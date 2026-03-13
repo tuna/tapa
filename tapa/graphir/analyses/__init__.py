@@ -1,4 +1,4 @@
-"""Analyses tools of RapidStream."""
+"""Analyses tools of TAPA."""
 
 __copyright__ = """
 Copyright (c) 2025 RapidStream Design Automation, Inc. and contributors.

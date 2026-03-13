@@ -576,7 +576,7 @@ endmodule
                 self._rewriter.remove(instance.sourceRange)
 
     def add_rs_pragmas(self) -> "Module":
-        """Add RapidStream pragmas for existing ports.
+        """Add RS pragmas for existing ports.
 
         Note, this is based on port name suffix matching and may not be perfect.
 
@@ -873,7 +873,7 @@ def _get_rs_pragma(port_name: str) -> Pragma | None:
 
 
 def _get_rs_port(port: str) -> str:
-    """Return the RapidStream port for the given m_axi `port`."""
+    """Return the RS port for the given m_axi `port`."""
     if port in {"READY", "VALID"}:
         return port.lower()
     return "data"

@@ -6,12 +6,19 @@ Releasing TAPA Builds
    This section explains how to release TAPA builds. It is intended for
    **maintainers** with write access to the TAPA repository.
 
-Start a new GitHub action of
-`"Build and Publish Stable Version <https://github.com/rapidstream-org/rapidstream-tapa/actions/workflows/publish-stable.yml>`_
-from the GitHub Actions tab. This action will build and publish the stable
-version of TAPA to RapidStream Release Registry and automatically mark the
-release as the latest stable version.
+To create a release build:
 
-Only the administrators of the RapidStream organization can approve the
-release. Once the action is triggered, the administrators will be notified
-and asked to approve the release.
+1. Build the binary distribution:
+
+   .. code-block:: bash
+
+      bazel build --config=release //:tapa-pkg-tar
+
+2. Tag the release and create a GitHub release with the tarball from
+   ``bazel-bin/tapa-pkg-tar.tar``.
+
+3. Users can install from the tarball using the ``install.sh`` script:
+
+   .. code-block:: bash
+
+      TAPA_LOCAL_PACKAGE=./tapa-pkg-tar.tar ./install.sh

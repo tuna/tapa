@@ -9,9 +9,9 @@ import os.path
 import subprocess
 import sys
 
-project = "RapidStream TAPA"
-author = "RapidStream Design Automation, Inc. and contributors"
-copyright = "2024, " + author  # noqa: A001
+project = "TAPA"
+author = "TAPA community maintainers and contributors"
+copyright = "2026, " + author  # noqa: A001
 
 html_theme = "sphinx_rtd_theme"
 
@@ -24,7 +24,7 @@ extensions = [
     "sphinx.ext.napoleon",  # Handles Google-stype docstring.
 ]
 
-breathe_default_project = "RapidStream TAPA"
+breathe_default_project = "TAPA"
 
 if os.environ.get("READTHEDOCS") == "True":
     docs_dir = os.path.dirname(__file__)

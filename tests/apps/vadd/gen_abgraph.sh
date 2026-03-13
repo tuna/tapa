@@ -9,7 +9,7 @@ CSYNTH_FILE=vadd.cpp
 ARGS="1000"
 
 # Synthesizing the app to generate the XO file
-/home/Ed-5100/rapidstream-tapa/bazel-bin/tapa/tapa \
+tapa \
     --work-dir build \
     compile \
     --top $APP \

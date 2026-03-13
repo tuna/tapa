@@ -1,4 +1,4 @@
-"""Test for leaf task rapidstream graphir conversion."""
+"""Test for leaf task graphir conversion."""
 
 __copyright__ = """
 Copyright (c) 2025 RapidStream Design Automation, Inc. and contributors.
