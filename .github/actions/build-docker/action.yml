@@ -9,7 +9,7 @@ inputs:
   imageTag:
     description: "Tag to apply to the docker image"
     required: false
-    default: "rapidstream/tapa-buildenv:local"
+    default: "tapa/buildenv:local"
   dockerfile:
     description: "Path to the dockerfile to build"
     required: false

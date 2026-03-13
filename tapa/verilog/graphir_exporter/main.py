@@ -45,13 +45,6 @@ DEFAULT_SCHEMA = "xilinx.com:schema:json_instance:1.0"
     default="",
 )
 @click.option(
-    "--binary",
-    hidden=True,
-    envvar="RAPIDSTREAM_EXPORTER_BINARY",
-    type=click.Path(executable=True, resolve_path=True),
-    required=False,
-)
-@click.option(
     "-v",
     "--verbose",
     count=True,

@@ -20,7 +20,7 @@ def export_design_file(root_path: str, module: AnyModuleDefinition) -> None:
         module (AnyModuleDefinition): The module to be exported.
 
     Examples:
-        >>> from rapidstream.graphir.types import VerilogModuleDefinition
+        >>> from tapa.graphir.types import VerilogModuleDefinition
         >>> module = VerilogModuleDefinition(
         ...     name="empty",
         ...     hierarchical_name=("empty_orig_name",),

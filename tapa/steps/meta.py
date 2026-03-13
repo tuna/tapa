@@ -12,8 +12,6 @@ from pathlib import Path
 
 import click
 
-from tapa.steps.add_pipeline import add_pipeline
-from tapa.steps.add_top_passthrough import add_top_passthrough
 from tapa.steps.analyze import analyze
 from tapa.steps.common import forward_applicable, load_tapa_program
 from tapa.steps.floorplan import AUTOBRIDGE_WORK_DIR, floorplan, run_autobridge
@@ -24,39 +22,17 @@ _logger = logging.getLogger().getChild(__name__)
 
 
 @click.command("compile")
-@click.option(
-    "--run-add-pipeline",
-    is_flag=True,
-    help=(
-        "Run the add pipeline step in the compilation flow. When specified, "
-        "flatten_hierarchy and gen_graphir options are specified automatically."
-    ),
-)
 @click.pass_context
-def compile_entry(ctx: click.Context, run_add_pipeline: bool, **kwargs: bool) -> None:
+def compile_entry(ctx: click.Context, **kwargs: bool) -> None:
     """Compile a TAPA program to a hardware design."""
-    if not run_add_pipeline:
-        forward_applicable(ctx, analyze, kwargs)
-        forward_applicable(ctx, synth, kwargs)
-        forward_applicable(ctx, pack, kwargs)
-    else:
-        assert "floorplan_path" in kwargs, (
-            "When --run-add-pipeline is specified, floorplan_path must be provided."
-        )
-        kwargs["flatten_hierarchy"] = True
-        kwargs["gen_graphir"] = True
-        forward_applicable(ctx, analyze, kwargs)
-        forward_applicable(ctx, floorplan, kwargs)
-        forward_applicable(ctx, synth, kwargs)
-        forward_applicable(ctx, add_top_passthrough, kwargs)
-        forward_applicable(ctx, add_pipeline, kwargs)
-        forward_applicable(ctx, pack, kwargs)
+    forward_applicable(ctx, analyze, kwargs)
+    forward_applicable(ctx, synth, kwargs)
+    forward_applicable(ctx, pack, kwargs)
 
 
 compile_entry.params.extend(analyze.params)
 compile_entry.params.extend(floorplan.params)
 compile_entry.params.extend(synth.params)
-compile_entry.params.extend(add_pipeline.params)
 compile_entry.params.extend(pack.params)
 
 
@@ -101,7 +77,6 @@ def compile_with_floorplan_dse(ctx: click.Context, **kwargs: bool | Path) -> Non
     kwargs["gen_graphir"] = True
     kwargs["enable_synth_util"] = False
     kwargs["gen_ab_graph"] = False
-    kwargs["run_add_pipeline"] = True
     succeeded = []
     for floorplan_file in floorplan_files:
         _logger.info("Using floorplan file: %s", floorplan_file)
@@ -131,6 +106,4 @@ compile_with_floorplan_dse.params.extend(analyze.params)
 compile_with_floorplan_dse.params.extend(floorplan.params)
 compile_with_floorplan_dse.params.extend(synth.params)
 compile_with_floorplan_dse.params.extend(run_autobridge.params)
-compile_with_floorplan_dse.params.extend(add_top_passthrough.params)
-compile_with_floorplan_dse.params.extend(add_pipeline.params)
 compile_with_floorplan_dse.params.extend(pack.params)

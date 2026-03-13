@@ -1,4 +1,4 @@
-"""Rapidstream device utilities."""
+"""TAPA device utilities."""
 
 __copyright__ = """
 Copyright (c) 2024 RapidStream Design Automation, Inc. and contributors.

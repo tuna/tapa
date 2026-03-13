@@ -6,13 +6,13 @@ Building from Source
    This guide is for **developers** contributing to or extending TAPA,
    or **advanced users** building TAPA from source for custom OS support.
    For FPGA accelerator development with TAPA, refer to the
-   :ref:`User Documentation`.
+   :ref:`User Documentation`. This is also the recommended way to install
+   TAPA for all users.
 
 .. tip::
 
-   If your OS isn't officially supported and you're not a developer,
-   consider using a virtual machine or file a
-   `feature request on GitHub <https://github.com/rapidstream-org/rapidstream-tapa/issues>`_.
+   If your OS isn't officially supported, consider using a virtual machine
+   or file a `feature request on GitHub <https://github.com/tuna/tapa/issues>`_.
 
 System Prerequisites
 --------------------
@@ -50,7 +50,7 @@ Install these tools using your OS package manager. For Ubuntu:
 
 .. note::
 
-   The `Dockerfile in the TAPA repository <https://github.com/rapidstream-org/rapidstream-tapa/blob/main/.github/docker/build-env/Dockerfile.Dependencies>`_
+   The `Dockerfile in the TAPA repository <https://github.com/tuna/tapa/blob/main/.github/docker/build-env/Dockerfile.Dependencies>`_
    provides a complete build environment. Use it for containerized builds or
    run the Ubuntu commands to install required tools.
 
@@ -61,7 +61,7 @@ To get started with building TAPA from source, you'll need to clone the reposito
 
 .. code-block:: bash
 
-   git clone https://github.com/rapidstream-org/rapidstream-tapa.git
+   git clone https://github.com/tuna/tapa.git
 
 If you are contributing to TAPA, fork the repository and clone your fork
 instead. When you're ready to contribute, create a new branch for your
@@ -71,8 +71,7 @@ changes back to the main repository.
 Modify the Build Configuration
 ------------------------------
 
-When building on systems other than a RapidStream server or a UCLA server, you
-will need to modify the ``VARS.bzl`` file in the repository's root directory
+You may need to modify the ``VARS.bzl`` file in the repository's root directory
 to specify the correct Vivado installation paths and versions. The build script
 currently assumes default installation paths at
 ``/opt/tools/xilinx/Vivado/2024.2`` and
@@ -216,10 +215,6 @@ Prerequisites
 2. Ensure Docker is installed on your system, as ``act`` requires it to run
    the workflow.
 
-.. note::
-
-   RapidStream organization developers using RapidStream servers can skip
-   the configuration steps below, as the necessary setup is already in place.
 
 Configuration
 ^^^^^^^^^^^^^
@@ -247,10 +242,6 @@ Before running ``act``, set up the following configuration files:
    (``/share/software/licenses/xilinx-ci.lic`` and
    ``/share/software/tools`` respectively), update
    ``.github/actions/run-docker/action.yml`` accordingly.
-
-.. note::
-
-   Developers from the RapidStream organization can start from here.
 
 Running Containerized Tests
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -296,4 +287,4 @@ To install the binary distribution:
 
    .. code-block:: bash
 
-      RAPIDSTREAM_LOCAL_PACKAGE=./artifacts.out/1/tapa/tapa.tar.gz ./install.sh
+      TAPA_LOCAL_PACKAGE=./artifacts.out/1/tapa/tapa.tar.gz ./install.sh

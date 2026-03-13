@@ -3,39 +3,13 @@ Installation
 
 .. note::
 
-   This guide walks you through installing RapidStream TAPA, and
-   optionally, the RapidStream toolchain.
-
-One-Step Installation
-~~~~~~~~~~~~~~~~~~~~~
-
-Install the RapidStream TAPA toolchain with a single command. After
-installation, restart your terminal or follow the instructions to apply the
-changes.
-
-.. code-block:: bash
-
-  # Install TAPA
-  sh -c "$(curl -fsSL tapa.rapidstream.sh)"
-
-  # Optional: Install RapidStream
-  sh -c "$(curl -fsSL rapidstream.sh)"
-
-.. note::
-
-   You may rerun the installation script to update TAPA and RapidStream.
-
-Verify the installation by running:
-
-.. code-block:: bash
-
-  tapa --version
-  rapidstream-tapaopt --version
+   This guide walks you through building and installing TAPA.
+   The recommended installation method is building from source.
 
 System Prerequisites
 ~~~~~~~~~~~~~~~~~~~~
 
-RapidStream TAPA requires the following dependencies:
+TAPA requires the following dependencies:
 
 +-------------------+-----------------+----------------------------------------------+
 | Dependency        | Version         | Notes                                        |
@@ -45,7 +19,7 @@ RapidStream TAPA requires the following dependencies:
 | Xilinx Vitis      | 2022.1 or newer |                                              |
 +-------------------+-----------------+----------------------------------------------+
 
-RapidStream TAPA has been tested on the following operating systems. Use the
+TAPA has been tested on the following operating systems. Use the
 appropriate package manager to install the required dependencies if using a
 different OS.
 
@@ -54,8 +28,7 @@ Ubuntu / Debian
 
 .. note::
 
-   For **Ubuntu 18.04 and newer**, or **Debian 10 and newer**. Older versions
-   require building TAPA from source.
+   For **Ubuntu 18.04 and newer**, or **Debian 10 and newer**.
 
 .. code-block:: bash
 
@@ -68,7 +41,6 @@ RHEL / Amazon Linux
 
    For **Red Hat Enterprise Linux 9 and newer**, derivatives like **AlmaLinux
    9 and newer** and **Rocky Linux 9 and newer**, or **Amazon Linux 2023**.
-   Older versions require building TAPA from source.
 
 .. code-block:: bash
 
@@ -86,21 +58,24 @@ Fedora
 
   sudo yum install gcc-c++ libxcrypt-compat
 
-RapidStream License
-~~~~~~~~~~~~~~~~~~~
+Building from Source
+~~~~~~~~~~~~~~~~~~~~
 
-While TAPA compiler is open-source, RapidStream requires a free license.
-Request one at https://rapidstream-da.com/contact-us to access the full
-RapidStream TAPA flow.
+For detailed build instructions, see
+:ref:`Building from Source <dev/build:Building from Source>`.
 
-.. note::
+Quick start:
 
-   Without a license, you can still use the TAPA compiler without physical
-   optimizations. The operating frequency will not be as high as with a
-   license.
+.. code-block:: bash
 
-Place the license file in one of these locations or set the
-``RAPIDSTREAM_LICENSE_FILE`` environment variable:
+  # Install Bazel (see https://bazel.build/install)
 
-- ``~/.rapidstream.lic``
-- ``/opt/licenses/rapidstream.lic``
+  git clone https://github.com/tuna/tapa.git
+  cd tapa
+  bazel build //...
+
+Verify the installation by running:
+
+.. code-block:: bash
+
+  bazel-bin/tapa/tapa --version

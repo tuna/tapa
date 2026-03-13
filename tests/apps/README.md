@@ -10,21 +10,11 @@ This directory contains multiple small example TAPA designs.
 
 For large and complex designs, refer to the `tests/regression` directory.
 
-## Running TAPA application with rapidstream optimization
-
-In each app, an `run_rs.sh` file is provided to demonstrate the workflow to csynth TAPA
-applications to XO files, optimize the design with RapidStream, and cosimulate the
-design with TAPA.
-
-The example script of generating rapidstream configuration files can be found
-at `rapidstream-tapa/tests/rs_templetes/gen_config.py`.
-
-The example of script of TAPA and rapidstream commands can be found at `rapidstream-tapa/tests/rs_templetes/run_rs.sh`
-
-To run the examples, install both rapidstream and TAPA, and follow the instruction below.
+To run the examples, build TAPA from source and follow the instruction below.
 ```bash
-cd rapidstream-tapa/tests/apps/vadd
-source ./run_rs.sh
+cd tapa/tests/apps/vadd
+tapa g++ vadd.cpp vadd-host.cpp -o vadd
+./vadd
 ```
 
-The steps of installing TAPA and rapidstream can be found at `https://tapa.readthedocs.io/en/main/user/installation.html`
+The steps of building TAPA can be found at `https://tapa.readthedocs.io/en/main/dev/build.html`

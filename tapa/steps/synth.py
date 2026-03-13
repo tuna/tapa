@@ -85,7 +85,7 @@ from tapa.steps.common import (
     default=None,
     help=(
         "Specifies the stream FIFOs to not add pipeline to. "
-        "A `grouping_constrains.json` file will be generated for rapidstream."
+        "A `grouping_constrains.json` file will be generated for floorplanning."
     ),
 )
 @click.option(

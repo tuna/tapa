@@ -4,6 +4,12 @@ All rights reserved. The contributor(s) of this file has/have agreed to the
 RapidStream Contributor License Agreement.
 -->
 
+> **Note**: This CLA is a historical document from when the project was
+> managed by RapidStream Design Automation, Inc. The project is now community
+> maintained by the Tsinghua University TUNA Association. New contributions
+> are governed by the MIT license. This document is preserved for historical
+> reference only.
+
 ## RapidStream Design Automation, Inc. <br/>Contributor License Agreement
 
 Thank you for your interest in the open source project(s) managed by RapidStream Design Automation, Inc. (“Company”). This license agreement is for your protection as a contributor as well as the protection of Company and its other contributors and users; it does not change your rights to use your own Contributions for any other purpose.

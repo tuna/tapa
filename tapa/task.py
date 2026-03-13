@@ -634,7 +634,7 @@ class Task:
             )
 
     def add_rs_pragmas_to_fsm(self) -> None:
-        """Add RapidStream pragmas to the FSM module."""
+        """Add RS pragmas to the FSM module."""
         port_map_str = " ".join(
             f"{x}={x}" for x in (HANDSHAKE_START, *HANDSHAKE_OUTPUT_PORTS)
         )

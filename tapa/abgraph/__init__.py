@@ -1,4 +1,4 @@
-"""Rapidstream ABGraph package."""
+"""TAPA ABGraph package."""
 
 __copyright__ = """
 Copyright (c) 2024 RapidStream Design Automation, Inc. and contributors.

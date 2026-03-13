@@ -4,37 +4,48 @@
 # All rights reserved. The contributor(s) of this file has/have agreed to the
 # RapidStream Contributor License Agreement.
 
-# This script is used to install the RapidStream software on the target machine.
-
+# This script is used to install TAPA from a local package on the target machine.
+#
+# Usage:
+#   TAPA_LOCAL_PACKAGE=./path/to/tapa.tar.gz ./install.sh
+#
 # If the user runs this script with the root privilege, it will install the software
-# in the /opt/rapidstream-tapa directory. It further creates symbolic links in the
-# /usr/local/bin directory to the executables in the /opt/rapidstream-tapa directory to
+# in the /opt/tapa directory. It further creates symbolic links in the
+# /usr/local/bin directory to the executables in the /opt/tapa directory to
 # make the software available in the system path.
-
+#
 # Otherwise, if the user runs this script without the root privilege, it will install
-# the software in the $HOME/.rapidstream-tapa directory. It further modifies the user's
-# PATH environment variable to include the $HOME/.rapidstream-tapa directory.
+# the software in the $HOME/.tapa directory. It further modifies the user's
+# PATH environment variable to include the $HOME/.tapa directory.
 
 # Treat unset variables as an error when substituting. And exit immediately if a
 # pipeline returns non-zero status.
 set -ue
 
 # Default values for the installation options.
-RAPIDSTREAM_UPDATE_ROOT="${RAPIDSTREAM_UPDATE_ROOT:-https://releases.rapidstream-da.com}"
-RAPIDSTREAM_LOCAL_PACKAGE="${RAPIDSTREAM_LOCAL_PACKAGE:-}"
+# Support both new and legacy environment variable names.
+TAPA_LOCAL_PACKAGE="${TAPA_LOCAL_PACKAGE:-${RAPIDSTREAM_LOCAL_PACKAGE:-}}"
 
-RAPIDSTREAM_CHANNEL="${RAPIDSTREAM_CHANNEL:-stable}"
-RAPIDSTREAM_VERSION="${RAPIDSTREAM_VERSION:-latest}"
+if [ -z "$TAPA_LOCAL_PACKAGE" ]; then
+  echo "Error: TAPA_LOCAL_PACKAGE must be set to the path of the TAPA tarball."
+  echo ""
+  echo "To build TAPA from source and create a tarball, run:"
+  echo "  bazel build --config=release //:tapa-pkg-tar"
+  echo ""
+  echo "Then install with:"
+  echo "  TAPA_LOCAL_PACKAGE=./bazel-bin/tapa-pkg-tar.tar ./install.sh"
+  exit 1
+fi
 
 if [ "$(id -u)" -eq 0 ]; then
-  # Default to /opt/rapidstream-tapa if the user has the root privilege.
-  RAPIDSTREAM_INSTALL_DIR="${RAPIDSTREAM_INSTALL_DIR:-/opt/rapidstream-tapa}"
+  # Default to /opt/tapa if the user has the root privilege.
+  TAPA_INSTALL_DIR="${TAPA_INSTALL_DIR:-${RAPIDSTREAM_INSTALL_DIR:-/opt/tapa}}"
   CREATE_SYMLINKS="yes"
   MODIFY_PROFILE_PATH="no"
 
 elif [ "$(id -u)" -ne 0 ]; then
   # Default to the user's home directory if the user does not have the root privilege.
-  RAPIDSTREAM_INSTALL_DIR="${RAPIDSTREAM_INSTALL_DIR:-$HOME/.rapidstream-tapa}"
+  TAPA_INSTALL_DIR="${TAPA_INSTALL_DIR:-${RAPIDSTREAM_INSTALL_DIR:-$HOME/.tapa}}"
   CREATE_SYMLINKS="no"
   MODIFY_PROFILE_PATH="yes"
 
@@ -46,14 +57,11 @@ QUIET="${QUIET:-no}"
 # Display the usage of this script.
 usage() {
   cat <<EOF
-tapa.rapidstream.sh - Installer of the RapidStream TAPA software on the target machine.
+install.sh - Install TAPA from a local package.
 
-Usage: tapa.rapidstream.sh [OPTIONS]
+Usage: TAPA_LOCAL_PACKAGE=./tapa.tar.gz ./install.sh [OPTIONS]
 
 Options:
-  -c, --channel <channel>      Specify the channel to download the software from.
-      --version <version>      Specify the version of the software to install.
-
   -t, --target <directory>     Specify the directory to install the software to.
       --no-create-symlinks     Do not create symbolic links in the system path.
       --no-modify-path         Do not modify the PATH environment variable.
@@ -73,14 +81,8 @@ main() {
   # Display the installation options if the verbose mode is enabled.
   if [ "$VERBOSE" = "yes" ]; then
     echo "Please verify the specified installation options:"
-    if [ -n "$RAPIDSTREAM_LOCAL_PACKAGE" ]; then
-      echo "  Local package:     $RAPIDSTREAM_LOCAL_PACKAGE"
-    else
-      echo "  Update root:       $RAPIDSTREAM_UPDATE_ROOT"
-      echo "  Channel:           $RAPIDSTREAM_CHANNEL"
-      echo "  Version:           $RAPIDSTREAM_VERSION"
-    fi
-    echo "  Install target:    $RAPIDSTREAM_INSTALL_DIR"
+    echo "  Local package:     $TAPA_LOCAL_PACKAGE"
+    echo "  Install target:    $TAPA_INSTALL_DIR"
     echo "  Create symlinks:   $CREATE_SYMLINKS"
     echo "  Modify PATH:       $MODIFY_PROFILE_PATH"
     printf "Press Enter to continue, or Ctrl+C to cancel..."
@@ -92,11 +94,11 @@ main() {
 
   # Display the installation message.
   if [ "$QUIET" = "no" ]; then
-    echo "Installing RapidStream TAPA to \"$RAPIDSTREAM_INSTALL_DIR\"..."
+    echo "Installing TAPA to \"$TAPA_INSTALL_DIR\"..."
   fi
 
-  # Download and extract the RapidStream TAPA software.
-  download_and_extract_rapidstream_tapa
+  # Extract the TAPA package.
+  extract_tapa_package
 
   # Create symbolic links in the system path.
   create_symlinks
@@ -109,28 +111,12 @@ main() {
 parse_args() {
   while [ $# -gt 0 ]; do
     case "$1" in
-    -c | --channel)
-      RAPIDSTREAM_CHANNEL="$2"
-      shift 2
-      ;;
-    --channel=*)
-      RAPIDSTREAM_CHANNEL="${1#*=}"
-      shift
-      ;;
-    --version)
-      RAPIDSTREAM_VERSION="$2"
-      shift 2
-      ;;
-    --version=*)
-      RAPIDSTREAM_VERSION="${1#*=}"
-      shift
-      ;;
     -t | --target)
-      RAPIDSTREAM_INSTALL_DIR="$2"
+      TAPA_INSTALL_DIR="$2"
       shift 2
       ;;
     --target=*)
-      RAPIDSTREAM_INSTALL_DIR="${1#*=}"
+      TAPA_INSTALL_DIR="${1#*=}"
       shift
       ;;
     --no-create-symlinks)
@@ -172,7 +158,7 @@ parse_args() {
 # Check if the installation directory exists. If so, prompt the user to confirm.
 check_install_dir() {
   # If the installation directory exists
-  if [ -d "$RAPIDSTREAM_INSTALL_DIR" ]; then
+  if [ -d "$TAPA_INSTALL_DIR" ]; then
 
     # If the user does not enable the auto-confirm option
     if [ "$VERBOSE" = "yes" ]; then
@@ -191,60 +177,29 @@ check_install_dir() {
     # If the user enables the auto-confirm option or confirms the prompt,
     # show the message that the installation directory will be overwritten.
     if [ "$QUIET" = "no" ]; then
-      echo "Overwriting the installation directory: \"$RAPIDSTREAM_INSTALL_DIR\"..."
+      echo "Overwriting the installation directory: \"$TAPA_INSTALL_DIR\"..."
     fi
 
     # Remove the existing installation directory
-    rm -rf "$RAPIDSTREAM_INSTALL_DIR"
+    rm -rf "$TAPA_INSTALL_DIR"
   fi
 }
 
-# Download and extract the RapidStream TAPA software.
-download_and_extract_rapidstream_tapa() {
-  # Create a temporary directory to download the RapidStream TAPA software.
-  tmpdir="$(mktemp -d)"
-  if [ "$VERBOSE" = "yes" ]; then
-    echo "Creating a temporary directory for the download: \"$tmpdir\"..."
+# Extract the TAPA package from the local tarball.
+extract_tapa_package() {
+  if [ ! -f "$TAPA_LOCAL_PACKAGE" ]; then
+    echo "Error: Local package not found: \"$TAPA_LOCAL_PACKAGE\""
+    exit 1
   fi
 
-  if [ -f "$RAPIDSTREAM_LOCAL_PACKAGE" ]; then
-    if [ "$VERBOSE" = "yes" ]; then
-      echo "Copying RapidStream TAPA from: \"$RAPIDSTREAM_LOCAL_PACKAGE\" to \"$tmpdir/rapidstream-tapa.tar.gz\"..."
-    fi
-    cp "$RAPIDSTREAM_LOCAL_PACKAGE" "$tmpdir/rapidstream-tapa.tar.gz"
-  else
-    # Download the RapidStream software.
-    url="${RAPIDSTREAM_UPDATE_ROOT}/rapidstream-tapa-${RAPIDSTREAM_CHANNEL}-${RAPIDSTREAM_VERSION}.tar.gz"
-    if [ "$VERBOSE" = "yes" ]; then
-      echo "Downloading RapidStream TAPA from: \"$url\" to \"$tmpdir/rapidstream-tapa.tar.gz\"..."
-      curl_opts="-fSL"
-    elif [ "$QUIET" = "no" ]; then
-      echo "Downloading RapidStream TAPA..."
-      curl_opts="-fsSL"
-    else
-      curl_opts="-fsSL"
-    fi
-    curl "$curl_opts" "$url" -o "$tmpdir/rapidstream-tapa.tar.gz"
-  fi
-
-  # Extract the RapidStream TAPA software.
+  # Extract the TAPA package.
   if [ "$VERBOSE" = "yes" ]; then
-    echo "Extracting RapidStream TAPA to: \"$RAPIDSTREAM_INSTALL_DIR\"..."
-    tar_opts="-xzf"
+    echo "Extracting TAPA from: \"$TAPA_LOCAL_PACKAGE\" to: \"$TAPA_INSTALL_DIR\"..."
   elif [ "$QUIET" = "no" ]; then
-    echo "Extracting RapidStream TAPA..."
-    tar_opts="-xzf"
-  else
-    tar_opts="-xzf"
+    echo "Extracting TAPA..."
   fi
-  mkdir -p "$RAPIDSTREAM_INSTALL_DIR"
-  tar "$tar_opts" "$tmpdir/rapidstream-tapa.tar.gz" -C "$RAPIDSTREAM_INSTALL_DIR" --overwrite
-
-  # Clean up the temporary directory.
-  if [ "$VERBOSE" = "yes" ]; then
-    echo "Cleaning up the temporary directory..."
-  fi
-  rm -rf "$tmpdir"
+  mkdir -p "$TAPA_INSTALL_DIR"
+  tar -xzf "$TAPA_LOCAL_PACKAGE" -C "$TAPA_INSTALL_DIR" --overwrite
 }
 
 # Create symbolic links in the system path.
@@ -255,7 +210,7 @@ create_symlinks() {
     fi
 
     # Create symbolic links for each executable in the installation directory.
-    for bin in "$RAPIDSTREAM_INSTALL_DIR"/usr/bin/*; do
+    for bin in "$TAPA_INSTALL_DIR"/usr/bin/*; do
       # Skip the directories.
       if [ ! -f "$bin" ]; then
         continue
@@ -282,18 +237,18 @@ modify_profile_path_in_file() {
   fi
 
   # Check if the PATH environment variable is already modified.
-  if grep -q "$RAPIDSTREAM_INSTALL_DIR" "$profile_file"; then
+  if grep -q "$TAPA_INSTALL_DIR" "$profile_file"; then
     if [ "$VERBOSE" = "yes" ]; then
-      echo "The PATH to RapidStream TAPA is already set in \"$profile_file\". Skipping..."
+      echo "The PATH to TAPA is already set in \"$profile_file\". Skipping..."
     fi
     return
   fi
 
   # Add the PATH environment variable to the profile file.
   if [ "$QUIET" = "no" ]; then
-    echo "Adding PATH to RapidStream TAPA to \"$profile_file\"..."
+    echo "Adding PATH to TAPA to \"$profile_file\"..."
   fi
-  echo "export PATH=\"\$PATH:$RAPIDSTREAM_INSTALL_DIR/usr/bin\"" >>"$profile_file"
+  echo "export PATH=\"\$PATH:$TAPA_INSTALL_DIR/usr/bin\"" >>"$profile_file"
 }
 
 # Modify the PATH environment variable.
@@ -313,7 +268,7 @@ modify_profile_path() {
     if [ "$QUIET" = "no" ]; then
       echo "Please restart your shell to finish the installation."
       echo "Alternatively, you can run the following command to apply the changes:"
-      echo "  export PATH=\"\$PATH:$RAPIDSTREAM_INSTALL_DIR/usr/bin\""
+      echo "  export PATH=\"\$PATH:$TAPA_INSTALL_DIR/usr/bin\""
     fi
   fi
 }
