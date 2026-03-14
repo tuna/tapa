@@ -17,7 +17,10 @@ exports_files(
         "gemv.cpp",
         "gemv.h",
     ],
-    visibility = ["//tests/functional:__subpackages__"],
+    visibility = [
+        "//tests/apps:__pkg__",
+        "//tests/functional:__subpackages__",
+    ],
 )
 
 sh_test(

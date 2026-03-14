@@ -1,0 +1,36 @@
+"""Tests for TAPA analyze step on sample apps."""
+
+load("//bazel:pytest_rules.bzl", "py_test")
+
+py_test(
+    name = "analyze_test",
+    size = "large",
+    srcs = ["analyze_test.py"],
+    data = [
+        "//tapa",
+        "//tapa-lib:include",
+        # vadd
+        "//tests/apps/vadd:vadd.cpp",
+        "//tests/apps/vadd:vadd.h",
+        # bandwidth
+        "//tests/apps/bandwidth:bandwidth.cpp",
+        "//tests/apps/bandwidth:bandwidth.h",
+        "//tests/apps/bandwidth:lfsr.h",
+        # cannon
+        "//tests/apps/cannon:cannon.cpp",
+        "//tests/apps/cannon:cannon.h",
+        # gemv
+        "//tests/apps/gemv:gemv.cpp",
+        "//tests/apps/gemv:gemv.h",
+        # graph
+        "//tests/apps/graph:graph.cpp",
+        "//tests/apps/graph:graph.h",
+        "//tests/apps/graph:nxgraph.hpp",
+        # jacobi
+        "//tests/apps/jacobi:jacobi.cpp",
+        "//tests/apps/jacobi:jacobi.h",
+        # network
+        "//tests/apps/network:network.cpp",
+        "//tests/apps/network:network.h",
+    ],
+)

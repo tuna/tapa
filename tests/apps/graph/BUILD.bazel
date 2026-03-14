@@ -18,7 +18,10 @@ exports_files(
         "nxgraph.hpp",
         "graph.txt",
     ],
-    visibility = ["//tests/functional:__subpackages__"],
+    visibility = [
+        "//tests/apps:__pkg__",
+        "//tests/functional:__subpackages__",
+    ],
 )
 
 sh_test(
