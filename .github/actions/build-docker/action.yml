@@ -25,7 +25,6 @@ runs:
     - name: Create docker image as the build environment
       run: >
         docker build \
-          --pull \
           -t ${{ inputs.imageTag }} \
           -f ${{ inputs.dockerfile }} \
           --build-arg UBUNTU_PRO_TOKEN=${{ env.UBUNTU_PRO_TOKEN }} \
