@@ -221,7 +221,7 @@ class basic_stream {
 
   // not protected since we'll use std::vector<basic_stream<T>>
   basic_stream() {}
-  basic_stream(const std::string& name, int depth)
+  basic_stream(const std::string& name, uint64_t depth)
       : queue(make_queue<elem_t<T>>(depth, name)) {}
 
   basic_stream(const basic_stream&) = default;
@@ -747,7 +747,7 @@ class istreams : virtual public internal::basic_streams<T> {
   template <typename Param, typename Arg>
   friend struct internal::accessor;
 
-  int access_pos_ = 0;
+  uint64_t access_pos_ = 0;
 
   istream<T> access() {
     CHECK_LT(access_pos_, this->ptr->refs.size())
@@ -765,7 +765,7 @@ class istreams : virtual public internal::basic_streams<T> {
         std::make_shared<typename internal::basic_streams<T>::metadata_t>(
             this->ptr->name, this->ptr->pos);
     result.ptr->refs.reserve(length);
-    for (int i = 0; i < length; ++i) {
+    for (uint64_t i = 0; i < length; ++i) {
       result.ptr->refs.emplace_back(access());
     }
     return result;
@@ -808,7 +808,7 @@ class ostreams : virtual public internal::basic_streams<T> {
   template <typename Param, typename Arg>
   friend struct internal::accessor;
 
-  int access_pos_ = 0;
+  uint64_t access_pos_ = 0;
 
   ostream<T> access() {
     CHECK_LT(access_pos_, this->ptr->refs.size())
@@ -826,7 +826,7 @@ class ostreams : virtual public internal::basic_streams<T> {
         std::make_shared<typename internal::basic_streams<T>::metadata_t>(
             this->ptr->name, this->ptr->pos);
     result.ptr->refs.reserve(length);
-    for (int i = 0; i < length; ++i) {
+    for (uint64_t i = 0; i < length; ++i) {
       result.ptr->refs.emplace_back(access());
     }
     return result;
@@ -849,7 +849,7 @@ class streams : public internal::unbound_streams<T, S> {
       : internal::basic_streams<T>(
             std::make_shared<typename internal::basic_streams<T>::metadata_t>(
                 "", 0)) {
-    for (int i = 0; i < S; ++i) {
+    for (uint64_t i = 0; i < S; ++i) {
       this->ptr->refs.emplace_back("", SimulationDepth);
     }
   }
@@ -865,7 +865,7 @@ class streams : public internal::unbound_streams<T, S> {
       : internal::basic_streams<T>(
             std::make_shared<typename internal::basic_streams<T>::metadata_t>(
                 name, 0)) {
-    for (int i = 0; i < S; ++i) {
+    for (uint64_t i = 0; i < S; ++i) {
       this->ptr->refs.emplace_back(
           std::string(name) + "[" + std::to_string(i) + "]", SimulationDepth);
     }
@@ -883,8 +883,8 @@ class streams : public internal::unbound_streams<T, S> {
   template <typename Param, typename Arg>
   friend struct internal::accessor;
 
-  int istream_access_pos_ = 0;
-  int ostream_access_pos_ = 0;
+  uint64_t istream_access_pos_ = 0;
+  uint64_t ostream_access_pos_ = 0;
 
   istream<T> access_as_istream() {
     CHECK_LT(istream_access_pos_, this->ptr->refs.size())
@@ -908,7 +908,7 @@ class streams : public internal::unbound_streams<T, S> {
         std::make_shared<typename internal::basic_streams<T>::metadata_t>(
             this->ptr->name, istream_access_pos_);
     result.ptr->refs.reserve(length);
-    for (int i = 0; i < length; ++i) {
+    for (uint64_t i = 0; i < length; ++i) {
       result.ptr->refs.emplace_back(access_as_istream());
     }
     return result;
@@ -921,7 +921,7 @@ class streams : public internal::unbound_streams<T, S> {
         std::make_shared<typename internal::basic_streams<T>::metadata_t>(
             this->ptr->name, ostream_access_pos_);
     result.ptr->refs.reserve(length);
-    for (int i = 0; i < length; ++i) {
+    for (uint64_t i = 0; i < length; ++i) {
       result.ptr->refs.emplace_back(access_as_ostream());
     }
     return result;

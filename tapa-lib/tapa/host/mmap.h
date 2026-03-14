@@ -464,7 +464,7 @@ class mmaps {
   template <typename Param, typename Arg>
   friend struct internal::accessor;
 
-  int access_pos_ = 0;
+  uint64_t access_pos_ = 0;
 
   mmap<T> access() {
     LOG_IF(WARNING, access_pos_ >= S)

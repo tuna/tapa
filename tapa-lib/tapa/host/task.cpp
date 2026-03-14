@@ -196,7 +196,12 @@ class worker {
               delete coroutine;
               f();
             };
-            l.emplace_back(segmented_stack(), call_back);
+            // Use 8 MB stack per coroutine, matching typical thread stack
+            // sizes. Without -fsplit-stacks (e.g., when using Clang),
+            // segmented_stack uses a fixed-size allocation and tasks with
+            // large local arrays (e.g., 128 KB in graph's ProcElem) would
+            // overflow the default ~64 KB stack.
+            l.emplace_back(segmented_stack(8 * 1024 * 1024), call_back);
             *coroutine = &l.back();
           }
         }
