@@ -113,12 +113,15 @@ non_module_boost_repositories = use_extension("@com_github_nelhage_rules_boost//
 use_repo(non_module_boost_repositories, "boost")
 
 bazel_dep(name = "gflags", version = "2.2.2.bcr.1")
-bazel_dep(name = "glog", version = "0.7.1")
+
+# glog must be 0.5.0 as in later versions, bazel is strictly required for
+# including glog headers for the host code
+bazel_dep(name = "glog", version = "0.5.0")
 bazel_dep(name = "googletest", version = "1.17.0")
 
 single_version_override(
     module_name = "glog",
-    version = "0.7.1.bcr.1",
+    patches = ["//bazel:patches/glog/0001-Fix-unused-but-set-variable.patch"],
 )
 
 load_dependencies = use_extension(
