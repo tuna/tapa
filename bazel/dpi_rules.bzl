@@ -7,6 +7,27 @@
 load("@rules_cc//cc:defs.bzl", "cc_library")
 load("@rules_cc//cc/common:cc_info.bzl", "CcInfo")
 
+def _no_lto_transition_impl(settings, _attr):
+    """Remove LTO flags so deps produce regular ELF objects.
+
+    Xilinx's bundled linker (binutils-2.37) cannot handle LTO bitcode
+    objects produced by -flto=thin. This transition strips LTO flags from
+    the compilation so that static archives contain native ELF objects
+    that the old linker can process.
+    """
+    copts = [c for c in settings["//command_line_option:copt"] if "lto" not in c]
+    linkopts = [opt for opt in settings["//command_line_option:linkopt"] if "lto" not in opt]
+    return {
+        "//command_line_option:copt": copts,
+        "//command_line_option:linkopt": linkopts,
+    }
+
+_no_lto_transition = transition(
+    implementation = _no_lto_transition_impl,
+    inputs = ["//command_line_option:copt", "//command_line_option:linkopt"],
+    outputs = ["//command_line_option:copt", "//command_line_option:linkopt"],
+)
+
 def _dpi_library_impl(ctx):
     compile_options = [
         "-Wall",
@@ -124,34 +145,38 @@ def _dpi_library_impl(ctx):
         ),
     ]
 
+_DPI_ATTRS = {
+    "srcs": attr.label_list(allow_files = True),
+    "hdrs": attr.label_list(allow_files = True),
+    "includes": attr.label_list(allow_files = True),
+    # Use _no_lto_transition so deps are compiled without LTO. Xilinx's
+    # bundled binutils-2.37 cannot handle LTO bitcode objects.
+    "deps": attr.label_list(providers = [CcInfo], cfg = _no_lto_transition),
+    "_allowlist_function_transition": attr.label(
+        default = "@bazel_tools//tools/allowlists/function_transition_allowlist",
+    ),
+}
+
 _dpi_library = rule(
     implementation = _dpi_library_impl,
-    attrs = {
-        "srcs": attr.label_list(allow_files = True),
-        "hdrs": attr.label_list(allow_files = True),
-        "includes": attr.label_list(allow_files = True),
-        "deps": attr.label_list(providers = [CcInfo]),
+    attrs = dict(_DPI_ATTRS, **{
         "_xsc": attr.label(
             cfg = "exec",
             default = Label("//bazel:xsc_xv"),
             executable = True,
         ),
-    },
+    }),
 )
 
 _dpi_legacy_rdi_library = rule(
     implementation = _dpi_library_impl,
-    attrs = {
-        "srcs": attr.label_list(allow_files = True),
-        "hdrs": attr.label_list(allow_files = True),
-        "includes": attr.label_list(allow_files = True),
-        "deps": attr.label_list(providers = [CcInfo]),
+    attrs = dict(_DPI_ATTRS, **{
         "_xsc": attr.label(
             cfg = "exec",
             default = Label("//bazel:xsc_legacy_rdi"),
             executable = True,
         ),
-    },
+    }),
 )
 
 def dpi_library(name, **kwargs):
