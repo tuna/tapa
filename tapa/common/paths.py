@@ -8,6 +8,8 @@ RapidStream Contributor License Agreement.
 
 import logging
 import os.path
+import platform
+import subprocess as _subprocess
 from collections.abc import Iterable
 from functools import cache
 from pathlib import Path
@@ -136,9 +138,14 @@ def get_xpfm_path(platform: str) -> str | None:
     return None
 
 
-@cache
-def get_vendor_include_paths() -> Iterable[str]:
-    """Yields include paths that are automatically available in vendor tools."""
+def _get_vendor_include_paths(*, include_gcc: bool) -> Iterable[str]:
+    """Yields include paths that are automatically available in vendor tools.
+
+    Args:
+        include_gcc: If True, include vendor GCC C++ stdlib headers.
+            These are Linux-specific (require glibc) so should only be
+            enabled on Linux or when targeting remote Linux HLS execution.
+    """
     xilinx_hls: str | None = None
     for tool_name in "HLS", "VITIS":
         # 2024.2 moved the HLS include path from Vitis_HLS to Vitis
@@ -149,9 +156,10 @@ def get_vendor_include_paths() -> Iterable[str]:
                 yield include
                 break
 
-    if xilinx_hls is not None:
-        # there are multiple versions of gcc, such as 6.2.0, 9.3.0, 11.4.0,
-        # we choose the latest version based on numerical order
+    if xilinx_hls is not None and include_gcc:
+        # GCC C++ stdlib headers from the vendor toolchain are Linux-specific
+        # (they depend on glibc). On non-Linux (e.g., macOS with remote vendor
+        # headers), we skip them and keep the platform's own C++ stdlib.
         tps_lnx64 = Path(xilinx_hls) / "tps" / "lnx64"
         gcc_paths = tps_lnx64.glob("gcc-*.*.*")
         gcc_versions = [path.name.split("-")[1] for path in gcc_paths]
@@ -182,21 +190,42 @@ def get_vendor_include_paths() -> Iterable[str]:
 
 
 @cache
+def get_vendor_include_paths() -> Iterable[str]:
+    """Yields vendor include paths for local compilation."""
+    yield from _get_vendor_include_paths(include_gcc=platform.system() == "Linux")
+
+
+@cache
 def get_tapa_cflags() -> tuple[str, ...]:
     """Return the CFLAGS for compiling TAPA programs.
 
     The CFLAGS include the TAPA include and system include paths when applicable.
     """
-    tapa_lib_include = find_resource("tapa-lib-include")
-    includes = {
-        find_resource("fpga-runtime-include"),
-        find_resource("tapa-extra-runtime-include"),
-    }
+    include_flags: list[str] = []
 
-    # WORKAROUND: tapa-lib-include must be included first to make Vitis happy
-    include_flags = ["-isystem" + str(tapa_lib_include)]
-    for include in includes - {tapa_lib_include}:
-        include_flags.extend(["-isystem" + str(include)])
+    try:
+        tapa_lib_include = find_resource("tapa-lib-include")
+
+        # Validate that the found path actually contains tapa headers,
+        # not stale Bazel build artifacts.
+        if not (tapa_lib_include / "tapa.h").exists():
+            msg = "tapa.h not found in tapa-lib-include"
+            raise FileNotFoundError(msg)
+
+        includes = {
+            find_resource("fpga-runtime-include"),
+            find_resource("tapa-extra-runtime-include"),
+        }
+
+        # WORKAROUND: tapa-lib-include must be included first to make Vitis happy
+        include_flags.append("-isystem" + str(tapa_lib_include))
+        for include in includes - {tapa_lib_include}:
+            include_flags.extend(["-isystem" + str(include)])
+    except FileNotFoundError:
+        _logger.warning(
+            "TAPA runtime libraries not found; "
+            "runtime include paths will not be added to CFLAGS"
+        )
 
     return (
         *include_flags,
@@ -243,14 +272,20 @@ def get_tapa_ldflags() -> tuple[str, ...]:
 
 
 @cache
-def get_tapacc_cflags() -> tuple[str, ...]:
+def get_tapacc_cflags(for_remote_hls: bool = False) -> tuple[str, ...]:
     """Return CFLAGS with vendor libraries for HLS.
 
     This CFLAGS include the tapa and HLS vendor libraries.
+
+    Args:
+        for_remote_hls: If True, include vendor GCC C++ stdlib headers and
+            -nostdinc++ even on non-Linux. This is needed when HLS runs on
+            a remote Linux host while the local machine is macOS.
     """
     # Add vendor include files to tapacc cflags
+    include_gcc = platform.system() == "Linux" or for_remote_hls
     vendor_include_paths = ()
-    for vendor_path in get_vendor_include_paths():
+    for vendor_path in _get_vendor_include_paths(include_gcc=include_gcc):
         vendor_include_paths += ("-isystem" + vendor_path,)
         _logger.info("added vendor include path `%s`", vendor_path)
 
@@ -260,17 +295,51 @@ def get_tapacc_cflags() -> tuple[str, ...]:
     #       A full solution is to provide tapa::assume that guarantees
     #       the produce the pattern that HLS likes.
     #       For now, newer versions of glibc will not be supported.
+    # Only use -nostdinc++ when vendor GCC paths are available to replace it.
+    # On non-Linux (e.g., macOS), we keep the platform's C++ stdlib, so we
+    # only have the Xilinx include dir without GCC headers to replace it.
+    nostdinc_flag = ("-nostdinc++",) if vendor_include_paths and include_gcc else ()
+
     return (
-        # Use the stdc++ library from the HLS toolchain.
-        "-nostdinc++",
+        # Use the stdc++ library from the HLS toolchain when available.
+        *nostdinc_flag,
         *get_tapa_cflags(),
         *vendor_include_paths,
     )
 
 
 @cache
-def get_system_cflags() -> tuple[str, ...]:
-    """Return CFLAGS for system libraries, such as clang and libc++."""
-    if system_include_path := find_resource("tapa-system-include"):
-        return ("-isystem" + str(system_include_path),)
+def _get_macos_sysroot_flags() -> tuple[str, ...]:
+    """Return -isysroot flag for macOS SDK if available."""
+    if platform.system() != "Darwin":
+        return ()
+
+    try:
+        sdk_path = _subprocess.check_output(
+            ["xcrun", "--show-sdk-path"],
+            text=True,
+            timeout=10,
+        ).strip()
+        if sdk_path:
+            return ("-isysroot", sdk_path)
+    except (FileNotFoundError, _subprocess.SubprocessError):
+        _logger.warning("xcrun not found; macOS SDK headers may be missing")
+
     return ()
+
+
+@cache
+def get_system_cflags() -> tuple[str, ...]:
+    """Return CFLAGS for system libraries, such as clang and libc++.
+
+    Uses -idirafter so that LLVM builtin headers from tapa-system-include
+    are searched after any platform C++ standard library headers (e.g.,
+    macOS libc++), avoiding conflicts with wrapper headers like stddef.h.
+    On macOS, also adds -isysroot for the SDK so that tapa-cpp and tapacc
+    (custom clang builds) can find system C++ headers.
+    """
+    flags: list[str] = []
+    flags.extend(_get_macos_sysroot_flags())
+    if system_include_path := find_resource("tapa-system-include"):
+        flags.append("-idirafter" + str(system_include_path))
+    return tuple(flags)

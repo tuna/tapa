@@ -18,28 +18,33 @@ exports_files([
 xilinx_wrapper(
     name = "v++",
     argv0 = "v++",
+    target_compatible_with = ["@platforms//os:linux"],
     tool = "Vitis",
 )
 
 xilinx_wrapper(
     name = "v++_env.sh",
+    target_compatible_with = ["@platforms//os:linux"],
     tool = "Vitis",
 )
 
 xilinx_wrapper(
     name = "xrt_env.sh",
+    target_compatible_with = ["@platforms//os:linux"],
     tool = "Vitis",
     xrt = True,
 )
 
 xilinx_wrapper(
     name = "vitis_hls_env",
+    target_compatible_with = ["@platforms//os:linux"],
     tool = "Vitis_HLS",
 )
 
 xilinx_wrapper(
     name = "xsc_xv",
     argv0 = "xsc",
+    target_compatible_with = ["@platforms//os:linux"],
     tool = "Vivado",
 )
 
@@ -47,6 +52,7 @@ xilinx_wrapper(
 xilinx_wrapper(
     name = "xsc_legacy_rdi",
     argv0 = "xsc",
+    target_compatible_with = ["@platforms//os:linux"],
     tool = "Vivado",
     tool_path = XILINX_TOOL_LEGACY_PATH,
     tool_version = XILINX_TOOL_LEGACY_VERSION,

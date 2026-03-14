@@ -32,6 +32,7 @@ py_library(
         ":templates",
         ":vivado",
         "//tapa:__init__",
+        "//tapa/remote",
         requirement("click"),
         requirement("psutil"),
     ],
@@ -59,12 +60,16 @@ py_library(
 py_library(
     name = "vivado",
     srcs = ["vivado.py"],
-    data = [
-        "//fpga-runtime:tapa_fast_cosim_dpi_legacy_rdi",
-        "//fpga-runtime:tapa_fast_cosim_dpi_xv",
-    ],
+    data = select({
+        "@platforms//os:linux": [
+            "//fpga-runtime:tapa_fast_cosim_dpi_legacy_rdi",
+            "//fpga-runtime:tapa_fast_cosim_dpi_xv",
+        ],
+        "//conditions:default": [],
+    }),
     deps = [
         "//tapa/common:paths",
+        "//tapa/remote",
     ],
 )
 

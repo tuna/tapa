@@ -275,6 +275,7 @@ void XilinxHLSTarget::RewriteLowerLevelFunc(REWRITE_FUNC_ARGS_DEF) {
 }
 
 void XilinxHLSTarget::RewriteOtherFunc(REWRITE_FUNC_ARGS_DEF) {
+  if (!func->hasBody()) return;
   BaseTarget::RewriteOtherFunc(REWRITE_FUNC_ARGS);
   RewriteStreamDefinitions(REWRITE_FUNC_ARGS);
 }

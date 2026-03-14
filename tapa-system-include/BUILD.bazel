@@ -17,6 +17,7 @@ header_extractor(
 
 header_extractor(
     name = "tapa-extra-runtime-include",
+    target_compatible_with = ["@platforms//os:linux"],
     visibility = ["//visibility:public"],
     deps = ["//tapa-lib:tapa"],
 )

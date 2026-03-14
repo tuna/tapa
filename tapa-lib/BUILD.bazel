@@ -61,11 +61,16 @@ cc_library(
         "tapa/host/task.cpp",
     ],
     hdrs = _PUBLIC_HEADERS,
+    copts = [
+        # Suppress warnings from Boost headers redefining their own macros
+        "-Wno-macro-redefined",
+    ],
     includes = ["."],
     local_defines = select({
         ":coroutine_enabled": ["TAPA_ENABLE_COROUTINE"],
         "//conditions:default": [],
     }),
+    target_compatible_with = ["@platforms//os:linux"],
     visibility = ["//visibility:public"],
     deps = [
         "//fpga-runtime:frt",
@@ -97,6 +102,7 @@ cc_test(
     name = "tapa-lib-test",
     size = "small",
     srcs = glob(["tapa/**/*_test.cpp"]),
+    target_compatible_with = ["@platforms//os:linux"],
     visibility = ["//visibility:public"],
     deps = [
         ":scoped_log_sink_mock",
@@ -124,6 +130,7 @@ pkg_files(
     srcs = [":tapa"],
     prefix = "usr/lib",
     strip_prefix = strip_prefix.files_only(),
+    target_compatible_with = ["@platforms//os:linux"],
     visibility = ["//visibility:public"],
 )
 
@@ -152,6 +159,7 @@ pkg_files(
     ],
     prefix = "usr/lib",
     strip_prefix = strip_prefix.files_only(),
+    target_compatible_with = ["@platforms//os:linux"],
     visibility = ["//visibility:public"],
 )
 
@@ -161,6 +169,7 @@ pkg_filegroup(
         ":pkg-include",
         ":pkg-lib",
     ],
+    target_compatible_with = ["@platforms//os:linux"],
     visibility = ["//visibility:public"],
 )
 
@@ -171,5 +180,6 @@ pkg_filegroup(
         ":pkg-extra-runtime-deps",
         ":pkg-extra-runtime-include",
     ],
+    target_compatible_with = ["@platforms//os:linux"],
     visibility = ["//visibility:public"],
 )

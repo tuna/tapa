@@ -25,8 +25,8 @@ def _nuitka_binary_impl(ctx):
     nuitka = ctx.executable.nuitka
 
     # Start building the command to run Nuitka.
+    # Note: nuitka.path is NOT included here; it's used as the executable.
     nuitka_cmd = [
-        nuitka.path,
         src.path,
         "--clang",  # Use clang as the compiler. In this case, Nuitka generates .c files.
         "--output-dir={}".format(output_dir.dirname),
@@ -62,6 +62,12 @@ def _nuitka_binary_impl(ctx):
             ctx.actions.symlink(output = tool_file, target_file = tool, is_executable = True)
         tools.append(tool_file)
 
+    # On macOS, use system clang which has sysroot configured.
+    # The LLVM toolchain clang doesn't have macOS system headers.
+    is_macos = ctx.target_platform_has_constraint(
+        ctx.attr._macos_constraint[platform_common.ConstraintValueInfo],
+    )
+
     # Add action tools to the env
     env = {
         "PATH": ctx.configuration.host_path_separator.join(
@@ -69,9 +75,25 @@ def _nuitka_binary_impl(ctx):
             depset([py_bin_dir] + [x.dirname for x in tools]).to_list() + ["/usr/bin", "/bin"],
         ),
         "LIBRARY_PATH": py_lib_dir,
-        "LD_LIBRARY_PATH": py_lib_dir,
-        "CC": ctx.executable._clang.path,
+        "CC": "/usr/bin/clang" if is_macos else ctx.executable._clang.path,
     }
+    if not is_macos:
+        env["LD_LIBRARY_PATH"] = py_lib_dir
+
+    # Collect runfiles from the Nuitka py_binary so its pip deps are available.
+    nuitka_runfiles = ctx.attr.nuitka[DefaultInfo].default_runfiles.files
+
+    # Build PYTHONPATH from site-packages directories in the nuitka runfiles.
+    site_packages_dirs = {}
+    for f in nuitka_runfiles.to_list():
+        if "/site-packages/" in f.path:
+            # Extract the site-packages directory path
+            idx = f.path.index("/site-packages/")
+            site_packages_dirs[f.path[:idx + len("/site-packages")]] = True
+    if site_packages_dirs:
+        env["PYTHONPATH"] = ctx.configuration.host_path_separator.join(
+            sorted(site_packages_dirs.keys()),
+        )
 
     # Define a custom action to run the Nuitka command.
     tools += [
@@ -82,10 +104,10 @@ def _nuitka_binary_impl(ctx):
     ]
     ctx.actions.run(
         outputs = [output_dir],
-        inputs = depset([src], transitive = [py_toolchain.files]),
+        inputs = depset([src], transitive = [py_toolchain.files, nuitka_runfiles]),
         tools = tools,
         executable = py_interpreter,
-        arguments = nuitka_cmd,
+        arguments = [nuitka.path] + nuitka_cmd,
         mnemonic = "Nuitka",
         env = env,
     )
@@ -145,6 +167,9 @@ _nuitka_binary = rule(
             executable = True,
             cfg = "exec",
             allow_files = True,
+        ),
+        "_macos_constraint": attr.label(
+            default = Label("@platforms//os:macos"),
         ),
     },
     toolchains = [

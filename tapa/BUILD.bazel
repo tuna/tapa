@@ -49,21 +49,25 @@ py_binary(
     srcs = ["__main__.py"],
     data = [
         "//fpga-runtime:include",
-        "//fpga-runtime:pkg-extra-runtime-deps",
-        "//fpga-runtime:pkg-lib",
         "//tapa-cpp",
         "//tapa-lib:include",
-        "//tapa-lib:pkg-extra-runtime-deps",
-        "//tapa-lib:pkg-lib",
         "//tapa-system-include",
-        "//tapa-system-include:tapa-extra-runtime-include",
         "//tapa/cosim:__main__",
-    ],
+        "//tapacc",
+    ] + select({
+        "@platforms//os:linux": [
+            "//fpga-runtime:pkg-extra-runtime-deps",
+            "//fpga-runtime:pkg-lib",
+            "//tapa-lib:pkg-extra-runtime-deps",
+            "//tapa-lib:pkg-lib",
+            "//tapa-system-include:tapa-extra-runtime-include",
+        ],
+        "//conditions:default": [],
+    }),
     main = "__main__.py",
     visibility = ["//visibility:public"],
     deps = [
         ":tapa-py-libs",
-        "//tapacc",
     ],
 )
 

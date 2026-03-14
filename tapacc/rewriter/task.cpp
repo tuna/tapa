@@ -142,6 +142,7 @@ void Visitor::VisitTask(const TapaTask& task) {
 }
 
 bool Visitor::isFuncTapaTask(const FunctionDecl* func) {
+  if (!func) return false;
   for (const auto& task : tapa_tasks_) {
     // Compare the function name with the task function name since
     // template are stored in task.func as the specialized function,

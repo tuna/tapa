@@ -236,7 +236,7 @@ static void AddPipelinePragma(clang::Rewriter& rewriter,
 
 void XilinxAIETarget::RewritePipelinedDecl(REWRITE_DECL_ARGS_DEF,
                                            const clang::Stmt* body) {
-  if (auto pipeline = llvm::dyn_cast<clang::TapaPipelineAttr>(attr)) {
+  if (llvm::isa<clang::TapaPipelineAttr>(attr)) {
     if (body) AddPipelinePragma(rewriter, body);
   }
   rewriter.RemoveText(ExtendAttrRemovalRange(rewriter, attr->getRange()));
@@ -244,7 +244,7 @@ void XilinxAIETarget::RewritePipelinedDecl(REWRITE_DECL_ARGS_DEF,
 
 void XilinxAIETarget::RewritePipelinedStmt(REWRITE_STMT_ARGS_DEF,
                                            const clang::Stmt* body) {
-  if (auto pipeline = llvm::dyn_cast<clang::TapaPipelineAttr>(attr)) {
+  if (llvm::isa<clang::TapaPipelineAttr>(attr)) {
     if (body) AddPipelinePragma(rewriter, body);
   }
   rewriter.RemoveText(ExtendAttrRemovalRange(rewriter, attr->getRange()));

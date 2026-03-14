@@ -25,6 +25,7 @@ exports_files(_TESTDATA)
 cc_library(
     name = "testdata_cc",
     srcs = ["testdata.cpp"],
+    target_compatible_with = ["@platforms//os:linux"],
     deps = [
         "//tapa-lib:tapa",
     ],
@@ -49,6 +50,7 @@ for f in $(OUTS); do
     cp hdl/$${f##*/} $$f
 done
 """,
+    target_compatible_with = ["@platforms//os:linux"],
     tools = [
         "//bazel:vitis_hls_env",
         "//tapa",
