@@ -38,6 +38,8 @@ from tapa.cosim.templates import (
     get_vitis_test_signals,
 )
 from tapa.cosim.vivado import get_vivado_tcl
+from tapa.remote.config import get_remote_config
+from tapa.remote.popen import create_tool_process
 
 [logging.root.removeHandler(handler) for handler in logging.root.handlers]
 logging.basicConfig(
@@ -251,6 +253,12 @@ def _launch_simulation(
     stdout_fp: TextIOWrapper,
     stderr_fp: TextIOWrapper,
 ) -> None:
+    remote_config = get_remote_config()
+
+    if start_gui and remote_config is not None:
+        _logger.error("--start-gui is not supported with remote execution")
+        sys.exit(1)
+
     mode = "gui" if start_gui else "batch"
     command = ["vivado", "-mode", mode, "-source", "run_cosim.tcl"]
 
@@ -260,43 +268,67 @@ def _launch_simulation(
     _logger.info("   Stdout: %s/cosim.stdout.log", tb_output_dir)
     _logger.info("   Stderr: %s/cosim.stderr.log", tb_output_dir)
 
-    with subprocess.Popen(
-        command,
-        cwd=Path(f"{tb_output_dir}/run").resolve(),
-        env=os.environ
-        | {
-            # Vivado generates garbage files in the user home directory.
-            # We ask Vivado to dump garbages to the current directory instead
-            # of the user home to avoid collisions.
-            "HOME": Path(f"{tb_output_dir}/run").resolve().as_posix(),
-            "TAPA_FAST_COSIM_DPI_ARGS": ",".join(
-                f"{k}:{v}" for k, v in config["axis_to_data_file"].items()
-            ),
-        },
-        stdout=stdout_fp,
-        stderr=stderr_fp,
-    ) as process:
+    run_dir = Path(f"{tb_output_dir}/run").resolve().as_posix()
+    env = os.environ | {
+        # Vivado generates garbage files in the user home directory.
+        # We ask Vivado to dump garbages to the current directory instead
+        # of the user home to avoid collisions.
+        "HOME": run_dir,
+        "TAPA_FAST_COSIM_DPI_ARGS": ",".join(
+            f"{k}:{v}" for k, v in config["axis_to_data_file"].items()
+        ),
+    }
 
-        def kill_vivado_tree() -> None:
-            """Kill the Vivado process and its children."""
-            _logger.info("Killing Vivado process and its children")
-            for child in psutil.Process(process.pid).children(recursive=True):
+    if remote_config is not None:
+        proc = create_tool_process(
+            command,
+            cwd=run_dir,
+            env=env,
+            extra_upload_paths=(run_dir,),
+            extra_download_paths=(run_dir,),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        with proc:
+            stdout_data, stderr_data = proc.communicate()
+            stdout_fp.write(stdout_data.decode("utf-8", errors="replace"))
+            stderr_fp.write(stderr_data.decode("utf-8", errors="replace"))
+            if proc.returncode != 0:
+                _logger.error(
+                    "Vivado simulation failed with error code %d", proc.returncode
+                )
+                sys.exit(proc.returncode)
+            else:
+                _logger.info("Vivado simulation finished successfully")
+    else:
+        with subprocess.Popen(
+            command,
+            cwd=run_dir,
+            env=env,
+            stdout=stdout_fp,
+            stderr=stderr_fp,
+        ) as process:
+
+            def kill_vivado_tree() -> None:
+                """Kill the Vivado process and its children."""
+                _logger.info("Killing Vivado process and its children")
+                for child in psutil.Process(process.pid).children(recursive=True):
+                    with suppress(psutil.NoSuchProcess):
+                        child.kill()
                 with suppress(psutil.NoSuchProcess):
-                    child.kill()
-            with suppress(psutil.NoSuchProcess):
-                process.kill()
+                    process.kill()
 
-        signal.signal(signal.SIGINT, lambda _s, _f: kill_vivado_tree())
-        signal.signal(signal.SIGTERM, lambda _s, _f: kill_vivado_tree())
+            signal.signal(signal.SIGINT, lambda _s, _f: kill_vivado_tree())
+            signal.signal(signal.SIGTERM, lambda _s, _f: kill_vivado_tree())
 
-        process.wait()
-        if process.returncode != 0:
-            _logger.error(
-                "Vivado simulation failed with error code %d", process.returncode
-            )
-            sys.exit(process.returncode)
-        else:
-            _logger.info("Vivado simulation finished successfully")
+            process.wait()
+            if process.returncode != 0:
+                _logger.error(
+                    "Vivado simulation failed with error code %d", process.returncode
+                )
+                sys.exit(process.returncode)
+            else:
+                _logger.info("Vivado simulation finished successfully")
 
 
 if __name__ == "__main__":

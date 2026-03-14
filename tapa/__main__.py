@@ -7,12 +7,15 @@ RapidStream Contributor License Agreement.
 """
 
 import logging
+import os
 import tempfile
 
 import click
 
 from tapa import __version__
 from tapa.cosim.__main__ import main as cosim
+from tapa.remote.config import load_remote_config, set_remote_config
+from tapa.remote.vendor import sync_remote_vendor_includes
 from tapa.steps.analyze import analyze
 from tapa.steps.common import switch_work_dir
 from tapa.steps.floorplan import floorplan
@@ -65,6 +68,18 @@ _logger = logging.getLogger().getChild(__name__)
     default=Options.clang_format_quota_in_bytes,
     help="Limit clang-format to the first few bytes of code.",
 )
+@click.option(
+    "--remote-host",
+    type=str,
+    default=None,
+    help="Remote Linux host for vendor tools (user@host[:port]). Overrides ~/.taparc.",
+)
+@click.option(
+    "--remote-xilinx-settings",
+    type=str,
+    default=None,
+    help="Path to Xilinx settings64.sh on the remote host.",
+)
 @click.version_option(__version__, prog_name="tapa")
 @click.pass_context
 def entry_point(  # noqa: PLR0913,PLR0917
@@ -74,11 +89,31 @@ def entry_point(  # noqa: PLR0913,PLR0917
     work_dir: str,
     temp_dir: str | None,
     clang_format_quota_in_bytes: int,
+    remote_host: str | None,
+    remote_xilinx_settings: str | None,
 ) -> None:
     """The TAPA compiler."""
     setup_logging(verbose, quiet, work_dir)
 
     Options.clang_format_quota_in_bytes = clang_format_quota_in_bytes
+
+    # Setup remote execution config
+    config = load_remote_config(remote_host)
+    if config and remote_xilinx_settings:
+        config.xilinx_settings = remote_xilinx_settings
+    set_remote_config(config)
+    if config:
+        _logger.info(
+            "Using remote host %s@%s:%d for vendor tools",
+            config.user,
+            config.host,
+            config.port,
+        )
+        # Sync vendor headers from remote so tapacc can use them locally
+        vendor_path = sync_remote_vendor_includes(config)
+        if vendor_path:
+            os.environ.setdefault("XILINX_HLS", vendor_path)
+            os.environ.setdefault("XILINX_VITIS", vendor_path)
 
     # Setup execution context
     ctx.ensure_object(dict)

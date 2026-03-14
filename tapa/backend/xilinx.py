@@ -11,7 +11,6 @@ import glob
 import logging
 import os
 import shlex
-import subprocess
 import tarfile
 import tempfile
 import xml.sax.saxutils
@@ -20,6 +19,9 @@ from collections.abc import Callable, Iterable
 from types import TracebackType
 from typing import IO, BinaryIO, NamedTuple, NoReturn
 from xml.etree import ElementTree as ET
+
+from tapa.remote.config import get_remote_config
+from tapa.remote.popen import create_tool_process
 
 _logger = logging.getLogger().getChild(__name__)
 
@@ -39,11 +41,12 @@ class Arg(NamedTuple):
     width: int
 
 
-class Vivado(subprocess.Popen):
+class Vivado:
     """Call vivado with the given Tcl commands and arguments.
 
-    This is a subclass of subprocess.Popen. A temporary directory will be created
-    and used as the working directory.
+    Uses composition with ToolProcess (local or remote) instead of inheriting
+    from subprocess.Popen. A temporary directory will be created and used as
+    the working directory.
 
     Args:
       commands: A string of Tcl commands.
@@ -68,16 +71,37 @@ class Vivado(subprocess.Popen):
             "-tclargs",
             *args,
         ]
-        kwargs = {
-            "stdout": subprocess.PIPE,
-            "stderr": subprocess.PIPE,
+        popen_kwargs: dict = {
             "env": os.environ
             | {
                 "HOME": self.cwd.name,
             },
         }
-        cmd_args = get_cmd_args(cmd_args, ["XILINX_VIVADO"], kwargs)
-        super().__init__(cmd_args, cwd=self.cwd.name, **kwargs)
+        cmd_args = get_cmd_args(cmd_args, ["XILINX_VIVADO"], popen_kwargs)
+        extra_upload = getattr(self, "_extra_upload", ())
+        extra_download = getattr(self, "_extra_download", ())
+        self._proc = create_tool_process(
+            cmd_args,
+            cwd=self.cwd.name,
+            extra_upload_paths=extra_upload,
+            extra_download_paths=extra_download,
+            **popen_kwargs,
+        )
+
+    @property
+    def returncode(self) -> int | None:
+        return self._proc.returncode
+
+    @returncode.setter
+    def returncode(self, value: int | None) -> None:
+        self._proc.returncode = value
+
+    def communicate(self, timeout: float | None = None) -> tuple[bytes, bytes]:
+        return self._proc.communicate(timeout=timeout)
+
+    def __enter__(self) -> "Vivado":
+        self._proc.__enter__()
+        return self
 
     def __exit__(
         self,
@@ -85,22 +109,28 @@ class Vivado(subprocess.Popen):
         exc_value: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
-        super().__exit__(exc_type, exc_value, traceback)
+        self._proc.__exit__(exc_type, exc_value, traceback)
         self.cwd.cleanup()
 
 
-class VivadoHls(subprocess.Popen):
+class VivadoHls:
     """Call vivado_hls with the given Tcl commands.
 
-    This is a subclass of subprocess.Popen. A temporary directory will be created
-    and used as the working directory.
+    Uses composition with ToolProcess (local or remote). A temporary directory
+    will be created and used as the working directory.
 
     Args:
       commands: A string of Tcl commands.
       hls: Either 'vivado_hls' or 'vitis_hls'.
     """
 
-    def __init__(self, commands: str, hls: str = "vivado_hls", cwd: str = "") -> None:
+    def __init__(
+        self,
+        commands: str,
+        hls: str = "vivado_hls",
+        cwd: str = "",
+        tclargs: tuple[str, ...] = (),
+    ) -> None:
         if cwd:
             self.cwd = cwd
         else:
@@ -110,20 +140,48 @@ class VivadoHls(subprocess.Popen):
             os.path.join(cwd, "commands.tcl"), mode="w+", encoding="locale"
         ) as tcl_file:
             tcl_file.write(commands)
-        cmd_args = [hls, "-f", tcl_file.name]
-        kwargs = {
-            "stdout": subprocess.PIPE,
-            "stderr": subprocess.PIPE,
+        cmd_args_list: list[str] = [hls, "-f", tcl_file.name]
+        if tclargs:
+            cmd_args_list.extend(["-tclargs", *tclargs])
+        extra_env = getattr(self, "_extra_env", {})
+        popen_kwargs: dict = {
             "env": os.environ
             | {
                 "HOME": cwd,
-            },
+            }
+            | extra_env,
         }
+        cmd_args: list[str] | str = cmd_args_list
         if hls == "vitis_hls":
-            cmd_args = get_cmd_args(cmd_args, ["XILINX_HLS", "XILINX_VITIS"], kwargs)
+            cmd_args = get_cmd_args(
+                cmd_args_list, ["XILINX_HLS", "XILINX_VITIS"], popen_kwargs
+            )
         elif hls == "vivado_hls":
-            cmd_args = get_cmd_args(cmd_args, ["XILINX_VIVADO"], kwargs)
-        super().__init__(cmd_args, cwd=cwd, **kwargs)
+            cmd_args = get_cmd_args(cmd_args_list, ["XILINX_VIVADO"], popen_kwargs)
+        extra_upload = getattr(self, "_extra_upload", ())
+        extra_download = getattr(self, "_extra_download", ())
+        self._proc = create_tool_process(
+            cmd_args,
+            cwd=cwd,
+            extra_upload_paths=extra_upload,
+            extra_download_paths=extra_download,
+            **popen_kwargs,
+        )
+
+    @property
+    def returncode(self) -> int | None:
+        return self._proc.returncode
+
+    @returncode.setter
+    def returncode(self, value: int | None) -> None:
+        self._proc.returncode = value
+
+    def communicate(self, timeout: float | None = None) -> tuple[bytes, bytes]:
+        return self._proc.communicate(timeout=timeout)
+
+    def __enter__(self) -> "VivadoHls":
+        self._proc.__enter__()
+        return self
 
     def __exit__(
         self,
@@ -131,20 +189,25 @@ class VivadoHls(subprocess.Popen):
         exc_value: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
-        super().__exit__(exc_type, exc_value, traceback)
+        self._proc.__exit__(exc_type, exc_value, traceback)
         if isinstance(self.cwd, tempfile.TemporaryDirectory):
             self.cwd.cleanup()
 
 
 PACKAGEXO_COMMANDS = r"""
-set tmp_ip_dir "{tmpdir}/tmp_ip_dir"
-set tmp_project "{tmpdir}/tmp_project"
+# Paths passed via tclargs for remote execution path rewriting:
+# argv[0] = tmpdir, argv[1] = hdl_dir, argv[2] = xo_file, argv[3] = kernel_xml
+set tmpdir [lindex $argv 0]
+set hdl_dir [lindex $argv 1]
+set xo_file [lindex $argv 2]
+set kernel_xml_path [lindex $argv 3]
+set tmp_ip_dir "$tmpdir/tmp_ip_dir"
+set tmp_project "$tmpdir/tmp_project"
 
 create_project -force kernel_pack ${{tmp_project}}{part_num}
-add_files {{
-  {src_files}
-}}
-foreach tcl_file [glob -nocomplain {hdl_dir}/*.tcl {hdl_dir}/*/*.tcl] {{
+add_files [glob -nocomplain $hdl_dir/* $hdl_dir/*/* $hdl_dir/*/*/* \
+        $hdl_dir/*/*/*/* $hdl_dir/*/*/*/*/*]
+foreach tcl_file [glob -nocomplain $hdl_dir/*.tcl $hdl_dir/*/*.tcl] {{
   source ${{tcl_file}}
 }}
 set_property top {top_name} [current_fileset]
@@ -170,8 +233,8 @@ ipx::update_checksums [ipx::current_core]
 ipx::save_core [ipx::current_core]
 close_project -delete
 
-package_xo -force -xo_path "{xo_file}" -kernel_name {top_name} \
-        -ip_directory ${{tmp_ip_dir}} -kernel_xml {kernel_xml}{cpp_kernels}
+package_xo -force -xo_path "$xo_file" -kernel_name {top_name} \
+        -ip_directory ${{tmp_ip_dir}} -kernel_xml $kernel_xml_path{cpp_kernels}
 """
 
 BUS_IFACE = r"""
@@ -189,8 +252,7 @@ M_AXI_PREFIX = "m_axi_"
 class PackageXo(Vivado):
     """Packages the given files into a Xilinx hardware object.
 
-    This is a subclass of subprocess.Popen. A temporary directory will be created
-    and used as the working directory.
+    A temporary directory will be created and used as the working directory.
 
     Args:
       xo_file: Name of the generated xo file.
@@ -216,6 +278,9 @@ class PackageXo(Vivado):
         part_num: str = "",
     ) -> None:
         self.tmpdir = tempfile.TemporaryDirectory(prefix="package-xo-")
+        self._xo_file = xo_file
+        self._hdl_dir = hdl_dir
+        self._kernel_xml = kernel_xml
         if _logger.isEnabledFor(logging.DEBUG):
             for _, _, files in os.walk(hdl_dir):
                 for filename in files:
@@ -230,22 +295,26 @@ class PackageXo(Vivado):
             for key, value in m_axi_names.get(m_axi_name, {}).items():
                 bus_ifaces.append(BUS_PARAM.format(m_axi_iface_name, key, value))
 
-        # get all files under hdl_dir that does not ends with .tcl
-        all_files = glob.glob(f"{hdl_dir}/**", recursive=True)
-        src_files = [f for f in all_files if not f.endswith(".tcl")]
-
         kwargs = {
             "top_name": top_name,
-            "kernel_xml": kernel_xml,
-            "src_files": " ".join(src_files),
-            "hdl_dir": hdl_dir,
-            "xo_file": xo_file,
             "bus_ifaces": "".join(bus_ifaces),
-            "tmpdir": self.tmpdir.name,
             "cpp_kernels": "".join(map(" -kernel_files {}".format, cpp_kernels)),
             "part_num": f" -part {part_num}" if part_num else "",
         }
-        super().__init__(PACKAGEXO_COMMANDS.format(**kwargs))
+        # Store extra paths for remote upload/download before calling super
+        upload_paths: list[str] = [hdl_dir, self.tmpdir.name]
+        if os.path.isfile(kernel_xml):
+            upload_paths.append(kernel_xml)
+        self._extra_upload = tuple(upload_paths)
+        self._extra_download = (os.path.dirname(os.path.abspath(xo_file)),)
+        # Pass paths as tclargs so they go through remote path rewriting
+        super().__init__(
+            PACKAGEXO_COMMANDS.format(**kwargs),
+            self.tmpdir.name,
+            hdl_dir,
+            xo_file,
+            kernel_xml,
+        )
 
     def __exit__(
         self,
@@ -258,10 +327,14 @@ class PackageXo(Vivado):
 
 
 HLS_COMMANDS = r"""
-cd "{project_dir}"
+cd [pwd]
 open_project "{project_name}"
 set_top {top_name}
-{add_kernels}
+for {{set i 0}} {{$i < $::env(TAPA_KERNEL_COUNT)}} {{incr i}} {{
+    set kpath [set ::env(TAPA_KERNEL_PATH_$i)]
+    set kcflags [set ::env(TAPA_KERNEL_CFLAGS_$i)]
+    add_files "$kpath" -cflags "$kcflags"
+}}
 open_solution "{solution_name}"
 set_part {{{part_num}}}
 create_clock -period {clock_period} -name default
@@ -280,8 +353,7 @@ exit
 class RunHls(VivadoHls):
     """Runs Vivado HLS for the given kernels and generate HDL files.
 
-    This is a subclass of subprocess.Popen. A temporary directory will be created
-    and used as the working directory.
+    A temporary directory will be created and used as the working directory.
 
     Args:
       tarfileobj: File object that will contain the reports and HDL files.
@@ -297,7 +369,7 @@ class RunHls(VivadoHls):
       hls: Either 'vivado_hls' or 'vitis_hls'.
     """
 
-    def __init__(  # noqa: PLR0913,PLR0917
+    def __init__(  # noqa: C901,PLR0912,PLR0913,PLR0917
         self,
         tarfileobj: BinaryIO,
         kernel_files: Iterable[str | tuple[str, str]],
@@ -322,16 +394,34 @@ class RunHls(VivadoHls):
         self.solution_name = top_name
         self.tarfileobj = tarfileobj
         self.hls = hls
-        kernels = []
-        for kernel_file in kernel_files:
+
+        # Build kernel env vars for TCL template (paths get rewritten for remote)
+        kernel_env: dict[str, str] = {}
+        upload_dirs: set[str] = set()
+        kernel_list = list(kernel_files)
+        kernel_env["TAPA_KERNEL_COUNT"] = str(len(kernel_list))
+        for idx, kernel_file in enumerate(kernel_list):
             if isinstance(kernel_file, str):
-                kernels.append(
-                    f'add_files "{{}}" -cflags "-std={std}"'.format(kernel_file)
-                )
+                kernel_env[f"TAPA_KERNEL_PATH_{idx}"] = kernel_file
+                kernel_env[f"TAPA_KERNEL_CFLAGS_{idx}"] = f"-std={std}"
+                upload_dirs.add(os.path.dirname(os.path.abspath(kernel_file)))
             else:
-                kernels.append(
-                    f'add_files "{{}}" -cflags "-std={std} {{}}"'.format(*kernel_file)
-                )
+                kernel_env[f"TAPA_KERNEL_PATH_{idx}"] = kernel_file[0]
+                kernel_env[f"TAPA_KERNEL_CFLAGS_{idx}"] = f"-std={std} {kernel_file[1]}"
+                upload_dirs.add(os.path.dirname(os.path.abspath(kernel_file[0])))
+                # Extract -I and -isystem include dirs from cflags for remote upload
+                for part in kernel_file[1].split():
+                    if part.startswith("-isystem"):
+                        inc_dir = os.path.abspath(part[len("-isystem") :])
+                    elif part.startswith("-I"):
+                        inc_dir = os.path.abspath(part[2:])
+                    else:
+                        continue
+                    if os.path.isdir(inc_dir):
+                        upload_dirs.add(inc_dir)
+        self._extra_upload = tuple(upload_dirs)
+        self._extra_env = kernel_env
+
         rtl_config = "config_rtl -reset_level " + ("low" if reset_low else "high")
         if auto_prefix:
             if hls == "vivado_hls":
@@ -339,17 +429,19 @@ class RunHls(VivadoHls):
             elif hls == "vitis_hls":
                 rtl_config += " -module_auto_prefix"
         kwargs = {
-            "project_dir": self.project_path,
             "project_name": self.project_name,
             "solution_name": self.solution_name,
             "top_name": top_name,
-            "add_kernels": "\n".join(kernels),
             "part_num": part_num,
             "clock_period": clock_period,
             "config": rtl_config,
             "other_configs": other_configs,
         }
-        super().__init__(HLS_COMMANDS.format(**kwargs), hls, self.project_path)
+        super().__init__(
+            HLS_COMMANDS.format(**kwargs),
+            hls,
+            self.project_path,
+        )
 
     def __exit__(
         self,
@@ -358,7 +450,7 @@ class RunHls(VivadoHls):
         traceback: TracebackType | None,
     ) -> None:
         # wait for process termination and keep the log
-        subprocess.Popen.__exit__(self, exc_type, exc_value, traceback)
+        self._proc.__exit__(exc_type, exc_value, traceback)
         if self.returncode == 0:
             with tarfile.open(mode="w", fileobj=self.tarfileobj) as tar:
                 solution_dir = os.path.join(
@@ -402,16 +494,17 @@ class RunHls(VivadoHls):
                 except FileNotFoundError as e:
                     self.returncode = 1
                     _logger.error("%s", e)
-        super().__exit__(exc_type, exc_value, traceback)
+        # Clean up temp dirs
+        if isinstance(self.cwd, tempfile.TemporaryDirectory):
+            self.cwd.cleanup()
         if self.tempdir is not None:
             self.tempdir.cleanup()
 
 
-class RunAie(subprocess.Popen):
+class RunAie:
     """Runs Vitis AIE for the given kernels and generate aie.a files.
 
-    This is a subclass of subprocess.Popen. A temporary directory will be created and
-    used as the working directory.
+    A temporary directory will be created and used as the working directory.
     """
 
     def __init__(  # noqa: PLR0913,PLR0917
@@ -434,26 +527,52 @@ class RunAie(subprocess.Popen):
         self.solution_name = top_name
         self.tarfileobj = tarfileobj
         self.aiecompiler = "aiecompiler"
-        include_path_str = [f"--include={os.path.dirname(f)}" for f in kernel_files]
+        kernel_files_list = list(kernel_files)
+        include_path_str = [
+            f"--include={os.path.dirname(f)}" for f in kernel_files_list
+        ]
+        # Upload kernel file directories for remote execution
+        self._extra_upload = tuple(
+            {os.path.dirname(os.path.abspath(f)) for f in kernel_files_list}
+        )
         cmd_args = [
             self.aiecompiler,
             "--target=hw",
             f"--platform={xpfm}",
             *include_path_str,
             f"--workdir={self.project_path}",
-            *kernel_files,
+            *kernel_files_list,
         ]
-        kwargs = {
-            "stdout": subprocess.PIPE,
-            "stderr": subprocess.PIPE,
+        popen_kwargs: dict = {
             "env": os.environ
             | {
                 "HOME": self.project_path,
             },
         }
 
-        cmd_args = get_cmd_args(cmd_args, ["XILINX_VITIS"], kwargs)
-        super().__init__(cmd_args, cwd=self.project_path, **kwargs)
+        cmd_args = get_cmd_args(cmd_args, ["XILINX_VITIS"], popen_kwargs)
+        extra_upload = getattr(self, "_extra_upload", ())
+        self._proc = create_tool_process(
+            cmd_args,
+            cwd=self.project_path,
+            extra_upload_paths=extra_upload,
+            **popen_kwargs,
+        )
+
+    @property
+    def returncode(self) -> int | None:
+        return self._proc.returncode
+
+    @returncode.setter
+    def returncode(self, value: int | None) -> None:
+        self._proc.returncode = value
+
+    def communicate(self, timeout: float | None = None) -> tuple[bytes, bytes]:
+        return self._proc.communicate(timeout=timeout)
+
+    def __enter__(self) -> "RunAie":
+        self._proc.__enter__()
+        return self
 
     def __exit__(
         self,
@@ -462,7 +581,7 @@ class RunAie(subprocess.Popen):
         traceback: TracebackType | None,
     ) -> None:
         # wait for process termination and keep the log
-        subprocess.Popen.__exit__(self, exc_type, exc_value, traceback)
+        self._proc.__exit__(exc_type, exc_value, traceback)
         if self.returncode == 0:
             with tarfile.open(mode="w", fileobj=self.tarfileobj) as tar:
                 solution_dir = os.path.join(
@@ -489,7 +608,6 @@ class RunAie(subprocess.Popen):
                 except FileNotFoundError as e:
                     self.returncode = 1
                     _logger.error("%s", e)
-        super().__exit__(exc_type, exc_value, traceback)
         if self.tempdir is not None:
             self.tempdir.cleanup()
 
@@ -733,18 +851,25 @@ def get_cmd_args(
     env_names: Iterable[str],
     kwargs: dict[str, str | int | bool],
 ) -> list[str] | str:
-    """Get command arguments for subprocess.Popen with specified environment.
+    """Get command arguments for tool process with specified environment.
+
+    When remote config is active, skip local settings64.sh sourcing (the file
+    doesn't exist on macOS). The remote execution layer handles sourcing on the
+    remote side via xilinx_settings from config.
 
     Args:
       cmd_args: The original command arguments.
       env_names: Environment variable names to try.
-      kwargs: Keyword arguments to subprocess.Popen. This will be updated if
+      kwargs: Keyword arguments to the tool process. This will be updated if
           necessary.
 
     Returns:
-      Command arguments for subprocess.Popen, with env_name/settings64.sh sourced
-      if it exists.
+      Command arguments for the tool process, with env_name/settings64.sh
+      sourced if it exists (local mode only).
     """
+    if get_remote_config() is not None:
+        return cmd_args
+
     for env_name in env_names:
         env_value = os.environ.get(env_name)
         if env_value is not None:

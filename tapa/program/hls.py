@@ -15,9 +15,10 @@ from typing import Literal
 from psutil import cpu_count
 
 from tapa.backend.xilinx import RunAie, RunHls
-from tapa.common.paths import find_resource, get_xpfm_path
+from tapa.common.paths import find_resource, get_tapacc_cflags, get_xpfm_path
 from tapa.program.abc import ProgramInterface
 from tapa.program.directory import ProgramDirectoryInterface
+from tapa.remote.config import get_remote_config
 from tapa.safety_check import check_mmap_arg_name
 from tapa.task import Task
 from tapa.util import clang_format
@@ -182,7 +183,16 @@ class ProgramHlsMixin(
             hls_defines = "-DTAPA_TARGET_DEVICE_ -DTAPA_TARGET_XILINX_HLS_"
             # WORKAROUND: Vitis HLS requires -I or gflags cannot be found...
             hls_includes = f"-I{find_resource('tapa-extra-runtime-include')}"
-            hls_cflags = f"{self.cflags} {hls_defines} {hls_includes}"
+            # For remote HLS on Linux, use vendor GCC paths and -nostdinc++
+            # even when the local machine is macOS.
+            if get_remote_config() is not None:
+                # Replace local tapacc cflags with remote-appropriate ones
+                local_suffix = " ".join(get_tapacc_cflags())
+                remote_suffix = " ".join(get_tapacc_cflags(for_remote_hls=True))
+                base_cflags = self.cflags.replace(local_suffix, remote_suffix)
+            else:
+                base_cflags = self.cflags
+            hls_cflags = f"{base_cflags} {hls_defines} {hls_includes}"
             with (
                 open(self.get_tar_path(task.name), "wb") as tarfileobj,
                 RunHls(

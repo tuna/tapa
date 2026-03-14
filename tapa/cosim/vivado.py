@@ -8,27 +8,30 @@ RapidStream Contributor License Agreement.
 
 import logging
 import re
+import shlex
 import subprocess
 
 from tapa.common import paths
+from tapa.remote.config import RemoteConfig, get_remote_config
+from tapa.remote.connection import get_connection
 
 _logger = logging.getLogger().getChild(__name__)
 
 
 def get_vivado_version() -> str:
     """Return the Vivado version."""
+    config = get_remote_config()
+    if config is not None:
+        return _get_vivado_version_remote(config)
+    return _get_vivado_version_local()
+
+
+def _get_vivado_version_local() -> str:
+    """Return the Vivado version from local installation."""
     command = ["vivado", "-version"]
     try:
         output = subprocess.check_output(command, stderr=subprocess.STDOUT)
-        version_lines = output.decode("utf-8")
-        # e.g., vivado v2024.2  Vivado v2022.2
-        match = re.search(r"vivado v(\d+\.\d+)", version_lines, re.IGNORECASE)
-        if match is None:
-            error = f"Failed to parse Vivado version from:\n{version_lines}"
-            raise ValueError(error)
-        version = match.group(1)
-        _logger.info("Vivado version: %s", version)
-        return version
+        return _parse_vivado_version(output.decode("utf-8"))
 
     except FileNotFoundError:
         error = "Vivado not found. Please add Vivado to PATH."
@@ -37,6 +40,38 @@ def get_vivado_version() -> str:
     except subprocess.CalledProcessError as e:
         error = f"Failed to get Vivado version: {e.output.decode('utf-8')}"
         raise ValueError(error) from e
+
+
+def _get_vivado_version_remote(config: RemoteConfig) -> str:
+    """Return the Vivado version from remote host."""
+    ssh = get_connection(config)
+    cmd_parts = []
+    if config.xilinx_settings:
+        cmd_parts.append(f"source {shlex.quote(config.xilinx_settings)}")
+    cmd_parts.append("vivado -version")
+    full_cmd = " ; ".join(cmd_parts)
+
+    _, stdout, stderr = ssh.exec_command(f"bash -c {shlex.quote(full_cmd)}")
+    output = stdout.read().decode("utf-8")
+    exit_status = stdout.channel.recv_exit_status()
+
+    if exit_status != 0:
+        err = stderr.read().decode("utf-8", errors="replace")
+        error = f"Failed to get Vivado version from remote: {err}"
+        raise ValueError(error)
+
+    return _parse_vivado_version(output)
+
+
+def _parse_vivado_version(version_lines: str) -> str:
+    """Parse vivado version string from version output."""
+    match = re.search(r"vivado v(\d+\.\d+)", version_lines, re.IGNORECASE)
+    if match is None:
+        error = f"Failed to parse Vivado version from:\n{version_lines}"
+        raise ValueError(error)
+    version = match.group(1)
+    _logger.info("Vivado version: %s", version)
+    return version
 
 
 def get_vivado_tcl(
