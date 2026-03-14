@@ -67,15 +67,6 @@ repos:
         args: [ --fix, --unsafe-fixes ]
       - id: ruff-format
 
-  - repo: https://github.com/PyCQA/docformatter
-    rev: v1.7.7
-    hooks:
-      - id: docformatter
-        additional_dependencies: [tomli]
-        args:
-          - --in-place
-          - --config=pyproject.toml
-
   #############
   #  Linting  #
   #############

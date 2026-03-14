@@ -10,16 +10,16 @@ programming model and generates high-frequency FPGA accelerators.
 module(name = "tapa")
 
 # Bazel dependencies
-bazel_dep(name = "aspect_rules_js", version = "2.4.0", dev_dependency = True)
-bazel_dep(name = "aspect_rules_webpack", version = "0.17.0", dev_dependency = True)
-bazel_dep(name = "bazel_skylib", version = "1.8.1", dev_dependency = True)
+bazel_dep(name = "aspect_rules_js", version = "3.0.3", dev_dependency = True)
+bazel_dep(name = "aspect_rules_webpack", version = "0.17.1", dev_dependency = True)
+bazel_dep(name = "bazel_skylib", version = "1.8.2", dev_dependency = True)
 bazel_dep(name = "platforms", version = "1.0.0", dev_dependency = True)
 bazel_dep(name = "rules_cc", version = "0.1.4", dev_dependency = True)
 bazel_dep(name = "rules_nodejs", version = "6.4.0", dev_dependency = True)
 bazel_dep(name = "rules_pkg", version = "1.1.0", dev_dependency = True)
-bazel_dep(name = "rules_python", version = "1.5.1", dev_dependency = True)
-bazel_dep(name = "rules_shell", version = "0.5.0", dev_dependency = True)
-bazel_dep(name = "toolchains_llvm", version = "1.4.0", dev_dependency = True)
+bazel_dep(name = "rules_python", version = "1.9.0", dev_dependency = True)
+bazel_dep(name = "rules_shell", version = "0.6.1", dev_dependency = True)
+bazel_dep(name = "toolchains_llvm", version = "1.6.0", dev_dependency = True)
 
 http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
@@ -56,7 +56,10 @@ llvm.toolchain(
         # you are really on your own here
         "": "20.1.8",
     },
-    stdlib = {"": "stdc++"},
+    stdlib = {
+        "linux-x86_64": "stdc++",
+        "linux-aarch64": "stdc++",
+    },
 )
 use_repo(llvm, "llvm_toolchain")
 use_repo(llvm, "llvm_toolchain_llvm")
@@ -98,9 +101,10 @@ git_override(
         # Enable BOOST_USE_SEGMENTED_STACKS
         # Enable BOOST_USE_ASAN
         # Dependency: BOOST_USE_UCONTEXT.
-        """sed '/name = "context",/a defines=["BOOST_USE_ASAN","BOOST_USE_SEGMENTED_STACKS","BOOST_USE_UCONTEXT"],' -i boost.BUILD""",
+        # Use perl -i for cross-platform compatibility (sed -i differs between GNU and BSD).
+        """perl -i -pe 'print qq{    defines=["BOOST_USE_ASAN","BOOST_USE_SEGMENTED_STACKS","BOOST_USE_UCONTEXT"],\\n} if /name = "context",/' boost.BUILD""",
         # Do not exclude fiber.cpp since we enable BOOST_USE_UCONTEXT
-        "sed /fiber.cpp/d -i boost.BUILD",
+        "perl -i -ne 'print unless /fiber\\.cpp/' boost.BUILD",
     ],
     remote = "https://github.com/nelhage/rules_boost.git",
 )
@@ -108,16 +112,13 @@ git_override(
 non_module_boost_repositories = use_extension("@com_github_nelhage_rules_boost//:boost/repositories.bzl", "non_module_dependencies")
 use_repo(non_module_boost_repositories, "boost")
 
-bazel_dep(name = "gflags", version = "2.2.2")
-
-# glog must be 0.5.0 as in later versions, bazel is strictly required for
-# including glog headers for the host code
-bazel_dep(name = "glog", version = "0.5.0")
+bazel_dep(name = "gflags", version = "2.2.2.bcr.1")
+bazel_dep(name = "glog", version = "0.7.1")
 bazel_dep(name = "googletest", version = "1.17.0")
 
 single_version_override(
     module_name = "glog",
-    patches = ["//bazel:patches/glog/0001-Fix-unused-but-set-variable.patch"],
+    version = "0.7.1.bcr.1",
 )
 
 load_dependencies = use_extension(
@@ -241,8 +242,9 @@ XRT_SHA256 = "a901127412261d4ad8c1c6978f1d69680573af33a8702366031805c6acf42ebd"
 http_archive(
     name = "xilinx_xrt",
     patch_cmds = [
+        "rm -rf BUILD",
         """
-        cat >BUILD <<EOF
+        cat >BUILD.bazel <<EOF
 cc_library(
     name = "xilinx_xrt",
     hdrs = [
@@ -346,7 +348,7 @@ EOF
         # 0004-Add-BUILD.bazel.patch
         """echo >BUILD.bazel""",
         # 0005-Add-Bazel-LLVM-targets.patch
-        """echo 'llvm_targets = ["X86"]' >llvm/targets.bzl""",
+        """echo 'llvm_targets = ["X86", "AArch64"]' >llvm/targets.bzl""",
         # 0006-Add-LLVM-version-vars.patch
         """
         cat >vars.bzl <<EOF
@@ -379,7 +381,7 @@ npm.npm_translate_lock(
 )
 use_repo(npm, "npm")
 
-pnpm = use_extension("@aspect_rules_js//npm:extensions.bzl", "pnpm")
+pnpm = use_extension("@aspect_rules_js//npm:extensions.bzl", "pnpm", dev_dependency = True)
 use_repo(pnpm, "pnpm")
 
 # Test data
@@ -394,7 +396,7 @@ http_file(
 # Usage: `bazel run :refresh_compile_commands`
 git_override(
     module_name = "hedron_compile_commands",
-    commit = "4f28899228fb3ad0126897876f147ca15026151e",
+    commit = "abb61a688167623088f8768cc9264798df6a9d10",
     remote = "https://github.com/hedronvision/bazel-compile-commands-extractor.git",
 )
 
