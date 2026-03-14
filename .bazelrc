@@ -1,12 +1,22 @@
 build --copt=-Wall
 build --copt=-Wextra
 build --copt=-Werror
+build --per_file_copt=external/.*@-Wno-error
 build --copt=-Wno-attributes
 build --copt=-Wno-deprecated-declarations
 build --copt=-Wno-unknown-pragmas
 build --copt=-Wno-unused-label
 build --copt=-Wno-unused-parameter
-build --incompatible_autoload_externally=+@rules_python,+@rules_shell
+build --copt=-Wno-packed-non-pod
+build --copt=-Wno-sign-compare
+build --copt=-Wno-bitwise-instead-of-logical
+build --copt=-Wno-deprecated-copy-with-user-provided-copy
+build --copt=-Wno-unused-but-set-parameter
+build --copt=-Wno-unused-function
+build --copt=-Wno-deprecated-copy
+build --copt=-Wno-unknown-warning-option
+build --copt=-Wno-nontrivial-memcall
+build --incompatible_autoload_externally=+@rules_python,+@rules_shell,+@rules_cc
 build --incompatible_default_to_explicit_init_py # Don't overwrite __init__.py files
 build --incompatible_strict_action_env
 

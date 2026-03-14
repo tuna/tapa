@@ -12,15 +12,27 @@ def _dpi_library_impl(ctx):
         "-Wall",
         "-Werror",
         "-Wno-sign-compare",
+        # Xilinx's bundled GCC may not know about multiarch system header
+        # paths (e.g., /usr/include/x86_64-linux-gnu for asm/types.h).
+        "-I/usr/include/x86_64-linux-gnu",
     ]
     transitive_inputs = []
     compile_options += ["-isystem" + x.path for x in ctx.files.includes]
+
     for dep in ctx.attr.deps:
         context = dep[CcInfo].compilation_context
         compile_options += ["-iquote" + x for x in context.quote_includes.to_list()]
         compile_options += ["-isystem" + x for x in context.system_includes.to_list()]
         compile_options += ["-I" + x for x in context.includes.to_list()]
-        compile_options += ["-D" + x for x in context.defines.to_list()]
+        for d in context.defines.to_list():
+            if "(" in d:
+                # xsc passes --gcc_compile_options through a shell that
+                # mangles values with parentheses. Replace with empty
+                # values — visibility attributes are not needed for DPI.
+                name = d.split("=", 1)[0]
+                compile_options.append("-D" + name + "=")
+            else:
+                compile_options.append("-D" + d)
         transitive_inputs.append(context.headers)
 
     link_options = [
@@ -28,35 +40,65 @@ def _dpi_library_impl(ctx):
         "-Wl,-rpath,\\$ORIGIN",
     ]
 
-    # Link against the dynamic libraries in `deps`.
+    # Link deps into the DPI .so. Prefer static archives so that all symbols
+    # are embedded directly; this avoids runtime symbol-lookup failures when
+    # xsim loads the DPI library via dlopen(RTLD_LOCAL), which prevents
+    # transitive shared-library dependencies from resolving each other's
+    # symbols (e.g., libglog.so failing to find gflags symbols).
     direct_inputs = ctx.files.hdrs + ctx.files.srcs
     output = ctx.actions.declare_file(ctx.label.name + ".so")
     runfiles = []
+    static_archives = []
     for dep in ctx.attr.deps:
         for linker_input in dep[CcInfo].linking_context.linker_inputs.to_list():
             for library in linker_input.libraries:
-                dynamic_library = library.resolved_symlink_dynamic_library
-                if dynamic_library == None:
-                    dynamic_library = library.dynamic_library
-                if dynamic_library == None:
-                    continue
-                direct_inputs.append(dynamic_library)
-                name = dynamic_library.basename
-                name = name.removeprefix("lib")
-                name = name.removesuffix("." + dynamic_library.extension)
-                link_options += [
-                    "-L" + dynamic_library.dirname,
-                    "-l" + name,
-                ]
-                library_symlink = ctx.actions.declare_file(
-                    dynamic_library.basename,
-                    sibling = output,
-                )
-                ctx.actions.symlink(
-                    output = library_symlink,
-                    target_file = dynamic_library,
-                )
-                runfiles.append(library_symlink)
+                static_lib = library.pic_static_library or library.static_library
+                if static_lib:
+                    static_archives.append(static_lib)
+                    direct_inputs.append(static_lib)
+                else:
+                    # Fall back to dynamic linking for libraries without a
+                    # static archive (e.g., pre-built Xilinx simulator libs).
+                    dynamic_library = library.resolved_symlink_dynamic_library
+                    if dynamic_library == None:
+                        dynamic_library = library.dynamic_library
+                    if dynamic_library == None:
+                        continue
+                    direct_inputs.append(dynamic_library)
+                    name = dynamic_library.basename
+                    name = name.removeprefix("lib")
+                    name = name.removesuffix("." + dynamic_library.extension)
+                    link_options += [
+                        "-L" + dynamic_library.dirname,
+                        "-l" + name,
+                    ]
+                    library_symlink = ctx.actions.declare_file(
+                        dynamic_library.basename,
+                        sibling = output,
+                    )
+                    ctx.actions.symlink(
+                        output = library_symlink,
+                        target_file = dynamic_library,
+                    )
+                    runfiles.append(library_symlink)
+
+    # Embed all static archives with --whole-archive so every symbol is
+    # available inside the DPI .so at runtime. Use -L/-l: syntax because
+    # xsc prepends '-' to link options that don't already start with '-'.
+    # These must come BEFORE system library paths to avoid picking up
+    # non-PIC system static archives (e.g., /usr/lib/.../libgflags.a).
+    if static_archives:
+        link_options.append("-Wl,--whole-archive")
+        for archive in static_archives:
+            link_options += [
+                "-L" + archive.dirname,
+                "-l:" + archive.basename,
+            ]
+        link_options.append("-Wl,--no-whole-archive")
+
+    # Multiarch library paths and RELR compatibility are handled by the
+    # xilinx_wrapper via LIBRARY_PATH. Explicit -L paths here would take
+    # precedence and bypass the RELR-stripped compat libraries.
 
     # Assemble arguments.
     args = [
