@@ -30,6 +30,7 @@ RUN ln -fs /usr/share/zoneinfo/UTC /etc/localtime
 # Required by pre-commit:
 #   - git
 
+
 # Required by Vivado:
 #   - libtinfo5
 #   - libx11-6
@@ -89,6 +90,13 @@ RUN curl -sSL \
     /opt/python/bin/python3 -m pip install pre-commit && \
     ln -s /opt/python/bin/pre-commit /usr/local/bin/pre-commit && \
     chmod -R go=u /opt/python
+
+# Install Node.js (required by pre-commit pyright hook)
+# Node.js 16.x is the last major version supporting glibc 2.27 (Ubuntu Bionic).
+RUN curl -sSL \
+        https://nodejs.org/dist/v16.20.2/node-v16.20.2-linux-x64.tar.xz \
+        | tar -xJ --strip-components=1 -C /usr/local && \
+    npm config set registry https://registry.npmmirror.com
 
 # Rebuild locale so that Vivado can run in the Docker
 RUN echo "en_US.UTF-8 UTF-8" > /etc/locale.gen && locale-gen

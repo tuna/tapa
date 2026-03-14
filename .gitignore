@@ -3,6 +3,7 @@
 *.out
 *.pyc
 *.zip
+.ci-secrets
 .venv*
 /.cache/
 /.cmake-format

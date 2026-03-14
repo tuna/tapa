@@ -44,9 +44,9 @@ runs:
           --label="${label}" \
           --mac-address=${{ env.MAC_ADDRESS }} \
           -v "${local_bazelrc}":/etc/bazel.bazelrc:ro \
-          -v /share/software/licenses:/opt/licenses:ro \
-          -v /share/software/tools:/opt/tools:ro \
-          -v /share/software/xilinx/platforms:/opt/xilinx/platforms:ro \
+          -v ${TAPA_LICENSE_DIR:-/share/software/licenses}:/opt/licenses:ro \
+          -v ${TAPA_TOOLS_DIR:-/share/software/tools}:/opt/tools:ro \
+          -v ${TAPA_PLATFORMS_DIR:-/share/software/xilinx/platforms}:/opt/xilinx/platforms:ro \
           -v ${{ github.workspace }}:/workspace \
           -v ~/.cache/tapa-cache:/tmp/home/.cache \
           -v ~/.cache/tapa-local:/tmp/home/.local \

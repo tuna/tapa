@@ -93,7 +93,6 @@ repos:
           - intervaltree
           - jinja2
           - networkx
-          - nodejs-wheel-binaries # default node does not work due to old glibc
           - nuitka
           - psutil
           - pydantic
