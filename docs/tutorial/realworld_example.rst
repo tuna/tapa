@@ -40,5 +40,3 @@ we are adding more sophiticated TAPA designs here.
 
 - ``page_rank`` is an accelerator for the Page-Rank algorithm that is included
   in `FCCM'21 <https://about.blaok.me/pub/fccm21-tapa.pdf>`_.
-
-

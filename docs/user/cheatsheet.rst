@@ -112,4 +112,3 @@ Stream Operations
   // Write
   stream.write(data);
   stream << data;  // Equivalent
-
