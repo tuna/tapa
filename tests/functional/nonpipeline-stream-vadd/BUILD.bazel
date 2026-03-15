@@ -38,6 +38,28 @@ sh_test(
     ],
 )
 
+sh_test(
+    name = "nonpipeline-stream-vadd-verilator-zipsim",
+    size = "enormous",
+    timeout = "moderate",
+    srcs = ["//bazel:sim_env.sh"],
+    args = [
+        "$(location //tests/apps/vadd:vadd-host)",
+        "--bitstream=$(location nonpipeline-stream-vadd-zip)",
+        "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
+        "--xosim_simulator=verilator",
+        "1000",
+    ],
+    data = [
+        ":nonpipeline-stream-vadd-zip",
+        "//tapa/cosim:tapa-fast-cosim",
+        "//tests/apps/vadd:vadd-host",
+        "@verilator//:verilator_executable",
+    ],
+    env = {"VERILATOR_BIN": "$(rootpath @verilator//:verilator_executable)"},
+    tags = ["cpu:2"],
+)
+
 tapa_xo(
     name = "nonpipeline-stream-vadd-xo",
     src = "vadd.cpp",
@@ -45,4 +67,13 @@ tapa_xo(
     include = ["."],
     top_name = "VecAdd",
     visibility = ["//tests/functional:__subpackages__"],
+)
+
+tapa_xo(
+    name = "nonpipeline-stream-vadd-zip",
+    src = "vadd.cpp",
+    hdrs = ["vadd.h"],
+    include = ["."],
+    target = "xilinx-hls",
+    top_name = "VecAdd",
 )
