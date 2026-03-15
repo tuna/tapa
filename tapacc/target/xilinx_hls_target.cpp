@@ -121,8 +121,16 @@ void XilinxHLSTarget::AddCodeForMiddleLevelAsyncMmap(ADD_FOR_PARAMS_ARGS_DEF) {
 }
 
 void XilinxHLSTarget::AddCodeForMiddleLevelMmap(ADD_FOR_PARAMS_ARGS_DEF) {
-  add_pragma({"HLS interface ap_none port =",
-              param->getNameAsString() + "_offset", "register"});
+  auto param_name = param->getNameAsString();
+  if (IsTapaType(param, "((async_)?mmaps|hmap)")) {
+    for (size_t i = 0; i < GetArraySize(param); ++i) {
+      add_pragma({"HLS interface ap_none port =", GetArrayElem(param_name, i),
+                  "register"});
+    }
+  } else {
+    add_pragma(
+        {"HLS interface ap_none port =", param_name + "_offset", "register"});
+  }
   AddDummyMmapOrScalarRW(ADD_FOR_PARAMS_ARGS);
 }
 
