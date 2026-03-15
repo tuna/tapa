@@ -636,13 +636,14 @@ def _cpp_stream_init(stream_args: Sequence[Arg]) -> list[str]:
     lines: list[str] = []
     for arg in stream_args:
         n = arg.qualified_name
+        # Stream FIFO ports are data_width + 1 (EOT bit)
+        port_width = arg.port.data_width + 1
         if arg.port.is_istream:
-            lines.extend(
-                [
-                    f"    dut->{n}_dout = 0;",
-                    f"    dut->{n}_empty_n = 0;",
-                ]
-            )
+            if port_width > 64:
+                lines.append(f"    memset(&dut->{n}_dout, 0, sizeof(dut->{n}_dout));")
+            else:
+                lines.append(f"    dut->{n}_dout = 0;")
+            lines.append(f"    dut->{n}_empty_n = 0;")
         elif arg.port.is_ostream:
             lines.append(f"    dut->{n}_full_n = 1;")
     return lines
