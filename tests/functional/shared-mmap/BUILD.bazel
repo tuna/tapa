@@ -67,9 +67,38 @@ cc_binary(
     ],
 )
 
+sh_test(
+    name = "shared-mmap-verilator-zipsim",
+    size = "enormous",
+    timeout = "moderate",
+    srcs = ["//bazel:sim_env.sh"],
+    args = [
+        "$(location shared-mmap-host)",
+        "--bitstream=$(location shared-mmap-zip)",
+        "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
+        "--xosim_simulator=verilator",
+        "1000",
+    ],
+    data = [
+        ":shared-mmap-host",
+        ":shared-mmap-zip",
+        "//tapa/cosim:tapa-fast-cosim",
+        "@verilator//:verilator_executable",
+    ],
+    env = {"VERILATOR_BIN": "$(rootpath @verilator//:verilator_executable)"},
+    tags = ["cpu:2"],
+)
+
 tapa_xo(
     name = "shared-mmap-xo",
     src = "vadd.cpp",
+    top_name = "VecAddShared",
+)
+
+tapa_xo(
+    name = "shared-mmap-zip",
+    src = "vadd.cpp",
+    target = "xilinx-hls",
     top_name = "VecAddShared",
 )
 
