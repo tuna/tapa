@@ -115,7 +115,9 @@ sh_test(
         ":vadd-host",
         ":vadd-zip",
         "//tapa/cosim:tapa-fast-cosim",
+        "@verilator//:verilator_executable",
     ],
+    env = {"VERILATOR_BIN": "$(rootpath @verilator//:verilator_executable)"},
     tags = ["cpu:2"],
 )
 

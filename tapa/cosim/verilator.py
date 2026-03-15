@@ -5,6 +5,7 @@ open-source alternative to xsim that works on both Linux and macOS.
 """
 
 import logging
+import os
 import re
 import shutil
 import subprocess
@@ -997,7 +998,58 @@ def _generate_build_script(
     top_name: str,
 ) -> str:
     """Generate a shell script that builds the Verilator simulation."""
-    # Find verilator, checking common install locations as fallback
+    verilator_bin, verilator_root = _find_verilator()
+
+    # Verilator warning suppressions for HLS-generated code.
+    # Use -Wno-WIDTH (covers WIDTHEXPAND/WIDTHTRUNC/WIDTHXZEXPAND) and
+    # -Wno-fatal for broad compatibility across Verilator 5.x versions.
+    warn_flags = (
+        "-Wno-fatal -Wno-PINMISSING -Wno-WIDTH"
+        " -Wno-UNUSEDSIGNAL -Wno-UNDRIVEN -Wno-UNOPTFLAT"
+        " -Wno-STMTDLY -Wno-CASEINCOMPLETE -Wno-SYMRSVDWORD"
+        " -Wno-COMBDLY -Wno-TIMESCALEMOD -Wno-MULTIDRIVEN"
+    )
+
+    root_export = f'export VERILATOR_ROOT="{verilator_root}"' if verilator_root else ""
+
+    return f"""\
+#!/bin/bash
+set -e
+cd "$(dirname "$0")"
+{root_export}
+
+{verilator_bin} --cc --top-module {top_name} \\
+  {warn_flags} \\
+  --no-timing \\
+  --exe tb.cpp dpi_support.cpp \\
+  rtl/*.v 2>&1
+
+make -C obj_dir -f V{top_name}.mk V{top_name} \\
+  -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4) 2>&1
+"""
+
+
+def _find_verilator() -> tuple[str, str | None]:
+    """Find the Verilator binary and optionally its root directory.
+
+    Returns a (binary_path, verilator_root) tuple. verilator_root is set
+    when using a Bazel-built Verilator that needs VERILATOR_ROOT exported.
+    """
+    # Check VERILATOR_BIN env var first (set by Bazel test rules)
+    env_bin = os.environ.get("VERILATOR_BIN")
+    if env_bin:
+        verilator_bin = str(Path(env_bin).resolve())
+        if not Path(verilator_bin).is_file():
+            _logger.error("VERILATOR_BIN=%s does not exist", env_bin)
+            sys.exit(1)
+        # For Bazel-built verilator, find VERILATOR_ROOT in runfiles
+        verilator_root = _find_verilator_root(verilator_bin)
+        _logger.info(
+            "Using Bazel Verilator: %s (root: %s)", verilator_bin, verilator_root
+        )
+        return verilator_bin, verilator_root
+
+    # Fall back to PATH and common install locations
     verilator_bin = shutil.which("verilator")
     if verilator_bin is None:
         for candidate in (
@@ -1011,28 +1063,43 @@ def _generate_build_script(
     if verilator_bin is None:
         _logger.error("verilator not found in PATH or common locations")
         sys.exit(1)
+    return verilator_bin, None
 
-    # Verilator warning suppressions for HLS-generated code.
-    # Use -Wno-WIDTH (covers WIDTHEXPAND/WIDTHTRUNC/WIDTHXZEXPAND) and
-    # -Wno-fatal for broad compatibility across Verilator 5.x versions.
-    warn_flags = (
-        "-Wno-fatal -Wno-PINMISSING -Wno-WIDTH"
-        " -Wno-UNUSEDSIGNAL -Wno-UNDRIVEN -Wno-UNOPTFLAT"
-        " -Wno-STMTDLY -Wno-CASEINCOMPLETE -Wno-SYMRSVDWORD"
-        " -Wno-COMBDLY -Wno-TIMESCALEMOD -Wno-MULTIDRIVEN"
-    )
 
-    return f"""\
-#!/bin/bash
-set -e
-cd "$(dirname "$0")"
+def _find_verilator_root(verilator_bin: str) -> str | None:
+    """Determine VERILATOR_ROOT for a Bazel-built Verilator binary.
 
-{verilator_bin} --cc --top-module {top_name} \\
-  {warn_flags} \\
-  --no-timing \\
-  --exe tb.cpp dpi_support.cpp \\
-  rtl/*.v 2>&1
+    Searches runfiles directories and standard install layouts for the
+    Verilator include directory containing verilated.h.
+    """
+    bin_path = Path(verilator_bin)
 
-make -C obj_dir -f V{top_name}.mk V{top_name} \\
-  -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4) 2>&1
-"""
+    # In Bazel tests, the include files are in the test's runfiles tree.
+    # Check TEST_SRCDIR / RUNFILES_DIR for the verilator repo.
+    for env_var in ("TEST_SRCDIR", "RUNFILES_DIR"):
+        runfiles_dir = os.environ.get(env_var)
+        if not runfiles_dir:
+            continue
+        # Look for verilator+/include/ (bzlmod repo name) or verilator/include/
+        for repo_name in ("verilator+", "verilator"):
+            candidate = Path(runfiles_dir) / repo_name
+            if (candidate / "include" / "verilated.h").is_file():
+                return str(candidate.resolve())
+
+    # Check binary's own runfiles: <binary>.runfiles/<repo>/include/
+    runfiles_dir = bin_path.parent / (bin_path.name + ".runfiles")
+    if runfiles_dir.is_dir():
+        for entry in runfiles_dir.iterdir():
+            if (
+                entry.name.startswith("verilator")
+                and (entry / "include" / "verilated.h").is_file()
+            ):
+                return str(entry.resolve())
+
+    # Check standard install layout: bin/verilator -> ../include/
+    root_candidate = bin_path.parent.parent
+    if (root_candidate / "include" / "verilated.h").is_file():
+        return str(root_candidate)
+
+    _logger.warning("Could not determine VERILATOR_ROOT for %s", verilator_bin)
+    return None

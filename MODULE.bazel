@@ -19,7 +19,10 @@ bazel_dep(name = "rules_nodejs", version = "6.4.0", dev_dependency = True)
 bazel_dep(name = "rules_pkg", version = "1.1.0", dev_dependency = True)
 bazel_dep(name = "rules_python", version = "1.9.0", dev_dependency = True)
 bazel_dep(name = "rules_shell", version = "0.6.1", dev_dependency = True)
+bazel_dep(name = "rules_verilator", version = "0.2.1", dev_dependency = True)
+bazel_dep(name = "rules_verilog", version = "0.1.0", dev_dependency = True)
 bazel_dep(name = "toolchains_llvm", version = "1.6.0", dev_dependency = True)
+bazel_dep(name = "verilator", version = "5.044", dev_dependency = True)
 
 http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
@@ -66,6 +69,11 @@ use_repo(llvm, "llvm_toolchain_llvm")
 
 register_toolchains(
     "@llvm_toolchain//:all",
+    dev_dependency = True,
+)
+
+register_toolchains(
+    "@rules_verilator//verilator:verilator_toolchain",
     dev_dependency = True,
 )
 
