@@ -276,7 +276,7 @@
   "moduleExtensions": {
     "//bazel:dependencies.bzl%load_dependencies": {
       "general": {
-        "bzlTransitiveDigest": "tMZVkBz5WjZl/YzEeoVNNEOg7m50zrnfrmVywzRXxxQ=",
+        "bzlTransitiveDigest": "jXOvQjOn/svYyKhLstnPjzmShco3ThH+WIEZYJiXd1A=",
         "usagesDigest": "R/mru0wX2nxaR5WLYDX44DFEAMeABaiVH5PaEGW3+bc=",
         "recordedInputs": [
           "REPO_MAPPING:,vars +resolve_vars+vars"
@@ -291,7 +291,7 @@
               "remote_host": "166.111.238.61",
               "remote_user": "tapa",
               "remote_port": "22222",
-              "remote_key_file": ""
+              "remote_key_file": "~/.ssh/tuna_tapa"
             }
           },
           "xsim_xv": {

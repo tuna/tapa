@@ -13,6 +13,7 @@ import logging
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import tarfile
 import uuid
@@ -93,23 +94,41 @@ class LocalToolProcess(ToolProcess):
         self.returncode = self._proc.returncode
 
 
-def _tar_directory(local_path: str) -> bytes:
-    """Create a tar.gz archive of a directory, returning bytes.
+def _tar_path(local_path: str) -> bytes:
+    """Create a tar.gz archive of a file or directory, returning bytes.
 
     Dereferences symlinks so the archive contains real files, since symlink
     targets (e.g., Bazel runfiles) won't exist on the remote host.
     """
     buf = io.BytesIO()
     with tarfile.open(mode="w:gz", fileobj=buf, dereference=True) as tar:
-        tar.add(local_path, arcname=".")
+        if os.path.isdir(local_path):
+            for entry in os.listdir(local_path):
+                tar.add(os.path.join(local_path, entry), arcname=entry)
+        else:
+            tar.add(local_path, arcname=os.path.basename(local_path))
     return buf.getvalue()
 
 
 def _untar_to_directory(data: bytes, local_path: str) -> None:
-    """Extract a tar.gz archive into a directory."""
+    """Extract a tar.gz archive into a directory.
+
+    Handles conflicts where a file and directory share the same name
+    (e.g., Vitis HLS creates kernel.xml as a directory, but a prior
+    step may have created it as a file).
+    """
     buf = io.BytesIO(data)
     with tarfile.open(mode="r:gz", fileobj=buf) as tar:
-        tar.extractall(path=local_path, filter="fully_trusted")
+        for member in tar:
+            target = os.path.join(local_path, member.name)
+            if member.isdir():
+                if os.path.exists(target) and not os.path.isdir(target):
+                    os.remove(target)
+                os.makedirs(target, exist_ok=True)
+            else:
+                if os.path.isdir(target):
+                    shutil.rmtree(target)
+                tar.extract(member, path=local_path, filter="fully_trusted")
 
 
 def _local_to_remote_path(local_path: str, session_dir: str) -> str:
@@ -161,17 +180,22 @@ def _dedup_paths(paths: list[str]) -> list[str]:
 
 
 def _upload_paths(ssh: paramiko.SSHClient, paths: list[str], session_dir: str) -> None:
-    """Upload local directories to remote via tar-over-SSH."""
+    """Upload local files and directories to remote via tar-over-SSH."""
     for local_path in paths:
         if not os.path.exists(local_path):
             _logger.warning("Upload path does not exist: %s", local_path)
             continue
         remote_path = _local_to_remote_path(local_path, session_dir)
         _logger.info("Uploading %s -> %s", local_path, remote_path)
-        tar_data = _tar_directory(local_path)
+        tar_data = _tar_path(local_path)
+        if os.path.isdir(local_path):
+            extract_dir = remote_path
+        else:
+            extract_dir = os.path.dirname(remote_path)
         stdin, stdout, stderr = ssh.exec_command(
-            f"mkdir -p {shlex.quote(remote_path)} && "
-            f"tar xzf - -C {shlex.quote(remote_path)}",
+            f"rm -rf {shlex.quote(remote_path)} && "
+            f"mkdir -p {shlex.quote(extract_dir)} && "
+            f"tar xzf - -C {shlex.quote(extract_dir)} --no-same-owner",
         )
         stdin.write(tar_data)
         stdin.channel.shutdown_write()

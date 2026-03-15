@@ -212,15 +212,17 @@ def get_tapa_cflags() -> tuple[str, ...]:
             msg = "tapa.h not found in tapa-lib-include"
             raise FileNotFoundError(msg)
 
-        includes = {
-            find_resource("fpga-runtime-include"),
-            find_resource("tapa-extra-runtime-include"),
-        }
-
         # WORKAROUND: tapa-lib-include must be included first to make Vitis happy
         include_flags.append("-isystem" + str(tapa_lib_include))
-        for include in includes - {tapa_lib_include}:
-            include_flags.extend(["-isystem" + str(include)])
+
+        # Add optional runtime includes (may not be available on all platforms).
+        for resource in ("fpga-runtime-include", "tapa-extra-runtime-include"):
+            try:
+                inc = find_resource(resource)
+                if inc != tapa_lib_include:
+                    include_flags.append("-isystem" + str(inc))
+            except FileNotFoundError:
+                pass
     except FileNotFoundError:
         _logger.warning(
             "TAPA runtime libraries not found; "
