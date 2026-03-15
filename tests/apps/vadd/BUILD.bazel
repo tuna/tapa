@@ -99,6 +99,26 @@ sh_test(
     tags = ["cpu:2"],
 )
 
+sh_test(
+    name = "vadd-verilator-zipsim",
+    size = "enormous",
+    timeout = "moderate",
+    srcs = ["//bazel:sim_env.sh"],
+    args = [
+        "$(location vadd-host)",
+        "--bitstream=$(location vadd-zip)",
+        "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
+        "--xosim_simulator=verilator",
+        "1000",
+    ],
+    data = [
+        ":vadd-host",
+        ":vadd-zip",
+        "//tapa/cosim:tapa-fast-cosim",
+    ],
+    tags = ["cpu:2"],
+)
+
 cc_binary(
     name = "vadd-host",
     srcs = glob([
