@@ -1,9 +1,12 @@
 """Fetch vendor (Xilinx) include headers from a remote host."""
 
+import glob
 import hashlib
 import io
 import logging
 import os
+import platform
+import re
 import shlex
 import tarfile
 
@@ -79,6 +82,54 @@ def _download_dir(
     return True
 
 
+def _patch_vendor_headers_for_macos(cache_dir: str) -> None:
+    """Patch vendor headers for macOS libc++ compatibility.
+
+    On macOS, libc++ puts std::complex in an inline namespace (std::__1::complex).
+    Xilinx vendor headers (ap_int_special.h, ap_fixed_special.h) forward-declare
+    'namespace std { template<typename _Tp> class complex; }' which creates a
+    separate std::complex that conflicts with std::__1::complex, causing ambiguity.
+
+    This patches those files to use '#include <complex>' instead.
+    """
+    if platform.system() != "Darwin":
+        return
+
+    marker = os.path.join(cache_dir, ".patched_macos_complex")
+    if os.path.exists(marker):
+        return
+
+    # Pattern: the forward declaration block in ap_int_special.h / ap_fixed_special.h
+    pattern = re.compile(
+        r"// FIXME AP_AUTOCC cannot handle many standard headers,"
+        r" so declare instead of\n"
+        r"// include\.\n"
+        r"// #include <complex>\n"
+        r"namespace std \{\n"
+        r"template<typename _Tp> class complex;\n"
+        r"\}"
+    )
+    replacement = "#include <complex>"
+
+    patched_any = False
+    for header in glob.glob(
+        os.path.join(cache_dir, "include", "etc", "ap_*_special.h")
+    ):
+        with open(header, encoding="utf-8") as f:
+            content = f.read()
+        new_content = pattern.sub(replacement, content)
+        if new_content != content:
+            with open(header, "w", encoding="utf-8") as f:
+                f.write(new_content)
+            _logger.info("Patched %s for macOS libc++ compatibility", header)
+            patched_any = True
+
+    if patched_any:
+        with open(marker, "w", encoding="utf-8") as f:
+            f.write("patched\n")
+        _logger.info("Applied macOS libc++ compatibility patches")
+
+
 def sync_remote_vendor_includes(config: RemoteConfig) -> str | None:
     """Fetch Xilinx vendor include headers from the remote host.
 
@@ -95,6 +146,7 @@ def sync_remote_vendor_includes(config: RemoteConfig) -> str | None:
     marker = os.path.join(cache_dir, ".synced")
     if os.path.exists(marker):
         _logger.info("Using cached vendor headers from %s", cache_dir)
+        _patch_vendor_headers_for_macos(cache_dir)
         return cache_dir
 
     _logger.info("Fetching vendor include headers from %s ...", config.host)
@@ -134,6 +186,9 @@ def sync_remote_vendor_includes(config: RemoteConfig) -> str | None:
         local_gcc = os.path.join(cache_dir, rel)
         if _download_dir(ssh, gcc_include, local_gcc):
             _logger.info("Downloaded %s -> %s", gcc_include, local_gcc)
+
+    # Patch vendor headers for macOS compatibility before marking as synced
+    _patch_vendor_headers_for_macos(cache_dir)
 
     # Write marker to indicate successful sync
     with open(marker, "w", encoding="utf-8") as f:
