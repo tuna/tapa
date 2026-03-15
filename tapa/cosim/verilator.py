@@ -379,13 +379,18 @@ def _generate_cpp_testbench(  # noqa: PLR0913, PLR0917
 ) -> str:
     """Generate a C++ testbench for Verilator simulation."""
     lines: list[str] = []
-    lines.extend(_cpp_preamble(top_name, axi_list, mode))
+    lines.extend(_cpp_preamble(top_name, axi_list, args, mode))
     lines.extend(_cpp_main_body(top_name, axi_list, args, config, reg_addrs, mode))
     lines.extend(_cpp_axi_helpers(axi_list, mode))
     return "\n".join(lines) + "\n"
 
 
-def _cpp_preamble(top_name: str, axi_list: list[AXI], mode: str) -> list[str]:
+def _cpp_preamble(
+    top_name: str,
+    axi_list: list[AXI],
+    args: Sequence[Arg],
+    mode: str,
+) -> list[str]:
     """Generate C++ includes, types, and global declarations."""
     lines: list[str] = [
         "#include <cstdio>",
@@ -460,7 +465,61 @@ def _cpp_preamble(top_name: str, axi_list: list[AXI], mode: str) -> list[str]:
     lines.append("static void service_all_axi();")
     if mode == "vitis":
         lines.append("static void ctrl_write(uint8_t addr, uint32_t data);")
+
+    # Add stream queue types if there are stream args
+    stream_args = [a for a in args if a.is_stream]
+    if stream_args:
+        lines.extend(_cpp_stream_types(stream_args))
+
     lines.append("")
+    return lines
+
+
+def _cpp_stream_types(stream_args: Sequence[Arg]) -> list[str]:
+    """Generate C++ stream queue types and declarations."""
+    lines: list[str] = [
+        "",
+        "// Stream queue for FIFO-style interfaces",
+        "#include <queue>",
+        "",
+        "struct StreamQueue {",
+        "    std::queue<std::vector<uint8_t>> data;",
+        "    size_t width_bytes;",
+        "    bool eot_sent = false;",
+        "};",
+        "",
+    ]
+    for arg in stream_args:
+        width_bytes = (arg.port.data_width + 7) // 8
+        lines.append(
+            f"static StreamQueue stream_{arg.qualified_name}{{{{}}, {width_bytes}}};"
+        )
+    lines.extend(
+        [
+            "",
+            ("static void load_stream(StreamQueue& sq, const char* path) {"),
+            "    std::ifstream f(path, std::ios::binary);",
+            "    if (!f) return;",
+            "    while (f.peek() != EOF) {",
+            "        std::vector<uint8_t> buf(sq.width_bytes);",
+            ("        f.read(reinterpret_cast<char*>(buf.data()), sq.width_bytes);"),
+            "        size_t n = f.gcount();",
+            "        buf.resize(n);",
+            "        if (n > 0) sq.data.push(std::move(buf));",
+            "    }",
+            "}",
+            "",
+            ("static void dump_stream(StreamQueue& sq, const char* path) {"),
+            "    std::ofstream f(path, std::ios::binary);",
+            "    while (!sq.data.empty()) {",
+            "        auto& buf = sq.data.front();",
+            ("        f.write(reinterpret_cast<const char*>(buf.data()), buf.size());"),
+            "        sq.data.pop();",
+            "    }",
+            "}",
+            "",
+        ]
+    )
     return lines
 
 
@@ -473,6 +532,7 @@ def _cpp_main_body(  # noqa: PLR0913, PLR0917
     mode: str,
 ) -> list[str]:
     """Generate the main() function body."""
+    stream_args = [a for a in args if a.is_stream]
     lines: list[str] = [
         "int main(int argc, char** argv) {",
         "    Verilated::commandArgs(argc, argv);",
@@ -495,21 +555,8 @@ def _cpp_main_body(  # noqa: PLR0913, PLR0917
     else:
         lines.append("    dut->ap_start = 0;")
 
-    for axi in axi_list:
-        n = axi.name
-        lines.extend(
-            [
-                f"    dut->m_axi_{n}_ARREADY = 0;",
-                f"    dut->m_axi_{n}_RVALID = 0; dut->m_axi_{n}_RDATA = 0;",
-                f"    dut->m_axi_{n}_RLAST = 0;"
-                f" dut->m_axi_{n}_RID = 0;"
-                f" dut->m_axi_{n}_RRESP = 0;",
-                f"    dut->m_axi_{n}_AWREADY = 1; dut->m_axi_{n}_WREADY = 1;",
-                f"    dut->m_axi_{n}_BVALID = 0;"
-                f" dut->m_axi_{n}_BID = 0;"
-                f" dut->m_axi_{n}_BRESP = 0;",
-            ]
-        )
+    lines.extend(_cpp_axi_port_init(axi_list))
+    lines.extend(_cpp_stream_init(stream_args))
 
     lines.extend(
         [
@@ -522,7 +569,79 @@ def _cpp_main_body(  # noqa: PLR0913, PLR0917
         ]
     )
 
-    # Load binary data
+    lines.extend(_cpp_load_data(axi_list, stream_args, config))
+
+    # Control register writes / port setup
+    if mode == "vitis":
+        lines.extend(_cpp_ctrl_writes(args, config, reg_addrs))
+    else:
+        lines.extend(_cpp_hls_port_setup(args, axi_list, config))
+
+    lines.extend(_cpp_sim_loop(stream_args, mode))
+    lines.extend(_cpp_dump_data(axi_list, stream_args, config))
+
+    lines.extend(
+        [
+            "",
+            '    printf("Simulation completed successfully\\n");',
+            "    delete dut;",
+            "    return 0;",
+            "}",
+            "",
+        ]
+    )
+    return lines
+
+
+def _cpp_axi_port_init(axi_list: list[AXI]) -> list[str]:
+    """Generate AXI port initialization statements."""
+    lines: list[str] = []
+    for axi in axi_list:
+        n = axi.name
+        lines.extend(
+            [
+                f"    dut->m_axi_{n}_ARREADY = 0;",
+                f"    dut->m_axi_{n}_RVALID = 0; dut->m_axi_{n}_RDATA = 0;",
+                (
+                    f"    dut->m_axi_{n}_RLAST = 0;"
+                    f" dut->m_axi_{n}_RID = 0;"
+                    f" dut->m_axi_{n}_RRESP = 0;"
+                ),
+                f"    dut->m_axi_{n}_AWREADY = 1; dut->m_axi_{n}_WREADY = 1;",
+                (
+                    f"    dut->m_axi_{n}_BVALID = 0;"
+                    f" dut->m_axi_{n}_BID = 0;"
+                    f" dut->m_axi_{n}_BRESP = 0;"
+                ),
+            ]
+        )
+    return lines
+
+
+def _cpp_stream_init(stream_args: Sequence[Arg]) -> list[str]:
+    """Generate FIFO stream signal initialization statements."""
+    lines: list[str] = []
+    for arg in stream_args:
+        n = arg.qualified_name
+        if arg.port.is_istream:
+            lines.extend(
+                [
+                    f"    dut->{n}_dout = 0;",
+                    f"    dut->{n}_empty_n = 0;",
+                ]
+            )
+        elif arg.port.is_ostream:
+            lines.append(f"    dut->{n}_full_n = 1;")
+    return lines
+
+
+def _cpp_load_data(
+    axi_list: list[AXI],
+    stream_args: Sequence[Arg],
+    config: dict,
+) -> list[str]:
+    """Generate binary and stream data loading statements."""
+    lines: list[str] = []
     axi_to_data = config.get("axi_to_data_file", {})
     axi_to_size = config.get("axi_to_c_array_size", {})
     for idx, axi in enumerate(axi_list):
@@ -538,23 +657,65 @@ def _cpp_main_body(  # noqa: PLR0913, PLR0917
             )
     lines.append("")
 
-    # Control register writes / port setup
-    if mode == "vitis":
-        lines.extend(_cpp_ctrl_writes(args, config, reg_addrs))
-    else:
-        lines.extend(_cpp_hls_port_setup(args, axi_list, config))
+    axis_to_data = config.get("axis_to_data_file", {})
+    for arg in stream_args:
+        data_path = axis_to_data.get(arg.qualified_name, "")
+        if data_path:
+            lines.append(
+                f'    load_stream(stream_{arg.qualified_name}, "{data_path}");'
+            )
+    if stream_args:
+        lines.append("")
+    return lines
 
-    lines.extend(
-        [
-            '    printf("Kernel started, running simulation...\\n");',
-            "",
-            "    bool done = false;",
-            "    int timeout = 1000000;",
-            "    for (int cycle = 0; cycle < timeout; cycle++) {",
-            "        service_all_axi();",
-            "        tick();",
-        ]
-    )
+
+def _cpp_stream_service(stream_args: Sequence[Arg]) -> list[str]:
+    """Generate FIFO stream servicing code for the simulation loop."""
+    lines: list[str] = []
+    for arg in stream_args:
+        n = arg.qualified_name
+        w = (arg.port.data_width + 7) // 8
+        if arg.port.is_istream:
+            lines.extend(
+                [
+                    f"        if (dut->{n}_read && dut->{n}_empty_n)",
+                    f"            stream_{n}.data.pop();",
+                    f"        if (!stream_{n}.data.empty()) {{",
+                    f"            dut->{n}_empty_n = 1;",
+                    (
+                        f"            memcpy(&dut->{n}_dout,"
+                        f" stream_{n}.data.front().data(), {w});"
+                    ),
+                    f"        }} else dut->{n}_empty_n = 0;",
+                ]
+            )
+        elif arg.port.is_ostream:
+            lines.extend(
+                [
+                    f"        if (dut->{n}_write && dut->{n}_full_n) {{",
+                    f"            std::vector<uint8_t> buf({w});",
+                    f"            memcpy(buf.data(), &dut->{n}_din, {w});",
+                    f"            stream_{n}.data.push(std::move(buf));",
+                    "        }",
+                    f"        dut->{n}_full_n = 1;",
+                ]
+            )
+    return lines
+
+
+def _cpp_sim_loop(stream_args: Sequence[Arg], mode: str) -> list[str]:
+    """Generate the main simulation loop."""
+    lines: list[str] = [
+        '    printf("Kernel started, running simulation...\\n");',
+        "",
+        "    bool done = false;",
+        "    int timeout = 1000000;",
+        "    for (int cycle = 0; cycle < timeout; cycle++) {",
+        "        service_all_axi();",
+    ]
+
+    lines.extend(_cpp_stream_service(stream_args))
+    lines.append("        tick();")
 
     if mode == "vitis":
         lines.extend(
@@ -585,15 +746,27 @@ def _cpp_main_body(  # noqa: PLR0913, PLR0917
             "    }",
             "",
             "    if (!done) {",
-            '        printf("TIMEOUT: kernel did not complete'
-            ' in %d cycles\\n", timeout);',
+            (
+                '        printf("TIMEOUT: kernel did not complete'
+                ' in %d cycles\\n", timeout);'
+            ),
             "        delete dut;",
             "        return 1;",
             "    }",
             "",
         ]
     )
+    return lines
 
+
+def _cpp_dump_data(
+    axi_list: list[AXI],
+    stream_args: Sequence[Arg],
+    config: dict,
+) -> list[str]:
+    """Generate binary and stream data dumping statements."""
+    lines: list[str] = []
+    axi_to_data = config.get("axi_to_data_file", {})
     for axi in axi_list:
         data_path = axi_to_data.get(axi.name, "")
         if data_path:
@@ -602,16 +775,13 @@ def _cpp_main_body(  # noqa: PLR0913, PLR0917
                 f" {axi.name}_BASE, {axi.name}_SIZE);"
             )
 
-    lines.extend(
-        [
-            "",
-            '    printf("Simulation completed successfully\\n");',
-            "    delete dut;",
-            "    return 0;",
-            "}",
-            "",
-        ]
-    )
+    axis_to_data = config.get("axis_to_data_file", {})
+    for arg in stream_args:
+        data_path = axis_to_data.get(arg.qualified_name, "")
+        if data_path and arg.port.is_ostream:
+            lines.append(
+                f'    dump_stream(stream_{arg.qualified_name}, "{data_path}_out.bin");'
+            )
     return lines
 
 
