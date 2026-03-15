@@ -77,7 +77,6 @@ cc_binary(
         "*.cpp",
         "*.h",
     ]),
-    target_compatible_with = ["@platforms//os:linux"],
     deps = [
         "//tapa-lib:tapa-host",
         "@gflags",

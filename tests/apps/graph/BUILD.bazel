@@ -112,7 +112,6 @@ cc_binary(
         "*.h",
         "*.hpp",
     ]),
-    target_compatible_with = ["@platforms//os:linux"],
     visibility = ["//tests/functional:__subpackages__"],
     deps = [
         "//tapa-lib:tapa-host",
