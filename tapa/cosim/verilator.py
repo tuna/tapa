@@ -271,10 +271,7 @@ def _generate_fp_ip_replacement(
     bit_width = 64 if "64" in dpi_func else 32
     ret_type = "longint unsigned" if bit_width == 64 else "int unsigned"
     arg_type = ret_type
-    # The HLS wrapper adds 1 cycle of latency via input buffers (din0_buf1).
-    # The TCL c_latency includes this cycle, so subtract 1 for the _ip's
-    # internal pipeline depth.
-    pipe_depth = max(latency - 1, 1)
+    pipe_depth = max(latency, 1)
 
     if is_unary:
         return _generate_unary_ip(
