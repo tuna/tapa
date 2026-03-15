@@ -721,7 +721,7 @@ def _cpp_sim_loop(stream_args: Sequence[Arg], mode: str) -> list[str]:
         '    printf("Kernel started, running simulation...\\n");',
         "",
         "    bool done = false;",
-        "    int timeout = 1000000;",
+        "    int timeout = 50000000;",
         "    for (int cycle = 0; cycle < timeout; cycle++) {",
         "        service_all_axi();",
     ]
@@ -1020,6 +1020,7 @@ def _generate_build_script(
         " -Wno-STMTDLY -Wno-WIDTHXZEXPAND"
         " -Wno-CASEINCOMPLETE -Wno-SYMRSVDWORD -Wno-COMBDLY"
         " -Wno-TIMESCALEMOD -Wno-MULTIDRIVEN -Wno-INITIALDLY"
+        " -Wno-ASCRANGE"
     )
 
     return f"""\

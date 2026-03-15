@@ -204,9 +204,29 @@ def _parse_zip_update_config(config: dict, tmp_path: str) -> None:
             elif port["cat"] == "ostream" or port["cat"] == "ostreams":
                 address_qualifier = 4
                 mode = "write_only"
-            elif port["cat"] == "mmap":
+            elif port["cat"] in {"mmap", "async_mmap"}:
                 address_qualifier = 1
                 mode = "read_write"
+            elif port["cat"] in {"mmaps", "hmap"}:
+                # Array mmap types: expand into individual mmap entries.
+                chan_count = port["chan_count"]
+                for i in range(chan_count):
+                    port_name = f"{port['name']}_{i}"
+                    args.append(
+                        Arg(
+                            name=port_name,
+                            address_qualifier=1,
+                            id=idx,
+                            stream_idx=None,
+                            port=Port(
+                                name=port_name,
+                                mode="read_write",
+                                data_width=port["width"],
+                            ),
+                        )
+                    )
+                    idx += 1
+                continue
             elif port["cat"] == "scalar":
                 address_qualifier = 0
                 mode = "read_only"

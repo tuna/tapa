@@ -185,14 +185,31 @@ void TapaFastCosimDevice::LoadArgsFromTapaYaml() {
   size_t index = 0;
   for (auto it = ports.begin(); it != ports.end(); ++it) {
     auto port = *it;
+    auto port_name = port["name"].as<std::string>();
+    auto port_type = port["type"].as<std::string>();
+    auto port_cat = port["cat"].as<std::string>();
+
+    // Expand array mmap types (mmaps, hmap) into individual mmap entries.
+    if (port_cat == "mmaps" || port_cat == "hmap") {
+      int chan_count = port["chan_count"].as<int>();
+      for (int i = 0; i < chan_count; ++i) {
+        ArgInfo arg;
+        arg.index = index++;
+        arg.name = port_name + "_" + std::to_string(i);
+        arg.type = port_type;
+        arg.cat = ArgInfo::kMmap;
+        args_.push_back(arg);
+      }
+      continue;
+    }
+
     ArgInfo arg;
     arg.index = index++;
-    arg.name = port["name"].as<std::string>();
-    arg.type = port["type"].as<std::string>();
-    auto port_cat = port["cat"].as<std::string>();
+    arg.name = port_name;
+    arg.type = port_type;
     if (port_cat == "scalar") {
       arg.cat = ArgInfo::kScalar;
-    } else if (port_cat == "mmap") {
+    } else if (port_cat == "mmap" || port_cat == "async_mmap") {
       arg.cat = ArgInfo::kMmap;
     } else if (port_cat == "istream" || port_cat == "ostream") {
       arg.cat = ArgInfo::kStream;
