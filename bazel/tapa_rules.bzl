@@ -7,6 +7,7 @@
 load(
     "@vars//:vars.bzl",
     "REMOTE_HOST",
+    "REMOTE_KEY_FILE",
     "REMOTE_PORT",
     "REMOTE_USER",
     "REMOTE_XILINX_SETTINGS",
@@ -61,6 +62,8 @@ def _tapa_xo_impl(ctx):
     remote_host = _remote_host_flag()
     if remote_host:
         tapa_cmd.extend(["--remote-host", remote_host])
+        if REMOTE_KEY_FILE:
+            tapa_cmd.extend(["--remote-key-file", REMOTE_KEY_FILE])
         xilinx_settings = _remote_xilinx_settings()
         if xilinx_settings:
             tapa_cmd.extend(["--remote-xilinx-settings", xilinx_settings])
@@ -198,6 +201,8 @@ def _tapa_reuse_work_dir_xo_impl(ctx):
     remote_host = _remote_host_flag()
     if remote_host:
         tapa_prefix.extend(["--remote-host", remote_host])
+        if REMOTE_KEY_FILE:
+            tapa_prefix.extend(["--remote-key-file", REMOTE_KEY_FILE])
         xilinx_settings = _remote_xilinx_settings()
         if xilinx_settings:
             tapa_prefix.extend(["--remote-xilinx-settings", xilinx_settings])
@@ -216,7 +221,7 @@ def _tapa_reuse_work_dir_xo_impl(ctx):
 
     script = """
 set -ex
-{prefix} analyze -c {includes} --input {src} --top {top} --target xilinx-vitis
+{prefix} analyze {includes} --input {src} --top {top} --target xilinx-vitis
 {prefix} synth --part-num {part} --clock-period {clock} --override-report-schema-version=redacted
 {prefix} synth --part-num {part} --clock-period {clock} --skip-hls-based-on-mtime --override-report-schema-version=redacted
 {prefix} pack --output {output}

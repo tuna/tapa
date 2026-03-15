@@ -75,6 +75,12 @@ _logger = logging.getLogger().getChild(__name__)
     help="Remote Linux host for vendor tools (user@host[:port]). Overrides ~/.taparc.",
 )
 @click.option(
+    "--remote-key-file",
+    type=str,
+    default=None,
+    help="Path to SSH private key for remote host authentication.",
+)
+@click.option(
     "--remote-xilinx-settings",
     type=str,
     default=None,
@@ -90,6 +96,7 @@ def entry_point(  # noqa: PLR0913,PLR0917
     temp_dir: str | None,
     clang_format_quota_in_bytes: int,
     remote_host: str | None,
+    remote_key_file: str | None,
     remote_xilinx_settings: str | None,
 ) -> None:
     """The TAPA compiler."""
@@ -99,6 +106,8 @@ def entry_point(  # noqa: PLR0913,PLR0917
 
     # Setup remote execution config
     config = load_remote_config(remote_host)
+    if config and remote_key_file:
+        config.key_file = os.path.expanduser(remote_key_file)
     if config and remote_xilinx_settings:
         config.xilinx_settings = remote_xilinx_settings
     set_remote_config(config)

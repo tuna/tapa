@@ -54,7 +54,8 @@ class SSHConnectionPool:
         }
         if config.key_file:
             connect_kwargs["key_filename"] = config.key_file
-        # Otherwise, paramiko tries SSH agent, then default keys
+            connect_kwargs["look_for_keys"] = False
+            connect_kwargs["allow_agent"] = False
 
         _logger.info(
             "Opening SSH connection to %s@%s:%d",

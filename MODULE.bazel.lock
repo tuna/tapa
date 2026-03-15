@@ -84,8 +84,9 @@
     "https://bcr.bazel.build/modules/gawk/5.3.2.bcr.1/source.json": "fa7b512dfcb5eafd90ce3959cf42a2a6fe96144ebbb4b3b3928054895f2afac2",
     "https://bcr.bazel.build/modules/gflags/2.2.2.bcr.1/MODULE.bazel": "67bdfd9b6b54c57a5162171739b2e90f5fd056447f642562eff91448f9d37cfb",
     "https://bcr.bazel.build/modules/gflags/2.2.2.bcr.1/source.json": "04ac4a32d9cb6fcf02dbd63cee53d5c349e55cb219d7f608f39855ea86619188",
-    "https://bcr.bazel.build/modules/glog/0.7.1.bcr.1/MODULE.bazel": "04b9cfb4142f482ecd925a8bfae0a5cb9e5aed36c9d44362cf6b7589b109f009",
-    "https://bcr.bazel.build/modules/glog/0.7.1.bcr.1/source.json": "7dc7bacf29816c20cab391fbdffdc320e63237d53044a738a1e3501ad537913b",
+    "https://bcr.bazel.build/modules/gflags/2.2.2/MODULE.bazel": "ba6502c3fee189734f359454db8a49b7c08afd7271b32e7c6fc38c2d2e1edbeb",
+    "https://bcr.bazel.build/modules/glog/0.5.0/MODULE.bazel": "f5e4f5ae1c0642c84a06a68c5428a576b28bac2cd1dfa3faf5b6d683c69007a4",
+    "https://bcr.bazel.build/modules/glog/0.5.0/source.json": "241565699f6a5428189e090297f6f9742259e791908cbace6e9f0eeb8104bd9e",
     "https://bcr.bazel.build/modules/google_benchmark/1.8.2/MODULE.bazel": "a70cf1bba851000ba93b58ae2f6d76490a9feb74192e57ab8e8ff13c34ec50cb",
     "https://bcr.bazel.build/modules/googletest/1.11.0/MODULE.bazel": "3a83f095183f66345ca86aa13c58b59f9f94a2f81999c093d4eeaa2d262d12f4",
     "https://bcr.bazel.build/modules/googletest/1.14.0.bcr.1/MODULE.bazel": "22c31a561553727960057361aa33bf20fb2e98584bc4fec007906e27053f80c6",
@@ -144,7 +145,6 @@
     "https://bcr.bazel.build/modules/rules_apple/4.1.0/source.json": "8ee81e1708756f81b343a5eb2b2f0b953f1d25c4ab3d4a68dc02754872e80715",
     "https://bcr.bazel.build/modules/rules_cc/0.0.1/MODULE.bazel": "cb2aa0747f84c6c3a78dad4e2049c154f08ab9d166b1273835a8174940365647",
     "https://bcr.bazel.build/modules/rules_cc/0.0.10/MODULE.bazel": "ec1705118f7eaedd6e118508d3d26deba2a4e76476ada7e0e3965211be012002",
-    "https://bcr.bazel.build/modules/rules_cc/0.0.12/MODULE.bazel": "28259f5cb8dd72d7503eb4fd1f9c89ab13759a438b1b78cb9655568d8566d7f9",
     "https://bcr.bazel.build/modules/rules_cc/0.0.13/MODULE.bazel": "0e8529ed7b323dad0775ff924d2ae5af7640b23553dfcd4d34344c7e7a867191",
     "https://bcr.bazel.build/modules/rules_cc/0.0.15/MODULE.bazel": "6704c35f7b4a72502ee81f61bf88706b54f06b3cbe5558ac17e2e14666cd5dcc",
     "https://bcr.bazel.build/modules/rules_cc/0.0.16/MODULE.bazel": "7661303b8fc1b4d7f532e54e9d6565771fea666fbdf839e0a86affcd02defe87",
@@ -276,15 +276,22 @@
   "moduleExtensions": {
     "//bazel:dependencies.bzl%load_dependencies": {
       "general": {
-        "bzlTransitiveDigest": "MkL7sWXOTpiXbYDReTeQhaM2JMBHBBvF6ddqR/RbXjg=",
+        "bzlTransitiveDigest": "tMZVkBz5WjZl/YzEeoVNNEOg7m50zrnfrmVywzRXxxQ=",
         "usagesDigest": "R/mru0wX2nxaR5WLYDX44DFEAMeABaiVH5PaEGW3+bc=",
-        "recordedInputs": [],
+        "recordedInputs": [
+          "REPO_MAPPING:,vars +resolve_vars+vars"
+        ],
         "generatedRepoSpecs": {
           "vitis_hls": {
-            "repoRuleId": "@@//bazel:dependencies.bzl%_optional_local_repository",
+            "repoRuleId": "@@//bazel:dependencies.bzl%_vitis_hls_repository",
             "attributes": {
-              "build_file_content": "\ncc_library(\n    name = \"include\",\n    hdrs = glob([\"include/**/*.h\"], allow_empty = True),\n    includes = [\"include\"],\n    visibility = [\"//visibility:public\"],\n)\n        ",
-              "path": "/opt/tools/xilinx/Vitis/2024.2"
+              "build_file_content": "\ncc_library(\n    name = \"include\",\n    hdrs = glob([\"include/**/*.h\"], allow_empty = True),\n    defines = select({\n        \"@platforms//os:macos\": [\n            # Xilinx std::complex specializations conflict with libc++ inline\n            # namespaces (std::__1::complex vs std::complex). Skip them since\n            # TAPA programs do not use std::complex<ap_int/ap_fixed>.\n            \"AP_INT_SPECIAL_H\",\n            \"AP_FIXED_SPECIAL_H\",\n            # Disable Xilinx FPO library dependency.\n            \"HLS_NO_XIL_FPO_LIB\",\n        ],\n        \"//conditions:default\": [],\n    }),\n    includes = [\"include\"],\n    visibility = [\"//visibility:public\"],\n)\n        ",
+              "path": "/opt/tools/xilinx/Vitis/2024.2",
+              "remote_path": "/opt/tapa/software/tools/xilinx/Vitis/2024.2",
+              "remote_host": "166.111.238.61",
+              "remote_user": "tapa",
+              "remote_port": "22222",
+              "remote_key_file": ""
             }
           },
           "xsim_xv": {
@@ -300,6 +307,23 @@
               "build_file_content": "\ncc_library(\n    name = \"svdpi\",\n    hdrs = glob([\"include/svdpi.h\"], allow_empty = True),\n    includes = [\"include\"],\n    visibility = [\"//visibility:public\"],\n)\n    ",
               "path": "/opt/tools/xilinx/Vivado/2022.2/data/xsim"
             }
+          }
+        },
+        "moduleExtensionMetadata": {
+          "useAllRepos": "DEV",
+          "reproducible": false
+        }
+      }
+    },
+    "//bazel:vars.bzl%resolve_vars": {
+      "general": {
+        "bzlTransitiveDigest": "Nx2S11kpId6Ffv17y5ovU/IoHcJskhyVPl8oiOxmIqE=",
+        "usagesDigest": "vze61CPQZCDqdNmuHWPYtjJ4MlMvDp568CakZ9WQ7t0=",
+        "recordedInputs": [],
+        "generatedRepoSpecs": {
+          "vars": {
+            "repoRuleId": "@@//bazel:vars.bzl%_vars_repository",
+            "attributes": {}
           }
         },
         "moduleExtensionMetadata": {
