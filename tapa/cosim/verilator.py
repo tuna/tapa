@@ -796,14 +796,23 @@ def _cpp_stream_init(stream_args: Sequence[Arg]) -> list[str]:
     lines: list[str] = []
     for arg in stream_args:
         n = arg.qualified_name
+        pn = arg.peek_qualified_name
         # Stream FIFO ports are data_width + 1 (EOT bit)
         port_width = arg.port.data_width + 1
         if arg.port.is_istream:
             if port_width > 64:
                 lines.append(f"    memset(&dut->{n}_dout, 0, sizeof(dut->{n}_dout));")
+                if pn:
+                    lines.append(
+                        f"    memset(&dut->{pn}_dout, 0, sizeof(dut->{pn}_dout));"
+                    )
             else:
                 lines.append(f"    dut->{n}_dout = 0;")
+                if pn:
+                    lines.append(f"    dut->{pn}_dout = 0;")
             lines.append(f"    dut->{n}_empty_n = 0;")
+            if pn:
+                lines.append(f"    dut->{pn}_empty_n = 0;")
         elif arg.port.is_ostream:
             lines.append(f"    dut->{n}_full_n = 1;")
     return lines
@@ -865,6 +874,7 @@ def _cpp_stream_service(stream_args: Sequence[Arg]) -> list[str]:
                 )
             else:
                 eot_set = f"            dut->{n}_dout = (1ULL << {dw});"
+            pn = arg.peek_qualified_name
             lines.extend(
                 [
                     f"        if (dut->{n}_read && dut->{n}_empty_n",
@@ -885,6 +895,16 @@ def _cpp_stream_service(stream_args: Sequence[Arg]) -> list[str]:
                     "        }",
                 ]
             )
+            # Mirror peek port from read port (TAPA_WHILE_NOT_EOT uses peek)
+            if pn:
+                if port_width > 64:
+                    lines.append(
+                        f"        memcpy(&dut->{pn}_dout, &dut->{n}_dout,"
+                        f" sizeof(dut->{n}_dout));"
+                    )
+                else:
+                    lines.append(f"        dut->{pn}_dout = dut->{n}_dout;")
+                lines.append(f"        dut->{pn}_empty_n = dut->{n}_empty_n;")
         elif arg.port.is_ostream:
             lines.extend(
                 [
