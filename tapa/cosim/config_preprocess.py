@@ -46,7 +46,8 @@ def extract_part_from_xml_file(file_path: str) -> str | None:
     try:
         tree = ET.parse(file_path)
     except (ET.ParseError, FileNotFoundError) as e:
-        return f"Error reading or parsing the XML file: {e}"
+        _logger.warning("Error reading or parsing XML file %s: %s", file_path, e)
+        return None
 
     root = tree.getroot()
     part_element = root.find(".//Part")
