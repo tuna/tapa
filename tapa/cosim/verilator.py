@@ -130,8 +130,9 @@ def _detect_top_level_peek_ports(
     """Return the set of peek_qualified_names that exist at the top level.
 
     Peek ports are only exposed at the top level for leaf tasks.  Non-leaf
-    tasks have internal FIFOs that drive peek ports, so the top module
-    does not include them.
+    tasks have internal FIFOs that drive peek ports internally, so the top
+    module does not include them as I/O ports.  We check specifically for
+    port declarations (input/output) to avoid matching internal wires.
     """
     result: set[str] = set()
     if not top_module_path.exists():
@@ -139,7 +140,10 @@ def _detect_top_level_peek_ports(
     content = top_module_path.read_text(encoding="utf-8", errors="replace")
     for arg in args:
         pn = arg.peek_qualified_name
-        if pn and f"{pn}_dout" in content:
+        # Check that it's declared as a port (input/output), not an internal wire
+        if pn and re.search(
+            rf"\b(?:input|output)\b[^;]*\b{re.escape(pn)}_dout\b", content
+        ):
             result.add(pn)
     return result
 
