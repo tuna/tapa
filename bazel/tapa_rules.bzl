@@ -167,6 +167,7 @@ def _tapa_xo_impl(ctx):
         tools = [tapa_cli, ctx.executable.vitis_hls_env],
         executable = ctx.executable.vitis_hls_env,
         arguments = tapa_cmd,
+        execution_requirements = {"requires-network": "1"} if remote_host else {},
     )
 
     # Extract ab_graph
@@ -183,6 +184,84 @@ def _tapa_xo_impl(ctx):
 
     # Return default information, including the output file.
     return [DefaultInfo(files = depset([output_file or work_dir] + ab_graph_return))]
+
+def _tapa_reuse_work_dir_xo_impl(ctx):
+    """Run tapa analyze/synth/synth(reuse)/pack as separate steps."""
+    tapa_cli = ctx.executable.tapa_cli
+    src = ctx.file.src
+    top_name = ctx.attr.top_name
+    output_file = ctx.actions.declare_file(ctx.attr.name + ".xo")
+    work_dir = ctx.actions.declare_directory(ctx.attr.name + ".tapa")
+
+    # Build common tapa prefix with optional remote flags.
+    tapa_prefix = [tapa_cli.path, "--work-dir", work_dir.path]
+    remote_host = _remote_host_flag()
+    if remote_host:
+        tapa_prefix.extend(["--remote-host", remote_host])
+        xilinx_settings = _remote_xilinx_settings()
+        if xilinx_settings:
+            tapa_prefix.extend(["--remote-xilinx-settings", xilinx_settings])
+
+    # Build include flags.
+    include_flags = []
+    for inc in ctx.files.include:
+        include_flags.extend(["--cflags", "-I" + inc.path])
+
+    # Construct the multi-step shell command.
+    env_path = ctx.executable.vitis_hls_env.path
+    prefix = " ".join([env_path] + tapa_prefix)
+    includes = " ".join(include_flags)
+    part_num = ctx.attr.part_num
+    clock_period = ctx.attr.clock_period
+
+    script = """
+set -ex
+{prefix} analyze -c {includes} --input {src} --top {top} --target xilinx-vitis
+{prefix} synth --part-num {part} --clock-period {clock} --override-report-schema-version=redacted
+{prefix} synth --part-num {part} --clock-period {clock} --skip-hls-based-on-mtime --override-report-schema-version=redacted
+{prefix} pack --output {output}
+""".format(
+        prefix = prefix,
+        includes = includes,
+        src = src.path,
+        top = top_name,
+        part = part_num,
+        clock = clock_period,
+        output = output_file.path,
+    )
+
+    inputs = [src] + ctx.files.hdrs
+    ctx.actions.run_shell(
+        outputs = [output_file, work_dir],
+        inputs = inputs,
+        tools = [tapa_cli, ctx.executable.vitis_hls_env],
+        command = script,
+        execution_requirements = {"requires-network": "1"} if remote_host else {},
+    )
+
+    return [DefaultInfo(files = depset([output_file]))]
+
+tapa_reuse_work_dir_xo = rule(
+    implementation = _tapa_reuse_work_dir_xo_impl,
+    attrs = {
+        "src": attr.label(allow_single_file = True, mandatory = True),
+        "hdrs": attr.label_list(allow_files = True),
+        "include": attr.label_list(allow_files = True),
+        "top_name": attr.string(mandatory = True),
+        "part_num": attr.string(default = "xcu250-figd2104-2l-e"),
+        "clock_period": attr.string(default = "3.33"),
+        "tapa_cli": attr.label(
+            cfg = "exec",
+            default = Label("//tapa"),
+            executable = True,
+        ),
+        "vitis_hls_env": attr.label(
+            cfg = "exec",
+            default = Label("//bazel:vitis_hls_env"),
+            executable = True,
+        ),
+    },
+)
 
 # Define the custom Bazel rule.
 tapa_xo = rule(

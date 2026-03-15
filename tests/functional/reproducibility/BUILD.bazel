@@ -5,7 +5,7 @@
 # RapidStream Contributor License Agreement.
 
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
-load("//bazel:tapa_rules.bzl", "tapa_xo")
+load("//bazel:tapa_rules.bzl", "tapa_reuse_work_dir_xo", "tapa_xo")
 
 tapa_xo(
     name = "vadd-xo",
@@ -50,43 +50,12 @@ sh_test(
     ],
 )
 
-genrule(
+tapa_reuse_work_dir_xo(
     name = "reuse-work-dir-vadd-xo",
-    srcs = [
-        "//tests/apps/vadd:vadd.cpp",
-        "//tests/apps/vadd:vadd.h",
-    ],
-    outs = ["reuse-work-dir-vadd.xo"],
-    cmd_bash = """
-set -ex
-work_dir="work.out"
-part_name="xcu250-figd2104-2L-e"
-clock_period="3.33"
-
-$(location //bazel:vitis_hls_env) $(location //tapa) --work-dir "$${work_dir}" \
-    analyze -c -I$$(dirname $(location //tests/apps/vadd:vadd.h)) \
-    --input $(location //tests/apps/vadd:vadd.cpp) --top VecAdd \
-
-$(location //bazel:vitis_hls_env) $(location //tapa) --work-dir "$${work_dir}" \
-    synth --part-num "$${part_name}" --clock-period "$${clock_period}" \
-    --override-report-schema-version=redacted \
-
-$(location //bazel:vitis_hls_env) $(location //tapa) --work-dir "$${work_dir}" \
-    synth --part-num "$${part_name}" --clock-period "$${clock_period}" \
-    --skip-hls-based-on-mtime \
-    --override-report-schema-version=redacted \
-
-$(location //bazel:vitis_hls_env) $(location //tapa) --work-dir "$${work_dir}" \
-    pack --output $@ \
-
-""",
-    # This genrule invokes the tapa CLI directly without --remote-host,
-    # so it requires local Xilinx tools (Linux only).
-    target_compatible_with = ["@platforms//os:linux"],
-    tools = [
-        "//bazel:vitis_hls_env",
-        "//tapa",
-    ],
+    src = "//tests/apps/vadd:vadd.cpp",
+    hdrs = ["//tests/apps/vadd:vadd.h"],
+    include = ["//tests/apps/vadd:."],
+    top_name = "VecAdd",
 )
 
 # XO generated step-by-step should be the same as XO generated in one step.
