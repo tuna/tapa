@@ -1012,14 +1012,14 @@ def _generate_build_script(
         _logger.error("verilator not found in PATH or common locations")
         sys.exit(1)
 
-    # Verilator warning suppressions for HLS-generated code
+    # Verilator warning suppressions for HLS-generated code.
+    # Use -Wno-WIDTH (covers WIDTHEXPAND/WIDTHTRUNC/WIDTHXZEXPAND) and
+    # -Wno-fatal for broad compatibility across Verilator 5.x versions.
     warn_flags = (
-        "-Wno-PINMISSING -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC"
+        "-Wno-fatal -Wno-PINMISSING -Wno-WIDTH"
         " -Wno-UNUSEDSIGNAL -Wno-UNDRIVEN -Wno-UNOPTFLAT"
-        " -Wno-STMTDLY -Wno-WIDTHXZEXPAND"
-        " -Wno-CASEINCOMPLETE -Wno-SYMRSVDWORD -Wno-COMBDLY"
-        " -Wno-TIMESCALEMOD -Wno-MULTIDRIVEN -Wno-INITIALDLY"
-        " -Wno-ASCRANGE"
+        " -Wno-STMTDLY -Wno-CASEINCOMPLETE -Wno-SYMRSVDWORD"
+        " -Wno-COMBDLY -Wno-TIMESCALEMOD -Wno-MULTIDRIVEN"
     )
 
     return f"""\
