@@ -57,8 +57,37 @@ cc_binary(
     ],
 )
 
+sh_test(
+    name = "eot-peek-verilator-zipsim",
+    size = "enormous",
+    timeout = "moderate",
+    srcs = ["//bazel:sim_env.sh"],
+    args = [
+        "$(location eot-peek-host)",
+        "--bitstream=$(location eot-peek-zip)",
+        "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
+        "--xosim_simulator=verilator",
+        "1000",
+    ],
+    data = [
+        ":eot-peek-host",
+        ":eot-peek-zip",
+        "//tapa/cosim:tapa-fast-cosim",
+        "@verilator//:verilator_executable",
+    ],
+    env = {"VERILATOR_BIN": "$(rootpath @verilator//:verilator_executable)"},
+    tags = ["cpu:2"],
+)
+
 tapa_xo(
     name = "eot-peek-xo",
     src = "vadd.cpp",
+    top_name = "VecAdd",
+)
+
+tapa_xo(
+    name = "eot-peek-zip",
+    src = "vadd.cpp",
+    target = "xilinx-hls",
     top_name = "VecAdd",
 )

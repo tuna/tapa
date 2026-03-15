@@ -58,9 +58,39 @@ cc_binary(
     ],
 )
 
+sh_test(
+    name = "invoke-streams-verilator-zipsim",
+    size = "enormous",
+    timeout = "moderate",
+    srcs = ["//bazel:sim_env.sh"],
+    args = [
+        "$(location invoke-streams-host)",
+        "--bitstream=$(location invoke-streams-zip)",
+        "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
+        "--xosim_simulator=verilator",
+        "1000",
+    ],
+    data = [
+        ":invoke-streams-host",
+        ":invoke-streams-zip",
+        "//tapa/cosim:tapa-fast-cosim",
+        "@verilator//:verilator_executable",
+    ],
+    env = {"VERILATOR_BIN": "$(rootpath @verilator//:verilator_executable)"},
+    tags = ["cpu:2"],
+)
+
 tapa_xo(
     name = "invoke-streams-xo",
     src = "vadd.cpp",
     hdrs = glob(["*.h"]),
+    top_name = "VecAdd",
+)
+
+tapa_xo(
+    name = "invoke-streams-zip",
+    src = "vadd.cpp",
+    hdrs = glob(["*.h"]),
+    target = "xilinx-hls",
     top_name = "VecAdd",
 )

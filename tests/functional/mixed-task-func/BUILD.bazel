@@ -57,8 +57,37 @@ cc_binary(
     ],
 )
 
+sh_test(
+    name = "mixed-task-func-verilator-zipsim",
+    size = "enormous",
+    timeout = "moderate",
+    srcs = ["//bazel:sim_env.sh"],
+    args = [
+        "$(location mixed-task-func-host)",
+        "--bitstream=$(location mixed-task-func-zip)",
+        "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
+        "--xosim_simulator=verilator",
+        "1000",
+    ],
+    data = [
+        ":mixed-task-func-host",
+        ":mixed-task-func-zip",
+        "//tapa/cosim:tapa-fast-cosim",
+        "@verilator//:verilator_executable",
+    ],
+    env = {"VERILATOR_BIN": "$(rootpath @verilator//:verilator_executable)"},
+    tags = ["cpu:2"],
+)
+
 tapa_xo(
     name = "mixed-task-func-xo",
     src = "vadd.cpp",
+    top_name = "VecAddMixed",
+)
+
+tapa_xo(
+    name = "mixed-task-func-zip",
+    src = "vadd.cpp",
+    target = "xilinx-hls",
     top_name = "VecAddMixed",
 )

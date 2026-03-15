@@ -53,8 +53,37 @@ cc_binary(
     ],
 )
 
+sh_test(
+    name = "detached-verilator-zipsim",
+    size = "enormous",
+    timeout = "moderate",
+    srcs = ["//bazel:sim_env.sh"],
+    args = [
+        "$(location detached-host)",
+        "--bitstream=$(location detached-zip)",
+        "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
+        "--xosim_simulator=verilator",
+        "1000",
+    ],
+    data = [
+        ":detached-host",
+        ":detached-zip",
+        "//tapa/cosim:tapa-fast-cosim",
+        "@verilator//:verilator_executable",
+    ],
+    env = {"VERILATOR_BIN": "$(rootpath @verilator//:verilator_executable)"},
+    tags = ["cpu:2"],
+)
+
 tapa_xo(
     name = "detached-xo",
     src = "vadd.cpp",
+    top_name = "VecAddDetach",
+)
+
+tapa_xo(
+    name = "detached-zip",
+    src = "vadd.cpp",
+    target = "xilinx-hls",
     top_name = "VecAddDetach",
 )
