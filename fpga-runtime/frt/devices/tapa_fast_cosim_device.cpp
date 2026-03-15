@@ -46,6 +46,8 @@ DEFINE_string(xosim_executable, "",
               "`tapa-fast-cosim`");
 DEFINE_string(xosim_part_num, "",
               "if not empty, use the specified part number for Vivado");
+DEFINE_string(xosim_simulator, "",
+              "simulator backend to use: 'xsim' (default) or 'verilator'");
 DEFINE_bool(xosim_setup_only, false, "only setup the simulation");
 DEFINE_bool(xosim_resume_from_post_sim, false,
             "skip simulation and do post-sim checking");
@@ -350,6 +352,9 @@ void TapaFastCosimDevice::Exec() {
   }
   if (!FLAGS_xosim_part_num.empty()) {
     argv.push_back("--part-num=" + FLAGS_xosim_part_num);
+  }
+  if (!FLAGS_xosim_simulator.empty()) {
+    argv.push_back("--simulator=" + FLAGS_xosim_simulator);
   }
 
   // launch simulation as a noop if resume from post sim
