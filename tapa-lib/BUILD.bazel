@@ -80,6 +80,47 @@ cc_library(
     ],
 )
 
+alias(
+    name = "tapa-host",
+    actual = select({
+        "//bazel:is_macos": ":tapa-sim",
+        "//conditions:default": ":tapa",
+    }),
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "tapa-sim",
+    srcs = [
+        "tapa/host/private_util.cpp",
+        "tapa/host/private_util.h",
+        "tapa/host/stream.cpp",
+        "tapa/host/task.cpp",
+    ],
+    hdrs = _PUBLIC_HEADERS,
+    copts = [
+        "-Wno-macro-redefined",
+    ],
+    includes = ["."],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//fpga-runtime:frt-sim",
+        "@glog",
+    ],
+)
+
+cc_test(
+    name = "tapa-sim-test",
+    size = "small",
+    srcs = ["tapa/host/sim_test.cpp"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":tapa-sim",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "scoped_set_env",
     hdrs = ["tapa/scoped_set_env.h"],

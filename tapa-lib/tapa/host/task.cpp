@@ -29,7 +29,23 @@
 #include <sys/resource.h>
 #include <time.h>
 
+#ifdef __APPLE__
+#include <sys/sysctl.h>
+#endif
+
 #include <frt.h>
+
+namespace tapa {
+
+namespace {
+
+void reschedule_this_thread() {
+  std::this_thread::sleep_for(std::chrono::milliseconds(1));
+}
+
+}  // namespace
+
+}  // namespace tapa
 
 #if TAPA_ENABLE_COROUTINE
 
@@ -56,14 +72,6 @@ using push_type = boost::coroutines2::coroutine<void>::push_type;
 using unique_lock = boost::unique_lock<mutex>;
 
 namespace tapa {
-
-namespace {
-
-void reschedule_this_thread() {
-  std::this_thread::sleep_for(std::chrono::milliseconds(1));
-}
-
-}  // namespace
 
 namespace internal {
 
@@ -128,6 +136,15 @@ uint64_t get_time_ns() {
 }
 
 int get_physical_core_count() {
+#ifdef __APPLE__
+  int count = 0;
+  size_t size = sizeof(count);
+  if (sysctlbyname("hw.physicalcpu", &count, &size, nullptr, 0) == 0 &&
+      count > 0) {
+    return count;
+  }
+  return std::thread::hardware_concurrency();
+#else
   std::ifstream cpuinfo("/proc/cpuinfo");
   std::string line;
   std::set<int> cores;
@@ -146,6 +163,7 @@ int get_physical_core_count() {
   }
 
   return cores.size();
+#endif
 }
 
 class worker {
@@ -439,6 +457,25 @@ void schedule(bool detach, const std::function<void()>& f) {
     std::unique_lock<std::mutex> lock(internal::mtx);
     threads->emplace_back(f);
   }
+}
+
+fpga::Instance* frt_sync_kernel_instance = nullptr;
+extern "C" void kill_frt_sync_kernel(int) {
+  if (frt_sync_kernel_instance) {
+    frt_sync_kernel_instance->Kill();
+    frt_sync_kernel_instance = nullptr;
+  }
+  exit(EXIT_FAILURE);
+}
+
+namespace {
+
+std::list<std::function<void()>> cleanup_tasks;
+
+}  // namespace
+
+void schedule_cleanup(const std::function<void()>& f) {
+  cleanup_tasks.push_back(f);
 }
 
 }  // namespace internal

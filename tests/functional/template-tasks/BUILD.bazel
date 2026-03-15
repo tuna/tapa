@@ -11,8 +11,14 @@ load("//bazel:tapa_rules.bzl", "tapa_xo")
 sh_test(
     name = "template-tasks",
     size = "medium",
-    srcs = ["//bazel:v++_env.sh"],
-    args = ["$(location template-tasks-host)"],
+    srcs = select({
+        "//bazel:is_macos": ["//bazel:sim_env.sh"],
+        "//conditions:default": ["//bazel:v++_env.sh"],
+    }),
+    args = ["$(location template-tasks-host)"] + select({
+        "//bazel:is_macos": ["1000"],
+        "//conditions:default": [],
+    }),
     data = [":template-tasks-host"],
     env = {"TAPA_CONCURRENCY": "2"},
     tags = ["cpu:2"],
@@ -45,7 +51,7 @@ cc_binary(
     ]) + ["//tests/apps/vadd:vadd-host.cpp"],
     includes = ["."],
     deps = [
-        "//tapa-lib:tapa",
+        "//tapa-lib:tapa-host",
         "@gflags",
         "@vitis_hls//:include",
     ],

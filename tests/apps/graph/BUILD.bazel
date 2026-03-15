@@ -27,7 +27,10 @@ exports_files(
 sh_test(
     name = "graph",
     size = "medium",
-    srcs = ["//bazel:v++_env.sh"],
+    srcs = select({
+        "//bazel:is_macos": ["//bazel:sim_env.sh"],
+        "//conditions:default": ["//bazel:v++_env.sh"],
+    }),
     args = [
         "$(location graph-host)",
         "$(location graph.txt)",
@@ -43,7 +46,10 @@ sh_test(
 sh_test(
     name = "graph-facebook",
     size = "medium",
-    srcs = ["//bazel:v++_env.sh"],
+    srcs = select({
+        "//bazel:is_macos": ["//bazel:sim_env.sh"],
+        "//conditions:default": ["//bazel:v++_env.sh"],
+    }),
     args = [
         "$(location graph-host)",
         "$(location process_facebook_txt)",
@@ -106,9 +112,10 @@ cc_binary(
         "*.h",
         "*.hpp",
     ]),
+    target_compatible_with = ["@platforms//os:linux"],
     visibility = ["//tests/functional:__subpackages__"],
     deps = [
-        "//tapa-lib:tapa",
+        "//tapa-lib:tapa-host",
         "@gflags",
         "@vitis_hls//:include",
     ],

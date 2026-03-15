@@ -11,7 +11,10 @@ load("//bazel:tapa_rules.bzl", "tapa_xo")
 sh_test(
     name = "leaf-task-stream",
     size = "medium",
-    srcs = ["//bazel:v++_env.sh"],
+    srcs = select({
+        "//bazel:is_macos": ["//bazel:sim_env.sh"],
+        "//conditions:default": ["//bazel:v++_env.sh"],
+    }),
     args = [
         "$(location leaf-task-stream-host)",
         "1000",
@@ -48,7 +51,7 @@ cc_binary(
         "*.cpp",
     ]),
     deps = [
-        "//tapa-lib:tapa",
+        "//tapa-lib:tapa-host",
         "@gflags",
         "@vitis_hls//:include",
     ],

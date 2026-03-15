@@ -11,8 +11,14 @@ load("//bazel:tapa_rules.bzl", "tapa_xo")
 sh_test(
     name = "cannon",
     size = "medium",
-    srcs = ["//bazel:v++_env.sh"],
-    args = ["$(location cannon-host)"],
+    srcs = select({
+        "//bazel:is_macos": ["//bazel:sim_env.sh"],
+        "//conditions:default": ["//bazel:v++_env.sh"],
+    }),
+    args = ["$(location cannon-host)"] + select({
+        "//bazel:is_macos": ["1000"],
+        "//conditions:default": [],
+    }),
     data = [":cannon-host"],
     env = {"TAPA_CONCURRENCY": "2"},
     tags = ["cpu:2"],
@@ -22,7 +28,10 @@ sh_test(
     name = "cannon-xosim",
     size = "enormous",
     timeout = "long",  # 85s without contention
-    srcs = ["//bazel:v++_env.sh"],
+    srcs = select({
+        "//bazel:is_macos": ["//bazel:sim_env.sh"],
+        "//conditions:default": ["//bazel:v++_env.sh"],
+    }),
     args = [
         "$(location cannon-host)",
         "--scatter_bitstream=$(location scatter)",
@@ -51,7 +60,7 @@ cc_binary(
     defines = ["TAPA_CANNON_P=2"],
     includes = ["."],
     deps = [
-        "//tapa-lib:tapa",
+        "//tapa-lib:tapa-host",
         "@gflags",
         "@vitis_hls//:include",
     ],
@@ -90,8 +99,14 @@ tapa_xo(
 sh_test(
     name = "cannon-4x4",
     size = "medium",
-    srcs = ["//bazel:v++_env.sh"],
-    args = ["$(location cannon-host)"],
+    srcs = select({
+        "//bazel:is_macos": ["//bazel:sim_env.sh"],
+        "//conditions:default": ["//bazel:v++_env.sh"],
+    }),
+    args = ["$(location cannon-host)"] + select({
+        "//bazel:is_macos": ["1000"],
+        "//conditions:default": [],
+    }),
     data = [":cannon-host"],
     env = {"TAPA_CONCURRENCY": "1"},
 )
@@ -100,7 +115,10 @@ sh_test(
     name = "cannon-xosim-4x4",
     size = "enormous",
     timeout = "long",  # 125s without contention
-    srcs = ["//bazel:v++_env.sh"],
+    srcs = select({
+        "//bazel:is_macos": ["//bazel:sim_env.sh"],
+        "//conditions:default": ["//bazel:v++_env.sh"],
+    }),
     args = [
         "$(location cannon-host-4x4)",
         "--scatter_bitstream=$(location scatter-4x4)",
@@ -133,7 +151,7 @@ cc_binary(
     includes = ["."],
     tags = ["manual"],
     deps = [
-        "//tapa-lib:tapa",
+        "//tapa-lib:tapa-host",
         "@gflags",
         "@vitis_hls//:include",
     ],

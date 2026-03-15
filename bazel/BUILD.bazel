@@ -9,10 +9,16 @@ load("//bazel:v++_rules.bzl", "xilinx_wrapper")
 
 package(default_visibility = ["//visibility:public"])
 
+config_setting(
+    name = "is_macos",
+    constraint_values = ["@platforms//os:macos"],
+)
+
 exports_files([
     "doctest_wrapper.py",
     "nuitka_wrapper.py",
     "pytest_wrapper.py",
+    "sim_env.sh",
 ])
 
 xilinx_wrapper(

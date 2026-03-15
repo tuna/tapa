@@ -26,8 +26,14 @@ exports_files(
 sh_test(
     name = "bandwidth",
     size = "medium",
-    srcs = ["//bazel:v++_env.sh"],
-    args = ["$(location bandwidth-host)"],
+    srcs = select({
+        "//bazel:is_macos": ["//bazel:sim_env.sh"],
+        "//conditions:default": ["//bazel:v++_env.sh"],
+    }),
+    args = ["$(location bandwidth-host)"] + select({
+        "//bazel:is_macos": ["1000"],
+        "//conditions:default": [],
+    }),
     data = [":bandwidth-host"],
     env = {"TAPA_CONCURRENCY": "2"},
     tags = ["cpu:2"],
@@ -80,9 +86,10 @@ cc_binary(
         "*.cpp",
         "*.h",
     ]),
+    target_compatible_with = ["@platforms//os:linux"],
     visibility = ["//tests/functional:__subpackages__"],
     deps = [
-        "//tapa-lib:tapa",
+        "//tapa-lib:tapa-host",
         "@gflags",
         "@vitis_hls//:include",
     ],

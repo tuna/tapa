@@ -36,7 +36,7 @@ cc_binary(
         "*.cpp",
     ]),
     deps = [
-        "//tapa-lib:tapa",
+        "//tapa-lib:tapa-host",
         "@gflags",
         "@vitis_hls//:include",
     ],

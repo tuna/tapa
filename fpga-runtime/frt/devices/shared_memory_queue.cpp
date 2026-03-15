@@ -15,6 +15,10 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#ifdef __APPLE__
+#include <mach/vm_statistics.h>
+#endif
+
 #include <glog/logging.h>
 
 namespace fpga {
@@ -65,6 +69,7 @@ SharedMemoryQueue::UniquePtr SharedMemoryQueue::New(int fd) {
     return nullptr;
   }
 
+#ifdef __linux__
   ptr = static_cast<SharedMemoryQueue*>(
       mremap(ptr, sizeof(SharedMemoryQueue), ptr->mmap_len(), MREMAP_MAYMOVE));
   if (ptr == MAP_FAILED) {
@@ -72,12 +77,25 @@ SharedMemoryQueue::UniquePtr SharedMemoryQueue::New(int fd) {
     PLOG_IF(ERROR, munmap(ptr, sizeof(SharedMemoryQueue)) != 0) << "munmap";
     return nullptr;
   }
+#else
+  // mremap is Linux-specific; use munmap + mmap as a portable fallback.
+  size_t full_len = ptr->mmap_len();
+  munmap(ptr, sizeof(SharedMemoryQueue));
+  ptr = static_cast<SharedMemoryQueue*>(
+      mmap(nullptr, full_len, PROT_READ | PROT_WRITE, MAP_SHARED, fd,
+           /*offset=*/0));
+  if (ptr == MAP_FAILED) {
+    PLOG(ERROR) << "mmap (remap)";
+    return nullptr;
+  }
+#endif
 
   return UniquePtr(ptr);
 }
 
 int SharedMemoryQueue::CreateFile(std::string& path, int32_t depth,
                                   int32_t width) {
+#ifdef __linux__
   // Use /dev/shm as the prefix for the path.
   path = std::string("/dev/shm/") + path;
 
@@ -91,8 +109,19 @@ int SharedMemoryQueue::CreateFile(std::string& path, int32_t depth,
 
   // Remove /dev/shm prefix from the path template to get the shm_open name.
   path = path.substr(strlen("/dev/shm"));
+#else
+  // On macOS and other POSIX systems, shm_open names must start with '/'.
+  // Generate a unique name using the PID and a counter.
+  static std::atomic<uint64_t> counter{0};
+  path = "/tapa_shm_" + std::to_string(getpid()) + "_" +
+         std::to_string(counter.fetch_add(1));
+#endif
 
+#ifdef __linux__
   int fd = shm_open(path.c_str(), O_RDWR, 0600);
+#else
+  int fd = shm_open(path.c_str(), O_RDWR | O_CREAT, 0600);
+#endif
   if (fd < 0) {
     PLOG(ERROR) << "shm_open";
     return fd;
@@ -104,8 +133,10 @@ int SharedMemoryQueue::CreateFile(std::string& path, int32_t depth,
   queue.version_ = kVersion;
   queue.depth_ = depth;
   queue.width_ = width;
-  int rc = ftruncate(fd, sizeof(queue) + depth * width);
+  size_t total_size = sizeof(queue) + depth * width;
+  int rc = ftruncate(fd, total_size);
   if (rc == 0) {
+#ifdef __linux__
     rc = write(fd, &queue, sizeof(queue));
     if (rc == sizeof(queue)) {
       return fd;
@@ -116,6 +147,17 @@ int SharedMemoryQueue::CreateFile(std::string& path, int32_t depth,
     } else {
       PLOG(ERROR) << "write";
     }
+#else
+    // On macOS, write() to shm fds is not supported. Use mmap instead.
+    void* mapped = mmap(nullptr, total_size, PROT_READ | PROT_WRITE, MAP_SHARED,
+                        fd, /*offset=*/0);
+    if (mapped != MAP_FAILED) {
+      memcpy(mapped, &queue, sizeof(queue));
+      munmap(mapped, total_size);
+      return fd;
+    }
+    PLOG(ERROR) << "mmap (init)";
+#endif
   } else {
     PLOG(ERROR) << "ftruncate";
   }

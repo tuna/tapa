@@ -25,8 +25,14 @@ exports_files(
 sh_test(
     name = "network",
     size = "medium",
-    srcs = ["//bazel:v++_env.sh"],
-    args = ["$(location network-host)"],
+    srcs = select({
+        "//bazel:is_macos": ["//bazel:sim_env.sh"],
+        "//conditions:default": ["//bazel:v++_env.sh"],
+    }),
+    args = ["$(location network-host)"] + select({
+        "//bazel:is_macos": ["1000"],
+        "//conditions:default": [],
+    }),
     data = [":network-host"],
     env = {"TAPA_CONCURRENCY": "2"},
     tags = ["cpu:2"],
@@ -79,7 +85,7 @@ cc_binary(
     ]),
     visibility = ["//tests/functional:__subpackages__"],
     deps = [
-        "//tapa-lib:tapa",
+        "//tapa-lib:tapa-host",
         "@gflags",
         "@vitis_hls//:include",
     ],

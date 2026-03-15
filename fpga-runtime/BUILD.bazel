@@ -71,6 +71,22 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "frt-sim",
+    srcs = [
+        "frt/arg_info.cpp",
+        "frt/devices/shared_memory_queue.cpp",
+        "frt/devices/shared_memory_stream.cpp",
+        "frt_sim.cpp",
+    ],
+    hdrs = _PUBLIC_HEADERS,
+    includes = ["."],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@glog",
+    ],
+)
+
 cc_test(
     name = "frt-test",
     size = "small",
