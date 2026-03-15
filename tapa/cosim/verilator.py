@@ -267,7 +267,7 @@ def _generate_fp_ip_replacement(
     bit_width = 64 if "64" in dpi_func else 32
     ret_type = "longint unsigned" if bit_width == 64 else "int unsigned"
     arg_type = ret_type
-    pipe_depth = latency
+    pipe_depth = max(latency, 1)
 
     if is_unary:
         return _generate_unary_ip(
@@ -809,18 +809,43 @@ def _cpp_stream_service(stream_args: Sequence[Arg]) -> list[str]:
     for arg in stream_args:
         n = arg.qualified_name
         w = (arg.port.data_width + 7) // 8
+        dw = arg.port.data_width
+        port_width = dw + 1
         if arg.port.is_istream:
+            # EOT bit is the MSB of dout at bit position data_width.
+            # After all data is consumed, send one EOT packet so kernels
+            # using TAPA_WHILE_NOT_EOT can terminate.
+            if port_width > 64:
+                eot_set = (
+                    f"            memset(&dut->{n}_dout, 0,"
+                    f" sizeof(dut->{n}_dout));\n"
+                    f"            reinterpret_cast<uint32_t*>"
+                    f"(&dut->{n}_dout)[{dw // 32}]"
+                    f" |= (1U << {dw % 32});"
+                )
+            else:
+                eot_set = f"            dut->{n}_dout = (1ULL << {dw});"
             lines.extend(
                 [
-                    f"        if (dut->{n}_read && dut->{n}_empty_n)",
-                    f"            stream_{n}.data.pop();",
+                    f"        if (dut->{n}_read && dut->{n}_empty_n) {{",
+                    f"            if (stream_{n}.eot_sent)",
+                    f"                stream_{n}.eot_sent = false;",
+                    "            else",
+                    f"                stream_{n}.data.pop();",
+                    "        }",
                     f"        if (!stream_{n}.data.empty()) {{",
                     f"            dut->{n}_empty_n = 1;",
                     (
                         f"            memcpy(&dut->{n}_dout,"
                         f" stream_{n}.data.front().data(), {w});"
                     ),
-                    f"        }} else dut->{n}_empty_n = 0;",
+                    f"        }} else if (!stream_{n}.eot_sent) {{",
+                    f"            dut->{n}_empty_n = 1;",
+                    eot_set,
+                    f"            stream_{n}.eot_sent = true;",
+                    "        } else {",
+                    f"            dut->{n}_empty_n = 0;",
+                    "        }",
                 ]
             )
         elif arg.port.is_ostream:
@@ -986,11 +1011,15 @@ def _cpp_hls_port_setup(
     for arg in args:
         if arg.is_mmap:
             # Find corresponding AXI base address
+            found = False
             for idx, axi in enumerate(axi_list):
                 if axi.name == arg.name:
                     base = f"0x{idx + 1}0000000ULL"
                     lines.append(f"    dut->{arg.name}_offset = {base};")
+                    found = True
                     break
+            if not found:
+                _logger.warning("No AXI port found for mmap arg %s", arg.name)
 
     # Set scalar ports
     for arg in args:
