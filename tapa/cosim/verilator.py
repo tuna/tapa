@@ -405,19 +405,23 @@ def _cpp_preamble(
         "",
         "static std::map<uint64_t, uint8_t> memory;",
         "",
-        "static uint32_t mem_read32(uint64_t addr) {",
-        "    addr &= ~3ULL;",
-        "    uint32_t val = 0;",
-        "    for (int i = 0; i < 4; i++)",
-        "        val |= (uint32_t)memory[addr + i] << (i * 8);",
-        "    return val;",
+        "// Byte-oriented memory read: copies nbytes from memory into buf",
+        "static void mem_read(uint64_t addr, void* buf, size_t nbytes) {",
+        "    auto* dst = reinterpret_cast<uint8_t*>(buf);",
+        "    for (size_t i = 0; i < nbytes; i++)",
+        "        dst[i] = memory[addr + i];",
         "}",
         "",
-        "static void mem_write32(uint64_t addr, uint32_t data, uint8_t strb) {",
-        "    addr &= ~3ULL;",
-        "    for (int i = 0; i < 4; i++)",
-        "        if (strb & (1 << i))",
-        "            memory[addr + i] = (data >> (i * 8)) & 0xFF;",
+        "// Byte-oriented memory write: copies nbytes from buf into memory",
+        "// strb is a per-byte write enable bitmask",
+        (
+            "static void mem_write(uint64_t addr, const void* buf,"
+            " uint64_t strb, size_t nbytes) {"
+        ),
+        "    auto* src = reinterpret_cast<const uint8_t*>(buf);",
+        "    for (size_t i = 0; i < nbytes; i++)",
+        "        if (strb & (1ULL << i))",
+        "            memory[addr + i] = src[i];",
         "}",
         "",
         "static void load_binary(const char* path, uint64_t base, size_t size) {",
@@ -599,10 +603,17 @@ def _cpp_axi_port_init(axi_list: list[AXI]) -> list[str]:
     lines: list[str] = []
     for axi in axi_list:
         n = axi.name
+        lines.append(f"    dut->m_axi_{n}_ARREADY = 0;")
+        lines.append(f"    dut->m_axi_{n}_RVALID = 0;")
+        # Wide data ports need memset, narrow ports can use = 0
+        if axi.data_width > 64:
+            lines.append(
+                f"    memset(&dut->m_axi_{n}_RDATA, 0, sizeof(dut->m_axi_{n}_RDATA));"
+            )
+        else:
+            lines.append(f"    dut->m_axi_{n}_RDATA = 0;")
         lines.extend(
             [
-                f"    dut->m_axi_{n}_ARREADY = 0;",
-                f"    dut->m_axi_{n}_RVALID = 0; dut->m_axi_{n}_RDATA = 0;",
                 (
                     f"    dut->m_axi_{n}_RLAST = 0;"
                     f" dut->m_axi_{n}_RID = 0;"
@@ -880,45 +891,15 @@ def _cpp_hls_port_setup(
 
 def _cpp_axi_helpers(axi_list: list[AXI], mode: str) -> list[str]:
     """Generate AXI service functions and ctrl_write."""
-    lines: list[str] = _CPP_AXI_SERVICE_FUNCTIONS[:]
+    lines: list[str] = []
 
-    # service_all_axi
+    # service_all_axi — generates inline read/write handling per AXI port
     lines.append("static void service_all_axi() {")
     for axi in axi_list:
         n = axi.name
-        lines.extend(
-            [
-                "    { uint8_t ar, rv, rl, ri, rr; uint32_t rd;",
-                f"      service_axi_read(rd_{n},",
-                f"        dut->m_axi_{n}_ARVALID,",
-                f"        dut->m_axi_{n}_ARADDR,",
-                f"        dut->m_axi_{n}_ARLEN,",
-                f"        dut->m_axi_{n}_RREADY,",
-                "        ar, rv, rd, rl, ri, rr);",
-                f"      dut->m_axi_{n}_ARREADY = ar;",
-                f"      dut->m_axi_{n}_RVALID = rv;",
-                f"      dut->m_axi_{n}_RDATA = rd;",
-                f"      dut->m_axi_{n}_RLAST = rl;",
-                f"      dut->m_axi_{n}_RID = ri;",
-                f"      dut->m_axi_{n}_RRESP = rr; }}",
-                "    { uint8_t aw, wr, bv, bi, br;",
-                f"      service_axi_write(wr_{n},",
-                f"        dut->m_axi_{n}_AWVALID,",
-                f"        dut->m_axi_{n}_AWADDR,",
-                f"        dut->m_axi_{n}_AWLEN,",
-                f"        dut->m_axi_{n}_WVALID,",
-                f"        dut->m_axi_{n}_WDATA,",
-                f"        dut->m_axi_{n}_WSTRB,",
-                f"        dut->m_axi_{n}_WLAST,",
-                f"        dut->m_axi_{n}_BREADY,",
-                "        aw, wr, bv, bi, br);",
-                f"      dut->m_axi_{n}_AWREADY = aw;",
-                f"      dut->m_axi_{n}_WREADY = wr;",
-                f"      dut->m_axi_{n}_BVALID = bv;",
-                f"      dut->m_axi_{n}_BID = bi;",
-                f"      dut->m_axi_{n}_BRESP = br; }}",
-            ]
-        )
+        data_bytes = axi.data_width // 8
+        lines.extend(_cpp_axi_read_service(n, data_bytes))
+        lines.extend(_cpp_axi_write_service(n, data_bytes))
     lines.extend(["}", ""])
 
     if mode == "vitis":
@@ -927,67 +908,70 @@ def _cpp_axi_helpers(axi_list: list[AXI], mode: str) -> list[str]:
     return lines
 
 
-_CPP_AXI_SERVICE_FUNCTIONS = [
-    "static void service_axi_read(AxiReadPort& p,",
-    "    uint8_t arvalid, uint64_t araddr,",
-    "    uint8_t arlen, uint8_t rready,",
-    "    uint8_t& arready, uint8_t& rvalid,",
-    "    uint32_t& rdata,",
-    "    uint8_t& rlast, uint8_t& rid,",
-    "    uint8_t& rresp) {",
-    "    arready = !p.busy;",
-    "    if (arvalid && arready) {",
-    "        p.busy = true; p.addr = araddr;",
-    "        p.len = arlen; p.beat = 0;",
-    "    }",
-    "    if (p.busy) {",
-    "        rvalid = 1;",
-    "        rdata = mem_read32(",
-    "            p.addr + (uint64_t)p.beat * 4);",
-    "        rlast = (p.beat == p.len) ? 1 : 0;",
-    "        rid = 0; rresp = 0;",
-    "        if (rready) {",
-    "            if (p.beat >= p.len) p.busy = false;",
-    "            else p.beat++;",
-    "        }",
-    "    } else {",
-    "        rvalid = 0; rdata = 0; rlast = 0;",
-    "        rid = 0; rresp = 0;",
-    "    }",
-    "}",
-    "",
-    "static void service_axi_write(AxiWritePort& p,",
-    "    uint8_t awvalid, uint64_t awaddr,",
-    "    uint8_t awlen,",
-    "    uint8_t wvalid, uint32_t wdata,",
-    "    uint8_t wstrb, uint8_t wlast,",
-    "    uint8_t bready,",
-    "    uint8_t& awready, uint8_t& wready,",
-    "    uint8_t& bvalid, uint8_t& bid,",
-    "    uint8_t& bresp) {",
-    "    awready = (!p.aw_got && !p.b_pending) ? 1 : 0;",
-    "    if (awvalid && awready) {",
-    "        p.aw_got = true; p.addr = awaddr;",
-    "        p.beat = 0;",
-    "    }",
-    "    wready = p.aw_got ? 1 : 0;",
-    "    if (wvalid && wready) {",
-    "        mem_write32(",
-    "            p.addr + (uint64_t)p.beat * 4,",
-    "            wdata, wstrb);",
-    "        p.beat++;",
-    "        if (wlast) {",
-    "            p.aw_got = false;",
-    "            p.b_pending = true;",
-    "        }",
-    "    }",
-    "    bvalid = p.b_pending ? 1 : 0;",
-    "    bid = 0; bresp = 0;",
-    "    if (p.b_pending && bready)",
-    "        p.b_pending = false;",
-    "}",
-    "",
-]
+def _cpp_axi_read_service(name: str, data_bytes: int) -> list[str]:
+    """Generate inline AXI read service code for one port."""
+    n = name
+    return [
+        "    // AXI read service for " + n,
+        f"    dut->m_axi_{n}_ARREADY = !rd_{n}.busy;",
+        f"    if (dut->m_axi_{n}_ARVALID && !rd_{n}.busy) {{",
+        f"        rd_{n}.busy = true;",
+        f"        rd_{n}.addr = dut->m_axi_{n}_ARADDR;",
+        f"        rd_{n}.len = dut->m_axi_{n}_ARLEN;",
+        f"        rd_{n}.beat = 0;",
+        "    }",
+        f"    if (rd_{n}.busy) {{",
+        f"        dut->m_axi_{n}_RVALID = 1;",
+        f"        mem_read(rd_{n}.addr + (uint64_t)rd_{n}.beat * {data_bytes},",
+        f"                 &dut->m_axi_{n}_RDATA, {data_bytes});",
+        f"        dut->m_axi_{n}_RLAST = (rd_{n}.beat == rd_{n}.len) ? 1 : 0;",
+        f"        dut->m_axi_{n}_RID = 0;",
+        f"        dut->m_axi_{n}_RRESP = 0;",
+        f"        if (dut->m_axi_{n}_RREADY) {{",
+        f"            if (rd_{n}.beat >= rd_{n}.len) rd_{n}.busy = false;",
+        f"            else rd_{n}.beat++;",
+        "        }",
+        "    } else {",
+        f"        dut->m_axi_{n}_RVALID = 0;",
+        f"        dut->m_axi_{n}_RLAST = 0;",
+        f"        dut->m_axi_{n}_RID = 0;",
+        f"        dut->m_axi_{n}_RRESP = 0;",
+        "    }",
+    ]
+
+
+def _cpp_axi_write_service(name: str, data_bytes: int) -> list[str]:
+    """Generate inline AXI write service code for one port."""
+    n = name
+    return [
+        "    // AXI write service for " + n,
+        (
+            f"    dut->m_axi_{n}_AWREADY ="
+            f" (!wr_{n}.aw_got && !wr_{n}.b_pending) ? 1 : 0;"
+        ),
+        f"    if (dut->m_axi_{n}_AWVALID && dut->m_axi_{n}_AWREADY) {{",
+        f"        wr_{n}.aw_got = true;",
+        f"        wr_{n}.addr = dut->m_axi_{n}_AWADDR;",
+        f"        wr_{n}.beat = 0;",
+        "    }",
+        f"    dut->m_axi_{n}_WREADY = wr_{n}.aw_got ? 1 : 0;",
+        f"    if (dut->m_axi_{n}_WVALID && dut->m_axi_{n}_WREADY) {{",
+        f"        mem_write(wr_{n}.addr + (uint64_t)wr_{n}.beat * {data_bytes},",
+        f"                  &dut->m_axi_{n}_WDATA, dut->m_axi_{n}_WSTRB,",
+        f"                  {data_bytes});",
+        f"        wr_{n}.beat++;",
+        f"        if (dut->m_axi_{n}_WLAST) {{",
+        f"            wr_{n}.aw_got = false;",
+        f"            wr_{n}.b_pending = true;",
+        "        }",
+        "    }",
+        f"    dut->m_axi_{n}_BVALID = wr_{n}.b_pending ? 1 : 0;",
+        f"    dut->m_axi_{n}_BID = 0;",
+        f"    dut->m_axi_{n}_BRESP = 0;",
+        f"    if (wr_{n}.b_pending && dut->m_axi_{n}_BREADY)",
+        f"        wr_{n}.b_pending = false;",
+    ]
+
 
 _CPP_CTRL_WRITE_FUNC = [
     "static void ctrl_write(uint8_t addr, uint32_t data) {",
