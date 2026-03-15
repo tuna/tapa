@@ -231,13 +231,12 @@ void TapaFastCosimDevice::SetScalarArg(size_t index, const void* arg,
   LOG_IF(FATAL, args_[index].cat != ArgInfo::kScalar)
       << "Cannot set argument '" << args_[index].name
       << "' as a scalar; it is a " << args_[index].cat;
-  std::basic_string_view<unsigned char> arg_str(
-      reinterpret_cast<const unsigned char*>(arg), size);
+  const auto* arg_bytes = reinterpret_cast<const unsigned char*>(arg);
   std::stringstream ss;
   ss << "'h";
-  // Assuming litten-endian.
-  for (auto it = arg_str.crbegin(); it < arg_str.crend(); ++it) {
-    ss << std::setfill('0') << std::setw(2) << std::hex << int(*it);
+  // Assuming little-endian.
+  for (int i = size - 1; i >= 0; --i) {
+    ss << std::setfill('0') << std::setw(2) << std::hex << int(arg_bytes[i]);
   }
   scalars_[index] = ss.str();
 }

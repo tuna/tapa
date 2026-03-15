@@ -6,6 +6,7 @@ open-source alternative to xsim that works on both Linux and macOS.
 
 import logging
 import re
+import shutil
 import subprocess
 import sys
 from collections.abc import Sequence
@@ -770,19 +771,29 @@ def _cpp_dump_data(
     for axi in axi_list:
         data_path = axi_to_data.get(axi.name, "")
         if data_path:
+            # Output path convention: <base>_out.bin (strip .bin from input)
+            out_path = _get_output_path(data_path)
             lines.append(
-                f'    dump_binary("{data_path}_out.bin",'
-                f" {axi.name}_BASE, {axi.name}_SIZE);"
+                f'    dump_binary("{out_path}", {axi.name}_BASE, {axi.name}_SIZE);'
             )
 
     axis_to_data = config.get("axis_to_data_file", {})
     for arg in stream_args:
         data_path = axis_to_data.get(arg.qualified_name, "")
         if data_path and arg.port.is_ostream:
-            lines.append(
-                f'    dump_stream(stream_{arg.qualified_name}, "{data_path}_out.bin");'
-            )
+            out_path = _get_output_path(data_path)
+            lines.append(f'    dump_stream(stream_{arg.qualified_name}, "{out_path}");')
     return lines
+
+
+def _get_output_path(input_path: str) -> str:
+    """Convert an input data path to the corresponding output path.
+
+    Follows the convention used by tapa_fast_cosim_device:
+    <base>.bin → <base>_out.bin
+    """
+    p = Path(input_path)
+    return str(p.with_name(p.stem + "_out.bin"))
 
 
 def _cpp_ctrl_writes(
@@ -1003,6 +1014,21 @@ def _generate_build_script(
     top_name: str,
 ) -> str:
     """Generate a shell script that builds the Verilator simulation."""
+    # Find verilator, checking common install locations as fallback
+    verilator_bin = shutil.which("verilator")
+    if verilator_bin is None:
+        for candidate in (
+            "/opt/homebrew/bin/verilator",
+            "/usr/local/bin/verilator",
+            "/usr/bin/verilator",
+        ):
+            if Path(candidate).is_file():
+                verilator_bin = candidate
+                break
+    if verilator_bin is None:
+        _logger.error("verilator not found in PATH or common locations")
+        sys.exit(1)
+
     # Verilator warning suppressions for HLS-generated code
     warn_flags = (
         "-Wno-PINMISSING -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC"
@@ -1017,7 +1043,7 @@ def _generate_build_script(
 set -e
 cd "$(dirname "$0")"
 
-verilator --cc --top-module {top_name} \\
+{verilator_bin} --cc --top-module {top_name} \\
   {warn_flags} \\
   --no-timing \\
   --exe tb.cpp dpi_support.cpp \\

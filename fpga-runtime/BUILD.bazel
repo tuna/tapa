@@ -75,15 +75,30 @@ cc_library(
     name = "frt-sim",
     srcs = [
         "frt/arg_info.cpp",
+        "frt/devices/filesystem.h",
         "frt/devices/shared_memory_queue.cpp",
         "frt/devices/shared_memory_stream.cpp",
-        "frt_sim.cpp",
+        "frt/devices/tapa_fast_cosim_device.cpp",
+        "frt/devices/tapa_fast_cosim_device.h",
+        "frt/devices/xilinx_environ.cpp",
+        "frt/devices/xilinx_environ.h",
+        "frt/subprocess.h",
+        "frt/zip_file.h",
+        "frt_cosim.cpp",
     ],
     hdrs = _PUBLIC_HEADERS,
+    copts = [
+        # Suppress warnings from third-party subprocess headers
+        "-Wno-missing-field-initializers",
+    ],
     includes = ["."],
     visibility = ["//visibility:public"],
     deps = [
+        "@gflags",
         "@glog",
+        "@nlohmann_json//:json",
+        "@tinyxml2",
+        "@yaml-cpp",
     ],
 )
 
