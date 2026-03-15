@@ -19,6 +19,7 @@ from xml.etree import ElementTree as ET
 from yaml import safe_load
 
 from tapa.cosim.common import Arg, Port
+from tapa.verilog.util import sanitize_array_name
 
 _logger = logging.getLogger().getChild(__name__)
 
@@ -240,7 +241,7 @@ def _parse_zip_update_config(config: dict, tmp_path: str) -> None:
                 stream_indices = [None]
 
             for stream_idx in stream_indices:
-                port_name = port["name"]
+                port_name = sanitize_array_name(port["name"])
                 args.append(
                     Arg(
                         name=port_name,
