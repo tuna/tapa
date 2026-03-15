@@ -48,6 +48,11 @@ def generate_verilator_tb(
     for ip_file in ip_replacements:
         _logger.info("   Generated behavioral replacement: %s", ip_file)
 
+    # Detect which peek ports are exposed at the top-level module.
+    # Peek ports only exist at the top level for leaf tasks; non-leaf tasks
+    # have internal FIFOs that drive peek ports internally.
+    top_level_peek = _detect_top_level_peek_ports(rtl_dir / f"{top_name}.v", args)
+
     # Parse control register addresses (Vitis mode)
     reg_addrs: dict[str, list[str]] = {}
     if mode == "vitis":
@@ -55,7 +60,9 @@ def generate_verilator_tb(
         reg_addrs = parse_register_addr(ctrl_path)
 
     # Generate the C++ testbench
-    tb_cpp = _generate_cpp_testbench(top_name, axi_list, args, config, reg_addrs, mode)
+    tb_cpp = _generate_cpp_testbench(
+        top_name, axi_list, args, config, reg_addrs, mode, top_level_peek
+    )
     (Path(tb_output_dir) / "tb.cpp").write_text(tb_cpp, encoding="utf-8")
 
     # Generate the DPI-C FP32 support file
@@ -117,6 +124,26 @@ def launch_verilator(config: dict, tb_output_dir: str) -> None:
     _logger.info("Verilator simulation finished successfully")
 
 
+def _detect_top_level_peek_ports(
+    top_module_path: Path, args: Sequence[Arg]
+) -> set[str]:
+    """Return the set of peek_qualified_names that exist at the top level.
+
+    Peek ports are only exposed at the top level for leaf tasks.  Non-leaf
+    tasks have internal FIFOs that drive peek ports, so the top module
+    does not include them.
+    """
+    result: set[str] = set()
+    if not top_module_path.exists():
+        return result
+    content = top_module_path.read_text(encoding="utf-8", errors="replace")
+    for arg in args:
+        pn = arg.peek_qualified_name
+        if pn and f"{pn}_dout" in content:
+            result.add(pn)
+    return result
+
+
 def _detect_xilinx_ips(rtl_dir: Path) -> list[str]:
     """Detect Xilinx IP instantiations and generate behavioral replacements.
 
@@ -162,11 +189,14 @@ def _detect_xilinx_ips(rtl_dir: Path) -> list[str]:
             ip_path = rtl_dir / f"{ip_module}.v"
             ip_path.write_text(replacement, encoding="utf-8")
             replacements.append(ip_module)
+            total_from_name = _extract_total_latency_from_name(ip_module)
             _logger.info(
-                "Generated behavioral replacement: %s (using %s, latency=%d)",
+                "Generated behavioral replacement: %s"
+                " (using %s, c_latency=%d, total_from_name=%s)",
                 ip_module,
                 dpi_func,
                 latency,
+                total_from_name,
             )
 
     return replacements
@@ -257,6 +287,25 @@ def _detect_fp_operation_from_name(module_name: str) -> str | None:
     return None
 
 
+def _extract_total_latency_from_name(module_name: str) -> int | None:
+    """Extract the documented total latency from an HLS IP module name.
+
+    HLS wrapper names encode the total through-wrapper latency, e.g.:
+      Add_fadd_32ns_32ns_32_7_full_dsp_1_ip  →  total latency = 7
+      Add_sitofp_32ns_32_5_no_dsp_1_ip       →  total latency = 5
+    """
+    m = re.search(r"_(\d+)_(?:full|no|medium|max)_dsp_\d+_ip$", module_name)
+    if m:
+        return int(m.group(1))
+    return None
+
+
+# The HLS wrapper around each _ip adds 2 cycles of overhead:
+# 1 cycle for input buffering (din_buf registers) and 1 cycle for
+# the ce_r clock-enable delay before aclken reaches the _ip.
+_HLS_WRAPPER_OVERHEAD = 2
+
+
 def _generate_fp_ip_replacement(
     module_name: str, dpi_func: str, latency: int = 5
 ) -> str:
@@ -271,7 +320,17 @@ def _generate_fp_ip_replacement(
     bit_width = 64 if "64" in dpi_func else 32
     ret_type = "longint unsigned" if bit_width == 64 else "int unsigned"
     arg_type = ret_type
-    pipe_depth = max(latency, 1)
+
+    # The _ip module sits inside an HLS wrapper that adds overhead cycles.
+    # Extract the documented total latency from the module name and subtract
+    # the wrapper overhead to get the correct _ip-internal pipe depth.
+    # For fadd (c_latency=5, total=7): pipe_depth = 7 - 2 = 5
+    # For sitofp (c_latency=5, total=5): pipe_depth = 5 - 2 = 3
+    total_from_name = _extract_total_latency_from_name(module_name)
+    if total_from_name is not None:
+        pipe_depth = max(total_from_name - _HLS_WRAPPER_OVERHEAD, 1)
+    else:
+        pipe_depth = max(latency, 1)
 
     if is_unary:
         return _generate_unary_ip(
@@ -538,11 +597,16 @@ def _generate_cpp_testbench(  # noqa: PLR0913, PLR0917
     config: dict,
     reg_addrs: dict[str, list[str]],
     mode: str,
+    top_level_peek: set[str] | None = None,
 ) -> str:
     """Generate a C++ testbench for Verilator simulation."""
     lines: list[str] = []
     lines.extend(_cpp_preamble(top_name, axi_list, args, mode))
-    lines.extend(_cpp_main_body(top_name, axi_list, args, config, reg_addrs, mode))
+    lines.extend(
+        _cpp_main_body(
+            top_name, axi_list, args, config, reg_addrs, mode, top_level_peek
+        )
+    )
     lines.extend(_cpp_axi_helpers(axi_list, mode))
     return "\n".join(lines) + "\n"
 
@@ -696,6 +760,7 @@ def _cpp_main_body(  # noqa: PLR0913, PLR0917
     config: dict,
     reg_addrs: dict[str, list[str]],
     mode: str,
+    top_level_peek: set[str] | None = None,
 ) -> list[str]:
     """Generate the main() function body."""
     stream_args = [a for a in args if a.is_stream]
@@ -722,7 +787,7 @@ def _cpp_main_body(  # noqa: PLR0913, PLR0917
         lines.append("    dut->ap_start = 0;")
 
     lines.extend(_cpp_axi_port_init(axi_list))
-    lines.extend(_cpp_stream_init(stream_args))
+    lines.extend(_cpp_stream_init(stream_args, top_level_peek))
 
     lines.extend(
         [
@@ -743,7 +808,7 @@ def _cpp_main_body(  # noqa: PLR0913, PLR0917
     else:
         lines.extend(_cpp_hls_port_setup(args, axi_list, config))
 
-    lines.extend(_cpp_sim_loop(stream_args, mode))
+    lines.extend(_cpp_sim_loop(stream_args, mode, top_level_peek))
     lines.extend(_cpp_dump_data(axi_list, stream_args, config))
 
     lines.extend(
@@ -791,12 +856,17 @@ def _cpp_axi_port_init(axi_list: list[AXI]) -> list[str]:
     return lines
 
 
-def _cpp_stream_init(stream_args: Sequence[Arg]) -> list[str]:
+def _cpp_stream_init(
+    stream_args: Sequence[Arg], top_level_peek: set[str] | None = None
+) -> list[str]:
     """Generate FIFO stream signal initialization statements."""
     lines: list[str] = []
     for arg in stream_args:
         n = arg.qualified_name
         pn = arg.peek_qualified_name
+        # Only drive peek ports that exist at the top-level module
+        if pn and top_level_peek is not None and pn not in top_level_peek:
+            pn = None
         # Stream FIFO ports are data_width + 1 (EOT bit)
         port_width = arg.port.data_width + 1
         if arg.port.is_istream:
@@ -852,7 +922,9 @@ def _cpp_load_data(
     return lines
 
 
-def _cpp_stream_service(stream_args: Sequence[Arg]) -> list[str]:
+def _cpp_stream_service(
+    stream_args: Sequence[Arg], top_level_peek: set[str] | None = None
+) -> list[str]:
     """Generate FIFO stream servicing code for the simulation loop."""
     lines: list[str] = []
     for arg in stream_args:
@@ -875,6 +947,9 @@ def _cpp_stream_service(stream_args: Sequence[Arg]) -> list[str]:
             else:
                 eot_set = f"            dut->{n}_dout = (1ULL << {dw});"
             pn = arg.peek_qualified_name
+            # Only drive peek ports that exist at the top-level module
+            if pn and top_level_peek is not None and pn not in top_level_peek:
+                pn = None
             lines.extend(
                 [
                     f"        if (dut->{n}_read && dut->{n}_empty_n",
@@ -919,7 +994,11 @@ def _cpp_stream_service(stream_args: Sequence[Arg]) -> list[str]:
     return lines
 
 
-def _cpp_sim_loop(stream_args: Sequence[Arg], mode: str) -> list[str]:
+def _cpp_sim_loop(
+    stream_args: Sequence[Arg],
+    mode: str,
+    top_level_peek: set[str] | None = None,
+) -> list[str]:
     """Generate the main simulation loop."""
     lines: list[str] = [
         '    printf("Kernel started, running simulation...\\n");',
@@ -930,7 +1009,7 @@ def _cpp_sim_loop(stream_args: Sequence[Arg], mode: str) -> list[str]:
         "        service_all_axi();",
     ]
 
-    lines.extend(_cpp_stream_service(stream_args))
+    lines.extend(_cpp_stream_service(stream_args, top_level_peek))
     lines.append("        tick();")
 
     if mode == "vitis":
