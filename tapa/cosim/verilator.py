@@ -457,14 +457,10 @@ def _cpp_preamble(top_name: str, axi_list: list[AXI], mode: str) -> list[str]:
             "",
         ]
     )
+    lines.append("static void service_all_axi();")
     if mode == "vitis":
-        lines.extend(
-            [
-                "static void ctrl_write(uint8_t addr, uint32_t data);",
-                "static void service_all_axi();",
-                "",
-            ]
-        )
+        lines.append("static void ctrl_write(uint8_t addr, uint32_t data);")
+    lines.append("")
     return lines
 
 
@@ -496,6 +492,8 @@ def _cpp_main_body(  # noqa: PLR0913, PLR0917
                 "    dut->s_axi_control_RREADY = 0;",
             ]
         )
+    else:
+        lines.append("    dut->ap_start = 0;")
 
     for axi in axi_list:
         n = axi.name
@@ -540,9 +538,11 @@ def _cpp_main_body(  # noqa: PLR0913, PLR0917
             )
     lines.append("")
 
-    # Control register writes (Vitis mode)
+    # Control register writes / port setup
     if mode == "vitis":
         lines.extend(_cpp_ctrl_writes(args, config, reg_addrs))
+    else:
+        lines.extend(_cpp_hls_port_setup(args, axi_list, config))
 
     lines.extend(
         [
@@ -563,6 +563,19 @@ def _cpp_main_body(  # noqa: PLR0913, PLR0917
                 '            printf("Kernel done after %d cycles\\n", cycle);',
                 "            done = true;",
                 "            break;",
+                "        }",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                "        if (dut->ap_done) {",
+                '            printf("Kernel done after %d cycles\\n", cycle);',
+                "            done = true;",
+                "            break;",
+                "        }",
+                "        if (dut->ap_ready) {",
+                "            dut->ap_start = 0;",
                 "        }",
             ]
         )
@@ -643,6 +656,44 @@ def _cpp_ctrl_writes(
                 lines.append(f"    ctrl_write({a}, {v});")
 
     lines.extend(["", "    // Start kernel", "    ctrl_write(0x00, 1);"])
+    return lines
+
+
+def _cpp_hls_port_setup(
+    args: Sequence[Arg],
+    axi_list: list[AXI],
+    config: dict,
+) -> list[str]:
+    """Generate direct port assignments for HLS mode."""
+    lines: list[str] = []
+    scalar_to_val = config.get("scalar_to_val", {})
+
+    # Set mmap offset ports
+    for arg in args:
+        if arg.is_mmap:
+            # Find corresponding AXI base address
+            for idx, axi in enumerate(axi_list):
+                if axi.name == arg.name:
+                    base = f"0x{idx + 1}0000000ULL"
+                    lines.append(f"    dut->{arg.name}_offset = {base};")
+                    break
+
+    # Set scalar ports
+    for arg in args:
+        if arg.is_scalar:
+            val = scalar_to_val.get(arg.qualified_name, "'h0")
+            hex_val = val.replace("'h", "0x")
+            lines.append(f"    dut->{arg.name} = {hex_val};")
+
+    lines.extend(
+        [
+            "",
+            "    // Start kernel",
+            "    dut->ap_start = 1;",
+            "    service_all_axi();",
+            "    tick();",
+        ]
+    )
     return lines
 
 
@@ -788,6 +839,7 @@ def _generate_build_script(
         " -Wno-UNUSEDSIGNAL -Wno-UNDRIVEN -Wno-UNOPTFLAT"
         " -Wno-STMTDLY -Wno-WIDTHXZEXPAND"
         " -Wno-CASEINCOMPLETE -Wno-SYMRSVDWORD -Wno-COMBDLY"
+        " -Wno-TIMESCALEMOD -Wno-MULTIDRIVEN -Wno-INITIALDLY"
     )
 
     return f"""\
