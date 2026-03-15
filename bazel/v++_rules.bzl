@@ -4,7 +4,7 @@
 # All rights reserved. The contributor(s) of this file has/have agreed to the
 # RapidStream Contributor License Agreement.
 
-load("//:VARS.bzl", "XILINX_PLATFORM_REPO_PATHS", "XILINX_TOOL_PATH", "XILINX_TOOL_VERSION", "XILINX_XRT_SETUP")
+load("@vars//:vars.bzl", "XILINX_PLATFORM_REPO_PATHS", "XILINX_TOOL_PATH", "XILINX_TOOL_VERSION", "XILINX_XRT_SETUP")
 
 # Define the implementation of vpp target.
 def _vpp_xclbin_impl(ctx):
@@ -122,6 +122,11 @@ def _xilinx_wrapper_impl(ctx):
     lines = [
         "#!/bin/bash",
         "set -e",
+        # When local Xilinx tools are not installed (e.g., macOS with remote
+        # execution), just pass through to the wrapped command.
+        'if [ ! -d "{}" ]; then'.format(tool_path),
+        '  exec "$@"',
+        "fi",
         # Xilinx tools use #!/bin/sh with bash-specific syntax internally.
         # On systems where /bin/sh is dash, this causes syntax errors.
         # Work around by creating a temp dir with sh -> bash in PATH.

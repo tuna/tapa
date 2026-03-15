@@ -4,6 +4,37 @@
 # All rights reserved. The contributor(s) of this file has/have agreed to the
 # RapidStream Contributor License Agreement.
 
+load(
+    "@vars//:vars.bzl",
+    "REMOTE_HOST",
+    "REMOTE_PORT",
+    "REMOTE_USER",
+    "REMOTE_XILINX_SETTINGS",
+    "REMOTE_XILINX_TOOL_PATH",
+    "XILINX_TOOL_VERSION",
+)
+
+def _remote_host_flag():
+    """Construct --remote-host flag value from VARS.bzl remote config."""
+    if not REMOTE_HOST:
+        return ""
+    host_part = REMOTE_HOST
+    if REMOTE_USER:
+        host_part = REMOTE_USER + "@" + host_part
+    if REMOTE_PORT and REMOTE_PORT != "22":
+        host_part = host_part + ":" + REMOTE_PORT
+    return host_part
+
+def _remote_xilinx_settings():
+    """Return the remote Xilinx settings path, auto-computed if not set."""
+    if REMOTE_XILINX_SETTINGS:
+        return REMOTE_XILINX_SETTINGS
+    if REMOTE_XILINX_TOOL_PATH:
+        # Construct from tool path + version (matches local VARS.bzl logic).
+        subdir = "/Vitis/" if XILINX_TOOL_VERSION >= "2024.2" else "/Vitis_HLS/"
+        return REMOTE_XILINX_TOOL_PATH + subdir + XILINX_TOOL_VERSION + "/settings64.sh"
+    return ""
+
 # Define the implementation function for the custom TAPA target rule.
 def _tapa_xo_impl(ctx):
     # Retrieve the inputs and attributes from the rule invocation.
@@ -25,6 +56,14 @@ def _tapa_xo_impl(ctx):
 
     # Start building the command to run tapa-cli.
     tapa_cmd = [tapa_cli.path, "--work-dir", work_dir.path]
+
+    # Pass remote execution flags when configured in VARS.bzl.
+    remote_host = _remote_host_flag()
+    if remote_host:
+        tapa_cmd.extend(["--remote-host", remote_host])
+        xilinx_settings = _remote_xilinx_settings()
+        if xilinx_settings:
+            tapa_cmd.extend(["--remote-xilinx-settings", xilinx_settings])
 
     # Build the command for tapa-cli analyze.
     tapa_cmd.extend(["analyze", "--input", src.path, "--top", top_name])

@@ -5,7 +5,7 @@
 # RapidStream Contributor License Agreement.
 
 load(
-    "//:VARS.bzl",
+    "@vars//:vars.bzl",
     "REMOTE_HOST",
     "REMOTE_KEY_FILE",
     "REMOTE_PORT",

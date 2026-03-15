@@ -9,6 +9,7 @@
 /.cmake-format
 /.coverage
 /.vscode
+/VARS.local.bzl
 /bazel-*
 /build/
 /compile_commands.json

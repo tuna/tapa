@@ -124,6 +124,9 @@ single_version_override(
     patches = ["//bazel:patches/glog/0001-Fix-unused-but-set-variable.patch"],
 )
 
+resolve_vars = use_extension("//bazel:vars.bzl", "resolve_vars", dev_dependency = True)
+use_repo(resolve_vars, "vars")
+
 load_dependencies = use_extension(
     "//bazel:dependencies.bzl",
     "load_dependencies",

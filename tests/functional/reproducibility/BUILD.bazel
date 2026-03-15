@@ -80,6 +80,9 @@ $(location //bazel:vitis_hls_env) $(location //tapa) --work-dir "$${work_dir}" \
     pack --output $@ \
 
 """,
+    # This genrule invokes the tapa CLI directly without --remote-host,
+    # so it requires local Xilinx tools (Linux only).
+    target_compatible_with = ["@platforms//os:linux"],
     tools = [
         "//bazel:vitis_hls_env",
         "//tapa",

@@ -6,7 +6,7 @@
 
 load("@rules_cc//cc:defs.bzl", "cc_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
-load("//:VARS.bzl", "HAS_XRT")
+load("@vars//:vars.bzl", "HAS_XRT")
 load("//bazel:tapa_rules.bzl", "tapa_xo")
 load("//bazel:v++_rules.bzl", "vpp_xclbin")
 
