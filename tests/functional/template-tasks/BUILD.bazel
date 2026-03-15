@@ -43,6 +43,28 @@ sh_test(
     tags = ["cpu:2"],
 )
 
+sh_test(
+    name = "template-tasks-verilator-zipsim",
+    size = "enormous",
+    timeout = "moderate",
+    srcs = ["//bazel:sim_env.sh"],
+    args = [
+        "$(location template-tasks-host)",
+        "--bitstream=$(location template-tasks-zip)",
+        "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
+        "--xosim_simulator=verilator",
+        "1000",
+    ],
+    data = [
+        ":template-tasks-host",
+        ":template-tasks-zip",
+        "//tapa/cosim:tapa-fast-cosim",
+        "@verilator//:verilator_executable",
+    ],
+    env = {"VERILATOR_BIN": "$(rootpath @verilator//:verilator_executable)"},
+    tags = ["cpu:2"],
+)
+
 cc_binary(
     name = "template-tasks-host",
     srcs = glob([
