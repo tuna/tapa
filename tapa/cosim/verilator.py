@@ -241,6 +241,10 @@ _UNARY_DPI_FUNCS = {
     "fp32_uitofp",
     "fp32_fptosi",
     "fp32_fptoui",
+    "fp64_sitofp",
+    "fp64_uitofp",
+    "fp64_fptosi",
+    "fp64_fptoui",
 }
 
 
@@ -484,6 +488,42 @@ unsigned int fp32_fptoui(unsigned int a) {
     float fa;
     memcpy(&fa, &a, sizeof(float));
     unsigned int result = (unsigned int)fa;
+    return result;
+}
+
+// Signed 64-bit integer to IEEE 754 double-precision float
+unsigned long long fp64_sitofp(unsigned long long a) {
+    int64_t ia;
+    memcpy(&ia, &a, sizeof(int64_t));
+    double f = (double)ia;
+    unsigned long long result;
+    memcpy(&result, &f, sizeof(unsigned long long));
+    return result;
+}
+
+// Unsigned 64-bit integer to IEEE 754 double-precision float
+unsigned long long fp64_uitofp(unsigned long long a) {
+    double f = (double)a;
+    unsigned long long result;
+    memcpy(&result, &f, sizeof(unsigned long long));
+    return result;
+}
+
+// IEEE 754 double-precision float to signed 64-bit integer
+unsigned long long fp64_fptosi(unsigned long long a) {
+    double fa;
+    memcpy(&fa, &a, sizeof(double));
+    int64_t result = (int64_t)fa;
+    unsigned long long uresult;
+    memcpy(&uresult, &result, sizeof(unsigned long long));
+    return uresult;
+}
+
+// IEEE 754 double-precision float to unsigned 64-bit integer
+unsigned long long fp64_fptoui(unsigned long long a) {
+    double fa;
+    memcpy(&fa, &a, sizeof(double));
+    unsigned long long result = (unsigned long long)fa;
     return result;
 }
 
