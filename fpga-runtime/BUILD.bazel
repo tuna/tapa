@@ -92,6 +92,13 @@ cc_library(
         "-Wno-missing-field-initializers",
     ],
     includes = ["."],
+    linkopts = select({
+        "@platforms//os:linux": [
+            "-lstdc++fs",
+            "-lrt",
+        ],
+        "//conditions:default": [],
+    }),
     visibility = ["//visibility:public"],
     deps = [
         "@gflags",
