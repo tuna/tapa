@@ -43,6 +43,28 @@ sh_test(
     tags = ["cpu:2"],
 )
 
+sh_test(
+    name = "blackhole-verilator-zipsim",
+    size = "enormous",
+    timeout = "moderate",
+    srcs = ["//bazel:sim_env.sh"],
+    args = [
+        "$(location blackhole-host)",
+        "--bitstream=$(location blackhole-zip)",
+        "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
+        "--xosim_simulator=verilator",
+        "1000",
+    ],
+    data = [
+        ":blackhole-host",
+        ":blackhole-zip",
+        "//tapa/cosim:tapa-fast-cosim",
+        "@verilator//:verilator_executable",
+    ],
+    env = {"VERILATOR_BIN": "$(rootpath @verilator//:verilator_executable)"},
+    tags = ["cpu:2"],
+)
+
 cc_binary(
     name = "blackhole-host",
     srcs = glob(["*.cpp"]),
