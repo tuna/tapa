@@ -11,3 +11,11 @@ XILINX_TOOL_LEGACY_VERSION = "2022.2"
 HAS_XRT = True
 XILINX_XRT_SETUP = "/opt/xilinx/xrt/setup.sh"
 XILINX_PLATFORM_REPO_PATHS = "/opt/xilinx/platforms"
+
+# Remote SSH host for fetching vendor headers (e.g., on macOS without local
+# Xilinx tools). Leave REMOTE_HOST empty to disable remote fetching.
+REMOTE_HOST = ""
+REMOTE_USER = ""
+REMOTE_PORT = "22"
+REMOTE_KEY_FILE = ""
+REMOTE_XILINX_TOOL_PATH = ""

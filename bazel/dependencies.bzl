@@ -4,34 +4,37 @@
 # All rights reserved. The contributor(s) of this file has/have agreed to the
 # RapidStream Contributor License Agreement.
 
-load("//:VARS.bzl", "XILINX_TOOL_LEGACY_PATH", "XILINX_TOOL_LEGACY_VERSION", "XILINX_TOOL_PATH", "XILINX_TOOL_VERSION")
+load(
+    "//:VARS.bzl",
+    "REMOTE_HOST",
+    "REMOTE_KEY_FILE",
+    "REMOTE_PORT",
+    "REMOTE_USER",
+    "REMOTE_XILINX_TOOL_PATH",
+    "XILINX_TOOL_LEGACY_PATH",
+    "XILINX_TOOL_LEGACY_VERSION",
+    "XILINX_TOOL_PATH",
+    "XILINX_TOOL_VERSION",
+)
+
+def _symlink_dir(rctx, path):
+    """Symlink individual entries from a directory into the repository."""
+    entries = rctx.execute(["ls", "-1", path])
+    for entry in entries.stdout.strip().split("\n"):
+        if entry:
+            rctx.symlink(path + "/" + entry, entry)
 
 def _optional_local_repository_impl(rctx):
     """Repository rule that creates a stub when the local path doesn't exist."""
+    path = rctx.attr.path
     build_file_content = rctx.attr.build_file_content
 
-    # Try primary path first, then any fallback glob patterns.
-    resolved_path = None
-    result = rctx.execute(["test", "-d", rctx.attr.path])
+    result = rctx.execute(["test", "-d", path])
     if result.return_code == 0:
-        resolved_path = rctx.attr.path
-    else:
-        for pattern in rctx.attr.fallback_globs:
-            # Use shell glob to expand the pattern.
-            result = rctx.execute(["sh", "-c", "ls -1d " + pattern + " 2>/dev/null | head -1"])
-            candidate = result.stdout.strip()
-            if candidate:
-                resolved_path = candidate
-                break
-
-    if resolved_path:
         # Path exists: symlink each entry individually instead of
         # symlinking "." which fails on some Bazel versions when the
         # repository directory already exists.
-        entries = rctx.execute(["ls", "-1", resolved_path])
-        for entry in entries.stdout.strip().split("\n"):
-            if entry:
-                rctx.symlink(resolved_path + "/" + entry, entry)
+        _symlink_dir(rctx, path)
     rctx.file("BUILD.bazel", build_file_content)
 
 _optional_local_repository = repository_rule(
@@ -40,7 +43,69 @@ _optional_local_repository = repository_rule(
     attrs = {
         "path": attr.string(mandatory = True),
         "build_file_content": attr.string(mandatory = True),
-        "fallback_globs": attr.string_list(default = []),
+    },
+)
+
+def _fetch_vendor_headers_via_ssh(rctx, remote_path):
+    """Fetch vendor headers from the remote host configured in VARS.bzl."""
+    host = rctx.attr.remote_host
+    user = rctx.attr.remote_user
+    port = rctx.attr.remote_port
+    key_file = rctx.attr.remote_key_file
+
+    ssh_target = (user + "@" + host) if user else host
+    ssh_opts = ["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", "-p", port]
+    if key_file:
+        home = rctx.os.environ.get("HOME", "")
+        resolved_key = key_file.replace("~", home)
+        ssh_opts.extend(["-i", resolved_key])
+
+    # Download include/ directory via tar-over-SSH.
+    result = rctx.execute(
+        [
+            "sh",
+            "-c",
+            "ssh " + " ".join(ssh_opts) + " " + ssh_target +
+            " 'tar czf - -C " + remote_path + " include' | tar xzf -",
+        ],
+        timeout = 60,
+    )
+    return result.return_code == 0
+
+def _vitis_hls_repository_impl(rctx):
+    """Repository rule for Vitis HLS that fetches headers via SSH if needed."""
+    path = rctx.attr.path
+    build_file_content = rctx.attr.build_file_content
+
+    result = rctx.execute(["test", "-d", path])
+    if result.return_code == 0:
+        # Local Xilinx tools available — symlink directly.
+        _symlink_dir(rctx, path)
+    else:
+        # No local tools. Try fetching from remote via SSH.
+        fetched = False
+        if rctx.attr.remote_host and rctx.attr.remote_path:
+            fetched = _fetch_vendor_headers_via_ssh(rctx, rctx.attr.remote_path)
+
+        if not fetched:
+            # print is the only way to emit warnings from repository rules.
+            # buildifier: disable=print
+            print("NOTE: Vitis HLS headers not available. " +
+                  "Set REMOTE_HOST in VARS.bzl or install Xilinx tools locally.")
+
+    rctx.file("BUILD.bazel", build_file_content)
+
+_vitis_hls_repository = repository_rule(
+    implementation = _vitis_hls_repository_impl,
+    local = True,
+    attrs = {
+        "path": attr.string(mandatory = True),
+        "build_file_content": attr.string(mandatory = True),
+        "remote_path": attr.string(default = ""),
+        "remote_host": attr.string(default = ""),
+        "remote_user": attr.string(default = ""),
+        "remote_port": attr.string(default = "22"),
+        "remote_key_file": attr.string(default = ""),
     },
 )
 
@@ -48,23 +113,17 @@ def _load_dependencies(module_ctx):
     """Load dependencies for the TAPA project."""
 
     # Load the Xilinx Vitis HLS library
-    vitis_hls_path = XILINX_TOOL_PATH + (
-        "/Vitis/" if XILINX_TOOL_VERSION >= "2024.2" else "/Vitis_HLS/"
-    ) + XILINX_TOOL_VERSION
+    vitis_hls_subdir = "/Vitis/" if XILINX_TOOL_VERSION >= "2024.2" else "/Vitis_HLS/"
+    vitis_hls_path = XILINX_TOOL_PATH + vitis_hls_subdir + XILINX_TOOL_VERSION
 
-    # On systems without local Xilinx tools (e.g., macOS), fall back to
-    # vendor headers cached by `tapa` via remote sync (~/.cache/tapa/vendor-headers/*/).
-    # Users can populate this cache by running any `tapa` command with
-    # --remote-host or configuring ~/.taparc.
-    home = module_ctx.os.environ.get("HOME", "")
-    xdg_cache = module_ctx.os.environ.get("XDG_CACHE_HOME", home + "/.cache")
-    vendor_cache_glob = xdg_cache + "/tapa/vendor-headers/*"
+    # Compute the remote path using the same version logic.
+    remote_vitis_hls_path = ""
+    if REMOTE_HOST and REMOTE_XILINX_TOOL_PATH:
+        remote_vitis_hls_path = REMOTE_XILINX_TOOL_PATH + vitis_hls_subdir + XILINX_TOOL_VERSION
 
-    _optional_local_repository(
+    _vitis_hls_repository(
         name = "vitis_hls",
         build_file_content = """
-load("@bazel_skylib//lib:selects.bzl", "selects")
-
 cc_library(
     name = "include",
     hdrs = glob(["include/**/*.h"], allow_empty = True),
@@ -85,7 +144,11 @@ cc_library(
 )
         """,
         path = vitis_hls_path,
-        fallback_globs = [vendor_cache_glob],
+        remote_path = remote_vitis_hls_path,
+        remote_host = REMOTE_HOST,
+        remote_user = REMOTE_USER,
+        remote_port = REMOTE_PORT,
+        remote_key_file = REMOTE_KEY_FILE,
     )
 
     # Starting from 2024.2, Vivado has renamed rdi to xv
