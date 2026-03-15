@@ -25,7 +25,11 @@ ARG DOCKER_GROUP_ID
 #   - g++
 
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && \
+# Buster is EOL; switch to archive.debian.org
+RUN sed -i 's|deb.debian.org|archive.debian.org|g' /etc/apt/sources.list && \
+    sed -i '/buster-updates/d' /etc/apt/sources.list && \
+    sed -i 's|security.debian.org|archive.debian.org|g' /etc/apt/sources.list && \
+    apt-get update && \
       # Update the following line to the latest date for retriggering the docker build
       echo "Installing system dependencies as of 20250723" && \
       apt-get upgrade -y && \
