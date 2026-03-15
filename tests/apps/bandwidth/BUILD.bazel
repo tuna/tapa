@@ -102,6 +102,35 @@ tapa_xo(
     top_name = "Bandwidth",
 )
 
+sh_test(
+    name = "bandwidth-verilator-zipsim",
+    size = "enormous",
+    timeout = "moderate",
+    srcs = ["//bazel:sim_env.sh"],
+    args = [
+        "$(location bandwidth-host)",
+        "--bitstream=$(location bandwidth-zip)",
+        "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
+        "--xosim_simulator=verilator",
+        "1000",
+    ],
+    data = [
+        ":bandwidth-host",
+        ":bandwidth-zip",
+        "//tapa/cosim:tapa-fast-cosim",
+    ],
+    tags = ["cpu:2"],
+)
+
+tapa_xo(
+    name = "bandwidth-zip",
+    src = "bandwidth.cpp",
+    hdrs = glob(["*.h"]),
+    include = ["."],
+    target = "xilinx-hls",
+    top_name = "Bandwidth",
+)
+
 vpp_xclbin(
     name = "bandwidth-hw-emu-xclbin",
     platform_name = "xilinx_u250_gen3x16_xdma_4_1_202210_1",

@@ -131,6 +131,39 @@ tapa_xo(
     top_name = "Graph",
 )
 
+sh_test(
+    name = "graph-verilator-zipsim",
+    size = "enormous",
+    timeout = "moderate",
+    srcs = ["//bazel:sim_env.sh"],
+    args = [
+        "$(location graph-host)",
+        "--bitstream=$(location graph-zip)",
+        "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
+        "--xosim_simulator=verilator",
+        "$(location graph.txt)",
+    ],
+    data = [
+        "graph.txt",
+        ":graph-host",
+        ":graph-zip",
+        "//tapa/cosim:tapa-fast-cosim",
+    ],
+    tags = ["cpu:2"],
+)
+
+tapa_xo(
+    name = "graph-zip",
+    src = "graph.cpp",
+    hdrs = glob([
+        "*.hpp",
+        "*.h",
+    ]),
+    include = ["."],
+    target = "xilinx-hls",
+    top_name = "Graph",
+)
+
 vpp_xclbin(
     name = "graph-hw-emu-xclbin",
     platform_name = "xilinx_u250_gen3x16_xdma_4_1_202210_1",

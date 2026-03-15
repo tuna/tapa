@@ -97,6 +97,34 @@ tapa_xo(
     top_name = "Jacobi",
 )
 
+sh_test(
+    name = "jacobi-verilator-zipsim",
+    size = "enormous",
+    timeout = "moderate",
+    srcs = ["//bazel:sim_env.sh"],
+    args = [
+        "$(location jacobi-host)",
+        "--bitstream=$(location jacobi-zip)",
+        "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
+        "--xosim_simulator=verilator",
+    ],
+    data = [
+        ":jacobi-host",
+        ":jacobi-zip",
+        "//tapa/cosim:tapa-fast-cosim",
+    ],
+    tags = ["cpu:2"],
+)
+
+tapa_xo(
+    name = "jacobi-zip",
+    src = "jacobi.cpp",
+    hdrs = ["jacobi.h"],
+    include = ["."],
+    target = "xilinx-hls",
+    top_name = "Jacobi",
+)
+
 vpp_xclbin(
     name = "jacobi-hw-emu-xclbin",
     platform_name = "xilinx_u250_gen3x16_xdma_4_1_202210_1",

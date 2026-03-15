@@ -99,6 +99,34 @@ tapa_xo(
     top_name = "Network",
 )
 
+sh_test(
+    name = "network-verilator-zipsim",
+    size = "enormous",
+    timeout = "moderate",
+    srcs = ["//bazel:sim_env.sh"],
+    args = [
+        "$(location network-host)",
+        "--bitstream=$(location network-zip)",
+        "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
+        "--xosim_simulator=verilator",
+    ],
+    data = [
+        ":network-host",
+        ":network-zip",
+        "//tapa/cosim:tapa-fast-cosim",
+    ],
+    tags = ["cpu:2"],
+)
+
+tapa_xo(
+    name = "network-zip",
+    src = "network.cpp",
+    hdrs = ["network.h"],
+    include = ["."],
+    target = "xilinx-hls",
+    top_name = "Network",
+)
+
 vpp_xclbin(
     name = "network-hw-emu-xclbin",
     platform_name = "xilinx_u250_gen3x16_xdma_4_1_202210_1",

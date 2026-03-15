@@ -97,6 +97,34 @@ tapa_xo(
     top_name = "Cannon",
 )
 
+sh_test(
+    name = "cannon-verilator-zipsim",
+    size = "enormous",
+    timeout = "long",
+    srcs = ["//bazel:sim_env.sh"],
+    args = [
+        "$(location cannon-host)",
+        "--bitstream=$(location cannon-zip)",
+        "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
+        "--xosim_simulator=verilator",
+    ],
+    data = [
+        ":cannon-host",
+        ":cannon-zip",
+        "//tapa/cosim:tapa-fast-cosim",
+    ],
+    tags = ["cpu:2"],
+)
+
+tapa_xo(
+    name = "cannon-zip",
+    src = "cannon.cpp",
+    hdrs = ["cannon.h"],
+    include = ["."],
+    target = "xilinx-hls",
+    top_name = "Cannon",
+)
+
 vpp_xclbin(
     name = "cannon-hw-emu-xclbin",
     platform_name = "xilinx_u250_gen3x16_xdma_4_1_202210_1",

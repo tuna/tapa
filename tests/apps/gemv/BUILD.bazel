@@ -97,6 +97,34 @@ tapa_xo(
     top_name = "Gemv",
 )
 
+sh_test(
+    name = "gemv-verilator-zipsim",
+    size = "enormous",
+    timeout = "moderate",
+    srcs = ["//bazel:sim_env.sh"],
+    args = [
+        "$(location gemv-host)",
+        "--bitstream=$(location gemv-zip)",
+        "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
+        "--xosim_simulator=verilator",
+    ],
+    data = [
+        ":gemv-host",
+        ":gemv-zip",
+        "//tapa/cosim:tapa-fast-cosim",
+    ],
+    tags = ["cpu:2"],
+)
+
+tapa_xo(
+    name = "gemv-zip",
+    src = "gemv.cpp",
+    hdrs = glob(["*.h"]),
+    include = ["."],
+    target = "xilinx-hls",
+    top_name = "Gemv",
+)
+
 vpp_xclbin(
     name = "gemv-hw-emu-xclbin",
     platform_name = "xilinx_u250_gen3x16_xdma_4_1_202210_1",
