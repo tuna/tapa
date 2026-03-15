@@ -4,6 +4,8 @@ All rights reserved. The contributor(s) of this file has/have agreed to the
 RapidStream Contributor License Agreement.
 """
 
+import re
+from collections import defaultdict
 from typing import NamedTuple
 
 
@@ -78,3 +80,26 @@ class Arg(NamedTuple):
 
 
 MAX_AXI_BRAM_ADDR_WIDTH = 32
+
+
+def parse_register_addr(ctrl_unit_path: str) -> dict[str, list[str]]:
+    """Parses register addresses from the given s_axi_control.v file.
+
+    Parses the comments in s_axi_control.v to get the register addresses for each
+    argument.
+    """
+    with open(ctrl_unit_path, encoding="utf-8") as fp:
+        ctrl_unit = fp.readlines()
+    comments = [line for line in ctrl_unit if line.strip().startswith("//")]
+
+    arg_to_reg_addrs: dict[str, list[str]] = defaultdict(list)
+    for line in comments:
+        if " 0x" in line and "Data signal" in line:
+            match = re.search(r"(0x\w+) : Data signal of (\w+)", line)
+            if match is None:
+                continue
+            signal = match.group(2)
+            addr = match.group(1)
+            arg_to_reg_addrs[signal].append(addr.replace("0x", "'h"))
+
+    return dict(arg_to_reg_addrs)

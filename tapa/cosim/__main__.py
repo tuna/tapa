@@ -11,7 +11,6 @@ import re
 import signal
 import subprocess
 import sys
-from collections import defaultdict
 from collections.abc import Sequence
 from contextlib import suppress
 from io import TextIOWrapper
@@ -21,7 +20,7 @@ import click
 import psutil
 
 from tapa import __version__
-from tapa.cosim.common import AXI, Arg
+from tapa.cosim.common import AXI, Arg, parse_register_addr
 from tapa.cosim.config_preprocess import preprocess_config
 from tapa.cosim.templates import (
     get_axi_ram_inst,
@@ -37,6 +36,7 @@ from tapa.cosim.templates import (
     get_vitis_dut,
     get_vitis_test_signals,
 )
+from tapa.cosim.verilator import generate_verilator_tb, launch_verilator
 from tapa.cosim.vivado import get_vivado_tcl
 from tapa.remote.config import get_remote_config
 from tapa.remote.popen import create_tool_process
@@ -49,29 +49,6 @@ logging.basicConfig(
 )
 
 _logger = logging.getLogger().getChild(__name__)
-
-
-def parse_register_addr(ctrl_unit_path: str) -> dict[str, list[str]]:
-    """Parses register addresses from the given s_axi_control.v file.
-
-    Parses the comments in s_axi_control.v to get the register addresses for each
-    argument.
-    """
-    with open(ctrl_unit_path, encoding="utf-8") as fp:
-        ctrl_unit = fp.readlines()
-    comments = [line for line in ctrl_unit if line.strip().startswith("//")]
-
-    arg_to_reg_addrs = defaultdict(list)
-    for line in comments:
-        if " 0x" in line and "Data signal" in line:
-            match = re.search(r"(0x\w+) : Data signal of (\w+)", line)
-            if match is None:
-                continue
-            signal = match.group(2)
-            addr = match.group(1)
-            arg_to_reg_addrs[signal].append(addr.replace("0x", "'h"))
-
-    return dict(arg_to_reg_addrs)
 
 
 def parse_m_axi_interfaces(top_rtl_path: str) -> list[AXI]:
@@ -159,6 +136,13 @@ def set_default_nettype(verilog_path: str) -> None:
 @click.option("--launch-simulation / --no-launch-simulation", type=bool, default=False)
 @click.option("--save-waveform / --no-save-waveform", type=bool, default=False)
 @click.option("--start-gui / --no-start-gui", type=bool, default=False)
+@click.option(
+    "--simulator",
+    type=click.Choice(["xsim", "verilator"]),
+    default="xsim",
+    help="Simulator backend to use. 'xsim' requires Vivado (Linux only). "
+    "'verilator' is open-source and works on both Linux and macOS.",
+)
 def main(  # noqa: PLR0913, PLR0917
     config_path: str,
     tb_output_dir: str,
@@ -166,6 +150,7 @@ def main(  # noqa: PLR0913, PLR0917
     launch_simulation: bool,
     save_waveform: bool,
     start_gui: bool,
+    simulator: str,
 ) -> None:
     """Main entry point for the TAPA fast cosim tool."""
     _logger.info("TAPA fast cosim version: %s", __version__)
@@ -173,6 +158,7 @@ def main(  # noqa: PLR0913, PLR0917
     _logger.debug("   Loading configuration from %s", config_path)
     _logger.debug("   Generating testbench in %s", tb_output_dir)
     _logger.debug("   Part number: %s", part_num)
+    _logger.debug("   Simulator: %s", simulator)
     _logger.debug("   Launch simulation: %s", launch_simulation)
     _logger.debug("   Save waveform: %s", save_waveform)
     _logger.debug("   Start GUI: %s", start_gui)
@@ -184,10 +170,41 @@ def main(  # noqa: PLR0913, PLR0917
     top_path = f"{verilog_path}/{top_name}.v"
     ctrl_path = f"{verilog_path}/{top_name}_control_s_axi.v"
 
+    axi_list = parse_m_axi_interfaces(top_path)
+
+    if simulator == "verilator":
+        generate_verilator_tb(config, axi_list, tb_output_dir)
+        if launch_simulation:
+            launch_verilator(config, tb_output_dir)
+    else:
+        _generate_xsim(
+            config,
+            top_name,
+            verilog_path,
+            ctrl_path,
+            axi_list,
+            tb_output_dir,
+            save_waveform,
+            start_gui,
+            launch_simulation,
+        )
+
+
+def _generate_xsim(  # noqa: PLR0913, PLR0917
+    config: dict,
+    top_name: str,
+    verilog_path: str,
+    ctrl_path: str,
+    axi_list: list[AXI],
+    tb_output_dir: str,
+    save_waveform: bool,
+    start_gui: bool,
+    launch_simulation: bool,
+) -> None:
+    """Generate xsim testbench and optionally launch Vivado simulation."""
     # add default nettype to all rtl
     set_default_nettype(verilog_path)
 
-    axi_list = parse_m_axi_interfaces(top_path)
     tb = get_cosim_tb(
         top_name,
         config["top_is_leaf_task"],

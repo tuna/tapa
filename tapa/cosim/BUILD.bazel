@@ -30,6 +30,7 @@ py_library(
         ":common",
         ":config_preprocess",
         ":templates",
+        ":verilator",
         ":vivado",
         "//tapa:__init__",
         "//tapa/remote",
@@ -54,6 +55,12 @@ py_library(
 py_library(
     name = "templates",
     srcs = ["templates.py"],
+    deps = [":common"],
+)
+
+py_library(
+    name = "verilator",
+    srcs = ["verilator.py"],
     deps = [":common"],
 )
 
