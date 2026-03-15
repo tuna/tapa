@@ -276,12 +276,18 @@
   "moduleExtensions": {
     "//bazel:dependencies.bzl%load_dependencies": {
       "general": {
-        "bzlTransitiveDigest": "jXOvQjOn/svYyKhLstnPjzmShco3ThH+WIEZYJiXd1A=",
+        "bzlTransitiveDigest": "cPEDSM8wM7YKNVUGqYI46k+FxJomX4VwzCc5ic6LGOQ=",
         "usagesDigest": "R/mru0wX2nxaR5WLYDX44DFEAMeABaiVH5PaEGW3+bc=",
         "recordedInputs": [
           "REPO_MAPPING:,vars +resolve_vars+vars"
         ],
         "generatedRepoSpecs": {
+          "ssh_key": {
+            "repoRuleId": "@@//bazel:dependencies.bzl%_ssh_key_repository",
+            "attributes": {
+              "key_file": "~/.ssh/tuna_tapa"
+            }
+          },
           "vitis_hls": {
             "repoRuleId": "@@//bazel:dependencies.bzl%_vitis_hls_repository",
             "attributes": {
