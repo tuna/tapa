@@ -109,8 +109,39 @@ _vitis_hls_repository = repository_rule(
     },
 )
 
+def _ssh_key_repository_impl(rctx):
+    """Repository rule that copies an SSH key file for sandbox access."""
+    key_path = rctx.attr.key_file
+    if key_path.startswith("~"):
+        home = rctx.os.environ.get("HOME", "")
+        key_path = home + key_path[1:]
+
+    key_file = rctx.path(key_path)
+    if key_file.exists:
+        rctx.symlink(key_file, "key")
+        rctx.file("BUILD.bazel", 'exports_files(["key"], visibility = ["//visibility:public"])\n')
+    else:
+        # buildifier: disable=print
+        print("NOTE: SSH key file not found: " + key_path)
+        rctx.file("key", "")
+        rctx.file("BUILD.bazel", 'exports_files(["key"], visibility = ["//visibility:public"])\n')
+
+_ssh_key_repository = repository_rule(
+    implementation = _ssh_key_repository_impl,
+    local = True,
+    attrs = {
+        "key_file": attr.string(mandatory = True),
+    },
+)
+
 def _load_dependencies(module_ctx):
     """Load dependencies for the TAPA project."""
+
+    # Make SSH key available as a Bazel target for sandbox access.
+    _ssh_key_repository(
+        name = "ssh_key",
+        key_file = REMOTE_KEY_FILE if REMOTE_KEY_FILE else "/dev/null",
+    )
 
     # Load the Xilinx Vitis HLS library
     vitis_hls_subdir = "/Vitis/" if XILINX_TOOL_VERSION >= "2024.2" else "/Vitis_HLS/"

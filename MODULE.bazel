@@ -132,7 +132,7 @@ load_dependencies = use_extension(
     "load_dependencies",
     dev_dependency = True,
 )
-use_repo(load_dependencies, "vitis_hls", "xsim_legacy_rdi", "xsim_xv")
+use_repo(load_dependencies, "ssh_key", "vitis_hls", "xsim_legacy_rdi", "xsim_xv")
 
 # Required by FRT
 bazel_dep(name = "tinyxml2", version = "10.0.0")

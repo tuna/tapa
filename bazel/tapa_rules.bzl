@@ -62,8 +62,8 @@ def _tapa_xo_impl(ctx):
     remote_host = _remote_host_flag()
     if remote_host:
         tapa_cmd.extend(["--remote-host", remote_host])
-        if REMOTE_KEY_FILE:
-            tapa_cmd.extend(["--remote-key-file", REMOTE_KEY_FILE])
+        if ctx.file.ssh_key:
+            tapa_cmd.extend(["--remote-key-file", ctx.file.ssh_key.path])
         xilinx_settings = _remote_xilinx_settings()
         if xilinx_settings:
             tapa_cmd.extend(["--remote-xilinx-settings", xilinx_settings])
@@ -158,6 +158,8 @@ def _tapa_xo_impl(ctx):
 
     # Define a custom action to run the synthesized command.
     inputs = [src] + ctx.files.hdrs + ctx.files.custom_rtl_files
+    if ctx.file.ssh_key:
+        inputs.append(ctx.file.ssh_key)
     if ctx.file.floorplan_path:
         inputs.append(ctx.file.floorplan_path)
     if ctx.file.floorplan_config:
@@ -201,8 +203,8 @@ def _tapa_reuse_work_dir_xo_impl(ctx):
     remote_host = _remote_host_flag()
     if remote_host:
         tapa_prefix.extend(["--remote-host", remote_host])
-        if REMOTE_KEY_FILE:
-            tapa_prefix.extend(["--remote-key-file", REMOTE_KEY_FILE])
+        if ctx.file.ssh_key:
+            tapa_prefix.extend(["--remote-key-file", ctx.file.ssh_key.path])
         xilinx_settings = _remote_xilinx_settings()
         if xilinx_settings:
             tapa_prefix.extend(["--remote-xilinx-settings", xilinx_settings])
@@ -236,6 +238,8 @@ set -ex
     )
 
     inputs = [src] + ctx.files.hdrs
+    if ctx.file.ssh_key:
+        inputs.append(ctx.file.ssh_key)
     ctx.actions.run_shell(
         outputs = [output_file, work_dir],
         inputs = inputs,
@@ -259,6 +263,10 @@ tapa_reuse_work_dir_xo = rule(
             cfg = "exec",
             default = Label("//tapa"),
             executable = True,
+        ),
+        "ssh_key": attr.label(
+            allow_single_file = True,
+            default = Label("@ssh_key//:key") if REMOTE_KEY_FILE else None,
         ),
         "vitis_hls_env": attr.label(
             cfg = "exec",
@@ -300,6 +308,10 @@ tapa_xo = rule(
         "floorplan_path": attr.label(allow_single_file = True),
         "floorplan_config": attr.label(allow_single_file = True),
         "device_config": attr.label(allow_single_file = True),
+        "ssh_key": attr.label(
+            allow_single_file = True,
+            default = Label("@ssh_key//:key") if REMOTE_KEY_FILE else None,
+        ),
         "vitis_hls_env": attr.label(
             cfg = "exec",
             default = Label("//bazel:vitis_hls_env"),
