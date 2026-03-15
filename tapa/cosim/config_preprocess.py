@@ -10,6 +10,7 @@ import glob
 import json
 import logging
 import os
+import re
 import shutil
 import sys
 import zipfile
@@ -19,7 +20,6 @@ from xml.etree import ElementTree as ET
 from yaml import safe_load
 
 from tapa.cosim.common import Arg, Port
-from tapa.verilog.util import sanitize_array_name
 
 _logger = logging.getLogger().getChild(__name__)
 
@@ -242,7 +242,10 @@ def _parse_zip_update_config(config: dict, tmp_path: str) -> None:
                 stream_indices = [None]
 
             for stream_idx in stream_indices:
-                port_name = sanitize_array_name(port["name"])
+                # Sanitize bracket notation (a[0] → a_0) to match RTL naming.
+                raw_name = port["name"]
+                m = re.fullmatch(r"(\w+)\[(\d+)\]", raw_name)
+                port_name = f"{m[1]}_{m[2]}" if m else raw_name
                 args.append(
                     Arg(
                         name=port_name,
