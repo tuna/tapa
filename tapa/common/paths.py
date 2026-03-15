@@ -302,11 +302,21 @@ def get_tapacc_cflags(for_remote_hls: bool = False) -> tuple[str, ...]:
     # only have the Xilinx include dir without GCC headers to replace it.
     nostdinc_flag = ("-nostdinc++",) if vendor_include_paths and include_gcc else ()
 
+    # When running remote HLS from macOS, the flatten step (tapa-cpp) expands
+    # assert() using macOS's assert.h, which calls __assert_rtn. This function
+    # doesn't exist on Linux. Map it to Linux's __assert_fail.
+    assert_compat_flag = ()
+    if for_remote_hls and platform.system() == "Darwin":
+        assert_compat_flag = (
+            "-D__assert_rtn(func,file,line,expr)=__assert_fail(expr,file,line,func)",
+        )
+
     return (
         # Use the stdc++ library from the HLS toolchain when available.
         *nostdinc_flag,
         *get_tapa_cflags(),
         *vendor_include_paths,
+        *assert_compat_flag,
     )
 
 
