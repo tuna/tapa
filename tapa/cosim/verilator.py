@@ -1008,18 +1008,17 @@ def _cpp_stream_service(
         dw = arg.port.data_width
         port_width = dw + 1
         if arg.port.is_istream:
-            # Pointer expression for dout memcpy target.
-            # >64-bit ports are WData arrays (already a pointer);
-            # <=64-bit ports are QData scalars (need &).
-            dout_ptr = f"&dut->{n}_dout" if port_width <= 64 else f"dut->{n}_dout"
+            # Pointer expression for dout memcpy/memset target.
+            # Both VlWide (>64) and QData (<=64) need & to get address.
+            dout_ptr = f"&dut->{n}_dout"
             if port_width > 64:
                 eot_set = (
                     f"                    reinterpret_cast<uint32_t*>"
-                    f"(dut->{n}_dout)[{dw // 32}]"
+                    f"(&dut->{n}_dout)[{dw // 32}]"
                     f" |= (1U << {dw % 32});"
                 )
                 zero_dout = (
-                    f"                memset(dut->{n}_dout, 0, sizeof(dut->{n}_dout));"
+                    f"                memset(&dut->{n}_dout, 0, sizeof(dut->{n}_dout));"
                 )
             else:
                 eot_set = f"                    dut->{n}_dout |= (1ULL << {dw});"
@@ -1071,10 +1070,10 @@ def _cpp_stream_service(
                 eot_extract = (
                     f"            uint8_t eot_{n} ="
                     f" (reinterpret_cast<uint32_t*>"
-                    f"(dut->{n}_din)[{dw // 32}]"
+                    f"(&dut->{n}_din)[{dw // 32}]"
                     f" >> {dw % 32}) & 1;"
                 )
-                din_ptr = f"dut->{n}_din"
+                din_ptr = f"&dut->{n}_din"
             else:
                 eot_extract = (
                     f"            uint8_t eot_{n} = (dut->{n}_din >> {dw}) & 1;"
