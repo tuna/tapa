@@ -629,6 +629,11 @@ def _cpp_preamble(
         "#include <fstream>",
         "#include <map>",
         "#include <vector>",
+        "",
+        "#include <fcntl.h>",
+        "#include <sys/mman.h>",
+        "#include <sys/stat.h>",
+        "#include <unistd.h>",
         f'#include "V{top_name}.h"',
         '#include "verilated.h"',
         "",
@@ -710,50 +715,64 @@ def _cpp_preamble(
 
 
 def _cpp_stream_types(stream_args: Sequence[Arg]) -> list[str]:
-    """Generate C++ stream queue types and declarations."""
+    """Generate C++ shared memory queue types and declarations.
+
+    The host creates SharedMemoryQueues via shm_open; we mmap them and
+    interact with them concurrently during simulation (like xosim DPI).
+    """
     lines: list[str] = [
         "",
-        "// Stream queue for FIFO-style interfaces",
-        "#include <queue>",
+        "// SharedMemoryQueue access for FIFO-style AXI-Stream interfaces.",
+        "// The host creates SharedMemoryQueues via shm_open; we mmap them and",
+        "// interact with them concurrently during simulation (like xosim DPI).",
         "",
-        "struct StreamQueue {",
-        "    std::queue<std::vector<uint8_t>> data;",
-        "    size_t width_bytes;",
-        "    bool eot_sent = false;",
+        "struct ShmMapping {",
+        "    uint8_t* base = nullptr;",
+        "    size_t len = 0;",
+        "    int fd = -1;",
+        "    uint32_t depth = 0;",
+        "    uint32_t width = 0;",
+        "    uint64_t* tail_ptr = nullptr;",
+        "    uint64_t* head_ptr = nullptr;",
+        "    uint8_t* ring = nullptr;",
         "};",
+        "",
+        "static ShmMapping shm_map(const char* path) {",
+        "    ShmMapping m;",
+        "    m.fd = shm_open(path, O_RDWR, 0600);",
+        "    if (m.fd < 0) return m;",
+        "    struct stat st;",
+        "    if (fstat(m.fd, &st) < 0 || st.st_size < 32) {",
+        "        close(m.fd); m.fd = -1; return m;",
+        "    }",
+        "    m.len = st.st_size;",
+        "    m.base = static_cast<uint8_t*>(",
+        "        mmap(nullptr, m.len, PROT_READ | PROT_WRITE,",
+        "             MAP_SHARED, m.fd, 0));",
+        "    if (m.base == MAP_FAILED) {",
+        "        m.base = nullptr; close(m.fd); m.fd = -1; return m;",
+        "    }",
+        "    memcpy(&m.depth, m.base + 8, 4);",
+        "    memcpy(&m.width, m.base + 12, 4);",
+        "    m.tail_ptr = reinterpret_cast<uint64_t*>(m.base + 16);",
+        "    m.head_ptr = reinterpret_cast<uint64_t*>(m.base + 24);",
+        "    m.ring = m.base + 32;",
+        "    return m;",
+        "}",
+        "",
+        "static void shm_unmap(ShmMapping& m) {",
+        "    if (m.base) munmap(m.base, m.len);",
+        "    if (m.fd >= 0) close(m.fd);",
+        "    m.base = nullptr; m.fd = -1;",
+        "}",
         "",
     ]
     for arg in stream_args:
-        width_bytes = (arg.port.data_width + 7) // 8
-        lines.append(
-            f"static StreamQueue stream_{arg.qualified_name}{{{{}}, {width_bytes}}};"
-        )
-    lines.extend(
-        [
-            "",
-            ("static void load_stream(StreamQueue& sq, const char* path) {"),
-            "    std::ifstream f(path, std::ios::binary);",
-            "    if (!f) return;",
-            "    while (f.peek() != EOF) {",
-            "        std::vector<uint8_t> buf(sq.width_bytes);",
-            ("        f.read(reinterpret_cast<char*>(buf.data()), sq.width_bytes);"),
-            "        size_t n = f.gcount();",
-            "        buf.resize(n);",
-            "        if (n > 0) sq.data.push(std::move(buf));",
-            "    }",
-            "}",
-            "",
-            ("static void dump_stream(StreamQueue& sq, const char* path) {"),
-            "    std::ofstream f(path, std::ios::binary);",
-            "    while (!sq.data.empty()) {",
-            "        auto& buf = sq.data.front();",
-            ("        f.write(reinterpret_cast<const char*>(buf.data()), buf.size());"),
-            "        sq.data.pop();",
-            "    }",
-            "}",
-            "",
-        ]
-    )
+        n = arg.qualified_name
+        lines.append(f"static ShmMapping shm_{n};")
+        if arg.port.is_istream:
+            lines.append(f"static bool last_empty_n_{n} = false;")
+    lines.append("")
     return lines
 
 
@@ -918,9 +937,7 @@ def _cpp_load_data(
     for arg in stream_args:
         data_path = axis_to_data.get(arg.qualified_name, "")
         if data_path:
-            lines.append(
-                f'    load_stream(stream_{arg.qualified_name}, "{data_path}");'
-            )
+            lines.append(f'    shm_{arg.qualified_name} = shm_map("{data_path}");')
     if stream_args:
         lines.append("")
     return lines
@@ -929,7 +946,11 @@ def _cpp_load_data(
 def _cpp_stream_service(
     stream_args: Sequence[Arg], top_level_peek: set[str] | None = None
 ) -> list[str]:
-    """Generate FIFO stream servicing code for the simulation loop."""
+    """Generate FIFO stream servicing code using direct SharedMemoryQueue access.
+
+    Mirrors the xosim DPI istream/ostream protocol: the testbench reads/writes
+    the mmap'd ring buffer concurrently with the host process each cycle.
+    """
     lines: list[str] = []
     for arg in stream_args:
         n = arg.qualified_name
@@ -937,40 +958,60 @@ def _cpp_stream_service(
         dw = arg.port.data_width
         port_width = dw + 1
         if arg.port.is_istream:
-            # EOT bit is the MSB of dout at bit position data_width.
-            # After all data is consumed, send one EOT packet so kernels
-            # using TAPA_WHILE_NOT_EOT can terminate.
+            pn = arg.peek_qualified_name
+            if pn and top_level_peek is not None and pn not in top_level_peek:
+                pn = None
+            # EOT bit set code (bit data_width in dout)
             if port_width > 64:
                 eot_set = (
-                    f"            memset(&dut->{n}_dout, 0,"
-                    f" sizeof(dut->{n}_dout));\n"
-                    f"            reinterpret_cast<uint32_t*>"
+                    f"                    reinterpret_cast<uint32_t*>"
                     f"(&dut->{n}_dout)[{dw // 32}]"
                     f" |= (1U << {dw % 32});"
                 )
+                zero_dout = (
+                    f"                memset(&dut->{n}_dout, 0, sizeof(dut->{n}_dout));"
+                )
             else:
-                eot_set = f"            dut->{n}_dout = (1ULL << {dw});"
-            pn = arg.peek_qualified_name
-            # Only drive peek ports that exist at the top-level module
-            if pn and top_level_peek is not None and pn not in top_level_peek:
-                pn = None
+                eot_set = f"                    dut->{n}_dout |= (1ULL << {dw});"
+                zero_dout = f"                dut->{n}_dout = 0;"
             lines.extend(
                 [
-                    f"        if (dut->{n}_read && dut->{n}_empty_n",
-                    f"            && !stream_{n}.eot_sent)",
-                    f"            stream_{n}.data.pop();",
-                    f"        if (!stream_{n}.data.empty()) {{",
-                    f"            dut->{n}_empty_n = 1;",
+                    f"        if (shm_{n}.base) {{",
+                    f"            if (last_empty_n_{n} && dut->{n}_read) {{",
+                    f"                __atomic_store_n(shm_{n}.tail_ptr,",
                     (
-                        f"            memcpy(&dut->{n}_dout,"
-                        f" stream_{n}.data.front().data(), {w});"
+                        f"                    __atomic_load_n(shm_{n}.tail_ptr,"
+                        " __ATOMIC_ACQUIRE) + 1,"
                     ),
-                    f"        }} else if (!stream_{n}.eot_sent) {{",
-                    f"            dut->{n}_empty_n = 1;",
+                    "                    __ATOMIC_RELEASE);",
+                    "            }",
+                    (
+                        f"            uint64_t h_{n} = __atomic_load_n("
+                        f"shm_{n}.head_ptr, __ATOMIC_ACQUIRE);"
+                    ),
+                    (
+                        f"            uint64_t t_{n} = __atomic_load_n("
+                        f"shm_{n}.tail_ptr, __ATOMIC_ACQUIRE);"
+                    ),
+                    f"            if (h_{n} > t_{n}) {{",
+                    (
+                        f"                size_t off_{n} ="
+                        f" size_t(t_{n} % shm_{n}.depth)"
+                        f" * shm_{n}.width;"
+                    ),
+                    zero_dout,
+                    (
+                        f"                memcpy(&dut->{n}_dout,"
+                        f" shm_{n}.ring + off_{n}, {w});"
+                    ),
+                    (f"                if (shm_{n}.ring[off_{n} + shm_{n}.width - 1])"),
                     eot_set,
-                    f"            stream_{n}.eot_sent = true;",
-                    "        } else {",
-                    f"            dut->{n}_empty_n = 0;",
+                    f"                dut->{n}_empty_n = 1;",
+                    f"                last_empty_n_{n} = true;",
+                    "            } else {",
+                    f"                dut->{n}_empty_n = 0;",
+                    f"                last_empty_n_{n} = false;",
+                    "            }",
                     "        }",
                 ]
             )
@@ -985,14 +1026,64 @@ def _cpp_stream_service(
                     lines.append(f"        dut->{pn}_dout = dut->{n}_dout;")
                 lines.append(f"        dut->{pn}_empty_n = dut->{n}_empty_n;")
         elif arg.port.is_ostream:
+            # Extract EOT bit from din (bit data_width)
+            if port_width > 64:
+                eot_extract = (
+                    f"            uint8_t eot_{n} ="
+                    f" (reinterpret_cast<const uint32_t*>"
+                    f"(&dut->{n}_din)[{dw // 32}]"
+                    f" >> {dw % 32}) & 1;"
+                )
+            else:
+                eot_extract = (
+                    f"            uint8_t eot_{n} = (dut->{n}_din >> {dw}) & 1;"
+                )
             lines.extend(
                 [
-                    f"        if (dut->{n}_write && dut->{n}_full_n) {{",
-                    f"            std::vector<uint8_t> buf({w});",
-                    f"            memcpy(buf.data(), &dut->{n}_din, {w});",
-                    f"            stream_{n}.data.push(std::move(buf));",
+                    (
+                        f"        if (dut->{n}_write && dut->{n}_full_n"
+                        f" && shm_{n}.base) {{"
+                    ),
+                    (
+                        f"            uint64_t wh_{n} = __atomic_load_n("
+                        f"shm_{n}.head_ptr, __ATOMIC_ACQUIRE);"
+                    ),
+                    (
+                        f"            size_t woff_{n} ="
+                        f" size_t(wh_{n} % shm_{n}.depth)"
+                        f" * shm_{n}.width;"
+                    ),
+                    (f"            memset(shm_{n}.ring + woff_{n}, 0, shm_{n}.width);"),
+                    (
+                        f"            memcpy(shm_{n}.ring + woff_{n},"
+                        f" &dut->{n}_din, {w});"
+                    ),
+                    eot_extract,
+                    (
+                        f"            shm_{n}.ring"
+                        f"[woff_{n} + shm_{n}.width - 1] = eot_{n};"
+                    ),
+                    (
+                        f"            __atomic_store_n(shm_{n}.head_ptr,"
+                        f" wh_{n} + 1, __ATOMIC_RELEASE);"
+                    ),
                     "        }",
-                    f"        dut->{n}_full_n = 1;",
+                    f"        if (shm_{n}.base) {{",
+                    (
+                        f"            uint64_t fh_{n} = __atomic_load_n("
+                        f"shm_{n}.head_ptr, __ATOMIC_ACQUIRE);"
+                    ),
+                    (
+                        f"            uint64_t ft_{n} = __atomic_load_n("
+                        f"shm_{n}.tail_ptr, __ATOMIC_ACQUIRE);"
+                    ),
+                    (
+                        f"            dut->{n}_full_n ="
+                        f" (fh_{n} - ft_{n} < shm_{n}.depth) ? 1 : 0;"
+                    ),
+                    "        } else {",
+                    f"            dut->{n}_full_n = 1;",
+                    "        }",
                 ]
             )
     return lines
@@ -1075,12 +1166,7 @@ def _cpp_dump_data(
                 f'    dump_binary("{out_path}", {axi.name}_BASE, {axi.name}_SIZE);'
             )
 
-    axis_to_data = config.get("axis_to_data_file", {})
-    for arg in stream_args:
-        data_path = axis_to_data.get(arg.qualified_name, "")
-        if data_path and arg.port.is_ostream:
-            out_path = _get_output_path(data_path)
-            lines.append(f'    dump_stream(stream_{arg.qualified_name}, "{out_path}");')
+    lines.extend(f"    shm_unmap(shm_{arg.qualified_name});" for arg in stream_args)
     return lines
 
 
@@ -1314,7 +1400,12 @@ cd "$(dirname "$0")"
   --exe tb.cpp dpi_support.cpp \\
   rtl/*.v 2>&1
 
+# -lrt is needed on Linux for shm_open; not needed/available on macOS
+RT_LIB=""
+if [ "$(uname)" = "Linux" ]; then RT_LIB="-lrt"; fi
+
 make -C obj_dir -f V{top_name}.mk V{top_name} \\
+  VM_USER_LDLIBS="$RT_LIB" \\
   -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4) 2>&1
 """
 
