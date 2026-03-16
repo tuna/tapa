@@ -829,25 +829,11 @@ def _cpp_main_body(  # noqa: PLR0913, PLR0917
 
     lines.extend(_cpp_load_data(axi_list, stream_args, config))
 
-    # Shadow variables hold the previous tick's DUT outputs so that
-    # stream_service sees 1-cycle-delayed values (DUT→TB delay).
-    # Staged variables hold the next TB→DUT values; they are applied to
-    # the DUT at the start of the next iteration (TB→DUT delay).
-    if stream_args:
-        lines.extend(_cpp_stream_shadow_decls(stream_args))
-        lines.extend(_cpp_stream_staged_decls(stream_args, top_level_peek))
-
     # Control register writes / port setup
     if mode == "vitis":
         lines.extend(_cpp_ctrl_writes(args, config, reg_addrs))
     else:
         lines.extend(_cpp_hls_port_setup(args, axi_list, config))
-
-    # HLS port setup ends with tick() after ap_start=1.  Capture the DUT's
-    # outputs from that tick so the main loop's first stream_service uses
-    # correct prev_ values (otherwise the first read/write assertion is lost).
-    if stream_args:
-        lines.extend(_cpp_stream_shadow_save(stream_args))
 
     lines.extend(_cpp_sim_loop(stream_args, mode, top_level_peek))
     lines.extend(_cpp_dump_data(axi_list, stream_args, config))
@@ -974,129 +960,29 @@ def _cpp_load_data(
     return lines
 
 
-def _cpp_stream_shadow_decls(stream_args: Sequence[Arg]) -> list[str]:
-    """Generate shadow variable declarations for DUT stream output signals.
-
-    Shadow variables store the previous tick's DUT outputs so that
-    stream_service sees 1-cycle-delayed values, matching xsim's pre-NBA
-    DPI read semantics.
-    """
-    lines: list[str] = []
-    for arg in stream_args:
-        n = arg.qualified_name
-        dw = arg.port.data_width
-        port_width = dw + 1
-        if arg.port.is_istream:
-            lines.append(f"    bool prev_{n}_read = false;")
-        elif arg.port.is_ostream:
-            lines.append(f"    bool prev_{n}_write = false;")
-            if port_width > 64:
-                nw = (port_width + 31) // 32
-                lines.append(f"    uint32_t prev_{n}_din[{nw}] = {{}};")
-            else:
-                lines.append(f"    uint64_t prev_{n}_din = 0;")
-    return lines
-
-
-def _cpp_stream_staged_decls(
+def _cpp_stream_peek_mirror(
     stream_args: Sequence[Arg], top_level_peek: set[str] | None = None
 ) -> list[str]:
-    """Generate staged variable declarations for TB→DUT stream signals.
-
-    In xsim, DPI outputs use NBA (<=) so the DUT sees updates one cycle
-    later.  Staged variables emulate this: stream_service writes to staged
-    vars, and they are applied to the DUT at the start of the NEXT
-    iteration.
-    """
+    """Generate statements to mirror read-port values to peek ports."""
     lines: list[str] = []
     for arg in stream_args:
+        if not arg.port.is_istream:
+            continue
         n = arg.qualified_name
         dw = arg.port.data_width
         port_width = dw + 1
         pn = arg.peek_qualified_name
         if pn and top_level_peek is not None and pn not in top_level_peek:
             pn = None
-        if arg.port.is_istream:
-            lines.append(f"    uint8_t staged_{n}_empty_n = 0;")
+        if pn:
             if port_width > 64:
                 lines.append(
-                    f"    alignas(4) uint8_t staged_{n}_dout"
-                    f"[sizeof(dut->{n}_dout)] = {{}};"
-                )
-            else:
-                lines.append(f"    uint64_t staged_{n}_dout = 0;")
-            if pn:
-                lines.append(f"    uint8_t staged_{pn}_empty_n = 0;")
-                if port_width > 64:
-                    lines.append(
-                        f"    alignas(4) uint8_t staged_{pn}_dout"
-                        f"[sizeof(dut->{pn}_dout)] = {{}};"
-                    )
-                else:
-                    lines.append(f"    uint64_t staged_{pn}_dout = 0;")
-        elif arg.port.is_ostream:
-            lines.append(f"    uint8_t staged_{n}_full_n = 0;")
-    return lines
-
-
-def _cpp_stream_apply_staged(
-    stream_args: Sequence[Arg], top_level_peek: set[str] | None = None
-) -> list[str]:
-    """Generate statements to apply staged TB→DUT values to the DUT.
-
-    Also updates last_empty_n / last_full_n to reflect the applied state.
-    """
-    lines: list[str] = []
-    for arg in stream_args:
-        n = arg.qualified_name
-        dw = arg.port.data_width
-        port_width = dw + 1
-        pn = arg.peek_qualified_name
-        if pn and top_level_peek is not None and pn not in top_level_peek:
-            pn = None
-        if arg.port.is_istream:
-            lines.append(f"        dut->{n}_empty_n = staged_{n}_empty_n;")
-            if port_width > 64:
-                lines.append(
-                    f"        memcpy(&dut->{n}_dout, staged_{n}_dout,"
+                    f"        memcpy(&dut->{pn}_dout, &dut->{n}_dout,"
                     f" sizeof(dut->{n}_dout));"
                 )
             else:
-                lines.append(f"        dut->{n}_dout = staged_{n}_dout;")
-            lines.append(f"        last_empty_n_{n} = (staged_{n}_empty_n != 0);")
-            if pn:
-                lines.append(f"        dut->{pn}_empty_n = staged_{pn}_empty_n;")
-                if port_width > 64:
-                    lines.append(
-                        f"        memcpy(&dut->{pn}_dout, staged_{pn}_dout,"
-                        f" sizeof(dut->{pn}_dout));"
-                    )
-                else:
-                    lines.append(f"        dut->{pn}_dout = staged_{pn}_dout;")
-        elif arg.port.is_ostream:
-            lines.append(f"        dut->{n}_full_n = staged_{n}_full_n;")
-            lines.append(f"        last_full_n_{n} = (staged_{n}_full_n != 0);")
-    return lines
-
-
-def _cpp_stream_shadow_save(stream_args: Sequence[Arg]) -> list[str]:
-    """Generate statements to snapshot DUT stream outputs into shadow vars."""
-    lines: list[str] = []
-    for arg in stream_args:
-        n = arg.qualified_name
-        dw = arg.port.data_width
-        port_width = dw + 1
-        if arg.port.is_istream:
-            lines.append(f"        prev_{n}_read = dut->{n}_read;")
-        elif arg.port.is_ostream:
-            lines.append(f"        prev_{n}_write = dut->{n}_write;")
-            if port_width > 64:
-                lines.append(
-                    f"        memcpy(prev_{n}_din, &dut->{n}_din,"
-                    f" sizeof(prev_{n}_din));"
-                )
-            else:
-                lines.append(f"        prev_{n}_din = dut->{n}_din;")
+                lines.append(f"        dut->{pn}_dout = dut->{n}_dout;")
+            lines.append(f"        dut->{pn}_empty_n = dut->{n}_empty_n;")
     return lines
 
 
@@ -1105,20 +991,15 @@ def _cpp_stream_service(
 ) -> list[str]:
     """Generate FIFO stream servicing code using direct SharedMemoryQueue access.
 
-    Mirrors the xsim DPI istream/ostream protocol: the testbench reads/writes
-    the mmap'd ring buffer concurrently with the host process each cycle.
+    Mirrors the xsim DPI istream/ostream protocol.  This function is called
+    AFTER ``tick()`` so it reads the DUT's current ``read``/``write``/``din``
+    outputs from the just-evaluated tick and writes ``dout``/``empty_n``/
+    ``full_n`` directly to the DUT for the next tick.
 
-    DUT output signals (read, write, din) are read from ``prev_*`` shadow
-    variables so that stream_service sees values from the *previous* tick,
-    matching xsim's pre-NBA DPI read semantics (DUT→TB: 1 cycle).
-
-    TB-to-DUT signals (empty_n, dout, full_n) are written to ``staged_*``
-    variables instead of directly to the DUT.  The staged values are applied
-    at the start of the *next* iteration by ``_cpp_stream_apply_staged``,
-    giving a 1-cycle TB→DUT delay that matches xsim's NBA semantics.
-
-    Combined with the ``apply_staged → stream_service → tick → shadow_save``
-    ordering, the total round trip is 2 cycles, matching xsim exactly.
+    This gives a 1-cycle round trip matching xsim:
+      - TB→DUT: values written here are seen by the DUT at the next tick.
+      - DUT→TB: we read the DUT's outputs from the current tick (0 delay),
+        the same as xsim's DPI reading active-region signals.
     """
     lines: list[str] = []
     for arg in stream_args:
@@ -1127,32 +1008,26 @@ def _cpp_stream_service(
         dw = arg.port.data_width
         port_width = dw + 1
         if arg.port.is_istream:
-            pn = arg.peek_qualified_name
-            if pn and top_level_peek is not None and pn not in top_level_peek:
-                pn = None
-            # EOT bit set code (bit data_width in staged dout)
-            # For > 64 bits, staged_dout is a uint8_t array;
-            # for <= 64 bits, it is a uint64_t scalar (needs &).
-            staged_dout_ptr = (
-                f"staged_{n}_dout" if port_width > 64 else f"&staged_{n}_dout"
-            )
+            # Pointer expression for dout memcpy target.
+            # >64-bit ports are WData arrays (already a pointer);
+            # <=64-bit ports are QData scalars (need &).
+            dout_ptr = f"&dut->{n}_dout" if port_width <= 64 else f"dut->{n}_dout"
             if port_width > 64:
                 eot_set = (
                     f"                    reinterpret_cast<uint32_t*>"
-                    f"(staged_{n}_dout)[{dw // 32}]"
+                    f"(dut->{n}_dout)[{dw // 32}]"
                     f" |= (1U << {dw % 32});"
                 )
                 zero_dout = (
-                    f"                memset(staged_{n}_dout, 0,"
-                    f" sizeof(staged_{n}_dout));"
+                    f"                memset(dut->{n}_dout, 0, sizeof(dut->{n}_dout));"
                 )
             else:
-                eot_set = f"                    staged_{n}_dout |= (1ULL << {dw});"
-                zero_dout = f"                staged_{n}_dout = 0;"
+                eot_set = f"                    dut->{n}_dout |= (1ULL << {dw});"
+                zero_dout = f"                dut->{n}_dout = 0;"
             lines.extend(
                 [
                     f"        if (shm_{n}.base) {{",
-                    f"            if (last_empty_n_{n} && prev_{n}_read) {{",
+                    f"            if (last_empty_n_{n} && dut->{n}_read) {{",
                     f"                __atomic_store_n(shm_{n}.tail_ptr,",
                     (
                         f"                    __atomic_load_n(shm_{n}.tail_ptr,"
@@ -1176,47 +1051,39 @@ def _cpp_stream_service(
                     ),
                     zero_dout,
                     (
-                        f"                memcpy({staged_dout_ptr},"
+                        f"                memcpy({dout_ptr},"
                         f" shm_{n}.ring + off_{n}, {w});"
                     ),
                     (f"                if (shm_{n}.ring[off_{n} + {w}])"),
                     eot_set,
-                    f"                staged_{n}_empty_n = 1;",
+                    f"                dut->{n}_empty_n = 1;",
+                    f"                last_empty_n_{n} = true;",
                     "            } else {",
-                    f"                staged_{n}_empty_n = 0;",
+                    f"                dut->{n}_empty_n = 0;",
+                    f"                last_empty_n_{n} = false;",
                     "            }",
                     "        }",
                 ]
             )
-            # Mirror peek port from read port (TAPA_WHILE_NOT_EOT uses peek)
-            if pn:
-                if port_width > 64:
-                    lines.append(
-                        f"        memcpy(staged_{pn}_dout, staged_{n}_dout,"
-                        f" sizeof(staged_{n}_dout));"
-                    )
-                else:
-                    lines.append(f"        staged_{pn}_dout = staged_{n}_dout;")
-                lines.append(f"        staged_{pn}_empty_n = staged_{n}_empty_n;")
         elif arg.port.is_ostream:
             # Extract EOT bit from din (bit data_width)
             if port_width > 64:
                 eot_extract = (
                     f"            uint8_t eot_{n} ="
                     f" (reinterpret_cast<uint32_t*>"
-                    f"(prev_{n}_din)[{dw // 32}]"
+                    f"(dut->{n}_din)[{dw // 32}]"
                     f" >> {dw % 32}) & 1;"
                 )
-                din_ptr = f"prev_{n}_din"
+                din_ptr = f"dut->{n}_din"
             else:
                 eot_extract = (
-                    f"            uint8_t eot_{n} = (prev_{n}_din >> {dw}) & 1;"
+                    f"            uint8_t eot_{n} = (dut->{n}_din >> {dw}) & 1;"
                 )
-                din_ptr = f"&prev_{n}_din"
+                din_ptr = f"&dut->{n}_din"
             lines.extend(
                 [
                     (
-                        f"        if (last_full_n_{n} && prev_{n}_write"
+                        f"        if (last_full_n_{n} && dut->{n}_write"
                         f" && shm_{n}.base) {{"
                     ),
                     (
@@ -1247,14 +1114,21 @@ def _cpp_stream_service(
                         f"shm_{n}.tail_ptr, __ATOMIC_ACQUIRE);"
                     ),
                     (
-                        f"            staged_{n}_full_n ="
+                        f"            dut->{n}_full_n ="
                         f" (fh_{n} - ft_{n} < shm_{n}.depth) ? 1 : 0;"
                     ),
+                    (
+                        f"            last_full_n_{n} ="
+                        f" (fh_{n} - ft_{n} < shm_{n}.depth);"
+                    ),
                     "        } else {",
-                    f"            staged_{n}_full_n = 1;",
+                    f"            dut->{n}_full_n = 1;",
+                    f"            last_full_n_{n} = true;",
                     "        }",
                 ]
             )
+    # Mirror peek ports after all streams are serviced.
+    lines.extend(_cpp_stream_peek_mirror(stream_args, top_level_peek))
     return lines
 
 
@@ -1264,9 +1138,9 @@ def _cpp_stream_stall_cond(stream_args: Sequence[Arg]) -> str:
     for a in stream_args:
         n = a.qualified_name
         if a.port.is_istream:
-            parts.append(f"!staged_{n}_empty_n")
+            parts.append(f"!dut->{n}_empty_n")
         elif a.port.is_ostream:
-            parts.append(f"!staged_{n}_full_n")
+            parts.append(f"!dut->{n}_full_n")
     return " || ".join(parts)
 
 
@@ -1301,23 +1175,18 @@ def _cpp_sim_loop(
         ]
     )
 
-    # Ordering: apply_staged → stream_service(prev_) → tick → shadow_save.
+    # Ordering: tick → stream_service.
     #
-    # In xsim, DPI outputs use NBA (<=) so the DUT sees stream port
-    # updates one cycle AFTER the DPI computes them.  To match:
-    #   - apply_staged writes PREVIOUS iteration's service results to
-    #     the DUT (1-cycle TB→DUT delay, matching NBA).
-    #   - stream_service reads prev_ shadow variables from the previous
-    #     tick (1-cycle DUT→TB delay, matching pre-NBA DPI reads).
-    #   - stream_service writes to staged_ variables (applied next iter).
-    #   - tick evaluates the DUT with the applied (old) values.
-    #   - shadow_save captures DUT outputs for the next iteration.
-    # Total round trip: 2 cycles, matching xsim exactly.
-    lines.extend(_cpp_stream_apply_staged(stream_args, top_level_peek))
-    lines.extend(_cpp_stream_service(stream_args, top_level_peek))
-
+    # This matches xsim's DPI semantics: the DPI runs at posedge and
+    # reads the DUT's current read/write/din signals (active region),
+    # then writes dout/empty_n/full_n via NBA for the next cycle.
+    #
+    # Here, tick() evaluates the DUT; then stream_service reads the
+    # DUT's current outputs and writes new values directly to the DUT.
+    # Those values are visible to the DUT at the next tick() call,
+    # giving the same 1-cycle TB→DUT delay as xsim's NBA.
     lines.append("        tick();")
-    lines.extend(_cpp_stream_shadow_save(stream_args))
+    lines.extend(_cpp_stream_service(stream_args, top_level_peek))
 
     # Yield CPU when streams stay stalled for multiple consecutive cycles.
     if stall_cond:
@@ -1358,7 +1227,7 @@ def _cpp_sim_loop(
     lines.append("    }")
 
     # After ap_done, continue ticking to drain any remaining pipeline
-    # writes.  Same ordering: apply_staged → service → tick → shadow_save.
+    # writes.  Same ordering: tick → service.
     if stream_args:
         lines.extend(
             [
@@ -1367,10 +1236,8 @@ def _cpp_sim_loop(
                 "            service_all_axi();",
             ]
         )
-        lines.extend(_cpp_stream_apply_staged(stream_args, top_level_peek))
-        lines.extend(_cpp_stream_service(stream_args, top_level_peek))
         lines.append("            tick();")
-        lines.extend(_cpp_stream_shadow_save(stream_args))
+        lines.extend(_cpp_stream_service(stream_args, top_level_peek))
         if stall_cond:
             lines.extend(
                 [
