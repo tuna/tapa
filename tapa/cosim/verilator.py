@@ -966,48 +966,23 @@ def _cpp_load_data(
 
 
 def _cpp_stream_shadow_decls(stream_args: Sequence[Arg]) -> list[str]:
-    """Declare shadow variables for DUT→TB stream signals (read, write, din).
+    """Declare shadow variables for istream ``read`` signals.
 
-    In xsim, DPI reads pre-NBA signal values (the OLD registered values
-    from the previous posedge).  In Verilator, eval() produces the NEWLY
-    latched values.  Shadow variables store the previous tick's outputs so
-    that stream_service sees 1-cycle-delayed values, matching xsim.
+    Verilator's eval() merges Active and NBA regions, so after tick()
+    the DUT's ``read`` output reflects the *current* cycle's post-NBA
+    state.  In xosim the DPI reads ``read`` in the Active region
+    (pre-NBA), so it sees the *previous* cycle's committed value.
+
+    To match xosim timing we delay the ``read`` check by one cycle
+    using a ``prev_read`` variable.  Only istream ``read`` is affected;
+    ostream ``write`` and ``din`` are fine because they are produced and
+    consumed in the same eval cycle.
     """
     lines: list[str] = []
     for arg in stream_args:
-        n = arg.qualified_name
-        dw = arg.port.data_width
-        port_width = dw + 1
         if arg.port.is_istream:
-            lines.append(f"    bool prev_{n}_read = false;")
-        elif arg.port.is_ostream:
-            lines.append(f"    bool prev_{n}_write = false;")
-            if port_width > 64:
-                nw = (port_width + 31) // 32
-                lines.append(f"    uint32_t prev_{n}_din[{nw}] = {{}};")
-            else:
-                lines.append(f"    uint64_t prev_{n}_din = 0;")
-    return lines
-
-
-def _cpp_stream_shadow_save(stream_args: Sequence[Arg]) -> list[str]:
-    """Snapshot DUT stream outputs into shadow variables for next iteration."""
-    lines: list[str] = []
-    for arg in stream_args:
-        n = arg.qualified_name
-        dw = arg.port.data_width
-        port_width = dw + 1
-        if arg.port.is_istream:
-            lines.append(f"        prev_{n}_read = dut->{n}_read;")
-        elif arg.port.is_ostream:
-            lines.append(f"        prev_{n}_write = dut->{n}_write;")
-            if port_width > 64:
-                lines.append(
-                    f"        memcpy(prev_{n}_din, &dut->{n}_din,"
-                    f" sizeof(prev_{n}_din));"
-                )
-            else:
-                lines.append(f"        prev_{n}_din = dut->{n}_din;")
+            n = arg.qualified_name
+            lines.append(f"    bool prev_read_{n} = false;")
     return lines
 
 
@@ -1042,18 +1017,16 @@ def _cpp_stream_service(
 ) -> list[str]:
     """Generate FIFO stream servicing code using direct SharedMemoryQueue access.
 
-    Mirrors the xsim DPI istream/ostream protocol.  Called AFTER ``tick()``
-    in the ordering ``tick → service(prev_) → shadow_save``.
+    Mirrors the xsim DPI istream/ostream protocol.  Called AFTER ``tick()``.
 
-    DUT→TB signals (read, write, din) are read from ``prev_*`` shadow
-    variables (1-cycle delay), matching xsim's pre-NBA DPI read semantics
-    where registered signals show the value latched at the previous posedge.
+    Istream ``read`` is delayed by one cycle via ``prev_read`` to match
+    xosim's pre-NBA timing: Verilator's eval() merges Active+NBA so
+    ``dut->read`` after tick() reflects the current cycle, whereas xosim
+    DPI reads the previous cycle's committed value.
 
     TB→DUT signals (dout, empty_n, full_n) are written directly to the DUT.
     They take effect at the next ``tick()`` call (1-cycle delay), matching
     xsim's NBA write semantics.
-
-    Total round trip: 2 cycles, matching xsim exactly.
     """
     lines: list[str] = []
     for arg in stream_args:
@@ -1080,7 +1053,9 @@ def _cpp_stream_service(
             lines.extend(
                 [
                     f"        if (shm_{n}.base) {{",
-                    f"            if (last_empty_n_{n} && prev_{n}_read) {{",
+                    # Use prev_read (previous cycle) to match xosim pre-NBA timing.
+                    f"            bool cur_read_{n} = dut->{n}_read;",
+                    f"            if (last_empty_n_{n} && prev_read_{n}) {{",
                     f"                __atomic_store_n(shm_{n}.tail_ptr,",
                     (
                         f"                    __atomic_load_n(shm_{n}.tail_ptr,"
@@ -1088,6 +1063,7 @@ def _cpp_stream_service(
                     ),
                     "                    __ATOMIC_RELEASE);",
                     "            }",
+                    f"            prev_read_{n} = cur_read_{n};",
                     (
                         f"            uint64_t h_{n} = __atomic_load_n("
                         f"shm_{n}.head_ptr, __ATOMIC_ACQUIRE);"
@@ -1119,24 +1095,24 @@ def _cpp_stream_service(
                 ]
             )
         elif arg.port.is_ostream:
-            # Extract EOT bit from din (bit data_width)
+            # Extract EOT bit from din (bit data_width).
             if port_width > 64:
                 eot_extract = (
                     f"            uint8_t eot_{n} ="
                     f" (reinterpret_cast<uint32_t*>"
-                    f"(prev_{n}_din)[{dw // 32}]"
+                    f"(&dut->{n}_din)[{dw // 32}]"
                     f" >> {dw % 32}) & 1;"
                 )
-                din_ptr = f"prev_{n}_din"
+                din_ptr = f"&dut->{n}_din"
             else:
                 eot_extract = (
-                    f"            uint8_t eot_{n} = (prev_{n}_din >> {dw}) & 1;"
+                    f"            uint8_t eot_{n} = (dut->{n}_din >> {dw}) & 1;"
                 )
-                din_ptr = f"&prev_{n}_din"
+                din_ptr = f"&dut->{n}_din"
             lines.extend(
                 [
                     (
-                        f"        if (last_full_n_{n} && prev_{n}_write"
+                        f"        if (last_full_n_{n} && dut->{n}_write"
                         f" && shm_{n}.base) {{"
                     ),
                     (
@@ -1228,19 +1204,14 @@ def _cpp_sim_loop(
         ]
     )
 
-    # Ordering: tick → stream_service(prev_) → shadow_save.
+    # Ordering: tick → service.
     #
-    # This matches xsim's DPI semantics with a 2-cycle round trip:
-    #   - tick() evaluates the DUT.
-    #   - stream_service reads prev_ shadows from the PREVIOUS tick
-    #     (1-cycle DUT→TB delay, matching pre-NBA DPI reads).
-    #   - stream_service writes dout/empty_n/full_n directly to the DUT
-    #     (1-cycle TB→DUT delay: values seen at the next tick).
-    #   - shadow_save captures the current tick's DUT outputs for use
-    #     by the next iteration's stream_service.
+    # After tick()/eval(), combinational DUT outputs (read, write, din)
+    # reflect the DUT's response to the posedge that just occurred.
+    # TB→DUT writes (empty_n, full_n, dout) take effect at the next
+    # tick() call, providing the 1-cycle delay that matches xsim NBA.
     lines.append("        tick();")
     lines.extend(_cpp_stream_service(stream_args, top_level_peek))
-    lines.extend(_cpp_stream_shadow_save(stream_args))
 
     # Yield CPU when streams stay stalled for multiple consecutive cycles.
     if stall_cond:
@@ -1281,7 +1252,7 @@ def _cpp_sim_loop(
     lines.append("    }")
 
     # After ap_done, continue ticking to drain any remaining pipeline
-    # writes.  Same ordering: tick → service(prev_) → shadow_save.
+    # writes.  Same ordering: tick → service.
     if stream_args:
         lines.extend(
             [
@@ -1292,7 +1263,6 @@ def _cpp_sim_loop(
         )
         lines.append("            tick();")
         lines.extend(_cpp_stream_service(stream_args, top_level_peek))
-        lines.extend(_cpp_stream_shadow_save(stream_args))
         if stall_cond:
             lines.extend(
                 [
