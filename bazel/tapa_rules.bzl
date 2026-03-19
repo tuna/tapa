@@ -9,6 +9,8 @@ load(
     "REMOTE_HOST",
     "REMOTE_KEY_FILE",
     "REMOTE_PORT",
+    "REMOTE_SSH_CONTROL_DIR",
+    "REMOTE_SSH_CONTROL_PERSIST",
     "REMOTE_USER",
     "REMOTE_XILINX_SETTINGS",
     "REMOTE_XILINX_TOOL_PATH",
@@ -35,6 +37,14 @@ def _remote_xilinx_settings():
         subdir = "/Vitis/" if XILINX_TOOL_VERSION >= "2024.2" else "/Vitis_HLS/"
         return REMOTE_XILINX_TOOL_PATH + subdir + XILINX_TOOL_VERSION + "/settings64.sh"
     return ""
+
+def _remote_ssh_control_dir():
+    """Return the configured SSH multiplex control directory."""
+    return REMOTE_SSH_CONTROL_DIR
+
+def _remote_ssh_control_persist():
+    """Return the configured SSH multiplex control persist duration."""
+    return REMOTE_SSH_CONTROL_PERSIST
 
 # Define the implementation function for the custom TAPA target rule.
 def _tapa_xo_impl(ctx):
@@ -67,6 +77,12 @@ def _tapa_xo_impl(ctx):
         xilinx_settings = _remote_xilinx_settings()
         if xilinx_settings:
             tapa_cmd.extend(["--remote-xilinx-settings", xilinx_settings])
+        control_dir = _remote_ssh_control_dir()
+        if control_dir:
+            tapa_cmd.extend(["--remote-ssh-control-dir", control_dir])
+        control_persist = _remote_ssh_control_persist()
+        if control_persist:
+            tapa_cmd.extend(["--remote-ssh-control-persist", control_persist])
 
     # Build the command for tapa-cli analyze.
     tapa_cmd.extend(["analyze", "--input", src.path, "--top", top_name])
@@ -208,6 +224,12 @@ def _tapa_reuse_work_dir_xo_impl(ctx):
         xilinx_settings = _remote_xilinx_settings()
         if xilinx_settings:
             tapa_prefix.extend(["--remote-xilinx-settings", xilinx_settings])
+        control_dir = _remote_ssh_control_dir()
+        if control_dir:
+            tapa_prefix.extend(["--remote-ssh-control-dir", control_dir])
+        control_persist = _remote_ssh_control_persist()
+        if control_persist:
+            tapa_prefix.extend(["--remote-ssh-control-persist", control_persist])
 
     # Build include flags.
     include_flags = []

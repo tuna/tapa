@@ -28,6 +28,9 @@ class RemoteConfig:
     key_file: str | None = None
     xilinx_settings: str | None = None
     work_dir: str = "/tmp/tapa-remote"
+    ssh_control_dir: str | None = None
+    ssh_control_persist: str = "30m"
+    ssh_multiplex: bool = True
 
 
 _active_config: RemoteConfig | None = None
@@ -58,26 +61,45 @@ def _parse_remote_host(remote_host: str) -> dict[str, str | int]:
     return result
 
 
+def _load_remote_config_from_file() -> dict:
+    """Load remote config from ~/.taparc."""
+    if not os.path.isfile(TAPARC_PATH):
+        return {}
+
+    try:
+        with open(TAPARC_PATH, encoding="utf-8") as f:
+            taparc = yaml.safe_load(f)
+    except (OSError, yaml.YAMLError):
+        _logger.warning("Failed to parse %s", TAPARC_PATH, exc_info=True)
+        return {}
+
+    if not isinstance(taparc, dict) or "remote" not in taparc:
+        return {}
+
+    remote_config = dict(taparc["remote"])
+    if remote_config.get("key_file"):
+        remote_config["key_file"] = os.path.expanduser(remote_config["key_file"])
+    return remote_config
+
+
+def _parse_bool(value: object, default: bool = True) -> bool:
+    """Parse bool-like config values."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() not in {"0", "false", "no", "off"}
+    if value is None:
+        return default
+    return bool(value)
+
+
 def load_remote_config(cli_remote_host: str | None) -> RemoteConfig | None:
     """Load remote configuration from CLI and/or ~/.taparc.
 
     CLI --remote-host overrides ~/.taparc values.
     Returns None if remote execution is not configured.
     """
-    file_config: dict = {}
-
-    if os.path.isfile(TAPARC_PATH):
-        try:
-            with open(TAPARC_PATH, encoding="utf-8") as f:
-                taparc = yaml.safe_load(f)
-            if isinstance(taparc, dict) and "remote" in taparc:
-                file_config = taparc["remote"]
-                if file_config.get("key_file"):
-                    file_config["key_file"] = os.path.expanduser(
-                        file_config["key_file"]
-                    )
-        except (OSError, yaml.YAMLError):
-            _logger.warning("Failed to parse %s", TAPARC_PATH, exc_info=True)
+    file_config = _load_remote_config_from_file()
 
     if cli_remote_host is None and not file_config:
         return None
@@ -92,11 +114,22 @@ def load_remote_config(cli_remote_host: str | None) -> RemoteConfig | None:
     if "user" not in merged:
         merged["user"] = getpass.getuser()
 
+    key_file = merged.get("key_file")
+    if isinstance(key_file, str):
+        key_file = os.path.expanduser(key_file)
+
+    ssh_control_dir = merged.get("ssh_control_dir")
+    if isinstance(ssh_control_dir, str):
+        ssh_control_dir = os.path.expanduser(ssh_control_dir)
+
     return RemoteConfig(
         host=merged["host"],
         user=merged.get("user", getpass.getuser()),
         port=int(merged.get("port", 22)),
-        key_file=merged.get("key_file"),
+        key_file=key_file,
         xilinx_settings=merged.get("xilinx_settings"),
         work_dir=merged.get("work_dir", "/tmp/tapa-remote"),
+        ssh_control_dir=ssh_control_dir,
+        ssh_control_persist=str(merged.get("ssh_control_persist", "30m")),
+        ssh_multiplex=_parse_bool(merged.get("ssh_multiplex"), default=True),
     )

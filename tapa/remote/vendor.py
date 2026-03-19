@@ -10,10 +10,8 @@ import re
 import shlex
 import tarfile
 
-import paramiko
-
 from tapa.remote.config import RemoteConfig
-from tapa.remote.connection import get_connection
+from tapa.remote.ssh import run_ssh_with_stdout
 
 _logger = logging.getLogger().getChild(__name__)
 
@@ -31,7 +29,7 @@ def _cache_key(config: RemoteConfig) -> str:
 
 
 def _query_remote_xilinx_paths(
-    ssh: paramiko.SSHClient,
+    config: RemoteConfig,
     xilinx_settings: str,
 ) -> dict[str, str]:
     """Source settings64.sh on remote and return XILINX_HLS and XILINX_VITIS."""
@@ -39,11 +37,10 @@ def _query_remote_xilinx_paths(
         f"source {shlex.quote(xilinx_settings)} && "
         "echo XILINX_HLS=$XILINX_HLS && echo XILINX_VITIS=$XILINX_VITIS"
     )
-    _, stdout, stderr = ssh.exec_command(cmd)
-    output = stdout.read().decode("utf-8", errors="replace")
-    exit_status = stdout.channel.recv_exit_status()
+    exit_status, stdout, stderr = run_ssh_with_stdout(config, cmd)
+    output = stdout.decode("utf-8", errors="replace")
     if exit_status != 0:
-        err = stderr.read().decode("utf-8", errors="replace")
+        err = stderr.decode("utf-8", errors="replace")
         _logger.warning("Failed to query Xilinx paths on remote: %s", err)
         return {}
 
@@ -57,18 +54,18 @@ def _query_remote_xilinx_paths(
 
 
 def _download_dir(
-    ssh: paramiko.SSHClient,
+    config: RemoteConfig,
     remote_path: str,
     local_path: str,
 ) -> bool:
     """Download a remote directory to a local path via tar-over-SSH."""
-    _, stdout, stderr = ssh.exec_command(
+    exit_status, stdout, stderr = run_ssh_with_stdout(
+        config,
         f"tar czf - -C {shlex.quote(remote_path)} .",
     )
-    tar_data = stdout.read()
-    exit_status = stdout.channel.recv_exit_status()
+    tar_data = stdout
     if exit_status != 0:
-        err = stderr.read().decode("utf-8", errors="replace")
+        err = stderr.decode("utf-8", errors="replace")
         _logger.warning("Download failed for %s: %s", remote_path, err)
         return False
     if not tar_data:
@@ -151,8 +148,7 @@ def sync_remote_vendor_includes(config: RemoteConfig) -> str | None:
 
     _logger.info("Fetching vendor include headers from %s ...", config.host)
 
-    ssh = get_connection(config)
-    paths = _query_remote_xilinx_paths(ssh, config.xilinx_settings)
+    paths = _query_remote_xilinx_paths(config, config.xilinx_settings)
 
     xilinx_tool = paths.get("XILINX_HLS") or paths.get("XILINX_VITIS")
     if not xilinx_tool:
@@ -164,18 +160,17 @@ def sync_remote_vendor_includes(config: RemoteConfig) -> str | None:
     # Download include/ (ap_int.h, ap_utils.h, hls_stream.h, etc.)
     remote_include = f"{xilinx_tool}/include"
     local_include = os.path.join(cache_dir, "include")
-    if not _download_dir(ssh, remote_include, local_include):
+    if not _download_dir(config, remote_include, local_include):
         _logger.warning("Failed to download vendor include directory")
         return None
     _logger.info("Downloaded %s -> %s", remote_include, local_include)
 
     # Download tps/lnx64/gcc-*/include/ (C++ stdlib headers)
     # First, find which gcc versions exist
-    _, stdout, _ = ssh.exec_command(
-        f"ls -d {shlex.quote(xilinx_tool)}/tps/lnx64/gcc-*/include 2>/dev/null"
+    _, stdout, _ = run_ssh_with_stdout(
+        config, f"ls -d {shlex.quote(xilinx_tool)}/tps/lnx64/gcc-*/include 2>/dev/null"
     )
-    gcc_include_dirs = stdout.read().decode("utf-8", errors="replace").strip()
-    stdout.channel.recv_exit_status()
+    gcc_include_dirs = stdout.decode("utf-8", errors="replace").strip()
 
     for gcc_include_raw in gcc_include_dirs.splitlines():
         gcc_include = gcc_include_raw.strip()
@@ -184,7 +179,7 @@ def sync_remote_vendor_includes(config: RemoteConfig) -> str | None:
         # Compute relative path: tps/lnx64/gcc-X.Y.Z/include
         rel = os.path.relpath(gcc_include, xilinx_tool)
         local_gcc = os.path.join(cache_dir, rel)
-        if _download_dir(ssh, gcc_include, local_gcc):
+        if _download_dir(config, gcc_include, local_gcc):
             _logger.info("Downloaded %s -> %s", gcc_include, local_gcc)
 
     # Patch vendor headers for macOS compatibility before marking as synced

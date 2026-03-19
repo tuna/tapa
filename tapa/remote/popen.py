@@ -20,9 +20,8 @@ import uuid
 from types import TracebackType
 from typing import Any
 
-import paramiko
-
 from tapa.remote.config import RemoteConfig, get_remote_config
+from tapa.remote.ssh import run_ssh_with_stdin, run_ssh_with_stdout
 
 _logger = logging.getLogger().getChild(__name__)
 
@@ -179,7 +178,7 @@ def _dedup_paths(paths: list[str]) -> list[str]:
     return result
 
 
-def _upload_paths(ssh: paramiko.SSHClient, paths: list[str], session_dir: str) -> None:
+def _upload_paths(config: RemoteConfig, paths: list[str], session_dir: str) -> None:
     """Upload local files and directories to remote via tar-over-SSH."""
     for local_path in paths:
         if not os.path.exists(local_path):
@@ -192,33 +191,28 @@ def _upload_paths(ssh: paramiko.SSHClient, paths: list[str], session_dir: str) -
             extract_dir = remote_path
         else:
             extract_dir = os.path.dirname(remote_path)
-        stdin, stdout, stderr = ssh.exec_command(
+        command = (
             f"rm -rf {shlex.quote(remote_path)} && "
             f"mkdir -p {shlex.quote(extract_dir)} && "
-            f"tar xzf - -C {shlex.quote(extract_dir)} --no-same-owner",
+            f"tar xzf - -C {shlex.quote(extract_dir)} --no-same-owner"
         )
-        stdin.write(tar_data)
-        stdin.channel.shutdown_write()
-        exit_status = stdout.channel.recv_exit_status()
-        if exit_status != 0:
-            err = stderr.read().decode("utf-8", errors="replace")
+        returncode, stderr = run_ssh_with_stdin(config, command, tar_data)
+        if returncode != 0:
+            err = stderr.decode("utf-8", errors="replace")
             _logger.error("Upload failed for %s: %s", local_path, err)
 
 
-def _download_paths(
-    ssh: paramiko.SSHClient, paths: list[str], session_dir: str
-) -> None:
+def _download_paths(config: RemoteConfig, paths: list[str], session_dir: str) -> None:
     """Download remote directories back to local via tar-over-SSH."""
     for local_path in paths:
         remote_path = _local_to_remote_path(local_path, session_dir)
         _logger.info("Downloading %s -> %s", remote_path, local_path)
-        _, dl_stdout, dl_stderr = ssh.exec_command(
+        returncode, tar_data, dl_stderr = run_ssh_with_stdout(
+            config,
             f"tar czf - -C {shlex.quote(remote_path)} .",
         )
-        tar_data = dl_stdout.read()
-        dl_exit = dl_stdout.channel.recv_exit_status()
-        if dl_exit != 0:
-            err = dl_stderr.read().decode("utf-8", errors="replace")
+        if returncode != 0:
+            err = dl_stderr.decode("utf-8", errors="replace")
             _logger.warning("Download failed for %s: %s", remote_path, err)
             continue
         if tar_data:
@@ -291,20 +285,22 @@ class RemoteToolProcess(ToolProcess):
             return b"", b""
         self._communicated = True
 
-        from tapa.remote.connection import get_connection  # noqa: PLC0415
-
-        ssh = get_connection(self._config)
         all_local_paths = _dedup_paths(
             [self._cwd, *self._extra_upload_paths, *self._extra_download_paths]
         )
 
         # Create remote session dir
         _logger.info("Creating remote session directory: %s", self._session_dir)
-        ssh.exec_command(f"mkdir -p {self._session_dir}")
+        mk_exit, _, mk_err = run_ssh_with_stdout(
+            self._config, f"mkdir -p {shlex.quote(self._session_dir)}"
+        )
+        if mk_exit != 0:
+            self.returncode = mk_exit
+            return b"", mk_err
 
         # Upload
         upload_list = [self._cwd, *list(self._extra_upload_paths)]
-        _upload_paths(ssh, upload_list, self._session_dir)
+        _upload_paths(self._config, upload_list, self._session_dir)
 
         # Build and execute remote command
         remote_cwd = _local_to_remote_path(self._cwd, self._session_dir)
@@ -321,21 +317,20 @@ class RemoteToolProcess(ToolProcess):
         )
         _logger.info("Executing remote command: %s", full_cmd)
 
-        _stdin, stdout, stderr = ssh.exec_command(
+        returncode, stdout_data, stderr_data = run_ssh_with_stdout(
+            self._config,
             f"bash -c {shlex.quote(full_cmd)}",
             timeout=timeout,
         )
-        stdout_data = stdout.read()
-        stderr_data = stderr.read()
-        self.returncode = stdout.channel.recv_exit_status()
+        self.returncode = returncode
         _logger.info("Remote command exited with code %d", self.returncode)
 
         # Download
         download_list = [self._cwd, *list(self._extra_download_paths)]
-        _download_paths(ssh, download_list, self._session_dir)
+        _download_paths(self._config, download_list, self._session_dir)
 
         # Cleanup
-        ssh.exec_command(f"rm -rf {shlex.quote(self._session_dir)}")
+        run_ssh_with_stdout(self._config, f"rm -rf {shlex.quote(self._session_dir)}")
 
         return stdout_data, stderr_data
 

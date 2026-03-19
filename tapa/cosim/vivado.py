@@ -13,7 +13,7 @@ import subprocess
 
 from tapa.common import paths
 from tapa.remote.config import RemoteConfig, get_remote_config
-from tapa.remote.connection import get_connection
+from tapa.remote.ssh import run_ssh_with_stdout
 
 _logger = logging.getLogger().getChild(__name__)
 
@@ -44,19 +44,19 @@ def _get_vivado_version_local() -> str:
 
 def _get_vivado_version_remote(config: RemoteConfig) -> str:
     """Return the Vivado version from remote host."""
-    ssh = get_connection(config)
     cmd_parts = []
     if config.xilinx_settings:
         cmd_parts.append(f"source {shlex.quote(config.xilinx_settings)}")
     cmd_parts.append("vivado -version")
     full_cmd = " ; ".join(cmd_parts)
 
-    _, stdout, stderr = ssh.exec_command(f"bash -c {shlex.quote(full_cmd)}")
-    output = stdout.read().decode("utf-8")
-    exit_status = stdout.channel.recv_exit_status()
+    exit_status, stdout, stderr = run_ssh_with_stdout(
+        config, f"bash -c {shlex.quote(full_cmd)}"
+    )
+    output = stdout.decode("utf-8")
 
     if exit_status != 0:
-        err = stderr.read().decode("utf-8", errors="replace")
+        err = stderr.decode("utf-8", errors="replace")
         error = f"Failed to get Vivado version from remote: {err}"
         raise ValueError(error)
 

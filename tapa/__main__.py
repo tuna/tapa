@@ -86,6 +86,24 @@ _logger = logging.getLogger().getChild(__name__)
     default=None,
     help="Path to Xilinx settings64.sh on the remote host.",
 )
+@click.option(
+    "--remote-ssh-control-dir",
+    type=str,
+    default=None,
+    help="Directory for OpenSSH multiplex control sockets.",
+)
+@click.option(
+    "--remote-ssh-control-persist",
+    type=str,
+    default=None,
+    help="OpenSSH ControlPersist duration, e.g. 30m or 4h.",
+)
+@click.option(
+    "--remote-disable-ssh-mux",
+    is_flag=True,
+    default=False,
+    help="Disable OpenSSH multiplexing for remote execution.",
+)
 @click.version_option(__version__, prog_name="tapa")
 @click.pass_context
 def entry_point(  # noqa: PLR0913,PLR0917
@@ -98,6 +116,9 @@ def entry_point(  # noqa: PLR0913,PLR0917
     remote_host: str | None,
     remote_key_file: str | None,
     remote_xilinx_settings: str | None,
+    remote_ssh_control_dir: str | None,
+    remote_ssh_control_persist: str | None,
+    remote_disable_ssh_mux: bool,
 ) -> None:
     """The TAPA compiler."""
     setup_logging(verbose, quiet, work_dir)
@@ -110,6 +131,12 @@ def entry_point(  # noqa: PLR0913,PLR0917
         config.key_file = os.path.expanduser(remote_key_file)
     if config and remote_xilinx_settings:
         config.xilinx_settings = remote_xilinx_settings
+    if config and remote_ssh_control_dir:
+        config.ssh_control_dir = os.path.expanduser(remote_ssh_control_dir)
+    if config and remote_ssh_control_persist:
+        config.ssh_control_persist = remote_ssh_control_persist
+    if config and remote_disable_ssh_mux:
+        config.ssh_multiplex = False
     set_remote_config(config)
     if config:
         _logger.info(

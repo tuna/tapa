@@ -9,6 +9,8 @@ load(
     "REMOTE_HOST",
     "REMOTE_KEY_FILE",
     "REMOTE_PORT",
+    "REMOTE_SSH_CONTROL_DIR",
+    "REMOTE_SSH_CONTROL_PERSIST",
     "REMOTE_USER",
     "REMOTE_XILINX_TOOL_PATH",
     "XILINX_TOOL_LEGACY_PATH",
@@ -46,6 +48,19 @@ _optional_local_repository = repository_rule(
     },
 )
 
+def _sh_quote(value):
+    """Quote a string for POSIX shell single-quoted contexts."""
+    return "'" + value.replace("'", "'\"'\"'") + "'"
+
+def _remote_ssh_control_dir(rctx):
+    """Return SSH control socket directory for repository fetch."""
+    if rctx.attr.remote_ssh_control_dir:
+        return rctx.attr.remote_ssh_control_dir
+    xdg_runtime = rctx.os.environ.get("XDG_RUNTIME_DIR", "")
+    if xdg_runtime:
+        return xdg_runtime + "/tapa/ssh"
+    return "/tmp/tapa-ssh-mux"
+
 def _fetch_vendor_headers_via_ssh(rctx, remote_path):
     """Fetch vendor headers from the remote host configured in VARS.bzl."""
     host = rctx.attr.remote_host
@@ -54,19 +69,41 @@ def _fetch_vendor_headers_via_ssh(rctx, remote_path):
     key_file = rctx.attr.remote_key_file
 
     ssh_target = (user + "@" + host) if user else host
-    ssh_opts = ["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", "-p", port]
+    ssh_opts = [
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "StrictHostKeyChecking=accept-new",
+        "-o",
+        "ConnectTimeout=30",
+        "-p",
+        port,
+    ]
     if key_file:
         home = rctx.os.environ.get("HOME", "")
         resolved_key = key_file.replace("~", home)
         ssh_opts.extend(["-i", resolved_key])
+    control_dir = _remote_ssh_control_dir(rctx)
+    control_path = control_dir + "/cm-%C"
+    ssh_opts.extend([
+        "-o",
+        "ControlMaster=auto",
+        "-o",
+        "ControlPath=" + control_path,
+        "-o",
+        "ControlPersist=" + rctx.attr.remote_ssh_control_persist,
+    ])
+    rctx.execute(["mkdir", "-p", control_dir])
+    rctx.execute(["chmod", "700", control_dir])
+
+    remote_tar_cmd = "tar czf - -C " + _sh_quote(remote_path) + " include"
 
     # Download include/ directory via tar-over-SSH.
     result = rctx.execute(
         [
             "sh",
             "-c",
-            "ssh " + " ".join(ssh_opts) + " " + ssh_target +
-            " 'tar czf - -C " + remote_path + " include' | tar xzf -",
+            "ssh " + " ".join(ssh_opts) + " " + ssh_target + " " + _sh_quote(remote_tar_cmd) + " | tar xzf -",
         ],
         timeout = 60,
     )
@@ -106,6 +143,8 @@ _vitis_hls_repository = repository_rule(
         "remote_user": attr.string(default = ""),
         "remote_port": attr.string(default = "22"),
         "remote_key_file": attr.string(default = ""),
+        "remote_ssh_control_dir": attr.string(default = ""),
+        "remote_ssh_control_persist": attr.string(default = "30m"),
     },
 )
 
@@ -155,6 +194,8 @@ def _load_dependencies(module_ctx):
     _vitis_hls_repository(
         name = "vitis_hls",
         build_file_content = """
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
 cc_library(
     name = "include",
     hdrs = glob(["include/**/*.h"], allow_empty = True),
@@ -180,6 +221,8 @@ cc_library(
         remote_user = REMOTE_USER,
         remote_port = REMOTE_PORT,
         remote_key_file = REMOTE_KEY_FILE,
+        remote_ssh_control_dir = REMOTE_SSH_CONTROL_DIR,
+        remote_ssh_control_persist = REMOTE_SSH_CONTROL_PERSIST,
     )
 
     # Starting from 2024.2, Vivado has renamed rdi to xv
@@ -188,6 +231,8 @@ cc_library(
     _optional_local_repository(
         name = "xsim_xv",
         build_file_content = """
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
 cc_library(
     name = "svdpi",
     hdrs = glob(["include/svdpi.h"], allow_empty = True),
@@ -204,6 +249,8 @@ cc_library(
     _optional_local_repository(
         name = "xsim_legacy_rdi",
         build_file_content = """
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
 cc_library(
     name = "svdpi",
     hdrs = glob(["include/svdpi.h"], allow_empty = True),
