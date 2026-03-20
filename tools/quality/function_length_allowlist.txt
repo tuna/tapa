@@ -1,0 +1,2 @@
+# Temporary exceptions for Python function-length budget.
+# Format: relative/path.py:qualified.symbol

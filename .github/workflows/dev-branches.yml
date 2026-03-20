@@ -48,6 +48,75 @@ jobs:
           UBUNTU_PRO_TOKEN: ${{ secrets.UBUNTU_PRO_TOKEN }}
           MAC_ADDRESS: ${{ secrets.MAC_ADDRESS }}
 
+  lint-python:
+    name: Lint Python
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout myself
+        uses: actions/checkout@v4
+
+      - name: Run Ruff
+        uses: ./.github/actions/run-command
+        with:
+          run: ruff check tapa
+        env:
+          UBUNTU_PRO_TOKEN: ${{ secrets.UBUNTU_PRO_TOKEN }}
+          MAC_ADDRESS: ${{ secrets.MAC_ADDRESS }}
+
+  lint-js:
+    name: Lint JS
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout myself
+        uses: actions/checkout@v4
+
+      - name: Run JS lint
+        uses: ./.github/actions/run-command
+        with:
+          run: pnpm --dir tapa-visualizer lint src
+        env:
+          UBUNTU_PRO_TOKEN: ${{ secrets.UBUNTU_PRO_TOKEN }}
+          MAC_ADDRESS: ${{ secrets.MAC_ADDRESS }}
+
+  size-budget:
+    name: Size Budget
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout myself
+        uses: actions/checkout@v4
+
+      - name: Run size budgets
+        uses: ./.github/actions/run-command
+        with:
+          run: python3 tools/quality/file_budget.py --mode all --disable-function-budget
+        env:
+          UBUNTU_PRO_TOKEN: ${{ secrets.UBUNTU_PRO_TOKEN }}
+          MAC_ADDRESS: ${{ secrets.MAC_ADDRESS }}
+
+  refactor-tests:
+    name: Refactor Tests
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout myself
+        uses: actions/checkout@v4
+
+      - name: Run representative matrix
+        uses: ./.github/actions/run-command
+        with:
+          run: >-
+            python3 tools/quality/run_refactor_matrix.py
+            --suite compiler
+            --suite graphir
+            --suite cosim
+            --suite visualizer
+        env:
+          UBUNTU_PRO_TOKEN: ${{ secrets.UBUNTU_PRO_TOKEN }}
+          MAC_ADDRESS: ${{ secrets.MAC_ADDRESS }}
+
   # TODO: integrate into bazel
   docs:
     name: Bulid Documentations
@@ -86,6 +155,10 @@ jobs:
     needs:
       - pre-commit
       - test
+      - lint-python
+      - lint-js
+      - size-budget
+      - refactor-tests
       - docs
 
     steps:

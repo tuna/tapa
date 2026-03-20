@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
+import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -79,6 +80,7 @@ def _ruff_count(target: Path, config: Path) -> int:
     )
     # ruff returns non-zero when findings exist; treat both 0 and 1 as valid.
     if result.returncode not in {0, 1}:
+        sys.stderr.write((result.stderr.strip() or result.stdout.strip()) + "\n")
         msg = f"ruff failed for {target}"
         raise RuntimeError(msg)
     payload = result.stdout.strip() or "[]"
@@ -130,8 +132,12 @@ def main() -> int:
             deltas.append(LintDelta(path=rel, before=before, after=after))
     if not deltas:
         return 0
+    sys.stderr.write("Lint budget regression detected (ruff findings increased):\n")
     for delta in deltas:
-        pass
+        sys.stderr.write(
+            f"  - {delta.path}: before={delta.before} -> after={delta.after}\n",
+        )
+    sys.stderr.write(f"Total regressions: {len(deltas)}\n")
     return 1
 
 

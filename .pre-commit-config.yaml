@@ -75,13 +75,15 @@ repos:
     hooks:
       - id: file-budget
         name: file budget
-        entry: python3 tools/quality/file_budget.py --mode paths
+        entry: python3 tools/quality/file_budget.py --mode staged
         language: system
+        pass_filenames: false
         files: ^(tapa/.*\.py|tapa-visualizer/src/.*\.(js|mjs|cjs))$
       - id: lint-budget
         name: lint budget (ruff regression)
-        entry: python3 tools/quality/lint_budget.py --mode paths
+        entry: python3 tools/quality/lint_budget.py --mode staged
         language: system
+        pass_filenames: false
         files: ^tapa/.*\.py$
 
   - repo: https://github.com/codespell-project/codespell
