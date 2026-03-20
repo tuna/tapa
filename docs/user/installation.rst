@@ -3,8 +3,37 @@ Installation
 
 .. note::
 
-   This guide walks you through building and installing TAPA.
-   The recommended installation method is building from source.
+   This guide walks you through installing TAPA.
+   The recommended installation method is from pre-built releases.
+
+Installing from Releases
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+The easiest way to install TAPA is from a pre-built release:
+
+.. code-block:: bash
+
+   curl -fsSL https://raw.githubusercontent.com/tuna/tapa/main/install.sh | sh -s -- -q
+
+This downloads and installs the latest release. With root privileges, TAPA
+installs to ``/opt/tapa`` with symlinks in ``/usr/local/bin``. Otherwise it
+installs to ``~/.tapa`` and adds it to your ``PATH`` via your shell profile.
+
+To install a specific version:
+
+.. code-block:: bash
+
+   TAPA_VERSION=0.1.20260319 \
+     curl -fsSL https://raw.githubusercontent.com/tuna/tapa/main/install.sh | sh -s -- -q
+
+Releases are available at
+`github.com/tuna/tapa/releases <https://github.com/tuna/tapa/releases>`_.
+
+Verify the installation:
+
+.. code-block:: bash
+
+   tapa --version
 
 System Prerequisites
 ~~~~~~~~~~~~~~~~~~~~
@@ -79,3 +108,9 @@ Verify the installation by running:
 .. code-block:: bash
 
   bazel-bin/tapa/tapa --version
+
+.. note::
+
+   Pre-built releases are available at
+   `github.com/tuna/tapa/releases <https://github.com/tuna/tapa/releases>`_
+   and can be installed with the one-liner above.

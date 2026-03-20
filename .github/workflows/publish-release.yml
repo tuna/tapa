@@ -7,9 +7,6 @@ on:
         description: "Version to publish (defaults to contents of VERSION file)"
         required: false
         default: ""
-  push:
-    tags:
-      - "v*"
 
 permissions:
   contents: write
@@ -55,8 +52,6 @@ jobs:
         run: |
           if [ -n "${{ github.event.inputs.version }}" ]; then
             VERSION="${{ github.event.inputs.version }}"
-          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            VERSION="${{ github.ref_name }}"; VERSION="${VERSION#v}"
           else
             VERSION="$(cat VERSION)"
           fi
