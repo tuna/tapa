@@ -4,6 +4,7 @@
 *.pyc
 *.zip
 .ci-secrets
+.humanize/
 .venv*
 /.cache/
 /.cmake-format
@@ -20,6 +21,7 @@ device_config.json
 floorplan_config.json
 impl_config.json
 node_modules
+plans/
 run/
 work.xo
 work.zip
