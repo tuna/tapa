@@ -5,7 +5,7 @@ Getting Started with TAPA
 
    This guide introduces the basic usage of TAPA for creating
    FPGA dataflow accelerators. It assumes you have :ref:`installed TAPA
-   <user/installation:Building from Source>` and guides you through creating
+   <user/installation:Installation>` and guides you through creating
    a simple vector adder, compiling it for software simulation, synthesizing
    it into RTL, and running hardware simulation using the generated RTL.
 
