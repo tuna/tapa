@@ -75,7 +75,7 @@ def _fetch_vendor_headers_via_ssh(rctx, remote_path):
         "-o",
         "StrictHostKeyChecking=accept-new",
         "-o",
-        "ConnectTimeout=30",
+        "ConnectTimeout=10",
         "-p",
         port,
     ]

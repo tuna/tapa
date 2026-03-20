@@ -179,27 +179,52 @@ def _dedup_paths(paths: list[str]) -> list[str]:
 
 
 def _upload_paths(config: RemoteConfig, paths: list[str], session_dir: str) -> None:
-    """Upload local files and directories to remote via tar-over-SSH."""
-    for local_path in paths:
-        if not os.path.exists(local_path):
-            _logger.warning("Upload path does not exist: %s", local_path)
-            continue
-        remote_path = _local_to_remote_path(local_path, session_dir)
-        _logger.info("Uploading %s -> %s", local_path, remote_path)
-        tar_data = _tar_path(local_path)
-        if os.path.isdir(local_path):
-            extract_dir = remote_path
-        else:
-            extract_dir = os.path.dirname(remote_path)
-        command = (
-            f"rm -rf {shlex.quote(remote_path)} && "
-            f"mkdir -p {shlex.quote(extract_dir)} && "
-            f"tar xzf - -C {shlex.quote(extract_dir)} --no-same-owner"
-        )
-        returncode, stderr = run_ssh_with_stdin(config, command, tar_data)
-        if returncode != 0:
-            err = stderr.decode("utf-8", errors="replace")
-            _logger.error("Upload failed for %s: %s", local_path, err)
+    """Upload all local files/dirs to remote in a single SSH session.
+
+    Creates a single tar archive containing all paths (preserving their
+    absolute directory structure) and extracts it on the remote host under
+    ``<session_dir>/rootfs/``.  This uses one SSH channel instead of one
+    per path, dramatically reducing the number of multiplexed sessions.
+    """
+    rootfs = f"{session_dir}/rootfs"
+
+    valid_paths = [p for p in paths if os.path.exists(p)]
+    for p in paths:
+        if not os.path.exists(p):
+            _logger.warning("Upload path does not exist: %s", p)
+
+    if not valid_paths:
+        # Still need the session directory for the execute step.
+        run_ssh_with_stdout(config, f"mkdir -p {shlex.quote(rootfs)}")
+        return
+
+    # Build a single tar with all paths, archived relative to /.
+    buf = io.BytesIO()
+    with tarfile.open(mode="w:gz", fileobj=buf, dereference=True) as tar:
+        for local_path in valid_paths:
+            arcname_prefix = local_path.lstrip("/")
+            remote_path = _local_to_remote_path(local_path, session_dir)
+            _logger.info("Uploading %s -> %s", local_path, remote_path)
+            if os.path.isdir(local_path):
+                for entry in os.listdir(local_path):
+                    full_entry = os.path.join(local_path, entry)
+                    tar.add(
+                        full_entry,
+                        arcname=os.path.join(arcname_prefix, entry),
+                    )
+            else:
+                tar.add(local_path, arcname=arcname_prefix)
+    tar_data = buf.getvalue()
+
+    # Single SSH session: create rootfs dir + extract everything.
+    command = (
+        f"mkdir -p {shlex.quote(rootfs)} && "
+        f"tar xzf - -C {shlex.quote(rootfs)} --no-same-owner"
+    )
+    returncode, stderr = run_ssh_with_stdin(config, command, tar_data)
+    if returncode != 0:
+        err = stderr.decode("utf-8", errors="replace")
+        _logger.error("Batch upload failed: %s", err)
 
 
 def _download_paths(config: RemoteConfig, paths: list[str], session_dir: str) -> None:
@@ -289,16 +314,8 @@ class RemoteToolProcess(ToolProcess):
             [self._cwd, *self._extra_upload_paths, *self._extra_download_paths]
         )
 
-        # Create remote session dir
+        # Upload (creates session dir + uploads all paths in one session)
         _logger.info("Creating remote session directory: %s", self._session_dir)
-        mk_exit, _, mk_err = run_ssh_with_stdout(
-            self._config, f"mkdir -p {shlex.quote(self._session_dir)}"
-        )
-        if mk_exit != 0:
-            self.returncode = mk_exit
-            return b"", mk_err
-
-        # Upload
         upload_list = [self._cwd, *list(self._extra_upload_paths)]
         _upload_paths(self._config, upload_list, self._session_dir)
 
@@ -328,9 +345,6 @@ class RemoteToolProcess(ToolProcess):
         # Download
         download_list = [self._cwd, *list(self._extra_download_paths)]
         _download_paths(self._config, download_list, self._session_dir)
-
-        # Cleanup
-        run_ssh_with_stdout(self._config, f"rm -rf {shlex.quote(self._session_dir)}")
 
         return stdout_data, stderr_data
 

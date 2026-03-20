@@ -23,9 +23,12 @@ _logger = logging.getLogger().getChild(__name__)
 _MUX_FAILURE_PATTERNS = (
     "control socket connect",
     "mux_client_hello_exchange",
+    "mux_client_request_session",
+    "read from master failed",
     "master is dead",
     "stale control socket",
     "master refused session request",
+    "broken pipe",
 )
 
 _MASTER_READY_LOCK = threading.Lock()
@@ -69,7 +72,7 @@ def build_ssh_args(config: RemoteConfig) -> list[str]:
         "-o",
         "StrictHostKeyChecking=accept-new",
         "-o",
-        "ConnectTimeout=30",
+        "ConnectTimeout=10",
         "-p",
         str(config.port),
     ]
@@ -142,6 +145,12 @@ def _remove_stale_control_socket(config: RemoteConfig) -> None:
             _logger.warning("Removed stale SSH control socket: %s", control_path)
 
 
+def _kill_master(config: RemoteConfig) -> None:
+    """Send exit command to the SSH control master process."""
+    cmd = [*build_ssh_args(config), "-O", "exit", ssh_target(config)]
+    subprocess.run(cmd, capture_output=True, check=False, timeout=10)
+
+
 def _check_master(config: RemoteConfig) -> bool:
     if not config.ssh_multiplex:
         return False
@@ -162,26 +171,46 @@ def _append_mux_log(control_dir: str, message: str) -> None:
         f.write(f"[{ts}] pid={os.getpid()} {message}\n")
 
 
-def ensure_ssh_master(config: RemoteConfig) -> None:
-    """Ensure a shared OpenSSH control master is running."""
+def ensure_ssh_master(
+    config: RemoteConfig,
+    *,
+    force_restart: bool = False,
+) -> None:
+    """Ensure a shared OpenSSH control master is running.
+
+    Args:
+        config: Remote host configuration.
+        force_restart: If True, kill any existing master and start fresh.
+            Used when a mux failure is detected (e.g., TCP connection died
+            but master process is still alive).
+    """
     if not config.ssh_multiplex:
         return
 
     key = _master_key(config)
-    with _MASTER_READY_LOCK:
-        if key in _MASTER_READY_KEYS:
-            return
-        if key in _MASTER_FAILED_KEYS:
-            return
+    if not force_restart:
+        with _MASTER_READY_LOCK:
+            if key in _MASTER_READY_KEYS:
+                return
+            if key in _MASTER_FAILED_KEYS:
+                return
 
     control_dir = _ensure_ssh_control_dir(config)
     lock_path = os.path.join(control_dir, "master.lock")
     with open(lock_path, "a", encoding="utf-8") as lock_file:
         fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-        control_path = _resolve_control_path(config)
-        if _check_master(config):
+
+        if force_restart:
+            _kill_master(config)
+            _remove_stale_control_socket(config)
+            msg = f"SSH mux: force-restarting master for {config.host}:{config.port}"
+            _logger.info(msg)
+            _append_mux_log(control_dir, msg)
+        elif _check_master(config):
+            control_path = _resolve_control_path(config)
             msg = (
-                f"SSH mux: reusing existing master at {control_path}"
+                f"SSH mux: reusing existing master"
+                f" at {control_path}"
                 f" for {config.host}:{config.port}"
             )
             _logger.info(msg)
@@ -189,7 +218,9 @@ def ensure_ssh_master(config: RemoteConfig) -> None:
             with _MASTER_READY_LOCK:
                 _MASTER_READY_KEYS.add(key)
             return
-        _remove_stale_control_socket(config)
+        else:
+            _remove_stale_control_socket(config)
+
         cmd = [*build_ssh_args(config), "-MNf", ssh_target(config)]
         result = subprocess.run(
             cmd,
@@ -207,6 +238,7 @@ def ensure_ssh_master(config: RemoteConfig) -> None:
             with _MASTER_READY_LOCK:
                 _MASTER_FAILED_KEYS.add(key)
             return
+        control_path = _resolve_control_path(config)
         msg = (
             f"SSH mux: started new master at {control_path}"
             f" for {config.host}:{config.port}"
@@ -215,6 +247,8 @@ def ensure_ssh_master(config: RemoteConfig) -> None:
         _append_mux_log(control_dir, msg)
 
     with _MASTER_READY_LOCK:
+        # Clear any previous failure state on success.
+        _MASTER_FAILED_KEYS.discard(key)
         _MASTER_READY_KEYS.add(key)
 
 
@@ -227,6 +261,18 @@ def run_ssh(
 ) -> subprocess.CompletedProcess[bytes]:
     """Run a remote command via OpenSSH."""
     ensure_ssh_master(config)
+
+    # Fail fast if master is known to be unreachable.
+    key = _master_key(config)
+    with _MASTER_READY_LOCK:
+        if key in _MASTER_FAILED_KEYS:
+            return subprocess.CompletedProcess(
+                args=[],
+                returncode=255,
+                stdout=b"",
+                stderr=b"SSH connection unavailable (master failed)\n",
+            )
+
     cmd = [*build_ssh_args(config), ssh_target(config), remote_command]
     result = subprocess.run(
         cmd,
@@ -236,12 +282,16 @@ def run_ssh(
         check=False,
     )
     if _is_mux_failure(result):
-        # Drop the in-process "master ready" mark so ensure_ssh_master restarts.
-        key = _master_key(config)
         with _MASTER_READY_LOCK:
             _MASTER_READY_KEYS.discard(key)
-        _remove_stale_control_socket(config)
-        ensure_ssh_master(config)
+            _MASTER_FAILED_KEYS.discard(key)
+        ensure_ssh_master(config, force_restart=True)
+
+        # Only retry if the new master was established successfully.
+        with _MASTER_READY_LOCK:
+            if key in _MASTER_FAILED_KEYS:
+                return result
+
         result = subprocess.run(
             cmd,
             input=input_bytes,
