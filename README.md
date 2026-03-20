@@ -29,6 +29,28 @@ TAPA is community maintained by
 
 ## Quick Start
 
+### Installing from Releases
+
+The easiest way to install TAPA is from a pre-built release:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/tuna/tapa/main/install.sh | sh -s -- -q
+```
+
+This downloads and installs the latest release. With root privileges, TAPA
+installs to `/opt/tapa` with symlinks in `/usr/local/bin`. Otherwise it
+installs to `~/.tapa` and adds it to your `PATH` via your shell profile.
+
+To install a specific version:
+
+```sh
+TAPA_VERSION=0.1.20260319 \
+  curl -fsSL https://raw.githubusercontent.com/tuna/tapa/main/install.sh | sh -s -- -q
+```
+
+Releases are available at
+[github.com/tuna/tapa/releases](https://github.com/tuna/tapa/releases).
+
 ### Prerequisites
 
 - Ubuntu 18.04+, Debian 10+, RHEL 9+, Fedora 34+, or Amazon Linux 2023

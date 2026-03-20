@@ -4,9 +4,10 @@
 # All rights reserved. The contributor(s) of this file has/have agreed to the
 # RapidStream Contributor License Agreement.
 
-# This script is used to install TAPA from a local package on the target machine.
+# This script is used to install TAPA on the target machine.
 #
 # Usage:
+#   ./install.sh [-q]
 #   TAPA_LOCAL_PACKAGE=./path/to/tapa.tar.gz ./install.sh
 #
 # If the user runs this script with the root privilege, it will install the software
@@ -25,17 +26,8 @@ set -ue
 # Default values for the installation options.
 # Support both new and legacy environment variable names.
 TAPA_LOCAL_PACKAGE="${TAPA_LOCAL_PACKAGE:-${RAPIDSTREAM_LOCAL_PACKAGE:-}}"
-
-if [ -z "$TAPA_LOCAL_PACKAGE" ]; then
-  echo "Error: TAPA_LOCAL_PACKAGE must be set to the path of the TAPA tarball."
-  echo ""
-  echo "To build TAPA from source and create a tarball, run:"
-  echo "  bazel build --config=release //:tapa-pkg-tar"
-  echo ""
-  echo "Then install with:"
-  echo "  TAPA_LOCAL_PACKAGE=./bazel-bin/tapa-pkg-tar.tar ./install.sh"
-  exit 1
-fi
+TAPA_VERSION="${TAPA_VERSION:-latest}"
+TAPA_DOWNLOAD_TMPFILE=""
 
 if [ "$(id -u)" -eq 0 ]; then
   # Default to /opt/tapa if the user has the root privilege.
@@ -57,19 +49,27 @@ QUIET="${QUIET:-no}"
 # Display the usage of this script.
 usage() {
   cat <<EOF
-install.sh - Install TAPA from a local package.
+install.sh - Install TAPA.
 
-Usage: TAPA_LOCAL_PACKAGE=./tapa.tar.gz ./install.sh [OPTIONS]
+Usage: ./install.sh [OPTIONS]
+       TAPA_LOCAL_PACKAGE=./tapa.tar.gz ./install.sh [OPTIONS]
 
 Options:
   -t, --target <directory>     Specify the directory to install the software to.
       --no-create-symlinks     Do not create symbolic links in the system path.
       --no-modify-path         Do not modify the PATH environment variable.
 
+  -V, --version <version>      Specify the TAPA version to download (default: latest).
+                               Ignored if TAPA_LOCAL_PACKAGE is set.
+
   -q, --quiet                  Disable verbose output.
   -qq, --quiet-all             Disable most of the output.
 
   -h, --help                   Display this help message and exit.
+
+Environment variables:
+  TAPA_LOCAL_PACKAGE           Path to a local TAPA tarball (skips download).
+  TAPA_VERSION                 Version to download (default: latest).
 EOF
 }
 
@@ -77,6 +77,10 @@ EOF
 main() {
   # Parse the command-line arguments.
   parse_args "$@"
+
+  if [ -z "$TAPA_LOCAL_PACKAGE" ]; then
+    download_tapa_package
+  fi
 
   # Display the installation options if the verbose mode is enabled.
   if [ "$VERBOSE" = "yes" ]; then
@@ -125,6 +129,14 @@ parse_args() {
       ;;
     --no-modify-path)
       MODIFY_PROFILE_PATH="no"
+      shift
+      ;;
+    -V | --version)
+      TAPA_VERSION="$2"
+      shift 2
+      ;;
+    --version=*)
+      TAPA_VERSION="${1#*=}"
       shift
       ;;
     -q | --quiet)
@@ -183,6 +195,33 @@ check_install_dir() {
     # Remove the existing installation directory
     rm -rf "$TAPA_INSTALL_DIR"
   fi
+}
+
+# Download the TAPA package from GitHub Releases.
+download_tapa_package() {
+  if [ "$TAPA_VERSION" = "latest" ]; then
+    TAPA_URL="https://github.com/tuna/tapa/releases/latest/download/tapa.tar.gz"
+  else
+    TAPA_URL="https://github.com/tuna/tapa/releases/download/v${TAPA_VERSION}/tapa.tar.gz"
+  fi
+  if [ "$QUIET" = "no" ]; then
+    echo "Downloading TAPA ${TAPA_VERSION} from: ${TAPA_URL}..."
+  fi
+  TAPA_DOWNLOAD_TMPFILE="$(mktemp /tmp/tapa-XXXXXX.tar.gz)"
+  trap 'rm -f "$TAPA_DOWNLOAD_TMPFILE"' EXIT INT TERM
+  if command -v curl > /dev/null 2>&1; then
+    if [ "$QUIET" = "yes" ]; then
+      curl -fsSL -o "$TAPA_DOWNLOAD_TMPFILE" "$TAPA_URL"
+    else
+      curl -fL --progress-bar -o "$TAPA_DOWNLOAD_TMPFILE" "$TAPA_URL"
+    fi
+  elif command -v wget > /dev/null 2>&1; then
+    wget -q -O "$TAPA_DOWNLOAD_TMPFILE" "$TAPA_URL" 2>&1 || wget -O "$TAPA_DOWNLOAD_TMPFILE" "$TAPA_URL"
+  else
+    echo "Error: Neither curl nor wget is available. Please install one of them."
+    exit 1
+  fi
+  TAPA_LOCAL_PACKAGE="$TAPA_DOWNLOAD_TMPFILE"
 }
 
 # Extract the TAPA package from the local tarball.

@@ -1,0 +1,74 @@
+name: Publish Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish (defaults to contents of VERSION file)"
+        required: false
+        default: ""
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Release
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout myself
+        uses: actions/checkout@v4
+
+      - name: Run Bazel to build
+        uses: ./.github/actions/build-release
+        env:
+          UBUNTU_PRO_TOKEN: ${{ secrets.UBUNTU_PRO_TOKEN }}
+          MAC_ADDRESS: ${{ secrets.MAC_ADDRESS }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tapa-release
+          path: ${{ github.workspace }}/artifacts.out/*.tar.gz
+          retention-days: 30
+
+  publish:
+    name: Publish Release
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Checkout myself
+        uses: actions/checkout@v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: tapa-release
+
+      - name: Determine version and tag
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION="${{ github.ref_name }}"; VERSION="${VERSION#v}"
+          else
+            VERSION="$(cat VERSION)"
+          fi
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "tag=v${VERSION}" >> "${GITHUB_OUTPUT}"
+
+      - name: Create release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ steps.version.outputs.tag }}
+          name: TAPA ${{ steps.version.outputs.version }}
+          prerelease: false
+          allowUpdates: true
+          generateReleaseNotes: true
+          artifacts: tapa.tar.gz,tapa-visualizer.tar.gz

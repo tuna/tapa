@@ -132,7 +132,7 @@ jobs:
     name: Create Staging Release
     runs-on: self-hosted
     needs: test-staging
-    if: "!github.event.act && startsWith(github.event.ref, 'refs/tags')"
+    if: "!github.event.act && startsWith(github.event.ref, 'refs/tags') && !startsWith(github.event.ref, 'refs/tags/v')"
 
     steps:
       - name: Download artifacts
