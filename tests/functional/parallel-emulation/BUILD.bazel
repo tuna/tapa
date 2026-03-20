@@ -28,10 +28,7 @@ sh_test(
     name = "cannon-xosim",
     size = "enormous",
     timeout = "long",  # 85s without contention
-    srcs = select({
-        "//bazel:is_macos": ["//bazel:sim_env.sh"],
-        "//conditions:default": ["//bazel:v++_env.sh"],
-    }),
+    srcs = ["//bazel:v++_env.sh"],
     args = [
         "$(location cannon-host)",
         "--scatter_bitstream=$(location scatter)",
@@ -115,10 +112,7 @@ sh_test(
     name = "cannon-xosim-4x4",
     size = "enormous",
     timeout = "long",  # 125s without contention
-    srcs = select({
-        "//bazel:is_macos": ["//bazel:sim_env.sh"],
-        "//conditions:default": ["//bazel:v++_env.sh"],
-    }),
+    srcs = ["//bazel:v++_env.sh"],
     args = [
         "$(location cannon-host-4x4)",
         "--scatter_bitstream=$(location scatter-4x4)",

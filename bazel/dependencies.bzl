@@ -92,6 +92,10 @@ def _fetch_vendor_headers_via_ssh(rctx, remote_path):
         "ControlPath=" + control_path,
         "-o",
         "ControlPersist=" + rctx.attr.remote_ssh_control_persist,
+        "-o",
+        "ServerAliveInterval=30",
+        "-o",
+        "ServerAliveCountMax=3",
     ])
     rctx.execute(["mkdir", "-p", control_dir])
     rctx.execute(["chmod", "700", control_dir])

@@ -22,21 +22,23 @@ __all__ = (
 )
 
 REPORT_UTIL_COMMANDS = r"""
+set hdl_dir [lindex $argv 0]
+set rpt_file [lindex $argv 1]
 set_part {part_num}
-read_verilog [ glob {hdl_dir}/*.v ]
-set ips [ glob -nocomplain {hdl_dir}/*/*.xci ]
+read_verilog [ glob $hdl_dir/*.v ]
+set ips [ glob -nocomplain $hdl_dir/*/*.xci ]
 if {{ $ips ne "" }} {{
   import_ip $ips
   upgrade_ip [get_ips *]
   generate_target synthesis [ get_files *.xci ]
 }}
-foreach tcl_file [glob -nocomplain {hdl_dir}/*.tcl] {{
+foreach tcl_file [glob -nocomplain $hdl_dir/*.tcl] {{
   source $tcl_file
 }}
 {set_parallel}
 synth_design {synth_args}
 opt_design
-report_utilization {report_util_args}
+report_utilization -file $rpt_file {report_util_args}
 """
 
 
@@ -98,19 +100,25 @@ class ReportDirUtil(backend.Vivado):
 
         if report_util_kwargs is None:
             report_util_kwargs = {}
-        report_util_kwargs["file"] = os.path.abspath(rpt_path)
         report_util_kwargs.setdefault("hierarchical", "")
 
         synth_args = " ".join(f"-{k} {v}" for k, v in synth_kwargs.items())
         report_util_args = " ".join(f"-{k} {v}" for k, v in report_util_kwargs.items())
         kwargs = {
             "part_num": part_num,
-            "hdl_dir": os.path.abspath(hdl_dir),
             "synth_args": synth_args,
             "report_util_args": report_util_args,
             "set_parallel": "",
         }
-        super().__init__(REPORT_UTIL_COMMANDS.format(**kwargs))
+        abs_hdl_dir = os.path.abspath(hdl_dir)
+        abs_rpt_path = os.path.abspath(rpt_path)
+        rpt_dir = os.path.dirname(abs_rpt_path)
+        os.makedirs(rpt_dir, exist_ok=True)
+        self._extra_upload = (abs_hdl_dir, rpt_dir)
+        self._extra_download = (rpt_dir,)
+        super().__init__(
+            REPORT_UTIL_COMMANDS.format(**kwargs), abs_hdl_dir, abs_rpt_path
+        )
 
 
 class ReportXoUtil(ReportDirUtil):

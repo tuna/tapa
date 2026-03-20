@@ -50,6 +50,7 @@ py_binary(
     data = [
         "//fpga-runtime:include",
         "//tapa-cpp",
+        "//tapa-lib:extra-runtime-include",
         "//tapa-lib:include",
         "//tapa-system-include",
         "//tapa/cosim:__main__",
