@@ -96,6 +96,61 @@ jobs:
           UBUNTU_PRO_TOKEN: ${{ secrets.UBUNTU_PRO_TOKEN }}
           MAC_ADDRESS: ${{ secrets.MAC_ADDRESS }}
 
+      - name: Run changed-file function budget
+        uses: ./.github/actions/run-command
+        with:
+          run: |
+            set -euo pipefail
+            changed_files="$(git diff --name-only "${{ github.event.before }}"..."${{ github.sha }}" || true)"
+            if [[ -z "$changed_files" ]]; then
+              exit 0
+            fi
+            python3 tools/quality/file_budget.py --mode paths ${changed_files}
+        env:
+          UBUNTU_PRO_TOKEN: ${{ secrets.UBUNTU_PRO_TOKEN }}
+          MAC_ADDRESS: ${{ secrets.MAC_ADDRESS }}
+
+  lint-budget:
+    name: Lint Budget
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout myself
+        uses: actions/checkout@v4
+
+      - name: Run changed-file lint budget
+        uses: ./.github/actions/run-command
+        with:
+          run: |
+            set -euo pipefail
+            changed_files="$(git diff --name-only "${{ github.event.before }}"..."${{ github.sha }}" -- 'tapa/**/*.py' 'tapa/*.py' || true)"
+            if [[ -z "$changed_files" ]]; then
+              exit 0
+            fi
+            python3 tools/quality/lint_budget.py --mode paths ${changed_files}
+        env:
+          UBUNTU_PRO_TOKEN: ${{ secrets.UBUNTU_PRO_TOKEN }}
+          MAC_ADDRESS: ${{ secrets.MAC_ADDRESS }}
+
+  quality-tests:
+    name: Quality Tests
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout myself
+        uses: actions/checkout@v4
+
+      - name: Run quality tests
+        uses: ./.github/actions/run-command
+        with:
+          run: |
+            set -euo pipefail
+            python3 -m pip install pytest
+            python3 -m pytest -q tests/quality
+        env:
+          UBUNTU_PRO_TOKEN: ${{ secrets.UBUNTU_PRO_TOKEN }}
+          MAC_ADDRESS: ${{ secrets.MAC_ADDRESS }}
+
   refactor-tests:
     name: Refactor Tests
     runs-on: self-hosted
@@ -158,6 +213,8 @@ jobs:
       - lint-python
       - lint-js
       - size-budget
+      - lint-budget
+      - quality-tests
       - refactor-tests
       - docs
 

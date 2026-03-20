@@ -23,22 +23,34 @@ SUITE_COMMANDS: dict[str, tuple[SuiteCommand, ...]] = {
     "compiler": (
         SuiteCommand(
             required_tool="bazel",
-            argv=("bazel", "test", "--test_output=errors", "//tests/apps/vadd:vadd"),
+            argv=("bazel", "build", "//tests/apps/vadd:vadd-xo"),
+        ),
+        SuiteCommand(
+            required_tool="bazel",
+            argv=("bazel", "build", "//tests/apps/vadd:vadd-zip"),
         ),
     ),
     "graphir": (
         SuiteCommand(
-            required_tool="pytest",
+            required_tool="bazel",
             argv=(
-                "pytest",
-                "-q",
-                "tapa/graphir_conversion/leaf_task_conversion_test.py",
-                "tapa/graphir_conversion/slot_task_conversion_test.py",
-                "tapa/graphir_conversion/top_task_conversion_test.py",
+                "bazel",
+                "test",
+                "--test_output=errors",
+                "//tests/functional/graphir:vadd-xosim",
             ),
         ),
     ),
     "cosim": (
+        SuiteCommand(
+            required_tool="bazel",
+            argv=(
+                "bazel",
+                "test",
+                "--test_output=errors",
+                "//tests/apps/vadd:vadd-zipsim",
+            ),
+        ),
         SuiteCommand(
             required_tool="bazel",
             argv=(
