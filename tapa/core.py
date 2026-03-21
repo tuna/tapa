@@ -46,8 +46,10 @@ from tapa.program_codegen.custom_rtl import (
 from tapa.program_codegen.custom_rtl import (
     replace_custom_rtl as replace_custom_rtl_codegen,
 )
+from tapa.program_codegen.fifos import connect_fifos as connect_fifos_codegen
+from tapa.program_codegen.fifos import instantiate_fifos as instantiate_fifos_codegen
 from tapa.task import Task
-from tapa.util import as_type, get_module_name
+from tapa.util import get_module_name
 from tapa.verilog.ast.ioport import IOPort
 from tapa.verilog.ast.logic import Always, Assign
 from tapa.verilog.ast.signal import Reg, Wire
@@ -58,7 +60,7 @@ from tapa.verilog.ast_utils import (
     make_if_with_block,
     make_port_arg,
 )
-from tapa.verilog.util import Pipeline, array_name, match_array_name, wire_name
+from tapa.verilog.util import Pipeline, array_name, match_array_name
 from tapa.verilog.xilinx import generate_handshake_ports
 from tapa.verilog.xilinx.async_mmap import (
     ASYNC_MMAP_SUFFIXES,
@@ -344,45 +346,15 @@ class Program(  # TODO: refactor this class
                 fp.write(content)
 
     def _connect_fifos(self, task: Task) -> None:
-        _logger.debug("  connecting %s's children tasks", task.name)
-        for fifo_name in task.fifos:
-            for direction in task.get_fifo_directions(fifo_name):
-                task_name, _, fifo_port = task.get_connection_to(fifo_name, direction)
-
-                for suffix in task.get_fifo_suffixes(direction):
-                    # declare wires for FIFOs
-                    wire = Wire(
-                        wire_name(fifo_name, suffix),
-                        self.get_task(task_name)
-                        .module.get_port_of(fifo_port, suffix)
-                        .width,
-                    )
-                    task.module.add_signals([wire])
-
-            if task.is_fifo_external(fifo_name):
-                task.connect_fifo_externally(
-                    fifo_name,
-                    task.name == self.top and self.target == Target.XILINX_VITIS,
-                )
+        connect_fifos_codegen(
+            task=task,
+            top=self.top,
+            target=self.target,
+            get_task=self.get_task,
+        )
 
     def _instantiate_fifos(self, task: Task) -> None:
-        _logger.debug("  instantiating FIFOs in %s", task.name)
-
-        # skip instantiating if the fifo is not declared in this task
-        fifos = {name: fifo for name, fifo in task.fifos.items() if "depth" in fifo}
-        if not fifos:
-            return
-
-        for fifo_name, fifo in fifos.items():
-            _logger.debug("    instantiating %s.%s", task.name, fifo_name)
-
-            # add FIFO instances
-            task.module.add_fifo_instance(
-                name=fifo_name,
-                rst=RST,
-                width=self.get_fifo_width(task, fifo_name),
-                depth=as_type(int, fifo["depth"]),
-            )
+        instantiate_fifos_codegen(task=task, get_fifo_width=self.get_fifo_width)
 
     def _instantiate_children_tasks(  # noqa: C901,PLR0912,PLR0915,PLR0914  # TODO: refactor this method
         self,
