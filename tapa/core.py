@@ -869,38 +869,6 @@ class Program(  # TODO: refactor this class
             tasks=self._tasks, gen_templates=self.gen_templates
         )
 
-    def _check_custom_rtl_format(
-        self, rtl_paths: list[Path], templates_info: dict[str, list[str]]
-    ) -> None:
-        """Check if the custom RTL files are in the correct format."""
-        if rtl_paths:
-            _logger.info("checking custom RTL files format")
-        for rtl_path in rtl_paths:
-            if rtl_path.suffix != ".v":
-                _logger.warning(
-                    "Skip checking custom rtl format for non-verilog file: %s",
-                    rtl_path,
-                )
-                continue
-            rtl_module = Module([rtl_path])
-            if (task := self._tasks.get(rtl_module.name)) is None:
-                continue  # ignore RTL modules that are not tasks
-            if {str(port) for port in rtl_module.ports.values()} == set(
-                templates_info[task.name]
-            ):
-                continue  # ports match exactly
-            msg = [
-                (
-                    f"Custom RTL file {rtl_path} for task {task.name}"
-                    " does not match the expected ports."
-                ),
-                "Task ports:",
-                *(f"  {port}" for port in templates_info[task.name]),
-                "Custom RTL ports:",
-                *(f"  {port}" for port in rtl_module.ports.values()),
-            ]
-            _logger.warning("\n".join(msg))
-
     def _find_task_inst_hierarchy(
         self,
         target_task: str,
