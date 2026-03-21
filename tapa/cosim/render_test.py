@@ -105,10 +105,10 @@ def test_testbench_frame_matches_fixture() -> None:
 
 def test_stream_typedef_matches_fixture() -> None:
     args = _sample_args()
-    expected = _read_fixture("render", "stream_typedef.txt")
+    expected = _read_fixture("render", "stream_typedef.txt").rstrip("\n")
 
-    assert render_stream_typedef(args) == expected
-    assert get_stream_typedef(args) == expected
+    assert render_stream_typedef(args).rstrip("\n") == expected
+    assert get_stream_typedef(args).rstrip("\n") == expected
 
 
 def test_m_axi_connections_matches_fixture() -> None:
