@@ -33,7 +33,7 @@ def test_generate_verilator_tb_matches_golden_outputs() -> None:
     with TemporaryDirectory() as tb_dir, TemporaryDirectory() as verilog_dir:
         config["verilog_path"] = verilog_dir
         with patch(
-            "tapa.cosim.verilator._find_verilator",
+            "tapa.cosim.verilator_build._find_verilator",
             return_value=("/verilator/bin/verilator", None),
         ):
             generate_verilator_tb(config, [], tb_dir)
@@ -46,6 +46,8 @@ def test_generate_verilator_tb_matches_golden_outputs() -> None:
         )
         expected_dpi = _canonicalize(_read_fixture("dpi_support.cpp"))
         assert rendered_dpi == expected_dpi
-        assert Path(tb_dir, "build.sh").read_text(encoding="utf-8") == _read_fixture(
-            "build.sh"
+        rendered_build = _canonicalize(
+            Path(tb_dir, "build.sh").read_text(encoding="utf-8")
         )
+        expected_build = _canonicalize(_read_fixture("build.sh"))
+        assert rendered_build == expected_build
