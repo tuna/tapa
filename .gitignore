@@ -4,6 +4,7 @@
 *.pyc
 *.zip
 .ci-secrets
+.humanize
 .humanize/
 .venv*
 /.cache/
