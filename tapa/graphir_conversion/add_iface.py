@@ -126,6 +126,10 @@ def _append_mmap_ifaces(
 ) -> None:
     scalars.append(f"{port_name}_offset")
     for channel in M_AXI_SUFFIXES_BY_CHANNEL.values():
+        valid_port = get_m_axi_port_name(port_name, channel["valid"])
+        ready_port = get_m_axi_port_name(port_name, channel["ready"])
+        if valid_port not in ir_ports or ready_port not in ir_ports:
+            continue
         channel_ports = [
             ir_port_name
             for suffix in channel["ports"]
@@ -137,8 +141,8 @@ def _append_mmap_ifaces(
                 ports=tuple(channel_ports),
                 clk_port=HANDSHAKE_CLK,
                 rst_port=HANDSHAKE_RST_N,
-                valid_port=get_m_axi_port_name(port_name, channel["valid"]),
-                ready_port=get_m_axi_port_name(port_name, channel["ready"]),
+                valid_port=valid_port,
+                ready_port=ready_port,
             )
         )
 

@@ -19,7 +19,9 @@ py_library(
         "pipeline/iface_builders.py",
         "pipeline/iface_roles.py",
         "pipeline/instantiation_builder.py",
+        "pipeline/ports_builder.py",
         "pipeline/project_builder.py",
+        "pipeline/wire_builder.py",
         "templates.py",
         "utils.py",
     ],
@@ -58,6 +60,21 @@ py_test(
         "//tests/functional/graphir:u55c_device_config.json",
     ],
     deps = ["//tapa/graphir_conversion"],
+)
+
+py_test(
+    name = "project_assembly_test",
+    srcs = ["project_assembly_test.py"],
+    data = glob([
+        "top_conversion_test_files/*",
+    ]) + [
+        "//tests/functional/graphir:floorplan/vadd.json",
+        "//tests/functional/graphir:u55c_device_config.json",
+    ],
+    deps = [
+        "//tapa:core",
+        "//tapa/graphir_conversion",
+    ],
 )
 
 py_test(

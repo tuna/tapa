@@ -261,25 +261,25 @@ def get_reset_inverter_ifaces() -> list[AnyInterface]:
 
 def get_top_task_ifaces() -> list[AnyInterface]:
     names = (
-        ("ARADDR", "ARREADY", "ARVALID"),
-        ("AWADDR", "AWREADY", "AWVALID"),
-        ("BREADY", "BRESP", "BVALID"),
-        ("RDATA", "RREADY", "RRESP", "RVALID"),
-        ("WDATA", "WREADY", "WSTRB", "WVALID"),
+        (("ARADDR", "ARREADY", "ARVALID"), "ARVALID", "ARREADY"),
+        (("AWADDR", "AWREADY", "AWVALID"), "AWVALID", "AWREADY"),
+        (("BREADY", "BRESP", "BVALID"), "BVALID", "BREADY"),
+        (("RDATA", "RREADY", "RRESP", "RVALID"), "RVALID", "RREADY"),
+        (("WDATA", "WREADY", "WSTRB", "WVALID"), "WVALID", "WREADY"),
     )
     return [
         make_handshake_iface(
             ports=(
-                *(f"s_axi_control_{name}" for name in port_names),
+                *(f"s_axi_control_{name}" for name in channel_ports),
                 HANDSHAKE_CLK,
                 HANDSHAKE_RST_N,
             ),
             clk_port=HANDSHAKE_CLK,
             rst_port=HANDSHAKE_RST_N,
-            valid_port=f"s_axi_control_{port_names[-1]}",
-            ready_port=f"s_axi_control_{port_names[-2]}",
+            valid_port=f"s_axi_control_{valid_port}",
+            ready_port=f"s_axi_control_{ready_port}",
         )
-        for port_names in names
+        for channel_ports, valid_port, ready_port in names
     ]
 
 
