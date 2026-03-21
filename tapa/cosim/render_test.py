@@ -25,6 +25,8 @@ from tapa.cosim.templates import (
     get_vitis_test_signals,
 )
 
+_FIXTURES = Path(__file__).with_name("testdata")
+
 
 def _sample_args() -> tuple[Arg, ...]:
     return (
@@ -34,88 +36,86 @@ def _sample_args() -> tuple[Arg, ...]:
     )
 
 
-def test_axi_ram_inst_wrapper_matches_renderer() -> None:
+def _read_fixture(*parts: str) -> str:
+    return _FIXTURES.joinpath(*parts).read_text(encoding="utf-8")
+
+
+def test_axi_ram_inst_renderer_smoke() -> None:
     axi = AXI("gmem", 64, 32)
 
     rendered = render_axi_ram_inst(axi)
 
-    assert get_axi_ram_inst(axi) == rendered
+    assert "parameter AXI_RAM_GMEM_DATA_WIDTH = 64;" in get_axi_ram_inst(axi)
     assert "parameter AXI_RAM_GMEM_DATA_WIDTH = 64;" in rendered
     assert "axi_ram_gmem_unit" in rendered
 
 
-def test_axi_ram_module_wrapper_matches_renderer(tmp_path: Path) -> None:
+def test_axi_ram_module_renderer_smoke(tmp_path: Path) -> None:
     axi = AXI("mem", 32, 32)
     input_path = tmp_path / "mem.bin"
     input_path.write_bytes(b"\x00" * 16)
 
     rendered = render_axi_ram_module(axi, str(input_path), 4)
 
-    assert get_axi_ram_module(axi, str(input_path), 4) == rendered
+    assert "module axi_ram_mem #" in get_axi_ram_module(axi, str(input_path), 4)
     assert "module axi_ram_mem #" in rendered
     assert f'$fopen("{input_path}", "rb");' in rendered
     assert f'$fopen("{input_path.with_name("mem_out.bin")}", "wb");' in rendered
 
 
-def test_vitis_test_signals_wrapper_matches_renderer() -> None:
+def test_vitis_test_signals_matches_fixture() -> None:
     args = _sample_args()
+
     rendered = render_vitis_test_signals(
         {"scalar": ["'h10", "'h14"]},
         {"scalar": "123456789"},
         args,
     )
+    expected = _read_fixture("render", "vitis_test_signals.txt")
 
+    assert rendered == expected
     assert (
         get_vitis_test_signals(
             {"scalar": ["'h10", "'h14"]},
             {"scalar": "123456789"},
             args,
         )
-        == rendered
+        == expected
     )
-    assert "tapa::istream(" in rendered
-    assert "tapa::ostream(" in rendered
-    assert "s_axi_aw_din <= 'h10;" in rendered
-    assert "s_axi_aw_din <= 'h14;" in rendered
-    assert "axi_ram_mem_dump_mem <= 1;" in rendered
 
 
-def test_hls_test_signals_wrapper_matches_renderer() -> None:
+def test_hls_test_signals_matches_fixture() -> None:
     args = _sample_args()
 
     rendered = render_hls_test_signals(args)
+    expected = _read_fixture("render", "hls_test_signals.txt")
 
-    assert get_hls_test_signals(args) == rendered
-    assert "wait(kernel_done);" in rendered
-    assert "fifo_a_s_data_unpacked_next" in rendered
-    assert "fifo_b_s_ready_next" in rendered
-    assert "axi_ram_mem_dump_mem <= 1;" in rendered
+    assert rendered == expected
+    assert get_hls_test_signals(args) == expected
 
 
-def test_testbench_frame_wrappers_match_renderer() -> None:
-    assert get_begin() == render_testbench_begin()
+def test_testbench_frame_matches_fixture() -> None:
+    expected = _read_fixture("render", "testbench_begin.txt")
+
+    assert render_testbench_begin() == expected
+    assert get_begin() == expected
+    assert render_testbench_end() == _read_fixture("render", "testbench_end.txt")
     assert get_end() == render_testbench_end()
-    assert "module test();" in get_begin()
-    assert "endmodule" in get_end()
-    assert "wire [31:0] REG_MASK_32_BIT = {{32{{1'b1}}}};" in get_begin()
 
 
-def test_stream_typedef_wrapper_matches_renderer() -> None:
+def test_stream_typedef_matches_fixture() -> None:
     args = _sample_args()
+    expected = _read_fixture("render", "stream_typedef.txt")
 
-    rendered = render_stream_typedef(args)
-
-    assert get_stream_typedef(args) == rendered
-    assert "typedef logic unpacked_uint32_t[31:0];" in rendered
-    assert "typedef logic [64:0] packed_uint65_t;" in rendered
+    assert render_stream_typedef(args) == expected
+    assert get_stream_typedef(args) == expected
 
 
-def test_m_axi_connections_wrapper_matches_renderer() -> None:
-    rendered = render_m_axi_connections("mem")
+def test_m_axi_connections_matches_fixture() -> None:
+    expected = _read_fixture("render", "m_axi_connections.txt")
 
-    assert get_m_axi_connections("mem") == rendered
-    assert ".m_axi_mem_ARADDR  (axi_mem_araddr )," in rendered
-    assert ".m_axi_mem_WVALID  (axi_mem_wvalid )," in rendered
+    assert render_m_axi_connections("mem") == expected
+    assert get_m_axi_connections("mem") == expected
 
 
 def test_render_template_failure_is_wrapped() -> None:

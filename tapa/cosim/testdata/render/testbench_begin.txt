@@ -1,0 +1,31 @@
+
+`timescale 1 ns / 1 ps
+
+package tapa;
+  import "DPI-C" function void istream(
+    output logic  dout[],
+    output logic  empty_n,
+    input  logic  read,
+    input  string id
+  );
+  import "DPI-C" function void ostream(
+    input  logic  din[],
+    output logic  full_n,
+    input  logic  write,
+    input  string id
+  );
+endpackage
+
+module test();
+
+  reg ap_clk = 0;
+  reg ap_rst_n = 0;
+  reg ap_start = 0;
+  wire ap_done;
+  wire ap_ready;
+  wire ap_idle;
+
+  reg kernel_started = 0;
+  reg kernel_done = 0;
+
+  wire [31:0] REG_MASK_32_BIT = {{32{{1'b1}}}};

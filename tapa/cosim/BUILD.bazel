@@ -65,7 +65,10 @@ py_library(
 py_library(
     name = "render",
     srcs = ["render.py"],
-    data = glob(["assets/*.j2"]),
+    data = glob([
+        "assets/*.j2",
+        "testdata/**/*",
+    ]),
     deps = [
         ":common",
         requirement("jinja2"),
@@ -82,11 +85,23 @@ py_library(
 py_test(
     name = "render_test",
     srcs = ["render_test.py"],
-    data = glob(["assets/*.j2"]),
+    data = glob([
+        "assets/*.j2",
+        "testdata/**/*",
+    ]),
     deps = [
         ":common",
         ":render",
         ":templates",
+    ],
+)
+
+py_test(
+    name = "verilator_test",
+    srcs = ["verilator_test.py"],
+    data = glob(["testdata/**/*"]),
+    deps = [
+        ":verilator",
     ],
 )
 

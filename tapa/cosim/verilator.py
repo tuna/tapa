@@ -472,10 +472,7 @@ def _cpp_preamble(
     if mode == "vitis":
         lines.append("static void ctrl_write(uint8_t addr, uint32_t data);")
 
-    # Add stream queue types if there are stream args
-    stream_args = [a for a in args if a.is_stream]
-    if stream_args:
-        lines.extend(_cpp_stream_types(stream_args))
+    lines.extend(_cpp_stream_support(args))
 
     lines.append("")
     return lines
@@ -527,6 +524,14 @@ def _cpp_stream_types(stream_args: Sequence[Arg]) -> list[str]:
         ]
     )
     return lines
+
+
+def _cpp_stream_support(args: Sequence[Arg]) -> list[str]:
+    """Generate stream queue declarations when the design has streams."""
+    stream_args = [arg for arg in args if arg.is_stream]
+    if not stream_args:
+        return []
+    return _cpp_stream_types(stream_args)
 
 
 def _cpp_main_body(  # noqa: PLR0913, PLR0917
