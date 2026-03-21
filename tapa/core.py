@@ -40,6 +40,12 @@ from tapa.program.directory import ProgramDirectoryMixin
 from tapa.program.hls import ProgramHlsMixin
 from tapa.program.pack import ProgramPackMixin
 from tapa.program.synthesis import ProgramSynthesisMixin
+from tapa.program_codegen.custom_rtl import (
+    get_rtl_templates_info as get_rtl_templates_info_codegen,
+)
+from tapa.program_codegen.custom_rtl import (
+    replace_custom_rtl as replace_custom_rtl_codegen,
+)
 from tapa.task import Task
 from tapa.util import as_type, get_module_name
 from tapa.verilog.ast.ioport import IOPort
@@ -844,28 +850,13 @@ class Program(  # TODO: refactor this class
             rtl_paths: List of file paths to copy.
             templates_info: The target folder where files will be copied.
         """
-        rtl_path = Path(self.rtl_dir)
-        assert Path.exists(rtl_path)
-
         custom_rtl = self._get_custom_rtl_files(rtl_paths)
-        _logger.info("Adding custom RTL files to the project:")
-        for file_path in custom_rtl:
-            _logger.info("  %s", file_path)
-        self._check_custom_rtl_format(custom_rtl, templates_info)
-
-        for file_path in custom_rtl:
-            assert file_path.is_file()
-
-            # Determine destination path
-            dest_path = rtl_path / file_path.name
-
-            if dest_path.exists():
-                _logger.info("Replacing %s with custom RTL.", file_path.name)
-            else:
-                _logger.info("Adding custom RTL %s.", file_path.name)
-
-            # Copy file to destination, replacing if necessary
-            shutil.copy2(file_path, dest_path)
+        replace_custom_rtl_codegen(
+            rtl_dir=self.rtl_dir,
+            custom_rtl=custom_rtl,
+            templates_info=templates_info,
+            tasks=self._tasks,
+        )
 
     def get_rtl_templates_info(self) -> dict[str, list[str]]:
         """Get the template information for each task.
@@ -874,10 +865,9 @@ class Program(  # TODO: refactor this class
             dict[str, list[str]]: A dictionary where the key is the task
             name and the value is the list of ports of the task.
         """
-        return {
-            task: [str(port) for port in self._tasks[task].module.ports.values()]
-            for task in self.gen_templates
-        }
+        return get_rtl_templates_info_codegen(
+            tasks=self._tasks, gen_templates=self.gen_templates
+        )
 
     def _check_custom_rtl_format(
         self, rtl_paths: list[Path], templates_info: dict[str, list[str]]

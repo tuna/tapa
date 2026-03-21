@@ -14,26 +14,16 @@ import operator
 from typing import ClassVar, Literal, NamedTuple
 
 from pyverilog.vparser.ast import (
-    Constant,
     IntConst,
-    ParamArg,
     Plus,
 )
 
 from tapa import __version__
-from tapa.backend.xilinx import M_AXI_PREFIX
 from tapa.instance import Instance, Port
-from tapa.util import (
-    get_addr_width,
-    get_indexed_name,
-    range_or_none,
-)
+from tapa.task_codegen.m_axi import add_m_axi as add_m_axi_codegen
 from tapa.verilog.ast.ioport import IOPort
 from tapa.verilog.ast.logic import Assign
 from tapa.verilog.ast.signal import Wire
-from tapa.verilog.ast.width import Width
-from tapa.verilog.ast_utils import make_port_arg
-from tapa.verilog.axi_xbar import generate as axi_xbar_generate
 from tapa.verilog.util import wire_name
 from tapa.verilog.xilinx.axis import (
     AXIS_CONSTANTS,
@@ -46,7 +36,6 @@ from tapa.verilog.xilinx.const import (
     HANDSHAKE_IDLE,
     HANDSHAKE_OUTPUT_PORTS,
     HANDSHAKE_READY,
-    HANDSHAKE_RST,
     HANDSHAKE_RST_N,
     HANDSHAKE_START,
     ISTREAM_SUFFIXES,
@@ -55,7 +44,6 @@ from tapa.verilog.xilinx.const import (
     STREAM_PORT_DIRECTION,
     get_stream_width,
 )
-from tapa.verilog.xilinx.m_axi import M_AXI_PORTS, get_m_axi_port_width
 from tapa.verilog.xilinx.module import Module
 
 _logger = logging.getLogger().getChild(__name__)
@@ -490,148 +478,9 @@ class Task:
                 STREAM_PORT_DIRECTION[suffix],
             )
 
-    def add_m_axi(  # noqa: C901,PLR0912,PLR0914
-        self,
-        width_table: dict[str, int],
-        files: dict[str, str],
-    ) -> None:
-        for arg_name, mmap in self.mmaps.items():  # noqa: PLR1702
-            m_axi_id_width, m_axi_thread_count, args, chan_count, chan_size = mmap
-            # add m_axi ports to the arg list
-            for idx in range_or_none(chan_count):
-                self.module.add_m_axi(
-                    name=get_indexed_name(arg_name, idx),
-                    data_width=width_table[arg_name],
-                    id_width=m_axi_id_width or None,
-                )
-            if len(args) == 1 and chan_count is None:
-                continue
-
-            # add AXI interconnect if necessary
-            assert m_axi_id_width is not None
-            assert (m_axi_thread_count > 1) == (len(args) > 1)
-
-            # S_ID_WIDTH must be at least 1
-            s_axi_id_width = max(
-                arg.instance.task.get_id_width(arg.port) or 1 for arg in args
-            )
-
-            portargs = [
-                make_port_arg(port="clk", arg=HANDSHAKE_CLK),
-                make_port_arg(port="rst", arg=HANDSHAKE_RST),
-            ]
-
-            # upstream m_axi
-            for idx in range_or_none(chan_count):
-                for axi_chan, axi_ports in M_AXI_PORTS.items():
-                    for axi_port, direction in axi_ports:
-                        name = get_indexed_name(arg_name, idx)
-                        axi_arg_name = f"{M_AXI_PREFIX}{name}_{axi_chan}{axi_port}"
-                        axi_arg_name_raw = axi_arg_name
-                        if idx is not None and axi_port == "ADDR":
-                            # set mmap offset for hmap
-                            axi_arg_name_raw += "_raw"
-                            self.module.add_signals(
-                                [
-                                    Wire(
-                                        name=axi_arg_name_raw,
-                                        width=Width.create(64),
-                                    ),
-                                ],
-                            )
-                            # assume power-of-2 address allocation
-                            assert chan_size is not None
-                            addr_width = get_addr_width(
-                                chan_size,
-                                width_table[arg_name],
-                            )
-                            self.module.add_logics(
-                                [
-                                    Assign(
-                                        lhs=axi_arg_name,
-                                        rhs=f"{{{name}_offset[63:{addr_width}], "
-                                        f"{axi_arg_name_raw}[{addr_width - 1}:0]}}",
-                                    ),
-                                ],
-                            )
-                        portargs.append(
-                            make_port_arg(
-                                port=f"m{idx or 0:02d}_axi_"
-                                f"{axi_chan.lower()}{axi_port.lower()}",
-                                arg=axi_arg_name_raw,
-                            ),
-                        )
-
-            # downstrean s_axi
-            for idx, arg in enumerate(args):
-                wires = []
-                id_width = arg.instance.task.get_id_width(arg.port)
-                for axi_chan, axi_ports in M_AXI_PORTS.items():
-                    for axi_port, direction in axi_ports:
-                        wire_name = (
-                            f"{M_AXI_PREFIX}{arg.mmap_name}_{axi_chan}{axi_port}"
-                        )
-                        wires.append(
-                            Wire(
-                                name=wire_name,
-                                width=get_m_axi_port_width(
-                                    port=axi_port,
-                                    data_width=width_table[arg_name],
-                                    id_width=id_width,
-                                ),
-                            ),
-                        )
-                        if axi_port == "ID":
-                            id_width = id_width or 1
-                            if id_width != s_axi_id_width and direction == "output":
-                                # make sure inputs to s_axi of interconnect won't be X
-                                wire_name = (
-                                    f"{{{s_axi_id_width - id_width}'d0, {wire_name}}}"
-                                )
-                        portargs.append(
-                            make_port_arg(
-                                port=f"s{idx:02d}_axi_{axi_chan.lower()}{axi_port.lower()}",
-                                arg=wire_name,
-                            ),
-                        )
-                self.module.add_signals(wires)
-
-            data_width = max(width_table[arg_name], 32)
-            assert data_width in {32, 64, 128, 256, 512, 1024}
-            module_name = f"axi_crossbar_{len(args)}x{chan_count or 1}"
-            if f"{module_name}.v" not in files:
-                files[f"{module_name}.v"] = axi_xbar_generate(
-                    ports=(len(args), chan_count or 1),
-                    name=module_name,
-                )
-
-            paramargs = [
-                ParamArg("DATA_WIDTH", Constant(data_width)),
-                ParamArg("ADDR_WIDTH", Constant(64)),
-                ParamArg("S_ID_WIDTH", Constant(s_axi_id_width)),
-                ParamArg("M_ID_WIDTH", Constant(m_axi_id_width)),
-            ]
-            for idx in range(chan_count or 1):
-                addr_width = get_addr_width(chan_size, width_table[arg_name])
-                paramargs.extend(
-                    [
-                        ParamArg(f"M{idx:02d}_ADDR_WIDTH", Constant(addr_width)),
-                        ParamArg(f"M{idx:02d}_ISSUE", Constant(16)),
-                    ],
-                )
-            paramargs.extend(
-                ParamArg(
-                    f"S{idx:02d}_THREADS",
-                    Constant(arg.instance.task.get_thread_count(arg.port)),
-                )
-                for idx, arg in enumerate(args)
-            )
-            self.module.add_instance(
-                module_name=module_name,
-                instance_name=f"{module_name}__{arg_name}",
-                ports=portargs,
-                params=paramargs,
-            )
+    def add_m_axi(self, width_table: dict[str, int], files: dict[str, str]) -> None:
+        """Add M-AXI ports and crossbar wiring for upper tasks."""
+        add_m_axi_codegen(self, width_table, files)
 
     def add_rs_pragmas_to_fsm(self) -> None:
         """Add RS pragmas to the FSM module."""
