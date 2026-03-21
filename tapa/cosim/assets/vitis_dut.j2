@@ -1,0 +1,75 @@
+
+  {{ ctx.top_name }} dut (
+    .s_axi_control_AWVALID (s_axi_control_awvalid),
+    .s_axi_control_AWREADY (s_axi_control_awready),
+    .s_axi_control_AWADDR  (s_axi_control_awaddr ),
+
+    .s_axi_control_WVALID  (s_axi_control_wvalid ),
+    .s_axi_control_WREADY  (s_axi_control_wready ),
+    .s_axi_control_WDATA   (s_axi_control_wdata  ),
+    .s_axi_control_WSTRB   ({64{1'b1}}      ),
+
+    // keep polling the control registers
+    .s_axi_control_ARVALID (s_axi_control_arvalid),
+    .s_axi_control_ARREADY (s_axi_control_arready),
+    .s_axi_control_ARADDR  ('h00 ),
+
+    .s_axi_control_RVALID  (s_axi_control_rvalid ),
+    .s_axi_control_RREADY  (1 ),
+    .s_axi_control_RDATA   (s_axi_control_rdata  ),
+    .s_axi_control_RRESP   (                     ),
+
+    .s_axi_control_BVALID  (s_axi_control_bvalid ),
+    .s_axi_control_BREADY  (1'b1                 ),
+    .s_axi_control_BRESP   (s_axi_control_bresp  ),
+{% for arg in ctx.args %}
+{% if arg.is_mmap %}
+    .m_axi_{{ arg.name }}_ARADDR  (axi_{{ arg.name }}_araddr ),
+    .m_axi_{{ arg.name }}_ARBURST (axi_{{ arg.name }}_arburst),
+    .m_axi_{{ arg.name }}_ARCACHE (axi_{{ arg.name }}_arcache),
+    .m_axi_{{ arg.name }}_ARID    (axi_{{ arg.name }}_arid   ),
+    .m_axi_{{ arg.name }}_ARLEN   (axi_{{ arg.name }}_arlen  ),
+    .m_axi_{{ arg.name }}_ARLOCK  (axi_{{ arg.name }}_arlock ),
+    .m_axi_{{ arg.name }}_ARPROT  (axi_{{ arg.name }}_arprot ),
+    .m_axi_{{ arg.name }}_ARQOS   (axi_{{ arg.name }}_arqos  ),
+    .m_axi_{{ arg.name }}_ARREADY (axi_{{ arg.name }}_arready),
+    .m_axi_{{ arg.name }}_ARSIZE  (axi_{{ arg.name }}_arsize ),
+    .m_axi_{{ arg.name }}_ARVALID (axi_{{ arg.name }}_arvalid),
+    .m_axi_{{ arg.name }}_AWADDR  (axi_{{ arg.name }}_awaddr ),
+    .m_axi_{{ arg.name }}_AWBURST (axi_{{ arg.name }}_awburst),
+    .m_axi_{{ arg.name }}_AWCACHE (axi_{{ arg.name }}_awcache),
+    .m_axi_{{ arg.name }}_AWID    (axi_{{ arg.name }}_awid   ),
+    .m_axi_{{ arg.name }}_AWLEN   (axi_{{ arg.name }}_awlen  ),
+    .m_axi_{{ arg.name }}_AWLOCK  (axi_{{ arg.name }}_awlock ),
+    .m_axi_{{ arg.name }}_AWPROT  (axi_{{ arg.name }}_awprot ),
+    .m_axi_{{ arg.name }}_AWQOS   (axi_{{ arg.name }}_awqos  ),
+    .m_axi_{{ arg.name }}_AWREADY (axi_{{ arg.name }}_awready),
+    .m_axi_{{ arg.name }}_AWSIZE  (axi_{{ arg.name }}_awsize ),
+    .m_axi_{{ arg.name }}_AWVALID (axi_{{ arg.name }}_awvalid),
+    .m_axi_{{ arg.name }}_BID     (axi_{{ arg.name }}_bid    ),
+    .m_axi_{{ arg.name }}_BREADY  (axi_{{ arg.name }}_bready ),
+    .m_axi_{{ arg.name }}_BRESP   (axi_{{ arg.name }}_bresp  ),
+    .m_axi_{{ arg.name }}_BVALID  (axi_{{ arg.name }}_bvalid ),
+    .m_axi_{{ arg.name }}_RDATA   (axi_{{ arg.name }}_rdata  ),
+    .m_axi_{{ arg.name }}_RID     (axi_{{ arg.name }}_rid    ),
+    .m_axi_{{ arg.name }}_RLAST   (axi_{{ arg.name }}_rlast  ),
+    .m_axi_{{ arg.name }}_RREADY  (axi_{{ arg.name }}_rready ),
+    .m_axi_{{ arg.name }}_RRESP   (axi_{{ arg.name }}_rresp  ),
+    .m_axi_{{ arg.name }}_RVALID  (axi_{{ arg.name }}_rvalid ),
+    .m_axi_{{ arg.name }}_WDATA   (axi_{{ arg.name }}_wdata  ),
+    .m_axi_{{ arg.name }}_WLAST   (axi_{{ arg.name }}_wlast  ),
+    .m_axi_{{ arg.name }}_WREADY  (axi_{{ arg.name }}_wready ),
+    .m_axi_{{ arg.name }}_WSTRB   (axi_{{ arg.name }}_wstrb  ),
+    .m_axi_{{ arg.name }}_WVALID  (axi_{{ arg.name }}_wvalid ),
+{% endif %}
+{% if arg.is_stream %}
+    .{{ arg.name }}_TDATA  (axis_{{ arg.name }}_tdata ),
+    .{{ arg.name }}_TVALID (axis_{{ arg.name }}_tvalid),
+    .{{ arg.name }}_TREADY (axis_{{ arg.name }}_tready),
+    .{{ arg.name }}_TLAST  (axis_{{ arg.name }}_tlast ),
+{% endif %}
+{% endfor %}
+    .ap_clk          (ap_clk       ),
+    .ap_rst_n        (ap_rst_n     ),
+    .interrupt       (             )
+  );

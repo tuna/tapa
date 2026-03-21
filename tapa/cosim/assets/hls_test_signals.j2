@@ -13,7 +13,29 @@
   // fifo signals
   always @(posedge ap_clk) begin
     if (kernel_started) begin
-      {{ fifo_dpi_calls }}
+{% for arg in ctx.stream_args %}
+{% if arg.direction == "istream" %}
+    tapa::istream(
+        fifo_{{ arg.qualified_name }}_data_unpacked_next,
+        fifo_{{ arg.qualified_name }}_valid_next,
+        fifo_{{ arg.qualified_name }}_ready,
+        "{{ arg.qualified_name }}"
+    );
+
+    fifo_{{ arg.qualified_name }}_data_unpacked <=
+        fifo_{{ arg.qualified_name }}_data_unpacked_next;
+    fifo_{{ arg.qualified_name }}_valid <= fifo_{{ arg.qualified_name }}_valid_next;
+{% else %}
+    tapa::ostream(
+        fifo_{{ arg.qualified_name }}_data_unpacked,
+        fifo_{{ arg.qualified_name }}_ready_next,
+        fifo_{{ arg.qualified_name }}_valid,
+        "{{ arg.qualified_name }}"
+    );
+
+    fifo_{{ arg.qualified_name }}_ready <= fifo_{{ arg.qualified_name }}_ready_next;
+{% endif %}
+{% endfor %}
     end
     if (ap_done) begin
       kernel_done <= 1'b1;
@@ -23,7 +45,16 @@
     end
   end
 
-{{ fifo_assignments }}
+{% for arg in ctx.stream_args %}
+{% if arg.direction == "istream" %}
+    assign fifo_{{ arg.qualified_name }}_data =
+        packed_uint{{ arg.data_width + 1 }}_t'(
+            fifo_{{ arg.qualified_name }}_data_unpacked);
+{% else %}
+    assign fifo_{{ arg.qualified_name }}_data_unpacked =
+        unpacked_uint{{ arg.data_width + 1 }}_t'(fifo_{{ arg.qualified_name }}_data);
+{% endif %}
+{% endfor %}
 
   initial begin
     // reset the DUT
@@ -43,7 +74,9 @@
 
     wait(kernel_done);
 
-{{ dump_signals }}
+{% for name in ctx.mmap_names %}
+    axi_ram_{{ name }}_dump_mem <= 1;
+{% endfor %}
 
     #(CLOCK_PERIOD*100);
     $finish;

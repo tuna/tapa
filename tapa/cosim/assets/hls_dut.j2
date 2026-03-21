@@ -1,0 +1,71 @@
+
+  {{ ctx.top_name }} dut (
+{% for arg in ctx.args %}
+{% if arg.is_mmap %}
+    .{{ arg.name }}_offset({{ ctx.scalar_to_val.get(arg.name, 0) }}),
+
+    .m_axi_{{ arg.name }}_ARADDR  (axi_{{ arg.name }}_araddr ),
+    .m_axi_{{ arg.name }}_ARBURST (axi_{{ arg.name }}_arburst),
+    .m_axi_{{ arg.name }}_ARCACHE (axi_{{ arg.name }}_arcache),
+    .m_axi_{{ arg.name }}_ARID    (axi_{{ arg.name }}_arid   ),
+    .m_axi_{{ arg.name }}_ARLEN   (axi_{{ arg.name }}_arlen  ),
+    .m_axi_{{ arg.name }}_ARLOCK  (axi_{{ arg.name }}_arlock ),
+    .m_axi_{{ arg.name }}_ARPROT  (axi_{{ arg.name }}_arprot ),
+    .m_axi_{{ arg.name }}_ARQOS   (axi_{{ arg.name }}_arqos  ),
+    .m_axi_{{ arg.name }}_ARREADY (axi_{{ arg.name }}_arready),
+    .m_axi_{{ arg.name }}_ARSIZE  (axi_{{ arg.name }}_arsize ),
+    .m_axi_{{ arg.name }}_ARVALID (axi_{{ arg.name }}_arvalid),
+    .m_axi_{{ arg.name }}_AWADDR  (axi_{{ arg.name }}_awaddr ),
+    .m_axi_{{ arg.name }}_AWBURST (axi_{{ arg.name }}_awburst),
+    .m_axi_{{ arg.name }}_AWCACHE (axi_{{ arg.name }}_awcache),
+    .m_axi_{{ arg.name }}_AWID    (axi_{{ arg.name }}_awid   ),
+    .m_axi_{{ arg.name }}_AWLEN   (axi_{{ arg.name }}_awlen  ),
+    .m_axi_{{ arg.name }}_AWLOCK  (axi_{{ arg.name }}_awlock ),
+    .m_axi_{{ arg.name }}_AWPROT  (axi_{{ arg.name }}_awprot ),
+    .m_axi_{{ arg.name }}_AWQOS   (axi_{{ arg.name }}_awqos  ),
+    .m_axi_{{ arg.name }}_AWREADY (axi_{{ arg.name }}_awready),
+    .m_axi_{{ arg.name }}_AWSIZE  (axi_{{ arg.name }}_awsize ),
+    .m_axi_{{ arg.name }}_AWVALID (axi_{{ arg.name }}_awvalid),
+    .m_axi_{{ arg.name }}_BID     (axi_{{ arg.name }}_bid    ),
+    .m_axi_{{ arg.name }}_BREADY  (axi_{{ arg.name }}_bready ),
+    .m_axi_{{ arg.name }}_BRESP   (axi_{{ arg.name }}_bresp  ),
+    .m_axi_{{ arg.name }}_BVALID  (axi_{{ arg.name }}_bvalid ),
+    .m_axi_{{ arg.name }}_RDATA   (axi_{{ arg.name }}_rdata  ),
+    .m_axi_{{ arg.name }}_RID     (axi_{{ arg.name }}_rid    ),
+    .m_axi_{{ arg.name }}_RLAST   (axi_{{ arg.name }}_rlast  ),
+    .m_axi_{{ arg.name }}_RREADY  (axi_{{ arg.name }}_rready ),
+    .m_axi_{{ arg.name }}_RRESP   (axi_{{ arg.name }}_rresp  ),
+    .m_axi_{{ arg.name }}_RVALID  (axi_{{ arg.name }}_rvalid ),
+    .m_axi_{{ arg.name }}_WDATA   (axi_{{ arg.name }}_wdata  ),
+    .m_axi_{{ arg.name }}_WLAST   (axi_{{ arg.name }}_wlast  ),
+    .m_axi_{{ arg.name }}_WREADY  (axi_{{ arg.name }}_wready ),
+    .m_axi_{{ arg.name }}_WSTRB   (axi_{{ arg.name }}_wstrb  ),
+    .m_axi_{{ arg.name }}_WVALID  (axi_{{ arg.name }}_wvalid ),
+
+{% endif %}
+{% if arg.is_stream and arg.port.is_istream %}
+    .{{ arg.qualified_name }}_dout(fifo_{{ arg.qualified_name }}_data),
+    .{{ arg.qualified_name }}_empty_n(fifo_{{ arg.qualified_name }}_valid),
+    .{{ arg.qualified_name }}_read(fifo_{{ arg.qualified_name }}_ready),
+{% if ctx.top_is_leaf_task %}
+    .{{ arg.peek_qualified_name }}_dout(fifo_{{ arg.qualified_name }}_data),
+    .{{ arg.peek_qualified_name }}_empty_n(fifo_{{ arg.qualified_name }}_valid),
+{% endif %}
+{% endif %}
+{% if arg.is_stream and arg.port.is_ostream %}
+    .{{ arg.qualified_name }}_din(fifo_{{ arg.qualified_name }}_data),
+    .{{ arg.qualified_name }}_full_n(fifo_{{ arg.qualified_name }}_ready),
+    .{{ arg.qualified_name }}_write(fifo_{{ arg.qualified_name }}_valid),
+{% endif %}
+{% if arg.is_scalar %}
+    .{{ arg.name }}({{ ctx.scalar_to_val.get(arg.name, 0) }}),
+
+{% endif %}
+{% endfor %}
+    .ap_clk(ap_clk),
+    .ap_rst_n(ap_rst_n),
+    .ap_start(ap_start),
+    .ap_done(ap_done),
+    .ap_ready(ap_ready),
+    .ap_idle(ap_idle)
+  );

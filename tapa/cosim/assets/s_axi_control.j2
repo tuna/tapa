@@ -1,0 +1,78 @@
+
+  parameter C_S_AXI_CONTROL_DATA_WIDTH = 32;
+  parameter C_S_AXI_CONTROL_ADDR_WIDTH = 64;
+  parameter C_S_AXI_DATA_WIDTH = 32;
+  parameter C_S_AXI_CONTROL_WSTRB_WIDTH = 32 / 8;
+  parameter C_S_AXI_WSTRB_WIDTH = 32 / 8;
+
+  wire                                    s_axi_control_awvalid;
+  wire                                    s_axi_control_awready;
+  wire [C_S_AXI_CONTROL_ADDR_WIDTH-1:0]   s_axi_control_awaddr;
+  wire                                    s_axi_control_wvalid;
+  wire                                    s_axi_control_wready;
+  wire [C_S_AXI_CONTROL_DATA_WIDTH-1:0]   s_axi_control_wdata;
+  wire [C_S_AXI_CONTROL_WSTRB_WIDTH-1:0]  s_axi_control_wstrb;
+  reg                                     s_axi_control_arvalid = 0;
+  wire                                    s_axi_control_arready;
+  wire [C_S_AXI_CONTROL_ADDR_WIDTH-1:0]   s_axi_control_araddr;
+  wire                                    s_axi_control_rvalid;
+  wire                                    s_axi_control_rready;
+  wire [C_S_AXI_CONTROL_DATA_WIDTH-1:0]   s_axi_control_rdata;
+  wire [1:0]                              s_axi_control_rresp;
+  wire                                    s_axi_control_bvalid;
+  wire                                    s_axi_control_bready;
+  wire [1:0]                              s_axi_control_bresp;
+
+  // use a large FIFO to buffer the command to s_axi_control
+  // in this way we don't need to worry about flow control
+  reg [63:0] s_axi_aw_din = 0;
+  reg        s_axi_aw_write = 0;
+
+  fifo_srl #(
+    .DATA_WIDTH(64),
+    .ADDR_WIDTH(6),
+    .DEPTH(64)
+  ) s_axi_aw(
+    .clk(ap_clk),
+    .reset(~ap_rst_n),
+
+    // write
+    .if_full_n   (),
+    .if_write    (s_axi_aw_write),
+    .if_din      (s_axi_aw_din  ),
+
+    // read
+    .if_empty_n  (s_axi_control_awvalid),
+    .if_read     (s_axi_control_awready),
+    .if_dout     (s_axi_control_awaddr),
+
+    .if_write_ce (1'b1),
+    .if_read_ce  (1'b1)
+
+  );
+
+  reg [511:0] s_axi_w_din = 0;
+  reg         s_axi_w_write = 0;
+
+  fifo_srl #(
+    .DATA_WIDTH(32),
+    .ADDR_WIDTH(6),
+    .DEPTH(64)
+  ) s_axi_w(
+    .clk(ap_clk),
+    .reset(~ap_rst_n),
+
+    // write
+    .if_full_n   (),
+    .if_write    (s_axi_w_write),
+    .if_din      (s_axi_w_din  ),
+
+    // read
+    .if_empty_n  (s_axi_control_wvalid),
+    .if_read     (s_axi_control_wready),
+    .if_dout     (s_axi_control_wdata),
+
+    .if_write_ce (1'b1),
+    .if_read_ce  (1'b1)
+
+  );

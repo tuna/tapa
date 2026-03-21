@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from jinja2 import Environment, FileSystemLoader
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from tapa.cosim.common import AXI, MAX_AXI_BRAM_ADDR_WIDTH, Arg
 
@@ -117,8 +117,22 @@ class AxiRamModuleContext(BaseModel):
         )
 
 
+class DutContext(BaseModel):
+    """Context for rendering DUT connection snippets."""
+
+    top_name: str | None = None
+    args: list[Arg]
+    scalar_to_val: dict[str, str] | None = None
+    top_is_leaf_task: bool | None = None
+    stream_widths: list[int] = Field(default_factory=list)
+
+
 def _render_template(template_name: str, **kwargs: object) -> str:
-    return _JINJA_ENV.get_template(template_name).render(**kwargs)
+    try:
+        return _JINJA_ENV.get_template(template_name).render(**kwargs)
+    except Exception as exc:
+        msg = f"cosim render failed for {template_name}: {exc}"
+        raise RuntimeError(msg) from exc
 
 
 def render_axi_ram_inst(axi: AXI) -> str:
@@ -137,115 +151,6 @@ def render_testbench_begin() -> str:
 def render_testbench_end() -> str:
     """Render the shared testbench epilogue."""
     return _render_template("testbench_end.j2")
-
-
-def _get_axis_dpi_calls(stream_args: list[StreamArgContext]) -> list[str]:
-    axis_dpi_calls = []
-    for arg in stream_args:
-        if arg.direction == "istream":
-            axis_dpi_calls.append(
-                f"""
-    tapa::istream(
-        axis_{arg.name}_tdata_unpacked_next,
-        axis_{arg.name}_tvalid_next,
-        axis_{arg.name}_tready,
-        "{arg.qualified_name}"
-    );
-
-    axis_{arg.name}_tdata_unpacked <= axis_{arg.name}_tdata_unpacked_next;
-    axis_{arg.name}_tvalid <= axis_{arg.name}_tvalid_next;
-"""
-            )
-        else:
-            axis_dpi_calls.append(
-                f"""
-    tapa::ostream(
-        axis_{arg.name}_tdata_unpacked,
-        axis_{arg.name}_tready_next,
-        axis_{arg.name}_tvalid,
-        "{arg.qualified_name}"
-    );
-
-    axis_{arg.name}_tready <= axis_{arg.name}_tready_next;
-"""
-            )
-    return axis_dpi_calls
-
-
-def _get_axis_assignments(stream_args: list[StreamArgContext]) -> list[str]:
-    assignments = []
-    for arg in stream_args:
-        if arg.direction == "istream":
-            assignments.append(
-                f"""
-    assign {{axis_{arg.name}_tlast, axis_{arg.name}_tdata}} =
-        packed_uint{arg.data_width + 1}_t'(axis_{arg.name}_tdata_unpacked);
-"""
-            )
-        else:
-            assignments.append(
-                f"""
-    assign axis_{arg.name}_tdata_unpacked =
-        unpacked_uint{arg.data_width + 1}_t'
-            ({{axis_{arg.name}_tlast, axis_{arg.name}_tdata}});
-"""
-            )
-    return assignments
-
-
-def _get_fifo_dpi_calls(stream_args: list[StreamArgContext]) -> list[str]:
-    fifo_dpi_calls = []
-    for arg in stream_args:
-        if arg.direction == "istream":
-            fifo_dpi_calls.append(
-                f"""
-    tapa::istream(
-        fifo_{arg.qualified_name}_data_unpacked_next,
-        fifo_{arg.qualified_name}_valid_next,
-        fifo_{arg.qualified_name}_ready,
-        "{arg.qualified_name}"
-    );
-
-    fifo_{arg.qualified_name}_data_unpacked <=
-        fifo_{arg.qualified_name}_data_unpacked_next;
-    fifo_{arg.qualified_name}_valid <= fifo_{arg.qualified_name}_valid_next;
-"""
-            )
-        else:
-            fifo_dpi_calls.append(
-                f"""
-    tapa::ostream(
-        fifo_{arg.qualified_name}_data_unpacked,
-        fifo_{arg.qualified_name}_ready_next,
-        fifo_{arg.qualified_name}_valid,
-        "{arg.qualified_name}"
-    );
-
-    fifo_{arg.qualified_name}_ready <= fifo_{arg.qualified_name}_ready_next;
-"""
-            )
-    return fifo_dpi_calls
-
-
-def _get_fifo_assignments(stream_args: list[StreamArgContext]) -> list[str]:
-    assignments = []
-    for arg in stream_args:
-        if arg.direction == "istream":
-            assignments.append(
-                f"""
-    assign fifo_{arg.qualified_name}_data =
-        packed_uint{arg.data_width + 1}_t'(
-            fifo_{arg.qualified_name}_data_unpacked);
-"""
-            )
-        else:
-            assignments.append(
-                f"""
-    assign fifo_{arg.qualified_name}_data_unpacked =
-        unpacked_uint{arg.data_width + 1}_t'(fifo_{arg.qualified_name}_data);
-"""
-            )
-    return assignments
 
 
 def render_vitis_test_signals(
@@ -274,12 +179,7 @@ def render_vitis_test_signals(
     )
     return _render_template(
         "vitis_test_signals.j2",
-        axis_dpi_calls="\n".join(_get_axis_dpi_calls(ctx.stream_args)),
-        axis_assignments="\n".join(_get_axis_assignments(ctx.stream_args)),
-        register_writes=ctx.register_writes,
-        dump_signals="\n".join(
-            f"          axi_ram_{name}_dump_mem <= 1;" for name in ctx.mmap_names
-        ),
+        ctx=ctx,
     )
 
 
@@ -291,12 +191,90 @@ def render_hls_test_signals(args: list[Arg] | tuple[Arg, ...] | Sequence[Arg]) -
     )
     return _render_template(
         "hls_test_signals.j2",
-        fifo_dpi_calls="\n".join(_get_fifo_dpi_calls(ctx.stream_args)),
-        fifo_assignments="\n".join(_get_fifo_assignments(ctx.stream_args)),
-        dump_signals="\n".join(
-            f"    axi_ram_{name}_dump_mem <= 1;" for name in ctx.mmap_names
+        ctx=ctx,
+    )
+
+
+def render_s_axi_control() -> str:
+    """Render the control S_AXI testbench scaffolding."""
+    return _render_template("s_axi_control.j2")
+
+
+def render_axis(args: list[Arg] | tuple[Arg, ...] | Sequence[Arg]) -> str:
+    """Render the AXIS testbench scaffolding."""
+    stream_args = [arg for arg in args if arg.is_stream]
+    ctx = DutContext(
+        args=list(args),
+        stream_widths=sorted(
+            {
+                width
+                for arg in stream_args
+                for width in (arg.port.data_width, arg.port.data_width + 1)
+            }
         ),
     )
+    return _render_template("axis.j2", ctx=ctx)
+
+
+def render_stream_typedef(args: list[Arg] | tuple[Arg, ...] | Sequence[Arg]) -> str:
+    """Render the stream typedef declarations."""
+    stream_args = [arg for arg in args if arg.is_stream]
+    ctx = DutContext(
+        args=[],
+        stream_widths=sorted(
+            {
+                width
+                for arg in stream_args
+                for width in (arg.port.data_width, arg.port.data_width + 1)
+            }
+        ),
+    )
+    return _render_template("stream_typedef.j2", ctx=ctx)
+
+
+def render_fifo(args: list[Arg] | tuple[Arg, ...] | Sequence[Arg]) -> str:
+    """Render the FIFO testbench scaffolding."""
+    stream_args = [arg for arg in args if arg.is_stream]
+    ctx = DutContext(
+        args=list(args),
+        stream_widths=sorted({arg.port.data_width + 1 for arg in stream_args}),
+    )
+    return _render_template("fifo.j2", ctx=ctx)
+
+
+def render_m_axi_connections(arg_name: str) -> str:
+    """Render the AXI master connection block for one memory port."""
+    return _render_template("m_axi_connections.j2", arg_name=arg_name)
+
+
+def render_vitis_dut(
+    top_name: str,
+    args: list[Arg] | tuple[Arg, ...] | Sequence[Arg],
+) -> str:
+    """Render the Vitis DUT instantiation."""
+    ctx = DutContext(top_name=top_name, args=list(args))
+    return _render_template("vitis_dut.j2", ctx=ctx)
+
+
+def render_hls_dut(
+    top_name: str,
+    top_is_leaf_task: bool,
+    args: list[Arg] | tuple[Arg, ...] | Sequence[Arg],
+    scalar_to_val: dict[str, str],
+) -> str:
+    """Render the HLS DUT instantiation."""
+    ctx = DutContext(
+        top_name=top_name,
+        args=list(args),
+        scalar_to_val=scalar_to_val,
+        top_is_leaf_task=top_is_leaf_task,
+    )
+    return _render_template("hls_dut.j2", ctx=ctx)
+
+
+def render_srl_fifo_template() -> str:
+    """Render the SRL FIFO module."""
+    return _render_template("srl_fifo_template.j2")
 
 
 def render_axi_ram_module(axi: AXI, input_data_path: str, c_array_size: int) -> str:

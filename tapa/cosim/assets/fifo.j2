@@ -1,0 +1,16 @@
+{% include "stream_typedef.j2" %}
+
+{% for arg in ctx.args if arg.is_stream %}
+
+  // data ports connected to DUT
+  packed_uint{{ arg.port.data_width + 1 }}_t fifo_{{ arg.qualified_name }}_data;
+
+  // data ports connected to testbench
+  unpacked_uint{{ arg.port.data_width + 1 }}_t fifo_{{ arg.qualified_name }}_data_unpacked;
+  unpacked_uint{{ arg.port.data_width + 1 }}_t fifo_{{ arg.qualified_name }}_data_unpacked_next;
+
+  logic fifo_{{ arg.qualified_name }}_valid = 0;
+  logic fifo_{{ arg.qualified_name }}_ready = 0;
+  logic fifo_{{ arg.qualified_name }}_valid_next = 0;
+  logic fifo_{{ arg.qualified_name }}_ready_next = 0;
+{% endfor %}
