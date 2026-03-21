@@ -4,7 +4,10 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import Mock
 
+import pytest
+
 from tapa.common.target import Target
+from tapa.program_codegen import fifos as program_codegen_fifos
 from tapa.program_codegen.fifos import connect_fifos, instantiate_fifos
 from tapa.verilog.util import wire_name
 from tapa.verilog.xilinx.const import RST
@@ -35,7 +38,10 @@ def test_instantiate_fifos_skips_entries_without_depth_and_casts_depth() -> None
     )
 
 
-def test_connect_fifos_adds_child_wires_and_connects_external_fifo() -> None:
+def test_connect_fifos_adds_child_wires_and_connects_external_fifo(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    connect_fifo_externally_mock = Mock()
     parent_module = Mock()
     parent_task = cast(
         "Any",
@@ -43,17 +49,38 @@ def test_connect_fifos_adds_child_wires_and_connects_external_fifo() -> None:
             name="top_task",
             fifos={"fifo_a": {"depth": 8}},
             module=parent_module,
-            get_fifo_directions=Mock(return_value=["consumed_by"]),
-            get_connection_to=Mock(return_value=("child_task", "inst_0", "in_fifo")),
-            get_fifo_suffixes=Mock(return_value=["dout", "empty_n"]),
-            is_fifo_external=Mock(return_value=True),
-            connect_fifo_externally=Mock(),
         ),
     )
     child_module = Mock()
     child_module.get_port_of.return_value = SimpleNamespace(width="child-width")
     child_task = cast("Any", SimpleNamespace(module=child_module))
     get_task = Mock(return_value=child_task)
+
+    monkeypatch.setattr(
+        program_codegen_fifos,
+        "get_fifo_directions_codegen",
+        Mock(return_value=["consumed_by"]),
+    )
+    monkeypatch.setattr(
+        program_codegen_fifos,
+        "get_connection_to_codegen",
+        Mock(return_value=("child_task", "inst_0", "in_fifo")),
+    )
+    monkeypatch.setattr(
+        program_codegen_fifos,
+        "get_fifo_suffixes_codegen",
+        Mock(return_value=["dout", "empty_n"]),
+    )
+    monkeypatch.setattr(
+        program_codegen_fifos,
+        "is_fifo_external_codegen",
+        Mock(return_value=True),
+    )
+    monkeypatch.setattr(
+        program_codegen_fifos,
+        "connect_fifo_externally_codegen",
+        connect_fifo_externally_mock,
+    )
 
     connect_fifos(
         task=parent_task,
@@ -69,4 +96,8 @@ def test_connect_fifos_adds_child_wires_and_connects_external_fifo() -> None:
     assert second_wire.name == wire_name("fifo_a", "empty_n")
     assert first_wire.width == "child-width"
     assert second_wire.width == "child-width"
-    parent_task.connect_fifo_externally.assert_called_once_with("fifo_a", True)
+    connect_fifo_externally_mock.assert_called_once_with(
+        parent_task,
+        "fifo_a",
+        True,
+    )
