@@ -1,11 +1,11 @@
 """Core logic of TAPA."""
 
+# ruff: noqa: I001
 __copyright__ = """
 Copyright (c) 2025 RapidStream Design Automation, Inc. and contributors.
 All rights reserved. The contributor(s) of this file has/have agreed to the
 RapidStream Contributor License Agreement.
 """
-
 import decimal
 import functools
 import json
@@ -15,23 +15,11 @@ import os.path
 import shutil
 import tarfile
 import tempfile
-from collections.abc import Generator
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
 import toposort
 import yaml
-from pyverilog.ast_code_generator.codegen import ASTCodeGenerator
-from pyverilog.vparser.ast import (
-    Constant,
-    Eq,
-    Identifier,
-    IntConst,
-    Minus,
-    NonblockingSubstitution,
-    Plus,
-    PortArg,
-)
 
 from tapa.common.paths import get_tapacc_cflags
 from tapa.common.target import Target
@@ -40,63 +28,26 @@ from tapa.program.directory import ProgramDirectoryMixin
 from tapa.program.hls import ProgramHlsMixin
 from tapa.program.pack import ProgramPackMixin
 from tapa.program.synthesis import ProgramSynthesisMixin
-from tapa.program_codegen.custom_rtl import (
-    get_rtl_templates_info as get_rtl_templates_info_codegen,
+from tapa.program_codegen.fifos import (
+    connect_fifos as connect_fifos_codegen,
+    instantiate_fifos as instantiate_fifos_codegen,
 )
-from tapa.program_codegen.custom_rtl import (
+from tapa.program_codegen.program import (
+    get_fifo_width as get_fifo_width_codegen,
+    get_grouping_constraints as get_grouping_constraints_codegen,
+    get_rtl_templates_info as get_rtl_templates_info_codegen,
+    instrument_upper_and_template_task as instrument_upper_and_template_task_codegen,
+    instantiate_children_tasks as instantiate_children_tasks_codegen,
+    instantiate_global_fsm as instantiate_global_fsm_codegen,
     replace_custom_rtl as replace_custom_rtl_codegen,
 )
-from tapa.program_codegen.fifos import connect_fifos as connect_fifos_codegen
-from tapa.program_codegen.fifos import instantiate_fifos as instantiate_fifos_codegen
 from tapa.task import Task
-from tapa.util import get_module_name
-from tapa.verilog.ast.ioport import IOPort
-from tapa.verilog.ast.logic import Always, Assign
-from tapa.verilog.ast.signal import Reg, Wire
-from tapa.verilog.ast.width import Width
-from tapa.verilog.ast_utils import (
-    make_block,
-    make_case_with_block,
-    make_if_with_block,
-    make_port_arg,
-)
-from tapa.verilog.util import Pipeline, array_name, match_array_name
-from tapa.verilog.xilinx import generate_handshake_ports
-from tapa.verilog.xilinx.async_mmap import (
-    ASYNC_MMAP_SUFFIXES,
-    generate_async_mmap_ioports,
-    generate_async_mmap_ports,
-    generate_async_mmap_signals,
-)
-from tapa.verilog.xilinx.const import (
-    CLK_SENS_LIST,
-    DONE,
-    FALSE,
-    HANDSHAKE_DONE,
-    HANDSHAKE_IDLE,
-    HANDSHAKE_INPUT_PORTS,
-    HANDSHAKE_OUTPUT_PORTS,
-    HANDSHAKE_READY,
-    ISTREAM_SUFFIXES,
-    OSTREAM_SUFFIXES,
-    RST,
-    RST_N,
-    START,
-    STATE,
-    TRUE,
-)
-from tapa.verilog.xilinx.module import Module, generate_m_axi_ports, get_streams_fifos
+from tapa.verilog.util import Pipeline
+from tapa.verilog.xilinx.const import DONE, START
+from tapa.verilog.xilinx.module import Module
+from pyverilog.vparser.ast import Plus
 
 _logger = logging.getLogger().getChild(__name__)
-
-_CODEGEN = ASTCodeGenerator()
-
-STATE00 = IntConst("2'b00")
-STATE01 = IntConst("2'b01")
-STATE11 = IntConst("2'b11")
-STATE10 = IntConst("2'b10")
-
-FIFO_DIRECTIONS = ["consumed_by", "produced_by"]
 
 
 class Program(  # TODO: refactor this class
@@ -356,567 +307,35 @@ class Program(  # TODO: refactor this class
     def _instantiate_fifos(self, task: Task) -> None:
         instantiate_fifos_codegen(task=task, get_fifo_width=self.get_fifo_width)
 
-    def _instantiate_children_tasks(  # noqa: C901,PLR0912,PLR0915,PLR0914  # TODO: refactor this method
+    def _instantiate_children_tasks(
         self,
         task: Task,
         width_table: dict[str, int],
-    ) -> list[Pipeline]:
-        _logger.debug("  instantiating children tasks in %s", task.name)
-        is_done_signals: list[Pipeline] = []
-        arg_table: dict[str, Pipeline] = {}
-        async_mmap_args: dict[Instance.Arg, list[str]] = {}
-
-        task.add_m_axi(width_table, self.files)
-
-        # Wires connecting to the upstream (s_axi_control).
-        fsm_upstream_portargs: list[PortArg] = [
-            make_port_arg(x, x) for x in HANDSHAKE_INPUT_PORTS + HANDSHAKE_OUTPUT_PORTS
-        ]
-        fsm_upstream_module_ports = {}  # keyed by arg.name for deduplication
-
-        # Wires connecting to the downstream (task instances).
-        fsm_downstream_portargs: list[PortArg] = []
-        fsm_downstream_module_ports = []
-
-        for instance in task.instances:
-            child_port_set = set(instance.task.module.ports)
-
-            # add signal declarations
-            for arg in instance.args:
-                if arg.cat.is_stream:
-                    continue
-
-                # Find arg width.
-                width = 64  # 64-bit address
-                if arg.cat.is_scalar:
-                    width = width_table.get(arg.name, 0)
-                    if width == 0:
-                        # Constant literals are not in the width table.
-                        width = int(arg.name.split("'d")[0])
-
-                # For mmap ports, the scalar port is the offset.
-                upper_name = (
-                    f"{arg.name}_offset"
-                    if arg.cat.is_sync_mmap or arg.cat.is_async_mmap
-                    else arg.name
-                )
-
-                # Find identifier name of the arg. May be a constant with "'d" in it
-                # If `arg` is an hmap, `upper_name` refers to the mmap offset, which
-                # needs to be set to 0. The actual address mapping will be handled
-                # between the AXI interconnect and the upstream M-AXI interface.
-                id_name = "64'd0" if arg.chan_count is not None else upper_name
-                # upper_name may be a constant
-
-                # Instantiate a pipeline for the arg.
-                q = Pipeline(
-                    name=instance.get_instance_arg(id_name),
-                    width=width,
-                )
-                arg_table[arg.name] = q
-
-                # Add signals only for non-consts. Constants are passed as literals.
-                if "'d" not in q.name:
-                    task.module.add_signals(
-                        [
-                            Wire(q[-1].name, Width.create(width)),
-                        ]
-                    )
-                    task.fsm_module.add_pipeline(q, init=Identifier(id_name))
-                    _logger.debug("    pipelined signal: %s => %s", id_name, q.name)
-                    fsm_upstream_module_ports.setdefault(
-                        upper_name,
-                        IOPort("input", upper_name, Width.create(width)),
-                    )
-                    fsm_downstream_module_ports.append(
-                        IOPort("output", q[-1].name, Width.create(width))
-                    )
-                    fsm_downstream_portargs.append(
-                        make_port_arg(q[-1].name, q[-1].name),
-                    )
-
-                # upper_name is the upper-level name
-                # arg.port is the lower-level name
-
-                # check which ports are used for async_mmap
-                if arg.cat.is_async_mmap:
-                    for tag in ASYNC_MMAP_SUFFIXES:
-                        if {
-                            x.portname
-                            for x in generate_async_mmap_ports(
-                                tag=tag,
-                                port=arg.port,
-                                arg=upper_name,
-                                offset_name=arg_table[arg.name][-1].name,
-                                instance=instance,
-                            )
-                        } & child_port_set:
-                            async_mmap_args.setdefault(arg, []).append(tag)
-
-                # declare wires or forward async_mmap ports
-                for tag in async_mmap_args.get(arg, []):
-                    if task.is_upper and instance.task.is_lower:
-                        task.module.add_signals(
-                            generate_async_mmap_signals(
-                                tag=tag,
-                                arg=arg.mmap_name,
-                                data_width=width_table[arg.name],
-                            ),
-                        )
-                    else:
-                        task.module.add_ports(
-                            generate_async_mmap_ioports(
-                                tag=tag,
-                                arg=upper_name,
-                                data_width=width_table[arg.name],
-                            ),
-                        )
-
-            # add start registers
-            start_q = Pipeline(f"{instance.start.name}_global")
-            task.fsm_module.add_pipeline(start_q, self.start_q[0])
-
-            if instance.is_autorun:
-                # autorun modules start when the global start signal is asserted
-                task.fsm_module.add_logics(
-                    [
-                        Always(
-                            sens_list=CLK_SENS_LIST,
-                            statement=_CODEGEN.visit(
-                                make_block(
-                                    make_if_with_block(
-                                        cond=RST,
-                                        true=NonblockingSubstitution(
-                                            left=instance.start,
-                                            right=FALSE,
-                                        ),
-                                        false=make_if_with_block(
-                                            cond=start_q[-1],
-                                            true=NonblockingSubstitution(
-                                                left=instance.start,
-                                                right=TRUE,
-                                            ),
-                                        ),
-                                    ),
-                                )
-                            ),
-                        ),
-                    ],
-                )
-            else:
-                # set up state
-                is_done_q = Pipeline(f"{instance.is_done.name}")
-                done_q = Pipeline(f"{instance.done.name}_global")
-                task.fsm_module.add_pipeline(is_done_q, instance.is_state(STATE10))
-                task.fsm_module.add_pipeline(done_q, self.done_q[0])
-
-                if_branch = instance.set_state(STATE00)
-                else_branch = (
-                    make_if_with_block(
-                        cond=instance.is_state(STATE00),
-                        true=make_if_with_block(
-                            cond=start_q[-1],
-                            true=instance.set_state(STATE01),
-                        ),
-                    ),
-                    make_if_with_block(
-                        cond=instance.is_state(STATE01),
-                        true=make_if_with_block(
-                            cond=instance.ready,
-                            true=make_if_with_block(
-                                cond=instance.done,
-                                true=instance.set_state(STATE10),
-                                false=instance.set_state(STATE11),
-                            ),
-                        ),
-                    ),
-                    make_if_with_block(
-                        cond=instance.is_state(STATE11),
-                        true=make_if_with_block(
-                            cond=instance.done,
-                            true=instance.set_state(STATE10),
-                        ),
-                    ),
-                    make_if_with_block(
-                        cond=instance.is_state(STATE10),
-                        true=make_if_with_block(
-                            cond=done_q[-1],
-                            true=instance.set_state(STATE00),
-                        ),
-                    ),
-                )
-                task.fsm_module.add_logics(
-                    [
-                        Always(
-                            sens_list=CLK_SENS_LIST,
-                            statement=_CODEGEN.visit(
-                                make_block(
-                                    make_if_with_block(
-                                        cond=RST,
-                                        true=if_branch,
-                                        false=else_branch,
-                                    ),
-                                )
-                            ),
-                        ),
-                        Assign(
-                            lhs=instance.start.name,
-                            rhs=_CODEGEN.visit(instance.is_state(STATE01)),
-                        ),
-                    ],
-                )
-
-                is_done_signals.append(is_done_q)
-
-            # insert handshake signals
-            fsm_downstream_portargs.extend(
-                make_port_arg(x.name, x.name) for x in instance.public_handshake_signals
-            )
-            task.module.add_signals(
-                Wire(x.name, x.width) for x in instance.public_handshake_signals
-            )
-            task.fsm_module.add_signals(instance.all_handshake_signals)
-            fsm_downstream_module_ports.extend(instance.public_handshake_ports)
-
-            # add task module instances
-            portargs = list(generate_handshake_ports(instance, RST_N))
-            for arg in instance.args:
-                if arg.cat.is_scalar:
-                    portargs.append(
-                        PortArg(portname=arg.port, argname=arg_table[arg.name][-1]),
-                    )
-                elif arg.cat.is_istream:
-                    portargs.extend(
-                        instance.task.module.generate_istream_ports(
-                            port=arg.port,
-                            arg=arg.name,
-                            ignore_peek_fifos=(
-                                (arg.port,) if instance.task.is_slot else ()
-                            ),
-                        ),
-                    )
-                elif arg.cat.is_ostream:
-                    portargs.extend(
-                        instance.task.module.generate_ostream_ports(
-                            port=arg.port,
-                            arg=arg.name,
-                        ),
-                    )
-                elif arg.cat.is_sync_mmap:
-                    portargs.extend(
-                        generate_m_axi_ports(
-                            module=instance.task.module,
-                            port=arg.port,
-                            arg=arg.mmap_name,
-                            arg_reg=arg_table[arg.name][-1].name,
-                        ),
-                    )
-                elif arg.cat.is_async_mmap:
-                    for tag in async_mmap_args[arg]:
-                        portargs.extend(
-                            generate_async_mmap_ports(
-                                tag=tag,
-                                port=arg.port,
-                                arg=arg.mmap_name,
-                                offset_name=arg_table[arg.name][-1].name,
-                                instance=instance,
-                            ),
-                        )
-
-            task.module.add_instance(
-                module_name=get_module_name(instance.task.name),
-                instance_name=instance.name,
-                ports=portargs,
-            )
-
-        # Add scalar ports to the FSM module.
-        fsm_upstream_portargs.extend(
-            [make_port_arg(x.name, x.name) for x in fsm_upstream_module_ports.values()]
-        )
-        task.fsm_module.add_ports(fsm_upstream_module_ports.values())
-        task.fsm_module.add_ports(fsm_downstream_module_ports)
-        task.add_rs_pragmas_to_fsm()
-
-        # instantiate async_mmap modules at the upper levels
-        # the base address may not be 0, so must use full 64 bit
-        addr_width = 64
-        _logger.debug("Set the address width of async_mmap to %d", addr_width)
-
-        if task.is_upper:
-            for arg, tag in async_mmap_args.items():
-                task.module.add_async_mmap_instance(
-                    name=arg.mmap_name,
-                    tags=tag,
-                    rst=RST,
-                    data_width=width_table[arg.name],
-                    addr_width=addr_width,
-                )
-
-            task.module.add_instance(
-                module_name=task.fsm_module.name,
-                instance_name="__tapa_fsm_unit",
-                ports=fsm_upstream_portargs + fsm_downstream_portargs,
-            )
-
-        return is_done_signals
+    ) -> list:
+        return instantiate_children_tasks_codegen(self, task, width_table)
 
     def _instantiate_global_fsm(
         self,
         module: Module,
-        is_done_signals: list[Pipeline],
+        is_done_signals: list,
     ) -> None:
-        # global state machine
+        instantiate_global_fsm_codegen(self, module, is_done_signals)
 
-        def is_state(state: IntConst) -> Eq:
-            return Eq(left=STATE, right=state)
-
-        def set_state(state: IntConst) -> NonblockingSubstitution:
-            return NonblockingSubstitution(left=STATE, right=state)
-
-        module.add_signals(
-            [
-                Reg(STATE.name, width=Width.create(2)),
-            ],
-        )
-
-        state01_action = set_state(STATE10)
-        if is_done_signals:
-            state01_action = make_if_with_block(
-                cond=Identifier(" && ".join(str(x[-1]) for x in is_done_signals)),
-                true=state01_action,
-            )
-
-        global_fsm = make_case_with_block(
-            comp=STATE,
-            cases=[
-                (
-                    STATE00,
-                    make_if_with_block(cond=self.start_q[-1], true=set_state(STATE01)),
-                ),
-                (
-                    STATE01,
-                    state01_action,
-                ),
-                (
-                    STATE10,
-                    [
-                        set_state(STATE00),
-                    ],
-                ),
-            ],
-        )
-
-        module.add_logics(
-            [
-                Always(
-                    sens_list=CLK_SENS_LIST,
-                    statement=_CODEGEN.visit(
-                        make_block(
-                            make_if_with_block(
-                                cond=RST,
-                                true=set_state(STATE00),
-                                false=global_fsm,
-                            ),
-                        )
-                    ),
-                ),
-                Assign(lhs=HANDSHAKE_IDLE, rhs=_CODEGEN.visit(is_state(STATE00))),
-                Assign(lhs=HANDSHAKE_DONE, rhs=self.done_q[-1].name),
-                Assign(lhs=HANDSHAKE_READY, rhs=self.done_q[0].name),
-            ],
-        )
-
-        module.add_pipeline(self.start_q, init=START)
-        module.add_pipeline(self.done_q, init=is_state(STATE10))
-
-    def _instrument_upper_and_template_task(  # noqa: C901, PLR0912 # TODO: refactor this method
-        self,
-        task: Task,
-    ) -> None:
-        """Codegen for the top task."""
-        # assert task.is_upper
-        task.module.cleanup()
-        if task.name == self.top and self.target == Target.XILINX_VITIS:
-            task.module.add_rs_pragmas()
-
-        # remove top level peek ports
-        if task.name == self.top_task.name:
-            _logger.debug("remove top peek ports")
-            for port_name, port in task.ports.items():
-                if port.cat.is_istream:
-                    fifos = [port_name]
-                elif port.is_istreams:
-                    fifos = get_streams_fifos(task.module, port_name)
-                else:
-                    continue
-                for fifo in fifos:
-                    for suffix in ISTREAM_SUFFIXES:
-                        match = match_array_name(fifo)
-                        if match is None:
-                            peek_port = f"{fifo}_peek"
-                        else:
-                            peek_port = array_name(f"{match[0]}_peek", match[1])
-
-                        # Cannot use find_ports instead of get_port_of
-                        # since find port only check if the port name start with
-                        # the given fifo name and end with the suffix. This causes
-                        # wrong port being matched.
-                        # e.g. fifo = "a_fifo", suffix = "dout", find_ports will
-                        # match both "a_fifo_dout" and "a_fifo_ack_dout" even
-                        # though the latter has fifo name "a_fifo_ack" instead of
-                        # "a_fifo".
-                        try:
-                            task.module.get_port_of(peek_port, suffix)
-                        except Module.NoMatchingPortError:
-                            continue
-
-                        name = task.module.get_port_of(peek_port, suffix).name
-                        _logger.debug("  remove %s", name)
-                        task.module.del_port(name)
-
-        if task.name in self.gen_templates:
-            _logger.info("skip instrumenting template task %s", task.name)
-            if task.name in self.gen_templates:
-                with open(
-                    self.get_rtl_template_path(task.name), "w", encoding="utf-8"
-                ) as rtl_code:
-                    rtl_code.write(task.module.get_template_code())
-        else:
-            self._instantiate_fifos(task)
-            self._connect_fifos(task)
-            width_table = {port.name: port.width for port in task.ports.values()}
-            is_done_signals = self._instantiate_children_tasks(task, width_table)
-            self._instantiate_global_fsm(task.fsm_module, is_done_signals)
-
-            with open(
-                self.get_rtl_path(task.fsm_module.name),
-                "w",
-                encoding="utf-8",
-            ) as rtl_code:
-                rtl_code.write(task.fsm_module.code)
-
-        # generate the top-level task
-        with open(self.get_rtl_path(task.name), "w", encoding="utf-8") as rtl_code:
-            rtl_code.write(task.module.code)
+    def _instrument_upper_and_template_task(self, task: Task) -> None:
+        instrument_upper_and_template_task_codegen(self, task)
 
     def get_fifo_width(self, task: Task, fifo: str) -> Plus:
-        producer_task, _, fifo_port = task.get_connection_to(fifo, "produced_by")
-        port = self.get_task(producer_task).module.get_port_of(
-            fifo_port,
-            OSTREAM_SUFFIXES[0],
-        )
-        # TODO: err properly if not integer literals
-        assert port.width is not None
-        return Plus(
-            Minus(Constant(port.width.msb), Constant(port.width.lsb)), IntConst(1)
-        )
+        return get_fifo_width_codegen(self, task, fifo)
 
     def replace_custom_rtl(
         self, rtl_paths: tuple[Path, ...], templates_info: dict[str, list[str]]
     ) -> None:
-        """Add custom RTL files to the project.
-
-        It will replace all files that originally exist in the project.
-
-        Args:
-            rtl_paths: List of file paths to copy.
-            templates_info: The target folder where files will be copied.
-        """
-        custom_rtl = self._get_custom_rtl_files(rtl_paths)
-        replace_custom_rtl_codegen(
-            rtl_dir=self.rtl_dir,
-            custom_rtl=custom_rtl,
-            templates_info=templates_info,
-            tasks=self._tasks,
-        )
+        replace_custom_rtl_codegen(self, rtl_paths, templates_info)
 
     def get_rtl_templates_info(self) -> dict[str, list[str]]:
-        """Get the template information for each task.
-
-        Return:
-            dict[str, list[str]]: A dictionary where the key is the task
-            name and the value is the list of ports of the task.
-        """
-        return get_rtl_templates_info_codegen(
-            tasks=self._tasks, gen_templates=self.gen_templates
-        )
-
-    def _find_task_inst_hierarchy(
-        self,
-        target_task: str,
-        current_task: str,
-        current_inst: str,
-        current_hierarchy: tuple[str, ...],
-    ) -> Generator[tuple[str, ...]]:
-        """Find hierarchies of all instances of the given task name."""
-        if current_task == target_task:
-            yield (*current_hierarchy, current_inst)
-        for inst in self._tasks[current_task].instances:
-            assert inst.name
-            self._find_task_inst_hierarchy(
-                target_task,
-                inst.task.name,
-                inst.name,
-                (*current_hierarchy, current_inst),
-            )
-
-    @staticmethod
-    def get_inst_by_port_arg_name(
-        target_task: str | None, parent_task: Task, port_arg_name: str
-    ) -> Instance:
-        """Get the instance of the target task that connect to the port arg name.
-
-        If target_task is None, return the first instance that connects to the port arg
-        name. If target_task is not None, return the instance that connects to the port
-        arg name and is of the target task.
-        """
-        matched_inst = None
-        for inst in parent_task.instances:
-            if target_task and inst.task.name != target_task:
-                continue
-            for arg in inst.args:
-                if arg.name == port_arg_name:
-                    matched_inst = inst
-                    break
-        assert matched_inst is not None
-        return matched_inst
+        return get_rtl_templates_info_codegen(self)
 
     def get_grouping_constraints(
         self, nonpipeline_fifos: list[str] | None = None
     ) -> list[list[str]]:
-        """Generates the grouping constraints based on critical path."""
-        _logger.info("Resolving grouping constraints from non-pipeline FIFOs")
-
-        if not nonpipeline_fifos:
-            return []
-
-        grouping_constraints = []
-        for task_fifo_name in nonpipeline_fifos:
-            # dfs all tasks to find all task instances
-            task_name, fifo_name = tuple(task_fifo_name.split("."))
-            found_hierarchies = self._find_task_inst_hierarchy(
-                task_name, self.top, self.top, ()
-            )
-            fifo = self._tasks[task_name].fifos[fifo_name]
-            assert all(direction in fifo for direction in FIFO_DIRECTIONS)
-            consumer_task: str = fifo["consumed_by"][0]
-            producer_task: str = fifo["produced_by"][0]
-            for hierarchy in found_hierarchies:
-                # find fifo producer and consumer instance names as fifo object only
-                # contains task names
-                producer_inst = self.get_inst_by_port_arg_name(
-                    producer_task, self._tasks[task_name], fifo_name
-                ).name
-                consumer_inst = self.get_inst_by_port_arg_name(
-                    consumer_task, self._tasks[task_name], fifo_name
-                ).name
-
-                grouping_constraints.append(
-                    [
-                        "/".join((*hierarchy, producer_inst)),
-                        "/".join((*hierarchy, fifo_name)),
-                        "/".join((*hierarchy, consumer_inst)),
-                    ]
-                )
-
-        return grouping_constraints
+        return get_grouping_constraints_codegen(self, nonpipeline_fifos)
