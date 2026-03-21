@@ -73,6 +73,24 @@ def build_m_axi_io_ports(
     return io_ports
 
 
+def add_m_axi(
+    module: Module,
+    name: str,
+    data_width: int,
+    addr_width: int = 64,
+    id_width: int | None = None,
+) -> Module:
+    return module.add_ports(
+        build_m_axi_io_ports(
+            module,
+            name,
+            data_width,
+            addr_width=addr_width,
+            id_width=id_width,
+        ),
+    )
+
+
 def generate_m_axi_ports(
     module: Module,
     port: str,

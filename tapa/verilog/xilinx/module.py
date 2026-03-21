@@ -13,23 +13,33 @@ from pathlib import Path
 import jinja2
 import pyslang
 from pyverilog.ast_code_generator.codegen import ASTCodeGenerator
-from pyverilog.vparser.ast import Instance, InstanceList, Node, ParamArg, PortArg
+from pyverilog.vparser.ast import Node, PortArg
 
 from tapa.common.pyslang_rewriter import PyslangRewriter
 from tapa.common.unique_attrs import UniqueAttrs
 from tapa.verilog.ast.ioport import IOPort
-from tapa.verilog.ast.logic import Always, Assign
 from tapa.verilog.ast.parameter import Parameter
 from tapa.verilog.ast.signal import Reg, Wire
 from tapa.verilog.ast.width import Width
-from tapa.verilog.util import Pipeline
-from tapa.verilog.xilinx.module_ops.axi import (
-    _get_rs_pragma,
-    build_m_axi_io_ports,
-)
+from tapa.verilog.xilinx.module_ops.axi import add_m_axi as add_m_axi_helper
 from tapa.verilog.xilinx.module_ops.axi import (
     generate_m_axi_ports as generate_m_axi_ports_helper,
 )
+from tapa.verilog.xilinx.module_ops.edits import (
+    add_comment_lines as add_comment_lines_helper,
+)
+from tapa.verilog.xilinx.module_ops.edits import add_instance as add_instance_helper
+from tapa.verilog.xilinx.module_ops.edits import add_logics as add_logics_helper
+from tapa.verilog.xilinx.module_ops.edits import add_params as add_params_helper
+from tapa.verilog.xilinx.module_ops.edits import add_pipeline as add_pipeline_helper
+from tapa.verilog.xilinx.module_ops.edits import add_ports as add_ports_helper
+from tapa.verilog.xilinx.module_ops.edits import add_rs_pragmas as add_rs_pragmas_helper
+from tapa.verilog.xilinx.module_ops.edits import add_signals as add_signals_helper
+from tapa.verilog.xilinx.module_ops.edits import del_instances as del_instances_helper
+from tapa.verilog.xilinx.module_ops.edits import del_logics as del_logics_helper
+from tapa.verilog.xilinx.module_ops.edits import del_params as del_params_helper
+from tapa.verilog.xilinx.module_ops.edits import del_port as del_port_helper
+from tapa.verilog.xilinx.module_ops.edits import del_signals as del_signals_helper
 from tapa.verilog.xilinx.module_ops.fifo import (
     add_fifo_instance as add_fifo_instance_helper,
 )
@@ -80,7 +90,7 @@ def _get_name(
     return node.declarators[0].name.valueText
 
 
-class Module:  # noqa: PLR0904  # TODO: refactor this class
+class Module:  # TODO: refactor this class
     """AST and helpers for a verilog module.
 
     Attributes:
@@ -352,206 +362,19 @@ endmodule
 
 """).render(name=self.name, ports=self.ports.values())
 
-    def add_ports(self, ports: Iterable[IOPort]) -> "Module":
-        """Add IO ports to this module."""
-        header_pieces = []
-        body_pieces = []
-        is_ports_empty = len(self._ports) == 0
-        for port in ports:
-            self._ports[port.name] = port
-            header_pieces.extend([",\n  ", port.name])
-            body_pieces.extend(["\n  ", str(port)])
-        if is_ports_empty and header_pieces:
-            # Remove the first `,` if there is no preceding ports.
-            header_pieces[0] = "  "
-
-        self._rewriter.add_before(
-            # Append new ports before token `)` of the port list in header.
-            self._module_decl.header.ports.getLastToken().location,
-            header_pieces,
-        )
-        self._rewriter.add_before(
-            # If module has no existing port, append new ports after the header.
-            self._port_source_range.end,
-            body_pieces,
-        )
-        return self
-
-    def del_port(self, port_name: str) -> None:
-        """Delete IO port from this module.
-
-        Args:
-          port_name (str): Name of the IO port.
-
-        Raises:
-          ValueError: Module does not have the port.
-        """
-        if self._ports.pop(port_name, None) is None:
-            msg = f"no port {port_name} found in module {self.name}"
-            raise ValueError(msg)
-
-        self._rewriter.remove(self._port_name_to_decl[port_name].sourceRange)
-
-        non_ansi_port_list = self._module_decl.header.ports
-        assert isinstance(non_ansi_port_list, pyslang.NonAnsiPortListSyntax)
-
-        # `ports` is a list of alternating `SyntaxNode`s and `Token`s; find the
-        # port in header that to delete, and the corresponding comma token.
-        nodes = []
-        tokens = []
-        index_to_del = -1
-        for i, node_or_token in enumerate(non_ansi_port_list.ports):
-            if i % 2 == 0:
-                assert isinstance(node_or_token, pyslang.ImplicitNonAnsiPortSyntax)
-                assert isinstance(node_or_token.expr, pyslang.PortReferenceSyntax)
-                nodes.append(node_or_token)
-                if node_or_token.expr.name.valueText == port_name:
-                    index_to_del = i // 2
-            else:
-                assert isinstance(node_or_token, pyslang.Token)
-                assert node_or_token.valueText == ","
-                tokens.append(node_or_token)
-        assert len(nodes) == len(tokens) + 1
-
-        if index_to_del == -1:
-            msg = f"no port {port_name} found in module {self.name}"
-            raise ValueError(msg)
-
-        # Remove the `SyntaxNode` of port in header.
-        self._rewriter.remove(nodes[index_to_del].sourceRange)
-
-        # If the removed `SyntaxNode` is the last in the list, remove the last
-        # comma which is right before the removed `SyntaxNode`. Otherwise,
-        # remove the comma right after.
-        if index_to_del == len(nodes) - 1:
-            index_to_del = -1
-        self._rewriter.remove(tokens[index_to_del].range)
-
-    def add_comment_lines(self, lines: Iterable[str]) -> "Module":
-        """Add comment lines after the module header.
-
-        Each line must start with `// ` and must not contain the new line character.
-        """
-        pieces = ["\n"]
-        for line in lines:
-            if not line.startswith("// "):
-                msg = f"line must start with `// `, got `{line}`"
-                raise ValueError(msg)
-            if "\n" in line:
-                msg = f"line must not contain newlines`, got `{line}`"
-                raise ValueError(msg)
-            pieces.append(line)
-            pieces.append("\n")
-
-        # Append the comment lines after the module header.
-        self._rewriter.add_before(self._module_decl.header.sourceRange.end, pieces)
-        return self
-
-    def add_signals(self, signals: Iterable[Wire | Reg]) -> "Module":
-        for signal in signals:
-            self._signals[signal.name] = signal
-            self._rewriter.add_before(
-                self._signal_source_range.end, ["\n  ", str(signal)]
-            )
-        return self
-
-    def add_pipeline(self, q: Pipeline, init: Node) -> None:
-        """Add registered signals and logics for q initialized by init.
-
-        Args:
-            q (Pipeline): The pipelined variable.
-            init (Node): Value used to drive the first stage of the pipeline.
-        """
-        self.add_signals(q.signals)
-        self.add_logics([Assign(lhs=q[0].name, rhs=_CODEGEN.visit(init))])
-
-    def del_signals(self, prefix: str = "", suffix: str = "") -> None:
-        new_signals = {}
-        for name, signal in self._signals.items():
-            if name.startswith(prefix) and name.endswith(suffix):
-                # TODO: support deleting added signals
-                self._rewriter.remove(self._signal_name_to_decl[name].sourceRange)
-            else:
-                new_signals[name] = signal
-        self._signals = new_signals
-
-    def add_params(self, params: Iterable[Parameter]) -> "Module":
-        for param in params:
-            self._params[param.name] = param
-            self._rewriter.add_before(
-                self._param_source_range.end, ["\n  ", str(param)]
-            )
-        return self
-
-    def del_params(self, prefix: str = "", suffix: str = "") -> None:
-        new_params = {}
-        for name, param in self._params.items():
-            if name.startswith(prefix) and name.endswith(suffix):
-                # TODO: support deleting added params
-                self._rewriter.remove(self._param_name_to_decl[name].sourceRange)
-            else:
-                new_params[name] = param
-        self._params = new_params
-
-    def add_instance(
-        self,
-        module_name: str,
-        instance_name: str,
-        ports: Iterable[PortArg],
-        params: Iterable[ParamArg] = (),
-    ) -> "Module":
-        item = InstanceList(
-            module=module_name,
-            parameterlist=tuple(params),
-            instances=(
-                Instance(
-                    module=None,
-                    name=instance_name,
-                    parameterlist=None,
-                    portlist=tuple(ports),
-                ),
-            ),
-        )
-        self._rewriter.add_before(
-            self._instance_source_range.end, ["\n  ", _CODEGEN.visit(item)]
-        )
-        return self
-
-    def add_logics(self, logics: Iterable[Assign | Always]) -> "Module":
-        for logic in logics:
-            self._rewriter.add_before(
-                self._logic_source_range.end, ["\n  ", str(logic)]
-            )
-        return self
-
-    def del_logics(self) -> None:
-        for logic in self._logics:
-            self._rewriter.remove(logic.sourceRange)
-
-    def del_instances(self, prefix: str = "", suffix: str = "") -> None:
-        """Deletes instances with a matching *module* name."""
-        for instance in self._instances:
-            module_name = instance.type.valueText
-            if module_name.startswith(prefix) and module_name.endswith(suffix):
-                self._rewriter.remove(instance.sourceRange)
-
-    def add_rs_pragmas(self) -> "Module":
-        """Add RS pragmas for existing ports.
-
-        Note, this is based on port name suffix matching and may not be perfect.
-
-        Returns:
-            Module: self, for chaining.
-        """
-        self._syntax_tree = self._rewriter.commit()
-        self._parse_syntax_tree()
-        for port in self._ports.values():
-            if (pragma := _get_rs_pragma(port.name)) is not None:
-                self._rewriter.add_before(
-                    self._port_name_to_decl[port.name].sourceRange.start,
-                    str(pragma),
-                )
-        return self
+    add_ports = add_ports_helper
+    del_port = del_port_helper
+    add_comment_lines = add_comment_lines_helper
+    add_signals = add_signals_helper
+    add_pipeline = add_pipeline_helper
+    del_signals = del_signals_helper
+    add_params = add_params_helper
+    del_params = del_params_helper
+    add_instance = add_instance_helper
+    add_logics = add_logics_helper
+    del_logics = del_logics_helper
+    del_instances = del_instances_helper
+    add_rs_pragmas = add_rs_pragmas_helper
 
     def add_fifo_instance(
         self,
@@ -598,14 +421,12 @@ endmodule
         addr_width: int = 64,
         id_width: int | None = None,
     ) -> "Module":
-        return self.add_ports(
-            build_m_axi_io_ports(
-                self,
-                name,
-                data_width,
-                addr_width=addr_width,
-                id_width=id_width,
-            ),
+        return add_m_axi_helper(
+            self,
+            name,
+            data_width,
+            addr_width=addr_width,
+            id_width=id_width,
         )
 
     def cleanup(self) -> None:
