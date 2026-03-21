@@ -6,7 +6,6 @@ RapidStream Contributor License Agreement.
 
 import functools
 import logging
-import re
 import tempfile
 from collections.abc import Collection, Iterable, Iterator
 from pathlib import Path
@@ -14,51 +13,51 @@ from pathlib import Path
 import jinja2
 import pyslang
 from pyverilog.ast_code_generator.codegen import ASTCodeGenerator
-from pyverilog.vparser.ast import (
-    Constant,
-    Instance,
-    InstanceList,
-    Node,
-    ParamArg,
-    PortArg,
-)
+from pyverilog.vparser.ast import Instance, InstanceList, Node, ParamArg, PortArg
 
-from tapa.backend.xilinx import M_AXI_PREFIX
 from tapa.common.pyslang_rewriter import PyslangRewriter
 from tapa.common.unique_attrs import UniqueAttrs
 from tapa.verilog.ast.ioport import IOPort
 from tapa.verilog.ast.logic import Always, Assign
 from tapa.verilog.ast.parameter import Parameter
-from tapa.verilog.ast.pragma import Pragma
 from tapa.verilog.ast.signal import Reg, Wire
 from tapa.verilog.ast.width import Width
-from tapa.verilog.ast_utils import make_port_arg
-from tapa.verilog.util import (
-    Pipeline,
-    array_name,
-    async_mmap_instance_name,
-    match_array_name,
-    sanitize_array_name,
-    wire_name,
+from tapa.verilog.util import Pipeline
+from tapa.verilog.xilinx.module_ops.axi import (
+    _get_rs_pragma,
+    build_m_axi_io_ports,
 )
-from tapa.verilog.xilinx.async_mmap import ASYNC_MMAP_SUFFIXES, async_mmap_arg_name
-from tapa.verilog.xilinx.axis import AXIS_PORTS
-from tapa.verilog.xilinx.const import (
-    CLK,
-    FIFO_READ_PORTS,
-    FIFO_WRITE_PORTS,
-    HANDSHAKE_CLK,
-    HANDSHAKE_DONE,
-    HANDSHAKE_IDLE,
-    HANDSHAKE_READY,
-    HANDSHAKE_RST,
-    HANDSHAKE_RST_N,
-    ISTREAM_SUFFIXES,
-    OSTREAM_SUFFIXES,
-    STREAM_PORT_DIRECTION,
-    TRUE,
+from tapa.verilog.xilinx.module_ops.axi import (
+    generate_m_axi_ports as generate_m_axi_ports_helper,
 )
-from tapa.verilog.xilinx.m_axi import M_AXI_PORTS, M_AXI_SUFFIXES, get_m_axi_port_width
+from tapa.verilog.xilinx.module_ops.fifo import (
+    add_fifo_instance as add_fifo_instance_helper,
+)
+from tapa.verilog.xilinx.module_ops.fifo import cleanup as cleanup_helper
+from tapa.verilog.xilinx.module_ops.mmap import (
+    _AsyncMmapContext,
+)
+from tapa.verilog.xilinx.module_ops.mmap import (
+    add_async_mmap_instance as add_async_mmap_instance_helper,
+)
+from tapa.verilog.xilinx.module_ops.ports import (
+    find_port as find_port_helper,
+)
+from tapa.verilog.xilinx.module_ops.ports import (
+    generate_istream_ports as generate_istream_ports_helper,
+)
+from tapa.verilog.xilinx.module_ops.ports import (
+    generate_ostream_ports as generate_ostream_ports_helper,
+)
+from tapa.verilog.xilinx.module_ops.ports import (
+    get_port_of as get_port_of_helper,
+)
+from tapa.verilog.xilinx.module_ops.ports import (
+    get_streams_fifos as get_streams_fifos_helper,
+)
+
+generate_m_axi_ports = generate_m_axi_ports_helper
+get_streams_fifos = get_streams_fifos_helper
 
 _logger = logging.getLogger().getChild(__name__)
 
@@ -73,6 +72,12 @@ FIFO_INFIXES = ("_V", "_r", "_s", "")
 _CODEGEN = ASTCodeGenerator()
 _SIGNAL_SYNTAX = pyslang.DataDeclarationSyntax | pyslang.NetDeclarationSyntax
 _LOGIC_SYNTAX = pyslang.ContinuousAssignSyntax | pyslang.ProceduralBlockSyntax
+
+
+def _get_name(
+    node: pyslang.DataDeclarationSyntax | pyslang.NetDeclarationSyntax,
+) -> str:
+    return node.declarators[0].name.valueText
 
 
 class Module:  # noqa: PLR0904  # TODO: refactor this class
@@ -301,25 +306,7 @@ class Module:  # noqa: PLR0904  # TODO: refactor this class
         Raises:
           ValueError: Module does not have the port.
         """
-        ports = self.ports
-        sanitized_fifo = sanitize_array_name(fifo)
-        for infix in FIFO_INFIXES:
-            port = ports.get(f"{sanitized_fifo}{infix}{suffix}")
-            if port is not None:
-                return port
-        # may be a singleton array without the numerical suffix...
-        match = match_array_name(fifo)
-        if match is not None and match[1] == 0:
-            singleton_fifo = match[0]
-            for infix in FIFO_INFIXES:
-                port_name = f"{singleton_fifo}{infix}{suffix}"
-                port = ports.get(port_name)
-                if port is not None:
-                    _logger.debug("assuming %s is a singleton array", port_name)
-                    return port
-
-        msg = f"module {self.name} does not have port {fifo}.{suffix}"
-        raise Module.NoMatchingPortError(msg)
+        return get_port_of_helper(self, fifo, suffix, self.NoMatchingPortError)
 
     def generate_istream_ports(
         self,
@@ -327,41 +314,14 @@ class Module:  # noqa: PLR0904  # TODO: refactor this class
         arg: str,
         ignore_peek_fifos: Iterable[str] = (),
     ) -> Iterator[PortArg]:
-        for suffix in ISTREAM_SUFFIXES:
-            arg_name = None
-
-            arg_name = wire_name(arg, suffix)
-
-            # read port
-            yield make_port_arg(
-                port=self.get_port_of(port, suffix).name,
-                arg=arg_name,
-            )
-            # peek port
-            if STREAM_PORT_DIRECTION[suffix] == "input":
-                if port in ignore_peek_fifos:
-                    continue
-                match = match_array_name(port)
-                if match is None:
-                    peek_port = f"{port}_peek"
-                else:
-                    peek_port = array_name(f"{match[0]}_peek", match[1])
-                assert arg_name
-                yield make_port_arg(
-                    port=self.get_port_of(peek_port, suffix).name,
-                    arg=arg_name,
-                )
+        yield from generate_istream_ports_helper(self, port, arg, ignore_peek_fifos)
 
     def generate_ostream_ports(
         self,
         port: str,
         arg: str,
     ) -> Iterator[PortArg]:
-        for suffix in OSTREAM_SUFFIXES:
-            yield make_port_arg(
-                port=self.get_port_of(port, suffix).name,
-                arg=wire_name(arg, suffix),
-            )
+        yield from generate_ostream_ports_helper(self, port, arg)
 
     @property
     def signals(self) -> dict[str, Wire | Reg]:
@@ -600,33 +560,7 @@ endmodule
         width: Node,
         depth: int,
     ) -> "Module":
-        name = sanitize_array_name(name)
-
-        def ports() -> Iterator[PortArg]:
-            yield make_port_arg(port="clk", arg=CLK)
-            yield make_port_arg(port="reset", arg=rst)
-            for port_name, arg_suffix in zip(FIFO_READ_PORTS, ISTREAM_SUFFIXES):
-                yield make_port_arg(port=port_name, arg=wire_name(name, arg_suffix))
-
-            yield make_port_arg(port=FIFO_READ_PORTS[-1], arg=TRUE)
-            for port_name, arg_suffix in zip(FIFO_WRITE_PORTS, OSTREAM_SUFFIXES):
-                yield make_port_arg(port=port_name, arg=wire_name(name, arg_suffix))
-            yield make_port_arg(port=FIFO_WRITE_PORTS[-1], arg=TRUE)
-
-        module_name = "fifo"
-        return self.add_instance(
-            module_name=module_name,
-            instance_name=name,
-            ports=ports(),
-            params=(
-                ParamArg(paramname="DATA_WIDTH", argname=width),
-                ParamArg(
-                    paramname="ADDR_WIDTH",
-                    argname=Constant(max(1, (depth - 1).bit_length())),
-                ),
-                ParamArg(paramname="DEPTH", argname=Constant(depth)),
-            ),
-        )
+        return add_fifo_instance_helper(self, name, rst, width, depth)
 
     def add_async_mmap_instance(  # noqa: PLR0913,PLR0917
         self,
@@ -639,88 +573,23 @@ endmodule
         max_wait_time: int = 3,
         max_burst_len: int | None = None,
     ) -> "Module":
-        paramargs = [
-            ParamArg(paramname="DataWidth", argname=Constant(data_width)),
-            ParamArg(
-                paramname="DataWidthBytesLog",
-                argname=Constant((data_width // 8 - 1).bit_length()),
+        return add_async_mmap_instance_helper(
+            _AsyncMmapContext(
+                module=self,
+                name=name,
+                tags=tuple(tags),
+                rst=rst,
+                data_width=data_width,
+                addr_width=addr_width,
+                buffer_size=buffer_size,
+                max_wait_time=max_wait_time,
+                max_burst_len=max_burst_len,
             ),
-        ]
-        portargs = [
-            make_port_arg(port="clk", arg=CLK),
-            make_port_arg(port="rst", arg=rst),
-        ]
-        paramargs.append(ParamArg(paramname="AddrWidth", argname=Constant(addr_width)))
-        if buffer_size:
-            paramargs.extend(
-                (
-                    ParamArg(paramname="BufferSize", argname=Constant(buffer_size)),
-                    ParamArg(
-                        paramname="BufferSizeLog",
-                        argname=Constant((buffer_size - 1).bit_length()),
-                    ),
-                ),
-            )
-
-        max_wait_time = max(1, max_wait_time)
-        paramargs.extend(
-            (
-                ParamArg(
-                    paramname="WaitTimeWidth",
-                    argname=Constant(max_wait_time.bit_length()),
-                ),
-                ParamArg(
-                    paramname="MaxWaitTime",
-                    argname=Constant(max(1, max_wait_time)),
-                ),
-            ),
-        )
-
-        if max_burst_len is None:
-            # 1KB burst length
-            max_burst_len = max(0, 8192 // data_width - 1)
-        paramargs.extend(
-            (
-                ParamArg(paramname="BurstLenWidth", argname=Constant(9)),
-                ParamArg(paramname="MaxBurstLen", argname=Constant(max_burst_len)),
-            ),
-        )
-
-        for channel, ports in M_AXI_PORTS.items():
-            for port, _direction in ports:
-                portargs.append(
-                    make_port_arg(
-                        port=f"{M_AXI_PREFIX}{channel}{port}",
-                        arg=f"{M_AXI_PREFIX}{name}_{channel}{port}",
-                    ),
-                )
-
-        tags = set(tags)
-        for tag in ASYNC_MMAP_SUFFIXES:
-            for suffix in ASYNC_MMAP_SUFFIXES[tag]:
-                if tag in tags:
-                    arg = async_mmap_arg_name(arg=name, tag=tag, suffix=suffix)
-                elif suffix.endswith(("_read", "_write")):
-                    arg = "1'b0"
-                elif suffix.endswith("_din"):
-                    arg = "'d0"
-                else:
-                    arg = ""
-                portargs.append(make_port_arg(port=tag + suffix, arg=arg))
-
-        return self.add_instance(
-            module_name="async_mmap",
-            instance_name=async_mmap_instance_name(name),
-            ports=portargs,
-            params=paramargs,
         )
 
     def find_port(self, prefix: str, suffix: str) -> str | None:
         """Find an IO port with given prefix and suffix in this module."""
-        for port_name in self.ports:
-            if port_name.startswith(prefix) and port_name.endswith(suffix):
-                return port_name
-        return None
+        return find_port_helper(self, prefix, suffix)
 
     def add_m_axi(
         self,
@@ -729,151 +598,15 @@ endmodule
         addr_width: int = 64,
         id_width: int | None = None,
     ) -> "Module":
-        io_ports = []
-        for channel, ports in M_AXI_PORTS.items():
-            for port, direction in ports:
-                port_name = f"{M_AXI_PREFIX}{name}_{channel}{port}"
-                io_port = IOPort(
-                    direction,
-                    port_name,
-                    get_m_axi_port_width(port, data_width, addr_width, id_width),
-                    _get_rs_pragma(port_name),
-                )
-                io_ports.append(io_port)
-        return self.add_ports(io_ports)
-
-    def cleanup(self) -> None:
-        self.del_params(prefix="ap_ST_fsm_state")
-        self.del_signals(prefix="ap_CS_fsm")
-        self.del_signals(prefix="ap_NS_fsm")
-        self.del_signals(suffix="_read")
-        self.del_signals(suffix="_write")
-        self.del_signals(suffix="_blk_n")
-        self.del_signals(suffix="_regslice")
-        self.del_signals(prefix="regslice_")
-        self.del_signals(HANDSHAKE_RST)
-        self.del_signals(HANDSHAKE_DONE)
-        self.del_signals(HANDSHAKE_IDLE)
-        self.del_signals(HANDSHAKE_READY)
-        self.del_logics()
-        self.del_instances(suffix="_regslice_both")
-        self.add_signals(
-            map(
-                Wire,
-                (
-                    HANDSHAKE_RST,
-                    HANDSHAKE_DONE,
-                    HANDSHAKE_IDLE,
-                    HANDSHAKE_READY,
-                ),
+        return self.add_ports(
+            build_m_axi_io_ports(
+                self,
+                name,
+                data_width,
+                addr_width=addr_width,
+                id_width=id_width,
             ),
         )
-        self.add_logics(
-            [
-                # `s_axi_control` still uses `ap_rst_n_inv`.
-                Assign(lhs=HANDSHAKE_RST, rhs=f"~{HANDSHAKE_RST_N}"),
-            ],
-        )
 
-
-def get_streams_fifos(module: Module, streams_name: str) -> list[str]:
-    """Get all FIFOs that are related to a streams."""
-    pattern = re.compile(rf"{streams_name}_(\d+)_")
-    fifos = set()
-
-    for s in module.ports:
-        match = pattern.match(s)
-        if match:
-            number = match.group(1)
-            fifos.add(f"{streams_name}_{number}")
-
-    # singleton array without number
-    # when a stream array has length 1,
-    # the generated port name may not have the number
-    # in it.
-    # e.g., in tests/functional/singleton/vadd.cpp,
-    # "tapa::istreams<float, M>& a" where M = 1 resulted in
-    # stream data port a_s_dout rather than a_0_dout.
-    if not fifos:
-        for s in module.ports:
-            for infix in FIFO_INFIXES:
-                if s.startswith(f"{streams_name}{infix}"):
-                    return [streams_name]
-
-    if not fifos:
-        msg = f"no fifo found for {streams_name}"
-        raise ValueError(msg)
-    return list(fifos)
-
-
-def generate_m_axi_ports(
-    module: Module,
-    port: str,
-    arg: str,
-    arg_reg: str = "",
-) -> Iterator[PortArg]:
-    """Generate AXI mmap ports that instantiate given module.
-
-    Args:
-        module (Module): Module that needs to be instantiated.
-        port (str): Port name in the instantiated module.
-        arg (str): Argument name in the instantiating module.
-        arg_reg (str, optional): Registered argument name. Defaults to ''.
-
-    Yields:
-        Iterator[PortArg]: PortArgs.
-
-    Raises:
-        ValueError: If the offset port cannot be found in the instantiated module.
-    """
-    for suffix in M_AXI_SUFFIXES:
-        yield make_port_arg(
-            port=M_AXI_PREFIX + port + suffix,
-            arg=M_AXI_PREFIX + arg + suffix,
-        )
-    for suffix in "_offset", "_data_V", "_V", "":
-        if (port_name := port + suffix) in module.ports:
-            yield make_port_arg(port=port_name, arg=arg_reg or arg)
-            break
-    else:
-        msg = f"cannot find offset port for {port}"
-        raise ValueError(msg)
-
-
-def _get_name(
-    node: pyslang.DataDeclarationSyntax | pyslang.NetDeclarationSyntax,
-) -> str:
-    return node.declarators[0].name.valueText
-
-
-def _get_rs_pragma(port_name: str) -> Pragma | None:
-    if port_name == HANDSHAKE_CLK:
-        return Pragma("RS_CLK")
-
-    if port_name == HANDSHAKE_RST_N:
-        return Pragma("RS_RST", "ff")
-
-    if port_name == "interrupt":
-        return Pragma("RS_FF", port_name)
-
-    for channel, ports in M_AXI_PORTS.items():
-        for port, _ in ports:
-            if port_name.endswith(f"_{channel}{port}"):
-                return Pragma(
-                    "RS_HS",
-                    f"{port_name[: -len(port)]}.{_get_rs_port(port)}",
-                )
-
-    for suffix, role in AXIS_PORTS.items():
-        if port_name.endswith(suffix):
-            return Pragma("RS_HS", f"{port_name[: -len(suffix)]}.{role}")
-
-    _logger.error("not adding pragma for unknown port '%s'", port_name)
-    return None
-
-
-def _get_rs_port(port: str) -> str:
-    """Return the RS port for the given m_axi `port`."""
-    if port in {"READY", "VALID"}:
-        return port.lower()
-    return "data"
+    def cleanup(self) -> None:
+        cleanup_helper(self)
