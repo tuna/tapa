@@ -181,9 +181,9 @@ def xci_to_stub(xci_path: str, file_path: str | None = None) -> list[str]:
     stub = []
     stub += [f"module {module_name} ("]
 
-    for port_name, _port_info in ports.items():
-        assert len(_port_info) == 1
-        port_info = _port_info[0]
+    for port_name, port_info_list in ports.items():
+        assert len(port_info_list) == 1
+        port_info = port_info_list[0]
 
         port = "  "
 

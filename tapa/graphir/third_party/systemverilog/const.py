@@ -67,11 +67,11 @@ def eval_verilog_const(const: str) -> str:
     Args:
         const (str): The Verilog expression of the constant.
 
-    Raises:
-        ValueError: The given argument is not a constant.
-
     Returns:
         str: The corresponding string representation of the constant.
+
+    Raises:
+        ValueError: The given argument is not a constant.
 
     Examples:
         It evaluates constant integer values:

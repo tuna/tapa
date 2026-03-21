@@ -1,11 +1,5 @@
 """Common base data types for TAPA graph IR."""
 
-__copyright__ = """
-Copyright (c) 2025 RapidStream Design Automation, Inc. and contributors.
-All rights reserved. The contributor(s) of this file has/have agreed to the
-RapidStream Contributor License Agreement.
-"""
-
 from tapa.graphir.types.commons.enum import StringEnum
 from tapa.graphir.types.commons.hierarchical_name import (
     HierarchicalName,

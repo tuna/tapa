@@ -889,7 +889,7 @@ class Program(  # TODO: refactor this class
             if rtl_path.suffix != ".v":
                 _logger.warning(
                     "Skip checking custom rtl format for non-verilog file: %s",
-                    str(rtl_path),
+                    rtl_path,
                 )
                 continue
             rtl_module = Module([rtl_path])
@@ -900,8 +900,10 @@ class Program(  # TODO: refactor this class
             ):
                 continue  # ports match exactly
             msg = [
-                f"Custom RTL file {rtl_path} for task {task.name}"
-                " does not match the expected ports.",
+                (
+                    f"Custom RTL file {rtl_path} for task {task.name}"
+                    " does not match the expected ports."
+                ),
                 "Task ports:",
                 *(f"  {port}" for port in templates_info[task.name]),
                 "Custom RTL ports:",

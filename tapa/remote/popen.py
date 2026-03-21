@@ -18,7 +18,7 @@ import subprocess
 import tarfile
 import uuid
 from types import TracebackType
-from typing import Any
+from typing import Any, Self
 
 from tapa.remote.config import RemoteConfig, get_remote_config
 from tapa.remote.ssh import run_ssh_with_stdin, run_ssh_with_stdout
@@ -35,7 +35,7 @@ class ToolProcess(abc.ABC):
     def communicate(self, timeout: float | None = None) -> tuple[bytes, bytes]:
         """Run the process and return (stdout, stderr)."""
 
-    def __enter__(self) -> "ToolProcess":
+    def __enter__(self) -> Self:
         return self
 
     @abc.abstractmethod

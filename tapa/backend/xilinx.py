@@ -17,7 +17,7 @@ import xml.sax.saxutils
 import zipfile
 from collections.abc import Callable, Iterable
 from types import TracebackType
-from typing import IO, BinaryIO, NamedTuple, NoReturn
+from typing import IO, BinaryIO, NamedTuple, NoReturn, Self
 from xml.etree import ElementTree as ET
 
 from tapa.remote.config import get_remote_config
@@ -99,7 +99,7 @@ class Vivado:
     def communicate(self, timeout: float | None = None) -> tuple[bytes, bytes]:
         return self._proc.communicate(timeout=timeout)
 
-    def __enter__(self) -> "Vivado":
+    def __enter__(self) -> Self:
         self._proc.__enter__()
         return self
 
@@ -179,7 +179,7 @@ class VivadoHls:
     def communicate(self, timeout: float | None = None) -> tuple[bytes, bytes]:
         return self._proc.communicate(timeout=timeout)
 
-    def __enter__(self) -> "VivadoHls":
+    def __enter__(self) -> Self:
         self._proc.__enter__()
         return self
 
@@ -570,7 +570,7 @@ class RunAie:
     def communicate(self, timeout: float | None = None) -> tuple[bytes, bytes]:
         return self._proc.communicate(timeout=timeout)
 
-    def __enter__(self) -> "RunAie":
+    def __enter__(self) -> Self:
         self._proc.__enter__()
         return self
 

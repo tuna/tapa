@@ -231,9 +231,9 @@ class VirtualSlot(BaseModel):
 
             add_ranges = []
             remove_ranges = []
-            for _line in pblock_lines:
+            for line_ in pblock_lines:
                 # in case the original ranges already have {}
-                line = _line.replace("{", "").replace("}", "")
+                line = line_.replace("{", "").replace("}", "")
 
                 if line.startswith("-add"):
                     add_ranges.append(re.sub(r"^-add", "", line))

@@ -215,7 +215,7 @@ class ModuleInstantiation(HierarchicalNamespaceModel):
             _logger.warning(
                 "%s is a blackbox, so that its connections cannot be analyzed. "
                 "It is assumed to be an inout port.",
-                str(self.module),
+                self.module,
             )
             return ModulePort.Type.INOUT
 

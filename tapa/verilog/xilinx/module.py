@@ -295,11 +295,11 @@ class Module:  # noqa: PLR0904  # TODO: refactor this class
           fifo (str): Name of the fifo.
           suffix (str): One of the suffixes in ISTREAM_SUFFIXES or OSTREAM_SUFFIXES.
 
-        Raises:
-          ValueError: Module does not have the port.
-
         Returns:
           IOPort.
+
+        Raises:
+          ValueError: Module does not have the port.
         """
         ports = self.ports
         sanitized_fifo = sanitize_array_name(fifo)
@@ -820,11 +820,11 @@ def generate_m_axi_ports(
         arg (str): Argument name in the instantiating module.
         arg_reg (str, optional): Registered argument name. Defaults to ''.
 
-    Raises:
-        ValueError: If the offset port cannot be found in the instantiated module.
-
     Yields:
         Iterator[PortArg]: PortArgs.
+
+    Raises:
+        ValueError: If the offset port cannot be found in the instantiated module.
     """
     for suffix in M_AXI_SUFFIXES:
         yield make_port_arg(

@@ -1,11 +1,5 @@
 """Data types of a graph intermediate representation."""
 
-__copyright__ = """
-Copyright (c) 2025 RapidStream Design Automation, Inc. and contributors.
-All rights reserved. The contributor(s) of this file has/have agreed to the
-RapidStream Contributor License Agreement.
-"""
-
 from tapa.graphir.types.blackbox import BlackBox
 from tapa.graphir.types.commons import (
     HierarchicalName,

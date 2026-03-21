@@ -991,7 +991,7 @@ def get_project_from_floorplanned_program(
     top_task = program.top_task
 
     slot_tasks = {inst.task.name: inst.task for inst in top_task.instances}
-    assert all(task.is_slot for _, task in slot_tasks.items())
+    assert all(task.is_slot for task in slot_tasks.values())
 
     leaf_tasks = {
         inst.task.name: inst.task
