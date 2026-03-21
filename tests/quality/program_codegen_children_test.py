@@ -1,6 +1,6 @@
 """Focused tests for extracted Program child-instantiation helpers."""
 
-# ruff: noqa: ANN401, ARG005, PLC2701, SLF001
+# ruff: noqa: ANN001, ANN401, ARG005, PLC2701, SLF001
 
 from types import SimpleNamespace
 from typing import Any, cast
@@ -26,7 +26,7 @@ def _make_state(task: Any, program: Any, width_table: dict[str, int]) -> _ChildS
     )
 
 
-def test_collect_async_mmap_tags_matches_child_ports() -> None:
+def test_collect_async_mmap_tags_matches_child_ports(monkeypatch) -> None:
     instance = cast("Any", SimpleNamespace())
     arg = cast(
         "Any",
@@ -43,7 +43,9 @@ def test_collect_async_mmap_tags_matches_child_ports() -> None:
             return [SimpleNamespace(portname="hit")]
         return []
 
-    children.generate_async_mmap_ports = fake_generate_async_mmap_ports  # type: ignore[assignment]
+    monkeypatch.setattr(
+        children, "generate_async_mmap_ports", fake_generate_async_mmap_ports
+    )
 
     tags = children._collect_async_mmap_tags(
         instance=instance,
@@ -56,7 +58,7 @@ def test_collect_async_mmap_tags_matches_child_ports() -> None:
     assert tags == ["axi"]
 
 
-def test_bind_async_mmap_tag_uses_signal_path_for_upper_to_lower() -> None:
+def test_bind_async_mmap_tag_uses_signal_path_for_upper_to_lower(monkeypatch) -> None:
     task_module = SimpleNamespace(add_signals=Mock(), add_ports=Mock())
     task = cast(
         "Any",
@@ -74,8 +76,12 @@ def test_bind_async_mmap_tag_uses_signal_path_for_upper_to_lower() -> None:
     instance = cast("Any", SimpleNamespace(task=SimpleNamespace(is_lower=True)))
     arg = cast("Any", SimpleNamespace(name="mem", mmap_name="mem"))
 
-    children.generate_async_mmap_signals = lambda **kwargs: ["sig"]  # type: ignore[assignment]
-    children.generate_async_mmap_ioports = lambda **kwargs: ["io"]  # type: ignore[assignment]
+    monkeypatch.setattr(
+        children, "generate_async_mmap_signals", lambda **kwargs: ["sig"]
+    )
+    monkeypatch.setattr(
+        children, "generate_async_mmap_ioports", lambda **kwargs: ["io"]
+    )
 
     children._bind_async_mmap_tag(state, instance, arg, "mem_offset", "axi")
 
@@ -83,7 +89,7 @@ def test_bind_async_mmap_tag_uses_signal_path_for_upper_to_lower() -> None:
     task_module.add_ports.assert_not_called()
 
 
-def test_declare_instance_start_logic_autorun_adds_fsm_logic() -> None:
+def test_declare_instance_start_logic_autorun_adds_fsm_logic(monkeypatch) -> None:
     task = cast(
         "Any",
         SimpleNamespace(
@@ -103,11 +109,17 @@ def test_declare_instance_start_logic_autorun_adds_fsm_logic() -> None:
         ),
     )
 
-    children.Always = lambda *args, **kwargs: ("Always", args, kwargs)  # type: ignore[assignment]
-    children.NonblockingSubstitution = lambda *args, **kwargs: ("NBS", args, kwargs)  # type: ignore[assignment]
-    children.make_block = lambda value: ("block", value)  # type: ignore[assignment]
-    children.make_if_with_block = lambda **kwargs: ("if", kwargs)  # type: ignore[assignment]
-    children._CODEGEN.visit = lambda value: value  # type: ignore[assignment]
+    monkeypatch.setattr(
+        children, "Always", lambda *args, **kwargs: ("Always", args, kwargs)
+    )
+    monkeypatch.setattr(
+        children,
+        "NonblockingSubstitution",
+        lambda *args, **kwargs: ("NBS", args, kwargs),
+    )
+    monkeypatch.setattr(children, "make_block", lambda value: ("block", value))
+    monkeypatch.setattr(children, "make_if_with_block", lambda **kwargs: ("if", kwargs))
+    monkeypatch.setattr(children._CODEGEN, "visit", lambda value: value)
 
     children._declare_instance_start_logic(state, instance)
 
