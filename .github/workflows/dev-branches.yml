@@ -87,6 +87,8 @@ jobs:
     steps:
       - name: Checkout myself
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Run size budgets
         uses: ./.github/actions/run-command
@@ -101,7 +103,7 @@ jobs:
         with:
           run: |
             set -euo pipefail
-            changed_files="$(git diff --name-only "${{ github.event.before }}"..."${{ github.sha }}" || true)"
+            changed_files="$(git diff --name-only "${{ github.event.before }}"..."${{ github.sha }}")"
             if [[ -z "$changed_files" ]]; then
               exit 0
             fi
@@ -117,13 +119,15 @@ jobs:
     steps:
       - name: Checkout myself
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Run changed-file lint budget
         uses: ./.github/actions/run-command
         with:
           run: |
             set -euo pipefail
-            changed_files="$(git diff --name-only "${{ github.event.before }}"..."${{ github.sha }}" -- 'tapa/**/*.py' 'tapa/*.py' || true)"
+            changed_files="$(git diff --name-only "${{ github.event.before }}"..."${{ github.sha }}" -- 'tapa/**/*.py' 'tapa/*.py')"
             if [[ -z "$changed_files" ]]; then
               exit 0
             fi
