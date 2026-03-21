@@ -15,8 +15,11 @@ py_library(
         "add_iface.py",
         "gen_rs_graphir.py",
         "pipeline/__init__.py",
+        "pipeline/fifo_builder.py",
         "pipeline/iface_builders.py",
         "pipeline/iface_roles.py",
+        "pipeline/instantiation_builder.py",
+        "pipeline/project_builder.py",
         "templates.py",
         "utils.py",
     ],
@@ -44,6 +47,16 @@ py_library(
 py_test(
     name = "iface_roles_test",
     srcs = ["iface_roles_test.py"],
+    deps = ["//tapa/graphir_conversion"],
+)
+
+py_test(
+    name = "project_builder_test",
+    srcs = ["project_builder_test.py"],
+    data = [
+        "//tests/functional/graphir:floorplan/vadd.json",
+        "//tests/functional/graphir:u55c_device_config.json",
+    ],
     deps = ["//tapa/graphir_conversion"],
 )
 

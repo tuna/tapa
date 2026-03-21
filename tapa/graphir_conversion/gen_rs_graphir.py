@@ -6,7 +6,6 @@ All rights reserved. The contributor(s) of this file has/have agreed to the
 RapidStream Contributor License Agreement.
 """
 
-import json
 import logging
 from collections.abc import Generator, Mapping
 from pathlib import Path
@@ -29,12 +28,32 @@ from tapa.graphir.types import (
     VerilogModuleDefinition,
 )
 from tapa.graphir_conversion.add_iface import get_graphir_iface
+from tapa.graphir_conversion.pipeline.fifo_builder import (
+    get_fifo_inst as get_fifo_inst_builder,
+)
+from tapa.graphir_conversion.pipeline.fifo_builder import (
+    infer_fifo_data_range as infer_fifo_data_range_builder,
+)
+from tapa.graphir_conversion.pipeline.instantiation_builder import (
+    get_submodule_inst as get_submodule_inst_builder,
+)
+from tapa.graphir_conversion.pipeline.instantiation_builder import (
+    get_top_ir_subinsts as get_top_ir_subinsts_builder,
+)
+from tapa.graphir_conversion.pipeline.instantiation_builder import (
+    get_top_level_slot_inst as get_top_level_slot_inst_builder,
+)
+from tapa.graphir_conversion.pipeline.instantiation_builder import (
+    get_upper_module_ir_subinsts as get_upper_module_ir_subinsts_builder,
+)
+from tapa.graphir_conversion.pipeline.project_builder import (
+    add_pblock_ranges as add_pblock_ranges_builder,
+)
 from tapa.graphir_conversion.utils import (
     get_child_port_connection_mapping,
     get_ctrl_s_axi_def,
     get_fifo_def,
     get_fsm_def,
-    get_m_axi_port_name,
     get_reset_inverter_def,
     get_reset_inverter_inst,
     get_stream_port_name,
@@ -46,9 +65,6 @@ from tapa.graphir_conversion.utils import (
 from tapa.instance import Instance
 from tapa.task import Task
 from tapa.task_codegen.fifos import (
-    get_connection_to as get_connection_to_codegen,
-)
-from tapa.task_codegen.fifos import (
     is_fifo_external as is_fifo_external_codegen,
 )
 from tapa.verilog.util import Pipeline, match_array_name, sanitize_array_name
@@ -58,14 +74,10 @@ from tapa.verilog.xilinx.const import (
     ISTREAM_SUFFIXES,
     OSTREAM_SUFFIXES,
     STREAM_DATA_SUFFIXES,
-    STREAM_PORT_DIRECTION,
 )
-from tapa.verilog.xilinx.m_axi import M_AXI_SUFFIXES
 from tapa.verilog.xilinx.module import Module
 
 _logger = logging.getLogger().getChild(__name__)
-_FIFO_MODULE_NAME = "fifo"
-
 _CTRL_S_AXI_PARAM_MAPPING = {
     "C_S_AXI_ADDR_WIDTH": "C_S_AXI_CONTROL_ADDR_WIDTH",
     "C_S_AXI_DATA_WIDTH": "C_S_AXI_CONTROL_DATA_WIDTH",
@@ -218,146 +230,14 @@ def get_slot_module_definition_ports(  # noqa: C901
     return ports
 
 
-def get_submodule_inst(  # noqa: PLR0912,C901
+def get_submodule_inst(
     subtasks: dict[str, Task],
     inst: Instance,
     arg_table: dict[str, dict[str, Pipeline]],
     floorplan_region: str | None = None,
 ) -> ModuleInstantiation:
     """Get submodule instantiation."""
-    task_name = inst.task.name
-    connections = []
-    for arg in inst.args:
-        port_name = arg.port
-        if arg.cat == Instance.Arg.Cat.SCALAR:
-            # connect port directly to literal
-            expr = Expression.from_str_to_tokens(arg.name)
-            if not expr.is_all_literals():
-                # connect port to wire
-                # get wire name from arg_table
-                expr = Expression.from_str_to_tokens(
-                    arg_table[inst.name][arg.name][-1].name
-                )
-
-            connections.append(
-                ModuleConnection(
-                    name=port_name,
-                    hierarchical_name=HierarchicalName.get_name(port_name),
-                    expr=expr,
-                )
-            )
-
-        elif arg.cat == Instance.Arg.Cat.ISTREAM:
-            for suffix in ISTREAM_SUFFIXES:
-                leaf_port = subtasks[task_name].module.get_port_of(port_name, suffix)
-                expr = Expression(
-                    (Token.new_id(get_stream_port_name(arg.name, suffix)),)
-                )
-                connections.append(
-                    ModuleConnection(
-                        name=leaf_port.name,
-                        hierarchical_name=HierarchicalName.get_name(leaf_port.name),
-                        expr=expr,
-                    )
-                )
-
-                # peek ports
-                if STREAM_PORT_DIRECTION[suffix] == "input":
-                    match = match_array_name(port_name)
-                    if match:
-                        leaf_peek_port = match[0] + "_peek_" + str(match[1]) + suffix
-                    else:
-                        leaf_peek_port = (
-                            subtasks[task_name]
-                            .module.get_port_of(port_name, "_peek" + suffix)
-                            .name
-                        )
-                    connections.append(
-                        ModuleConnection(
-                            name=leaf_peek_port,
-                            hierarchical_name=HierarchicalName.get_name(leaf_peek_port),
-                            expr=expr,
-                        )
-                    )
-
-        elif arg.cat == Instance.Arg.Cat.OSTREAM:
-            for suffix in OSTREAM_SUFFIXES:
-                leaf_port = subtasks[task_name].module.get_port_of(port_name, suffix)
-                connections.append(
-                    ModuleConnection(
-                        name=leaf_port.name,
-                        hierarchical_name=HierarchicalName.get_name(leaf_port.name),
-                        expr=Expression(
-                            (Token.new_id(get_stream_port_name(arg.name, suffix)),)
-                        ),
-                    )
-                )
-
-        else:  # mmap
-            assert arg.cat == Instance.Arg.Cat.MMAP, arg.cat
-            for suffix in M_AXI_SUFFIXES:
-                full_port_name = get_m_axi_port_name(port_name, suffix)
-                if full_port_name not in subtasks[task_name].module.ports:
-                    continue
-                connections.append(
-                    ModuleConnection(
-                        name=full_port_name,
-                        hierarchical_name=HierarchicalName.get_name(full_port_name),
-                        expr=Expression(
-                            (Token.new_id(get_m_axi_port_name(arg.name, suffix)),)
-                        ),
-                    )
-                )
-            # offset port
-            offset_port_name = f"{port_name}_offset"
-            connections.append(
-                ModuleConnection(
-                    name=offset_port_name,
-                    hierarchical_name=HierarchicalName.get_name(offset_port_name),
-                    expr=Expression(
-                        (Token.new_id(arg_table[inst.name][arg.name][-1].name),)
-                    ),
-                )
-            )
-    # add control signals
-    # ap_clk
-    connections.append(
-        ModuleConnection(
-            name="ap_clk",
-            hierarchical_name=HierarchicalName.get_name("ap_clk"),
-            expr=Expression((Token.new_id("ap_clk"),)),
-        )
-    )
-
-    # ap_rst_n
-    connections.append(
-        ModuleConnection(
-            name="ap_rst_n",
-            hierarchical_name=HierarchicalName.get_name("ap_rst_n"),
-            expr=Expression((Token.new_id("ap_rst_n"),)),
-        )
-    )
-
-    # ap_ctrl
-    ap_signals = ["ap_start", "ap_done", "ap_ready", "ap_idle"]
-    connections.extend(
-        ModuleConnection(
-            name=signal,
-            hierarchical_name=HierarchicalName.get_name(signal),
-            expr=Expression((Token.new_id(f"{inst.name}__{signal}"),)),
-        )
-        for signal in ap_signals
-    )
-
-    return ModuleInstantiation(
-        name=inst.name,
-        hierarchical_name=HierarchicalName.get_name(inst.name),
-        module=task_name,
-        connections=tuple(connections),
-        parameters=(),
-        floorplan_region=floorplan_region,
-        area=None,
-    )
+    return get_submodule_inst_builder(subtasks, inst, arg_table, floorplan_region)
 
 
 def get_fifo_inst(  # noqa: PLR0917, PLR0913
@@ -369,117 +249,13 @@ def get_fifo_inst(  # noqa: PLR0917, PLR0913
     floorplan_region: str | None = None,
 ) -> ModuleInstantiation:
     """Get slot fifo module instantiation."""
-    depth = int(fifo["depth"])
-    addr_width = max(1, (depth - 1).bit_length())
-    # infer width from leaf module port
-    fifo_range = infer_fifo_data_range(
+    return get_fifo_inst_builder(
+        upper_task,
         fifo_name,
         fifo,
         submodule_ir_defs,
-        upper_task,
-        not is_top,
-    )
-    assert fifo_range
-
-    data_width = Expression(
-        (
-            Token.new_lit("("),
-            *fifo_range.left.root,
-            Token.new_lit(")"),
-            Token.new_lit("-"),
-            Token.new_lit("("),
-            *fifo_range.right.root,
-            Token.new_lit(")"),
-            Token.new_lit("+"),
-            Token.new_lit("1"),
-        )
-    )
-
-    fifo_name_no_bracket = sanitize_array_name(fifo_name)
-    return ModuleInstantiation(
-        name=fifo_name_no_bracket,
-        hierarchical_name=HierarchicalName.get_name(fifo_name_no_bracket),
-        module=_FIFO_MODULE_NAME,
-        connections=(
-            ModuleConnection(
-                name="clk",
-                hierarchical_name=HierarchicalName.get_name("clk"),
-                expr=Expression((Token.new_id("ap_clk"),)),
-            ),
-            ModuleConnection(
-                name="reset",
-                hierarchical_name=HierarchicalName.get_name("reset"),
-                expr=(
-                    Expression((Token.new_id("rst"),))
-                    if is_top
-                    else Expression(
-                        (
-                            Token.new_lit("~"),
-                            Token.new_id("ap_rst_n"),
-                        )
-                    )
-                ),
-            ),
-            ModuleConnection(
-                name="if_dout",
-                hierarchical_name=HierarchicalName.get_name("if_dout"),
-                expr=Expression((Token.new_id(f"{fifo_name_no_bracket}_dout"),)),
-            ),
-            ModuleConnection(
-                name="if_empty_n",
-                hierarchical_name=HierarchicalName.get_name("if_empty_n"),
-                expr=Expression((Token.new_id(f"{fifo_name_no_bracket}_empty_n"),)),
-            ),
-            ModuleConnection(
-                name="if_read",
-                hierarchical_name=HierarchicalName.get_name("if_read"),
-                expr=Expression((Token.new_id(f"{fifo_name_no_bracket}_read"),)),
-            ),
-            ModuleConnection(
-                name="if_read_ce",
-                hierarchical_name=HierarchicalName.get_name("if_read_ce"),
-                expr=Expression((Token.new_lit("1'b1"),)),
-            ),
-            ModuleConnection(
-                name="if_din",
-                hierarchical_name=HierarchicalName.get_name("if_din"),
-                expr=Expression((Token.new_id(f"{fifo_name_no_bracket}_din"),)),
-            ),
-            ModuleConnection(
-                name="if_full_n",
-                hierarchical_name=HierarchicalName.get_name("if_full_n"),
-                expr=Expression((Token.new_id(f"{fifo_name_no_bracket}_full_n"),)),
-            ),
-            ModuleConnection(
-                name="if_write",
-                hierarchical_name=HierarchicalName.get_name("if_write"),
-                expr=Expression((Token.new_id(f"{fifo_name_no_bracket}_write"),)),
-            ),
-            ModuleConnection(
-                name="if_write_ce",
-                hierarchical_name=HierarchicalName.get_name("if_write_ce"),
-                expr=Expression((Token.new_lit("1'b1"),)),
-            ),
-        ),
-        parameters=(
-            ModuleConnection(
-                name="DEPTH",
-                hierarchical_name=HierarchicalName.get_name("DEPTH"),
-                expr=Expression((Token.new_lit(str(depth)),)),
-            ),
-            ModuleConnection(
-                name="ADDR_WIDTH",
-                hierarchical_name=HierarchicalName.get_name("ADDR_WIDTH"),
-                expr=Expression((Token.new_lit(str(addr_width)),)),
-            ),
-            ModuleConnection(
-                name="DATA_WIDTH",
-                hierarchical_name=HierarchicalName.get_name("DATA_WIDTH"),
-                expr=data_width,
-            ),
-        ),
-        floorplan_region=floorplan_region,
-        area=None,
+        is_top,
+        floorplan_region,
     )
 
 
@@ -489,55 +265,11 @@ def get_upper_module_ir_subinsts(
     floorplan_region: str | None = None,
 ) -> list[ModuleInstantiation]:
     """Get leaf module instantiations of slot module."""
-    subtasks = {inst.task.name: inst.task for inst in upper_task.instances}
-    ir_insts = [
-        get_submodule_inst(
-            subtasks,
-            inst,
-            get_task_arg_table(upper_task),
-            floorplan_region,
-        )
-        for inst in upper_task.instances
-    ]
-
-    # fsm
-    fsm_module = upper_task.fsm_module
-    connections = [
-        ModuleConnection(
-            name=port,
-            hierarchical_name=HierarchicalName.get_name(port),
-            expr=Expression((Token.new_id(port),)),
-        )
-        for port in fsm_module.ports
-    ]
-    ir_insts.append(
-        ModuleInstantiation(
-            name=f"{fsm_module.name}_0",
-            hierarchical_name=HierarchicalName.get_name(f"{fsm_module.name}_0"),
-            module=fsm_module.name,
-            connections=tuple(connections),
-            parameters=(),
-            floorplan_region=floorplan_region,
-            area=None,
-        )
+    return get_upper_module_ir_subinsts_builder(
+        upper_task,
+        submodule_ir_defs,
+        floorplan_region,
     )
-
-    # fifo
-    for fifo_name, fifo in upper_task.fifos.items():
-        # skip external fifos
-        if is_fifo_external_codegen(upper_task, fifo_name):
-            continue
-        ir_insts.append(
-            get_fifo_inst(
-                upper_task,
-                fifo_name,
-                fifo,
-                submodule_ir_defs,
-                floorplan_region=floorplan_region,
-            )
-        )
-
-    return ir_insts
 
 
 def infer_fifo_data_range(
@@ -547,68 +279,14 @@ def infer_fifo_data_range(
     slot: Task,
     infer_port_name_from_tapa_module: bool = True,
 ) -> Range | None:
-    """Infer the range of a fifo data.
-
-    If infer_port_name_from_tapa_module is True, it will try to match the port name from
-    tapa.module. Otherwise, it will directly use fifo name + suffix as the port name.
-    """
-    consumer = fifo["consumed_by"][0]
-    producer = fifo["produced_by"][0]
-    assert isinstance(consumer, str)
-    assert isinstance(producer, str)
-    assert consumer in slot.tasks
-    assert producer in slot.tasks
-    producer_task_name, _, producer_fifo = get_connection_to_codegen(
-        slot, fifo_name, "produced_by"
+    """Infer the range of a fifo data."""
+    return infer_fifo_data_range_builder(
+        fifo_name,
+        fifo,
+        leaf_ir_defs,
+        slot,
+        infer_port_name_from_tapa_module,
     )
-    consumer_task_name, _, consumer_fifo = get_connection_to_codegen(
-        slot, fifo_name, "consumed_by"
-    )
-
-    subtasks: dict[str, Task] = {}
-    for inst in slot.instances:
-        if inst.task.name not in subtasks:
-            subtasks[inst.task.name] = inst.task
-    assert producer_task_name in subtasks
-    assert consumer_task_name in subtasks
-
-    if infer_port_name_from_tapa_module:
-        producer_data_port = (
-            subtasks[producer_task_name]
-            .module.get_port_of(
-                producer_fifo,
-                STREAM_DATA_SUFFIXES[1],
-            )
-            .name
-        )
-        consumer_data_port = (
-            subtasks[consumer_task_name]
-            .module.get_port_of(
-                consumer_fifo,
-                STREAM_DATA_SUFFIXES[0],
-            )
-            .name
-        )
-    else:
-        producer_data_port = get_stream_port_name(
-            producer_fifo, STREAM_DATA_SUFFIXES[1]
-        )
-        consumer_data_port = get_stream_port_name(
-            consumer_fifo, STREAM_DATA_SUFFIXES[0]
-        )
-
-    range0 = leaf_ir_defs[producer_task_name].get_port(producer_data_port).range
-    range1 = leaf_ir_defs[consumer_task_name].get_port(consumer_data_port).range
-
-    if range0 != range1:
-        _logger.warning(
-            "Fifo %s has different ranges in producer %s and consumer %s",
-            fifo_name,
-            producer_task_name,
-            consumer_task_name,
-        )
-
-    return range0
 
 
 def get_upper_task_ir_wires(
@@ -772,113 +450,11 @@ def get_top_level_slot_inst(
     floorplan_task_name_region_mapping: dict[str, str],
 ) -> ModuleInstantiation:
     """Get top level slot instantiation."""
-    slot_def_port_names = [port.name for port in slot_def.ports]
-    task_name = slot_inst.task.name
-    connections = []
-    for arg in slot_inst.args:
-        port_name = arg.port
-        if arg.cat == Instance.Arg.Cat.SCALAR:
-            # if leaf module port directly connects to a literal,
-            # slot needs no connection
-            if Expression.from_str_to_tokens(arg.name).is_all_literals():
-                continue
-            connections.append(
-                ModuleConnection(
-                    name=port_name,
-                    hierarchical_name=HierarchicalName.get_name(port_name),
-                    expr=Expression((Token.new_id(arg_table[arg.name][-1].name),)),
-                )
-            )
-
-        elif arg.cat == Instance.Arg.Cat.ISTREAM:
-            for suffix in ISTREAM_SUFFIXES:
-                leaf_port = port_name + suffix
-                assert leaf_port in slot_def_port_names
-                connections.append(
-                    ModuleConnection(
-                        name=leaf_port,
-                        hierarchical_name=HierarchicalName.get_name(leaf_port),
-                        expr=Expression(
-                            (Token.new_id(get_stream_port_name(arg.name, suffix)),)
-                        ),
-                    )
-                )
-        elif arg.cat == Instance.Arg.Cat.OSTREAM:
-            for suffix in OSTREAM_SUFFIXES:
-                leaf_port = port_name + suffix
-                assert leaf_port in slot_def_port_names
-                connections.append(
-                    ModuleConnection(
-                        name=leaf_port,
-                        hierarchical_name=HierarchicalName.get_name(leaf_port),
-                        expr=Expression(
-                            (Token.new_id(get_stream_port_name(arg.name, suffix)),)
-                        ),
-                    )
-                )
-
-        else:  # mmap
-            assert arg.cat == Instance.Arg.Cat.MMAP, arg.cat
-            for suffix in M_AXI_SUFFIXES:
-                full_port_name = get_m_axi_port_name(port_name, suffix)
-                if full_port_name not in slot_def_port_names:
-                    continue
-                connections.append(
-                    ModuleConnection(
-                        name=full_port_name,
-                        hierarchical_name=HierarchicalName.get_name(full_port_name),
-                        expr=Expression(
-                            (Token.new_id(get_m_axi_port_name(arg.name, suffix)),)
-                        ),
-                    )
-                )
-            # offset port
-            offset_port_name = f"{port_name}_offset"
-            connections.append(
-                ModuleConnection(
-                    name=offset_port_name,
-                    hierarchical_name=HierarchicalName.get_name(offset_port_name),
-                    expr=Expression((Token.new_id(arg_table[arg.name][-1].name),)),
-                )
-            )
-    # add control signals
-    # ap_clk
-    connections.append(
-        ModuleConnection(
-            name="ap_clk",
-            hierarchical_name=HierarchicalName.get_name("ap_clk"),
-            expr=Expression((Token.new_id("ap_clk"),)),
-        )
-    )
-
-    # ap_rst_n
-    connections.append(
-        ModuleConnection(
-            name="ap_rst_n",
-            hierarchical_name=HierarchicalName.get_name("ap_rst_n"),
-            expr=Expression((Token.new_id("ap_rst_n"),)),
-        )
-    )
-
-    # ap_ctrl
-    ap_signals = ["ap_start", "ap_done", "ap_ready", "ap_idle"]
-    connections.extend(
-        ModuleConnection(
-            name=signal,
-            hierarchical_name=HierarchicalName.get_name(signal),
-            expr=Expression((Token.new_id(f"{slot_inst.name}__{signal}"),)),
-        )
-        for signal in ap_signals
-    )
-
-    return ModuleInstantiation(
-        name=slot_inst.name,
-        hierarchical_name=HierarchicalName.get_name(slot_inst.name),
-        module=task_name,
-        connections=tuple(connections),
-        parameters=(),
-        floorplan_region=floorplan_task_name_region_mapping[task_name],
-        area=None,
+    return get_top_level_slot_inst_builder(
+        slot_def,
+        slot_inst,
+        arg_table,
+        floorplan_task_name_region_mapping,
     )
 
 
@@ -889,55 +465,12 @@ def get_top_ir_subinsts(
     fsm_floorplan_region: str,
 ) -> list[ModuleInstantiation]:
     """Get leaf module instantiations of slot module."""
-    ir_insts = [
-        get_top_level_slot_inst(
-            slot_defs[inst.task.name],
-            inst,
-            get_task_arg_table(top_task)[inst.name],
-            floorplan_task_name_region_mapping,
-        )
-        for inst in top_task.instances
-    ]
-
-    # fsm
-    fsm_module = top_task.fsm_module
-    connections = [
-        ModuleConnection(
-            name=port,
-            hierarchical_name=HierarchicalName.get_name(port),
-            expr=Expression((Token.new_id(port),)),
-        )
-        for port in fsm_module.ports
-    ]
-    ir_insts.append(
-        ModuleInstantiation(
-            name=f"{fsm_module.name}_0",
-            hierarchical_name=HierarchicalName.get_name(f"{fsm_module.name}_0"),
-            module=fsm_module.name,
-            connections=tuple(connections),
-            parameters=(),
-            floorplan_region=fsm_floorplan_region,
-            area=None,
-        )
+    return get_top_ir_subinsts_builder(
+        top_task,
+        slot_defs,
+        floorplan_task_name_region_mapping,
+        fsm_floorplan_region,
     )
-
-    # fifo
-    for fifo_name, fifo in top_task.fifos.items():
-        # skip external fifos
-        if is_fifo_external_codegen(top_task, fifo_name):
-            continue
-        ir_insts.append(
-            get_fifo_inst(
-                top_task,
-                fifo_name,
-                fifo,
-                slot_defs,
-                True,
-                floorplan_task_name_region_mapping[fifo["consumed_by"][0]],
-            )
-        )
-
-    return ir_insts
 
 
 def get_top_module_definition(
@@ -1076,26 +609,9 @@ def get_project_from_floorplanned_program(
 
 
 def add_pblock_ranges(
-    device_config: Path, project: Project, floorplan_path: Path
+    device_config: Path,
+    project: Project,
+    floorplan_path: Path,
 ) -> None:
     """Get the pblock range for the TAPA program."""
-    with open(device_config, encoding="utf-8") as f:
-        device = json.load(f)
-
-    with open(floorplan_path, encoding="utf-8") as f:
-        floorplan = json.load(f)
-
-    slots = set()
-    for slot in floorplan.values():
-        slots.add(slot)
-
-    slot_to_pblock_ranges = {}
-    for slot in device["slots"]:
-        x = slot["x"]
-        y = slot["y"]
-        slot_name = f"SLOT_X{x}Y{y}:SLOT_X{x}Y{y}"
-        if slot_name not in slots:
-            continue
-        slot_to_pblock_ranges[slot_name.replace(":", "_TO_")] = slot["pblock_ranges"]
-
-    project.island_to_pblock_range = slot_to_pblock_ranges
+    add_pblock_ranges_builder(device_config, project, floorplan_path)

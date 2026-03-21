@@ -7,6 +7,14 @@
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//bazel:tapa_rules.bzl", "tapa_xo")
 
+exports_files(
+    [
+        "floorplan/vadd.json",
+        "u55c_device_config.json",
+    ],
+    visibility = ["//visibility:public"],
+)
+
 # vadd
 tapa_xo(
     name = "vadd-graphir-xo",
