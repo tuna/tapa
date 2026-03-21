@@ -2,14 +2,14 @@
 
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import Mock
+from unittest.mock import Mock, call
 
 from tapa.common.target import Target
 from tapa.program_codegen.fifos import connect_fifos, instantiate_fifos
 from tapa.verilog.ast.logic import Assign
 from tapa.verilog.ast.signal import Wire
 from tapa.verilog.util import wire_name
-from tapa.verilog.xilinx.const import ISTREAM_SUFFIXES, RST
+from tapa.verilog.xilinx.const import ISTREAM_SUFFIXES, RST, STREAM_PORT_DIRECTION
 
 
 class _FakeModule:
@@ -31,13 +31,13 @@ class _FakeModule:
         )
 
 
-def test_instantiate_fifos_skips_entries_without_depth_and_casts_depth() -> None:
+def test_instantiate_fifos_skips_entries_without_depth() -> None:
     module = Mock()
     task = cast(
         "Any",
         SimpleNamespace(
             name="parent",
-            fifos={"fifo_a": {"depth": "16"}, "fifo_b": {"direction": "produced_by"}},
+            fifos={"fifo_a": {"depth": 16}, "fifo_b": {"direction": "produced_by"}},
             module=module,
         ),
     )
@@ -104,6 +104,11 @@ def test_connect_fifos_uses_real_metadata_for_wires_and_external_connections() -
             lhs=wire_name("fifo_ext", suffix),
             rhs=f"fifo_ext_{suffix}_port",
         )
+        if STREAM_PORT_DIRECTION[suffix] == "input"
+        else Assign(
+            lhs=f"fifo_ext_{suffix}_port",
+            rhs=wire_name("fifo_ext", suffix),
+        )
         for suffix in ISTREAM_SUFFIXES
     ]
-    get_task.assert_called_once_with("child_task")
+    assert get_task.call_args_list == [call("child_task") for _ in ISTREAM_SUFFIXES]
