@@ -1,8 +1,6 @@
 # Temporary exceptions for Python function-length budget.
 # Format: relative/path.py:qualified.symbol
-tapa/core.py:Program._instantiate_children_tasks
 tapa/graphir_conversion/gen_rs_graphir.py:get_slot_module_definition_ports
 tapa/graphir_conversion/gen_rs_graphir.py:get_submodule_inst
 tapa/graphir_conversion/gen_rs_graphir.py:get_fifo_inst
 tapa/graphir_conversion/gen_rs_graphir.py:get_top_level_slot_inst
-tapa/program_codegen/children.py:instantiate_children_tasks
