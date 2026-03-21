@@ -14,7 +14,7 @@ from tapa.graphir.types import (
     HierarchicalName,
     ModulePort,
 )
-from tapa.graphir_conversion.iface_roles import set_iface_role
+from tapa.graphir_conversion.pipeline.iface_roles import set_iface_role
 
 
 def _port(name: str, type_: ModulePort.Type) -> ModulePort:

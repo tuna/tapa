@@ -14,6 +14,9 @@ py_library(
         "__init__.py",
         "add_iface.py",
         "gen_rs_graphir.py",
+        "pipeline/__init__.py",
+        "pipeline/iface_builders.py",
+        "pipeline/iface_roles.py",
         "templates.py",
         "utils.py",
     ],
@@ -35,6 +38,12 @@ py_library(
     visibility = [
         "//tapa/graphir_conversion:__subpackages__",
     ],
+    deps = ["//tapa/graphir_conversion"],
+)
+
+py_test(
+    name = "iface_roles_test",
+    srcs = ["iface_roles_test.py"],
     deps = ["//tapa/graphir_conversion"],
 )
 

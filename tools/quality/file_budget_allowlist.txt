@@ -7,7 +7,6 @@ tapa/common/graph.py
 tapa/core.py
 tapa/cosim/templates.py
 tapa/cosim/verilator.py
-tapa/graphir_conversion/add_iface.py
 tapa/graphir_conversion/gen_rs_graphir.py
 tapa/graphir_conversion/utils.py
 tapa/instance.py
