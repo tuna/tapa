@@ -114,6 +114,7 @@ py_library(
     srcs = ["core.py"],
     deps = [
         ":instance",
+        ":program_codegen",
         ":task",
         ":util",
         "//tapa/common:paths",
@@ -163,6 +164,7 @@ py_library(
     deps = [
         ":__init__",
         ":instance",
+        ":task_codegen",
         ":util",
         "//tapa/backend",
         "//tapa/verilog:ast_utils",
@@ -176,6 +178,50 @@ py_library(
         "//tapa/verilog/xilinx:const",
         "//tapa/verilog/xilinx:m_axi",
         "//tapa/verilog/xilinx:module",
+        requirement("pyverilog"),
+    ],
+)
+
+py_library(
+    name = "program_codegen",
+    srcs = glob(["program_codegen/*.py"]),
+    deps = [
+        ":instance",
+        ":task",
+        ":util",
+        "//tapa/common:target",
+        "//tapa/verilog:ast_utils",
+        "//tapa/verilog:axi_xbar",
+        "//tapa/verilog:util",
+        "//tapa/verilog/ast:ioport",
+        "//tapa/verilog/ast:logic",
+        "//tapa/verilog/ast:signal",
+        "//tapa/verilog/ast:width",
+        "//tapa/verilog/xilinx",
+        "//tapa/verilog/xilinx:async_mmap",
+        "//tapa/verilog/xilinx:const",
+        "//tapa/verilog/xilinx:module",
+        requirement("pyverilog"),
+        requirement("pyyaml"),
+    ],
+)
+
+py_library(
+    name = "task_codegen",
+    srcs = glob(["task_codegen/*.py"]),
+    deps = [
+        ":instance",
+        ":util",
+        "//tapa/backend",
+        "//tapa/verilog:ast_utils",
+        "//tapa/verilog:axi_xbar",
+        "//tapa/verilog:util",
+        "//tapa/verilog/ast:logic",
+        "//tapa/verilog/ast:signal",
+        "//tapa/verilog/ast:width",
+        "//tapa/verilog/xilinx:axis",
+        "//tapa/verilog/xilinx:const",
+        "//tapa/verilog/xilinx:m_axi",
         requirement("pyverilog"),
     ],
 )
