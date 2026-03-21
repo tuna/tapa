@@ -163,7 +163,10 @@ def add_instance(
             ),
         ),
     )
-    module._rewriter.add_before(module._instance_source_range.end, ["\n  ", str(item)])
+    module._rewriter.add_before(
+        module._instance_source_range.end,
+        ["\n  ", _CODEGEN.visit(item)],
+    )
     return module
 
 

@@ -35,7 +35,6 @@ def get_port_of(
     module: Module,
     fifo: str,
     suffix: str,
-    error_type: type[ValueError],
 ) -> IOPort:
     """Return the IOPort of the given fifo with the given suffix."""
     ports = module.ports
@@ -55,7 +54,7 @@ def get_port_of(
                 return port
 
     msg = f"module {module.name} does not have port {fifo}.{suffix}"
-    raise error_type(msg)
+    raise module.NoMatchingPortError(msg)
 
 
 def generate_istream_ports(
@@ -66,10 +65,7 @@ def generate_istream_ports(
 ) -> Iterator[PortArg]:
     for suffix in ISTREAM_SUFFIXES:
         arg_name = wire_name(arg, suffix)
-        yield make_port_arg(
-            port=get_port_of(module, port, suffix, module.NoMatchingPortError).name,
-            arg=arg_name,
-        )
+        yield make_port_arg(port=get_port_of(module, port, suffix).name, arg=arg_name)
         if STREAM_PORT_DIRECTION[suffix] == "input":
             if port in ignore_peek_fifos:
                 continue
@@ -80,12 +76,7 @@ def generate_istream_ports(
                 else array_name(f"{match[0]}_peek", match[1])
             )
             yield make_port_arg(
-                port=get_port_of(
-                    module,
-                    peek_port,
-                    suffix,
-                    module.NoMatchingPortError,
-                ).name,
+                port=get_port_of(module, peek_port, suffix).name,
                 arg=arg_name,
             )
 
@@ -93,7 +84,7 @@ def generate_istream_ports(
 def generate_ostream_ports(module: Module, port: str, arg: str) -> Iterator[PortArg]:
     for suffix in OSTREAM_SUFFIXES:
         yield make_port_arg(
-            port=get_port_of(module, port, suffix, module.NoMatchingPortError).name,
+            port=get_port_of(module, port, suffix).name,
             arg=wire_name(arg, suffix),
         )
 

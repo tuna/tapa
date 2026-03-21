@@ -4,23 +4,19 @@ All rights reserved. The contributor(s) of this file has/have agreed to the
 RapidStream Contributor License Agreement.
 """
 
-import functools
 import logging
 import tempfile
-from collections.abc import Collection, Iterable, Iterator
+from collections.abc import Collection, Iterable
 from pathlib import Path
 
 import jinja2
 import pyslang
-from pyverilog.ast_code_generator.codegen import ASTCodeGenerator
-from pyverilog.vparser.ast import Node, PortArg
+from pyverilog.vparser.ast import Node
 
 from tapa.common.pyslang_rewriter import PyslangRewriter
-from tapa.common.unique_attrs import UniqueAttrs
 from tapa.verilog.ast.ioport import IOPort
 from tapa.verilog.ast.parameter import Parameter
 from tapa.verilog.ast.signal import Reg, Wire
-from tapa.verilog.ast.width import Width
 from tapa.verilog.xilinx.module_ops.axi import add_m_axi as add_m_axi_helper
 from tapa.verilog.xilinx.module_ops.axi import (
     generate_m_axi_ports as generate_m_axi_ports_helper,
@@ -50,6 +46,9 @@ from tapa.verilog.xilinx.module_ops.mmap import (
 from tapa.verilog.xilinx.module_ops.mmap import (
     add_async_mmap_instance as add_async_mmap_instance_helper,
 )
+from tapa.verilog.xilinx.module_ops.parse import (
+    parse_syntax_tree as parse_syntax_tree_helper,
+)
 from tapa.verilog.xilinx.module_ops.ports import (
     find_port as find_port_helper,
 )
@@ -78,16 +77,6 @@ __all__ = [
 
 # vitis hls generated port infixes
 FIFO_INFIXES = ("_V", "_r", "_s", "")
-
-_CODEGEN = ASTCodeGenerator()
-_SIGNAL_SYNTAX = pyslang.DataDeclarationSyntax | pyslang.NetDeclarationSyntax
-_LOGIC_SYNTAX = pyslang.ContinuousAssignSyntax | pyslang.ProceduralBlockSyntax
-
-
-def _get_name(
-    node: pyslang.DataDeclarationSyntax | pyslang.NetDeclarationSyntax,
-) -> str:
-    return node.declarators[0].name.valueText
 
 
 class Module:  # TODO: refactor this class
@@ -142,10 +131,13 @@ class Module:  # TODO: refactor this class
     _port_source_range: pyslang.SourceRange
 
     _signals: dict[str, Wire | Reg]
-    _signal_name_to_decl: dict[str, _SIGNAL_SYNTAX]
+    _signal_name_to_decl: dict[
+        str,
+        pyslang.DataDeclarationSyntax | pyslang.NetDeclarationSyntax,
+    ]
     _signal_source_range: pyslang.SourceRange
 
-    _logics: list[_LOGIC_SYNTAX]
+    _logics: list[pyslang.ContinuousAssignSyntax | pyslang.ProceduralBlockSyntax]
     _logic_source_range: pyslang.SourceRange
 
     _instances: list[pyslang.HierarchyInstantiationSyntax]
@@ -198,100 +190,6 @@ class Module:  # TODO: refactor this class
             self._rewriter = PyslangRewriter(self._syntax_tree)
             self._parse_syntax_tree()
 
-    def _parse_syntax_tree(self) -> None:
-        """Parse syntax tree and memorize relevant nodes.
-
-        All private attributes (except `_syntax_tree` and `_rewriter`) will be
-        created/updated.
-        """
-
-        class Attrs(UniqueAttrs):
-            module_decl: pyslang.ModuleDeclarationSyntax
-
-        attrs = Attrs()
-
-        self._params = {}
-        self._param_name_to_decl = {}
-        self._ports = {}
-        self._port_name_to_decl = {}
-        self._signals = {}
-        self._signal_name_to_decl = {}
-        self._logics = []
-        self._instances = []
-
-        @functools.singledispatch
-        def visitor(_: object) -> pyslang.VisitAction:
-            return pyslang.VisitAction.Advance
-
-        @visitor.register
-        def _(node: pyslang.ModuleDeclarationSyntax) -> pyslang.VisitAction:
-            attrs.module_decl = node
-            # Append after the header by default.
-            self._update_source_range_for_param(node.header)
-            return pyslang.VisitAction.Advance
-
-        @visitor.register
-        def _(node: pyslang.ParameterDeclarationStatementSyntax) -> pyslang.VisitAction:
-            param = Parameter.create(node)
-            self._params[param.name] = param
-            self._param_name_to_decl[param.name] = node
-            self._update_source_range_for_param(node)
-            return pyslang.VisitAction.Skip
-
-        @visitor.register
-        def _(node: pyslang.PortDeclarationSyntax) -> pyslang.VisitAction:
-            port = IOPort.create(node)
-            self._ports[port.name] = port
-            self._port_name_to_decl[port.name] = node
-            self._update_source_range_for_port(node)
-            return pyslang.VisitAction.Skip
-
-        @visitor.register
-        def _(node: _SIGNAL_SYNTAX) -> pyslang.VisitAction:
-            signal = {
-                pyslang.DataDeclarationSyntax: Reg,
-                pyslang.NetDeclarationSyntax: Wire,
-            }[type(node)](_get_name(node), Width.create(node.type))
-            self._signals[signal.name] = signal
-            self._signal_name_to_decl[signal.name] = node
-            self._update_source_range_for_signal(node)
-            return pyslang.VisitAction.Skip
-
-        @visitor.register
-        def _(node: _LOGIC_SYNTAX) -> pyslang.VisitAction:
-            self._logics.append(node)
-            self._update_source_range_for_logic(node)
-            return pyslang.VisitAction.Skip
-
-        @visitor.register
-        def _(node: pyslang.HierarchyInstantiationSyntax) -> pyslang.VisitAction:
-            self._instances.append(node)
-            self._update_source_range_for_instance(node)
-            return pyslang.VisitAction.Skip
-
-        self._syntax_tree.root.visit(visitor)
-
-        self._module_decl = attrs.module_decl
-
-    def _update_source_range_for_param(self, node: pyslang.SyntaxNode) -> None:
-        self._param_source_range = node.sourceRange
-        self._update_source_range_for_port(node)
-
-    def _update_source_range_for_port(self, node: pyslang.SyntaxNode) -> None:
-        self._port_source_range = node.sourceRange
-        self._update_source_range_for_signal(node)
-
-    def _update_source_range_for_signal(self, node: pyslang.SyntaxNode) -> None:
-        self._signal_source_range = node.sourceRange
-        self._update_source_range_for_logic(node)
-
-    def _update_source_range_for_logic(self, node: pyslang.SyntaxNode) -> None:
-        self._logic_source_range = node.sourceRange
-        self._update_source_range_for_instance(node)
-
-    def _update_source_range_for_instance(self, node: pyslang.SyntaxNode) -> None:
-        self._instance_source_range = node.sourceRange
-
     @property
     def name(self) -> str:
         return self._module_decl.header.name.valueText
@@ -303,35 +201,9 @@ class Module:  # TODO: refactor this class
     class NoMatchingPortError(ValueError):
         """No matching port being found exception."""
 
-    def get_port_of(self, fifo: str, suffix: str) -> IOPort:
-        """Return the IOPort of the given fifo with the given suffix.
-
-        Args:
-          fifo (str): Name of the fifo.
-          suffix (str): One of the suffixes in ISTREAM_SUFFIXES or OSTREAM_SUFFIXES.
-
-        Returns:
-          IOPort.
-
-        Raises:
-          ValueError: Module does not have the port.
-        """
-        return get_port_of_helper(self, fifo, suffix, self.NoMatchingPortError)
-
-    def generate_istream_ports(
-        self,
-        port: str,
-        arg: str,
-        ignore_peek_fifos: Iterable[str] = (),
-    ) -> Iterator[PortArg]:
-        yield from generate_istream_ports_helper(self, port, arg, ignore_peek_fifos)
-
-    def generate_ostream_ports(
-        self,
-        port: str,
-        arg: str,
-    ) -> Iterator[PortArg]:
-        yield from generate_ostream_ports_helper(self, port, arg)
+    get_port_of = get_port_of_helper
+    generate_istream_ports = generate_istream_ports_helper
+    generate_ostream_ports = generate_ostream_ports_helper
 
     @property
     def signals(self) -> dict[str, Wire | Reg]:
@@ -362,6 +234,7 @@ endmodule
 
 """).render(name=self.name, ports=self.ports.values())
 
+    _parse_syntax_tree = parse_syntax_tree_helper
     add_ports = add_ports_helper
     del_port = del_port_helper
     add_comment_lines = add_comment_lines_helper
@@ -376,14 +249,7 @@ endmodule
     del_instances = del_instances_helper
     add_rs_pragmas = add_rs_pragmas_helper
 
-    def add_fifo_instance(
-        self,
-        name: str,
-        rst: Node,
-        width: Node,
-        depth: int,
-    ) -> "Module":
-        return add_fifo_instance_helper(self, name, rst, width, depth)
+    add_fifo_instance = add_fifo_instance_helper
 
     def add_async_mmap_instance(  # noqa: PLR0913,PLR0917
         self,
@@ -410,24 +276,6 @@ endmodule
             ),
         )
 
-    def find_port(self, prefix: str, suffix: str) -> str | None:
-        """Find an IO port with given prefix and suffix in this module."""
-        return find_port_helper(self, prefix, suffix)
-
-    def add_m_axi(
-        self,
-        name: str,
-        data_width: int,
-        addr_width: int = 64,
-        id_width: int | None = None,
-    ) -> "Module":
-        return add_m_axi_helper(
-            self,
-            name,
-            data_width,
-            addr_width=addr_width,
-            id_width=id_width,
-        )
-
-    def cleanup(self) -> None:
-        cleanup_helper(self)
+    find_port = find_port_helper
+    add_m_axi = add_m_axi_helper
+    cleanup = cleanup_helper
