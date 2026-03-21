@@ -6,6 +6,21 @@ import logging
 from typing import TYPE_CHECKING
 
 from tapa.common.target import Target
+from tapa.task_codegen.fifos import (
+    connect_fifo_externally as connect_fifo_externally_codegen,
+)
+from tapa.task_codegen.fifos import (
+    get_connection_to as get_connection_to_codegen,
+)
+from tapa.task_codegen.fifos import (
+    get_fifo_directions as get_fifo_directions_codegen,
+)
+from tapa.task_codegen.fifos import (
+    get_fifo_suffixes as get_fifo_suffixes_codegen,
+)
+from tapa.task_codegen.fifos import (
+    is_fifo_external as is_fifo_external_codegen,
+)
 from tapa.util import as_type
 from tapa.verilog.ast.signal import Wire
 from tapa.verilog.util import wire_name
@@ -30,18 +45,21 @@ def connect_fifos(
     """Declare FIFO wires between child tasks and connect external FIFOs."""
     _logger.debug("  connecting %s's children tasks", task.name)
     for fifo_name in task.fifos:
-        for direction in task.get_fifo_directions(fifo_name):
-            task_name, _, fifo_port = task.get_connection_to(fifo_name, direction)
+        for direction in get_fifo_directions_codegen(task, fifo_name):
+            task_name, _, fifo_port = get_connection_to_codegen(
+                task, fifo_name, direction
+            )
 
-            for suffix in task.get_fifo_suffixes(direction):
+            for suffix in get_fifo_suffixes_codegen(direction):
                 wire = Wire(
                     wire_name(fifo_name, suffix),
                     get_task(task_name).module.get_port_of(fifo_port, suffix).width,
                 )
                 task.module.add_signals([wire])
 
-        if task.is_fifo_external(fifo_name):
-            task.connect_fifo_externally(
+        if is_fifo_external_codegen(task, fifo_name):
+            connect_fifo_externally_codegen(
+                task,
                 fifo_name,
                 task.name == top and target == Target.XILINX_VITIS,
             )

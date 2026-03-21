@@ -45,6 +45,12 @@ from tapa.graphir_conversion.utils import (
 )
 from tapa.instance import Instance
 from tapa.task import Task
+from tapa.task_codegen.fifos import (
+    get_connection_to as get_connection_to_codegen,
+)
+from tapa.task_codegen.fifos import (
+    is_fifo_external as is_fifo_external_codegen,
+)
 from tapa.verilog.util import Pipeline, match_array_name, sanitize_array_name
 from tapa.verilog.xilinx.const import (
     HANDSHAKE_INPUT_PORTS,
@@ -519,7 +525,7 @@ def get_upper_module_ir_subinsts(
     # fifo
     for fifo_name, fifo in upper_task.fifos.items():
         # skip external fifos
-        if upper_task.is_fifo_external(fifo_name):
+        if is_fifo_external_codegen(upper_task, fifo_name):
             continue
         ir_insts.append(
             get_fifo_inst(
@@ -552,11 +558,11 @@ def infer_fifo_data_range(
     assert isinstance(producer, str)
     assert consumer in slot.tasks
     assert producer in slot.tasks
-    producer_task_name, _, producer_fifo = slot.get_connection_to(
-        fifo_name, "produced_by"
+    producer_task_name, _, producer_fifo = get_connection_to_codegen(
+        slot, fifo_name, "produced_by"
     )
-    consumer_task_name, _, consumer_fifo = slot.get_connection_to(
-        fifo_name, "consumed_by"
+    consumer_task_name, _, consumer_fifo = get_connection_to_codegen(
+        slot, fifo_name, "consumed_by"
     )
 
     subtasks: dict[str, Task] = {}
@@ -616,7 +622,7 @@ def get_upper_task_ir_wires(
     connections = []
     # add fifo wires
     for fifo_name, fifo in upper_task.fifos.items():
-        if upper_task.is_fifo_external(fifo_name):
+        if is_fifo_external_codegen(upper_task, fifo_name):
             continue
         for suffix in ISTREAM_SUFFIXES + OSTREAM_SUFFIXES:
             fifo_name_no_bracket = sanitize_array_name(fifo_name)
@@ -918,7 +924,7 @@ def get_top_ir_subinsts(
     # fifo
     for fifo_name, fifo in top_task.fifos.items():
         # skip external fifos
-        if top_task.is_fifo_external(fifo_name):
+        if is_fifo_external_codegen(top_task, fifo_name):
             continue
         ir_insts.append(
             get_fifo_inst(

@@ -27,6 +27,7 @@ from pyverilog.vparser.ast import (
 
 from tapa.common.target import Target
 from tapa.instance import Instance
+from tapa.task_codegen.fifos import get_connection_to as get_connection_to_codegen
 from tapa.task import Task
 from tapa.util import as_type, get_module_name
 from tapa.verilog.ast.ioport import IOPort
@@ -120,7 +121,7 @@ def replace_custom_rtl(
 
 
 def get_fifo_width(program: Any, task: Task, fifo: str) -> Plus:
-    producer_task, _, fifo_port = task.get_connection_to(fifo, "produced_by")
+    producer_task, _, fifo_port = get_connection_to_codegen(task, fifo, "produced_by")
     port = program.get_task(producer_task).module.get_port_of(
         fifo_port,
         OSTREAM_SUFFIXES[0],

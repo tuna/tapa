@@ -11,38 +11,20 @@ import decimal
 import enum
 import logging
 import operator
-from typing import ClassVar, Literal, NamedTuple
-
-from pyverilog.vparser.ast import (
-    IntConst,
-    Plus,
-)
+from typing import NamedTuple
 
 from tapa import __version__
 from tapa.instance import Instance, Port
+from tapa.task_codegen.fsm import add_rs_pragmas_to_fsm as add_rs_pragmas_to_fsm_codegen
 from tapa.task_codegen.m_axi import add_m_axi as add_m_axi_codegen
 from tapa.verilog.ast.ioport import IOPort
-from tapa.verilog.ast.logic import Assign
-from tapa.verilog.ast.signal import Wire
-from tapa.verilog.util import wire_name
-from tapa.verilog.xilinx.axis import (
-    AXIS_CONSTANTS,
-    STREAM_TO_AXIS,
-    get_axis_port_width_int,
-)
 from tapa.verilog.xilinx.const import (
     HANDSHAKE_CLK,
     HANDSHAKE_DONE,
     HANDSHAKE_IDLE,
-    HANDSHAKE_OUTPUT_PORTS,
     HANDSHAKE_READY,
     HANDSHAKE_RST_N,
     HANDSHAKE_START,
-    ISTREAM_SUFFIXES,
-    OSTREAM_SUFFIXES,
-    RST,
-    STREAM_PORT_DIRECTION,
-    get_stream_width,
 )
 from tapa.verilog.xilinx.module import Module
 
@@ -344,174 +326,10 @@ class Task:
             return self.mmaps[port].thread_count
         return 1
 
-    _DIR2CAT: ClassVar = {"produced_by": "ostream", "consumed_by": "istream"}
-
-    def get_connection_to(
-        self,
-        fifo_name: str,
-        direction: str,
-    ) -> tuple[str, int, str]:
-        """Get port information to which a given FIFO is connected."""
-        if direction not in self._DIR2CAT:
-            msg = f"invalid direction: {direction}"
-            raise ValueError(msg)
-        if direction not in self.fifos[fifo_name]:
-            msg = f"{fifo_name} is not {direction} any task"
-            raise ValueError(msg)
-        task_name, task_idx = self.fifos[fifo_name][direction]
-        for port, arg in self.tasks[task_name][task_idx]["args"].items():
-            if arg["cat"] == self._DIR2CAT[direction] and arg["arg"] == fifo_name:
-                return task_name, task_idx, port
-        msg = f"task {self.name} has inconsistent metadata"
-        raise ValueError(msg)
-
-    def get_fifo_directions(self, fifo_name: str) -> list[str]:
-        return [
-            direction
-            for direction in ["consumed_by", "produced_by"]
-            if direction in self.fifos[fifo_name]
-        ]
-
-    @staticmethod
-    def get_fifo_suffixes(direction: str) -> list[str]:
-        suffixes = {
-            "consumed_by": ISTREAM_SUFFIXES,
-            "produced_by": OSTREAM_SUFFIXES,
-        }
-        return suffixes[direction]
-
-    def is_fifo_external(self, fifo_name: str) -> bool:
-        return "depth" not in self.fifos[fifo_name]
-
-    def _assign_directional(
-        self, a: str, b: str, a_direction: Literal["input", "output"]
-    ) -> None:
-        if a_direction == "input":
-            self.module.add_logics([Assign(lhs=a, rhs=b)])
-        elif a_direction == "output":
-            self.module.add_logics([Assign(lhs=b, rhs=a)])
-
-    def convert_axis_to_fifo(self, axis_name: str) -> str:
-        assert len(self.get_fifo_directions(axis_name)) == 1, (
-            "axis interfaces should have one direction"
-        )
-        direction_axis = {
-            "consumed_by": "produced_by",
-            "produced_by": "consumed_by",
-        }[self.get_fifo_directions(axis_name)[0]]
-        data_width = self.ports[axis_name].width
-
-        # add FIFO registerings to provide timing isolation
-        fifo_name = "tapa_fifo_" + axis_name
-        self.module.add_fifo_instance(
-            name=fifo_name,
-            rst=RST,
-            width=Plus(IntConst(data_width), IntConst(1)),
-            depth=2,
-        )
-
-        # add FIFO's wires
-        for suffix in STREAM_PORT_DIRECTION:
-            w_name = wire_name(fifo_name, suffix)
-            wire_width = get_stream_width(suffix, data_width)
-            self.module.add_signals([Wire(name=w_name, width=wire_width)])
-
-        # add constant outputs for AXIS output ports
-        if direction_axis == "consumed_by":
-            for axis_suffix, bit in AXIS_CONSTANTS.items():
-                port_name = self.module.find_port(axis_name, axis_suffix)
-                assert port_name is not None
-                width = get_axis_port_width_int(axis_suffix, data_width)
-
-                self.module.add_logics(
-                    [
-                        Assign(
-                            lhs=port_name,
-                            rhs=f"{width}'b{str(bit) * width}",
-                        ),
-                    ],
-                )
-
-        # connect the FIFO to the AXIS interface
-        for suffix in self.get_fifo_suffixes(direction_axis):
-            w_name = wire_name(fifo_name, suffix)
-
-            offset = 0
-            for axis_suffix in STREAM_TO_AXIS[suffix]:
-                port_name = self.module.find_port(axis_name, axis_suffix)
-                assert port_name is not None
-                width = get_axis_port_width_int(axis_suffix, data_width)
-
-                if len(STREAM_TO_AXIS[suffix]) > 1:
-                    wire = f"{w_name}[{offset + width - 1}:{offset}]"
-                else:
-                    wire = w_name
-
-                self._assign_directional(
-                    port_name,
-                    wire,
-                    STREAM_PORT_DIRECTION[suffix],
-                )
-
-                offset += width
-
-        return fifo_name
-
-    def connect_fifo_externally(self, internal_name: str, axis: bool) -> None:
-        assert len(self.get_fifo_directions(internal_name)) == 1, (
-            "externally connected fifos should have one direction"
-        )
-        direction = self.get_fifo_directions(internal_name)[0]
-        external_name = (
-            self.convert_axis_to_fifo(internal_name) if axis else internal_name
-        )
-
-        # connect fifo with external ports
-        for suffix in self.get_fifo_suffixes(direction):
-            if external_name == internal_name:
-                rhs = self.module.get_port_of(external_name, suffix).name
-            else:
-                rhs = wire_name(external_name, suffix)
-            self._assign_directional(
-                wire_name(internal_name, suffix),
-                rhs,
-                STREAM_PORT_DIRECTION[suffix],
-            )
-
     def add_m_axi(self, width_table: dict[str, int], files: dict[str, str]) -> None:
         """Add M-AXI ports and crossbar wiring for upper tasks."""
         add_m_axi_codegen(self, width_table, files)
 
     def add_rs_pragmas_to_fsm(self) -> None:
         """Add RS pragmas to the FSM module."""
-        port_map_str = " ".join(
-            f"{x}={x}" for x in (HANDSHAKE_START, *HANDSHAKE_OUTPUT_PORTS)
-        )
-        scalar_regex_str = "|".join(
-            name
-            for x in self.ports.values()
-            for name in [f"{x.name}_offset" if not x.cat.is_scalar else x.name]
-            if name in self.fsm_module.ports  # skip unused ports
-            and (not x.cat.is_stream and not x.is_streams)  # TODO: refactor port.cat
-        )
-        scalar_pragma = f" scalar=({scalar_regex_str})" if scalar_regex_str else ""
-        pragma_list = [
-            f"clk port={HANDSHAKE_CLK}",
-            f"rst port={HANDSHAKE_RST_N} active=low",
-            f"ap-ctrl {port_map_str}{scalar_pragma}",
-        ]
-        for instance in self.instances:
-            port_list = [HANDSHAKE_START]
-            if not instance.is_autorun:
-                port_list.extend(HANDSHAKE_OUTPUT_PORTS)
-            port_map_str = " ".join(
-                f"{x}={wire_name(instance.name, x)}" for x in port_list
-            )
-            if all(arg.cat.is_stream or "'d" in arg.name for arg in instance.args):
-                scalar_pragma = ""
-            else:
-                scalar_pragma = f" scalar={instance.get_instance_arg('.*')}"
-            pragma_list.append(f"ap-ctrl {port_map_str}{scalar_pragma}")
-        self.fsm_module.add_comment_lines(
-            f"// pragma RS {pragma}" for pragma in pragma_list
-        )
+        add_rs_pragmas_to_fsm_codegen(self)
