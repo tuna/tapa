@@ -6,6 +6,7 @@ RapidStream Contributor License Agreement.
 
 import re
 from collections import defaultdict
+from pathlib import Path
 from typing import NamedTuple
 
 
@@ -80,6 +81,11 @@ class Arg(NamedTuple):
 
 
 MAX_AXI_BRAM_ADDR_WIDTH = 32
+
+
+def output_data_path(input_path: str) -> str:
+    p = Path(input_path)
+    return str(p.with_name(p.stem + "_out.bin"))
 
 
 def parse_register_addr(ctrl_unit_path: str) -> dict[str, list[str]]:

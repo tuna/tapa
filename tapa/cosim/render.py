@@ -9,9 +9,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from jinja2 import Environment, FileSystemLoader
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
-from tapa.cosim.common import AXI, MAX_AXI_BRAM_ADDR_WIDTH, Arg
+from tapa.cosim.common import AXI, MAX_AXI_BRAM_ADDR_WIDTH, Arg, output_data_path
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -29,17 +29,17 @@ class AxiRamInstContext(BaseModel):
     """Context for rendering the AXI RAM instance snippet."""
 
     name: str
-    upper_name: str
     data_width: int
     max_addr_width: int = MAX_AXI_BRAM_ADDR_WIDTH
 
+    @computed_field
+    @property
+    def upper_name(self) -> str:
+        return self.name.upper()
+
     @classmethod
     def from_axi(cls, axi: AXI) -> AxiRamInstContext:
-        return cls(
-            name=axi.name,
-            upper_name=axi.name.upper(),
-            data_width=axi.data_width,
-        )
+        return cls(name=axi.name, data_width=axi.data_width)
 
 
 class StreamArgContext(BaseModel):
@@ -112,7 +112,7 @@ class AxiRamModuleContext(BaseModel):
             data_width=axi.data_width,
             max_addr_width=MAX_AXI_BRAM_ADDR_WIDTH,
             input_data_path=input_data_path,
-            output_data_path=input_data_path.replace(".bin", "_out.bin"),
+            output_data_path=output_data_path(input_data_path),
             c_array_size=c_array_size,
         )
 
@@ -136,7 +136,6 @@ def _render_template(template_name: str, **kwargs: object) -> str:
 
 
 def render_axi_ram_inst(axi: AXI) -> str:
-    """Render the AXI RAM instance snippet."""
     return _render_template(
         "axi_ram_inst.j2",
         ctx=AxiRamInstContext.from_axi(axi),
@@ -144,12 +143,10 @@ def render_axi_ram_inst(axi: AXI) -> str:
 
 
 def render_testbench_begin() -> str:
-    """Render the shared testbench prologue."""
     return _render_template("testbench_begin.j2")
 
 
 def render_testbench_end() -> str:
-    """Render the shared testbench epilogue."""
     return _render_template("testbench_end.j2")
 
 
@@ -158,7 +155,6 @@ def render_vitis_test_signals(
     scalar_arg_to_val: dict[str, str],
     args: list[Arg] | tuple[Arg, ...] | Sequence[Arg],
 ) -> str:
-    """Render the Vitis test-signal block."""
     stream_args = [StreamArgContext.from_arg(arg) for arg in args if arg.is_stream]
     register_writes = []
     for arg_name, addrs in arg_to_reg_addrs.items():
@@ -184,7 +180,6 @@ def render_vitis_test_signals(
 
 
 def render_hls_test_signals(args: list[Arg] | tuple[Arg, ...] | Sequence[Arg]) -> str:
-    """Render the HLS test-signal block."""
     ctx = HlsTestSignalsContext(
         stream_args=[StreamArgContext.from_arg(arg) for arg in args if arg.is_stream],
         mmap_names=[arg.name for arg in args if arg.is_mmap],
@@ -196,12 +191,10 @@ def render_hls_test_signals(args: list[Arg] | tuple[Arg, ...] | Sequence[Arg]) -
 
 
 def render_s_axi_control() -> str:
-    """Render the control S_AXI testbench scaffolding."""
     return _render_template("s_axi_control.j2")
 
 
 def render_axis(args: list[Arg] | tuple[Arg, ...] | Sequence[Arg]) -> str:
-    """Render the AXIS testbench scaffolding."""
     stream_args = [arg for arg in args if arg.is_stream]
     ctx = DutContext(
         args=list(args),
@@ -217,7 +210,6 @@ def render_axis(args: list[Arg] | tuple[Arg, ...] | Sequence[Arg]) -> str:
 
 
 def render_stream_typedef(args: list[Arg] | tuple[Arg, ...] | Sequence[Arg]) -> str:
-    """Render the stream typedef declarations."""
     stream_args = [arg for arg in args if arg.is_stream]
     ctx = DutContext(
         args=[],
@@ -233,7 +225,6 @@ def render_stream_typedef(args: list[Arg] | tuple[Arg, ...] | Sequence[Arg]) -> 
 
 
 def render_fifo(args: list[Arg] | tuple[Arg, ...] | Sequence[Arg]) -> str:
-    """Render the FIFO testbench scaffolding."""
     stream_args = [arg for arg in args if arg.is_stream]
     ctx = DutContext(
         args=list(args),
@@ -243,7 +234,6 @@ def render_fifo(args: list[Arg] | tuple[Arg, ...] | Sequence[Arg]) -> str:
 
 
 def render_m_axi_connections(arg_name: str) -> str:
-    """Render the AXI master connection block for one memory port."""
     return _render_template("m_axi_connections.j2", arg_name=arg_name)
 
 
@@ -251,7 +241,6 @@ def render_vitis_dut(
     top_name: str,
     args: list[Arg] | tuple[Arg, ...] | Sequence[Arg],
 ) -> str:
-    """Render the Vitis DUT instantiation."""
     ctx = DutContext(top_name=top_name, args=list(args))
     return _render_template("vitis_dut.j2", ctx=ctx)
 
@@ -262,7 +251,6 @@ def render_hls_dut(
     args: list[Arg] | tuple[Arg, ...] | Sequence[Arg],
     scalar_to_val: dict[str, str],
 ) -> str:
-    """Render the HLS DUT instantiation."""
     ctx = DutContext(
         top_name=top_name,
         args=list(args),
@@ -273,12 +261,10 @@ def render_hls_dut(
 
 
 def render_srl_fifo_template() -> str:
-    """Render the SRL FIFO module."""
     return _render_template("srl_fifo_template.j2")
 
 
 def render_axi_ram_module(axi: AXI, input_data_path: str, c_array_size: int) -> str:
-    """Render the AXI RAM behavioral module."""
     if axi.data_width / 8 * c_array_size > 2**MAX_AXI_BRAM_ADDR_WIDTH:
         _logger.error(
             "The current cosim data size is larger than the template "

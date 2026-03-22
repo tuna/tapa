@@ -10,6 +10,8 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+from _git import _repo_root, _staged_files  # noqa: PLC2701
+
 
 @dataclass(frozen=True)
 class LintDelta:
@@ -18,27 +20,6 @@ class LintDelta:
     path: Path
     before: int
     after: int
-
-
-def _repo_root() -> Path:
-    result = subprocess.run(
-        ["git", "rev-parse", "--show-toplevel"],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    return Path(result.stdout.strip())
-
-
-def _staged_files(repo_root: Path) -> list[Path]:
-    result = subprocess.run(
-        ["git", "diff", "--cached", "--name-only", "--diff-filter=ACMR"],
-        check=True,
-        capture_output=True,
-        text=True,
-        cwd=repo_root,
-    )
-    return [repo_root / line for line in result.stdout.splitlines() if line.strip()]
 
 
 def _head_has_file(repo_root: Path, rel_path: Path) -> bool:

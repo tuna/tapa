@@ -22,12 +22,10 @@ def set_iface_role(module: AnyModuleDefinition, iface: AnyInterface) -> AnyInter
 
 
 def _set_as_sink(iface: AnyInterface) -> AnyInterface:
-    """Return a copy of the interface whose role is set as sink."""
     return iface.updated(role=BaseInterface.InterfaceRole.SINK)
 
 
 def _set_as_source(iface: AnyInterface) -> AnyInterface:
-    """Return a copy of the interface whose role is set as source."""
     return iface.updated(role=BaseInterface.InterfaceRole.SOURCE)
 
 
@@ -36,7 +34,6 @@ def _set_hs_iface_role_by_ports(
     iface: HandShakeInterface,
     module_name: str,
 ) -> AnyInterface:
-    """Set the role of the handshake interface based on port directions."""
     valid_port = name_to_port[iface.valid_port]
     ready_port = name_to_port[iface.ready_port]
     data_ports = [name_to_port[p] for p in iface.get_data_ports()]
@@ -76,7 +73,6 @@ def _set_ap_ctrl_iface_role_by_ports(
     iface: ApCtrlInterface,
     module_name: str,
 ) -> AnyInterface:
-    """Set the role of the ap_ctrl interface based on port directions."""
     ap_start_port = name_to_port[iface.ap_start_port]
     ap_ready_port = name_to_port[iface.ap_ready_port] if iface.ap_ready_port else None
     ap_done_port = name_to_port[iface.ap_done_port] if iface.ap_done_port else None

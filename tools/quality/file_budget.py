@@ -5,10 +5,11 @@ from __future__ import annotations
 import argparse
 import ast
 import json
-import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+
+from _git import _repo_root, _staged_files  # noqa: PLC2701
 
 MIN_JS_PATH_PARTS = 3
 PYTHON_LOC_LIMIT = 450
@@ -20,8 +21,6 @@ FUNCTION_ALLOWLIST_PATH = Path("tools/quality/function_length_allowlist.txt")
 
 @dataclass(frozen=True)
 class BudgetViolation:
-    """A single file-size budget violation."""
-
     path: Path
     lines: int
     limit: int
@@ -30,8 +29,6 @@ class BudgetViolation:
 
 @dataclass(frozen=True)
 class FunctionViolation:
-    """A single function-length budget violation."""
-
     path: Path
     symbol: str
     lines: int
@@ -40,31 +37,8 @@ class FunctionViolation:
 
 @dataclass(frozen=True)
 class BudgetBaseline:
-    """A snapshot of accepted budget debt."""
-
     file_violations: dict[str, BudgetViolation]
     function_violations: dict[str, FunctionViolation]
-
-
-def _repo_root() -> Path:
-    result = subprocess.run(
-        ["git", "rev-parse", "--show-toplevel"],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    return Path(result.stdout.strip())
-
-
-def _staged_files(repo_root: Path) -> list[Path]:
-    result = subprocess.run(
-        ["git", "diff", "--cached", "--name-only", "--diff-filter=ACMR"],
-        check=True,
-        capture_output=True,
-        text=True,
-        cwd=repo_root,
-    )
-    return [repo_root / line for line in result.stdout.splitlines() if line.strip()]
 
 
 def _all_target_files(repo_root: Path) -> list[Path]:

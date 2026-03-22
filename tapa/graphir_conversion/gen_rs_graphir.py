@@ -7,7 +7,7 @@ RapidStream Contributor License Agreement.
 """
 
 import logging
-from collections.abc import Generator, Mapping
+from collections.abc import Generator, Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -210,10 +210,9 @@ def get_upper_task_ir_wires(
     upper_task: Task,
     submodule_ir_defs: Mapping[str, AnyModuleDefinition],
     upper_task_ir_ports: list[ModulePort],
-    ctrl_s_axi_ir_ports: list[ModulePort] = [],
+    ctrl_s_axi_ir_ports: Sequence[ModulePort] = (),
     is_top: bool = False,
 ) -> list[ModuleNet]:
-    """Get upper_task module wires."""
     return get_upper_task_ir_wires_builder(
         upper_task,
         submodule_ir_defs,

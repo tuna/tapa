@@ -33,7 +33,6 @@ def generate_verilator_tb(
     verilog_path: str = config["verilog_path"]
     mode: str = config["mode"]
 
-    # Copy RTL and TCL files to output directory for Verilator
     rtl_dir = Path(tb_output_dir) / "rtl"
     rtl_dir.mkdir(parents=True, exist_ok=True)
     for ext in ("*.v", "*.sv", "*.tcl"):
@@ -41,24 +40,19 @@ def generate_verilator_tb(
             target = rtl_dir / src_file.name
             target.write_bytes(src_file.read_bytes())
 
-    # Detect and replace Xilinx IPs with behavioral models
     detect_xilinx_ips(rtl_dir)
 
-    # Parse control register addresses (Vitis mode)
     reg_addrs: dict[str, list[str]] = {}
     if mode == "vitis":
         ctrl_path = f"{verilog_path}/{top_name}_control_s_axi.v"
         reg_addrs = parse_register_addr(ctrl_path)
 
-    # Generate the C++ testbench
     tb_cpp = generate_cpp_testbench(top_name, axi_list, args, config, reg_addrs, mode)
     (Path(tb_output_dir) / "tb.cpp").write_text(tb_cpp, encoding="utf-8")
 
-    # Generate the DPI-C FP32 support file
     dpi_c = generate_dpi_support()
     (Path(tb_output_dir) / "dpi_support.cpp").write_text(dpi_c, encoding="utf-8")
 
-    # Generate build script
     build_sh = _generate_build_script(top_name)
     build_path = Path(tb_output_dir) / "build.sh"
     build_path.write_text(build_sh, encoding="utf-8")

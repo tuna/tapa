@@ -13,15 +13,10 @@ _logger = logging.getLogger().getChild(__name__)
 
 
 def launch_verilator(config: dict, tb_output_dir: str) -> None:
-    """Build and run the Verilator simulation."""
     top_name: str = config["top_name"]
     _logger.info("Building Verilator simulation for %s", top_name)
 
     build_script = Path(tb_output_dir) / "build.sh"
-    if not build_script.exists():
-        _logger.error("Build script not found: %s", build_script)
-        sys.exit(1)
-
     result = subprocess.run(
         [str(build_script)],
         check=False,
@@ -35,10 +30,6 @@ def launch_verilator(config: dict, tb_output_dir: str) -> None:
     _logger.info("Verilator build succeeded")
 
     binary = Path(tb_output_dir) / f"obj_dir/V{top_name}"
-    if not binary.exists():
-        _logger.error("Simulation binary not found: %s", binary)
-        sys.exit(1)
-
     _logger.info("Running Verilator simulation")
     result = subprocess.run(
         [str(binary)],
@@ -57,7 +48,6 @@ def launch_verilator(config: dict, tb_output_dir: str) -> None:
 
 
 def generate_build_script(top_name: str) -> str:
-    """Generate a shell script that builds the Verilator simulation."""
     verilator_bin, verilator_root = _find_verilator()
 
     warn_flags = (
@@ -88,7 +78,6 @@ make -C obj_dir -f V{top_name}.mk V{top_name} \\
 
 
 def _find_verilator() -> tuple[str, str | None]:
-    """Find the Verilator binary and optionally its root directory."""
     env_bin = os.environ.get("VERILATOR_BIN")
     if env_bin:
         verilator_bin = str(Path(env_bin).resolve())
@@ -118,7 +107,6 @@ def _find_verilator() -> tuple[str, str | None]:
 
 
 def _find_verilator_root(verilator_bin: str) -> str | None:
-    """Determine VERILATOR_ROOT for a Bazel-built Verilator binary."""
     bin_path = Path(verilator_bin)
 
     for env_var in ("TEST_SRCDIR", "RUNFILES_DIR"):

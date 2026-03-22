@@ -11,18 +11,11 @@ if TYPE_CHECKING:
 
 
 def generate_stream_support(args: Sequence[Arg]) -> list[str]:
-    """Generate stream queue declarations when the design has streams."""
     stream_args = [arg for arg in args if arg.is_stream]
     if not stream_args:
         return []
-    return _generate_stream_types(stream_args)
-
-
-def _generate_stream_types(stream_args: Sequence[Arg]) -> list[str]:
-    """Generate C++ stream queue types and declarations."""
     lines: list[str] = [
         "",
-        "// Stream queue for FIFO-style interfaces",
         "#include <queue>",
         "",
         "struct StreamQueue {",
