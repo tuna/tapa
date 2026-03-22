@@ -82,12 +82,51 @@ py_library(
     deps = [
         ":common",
         ":verilator_build",
+        ":verilator_dpi",
+        ":verilator_ips",
+        ":verilator_tb_core",
     ],
 )
 
 py_library(
     name = "verilator_build",
     srcs = ["verilator_build.py"],
+)
+
+py_library(
+    name = "verilator_dpi",
+    srcs = ["verilator_dpi.py"],
+)
+
+py_library(
+    name = "verilator_ips",
+    srcs = ["verilator_ips.py"],
+)
+
+py_library(
+    name = "verilator_tb_axi",
+    srcs = ["verilator_tb_axi.py"],
+    deps = [
+        ":common",
+    ],
+)
+
+py_library(
+    name = "verilator_tb_core",
+    srcs = ["verilator_tb_core.py"],
+    deps = [
+        ":common",
+        ":verilator_tb_axi",
+        ":verilator_tb_stream",
+    ],
+)
+
+py_library(
+    name = "verilator_tb_stream",
+    srcs = ["verilator_tb_stream.py"],
+    deps = [
+        ":common",
+    ],
 )
 
 py_test(
@@ -101,6 +140,53 @@ py_test(
         ":common",
         ":render",
         ":templates",
+    ],
+)
+
+py_test(
+    name = "verilator_dpi_test",
+    srcs = ["verilator_dpi_test.py"],
+    data = glob(["testdata/**/*"]),
+    deps = [
+        ":verilator_dpi",
+    ],
+)
+
+py_test(
+    name = "verilator_ips_test",
+    srcs = ["verilator_ips_test.py"],
+    deps = [
+        ":verilator_ips",
+    ],
+)
+
+py_test(
+    name = "verilator_tb_axi_test",
+    srcs = ["verilator_tb_axi_test.py"],
+    deps = [
+        ":common",
+        ":verilator_tb_axi",
+    ],
+)
+
+py_test(
+    name = "verilator_tb_core_test",
+    srcs = ["verilator_tb_core_test.py"],
+    data = glob([
+        "testdata/**/*",
+    ]),
+    deps = [
+        ":common",
+        ":verilator_tb_core",
+    ],
+)
+
+py_test(
+    name = "verilator_tb_stream_test",
+    srcs = ["verilator_tb_stream_test.py"],
+    deps = [
+        ":common",
+        ":verilator_tb_stream",
     ],
 )
 
