@@ -144,6 +144,15 @@ py_test(
 )
 
 py_test(
+    name = "verilator_build_test",
+    srcs = ["verilator_build_test.py"],
+    data = glob(["testdata/**/*"]),
+    deps = [
+        ":verilator_build",
+    ],
+)
+
+py_test(
     name = "verilator_dpi_test",
     srcs = ["verilator_dpi_test.py"],
     data = glob(["testdata/**/*"]),
