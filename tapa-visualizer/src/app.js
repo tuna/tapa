@@ -6,19 +6,17 @@
 
 "use strict";
 
-import { DragCanvas, Graph } from "@antv/g6";
 import { createIcons, icons } from "lucide";
 
 createIcons({ icons });
 
-import { antvDagre, dagre, forceAtlas2, graphOptions } from "./graph-config.js";
+import { setupFileInput } from "./app/file-loader.js";
+import { createGraph } from "./app/graph.js";
+import { setupCodeDialog, setupGraphButtons, setupSidebarToggle } from "./app/ui.js";
+import { antvDagre, dagre, forceAtlas2 } from "./graph-config.js";
 import {
   resetInstance,
   resetSidebar,
-  updateExplorer,
-  updateSidebarForCombo,
-  updateSidebarForEdge,
-  updateSidebarForNode,
 } from "./sidebar.js";
 import { getComboId } from "./helper.js";
 import { getGraphData } from "./parser.js";
@@ -126,83 +124,6 @@ const setupGraph = async (graph, graphJSON) => {
   });
 };
 
-// File Input + graph rendering for new file
-
-/** @satisfies {HTMLInputElement & { files: FileList } | null} */
-const fileInput = document.querySelector("input.fileInput");
-if (fileInput === null) {
-  throw new TypeError("Element input.fileInput not found!");
-}
-
-/** @param {Graph} graph */
-const setupFileInput = (graph) => {
-
-  const readFile = () => {
-
-    /** @type {File | undefined} */
-    const file = fileInput.files[0];
-
-    // Return false when there is no file to reset sidebar later
-    if (!file) return false;
-    if (file.type !== "application/json") {
-      console.warn("File type is not application/json!");
-    }
-
-    // Update filename and graph
-    filename = file.name;
-
-    resetSidebar("Loading...");
-    file.text().then(async text => {
-
-      // 1. Get graphJSON, update explorer
-
-      /** @satisfies {GraphJSON} */
-      graphJSON = JSON.parse(text);
-      if (!graphJSON?.tasks) {
-        resetInstance("Invalid graph.json, please retry.");
-        return;
-      }
-      updateExplorer(graphJSON);
-
-      // 2. Get graphData, set global variable, log debug info
-
-      options = getOptions();
-      graphData = getGraphData(graphJSON, options);
-      Object.assign(globalThis, { graphJSON, graphData });
-
-      console.debug(
-        `${filename}:\n`, graphJSON,
-        "\ngraphData:\n", graphData,
-        "\ngetGraphData() options:", options,
-      );
-
-      // 3. Render & fine-tune graph
-
-      resetInstance("Rendering...");
-      await renderGraph(graph, graphData);
-      await setupGraph(graph, graphJSON);
-      resetInstance();
-
-      // 4. Update options form's className for hint about only one combo
-      const classListMethod = graphData.combos.length <= 1 ? "add" : "remove";
-      optionsForm?.classList[classListMethod]("only-one-combo");
-
-    }).catch(error => {
-      console.error(error);
-      resetInstance(String(error));
-    });
-
-    return true;
-
-  };
-
-  readFile() ||
-  resetInstance("Please load the graph.json file.");
-
-  fileInput.addEventListener("change", readFile);
-};
-
-
 /** Re-render graph when grouping or options changed
  * @param {Graph} graph */
 const setupRadioToggles = graph => {
@@ -257,179 +178,48 @@ const setupRadioToggles = graph => {
 };
 
 
-// Buttons
-
-/** Button selector and click event callback
- * @param {Graph} graph
- * @returns {[string, EventListenerOrEventListenerObject][]} */
-const getGraphButtons = (graph) => [[
-  ".btn-clearGraph",
-  () => void graph.clear().then(() => {
-    filename = "";
-    graphJSON = undefined;
-    graphData = { nodes: [], edges: [], combos: [] };
-
-    resetSidebar("Please load a file.");
-  })
-], [
-  ".btn-rerenderGraph",
-  () => void graph.layout().then(() => graph.fitView())
-], [
-  ".btn-fitCenter",
-  () => void graph.fitCenter()
-], [
-  ".btn-fitView",
-  () => void graph.fitView()
-], [
-  ".btn-saveImage",
-  () => void graph.toDataURL({ mode: "overall" }).then(
-    href => Object.assign(
-      document.createElement("a"),
-      { href, download: filename, rel: "noopener" },
-    ).click(),
-  )
-]];
-
-/** @param {Graph} graph */
-const setupGraphButtons = graph => getGraphButtons(graph).forEach(
-  ([selector, callback]) => {
-    /** @satisfies { HTMLButtonElement | null } */
-    const button = document.querySelector(selector);
-    if (button) {
-      button.addEventListener("click", callback);
-      button.disabled = false;
-    } else {
-      console.warn(`setButton(): "${selector}" don't match any element!`);
-    }
-  }
-);
-
 // G6.Graph()
 
 (() => {
-	const sidebar = document.querySelector("aside");
-	/** @type { HTMLButtonElement | null } */
-	const toggleSidebar = document.querySelector(".btn-toggleSidebar");
-	if (sidebar && toggleSidebar) {
-		// FIXME: expand main after hide sidebar
-		toggleSidebar.addEventListener("click", () => {
-			const newValue = sidebar.style.display !== "none" ? "none" : null;
-			sidebar.style.setProperty("display", newValue);
-		});
-		toggleSidebar.disabled = false;
-	}
-
-	const dialog = document.querySelector("dialog");
-	if (dialog) {
-		const closeBtn = dialog.querySelector(":scope .btn-close");
-		closeBtn?.addEventListener("click", () => dialog.close());
-
-		const code = dialog.querySelector(":scope > pre > code");
-		if (code) {
-			const copyBtn = dialog.querySelector(":scope .btn-copy");
-			copyBtn?.addEventListener(
-				"click",
-				() => code.textContent &&
-          void navigator.clipboard.writeText(code.textContent),
-			);
-		}
-	}
-
-  /** @type {((states: Record<string, string[]>) => Record<string, string[]>)} */
-  const showSelectedNodes = states => {
-    const selected = Object.keys(states);
-    selected.length > 0 &&
-    resetSidebar(`Selected nodes: ${selected.join(", ")}`);
-    return states;
+  /** @satisfies {HTMLInputElement & { files: FileList } | null} */
+  const fileInput = document.querySelector("input.fileInput");
+  if (fileInput === null) {
+    throw new TypeError("Element input.fileInput not found!");
   }
 
-  // https://g6.antv.antgroup.com/api/graph/option
-  const graph = new Graph({
-    ...graphOptions,
+  setupSidebarToggle();
+  setupCodeDialog();
 
-    layout: getLayout(),
-
-    behaviors: [
-      // "auto-adapt-label",
-      "zoom-canvas",
-      "drag-element",
-
-      /** drag canvas when Shift or Ctrl are not pressed
-       * @type {import("@antv/g6").DragCanvasOptions} */
-      ({
-        type: "drag-canvas",
-        enable: event => {
-          if (event.ctrlKey || event.shiftKey) {
-            return false;
-          } else {
-            const defaultEnable = DragCanvas.defaultOptions.enable;
-            return typeof defaultEnable === "function"
-              ? defaultEnable(event)
-              : true;
-          }
-        }
-
-      }),
-      /** Shift + drag: brush select (box selection)
-       * @type {import("@antv/g6").BrushSelectOptions} */
-      ({
-        type: "brush-select",
-        trigger: ["shift"],
-        mode: "diff",
-        enableElements: ["node"],
-        onSelect: showSelectedNodes,
-      }),
-      /** Ctrl + drag: lasso select
-       * @type {import("@antv/g6").LassoSelectOptions} */
-      ({
-        type: "lasso-select",
-        trigger: ["control"],
-        mode: "diff",
-        enableElements: ["node"],
-        onSelect: showSelectedNodes,
-      }),
-
-      /** Double click to collapse / expand combo
-       * @type {import("@antv/g6").CollapseExpandOptions} */
-      ({
-        type: "collapse-expand",
-        animation: false,
-        // If combo contains more than 1 children, layout again to avoid G6 bug
-        // TODO: fix node with identical position
-        onExpand: id =>
-          graph.getComboData(id) &&
-          graph.getChildrenData(id).length > 1 &&
-          void graph.layout(),
-      }),
-
-      /** @type {import("@antv/g6").ClickSelectOptions} */
-      ({
-        type: "click-select",
-        degree: 1,
-        neighborState: "highlight",
-        onClick: ({ target: item }) => {
-          if (!("type" in item) || !("id" in item)) { resetSidebar(); return; }
-          switch (item.type) {
-            case "node":  updateSidebarForNode(item.id, graph); break;
-            case "combo": updateSidebarForCombo(item.id, graph); break;
-            case "edge":  updateSidebarForEdge(item.id, graph); break;
-            default: resetSidebar(); break;
-          }
-        },
-      }),
-
-    ],
-
-  });
-  // graph.on();
+  const graph = createGraph(getLayout);
 
   globalThis.graph = graph;
 
   // Graph loading finished, remove loading status in instance sidebar
   resetInstance();
 
-  setupFileInput(graph);
-  setupGraphButtons(graph);
+  setupFileInput(graph, fileInput, {
+    getOptions,
+    renderGraph,
+    setupGraph,
+    setFilename: nextFilename => { filename = nextFilename; },
+    setGraphJSON: nextGraphJSON => { graphJSON = nextGraphJSON; },
+    setGraphData: nextGraphData => { graphData = nextGraphData; },
+    setOptions: nextOptions => { options = nextOptions; },
+    updateOptionsHint: comboCount => {
+      const classListMethod = comboCount <= 1 ? "add" : "remove";
+      optionsForm?.classList[classListMethod]("only-one-combo");
+    },
+  });
+  setupGraphButtons(
+    graph,
+    () => {
+      filename = "";
+      graphJSON = undefined;
+      graphData = { nodes: [], edges: [], combos: [] };
+      resetSidebar("Please load a file.");
+    },
+    () => filename,
+  );
   setupRadioToggles(graph);
 
   console.debug("graph object:\n", graph);
