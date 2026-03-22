@@ -63,7 +63,7 @@ module fifo_srl #(
       begin
         out_ptr <= out_ptr + 1'b1;
         internal_empty_n <= 1'b1;
-        if (out_ptr == DEPTH - {{(ADDR_WIDTH-1){1'b0}}, 2'd2})
+        if (out_ptr == DEPTH - {{ '{' }}{(ADDR_WIDTH-1){1'b0}}, 2'd2})
           internal_full_n <= 1'b0;
       end
     end
