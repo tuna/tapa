@@ -60,6 +60,7 @@ export const graphJsonSchema = z.strictObject({
 /** @param {string} text
  * @returns {GraphJSON} */
 export const parseGraphJSON = text => {
+  /** @type {unknown} */
   let parsed;
   try {
     parsed = JSON.parse(text);
@@ -67,7 +68,7 @@ export const parseGraphJSON = text => {
     throw new TypeError("Invalid graph.json: file is not valid JSON.");
   }
 
-  const result = graphJsonSchema.safeParse(parsed);
+  const result = graphJsonSchema.safeParse(/** @type {unknown} */ (parsed));
   if (!result.success) {
     const issue = result.error.issues[0];
     const where = issue?.path.join(".") || "<root>";

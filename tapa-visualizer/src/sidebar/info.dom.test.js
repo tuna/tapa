@@ -20,12 +20,13 @@ const mountSidebarDom = () => {
   dialog.showModal = vi.fn();
 };
 
+/** @type {typeof import("./info.js")} */
 let info;
 
 beforeEach(async () => {
   mountSidebarDom();
   vi.resetModules();
-  info = await import("./info.js");
+  info = /** @type {typeof import("./info.js")} */ (await import("./info.js"));
 });
 
 describe("sidebar info renderers", () => {
@@ -85,6 +86,9 @@ describe("sidebar info renderers", () => {
     fireEvent.click(button);
 
     const dialog = document.querySelector("dialog");
+    if (!(dialog instanceof HTMLDialogElement)) {
+      throw new TypeError("dialog not found");
+    }
     expect(dialog.querySelector("h2").textContent).toBe("top");
     expect(dialog.querySelector("code").textContent).toBe("int main() {}");
   });

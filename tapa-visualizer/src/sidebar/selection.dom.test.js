@@ -15,12 +15,13 @@ const mountSidebarDom = () => {
   `;
 };
 
+/** @type {typeof import("./selection.js")} */
 let selection;
 
 beforeEach(async () => {
   mountSidebarDom();
   vi.resetModules();
-  selection = await import("./selection.js");
+  selection = /** @type {typeof import("./selection.js")} */ (await import("./selection.js"));
 });
 
 describe("sidebar explorer renderer", () => {
@@ -57,6 +58,9 @@ describe("sidebar explorer renderer", () => {
 
     const explorer = document.querySelector(".sidebar-content-explorer");
     const cflags = document.querySelector(".sidebar-content-cflags");
+    if (!(explorer instanceof HTMLElement) || !(cflags instanceof HTMLElement)) {
+      throw new TypeError("sidebar containers not found");
+    }
 
     const explorerItems = within(explorer).getAllByRole("listitem");
     const cflagItems = within(cflags).getAllByRole("listitem");

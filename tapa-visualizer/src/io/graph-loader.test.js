@@ -1,8 +1,13 @@
+// @vitest-environment jsdom
+
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../sidebar.js", () => ({
   resetInstance: vi.fn(),
   resetSidebar: vi.fn(),
+}));
+vi.mock("../graph-config.js", () => ({
+  color: { edgeB: "#000000" },
 }));
 
 import { resetSidebar } from "../sidebar.js";

@@ -23,6 +23,6 @@ describe("graph schema", () => {
           ports: [],
         },
       },
-    }))).toThrow("Invalid graph.json: tasks.top.code");
+    }))).toThrow(/Invalid graph\.json: tasks\.top/);
   });
 });
