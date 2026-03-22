@@ -339,3 +339,18 @@ class Program(  # TODO: refactor this class
         self, nonpipeline_fifos: list[str] | None = None
     ) -> list[list[str]]:
         return get_grouping_constraints_codegen(self, nonpipeline_fifos)
+
+    @staticmethod
+    def get_inst_by_port_arg_name(
+        target_task: str | None, parent_task: Task, port_arg_name: str
+    ) -> Instance:
+        matched_inst = None
+        for inst in parent_task.instances:
+            if target_task and inst.task.name != target_task:
+                continue
+            for arg in inst.args:
+                if arg.name == port_arg_name:
+                    matched_inst = inst
+                    break
+        assert matched_inst is not None
+        return matched_inst

@@ -21,7 +21,8 @@ from tapa.verilog.xilinx.const import (
     HANDSHAKE_CLK,
     HANDSHAKE_RST_N,
 )
-from tapa.verilog.xilinx.module import Module, _get_rs_pragma
+from tapa.verilog.xilinx.module import Module
+from tapa.verilog.xilinx.module_ops.axi import _get_rs_pragma
 
 _TESTDATA_PATH = (Path(__file__).parent / "testdata").resolve()
 

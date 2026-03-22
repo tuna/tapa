@@ -100,7 +100,8 @@ RUN curl -sSL \
 RUN curl -sSL \
         https://nodejs.org/dist/v16.20.2/node-v16.20.2-linux-x64.tar.xz \
         | tar -xJ --strip-components=1 -C /usr/local && \
-    npm config set registry https://registry.npmmirror.com
+    npm config set registry https://registry.npmmirror.com && \
+    npm install -g pnpm@8
 
 # Rebuild locale so that Vivado can run in the Docker
 RUN echo "en_US.UTF-8 UTF-8" > /etc/locale.gen && locale-gen
@@ -120,6 +121,6 @@ RUN chown -R ${DOCKER_USER_ID}:${DOCKER_GROUP_ID} /tmp/home
 
 ENV HOME="/tmp/home"
 ENV NUITKA_CACHE_DIR="/tmp/home/.nuitka_cache"
-ENV PATH="/tmp/home/.cargo/bin:/tmp/home/.local/bin:${PATH}"
+ENV PATH="/opt/python/bin:/tmp/home/.cargo/bin:/tmp/home/.local/bin:${PATH}"
 
 WORKDIR /tmp

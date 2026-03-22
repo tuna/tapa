@@ -16,14 +16,25 @@ SRCS = [
     ":css/sidebar.css",
     ":css/style.css",
     ":index.html",
+    ":src/app/file-loader.js",
+    ":src/app/graph.js",
+    ":src/app/ui.js",
     ":src/graph-config.js",
     ":src/helper.js",
+    ":src/io/graph-loader.js",
+    ":src/io/schema.js",
     ":src/parser.js",
     ":src/parser/expand.js",
     ":src/parser/fifo.js",
+    ":src/parser/fifo-utils.js",
     ":src/parser/ports.js",
     ":src/prism-config.js",
     ":src/sidebar.js",
+    ":src/sidebar/dom.js",
+    ":src/sidebar/explorer.js",
+    ":src/sidebar/info.js",
+    ":src/sidebar/models.js",
+    ":src/sidebar/selection.js",
 ]
 
 NODE_MODULES = [
@@ -35,6 +46,7 @@ NODE_MODULES = [
     ":node_modules/prismjs",
     ":node_modules/tslib",
     ":node_modules/url",
+    ":node_modules/zod",
 ]
 
 webpack_bundle(
