@@ -93,7 +93,7 @@ jobs:
       - name: Run size budgets
         uses: ./.github/actions/run-command
         with:
-          run: python3 tools/quality/file_budget.py --mode all --disable-function-budget
+          run: python3 tools/quality/file_budget.py --mode all --baseline tools/quality/file_budget_baseline.json
         env:
           UBUNTU_PRO_TOKEN: ${{ secrets.UBUNTU_PRO_TOKEN }}
           MAC_ADDRESS: ${{ secrets.MAC_ADDRESS }}

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from tools.quality import file_budget
@@ -61,3 +62,88 @@ def test_function_loc_violation_and_allowlist(tmp_path: Path) -> None:
         function_allowlist={"tapa/long_fn.py:too_long"},
     )
     assert suppressed == []
+
+
+def test_baseline_regressions_allow_existing_debt(tmp_path: Path) -> None:
+    baseline_path = tmp_path / "baseline.json"
+    baseline_path.write_text(
+        json.dumps(
+            {
+                "file_violations": [],
+                "function_violations": [
+                    {
+                        "path": "tapa/old.py",
+                        "symbol": "legacy",
+                        "lines": 100,
+                        "limit": 90,
+                    },
+                ],
+            },
+        ),
+        encoding="utf-8",
+    )
+
+    baseline = file_budget._load_baseline(baseline_path)  # noqa: SLF001
+    current = [
+        file_budget.FunctionViolation(
+            path=Path("tapa/old.py"),
+            symbol="legacy",
+            lines=95,
+            limit=90,
+        ),
+    ]
+    assert (
+        file_budget._baseline_regressions(  # noqa: SLF001
+            file_violations=[],
+            function_violations=current,
+            baseline=baseline,
+        )
+        == []
+    )
+
+
+def test_baseline_regressions_flag_new_or_growing_debt(
+    tmp_path: Path,
+) -> None:
+    baseline_path = tmp_path / "baseline.json"
+    baseline_path.write_text(
+        json.dumps(
+            {
+                "file_violations": [],
+                "function_violations": [
+                    {
+                        "path": "tapa/old.py",
+                        "symbol": "legacy",
+                        "lines": 100,
+                        "limit": 90,
+                    },
+                ],
+            },
+        ),
+        encoding="utf-8",
+    )
+
+    baseline = file_budget._load_baseline(baseline_path)  # noqa: SLF001
+    regressions = file_budget._baseline_regressions(  # noqa: SLF001
+        file_violations=[],
+        function_violations=[
+            file_budget.FunctionViolation(
+                path=Path("tapa/old.py"),
+                symbol="legacy",
+                lines=101,
+                limit=90,
+            ),
+            file_budget.FunctionViolation(
+                path=Path("tapa/new.py"),
+                symbol="fresh",
+                lines=95,
+                limit=90,
+            ),
+        ],
+        baseline=baseline,
+    )
+
+    assert any("baseline 100 LOC" in regression for regression in regressions)
+    assert any(
+        "not present in the baseline" in regression for regression in regressions
+    )

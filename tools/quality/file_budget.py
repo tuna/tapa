@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import json
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -35,6 +36,14 @@ class FunctionViolation:
     symbol: str
     lines: int
     limit: int
+
+
+@dataclass(frozen=True)
+class BudgetBaseline:
+    """A snapshot of accepted budget debt."""
+
+    file_violations: dict[str, BudgetViolation]
+    function_violations: dict[str, FunctionViolation]
 
 
 def _repo_root() -> Path:
@@ -111,6 +120,80 @@ def _load_allowlist(path: Path) -> set[str]:
                 continue
             entries.add(line)
     return entries
+
+
+def _load_baseline(path: Path) -> BudgetBaseline:
+    if not path.exists():
+        raise FileNotFoundError(path)
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+
+    file_violations: dict[str, BudgetViolation] = {}
+    for entry in payload.get("file_violations", []):
+        violation = BudgetViolation(
+            path=Path(entry["path"]),
+            lines=int(entry["lines"]),
+            limit=int(entry["limit"]),
+            rule=str(entry.get("rule", "tapa Python file")),
+        )
+        file_violations[violation.path.as_posix()] = violation
+
+    function_violations: dict[str, FunctionViolation] = {}
+    for entry in payload.get("function_violations", []):
+        violation = FunctionViolation(
+            path=Path(entry["path"]),
+            symbol=str(entry["symbol"]),
+            lines=int(entry["lines"]),
+            limit=int(entry["limit"]),
+        )
+        key = f"{violation.path.as_posix()}:{violation.symbol}"
+        function_violations[key] = violation
+
+    return BudgetBaseline(
+        file_violations=file_violations,
+        function_violations=function_violations,
+    )
+
+
+def _baseline_regressions(
+    file_violations: list[BudgetViolation],
+    function_violations: list[FunctionViolation],
+    baseline: BudgetBaseline,
+) -> list[str]:
+    regressions: list[str] = []
+
+    for violation in file_violations:
+        key = violation.path.as_posix()
+        accepted = baseline.file_violations.get(key)
+        if accepted is None:
+            regressions.append(
+                f"  - [baseline file] {violation.path}: {violation.lines} LOC "
+                f"> limit {violation.limit} and is not present in the baseline",
+            )
+            continue
+        if violation.lines > accepted.lines:
+            regressions.append(
+                f"  - [baseline file] {violation.path}: {violation.lines} LOC "
+                f"> baseline {accepted.lines} LOC",
+            )
+
+    for violation in function_violations:
+        key = f"{violation.path.as_posix()}:{violation.symbol}"
+        accepted = baseline.function_violations.get(key)
+        if accepted is None:
+            regressions.append(
+                f"  - [baseline function] {violation.path}:{violation.symbol} "
+                f"{violation.lines} LOC > limit {violation.limit} and is not "
+                "present in the baseline",
+            )
+            continue
+        if violation.lines > accepted.lines:
+            regressions.append(
+                f"  - [baseline function] {violation.path}:{violation.symbol} "
+                f"{violation.lines} LOC > baseline {accepted.lines} LOC",
+            )
+
+    return regressions
 
 
 def _function_violations(
@@ -237,40 +320,85 @@ def _parse_args() -> argparse.Namespace:
             "(format: relative/path.py:qualified.symbol)."
         ),
     )
+    parser.add_argument(
+        "--baseline",
+        help=(
+            "Path to a repo-wide baseline snapshot of accepted budget debt. "
+            "When set, only regressions beyond the snapshot fail."
+        ),
+    )
     parser.add_argument("paths", nargs="*", help="Candidate files to check")
     return parser.parse_args()
 
 
-def main() -> int:
-    args = _parse_args()
-    repo_root = _repo_root()
+def _candidate_paths(repo_root: Path, args: argparse.Namespace) -> list[Path]:
     if args.mode == "staged":
-        candidates = _staged_files(repo_root)
-    elif args.mode == "all":
-        candidates = _all_target_files(repo_root)
-    else:
-        candidates = [(repo_root / path).resolve() for path in args.paths]
+        return _staged_files(repo_root)
+    if args.mode == "all":
+        return _all_target_files(repo_root)
+    return [(repo_root / path).resolve() for path in args.paths]
 
-    file_allowlist = _load_allowlist(repo_root / args.file_allowlist)
-    function_allowlist = _load_allowlist(repo_root / args.function_allowlist)
-    file_violations = _file_violations(repo_root, candidates, file_allowlist)
 
-    function_violations: list[FunctionViolation] = []
-    if not args.disable_function_budget:
-        for path in candidates:
-            if not path.exists() or not path.is_file():
-                continue
-            rel = path.relative_to(repo_root)
-            if _python_budget_target(rel):
-                function_violations.extend(
-                    _function_violations(
-                        path=path,
-                        rel=rel,
-                        function_limit=args.python_function_loc_limit,
-                        function_allowlist=function_allowlist,
-                    ),
-                )
+def _function_budget_violations_for_candidates(
+    repo_root: Path,
+    candidates: list[Path],
+    *,
+    disabled: bool,
+    function_limit: int,
+    function_allowlist: set[str],
+) -> list[FunctionViolation]:
+    if disabled:
+        return []
 
+    violations: list[FunctionViolation] = []
+    for path in candidates:
+        if not path.exists() or not path.is_file():
+            continue
+        rel = path.relative_to(repo_root)
+        if _python_budget_target(rel):
+            violations.extend(
+                _function_violations(
+                    path=path,
+                    rel=rel,
+                    function_limit=function_limit,
+                    function_allowlist=function_allowlist,
+                ),
+            )
+    return violations
+
+
+def _baseline_exit_code(
+    *,
+    file_violations: list[BudgetViolation],
+    function_violations: list[FunctionViolation],
+    baseline: BudgetBaseline | None,
+    disable_function_budget: bool,
+) -> int | None:
+    if baseline is None:
+        return None
+    if disable_function_budget:
+        sys.stderr.write(
+            "ERROR: --baseline cannot be combined with --disable-function-budget\n",
+        )
+        return 1
+    regressions = _baseline_regressions(
+        file_violations=file_violations,
+        function_violations=function_violations,
+        baseline=baseline,
+    )
+    if not regressions:
+        return 0
+    sys.stderr.write("File budget baseline regressions detected:\n")
+    for regression in regressions:
+        sys.stderr.write(f"{regression}\n")
+    sys.stderr.write(f"Total regressions: {len(regressions)}\n")
+    return 1
+
+
+def _report_violations(
+    file_violations: list[BudgetViolation],
+    function_violations: list[FunctionViolation],
+) -> int:
     total_violations = len(file_violations) + len(function_violations)
     if total_violations == 0:
         return 0
@@ -294,6 +422,34 @@ def main() -> int:
         f"(file={len(file_violations)}, function={len(function_violations)})\n",
     )
     return 1
+
+
+def main() -> int:
+    args = _parse_args()
+    repo_root = _repo_root()
+    baseline = _load_baseline(repo_root / args.baseline) if args.baseline else None
+
+    candidates = _candidate_paths(repo_root, args)
+    file_allowlist = _load_allowlist(repo_root / args.file_allowlist)
+    function_allowlist = _load_allowlist(repo_root / args.function_allowlist)
+    file_violations = _file_violations(repo_root, candidates, file_allowlist)
+    function_violations = _function_budget_violations_for_candidates(
+        repo_root,
+        candidates,
+        disabled=args.disable_function_budget,
+        function_limit=args.python_function_loc_limit,
+        function_allowlist=function_allowlist,
+    )
+
+    baseline_exit_code = _baseline_exit_code(
+        file_violations=file_violations,
+        function_violations=function_violations,
+        baseline=baseline,
+        disable_function_budget=args.disable_function_budget,
+    )
+    if baseline_exit_code is not None:
+        return baseline_exit_code
+    return _report_violations(file_violations, function_violations)
 
 
 if __name__ == "__main__":
