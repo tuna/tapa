@@ -107,7 +107,10 @@ jobs:
             if [[ -z "$changed_files" ]]; then
               exit 0
             fi
-            python3 tools/quality/file_budget.py --mode paths ${changed_files}
+            python3 tools/quality/file_budget.py \
+              --mode paths \
+              --baseline tools/quality/file_budget_baseline.json \
+              ${changed_files}
         env:
           UBUNTU_PRO_TOKEN: ${{ secrets.UBUNTU_PRO_TOKEN }}
           MAC_ADDRESS: ${{ secrets.MAC_ADDRESS }}

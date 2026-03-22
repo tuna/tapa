@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from tools.quality import file_budget
+
+if TYPE_CHECKING:
+    import pytest
 
 
 def _write_lines(path: Path, count: int) -> None:
@@ -100,6 +105,111 @@ def test_baseline_regressions_allow_existing_debt(tmp_path: Path) -> None:
         )
         == []
     )
+
+
+def test_baseline_regressions_allow_existing_file_debt(tmp_path: Path) -> None:
+    baseline_path = tmp_path / "baseline.json"
+    baseline_path.write_text(
+        json.dumps(
+            {
+                "file_violations": [
+                    {
+                        "path": "tapa/old.py",
+                        "lines": 451,
+                        "limit": 450,
+                        "rule": "tapa Python file",
+                    },
+                ],
+                "function_violations": [],
+            },
+        ),
+        encoding="utf-8",
+    )
+
+    baseline = file_budget._load_baseline(baseline_path)  # noqa: SLF001
+    current = [
+        file_budget.BudgetViolation(
+            path=Path("tapa/old.py"),
+            lines=451,
+            limit=450,
+            rule="tapa Python file",
+        ),
+    ]
+    assert (
+        file_budget._baseline_regressions(  # noqa: SLF001
+            file_violations=current,
+            function_violations=[],
+            baseline=baseline,
+        )
+        == []
+    )
+
+
+def test_main_rejects_new_file_overage_under_baseline(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    target = tmp_path / "tapa" / "big.py"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("x = 1\n", encoding="utf-8")
+
+    baseline_path = tmp_path / "baseline.json"
+    baseline_path.write_text(
+        json.dumps(
+            {
+                "file_violations": [
+                    {
+                        "path": "tapa/big.py",
+                        "lines": 451,
+                        "limit": 450,
+                        "rule": "tapa Python file",
+                    },
+                ],
+                "function_violations": [],
+            },
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(file_budget, "_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        file_budget,
+        "_parse_args",
+        lambda: argparse.Namespace(
+            mode="all",
+            baseline="baseline.json",
+            disable_function_budget=False,
+            file_allowlist=str(file_budget.FILE_ALLOWLIST_PATH),
+            function_allowlist=str(file_budget.FUNCTION_ALLOWLIST_PATH),
+            python_function_loc_limit=file_budget.PYTHON_FUNCTION_LOC_LIMIT,
+            paths=[],
+        ),
+    )
+    monkeypatch.setattr(file_budget, "_candidate_paths", lambda *_: [target])
+    monkeypatch.setattr(file_budget, "_load_allowlist", lambda *_: set())
+    monkeypatch.setattr(
+        file_budget,
+        "_file_violations",
+        lambda *_: [
+            file_budget.BudgetViolation(
+                path=Path("tapa/big.py"),
+                lines=452,
+                limit=450,
+                rule="tapa Python file",
+            ),
+        ],
+    )
+    monkeypatch.setattr(
+        file_budget,
+        "_function_budget_violations_for_candidates",
+        lambda *_, **__: [],
+    )
+
+    assert file_budget.main() == 1
+    stderr = capsys.readouterr().err
+    assert "baseline file" in stderr
+    assert "452 LOC > baseline 451 LOC" in stderr
 
 
 def test_baseline_regressions_flag_new_or_growing_debt(
