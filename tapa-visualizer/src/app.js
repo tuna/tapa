@@ -14,6 +14,7 @@ import { setupFileInput } from "./app/file-loader.js";
 import { createGraph } from "./app/graph.js";
 import { setupCodeDialog, setupGraphButtons, setupSidebarToggle } from "./app/ui.js";
 import { antvDagre, dagre, forceAtlas2 } from "./graph-config.js";
+import { getEmptyGraphData } from "./io/graph-loader.js";
 import {
   createSidebarController,
   resetInstance,
@@ -35,7 +36,7 @@ const visualizerState = {
   filename: undefined,
   graph: undefined,
   graphJSON: undefined,
-  graphData: { nodes: [], edges: [], combos: [] },
+  graphData: getEmptyGraphData(),
   options: { grouping: "merge", expand: false, port: false },
 };
 
@@ -212,6 +213,7 @@ const setupRadioToggles = graph => {
 
   setupFileInput(fileInput, {
     state: /** @type {typeof visualizerState & { graph: Graph }} */ (visualizerState),
+    clearExplorer: sidebarController.clearExplorer,
     getOptions,
     renderGraph,
     setupGraph,
@@ -226,7 +228,8 @@ const setupRadioToggles = graph => {
     () => {
       visualizerState.filename = undefined;
       visualizerState.graphJSON = undefined;
-      visualizerState.graphData = { nodes: [], edges: [], combos: [] };
+      visualizerState.graphData = getEmptyGraphData();
+      sidebarController.clearExplorer();
       resetSidebar("Please load a file.");
     },
     () => visualizerState.filename,

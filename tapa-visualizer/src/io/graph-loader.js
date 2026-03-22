@@ -10,6 +10,8 @@ import { resetInstance, resetSidebar } from "../sidebar.js";
 import { getGraphData } from "../parser.js";
 import { parseGraphJSON } from "./schema.js";
 
+export const getEmptyGraphData = () => ({ nodes: [], edges: [], combos: [] });
+
 /** @typedef {{
  *   state: {
  *     filename: string | undefined,
@@ -21,10 +23,18 @@ import { parseGraphJSON } from "./schema.js";
  *   getOptions: () => GetGraphDataOptions,
  *   renderGraph: (graph: import("@antv/g6").Graph, graphData: GraphData) => Promise<void>,
  *   setupGraph: (graph: import("@antv/g6").Graph, graphJSON: GraphJSON) => Promise<void>,
+ *   clearExplorer: (message?: string) => void,
  *   updateExplorer: (graphJSON: GraphJSON) => void,
  *   updateOptionsHint: (comboCount: number) => void,
  * }} GraphLoaderDeps
  */
+
+/** @param {GraphLoaderDeps["state"]} state */
+export const resetGraphLoaderState = state => {
+  state.filename = undefined;
+  state.graphJSON = undefined;
+  state.graphData = getEmptyGraphData();
+};
 
 /** @param {HTMLInputElement & { files: FileList }} fileInput
  * @param {GraphLoaderDeps} deps */
@@ -38,7 +48,6 @@ export const setupGraphLoader = (fileInput, deps) => {
       console.warn("File type is not application/json!");
     }
 
-    deps.state.filename = file.name;
     resetSidebar("Loading...");
 
     file.text().then(async text => {
@@ -47,6 +56,7 @@ export const setupGraphLoader = (fileInput, deps) => {
 
       const options = deps.getOptions();
       const graphData = getGraphData(graphJSON, options);
+      deps.state.filename = file.name;
       deps.state.graphJSON = graphJSON;
       deps.state.graphData = graphData;
       deps.state.options = options;
@@ -64,8 +74,11 @@ export const setupGraphLoader = (fileInput, deps) => {
       deps.updateOptionsHint(graphData.combos.length);
     }).catch(error => {
       console.error(error);
-      deps.state.graphJSON = undefined;
-      resetInstance(String(error));
+      resetGraphLoaderState(deps.state);
+      deps.clearExplorer();
+      deps.updateOptionsHint(0);
+      resetSidebar(String(error));
+      void deps.state.graph?.clear();
     });
 
     return true;

@@ -47,6 +47,11 @@ const targetsTitle = append(
  *   graphData: GraphData,
  * }} state */
 export const createSidebarController = state => {
+  const clearExplorer = (message = "Please load a file.") => {
+    explorer.replaceChildren($text("p", message));
+    cflags.replaceChildren($text("p", message));
+  };
+
   /** @type {(graphJSON: GraphJSON) => void} */
   const updateExplorer = ({ cflags: flags, top, tasks }) => {
     cflags.replaceChildren(
@@ -213,6 +218,7 @@ export const createSidebarController = state => {
   };
 
   return {
+    clearExplorer,
     updateExplorer,
     updateSidebarForCombo,
     updateSidebarForEdge,

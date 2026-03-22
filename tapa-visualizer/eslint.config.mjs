@@ -56,8 +56,8 @@ export default [
     name: "@eslint/js/custom",
     rules: {
       'no-undef': "off",
-      "complexity": ["warn", 12],
-      "max-lines": ["warn", { max: 300, skipBlankLines: true, skipComments: true }],
+      "complexity": ["error", 12],
+      "max-lines": ["error", { max: 300, skipBlankLines: true, skipComments: true }],
       "no-plusplus": ["error", { allowForLoopAfterthoughts: true }],
       "prefer-object-has-own": "error",
       "prefer-object-spread": "error",
