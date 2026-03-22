@@ -18,6 +18,9 @@ import { graphOptions } from "../graph-config.js";
 
 /** @param {() => import("@antv/g6").LayoutOptions} getLayout */
 export const createGraph = getLayout => {
+  /** @type {Graph} */
+  let graph;
+
   /** @type {((states: Record<string, string[]>) => Record<string, string[]>)} */
   const showSelectedNodes = states => {
     const selected = Object.keys(states);
@@ -26,7 +29,7 @@ export const createGraph = getLayout => {
     return states;
   };
 
-  return new Graph({
+  graph = new Graph({
     ...graphOptions,
     layout: getLayout(),
     behaviors: [
@@ -92,4 +95,5 @@ export const createGraph = getLayout => {
       }),
     ],
   });
+  return graph;
 };

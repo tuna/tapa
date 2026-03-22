@@ -1,0 +1,231 @@
+/*
+ * Copyright (c) 2024 RapidStream Design Automation, Inc. and contributors.
+ * All rights reserved. The contributor(s) of this file has/have agreed to the
+ * RapidStream Contributor License Agreement.
+ */
+
+"use strict";
+
+import { $, $text, append, getComboId, getComboName } from "../helper.js";
+import {
+  cflags,
+  connections,
+  explorer,
+  instance,
+  neighbors,
+  resetSidebar,
+  task,
+  ul,
+} from "./dom.js";
+import { getComboInfo, getNodeInfo, getTaskInfo } from "./info.js";
+
+const sourcesTitle = append(
+  $("p", { textContent: "Sources" }),
+  $("br"),
+  $("code", {
+    className: "hint",
+    textContent: "Format: connection name -> target name",
+  }),
+);
+const targetsTitle = append(
+  $("p", { textContent: "Targets" }),
+  $("br"),
+  $("code", {
+    className: "hint",
+    textContent: "Format: connection name <- source name",
+  }),
+);
+
+/** @type {(graphJSON: GraphJSON) => void} */
+export const updateExplorer = ({ tasks, top, cflags: flags }) => {
+  cflags.replaceChildren(
+    ul(
+      flags.reduce(
+        (arr, cur) => {
+          const last = arr.length - 1;
+          if (cur === "-isystem") {
+            arr.push(`${cur} `);
+          } else if (arr[last]?.endsWith(" ")) {
+            arr[last] += cur;
+          } else {
+            arr.push(cur);
+          }
+          return arr;
+        },
+        /** @type {string[]} */
+        ([]),
+      ).map(flag => {
+        const li = $text("li", flag);
+        if (flag.startsWith("-isystem ")) {
+          li.className = "isystem";
+        }
+        return li;
+      }),
+    ),
+  );
+
+  const taskLis = [];
+
+  /** @type {(task: UpperTask, level: number) => void} */
+  const parseUpperTask = (currentTask, level) => {
+    for (const subTaskName in currentTask.tasks) {
+      const subTask = tasks[subTaskName];
+      if (!subTask) {
+        console.warn(`task not found: ${subTaskName}`);
+        continue;
+      }
+      taskLis.push($text("li", `${"  ".repeat(level)}${subTaskName}`));
+      if (subTask.level === "upper") {
+        parseUpperTask(subTask, level + 1);
+      }
+    }
+  };
+
+  const topTask = tasks[top];
+  if (!topTask) {
+    explorer.replaceChildren($text("p", "This graph has no top task."));
+    return;
+  }
+
+  taskLis.push($text("li", top));
+  if (topTask.level === "upper") {
+    parseUpperTask(topTask, 1);
+  }
+
+  const taskUl = ul(taskLis);
+  taskUl.addEventListener("click", ({ target }) => {
+    if (target instanceof HTMLLIElement && target.textContent) {
+      /** @type {Record<string, string[]>} */
+      const states = {};
+      [graphData.nodes, graphData.edges, graphData.combos].forEach(
+        items => items.forEach(({ id }) => { states[id ?? ""] = []; }),
+      );
+
+      const id = target.textContent.trim();
+      if (id in states) {
+        states[id].push("selected");
+      } else {
+        const comboId = getComboId(id);
+        comboId in states
+          ? states[comboId].push("selected")
+          : console.warn(`id not found: ${id}`);
+      }
+
+      void graph.setElementState(states);
+    }
+  });
+
+  explorer.replaceChildren(taskUl);
+};
+
+/** @param {string} id
+ * @param {Graph} graph */
+export const updateSidebarForNode = (id, graph) => {
+  /** @ts-expect-error @type {NodeData | undefined} */
+  const node = graph.getNodeData(id);
+  if (!node) {
+    resetSidebar(`Node ${id} not found!`);
+    return;
+  }
+
+  instance.replaceChildren(getNodeInfo(node));
+
+  const taskInfo = node.data.task
+    ? getTaskInfo(node.data.task, node.id)
+    : [$text("p", "This item has no task infomation.")];
+  task.replaceChildren(...taskInfo);
+
+  const sources = graph.getRelatedEdgesData(node.id, "out");
+  const targets = graph.getRelatedEdgesData(node.id, "in");
+
+  /** @type {Set<string>} */
+  const neighborIds = new Set();
+  sources.forEach(edge => neighborIds.add(edge.target));
+  targets.forEach(edge => neighborIds.add(edge.source));
+
+  if (neighborIds.size > 0) {
+    neighbors.replaceChildren(
+      append($("p", { className: "hint" }), $text("code", node.id), "'s neighbors:"),
+      ul([...neighborIds.values().map(neighborId => $text("li", neighborId))]),
+    );
+  } else {
+    neighbors.replaceChildren($text("p", `Node ${node.id} has no neighbors.`));
+  }
+
+  connections.replaceChildren(
+    append($("p", { className: "hint" }), $text("code", node.id), "'s connections:"),
+    sourcesTitle,
+    sources.length !== 0
+      ? ul(sources.map(edge => $text("li", `${edge.id} -> ${edge.target}`)))
+      : $("p", { textContent: "none", style: "padding-inline-start: 1em; font-size: .85rem;" }),
+    targetsTitle,
+    targets.length !== 0
+      ? ul(targets.map(edge => $text("li", `${edge.id} <- ${edge.source}`)))
+      : $("p", { textContent: "none", style: "padding-inline-start: 1em; font-size: .85rem;" }),
+  );
+};
+
+/** @param {string} id
+ * @param {Graph} graph */
+export const updateSidebarForCombo = (id, graph) => {
+  /** @ts-expect-error @type {ComboData | undefined} */
+  const combo = graph.getComboData(id);
+  if (!combo) {
+    resetSidebar(`Combo ${id} not found!`);
+    return;
+  }
+
+  instance.replaceChildren(getComboInfo(combo, graph));
+  task.replaceChildren(...getTaskInfo(combo.data, getComboName(combo.id)));
+  neighbors.replaceChildren($text("p", "Please select a node."));
+  connections.replaceChildren($text("p", "Please select a node."));
+};
+
+/** @param {string} id
+ * @param {Graph} graph */
+export const updateSidebarForEdge = (id, graph) => {
+  const edge = graph.getEdgeData(id);
+  if (!edge) {
+    resetSidebar(`Edge ${id} not found!`);
+    return;
+  }
+
+  instance.replaceChildren(
+    append(
+      $("dl"),
+      $text("dt", "Edge Name"),
+      $text("dd", id),
+      $text("dt", "Source Node"),
+      $text("dd", edge.source),
+      $text("dt", "Target Node"),
+      $text("dd", edge.target),
+    ),
+  );
+
+  /** @type {HTMLElement[]} */
+  const taskElements = [];
+  /** @ts-expect-error @type {NodeData} */
+  const sourceNode = graph.getNodeData(edge.source);
+  /** @ts-expect-error @type {NodeData} */
+  const targetNode = graph.getNodeData(edge.target);
+
+  sourceNode?.data?.task &&
+    taskElements.push(
+      $text("h3", "Source Task"),
+      ...getTaskInfo(sourceNode.data.task, sourceNode.id),
+    );
+
+  sourceNode?.data?.task && targetNode?.data?.task && taskElements.push($("hr"));
+
+  targetNode?.data?.task &&
+    taskElements.push(
+      $text("h3", "Target Task"),
+      ...getTaskInfo(targetNode.data.task, targetNode.id),
+    );
+
+  const hint = $("p", {
+    style: "opacity: .75;",
+    textContent: "This edge has no task infomation.",
+  });
+  taskElements.length !== 0 ? task.replaceChildren(...taskElements) : task.replaceChildren(hint);
+};

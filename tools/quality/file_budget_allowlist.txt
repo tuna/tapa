@@ -12,5 +12,3 @@ tapa/instance.py
 tapa/program/hls.py
 tapa/task.py
 tapa/verilog/xilinx/module.py
-tapa-visualizer/src/app.js
-tapa-visualizer/src/sidebar.js
