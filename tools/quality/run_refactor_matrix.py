@@ -17,6 +17,7 @@ class SuiteCommand:
 
     required_tool: str
     argv: tuple[str, ...]
+    fallback_commands: tuple[SuiteCommand, ...] = ()
 
 
 SUITE_COMMANDS: dict[str, tuple[SuiteCommand, ...]] = {
@@ -65,10 +66,36 @@ SUITE_COMMANDS: dict[str, tuple[SuiteCommand, ...]] = {
         SuiteCommand(
             required_tool="pnpm",
             argv=("pnpm", "--dir", "tapa-visualizer", "lint", "src"),
+            fallback_commands=(
+                SuiteCommand(
+                    required_tool="npm",
+                    argv=(
+                        "npm",
+                        "--prefix",
+                        "tapa-visualizer",
+                        "run",
+                        "lint",
+                        "--",
+                        "src",
+                    ),
+                ),
+            ),
         ),
         SuiteCommand(
             required_tool="pnpm",
             argv=("pnpm", "--dir", "tapa-visualizer", "build"),
+            fallback_commands=(
+                SuiteCommand(
+                    required_tool="npm",
+                    argv=(
+                        "npm",
+                        "--prefix",
+                        "tapa-visualizer",
+                        "run",
+                        "build",
+                    ),
+                ),
+            ),
         ),
     ),
 }
@@ -91,18 +118,28 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _select_command(command: SuiteCommand) -> SuiteCommand | None:
+    for candidate in (command, *command.fallback_commands):
+        if shutil.which(candidate.required_tool) is not None:
+            return candidate
+    return None
+
+
 def _run_command(command: SuiteCommand, *, allow_missing_tools: bool) -> bool:
-    if shutil.which(command.required_tool) is None:
-        msg = f"Required tool '{command.required_tool}' not found"
+    selected = _select_command(command)
+    if selected is None:
+        candidates = (command, *command.fallback_commands)
+        msg = " or ".join(f"'{candidate.required_tool}'" for candidate in candidates)
         if allow_missing_tools:
             sys.stderr.write(
-                f"SKIP: {msg} for command: {' '.join(command.argv)}\n",
+                f"SKIP: Required tool(s) {msg} not found for command: "
+                f"{' '.join(command.argv)}\n",
             )
             return True
-        sys.stderr.write(f"ERROR: {msg}\n")
+        sys.stderr.write(f"ERROR: Required tool(s) {msg} not found\n")
         return False
-    sys.stderr.write(f"RUN: {' '.join(command.argv)}\n")
-    result = subprocess.run(command.argv, check=False)
+    sys.stderr.write(f"RUN: {' '.join(selected.argv)}\n")
+    result = subprocess.run(selected.argv, check=False)
     return result.returncode == 0
 
 
