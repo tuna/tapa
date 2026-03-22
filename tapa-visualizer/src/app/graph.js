@@ -7,17 +7,22 @@
 "use strict";
 
 import { DragCanvas, Graph } from "@antv/g6";
-
-import {
-  resetSidebar,
-  updateSidebarForCombo,
-  updateSidebarForEdge,
-  updateSidebarForNode,
-} from "../sidebar.js";
 import { graphOptions } from "../graph-config.js";
 
-/** @param {() => import("@antv/g6").LayoutOptions} getLayout */
-export const createGraph = getLayout => {
+/** @param {{
+ *   getLayout: () => import("@antv/g6").LayoutOptions,
+ *   onResetSidebar: (message?: string) => void,
+ *   onComboClick: (id: string, graph: Graph) => void,
+ *   onEdgeClick: (id: string, graph: Graph) => void,
+ *   onNodeClick: (id: string, graph: Graph) => void,
+ * }} deps */
+export const createGraph = ({
+  getLayout,
+  onComboClick,
+  onEdgeClick,
+  onNodeClick,
+  onResetSidebar,
+}) => {
   /** @type {Graph} */
   let graph;
 
@@ -25,7 +30,7 @@ export const createGraph = getLayout => {
   const showSelectedNodes = states => {
     const selected = Object.keys(states);
     selected.length > 0 &&
-    resetSidebar(`Selected nodes: ${selected.join(", ")}`);
+    onResetSidebar(`Selected nodes: ${selected.join(", ")}`);
     return states;
   };
 
@@ -84,12 +89,12 @@ export const createGraph = getLayout => {
         degree: 1,
         neighborState: "highlight",
         onClick: ({ target: item }) => {
-          if (!("type" in item) || !("id" in item)) { resetSidebar(); return; }
+          if (!("type" in item) || !("id" in item)) { onResetSidebar(); return; }
           switch (item.type) {
-            case "node": updateSidebarForNode(item.id, graph); break;
-            case "combo": updateSidebarForCombo(item.id, graph); break;
-            case "edge": updateSidebarForEdge(item.id, graph); break;
-            default: resetSidebar(); break;
+            case "node": onNodeClick(item.id, graph); break;
+            case "combo": onComboClick(item.id, graph); break;
+            case "edge": onEdgeClick(item.id, graph); break;
+            default: onResetSidebar(); break;
           }
         },
       }),

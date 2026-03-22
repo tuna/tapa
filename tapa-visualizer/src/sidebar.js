@@ -7,9 +7,4 @@
 "use strict";
 
 export { resetInstance, resetSidebar } from "./sidebar/dom.js";
-export {
-  updateExplorer,
-  updateSidebarForCombo,
-  updateSidebarForEdge,
-  updateSidebarForNode,
-} from "./sidebar/selection.js";
+export { createSidebarController } from "./sidebar/selection.js";

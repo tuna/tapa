@@ -15,6 +15,7 @@ import { createGraph } from "./app/graph.js";
 import { setupCodeDialog, setupGraphButtons, setupSidebarToggle } from "./app/ui.js";
 import { antvDagre, dagre, forceAtlas2 } from "./graph-config.js";
 import {
+  createSidebarController,
   resetInstance,
   resetSidebar,
 } from "./sidebar.js";
@@ -23,16 +24,20 @@ import { getGraphData } from "./parser.js";
 
 import "../css/style.css";
 
-/** Used in "Save Image" button
- * @type {string | undefined} */
-let filename;
-
-/** @type {GraphJSON | undefined} */
-let graphJSON;
-
-/** Data for G6.Graph()
- * @type {GraphData} */
-let graphData = { nodes: [], edges: [], combos: [] };
+/** @type {{
+ *   filename: string | undefined,
+ *   graph: Graph | undefined,
+ *   graphJSON: GraphJSON | undefined,
+ *   graphData: GraphData,
+ *   options: GetGraphDataOptions,
+ * }} */
+const visualizerState = {
+  filename: undefined,
+  graph: undefined,
+  graphJSON: undefined,
+  graphData: { nodes: [], edges: [], combos: [] },
+  options: { grouping: "merge", expand: false, port: false },
+};
 
 
 // Form and options + graph rendering for new option
@@ -63,6 +68,7 @@ const getOptions = () => ({
 });
 
 let options = getOptions();
+visualizerState.options = options;
 
 /** Render graph when file or grouping changed.
  * @type {(graph: Graph, graphData: GraphData) => Promise<void>} */
@@ -88,7 +94,7 @@ const setupGraph = async (graph, graphJSON) => {
 
   const expand = optionsForm?.elements.expand.value === "true";
   const topChildren = graph.getChildrenData(getComboId(graphJSON.top));
-  const visibleElements = expand ? graphData.nodes : topChildren;
+  const visibleElements = expand ? visualizerState.graphData.nodes : topChildren;
 
   // Setup kg for force-atlas2, based on visible element amount
   const layout = graph.getLayout();
@@ -133,17 +139,18 @@ const setupRadioToggles = graph => {
    * @type {(newOption: GetGraphDataOptions) => Promise<void>} */
   const updateGraph = async (newOption) => {
     Object.assign(options, newOption);
+    visualizerState.options = options;
 
     // Only re-render if graph exist
-    if (!graphJSON) return;
-    graphData = getGraphData(graphJSON, options);
+    if (!visualizerState.graphJSON) return;
+    visualizerState.graphData = getGraphData(visualizerState.graphJSON, options);
     console.debug(
-      "graphData:\n", graphData,
+      "graphData:\n", visualizerState.graphData,
       "\ngetGraphData() options:", options,
     );
 
     resetSidebar("Loading...");
-    await renderGraph(graph, graphData);
+    await renderGraph(graph, visualizerState.graphData);
     resetInstance();
   };
 
@@ -189,22 +196,26 @@ const setupRadioToggles = graph => {
 
   setupSidebarToggle();
   setupCodeDialog();
+  const sidebarController = createSidebarController(visualizerState);
 
-  const graph = createGraph(getLayout);
-
-  globalThis.graph = graph;
+  const graph = createGraph({
+    getLayout,
+    onResetSidebar: resetSidebar,
+    onComboClick: sidebarController.updateSidebarForCombo,
+    onEdgeClick: sidebarController.updateSidebarForEdge,
+    onNodeClick: sidebarController.updateSidebarForNode,
+  });
+  visualizerState.graph = graph;
 
   // Graph loading finished, remove loading status in instance sidebar
   resetInstance();
 
-  setupFileInput(graph, fileInput, {
+  setupFileInput(fileInput, {
+    state: /** @type {typeof visualizerState & { graph: Graph }} */ (visualizerState),
     getOptions,
     renderGraph,
     setupGraph,
-    setFilename: nextFilename => { filename = nextFilename; },
-    setGraphJSON: nextGraphJSON => { graphJSON = nextGraphJSON; },
-    setGraphData: nextGraphData => { graphData = nextGraphData; },
-    setOptions: nextOptions => { options = nextOptions; },
+    updateExplorer: sidebarController.updateExplorer,
     updateOptionsHint: comboCount => {
       const classListMethod = comboCount <= 1 ? "add" : "remove";
       optionsForm?.classList[classListMethod]("only-one-combo");
@@ -213,12 +224,12 @@ const setupRadioToggles = graph => {
   setupGraphButtons(
     graph,
     () => {
-      filename = "";
-      graphJSON = undefined;
-      graphData = { nodes: [], edges: [], combos: [] };
+      visualizerState.filename = undefined;
+      visualizerState.graphJSON = undefined;
+      visualizerState.graphData = { nodes: [], edges: [], combos: [] };
       resetSidebar("Please load a file.");
     },
-    () => filename,
+    () => visualizerState.filename,
   );
   setupRadioToggles(graph);
 
