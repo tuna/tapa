@@ -115,7 +115,6 @@ repos:
           - pytest
           - pyverilog
           - pyyaml
-          - toposort
 
   ##################
   #  Link Checks  #
