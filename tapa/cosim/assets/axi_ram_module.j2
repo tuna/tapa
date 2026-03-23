@@ -118,6 +118,7 @@ always @* begin
         $fwrite(fp, "%c", mem[i_wr][j_wr * 8 +: 8] );
       end
     end
+    $fclose(fp);
   end
 end
 

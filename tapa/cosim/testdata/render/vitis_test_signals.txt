@@ -82,9 +82,10 @@
     kernel_started <= 1;
     @(posedge ap_clk);
 
-    // start polling ap_done
+    // start polling ap_done (keep arvalid asserted unconditionally so
+    // the handshake completes even if arready is low at this instant)
     #(CLOCK_PERIOD*1000);
-    s_axi_control_arvalid <= 1'b1 & s_axi_control_arready;
+    s_axi_control_arvalid <= 1'b1;
     @(posedge ap_clk);
 
   end

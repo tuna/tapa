@@ -17,6 +17,7 @@ from tapa.verilog.ast_utils import make_block, make_if_with_block, make_port_arg
 from tapa.verilog.util import Pipeline
 from tapa.verilog.xilinx import generate_handshake_ports
 from tapa.verilog.xilinx.async_mmap import (
+    ADDR_CHANNEL_DATA_WIDTH,
     ASYNC_MMAP_SUFFIXES,
     generate_async_mmap_ioports,
     generate_async_mmap_ports,
@@ -178,12 +179,18 @@ def _declare_instance_inputs(
             if arg.cat.is_sync_mmap or arg.cat.is_async_mmap
             else arg.name
         )
+        # mmap offset carries an AXI address, always 64-bit regardless of data width.
+        arg_width = (
+            ADDR_CHANNEL_DATA_WIDTH
+            if arg.cat.is_async_mmap or arg.cat.is_sync_mmap
+            else _resolve_arg_width(state.width_table, arg)
+        )
         q = _declare_arg_signal(
             state=state,
             instance=instance,
             arg=arg,
             upper_name=upper_name,
-            width=_resolve_arg_width(state.width_table, arg),
+            width=arg_width,
         )
 
         if arg.cat.is_async_mmap:
