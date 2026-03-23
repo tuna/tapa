@@ -316,11 +316,6 @@ def _gen_definitions(task: Task) -> tuple[list[str], ...]:
         for i in range(len(insts))
     ]
 
-    kernel_header = [
-        f'//headers(k_{name}{i}) = {{"{name}.h"}};'
-        for name, insts in task.tasks.items()
-        for i in range(len(insts))
-    ]
     kernel_header = []
     kernel_runtime = [
         f"runtime<ratio>(k_{name}{i}) = OCCUPANCY;"
@@ -391,12 +386,6 @@ def _gen_connections(task: Task) -> list[str]:  # noqa: C901 PLR0912
                 else:
                     msg = f"Unknown connection category: {conn_dict['cat']}"
                     raise ValueError(msg)
-
-    for k, val in link_from_src.items():
-        pass
-
-    for k, val in link_to_dst.items():
-        pass
 
     connect_def = [
         f"connect<stream> {name} (k_{link_from_src[name][0]},"
