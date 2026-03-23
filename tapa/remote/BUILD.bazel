@@ -6,12 +6,25 @@
 
 load("@rules_python//python:defs.bzl", "py_library")
 load("@tapa_deps//:requirements.bzl", "requirement")
+load("//bazel:pytest_rules.bzl", "py_test")
 
 py_library(
     name = "remote",
-    srcs = glob(["**/*.py"]),
+    srcs = glob(
+        ["**/*.py"],
+        exclude = ["test_*.py"],
+    ),
     visibility = ["//tapa:__subpackages__"],
     deps = [
+        requirement("pydantic"),
         requirement("pyyaml"),
+    ],
+)
+
+py_test(
+    name = "config_test",
+    srcs = ["test_config.py"],
+    deps = [
+        ":remote",
     ],
 )

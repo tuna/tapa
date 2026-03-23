@@ -9,21 +9,20 @@ RapidStream Contributor License Agreement.
 import getpass
 import logging
 import os
-from dataclasses import dataclass
 
 import yaml
+from pydantic import BaseModel, Field, field_validator
 
 _logger = logging.getLogger().getChild(__name__)
 
 TAPARC_PATH = os.path.expanduser("~/.taparc")
 
 
-@dataclass
-class RemoteConfig:
+class RemoteConfig(BaseModel):
     """Configuration for remote execution of vendor tools."""
 
     host: str
-    user: str
+    user: str = Field(default_factory=getpass.getuser)
     port: int = 22
     key_file: str | None = None
     xilinx_settings: str | None = None
@@ -31,6 +30,18 @@ class RemoteConfig:
     ssh_control_dir: str | None = None
     ssh_control_persist: str = "30m"
     ssh_multiplex: bool = True
+
+    @field_validator("key_file", "ssh_control_dir", mode="before")
+    @classmethod
+    def expand_path(cls, v: str | None) -> str | None:
+        return os.path.expanduser(v) if isinstance(v, str) else v
+
+    @field_validator("ssh_multiplex", mode="before")
+    @classmethod
+    def parse_bool(cls, v: object) -> bool:
+        if isinstance(v, str):
+            return v.strip().lower() in {"true", "yes", "1", "on"}
+        return bool(v)
 
 
 _active_config: RemoteConfig | None = None
@@ -76,21 +87,7 @@ def _load_remote_config_from_file() -> dict:
     if not isinstance(taparc, dict) or "remote" not in taparc:
         return {}
 
-    remote_config = dict(taparc["remote"])
-    if remote_config.get("key_file"):
-        remote_config["key_file"] = os.path.expanduser(remote_config["key_file"])
-    return remote_config
-
-
-def _parse_bool(value: object, default: bool = True) -> bool:
-    """Parse bool-like config values."""
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        return value.strip().lower() not in {"0", "false", "no", "off"}
-    if value is None:
-        return default
-    return bool(value)
+    return dict(taparc["remote"])
 
 
 def load_remote_config(cli_remote_host: str | None) -> RemoteConfig | None:
@@ -111,25 +108,4 @@ def load_remote_config(cli_remote_host: str | None) -> RemoteConfig | None:
     if "host" not in merged:
         return None
 
-    if "user" not in merged:
-        merged["user"] = getpass.getuser()
-
-    key_file = merged.get("key_file")
-    if isinstance(key_file, str):
-        key_file = os.path.expanduser(key_file)
-
-    ssh_control_dir = merged.get("ssh_control_dir")
-    if isinstance(ssh_control_dir, str):
-        ssh_control_dir = os.path.expanduser(ssh_control_dir)
-
-    return RemoteConfig(
-        host=merged["host"],
-        user=merged.get("user", getpass.getuser()),
-        port=int(merged.get("port", 22)),
-        key_file=key_file,
-        xilinx_settings=merged.get("xilinx_settings"),
-        work_dir=merged.get("work_dir", "/tmp/tapa-remote"),
-        ssh_control_dir=ssh_control_dir,
-        ssh_control_persist=str(merged.get("ssh_control_persist", "30m")),
-        ssh_multiplex=_parse_bool(merged.get("ssh_multiplex"), default=True),
-    )
+    return RemoteConfig(**merged)
