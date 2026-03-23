@@ -37,8 +37,8 @@ POTENTIAL_PATHS: dict[str, tuple[str, ...]] = {
         "usr/bin/tapa-cpp",
     ),
     "tapa-extra-runtime-include": (
-        "tapa-lib/extra-runtime-include",
         "tapa-system-include/tapa-extra-runtime-include",
+        "tapa-lib/extra-runtime-include",
         "usr/include",
     ),
     "tapa-fast-cosim-dpi-lib": (
