@@ -4,7 +4,6 @@ intervaltree
 jinja2
 networkx
 nuitka
-paramiko
 psutil
 pydantic
 pyslang
