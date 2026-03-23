@@ -28,8 +28,12 @@ py_library(
             "*_test.py",
         ],
     ),
+    data = glob(["floorplan/assets/*.j2"]),
     deps = [
         "//tapa/verilog:util",
+        requirement("jinja2"),
+        requirement("tree-sitter"),
+        requirement("tree-sitter-cpp"),
     ],
 )
 
@@ -74,5 +78,14 @@ py_test(
     srcs = ["unique_attrs_test.py"],
     deps = [
         ":unique_attrs",
+    ],
+)
+
+py_test(
+    name = "gen_slot_cpp_test",
+    srcs = ["floorplan/gen_slot_cpp_test.py"],
+    data = glob(["floorplan/assets/*.j2"]),
+    deps = [
+        ":common",
     ],
 )

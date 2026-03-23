@@ -115,6 +115,8 @@ repos:
           - pytest
           - pyverilog
           - pyyaml
+          - tree-sitter
+          - tree-sitter-cpp
 
   ##################
   #  Link Checks  #
