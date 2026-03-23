@@ -19,6 +19,7 @@ __pycache__
 a.out
 artifacts.out/
 device_config.json
+docs/superpowers/
 floorplan_config.json
 impl_config.json
 node_modules
