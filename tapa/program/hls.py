@@ -10,8 +10,10 @@ import os
 import os.path
 import sys
 from concurrent import futures
+from pathlib import Path
 from typing import Literal
 
+from jinja2 import Environment, FileSystemLoader, StrictUndefined
 from psutil import cpu_count
 
 from tapa.backend.xilinx import RunAie, RunHls
@@ -28,60 +30,12 @@ _logger = logging.getLogger().getChild(__name__)
 # _AIE_DEPTH is the number of elements in the AIE windows.
 _AIE_DEPTH = 64
 
-_GRAPH_HEADER_TEMPLATE = r"""
-#pragma once
-#include <adf.h>
-#include "common.h"
-#define OCCUPANCY 0.9
-using namespace adf;
-class {graph_name}: public graph
-{{
-private:
-    {kernel_decl}
-
-public:
-    {port_decl}
-
-    {graph_name}()
-	{{
-		// create kernel
-        {kernel_def}
-        {kernel_source}
-        {kernel_header}
-        {kernel_runtime}
-        {kernel_loc}
-
-		// create port
-        {port_def}
-
-		// connect port and kernel
-        {connect_def}
-	}};
-}};
-"""
-
-_GRAPH_CPP_TEMPLATE = r"""
-// Copyright 2024 RapidStream Design Automation, Inc.
-// All Rights Reserved.
-
-#include "{top_task_name}.h"
-
-using namespace adf;
-
-{top_task_name} my_graph;
-
-int main(int argc, char ** argv)
-{{
-	my_graph.init();
-#if defined(__X86SIM__)
-	my_graph.run(1);
-#else
-	my_graph.run();
-#endif
-	my_graph.end();
-	return 0;
-}}
-"""
+_env = Environment(
+    loader=FileSystemLoader(str(Path(__file__).parent / "assets")),
+    undefined=StrictUndefined,
+    trim_blocks=True,
+    lstrip_blocks=True,
+)
 
 
 class ProgramHlsMixin(
@@ -114,7 +68,11 @@ class ProgramHlsMixin(
                 with open(
                     self.get_cpp_path(task.name), "w", encoding="utf-8"
                 ) as src_code:
-                    src_code.write(_GRAPH_CPP_TEMPLATE.format(top_task_name=self.top))
+                    src_code.write(
+                        _env.get_template("aie_graph_cpp.j2").render(
+                            top_task_name=self.top
+                        )
+                    )
                 with open(self.get_common_path(), "w", encoding="utf-8") as src_code:
                     src_code.write(
                         clang_format(task.code).replace(
@@ -312,7 +270,7 @@ class ProgramHlsMixin(
         ) = _gen_definitions(task)
         connect_def = _gen_connections(task)
 
-        return _GRAPH_HEADER_TEMPLATE.format(
+        return _env.get_template("aie_graph_header.j2").render(
             graph_name=self.top,
             kernel_decl="\n\t".join(kernel_decl),
             kernel_def="\n\t\t".join(kernel_def),

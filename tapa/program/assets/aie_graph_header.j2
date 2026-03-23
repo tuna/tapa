@@ -1,0 +1,30 @@
+
+#pragma once
+#include <adf.h>
+#include "common.h"
+#define OCCUPANCY 0.9
+using namespace adf;
+class {{ graph_name }}: public graph
+{
+private:
+    {{ kernel_decl }}
+
+public:
+    {{ port_decl }}
+
+    {{ graph_name }}()
+	{
+		// create kernel
+        {{ kernel_def }}
+        {{ kernel_source }}
+        {{ kernel_header }}
+        {{ kernel_runtime }}
+        {{ kernel_loc }}
+
+		// create port
+        {{ port_def }}
+
+		// connect port and kernel
+        {{ connect_def }}
+	};
+};

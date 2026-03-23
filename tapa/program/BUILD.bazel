@@ -26,6 +26,7 @@ py_library(
 py_library(
     name = "hls",
     srcs = ["hls.py"],
+    data = glob(["assets/*.j2"]),
     deps = [
         "//tapa:safety_check",
         "//tapa:task",
@@ -34,6 +35,7 @@ py_library(
         "//tapa/common:paths",
         "//tapa/program:abc",
         "//tapa/program:directory",
+        requirement("jinja2"),
         requirement("psutil"),
     ],
 )
