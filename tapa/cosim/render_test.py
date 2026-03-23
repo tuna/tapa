@@ -7,11 +7,13 @@ from tapa.cosim.common import AXI, Arg, Port
 from tapa.cosim.render import (
     render_axi_ram_inst,
     render_axi_ram_module,
+    render_hls_dut,
     render_hls_test_signals,
     render_m_axi_connections,
     render_stream_typedef,
     render_testbench_begin,
     render_testbench_end,
+    render_vitis_dut,
     render_vitis_test_signals,
 )
 from tapa.cosim.templates import (
@@ -19,9 +21,11 @@ from tapa.cosim.templates import (
     get_axi_ram_module,
     get_begin,
     get_end,
+    get_hls_dut,
     get_hls_test_signals,
     get_m_axi_connections,
     get_stream_typedef,
+    get_vitis_dut,
     get_vitis_test_signals,
 )
 
@@ -116,6 +120,38 @@ def test_m_axi_connections_matches_fixture() -> None:
 
     assert render_m_axi_connections("mem") == expected
     assert get_m_axi_connections("mem") == expected
+
+
+def test_vitis_dut_renderer_generates_mmap_connections() -> None:
+    args = (
+        Arg("a", 1, 0, Port("a", "read_write", 512)),
+        Arg("b", 1, 1, Port("b", "read_write", 512)),
+        Arg("c", 1, 2, Port("c", "read_write", 512)),
+        Arg("n", 0, 3, Port("n", "read_only", 64)),
+    )
+
+    rendered = render_vitis_dut("VecAdd", args)
+
+    assert "m_axi_a_ARADDR" in rendered
+    assert "m_axi_b_ARADDR" in rendered
+    assert "m_axi_c_ARADDR" in rendered
+    assert rendered == get_vitis_dut("VecAdd", args)
+
+
+def test_hls_dut_renderer_generates_mmap_connections() -> None:
+    args = (
+        Arg("a", 1, 0, Port("a", "read_write", 512)),
+        Arg("b", 1, 1, Port("b", "read_write", 512)),
+        Arg("c", 1, 2, Port("c", "read_write", 512)),
+        Arg("n", 0, 3, Port("n", "read_only", 64)),
+    )
+
+    rendered = render_hls_dut("VecAdd", False, args, {"n": "'h3e8"})
+
+    assert "m_axi_a_ARADDR" in rendered
+    assert "m_axi_b_ARADDR" in rendered
+    assert "m_axi_c_ARADDR" in rendered
+    assert rendered == get_hls_dut("VecAdd", False, args, {"n": "'h3e8"})
 
 
 def test_render_template_failure_is_wrapped() -> None:

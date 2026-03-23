@@ -98,7 +98,7 @@ def pack(
         else:
             sys.stdout.write(stdout.decode("utf-8"))
             sys.stderr.write(stderr.decode("utf-8"))
-    if not isinstance(output_file, str):
+    if not isinstance(output_file, str) and os.path.exists(xo_file):
         os.remove(xo_file)
 
 
