@@ -106,26 +106,30 @@ py_library(
 py_library(
     name = "verilator_tb_axi",
     srcs = ["verilator_tb_axi.py"],
+    data = glob(["assets/*.j2"]),
     deps = [
         ":common",
+        requirement("jinja2"),
     ],
 )
 
 py_library(
     name = "verilator_tb_core",
     srcs = ["verilator_tb_core.py"],
+    data = glob(["assets/*.j2"]),
     deps = [
         ":common",
-        ":verilator_tb_axi",
-        ":verilator_tb_stream",
+        requirement("jinja2"),
     ],
 )
 
 py_library(
     name = "verilator_tb_stream",
     srcs = ["verilator_tb_stream.py"],
+    data = glob(["assets/*.j2"]),
     deps = [
         ":common",
+        requirement("jinja2"),
     ],
 )
 

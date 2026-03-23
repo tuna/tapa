@@ -2,28 +2,28 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
+
+from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from tapa.cosim.common import AXI, Arg
 
+_env = Environment(
+    loader=FileSystemLoader(str(Path(__file__).parent / "assets")),
+    undefined=StrictUndefined,
+    trim_blocks=True,
+    lstrip_blocks=True,
+)
+
 
 def generate_axi_helpers(axi_list: list[AXI], mode: str) -> list[str]:
-    lines: list[str] = []
-
-    lines.append("static void service_all_axi() {")
-    for axi in axi_list:
-        data_bytes = axi.data_width // 8
-        lines.extend(_generate_axi_read_service(axi.name, data_bytes))
-        lines.extend(_generate_axi_write_service(axi.name, data_bytes))
-    lines.extend(["}", ""])
-
-    if mode == "vitis":
-        lines.extend(_CTRL_WRITE_FUNC)
-
-    return lines
+    ctx = [{"name": axi.name, "data_bytes": axi.data_width // 8} for axi in axi_list]
+    rendered = _env.get_template("verilator_tb_axi.j2").render(axi_list=ctx, mode=mode)
+    return rendered.split("\n")
 
 
 def generate_ctrl_writes(
@@ -98,84 +98,3 @@ def generate_hls_port_setup(
         ]
     )
     return lines
-
-
-def _generate_axi_read_service(name: str, data_bytes: int) -> list[str]:
-    return [
-        "    // AXI read service for " + name,
-        f"    dut->m_axi_{name}_ARREADY = !rd_{name}.busy;",
-        f"    if (dut->m_axi_{name}_ARVALID && !rd_{name}.busy) {{",
-        f"        rd_{name}.busy = true;",
-        f"        rd_{name}.addr = dut->m_axi_{name}_ARADDR;",
-        f"        rd_{name}.len = dut->m_axi_{name}_ARLEN;",
-        f"        rd_{name}.id = dut->m_axi_{name}_ARID;",
-        f"        rd_{name}.beat = 0;",
-        "    }",
-        f"    if (rd_{name}.busy) {{",
-        f"        dut->m_axi_{name}_RVALID = 1;",
-        f"        mem_read(rd_{name}.addr + (uint64_t)rd_{name}.beat * {data_bytes},",
-        f"                 &dut->m_axi_{name}_RDATA, {data_bytes});",
-        f"        dut->m_axi_{name}_RLAST = (rd_{name}.beat == rd_{name}.len) ? 1 : 0;",
-        f"        dut->m_axi_{name}_RID = rd_{name}.id;",
-        f"        dut->m_axi_{name}_RRESP = 0;",
-        f"        if (dut->m_axi_{name}_RREADY) {{",
-        f"            if (rd_{name}.beat >= rd_{name}.len) rd_{name}.busy = false;",
-        f"            else rd_{name}.beat++;",
-        "        }",
-        "    } else {",
-        f"        dut->m_axi_{name}_RVALID = 0;",
-        "    }",
-    ]
-
-
-def _generate_axi_write_service(name: str, data_bytes: int) -> list[str]:
-    return [
-        "    // AXI write service for " + name,
-        (
-            f"    dut->m_axi_{name}_AWREADY ="
-            f" (!wr_{name}.aw_got && !wr_{name}.b_pending) ? 1 : 0;"
-        ),
-        f"    if (dut->m_axi_{name}_AWVALID && dut->m_axi_{name}_AWREADY) {{",
-        f"        wr_{name}.aw_got = true;",
-        f"        wr_{name}.addr = dut->m_axi_{name}_AWADDR;",
-        f"        wr_{name}.id = dut->m_axi_{name}_AWID;",
-        f"        wr_{name}.beat = 0;",
-        "    }",
-        f"    dut->m_axi_{name}_WREADY = wr_{name}.aw_got ? 1 : 0;",
-        f"    if (dut->m_axi_{name}_WVALID && dut->m_axi_{name}_WREADY) {{",
-        f"        mem_write(wr_{name}.addr + (uint64_t)wr_{name}.beat * {data_bytes},",
-        f"                  &dut->m_axi_{name}_WDATA, dut->m_axi_{name}_WSTRB,",
-        f"                  {data_bytes});",
-        f"        wr_{name}.beat++;",
-        f"        if (dut->m_axi_{name}_WLAST) {{",
-        f"            wr_{name}.aw_got = false;",
-        f"            wr_{name}.b_pending = true;",
-        "        }",
-        "    }",
-        f"    dut->m_axi_{name}_BVALID = wr_{name}.b_pending ? 1 : 0;",
-        f"    dut->m_axi_{name}_BID = wr_{name}.id;",
-        f"    dut->m_axi_{name}_BRESP = 0;",
-        f"    if (wr_{name}.b_pending && dut->m_axi_{name}_BREADY)",
-        f"        wr_{name}.b_pending = false;",
-    ]
-
-
-_CTRL_WRITE_FUNC = [
-    "static void ctrl_write(uint8_t addr, uint32_t data) {",
-    "    dut->s_axi_control_AWVALID = 1;",
-    "    dut->s_axi_control_AWADDR = addr;",
-    "    dut->s_axi_control_WVALID = 1;",
-    "    dut->s_axi_control_WDATA = data;",
-    "    dut->s_axi_control_WSTRB = 0xF;",
-    "    dut->s_axi_control_BREADY = 1;",
-    "    for (int i = 0; i < 20; i++) {",
-    "        service_all_axi(); tick();",
-    "        if (dut->s_axi_control_BVALID) break;",
-    "    }",
-    "    dut->s_axi_control_AWVALID = 0;",
-    "    dut->s_axi_control_WVALID = 0;",
-    "    dut->s_axi_control_BREADY = 0;",
-    "    service_all_axi(); tick();",
-    "}",
-    "",
-]
