@@ -170,6 +170,67 @@ _QUERY_EXTERN_FUNC = Query(
     """,
 )
 
+# Captures braced extern "C" { void foo() {} } linkage_specification nodes
+# (body is declaration_list containing function_definition).
+_QUERY_EXTERN_LINKAGE_BRACED_DEF = Query(
+    _CPP_LANGUAGE,
+    """
+    (linkage_specification
+      (declaration_list
+        (function_definition
+          declarator: (function_declarator
+            declarator: (identifier) @name)))) @linkage
+    """,
+)
+
+# Captures braced extern "C" { void foo(); } linkage_specification nodes
+# (body is declaration_list containing declaration).
+_QUERY_EXTERN_LINKAGE_BRACED_DECL = Query(
+    _CPP_LANGUAGE,
+    """
+    (linkage_specification
+      (declaration_list
+        (declaration
+          declarator: (function_declarator
+            declarator: (identifier) @name)))) @linkage
+    """,
+)
+
+# Captures inline extern "C" void foo() {} linkage_specification nodes
+# (body is a direct function_definition, no declaration_list).
+_QUERY_EXTERN_LINKAGE_INLINE = Query(
+    _CPP_LANGUAGE,
+    """
+    (linkage_specification
+      body: (function_definition
+        declarator: (function_declarator
+          declarator: (identifier) @name))) @linkage
+    """,
+)
+
+
+def _find_extern_c_linkage_nodes(source: bytes, func_name: str) -> list[Node]:
+    """Return all linkage_specification nodes wrapping func_name (decl or def).
+
+    Handles both inline form (extern "C" void foo() {}) and braced form
+    (extern "C" { void foo() {} } or extern "C" { void foo(); }).
+    """
+    tree = _parser.parse(source)
+    nodes: list[Node] = []
+    func_bytes = func_name.encode()
+    queries = (
+        _QUERY_EXTERN_LINKAGE_BRACED_DEF,
+        _QUERY_EXTERN_LINKAGE_BRACED_DECL,
+        _QUERY_EXTERN_LINKAGE_INLINE,
+    )
+    for query in queries:
+        for _pattern_idx, captures in QueryCursor(query).matches(tree.root_node):
+            name_nodes = captures.get("name", [])
+            linkage_nodes = captures.get("linkage", [])
+            if name_nodes and name_nodes[0].text == func_bytes and linkage_nodes:
+                nodes.append(linkage_nodes[0])
+    return nodes
+
 
 def _find_function_body(source: bytes, func_name: str) -> Node | None:
     """Find the compound_statement node for func_name using tree-sitter."""
@@ -199,18 +260,31 @@ def replace_function(
 ) -> str:
     """Replace the body of func_name in source using tree-sitter CST.
 
-    When called with two positional arguments (source, func_name, new_body),
+    When called with three positional arguments (source, func_name, new_body),
     replaces only the compound_statement body of the named function.
 
     When called with four arguments (source, func_name, new_decl, new_def),
-    uses the legacy remove-and-append strategy to replace both the extern "C"
-    declaration and definition blocks.
+    removes all extern "C" linkage_specification nodes for the function using
+    tree-sitter byte-offset splicing, then appends the new declaration and
+    definition blocks.
     """
     if new_def is not None:
-        # Legacy 4-arg path: remove old extern "C" blocks, append new ones.
+        # 4-arg path: tree-sitter-based removal of extern "C" linkage nodes.
         new_decl = new_body_or_decl
-        code = _remove_extern_c_function_block(source, func_name, is_definition=False)
-        code = _remove_extern_c_function_block(code, func_name, is_definition=True)
+        source_bytes = source.encode()
+        linkage_nodes = _find_extern_c_linkage_nodes(source_bytes, func_name)
+        # Sort by start offset descending so later splices don't shift earlier ones.
+        linkage_nodes.sort(key=lambda n: n.start_byte, reverse=True)
+        for node in linkage_nodes:
+            end = node.end_byte
+            # Also consume a trailing "  // extern "C"" comment on the same line
+            # that may follow the closing brace (left by our own code generation).
+            rest = source_bytes[end:]
+            comment_match = re.match(rb'\s*//\s*extern\s+"C"', rest)
+            if comment_match:
+                end += comment_match.end()
+            source_bytes = source_bytes[: node.start_byte] + source_bytes[end:]
+        code = source_bytes.decode()
         decl_block = f'extern "C" {{\n{new_decl.strip()}\n}}  // extern "C"\n'
         def_block = f'extern "C" {{\n{new_def.strip()}\n}}  // extern "C"\n'
         return code.rstrip() + "\n\n" + decl_block + "\n\n" + def_block + "\n"
@@ -229,35 +303,3 @@ def replace_function(
         + "\n}"
         + source_bytes[body_node.end_byte :].decode()
     )
-
-
-def _find_extern_c_function_block(
-    code: str, func_name: str, is_definition: bool
-) -> tuple[int, int] | None:
-    """Find start & end index of the extern "C" block of the given function."""
-    if is_definition:
-        signature = rf"void\s+{re.escape(func_name)}\s*\([^)]*\)\s*\{{"
-    else:
-        signature = rf"void\s+{re.escape(func_name)}\s*\([^)]*\)\s*;"
-
-    pattern = (
-        rf'extern\s+"C"\s*\{{\s*'
-        rf"{signature}.*?"
-        rf'\}}\s*//\s*extern\s+"C"'
-    )
-
-    match = re.search(pattern, code, flags=re.DOTALL)
-    if match:
-        return match.start(), match.end()
-    return None
-
-
-def _remove_extern_c_function_block(
-    code: str, func_name: str, is_definition: bool
-) -> str:
-    """Remove the extern "C" block containing the specified function."""
-    bounds = _find_extern_c_function_block(code, func_name, is_definition)
-    if bounds:
-        start, end = bounds
-        return code[:start] + code[end:]
-    return code

@@ -44,3 +44,52 @@ extern "C" void slot_func(uint64_t x) {
     assert "// some trailing code" in result
     assert "// new body" in result
     assert "// old body" not in result
+
+
+def test_replace_extern_c_function_removes_regex_replaces_body() -> None:
+    source = """
+extern "C" {
+void my_func(int a);
+}  // extern "C"
+
+extern "C" {
+void my_func(int a) {
+    // original body
+}
+}  // extern "C"
+"""
+    result = replace_function(
+        source,
+        "my_func",
+        "void my_func(int a);",
+        "void my_func(int a) { /* new body */ }",
+    )
+    assert "/* new body */" in result
+    assert "original body" not in result
+
+
+def test_replace_extern_c_4arg_removes_old_blocks() -> None:
+    """4-arg path should strip both old extern C blocks and append new ones."""
+    source = """
+#include <stdint.h>
+
+extern "C" {
+void top(uint64_t x);
+}  // extern "C"
+
+extern "C" {
+void top(uint64_t x) {
+    // old impl
+}
+}  // extern "C"
+"""
+    new_decl = "void top(uint64_t x);"
+    new_def = "void top(uint64_t x) { /* new impl */ }"
+    result = replace_function(source, "top", new_decl, new_def)
+    assert "#include <stdint.h>" in result
+    assert "/* new impl */" in result
+    assert "old impl" not in result
+    # Each extern "C" block has 2 occurrences of `extern "C"` (open + comment);
+    # 2 new blocks = 4 total.
+    expected_extern_c_count = 2 * 2
+    assert result.count('extern "C"') == expected_extern_c_count
