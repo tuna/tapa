@@ -3,7 +3,6 @@
 
 extern "C" {
 
-// IEEE 754 single-precision floating-point addition
 unsigned int fp32_add(unsigned int a, unsigned int b) {
   float fa, fb, fc;
   memcpy(&fa, &a, sizeof(float));
@@ -14,7 +13,6 @@ unsigned int fp32_add(unsigned int a, unsigned int b) {
   return result;
 }
 
-// IEEE 754 single-precision floating-point subtraction
 unsigned int fp32_sub(unsigned int a, unsigned int b) {
   float fa, fb, fc;
   memcpy(&fa, &a, sizeof(float));
@@ -25,7 +23,6 @@ unsigned int fp32_sub(unsigned int a, unsigned int b) {
   return result;
 }
 
-// IEEE 754 single-precision floating-point multiplication
 unsigned int fp32_mul(unsigned int a, unsigned int b) {
   float fa, fb, fc;
   memcpy(&fa, &a, sizeof(float));
@@ -36,7 +33,6 @@ unsigned int fp32_mul(unsigned int a, unsigned int b) {
   return result;
 }
 
-// IEEE 754 double-precision floating-point addition
 unsigned long long fp64_add(unsigned long long a, unsigned long long b) {
   double da, db, dc;
   memcpy(&da, &a, sizeof(double));
@@ -47,7 +43,6 @@ unsigned long long fp64_add(unsigned long long a, unsigned long long b) {
   return result;
 }
 
-// IEEE 754 double-precision floating-point subtraction
 unsigned long long fp64_sub(unsigned long long a, unsigned long long b) {
   double da, db, dc;
   memcpy(&da, &a, sizeof(double));
@@ -58,7 +53,6 @@ unsigned long long fp64_sub(unsigned long long a, unsigned long long b) {
   return result;
 }
 
-// IEEE 754 double-precision floating-point multiplication
 unsigned long long fp64_mul(unsigned long long a, unsigned long long b) {
   double da, db, dc;
   memcpy(&da, &a, sizeof(double));

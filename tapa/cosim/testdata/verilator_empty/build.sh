@@ -3,6 +3,7 @@ set -e
 cd "$(dirname "$0")"
 
 
+
 /verilator/bin/verilator --cc --top-module top \
   -Wno-fatal -Wno-PINMISSING -Wno-WIDTH -Wno-UNUSEDSIGNAL -Wno-UNDRIVEN -Wno-UNOPTFLAT -Wno-STMTDLY -Wno-CASEINCOMPLETE -Wno-SYMRSVDWORD -Wno-COMBDLY -Wno-TIMESCALEMOD -Wno-MULTIDRIVEN \
   --no-timing \
