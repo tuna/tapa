@@ -52,7 +52,6 @@ def _copy_fixture_rtl(work_dir: Path) -> None:
 
 
 def _build_program() -> "Program":
-    pytest.importorskip("toposort")
     pytest.importorskip("intervaltree")
     program_cls = importlib.import_module("tapa.core").Program
     instance_cls = importlib.import_module("tapa.instance").Instance

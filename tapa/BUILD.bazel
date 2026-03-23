@@ -133,7 +133,6 @@ py_library(
         "//tapa/verilog/xilinx:module",
         requirement("pyverilog"),
         requirement("pyyaml"),
-        requirement("toposort"),
     ],
 )
 

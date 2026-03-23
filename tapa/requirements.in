@@ -11,4 +11,3 @@ pyslang
 pytest
 pyverilog
 pyyaml
-toposort

@@ -18,7 +18,8 @@ import tempfile
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
-import toposort
+from graphlib import TopologicalSorter
+
 import yaml
 
 from tapa.common.paths import get_tapacc_cflags
@@ -105,8 +106,10 @@ class Program(  # TODO: refactor this class
             self.is_temp = False
         self._tasks: dict[str, Task] = {}
 
-        task_names = toposort.toposort_flatten(
-            {k: set(v.get("tasks", ())) for k, v in obj["tasks"].items()},
+        task_names = list(
+            TopologicalSorter(
+                {k: set(v.get("tasks", ())) for k, v in obj["tasks"].items()}
+            ).static_order()
         )
         for template in gen_templates:
             assert template in task_names, (
