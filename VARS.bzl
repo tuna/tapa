@@ -5,8 +5,8 @@ XILINX_TOOL_VERSION = "2024.2"
 XILINX_TOOL_LEGACY_PATH = "/opt/tools/xilinx"
 XILINX_TOOL_LEGACY_VERSION = "2022.2"
 HAS_XRT = True
-XILINX_XRT_SETUP = "/opt/tapa/software/xilinx/xrt/setup.sh"
-XILINX_PLATFORM_REPO_PATHS = "/opt/tapa/software/xilinx/platforms"
+XILINX_XRT_SETUP = "/opt/xilinx/xrt/setup.sh"
+XILINX_PLATFORM_REPO_PATHS = "/opt/xilinx/platforms"
 
 # Remote SSH host for fetching vendor headers. Leave REMOTE_HOST empty to disable.
 REMOTE_HOST = ""
