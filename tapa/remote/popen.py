@@ -293,6 +293,7 @@ class RemoteToolProcess(ToolProcess):
         config: RemoteConfig,
         extra_upload_paths: tuple[str, ...] = (),
         extra_download_paths: tuple[str, ...] = (),
+        download_cwd: bool = False,
         **kwargs: Any,  # noqa: ANN401
     ) -> None:
         self._cmd_args = cmd_args
@@ -301,6 +302,7 @@ class RemoteToolProcess(ToolProcess):
         self._config = config
         self._extra_upload_paths = extra_upload_paths
         self._extra_download_paths = extra_download_paths
+        self._download_cwd = download_cwd
         self._kwargs = kwargs
         self._session_dir = f"{config.work_dir}/{uuid.uuid4()}"
         self._communicated = False
@@ -343,7 +345,10 @@ class RemoteToolProcess(ToolProcess):
         _logger.info("Remote command exited with code %d", self.returncode)
 
         # Download
-        download_list = [self._cwd, *list(self._extra_download_paths)]
+        download_list = [
+            *([self._cwd] if self._download_cwd else []),
+            *list(self._extra_download_paths),
+        ]
         _download_paths(self._config, download_list, self._session_dir)
 
         return stdout_data, stderr_data
@@ -359,13 +364,14 @@ class RemoteToolProcess(ToolProcess):
                 self.communicate()
 
 
-def create_tool_process(
+def create_tool_process(  # noqa: PLR0913
     cmd_args: list[str] | str,
     *,
     cwd: str | None = None,
     env: dict[str, str] | None = None,
     extra_upload_paths: tuple[str, ...] = (),
     extra_download_paths: tuple[str, ...] = (),
+    download_cwd: bool = False,
     **kwargs: Any,  # noqa: ANN401
 ) -> ToolProcess:
     """Factory: create a local or remote tool process based on config."""
@@ -378,6 +384,7 @@ def create_tool_process(
             config=config,
             extra_upload_paths=extra_upload_paths,
             extra_download_paths=extra_download_paths,
+            download_cwd=download_cwd,
             **kwargs,
         )
     return LocalToolProcess(cmd_args, cwd=cwd, env=env, **kwargs)

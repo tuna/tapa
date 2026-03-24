@@ -28,3 +28,11 @@ py_test(
         ":remote",
     ],
 )
+
+py_test(
+    name = "popen_test",
+    srcs = ["test_popen.py"],
+    deps = [
+        ":remote",
+    ],
+)
