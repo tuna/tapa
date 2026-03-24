@@ -9,6 +9,7 @@ load("@rules_python//python:defs.bzl", "py_library")
 load("@rules_python//python:py_binary.bzl", "py_binary")
 load("@rules_python//python:py_test.bzl", "py_test")
 load("@tapa_deps//:requirements.bzl", "requirement")
+load("//bazel:pytest_rules.bzl", py_pytest_test = "py_test")
 
 py_binary(
     name = "tapa-fast-cosim",
@@ -241,6 +242,25 @@ py_library(
         "//tapa/common:paths",
         "//tapa/remote",
         requirement("packaging"),
+    ],
+)
+
+py_pytest_test(
+    name = "config_preprocess_test",
+    size = "small",
+    srcs = ["config_preprocess_test.py"],
+    deps = [
+        ":config_preprocess",
+    ],
+)
+
+py_pytest_test(
+    name = "vivado_test",
+    size = "small",
+    srcs = ["vivado_test.py"],
+    deps = [
+        ":config_preprocess",
+        ":vivado",
     ],
 )
 
