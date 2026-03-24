@@ -14,7 +14,7 @@ import click
 
 from tapa import __version__
 from tapa.cosim.__main__ import main as cosim
-from tapa.remote.config import load_remote_config, set_remote_config
+from tapa.remote.config import RemoteConfig, load_remote_config, set_remote_config
 from tapa.remote.vendor import sync_remote_vendor_includes
 from tapa.steps.analyze import analyze
 from tapa.steps.common import switch_work_dir
@@ -31,6 +31,27 @@ from tapa.steps.version import version
 from tapa.util import Options, setup_logging
 
 _logger = logging.getLogger().getChild(__name__)
+
+
+def _apply_remote_overrides(  # noqa: PLR0913,PLR0917
+    config: RemoteConfig,
+    remote_key_file: str | None,
+    remote_xilinx_settings: str | None,
+    remote_ssh_control_dir: str | None,
+    remote_ssh_control_persist: str | None,
+    remote_disable_ssh_mux: bool,
+) -> None:
+    """Apply CLI remote override flags to an existing RemoteConfig object."""
+    if remote_key_file:
+        config.key_file = os.path.expanduser(remote_key_file)
+    if remote_xilinx_settings:
+        config.xilinx_settings = remote_xilinx_settings
+    if remote_ssh_control_dir:
+        config.ssh_control_dir = os.path.expanduser(remote_ssh_control_dir)
+    if remote_ssh_control_persist:
+        config.ssh_control_persist = remote_ssh_control_persist
+    if remote_disable_ssh_mux:
+        config.ssh_multiplex = False
 
 
 @click.group(chain=True)
@@ -127,16 +148,15 @@ def entry_point(  # noqa: PLR0913,PLR0917
 
     # Setup remote execution config
     config = load_remote_config(remote_host)
-    if config and remote_key_file:
-        config.key_file = os.path.expanduser(remote_key_file)
-    if config and remote_xilinx_settings:
-        config.xilinx_settings = remote_xilinx_settings
-    if config and remote_ssh_control_dir:
-        config.ssh_control_dir = os.path.expanduser(remote_ssh_control_dir)
-    if config and remote_ssh_control_persist:
-        config.ssh_control_persist = remote_ssh_control_persist
-    if config and remote_disable_ssh_mux:
-        config.ssh_multiplex = False
+    if config:
+        _apply_remote_overrides(
+            config,
+            remote_key_file=remote_key_file,
+            remote_xilinx_settings=remote_xilinx_settings,
+            remote_ssh_control_dir=remote_ssh_control_dir,
+            remote_ssh_control_persist=remote_ssh_control_persist,
+            remote_disable_ssh_mux=remote_disable_ssh_mux,
+        )
     set_remote_config(config)
     if config:
         _logger.info(
