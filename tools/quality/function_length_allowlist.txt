@@ -2,7 +2,5 @@
 # Format: relative/path.py:qualified.symbol
 # to be removed: Phase 2
 tapa/steps/synth.py:synth
-# to be removed: P1-B4
-tapa/verilog/axi_xbar.py:generate
 # to be removed: Phase 3
 tapa/verilog/graphir_exporter/verilog.py:export_verilog_grouped_module

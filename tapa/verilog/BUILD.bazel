@@ -21,6 +21,7 @@ py_library(
 py_library(
     name = "axi_xbar",
     srcs = ["axi_xbar.py"],
+    data = glob(["assets/*.j2"]),
     deps = [
         requirement("jinja2"),
     ],
