@@ -49,6 +49,8 @@ py_library(
     name = "config_preprocess",
     srcs = ["config_preprocess.py"],
     deps = [
+        ":common",
+        requirement("pydantic"),
         requirement("pyyaml"),
     ],
 )

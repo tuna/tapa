@@ -14,8 +14,10 @@ import shutil
 import sys
 import zipfile
 from pathlib import Path
+from typing import cast
 from xml.etree import ElementTree as ET
 
+from pydantic import BaseModel, ConfigDict, Field
 from yaml import safe_load
 
 from tapa.cosim.common import Arg, Port
@@ -23,17 +25,65 @@ from tapa.cosim.common import Arg, Port
 _logger = logging.getLogger().getChild(__name__)
 
 
-def _update_relative_path(config: dict, config_path: str) -> None:
+def _remap_keys[V](id_to_name: dict[int, str], id_to_val: dict[str, V]) -> dict[str, V]:
+    """Remap dict keys from integer argument IDs to qualified argument names."""
+    return {id_to_name[int(arg_id)]: val for arg_id, val in id_to_val.items()}
+
+
+class CosimConfig(BaseModel):
+    """Typed schema for cosim configuration.
+
+    Input fields come from the JSON config file; computed fields are populated
+    by the preprocessing pipeline before the config is used by callers.
+    """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    # --- Input fields (from the JSON config file) ---
+    xo_path: str
+    axi_to_data_file: dict[str, str] = Field(default_factory=dict)
+    scalar_to_val: dict[str, str] = Field(default_factory=dict)
+    # Values are array sizes (integers), keys are argument IDs (later mapped to names)
+    axi_to_c_array_size: dict[str, int] = Field(default_factory=dict)
+    axis_to_data_file: dict[str, str] = Field(default_factory=dict)
+
+    # --- Computed fields (populated during preprocessing) ---
+    mode: str = ""
+    verilog_path: str = ""
+    top_name: str = ""
+    top_is_leaf_task: bool = False
+    args: list[Arg] = Field(default_factory=list)
+    part_num: str | None = None
+
+    # Backward-compatibility: allow callers to do config["key"] / config["key"] = v
+    def __getitem__(self, key: str) -> object:
+        return getattr(self, key)
+
+    def __setitem__(self, key: str, value: object) -> None:
+        object.__setattr__(self, key, value)
+
+    def __contains__(self, key: str) -> bool:
+        return key in self.model_fields
+
+    def get(self, key: str, default: object = None) -> object:
+        """Return the field value, or default if the field does not exist."""
+        try:
+            return getattr(self, key)
+        except AttributeError:
+            return default
+
+
+def _update_relative_path(config: CosimConfig, config_path: str) -> None:
     """Convert the relative path in the config file."""
     config_dir = "/".join(config_path.split("/")[:-1])
 
-    curr_path = config["xo_path"]
+    curr_path = config.xo_path
     if not curr_path.startswith("/") and not curr_path.startswith("~"):
-        config["xo_path"] = f"{config_dir}/{curr_path}"
+        config.xo_path = f"{config_dir}/{curr_path}"
 
-    for axi_name, curr_path in config["axi_to_data_file"].items():
+    for axi_name, curr_path in config.axi_to_data_file.items():
         if not curr_path.startswith("/") and not curr_path.startswith("~"):
-            config["axi_to_data_file"][axi_name] = f"{config_dir}/{curr_path}"
+            config.axi_to_data_file[axi_name] = f"{config_dir}/{curr_path}"
 
 
 def extract_part_from_xml_file(file_path: str) -> str | None:
@@ -80,12 +130,12 @@ def parse_part_num(xo_dir: str) -> str | None:
     return extract_part_from_xml_file(csynth_reports[0])
 
 
-def _parse_and_update_config(config: dict, tb_output_dir: str) -> None:
+def _parse_and_update_config(config: CosimConfig, tb_output_dir: str) -> None:
     """Only supports TAPA xo.
 
     Vitis XO has different hierarchy and RTL coding style.
     """
-    xo_path = config["xo_path"]
+    xo_path = config.xo_path
 
     tmp_path = f"{tb_output_dir}/tapa_fast_cosim_{os.getuid()}/"
     shutil.rmtree(tmp_path, ignore_errors=True)
@@ -95,45 +145,36 @@ def _parse_and_update_config(config: dict, tb_output_dir: str) -> None:
     zip_ref.extractall(tmp_path)
 
     if xo_path.endswith(".xo"):
-        config["mode"] = "vitis"
+        config.mode = "vitis"
         _parse_xo_update_config(config, tmp_path)
     elif xo_path.endswith(".zip"):
-        config["mode"] = "hls"
+        config.mode = "hls"
         _parse_zip_update_config(config, tmp_path)
     else:
         msg = f"Unsupported xo file format: {xo_path}"
         raise ValueError(msg)
 
     # convert argument index in the config file to actual names
-    id_to_name = {arg.id: arg.qualified_name for arg in config["args"]}
-
-    # update scalar arguments
-    def change_id_to_name(id_to_val: dict[str, str]) -> dict[str, str]:
-        return {
-            id_to_name[int(scalar_arg_id)]: val
-            for scalar_arg_id, val in id_to_val.items()
-        }
-
-    for entry in (
-        "scalar_to_val",
-        "axi_to_data_file",
-        "axis_to_data_file",
-        "axi_to_c_array_size",
-    ):
-        config[entry] = change_id_to_name(config[entry] or {})
+    id_to_name = {arg.id: arg.qualified_name for arg in config.args}
+    config.scalar_to_val = _remap_keys(id_to_name, config.scalar_to_val or {})
+    config.axi_to_data_file = _remap_keys(id_to_name, config.axi_to_data_file or {})
+    config.axis_to_data_file = _remap_keys(id_to_name, config.axis_to_data_file or {})
+    config.axi_to_c_array_size = _remap_keys(
+        id_to_name, config.axi_to_c_array_size or {}
+    )
 
 
-def _parse_xo_update_config(config: dict, tmp_path: str) -> None:
+def _parse_xo_update_config(config: CosimConfig, tmp_path: str) -> None:
     """Parse the xo file and update the config file with the extracted information.
 
     Args:
-        config (dict): The configuration dictionary.
+        config (CosimConfig): The configuration object.
         tmp_path (str): The temporary directory path.
     """
     # only supports tapa xo
     src_dirs = glob.glob(f"{tmp_path}/ip_repo/*/src")
     assert len(src_dirs) == 1, "Only supports TAPA XO. Vitis XO is not supported"
-    config["verilog_path"] = src_dirs[0]
+    config.verilog_path = src_dirs[0]
 
     # extract other kernel information
     kernel_file_path = glob.glob(f"{tmp_path}/*/kernel.xml")[0]
@@ -141,9 +182,9 @@ def _parse_xo_update_config(config: dict, tmp_path: str) -> None:
     if kernel_xml is None:
         _logger.error("Fail to extract kernel name")
         sys.exit(1)
-    config["top_name"] = kernel_xml.attrib["name"]
+    config.top_name = kernel_xml.attrib["name"]
     # Vitis mode does not support a leaf task as top task
-    config["top_is_leaf_task"] = False
+    config.top_is_leaf_task = False
 
     # parse kernel ports and args
     ports = {}
@@ -165,108 +206,107 @@ def _parse_xo_update_config(config: dict, tmp_path: str) -> None:
         )
         args.append(arg)
         _logger.debug("arg: %s", arg)
-    config["args"] = args
+    config.args = args
 
-    config["part_num"] = parse_part_num(tmp_path)
+    config.part_num = parse_part_num(tmp_path)
 
 
-def _parse_zip_update_config(config: dict, tmp_path: str) -> None:
+def _parse_zip_ports(ports_yaml: list[dict[str, object]]) -> list[Arg]:
+    """Parse port descriptors from graph.yaml into a list of Arg objects."""
+    args: list[Arg] = []
+    idx = 0
+    for port in ports_yaml:
+        if port["cat"] == "istream" or port["cat"] == "istreams":
+            address_qualifier = 4
+            mode = "read_only"
+        elif port["cat"] == "ostream" or port["cat"] == "ostreams":
+            address_qualifier = 4
+            mode = "write_only"
+        elif port["cat"] in {"mmap", "async_mmap"}:
+            address_qualifier = 1
+            mode = "read_write"
+        elif port["cat"] in {"mmaps", "hmap"}:
+            # Array mmap types: expand into individual mmap entries.
+            chan_count = cast("int", port["chan_count"])
+            for i in range(chan_count):
+                port_name = f"{cast('str', port['name'])}_{i}"
+                args.append(
+                    Arg(
+                        name=port_name,
+                        address_qualifier=1,
+                        id=idx,
+                        stream_idx=None,
+                        port=Port(
+                            name=port_name,
+                            mode="read_write",
+                            data_width=cast("int", port["width"]),
+                        ),
+                    )
+                )
+                idx += 1
+            continue
+        elif port["cat"] == "scalar":
+            address_qualifier = 0
+            mode = "read_only"
+        else:
+            msg = f"Unsupported port category: {port['cat']}"
+            raise ValueError(msg)
+
+        if port["cat"] == "istreams" or port["cat"] == "ostreams":
+            stream_indices = range(cast("int", port["chan_count"]))
+        else:
+            stream_indices = [None]
+
+        for stream_idx in stream_indices:
+            port_name = cast("str", port["name"])
+            args.append(
+                Arg(
+                    name=port_name,
+                    address_qualifier=address_qualifier,
+                    id=idx,
+                    stream_idx=stream_idx,
+                    port=Port(
+                        name=port_name,
+                        mode=mode,
+                        data_width=cast("int", port["width"]),
+                    ),
+                )
+            )
+            idx += 1
+
+    return args
+
+
+def _parse_zip_update_config(config: CosimConfig, tmp_path: str) -> None:
     """Parse the zip file and update the config file with the extracted information.
 
     Args:
-        config (dict): The configuration dictionary.
+        config (CosimConfig): The configuration object.
         tmp_path (str): The temporary directory path.
     """
     rtl_dir = Path(tmp_path) / "rtl"
     # only supports tapa generated zip file
     assert rtl_dir.is_dir(), "Only supports TAPA XO. Vitis XO is not supported"
-    config["verilog_path"] = str(rtl_dir)
+    config.verilog_path = str(rtl_dir)
 
     # extract other kernel information
     graph_file_path = Path(tmp_path) / "graph.yaml"
     assert graph_file_path.is_file(), "Fail to extract kernel information"
     with graph_file_path.open(encoding="utf-8") as f:
-        # top name of the kernel
         graph = safe_load(f)
-        config["top_name"] = graph["top"]
-
-        config["top_is_leaf_task"] = (
-            graph["tasks"][config["top_name"]]["level"] == "lower"
-        )
-
-        # parse kernel ports
-        args = []
-        idx = 0
-        for port in graph["tasks"][config["top_name"]]["ports"]:
-            if port["cat"] == "istream" or port["cat"] == "istreams":
-                address_qualifier = 4
-                mode = "read_only"
-            elif port["cat"] == "ostream" or port["cat"] == "ostreams":
-                address_qualifier = 4
-                mode = "write_only"
-            elif port["cat"] in {"mmap", "async_mmap"}:
-                address_qualifier = 1
-                mode = "read_write"
-            elif port["cat"] in {"mmaps", "hmap"}:
-                # Array mmap types: expand into individual mmap entries.
-                chan_count = port["chan_count"]
-                for i in range(chan_count):
-                    port_name = f"{port['name']}_{i}"
-                    args.append(
-                        Arg(
-                            name=port_name,
-                            address_qualifier=1,
-                            id=idx,
-                            stream_idx=None,
-                            port=Port(
-                                name=port_name,
-                                mode="read_write",
-                                data_width=port["width"],
-                            ),
-                        )
-                    )
-                    idx += 1
-                continue
-            elif port["cat"] == "scalar":
-                address_qualifier = 0
-                mode = "read_only"
-            else:
-                msg = f"Unsupported port category: {port['cat']}"
-                raise ValueError(msg)
-
-            if port["cat"] == "istreams" or port["cat"] == "ostreams":
-                stream_indices = range(port["chan_count"])
-            else:
-                stream_indices = [None]
-
-            for stream_idx in stream_indices:
-                port_name = port["name"]
-                args.append(
-                    Arg(
-                        name=port_name,
-                        address_qualifier=address_qualifier,
-                        id=idx,
-                        stream_idx=stream_idx,
-                        port=Port(
-                            name=port_name,
-                            mode=mode,
-                            data_width=port["width"],
-                        ),
-                    )
-                )
-                idx += 1
-
-        config["args"] = args
+        config.top_name = graph["top"]
+        config.top_is_leaf_task = graph["tasks"][config.top_name]["level"] == "lower"
+        config.args = _parse_zip_ports(graph["tasks"][config.top_name]["ports"])
 
     settings_file_path = Path(tmp_path) / "settings.yaml"
     assert settings_file_path.is_file(), "Fail to extract kernel settings"
     with settings_file_path.open(encoding="utf-8") as f:
         settings = safe_load(f)
-        config["part_num"] = settings["part_num"]
+        config.part_num = settings["part_num"]
 
 
-def _check_scalar_val_format(config: dict) -> None:
-    for scalar, val in config["scalar_to_val"].items():
+def _check_scalar_val_format(config: CosimConfig) -> None:
+    for scalar, val in config.scalar_to_val.items():
         assert val.startswith("'h"), (
             "scalar value should be written in hex format, lsb on the right, "
             "with the suffix 'h according to Verilog syntax. "
@@ -279,14 +319,10 @@ def _check_scalar_val_format(config: dict) -> None:
 
 def preprocess_config(
     config_path: str, tb_output_dir: str, part_num: str | None
-) -> dict:
+) -> CosimConfig:
     """Preprocess the config file."""
     with open(config_path, encoding="utf-8") as fp:
-        config = json.load(fp)
-
-    # handle designs with no scalar
-    if "scalar_to_val" not in config:
-        config["scalar_to_val"] = {}
+        config = CosimConfig.model_validate(json.load(fp))
 
     _update_relative_path(config, config_path)
     _parse_and_update_config(config, tb_output_dir)
@@ -294,6 +330,6 @@ def preprocess_config(
 
     # overwrite part number if provided
     if part_num:
-        config["part_num"] = part_num
+        config.part_num = part_num
 
     return config
