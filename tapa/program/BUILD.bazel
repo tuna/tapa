@@ -6,6 +6,7 @@
 
 load("@rules_python//python:defs.bzl", "py_library")
 load("@tapa_deps//:requirements.bzl", "requirement")
+load("//bazel:pytest_rules.bzl", "py_test")
 
 package(default_visibility = ["//tapa:__pkg__"])
 
@@ -37,6 +38,16 @@ py_library(
         "//tapa/program:directory",
         requirement("jinja2"),
         requirement("psutil"),
+    ],
+)
+
+py_test(
+    name = "hls_test",
+    size = "small",
+    srcs = ["hls_test.py"],
+    deps = [
+        ":hls",
+        "//tapa/backend",
     ],
 )
 
