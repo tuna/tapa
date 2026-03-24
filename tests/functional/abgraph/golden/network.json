@@ -1316,17 +1316,17 @@
             },
             "target_vertex": {
                 "area": {
-                    "bram_18k": 15,
+                    "bram_18k": 16,
                     "dsp": 0,
-                    "ff": 3511,
-                    "lut": 2746,
+                    "ff": 3481,
+                    "lut": 3954,
                     "uram": 0
                 },
                 "current_slot": null,
-                "name": "Produce_0",
+                "name": "Consume_0",
                 "reserved_slot": null,
                 "sub_cells": [
-                    "Produce_0"
+                    "Consume_0"
                 ],
                 "target_slot": null
             },

@@ -22,8 +22,8 @@
                 "area": {
                     "bram_18k": 0,
                     "dsp": 0,
-                    "ff": 840,
-                    "lut": 757,
+                    "ff": 1098,
+                    "lut": 747,
                     "uram": 0
                 },
                 "current_slot": null,
@@ -42,8 +42,8 @@
                 "area": {
                     "bram_18k": 0,
                     "dsp": 0,
-                    "ff": 840,
-                    "lut": 757,
+                    "ff": 1098,
+                    "lut": 747,
                     "uram": 0
                 },
                 "current_slot": null,
@@ -94,8 +94,8 @@
                 "area": {
                     "bram_18k": 0,
                     "dsp": 0,
-                    "ff": 840,
-                    "lut": 757,
+                    "ff": 1098,
+                    "lut": 747,
                     "uram": 0
                 },
                 "current_slot": null,
@@ -114,8 +114,8 @@
                 "area": {
                     "bram_18k": 0,
                     "dsp": 0,
-                    "ff": 840,
-                    "lut": 757,
+                    "ff": 1098,
+                    "lut": 747,
                     "uram": 0
                 },
                 "current_slot": null,
@@ -166,8 +166,8 @@
                 "area": {
                     "bram_18k": 0,
                     "dsp": 0,
-                    "ff": 840,
-                    "lut": 757,
+                    "ff": 1098,
+                    "lut": 747,
                     "uram": 0
                 },
                 "current_slot": null,
@@ -186,8 +186,8 @@
                 "area": {
                     "bram_18k": 0,
                     "dsp": 0,
-                    "ff": 840,
-                    "lut": 757,
+                    "ff": 1098,
+                    "lut": 747,
                     "uram": 0
                 },
                 "current_slot": null,
@@ -238,8 +238,8 @@
                 "area": {
                     "bram_18k": 0,
                     "dsp": 0,
-                    "ff": 840,
-                    "lut": 757,
+                    "ff": 1098,
+                    "lut": 747,
                     "uram": 0
                 },
                 "current_slot": null,
@@ -258,8 +258,8 @@
                 "area": {
                     "bram_18k": 0,
                     "dsp": 0,
-                    "ff": 840,
-                    "lut": 757,
+                    "ff": 1098,
+                    "lut": 747,
                     "uram": 0
                 },
                 "current_slot": null,
@@ -310,15 +310,15 @@
                 "area": {
                     "bram_18k": 0,
                     "dsp": 0,
-                    "ff": 840,
-                    "lut": 757,
+                    "ff": 1098,
+                    "lut": 747,
                     "uram": 0
                 },
                 "current_slot": null,
-                "name": "Copy_3",
+                "name": "Copy_0",
                 "reserved_slot": null,
                 "sub_cells": [
-                    "Copy_3"
+                    "Copy_0"
                 ],
                 "target_slot": null
             },
@@ -346,15 +346,15 @@
                 "area": {
                     "bram_18k": 0,
                     "dsp": 0,
-                    "ff": 840,
-                    "lut": 757,
+                    "ff": 1098,
+                    "lut": 747,
                     "uram": 0
                 },
                 "current_slot": null,
-                "name": "Copy_3",
+                "name": "Copy_0",
                 "reserved_slot": null,
                 "sub_cells": [
-                    "Copy_3"
+                    "Copy_0"
                 ],
                 "target_slot": null
             },
@@ -366,8 +366,8 @@
             "area": {
                 "bram_18k": 0,
                 "dsp": 0,
-                "ff": 840,
-                "lut": 757,
+                "ff": 1098,
+                "lut": 747,
                 "uram": 0
             },
             "current_slot": null,
@@ -382,8 +382,8 @@
             "area": {
                 "bram_18k": 0,
                 "dsp": 0,
-                "ff": 840,
-                "lut": 757,
+                "ff": 1098,
+                "lut": 747,
                 "uram": 0
             },
             "current_slot": null,
@@ -398,8 +398,8 @@
             "area": {
                 "bram_18k": 0,
                 "dsp": 0,
-                "ff": 840,
-                "lut": 757,
+                "ff": 1098,
+                "lut": 747,
                 "uram": 0
             },
             "current_slot": null,
@@ -414,8 +414,8 @@
             "area": {
                 "bram_18k": 0,
                 "dsp": 0,
-                "ff": 840,
-                "lut": 757,
+                "ff": 1098,
+                "lut": 747,
                 "uram": 0
             },
             "current_slot": null,
