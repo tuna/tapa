@@ -332,6 +332,40 @@ void Visitor::ProcessTaskPorts(const TapaTask& task, nlohmann::json& metadata) {
   }
 }
 
+// Checks that mmap parameters are passed by value and stream parameters are
+// passed by reference. Emits a compile error for each violation.
+static void CheckTaskPortPassingConventions(clang::ASTContext& context,
+                                            const clang::FunctionDecl* func) {
+  auto& diags = context.getDiagnostics();
+  for (const auto* param : func->parameters()) {
+    const bool is_ref = param->getType()->isLValueReferenceType();
+
+    // mmap/mmaps must be by value — by-reference produces invalid HLS ports.
+    if (is_ref && (IsTapaType(param, "mmap") || IsTapaType(param, "immap") ||
+                   IsTapaType(param, "ommap") || IsTapaType(param, "mmaps"))) {
+      static const auto diag_id = diags.getCustomDiagID(
+          clang::DiagnosticsEngine::Error,
+          "tapa::mmap parameter '%0' must be passed by value in task "
+          "functions, not by reference; remove the '&' from the parameter "
+          "declaration");
+      diags.Report(param->getLocation(), diag_id)
+          .AddString(param->getNameAsString());
+    }
+
+    // stream/streams must be by reference — by-value copies are not supported.
+    if (!is_ref &&
+        (IsTapaType(param, "istream") || IsTapaType(param, "ostream") ||
+         IsTapaType(param, "istreams") || IsTapaType(param, "ostreams"))) {
+      static const auto diag_id = diags.getCustomDiagID(
+          clang::DiagnosticsEngine::Error,
+          "tapa stream parameter '%0' must be passed by reference in task "
+          "functions; add '&' to the parameter declaration");
+      diags.Report(param->getLocation(), diag_id)
+          .AddString(param->getNameAsString());
+    }
+  }
+}
+
 // Apply tapa s2s transformations on a upper-level task.
 void Visitor::ProcessUpperLevelTaskFunc(const ExprWithCleanups* task_obj,
                                         const FunctionDecl* func) {
@@ -344,6 +378,8 @@ void Visitor::ProcessUpperLevelTaskFunc(const ExprWithCleanups* task_obj,
   // The task metadata should only be obtained from the function definition
   if (!func->isThisDeclarationADefinition()) return;
   assert(task_obj != nullptr);
+
+  CheckTaskPortPassingConventions(this->context_, func);
 
   // Obtain the connection schema from the task.
   // metadata: {tasks, fifos}
@@ -675,6 +711,8 @@ void Visitor::ProcessLowerLevelTaskFunc(const clang::FunctionDecl* func) {
 
   // The task metadata should only be obtained from the function definition
   if (!func->isThisDeclarationADefinition()) return;
+
+  CheckTaskPortPassingConventions(this->context_, func);
 
   auto& metadata = GetMetadata();
   ProcessTaskPorts(*current_task, metadata);
