@@ -1,5 +1,7 @@
 """Generate a Vivado TCL script for cosimulation."""
 
+from __future__ import annotations
+
 __copyright__ = """
 Copyright (c) 2024 RapidStream Design Automation, Inc. and contributors.
 All rights reserved. The contributor(s) of this file has/have agreed to the
@@ -10,6 +12,12 @@ import logging
 import re
 import shlex
 import subprocess
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from tapa.cosim.config_preprocess import CosimConfig
+
+from packaging.version import Version
 
 from tapa.common import paths
 from tapa.remote.config import RemoteConfig, get_remote_config
@@ -75,7 +83,7 @@ def _parse_vivado_version(version_lines: str) -> str:
 
 
 def get_vivado_tcl(
-    config: dict,
+    config: CosimConfig,
     tb_rtl_path: str,
     save_waveform: bool,
     start_gui: bool,
@@ -83,7 +91,7 @@ def get_vivado_tcl(
     """Generate a Vivado TCL script for cosimulation."""
     dpi_version = (
         "tapa_fast_cosim_dpi_xv"
-        if get_vivado_version() >= "2024.2"
+        if Version(get_vivado_version()) >= Version("2024.2")
         else "tapa_fast_cosim_dpi_legacy_rdi"
     )
 

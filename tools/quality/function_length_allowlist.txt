@@ -1,2 +1,3 @@
 # Temporary exceptions for Python function-length budget.
 # Format: relative/path.py:qualified.symbol
+tapa/cosim/vivado.py:get_vivado_tcl

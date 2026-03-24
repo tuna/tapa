@@ -83,6 +83,7 @@ py_library(
     srcs = ["verilator.py"],
     deps = [
         ":common",
+        ":config_preprocess",
         ":verilator_build",
         ":verilator_dpi",
         ":verilator_ips",
@@ -132,6 +133,16 @@ py_library(
     deps = [
         ":common",
         requirement("jinja2"),
+    ],
+)
+
+py_test(
+    name = "main_test",
+    size = "small",
+    srcs = ["main_test.py"],
+    deps = [
+        ":__main__",
+        requirement("pytest"),
     ],
 )
 
@@ -228,6 +239,7 @@ py_library(
     deps = [
         "//tapa/common:paths",
         "//tapa/remote",
+        requirement("packaging"),
     ],
 )
 

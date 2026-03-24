@@ -109,6 +109,7 @@ repos:
           - jinja2
           - networkx
           - nuitka
+          - packaging
           - psutil
           - pydantic
           - pyslang==8.1.0  # specific version needed for pyslang stub

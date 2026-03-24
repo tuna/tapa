@@ -8,12 +8,16 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from tapa.cosim.config_preprocess import CosimConfig
 
 _logger = logging.getLogger().getChild(__name__)
 
 
-def launch_verilator(config: dict, tb_output_dir: str) -> None:
-    top_name: str = config["top_name"]
+def launch_verilator(config: CosimConfig, tb_output_dir: str) -> None:
+    top_name = config.top_name
     _logger.info("Building Verilator simulation for %s", top_name)
 
     build_script = Path(tb_output_dir) / "build.sh"

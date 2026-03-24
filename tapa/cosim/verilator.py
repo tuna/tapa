@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from tapa.cosim.common import parse_register_addr
+from tapa.cosim.config_preprocess import CosimConfig
 from tapa.cosim.verilator_build import generate_build_script as _generate_build_script
 from tapa.cosim.verilator_build import launch_verilator  # noqa: F401
 from tapa.cosim.verilator_dpi import generate_dpi_support
@@ -15,23 +16,21 @@ from tapa.cosim.verilator_ips import detect_xilinx_ips
 from tapa.cosim.verilator_tb_core import generate_cpp_testbench
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-
-    from tapa.cosim.common import AXI, Arg
+    from tapa.cosim.common import AXI
 
 
 def generate_verilator_tb(
-    config: dict,
+    config: CosimConfig,
     axi_list: list["AXI"],
     tb_output_dir: str,
 ) -> None:
     """Generate C++ testbench and support files for Verilator simulation."""
     Path(tb_output_dir).mkdir(parents=True, exist_ok=True)
 
-    top_name: str = config["top_name"]
-    args: Sequence[Arg] = config["args"]
-    verilog_path: str = config["verilog_path"]
-    mode: str = config["mode"]
+    top_name = config.top_name
+    args = config.args
+    verilog_path = config.verilog_path
+    mode = config.mode
 
     rtl_dir = Path(tb_output_dir) / "rtl"
     rtl_dir.mkdir(parents=True, exist_ok=True)

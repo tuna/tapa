@@ -4,6 +4,7 @@ All rights reserved. The contributor(s) of this file has/have agreed to the
 RapidStream Contributor License Agreement.
 """
 
+import ast as _ast
 import logging
 import os
 import os.path
@@ -21,7 +22,7 @@ import psutil
 
 from tapa import __version__
 from tapa.cosim.common import AXI, Arg, parse_register_addr
-from tapa.cosim.config_preprocess import preprocess_config
+from tapa.cosim.config_preprocess import CosimConfig, preprocess_config
 from tapa.cosim.templates import (
     get_axi_ram_inst,
     get_axi_ram_module,
@@ -51,6 +52,35 @@ logging.basicConfig(
 _logger = logging.getLogger().getChild(__name__)
 
 
+def _safe_eval_int(expr: str, params: dict[str, str]) -> int:
+    """Evaluate a Verilog constant integer expression safely.
+
+    Replaces parameter names with their values, then evaluates using
+    ast.parse restricted to arithmetic operations only.
+    """
+    for name, val in params.items():
+        expr = expr.replace(name, val)
+    tree = _ast.parse(expr.strip(), mode="eval")
+    for node in _ast.walk(tree):
+        if not isinstance(
+            node,
+            (
+                _ast.Expression,
+                _ast.BinOp,
+                _ast.UnaryOp,
+                _ast.Constant,
+                _ast.Add,
+                _ast.Sub,
+                _ast.Mult,
+                _ast.FloorDiv,
+                _ast.USub,
+            ),
+        ):
+            msg = f"Unsafe expression: {expr!r}"
+            raise ValueError(msg)
+    return int(eval(compile(tree, "<string>", "eval")))
+
+
 def parse_m_axi_interfaces(top_rtl_path: str) -> list[AXI]:
     """Parse the top RTL to extract all m_axi interface metadata."""
     with open(top_rtl_path, encoding="utf-8") as fp:
@@ -71,13 +101,13 @@ def parse_m_axi_interfaces(top_rtl_path: str) -> list[AXI]:
     name_to_addr_width = {m_axi: addr_width for addr_width, m_axi in match_addr}
     for data_width, m_axi in match_data:
         addr_width = name_to_addr_width[m_axi]
-
-        # substitute the parameters
-        for name, val in param_to_value.items():
-            data_width = data_width.replace(name, val)  # noqa: PLW2901
-            addr_width = addr_width.replace(name, val)
-
-        axi_list.append(AXI(m_axi, eval(data_width) + 1, eval(addr_width) + 1))
+        axi_list.append(
+            AXI(
+                m_axi,
+                _safe_eval_int(data_width, param_to_value) + 1,
+                _safe_eval_int(addr_width, param_to_value) + 1,
+            )
+        )
     return axi_list
 
 
@@ -165,8 +195,8 @@ def main(  # noqa: PLR0913, PLR0917
 
     config = preprocess_config(config_path, tb_output_dir, part_num)
 
-    top_name = config["top_name"]
-    verilog_path = config["verilog_path"]
+    top_name = config.top_name
+    verilog_path = config.verilog_path
     top_path = f"{verilog_path}/{top_name}.v"
     ctrl_path = f"{verilog_path}/{top_name}_control_s_axi.v"
 
@@ -191,7 +221,7 @@ def main(  # noqa: PLR0913, PLR0917
 
 
 def _generate_xsim(  # noqa: PLR0913, PLR0917
-    config: dict,
+    config: CosimConfig,
     top_name: str,
     verilog_path: str,
     ctrl_path: str,
@@ -207,12 +237,12 @@ def _generate_xsim(  # noqa: PLR0913, PLR0917
 
     tb = get_cosim_tb(
         top_name,
-        config["top_is_leaf_task"],
+        config.top_is_leaf_task,
         ctrl_path,
         axi_list,
-        config["args"],
-        config["scalar_to_val"],
-        config["mode"],
+        config.args,
+        config.scalar_to_val,
+        config.mode,
     )
 
     # generate test bench RTL files
@@ -225,8 +255,8 @@ def _generate_xsim(  # noqa: PLR0913, PLR0917
         fp.write(get_srl_fifo_template())
 
     for axi in axi_list:
-        source_data_path = config["axi_to_data_file"][axi.name]
-        c_array_size = config["axi_to_c_array_size"][axi.name]
+        source_data_path = config.axi_to_data_file[axi.name]
+        c_array_size = config.axi_to_c_array_size[axi.name]
         ram_module = get_axi_ram_module(axi, source_data_path, c_array_size)
         with open(f"{tb_output_dir}/axi_ram_{axi.name}.v", "w", encoding="utf-8") as fp:
             fp.write(ram_module)
@@ -264,7 +294,7 @@ def _generate_xsim(  # noqa: PLR0913, PLR0917
 
 
 def _launch_simulation(
-    config: dict,
+    config: CosimConfig,
     start_gui: bool,
     tb_output_dir: str,
     stdout_fp: TextIOWrapper,
@@ -292,7 +322,7 @@ def _launch_simulation(
         # of the user home to avoid collisions.
         "HOME": run_dir,
         "TAPA_FAST_COSIM_DPI_ARGS": ",".join(
-            f"{k}:{v}" for k, v in config["axis_to_data_file"].items()
+            f"{k}:{v}" for k, v in config.axis_to_data_file.items()
         ),
     }
 

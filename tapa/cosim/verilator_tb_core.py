@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from tapa.cosim.common import AXI, Arg
+    from tapa.cosim.config_preprocess import CosimConfig
 
 _env = Environment(
     loader=FileSystemLoader(str(Path(__file__).parent / "assets")),
@@ -128,17 +129,17 @@ def generate_cpp_testbench(  # noqa: PLR0913, PLR0917
     top_name: str,
     axi_list: list[AXI],
     args: Sequence[Arg],
-    config: dict,
+    config: CosimConfig,
     reg_addrs: dict[str, list[str]],
     mode: str,
 ) -> str:
-    scalar_to_val = config.get("scalar_to_val", {})
+    scalar_to_val = config.scalar_to_val
     axi_ctx = _build_axi_ctx(
         axi_list,
-        config.get("axi_to_data_file", {}),
-        config.get("axi_to_c_array_size", {}),
+        config.axi_to_data_file,
+        config.axi_to_c_array_size,
     )
-    stream_args_ctx = _build_stream_args_ctx(args, config.get("axis_to_data_file", {}))
+    stream_args_ctx = _build_stream_args_ctx(args, config.axis_to_data_file)
     ctrl_writes = (
         _build_vitis_ctrl_writes(args, reg_addrs, scalar_to_val)
         if mode == "vitis"
