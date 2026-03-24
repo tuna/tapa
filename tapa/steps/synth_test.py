@@ -6,7 +6,7 @@ import click
 import pytest
 from click.testing import CliRunner
 
-from tapa.backend.device_config import parse_device_info
+from tapa.backend.xilinx import parse_device_info
 from tapa.steps.synth import synth
 
 # ---------------------------------------------------------------------------
