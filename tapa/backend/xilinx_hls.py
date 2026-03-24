@@ -92,6 +92,7 @@ class RunHls(VivadoHls):
                     if os.path.isdir(inc_dir):
                         upload_dirs.add(inc_dir)
         self._extra_upload = tuple(upload_dirs)
+        self._extra_download = (self.project_path,)
         self._extra_env = kernel_env
 
         rtl_config = "config_rtl -reset_level " + ("low" if reset_low else "high")
