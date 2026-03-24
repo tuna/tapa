@@ -197,7 +197,7 @@ def main(  # noqa: PLR0913, PLR0917
     if simulator == "verilator":
         generate_verilator_tb(config, axi_list, tb_output_dir)
         if launch_simulation:
-            launch_verilator(config, tb_output_dir)
+            launch_verilator(top_name, tb_output_dir)
     else:
         _generate_xsim(
             config,

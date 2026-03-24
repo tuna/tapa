@@ -54,7 +54,7 @@ def test_launch_verilator_runs_build_script_and_binary(
         )
         build_script.chmod(0o755)
 
-        launch_verilator({"top_name": "top"}, tb_dir)
+        launch_verilator("top", tb_dir)
 
     captured = capsys.readouterr()
     assert "sim ok" in captured.out
