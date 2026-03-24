@@ -37,7 +37,7 @@ class CosimConfig(BaseModel):
     by the preprocessing pipeline before the config is used by callers.
     """
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+    model_config = ConfigDict(arbitrary_types_allowed=True, frozen=False)
 
     # --- Input fields (from the JSON config file) ---
     xo_path: str
@@ -60,7 +60,7 @@ class CosimConfig(BaseModel):
         return getattr(self, key)
 
     def __setitem__(self, key: str, value: object) -> None:
-        object.__setattr__(self, key, value)
+        setattr(self, key, value)
 
     def __contains__(self, key: str) -> bool:
         return key in self.model_fields
