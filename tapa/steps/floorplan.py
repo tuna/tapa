@@ -16,6 +16,7 @@ import click
 
 from tapa.common.graph import Graph as TapaGraph
 from tapa.core import Program
+from tapa.remote.popen import create_tool_process
 from tapa.steps.common import (
     is_pipelined,
     load_persistent_context,
@@ -76,7 +77,12 @@ def run_autobridge(device_config: Path, floorplan_config: Path) -> None:
         "--run-floorplan",
     ]
 
-    subprocess.run(cmd, check=True)
+    with create_tool_process(cmd) as proc:
+        proc.communicate()
+    returncode = proc.returncode if proc.returncode is not None else 0
+    if returncode != 0:
+        msg = f"rapidstream-tapafp failed with exit code {returncode}"
+        raise subprocess.CalledProcessError(returncode, cmd, msg)
     floorplan_files = autobridge_work_dir.glob("solution_*/floorplan.json")
     for floorplan_file in floorplan_files:
         _logger.info("Generated floorplan file: %s", floorplan_file)

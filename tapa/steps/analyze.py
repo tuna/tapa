@@ -24,6 +24,7 @@ from tapa.common.paths import find_resource, get_system_cflags, get_tapacc_cflag
 from tapa.common.target import Target
 from tapa.common.task_definition import TaskDefinition
 from tapa.core import Program
+from tapa.remote.popen import create_tool_process
 from tapa.steps.common import (
     get_work_dir,
     is_pipelined,
@@ -208,13 +209,8 @@ def run_and_check(cmd: tuple[str, ...]) -> str:
     Returns:
       Stdout of the command execution.
     """
-    proc = subprocess.run(
-        cmd,
-        stdout=subprocess.PIPE,
-        text=True,
-        check=False,
-        encoding="utf-8",
-    )
+    with create_tool_process(list(cmd), stdout=subprocess.PIPE) as proc:
+        stdout_bytes, _ = proc.communicate()
     if proc.returncode != 0:
         quoted_cmd = " ".join(f'"{arg}"' if " " in arg else arg for arg in cmd)
         _logger.error(
@@ -224,7 +220,7 @@ def run_and_check(cmd: tuple[str, ...]) -> str:
         )
         sys.exit(proc.returncode)
 
-    return proc.stdout
+    return stdout_bytes.decode("utf-8")
 
 
 def run_flatten(
