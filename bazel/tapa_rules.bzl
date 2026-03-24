@@ -23,8 +23,9 @@ def _remote_host_flag():
     host_part = REMOTE_HOST
     if REMOTE_USER:
         host_part = REMOTE_USER + "@" + host_part
-    if REMOTE_PORT and REMOTE_PORT != "22":
-        host_part = host_part + ":" + REMOTE_PORT
+
+    # Always include port so VARS.local.bzl port overrides any ~/.taparc port.
+    host_part = host_part + ":" + REMOTE_PORT
     return host_part
 
 def _remote_xilinx_settings():
