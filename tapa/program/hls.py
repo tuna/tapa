@@ -19,7 +19,12 @@ from jinja2 import Environment, FileSystemLoader, StrictUndefined
 from psutil import cpu_count
 
 from tapa.backend.xilinx import RunAie, RunHls
-from tapa.common.paths import find_resource, get_tapacc_cflags, get_xpfm_path
+from tapa.common.paths import (
+    find_resource,
+    get_tapa_cflags,
+    get_tapacc_cflags,
+    get_xpfm_path,
+)
 from tapa.program.abc import ProgramInterface
 from tapa.program.directory import ProgramDirectoryInterface
 from tapa.remote.config import get_remote_config
@@ -146,12 +151,13 @@ class ProgramHlsMixin(
                 hls_includes = f"-I{find_resource('tapa-extra-runtime-include')}"
             except FileNotFoundError:
                 hls_includes = ""
-            # For remote HLS on Linux, use vendor GCC paths and -nostdinc++
-            # even when the local machine is macOS.
+            # For remote HLS, use only TAPA-specific headers (not local vendor/
+            # stdlib paths). The remote Vitis HLS handles vendor headers natively
+            # via settings64.sh, so uploading local Vitis copies is unnecessary
+            # and can cause header conflicts.
             if get_remote_config() is not None:
-                # Replace local tapacc cflags with remote-appropriate ones
                 local_suffix = " ".join(get_tapacc_cflags())
-                remote_suffix = " ".join(get_tapacc_cflags(for_remote_hls=True))
+                remote_suffix = " ".join(get_tapa_cflags())
                 base_cflags = self.cflags.replace(local_suffix, remote_suffix)
             else:
                 base_cflags = self.cflags
