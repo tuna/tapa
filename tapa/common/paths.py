@@ -243,6 +243,23 @@ def get_tapa_cflags() -> tuple[str, ...]:
 
 
 @cache
+def get_remote_hls_cflags() -> tuple[str, ...]:
+    """Return CFLAGS for remote HLS compilation from this host.
+
+    When running HLS remotely from macOS, assert() in generated C++ code
+    expands using macOS's assert.h (calls __assert_rtn), which doesn't exist
+    on the Linux HLS host. This includes a compatibility define to fix that.
+    """
+    assert_compat: tuple[str, ...] = ()
+    if platform.system() == "Darwin":
+        # assert() on macOS expands to __assert_rtn; remap to Linux's __assert_fail.
+        assert_compat = (
+            "-D__assert_rtn(func,file,line,expr)=__assert_fail(expr,file,line,func)",
+        )
+    return (*get_tapa_cflags(), *assert_compat)
+
+
+@cache
 def get_tapa_ldflags() -> tuple[str, ...]:
     """Return the LDFLAGS for linking TAPA programs.
 

@@ -18,6 +18,7 @@ __all__ = (
 REPORT_UTIL_COMMANDS = r"""
 set hdl_dir [lindex $argv 0]
 set rpt_file [lindex $argv 1]
+set_param general.maxThreads 1
 set_part {part_num}
 read_verilog [ glob $hdl_dir/*.v ]
 set ips [ glob -nocomplain $hdl_dir/*/*.xci ]

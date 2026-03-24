@@ -21,7 +21,7 @@ from psutil import cpu_count
 from tapa.backend.xilinx import RunAie, RunHls
 from tapa.common.paths import (
     find_resource,
-    get_tapa_cflags,
+    get_remote_hls_cflags,
     get_tapacc_cflags,
     get_xpfm_path,
 )
@@ -157,7 +157,7 @@ class ProgramHlsMixin(
             # and can cause header conflicts.
             if get_remote_config() is not None:
                 local_suffix = " ".join(get_tapacc_cflags())
-                remote_suffix = " ".join(get_tapa_cflags())
+                remote_suffix = " ".join(get_remote_hls_cflags())
                 base_cflags = self.cflags.replace(local_suffix, remote_suffix)
             else:
                 base_cflags = self.cflags

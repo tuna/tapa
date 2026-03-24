@@ -105,7 +105,7 @@ def _tapa_xo_impl(ctx):
 
     tapa_cmd.extend(["--override-report-schema-version", "redacted"])
 
-    tapa_cmd.extend(["--jobs", "2"])
+    tapa_cmd.extend(["--jobs", "1"])
 
     if ctx.attr.platform_name:
         tapa_cmd.extend(["--platform", ctx.attr.platform_name])
