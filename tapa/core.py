@@ -73,7 +73,7 @@ class Program(  # TODO: refactor this class
         target: str | Target,
         work_dir: str | None = None,
         gen_templates: tuple[str, ...] = (),
-        floorplan_slots: list[str] = [],
+        floorplan_slots: list[str] | None = None,
         flattened: bool = False,
         slot_task_name_to_fp_region: dict[str, str] | None = None,
     ) -> None:
@@ -92,6 +92,8 @@ class Program(  # TODO: refactor this class
           slot_task_name_to_fp_region: Mapping from slot task names to
               floorplan region names.
         """
+        if floorplan_slots is None:
+            floorplan_slots = []
         self.top: str = obj["top"]
         self.cflags = " ".join((*(obj.get("cflags", [])), *get_tapacc_cflags()))
         self.target = Target(target)
