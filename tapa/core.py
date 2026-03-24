@@ -16,6 +16,8 @@ import tarfile
 import tempfile
 from graphlib import TopologicalSorter
 from pathlib import Path
+from types import TracebackType
+from typing import Self
 from xml.etree import ElementTree as ET
 
 import yaml
@@ -140,9 +142,22 @@ class Program(  # TODO: refactor this class
         self.files: dict[str, str] = {}
         self.slot_task_name_to_fp_region = slot_task_name_to_fp_region
 
-    def __del__(self) -> None:
-        if self.is_temp:
+    def close(self) -> None:
+        """Clean up temporary working directory if one was created."""
+        if self.is_temp and os.path.exists(self.work_dir):
             shutil.rmtree(self.work_dir)
+            self.is_temp = False  # prevent double-cleanup
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        self.close()
 
     @property
     def top_task(self) -> Task:
