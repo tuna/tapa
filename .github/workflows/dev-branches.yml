@@ -96,6 +96,20 @@ jobs:
         env:
           READTHEDOCS: "True"
 
+  quality-baseline:
+    name: Quality Baseline Staleness Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout myself
+        uses: actions/checkout@v4
+
+      - name: Verify allowlist baseline is up to date
+        run: |
+          python3 tools/quality/file_budget.py \
+            --write-baseline tools/quality/file_budget_baseline.json
+          git diff --exit-code tools/quality/file_budget_baseline.json
+
   all-required-branch-checks:
     name: All Required Branch Checks
     runs-on: ubuntu-latest
@@ -106,6 +120,7 @@ jobs:
       - test
       - lint-js
       - docs
+      - quality-baseline
 
     steps:
       - name: Checkout myself
