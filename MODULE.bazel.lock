@@ -297,7 +297,7 @@
   "moduleExtensions": {
     "//bazel:dependencies.bzl%load_dependencies": {
       "general": {
-        "bzlTransitiveDigest": "hXi/Ow22UtAdV8s3PO1ZvIQV984JZkbwK/NuBCHP4nQ=",
+        "bzlTransitiveDigest": "ZCRwSohEJdDQ3Z2X1L2y1AUIFfUl5kxWxodXARYSYnw=",
         "usagesDigest": "R/mru0wX2nxaR5WLYDX44DFEAMeABaiVH5PaEGW3+bc=",
         "recordedInputs": [
           "REPO_MAPPING:,vars +resolve_vars+vars"
@@ -315,9 +315,9 @@
               "build_file_content": "\nload(\"@rules_cc//cc:cc_library.bzl\", \"cc_library\")\n\ncc_library(\n    name = \"include\",\n    hdrs = glob([\"include/**/*.h\"], allow_empty = True),\n    defines = select({\n        \"@platforms//os:macos\": [\n            # Xilinx std::complex specializations conflict with libc++ inline\n            # namespaces (std::__1::complex vs std::complex). Skip them since\n            # TAPA programs do not use std::complex<ap_int/ap_fixed>.\n            \"AP_INT_SPECIAL_H\",\n            \"AP_FIXED_SPECIAL_H\",\n            # Disable Xilinx FPO library dependency.\n            \"HLS_NO_XIL_FPO_LIB\",\n        ],\n        \"//conditions:default\": [],\n    }),\n    includes = [\"include\"],\n    visibility = [\"//visibility:public\"],\n)\n        ",
               "path": "/opt/tools/xilinx/Vitis/2024.2",
               "remote_path": "/opt/tapa/software/tools/xilinx/Vitis/2024.2",
-              "remote_host": "2402:f000:4:1007:809:e180:5932:e35b",
+              "remote_host": "100.126.154.100",
               "remote_user": "tapa",
-              "remote_port": "22222",
+              "remote_port": "22",
               "remote_key_file": "~/.ssh/tuna_tapa",
               "remote_ssh_control_dir": "/tmp/tapa-ssh-mux",
               "remote_ssh_control_persist": "1h"
