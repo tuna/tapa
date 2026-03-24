@@ -91,8 +91,8 @@ def _append_stream_iface(
     ifaces: list[AnyInterface],
     port_name: str,
     suffixes: tuple[str, ...],
-    valid_port: str,
-    ready_port: str,
+    valid_suffix: str,
+    ready_suffix: str,
 ) -> None:
     real_port_name = sanitize_array_name(port_name)
     ports = tuple(f"{real_port_name}{suffix}" for suffix in suffixes)
@@ -102,8 +102,8 @@ def _append_stream_iface(
             ports=ports,
             clk_port=HANDSHAKE_CLK,
             rst_port=HANDSHAKE_RST_N,
-            valid_port=valid_port.format(port=real_port_name),
-            ready_port=ready_port.format(port=real_port_name),
+            valid_port=f"{real_port_name}{valid_suffix}",
+            ready_port=f"{real_port_name}{ready_suffix}",
         )
     )
 
@@ -148,11 +148,11 @@ def _append_task_port_ifaces(
             scalars.append(port_name)
         elif port.cat.is_istream or port.cat.is_istreams:
             _append_stream_iface(
-                ifaces, port_name, ISTREAM_SUFFIXES, f"{port}_empty_n", f"{port}_read"
+                ifaces, port_name, ISTREAM_SUFFIXES, "_empty_n", "_read"
             )
         elif port.cat.is_ostream or port.cat.is_ostreams:
             _append_stream_iface(
-                ifaces, port_name, OSTREAM_SUFFIXES, f"{port}_write", f"{port}_full_n"
+                ifaces, port_name, OSTREAM_SUFFIXES, "_write", "_full_n"
             )
         elif port.cat.is_mmap:
             _append_mmap_ifaces(ifaces, scalars, port_name, ir_ports)
