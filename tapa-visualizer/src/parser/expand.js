@@ -10,6 +10,7 @@ import { getComboName } from "../helper.js";
 
 /** @type {(graphData: GraphData) => void} */
 export const expandSubTask = graphData => {
+  /** @type {(id: string, i: string) => string} */
   const insertIndex = (id, i) => id.split("/").toSpliced(2, 0, i).join("/");
 
   /** @type {import("@antv/g6").ComboData[]} */

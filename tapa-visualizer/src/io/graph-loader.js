@@ -72,7 +72,7 @@ export const setupGraphLoader = (fileInput, deps) => {
       deps.clearExplorer();
       deps.updateOptionsHint(0);
       const showError = () => resetSidebar(String(error));
-      deps.state.graph?.clear().then(showError, e => { console.error(e); showError(); }) ?? showError();
+      void (deps.state.graph?.clear().then(showError, e => { console.error(e); showError(); }) ?? showError());
     });
 
     return true;

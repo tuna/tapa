@@ -60,12 +60,28 @@ const getConsumedMissingStyle = (node, fifoName) => ({
   sourcePort: fifoName, targetPort: getPortKey(node, fifoName), stroke: altEdgeColor,
 });
 
+/** @type {(params: {
+ *   fifoName: string,
+ *   source: string,
+ *   target: string,
+ *   id: string,
+ *   fifo: UpperTask["fifos"][string],
+ *   addEdge: (edge: import("@antv/g6").EdgeData) => void,
+ *   getStyle: () => import("@antv/g6/lib/spec/element/edge").EdgeStyle,
+ * }) => void} */
 const addFifoEdge = ({ addEdge, fifo, fifoName, getStyle, id, source, target }) => {
   if (!matchFifoGroup(fifoName, source, target, id)) {
     addEdge({ source, target, id, style: getStyle(), data: { fifo } });
   }
 };
 
+/** @type {(params: {
+ *   fifoName: string,
+ *   fifo: UpperTask["fifos"][string],
+ *   taskName: string,
+ *   grouping: Grouping,
+ *   addEdge: (edge: import("@antv/g6").EdgeData) => void,
+ * }) => void} */
 const addConnectedFifo = ({ addEdge, fifo, fifoName, grouping, taskName }) => {
   const source = getSubTaskKey(fifo.produced_by, grouping);
   const target = getSubTaskKey(fifo.consumed_by, grouping);
@@ -73,7 +89,16 @@ const addConnectedFifo = ({ addEdge, fifo, fifoName, grouping, taskName }) => {
   addFifoEdge({ addEdge, fifo, fifoName, getStyle: () => style, id: `${taskName}/${fifoName}`, source, target });
 };
 
+/** @type {(params: {
+ *   fifoName: string,
+ *   fifo: UpperTask["fifos"][string],
+ *   taskName: string,
+ *   grouping: Grouping,
+ *   nodes: GraphData["nodes"],
+ *   addEdge: (edge: import("@antv/g6").EdgeData) => void,
+ * }) => void} */
 const addProducedMissingFifo = ({ addEdge, fifo, fifoName, grouping, nodes, taskName }) => {
+  /** @type {(node: import("@antv/g6").NodeData | undefined) => () => import("@antv/g6/lib/spec/element/edge").EdgeStyle} */
   const styleFor = node => () => getProducedMissingStyle(node, fifoName);
   switch (grouping) {
     case "merge": {
@@ -104,7 +129,16 @@ const addProducedMissingFifo = ({ addEdge, fifo, fifoName, grouping, nodes, task
   }
 };
 
+/** @type {(params: {
+ *   fifoName: string,
+ *   fifo: UpperTask["fifos"][string],
+ *   taskName: string,
+ *   grouping: Grouping,
+ *   nodes: GraphData["nodes"],
+ *   addEdge: (edge: import("@antv/g6").EdgeData) => void,
+ * }) => void} */
 const addConsumedMissingFifo = ({ addEdge, fifo, fifoName, grouping, nodes, taskName }) => {
+  /** @type {(node: import("@antv/g6").NodeData | undefined) => () => import("@antv/g6/lib/spec/element/edge").EdgeStyle} */
   const styleFor = node => () => getConsumedMissingStyle(node, fifoName);
   switch (grouping) {
     case "merge": {
@@ -135,6 +169,14 @@ const addConsumedMissingFifo = ({ addEdge, fifo, fifoName, grouping, nodes, task
   }
 };
 
+/** @type {(params: {
+ *   fifoName: string,
+ *   fifo: UpperTask["fifos"][string],
+ *   taskName: string,
+ *   grouping: Grouping,
+ *   nodes: GraphData["nodes"],
+ *   addEdge: (edge: import("@antv/g6").EdgeData) => void,
+ * }) => void} */
 export const addFifo = params => {
   const { fifo, fifoName, taskName } = params;
   if (fifo.produced_by && fifo.consumed_by) addConnectedFifo(params);
