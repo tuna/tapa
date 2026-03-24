@@ -16,7 +16,6 @@ from tapa.common.paths import find_resource, get_system_cflags, get_tapacc_cflag
 from tapa.common.target import Target
 from tapa.common.task_definition import TaskDefinition
 from tapa.core import Program
-from tapa.remote.popen import create_tool_process
 from tapa.steps.common import (
     get_work_dir,
     is_pipelined,
@@ -153,9 +152,13 @@ def find_clang_binary(name: str) -> str:
 
 
 def run_and_check(cmd: tuple[str, ...]) -> str:
-    """Run command and check return code."""
-    with create_tool_process(list(cmd), stdout=subprocess.PIPE) as proc:
-        stdout_bytes, _ = proc.communicate()
+    """Run command locally and check return code."""
+    proc = subprocess.run(
+        cmd,
+        stdout=subprocess.PIPE,
+        check=False,
+        encoding="utf-8",
+    )
     if proc.returncode != 0:
         _logger.error(
             "command %s failed with exit code %d",
@@ -164,7 +167,7 @@ def run_and_check(cmd: tuple[str, ...]) -> str:
         )
         sys.exit(proc.returncode)
 
-    return stdout_bytes.decode("utf-8")
+    return proc.stdout
 
 
 def run_flatten(
