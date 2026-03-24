@@ -1,7 +1,12 @@
 # Temporary exceptions for Python function-length budget.
 # Format: relative/path.py:qualified.symbol
-tapa/cosim/vivado.py:get_vivado_tcl
-tapa/graphir_conversion/utils.py:get_fifo_def
+# to be removed: Phase 2
 tapa/steps/synth.py:synth
+# to be removed: P1-B4
 tapa/verilog/axi_xbar.py:generate
+# to be removed: Phase 2
+tapa/cosim/vivado.py:get_vivado_tcl
+# to be removed: Phase 3
+tapa/graphir_conversion/utils.py:get_fifo_def
+# to be removed: Phase 3
 tapa/verilog/graphir_exporter/verilog.py:export_verilog_grouped_module

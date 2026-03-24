@@ -1,14 +1,4 @@
 # Existing oversized files tracked during phased refactor.
 # Format: relative file path.
 
-tapa/abgraph/device/virtual_device.py
-tapa/backend/xilinx.py
-tapa/common/graph.py
-tapa/core.py
-tapa/cosim/templates.py
-tapa/cosim/verilator.py
 tapa/graphir_conversion/utils.py
-tapa/instance.py
-tapa/program/hls.py
-tapa/task.py
-tapa/verilog/xilinx/module.py
