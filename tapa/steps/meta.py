@@ -14,6 +14,12 @@ from tapa.steps.synth import synth
 _logger = logging.getLogger().getChild(__name__)
 
 
+def _extend_params(cmd: click.Command, *sources: click.Command) -> None:
+    """Extend a Click command's params from one or more source commands."""
+    for src in sources:
+        cmd.params.extend(src.params)
+
+
 @click.command("compile")
 @click.pass_context
 def compile_entry(ctx: click.Context, **kwargs: bool) -> None:
@@ -23,10 +29,7 @@ def compile_entry(ctx: click.Context, **kwargs: bool) -> None:
     forward_applicable(ctx, pack, kwargs)
 
 
-compile_entry.params.extend(analyze.params)
-compile_entry.params.extend(floorplan.params)
-compile_entry.params.extend(synth.params)
-compile_entry.params.extend(pack.params)
+_extend_params(compile_entry, analyze, floorplan, synth, pack)
 
 
 @click.command("generate-floorplan")
@@ -41,9 +44,7 @@ def generate_floorplan_entry(ctx: click.Context, **kwargs: bool) -> None:
     forward_applicable(ctx, run_autobridge, kwargs)
 
 
-generate_floorplan_entry.params.extend(analyze.params)
-generate_floorplan_entry.params.extend(synth.params)
-generate_floorplan_entry.params.extend(run_autobridge.params)
+_extend_params(generate_floorplan_entry, analyze, synth, run_autobridge)
 
 
 @click.command("compile-with-floorplan-dse")
@@ -92,8 +93,6 @@ def compile_with_floorplan_dse(ctx: click.Context, **kwargs: bool | Path) -> Non
         _logger.info("Successful compilation with floorplan: %s", floorplan_file)
 
 
-compile_with_floorplan_dse.params.extend(analyze.params)
-compile_with_floorplan_dse.params.extend(floorplan.params)
-compile_with_floorplan_dse.params.extend(synth.params)
-compile_with_floorplan_dse.params.extend(run_autobridge.params)
-compile_with_floorplan_dse.params.extend(pack.params)
+_extend_params(
+    compile_with_floorplan_dse, analyze, floorplan, synth, run_autobridge, pack
+)
