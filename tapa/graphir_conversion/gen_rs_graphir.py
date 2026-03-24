@@ -56,28 +56,35 @@ _CTRL_S_AXI_PARAM_MAPPING = {
     "C_S_AXI_ADDR_WIDTH": "C_S_AXI_CONTROL_ADDR_WIDTH",
     "C_S_AXI_DATA_WIDTH": "C_S_AXI_CONTROL_DATA_WIDTH",
 }
-_CTRL_S_AXI_PORT_MAPPING = {
-    "AWVALID": Expression((Token.new_id("s_axi_control_AWVALID"),)),
-    "AWREADY": Expression((Token.new_id("s_axi_control_AWREADY"),)),
-    "AWADDR": Expression((Token.new_id("s_axi_control_AWADDR"),)),
-    "WVALID": Expression((Token.new_id("s_axi_control_WVALID"),)),
-    "WREADY": Expression((Token.new_id("s_axi_control_WREADY"),)),
-    "WDATA": Expression((Token.new_id("s_axi_control_WDATA"),)),
-    "WSTRB": Expression((Token.new_id("s_axi_control_WSTRB"),)),
-    "ARVALID": Expression((Token.new_id("s_axi_control_ARVALID"),)),
-    "ARREADY": Expression((Token.new_id("s_axi_control_ARREADY"),)),
-    "ARADDR": Expression((Token.new_id("s_axi_control_ARADDR"),)),
-    "RVALID": Expression((Token.new_id("s_axi_control_RVALID"),)),
-    "RREADY": Expression((Token.new_id("s_axi_control_RREADY"),)),
-    "RDATA": Expression((Token.new_id("s_axi_control_RDATA"),)),
-    "RRESP": Expression((Token.new_id("s_axi_control_RRESP"),)),
-    "BVALID": Expression((Token.new_id("s_axi_control_BVALID"),)),
-    "BREADY": Expression((Token.new_id("s_axi_control_BREADY"),)),
-    "BRESP": Expression((Token.new_id("s_axi_control_BRESP"),)),
-    "ACLK": Expression((Token.new_id("ap_clk"),)),
-    "ARESET": Expression((Token.new_id("rst"),)),
-    "ACLK_EN": Expression((Token.new_lit("1'b1"),)),
+_CTRL_S_AXI_PORT_MAPPING: dict[str, Expression] = {
+    port: Expression((Token.new_id(f"s_axi_control_{port}"),))
+    for port in (
+        "AWVALID",
+        "AWREADY",
+        "AWADDR",
+        "WVALID",
+        "WREADY",
+        "WDATA",
+        "WSTRB",
+        "ARVALID",
+        "ARREADY",
+        "ARADDR",
+        "RVALID",
+        "RREADY",
+        "RDATA",
+        "RRESP",
+        "BVALID",
+        "BREADY",
+        "BRESP",
+    )
 }
+_CTRL_S_AXI_PORT_MAPPING.update(
+    {
+        "ACLK": Expression((Token.new_id("ap_clk"),)),
+        "ARESET": Expression((Token.new_id("rst"),)),
+        "ACLK_EN": Expression((Token.new_lit("1'b1"),)),
+    }
+)
 
 
 def get_verilog_module_from_leaf_task(
@@ -99,35 +106,25 @@ def get_top_ctrl_s_axi_inst(
     floorplan_region: str,
 ) -> ModuleInstantiation:
     """Get top ctrl_s_axi instantiation."""
-    connections = []
-    for port in ctrl_s_axi_ir.ports:
-        if port.name in _CTRL_S_AXI_PORT_MAPPING:
-            expr = _CTRL_S_AXI_PORT_MAPPING[port.name]
-        else:
-            expr = Expression((Token.new_id(port.name),))
-        connections.append(
-            ModuleConnection(
-                name=port.name,
-                hierarchical_name=HierarchicalName.get_name(port.name),
-                expr=expr,
-            )
+    connections = [
+        ModuleConnection(
+            name=port.name,
+            hierarchical_name=HierarchicalName.get_name(port.name),
+            expr=_CTRL_S_AXI_PORT_MAPPING.get(
+                port.name, Expression((Token.new_id(port.name),))
+            ),
         )
-    parameters = []
-    for param, value in _CTRL_S_AXI_PARAM_MAPPING.items():
-        # find id in top def and replace to make parameter constant
-        tokens = None
-        for top_param in top_ir_param:
-            if top_param.name == value:
-                tokens = top_param.expr.root
-                break
-        assert tokens
-        parameters.append(
-            ModuleConnection(
-                name=param,
-                hierarchical_name=HierarchicalName.get_name(param),
-                expr=Expression(tokens),
-            )
+        for port in ctrl_s_axi_ir.ports
+    ]
+    top_param_by_name = {p.name: p for p in top_ir_param}
+    parameters = [
+        ModuleConnection(
+            name=param,
+            hierarchical_name=HierarchicalName.get_name(param),
+            expr=Expression(top_param_by_name[value].expr.root),
         )
+        for param, value in _CTRL_S_AXI_PARAM_MAPPING.items()
+    ]
     return ModuleInstantiation(
         name="control_s_axi_U",
         hierarchical_name=HierarchicalName.get_name("control_s_axi_U"),
@@ -140,10 +137,10 @@ def get_top_ctrl_s_axi_inst(
 
 
 def get_top_extra_wires(
-    ctrl_s_axi__ir: VerilogModuleDefinition,
+    ctrl_s_axi_ir: VerilogModuleDefinition,
 ) -> Generator[ModuleNet]:
     """Get wires between control_s_axi and fsm."""
-    for port in ctrl_s_axi__ir.ports:
+    for port in ctrl_s_axi_ir.ports:
         if port.name not in _CTRL_S_AXI_PORT_MAPPING:
             yield ModuleNet(
                 name=port.name,

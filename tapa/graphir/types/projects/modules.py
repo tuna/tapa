@@ -19,14 +19,6 @@ from tapa.graphir.types.modules.instantiation import ModuleInstantiation
 
 _logger = logging.getLogger(__name__)
 
-DEBUG_MAKR_USED = "Module '%s' is marked as used from module '%s'."
-WARN_BLACKBOX_USED = (
-    "Blackbox module '%s' is marked used.  However, we cannot analyze if it uses other "
-    "modules.  It is assumed to be using no other modules in the call graph analysis.  "
-    "The exported design may lack some modules if this assumption is false."
-)
-RAISE_TOP_NOT_SET = "The top module must be set before analyzing used modules."
-
 
 class Modules(NamespaceModel):
     """A collection of modules in the project.
@@ -162,12 +154,10 @@ class Modules(NamespaceModel):
                 area=None, pragmas=()))
         """
         submodules = module.get_submodules()
-        all_submodules = submodules
-        for curr_submodule in submodules:
-            all_submodules += self.get_submodules_recursive(
-                self.get(curr_submodule.module)
-            )
-        return all_submodules
+        result = submodules
+        for s in submodules:
+            result += self.get_submodules_recursive(self.get(s.module))
+        return result
 
     def get_all_used_modules(self) -> set[str]:
         """Recursively collect all used modules from the top module."""
@@ -180,19 +170,26 @@ class Modules(NamespaceModel):
                 return
             used_modules.add(module)
 
-            # Ignore blackbox modules
             try:
-                # Recursively collect all used modules from the submodule
                 for submodule in self.get(module).get_submodules_module_names():
                     recurse(submodule)
-                    _logger.debug(DEBUG_MAKR_USED, submodule, module)
+                    _logger.debug(
+                        "Module '%s' is marked as used from module '%s'.",
+                        submodule,
+                        module,
+                    )
             except KeyError:
-                _logger.warning(WARN_BLACKBOX_USED, module)
+                _logger.warning(
+                    "Blackbox module '%s' is marked used.  However, we cannot analyze "
+                    "if it uses other modules.  It is assumed to be using no other "
+                    "modules in the call graph analysis.  The exported design may lack "
+                    "some modules if this assumption is false.",
+                    module,
+                )
 
         if not self.top_name:
-            raise ValueError(RAISE_TOP_NOT_SET)
-
-        # Recursively collect all used modules from the top module
+            msg = "The top module must be set before analyzing used modules."
+            raise ValueError(msg)
         recurse(self.top_name)
 
         return used_modules
@@ -265,8 +262,6 @@ class Modules(NamespaceModel):
         remained_modules = tuple(
             m for m in self.module_definitions if m.name not in names
         )
-
-        # Check that no remaining grouped module references a removed module.
         remained_module_names = {mod.name for mod in remained_modules}
         for mod in remained_modules:
             if isinstance(mod, GroupedModuleDefinition):
@@ -274,8 +269,6 @@ class Modules(NamespaceModel):
                     if inst.module not in remained_module_names:
                         msg = f"Module {inst.module} is used but removed."
                         raise ValueError(msg)
-
-        # remained_modules preserves the existing sorted order (filter only)
         return self.updated(module_definitions=remained_modules)
 
     def has_module(self, name: str) -> bool:

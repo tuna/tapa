@@ -175,10 +175,6 @@ class tapa_stream {
   mutable hls::stream<internal::elem_t<T>> _peek;
 };
 
-// Stream, istream, ostream are all refer to the same tapa_stream class so
-// that in HLS without tapacc rewriting the code, the user can still pass the
-// stream object to the function that takes istream or ostream.
-
 template <typename T>
 using istream = tapa_stream<T>;
 

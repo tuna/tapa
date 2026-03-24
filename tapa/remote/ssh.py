@@ -187,9 +187,7 @@ def ensure_ssh_master(
     key = _master_key(config)
     if not force_restart:
         with _MASTER_READY_LOCK:
-            if key in _MASTER_READY_KEYS:
-                return
-            if key in _MASTER_FAILED_KEYS:
+            if key in _MASTER_READY_KEYS or key in _MASTER_FAILED_KEYS:
                 return
 
     control_dir = _ensure_ssh_control_dir(config)

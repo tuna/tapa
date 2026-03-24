@@ -55,16 +55,7 @@ def _(_: None) -> None:
     return None
 
 
-@functools.singledispatch
 def get_ast_width(width: Width | None) -> ast.Width | None:
-    raise TypeError(type(width))
-
-
-@get_ast_width.register
-def _(width: Width) -> ast.Width:
+    if width is None:
+        return None
     return ast.Width(ast.Constant(width.msb), ast.Constant(width.lsb))
-
-
-@get_ast_width.register
-def _(_: None) -> None:
-    return None

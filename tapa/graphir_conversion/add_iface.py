@@ -30,9 +30,7 @@ from tapa.verilog.util import sanitize_array_name
 from tapa.verilog.xilinx.const import (
     HANDSHAKE_CLK,
     HANDSHAKE_RST_N,
-    ISTREAM_ROLES,
     ISTREAM_SUFFIXES,
-    OSTREAM_ROLES,
     OSTREAM_SUFFIXES,
 )
 from tapa.verilog.xilinx.m_axi import M_AXI_SUFFIXES_BY_CHANNEL
@@ -161,16 +159,16 @@ def _append_task_port_ifaces(
                 ifaces,
                 port_name,
                 ISTREAM_SUFFIXES,
-                valid_port=f"{{port}}{ISTREAM_ROLES['valid']}",
-                ready_port=f"{{port}}{ISTREAM_ROLES['ready']}",
+                valid_port=f"{port}_empty_n",
+                ready_port=f"{port}_read",
             )
         elif port.cat.is_ostream or port.cat.is_ostreams:
             _append_stream_iface(
                 ifaces,
                 port_name,
                 OSTREAM_SUFFIXES,
-                valid_port=f"{{port}}{OSTREAM_ROLES['valid']}",
-                ready_port=f"{{port}}{OSTREAM_ROLES['ready']}",
+                valid_port=f"{port}_write",
+                ready_port=f"{port}_full_n",
             )
         elif port.cat.is_mmap:
             _append_mmap_ifaces(ifaces, scalars, port_name, ir_ports)

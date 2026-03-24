@@ -52,8 +52,7 @@ export const getNodeInfo = node => {
 
 /** @type {(task: Task, id: string) => HTMLElement[]} */
 export const getTaskInfo = (task, id) => {
-  const separator = id.indexOf("/");
-  const taskName = separator !== -1 ? id.slice(0, separator) : id;
+  const taskName = id.includes("/") ? id.slice(0, id.indexOf("/")) : id;
 
   const compactInfo = append(
     $("dl", { className: "compact" }),

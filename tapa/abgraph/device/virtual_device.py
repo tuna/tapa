@@ -8,8 +8,7 @@ RapidStream Contributor License Agreement.
 
 import logging
 import math
-import re
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import BaseModel, model_validator
 
@@ -153,76 +152,6 @@ class VirtualSlot(BaseModel):
         """Get the name of the slot."""
         return f"SLOT_X{self.x}Y{self.y}_TO_SLOT_X{self.x}Y{self.y}"
 
-    def add_range(self, pblock_ranges: list[str]) -> None:
-        """Add a pblock range."""
-        for pblock_range in pblock_ranges:
-            self._edit_range(pblock_range, "-add")
-
-        self.sanitize_pblock_range()
-
-    def remove_range(self, pblock_ranges: list[str]) -> None:
-        """Remove a pblock range."""
-        for pblock_range in pblock_ranges:
-            self._edit_range(pblock_range, "-remove")
-
-        self.sanitize_pblock_range()
-
-    def _edit_range(self, pblock_range: str, op: Literal["-add", "-remove"]) -> None:
-        """Add a pblock range."""
-        if self.pblock_ranges is None:
-            self.pblock_ranges = []
-
-        self._check_range_valid(pblock_range)
-
-        self.pblock_ranges.append(f"{op} {pblock_range}")
-
-    def add_anchor_region(self, direction: str, pblock_ranges: list[str]) -> None:
-        """Add an anchor region."""
-        for pblock_range in pblock_ranges:
-            self._edit_anchor_region_range(direction, pblock_range, "-add")
-
-        self.sanitize_pblock_range()
-
-    def remove_anchor_region(self, direction: str, pblock_ranges: list[str]) -> None:
-        """Remove an anchor region."""
-        for pblock_range in pblock_ranges:
-            self._edit_anchor_region_range(direction, pblock_range, "-remove")
-
-        self.sanitize_pblock_range()
-
-    def _edit_anchor_region_range(
-        self,
-        direction: str,
-        pblock_range: str,
-        op: Literal["-add", "-remove"],
-    ) -> None:
-        """Edit an anchor region range."""
-        self._check_range_valid(pblock_range)
-        line = f"{op} {pblock_range}"
-
-        if direction == "N":
-            self.north_anchor_region.append(line)
-        elif direction == "S":
-            self.south_anchor_region.append(line)
-        elif direction == "E":
-            self.east_anchor_region.append(line)
-        elif direction == "W":
-            self.west_anchor_region.append(line)
-        else:
-            msg = f"Invalid direction: {direction}"
-            raise ValueError(msg)
-
-    # ruff: noqa: PLR6301
-    def _check_range_valid(self, pblock_range: str) -> None:
-        """Check if a pblock range is valid."""
-        if not re.search(r"_X\d+Y\d+", pblock_range):
-            msg = f"Invalid pblock range: {pblock_range}"
-            raise ValueError(msg)
-
-        if pblock_range.startswith(("-add", "-remove")):
-            msg = f"Remove -add or -remove from pblock range: {pblock_range}"
-            raise ValueError(msg)
-
     def sanitize_pblock_range(self) -> None:
         """Sanitize all pblock-related attributes."""
 
@@ -265,15 +194,6 @@ class VirtualSlot(BaseModel):
             if value:
                 setattr(self, attr, _sanitize_pblock_range_helper(value))
 
-    def get_corner_tile_coors(self) -> Coor:
-        """Get the corner tile coordinates."""
-        return Coor(
-            down_left_x=self.down_left_x,
-            down_left_y=self.down_left_y,
-            up_right_x=self.up_right_x,
-            up_right_y=self.up_right_y,
-        )
-
 
 class VirtualDevice(BaseModel):
     """Represents a virtual device."""
@@ -303,14 +223,6 @@ class VirtualDevice(BaseModel):
             for y in range(self.rows):
                 self.get_slot(x, y)
 
-    def get_num_col(self) -> int:
-        """Get the number of columns."""
-        return self.cols
-
-    def get_num_row(self) -> int:
-        """Get the number of rows."""
-        return self.rows
-
     def get_slot(self, x: int, y: int) -> VirtualSlot:
         """Get a slot in O(N) time."""
         for slot in self.slots:
@@ -334,103 +246,6 @@ class VirtualDevice(BaseModel):
         """Get the area of an island."""
         areas = [self.get_slot(x, y).area for x, y in coor.get_all_slot_coors()]
         return sum_area(areas)
-
-    def set_slot_tags(self, x: int, y: int, tags: list[str]) -> None:
-        """Set the tags of a slot."""
-        self.get_slot(x, y).tags = tags
-
-    def get_tag_to_slot_name(self) -> dict[str, str]:
-        """Get the mapping from tag to slot name."""
-        tag_to_slot_name = {}
-        for slot in self.slots:
-            for tag in slot.tags:
-                assert tag not in tag_to_slot_name
-                tag_to_slot_name[tag] = slot.get_name()
-
-        return tag_to_slot_name
-
-    def set_slot_wire_capacity(
-        self,
-        x: int,
-        y: int,
-        direction: str,
-        capacity: int,
-        mirror: bool = True,
-    ) -> None:
-        """Set the wire capacity of a slot.
-
-        If mirror is True, the south wire capacity of the up neighbor is also set.
-        """
-        if direction == "N":
-            self.set_slot_north_wire_capacity(x, y, capacity, mirror)
-        elif direction == "S":
-            self.set_slot_south_wire_capacity(x, y, capacity, mirror)
-        elif direction == "E":
-            self.set_slot_east_wire_capacity(x, y, capacity, mirror)
-        elif direction == "W":
-            self.set_slot_west_wire_capacity(x, y, capacity, mirror)
-        else:
-            msg = f"Invalid direction: {direction}"
-            raise ValueError(msg)
-
-    def set_slot_north_wire_capacity(
-        self, x: int, y: int, capacity: int, mirror: bool = True
-    ) -> None:
-        """Set the north wire capacity of a slot.
-
-        If mirror is True, the south wire capacity of the up neighbor is also set.
-        """
-        self.get_slot(x, y).north_wire_capacity = capacity
-
-        up_neighbor_y = y + 1
-        if mirror and up_neighbor_y < self.rows:
-            self.get_slot(x, up_neighbor_y).south_wire_capacity = capacity
-
-    def set_slot_south_wire_capacity(
-        self, x: int, y: int, capacity: int, mirror: bool = True
-    ) -> None:
-        """Set the south wire capacity of a slot."""
-        self.get_slot(x, y).south_wire_capacity = capacity
-
-        down_neighbor_y = y - 1
-        if mirror and down_neighbor_y >= 0:
-            self.get_slot(x, down_neighbor_y).north_wire_capacity = capacity
-
-    def set_slot_east_wire_capacity(
-        self, x: int, y: int, capacity: int, mirror: bool = True
-    ) -> None:
-        """Set the east wire capacity of a slot."""
-        self.get_slot(x, y).east_wire_capacity = capacity
-
-        right_neighbor_x = x + 1
-        if mirror and right_neighbor_x < self.cols:
-            self.get_slot(right_neighbor_x, y).west_wire_capacity = capacity
-
-    def set_slot_west_wire_capacity(
-        self, x: int, y: int, capacity: int, mirror: bool = True
-    ) -> None:
-        """Set the west wire capacity of a slot."""
-        self.get_slot(x, y).west_wire_capacity = capacity
-
-        left_neighbor_x = x - 1
-        if mirror and left_neighbor_x >= 0:
-            self.get_slot(left_neighbor_x, y).east_wire_capacity = capacity
-
-    def get_slot_north_wire_capacity(self, x: int, y: int) -> int:
-        """Get the north wire capacity of a slot."""
-        return self.get_slot(x, y).north_wire_capacity
-
-    def get_slot_south_wire_capacity(self, x: int, y: int) -> int:
-        """Get the south wire capacity of a slot."""
-        return self.get_slot(x, y).south_wire_capacity
-
-    def get_slot_east_wire_capacity(self, x: int, y: int) -> int:
-        """Get the east wire capacity of a slot."""
-        return self.get_slot(x, y).east_wire_capacity
-
-    def get_slot_west_wire_capacity(self, x: int, y: int) -> int:
-        """Get the west wire capacity of a slot."""
-        return self.get_slot(x, y).west_wire_capacity
 
     def get_island_pblock_range(self, coor: Coor) -> list[str]:
         """Get the pblock range of an island."""
@@ -550,6 +365,7 @@ def get_empty_device(
         cols=num_col,
         pp_dist=pp_dist,
         part_num=part_num,
-        board_name="",
-        user_pblock_name="",
+        board_name=None,
+        platform_name=None,
+        user_pblock_name=None,
     )

@@ -7,8 +7,7 @@ RapidStream Contributor License Agreement.
 """
 
 from tapa.graphir.types.commons import HierarchicalNamedModel, StringEnum
-from tapa.graphir.types.expressions import Range
-from tapa.graphir.types.expressions.expression import Expression, Token
+from tapa.graphir.types.expressions import Expression, Range, get_width_expr
 
 
 class ModulePort(HierarchicalNamedModel):
@@ -139,24 +138,7 @@ class ModulePort(HierarchicalNamedModel):
 
     def get_width_expr(self) -> Expression:
         """Get the expression for the width of the port."""
-        if not self.range:
-            return Expression((Token.new_lit("1"),))
-
-        return Expression(
-            (
-                Token.new_lit("("),
-                Token.new_lit("("),
-                *self.range.left.root,
-                Token.new_lit(")"),
-                Token.new_lit("-"),
-                Token.new_lit("("),
-                *self.range.right.root,
-                Token.new_lit(")"),
-                Token.new_lit("+"),
-                Token.new_lit("1"),
-                Token.new_lit(")"),
-            )
-        )
+        return get_width_expr(self.range)
 
     def rewritten(self, idmap: dict[str, Expression]) -> "ModulePort":
         """Rewrite the expression of the port."""

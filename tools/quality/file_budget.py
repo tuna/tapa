@@ -8,6 +8,7 @@ import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from _git import _repo_root, _staged_files  # noqa: PLC2701
 
@@ -42,37 +43,39 @@ class BudgetBaseline:
 
 
 def _all_target_files(repo_root: Path) -> list[Path]:
-    candidates: list[Path] = []
-    candidates.extend((repo_root / "tapa").rglob("*.py"))
-    candidates.extend((repo_root / "tapa-visualizer" / "src").rglob("*.js"))
-    candidates.extend((repo_root / "tapa-visualizer" / "src").rglob("*.mjs"))
-    candidates.extend((repo_root / "tapa-visualizer" / "src").rglob("*.cjs"))
-    return sorted(candidates)
+    viz_src = repo_root / "tapa-visualizer" / "src"
+    return sorted(
+        [
+            *(repo_root / "tapa").rglob("*.py"),
+            *viz_src.rglob("*.js"),
+            *viz_src.rglob("*.mjs"),
+            *viz_src.rglob("*.cjs"),
+        ]
+    )
 
 
 def _is_test_python(path: Path) -> bool:
-    name = path.name
-    if name.startswith("test_") or name.endswith("_test.py"):
-        return True
-    parts = set(path.parts)
-    return "tests" in parts or "test" in parts
+    return (
+        path.name.startswith("test_")
+        or path.name.endswith("_test.py")
+        or "tests" in path.parts
+        or "test" in path.parts
+    )
 
 
 def _python_budget_target(path: Path) -> bool:
-    if path.suffix != ".py":
-        return False
-    if "third_party" in path.parts:
-        return False
-    if "tapa" not in path.parts:
-        return False
-    return not _is_test_python(path)
+    return (
+        path.suffix == ".py"
+        and "third_party" not in path.parts
+        and "tapa" in path.parts
+        and not _is_test_python(path)
+    )
 
 
 def _js_budget_target(path: Path) -> bool:
-    if path.suffix not in {".js", ".mjs", ".cjs"}:
-        return False
     return (
-        len(path.parts) >= MIN_JS_PATH_PARTS
+        path.suffix in {".js", ".mjs", ".cjs"}
+        and len(path.parts) >= MIN_JS_PATH_PARTS
         and path.parts[0] == "tapa-visualizer"
         and path.parts[1] == "src"
     )
@@ -86,14 +89,12 @@ def _line_count(path: Path) -> int:
 def _load_allowlist(path: Path) -> set[str]:
     if not path.exists():
         return set()
-    entries: set[str] = set()
     with path.open(encoding="utf-8") as file:
-        for raw_line in file:
-            line = raw_line.strip()
-            if not line or line.startswith("#"):
-                continue
-            entries.add(line)
-    return entries
+        return {
+            line
+            for raw_line in file
+            if (line := raw_line.strip()) and not line.startswith("#")
+        }
 
 
 def _load_baseline(path: Path) -> BudgetBaseline:
@@ -219,6 +220,12 @@ def _function_violations(
     return violations
 
 
+_FILE_RULES: tuple[tuple[Any, int, str], ...] = (
+    (_python_budget_target, PYTHON_LOC_LIMIT, "tapa Python file"),
+    (_js_budget_target, JS_LOC_LIMIT, "visualizer JS file"),
+)
+
+
 def _file_violations(
     repo_root: Path,
     candidates: list[Path],
@@ -229,33 +236,13 @@ def _file_violations(
         if not path.exists() or not path.is_file():
             continue
         rel = path.relative_to(repo_root)
+        rel_posix = rel.as_posix()
         lines = _line_count(path)
-        if (
-            _python_budget_target(rel)
-            and lines > PYTHON_LOC_LIMIT
-            and rel.as_posix() not in file_allowlist
-        ):
-            violations.append(
-                BudgetViolation(
-                    path=rel,
-                    lines=lines,
-                    limit=PYTHON_LOC_LIMIT,
-                    rule="tapa Python file",
-                ),
-            )
-        if (
-            _js_budget_target(rel)
-            and lines > JS_LOC_LIMIT
-            and rel.as_posix() not in file_allowlist
-        ):
-            violations.append(
-                BudgetViolation(
-                    path=rel,
-                    lines=lines,
-                    limit=JS_LOC_LIMIT,
-                    rule="visualizer JS file",
-                ),
-            )
+        for target_fn, limit, rule in _FILE_RULES:
+            if target_fn(rel) and lines > limit and rel_posix not in file_allowlist:
+                violations.append(
+                    BudgetViolation(path=rel, lines=lines, limit=limit, rule=rule)
+                )
     return violations
 
 

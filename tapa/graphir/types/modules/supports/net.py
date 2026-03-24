@@ -7,7 +7,7 @@ RapidStream Contributor License Agreement.
 """
 
 from tapa.graphir.types.commons import HierarchicalNamedModel
-from tapa.graphir.types.expressions import Expression, Range, Token
+from tapa.graphir.types.expressions import Expression, Range, get_width_expr
 
 
 class ModuleNet(HierarchicalNamedModel):
@@ -38,21 +38,4 @@ class ModuleNet(HierarchicalNamedModel):
 
     def get_width_expr(self) -> Expression:
         """Get the expression for the width of the wire."""
-        if not self.range:
-            return Expression((Token.new_lit("1"),))
-
-        return Expression(
-            (
-                Token.new_lit("("),
-                Token.new_lit("("),
-                *self.range.left.root,
-                Token.new_lit(")"),
-                Token.new_lit("-"),
-                Token.new_lit("("),
-                *self.range.right.root,
-                Token.new_lit(")"),
-                Token.new_lit("+"),
-                Token.new_lit("1"),
-                Token.new_lit(")"),
-            )
-        )
+        return get_width_expr(self.range)

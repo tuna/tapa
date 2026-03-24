@@ -5,9 +5,6 @@
 
 #include "frt.h"
 
-#include <string>
-#include <vector>
-
 #include <glog/logging.h>
 
 namespace fpga {

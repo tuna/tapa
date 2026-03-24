@@ -188,35 +188,36 @@ def synth(  # noqa: PLR0913,PLR0917
                 "w",
                 encoding="utf-8",
             ) as json_file:
-                result = program.get_grouping_constraints(fifos)
-                json.dump(result, json_file)
+                json.dump(program.get_grouping_constraints(fifos), json_file)
 
         if gen_ab_graph:
             assert floorplan_config, (
                 "Floorplan configuration is required for generating AB graph."
             )
-            graph = get_top_level_ab_graph(program, floorplan_config)
             with open(
                 os.path.join(program.work_dir, "ab_graph.json"),
                 "w",
                 encoding="utf-8",
             ) as json_file:
-                json_file.write(graph.model_dump_json())
+                json_file.write(
+                    get_top_level_ab_graph(program, floorplan_config).model_dump_json()
+                )
 
         if gen_graphir:
             assert device_config, (
                 "Device configuration is required for generating GraphIR."
             )
             assert floorplan_path, "Floorplan path is required for generating GraphIR."
-            project = get_project_from_floorplanned_program(
-                program, device_config, floorplan_path
-            )
             with open(
                 os.path.join(program.work_dir, "graphir.json"),
                 "w",
                 encoding="utf-8",
             ) as json_file:
-                json_file.write(project.model_dump_json())
+                json_file.write(
+                    get_project_from_floorplanned_program(
+                        program, device_config, floorplan_path
+                    ).model_dump_json()
+                )
 
         settings["synthed"] = True
         store_persistent_context("settings")

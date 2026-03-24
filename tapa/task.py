@@ -79,11 +79,12 @@ class Task:
         is_slot: bool = False,
     ) -> None:
         if isinstance(level, str):
-            level = {"lower": Task.Level.LOWER, "upper": Task.Level.UPPER}.get(
-                level, level
-            )
+            level_map = {"lower": Task.Level.LOWER, "upper": Task.Level.UPPER}
+            if level not in level_map:
+                raise TypeError("unexpected `level`: " + level)
+            level = level_map[level]
         if not isinstance(level, Task.Level):
-            raise TypeError("unexpected `level`: " + level)
+            raise TypeError("unexpected `level`: " + str(level))
         self.level = level
         self.name: str = name
         self.code: str = code

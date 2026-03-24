@@ -122,6 +122,7 @@ py_library(
     data = glob(["assets/*.j2"]),
     deps = [
         ":common",
+        ":config_preprocess",
         requirement("jinja2"),
     ],
 )

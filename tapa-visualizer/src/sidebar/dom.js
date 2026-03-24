@@ -9,38 +9,30 @@
 import { $, $text, append } from "../helper.js";
 import Prism from "../prism-config.js";
 
-const sidebarContainers = [
-  "explorer",
-  "cflags",
-  "instance",
-  "task",
-  "neighbors",
-  "connections",
-].map(name => {
+const getSidebarContainer = name => {
   const element = document.querySelector(`.sidebar-content-${name}`);
-  if (element) {
-    return element;
-  } else {
-    throw new TypeError(`Element .sidebar-content-${name} not found!`);
-  }
-});
+  if (element) return element;
+  throw new TypeError(`Element .sidebar-content-${name} not found!`);
+};
 
-const [explorer, cflags] = sidebarContainers.splice(0, 2);
-const [instance, task, neighbors, connections] = sidebarContainers;
+const explorer = getSidebarContainer("explorer");
+const cflags = getSidebarContainer("cflags");
+const instance = getSidebarContainer("instance");
+const task = getSidebarContainer("task");
+const neighbors = getSidebarContainer("neighbors");
+const connections = getSidebarContainer("connections");
 
 export { cflags, connections, explorer, instance, neighbors, task };
 
 export const resetInstance = (text = "Please select an item.") =>
   instance.replaceChildren($text("p", text));
 
-export const resetSidebar = (instanceText = "Please select an item.") => [
-  instanceText,
-  "Please select a node or combo.",
-  "Please select a node.",
-  "Please select a node.",
-].forEach(
-  (text, i) => sidebarContainers[i].replaceChildren($text("p", text)),
-);
+export const resetSidebar = (instanceText = "Please select an item.") => {
+  instance.replaceChildren($text("p", instanceText));
+  task.replaceChildren($text("p", "Please select a node or combo."));
+  neighbors.replaceChildren($text("p", "Please select a node."));
+  connections.replaceChildren($text("p", "Please select a node."));
+};
 
 /** @type {(elements: (Node | string)[]) => HTMLUListElement} */
 export const ul = elements => append(

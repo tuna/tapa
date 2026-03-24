@@ -23,7 +23,6 @@ class TaskDefinition(Base):
     @lru_cache(None)
     def get_level(self) -> Level:
         """Returns the level of the task in the task graph."""
-        # Import Graph locally to avoid circular import
         from tapa.common.graph import Graph  # noqa: PLC0415
 
         if self.obj["level"] == "lower":
@@ -38,20 +37,16 @@ class TaskDefinition(Base):
     @lru_cache(None)
     def get_interconnect_def(self, name: str) -> InterconnectDefinition | None:
         """Returns the interconnect named `name` defined in this task."""
-        # If not defined
         assert isinstance(self.obj["fifos"], dict)
         if name not in self.obj["fifos"]:
             return None
 
-        # If is an argument
-        port_name = re.sub(r"\[\d+\]$", "", name)
         # FIXME: tapacc should output port name with []
+        port_name = re.sub(r"\[\d+\]$", "", name)
         assert isinstance(self.obj["ports"], list)
-        port_names = {p["name"] for p in self.obj["ports"]}
-        if port_name in port_names:
+        if port_name in {p["name"] for p in self.obj["ports"]}:
             return None
 
-        assert isinstance(self.obj["fifos"], dict)
         return InterconnectDefinition(name, self.obj["fifos"][name], self)
 
     @lru_cache(None)
@@ -73,7 +68,6 @@ class TaskDefinition(Base):
         if self.get_level() == TaskDefinition.Level.LEAF:
             return []
 
-        # Import Graph locally to avoid circular import
         from tapa.common.graph import Graph  # noqa: PLC0415
 
         assert isinstance(self.parent, Graph)

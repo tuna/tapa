@@ -82,12 +82,10 @@ def run_autobridge(device_config: Path, floorplan_config: Path) -> None:
         extra_download_paths=(str(autobridge_work_dir),),
     ) as proc:
         proc.communicate()
-    returncode = proc.returncode
-    if returncode is not None and returncode != 0:
-        msg = f"rapidstream-tapafp failed with exit code {returncode}"
-        raise subprocess.CalledProcessError(returncode, cmd, msg)
-    floorplan_files = autobridge_work_dir.glob("solution_*/floorplan.json")
-    for floorplan_file in floorplan_files:
+    if proc.returncode is not None and proc.returncode != 0:
+        msg = f"rapidstream-tapafp failed with exit code {proc.returncode}"
+        raise subprocess.CalledProcessError(proc.returncode, cmd, msg)
+    for floorplan_file in autobridge_work_dir.glob("solution_*/floorplan.json"):
         _logger.info("Generated floorplan file: %s", floorplan_file)
 
 

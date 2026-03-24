@@ -50,7 +50,7 @@ Environ GetEnviron() {
   }
 
   if (xilinx_tool.empty()) {
-    for (std::string hls : {"vitis_hls", "vivado_hls"}) {
+    for (const std::string hls : {"vitis_hls", "vivado_hls"}) {
       subprocess::OutBuffer buf = subprocess::check_output({
           "bash",
           "-c",
@@ -58,9 +58,9 @@ Environ GetEnviron() {
           hls,
       });
       std::istringstream lines(std::string(buf.buf.data(), buf.length));
+      const std::string_view prefix = "source ";
+      const std::string suffix = "/scripts/" + hls + "/hls.tcl -notrace";
       for (std::string line; getline(lines, line);) {
-        std::string_view prefix = "source ";
-        std::string suffix = "/scripts/" + hls + "/hls.tcl -notrace";
         if (line.size() > prefix.size() + suffix.size() &&
             line.compare(0, prefix.size(), prefix) == 0 &&
             line.compare(line.size() - suffix.size(), suffix.size(), suffix) ==

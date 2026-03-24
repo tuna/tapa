@@ -88,13 +88,14 @@ def print_kernel_xml(name: str, args: Iterable[Arg], kernel_xml: IO[str]) -> Non
     offset = 0x10
     has_s_axi_control = False
     for arg_id, arg in enumerate(args):
-        is_stream = False
         if arg.cat == Cat.SCALAR:
             has_s_axi_control = True
             addr_qualifier = 0
             host_size = arg.width // 8
             size = max(4, host_size)
             port_name = arg.port or S_AXI_NAME
+            arg_offset = offset
+            offset += size + 4
         elif arg.cat == Cat.MMAP:
             has_s_axi_control = True
             addr_qualifier = 1
@@ -103,8 +104,9 @@ def print_kernel_xml(name: str, args: Iterable[Arg], kernel_xml: IO[str]) -> Non
             kernel_ports += M_AXI_PORT_TEMPLATE.format(
                 name=arg.port or arg.name, width=arg.width
             )
+            arg_offset = offset
+            offset += size + 4
         elif arg.cat in {Cat.ISTREAM, Cat.OSTREAM}:
-            is_stream = True
             addr_qualifier = 4
             size = host_size = 8
             port_name = arg.port or arg.name
@@ -112,6 +114,7 @@ def print_kernel_xml(name: str, args: Iterable[Arg], kernel_xml: IO[str]) -> Non
             kernel_ports += AXIS_PORT_TEMPLATE.format(
                 name=arg.name, mode=mode, width=arg.width
             )
+            arg_offset = 0
         else:
             msg = f"unknown arg category: {arg.cat}"
             raise NotImplementedError(msg)
@@ -122,20 +125,16 @@ def print_kernel_xml(name: str, args: Iterable[Arg], kernel_xml: IO[str]) -> Non
             port_name=port_name,
             c_type=xml.sax.saxutils.escape(arg.ctype),
             size=size,
-            offset=0 if is_stream else offset,
+            offset=arg_offset,
             host_size=host_size,
         )
-        if not is_stream:
-            offset += size + 4
-    hw_ctrl_protocol = "ap_ctrl_none"
     if has_s_axi_control:
-        hw_ctrl_protocol = "ap_ctrl_hs"
         kernel_ports += S_AXI_PORT
     kernel_xml.write(
         KERNEL_XML_TEMPLATE.format(
             name=name,
             ports=kernel_ports,
             args=kernel_args,
-            hw_ctrl_protocol=hw_ctrl_protocol,
+            hw_ctrl_protocol="ap_ctrl_hs" if has_s_axi_control else "ap_ctrl_none",
         )
     )

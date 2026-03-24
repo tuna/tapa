@@ -11,14 +11,10 @@ import { getComboName } from "../helper.js";
 /** @type {(graphData: GraphData) => void} */
 export const expandSubTask = (graphData) => {
 
-  /** insert index to the node, change the number in the toSpliced()
-   * to change its position
-   * Example: NodeName/1 -> NodeName/1/0, NodeName/1/1, ...
-   * @type {(id: string, i: string) => string} */
+  /** @type {(id: string, i: string) => string} */
   const insertIndex = (id, i) => id.split("/").toSpliced(2, 0, i).join("/");
 
-  /** Combos involved in the expanding, saved for set combo.combo later
-   * @type {import("@antv/g6").ComboData[]} */
+  /** @type {import("@antv/g6").ComboData[]} */
   const expandedCombos = [];
   /** @type {string[]} */
   const expandedComboIds = [];

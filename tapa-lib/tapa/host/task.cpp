@@ -6,9 +6,7 @@
 
 #include <chrono>
 #include <csignal>
-#include <cstring>
 
-#include <algorithm>
 #include <atomic>
 #include <deque>
 #include <fstream>
@@ -16,17 +14,15 @@
 #include <list>
 #include <memory>
 #include <mutex>
+#include <new>
 #include <queue>
 #include <set>
 #include <sstream>
-#include <stdexcept>
 #include <string>
 #include <thread>
 #include <unordered_map>
 
-#include <sched.h>
 #include <sys/mman.h>
-#include <sys/resource.h>
 #include <time.h>
 
 #ifdef __APPLE__
@@ -59,7 +55,6 @@ void reschedule_this_thread() {
 #endif  // TAPA_ENABLE_STACKTRACE
 
 using std::function;
-using std::runtime_error;
 using std::string;
 using std::unordered_map;
 
@@ -145,23 +140,21 @@ int get_physical_core_count() {
   }
   return std::thread::hardware_concurrency();
 #else
+  auto trim = [](std::string s) {
+    auto b = s.find_first_not_of(" \t");
+    auto e = s.find_last_not_of(" \t");
+    return (b == std::string::npos) ? "" : s.substr(b, e - b + 1);
+  };
   std::ifstream cpuinfo("/proc/cpuinfo");
   std::string line;
   std::set<int> cores;
-
   while (std::getline(cpuinfo, line)) {
     std::istringstream iss(line);
-    std::string token;
-    std::string value;
-    if (std::getline(iss, token, ':') && std::getline(iss, value)) {
-      token.erase(0, token.find_first_not_of(" \t"));
-      token.erase(token.find_last_not_of(" \t") + 1);
-      value.erase(0, value.find_first_not_of(" \t"));
-      value.erase(value.find_last_not_of(" \t") + 1);
-      if (token == "core id") cores.insert(std::stoi(value));
+    std::string key, val;
+    if (std::getline(iss, key, ':') && std::getline(iss, val)) {
+      if (trim(key) == "core id") cores.insert(std::stoi(trim(val)));
     }
   }
-
   return cores.size();
 #endif
 }
@@ -379,21 +372,17 @@ mutex mtx;
 constexpr int64_t kSignalThreshold = 500 * 1000 * 1000;  // 500 ms
 int64_t last_signal_timestamp = 0;
 void signal_handler(int signal) {
-  if (signal == SIGINT) {
-    const int64_t signal_timestamp = get_time_ns();
-    if (last_signal_timestamp != 0 &&
-        signal_timestamp - last_signal_timestamp < kSignalThreshold) {
-      LOG(INFO) << "caught SIGINT twice in " << kSignalThreshold / 1000000
-                << " ms; exit";
-      pool->run_cleanup_tasks();
-      exit(EXIT_FAILURE);
-    }
-    LOG(INFO) << "caught SIGINT";
-    last_signal_timestamp = signal_timestamp;
-    pool->send(signal);
-  } else {
-    last_signal_timestamp = get_time_ns();
+  const int64_t signal_timestamp = get_time_ns();
+  if (last_signal_timestamp != 0 &&
+      signal_timestamp - last_signal_timestamp < kSignalThreshold) {
+    LOG(INFO) << "caught SIGINT twice in " << kSignalThreshold / 1000000
+              << " ms; exit";
+    pool->run_cleanup_tasks();
+    exit(EXIT_FAILURE);
   }
+  LOG(INFO) << "caught SIGINT";
+  last_signal_timestamp = signal_timestamp;
+  pool->send(signal);
 }
 
 }  // namespace

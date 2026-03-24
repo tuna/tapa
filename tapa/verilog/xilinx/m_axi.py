@@ -14,7 +14,6 @@ from tapa.verilog.ast.width import Width
 
 __all__ = [
     "M_AXI_ADDR_PORTS",
-    "M_AXI_PARAMS",
     "M_AXI_PARAM_PREFIX",
     "M_AXI_PARAM_SUFFIXES",
     "M_AXI_PORTS",
@@ -24,7 +23,6 @@ __all__ = [
     "get_m_axi_port_width",
 ]
 
-# width=0 means configurable
 M_AXI_PORT_WIDTHS = {
     "ADDR": 0,
     "BURST": 2,
@@ -43,7 +41,6 @@ M_AXI_PORT_WIDTHS = {
     "VALID": 1,
 }
 
-# => [(name, direction), ...]
 M_AXI_ADDR_PORTS: tuple[tuple[str, Literal["input", "output"]], ...] = (
     ("ADDR", "output"),
     ("BURST", "output"),
@@ -58,7 +55,6 @@ M_AXI_ADDR_PORTS: tuple[tuple[str, Literal["input", "output"]], ...] = (
     ("VALID", "output"),
 )
 
-# => {channel: [(name, direction), ...]}
 M_AXI_PORTS: dict[str, tuple[tuple[str, Literal["input", "output"]], ...]] = {
     "AR": M_AXI_ADDR_PORTS,
     "AW": M_AXI_ADDR_PORTS,
@@ -198,8 +194,6 @@ M_AXI_PARAM_SUFFIXES = (
     "_CACHE_VALUE",
     "_WSTRB_WIDTH",
 )
-
-M_AXI_PARAMS = ("C_M_AXI_DATA_WIDTH", "C_M_AXI_WSTRB_WIDTH")
 
 
 def get_m_axi_port_width(

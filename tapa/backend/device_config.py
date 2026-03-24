@@ -11,7 +11,7 @@ from xml.etree import ElementTree as ET
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-XILINX_XML_NS = {"xd": "http://www.xilinx.com/xd"}
+_XILINX_XML_NS = {"xd": "http://www.xilinx.com/xd"}
 _XD_NS = "{http://www.xilinx.com/xd}"
 
 
@@ -30,18 +30,18 @@ def get_device_info(platform_path: str) -> dict[str, str]:
         platform.open(os.path.basename(platform_file)[:-4] + ".hpfm") as metadata,
     ):
         platform_info = ET.parse(metadata).find(
-            "./xd:component/xd:platformInfo", XILINX_XML_NS
+            "./xd:component/xd:platformInfo", _XILINX_XML_NS
         )
         if platform_info is None:
             msg = "cannot parse platform"
             raise ValueError(msg)
         clock_period = platform_info.find(
-            "./xd:systemClocks/xd:clock/[@xd:id='0']", XILINX_XML_NS
+            "./xd:systemClocks/xd:clock/[@xd:id='0']", _XILINX_XML_NS
         )
         if clock_period is None:
             msg = "cannot find clock period in platform"
             raise ValueError(msg)
-        part_num = platform_info.find("xd:deviceInfo", XILINX_XML_NS)
+        part_num = platform_info.find("xd:deviceInfo", _XILINX_XML_NS)
         if part_num is None:
             msg = "cannot find part number in platform"
             raise ValueError(msg)
@@ -60,8 +60,7 @@ def parse_device_info(
     platform, platform_argname = platform_and_argname
     part_num, part_num_argname = part_num_and_argname
     clock_period, clock_period_argname = clock_period_and_argname
-    raw_platform_input = platform
-    device_info: dict[str, str]
+    original_platform = platform
 
     if platform is not None:
         platform = os.path.join(
@@ -77,7 +76,7 @@ def parse_device_info(
                 platform = os.path.join(platform_dir, "platforms", platform)
         if not os.path.isdir(platform):
             on_error(
-                f"cannot find the specified platform '{raw_platform_input}'; "
+                f"cannot find the specified platform '{original_platform}'; "
                 "are you sure it has been installed, "
                 "e.g., in '/opt/xilinx/platforms'?"
             )
@@ -96,14 +95,13 @@ def parse_device_info(
                 "so the target part number can be extracted from it, or "
                 f"specify '{part_num_argname}' directly"
             )
-        device_info = {
+        return {
             "clock_period": str(clock_period),
             "part_num": part_num,
         }
-    else:
-        device_info = get_device_info(platform)
-        if clock_period is not None:
-            device_info["clock_period"] = str(clock_period)
-        if part_num is not None:
-            device_info["part_num"] = part_num
+    device_info = get_device_info(platform)
+    if clock_period is not None:
+        device_info["clock_period"] = str(clock_period)
+    if part_num is not None:
+        device_info["part_num"] = part_num
     return device_info

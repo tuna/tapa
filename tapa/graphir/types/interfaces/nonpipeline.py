@@ -73,7 +73,3 @@ class TAPAPeekInterface(NonPipelineInterface):
     """TAPA peek interface."""
 
     type: Literal["tapa_peek"] = "tapa_peek"  # type: ignore[reportIncompatibleVariableOverride]
-
-    def __init__(self, **kwargs: object) -> None:
-        """Prevent pyright false positive warning of missing args."""
-        super().__init__(**kwargs)

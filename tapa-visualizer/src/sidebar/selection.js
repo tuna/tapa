@@ -210,11 +210,11 @@ export const createSidebarController = state => {
         ...getTaskInfo(sidebarModel.targetTask, sidebarModel.targetTaskId),
       );
 
-    const hint = $("p", {
-      style: "opacity: .75;",
-      textContent: "This edge has no task infomation.",
-    });
-    taskElements.length !== 0 ? task.replaceChildren(...taskElements) : task.replaceChildren(hint);
+    if (taskElements.length !== 0) {
+      task.replaceChildren(...taskElements);
+    } else {
+      task.replaceChildren($("p", { style: "opacity: .75;", textContent: "This edge has no task infomation." }));
+    }
   };
 
   return {

@@ -28,8 +28,6 @@ from pyverilog.vparser.ast import (
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-# Please keep `make_*` functions sorted by their name.
-
 
 def make_block(statements: Iterable[Node] | Node) -> Block:
     if isinstance(statements, Node):
@@ -68,15 +66,6 @@ def make_if_with_block(
 
 
 def make_port_arg(port: str, arg: str | Node) -> PortArg:
-    """Make PortArg from port and arg names.
-
-    Args:
-        port: Port name.
-        arg: Arg name (will be used to construct an Identifier) or Node.
-
-    Returns:
-        PortArg: `.port(arg)` in Verilog.
-    """
     return PortArg(
         portname=port,
         argname=arg if isinstance(arg, Node) else Identifier(arg),

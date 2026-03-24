@@ -40,14 +40,12 @@ class mmap {
 template <typename T>
 class immap : public mmap<T> {
  public:
-  // Inherit all constructors from mmap
   using mmap<T>::mmap;
 };
 
 template <typename T>
 class ommap : public mmap<T> {
  public:
-  // Inherit all constructors from mmap
   using mmap<T>::mmap;
 };
 
@@ -103,13 +101,13 @@ class hmap : public mmap<T> {
 
 template <typename Mem>
 auto window_readincr(Mem& mem) -> decltype(*mem) {
-  auto value = *mem;  // Read the current value
-  ++mem;              // Increment to the next location
-  return value;       // Return the read value
+  auto value = *mem;
+  ++mem;
+  return value;
 }
 
 template <typename Mem, typename T>
 void window_writeincr(Mem& mem, const T& value) {
-  *mem = value;  // Write the value at the current memory position
-  ++mem;         // Increment to the next memory position
+  *mem = value;
+  ++mem;
 }

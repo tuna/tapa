@@ -65,4 +65,4 @@ struct task {
 };
 
 }  // namespace tapa
-#endif  // TAPA_XILINX_HLS_TASK_H
+#endif  // TAPA_XILINX_HLS_TASK_H_

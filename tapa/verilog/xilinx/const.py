@@ -49,8 +49,6 @@ __all__ = [
     "get_stream_width",
 ]
 
-# const strings
-
 RTL_SUFFIX = ".v"
 
 ISTREAM_SUFFIXES = (
@@ -65,22 +63,11 @@ OSTREAM_SUFFIXES = (
     "_write",
 )
 
-ISTREAM_ROLES = {
-    "valid": "_empty_n",
-    "ready": "_read",
-}
-
-OSTREAM_ROLES = {
-    "ready": "_full_n",
-    "valid": "_write",
-}
-
 STREAM_DATA_SUFFIXES = (
     "_dout",
     "_din",
 )
 
-# => {port_suffix: direction}
 STREAM_PORT_DIRECTION: dict[str, Literal["input", "output"]] = {
     "_dout": "input",
     "_empty_n": "input",
@@ -90,8 +77,6 @@ STREAM_PORT_DIRECTION: dict[str, Literal["input", "output"]] = {
     "_write": "output",
 }
 
-# => {port_suffix: opposite_suffix}
-# used when connecting two FIFOs head to tail
 STREAM_PORT_OPPOSITE = {
     "_dout": "_din",
     "_empty_n": "_write",
@@ -101,7 +86,6 @@ STREAM_PORT_OPPOSITE = {
     "_write": "_empty_n",
 }
 
-# => {port_suffix: width}, 0 is variable
 STREAM_PORT_WIDTH = {
     "_dout": 0,
     "_empty_n": 1,
@@ -143,8 +127,6 @@ HANDSHAKE_OUTPUT_PORTS = (
     HANDSHAKE_IDLE,
     HANDSHAKE_READY,
 )
-
-# const ast nodes
 
 START = Identifier(HANDSHAKE_START)
 DONE = Identifier(HANDSHAKE_DONE)

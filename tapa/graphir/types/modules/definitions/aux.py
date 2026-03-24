@@ -41,7 +41,7 @@ class AuxModuleDefinition(VerilogModuleDefinition):
     module_type: Literal["aux_module"] = "aux_module"  # type: ignore[reportIncompatibleVariableOverride]
 
     def is_internal_module(self) -> bool:  # noqa: PLR6301
-        """It is not an internal module."""
+        """Return False: aux modules are not internal modules."""
         return False
 
 

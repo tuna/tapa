@@ -223,9 +223,6 @@ def export_verilog_verilog_module(module: VerilogModuleDefinition) -> str:
         `timescale 1 ns / 1 ps
         module empty_module; endmodule;
     """
-    # note that some simulation tools require a time scale
-    # the original time scale info will be discarded by the importer
-    # avoid adding duplicate time scale
     return (
         TIME_SCALE + "\n" + module.verilog
         if TIME_SCALE not in module.verilog

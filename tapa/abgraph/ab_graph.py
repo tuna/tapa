@@ -11,53 +11,6 @@ from pydantic import BaseModel, ConfigDict
 
 from tapa.abgraph.device.common import RESOURCES, Coor
 from tapa.abgraph.device.virtual_device import Area
-from tapa.abgraph.slot_utilities import get_coor_from_slot_name
-
-
-class ABSlot(BaseModel):
-    """Represents a slot in the AutoBridge partitioning algorithm."""
-
-    model_config = ConfigDict(frozen=True)
-
-    name: str
-    slot_coor: Coor
-
-    total_resources: Area
-    usable_resources: Area
-    usage_limit: dict[str, float]
-
-    grid_centroid_x: float
-    grid_centroid_y: float
-
-    def has_overlap(self, other_slot: str) -> bool:
-        """Check if the current node overlaps with a slot."""
-        return self.slot_coor.has_overlap(get_coor_from_slot_name(other_slot))
-
-    def __hash__(self) -> int:
-        """Get the hash."""
-        # ruff: noqa: SLF001
-        return hash(self.slot_coor._key())
-
-
-class ABCut(BaseModel):
-    """Represents a cut in the AutoBridge partitioning algorithm."""
-
-    name: str
-    lhs: list[ABSlot]
-    rhs: list[ABSlot]
-    capacity: int
-
-    def __hash__(self) -> int:
-        """Get the hash."""
-        return hash(self.name)
-
-    def __repr__(self) -> str:
-        """Get a printable version."""
-        return self.name
-
-    def __eq__(self, other: object) -> bool:
-        """If equal."""
-        return isinstance(other, ABCut) and self.name == other.name
 
 
 class ABVertex(BaseModel):
@@ -109,10 +62,6 @@ class ABGraph(BaseModel):
 
     vs: list[ABVertex]
     es: list[ABEdge]
-
-    def ecount(self) -> int:
-        """Return the number of edges in the graph."""
-        return len(self.es)
 
 
 def get_ab_graphx(graph: nx.Graph) -> ABGraph:

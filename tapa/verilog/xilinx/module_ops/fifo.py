@@ -50,9 +50,8 @@ def add_fifo_instance(
             yield make_port_arg(port=port_name, arg=wire_name(name, arg_suffix))
         yield make_port_arg(port=FIFO_WRITE_PORTS[-1], arg=TRUE)  # if_write_ce
 
-    module_name = "fifo"
     return module.add_instance(
-        module_name=module_name,
+        module_name="fifo",
         instance_name=name,
         ports=ports(),
         params=(

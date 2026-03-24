@@ -5,13 +5,9 @@
 #ifndef FPGA_RUNTIME_H_
 #define FPGA_RUNTIME_H_
 
-#include <array>
 #include <cstddef>
 #include <cstdint>
-
-#include <iostream>
 #include <memory>
-#include <ratio>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -127,11 +123,9 @@ class Instance {
     WriteToDevice();
     Exec();
     ReadFromDevice();
-    bool has_stream = false;
-    bool _[sizeof...(Args)] = {(
-        has_stream |=
-        std::is_base_of<internal::StreamArg,
-                        typename std::remove_reference<Args>::type>::value)...};
+    bool has_stream =
+        (... || std::is_base_of<internal::StreamArg,
+                                std::remove_reference_t<Args>>::value);
     ConditionallyFinish(has_stream);
     return *this;
   }

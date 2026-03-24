@@ -8,14 +8,14 @@ import shlex
 import subprocess
 from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from tapa.cosim.config_preprocess import CosimConfig
-
 from packaging.version import Version
 
 from tapa.common import paths
 from tapa.remote.config import RemoteConfig, get_remote_config
 from tapa.remote.ssh import run_ssh_with_stdout
+
+if TYPE_CHECKING:
+    from tapa.cosim.config_preprocess import CosimConfig
 
 _logger = logging.getLogger().getChild(__name__)
 
@@ -120,17 +120,12 @@ def get_vivado_tcl(
         script.append(f"set tcl_files [glob -nocomplain {loc}]")
         script.append(r"foreach ip_tcl ${tcl_files} { source ${ip_tcl} }")
 
-    # instantiate IPs used in the RTL. Use "-nocomplain" in case no IP is used
-    script.append(r"set xci_ip_files [glob -nocomplain ${ORIG_RTL_PATH}/*/*.xci]")
-    script.append(
-        'if {$xci_ip_files ne ""} '
-        "{add_files -norecurse -scan_for_includes ${xci_ip_files} }"
-    )
-    script.append(r"set xci_ip_files [glob -nocomplain ${ORIG_RTL_PATH}/*.xci]")
-    script.append(
-        'if {$xci_ip_files ne ""} '
-        "{add_files -norecurse -scan_for_includes ${xci_ip_files} }"
-    )
+    for loc in (r"${ORIG_RTL_PATH}/*/*.xci", r"${ORIG_RTL_PATH}/*.xci"):
+        script.append(f"set xci_ip_files [glob -nocomplain {loc}]")
+        script.append(
+            'if {$xci_ip_files ne ""} '
+            "{add_files -norecurse -scan_for_includes ${xci_ip_files} }"
+        )
 
     # IPs may be locked due to version mismatch
     script.append("upgrade_ip -quiet [get_ips *]")

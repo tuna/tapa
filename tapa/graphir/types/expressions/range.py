@@ -7,7 +7,7 @@ RapidStream Contributor License Agreement.
 """
 
 from tapa.graphir.types.commons import Model
-from tapa.graphir.types.expressions.expression import Expression
+from tapa.graphir.types.expressions.expression import Expression, Token
 
 
 class Range(Model):
@@ -66,3 +66,24 @@ class Range(Model):
             left=self.left.rewrite(idmap),
             right=self.right.rewrite(idmap),
         )
+
+
+def get_width_expr(range_: "Range | None") -> Expression:
+    """Get the expression for the width of a range."""
+    if not range_:
+        return Expression((Token.new_lit("1"),))
+    return Expression(
+        (
+            Token.new_lit("("),
+            Token.new_lit("("),
+            *range_.left.root,
+            Token.new_lit(")"),
+            Token.new_lit("-"),
+            Token.new_lit("("),
+            *range_.right.root,
+            Token.new_lit(")"),
+            Token.new_lit("+"),
+            Token.new_lit("1"),
+            Token.new_lit(")"),
+        )
+    )

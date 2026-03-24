@@ -128,8 +128,9 @@ def _select_command(command: SuiteCommand) -> SuiteCommand | None:
 def _run_command(command: SuiteCommand, *, allow_missing_tools: bool) -> bool:
     selected = _select_command(command)
     if selected is None:
-        candidates = (command, *command.fallback_commands)
-        msg = " or ".join(f"'{candidate.required_tool}'" for candidate in candidates)
+        msg = " or ".join(
+            f"'{c.required_tool}'" for c in (command, *command.fallback_commands)
+        )
         if allow_missing_tools:
             sys.stderr.write(
                 f"SKIP: Required tool(s) {msg} not found for command: "
@@ -139,8 +140,7 @@ def _run_command(command: SuiteCommand, *, allow_missing_tools: bool) -> bool:
         sys.stderr.write(f"ERROR: Required tool(s) {msg} not found\n")
         return False
     sys.stderr.write(f"RUN: {' '.join(selected.argv)}\n")
-    result = subprocess.run(selected.argv, check=False)
-    return result.returncode == 0
+    return subprocess.run(selected.argv, check=False).returncode == 0
 
 
 def main() -> int:

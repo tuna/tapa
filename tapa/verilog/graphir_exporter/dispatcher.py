@@ -56,10 +56,7 @@ def export_blackbox_file(root_path: str, blackbox: BlackBox) -> None:
         ...     print(open(os.path.join(temp_dir, "test/test.bin")).read())
         test
     """
-    # Create the folder if it does not exist
     file_path = os.path.join(root_path, blackbox.path)
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
-
-    # Export the binary blackbox file
     with open(file_path, "wb") as file:
         file.write(blackbox.get_binary())

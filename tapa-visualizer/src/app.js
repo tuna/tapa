@@ -40,7 +40,6 @@ const visualizerState = {
   options: { grouping: "merge", expand: false, port: false },
 };
 
-
 // Form and options + graph rendering for new option
 
 /** Grouping radios' form in header
@@ -68,7 +67,7 @@ const getOptions = () => ({
   port: optionsForm?.elements.port.value === "true",
 });
 
-let options = getOptions();
+const options = getOptions();
 visualizerState.options = options;
 
 /** Render graph when file or grouping changed.
@@ -92,15 +91,13 @@ const renderGraph = async (graph, graphData) => {
  * @param {Graph} graph
  * @param {GraphJSON} graphJSON */
 const setupGraph = async (graph, graphJSON) => {
-
-  const expand = optionsForm?.elements.expand.value === "true";
   const topChildren = graph.getChildrenData(getComboId(graphJSON.top));
-  const visibleElements = expand ? visualizerState.graphData.nodes : topChildren;
+  const visibleElements = options.expand ? visualizerState.graphData.nodes : topChildren;
 
   // Setup kg for force-atlas2, based on visible element amount
   const layout = graph.getLayout();
   if (!Array.isArray(layout) && layout.type === "force-atlas2") {
-    const kg =  visibleElements.length >= 25 ? 10 : 1;
+    const kg = visibleElements.length >= 25 ? 10 : 1;
     forceAtlas2.kg = kg;
     graph.setLayout(prev => ({ ...prev, kg }));
     await graph.layout();
@@ -119,7 +116,7 @@ const setupGraph = async (graph, graphJSON) => {
   );
 
   // Run translateElementTo() twice to reset position for collapsed combo
-  !expand &&
+  !options.expand &&
   topChildren.forEach(item => {
     if (item.type === "circle" && item.style?.collapsed) {
       const position = graph.getElementPosition(item.id);
@@ -156,35 +153,22 @@ const setupRadioToggles = graph => {
   };
 
   if (groupingForm) {
-    for (let i = 0; i < groupingForm.elements.length; i++) {
-      groupingForm.elements[i].addEventListener("change",
-        () => void updateGraph({ grouping: groupingForm.grouping.value }));
-    }
+    groupingForm.addEventListener("change",
+      () => void updateGraph({ grouping: groupingForm.grouping.value }));
   }
 
   if (optionsForm) {
-    for (let i = 0; i < optionsForm.elements.length; i++) {
-      const element = optionsForm.elements[i];
-      if (!(element instanceof HTMLInputElement)) continue;
-
-      element.addEventListener(
-        "change",
-        element.name === "layout"
-          // layout option
-          ? () => {
-            graph.setLayout(getLayout());
-            void graph.layout().then(() => graph.fitView());
-          }
-          // other options
-          : ({ target }) => {
-            target instanceof HTMLInputElement &&
-            void updateGraph({ [target.name]: target.value === "true" });
-          }
-      );
-    }
+    optionsForm.addEventListener("change", ({ target }) => {
+      if (!(target instanceof HTMLInputElement)) return;
+      if (target.name === "layout") {
+        graph.setLayout(getLayout());
+        void graph.layout().then(() => graph.fitView());
+      } else {
+        void updateGraph({ [target.name]: target.value === "true" });
+      }
+    });
   }
 };
-
 
 // G6.Graph()
 

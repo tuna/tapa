@@ -262,7 +262,6 @@ cc_library(
     visibility = ["//visibility:public"],
 )
     """,
-        # Use the oldest supported version to ensure compatibility
         path = xsim_legacy_path,
     )
 

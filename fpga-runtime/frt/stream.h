@@ -5,12 +5,11 @@
 #ifndef FPGA_RUNTIME_STREAM_H_
 #define FPGA_RUNTIME_STREAM_H_
 
-#include "frt/devices/shared_memory_queue.h"
-
 #include <memory>
 
 #include <glog/logging.h>
 
+#include "frt/devices/shared_memory_queue.h"
 #include "frt/devices/shared_memory_stream.h"
 #include "frt/stream_arg.h"
 #include "frt/stringify.h"

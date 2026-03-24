@@ -43,10 +43,6 @@ class BaseModuleDefinition(HierarchicalNamespaceModel):
         metadata (dict[str, str] | None): Metadata of the module.
     """
 
-    ##############################
-    #           Fields           #
-    ##############################
-
     module_type: str = "base_module"
 
     parameters: tuple[ModuleParameter, ...]
@@ -63,10 +59,6 @@ class BaseModuleDefinition(HierarchicalNamespaceModel):
         """
         cls.sort_tuple_field(data, "ports")
         return data
-
-    ###############################
-    #           Methods           #
-    ###############################
 
     def get_port(self, name: str) -> ModulePort:
         """Return the port of the given port.
@@ -142,13 +134,7 @@ class BaseModuleDefinition(HierarchicalNamespaceModel):
 
     def metadata_updated(self, new_metadata: dict[str, str]) -> Self:
         """Add and override metadata of the module."""
-        if self.metadata is None:
-            return self.updated(metadata=new_metadata)
-        return self.updated(metadata={**self.metadata, **new_metadata})
-
-    ########################################
-    #           Abstract Methods           #
-    ########################################
+        return self.updated(metadata={**(self.metadata or {}), **new_metadata})
 
     @abstractmethod
     def get_submodules_module_names(self) -> tuple[str, ...]:

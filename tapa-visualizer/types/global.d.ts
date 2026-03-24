@@ -40,11 +40,6 @@ type GetGraphDataOptions = {
   /** Toggle ports
    * @default false */
   port?: boolean;
-  /** Set node fill color by:
-   * - connection count (`> 1`, `<= 1`), or
-   * - task level (`upper`, `lower`)
-   * @default "auto" */
-  // nodeFill?: "auto" | "connection" | "task-level";
 };
 
 // Ports

@@ -85,38 +85,31 @@ def gen_slot_cpp(slot_name: str, top_name: str, ports: list, top_cpp: str) -> st
     cpp_pragmas = []
     for port in ports:
         assert isinstance(port, dict)
-        assert "cat" in port
-        assert "name" in port
-        assert "type" in port
-        assert "width" in port
+        assert {"cat", "name", "type", "width"} <= port.keys()
         assert port["cat"] in _PORT_TEMPLATE
         port_type = port["type"]
         port_cat = port["cat"]
 
-        # if "name[idx]" exists, replace it with "name_idx"
         match = re.fullmatch(r"([a-zA-Z_]\w*)\[(\d+)\]", port["name"])
         if match:
             n, i = match.groups()
             name = f"{n}_{i}"
-        elif "[" in port and "]" in port:
-            msg = f"Invalid port index in '{port}': must be a numeric index."
+        elif "[" in port["name"]:
+            msg = f"Invalid port index in '{port['name']}': must be a numeric index."
             raise ValueError(msg)
         else:
             name = port["name"]
 
-        # when port is an array, find array element type
         # TODO: fix scalar cat due to mmap/streams
         if port_cat == "scalar":
-            match = re.search(r"(?:tapa::)?(\w+)<([^,>]+)", port_type)
-            if match:
-                port_cat = match.group(1)
-                port_type = match.group(2)
+            m = re.search(r"(?:tapa::)?(\w+)<([^,>]+)", port_type)
+            if m:
+                port_cat = m.group(1)
+                port_type = m.group(2)
 
-        # convert pointer to uint64_t
         if "*" in port_type:
             port_type = "uint64_t"
 
-        # remove const from type for reinterpret_cast
         port_type = port_type.removeprefix("const ")
 
         cpp_ports.append(
@@ -234,20 +227,13 @@ def _find_extern_c_linkage_nodes(source: bytes, func_name: str) -> list[Node]:
 def _find_function_body(source: bytes, func_name: str) -> Node | None:
     """Find the compound_statement node for func_name using tree-sitter."""
     tree = _parser.parse(source)
-    # Try plain function_definition first
-    for _pattern_idx, captures in QueryCursor(_QUERY_FUNC).matches(tree.root_node):
-        name_nodes = captures.get("name", [])
-        body_nodes = captures.get("body", [])
-        if name_nodes and name_nodes[0].text == func_name.encode():
-            return body_nodes[0]
-    # Try linkage_specification (extern "C") wrapping
-    for _pattern_idx, captures in QueryCursor(_QUERY_EXTERN_FUNC).matches(
-        tree.root_node
-    ):
-        name_nodes = captures.get("name", [])
-        body_nodes = captures.get("body", [])
-        if name_nodes and name_nodes[0].text == func_name.encode():
-            return body_nodes[0]
+    func_bytes = func_name.encode()
+    for query in (_QUERY_FUNC, _QUERY_EXTERN_FUNC):
+        for _pattern_idx, captures in QueryCursor(query).matches(tree.root_node):
+            name_nodes = captures.get("name", [])
+            body_nodes = captures.get("body", [])
+            if name_nodes and name_nodes[0].text == func_bytes:
+                return body_nodes[0]
     return None
 
 
@@ -268,16 +254,12 @@ def replace_function(
     definition blocks.
     """
     if new_def is not None:
-        # 4-arg path: tree-sitter-based removal of extern "C" linkage nodes.
         new_decl = new_body_or_decl
         source_bytes = source.encode()
         linkage_nodes = _find_extern_c_linkage_nodes(source_bytes, func_name)
-        # Sort by start offset descending so later splices don't shift earlier ones.
         linkage_nodes.sort(key=lambda n: n.start_byte, reverse=True)
         for node in linkage_nodes:
             end = node.end_byte
-            # Also consume a trailing "  // extern "C"" comment on the same line
-            # that may follow the closing brace (left by our own code generation).
             rest = source_bytes[end:]
             comment_match = re.match(rb'\s*//\s*extern\s+"C"', rest)
             if comment_match:
@@ -288,7 +270,6 @@ def replace_function(
         def_block = f'extern "C" {{\n{new_def.strip()}\n}}  // extern "C"\n'
         return code.rstrip() + "\n\n" + decl_block + "\n\n" + def_block + "\n"
 
-    # 3-arg path: tree-sitter body replacement.
     new_body = new_body_or_decl
     source_bytes = source.encode()
     body_node = _find_function_body(source_bytes, func_name)

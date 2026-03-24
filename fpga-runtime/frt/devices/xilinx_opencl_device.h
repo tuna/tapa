@@ -8,8 +8,6 @@
 #include <cstddef>
 
 #include <memory>
-#include <string>
-#include <unordered_map>
 
 #include <CL/cl_ext_xilinx.h>
 #include <CL/cl2.hpp>

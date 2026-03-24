@@ -20,8 +20,6 @@
 
 namespace tapa {
 
-// ap_data_bits is a utility function to get the bit width of an ap_int or
-// ap_uint type.
 namespace internal {
 template <typename T>
 inline constexpr int ap_data_bits(T) {

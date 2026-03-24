@@ -21,15 +21,10 @@ class FalsePathInterface(BaseInterface):
 
     def __init__(self, **kwargs: Any) -> None:  # noqa: ANN401
         """Preprocessing the input ports."""
-        if "clk_port" not in kwargs:
-            kwargs["clk_port"] = None
-        if "rst_port" not in kwargs:
-            kwargs["rst_port"] = None
-
-        # FalsePath interface must not have clock or reset
-        assert not kwargs["clk_port"]
-        assert not kwargs["rst_port"]
-
+        assert not kwargs.get("clk_port")
+        assert not kwargs.get("rst_port")
+        kwargs["clk_port"] = None
+        kwargs["rst_port"] = None
         super().__init__(**kwargs)
 
     def __repr__(self) -> str:

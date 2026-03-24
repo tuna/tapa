@@ -10,7 +10,7 @@ RapidStream Contributor License Agreement.
 
 import getpass
 import logging
-import os.path
+import os
 import shutil
 import socket
 import subprocess

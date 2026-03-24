@@ -41,14 +41,7 @@ def is_pipelined(step: str, pipelined: bool | None = None) -> bool | None:
 
 
 def load_persistent_context(name: str) -> dict:
-    """Try load context from the flow or from the workdir.
-
-    Args:
-      name: Name of the context, e.g. graph, settings.
-
-    Returns:
-      The context.
-    """
+    """Try load context from the flow or from the workdir."""
     local_ctx = click.get_current_context().obj
 
     if local_ctx.get(name) is not None:
@@ -65,20 +58,14 @@ def load_persistent_context(name: str) -> dict:
                 f"Graph description {json_file} does not exist.  Either "
                 "`tapa analyze` wasn't executed, or you specified a wrong path."
             )
-            raise click.BadArgumentUsage(
-                msg,
-            )
+            raise click.BadArgumentUsage(msg)
         local_ctx[name] = obj
 
     return local_ctx[name]
 
 
 def load_tapa_program() -> Program:
-    """Try load program description from the flow or from the workdir.
-
-    Returns:
-      Loaded program description.
-    """
+    """Try load program description from the flow or from the workdir."""
     local_ctx = click.get_current_context().obj
     if "tapa-program" not in local_ctx:
         local_ctx["tapa-program"] = Program(
@@ -91,15 +78,9 @@ def load_tapa_program() -> Program:
 
 
 def store_persistent_context(name: str, ctx: dict | None = None) -> None:
-    """Try store context to the workdir.
-
-    Args:
-      name: Name of the context, e.g. program, settings.
-      ctx: The context to be stored.  If not given, use local context.
-    """
+    """Try store context to the workdir."""
     local_ctx = click.get_current_context().obj
 
-    # If the context is given, use that instead
     if ctx is not None:
         local_ctx[name] = ctx
 
@@ -111,19 +92,14 @@ def store_persistent_context(name: str, ctx: dict | None = None) -> None:
 
 
 def store_tapa_program(prog: Program) -> None:
-    """Store program description to the flow for downstream reuse.
-
-    Args:
-      prog: The TAPA program for reuse.
-    """
+    """Store program description to the flow for downstream reuse."""
     click.get_current_context().obj["tapa-program"] = prog
 
 
 def switch_work_dir(path: str) -> None:
     """Switch working directory to `path`."""
     os.makedirs(path, exist_ok=True)
-    click.get_current_context().obj["work-dir"] = path
-
-    # update tapa.core.Program if created
-    if "tapa-program" in click.get_current_context().obj:
-        click.get_current_context().obj["tapa-program"].work_dir = path
+    ctx = click.get_current_context().obj
+    ctx["work-dir"] = path
+    if "tapa-program" in ctx:
+        ctx["tapa-program"].work_dir = path

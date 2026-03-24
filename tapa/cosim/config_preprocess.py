@@ -62,11 +62,7 @@ class CosimConfig(BaseModel):
         return key in self.model_fields
 
     def get(self, key: str, default: object = None) -> object:
-        """Return the field value, or default if the field does not exist."""
-        try:
-            return getattr(self, key)
-        except AttributeError:
-            return default
+        return getattr(self, key, default)
 
 
 def _update_relative_path(config: CosimConfig, config_path: str) -> None:
@@ -85,11 +81,7 @@ def _update_relative_path(config: CosimConfig, config_path: str) -> None:
 
 
 def extract_part_from_xml_file(file_path: str) -> str | None:
-    """Extracts the <Part> element from the given XML file.
-
-    Args:
-        file_path (str): The path to the XML file.
-    """
+    """Extracts the <Part> element from the given XML file."""
     try:
         tree = ET.parse(file_path)
     except (ET.ParseError, FileNotFoundError) as e:
@@ -161,12 +153,6 @@ def _parse_and_update_config(config: CosimConfig, tb_output_dir: str) -> None:
 
 
 def _parse_xo_update_config(config: CosimConfig, tmp_path: str) -> None:
-    """Parse the xo file and update the config file with the extracted information.
-
-    Args:
-        config (CosimConfig): The configuration object.
-        tmp_path (str): The temporary directory path.
-    """
     # only supports tapa xo
     src_dirs = glob.glob(f"{tmp_path}/ip_repo/*/src")
     assert len(src_dirs) == 1, "Only supports TAPA XO. Vitis XO is not supported"
@@ -276,12 +262,6 @@ def _parse_zip_ports(ports_yaml: list[dict[str, object]]) -> list[Arg]:
 
 
 def _parse_zip_update_config(config: CosimConfig, tmp_path: str) -> None:
-    """Parse the zip file and update the config file with the extracted information.
-
-    Args:
-        config (CosimConfig): The configuration object.
-        tmp_path (str): The temporary directory path.
-    """
     rtl_dir = Path(tmp_path) / "rtl"
     # only supports tapa generated zip file
     assert rtl_dir.is_dir(), "Only supports TAPA XO. Vitis XO is not supported"

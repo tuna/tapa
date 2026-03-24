@@ -179,14 +179,12 @@ class mmap {
 template <typename T>
 class immap : public mmap<T> {
  public:
-  // Inherit all constructors from mmap
   using mmap<T>::mmap;
 };
 
 template <typename T>
 class ommap : public mmap<T> {
  public:
-  // Inherit all constructors from mmap
   using mmap<T>::mmap;
 };
 
@@ -310,16 +308,13 @@ class async_mmap : public mmap<T> {
     using s_resp_t = stream<resp_t, 64>&;
     using internal::accessor;
 
-    // a copy of async_mem is stored in std::function<void()>
     async_mmap async_mem(mem);
-    // access the streams for the scheduled async i/o task
     accessor<i_addr_t, s_addr_t>::access(async_mem.read_addr_q_, false);
     accessor<o_data_t, s_data_t>::access(async_mem.read_data_q_, false);
     accessor<i_addr_t, s_addr_t>::access(async_mem.write_addr_q_, false);
     accessor<i_data_t, s_data_t>::access(async_mem.write_data_q_, false);
     accessor<o_resp_t, s_resp_t>::access(async_mem.write_resp_q_, false);
     internal::schedule(/*detach=*/true, async_mem);
-    // access the streams for the user task
     accessor<o_addr_t, s_addr_t>::access(async_mem.read_addr_q_, false);
     accessor<i_data_t, s_data_t>::access(async_mem.read_data_q_, false);
     accessor<o_addr_t, s_addr_t>::access(async_mem.write_addr_q_, false);
@@ -359,13 +354,9 @@ class mmaps {
     }
   }
 
-  // defaultd copy constructor
   mmaps(const mmaps&) = default;
-  // default move constructor
   mmaps(mmaps&&) = default;
-  // defaultd copy assignment operator
   mmaps& operator=(const mmaps&) = default;
-  // default move assignment operator
   mmaps& operator=(mmaps&&) = default;
 
   /// References a @c tapa::mmap in the array.

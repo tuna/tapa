@@ -6,9 +6,7 @@
 
 load("@vars//:vars.bzl", "XILINX_PLATFORM_REPO_PATHS", "XILINX_TOOL_PATH", "XILINX_TOOL_VERSION", "XILINX_XRT_SETUP")
 
-# Define the implementation of vpp target.
 def _vpp_xclbin_impl(ctx):
-    # Retrieve the inputs and attributes from the rule invocation.
     vpp = ctx.executable.vpp
     xo = ctx.file.xo
     target = ctx.attr.target
@@ -22,7 +20,6 @@ def _vpp_xclbin_impl(ctx):
         ),
     )
 
-    # Start building the command to run v++.
     vpp_cmd = [
         "--link",
         "--output",
@@ -58,7 +55,6 @@ def _vpp_xclbin_impl(ctx):
             "--vivado.prop=fileset.sim_1.xsim.elaborate.xsc.more_options={--gcc_compile_options -I/usr/include/x86_64-linux-gnu --gcc_link_options -B/tmp/tapa-compat-relr/}",
         ]
 
-    # Define a custom action to run the synthesized command.
     ctx.actions.run(
         outputs = [xclbin],
         inputs = [xo],
@@ -69,15 +65,11 @@ def _vpp_xclbin_impl(ctx):
         resource_set = _resource_set,
     )
 
-    # Return default information, including the output file.
     return [DefaultInfo(files = depset([xclbin]))]
 
-# Tell bazel v++ consumes a lot of memory. 2GB is a conservative estimation that
-# avoids wasting memory.
 def _resource_set(_os, _num_inputs):
     return {"memory": 2000}  # MB
 
-# Define the v++ rule.
 vpp_xclbin = rule(
     implementation = _vpp_xclbin_impl,
     attrs = {
@@ -106,7 +98,6 @@ vpp_xclbin = rule(
             values = ["sw_emu", "hw_emu", "hw"],
         ),
         "xclbin": attr.string(
-            mandatory = False,
             doc = "The output xclbin file name for the kernel.",
         ),
     },
@@ -220,7 +211,7 @@ def _xilinx_wrapper_impl(ctx):
     lines.append("    fi")
     lines.append("  fi")
     lines.append("fi")
-    lines.append('export PLATFORM_REPO_PATHS="${{PLATFORM_REPO_PATHS:-{}}}"'.format(
+    lines.append('export PLATFORM_REPO_PATHS="{}${{PLATFORM_REPO_PATHS:+:$PLATFORM_REPO_PATHS}}"'.format(
         ctx.attr.platform_repo_paths,
     ))
     if ctx.attr.argv0:
@@ -230,7 +221,6 @@ def _xilinx_wrapper_impl(ctx):
     ctx.actions.write(output, "\n".join(lines), is_executable = True)
     return [DefaultInfo(executable = output)]
 
-# Generates a shell script wrapper that sets up necessary Xilinx environment.
 xilinx_wrapper = rule(
     implementation = _xilinx_wrapper_impl,
     executable = True,

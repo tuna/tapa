@@ -77,18 +77,11 @@ export const setupGraphLoader = (fileInput, deps) => {
       resetGraphLoaderState(deps.state);
       deps.clearExplorer();
       deps.updateOptionsHint(0);
-      const clearPromise = deps.state.graph?.clear();
-      if (clearPromise !== undefined) {
-        clearPromise.then(
-          () => resetSidebar(String(error)),
-          clearError => {
-            console.error(clearError);
-            resetSidebar(String(error));
-          },
-        );
-      } else {
-        resetSidebar(String(error));
-      }
+      const showError = () => resetSidebar(String(error));
+      deps.state.graph?.clear().then(showError, clearError => {
+        console.error(clearError);
+        showError();
+      }) ?? showError();
     });
 
     return true;

@@ -50,11 +50,8 @@ def get_connection_to(
 
 def get_fifo_directions(task: Task, fifo_name: str) -> list[str]:
     """Return the directions recorded for a FIFO."""
-    return [
-        direction
-        for direction in ["consumed_by", "produced_by"]
-        if direction in task.fifos[fifo_name]
-    ]
+    fifo = task.fifos[fifo_name]
+    return [d for d in ("consumed_by", "produced_by") if d in fifo]
 
 
 _DIR2SUFFIXES = {

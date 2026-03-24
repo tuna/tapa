@@ -260,9 +260,8 @@ def get_child_port_connection_mapping(
         matching_ports[task_port.name] = arg
 
     elif task_port.cat.is_istream or task_port.cat.is_istreams:
-        suffixes = ISTREAM_SUFFIXES
         full_port_name = task_port.name if idx is None else f"{task_port.name}_{idx}"
-        for suffix in suffixes:
+        for suffix in ISTREAM_SUFFIXES:
             module_port = task_module.get_port_of(full_port_name, suffix)
             matching_ports[module_port.name] = get_stream_port_name(arg, suffix)
 
@@ -496,12 +495,8 @@ def get_fsm_def(
     fsm_file: Path,
 ) -> VerilogModuleDefinition:
     """Get FSM module definition."""
-    with open(fsm_file, encoding="utf-8") as f:
-        content = f.read()
-    module = Module(
-        (fsm_file,),
-        is_trimming_enabled=True,
-    )
+    content = Path(fsm_file).read_text(encoding="utf-8")
+    module = Module((fsm_file,), is_trimming_enabled=True)
     return get_verilog_definition_from_tapa_module(module, content)
 
 

@@ -15,12 +15,10 @@
 
 namespace tapa_testing {
 
-// NOT thread-safe.
 class ScopedLogSinkMock : public google::LogSink {
  public:
   ScopedLogSinkMock() { AddLogSink(this); }
 
-  // Not copyable or movable.
   ScopedLogSinkMock(const ScopedLogSinkMock&) = delete;
   ScopedLogSinkMock& operator=(const ScopedLogSinkMock&) = delete;
 

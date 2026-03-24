@@ -23,10 +23,8 @@ std::ostream& operator<<(std::ostream& os, const ArgInfo::Cat& cat) {
 }
 
 std::ostream& operator<<(std::ostream& os, const ArgInfo& arg) {
-  os << "ArgInfo: {index: " << arg.index << ", name: '" << arg.name
-     << "', type: '" << arg.type << "', category: " << arg.cat;
-  os << "}";
-  return os;
+  return os << "ArgInfo: {index: " << arg.index << ", name: '" << arg.name
+            << "', type: '" << arg.type << "', category: " << arg.cat << "}";
 }
 
 }  // namespace fpga

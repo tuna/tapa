@@ -5,7 +5,6 @@
 #include "frt/devices/shared_memory_queue.h"
 
 #include <cstdint>
-#include <cstdlib>
 #include <cstring>
 
 #include <string>
@@ -40,7 +39,7 @@ void SharedMemoryQueue::Deleter::operator()(SharedMemoryQueue* ptr) {
 SharedMemoryQueue::UniquePtr SharedMemoryQueue::New(int fd) {
   auto* ptr = static_cast<SharedMemoryQueue*>(
       mmap(nullptr, sizeof(SharedMemoryQueue), PROT_READ | PROT_WRITE,
-           MAP_SHARED, fd, /*offset=*/0));
+           MAP_SHARED, fd, 0));
   if (ptr == MAP_FAILED) {
     PLOG(ERROR) << "mmap";
     return nullptr;
@@ -48,22 +47,19 @@ SharedMemoryQueue::UniquePtr SharedMemoryQueue::New(int fd) {
 
   const std::string magic(ptr->magic_, sizeof(ptr->magic_));
   if (magic != kMagic) {
-    LOG(ERROR) << "unexpected magic '" << magic << "'; want '" << kMagic << "'"
-               << "; size: " << magic.size();
+    LOG(ERROR) << "unexpected magic '" << magic << "'; want '" << kMagic
+               << "'; size: " << magic.size();
     return nullptr;
   }
-
   if (ptr->version_ != kVersion) {
     LOG(ERROR) << "unexpected version " << ptr->version_ << "; want "
                << kVersion;
     return nullptr;
   }
-
   if (ptr->depth_ <= 0) {
     LOG(ERROR) << "unexpected non-positive depth " << ptr->depth_;
     return nullptr;
   }
-
   if (ptr->width_ <= 0) {
     LOG(ERROR) << "unexpected non-positive width " << ptr->width_;
     return nullptr;
@@ -78,12 +74,10 @@ SharedMemoryQueue::UniquePtr SharedMemoryQueue::New(int fd) {
     return nullptr;
   }
 #else
-  // mremap is Linux-specific; use munmap + mmap as a portable fallback.
   size_t full_len = ptr->mmap_len();
   munmap(ptr, sizeof(SharedMemoryQueue));
   ptr = static_cast<SharedMemoryQueue*>(
-      mmap(nullptr, full_len, PROT_READ | PROT_WRITE, MAP_SHARED, fd,
-           /*offset=*/0));
+      mmap(nullptr, full_len, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0));
   if (ptr == MAP_FAILED) {
     PLOG(ERROR) << "mmap (remap)";
     return nullptr;
@@ -134,46 +128,39 @@ int SharedMemoryQueue::CreateFile(std::string& path, int32_t depth,
   queue.depth_ = depth;
   queue.width_ = width;
   size_t total_size = sizeof(queue) + depth * width;
-  int rc = ftruncate(fd, total_size);
-  if (rc == 0) {
-#ifdef __linux__
-    rc = write(fd, &queue, sizeof(queue));
-    if (rc == sizeof(queue)) {
-      return fd;
-    }
-    if (rc >= 0) {
-      LOG(ERROR) << "partial write: wrote " << rc << " bytes, want "
-                 << sizeof(queue);
-    } else {
-      PLOG(ERROR) << "write";
-    }
-#else
-    // On macOS, write() to shm fds is not supported. Use mmap instead.
-    void* mapped = mmap(nullptr, total_size, PROT_READ | PROT_WRITE, MAP_SHARED,
-                        fd, /*offset=*/0);
-    if (mapped != MAP_FAILED) {
-      memcpy(mapped, &queue, sizeof(queue));
-      munmap(mapped, total_size);
-      return fd;
-    }
-    PLOG(ERROR) << "mmap (init)";
-#endif
-  } else {
+  if (ftruncate(fd, total_size) != 0) {
     PLOG(ERROR) << "ftruncate";
+    PLOG_IF(ERROR, close(fd)) << "close";
+    PLOG_IF(ERROR, shm_unlink(path.c_str())) << "shm_unlink";
+    return -1;
   }
+#ifdef __linux__
+  int rc = write(fd, &queue, sizeof(queue));
+  if (rc == (int)sizeof(queue)) return fd;
+  if (rc >= 0)
+    LOG(ERROR) << "partial write: wrote " << rc << " bytes, want "
+               << sizeof(queue);
+  else
+    PLOG(ERROR) << "write";
+#else
+  void* mapped =
+      mmap(nullptr, total_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+  if (mapped != MAP_FAILED) {
+    memcpy(mapped, &queue, sizeof(queue));
+    munmap(mapped, total_size);
+    return fd;
+  }
+  PLOG(ERROR) << "mmap (init)";
+#endif
   PLOG_IF(ERROR, close(fd)) << "close";
   PLOG_IF(ERROR, shm_unlink(path.c_str())) << "shm_unlink";
-  return rc;
+  return -1;
 }
 
 size_t SharedMemoryQueue::size() const { return head_ - tail_; }
-
 size_t SharedMemoryQueue::capacity() const { return depth_; }
-
 size_t SharedMemoryQueue::width() const { return width_; }
-
-bool SharedMemoryQueue::empty() const { return size() <= 0; }
-
+bool SharedMemoryQueue::empty() const { return size() == 0; }
 bool SharedMemoryQueue::full() const { return size() >= capacity(); }
 
 std::string SharedMemoryQueue::front() const {

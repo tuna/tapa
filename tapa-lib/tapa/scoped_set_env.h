@@ -16,7 +16,6 @@
 
 namespace tapa_testing {
 
-// NOT thread-safe.
 class ScopedSetEnv {
  public:
   explicit ScopedSetEnv(std::string_view name, const char* value)
@@ -27,7 +26,6 @@ class ScopedSetEnv {
     SetValue(value);
   }
 
-  // Not copyable or movable.
   ScopedSetEnv(const ScopedSetEnv&) = delete;
   ScopedSetEnv& operator=(const ScopedSetEnv&) = delete;
 

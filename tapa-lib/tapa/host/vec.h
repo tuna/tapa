@@ -158,13 +158,11 @@ struct vec_t : protected std::array<T, N> {
     set(N - 1, val);
   }
 
-  // return true if and only if val exists
   bool has(const T& val) {
-    bool result = false;
     for (size_type i = 0; i < N; ++i) {
-      if (val == get(i)) result |= true;
+      if (val == get(i)) return true;
     }
-    return result;
+    return false;
   }
 };
 
@@ -190,9 +188,8 @@ inline vec_t<T, length> truncated(const vec_t<T, N>& vec) {
 template <int length, typename T, int N>
 inline vec_t<T, length> truncated(const vec_t<T, N>& vec, int begin) {
   static_assert(length <= N, "cannot enlarge vector");
-  int end = begin + length;
   CHECK_GE(begin, 0) << "cannot truncate before 0";
-  CHECK_LE(end, N) << "cannot truncate after N";
+  CHECK_LE(begin + length, N) << "cannot truncate after N";
   vec_t<T, length> result;
   for (int i = 0; i < length; ++i) {
     result.set(i, vec[begin + i]);
@@ -235,12 +232,10 @@ inline vec_t<T, N1 + N2> cat(const vec_t<T, N1>& v1, const vec_t<T, N2>& v2) {
   return result;
 }
 
-#if __cplusplus >= 201402L
 template <typename T, typename... Args>
 inline auto cat(T arg, Args... args) {
   return cat(arg, cat(args...));
 }
-#endif  // __cplusplus >= 201402L
 
 // binary arithemetic operators, vector on the right-hand side
 #define DEFINE_OP(op)                                               \

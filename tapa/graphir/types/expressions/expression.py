@@ -50,14 +50,14 @@ class Token(Model):
 
         super().__init__(**kwargs)
 
-    @classmethod
-    def new_id(cls, ident: str) -> "Token":
+    @staticmethod
+    def new_id(ident: str) -> "Token":
         """Get an expression part pointing to an identifier."""
         return Token(type=Token.Type.ID, repr=ident)
 
-    @classmethod
-    def new_lit(cls, lit: str) -> "Token":
-        """Get an expression part pointing to an identifier."""
+    @staticmethod
+    def new_lit(lit: str) -> "Token":
+        """Get an expression part pointing to a literal."""
         return Token(type=Token.Type.LIT, repr=lit)
 
     def is_literal(self) -> bool:
@@ -210,15 +210,14 @@ class Expression(  # type: ignore [misc]
         return self[0].repr
 
     def get_only_identifier(self) -> str | None:
-        """Return the identifier the expression directly connects to without exception.
-
-        Returns:
-            str: The identifier directly connects to.
+        """Return the identifier the expression directly connects to, or None.
 
         Examples:
             >>> e = Expression.new_id("a")
-            >>> e.get_identifier()
+            >>> e.get_only_identifier()
             'a'
+            >>> Expression.new_lit("1").get_only_identifier() is None
+            True
         """
         if not self.is_identifier():
             return None
@@ -288,8 +287,8 @@ class Expression(  # type: ignore [misc]
         """
         return len(self) == 1 and self[0].type == Token.Type.ID
 
-    @classmethod
-    def new_empty(cls) -> "Expression":
+    @staticmethod
+    def new_empty() -> "Expression":
         """Get an empty expression.
 
         Returns:
@@ -302,8 +301,8 @@ class Expression(  # type: ignore [misc]
         """
         return Expression(())
 
-    @classmethod
-    def new_id(cls, ident: str) -> "Expression":
+    @staticmethod
+    def new_id(ident: str) -> "Expression":
         """Get an expression pointing to an identifier.
 
         Args:
@@ -319,8 +318,8 @@ class Expression(  # type: ignore [misc]
         """
         return Expression((Token.new_id(ident),))
 
-    @classmethod
-    def new_lit(cls, lit: str) -> "Expression":
+    @staticmethod
+    def new_lit(lit: str) -> "Expression":
         """Get an expression with a literal expression.
 
         Args:
@@ -336,8 +335,8 @@ class Expression(  # type: ignore [misc]
         """
         return Expression((Token.new_lit(lit),))
 
-    @classmethod
-    def new_string_lit(cls, lit: str) -> "Expression":
+    @staticmethod
+    def new_string_lit(lit: str) -> "Expression":
         r"""Get an expression with a quoted string literal.
 
         Args:
@@ -349,7 +348,7 @@ class Expression(  # type: ignore [misc]
         Example:
             >>> e = Expression.new_string_lit("hello")
             >>> print(e.model_dump_json())
-            [{"type":"lit","repr":"\\"hello\\""}]
+            [{"type":"lit","repr":"\"hello\""}]
         """
         return Expression((Token.new_lit(f'"{lit}"'),))
 

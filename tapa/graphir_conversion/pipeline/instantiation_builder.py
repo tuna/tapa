@@ -36,7 +36,7 @@ if TYPE_CHECKING:
 
 
 def _get_control_connections(instance_name: str) -> list[ModuleConnection]:
-    connections = [
+    return [
         ModuleConnection(
             name="ap_clk",
             hierarchical_name=HierarchicalName.get_name("ap_clk"),
@@ -47,16 +47,15 @@ def _get_control_connections(instance_name: str) -> list[ModuleConnection]:
             hierarchical_name=HierarchicalName.get_name("ap_rst_n"),
             expr=Expression((Token.new_id("ap_rst_n"),)),
         ),
+        *(
+            ModuleConnection(
+                name=signal,
+                hierarchical_name=HierarchicalName.get_name(signal),
+                expr=Expression((Token.new_id(f"{instance_name}__{signal}"),)),
+            )
+            for signal in ("ap_start", "ap_done", "ap_ready", "ap_idle")
+        ),
     ]
-    connections.extend(
-        ModuleConnection(
-            name=signal,
-            hierarchical_name=HierarchicalName.get_name(signal),
-            expr=Expression((Token.new_id(f"{instance_name}__{signal}"),)),
-        )
-        for signal in ("ap_start", "ap_done", "ap_ready", "ap_idle")
-    )
-    return connections
 
 
 def _get_task_inst_connections(  # noqa: C901

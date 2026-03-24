@@ -5,7 +5,6 @@
 #include "frt/devices/intel_opencl_device.h"
 
 #include <memory>
-#include <stdexcept>
 #include <string>
 
 #include <elf.h>
@@ -61,17 +60,14 @@ IntelOpenclDevice::IntelOpenclDevice(const cl::Program::Binaries& binaries) {
     vendor_name = "Intel(R) FPGA SDK for OpenCL(TM)";
     auto elf_header = reinterpret_cast<const Elf32_Ehdr*>(data);
     auto elf_section_headers = reinterpret_cast<const Elf32_Shdr*>(
-        (reinterpret_cast<const char*>(elf_header) + elf_header->e_shoff));
-    auto elf_section = [&](int idx) -> const Elf32_Shdr* {
-      return &elf_section_headers[idx];
-    };
+        reinterpret_cast<const char*>(elf_header) + elf_header->e_shoff);
     auto elf_str_table =
         (elf_header->e_shstrndx == SHN_UNDEF)
             ? nullptr
             : reinterpret_cast<const char*>(elf_header) +
-                  elf_section(elf_header->e_shstrndx)->sh_offset;
+                  elf_section_headers[elf_header->e_shstrndx].sh_offset;
     for (int i = 0; i < elf_header->e_shnum; ++i) {
-      auto section_header = elf_section(i);
+      const auto* section_header = &elf_section_headers[i];
       auto section_name =
           elf_str_table ? elf_str_table + section_header->sh_name : nullptr;
       if (strcmp(section_name, ".acl.kernel_arg_info.xml") == 0) {
@@ -148,31 +144,27 @@ std::unique_ptr<Device> IntelOpenclDevice::New(
 
 void IntelOpenclDevice::SetStreamArg(size_t index, Tag tag, StreamArg& arg) {
   LOG(FATAL) << "Intel OpenCL device does not support streaming";
-};
+}
 
 void IntelOpenclDevice::WriteToDevice() {
   load_event_.resize(load_indices_.size());
-  int i = 0;
-  for (auto index : load_indices_) {
-    auto buffer = buffer_table_[index];
+  size_t i = 0;
+  for (auto idx : load_indices_) {
+    auto buf = buffer_table_[idx];
     CL_CHECK(cmd_.enqueueWriteBuffer(
-        buffer, /* blocking = */ CL_FALSE, /* offset = */ 0,
-        buffer.getInfo<CL_MEM_SIZE>(), host_ptr_table_[index],
-        /* events = */ nullptr, &load_event_[i]));
-    ++i;
+        buf, CL_FALSE, 0, buf.getInfo<CL_MEM_SIZE>(), host_ptr_table_[idx],
+        nullptr, &load_event_[i++]));
   }
 }
 
 void IntelOpenclDevice::ReadFromDevice() {
   store_event_.resize(store_indices_.size());
-  int i = 0;
-  for (auto index : store_indices_) {
-    auto buffer = buffer_table_[index];
-    cmd_.enqueueReadBuffer(buffer, /* blocking = */ CL_FALSE,
-                           /* offset = */ 0, buffer.getInfo<CL_MEM_SIZE>(),
-                           host_ptr_table_[index], &compute_event_,
-                           &store_event_[i]);
-    ++i;
+  size_t i = 0;
+  for (auto idx : store_indices_) {
+    auto buf = buffer_table_[idx];
+    cmd_.enqueueReadBuffer(buf, CL_FALSE, 0, buf.getInfo<CL_MEM_SIZE>(),
+                           host_ptr_table_[idx], &compute_event_,
+                           &store_event_[i++]);
   }
 }
 
@@ -180,8 +172,7 @@ cl::Buffer IntelOpenclDevice::CreateBuffer(size_t index, cl_mem_flags flags,
                                            void* host_ptr, size_t size) {
   flags |= /* CL_MEM_HETEROGENEOUS_INTELFPGA = */ 1 << 19;
   host_ptr_table_[index] = host_ptr;
-  host_ptr = nullptr;
-  return OpenclDevice::CreateBuffer(index, flags, host_ptr, size);
+  return OpenclDevice::CreateBuffer(index, flags, nullptr, size);
 }
 
 }  // namespace internal

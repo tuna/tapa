@@ -15,21 +15,22 @@ def generate(
     ports: int | list[int] | tuple[int, int] = 4, name: str | None = None
 ) -> str:
     """Generates an AXI crossbar wrapper with the specified number of ports."""
-    if type(ports) is int:
+    if isinstance(ports, int):
         m = n = ports
-    elif isinstance(ports, (tuple, list)) and len(ports) == 1:
-        m = n = ports[0]
-    elif isinstance(ports, (tuple, list)) and len(ports) == 2:  # noqa: PLR2004
-        m, n = ports
+    elif isinstance(ports, (tuple, list)):
+        if len(ports) == 1:
+            m = n = ports[0]
+        elif len(ports) == 2:  # noqa: PLR2004
+            m, n = ports
+        else:
+            msg = "Invalid number of ports"
+            raise ValueError(msg)
     else:
         msg = "Invalid number of ports"
         raise ValueError(msg)
 
     if name is None:
         name = f"axi_crossbar_wrap_{m}x{n}"
-
-    cm = (m - 1).bit_length()
-    cn = (n - 1).bit_length()
 
     t = Template(
         """/*
@@ -425,4 +426,4 @@ endmodule
 """,
     )
 
-    return t.render(m=m, n=n, cm=cm, cn=cn, name=name)
+    return t.render(m=m, n=n, name=name)

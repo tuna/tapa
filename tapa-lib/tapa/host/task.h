@@ -75,20 +75,10 @@ struct function_traits<R (&)(Args...)> {
   using params = std::tuple<Args...>;
 };
 
-// Utilities to check if a type is callable.
+template <typename F, typename = void>
+struct is_callable : std::is_function<F> {};
 template <typename F>
-struct is_callable {
- private:
-  typedef char (&yes)[1];
-  typedef char (&no)[2];
-  template <typename U>
-  static yes check(decltype(&U::operator()));
-  template <typename U>
-  static no check(...);
-
- public:
-  static constexpr bool value =
-      std::is_function_v<F> || sizeof(check<F>(0)) == sizeof(yes);
+struct is_callable<F, std::void_t<decltype(&F::operator())>> : std::true_type {
 };
 template <typename F>
 inline constexpr bool is_callable_v = is_callable<F>::value;
@@ -155,10 +145,9 @@ struct invoker {
                             std::index_sequence<Is...>,
                             CapturedArgs&&... args) {
     int idx = 0;
-    int _[] = {
-        (accessor<std::tuple_element_t<Is, Params>, CapturedArgs>::access(
-             instance, idx, std::forward<CapturedArgs>(args)),
-         0)...};
+    (accessor<std::tuple_element_t<Is, Params>, CapturedArgs>::access(
+         instance, idx, std::forward<CapturedArgs>(args)),
+     ...);
   }
 
  private:

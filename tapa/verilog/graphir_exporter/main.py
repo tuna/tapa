@@ -62,10 +62,7 @@ def main(
     else:
         project = Project.model_validate_json(sys.stdin.read())
 
-    export_design(
-        project,
-        destination,
-    )
+    export_design(project, destination)
 
 
 def export_design(
@@ -85,8 +82,6 @@ def export_design(
 
     create_xci_sub_folder(destination)
 
-    # generate a stub module for IPs
-    # for example, elaboration and syntax check may need those stub files.
     if create_stub_for_xci:
         create_stub_files(destination)
 
@@ -100,12 +95,9 @@ def create_xci_sub_folder(destination: str) -> None:
 
         target_folder.mkdir(parents=True, exist_ok=True)
 
-        # Skip if the file is already at the correct path
         if target_path.exists():
             if target_path.samefile(source):
                 continue
-
-            # Remove and replace the file if already existing.
             _logger.warning("File %s exists, replacing with a new file.", target_path)
             target_path.unlink()
 
@@ -155,8 +147,6 @@ def create_stub_files(destination: str) -> None:
     for xci_path in glob(f"{destination}/**/*.xci", recursive=True):
         xci_name = Path(xci_path).stem
         xci_to_stub(xci_path, f"{destination}/{xci_name}.v")
-
-    # create stub files for xilinx primitives
     for module_name, body in _XILINX_PRIMITIVE_STUBS.items():
         with open(f"{destination}/{module_name}.v", "w", encoding="utf-8") as file:
             file.write(body)
@@ -177,7 +167,6 @@ def xci_to_stub(xci_path: str, file_path: str | None = None) -> list[str]:
 
         port = "  " + _DIRECTION_MAP[port_info["direction"]]
 
-        # width if available
         if "size_left" in port_info:
             assert "size_right" in port_info
             port += "[" + port_info["size_left"] + ": " + port_info["size_right"] + "] "
@@ -185,9 +174,7 @@ def xci_to_stub(xci_path: str, file_path: str | None = None) -> list[str]:
         port += f"{port_name},"
         stub.append(port)
 
-    # the last port does not have comma
     stub[-1] = stub[-1].strip(",")
-
     stub.extend([");", "endmodule"])
 
     if file_path:

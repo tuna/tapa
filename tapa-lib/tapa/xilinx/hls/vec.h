@@ -25,21 +25,15 @@ struct vec_t : protected std::array<T, N> {
  private:
   using base_type = std::array<T, N>;
 
-  // if T is of type of ap_int or ap_uint, the width must be a multiple of 32,
-  // otherwise, the host alignment will not match the hardware alignment.
-  // e.g. ap_int<32> is 4 bytes, but ap_int<33> is 8 bytes in Vitis's
-  // implementation.
   static_assert(
       internal::ap_data_bits(T()) % 32 == 0,
       "width of ap_int or ap_uint in a vec_t must be a multiple of 32 for "
       "matched host and hardware alignment");
 
  public:
-  // static constexpr metadata
   static constexpr int length = N;
   static constexpr int width = widthof<T>() * N;
 
-  // public type alias
   using size_type = int;
   using typename base_type::const_iterator;
   using typename base_type::const_pointer;
@@ -52,7 +46,6 @@ struct vec_t : protected std::array<T, N> {
   using typename base_type::reverse_iterator;
   using typename base_type::value_type;
 
-  // single-element getter and setter
   constexpr const_reference operator[](size_type pos) const {
 #pragma HLS inline
 #pragma HLS aggregate variable = this bit
@@ -72,15 +65,12 @@ struct vec_t : protected std::array<T, N> {
     (*this)[pos] = value;
   }
 
-  // use base type constructors and assignment operators
   using base_type::base_type;
   using base_type::operator=;
 
-  // constructors from base_type
   explicit vec_t(const base_type& other) : base_type(other) {}
   explicit vec_t(base_type&& other) : base_type(other) {}
 
-  // static cast to vec_t of another type
   template <typename U>
   explicit operator vec_t<U, N>() const {
 #pragma HLS inline
@@ -91,13 +81,11 @@ struct vec_t : protected std::array<T, N> {
     return result;
   }
 
-  // all-element setter
   void set(T val) {
 #pragma HLS inline
     *this = val;
   }
 
-  // all-element assignment operator
   vec_t& operator=(T val) {
 #pragma HLS inline
     for (size_type i = 0; i < N; ++i) {
@@ -107,7 +95,6 @@ struct vec_t : protected std::array<T, N> {
     return *this;
   }
 
-// assignment operators
 #define DEFINE_OP(op)                                    \
   template <typename T2>                                 \
   vec_t<T, N>& operator op##=(const vec_t<T2, N>& rhs) { \
@@ -139,7 +126,6 @@ struct vec_t : protected std::array<T, N> {
   DEFINE_OP(>>)
 #undef DEFINE_OP
 
-// unary arithemetic operators
 #define DEFINE_OP(op)                   \
   vec_t<T, N> operator op() {           \
     _Pragma("HLS inline");              \
@@ -154,7 +140,6 @@ struct vec_t : protected std::array<T, N> {
   DEFINE_OP(~)
 #undef DEFINE_OP
 
-// binary arithemetic operators
 #define DEFINE_OP(op)                                \
   template <typename T2>                             \
   vec_t<T, N> operator op(const vec_t<T2, N>& rhs) { \
@@ -188,7 +173,6 @@ struct vec_t : protected std::array<T, N> {
   DEFINE_OP(>>)
 #undef DEFINE_OP
 
-  // shift all elements by 1, put val at [N-1], and through away [0]
   void shift(const T& val) {
 #pragma HLS inline
     for (size_type i = 1; i < N; ++i) {
@@ -198,7 +182,6 @@ struct vec_t : protected std::array<T, N> {
     set(N - 1, val);
   }
 
-  // return true if and only if val exists
   bool has(const T& val) {
 #pragma HLS inline
     bool result = false;
@@ -210,7 +193,6 @@ struct vec_t : protected std::array<T, N> {
   }
 };
 
-// return vec[begin:end]
 template <int begin, int end, typename T, int N>
 inline vec_t<T, end - begin> truncated(const vec_t<T, N>& vec) {
   static_assert(begin >= 0, "cannot truncate before 0");
@@ -224,14 +206,12 @@ inline vec_t<T, end - begin> truncated(const vec_t<T, N>& vec) {
   return result;
 }
 
-// return vec[:length]
 template <int length, typename T, int N>
 inline vec_t<T, length> truncated(const vec_t<T, N>& vec) {
 #pragma HLS inline
   return truncated<0, length>(vec);
 }
 
-// return vec[begin:begin+length]
 template <int length, typename T, int N>
 inline vec_t<T, length> truncated(const vec_t<T, N>& vec, int begin) {
   static_assert(length <= N, "cannot enlarge vector");
@@ -247,7 +227,6 @@ inline vec_t<T, length> truncated(const vec_t<T, N>& vec, int begin) {
   return result;
 }
 
-// return vec[:] + [val]
 template <typename T, int N>
 inline vec_t<T, N + 1> cat(const vec_t<T, N>& vec, const T& val) {
   vec_t<T, N + 1> result;
@@ -260,7 +239,6 @@ inline vec_t<T, N + 1> cat(const vec_t<T, N>& vec, const T& val) {
   return result;
 }
 
-// return [val] + vec[:]
 template <typename T, int N>
 inline vec_t<T, N + 1> cat(const T& val, const vec_t<T, N>& vec) {
   vec_t<T, N + 1> result;
@@ -273,7 +251,6 @@ inline vec_t<T, N + 1> cat(const T& val, const vec_t<T, N>& vec) {
   return result;
 }
 
-// return v1[:] + v2[:]
 template <typename T, int N1, int N2>
 inline vec_t<T, N1 + N2> cat(const vec_t<T, N1>& v1, const vec_t<T, N2>& v2) {
   vec_t<T, N1 + N2> result;
@@ -297,7 +274,6 @@ inline auto cat(T arg, Args... args) {
 }
 #endif  // __cplusplus >= 201402L
 
-// binary arithemetic operators, vector on the right-hand side
 #define DEFINE_OP(op)                                               \
   template <typename T, int N, typename T2>                         \
   vec_t<T, N> operator op(const T2 & lhs, const vec_t<T, N>& rhs) { \
@@ -329,7 +305,6 @@ vec_t<T, N> make_vec(T val) {
   return result;
 }
 
-// unary operation functions
 #define DEFINE_FUNC(func)             \
   template <typename T, int N>        \
   vec_t<T, N> func(vec_t<T, N> vec) { \
@@ -349,7 +324,6 @@ DEFINE_FUNC(log1p)
 DEFINE_FUNC(log2)
 #undef DEFINE_FUNC
 
-// binary operation functions
 #define DEFINE_FUNC(func)                                            \
   template <typename T, int N>                                       \
   vec_t<T, N> func(const vec_t<T, N>& lhs, const vec_t<T, N>& rhs) { \
@@ -373,7 +347,6 @@ DEFINE_FUNC(max)
 DEFINE_FUNC(min)
 #undef DEFINE_FUNC
 
-// reduction operation functions
 #define DEFINE_FUNC(func, op)                                             \
   template <typename T>                                                   \
   T func(const vec_t<T, 1>& vec) {                                        \

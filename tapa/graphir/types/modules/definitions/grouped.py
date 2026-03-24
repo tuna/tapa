@@ -154,15 +154,11 @@ class GroupedModuleDefinition(BaseModuleDefinition):
         }
 
     def is_leaf_module(self) -> bool:  # noqa: PLR6301
-        """Return True if the module is a leaf module.
-
-        Returns:
-            bool: Return True if the module is a leaf module.
-        """
+        """Return False: grouped modules are not leaf modules."""
         return False
 
     def is_internal_module(self) -> bool:  # noqa: PLR6301
-        """It is not an internal module."""
+        """Return False: grouped modules are not internal modules."""
         return False
 
     def has_submodule(self, inst_name: str) -> bool:

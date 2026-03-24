@@ -75,13 +75,9 @@ class ProgramSynthesisMixin(
                 return parse_hierarchical_utilization_report(rpt_file)
 
         worker_num = jobs or cpu_count(logical=False) or 8
-        _logger.info("generating post-synthesis resource utilization reports")
         _logger.info(
-            "this step runs logic synthesis of each task "
-            "for accurate area info and may take a while"
-        )
-        _logger.info(
-            "spawn %d workers for parallel logic synthesis",
+            "generating post-synthesis resource utilization reports "
+            "(this may take a while); spawning %d workers",
             worker_num,
         )
         with futures.ThreadPoolExecutor(max_workers=worker_num) as executor:

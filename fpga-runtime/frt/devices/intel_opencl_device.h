@@ -8,7 +8,7 @@
 #include <cstddef>
 
 #include <memory>
-#include <string>
+#include <unordered_map>
 
 #include <CL/cl2.hpp>
 

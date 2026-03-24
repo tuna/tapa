@@ -196,22 +196,21 @@ class RunAie:
         self._extra_upload = tuple(
             {os.path.dirname(os.path.abspath(file)) for file in kernel_files}
         )
-        cmd_args = [
-            self.aiecompiler,
-            "--target=hw",
-            f"--platform={xpfm}",
-            *include_path_str,
-            f"--workdir={self.project_path}",
-            *kernel_files,
-        ]
         popen_kwargs: dict = {
-            "env": os.environ
-            | {
-                "HOME": self.project_path,
-            },
+            "env": os.environ | {"HOME": self.project_path},
         }
-
-        cmd_args = get_cmd_args(cmd_args, ["XILINX_VITIS"], popen_kwargs)
+        cmd_args = get_cmd_args(
+            [
+                self.aiecompiler,
+                "--target=hw",
+                f"--platform={xpfm}",
+                *include_path_str,
+                f"--workdir={self.project_path}",
+                *kernel_files,
+            ],
+            ["XILINX_VITIS"],
+            popen_kwargs,
+        )
         self._proc = create_tool_process(
             cmd_args,
             cwd=self.project_path,

@@ -13,7 +13,6 @@ __all__ = [
     "get_axis_port_width_int",
 ]
 
-# width=0 means configurable
 AXIS_PORT_WIDTHS = {
     "TDATA": 0,
     "TLAST": 1,
@@ -22,7 +21,6 @@ AXIS_PORT_WIDTHS = {
     "TKEEP": 0,
 }
 
-# => {port_suffix: [axis_port_suffixes in order]}
 STREAM_TO_AXIS = {
     "_dout": ["TDATA", "TLAST"],
     "_empty_n": ["TVALID"],
@@ -32,7 +30,6 @@ STREAM_TO_AXIS = {
     "_write": ["TVALID"],
 }
 
-# => {port_suffix: bit_to_fill}
 AXIS_CONSTANTS = {
     "TKEEP": 1,
 }

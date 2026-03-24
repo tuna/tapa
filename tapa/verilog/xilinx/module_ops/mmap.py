@@ -39,14 +39,12 @@ def add_async_mmap_instance(context: _AsyncMmapContext) -> Module:
             paramname="DataWidthBytesLog",
             argname=Constant((context.data_width // 8 - 1).bit_length()),
         ),
+        ParamArg(paramname="AddrWidth", argname=Constant(context.addr_width)),
     ]
     portargs = [
         make_port_arg(port="clk", arg=CLK),
         make_port_arg(port="rst", arg=context.rst),
     ]
-    paramargs.append(
-        ParamArg(paramname="AddrWidth", argname=Constant(context.addr_width))
-    )
     if context.buffer_size:
         paramargs.extend(
             (
@@ -71,7 +69,6 @@ def add_async_mmap_instance(context: _AsyncMmapContext) -> Module:
 
     max_burst_len = context.max_burst_len
     if max_burst_len is None:
-        # 1KB burst length
         max_burst_len = max(0, 8192 // context.data_width - 1)
     paramargs.extend(
         (

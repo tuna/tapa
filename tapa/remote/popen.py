@@ -79,8 +79,9 @@ class LocalToolProcess(ToolProcess):
     def communicate(self, timeout: float | None = None) -> tuple[bytes, bytes]:
         stdout, stderr = self._proc.communicate(timeout=timeout)
         self.returncode = self._proc.returncode
-        return (stdout if isinstance(stdout, bytes) else b""), (
-            stderr if isinstance(stderr, bytes) else b""
+        return (
+            stdout if isinstance(stdout, bytes) else b"",
+            stderr if isinstance(stderr, bytes) else b"",
         )
 
     def __exit__(
@@ -167,11 +168,9 @@ def _upload_paths(config: RemoteConfig, paths: list[str], session_dir: str) -> N
     valid_paths = [p for p in paths if os.path.exists(p)]
 
     if not valid_paths:
-        # Still need the session directory for the execute step.
         run_ssh_with_stdout(config, f"mkdir -p {shlex.quote(rootfs)}")
         return
 
-    # Build a single tar with all paths, archived relative to /.
     buf = io.BytesIO()
     with tarfile.open(mode="w:gz", fileobj=buf, dereference=True) as tar:
         for local_path in valid_paths:
@@ -180,16 +179,14 @@ def _upload_paths(config: RemoteConfig, paths: list[str], session_dir: str) -> N
             _logger.info("Uploading %s -> %s", local_path, remote_path)
             if os.path.isdir(local_path):
                 for entry in os.listdir(local_path):
-                    full_entry = os.path.join(local_path, entry)
                     tar.add(
-                        full_entry,
+                        os.path.join(local_path, entry),
                         arcname=os.path.join(arcname_prefix, entry),
                     )
             else:
                 tar.add(local_path, arcname=arcname_prefix)
     tar_data = buf.getvalue()
 
-    # Single SSH session: create rootfs dir + extract everything.
     command = (
         f"mkdir -p {shlex.quote(rootfs)} && "
         f"tar xzf - -C {shlex.quote(rootfs)} --no-same-owner"
@@ -290,18 +287,14 @@ class RemoteToolProcess(ToolProcess):
             )
         )
 
-        # Upload (creates session dir + uploads all paths in one session)
         _logger.info("Creating remote session directory: %s", self._session_dir)
-        upload_list = [self._cwd, *self._extra_upload_paths]
-        _upload_paths(self._config, upload_list, self._session_dir)
-
-        # Build and execute remote command
-        remote_cwd = _local_to_remote_path(self._cwd, self._session_dir)
-        rewritten_args = _rewrite_cmd_args(
-            self._cmd_args, all_local_paths, self._session_dir
+        _upload_paths(
+            self._config, [self._cwd, *self._extra_upload_paths], self._session_dir
         )
+
+        remote_cwd = _local_to_remote_path(self._cwd, self._session_dir)
         full_cmd = _build_remote_command(
-            rewritten_args,
+            _rewrite_cmd_args(self._cmd_args, all_local_paths, self._session_dir),
             remote_cwd,
             self._env,
             all_local_paths,
@@ -318,7 +311,6 @@ class RemoteToolProcess(ToolProcess):
         self.returncode = returncode
         _logger.info("Remote command exited with code %d", self.returncode)
 
-        # Download
         download_list = [
             *([self._cwd] if self._download_cwd else []),
             *self._extra_download_paths,

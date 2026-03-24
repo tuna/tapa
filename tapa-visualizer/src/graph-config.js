@@ -41,15 +41,13 @@ const viewportOptions = {
 
 /** @type {(id: string | undefined) => string | undefined} */
 const trimEdgeId = id => {
-  // Remove the prefix part
-  id = id?.slice(id.indexOf("/") + 1);
-  // If still very long, then cap each part's length to 15
-  if (id && id.length > 20) {
-    id = id.split("/").map(
+  let trimmed = id?.slice(id.indexOf("/") + 1);
+  if (trimmed && trimmed.length > 20) {
+    trimmed = trimmed.split("/").map(
       part => part.length <= 15 ? part : `${part.slice(1, 12)}...`
     ).join("/");
   }
-  return id;
+  return trimmed;
 };
 
 /** @type {NodeStyle} */
@@ -162,11 +160,9 @@ const elementOptions = {
  * @satisfies {import("@antv/g6").AntVDagreLayoutOptions} */
 export const antvDagre = {
   type: "antv-dagre",
-  // rankdir: "LR",
   ranksep: 60,
   nodeSize: [120, 40],
   nodesep: 20,
-  // ranker: "network-simplex",
 };
 
 /**

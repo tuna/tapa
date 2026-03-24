@@ -52,22 +52,14 @@ class Graph(Base):
         # Find all leaf task instances
         leaves = self.get_top_task_inst().get_leaf_tasks_insts()
 
-        # obj['tasks']:
-        # Reconstruct the task definitions of the graph
-        #   are (1) all relevant definitions of the leaf tasks
         defs = {leaf.definition for leaf in leaves}
         new_obj["tasks"] = {d.name: d.to_dict() for d in defs}
-        #   and (2) also the top task
         top_name = self.obj["top"]
         assert isinstance(top_name, str)
         assert isinstance(new_obj["tasks"], dict)
         new_obj["tasks"][top_name] = self.get_top_task_def().to_dict()
 
-        # obj['tasks'][top_task]['tasks']:
-        # Reconstruct the subtasks of the top level task
-        #   insts = {definition: [instance, ...], ...}
         insts = {i: [j for j in leaves if j.definition is i] for i in defs}
-        #   {definition.name: [instance.to_dict(), ...], ...}
         new_subtask_instantiations = {
             definition.name: [
                 inst.to_dict(interconnect_global_name=True)
@@ -77,11 +69,7 @@ class Graph(Base):
         }
         new_obj["tasks"][top_name]["tasks"] = new_subtask_instantiations
 
-        # obj['tasks'][top_task]['fifos']:
-        # Reconstruct the local interconnects of the top level task
-        #   -> [instance, ...]
         interconnect_insts = self.get_top_task_inst().recursive_get_interconnect_insts()
-        #   -> {instance.gid: instance.definition.to_dict()}
         new_obj["tasks"][top_name]["fifos"] = {
             i.global_name: i.to_dict(
                 insts_override=new_subtask_instantiations,
@@ -116,8 +104,6 @@ class Graph(Base):
 
         assert new_insts, [inst.name for inst in insts]
 
-        # obj['tasks']:
-        # construct the task insts of the slot
         top_to_slot_inst_idx_map = defaultdict(dict)
         top_tasks = self.get_top_task_def().to_dict()["tasks"]
         assert isinstance(top_tasks, dict)
@@ -130,16 +116,10 @@ class Graph(Base):
             idx = len(new_obj["tasks"][inst.definition.name])
             top_to_slot_inst_idx_map[inst.definition.name][top_idx] = idx
 
-            # For mmap, we keep all crossbar at top level. Generate a port on slot
-            # for each subinst mmap port, and connect the subinst mmap to the slot
-            # port. At top level, we connect the slot port to either the top or the
-            # crossbar.
             assert inst.name
             new_inst_obj = _connect_subinst_mmap_to_slot_port(inst.obj, inst.name)
             new_obj["tasks"][inst.definition.name].append(new_inst_obj)
 
-        # obj['fifos']:
-        # construct the fifos of the slot
         fifos = self.get_top_task_inst().get_interconnect_insts()
         fifo_ports: list[str] = []
         new_obj["fifos"], fifo_ports = _get_slot_fifos(
@@ -148,9 +128,6 @@ class Graph(Base):
             task_inst_in_slot,
         )
 
-        # obj['ports']:
-        # Reconstruct the ports of the slot
-        # Add scalars to the slot ports
         scalar_args: set[str] = set()
         for inst in new_insts:
             assert isinstance(inst.obj["args"], dict)
@@ -161,9 +138,6 @@ class Graph(Base):
         assert isinstance(new_obj["ports"], list)
         new_ports = [port for port in new_obj["ports"] if port["name"] in scalar_args]
 
-        # Add fifos connecting the slot and the outside as ports
-        # Find the port on inst that connects to the fifo and copy
-        # the port to the slot
         new_ports += _get_used_ports(new_insts, fifo_ports)
         new_ports += _infer_mmap_ports_from_subtasks(new_insts)
 
@@ -180,8 +154,7 @@ class Graph(Base):
 
         return TaskDefinition(slot_name, new_obj, top)
 
-    # ruff: noqa: C901
-    def get_floorplan_top(
+    def get_floorplan_top(  # noqa: C901
         self,
         slot_defs: dict[str, TaskDefinition],
         task_inst_to_slot: dict[str, str],
@@ -191,8 +164,6 @@ class Graph(Base):
         assert top_obj["level"] != "lower"
         new_top_obj = copy.deepcopy(top_obj)
 
-        # obj['tasks']:
-        # construct slot instances
         new_top_insts = defaultdict(list)
         for slot_name, slot_def in slot_defs.items():
             assert isinstance(slot_def.obj["ports"], list)
@@ -220,8 +191,6 @@ class Graph(Base):
             new_top_insts[slot_name].append({"args": args, "step": 0})
         new_top_obj["tasks"] = new_top_insts
 
-        # obj['fifos']:
-        # remove all fifos except external fifo and the ones connecting the slots
         in_slot_fifos = []
         for slot_def in slot_defs.values():
             assert isinstance(slot_def.obj["fifos"], dict)

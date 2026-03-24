@@ -28,9 +28,8 @@ class ExternalPort(Base):
         parent: Base | None = None,
         definition: Base | None = None,
     ) -> None:
-        """Constructs a TAPA external port."""
         super().__init__(name=name, obj=obj, parent=parent, definition=definition)
-        self.global_name = self.name  # external port's name is global
+        self.global_name = self.name
 
     @lru_cache(None)
     def get_bitwidth(self) -> int:
@@ -41,13 +40,14 @@ class ExternalPort(Base):
     @lru_cache(None)
     def get_type(self) -> Type:
         """Returns the type of the external port."""
-        if self.obj["cat"] == "stream":
-            return ExternalPort.Type.STREAM
-        if self.obj["cat"] == "mmap":
-            return ExternalPort.Type.SYNC_MMAP
-        if self.obj["cat"] == "async_mmap":
-            return ExternalPort.Type.ASYNC_MMAP
-        if self.obj["cat"] == "scalar":
-            return ExternalPort.Type.SCALAR
-        msg = f'Unknown type "{self.obj["cat"]}"'
-        raise NotImplementedError(msg)
+        cat = str(self.obj["cat"])
+        try:
+            return {
+                "stream": ExternalPort.Type.STREAM,
+                "mmap": ExternalPort.Type.SYNC_MMAP,
+                "async_mmap": ExternalPort.Type.ASYNC_MMAP,
+                "scalar": ExternalPort.Type.SCALAR,
+            }[cat]
+        except KeyError:
+            msg = f'Unknown type "{cat}"'
+            raise NotImplementedError(msg) from None

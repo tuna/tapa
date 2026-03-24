@@ -69,7 +69,7 @@ def get_upper_task_ir_wires(
             )
 
     for inst in upper_task.instances:
-        for signal in ["ap_start", "ap_done", "ap_ready", "ap_idle"]:
+        for signal in ("ap_start", "ap_done", "ap_ready", "ap_idle"):
             wire_name = f"{inst.name}__{signal}"
             connections.append(
                 ModuleNet(

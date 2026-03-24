@@ -1,7 +1,6 @@
 import ast as _ast
 import logging
 import os
-import os.path
 import re
 import signal
 import subprocess
@@ -339,8 +338,7 @@ def _launch_simulation(
                     "Vivado simulation failed with error code %d", proc.returncode
                 )
                 sys.exit(proc.returncode)
-            else:
-                _logger.info("Vivado simulation finished successfully")
+            _logger.info("Vivado simulation finished successfully")
     else:
         with subprocess.Popen(
             command,
@@ -368,8 +366,7 @@ def _launch_simulation(
                     "Vivado simulation failed with error code %d", process.returncode
                 )
                 sys.exit(process.returncode)
-            else:
-                _logger.info("Vivado simulation finished successfully")
+            _logger.info("Vivado simulation finished successfully")
 
 
 if __name__ == "__main__":

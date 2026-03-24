@@ -41,10 +41,7 @@ class Vivado:
             *args,
         ]
         popen_kwargs: dict = {
-            "env": os.environ
-            | {
-                "HOME": self.cwd.name,
-            },
+            "env": os.environ | {"HOME": self.cwd.name},
         }
         cmd_args = get_cmd_args(cmd_args, ["XILINX_VIVADO"], popen_kwargs)
         extra_upload = getattr(self, "_extra_upload", ())
@@ -106,19 +103,16 @@ class VivadoHls:
             cmd_args_list.extend(["-tclargs", *tclargs])
         extra_env = getattr(self, "_extra_env", {})
         popen_kwargs: dict = {
-            "env": os.environ
-            | {
-                "HOME": cwd,
-            }
-            | extra_env,
+            "env": os.environ | {"HOME": cwd} | extra_env,
         }
-        cmd_args: list[str] | str = cmd_args_list
         if hls == "vitis_hls":
-            cmd_args = get_cmd_args(
+            cmd_args: list[str] | str = get_cmd_args(
                 cmd_args_list, ["XILINX_HLS", "XILINX_VITIS"], popen_kwargs
             )
         elif hls == "vivado_hls":
             cmd_args = get_cmd_args(cmd_args_list, ["XILINX_VIVADO"], popen_kwargs)
+        else:
+            cmd_args = cmd_args_list
         extra_upload = getattr(self, "_extra_upload", ())
         extra_download = getattr(self, "_extra_download", ())
         self._proc = create_tool_process(

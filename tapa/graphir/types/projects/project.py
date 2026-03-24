@@ -31,34 +31,14 @@ class Project(MutableModel):
         modules (list[AnyModuleDefinition]): The modules of the project.
     """
 
-    # ========================================
-    # ==== Information about the project. ====
-    # ========================================
     part_num: str | None = None
-
-    # modules, including all imported whiteboxes and blackboxes files
     modules: Modules
     blackboxes: list[BlackBox] = []  # noqa: RUF012
-
-    # additional optional information about the project, including:
-    # ifaces: the protocols of the ports of the modules
     ifaces: Interfaces | None = None
-
     module_to_rtl_pragmas: dict[str, list[str]] | None = None
     module_to_old_rtl_pragmas: dict[str, dict[str, dict[str, str | None]]] | None = None
-
-    # =================================
-    # ==== Context of the project. ====
-    # =================================
-
-    # floorplan output: the island of each module.
     island_to_pblock_range: dict[str, list[str]] | None = None
-    # records the *grid* coordinates of all rectangles belonging to each island
-
-    # routing info
     routes: list[IfaceInstPath] | None = None
-
-    # floorplan output: the information about the islands.
     resource_to_max_local_usage: dict[str, float] | None = None
     cut_to_crossing_count: dict[str, float] | None = None
 
@@ -76,11 +56,7 @@ class Project(MutableModel):
         The top of the new project will be the top of this project.
         """
         assert isinstance(other, Project)
-
-        # get a new copy
         prj = self.model_copy(deep=True)
-
-        # merge modules
         prj.modules = Modules(
             name="$root",
             module_definitions=(
@@ -88,17 +64,11 @@ class Project(MutableModel):
             ),
             top_name=self.modules.top_name,
         )
-
-        # merge blackboxes
         prj.blackboxes = self.blackboxes + other.blackboxes
-
-        # merge ifaces
-        if not self.ifaces:
-            prj.ifaces = other.ifaces
-        elif not other.ifaces:
-            prj.ifaces = self.ifaces
-        else:
+        if self.ifaces and other.ifaces:
             prj.ifaces = Interfaces(self.ifaces.root | other.ifaces.root)
+        else:
+            prj.ifaces = self.ifaces or other.ifaces
 
         return prj
 
@@ -172,31 +142,25 @@ class Project(MutableModel):
         Interfaces of an existing module are merged with ones from `new_ifaces` so that
         they can be deduplicated and validated for conflicts.
         """
-        if self.ifaces:
-            for module_name, new_iface_list in new_ifaces.items():
-                self.ifaces.root.setdefault(module_name, []).extend(new_iface_list)
-        else:
-            self.ifaces = Interfaces(new_ifaces)
+        if not self.ifaces:
+            self.ifaces = Interfaces({})
+        for module_name, new_iface_list in new_ifaces.items():
+            self.ifaces.root.setdefault(module_name, []).extend(new_iface_list)
 
     def reset_ifaces(self, new_ifaces: dict[str, list[AnyInterface]]) -> None:
         """Set the interfaces of the modules."""
-        if self.ifaces:
-            for module_name, new_iface_list in new_ifaces.items():
-                self.ifaces.root[module_name] = new_iface_list
-        else:
-            self.ifaces = Interfaces(new_ifaces)
+        if not self.ifaces:
+            self.ifaces = Interfaces({})
+        for module_name, new_iface_list in new_ifaces.items():
+            self.ifaces.root[module_name] = new_iface_list
 
     def get_all_ifaces(self) -> dict[str, list[AnyInterface]]:
         """Get all interfaces of the modules."""
-        if self.ifaces:
-            return self.ifaces.root
-        return {}
+        return self.ifaces.root if self.ifaces else {}
 
     def get_ifaces_of_module(self, module_name: str) -> list[AnyInterface]:
         """Get the interfaces of a module."""
-        if self.ifaces:
-            return self.ifaces.get(module_name)
-        return []
+        return self.ifaces.get(module_name) if self.ifaces else []
 
     def assign_inst_under_top_to_region(self, inst_to_region: dict[str, str]) -> None:
         """Assign each instance under top to a region."""

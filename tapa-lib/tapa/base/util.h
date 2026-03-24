@@ -27,22 +27,11 @@ inline constexpr int widthof(short) {
 
 }  // namespace internal
 
-/// Queries width (in bits) of the type.
-///
-/// @tparam T Type to be queried.
-/// @return   @c T::width if it exists, `sizeof(T) * CHAR_BIT` otherwise.
 template <typename T>
 inline constexpr int widthof() {
   return internal::widthof<T>(0);
 }
 
-/// Queries width (in bits) of the object.
-///
-/// @note         Unlike @c sizeof, the argument expression is evaluated (though
-///               unused).
-/// @tparam T     Type of @c object.
-/// @param object Object to be queried.
-/// @return       @c T::width if it exists, `sizeof(T) * CHAR_BIT` otherwise.
 template <typename T>
 inline constexpr int widthof(T object) {
   return internal::widthof<T>(0);

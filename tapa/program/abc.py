@@ -17,17 +17,13 @@ if TYPE_CHECKING:
     from tapa.task import Task
 
 
-# TODO: add docstrings for each property/method.
 class ProgramInterface:
     @property
     @abstractmethod
-    def top_task(self) -> "Task":
-        pass
+    def top_task(self) -> "Task": ...
 
     @abstractmethod
-    def get_task(self, name: str) -> "Task":
-        pass
+    def get_task(self, name: str) -> "Task": ...
 
     @abstractmethod
-    def _get_part_num(self, name: str) -> str:
-        pass
+    def _get_part_num(self, name: str) -> str: ...

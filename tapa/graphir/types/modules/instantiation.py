@@ -255,43 +255,31 @@ class ModuleInstantiation(HierarchicalNamespaceModel):
 
     def is_port_connect_to_constant(self, port_name: str) -> bool:
         """Check if the port is connected to a constant."""
-        expr = self.get_expression_of_port(port_name)
-        return all(token.type != token.Type.ID for token in expr)
+        return self.get_expression_of_port(port_name).is_all_literals()
 
     def resolve_parameters(
         self, module: "AnyModuleDefinition"
     ) -> dict[str, Expression]:
         """Resolve all parameters of the module instantiation."""
-        # (1) Collect the parameters and their default of the submodule.
         default_exprs: dict[str, Expression] = {
             p.name: p.expr for p in module.parameters
         }
-
-        # (2) Collect the resolved parameters of the submodule instance.
         resolved_exprs: dict[str, Expression] = {
             p.name: p.expr for p in self.parameters
         }
 
-        # (2b) Iterate over the default parameters and resolve them.
         while default_exprs:
             new_resolved = False
-
-            # Remove parameters already present in resolved_exprs.
             for name in set(default_exprs) & set(resolved_exprs):
                 default_exprs.pop(name)
                 new_resolved = True
-
-            # For all remaining default parameters, if all used identifiers are
-            # resolved, resolve the parameter.
             for name, expr in default_exprs.items():
                 if all(idf in resolved_exprs for idf in expr.get_used_identifiers()):
                     resolved_exprs[name] = expr.rewrite(resolved_exprs)
                     new_resolved = True
-
-            # If no new parameter is resolved, the parameters are not resolvable.
             if not new_resolved:
-                # HACK: if the unresolvable parameter has function `clog2`, we resolve
-                # it to $clog2. This is a workaround for the HLS tool >= 2024.2.
+                # HACK: workaround for HLS tool >= 2024.2 which uses `clog2`
+                # instead of `$clog2`.
                 workaround = False
                 for name, expr in default_exprs.items():
                     _logger.error("Cannot resolve the parameter %s = %s", name, expr)
@@ -301,7 +289,6 @@ class ModuleInstantiation(HierarchicalNamespaceModel):
                         workaround = True
                 if workaround:
                     continue
-                # If workaround is not applied, raise an error
                 msg = f"Cannot resolve the parameters of {self.name} in {module.name}."
                 raise ValueError(msg)
 

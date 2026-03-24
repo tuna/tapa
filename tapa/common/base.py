@@ -33,20 +33,10 @@ class Base:
         parent: Base | None = None,
         definition: Base | None = None,
     ) -> None:
-        """Construct TAPA object from a JSON description.
-
-        Args:
-          name: Name of the object, which is locally unique in its parent.
-          obj: The JSON dict object of the TAPA object.
-          parent: The TAPA object that has this object nested in.
-          definition: The TAPA definition object of this object, or self.
-        """
         self.obj = copy.deepcopy(obj)
         self.name = name
         self.parent = parent
         self.global_name = self._generate_global_name()
-
-        # Link definition to self if not specified
         self.definition = self if definition is None else definition
 
     def to_dict(self) -> dict[str, object]:
@@ -64,25 +54,19 @@ class Base:
 
     def _generate_global_name_without_sub(self, name: str | None) -> str:
         """Returns the global name for a name without an array subscript."""
-        # Circular import is avoided by importing Graph locally
         from tapa.common.graph import Graph  # noqa: PLC0415
 
         if type(self.parent) is Graph:
-            # (1) If its parent is the graph, its name is global already
             assert name is not None
             return name
 
         if self.parent is not None and self.parent.global_name is not None:
-            # (2) Try generate readable global name by appending parent's name
             assert name is not None
             return f"{name}_{self.parent.global_name}"
 
+        Base.uuid_counter += 1
         if self.name is not None:
-            # (3) Try generate global name by appending UUID counter
-            Base.uuid_counter += 1
             assert name is not None
             return f"{name}_{Base.uuid_counter}"
 
-        # (4) Use UUID counter directly
-        Base.uuid_counter += 1
         return f"object_{Base.uuid_counter}"

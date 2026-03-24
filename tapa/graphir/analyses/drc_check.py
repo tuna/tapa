@@ -21,7 +21,7 @@ def check_missing_wire(mod: GroupedModuleDefinition) -> None:
         | {param.name for param in mod.parameters}
     )
 
-    used_ids: set[str] = set()
+    used_ids = set()
     for inst in mod.submodules:
         for conn in inst.connections:
             used_ids |= conn.expr.get_used_identifiers()

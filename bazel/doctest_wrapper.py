@@ -13,7 +13,7 @@ import unittest
 
 def load_tests(loader, tests, ignore):  # noqa: ANN001, ANN201, ARG001
     package = importlib.import_module(os.environ["DOCTEST_PACKAGE"])
-    for importer, module_name, is_package in pkgutil.walk_packages(
+    for _importer, module_name, _is_package in pkgutil.walk_packages(
         path=package.__path__, prefix=package.__name__ + "."
     ):
         tests.addTests(doctest.DocTestSuite(importlib.import_module(module_name)))

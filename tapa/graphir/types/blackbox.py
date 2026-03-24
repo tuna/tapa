@@ -25,14 +25,7 @@ class BlackBox(Model):
 
     @staticmethod
     def from_binary(path: str, binary: bytes) -> "BlackBox":
-        """Return the blackbox of a binary content.
-
-        Args:
-            path (str): The relative path to the file.
-            binary (bytes): The binary representation of the file.
-
-        Returns:
-            BlackBox: The blackbox of the file.
+        """Return a BlackBox from a binary file content.
 
         Examples:
             >>> m = BlackBox.from_binary("test.bin", b"test")
@@ -43,9 +36,6 @@ class BlackBox(Model):
 
     def get_binary(self) -> bytes:
         """Return the binary representation of the file.
-
-        Returns:
-            bytes: The binary representation of the file.
 
         Examples:
             >>> m = BlackBox.from_binary("test.bin", b"test")

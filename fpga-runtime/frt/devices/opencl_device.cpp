@@ -5,8 +5,6 @@
 #include "frt/devices/opencl_device.h"
 
 #include <algorithm>
-#include <iostream>
-#include <iterator>
 #include <string>
 #include <vector>
 
@@ -32,11 +30,10 @@ int64_t GetTime(const cl::Event& event) {
 template <cl_int name>
 int64_t Earliest(const std::vector<cl::Event>& events,
                  int64_t default_value = 0) {
-  if (events.size() != 0) {
+  if (!events.empty()) {
     default_value = std::numeric_limits<int64_t>::max();
-    for (auto& event : events) {
+    for (auto& event : events)
       default_value = std::min(default_value, GetTime<name>(event));
-    }
   }
   return default_value;
 }
@@ -44,11 +41,10 @@ int64_t Earliest(const std::vector<cl::Event>& events,
 template <cl_int name>
 int64_t Latest(const std::vector<cl::Event>& events,
                int64_t default_value = 0) {
-  if (events.size() != 0) {
+  if (!events.empty()) {
     default_value = std::numeric_limits<int64_t>::min();
-    for (auto& event : events) {
+    for (auto& event : events)
       default_value = std::max(default_value, GetTime<name>(event));
-    }
   }
   return default_value;
 }
@@ -92,12 +88,11 @@ size_t OpenclDevice::SuspendBuffer(size_t index) {
 
 void OpenclDevice::Exec() {
   compute_event_.resize(kernels_.size());
-  int i = 0;
-  for (auto& pair : kernels_) {
-    CL_CHECK(cmd_.enqueueNDRangeKernel(pair.second, cl::NullRange,
-                                       cl::NDRange(1), cl::NDRange(1),
-                                       &load_event_, &compute_event_[i]));
-    ++i;
+  size_t i = 0;
+  for (auto& [k, kernel] : kernels_) {
+    CL_CHECK(cmd_.enqueueNDRangeKernel(kernel, cl::NullRange, cl::NDRange(1),
+                                       cl::NDRange(1), &load_event_,
+                                       &compute_event_[i++]));
   }
   is_finished_ = false;
 }
@@ -111,24 +106,19 @@ void OpenclDevice::Finish() {
 void OpenclDevice::Kill() { LOG(ERROR) << "OpenCl kernels cannot be killed"; }
 
 bool OpenclDevice::IsFinished() const {
-  if (is_finished_) {
-    return true;
-  } else {
+  if (!is_finished_) {
     LOG(ERROR) << "Not implemented, assuming to be running.";
-    return false;
   }
+  return is_finished_;
 }
 
 std::vector<ArgInfo> OpenclDevice::GetArgsInfo() const {
   std::vector<ArgInfo> args;
   args.reserve(arg_table_.size());
-  for (const auto& arg : arg_table_) {
-    args.push_back(arg.second);
-  }
-  std::sort(args.begin(), args.end(),
-            [](const ArgInfo& lhs, const ArgInfo& rhs) {
-              return lhs.index < rhs.index;
-            });
+  for (const auto& [k, v] : arg_table_) args.push_back(v);
+  std::sort(args.begin(), args.end(), [](const ArgInfo& a, const ArgInfo& b) {
+    return a.index < b.index;
+  });
   return args;
 }
 
@@ -145,22 +135,22 @@ int64_t OpenclDevice::StoreTimeNanoSeconds() const {
          Earliest<CL_PROFILING_COMMAND_START>(store_event_);
 }
 size_t OpenclDevice::LoadBytes() const {
-  size_t total_size = 0;
+  size_t total = 0;
   cl_int err;
-  for (const auto& buffer : GetLoadBuffers()) {
-    total_size += buffer.getInfo<CL_MEM_SIZE>(&err);
+  for (const auto& buf : GetLoadBuffers()) {
+    total += buf.getInfo<CL_MEM_SIZE>(&err);
     CL_CHECK(err);
   }
-  return total_size;
+  return total;
 }
 size_t OpenclDevice::StoreBytes() const {
-  size_t total_size = 0;
+  size_t total = 0;
   cl_int err;
-  for (const auto& buffer : GetStoreBuffers()) {
-    total_size += buffer.getInfo<CL_MEM_SIZE>(&err);
+  for (const auto& buf : GetStoreBuffers()) {
+    total += buf.getInfo<CL_MEM_SIZE>(&err);
     CL_CHECK(err);
   }
-  return total_size;
+  return total;
 }
 
 void OpenclDevice::Initialize(const cl::Program::Binaries& binaries,
@@ -174,7 +164,7 @@ void OpenclDevice::Initialize(const cl::Program::Binaries& binaries,
   for (const auto& platform : platforms) {
     std::string platformName = platform.getInfo<CL_PLATFORM_NAME>(&err);
     CL_CHECK(err);
-    LOG(INFO) << "Found platform: " << platformName.c_str();
+    LOG(INFO) << "Found platform: " << platformName;
     if (platformName == vendor_name) {
       std::vector<cl::Device> devices;
       CL_CHECK(platform.getDevices(CL_DEVICE_TYPE_ACCELERATOR, &devices));
@@ -197,9 +187,7 @@ void OpenclDevice::Initialize(const cl::Program::Binaries& binaries,
           std::vector<int> binary_status;
           program_ =
               cl::Program(context_, {device}, binaries, &binary_status, &err);
-          for (auto status : binary_status) {
-            CL_CHECK(status);
-          }
+          for (auto s : binary_status) CL_CHECK(s);
           CL_CHECK(err);
           CL_CHECK(program_.build());
           for (size_t i = 0; i < kernel_names.size(); ++i) {
@@ -215,7 +203,6 @@ void OpenclDevice::Initialize(const cl::Program::Binaries& binaries,
     }
   }
   LOG(FATAL) << "Target platform '" + vendor_name + "' not found";
-  is_finished_ = true;
 }
 
 cl::Buffer OpenclDevice::CreateBuffer(size_t index, cl_mem_flags flags,
@@ -228,21 +215,17 @@ cl::Buffer OpenclDevice::CreateBuffer(size_t index, cl_mem_flags flags,
 }
 
 std::vector<cl::Memory> OpenclDevice::GetLoadBuffers() const {
-  std::vector<cl::Memory> buffers;
-  buffers.reserve(load_indices_.size());
-  for (auto index : load_indices_) {
-    buffers.push_back(buffer_table_.at(index));
-  }
-  return buffers;
+  std::vector<cl::Memory> bufs;
+  bufs.reserve(load_indices_.size());
+  for (auto idx : load_indices_) bufs.push_back(buffer_table_.at(idx));
+  return bufs;
 }
 
 std::vector<cl::Memory> OpenclDevice::GetStoreBuffers() const {
-  std::vector<cl::Memory> buffers;
-  buffers.reserve(store_indices_.size());
-  for (auto index : store_indices_) {
-    buffers.push_back(buffer_table_.at(index));
-  }
-  return buffers;
+  std::vector<cl::Memory> bufs;
+  bufs.reserve(store_indices_.size());
+  for (auto idx : store_indices_) bufs.push_back(buffer_table_.at(idx));
+  return bufs;
 }
 
 std::pair<int, cl::Kernel> OpenclDevice::GetKernel(size_t index) const {

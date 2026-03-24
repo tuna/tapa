@@ -157,13 +157,13 @@ class BaseInterface(Model):
         )
 
     def is_clk(self) -> bool:
-        """Return if the interface is a clock or reset interface."""
-        msg = f"is_clk_or_reset is not implemented for {self.__class__.__name__}."
+        """Return if the interface is a clock interface."""
+        msg = f"is_clk is not implemented for {self.__class__.__name__}."
         raise NotImplementedError(msg)
 
     def is_reset(self) -> bool:
-        """Return if the interface is a clock or reset interface."""
-        msg = f"is_clk_or_reset is not implemented for {self.__class__.__name__}."
+        """Return if the interface is a reset interface."""
+        msg = f"is_reset is not implemented for {self.__class__.__name__}."
         raise NotImplementedError(msg)
 
     def is_clk_or_reset(self) -> bool:

@@ -147,10 +147,6 @@ bazel_dep(name = "tinyxml2", version = "10.0.0")
 bazel_dep(name = "libuuid", version = "2.39.3.bcr.1")
 bazel_dep(name = "yaml-cpp", version = "0.8.0")
 
-OPENCL_VERSION = "2.3.3"
-
-OPENCL_SHA256 = "8cd8e8e129db3081a64090fc1252bec39dc88cdb7b3f929315e014b75069bd9d"
-
 http_archive(
     name = "OpenCL",
     patch_args = ["-p1"],
@@ -208,26 +204,21 @@ EOF
 #define PACKAGE_TARNAME "ocl-icd"
 #define PACKAGE_URL ""
 #define STDC_HEADERS 1
-#define VERSION "{}"
+#define VERSION "2.3.3"
 #define PACKAGE_VERSION VERSION
 #define PACKAGE_STRING "OpenCL ICD Loader " VERSION
 EOF
-        """.format(OPENCL_VERSION),
+        """,
     ],
     patches = [
         "//bazel:patches/opencl/ocl_icd.h.patch",
         "//bazel:patches/opencl/ocl_icd_loader_gen.h.patch",
         "//bazel:patches/opencl/ocl_icd_loader_gen.c.patch",
     ],
-    sha256 = OPENCL_SHA256,
-    strip_prefix = "ocl-icd-{}".format(OPENCL_VERSION),
-    urls = ["https://github.com/OCL-dev/ocl-icd/archive/refs/tags/v{}.tar.gz".format(OPENCL_VERSION)],
+    sha256 = "8cd8e8e129db3081a64090fc1252bec39dc88cdb7b3f929315e014b75069bd9d",
+    strip_prefix = "ocl-icd-2.3.3",
+    urls = ["https://github.com/OCL-dev/ocl-icd/archive/refs/tags/v2.3.3.tar.gz"],
 )
-
-# Latest version of OpenCL-CLHPP supporting OpenCL 1.2
-OPENCL_CLHPP_VERSION = "2023.02.06"
-
-OPENCL_CLHPP_SHA256 = "2726106df611fb5cb65503a52df27988d80c0b8844c8f0901c6092ab43701e8c"
 
 http_archive(
     name = "opencl-clhpp",
@@ -244,14 +235,10 @@ cc_library(
 EOF
 """,
     ],
-    sha256 = OPENCL_CLHPP_SHA256,
-    strip_prefix = "OpenCL-CLHPP-{}".format(OPENCL_CLHPP_VERSION),
-    urls = ["https://github.com/KhronosGroup/OpenCL-CLHPP/archive/refs/tags/v{}.tar.gz".format(OPENCL_CLHPP_VERSION)],
+    sha256 = "2726106df611fb5cb65503a52df27988d80c0b8844c8f0901c6092ab43701e8c",
+    strip_prefix = "OpenCL-CLHPP-2023.02.06",
+    urls = ["https://github.com/KhronosGroup/OpenCL-CLHPP/archive/refs/tags/v2023.02.06.tar.gz"],
 )
-
-XRT_VERSION = "202510.2.19.194"
-
-XRT_SHA256 = "a901127412261d4ad8c1c6978f1d69680573af33a8702366031805c6acf42ebd"
 
 http_archive(
     name = "xilinx_xrt",
@@ -275,9 +262,9 @@ cc_library(
 EOF
 """,
     ],
-    sha256 = XRT_SHA256,
-    strip_prefix = "XRT-{}".format(XRT_VERSION),
-    urls = ["https://github.com/Xilinx/XRT/archive/refs/tags/{}.tar.gz".format(XRT_VERSION)],
+    sha256 = "a901127412261d4ad8c1c6978f1d69680573af33a8702366031805c6acf42ebd",
+    strip_prefix = "XRT-202510.2.19.194",
+    urls = ["https://github.com/Xilinx/XRT/archive/refs/tags/202510.2.19.194.tar.gz"],
 )
 
 # Required by nuitka build
@@ -406,8 +393,6 @@ http_file(
     url = "https://snap.stanford.edu/data/facebook_combined.txt.gz",
 )
 
-# Required to generate `compile_commands.json`
-# Usage: `bazel run :refresh_compile_commands`
 git_override(
     module_name = "hedron_compile_commands",
     commit = "abb61a688167623088f8768cc9264798df6a9d10",

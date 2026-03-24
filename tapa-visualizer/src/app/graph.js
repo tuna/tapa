@@ -23,18 +23,15 @@ export const createGraph = ({
   onNodeClick,
   onResetSidebar,
 }) => {
-  /** @type {Graph} */
-  let graph;
-
   /** @type {((states: Record<string, string[]>) => Record<string, string[]>)} */
   const showSelectedNodes = states => {
     const selected = Object.keys(states);
-    selected.length > 0 &&
-    onResetSidebar(`Selected nodes: ${selected.join(", ")}`);
+    if (selected.length > 0) onResetSidebar(`Selected nodes: ${selected.join(", ")}`);
     return states;
   };
 
-  graph = new Graph({
+  /** @type {Graph} */
+  const graph = new Graph({
     ...graphOptions,
     layout: getLayout(),
     behaviors: [

@@ -12,12 +12,11 @@ import { getComboName } from "../helper.js";
  * @param {import("@antv/g6").EdgeData[]} sources
  * @param {import("@antv/g6").EdgeData[]} targets */
 export const getNodeSidebarModel = (node, sources, targets) => {
-  /** @type {string[]} */
-  const neighbors = [];
-  const neighborIds = new Set();
-  sources.forEach(edge => neighborIds.add(edge.target));
-  targets.forEach(edge => neighborIds.add(edge.source));
-  neighbors.push(...neighborIds.values());
+  const neighborIds = new Set([
+    ...sources.map(edge => edge.target),
+    ...targets.map(edge => edge.source),
+  ]);
+  const neighbors = Array.from(neighborIds);
 
   return {
     neighbors,

@@ -41,13 +41,13 @@ class StubModuleDefinition(BaseModuleDefinition):
         yield from self.parameters
 
     def get_submodules_module_names(self) -> tuple[str, ...]:  # noqa: PLR6301
-        """No submodules in a stub module."""
+        """Return empty tuple: stub modules have no submodules."""
         return ()
 
     def is_leaf_module(self) -> bool:  # noqa: PLR6301
-        """Stub module is always a leaf module."""
+        """Return True: stub modules are always leaf modules."""
         return True
 
     def is_internal_module(self) -> bool:  # noqa: PLR6301
-        """Stub module is not an internal module."""
+        """Return False: stub modules are not internal modules."""
         return False

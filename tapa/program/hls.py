@@ -259,15 +259,10 @@ class ProgramHlsMixin(
 
     def _get_aie_graph(self, task: Task) -> str:
         """Generates the complete AIE graph code."""
-        _header_decl, kernel_decl, port_decl = _gen_declarations(task)
-        (
-            kernel_def,
-            kernel_source,
-            kernel_header,
-            kernel_runtime,
-            kernel_loc,
-            port_def,
-        ) = _gen_definitions(task)
+        _, kernel_decl, port_decl = _gen_declarations(task)
+        kernel_def, kernel_source, kernel_runtime, kernel_loc, port_def = (
+            _gen_definitions(task)
+        )
         connect_def = _gen_connections(task)
 
         return _env.get_template("aie_graph_header.j2").render(
@@ -275,7 +270,7 @@ class ProgramHlsMixin(
             kernel_decl="\n\t".join(kernel_decl),
             kernel_def="\n\t\t".join(kernel_def),
             kernel_source="\n\t\t".join(kernel_source),
-            kernel_header="\n\t\t".join(kernel_header),
+            kernel_header="",
             kernel_runtime="\n\t\t".join(kernel_runtime),
             kernel_loc="\n\t\t".join(kernel_loc),
             port_decl="\n\t".join(port_decl),
@@ -299,11 +294,12 @@ def _gen_declarations(task: Task) -> tuple[list[str], list[str], list[str]]:
         for name, insts in task.tasks.items()
         for i in range(len(insts))
     ]
-    header_decl = [f'#include "{name}.h"' for name in task.tasks]
-    return header_decl, kernel_decl, port_decl
+    return [], kernel_decl, port_decl
 
 
-def _gen_definitions(task: Task) -> tuple[list[str], ...]:
+def _gen_definitions(
+    task: Task,
+) -> tuple[list[str], list[str], list[str], list[str], list[str]]:
     """Generates kernel and port definitions."""
     kernel_def = [
         f"k_{name}{i} = kernel::create({name});"
@@ -315,8 +311,6 @@ def _gen_definitions(task: Task) -> tuple[list[str], ...]:
         for name, insts in task.tasks.items()
         for i in range(len(insts))
     ]
-
-    kernel_header = []
     kernel_runtime = [
         f"runtime<ratio>(k_{name}{i}) = OCCUPANCY;"
         for name, insts in task.tasks.items()
@@ -327,7 +321,6 @@ def _gen_definitions(task: Task) -> tuple[list[str], ...]:
         for name, insts in task.tasks.items()
         for i in range(len(insts))
     ]
-
     port_def = [
         (
             f'p_{port.name} = input_plio::create("{port.name}",'
@@ -338,14 +331,7 @@ def _gen_definitions(task: Task) -> tuple[list[str], ...]:
         )
         for port in task.ports.values()
     ]
-    return (
-        kernel_def,
-        kernel_source,
-        kernel_header,
-        kernel_runtime,
-        kernel_loc,
-        port_def,
-    )
+    return kernel_def, kernel_source, kernel_runtime, kernel_loc, port_def
 
 
 def _gen_connections(task: Task) -> list[str]:  # noqa: C901 PLR0912

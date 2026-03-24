@@ -113,7 +113,7 @@ def get_fsm_ifaces(
         ap_ctrl_ports = (
             HANDSHAKE_CLK,
             HANDSHAKE_RST_N,
-            *tuple(
+            *(
                 port.name
                 for port in fsm_ir.ports
                 if port.name.startswith(f"{slot_name}_0")

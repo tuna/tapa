@@ -7,7 +7,6 @@
 #include <bitset>
 #include <sstream>
 #include <string>
-#include <tuple>
 #include <unordered_map>
 #include <vector>
 
@@ -29,27 +28,17 @@ std::unordered_map<std::string, SharedMemoryQueue::UniquePtr> InitStreamMap() {
   CHECK(env != nullptr) << "Please set `TAPA_FAST_COSIM_DPI_ARGS`";
   VLOG(1) << "TAPA_FAST_COSIM_DPI_ARGS: " << env;
 
-  std::vector<std::tuple<std::string, std::string>> stream_id_and_path;
-  {
-    std::istringstream ss(env);
-    std::string stream_entry;  // `id:path`
-    while (std::getline(ss, stream_entry, /*delimiter=*/',')) {
-      const std::string::size_type pos = stream_entry.find(':');
-      CHECK_NE(pos, std::string::npos) << stream_entry;
-      stream_id_and_path.push_back({
-          stream_entry.substr(0, pos),
-          stream_entry.substr(pos + 1),
-      });
-    }
-  }
-
   std::unordered_map<std::string, SharedMemoryQueue::UniquePtr> streams;
-  for (const std::tuple<std::string, std::string>& entry : stream_id_and_path) {
-    const std::string& stream_id = std::get<0>(entry);
-    const std::string& stream_path = std::get<1>(entry);
-    int fd = shm_open(stream_path.c_str(), O_RDWR, 0600);
-    VLOG(2) << "fd: " << fd << " <=> arg: " << stream_id;
-    streams[stream_id] = SharedMemoryQueue::New(fd);
+  std::istringstream ss(env);
+  std::string entry;
+  while (std::getline(ss, entry, ',')) {
+    const auto pos = entry.find(':');
+    CHECK_NE(pos, std::string::npos) << entry;
+    const std::string id = entry.substr(0, pos);
+    const std::string path = entry.substr(pos + 1);
+    int fd = shm_open(path.c_str(), O_RDWR, 0600);
+    VLOG(2) << "fd: " << fd << " <=> arg: " << id;
+    streams[id] = SharedMemoryQueue::New(fd);
   }
   return streams;
 }
@@ -199,7 +188,7 @@ DPI_DLLESPEC void ostream(
     // the next cycle.
     bool is_full = ostream->full();
     full_n = is_full ? sv_0 : sv_1;
-    last_full_n[id] = is_full ? false : true;
+    last_full_n[id] = !is_full;
   }
 }
 

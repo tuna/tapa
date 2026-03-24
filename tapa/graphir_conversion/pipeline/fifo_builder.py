@@ -57,7 +57,7 @@ def infer_fifo_data_range(
             .module.get_port_of(producer_fifo, STREAM_DATA_SUFFIXES[1])
             .name
         )
-        consumer_data_port = (
+        (
             subtasks[consumer_task_name]
             .module.get_port_of(consumer_fifo, STREAM_DATA_SUFFIXES[0])
             .name
@@ -66,13 +66,9 @@ def infer_fifo_data_range(
         producer_data_port = get_stream_port_name(
             producer_fifo, STREAM_DATA_SUFFIXES[1]
         )
-        consumer_data_port = get_stream_port_name(
-            consumer_fifo, STREAM_DATA_SUFFIXES[0]
-        )
+        get_stream_port_name(consumer_fifo, STREAM_DATA_SUFFIXES[0])
 
-    range0 = leaf_ir_defs[producer_task_name].get_port(producer_data_port).range
-    _ = leaf_ir_defs[consumer_task_name].get_port(consumer_data_port).range
-    return range0
+    return leaf_ir_defs[producer_task_name].get_port(producer_data_port).range
 
 
 def _get_fifo_data_width(fifo_range: Range) -> Expression:

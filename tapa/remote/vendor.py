@@ -44,13 +44,13 @@ def _query_remote_xilinx_paths(
         _logger.warning("Failed to query Xilinx paths on remote: %s", err)
         return {}
 
-    result: dict[str, str] = {}
-    for line in output.strip().splitlines():
-        if "=" in line:
-            key, _, val = line.partition("=")
-            if val:
-                result[key] = val
-    return result
+    return {
+        key: val
+        for line in output.strip().splitlines()
+        if "=" in line
+        for key, _, val in [line.partition("=")]
+        if val
+    }
 
 
 def _download_dir(
@@ -125,7 +125,6 @@ def _patch_vendor_headers_for_macos(cache_dir: str) -> None:
     if patched_any:
         with open(marker, "w", encoding="utf-8") as f:
             f.write("patched\n")
-        _logger.info("Applied macOS libc++ compatibility patches")
 
 
 def sync_remote_vendor_includes(config: RemoteConfig) -> str | None:
@@ -173,8 +172,8 @@ def sync_remote_vendor_includes(config: RemoteConfig) -> str | None:
     )
     gcc_include_dirs = stdout.decode("utf-8", errors="replace").strip()
 
-    for gcc_include in filter(
-        None, (ln.strip() for ln in gcc_include_dirs.splitlines())
+    for gcc_include in (
+        ln.strip() for ln in gcc_include_dirs.splitlines() if ln.strip()
     ):
         # Compute relative path: tps/lnx64/gcc-X.Y.Z/include
         local_gcc = os.path.join(cache_dir, os.path.relpath(gcc_include, xilinx_tool))

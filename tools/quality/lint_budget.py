@@ -82,41 +82,46 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _python_paths(repo_root: Path, args: argparse.Namespace) -> list[Path]:
-    if args.mode == "staged":
-        candidates = _staged_files(repo_root)
-    else:
-        candidates = [(repo_root / path).resolve() for path in args.paths]
-    python_paths = [
+    candidates = (
+        _staged_files(repo_root)
+        if args.mode == "staged"
+        else [(repo_root / path).resolve() for path in args.paths]
+    )
+    return sorted(
         path
         for path in candidates
         if path.suffix == ".py" and path.exists() and path.is_file()
-    ]
-    return sorted(python_paths)
+    )
+
+
+def _before_count(repo_root: Path, rel: Path, config: Path) -> int:
+    if not _head_has_file(repo_root, rel):
+        return 0
+    with tempfile.TemporaryDirectory(prefix="lint-budget-") as tmp_dir:
+        tmp_path = Path(tmp_dir) / rel
+        tmp_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path.write_text(_load_head_file(repo_root, rel), encoding="utf-8")
+        return _ruff_count(tmp_path, config)
 
 
 def main() -> int:
     args = _parse_args()
     repo_root = _repo_root()
     config = repo_root / "pyproject.toml"
-    deltas: list[LintDelta] = []
-    for path in _python_paths(repo_root, args):
-        rel = path.relative_to(repo_root)
-        after = _ruff_count(path, config)
-        before = 0
-        if _head_has_file(repo_root, rel):
-            with tempfile.TemporaryDirectory(prefix="lint-budget-") as tmp_dir:
-                tmp_path = Path(tmp_dir) / rel
-                tmp_path.parent.mkdir(parents=True, exist_ok=True)
-                tmp_path.write_text(_load_head_file(repo_root, rel), encoding="utf-8")
-                before = _ruff_count(tmp_path, config)
-        if after > before:
-            deltas.append(LintDelta(path=rel, before=before, after=after))
+    deltas = [
+        LintDelta(path=rel, before=before, after=after)
+        for path in _python_paths(repo_root, args)
+        for rel in [path.relative_to(repo_root)]
+        for after in [_ruff_count(path, config)]
+        for before in [_before_count(repo_root, rel, config)]
+        if after > before
+    ]
     if not deltas:
         return 0
     sys.stderr.write("Lint budget regression detected (ruff findings increased):\n")
     for delta in deltas:
         sys.stderr.write(
-            f"  - {delta.path}: before={delta.before} -> after={delta.after}\n",
+            f"  - {delta.path}: before={delta.before} -> after={delta.after}\n"
         )
     sys.stderr.write(f"Total regressions: {len(deltas)}\n")
     return 1

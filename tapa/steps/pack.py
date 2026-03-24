@@ -154,9 +154,7 @@ def get_vitis_script(
     connectivity: str | None,
 ) -> str:
     """Generate v++ commands to run implementation."""
-    script = []
-    script.append("#!/bin/bash")
-
+    script = ["#!/bin/bash"]
     vitis_command = VITIS_COMMAND_BASIC
 
     script.extend(("TARGET=hw", "# TARGET=hw_emu", "# DEBUG=-g"))

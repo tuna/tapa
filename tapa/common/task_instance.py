@@ -140,12 +140,12 @@ class TaskInstance(Base):
         if self.definition.get_level() == TaskDefinition.Level.LEAF:
             return []
         return list(
-            itertools.chain(
-                self.get_interconnect_insts(),
-                *(
+            itertools.chain.from_iterable(
+                [self.get_interconnect_insts()]
+                + [
                     t.recursive_get_interconnect_insts()
                     for t in self.get_subtasks_insts()
-                ),
+                ]
             )
         )
 

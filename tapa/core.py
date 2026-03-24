@@ -1,11 +1,11 @@
 """Core logic of TAPA."""
 
-# ruff: noqa: I001
 __copyright__ = """
 Copyright (c) 2025 RapidStream Design Automation, Inc. and contributors.
 All rights reserved. The contributor(s) of this file has/have agreed to the
 RapidStream Contributor License Agreement.
 """
+
 import decimal
 import functools
 import json
@@ -14,12 +14,12 @@ import os
 import shutil
 import tarfile
 import tempfile
+from graphlib import TopologicalSorter
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
-from graphlib import TopologicalSorter
-
 import yaml
+from pyverilog.vparser.ast import Plus
 
 from tapa.common.paths import get_tapacc_cflags
 from tapa.common.target import Target
@@ -30,22 +30,35 @@ from tapa.program.pack import ProgramPackMixin
 from tapa.program.synthesis import ProgramSynthesisMixin
 from tapa.program_codegen.fifos import (
     connect_fifos as connect_fifos_codegen,
+)
+from tapa.program_codegen.fifos import (
     instantiate_fifos as instantiate_fifos_codegen,
 )
 from tapa.program_codegen.program import (
     get_fifo_width as get_fifo_width_codegen,
+)
+from tapa.program_codegen.program import (
     get_grouping_constraints as get_grouping_constraints_codegen,
+)
+from tapa.program_codegen.program import (
     get_rtl_templates_info as get_rtl_templates_info_codegen,
-    instrument_upper_and_template_task as instrument_upper_and_template_task_codegen,
+)
+from tapa.program_codegen.program import (
     instantiate_children_tasks as instantiate_children_tasks_codegen,
+)
+from tapa.program_codegen.program import (
     instantiate_global_fsm as instantiate_global_fsm_codegen,
+)
+from tapa.program_codegen.program import (
+    instrument_upper_and_template_task as instrument_upper_and_template_task_codegen,
+)
+from tapa.program_codegen.program import (
     replace_custom_rtl as replace_custom_rtl_codegen,
 )
 from tapa.task import Task
 from tapa.verilog.util import Pipeline
 from tapa.verilog.xilinx.const import DONE, START
 from tapa.verilog.xilinx.module import Module
-from pyverilog.vparser.ast import Plus
 
 _logger = logging.getLogger().getChild(__name__)
 

@@ -138,10 +138,7 @@ export const getGraphData = (json, options = defaultOptions) => {
         // Upper 2: If there is more than 1 upper task, color node by task level
         if (colorByTaskLevel) style.fill = altNodeColor;
 
-        // Put combo's node under it
-        // TODO: make it an option?
-        // combo = getComboId(subTaskName);
-      }
+        }
 
       // Add node for subTask
       if (grouping !== "merge") {

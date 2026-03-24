@@ -149,8 +149,6 @@ _DPI_ATTRS = {
     "srcs": attr.label_list(allow_files = True),
     "hdrs": attr.label_list(allow_files = True),
     "includes": attr.label_list(allow_files = True),
-    # Use _no_lto_transition so deps are compiled without LTO. Xilinx's
-    # bundled binutils-2.37 cannot handle LTO bitcode objects.
     "deps": attr.label_list(providers = [CcInfo], cfg = _no_lto_transition),
     "_allowlist_function_transition": attr.label(
         default = "@bazel_tools//tools/allowlists/function_transition_allowlist",

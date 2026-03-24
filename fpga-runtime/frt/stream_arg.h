@@ -26,11 +26,6 @@ class StreamArg {
     return std::any_cast<Context>(context_);
   }
 
-  template <typename Context>
-  void set(Context context) {
-    context_ = context;
-  }
-
  private:
   std::any context_;
 };

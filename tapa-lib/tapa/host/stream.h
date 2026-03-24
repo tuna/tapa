@@ -162,24 +162,20 @@ class frt_queue : public base_queue<T> {
   bool empty() const override {
     if (this->stream_.empty()) {
       if (is_frt_arg_.load(std::memory_order_relaxed)) {
-        // Yield to the OS to allow the simulation to produce data.
         sleep(0);
       }
       return true;
-    } else {
-      return false;
     }
+    return false;
   }
   bool full() const override {
     if (this->stream_.full()) {
       if (is_frt_arg_.load(std::memory_order_relaxed)) {
-        // Yield to the OS to allow the simulation to consume data.
         sleep(0);
       }
       return true;
-    } else {
-      return false;
     }
+    return false;
   }
   void push(const T& val) override {
     this->maybe_log(val);

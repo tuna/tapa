@@ -18,7 +18,6 @@ load(
 )
 
 def _remote_host_flag():
-    """Construct --remote-host flag value from VARS.bzl remote config."""
     if not REMOTE_HOST:
         return ""
     host_part = REMOTE_HOST
@@ -29,26 +28,14 @@ def _remote_host_flag():
     return host_part
 
 def _remote_xilinx_settings():
-    """Return the remote Xilinx settings path, auto-computed if not set."""
     if REMOTE_XILINX_SETTINGS:
         return REMOTE_XILINX_SETTINGS
     if REMOTE_XILINX_TOOL_PATH:
-        # Construct from tool path + version (matches local VARS.bzl logic).
         subdir = "/Vitis/" if XILINX_TOOL_VERSION >= "2024.2" else "/Vitis_HLS/"
         return REMOTE_XILINX_TOOL_PATH + subdir + XILINX_TOOL_VERSION + "/settings64.sh"
     return ""
 
-def _remote_ssh_control_dir():
-    """Return the configured SSH multiplex control directory."""
-    return REMOTE_SSH_CONTROL_DIR
-
-def _remote_ssh_control_persist():
-    """Return the configured SSH multiplex control persist duration."""
-    return REMOTE_SSH_CONTROL_PERSIST
-
-# Define the implementation function for the custom TAPA target rule.
 def _tapa_xo_impl(ctx):
-    # Retrieve the inputs and attributes from the rule invocation.
     tapa_cli = ctx.executable.tapa_cli
     src = ctx.file.src
     top_name = ctx.attr.top_name
@@ -65,10 +52,8 @@ def _tapa_xo_impl(ctx):
 
     outputs = [work_dir]
 
-    # Start building the command to run tapa-cli.
     tapa_cmd = [tapa_cli.path, "--work-dir", work_dir.path]
 
-    # Pass remote execution flags when configured in VARS.bzl.
     remote_host = _remote_host_flag()
     if remote_host:
         tapa_cmd.extend(["--remote-host", remote_host])
@@ -77,67 +62,50 @@ def _tapa_xo_impl(ctx):
         xilinx_settings = _remote_xilinx_settings()
         if xilinx_settings:
             tapa_cmd.extend(["--remote-xilinx-settings", xilinx_settings])
-        control_dir = _remote_ssh_control_dir()
-        if control_dir:
-            tapa_cmd.extend(["--remote-ssh-control-dir", control_dir])
-        control_persist = _remote_ssh_control_persist()
-        if control_persist:
-            tapa_cmd.extend(["--remote-ssh-control-persist", control_persist])
+        if REMOTE_SSH_CONTROL_DIR:
+            tapa_cmd.extend(["--remote-ssh-control-dir", REMOTE_SSH_CONTROL_DIR])
+        if REMOTE_SSH_CONTROL_PERSIST:
+            tapa_cmd.extend(["--remote-ssh-control-persist", REMOTE_SSH_CONTROL_PERSIST])
 
-    # Build the command for tapa-cli analyze.
     tapa_cmd.extend(["analyze", "--input", src.path, "--top", top_name])
 
-    # Add tapacc and tapa-clang executables.
     if ctx.file.tapacc:
         tapa_cmd.extend(["--tapacc", ctx.file.tapacc])
     if ctx.file.tapa_clang:
         tapa_cmd.extend(["--tapa-clang", ctx.file.tapa_clang])
 
-    # Add optional flags, if specified.
     if ctx.attr.cflags:
         tapa_cmd.extend(["--cflags", ctx.attr.cflags])
 
-    # Add include directory, if specified.
     if ctx.files.include:
         for include in ctx.files.include:
             tapa_cmd.extend(["--cflags", "-I" + include.path])
 
     tapa_cmd.extend(["--target", ctx.attr.target])
 
-    # Add flatten hierarchy, if specified.
     if ctx.attr.flatten_hierarchy:
         tapa_cmd.extend(["--flatten-hierarchy"])
 
-    # Build the command for tapa-cli floorplan.
     tapa_cmd.extend(["floorplan"])
 
-    # Add floorplan path, if specified.
     if ctx.file.floorplan_path:
         tapa_cmd.extend(["--floorplan-path", ctx.file.floorplan_path.path])
 
-    # Build the command for tapa-cli synth.
     tapa_cmd.extend(["synth"])
 
-    # Add floorplan path, if specified.
     if ctx.file.floorplan_path:
         tapa_cmd.extend(["--floorplan-path", ctx.file.floorplan_path.path])
 
-    # Add floorplan config, if specified.
     if ctx.file.floorplan_config:
         tapa_cmd.extend(["--floorplan-config", ctx.file.floorplan_config.path])
 
-    # Add device config path, if specified.
     if ctx.file.device_config:
         tapa_cmd.extend(["--device-config", ctx.file.device_config.path])
 
-    # Redact report schema version for better cache hit.
     tapa_cmd.extend(["--override-report-schema-version", "redacted"])
 
-    # Limit the number of jobs to reduce excessive amount of processes.
-    # Launch 2 workers to avoid wasting time on I/O.
     tapa_cmd.extend(["--jobs", "2"])
 
-    # Add optional parameters to synth command.
     if ctx.attr.platform_name:
         tapa_cmd.extend(["--platform", ctx.attr.platform_name])
     if ctx.attr.clock_period:
@@ -145,10 +113,8 @@ def _tapa_xo_impl(ctx):
     if ctx.attr.part_num:
         tapa_cmd.extend(["--part-num", ctx.attr.part_num])
 
-    # If none of the platform, clock period, or part number is specified,
-    # use the default partnum.
     if not ctx.attr.platform_name and not ctx.attr.clock_period and not ctx.attr.part_num:
-        tapa_cmd.extend(["--part-num", "xcu250-figd2104-2l-e"])  # UltraScale+ U250
+        tapa_cmd.extend(["--part-num", "xcu250-figd2104-2l-e"])
         tapa_cmd.extend(["--clock-period", "3.33"])
 
     if ctx.attr.enable_synth_util:
@@ -161,18 +127,15 @@ def _tapa_xo_impl(ctx):
     if ctx.attr.use_graphir:
         tapa_cmd.extend(["--gen-graphir"])
 
-    # Complete the command sequence with the pack command.
     if output_file != None:
         tapa_cmd.extend(["pack", "--output", output_file.path])
         outputs = [output_file] + outputs
     if ctx.attr.use_graphir:
         tapa_cmd.extend(["--graphir-path", work_dir.path + "/graphir.json"])
 
-    # Add custom rtl
     for rtl_file in ctx.files.custom_rtl_files:
         tapa_cmd.extend(["--custom-rtl", rtl_file.path])
 
-    # Define a custom action to run the synthesized command.
     inputs = [src] + ctx.files.hdrs + ctx.files.custom_rtl_files
     if ctx.file.ssh_key:
         inputs.append(ctx.file.ssh_key)
@@ -191,7 +154,6 @@ def _tapa_xo_impl(ctx):
         execution_requirements = {"requires-network": "1"} if remote_host else {},
     )
 
-    # Extract ab_graph
     ab_graph_return = []
     if ab_graph_file:
         ctx.actions.run_shell(
@@ -203,18 +165,15 @@ def _tapa_xo_impl(ctx):
         )
         ab_graph_return = [ab_graph_file]
 
-    # Return default information, including the output file.
     return [DefaultInfo(files = depset([output_file or work_dir] + ab_graph_return))]
 
 def _tapa_reuse_work_dir_xo_impl(ctx):
-    """Run tapa analyze/synth/synth(reuse)/pack as separate steps."""
     tapa_cli = ctx.executable.tapa_cli
     src = ctx.file.src
     top_name = ctx.attr.top_name
     output_file = ctx.actions.declare_file(ctx.attr.name + ".xo")
     work_dir = ctx.actions.declare_directory(ctx.attr.name + ".tapa")
 
-    # Build common tapa prefix with optional remote flags.
     tapa_prefix = [tapa_cli.path, "--work-dir", work_dir.path]
     remote_host = _remote_host_flag()
     if remote_host:
@@ -224,19 +183,15 @@ def _tapa_reuse_work_dir_xo_impl(ctx):
         xilinx_settings = _remote_xilinx_settings()
         if xilinx_settings:
             tapa_prefix.extend(["--remote-xilinx-settings", xilinx_settings])
-        control_dir = _remote_ssh_control_dir()
-        if control_dir:
-            tapa_prefix.extend(["--remote-ssh-control-dir", control_dir])
-        control_persist = _remote_ssh_control_persist()
-        if control_persist:
-            tapa_prefix.extend(["--remote-ssh-control-persist", control_persist])
+        if REMOTE_SSH_CONTROL_DIR:
+            tapa_prefix.extend(["--remote-ssh-control-dir", REMOTE_SSH_CONTROL_DIR])
+        if REMOTE_SSH_CONTROL_PERSIST:
+            tapa_prefix.extend(["--remote-ssh-control-persist", REMOTE_SSH_CONTROL_PERSIST])
 
-    # Build include flags.
     include_flags = []
     for inc in ctx.files.include:
         include_flags.extend(["--cflags", "-I" + inc.path])
 
-    # Construct the multi-step shell command.
     env_path = ctx.executable.vitis_hls_env.path
     prefix = " ".join([env_path] + tapa_prefix)
     includes = " ".join(include_flags)
@@ -298,10 +253,8 @@ tapa_reuse_work_dir_xo = rule(
     },
 )
 
-# Define the custom Bazel rule.
 tapa_xo = rule(
     implementation = _tapa_xo_impl,
-    # Define the attributes (inputs) for the rule.
     attrs = {
         "src": attr.label(allow_single_file = True, mandatory = True),
         "hdrs": attr.label_list(allow_files = True),

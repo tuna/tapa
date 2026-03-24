@@ -47,8 +47,6 @@ from tapa.cosim.render import (
     render_vitis_test_signals as get_vitis_test_signals,
 )
 
-# FIXME: test if using addr_width = 64 will cause problem in simulation
-
 __all__ = [
     "get_axi_ram_inst",
     "get_axi_ram_module",

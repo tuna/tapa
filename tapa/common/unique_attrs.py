@@ -18,7 +18,7 @@ class UniqueAttrs(dict[str, object]):
     """
 
     def __init__(self, **kwargs: object) -> None:
-        self.update(**kwargs)
+        super().__init__(**kwargs)
 
     def __getattr__(self, name: str) -> object:
         return self[name]

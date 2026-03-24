@@ -5,9 +5,7 @@
 #ifndef TAPA_HOST_UTIL_H_
 #define TAPA_HOST_UTIL_H_
 
-#include <climits>
-
-#include <iostream>
+#include <cstring>
 
 #include "tapa/base/util.h"
 

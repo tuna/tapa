@@ -97,8 +97,7 @@ class ProgramPackMixin(
             zipfile.ZipFile(tmp_file, "w") as tmp_zipf,
         ):
             _logger.info("adding the RTL to the zip file")
-            all_files = Path(self.rtl_dir).glob("**")
-            for file in all_files:
+            for file in Path(self.rtl_dir).glob("**"):
                 if file.is_file():
                     tmp_zipf.write(file, f"rtl/{file.relative_to(self.rtl_dir)}")
                     _logger.debug("added %s to the zip file", file)

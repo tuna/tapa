@@ -131,9 +131,6 @@ def eval_verilog_const_no_exception(value_str: str) -> str | None:
     value = session.eval(value_str)
 
     if value and isinstance(value, sl.ConstantValue):
-        # Do nothing for large value or string
-        # Vivado accepts large values in the format of [width]'[base][value] but not
-        # as pure int. There is no need to convert it to int.
         if (
             value.bitstreamWidth() > 64  # noqa: PLR2004
             or '"' in value_str
@@ -143,15 +140,12 @@ def eval_verilog_const_no_exception(value_str: str) -> str | None:
 
         int_val = int(value.convertToInt().value)
 
-        # do not try to simplify large value
         if int_val < -(2**31) or int_val >= 2**31:
             _logger.warning(
                 "Failed to convert the overly large/small constant: %s", value_str
             )
             return value_str
 
-        # simplify small value
         return str(value)
 
-    # value is not constant
     return None

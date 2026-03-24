@@ -7,9 +7,9 @@ RapidStream Contributor License Agreement.
 """
 
 import logging
-import os.path
+import os
 import platform
-import subprocess as _subprocess
+import subprocess
 from collections.abc import Iterable
 from functools import cache
 from pathlib import Path
@@ -72,7 +72,10 @@ def find_resource(file: str) -> Path:
         file: The file to find.
 
     Returns:
-        The path to the executable if found, otherwise None.
+        The path to the resource.
+
+    Raises:
+        FileNotFoundError: If the resource cannot be found.
     """
     assert file in POTENTIAL_PATHS, f"Unknown file: {file}"
 
@@ -96,8 +99,6 @@ def find_external_lib_in_runfiles() -> set[Path]:
     """
     for parent in Path(__file__).absolute().parents:
         potential_path = parent / "tapa.runfiles"
-
-        # if the execution is in a Bazel runfiles
         if potential_path.exists():
             return {
                 potential_path / "gflags+",
@@ -128,12 +129,15 @@ def get_xilinx_tool_path(tool_name: Literal["HLS", "VITIS"] = "HLS") -> str | No
 def get_xpfm_path(platform: str) -> str | None:
     """Returns the XPFM path for a platform."""
     xilinx_vitis_path = get_xilinx_tool_path("VITIS")
-    path_in_vitis = f"{xilinx_vitis_path}/base_platforms/{platform}/{platform}.xpfm"
-    path_in_opt = f"/opt/xilinx/platforms/{platform}/{platform}.xpfm"
-    if os.path.exists(path_in_vitis):
-        return path_in_vitis
-    if os.path.exists(path_in_opt):
-        return path_in_opt
+    if xilinx_vitis_path:
+        path_in_vitis = (
+            Path(xilinx_vitis_path) / "base_platforms" / platform / f"{platform}.xpfm"
+        )
+        if path_in_vitis.exists():
+            return str(path_in_vitis)
+    path_in_opt = Path("/opt/xilinx/platforms") / platform / f"{platform}.xpfm"
+    if path_in_opt.exists():
+        return str(path_in_opt)
 
     _logger.critical("Cannot find XPFM for platform %s", platform)
     return None
@@ -152,9 +156,9 @@ def _get_vendor_include_paths(*, include_gcc: bool) -> Iterable[str]:
         # 2024.2 moved the HLS include path from Vitis_HLS to Vitis
         xilinx_hls = get_xilinx_tool_path(tool_name)
         if xilinx_hls is not None:
-            include = os.path.join(xilinx_hls, "include")
-            if os.path.exists(include):
-                yield include
+            include = Path(xilinx_hls) / "include"
+            if include.exists():
+                yield str(include)
                 break
 
     if xilinx_hls is not None and include_gcc:
@@ -179,11 +183,10 @@ def _get_vendor_include_paths(*, include_gcc: bool) -> Iterable[str]:
             return
         yield str(cpp_include)
 
-        # there might be a x86_64-pc-linux-gnu or x86_64-linux-gnu
         if (cpp_include / "x86_64-pc-linux-gnu").exists():
-            yield os.path.join(cpp_include, "x86_64-pc-linux-gnu")
+            yield str(cpp_include / "x86_64-pc-linux-gnu")
         elif (cpp_include / "x86_64-linux-gnu").exists():
-            yield os.path.join(cpp_include, "x86_64-linux-gnu")
+            yield str(cpp_include / "x86_64-linux-gnu")
         else:
             _logger.critical("cannot find HLS vendor paths for C++ (x86_64)")
             _logger.critical("it should be at %s", cpp_include)
@@ -328,14 +331,14 @@ def _get_macos_sysroot_flags() -> tuple[str, ...]:
         return ()
 
     try:
-        sdk_path = _subprocess.check_output(
+        sdk_path = subprocess.check_output(
             ["xcrun", "--show-sdk-path"],
             text=True,
             timeout=10,
         ).strip()
         if sdk_path:
             return ("-isysroot", sdk_path)
-    except (FileNotFoundError, _subprocess.SubprocessError):
+    except (FileNotFoundError, subprocess.SubprocessError):
         _logger.warning("xcrun not found; macOS SDK headers may be missing")
 
     return ()

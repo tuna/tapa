@@ -70,14 +70,12 @@ struct vec_t : protected std::array<T, N> {
   DEFINE_OP(>>)
 #undef DEFINE_OP
 
-// unary arithemetic operators
 #define DEFINE_OP(op) vec_t<T, N> operator op();
   DEFINE_OP(+)
   DEFINE_OP(-)
   DEFINE_OP(~)
 #undef DEFINE_OP
 
-// binary arithemetic operators
 #define DEFINE_OP(op)                               \
   template <typename T2>                            \
   vec_t<T, N> operator op(const vec_t<T2, N>& rhs); \
@@ -122,7 +120,6 @@ template <typename T, typename... Args>
 auto cat(T arg, Args... args);
 #endif  // __cplusplus >= 201402L
 
-// binary arithemetic operators, vector on the right-hand side
 #define DEFINE_OP(op)                       \
   template <typename T, int N, typename T2> \
   vec_t<T, N> operator op(const T2 & lhs, const vec_t<T, N>& rhs);
@@ -141,7 +138,6 @@ DEFINE_OP(>>)
 template <int N, typename T>
 vec_t<T, N> make_vec(T val);
 
-// unary operation functions
 #define DEFINE_FUNC(func)      \
   template <typename T, int N> \
   vec_t<T, N> func(vec_t<T, N> vec);
@@ -153,7 +149,6 @@ DEFINE_FUNC(log1p)
 DEFINE_FUNC(log2)
 #undef DEFINE_FUNC
 
-// binary operation functions
 #define DEFINE_FUNC(func)                                           \
   template <typename T, int N>                                      \
   vec_t<T, N> func(const vec_t<T, N>& lhs, const vec_t<T, N>& rhs); \
@@ -165,7 +160,6 @@ DEFINE_FUNC(max)
 DEFINE_FUNC(min)
 #undef DEFINE_FUNC
 
-// reduction operation functions
 #define DEFINE_FUNC(func, op)     \
   template <typename T>           \
   T func(const vec_t<T, 1>& vec); \

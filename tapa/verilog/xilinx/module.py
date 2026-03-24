@@ -53,50 +53,9 @@ __all__ = [
     "generate_m_axi_ports",
 ]
 
-# vitis hls generated port infixes
-FIFO_INFIXES = ("_V", "_r", "_s", "")
 
-
-class Module:  # TODO: refactor this class
-    """AST and helpers for a verilog module.
-
-    Attributes:
-        _syntax_tree: Syntax tree parsed from the source.
-        _rewriter: Rewriter holding all uncommitted changes to the source.
-
-        _module_decl: Singleton syntax node of the module declaration.
-
-        _params: A dict mapping parameter names to `Parameter` AST nodes.
-            Changes to the parameters are always reflected.
-        _param_name_to_decl: A dict mapping parameter names to syntax nodes.
-            Changes to the parameters are not reflected until they are committed.
-        _param_source_range: Syntax node to which the next parameter should be
-            appended.
-
-        _ports: A dict mapping port names to `IOPort` AST nodes. Changes to the
-            ports are always reflected.
-        _port_name_to_decl: A dict mapping port names to syntax nodes. Changes
-            to the ports are not reflected until they are committed.
-        _port_source_range: Syntax node to which the next port should be
-            appended.
-
-        _signals: A dict mapping signal names to `Wire`/`Reg` AST nodes. Changes
-            to the signals are always reflected.
-        _signal_name_to_decl: A dict mapping signal names to syntax nodes.
-            Changes to the signals are not reflected until they are committed.
-        _signal_source_range: Syntax node to which the next signal should be
-            appended.
-
-        _logics: A list of logic syntax nodes. Changes to the logics are not
-            reflected until they are committed.
-        _logic_source_range: Syntax node to which the next logic should be
-            appended.
-
-        _instances: A list of instance syntax nodes. Changes to the instances
-            are not reflected until they are committed.
-        _instance_source_range: Syntax node to which the next instance should be
-            appended.
-    """
+class Module:
+    """AST and helpers for a verilog module."""
 
     _module_decl: pyslang.ModuleDeclarationSyntax
 
@@ -127,7 +86,6 @@ class Module:  # TODO: refactor this class
         is_trimming_enabled: bool = False,
         name: str = "",
     ) -> None:
-        """Construct a Module from files."""
         if not files:
             if not name:
                 msg = "`files` and `name` cannot both be empty"

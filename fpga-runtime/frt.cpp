@@ -5,8 +5,6 @@
 #include "frt.h"
 
 #include <fstream>
-#include <iostream>
-#include <stdexcept>
 #include <string>
 
 #include <glog/logging.h>
@@ -20,25 +18,17 @@ namespace fpga {
 
 Instance::Instance(const std::string& bitstream) {
   LOG(INFO) << "Loading " << bitstream;
-  cl::Program::Binaries binaries;
-  {
-    std::ifstream stream(bitstream, std::ios::binary);
-    binaries = {{std::istreambuf_iterator<char>(stream),
-                 std::istreambuf_iterator<char>()}};
-  }
+  std::ifstream stream(bitstream, std::ios::binary);
+  const cl::Program::Binaries binaries = {
+      {std::istreambuf_iterator<char>(stream),
+       std::istreambuf_iterator<char>()}};
 
-  if ((device_ = internal::XilinxOpenclDevice::New(binaries))) {
-    return;
-  }
-
-  if ((device_ = internal::IntelOpenclDevice::New(binaries))) {
-    return;
-  }
-
+  if ((device_ = internal::XilinxOpenclDevice::New(binaries))) return;
+  if ((device_ = internal::IntelOpenclDevice::New(binaries))) return;
   if ((device_ = internal::TapaFastCosimDevice::New(
            bitstream,
-           std::string_view(reinterpret_cast<char*>(binaries.begin()->data()),
-                            binaries.begin()->size())))) {
+           std::string_view(reinterpret_cast<const char*>(binaries[0].data()),
+                            binaries[0].size())))) {
     return;
   }
 

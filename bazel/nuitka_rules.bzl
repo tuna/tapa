@@ -8,70 +8,54 @@ load("@rules_python//python:py_binary.bzl", "py_binary")
 load("@rules_python//python:py_executable_info.bzl", "PyExecutableInfo")
 load("@tapa_deps//:requirements.bzl", "requirement")
 
-# Define the implementation function for the custom Nuitka rule.
 def _nuitka_binary_impl(ctx):
-    # Retrieve the inputs and attributes from the rule invocation.
     src = ctx.attr.src[PyExecutableInfo].main
     flags = ctx.attr.flags
     output_dir = ctx.actions.declare_directory(src.basename.split(".")[0] + ".dist")
 
-    # Get the Python toolchain information.
     py_toolchain = ctx.toolchains["@rules_python//python:toolchain_type"].py3_runtime
     py_interpreter = py_toolchain.interpreter.path
     py_bin_dir = py_toolchain.interpreter.dirname
     py_lib_dir = py_toolchain.interpreter.dirname.rsplit("/", 1)[0] + "/lib"
 
-    # Get the Nuitka executable.
     nuitka = ctx.executable.nuitka
 
-    # Start building the command to run Nuitka.
-    # Note: nuitka.path is NOT included here; it's used as the executable.
     nuitka_cmd = [
         src.path,
-        "--clang",  # Use clang as the compiler. In this case, Nuitka generates .c files.
+        "--clang",
         "--output-dir={}".format(output_dir.dirname),
         "--output-filename={}".format(ctx.attr.output_name or ctx.attr.name),
         "--show-scons",
         "--standalone",
     ]
 
-    # Do not package the generated main file as data.
     for file in ctx.attr.src.files.to_list():
         if not file.is_source:
             nuitka_cmd.append("--noinclude-data-files=" + file.short_path)
 
-    # Add optional flags, if specified.
     if flags:
         nuitka_cmd.extend(flags)
 
-    # Create symlinks to the required tools.
-    tools = []  # type: list[File]
+    tools = []
     for tool_name, tool in {
-        # Please keep sorted.
         "ld": ctx.executable._ld,
         "patchelf": ctx.executable._patchelf,
         "readelf": ctx.executable._readelf,
     }.items():
         if type(tool) == type(""):
-            # `tool` is a path string; create symlink to that path verbatim.
             tool_file = ctx.actions.declare_symlink("_nuitka_tools/" + tool_name)
             ctx.actions.symlink(output = tool_file, target_path = tool)
         else:
-            # `tool` is a `File`; create symlink with relative path resolved.
             tool_file = ctx.actions.declare_file("_nuitka_tools/" + tool_name)
             ctx.actions.symlink(output = tool_file, target_file = tool, is_executable = True)
         tools.append(tool_file)
 
-    # On macOS, use system clang which has sysroot configured.
-    # The LLVM toolchain clang doesn't have macOS system headers.
     is_macos = ctx.target_platform_has_constraint(
         ctx.attr._macos_constraint[platform_common.ConstraintValueInfo],
     )
 
-    # Add action tools to the env
     env = {
         "PATH": ctx.configuration.host_path_separator.join(
-            # Using `depset` for deduplication.
             depset([py_bin_dir] + [x.dirname for x in tools]).to_list() + ["/usr/bin", "/bin"],
         ),
         "LIBRARY_PATH": py_lib_dir,
@@ -80,14 +64,11 @@ def _nuitka_binary_impl(ctx):
     if not is_macos:
         env["LD_LIBRARY_PATH"] = py_lib_dir
 
-    # Collect runfiles from the Nuitka py_binary so its pip deps are available.
     nuitka_runfiles = ctx.attr.nuitka[DefaultInfo].default_runfiles.files
 
-    # Build PYTHONPATH from site-packages directories in the nuitka runfiles.
     site_packages_dirs = {}
     for f in nuitka_runfiles.to_list():
         if "/site-packages/" in f.path:
-            # Extract the site-packages directory path
             idx = f.path.index("/site-packages/")
             site_packages_dirs[f.path[:idx + len("/site-packages")]] = True
     if site_packages_dirs:
@@ -95,9 +76,7 @@ def _nuitka_binary_impl(ctx):
             sorted(site_packages_dirs.keys()),
         )
 
-    # Define a custom action to run the Nuitka command.
     tools += [
-        # Please keep sorted.
         ctx.executable._clang,
         nuitka,
         py_toolchain.interpreter,
@@ -112,15 +91,10 @@ def _nuitka_binary_impl(ctx):
         env = env,
     )
 
-    # Create the list of all files generated under the output directory.
-    # all_files = ctx.actions.glob([output_file.dirname + src.basename + ".dist/**"])
-
     return [DefaultInfo(files = depset([output_dir]))]
 
-# Define the custom Bazel rule.
 _nuitka_binary = rule(
     implementation = _nuitka_binary_impl,
-    # Define the attributes (inputs) for the rule.
     attrs = {
         "src": attr.label(
             doc = "The Python binary to compile.",
@@ -179,7 +153,6 @@ _nuitka_binary = rule(
 )
 
 def nuitka_binary(name, src, **kwargs):
-    # Generate a Nuitka binary with all Python dependencies.
     py_binary(
         name = name + ".nuitka.py",
         srcs = ["//bazel:nuitka_wrapper.py"],

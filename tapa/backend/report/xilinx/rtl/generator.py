@@ -37,15 +37,7 @@ report_utilization -file $rpt_file {report_util_args}
 
 
 class ReportDirUtil(backend.Vivado):
-    """Run synthesis and generate resource utilization report.
-
-    This class is a child of subprocess.Popen and will launch Vivado to run
-    synthesis and generate resource utilization report. Arguments passed to
-    synth_design and report_utilization can be configured via the kwargs params.
-
-    Attributes:
-      num_jobs: Optional number of jobs.
-    """
+    """Run synthesis and generate resource utilization report."""
 
     def __init__(  # noqa: PLR0913,PLR0917
         self,
@@ -56,19 +48,6 @@ class ReportDirUtil(backend.Vivado):
         synth_kwargs: dict[str, str] | None = None,
         report_util_kwargs: dict[str, str] | None = None,
     ) -> None:
-        """Run synthesis and generate resource utilization report.
-
-        Args:
-          hdl_dir: HDL directory containing *.v and *.tcl files.
-          rpt_path: Path of generated resource utilization report.
-          top_name: Top module name.
-          part_num: Part number; inferred from HDL if empty.
-          synth_kwargs: Additional arguments for synth_design.
-          report_util_kwargs: Additional arguments for report_utilization.
-
-        Raises:
-          InputError if part number cannot be inferred.
-        """
         if part_num is None:
             for hdl_file_format in ("{}.v", "{0}_{0}.v"):
                 hdl_path = os.path.join(hdl_dir, hdl_file_format.format(top_name))
@@ -111,17 +90,7 @@ class ReportDirUtil(backend.Vivado):
 
 
 class ReportXoUtil(ReportDirUtil):
-    """Run synthesis and generate resource utilization report.
-
-    This class is a child of subprocess.Popen and will launch Vivado to run
-    synthesis and generate resource utilization report. Arguments passed to
-    synth_design and report_utilization can be configured via the kwargs params.
-
-    Attributes:
-      tmpdir: Temporary working directory for the RTL files and generated report.
-      rpt_file: File object of generated resource utilization report.
-      rpt_file_name: Name of the generated temporary resource utilization report.
-    """
+    """Run synthesis and generate resource utilization report from an XO file."""
 
     def __init__(  # noqa: PLR0913,PLR0917
         self,
@@ -132,22 +101,6 @@ class ReportXoUtil(ReportDirUtil):
         synth_kwargs: dict[str, str] | None = None,
         report_util_kwargs: dict[str, str] | None = None,
     ) -> None:
-        """Run synthesis and generate resource utilization report.
-
-        Args:
-          xo_file: XO file object containing the HDL files.
-          rpt_file: File object of generated resource utilization report.
-          top_name: Optionally specify a different top name other than "Dataflow";
-              inferred from XO file if empty.
-          part_num: Optionally specify a different part number other than
-              automatically determined.
-          synth_kwargs: dict of arguments for the synth_design command.
-          report_util_kwargs: dict of arguments for the synth_design command.
-
-        Raises:
-          InputError: if input is not a valid XO.
-          InternalError: if the report is not generated as expected.
-        """
         self.tmpdir = tempfile.TemporaryDirectory(prefix="report-xo-util-")
         self.rpt_file = rpt_file
         self.rpt_file_name = os.path.join(self.tmpdir.name, "post_synth_util.rpt")

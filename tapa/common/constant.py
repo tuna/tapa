@@ -19,6 +19,5 @@ class Constant(Base):
         parent: Base | None = None,
         definition: Base | None = None,
     ) -> None:
-        """Constructs a TAPA constant."""
         super().__init__(name=name, obj=obj, parent=parent, definition=definition)
-        self.global_name = self.name  # constant's name is global
+        self.global_name = self.name

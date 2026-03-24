@@ -51,9 +51,8 @@ def suggest_name(name: str, blocklist: set[str]) -> str:
         ) not in blocklist:
             _logger.debug('"%s" is replaced with name "%s" instead.', name, new_name)
             return new_name
-
-    msg = "Should not reach here"
-    raise NotImplementedError(msg)
+    msg = "unreachable"
+    raise AssertionError(msg)
 
 
 def compress_name(name: str, target_len: int) -> str:

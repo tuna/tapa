@@ -9,8 +9,8 @@
 #include <algorithm>
 #include <chrono>
 #include <fstream>
+#include <iomanip>
 #include <ios>
-#include <iostream>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -61,34 +61,24 @@ using clock = std::chrono::steady_clock;
 
 std::string GetWorkDirectory() {
   fs::path work_dir;
-
   if (!FLAGS_xosim_work_dir.empty()) {
-    // Use the specified work directory.
-    work_dir = fs::path(FLAGS_xosim_work_dir);
-    if (!fs::exists(work_dir)) {
+    work_dir = FLAGS_xosim_work_dir;
+    if (!fs::exists(work_dir))
       LOG_IF(INFO, fs::create_directories(work_dir))
           << "created directory '" << work_dir << "'";
-    }
-
-    // If running in parallel, create a temporary directory inside the
-    // specified work directory, and use that as the work directory for
-    // this instance.
     if (FLAGS_xosim_work_dir_parallel_cosim) {
       std::string dir = (work_dir / "XXXXXX").string();
       LOG_IF(FATAL, ::mkdtemp(&dir[0]) == nullptr)
           << "failed to create work directory";
       work_dir = dir;
     }
-
   } else {
-    // Create a temporary directory in the system's temp directory.
     std::string dir =
         (fs::temp_directory_path() / "tapa-fast-cosim.XXXXXX").string();
     LOG_IF(FATAL, ::mkdtemp(&dir[0]) == nullptr)
         << "failed to create work directory";
     work_dir = dir;
   }
-
   return fs::absolute(work_dir).string();
 }
 
@@ -127,15 +117,11 @@ TapaFastCosimDevice::TapaFastCosimDevice(std::string_view xo_path)
 static std::string ReadFileInZip(const std::string& zip_path,
                                  const std::string& filename) {
   miniz_cpp::zip_file xo_file = zip_path;
+  const std::string suffix = "/" + filename;
   for (auto& info : xo_file.infolist()) {
-    // Check for files in the root directory.
-    if (info.filename == filename) {
-      return xo_file.read(info);
-    }
-    // Check for files in subdirectories.
-    const std::string suffix = "/" + filename;
-    if (info.filename.size() >= suffix.size() &&
-        std::equal(suffix.rbegin(), suffix.rend(), info.filename.rbegin())) {
+    if (info.filename == filename ||
+        (info.filename.size() >= suffix.size() &&
+         std::equal(suffix.rbegin(), suffix.rend(), info.filename.rbegin()))) {
       return xo_file.read(info);
     }
   }
@@ -156,8 +142,7 @@ void TapaFastCosimDevice::LoadArgsFromKernelXml() {
     arg.index = atoi(xml_arg->Attribute("id"));
     LOG_IF(FATAL, arg.index < 0) << "Invalid argument index: " << arg.index;
     LOG_IF(FATAL, size_t(arg.index) != args_.size())
-        << "Expecting argument #" << args_.size() << ", got argument #"
-        << arg.index << " in the metadata";
+        << "Expecting argument #" << args_.size() << ", got #" << arg.index;
     arg.name = xml_arg->Attribute("name");
     arg.type = xml_arg->Attribute("type");
     switch (int cat = atoi(xml_arg->Attribute("addressQualifier")); cat) {
@@ -183,42 +168,30 @@ void TapaFastCosimDevice::LoadArgsFromTapaYaml() {
   auto ports = graph["tasks"][graph["top"].as<std::string>()]["ports"];
 
   size_t index = 0;
-  for (auto it = ports.begin(); it != ports.end(); ++it) {
-    auto port = *it;
-    auto port_name = port["name"].as<std::string>();
-    auto port_type = port["type"].as<std::string>();
-    auto port_cat = port["cat"].as<std::string>();
+  for (const auto& port : ports) {
+    const auto port_name = port["name"].as<std::string>();
+    const auto port_type = port["type"].as<std::string>();
+    const auto port_cat = port["cat"].as<std::string>();
 
-    // Expand array mmap types (mmaps, hmap) into individual mmap entries.
     if (port_cat == "mmaps" || port_cat == "hmap") {
-      int chan_count = port["chan_count"].as<int>();
-      for (int i = 0; i < chan_count; ++i) {
-        ArgInfo arg;
-        arg.index = index++;
-        arg.name = port_name + "_" + std::to_string(i);
-        arg.type = port_type;
-        arg.cat = ArgInfo::kMmap;
-        args_.push_back(arg);
-      }
+      for (int i = 0, n = port["chan_count"].as<int>(); i < n; ++i)
+        args_.push_back({(int)index++, port_name + "_" + std::to_string(i),
+                         port_type, ArgInfo::kMmap});
       continue;
     }
 
-    ArgInfo arg;
-    arg.index = index++;
-    arg.name = port_name;
-    arg.type = port_type;
-    if (port_cat == "scalar") {
-      arg.cat = ArgInfo::kScalar;
-    } else if (port_cat == "mmap" || port_cat == "async_mmap") {
-      arg.cat = ArgInfo::kMmap;
-    } else if (port_cat == "istream" || port_cat == "ostream") {
-      arg.cat = ArgInfo::kStream;
-    } else if (port_cat == "istreams" || port_cat == "ostreams") {
-      arg.cat = ArgInfo::kStreams;
-    } else {
+    ArgInfo::Cat cat = ArgInfo::kScalar;
+    if (port_cat == "scalar")
+      cat = ArgInfo::kScalar;
+    else if (port_cat == "mmap" || port_cat == "async_mmap")
+      cat = ArgInfo::kMmap;
+    else if (port_cat == "istream" || port_cat == "ostream")
+      cat = ArgInfo::kStream;
+    else if (port_cat == "istreams" || port_cat == "ostreams")
+      cat = ArgInfo::kStreams;
+    else
       LOG(FATAL) << "Unknown argument category: " << port_cat;
-    }
-    args_.push_back(arg);
+    args_.push_back({(int)index++, port_name, port_type, cat});
   }
 }
 
@@ -288,13 +261,10 @@ void TapaFastCosimDevice::WriteToDevice() {
 }
 
 void TapaFastCosimDevice::WriteToDeviceImpl() {
-  // All buffers must have a data file.
   auto tic = clock::now();
-  for (const auto& [index, buffer_arg] : buffer_table_) {
-    std::ofstream(GetInputDataPath(work_dir, index),
-                  std::ios::out | std::ios::binary)
-        .write(buffer_arg.Get(), buffer_arg.SizeInBytes());
-  }
+  for (const auto& [idx, arg] : buffer_table_)
+    std::ofstream(GetInputDataPath(work_dir, idx), std::ios::binary)
+        .write(arg.Get(), arg.SizeInBytes());
   load_time_ = clock::now() - tic;
 }
 
@@ -304,11 +274,10 @@ void TapaFastCosimDevice::ReadFromDevice() {
 
 void TapaFastCosimDevice::ReadFromDeviceImpl() {
   auto tic = clock::now();
-  for (int index : store_indices_) {
-    auto buffer_arg = buffer_table_.at(index);
-    std::ifstream(GetOutputDataPath(work_dir, index),
-                  std::ios::in | std::ios::binary)
-        .read(buffer_arg.Get(), buffer_arg.SizeInBytes());
+  for (int idx : store_indices_) {
+    auto arg = buffer_table_.at(idx);
+    std::ifstream(GetOutputDataPath(work_dir, idx), std::ios::binary)
+        .read(arg.Get(), arg.SizeInBytes());
   }
   store_time_ = clock::now() - tic;
 }
@@ -322,37 +291,27 @@ void TapaFastCosimDevice::Exec() {
 
   nlohmann::json json;
   json["xo_path"] = xo_path;
-
-  nlohmann::json scalar_to_val = nlohmann::json::object();
-  for (const auto& [index, scalar] : scalars_) {
-    scalar_to_val[std::to_string(index)] = scalar;
+  json["scalar_to_val"] = nlohmann::json::object();
+  for (const auto& [idx, scalar] : scalars_)
+    json["scalar_to_val"][std::to_string(idx)] = scalar;
+  json["axi_to_c_array_size"] = nlohmann::json::object();
+  json["axi_to_data_file"] = nlohmann::json::object();
+  for (const auto& [idx, content] : buffer_table_) {
+    json["axi_to_c_array_size"][std::to_string(idx)] = content.SizeInCount();
+    json["axi_to_data_file"][std::to_string(idx)] =
+        GetInputDataPath(work_dir, idx);
   }
-  json["scalar_to_val"] = std::move(scalar_to_val);
-
-  nlohmann::json axi_to_c_array_size = nlohmann::json::object();
-  nlohmann::json axi_to_data_file = nlohmann::json::object();
-  for (const auto& [index, content] : buffer_table_) {
-    axi_to_c_array_size[std::to_string(index)] = content.SizeInCount();
-    axi_to_data_file[std::to_string(index)] = GetInputDataPath(work_dir, index);
+  json["axis_to_data_file"] = nlohmann::json::object();
+  for (const auto& [idx, stream] : stream_table_) {
+    VLOG(1) << "arg[" << idx << "] is a stream backed by " << stream->path();
+    json["axis_to_data_file"][std::to_string(idx)] = stream->path();
   }
-  json["axi_to_c_array_size"] = std::move(axi_to_c_array_size);
-  json["axi_to_data_file"] = std::move(axi_to_data_file);
-
-  nlohmann::json axis_to_data_file = nlohmann::json::object();
-  for (const auto& [index, stream] : stream_table_) {
-    VLOG(1) << "arg[" << index << "] is a stream backed by " << stream->path();
-    axis_to_data_file[std::to_string(index)] = stream->path();
-  }
-  json["axis_to_data_file"] = std::move(axis_to_data_file);
 
   std::ofstream(GetConfigPath(work_dir)) << json.dump(2);
 
-  std::vector<std::string> argv;
-  if (FLAGS_xosim_executable.empty()) {
-    argv = {"tapa-fast-cosim"};
-  } else {
-    argv = {FLAGS_xosim_executable};
-  }
+  std::vector<std::string> argv = {FLAGS_xosim_executable.empty()
+                                       ? "tapa-fast-cosim"
+                                       : FLAGS_xosim_executable};
   argv.insert(argv.end(), {
                               "--config-path=" + GetConfigPath(work_dir),
                               "--tb-output-dir=" + work_dir + "/output",
@@ -395,13 +354,10 @@ void TapaFastCosimDevice::Finish() {
   int rc = context_->proc.retcode();
   if (rc != 0) {
     LOG(ERROR) << "TAPA fast cosim failed with exit code " << rc;
-    // terminate the whole process if the simulation fails
     std::terminate();
-  } else {
-    LOG(INFO) << "TAPA fast cosim finished successfully";
   }
+  LOG(INFO) << "TAPA fast cosim finished successfully";
 
-  // skip the rest of the function if only setup is needed
   if (FLAGS_xosim_setup_only) {
     exit(0);
   }
@@ -432,30 +388,23 @@ std::vector<ArgInfo> TapaFastCosimDevice::GetArgsInfo() const { return args_; }
 int64_t TapaFastCosimDevice::LoadTimeNanoSeconds() const {
   return load_time_.count();
 }
-
 int64_t TapaFastCosimDevice::ComputeTimeNanoSeconds() const {
   return compute_time_.count();
 }
-
 int64_t TapaFastCosimDevice::StoreTimeNanoSeconds() const {
   return store_time_.count();
 }
 
 size_t TapaFastCosimDevice::LoadBytes() const {
-  size_t total_size = 0;
-  for (auto& [index, buffer_arg] : buffer_table_) {
-    total_size += buffer_arg.SizeInBytes();
-  }
-  return total_size;
+  size_t total = 0;
+  for (auto& [idx, arg] : buffer_table_) total += arg.SizeInBytes();
+  return total;
 }
 
 size_t TapaFastCosimDevice::StoreBytes() const {
-  size_t total_size = 0;
-  for (int index : store_indices_) {
-    auto buffer_arg = buffer_table_.at(index);
-    total_size += buffer_arg.SizeInBytes();
-  }
-  return total_size;
+  size_t total = 0;
+  for (int idx : store_indices_) total += buffer_table_.at(idx).SizeInBytes();
+  return total;
 }
 
 }  // namespace internal

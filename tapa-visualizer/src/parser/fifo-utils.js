@@ -55,7 +55,7 @@ export const getIndexRange = indexes => {
 export const getPortKey = (node, fifoName) => node?.style?.ports
   ?.find(port => "name" in port && port.name === fifoName)?.key ?? fifoName;
 
-/** @type {(grouping: Grouping, by: [string, number]) => string} */
+/** @type {(by: [string, number], grouping: Grouping) => string} */
 const getSubTaskKey = (by, grouping) => grouping !== "merge"
   ? `${by[0]}/${by[1]}`
   : by[0];
@@ -135,7 +135,7 @@ const addProducedMissingFifo = ({
   taskName,
 }) => {
   /** @type {(node: import("@antv/g6").NodeData | undefined) => () => import("@antv/g6/lib/spec/element/edge").EdgeStyle} */
-  const getStyle = node => () => getProducedMissingStyle(node, fifoName);
+  const styleFor = node => () => getProducedMissingStyle(node, fifoName);
   switch (grouping) {
     case "merge": {
       const node = /** @type {import("@antv/g6").NodeData | undefined} */ (
@@ -145,7 +145,7 @@ const addProducedMissingFifo = ({
         addEdge,
         fifo,
         fifoName,
-        getStyle: () => getProducedMissingStyle(node, fifoName),
+        getStyle: styleFor(node),
         id: `${taskName}/${fifoName}`,
         source: taskName,
         target: fifo.consumed_by[0],
@@ -162,7 +162,7 @@ const addProducedMissingFifo = ({
             addEdge,
             fifo,
             fifoName,
-            getStyle: getStyle(node),
+            getStyle: styleFor(node),
             id: edgeId,
             source: node.id,
             target,
@@ -183,7 +183,7 @@ const addProducedMissingFifo = ({
           addEdge,
           fifo,
           fifoName,
-          getStyle: getStyle(source),
+          getStyle: styleFor(source),
           id: `${taskName}/${fifoName}/${i}`,
           source: source.id,
           target: targets[i].id,
@@ -211,7 +211,7 @@ const addConsumedMissingFifo = ({
   taskName,
 }) => {
   /** @type {(node: import("@antv/g6").NodeData | undefined) => () => import("@antv/g6/lib/spec/element/edge").EdgeStyle} */
-  const getStyle = node => () => getConsumedMissingStyle(node, fifoName);
+  const styleFor = node => () => getConsumedMissingStyle(node, fifoName);
   switch (grouping) {
     case "merge": {
       const node = /** @type {import("@antv/g6").NodeData | undefined} */ (
@@ -221,7 +221,7 @@ const addConsumedMissingFifo = ({
         addEdge,
         fifo,
         fifoName,
-        getStyle: () => getConsumedMissingStyle(node, fifoName),
+        getStyle: styleFor(node),
         id: `${taskName}/${fifoName}`,
         source: fifo.produced_by[0],
         target: taskName,
@@ -238,7 +238,7 @@ const addConsumedMissingFifo = ({
             addEdge,
             fifo,
             fifoName,
-            getStyle: getStyle(node),
+            getStyle: styleFor(node),
             id: edgeId,
             source,
             target: node.id,
@@ -259,7 +259,7 @@ const addConsumedMissingFifo = ({
           addEdge,
           fifo,
           fifoName,
-          getStyle: getStyle(target),
+          getStyle: styleFor(target),
           id: `${taskName}/${fifoName}/${i}`,
           source: sources[i].id,
           target: target.id,

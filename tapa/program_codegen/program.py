@@ -23,12 +23,8 @@ from tapa.program_codegen.children import (
     instantiate_children_tasks as _instantiate_children,
 )
 from tapa.program_codegen.custom_rtl import replace_custom_rtl as _replace_custom_rtl
-from tapa.program_codegen.fifos import (
-    connect_fifos as _connect_fifos,
-)
-from tapa.program_codegen.fifos import (
-    instantiate_fifos as _instantiate_fifos,
-)
+from tapa.program_codegen.fifos import connect_fifos as _connect_fifos
+from tapa.program_codegen.fifos import instantiate_fifos as _instantiate_fifos
 from tapa.task_codegen.fifos import get_connection_to as get_connection_to_codegen
 from tapa.verilog.ast.logic import Always, Assign
 from tapa.verilog.ast.signal import Reg
@@ -125,9 +121,7 @@ def instantiate_fifos(program: Any, task: Task) -> None:
 
 
 def instantiate_children_tasks(
-    program: Any,
-    task: Task,
-    width_table: dict[str, int],
+    program: Any, task: Task, width_table: dict[str, int]
 ) -> list[Pipeline]:
     return _instantiate_children(program, task, width_table)
 

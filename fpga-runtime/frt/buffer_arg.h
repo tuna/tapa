@@ -19,7 +19,7 @@ class BufferArg {
   BufferArg(Buffer<T, tag> buffer)
       : ptr_(const_cast<char*>(reinterpret_cast<const char*>(buffer.Get()))),
         size_(sizeof(T)),
-        n_(buffer.SizeInBytes() / sizeof(T)) {}
+        n_(buffer.Size()) {}
 
   BufferArg() = default;
   BufferArg(const BufferArg&) = default;

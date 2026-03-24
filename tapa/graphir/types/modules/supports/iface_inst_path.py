@@ -6,8 +6,8 @@ All rights reserved. The contributor(s) of this file has/have agreed to the
 RapidStream Contributor License Agreement.
 """
 
-from tapa.graphir.types import AnyInterface
 from tapa.graphir.types.commons import Model
+from tapa.graphir.types.interfaces.any import AnyInterface
 
 
 class IfaceInstPath(Model):

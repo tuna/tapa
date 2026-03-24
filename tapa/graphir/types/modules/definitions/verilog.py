@@ -103,11 +103,7 @@ class VerilogModuleDefinition(BaseModuleDefinition):
         return data
 
     def is_leaf_module(self) -> bool:  # noqa: PLR6301
-        """Return True if the module is a leaf module.
-
-        Returns:
-            bool: Return True if the module is a leaf module.
-        """
+        """Return True: verilog modules are always leaf modules."""
         return True
 
     def get_submodules_module_names(self) -> tuple[str, ...]:
@@ -115,7 +111,7 @@ class VerilogModuleDefinition(BaseModuleDefinition):
         return self.submodules_module_names
 
     def is_internal_module(self) -> bool:  # noqa: PLR6301
-        """Return True if the module is an internal module."""
+        """Return False: verilog modules are not internal modules."""
         return False
 
     def module_name_updated(self, new_name: str) -> "VerilogModuleDefinition":

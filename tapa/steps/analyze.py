@@ -144,25 +144,9 @@ def analyze(
 
 
 def find_clang_binary(name: str) -> str:
-    """Find executable from PATH if not overridden.
-
-    From PATH and user `override` value, look for a clang-based executable
-    `name` and then verify if that is an executable binary.
-
-    Args:
-      name: The name of the binary.
-      override: A user specified path of the binary, or None
-
-    Returns:
-      Verified binary path.
-
-    Raises:
-      ValueError: If the binary is not found.
-    """
-    # Lookup binary from the distribution
+    """Find executable from PATH if not overridden."""
     binary = find_resource(name)
 
-    # Lookup binary from PATH
     if not binary:
         path_str = shutil.which(name)
         if path_str is not None:
@@ -172,7 +156,6 @@ def find_clang_binary(name: str) -> str:
         msg = f"Cannot find `{name}` in PATH."
         raise ValueError(msg)
 
-    # Check if the binary is working
     version = subprocess.check_output([binary, "--version"], universal_newlines=True)
     match = re.compile(R"version (\d+)(\.\d+)*").search(version)
     if match is None:
@@ -183,14 +166,7 @@ def find_clang_binary(name: str) -> str:
 
 
 def run_and_check(cmd: tuple[str, ...]) -> str:
-    """Run command and check return code.
-
-    Args:
-      cmd: The command to execute.
-
-    Returns:
-      Stdout of the command execution.
-    """
+    """Run command and check return code."""
     with create_tool_process(list(cmd), stdout=subprocess.PIPE) as proc:
         stdout_bytes, _ = proc.communicate()
     if proc.returncode != 0:
@@ -210,26 +186,12 @@ def run_flatten(
     cflags: tuple[str, ...],
     work_dir: str,
 ) -> tuple[str, ...]:
-    """Flatten input files.
-
-    Preprocess input C/C++ files so that all macros are expanded, and all
-    header files, excluding system and TAPA header files, are inlined.
-
-    Args:
-      tapa_cpp: The path of the tapa-clang binary.
-      files: C/C++ files to flatten.
-      cflags: User specified CFLAGS.
-      work_dir: Working directory of TAPA, for output of the flatten files.
-
-    Returns:
-      Tuple of the flattened output files.
-    """
+    """Flatten input files."""
     flatten_folder = os.path.join(work_dir, "flatten")
     os.makedirs(flatten_folder, exist_ok=True)
     flatten_files = []
 
     for file in files:
-        # Generate hash-based file name for flattened files
         hash_val = hashlib.sha256()
         hash_val.update(os.path.abspath(file).encode())
         flatten_name = (
@@ -248,10 +210,6 @@ def run_flatten(
                 "-CC",
                 "-P",
                 "-fkeep-system-includes",
-                # FIXME: If we don't define __SYNTHESIS__, the generated code
-                #        may not be synthesizable if the user depends on this
-                #        synthesis-specific macros, as the macros will be
-                #        expanded by clang cpp.
                 "-D__SYNTHESIS__",
                 "-DAESL_SYN",
                 "-DAP_AUTOCC",
@@ -260,9 +218,7 @@ def run_flatten(
                 *cflags,
                 file,
             )
-            flatten_code = run_and_check(tapa_cpp_cmd)
-            formated_code = clang_format(flatten_code)
-            output_fp.write(formated_code)
+            output_fp.write(clang_format(run_and_check(tapa_cpp_cmd)))
 
     return tuple(flatten_files)
 
@@ -274,18 +230,7 @@ def run_tapacc(
     cflags: tuple[str, ...],
     target: str,
 ) -> dict:
-    """Execute tapacc and return the program description.
-
-    Args:
-      tapacc: The path of the tapacc binary.
-      files: C/C++ files to flatten.
-      top: Top task name.
-      cflags: User specified CFLAGS with TAPA specific headers.
-      target: Target flow of TAPA compiler, e.g., `xilinx-vitis`.
-
-    Returns:
-      Output description of the TAPA program.
-    """
+    """Execute tapacc and return the program description."""
     tapacc_args = (
         "-top",
         top,
