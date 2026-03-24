@@ -5,7 +5,21 @@
 # RapidStream Contributor License Agreement.
 
 load("@rules_python//python:defs.bzl", "py_library")
+load("@rules_python//python:py_test.bzl", "py_test")
 load("@tapa_deps//:requirements.bzl", "requirement")
+
+py_test(
+    name = "synth_test",
+    size = "small",
+    srcs = ["synth_test.py"],
+    deps = [
+        ":steps",
+        "//tapa/backend",
+        "//tapa/common:target",
+        requirement("click"),
+        requirement("pytest"),
+    ],
+)
 
 py_library(
     name = "steps",
