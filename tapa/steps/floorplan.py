@@ -77,7 +77,10 @@ def run_autobridge(device_config: Path, floorplan_config: Path) -> None:
         "--run-floorplan",
     ]
 
-    with create_tool_process(cmd) as proc:
+    with create_tool_process(
+        cmd,
+        extra_download_paths=(str(autobridge_work_dir),),
+    ) as proc:
         proc.communicate()
     returncode = proc.returncode
     if returncode is not None and returncode != 0:
