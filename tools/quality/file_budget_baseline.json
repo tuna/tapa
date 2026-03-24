@@ -1,41 +1,4 @@
 {
     "file_violations": [],
-    "function_violations": [
-        {
-            "limit": 90,
-            "lines": 93,
-            "path": "tapa/cosim/config_preprocess.py",
-            "symbol": "_parse_zip_update_config"
-        },
-        {
-            "limit": 90,
-            "lines": 94,
-            "path": "tapa/cosim/vivado.py",
-            "symbol": "get_vivado_tcl"
-        },
-        {
-            "limit": 90,
-            "lines": 108,
-            "path": "tapa/graphir_conversion/utils.py",
-            "symbol": "get_fifo_def"
-        },
-        {
-            "limit": 90,
-            "lines": 107,
-            "path": "tapa/steps/synth.py",
-            "symbol": "synth"
-        },
-        {
-            "limit": 90,
-            "lines": 415,
-            "path": "tapa/verilog/axi_xbar.py",
-            "symbol": "generate"
-        },
-        {
-            "limit": 90,
-            "lines": 107,
-            "path": "tapa/verilog/graphir_exporter/verilog.py",
-            "symbol": "export_verilog_grouped_module"
-        }
-    ]
+    "function_violations": []
 }

@@ -288,6 +288,14 @@ def _parse_args() -> argparse.Namespace:
             "When set, only regressions beyond the snapshot fail."
         ),
     )
+    parser.add_argument(
+        "--write-baseline",
+        metavar="PATH",
+        help=(
+            "Scan all target files (like --mode all) and write the current "
+            "violations as a new baseline snapshot to PATH. Exits 0 on success."
+        ),
+    )
     parser.add_argument("paths", nargs="*", help="Candidate files to check")
     return parser.parse_args()
 
@@ -385,10 +393,60 @@ def _report_violations(
     return 1
 
 
+def _write_baseline(
+    path: Path,
+    file_violations: list[BudgetViolation],
+    function_violations: list[FunctionViolation],
+) -> None:
+    payload = {
+        "file_violations": [
+            {
+                "limit": v.limit,
+                "lines": v.lines,
+                "path": v.path.as_posix(),
+                "rule": v.rule,
+            }
+            for v in sorted(file_violations, key=lambda v: v.path.as_posix())
+        ],
+        "function_violations": [
+            {
+                "limit": v.limit,
+                "lines": v.lines,
+                "path": v.path.as_posix(),
+                "symbol": v.symbol,
+            }
+            for v in sorted(
+                function_violations,
+                key=lambda v: (v.path.as_posix(), v.symbol),
+            )
+        ],
+    }
+    path.write_text(json.dumps(payload, indent=4) + "\n", encoding="utf-8")
+
+
 def main() -> int:
     args = _parse_args()
     repo_root = _repo_root()
     baseline = _load_baseline(repo_root / args.baseline) if args.baseline else None
+
+    if args.write_baseline:
+        write_candidates = _all_target_files(repo_root)
+        file_allowlist = _load_allowlist(repo_root / args.file_allowlist)
+        function_allowlist = _load_allowlist(repo_root / args.function_allowlist)
+        wf_violations = _file_violations(repo_root, write_candidates, file_allowlist)
+        wfn_violations = _function_budget_violations_for_candidates(
+            repo_root,
+            write_candidates,
+            disabled=False,
+            function_limit=args.python_function_loc_limit,
+            function_allowlist=function_allowlist,
+        )
+        _write_baseline(
+            repo_root / args.write_baseline,
+            wf_violations,
+            wfn_violations,
+        )
+        return 0
 
     candidates = _candidate_paths(repo_root, args)
     file_allowlist = _load_allowlist(repo_root / args.file_allowlist)
