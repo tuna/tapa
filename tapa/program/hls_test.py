@@ -87,9 +87,11 @@ def test_gen_connections_stream_pair_produces_connect_def() -> None:
     # There must be exactly one connect<stream> entry for the matched FIFO.
     stream_lines = [line for line in result if "connect<stream>" in line]
     assert len(stream_lines) == 1
-    # The line must reference the kernel output and kernel input.
-    assert "producer0.out[0]" in stream_lines[0]
-    assert "consumer0.in[0]" in stream_lines[0]
+    # The line must match the exact format including the k_ prefix.
+    assert (
+        stream_lines[0]
+        == "connect<stream> fifo0 (k_producer0.out[0], k_consumer0.in[0]);"
+    )
 
 
 def test_gen_connections_unmatched_fifo_not_included() -> None:
