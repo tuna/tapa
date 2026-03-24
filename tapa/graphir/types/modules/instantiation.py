@@ -10,6 +10,8 @@ import logging
 from collections.abc import Generator
 from typing import TYPE_CHECKING
 
+from pydantic import model_validator
+
 from tapa.graphir.assets.floorplan.instance_area import InstanceArea
 from tapa.graphir.types.commons import HierarchicalNamespaceModel
 from tapa.graphir.types.commons.name import NamedModel
@@ -122,12 +124,13 @@ class ModuleInstantiation(HierarchicalNamespaceModel):
         yield from self.connections
         yield from self.parameters
 
+    @model_validator(mode="before")
     @classmethod
-    def sanitze_fields(cls, **kwargs: object) -> dict[str, object]:
-        """Sort the tuple arguments by name and return the arguments."""
-        cls.sort_tuple_field(kwargs, "connections")
-        cls.sort_tuple_field(kwargs, "parameters")
-        return super().sanitze_fields(**kwargs)
+    def _sort_instantiation_fields(cls, data: dict) -> dict:
+        """Sort the tuple arguments by name."""
+        cls.sort_tuple_field(data, "connections")
+        cls.sort_tuple_field(data, "parameters")
+        return data
 
     def get_parameters_used_identifiers(self) -> set[str]:
         """Return the used identifiers in the parameters.

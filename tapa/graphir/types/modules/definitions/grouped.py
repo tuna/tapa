@@ -9,6 +9,8 @@ RapidStream Contributor License Agreement.
 from collections.abc import Generator
 from typing import Literal, Self
 
+from pydantic import model_validator
+
 from tapa.graphir.types.commons.name import NamedModel
 from tapa.graphir.types.expressions import Expression
 from tapa.graphir.types.modules.definitions.base import BaseModuleDefinition
@@ -116,12 +118,13 @@ class GroupedModuleDefinition(BaseModuleDefinition):
         yield from self.submodules
         yield from self.wires
 
+    @model_validator(mode="before")
     @classmethod
-    def sanitze_fields(cls, **kwargs: object) -> dict[str, object]:
-        """Sort the tuple arguments by name and return the arguments."""
-        cls.sort_tuple_field(kwargs, "submodules")
-        cls.sort_tuple_field(kwargs, "wires")
-        return super().sanitze_fields(**kwargs)
+    def _sort_grouped_module_fields(cls, data: dict) -> dict:
+        """Sort the tuple arguments by name."""
+        cls.sort_tuple_field(data, "submodules")
+        cls.sort_tuple_field(data, "wires")
+        return data
 
     def get_submodules(self) -> tuple[ModuleInstantiation, ...]:
         """Return the submodules of the module.

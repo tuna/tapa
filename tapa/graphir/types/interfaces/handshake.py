@@ -87,7 +87,7 @@ class HandShakeInterface(BaseInterface):
             raise NotImplementedError(msg)
 
         return self.updated(
-            ports=tuple(port_mapping[p] for p in self.ports),
+            ports=tuple(sorted(port_mapping[p] for p in self.ports)),
             clk_port=port_mapping.get(self.clk_port, self.clk_port),
             rst_port=port_mapping.get(self.rst_port, self.rst_port),
             ready_port=port_mapping[self.ready_port],

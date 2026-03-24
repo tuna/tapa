@@ -6,7 +6,9 @@ All rights reserved. The contributor(s) of this file has/have agreed to the
 RapidStream Contributor License Agreement.
 """
 
-from typing import Any, Self
+from typing import Self
+
+from pydantic import model_validator
 
 from tapa.graphir.types.commons import Model, StringEnum
 from tapa.graphir.utilities.path import get_relative_path_and_func
@@ -41,27 +43,29 @@ class BaseInterface(Model):
     role: InterfaceRole
     origin_info: str
 
-    def __init__(self, **kwargs: Any) -> None:  # noqa: ANN401
-        """Preprocessing the input ports."""
+    @model_validator(mode="before")
+    @classmethod
+    def _preprocess_ports(cls, data: dict) -> dict:
+        """Preprocess ports: add clk/rst, sort, deduplicate, and set default role."""
         # make sure that ports include clk_port and rst_port.
-        curr_ports = list(kwargs["ports"])
+        curr_ports = list(data["ports"])
         curr_ports.extend(
             port_name
             for special_port in ("clk_port", "rst_port")
-            if special_port in kwargs and (port_name := kwargs[special_port])
+            if special_port in data and (port_name := data[special_port])
         )
 
-        # sort the ports
-        kwargs["ports"] = tuple(sorted(set(curr_ports)))
+        # sort and deduplicate the ports
+        data["ports"] = tuple(sorted(set(curr_ports)))
 
         # default role is TBD
-        kwargs["role"] = kwargs.get("role", BaseInterface.InterfaceRole.TBD)
+        data["role"] = data.get("role", BaseInterface.InterfaceRole.TBD)
 
-        if not kwargs["ports"]:
+        if not data["ports"]:
             msg = "Interface must have at least one port."
             raise RuntimeError(msg)
 
-        super().__init__(**kwargs)
+        return data
 
     def __eq__(self, other: object) -> bool:
         """Check if two interfaces are equal.
@@ -88,12 +92,6 @@ class BaseInterface(Model):
     def get_key(self) -> int:
         """Return the hash value of the interface."""
         return hash(self)  # pylint: disable=unnecessary-dunder-call
-
-    @classmethod
-    def sanitze_fields(cls, **kwargs: object) -> dict[str, object]:
-        """Sort the ports by name and return the arguments."""
-        cls.sort_tuple_field(kwargs, "ports")
-        return Model.sanitze_fields(**kwargs)
 
     def get_data_ports(self) -> tuple[str, ...]:
         """Return all ports except clk, rst, valid, ready.
@@ -127,7 +125,7 @@ class BaseInterface(Model):
         self, remaining_ports: set[str], **kawgs: str | None
     ) -> Self | None:
         """Remove ports that are not in the remaining_ports."""
-        ports = tuple(set(self.ports) & remaining_ports)
+        ports = tuple(sorted(set(self.ports) & remaining_ports))
         clk_port = None if self.clk_port not in self.ports else self.clk_port
         rst_port = None if self.rst_port not in self.ports else self.rst_port
 
@@ -151,7 +149,7 @@ class BaseInterface(Model):
             raise NotImplementedError(msg)
 
         return self.updated(
-            ports=tuple(port_mapping[p] for p in self.ports),
+            ports=tuple(sorted(port_mapping[p] for p in self.ports)),
             clk_port=port_mapping.get(self.clk_port, self.clk_port),
             rst_port=port_mapping.get(self.rst_port, self.rst_port),
             role=BaseInterface.InterfaceRole.TBD,

@@ -9,6 +9,8 @@ RapidStream Contributor License Agreement.
 from abc import abstractmethod
 from typing import Self
 
+from pydantic import model_validator
+
 from tapa.graphir.types.commons import HierarchicalNamespaceModel
 from tapa.graphir.types.expressions import Expression
 from tapa.graphir.types.modules.instantiation import ModuleInstantiation
@@ -52,14 +54,15 @@ class BaseModuleDefinition(HierarchicalNamespaceModel):
 
     metadata: dict[str, str] | None = None
 
+    @model_validator(mode="before")
     @classmethod
-    def sanitze_fields(cls, **kwargs: object) -> dict[str, object]:
-        """Sort the ports by name and return the arguments.
+    def _sort_base_module_fields(cls, data: dict) -> dict:
+        """Sort the ports by name.
 
         Parameters must not be sorted to prevent use before definition.
         """
-        cls.sort_tuple_field(kwargs, "ports")
-        return super().sanitze_fields(**kwargs)
+        cls.sort_tuple_field(data, "ports")
+        return data
 
     ###############################
     #           Methods           #

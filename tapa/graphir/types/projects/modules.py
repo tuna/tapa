@@ -10,6 +10,8 @@ import logging
 from collections.abc import Generator, Iterable
 from typing import get_args
 
+from pydantic import model_validator
+
 from tapa.graphir.types.commons import NamedModel, NamespaceModel
 from tapa.graphir.types.modules import AnyModuleDefinition
 from tapa.graphir.types.modules.definitions.grouped import GroupedModuleDefinition
@@ -63,11 +65,12 @@ class Modules(NamespaceModel):
         """Yields all the named objects in the namespace."""
         yield from self.module_definitions
 
+    @model_validator(mode="before")
     @classmethod
-    def sanitze_fields(cls, **kwargs: object) -> dict[str, object]:
-        """Sort the tuple arguments by name and return the arguments."""
-        cls.sort_tuple_field(kwargs, "module_definitions")
-        return super().sanitze_fields(**kwargs)
+    def _sort_modules_fields(cls, data: dict) -> dict:
+        """Sort the tuple arguments by name."""
+        cls.sort_tuple_field(data, "module_definitions")
+        return data
 
     def get(self, name: str) -> AnyModuleDefinition:
         """Get the module with the specified name.
@@ -248,14 +251,19 @@ class Modules(NamespaceModel):
         # The module names to be updated.
         updated_names = {mod.name for mod in modules}
 
-        defs = (
-            tuple(
-                # Remove the existing modules with the same name, if any.
-                m
-                for m in self.module_definitions
-                if m.name not in updated_names
+        defs = tuple(
+            sorted(
+                (
+                    tuple(
+                        # Remove the existing modules with the same name, if any.
+                        m
+                        for m in self.module_definitions
+                        if m.name not in updated_names
+                    )
+                    + modules  # And add updated modules
+                ),
+                key=lambda m: m.name,
             )
-            + modules  # And add updated modules
         )
         return self.updated(module_definitions=defs)
 
@@ -285,6 +293,7 @@ class Modules(NamespaceModel):
                 msg = f"Module {mod_name} is used but removed."
                 raise ValueError(msg)
 
+        # remained_modules preserves the existing sorted order (filter only)
         return self.updated(module_definitions=remained_modules)
 
     def has_module(self, name: str) -> bool:

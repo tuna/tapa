@@ -10,6 +10,8 @@ import re
 from collections.abc import Generator
 from typing import Literal
 
+from pydantic import model_validator
+
 from tapa.graphir.types.commons.name import NamedModel
 from tapa.graphir.types.modules.definitions.base import BaseModuleDefinition
 
@@ -93,11 +95,12 @@ class VerilogModuleDefinition(BaseModuleDefinition):
         yield from self.ports
         yield from self.parameters
 
+    @model_validator(mode="before")
     @classmethod
-    def sanitze_fields(cls, **kwargs: object) -> dict[str, object]:
-        """Sort the tuple arguments by name and return the arguments."""
-        cls.sort_tuple_field(kwargs, "submodules_module_names")
-        return super().sanitze_fields(**kwargs)
+    def _sort_verilog_module_fields(cls, data: dict) -> dict:
+        """Sort the tuple arguments by name."""
+        cls.sort_tuple_field(data, "submodules_module_names")
+        return data
 
     def is_leaf_module(self) -> bool:  # noqa: PLR6301
         """Return True if the module is a leaf module.

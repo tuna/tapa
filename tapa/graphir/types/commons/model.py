@@ -44,12 +44,10 @@ class ModelMixin:
         Returns:
             _X: The updated immutable object.
         """
-        for key in update:
-            if key not in self.model_fields:  # type: ignore[reportAttributeAccessIssue]
-                msg = f"Unknown field {key} to update."
-                raise ValueError(msg)
-
-        update = self.sanitze_fields(**update)
+        unknown = set(update) - set(self.model_fields)  # type: ignore[reportAttributeAccessIssue]
+        if unknown:
+            msg = f"Unknown fields to update: {unknown}"
+            raise ValueError(msg)
         return self.model_copy(update=update, deep=deep)  # type: ignore[reportAttributeAccessIssue]
 
     @staticmethod
@@ -63,18 +61,6 @@ class ModelMixin:
             return inst
         msg = f"Cannot get name of {inst}."
         raise ValueError(msg)
-
-    @classmethod
-    def sanitze_fields(cls, **kwargs: object) -> dict[str, object]:
-        """To be overridden by subclasses to sanitize the fields.
-
-        Args:
-            **kwargs (object): The fields to sanitize.
-
-        Returns:
-            dict[str, object]: The sanitized fields.
-        """
-        return kwargs
 
     @classmethod
     def sort_tuple_field(cls, kwargs: dict[str, object], field: str) -> None:
@@ -95,12 +81,6 @@ class ModelMixin:
 
 class Model(BaseModel, ModelMixin):
     """The base model of immutable and hashable tapa graph IR types."""
-
-    # This must be implemented by this class instead of in the mixin class.
-    # Otherwise, super() solves the MRO incorrectly.
-    def __init__(self, **kwargs: object) -> None:
-        """Initialize the model with the fields sorted."""
-        super().__init__(**(self.sanitze_fields(**kwargs)))
 
 
 class RootModel(PydanticRootModel[X], ModelMixin):
