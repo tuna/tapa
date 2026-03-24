@@ -217,6 +217,7 @@ class RunAie:
             cmd_args,
             cwd=self.project_path,
             extra_upload_paths=extra_upload,
+            extra_download_paths=(self.project_path,),
             **popen_kwargs,
         )
 
