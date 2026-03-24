@@ -32,6 +32,7 @@ def test_default_does_not_download_cwd(
     mock_ssh.return_value = (0, b"", b"")
     proc = _make_proc("/some/cwd")
     proc.communicate()
+    mock_download.assert_called_once()
     downloaded = mock_download.call_args[0][1]  # positional arg: paths list
     assert "/some/cwd" not in downloaded
 
@@ -48,6 +49,7 @@ def test_download_cwd_true_includes_cwd(
     mock_ssh.return_value = (0, b"", b"")
     proc = _make_proc("/some/cwd", download_cwd=True)
     proc.communicate()
+    mock_download.assert_called_once()
     downloaded = mock_download.call_args[0][1]
     assert "/some/cwd" in downloaded
 
@@ -67,6 +69,7 @@ def test_extra_download_paths_still_downloaded_without_cwd(
         extra_download_paths=("/explicit/output",),
     )
     proc.communicate()
+    mock_download.assert_called_once()
     downloaded = mock_download.call_args[0][1]
     assert "/some/cwd" not in downloaded
     assert "/explicit/output" in downloaded
