@@ -81,10 +81,12 @@ class Task:
         if isinstance(level, str):
             level_map = {"lower": Task.Level.LOWER, "upper": Task.Level.UPPER}
             if level not in level_map:
-                raise TypeError("unexpected `level`: " + level)
+                msg = f"unexpected `level`: {level}"
+                raise TypeError(msg)
             level = level_map[level]
         if not isinstance(level, Task.Level):
-            raise TypeError("unexpected `level`: " + str(level))
+            msg = f"unexpected `level`: {level}"
+            raise TypeError(msg)
         self.level = level
         self.name: str = name
         self.code: str = code

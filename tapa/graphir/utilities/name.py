@@ -1,11 +1,5 @@
 """Suggest and compress an identifier to a shorter name if it is too long."""
 
-__copyright__ = """
-Copyright (c) 2025 RapidStream Design Automation, Inc. and contributors.
-All rights reserved. The contributor(s) of this file has/have agreed to the
-RapidStream Contributor License Agreement.
-"""
-
 import logging
 from itertools import count
 
@@ -39,11 +33,11 @@ def suggest_name(name: str, blocklist: set[str]) -> str:
     if name not in blocklist:
         return name
 
-    # compress the name further to make room for the suffix
-    if len(name) > MAX_NAME_LENGTH - 16:
-        short_name = compress_name(name, MAX_NAME_LENGTH - 16)
-    else:
-        short_name = name
+    short_name = (
+        compress_name(name, MAX_NAME_LENGTH - 16)
+        if len(name) > MAX_NAME_LENGTH - 16
+        else name
+    )
 
     for suffix in count(1):
         if (
@@ -103,30 +97,24 @@ def compress_name(name: str, target_len: int) -> str:
         >>> compress_name("foooo", 3)
         'foo'
     """
-    # If the name is already shorter than the target length, return the name.
     if len(name) <= target_len:
         return name
 
-    # Get the components of the name.
     components = name.split("_")
 
-    # First, iterate through the components and remove the components that are
-    # a subsequence of other components, from the longest to the shortest.
+    # Remove subcomponents that are subsequences of other components (longest first).
     while get_current_length(components) > target_len:
-        # If no subsequence is found, break
         if not is_removed_longest_subcomponent(components):
             break
 
-    # Second, iterate through the components and remove the longest component.
+    # Remove longest component until short enough.
     while get_current_length(components) > target_len and len(components) > 1:
         components.pop(components.index(max(components, key=len)))
 
-    # If the name is still longer truncate the name from the left.
     name = "_".join(components)
     if len(name) > target_len:
         name = name[:target_len]
 
-    # the first character must not be a number
     if name[0].isdigit():
         name = "_" + name[:-1]
 
@@ -153,39 +141,30 @@ def is_removed_longest_subcomponent(components: list[str]) -> bool:
     subsequence_to_remove = ""
     subsequence_index = -1
 
-    # For each pair of components, find the longest subsequence.
     for index_comp, comp in enumerate(components):
         for index_sub, comp_sub in reversed(list(enumerate(components))):
-            # If comp_sub is a subsequence of comp or itself.
             if index_comp == index_sub or comp_sub not in comp:
                 continue
 
             diff_current = len(comp) - len(comp_sub)
+            # Use inf as sentinel when no subsequence found yet.
             diff_previous = (
                 len(component_to_keep) - len(subsequence_to_remove)
                 if subsequence_index != -1
-                # If no subsequence is found, set the previous difference to infinity.
                 else float("inf")
             )
 
-            if (
-                # First priority: the shortest subsequence difference
-                diff_current < diff_previous
-                # Second priority: the longest component
-                or (
-                    diff_current == diff_previous
-                    and len(comp_sub) > len(subsequence_to_remove)
-                )
+            if diff_current < diff_previous or (
+                diff_current == diff_previous
+                and len(comp_sub) > len(subsequence_to_remove)
             ):
                 component_to_keep = comp
                 subsequence_to_remove = comp_sub
                 subsequence_index = index_sub
 
-    # If no subsequence is found
     if subsequence_index == -1:
         return False
 
-    # Remove the subsequence from the components.
     components.pop(subsequence_index)
     return True
 

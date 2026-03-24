@@ -20,9 +20,7 @@ class SharedMemoryStream {
   struct Options {
     uint64_t depth = 0;
     uint64_t width = 0;
-
-    // This will be consumed by `mkstemp` to create a unique path for the shared
-    // memory object. See `SharedMemoryQueue::CreateFile`.
+    // Consumed by mkstemp; see SharedMemoryQueue::CreateFile.
     std::string filename_template = "shared_memory_queue.XXXXXX";
   };
 

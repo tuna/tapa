@@ -70,8 +70,7 @@ namespace tapa {
 
 namespace internal {
 
-// Signal handler for SIGINT to kill running kernel instance,
-// when the tapa::invoke synchronous kernel is running.
+// Killed via SIGINT when tapa::invoke synchronous kernel is running.
 fpga::Instance* frt_sync_kernel_instance = nullptr;
 extern "C" void kill_frt_sync_kernel(int) {
   if (frt_sync_kernel_instance) {
@@ -160,11 +159,8 @@ int get_physical_core_count() {
 }
 
 class worker {
-  // dict mapping detach to list of coroutine
-  // list is used because the stable pointer can be used as key in handle_table
+  // keyed by detach flag; list for stable pointer (used in handle_table)
   unordered_map<bool, std::list<push_type>> coroutines;
-
-  // dict mapping coroutine to handle
   unordered_map<push_type*, pull_type*> handle_table;
 
   std::queue<std::tuple<bool, function<void()>>> tasks;
@@ -179,28 +175,24 @@ class worker {
   worker() {
     this->thread = std::thread([this]() {
       for (;;) {
-        // accept new tasks
         {
           unique_lock lock(this->mtx);
           this->task_cv.wait(lock, [this] {
             bool pred =
                 this->done || !this->coroutines.empty() || !this->tasks.empty();
-            // yield to the OS for every idle spin
             if (!pred) reschedule_this_thread();
             return pred;
           });
 
-          // stop worker if it is done
           if (this->done && this->tasks.empty()) break;
 
-          // create coroutines for new tasks
           while (!this->tasks.empty()) {
             bool detach;
             function<void()> f;
             std::tie(detach, f) = this->tasks.front();
             this->tasks.pop();
 
-            auto& l = this->coroutines[detach];  // list of coroutines
+            auto& l = this->coroutines[detach];
             auto coroutine = new push_type*;
             auto call_back = [this, f, coroutine](pull_type& handle) {
               this->handle_table[*coroutine] = current_handle = &handle;
@@ -217,7 +209,6 @@ class worker {
           }
         }
 
-        // iterate over all tasks and their coroutines
         bool active = false;
         bool coroutine_executed = false;
 
@@ -248,14 +239,10 @@ class worker {
           this->signal = 0;
         }
 
-        // response to wait requests
         if (!active) {
           this->wait_cv.notify_all();
         }
-
-        // check if coroutines are executed
         if (!coroutine_executed) {
-          // yield to the OS every time the thread is idle
           reschedule_this_thread();
         }
       }
@@ -274,10 +261,7 @@ class worker {
     unique_lock lock(this->mtx);
     this->wait_cv.wait(lock, [this] {
       bool pred = this->tasks.empty() && this->coroutines[false].empty();
-      if (!pred) {
-        // yield to the OS for every idle spin
-        reschedule_this_thread();
-      }
+      if (!pred) reschedule_this_thread();
       return pred;
     });
   }
@@ -363,12 +347,8 @@ thread_pool* pool = nullptr;
 const task* top_task = nullptr;
 mutex mtx;
 
-// How the signal handler works:
-//
-// 1. The main thread receives the signal;
-// 2. Each worker sets `this->signal`;
-// 3. Each worker prints debug info in next iteration of coroutines;
-// 4. Each worker clears `this->signal`.
+// SIGINT flow: main thread receives -> each worker sets signal ->
+// next coroutine iteration prints debug info -> each worker clears signal.
 constexpr int64_t kSignalThreshold = 500 * 1000 * 1000;  // 500 ms
 int64_t last_signal_timestamp = 0;
 void signal_handler(int signal) {
@@ -414,8 +394,7 @@ task::~task() {
 
 }  // namespace tapa
 
-// To build library that works with and without asan, we provide definitions for
-// symbols reference by boost's ucontext implementation here.
+// Weak definitions for asan compatibility with boost's ucontext.
 extern "C" {
 __attribute__((weak)) void __sanitizer_start_switch_fiber(void**, const void*,
                                                           size_t) {}
@@ -532,8 +511,6 @@ task& task::invoke_frt(std::shared_ptr<fpga::Instance> instance) {
   internal::schedule(
       /*detach=*/false, [instance]() {
         while (!instance->IsFinished()) {
-          // Yield to the OS for every idle spin, so that a thread waiting
-          // for the FPGA to finish will not spin in a 100% CPU loop.
           reschedule_this_thread();
           internal::yield("fpga::Instance() is not finished");
         }

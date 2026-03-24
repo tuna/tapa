@@ -103,8 +103,6 @@ def get_vivado_tcl(
         raise ValueError(msg)
 
     script.append(f"create_project -force tapa-fast-cosim ./vivado -part {part_num}")
-
-    # read in the original RTLs by HLS
     script.append(f'set ORIG_RTL_PATH "{tapa_hdl_path}"')
 
     for suffix in (".v", ".sv", ".dat"):
@@ -115,7 +113,6 @@ def get_vivado_tcl(
                 "{add_files -norecurse -scan_for_includes ${rtl_files} }"
             )
 
-    # instantiate IPs used in the RTL. Use "-nocomplain" in case no IP is used
     for loc in (r"${ORIG_RTL_PATH}/*.tcl", r"${ORIG_RTL_PATH}/*/*.tcl"):
         script.append(f"set tcl_files [glob -nocomplain {loc}]")
         script.append(r"foreach ip_tcl ${tcl_files} { source ${ip_tcl} }")
@@ -127,10 +124,8 @@ def get_vivado_tcl(
             "{add_files -norecurse -scan_for_includes ${xci_ip_files} }"
         )
 
-    # IPs may be locked due to version mismatch
     script.append("upgrade_ip -quiet [get_ips *]")
 
-    # read in tb files
     script.append(f"set tb_files [glob {tb_rtl_path}/*.v {tb_rtl_path}/*.sv]")
     script.append(r"set_property SOURCE_SET sources_1 [get_filesets sim_1]")
     script.append(r"add_files -fileset sim_1 -norecurse -scan_for_includes ${tb_files}")
@@ -149,7 +144,6 @@ def get_vivado_tcl(
             "-objects [get_filesets sim_1]"
         )
 
-    # log all signals
     if save_waveform or start_gui:
         script.append(
             r"set_property -name {xsim.simulate.log_all_signals} "

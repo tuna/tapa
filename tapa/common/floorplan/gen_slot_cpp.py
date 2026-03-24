@@ -1,11 +1,5 @@
 """Generate floorplan slot cpp for hls synth."""
 
-__copyright__ = """
-Copyright (c) 2025 RapidStream Design Automation, Inc. and contributors.
-All rights reserved. The contributor(s) of this file has/have agreed to the
-RapidStream Contributor License Agreement.
-"""
-
 import re
 from pathlib import Path
 
@@ -90,10 +84,8 @@ def gen_slot_cpp(slot_name: str, top_name: str, ports: list, top_cpp: str) -> st
         port_type = port["type"]
         port_cat = port["cat"]
 
-        match = re.fullmatch(r"([a-zA-Z_]\w*)\[(\d+)\]", port["name"])
-        if match:
-            n, i = match.groups()
-            name = f"{n}_{i}"
+        if m := re.fullmatch(r"([a-zA-Z_]\w*)\[(\d+)\]", port["name"]):
+            name = f"{m.group(1)}_{m.group(2)}"
         elif "[" in port["name"]:
             msg = f"Invalid port index in '{port['name']}': must be a numeric index."
             raise ValueError(msg)
@@ -101,23 +93,17 @@ def gen_slot_cpp(slot_name: str, top_name: str, ports: list, top_cpp: str) -> st
             name = port["name"]
 
         # TODO: fix scalar cat due to mmap/streams
-        if port_cat == "scalar":
-            m = re.search(r"(?:tapa::)?(\w+)<([^,>]+)", port_type)
-            if m:
-                port_cat = m.group(1)
-                port_type = m.group(2)
+        if port_cat == "scalar" and (
+            m := re.search(r"(?:tapa::)?(\w+)<([^,>]+)", port_type)
+        ):
+            port_cat = m.group(1)
+            port_type = m.group(2)
 
         if "*" in port_type:
             port_type = "uint64_t"
-
         port_type = port_type.removeprefix("const ")
 
-        cpp_ports.append(
-            _PORT_TEMPLATE[port_cat].format(
-                name=name,
-                type=port_type,
-            )
-        )
+        cpp_ports.append(_PORT_TEMPLATE[port_cat].format(name=name, type=port_type))
         assert port_cat in _PRAGMA, port_cat
         cpp_pragmas.append(_PRAGMA[port_cat].format(name=name, type=port_type))
 
@@ -208,14 +194,13 @@ def _find_extern_c_linkage_nodes(source: bytes, func_name: str) -> list[Node]:
     (extern "C" { void foo() {} } or extern "C" { void foo(); }).
     """
     tree = _parser.parse(source)
-    nodes: list[Node] = []
     func_bytes = func_name.encode()
-    queries = (
+    nodes: list[Node] = []
+    for query in (
         _QUERY_EXTERN_LINKAGE_BRACED_DEF,
         _QUERY_EXTERN_LINKAGE_BRACED_DECL,
         _QUERY_EXTERN_LINKAGE_INLINE,
-    )
-    for query in queries:
+    ):
         for _pattern_idx, captures in QueryCursor(query).matches(tree.root_node):
             name_nodes = captures.get("name", [])
             linkage_nodes = captures.get("linkage", [])

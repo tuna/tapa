@@ -13,7 +13,6 @@ import { parseFifo } from "./parser/fifo.js";
 import { color } from "./graph-config.js";
 import { getComboId } from "./helper.js";
 
-/** Color for node with more than 1 connection */
 const altNodeColor = color.nodeB;
 
 /** @type {Readonly<Required<GetGraphDataOptions>>} */
@@ -25,10 +24,7 @@ const defaultOptions = {
 
 /** @type {(json: GraphJSON, options: Required<GetGraphDataOptions>) => GraphData} */
 export const getGraphData = (json, options = defaultOptions) => {
-
-  /** Rename `port` option to a meaningful one */
   const { grouping, port: showPorts } = options;
-  /** Convert `expand` option to combo's `collapsed` style */
   const collapsed = !options.expand;
 
   /** @type {GraphData} */
@@ -40,144 +36,92 @@ export const getGraphData = (json, options = defaultOptions) => {
 
   const { nodes, edges, combos } = graphData;
 
-  /** Gather upper tasks to determine if there is only 1 upper task
-   * @type {Map<string, UpperTask>} */
+  /** @type {Map<string, UpperTask>} */
   const upperTasks = new Map();
   for (const taskName in json.tasks) {
     const task = json.tasks[taskName];
-    if (task.level === "upper") {
-      upperTasks.set(taskName, task);
-    }
+    if (task.level === "upper") upperTasks.set(taskName, task);
   }
 
-  // Use different node color method for differnt amount of upper task
   const colorByTaskLevel = upperTasks.size > 1;
 
-  /** If there is only 1 upper task, color node with 2+ connection
-   * @type {(edge: import("@antv/g6").EdgeData) => void} */
-  const addEdge = (
-    colorByTaskLevel
-      ? edge => edges.push(edge)
-      // Color node by
-      : (() => {
-        /** Connection counts for nodes, 0: `<= 1`, 1: `> 1`
-         * @type {Map<string, 0 | 1>} */
-        const counts = new Map();
-
-        return (edge) => {
-          [edge.source, edge.target].forEach(id => {
-            switch (counts.get(id)) {
-              case undefined: // set to 0 if undefined
-                counts.set(id, 0);
-                break;
-              case 0: { // fill and set to 1
-                const node = nodes.find(node => node.id === id);
-                if (node) node.style = { ...node.style, fill: altNodeColor };
-                counts.set(id, 1);
-                break;
-              }
-              case 1: // skip filled node
-                break;
+  /** @type {(edge: import("@antv/g6").EdgeData) => void} */
+  const addEdge = colorByTaskLevel
+    ? edge => edges.push(edge)
+    : (() => {
+      /** Connection counts: 0 = first seen, 1 = already colored
+       * @type {Map<string, 0 | 1>} */
+      const counts = new Map();
+      return edge => {
+        [edge.source, edge.target].forEach(id => {
+          switch (counts.get(id)) {
+            case undefined: counts.set(id, 0); break;
+            case 0: {
+              const node = nodes.find(n => n.id === id);
+              if (node) node.style = { ...node.style, fill: altNodeColor };
+              counts.set(id, 1);
+              break;
             }
-          });
-          edges.push(edge);
-        };
-      })()
-  );
+          }
+        });
+        edges.push(edge);
+      };
+    })();
 
   const topTaskName = json.top;
-  /** @type {Task | undefined} */
   const topTask = json.tasks[topTaskName];
-  if (!topTask) {
-    return graphData;
-  } else if (topTask.level === "lower") {
-    nodes.push({
-      id: topTaskName,
-      data: { task: topTask },
-    })
+  if (!topTask) return graphData;
+  if (topTask.level === "lower") {
+    nodes.push({ id: topTaskName, data: { task: topTask } });
     return graphData;
   }
 
-  combos.push({
-    id: getComboId(topTaskName),
-    data: topTask,
-  });
+  combos.push({ id: getComboId(topTaskName), data: topTask });
 
   // Loop 1: sub-tasks -> combos and nodes
   upperTasks.forEach((upperTask, upperTaskName) => {
     for (const subTaskName in upperTask.tasks) {
-      /** Sub-tasks: `${subTaskName}/0`, `${subTaskName}/1`, ... */
       const subTasks = upperTask.tasks[subTaskName];
-
-      /** Sub-tasks' task
-       * @type {Task | undefined} */
       const task = json.tasks[subTaskName];
-
-      /** upperTask's combo id */
-      let combo = getComboId(upperTaskName);
-
-      /** Node style, not for combo;
-       * ports don't gone by itself, set default ports to override existing ones
-       * @type {NonNullable<NodeData["style"]>} */
-      const style = { ports: [] };
+      const combo = getComboId(upperTaskName);
+      // ports don't reset by themselves; always set to override existing ones
+      const style = /** @type {NonNullable<NodeData["style"]>} */ ({ ports: [] });
 
       if (task?.level === "upper") {
-        // Upper 1: Add combo for upper task
-        const newCombo = {
-          id: getComboId(subTaskName),
-          combo,
-          data: task,
-          style: { collapsed },
-        };
-        // Insert combo after its parent for z-index order
+        const newCombo = { id: getComboId(subTaskName), combo, data: task, style: { collapsed } };
         const i = combos.findIndex(({ id }) => id === combo);
-        i !== -1
-          ? combos.splice(i + 1, 0, newCombo)
-          : combos.push(newCombo);
-
-        // Upper 2: If there is more than 1 upper task, color node by task level
+        i !== -1 ? combos.splice(i + 1, 0, newCombo) : combos.push(newCombo);
         if (colorByTaskLevel) style.fill = altNodeColor;
+      }
 
-        }
-
-      // Add node for subTask
       if (grouping !== "merge") {
         subTasks.forEach((subTask, i) => {
           if (showPorts) {
-          /** @type {IOPorts} */
             const ioPorts = { istream: [], ostream: [] };
             setIOPorts(subTask, ioPorts);
             setPortsStyle(ioPorts, style);
           }
-
-          const id = `${subTaskName}/${i}`;
-          nodes.push({ id, combo, style, data: { task, subTask } });
+          nodes.push({ id: `${subTaskName}/${i}`, combo, style, data: { task, subTask } });
         });
       } else {
         if (showPorts) {
-          /** @type {IOPorts} */
           const ioPorts = { istream: [], ostream: [] };
           subTasks.forEach(subTask => setIOPorts(subTask, ioPorts));
           setPortsStyle(ioPorts, style);
         }
-
         nodes.push({ id: subTaskName, combo, style, data: { task, subTasks } });
       }
-
     }
   });
 
-  // Between Loop 1 and Loop 2: check & expand sub-task
   if (grouping === "expand" && graphData.combos.length > 1) {
     expandSubTask(graphData);
   }
 
-  // Loop 2: fifo -> edges
-  upperTasks.forEach(
-    (upperTask, upperTaskName) =>
-      parseFifo(upperTask, upperTaskName, grouping, nodes, addEdge),
+  // Loop 2: fifos -> edges
+  upperTasks.forEach((upperTask, upperTaskName) =>
+    parseFifo(upperTask, upperTaskName, grouping, nodes, addEdge),
   );
 
   return graphData;
-
 };

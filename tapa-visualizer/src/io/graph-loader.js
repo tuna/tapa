@@ -13,13 +13,7 @@ import { parseGraphJSON } from "./schema.js";
 export const getEmptyGraphData = () => ({ nodes: [], edges: [], combos: [] });
 
 /** @typedef {{
- *   state: {
- *     filename: string | undefined,
- *     graph: import("@antv/g6").Graph,
- *     graphJSON: GraphJSON | undefined,
- *     graphData: GraphData,
- *     options: GetGraphDataOptions,
- *   },
+ *   state: { filename: string | undefined, graph: import("@antv/g6").Graph, graphJSON: GraphJSON | undefined, graphData: GraphData, options: GetGraphDataOptions },
  *   getOptions: () => GetGraphDataOptions,
  *   renderGraph: (graph: import("@antv/g6").Graph, graphData: GraphData) => Promise<void>,
  *   setupGraph: (graph: import("@antv/g6").Graph, graphJSON: GraphJSON) => Promise<void>,
@@ -78,10 +72,7 @@ export const setupGraphLoader = (fileInput, deps) => {
       deps.clearExplorer();
       deps.updateOptionsHint(0);
       const showError = () => resetSidebar(String(error));
-      deps.state.graph?.clear().then(showError, clearError => {
-        console.error(clearError);
-        showError();
-      }) ?? showError();
+      deps.state.graph?.clear().then(showError, e => { console.error(e); showError(); }) ?? showError();
     });
 
     return true;

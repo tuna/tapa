@@ -1,11 +1,5 @@
 """Interconnect definition object in TAPA."""
 
-__copyright__ = """
-Copyright (c) 2024 RapidStream Design Automation, Inc. and contributors.
-All rights reserved. The contributor(s) of this file has/have agreed to the
-RapidStream Contributor License Agreement.
-"""
-
 from enum import Enum
 from functools import lru_cache
 
@@ -24,13 +18,11 @@ class InterconnectDefinition(Base):
     @lru_cache(None)
     def get_depth(self) -> int:
         """Return the depth of the local interconnect."""
-        if self.get_type() == InterconnectDefinition.Type.STREAM:
-            assert isinstance(self.obj["depth"], int)
-            return self.obj["depth"]
-        msg = "Local interconnects other than streams are not implemented yet."
-        raise NotImplementedError(
-            msg,
-        )
+        if self.get_type() != InterconnectDefinition.Type.STREAM:
+            msg = "Local interconnects other than streams are not implemented yet."
+            raise NotImplementedError(msg)
+        assert isinstance(self.obj["depth"], int)
+        return self.obj["depth"]
 
     @staticmethod
     def get_type() -> "InterconnectDefinition.Type":

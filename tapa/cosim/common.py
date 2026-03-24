@@ -51,9 +51,7 @@ class Arg(NamedTuple):
     @property
     def is_stream(self) -> bool:
         """Returns whether this arg is a stream."""
-        # Adding a constant for this magic value is tautology.
-        # ruff: noqa: PLR2004
-        return self.address_qualifier == 4
+        return self.address_qualifier == 4  # noqa: PLR2004
 
     @property
     def qualified_name(self) -> str:
@@ -83,7 +81,7 @@ MAX_AXI_BRAM_ADDR_WIDTH = 32
 
 def output_data_path(input_path: str) -> str:
     p = Path(input_path)
-    return str(p.with_name(p.stem + "_out.bin"))
+    return str(p.with_name(f"{p.stem}_out.bin"))
 
 
 def parse_register_addr(ctrl_unit_path: str) -> dict[str, list[str]]:
@@ -97,12 +95,10 @@ def parse_register_addr(ctrl_unit_path: str) -> dict[str, list[str]]:
 
     arg_to_reg_addrs: dict[str, list[str]] = defaultdict(list)
     for line in comments:
-        if " 0x" in line and "Data signal" in line:
-            match = re.search(r"(0x\w+) : Data signal of (\w+)", line)
-            if match is None:
-                continue
-            signal = match.group(2)
-            addr = match.group(1)
-            arg_to_reg_addrs[signal].append(addr.replace("0x", "'h"))
+        if " 0x" not in line or "Data signal" not in line:
+            continue
+        match = re.search(r"(0x\w+) : Data signal of (\w+)", line)
+        if match:
+            arg_to_reg_addrs[match.group(2)].append(match.group(1).replace("0x", "'h"))
 
     return dict(arg_to_reg_addrs)

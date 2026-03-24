@@ -1,11 +1,5 @@
 """Mixin class that has a root field that is list-like or dict-like."""
 
-__copyright__ = """
-Copyright (c) 2025 RapidStream Design Automation, Inc. and contributors.
-All rights reserved. The contributor(s) of this file has/have agreed to the
-RapidStream Contributor License Agreement.
-"""
-
 from collections.abc import ItemsView, Iterator, KeysView, ValuesView
 from typing import Any, Generic, TypeVar
 

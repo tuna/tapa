@@ -98,9 +98,8 @@ def build_ssh_args(config: RemoteConfig) -> list[str]:
 def _resolve_control_path(config: RemoteConfig) -> str | None:
     if not config.ssh_multiplex:
         return None
-    cmd = [*build_ssh_args(config), "-G", ssh_target(config)]
     result = subprocess.run(
-        cmd,
+        [*build_ssh_args(config), "-G", ssh_target(config)],
         capture_output=True,
         check=False,
     )
@@ -108,9 +107,7 @@ def _resolve_control_path(config: RemoteConfig) -> str | None:
         return None
     output = result.stdout.decode("utf-8", errors="replace")
     match = re.search(r"^controlpath (.+)$", output, re.MULTILINE)
-    if match is None:
-        return None
-    return match.group(1).strip()
+    return match.group(1).strip() if match else None
 
 
 def _master_key(config: RemoteConfig) -> tuple[str, str, int, str, str, str, bool]:
@@ -129,7 +126,7 @@ def _is_mux_failure(result: subprocess.CompletedProcess[bytes]) -> bool:
     if result.returncode == 0:
         return False
     stderr = result.stderr.decode("utf-8", errors="replace").lower()
-    return any(pattern in stderr for pattern in _MUX_FAILURE_PATTERNS)
+    return any(p in stderr for p in _MUX_FAILURE_PATTERNS)
 
 
 def _remove_stale_control_socket(config: RemoteConfig) -> None:
@@ -151,9 +148,8 @@ def _kill_master(config: RemoteConfig) -> None:
 def _check_master(config: RemoteConfig) -> bool:
     if not config.ssh_multiplex:
         return False
-    cmd = [*build_ssh_args(config), "-O", "check", ssh_target(config)]
     result = subprocess.run(
-        cmd,
+        [*build_ssh_args(config), "-O", "check", ssh_target(config)],
         capture_output=True,
         check=False,
     )
@@ -204,8 +200,7 @@ def ensure_ssh_master(
         elif _check_master(config):
             control_path = _resolve_control_path(config)
             msg = (
-                f"SSH mux: reusing existing master"
-                f" at {control_path}"
+                f"SSH mux: reusing existing master at {control_path}"
                 f" for {config.host}:{config.port}"
             )
             _logger.info(msg)
@@ -216,17 +211,16 @@ def ensure_ssh_master(
         else:
             _remove_stale_control_socket(config)
 
-        cmd = [*build_ssh_args(config), "-MNf", ssh_target(config)]
         result = subprocess.run(
-            cmd,
+            [*build_ssh_args(config), "-MNf", ssh_target(config)],
             capture_output=True,
             check=False,
         )
         if result.returncode != 0 and not _check_master(config):
             err = result.stderr.decode("utf-8", errors="replace").strip()
             msg = (
-                f"SSH mux: FAILED to start master for"
-                f" {config.host}:{config.port}: {err}"
+                f"SSH mux: FAILED to start master"
+                f" for {config.host}:{config.port}: {err}"
             )
             _logger.warning(msg)
             _append_mux_log(control_dir, msg)
@@ -242,8 +236,7 @@ def ensure_ssh_master(
         _append_mux_log(control_dir, msg)
 
     with _MASTER_READY_LOCK:
-        # Clear any previous failure state on success.
-        _MASTER_FAILED_KEYS.discard(key)
+        _MASTER_FAILED_KEYS.discard(key)  # clear any previous failure state
         _MASTER_READY_KEYS.add(key)
 
 
@@ -256,9 +249,7 @@ def run_ssh(
 ) -> subprocess.CompletedProcess[bytes]:
     """Run a remote command via OpenSSH."""
     ensure_ssh_master(config)
-
-    # Fail fast if master is known to be unreachable.
-    key = _master_key(config)
+    key = _master_key(config)  # fail fast if master is known unreachable
     with _MASTER_READY_LOCK:
         if key in _MASTER_FAILED_KEYS:
             return subprocess.CompletedProcess(
@@ -281,18 +272,11 @@ def run_ssh(
             _MASTER_READY_KEYS.discard(key)
             _MASTER_FAILED_KEYS.discard(key)
         ensure_ssh_master(config, force_restart=True)
-
-        # Only retry if the new master was established successfully.
         with _MASTER_READY_LOCK:
             if key in _MASTER_FAILED_KEYS:
-                return result
-
+                return result  # only retry if new master was established
         result = subprocess.run(
-            cmd,
-            input=input_bytes,
-            capture_output=True,
-            timeout=timeout,
-            check=False,
+            cmd, input=input_bytes, capture_output=True, timeout=timeout, check=False
         )
     return result
 

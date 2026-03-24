@@ -26,6 +26,12 @@ if TYPE_CHECKING:
 _FIFO_MODULE_NAME = "fifo"
 
 
+def _mc(name: str, expr: Expression) -> ModuleConnection:
+    return ModuleConnection(
+        name=name, hierarchical_name=HierarchicalName.get_name(name), expr=expr
+    )
+
+
 def infer_fifo_data_range(
     fifo_name: str,
     fifo: dict,
@@ -43,7 +49,7 @@ def infer_fifo_data_range(
     producer_task_name, _, producer_fifo = get_connection_to_codegen(
         slot, fifo_name, "produced_by"
     )
-    consumer_task_name, _, consumer_fifo = get_connection_to_codegen(
+    consumer_task_name, _, _consumer_fifo = get_connection_to_codegen(
         slot, fifo_name, "consumed_by"
     )
 
@@ -57,16 +63,10 @@ def infer_fifo_data_range(
             .module.get_port_of(producer_fifo, STREAM_DATA_SUFFIXES[1])
             .name
         )
-        (
-            subtasks[consumer_task_name]
-            .module.get_port_of(consumer_fifo, STREAM_DATA_SUFFIXES[0])
-            .name
-        )
     else:
         producer_data_port = get_stream_port_name(
             producer_fifo, STREAM_DATA_SUFFIXES[1]
         )
-        get_stream_port_name(consumer_fifo, STREAM_DATA_SUFFIXES[0])
 
     return leaf_ir_defs[producer_task_name].get_port(producer_data_port).range
 
@@ -91,47 +91,29 @@ def _get_fifo_connections(
     fifo_name_no_bracket: str,
     is_top: bool,
 ) -> tuple[ModuleConnection, ...]:
+    n = fifo_name_no_bracket
     reset_expr = (
         Expression((Token.new_id("rst"),))
         if is_top
         else Expression((Token.new_lit("~"), Token.new_id("ap_rst_n")))
     )
+    one = Expression((Token.new_lit("1'b1"),))
     return (
-        ModuleConnection(
-            name="clk",
-            hierarchical_name=HierarchicalName.get_name("clk"),
-            expr=Expression((Token.new_id("ap_clk"),)),
-        ),
-        ModuleConnection(
-            name="reset",
-            hierarchical_name=HierarchicalName.get_name("reset"),
-            expr=reset_expr,
-        ),
-        *tuple(
-            ModuleConnection(
-                name=port,
-                hierarchical_name=HierarchicalName.get_name(port),
-                expr=Expression((Token.new_id(signal),)),
-            )
-            for port, signal in (
-                ("if_dout", f"{fifo_name_no_bracket}_dout"),
-                ("if_empty_n", f"{fifo_name_no_bracket}_empty_n"),
-                ("if_read", f"{fifo_name_no_bracket}_read"),
-                ("if_din", f"{fifo_name_no_bracket}_din"),
-                ("if_full_n", f"{fifo_name_no_bracket}_full_n"),
-                ("if_write", f"{fifo_name_no_bracket}_write"),
+        _mc("clk", Expression((Token.new_id("ap_clk"),))),
+        _mc("reset", reset_expr),
+        *(
+            _mc(port, Expression((Token.new_id(sig),)))
+            for port, sig in (
+                ("if_dout", f"{n}_dout"),
+                ("if_empty_n", f"{n}_empty_n"),
+                ("if_read", f"{n}_read"),
+                ("if_din", f"{n}_din"),
+                ("if_full_n", f"{n}_full_n"),
+                ("if_write", f"{n}_write"),
             )
         ),
-        ModuleConnection(
-            name="if_read_ce",
-            hierarchical_name=HierarchicalName.get_name("if_read_ce"),
-            expr=Expression((Token.new_lit("1'b1"),)),
-        ),
-        ModuleConnection(
-            name="if_write_ce",
-            hierarchical_name=HierarchicalName.get_name("if_write_ce"),
-            expr=Expression((Token.new_lit("1'b1"),)),
-        ),
+        _mc("if_read_ce", one),
+        _mc("if_write_ce", one),
     )
 
 
@@ -147,13 +129,12 @@ def get_fifo_inst(  # noqa: PLR0917, PLR0913
     depth = int(fifo["depth"])
     addr_width = max(1, (depth - 1).bit_length())
     fifo_range = infer_fifo_data_range(
-        fifo_name,
-        fifo,
-        submodule_ir_defs,
-        upper_task,
-        not is_top,
+        fifo_name, fifo, submodule_ir_defs, upper_task, not is_top
     )
     assert fifo_range is not None
+
+    def _lit(val: str) -> Expression:
+        return Expression((Token.new_lit(val),))
 
     fifo_name_no_bracket = sanitize_array_name(fifo_name)
     return ModuleInstantiation(
@@ -162,21 +143,9 @@ def get_fifo_inst(  # noqa: PLR0917, PLR0913
         module=_FIFO_MODULE_NAME,
         connections=_get_fifo_connections(fifo_name_no_bracket, is_top),
         parameters=(
-            ModuleConnection(
-                name="DEPTH",
-                hierarchical_name=HierarchicalName.get_name("DEPTH"),
-                expr=Expression((Token.new_lit(str(depth)),)),
-            ),
-            ModuleConnection(
-                name="ADDR_WIDTH",
-                hierarchical_name=HierarchicalName.get_name("ADDR_WIDTH"),
-                expr=Expression((Token.new_lit(str(addr_width)),)),
-            ),
-            ModuleConnection(
-                name="DATA_WIDTH",
-                hierarchical_name=HierarchicalName.get_name("DATA_WIDTH"),
-                expr=_get_fifo_data_width(fifo_range),
-            ),
+            _mc("DEPTH", _lit(str(depth))),
+            _mc("ADDR_WIDTH", _lit(str(addr_width))),
+            _mc("DATA_WIDTH", _get_fifo_data_width(fifo_range)),
         ),
         floorplan_region=floorplan_region,
         area=None,

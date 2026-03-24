@@ -177,14 +177,13 @@ def main(  # noqa: PLR0913, PLR0917
 ) -> None:
     """Main entry point for the TAPA fast cosim tool."""
     _logger.info("TAPA fast cosim version: %s", __version__)
-
-    _logger.debug("   Loading configuration from %s", config_path)
-    _logger.debug("   Generating testbench in %s", tb_output_dir)
-    _logger.debug("   Part number: %s", part_num)
-    _logger.debug("   Simulator: %s", simulator)
-    _logger.debug("   Launch simulation: %s", launch_simulation)
-    _logger.debug("   Save waveform: %s", save_waveform)
-    _logger.debug("   Start GUI: %s", start_gui)
+    _logger.debug(
+        "config=%s tb_output_dir=%s part=%s sim=%s",
+        config_path,
+        tb_output_dir,
+        part_num,
+        simulator,
+    )
 
     config = preprocess_config(config_path, tb_output_dir, part_num)
 
@@ -225,7 +224,6 @@ def _generate_xsim(  # noqa: PLR0913, PLR0917
     launch_simulation: bool,
 ) -> None:
     """Generate xsim testbench and optionally launch Vivado simulation."""
-    # add default nettype to all rtl
     set_default_nettype(verilog_path)
 
     tb = get_cosim_tb(
@@ -238,23 +236,22 @@ def _generate_xsim(  # noqa: PLR0913, PLR0917
         config.mode,
     )
 
-    # generate test bench RTL files
     Path(tb_output_dir).mkdir(parents=True, exist_ok=True)
     for bin_file in Path(tb_output_dir).glob("*.bin"):
         bin_file.unlink()
-    with open(f"{tb_output_dir}/tb.sv", "w", encoding="utf-8") as fp:
-        fp.write(tb)
-    with open(f"{tb_output_dir}/fifo_srl_tb.v", "w", encoding="utf-8") as fp:
-        fp.write(get_srl_fifo_template())
+    Path(f"{tb_output_dir}/tb.sv").write_text(tb, encoding="utf-8")
+    Path(f"{tb_output_dir}/fifo_srl_tb.v").write_text(
+        get_srl_fifo_template(), encoding="utf-8"
+    )
 
     for axi in axi_list:
-        source_data_path = config.axi_to_data_file[axi.name]
-        c_array_size = config.axi_to_c_array_size[axi.name]
-        ram_module = get_axi_ram_module(axi, source_data_path, c_array_size)
-        with open(f"{tb_output_dir}/axi_ram_{axi.name}.v", "w", encoding="utf-8") as fp:
-            fp.write(ram_module)
+        ram_module = get_axi_ram_module(
+            axi, config.axi_to_data_file[axi.name], config.axi_to_c_array_size[axi.name]
+        )
+        Path(f"{tb_output_dir}/axi_ram_{axi.name}.v").write_text(
+            ram_module, encoding="utf-8"
+        )
 
-    # generate vivado script
     Path(f"{tb_output_dir}/run").mkdir(parents=True, exist_ok=True)
     if save_waveform:
         _logger.warning(
@@ -264,15 +261,10 @@ def _generate_xsim(  # noqa: PLR0913, PLR0917
             tb_output_dir,
         )
 
-    vivado_script = get_vivado_tcl(
-        config,
-        tb_output_dir,
-        save_waveform,
-        start_gui,
+    vivado_script = get_vivado_tcl(config, tb_output_dir, save_waveform, start_gui)
+    Path(f"{tb_output_dir}/run/run_cosim.tcl").write_text(
+        "\n".join(vivado_script), encoding="utf-8"
     )
-
-    with open(f"{tb_output_dir}/run/run_cosim.tcl", "w", encoding="utf-8") as fp:
-        fp.write("\n".join(vivado_script))
 
     if launch_simulation:
         with (
@@ -301,18 +293,11 @@ def _launch_simulation(
 
     mode = "gui" if start_gui else "batch"
     command = ["vivado", "-mode", mode, "-source", "run_cosim.tcl"]
-
-    _logger.info("Starting Vivado:")
-    _logger.info("   Command: %s", " ".join(command))
-    _logger.info("   Working directory: %s/run", tb_output_dir)
-    _logger.info("   Stdout: %s/cosim.stdout.log", tb_output_dir)
-    _logger.info("   Stderr: %s/cosim.stderr.log", tb_output_dir)
+    _logger.info("Starting Vivado: %s in %s/run", " ".join(command), tb_output_dir)
 
     run_dir = Path(f"{tb_output_dir}/run").resolve().as_posix()
     env = os.environ | {
-        # Vivado generates garbage files in the user home directory.
-        # We ask Vivado to dump garbages to the current directory instead
-        # of the user home to avoid collisions.
+        # Redirect Vivado's home directory to avoid collisions in the real home.
         "HOME": run_dir,
         "TAPA_FAST_COSIM_DPI_ARGS": ",".join(
             f"{k}:{v}" for k, v in config.axis_to_data_file.items()

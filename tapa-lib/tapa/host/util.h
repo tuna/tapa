@@ -11,12 +11,8 @@
 
 namespace tapa {
 
-/// Obtain a value of type @c To by reinterpreting the object representation of
-/// @c from.
-///
-/// @note       This function is slightly different from C++20 @c std::bit_cast.
-/// @tparam To  Target type.
-/// @param from Source object.
+/// Reinterprets the object representation of @p from as type @c To.
+/// Slightly different from C++20 @c std::bit_cast.
 template <typename To, typename From>
 inline typename std::enable_if<sizeof(To) == sizeof(From), To>::type  //
 bit_cast(From from) noexcept {

@@ -1,10 +1,5 @@
 """Base class of immutable objects that is shared among TAPA graph IR types."""
 
-__copyright__ = """
-Copyright (c) 2025 RapidStream Design Automation, Inc. and contributors.
-All rights reserved. The contributor(s) of this file has/have agreed to the
-RapidStream Contributor License Agreement.
-"""
 from typing import Self, TypeVar
 
 from pydantic import BaseModel, ConfigDict
@@ -31,23 +26,11 @@ class ModelMixin:
         Returns:
             _X: The updated immutable object.
         """
-        return self._model_copy(deep=False, **update)
-
-    def _model_copy(self, deep: bool, **update: object) -> Self:
-        """Return a new immutable object with fields updated.  Either deep or shallow.
-
-        Args:
-            deep (bool): Whether to perform a deep copy.
-            **update (object): The fields to update.
-
-        Returns:
-            _X: The updated immutable object.
-        """
         unknown = set(update) - set(self.model_fields)  # type: ignore[reportAttributeAccessIssue]
         if unknown:
             msg = f"Unknown fields to update: {unknown}"
             raise ValueError(msg)
-        return self.model_copy(update=update, deep=deep)  # type: ignore[reportAttributeAccessIssue]
+        return self.model_copy(update=update, deep=False)  # type: ignore[reportAttributeAccessIssue]
 
     @staticmethod
     def get_name_of_object(inst: object | dict[str, object]) -> str:

@@ -1,11 +1,5 @@
 """Data structure to represent an expression."""
 
-__copyright__ = """
-Copyright (c) 2025 RapidStream Design Automation, Inc. and contributors.
-All rights reserved. The contributor(s) of this file has/have agreed to the
-RapidStream Contributor License Agreement.
-"""
-
 import re
 from typing import Any
 
@@ -196,9 +190,6 @@ class Expression(  # type: ignore [misc]
     def get_identifier(self) -> str:
         """Return the identifier the expression directly connects to.
 
-        Returns:
-            str: The identifier directly connects to.
-
         Examples:
             >>> e = Expression.new_id("a")
             >>> e.get_identifier()
@@ -226,9 +217,6 @@ class Expression(  # type: ignore [misc]
     def get_used_identifiers(self) -> set[str]:
         """Return all identifiers used in the expression.
 
-        Returns:
-            set[str]: The set of identifiers used in the expression.
-
         Examples:
             >>> e = Expression(
             ...     (Token.new_id("a"), Token.new_lit("+"), Token.new_lit("1"))
@@ -240,9 +228,6 @@ class Expression(  # type: ignore [misc]
 
     def get_used_literals(self) -> set[str]:
         """Return all literals used in the expression.
-
-        Returns:
-            set[str]: The set of literals used in the expression.
 
         Examples:
             >>> e = Expression(
@@ -256,9 +241,6 @@ class Expression(  # type: ignore [misc]
     def is_empty(self) -> bool:
         """Return true if the expression is empty.
 
-        Returns:
-            bool: True if the expression is empty.
-
         Examples:
             >>> e = Expression.new_empty()
             >>> e.is_empty()
@@ -271,9 +253,6 @@ class Expression(  # type: ignore [misc]
 
     def is_identifier(self) -> bool:
         """Return true if the expression directly connects to an identifier.
-
-        Returns:
-            bool: True if the expression directly connects to an identifier.
 
         Examples:
             >>> e = Expression(
@@ -291,9 +270,6 @@ class Expression(  # type: ignore [misc]
     def new_empty() -> "Expression":
         """Get an empty expression.
 
-        Returns:
-            Expression: The empty expression.
-
         Example:
             >>> e = Expression.new_empty()
             >>> print(e.model_dump_json())
@@ -304,12 +280,6 @@ class Expression(  # type: ignore [misc]
     @staticmethod
     def new_id(ident: str) -> "Expression":
         """Get an expression pointing to an identifier.
-
-        Args:
-            ident (str): The identifier.
-
-        Returns:
-            Expression: The expression to the identifier.
 
         Example:
             >>> e = Expression.new_id("i")
@@ -322,12 +292,6 @@ class Expression(  # type: ignore [misc]
     def new_lit(lit: str) -> "Expression":
         """Get an expression with a literal expression.
 
-        Args:
-            lit (str): The literal expression.
-
-        Returns:
-            Expression: The expression of the literal expression.
-
         Example:
             >>> e = Expression.new_lit("1")
             >>> print(e.model_dump_json())
@@ -338,12 +302,6 @@ class Expression(  # type: ignore [misc]
     @staticmethod
     def new_string_lit(lit: str) -> "Expression":
         r"""Get an expression with a quoted string literal.
-
-        Args:
-            lit (str): The string to quote as a literal.
-
-        Returns:
-            Expression: The expression of the quoted string literal.
 
         Example:
             >>> e = Expression.new_string_lit("hello")

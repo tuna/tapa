@@ -14,10 +14,8 @@ namespace internal {
 
 class OpenclDeviceMatcher {
  public:
-  // Returns the name of the target device.
   virtual std::string GetTargetName() const = 0;
-
-  // Returns the name of matched device. Empty if not matched.
+  // Returns matched device name, or empty string if no match.
   virtual std::string Match(cl::Device device) const = 0;
 };
 

@@ -9,9 +9,7 @@
 import { getComboName } from "../helper.js";
 
 /** @type {(graphData: GraphData) => void} */
-export const expandSubTask = (graphData) => {
-
-  /** @type {(id: string, i: string) => string} */
+export const expandSubTask = graphData => {
   const insertIndex = (id, i) => id.split("/").toSpliced(2, 0, i).join("/");
 
   /** @type {import("@antv/g6").ComboData[]} */
@@ -21,8 +19,6 @@ export const expandSubTask = (graphData) => {
 
   for (let i = 1; i < graphData.combos.length; i++) {
     const combo = graphData.combos[i];
-
-    // Check if combo need expand: if it has multiple nodes (sub-tasks)
     const comboNodes = graphData.nodes.filter(
       node => node.id.startsWith(`${getComboName(combo.id)}/`)
     );
@@ -31,25 +27,18 @@ export const expandSubTask = (graphData) => {
     expandedCombos.push(combo);
     expandedComboIds.push(combo.id);
 
-    // Combo's children
     const children = graphData.nodes.filter(node => node.combo === combo.id);
 
-    // Add expanded combos & nodes, using combo & its children as template
     for (let j = 1; j < comboNodes.length; j++) {
       const comboId = `${combo.id}/${j}`;
       const newCombo = { ...combo, id: comboId };
       expandedCombos.push(newCombo);
       graphData.combos.push(newCombo);
-
       graphData.nodes.push(
-        ...children.map(node => {
-          const nodeId = insertIndex(node.id, j.toString());
-          return { ...node, id: nodeId, combo: comboId };
-        }),
+        ...children.map(node => ({ ...node, id: insertIndex(node.id, j.toString()), combo: comboId })),
       );
     }
 
-    // Update combo & its original children
     combo.id += "/0";
     children.forEach(node => {
       node.id = insertIndex(node.id, "0");
@@ -57,11 +46,9 @@ export const expandSubTask = (graphData) => {
     });
   }
 
-  // set combo.combo for the involved combos
   expandedCombos.forEach(combo => {
     if (combo.combo && expandedComboIds.includes(combo.combo)) {
       combo.combo += `/${combo.id.split("/").at(-1)}`;
     }
   });
-
 };

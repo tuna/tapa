@@ -21,10 +21,10 @@ def detect_xilinx_ips(rtl_dir: Path) -> list[str]:
         ip_insts = re.findall(r"^(\w+_ip)\s+\w+\s*\(", content, re.MULTILINE)
         for ip_module in ip_insts:
             ip_path = rtl_dir / f"{ip_module}.v"
-            if ip_path.exists():
-                ip_content = ip_path.read_text(encoding="utf-8", errors="replace")
-                if "`pragma protect" not in ip_content:
-                    continue
+            if ip_path.exists() and "`pragma protect" not in ip_path.read_text(
+                encoding="utf-8", errors="replace"
+            ):
+                continue
 
             tcl_path = rtl_dir / f"{ip_module}.tcl"
             ip_config = parse_ip_tcl(tcl_path) if tcl_path.exists() else None
@@ -37,8 +37,7 @@ def detect_xilinx_ips(rtl_dir: Path) -> list[str]:
                 latency = 5
                 if dpi_func is None:
                     _logger.warning(
-                        "Cannot determine operation for %s -- skipping",
-                        ip_module,
+                        "Cannot determine operation for %s -- skipping", ip_module
                     )
                     continue
 
@@ -57,30 +56,26 @@ def detect_xilinx_ips(rtl_dir: Path) -> list[str]:
 
 def parse_ip_tcl(tcl_path: Path) -> dict | None:
     content = tcl_path.read_text(encoding="utf-8", errors="replace")
-
     if "create_ip -name floating_point" not in content:
         return None
 
-    config = {}
-    for match in re.finditer(r"CONFIG\.(\w+)\s+(\S+)", content):
-        config[match.group(1)] = match.group(2).rstrip("\\")
+    config = {
+        m.group(1): m.group(2).rstrip("\\")
+        for m in re.finditer(r"CONFIG\.(\w+)\s+(\S+)", content)
+    }
 
-    precision = config.get("a_precision_type", "Single")
-    is_double = precision.lower() == "double"
-
-    add_sub = config.get("add_sub_value", "Add")
+    is_double = config.get("a_precision_type", "Single").lower() == "double"
     op_type = config.get("operation_type", "")
     if "Add" in op_type or "Subtract" in op_type:
+        add_sub = config.get("add_sub_value", "Add")
         op = "sub" if add_sub.lower() in {"subtract", "sub"} else "add"
     elif "Multiply" in op_type:
         op = "mul"
     else:
         return None
 
-    prefix = "fp64" if is_double else "fp32"
-    dpi_func = f"{prefix}_{op}"
-    latency = int(config.get("c_latency", "5"))
-    return {"dpi_func": dpi_func, "latency": latency}
+    dpi_func = f"{'fp64' if is_double else 'fp32'}_{op}"
+    return {"dpi_func": dpi_func, "latency": int(config.get("c_latency", "5"))}
 
 
 _FP_NAME_MAP = {

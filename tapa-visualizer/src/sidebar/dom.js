@@ -24,8 +24,7 @@ const connections = getSidebarContainer("connections");
 
 export { cflags, connections, explorer, instance, neighbors, task };
 
-export const resetInstance = (text = "Please select an item.") =>
-  instance.replaceChildren($text("p", text));
+export const resetInstance = (text = "Please select an item.") => instance.replaceChildren($text("p", text));
 
 export const resetSidebar = (instanceText = "Please select an item.") => {
   instance.replaceChildren($text("p", instanceText));
@@ -52,42 +51,21 @@ export const parseArgs = args => append(
 /** @type {(fifos: [string, FIFO][], taskName: string) => HTMLTableElement} */
 export const parseFifos = (fifos, taskName) => append(
   $("table", { style: "text-align: center;" }),
-  append(
+  append($("tr"), $text("th", "Name"), $text("th", "Source -> Target"), $text("th", "Depth")),
+  ...fifos.map(([name, { produced_by, consumed_by, depth }]) => append(
     $("tr"),
-    $text("th", "Name"),
-    $text("th", "Source -> Target"),
-    $text("th", "Depth"),
-  ),
-  ...fifos.map(
-    ([name, { produced_by, consumed_by, depth }]) => {
-      const source = produced_by?.join("/") ?? taskName;
-      const target = consumed_by?.join("/") ?? taskName;
-      return append(
-        $("tr"),
-        $text("td", name),
-        $text("td", `${source} -> ${target}`),
-        $text("td", depth ?? "/"),
-      );
-    }
-  ),
+    $text("td", name),
+    $text("td", `${produced_by?.join("/") ?? taskName} -> ${consumed_by?.join("/") ?? taskName}`),
+    $text("td", depth ?? "/"),
+  )),
 );
 
 /** @type {(ports: Port[]) => HTMLTableElement} */
 export const parsePorts = ports => append(
   $("table", { className: "upperTask-ports" }),
-  append(
-    $("tr"),
-    $text("th", "Name"),
-    $text("th", "Category"),
-    $text("th", "Type"),
-    $text("th", "Width"),
-  ),
-  ...ports.map(
-    ({ name, cat, type, width }) => append(
-      $("tr"),
-      ...[name, cat, type, width].map(value => $text("td", value)),
-    ),
-  ),
+  append($("tr"), $text("th", "Name"), $text("th", "Category"), $text("th", "Type"), $text("th", "Width")),
+  ...ports.map(({ name, cat, type, width }) =>
+    append($("tr"), ...[name, cat, type, width].map(v => $text("td", v)))),
 );
 
 const codeDialog = document.querySelector("dialog");
@@ -100,20 +78,11 @@ export const showCode = codeDialog && codeContainer
     button.addEventListener("click", () => {
       codeContainer.textContent = code;
       Prism.highlightElement(codeContainer);
-
-      code.length >= 2500
-        ? codeContainer.setAttribute("style", "font-size: .8rem;")
-        : codeContainer.removeAttribute("style");
-
+      codeContainer[code.length >= 2500 ? "setAttribute" : "removeAttribute"]("style", "font-size: .8rem;");
       const title = codeDialog.querySelector(":scope h2");
       if (title) title.textContent = taskName;
-
       codeDialog.showModal();
     });
     return button;
   }
-  : () => $("button", {
-    textContent: "Show C++ Code",
-    title: "Error: C++ code-related element(s) does not exist!",
-    disabled: true,
-  });
+  : () => $("button", { textContent: "Show C++ Code", title: "Error: C++ code-related element(s) does not exist!", disabled: true });

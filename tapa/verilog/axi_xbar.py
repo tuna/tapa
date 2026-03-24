@@ -2,12 +2,6 @@
 
 # ruff: noqa: E501
 
-__copyright__ = """
-Copyright (c) 2024 RapidStream Design Automation, Inc. and contributors.
-All rights reserved. The contributor(s) of this file has/have agreed to the
-RapidStream Contributor License Agreement.
-"""
-
 from jinja2 import Template
 
 
@@ -17,14 +11,10 @@ def generate(
     """Generates an AXI crossbar wrapper with the specified number of ports."""
     if isinstance(ports, int):
         m = n = ports
-    elif isinstance(ports, (tuple, list)):
-        if len(ports) == 1:
-            m = n = ports[0]
-        elif len(ports) == 2:  # noqa: PLR2004
-            m, n = ports
-        else:
-            msg = "Invalid number of ports"
-            raise ValueError(msg)
+    elif isinstance(ports, (tuple, list)) and len(ports) in {1, 2}:
+        m = n = ports[0]
+        if len(ports) == 2:  # noqa: PLR2004
+            n = ports[1]
     else:
         msg = "Invalid number of ports"
         raise ValueError(msg)

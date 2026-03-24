@@ -23,7 +23,7 @@ export const createGraph = ({
   onNodeClick,
   onResetSidebar,
 }) => {
-  /** @type {((states: Record<string, string[]>) => Record<string, string[]>)} */
+  /** @type {(states: Record<string, string[]>) => Record<string, string[]>} */
   const showSelectedNodes = states => {
     const selected = Object.keys(states);
     if (selected.length > 0) onResetSidebar(`Selected nodes: ${selected.join(", ")}`);
@@ -42,14 +42,9 @@ export const createGraph = ({
       ({
         type: "drag-canvas",
         enable: event => {
-          if (event.ctrlKey || event.shiftKey) {
-            return false;
-          } else {
-            const defaultEnable = DragCanvas.defaultOptions.enable;
-            return typeof defaultEnable === "function"
-              ? defaultEnable(event)
-              : true;
-          }
+          if (event.ctrlKey || event.shiftKey) return false;
+          const defaultEnable = DragCanvas.defaultOptions.enable;
+          return typeof defaultEnable === "function" ? defaultEnable(event) : true;
         },
       }),
       /** Shift + drag: brush select (box selection)

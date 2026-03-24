@@ -1,11 +1,5 @@
 """Add tapa graphir interface."""
 
-__copyright__ = """
-Copyright (c) 2025 RapidStream Design Automation, Inc. and contributors.
-All rights reserved. The contributor(s) of this file has/have agreed to the
-RapidStream Contributor License Agreement.
-"""
-
 from collections import defaultdict
 from collections.abc import Collection
 
@@ -51,10 +45,8 @@ def _validate_top_submodule_ifaces(
     project: Project,
     ifaces: defaultdict[str, list[AnyInterface]],
 ) -> None:
-    top_submodules = [
-        project.get_module(inst.module) for inst in project.get_top_module().submodules
-    ]
-    for module in top_submodules:
+    for inst in project.get_top_module().submodules:
+        module = project.get_module(inst.module)
         module_ifaces = ifaces[module.name]
         for port in module.ports:
             if not any(port.name in iface.ports for iface in module_ifaces):
@@ -156,26 +148,18 @@ def _append_task_port_ifaces(
             scalars.append(port_name)
         elif port.cat.is_istream or port.cat.is_istreams:
             _append_stream_iface(
-                ifaces,
-                port_name,
-                ISTREAM_SUFFIXES,
-                valid_port=f"{port}_empty_n",
-                ready_port=f"{port}_read",
+                ifaces, port_name, ISTREAM_SUFFIXES, f"{port}_empty_n", f"{port}_read"
             )
         elif port.cat.is_ostream or port.cat.is_ostreams:
             _append_stream_iface(
-                ifaces,
-                port_name,
-                OSTREAM_SUFFIXES,
-                valid_port=f"{port}_write",
-                ready_port=f"{port}_full_n",
+                ifaces, port_name, OSTREAM_SUFFIXES, f"{port}_write", f"{port}_full_n"
             )
         elif port.cat.is_mmap:
             _append_mmap_ifaces(ifaces, scalars, port_name, ir_ports)
         else:
             msg = (
-                f"Unsupported port category {port.cat} for port "
-                f"{port_name} in task {task.name}"
+                f"Unsupported port category {port.cat}"
+                f" for port {port_name} in task {task.name}"
             )
             raise ValueError(msg)
 

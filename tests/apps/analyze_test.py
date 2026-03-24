@@ -77,7 +77,7 @@ HAS_VENDOR_HEADERS = bool(
 
 
 def _find_tapa() -> str:
-    """Find the tapa binary."""
+    """Find the tapa binary in Bazel runfiles or fall back to PATH."""
     for env_var in ("RUNFILES_DIR", "TEST_SRCDIR"):
         base = os.environ.get(env_var, "")
         if base:
@@ -88,7 +88,7 @@ def _find_tapa() -> str:
 
 
 def _find_source(rel_path: str) -> str:
-    """Find a source file relative to the workspace root."""
+    """Resolve a workspace-relative source path via Bazel runfiles."""
     runfiles = os.environ.get("TEST_SRCDIR", "")
     if runfiles:
         full = os.path.join(runfiles, "_main", rel_path)
@@ -98,7 +98,7 @@ def _find_source(rel_path: str) -> str:
 
 
 def _find_tapa_lib_include() -> str | None:
-    """Find the tapa-lib include directory for tapa.h."""
+    """Return the tapa-lib include directory from Bazel runfiles, if present."""
     runfiles = os.environ.get("TEST_SRCDIR", "")
     if runfiles:
         inc = os.path.join(runfiles, "_main", "tapa-lib")
@@ -109,34 +109,24 @@ def _find_tapa_lib_include() -> str | None:
 
 def _validate_task(task: dict, task_name: str, app_name: str) -> None:
     """Validate the structure of a single task in the graph."""
-    assert "level" in task, f"{app_name}/{task_name}: missing 'level'"
-    assert task["level"] in VALID_LEVELS, (
-        f"{app_name}/{task_name}: invalid level '{task['level']}'"
-    )
-
-    assert "target" in task, f"{app_name}/{task_name}: missing 'target'"
-    assert "code" in task, f"{app_name}/{task_name}: missing 'code'"
-    assert len(task["code"]) > 0, f"{app_name}/{task_name}: empty code"
-
-    assert "ports" in task, f"{app_name}/{task_name}: missing 'ports'"
-    assert len(task["ports"]) > 0, f"{app_name}/{task_name}: no ports"
+    ctx = f"{app_name}/{task_name}"
+    assert "level" in task, f"{ctx}: missing 'level'"
+    assert task["level"] in VALID_LEVELS, f"{ctx}: invalid level '{task['level']}'"
+    assert "target" in task, f"{ctx}: missing 'target'"
+    assert "code" in task, f"{ctx}: missing 'code'"
+    assert task["code"], f"{ctx}: empty code"
+    assert "ports" in task, f"{ctx}: missing 'ports'"
+    assert task["ports"], f"{ctx}: no ports"
     for port in task["ports"]:
-        assert "name" in port, f"{app_name}/{task_name}: port missing 'name'"
-        assert "cat" in port, f"{app_name}/{task_name}/{port['name']}: missing 'cat'"
+        assert "name" in port, f"{ctx}: port missing 'name'"
+        assert "cat" in port, f"{ctx}/{port['name']}: missing 'cat'"
         assert port["cat"] in VALID_PORT_CATS, (
-            f"{app_name}/{task_name}/{port['name']}: invalid cat '{port['cat']}'"
+            f"{ctx}/{port['name']}: invalid cat '{port['cat']}'"
         )
-
     if task["level"] == "upper":
-        assert "tasks" in task, (
-            f"{app_name}/{task_name}: upper-level task missing 'tasks'"
-        )
-        assert len(task["tasks"]) > 0, (
-            f"{app_name}/{task_name}: upper-level task has no subtasks"
-        )
-        assert "fifos" in task, (
-            f"{app_name}/{task_name}: upper-level task missing 'fifos'"
-        )
+        assert "tasks" in task, f"{ctx}: upper-level task missing 'tasks'"
+        assert task["tasks"], f"{ctx}: upper-level task has no subtasks"
+        assert "fifos" in task, f"{ctx}: upper-level task missing 'fifos'"
 
 
 @pytest.mark.parametrize("app", APPS, ids=[app.name for app in APPS])
@@ -148,9 +138,7 @@ def test_analyze(app: AppConfig) -> None:
     tapa_bin = _find_tapa()
     src_path = _find_source(app.source)
 
-    with tempfile.TemporaryDirectory(
-        prefix=f"tapa-analyze-{app.name}-",
-    ) as work_dir:
+    with tempfile.TemporaryDirectory(prefix=f"tapa-analyze-{app.name}-") as work_dir:
         cmd = [
             tapa_bin,
             "--work-dir",
@@ -161,31 +149,19 @@ def test_analyze(app: AppConfig) -> None:
             "--top",
             app.top_name,
         ]
-
-        # Add include directory for the app's headers
-        app_dir = os.path.dirname(src_path)
-        cmd.extend(["--cflags", f"-I{app_dir}"])
-
-        # Add tapa-lib include path for tapa.h
+        cmd.extend(["--cflags", f"-I{os.path.dirname(src_path)}"])
         tapa_lib_inc = _find_tapa_lib_include()
         if tapa_lib_inc:
             cmd.extend(["--cflags", f"-I{tapa_lib_inc}"])
 
         result = subprocess.run(
-            cmd,
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=120,
+            cmd, check=False, capture_output=True, text=True, timeout=120
         )
-
         assert result.returncode == 0, (
             f"tapa analyze failed for {app.name}:\n"
-            f"stdout: {result.stdout}\n"
-            f"stderr: {result.stderr}"
+            f"stdout: {result.stdout}\nstderr: {result.stderr}"
         )
 
-        # Check work dir artifacts exist
         graph_path = os.path.join(work_dir, "graph.json")
         assert os.path.isfile(graph_path), f"graph.json missing for {app.name}"
         assert os.path.isfile(os.path.join(work_dir, "settings.json")), (
@@ -198,24 +174,19 @@ def test_analyze(app: AppConfig) -> None:
         with open(graph_path, encoding="utf-8") as f:
             graph = json.load(f)
 
-        # Validate graph has tasks
         assert "tasks" in graph, f"graph.json missing 'tasks' for {app.name}"
         task_names = list(graph["tasks"].keys())
-        assert len(task_names) > 0, f"No tasks in graph for {app.name}"
+        assert task_names, f"No tasks in graph for {app.name}"
 
-        # Check expected tasks are present
         for expected in app.expected_tasks:
             assert expected in task_names, (
                 f"Expected task '{expected}' not in {app.name}. Found: {task_names}"
             )
 
-        # Validate every task has correct structure
         for task_name, task in graph["tasks"].items():
             _validate_task(task, task_name, app.name)
 
-        # Validate the top task is upper-level
-        top_task = graph["tasks"][app.top_name]
-        assert top_task["level"] == "upper", (
+        assert graph["tasks"][app.top_name]["level"] == "upper", (
             f"{app.name}: top task '{app.top_name}' should be upper-level"
         )
 

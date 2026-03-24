@@ -58,11 +58,6 @@ std::vector<std::string_view> Split(std::string_view text, char delimiter,
   return pieces;
 }
 
-bool StartsWith(std::string_view text, std::string_view prefix) {
-  return text.size() >= prefix.size() &&
-         text.substr(0, prefix.size()) == prefix;
-}
-
 class DeviceMatcher : public OpenclDeviceMatcher {
  public:
   explicit DeviceMatcher(std::string target_device_name)
@@ -70,7 +65,7 @@ class DeviceMatcher : public OpenclDeviceMatcher {
         target_device_name_pieces_(
             Split(target_device_name_, /*delimiter=*/'_', /*maxsplit=*/4)) {}
 
-  // Not copyable nor movable because the `string_view`s won't be valid.
+  // Not copyable/movable: string_views reference target_device_name_.
   DeviceMatcher(const DeviceMatcher&) = delete;
   DeviceMatcher(DeviceMatcher&&) = delete;
   DeviceMatcher& operator=(const DeviceMatcher&) = delete;
@@ -94,18 +89,12 @@ class DeviceMatcher : public OpenclDeviceMatcher {
 
     if (device_name == target_device_name_) return device_name_and_bdf;
 
-    // Xilinx devices might have unrelated names in the binary:
-    //   1) target_device_name == "xilinx_u250_gen3x16_xdma_3_1_202020_1"
-    //      device_name == "xilinx_u250_gen3x16_xdma_shell_3_1"
-    //   2) target_device_name == "xilinx_u200_gen3x16_xdma_1_202110_1"
-    //      device_name == "xilinx_u200_gen3x16_xdma_base_1"
-
-    // For 1), this is {"xilinx", "u250", "gen3x16", "xdma", "3_1_202020_1"}.
-    // For 2), this is {"xilinx", "u200", "gen3x16", "xdma", "1_202110_1"}.
+    // Xilinx shell names differ from binary platform names, e.g.:
+    //   binary: "xilinx_u250_gen3x16_xdma_3_1_202020_1"
+    //   device: "xilinx_u250_gen3x16_xdma_shell_3_1"
+    // Match by comparing first 4 underscore-separated fields and checking
+    // that the binary's 5th field starts with the device's 6th field.
     if (target_device_name_pieces_.size() < 5) return "";
-
-    // For 1), this is {"xilinx", "u250", "gen3x16", "xdma", "shell", "3_1"}.
-    // For 2), this is {"xilinx", "u200", "gen3x16", "xdma", "base", "1"}.
     std::vector<std::string_view> device_name_pieces =
         Split(device_name, /*delimiter=*/'_', /*maxsplit=*/5);
     if (device_name_pieces.size() < 6) return "";
@@ -114,7 +103,9 @@ class DeviceMatcher : public OpenclDeviceMatcher {
       if (device_name_pieces[i] != target_device_name_pieces_[i]) return "";
     }
 
-    if (StartsWith(target_device_name_pieces_[4], device_name_pieces[5])) {
+    const auto& suffix = target_device_name_pieces_[4];
+    const auto& ver = device_name_pieces[5];
+    if (suffix.size() >= ver.size() && suffix.substr(0, ver.size()) == ver) {
       return device_name_and_bdf;
     }
 
@@ -211,12 +202,10 @@ XilinxOpenclDevice::XilinxOpenclDevice(const cl::Program::Binaries& binaries) {
     const char* tmpdir_or_null = getenv("TMPDIR");
     std::string tmpdir = (tmpdir_or_null ? tmpdir_or_null : "/tmp");
     tmpdir += "/.frt." + uid;
-    if (mkdir(tmpdir.c_str(), S_IRUSR | S_IWUSR | S_IXUSR) && errno != EEXIST) {
+    if (mkdir(tmpdir.c_str(), S_IRUSR | S_IWUSR | S_IXUSR) && errno != EEXIST)
       LOG(FATAL) << "Cannot create FRT tmpdir '" << tmpdir
                  << "': " << strerror(errno);
-    }
 
-    // If SDACCEL_EM_RUN_DIR is not set, use a per-use tmpdir for `.run`.
     setenv("SDACCEL_EM_RUN_DIR", tmpdir.c_str(), 0);
 
     fs::path emconfig_dir;
@@ -256,13 +245,12 @@ XilinxOpenclDevice::XilinxOpenclDevice(const cl::Program::Binaries& binaries) {
                                    emconfig_dir_per_pid_tmp);
       fs::rename(emconfig_dir_per_pid_tmp, emconfig_dir);
     }
-    if (xcl_emulation_mode == std::string_view("sw_emu")) {
+    if (xcl_emulation_mode == std::string_view("sw_emu"))
       LOG(INFO) << "Running software simulation with Xilinx OpenCL";
-    } else if (xcl_emulation_mode == std::string_view("hw_emu")) {
+    else if (xcl_emulation_mode == std::string_view("hw_emu"))
       LOG(INFO) << "Running hardware simulation with Xilinx OpenCL";
-    } else {
+    else
       LOG(FATAL) << "Unexpected XCL_EMULATION_MODE: " << xcl_emulation_mode;
-    }
   } else {
     LOG(INFO) << "Running on-board execution with Xilinx OpenCL";
   }

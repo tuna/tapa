@@ -51,6 +51,19 @@ def _get_port_direction(name: str) -> ModulePort.Type:
     raise ValueError(msg)
 
 
+def _find_port_child(slot: Task, port: str) -> tuple[str, str, int | None] | None:
+    """Find (task_name, inst_port, inst_port_idx) for a slot port."""
+    for inst in slot.instances:
+        for arg in inst.args:
+            if arg.name != port:
+                continue
+            match = match_array_name(arg.port)
+            if match:
+                return inst.task.name, match[0], match[1]
+            return inst.task.name, arg.port, None
+    return None
+
+
 def get_slot_module_definition_ports(
     slot: Task,
     child_modules: dict[str, VerilogModuleDefinition],
@@ -59,35 +72,17 @@ def get_slot_module_definition_ports(
     ports = []
     child_module_tasks = {inst.task.name: inst.task for inst in slot.instances}
     for port in slot.ports:
-        child_module_name = None
-        child_inst_port = None
-        child_inst_port_idx = None
-        for inst in slot.instances:
-            for arg in inst.args:
-                if arg.name != port:
-                    continue
-                match = match_array_name(arg.port)
-                child_module_name = inst.task.name
-                if match:
-                    child_inst_port = match[0]
-                    child_inst_port_idx = match[1]
-                else:
-                    child_inst_port = arg.port
-                break
-            if child_module_name:
-                break
-        if not child_module_name or not child_inst_port:
+        found = _find_port_child(slot, port)
+        if not found:
             continue
+        child_module_name, child_inst_port, child_inst_port_idx = found
 
         child_module_ir = child_modules[child_module_name]
         child_module_task = child_module_tasks[child_module_name]
         assert child_inst_port in child_module_task.ports
         task_port = child_module_task.ports[child_inst_port]
         port_map = get_child_port_connection_mapping(
-            task_port,
-            child_module_task.module,
-            port,
-            child_inst_port_idx,
+            task_port, child_module_task.module, port, child_inst_port_idx
         )
         for child_port, slot_port in port_map.items():
             child_module_ir_port = child_module_ir.get_port(child_port)

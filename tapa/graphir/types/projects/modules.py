@@ -1,11 +1,5 @@
 """Data structure to store the modules in the project."""
 
-__copyright__ = """
-Copyright (c) 2025 RapidStream Design Automation, Inc. and contributors.
-All rights reserved. The contributor(s) of this file has/have agreed to the
-RapidStream Contributor License Agreement.
-"""
-
 import logging
 from collections.abc import Generator, Iterable
 from typing import get_args
@@ -161,18 +155,20 @@ class Modules(NamespaceModel):
 
     def get_all_used_modules(self) -> set[str]:
         """Recursively collect all used modules from the top module."""
-        # Collect all used modules
+        if not self.top_name:
+            msg = "The top module must be set before analyzing used modules."
+            raise ValueError(msg)
+
         used_modules: set[str] = set()
-
-        def recurse(module: str) -> None:
-            """Recursively collect all used modules."""
+        stack = [self.top_name]
+        while stack:
+            module = stack.pop()
             if module in used_modules:
-                return
+                continue
             used_modules.add(module)
-
             try:
                 for submodule in self.get(module).get_submodules_module_names():
-                    recurse(submodule)
+                    stack.append(submodule)
                     _logger.debug(
                         "Module '%s' is marked as used from module '%s'.",
                         submodule,
@@ -186,11 +182,6 @@ class Modules(NamespaceModel):
                     "some modules if this assumption is false.",
                     module,
                 )
-
-        if not self.top_name:
-            msg = "The top module must be set before analyzing used modules."
-            raise ValueError(msg)
-        recurse(self.top_name)
 
         return used_modules
 
@@ -244,7 +235,6 @@ class Modules(NamespaceModel):
         """
         modules = tuple(modules)
         updated_names = {mod.name for mod in modules}
-        # Replace existing modules with the same name, add new ones, keep sorted.
         retained = (m for m in self.module_definitions if m.name not in updated_names)
         defs = tuple(sorted((*retained, *modules), key=lambda m: m.name))
         return self.updated(module_definitions=defs)
@@ -258,15 +248,15 @@ class Modules(NamespaceModel):
         Returns:
             Modules: The updated immutable modules object.
         """
-        names = set(names)
+        removed = set(names)
         remained_modules = tuple(
-            m for m in self.module_definitions if m.name not in names
+            m for m in self.module_definitions if m.name not in removed
         )
-        remained_module_names = {mod.name for mod in remained_modules}
+        remained_names = {mod.name for mod in remained_modules}
         for mod in remained_modules:
             if isinstance(mod, GroupedModuleDefinition):
                 for inst in mod.submodules:
-                    if inst.module not in remained_module_names:
+                    if inst.module not in remained_names:
                         msg = f"Module {inst.module} is used but removed."
                         raise ValueError(msg)
         return self.updated(module_definitions=remained_modules)

@@ -40,16 +40,10 @@ const visualizerState = {
   options: { grouping: "merge", expand: false, port: false },
 };
 
-// Form and options + graph rendering for new option
-
-/** Grouping radios' form in header
- * @satisfies {GroupingForm | null} */
+/** @satisfies {GroupingForm | null} */
 const groupingForm = document.querySelector(".grouping");
 
-/** Options sidebar's form, contains all the options other than grouping.
- *
- * For convenience, it's the only sidebar managed outside of `sidebar.js`.
- * @satisfies {OptionsForm | null} */
+/** @satisfies {OptionsForm | null} */
 const optionsForm = document.querySelector(".sidebar-content-options");
 
 const getLayout = (layout = optionsForm?.elements.layout.value) => {
@@ -70,31 +64,25 @@ const getOptions = () => ({
 const options = getOptions();
 visualizerState.options = options;
 
-/** Render graph when file or grouping changed.
- * @type {(graph: Graph, graphData: GraphData) => Promise<void>} */
+/** @type {(graph: Graph, graphData: GraphData) => Promise<void>} */
 const renderGraph = async (graph, graphData) => {
-  // Update sortByCombo by combo amount
   antvDagre.sortByCombo = graphData.combos.length > 1;
-
-  // Reset zoom if it's not 100% (1)
   if (graph.rendered && graph.getZoom() !== 1) {
     graph.setData({});
     await graph.draw();
     await graph.zoomTo(1, false);
   }
-
   graph.setData(graphData);
   await graph.render();
 };
 
-/** Fine-tune a graph after its first render
- * @param {Graph} graph
+/** @param {Graph} graph
  * @param {GraphJSON} graphJSON */
 const setupGraph = async (graph, graphJSON) => {
   const topChildren = graph.getChildrenData(getComboId(graphJSON.top));
   const visibleElements = options.expand ? visualizerState.graphData.nodes : topChildren;
 
-  // Setup kg for force-atlas2, based on visible element amount
+  // Tune kg for force-atlas2 based on visible element count
   const layout = graph.getLayout();
   if (!Array.isArray(layout) && layout.type === "force-atlas2") {
     const kg = visibleElements.length >= 25 ? 10 : 1;
@@ -103,50 +91,39 @@ const setupGraph = async (graph, graphJSON) => {
     await graph.layout();
   }
 
-  // Run a 2nd layout if amount of visible elements is acceptable
-  visibleElements.length >= 10 &&
-  visibleElements.length <= 500 &&
-  await graph.layout(getLayout());
+  if (visibleElements.length >= 10 && visibleElements.length <= 500) {
+    await graph.layout(getLayout());
+  }
 
   // Put edges in front of nodes
   await graph.frontElement(
-    graph.getEdgeData()
-    .map(({ id }) => id)
-    .filter(id => typeof id === "string")
+    graph.getEdgeData().map(({ id }) => id).filter(id => typeof id === "string")
   );
 
   // Run translateElementTo() twice to reset position for collapsed combo
-  !options.expand &&
-  topChildren.forEach(item => {
-    if (item.type === "circle" && item.style?.collapsed) {
-      const position = graph.getElementPosition(item.id);
-      void (async () => {
-        await graph.translateElementTo(item.id, position, false);
-        await graph.translateElementTo(item.id, position, false);
-      })();
-    }
-  });
+  if (!options.expand) {
+    topChildren.forEach(item => {
+      if (item.type === "circle" && item.style?.collapsed) {
+        const position = graph.getElementPosition(item.id);
+        void (async () => {
+          await graph.translateElementTo(item.id, position, false);
+          await graph.translateElementTo(item.id, position, false);
+        })();
+      }
+    });
+  }
 };
 
-/** Re-render graph when grouping or options changed
- * @param {Graph} graph */
+/** @param {Graph} graph */
 const setupRadioToggles = graph => {
 
-  /** Re-render graph with new option;
-   * update options & re-render graph when option changed.
-   * @type {(newOption: GetGraphDataOptions) => Promise<void>} */
+  /** @type {(newOption: GetGraphDataOptions) => Promise<void>} */
   const updateGraph = async (newOption) => {
     Object.assign(options, newOption);
     visualizerState.options = options;
-
-    // Only re-render if graph exist
     if (!visualizerState.graphJSON) return;
     visualizerState.graphData = getGraphData(visualizerState.graphJSON, options);
-    console.debug(
-      "graphData:\n", visualizerState.graphData,
-      "\ngetGraphData() options:", options,
-    );
-
+    console.debug("graphData:\n", visualizerState.graphData, "\ngetGraphData() options:", options);
     resetSidebar("Loading...");
     await renderGraph(graph, visualizerState.graphData);
     resetInstance();
@@ -169,8 +146,6 @@ const setupRadioToggles = graph => {
     });
   }
 };
-
-// G6.Graph()
 
 (() => {
   /** @satisfies {HTMLInputElement & { files: FileList } | null} */

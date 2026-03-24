@@ -51,10 +51,7 @@ SharedMemoryQueue* GetStream(const char* id) {
   static std::unordered_map<std::string, SharedMemoryQueue::UniquePtr> streams =
       InitStreamMap();
   auto it = streams.find(id);
-  if (it == streams.end()) {
-    return nullptr;
-  }
-  return it->second.get();
+  return it == streams.end() ? nullptr : it->second.get();
 }
 
 void StringToOpenArrayHandle(const std::string& bytes,
@@ -124,25 +121,18 @@ DPI_DLLESPEC void istream(
 
   static std::unordered_map<std::string, bool> last_empty_n;
 
+  // Pop previously presented data if downstream consumed it.
   if (last_empty_n[id] && read == sv_1) {
-    // If we provided data in the last cycle, and the downstream consumed it,
-    // we need to pop that data in this cycle.
     CHECK(!istream->empty());
     istream->pop();
   }
 
   if (istream->empty()) {
-    // If we are empty in this cycle, we do not provide data.
     StringToOpenArrayHandle(std::string(istream->width(), 'x'), dout);
     empty_n = sv_0;
     last_empty_n[id] = false;
-
-    // If there is no data to be consumed from the DPI queue, we yield to
-    // the operating system to allow the TAPA processes or other simulation
-    // processes to produce data to write to the queue.
-    sleep(0);
+    sleep(0);  // Yield to allow producers to fill the queue.
   } else {
-    // Otherwise, we provide data and tell the downstream we are not empty.
     StringToOpenArrayHandle(istream->front(), dout);
     empty_n = sv_1;
     last_empty_n[id] = true;
@@ -161,31 +151,18 @@ DPI_DLLESPEC void ostream(
   static std::unordered_map<std::string, bool> last_full_n;
 
   if (ostream->full()) {
-    // In the previous cycle we should have indicated that we are full, or this
-    // is the first cycle of the simulation. Otherwise, we have to consume data
-    // in this cycle which is not possible.
+    // Previous cycle should have signaled full (or this is the first cycle).
     CHECK(last_full_n.find(id) != last_full_n.end() ||
           last_full_n[id] == false);
-
-    // No data can be read in the next cycle because we are full
     full_n = sv_0;
     last_full_n[id] = false;
-
-    // If the DPI queue is full, we yield to the operating system to allow
-    // the TAPA processes or other simulation processes to consume data from
-    // the queue.
-    sleep(0);
+    sleep(0);  // Yield to allow consumers to drain the queue.
   } else {
-    // If in the *previous* cycle we have indicated that we are not full, we
-    // shall consume data in this cycle if it is available.
+    // If previous cycle indicated not-full, consume upstream data if written.
     if (last_full_n.find(id) != last_full_n.end() && last_full_n[id] == true &&
         write == sv_1) {
-      const std::string bits = OpenArrayHandleToString(din, ostream->width());
-      ostream->push(bits);
+      ostream->push(OpenArrayHandleToString(din, ostream->width()));
     }
-
-    // If we are still not full after the consumption, we can accept data in
-    // the next cycle.
     bool is_full = ostream->full();
     full_n = is_full ? sv_0 : sv_1;
     last_full_n[id] = !is_full;

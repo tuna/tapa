@@ -1,21 +1,13 @@
 """Analyze TAPA program and store the program description."""
 
-__copyright__ = """
-Copyright (c) 2025 RapidStream Design Automation, Inc. and contributors.
-All rights reserved. The contributor(s) of this file has/have agreed to the
-RapidStream Contributor License Agreement.
-"""
-
 import hashlib
 import json
 import logging
 import os
 import re
 import shlex
-import shutil
 import subprocess
 import sys
-from pathlib import Path
 
 import click
 
@@ -147,12 +139,7 @@ def find_clang_binary(name: str) -> str:
     """Find executable from PATH if not overridden."""
     binary = find_resource(name)
 
-    if not binary:
-        path_str = shutil.which(name)
-        if path_str is not None:
-            binary = Path(path_str)
-
-    if binary is None or not binary.exists():
+    if not binary.exists():
         msg = f"Cannot find `{name}` in PATH."
         raise ValueError(msg)
 
@@ -190,36 +177,29 @@ def run_flatten(
     flatten_folder = os.path.join(work_dir, "flatten")
     os.makedirs(flatten_folder, exist_ok=True)
     flatten_files = []
-
     for file in files:
-        hash_val = hashlib.sha256()
-        hash_val.update(os.path.abspath(file).encode())
-        flatten_name = (
-            "flatten-" + hash_val.hexdigest()[:8] + "-" + os.path.basename(file)
-        )
+        digest = hashlib.sha256(os.path.abspath(file).encode()).hexdigest()[:8]
+        flatten_name = f"flatten-{digest}-{os.path.basename(file)}"
         flatten_path = os.path.join(flatten_folder, flatten_name)
         flatten_files.append(flatten_path)
-
-        # Output flatten code to the file
+        tapa_cpp_cmd = (
+            tapa_cpp,
+            "-x",
+            "c++",
+            "-E",
+            "-CC",
+            "-P",
+            "-fkeep-system-includes",
+            "-D__SYNTHESIS__",
+            "-DAESL_SYN",
+            "-DAP_AUTOCC",
+            "-DTAPA_TARGET_DEVICE_",
+            "-DTAPA_TARGET_STUB_",
+            *cflags,
+            file,
+        )
         with open(flatten_path, "w", encoding="utf-8") as output_fp:
-            tapa_cpp_cmd = (
-                tapa_cpp,
-                "-x",
-                "c++",
-                "-E",
-                "-CC",
-                "-P",
-                "-fkeep-system-includes",
-                "-D__SYNTHESIS__",
-                "-DAESL_SYN",
-                "-DAP_AUTOCC",
-                "-DTAPA_TARGET_DEVICE_",
-                "-DTAPA_TARGET_STUB_",
-                *cflags,
-                file,
-            )
             output_fp.write(clang_format(run_and_check(tapa_cpp_cmd)))
-
     return tuple(flatten_files)
 
 

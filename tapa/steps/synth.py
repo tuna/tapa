@@ -1,11 +1,5 @@
 """Synthesize the TAPA program into RTL code."""
 
-__copyright__ = """
-Copyright (c) 2024 RapidStream Design Automation, Inc. and contributors.
-All rights reserved. The contributor(s) of this file has/have agreed to the
-RapidStream Contributor License Agreement.
-"""
-
 import json
 import os
 from pathlib import Path
@@ -181,43 +175,34 @@ def synth(  # noqa: PLR0913,PLR0917
         program.generate_top_rtl(override_report_schema_version)
 
         if nonpipeline_fifos:
-            with open(nonpipeline_fifos, encoding="utf-8") as fifo_file:
-                fifos = json.load(fifo_file)
-            with open(
-                os.path.join(program.work_dir, "grouping_constraints.json"),
-                "w",
-                encoding="utf-8",
-            ) as json_file:
-                json.dump(program.get_grouping_constraints(fifos), json_file)
+            with open(nonpipeline_fifos, encoding="utf-8") as f:
+                fifos = json.load(f)
+            Path(
+                os.path.join(program.work_dir, "grouping_constraints.json")
+            ).write_text(
+                json.dumps(program.get_grouping_constraints(fifos)), encoding="utf-8"
+            )
 
         if gen_ab_graph:
             assert floorplan_config, (
                 "Floorplan configuration is required for generating AB graph."
             )
-            with open(
-                os.path.join(program.work_dir, "ab_graph.json"),
-                "w",
+            Path(os.path.join(program.work_dir, "ab_graph.json")).write_text(
+                get_top_level_ab_graph(program, floorplan_config).model_dump_json(),
                 encoding="utf-8",
-            ) as json_file:
-                json_file.write(
-                    get_top_level_ab_graph(program, floorplan_config).model_dump_json()
-                )
+            )
 
         if gen_graphir:
             assert device_config, (
                 "Device configuration is required for generating GraphIR."
             )
             assert floorplan_path, "Floorplan path is required for generating GraphIR."
-            with open(
-                os.path.join(program.work_dir, "graphir.json"),
-                "w",
+            Path(os.path.join(program.work_dir, "graphir.json")).write_text(
+                get_project_from_floorplanned_program(
+                    program, device_config, floorplan_path
+                ).model_dump_json(),
                 encoding="utf-8",
-            ) as json_file:
-                json_file.write(
-                    get_project_from_floorplanned_program(
-                        program, device_config, floorplan_path
-                    ).model_dump_json()
-                )
+            )
 
         settings["synthed"] = True
         store_persistent_context("settings")

@@ -35,25 +35,19 @@ if TYPE_CHECKING:
     from tapa.verilog.xilinx.module import Module
 
 
+def _mc(name: str, expr: Expression) -> ModuleConnection:
+    return ModuleConnection(
+        name=name, hierarchical_name=HierarchicalName.get_name(name), expr=expr
+    )
+
+
 def _get_control_connections(instance_name: str) -> list[ModuleConnection]:
     return [
-        ModuleConnection(
-            name="ap_clk",
-            hierarchical_name=HierarchicalName.get_name("ap_clk"),
-            expr=Expression((Token.new_id("ap_clk"),)),
-        ),
-        ModuleConnection(
-            name="ap_rst_n",
-            hierarchical_name=HierarchicalName.get_name("ap_rst_n"),
-            expr=Expression((Token.new_id("ap_rst_n"),)),
-        ),
+        _mc("ap_clk", Expression((Token.new_id("ap_clk"),))),
+        _mc("ap_rst_n", Expression((Token.new_id("ap_rst_n"),))),
         *(
-            ModuleConnection(
-                name=signal,
-                hierarchical_name=HierarchicalName.get_name(signal),
-                expr=Expression((Token.new_id(f"{instance_name}__{signal}"),)),
-            )
-            for signal in ("ap_start", "ap_done", "ap_ready", "ap_idle")
+            _mc(sig, Expression((Token.new_id(f"{instance_name}__{sig}"),)))
+            for sig in ("ap_start", "ap_done", "ap_ready", "ap_idle")
         ),
     ]
 
@@ -72,13 +66,7 @@ def _get_task_inst_connections(  # noqa: C901
             expr = Expression.from_str_to_tokens(arg.name)
             if not expr.is_all_literals():
                 expr = Expression((Token.new_id(arg_table[arg.name][-1].name),))
-            connections.append(
-                ModuleConnection(
-                    name=port_name,
-                    hierarchical_name=HierarchicalName.get_name(port_name),
-                    expr=expr,
-                )
-            )
+            connections.append(_mc(port_name, expr))
             continue
 
         if arg.cat == Instance.Arg.Cat.ISTREAM:
@@ -88,23 +76,11 @@ def _get_task_inst_connections(  # noqa: C901
                 expr = Expression(
                     (Token.new_id(get_stream_port_name(arg.name, suffix)),)
                 )
-                connections.append(
-                    ModuleConnection(
-                        name=leaf_port,
-                        hierarchical_name=HierarchicalName.get_name(leaf_port),
-                        expr=expr,
-                    )
-                )
+                connections.append(_mc(leaf_port, expr))
                 if STREAM_PORT_DIRECTION[suffix] == "input":
                     peek_port = get_stream_port(port_name, f"_peek{suffix}")
                     if peek_port is not None:
-                        connections.append(
-                            ModuleConnection(
-                                name=peek_port,
-                                hierarchical_name=HierarchicalName.get_name(peek_port),
-                                expr=expr,
-                            )
-                        )
+                        connections.append(_mc(peek_port, expr))
             continue
 
         if arg.cat == Instance.Arg.Cat.OSTREAM:
@@ -112,10 +88,9 @@ def _get_task_inst_connections(  # noqa: C901
                 leaf_port = get_stream_port(port_name, suffix)
                 assert leaf_port is not None
                 connections.append(
-                    ModuleConnection(
-                        name=leaf_port,
-                        hierarchical_name=HierarchicalName.get_name(leaf_port),
-                        expr=Expression(
+                    _mc(
+                        leaf_port,
+                        Expression(
                             (Token.new_id(get_stream_port_name(arg.name, suffix)),)
                         ),
                     )
@@ -128,20 +103,16 @@ def _get_task_inst_connections(  # noqa: C901
             if not has_port(full_port_name):
                 continue
             connections.append(
-                ModuleConnection(
-                    name=full_port_name,
-                    hierarchical_name=HierarchicalName.get_name(full_port_name),
-                    expr=Expression(
-                        (Token.new_id(get_m_axi_port_name(arg.name, suffix)),)
-                    ),
+                _mc(
+                    full_port_name,
+                    Expression((Token.new_id(get_m_axi_port_name(arg.name, suffix)),)),
                 )
             )
         offset_port_name = f"{port_name}_offset"
         connections.append(
-            ModuleConnection(
-                name=offset_port_name,
-                hierarchical_name=HierarchicalName.get_name(offset_port_name),
-                expr=Expression((Token.new_id(arg_table[arg.name][-1].name),)),
+            _mc(
+                offset_port_name,
+                Expression((Token.new_id(arg_table[arg.name][-1].name),)),
             )
         )
 
@@ -196,12 +167,7 @@ def _make_fsm_inst(
         hierarchical_name=HierarchicalName.get_name(name),
         module=fsm_module.name,
         connections=tuple(
-            ModuleConnection(
-                name=port,
-                hierarchical_name=HierarchicalName.get_name(port),
-                expr=Expression((Token.new_id(port),)),
-            )
-            for port in fsm_module.ports
+            _mc(port, Expression((Token.new_id(port),))) for port in fsm_module.ports
         ),
         parameters=(),
         floorplan_region=floorplan_region,

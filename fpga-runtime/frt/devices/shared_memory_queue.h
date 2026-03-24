@@ -24,15 +24,12 @@ class SharedMemoryQueue {
  public:
   using UniquePtr = std::unique_ptr<SharedMemoryQueue, Deleter>;
 
-  // Returns `nullptr` on failure with logging.
+  // Maps shared memory at fd; returns nullptr on failure.
   static UniquePtr New(int fd);
 
-  // Creates (using `shm_open`) a shared memory object suitable for backing a
-  // `SharedMemoryQueue` and returns the corresponding file descriptor, with
-  // `path_template` modified to the path of the created shared memory object.
-  // Returns a negative fd on failure with the corresponding errno and logging.
-  static int CreateFile(std::string& path_template, int32_t depth,
-                        int32_t width);
+  // Creates a shm_open-backed file for a queue of given depth and width.
+  // Modifies path to the created path; returns fd (negative on failure).
+  static int CreateFile(std::string& path, int32_t depth, int32_t width);
 
   // Not copyable or movable.
   SharedMemoryQueue(const SharedMemoryQueue&) = delete;

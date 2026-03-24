@@ -57,7 +57,7 @@ class StreamArgContext(BaseModel):
         elif arg.port.is_ostream:
             direction = "ostream"
         else:
-            msg = f"unexpected arg.port.mode: {arg.port.mode}"
+            msg = f"unexpected arg.port.mode: {arg.port.mode!r}"
             raise ValueError(msg)
         return cls(
             name=arg.name,
@@ -196,11 +196,11 @@ def render_s_axi_control() -> str:
 
 def _axis_stream_widths(args: Sequence[Arg]) -> list[int]:
     """Return sorted unique data widths (both w and w+1) across all stream args."""
-    stream_args = [arg for arg in args if arg.is_stream]
     return sorted(
         {
             width
-            for arg in stream_args
+            for arg in args
+            if arg.is_stream
             for width in (arg.port.data_width, arg.port.data_width + 1)
         }
     )
@@ -217,10 +217,11 @@ def render_stream_typedef(args: Sequence[Arg]) -> str:
 
 
 def render_fifo(args: Sequence[Arg]) -> str:
-    stream_args = [arg for arg in args if arg.is_stream]
     ctx = DutContext(
         args=list(args),
-        stream_widths=sorted({arg.port.data_width + 1 for arg in stream_args}),
+        stream_widths=sorted(
+            {arg.port.data_width + 1 for arg in args if arg.is_stream}
+        ),
     )
     return _render_template("fifo.j2", ctx=ctx)
 

@@ -63,9 +63,7 @@ def clang_format(code: str, *args: str) -> str:
 
 def get_indexed_name(name: str, idx: int | None) -> str:
     """Return `name` if `idx` is `None`, `f'{name}_{idx}'` otherwise."""
-    if idx is None:
-        return name
-    return f"{name}_{idx}"
+    return name if idx is None else f"{name}_{idx}"
 
 
 def range_or_none(count: int | None) -> tuple[None] | Iterable[int]:

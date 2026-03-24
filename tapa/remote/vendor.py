@@ -38,15 +38,16 @@ def _query_remote_xilinx_paths(
         "echo XILINX_HLS=$XILINX_HLS && echo XILINX_VITIS=$XILINX_VITIS"
     )
     exit_status, stdout, stderr = run_ssh_with_stdout(config, cmd)
-    output = stdout.decode("utf-8", errors="replace")
     if exit_status != 0:
-        err = stderr.decode("utf-8", errors="replace")
-        _logger.warning("Failed to query Xilinx paths on remote: %s", err)
+        _logger.warning(
+            "Failed to query Xilinx paths on remote: %s",
+            stderr.decode("utf-8", errors="replace"),
+        )
         return {}
 
     return {
         key: val
-        for line in output.strip().splitlines()
+        for line in stdout.decode("utf-8", errors="replace").strip().splitlines()
         if "=" in line
         for key, _, val in [line.partition("=")]
         if val
@@ -60,8 +61,7 @@ def _download_dir(
 ) -> bool:
     """Download a remote directory to a local path via tar-over-SSH."""
     exit_status, stdout, stderr = run_ssh_with_stdout(
-        config,
-        f"tar czf - -C {shlex.quote(remote_path)} .",
+        config, f"tar czf - -C {shlex.quote(remote_path)} ."
     )
     if exit_status != 0:
         _logger.warning(
@@ -157,7 +157,6 @@ def sync_remote_vendor_includes(config: RemoteConfig) -> str | None:
 
     os.makedirs(cache_dir, exist_ok=True)
 
-    # Download include/ (ap_int.h, ap_utils.h, hls_stream.h, etc.)
     remote_include = f"{xilinx_tool}/include"
     local_include = os.path.join(cache_dir, "include")
     if not _download_dir(config, remote_include, local_include):
@@ -165,25 +164,21 @@ def sync_remote_vendor_includes(config: RemoteConfig) -> str | None:
         return None
     _logger.info("Downloaded %s -> %s", remote_include, local_include)
 
-    # Download tps/lnx64/gcc-*/include/ (C++ stdlib headers)
-    # First, find which gcc versions exist
+    # Find and download tps/lnx64/gcc-*/include/ (C++ stdlib headers)
     _, stdout, _ = run_ssh_with_stdout(
         config, f"ls -d {shlex.quote(xilinx_tool)}/tps/lnx64/gcc-*/include 2>/dev/null"
     )
-    gcc_include_dirs = stdout.decode("utf-8", errors="replace").strip()
-
     for gcc_include in (
-        ln.strip() for ln in gcc_include_dirs.splitlines() if ln.strip()
+        ln.strip()
+        for ln in stdout.decode("utf-8", errors="replace").strip().splitlines()
+        if ln.strip()
     ):
-        # Compute relative path: tps/lnx64/gcc-X.Y.Z/include
         local_gcc = os.path.join(cache_dir, os.path.relpath(gcc_include, xilinx_tool))
         if _download_dir(config, gcc_include, local_gcc):
             _logger.info("Downloaded %s -> %s", gcc_include, local_gcc)
 
-    # Patch vendor headers for macOS compatibility before marking as synced
     _patch_vendor_headers_for_macos(cache_dir)
 
-    # Write marker to indicate successful sync
     with open(marker, "w", encoding="utf-8") as f:
         f.write(xilinx_tool + "\n")
 

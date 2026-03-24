@@ -1,11 +1,5 @@
 """Pack the generated RTL into a Xilinx object file."""
 
-__copyright__ = """
-Copyright (c) 2024 RapidStream Design Automation, Inc. and contributors.
-All rights reserved. The contributor(s) of this file has/have agreed to the
-RapidStream Contributor License Agreement.
-"""
-
 import logging
 import os
 from pathlib import Path
@@ -154,14 +148,10 @@ def get_vitis_script(
     connectivity: str | None,
 ) -> str:
     """Generate v++ commands to run implementation."""
-    script = ["#!/bin/bash"]
-    vitis_command = VITIS_COMMAND_BASIC
+    script = ["#!/bin/bash", "TARGET=hw", "# TARGET=hw_emu", "# DEBUG=-g", ""]
+    vitis_command = list(VITIS_COMMAND_BASIC)
 
-    script.extend(("TARGET=hw", "# TARGET=hw_emu", "# DEBUG=-g"))
-    script += NEWLINE
-
-    script.append(f"TOP={top}")
-    script.append(f"XO='{os.path.abspath(output_file)}'")
+    script += [f"TOP={top}", f"XO='{os.path.abspath(output_file)}'"]
 
     if connectivity:
         orig_config_path = os.path.abspath(connectivity)
@@ -173,37 +163,33 @@ def get_vitis_script(
         vitis_command += CONFIG_OPTION
     else:
         _logger.warning(
-            "No connectivity file is provided, skip this part in the v++ script.",
+            "No connectivity file is provided, skip this part in the v++ script."
         )
 
-    # if not specified in tapac, use platform default
     if clock_period:
-        freq_mhz = round(1000 / float(clock_period))
-        script.append(f"TARGET_FREQUENCY={freq_mhz}")
+        script.append(f"TARGET_FREQUENCY={round(1000 / float(clock_period))}")
         vitis_command += CLOCK_OPTION
     else:
         script.append('>&2 echo "Using the default clock target of the platform."')
 
-    # if platform not specified in tapac, need to manually add it
     if platform:
         script.append(f"PLATFORM={platform}")
     else:
-        script.append('PLATFORM=""')
-        warning_msg = (
-            'Please edit this file and set a valid PLATFORM= on line "${LINENO}"'
-        )
-        script.append(f"if [ -z $PLATFORM ]; then echo {warning_msg}; exit; fi")
-        script += NEWLINE
+        script += [
+            'PLATFORM=""',
+            "if [ -z $PLATFORM ]; then echo 'Please edit this file and set a valid PLATFORM= on line \"${LINENO}\"'; exit; fi",  # noqa: E501
+            "",
+        ]
 
-    script.append(r'OUTPUT_DIR="$(pwd)/vitis_run_${TARGET}"')
-    script += NEWLINE
-
-    script.append(r"MAX_SYNTH_JOBS=8")
-    script.append(r'STRATEGY="Explore"')
-    script.append(r'PLACEMENT_STRATEGY="EarlyBlockPlacement"')
-    script += NEWLINE
-
-    script += vitis_command
-    script += NEWLINE
+    script += [
+        r'OUTPUT_DIR="$(pwd)/vitis_run_${TARGET}"',
+        "",
+        r"MAX_SYNTH_JOBS=8",
+        r'STRATEGY="Explore"',
+        r'PLACEMENT_STRATEGY="EarlyBlockPlacement"',
+        "",
+        *vitis_command,
+        "",
+    ]
 
     return "\n".join(script)

@@ -33,9 +33,7 @@ def _dpi_library_impl(ctx):
         "-Wall",
         "-Werror",
         "-Wno-sign-compare",
-        # Xilinx's bundled GCC may not know about multiarch system header
-        # paths (e.g., /usr/include/x86_64-linux-gnu for asm/types.h).
-        "-I/usr/include/x86_64-linux-gnu",
+        "-I/usr/include/x86_64-linux-gnu",  # multiarch headers for bundled GCC
     ]
     transitive_inputs = []
     compile_options += ["-isystem" + x.path for x in ctx.files.includes]
@@ -47,9 +45,7 @@ def _dpi_library_impl(ctx):
         compile_options += ["-I" + x for x in context.includes.to_list()]
         for d in context.defines.to_list():
             if "(" in d:
-                # xsc passes --gcc_compile_options through a shell that
-                # mangles values with parentheses. Replace with empty
-                # values — visibility attributes are not needed for DPI.
+                # xsc mangles parentheses in --gcc_compile_options; drop the value.
                 name = d.split("=", 1)[0]
                 compile_options.append("-D" + name + "=")
             else:
@@ -57,15 +53,10 @@ def _dpi_library_impl(ctx):
         transitive_inputs.append(context.headers)
 
     link_options = [
-        # Prefer libraries in the same directory. Escaping '$' due to `xsc` bug.
-        "-Wl,-rpath,\\$ORIGIN",
+        "-Wl,-rpath,\\$ORIGIN",  # '$' escaped due to xsc bug
     ]
 
-    # Link deps into the DPI .so. Prefer static archives so that all symbols
-    # are embedded directly; this avoids runtime symbol-lookup failures when
-    # xsim loads the DPI library via dlopen(RTLD_LOCAL), which prevents
-    # transitive shared-library dependencies from resolving each other's
-    # symbols (e.g., libglog.so failing to find gflags symbols).
+    # Prefer static archives to avoid dlopen(RTLD_LOCAL) symbol-lookup failures.
     direct_inputs = ctx.files.hdrs + ctx.files.srcs
     output = ctx.actions.declare_file(ctx.label.name + ".so")
     runfiles = []
@@ -78,8 +69,7 @@ def _dpi_library_impl(ctx):
                     static_archives.append(static_lib)
                     direct_inputs.append(static_lib)
                 else:
-                    # Fall back to dynamic linking for libraries without a
-                    # static archive (e.g., pre-built Xilinx simulator libs).
+                    # Fall back to dynamic linking (e.g., pre-built Xilinx simulator libs).
                     dynamic_library = library.resolved_symlink_dynamic_library
                     if dynamic_library == None:
                         dynamic_library = library.dynamic_library
@@ -103,11 +93,8 @@ def _dpi_library_impl(ctx):
                     )
                     runfiles.append(library_symlink)
 
-    # Embed all static archives with --whole-archive so every symbol is
-    # available inside the DPI .so at runtime. Use -L/-l: syntax because
-    # xsc prepends '-' to link options that don't already start with '-'.
-    # These must come BEFORE system library paths to avoid picking up
-    # non-PIC system static archives (e.g., /usr/lib/.../libgflags.a).
+    # Embed static archives with --whole-archive. Use -L/-l: because xsc prepends
+    # '-' to options. These must come before system paths to avoid non-PIC archives.
     if static_archives:
         link_options.append("-Wl,--whole-archive")
         for archive in static_archives:
@@ -117,11 +104,7 @@ def _dpi_library_impl(ctx):
             ]
         link_options.append("-Wl,--no-whole-archive")
 
-    # Multiarch library paths and RELR compatibility are handled by the
-    # xilinx_wrapper via LIBRARY_PATH. Explicit -L paths here would take
-    # precedence and bypass the RELR-stripped compat libraries.
-
-    # Assemble arguments.
+    # Multiarch paths/RELR compat handled by xilinx_wrapper via LIBRARY_PATH.
     args = [
         "--output=" + output.path,
         "--mt=off",

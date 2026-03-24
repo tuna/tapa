@@ -28,23 +28,13 @@ def _update_source_range_for_port(module: Module, node: pyslang.SyntaxNode) -> N
     _update_source_range_for_signal(module, node)
 
 
-def _update_source_range_for_signal(
-    module: Module,
-    node: pyslang.SyntaxNode,
-) -> None:
+def _update_source_range_for_signal(module: Module, node: pyslang.SyntaxNode) -> None:
     module._signal_source_range = node.sourceRange
     _update_source_range_for_logic(module, node)
 
 
 def _update_source_range_for_logic(module: Module, node: pyslang.SyntaxNode) -> None:
     module._logic_source_range = node.sourceRange
-    _update_source_range_for_instance(module, node)
-
-
-def _update_source_range_for_instance(
-    module: Module,
-    node: pyslang.SyntaxNode,
-) -> None:
     module._instance_source_range = node.sourceRange
 
 
@@ -115,7 +105,7 @@ def parse_syntax_tree(module: Module) -> None:
     @visitor.register
     def _(node: pyslang.HierarchyInstantiationSyntax) -> pyslang.VisitAction:
         module._instances.append(node)
-        _update_source_range_for_instance(module, node)
+        module._instance_source_range = node.sourceRange
         return pyslang.VisitAction.Skip
 
     module._syntax_tree.root.visit(visitor)

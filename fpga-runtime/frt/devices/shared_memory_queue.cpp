@@ -90,19 +90,11 @@ SharedMemoryQueue::UniquePtr SharedMemoryQueue::New(int fd) {
 int SharedMemoryQueue::CreateFile(std::string& path, int32_t depth,
                                   int32_t width) {
 #ifdef __linux__
-  // Use /dev/shm as the prefix for the path.
   path = std::string("/dev/shm/") + path;
-
-  if (access("/dev/shm", F_OK) == 0) {
-    // Create a unique name using mkstemp to avoid collisions. Close the file
-    // descriptor returned by mkstemp and we will use shm_open later.
-    close(mkstemp(&path[0]));
-  } else {
+  if (access("/dev/shm", F_OK) != 0)
     LOG(FATAL) << "Shared memory not supported on this system without /dev/shm";
-  }
-
-  // Remove /dev/shm prefix from the path template to get the shm_open name.
-  path = path.substr(strlen("/dev/shm"));
+  close(mkstemp(&path[0]));  // Create unique name; reopen via shm_open below.
+  path = path.substr(strlen("/dev/shm"));  // Strip prefix for shm_open.
 #else
   // On macOS and other POSIX systems, shm_open names must start with '/'.
   // Generate a unique name using the PID and a counter.
@@ -122,7 +114,7 @@ int SharedMemoryQueue::CreateFile(std::string& path, int32_t depth,
   }
 
   SharedMemoryQueue queue;
-  static_assert(sizeof(queue.magic_) + 1 == sizeof(kMagic));  // +1 for '\0'
+  static_assert(sizeof(queue.magic_) + 1 == sizeof(kMagic));
   memcpy(queue.magic_, kMagic, sizeof(queue.magic_));
   queue.version_ = kVersion;
   queue.depth_ = depth;

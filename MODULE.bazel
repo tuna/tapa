@@ -1,15 +1,7 @@
-"""
-TAPA is a dataflow HLS framework that features fast compilation, expressive
-programming model and generates high-frequency FPGA accelerators.
-"""
-
-# Copyright (c) 2025 RapidStream Design Automation, Inc. and contributors.
-# All rights reserved. The contributor(s) of this file has/have agreed to the
-# RapidStream Contributor License Agreement.
+"""TAPA: dataflow HLS framework for fast compilation and high-frequency FPGA accelerators."""
 
 module(name = "tapa")
 
-# Bazel dependencies
 bazel_dep(name = "aspect_rules_js", version = "3.0.3", dev_dependency = True)
 bazel_dep(name = "aspect_rules_webpack", version = "0.17.1", dev_dependency = True)
 bazel_dep(name = "bazel_skylib", version = "1.8.2", dev_dependency = True)
@@ -34,16 +26,15 @@ pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
 
 python = use_extension("@rules_python//python/extensions:python.bzl", "python")
 
-# LLVM toolchain
 llvm.toolchain(
     llvm_versions = {
-        # lastest version supporting Ubuntus
+        # Latest version supporting Ubuntus
         "ubuntu-18.04-x86_64": "18.1.8",
         "ubuntu-20.04-x86_64": "18.1.8",
         "ubuntu-22.04-x86_64": "18.1.8",
         "ubuntu-24.04-x86_64": "18.1.8",
         "ubuntu-25.04-x86_64": "18.1.8",
-        # lastest version supporting RHELs
+        # Latest version supporting RHELs
         "rhel-8.6-x86_64": "14.0.0",
         "rhel-8.7-x86_64": "14.0.0",
         "rhel-8.8-x86_64": "14.0.0",
@@ -55,8 +46,7 @@ llvm.toolchain(
         "rhel-9.3-x86_64": "14.0.0",
         "rhel-9.4-x86_64": "14.0.0",
         "rhel-9.5-x86_64": "14.0.0",
-        # for other platforms, use the latest version
-        # you are really on your own here
+        # Other platforms use latest
         "": "20.1.8",
     },
     stdlib = {
@@ -77,7 +67,6 @@ register_toolchains(
     dev_dependency = True,
 )
 
-# Python toolchain
 python.toolchain(
     configure_coverage_tool = True,
     is_default = True,
@@ -85,11 +74,9 @@ python.toolchain(
 )
 use_repo(python, python_3_13 = "python_3_13_4")
 
-# Node toolchain
 node = use_extension("@rules_nodejs//nodejs:extensions.bzl", "node", dev_dependency = True)
-node.toolchain(node_version = "17.9.1")  # lastest version supporting Ubuntu 18.04
+node.toolchain(node_version = "17.9.1")  # Latest version supporting Ubuntu 18.04
 
-# Required by tapa Python libraries
 pip.parse(
     hub_name = "tapa_deps",
     python_version = "3.13.4",
@@ -97,21 +84,15 @@ pip.parse(
 )
 use_repo(pip, "tapa_deps")
 
-# Required by tapacc
-bazel_dep(name = "nlohmann_json", version = "3.12.0")
-
-# Required by tapa-lib
+bazel_dep(name = "nlohmann_json", version = "3.12.0")  # Required by tapacc
 bazel_dep(name = "rules_boost", repo_name = "com_github_nelhage_rules_boost")
 git_override(
     module_name = "rules_boost",
     commit = "795af624bbc1a285b73358ee53eb056e30723d26",
     patch_cmds = [
-        # Enable BOOST_USE_SEGMENTED_STACKS
-        # Enable BOOST_USE_ASAN
-        # Dependency: BOOST_USE_UCONTEXT.
+        # Enable BOOST_USE_SEGMENTED_STACKS, BOOST_USE_ASAN, BOOST_USE_UCONTEXT.
         # Use perl -i for cross-platform compatibility (sed -i differs between GNU and BSD).
         """perl -i -pe 'print qq{    defines=["BOOST_USE_ASAN","BOOST_USE_SEGMENTED_STACKS","BOOST_USE_UCONTEXT"],\\n} if /name = "context",/' boost.BUILD""",
-        # Do not exclude fiber.cpp since we enable BOOST_USE_UCONTEXT
         "perl -i -ne 'print unless /fiber\\.cpp/' boost.BUILD",
     ],
     remote = "https://github.com/nelhage/rules_boost.git",
@@ -121,10 +102,7 @@ non_module_boost_repositories = use_extension("@com_github_nelhage_rules_boost//
 use_repo(non_module_boost_repositories, "boost")
 
 bazel_dep(name = "gflags", version = "2.2.2.bcr.1")
-
-# glog must be 0.5.0 as in later versions, bazel is strictly required for
-# including glog headers for the host code
-bazel_dep(name = "glog", version = "0.5.0")
+bazel_dep(name = "glog", version = "0.5.0")  # Must be 0.5.0; later versions require Bazel for host headers
 bazel_dep(name = "googletest", version = "1.17.0")
 
 single_version_override(
@@ -142,8 +120,7 @@ load_dependencies = use_extension(
 )
 use_repo(load_dependencies, "ssh_key", "vitis_hls", "xsim_legacy_rdi", "xsim_xv")
 
-# Required by FRT
-bazel_dep(name = "tinyxml2", version = "10.0.0")
+bazel_dep(name = "tinyxml2", version = "10.0.0")  # Required by FRT
 bazel_dep(name = "libuuid", version = "2.39.3.bcr.1")
 bazel_dep(name = "yaml-cpp", version = "0.8.0")
 
@@ -309,7 +286,6 @@ EOF
     remote = "https://github.com/NixOS/patchelf.git",
 )
 
-# Build LLVM from source
 LLVM_VERSION_MAJOR = 20
 
 LLVM_VERSION_MINOR = 1
@@ -320,17 +296,14 @@ LLVM_VERSION = "{}.{}.{}".format(LLVM_VERSION_MAJOR, LLVM_VERSION_MINOR, LLVM_VE
 
 LLVM_SHA256 = "6898f963c8e938981e6c4a302e83ec5beb4630147c7311183cf61069af16333d"
 
-# Based on patches from https://github.com/bazelbuild/bazel-central-registry/tree/707c0f939d1a801370aeb3a795e1a253a880f4f7/modules/llvm-project/17.0.3/patches
 http_archive(
     name = "tapa-llvm-project",
     patch_args = ["-p1"],
     patch_cmds = [
-        # 0002-Add-LLVM-Bazel-overlay-files.patch
         """
         cp -r utils/bazel/llvm-project-overlay/* .
         rm -rf utils/bazel
         """,
-        # 0003-Add-MODULE.bazel.patch
         """
         cat >MODULE.bazel <<EOF
 module(
@@ -346,11 +319,8 @@ bazel_dep(name = "platforms", version = "1.0.0")
 bazel_dep(name = "rules_cc", version = "0.1.2")
 EOF
         """.format(LLVM_VERSION),
-        # 0004-Add-BUILD.bazel.patch
         """echo >BUILD.bazel""",
-        # 0005-Add-Bazel-LLVM-targets.patch
         """echo 'llvm_targets = ["X86", "AArch64"]' >llvm/targets.bzl""",
-        # 0006-Add-LLVM-version-vars.patch
         """
         cat >vars.bzl <<EOF
 LLVM_VERSION = "{0}.{1}.{2}"
@@ -373,7 +343,6 @@ EOF
     urls = ["https://github.com/llvm/llvm-project/releases/download/llvmorg-{0}/llvm-project-{0}.src.tar.xz".format(LLVM_VERSION)],
 )
 
-# Required by tapa-visualizer
 npm = use_extension("@aspect_rules_js//npm:extensions.bzl", "npm", dev_dependency = True)
 npm.npm_translate_lock(
     name = "npm",

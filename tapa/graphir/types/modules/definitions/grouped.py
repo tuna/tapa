@@ -1,11 +1,5 @@
 """Data structure to represent a module grouping multiple submodules."""
 
-__copyright__ = """
-Copyright (c) 2025 RapidStream Design Automation, Inc. and contributors.
-All rights reserved. The contributor(s) of this file has/have agreed to the
-RapidStream Contributor License Agreement.
-"""
-
 from collections.abc import Generator
 from typing import Literal, Self
 
@@ -127,11 +121,7 @@ class GroupedModuleDefinition(BaseModuleDefinition):
         return data
 
     def get_submodules(self) -> tuple[ModuleInstantiation, ...]:
-        """Return the submodules of the module.
-
-        Returns:
-            tuple[ModuleInstantiation, ...]: The submodules.
-        """
+        """Return the submodules of the module."""
         return self.submodules
 
     def get_submodules_module_names(self) -> tuple[str, ...]:
@@ -165,6 +155,14 @@ class GroupedModuleDefinition(BaseModuleDefinition):
         """Return True if the module has a submodule with the given name."""
         return any(inst.name == inst_name for inst in self.submodules)
 
+    def get_wire(self, wire_name: str) -> ModuleNet:
+        """Return the wire with the given name."""
+        wire = next((w for w in self.wires if w.name == wire_name), None)
+        if wire is None:
+            msg = f"Wire {wire_name} not found in the module."
+            raise KeyError(msg)
+        return wire
+
     def rewritten(self, idmap: dict[str, Expression]) -> Self:
         """Rewrite the whole module definition with the given idmap.
 
@@ -189,17 +187,9 @@ class GroupedModuleDefinition(BaseModuleDefinition):
         self, inst_to_region: dict[str, str]
     ) -> "GroupedModuleDefinition":
         """Mark the floorplan_region field of each submodule."""
-        updated_submodules = [
-            inst.updated(floorplan_region=inst_to_region.get(inst.name))
-            for inst in self.submodules
-        ]
-
-        return self.updated(submodules=updated_submodules)
-
-    def get_wire(self, wire_name: str) -> ModuleNet:
-        """Return the wire with the given name."""
-        wire = next((w for w in self.wires if w.name == wire_name), None)
-        if wire is None:
-            msg = f"Wire {wire_name} not found in the module."
-            raise KeyError(msg)
-        return wire
+        return self.updated(
+            submodules=[
+                inst.updated(floorplan_region=inst_to_region.get(inst.name))
+                for inst in self.submodules
+            ]
+        )

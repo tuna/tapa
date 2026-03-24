@@ -48,7 +48,7 @@ struct accessor<T, seq> {
 void* allocate(size_t length);
 void deallocate(void* addr, size_t length);
 
-// std::bind wrapper with arguments evaluated from left to right.
+// std::bind wrapper ensuring left-to-right argument evaluation.
 struct binder {
   template <typename F, typename... Args>
   binder(F&& f, Args&&... args)
@@ -56,7 +56,6 @@ struct binder {
   std::function<void()> result;
 };
 
-// Utilities to obtain function traits.
 template <typename T>
 struct function_traits : public function_traits<decltype(&T::operator())> {};
 template <typename R, typename... Args>
@@ -94,11 +93,10 @@ struct invoker {
 
   template <typename... Args>
   static void invoke(InvokeMode mode, F&& f, Args&&... args) {
-    // Create a functor that captures args by value
     auto functor = invoker::functor_with_accessors(
         mode == InvokeMode::kSequential, std::forward<F>(f),
         std::index_sequence_for<Args...>{}, std::forward<Args>(args)...);
-    if (mode == InvokeMode::kSequential) {  // Sequential scheduling.
+    if (mode == InvokeMode::kSequential) {
       std::move(functor)();
     } else {
       schedule(mode == InvokeMode::kDetach, std::move(functor));
@@ -181,8 +179,7 @@ struct invoker {
   static auto functor_with_accessors(bool is_sequential, Func&& func,
                                      std::index_sequence<Is...>,
                                      CapturedArgs&&... args) {
-    // std::bind creates a copy of args
-    // Aggregate initialization evaluates args from left to right.
+    // Aggregate initialization evaluates args left-to-right; std::bind copies.
     return binder{
         func, accessor<std::tuple_element_t<Is, Params>, CapturedArgs>::access(
                   std::forward<CapturedArgs>(args), is_sequential)...}
@@ -192,7 +189,7 @@ struct invoker {
 
 }  // namespace internal
 
-/// Enables overriding the executable target for `tapa::task::invoke`.
+/// Overrides the executable target for @c tapa::task::invoke.
 class executable {
  public:
   explicit executable(std::string path) : path_(std::move(path)) {}
@@ -206,51 +203,20 @@ class executable {
   const std::string path_;
 };
 
-/// Defines a parent task instantiating children task instances.
-///
-/// Canonical usage:
-/// @code{.cpp}
-///  tapa::task()
-///    .invoke(...)
-///    .invoke(...)
-///    ...
-///    ;
-/// @endcode
-///
-/// A parent task itself does not do any computation. By default, a parent task
-/// will not finish until all its children task instances finish. Such children
-/// task instances are @a joined to their parent. The alternative is to @a
-/// detach a child from the parent. If a child task instance is instantiated and
-/// detached, the parent will no longer wait for the child task to finish.
-/// Detached tasks are very useful when infinite loops can be used.
+/// Parent task that instantiates and joins/detaches child task instances.
 struct task {
-  /// Constructs a @c tapa::task.
   explicit task();
-
   ~task();
 
-  // Not copyable or movable.
   task(const task&) = delete;
   task& operator=(const task&) = delete;
 
-  /// Invokes a task and instantiates a child task instance.
-  ///
-  /// @param func Task function definition of the instantiated child.
-  /// @param args Arguments passed to @c func.
-  /// @return     Reference to the caller @c tapa::task.
   template <typename Func, typename... Args>
   task& invoke(Func&& func, Args&&... args) {
     return invoke<join>(std::forward<Func>(func), "",
                         std::forward<Args>(args)...);
   }
 
-  /// Invokes a task and instantiates a child task instance with the given
-  /// instatiation mode.
-  ///
-  /// @tparam mode Instatiation mode (@c join or @c detach).
-  /// @param func  Task function definition of the instantiated child.
-  /// @param args  Arguments passed to @c func.
-  /// @return      Reference to the caller @c tapa::task.
   template <internal::InvokeMode mode, typename Func, typename... Args>
   task& invoke(Func&& func, Args&&... args) {
     return invoke<mode>(std::forward<Func>(func), "",
@@ -275,15 +241,8 @@ struct task {
     return *this;
   }
 
-  /// Host-only invoke that takes an @c executable as an argument.
-  ///
-  /// NOTE: This `invoke` must be called before any direct `tapa::stream` reader
-  /// / writer; otherwise `tapa::stream` will not bind correctly.
-  ///
-  /// @param func Task function definition of the instantiated child.
-  /// @param exe  Optionally overrides the execution target.
-  /// @param args Arguments passed to @c func.
-  /// @return     Reference to the caller @c tapa::task.
+  /// Host-only invoke with @c executable to override execution target.
+  /// Must be called before any direct @c tapa::stream reader/writer.
   template <typename Func, typename... Args>
   task& invoke(Func&& func, executable exe, Args&&... args) {
     if (exe.path_.empty()) {
@@ -297,14 +256,6 @@ struct task {
     return invoke_frt(std::move(instance));
   }
 
-  /// Invokes a task @c n times and instantiates @c n child task
-  /// instances with the given instatiation mode.
-  ///
-  /// @tparam mode Instatiation mode (@c join or @c detach).
-  /// @tparam n    Instatiation count.
-  /// @param func  Task function definition of the instantiated child.
-  /// @param args  Arguments passed to @c func.
-  /// @return      Reference to the caller @c tapa::task.
   template <internal::InvokeMode mode, int n, typename Func, typename... Args>
   task& invoke(Func&& func, Args&&... args) {
     return invoke<mode, n>(std::forward<Func>(func), "",

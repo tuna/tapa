@@ -121,18 +121,13 @@ def parse_part_num(xo_dir: str) -> str | None:
 
 
 def _parse_and_update_config(config: CosimConfig, tb_output_dir: str) -> None:
-    """Only supports TAPA xo.
-
-    Vitis XO has different hierarchy and RTL coding style.
-    """
+    """Only supports TAPA xo. Vitis XO has different hierarchy and RTL coding style."""
     xo_path = config.xo_path
-
     tmp_path = f"{tb_output_dir}/tapa_fast_cosim_{os.getuid()}/"
     shutil.rmtree(tmp_path, ignore_errors=True)
     Path(tmp_path).mkdir(parents=True, exist_ok=True)
     shutil.copy(xo_path, f"{tmp_path}/target.xo")
-    zip_ref = zipfile.ZipFile(f"{tmp_path}/target.xo", "r")
-    zip_ref.extractall(tmp_path)
+    zipfile.ZipFile(f"{tmp_path}/target.xo", "r").extractall(tmp_path)
 
     if xo_path.endswith(".xo"):
         config.mode = "vitis"
@@ -144,7 +139,6 @@ def _parse_and_update_config(config: CosimConfig, tb_output_dir: str) -> None:
         msg = f"Unsupported xo file format: {xo_path}"
         raise ValueError(msg)
 
-    # convert argument index in the config file to actual names
     id_to_name = {arg.id: arg.qualified_name for arg in config.args}
     config.scalar_to_val = _remap_keys(id_to_name, config.scalar_to_val)
     config.axi_to_data_file = _remap_keys(id_to_name, config.axi_to_data_file)
@@ -153,12 +147,10 @@ def _parse_and_update_config(config: CosimConfig, tb_output_dir: str) -> None:
 
 
 def _parse_xo_update_config(config: CosimConfig, tmp_path: str) -> None:
-    # only supports tapa xo
     src_dirs = glob.glob(f"{tmp_path}/ip_repo/*/src")
     assert len(src_dirs) == 1, "Only supports TAPA XO. Vitis XO is not supported"
     config.verilog_path = src_dirs[0]
 
-    # extract other kernel information
     kernel_file_path = glob.glob(f"{tmp_path}/*/kernel.xml")[0]
     kernel_xml = ET.parse(kernel_file_path).getroot().find("./kernel")
     if kernel_xml is None:
@@ -178,17 +170,15 @@ def _parse_xo_update_config(config: CosimConfig, tmp_path: str) -> None:
         )
         ports[port.name] = port
         _logger.debug("port: %s", port)
-    args = []
-    for arg_xml in kernel_xml.findall("./args/arg"):
-        arg = Arg(
+    config.args = [
+        Arg(
             name=arg_xml.attrib["name"],
             address_qualifier=int(arg_xml.attrib["addressQualifier"]),
             id=int(arg_xml.attrib["id"]),
             port=ports[arg_xml.attrib["port"]],
         )
-        args.append(arg)
-        _logger.debug("arg: %s", arg)
-    config.args = args
+        for arg_xml in kernel_xml.findall("./args/arg")
+    ]
 
     config.part_num = parse_part_num(tmp_path)
 

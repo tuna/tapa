@@ -11,20 +11,12 @@ import { getComboName } from "../helper.js";
 /** @param {NodeData} node
  * @param {import("@antv/g6").EdgeData[]} sources
  * @param {import("@antv/g6").EdgeData[]} targets */
-export const getNodeSidebarModel = (node, sources, targets) => {
-  const neighborIds = new Set([
-    ...sources.map(edge => edge.target),
-    ...targets.map(edge => edge.source),
-  ]);
-  const neighbors = Array.from(neighborIds);
-
-  return {
-    neighbors,
-    sources: sources.map(edge => `${edge.id} -> ${edge.target}`),
-    targets: targets.map(edge => `${edge.id} <- ${edge.source}`),
-    task: node.data.task,
-  };
-};
+export const getNodeSidebarModel = (node, sources, targets) => ({
+  neighbors: Array.from(new Set([...sources.map(e => e.target), ...targets.map(e => e.source)])),
+  sources: sources.map(edge => `${edge.id} -> ${edge.target}`),
+  targets: targets.map(edge => `${edge.id} <- ${edge.source}`),
+  task: node.data.task,
+});
 
 /** @param {ComboData} combo
  * @param {{ id?: string }[]} children */

@@ -24,25 +24,21 @@ class ABVertex(BaseModel):
 
     current_slot: Coor | None = None
 
-    def _key(self) -> str:
-        """Return a key for the vertex."""
-        return self.name
-
     def __hash__(self) -> int:
         """Return a hash for the vertex."""
-        return hash(self._key())
+        return hash(self.name)
 
     def __eq__(self, other: object) -> bool:
         """Return whether two vertices are equal."""
         if not isinstance(other, ABVertex):
             return NotImplemented
-        return self._key() == other._key()
+        return self.name == other.name
 
     def __lt__(self, other: object) -> bool:
         """Return whether one vertex is less than another."""
         if not isinstance(other, ABVertex):
             return NotImplemented
-        return self._key() < other._key()
+        return self.name < other.name
 
 
 class ABEdge(BaseModel):

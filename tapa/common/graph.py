@@ -1,10 +1,5 @@
 """Graph object class in TAPA."""
 
-__copyright__ = """
-Copyright (c) 2025 RapidStream Design Automation, Inc. and contributors.
-All rights reserved. The contributor(s) of this file has/have agreed to the
-RapidStream Contributor License Agreement.
-"""
 import copy
 import re
 from collections import defaultdict
@@ -46,20 +41,18 @@ class Graph(Base):
 
     def get_flatten_graph(self) -> "Graph":
         """Returns the flatten graph with all leaf tasks as the top's children."""
-        # Construct obj of the new flatten graph
         new_obj = self.to_dict()
-
-        # Find all leaf task instances
         leaves = self.get_top_task_inst().get_leaf_tasks_insts()
-
         defs = {leaf.definition for leaf in leaves}
-        new_obj["tasks"] = {d.name: d.to_dict() for d in defs}
+
         top_name = self.obj["top"]
         assert isinstance(top_name, str)
+
+        new_obj["tasks"] = {d.name: d.to_dict() for d in defs}
         assert isinstance(new_obj["tasks"], dict)
         new_obj["tasks"][top_name] = self.get_top_task_def().to_dict()
 
-        insts = {i: [j for j in leaves if j.definition is i] for i in defs}
+        insts = {d: [leaf for leaf in leaves if leaf.definition is d] for d in defs}
         new_subtask_instantiations = {
             definition.name: [
                 inst.to_dict(interconnect_global_name=True)
@@ -84,24 +77,18 @@ class Graph(Base):
         self, slot_name: str, task_inst_in_slot: list[str], top: Base
     ) -> TaskDefinition:
         """Return the task grouping the tasks floorplanned in the given slot."""
-        # Construct obj of the slot by modifying the top task
         new_obj = self.get_top_task_def().to_dict()
-
         new_obj["level"] = "upper"
 
-        # Find all task instances
         insts = self.get_top_task_inst().get_subtasks_insts()
         assert all(inst in [inst.name for inst in insts] for inst in task_inst_in_slot)
         for inst in insts:
-            # make sure top has been flattened
             assert isinstance(inst.definition, TaskDefinition)
             assert inst.definition.get_level() == TaskDefinition.Level.LEAF, (
                 "Top task must be flattened for floorplanning"
             )
 
-        # filter out tasks that are not in the slot
         new_insts = [inst for inst in insts if inst.name in task_inst_in_slot]
-
         assert new_insts, [inst.name for inst in insts]
 
         top_to_slot_inst_idx_map = defaultdict(dict)
@@ -111,21 +98,17 @@ class Graph(Base):
         new_obj["tasks"] = defaultdict(list)
         for inst in new_insts:
             assert isinstance(top_tasks[inst.definition.name], list)
-
             top_idx = top_tasks[inst.definition.name].index(inst.obj)
             idx = len(new_obj["tasks"][inst.definition.name])
             top_to_slot_inst_idx_map[inst.definition.name][top_idx] = idx
-
             assert inst.name
-            new_inst_obj = _connect_subinst_mmap_to_slot_port(inst.obj, inst.name)
-            new_obj["tasks"][inst.definition.name].append(new_inst_obj)
+            new_obj["tasks"][inst.definition.name].append(
+                _connect_subinst_mmap_to_slot_port(inst.obj, inst.name)
+            )
 
         fifos = self.get_top_task_inst().get_interconnect_insts()
-        fifo_ports: list[str] = []
         new_obj["fifos"], fifo_ports = _get_slot_fifos(
-            fifos,
-            top_to_slot_inst_idx_map,
-            task_inst_in_slot,
+            fifos, top_to_slot_inst_idx_map, task_inst_in_slot
         )
 
         scalar_args: set[str] = set()
@@ -137,19 +120,14 @@ class Graph(Base):
                     scalar_args.add(arg["arg"])
         assert isinstance(new_obj["ports"], list)
         new_ports = [port for port in new_obj["ports"] if port["name"] in scalar_args]
-
         new_ports += _get_used_ports(new_insts, fifo_ports)
         new_ports += _infer_mmap_ports_from_subtasks(new_insts)
-
         new_obj["ports"] = new_ports
 
         top_code = new_obj["code"]
         assert isinstance(top_code, str)
         new_obj["code"] = gen_slot_cpp(
-            slot_name,
-            self.get_top_task_name(),
-            new_ports,
-            top_code,
+            slot_name, self.get_top_task_name(), new_ports, top_code
         )
 
         return TaskDefinition(slot_name, new_obj, top)
@@ -168,23 +146,19 @@ class Graph(Base):
         for slot_name, slot_def in slot_defs.items():
             assert isinstance(slot_def.obj["ports"], list)
             ports: dict[str, dict] = {p["name"]: p for p in slot_def.obj["ports"]}
-            args = {}
             slot_subtasks = slot_def.obj["tasks"]
             assert isinstance(slot_subtasks, dict)
+            args = {}
             for port_name, port in ports.items():
                 if port["cat"] in {"mmap", "hmap", "async_mmap"}:
-                    # mmap ports needs to be deal separately
                     continue
-                # format port[idx] to port_idx for array
-                port_name_formated = re.sub(
+                port_name_formatted = re.sub(
                     r"\[([^\]]+)\]$", lambda m: f"_{m.group(1)}", port_name
                 )
-                args[port_name_formated] = {
+                args[port_name_formatted] = {
                     "arg": port_name,
                     "cat": _infer_arg_cat_from_subinst(port_name, slot_subtasks),
                 }
-
-            # add mmap args
             args |= _get_slot_inst_mmap_port_args(
                 slot_name, as_type(dict, top_obj["tasks"]), task_inst_to_slot
             )
@@ -196,10 +170,8 @@ class Graph(Base):
             assert isinstance(slot_def.obj["fifos"], dict)
             for fifo_name, fifo in slot_def.obj["fifos"].items():
                 assert isinstance(fifo, dict)
-                # keep external fifos
-                if "depth" not in fifo:
-                    continue
-                in_slot_fifos.append(fifo_name)
+                if "depth" in fifo:
+                    in_slot_fifos.append(fifo_name)
 
         assert isinstance(top_obj["fifos"], dict)
         new_top_obj["fifos"] = {}
@@ -212,13 +184,11 @@ class Graph(Base):
                     task_inst_to_slot[get_instance_name(fifo["consumed_by"])],
                     0,
                 )
-
             if "produced_by" in updated_fifo:
                 updated_fifo["produced_by"] = (
                     task_inst_to_slot[get_instance_name(fifo["produced_by"])],
                     0,
                 )
-
             new_top_obj["fifos"][name] = updated_fifo
 
         return TaskDefinition(self.get_top_task_name(), new_top_obj, self)
@@ -252,13 +222,13 @@ class Graph(Base):
 
 def _infer_arg_cat_from_subinst(port_name: str, tasks: dict[str, dict]) -> str:
     """Infer port arg category from child instance connecting to the port."""
-    cat: set[str] = set()
-    for task_insts in tasks.values():
-        for inst in task_insts:
-            assert isinstance(inst["args"], dict)
-            for arg in inst["args"].values():
-                if arg["arg"] == port_name:
-                    cat.add(arg["cat"])
+    cat: set[str] = {
+        arg["cat"]
+        for task_insts in tasks.values()
+        for inst in task_insts
+        for arg in inst["args"].values()
+        if arg["arg"] == port_name
+    }
     assert len(cat) == 1
     return cat.pop()
 
@@ -269,20 +239,18 @@ def _get_used_ports(new_insts: list[TaskInstance], fifo_ports: list[str]) -> lis
     for inst in new_insts:
         assert isinstance(inst.obj["args"], dict)
         for port_name, arg in inst.obj["args"].items():
-            # Skip mmap ports as they are generated separately
             if arg["cat"] in {"mmap", "async_mmap"}:
                 continue
-            port_name_no_idx = re.sub(r"\[[^\]]+\]$", "", port_name)
             if arg["arg"] not in fifo_ports:
                 continue
+            port_name_no_idx = re.sub(r"\[[^\]]+\]$", "", port_name)
             ports = inst.definition.obj["ports"]
             assert isinstance(ports, list)
             for port in ports:
-                if port["name"] != port_name_no_idx:
-                    continue
-                new_port = port.copy()
-                new_port["name"] = arg["arg"]
-                new_ports.append(new_port)
+                if port["name"] == port_name_no_idx:
+                    new_port = port.copy()
+                    new_port["name"] = arg["arg"]
+                    new_ports.append(new_port)
 
     assert len(new_ports) == len(fifo_ports), f"{new_ports}, {fifo_ports}"
     return new_ports
@@ -373,15 +341,13 @@ def _get_slot_inst_mmap_port_args(
     new_args = {}
     for task_name, insts in top_subtasks.items():
         for idx, inst in enumerate(insts):
-            inst_name_with_idx = get_instance_name((task_name, idx))
-            if task_inst_to_slot[inst_name_with_idx] != slot_name:
+            inst_name = get_instance_name((task_name, idx))
+            if task_inst_to_slot[inst_name] != slot_name:
                 continue
             assert isinstance(inst, dict)
             for port_name, arg in inst["args"].items():
                 if arg["cat"] in {"mmap", "async_mmap"}:
-                    new_args[
-                        _get_mmap_slot_port_name(port_name, inst_name_with_idx)
-                    ] = {
+                    new_args[_get_mmap_slot_port_name(port_name, inst_name)] = {
                         "arg": arg["arg"],
                         "cat": arg["cat"],
                     }

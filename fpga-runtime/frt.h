@@ -56,67 +56,45 @@ class Instance {
  public:
   Instance(const std::string& bitstream);
 
-  // Move-only.
   Instance(Instance&&) = default;
   Instance& operator=(Instance&&) = default;
 
-  // Cleanup on destruction.
   ~Instance() {
-    // If the execution is not finished, kill the program.
-    if (device_ && !device_->IsFinished()) {
-      device_->Kill();
-    }
+    if (device_ && !device_->IsFinished()) device_->Kill();
   }
 
-  // Sets a scalar argument.
   template <typename T>
   void SetArg(int index, T arg) {
     device_->SetScalarArg(index, &arg, sizeof(arg));
   }
 
-  // Sets a buffer argument.
   template <typename T, internal::Tag tag>
   void SetArg(int index, internal::Buffer<T, tag> arg) {
     device_->SetBufferArg(index, tag, arg);
   }
 
-  // Sets a stream argument.
   template <typename T, internal::Tag tag>
   void SetArg(int index, internal::Stream<T, tag>& arg) {
     device_->SetStreamArg(index, tag, arg);
   }
 
-  // Sets all arguments.
   template <typename... Args>
   void SetArgs(Args&&... args) {
     SetArg(0, std::forward<Args>(args)...);
   }
 
-  // Suspends a buffer from being transferred between host and device and
-  // returns the number of transfer operations suspended.
+  // Suspends a buffer transfer; returns number of operations suspended.
   size_t SuspendBuf(int index);
 
-  // Writes buffers to the device.
   void WriteToDevice();
-
-  // Reads buffers to the device.
   void ReadFromDevice();
-
-  // Executes the program on the device.
   void Exec();
-
-  // Waits for the program to finish.
   void Finish();
-
-  // Kill the program on the device.
   void Kill();
-
-  // Returns whether the program has finished.
   bool IsFinished() const;
 
-  // Invokes the program on the device. This is a shortcut for `SetArgs`,
-  // `WriteToDevice`, `Exec`, `ReadFromDevice`, and if there is no stream
-  // arguments, `Finish` as well.
+  // Shortcut for SetArgs + WriteToDevice + Exec + ReadFromDevice + Finish
+  // (Finish is skipped if any stream argument is present).
   template <typename... Args>
   Instance& Invoke(Args&&... args) {
     SetArgs(std::forward<Args>(args)...);
@@ -130,31 +108,15 @@ class Instance {
     return *this;
   }
 
-  // Returns information of all args as a vector, sorted by the index.
   std::vector<ArgInfo> GetArgsInfo() const;
 
-  // Returns the load time in nanoseconds.
   int64_t LoadTimeNanoSeconds() const;
-
-  // Returns the compute time in nanoseconds.
   int64_t ComputeTimeNanoSeconds() const;
-
-  // Returns the store time in nanoseconds.
   int64_t StoreTimeNanoSeconds() const;
-
-  // Returns the load time in seconds.
   double LoadTimeSeconds() const;
-
-  // Returns the compute time in seconds.
   double ComputeTimeSeconds() const;
-
-  // Returns the store time in seconds.
   double StoreTimeSeconds() const;
-
-  // Returns the load throughput in GB/s.
   double LoadThroughputGbps() const;
-
-  // Returns the store throughput in GB/s.
   double StoreThroughputGbps() const;
 
  private:

@@ -1,11 +1,5 @@
 """Data structure to represent a base module definition."""
 
-__copyright__ = """
-Copyright (c) 2025 RapidStream Design Automation, Inc. and contributors.
-All rights reserved. The contributor(s) of this file has/have agreed to the
-RapidStream Contributor License Agreement.
-"""
-
 from abc import abstractmethod
 from typing import Self
 
@@ -61,13 +55,13 @@ class BaseModuleDefinition(HierarchicalNamespaceModel):
         return data
 
     def get_port(self, name: str) -> ModulePort:
-        """Return the port of the given port.
+        """Return the port of the given name.
 
         Args:
             name (str): The name of the port.
 
         Returns:
-            ModuleModulePort: The port with the given name
+            ModulePort: The port with the given name.
 
         Raises:
             KeyError: If the port is not found or if the name is not a port.
@@ -98,35 +92,15 @@ class BaseModuleDefinition(HierarchicalNamespaceModel):
         return port
 
     def get_submodules(self) -> tuple[ModuleInstantiation, ...]:  # noqa: PLR6301
-        """Return the submodules of the module.
-
-        A module with submodules shall override this method.
-
-        Returns:
-            tuple[ModuleInstantiation, ...]: The submodules.
-        """
+        """Return the submodules of the module (empty for leaf modules)."""
         return ()
 
     def get_submodules_of(self, module_name: str) -> tuple[ModuleInstantiation, ...]:
-        """Return the submodules of the given module name.
-
-        Args:
-            module_name (str): The module name of the submodule.
-
-        Returns:
-            tuple[ModuleInstantiation, ...]: The submodules.
-        """
+        """Return the submodules of the given module name."""
         return tuple(m for m in self.get_submodules() if m.module == module_name)
 
     def rewritten(self, idmap: dict[str, Expression]) -> Self:
-        """Rewrite the whole module definition with the given idmap.
-
-        Args:
-            idmap (dict[str, Expression]): The idmap to have identifiers rewritten.
-
-        Returns:
-            The modified module definition.
-        """
+        """Rewrite the whole module definition with the given idmap."""
         return self.updated(
             parameters=tuple(param.rewritten(idmap) for param in self.parameters),
             ports=tuple(port.rewritten(idmap) for port in self.ports),
@@ -138,24 +112,12 @@ class BaseModuleDefinition(HierarchicalNamespaceModel):
 
     @abstractmethod
     def get_submodules_module_names(self) -> tuple[str, ...]:
-        """Return the module names of the submodules.
-
-        Returns:
-            set[str]: The module names of the submodules.
-        """
+        """Return the module names of the submodules."""
 
     @abstractmethod
     def is_leaf_module(self) -> bool:
-        """Return True if the module is a leaf module.
-
-        Returns:
-            bool: Return True if the module is a leaf module.
-        """
+        """Return True if the module is a leaf module."""
 
     @abstractmethod
     def is_internal_module(self) -> bool:
-        """Return True if the module is an internal module.
-
-        Returns:
-            bool: Return True if the module is a internal module.
-        """
+        """Return True if the module is an internal module."""

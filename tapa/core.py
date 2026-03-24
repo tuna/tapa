@@ -28,26 +28,12 @@ from tapa.program.directory import ProgramDirectoryMixin
 from tapa.program.hls import ProgramHlsMixin
 from tapa.program.pack import ProgramPackMixin
 from tapa.program.synthesis import ProgramSynthesisMixin
-from tapa.program_codegen.fifos import (
-    connect_fifos as connect_fifos_codegen,
-)
-from tapa.program_codegen.fifos import (
-    instantiate_fifos as instantiate_fifos_codegen,
-)
-from tapa.program_codegen.program import (
-    get_fifo_width as get_fifo_width_codegen,
-)
+from tapa.program_codegen.program import get_fifo_width as get_fifo_width_codegen
 from tapa.program_codegen.program import (
     get_grouping_constraints as get_grouping_constraints_codegen,
 )
 from tapa.program_codegen.program import (
     get_rtl_templates_info as get_rtl_templates_info_codegen,
-)
-from tapa.program_codegen.program import (
-    instantiate_children_tasks as instantiate_children_tasks_codegen,
-)
-from tapa.program_codegen.program import (
-    instantiate_global_fsm as instantiate_global_fsm_codegen,
 )
 from tapa.program_codegen.program import (
     instrument_upper_and_template_task as instrument_upper_and_template_task_codegen,
@@ -310,31 +296,6 @@ class Program(  # TODO: refactor this class
         for name, content in self.files.items():
             with open(os.path.join(self.rtl_dir, name), "w", encoding="utf-8") as fp:
                 fp.write(content)
-
-    def _connect_fifos(self, task: Task) -> None:
-        connect_fifos_codegen(
-            task=task,
-            top=self.top,
-            target=self.target,
-            get_task=self.get_task,
-        )
-
-    def _instantiate_fifos(self, task: Task) -> None:
-        instantiate_fifos_codegen(task=task, get_fifo_width=self.get_fifo_width)
-
-    def _instantiate_children_tasks(
-        self,
-        task: Task,
-        width_table: dict[str, int],
-    ) -> list:
-        return instantiate_children_tasks_codegen(self, task, width_table)
-
-    def _instantiate_global_fsm(
-        self,
-        module: Module,
-        is_done_signals: list,
-    ) -> None:
-        instantiate_global_fsm_codegen(self, module, is_done_signals)
 
     def _instrument_upper_and_template_task(self, task: Task) -> None:
         instrument_upper_and_template_task_codegen(self, task)

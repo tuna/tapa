@@ -1,11 +1,5 @@
 """Utility functions for TAPA Verilog code generation."""
 
-__copyright__ = """
-Copyright (c) 2024 RapidStream Design Automation, Inc. and contributors.
-All rights reserved. The contributor(s) of this file has/have agreed to the
-RapidStream Contributor License Agreement.
-"""
-
 import re
 from collections.abc import Iterator
 
@@ -16,6 +10,7 @@ from tapa.verilog.ast.width import Width
 
 __all__ = [
     "Pipeline",
+    "array_name",
     "async_mmap_instance_name",
     "match_array_name",
     "sanitize_array_name",
@@ -46,9 +41,7 @@ class Pipeline:
 
 def match_array_name(name: str) -> tuple[str, int] | None:
     match = re.fullmatch(r"(\w+)\[(\d+)\]", name)
-    if match is not None:
-        return match[1], int(match[2])
-    return None
+    return (match[1], int(match[2])) if match is not None else None
 
 
 def array_name(name: str, idx: int) -> str:
@@ -57,9 +50,7 @@ def array_name(name: str, idx: int) -> str:
 
 def sanitize_array_name(name: str) -> str:
     match = match_array_name(name)
-    if match is not None:
-        return f"{match[0]}_{match[1]}"
-    return name
+    return f"{match[0]}_{match[1]}" if match is not None else name
 
 
 def wire_name(fifo: str, suffix: str) -> str:

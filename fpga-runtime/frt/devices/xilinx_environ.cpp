@@ -37,12 +37,8 @@ void UpdateEnviron(std::string_view script, Environ& environ) {
 
 Environ GetEnviron() {
   std::string xilinx_tool;
-  for (const char* env : {
-           "XILINX_VITIS",
-           "XILINX_SDX",
-           "XILINX_HLS",
-           "XILINX_VIVADO",
-       }) {
+  for (const char* env :
+       {"XILINX_VITIS", "XILINX_SDX", "XILINX_HLS", "XILINX_VIVADO"}) {
     if (const char* value = getenv(env)) {
       xilinx_tool = value;
       break;
@@ -50,7 +46,7 @@ Environ GetEnviron() {
   }
 
   if (xilinx_tool.empty()) {
-    for (const std::string hls : {"vitis_hls", "vivado_hls"}) {
+    for (const std::string& hls : {"vitis_hls", "vivado_hls"}) {
       subprocess::OutBuffer buf = subprocess::check_output({
           "bash",
           "-c",
@@ -75,9 +71,8 @@ Environ GetEnviron() {
 
   Environ environ;
   UpdateEnviron(xilinx_tool + "/settings64.sh", environ);
-  if (const char* xrt = getenv("XILINX_XRT")) {
+  if (const char* xrt = getenv("XILINX_XRT"))
     UpdateEnviron(std::string(xrt) + "/setup.sh", environ);
-  }
   return environ;
 }
 

@@ -6,49 +6,29 @@
 
 "use strict";
 
-/** Button selector and click event callback
- * @param {import("@antv/g6").Graph} graph
+/** @param {import("@antv/g6").Graph} graph
  * @param {() => void} clearGraph
  * @param {() => string | undefined} getFilename
  * @returns {[string, EventListenerOrEventListenerObject][]} */
-const getGraphButtons = (graph, clearGraph, getFilename) => [[
-  ".btn-clearGraph",
-  () => void graph.clear().then(clearGraph)
-], [
-  ".btn-rerenderGraph",
-  () => void graph.layout().then(() => graph.fitView())
-], [
-  ".btn-fitCenter",
-  () => void graph.fitCenter()
-], [
-  ".btn-fitView",
-  () => void graph.fitView()
-], [
-  ".btn-saveImage",
-  () => void graph.toDataURL({ mode: "overall" }).then(
-    href => Object.assign(
-      document.createElement("a"),
-      { href, download: getFilename(), rel: "noopener" },
-    ).click(),
-  )
-]];
+const getGraphButtons = (graph, clearGraph, getFilename) => [
+  [".btn-clearGraph", () => void graph.clear().then(clearGraph)],
+  [".btn-rerenderGraph", () => void graph.layout().then(() => graph.fitView())],
+  [".btn-fitCenter", () => void graph.fitCenter()],
+  [".btn-fitView", () => void graph.fitView()],
+  [".btn-saveImage", () => void graph.toDataURL({ mode: "overall" }).then(
+    href => Object.assign(document.createElement("a"), { href, download: getFilename(), rel: "noopener" }).click(),
+  )],
+];
 
 /** @param {import("@antv/g6").Graph} graph
  * @param {() => void} clearGraph
  * @param {() => string | undefined} getFilename */
 export const setupGraphButtons = (graph, clearGraph, getFilename) => {
-  getGraphButtons(graph, clearGraph, getFilename).forEach(
-    ([selector, callback]) => {
-      /** @satisfies { HTMLButtonElement | null } */
-      const button = document.querySelector(selector);
-      if (button) {
-        button.addEventListener("click", callback);
-        button.disabled = false;
-      } else {
-        console.warn(`setButton(): "${selector}" don't match any element!`);
-      }
-    }
-  );
+  getGraphButtons(graph, clearGraph, getFilename).forEach(([selector, callback]) => {
+    const button = document.querySelector(selector);
+    if (button) { button.addEventListener("click", callback); button.disabled = false; }
+    else console.warn(`setButton(): "${selector}" don't match any element!`);
+  });
 };
 
 export const setupSidebarToggle = () => {

@@ -89,15 +89,11 @@ def get_project_from_floorplanned_program(  # noqa: PLR0913, PLR0917
 
     leaf_irs = {}
     for task in leaf_tasks.values():
-        full_task_module = module_cls(
+        task.module = module_cls(
             files=[Path(program.get_rtl_path(task.name))],
             is_trimming_enabled=False,
         )
-        task.module = full_task_module
-        leaf_irs[task.name] = get_verilog_module_from_leaf_task(
-            task,
-            full_task_module.code,
-        )
+        leaf_irs[task.name] = get_verilog_module_from_leaf_task(task, task.module.code)
 
     assert program.slot_task_name_to_fp_region is not None
     slot_irs = {

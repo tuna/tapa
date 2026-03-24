@@ -1,11 +1,6 @@
 """Utility to lookup distribution paths for TAPA."""
 
-__copyright__ = """
-Copyright (c) 2024 RapidStream Design Automation, Inc. and contributors.
-All rights reserved. The contributor(s) of this file has/have agreed to the
-RapidStream Contributor License Agreement.
-"""
-
+import contextlib
 import logging
 import os
 import platform
@@ -288,35 +283,25 @@ def get_tapacc_cflags(for_remote_hls: bool = False) -> tuple[str, ...]:
             -nostdinc++ even on non-Linux. This is needed when HLS runs on
             a remote Linux host while the local machine is macOS.
     """
-    # Add vendor include files to tapacc cflags
     include_gcc = platform.system() == "Linux" or for_remote_hls
-    vendor_include_paths = ()
+    vendor_include_paths: tuple[str, ...] = ()
     for vendor_path in _get_vendor_include_paths(include_gcc=include_gcc):
         vendor_include_paths += ("-isystem" + vendor_path,)
         _logger.info("added vendor include path `%s`", vendor_path)
 
-    # TODO: Vitis HLS highly depends on the assert to be defined in
-    #       the system include path in a certain way. One attempt was
-    #       to disable NDEBUG but this causes hls::assume to fail.
-    #       A full solution is to provide tapa::assume that guarantees
-    #       the produce the pattern that HLS likes.
-    #       For now, newer versions of glibc will not be supported.
     # Only use -nostdinc++ when vendor GCC paths are available to replace it.
-    # On non-Linux (e.g., macOS), we keep the platform's C++ stdlib, so we
-    # only have the Xilinx include dir without GCC headers to replace it.
+    # On non-Linux (e.g., macOS), we keep the platform's C++ stdlib.
     nostdinc_flag = ("-nostdinc++",) if vendor_include_paths and include_gcc else ()
 
-    # When running remote HLS from macOS, the flatten step (tapa-cpp) expands
-    # assert() using macOS's assert.h, which calls __assert_rtn. This function
-    # doesn't exist on Linux. Map it to Linux's __assert_fail.
-    assert_compat_flag = ()
+    # When running remote HLS from macOS, assert() expands using macOS's
+    # assert.h (calls __assert_rtn), which doesn't exist on Linux.
+    assert_compat_flag: tuple[str, ...] = ()
     if for_remote_hls and platform.system() == "Darwin":
         assert_compat_flag = (
             "-D__assert_rtn(func,file,line,expr)=__assert_fail(expr,file,line,func)",
         )
 
     return (
-        # Use the stdc++ library from the HLS toolchain when available.
         *nostdinc_flag,
         *get_tapa_cflags(),
         *vendor_include_paths,
@@ -354,8 +339,7 @@ def get_system_cflags() -> tuple[str, ...]:
     On macOS, also adds -isysroot for the SDK so that tapa-cpp and tapacc
     (custom clang builds) can find system C++ headers.
     """
-    flags: list[str] = []
-    flags.extend(_get_macos_sysroot_flags())
-    if system_include_path := find_resource("tapa-system-include"):
-        flags.append("-idirafter" + str(system_include_path))
+    flags = list(_get_macos_sysroot_flags())
+    with contextlib.suppress(FileNotFoundError):
+        flags.append("-idirafter" + str(find_resource("tapa-system-include")))
     return tuple(flags)

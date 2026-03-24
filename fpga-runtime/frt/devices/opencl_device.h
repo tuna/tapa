@@ -59,8 +59,8 @@ class OpenclDevice : public Device {
   cl::Context context_;
   cl::CommandQueue cmd_;
   cl::Program program_;
-  // Maps prefix sum of arg count to kernels.
-  std::map<int, cl::Kernel> kernels_;
+  std::map<int, cl::Kernel>
+      kernels_;  // Maps prefix sum of arg count to kernels.
   std::unordered_map<int, cl::Buffer> buffer_table_;
   std::unordered_map<int, ArgInfo> arg_table_;
   std::unordered_set<int> load_indices_;

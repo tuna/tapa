@@ -1,9 +1,3 @@
-__copyright__ = """
-Copyright (c) 2024 RapidStream Design Automation, Inc. and contributors.
-All rights reserved. The contributor(s) of this file has/have agreed to the
-RapidStream Contributor License Agreement.
-"""
-
 import json
 import logging
 import os
@@ -22,9 +16,8 @@ def forward_applicable(
     kwargs: dict[str, Any],
 ) -> None:
     """Forward only applicable arguments to a subcommand."""
-    names = [param.name for param in command.params]
-    args = {key: value for (key, value) in kwargs.items() if key in names}
-    ctx.invoke(command, **args)
+    names = {param.name for param in command.params}
+    ctx.invoke(command, **{k: v for k, v in kwargs.items() if k in names})
 
 
 def get_work_dir() -> str:
@@ -43,24 +36,21 @@ def is_pipelined(step: str, pipelined: bool | None = None) -> bool | None:
 def load_persistent_context(name: str) -> dict:
     """Try load context from the flow or from the workdir."""
     local_ctx = click.get_current_context().obj
-
     if local_ctx.get(name) is not None:
         _logger.info("reusing TAPA %s from upstream flows.", name)
-    else:
-        json_file = os.path.join(get_work_dir(), f"{name}.json")
-        _logger.info("loading TAPA graph from json `%s`.", json_file)
+        return local_ctx[name]
 
-        try:
-            with open(json_file, encoding="utf-8") as input_fp:
-                obj = json.load(input_fp)
-        except FileNotFoundError:
-            msg = (
-                f"Graph description {json_file} does not exist.  Either "
-                "`tapa analyze` wasn't executed, or you specified a wrong path."
-            )
-            raise click.BadArgumentUsage(msg)
-        local_ctx[name] = obj
-
+    json_file = os.path.join(get_work_dir(), f"{name}.json")
+    _logger.info("loading TAPA graph from json `%s`.", json_file)
+    try:
+        with open(json_file, encoding="utf-8") as input_fp:
+            local_ctx[name] = json.load(input_fp)
+    except FileNotFoundError:
+        msg = (
+            f"Graph description {json_file} does not exist.  Either "
+            "`tapa analyze` wasn't executed, or you specified a wrong path."
+        )
+        raise click.BadArgumentUsage(msg)
     return local_ctx[name]
 
 
@@ -73,7 +63,6 @@ def load_tapa_program() -> Program:
             target=load_persistent_context("settings")["target"],
             work_dir=local_ctx["work-dir"],
         )
-
     return local_ctx["tapa-program"]
 
 

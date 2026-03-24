@@ -254,26 +254,10 @@ class Instance:
         if self.is_autorun:
             yield (Reg, "output", self.start.name)
         else:
-            yield (
-                Wire,
-                "output",
-                self.start.name,
-            )
-            yield (
-                Wire,
-                "input",
-                wire_name(self.name, HANDSHAKE_READY),
-            )
-            yield (
-                Wire,
-                "input",
-                wire_name(self.name, HANDSHAKE_DONE),
-            )
-            yield (
-                Wire,
-                "input",
-                wire_name(self.name, HANDSHAKE_IDLE),
-            )
+            yield (Wire, "output", self.start.name)
+            yield (Wire, "input", wire_name(self.name, HANDSHAKE_READY))
+            yield (Wire, "input", wire_name(self.name, HANDSHAKE_DONE))
+            yield (Wire, "input", wire_name(self.name, HANDSHAKE_IDLE))
 
     @property
     def public_handshake_ports(self) -> Iterator[IOPort]:

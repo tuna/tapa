@@ -1,11 +1,5 @@
 """Defining the exporter to write Verilog designs from a graph IR node."""
 
-__copyright__ = """
-Copyright (c) 2025 RapidStream Design Automation, Inc. and contributors.
-All rights reserved. The contributor(s) of this file has/have agreed to the
-RapidStream Contributor License Agreement.
-"""
-
 from functools import singledispatch
 
 from tapa.graphir.analyses.drc_check import check_missing_wire

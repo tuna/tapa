@@ -128,6 +128,6 @@ def gen_random_floorplan(i: int, app: str, output_path: Path) -> None:
 
 if __name__ == "__main__":
     assert len(sys.argv) == _ARG_NUMBER, (
-        "Usage: python gen_random_floorplan.py <index> <app>"
+        "Usage: python gen_random_floorplan.py <index> <app> <output_path>"
     )
     gen_random_floorplan(int(sys.argv[1]), sys.argv[2], Path(sys.argv[3]))

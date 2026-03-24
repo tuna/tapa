@@ -159,7 +159,7 @@ class tapa_stream {
   bool try_close() {
 #pragma HLS inline
     internal::elem_t<T> elem;
-    memset(&elem.val, 0, sizeof(elem.val));
+    elem.val = {};
     elem.eot = true;
     return _.write_nb(elem);
   }

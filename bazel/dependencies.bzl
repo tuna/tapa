@@ -20,7 +20,7 @@ load(
 )
 
 def _symlink_dir(rctx, path):
-    """Symlink individual entries from a directory into the repository."""
+    """Symlink each entry from a directory into the repository."""
     entries = rctx.execute(["ls", "-1", path])
     for entry in entries.stdout.strip().split("\n"):
         if entry:
@@ -33,9 +33,6 @@ def _optional_local_repository_impl(rctx):
 
     result = rctx.execute(["test", "-d", path])
     if result.return_code == 0:
-        # Path exists: symlink each entry individually instead of
-        # symlinking "." which fails on some Bazel versions when the
-        # repository directory already exists.
         _symlink_dir(rctx, path)
     rctx.file("BUILD.bazel", build_file_content)
 
@@ -120,16 +117,12 @@ def _vitis_hls_repository_impl(rctx):
 
     result = rctx.execute(["test", "-d", path])
     if result.return_code == 0:
-        # Local Xilinx tools available — symlink directly.
         _symlink_dir(rctx, path)
     else:
-        # No local tools. Try fetching from remote via SSH.
         fetched = False
         if rctx.attr.remote_host and rctx.attr.remote_path:
             fetched = _fetch_vendor_headers_via_ssh(rctx, rctx.attr.remote_path)
-
         if not fetched:
-            # print is the only way to emit warnings from repository rules.
             # buildifier: disable=print
             print("NOTE: Vitis HLS headers not available. " +
                   "Set REMOTE_HOST in VARS.bzl or install Xilinx tools locally.")
@@ -180,17 +173,13 @@ _ssh_key_repository = repository_rule(
 def _load_dependencies(module_ctx):
     """Load dependencies for the TAPA project."""
 
-    # Make SSH key available as a Bazel target for sandbox access.
     _ssh_key_repository(
         name = "ssh_key",
         key_file = REMOTE_KEY_FILE if REMOTE_KEY_FILE else "/dev/null",
     )
 
-    # Load the Xilinx Vitis HLS library
     vitis_hls_subdir = "/Vitis/" if XILINX_TOOL_VERSION >= "2024.2" else "/Vitis_HLS/"
     vitis_hls_path = XILINX_TOOL_PATH + vitis_hls_subdir + XILINX_TOOL_VERSION
-
-    # Compute the remote path using the same version logic.
     remote_vitis_hls_path = ""
     if REMOTE_HOST and REMOTE_XILINX_TOOL_PATH:
         remote_vitis_hls_path = REMOTE_XILINX_TOOL_PATH + vitis_hls_subdir + XILINX_TOOL_VERSION
@@ -229,7 +218,6 @@ cc_library(
         remote_ssh_control_persist = REMOTE_SSH_CONTROL_PERSIST,
     )
 
-    # Starting from 2024.2, Vivado has renamed rdi to xv
     vivado_path = XILINX_TOOL_PATH + "/Vivado/"
     xsim_path = vivado_path + XILINX_TOOL_VERSION + "/data/xsim"
     _optional_local_repository(
@@ -247,7 +235,6 @@ cc_library(
         path = xsim_path,
     )
 
-    # Use the oldest supported version to ensure compatibility
     vivado_legacy_path = XILINX_TOOL_LEGACY_PATH + "/Vivado/"
     xsim_legacy_path = vivado_legacy_path + XILINX_TOOL_LEGACY_VERSION + "/data/xsim"
     _optional_local_repository(

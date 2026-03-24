@@ -1,11 +1,5 @@
 """Floorplan TAPA program and store the program description."""
 
-__copyright__ = """
-Copyright (c) 2025 RapidStream Design Automation, Inc. and contributors.
-All rights reserved. The contributor(s) of this file has/have agreed to the
-RapidStream Contributor License Agreement.
-"""
-
 import json
 import logging
 import subprocess
@@ -51,7 +45,6 @@ def run_autobridge(device_config: Path, floorplan_config: Path) -> None:
     autobridge_work_dir = Path(program.work_dir) / AUTOBRIDGE_WORK_DIR
     autobridge_work_dir.mkdir(parents=True, exist_ok=True)
 
-    # remove pre_assignments from the floorplan config
     with open(floorplan_config, encoding="utf-8") as f:
         floorplan_config_dict: dict = json.load(f)
     floorplan_config_dict.pop("sys_port_pre_assignments", None)
@@ -136,11 +129,11 @@ def get_slot_to_inst(
 ) -> dict[str, list[str]]:
     """Get slot to instance mapping from floorplan file."""
     with open(floorplan_path, encoding="utf-8") as f:
-        vertex_to_region = json.load(f)
-    slot_to_insts = defaultdict(list)
-    task_inst_names = [
+        vertex_to_region: dict[str, str] = json.load(f)
+    task_inst_names = {
         inst.name for inst in graph.get_top_task_inst().get_subtasks_insts()
-    ]
+    }
+    slot_to_insts: dict[str, list[str]] = defaultdict(list)
     slot_task_name_to_fp_region = {}
     for vertex, region in vertex_to_region.items():
         if vertex not in task_inst_names:
@@ -148,9 +141,7 @@ def get_slot_to_inst(
         slot_name = "_".join(region.split(":"))
         slot_to_insts[slot_name].append(vertex)
         slot_task_name_to_fp_region[slot_name] = convert_region_format(region)
-
     program.slot_task_name_to_fp_region = slot_task_name_to_fp_region
-
     return slot_to_insts
 
 

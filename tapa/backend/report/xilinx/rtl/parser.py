@@ -41,15 +41,10 @@ class HierarchicalUtilization:
         return self.items[self.schema[key]]
 
     def __str__(self) -> str:
-        parent_instance = self.parent.instance if self.parent is not None else None
-        return "\n".join(
-            (
-                "",
-                f"instance: {self.instance}",
-                f"parent: {parent_instance}",
-                *(f"{key}: {value}" for key, value in zip(self.schema, self.items)),
-            )
-        )
+        parent_instance = self.parent.instance if self.parent else None
+        lines = ["", f"instance: {self.instance}", f"parent: {parent_instance}"]
+        lines.extend(f"{key}: {value}" for key, value in zip(self.schema, self.items))
+        return "\n".join(lines)
 
 
 class _ParseState(enum.Enum):
@@ -108,4 +103,4 @@ def parse_hierarchical_utilization_report(rpt_file: TextIO) -> HierarchicalUtili
 def get_items(line: str) -> tuple[str, tuple[str, ...]]:
     """Split a table line into instance name and column values."""
     parts = line.strip().strip("|").split("|")
-    return parts[0].rstrip(), tuple(x.strip() for x in parts[1:])
+    return parts[0].rstrip(), tuple(p.strip() for p in parts[1:])

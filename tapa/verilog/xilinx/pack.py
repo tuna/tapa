@@ -106,14 +106,14 @@ def print_kernel_xml(name: str, ports: Iterable[Port], kernel_xml: IO[str]) -> N
     """Generate kernel.xml file for XO packaging."""
     args = []
     for port in ports:
-        if port.cat.is_scalar:
-            cat = Cat.SCALAR
-        elif port.cat.is_mmap:
-            cat = Cat.MMAP
-        elif port.cat.is_istream:
-            cat = Cat.ISTREAM
-        elif port.cat.is_ostream:
-            cat = Cat.OSTREAM
+        for attr, cat in (
+            ("is_scalar", Cat.SCALAR),
+            ("is_mmap", Cat.MMAP),
+            ("is_istream", Cat.ISTREAM),
+            ("is_ostream", Cat.OSTREAM),
+        ):
+            if getattr(port.cat, attr):
+                break
         else:
             msg = f"unexpected port.cat: {port.cat}"
             raise ValueError(msg)

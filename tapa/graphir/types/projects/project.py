@@ -1,11 +1,5 @@
 """Data structure to represent a project."""
 
-__copyright__ = """
-Copyright (c) 2025 RapidStream Design Automation, Inc. and contributors.
-All rights reserved. The contributor(s) of this file has/have agreed to the
-RapidStream Contributor License Agreement.
-"""
-
 import logging
 from collections.abc import Callable
 
@@ -84,13 +78,13 @@ class Project(MutableModel):
         self, update_inst: Callable[[ModuleInstantiation], ModuleInstantiation]
     ) -> None:
         """Update all submodules of all grouped modules."""
-        updated_modules: list[GroupedModuleDefinition] = [
-            update_group_submodules(module, update_inst)
-            for module in self.get_all_modules()
-            if isinstance(module, GroupedModuleDefinition)
-        ]
-
-        self.add_and_override_modules(tuple(updated_modules))
+        self.add_and_override_modules(
+            tuple(
+                update_group_submodules(module, update_inst)
+                for module in self.get_all_modules()
+                if isinstance(module, GroupedModuleDefinition)
+            )
+        )
 
     def add_and_override_modules(
         self, new_modules: tuple[AnyModuleDefinition, ...]
@@ -119,10 +113,10 @@ class Project(MutableModel):
 
     def get_top_name(self) -> str:
         """Get the name of the top module."""
-        if self.modules.top_name is None:
+        if not (name := self.modules.top_name):
             msg = "Top module is not set"
             raise ValueError(msg)
-        return self.modules.top_name
+        return name
 
     def get_all_modules(self) -> list[AnyModuleDefinition]:
         """Get all modules of the project."""

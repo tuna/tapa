@@ -1,11 +1,5 @@
 """Defining the driver to use exporters."""
 
-__copyright__ = """
-Copyright (c) 2025 RapidStream Design Automation, Inc. and contributors.
-All rights reserved. The contributor(s) of this file has/have agreed to the
-RapidStream Contributor License Agreement.
-"""
-
 import json
 import logging
 import os
@@ -47,12 +41,7 @@ def main(
     destination: str,
     input_file: str,
 ) -> None:
-    """Read a project graph IR from stdin and export the design.
-
-    Args:
-        destination (str): The project folder to export into.
-        input_file (str): The input IR file.
-    """
+    """Read a project graph IR from stdin or file and export the design."""
     os.makedirs(destination, exist_ok=True)
 
     _logger.info("Loading the project graph IR from %s", input_file)

@@ -1,10 +1,5 @@
 """Graphir conversion utilities."""
 
-__copyright__ = """
-Copyright (c) 2025 RapidStream Design Automation, Inc. and contributors.
-All rights reserved. The contributor(s) of this file has/have agreed to the
-RapidStream Contributor License Agreement.
-"""
 from pathlib import Path
 
 from pyverilog.vparser.ast import (
@@ -208,17 +203,16 @@ def get_operator_token(node: Node) -> Token:
 def get_task_graphir_ports(task_module: Module) -> list[ModulePort]:
     """Get the graphir ports from a task."""
     assert task_module.ports
-    ports = []
+    result = []
     for name, port in task_module.ports.items():
+        port_range = None
         if port.width:
             port_range = Range(
                 left=Expression.from_str_to_tokens(port.width.msb),
                 right=Expression.from_str_to_tokens(port.width.lsb),
             )
             assert port_range.left, type(port.width.msb)
-        else:
-            port_range = None
-        ports.append(
+        result.append(
             ModulePort(
                 name=name,
                 hierarchical_name=HierarchicalName.get_name(port.name),
@@ -226,7 +220,7 @@ def get_task_graphir_ports(task_module: Module) -> list[ModulePort]:
                 range=port_range,
             )
         )
-    return ports
+    return result
 
 
 def get_task_graphir_parameters(task_module: Module) -> list[ModuleParameter]:
@@ -255,39 +249,40 @@ def get_child_port_connection_mapping(
     slot port name. This is for inferring the slot port range and direction from its
     connected child port.
     """
-    matching_ports = {}
     if task_port.cat.is_scalar:
-        matching_ports[task_port.name] = arg
+        return {task_port.name: arg}
 
-    elif task_port.cat.is_istream or task_port.cat.is_istreams:
+    if task_port.cat.is_istream or task_port.cat.is_istreams:
         full_port_name = task_port.name if idx is None else f"{task_port.name}_{idx}"
-        for suffix in ISTREAM_SUFFIXES:
-            module_port = task_module.get_port_of(full_port_name, suffix)
-            matching_ports[module_port.name] = get_stream_port_name(arg, suffix)
+        return {
+            task_module.get_port_of(full_port_name, suffix).name: get_stream_port_name(
+                arg, suffix
+            )
+            for suffix in ISTREAM_SUFFIXES
+        }
 
-    elif task_port.cat.is_ostream or task_port.cat.is_ostreams:
+    if task_port.cat.is_ostream or task_port.cat.is_ostreams:
         full_port_name = task_port.name if idx is None else f"{task_port.name}_{idx}"
-        for suffix in OSTREAM_SUFFIXES:
-            module_port = task_module.get_port_of(full_port_name, suffix)
-            matching_ports[module_port.name] = get_stream_port_name(arg, suffix)
+        return {
+            task_module.get_port_of(full_port_name, suffix).name: get_stream_port_name(
+                arg, suffix
+            )
+            for suffix in OSTREAM_SUFFIXES
+        }
 
-    elif task_port.cat.is_mmap:
-        # add offset mapping
-        # note that offset port is pipelined through fsm
-        matching_ports[f"{task_port.name}_offset"] = f"{arg}_offset"
+    if task_port.cat.is_mmap:
+        mapping = {f"{task_port.name}_offset": f"{arg}_offset"}
         for suffix in M_AXI_SUFFIXES:
             m_axi_port_name = get_m_axi_port_name(task_port.name, suffix)
             if m_axi_port_name in task_module.ports:
-                matching_ports[m_axi_port_name] = get_m_axi_port_name(arg, suffix)
+                mapping[m_axi_port_name] = get_m_axi_port_name(arg, suffix)
+        return mapping
 
-    else:
-        msg = (
-            f"Unknown port type for port {task_port.name}, "
-            f"category {task_port.cat}, arg {arg}."
-        )
-        raise ValueError(msg)
-
-    return matching_ports
+    msg = (
+        f"Unknown port type for port {task_port.name}, "
+        f"category {task_port.cat}, arg {arg}."
+    )
+    raise ValueError(msg)
 
 
 def get_stream_port_name(task_port_name: str, suffix: str) -> str:
@@ -347,6 +342,10 @@ def get_verilog_definition_from_tapa_module(
 
 def get_ctrl_s_axi_def(top: Task, content: str) -> VerilogModuleDefinition:
     """Get control_s_axi module definition."""
+    bit64_range = Range(
+        left=Expression((Token.new_lit("63"),)),
+        right=Expression((Token.new_lit("0"),)),
+    )
     ports = [
         ModulePort(
             name=port_name,
@@ -365,15 +364,13 @@ def get_ctrl_s_axi_def(top: Task, content: str) -> VerilogModuleDefinition:
                 name=ctrl_s_axi_port_name,
                 hierarchical_name=HierarchicalName.get_name(ctrl_s_axi_port_name),
                 type=ModulePort.Type.OUTPUT,
-                range=Range(
-                    left=Expression((Token.new_lit("63"),)),
-                    right=Expression((Token.new_lit("0"),)),
-                ),
+                range=bit64_range,
             )
         )
+    name = f"{top.name}_control_s_axi"
     return VerilogModuleDefinition(
-        name=f"{top.name}_control_s_axi",
-        hierarchical_name=HierarchicalName.get_name(f"{top.name}_control_s_axi"),
+        name=name,
+        hierarchical_name=HierarchicalName.get_name(name),
         parameters=tuple(_CTRL_S_AXI_PARAMETERS),
         ports=tuple(ports),
         verilog=content,
@@ -383,108 +380,56 @@ def get_ctrl_s_axi_def(top: Task, content: str) -> VerilogModuleDefinition:
 
 def get_fifo_def() -> VerilogModuleDefinition:
     """Get fifo module definition."""
+    data_range = Range(
+        left=Expression(
+            (
+                Token.new_id("DATA_WIDTH"),
+                Token.new_lit("-"),
+                Token.new_lit("1"),
+            )
+        ),
+        right=Expression((Token.new_lit("0"),)),
+    )
+
+    def _param(name: str, val: str) -> ModuleParameter:
+        return ModuleParameter(
+            name=name,
+            hierarchical_name=HierarchicalName.get_name(name),
+            expr=Expression((Token.new_lit(val),)),
+            range=None,
+        )
+
+    def _port(
+        name: str, hname: str, ptype: ModulePort.Type, prange: Range | None = None
+    ) -> ModulePort:
+        return ModulePort(
+            name=name,
+            hierarchical_name=HierarchicalName.get_name(hname),
+            type=ptype,
+            range=prange,
+        )
+
+    inp = ModulePort.Type.INPUT
+    out = ModulePort.Type.OUTPUT
     return VerilogModuleDefinition(
         name="fifo",
         hierarchical_name=HierarchicalName.get_name("fifo"),
         parameters=(
-            ModuleParameter(
-                name="DATA_WIDTH",
-                hierarchical_name=HierarchicalName.get_name("DATA_WIDTH"),
-                expr=Expression((Token.new_lit("32"),)),
-                range=None,
-            ),
-            ModuleParameter(
-                name="ADDR_WIDTH",
-                hierarchical_name=HierarchicalName.get_name("ADDR_WIDTH"),
-                expr=Expression((Token.new_lit("5"),)),
-                range=None,
-            ),
-            ModuleParameter(
-                name="DEPTH",
-                hierarchical_name=HierarchicalName.get_name("DEPTH"),
-                expr=Expression((Token.new_lit("32"),)),
-                range=None,
-            ),
+            _param("DATA_WIDTH", "32"),
+            _param("ADDR_WIDTH", "5"),
+            _param("DEPTH", "32"),
         ),
         ports=(
-            ModulePort(
-                name="clk",
-                hierarchical_name=HierarchicalName.get_name("clk"),
-                type=ModulePort.Type.INPUT,
-                range=None,
-            ),
-            ModulePort(
-                name="reset",
-                hierarchical_name=HierarchicalName.get_name("rst"),
-                type=ModulePort.Type.INPUT,
-                range=None,
-            ),
-            ModulePort(
-                name="if_full_n",
-                hierarchical_name=HierarchicalName.get_name("if_full_n"),
-                type=ModulePort.Type.OUTPUT,
-                range=None,
-            ),
-            ModulePort(
-                name="if_write_ce",
-                hierarchical_name=HierarchicalName.get_name("if_write_ce"),
-                type=ModulePort.Type.INPUT,
-                range=None,
-            ),
-            ModulePort(
-                name="if_write",
-                hierarchical_name=HierarchicalName.get_name("if_write"),
-                type=ModulePort.Type.INPUT,
-                range=None,
-            ),
-            ModulePort(
-                name="if_din",
-                hierarchical_name=HierarchicalName.get_name("if_din"),
-                type=ModulePort.Type.INPUT,
-                range=Range(
-                    left=Expression(
-                        (
-                            Token.new_id("DATA_WIDTH"),
-                            Token.new_lit("-"),
-                            Token.new_lit("1"),
-                        )
-                    ),
-                    right=Expression((Token.new_lit("0"),)),
-                ),
-            ),
-            ModulePort(
-                name="if_empty_n",
-                hierarchical_name=HierarchicalName.get_name("if_empty_n"),
-                type=ModulePort.Type.OUTPUT,
-                range=None,
-            ),
-            ModulePort(
-                name="if_read_ce",
-                hierarchical_name=HierarchicalName.get_name("if_read_ce"),
-                type=ModulePort.Type.INPUT,
-                range=None,
-            ),
-            ModulePort(
-                name="if_read",
-                hierarchical_name=HierarchicalName.get_name("if_read"),
-                type=ModulePort.Type.INPUT,
-                range=None,
-            ),
-            ModulePort(
-                name="if_dout",
-                hierarchical_name=HierarchicalName.get_name("if_dout"),
-                type=ModulePort.Type.OUTPUT,
-                range=Range(
-                    left=Expression(
-                        (
-                            Token.new_id("DATA_WIDTH"),
-                            Token.new_lit("-"),
-                            Token.new_lit("1"),
-                        )
-                    ),
-                    right=Expression((Token.new_lit("0"),)),
-                ),
-            ),
+            _port("clk", "clk", inp),
+            _port("reset", "rst", inp),
+            _port("if_full_n", "if_full_n", out),
+            _port("if_write_ce", "if_write_ce", inp),
+            _port("if_write", "if_write", inp),
+            _port("if_din", "if_din", inp, data_range),
+            _port("if_empty_n", "if_empty_n", out),
+            _port("if_read_ce", "if_read_ce", inp),
+            _port("if_read", "if_read", inp),
+            _port("if_dout", "if_dout", out, data_range),
         ),
         verilog=FIFO_TEMPLATE,
         submodules_module_names=(),
@@ -502,6 +447,8 @@ def get_fsm_def(
 
 def get_reset_inverter_def() -> VerilogModuleDefinition:
     """Get reset inverter module definition."""
+    inp = ModulePort.Type.INPUT
+    out = ModulePort.Type.OUTPUT
     return VerilogModuleDefinition(
         name="reset_inverter",
         hierarchical_name=HierarchicalName.get_name("reset_inverter"),
@@ -510,19 +457,19 @@ def get_reset_inverter_def() -> VerilogModuleDefinition:
             ModulePort(
                 name="clk",
                 hierarchical_name=HierarchicalName.get_name("clk"),
-                type=ModulePort.Type.INPUT,
+                type=inp,
                 range=None,
             ),
             ModulePort(
                 name="rst",
                 hierarchical_name=HierarchicalName.get_name("rst"),
-                type=ModulePort.Type.OUTPUT,
+                type=out,
                 range=None,
             ),
             ModulePort(
                 name="rst_n",
                 hierarchical_name=HierarchicalName.get_name("rst_n"),
-                type=ModulePort.Type.INPUT,
+                type=inp,
                 range=None,
             ),
         ),
@@ -538,22 +485,17 @@ def get_reset_inverter_inst(floorplan_region: str) -> ModuleInstantiation:
         hierarchical_name=HierarchicalName.get_name("reset_inverter_0"),
         module="reset_inverter",
         parameters=(),
-        connections=(
+        connections=tuple(
             ModuleConnection(
-                name="clk",
-                hierarchical_name=HierarchicalName.get_name("clk"),
-                expr=Expression((Token.new_id("ap_clk"),)),
-            ),
-            ModuleConnection(
-                name="rst",
-                hierarchical_name=HierarchicalName.get_name("rst"),
-                expr=Expression((Token.new_id("rst"),)),
-            ),
-            ModuleConnection(
-                name="rst_n",
-                hierarchical_name=HierarchicalName.get_name("rst_n"),
-                expr=Expression((Token.new_id("ap_rst_n"),)),
-            ),
+                name=name,
+                hierarchical_name=HierarchicalName.get_name(name),
+                expr=Expression((Token.new_id(signal),)),
+            )
+            for name, signal in (
+                ("clk", "ap_clk"),
+                ("rst", "rst"),
+                ("rst_n", "ap_rst_n"),
+            )
         ),
         floorplan_region=floorplan_region,
         area=None,

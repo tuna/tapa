@@ -2,12 +2,6 @@
 
 from __future__ import annotations
 
-__copyright__ = """
-Copyright (c) 2024 RapidStream Design Automation, Inc. and contributors.
-All rights reserved. The contributor(s) of this file has/have agreed to the
-RapidStream Contributor License Agreement.
-"""
-
 import copy
 
 from tapa.verilog.util import array_name, match_array_name
@@ -49,7 +43,6 @@ class Base:
             return array_name(
                 self._generate_global_name_without_sub(match[0]), match[1]
             )
-
         return self._generate_global_name_without_sub(self.name)
 
     def _generate_global_name_without_sub(self, name: str | None) -> str:

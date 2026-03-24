@@ -34,7 +34,7 @@ def report_freq(run_dir: str) -> None:
                 f"{sol_dir}/**/link/vivado/vpl/**/*_timing_summary_postroute_physopted.rpt",
                 recursive=True,
             )
-            if len(timing_rpt_g) == 0:
+            if not timing_rpt_g:
                 log_f.write("No timing report found.\n")
                 _logger.critical("No timing report found for %s", sol_dir)
                 continue

@@ -240,13 +240,12 @@ def _build_remote_command(  # noqa: PLR0913, PLR0917
         remapped_val = _rewrite_paths_in_string(val, all_local_paths, session_dir)
         cmd_parts.append(f"export {key}={shlex.quote(remapped_val)}")
 
-    if isinstance(rewritten_args, str):
-        cmd_parts.append(f"cd {shlex.quote(remote_cwd)} && exec {rewritten_args}")
-    else:
-        cmd_parts.append(
-            f"cd {shlex.quote(remote_cwd)} && exec "
-            + " ".join(shlex.quote(a) for a in rewritten_args)
-        )
+    exec_str = (
+        rewritten_args
+        if isinstance(rewritten_args, str)
+        else " ".join(shlex.quote(a) for a in rewritten_args)
+    )
+    cmd_parts.append(f"cd {shlex.quote(remote_cwd)} && exec {exec_str}")
 
     return " ; ".join(cmd_parts)
 
@@ -304,9 +303,7 @@ class RemoteToolProcess(ToolProcess):
         _logger.info("Executing remote command: %s", full_cmd)
 
         returncode, stdout_data, stderr_data = run_ssh_with_stdout(
-            self._config,
-            f"bash -c {shlex.quote(full_cmd)}",
-            timeout=timeout,
+            self._config, f"bash -c {shlex.quote(full_cmd)}", timeout=timeout
         )
         self.returncode = returncode
         _logger.info("Remote command exited with code %d", self.returncode)
@@ -316,7 +313,6 @@ class RemoteToolProcess(ToolProcess):
             *self._extra_download_paths,
         ]
         _download_paths(self._config, download_list, self._session_dir)
-
         return stdout_data, stderr_data
 
     def __exit__(

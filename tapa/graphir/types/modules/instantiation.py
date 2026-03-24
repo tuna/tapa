@@ -1,11 +1,5 @@
 """Data structure to represent the module instantiation inside a definition."""
 
-__copyright__ = """
-Copyright (c) 2025 RapidStream Design Automation, Inc. and contributors.
-All rights reserved. The contributor(s) of this file has/have agreed to the
-RapidStream Contributor License Agreement.
-"""
-
 import logging
 from collections.abc import Generator
 from typing import TYPE_CHECKING
@@ -273,7 +267,7 @@ class ModuleInstantiation(HierarchicalNamespaceModel):
             for name in set(default_exprs) & set(resolved_exprs):
                 default_exprs.pop(name)
                 new_resolved = True
-            for name, expr in default_exprs.items():
+            for name, expr in list(default_exprs.items()):
                 if all(idf in resolved_exprs for idf in expr.get_used_identifiers()):
                     resolved_exprs[name] = expr.rewrite(resolved_exprs)
                     new_resolved = True

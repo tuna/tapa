@@ -80,25 +80,24 @@ def parse_device_info(
                 "are you sure it has been installed, "
                 "e.g., in '/opt/xilinx/platforms'?"
             )
+
     if platform is None or not os.path.isdir(platform):
         if clock_period is None:
             on_error(
-                "cannot determine the target clock period; "
+                f"cannot determine the target clock period; "
                 f"please either specify '{platform_argname}' "
                 "so the target clock period can be extracted from it, or "
                 f"specify '{clock_period_argname}' directly"
             )
         if part_num is None:
             on_error(
-                "cannot determine the target part number; "
+                f"cannot determine the target part number; "
                 f"please either specify '{platform_argname}' "
                 "so the target part number can be extracted from it, or "
                 f"specify '{part_num_argname}' directly"
             )
-        return {
-            "clock_period": str(clock_period),
-            "part_num": part_num,
-        }
+        return {"clock_period": str(clock_period), "part_num": part_num}
+
     device_info = get_device_info(platform)
     if clock_period is not None:
         device_info["clock_period"] = str(clock_period)

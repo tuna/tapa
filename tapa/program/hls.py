@@ -1,3 +1,5 @@
+"""HLS and AIE synthesis functionalities for TAPA programs."""
+
 __copyright__ = """
 Copyright (c) 2025 RapidStream Design Automation, Inc. and contributors.
 All rights reserved. The contributor(s) of this file has/have agreed to the
@@ -282,11 +284,8 @@ class ProgramHlsMixin(
 def _gen_declarations(task: Task) -> tuple[list[str], list[str], list[str]]:
     """Generates kernel and port declarations."""
     port_decl = [
-        (
-            f"input_plio p_{port.name};"
-            if port.is_immap or port.is_istream
-            else f"output_plio p_{port.name};"
-        )
+        f"{'input' if port.is_immap or port.is_istream else 'output'}"
+        f"_plio p_{port.name};"
         for port in task.ports.values()
     ]
     kernel_decl = [
@@ -301,26 +300,13 @@ def _gen_definitions(
     task: Task,
 ) -> tuple[list[str], list[str], list[str], list[str], list[str]]:
     """Generates kernel and port definitions."""
-    kernel_def = [
-        f"k_{name}{i} = kernel::create({name});"
-        for name, insts in task.tasks.items()
-        for i in range(len(insts))
+    kernels = [
+        (name, i) for name, insts in task.tasks.items() for i in range(len(insts))
     ]
-    kernel_source = [
-        f'source(k_{name}{i}) = "../../cpp/{name}.cpp";'
-        for name, insts in task.tasks.items()
-        for i in range(len(insts))
-    ]
-    kernel_runtime = [
-        f"runtime<ratio>(k_{name}{i}) = OCCUPANCY;"
-        for name, insts in task.tasks.items()
-        for i in range(len(insts))
-    ]
-    kernel_loc = [
-        f"//location<kernel>(k_{name}{i}) = tile(X, X);"
-        for name, insts in task.tasks.items()
-        for i in range(len(insts))
-    ]
+    kernel_def = [f"k_{n}{i} = kernel::create({n});" for n, i in kernels]
+    kernel_source = [f'source(k_{n}{i}) = "../../cpp/{n}.cpp";' for n, i in kernels]
+    kernel_runtime = [f"runtime<ratio>(k_{n}{i}) = OCCUPANCY;" for n, i in kernels]
+    kernel_loc = [f"//location<kernel>(k_{n}{i}) = tile(X, X);" for n, i in kernels]
     port_def = [
         (
             f'p_{port.name} = input_plio::create("{port.name}",'

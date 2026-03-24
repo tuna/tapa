@@ -32,8 +32,8 @@
 
 namespace tapa {
 
-// Host-only invoke that takes path to a bistream file as an argument. Returns
-// the kernel time in nanoseconds.
+/// Invokes @p f; if @p bitstream is non-empty, programs the FPGA and returns
+/// kernel time in nanoseconds. If empty, runs software simulation.
 template <typename Func, typename... Args>
 inline int64_t invoke(Func&& f, const std::string& bitstream, Args&&... args) {
   static_assert(std::is_function_v<typename std::remove_reference_t<Func>>,

@@ -25,22 +25,10 @@ import {
   getNodeSidebarModel,
 } from "./models.js";
 
-const sourcesTitle = append(
-  $("p", { textContent: "Sources" }),
-  $("br"),
-  $("code", {
-    className: "hint",
-    textContent: "Format: connection name -> target name",
-  }),
-);
-const targetsTitle = append(
-  $("p", { textContent: "Targets" }),
-  $("br"),
-  $("code", {
-    className: "hint",
-    textContent: "Format: connection name <- source name",
-  }),
-);
+const sourcesTitle = append($("p", { textContent: "Sources" }), $("br"),
+  $("code", { className: "hint", textContent: "Format: connection name -> target name" }));
+const targetsTitle = append($("p", { textContent: "Targets" }), $("br"),
+  $("code", { className: "hint", textContent: "Format: connection name <- source name" }));
 
 /** @param {{
  *   graph: Graph | undefined,
@@ -56,25 +44,15 @@ export const createSidebarController = state => {
   const updateExplorer = ({ cflags: flags, top, tasks }) => {
     cflags.replaceChildren(
       ul(
-        flags.reduce(
-          (arr, cur) => {
-            const last = arr.length - 1;
-            if (cur === "-isystem") {
-              arr.push(`${cur} `);
-            } else if (arr[last]?.endsWith(" ")) {
-              arr[last] += cur;
-            } else {
-              arr.push(cur);
-            }
-            return arr;
-          },
-          /** @type {string[]} */
-          ([]),
-        ).map(flag => {
+        flags.reduce((arr, cur) => {
+          const last = arr.length - 1;
+          if (cur === "-isystem") arr.push(`${cur} `);
+          else if (arr[last]?.endsWith(" ")) arr[last] += cur;
+          else arr.push(cur);
+          return arr;
+        }, /** @type {string[]} */ ([])).map(flag => {
           const li = $text("li", flag);
-          if (flag.startsWith("-isystem ")) {
-            li.className = "isystem";
-          }
+          if (flag.startsWith("-isystem ")) li.className = "isystem";
           return li;
         }),
       ),
@@ -110,41 +88,35 @@ export const createSidebarController = state => {
   const updateSidebarForNode = (id, graph) => {
     /** @ts-expect-error @type {NodeData | undefined} */
     const node = graph.getNodeData(id);
-    if (!node) {
-      resetSidebar(`Node ${id} not found!`);
-      return;
-    }
+    if (!node) { resetSidebar(`Node ${id} not found!`); return; }
 
     instance.replaceChildren(getNodeInfo(node));
-
-    const taskInfo = node.data.task
+    task.replaceChildren(...(node.data.task
       ? getTaskInfo(node.data.task, node.id)
-      : [$text("p", "This item has no task infomation.")];
-    task.replaceChildren(...taskInfo);
+      : [$text("p", "This item has no task infomation.")]));
 
     const sources = graph.getRelatedEdgesData(node.id, "out");
     const targets = graph.getRelatedEdgesData(node.id, "in");
     const sidebarModel = getNodeSidebarModel(node, sources, targets);
+    const noneEl = () => $("p", { textContent: "none", style: "padding-inline-start: 1em; font-size: .85rem;" });
 
-    if (sidebarModel.neighbors.length > 0) {
-      neighbors.replaceChildren(
-        append($("p", { className: "hint" }), $text("code", node.id), "'s neighbors:"),
-        ul(sidebarModel.neighbors.map(neighborId => $text("li", neighborId))),
-      );
-    } else {
-      neighbors.replaceChildren($text("p", `Node ${node.id} has no neighbors.`));
-    }
+    neighbors.replaceChildren(
+      sidebarModel.neighbors.length > 0
+        ? append($("p", { className: "hint" }), $text("code", node.id), "'s neighbors:")
+        : $text("p", `Node ${node.id} has no neighbors.`),
+      ...(sidebarModel.neighbors.length > 0
+        ? [ul(sidebarModel.neighbors.map(nId => $text("li", nId)))]
+        : []),
+    );
 
     connections.replaceChildren(
       append($("p", { className: "hint" }), $text("code", node.id), "'s connections:"),
       sourcesTitle,
       sidebarModel.sources.length !== 0
-        ? ul(sidebarModel.sources.map(connection => $text("li", connection)))
-        : $("p", { textContent: "none", style: "padding-inline-start: 1em; font-size: .85rem;" }),
+        ? ul(sidebarModel.sources.map(c => $text("li", c))) : noneEl(),
       targetsTitle,
       sidebarModel.targets.length !== 0
-        ? ul(sidebarModel.targets.map(connection => $text("li", connection)))
-        : $("p", { textContent: "none", style: "padding-inline-start: 1em; font-size: .85rem;" }),
+        ? ul(sidebarModel.targets.map(c => $text("li", c))) : noneEl(),
     );
   };
 
@@ -153,11 +125,7 @@ export const createSidebarController = state => {
   const updateSidebarForCombo = (id, graph) => {
     /** @ts-expect-error @type {ComboData | undefined} */
     const combo = graph.getComboData(id);
-    if (!combo) {
-      resetSidebar(`Combo ${id} not found!`);
-      return;
-    }
-
+    if (!combo) { resetSidebar(`Combo ${id} not found!`); return; }
     const sidebarModel = getComboSidebarModel(combo, graph.getChildrenData(combo.id));
     instance.replaceChildren(getComboInfo(combo, graph));
     task.replaceChildren(...getTaskInfo(combo.data, sidebarModel.taskId));
@@ -169,22 +137,14 @@ export const createSidebarController = state => {
    * @param {Graph} graph */
   const updateSidebarForEdge = (id, graph) => {
     const edge = graph.getEdgeData(id);
-    if (!edge) {
-      resetSidebar(`Edge ${id} not found!`);
-      return;
-    }
+    if (!edge) { resetSidebar(`Edge ${id} not found!`); return; }
 
-    instance.replaceChildren(
-      append(
-        $("dl"),
-        $text("dt", "Edge Name"),
-        $text("dd", id),
-        $text("dt", "Source Node"),
-        $text("dd", edge.source),
-        $text("dt", "Target Node"),
-        $text("dd", edge.target),
-      ),
-    );
+    instance.replaceChildren(append(
+      $("dl"),
+      $text("dt", "Edge Name"), $text("dd", id),
+      $text("dt", "Source Node"), $text("dd", edge.source),
+      $text("dt", "Target Node"), $text("dd", edge.target),
+    ));
 
     /** @type {HTMLElement[]} */
     const taskElements = [];
@@ -194,27 +154,17 @@ export const createSidebarController = state => {
     const targetNode = graph.getNodeData(edge.target);
     const sidebarModel = getEdgeSidebarModel(edge, sourceNode, targetNode);
 
-    sidebarModel.sourceTask && sidebarModel.sourceTaskId &&
-      taskElements.push(
-        $text("h3", "Source Task"),
-        ...getTaskInfo(sidebarModel.sourceTask, sidebarModel.sourceTaskId),
-      );
-
-    sidebarModel.sourceTask &&
-    sidebarModel.targetTask &&
-    taskElements.push($("hr"));
-
-    sidebarModel.targetTask && sidebarModel.targetTaskId &&
-      taskElements.push(
-        $text("h3", "Target Task"),
-        ...getTaskInfo(sidebarModel.targetTask, sidebarModel.targetTaskId),
-      );
-
-    if (taskElements.length !== 0) {
-      task.replaceChildren(...taskElements);
-    } else {
-      task.replaceChildren($("p", { style: "opacity: .75;", textContent: "This edge has no task infomation." }));
+    if (sidebarModel.sourceTask && sidebarModel.sourceTaskId) {
+      taskElements.push($text("h3", "Source Task"), ...getTaskInfo(sidebarModel.sourceTask, sidebarModel.sourceTaskId));
     }
+    if (sidebarModel.sourceTask && sidebarModel.targetTask) taskElements.push($("hr"));
+    if (sidebarModel.targetTask && sidebarModel.targetTaskId) {
+      taskElements.push($text("h3", "Target Task"), ...getTaskInfo(sidebarModel.targetTask, sidebarModel.targetTaskId));
+    }
+
+    task.replaceChildren(...(taskElements.length !== 0
+      ? taskElements
+      : [$("p", { style: "opacity: .75;", textContent: "This edge has no task infomation." })]));
   };
 
   return {

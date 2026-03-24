@@ -157,14 +157,14 @@ RTL_HLS_INFO_REGEX = r'\(\* CORE_GENERATION_INFO\s*=\s*".*,\{(.*)\}" \*\)'
 
 
 class RtlHlsInfo:
+    """Parsed HLS generation info from an RTL file header."""
+
     def __init__(self, rtl_file: TextIO) -> None:
         match = re.search(RTL_HLS_INFO_REGEX, rtl_file.read())
         if match is None:
             msg = "cannot parse RTL file"
             raise ValueError(msg)
-        for item in match.group(1).split(","):
-            key, value = item.split("=")
-            setattr(self, key, value)
+        self._data = dict(item.split("=") for item in match.group(1).split(","))
 
     def __getitem__(self, key: str) -> str:
-        return getattr(self, key)
+        return self._data[key]

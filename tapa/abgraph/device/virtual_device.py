@@ -29,14 +29,11 @@ class Area(BaseModel):
     uram: int
 
     @model_validator(mode="after")
-    def _check_negtive(self) -> "Area":
+    def _check_negative(self) -> "Area":
         """Check all values are non-negative."""
-        if not all(
-            v >= 0 for v in (self.lut, self.ff, self.bram_18k, self.dsp, self.uram)
-        ):
+        if min(self.lut, self.ff, self.bram_18k, self.dsp, self.uram) < 0:
             msg = f"All area values must be non-negative: {self.to_dict()}"
             raise ValueError(msg)
-
         return self
 
     def to_dict(self) -> dict[str, int]:
@@ -54,13 +51,10 @@ class Area(BaseModel):
         return not any((self.lut, self.ff, self.bram_18k, self.dsp, self.uram))
 
     def is_smaller_than(self, other: "Area") -> bool:
-        """Check if the current area is smaller than another area."""
-        return (
-            self.lut <= other.lut
-            and self.ff <= other.ff
-            and self.bram_18k <= other.bram_18k
-            and self.dsp <= other.dsp
-            and self.uram <= other.uram
+        """Check if self is component-wise <= other across all resource dimensions."""
+        return all(
+            sv <= ov
+            for sv, ov in zip(self.to_dict().values(), other.to_dict().values())
         )
 
     @staticmethod
@@ -125,14 +119,11 @@ class VirtualSlot(BaseModel):
         ]
 
         for field in pblock_fields:
-            if field is not None:
-                for pblock_line in field:
-                    if pblock_line.startswith(("-add", "-remove")):
-                        continue
-
+            for pblock_line in field or []:
+                if not pblock_line.startswith(("-add", "-remove")):
                     msg = (
-                        f"Invalid pblock: {pblock_line}, must start "
-                        "with -add or -remove"
+                        f"Invalid pblock: {pblock_line},"
+                        " must start with -add or -remove"
                     )
                     raise ValueError(msg)
 
@@ -153,18 +144,21 @@ class VirtualSlot(BaseModel):
         return f"SLOT_X{self.x}Y{self.y}_TO_SLOT_X{self.x}Y{self.y}"
 
     def sanitize_pblock_range(self) -> None:
-        """Sanitize all pblock-related attributes."""
-
-        def _sanitize_pblock_range_helper(pblock_lines: list[str]) -> list[str]:
-            """Merge all -add and -remove lines together."""
-            assert all(line.startswith(("-add", "-remove")) for line in pblock_lines)
-
-            add_ranges = []
-            remove_ranges = []
-            for line_ in pblock_lines:
-                # in case the original ranges already have {}
-                line = line_.replace("{", "").replace("}", "")
-
+        """Sanitize all pblock-related attributes by merging -add/-remove lines."""
+        pblock_attrs = (
+            "pblock_ranges",
+            "north_anchor_region",
+            "south_anchor_region",
+            "east_anchor_region",
+            "west_anchor_region",
+        )
+        for attr in pblock_attrs:
+            value = getattr(self, attr, None)
+            if not value:
+                continue
+            add_ranges, remove_ranges = [], []
+            for raw in value:
+                line = raw.replace("{", "").replace("}", "")
                 if line.startswith("-add"):
                     add_ranges.append(line[4:])
                 elif line.startswith("-remove"):
@@ -172,27 +166,12 @@ class VirtualSlot(BaseModel):
                 else:
                     msg = f"Invalid pblock line: {line}"
                     raise ValueError(msg)
-
-            merged_range = []
+            merged = []
             if add_ranges:
-                merged_range.append("-add {" + " ".join(add_ranges) + " }")
+                merged.append("-add {" + " ".join(add_ranges) + " }")
             if remove_ranges:
-                merged_range.append("-remove {" + " ".join(remove_ranges) + " }")
-
-            return merged_range
-
-        attributes = [
-            "pblock_ranges",
-            "north_anchor_region",
-            "south_anchor_region",
-            "east_anchor_region",
-            "west_anchor_region",
-        ]
-
-        for attr in attributes:
-            value = getattr(self, attr, None)
-            if value:
-                setattr(self, attr, _sanitize_pblock_range_helper(value))
+                merged.append("-remove {" + " ".join(remove_ranges) + " }")
+            setattr(self, attr, merged)
 
 
 class VirtualDevice(BaseModel):
@@ -249,39 +228,27 @@ class VirtualDevice(BaseModel):
 
     def get_island_pblock_range(self, coor: Coor) -> list[str]:
         """Get the pblock range of an island."""
-        island_ranges = []
+        island_ranges: list[str] = []
         for x, y in coor.get_all_slot_coors():
             slot_ranges = self.get_slot(x, y).pblock_ranges
             if slot_ranges is None:
-                msg = "Slot (%d, %d) does not have a pblock range"
-                raise ValueError(msg, x, y)
-
+                msg = f"Slot ({x}, {y}) does not have a pblock range"
+                raise ValueError(msg)
             island_ranges += slot_ranges
-
         assert all(line.startswith(("-add", "-remove")) for line in island_ranges)
-
         return island_ranges
 
     def get_pipeline_level(self, src_island: Coor, sink_island: Coor) -> int:
-        """Get the pipeline level between two slots."""
-        src_centroid = self.get_island_centroid(src_island)
-        sink_centroid = self.get_island_centroid(sink_island)
+        """Get the pipeline level between two slots.
 
-        dist_x = abs(src_centroid["x"] - sink_centroid["x"])
-        dist_y = abs(src_centroid["y"] - sink_centroid["y"])
-
-        pp_x = dist_x / self.pp_dist
-        pp_y = dist_y / self.pp_dist
-
-        # if the source and sink have the same x coordinate, no pipeline is needed
-        # otherwise at least one pipeline stage is needed for x direction
-
-        if dist_x != 0:
-            pp_x = max(pp_x, 1)
-
-        if dist_y != 0:
-            pp_y = max(pp_y, 1)
-
+        At least one pipeline stage is needed per non-zero dimension.
+        """
+        src = self.get_island_centroid(src_island)
+        sink = self.get_island_centroid(sink_island)
+        dist_x = abs(src["x"] - sink["x"])
+        dist_y = abs(src["y"] - sink["y"])
+        pp_x = max(dist_x / self.pp_dist, 1) if dist_x else 0
+        pp_y = max(dist_y / self.pp_dist, 1) if dist_y else 0
         return math.ceil(pp_x + pp_y)
 
     # ruff: noqa: C901, PLR0912
@@ -324,14 +291,14 @@ class VirtualDevice(BaseModel):
                     if not slot.west_anchor_region:
                         _logger.warning("%s does not have west anchor region.", name)
 
-        # check that the no tag is assigned to multiple slots
-        used_tags = set()
-        for slot in self.slots:
-            for tag in slot.tags:
-                if tag in used_tags:
-                    msg = f"Tag {tag} is assigned to multiple slots."
-                    raise ValueError(msg)
-                used_tags.add(tag)
+        # check that no tag is assigned to multiple slots
+        all_tags = [tag for slot in self.slots for tag in slot.tags]
+        seen: set[str] = set()
+        for tag in all_tags:
+            if tag in seen:
+                msg = f"Tag {tag} is assigned to multiple slots."
+                raise ValueError(msg)
+            seen.add(tag)
 
         _logger.info("Finished sanity checking.")
 

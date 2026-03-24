@@ -116,27 +116,23 @@ _nuitka_binary = rule(
             cfg = "exec",
         ),
         "_clang": attr.label(
-            doc = "The clang executable.",
             default = Label("@llvm_toolchain_llvm//:bin/clang"),
             executable = True,
             cfg = "exec",
             allow_files = True,
         ),
         "_ld": attr.label(
-            doc = "The ld executable.",
             default = Label("@llvm_toolchain_llvm//:bin/ld.lld"),
             executable = True,
             cfg = "exec",
             allow_files = True,
         ),
         "_patchelf": attr.label(
-            doc = "The patchelf executable.",
             default = Label("@patchelf"),
             executable = True,
             cfg = "exec",
         ),
         "_readelf": attr.label(
-            doc = "The readelf executable.",
             default = Label("@llvm_toolchain_llvm//:bin/llvm-readelf"),
             executable = True,
             cfg = "exec",

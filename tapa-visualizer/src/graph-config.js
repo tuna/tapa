@@ -12,7 +12,7 @@ import { getComboName } from "./helper.js";
 const container = document.querySelector(".graph-container");
 if (container === null) throw new TypeError("container is null!");
 
-// Based on Bootstrap Color; H = Highlight
+// Bootstrap colors; H = Highlight
 export const color = Object.freeze({
   nodeA: "#198754", // $green-500
   nodeB: "#0F5132", // $green-700
@@ -60,7 +60,6 @@ const nodeActiveState = {
 
 /** @type {Pick<import("@antv/g6").GraphOptions, "node" | "edge" | "combo">} */
 const elementOptions = {
-  // https://g6.antv.antgroup.com/api/elements/nodes/base-node
   node: {
     type: "rect",
     style: {
@@ -72,7 +71,7 @@ const elementOptions = {
       portFill: color.nodeA,
 
       labelPlacement: "center",
-      labelWordWrap: true, // enable label ellipsis
+      labelWordWrap: true,
       labelMaxWidth: 100,
       labelMaxLines: 2,
       labelFill: "white",
@@ -82,18 +81,8 @@ const elementOptions = {
     },
     // Builtin states: "selected" "active" "inactive" "disabled" "highlight"
     state: {
-      // selected (degree 0): stroke + halo
-      selected: {
-        ...nodeActiveState,
-        lineWidth: 4,
-        haloLineWidth: 12,
-      },
-      // highlight (degree 1): stroke only
-      highlight: {
-        ...nodeActiveState,
-        lineWidth: 2,
-        haloLineWidth: 6,
-      },
+      selected: { ...nodeActiveState, lineWidth: 4, haloLineWidth: 12 },
+      highlight: { ...nodeActiveState, lineWidth: 2, haloLineWidth: 6 },
     },
   },
   edge: {
@@ -173,12 +162,7 @@ export const dagre = {
   nodeSize: [160, 120],
 };
 
-/** `force-atlas2` specifc config for large graph:
- * - `kr`:    roughly match up with nodeSize
- * - `kg`:    much smaller than kr; larger than 1 to work with small graph
- * - `ks`:    speed, at least 0.01 * nodeSize
- * - `ksmax`: max speed, not very important
- * - `tao`:   10 is the sweet point
+/** force-atlas2: kr~nodeSize, kg<<kr, ks>=0.01*nodeSize, tao=10 sweet spot
  * @type      {import("@antv/g6").SingleLayoutOptions}
  * @satisfies {import("@antv/g6").ForceAtlas2LayoutOptions} */
 export const forceAtlas2 = {
@@ -198,34 +182,21 @@ const getContentForTooltip = items =>
   items
   .filter(item => !item.id?.startsWith("combo:"))
   .map(item => {
-    if (!item.id) {
-      return "";
-    } else if (
-      typeof item.source === "string" &&
-      typeof item.target === "string"
-    ) {
-      // Edge
+    if (!item.id) return "";
+    if (typeof item.source === "string" && typeof item.target === "string") {
       return [
         `Edge ID: <code>${item.id}</code>`,
         `Source: <code>${item.source}</code>`,
         `Target: <code>${item.target}</code>`,
       ].join("<br>");
-    } else {
-      // Node
-      const [taskName, subTaskIndex, treeIndex] = item.id.split("/");
-      const lines = [`Node ID: <code>${item.id}</code>`];
-
-      if (subTaskIndex) {
-        lines.push(
-          `- Task Name: <code>${taskName}</code>`,
-          `- Sub-Task Index: ${subTaskIndex}`
-        );
-        treeIndex &&
-        lines.push(`- Expand Task Tree Index: ${treeIndex}`);
-      }
-
-      return lines.join("<br>");
     }
+    const [taskName, subTaskIndex, treeIndex] = item.id.split("/");
+    const lines = [`Node ID: <code>${item.id}</code>`];
+    if (subTaskIndex) {
+      lines.push(`- Task Name: <code>${taskName}</code>`, `- Sub-Task Index: ${subTaskIndex}`);
+      if (treeIndex) lines.push(`- Expand Task Tree Index: ${treeIndex}`);
+    }
+    return lines.join("<br>");
   })
   .join("<br>");
 
@@ -241,7 +212,7 @@ export const graphOptions = {
 
   layout: forceAtlas2,
 
-  // behaviors are defined in graph.js since they call the graph object.
+  // behaviors are defined in graph.js (they reference the graph object)
 
   plugins: [
     /** @type {import("@antv/g6").TooltipOptions} */

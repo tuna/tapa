@@ -1,11 +1,5 @@
 from __future__ import annotations
 
-__copyright__ = """
-Copyright (c) 2024 RapidStream Design Automation, Inc. and contributors.
-All rights reserved. The contributor(s) of this file has/have agreed to the
-RapidStream Contributor License Agreement.
-"""
-
 import itertools
 from functools import lru_cache
 
@@ -140,12 +134,12 @@ class TaskInstance(Base):
         if self.definition.get_level() == TaskDefinition.Level.LEAF:
             return []
         return list(
-            itertools.chain.from_iterable(
-                [self.get_interconnect_insts()]
-                + [
+            itertools.chain(
+                self.get_interconnect_insts(),
+                *(
                     t.recursive_get_interconnect_insts()
                     for t in self.get_subtasks_insts()
-                ]
+                ),
             )
         )
 

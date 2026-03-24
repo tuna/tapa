@@ -1,11 +1,5 @@
 """Classes for namespaces and the named objects in it."""
 
-__copyright__ = """
-Copyright (c) 2025 RapidStream Design Automation, Inc. and contributors.
-All rights reserved. The contributor(s) of this file has/have agreed to the
-RapidStream Contributor License Agreement.
-"""
-
 from abc import abstractmethod
 from collections.abc import Generator
 
@@ -71,4 +65,4 @@ class NamespaceModel(NamedModel):
         Returns:
             str: A name that is not used in the namespace.
         """
-        return suggest_name(name, (blocklist or set()) | set(self.get_all_names()))
+        return suggest_name(name, (blocklist or set()) | self.get_all_names())

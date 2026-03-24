@@ -88,10 +88,7 @@ double Instance::StoreThroughputGbps() const {
 }
 
 void Instance::ConditionallyFinish(bool has_stream) {
-  if (!has_stream) {
-    VLOG(1) << "no stream found; waiting for command to finish";
-    Finish();
-  }
+  if (!has_stream) Finish();
 }
 
 }  // namespace fpga

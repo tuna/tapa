@@ -103,14 +103,9 @@ void OpenclDevice::Finish() {
   is_finished_ = true;
 }
 
-void OpenclDevice::Kill() { LOG(ERROR) << "OpenCl kernels cannot be killed"; }
+void OpenclDevice::Kill() { LOG(ERROR) << "OpenCL kernels cannot be killed"; }
 
-bool OpenclDevice::IsFinished() const {
-  if (!is_finished_) {
-    LOG(ERROR) << "Not implemented, assuming to be running.";
-  }
-  return is_finished_;
-}
+bool OpenclDevice::IsFinished() const { return is_finished_; }
 
 std::vector<ArgInfo> OpenclDevice::GetArgsInfo() const {
   std::vector<ArgInfo> args;

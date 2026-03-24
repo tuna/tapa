@@ -11,13 +11,11 @@
 namespace fpga {
 namespace internal {
 
-// Type-erased streaming interface. Used to pass stream arguments to devices
-// with arbitrary type-safe context.
+// Type-erased stream argument for passing streams to devices.
 class StreamArg {
  public:
   explicit StreamArg(std::any context) : context_(std::move(context)) {}
 
-  // Not copyable or movable.
   StreamArg(const StreamArg&) = delete;
   StreamArg& operator=(const StreamArg&) = delete;
 

@@ -60,21 +60,19 @@ namespace {
 using clock = std::chrono::steady_clock;
 
 std::string GetWorkDirectory() {
-  fs::path work_dir;
-  if (!FLAGS_xosim_work_dir.empty()) {
-    work_dir = FLAGS_xosim_work_dir;
-    if (!fs::exists(work_dir))
-      LOG_IF(INFO, fs::create_directories(work_dir))
-          << "created directory '" << work_dir << "'";
-    if (FLAGS_xosim_work_dir_parallel_cosim) {
-      std::string dir = (work_dir / "XXXXXX").string();
-      LOG_IF(FATAL, ::mkdtemp(&dir[0]) == nullptr)
-          << "failed to create work directory";
-      work_dir = dir;
-    }
-  } else {
+  if (FLAGS_xosim_work_dir.empty()) {
     std::string dir =
         (fs::temp_directory_path() / "tapa-fast-cosim.XXXXXX").string();
+    LOG_IF(FATAL, ::mkdtemp(&dir[0]) == nullptr)
+        << "failed to create work directory";
+    return fs::absolute(dir).string();
+  }
+  fs::path work_dir = FLAGS_xosim_work_dir;
+  if (!fs::exists(work_dir))
+    LOG_IF(INFO, fs::create_directories(work_dir))
+        << "created directory '" << work_dir << "'";
+  if (FLAGS_xosim_work_dir_parallel_cosim) {
+    std::string dir = (work_dir / "XXXXXX").string();
     LOG_IF(FATAL, ::mkdtemp(&dir[0]) == nullptr)
         << "failed to create work directory";
     work_dir = dir;
@@ -180,7 +178,7 @@ void TapaFastCosimDevice::LoadArgsFromTapaYaml() {
       continue;
     }
 
-    ArgInfo::Cat cat = ArgInfo::kScalar;
+    ArgInfo::Cat cat;
     if (port_cat == "scalar")
       cat = ArgInfo::kScalar;
     else if (port_cat == "mmap" || port_cat == "async_mmap")
@@ -189,18 +187,16 @@ void TapaFastCosimDevice::LoadArgsFromTapaYaml() {
       cat = ArgInfo::kStream;
     else if (port_cat == "istreams" || port_cat == "ostreams")
       cat = ArgInfo::kStreams;
-    else
+    else {
       LOG(FATAL) << "Unknown argument category: " << port_cat;
+      cat = ArgInfo::kScalar;  // Unreachable; silences uninitialized warning.
+    }
     args_.push_back({(int)index++, port_name, port_type, cat});
   }
 }
 
 TapaFastCosimDevice::~TapaFastCosimDevice() {
-  // Remove the work directory if it is not specified and therefore
-  // created by mkdtemp under /tmp.
-  if (FLAGS_xosim_work_dir.empty()) {
-    fs::remove_all(work_dir);
-  }
+  if (FLAGS_xosim_work_dir.empty()) fs::remove_all(work_dir);
 }
 
 std::unique_ptr<Device> TapaFastCosimDevice::New(std::string_view path,
@@ -358,22 +354,15 @@ void TapaFastCosimDevice::Finish() {
   }
   LOG(INFO) << "TAPA fast cosim finished successfully";
 
-  if (FLAGS_xosim_setup_only) {
-    exit(0);
-  }
+  if (FLAGS_xosim_setup_only) exit(0);
 
   compute_time_ = clock::now() - context_->start_timestamp;
-
-  if (is_read_from_device_scheduled_) {
-    ReadFromDeviceImpl();
-  }
+  if (is_read_from_device_scheduled_) ReadFromDeviceImpl();
 }
 
 void TapaFastCosimDevice::Kill() {
   if (context_ != nullptr) {
-    // SIGINT is used to terminate the process so that it can
-    // be propagated to the child process.
-    context_->proc.kill(SIGINT);
+    context_->proc.kill(SIGINT);  // SIGINT propagates to child processes.
     context_ = nullptr;
     LOG(INFO) << "TAPA fast cosim process killed";
   }

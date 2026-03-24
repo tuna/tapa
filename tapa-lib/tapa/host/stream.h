@@ -114,11 +114,9 @@ class locked_queue : public base_queue<T> {
   std::deque<T> buffer;
 
  public:
-  // constructors
   locked_queue(size_t depth, const std::string& name)
       : base_queue<T>(name), depth(depth) {}
 
-  // basic queue operations
   bool empty() const override {
     std::unique_lock<std::mutex> lock(this->mtx);
     return this->buffer.empty();
@@ -150,7 +148,7 @@ class locked_queue : public base_queue<T> {
   ~locked_queue() { this->check_leftover(); }
 };
 
-// Implementation of `base_queue` that is a wrapper of `fpga::Stream`
+// `base_queue` backed by `fpga::Stream`
 template <typename T>
 class frt_queue : public base_queue<T> {
  public:
@@ -198,24 +196,20 @@ template <typename T>
 std::shared_ptr<base_queue<T>> make_queue(uint64_t depth,
                                           const std::string& name) {
   if (depth == ::tapa::kStreamInfiniteDepth) {
-    // It's too expensive to make the lock-free queue have infinite depth.
     VLOG(1) << "channel '" << name << "' created as a locked queue";
     return std::make_shared<locked_queue<T>>(depth, name);
-  } else {
-    VLOG(1) << "channel '" << name << "' created as a lock-free queue";
-    return std::make_shared<frt_queue<T>>(depth, name);
   }
+  VLOG(1) << "channel '" << name << "' created as a lock-free queue";
+  return std::make_shared<frt_queue<T>>(depth, name);
 }
 
-// shared pointer of a queue
 template <typename T>
 class basic_stream {
  public:
-  // debug helpers
   const std::string& get_name() const { return get_queue().get_name(); }
   void set_name(const std::string& name) { get_queue().set_name(name); }
 
-  // not protected since we'll use std::vector<basic_stream<T>>
+  // Not protected: used in std::vector<basic_stream<T>>.
   basic_stream() {}
   basic_stream(const std::string& name, uint64_t depth)
       : queue(make_queue<elem_t<T>>(depth, name)) {}
@@ -232,11 +226,9 @@ class basic_stream {
   template <typename Param, typename Arg>
   friend struct internal::accessor;
 
-  // Child class must access `queue` using `get_queue()`.
   std::shared_ptr<base_queue<elem_t<T>>> queue;
 };
 
-// shared pointer of multiple queues
 template <typename T>
 class basic_streams {
  protected:
@@ -268,14 +260,13 @@ class basic_streams {
   std::shared_ptr<metadata_t> ptr;
 };
 
-// stream without a bound depth; can be default-constructed by a derived class
+// stream/streams with no bound depth; default-constructible by derived classes.
 template <typename T>
 class unbound_stream : public istream<T>, public ostream<T> {
  protected:
   unbound_stream() : basic_stream<T>() {}
 };
 
-// streams without a bound depth; can be default-constructed by a derived class
 template <typename T, int S>
 class unbound_streams : public istreams<T, S>, public ostreams<T, S> {
  protected:
@@ -294,12 +285,11 @@ struct has_ostream_overload<
 template <typename T>
 std::ostream& operator<<(std::ostream& os, const elem_t<T>& elem) {
   if (elem.eot) {
-    // For EoT, create an empty line.
+    // EoT: emit an empty line.
   } else if constexpr (has_ostream_overload<T>::value) {
-    // For types that overload `operator<<`, use that.
     os << elem.val;
   } else {
-    // For types that do not overload `operator<<`, dump bytes in dex.
+    // Dump bytes in hex for types without operator<<.
     auto bytes = bit_cast<std::array<char, sizeof(elem.val)>>(elem.val);
     os << "0x" << std::hex;
     for (int byte : bytes) {
@@ -311,19 +301,11 @@ std::ostream& operator<<(std::ostream& os, const elem_t<T>& elem) {
 
 }  // namespace internal
 
-/// Provides consumer-side operations to a @c tapa::stream where it is used as
-/// an @a input.
-///
-/// This class should only be used in task function parameters and should never
-/// be instatiated directly.
+/// Consumer-side view of a @c tapa::stream. Use only as a task parameter.
 template <typename T>
 class istream : virtual public internal::basic_stream<T> {
  public:
-  /// Tests whether the stream is empty.
-  ///
-  /// This is a @a non-blocking and @a non-destructive operation.
-  ///
-  /// @return Whether the stream is empty.
+  /// Returns true if the stream is empty (non-blocking, non-destructive).
   bool empty() {
     bool is_empty = this->get_queue().empty();
     if (is_empty) {
@@ -332,13 +314,8 @@ class istream : virtual public internal::basic_stream<T> {
     return is_empty;
   }
 
-  /// Tests whether the next token is EoT.
-  ///
-  /// This is a @a non-blocking and @a non-destructive operation.
-  ///
-  /// @param[out] is_eot Uninitialized if the stream is empty. Otherwise,
-  ///                    updated to indicate whether the next token is EoT.
-  /// @return            Whether @c is_eot is updated.
+  /// Sets @p is_eot and returns true if next token is available (non-blocking,
+  /// non-destructive).
   bool try_eot(bool& is_eot) {
     if (!empty()) {
       is_eot = this->get_queue().front().eot;
@@ -347,38 +324,22 @@ class istream : virtual public internal::basic_stream<T> {
     return false;
   }
 
-  /// Tests whether the next token is EoT.
-  ///
-  /// This is a @a non-blocking and @a non-destructive operation.
-  ///
-  /// @param[out] is_success Whether the next token is available.
-  /// @return                Whether the next token is available and is EoT.
+  /// Returns true if next token is EoT; sets @p is_success to availability.
   bool eot(bool& is_success) {
     bool eot = false;
     is_success = try_eot(eot);
     return eot;
   }
 
-  /// Tests whether the next token is EoT.
-  ///
-  /// This is a @a non-blocking and @a non-destructive operation.
-  ///
-  /// @return Whether the next token is available and is EoT.
+  /// Returns true if next token is available and is EoT.
   bool eot(std::nullptr_t) {
     bool eot = false;
     try_eot(eot);
     return eot;
   }
 
-  /// Peeks the stream.
-  ///
-  /// This is a @a non-blocking and @a non-destructive operation.
-  ///
-  /// The next token must not be EoT.
-  ///
-  /// @param[out] value Uninitialized if the stream is empty. Otherwise, updated
-  ///                   to be the value of the next token.
-  /// @return           Whether @c value is updated.
+  /// Sets @p value to the next non-EoT token and returns true if available
+  /// (non-blocking).
   bool try_peek(T& value) {
     if (!empty()) {
       auto elem = this->get_queue().front();
@@ -391,46 +352,21 @@ class istream : virtual public internal::basic_stream<T> {
     return false;
   }
 
-  /// Peeks the stream.
-  ///
-  /// This is a @a non-blocking and @a non-destructive operation.
-  ///
-  /// The next token must not be EoT.
-  ///
-  /// @param[out] is_success Whether the next token is available.
-  /// @return                The value of the next token is returned if it is
-  ///                        available. Otherwise, default-constructed @c T() is
-  ///                        returned.
+  /// Returns next token value and sets @p is_success (non-blocking, non-EoT).
   T peek(bool& is_success) {
     T val;
     is_success = try_peek(val);
     return val;
   }
 
-  /// Peeks the stream.
-  ///
-  /// This is a @a non-blocking and @a non-destructive operation.
-  ///
-  /// The next token must not be EoT.
-  ///
-  /// @return The value of the next token is returned if it is available.
-  ///         Otherwise, default-constructed @c T() is returned.
+  /// Returns next token value or @c T() if empty (non-blocking, non-EoT).
   T peek(std::nullptr_t) {
     T val;
     try_peek(val);
     return val;
   }
 
-  /// Peeks the stream.
-  ///
-  /// This is a @a non-blocking and @a non-destructive operation.
-  ///
-  /// @param[out] is_success Whether the next token is available.
-  /// @param[out] is_eot     Set to @c false if the stream is empty. Otherwise,
-  ///                        updated to indicate whether the next token is EoT.
-  /// @return                The value of the next token is returned if it is
-  ///                        available. Otherwise, default-constructed @c T() is
-  ///                        returned.
+  /// Returns next token and sets @p is_success and @p is_eot (non-blocking).
   T peek(bool& is_success, bool& is_eot) {
     if (!empty()) {
       auto elem = this->get_queue().front();
@@ -443,15 +379,8 @@ class istream : virtual public internal::basic_stream<T> {
     return {};
   }
 
-  /// Reads the stream.
-  ///
-  /// This is a @a non-blocking and @a destructive operation.
-  ///
-  /// The next token must not be EoT.
-  ///
-  /// @param[out] value Uninitialized if the stream is empty. Otherwise, updated
-  ///                   to be the value of the next token.
-  /// @return           Whether @c value is updated.
+  /// Sets @p value and returns true if a non-EoT token was popped
+  /// (non-blocking).
   bool try_read(T& value) {
     if (!empty()) {
       auto elem = this->get_queue().pop();
@@ -464,13 +393,7 @@ class istream : virtual public internal::basic_stream<T> {
     return false;
   }
 
-  /// Reads the stream.
-  ///
-  /// This is a @a blocking and @a destructive operation.
-  ///
-  /// The next token must not be EoT.
-  ///
-  /// @return The value of the next token.
+  /// Blocking read; returns the next non-EoT token value.
   T read() {
     T val;
     while (!try_read(val)) {
@@ -478,59 +401,28 @@ class istream : virtual public internal::basic_stream<T> {
     return val;
   }
 
-  /// Reads the stream.
-  ///
-  /// This is a @a blocking and @a destructive operation.
-  ///
-  /// The next token must not be EoT.
-  ///
-  /// @param[out] value The value of the next token.
-  /// @return           @c *this.
+  /// Blocking read into @p value; returns @c *this.
   istream& operator>>(T& value) {
     value = read();
     return *this;
   }
 
-  /// Reads the stream.
-  ///
-  /// This is a @a non-blocking and @a destructive operation.
-  ///
-  /// The next token must not be EoT.
-  ///
-  /// @param[out] is_success Whether the next token is available.
-  /// @return                The value of the next token is returned if it is
-  ///                        available. Otherwise, default-constructed @c T() is
-  ///                        returned.
+  /// Non-blocking read; returns value and sets @p is_success.
   T read(bool& is_success) {
     T val;
     is_success = try_read(val);
     return val;
   }
 
-  /// Reads the stream.
-  ///
-  /// This is a @a non-blocking and @a destructive operation.
-  ///
-  /// The next token must not be EoT.
-  ///
-  /// @return The value of the next token is returned if it is available.
-  ///         Otherwise, default-constructed @c T() is returned.
+  /// Non-blocking read; returns value or @c T() if empty.
   T read(std::nullptr_t) {
     T val;
     try_read(val);
     return val;
   }
 
-  /// Reads the stream.
-  ///
-  /// This is a @a non-blocking and @a destructive operation.
-  ///
-  /// @param[in] default_value Value to return if the stream is empty.
-  /// @param[out] is_success   Updated to indicate whether the next token is
-  ///                          available if @c is_success is not @c nullptr.
-  /// @return                  The value of the next token is returned if it is
-  ///                          available. Otherwise, @c default_value is
-  ///                          returned.
+  /// Non-blocking read; returns value or @p default_value; optionally sets @p
+  /// is_success.
   T read(const T& default_value, bool* is_success = nullptr) {
     T val;
     bool succeeded = try_read(val);
@@ -540,13 +432,7 @@ class istream : virtual public internal::basic_stream<T> {
     return succeeded ? val : default_value;
   }
 
-  /// Consumes an EoT token.
-  ///
-  /// This is a @a non-blocking and @a destructive operation.
-  ///
-  /// The next token must be EoT.
-  ///
-  /// @return Whether an EoT token is consumed.
+  /// Non-blocking consume of an EoT token; returns true if consumed.
   bool try_open() {
     if (!empty()) {
       auto elem = this->get_queue().pop();
@@ -559,22 +445,16 @@ class istream : virtual public internal::basic_stream<T> {
     return false;
   }
 
-  /// Consumes an EoT token.
-  ///
-  /// This is a @a blocking and @a destructive operation.
-  ///
-  /// The next token must be EoT.
+  /// Blocking consume of an EoT token.
   void open() {
     while (!try_open()) {
     }
   }
 
  protected:
-  // allow derived class to omit initialization
   istream() : internal::basic_stream<T>() {}
 
  private:
-  // allow istreams and streams to return istream
   template <typename U, uint64_t S>
   friend class istreams;
   template <typename U, uint64_t S, uint64_t N, uint64_t SimulationDepth>
@@ -583,19 +463,11 @@ class istream : virtual public internal::basic_stream<T> {
       : internal::basic_stream<T>(base) {}
 };
 
-/// Provides producer-side operations to a @c tapa::stream where it is used as
-/// an @a output.
-///
-/// This class should only be used in task function parameters and should never
-/// be instatiated directly.
+/// Producer-side view of a @c tapa::stream. Use only as a task parameter.
 template <typename T>
 class ostream : virtual public internal::basic_stream<T> {
  public:
-  /// Tests whether the stream is full.
-  ///
-  /// This is a @a non-blocking and @a non-destructive operation.
-  ///
-  /// @return Whether the stream is full.
+  /// Returns true if the stream is full (non-blocking, non-destructive).
   bool full() {
     bool is_full = this->get_queue().full();
     if (is_full) {
@@ -604,12 +476,7 @@ class ostream : virtual public internal::basic_stream<T> {
     return is_full;
   }
 
-  /// Writes @c value to the stream.
-  ///
-  /// This is a @a non-blocking and @a destructive operation.
-  ///
-  /// @param[in] value The value to write.
-  /// @return          Whether @c value has been written successfully.
+  /// Non-blocking write; returns true on success.
   bool try_write(const T& value) {
     if (!full()) {
       this->get_queue().push({value, false});
@@ -618,32 +485,19 @@ class ostream : virtual public internal::basic_stream<T> {
     return false;
   }
 
-  /// Writes @c value to the stream.
-  ///
-  /// This is a @a blocking and @a destructive operation.
-  ///
-  /// @param[in] value The value to write.
+  /// Blocking write of @p value.
   void write(const T& value) {
     while (!try_write(value)) {
     }
   }
 
-  /// Writes @c value to the stream.
-  ///
-  /// This is a @a blocking and @a destructive operation.
-  ///
-  /// @param[in] value The value to write.
-  /// @return          @c *this.
+  /// Blocking write of @p value; returns @c *this.
   ostream& operator<<(const T& value) {
     write(value);
     return *this;
   }
 
-  /// Produces an EoT token to the stream.
-  ///
-  /// This is a @a non-blocking and @a destructive operation.
-  ///
-  /// @return Whether the EoT token has been written successfully.
+  /// Non-blocking write of an EoT token; returns true on success.
   bool try_close() {
     if (!full()) {
       this->get_queue().push({{}, true});
@@ -652,20 +506,16 @@ class ostream : virtual public internal::basic_stream<T> {
     return false;
   }
 
-  /// Produces an EoT token to the stream.
-  ///
-  /// This is a @a blocking and @a destructive operation.
+  /// Blocking write of an EoT token.
   void close() {
     while (!try_close()) {
     }
   }
 
  protected:
-  // allow derived class to omit initialization
   ostream() : internal::basic_stream<T>() {}
 
  private:
-  // allow ostreams and streams to return ostream
   template <typename U, uint64_t S>
   friend class ostreams;
   template <typename U, uint64_t S, uint64_t N, uint64_t SimulationDepth>
@@ -674,20 +524,16 @@ class ostream : virtual public internal::basic_stream<T> {
       : internal::basic_stream<T>(base) {}
 };
 
-/// Defines a communication channel between two task instances.
+/// Communication channel between two task instances.
 template <typename T, uint64_t N = kStreamDefaultDepth,
           uint64_t SimulationDepth = N>
 class stream : public internal::unbound_stream<T> {
  public:
-  /// Depth of the communication channel.
   constexpr static int depth = N;
 
-  /// Constructs a @c tapa::stream.
   stream() : internal::basic_stream<T>("", SimulationDepth) {}
 
-  /// Constructs a @c tapa::stream with the given name for debugging.
-  ///
-  /// @param[in] name Name of the communication channel (for debugging only).
+  /// Constructs with @p name for debugging.
   template <size_t S>
   stream(const char (&name)[S])
       : internal::basic_stream<T>(name, SimulationDepth) {}
@@ -702,40 +548,27 @@ class stream : public internal::unbound_stream<T> {
   stream(const internal::basic_stream<T>& base)
       : internal::basic_stream<T>(base) {}
 
-  // internal constructor for stream with given name and simulation depth
   stream(const std::string name, uint64_t simulation_depth = SimulationDepth)
       : internal::basic_stream<T>(name, simulation_depth) {}
 };
 
-/// Provides consumer-side operations to an array of @c tapa::stream where they
-/// are used as @a inputs.
-///
-/// This class should only be used in task function parameters and should never
-/// be instatiated directly.
+/// Consumer-side view of a @c tapa::stream array. Use only as a task parameter.
 template <typename T, uint64_t S>
 class istreams : virtual public internal::basic_streams<T> {
  public:
-  /// Length of the @c tapa::stream array.
   constexpr static int length = S;
 
-  /// References a @c tapa::stream in the array.
-  ///
-  /// @param pos Position of the array reference.
-  /// @return    @c tapa::istream referenced in the array.
   istream<T> operator[](int pos) const {
     return internal::basic_streams<T>::operator[](pos);
   }
 
  protected:
-  // allow derived class to omit initialization
   istreams() : internal::basic_streams<T>(nullptr) {}
 
-  // allow streams of any length to return istreams
   template <typename U, uint64_t friend_length, uint64_t friend_depth,
             uint64_t friend_simulation_depth>
   friend class streams;
 
-  // allow istreams of any length to return istreams
   template <typename U, uint64_t friend_length>
   friend class istreams;
 
@@ -768,35 +601,23 @@ class istreams : virtual public internal::basic_streams<T> {
   }
 };
 
-/// Provides producer-side operations to an array of @c tapa::stream where they
-/// are used as @a outputs.
-///
-/// This class should only be used in task function parameters and should never
-/// be instatiated directly.
+/// Producer-side view of a @c tapa::stream array. Use only as a task parameter.
 template <typename T, uint64_t S>
 class ostreams : virtual public internal::basic_streams<T> {
  public:
-  /// Length of the @c tapa::stream array.
   constexpr static int length = S;
 
-  /// References a @c tapa::stream in the array.
-  ///
-  /// @param pos Position of the array reference.
-  /// @return @c tapa::ostream referenced in the array.
   ostream<T> operator[](int pos) const {
     return internal::basic_streams<T>::operator[](pos);
   }
 
  protected:
-  // allow derived class to omit initialization
   ostreams() : internal::basic_streams<T>(nullptr) {}
 
-  // allow streams of any length to return ostreams
   template <typename U, uint64_t friend_length, uint64_t friend_depth,
             uint64_t friend_simulation_depth>
   friend class streams;
 
-  // allow ostreams of any length to return istreams
   template <typename U, uint64_t friend_length>
   friend class ostreams;
 
@@ -829,18 +650,14 @@ class ostreams : virtual public internal::basic_streams<T> {
   }
 };
 
-/// Defines an array of @c tapa::stream.
+/// Array of communication channels.
 template <typename T, uint64_t S, uint64_t N = kStreamDefaultDepth,
           uint64_t SimulationDepth = N>
 class streams : public internal::unbound_streams<T, S> {
  public:
-  /// Count of @c tapa::stream in the array.
   constexpr static int length = S;
-
-  /// Depth of each @c tapa::stream in the array.
   constexpr static int depth = N;
 
-  /// Constructs a @c tapa::streams array.
   streams()
       : internal::basic_streams<T>(
             std::make_shared<typename internal::basic_streams<T>::metadata_t>(
@@ -850,12 +667,7 @@ class streams : public internal::unbound_streams<T, S> {
     }
   }
 
-  /// Constructs a @c tapa::streams array with the given base name for
-  /// debugging.
-  ///
-  /// The actual name of each @c tapa::stream would be <tt>name[i]</tt>.
-  ///
-  /// @param[in] name Base name of the streams (for debugging only).
+  /// Constructs with @p name as base name; each element is named @c name[i].
   template <size_t name_length>
   streams(const char (&name)[name_length])
       : internal::basic_streams<T>(
@@ -867,10 +679,6 @@ class streams : public internal::unbound_streams<T, S> {
     }
   }
 
-  /// References a @c tapa::stream in the array.
-  ///
-  /// @param pos Position of the array reference.
-  /// @return @c tapa::stream referenced in the array.
   stream<T, N> operator[](int pos) const {
     return internal::basic_streams<T>::operator[](pos);
   };
@@ -950,8 +758,7 @@ constexpr bool dependent_false() {
     }                                                                          \
   };
 
-// streams should not be accessed as i/ostream without reference
-// e.g. stream -> istream, stream & -> istream
+// Accessing stream as value (not reference) is forbidden.
 TAPA_DEFINE_DISALLOWED_ACCESSOR(i, )
 TAPA_DEFINE_DISALLOWED_ACCESSOR(i, &)
 TAPA_DEFINE_DISALLOWED_ACCESSOR(o, )
@@ -959,8 +766,7 @@ TAPA_DEFINE_DISALLOWED_ACCESSOR(o, &)
 
 #undef TAPA_DEFINE_DISALLOWED_ACCESSOR
 
-#define TAPA_DEFINE_DISALLOWED_ACCESSOR(io) /********************************/ \
-  /* param = i/ostream, arg = i/ostream */                                     \
+#define TAPA_DEFINE_DISALLOWED_ACCESSOR(io)                                    \
   template <typename T>                                                        \
   struct accessor<io##stream<T>, io##stream<T>&> {                             \
     static io##stream<T> access(io##stream<T>& arg, bool sequential) {         \
@@ -976,27 +782,23 @@ TAPA_DEFINE_DISALLOWED_ACCESSOR(o, &)
     }                                                                          \
   };
 
-// streams should not be accessed as i/ostream without reference
-// e.g. istream & -> istream
 TAPA_DEFINE_DISALLOWED_ACCESSOR(i)
 TAPA_DEFINE_DISALLOWED_ACCESSOR(o)
 
 #undef TAPA_DEFINE_DISALLOWED_ACCESSOR
 
-#define TAPA_DEFINE_DEVICE_ACCESSOR(io, arg_ref) /***************************/ \
-  /* param = i/ostream, arg = stream */                                        \
-  template <typename T, uint64_t N, typename U>                                \
-  struct accessor<io##stream<T>&, stream<U, N> arg_ref> {                      \
-    static io##stream<T> access(stream<U, N> arg_ref arg, bool sequential) {   \
-      return arg;                                                              \
-    }                                                                          \
-    static void access(fpga::Instance& instance, int& idx,                     \
-                       stream<U, N> arg_ref arg) {                             \
-      return instance.SetArg(idx++, arg.get_queue().get_frt_stream());         \
-    }                                                                          \
+#define TAPA_DEFINE_DEVICE_ACCESSOR(io, arg_ref)                             \
+  template <typename T, uint64_t N, typename U>                              \
+  struct accessor<io##stream<T>&, stream<U, N> arg_ref> {                    \
+    static io##stream<T> access(stream<U, N> arg_ref arg, bool sequential) { \
+      return arg;                                                            \
+    }                                                                        \
+    static void access(fpga::Instance& instance, int& idx,                   \
+                       stream<U, N> arg_ref arg) {                           \
+      return instance.SetArg(idx++, arg.get_queue().get_frt_stream());       \
+    }                                                                        \
   };
 
-// streams are accessed as stream without reference
 TAPA_DEFINE_DEVICE_ACCESSOR(i, )
 TAPA_DEFINE_DEVICE_ACCESSOR(i, &)
 TAPA_DEFINE_DEVICE_ACCESSOR(o, )
@@ -1006,10 +808,7 @@ TAPA_DEFINE_DEVICE_ACCESSOR(unbound_, &)
 
 #undef TAPA_DEFINE_DEVICE_ACCESSOR
 
-// See the IMPORTANT NOTE in the header before you are tempted to refactor
-// this pass-through method. The accessors have the same logic but written
-// separately because their underlying mechanism is in fact different,
-// see the comment in the functions for more details.
+// Pass-through accessors: underlying mechanism differs per io type.
 
 template <typename T>
 struct accessor<istream<T>&, istream<T>&> {

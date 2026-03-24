@@ -70,19 +70,19 @@ class RunHls(VivadoHls):
         self.tarfileobj = tarfileobj
         self.hls = hls
 
-        kernel_env: dict[str, str] = {}
+        kernel_env: dict[str, str] = {"TAPA_KERNEL_COUNT": str(len(kernel_files))}
         upload_dirs: set[str] = set()
-        kernel_env["TAPA_KERNEL_COUNT"] = str(len(kernel_files))
         for idx, kernel_file in enumerate(kernel_files):
             if isinstance(kernel_file, str):
                 kernel_env[f"TAPA_KERNEL_PATH_{idx}"] = kernel_file
                 kernel_env[f"TAPA_KERNEL_CFLAGS_{idx}"] = f"-std={std}"
                 upload_dirs.add(os.path.dirname(os.path.abspath(kernel_file)))
             else:
-                kernel_env[f"TAPA_KERNEL_PATH_{idx}"] = kernel_file[0]
-                kernel_env[f"TAPA_KERNEL_CFLAGS_{idx}"] = f"-std={std} {kernel_file[1]}"
-                upload_dirs.add(os.path.dirname(os.path.abspath(kernel_file[0])))
-                for part in kernel_file[1].split():
+                path, cflags = kernel_file
+                kernel_env[f"TAPA_KERNEL_PATH_{idx}"] = path
+                kernel_env[f"TAPA_KERNEL_CFLAGS_{idx}"] = f"-std={std} {cflags}"
+                upload_dirs.add(os.path.dirname(os.path.abspath(path)))
+                for part in cflags.split():
                     if part.startswith("-isystem"):
                         inc_dir = os.path.abspath(part[len("-isystem") :])
                     elif part.startswith("-I"):
@@ -190,21 +190,17 @@ class RunAie:
         self.solution_name = top_name
         self.tarfileobj = tarfileobj
         self.aiecompiler = "aiecompiler"
-        include_path_str = [
-            f"--include={os.path.dirname(file)}" for file in kernel_files
-        ]
         self._extra_upload = tuple(
-            {os.path.dirname(os.path.abspath(file)) for file in kernel_files}
+            {os.path.dirname(os.path.abspath(f)) for f in kernel_files}
         )
-        popen_kwargs: dict = {
-            "env": os.environ | {"HOME": self.project_path},
-        }
+        popen_kwargs: dict = {"env": os.environ | {"HOME": self.project_path}}
+        include_args = [f"--include={os.path.dirname(f)}" for f in kernel_files]
         cmd_args = get_cmd_args(
             [
                 self.aiecompiler,
                 "--target=hw",
                 f"--platform={xpfm}",
-                *include_path_str,
+                *include_args,
                 f"--workdir={self.project_path}",
                 *kernel_files,
             ],

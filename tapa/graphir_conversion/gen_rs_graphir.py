@@ -1,11 +1,5 @@
 """Generate a tapa graphir from a floorplanned TAPA program."""
 
-__copyright__ = """
-Copyright (c) 2025 RapidStream Design Automation, Inc. and contributors.
-All rights reserved. The contributor(s) of this file has/have agreed to the
-RapidStream Contributor License Agreement.
-"""
-
 from collections.abc import Generator, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -95,7 +89,6 @@ def get_verilog_module_from_leaf_task(
     if not task.module:
         msg = "Task contains no module"
         raise ValueError(msg)
-
     return get_verilog_definition_from_tapa_module(task.module, code)
 
 
@@ -173,15 +166,10 @@ def get_top_module_definition(
     """Get top module definition."""
     top_ports = get_task_graphir_ports(top.module)
     top_param = get_task_graphir_parameters(top.module)
-
-    # Assign a default region for fsm and ctrl_s_axi instantiation
     default_region = next(iter(floorplan_task_name_region_mapping.values()))
 
     top_subinsts = get_top_ir_subinsts(
-        top,
-        slot_defs,
-        floorplan_task_name_region_mapping,
-        default_region,
+        top, slot_defs, floorplan_task_name_region_mapping, default_region
     )
     top_subinsts.append(
         get_top_ctrl_s_axi_inst(top, top_param, ctrl_s_axi_ir, default_region)
@@ -189,18 +177,12 @@ def get_top_module_definition(
     top_subinsts.append(get_reset_inverter_inst(default_region))
 
     top_wires = get_upper_task_ir_wires(
-        top,
-        slot_defs,
-        top_ports,
-        list(ctrl_s_axi_ir.ports),
-        True,
+        top, slot_defs, top_ports, list(ctrl_s_axi_ir.ports), True
     )
     top_wires.extend(get_top_extra_wires(ctrl_s_axi_ir))
     top_wires.append(
         ModuleNet(
-            name="rst",
-            hierarchical_name=HierarchicalName.get_name("rst"),
-            range=None,
+            name="rst", hierarchical_name=HierarchicalName.get_name("rst"), range=None
         )
     )
 

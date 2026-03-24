@@ -115,9 +115,8 @@ def add_pipeline(module: Module, q: Pipeline, init: Node) -> None:
 
 
 def del_signals(module: Module, prefix: str = "", suffix: str = "") -> None:
-    for name in [
-        n for n in module._signals if n.startswith(prefix) and n.endswith(suffix)
-    ]:
+    names = [n for n in module._signals if n.startswith(prefix) and n.endswith(suffix)]
+    for name in names:
         module._rewriter.remove(module._signal_name_to_decl[name].sourceRange)
         del module._signals[name]
 
@@ -133,9 +132,8 @@ def add_params(module: Module, params: Iterable[Parameter]) -> Module:
 
 
 def del_params(module: Module, prefix: str = "", suffix: str = "") -> None:
-    for name in [
-        n for n in module._params if n.startswith(prefix) and n.endswith(suffix)
-    ]:
+    names = [n for n in module._params if n.startswith(prefix) and n.endswith(suffix)]
+    for name in names:
         module._rewriter.remove(module._param_name_to_decl[name].sourceRange)
         del module._params[name]
 

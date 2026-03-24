@@ -110,22 +110,6 @@ def get_fifo_width(program: Any, task: Task, fifo: str) -> Plus:
     return Plus(Minus(Constant(port.width.msb), Constant(port.width.lsb)), IntConst(1))
 
 
-def connect_fifos(program: Any, task: Task) -> None:
-    _connect_fifos(
-        task=task, top=program.top, target=program.target, get_task=program.get_task
-    )
-
-
-def instantiate_fifos(program: Any, task: Task) -> None:
-    _instantiate_fifos(task=task, get_fifo_width=program.get_fifo_width)
-
-
-def instantiate_children_tasks(
-    program: Any, task: Task, width_table: dict[str, int]
-) -> list[Pipeline]:
-    return _instantiate_children(program, task, width_table)
-
-
 def instantiate_global_fsm(
     program: Any,
     module: Module,
@@ -216,10 +200,12 @@ def instrument_upper_and_template_task(program: Any, task: Task) -> None:
         ) as rtl_code:
             rtl_code.write(task.module.get_template_code())
     else:
-        instantiate_fifos(program, task)
-        connect_fifos(program, task)
+        _instantiate_fifos(task=task, get_fifo_width=program.get_fifo_width)
+        _connect_fifos(
+            task=task, top=program.top, target=program.target, get_task=program.get_task
+        )
         width_table = {port.name: port.width for port in task.ports.values()}
-        is_done_signals = instantiate_children_tasks(program, task, width_table)
+        is_done_signals = _instantiate_children(program, task, width_table)
         instantiate_global_fsm(program, task.fsm_module, is_done_signals)
         with open(
             program.get_rtl_path(task.fsm_module.name), "w", encoding="utf-8"

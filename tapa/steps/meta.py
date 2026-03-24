@@ -1,12 +1,5 @@
 """Meta command for TAPA compilation flow."""
 
-__copyright__ = """
-Copyright (c) 2024 RapidStream Design Automation, Inc. and contributors.
-All rights reserved. The contributor(s) of this file has/have agreed to the
-RapidStream Contributor License Agreement.
-"""
-
-
 import logging
 from pathlib import Path
 
@@ -65,11 +58,8 @@ def compile_with_floorplan_dse(ctx: click.Context, **kwargs: bool | Path) -> Non
     kwargs["enable_synth_util"] = True
     kwargs["gen_ab_graph"] = True
 
-    # Run generate-floorplan
     forward_applicable(ctx, generate_floorplan_entry, kwargs)
 
-    # Run the rest of the compilation flow
-    # Get floorplan solutions
     program = load_tapa_program()
     autobridge_work_dir = Path(program.work_dir) / AUTOBRIDGE_WORK_DIR
     floorplan_files = autobridge_work_dir.glob("solution_*/floorplan.json")

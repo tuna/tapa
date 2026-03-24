@@ -199,6 +199,7 @@ def add_port_iface_connections(  # noqa: C901
 def add_scalar_connections(
     program: Program, graph: ABGraph, port_width: dict[str, int | tuple[int, int]]
 ) -> ABGraph:
+    """Add scalar port connections via a shared FSM vertex to the ab graph."""
     vertices = {v.name: v for v in graph.vs}
     edges = graph.es.copy()
 

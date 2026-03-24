@@ -40,11 +40,9 @@ class Coor(BaseModel):
 
     def __hash__(self) -> int:
         """Get the hash."""
-        return hash(self._key())
-
-    def _key(self) -> tuple[int, int, int, int]:
-        """Get the key for coor."""
-        return (self.down_left_x, self.down_left_y, self.up_right_x, self.up_right_y)
+        return hash(
+            (self.down_left_x, self.down_left_y, self.up_right_x, self.up_right_y)
+        )
 
     def is_south_neighbor_of(self, other: "Coor") -> bool:
         """Check if self is on the south side of other."""
@@ -72,13 +70,11 @@ class Coor(BaseModel):
 
     def is_neighbor(self, other: "Coor") -> bool:
         """Check if self is a neighbor of other."""
-        return any(
-            [
-                self.is_north_neighbor_of(other),
-                self.is_south_neighbor_of(other),
-                self.is_east_neighbor_of(other),
-                self.is_west_neighbor_of(other),
-            ]
+        return (
+            self.is_north_neighbor_of(other)
+            or self.is_south_neighbor_of(other)
+            or self.is_east_neighbor_of(other)
+            or self.is_west_neighbor_of(other)
         )
 
     def get_all_slot_coors(self) -> list[tuple[int, int]]:

@@ -1,15 +1,16 @@
 """External port objects in TAPA."""
 
-__copyright__ = """
-Copyright (c) 2024 RapidStream Design Automation, Inc. and contributors.
-All rights reserved. The contributor(s) of this file has/have agreed to the
-RapidStream Contributor License Agreement.
-"""
-
 from enum import Enum
 from functools import lru_cache
 
 from tapa.common.base import Base
+
+_CAT_TO_TYPE = {
+    "stream": "STREAM",
+    "mmap": "SYNC_MMAP",
+    "async_mmap": "ASYNC_MMAP",
+    "scalar": "SCALAR",
+}
 
 
 class ExternalPort(Base):
@@ -41,13 +42,7 @@ class ExternalPort(Base):
     def get_type(self) -> Type:
         """Returns the type of the external port."""
         cat = str(self.obj["cat"])
-        try:
-            return {
-                "stream": ExternalPort.Type.STREAM,
-                "mmap": ExternalPort.Type.SYNC_MMAP,
-                "async_mmap": ExternalPort.Type.ASYNC_MMAP,
-                "scalar": ExternalPort.Type.SCALAR,
-            }[cat]
-        except KeyError:
+        if cat not in _CAT_TO_TYPE:
             msg = f'Unknown type "{cat}"'
-            raise NotImplementedError(msg) from None
+            raise NotImplementedError(msg)
+        return ExternalPort.Type[_CAT_TO_TYPE[cat]]

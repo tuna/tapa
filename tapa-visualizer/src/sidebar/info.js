@@ -13,10 +13,8 @@ import { parseArgs, parseFifos, parsePorts, showCode, ul } from "./dom.js";
 export const getNodeInfo = node => {
   const dl = append(
     $("dl"),
-    $text("dt", "Node Name"),
-    $text("dd", node.id),
-    $text("dt", "Upper Task"),
-    $text("dd", getComboName(node.combo ?? "<none>")),
+    $text("dt", "Node Name"), $text("dd", node.id),
+    $text("dt", "Upper Task"), $text("dd", getComboName(node.combo ?? "<none>")),
   );
 
   /** @param {HTMLDListElement} target
@@ -25,10 +23,7 @@ export const getNodeInfo = node => {
   const appendSubTask = (target, { args, step }, i) => {
     const argsArr = Object.entries(args);
     if (typeof i === "number") {
-      target.append($("dt", {
-        textContent: `Sub-Task ${i}`,
-        style: "padding: .25rem 0 .1rem; border-top: 1px solid var(--border);",
-      }));
+      target.append($("dt", { textContent: `Sub-Task ${i}`, style: "padding: .25rem 0 .1rem; border-top: 1px solid var(--border);" }));
     }
     target.append(
       $text("dt", "Arguments"),
@@ -39,13 +34,9 @@ export const getNodeInfo = node => {
   };
 
   const { data } = node;
-  if ("subTask" in data) {
-    appendSubTask(dl, data.subTask);
-  } else if ("subTasks" in data && Array.isArray(data.subTasks)) {
-    data.subTasks.forEach((subTask, i) => appendSubTask(dl, subTask, i));
-  } else {
-    console.warn("Selected node is missing data!", node);
-  }
+  if ("subTask" in data) appendSubTask(dl, data.subTask);
+  else if ("subTasks" in data && Array.isArray(data.subTasks)) data.subTasks.forEach((subTask, i) => appendSubTask(dl, subTask, i));
+  else console.warn("Selected node is missing data!", node);
 
   return dl;
 };
@@ -56,48 +47,32 @@ export const getTaskInfo = (task, id) => {
 
   const compactInfo = append(
     $("dl", { className: "compact" }),
-    $text("dt", "Task Name:"),
-    $text("dd", taskName),
-    $text("dt", "Task Level:"),
-    $text("dd", task.level),
-    $text("dt", "Build Target:"),
-    $text("dd", task.target),
-    $text("dt", "Vendor:"),
-    $text("dd", task.vendor),
-    $text("dt", "Code:"),
-    append($("dd"), showCode(task.code, taskName)),
+    $text("dt", "Task Name:"), $text("dd", taskName),
+    $text("dt", "Task Level:"), $text("dd", task.level),
+    $text("dt", "Build Target:"), $text("dd", task.target),
+    $text("dt", "Vendor:"), $text("dd", task.vendor),
+    $text("dt", "Code:"), append($("dd"), showCode(task.code, taskName)),
   );
 
   const listInfo = append(
     $("dl"),
     $text("dt", "Ports"),
-    task.ports && task.ports.length !== 0
-      ? append($("dd"), parsePorts(task.ports))
-      : $text("dd", "none"),
+    task.ports && task.ports.length !== 0 ? append($("dd"), parsePorts(task.ports)) : $text("dd", "none"),
   );
 
   const elements = [compactInfo, listInfo];
   if (task.level === "upper") {
     const fifos = Object.entries(task.fifos);
-
     /** @type {HTMLLIElement[]} */
     const tasks = [];
     for (const name in task.tasks) {
-      const subTasks = task.tasks[name];
-      for (let i = 0; i < subTasks.length; i++) {
-        tasks.push($("li", { textContent: `${name}/${i}` }));
-      }
+      task.tasks[name].forEach((_, i) => tasks.push($("li", { textContent: `${name}/${i}` })));
     }
-
     listInfo.append(
       $text("dt", "FIFO Streams"),
-      fifos.length !== 0
-        ? append($("dd"), parseFifos(fifos, taskName))
-        : $text("dd", "none"),
+      fifos.length !== 0 ? append($("dd"), parseFifos(fifos, taskName)) : $text("dd", "none"),
       $text("dt", "Sub-Tasks"),
-      tasks.length !== 0
-        ? append($("dd"), ul(tasks))
-        : $text("dd", "none"),
+      tasks.length !== 0 ? append($("dd"), ul(tasks)) : $text("dd", "none"),
     );
   }
 
@@ -105,14 +80,9 @@ export const getTaskInfo = (task, id) => {
 };
 
 /** @type {(combo: ComboData, graph: Graph) => HTMLElement} */
-export const getComboInfo = (combo, graph) => {
-  const children = graph.getChildrenData(combo.id).map(child => $text("li", child.id));
-
-  return append(
-    $("dl"),
-    $text("dt", "Combo Name"),
-    $text("dd", combo.id),
-    $text("dt", "Children"),
-    append($("dd"), ul(children)),
-  );
-};
+export const getComboInfo = (combo, graph) => append(
+  $("dl"),
+  $text("dt", "Combo Name"), $text("dd", combo.id),
+  $text("dt", "Children"),
+  append($("dd"), ul(graph.getChildrenData(combo.id).map(child => $text("li", child.id)))),
+);
