@@ -14,7 +14,7 @@ import shutil
 import sys
 import zipfile
 from pathlib import Path
-from typing import cast
+from typing import TypeVar, cast
 from xml.etree import ElementTree as ET
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -24,8 +24,10 @@ from tapa.cosim.common import Arg, Port
 
 _logger = logging.getLogger().getChild(__name__)
 
+_V = TypeVar("_V")
 
-def _remap_keys[V](id_to_name: dict[int, str], id_to_val: dict[str, V]) -> dict[str, V]:
+
+def _remap_keys(id_to_name: dict[int, str], id_to_val: dict[str, _V]) -> dict[str, _V]:
     """Remap dict keys from integer argument IDs to qualified argument names."""
     return {id_to_name[int(arg_id)]: val for arg_id, val in id_to_val.items()}
 
