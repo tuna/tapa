@@ -57,13 +57,15 @@ def get_fifo_directions(task: Task, fifo_name: str) -> list[str]:
     ]
 
 
+_DIR2SUFFIXES = {
+    "consumed_by": ISTREAM_SUFFIXES,
+    "produced_by": OSTREAM_SUFFIXES,
+}
+
+
 def get_fifo_suffixes(direction: str) -> list[str]:
     """Return the suffixes associated with a FIFO direction."""
-    suffixes = {
-        "consumed_by": ISTREAM_SUFFIXES,
-        "produced_by": OSTREAM_SUFFIXES,
-    }
-    return list(suffixes[direction])
+    return list(_DIR2SUFFIXES[direction])
 
 
 def is_fifo_external(task: Task, fifo_name: str) -> bool:
@@ -80,13 +82,12 @@ def _assign_directional(task: Task, a: str, b: str, a_direction: str) -> None:
 
 def convert_axis_to_fifo(task: Task, axis_name: str) -> str:
     """Convert an AXIS port into a registered FIFO."""
-    assert len(get_fifo_directions(task, axis_name)) == 1, (
-        "axis interfaces should have one direction"
-    )
+    directions = get_fifo_directions(task, axis_name)
+    assert len(directions) == 1, "axis interfaces should have one direction"
     direction_axis = {
         "consumed_by": "produced_by",
         "produced_by": "consumed_by",
-    }[get_fifo_directions(task, axis_name)[0]]
+    }[directions[0]]
     data_width = task.ports[axis_name].width
 
     fifo_name = "tapa_fifo_" + axis_name
@@ -140,10 +141,9 @@ def convert_axis_to_fifo(task: Task, axis_name: str) -> str:
 
 def connect_fifo_externally(task: Task, internal_name: str, axis: bool) -> None:
     """Connect a FIFO either to external ports or to a FIFO wrapper."""
-    assert len(get_fifo_directions(task, internal_name)) == 1, (
-        "externally connected fifos should have one direction"
-    )
-    direction = get_fifo_directions(task, internal_name)[0]
+    directions = get_fifo_directions(task, internal_name)
+    assert len(directions) == 1, "externally connected fifos should have one direction"
+    direction = directions[0]
     external_name = convert_axis_to_fifo(task, internal_name) if axis else internal_name
 
     for suffix in get_fifo_suffixes(direction):

@@ -107,17 +107,8 @@ class ModuleInstantiation(HierarchicalNamespaceModel):
 
     def get_pragma_string(self) -> str:
         """Return the pragma string."""
-        args = []
-        for key, value in self.pragmas:
-            if value:
-                args.append(f"{key}={value}")
-            else:
-                args.append(key)
-
-        if args:
-            return "(* " + ", ".join(args) + " *)"
-
-        return ""
+        args = [f"{k}={v}" if v else k for k, v in self.pragmas]
+        return "(* " + ", ".join(args) + " *)" if args else ""
 
     def get_all_named(self) -> Generator[NamedModel]:
         """Yields all the named objects in the namespace."""
@@ -197,10 +188,7 @@ class ModuleInstantiation(HierarchicalNamespaceModel):
             ... )
             {"name":"DEPTH","hierarchical_name":null,"expr":[{"type":"id","repr":"i"}]}
         """
-        try:
-            return next(conn for conn in self.connections if conn.name == port_name)
-        except StopIteration:
-            return None
+        return next((conn for conn in self.connections if conn.name == port_name), None)
 
     def get_connection_direction(
         self, modules: "Modules", port_name: str
@@ -263,39 +251,35 @@ class ModuleInstantiation(HierarchicalNamespaceModel):
 
     def is_port_connected(self, port_name: str) -> bool:
         """Return whether the port is connected."""
-        try:
-            return not self.get_expression_of_port(port_name).is_empty()
-        except KeyError:
-            return False
+        return not self.get_expression_of_port(port_name).is_empty()
 
     def is_port_connect_to_constant(self, port_name: str) -> bool:
         """Check if the port is connected to a constant."""
         expr = self.get_expression_of_port(port_name)
         return all(token.type != token.Type.ID for token in expr)
 
-    def resolve_parameters(  # noqa: C901
+    def resolve_parameters(
         self, module: "AnyModuleDefinition"
     ) -> dict[str, Expression]:
         """Resolve all parameters of the module instantiation."""
         # (1) Collect the parameters and their default of the submodule.
-        default_exprs: dict[str, Expression] = {}
-        for def_param in module.parameters:
-            default_exprs[def_param.name] = def_param.expr
+        default_exprs: dict[str, Expression] = {
+            p.name: p.expr for p in module.parameters
+        }
 
         # (2) Collect the resolved parameters of the submodule instance.
-        resolved_exprs: dict[str, Expression] = {}
-        for ovr_param in self.parameters:
-            resolved_exprs[ovr_param.name] = ovr_param.expr
+        resolved_exprs: dict[str, Expression] = {
+            p.name: p.expr for p in self.parameters
+        }
 
         # (2b) Iterate over the default parameters and resolve them.
         while default_exprs:
             new_resolved = False
 
-            # Remove the resolved parameters from the default parameters.
-            for name in resolved_exprs:
-                if name in default_exprs:
-                    default_exprs.pop(name)
-                    new_resolved = True
+            # Remove parameters already present in resolved_exprs.
+            for name in set(default_exprs) & set(resolved_exprs):
+                default_exprs.pop(name)
+                new_resolved = True
 
             # For all remaining default parameters, if all used identifiers are
             # resolved, resolve the parameter.

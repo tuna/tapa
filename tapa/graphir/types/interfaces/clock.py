@@ -31,7 +31,3 @@ class ClockInterface(FalsePathInterface):
     def is_clk(self) -> bool:  # noqa: PLR6301
         """Return if the interface is a clock or reset interface."""
         return True
-
-    def is_reset(self) -> bool:  # noqa: PLR6301
-        """Return if the interface is a clock or reset interface."""
-        return False

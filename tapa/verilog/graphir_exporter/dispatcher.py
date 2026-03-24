@@ -36,7 +36,6 @@ def export_design_file(root_path: str, module: AnyModuleDefinition) -> None:
         `timescale 1 ns / 1 ps
         module empty; endmodule;
     """
-    # exporting a vivado or v++ design file
     filename = f"{module.name}.v"
     with open(os.path.join(root_path, filename), "w", encoding="utf-8") as design_file:
         design_file.write(export_verilog_design(module))

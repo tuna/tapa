@@ -10,7 +10,7 @@ import os
 import sys
 from concurrent import futures
 
-import psutil
+from psutil import cpu_count
 
 from tapa.backend.report.xilinx.rtl.generator import ReportDirUtil
 from tapa.backend.report.xilinx.rtl.parser import (
@@ -74,7 +74,7 @@ class ProgramSynthesisMixin(
             with open(rpt_path, encoding="utf-8") as rpt_file:
                 return parse_hierarchical_utilization_report(rpt_file)
 
-        worker_num = jobs or psutil.cpu_count(logical=False) or 8
+        worker_num = jobs or cpu_count(logical=False) or 8
         _logger.info("generating post-synthesis resource utilization reports")
         _logger.info(
             "this step runs logic synthesis of each task "
@@ -88,7 +88,7 @@ class ProgramSynthesisMixin(
             for utilization in executor.map(
                 worker,
                 {x.task.name for x in self.top_task.instances},
-                itertools.count(0),
+                itertools.count(),
             ):
                 # override self_area populated from HLS report
                 bram = int(utilization["RAMB36"]) * 2 + int(utilization["RAMB18"])

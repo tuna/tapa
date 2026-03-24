@@ -47,10 +47,7 @@ def infer_fifo_data_range(
         slot, fifo_name, "consumed_by"
     )
 
-    subtasks: dict[str, Task] = {}
-    for inst in slot.instances:
-        if inst.task.name not in subtasks:
-            subtasks[inst.task.name] = inst.task
+    subtasks = {inst.task.name: inst.task for inst in slot.instances}
     assert producer_task_name in subtasks
     assert consumer_task_name in subtasks
 

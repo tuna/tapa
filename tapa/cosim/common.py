@@ -1,9 +1,3 @@
-__copyright__ = """
-Copyright (c) 2024 RapidStream Design Automation, Inc. and contributors.
-All rights reserved. The contributor(s) of this file has/have agreed to the
-RapidStream Contributor License Agreement.
-"""
-
 import re
 from collections import defaultdict
 from pathlib import Path
@@ -64,20 +58,24 @@ class Arg(NamedTuple):
     @property
     def qualified_name(self) -> str:
         """Returns the qualified name of this arg which was manipulated by HLS."""
-        if self.is_stream and self.stream_idx is None:
-            return f"{self.name}_s"
-        if self.is_stream and self.stream_idx is not None:
-            return f"{self.name}_{self.stream_idx}"
-        return self.name
+        if not self.is_stream:
+            return self.name
+        return (
+            f"{self.name}_s"
+            if self.stream_idx is None
+            else f"{self.name}_{self.stream_idx}"
+        )
 
     @property
     def peek_qualified_name(self) -> str | None:
         """Returns the name to access the peek port of this arg."""
-        if self.is_stream and self.stream_idx is None:
-            return f"{self.name}_peek"
-        if self.is_stream and self.stream_idx is not None:
-            return f"{self.name}_peek_{self.stream_idx}"
-        return None
+        if not self.is_stream:
+            return None
+        return (
+            f"{self.name}_peek"
+            if self.stream_idx is None
+            else f"{self.name}_peek_{self.stream_idx}"
+        )
 
 
 MAX_AXI_BRAM_ADDR_WIDTH = 32
@@ -95,8 +93,7 @@ def parse_register_addr(ctrl_unit_path: str) -> dict[str, list[str]]:
     argument.
     """
     with open(ctrl_unit_path, encoding="utf-8") as fp:
-        ctrl_unit = fp.readlines()
-    comments = [line for line in ctrl_unit if line.strip().startswith("//")]
+        comments = [line for line in fp if line.strip().startswith("//")]
 
     arg_to_reg_addrs: dict[str, list[str]] = defaultdict(list)
     for line in comments:

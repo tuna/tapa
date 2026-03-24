@@ -120,25 +120,15 @@ class VerilogModuleDefinition(BaseModuleDefinition):
 
     def module_name_updated(self, new_name: str) -> "VerilogModuleDefinition":
         """Update the module name and the verilog."""
-        non_word = r"(?<!\w)"  # Lookbehind for non-word character (beginning of word)
-        word_boundary = r"(?!\w)"  # Lookahead for non-word character (end of word)
-
-        # Pattern to match the module name with non-word boundaries
-        name_pattern = rf"{non_word}{self.name}{word_boundary}"
-
-        # Find all matches
+        name_pattern = rf"\b{self.name}\b"
         matches = re.findall(name_pattern, self.verilog)
-
-        # Ensure there is exactly one match
         if len(matches) != 1:
             msg = (
                 f"Expected exactly one match for keyword '{self.name}' "
                 f"in Verilog code, but found {len(matches)} matches."
             )
             raise NotImplementedError(msg)
-
-        # Replace the module name with the new name
         return self.updated(
             name=new_name,
-            verilog=re.sub(name_pattern, f"{new_name}", self.verilog),
+            verilog=re.sub(name_pattern, new_name, self.verilog),
         )

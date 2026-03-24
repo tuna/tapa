@@ -93,22 +93,6 @@ class LocalToolProcess(ToolProcess):
         self.returncode = self._proc.returncode
 
 
-def _tar_path(local_path: str) -> bytes:
-    """Create a tar.gz archive of a file or directory, returning bytes.
-
-    Dereferences symlinks so the archive contains real files, since symlink
-    targets (e.g., Bazel runfiles) won't exist on the remote host.
-    """
-    buf = io.BytesIO()
-    with tarfile.open(mode="w:gz", fileobj=buf, dereference=True) as tar:
-        if os.path.isdir(local_path):
-            for entry in os.listdir(local_path):
-                tar.add(os.path.join(local_path, entry), arcname=entry)
-        else:
-            tar.add(local_path, arcname=os.path.basename(local_path))
-    return buf.getvalue()
-
-
 def _untar_to_directory(data: bytes, local_path: str) -> None:
     """Extract a tar.gz archive into a directory.
 
@@ -167,17 +151,6 @@ def _rewrite_cmd_args(
     return [_rewrite_paths_in_string(arg, local_paths, session_dir) for arg in cmd_args]
 
 
-def _dedup_paths(paths: list[str]) -> list[str]:
-    """Deduplicate paths while preserving order."""
-    seen: set[str] = set()
-    result: list[str] = []
-    for p in paths:
-        if p not in seen:
-            seen.add(p)
-            result.append(p)
-    return result
-
-
 def _upload_paths(config: RemoteConfig, paths: list[str], session_dir: str) -> None:
     """Upload all local files/dirs to remote in a single SSH session.
 
@@ -188,10 +161,10 @@ def _upload_paths(config: RemoteConfig, paths: list[str], session_dir: str) -> N
     """
     rootfs = f"{session_dir}/rootfs"
 
-    valid_paths = [p for p in paths if os.path.exists(p)]
     for p in paths:
         if not os.path.exists(p):
             _logger.warning("Upload path does not exist: %s", p)
+    valid_paths = [p for p in paths if os.path.exists(p)]
 
     if not valid_paths:
         # Still need the session directory for the execute step.
@@ -294,7 +267,7 @@ class RemoteToolProcess(ToolProcess):
         extra_upload_paths: tuple[str, ...] = (),
         extra_download_paths: tuple[str, ...] = (),
         download_cwd: bool = False,
-        **kwargs: Any,  # noqa: ANN401
+        **kwargs: Any,  # noqa: ANN401, ARG002
     ) -> None:
         self._cmd_args = cmd_args
         self._cwd = cwd or os.getcwd()
@@ -303,7 +276,6 @@ class RemoteToolProcess(ToolProcess):
         self._extra_upload_paths = extra_upload_paths
         self._extra_download_paths = extra_download_paths
         self._download_cwd = download_cwd
-        self._kwargs = kwargs
         self._session_dir = f"{config.work_dir}/{uuid.uuid4()}"
         self._communicated = False
 
@@ -312,13 +284,15 @@ class RemoteToolProcess(ToolProcess):
             return b"", b""
         self._communicated = True
 
-        all_local_paths = _dedup_paths(
-            [self._cwd, *self._extra_upload_paths, *self._extra_download_paths]
+        all_local_paths = list(
+            dict.fromkeys(
+                [self._cwd, *self._extra_upload_paths, *self._extra_download_paths]
+            )
         )
 
         # Upload (creates session dir + uploads all paths in one session)
         _logger.info("Creating remote session directory: %s", self._session_dir)
-        upload_list = [self._cwd, *list(self._extra_upload_paths)]
+        upload_list = [self._cwd, *self._extra_upload_paths]
         _upload_paths(self._config, upload_list, self._session_dir)
 
         # Build and execute remote command
@@ -347,7 +321,7 @@ class RemoteToolProcess(ToolProcess):
         # Download
         download_list = [
             *([self._cwd] if self._download_cwd else []),
-            *list(self._extra_download_paths),
+            *self._extra_download_paths,
         ]
         _download_paths(self._config, download_list, self._session_dir)
 

@@ -63,18 +63,19 @@ def _download_dir(
         config,
         f"tar czf - -C {shlex.quote(remote_path)} .",
     )
-    tar_data = stdout
     if exit_status != 0:
-        err = stderr.decode("utf-8", errors="replace")
-        _logger.warning("Download failed for %s: %s", remote_path, err)
+        _logger.warning(
+            "Download failed for %s: %s",
+            remote_path,
+            stderr.decode("utf-8", errors="replace"),
+        )
         return False
-    if not tar_data:
+    if not stdout:
         _logger.warning("Empty tar for %s", remote_path)
         return False
 
     os.makedirs(local_path, exist_ok=True)
-    buf = io.BytesIO(tar_data)
-    with tarfile.open(mode="r:gz", fileobj=buf) as tar:
+    with tarfile.open(mode="r:gz", fileobj=io.BytesIO(stdout)) as tar:
         tar.extractall(path=local_path, filter="fully_trusted")
     return True
 
@@ -172,13 +173,11 @@ def sync_remote_vendor_includes(config: RemoteConfig) -> str | None:
     )
     gcc_include_dirs = stdout.decode("utf-8", errors="replace").strip()
 
-    for gcc_include_raw in gcc_include_dirs.splitlines():
-        gcc_include = gcc_include_raw.strip()
-        if not gcc_include:
-            continue
+    for gcc_include in filter(
+        None, (ln.strip() for ln in gcc_include_dirs.splitlines())
+    ):
         # Compute relative path: tps/lnx64/gcc-X.Y.Z/include
-        rel = os.path.relpath(gcc_include, xilinx_tool)
-        local_gcc = os.path.join(cache_dir, rel)
+        local_gcc = os.path.join(cache_dir, os.path.relpath(gcc_include, xilinx_tool))
         if _download_dir(config, gcc_include, local_gcc):
             _logger.info("Downloaded %s -> %s", gcc_include, local_gcc)
 

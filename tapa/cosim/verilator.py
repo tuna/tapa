@@ -20,11 +20,13 @@ if TYPE_CHECKING:
 
 
 def generate_verilator_tb(
-    config: CosimConfig,
+    config: CosimConfig | dict,
     axi_list: list["AXI"],
     tb_output_dir: str,
 ) -> None:
     """Generate C++ testbench and support files for Verilator simulation."""
+    if not isinstance(config, CosimConfig):
+        config = CosimConfig.model_validate(config)
     Path(tb_output_dir).mkdir(parents=True, exist_ok=True)
 
     top_name = config.top_name

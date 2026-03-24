@@ -42,13 +42,13 @@ def add_fifo_instance(
     def ports() -> Iterator[PortArg]:
         yield make_port_arg(port="clk", arg=CLK)
         yield make_port_arg(port="reset", arg=rst)
+        # FIFO_{READ,WRITE}_PORTS has one extra CE port at the end; always enable it.
         for port_name, arg_suffix in zip(FIFO_READ_PORTS, ISTREAM_SUFFIXES):
             yield make_port_arg(port=port_name, arg=wire_name(name, arg_suffix))
-
-        yield make_port_arg(port=FIFO_READ_PORTS[-1], arg=TRUE)
+        yield make_port_arg(port=FIFO_READ_PORTS[-1], arg=TRUE)  # if_read_ce
         for port_name, arg_suffix in zip(FIFO_WRITE_PORTS, OSTREAM_SUFFIXES):
             yield make_port_arg(port=port_name, arg=wire_name(name, arg_suffix))
-        yield make_port_arg(port=FIFO_WRITE_PORTS[-1], arg=TRUE)
+        yield make_port_arg(port=FIFO_WRITE_PORTS[-1], arg=TRUE)  # if_write_ce
 
     module_name = "fifo"
     return module.add_instance(

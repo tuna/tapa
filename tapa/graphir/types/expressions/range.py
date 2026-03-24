@@ -54,10 +54,11 @@ class Range(Model):
         Returns:
             str: The literal string of the range.
         """
-        left_str = f"({self.left!s})" if len(self.left) > 1 else f"{self.left!s}"
-        right_str = f"({self.right!s})" if len(self.right) > 1 else f"{self.right!s}"
 
-        return f"{left_str}:{right_str}"
+        def _fmt(expr: Expression) -> str:
+            return f"({expr})" if len(expr) > 1 else str(expr)
+
+        return f"{_fmt(self.left)}:{_fmt(self.right)}"
 
     def rewrite(self, idmap: dict[str, "Expression"]) -> "Range":
         """Rewrite the range's expression with the given idmap."""

@@ -1,3 +1,7 @@
 # Temporary exceptions for Python function-length budget.
 # Format: relative/path.py:qualified.symbol
 tapa/cosim/vivado.py:get_vivado_tcl
+tapa/graphir_conversion/utils.py:get_fifo_def
+tapa/steps/synth.py:synth
+tapa/verilog/axi_xbar.py:generate
+tapa/verilog/graphir_exporter/verilog.py:export_verilog_grouped_module

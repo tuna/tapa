@@ -9,7 +9,6 @@ RapidStream Contributor License Agreement.
 import json
 import logging
 import os
-import pathlib
 import shutil
 import sys
 from glob import glob
@@ -43,11 +42,6 @@ DEFAULT_SCHEMA = "xilinx.com:schema:json_instance:1.0"
     help="The input IR file",
     required=False,
     default="",
-)
-@click.option(
-    "-v",
-    "--verbose",
-    count=True,
 )
 def main(
     destination: str,
@@ -100,36 +94,26 @@ def export_design(
 def create_xci_sub_folder(destination: str) -> None:
     """Create a separate directory for each .xci according to Vivado requirement."""
     for source_xci_path in glob(f"{destination}/**/*.xci", recursive=True):
-        xci_folder_name = pathlib.Path(source_xci_path).stem
-        xci_file_basename = pathlib.Path(source_xci_path).name
+        source = Path(source_xci_path)
+        target_folder = Path(destination) / source.stem
+        target_path = target_folder / source.name
 
-        target_folder = f"{destination}/{xci_folder_name}"
-        target_path = f"{target_folder}/{xci_file_basename}"
-
-        os.makedirs(target_folder, exist_ok=True)
+        target_folder.mkdir(parents=True, exist_ok=True)
 
         # Skip if the file is already at the correct path
-        if os.path.exists(target_path):
-            if os.path.samefile(source_xci_path, target_path):
+        if target_path.exists():
+            if target_path.samefile(source):
                 continue
 
             # Remove and replace the file if already existing.
             _logger.warning("File %s exists, replacing with a new file.", target_path)
-            os.remove(target_path)
+            target_path.unlink()
 
         shutil.move(source_xci_path, target_path)
 
 
-def create_stub_files(destination: str) -> None:
-    """Create stub files for xci."""
-    for xci_path in glob(f"{destination}/**/*.xci", recursive=True):
-        xci_name = pathlib.Path(xci_path).stem
-        xci_to_stub(xci_path, f"{destination}/{xci_name}.v")
-
-    # create stub file for xilinx primitives
-    with open(f"{destination}/LUT6.v", "w", encoding="utf-8") as file:
-        file.write(
-            """
+_XILINX_PRIMITIVE_STUBS = {
+    "LUT6": """
             module LUT6 #(
                 parameter INIT = 64'h0000000000000000
             )(
@@ -142,12 +126,8 @@ def create_stub_files(destination: str) -> None:
                 output O
             );
             endmodule
-        """
-        )
-
-    with open(f"{destination}/FDRE.v", "w", encoding="utf-8") as file:
-        file.write(
-            """
+        """,
+    "FDRE": """
             module FDRE #(
                 parameter INIT = 1'b0
             )(
@@ -158,57 +138,57 @@ def create_stub_files(destination: str) -> None:
                 output Q
             );
             endmodule
-        """
-        )
-
-    with open(f"{destination}/BUFGCE.v", "w", encoding="utf-8") as file:
-        file.write(
-            """
+        """,
+    "BUFGCE": """
             module BUFGCE (
                 input  I,
                 input  CE,
                 output O
             );
             endmodule
-        """
-        )
+        """,
+}
+
+
+def create_stub_files(destination: str) -> None:
+    """Create stub files for xci."""
+    for xci_path in glob(f"{destination}/**/*.xci", recursive=True):
+        xci_name = Path(xci_path).stem
+        xci_to_stub(xci_path, f"{destination}/{xci_name}.v")
+
+    # create stub files for xilinx primitives
+    for module_name, body in _XILINX_PRIMITIVE_STUBS.items():
+        with open(f"{destination}/{module_name}.v", "w", encoding="utf-8") as file:
+            file.write(body)
+
+
+_DIRECTION_MAP = {"in": "input ", "out": "output ", "inout": "inout "}
 
 
 def xci_to_stub(xci_path: str, file_path: str | None = None) -> list[str]:
     """Generate a stub file for the XCI."""
     module_name, ports = get_module_name_and_ports(xci_path)
 
-    stub = []
-    stub += [f"module {module_name} ("]
+    stub = [f"module {module_name} ("]
 
     for port_name, port_info_list in ports.items():
         assert len(port_info_list) == 1
         port_info = port_info_list[0]
 
-        port = "  "
-
-        # direction is "in", "out" or "inout"
-        port += {
-            "in": "input ",
-            "out": "output ",
-            "inout": "inout ",
-        }[port_info["direction"]]
+        port = "  " + _DIRECTION_MAP[port_info["direction"]]
 
         # width if available
         if "size_left" in port_info:
             assert "size_right" in port_info
             port += "[" + port_info["size_left"] + ": " + port_info["size_right"] + "] "
 
-        # port name
         port += f"{port_name},"
-
         stub.append(port)
 
     # the last port does not have comma
     stub[-1] = stub[-1].strip(",")
 
-    stub += [");"]
-    stub += ["endmodule"]
+    stub.extend([");", "endmodule"])
 
     if file_path:
         with open(file_path, "w", encoding="utf-8") as fp:

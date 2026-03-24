@@ -287,7 +287,7 @@ def get_slot_task_ifaces(scalars: list[str]) -> list[AnyInterface]:
     return [
         ApCtrlInterface(
             ports=(
-                *tuple(scalars),
+                *scalars,
                 HANDSHAKE_CLK,
                 HANDSHAKE_RST_N,
                 HANDSHAKE_START,

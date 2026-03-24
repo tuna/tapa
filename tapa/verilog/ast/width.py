@@ -7,7 +7,7 @@ RapidStream Contributor License Agreement.
 """
 
 import functools
-from typing import NamedTuple, Union
+from typing import NamedTuple
 
 import pyslang
 from pyverilog.vparser import ast
@@ -18,7 +18,7 @@ class Width(NamedTuple):
     lsb: str
 
     @classmethod
-    def create(cls, width: int | pyslang.DataTypeSyntax | None) -> Union["Width", None]:
+    def create(cls, width: int | pyslang.DataTypeSyntax | None) -> "Width | None":
         return _create(width)
 
     @classmethod

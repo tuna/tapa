@@ -189,7 +189,7 @@ class ProgramHlsMixin(
 
         try:
             with futures.ThreadPoolExecutor(max_workers=jobs) as executor:
-                any(executor.map(worker, self._tasks.values(), itertools.count(0)))
+                any(executor.map(worker, self._tasks.values(), itertools.count()))
         except RuntimeError:
             if keep_hls_work_dir:
                 _logger.error(

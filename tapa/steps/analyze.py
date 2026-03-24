@@ -11,10 +11,10 @@ import json
 import logging
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
-from collections import defaultdict
 from pathlib import Path
 
 import click
@@ -126,14 +126,13 @@ def analyze(
         msg = "The top task is a leaf task, target `xilinx-vitis` is not supported."
         raise click.UsageError(msg)
 
-    fp_slots = []
     graph_dict = tapa_graph.to_dict()
     store_tapa_program(
         Program(
             obj=graph_dict,
             target=target,
             work_dir=work_dir,
-            floorplan_slots=fp_slots,
+            floorplan_slots=[],
             flattened=flatten_hierarchy,
         )
     )
@@ -142,23 +141,6 @@ def analyze(
     store_persistent_context("settings", {"target": target})
 
     is_pipelined("analyze", True)
-
-
-def get_slot_to_inst(floorplan_path: Path, graph: TapaGraph) -> dict[str, list[str]]:
-    """Get slot to instance mapping from floorplan file."""
-    with open(floorplan_path, encoding="utf-8") as f:
-        vertex_to_region = json.load(f)
-    slot_to_insts = defaultdict(list)
-    task_inst_names = [
-        inst.name for inst in graph.get_top_task_inst().get_subtasks_insts()
-    ]
-    for vertex, region in vertex_to_region.items():
-        if vertex not in task_inst_names:
-            continue
-        slot_name = "_".join(region.split(":"))
-        slot_to_insts[slot_name].append(vertex)
-
-    return slot_to_insts
 
 
 def find_clang_binary(name: str) -> str:
@@ -212,10 +194,9 @@ def run_and_check(cmd: tuple[str, ...]) -> str:
     with create_tool_process(list(cmd), stdout=subprocess.PIPE) as proc:
         stdout_bytes, _ = proc.communicate()
     if proc.returncode != 0:
-        quoted_cmd = " ".join(f'"{arg}"' if " " in arg else arg for arg in cmd)
         _logger.error(
             "command %s failed with exit code %d",
-            quoted_cmd,
+            shlex.join(cmd),
             proc.returncode,
         )
         sys.exit(proc.returncode)
@@ -316,7 +297,6 @@ def run_tapacc(
         "-DTAPA_TARGET_STUB_",
     )
     tapacc_cmd = (tapacc, *files, *tapacc_args)
-    quoted_cmd = " ".join(f'"{arg}"' if " " in arg else arg for arg in tapacc_cmd)
-    _logger.info("running tapacc command: %s", quoted_cmd)
+    _logger.info("running tapacc command: %s", shlex.join(tapacc_cmd))
 
     return json.loads(run_and_check(tapacc_cmd))

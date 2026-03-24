@@ -99,22 +99,21 @@ def find_port(module: Module, prefix: str, suffix: str) -> str | None:
 
 def get_streams_fifos(module: Module, streams_name: str) -> list[str]:
     """Get all FIFOs that are related to a streams."""
+    # First, look for numbered variants like `{streams_name}_0_`.
     pattern = re.compile(rf"{streams_name}_(\d+)_")
-    fifos = set()
+    fifos = {
+        f"{streams_name}_{m.group(1)}" for s in module.ports if (m := pattern.match(s))
+    }
+    if fifos:
+        return list(fifos)
 
-    for s in module.ports:
-        match = pattern.match(s)
-        if match:
-            number = match.group(1)
-            fifos.add(f"{streams_name}_{number}")
+    # Fall back to a singleton FIFO (no index).
+    if any(
+        s.startswith(f"{streams_name}{infix}")
+        for s in module.ports
+        for infix in _FIFO_INFIXES
+    ):
+        return [streams_name]
 
-    if not fifos:
-        for s in module.ports:
-            for infix in _FIFO_INFIXES:
-                if s.startswith(f"{streams_name}{infix}"):
-                    return [streams_name]
-
-    if not fifos:
-        msg = f"no fifo found for {streams_name}"
-        raise ValueError(msg)
-    return list(fifos)
+    msg = f"no fifo found for {streams_name}"
+    raise ValueError(msg)

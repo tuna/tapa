@@ -6,8 +6,7 @@ All rights reserved. The contributor(s) of this file has/have agreed to the
 RapidStream Contributor License Agreement.
 """
 
-import logging
-from collections.abc import Generator, Mapping, Sequence
+from collections.abc import Generator, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -20,50 +19,23 @@ from tapa.graphir.types import (
     ModuleInstantiation,
     ModuleNet,
     ModuleParameter,
-    ModulePort,
     Modules,
     Project,
-    Range,
     Token,
     VerilogModuleDefinition,
 )
 from tapa.graphir_conversion.add_iface import get_graphir_iface
-from tapa.graphir_conversion.pipeline.fifo_builder import (
-    get_fifo_inst as get_fifo_inst_builder,
-)
-from tapa.graphir_conversion.pipeline.fifo_builder import (
-    infer_fifo_data_range as infer_fifo_data_range_builder,
-)
 from tapa.graphir_conversion.pipeline.instantiation_builder import (
-    get_submodule_inst as get_submodule_inst_builder,
-)
-from tapa.graphir_conversion.pipeline.instantiation_builder import (
-    get_top_ir_subinsts as get_top_ir_subinsts_builder,
-)
-from tapa.graphir_conversion.pipeline.instantiation_builder import (
-    get_top_level_slot_inst as get_top_level_slot_inst_builder,
-)
-from tapa.graphir_conversion.pipeline.instantiation_builder import (
-    get_upper_module_ir_subinsts as get_upper_module_ir_subinsts_builder,
+    get_top_ir_subinsts,
+    get_upper_module_ir_subinsts,
 )
 from tapa.graphir_conversion.pipeline.ports_builder import (
-    get_slot_module_definition as get_slot_module_definition_builder,
-)
-from tapa.graphir_conversion.pipeline.ports_builder import (
-    get_slot_module_definition_parameters as get_slot_module_definition_parameters_b,
-)
-from tapa.graphir_conversion.pipeline.ports_builder import (
-    get_slot_module_definition_ports as get_slot_module_definition_ports_b,
+    get_slot_module_definition as _get_slot_module_definition,
 )
 from tapa.graphir_conversion.pipeline.project_builder import (
-    add_pblock_ranges as add_pblock_ranges_builder,
+    get_project_from_floorplanned_program as _get_project_from_floorplanned_program,
 )
-from tapa.graphir_conversion.pipeline.project_builder import (
-    get_project_from_floorplanned_program as get_project_from_floorplanned_program_b,
-)
-from tapa.graphir_conversion.pipeline.wire_builder import (
-    get_upper_task_ir_wires as get_upper_task_ir_wires_builder,
-)
+from tapa.graphir_conversion.pipeline.wire_builder import get_upper_task_ir_wires
 from tapa.graphir_conversion.utils import (
     get_ctrl_s_axi_def,
     get_fifo_def,
@@ -74,15 +46,12 @@ from tapa.graphir_conversion.utils import (
     get_task_graphir_ports,
     get_verilog_definition_from_tapa_module,
 )
-from tapa.instance import Instance
 from tapa.task import Task
-from tapa.verilog.util import Pipeline
 from tapa.verilog.xilinx.module import Module
 
 if TYPE_CHECKING:
     from tapa.core import Program
 
-_logger = logging.getLogger().getChild(__name__)
 _CTRL_S_AXI_PARAM_MAPPING = {
     "C_S_AXI_ADDR_WIDTH": "C_S_AXI_CONTROL_ADDR_WIDTH",
     "C_S_AXI_DATA_WIDTH": "C_S_AXI_CONTROL_DATA_WIDTH",
@@ -121,120 +90,6 @@ def get_verilog_module_from_leaf_task(
         raise ValueError(msg)
 
     return get_verilog_definition_from_tapa_module(task.module, code)
-
-
-def get_slot_module_definition_parameters(
-    leaf_modules: dict[str, VerilogModuleDefinition],
-) -> list[ModuleParameter]:
-    """Get slot module parameters."""
-    return get_slot_module_definition_parameters_b(leaf_modules)
-
-
-def get_slot_module_definition_ports(
-    slot: Task,
-    child_modules: dict[str, VerilogModuleDefinition],
-) -> list[ModulePort]:
-    """Get slot module ports.
-
-    Args:
-        slot: task of slot
-        child_modules: graphir module definitions of its child modules. The key is the
-            task name of the child module.
-
-    Returns:
-        List of the graphir ports of slot module definition.
-    """
-    return get_slot_module_definition_ports_b(slot, child_modules)
-
-
-def get_submodule_inst(
-    subtasks: dict[str, Task],
-    inst: Instance,
-    arg_table: dict[str, dict[str, Pipeline]],
-    floorplan_region: str | None = None,
-) -> ModuleInstantiation:
-    """Get submodule instantiation."""
-    return get_submodule_inst_builder(subtasks, inst, arg_table, floorplan_region)
-
-
-def get_fifo_inst(  # noqa: PLR0917, PLR0913
-    upper_task: Task,
-    fifo_name: str,
-    fifo: dict,
-    submodule_ir_defs: Mapping[str, AnyModuleDefinition],
-    is_top: bool = False,
-    floorplan_region: str | None = None,
-) -> ModuleInstantiation:
-    """Get slot fifo module instantiation."""
-    return get_fifo_inst_builder(
-        upper_task,
-        fifo_name,
-        fifo,
-        submodule_ir_defs,
-        is_top,
-        floorplan_region,
-    )
-
-
-def get_upper_module_ir_subinsts(
-    upper_task: Task,
-    submodule_ir_defs: Mapping[str, AnyModuleDefinition],
-    floorplan_region: str | None = None,
-) -> list[ModuleInstantiation]:
-    """Get leaf module instantiations of slot module."""
-    return get_upper_module_ir_subinsts_builder(
-        upper_task,
-        submodule_ir_defs,
-        floorplan_region,
-    )
-
-
-def infer_fifo_data_range(
-    fifo_name: str,
-    fifo: dict,
-    leaf_ir_defs: Mapping[str, AnyModuleDefinition],
-    slot: Task,
-    infer_port_name_from_tapa_module: bool = True,
-) -> Range | None:
-    """Infer the range of a fifo data."""
-    return infer_fifo_data_range_builder(
-        fifo_name,
-        fifo,
-        leaf_ir_defs,
-        slot,
-        infer_port_name_from_tapa_module,
-    )
-
-
-def get_upper_task_ir_wires(
-    upper_task: Task,
-    submodule_ir_defs: Mapping[str, AnyModuleDefinition],
-    upper_task_ir_ports: list[ModulePort],
-    ctrl_s_axi_ir_ports: Sequence[ModulePort] = (),
-    is_top: bool = False,
-) -> list[ModuleNet]:
-    return get_upper_task_ir_wires_builder(
-        upper_task,
-        submodule_ir_defs,
-        upper_task_ir_ports,
-        ctrl_s_axi_ir_ports,
-        is_top,
-    )
-
-
-def get_slot_module_definition(
-    slot: Task,
-    leaf_ir_defs: dict[str, VerilogModuleDefinition],
-    floorplan_region: str,
-) -> GroupedModuleDefinition:
-    """Get slot module definition."""
-    return get_slot_module_definition_builder(
-        slot,
-        leaf_ir_defs,
-        floorplan_region,
-        get_subinsts=get_upper_module_ir_subinsts,
-        get_wires=get_upper_task_ir_wires,
-    )
 
 
 def get_top_ctrl_s_axi_inst(
@@ -297,33 +152,18 @@ def get_top_extra_wires(
             )
 
 
-def get_top_level_slot_inst(
-    slot_def: AnyModuleDefinition,
-    slot_inst: Instance,
-    arg_table: dict[str, Pipeline],
-    floorplan_task_name_region_mapping: dict[str, str],
-) -> ModuleInstantiation:
-    """Get top level slot instantiation."""
-    return get_top_level_slot_inst_builder(
-        slot_def,
-        slot_inst,
-        arg_table,
-        floorplan_task_name_region_mapping,
-    )
-
-
-def get_top_ir_subinsts(
-    top_task: Task,
-    slot_defs: Mapping[str, AnyModuleDefinition],
-    floorplan_task_name_region_mapping: dict[str, str],
-    fsm_floorplan_region: str,
-) -> list[ModuleInstantiation]:
-    """Get leaf module instantiations of slot module."""
-    return get_top_ir_subinsts_builder(
-        top_task,
-        slot_defs,
-        floorplan_task_name_region_mapping,
-        fsm_floorplan_region,
+def get_slot_module_definition(
+    slot: Task,
+    leaf_ir_defs: dict[str, VerilogModuleDefinition],
+    floorplan_region: str,
+) -> GroupedModuleDefinition:
+    """Get slot module definition."""
+    return _get_slot_module_definition(
+        slot,
+        leaf_ir_defs,
+        floorplan_region,
+        get_subinsts=get_upper_module_ir_subinsts,
+        get_wires=get_upper_task_ir_wires,
     )
 
 
@@ -381,7 +221,7 @@ def get_project_from_floorplanned_program(
     program: "Program", device_config: Path, floorplan_path: Path
 ) -> Project:
     """Get a graphir project from a floorplanned TAPA program."""
-    return get_project_from_floorplanned_program_b(
+    return _get_project_from_floorplanned_program(
         program=program,
         device_config=device_config,
         floorplan_path=floorplan_path,
@@ -397,12 +237,3 @@ def get_project_from_floorplanned_program(
         modules_cls=Modules,
         project_cls=Project,
     )
-
-
-def add_pblock_ranges(
-    device_config: Path,
-    project: Project,
-    floorplan_path: Path,
-) -> None:
-    """Get the pblock range for the TAPA program."""
-    add_pblock_ranges_builder(device_config, project, floorplan_path)

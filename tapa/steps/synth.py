@@ -217,7 +217,6 @@ def synth(  # noqa: PLR0913,PLR0917
                 encoding="utf-8",
             ) as json_file:
                 json_file.write(project.model_dump_json())
-                os.path.abspath(program.work_dir)
 
         settings["synthed"] = True
         store_persistent_context("settings")

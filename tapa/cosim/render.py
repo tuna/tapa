@@ -153,7 +153,7 @@ def render_testbench_end() -> str:
 def render_vitis_test_signals(
     arg_to_reg_addrs: dict[str, list[str]],
     scalar_arg_to_val: dict[str, str],
-    args: list[Arg] | tuple[Arg, ...] | Sequence[Arg],
+    args: Sequence[Arg],
 ) -> str:
     stream_args = [StreamArgContext.from_arg(arg) for arg in args if arg.is_stream]
     register_writes = []
@@ -179,7 +179,7 @@ def render_vitis_test_signals(
     )
 
 
-def render_hls_test_signals(args: list[Arg] | tuple[Arg, ...] | Sequence[Arg]) -> str:
+def render_hls_test_signals(args: Sequence[Arg]) -> str:
     ctx = HlsTestSignalsContext(
         stream_args=[StreamArgContext.from_arg(arg) for arg in args if arg.is_stream],
         mmap_names=[arg.name for arg in args if arg.is_mmap],
@@ -194,37 +194,29 @@ def render_s_axi_control() -> str:
     return _render_template("s_axi_control.j2")
 
 
-def render_axis(args: list[Arg] | tuple[Arg, ...] | Sequence[Arg]) -> str:
+def _axis_stream_widths(args: Sequence[Arg]) -> list[int]:
+    """Return sorted unique data widths (both w and w+1) across all stream args."""
     stream_args = [arg for arg in args if arg.is_stream]
-    ctx = DutContext(
-        args=list(args),
-        stream_widths=sorted(
-            {
-                width
-                for arg in stream_args
-                for width in (arg.port.data_width, arg.port.data_width + 1)
-            }
-        ),
+    return sorted(
+        {
+            width
+            for arg in stream_args
+            for width in (arg.port.data_width, arg.port.data_width + 1)
+        }
     )
+
+
+def render_axis(args: Sequence[Arg]) -> str:
+    ctx = DutContext(args=list(args), stream_widths=_axis_stream_widths(args))
     return _render_template("axis.j2", ctx=ctx)
 
 
-def render_stream_typedef(args: list[Arg] | tuple[Arg, ...] | Sequence[Arg]) -> str:
-    stream_args = [arg for arg in args if arg.is_stream]
-    ctx = DutContext(
-        args=[],
-        stream_widths=sorted(
-            {
-                width
-                for arg in stream_args
-                for width in (arg.port.data_width, arg.port.data_width + 1)
-            }
-        ),
-    )
+def render_stream_typedef(args: Sequence[Arg]) -> str:
+    ctx = DutContext(args=[], stream_widths=_axis_stream_widths(args))
     return _render_template("stream_typedef.j2", ctx=ctx)
 
 
-def render_fifo(args: list[Arg] | tuple[Arg, ...] | Sequence[Arg]) -> str:
+def render_fifo(args: Sequence[Arg]) -> str:
     stream_args = [arg for arg in args if arg.is_stream]
     ctx = DutContext(
         args=list(args),
@@ -239,7 +231,7 @@ def render_m_axi_connections(arg_name: str) -> str:
 
 def render_vitis_dut(
     top_name: str,
-    args: list[Arg] | tuple[Arg, ...] | Sequence[Arg],
+    args: Sequence[Arg],
 ) -> str:
     ctx = DutContext(top_name=top_name, args=list(args))
     return _render_template("vitis_dut.j2", ctx=ctx)
@@ -248,7 +240,7 @@ def render_vitis_dut(
 def render_hls_dut(
     top_name: str,
     top_is_leaf_task: bool,
-    args: list[Arg] | tuple[Arg, ...] | Sequence[Arg],
+    args: Sequence[Arg],
     scalar_to_val: dict[str, str],
 ) -> str:
     ctx = DutContext(

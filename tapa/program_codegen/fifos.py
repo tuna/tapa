@@ -7,19 +7,11 @@ from typing import TYPE_CHECKING
 
 from tapa.common.target import Target
 from tapa.task_codegen.fifos import (
-    connect_fifo_externally as connect_fifo_externally_codegen,
-)
-from tapa.task_codegen.fifos import (
-    get_connection_to as get_connection_to_codegen,
-)
-from tapa.task_codegen.fifos import (
-    get_fifo_directions as get_fifo_directions_codegen,
-)
-from tapa.task_codegen.fifos import (
-    get_fifo_suffixes as get_fifo_suffixes_codegen,
-)
-from tapa.task_codegen.fifos import (
-    is_fifo_external as is_fifo_external_codegen,
+    connect_fifo_externally,
+    get_connection_to,
+    get_fifo_directions,
+    get_fifo_suffixes,
+    is_fifo_external,
 )
 from tapa.util import as_type
 from tapa.verilog.ast.signal import Wire
@@ -45,20 +37,18 @@ def connect_fifos(
     """Declare FIFO wires between child tasks and connect external FIFOs."""
     _logger.debug("  connecting %s's children tasks", task.name)
     for fifo_name in task.fifos:
-        for direction in get_fifo_directions_codegen(task, fifo_name):
-            task_name, _, fifo_port = get_connection_to_codegen(
-                task, fifo_name, direction
-            )
+        for direction in get_fifo_directions(task, fifo_name):
+            task_name, _, fifo_port = get_connection_to(task, fifo_name, direction)
 
-            for suffix in get_fifo_suffixes_codegen(direction):
+            for suffix in get_fifo_suffixes(direction):
                 wire = Wire(
                     wire_name(fifo_name, suffix),
                     get_task(task_name).module.get_port_of(fifo_port, suffix).width,
                 )
                 task.module.add_signals([wire])
 
-        if is_fifo_external_codegen(task, fifo_name):
-            connect_fifo_externally_codegen(
+        if is_fifo_external(task, fifo_name):
+            connect_fifo_externally(
                 task,
                 fifo_name,
                 task.name == top and target == Target.XILINX_VITIS,
@@ -71,11 +61,9 @@ def instantiate_fifos(
 ) -> None:
     """Instantiate declared FIFO channels on the given task module."""
     _logger.debug("  instantiating FIFOs in %s", task.name)
-    fifos = {name: fifo for name, fifo in task.fifos.items() if "depth" in fifo}
-    if not fifos:
-        return
-
-    for fifo_name, fifo in fifos.items():
+    for fifo_name, fifo in task.fifos.items():
+        if "depth" not in fifo:
+            continue
         _logger.debug("    instantiating %s.%s", task.name, fifo_name)
         task.module.add_fifo_instance(
             name=fifo_name,

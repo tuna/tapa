@@ -119,6 +119,9 @@ class Instance:
             def is_ommap(self) -> bool:
                 return self == self.OMMAP
 
+        # Shared lookup for Arg and Port; hmap maps to MMAP like an upper-level mmap.
+        _CAT_LOOKUP: "dict[str, Instance.Arg.Cat]"
+
         def __init__(
             self,
             name: str,
@@ -130,15 +133,7 @@ class Instance:
             self.name = name
             self.instance = instance
             if isinstance(cat, str):
-                self.cat = {
-                    "istream": Instance.Arg.Cat.ISTREAM,
-                    "ostream": Instance.Arg.Cat.OSTREAM,
-                    "istreams": Instance.Arg.Cat.ISTREAMS,
-                    "ostreams": Instance.Arg.Cat.OSTREAMS,
-                    "scalar": Instance.Arg.Cat.SCALAR,
-                    "mmap": Instance.Arg.Cat.MMAP,
-                    "async_mmap": Instance.Arg.Cat.ASYNC_MMAP,
-                }[cat]
+                self.cat = Instance.Arg._CAT_LOOKUP[cat]  # noqa: SLF001
                 # only lower-level async_mmap is acknowledged
                 if is_upper and self.cat == Instance.Arg.Cat.ASYNC_MMAP:
                     self.cat = Instance.Arg.Cat.MMAP
@@ -397,20 +392,25 @@ class Instance:
         return f"{self.name}___{arg}"
 
 
+# Populate _CAT_LOOKUP after Instance.Arg.Cat is defined.
+# Port uses this too; hmap and immap/ommap are Port-only entries.
+Instance.Arg._CAT_LOOKUP = {  # noqa: SLF001
+    "istream": Instance.Arg.Cat.ISTREAM,
+    "ostream": Instance.Arg.Cat.OSTREAM,
+    "istreams": Instance.Arg.Cat.ISTREAMS,
+    "ostreams": Instance.Arg.Cat.OSTREAMS,
+    "scalar": Instance.Arg.Cat.SCALAR,
+    "mmap": Instance.Arg.Cat.MMAP,
+    "immap": Instance.Arg.Cat.IMMAP,
+    "ommap": Instance.Arg.Cat.OMMAP,
+    "async_mmap": Instance.Arg.Cat.ASYNC_MMAP,
+    "hmap": Instance.Arg.Cat.MMAP,
+}
+
+
 class Port:
     def __init__(self, obj: dict[str, str | int]) -> None:
-        self.cat = {
-            "istream": Instance.Arg.Cat.ISTREAM,
-            "ostream": Instance.Arg.Cat.OSTREAM,
-            "istreams": Instance.Arg.Cat.ISTREAMS,
-            "ostreams": Instance.Arg.Cat.OSTREAMS,
-            "scalar": Instance.Arg.Cat.SCALAR,
-            "mmap": Instance.Arg.Cat.MMAP,
-            "immap": Instance.Arg.Cat.IMMAP,
-            "ommap": Instance.Arg.Cat.OMMAP,
-            "async_mmap": Instance.Arg.Cat.ASYNC_MMAP,
-            "hmap": Instance.Arg.Cat.MMAP,
-        }[as_type(str, obj["cat"])]
+        self.cat = Instance.Arg._CAT_LOOKUP[as_type(str, obj["cat"])]  # noqa: SLF001
         self.name = sanitize_array_name(as_type(str, obj["name"]))
         self.ctype = as_type(str, obj["type"])
         self.width = as_type(int, obj["width"])

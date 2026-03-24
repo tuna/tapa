@@ -2,12 +2,6 @@
 
 from __future__ import annotations
 
-__copyright__ = """
-Copyright (c) 2024 RapidStream Design Automation, Inc. and contributors.
-All rights reserved. The contributor(s) of this file has/have agreed to the
-RapidStream Contributor License Agreement.
-"""
-
 import logging
 import re
 import shlex
@@ -95,11 +89,11 @@ def get_vivado_tcl(
         else "tapa_fast_cosim_dpi_legacy_rdi"
     )
 
-    tapa_hdl_path = config["verilog_path"]
+    tapa_hdl_path = config.verilog_path
 
     script = []
 
-    part_num = config["part_num"]
+    part_num = config.part_num
 
     if not part_num:
         msg = (

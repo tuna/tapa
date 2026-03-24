@@ -154,10 +154,7 @@ class Graph(Base):
         scalar_args: set[str] = set()
         for inst in new_insts:
             assert isinstance(inst.obj["args"], dict)
-            args = inst.obj["args"]
-            assert isinstance(args, dict)
-            for arg in args.values():
-                assert isinstance(arg, dict)
+            for arg in inst.obj["args"].values():
                 assert isinstance(arg["arg"], str)
                 if arg["cat"] == "scalar":
                     scalar_args.add(arg["arg"])
@@ -242,22 +239,14 @@ class Graph(Base):
                 continue
             updated_fifo = copy.deepcopy(fifo)
             if "consumed_by" in updated_fifo:
-                consumer_name = fifo["consumed_by"][0]
-                consumer_top_idx = fifo["consumed_by"][1]
                 updated_fifo["consumed_by"] = (
-                    task_inst_to_slot[
-                        get_instance_name((consumer_name, consumer_top_idx))
-                    ],
+                    task_inst_to_slot[get_instance_name(fifo["consumed_by"])],
                     0,
                 )
 
             if "produced_by" in updated_fifo:
-                producer_name = fifo["produced_by"][0]
-                producer_top_idx = fifo["produced_by"][1]
                 updated_fifo["produced_by"] = (
-                    task_inst_to_slot[
-                        get_instance_name((producer_name, producer_top_idx))
-                    ],
+                    task_inst_to_slot[get_instance_name(fifo["produced_by"])],
                     0,
                 )
 
@@ -277,11 +266,11 @@ class Graph(Base):
             new_obj["tasks"][slot_name] = slot_def.to_dict()
             slot_defs[slot_name] = slot_def
 
-        inst_to_slot = {}
-        for slot_name, insts in slot_to_insts.items():
-            for inst in insts:
-                assert isinstance(inst, str)
-                inst_to_slot[inst] = slot_name
+        inst_to_slot = {
+            inst: slot_name
+            for slot_name, insts in slot_to_insts.items()
+            for inst in insts
+        }
 
         top_name = self.get_top_task_name()
         assert top_name in new_obj["tasks"]
@@ -298,9 +287,7 @@ def _infer_arg_cat_from_subinst(port_name: str, tasks: dict[str, dict]) -> str:
     for task_insts in tasks.values():
         for inst in task_insts:
             assert isinstance(inst["args"], dict)
-            args = inst["args"]
-            assert isinstance(args, dict)
-            for arg in args.values():
+            for arg in inst["args"].values():
                 if arg["arg"] == port_name:
                     cat.add(arg["cat"])
     assert len(cat) == 1
@@ -312,9 +299,7 @@ def _get_used_ports(new_insts: list[TaskInstance], fifo_ports: list[str]) -> lis
     new_ports = []
     for inst in new_insts:
         assert isinstance(inst.obj["args"], dict)
-        args = inst.obj["args"]
-        assert isinstance(args, dict)
-        for port_name, arg in args.items():
+        for port_name, arg in inst.obj["args"].items():
             # Skip mmap ports as they are generated separately
             if arg["cat"] in {"mmap", "async_mmap"}:
                 continue
@@ -341,21 +326,13 @@ def _update_fifo_inst_idx(
     fifo_obj = copy.deepcopy(fifo)
 
     if "consumed_by" in fifo_obj:
-        consumer_name = fifo_obj["consumed_by"][0]
-        consumer_top_idx = fifo_obj["consumed_by"][1]
-        fifo_obj["consumed_by"] = (
-            consumer_name,
-            top_to_slot_inst_idx_map[consumer_name][consumer_top_idx],
-        )
+        name, top_idx = fifo_obj["consumed_by"]
+        fifo_obj["consumed_by"] = (name, top_to_slot_inst_idx_map[name][top_idx])
 
     if "produced_by" in fifo_obj:
-        producer_name = fifo_obj["produced_by"][0]
-        producer_top_idx = fifo_obj["produced_by"][1]
-        assert producer_top_idx in top_to_slot_inst_idx_map[producer_name]
-        fifo_obj["produced_by"] = (
-            producer_name,
-            top_to_slot_inst_idx_map[producer_name][producer_top_idx],
-        )
+        name, top_idx = fifo_obj["produced_by"]
+        assert top_idx in top_to_slot_inst_idx_map[name]
+        fifo_obj["produced_by"] = (name, top_to_slot_inst_idx_map[name][top_idx])
 
     return fifo_obj
 
@@ -371,7 +348,7 @@ def _get_slot_fifos(
     - new_fifos: dict of updated slot fifos
     - fifo_ports: list of external fifo names.
     """
-    new_fifos: dict[str, dict] = defaultdict(dict)
+    new_fifos: dict[str, dict] = {}
     fifo_ports: list[str] = []
     for fifo in fifos:
         assert fifo.name
@@ -381,32 +358,27 @@ def _get_slot_fifos(
             continue
         src = fifo_obj["consumed_by"]
         dst = fifo_obj["produced_by"]
+        src_in_slot = get_instance_name((src[0], src[1])) in task_inst_in_slot
+        dst_in_slot = get_instance_name((dst[0], dst[1])) in task_inst_in_slot
         # For fifo connecting task insts inside the slot, keep it
-        if (
-            get_instance_name((src[0], src[1])) in task_inst_in_slot
-            and get_instance_name((dst[0], dst[1])) in task_inst_in_slot
-        ):
+        if src_in_slot and dst_in_slot:
             new_fifos[fifo.name] = fifo_obj
         # For fifo connecting a task inst inside and an inst outside the slot,
         # modify to an external fifo and put it to ports later
-        elif get_instance_name((src[0], src[1])) in task_inst_in_slot:
-            new_fifos[fifo.name] = {
-                "consumed_by": src,
-            }
+        elif src_in_slot:
+            new_fifos[fifo.name] = {"consumed_by": src}
             fifo_ports.append(fifo.name)
-        elif get_instance_name((dst[0], dst[1])) in task_inst_in_slot:
-            new_fifos[fifo.name] = {
-                "produced_by": dst,
-            }
+        elif dst_in_slot:
+            new_fifos[fifo.name] = {"produced_by": dst}
             fifo_ports.append(fifo.name)
 
-    new_fifos_obj = {}
-    for fifo_name, fifo_obj in new_fifos.items():
-        new_fifos_obj[fifo_name] = _update_fifo_inst_idx(
-            fifo_obj, top_to_slot_inst_idx_map
-        )
-
-    return new_fifos_obj, fifo_ports
+    return (
+        {
+            name: _update_fifo_inst_idx(obj, top_to_slot_inst_idx_map)
+            for name, obj in new_fifos.items()
+        },
+        fifo_ports,
+    )
 
 
 def _get_mmap_slot_port_name(port_name: str, inst_name: str) -> str:

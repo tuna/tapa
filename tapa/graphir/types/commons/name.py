@@ -6,14 +6,11 @@ All rights reserved. The contributor(s) of this file has/have agreed to the
 RapidStream Contributor License Agreement.
 """
 
-import logging
 from abc import abstractmethod
 from collections.abc import Generator
 
 from tapa.graphir.types.commons.model import Model
 from tapa.graphir.utilities.name import suggest_name
-
-_logger = logging.getLogger(__name__)
 
 
 class NamedModel(Model):

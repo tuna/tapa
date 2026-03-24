@@ -20,12 +20,6 @@ if TYPE_CHECKING:
     from tapa.verilog.xilinx.module import Module
 
 
-def _get_rs_port(port: str) -> str:
-    if port in {"READY", "VALID"}:
-        return port.lower()
-    return "data"
-
-
 def _get_rs_pragma(port_name: str) -> Pragma | None:
     if port_name == HANDSHAKE_CLK:
         return Pragma("RS_CLK")
@@ -39,10 +33,8 @@ def _get_rs_pragma(port_name: str) -> Pragma | None:
     for channel, ports in M_AXI_PORTS.items():
         for port, _ in ports:
             if port_name.endswith(f"_{channel}{port}"):
-                return Pragma(
-                    "RS_HS",
-                    f"{port_name[: -len(port)]}.{_get_rs_port(port)}",
-                )
+                role = port.lower() if port in {"READY", "VALID"} else "data"
+                return Pragma("RS_HS", f"{port_name[: -len(port)]}.{role}")
 
     for suffix, role in AXIS_PORTS.items():
         if port_name.endswith(suffix):
@@ -51,13 +43,13 @@ def _get_rs_pragma(port_name: str) -> Pragma | None:
     return None
 
 
-def build_m_axi_io_ports(
-    _module: Module,
+def add_m_axi(
+    module: Module,
     name: str,
     data_width: int,
     addr_width: int = 64,
     id_width: int | None = None,
-) -> list[IOPort]:
+) -> Module:
     io_ports = []
     for channel, ports in M_AXI_PORTS.items():
         for port, direction in ports:
@@ -70,25 +62,7 @@ def build_m_axi_io_ports(
                     _get_rs_pragma(port_name),
                 )
             )
-    return io_ports
-
-
-def add_m_axi(
-    module: Module,
-    name: str,
-    data_width: int,
-    addr_width: int = 64,
-    id_width: int | None = None,
-) -> Module:
-    return module.add_ports(
-        build_m_axi_io_ports(
-            module,
-            name,
-            data_width,
-            addr_width=addr_width,
-            id_width=id_width,
-        ),
-    )
+    return module.add_ports(io_ports)
 
 
 def generate_m_axi_ports(

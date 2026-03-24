@@ -82,9 +82,7 @@ class HierarchicalName(RootModel[tuple[str, ...] | None]):
 
     def is_empty(self) -> bool:
         """Check if the name is empty."""
-        if self.root is None:
-            return False
-        return len(self.root) == 0
+        return self.root is not None and len(self.root) == 0
 
     def get_leaf_name(self) -> str | None:
         """Get the leaf name of the hierarchical name."""

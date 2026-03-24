@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
     from tapa.task import Task
+    from tapa.verilog.xilinx.module import Module
 
 
 def _get_control_connections(instance_name: str) -> list[ModuleConnection]:
@@ -47,14 +48,13 @@ def _get_control_connections(instance_name: str) -> list[ModuleConnection]:
             expr=Expression((Token.new_id("ap_rst_n"),)),
         ),
     ]
-    ap_signals = ["ap_start", "ap_done", "ap_ready", "ap_idle"]
     connections.extend(
         ModuleConnection(
             name=signal,
             hierarchical_name=HierarchicalName.get_name(signal),
             expr=Expression((Token.new_id(f"{instance_name}__{signal}"),)),
         )
-        for signal in ap_signals
+        for signal in ("ap_start", "ap_done", "ap_ready", "ap_idle")
     )
     return connections
 
@@ -186,6 +186,30 @@ def get_submodule_inst(
     )
 
 
+def _make_fsm_inst(
+    fsm_module: Module,
+    floorplan_region: str | None,
+) -> ModuleInstantiation:
+    """Build a self-connected FSM instantiation."""
+    name = f"{fsm_module.name}_0"
+    return ModuleInstantiation(
+        name=name,
+        hierarchical_name=HierarchicalName.get_name(name),
+        module=fsm_module.name,
+        connections=tuple(
+            ModuleConnection(
+                name=port,
+                hierarchical_name=HierarchicalName.get_name(port),
+                expr=Expression((Token.new_id(port),)),
+            )
+            for port in fsm_module.ports
+        ),
+        parameters=(),
+        floorplan_region=floorplan_region,
+        area=None,
+    )
+
+
 def get_upper_module_ir_subinsts(
     upper_task: Task,
     submodule_ir_defs: Mapping[str, AnyModuleDefinition],
@@ -193,34 +217,12 @@ def get_upper_module_ir_subinsts(
 ) -> list[ModuleInstantiation]:
     """Get leaf module instantiations of slot module."""
     subtasks = {inst.task.name: inst.task for inst in upper_task.instances}
+    arg_table = get_task_arg_table(upper_task)
     ir_insts = [
-        get_submodule_inst(
-            subtasks,
-            inst,
-            get_task_arg_table(upper_task),
-            floorplan_region,
-        )
+        get_submodule_inst(subtasks, inst, arg_table, floorplan_region)
         for inst in upper_task.instances
     ]
-    fsm_module = upper_task.fsm_module
-    ir_insts.append(
-        ModuleInstantiation(
-            name=f"{fsm_module.name}_0",
-            hierarchical_name=HierarchicalName.get_name(f"{fsm_module.name}_0"),
-            module=fsm_module.name,
-            connections=tuple(
-                ModuleConnection(
-                    name=port,
-                    hierarchical_name=HierarchicalName.get_name(port),
-                    expr=Expression((Token.new_id(port),)),
-                )
-                for port in fsm_module.ports
-            ),
-            parameters=(),
-            floorplan_region=floorplan_region,
-            area=None,
-        )
-    )
+    ir_insts.append(_make_fsm_inst(upper_task.fsm_module, floorplan_region))
     for fifo_name, fifo in upper_task.fifos.items():
         if is_fifo_external_codegen(upper_task, fifo_name):
             continue
@@ -275,34 +277,17 @@ def get_top_ir_subinsts(
     fsm_floorplan_region: str,
 ) -> list[ModuleInstantiation]:
     """Get slot, FSM, and FIFO instantiations for the top module."""
+    arg_table = get_task_arg_table(top_task)
     ir_insts = [
         get_top_level_slot_inst(
             slot_defs[inst.task.name],
             inst,
-            get_task_arg_table(top_task)[inst.name],
+            arg_table[inst.name],
             floorplan_task_name_region_mapping,
         )
         for inst in top_task.instances
     ]
-    fsm_module = top_task.fsm_module
-    ir_insts.append(
-        ModuleInstantiation(
-            name=f"{fsm_module.name}_0",
-            hierarchical_name=HierarchicalName.get_name(f"{fsm_module.name}_0"),
-            module=fsm_module.name,
-            connections=tuple(
-                ModuleConnection(
-                    name=port,
-                    hierarchical_name=HierarchicalName.get_name(port),
-                    expr=Expression((Token.new_id(port),)),
-                )
-                for port in fsm_module.ports
-            ),
-            parameters=(),
-            floorplan_region=fsm_floorplan_region,
-            area=None,
-        )
-    )
+    ir_insts.append(_make_fsm_inst(top_task.fsm_module, fsm_floorplan_region))
     for fifo_name, fifo in top_task.fifos.items():
         if is_fifo_external_codegen(top_task, fifo_name):
             continue

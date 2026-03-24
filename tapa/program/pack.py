@@ -6,8 +6,6 @@ RapidStream Contributor License Agreement.
 
 import contextlib
 import logging
-import os
-import os.path
 import re
 import shutil
 import tempfile
@@ -54,11 +52,9 @@ class ProgramPackMixin(
                 )
 
                 # merge the graphir export into the RTL directory
-                for filename in os.listdir(full_export_path):
-                    src_file = os.path.join(full_export_path, filename)
-                    dst_file = os.path.join(self.rtl_dir, filename)
-                    if os.path.isfile(src_file):
-                        shutil.copy2(src_file, dst_file)
+                for src_file in full_export_path.iterdir():
+                    if src_file.is_file():
+                        shutil.copy2(src_file, Path(self.rtl_dir) / src_file.name)
 
             pack(
                 top_name=self.top,
@@ -73,7 +69,7 @@ class ProgramPackMixin(
             packed_obj = stack.enter_context(zipfile.ZipFile(tmp_fp, "a"))
             output_fp = stack.enter_context(zipfile.ZipFile(output_file, "w"))
             for filename in self.report_paths:
-                arcname = os.path.basename(filename)
+                arcname = Path(filename).name
                 _logger.debug("  packing %s", arcname)
                 packed_obj.write(filename, arcname)
 
@@ -108,10 +104,9 @@ class ProgramPackMixin(
                     _logger.debug("added %s to the zip file", file)
 
             _logger.info("adding the TAPA information to the zip file")
-            for filename in [self.report_paths.yaml]:
-                file = Path(filename)
-                tmp_zipf.write(file, f"{file.name}")
-                _logger.debug("added %s to the zip file", file)
+            report_yaml = Path(self.report_paths.yaml)
+            tmp_zipf.write(report_yaml, report_yaml.name)
+            _logger.debug("added %s to the zip file", report_yaml)
 
             for name, content in contexts.items():
                 tmp_zipf.writestr(f"{name}.yaml", safe_dump(content))

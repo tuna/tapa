@@ -192,15 +192,10 @@ def export_verilog_grouped_module(module: GroupedModuleDefinition) -> str:
         <BLANKLINE>
         endmodule  // nesting_module
     """
-    pre_export_checks(module)
+    check_missing_wire(module)
 
     template = env.from_string(GROUPED_MODULE)
     return template.render(module=module)
-
-
-def pre_export_checks(mod: GroupedModuleDefinition) -> None:
-    """Run pre-export checks."""
-    check_missing_wire(mod)
 
 
 def export_verilog_verilog_module(module: VerilogModuleDefinition) -> str:

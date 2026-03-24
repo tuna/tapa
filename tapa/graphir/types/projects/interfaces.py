@@ -40,15 +40,8 @@ class Interfaces(  # type: ignore [misc]
         super().__init__(value, **kwargs)
 
     def get(self, module_name: str) -> list[AnyInterface]:
-        """Return the interfaces of the given module.
-
-        Args:
-            module_name (str): The name of the module.
-
-        Returns:
-            list[AnyInterface]: The interfaces of the module.
-        """
-        return self.get(module_name, [])  # type: ignore[reportCallIssue]
+        """Return the interfaces of the given module, or [] if not present."""
+        return self.root.get(module_name, [])
 
     def remove(self, module_names: set[str]) -> None:
         """Remove the interfaces of the given modules."""

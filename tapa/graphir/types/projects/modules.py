@@ -161,12 +161,12 @@ class Modules(NamespaceModel):
                 module='stub', connections=(), parameters=(), floorplan_region=None,
                 area=None, pragmas=()))
         """
-        all_submodules = module.get_submodules()
-
-        for curr_submodule in module.get_submodules():
-            module_def = self.get(curr_submodule.module)
-            all_submodules += self.get_submodules_recursive(module_def)
-
+        submodules = module.get_submodules()
+        all_submodules = submodules
+        for curr_submodule in submodules:
+            all_submodules += self.get_submodules_recursive(
+                self.get(curr_submodule.module)
+            )
         return all_submodules
 
     def get_all_used_modules(self) -> set[str]:
@@ -245,26 +245,11 @@ class Modules(NamespaceModel):
         Returns:
             Modules: The updated immutable modules object.
         """
-        # Store the modules from the iterable.
         modules = tuple(modules)
-
-        # The module names to be updated.
         updated_names = {mod.name for mod in modules}
-
-        defs = tuple(
-            sorted(
-                (
-                    tuple(
-                        # Remove the existing modules with the same name, if any.
-                        m
-                        for m in self.module_definitions
-                        if m.name not in updated_names
-                    )
-                    + modules  # And add updated modules
-                ),
-                key=lambda m: m.name,
-            )
-        )
+        # Replace existing modules with the same name, add new ones, keep sorted.
+        retained = (m for m in self.module_definitions if m.name not in updated_names)
+        defs = tuple(sorted((*retained, *modules), key=lambda m: m.name))
         return self.updated(module_definitions=defs)
 
     def modules_removed(self, names: Iterable[str]) -> "Modules":
@@ -276,22 +261,19 @@ class Modules(NamespaceModel):
         Returns:
             Modules: The updated immutable modules object.
         """
+        names = set(names)
         remained_modules = tuple(
             m for m in self.module_definitions if m.name not in names
         )
 
-        # check if used modules are removed
-        used_modules: set[str] = set()
+        # Check that no remaining grouped module references a removed module.
+        remained_module_names = {mod.name for mod in remained_modules}
         for mod in remained_modules:
             if isinstance(mod, GroupedModuleDefinition):
-                used_modules |= {inst.module for inst in mod.submodules}
-
-        remained_module_names = {mod.name for mod in remained_modules}
-
-        for mod_name in used_modules:
-            if mod_name not in remained_module_names:
-                msg = f"Module {mod_name} is used but removed."
-                raise ValueError(msg)
+                for inst in mod.submodules:
+                    if inst.module not in remained_module_names:
+                        msg = f"Module {inst.module} is used but removed."
+                        raise ValueError(msg)
 
         # remained_modules preserves the existing sorted order (filter only)
         return self.updated(module_definitions=remained_modules)

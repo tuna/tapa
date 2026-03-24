@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 __copyright__ = """
 Copyright (c) 2024 RapidStream Design Automation, Inc. and contributors.
 All rights reserved. The contributor(s) of this file has/have agreed to the
@@ -53,16 +51,15 @@ def load_persistent_context(name: str) -> dict:
     """
     local_ctx = click.get_current_context().obj
 
-    if local_ctx.get(name, None) is not None:
+    if local_ctx.get(name) is not None:
         _logger.info("reusing TAPA %s from upstream flows.", name)
-
     else:
         json_file = os.path.join(get_work_dir(), f"{name}.json")
         _logger.info("loading TAPA graph from json `%s`.", json_file)
 
         try:
             with open(json_file, encoding="utf-8") as input_fp:
-                obj = json.loads(input_fp.read())
+                obj = json.load(input_fp)
         except FileNotFoundError:
             msg = (
                 f"Graph description {json_file} does not exist.  Either "

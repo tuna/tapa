@@ -175,32 +175,34 @@ _CTRL_S_AXI_PARAMETERS = [
 ]
 
 
+_OPERATOR_SYMBOLS: dict[type[Node], str] = {
+    Plus: "+",
+    Minus: "-",
+    Times: "*",
+    Divide: "/",
+    Mod: "%",
+    Power: "**",
+    Eq: "==",
+    NotEq: "!=",
+    GreaterThan: ">",
+    LessThan: "<",
+    GreaterEq: ">=",
+    LessEq: "<=",
+    Land: "&&",
+    Lor: "||",
+    And: "&",
+    Or: "|",
+    Xor: "^",
+    Xnor: "~^",
+    Sll: "<<",
+    Srl: ">>",
+    Sra: ">>>",
+}
+
+
 def get_operator_token(node: Node) -> Token:
-    """Map AST classes to operator symbols."""
-    mapping = {
-        Plus: "+",
-        Minus: "-",
-        Times: "*",
-        Divide: "/",
-        Mod: "%",
-        Power: "**",
-        Eq: "==",
-        NotEq: "!=",
-        GreaterThan: ">",
-        LessThan: "<",
-        GreaterEq: ">=",
-        LessEq: "<=",
-        Land: "&&",
-        Lor: "||",
-        And: "&",
-        Or: "|",
-        Xor: "^",
-        Xnor: "~^",
-        Sll: "<<",
-        Srl: ">>",
-        Sra: ">>>",
-    }
-    return Token.new_lit(mapping[type(node)])
+    """Map AST node to an operator symbol token."""
+    return Token.new_lit(_OPERATOR_SYMBOLS[type(node)])
 
 
 def get_task_graphir_ports(task_module: Module) -> list[ModulePort]:
@@ -229,18 +231,15 @@ def get_task_graphir_ports(task_module: Module) -> list[ModulePort]:
 
 def get_task_graphir_parameters(task_module: Module) -> list[ModuleParameter]:
     """Get the graphir parameters from a task."""
-    graphir_params = []
-    for name, param in task_module.params.items():
-        expr = Expression.from_str_to_tokens(param.value)
-        graphir_params.append(
-            ModuleParameter(
-                name=name,
-                hierarchical_name=HierarchicalName.get_name(param.name),
-                expr=expr,
-                range=None,
-            )
+    return [
+        ModuleParameter(
+            name=name,
+            hierarchical_name=HierarchicalName.get_name(param.name),
+            expr=Expression.from_str_to_tokens(param.value),
+            range=None,
         )
-    return graphir_params
+        for name, param in task_module.params.items()
+    ]
 
 
 def get_child_port_connection_mapping(
@@ -261,18 +260,15 @@ def get_child_port_connection_mapping(
         matching_ports[task_port.name] = arg
 
     elif task_port.cat.is_istream or task_port.cat.is_istreams:
-        for suffix in ISTREAM_SUFFIXES:
-            full_port_name = (
-                task_port.name if idx is None else f"{task_port.name}_{idx}"
-            )
+        suffixes = ISTREAM_SUFFIXES
+        full_port_name = task_port.name if idx is None else f"{task_port.name}_{idx}"
+        for suffix in suffixes:
             module_port = task_module.get_port_of(full_port_name, suffix)
             matching_ports[module_port.name] = get_stream_port_name(arg, suffix)
 
     elif task_port.cat.is_ostream or task_port.cat.is_ostreams:
+        full_port_name = task_port.name if idx is None else f"{task_port.name}_{idx}"
         for suffix in OSTREAM_SUFFIXES:
-            full_port_name = (
-                task_port.name if idx is None else f"{task_port.name}_{idx}"
-            )
             module_port = task_module.get_port_of(full_port_name, suffix)
             matching_ports[module_port.name] = get_stream_port_name(arg, suffix)
 
@@ -369,11 +365,11 @@ def get_ctrl_s_axi_def(top: Task, content: str) -> VerilogModuleDefinition:
             ModulePort(
                 name=ctrl_s_axi_port_name,
                 hierarchical_name=HierarchicalName.get_name(ctrl_s_axi_port_name),
-                type=ModulePort.Type.OUTPUT,  # Control ports are inputs
+                type=ModulePort.Type.OUTPUT,
                 range=Range(
                     left=Expression((Token.new_lit("63"),)),
                     right=Expression((Token.new_lit("0"),)),
-                ),  # No range for control ports
+                ),
             )
         )
     return VerilogModuleDefinition(

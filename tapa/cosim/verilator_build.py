@@ -17,7 +17,7 @@ _logger = logging.getLogger().getChild(__name__)
 
 
 def launch_verilator(config: CosimConfig, tb_output_dir: str) -> None:
-    top_name = config.top_name
+    top_name = config["top_name"]
     _logger.info("Building Verilator simulation for %s", top_name)
 
     build_script = Path(tb_output_dir) / "build.sh"

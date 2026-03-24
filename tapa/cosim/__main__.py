@@ -1,9 +1,3 @@
-__copyright__ = """
-Copyright (c) 2024 RapidStream Design Automation, Inc. and contributors.
-All rights reserved. The contributor(s) of this file has/have agreed to the
-RapidStream Contributor License Agreement.
-"""
-
 import ast as _ast
 import logging
 import os
@@ -42,7 +36,7 @@ from tapa.cosim.vivado import get_vivado_tcl
 from tapa.remote.config import get_remote_config
 from tapa.remote.popen import create_tool_process
 
-[logging.root.removeHandler(handler) for handler in logging.root.handlers]
+logging.root.handlers.clear()
 logging.basicConfig(
     level=logging.INFO,
     format="[%(levelname)s:%(name)s:%(lineno)d] %(message)s",

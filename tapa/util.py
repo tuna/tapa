@@ -88,7 +88,7 @@ def get_instance_name(item: tuple[str, int]) -> str:
 
 
 def get_module_name(module: str) -> str:
-    return f"{module}"
+    return module
 
 
 def as_type[T](type_: type[T], value: object) -> T:
@@ -133,7 +133,7 @@ def setup_logging(
     hostname = socket.gethostname()
     file_prefix = f"{program_name}.{hostname}.{username}.log"
     symlink_prefix = program_name
-    time_str = time.strftime("%Y%m%d-%H%M%S", time.localtime(time.time()))
+    time_str = time.strftime("%Y%m%d-%H%M%S", time.localtime())
     basename = f"{file_prefix}.INFO.{time_str}.{os.getpid()}"
     filename = os.path.join(log_dir, basename)
     symlink = os.path.join(log_dir, symlink_prefix + ".INFO")

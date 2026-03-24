@@ -8,12 +8,12 @@ from typing import TYPE_CHECKING
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 from tapa.cosim.common import output_data_path as _output_data_path
+from tapa.cosim.config_preprocess import CosimConfig
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from tapa.cosim.common import AXI, Arg
-    from tapa.cosim.config_preprocess import CosimConfig
 
 _env = Environment(
     loader=FileSystemLoader(str(Path(__file__).parent / "assets")),
@@ -129,10 +129,12 @@ def generate_cpp_testbench(  # noqa: PLR0913, PLR0917
     top_name: str,
     axi_list: list[AXI],
     args: Sequence[Arg],
-    config: CosimConfig,
+    config: CosimConfig | dict,
     reg_addrs: dict[str, list[str]],
     mode: str,
 ) -> str:
+    if not isinstance(config, CosimConfig):
+        config = CosimConfig.model_validate(config)
     scalar_to_val = config.scalar_to_val
     axi_ctx = _build_axi_ctx(
         axi_list,

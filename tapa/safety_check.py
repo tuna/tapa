@@ -6,8 +6,6 @@ All rights reserved. The contributor(s) of this file has/have agreed to the
 RapidStream Contributor License Agreement.
 """
 
-import logging
-
 from tapa.task import Task
 
 DISABLED_MMAP_NAME_LIST = {
@@ -21,8 +19,6 @@ DISABLED_MMAP_NAME_LIST = {
     "wire",
 }
 
-_logger = logging.getLogger().getChild(__name__)
-
 
 def check_mmap_arg_name(task_list: list[Task]) -> None:
     """Mmap arguments cannot be named "in" or "out".
@@ -34,8 +30,8 @@ def check_mmap_arg_name(task_list: list[Task]) -> None:
         if task.is_upper:
             for port_name in task.ports:
                 if port_name in DISABLED_MMAP_NAME_LIST:
-                    _logger.error(
-                        "Task arguments cannot be among the reserved keywords: %s",
-                        DISABLED_MMAP_NAME_LIST,
+                    msg = (
+                        f"Task argument '{port_name}' is a reserved keyword: "
+                        f"{DISABLED_MMAP_NAME_LIST}"
                     )
-                    raise AssertionError
+                    raise ValueError(msg)

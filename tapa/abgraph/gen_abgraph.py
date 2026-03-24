@@ -15,7 +15,7 @@ from tapa.abgraph.ab_graph import ABEdge, ABGraph, ABVertex, Area, convert_area
 from tapa.core import Program
 from tapa.steps.floorplan import convert_region_format
 from tapa.util import as_type
-from tapa.verilog.xilinx.module import get_streams_fifos
+from tapa.verilog.xilinx.module_ops.ports import get_streams_fifos
 
 TAPA_PORT_PREFIX = "__tapa_port_"
 
@@ -98,34 +98,10 @@ def get_basic_ab_graph(
             current_slot=None,
         )
 
-    def replace_bracketed_number(s: str) -> str:
-        """Replace the bracketed number in the string with an underscore.
-
-        Streams fifo names contain a bracketed number at the end such as fifo[0], which
-        matches the connected task instance arg name in the pattern of fifo_0. We need
-        to replace the bracketed number with an underscore to match the connected task
-        instance arg name.
-        """
-        pattern = r"\[(\d+)\]$"
-        match = re.search(pattern, s)
-
-        if match:
-            number = match.group(1)
-            return re.sub(pattern, f"_{number}", s)
-        return s
-
     for fifo_name, fifo_inst in top.fifos.items():
-        # each fifo has a producer and a consumer, but the fifo_inst only tells
-        # the task name, not the instance name. So we need to check all instances
-        # port connection to find the instance name.
-        consumer_task_inst = (
-            f"{fifo_inst['consumed_by'][0]}_{fifo_inst['consumed_by'][1]}"
-        )
-
-        producer_task_inst = (
-            f"{fifo_inst['produced_by'][0]}_{fifo_inst['produced_by'][1]}"
-        )
-
+        # fifo_inst gives task name and index; combine to get the instance name
+        consumer_task_inst = "{}_{}".format(*fifo_inst["consumed_by"])
+        producer_task_inst = "{}_{}".format(*fifo_inst["produced_by"])
         edges.append(
             ABEdge(
                 source_vertex=vertices[producer_task_inst],
@@ -171,8 +147,9 @@ def add_port_iface_connections(  # noqa: C901
                 region = current_region
 
         if not region:
-            msg = f"Port {port.name} does not match any preassignment pattern."
-            _logger.warning(msg)
+            _logger.warning(
+                "Port %s does not match any preassignment pattern.", port.name
+            )
 
         dummy_vertex = ABVertex(
             name=port.name,

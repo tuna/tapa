@@ -77,6 +77,43 @@ class Token(Model):
         return self.repr
 
 
+# Operators and bracket characters that are always literals in expressions.
+_LITERAL_TOKENS: frozenset[str] = frozenset(
+    {
+        "(",
+        ")",
+        "[",
+        "]",
+        "{",
+        "}",
+        "~",
+        "-",
+        "+",
+        "*",
+        "/",
+        "%",
+        "**",
+        "==",
+        "!=",
+        ">",
+        "<",
+        ">=",
+        "<=",
+        "&&",
+        "||",
+        "&",
+        "|",
+        "^",
+        "~^",
+        "<<",
+        ">>",
+        ">>>",
+    }
+)
+# Verilog radix specifiers (case-insensitive) that indicate a numeric literal.
+_RADIX_SPECIFIERS: tuple[str, ...] = ("'d", "'b", "'h", "'o", "'D", "'B", "'H", "'O")
+
+
 class Expression(  # type: ignore [misc]
     # Mix-in the methods from root
     TupleLikeRootMixin[Token],
@@ -123,10 +160,10 @@ class Expression(  # type: ignore [misc]
         # cannot be convert to {NUM 1}
         if (
             len(value) > 1
-            and all(part.type == Token.Type.LIT for part in value)
-            and ("{" not in str(value) and "}" not in str(value))
+            and all(part.is_literal() for part in value)
+            and not any("{" in p.repr or "}" in p.repr for p in value)
         ):
-            expr_str = " ".join([part.repr for part in value])
+            expr_str = " ".join(part.repr for part in value)
             val = eval_verilog_const_no_exception(expr_str)
             if val:
                 value = (Token.new_lit(val),)
@@ -150,7 +187,7 @@ class Expression(  # type: ignore [misc]
             >>> str(e)
             'a + 1'
         """
-        return " ".join([part.repr for part in self]) if self else ""
+        return " ".join(part.repr for part in self)
 
     def __hash__(self) -> int:  # pylint: disable=useless-super-delegation
         """Hash the expression and make static analysis happy."""
@@ -200,7 +237,7 @@ class Expression(  # type: ignore [misc]
             >>> e.get_used_identifiers()
             {'a'}
         """
-        return {part.repr for part in self if part.type == Token.Type.ID}
+        return {part.repr for part in self if part.is_id()}
 
     def get_used_literals(self) -> set[str]:
         """Return all literals used in the expression.
@@ -215,7 +252,7 @@ class Expression(  # type: ignore [misc]
             >>> e.get_used_literals() == {"+", "1"}
             True
         """
-        return {part.repr for part in self if part.type == Token.Type.LIT}
+        return {part.repr for part in self if part.is_literal()}
 
     def is_empty(self) -> bool:
         """Return true if the expression is empty.
@@ -231,7 +268,7 @@ class Expression(  # type: ignore [misc]
             >>> e.is_empty()
             False
         """
-        return len(self) == 0
+        return not self
 
     def is_identifier(self) -> bool:
         """Return true if the expression directly connects to an identifier.
@@ -301,18 +338,18 @@ class Expression(  # type: ignore [misc]
 
     @classmethod
     def new_string_lit(cls, lit: str) -> "Expression":
-        """Get an expression with a literal expression.
+        r"""Get an expression with a quoted string literal.
 
         Args:
-            lit (str): The literal expression.
+            lit (str): The string to quote as a literal.
 
         Returns:
-            Expression: The expression of the literal expression.
+            Expression: The expression of the quoted string literal.
 
         Example:
-            >>> e = Expression.new_lit("1")
+            >>> e = Expression.new_string_lit("hello")
             >>> print(e.model_dump_json())
-            [{"type":"lit","repr":"1"}]
+            [{"type":"lit","repr":"\\"hello\\""}]
         """
         return Expression((Token.new_lit(f'"{lit}"'),))
 
@@ -355,41 +392,8 @@ class Expression(  # type: ignore [misc]
         for elem in re.sub(r"([\[\]\(\)\{\}])", r" \1 ", s).split():
             if (
                 elem.isdigit()
-                or elem
-                in {
-                    "(",
-                    ")",
-                    "[",
-                    "]",
-                    "{",
-                    "}",
-                    "~",
-                    "-",
-                    "+",
-                    "*",
-                    "/",
-                    "%",
-                    "**",
-                    "==",
-                    "!=",
-                    ">",
-                    "<",
-                    ">=",
-                    "<=",
-                    "&&",
-                    "||",
-                    "&",
-                    "|",
-                    "^",
-                    "~^",
-                    "<<",
-                    ">>",
-                    ">>>",
-                }
-                or any(
-                    item in elem
-                    for item in ("'d", "'b", "'h", "'o", "'D", "'B", "'H", "'O")
-                )
+                or elem in _LITERAL_TOKENS
+                or any(spec in elem for spec in _RADIX_SPECIFIERS)
             ):
                 # numeric literal or operator
                 tokens.append(Token.new_lit(elem))

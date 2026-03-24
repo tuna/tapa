@@ -75,12 +75,6 @@ class ApCtrlInterface(BaseInterface):
             }
         )
 
-    def cleanup_ports(
-        self, remaining_ports: set[str], **kawgs: str | None
-    ) -> "ApCtrlInterface | None":
-        """Remove ports that are not in the remaining_ports."""
-        return super().cleanup_ports(remaining_ports, **kawgs)
-
     def get_mapped_iface(self, port_mapping: dict[str | None, str]) -> Self:
         """Return a new interface with port names mapped according to port_mapping."""
         if set(self.__dict__.keys()) != {

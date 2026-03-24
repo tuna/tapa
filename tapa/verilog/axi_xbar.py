@@ -17,9 +17,9 @@ def generate(
     """Generates an AXI crossbar wrapper with the specified number of ports."""
     if type(ports) is int:
         m = n = ports
-    elif isinstance(ports, tuple | list) and len(ports) == 1:
+    elif isinstance(ports, (tuple, list)) and len(ports) == 1:
         m = n = ports[0]
-    elif isinstance(ports, tuple | list) and len(ports) == 2:  # noqa: PLR2004
+    elif isinstance(ports, (tuple, list)) and len(ports) == 2:  # noqa: PLR2004
         m, n = ports
     else:
         msg = "Invalid number of ports"

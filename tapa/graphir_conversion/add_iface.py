@@ -122,7 +122,7 @@ def _append_mmap_ifaces(
     ifaces: list[AnyInterface],
     scalars: list[str],
     port_name: str,
-    ir_ports: list[str],
+    ir_ports: Collection[str],
 ) -> None:
     scalars.append(f"{port_name}_offset")
     for channel in M_AXI_SUFFIXES_BY_CHANNEL.values():
@@ -151,7 +151,7 @@ def _append_task_port_ifaces(
     ifaces: list[AnyInterface],
     scalars: list[str],
     task: Task,
-    ir_ports: list[str],
+    ir_ports: Collection[str],
 ) -> None:
     for port_name, port in task.ports.items():
         if port.cat.is_scalar:
@@ -191,7 +191,7 @@ def get_upper_task_ir_ifaces_and_scalars(
     ifaces: list[AnyInterface] = []
     scalars: list[str] = []
     task_ir = project.get_module(task.name)
-    ir_ports = [port.name for port in task_ir.ports]
+    ir_ports = frozenset(port.name for port in task_ir.ports)
     _append_task_port_ifaces(ifaces, scalars, task, ir_ports)
     ifaces.extend(get_top_task_ifaces() if is_top else get_slot_task_ifaces(scalars))
 

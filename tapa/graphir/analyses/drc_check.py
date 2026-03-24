@@ -10,14 +10,16 @@ import logging
 
 from tapa.graphir.types import GroupedModuleDefinition
 
-_logger = logging.getLogger().getChild(__name__)
+_logger = logging.getLogger(__name__)
 
 
 def check_missing_wire(mod: GroupedModuleDefinition) -> None:
     """Check if wire definition is missing in group modules."""
-    defined_ids = {wire.name for wire in mod.wires}
-    defined_ids |= {port.name for port in mod.ports}
-    defined_ids |= {param.name for param in mod.parameters}
+    defined_ids = (
+        {wire.name for wire in mod.wires}
+        | {port.name for port in mod.ports}
+        | {param.name for param in mod.parameters}
+    )
 
     used_ids: set[str] = set()
     for inst in mod.submodules:

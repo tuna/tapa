@@ -32,7 +32,9 @@ class Area(BaseModel):
     @model_validator(mode="after")
     def _check_negtive(self) -> "Area":
         """Check all values are non-negative."""
-        if not all(value >= 0 for value in self.to_dict().values()):
+        if not all(
+            v >= 0 for v in (self.lut, self.ff, self.bram_18k, self.dsp, self.uram)
+        ):
             msg = f"All area values must be non-negative: {self.to_dict()}"
             raise ValueError(msg)
 
@@ -50,13 +52,17 @@ class Area(BaseModel):
 
     def is_empty(self) -> bool:
         """Check if the area is empty."""
-        return all(value == 0 for value in self.to_dict().values())
+        return not any((self.lut, self.ff, self.bram_18k, self.dsp, self.uram))
 
     def is_smaller_than(self, other: "Area") -> bool:
         """Check if the current area is smaller than another area."""
-        this_dict = self.to_dict()
-        other_dict = other.to_dict()
-        return all(this_val <= other_dict[key] for key, this_val in this_dict.items())
+        return (
+            self.lut <= other.lut
+            and self.ff <= other.ff
+            and self.bram_18k <= other.bram_18k
+            and self.dsp <= other.dsp
+            and self.uram <= other.uram
+        )
 
     @staticmethod
     def from_dict(area_dict: dict[str, int]) -> "Area":
@@ -73,17 +79,12 @@ class Area(BaseModel):
 def sum_area(areas: list[Area]) -> Area:
     """Sum up a list of areas."""
     return Area(
-        lut=sum(area.lut for area in areas),
-        ff=sum(area.ff for area in areas),
-        bram_18k=sum(area.bram_18k for area in areas),
-        dsp=sum(area.dsp for area in areas),
-        uram=sum(area.uram for area in areas),
+        lut=sum(a.lut for a in areas),
+        ff=sum(a.ff for a in areas),
+        bram_18k=sum(a.bram_18k for a in areas),
+        dsp=sum(a.dsp for a in areas),
+        uram=sum(a.uram for a in areas),
     )
-
-
-def get_empty_area() -> Area:
-    """Get an empty area."""
-    return Area(lut=0, ff=0, bram_18k=0, dsp=0, uram=0)
 
 
 class VirtualSlot(BaseModel):
@@ -236,9 +237,9 @@ class VirtualSlot(BaseModel):
                 line = line_.replace("{", "").replace("}", "")
 
                 if line.startswith("-add"):
-                    add_ranges.append(re.sub(r"^-add", "", line))
+                    add_ranges.append(line[4:])
                 elif line.startswith("-remove"):
-                    remove_ranges.append(re.sub(r"^-remove", "", line))
+                    remove_ranges.append(line[7:])
                 else:
                     msg = f"Invalid pblock line: {line}"
                     raise ValueError(msg)
@@ -534,7 +535,7 @@ def get_empty_device(
     for x in range(num_col):
         slots.extend(
             VirtualSlot(
-                area=get_empty_area(),
+                area=Area(lut=0, ff=0, bram_18k=0, dsp=0, uram=0),
                 x=x,
                 y=y,
                 centroid_x_coor=unit_dist_x * x,

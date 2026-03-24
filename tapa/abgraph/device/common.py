@@ -92,8 +92,8 @@ class Coor(BaseModel):
             [
                 self.is_north_neighbor_of(other),
                 self.is_south_neighbor_of(other),
-                self.is_west_neighbor_of(other),
                 self.is_east_neighbor_of(other),
+                self.is_west_neighbor_of(other),
             ]
         )
 

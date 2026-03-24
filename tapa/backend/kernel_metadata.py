@@ -53,8 +53,7 @@ S_AXI_PORT = f"""
             range="0x1000" \
             dataWidth="32" \
             portType="addressable" \
-            base="0x0"/>
-"""
+            base="0x0"/>"""
 
 M_AXI_PORT_TEMPLATE = f"""
       <port name="{M_AXI_PREFIX}{{name}}" \
@@ -62,15 +61,13 @@ M_AXI_PORT_TEMPLATE = f"""
             range="0xFFFFFFFFFFFFFFFF" \
             dataWidth="{{width}}" \
             portType="addressable" \
-            base="0x0"/>
-"""
+            base="0x0"/>"""
 
 AXIS_PORT_TEMPLATE = """
       <port name="{name}" \
             mode="{mode}" \
             dataWidth="{width}" \
-            portType="stream"/>
-"""
+            portType="stream"/>"""
 
 ARG_TEMPLATE = """
       <arg name="{name}" \
@@ -81,8 +78,7 @@ ARG_TEMPLATE = """
            offset="{offset:#x}" \
            hostOffset="0x0" \
            hostSize="{host_size:#x}" \
-           type="{c_type}"/>
-"""
+           type="{c_type}"/>"""
 
 
 def print_kernel_xml(name: str, args: Iterable[Arg], kernel_xml: IO[str]) -> None:
@@ -106,7 +102,7 @@ def print_kernel_xml(name: str, args: Iterable[Arg], kernel_xml: IO[str]) -> Non
             port_name = M_AXI_PREFIX + (arg.port or arg.name)
             kernel_ports += M_AXI_PORT_TEMPLATE.format(
                 name=arg.port or arg.name, width=arg.width
-            ).rstrip("\n")
+            )
         elif arg.cat in {Cat.ISTREAM, Cat.OSTREAM}:
             is_stream = True
             addr_qualifier = 4
@@ -115,7 +111,7 @@ def print_kernel_xml(name: str, args: Iterable[Arg], kernel_xml: IO[str]) -> Non
             mode = "read_only" if arg.cat == Cat.ISTREAM else "write_only"
             kernel_ports += AXIS_PORT_TEMPLATE.format(
                 name=arg.name, mode=mode, width=arg.width
-            ).rstrip("\n")
+            )
         else:
             msg = f"unknown arg category: {arg.cat}"
             raise NotImplementedError(msg)
@@ -128,13 +124,13 @@ def print_kernel_xml(name: str, args: Iterable[Arg], kernel_xml: IO[str]) -> Non
             size=size,
             offset=0 if is_stream else offset,
             host_size=host_size,
-        ).rstrip("\n")
+        )
         if not is_stream:
             offset += size + 4
     hw_ctrl_protocol = "ap_ctrl_none"
     if has_s_axi_control:
         hw_ctrl_protocol = "ap_ctrl_hs"
-        kernel_ports += S_AXI_PORT.rstrip("\n")
+        kernel_ports += S_AXI_PORT
     kernel_xml.write(
         KERNEL_XML_TEMPLATE.format(
             name=name,

@@ -174,15 +174,12 @@ def _declare_instance_inputs(
         if arg.cat.is_stream:
             continue
 
-        upper_name = (
-            f"{arg.name}_offset"
-            if arg.cat.is_sync_mmap or arg.cat.is_async_mmap
-            else arg.name
-        )
+        is_mmap = arg.cat.is_sync_mmap or arg.cat.is_async_mmap
+        upper_name = f"{arg.name}_offset" if is_mmap else arg.name
         # mmap offset carries an AXI address, always 64-bit regardless of data width.
         arg_width = (
             ADDR_CHANNEL_DATA_WIDTH
-            if arg.cat.is_async_mmap or arg.cat.is_sync_mmap
+            if is_mmap
             else _resolve_arg_width(state.width_table, arg)
         )
         q = _declare_arg_signal(
@@ -366,10 +363,7 @@ def _process_instance(state: _ChildState, instance: Instance) -> None:
 
 def _finalize_state(state: _ChildState) -> list[Pipeline]:
     state.fsm_upstream_portargs.extend(
-        [
-            make_port_arg(x.name, x.name)
-            for x in state.fsm_upstream_module_ports.values()
-        ]
+        make_port_arg(x.name, x.name) for x in state.fsm_upstream_module_ports.values()
     )
     state.task.fsm_module.add_ports(state.fsm_upstream_module_ports.values())
     state.task.fsm_module.add_ports(state.fsm_downstream_module_ports)

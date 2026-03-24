@@ -20,7 +20,7 @@ from tapa.graphir.types.modules.supports.iface_inst_path import IfaceInstPath
 from tapa.graphir.types.projects.interfaces import Interfaces
 from tapa.graphir.types.projects.modules import Modules
 
-_logger = logging.getLogger().getChild(__name__)
+_logger = logging.getLogger(__name__)
 
 
 class Project(MutableModel):
@@ -221,16 +221,15 @@ class Project(MutableModel):
     ) -> None:
         """Attach the area to the instances in the top-level module."""
         top_module = self.get_top_module()
-        top_module_subs = []
-        for inst in top_module.submodules:
-            if inst.name not in inst_name_to_area:
-                top_module_subs.append(inst)
-            else:
-                updated_inst = inst.updated(area=inst_name_to_area[inst.name])
-                top_module_subs.append(updated_inst)
-
-        updated_top_module = top_module.updated(submodules=top_module_subs)
-        self.modules = self.modules.module_updated(updated_top_module)
+        updated_subs = tuple(
+            inst.updated(area=inst_name_to_area[inst.name])
+            if inst.name in inst_name_to_area
+            else inst
+            for inst in top_module.submodules
+        )
+        self.modules = self.modules.module_updated(
+            top_module.updated(submodules=updated_subs)
+        )
 
 
 def get_empty_project(part_num: str | None) -> Project:

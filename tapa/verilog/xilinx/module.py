@@ -17,56 +17,34 @@ from tapa.common.pyslang_rewriter import PyslangRewriter
 from tapa.verilog.ast.ioport import IOPort
 from tapa.verilog.ast.parameter import Parameter
 from tapa.verilog.ast.signal import Reg, Wire
-from tapa.verilog.xilinx.module_ops.axi import add_m_axi as add_m_axi_helper
-from tapa.verilog.xilinx.module_ops.axi import (
-    generate_m_axi_ports as generate_m_axi_ports_helper,
-)
+from tapa.verilog.xilinx.module_ops.axi import add_m_axi, generate_m_axi_ports
 from tapa.verilog.xilinx.module_ops.edits import (
-    add_comment_lines as add_comment_lines_helper,
+    add_comment_lines,
+    add_instance,
+    add_logics,
+    add_params,
+    add_pipeline,
+    add_ports,
+    add_rs_pragmas,
+    add_signals,
+    del_instances,
+    del_logics,
+    del_params,
+    del_port,
+    del_signals,
 )
-from tapa.verilog.xilinx.module_ops.edits import add_instance as add_instance_helper
-from tapa.verilog.xilinx.module_ops.edits import add_logics as add_logics_helper
-from tapa.verilog.xilinx.module_ops.edits import add_params as add_params_helper
-from tapa.verilog.xilinx.module_ops.edits import add_pipeline as add_pipeline_helper
-from tapa.verilog.xilinx.module_ops.edits import add_ports as add_ports_helper
-from tapa.verilog.xilinx.module_ops.edits import add_rs_pragmas as add_rs_pragmas_helper
-from tapa.verilog.xilinx.module_ops.edits import add_signals as add_signals_helper
-from tapa.verilog.xilinx.module_ops.edits import del_instances as del_instances_helper
-from tapa.verilog.xilinx.module_ops.edits import del_logics as del_logics_helper
-from tapa.verilog.xilinx.module_ops.edits import del_params as del_params_helper
-from tapa.verilog.xilinx.module_ops.edits import del_port as del_port_helper
-from tapa.verilog.xilinx.module_ops.edits import del_signals as del_signals_helper
-from tapa.verilog.xilinx.module_ops.fifo import (
-    add_fifo_instance as add_fifo_instance_helper,
-)
-from tapa.verilog.xilinx.module_ops.fifo import cleanup as cleanup_helper
+from tapa.verilog.xilinx.module_ops.fifo import add_fifo_instance, cleanup
 from tapa.verilog.xilinx.module_ops.mmap import (
     _AsyncMmapContext,
+    add_async_mmap_instance,
 )
-from tapa.verilog.xilinx.module_ops.mmap import (
-    add_async_mmap_instance as add_async_mmap_instance_helper,
-)
-from tapa.verilog.xilinx.module_ops.parse import (
-    parse_syntax_tree as parse_syntax_tree_helper,
-)
+from tapa.verilog.xilinx.module_ops.parse import parse_syntax_tree
 from tapa.verilog.xilinx.module_ops.ports import (
-    find_port as find_port_helper,
+    find_port,
+    generate_istream_ports,
+    generate_ostream_ports,
+    get_port_of,
 )
-from tapa.verilog.xilinx.module_ops.ports import (
-    generate_istream_ports as generate_istream_ports_helper,
-)
-from tapa.verilog.xilinx.module_ops.ports import (
-    generate_ostream_ports as generate_ostream_ports_helper,
-)
-from tapa.verilog.xilinx.module_ops.ports import (
-    get_port_of as get_port_of_helper,
-)
-from tapa.verilog.xilinx.module_ops.ports import (
-    get_streams_fifos as get_streams_fifos_helper,
-)
-
-generate_m_axi_ports = generate_m_axi_ports_helper
-get_streams_fifos = get_streams_fifos_helper
 
 _logger = logging.getLogger().getChild(__name__)
 
@@ -163,29 +141,10 @@ class Module:  # TODO: refactor this class
         with tempfile.TemporaryDirectory(prefix="pyverilog-") as output_dir:
             if is_trimming_enabled:
                 # trim the body since we only need the interface information
-                new_files = []
-
-                def gen_trimmed_file(file: Path, idx: int) -> Path:
-                    lines = []
-                    with open(file, encoding="utf-8") as fp:
-                        for line in fp:
-                            items = line.strip().split()
-                            if (
-                                len(items) > 1
-                                and items[0] in {"reg", "wire"}
-                                and items[1].startswith("ap_rst")
-                            ):
-                                lines.append("endmodule")
-                                break
-                            lines.append(line)
-                    new_file = Path(output_dir) / f"trimmed_{idx}.v"
-                    with open(new_file, "w", encoding="utf-8") as fp:
-                        fp.writelines(lines)
-                    return new_file
-
-                for idx, file in enumerate(files):
-                    new_files.append(gen_trimmed_file(file, idx))
-                files = new_files
+                files = [
+                    _gen_trimmed_file(file, idx, output_dir)
+                    for idx, file in enumerate(files)
+                ]
             self._syntax_tree = pyslang.SyntaxTree.fromFiles([str(x) for x in files])
             self._rewriter = PyslangRewriter(self._syntax_tree)
             self._parse_syntax_tree()
@@ -201,9 +160,9 @@ class Module:  # TODO: refactor this class
     class NoMatchingPortError(ValueError):
         """No matching port being found exception."""
 
-    get_port_of = get_port_of_helper
-    generate_istream_ports = generate_istream_ports_helper
-    generate_ostream_ports = generate_ostream_ports_helper
+    get_port_of = get_port_of
+    generate_istream_ports = generate_istream_ports
+    generate_ostream_ports = generate_ostream_ports
 
     @property
     def signals(self) -> dict[str, Wire | Reg]:
@@ -234,22 +193,22 @@ endmodule
 
 """).render(name=self.name, ports=self.ports.values())
 
-    _parse_syntax_tree = parse_syntax_tree_helper
-    add_ports = add_ports_helper
-    del_port = del_port_helper
-    add_comment_lines = add_comment_lines_helper
-    add_signals = add_signals_helper
-    add_pipeline = add_pipeline_helper
-    del_signals = del_signals_helper
-    add_params = add_params_helper
-    del_params = del_params_helper
-    add_instance = add_instance_helper
-    add_logics = add_logics_helper
-    del_logics = del_logics_helper
-    del_instances = del_instances_helper
-    add_rs_pragmas = add_rs_pragmas_helper
+    _parse_syntax_tree = parse_syntax_tree
+    add_ports = add_ports
+    del_port = del_port
+    add_comment_lines = add_comment_lines
+    add_signals = add_signals
+    add_pipeline = add_pipeline
+    del_signals = del_signals
+    add_params = add_params
+    del_params = del_params
+    add_instance = add_instance
+    add_logics = add_logics
+    del_logics = del_logics
+    del_instances = del_instances
+    add_rs_pragmas = add_rs_pragmas
 
-    add_fifo_instance = add_fifo_instance_helper
+    add_fifo_instance = add_fifo_instance
 
     def add_async_mmap_instance(  # noqa: PLR0913,PLR0917
         self,
@@ -262,7 +221,7 @@ endmodule
         max_wait_time: int = 3,
         max_burst_len: int | None = None,
     ) -> "Module":
-        return add_async_mmap_instance_helper(
+        return add_async_mmap_instance(
             _AsyncMmapContext(
                 module=self,
                 name=name,
@@ -276,6 +235,26 @@ endmodule
             ),
         )
 
-    find_port = find_port_helper
-    add_m_axi = add_m_axi_helper
-    cleanup = cleanup_helper
+    find_port = find_port
+    add_m_axi = add_m_axi
+    cleanup = cleanup
+
+
+def _gen_trimmed_file(file: Path, idx: int, output_dir: str) -> Path:
+    """Trim a Verilog file body, keeping only the interface declarations."""
+    lines = []
+    with open(file, encoding="utf-8") as fp:
+        for line in fp:
+            items = line.strip().split()
+            if (
+                len(items) > 1
+                and items[0] in {"reg", "wire"}
+                and items[1].startswith("ap_rst")
+            ):
+                lines.append("endmodule")
+                break
+            lines.append(line)
+    new_file = Path(output_dir) / f"trimmed_{idx}.v"
+    with open(new_file, "w", encoding="utf-8") as fp:
+        fp.writelines(lines)
+    return new_file

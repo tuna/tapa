@@ -7,7 +7,6 @@ RapidStream Contributor License Agreement.
 """
 
 import os
-import os.path
 from abc import abstractmethod
 from typing import NamedTuple
 

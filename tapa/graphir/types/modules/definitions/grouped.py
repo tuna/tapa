@@ -140,17 +140,18 @@ class GroupedModuleDefinition(BaseModuleDefinition):
 
     def get_submodule_by_inst_name(self, inst_name: str) -> ModuleInstantiation:
         """Return the submodule with the given instance name."""
-        insts = [inst for inst in self.submodules if inst.name == inst_name]
-        assert len(insts) == 1
-        return insts[0]
+        inst = next((inst for inst in self.submodules if inst.name == inst_name), None)
+        assert inst is not None
+        return inst
 
     def get_used_identifiers(self) -> set[str]:
         """Get the identifiers used in the module."""
-        used_idents: set[str] = set()
-        for inst in self.submodules:
-            for conn in inst.connections:
-                used_idents |= conn.expr.get_used_identifiers()
-        return used_idents
+        return {
+            ident
+            for inst in self.submodules
+            for conn in inst.connections
+            for ident in conn.expr.get_used_identifiers()
+        }
 
     def is_leaf_module(self) -> bool:  # noqa: PLR6301
         """Return True if the module is a leaf module.
@@ -201,11 +202,8 @@ class GroupedModuleDefinition(BaseModuleDefinition):
 
     def get_wire(self, wire_name: str) -> ModuleNet:
         """Return the wire with the given name."""
-        wires = [wire for wire in self.wires if wire.name == wire_name]
-        if len(wires) == 0:
+        wire = next((w for w in self.wires if w.name == wire_name), None)
+        if wire is None:
             msg = f"Wire {wire_name} not found in the module."
             raise KeyError(msg)
-        if len(wires) > 1:
-            msg = f"Multiple wires with the same name {wire_name}."
-            raise KeyError(msg)
-        return wires[0]
+        return wire

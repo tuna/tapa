@@ -57,9 +57,7 @@ class ABCut(BaseModel):
 
     def __eq__(self, other: object) -> bool:
         """If equal."""
-        return (
-            self.__hash__() == other.__hash__() if isinstance(other, ABCut) else False
-        )
+        return isinstance(other, ABCut) and self.name == other.name
 
 
 class ABVertex(BaseModel):
@@ -119,15 +117,17 @@ class ABGraph(BaseModel):
 
 def get_ab_graphx(graph: nx.Graph) -> ABGraph:
     """Convert an networkx graph to an AutoBridge graph."""
-    edges = []
-
-    vertices = [get_ab_vertexx(v, graph) for v in graph.nodes]
-
-    for idx, e in enumerate(graph.edges):
-        src, tgt = e
-        edges.append(get_ab_edgex(src, tgt, graph, idx))
-
-    return ABGraph(vs=vertices, es=edges)
+    vertex_map = {v: get_ab_vertexx(v, graph) for v in graph.nodes}
+    edges = [
+        ABEdge(
+            source_vertex=vertex_map[src],
+            target_vertex=vertex_map[tgt],
+            index=idx,
+            width=graph.get_edge_data(src, tgt)["width"],
+        )
+        for idx, (src, tgt) in enumerate(graph.edges)
+    ]
+    return ABGraph(vs=list(vertex_map.values()), es=edges)
 
 
 def get_ab_vertexx(v: int | str, g: nx.Graph) -> ABVertex:
@@ -138,16 +138,6 @@ def get_ab_vertexx(v: int | str, g: nx.Graph) -> ABVertex:
         area=convert_area(g.nodes[v]["area"]),
         target_slot=g.nodes[v]["target_slot"],
         reserved_slot=g.nodes[v]["reserved_slot"],
-    )
-
-
-def get_ab_edgex(src: int | str, tgt: int | str, g: nx.Graph, edge_idx: int) -> ABEdge:
-    """Convert an networkx edge to an AutoBridge edge."""
-    return ABEdge(
-        source_vertex=get_ab_vertexx(src, g),
-        target_vertex=get_ab_vertexx(tgt, g),
-        index=edge_idx,
-        width=g.get_edge_data(src, tgt)["width"],
     )
 
 

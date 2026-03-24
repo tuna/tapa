@@ -127,7 +127,6 @@ def gen_slot_cpp(slot_name: str, top_name: str, ports: list, top_cpp: str) -> st
         )
         assert port_cat in _PRAGMA, port_cat
         cpp_pragmas.append(_PRAGMA[port_cat].format(name=name, type=port_type))
-        continue
 
     pragma_body = "\n".join(cpp_pragmas)
 

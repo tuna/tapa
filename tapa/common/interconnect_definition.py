@@ -33,11 +33,9 @@ class InterconnectDefinition(Base):
         )
 
     @lru_cache(None)
-    def get_type(self) -> Type:
-        """Return the type of the local interconnect."""
-        if self.obj is not None:
-            return InterconnectDefinition.Type.STREAM
-        msg = "Local interconnects other than streams are not implemented yet."
-        raise NotImplementedError(
-            msg,
-        )
+    def get_type(self) -> Type:  # noqa: PLR6301
+        """Return the type of the local interconnect.
+
+        Currently only STREAM is supported.
+        """
+        return InterconnectDefinition.Type.STREAM

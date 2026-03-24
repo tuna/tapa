@@ -72,7 +72,7 @@ class PyslangRewriter:
 
         _logger.debug(
             "committing %d additions and %d deletions",
-            sum(map(len, (self._additions.values()))),
+            sum(map(len, self._additions.values())),
             len(self._deletions),
         )
 

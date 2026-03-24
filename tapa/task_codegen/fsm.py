@@ -24,9 +24,10 @@ def add_rs_pragmas_to_fsm(task: Task) -> None:
     scalar_regex_str = "|".join(
         name
         for x in task.ports.values()
+        if not x.cat.is_stream and not x.is_streams  # TODO: refactor port.cat
+        # Use _offset suffix for mmap ports, raw name for scalars; skip if unused.
         for name in [f"{x.name}_offset" if not x.cat.is_scalar else x.name]
-        if name in task.fsm_module.ports  # skip unused ports
-        and (not x.cat.is_stream and not x.is_streams)  # TODO: refactor port.cat
+        if name in task.fsm_module.ports
     )
     scalar_pragma = f" scalar=({scalar_regex_str})" if scalar_regex_str else ""
     pragma_list = [

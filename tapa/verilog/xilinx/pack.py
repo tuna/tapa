@@ -117,14 +117,7 @@ def print_kernel_xml(name: str, ports: Iterable[Port], kernel_xml: IO[str]) -> N
         else:
             msg = f"unexpected port.cat: {port.cat}"
             raise ValueError(msg)
-
         args.append(
-            Arg(
-                cat=cat,
-                name=port.name,
-                port="",  # use defaults
-                ctype=port.ctype,
-                width=port.width,
-            ),
+            Arg(cat=cat, name=port.name, port="", ctype=port.ctype, width=port.width)
         )
     print_kernel_xml_backend(name, args, kernel_xml)

@@ -1,11 +1,5 @@
-__copyright__ = """
-Copyright (c) 2025 RapidStream Design Automation, Inc. and contributors.
-All rights reserved. The contributor(s) of this file has/have agreed to the
-RapidStream Contributor License Agreement.
-"""
-
 import enum
-from typing import Optional, TextIO
+from typing import TextIO
 
 __all__ = (
     "HierarchicalUtilization",
@@ -17,7 +11,7 @@ class HierarchicalUtilization:
     """Semantic-agnostic hierarchical utilization."""
 
     device: str
-    parent: Optional["HierarchicalUtilization"]
+    parent: "HierarchicalUtilization | None"
     children: list["HierarchicalUtilization"]
     instance: str
     schema: dict[str, int]
@@ -29,7 +23,7 @@ class HierarchicalUtilization:
         instance: str,
         schema: dict[str, int],
         items: tuple[str, ...],
-        parent: Optional["HierarchicalUtilization"] = None,
+        parent: "HierarchicalUtilization | None" = None,
     ) -> None:
         if len(schema) != len(items):
             msg = "mismatching schema and items"
@@ -47,14 +41,12 @@ class HierarchicalUtilization:
         return self.items[self.schema[key]]
 
     def __str__(self) -> str:
-        parent = None
-        if self.parent is not None:
-            parent = self.parent.instance
+        parent_instance = self.parent.instance if self.parent is not None else None
         return "\n".join(
             (
                 "",
                 f"instance: {self.instance}",
-                f"parent: {parent}",
+                f"parent: {parent_instance}",
                 *(f"{key}: {value}" for key, value in zip(self.schema, self.items)),
             )
         )

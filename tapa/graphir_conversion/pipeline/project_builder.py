@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from pathlib import Path
 
     from tapa.core import Program
     from tapa.graphir.types import AnyModuleDefinition, Modules, Project
@@ -51,12 +51,9 @@ def add_pblock_ranges(
 def _get_ctrl_s_axi_definition(
     program: Program,
     top_name: str,
-    device_config: Path,
     get_ctrl_s_axi_def: Callable,
 ) -> object:
-    ctrl_s_axi_path = device_config.__class__(program.rtl_dir) / (
-        f"{top_name}_control_s_axi.v"
-    )
+    ctrl_s_axi_path = Path(program.rtl_dir) / f"{top_name}_control_s_axi.v"
     return get_ctrl_s_axi_def(
         program.top_task,
         ctrl_s_axi_path.read_text(encoding="utf-8"),
@@ -93,7 +90,7 @@ def get_project_from_floorplanned_program(  # noqa: PLR0913, PLR0917
     leaf_irs = {}
     for task in leaf_tasks.values():
         full_task_module = module_cls(
-            files=[device_config.__class__(program.get_rtl_path(task.name))],
+            files=[Path(program.get_rtl_path(task.name))],
             is_trimming_enabled=False,
         )
         task.module = full_task_module
@@ -115,7 +112,6 @@ def get_project_from_floorplanned_program(  # noqa: PLR0913, PLR0917
     ctrl_s_axi = _get_ctrl_s_axi_definition(
         program,
         top_task.name,
-        device_config,
         get_ctrl_s_axi_def,
     )
     top_ir = get_top_module_definition(

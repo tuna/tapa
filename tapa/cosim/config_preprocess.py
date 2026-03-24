@@ -1,11 +1,5 @@
 """Preprocess the config file for the cosimulation."""
 
-__copyright__ = """
-Copyright (c) 2024 RapidStream Design Automation, Inc. and contributors.
-All rights reserved. The contributor(s) of this file has/have agreed to the
-RapidStream Contributor License Agreement.
-"""
-
 import glob
 import json
 import logging
@@ -77,15 +71,17 @@ class CosimConfig(BaseModel):
 
 def _update_relative_path(config: CosimConfig, config_path: str) -> None:
     """Convert the relative path in the config file."""
-    config_dir = "/".join(config_path.split("/")[:-1])
+    config_dir = os.path.dirname(config_path)
 
-    curr_path = config.xo_path
-    if not curr_path.startswith("/") and not curr_path.startswith("~"):
-        config.xo_path = f"{config_dir}/{curr_path}"
+    def _resolve(path: str) -> str:
+        if not path.startswith("/") and not path.startswith("~"):
+            return os.path.join(config_dir, path)
+        return path
 
-    for axi_name, curr_path in config.axi_to_data_file.items():
-        if not curr_path.startswith("/") and not curr_path.startswith("~"):
-            config.axi_to_data_file[axi_name] = f"{config_dir}/{curr_path}"
+    config.xo_path = _resolve(config.xo_path)
+    config.axi_to_data_file = {
+        k: _resolve(v) for k, v in config.axi_to_data_file.items()
+    }
 
 
 def extract_part_from_xml_file(file_path: str) -> str | None:
@@ -158,12 +154,10 @@ def _parse_and_update_config(config: CosimConfig, tb_output_dir: str) -> None:
 
     # convert argument index in the config file to actual names
     id_to_name = {arg.id: arg.qualified_name for arg in config.args}
-    config.scalar_to_val = _remap_keys(id_to_name, config.scalar_to_val or {})
-    config.axi_to_data_file = _remap_keys(id_to_name, config.axi_to_data_file or {})
-    config.axis_to_data_file = _remap_keys(id_to_name, config.axis_to_data_file or {})
-    config.axi_to_c_array_size = _remap_keys(
-        id_to_name, config.axi_to_c_array_size or {}
-    )
+    config.scalar_to_val = _remap_keys(id_to_name, config.scalar_to_val)
+    config.axi_to_data_file = _remap_keys(id_to_name, config.axi_to_data_file)
+    config.axis_to_data_file = _remap_keys(id_to_name, config.axis_to_data_file)
+    config.axi_to_c_array_size = _remap_keys(id_to_name, config.axi_to_c_array_size)
 
 
 def _parse_xo_update_config(config: CosimConfig, tmp_path: str) -> None:
@@ -218,16 +212,17 @@ def _parse_zip_ports(ports_yaml: list[dict[str, object]]) -> list[Arg]:
     args: list[Arg] = []
     idx = 0
     for port in ports_yaml:
-        if port["cat"] == "istream" or port["cat"] == "istreams":
+        cat = port["cat"]
+        if cat in {"istream", "istreams"}:
             address_qualifier = 4
             mode = "read_only"
-        elif port["cat"] == "ostream" or port["cat"] == "ostreams":
+        elif cat in {"ostream", "ostreams"}:
             address_qualifier = 4
             mode = "write_only"
-        elif port["cat"] in {"mmap", "async_mmap"}:
+        elif cat in {"mmap", "async_mmap"}:
             address_qualifier = 1
             mode = "read_write"
-        elif port["cat"] in {"mmaps", "hmap"}:
+        elif cat in {"mmaps", "hmap"}:
             # Array mmap types: expand into individual mmap entries.
             chan_count = cast("int", port["chan_count"])
             for i in range(chan_count):
@@ -247,18 +242,19 @@ def _parse_zip_ports(ports_yaml: list[dict[str, object]]) -> list[Arg]:
                 )
                 idx += 1
             continue
-        elif port["cat"] == "scalar":
+        elif cat == "scalar":
             address_qualifier = 0
             mode = "read_only"
         else:
-            msg = f"Unsupported port category: {port['cat']}"
+            msg = f"Unsupported port category: {cat}"
             raise ValueError(msg)
 
-        if port["cat"] == "istreams" or port["cat"] == "ostreams":
-            stream_indices = range(cast("int", port["chan_count"]))
-        else:
-            stream_indices = [None]
-
+        # Multi-channel stream types expand into one entry per channel.
+        stream_indices: range | list = (
+            range(cast("int", port["chan_count"]))
+            if cat in {"istreams", "ostreams"}
+            else [None]
+        )
         for stream_idx in stream_indices:
             port_name = cast("str", port["name"])
             args.append(

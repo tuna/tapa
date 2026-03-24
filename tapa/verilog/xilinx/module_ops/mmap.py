@@ -65,10 +65,7 @@ def add_async_mmap_instance(context: _AsyncMmapContext) -> Module:
                 paramname="WaitTimeWidth",
                 argname=Constant(max_wait_time.bit_length()),
             ),
-            ParamArg(
-                paramname="MaxWaitTime",
-                argname=Constant(max(1, max_wait_time)),
-            ),
+            ParamArg(paramname="MaxWaitTime", argname=Constant(max_wait_time)),
         ),
     )
 
@@ -93,8 +90,8 @@ def add_async_mmap_instance(context: _AsyncMmapContext) -> Module:
             )
 
     tags = set(context.tags)
-    for tag in ASYNC_MMAP_SUFFIXES:
-        for suffix in ASYNC_MMAP_SUFFIXES[tag]:
+    for tag, tag_suffixes in ASYNC_MMAP_SUFFIXES.items():
+        for suffix in tag_suffixes:
             if tag in tags:
                 arg = async_mmap_arg_name(arg=context.name, tag=tag, suffix=suffix)
             elif suffix.endswith(("_read", "_write")):

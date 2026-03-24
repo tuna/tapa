@@ -12,16 +12,6 @@ from tapa.verilog.xilinx.module import Module
 _logger = logging.getLogger().getChild(__name__)
 
 
-def get_rtl_templates_info(
-    tasks: dict[str, Any], gen_templates: tuple[str, ...]
-) -> dict[str, list[str]]:
-    """Collect expected template port signatures keyed by task name."""
-    return {
-        task: [str(port) for port in tasks[task].module.ports.values()]
-        for task in gen_templates
-    }
-
-
 def check_custom_rtl_format(
     rtl_paths: list[Path],
     templates_info: dict[str, list[str]],

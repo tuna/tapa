@@ -13,9 +13,5 @@ class StringEnum(StrEnum):
     """Enum with string representation."""
 
     def __repr__(self) -> str:
-        """Use the string representation as enum's repr."""
+        """Use value string as repr (e.g. 'sink' instead of <Role.SINK: 'sink'>)."""
         return repr(str(self))
-
-    def __str__(self) -> str:
-        """Use the enum value as enum's string representation."""
-        return str(self.value)

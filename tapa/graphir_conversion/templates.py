@@ -8,15 +8,9 @@ All rights reserved. The contributor(s) of this file has/have agreed to the
 RapidStream Contributor License Agreement.
 """
 
-
-def get_fifo_template() -> str:
-    """Get the FIFO template."""
-    fifo_v_path = Path(__file__).parent.parent / "assets" / "verilog" / "fifo.v"
-    with open(fifo_v_path, encoding="utf-8") as f:
-        return f.read()
-
-
-FIFO_TEMPLATE = get_fifo_template()
+FIFO_TEMPLATE = (
+    Path(__file__).parent.parent / "assets" / "verilog" / "fifo.v"
+).read_text(encoding="utf-8")
 
 
 RESET_INVERTER_TEMPLATE = """

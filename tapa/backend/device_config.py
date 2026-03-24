@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 XILINX_XML_NS = {"xd": "http://www.xilinx.com/xd"}
+_XD_NS = "{http://www.xilinx.com/xd}"
 
 
 def get_device_info(platform_path: str) -> dict[str, str]:
@@ -45,14 +46,12 @@ def get_device_info(platform_path: str) -> dict[str, str]:
             msg = "cannot find part number in platform"
             raise ValueError(msg)
         return {
-            "clock_period": clock_period.attrib[
-                "{{{xd}}}period".format(**XILINX_XML_NS)
-            ],
-            "part_num": part_num.attrib["{{{xd}}}name".format(**XILINX_XML_NS)],
+            "clock_period": clock_period.attrib[f"{_XD_NS}period"],
+            "part_num": part_num.attrib[f"{_XD_NS}name"],
         }
 
 
-def parse_device_info(  # noqa: C901
+def parse_device_info(
     platform_and_argname: tuple[str | None, str],
     part_num_and_argname: tuple[str | None, str],
     clock_period_and_argname: tuple[float | str | None, str],
@@ -69,7 +68,6 @@ def parse_device_info(  # noqa: C901
             os.path.dirname(platform),
             os.path.basename(platform).replace(":", "_").replace(".", "_"),
         )
-    if platform is not None:
         for platform_dir in (
             os.path.join("/", "opt", "xilinx"),
             os.environ.get("XILINX_VITIS"),

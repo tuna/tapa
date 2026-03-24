@@ -5,7 +5,6 @@ Copyright (c) 2025 RapidStream Design Automation, Inc. and contributors.
 All rights reserved. The contributor(s) of this file has/have agreed to the
 RapidStream Contributor License Agreement.
 """
-from collections.abc import Iterable, Sized
 from typing import Self, TypeVar
 
 from pydantic import BaseModel, ConfigDict
@@ -66,15 +65,13 @@ class ModelMixin:
     def sort_tuple_field(cls, kwargs: dict[str, object], field: str) -> None:
         """Sort the tuple `field` in `kwargs` by name and return the argument."""
         if field in kwargs and (data := kwargs[field]):
-            assert isinstance(data, Iterable)
-            assert isinstance(data, Sized)
-
+            data_seq = list(data)  # type: ignore[call-overload]
             # The items in data should have unique names.
-            if len({cls.get_name_of_object(inst) for inst in data}) != len(data):
+            names = [cls.get_name_of_object(inst) for inst in data_seq]
+            if len(set(names)) != len(names):
                 msg = f"Duplicate names in {field}: {data}."
                 raise ValueError(msg)
-
-            kwargs[field] = tuple(sorted(data, key=cls.get_name_of_object))
+            kwargs[field] = tuple(sorted(data_seq, key=cls.get_name_of_object))
 
     model_config = ConfigDict(frozen=True)
 

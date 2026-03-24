@@ -6,6 +6,7 @@ All rights reserved. The contributor(s) of this file has/have agreed to the
 RapidStream Contributor License Agreement.
 """
 
+import itertools
 from functools import lru_cache
 
 from tapa.common.base import Base
@@ -45,9 +46,7 @@ class TaskInstance(Base):
     @lru_cache(None)
     def get_external_port(self, name: str) -> ExternalPort | None:
         """Returns the external port of this task instance."""
-        if name in self.get_external_ports():
-            return self.get_external_ports()[name]
-        return None
+        return self.get_external_ports().get(name)
 
     @lru_cache(None)
     def get_external_ports(self) -> dict[str, ExternalPort]:
@@ -81,13 +80,11 @@ class TaskInstance(Base):
         if self.definition.get_level() == TaskDefinition.Level.LEAF:
             return []
 
-        results = []
-        for inter_def in self.definition.get_interconnect_defs():
-            inter_inst = self.get_interconnect_inst(inter_def.name)
-            if inter_inst is not None:
-                results.append(inter_inst)
-
-        return results
+        return [
+            inst
+            for inter_def in self.definition.get_interconnect_defs()
+            if (inst := self.get_interconnect_inst(inter_def.name)) is not None
+        ]
 
     @lru_cache(None)
     def get_in_scope_interconnect_or_port(
@@ -142,10 +139,15 @@ class TaskInstance(Base):
 
         if self.definition.get_level() == TaskDefinition.Level.LEAF:
             return []
-        insts = self.get_interconnect_insts()
-        for task_inst in self.get_subtasks_insts():
-            insts.extend(task_inst.recursive_get_interconnect_insts())
-        return insts
+        return list(
+            itertools.chain(
+                self.get_interconnect_insts(),
+                *(
+                    t.recursive_get_interconnect_insts()
+                    for t in self.get_subtasks_insts()
+                ),
+            )
+        )
 
     @lru_cache(None)
     def get_subtasks_insts(self) -> list[TaskInstance]:
@@ -154,14 +156,13 @@ class TaskInstance(Base):
 
         if self.definition.get_level() == TaskDefinition.Level.LEAF:
             return []
-        insts = []
-        for task_def in self.definition.get_subtask_defs():
-            task_instances = self.definition.get_subtask_instantiations(task_def.name)
-            for idx, inst in enumerate(task_instances):
-                insts.append(
-                    TaskInstance(idx, f"{task_def.name}_{idx}", inst, self, task_def),
-                )
-        return insts
+        return [
+            TaskInstance(idx, f"{task_def.name}_{idx}", inst, self, task_def)
+            for task_def in self.definition.get_subtask_defs()
+            for idx, inst in enumerate(
+                self.definition.get_subtask_instantiations(task_def.name)
+            )
+        ]
 
     @lru_cache(None)
     def get_leaf_tasks_insts(self) -> list[TaskInstance]:
@@ -170,10 +171,11 @@ class TaskInstance(Base):
 
         if self.definition.get_level() == TaskDefinition.Level.LEAF:
             return [self]
-        insts = []
-        for task_inst in self.get_subtasks_insts():
-            insts.extend(task_inst.get_leaf_tasks_insts())
-        return insts
+        return list(
+            itertools.chain.from_iterable(
+                t.get_leaf_tasks_insts() for t in self.get_subtasks_insts()
+            )
+        )
 
     def to_dict(self, interconnect_global_name: bool = False) -> dict:
         """Transform the task instance object to its JSON description.

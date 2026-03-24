@@ -30,10 +30,6 @@ class FeedForwardResetInterface(FeedForwardInterface):
         """Represent the interface as a string."""
         return f"ff_rst{self.ports}"
 
-    def is_clk(self) -> bool:  # noqa: PLR6301
-        """Return if the interface is a clock or reset interface."""
-        return False
-
     def is_reset(self) -> bool:  # noqa: PLR6301
         """Return if the interface is a clock or reset interface."""
         return True

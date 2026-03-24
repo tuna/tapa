@@ -1,9 +1,3 @@
-__copyright__ = """
-Copyright (c) 2025 RapidStream Design Automation, Inc. and contributors.
-All rights reserved. The contributor(s) of this file has/have agreed to the
-RapidStream Contributor License Agreement.
-"""
-
 import os
 import re
 import shutil
@@ -77,14 +71,9 @@ class ReportDirUtil(backend.Vivado):
         """
         if part_num is None:
             for hdl_file_format in ("{}.v", "{0}_{0}.v"):
+                hdl_path = os.path.join(hdl_dir, hdl_file_format.format(top_name))
                 try:
-                    with open(
-                        os.path.join(
-                            hdl_dir,
-                            hdl_file_format.format(top_name),
-                        ),
-                        encoding="utf-8",
-                    ) as hdl_file:
+                    with open(hdl_path, encoding="utf-8") as hdl_file:
                         part_num = RtlHlsInfo(hdl_file)["HLS_INPUT_PART"]
                     break
                 except FileNotFoundError:

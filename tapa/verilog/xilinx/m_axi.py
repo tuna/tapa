@@ -200,7 +200,6 @@ M_AXI_PARAM_SUFFIXES = (
 )
 
 M_AXI_PARAMS = ("C_M_AXI_DATA_WIDTH", "C_M_AXI_WSTRB_WIDTH")
-M_AXI_PARAM_MIN_SPLIT = 5
 
 
 def get_m_axi_port_width(
@@ -213,12 +212,7 @@ def get_m_axi_port_width(
     """Get the width of a memory-mapped AXI port."""
     width = M_AXI_PORT_WIDTHS[port]
     if width == 0:
-        if port == "ADDR":
-            width = addr_width
-        elif port == "DATA":
-            width = data_width
-        elif port == "STRB":
-            width = data_width // 8
+        width = {"ADDR": addr_width, "DATA": data_width, "STRB": data_width // 8}[port]
     elif width == 1 and port not in vec_ports:
         return None
     if port == "ID" and id_width is not None:

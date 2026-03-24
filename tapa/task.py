@@ -10,7 +10,6 @@ import collections
 import decimal
 import enum
 import logging
-import operator
 from typing import NamedTuple
 
 from tapa import __version__
@@ -80,10 +79,9 @@ class Task:
         is_slot: bool = False,
     ) -> None:
         if isinstance(level, str):
-            if level == "lower":
-                level = Task.Level.LOWER
-            elif level == "upper":
-                level = Task.Level.UPPER
+            level = {"lower": Task.Level.LOWER, "upper": Task.Level.UPPER}.get(
+                level, level
+            )
         if not isinstance(level, Task.Level):
             raise TypeError("unexpected `level`: " + level)
         self.level = level
@@ -95,18 +93,8 @@ class Task:
         self.is_slot = is_slot
         port_dict = {i.name: i for i in map(Port, ports or [])}
         if self.is_upper:
-            self.tasks = dict(
-                sorted(
-                    (item for item in (tasks or {}).items()),
-                    key=operator.itemgetter(0),
-                ),
-            )
-            self.fifos = dict(
-                sorted(
-                    (item for item in (fifos or {}).items()),
-                    key=operator.itemgetter(0),
-                ),
-            )
+            self.tasks = dict(sorted((tasks or {}).items()))
+            self.fifos = dict(sorted((fifos or {}).items()))
             self.ports = port_dict
             self.fsm_module = Module(name=f"{self.name}_fsm")
             self.fsm_module.add_ports(

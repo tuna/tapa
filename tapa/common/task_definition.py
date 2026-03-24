@@ -4,10 +4,9 @@ All rights reserved. The contributor(s) of this file has/have agreed to the
 RapidStream Contributor License Agreement.
 """
 
-import operator
+import re
 from enum import Enum
 from functools import lru_cache
-from re import sub
 
 from tapa.common.base import Base
 from tapa.common.interconnect_definition import InterconnectDefinition
@@ -45,10 +44,11 @@ class TaskDefinition(Base):
             return None
 
         # If is an argument
-        port_name = sub(r"\[\d+\]$", r"", name)
+        port_name = re.sub(r"\[\d+\]$", "", name)
         # FIXME: tapacc should output port name with []
         assert isinstance(self.obj["ports"], list)
-        if port_name in map(operator.itemgetter("name"), self.obj["ports"]):
+        port_names = {p["name"] for p in self.obj["ports"]}
+        if port_name in port_names:
             return None
 
         assert isinstance(self.obj["fifos"], dict)
@@ -61,27 +61,24 @@ class TaskDefinition(Base):
             return []
 
         assert isinstance(self.obj["fifos"], dict)
-        results = []
-        for name in self.obj["fifos"]:
-            inter_def = self.get_interconnect_def(name)
-            if inter_def is not None:
-                results.append(inter_def)
-
-        return results
+        return [
+            d
+            for name in self.obj["fifos"]
+            if (d := self.get_interconnect_def(name)) is not None
+        ]
 
     @lru_cache(None)
     def get_subtask_defs(self) -> list["TaskDefinition"]:
         """Returns the task definitions of the subtasks of this task."""
+        if self.get_level() == TaskDefinition.Level.LEAF:
+            return []
+
         # Import Graph locally to avoid circular import
         from tapa.common.graph import Graph  # noqa: PLC0415
 
         assert isinstance(self.parent, Graph)
         assert isinstance(self.obj["tasks"], dict)
-        return (
-            [self.parent.get_task_def(name) for name in self.obj["tasks"]]
-            if self.get_level() != TaskDefinition.Level.LEAF
-            else []
-        )
+        return [self.parent.get_task_def(name) for name in self.obj["tasks"]]
 
     @lru_cache(None)
     def get_subtask_instantiations(self, name: str) -> list[dict]:

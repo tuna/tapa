@@ -28,10 +28,6 @@ class FalsePathResetInterface(FalsePathInterface):
         """Represent the interface as a string."""
         return f"fp_rst({self.ports[0]})"
 
-    def is_clk(self) -> bool:  # noqa: PLR6301
-        """Return if the interface is a clock or reset interface."""
-        return False
-
     def is_reset(self) -> bool:  # noqa: PLR6301
         """Return if the interface is a clock or reset interface."""
         return True

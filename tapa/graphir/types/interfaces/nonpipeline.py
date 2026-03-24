@@ -35,7 +35,7 @@ class NonPipelineInterface(BaseInterface):
             msg = "Interface must have at least one port."
             raise RuntimeError(msg)
 
-        super().__init__(**kwargs)
+        super().__init__(**kwargs)  # type: ignore[arg-type]
 
     def __repr__(self) -> str:
         """Represent the interface as a string."""
@@ -64,10 +64,8 @@ class UnknownInterface(NonPipelineInterface):
     type: Literal["unknown"] = "unknown"  # type: ignore[reportIncompatibleVariableOverride]
 
     def __init__(self, **kwargs: object) -> None:
-        """Prevent pylint false positive warning of missing args."""
-        # default role is TBD
+        """Prevent pyright false positive warning of missing args."""
         kwargs["role"] = kwargs.get("role", BaseInterface.InterfaceRole.TBD)
-
         super().__init__(**kwargs)
 
 
@@ -77,8 +75,5 @@ class TAPAPeekInterface(NonPipelineInterface):
     type: Literal["tapa_peek"] = "tapa_peek"  # type: ignore[reportIncompatibleVariableOverride]
 
     def __init__(self, **kwargs: object) -> None:
-        """Prevent pylint false positive warning of missing args."""
-        # default role is TBD
-        kwargs["role"] = kwargs.get("role", BaseInterface.InterfaceRole.TBD)
-
+        """Prevent pyright false positive warning of missing args."""
         super().__init__(**kwargs)

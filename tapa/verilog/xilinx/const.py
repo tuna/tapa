@@ -161,9 +161,5 @@ STATE = Identifier("tapa_state")
 
 
 def get_stream_width(port: str, data_width: int) -> Width | None:
-    width = STREAM_PORT_WIDTH[port]
-    if width == 0:
-        width = data_width + 1  # for eot
-    if width == 1:
-        return None
-    return Width.create(width)
+    width = STREAM_PORT_WIDTH[port] or (data_width + 1)  # 0 => data+eot
+    return None if width == 1 else Width.create(width)

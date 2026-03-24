@@ -14,7 +14,6 @@ import os
 import re
 import subprocess
 import threading
-from collections.abc import Sequence
 
 from tapa.remote.config import RemoteConfig
 
@@ -45,9 +44,7 @@ def _default_ssh_control_dir() -> str:
 
 def get_ssh_control_dir(config: RemoteConfig) -> str:
     """Return the control socket directory for SSH multiplexing."""
-    if config.ssh_control_dir:
-        return os.path.expanduser(config.ssh_control_dir)
-    return _default_ssh_control_dir()
+    return config.ssh_control_dir or _default_ssh_control_dir()
 
 
 def _ensure_ssh_control_dir(config: RemoteConfig) -> str:
@@ -77,7 +74,7 @@ def build_ssh_args(config: RemoteConfig) -> list[str]:
         str(config.port),
     ]
     if config.key_file:
-        args.extend(["-i", os.path.expanduser(config.key_file)])
+        args.extend(["-i", config.key_file])
     if config.ssh_multiplex:
         control_dir = _ensure_ssh_control_dir(config)
         control_path = os.path.join(control_dir, "cm-%C")
@@ -323,17 +320,3 @@ def run_ssh_with_stdin(
     """Run a command with binary stdin and return (returncode, stderr)."""
     result = run_ssh(config, command, input_bytes=data, timeout=timeout)
     return result.returncode, result.stderr
-
-
-def run_local_command(
-    argv: Sequence[str],
-    *,
-    timeout: float | None = None,
-) -> subprocess.CompletedProcess[bytes]:
-    """Run a local command and capture output as bytes."""
-    return subprocess.run(
-        list(argv),
-        capture_output=True,
-        timeout=timeout,
-        check=False,
-    )

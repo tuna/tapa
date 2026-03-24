@@ -212,11 +212,10 @@ class RunAie:
         }
 
         cmd_args = get_cmd_args(cmd_args, ["XILINX_VITIS"], popen_kwargs)
-        extra_upload = getattr(self, "_extra_upload", ())
         self._proc = create_tool_process(
             cmd_args,
             cwd=self.project_path,
-            extra_upload_paths=extra_upload,
+            extra_upload_paths=self._extra_upload,
             extra_download_paths=(self.project_path,),
             **popen_kwargs,
         )

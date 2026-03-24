@@ -49,8 +49,5 @@ AXIS_PORTS = {
 def get_axis_port_width_int(port: str, data_width: int) -> int:
     width = AXIS_PORT_WIDTHS[port]
     if width == 0:
-        if port == "TDATA":
-            width = data_width
-        elif port == "TKEEP":
-            width = data_width // 8
+        width = data_width if port == "TDATA" else data_width // 8
     return width
