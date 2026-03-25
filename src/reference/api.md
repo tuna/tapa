@@ -44,6 +44,16 @@ void Top(tapa::istream<float>& in, tapa::ostream<float>& out, int n) {
 }
 ```
 
+### `tapa::seq`
+
+A sequential index generator. When `tapa::seq{}` is passed as an argument to `.invoke()` with a repeat count `N`, each invocation receives a unique integer (0, 1, 2, …, N−1). Use this to distribute indexed work across task instances, such as assigning each instance its slice of a stream array.
+
+```cpp
+tapa::streams<float, 4> channels;
+tapa::task().invoke<tapa::join, 4>(Worker, channels, tapa::seq{});
+// Worker instance 0 gets channel[0], instance 1 gets channel[1], etc.
+```
+
 ### `tapa::executable`
 
 Wraps a path to an XO or bitstream file for use in `.invoke()`. When an `executable` is passed as the second argument to `.invoke()`, the task runs on hardware (via FRT) instead of in software simulation.
@@ -190,7 +200,7 @@ tapa::invoke(MyKernel, bitstream, tapa::read_only_mmap<float>(buf), n);
 
 | Channel | Type | Direction | Description |
 |---------|------|-----------|-------------|
-| `read_addr` | `ostream<int64_t>` | kernel → memory | Write a byte-element-index (i.e., element index, not byte offset) to request a read. |
+| `read_addr` | `ostream<int64_t>` | kernel → memory | Write an element index to request a read. The framework converts the index to a byte offset internally. |
 | `read_data` | `istream<T>` | memory → kernel | Read the data returned by a previously issued read request. |
 | `write_addr` | `ostream<int64_t>` | kernel → memory | Write an element index to request a write. |
 | `write_data` | `ostream<T>` | kernel → memory | Write the data to be written at the requested address. |
