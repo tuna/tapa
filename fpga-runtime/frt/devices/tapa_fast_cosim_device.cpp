@@ -39,7 +39,6 @@
 #include "frt/devices/shared_memory_stream.h"
 #include "frt/devices/xilinx_environ.h"
 #include "frt/stream_arg.h"
-#include "frt/subprocess.h"
 
 DEFINE_bool(xosim_start_gui, false, "start Vivado GUI for simulation");
 DEFINE_bool(xosim_save_waveform, false, "save waveform in the work directory");
