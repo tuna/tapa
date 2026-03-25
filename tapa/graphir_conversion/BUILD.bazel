@@ -14,6 +14,7 @@ py_library(
         "__init__.py",
         "add_iface.py",
         "gen_rs_graphir.py",
+        "module_definitions.py",
         "pipeline/__init__.py",
         "pipeline/fifo_builder.py",
         "pipeline/iface_builders.py",

@@ -19,6 +19,13 @@ from tapa.graphir.types import (
     VerilogModuleDefinition,
 )
 from tapa.graphir_conversion.add_iface import get_graphir_iface
+from tapa.graphir_conversion.module_definitions import (
+    get_ctrl_s_axi_def,
+    get_fifo_def,
+    get_fsm_def,
+    get_reset_inverter_def,
+    get_reset_inverter_inst,
+)
 from tapa.graphir_conversion.pipeline.instantiation_builder import (
     get_top_ir_subinsts,
     get_upper_module_ir_subinsts,
@@ -31,11 +38,6 @@ from tapa.graphir_conversion.pipeline.project_builder import (
 )
 from tapa.graphir_conversion.pipeline.wire_builder import get_upper_task_ir_wires
 from tapa.graphir_conversion.utils import (
-    get_ctrl_s_axi_def,
-    get_fifo_def,
-    get_fsm_def,
-    get_reset_inverter_def,
-    get_reset_inverter_inst,
     get_task_graphir_parameters,
     get_task_graphir_ports,
     get_verilog_definition_from_tapa_module,

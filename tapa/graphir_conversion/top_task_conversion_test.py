@@ -18,7 +18,7 @@ from tapa.graphir_conversion.gen_rs_graphir import (
     get_verilog_module_from_leaf_task,
 )
 from tapa.graphir_conversion.leaf_task_conversion_test import gen_dummy_leaf_task
-from tapa.graphir_conversion.utils import get_ctrl_s_axi_def
+from tapa.graphir_conversion.module_definitions import get_ctrl_s_axi_def
 from tapa.instance import Instance
 from tapa.verilog.xilinx.module import Module
 

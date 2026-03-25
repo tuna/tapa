@@ -1,4 +1,2 @@
 # Existing oversized files tracked during phased refactor.
 # Format: relative file path.
-
-tapa/graphir_conversion/utils.py
