@@ -117,11 +117,12 @@ def _get_fifo_connections(
     )
 
 
-def get_fifo_inst(  # noqa: PLR0917, PLR0913
+def get_fifo_inst(  # noqa: PLR0913
     upper_task: Task,
     fifo_name: str,
     fifo: dict,
     submodule_ir_defs: Mapping[str, AnyModuleDefinition],
+    *,
     is_top: bool = False,
     floorplan_region: str | None = None,
 ) -> ModuleInstantiation:

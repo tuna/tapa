@@ -58,7 +58,7 @@ class ProgramSynthesisMixin(
                     self.rtl_dir,
                     rpt_path,
                     module_name,
-                    part_num,
+                    part_num=part_num,
                     synth_kwargs={"mode": "out_of_context"},
                 ) as proc:
                     stdout, stderr = proc.communicate()

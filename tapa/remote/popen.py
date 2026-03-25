@@ -220,10 +220,11 @@ def _download_paths(config: RemoteConfig, paths: list[str], session_dir: str) ->
 _REMOTE_ENV_ALLOWLIST = {"HOME", "LANG", "LC_ALL", "LC_CTYPE"}
 
 
-def _build_remote_command(  # noqa: PLR0913, PLR0917
+def _build_remote_command(  # noqa: PLR0913
     rewritten_args: list[str] | str,
     remote_cwd: str,
     env: dict[str, str],
+    *,
     all_local_paths: list[str],
     session_dir: str,
     xilinx_settings: str | None,
@@ -296,9 +297,9 @@ class RemoteToolProcess(ToolProcess):
             _rewrite_cmd_args(self._cmd_args, all_local_paths, self._session_dir),
             remote_cwd,
             self._env,
-            all_local_paths,
-            self._session_dir,
-            self._config.xilinx_settings,
+            all_local_paths=all_local_paths,
+            session_dir=self._session_dir,
+            xilinx_settings=self._config.xilinx_settings,
         )
         _logger.info("Executing remote command: %s", full_cmd)
 

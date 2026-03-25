@@ -24,6 +24,8 @@ def test_generate_cpp_testbench_matches_golden_output() -> None:
         "axis_to_data_file": {},
     }
 
-    rendered = _canonicalize(generate_cpp_testbench("top", [], [], config, {}, "hls"))
+    rendered = _canonicalize(
+        generate_cpp_testbench("top", [], [], config, reg_addrs={}, mode="hls")
+    )
     expected = _canonicalize(_FIXTURES.joinpath("tb.cpp").read_text(encoding="utf-8"))
     assert rendered == expected

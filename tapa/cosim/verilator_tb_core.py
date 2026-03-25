@@ -125,11 +125,12 @@ def _build_hls_port_args(
     return mmap_args, scalar_args
 
 
-def generate_cpp_testbench(  # noqa: PLR0913, PLR0917
+def generate_cpp_testbench(  # noqa: PLR0913
     top_name: str,
     axi_list: list[AXI],
     args: Sequence[Arg],
     config: CosimConfig | dict,
+    *,
     reg_addrs: dict[str, list[str]],
     mode: str,
 ) -> str:

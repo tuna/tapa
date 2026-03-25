@@ -287,8 +287,10 @@ def get_top_ir_subinsts(
                 fifo_name,
                 fifo,
                 slot_defs,
-                True,
-                floorplan_task_name_region_mapping[fifo["consumed_by"][0]],
+                is_top=True,
+                floorplan_region=floorplan_task_name_region_mapping[
+                    fifo["consumed_by"][0]
+                ],
             )
         )
     return ir_insts

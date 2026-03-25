@@ -60,10 +60,11 @@ def _get_ctrl_s_axi_definition(
     )
 
 
-def get_project_from_floorplanned_program(  # noqa: PLR0913, PLR0917
+def get_project_from_floorplanned_program(  # noqa: PLR0913
     program: Program,
     device_config: Path,
     floorplan_path: Path,
+    *,
     get_verilog_module_from_leaf_task: Callable,
     get_slot_module_definition: Callable,
     get_top_module_definition: Callable,

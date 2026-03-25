@@ -10,13 +10,15 @@ from typing import TYPE_CHECKING
 from tapa.cosim.common import parse_register_addr
 from tapa.cosim.config_preprocess import CosimConfig
 from tapa.cosim.verilator_build import generate_build_script as _generate_build_script
-from tapa.cosim.verilator_build import launch_verilator  # noqa: F401
+from tapa.cosim.verilator_build import launch_verilator
 from tapa.cosim.verilator_dpi import generate_dpi_support
 from tapa.cosim.verilator_ips import detect_xilinx_ips
 from tapa.cosim.verilator_tb_core import generate_cpp_testbench
 
 if TYPE_CHECKING:
     from tapa.cosim.common import AXI
+
+__all__ = ["launch_verilator"]
 
 
 def generate_verilator_tb(
@@ -48,7 +50,9 @@ def generate_verilator_tb(
         ctrl_path = f"{verilog_path}/{top_name}_control_s_axi.v"
         reg_addrs = parse_register_addr(ctrl_path)
 
-    tb_cpp = generate_cpp_testbench(top_name, axi_list, args, config, reg_addrs, mode)
+    tb_cpp = generate_cpp_testbench(
+        top_name, axi_list, args, config, reg_addrs=reg_addrs, mode=mode
+    )
     (Path(tb_output_dir) / "tb.cpp").write_text(tb_cpp, encoding="utf-8")
 
     dpi_c = generate_dpi_support()

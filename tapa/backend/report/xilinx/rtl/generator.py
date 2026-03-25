@@ -40,11 +40,12 @@ report_utilization -file $rpt_file {report_util_args}
 class ReportDirUtil(backend.Vivado):
     """Run synthesis and generate resource utilization report."""
 
-    def __init__(  # noqa: PLR0913,PLR0917
+    def __init__(  # noqa: PLR0913
         self,
         hdl_dir: str,
         rpt_path: str,
         top_name: str,
+        *,
         part_num: str | None = None,
         synth_kwargs: dict[str, str] | None = None,
         report_util_kwargs: dict[str, str] | None = None,
@@ -93,10 +94,11 @@ class ReportDirUtil(backend.Vivado):
 class ReportXoUtil(ReportDirUtil):
     """Run synthesis and generate resource utilization report from an XO file."""
 
-    def __init__(  # noqa: PLR0913,PLR0917
+    def __init__(  # noqa: PLR0913
         self,
         xo_file: BinaryIO,
         rpt_file: TextIO,
+        *,
         top_name: str = "Dataflow",
         part_num: str | None = None,
         synth_kwargs: dict[str, str] | None = None,
@@ -133,9 +135,9 @@ class ReportXoUtil(ReportDirUtil):
             hdl_dir,
             self.rpt_file_name,
             top_name,
-            part_num,
-            synth_kwargs,
-            report_util_kwargs,
+            part_num=part_num,
+            synth_kwargs=synth_kwargs,
+            report_util_kwargs=report_util_kwargs,
         )
 
     def __exit__(
