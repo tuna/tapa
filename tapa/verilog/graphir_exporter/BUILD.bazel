@@ -6,6 +6,7 @@
 
 load("@rules_python//python:defs.bzl", "py_library")
 load("@tapa_deps//:requirements.bzl", "requirement")
+load("//bazel:pytest_rules.bzl", "py_test")
 
 package(
     default_visibility = ["//tapa:__subpackages__"],
@@ -13,10 +14,20 @@ package(
 
 py_library(
     name = "graphir_exporter",
-    srcs = glob(["**/*.py"]),
+    srcs = glob(
+        ["**/*.py"],
+        exclude = ["**/*_test.py"],
+    ),
     deps = [
         "//tapa/graphir",
         requirement("jinja2"),
         requirement("click"),
     ],
+)
+
+py_test(
+    name = "verilog_test",
+    size = "small",
+    srcs = ["verilog_test.py"],
+    deps = [":graphir_exporter"],
 )

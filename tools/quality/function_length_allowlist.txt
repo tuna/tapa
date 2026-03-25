@@ -1,4 +1,2 @@
 # Temporary exceptions for Python function-length budget.
 # Format: relative/path.py:qualified.symbol
-# to be removed: Phase 3
-tapa/verilog/graphir_exporter/verilog.py:export_verilog_grouped_module
