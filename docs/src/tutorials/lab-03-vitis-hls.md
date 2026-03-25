@@ -7,7 +7,7 @@
 After this lab you will understand:
 - The mechanical substitutions that cover most Vitis HLS kernels
 - Why the dataflow-in-a-loop pattern must be restructured in TAPA
-- How `tapa::hls_compat` helpers support incremental migration of large codebases
+- How `tapa::hls::stream` supports incremental migration of large codebases
 
 ---
 
@@ -172,27 +172,22 @@ The child tasks stream data to each other for the full duration; no synchronizat
 
 ## HLS-compat helpers for incremental migration
 
-If you have a large existing codebase and want to port it piece by piece rather than all at once, TAPA provides compatibility helpers that let you compile and simulate code that still uses Vitis-HLS-style idioms.
+If you have a large existing codebase, TAPA provides `tapa::hls::stream<T>` as a drop-in replacement for `hls::stream<T>`. Unlike `tapa::stream<T>`, it uses effectively infinite depth in software simulation, so producers never block. This lets you keep direction-agnostic stream passing patterns while still running software simulation.
 
-Include `tapa/host/compat.h` alongside `tapa.h`:
+`tapa::hls::stream<T>` is available via `#include <tapa.h>` — no additional include is needed.
 
 ```cpp
-#include <tapa.h>
-#include <tapa/host/compat.h>
+// Before (Vitis HLS):
+hls::stream<float>& s
+
+// After (TAPA compat, passes software simulation without depth tuning):
+tapa::hls::stream<float>& s
 ```
 
-The helpers available under the `tapa::hls_compat` namespace:
-
-- `tapa::hls_compat::stream<T>` — behaves like `hls::stream<T>` in software simulation (unbounded depth, no overflow check)
-- `tapa::hls_compat::stream_interface<T>&` — accepts both read and write operations from the same parameter, matching the direction-agnostic `hls::stream<T>&` behavior
-- `tapa::hls_compat::task()` — schedules child tasks **sequentially**, matching Vitis HLS software simulation semantics
-
-With these helpers, a partially migrated kernel (pointer args replaced but stream direction not yet split) compiles and produces correct software simulation output. You can then migrate functions one at a time, replacing `hls_compat` types with proper `tapa::istream`/`tapa::ostream` as you go.
-
-See [example_1_hls_compat.cpp](code/vitis-hls/example_1_hls_compat.cpp) for a complete example.
+Use this as a temporary stepping stone: get software simulation passing with `tapa::hls::stream`, then replace with directional `tapa::istream<T>&` / `tapa::ostream<T>&` before synthesis.
 
 ```admonish warning
-`tapa::hls_compat` APIs are software simulation only and are NOT synthesizable. You must replace all `hls_compat` types with proper TAPA types before running `tapa compile`.
+`tapa::hls::stream` is **not synthesizable** as a task parameter. Replace all uses with `tapa::istream<T>&` or `tapa::ostream<T>&` before running `tapa compile`.
 ```
 
 ---

@@ -40,7 +40,7 @@ A sentinel value written to a stream to signal the end of a data sequence. The p
 
 **fast cosim**
 
-Synonym for *cosim* in the TAPA context. The `tapa cosim` command runs RTL simulation directly from the XO file without a full Vivado implementation run, making it significantly faster than traditional cosim flows.
+Synonym for *cosim* in the TAPA context. Fast cosim is invoked by passing a `.xo` file as the `--bitstream` argument to the host executable. The host executable internally calls `tapa cosim`, which runs RTL simulation without a full Vivado implementation run, making it significantly faster than traditional cosim flows.
 
 ---
 
@@ -118,4 +118,4 @@ Xilinx compiled binary. The final bitstream file produced by Vivado implementati
 
 **xo**
 
-Xilinx object file. The intermediate artifact produced by `tapa pack`, containing all per-task RTL and metadata in a ZIP archive. The XO is the input to `v++ --link` for bitstream generation, and also the input to `tapa cosim` for fast hardware cosimulation.
+Xilinx object file. The intermediate artifact produced by `tapa pack`, containing all per-task RTL and metadata in a ZIP archive. The XO is the input to `v++ --link` for bitstream generation, and is also passed as `--bitstream` to the host executable for fast hardware cosimulation.

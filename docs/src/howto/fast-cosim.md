@@ -35,12 +35,6 @@ The default backend is `xsim`. To switch to Verilator:
 ./vadd --bitstream VecAdd.xo -xosim_simulator verilator 1000
 ```
 
-To invoke `tapa cosim` directly:
-
-```bash
-tapa cosim --simulator verilator ...
-```
-
 ### Saving waveforms
 
 Specify a persistent work directory and enable waveform saving:

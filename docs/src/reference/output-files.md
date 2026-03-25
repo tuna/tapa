@@ -69,4 +69,4 @@ Records compilation settings shared across pipeline steps (target, part number, 
 
 **`report.json` / `report.yaml`**
 
-Post-synthesis resource utilisation report. Produced only when `--enable-synth-util` is passed to `tapa synth`. Both files contain the same data in JSON and YAML encoding respectively. These files are absent when `--enable-synth-util` is not specified.
+Post-synthesis resource utilisation report, written unconditionally after `tapa synth` completes. Both files contain the same data in JSON and YAML encoding respectively. Passing `--enable-synth-util` to `tapa synth` additionally generates per-task `.hier.util.rpt` files under `tar/`, but does not affect whether these top-level report files are written.

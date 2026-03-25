@@ -295,10 +295,10 @@ These C++ attributes are recognised by TAPA and lowered to Vitis HLS pragmas dur
 `[[tapa::target("ignore")]]` was formerly written as `[[tapa::target("non_synthesizable", "xilinx")]]`. The `"ignore"` form is the current spelling.
 ```
 
-### `tapa::hls_compat` sub-namespace
+### `tapa::hls` sub-namespace
 
-`tapa::hls_compat` provides software-simulation-only wrappers (`stream`, `stream_interface`, `task`) that behave like their Vitis HLS equivalents. These are useful when incrementally migrating a design from Vitis HLS.
+`tapa::hls::stream<T>` is a stream type that behaves like `hls::stream<T>` in software simulation: it has effectively infinite depth, so producers never block in simulation. Use it when incrementally migrating a Vitis HLS design and you want software simulation to pass without tuning stream depths. `#include <tapa.h>` includes this automatically.
 
 ```admonish warning
-`tapa::hls_compat` APIs are **not synthesizable**. Before targeting hardware, replace all `tapa::hls_compat` uses with their native TAPA equivalents. Include `<tapa/host/compat.h>` to use the compat layer.
+`tapa::hls::stream` is **not synthesizable** for use as a direct replacement for `hls::stream`. Before targeting hardware, replace all `tapa::hls::stream` uses with `tapa::istream<T>&` / `tapa::ostream<T>&` and tune stream depths appropriately.
 ```
