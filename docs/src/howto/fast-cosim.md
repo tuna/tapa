@@ -70,16 +70,27 @@ When you want to inspect the generated simulation environment before committing 
 
 ### Parallel runs
 
-When running multiple fast-cosim instances concurrently, prevent work-directory collisions by using a dedicated flag:
+A design split across multiple kernels — each synthesized to its own `.xo` — runs multiple cosim instances concurrently. The Cannon matrix-multiply example illustrates this: `Scatter`, `ProcElem`, and `Gather` are three separate kernels, each passed via its own `--*_bitstream` flag:
 
 ```bash
-./vadd --bitstream VecAdd.xo \
-    -xosim_work_dir ./cosim_work \
-    -xosim_work_dir_parallel_cosim \
-    1000
+./cannon \
+    --scatter_bitstream=scatter.xo \
+    --proc_elem_bitstream=proc-elem.xo \
+    --gather_bitstream=gather.xo
 ```
 
-Each instance creates a uniquely named subdirectory within `./cosim_work`.
+The host calls `tapa::invoke` once per kernel; TAPA launches all three cosim instances in parallel. If all three share the same `-xosim_work_dir`, their simulation environments collide. Pass `-xosim_work_dir_parallel_cosim` to give each instance its own uniquely named subdirectory:
+
+```bash
+./cannon \
+    --scatter_bitstream=scatter.xo \
+    --proc_elem_bitstream=proc-elem.xo \
+    --gather_bitstream=gather.xo \
+    -xosim_work_dir ./cosim_work \
+    -xosim_work_dir_parallel_cosim
+```
+
+TAPA creates `./cosim_work/XXXXXX/` (a unique name per instance) so that the three simulations run without interfering with each other's build artifacts.
 
 ## Runtime flags reference
 
