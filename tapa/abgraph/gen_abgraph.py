@@ -13,6 +13,7 @@ from pathlib import Path
 
 from tapa.abgraph.ab_graph import ABEdge, ABGraph, ABVertex, Area, convert_area
 from tapa.core import Program
+from tapa.instance import Port
 from tapa.steps.floorplan import convert_region_format
 from tapa.util import as_type
 from tapa.verilog.xilinx.module_ops.ports import get_streams_fifos
@@ -114,7 +115,62 @@ def get_basic_ab_graph(
     return ABGraph(vs=list(vertices.values()), es=edges)
 
 
-def add_port_iface_connections(  # noqa: C901
+def _find_preassignment_region(
+    port_name: str, preassignments: dict[str, str]
+) -> str | None:
+    region = None
+    for pattern, current_region in preassignments.items():
+        if re.fullmatch(pattern, port_name):
+            if region and region != current_region:
+                msg = (
+                    f"Port {port_name} matches multiple preassignment patterns: "
+                    f"{region} and {current_region}. "
+                    "Please check your configuration."
+                )
+                raise ValueError(msg)
+            region = current_region
+    return region
+
+
+def _add_port_edges(
+    port: Port,
+    dummy_vertex: ABVertex,
+    connected_task_vertex: ABVertex,
+    port_width: dict[str, int | tuple[int, int]],
+    edges: list,
+) -> None:
+    # for mmap ports, both input and output width are not negligible,
+    # so we need to add two edges
+    if port.cat.is_mmap or port.cat.is_istream:
+        if port.cat.is_mmap:
+            width = as_type(tuple, port_width[port.name])[1]
+        else:
+            width = port_width[port.name]
+        edges.append(
+            ABEdge(
+                source_vertex=dummy_vertex,
+                target_vertex=connected_task_vertex,
+                width=as_type(int, width),
+                index=len(edges),
+            )
+        )
+
+    if port.cat.is_mmap or port.cat.is_ostream:
+        if port.cat.is_mmap:
+            width = as_type(tuple, port_width[port.name])[0]
+        else:
+            width = port_width[port.name]
+        edges.append(
+            ABEdge(
+                source_vertex=connected_task_vertex,
+                target_vertex=dummy_vertex,
+                width=as_type(int, width),
+                index=len(edges),
+            )
+        )
+
+
+def add_port_iface_connections(
     program: Program,
     graph: ABGraph,
     port_width: dict[str, int | tuple[int, int]],
@@ -133,19 +189,7 @@ def add_port_iface_connections(  # noqa: C901
         if not (port.cat.is_stream or port.cat.is_mmap or port.is_streams):
             continue
 
-        # find matching preassignment pattern
-        region = None
-        for pattern, current_region in cpp_arg_pre_assignments.items():
-            if re.fullmatch(pattern, port.name):
-                if region and region != current_region:
-                    msg = (
-                        f"Port {port.name} matches multiple preassignment patterns: "
-                        f"{region} and {current_region}. "
-                        "Please check your configuration."
-                    )
-                    raise ValueError(msg)
-                region = current_region
-
+        region = _find_preassignment_region(port.name, cpp_arg_pre_assignments)
         if not region:
             _logger.warning(
                 "Port %s does not match any preassignment pattern.", port.name
@@ -162,36 +206,7 @@ def add_port_iface_connections(  # noqa: C901
         vertices[TAPA_PORT_PREFIX + port.name] = dummy_vertex
 
         connected_task = program.get_inst_by_port_arg_name(None, top, port.name).name
-
-        # for mmap ports, both input and output width
-        # are not negligible, so we need to add two edges
-        if port.cat.is_mmap or port.cat.is_istream:
-            if port.cat.is_mmap:
-                width = as_type(tuple, port_width[port.name])[1]
-            else:
-                width = port_width[port.name]
-            edges.append(
-                ABEdge(
-                    source_vertex=dummy_vertex,
-                    target_vertex=vertices[connected_task],
-                    width=as_type(int, width),
-                    index=len(edges),
-                )
-            )
-
-        if port.cat.is_mmap or port.cat.is_ostream:
-            if port.cat.is_mmap:
-                width = as_type(tuple, port_width[port.name])[0]
-            else:
-                width = port_width[port.name]
-            edges.append(
-                ABEdge(
-                    source_vertex=vertices[connected_task],
-                    target_vertex=dummy_vertex,
-                    width=as_type(int, width),
-                    index=len(edges),
-                )
-            )
+        _add_port_edges(port, dummy_vertex, vertices[connected_task], port_width, edges)
 
     return ABGraph(vs=list(vertices.values()), es=edges)
 
