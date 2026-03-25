@@ -10,6 +10,7 @@ import click
 from tapa.abgraph.gen_abgraph import get_top_level_ab_graph
 from tapa.backend.xilinx import parse_device_info
 from tapa.common.target import Target
+from tapa.core import Program
 from tapa.graphir_conversion.gen_rs_graphir import get_project_from_floorplanned_program
 from tapa.steps.common import (
     is_pipelined,
@@ -17,6 +18,7 @@ from tapa.steps.common import (
     load_tapa_program,
     store_persistent_context,
 )
+from tapa.steps.synth_plan import SynthPlan, build_synth_plan
 
 
 @click.command()
@@ -151,31 +153,56 @@ def synth(  # noqa: PLR0913,PLR0917
     settings["platform"] = platform
     settings["clock_period"] = clock_period
 
-    # Generate RTL code
-    if target == Target.XILINX_AIE:
-        assert platform is not None, "Platform must be specified for AIE flow."
+    plan = build_synth_plan(
+        target=target,
+        part_num=part_num,
+        platform=platform,
+        clock_period=clock_period,
+        jobs=jobs,
+        keep_hls_work_dir=keep_hls_work_dir,
+        skip_hls_based_on_mtime=skip_hls_based_on_mtime,
+        other_hls_configs=other_hls_configs,
+        enable_synth_util=enable_synth_util,
+        override_report_schema_version=override_report_schema_version,
+        nonpipeline_fifos=nonpipeline_fifos,
+        gen_ab_graph=gen_ab_graph,
+        gen_graphir=gen_graphir,
+        floorplan_config=floorplan_config,
+        device_config=device_config,
+        floorplan_path=floorplan_path,
+    )
+    _execute_synth(program, plan, settings)
+
+
+def _execute_synth(program: Program, plan: SynthPlan, settings: dict) -> None:
+    """Execute the synth plan — all side effects live here."""
+    assert plan.clock_period is not None
+    assert isinstance(plan.clock_period, str)
+    if plan.target == Target.XILINX_AIE:
+        assert plan.platform is not None
         program.run_aie(
-            clock_period,
-            skip_hls_based_on_mtime,
-            keep_hls_work_dir,
-            platform,
+            plan.clock_period,
+            plan.skip_hls_based_on_mtime,
+            plan.keep_hls_work_dir,
+            plan.platform,
         )
-    elif target in {Target.XILINX_VITIS, Target.XILINX_HLS}:
+    elif plan.target in {Target.XILINX_VITIS, Target.XILINX_HLS}:
+        assert plan.part_num is not None
         program.run_hls(
-            clock_period,
-            part_num,
-            skip_hls_based_on_mtime,
-            other_hls_configs,
-            jobs,
-            keep_hls_work_dir,
+            plan.clock_period,
+            plan.part_num,
+            plan.skip_hls_based_on_mtime,
+            plan.other_hls_configs,
+            plan.jobs,
+            plan.keep_hls_work_dir,
         )
         program.generate_task_rtl()
-        if enable_synth_util:
-            program.generate_post_synth_util(part_num, jobs)
-        program.generate_top_rtl(override_report_schema_version)
+        if plan.enable_synth_util:
+            program.generate_post_synth_util(plan.part_num, plan.jobs)
+        program.generate_top_rtl(plan.override_report_schema_version)
 
-        if nonpipeline_fifos:
-            with open(nonpipeline_fifos, encoding="utf-8") as f:
+        if plan.nonpipeline_fifos:
+            with open(plan.nonpipeline_fifos, encoding="utf-8") as f:
                 fifos = json.load(f)
             Path(
                 os.path.join(program.work_dir, "grouping_constraints.json")
@@ -183,23 +210,21 @@ def synth(  # noqa: PLR0913,PLR0917
                 json.dumps(program.get_grouping_constraints(fifos)), encoding="utf-8"
             )
 
-        if gen_ab_graph:
-            assert floorplan_config, (
-                "Floorplan configuration is required for generating AB graph."
-            )
+        if plan.gen_ab_graph:
+            assert plan.floorplan_config is not None
             Path(os.path.join(program.work_dir, "ab_graph.json")).write_text(
-                get_top_level_ab_graph(program, floorplan_config).model_dump_json(),
+                get_top_level_ab_graph(
+                    program, plan.floorplan_config
+                ).model_dump_json(),
                 encoding="utf-8",
             )
 
-        if gen_graphir:
-            assert device_config, (
-                "Device configuration is required for generating GraphIR."
-            )
-            assert floorplan_path, "Floorplan path is required for generating GraphIR."
+        if plan.gen_graphir:
+            assert plan.device_config is not None
+            assert plan.floorplan_path is not None
             Path(os.path.join(program.work_dir, "graphir.json")).write_text(
                 get_project_from_floorplanned_program(
-                    program, device_config, floorplan_path
+                    program, plan.device_config, plan.floorplan_path
                 ).model_dump_json(),
                 encoding="utf-8",
             )

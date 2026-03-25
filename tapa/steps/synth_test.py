@@ -7,7 +7,9 @@ import pytest
 from click.testing import CliRunner
 
 from tapa.backend.xilinx import parse_device_info
+from tapa.common.target import Target
 from tapa.steps.synth import synth
+from tapa.steps.synth_plan import SynthPlan, build_synth_plan
 
 # ---------------------------------------------------------------------------
 # parse_device_info unit tests
@@ -174,3 +176,49 @@ def test_synth_routes_to_run_hls_for_vitis_target() -> None:
     program.run_hls.assert_called_once()
     program.generate_task_rtl.assert_called_once()
     program.run_aie.assert_not_called()
+
+
+def test_build_synth_plan_returns_plan_for_hls_target() -> None:
+    plan = build_synth_plan(
+        target=Target.XILINX_HLS,
+        part_num="xcu250-figd2104-2L-e",
+        platform=None,
+        clock_period=5.0,
+        jobs=4,
+        keep_hls_work_dir=False,
+        skip_hls_based_on_mtime=False,
+        other_hls_configs="",
+        enable_synth_util=False,
+        override_report_schema_version="",
+        nonpipeline_fifos=None,
+        gen_ab_graph=False,
+        gen_graphir=False,
+        floorplan_config=None,
+        device_config=None,
+        floorplan_path=None,
+    )
+    assert isinstance(plan, SynthPlan)
+    assert plan.target == Target.XILINX_HLS
+    assert plan.part_num == "xcu250-figd2104-2L-e"
+
+
+def test_build_synth_plan_aie_requires_platform() -> None:
+    with pytest.raises((AssertionError, ValueError)):
+        build_synth_plan(
+            target=Target.XILINX_AIE,
+            part_num=None,
+            platform=None,
+            clock_period=3.33,
+            jobs=None,
+            keep_hls_work_dir=False,
+            skip_hls_based_on_mtime=False,
+            other_hls_configs="",
+            enable_synth_util=False,
+            override_report_schema_version="",
+            nonpipeline_fifos=None,
+            gen_ab_graph=False,
+            gen_graphir=False,
+            floorplan_config=None,
+            device_config=None,
+            floorplan_path=None,
+        )

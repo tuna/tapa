@@ -8,12 +8,19 @@ load("@rules_python//python:defs.bzl", "py_library")
 load("@tapa_deps//:requirements.bzl", "requirement")
 load("//bazel:pytest_rules.bzl", "py_test")
 
+py_library(
+    name = "synth_plan",
+    srcs = ["synth_plan.py"],
+    deps = ["//tapa/common:target"],
+)
+
 py_test(
     name = "synth_test",
     size = "small",
     srcs = ["synth_test.py"],
     deps = [
         ":steps",
+        ":synth_plan",
         "//tapa/backend",
         "//tapa/common:target",
         requirement("click"),
@@ -25,6 +32,7 @@ py_library(
     srcs = glob(["**/*.py"]),
     visibility = ["//tapa:__subpackages__"],
     deps = [
+        ":synth_plan",
         "//tapa:core",
         "//tapa:util",
         "//tapa/abgraph",
