@@ -18,6 +18,48 @@ bazel_dep(name = "verilator", version = "5.044", dev_dependency = True)
 
 http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
+http_archive(
+    name = "mdbook_linux_amd64",
+    build_file_content = 'exports_files(["mdbook"])',
+    sha256 = "084e4342ba564db270108763e404a7d1f309d932651a22484e93c0dc1a071f6d",
+    url = "https://github.com/rust-lang/mdBook/releases/download/v0.5.2/mdbook-v0.5.2-x86_64-unknown-linux-gnu.tar.gz",
+)
+
+http_archive(
+    name = "mdbook_macos_amd64",
+    build_file_content = 'exports_files(["mdbook"])',
+    sha256 = "17cc64478ec279a73881420e850bd8f9d460552e56b50159ff465bc97eb90d6c",
+    url = "https://github.com/rust-lang/mdBook/releases/download/v0.5.2/mdbook-v0.5.2-x86_64-apple-darwin.tar.gz",
+)
+
+http_archive(
+    name = "mdbook_macos_arm64",
+    build_file_content = 'exports_files(["mdbook"])',
+    sha256 = "da2f55653e96e3f6e1c53e2e13e91cc0cfbce8ab971c2e0de792c0f1f8d24222",
+    url = "https://github.com/rust-lang/mdBook/releases/download/v0.5.2/mdbook-v0.5.2-aarch64-apple-darwin.tar.gz",
+)
+
+http_archive(
+    name = "mdbook_admonish_linux_amd64",
+    build_file_content = 'exports_files(["mdbook-admonish"])',
+    sha256 = "64ce6dad3d20d3723c149e333d9cf85a9f7d057f18c2707d264698afdfc6679f",
+    url = "https://github.com/tommilligan/mdbook-admonish/releases/download/v1.20.0/mdbook-admonish-v1.20.0-x86_64-unknown-linux-gnu.tar.gz",
+)
+
+http_archive(
+    name = "mdbook_admonish_macos_amd64",
+    build_file_content = 'exports_files(["mdbook-admonish"])',
+    sha256 = "f78237e9335554377fb4a83a7cb4ac382743729e1f3ca67d2e0e23314bcacab9",
+    url = "https://github.com/tommilligan/mdbook-admonish/releases/download/v1.20.0/mdbook-admonish-v1.20.0-x86_64-apple-darwin.tar.gz",
+)
+
+http_archive(
+    name = "mdbook_admonish_macos_arm64",
+    build_file_content = 'exports_files(["mdbook-admonish"])',
+    sha256 = "0019dfc4b32d63c1392aa264aed2253c1e0c2fb09216f8e2cc269bbfb8bb49b5",
+    url = "https://github.com/tommilligan/mdbook-admonish/releases/download/v1.20.0/mdbook-admonish-v1.20.0-aarch64-apple-darwin.tar.gz",
+)
+
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 
 llvm = use_extension("@toolchains_llvm//toolchain/extensions:llvm.bzl", "llvm", dev_dependency = True)

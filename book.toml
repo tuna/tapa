@@ -1,0 +1,14 @@
+[book]
+title = "TAPA Documentation"
+authors = ["TAPA community maintainers and contributors"]
+language = "en"
+src = "src"
+
+[output.html]
+site-url = "/tapa/"
+git-repository-url = "https://github.com/tuna/tapa"
+edit-url-template = "https://github.com/tuna/tapa/edit/main/docs/src/{path}"
+
+[preprocessor.admonish]
+command = "mdbook-admonish"
+assets_version = "3.0.2"
