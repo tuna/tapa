@@ -12,6 +12,7 @@
 #include <iomanip>
 #include <ios>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -20,6 +21,8 @@
 
 #include <tinyxml2.h>
 #include <unistd.h>
+#include <boost/asio.hpp>
+#include <boost/process/v2.hpp>
 
 #include <gflags/gflags.h>
 #include <glog/logging.h>
@@ -100,7 +103,11 @@ std::string GetConfigPath(const std::string& work_dir) {
 
 struct TapaFastCosimDevice::Context {
   std::chrono::time_point<std::chrono::steady_clock> start_timestamp;
-  subprocess::Popen proc;
+  boost::asio::io_context ioc;
+  std::optional<boost::process::v2::process> proc;
+  // Cached exit code: set by Finish() or IsFinished() after the process exits.
+  // Avoids double-waitpid (running() reaps child; a later wait() would ECHILD).
+  std::optional<int> exit_code;
 };
 
 TapaFastCosimDevice::TapaFastCosimDevice(std::string_view xo_path)
@@ -365,23 +372,34 @@ void TapaFastCosimDevice::Exec() {
     argv = {"/bin/sh", "-c", ":"};
   }
 
-  context_ = std::make_unique<Context>(Context{
-      .start_timestamp = tic,
-      .proc = subprocess::Popen(argv,
-                                subprocess::environment(xilinx::GetEnviron())),
-  });
+  auto env = xilinx::GetEnviron();
+
+  // Boost.Process v2 default_launcher uses execve (no PATH search), unlike
+  // subprocess::Popen which used execvpe. Resolve bare names via PATH search.
+  boost::process::v2::filesystem::path exe(argv[0]);
+  if (!exe.has_parent_path()) {
+    auto found = boost::process::v2::environment::find_executable(argv[0]);
+    if (!found.empty()) exe = found;
+  }
+
+  context_ = std::make_unique<Context>();
+  context_->start_timestamp = tic;
+  context_->proc.emplace(context_->ioc, exe,
+                         std::vector<std::string>(argv.begin() + 1, argv.end()),
+                         boost::process::v2::process_environment(env));
 }
 
 void TapaFastCosimDevice::Finish() {
   LOG_IF(FATAL, context_ == nullptr) << "Exec() must be called before Finish()";
 
-  int waitcode = context_->proc.wait();
-  LOG_IF(FATAL, waitcode != 0)
-      << "Failed to wait for TAPA fast cosim process: " << strerror(errno);
-
-  int rc = context_->proc.retcode();
-  if (rc != 0) {
-    LOG(ERROR) << "TAPA fast cosim failed with exit code " << rc;
+  // Use cached exit code if IsFinished() already reaped the process via
+  // running(); otherwise wait() now and cache for any later IsFinished() call.
+  if (!context_->exit_code.has_value()) {
+    context_->exit_code = context_->proc->wait();
+  }
+  if (*context_->exit_code != 0) {
+    LOG(ERROR) << "TAPA fast cosim failed with exit code "
+               << *context_->exit_code;
     std::terminate();
   }
   LOG(INFO) << "TAPA fast cosim finished successfully";
@@ -394,14 +412,25 @@ void TapaFastCosimDevice::Finish() {
 
 void TapaFastCosimDevice::Kill() {
   if (context_ != nullptr) {
-    context_->proc.kill(SIGINT);  // SIGINT propagates to child processes.
+    context_->proc->interrupt();  // sends SIGINT, propagates to child processes
     context_ = nullptr;
     LOG(INFO) << "TAPA fast cosim process killed";
   }
 }
 
 bool TapaFastCosimDevice::IsFinished() const {
-  return context_ != nullptr && context_->proc.poll() >= 0;
+  if (context_ == nullptr || !context_->proc.has_value()) return false;
+  // If Finish() already called wait(), exit_code is set — skip running().
+  if (context_->exit_code.has_value()) return true;
+  // running() calls waitpid(WNOHANG); if process exited it reaps the child and
+  // caches exit status internally. Call wait() immediately after to retrieve it
+  // before a later Finish() call would see ECHILD.
+  boost::system::error_code ec;
+  if (!context_->proc->running(ec)) {
+    context_->exit_code = context_->proc->wait(ec);
+    return true;
+  }
+  return false;
 }
 
 std::vector<ArgInfo> TapaFastCosimDevice::GetArgsInfo() const { return args_; }

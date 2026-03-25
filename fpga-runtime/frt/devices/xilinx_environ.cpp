@@ -13,6 +13,15 @@ namespace {
 
 namespace bp = boost::process::v2;
 
+// Boost.Process v2 default_launcher uses execve (no PATH search). Resolve bare
+// executable names (no '/' in the name) to full paths via the current PATH.
+bp::filesystem::path ResolveExe(const std::string& name) {
+  bp::filesystem::path p(name);
+  if (p.has_parent_path()) return p;
+  auto found = bp::environment::find_executable(name);
+  return found.empty() ? p : found;
+}
+
 // Run a shell command with the given environment, capture stdout, return it.
 // The captured output is NUL-delimited (env -0 output), so we return the raw
 // bytes as a std::string.
@@ -21,9 +30,10 @@ std::string RunCapture(const std::vector<std::string>& args,
   boost::asio::io_context ioc;
   boost::asio::readable_pipe rp{ioc};
   boost::system::error_code ec;
-  bp::process proc{
-      ioc, args[0], std::vector<std::string>(args.begin() + 1, args.end()),
-      bp::process_stdio{{}, rp, {}}, bp::process_environment(environ)};
+  bp::process proc{ioc, ResolveExe(args[0]),
+                   std::vector<std::string>(args.begin() + 1, args.end()),
+                   bp::process_stdio{{}, rp, {}},
+                   bp::process_environment(environ)};
   std::string out;
   boost::asio::read(rp, boost::asio::dynamic_buffer(out),
                     boost::asio::transfer_all(), ec);
@@ -37,7 +47,7 @@ std::string RunCaptureDefaultEnv(const std::vector<std::string>& args) {
   boost::asio::io_context ioc;
   boost::asio::readable_pipe rp{ioc};
   boost::system::error_code ec;
-  bp::process proc{ioc, args[0],
+  bp::process proc{ioc, ResolveExe(args[0]),
                    std::vector<std::string>(args.begin() + 1, args.end()),
                    bp::process_stdio{{}, rp, {}}};
   std::string out;
