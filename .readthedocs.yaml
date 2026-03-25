@@ -6,5 +6,5 @@ build:
     rust: latest
   commands:
     - cargo install mdbook@0.4.52 mdbook-admonish@1.20.0
-    - mdbook-admonish install docs/
+    - cd docs && mdbook-admonish install .
     - mdbook build docs/ --dest-dir "$READTHEDOCS_OUTPUT/html"

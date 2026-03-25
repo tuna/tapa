@@ -11,4 +11,4 @@ edit-url-template = "https://github.com/tuna/tapa/edit/main/docs/src/{path}"
 
 [preprocessor.admonish]
 command = "mdbook-admonish"
-assets_version = "3.0.2"
+assets_version = "3.1.0" # do not edit: managed by `mdbook-admonish install`
