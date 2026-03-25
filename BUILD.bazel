@@ -73,19 +73,25 @@ genrule(
     srcs = glob(["src/**"]) + ["book.toml"],
     outs = ["book.tar.gz"],
     # Source files in the Bazel sandbox are read-only symlinks, so we copy
-    # the entire book directory to a writable temp dir before running mdbook build.
+    # the entire book directory to a writable temp dir before running
+    # mdbook-admonish install (which writes CSS) and mdbook build.
     cmd = """
         set -e
         MDBOOK=$$(realpath $(location :mdbook_bin))
         MDBOOK_DIR=$$(dirname $$MDBOOK)
+        cp $(location :mdbook_admonish_bin) $$MDBOOK_DIR/mdbook-admonish
+        chmod +x $$MDBOOK_DIR/mdbook-admonish
         WORK=$$(mktemp -d)
         BOOK_DIR=$$(dirname $$(realpath $(location book.toml)))
         cp -rL $$BOOK_DIR/. $$WORK/
-        PATH=$$MDBOOK_DIR:$$PATH $$MDBOOK build $$WORK --dest-dir $(RULEDIR)/book
-        tar -czf $@ -C $(RULEDIR) book
+        OUTDIR="$$(pwd)/$(RULEDIR)/book"
+        PATH=$$MDBOOK_DIR:$$PATH mdbook-admonish install $$WORK
+        PATH=$$MDBOOK_DIR:$$PATH $$MDBOOK build $$WORK --dest-dir $$OUTDIR
+        tar -czf $@ -C "$$(pwd)/$(RULEDIR)" book
         rm -rf $$WORK
     """,
     tools = [
+        ":mdbook_admonish_bin",
         ":mdbook_bin",
     ],
 )
@@ -94,6 +100,7 @@ sh_binary(
     name = "serve",
     srcs = ["serve.sh"],
     data = [
+        ":mdbook_admonish_bin",
         ":mdbook_bin",
     ] + glob(["src/**"]) + ["book.toml"],
 )

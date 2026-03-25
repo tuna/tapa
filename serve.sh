@@ -9,5 +9,5 @@ WORK_BIN="$(mktemp -d)"
 cp "$MDBOOK" "$WORK_BIN/mdbook"
 cp "$MDBOOK_ADMONISH" "$WORK_BIN/mdbook-admonish"
 chmod +x "$WORK_BIN/mdbook" "$WORK_BIN/mdbook-admonish"
-PATH="$WORK_BIN:$PATH" "$WORK_BIN/mdbook" admonish install "$BOOK_DIR"
+PATH="$WORK_BIN:$PATH" mdbook-admonish install "$BOOK_DIR"
 exec PATH="$WORK_BIN:$PATH" "$WORK_BIN/mdbook" serve "$BOOK_DIR" --open

@@ -21,22 +21,22 @@ http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "ht
 http_archive(
     name = "mdbook_linux_amd64",
     build_file_content = 'exports_files(["mdbook"])',
-    sha256 = "084e4342ba564db270108763e404a7d1f309d932651a22484e93c0dc1a071f6d",
-    url = "https://github.com/rust-lang/mdBook/releases/download/v0.5.2/mdbook-v0.5.2-x86_64-unknown-linux-gnu.tar.gz",
+    sha256 = "c0b903f01dd8f4edc644372ad2b80b1fdddd12552d37b6a098657cbd8eddd768",
+    url = "https://github.com/rust-lang/mdBook/releases/download/v0.4.52/mdbook-v0.4.52-x86_64-unknown-linux-gnu.tar.gz",
 )
 
 http_archive(
     name = "mdbook_macos_amd64",
     build_file_content = 'exports_files(["mdbook"])',
-    sha256 = "17cc64478ec279a73881420e850bd8f9d460552e56b50159ff465bc97eb90d6c",
-    url = "https://github.com/rust-lang/mdBook/releases/download/v0.5.2/mdbook-v0.5.2-x86_64-apple-darwin.tar.gz",
+    sha256 = "4768a2a3cd6bff139feffd855dd8fb82ee356ecf822ae12ed9abcbde0633205b",
+    url = "https://github.com/rust-lang/mdBook/releases/download/v0.4.52/mdbook-v0.4.52-x86_64-apple-darwin.tar.gz",
 )
 
 http_archive(
     name = "mdbook_macos_arm64",
     build_file_content = 'exports_files(["mdbook"])',
-    sha256 = "da2f55653e96e3f6e1c53e2e13e91cc0cfbce8ab971c2e0de792c0f1f8d24222",
-    url = "https://github.com/rust-lang/mdBook/releases/download/v0.5.2/mdbook-v0.5.2-aarch64-apple-darwin.tar.gz",
+    sha256 = "4aee6a8ff54dc59fbe9bcf1c38b8f58583fba63535dff7a5ec8205f0cffc3fd4",
+    url = "https://github.com/rust-lang/mdBook/releases/download/v0.4.52/mdbook-v0.4.52-aarch64-apple-darwin.tar.gz",
 )
 
 http_archive(
