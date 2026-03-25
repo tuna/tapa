@@ -10,7 +10,7 @@ import logging
 import math
 from typing import Any
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, PrivateAttr, model_validator
 
 from tapa.abgraph.device.common import Coor
 
@@ -186,11 +186,10 @@ class VirtualDevice(BaseModel):
     platform_name: str | None
     user_pblock_name: str | None
 
-    # ruff: noqa: ANN401
-    def __init__(self, **data: Any) -> None:
-        """Init with extra validation."""
-        super().__init__(**data)
+    _slot_index: dict[tuple[int, int], VirtualSlot] = PrivateAttr(default_factory=dict)
 
+    def model_post_init(self, __context: Any, /) -> None:
+        """Build slot index and validate after model initialization."""
         if len(self.slots) != self.rows * self.cols:
             msg = (
                 f"Number of slots ({len(self.slots)}) does not match rows * cols "
@@ -198,18 +197,19 @@ class VirtualDevice(BaseModel):
             )
             raise ValueError(msg)
 
+        self._slot_index = {(s.x, s.y): s for s in self.slots}
+
         for x in range(self.cols):
             for y in range(self.rows):
                 self.get_slot(x, y)
 
     def get_slot(self, x: int, y: int) -> VirtualSlot:
-        """Get a slot in O(N) time."""
-        for slot in self.slots:
-            if slot.x == x and slot.y == y:
-                return slot
-
-        msg = f"Slot ({x}, {y}) not found"
-        raise ValueError(msg)
+        """Get a slot by coordinates."""
+        slot = self._slot_index.get((x, y))
+        if slot is None:
+            msg = f"Slot ({x}, {y}) not found"
+            raise ValueError(msg)
+        return slot
 
     def get_island_centroid(self, coor: Coor) -> dict[str, float]:
         """Get the centroid of an island."""
@@ -251,11 +251,8 @@ class VirtualDevice(BaseModel):
         pp_y = max(dist_y / self.pp_dist, 1) if dist_y else 0
         return math.ceil(pp_x + pp_y)
 
-    # ruff: noqa: C901, PLR0912
-    def sanity_check(self) -> None:  # pylint: disable=too-many-branches
-        """Sanity check the device."""
-        _logger.info("Sanity checking the virtual device.")
-
+    def _check_slot_properties(self) -> None:
+        """Check empty area and missing pblock for each slot."""
         for x in range(self.cols):
             for y in range(self.rows):
                 slot = self.get_slot(x, y)
@@ -267,31 +264,46 @@ class VirtualDevice(BaseModel):
                 if slot.pblock_ranges is None:
                     _logger.warning("%s does not have a pblock range.", name)
 
-                if y < self.rows - 1:
-                    if slot.north_wire_capacity == WIRE_CAPACITY_INF:
-                        _logger.warning("%s has infinite north wires.", name)
-                    if not slot.north_anchor_region:
-                        _logger.warning("%s does not have north anchor region.", name)
+    def _check_wire_capacities(self) -> None:
+        """Check N/S/E/W wire capacity warnings."""
+        for x in range(self.cols):
+            for y in range(self.rows):
+                slot = self.get_slot(x, y)
+                name = f"SLOT_X{x}Y{y}"
 
-                if y > 0:
-                    if slot.south_wire_capacity == WIRE_CAPACITY_INF:
-                        _logger.warning("%s has infinite south wire capacity.", name)
-                    if not slot.south_anchor_region:
-                        _logger.warning("%s does not have south anchor region.", name)
+                if y < self.rows - 1 and slot.north_wire_capacity == WIRE_CAPACITY_INF:
+                    _logger.warning("%s has infinite north wires.", name)
 
-                if x < self.cols - 1:
-                    if slot.east_wire_capacity == WIRE_CAPACITY_INF:
-                        _logger.warning("%s has infinite east wire capacity.", name)
-                    if not slot.east_anchor_region:
-                        _logger.warning("%s does not have east anchor region.", name)
+                if y > 0 and slot.south_wire_capacity == WIRE_CAPACITY_INF:
+                    _logger.warning("%s has infinite south wire capacity.", name)
 
-                if x > 0:
-                    if slot.west_wire_capacity == WIRE_CAPACITY_INF:
-                        _logger.warning("%s has infinite west wire capacity.", name)
-                    if not slot.west_anchor_region:
-                        _logger.warning("%s does not have west anchor region.", name)
+                if x < self.cols - 1 and slot.east_wire_capacity == WIRE_CAPACITY_INF:
+                    _logger.warning("%s has infinite east wire capacity.", name)
 
-        # check that no tag is assigned to multiple slots
+                if x > 0 and slot.west_wire_capacity == WIRE_CAPACITY_INF:
+                    _logger.warning("%s has infinite west wire capacity.", name)
+
+    def _check_anchor_regions(self) -> None:
+        """Check N/S/E/W anchor region warnings."""
+        for x in range(self.cols):
+            for y in range(self.rows):
+                slot = self.get_slot(x, y)
+                name = f"SLOT_X{x}Y{y}"
+
+                if y < self.rows - 1 and not slot.north_anchor_region:
+                    _logger.warning("%s does not have north anchor region.", name)
+
+                if y > 0 and not slot.south_anchor_region:
+                    _logger.warning("%s does not have south anchor region.", name)
+
+                if x < self.cols - 1 and not slot.east_anchor_region:
+                    _logger.warning("%s does not have east anchor region.", name)
+
+                if x > 0 and not slot.west_anchor_region:
+                    _logger.warning("%s does not have west anchor region.", name)
+
+    def _check_unique_tags(self) -> None:
+        """Check no tag is assigned to multiple slots."""
         all_tags = [tag for slot in self.slots for tag in slot.tags]
         seen: set[str] = set()
         for tag in all_tags:
@@ -300,14 +312,21 @@ class VirtualDevice(BaseModel):
                 raise ValueError(msg)
             seen.add(tag)
 
+    def sanity_check(self) -> None:
+        """Sanity check the device."""
+        _logger.info("Sanity checking the virtual device.")
+        self._check_slot_properties()
+        self._check_wire_capacities()
+        self._check_anchor_regions()
+        self._check_unique_tags()
         _logger.info("Finished sanity checking.")
 
 
-# ruff: noqa: PLR0913, PLR0917
-def get_empty_device(
+def get_empty_device(  # noqa: PLR0913
     num_row: int,
     num_col: int,
     part_num: str,
+    *,
     pp_dist: int = 100,
     unit_dist_x: int = 100,
     unit_dist_y: int = 150,  # penalty for vertical routing through SLR boundary
