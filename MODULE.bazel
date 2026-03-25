@@ -56,8 +56,9 @@ http_archive(
 http_archive(
     name = "mdbook_admonish_macos_arm64",
     build_file_content = 'exports_files(["mdbook-admonish"])',
-    sha256 = "0019dfc4b32d63c1392aa264aed2253c1e0c2fb09216f8e2cc269bbfb8bb49b5",
-    url = "https://github.com/tommilligan/mdbook-admonish/releases/download/v1.20.0/mdbook-admonish-v1.20.0-aarch64-apple-darwin.tar.gz",
+    # No aarch64-apple-darwin build exists; use x86_64 via Rosetta 2.
+    sha256 = "f78237e9335554377fb4a83a7cb4ac382743729e1f3ca67d2e0e23314bcacab9",
+    url = "https://github.com/tommilligan/mdbook-admonish/releases/download/v1.20.0/mdbook-admonish-v1.20.0-x86_64-apple-darwin.tar.gz",
 )
 
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
