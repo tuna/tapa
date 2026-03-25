@@ -89,12 +89,15 @@ const addConnectedFifo = ({ addEdge, fifo, fifoName, grouping, taskName }) => {
   addFifoEdge({ addEdge, fifo, fifoName, getStyle: () => style, id: `${taskName}/${fifoName}`, source, target });
 };
 
-/**
- * Add an edge for a FIFO that is missing one endpoint (either produced_by or consumed_by).
- * @param {Object} params
- * @param {"produced" | "consumed"} params.direction - "produced" means this task is the producer
- *   (missing consumer), "consumed" means this task is the consumer (missing producer)
- */
+/** @type {(params: {
+ *   addEdge: (edge: import("@antv/g6").EdgeData) => void,
+ *   direction: "produced" | "consumed",
+ *   fifo: UpperTask["fifos"][string],
+ *   fifoName: string,
+ *   grouping: Grouping,
+ *   nodes: import("@antv/g6").NodeData[],
+ *   taskName: string,
+ * }) => void} */
 const addMissingFifo = ({ addEdge, direction, fifo, fifoName, grouping, nodes, taskName }) => {
   const isMissingProducer = direction === "consumed";
   /** @type {(node: import("@antv/g6").NodeData | undefined) => () => import("@antv/g6/lib/spec/element/edge").EdgeStyle} */
@@ -103,6 +106,7 @@ const addMissingFifo = ({ addEdge, direction, fifo, fifoName, grouping, nodes, t
     : getProducedMissingStyle(node, fifoName);
   const otherTask = isMissingProducer ? fifo.produced_by[0] : fifo.consumed_by[0];
   const otherKey = isMissingProducer ? fifo.produced_by.join("/") : fifo.consumed_by.join("/");
+  /** @type {(src: string, tgt: string, node: import("@antv/g6").NodeData | undefined, edgeId: string) => void} */
   const mkEdge = (src, tgt, node, edgeId) =>
     addFifoEdge({ addEdge, fifo, fifoName, getStyle: styleFor(node), id: edgeId, source: src, target: tgt });
 
