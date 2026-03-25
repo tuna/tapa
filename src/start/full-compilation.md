@@ -54,7 +54,7 @@ Before waiting hours for a full bitstream, validate the RTL with TAPA's
 fast cosimulation. Pass the `.xo` file as the `--bitstream` argument:
 
 ```bash
-./vadd --bitstream VecAdd.xo 1000
+./vadd --bitstream=vecadd.xo 1000
 ```
 
 Fast cosim uses simplified models for external components (DRAM, AXI
