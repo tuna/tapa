@@ -70,27 +70,32 @@ When you want to inspect the generated simulation environment before committing 
 
 ### Parallel runs
 
-A design split across multiple kernels — each synthesized to its own `.xo` — runs multiple cosim instances concurrently. The Cannon matrix-multiply example illustrates this: `Scatter`, `ProcElem`, and `Gather` are three separate kernels, each passed via its own `--*_bitstream` flag:
+When a host application calls `tapa::invoke` more than once — for example, a pipeline split into separate kernels each compiled to its own `.xo` file — TAPA launches all cosim instances concurrently. Each kernel is compiled independently and its `.xo` path is passed to its own `tapa::invoke` call via a separate bitstream flag:
 
-```bash
-./cannon \
-    --scatter_bitstream=scatter.xo \
-    --proc_elem_bitstream=proc-elem.xo \
-    --gather_bitstream=gather.xo
+```cpp
+// Host code: two separate kernels, each with its own bitstream flag
+DEFINE_string(producer_bitstream, "", "XO for Producer kernel");
+DEFINE_string(consumer_bitstream, "", "XO for Consumer kernel");
+
+tapa::invoke(Producer, FLAGS_producer_bitstream, ...);
+tapa::invoke(Consumer, FLAGS_consumer_bitstream, ...);
 ```
 
-The host calls `tapa::invoke` once per kernel; TAPA launches all three cosim instances in parallel. If all three share the same `-xosim_work_dir`, their simulation environments collide. Pass `-xosim_work_dir_parallel_cosim` to give each instance its own uniquely named subdirectory:
+```bash
+./app --producer_bitstream=producer.xo --consumer_bitstream=consumer.xo
+```
+
+If all instances share the same `-xosim_work_dir`, their simulation environments collide. Pass `-xosim_work_dir_parallel_cosim` to give each instance its own uniquely named subdirectory:
 
 ```bash
-./cannon \
-    --scatter_bitstream=scatter.xo \
-    --proc_elem_bitstream=proc-elem.xo \
-    --gather_bitstream=gather.xo \
+./app \
+    --producer_bitstream=producer.xo \
+    --consumer_bitstream=consumer.xo \
     -xosim_work_dir ./cosim_work \
     -xosim_work_dir_parallel_cosim
 ```
 
-TAPA creates `./cosim_work/XXXXXX/` (a unique name per instance) so that the three simulations run without interfering with each other's build artifacts.
+TAPA creates `./cosim_work/XXXXXX/` (a unique name per instance) so that the simulations run without interfering with each other's build artifacts.
 
 ## Runtime flags reference
 
