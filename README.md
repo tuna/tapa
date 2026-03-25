@@ -83,7 +83,7 @@ tapa compile \
 A TAPA design is a directed graph of concurrent tasks connected by typed
 streams. An upper-level task declares streams and launches child tasks; leaf
 tasks perform computation. The same C++ code runs in software simulation and
-compiles to RTL — no pragma changes required.
+compiles to RTL.
 
 ```cpp
 // Kernel file (vadd.cpp)
