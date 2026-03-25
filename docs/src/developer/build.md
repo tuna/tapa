@@ -152,6 +152,30 @@ bazel-bin/tapa/tapa compile \
 Remember to rerun the `bazel build` command whenever you make changes to the
 TAPA compiler or runtime library to ensure you're using the latest version.
 
+## Build the Documentation
+
+The documentation is written in Markdown and built with [mdBook](https://rust-lang.github.io/mdBook/). The Bazel build rules fetch the correct mdBook and mdbook-admonish binaries automatically — no separate install is needed.
+
+**Build a static HTML site:**
+
+```bash
+bazel build //docs:build
+```
+
+The output is a tarball at `bazel-bin/docs/book.tar.gz`. Extract it to browse the HTML locally.
+
+**Serve with live reload during editing:**
+
+```bash
+bazel run //docs:serve
+```
+
+This starts a local server (default: `http://localhost:3000`) that reloads automatically when source files change. Supported on Linux x86\_64, macOS x86\_64, and macOS arm64.
+
+```admonish note
+The documentation source lives under `docs/src/`. The Bazel targets handle mdbook-admonish preprocessing automatically; do not run `mdbook-admonish install` manually in the source tree.
+```
+
 ## Run TAPA Tests
 
 To run all TAPA tests, including unit tests and integration tests, use the
