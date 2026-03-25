@@ -10,7 +10,7 @@ These variables are read by the host executable at startup.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `TAPA_CONCURRENCY` | Number of CPU cores | Number of parallel coroutine threads used by software simulation. Set to `1` for single-threaded, more reproducible simulation runs. Has no effect on remote HLS parallelism (`-j`). |
+| `TAPA_CONCURRENCY` | Number of CPU cores | Number of parallel coroutine threads used by software simulation. Set to `1` for single-threaded, more reproducible simulation runs. Has no effect on HLS compilation parallelism (`-j`). |
 | `TAPA_STREAM_LOG_DIR` | (unset — logging disabled) | Directory for stream transfer logs. When set, TAPA writes one log file per named stream recording each value written to that stream. Useful for tracing data corruption during software simulation. |
 
 ### Example: reproducible single-threaded simulation

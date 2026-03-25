@@ -21,6 +21,7 @@
 
 - [Software Simulation](howto/software-simulation.md)
 - [Fast Hardware Simulation](howto/fast-cosim.md)
+- [Parallel RTL Emulation](howto/parallel-rtl-emulation.md)
 - [Vitis Cosimulation](howto/vitis-cosim.md)
 - [Build & Run on Board](howto/build-and-run.md)
 - [Remote Execution](howto/remote-execution.md)
