@@ -40,8 +40,8 @@ on-board execution — **not** for software simulation.
 To install a specific version:
 
 ```bash
-TAPA_VERSION=0.1.20260319 \
-  curl -fsSL https://raw.githubusercontent.com/tuna/tapa/main/install.sh | sh -s -- -q
+curl -fsSL https://raw.githubusercontent.com/tuna/tapa/main/install.sh \
+  | TAPA_VERSION=0.1.20260319 sh -s -- -q
 ```
 
 Releases: [github.com/tuna/tapa/releases](https://github.com/tuna/tapa/releases)

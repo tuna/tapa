@@ -90,7 +90,7 @@ tapa compile \
 After repacking, run fast cosim to verify the custom RTL produces correct results before committing to a full bitstream build:
 
 ```bash
-tapa cosim --xo work.out/vadd.xo ...
+./vadd --bitstream=work.out/vadd.xo 1000
 ```
 
 Catching functional bugs at cosim time is far cheaper than discovering them after hours of bitstream generation.

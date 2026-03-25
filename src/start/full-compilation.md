@@ -62,10 +62,9 @@ interconnect) so setup takes only a few seconds instead of the ten-plus
 minutes that Vitis cosimulation requires. A successful run prints `PASS!`.
 
 ```admonish note
-The default simulator backend is `xsim`, which requires a Vivado installation
-on Linux. An open-source alternative is Verilator (Linux and macOS):
-
-    tapa cosim --simulator verilator ...
+The default simulator backend is `xsim`, which requires Vivado on Linux. To use
+Verilator instead (cross-platform, no Vivado required), pass `-xosim_simulator verilator`
+to the host executable: `./vadd --bitstream=vadd.xo -xosim_simulator verilator`.
 ```
 
 ## Stage 3 — Link to xclbin

@@ -94,7 +94,7 @@ The `tapa synth` step. Runs Vitis HLS on each leaf task extracted during `tapa a
 
 **TAPA_CONCURRENCY**
 
-Environment variable controlling the number of coroutine threads used during software simulation. Set to `1` to force sequential execution (useful for debugging). Set to a value greater than 1 to simulate parallel task execution. The default depends on the number of tasks in the design.
+Environment variable controlling the number of coroutine threads used during software simulation. Set to `1` to force sequential execution (useful for debugging). The default is the number of physical CPU cores on the host machine.
 
 ---
 

@@ -3,7 +3,7 @@
 **When to use this page:** When software simulation or fast cosim hangs without producing output, or terminates without printing results.
 
 ```admonish note
-Software simulation uses unbounded queues internally — stream depth is not enforced during software simulation. Hangs in software simulation are caused by structural deadlocks (circular dependencies, element count mismatches) rather than shallow FIFOs. Shallow stream depth causes deadlocks in fast cosim and hardware, where the declared depth is enforced.
+`tapa::stream` enforces the declared depth in both software simulation and fast cosim/RTL. A blocking `write()` on a full stream yields the current coroutine and retries until space is available — so shallow stream depth can deadlock in software simulation too. The exception is `tapa::hls::stream` (the Vitis HLS compatibility alias), which uses effectively infinite depth in software simulation.
 ```
 
 ---

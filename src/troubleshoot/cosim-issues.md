@@ -8,7 +8,7 @@
 
 If fast cosim fails (`FAIL!` or hangs) but software simulation passes, the most common causes are:
 
-- **RTL enforces declared stream depths; software simulation does not.** Software simulation uses unbounded queues internally. If your design only works because a producer can get arbitrarily far ahead of a consumer, it will pass software simulation but deadlock in RTL. Fix: check for backpressure issues using the guidance in [Deadlocks & Hangs](deadlocks-and-hangs.md).
+- **Non-deterministic scheduling can expose races not visible in software simulation.** Software simulation uses coroutine scheduling that runs tasks cooperatively; RTL runs tasks truly in parallel. Races that are hidden by cooperative scheduling in software simulation may surface as failures in fast cosim. Fix: remove any assumptions about task ordering that are not enforced by stream synchronization.
 
 - **Blocking `async_mmap` operations inside pipelined loops.** A blocking call inside a pipelined loop can stall the pipeline in RTL in ways that software simulation does not model. Fix: use non-blocking reads/writes and manually handle the response FIFOs, or switch to `tapa::mmap` to simplify the memory access model while debugging.
 

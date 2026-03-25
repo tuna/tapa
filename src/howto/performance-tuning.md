@@ -42,14 +42,10 @@ FIFOs that are too shallow cause backpressure and reduce throughput when produce
 Run synthesis with utilization reporting enabled:
 
 ```bash
-tapa \
-  --work-dir work.out \
-  synth \
+tapa --work-dir work.out synth \
   --enable-synth-util \
-  --top VecAdd \
   --part-num xcu280-fsvh2892-2L-e \
-  --clock-period 3.33 \
-  -f vadd.cpp
+  --clock-period 3.33
 ```
 
 TAPA runs an additional RTL synthesis pass and writes per-task resource counts to:
