@@ -29,20 +29,26 @@ A TAPA design is a directed graph of tasks connected by streams and memory
 interfaces. Scalars are passed as function arguments.
 
 ```
-Host ──tapa::invoke──> Top-level task (VecAdd)
-                          ├── stream a_q ──> Leaf task: Mmap2Stream(a)
-                          ├── stream b_q ──> Leaf task: Mmap2Stream(b)
-                          ├── stream c_q ──> Leaf task: Add
-                          └── mmap c     ──> Leaf task: Stream2Mmap
+Host
+ │  tapa::invoke(TopTask, bitstream, mmap_args...)
+ ▼
+Top-level task  ← no computation; spawns all leaf tasks
+ ├── spawns ──> Leaf task A  (writes to stream S)
+ │                            stream S
+ ├── spawns ──> Leaf task B  (reads stream S, writes to stream T)
+ │                            stream T
+ └── spawns ──> Leaf task C  (reads stream T, writes to mmap)
+                              mmap ──> DRAM
 ```
 
 - The **host** calls `tapa::invoke`, passing the kernel function, a bitstream
   path (empty for software simulation), and the kernel arguments.
 - The **top-level task** is the entry point synthesized by `tapa compile`. It
-  instantiates child tasks and wires them together with streams or shared mmap
-  arguments. It contains no computation of its own — only task instantiations.
-- **Leaf tasks** contain the actual computation: loops, arithmetic, and stream
-  reads/writes.
+  declares streams as local objects, then spawns all leaf tasks and passes
+  streams to them by reference. It contains no computation of its own.
+- **Leaf tasks** perform the actual computation. One leaf writes to a stream;
+  another reads from it. Streams flow *between* leaf tasks — the top-level task
+  is never the producer or consumer of stream data.
 
 All child tasks spawned by `tapa::task().invoke(...)` run **concurrently**. The
 top-level task returns only after every child task has finished.
