@@ -105,11 +105,14 @@ Run Vitis HLS on each task to produce per-task Verilog RTL. Reads the task graph
 | Flag | Description |
 |------|-------------|
 | `--clock-period NS` | Target clock period in nanoseconds. Can be derived from `--platform` if not set explicitly. |
-| `-j N` | Number of parallel HLS jobs (default: 1). |
+| `-j N` | Number of parallel HLS jobs (default: number of physical CPU cores). |
 | `--enable-synth-util` | Run post-HLS RTL synthesis to produce per-task resource utilization estimates. |
 | `--nonpipeline-fifos JSON` | JSON specification of FIFOs for which pipeline registers should be suppressed. |
 | `--gen-ab-graph` | Generate `ab_graph.json` for AutoBridge/RapidStream floorplanning. |
 | `--gen-graphir` | Generate `graphir.json` for RapidStream. |
+| `--floorplan-config PATH` | Path to the floorplan configuration file. Used with `--gen-ab-graph` or `--gen-graphir`. |
+| `--device-config PATH` | Path to the device configuration file. Used with `--gen-graphir`. |
+| `--floorplan-path PATH` | Path to an existing floorplan file to apply during synthesis. Requires `--flatten-hierarchy`. |
 
 ### Example
 
@@ -124,13 +127,13 @@ tapa --work-dir work.out synth \
 
 ## tapa pack
 
-Package per-task RTL from the work directory into a single XO file. Reads RTL produced by `tapa synth`.
+Package per-task RTL from the work directory into a single output artifact. For the default `xilinx-vitis` target this produces an XO file; for other targets a ZIP file is produced. Reads RTL produced by `tapa synth`.
 
 ### Optional flags
 
 | Flag | Description |
 |------|-------------|
-| `-o OUTPUT.xo` | Output XO file path (default: `work.xo` in the work directory). |
+| `-o OUTPUT` | Output file path (default: `work.xo` for the Vitis target, `work.zip` for other targets). |
 | `--custom-rtl PATH` | Custom RTL file or directory to include in the XO. |
 
 ### Example
