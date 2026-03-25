@@ -10,7 +10,7 @@
 
 [tool.codespell]
 # 'Implmentation' is intended here as it is a typo by Xilinx and we have conform lol
-ignore-words-list = "din,dout,edn,inout,pres,implmentation,cips,ket"
+ignore-words-list = "din,dout,edn,inout,pres,implmentation,cips,ket,fpt"
 
 
 [tool.docformatter]
