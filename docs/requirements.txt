@@ -1,5 +1,0 @@
-breathe
-myst_parser
-sphinx
-sphinx-click
-sphinx-rtd-theme

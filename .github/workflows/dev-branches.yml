@@ -66,35 +66,17 @@ jobs:
           pnpm --dir tapa-visualizer install --frozen-lockfile
           pnpm --dir tapa-visualizer lint src
 
-  # TODO: integrate into bazel
   docs:
-    name: Bulid Documentations
+    name: Build Documentation
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout myself
         uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: |
-          set -e
-          sudo apt-get update
-          sudo apt-get install -y doxygen
-          python3 -m pip install --user -r tapa/requirements_lock.txt
-          python3 -m pip install --user -r docs/requirements.txt
-
       - name: Build docs
-        run: |
-          set -e
-          python3 -m sphinx \
-            --fail-on-warning \
-            --keep-going \
-            --show-traceback \
-            --define language=en \
-            . ../build/docs/html
+        run: bazel build //:build
         working-directory: docs
-        env:
-          READTHEDOCS: "True"
 
   quality-baseline:
     name: Quality Baseline Staleness Check
