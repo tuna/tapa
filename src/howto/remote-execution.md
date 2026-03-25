@@ -129,7 +129,7 @@ TAPA prints transfer progress and the remote Vitis HLS log to standard output du
 
 **ControlMaster errors**: If the remote host or an intermediary proxy does not support SSH multiplexing, add `--remote-disable-ssh-mux` to your invocation.
 
-**Port conflicts in `~/.taparc`**: If you omit the port in `--remote-host`, TAPA uses the `port` field from `~/.taparc`. Always include the port in `--remote-host` (e.g., `user@host:22`) to avoid accidentally picking up a stale config-file port.
+**Port conflicts with `~/.taparc`**: If you omit the port in `--remote-host`, TAPA defaults to port 22 — it does **not** fall back to the `port` field from `~/.taparc`. Always include the port explicitly (e.g., `user@host:2222`) when the remote host listens on a non-standard port.
 ```
 
 ---

@@ -66,7 +66,7 @@ The same host executable used for software and hardware simulation runs on board
 ```
 INFO: Found platform: Xilinx
 INFO: Found device: xilinx_u280_xdma_201920_3
-INFO: Using xilinx_u250_xdma_201830_2
+INFO: Using xilinx_u280_xdma_201920_3
 ...
 elapsed time: 7.48926 s
 PASS!

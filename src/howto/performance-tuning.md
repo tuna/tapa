@@ -59,6 +59,19 @@ TAPA runs an additional RTL synthesis pass and writes per-task resource counts t
 
 Both files contain per-task LUT, FF, BRAM, and DSP counts. Use them to identify which tasks are consuming the most resources before proceeding to full implementation.
 
+## Validation
+
+After running `tapa synth --enable-synth-util`, confirm the reports were written:
+
+```bash
+ls work.out/report.json work.out/report.yaml
+```
+
+- `work.out/report.json` — machine-readable per-task resource counts (LUT, FF, BRAM, DSP)
+- `work.out/report.yaml` — human-readable version of the same data
+
+If these files are missing, synthesis either did not run or exited before the reporting step. Check the HLS log in `work.out/` for errors.
+
 ## Advanced synthesis flags
 
 ### Controlling FIFO pipelining for floorplanning

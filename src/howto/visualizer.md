@@ -10,7 +10,7 @@
 - A modern web browser (Chrome, Edge, Firefox, or other Chromium/Firefox-based browser)
 - The TAPA Visualizer web app — build it from the `tapa-visualizer/` directory in the TAPA repository
 
-## Getting started
+## Commands
 
 1. Run `tapa compile` with a `--work-dir` to produce `graph.json`:
    ```bash
@@ -109,6 +109,12 @@ The visualizer is working correctly when:
 
 ```admonish warning
 Using a modern, up-to-date browser is essential for both TAPA Visualizer compatibility and general web security.
+```
+
+## If something goes wrong
+
+```admonish warning
+If the graph fails to load or renders blank, check that `graph.json` was produced by `tapa compile` and is not empty. See [Common Errors](../troubleshoot/common-errors.md) for further diagnosis.
 ```
 
 ---

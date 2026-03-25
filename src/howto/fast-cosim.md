@@ -53,7 +53,7 @@ Specify a persistent work directory and enable waveform saving:
 ```
 
 ```admonish warning
-Always pair `-xosim_save_waveform` with `-xosim_work_dir`. Without a work directory, fast cosim uses a temporary directory that is deleted at exit, removing any saved waveforms with it.
+Strongly recommended: pair `-xosim_save_waveform` with `-xosim_work_dir`. Without a persistent work directory, fast cosim uses a temporary directory that is deleted at exit, removing any saved waveforms with it.
 ```
 
 ### Setup-only and resume workflow
