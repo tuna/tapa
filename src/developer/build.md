@@ -133,7 +133,7 @@ considerable time to build. Bazel will cache it after the initial build.
 
 ## Use the Built TAPA
 
-```admonish warning
+```admonish important
 Remember to source the Vivado settings script before running the TAPA compiler.
 ```
 
