@@ -12,7 +12,6 @@ import json
 import logging
 import os
 import shutil
-import tarfile
 import tempfile
 from graphlib import TopologicalSorter
 from pathlib import Path
@@ -46,7 +45,6 @@ from tapa.program_codegen.program import (
 from tapa.task import Task
 from tapa.verilog.util import Pipeline
 from tapa.verilog.xilinx.const import DONE, START
-from tapa.verilog.xilinx.module import Module
 
 _logger = logging.getLogger().getChild(__name__)
 
@@ -223,63 +221,15 @@ class Program(  # TODO: refactor this class
 
     def generate_task_rtl(self) -> None:
         """Extract HDL files from tarballs generated from HLS."""
-        _logger.info("extracting RTL files")
-        for task in self._tasks.values():
-            with tarfile.open(self.get_tar_path(task.name), "r") as tarfileobj:
-                tarfileobj.extractall(path=self.work_dir)
+        from tapa.program.rtl_codegen import (  # noqa: PLC0415
+            extract_task_rtl,
+            instrument_upper_task_rtl,
+            parse_task_rtl,
+        )
 
-        for file_name in (
-            "arbiter.v",
-            "async_mmap.v",
-            "axi_pipeline.v",
-            "axi_crossbar_addr.v",
-            "axi_crossbar_rd.v",
-            "axi_crossbar_wr.v",
-            "axi_crossbar.v",
-            "axi_register_rd.v",
-            "axi_register_wr.v",
-            "detect_burst.v",
-            "fifo.v",
-            "fifo_bram.v",
-            "fifo_fwd.v",
-            "fifo_srl.v",
-            "generate_last.v",
-            "priority_encoder.v",
-            "relay_station.v",
-            "a_axi_write_broadcastor_1_to_3.v",
-            "a_axi_write_broadcastor_1_to_4.v",
-        ):
-            shutil.copy(
-                os.path.join(os.path.dirname(__file__), "assets", "verilog", file_name),
-                self.rtl_dir,
-            )
-
-        # extract and parse RTL and populate tasks
-        _logger.info("parsing RTL files and populating tasks")
-        for task in self._tasks.values():
-            _logger.debug("parsing %s", task.name)
-            task.module = Module(
-                files=[Path(self.get_rtl_path(task.name))],
-                is_trimming_enabled=task.is_lower,
-            )
-            task.self_area = self.get_area(task.name)
-            task.clock_period = self.get_clock_period(task.name)
-
-            _logger.debug("populating %s", task.name)
-            task.instances = tuple(
-                Instance(self.get_task(name), instance_id=idx, **obj)
-                for name, objs in task.tasks.items()
-                for idx, obj in enumerate(objs)
-            )
-
-        # instrument the upper-level RTL except the top-level
-        _logger.info("instrumenting upper-level RTL")
-        for task in self._tasks.values():
-            if task.is_upper and task.name != self.top:
-                self._instrument_upper_and_template_task(task)
-            elif not task.is_upper and task.name in self.gen_templates:
-                assert task.ports
-                self._instrument_upper_and_template_task(task)
+        extract_task_rtl(self)
+        parse_task_rtl(self)
+        instrument_upper_task_rtl(self)
 
     def generate_top_rtl(
         self,

@@ -78,6 +78,16 @@ py_library(
 )
 
 py_library(
+    name = "rtl_codegen",
+    srcs = ["rtl_codegen.py"],
+    deps = [
+        "//tapa:instance",
+        "//tapa:task",
+        "//tapa/verilog/xilinx:module",
+    ],
+)
+
+py_library(
     name = "pack",
     srcs = ["pack.py"],
     deps = [

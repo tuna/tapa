@@ -123,6 +123,7 @@ py_library(
         "//tapa/program:directory",
         "//tapa/program:hls",
         "//tapa/program:pack",
+        "//tapa/program:rtl_codegen",
         "//tapa/program:synthesis",
         "//tapa/verilog:ast_utils",
         "//tapa/verilog:util",
