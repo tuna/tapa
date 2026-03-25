@@ -42,14 +42,13 @@ per-task RTL (Verilog)
 source, resolves task boundaries, and writes a task graph JSON to the work
 directory. No vendor tools are required for this step.
 
-**`tapa synth`** — Invokes Vitis HLS for each leaf task to produce per-task
+**`tapa synth`** — Invokes Vitis HLS for each task to produce per-task
 Verilog RTL. This is the most time-consuming step. With `-j N`, up to N tasks
 are synthesized in parallel. With `--remote-host`, synthesis runs on a remote
 Linux machine that has Vitis HLS installed.
 
-**`tapa pack`** — Combines the per-task RTL and the top-level wrapper generated
-by `tapa analyze` into a single Xilinx IP package (`.xo` file) suitable for
-`v++ --link`.
+**`tapa pack`** — Combines the per-task RTL into a single Xilinx IP package
+(`.xo` file) suitable for `v++ --link`.
 
 **Shortcut:** `tapa compile` runs all three stages in the correct order in a
 single command.
@@ -82,31 +81,32 @@ tapa compile \
 
 ### Running stages separately
 
+`--work-dir` is a top-level `tapa` flag that applies to all subcommands. It
+must be the same across all three stages when running them separately (default:
+`work.out`).
+
 Run `tapa analyze` first to extract the task graph (no vendor tools needed):
 
 ```bash
-tapa analyze \
+tapa --work-dir work.out analyze \
   --top VecAdd \
-  -f vadd.cpp \
-  --work-dir work.out
+  -f vadd.cpp
 ```
 
 Then run `tapa synth` to synthesize each task to RTL, optionally in parallel
 and/or on a remote host:
 
 ```bash
-tapa synth \
+tapa --work-dir work.out synth \
   --part-num xcu250-figd2104-2L-e \
   --clock-period 3.33 \
-  --work-dir work.out \
   -j 4
 ```
 
 Finally, run `tapa pack` to produce the `.xo` file:
 
 ```bash
-tapa pack \
-  --work-dir work.out \
+tapa --work-dir work.out pack \
   -o vecadd.xo
 ```
 
@@ -122,8 +122,7 @@ tapa pack \
 - The `-j` / `--jobs` flag on `tapa synth` controls how many Vitis HLS
   processes run in parallel. Keep it at or below the available core count on
   the synthesis machine.
-- The work directory (`--work-dir`, default `work.out`) must be the same across
-  all three stages when running them separately.
+- `--work-dir` is a top-level flag: `tapa --work-dir DIR <subcommand>`.
 
 ---
 
@@ -134,16 +133,16 @@ tapa pack \
 ```bash
 # WRONG — the task graph JSON does not exist yet; tapa synth will fail
 # with a missing file error.
-tapa synth --part-num xcu250-figd2104-2L-e --clock-period 3.33 --work-dir work.out
+tapa --work-dir work.out synth --part-num xcu250-figd2104-2L-e --clock-period 3.33
 ```
 
 ### Right: always run `tapa analyze` first, or use `tapa compile`
 
 ```bash
 # RIGHT — explicit ordering
-tapa analyze --top VecAdd -f vadd.cpp --work-dir work.out
-tapa synth   --part-num xcu250-figd2104-2L-e --clock-period 3.33 --work-dir work.out
-tapa pack    --work-dir work.out -o vecadd.xo
+tapa --work-dir work.out analyze --top VecAdd -f vadd.cpp
+tapa --work-dir work.out synth   --part-num xcu250-figd2104-2L-e --clock-period 3.33
+tapa --work-dir work.out pack    -o vecadd.xo
 
 # RIGHT — shortcut that handles ordering automatically
 tapa compile --top VecAdd --part-num xcu250-figd2104-2L-e \
