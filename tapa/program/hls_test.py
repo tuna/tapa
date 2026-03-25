@@ -13,7 +13,10 @@ import pytest
 
 from tapa.backend.xilinx import RunHls
 from tapa.program.hls import ProgramHlsMixin, _gen_connections
+from tapa.program.hls_runner import run_synthesis_task
 from tapa.task import Task
+
+_MAX_ATTEMPTS_TEST = 3
 
 # ---------------------------------------------------------------------------
 # _gen_connections tests
@@ -373,3 +376,38 @@ def test_worker_does_not_retry_when_error_line_present() -> None:
         f"Expected RunHls instantiated once (no retry), "
         f"but was called {run_hls_call_count['n']} time(s)"
     )
+
+
+def test_run_synthesis_task_calls_runner_communicate() -> None:
+    runner = MagicMock()
+    runner.__enter__ = MagicMock(return_value=runner)
+    runner.__exit__ = MagicMock(return_value=False)
+    runner.returncode = 0
+    runner.communicate.return_value = (b"", b"")
+
+    run_synthesis_task(lambda: runner, task_name="vadd", work_dir="/tmp")
+    runner.communicate.assert_called_once()
+
+
+def test_run_synthesis_task_retries_on_failure() -> None:
+    call_count = 0
+
+    def make_runner() -> MagicMock:
+        nonlocal call_count
+        r = MagicMock()
+        r.__enter__ = MagicMock(return_value=r)
+        r.__exit__ = MagicMock(return_value=False)
+        call_count += 1
+        r.returncode = 1
+        r.communicate.return_value = (b"", b"error")
+        return r
+
+    with pytest.raises((RuntimeError, SystemExit, Exception)):
+        run_synthesis_task(
+            make_runner,
+            task_name="vadd",
+            work_dir="/tmp",
+            max_attempts=_MAX_ATTEMPTS_TEST,
+        )
+
+    assert call_count == _MAX_ATTEMPTS_TEST

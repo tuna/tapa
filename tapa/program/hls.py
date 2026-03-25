@@ -27,6 +27,11 @@ from tapa.common.paths import (
 )
 from tapa.program.abc import ProgramInterface
 from tapa.program.directory import ProgramDirectoryInterface
+from tapa.program.hls_aie_codegen import (
+    gen_connections,
+    gen_declarations,
+    gen_definitions,
+)
 from tapa.remote.config import get_remote_config
 from tapa.safety_check import check_mmap_arg_name
 from tapa.task import Task
@@ -34,15 +39,18 @@ from tapa.util import clang_format
 
 _logger = logging.getLogger().getChild(__name__)
 
-# _AIE_DEPTH is the number of elements in the AIE windows.
-_AIE_DEPTH = 64
-
 _env = Environment(
     loader=FileSystemLoader(str(Path(__file__).parent / "assets")),
     undefined=StrictUndefined,
     trim_blocks=True,
     lstrip_blocks=True,
 )
+
+# Maximum number of times a flaky Pre-synthesis failure will be retried.
+_HLS_MAX_RETRIES = 1
+
+# Re-export for tests that import _gen_connections from this module.
+_gen_connections = gen_connections
 
 
 class ProgramHlsMixin(
@@ -125,43 +133,37 @@ class ProgramHlsMixin(
             pass
         return False
 
-    def run_hls(  # noqa: PLR0913, PLR0917
+    def _build_hls_cflags(self) -> str:
+        """Build HLS compiler flags, substituting remote-friendly headers if needed."""
+        hls_defines = "-DTAPA_TARGET_DEVICE_ -DTAPA_TARGET_XILINX_HLS_"
+        # WORKAROUND: Vitis HLS requires -I or gflags cannot be found...
+        try:
+            hls_includes = f"-I{find_resource('tapa-extra-runtime-include')}"
+        except FileNotFoundError:
+            hls_includes = ""
+        # For remote HLS, use only TAPA-specific headers (not local vendor/
+        # stdlib paths). The remote Vitis HLS handles vendor headers natively
+        # via settings64.sh, so uploading local Vitis copies is unnecessary
+        # and can cause header conflicts.
+        if get_remote_config() is not None:
+            local_suffix = " ".join(get_tapacc_cflags())
+            remote_suffix = " ".join(get_remote_hls_cflags())
+            base_cflags = self.cflags.replace(local_suffix, remote_suffix)
+        else:
+            base_cflags = self.cflags
+        return f"{base_cflags} {hls_defines} {hls_includes}"
+
+    def _run_hls_task(  # noqa: PLR0913, PLR0917
         self,
+        task: Task,
+        hls_cflags: str,
         clock_period: str,
         part_num: str,
-        skip_based_on_mtime: bool,
         other_configs: str,
-        jobs: int | None,
-        keep_hls_work_dir: bool,
+        work_dir: str | None,
     ) -> None:
-        """Run HLS with extracted HLS C++ files and generate tarballs."""
-        self._extract_cpp("hls")
-
-        _logger.info("running hls")
-        work_dir = os.path.join(self.work_dir, "hls") if keep_hls_work_dir else None
-
-        def worker(task: Task, idx: int) -> None:
-            _logger.info("start worker for %s, target: %s", task.name, task.target_type)
-            os.nice(idx % 19)
-            if skip_based_on_mtime and self._is_skippable_based_on_mtime(task.name):
-                return
-            hls_defines = "-DTAPA_TARGET_DEVICE_ -DTAPA_TARGET_XILINX_HLS_"
-            # WORKAROUND: Vitis HLS requires -I or gflags cannot be found...
-            try:
-                hls_includes = f"-I{find_resource('tapa-extra-runtime-include')}"
-            except FileNotFoundError:
-                hls_includes = ""
-            # For remote HLS, use only TAPA-specific headers (not local vendor/
-            # stdlib paths). The remote Vitis HLS handles vendor headers natively
-            # via settings64.sh, so uploading local Vitis copies is unnecessary
-            # and can cause header conflicts.
-            if get_remote_config() is not None:
-                local_suffix = " ".join(get_tapacc_cflags())
-                remote_suffix = " ".join(get_remote_hls_cflags())
-                base_cflags = self.cflags.replace(local_suffix, remote_suffix)
-            else:
-                base_cflags = self.cflags
-            hls_cflags = f"{base_cflags} {hls_defines} {hls_includes}"
+        """Run HLS for a single task with retry on flaky Pre-synthesis failures."""
+        for attempt in range(_HLS_MAX_RETRIES + 1):
             with (
                 open(self.get_tar_path(task.name), "wb") as tarfileobj,
                 RunHls(
@@ -179,18 +181,48 @@ class ProgramHlsMixin(
             ):
                 stdout, stderr = proc.communicate()
 
-            if proc.returncode != 0:
-                if b"Pre-synthesis failed." in stdout and b"\nERROR:" not in stdout:
-                    _logger.error(
-                        "HLS failed for %s, but the failure may be flaky; retrying",
-                        task.name,
-                    )
-                    worker(task, 0)
-                    return
-                sys.stdout.write(stdout.decode("utf-8"))
-                sys.stderr.write(stderr.decode("utf-8"))
-                msg = f"HLS failed for {task.name}"
-                raise RuntimeError(msg)
+            if proc.returncode == 0:
+                return
+
+            if (
+                b"Pre-synthesis failed." in stdout
+                and b"\nERROR:" not in stdout
+                and attempt < _HLS_MAX_RETRIES
+            ):
+                _logger.error(
+                    "HLS failed for %s, but the failure may be flaky; retrying",
+                    task.name,
+                )
+                continue
+
+            sys.stdout.write(stdout.decode("utf-8"))
+            sys.stderr.write(stderr.decode("utf-8"))
+            msg = f"HLS failed for {task.name}"
+            raise RuntimeError(msg)
+
+    def run_hls(  # noqa: PLR0913, PLR0917
+        self,
+        clock_period: str,
+        part_num: str,
+        skip_based_on_mtime: bool,
+        other_configs: str,
+        jobs: int | None,
+        keep_hls_work_dir: bool,
+    ) -> None:
+        """Run HLS with extracted HLS C++ files and generate tarballs."""
+        self._extract_cpp("hls")
+        _logger.info("running hls")
+        work_dir = os.path.join(self.work_dir, "hls") if keep_hls_work_dir else None
+        hls_cflags = self._build_hls_cflags()
+
+        def worker(task: Task, idx: int) -> None:
+            _logger.info("start worker for %s, target: %s", task.name, task.target_type)
+            os.nice(idx % 19)
+            if skip_based_on_mtime and self._is_skippable_based_on_mtime(task.name):
+                return
+            self._run_hls_task(
+                task, hls_cflags, clock_period, part_num, other_configs, work_dir
+            )
 
         jobs = jobs or cpu_count(logical=False)
         _logger.info("spawn %d workers for parallel HLS synthesis of the tasks", jobs)
@@ -227,7 +259,6 @@ class ProgramHlsMixin(
 
         # For AIE flow, only the top-level task is synthesized
         task = self.top_task
-
         if skip_based_on_mtime and self._is_skippable_based_on_mtime(task.name):
             return
         with (
@@ -267,11 +298,11 @@ class ProgramHlsMixin(
 
     def _get_aie_graph(self, task: Task) -> str:
         """Generates the complete AIE graph code."""
-        _, kernel_decl, port_decl = _gen_declarations(task)
+        _, kernel_decl, port_decl = gen_declarations(task)
         kernel_def, kernel_source, kernel_runtime, kernel_loc, port_def = (
-            _gen_definitions(task)
+            gen_definitions(task)
         )
-        connect_def = _gen_connections(task)
+        connect_def = gen_connections(task)
 
         return _env.get_template("aie_graph_header.j2").render(
             graph_name=self.top,
@@ -285,125 +316,3 @@ class ProgramHlsMixin(
             port_def="\n\t\t".join(port_def),
             connect_def="\n\t\t".join(connect_def),
         )
-
-
-def _gen_declarations(task: Task) -> tuple[list[str], list[str], list[str]]:
-    """Generates kernel and port declarations."""
-    port_decl = [
-        f"{'input' if port.is_immap or port.is_istream else 'output'}"
-        f"_plio p_{port.name};"
-        for port in task.ports.values()
-    ]
-    kernel_decl = [
-        f"kernel k_{name}{i};"
-        for name, insts in task.tasks.items()
-        for i in range(len(insts))
-    ]
-    return [], kernel_decl, port_decl
-
-
-def _gen_definitions(
-    task: Task,
-) -> tuple[list[str], list[str], list[str], list[str], list[str]]:
-    """Generates kernel and port definitions."""
-    kernels = [
-        (name, i) for name, insts in task.tasks.items() for i in range(len(insts))
-    ]
-    kernel_def = [f"k_{n}{i} = kernel::create({n});" for n, i in kernels]
-    kernel_source = [f'source(k_{n}{i}) = "../../cpp/{n}.cpp";' for n, i in kernels]
-    kernel_runtime = [f"runtime<ratio>(k_{n}{i}) = OCCUPANCY;" for n, i in kernels]
-    kernel_loc = [f"//location<kernel>(k_{n}{i}) = tile(X, X);" for n, i in kernels]
-    port_def = [
-        (
-            f'p_{port.name} = input_plio::create("{port.name}",'
-            f' plio_{port.width}_bits, "{port.name}.txt");'
-            if port.is_immap or port.is_istream
-            else f'p_{port.name} = output_plio::create("{port.name}",'
-            f' plio_{port.width}_bits, "{port.name}.txt");'
-        )
-        for port in task.ports.values()
-    ]
-    return kernel_def, kernel_source, kernel_runtime, kernel_loc, port_def
-
-
-def _gen_connections(task: Task) -> list[str]:  # noqa: C901 PLR0912
-    """Generates connections between ports and kernels."""
-    # TODO: refactor this function
-    link_from_src = {}
-    link_to_dst = {}
-    for name, insts in task.tasks.items():
-        for i, inst in enumerate(insts):
-            arg_dict = inst["args"]
-            in_num = 0
-            out_num = 0
-            for conn_dict in arg_dict.values():
-                if conn_dict["cat"] == "istream":
-                    link_to_dst[conn_dict["arg"]] = [
-                        f"{name}{i}.in[{in_num}]",
-                        "net",
-                    ]
-                    in_num += 1
-                elif conn_dict["cat"] == "ostream":
-                    link_from_src[conn_dict["arg"]] = [
-                        f"{name}{i}.out[{out_num}]",
-                        "net",
-                    ]
-                    out_num += 1
-                elif conn_dict["cat"] == "immap":
-                    link_to_dst[conn_dict["arg"]] = [
-                        f"{name}{i}.in[{in_num}]",
-                        "io",
-                    ]
-                    in_num += 1
-                elif conn_dict["cat"] == "ommap":
-                    link_from_src[conn_dict["arg"]] = [
-                        f"{name}{i}.out[{out_num}]",
-                        "io",
-                    ]
-                    out_num += 1
-                else:
-                    msg = f"Unknown connection category: {conn_dict['cat']}"
-                    raise ValueError(msg)
-
-    connect_def = [
-        f"connect<stream> {name} (k_{link_from_src[name][0]},"
-        f" k_{link_to_dst[name][0]});"
-        for name in task.fifos
-        if name in link_from_src and name in link_to_dst
-    ]
-
-    for port in task.ports.values():
-        name = port.name
-        width = port.width
-        window_default_size = int(width) // 8 * _AIE_DEPTH
-        if name in link_from_src:
-            if link_from_src[name][1] == "io":
-                connect_def.append(
-                    f"connect<window<{window_default_size}>> {name}_link"
-                    f" (k_{link_from_src[name][0]}, p_{name}.in[0]);"
-                )
-            elif link_from_src[name][1] == "net":
-                connect_def.append(
-                    f"connect<stream> {name}_link"
-                    f" (k_{link_from_src[name][0]}, p_{name}.in[0]);"
-                )
-            else:
-                msg = f"Port[{name}] should be connected to io/net"
-                raise ValueError(msg)
-
-        if name in link_to_dst:
-            if link_to_dst[name][1] == "io":
-                connect_def.append(
-                    f"connect<window<{window_default_size}>> {name}_link"
-                    f" (p_{name}.out[0], k_{link_to_dst[name][0]});"
-                )
-            elif link_to_dst[name][1] == "net":
-                connect_def.append(
-                    f"connect<stream> {name}_link"
-                    f" (p_{name}.out[0], k_{link_to_dst[name][0]});"
-                )
-            else:
-                msg = f"Port[{name}] should be connected to io"
-                raise ValueError(msg)
-
-    return connect_def
