@@ -166,7 +166,7 @@ and TAPA distributes the array elements automatically:
 ```cpp
 void InnerStage(int b, tapa::istreams<pkt_t, kN / 2>& in_q0,
                 tapa::istreams<pkt_t, kN / 2>& in_q1,
-                tapa::ostreams<pkt_t, kN> out_q) {
+                tapa::ostreams<pkt_t, kN>& out_q) {
   tapa::task().invoke<tapa::detach, kN / 2>(Switch2x2, b, in_q0, in_q1, out_q);
 }
 ```

@@ -51,11 +51,11 @@ void Switch2x2(int b, istream<pkt_t>& pkt_in_q0, istream<pkt_t>& pkt_in_q1,
 }
 
 void InnerStage(int b, istreams<pkt_t, kN / 2>& in_q0,
-                istreams<pkt_t, kN / 2>& in_q1, ostreams<pkt_t, kN> out_q) {
+                istreams<pkt_t, kN / 2>& in_q1, ostreams<pkt_t, kN>& out_q) {
   task().invoke<detach, kN / 2>(Switch2x2, b, in_q0, in_q1, out_q);
 }
 
-void Stage(int b, istreams<pkt_t, kN>& in_q, ostreams<pkt_t, kN> out_q) {
+void Stage(int b, istreams<pkt_t, kN>& in_q, ostreams<pkt_t, kN>& out_q) {
   task().invoke<detach>(InnerStage, b, in_q, in_q, out_q);
 }
 
@@ -71,7 +71,7 @@ produce:
 }
 
 void Consume(mmap<vec_t<pkt_t, kN>> mmap_out, uint64_t n,
-             istreams<pkt_t, kN> in_q) {
+             istreams<pkt_t, kN>& in_q) {
 consume:
   [[tapa::pipeline(1)]] for (uint64_t i = 0; i < n; ++i) {
     vec_t<pkt_t, kN> buf;

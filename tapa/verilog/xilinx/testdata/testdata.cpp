@@ -21,7 +21,7 @@ produce:
   }
 }
 
-void Consume(tapa::mmap<Data> mmap, int scalar, tapa::istream<Data> istream) {
+void Consume(tapa::mmap<Data> mmap, int scalar, tapa::istream<Data>& istream) {
 consume:
   [[tapa::pipeline(1)]] for (int i = 0; i < scalar; ++i) {
     mmap[i] = istream.read();
