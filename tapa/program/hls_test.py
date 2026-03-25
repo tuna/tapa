@@ -402,7 +402,7 @@ def test_run_synthesis_task_retries_on_failure() -> None:
         r.communicate.return_value = (b"", b"error")
         return r
 
-    with pytest.raises((RuntimeError, SystemExit, Exception)):
+    with pytest.raises(RuntimeError):
         run_synthesis_task(
             make_runner,
             task_name="vadd",

@@ -43,7 +43,6 @@ py_library(
     data = glob(["assets/*.j2"]),
     deps = [
         ":hls_aie_codegen",
-        ":hls_runner",
         "//tapa:safety_check",
         "//tapa:task",
         "//tapa:util",
