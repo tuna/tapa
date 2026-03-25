@@ -19,6 +19,7 @@ from jinja2 import Environment, FileSystemLoader, StrictUndefined
 from psutil import cpu_count
 
 from tapa.backend.xilinx import RunAie, RunHls
+from tapa.backend.xilinx_hls import HlsConfig
 from tapa.common.paths import (
     find_resource,
     get_remote_hls_cflags,
@@ -170,13 +171,15 @@ class ProgramHlsMixin(
                     tarfileobj,
                     kernel_files=[(self.get_cpp_path(task.name), hls_cflags)],
                     work_dir=work_dir,
-                    top_name=task.name,
-                    clock_period=clock_period,
-                    part_num=part_num,
-                    auto_prefix=True,
-                    hls="vitis_hls",
-                    std="c++14",
-                    other_configs=other_configs,
+                    config=HlsConfig(
+                        top_name=task.name,
+                        clock_period=clock_period,
+                        part_num=part_num,
+                        auto_prefix=True,
+                        hls="vitis_hls",
+                        std="c++14",
+                        other_configs=other_configs,
+                    ),
                 ) as proc,
             ):
                 stdout, stderr = proc.communicate()

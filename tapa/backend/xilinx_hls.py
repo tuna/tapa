@@ -7,6 +7,7 @@ import logging
 import os
 import tarfile
 import tempfile
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, BinaryIO, Self
 
 from tapa.backend.xilinx_tools import VivadoHls, get_cmd_args
@@ -16,6 +17,57 @@ if TYPE_CHECKING:
     from types import TracebackType
 
 _logger = logging.getLogger().getChild(__name__)
+
+
+@dataclass
+class HlsConfig:
+    top_name: str
+    clock_period: str
+    part_num: str
+    reset_low: bool = True
+    auto_prefix: bool = False
+    hls: str = "vivado_hls"
+    std: str = "c++11"
+    other_configs: str = ""
+
+
+def _build_kernel_env(
+    kernel_files: list[str | tuple[str, str]],
+    std: str,
+) -> tuple[dict[str, str], tuple[str, ...]]:
+    kernel_env: dict[str, str] = {"TAPA_KERNEL_COUNT": str(len(kernel_files))}
+    upload_dirs: set[str] = set()
+    for idx, kernel_file in enumerate(kernel_files):
+        if isinstance(kernel_file, str):
+            kernel_env[f"TAPA_KERNEL_PATH_{idx}"] = kernel_file
+            kernel_env[f"TAPA_KERNEL_CFLAGS_{idx}"] = f"-std={std}"
+            upload_dirs.add(os.path.dirname(os.path.abspath(kernel_file)))
+        else:
+            path, cflags = kernel_file
+            kernel_env[f"TAPA_KERNEL_PATH_{idx}"] = path
+            kernel_env[f"TAPA_KERNEL_CFLAGS_{idx}"] = f"-std={std} {cflags}"
+            upload_dirs.add(os.path.dirname(os.path.abspath(path)))
+            for part in cflags.split():
+                if part.startswith("-isystem"):
+                    inc_dir = os.path.abspath(part[len("-isystem") :])
+                elif part.startswith("-I"):
+                    inc_dir = os.path.abspath(part[2:])
+                else:
+                    continue
+                if os.path.isdir(inc_dir):
+                    upload_dirs.add(inc_dir)
+    return kernel_env, tuple(upload_dirs)
+
+
+def _build_rtl_config(hls: str, reset_low: bool, auto_prefix: bool) -> str:
+    rtl_config = "config_rtl -reset_level " + ("low" if reset_low else "high")
+    if auto_prefix:
+        if hls == "vivado_hls":
+            rtl_config += " -auto_prefix"
+        elif hls == "vitis_hls":
+            rtl_config += " -module_auto_prefix"
+    return rtl_config
+
 
 HLS_COMMANDS = r"""
 cd [pwd]
@@ -44,20 +96,14 @@ exit
 class RunHls(VivadoHls):
     """Run Vivado/Vitis HLS for kernels and generate HDL files."""
 
-    def __init__(  # noqa: C901,PLR0912,PLR0913,PLR0917
+    def __init__(
         self,
         tarfileobj: BinaryIO,
         kernel_files: list[str | tuple[str, str]],
         work_dir: str | None,
-        top_name: str,
-        clock_period: str,
-        part_num: str,
-        reset_low: bool = True,
-        auto_prefix: bool = False,
-        hls: str = "vivado_hls",
-        std: str = "c++11",
-        other_configs: str = "",
+        config: HlsConfig,
     ) -> None:
+        top_name = config.top_name
         if work_dir is None:
             self.tempdir = tempfile.TemporaryDirectory(prefix=f"run-hls-{top_name}-")
             self.project_path = self.tempdir.name
@@ -68,51 +114,26 @@ class RunHls(VivadoHls):
         self.project_name = "project"
         self.solution_name = top_name
         self.tarfileobj = tarfileobj
-        self.hls = hls
+        self.hls = config.hls
 
-        kernel_env: dict[str, str] = {"TAPA_KERNEL_COUNT": str(len(kernel_files))}
-        upload_dirs: set[str] = set()
-        for idx, kernel_file in enumerate(kernel_files):
-            if isinstance(kernel_file, str):
-                kernel_env[f"TAPA_KERNEL_PATH_{idx}"] = kernel_file
-                kernel_env[f"TAPA_KERNEL_CFLAGS_{idx}"] = f"-std={std}"
-                upload_dirs.add(os.path.dirname(os.path.abspath(kernel_file)))
-            else:
-                path, cflags = kernel_file
-                kernel_env[f"TAPA_KERNEL_PATH_{idx}"] = path
-                kernel_env[f"TAPA_KERNEL_CFLAGS_{idx}"] = f"-std={std} {cflags}"
-                upload_dirs.add(os.path.dirname(os.path.abspath(path)))
-                for part in cflags.split():
-                    if part.startswith("-isystem"):
-                        inc_dir = os.path.abspath(part[len("-isystem") :])
-                    elif part.startswith("-I"):
-                        inc_dir = os.path.abspath(part[2:])
-                    else:
-                        continue
-                    if os.path.isdir(inc_dir):
-                        upload_dirs.add(inc_dir)
-        self._extra_upload = tuple(upload_dirs)
+        kernel_env, upload_dirs = _build_kernel_env(kernel_files, config.std)
+        self._extra_upload = upload_dirs
         self._extra_download = (self.project_path,)
         self._extra_env = kernel_env
 
-        rtl_config = "config_rtl -reset_level " + ("low" if reset_low else "high")
-        if auto_prefix:
-            if hls == "vivado_hls":
-                rtl_config += " -auto_prefix"
-            elif hls == "vitis_hls":
-                rtl_config += " -module_auto_prefix"
+        rtl_config = _build_rtl_config(config.hls, config.reset_low, config.auto_prefix)
         kwargs = {
             "project_name": self.project_name,
             "solution_name": self.solution_name,
             "top_name": top_name,
-            "part_num": part_num,
-            "clock_period": clock_period,
+            "part_num": config.part_num,
+            "clock_period": config.clock_period,
             "config": rtl_config,
-            "other_configs": other_configs,
+            "other_configs": config.other_configs,
         }
         super().__init__(
             HLS_COMMANDS.format(**kwargs),
-            hls,
+            config.hls,
             self.project_path,
         )
 

@@ -12,6 +12,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from tapa.backend.xilinx import RunHls
+from tapa.backend.xilinx_hls import HlsConfig
 from tapa.program.hls import ProgramHlsMixin, _gen_connections
 from tapa.program.hls_runner import run_synthesis_task
 from tapa.task import Task
@@ -159,9 +160,11 @@ def test_run_hls_returncode_property_settable() -> None:
             tarfileobj=tarfileobj,
             kernel_files=[(cpp_file.name, "")],
             work_dir=tmpdir,
-            top_name="test_kernel",
-            clock_period="10",
-            part_num="xcu250",
+            config=HlsConfig(
+                top_name="test_kernel",
+                clock_period="10",
+                part_num="xcu250",
+            ),
         )
         # Verify returncode property reads from _proc.
         assert runner.returncode == mock_proc.returncode
@@ -196,9 +199,11 @@ def test_run_hls_exit_writes_tar_on_success(tmp_path: Path) -> None:
             tarfileobj=tarfileobj,
             kernel_files=[],
             work_dir=str(tmp_path),
-            top_name="kernel",
-            clock_period="5",
-            part_num="xcu250",
+            config=HlsConfig(
+                top_name="kernel",
+                clock_period="5",
+                part_num="xcu250",
+            ),
         )
         runner.__exit__(None, None, None)
 
