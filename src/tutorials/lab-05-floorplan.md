@@ -73,7 +73,7 @@ tapa compile-with-floorplan-dse \
   --part-num xcu55c-fsvh2892-2L-e
 ```
 
-`compile-with-floorplan-dse` runs the DSE, then compiles each solution and packages a separate XO for each. Use this when you want to hand off all candidates to downstream Vitis/Vivado runs and pick the best result based on actual timing reports.
+`compile-with-floorplan-dse` runs the DSE, then compiles and applies pipeline insertion for each floorplan solution it generates. Use this when you want to produce all candidates in one automated run and pick the best result based on downstream timing reports.
 
 ---
 
@@ -103,7 +103,7 @@ Key fields:
 - `cpp_arg_pre_assignments` — Forces specific top-function kernel arguments to specific SLR slots. Values are `SLOT_XmYn:SLOT_XmYn` strings. Array arguments can be matched with regex patterns (for example `"c_.*"` matches `c_0`, `c_1`, etc.).
 - `sys_port_pre_assignments` — Forces Verilog system ports (clock, reset, AXI control) to specific slots. Regex patterns are supported here as well.
 
-The full set of available fields (including `grouping_constraints`, `slot_to_rtype_to_min_limit`, and others) is documented in the Rapidstream floorplan configuration reference.
+The full set of available fields (including `grouping_constraints`, `slot_to_rtype_to_min_limit`, and others) is documented in the RapidStream floorplan configuration reference. Refer to the RapidStream documentation for details.
 
 ---
 

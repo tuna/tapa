@@ -53,7 +53,7 @@ Because `Add_Upper` is tagged `ignore`, TAPA generates RTL template files under 
 
 ## Step 3: Implement the RTL
 
-Write or adapt your custom RTL files so their port declarations match the generated templates. TAPA performs advisory port checking: it warns on mismatches but does not abort the build. Resolve any reported mismatches before moving to hardware.
+Write or adapt your custom RTL files so their port declarations match the generated templates. When you run `tapa pack --custom-rtl` (or `tapa compile --custom-rtl`) in Step 4, TAPA performs advisory port checking on `.v` files: it warns on mismatches but does not abort the build. Resolve any reported mismatches before moving to hardware.
 
 ---
 

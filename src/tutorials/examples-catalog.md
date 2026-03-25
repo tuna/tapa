@@ -1,6 +1,6 @@
 # Examples Catalog
 
-The TAPA repository includes two sets of example designs. Small self-contained examples live under `tests/apps/`. Larger, publication-quality benchmarks live under `tests/regression/`.
+The TAPA repository includes two sets of example designs. Small self-contained examples live under `tests/apps/`. Larger benchmarks live under `tests/regression/`.
 
 ---
 
