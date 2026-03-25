@@ -89,40 +89,46 @@ const addConnectedFifo = ({ addEdge, fifo, fifoName, grouping, taskName }) => {
   addFifoEdge({ addEdge, fifo, fifoName, getStyle: () => style, id: `${taskName}/${fifoName}`, source, target });
 };
 
-/** @type {(params: {
- *   fifoName: string,
- *   fifo: UpperTask["fifos"][string],
- *   taskName: string,
- *   grouping: Grouping,
- *   nodes: GraphData["nodes"],
- *   addEdge: (edge: import("@antv/g6").EdgeData) => void,
- * }) => void} */
-const addProducedMissingFifo = ({ addEdge, fifo, fifoName, grouping, nodes, taskName }) => {
+/**
+ * Add an edge for a FIFO that is missing one endpoint (either produced_by or consumed_by).
+ * @param {Object} params
+ * @param {"produced" | "consumed"} params.direction - "produced" means this task is the producer
+ *   (missing consumer), "consumed" means this task is the consumer (missing producer)
+ */
+const addMissingFifo = ({ addEdge, direction, fifo, fifoName, grouping, nodes, taskName }) => {
+  const isMissingProducer = direction === "consumed";
   /** @type {(node: import("@antv/g6").NodeData | undefined) => () => import("@antv/g6/lib/spec/element/edge").EdgeStyle} */
-  const styleFor = node => () => getProducedMissingStyle(node, fifoName);
+  const styleFor = node => () => isMissingProducer
+    ? getConsumedMissingStyle(node, fifoName)
+    : getProducedMissingStyle(node, fifoName);
+  const otherTask = isMissingProducer ? fifo.produced_by[0] : fifo.consumed_by[0];
+  const otherKey = isMissingProducer ? fifo.produced_by.join("/") : fifo.consumed_by.join("/");
+  const mkEdge = (src, tgt, node, edgeId) =>
+    addFifoEdge({ addEdge, fifo, fifoName, getStyle: styleFor(node), id: edgeId, source: src, target: tgt });
+
   switch (grouping) {
     case "merge": {
       const node = nodes.find(n => n.id === taskName);
-      addFifoEdge({ addEdge, fifo, fifoName, getStyle: styleFor(node),
-        id: `${taskName}/${fifoName}`, source: taskName, target: fifo.consumed_by[0] });
+      if (isMissingProducer) mkEdge(otherTask, taskName, node, `${taskName}/${fifoName}`);
+      else mkEdge(taskName, otherTask, node, `${taskName}/${fifoName}`);
       break;
     }
     case "separate": {
-      const target = fifo.consumed_by.join("/");
       nodes.filter(node => node.id.startsWith(`${taskName}/`)).forEach(node => {
         const edgeId = `${taskName}/${fifoName}${node.id.slice(node.id.indexOf("/"))}`;
-        addFifoEdge({ addEdge, fifo, fifoName, getStyle: styleFor(node), id: edgeId, source: node.id, target });
+        if (isMissingProducer) mkEdge(otherKey, node.id, node, edgeId);
+        else mkEdge(node.id, otherKey, node, edgeId);
       });
       break;
     }
     case "expand": {
-      const targetId = fifo.consumed_by.join("/");
-      const sources = nodes.filter(({ id }) => id.startsWith(`${taskName}/`));
-      const targets = nodes.filter(({ id }) => id === targetId || id.startsWith(`${targetId}/`));
+      const otherNodes = nodes.filter(({ id }) => id === otherKey || id.startsWith(`${otherKey}/`));
+      const taskNodes = nodes.filter(({ id }) => id.startsWith(`${taskName}/`));
+      const [sources, targets] = isMissingProducer ? [otherNodes, taskNodes] : [taskNodes, otherNodes];
       const len = Math.min(sources.length, targets.length);
       for (let i = 0; i < len; i++) {
-        addFifoEdge({ addEdge, fifo, fifoName, getStyle: styleFor(sources[i]),
-          id: `${taskName}/${fifoName}/${i}`, source: sources[i].id, target: targets[i].id });
+        const styleNode = isMissingProducer ? targets[i] : sources[i];
+        mkEdge(sources[i].id, targets[i].id, styleNode, `${taskName}/${fifoName}/${i}`);
       }
       break;
     }
@@ -137,37 +143,17 @@ const addProducedMissingFifo = ({ addEdge, fifo, fifoName, grouping, nodes, task
  *   nodes: GraphData["nodes"],
  *   addEdge: (edge: import("@antv/g6").EdgeData) => void,
  * }) => void} */
-const addConsumedMissingFifo = ({ addEdge, fifo, fifoName, grouping, nodes, taskName }) => {
-  /** @type {(node: import("@antv/g6").NodeData | undefined) => () => import("@antv/g6/lib/spec/element/edge").EdgeStyle} */
-  const styleFor = node => () => getConsumedMissingStyle(node, fifoName);
-  switch (grouping) {
-    case "merge": {
-      const node = nodes.find(n => n.id === taskName);
-      addFifoEdge({ addEdge, fifo, fifoName, getStyle: styleFor(node),
-        id: `${taskName}/${fifoName}`, source: fifo.produced_by[0], target: taskName });
-      break;
-    }
-    case "separate": {
-      const source = fifo.produced_by.join("/");
-      nodes.filter(node => node.id.startsWith(`${taskName}/`)).forEach(node => {
-        const edgeId = `${taskName}/${fifoName}${node.id.slice(node.id.indexOf("/"))}`;
-        addFifoEdge({ addEdge, fifo, fifoName, getStyle: styleFor(node), id: edgeId, source, target: node.id });
-      });
-      break;
-    }
-    case "expand": {
-      const sourceId = fifo.produced_by.join("/");
-      const sources = nodes.filter(({ id }) => id === sourceId || id.startsWith(`${sourceId}/`));
-      const targets = nodes.filter(({ id }) => id.startsWith(`${taskName}/`));
-      const len = Math.min(sources.length, targets.length);
-      for (let i = 0; i < len; i++) {
-        addFifoEdge({ addEdge, fifo, fifoName, getStyle: styleFor(targets[i]),
-          id: `${taskName}/${fifoName}/${i}`, source: sources[i].id, target: targets[i].id });
-      }
-      break;
-    }
-  }
-};
+const addProducedMissingFifo = (params) => addMissingFifo({ ...params, direction: "produced" });
+
+/** @type {(params: {
+ *   fifoName: string,
+ *   fifo: UpperTask["fifos"][string],
+ *   taskName: string,
+ *   grouping: Grouping,
+ *   nodes: GraphData["nodes"],
+ *   addEdge: (edge: import("@antv/g6").EdgeData) => void,
+ * }) => void} */
+const addConsumedMissingFifo = (params) => addMissingFifo({ ...params, direction: "consumed" });
 
 /** @type {(params: {
  *   fifoName: string,
