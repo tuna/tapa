@@ -204,6 +204,7 @@ pkg_files(
         "@minizip_ng",
         "@tinyxml2",
         "@yaml-cpp",
+        "@zlib",
     ],
     prefix = "usr/lib",
     strip_prefix = strip_prefix.files_only(),

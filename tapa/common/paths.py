@@ -287,6 +287,7 @@ def get_tapa_ldflags() -> tuple[str, ...]:
         "-lOpenCL",
         "-lminizip_ng",
         "-ltinyxml2",
+        "-lzlib",
         "-lyaml-cpp",
         "-lstdc++fs",
     )
