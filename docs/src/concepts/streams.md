@@ -180,8 +180,11 @@ void InnerStage(int b, tapa::istreams<pkt_t, kN / 2>& in_q0,
 - Each stream instance must have exactly one reader and exactly one writer.
 - TAPA software simulation respects stream depth: a full stream blocks the
   writer, matching hardware behavior.
-- Stream depth is a hardware FIFO size; deeper streams use more FPGA BRAM.
-  Default depth is 2.
+- Stream depth is a hardware FIFO size. The FPGA resource used depends on depth:
+  - **Depth ≤ 32**: synthesised from LUTs or SRL shift-registers (no BRAM cost).
+  - **Depth 33–512**: mapped to BRAM (18K or 36K depending on width).
+  - **Depth > 512**: may be mapped to URAM on devices that have it.
+  - Default depth is 2, which costs only LUTs.
 
 ---
 

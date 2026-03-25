@@ -84,13 +84,30 @@ the kernel arguments. When the bitstream path is empty (the default), TAPA runs
 software simulation:
 
 ```cpp
-int64_t kernel_time_ns = tapa::invoke(
-    VecAdd, FLAGS_bitstream,
-    tapa::read_only_mmap<const float>(a),
-    tapa::read_only_mmap<const float>(b),
-    tapa::write_only_mmap<float>(c),
-    n);
+#include <gflags/gflags.h>
+#include <tapa.h>
+
+DEFINE_string(bitstream, "", "Path to XO or xclbin file. Empty = software simulation.");
+
+int main(int argc, char* argv[]) {
+  gflags::ParseCommandLineFlags(&argc, &argv, true);
+
+  std::vector<float, tapa::aligned_allocator<float>> a(n), b(n), c(n);
+  // ... fill a and b ...
+
+  int64_t kernel_time_ns = tapa::invoke(
+      VecAdd, FLAGS_bitstream,
+      tapa::read_only_mmap<const float>(a),
+      tapa::read_only_mmap<const float>(b),
+      tapa::write_only_mmap<float>(c),
+      n);
+}
 ```
+
+The `--bitstream` flag is what controls which backend runs:
+- Omitted or empty → software simulation
+- `.xo` → fast cosimulation
+- `.hw.xclbin` → on-board execution
 
 ---
 
@@ -108,6 +125,9 @@ int64_t kernel_time_ns = tapa::invoke(
 - Streams are passed **by reference** (`tapa::istream<T>&`,
   `tapa::ostream<T>&`). Passing streams by value is a compile error.
 - mmap arguments are passed **by value** (`tapa::mmap<T>`), not by reference.
+- Scalar arguments (plain C++ types such as `int`, `float`, `uint64_t`) are passed
+  by value and are **read-only to the kernel**. The kernel cannot communicate a
+  result back to the host through a scalar parameter; use an mmap or stream instead.
 - Software simulation runs automatically when `tapa::invoke` receives an empty
   bitstream path.
 

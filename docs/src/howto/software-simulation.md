@@ -51,6 +51,14 @@ TAPA writes one log file per stream. The format depends on the element type:
 - **Non-primitive types without `operator<<`** are logged in hex with little-endian byte order. For example, writing `Foo{0x4222}` to a `tapa::stream<Foo>` produces `0x22420000\n`.
 - **Non-primitive types with `operator<<` defined** are logged using that operator, producing human-readable text.
 
+## Why coroutine simulation is more accurate than Vitis HLS simulation
+
+Vitis HLS software simulation runs each task **sequentially** in a single thread. The tasks take turns executing to completion before the next one starts. This means races between concurrent tasks are invisible — the simulation passes even when tasks make assumptions about each other's execution order that will not hold in real hardware.
+
+TAPA uses **coroutine-based simulation**: all tasks run on the same thread but yield cooperatively at stream blocking points. When a task calls `read()` on an empty stream, it suspends and another task runs. This models the concurrent, backpressure-driven semantics of hardware much more faithfully. Bugs that manifest in hardware because two tasks execute simultaneously are far more likely to surface during TAPA software simulation than during Vitis HLS software simulation.
+
+This is also why TAPA enforces stream depth in software simulation: a producer that fills a depth-2 FIFO will block in TAPA simulation, just as it would in hardware.
+
 ## Debugging with GDB
 
 Software simulation runs as ordinary host code, so GDB works as normal:

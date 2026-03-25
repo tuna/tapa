@@ -37,7 +37,7 @@ Run the full compilation pipeline (analyze → synth → pack) in a single comma
 | Flag | Description |
 |------|-------------|
 | `--top FUNCTION` / `-t FUNCTION` | Top-level task function name. |
-| `-f FILE` | Kernel source file. Repeatable to include multiple files. |
+| `-f FILE` | Kernel source file. |
 | `-o OUTPUT.xo` | Output XO file path. |
 
 ### Optional flags
@@ -73,7 +73,7 @@ Parse C++ source and extract the task graph to a JSON file in the work directory
 | Flag | Description |
 |------|-------------|
 | `--top FUNCTION` / `-t FUNCTION` | Top-level task function name. |
-| `-f FILE` | Kernel source file. Repeatable. |
+| `-f FILE` | Kernel source file. |
 
 ### Optional flags
 

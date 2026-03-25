@@ -49,6 +49,7 @@
 - [Runtime Flags](reference/runtime-flags.md)
 - [C++ API](reference/api.md)
 - [Output Files](reference/output-files.md)
+- [C++ Quick Reference](reference/cheatsheet.md)
 - [Glossary](reference/glossary.md)
 
 # Developer Guide
