@@ -29,6 +29,9 @@ class Port(NamedTuple):
         return self.mode == "write_only"
 
 
+_STREAM_QUALIFIER = 4  # address_qualifier value for stream args
+
+
 class Arg(NamedTuple):
     """Arg parsed from kernel.xml."""
 
@@ -51,7 +54,7 @@ class Arg(NamedTuple):
     @property
     def is_stream(self) -> bool:
         """Returns whether this arg is a stream."""
-        return self.address_qualifier == 4  # noqa: PLR2004
+        return self.address_qualifier == _STREAM_QUALIFIER
 
     @property
     def qualified_name(self) -> str:

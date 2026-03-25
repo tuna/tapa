@@ -6,6 +6,7 @@ import re
 import pyslang as sl
 
 VERILOG_CONST_PATTERN = r"\d+'s?[bodhBODH][0-9a-fA-F_]+"
+_MAX_BITSTREAM_WIDTH = 64
 
 _logger = logging.getLogger(__name__)
 
@@ -126,7 +127,7 @@ def eval_verilog_const_no_exception(value_str: str) -> str | None:
 
     if value and isinstance(value, sl.ConstantValue):
         if (
-            value.bitstreamWidth() > 64  # noqa: PLR2004
+            value.bitstreamWidth() > _MAX_BITSTREAM_WIDTH
             or '"' in value_str
             or re.fullmatch(VERILOG_CONST_PATTERN, value_str)
         ):

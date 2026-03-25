@@ -4,6 +4,8 @@ from typing import Any, Literal
 
 from tapa.graphir.types.interfaces.feedforward import FeedForwardInterface
 
+_FEEDFORWARD_PORT_COUNT = 2
+
 
 class FeedForwardResetInterface(FeedForwardInterface):
     """Interface of reset signal.
@@ -18,7 +20,7 @@ class FeedForwardResetInterface(FeedForwardInterface):
         if "rst_port" not in kwargs:
             kwargs["rst_port"] = None
         super().__init__(**kwargs)
-        assert len(self.ports) == 2  # noqa: PLR2004
+        assert len(self.ports) == _FEEDFORWARD_PORT_COUNT
 
     def __repr__(self) -> str:
         """Represent the interface as a string."""

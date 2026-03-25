@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 
 _logger = logging.getLogger().getChild(__name__)
 _ASSETS_DIR = Path(__file__).with_name("assets")
+_EXPECTED_ADDR_COUNT = 2
 _JINJA_ENV = Environment(
     loader=FileSystemLoader(_ASSETS_DIR),
     autoescape=False,
@@ -160,7 +161,7 @@ def render_vitis_test_signals(
     for arg_name, addrs in arg_to_reg_addrs.items():
         value = str(scalar_arg_to_val.get(arg_name, 0))
         register_writes.append(VitisRegisterWriteContext(address=addrs[0], value=value))
-        if len(addrs) == 2:  # noqa: PLR2004
+        if len(addrs) == _EXPECTED_ADDR_COUNT:
             register_writes.append(
                 VitisRegisterWriteContext(
                     address=addrs[1],

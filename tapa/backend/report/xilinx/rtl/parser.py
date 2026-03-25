@@ -7,6 +7,9 @@ __all__ = (
 )
 
 
+_DEVICE_HEADER_WORD_COUNT = 4
+
+
 class HierarchicalUtilization:
     """Semantic-agnostic hierarchical utilization."""
 
@@ -67,7 +70,11 @@ def parse_hierarchical_utilization_report(rpt_file: TextIO) -> HierarchicalUtili
     for unstripped_line in rpt_file:
         line = unstripped_line.strip()
         words = line.split()
-        if len(words) == 4 and words[:3] == ["|", "Device", ":"]:  # noqa: PLR2004
+        if len(words) == _DEVICE_HEADER_WORD_COUNT and words[:3] == [
+            "|",
+            "Device",
+            ":",
+        ]:
             device = words[3]
             continue
         if set(line) == {"+", "-"}:

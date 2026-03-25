@@ -10,6 +10,7 @@ _env = Environment(
     trim_blocks=True,
     lstrip_blocks=True,
 )
+_AXI_PORT_COUNT = 2
 
 
 def generate(
@@ -20,7 +21,7 @@ def generate(
         m = n = ports
     elif isinstance(ports, (tuple, list)) and len(ports) in {1, 2}:
         m = n = ports[0]
-        if len(ports) == 2:  # noqa: PLR2004
+        if len(ports) == _AXI_PORT_COUNT:
             n = ports[1]
     else:
         msg = "Invalid number of ports"
