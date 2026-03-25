@@ -34,7 +34,7 @@ The idiomatic TAPA read pattern uses two counters in a single pipelined loop:
 
 ```cpp
 void ReadKernel(tapa::async_mmap<float>& mem, float* result, uint64_t n) {
-  for (int i_req = 0, i_resp = 0; i_resp < n;) {
+  for (int64_t i_req = 0, i_resp = 0; i_resp < (int64_t)n;) {
 #pragma HLS pipeline II=1
     if (i_req < n && mem.read_addr.try_write(i_req)) ++i_req;
     float val;
@@ -64,7 +64,7 @@ Writes require coordinating three channels: `write_addr`, `write_data`, and `wri
 ```cpp
 void WriteKernel(tapa::async_mmap<float>& mem,
                  tapa::istream<float>& data, uint64_t n) {
-  for (int i_req = 0, i_resp = 0; i_resp < n;) {
+  for (int64_t i_req = 0, i_resp = 0; i_resp < (int64_t)n;) {
 #pragma HLS pipeline II=1
     if (i_req < n && !data.empty() &&
         !mem.write_addr.full() && !mem.write_data.full()) {

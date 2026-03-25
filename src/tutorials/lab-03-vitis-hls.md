@@ -20,7 +20,7 @@ After this lab you will understand:
 | `hls::stream<T>&` | `tapa::istream<T>&` or `tapa::ostream<T>&` | Direction is explicit in TAPA |
 | `#pragma HLS dataflow` + direct calls | `tapa::task().invoke(...)` | Tasks run concurrently |
 | Top function contains computation | Move computation into child tasks | TAPA upper-level tasks are orchestration-only |
-| `hls::stream<T>` local variable | `tapa::stream<T>` local variable | Same syntax; depth is enforced at compile time |
+| `hls::stream<T>` local variable | `tapa::stream<T>` local variable | Same syntax; depth is enforced during software simulation (default depth: 2) |
 
 ---
 
@@ -28,7 +28,7 @@ After this lab you will understand:
 
 The full before and after files are at [example_1_before.cpp](code/vitis-hls/example_1_before.cpp) and [example_1_after.cpp](code/vitis-hls/example_1_after.cpp).
 
-### Step 1: Replace the include and remove `extern "C"`
+### Step 1: Replace the include
 
 ```diff
 -#include <hls_stream.h>
@@ -37,7 +37,7 @@ The full before and after files are at [example_1_before.cpp](code/vitis-hls/exa
 +#include <tapa.h>
 ```
 
-TAPA kernels do not use `extern "C"` wrappers — TAPA generates the correct ABI automatically. Remove the `extern "C" {` block and its closing brace.
+TAPA provides its own stream types, so `hls_stream.h` is no longer needed. Other HLS headers such as `ap_int.h` and `hls_vector.h` are still supported and can be included as usual.
 
 ### Step 2: Replace pointer arguments with `tapa::mmap<T>`
 
@@ -90,7 +90,11 @@ Local streams declared inside the top-level function become `tapa::stream<T>`:
 +  tapa::stream<hls::vector<uint32_t, NUM_WORDS>> out_stream("output_stream");
 ```
 
-`tapa::stream<T>` accepts a name string for the same debugging purpose as `hls::stream<T>`.
+`tapa::stream<T>` accepts a name string for the same debugging purpose as `hls::stream<T>`. To set a custom depth, use `tapa::stream<T, DEPTH>`. For stream arrays, use `tapa::streams<T, ARRAY_SIZE, DEPTH>`.
+
+```admonish note
+The default stream depth in TAPA is 2, matching the Vitis HLS default. Unlike Vitis HLS, TAPA enforces the depth during software simulation, which helps catch backpressure bugs before synthesis.
+```
 
 ### Step 5: Replace `#pragma HLS dataflow` with `tapa::task().invoke(...)`
 
