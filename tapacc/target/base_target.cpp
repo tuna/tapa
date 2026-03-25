@@ -123,6 +123,26 @@ void BaseTarget::AddCodeForOtherParameter(ADD_FOR_PARAMS_ARGS_DEF) {
     lines.push_back("#pragma " + llvm::join(args, " "));                    \
   };
 
+namespace {
+
+using AddLineFn = std::function<void(llvm::StringRef)>;
+using AddPragmaFn = std::function<void(std::initializer_list<llvm::StringRef>)>;
+using AddParamCodeFn =
+    std::function<void(const clang::ParmVarDecl*, AddLineFn, AddPragmaFn)>;
+
+std::vector<std::string> GenerateCodeForFuncParams(
+    const clang::FunctionDecl* func, AddParamCodeFn add_code_for_param) {
+  std::vector<std::string> lines = {""};
+  LINES_FUNCTIONS;
+  for (const auto param : func->parameters()) {
+    add_code_for_param(param, add_line, add_pragma);
+    add_line("");  // Separate each parameter.
+  }
+  return lines;
+}
+
+}  // namespace
+
 std::vector<std::string> BaseTarget::GenerateCodeForTopLevelFunc(
     const clang::FunctionDecl* func) {
   std::vector<std::string> lines = {""};
@@ -141,41 +161,29 @@ std::vector<std::string> BaseTarget::GenerateCodeForTopLevelFunc(
 
 std::vector<std::string> BaseTarget::GenerateCodeForMiddleLevelFunc(
     const clang::FunctionDecl* func) {
-  std::vector<std::string> lines = {""};
-  LINES_FUNCTIONS;
-
-  for (const auto param : func->parameters()) {
-    AddCodeForMiddleLevelParameter(param, add_line, add_pragma);
-    add_line("");  // Separate each parameter.
-  }
-
-  return lines;
+  return GenerateCodeForFuncParams(
+      func, [this](const clang::ParmVarDecl* param, AddLineFn add_line,
+                   AddPragmaFn add_pragma) {
+        AddCodeForMiddleLevelParameter(param, add_line, add_pragma);
+      });
 }
 
 std::vector<std::string> BaseTarget::GenerateCodeForLowerLevelFunc(
     const clang::FunctionDecl* func) {
-  std::vector<std::string> lines = {""};
-  LINES_FUNCTIONS;
-
-  for (const auto param : func->parameters()) {
-    AddCodeForLowerLevelParameter(param, add_line, add_pragma);
-    add_line("");  // Separate each parameter.
-  }
-
-  return lines;
+  return GenerateCodeForFuncParams(
+      func, [this](const clang::ParmVarDecl* param, AddLineFn add_line,
+                   AddPragmaFn add_pragma) {
+        AddCodeForLowerLevelParameter(param, add_line, add_pragma);
+      });
 }
 
 std::vector<std::string> BaseTarget::GenerateCodeForOtherFunc(
     const clang::FunctionDecl* func) {
-  std::vector<std::string> lines = {""};
-  LINES_FUNCTIONS;
-
-  for (const auto param : func->parameters()) {
-    AddCodeForOtherParameter(param, add_line, add_pragma);
-    add_line("");  // Separate each parameter.
-  }
-
-  return lines;
+  return GenerateCodeForFuncParams(
+      func, [this](const clang::ParmVarDecl* param, AddLineFn add_line,
+                   AddPragmaFn add_pragma) {
+        AddCodeForOtherParameter(param, add_line, add_pragma);
+      });
 }
 
 clang::SourceRange BaseTarget::ExtendAttrRemovalRange(
