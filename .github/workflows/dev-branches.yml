@@ -75,8 +75,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build docs
-        run: bazel build //:build
-        working-directory: docs
+        run: bazel build //docs:build
 
   quality-baseline:
     name: Quality Baseline Staleness Check

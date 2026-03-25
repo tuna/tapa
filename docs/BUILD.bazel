@@ -1,0 +1,80 @@
+"""Build rules for the mdBook documentation."""
+
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+
+# Supported local dev platforms: Linux x86_64, macOS x86_64, macOS arm64.
+# Linux arm64 is not supported via Bazel — use the RTD cargo install path instead.
+
+# config_settings for combined OS+CPU constraints used in the select()s below.
+config_setting(
+    name = "_macos_arm64",
+    constraint_values = [
+        "@platforms//os:macos",
+        "@platforms//cpu:arm64",
+    ],
+)
+
+config_setting(
+    name = "_macos_amd64",
+    constraint_values = [
+        "@platforms//os:macos",
+        "@platforms//cpu:x86_64",
+    ],
+)
+
+alias(
+    name = "mdbook_bin",
+    actual = select({
+        ":_macos_arm64": "@mdbook_macos_arm64//:mdbook",
+        ":_macos_amd64": "@mdbook_macos_amd64//:mdbook",
+        "//conditions:default": "@mdbook_linux_amd64//:mdbook",
+    }),
+)
+
+alias(
+    name = "mdbook_admonish_bin",
+    actual = select({
+        ":_macos_arm64": "@mdbook_admonish_macos_arm64//:mdbook-admonish",
+        ":_macos_amd64": "@mdbook_admonish_macos_amd64//:mdbook-admonish",
+        "//conditions:default": "@mdbook_admonish_linux_amd64//:mdbook-admonish",
+    }),
+)
+
+genrule(
+    name = "build",
+    srcs = glob(["src/**"]) + ["book.toml"],
+    outs = ["book.tar.gz"],
+    # Source files in the Bazel sandbox are read-only symlinks, so we copy
+    # the entire book directory to a writable temp dir before running
+    # mdbook-admonish install (which writes CSS) and mdbook build.
+    cmd = """
+        set -e
+        MDBOOK=$$(realpath $(location :mdbook_bin))
+        MDBOOK_DIR=$$(dirname $$MDBOOK)
+        cp $(location :mdbook_admonish_bin) $$MDBOOK_DIR/mdbook-admonish
+        chmod +x $$MDBOOK_DIR/mdbook-admonish
+        WORK=$$(mktemp -d)
+        BOOK_DIR=$$(dirname $$(realpath $(location book.toml)))
+        cp -rL $$BOOK_DIR/. $$WORK/
+        OUTDIR="$$(pwd)/$(RULEDIR)/book"
+        PATH=$$MDBOOK_DIR:$$PATH mdbook-admonish install $$WORK
+        PATH=$$MDBOOK_DIR:$$PATH $$MDBOOK build $$WORK --dest-dir $$OUTDIR
+        tar -czf $@ -C "$$(pwd)/$(RULEDIR)" book
+        rm -rf $$WORK
+    """,
+    tags = ["manual"],
+    tools = [
+        ":mdbook_admonish_bin",
+        ":mdbook_bin",
+    ],
+)
+
+sh_binary(
+    name = "serve",
+    srcs = ["serve.sh"],
+    data = [
+        ":mdbook_admonish_bin",
+        ":mdbook_bin",
+    ] + glob(["src/**"]) + ["book.toml"],
+    tags = ["manual"],
+)
