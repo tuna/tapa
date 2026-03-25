@@ -44,9 +44,9 @@ void Task(tapa::mmap<int> mem) { ... }
 
 ## `async_mmap` passed by value
 
-**Symptom:** Compile error about a deleted copy constructor on an `async_mmap` parameter.
+**Symptom:** Passing `async_mmap` by value is deprecated and may produce a warning or error depending on the TAPA version.
 
-**Cause:** `tapa::async_mmap<T>` is a set of streams that controls memory access. Like regular streams, it is non-copyable and must be passed by reference.
+**Cause:** `tapa::async_mmap<T>` is a set of streams that controls memory access. Like regular streams, it must be passed by reference.
 
 **Fix:** Always pass `async_mmap` by reference.
 

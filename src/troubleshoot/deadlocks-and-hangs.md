@@ -2,6 +2,10 @@
 
 **When to use this page:** When software simulation or fast cosim hangs without producing output, or terminates without printing results.
 
+```admonish note
+Software simulation uses unbounded queues internally — stream depth is not enforced during software simulation. Hangs in software simulation are caused by structural deadlocks (circular dependencies, element count mismatches) rather than shallow FIFOs. Shallow stream depth causes deadlocks in fast cosim and hardware, where the declared depth is enforced.
+```
+
 ---
 
 ## Diagnosis checklist
@@ -40,24 +44,27 @@ Task A waits for output from Task B before it can write to Task B's input. Task 
 
 The `write_resp` FIFO fills up. Once full, the hardware stops accepting new write addresses and the kernel stalls.
 
-**Fix:** Always drain `write_resp` inside the write loop. A typical pattern:
+**Fix:** Always drain `write_resp` inside the same pipelined loop that issues writes. Use non-blocking `try_write` / `try_read` so both issue and drain progress every cycle:
 
 ```cpp
-void WriteTask(tapa::mmap<int> mem, tapa::async_mmap<int>& async_mem, int n) {
-  for (int i = 0; i < n; ++i) {
-    // issue write address and data
-    async_mem.write_addr.write(i);
-    async_mem.write_data.write(mem[i]);
-  }
-  // drain all responses
-  for (int i = 0; i < n; ) {
-    if (!async_mem.write_resp.empty()) {
-      async_mem.write_resp.read(nullptr);
-      ++i;
+void WriteTask(tapa::async_mmap<int>& mem, tapa::istream<int>& data, int n) {
+  for (int64_t i_req = 0, i_resp = 0; i_resp < n;) {
+#pragma HLS pipeline II=1
+    if (i_req < n && !data.empty() &&
+        !mem.write_addr.full() && !mem.write_data.full()) {
+      mem.write_addr.try_write(i_req);
+      mem.write_data.try_write(data.read(nullptr));
+      ++i_req;
+    }
+    uint8_t ack;
+    if (mem.write_resp.try_read(ack)) {
+      i_resp += unsigned(ack) + 1;  // ack encodes burst_length - 1
     }
   }
 }
 ```
+
+Splitting writes and response drain into separate loops risks deadlock: if `write_resp` fills before all writes are issued, the hardware stops accepting write addresses and the first loop never completes.
 
 ---
 
@@ -115,13 +122,11 @@ Inspect the AXI and stream signals to identify which channel is stalled. A valid
 ---
 
 ```admonish tip
-Set `TAPA_STREAM_LOG_DIR=/tmp/stream_logs` before running to log all stream transfers to files in that directory:
+Set `TAPA_STREAM_LOG_DIR=/tmp/stream_logs` before running. TAPA logs each value written to a stream into a file under that directory:
 
-```bash
-TAPA_STREAM_LOG_DIR=/tmp/stream_logs ./vadd
-```
+    TAPA_STREAM_LOG_DIR=/tmp/stream_logs ./vadd
 
-Each stream gets its own log file. A stream with an empty or truncated log identifies where data flow stops.
+Each named stream gets its own log file. A stream with an empty or truncated log identifies where data flow stops.
 ```
 
 ---
