@@ -21,7 +21,7 @@ Mmap2Stream(b) ──► b_q ──►
 
 This is a producer-pipeline-consumer pattern. The two `Mmap2Stream` tasks read from global memory and feed elements into streams. `Add` consumes both streams and produces a result stream. `Stream2Mmap` drains the result stream back to global memory. All four tasks run concurrently once `VecAdd` is invoked — there is no sequencing between them.
 
-The reason for this decomposition is not code style. TAPA generates separate hardware modules for each task, and the streams between them become FIFOs on the FPGA. The pipeline runs at full throughput because each stage is always doing useful work.
+The reason for this decomposition is not code style. TAPA generates separate hardware modules for each task, and the streams between them become FIFOs on the FPGA. When each stage is continuously supplied with data, the pipeline can run at full throughput.
 
 ## `Mmap2Stream`
 
@@ -34,7 +34,7 @@ void Mmap2Stream(tapa::mmap<const float> mmap, uint64_t n,
 }
 ```
 
-`tapa::mmap<const float>` is passed **by value**, not by reference. This is a hard rule in TAPA: mmap arguments to leaf tasks must be passed by value. The `const` qualifier marks the memory as read-only, which tells the runtime to use a read-only AXI master port. See [mmap](../concepts/mmap.md) for details.
+`tapa::mmap<const float>` is passed **by value**, not by reference. This is a hard rule in TAPA: mmap arguments to leaf tasks must be passed by value. The `const` qualifier marks the memory as read-only, which causes the compiler to generate a read-only AXI master port during synthesis. See [mmap](../concepts/mmap.md) for details.
 
 Inside the loop, `mmap[i]` is array-style access to global memory. Each access becomes an AXI read transaction. The `<<` operator writes the element to the output stream, blocking if the FIFO is full. HLS can pipeline this loop at II=1 when the memory access latency is hidden by the pipeline depth.
 
@@ -55,7 +55,7 @@ Stream arguments are passed **by reference**. This is the mirror of the mmap rul
 
 The `<<` on the output stream blocks if the downstream FIFO (`c_q`) is full. That backpressure propagates through the pipeline: `Add` stalls, which causes `a_q` and `b_q` to fill, which eventually stalls both `Mmap2Stream` tasks. The pipeline self-regulates without any explicit flow control logic.
 
-HLS pipelines this loop at II=1 by default because the operations (two reads and one add) are independent across iterations.
+HLS can pipeline this loop at II=1 because the operations (two reads and one add) are independent across iterations.
 
 ## `Stream2Mmap`
 
@@ -126,7 +126,7 @@ For the actual build and run commands, see [Your First Run](../start/first-run.m
 - **Leaf task arguments:** streams by reference (`tapa::istream<T>&`, `tapa::ostream<T>&`), mmap by value (`tapa::mmap<T>`)
 - **Upper-level tasks:** declare streams with `tapa::stream<T>`, invoke child tasks with `.invoke()`, contain no computation
 - **Stream names** (the string argument to `tapa::stream<T>`) are used by the debug infrastructure and appear in error messages — always name your streams
-- **mmap const-ness** expresses read-only vs. read-write access to the AXI port, and informs the runtime about transfer direction
+- **mmap const-ness** (`const float` vs `float`) determines whether the synthesized AXI master port is read-only or read-write; transfer direction at runtime is set separately by `read_only_mmap`/`write_only_mmap` on the host side
 
 ```admonish tip
 If you see a compilation error about streams being passed by value or mmap being passed by reference, check your task signatures. TAPA enforces these argument-passing conventions at compile time.

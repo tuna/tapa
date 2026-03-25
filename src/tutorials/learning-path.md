@@ -24,6 +24,6 @@ These labs walk through the TAPA programming model from first principles to adva
 
 ## Background reading
 
-Before starting any lab, the [Concepts](../concepts/programming-model.md) section covers the vocabulary used throughout: task graphs, streams, mmap, and the compile pipeline. The labs assume you have read at least the [Programming Model](../concepts/programming-model.md) page.
+Before starting any lab, the [Programming Model](../concepts/programming-model.md) page covers the vocabulary used throughout: task graphs, streams, mmap, and the compile pipeline. The labs assume you have read at least the [Programming Model](../concepts/programming-model.md) page.
 
 **Start here:** [Lab 1: Vector Add](lab-01-vadd.md)
