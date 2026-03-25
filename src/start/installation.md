@@ -13,11 +13,13 @@
 
 TAPA has been tested on the following operating systems:
 
-- Ubuntu 18.04 and newer
-- Debian 10 and newer
-- Red Hat Enterprise Linux 9 and newer (and derivatives: AlmaLinux 9+, Rocky Linux 9+)
-- Amazon Linux 2023
-- Fedora 34 and newer
+| OS | Minimum version | Notes |
+|----|-----------------|-------|
+| Ubuntu | 18.04 | |
+| Debian | 10 | |
+| Red Hat Enterprise Linux | 9 | Derivatives (AlmaLinux 9+, Rocky Linux 9+) also supported |
+| Amazon Linux | 2023 | |
+| Fedora | 34 | Fedora 39+ may have minor issues due to C library changes and Vitis HLS incompatibility |
 
 ## Install from release
 
