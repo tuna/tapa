@@ -26,13 +26,17 @@
 #include <yaml-cpp/yaml.h>
 #include <nlohmann/json.hpp>
 
+#include <mz.h>
+#include <mz_strm.h>
+#include <mz_zip.h>
+#include <mz_zip_rw.h>
+
 #include "frt/arg_info.h"
 #include "frt/devices/filesystem.h"
 #include "frt/devices/shared_memory_stream.h"
 #include "frt/devices/xilinx_environ.h"
 #include "frt/stream_arg.h"
 #include "frt/subprocess.h"
-#include "frt/zip_file.h"
 
 DEFINE_bool(xosim_start_gui, false, "start Vivado GUI for simulation");
 DEFINE_bool(xosim_save_waveform, false, "save waveform in the work directory");
@@ -114,15 +118,43 @@ TapaFastCosimDevice::TapaFastCosimDevice(std::string_view xo_path)
 
 static std::string ReadFileInZip(const std::string& zip_path,
                                  const std::string& filename) {
-  miniz_cpp::zip_file xo_file = zip_path;
-  const std::string suffix = "/" + filename;
-  for (auto& info : xo_file.infolist()) {
-    if (info.filename == filename ||
-        (info.filename.size() >= suffix.size() &&
-         std::equal(suffix.rbegin(), suffix.rend(), info.filename.rbegin()))) {
-      return xo_file.read(info);
-    }
+  void* reader = mz_zip_reader_create();
+  if (mz_zip_reader_open_file(reader, zip_path.c_str()) != MZ_OK) {
+    mz_zip_reader_delete(&reader);
+    LOG(FATAL) << "Cannot open zip: " << zip_path;
   }
+
+  const std::string suffix = "/" + filename;
+  int32_t rc = mz_zip_reader_goto_first_entry(reader);
+  while (rc == MZ_OK) {
+    mz_zip_file* info = nullptr;
+    mz_zip_reader_entry_get_info(reader, &info);
+    const std::string entry(info->filename);
+    if (entry == filename ||
+        (entry.size() >= suffix.size() &&
+         std::equal(suffix.rbegin(), suffix.rend(), entry.rbegin()))) {
+      if (mz_zip_reader_entry_open(reader) != MZ_OK) {
+        mz_zip_reader_close(reader);
+        mz_zip_reader_delete(&reader);
+        LOG(FATAL) << "Cannot open entry '" << filename << "' in " << zip_path;
+      }
+      std::string content;
+      char buf[4096];
+      int32_t bytes_read;
+      while ((bytes_read = mz_zip_reader_entry_read(reader, buf, sizeof(buf))) >
+             0) {
+        content.append(buf, bytes_read);
+      }
+      mz_zip_reader_entry_close(reader);
+      mz_zip_reader_close(reader);
+      mz_zip_reader_delete(&reader);
+      return content;
+    }
+    rc = mz_zip_reader_goto_next_entry(reader);
+  }
+
+  mz_zip_reader_close(reader);
+  mz_zip_reader_delete(&reader);
   LOG(FATAL) << "Missing '" << filename << "' in '" << zip_path << "'";
   return "";
 }

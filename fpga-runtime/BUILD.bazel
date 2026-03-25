@@ -43,7 +43,6 @@ cc_library(
         "frt/devices/xilinx_opencl_device.cpp",
         "frt/devices/xilinx_opencl_device.h",
         "frt/subprocess.h",
-        "frt/zip_file.h",
     ],
     hdrs = _PUBLIC_HEADERS,
     copts = [
@@ -64,6 +63,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "@glog",
+        "@minizip_ng",
         "@nlohmann_json//:json",
         "@tinyxml2",
         "@xilinx_xrt",
@@ -83,7 +83,6 @@ cc_library(
         "frt/devices/xilinx_environ.cpp",
         "frt/devices/xilinx_environ.h",
         "frt/subprocess.h",
-        "frt/zip_file.h",
         "frt_cosim.cpp",
     ],
     hdrs = _PUBLIC_HEADERS,
@@ -103,6 +102,7 @@ cc_library(
     deps = [
         "@gflags",
         "@glog",
+        "@minizip_ng",
         "@nlohmann_json//:json",
         "@tinyxml2",
         "@yaml-cpp",
