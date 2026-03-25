@@ -8,10 +8,13 @@
 
 ## Why this exists
 
-`mmap` issues one DRAM transaction at a time and waits for the response before
-issuing the next. For random-access patterns or high-bandwidth designs, this
-serialization is a bottleneck: off-chip DRAM latency is typically 100–200 ns,
-so one outstanding request at a time severely limits throughput.
+`mmap` does not provide explicit control over outstanding DRAM transactions.
+The HLS tool may issue burst transactions for sequential access, but for
+random-access patterns or designs that need fine-grained control over
+outstanding requests, the lack of explicit flow control limits throughput.
+Off-chip DRAM latency is typically 100–200 ns, and without the ability to
+overlap request issuance with data receipt, achievable bandwidth stays far
+below the channel peak.
 
 `async_mmap` exposes the five AXI channels as individual streams, letting you
 issue multiple outstanding requests and overlap address issuance with data
