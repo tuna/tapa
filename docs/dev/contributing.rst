@@ -14,9 +14,10 @@ Continuous Integration
 
 TAPA uses GitHub Actions for continuous integration. The CI pipeline:
 
-1. Builds and tests TAPA using Ubuntu 18.04 for every commit.
+1. Builds binary distributions on Ubuntu 18.04 self-hosted runners.
 2. Performs code quality checks using pre-commit hooks on every commit.
-3. Runs the full test suite on different platforms for every main branch push.
+3. Runs functional and integration tests via staging workflows across a matrix
+   of platforms and Vitis versions for every main branch push.
 
 Documentation
 ~~~~~~~~~~~~~

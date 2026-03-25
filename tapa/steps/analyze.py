@@ -112,7 +112,7 @@ def analyze(
     # If the top task is a leaf task, Vitis mode will not work.
     if (
         tapa_graph.get_top_task_def().get_level() == TaskDefinition.Level.LEAF
-        and target == Target.XILINX_VITIS.name
+        and target == Target.XILINX_VITIS.value
     ):
         msg = "The top task is a leaf task, target `xilinx-vitis` is not supported."
         raise click.UsageError(msg)

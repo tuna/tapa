@@ -344,7 +344,7 @@ To use the HLS-compat helpers, in addition to ``tapa.h``, also include
    #include <hls_vector.h>
   -#include <hls_stream.h>
   +#include <tapa.h>
-  +#include <tapa/host/compat.h
+  +#include <tapa/host/compat.h>
    #include "assert.h"
 
 Step 2: Use Infinite-Depth Streams

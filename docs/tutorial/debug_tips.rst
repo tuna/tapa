@@ -158,8 +158,7 @@ Instead, the computation should be done in the task itself:
 Working with Templates in Tasks
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-While TAPA doesn't support templated tasks directly, you can use template
-functions within tasks:
+Leaf templated tasks (where the template function directly computes without invoking other tasks) are supported. Non-leaf templated tasks that invoke other tasks are not yet supported. You can use template functions within tasks:
 
 .. code-block:: cpp
 
@@ -176,7 +175,7 @@ functions within tasks:
 
 .. warning::
 
-   Only leaf tasks that does not invoke other tasks can be templated.
+   Leaf templated tasks (where the template function directly computes without invoking other tasks) are supported. Non-leaf templated tasks that invoke other tasks are not yet supported.
 
 Correctly Defining Stream Arrays
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -227,7 +226,7 @@ during software simulation. To do so, compile your code with the
 
 .. code-block:: bash
 
-   tapa g++ vadd.cpp vadd-host.cpp -fsanitize=address -g -o vadd
+   tapa g++ -- vadd.cpp vadd-host.cpp -fsanitize=address -g -o vadd
 
 This will help catch issues like buffer overflows.
 

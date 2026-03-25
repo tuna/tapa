@@ -30,6 +30,8 @@ those contributing to or extending the TAPA framework itself.
   user/tasks
   user/data
   user/visualizer
+  user/remote
+  user/advanced_synth
 
 .. toctree::
   :maxdepth: 1

@@ -27,8 +27,9 @@ Here's an example of a TAPA task:
 
 .. note::
 
-   TAPA does not support template functions as tasks. To use a template
-   as a task, you must wrap it in a non-template function.
+   Leaf templated tasks (template functions that directly compute without
+   invoking other tasks) are supported. Non-leaf templated tasks that invoke
+   other tasks are not yet supported.
 
 TAPA tasks usually has scalar arguments, input streams, output streams, and
 memory maps.
@@ -100,8 +101,14 @@ accelerator. It orchestrates the execution of other tasks and manages the
 dataflow between them. The top-level task is responsible for instantiating
 streams, passing them to child tasks, and invoking them.
 
-A top-level task must be in the form of an upper-level task. For example,
-the top-level task ``TopLevel`` invokes the task ``Task``:
+The requirements on the top-level task depend on the compilation target:
+
+- For the ``xilinx-vitis`` target (the default): the top-level task must be an
+  upper-level task — it must invoke child tasks and cannot be a leaf task.
+- For the ``xilinx-hls`` target: the top-level task can be either an
+  upper-level task or a leaf task.
+
+For example, the top-level task ``TopLevel`` invokes the task ``Task``:
 
 .. code-block:: cpp
 
@@ -210,3 +217,27 @@ shipped with TAPA demonstrates both of these features:
 
    TAPA allows tasks to be detached on invocation and supports hierarchical
    design, enabling the creation of complex, modular designs.
+
+Advanced: Per-Task Executable Override
+---------------------------------------
+
+In host code, individual task invocations can specify a custom executable or
+bitstream using ``tapa::executable``. This overrides the bitstream used for a
+single child task invocation without affecting the rest of the design:
+
+.. code-block:: cpp
+
+   tapa::task()
+       .invoke(LeafA, tapa::executable("path/to/leafA.xclbin"), arg1, arg2)
+       .invoke(LeafB, arg3);
+
+This is useful for partial emulation or modular simulation workflows where
+different child tasks run from different bitstream files. Child tasks that do
+not receive a ``tapa::executable`` argument continue to use the default
+execution path (software simulation or the top-level bitstream).
+
+.. note::
+
+   ``tapa::executable`` is a host-only feature. It has no effect on RTL
+   synthesis. The overriding invoke must be called before any direct
+   ``tapa::stream`` reader or writer on the same stream.

@@ -81,7 +81,7 @@ from tapa.steps.synth_plan import SynthPlan, build_synth_plan
     default=None,
     help=(
         "Specifies the stream FIFOs to not add pipeline to. "
-        "A `grouping_constrains.json` file will be generated for floorplanning."
+        "A `grouping_constraints.json` file will be generated for floorplanning."
     ),
 )
 @click.option(

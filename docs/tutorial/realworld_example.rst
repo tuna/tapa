@@ -13,7 +13,7 @@ we are adding more sophiticated TAPA designs here.
   originally published in `FPGA'23
   <https://dl.acm.org/doi/pdf/10.1145/3543622.3573182>`_.
 
-- ``cnn`` and ``lu_decomposition`` are both systolic arrays (of different
+- ``cnn`` and ``lu_decompose`` are both systolic arrays (of different
   shape) originally published in `FPGA'21
   <https://dl.acm.org/doi/pdf/10.1145/3431920.3439292>`_.
 

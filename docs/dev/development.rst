@@ -78,7 +78,8 @@ The TAPA codebase is organized into several key directories:
 
   The TAPA C++ preprocessor reprocesses TAPA C++ code before passing to
   ``tapacc`` compiler. It supports TAPA-specific features, such as
-  ``[[tapa::pipeline]]`` annotations.
+  ``[[tapa::pipeline]]`` annotations (maps to Vitis HLS PIPELINE pragma) and
+  ``[[tapa::unroll]]`` annotations (maps to Vitis HLS UNROLL pragma).
 
 - ``tapa-lib/``: Houses the TAPA runtime library.
 
@@ -86,13 +87,14 @@ The TAPA codebase is organized into several key directories:
   streams, and memory maps. It implements platform-specific features
   (e.g., software simulation queues, hardware FIFOs).
 
-- ``tapa-llvm-project/``: Contains the LLVM project with TAPA-specific patches.
+- ``tapa-llvm-project/``: Contains the LLVM project with TAPA-specific patches
+  (fetched as an external Bazel dependency, not checked in to the repository).
 
   TAPA uses LLVM Clang to generate system interconnect and transformed C++
   code for each task. The LLVM project is customized with TAPA-specific
   features, such as C++ annotations.
 
-- ``tapa-system-includes/``: Creates a custom system include directory for TAPA.
+- ``tapa-system-include/``: Creates a custom system include directory for TAPA.
 
   This Bazel build target collects system include files for ``tapa-cpp``
   and ``tapacc`` compilers. It includes standard C++ headers, TAPA
@@ -103,7 +105,8 @@ The TAPA codebase is organized into several key directories:
   The TAPA compiler serves as the entry point for the TAPA framework. It
   invokes ``tapa-cpp`` and ``tapacc`` compilers, synthesizes tasks into RTL
   using HLS tools, and generates system interconnect and XO object file for
-  FPGA.
+  FPGA. For the ``xilinx-hls`` target, a ``.zip`` RTL archive is generated
+  instead.
 
 - ``tapacc/``: Implements the TAPA C++ compiler to translate TAPA tasks to JSON.
 

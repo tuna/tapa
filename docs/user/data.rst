@@ -305,6 +305,61 @@ In summary, the API for EoT tokens in TAPA is as follows:
    TAPA supports the ``close()`` and ``try_eot()`` APIs to close a stream and
    check for the EoT token, respectively.
 
+EoT Loop Helper Macros
+^^^^^^^^^^^^^^^^^^^^^^
+
+TAPA provides convenience macros that simplify writing loops that consume
+stream data until an EoT token is received. These macros handle the
+non-blocking ``eot()`` check internally, reducing boilerplate and avoiding
+common mistakes.
+
+``TAPA_WHILE_NOT_EOT(stream)``
+  Loops until ``stream`` delivers an EoT token. On each iteration the loop
+  body executes only when a valid (non-EoT) token is available.
+
+``TAPA_WHILE_NEITHER_EOT(stream1, stream2)``
+  Loops until *either* ``stream1`` or ``stream2`` delivers an EoT token.
+  The loop body executes only when both streams have a valid token available
+  on the same cycle.
+
+``TAPA_WHILE_NONE_EOT(stream1, stream2, stream3)``
+  Loops until *any one* of the three streams delivers an EoT token.
+  The loop body executes only when all three streams have a valid token
+  available on the same cycle.
+
+Example using ``TAPA_WHILE_NOT_EOT``:
+
+.. code-block:: cpp
+
+  #include <tapa.h>
+
+  void Consumer(tapa::istream<int>& in, tapa::ostream<int>& out) {
+    TAPA_WHILE_NOT_EOT(in) {
+      // Executes only when a valid non-EoT token is present in `in`
+      out.write(in.read(nullptr));
+    }
+    out.close();
+  }
+
+Example using ``TAPA_WHILE_NEITHER_EOT`` for two streams:
+
+.. code-block:: cpp
+
+  void PairConsumer(tapa::istream<int>& a, tapa::istream<int>& b,
+                    tapa::ostream<int>& out) {
+    TAPA_WHILE_NEITHER_EOT(a, b) {
+      // Executes only when both `a` and `b` have valid tokens
+      out.write(a.read(nullptr) + b.read(nullptr));
+    }
+    out.close();
+  }
+
+.. note::
+
+   These macros use the non-blocking ``eot()`` API internally and are
+   equivalent to writing an explicit ``for`` loop with ``eot()`` validity
+   checks. They are defined in ``<tapa.h>`` and require no additional includes.
+
 Memory-Mapped (MMAP)
 --------------------
 
@@ -399,6 +454,40 @@ values:
    task invocation. Memory-mapped interfaces can be passed to nested tasks
    as values.
 
+Directional MMAP Array Wrappers
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+For designs that use ``mmaps`` (arrays of memory-mapped interfaces), TAPA
+provides type-safe directional wrappers analogous to the single-channel
+``read_only_mmap`` / ``write_only_mmap`` / ``read_write_mmap`` helpers:
+
+- ``tapa::read_only_mmaps<T, N>``: array of ``N`` read-only mmap interfaces.
+- ``tapa::write_only_mmaps<T, N>``: array of ``N`` write-only mmap interfaces.
+- ``tapa::read_write_mmaps<T, N>``: array of ``N`` read-write mmap interfaces.
+
+These wrappers are used in ``tapa::invoke()`` calls on the host side to
+communicate the host-kernel data-flow direction to the TAPA runtime and
+toolchain. The kernel task receives the argument as a plain ``tapa::mmaps<T, N>``.
+
+Example from the host code of the multi-port vector-add example:
+
+.. code-block:: cpp
+
+  // Host side: invoke with directional mmaps wrappers
+  tapa::invoke(VecAdd, FLAGS_bitstream,
+               tapa::read_only_mmaps<float, M>(a),
+               tapa::read_only_mmaps<float, M>(b),
+               tapa::write_only_mmaps<float, M>(c), n);
+
+  // Kernel side: receive as plain mmaps
+  void VecAdd(tapa::mmaps<float, M> a, tapa::mmaps<float, M> b,
+              tapa::mmaps<float, M> c, uint64_t n) { ... }
+
+.. warning::
+
+   Like ``tapa::read_only_mmap``, these wrappers only specify host-kernel
+   communication behavior, not the kernel's internal access pattern.
+
 Memory Access
 ^^^^^^^^^^^^^
 
@@ -473,13 +562,26 @@ In the ``InnerStage`` function:
    ``Switch2x2`` instance takes one ``ostreams<pkt_t, 2>``, which is
    effectively two ``ostream<pkt_t>``.
 
-.. warning::
+.. note::
 
-   TAPA does not support accessing individual streams or memory-mapped
-   interfaces from a ``streams`` or ``mmaps`` array, unless it is in the leaf
-   level of the task invocation hierarchy. For example, ``in_q0[0]`` will not
-   compile. Instead, use ``tapa::invoke<..., n>`` to distribute the array
-   elements across multiple invocations.
+   TAPA supports accessing individual elements from a ``streams`` or ``mmaps``
+   array (e.g., ``streams[0]``, ``mmaps[1]``) when passing them to child tasks
+   at upper levels of the task hierarchy. For example:
+
+   .. code-block:: cpp
+
+     void Add(tapa::istreams<float, M>& a, tapa::istreams<float, M>& b,
+              tapa::ostreams<float, M>& c, uint64_t n) {
+       tapa::task()
+           // Pass full arrays — elements distributed automatically
+           .invoke<tapa::join>(AddSingle, a, b, c, n)
+           // Pass individual indexed elements explicitly
+           .invoke<tapa::join>(AddSingle, a[3], b[3], c[3], n)
+           .invoke<tapa::join>(AddSingle, a[2], b[2], c[2], n);
+     }
+
+   Alternatively, use ``tapa::invoke<..., n>`` to distribute array elements
+   automatically across multiple invocations.
 
 .. note::
 
@@ -559,20 +661,29 @@ Basic Usage
 
 ``async_mmap`` should be used only as formal parameters in leaf-level tasks.
 It can be constructed from ``mmap``, and an ``mmap`` argument can be passed to
-an ``async_mmap`` parameter. Note that the only the non-blocking API ``try_ready``
+an ``async_mmap`` parameter. Note that the only the non-blocking API ``try_read``
 and ``try_write`` should be used to avoid deadlocks. Detailed usage can be found at
 :ref:`Efficient Memory Accesses <tutorial/async_mmap:Efficient Memory Accesses>`
 
 .. warning::
 
-   ``async_mmap`` should only be used as formal parameters in leaf-level tasks,
-   which are C++ functions that are called directly from ``tapa::task::invoke``
-   and do not instantiate any children tasks or streams
+   The async read/write operations on ``async_mmap`` channels (i.e., reading
+   and writing the ``read_addr``, ``read_data``, ``write_addr``, ``write_data``,
+   and ``write_resp`` streams) should only occur in leaf-level tasks, which are
+   C++ functions called directly from ``tapa::task::invoke`` that do not
+   instantiate any child tasks or streams. However, an upper-level task may
+   accept ``async_mmap<T>&`` as a parameter and pass it through to a child
+   leaf task without performing any operations on it.
 
 .. warning::
-   Due to certain from the Vitis HLS compiler, ``async_mmap`` must be passed
-   by reference, i.e., with ``&``. In contrast, ``mmap`` must be passed by
-   value, i.e., without ``&``.
+   Due to certain constraints from the Vitis HLS compiler, ``async_mmap`` must
+   be passed by reference, i.e., with ``&``. In contrast, ``mmap`` must be
+   passed by value, i.e., without ``&``.
+
+.. note::
+   Passing ``async_mmap<T>`` by value (without ``&``) is accepted for
+   backwards compatibility but is deprecated. Prefer ``async_mmap<T>&`` in
+   all new code.
 
 .. code-block:: cpp
 

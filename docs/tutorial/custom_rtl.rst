@@ -31,13 +31,13 @@ Given a TAPA design with the following tasks:
         delete[] c_dyn;
     }
 
-    [[tapa::target("non_synthesizable", "xilinx")]] void Add_Upper(
+    [[tapa::target("ignore")]] void Add_Upper(
         tapa::istream<float>& a, tapa::istream<float>& b, tapa::ostream<float>& c,
         uint64_t n) {
         tapa::task().invoke(Add, a, b, c, n);
     }
 
-The ``Add_Upper`` task contains a non-synthesizable child task, ``Add``, because it includes dynamic memory allocation, which is not supported by TAPA. In such cases, we can replace the non-synthesizable task with a custom RTL kernel. To replace the entire ``Add_Upper`` task with a custom RTL kernel, we label the task with the ``non_synthesizable`` attribute: ``[[tapa::target("non_synthesizable", "xilinx")]]``.
+The ``Add_Upper`` task contains a non-synthesizable child task, ``Add``, because it includes dynamic memory allocation, which is not supported by TAPA. In such cases, we can replace the non-synthesizable task with a custom RTL kernel. To replace the entire ``Add_Upper`` task with a custom RTL kernel, we label the task with ``[[tapa::target("ignore")]]``.
 
 Compile with Non-synthesizable Task
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -70,4 +70,21 @@ Assuming the user has implemented the ``Add_Upper`` kernel with RTL files locate
         -o work.out/$APP.xo \
         --custom-rtl ./rtl/
 
-The ``--custom-rtl`` flag specifies the file path of a custom RTL file or a directory containing custom RTL files. Multiple custom RTL paths can be specified by repeating the flag. The ``pack`` command performs format checking on the user-provided Verilog files and packs the XO file with the custom RTL files.
+The ``--custom-rtl`` flag specifies the file path of a custom RTL file or a directory containing custom RTL files. Multiple custom RTL paths can be specified by repeating the flag. The ``pack`` command performs advisory format checking (issues warnings but does not fail the build) on the user-provided ``.v`` files against their expected port signatures, and packs the XO file with the custom RTL files. Other file types (e.g. ``.tcl``) are accepted and packaged without format checking.
+
+One-Step Compile and Pack
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+As an alternative to the two-step workflow above, the ``tapa compile`` command also accepts ``--custom-rtl`` directly, combining compilation and repacking into a single step:
+
+.. code-block:: shell
+
+    # Compile and pack with custom RTL files in one step
+    tapa \
+        compile \
+        --top $APP \
+        --part-num xcu250-figd2104-2L-e \
+        --clock-period 3.33 \
+        -f $CSYNTH_FILE \
+        -o work.out/$APP.xo \
+        --custom-rtl myfile.v

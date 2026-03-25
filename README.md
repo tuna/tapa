@@ -84,7 +84,7 @@ guide for detailed instructions.
 cd tests/apps/vadd
 
 # Software simulation (use bazel-bin/tapa/tapa if built from source)
-tapa g++ vadd.cpp vadd-host.cpp -o vadd
+tapa g++ -- vadd.cpp vadd-host.cpp -o vadd
 ./vadd
 
 # Hardware compilation and emulation
@@ -112,7 +112,7 @@ For detailed instructions, see our [User Guide](https://tapa.readthedocs.io/en/m
 - [User Guide](https://tapa.readthedocs.io/en/main/).
 - [Installation Guide](https://tapa.readthedocs.io/en/main/user/installation.html).
 - [Getting Started](https://tapa.readthedocs.io/en/main/user/getting_started.html).
-- [API Reference](https://tapa.readthedocs.io/en/main/api.html).
+- [API Reference](https://tapa.readthedocs.io/en/main/ref/api.html).
 
 
 ## Success Stories

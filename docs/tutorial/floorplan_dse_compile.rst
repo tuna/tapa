@@ -25,7 +25,11 @@ solutions.
 After generating the floorplan solutions, you can compile the project with a specific
 floorplan solution with the ``tapa compile`` command by specifying the ``--floorplan-path`` option.
 The application will be reorganized according to the floorplan solution, and pipeline
-will be added. An xo file and floorplan constrain xdc file will be generated.
+will be added.
+
+.. warning::
+
+   Using ``--floorplan-path`` requires a flattened hierarchy. Add the ``--flatten-hierarchy`` flag to your compile command.
 
 .. code-block:: bash
 
@@ -36,7 +40,7 @@ will be added. An xo file and floorplan constrain xdc file will be generated.
         --floorplan-path floorplan_0.json \
         --clock-period 3.00 \
         --part-num xcu55c-fsvh2892-2L-e \
-        --pipeline-config pipeline_config.json
+        --flatten-hierarchy
 
 Alternatively, you can use the ``tapa compile-with-floorplan-dse`` command to compile the project
 with floorplan DSE directly. This command will automatically run the floorplan DSE, compile,
@@ -50,8 +54,7 @@ and add pipeline to the project for each floorplan solution generated.
         --device-config device_config.json \
         --floorplan-config floorplan_config.json \
         --clock-period 3.00 \
-        --part-num xcu55c-fsvh2892-2L-e \
-        --pipeline-config pipeline_config.json
+        --part-num xcu55c-fsvh2892-2L-e
 
 The ``--floorplan-config`` option specifies the floorplan DSE configuration file.
 An example of a floorplan DSE configuration file is as follows:

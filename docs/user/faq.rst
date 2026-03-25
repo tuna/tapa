@@ -15,10 +15,30 @@ Where is ``tapac``?
 -------------------
 
 The ``tapac`` command has been replaced by ``tapa compile``.
-The ``tapa compile`` command is used to compile TAPA source files into a
-Vitis object file. Most of the arguments and options are the same as the
-original ``tapac`` command. You may refer to the ``--help`` option for more
-information.
+The ``tapa compile`` command compiles TAPA source files and supports multiple
+output targets, selected with the ``--target`` flag. Most of the arguments and
+options are the same as the original ``tapac`` command. You may refer to the
+``--help`` option for more information.
+
+What does ``tapa compile`` produce?
+------------------------------------
+
+The output format depends on the selected target:
+
+- ``xilinx-vitis`` (the default): produces a ``.xo`` Xilinx object file.
+  This file is consumed by the Vitis ``v++`` linker to generate an ``.xclbin``
+  hardware binary for on-board execution.
+
+- ``xilinx-hls``: produces a ``.zip`` RTL archive. This archive contains the
+  synthesized RTL and can be used for RTL inspection, standalone simulation, or
+  integration into custom downstream toolchains. It does not require Vivado to
+  generate.
+
+Select the target with the ``--target`` option:
+
+.. code-block:: bash
+
+   tapa compile --target xilinx-hls --top VecAdd -f vadd.cpp -o vadd_rtl.zip
 
 Is there a command-line utility for quick help?
 -----------------------------------------------

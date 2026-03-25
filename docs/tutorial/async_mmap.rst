@@ -199,8 +199,7 @@ a stride of 1 (consecutive elements).
 
 .. tip::
 
-   Despite that TAPA does not support template functions as tasks, you can
-   call a template function from a non-template task function.
+   Leaf templated tasks (where the template function directly computes without invoking other tasks) are supported. Non-leaf templated tasks that invoke other tasks are not yet supported. You can call a template function from a non-template task function.
 
 .. note::
 

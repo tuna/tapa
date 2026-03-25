@@ -288,6 +288,19 @@ use the same executable file for hardware simulation and on-board execution.
 The above runs software simulation of the program, which helps you quickly
 verify the correctness of your task design.
 
+.. note::
+
+   The ``TAPA_CONCURRENCY`` environment variable controls the size of the
+   worker thread pool used during host (software) simulation. By default it is
+   set to the number of physical CPU cores. Setting it to ``1``
+   (``TAPA_CONCURRENCY=1``) makes simulation single-threaded, which improves
+   reproducibility and simplifies debugging. Setting it higher than the default
+   can speed up large simulations with many parallel tasks.
+
+   .. code-block:: bash
+
+      TAPA_CONCURRENCY=1 ./vadd   # reproducible single-threaded simulation
+
 Synthesis into RTL
 ------------------
 
@@ -315,6 +328,27 @@ The ``--clock-period`` argument specifies the target clock period in nanoseconds
    ``--platform xilinx_u250_gen3x16_xdma_4_1_202210_1`` for Xilinx U250).
 
 HLS reports will be available in ``work.out/report``.
+
+Compiler Annotations
+~~~~~~~~~~~~~~~~~~~~
+
+TAPA supports C++ attributes that map to HLS pragmas and guide synthesis.
+
+``[[tapa::pipeline]]``
+  Applies the Vitis HLS ``PIPELINE`` pragma to the annotated loop or function
+  body, enabling initiation-interval pipelining.
+
+``[[tapa::unroll]]``
+  Applies the Vitis HLS ``UNROLL`` pragma to the annotated loop. An optional
+  factor argument controls the unroll degree:
+
+  .. code-block:: cpp
+
+     [[tapa::unroll]]          // fully unroll the loop
+     for (int i = 0; i < 4; ++i) { /* ... */ }
+
+     [[tapa::unroll(4)]]       // unroll with factor 4
+     for (int i = 0; i < N; ++i) { /* ... */ }
 
 Hardware Simulation
 -------------------

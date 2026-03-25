@@ -24,7 +24,9 @@ To build TAPA from source, you need:
 - `Git <https://git-scm.com>`_
 - `Libstdc++ <https://gcc.gnu.org/libstdc++/>`_ matching the most recent GCC
   version installed on your system
-- `Python <https://www.python.org>`_ 3.6 or later
+- `Python <https://www.python.org>`_ 3.13 or later (Bazel fetches its own
+  managed toolchain; this version applies to the Bazel-managed Python, not
+  necessarily the host system Python)
 - :ref:`Other TAPA dependencies <user/installation:System Prerequisites>`
 
 Install these tools using your OS package manager. For Ubuntu:
@@ -50,7 +52,7 @@ Install these tools using your OS package manager. For Ubuntu:
 
 .. note::
 
-   The `Dockerfile in the TAPA repository <https://github.com/tuna/tapa/blob/main/.github/docker/build-env/Dockerfile.Dependencies>`_
+   The `Dockerfile in the TAPA repository <https://github.com/tuna/tapa/blob/main/.github/docker/build-env/Dockerfile.binary-dependencies>`_
    provides a complete build environment. Use it for containerized builds or
    run the Ubuntu commands to install required tools.
 

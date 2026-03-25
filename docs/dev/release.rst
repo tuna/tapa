@@ -44,7 +44,13 @@ Users can install a published release with:
 
    curl -fsSL https://raw.githubusercontent.com/tuna/tapa/main/install.sh | sh -s -- -q
 
-To install a specific version:
+To install a specific version by tag:
+
+.. code-block:: bash
+
+   curl -fsSL https://raw.githubusercontent.com/tuna/tapa/main/install.sh | TAPA_VERSION=x.y.z sh -s -- -q
+
+To install from a local release tarball:
 
 .. code-block:: bash
 
