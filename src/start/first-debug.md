@@ -15,8 +15,8 @@ prints `FAIL!` instead of `PASS!`.
 ## How to confirm: run single-threaded
 
 By default TAPA runs each task in its own coroutine using a thread pool sized
-to the number of physical CPU cores. Reducing concurrency to one thread makes
-timing deterministic and simplifies debugging:
+to the number of physical CPU cores. Reducing concurrency to one thread improves
+reproducibility and simplifies debugging:
 
 ```bash
 TAPA_CONCURRENCY=1 ./vadd
