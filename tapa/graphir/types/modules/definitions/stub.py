@@ -34,14 +34,17 @@ class StubModuleDefinition(BaseModuleDefinition):
         yield from self.ports
         yield from self.parameters
 
-    def get_submodules_module_names(self) -> tuple[str, ...]:  # noqa: PLR6301
+    @staticmethod
+    def get_submodules_module_names() -> tuple[str, ...]:  # type: ignore[reportIncompatibleMethodOverride]
         """Return empty tuple: stub modules have no submodules."""
         return ()
 
-    def is_leaf_module(self) -> bool:  # noqa: PLR6301
+    @staticmethod
+    def is_leaf_module() -> bool:  # type: ignore[reportIncompatibleMethodOverride]
         """Return True: stub modules are always leaf modules."""
         return True
 
-    def is_internal_module(self) -> bool:  # noqa: PLR6301
+    @staticmethod
+    def is_internal_module() -> bool:  # type: ignore[reportIncompatibleMethodOverride]
         """Return False: stub modules are not internal modules."""
         return False

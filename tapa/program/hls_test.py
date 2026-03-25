@@ -230,18 +230,21 @@ class _ConcreteHlsMixin(ProgramHlsMixin):
     def __init__(self, tasks: dict) -> None:
         self._tasks = tasks
 
-    # ProgramDirectoryInterface stubs — intentionally static-like but must be
-    # instance methods to satisfy the abstract interface.
-    def get_cpp_path(self, name: str) -> str:  # noqa: PLR6301
+    # ProgramDirectoryInterface stubs.
+    @staticmethod
+    def get_cpp_path(name: str) -> str:  # type: ignore[reportIncompatibleMethodOverride]
         return f"/tmp/fake/{name}.cpp"
 
-    def get_tar_path(self, name: str) -> str:  # noqa: PLR6301
+    @staticmethod
+    def get_tar_path(name: str) -> str:  # type: ignore[reportIncompatibleMethodOverride]
         return f"/tmp/fake/{name}.tar"
 
-    def get_header_path(self, name: str) -> str:  # noqa: PLR6301
+    @staticmethod
+    def get_header_path(name: str) -> str:  # type: ignore[reportIncompatibleMethodOverride]
         return f"/tmp/fake/{name}.h"
 
-    def get_common_path(self) -> str:  # noqa: PLR6301
+    @staticmethod
+    def get_common_path() -> str:  # type: ignore[reportIncompatibleMethodOverride]
         return "/tmp/fake/common.h"
 
     # ProgramInterface stub — not needed for this test
@@ -342,7 +345,8 @@ def test_worker_does_not_retry_when_error_line_present() -> None:
         ) -> None:
             return None
 
-        def communicate(self) -> tuple[bytes, bytes]:  # noqa: PLR6301
+        @staticmethod
+        def communicate() -> tuple[bytes, bytes]:
             # Both markers present → no retry, raises RuntimeError
             return (b"Pre-synthesis failed.\nERROR: something bad", b"")
 

@@ -33,7 +33,8 @@ class InternalVerilogModuleDefinition(VerilogModuleDefinition):
 
     module_type: Literal["internal_verilog_module"] = "internal_verilog_module"  # type: ignore[reportIncompatibleVariableOverride]
 
-    def is_internal_module(self) -> bool:  # noqa: PLR6301
+    @staticmethod
+    def is_internal_module() -> bool:
         """Return True: internal verilog modules are internal."""
         return True
 
@@ -63,7 +64,8 @@ class InternalGroupedModuleDefinition(GroupedModuleDefinition):
 
     module_type: Literal["internal_grouped_module"] = "internal_grouped_module"  # type: ignore[reportIncompatibleVariableOverride]
 
-    def is_internal_module(self) -> bool:  # noqa: PLR6301
+    @staticmethod
+    def is_internal_module() -> bool:
         """Return True: internal grouped modules are internal."""
         return True
 

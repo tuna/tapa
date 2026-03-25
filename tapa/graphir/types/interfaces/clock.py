@@ -22,6 +22,7 @@ class ClockInterface(FalsePathInterface):
         """Represent the interface as a string."""
         return f"clk({self.ports[0]}, role={self.role})"
 
-    def is_clk(self) -> bool:  # noqa: PLR6301
+    @staticmethod
+    def is_clk() -> bool:
         """Return if the interface is a clock or reset interface."""
         return True

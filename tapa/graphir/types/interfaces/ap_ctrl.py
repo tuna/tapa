@@ -104,14 +104,17 @@ class ApCtrlInterface(BaseInterface):
             origin_info=get_relative_path_and_func(),
         )
 
-    def is_clk(self) -> bool:  # noqa: PLR6301
+    @staticmethod
+    def is_clk() -> bool:  # type: ignore[reportIncompatibleMethodOverride]
         """Return if the interface is a clock or reset interface."""
         return False
 
-    def is_reset(self) -> bool:  # noqa: PLR6301
+    @staticmethod
+    def is_reset() -> bool:  # type: ignore[reportIncompatibleMethodOverride]
         """Return if the interface is a clock or reset interface."""
         return False
 
-    def is_pipelinable(self) -> bool:  # noqa: PLR6301
+    @staticmethod
+    def is_pipelinable() -> bool:  # type: ignore[reportIncompatibleMethodOverride]
         """Return if the interface is pipelinable."""
         return True

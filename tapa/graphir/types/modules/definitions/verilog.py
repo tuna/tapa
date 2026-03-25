@@ -96,7 +96,8 @@ class VerilogModuleDefinition(BaseModuleDefinition):
         cls.sort_tuple_field(data, "submodules_module_names")
         return data
 
-    def is_leaf_module(self) -> bool:  # noqa: PLR6301
+    @staticmethod
+    def is_leaf_module() -> bool:  # type: ignore[reportIncompatibleMethodOverride]
         """Return True: verilog modules are always leaf modules."""
         return True
 
@@ -104,7 +105,8 @@ class VerilogModuleDefinition(BaseModuleDefinition):
         """Return the set of submodule module names."""
         return self.submodules_module_names
 
-    def is_internal_module(self) -> bool:  # noqa: PLR6301
+    @staticmethod
+    def is_internal_module() -> bool:  # type: ignore[reportIncompatibleMethodOverride]
         """Return False: verilog modules are not internal modules."""
         return False
 

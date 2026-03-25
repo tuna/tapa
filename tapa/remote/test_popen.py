@@ -25,7 +25,7 @@ def _make_proc(cwd: str, **kwargs: Any) -> RemoteToolProcess:  # noqa: ANN401
 @patch("tapa.remote.popen.run_ssh_with_stdout")
 def test_default_does_not_download_cwd(
     mock_ssh: MagicMock,
-    mock_upload: MagicMock,  # noqa: ARG001
+    _mock_upload: MagicMock,  # noqa: PT019
     mock_download: MagicMock,
 ) -> None:
     """download_cwd=False (default) must not include cwd in download list."""
@@ -42,7 +42,7 @@ def test_default_does_not_download_cwd(
 @patch("tapa.remote.popen.run_ssh_with_stdout")
 def test_download_cwd_true_includes_cwd(
     mock_ssh: MagicMock,
-    mock_upload: MagicMock,  # noqa: ARG001
+    _mock_upload: MagicMock,  # noqa: PT019
     mock_download: MagicMock,
 ) -> None:
     """download_cwd=True must include cwd in download list."""
@@ -59,7 +59,7 @@ def test_download_cwd_true_includes_cwd(
 @patch("tapa.remote.popen.run_ssh_with_stdout")
 def test_extra_download_paths_still_downloaded_without_cwd(
     mock_ssh: MagicMock,
-    mock_upload: MagicMock,  # noqa: ARG001
+    _mock_upload: MagicMock,  # noqa: PT019
     mock_download: MagicMock,
 ) -> None:
     """Extra download paths are always respected regardless of download_cwd."""

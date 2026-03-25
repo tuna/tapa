@@ -29,7 +29,7 @@ class IOPort(NamedTuple):
 
         port.visit(visitor)
 
-        return IOPort(**attrs)  # type: ignore  # noqa: PGH003
+        return IOPort(**attrs)  # type: ignore[call-arg]
 
     def __str__(self) -> str:
         fields = []

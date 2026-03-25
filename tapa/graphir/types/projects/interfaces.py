@@ -2,6 +2,8 @@
 
 from typing import Any
 
+from pydantic import Field
+
 from tapa.graphir.types.commons import DictLikeRootMixin, MutableRootModel
 from tapa.graphir.types.interfaces import AnyInterface
 
@@ -22,7 +24,7 @@ class Interfaces(  # type: ignore [misc]
         {}
     """
 
-    root: dict[str, list[AnyInterface]] = {}  # noqa: RUF012
+    root: dict[str, list[AnyInterface]] = Field(default_factory=dict)
 
     # Explicitly allow supplying one argument to make mypy happy.
     def __init__(

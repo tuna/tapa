@@ -3,6 +3,8 @@
 import logging
 from collections.abc import Callable
 
+from pydantic import Field
+
 from tapa.graphir.assets.floorplan.instance_area import InstanceArea
 from tapa.graphir.types.blackbox import BlackBox
 from tapa.graphir.types.commons import MutableModel
@@ -27,7 +29,7 @@ class Project(MutableModel):
 
     part_num: str | None = None
     modules: Modules
-    blackboxes: list[BlackBox] = []  # noqa: RUF012
+    blackboxes: list[BlackBox] = Field(default_factory=list)
     ifaces: Interfaces | None = None
     module_to_rtl_pragmas: dict[str, list[str]] | None = None
     module_to_old_rtl_pragmas: dict[str, dict[str, dict[str, str | None]]] | None = None

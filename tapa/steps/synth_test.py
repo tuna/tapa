@@ -1,5 +1,6 @@
 """Characterization tests for tapa/steps/synth.py."""
 
+from typing import NoReturn
 from unittest.mock import MagicMock, patch
 
 import click
@@ -35,7 +36,7 @@ def test_parse_device_info_no_device_raises() -> None:
     """With no platform and no part_num/clock_period, on_error is invoked."""
     errors: list[str] = []
 
-    def capture_error(msg: str):  # noqa: ANN202
+    def capture_error(msg: str) -> NoReturn:
         errors.append(msg)
         raise click.BadArgumentUsage(msg)
 

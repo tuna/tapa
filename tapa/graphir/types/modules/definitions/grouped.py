@@ -143,11 +143,13 @@ class GroupedModuleDefinition(BaseModuleDefinition):
             for ident in conn.expr.get_used_identifiers()
         }
 
-    def is_leaf_module(self) -> bool:  # noqa: PLR6301
+    @staticmethod
+    def is_leaf_module() -> bool:  # type: ignore[reportIncompatibleMethodOverride]
         """Return False: grouped modules are not leaf modules."""
         return False
 
-    def is_internal_module(self) -> bool:  # noqa: PLR6301
+    @staticmethod
+    def is_internal_module() -> bool:  # type: ignore[reportIncompatibleMethodOverride]
         """Return False: grouped modules are not internal modules."""
         return False
 
