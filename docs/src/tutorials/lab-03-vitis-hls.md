@@ -184,10 +184,10 @@ hls::stream<float>& s
 tapa::hls::stream<float>& s
 ```
 
-Use this as a temporary stepping stone: get software simulation passing with `tapa::hls::stream`, then replace with directional `tapa::istream<T>&` / `tapa::ostream<T>&` before synthesis.
+Use this as a stepping stone: get software simulation passing with `tapa::hls::stream`, then replace with directional `tapa::istream<T>&` / `tapa::ostream<T>&` before shipping.
 
-```admonish warning
-`tapa::hls::stream` is **not synthesizable** as a task parameter. Replace all uses with `tapa::istream<T>&` or `tapa::ostream<T>&` before running `tapa compile`.
+```admonish note
+`tapa::hls::stream` synthesizes correctly — the generated RTL FIFO is identical to `tapa::stream<T, N>`. The reason to replace it before hardware build is that the infinite simulation depth hides backpressure bugs. Switching to directional streams with a tuned depth catches those bugs during software simulation, before they appear on hardware.
 ```
 
 ---

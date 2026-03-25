@@ -299,6 +299,6 @@ These C++ attributes are recognised by TAPA and lowered to Vitis HLS pragmas dur
 
 `tapa::hls::stream<T>` is a stream type that behaves like `hls::stream<T>` in software simulation: it has effectively infinite depth, so producers never block in simulation. Use it when incrementally migrating a Vitis HLS design and you want software simulation to pass without tuning stream depths. `#include <tapa.h>` includes this automatically.
 
-```admonish warning
-`tapa::hls::stream` is **not synthesizable** for use as a direct replacement for `hls::stream`. Before targeting hardware, replace all `tapa::hls::stream` uses with `tapa::istream<T>&` / `tapa::ostream<T>&` and tune stream depths appropriately.
+```admonish note
+`tapa::hls::stream` synthesizes to the same RTL FIFO as `tapa::stream<T, N>` with the declared depth `N`. The infinite depth only applies to software simulation. The practical reason to replace it before hardware build is that software simulation with `tapa::hls::stream` will not expose backpressure bugs — switching to `tapa::istream<T>&` / `tapa::ostream<T>&` with a tuned depth catches those bugs at simulation time rather than on hardware.
 ```
