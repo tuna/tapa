@@ -52,7 +52,77 @@ def _get_control_connections(instance_name: str) -> list[ModuleConnection]:
     ]
 
 
-def _get_task_inst_connections(  # noqa: C901
+def _connect_scalar(
+    arg: Instance.Arg,
+    arg_table: Mapping[str, Pipeline],
+) -> list[ModuleConnection]:
+    expr = Expression.from_str_to_tokens(arg.name)
+    if not expr.is_all_literals():
+        expr = Expression((Token.new_id(arg_table[arg.name][-1].name),))
+    return [_mc(arg.port, expr)]
+
+
+def _connect_istream(
+    arg: Instance.Arg,
+    get_stream_port: Callable[[str, str], str | None],
+) -> list[ModuleConnection]:
+    connections = []
+    for suffix in ISTREAM_SUFFIXES:
+        leaf_port = get_stream_port(arg.port, suffix)
+        assert leaf_port is not None
+        expr = Expression((Token.new_id(get_stream_port_name(arg.name, suffix)),))
+        connections.append(_mc(leaf_port, expr))
+        if STREAM_PORT_DIRECTION[suffix] == "input":
+            peek_port = get_stream_port(arg.port, f"_peek{suffix}")
+            if peek_port is not None:
+                connections.append(_mc(peek_port, expr))
+    return connections
+
+
+def _connect_ostream(
+    arg: Instance.Arg,
+    get_stream_port: Callable[[str, str], str | None],
+) -> list[ModuleConnection]:
+    connections = []
+    for suffix in OSTREAM_SUFFIXES:
+        leaf_port = get_stream_port(arg.port, suffix)
+        assert leaf_port is not None
+        connections.append(
+            _mc(
+                leaf_port,
+                Expression((Token.new_id(get_stream_port_name(arg.name, suffix)),)),
+            )
+        )
+    return connections
+
+
+def _connect_mmap(
+    arg: Instance.Arg,
+    arg_table: Mapping[str, Pipeline],
+    has_port: Callable[[str], bool],
+) -> list[ModuleConnection]:
+    connections = []
+    for suffix in M_AXI_SUFFIXES:
+        full_port_name = get_m_axi_port_name(arg.port, suffix)
+        if not has_port(full_port_name):
+            continue
+        connections.append(
+            _mc(
+                full_port_name,
+                Expression((Token.new_id(get_m_axi_port_name(arg.name, suffix)),)),
+            )
+        )
+    offset_port_name = f"{arg.port}_offset"
+    connections.append(
+        _mc(
+            offset_port_name,
+            Expression((Token.new_id(arg_table[arg.name][-1].name),)),
+        )
+    )
+    return connections
+
+
+def _get_task_inst_connections(
     instance_name: str,
     args: tuple[Instance.Arg, ...],
     arg_table: Mapping[str, Pipeline],
@@ -61,60 +131,15 @@ def _get_task_inst_connections(  # noqa: C901
 ) -> list[ModuleConnection]:
     connections = []
     for arg in args:
-        port_name = arg.port
         if arg.cat == Instance.Arg.Cat.SCALAR:
-            expr = Expression.from_str_to_tokens(arg.name)
-            if not expr.is_all_literals():
-                expr = Expression((Token.new_id(arg_table[arg.name][-1].name),))
-            connections.append(_mc(port_name, expr))
-            continue
-
-        if arg.cat == Instance.Arg.Cat.ISTREAM:
-            for suffix in ISTREAM_SUFFIXES:
-                leaf_port = get_stream_port(port_name, suffix)
-                assert leaf_port is not None
-                expr = Expression(
-                    (Token.new_id(get_stream_port_name(arg.name, suffix)),)
-                )
-                connections.append(_mc(leaf_port, expr))
-                if STREAM_PORT_DIRECTION[suffix] == "input":
-                    peek_port = get_stream_port(port_name, f"_peek{suffix}")
-                    if peek_port is not None:
-                        connections.append(_mc(peek_port, expr))
-            continue
-
-        if arg.cat == Instance.Arg.Cat.OSTREAM:
-            for suffix in OSTREAM_SUFFIXES:
-                leaf_port = get_stream_port(port_name, suffix)
-                assert leaf_port is not None
-                connections.append(
-                    _mc(
-                        leaf_port,
-                        Expression(
-                            (Token.new_id(get_stream_port_name(arg.name, suffix)),)
-                        ),
-                    )
-                )
-            continue
-
-        assert arg.cat == Instance.Arg.Cat.MMAP, arg.cat
-        for suffix in M_AXI_SUFFIXES:
-            full_port_name = get_m_axi_port_name(port_name, suffix)
-            if not has_port(full_port_name):
-                continue
-            connections.append(
-                _mc(
-                    full_port_name,
-                    Expression((Token.new_id(get_m_axi_port_name(arg.name, suffix)),)),
-                )
-            )
-        offset_port_name = f"{port_name}_offset"
-        connections.append(
-            _mc(
-                offset_port_name,
-                Expression((Token.new_id(arg_table[arg.name][-1].name),)),
-            )
-        )
+            connections.extend(_connect_scalar(arg, arg_table))
+        elif arg.cat == Instance.Arg.Cat.ISTREAM:
+            connections.extend(_connect_istream(arg, get_stream_port))
+        elif arg.cat == Instance.Arg.Cat.OSTREAM:
+            connections.extend(_connect_ostream(arg, get_stream_port))
+        else:
+            assert arg.cat == Instance.Arg.Cat.MMAP, arg.cat
+            connections.extend(_connect_mmap(arg, arg_table, has_port))
 
     connections.extend(_get_control_connections(instance_name))
     return connections
