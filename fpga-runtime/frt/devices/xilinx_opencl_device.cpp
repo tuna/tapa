@@ -28,8 +28,10 @@
 #include "frt/devices/opencl_util.h"
 #include "frt/devices/xilinx_environ.h"
 #include "frt/stream_arg.h"
-#include "frt/subprocess.h"
 #include "frt/tag.h"
+
+#include <boost/asio.hpp>
+#include <boost/process/v2.hpp>
 
 DEFINE_string(xocl_bdf, "",
               "if not empty, use the specified PCIe Bus:Device:Function "
@@ -232,10 +234,19 @@ XilinxOpenclDevice::XilinxOpenclDevice(const cl::Program::Binaries& binaries) {
       fs::path emconfig_dir_per_pid = emconfig_dir;
       emconfig_dir_per_pid += "." + std::to_string(getpid());
       try {
-        int rc =
-            subprocess::call({"emconfigutil", "--platform", target_device_name,
-                              "--od", emconfig_dir_per_pid.native()});
-        LOG_IF(FATAL, rc != 0) << "emconfigutil failed";
+        namespace bp = boost::process::v2;
+        boost::asio::io_context ioc;
+        // Boost.Process v2 uses execve (no PATH search); resolve bare name.
+        bp::filesystem::path exe("emconfigutil");
+        auto found = bp::environment::find_executable("emconfigutil");
+        if (!found.empty()) exe = found;
+        bp::process proc{ioc,
+                         exe,
+                         {"--platform", target_device_name, "--od",
+                          emconfig_dir_per_pid.native()}};
+        ioc.run();
+        auto exit_code = proc.wait();
+        LOG_IF(FATAL, exit_code != 0) << "emconfigutil failed";
       } catch (const std::exception& e) {
         LOG(FATAL) << "emconfigutil failed: " << e.what();
       }
