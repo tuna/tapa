@@ -105,13 +105,6 @@ tapa::invoke(VecAdd, FLAGS_bitstream,
              tapa::write_only_mmap<float>(c), n);
 ```
 
-Key conventions:
-- **Streams** are passed by reference (`tapa::istream<T>&`, `tapa::ostream<T>&`)
-- **mmap** is passed by value (`tapa::mmap<T>`)
-- **Upper-level tasks** contain only stream declarations and `.invoke()` chains — no computation
-- `tapa::invoke` dispatches to software simulation (empty path), fast cosim (`.xo`), or on-board execution (`.xclbin`) based on the bitstream argument
-
-
 ## Documentation
 
 Full documentation: **[tapa.readthedocs.io](https://tapa.readthedocs.io/en/latest/)**
