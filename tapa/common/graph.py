@@ -132,7 +132,7 @@ class Graph(Base):
 
         return TaskDefinition(slot_name, new_obj, top)
 
-    def get_floorplan_top(  # noqa: C901
+    def get_floorplan_top(
         self,
         slot_defs: dict[str, TaskDefinition],
         task_inst_to_slot: dict[str, str],
@@ -142,54 +142,20 @@ class Graph(Base):
         assert top_obj["level"] != "lower"
         new_top_obj = copy.deepcopy(top_obj)
 
-        new_top_insts = defaultdict(list)
-        for slot_name, slot_def in slot_defs.items():
-            assert isinstance(slot_def.obj["ports"], list)
-            ports: dict[str, dict] = {p["name"]: p for p in slot_def.obj["ports"]}
-            slot_subtasks = slot_def.obj["tasks"]
-            assert isinstance(slot_subtasks, dict)
-            args = {}
-            for port_name, port in ports.items():
-                if port["cat"] in {"mmap", "hmap", "async_mmap"}:
-                    continue
-                port_name_formatted = re.sub(
-                    r"\[([^\]]+)\]$", lambda m: f"_{m.group(1)}", port_name
-                )
-                args[port_name_formatted] = {
-                    "arg": port_name,
-                    "cat": _infer_arg_cat_from_subinst(port_name, slot_subtasks),
-                }
-            args |= _get_slot_inst_mmap_port_args(
-                slot_name, as_type(dict, top_obj["tasks"]), task_inst_to_slot
-            )
-            new_top_insts[slot_name].append({"args": args, "step": 0})
-        new_top_obj["tasks"] = new_top_insts
+        new_top_obj["tasks"] = _build_top_slot_insts(
+            slot_defs, as_type(dict, top_obj["tasks"]), task_inst_to_slot
+        )
 
-        in_slot_fifos = []
-        for slot_def in slot_defs.values():
-            assert isinstance(slot_def.obj["fifos"], dict)
-            for fifo_name, fifo in slot_def.obj["fifos"].items():
-                assert isinstance(fifo, dict)
-                if "depth" in fifo:
-                    in_slot_fifos.append(fifo_name)
+        in_slot_fifos = [
+            fifo_name
+            for slot_def in slot_defs.values()
+            for fifo_name, fifo in as_type(dict, slot_def.obj["fifos"]).items()
+            if "depth" in fifo
+        ]
 
-        assert isinstance(top_obj["fifos"], dict)
-        new_top_obj["fifos"] = {}
-        for name, fifo in top_obj["fifos"].items():
-            if name in in_slot_fifos:
-                continue
-            updated_fifo = copy.deepcopy(fifo)
-            if "consumed_by" in updated_fifo:
-                updated_fifo["consumed_by"] = (
-                    task_inst_to_slot[get_instance_name(fifo["consumed_by"])],
-                    0,
-                )
-            if "produced_by" in updated_fifo:
-                updated_fifo["produced_by"] = (
-                    task_inst_to_slot[get_instance_name(fifo["produced_by"])],
-                    0,
-                )
-            new_top_obj["fifos"][name] = updated_fifo
+        new_top_obj["fifos"] = _update_cross_slot_fifos(
+            as_type(dict, top_obj["fifos"]), in_slot_fifos, task_inst_to_slot
+        )
 
         return TaskDefinition(self.get_top_task_name(), new_top_obj, self)
 
@@ -218,6 +184,57 @@ class Graph(Base):
         ).to_dict()
 
         return Graph(self.name, new_obj)
+
+
+def _build_top_slot_insts(
+    slot_defs: dict,
+    top_tasks: dict,
+    task_inst_to_slot: dict[str, str],
+) -> defaultdict:
+    new_top_insts = defaultdict(list)
+    for slot_name, slot_def in slot_defs.items():
+        assert isinstance(slot_def.obj["ports"], list)
+        ports: dict[str, dict] = {p["name"]: p for p in slot_def.obj["ports"]}
+        slot_subtasks = slot_def.obj["tasks"]
+        assert isinstance(slot_subtasks, dict)
+        args = {}
+        for port_name, port in ports.items():
+            if port["cat"] in {"mmap", "hmap", "async_mmap"}:
+                continue
+            port_name_formatted = re.sub(
+                r"\[([^\]]+)\]$", lambda m: f"_{m.group(1)}", port_name
+            )
+            args[port_name_formatted] = {
+                "arg": port_name,
+                "cat": _infer_arg_cat_from_subinst(port_name, slot_subtasks),
+            }
+        args |= _get_slot_inst_mmap_port_args(slot_name, top_tasks, task_inst_to_slot)
+        new_top_insts[slot_name].append({"args": args, "step": 0})
+    return new_top_insts
+
+
+def _update_cross_slot_fifos(
+    top_fifos: dict,
+    in_slot_fifos: list[str],
+    task_inst_to_slot: dict[str, str],
+) -> dict:
+    new_fifos = {}
+    for name, fifo in top_fifos.items():
+        if name in in_slot_fifos:
+            continue
+        updated_fifo = copy.deepcopy(fifo)
+        if "consumed_by" in updated_fifo:
+            updated_fifo["consumed_by"] = (
+                task_inst_to_slot[get_instance_name(fifo["consumed_by"])],
+                0,
+            )
+        if "produced_by" in updated_fifo:
+            updated_fifo["produced_by"] = (
+                task_inst_to_slot[get_instance_name(fifo["produced_by"])],
+                0,
+            )
+        new_fifos[name] = updated_fifo
+    return new_fifos
 
 
 def _infer_arg_cat_from_subinst(port_name: str, tasks: dict[str, dict]) -> str:
