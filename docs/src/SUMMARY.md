@@ -50,6 +50,7 @@
 - [C++ API](reference/api.md)
 - [Output Files](reference/output-files.md)
 - [C++ Quick Reference](reference/cheatsheet.md)
+- [Publications](reference/publications.md)
 - [Glossary](reference/glossary.md)
 
 # Developer Guide

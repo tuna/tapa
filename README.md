@@ -153,17 +153,31 @@ See [Building from Source](https://tapa.readthedocs.io/en/latest/developer/build
   over prior FPGA accelerators; up to 0.9× vs. A100 GPU.
 - [AutoSA](https://github.com/UCLA-VAST/AutoSA) (FPGA'21): Systolic-array compiler
   with frequency improvements over Vitis HLS baseline.
-- [KNN](https://github.com/SFU-HiAccel/CHIP-KNN) (FPT'20): 252 MHz on Alveo U280
-  versus 165 MHz with Vivado baseline.
+- [Callipepla](https://github.com/UCLA-VAST/Callipepla) (FPGA'23): 3.94× speedup
+  over Xilinx XcgSolver; 3.34× better energy efficiency than A100 GPU.
+- [LevelST](https://dl.acm.org/doi/10.1145/3626202.3637568) (FPGA'24): 2.65×
+  speedup, 9.82× higher energy efficiency vs. V100/RTX 3060 with cuSPARSE.
+- [CHIP-KNN](https://github.com/SFU-HiAccel/CHIP-KNN) (ICFPT'20 / TRETS'23):
+  252 MHz on Alveo U280 versus 165 MHz with Vivado; v2 up to 45× over 48-thread CPU.
 
 
 ## Publications
 
-1. Licheng Guo et al. [AutoBridge: Coupling coarse-grained floorplanning and pipelining for high-frequency HLS design on multi-die FPGAs](https://doi.org/10.1145/3431920.3439289). FPGA, 2021. **(Best Paper Award)**
-2. Yuze Chi et al. [Extending high-level synthesis for task-parallel programs](https://doi.org/10.1109/fccm51124.2021.00032). FCCM, 2021.
-3. Young-kyu Choi et al. [TARO: Automatic optimization for free-running kernels in FPGA high-level synthesis](https://doi.org/10.1109/TCAD.2022.3216544). TCAD, 2022.
-4. Licheng Guo et al. [RapidStream 2.0: Automated parallel implementation of latency insensitive FPGA designs through partial reconfiguration](https://doi.org/10.1145/3593025). TRETS, 2023.
-5. Licheng Guo et al. [TAPA: A scalable task-parallel dataflow programming framework for modern FPGAs with co-optimization of HLS and physical design](https://doi.org/10.1145/3609335). TRETS, 2023.
+Core papers describing the TAPA compiler and the physical design toolflow it integrates:
+
+1. Yuze Chi et al. [Extending high-level synthesis for task-parallel programs](https://doi.org/10.1109/fccm51124.2021.00032). FCCM, 2021.
+2. Licheng Guo et al. [TAPA: A scalable task-parallel dataflow programming framework for modern FPGAs with co-optimization of HLS and physical design](https://doi.org/10.1145/3609335). TRETS, 2023.
+3. Licheng Guo et al. [AutoBridge: Coupling coarse-grained floorplanning and pipelining for high-frequency HLS design on multi-die FPGAs](https://doi.org/10.1145/3431920.3439289). FPGA, 2021. **(Best Paper Award)**
+4. Young-kyu Choi et al. [TARO: Automatic optimization for free-running kernels in FPGA high-level synthesis](https://doi.org/10.1109/TCAD.2022.3216544). TCAD, 2022.
+5. Licheng Guo et al. [RapidStream: Parallel physical implementation of FPGA HLS designs](https://dl.acm.org/doi/10.1145/3490422.3502361). FPGA, 2022. **(Best Paper Award)**
+6. Licheng Guo et al. [RapidStream 2.0: Automated parallel implementation of latency-insensitive FPGA designs through partial reconfiguration](https://doi.org/10.1145/3593025). TRETS, 2023.
+7. Jason Lau et al. [RapidStream IR: Infrastructure for FPGA high-level physical synthesis](https://vast.cs.ucla.edu/sites/default/files/publications/522_Final_Manuscript.pdf). ICCAD, 2024.
+8. Neha Prakriya et al. [TAPA-CS: Enabling scalable accelerator design on distributed HBM-FPGAs](https://arxiv.org/abs/2311.10189). ASPLOS, 2024.
+9. Moazin Khatti et al. [PASTA: Programming and automation support for scalable task-parallel HLS programs on modern multi-die FPGAs](https://about.blaok.me/publication/fccm23-pasta/). FCCM, 2023 / TRETS, 2024.
+10. Suhail Basalama, Jason Cong. [Stream-HLS: Towards automatic dataflow acceleration](https://dl.acm.org/doi/10.1145/3706628.3708878). FPGA, 2025.
+11. Akhil Raj Baranwal, Zhenman Fang. [PoCo: Extending task-parallel HLS programming with shared multi-producer multi-consumer buffer support](https://www.sfu.ca/~zhenman/files/J22-TRETS2025-PoCo.pdf). TRETS, 2025.
+
+For annotated descriptions and the full list of application papers, see [Publications](https://tapa.readthedocs.io/en/latest/reference/publications.html).
 
 
 ## License
