@@ -89,9 +89,9 @@ Stream depth and FPGA resource:
 
 | Depth | Resource |
 |-------|----------|
-| ≤ 32 | LUT / SRL (no BRAM) |
-| 33–512 | BRAM |
-| > 512 | URAM (if available) |
+| < 128 | SRL shift-register (no BRAM) |
+| ≥ 128 | BRAM |
+| ≥ 4096 and element width ≥ 36 b | URAM |
 
 ---
 
