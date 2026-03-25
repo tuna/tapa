@@ -8,16 +8,17 @@
 #include "../rewriter/stream.h"
 #include "../rewriter/type.h"
 
-#include <cctype>
-#include <fstream>
 #include <string>
 using clang::TapaTargetAttr;
 using llvm::StringRef;
 
+#ifdef TAPA_AIE_DEBUG_LOG
+#include <fstream>
 void aie_log_out(std::string path, std::string str, bool append) {
   std::ofstream file(path, append ? std::ios::app : std::ios::out);
   file << str << std::endl;
 }
+#endif
 
 namespace tapa {
 namespace internal {
@@ -26,15 +27,9 @@ void XilinxAIETarget::AddCodeForTopLevelFunc(ADD_FOR_FUNC_ARGS_DEF) {
   // Set top-level control to s_axilite for Vitis mode.
 }
 
-void XilinxAIETarget::AddCodeForTopLevelStream(ADD_FOR_PARAMS_ARGS_DEF) {}
-
 void XilinxAIETarget::AddCodeForTopLevelAsyncMmap(ADD_FOR_PARAMS_ARGS_DEF) {
   AddCodeForTopLevelMmap(ADD_FOR_PARAMS_ARGS);
 }
-
-void XilinxAIETarget::AddCodeForTopLevelMmap(ADD_FOR_PARAMS_ARGS_DEF) {}
-
-void XilinxAIETarget::AddCodeForTopLevelScalar(ADD_FOR_PARAMS_ARGS_DEF) {}
 
 void XilinxAIETarget::AddCodeForMiddleLevelStream(ADD_FOR_PARAMS_ARGS_DEF) {
   AddCodeForLowerLevelStream(ADD_FOR_PARAMS_ARGS);
@@ -48,16 +43,10 @@ void XilinxAIETarget::AddCodeForMiddleLevelMmap(ADD_FOR_PARAMS_ARGS_DEF) {
   AddCodeForMiddleLevelScalar(ADD_FOR_PARAMS_ARGS);
 }
 
-void XilinxAIETarget::AddCodeForMiddleLevelScalar(ADD_FOR_PARAMS_ARGS_DEF) {}
-
 void XilinxAIETarget::AddCodeForLowerLevelStream(ADD_FOR_PARAMS_ARGS_DEF) {
   assert(IsTapaType(param, "(i|o)streams?"));
   ;
 }
-
-void XilinxAIETarget::AddCodeForLowerLevelAsyncMmap(ADD_FOR_PARAMS_ARGS_DEF) {}
-
-void XilinxAIETarget::AddCodeForLowerLevelMmap(ADD_FOR_PARAMS_ARGS_DEF) {}
 
 void XilinxAIETarget::RewriteTopLevelFunc(REWRITE_FUNC_ARGS_DEF) {
   // Remove the TapaTargetAttr defintion.
@@ -147,11 +136,15 @@ void XilinxAIETarget::ProcessNonCurrentTask(REWRITE_FUNC_ARGS_DEF,
   if (IsTapaTopLevel == true) {
     rewriter.ReplaceText(func->getBody()->getSourceRange(), ";\n");
     RewriteFuncArguments(func, rewriter, false);
+#ifdef TAPA_AIE_DEBUG_LOG
     ::aie_log_out("aielog.txt", func->getNameAsString() + " is top task", true);
+#endif
   } else {
     rewriter.RemoveText(func->getSourceRange());
+#ifdef TAPA_AIE_DEBUG_LOG
     ::aie_log_out("aielog.txt", func->getNameAsString() + " is not top task",
                   true);
+#endif
   }
 
   if (auto attr = func->getAttr<TapaTargetAttr>()) {
@@ -249,9 +242,6 @@ void XilinxAIETarget::RewritePipelinedStmt(REWRITE_STMT_ARGS_DEF,
   }
   rewriter.RemoveText(ExtendAttrRemovalRange(rewriter, attr->getRange()));
 }
-
-void XilinxAIETarget::RewriteUnrolledStmt(REWRITE_STMT_ARGS_DEF,
-                                          const clang::Stmt* body) {}
 
 }  // namespace internal
 }  // namespace tapa
