@@ -197,8 +197,11 @@ pkg_files(
     name = "pkg-extra-runtime-deps",
     srcs = [
         "@OpenCL",
+        "@boost//:asio",
+        "@boost//:filesystem",
         "@gflags",
         "@glog",
+        "@minizip_ng",
         "@tinyxml2",
         "@yaml-cpp",
     ],
