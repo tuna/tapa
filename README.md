@@ -9,153 +9,167 @@ RapidStream Contributor License Agreement.
 [![Staging Build](https://github.com/tuna/tapa/actions/workflows/staging-build.yml/badge.svg)](https://github.com/tuna/tapa/actions/workflows/staging-build.yml)
 [![Documentation](https://readthedocs.org/projects/tapa/badge/?version=latest)](https://tapa.readthedocs.io/en/latest/?badge=latest)
 
-TAPA is a powerful framework for designing high-frequency FPGA
-dataflow accelerators. It provides a **powerful C++ API** for expressing
-task-parallel designs with **advanced optimization techniques** to deliver
-exceptional design performance and productivity.
+TAPA is a task-parallel HLS framework that compiles C++ dataflow programs to Verilog RTL for Xilinx FPGAs. Software simulation runs on any Linux machine without FPGA hardware.
 
-TAPA is community maintained by
+*C++ source → `tapa compile` → RTL (.xo) → Vitis v++ → FPGA bitstream*
+
+TAPA is community maintained by the
 [Tsinghua University TUNA Association](https://tuna.moe/).
 
-- **High-Frequency Performance**: Achieve 2x higher frequency on average
-  compared to Vivado[<sup>1</sup>](https://doi.org/10.1145/3431920.3439289).
-- **Rapid Development**: 7x faster compilation and 3x faster software
-  simulation than Vitis HLS[<sup>2</sup>](https://doi.org/10.1109/fccm51124.2021.00032).
-- **Expressive API**: Rich C++ syntax with dedicated APIs for complex memory
-  access patterns and explicit parallelism.
-- **HBM Optimizations**: Automated design space exploration and physical
-  optimizations for HBM FPGAs.
+Published results: 2× higher frequency on average versus Vivado
+[[1]](https://doi.org/10.1145/3431920.3439289), with 7× faster compilation and
+3× faster software simulation versus Vitis HLS
+[[2]](https://doi.org/10.1109/fccm51124.2021.00032).
 
 
 ## Quick Start
 
-### Installing from Releases
+### Install
 
-The easiest way to install TAPA is from a pre-built release:
-
-```sh
+```bash
 curl -fsSL https://raw.githubusercontent.com/tuna/tapa/main/install.sh | sh -s -- -q
 ```
 
-This downloads and installs the latest release. With root privileges, TAPA
-installs to `/opt/tapa` with symlinks in `/usr/local/bin`. Otherwise it
-installs to `~/.tapa` and adds it to your `PATH` via your shell profile.
+With root privileges, installs to `/opt/tapa` (symlinks in `/usr/local/bin`).
+Without root, installs to `~/.tapa` and updates your shell `PATH`.
+
+**Requirements:** Linux (Ubuntu 18.04+, Debian 10+, RHEL 9+, Fedora 34+, Amazon
+Linux 2023), `g++` 7.5.0+. Vitis HLS 2022.1+ is required for RTL synthesis and
+on-board execution — **not** for software simulation.
 
 To install a specific version:
 
-```sh
+```bash
 TAPA_VERSION=0.1.20260319 \
   curl -fsSL https://raw.githubusercontent.com/tuna/tapa/main/install.sh | sh -s -- -q
 ```
 
-Releases are available at
-[github.com/tuna/tapa/releases](https://github.com/tuna/tapa/releases).
+Releases: [github.com/tuna/tapa/releases](https://github.com/tuna/tapa/releases)
 
-### Prerequisites
-
-- Ubuntu 18.04+, Debian 10+, RHEL 9+, Fedora 34+, or Amazon Linux 2023
-- Vitis HLS 2022.1 or later
-
-### Building from Source
+### Software simulation (no FPGA required)
 
 ```bash
-# Install dependencies (Ubuntu/Debian example)
-sudo apt-get install g++ binutils git python3
-
-# Install Bazel (see https://bazel.build/install)
-
-# Clone the repository
-git clone https://github.com/tuna/tapa.git
-cd tapa
-
-# Build TAPA
-bazel build //...
-
-# Build without tests
-bazel build //... -- -//tests/...
-```
-
-See the [Building from Source](https://tapa.readthedocs.io/en/main/dev/build.html)
-guide for detailed instructions.
-
-### Compilation
-
-```bash
-cd tests/apps/vadd
-
-# Software simulation (use bazel-bin/tapa/tapa if built from source)
+# Compile kernel + host together using the tapa g++ wrapper
 tapa g++ -- vadd.cpp vadd-host.cpp -o vadd
-./vadd
 
-# Hardware compilation and emulation
-tapa compile \
-   --top VecAdd \
-   --part-num xcu250-figd2104-2L-e \
-   --clock-period 3.33 \
-   -f vadd.cpp \
-   -o vecadd.xo
-./vadd --bitstream=vecadd.xo 1000
+# Run — executes on the CPU using TAPA's coroutine simulator
+./vadd
 ```
 
-### Visualization
+Expected output:
+```
+I20000101 00:00:00.000000 0000000 task.h:66] running software simulation with TAPA library
+kernel time: 1.19429 s
+PASS!
+```
 
-TAPA includes a web-based visualizer in the ``tapa-visualizer/`` directory.
-You can build and run it locally to visualize your design's ``graph.json``
-file generated during compilation.
+### Compile to hardware
 
-For detailed instructions, see our [User Guide](https://tapa.readthedocs.io/en/main/).
+```bash
+tapa compile \
+  --top VecAdd \
+  --part-num xcu280-fsvh2892-2L-e \
+  --clock-period 3.33 \
+  -f vadd.cpp \
+  -o vadd.xo
+
+# Run fast RTL cosimulation against the XO artifact
+./vadd --bitstream=vadd.xo 1000
+```
+
+
+## Programming Model
+
+A TAPA design is a directed graph of concurrent tasks connected by typed
+streams. An upper-level task declares streams and launches child tasks; leaf
+tasks perform computation. The same C++ code runs in software simulation and
+compiles to RTL — no pragma changes required.
+
+```cpp
+// Kernel file (vadd.cpp)
+void VecAdd(tapa::mmap<const float> a, tapa::mmap<const float> b,
+            tapa::mmap<float> c, uint64_t n) {
+  tapa::stream<float> a_q("a"), b_q("b"), c_q("c");
+
+  tapa::task()
+      .invoke(Mmap2Stream, a, n, a_q)   // reads DRAM → stream
+      .invoke(Mmap2Stream, b, n, b_q)
+      .invoke(Add, a_q, b_q, c_q, n)   // stream → stream
+      .invoke(Stream2Mmap, c_q, c, n); // stream → DRAM
+}
+
+// Host file (vadd-host.cpp)
+tapa::invoke(VecAdd, FLAGS_bitstream,
+             tapa::read_only_mmap<const float>(a),
+             tapa::read_only_mmap<const float>(b),
+             tapa::write_only_mmap<float>(c), n);
+```
+
+Key conventions:
+- **Streams** are passed by reference (`tapa::istream<T>&`, `tapa::ostream<T>&`)
+- **mmap** is passed by value (`tapa::mmap<T>`)
+- **Upper-level tasks** contain only stream declarations and `.invoke()` chains — no computation
+- `tapa::invoke` dispatches to software simulation (empty path), fast cosim (`.xo`), or on-board execution (`.xclbin`) based on the bitstream argument
 
 
 ## Documentation
 
-- [Quick Reference](https://tapa.readthedocs.io/en/main/user/cheatsheet.html).
-- [User Guide](https://tapa.readthedocs.io/en/main/).
-- [Installation Guide](https://tapa.readthedocs.io/en/main/user/installation.html).
-- [Getting Started](https://tapa.readthedocs.io/en/main/user/getting_started.html).
-- [API Reference](https://tapa.readthedocs.io/en/main/ref/api.html).
+Full documentation: **[tapa.readthedocs.io](https://tapa.readthedocs.io/en/latest/)**
+
+| Section | Description |
+|---------|-------------|
+| [Installation](https://tapa.readthedocs.io/en/latest/start/installation.html) | Install from release or build from source |
+| [Your First Run](https://tapa.readthedocs.io/en/latest/start/first-run.html) | Software simulation without FPGA hardware |
+| [How-To Guides](https://tapa.readthedocs.io/en/latest/howto/software-simulation.html) | Build, simulate, and deploy designs |
+| [Tutorials](https://tapa.readthedocs.io/en/latest/tutorials/learning-path.html) | Annotated labs from vadd to floorplanning |
+| [C++ API Reference](https://tapa.readthedocs.io/en/latest/reference/api.html) | Full API: tasks, streams, mmap, utilities |
+| [CLI Reference](https://tapa.readthedocs.io/en/latest/reference/cli.html) | All `tapa` subcommands and flags |
+| [Troubleshooting](https://tapa.readthedocs.io/en/latest/troubleshoot/common-errors.html) | Common errors, deadlocks, cosim issues |
 
 
-## Success Stories
+## Building from Source
+
+```bash
+# Install dependencies (Ubuntu/Debian)
+sudo apt-get install g++ binutils git python3
+
+# Install Bazel — see https://bazel.build/install
+
+git clone https://github.com/tuna/tapa.git
+cd tapa
+bazel build //...
+```
+
+See [Building from Source](https://tapa.readthedocs.io/en/latest/developer/build.html) for the full guide.
+
+
+## Published Results
 
 - [Serpens](https://dl.acm.org/doi/10.1145/3489517.3530420) (DAC'22): 270 MHz
-  on Xilinx Alveo U280 HBM board with 24 HBM channels, while the Vitis HLS
-  baseline failed in routing.
+  on Xilinx Alveo U280 with 24 HBM channels; the Vitis HLS baseline failed to route.
 - [Sextans](https://dl.acm.org/doi/pdf/10.1145/3490422.3502357) (FPGA'22):
-  260 MHz on Xilinx Alveo U250 board with 4 DDR channels, while the Vivado
-  baseline achieves only 189 MHz.
-- [SPLAG](https://github.com/UCLA-VAST/splag) (FPGA'22): Up to 4.9x speedup
-  over state-of-the-art FPGA accelerators, up to 2.6x speedup over 32-thread
-  CPU running at 4.4 GHz, and up to 0.9x speedup over an A100 GPU.
-- [AutoSA Systolic-Array Compiler](https://github.com/UCLA-VAST/AutoSA)
-  (FPGA'21): Significant frequency improvements over the Vitis HLS baseline.
-- [KNN](https://github.com/SFU-HiAccel/CHIP-KNN) (FPT'20): 252 MHz on Xilinx
-  Alveo U280 board, compared to 165 MHz with the Vivado baseline.
-
-
-## Licensing
-
-TAPA is open-source software licensed under the MIT license.
-For full license details, please refer to the
-[LICENSE](https://github.com/tuna/tapa/blob/main/LICENSE) file.
+  260 MHz on Xilinx Alveo U250 versus 189 MHz with Vivado baseline.
+- [SPLAG](https://github.com/UCLA-VAST/splag) (FPGA'22): Up to 4.9× speedup
+  over prior FPGA accelerators; up to 0.9× vs. A100 GPU.
+- [AutoSA](https://github.com/UCLA-VAST/AutoSA) (FPGA'21): Systolic-array compiler
+  with frequency improvements over Vitis HLS baseline.
+- [KNN](https://github.com/SFU-HiAccel/CHIP-KNN) (FPT'20): 252 MHz on Alveo U280
+  versus 165 MHz with Vivado baseline.
 
 
 ## Publications
 
-1. Licheng Guo, Yuze Chi, Jie Wang, Jason Lau, Weikang Qiao, Ecenur Ustun, Zhiru Zhang, Jason Cong.
-   [AutoBridge: Coupling coarse-grained floorplanning and pipelining for high-frequency HLS design on multi-die FPGAs](https://doi.org/10.1145/3431920.3439289).
-   FPGA, 2021. (Best Paper Award)
-2. Yuze Chi, Licheng Guo, Jason Lau, Young-kyu Choi, Jie Wang, Jason Cong.
-   [Extending high-level synthesis for task-Parallel programs](https://doi.org/10.1109/fccm51124.2021.00032).
-   FCCM, 2021.
-3. Young-kyu Choi, Yuze Chi, Jason Lau, Jason Cong.
-   [TARO: Automatic optimization for free-running kernels in FPGA high-level synthesis](https://doi.org/10.1109/TCAD.2022.3216544).
-   TCAD, 2022.
-4. Licheng Guo, Pongstorn Maidee, Yun Zhou, Chris Lavin, Eddie Hung, Wuxi Li, Jason Lau, Weikang Qiao, Yuze Chi, Linghao Song, Yuanlong Xiao, Alireza Kaviani, Zhiru Zhang, Jason Cong.
-   [RapidStream 2.0: Automated parallel implementation of latency insensitive FPGA designs through partial reconfiguration](https://doi.org/10.1145/3593025).
-   TRETS, 2023.
-5. Licheng Guo, Yuze Chi, Jason Lau, Linghao Song, Xingyu Tian, Moazin Khatti, Weikang Qiao, Jie Wang, Ecenur Ustun, Zhenman Fang, Zhiru Zhang, Jason Cong.
-   [TAPA: A scalable task-parallel dataflow programming framework for modern FPGAs with co-optimization of HLS and physical design](https://doi.org/10.1145/3609335).
-   TRETS, 2023.
+1. Licheng Guo et al. [AutoBridge: Coupling coarse-grained floorplanning and pipelining for high-frequency HLS design on multi-die FPGAs](https://doi.org/10.1145/3431920.3439289). FPGA, 2021. **(Best Paper Award)**
+2. Yuze Chi et al. [Extending high-level synthesis for task-parallel programs](https://doi.org/10.1109/fccm51124.2021.00032). FCCM, 2021.
+3. Young-kyu Choi et al. [TARO: Automatic optimization for free-running kernels in FPGA high-level synthesis](https://doi.org/10.1109/TCAD.2022.3216544). TCAD, 2022.
+4. Licheng Guo et al. [RapidStream 2.0: Automated parallel implementation of latency insensitive FPGA designs through partial reconfiguration](https://doi.org/10.1145/3593025). TRETS, 2023.
+5. Licheng Guo et al. [TAPA: A scalable task-parallel dataflow programming framework for modern FPGAs with co-optimization of HLS and physical design](https://doi.org/10.1145/3609335). TRETS, 2023.
+
+
+## License
+
+TAPA is open-source software licensed under the MIT license.
+See [LICENSE](https://github.com/tuna/tapa/blob/main/LICENSE) for details.
 
 
 ---
