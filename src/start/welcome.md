@@ -8,7 +8,7 @@ TAPA is a task-parallel HLS framework that compiles C++ dataflow programs to Ver
 
 - **New to FPGA?** → [Your First Run](first-run.md)
 - **Migrating from Vitis HLS?** → [Lab 3: Migrating from Vitis HLS](../tutorials/lab-03-vitis-hls.md)
-- **Already know FPGA?** → [How-To Guides](../howto/software-simulation.md)
+- **Already know FPGA?** → [How-To Guides](../howto/software-simulation.md) (start with software simulation)
 
 ## Most common tasks
 

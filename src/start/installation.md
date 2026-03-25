@@ -8,7 +8,7 @@
 
 | Dependency | Version | Notes |
 |------------|---------|-------|
-| GNU C++ Compiler (`g++`) | 7.5.0 or newer | Required for software simulation |
+| GNU C++ Compiler (`g++`) | 7.5.0 or newer | Required for software simulation and deployment |
 | Xilinx Vitis | 2022.1 or newer | **Not needed for software simulation** — only required for RTL synthesis and deployment |
 
 TAPA has been tested on the following operating systems:
@@ -78,7 +78,7 @@ tapa --version
 
 ## Building from source
 
-For source builds, see [Building from Source](../developer/build.md).
+For source builds (full toolchain requirements and build commands), see [Building from Source](../developer/build.md).
 
 ```admonish warning
 If installation fails, see [Common Errors](../troubleshoot/common-errors.md) for known issues.
