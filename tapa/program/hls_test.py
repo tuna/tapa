@@ -2,7 +2,9 @@
 
 import io
 import sys
+import tarfile
 import tempfile
+from pathlib import Path
 from types import TracebackType
 from typing import Never, Self
 from unittest.mock import MagicMock, patch
@@ -10,7 +12,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from tapa.backend.xilinx import RunHls
-from tapa.backend.xilinx_tools import VivadoHls
 from tapa.program.hls import ProgramHlsMixin, _gen_connections
 from tapa.task import Task
 
@@ -139,27 +140,6 @@ def test_gen_connections_unknown_cat_raises() -> None:
         _gen_connections(task)
 
 
-# ---------------------------------------------------------------------------
-# RunHls context manager contract tests
-# ---------------------------------------------------------------------------
-
-
-def test_run_hls_is_subclass_of_vivado_hls() -> None:
-    """RunHls must inherit from VivadoHls (which owns __enter__/__exit__)."""
-    assert issubclass(RunHls, VivadoHls)
-
-
-def test_run_hls_has_enter_and_exit() -> None:
-    """RunHls exposes __enter__ and __exit__ as callable members."""
-    assert callable(getattr(RunHls, "__enter__", None))
-    assert callable(getattr(RunHls, "__exit__", None))
-
-
-def test_run_hls_exit_overridden_in_run_hls() -> None:
-    """RunHls.__exit__ must be its own override, not inherited from VivadoHls."""
-    assert RunHls.__exit__ is not VivadoHls.__exit__
-
-
 def test_run_hls_returncode_property_settable() -> None:
     """The returncode setter delegates to _proc and is required by the retry loop."""
     mock_proc = MagicMock()
@@ -185,6 +165,46 @@ def test_run_hls_returncode_property_settable() -> None:
         # Verify returncode setter propagates to _proc.
         runner.returncode = 1
         assert mock_proc.returncode == 1
+
+
+def test_run_hls_exit_writes_tar_on_success(tmp_path: Path) -> None:
+    """On returncode=0, __exit__ must write report/ and hdl/ entries to tarfileobj."""
+    project_path = tmp_path / "kernel"
+    solution_dir = project_path / "project" / "kernel"
+    (solution_dir / "syn" / "report").mkdir(parents=True)
+    (solution_dir / "syn" / "verilog").mkdir(parents=True)
+    # The log path resolves to project_path/vivado_hls.log because project_path
+    # is an absolute path and os.path.join discards preceding segments.
+    log_file = project_path / "vivado_hls.log"
+    log_file.write_bytes(b"")
+
+    mock_proc = MagicMock()
+    mock_proc.returncode = 0
+    mock_proc.__enter__ = MagicMock(return_value=mock_proc)
+    mock_proc.__exit__ = MagicMock(return_value=None)
+
+    tarfileobj = io.BytesIO()
+    with (
+        patch("tapa.backend.xilinx_tools.create_tool_process", return_value=mock_proc),
+        patch("tapa.backend.xilinx_hls.create_tool_process", return_value=mock_proc),
+        patch("tapa.backend.xilinx_tools.get_remote_config", return_value=None),
+    ):
+        runner = RunHls(
+            tarfileobj=tarfileobj,
+            kernel_files=[],
+            work_dir=str(tmp_path),
+            top_name="kernel",
+            clock_period="5",
+            part_num="xcu250",
+        )
+        runner.__exit__(None, None, None)
+
+    # Verify tar was written with the expected arcnames
+    tarfileobj.seek(0)
+    with tarfile.open(fileobj=tarfileobj, mode="r") as tar:
+        names = tar.getnames()
+    assert any(n.startswith("report") for n in names), f"No report/ in tar: {names}"
+    assert any(n.startswith("hdl") for n in names), f"No hdl/ in tar: {names}"
 
 
 # ---------------------------------------------------------------------------

@@ -140,3 +140,37 @@ def test_synth_routes_to_run_hls_for_hls_target() -> None:
     program.run_hls.assert_called_once()
     program.generate_task_rtl.assert_called_once()
     program.run_aie.assert_not_called()
+
+
+def test_synth_routes_to_run_hls_for_vitis_target() -> None:
+    """synth() calls program.run_hls + generate_task_rtl when target is xilinx-vitis."""
+    program = _make_program_mock()
+
+    with (
+        patch("tapa.steps.synth.load_tapa_program", return_value=program),
+        patch(
+            "tapa.steps.synth.load_persistent_context",
+            return_value={"target": "xilinx-vitis"},
+        ),
+        patch(
+            "tapa.steps.synth.parse_device_info",
+            return_value={
+                "part_num": "xcu250-figd2104-2L-e",
+                "clock_period": "5.0",
+            },
+        ),
+        patch("tapa.steps.synth.store_persistent_context"),
+        patch("tapa.steps.synth.is_pipelined"),
+    ):
+        runner = CliRunner()
+        result = runner.invoke(
+            synth,
+            _MINIMAL_SYNTH_ARGS,
+            obj={"work-dir": "/tmp/tapa_test_work"},
+            catch_exceptions=False,
+        )
+
+    assert result.exit_code == 0, result.output
+    program.run_hls.assert_called_once()
+    program.generate_task_rtl.assert_called_once()
+    program.run_aie.assert_not_called()
