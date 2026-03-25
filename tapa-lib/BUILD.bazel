@@ -55,6 +55,7 @@ _PUBLIC_HEADERS = [
 cc_library(
     name = "tapa",
     srcs = [
+        "tapa/host/private_scheduler.h",
         "tapa/host/private_util.cpp",
         "tapa/host/private_util.h",
         "tapa/host/stream.cpp",
