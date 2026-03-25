@@ -7,10 +7,4 @@ build:
   commands:
     - cargo install mdbook@0.5.2 mdbook-admonish@1.20.0
     - mdbook-admonish install docs/
-    - mdbook build docs/
-
-sphinx:
-  configuration: null
-
-mkdocs:
-  configuration: null
+    - mdbook build docs/ --dest-dir "$READTHEDOCS_OUTPUT/html"
