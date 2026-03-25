@@ -1,10 +1,10 @@
-# Lab 5: Floorplan & DSE
+# Lab 6: Floorplan & DSE
 
 **Goal:** Use TAPA's floorplan design space exploration (DSE) to achieve timing closure on multi-SLR FPGAs.
 
-**Prerequisites:** [Lab 2: async\_mmap](lab-02-async-mmap.md) and familiarity with synthesis flags from [Performance Tuning](../howto/performance-tuning.md).
+**Prerequisites:** [Lab 2: High-Bandwidth Memory](lab-02-async-mmap.md) and familiarity with synthesis flags from [Performance Tuning](../howto/performance-tuning.md).
 
-After this lab you will understand how to generate floorplan solutions, apply them to a compile step, and use the automated DSE command to run both phases together.
+After this lab you will understand how to apply a floorplan solution to a compile step and, if the RapidStream optimization tool is available, how to generate floorplan solutions automatically.
 
 ---
 
@@ -16,15 +16,23 @@ Multi-SLR FPGAs (U250, U280, U55C, and similar) partition logic across physicall
 - Automatically inserting pipeline registers on streams that cross SLR boundaries.
 - Running a design space exploration to find placement configurations that stay within per-SLR resource limits.
 
-Two workflows are available: a **manual workflow** that separates floorplan generation from compilation, and an **automated DSE workflow** that runs both in one command.
+---
+
+## Tool dependency
+
+The floorplan generation step — which searches for optimal task-to-SLR assignments — requires **`rapidstream-tapaopt`**, an optimization tool historically provided by RapidStream Design Automation. **This tool is no longer publicly accessible.** If you hold a license, the full two-workflow process described below applies. If you do not, you can still apply a hand-written or externally provided `floorplan.json` directly using Workflow A Step 2, skipping the generation step.
+
+```admonish note
+Compiling a design with a floorplan applied — inserting pipeline registers and reorganizing the task hierarchy — works without `rapidstream-tapaopt`. Only the automated search for floorplan solutions requires the external tool.
+```
 
 ---
 
 ## Workflow A: Manual floorplan
 
-Use this workflow when you want to inspect individual floorplan solutions before committing to a full compile.
+Use this workflow when you want to inspect individual floorplan solutions before committing to a full compile, or when you already have a `floorplan.json` from another source.
 
-### Step 1: Generate floorplan solutions
+### Step 1: Generate floorplan solutions *(requires `rapidstream-tapaopt`)*
 
 ```bash
 tapa generate-floorplan \
@@ -44,7 +52,6 @@ This runs the DSE and writes one or more `floorplan_N.json` files to the working
 tapa compile \
   -f kernel.cpp \
   -t kernel0 \
-  --device-config device_config.json \
   --floorplan-path floorplan_0.json \
   --clock-period 3.00 \
   --part-num xcu55c-fsvh2892-2L-e \
@@ -55,11 +62,11 @@ tapa compile \
 `--floorplan-path` requires `--flatten-hierarchy`. Omitting `--flatten-hierarchy` will cause the compile to fail.
 ```
 
-TAPA reorganizes the task hierarchy according to the chosen floorplan and inserts pipeline registers at all SLR-crossing streams.
+TAPA reorganizes the task hierarchy according to the chosen floorplan and inserts pipeline registers at all SLR-crossing streams. This step does **not** require `rapidstream-tapaopt`.
 
 ---
 
-## Workflow B: Automated DSE
+## Workflow B: Automated DSE *(requires `rapidstream-tapaopt`)*
 
 Use this workflow to generate and compile all floorplan solutions in one step without manual inspection between them.
 
@@ -103,7 +110,7 @@ Key fields:
 - `cpp_arg_pre_assignments` — Forces specific top-function kernel arguments to specific SLR slots. Values are `SLOT_XmYn:SLOT_XmYn` strings. Array arguments can be matched with regex patterns (for example `"c_.*"` matches `c_0`, `c_1`, etc.).
 - `sys_port_pre_assignments` — Forces Verilog system ports (clock, reset, AXI control) to specific slots. Regex patterns are supported here as well.
 
-The full set of available fields (including `grouping_constraints`, `slot_to_rtype_to_min_limit`, and others) is documented in the RapidStream floorplan configuration reference. Refer to the RapidStream documentation for details.
+The full set of available fields (including `grouping_constraints`, `slot_to_rtype_to_min_limit`, and others) is documented in the RapidStream floorplan configuration reference.
 
 ---
 

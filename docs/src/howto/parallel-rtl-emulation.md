@@ -1,8 +1,10 @@
 # Parallel RTL Emulation
 
-**Purpose:** Compile a design as multiple independent kernel `.xo` files and run their RTL simulations concurrently.
+**Purpose:** Run cycle-accurate RTL simulation for each kernel module concurrently, reducing total cosim time while preserving cycle-accurate behavior where it matters.
 
-Parallel RTL emulation is useful when a design is large enough that splitting it across several separately compiled kernels reduces per-kernel synthesis time, or when you want to simulate a heterogeneous pipeline where each stage was authored and owned independently.
+RTL cosimulation gives you cycle-accurate behavior for the logic *inside* each kernel — pipeline depths, stall conditions, II violations, and hazards that software simulation cannot catch. It does not give you cycle-accurate behavior *between* kernels: the FIFOs connecting separate cosim processes are shared-memory queues, and memory (mmap/async_mmap) latency is similarly abstracted. Parallel RTL emulation is therefore most valuable for validating the **cycle-sensitive internals** of individual kernels, not end-to-end timing across the full datapath.
+
+Running one cosim process per kernel and launching them concurrently reduces wall-clock time compared to simulating everything in a single process or sequentially.
 
 ---
 
@@ -23,7 +25,7 @@ In a standard TAPA design, one top-level function is compiled into one `.xo` and
 │    .invoke(KernelB, tapa::executable(FLAGS_b_bs), ...) │──▶ cosim process B
 │    .invoke(KernelC, tapa::executable(FLAGS_c_bs), ...) │──▶ cosim process C
 └────────────────────────────────────────────────────────┘
-         streams between kernels → shared memory FIFOs
+         streams between kernels → shared-memory FIFOs (not cycle-accurate)
 ```
 
 ---

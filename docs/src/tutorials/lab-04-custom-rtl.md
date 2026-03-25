@@ -160,4 +160,4 @@ The complete working example is in `tests/functional/custom-rtl` in the TAPA rep
 
 ---
 
-**Next step:** [Lab 5: Floorplan & DSE](lab-05-floorplan.md)
+**Next step:** [Lab 5: Parallel RTL Emulation](lab-05-parallel-cosim.md)
