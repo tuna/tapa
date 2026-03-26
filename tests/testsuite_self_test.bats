@@ -24,10 +24,6 @@
   tapa --help
 }
 
-@test "testsuite: tapa-fast-cosim is runnable" {
-  tapa-fast-cosim --help
-}
-
 @test "testsuite: XILINX_HLS is set" {
   [ -d "${XILINX_HLS}" ]
 }

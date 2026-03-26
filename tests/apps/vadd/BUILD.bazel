@@ -47,13 +47,11 @@ sh_test(
     args = [
         "$(location vadd-host)",
         "--bitstream=$(location vadd-xo)",
-        "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
         "1000",
     ],
     data = [
         ":vadd-host",
         ":vadd-xo",
-        "//tapa/cosim:tapa-fast-cosim",
     ],
     tags = [
         "cpu:2",
@@ -88,13 +86,11 @@ sh_test(
     args = [
         "$(location vadd-host)",
         "--bitstream=$(location vadd-zip)",
-        "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
         "1000",
     ],
     data = [
         ":vadd-host",
         ":vadd-zip",
-        "//tapa/cosim:tapa-fast-cosim",
     ],
     tags = ["cpu:2"],
 )
@@ -107,14 +103,12 @@ sh_test(
     args = [
         "$(location vadd-host)",
         "--bitstream=$(location vadd-zip)",
-        "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
         "--xosim_simulator=verilator",
         "1000",
     ],
     data = [
         ":vadd-host",
         ":vadd-zip",
-        "//tapa/cosim:tapa-fast-cosim",
         "@verilator//:verilator_executable",
     ],
     env = {"VERILATOR_BIN": "$(rootpath @verilator//:verilator_executable)"},

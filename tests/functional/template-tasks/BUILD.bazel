@@ -32,13 +32,11 @@ sh_test(
     args = [
         "$(location template-tasks-host)",
         "--bitstream=$(location template-tasks-zip)",
-        "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
         "1000",
     ],
     data = [
         ":template-tasks-host",
         ":template-tasks-zip",
-        "//tapa/cosim:tapa-fast-cosim",
     ],
     tags = ["cpu:2"],
 )

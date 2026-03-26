@@ -103,7 +103,7 @@ The following flags control fast cosim behavior when passed to the host executab
 
 | Flag | Description |
 |------|-------------|
-| `-xosim_executable <path>` | Path to the `tapa-fast-cosim` binary when it is not in `PATH`. |
+| `-xosim_executable <path>` | Deprecated. Fast cosim now runs in-process via `libfrt`; this flag is ignored. |
 | `-xosim_part_num <part>` | Target FPGA part number for simulation (e.g., `xcu280-fsvh2892-2L-e`). |
 | `-xosim_work_dir <dir>` | Persistent working directory for simulation artifacts. Without this, a temporary directory is used and deleted after the run. |
 | `-xosim_save_waveform` | Save simulation waveforms to a `.wdb` file in the work directory. Requires `-xosim_work_dir`. |

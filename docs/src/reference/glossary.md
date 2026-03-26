@@ -40,7 +40,7 @@ A sentinel value written to a stream to signal the end of a data sequence. The p
 
 **fast cosim**
 
-Synonym for *cosim* in the TAPA context. Fast cosim is invoked by passing a `.xo` file as the `--bitstream` argument to the host executable. The host executable internally calls `tapa cosim`, which runs RTL simulation without a full Vivado implementation run, making it significantly faster than traditional cosim flows.
+Synonym for *cosim* in the TAPA context. Fast cosim is invoked by passing a `.xo` file as the `--bitstream` argument to the host executable. The host executable runs the Rust `libfrt` cosim runtime in-process, which avoids a full Vivado implementation run and is significantly faster than traditional cosim flows.
 
 ---
 

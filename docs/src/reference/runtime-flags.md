@@ -34,12 +34,12 @@ See [Software Simulation](../howto/software-simulation.md) for more on stream lo
 When the host executable is invoked with `--bitstream=vadd.xo`, it runs fast hardware cosimulation instead of software simulation. The following flags control cosim behavior. They are passed directly on the host executable command line.
 
 ```admonish note
-These flags use single-dash prefix (e.g., `-xosim_work_dir`) because they are forwarded to the underlying `tapa-fast-cosim` tool via gflags.
+These flags use single-dash prefix (e.g., `-xosim_work_dir`) because they are parsed by the host executable via gflags.
 ```
 
 | Flag | Description |
 |------|-------------|
-| `-xosim_executable <path>` | Path to the `tapa-fast-cosim` binary when it is not in `PATH`. |
+| `-xosim_executable <path>` | Deprecated. Fast cosim now runs in-process via `libfrt`; this flag is ignored. |
 | `-xosim_part_num <part>` | Target FPGA part number for simulation (e.g., `xcu280-fsvh2892-2L-e`). |
 | `-xosim_work_dir <dir>` | Persistent working directory for simulation artifacts. Without this flag, a temporary directory is used and deleted after the run. |
 | `-xosim_save_waveform` | Save simulation waveforms to a `.wdb` file in the work directory. Pair with `-xosim_work_dir`; without it, the temporary directory and all waveforms are deleted after the run. |

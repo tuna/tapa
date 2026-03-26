@@ -1,0 +1,2 @@
+# C++ fpga-runtime and Python tapa/cosim have been replaced by the Rust Cargo workspace.
+# See fpga-runtime/Cargo.toml and crates under fpga-runtime/.

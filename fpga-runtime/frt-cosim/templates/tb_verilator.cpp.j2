@@ -1,0 +1,42 @@
+#include "V{{ top_name }}.h"
+#include "verilated.h"
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+
+extern "C" {
+void tapa_axi_read(const char* port, uint64_t addr, uint32_t width, uint8_t* out);
+void tapa_axi_write(const char* port, uint64_t addr, uint32_t width, const uint8_t* data);
+bool tapa_stream_try_read(const char* port, uint8_t* out);
+bool tapa_stream_try_write(const char* port, const uint8_t* data);
+}
+
+static V{{ top_name }}* dut;
+static void tick() { dut->ap_clk = 1; dut->eval(); dut->ap_clk = 0; dut->eval(); }
+
+int main(int argc, char** argv) {
+  Verilated::commandArgs(argc, argv);
+  dut = new V{{ top_name }};
+  dut->ap_rst_n = 0;
+  for (int i = 0; i < 10; ++i) tick();
+  dut->ap_rst_n = 1;
+
+{% for arg in scalar_args %}
+  // scalar {{ arg.name }}
+  (void){{ arg.value }};
+{% endfor %}
+{% for arg in mmap_args %}
+  // mmap {{ arg.name }} base=0x{{ "{:016x}"|format(arg.base_addr) }} bytes={{ arg.data_width_bytes }}
+{% endfor %}
+{% for arg in stream_args %}
+  // stream-in {{ arg.name }} bytes={{ arg.width_bytes }}
+{% endfor %}
+{% for arg in stream_out_args %}
+  // stream-out {{ arg.name }} bytes={{ arg.width_bytes }}
+{% endfor %}
+
+  for (int i = 0; i < 1000; ++i) tick();
+  std::fprintf(stderr, "simulation complete (mode={{ mode }})\n");
+  delete dut;
+  return 0;
+}

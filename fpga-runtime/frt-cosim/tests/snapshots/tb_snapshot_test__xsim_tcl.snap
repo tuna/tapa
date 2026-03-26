@@ -1,0 +1,12 @@
+---
+source: frt-cosim/tests/tb_snapshot_test.rs
+assertion_line: 65
+expression: "generator.render_tcl(std::path::Path::new(\"/tmp/tb\")).expect(\"render tcl\")"
+---
+create_project -force cosim /tmp/tb/run -part xc7a100tcsg324-1
+
+set_property -name {xsim.elaborate.xelab.more_options} -value {-sv_lib /path/to/frt_dpi_xsim.so} -objects [get_filesets sim_1]
+
+launch_simulation
+run all
+close_sim

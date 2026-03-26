@@ -32,12 +32,10 @@ sh_test(
     args = [
         "$(location stream-top-host)",
         "--bitstream=$(location stream-top-xo)",
-        "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
     ],
     data = [
         ":stream-top-host",
         ":stream-top-xo",
-        "//tapa/cosim:tapa-fast-cosim",
     ],
     tags = [
         "cpu:3",
@@ -52,12 +50,10 @@ sh_test(
     args = [
         "$(location stream-top-host)",
         "--bitstream=$(location stream-top-hls-zip)",
-        "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
     ],
     data = [
         ":stream-top-hls-zip",
         ":stream-top-host",
-        "//tapa/cosim:tapa-fast-cosim",
     ],
     tags = [
         "cpu:3",

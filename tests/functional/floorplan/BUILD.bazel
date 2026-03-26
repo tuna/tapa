@@ -169,7 +169,6 @@ APPS = [
                 name = test,
                 idx = idx,
             ),
-            "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
             "1000",
         ],
         data = [
@@ -178,7 +177,6 @@ APPS = [
                 name = test,
                 idx = idx,
             ),
-            "//tapa/cosim:tapa-fast-cosim",
         ],
         tags = [
             "cpu:2",
@@ -202,11 +200,9 @@ APPS = [
         args = [
             "$(location //tests/apps/jacobi:jacobi-host)",
             "--bitstream=$(location jacobi-floorplan-{}-xo)".format(idx),
-            "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
         ],
         data = [
             ":jacobi-floorplan-{}-xo".format(idx),
-            "//tapa/cosim:tapa-fast-cosim",
             "//tests/apps/jacobi:jacobi-host",
         ],
         tags = [
@@ -225,12 +221,10 @@ APPS = [
         args = [
             "$(location //tests/apps/graph:graph-host)",
             "--bitstream=$(location graph-floorplan-{}-xo)".format(idx),
-            "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
             "$(location //tests/apps/graph:graph.txt)",
         ],
         data = [
             ":graph-floorplan-{}-xo".format(idx),
-            "//tapa/cosim:tapa-fast-cosim",
             "//tests/apps/graph:graph.txt",
             "//tests/apps/graph:graph-host",
         ],
@@ -250,12 +244,10 @@ APPS = [
         args = [
             "$(location //tests/functional/shared-mmap:shared-mmap-host)",
             "--bitstream=$(location shared-mmap-floorplan-{}-xo)".format(idx),
-            "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
             "1000",
         ],
         data = [
             ":shared-mmap-floorplan-{}-xo".format(idx),
-            "//tapa/cosim:tapa-fast-cosim",
             "//tests/functional/shared-mmap:shared-mmap-host",
         ],
         tags = [
@@ -274,11 +266,9 @@ APPS = [
         args = [
             "$(location //tests/apps/gemv:gemv-host)",
             "--bitstream=$(location gemv-floorplan-{}-xo)".format(idx),
-            "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
         ],
         data = [
             ":gemv-floorplan-{}-xo".format(idx),
-            "//tapa/cosim:tapa-fast-cosim",
             "//tests/apps/gemv:gemv-host",
         ],
         tags = [

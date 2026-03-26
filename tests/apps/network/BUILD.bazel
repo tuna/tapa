@@ -46,12 +46,10 @@ sh_test(
     args = [
         "$(location network-host)",
         "--bitstream=$(location network-xo)",
-        "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
     ],
     data = [
         ":network-host",
         ":network-xo",
-        "//tapa/cosim:tapa-fast-cosim",
     ],
     tags = [
         "cpu:2",
@@ -107,13 +105,11 @@ sh_test(
     args = [
         "$(location network-host)",
         "--bitstream=$(location network-zip)",
-        "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
         "--xosim_simulator=verilator",
     ],
     data = [
         ":network-host",
         ":network-zip",
-        "//tapa/cosim:tapa-fast-cosim",
         "@verilator//:verilator_executable",
     ],
     env = {"VERILATOR_BIN": "$(rootpath @verilator//:verilator_executable)"},

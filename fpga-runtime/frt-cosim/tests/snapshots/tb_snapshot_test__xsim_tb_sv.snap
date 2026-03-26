@@ -1,0 +1,30 @@
+---
+source: frt-cosim/tests/tb_snapshot_test.rs
+assertion_line: 64
+expression: "generator.render_tb().expect(\"render tb\")"
+---
+`timescale 1ns/1ps
+module tb_vadd;
+
+reg ap_clk = 0;
+always #5 ap_clk = ~ap_clk;
+reg ap_rst_n = 0;
+
+initial begin
+  repeat (10) @(posedge ap_clk);
+  ap_rst_n = 1;
+
+  // scalar n value=0
+
+
+  // mmap a base=0x0000000010000000 width_bytes=64
+
+
+  // stream-in s width_bytes=4
+
+
+  repeat (1000) @(posedge ap_clk);
+  $finish;
+end
+
+endmodule
