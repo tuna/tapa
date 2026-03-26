@@ -3,6 +3,7 @@
 #include "frt.h"
 
 #include <algorithm>
+#include <any>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
@@ -157,10 +158,15 @@ void Instance::SetStreamArgRaw(int index, internal::Tag,
                                internal::StreamArg& arg) {
   impl_->stream_args[index] = &arg;
   if (impl_->handle != nullptr) {
-    CheckFfi(
-        frt_instance_set_stream_arg(impl_->handle, static_cast<uint32_t>(index),
-                                    /*shm_path=*/""),
-        "frt_instance_set_stream_arg");
+    std::string shm_path;
+    try {
+      shm_path = arg.get<internal::StreamFfiContext>().path;
+    } catch (const std::bad_any_cast&) {
+      // Keep empty path for non-shared-memory stream contexts.
+    }
+    CheckFfi(frt_instance_set_stream_arg(
+                 impl_->handle, static_cast<uint32_t>(index), shm_path.c_str()),
+             "frt_instance_set_stream_arg");
   }
 }
 

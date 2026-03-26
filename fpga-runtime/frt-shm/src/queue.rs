@@ -105,6 +105,20 @@ impl SharedMemoryQueue {
         Some(out)
     }
 
+    pub fn peek(&self) -> Option<Vec<u8>> {
+        if self.is_empty() {
+            return None;
+        }
+        let head = self.hdr().head.load(Ordering::Acquire);
+        let slot = (head % self.depth()) as usize * self.width();
+        let w = self.width();
+        let mut out = vec![0u8; w];
+        unsafe {
+            std::ptr::copy_nonoverlapping(self.data_ptr().add(slot), out.as_mut_ptr(), w);
+        }
+        Some(out)
+    }
+
     pub fn path(&self) -> &Path {
         self.seg.path()
     }
@@ -151,5 +165,13 @@ mod tests {
         }
         q.push(b"xy").expect("push");
         assert_eq!(q.pop().expect("pop"), b"xy");
+    }
+
+    #[test]
+    fn peek_does_not_consume() {
+        let mut q = SharedMemoryQueue::create("test_q_peek", 4, 2).expect("create");
+        q.push(b"ab").expect("push");
+        assert_eq!(q.peek().expect("peek"), b"ab");
+        assert_eq!(q.pop().expect("pop"), b"ab");
     }
 }

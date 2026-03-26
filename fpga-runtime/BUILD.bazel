@@ -33,10 +33,6 @@ genrule(
         "cargo/libfrt_dpi_verilator.dylib",
         "cargo/libfrt_dpi_xsim.so",
         "cargo/libfrt_dpi_xsim.dylib",
-        "cargo/libtapa_fast_cosim_dpi_xv.so",
-        "cargo/libtapa_fast_cosim_dpi_xv.dylib",
-        "cargo/libtapa_fast_cosim_dpi_legacy_rdi.so",
-        "cargo/libtapa_fast_cosim_dpi_legacy_rdi.dylib",
     ],
     cmd = """
 set -euo pipefail
@@ -58,21 +54,13 @@ fi
 
 if [[ -f "$$CARGO_TARGET_DIR/release/libfrt_dpi_verilator.so" ]]; then
   cp "$$CARGO_TARGET_DIR/release/libfrt_dpi_verilator.so" "$(location cargo/libfrt_dpi_verilator.so)"
-  cp "$$CARGO_TARGET_DIR/release/libfrt_dpi_verilator.so" "$(location cargo/libtapa_fast_cosim_dpi_xv.so)"
-  cp "$$CARGO_TARGET_DIR/release/libfrt_dpi_verilator.so" "$(location cargo/libtapa_fast_cosim_dpi_legacy_rdi.so)"
 else
   : > "$(location cargo/libfrt_dpi_verilator.so)"
-  : > "$(location cargo/libtapa_fast_cosim_dpi_xv.so)"
-  : > "$(location cargo/libtapa_fast_cosim_dpi_legacy_rdi.so)"
 fi
 if [[ -f "$$CARGO_TARGET_DIR/release/libfrt_dpi_verilator.dylib" ]]; then
   cp "$$CARGO_TARGET_DIR/release/libfrt_dpi_verilator.dylib" "$(location cargo/libfrt_dpi_verilator.dylib)"
-  cp "$$CARGO_TARGET_DIR/release/libfrt_dpi_verilator.dylib" "$(location cargo/libtapa_fast_cosim_dpi_xv.dylib)"
-  cp "$$CARGO_TARGET_DIR/release/libfrt_dpi_verilator.dylib" "$(location cargo/libtapa_fast_cosim_dpi_legacy_rdi.dylib)"
 else
   : > "$(location cargo/libfrt_dpi_verilator.dylib)"
-  : > "$(location cargo/libtapa_fast_cosim_dpi_xv.dylib)"
-  : > "$(location cargo/libtapa_fast_cosim_dpi_legacy_rdi.dylib)"
 fi
 
 if [[ -f "$$CARGO_TARGET_DIR/release/libfrt_dpi_xsim.so" ]]; then
@@ -128,22 +116,6 @@ cc_library(
 )
 
 filegroup(
-    name = "tapa_fast_cosim_dpi_xv",
-    srcs = select({
-        "//bazel:is_macos": ["cargo/libtapa_fast_cosim_dpi_xv.dylib"],
-        "//conditions:default": ["cargo/libtapa_fast_cosim_dpi_xv.so"],
-    }),
-)
-
-filegroup(
-    name = "tapa_fast_cosim_dpi_legacy_rdi",
-    srcs = select({
-        "//bazel:is_macos": ["cargo/libtapa_fast_cosim_dpi_legacy_rdi.dylib"],
-        "//conditions:default": ["cargo/libtapa_fast_cosim_dpi_legacy_rdi.so"],
-    }),
-)
-
-filegroup(
     name = "include",
     srcs = _PUBLIC_HEADERS,
 )
@@ -154,8 +126,6 @@ pkg_files(
         "cargo/libfrt.dylib",
         "cargo/libfrt.so",
         ":frt",
-        ":tapa_fast_cosim_dpi_legacy_rdi",
-        ":tapa_fast_cosim_dpi_xv",
     ],
     prefix = "usr/lib",
     strip_prefix = strip_prefix.files_only(),
