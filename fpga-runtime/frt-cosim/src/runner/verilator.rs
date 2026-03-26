@@ -24,16 +24,14 @@ impl VerilatorRunner {
 }
 
 impl SimRunner for VerilatorRunner {
-    fn build(&self, spec: &KernelSpec, tb_dir: &Path) -> Result<()> {
-        let base_addrs: HashMap<String, u64> = spec
-            .args
-            .iter()
-            .filter_map(|arg| match &arg.kind {
-                crate::metadata::ArgKind::Mmap { .. } => Some((arg.name.clone(), 0x1000_0000)),
-                _ => None,
-            })
-            .collect();
-        let generator = VerilatorTbGenerator::new(spec, &self.dpi_lib, &base_addrs);
+    fn build(
+        &self,
+        spec: &KernelSpec,
+        ctx: &CosimContext,
+        scalar_values: &HashMap<u32, u64>,
+        tb_dir: &Path,
+    ) -> Result<()> {
+        let generator = VerilatorTbGenerator::new(spec, &self.dpi_lib, &ctx.base_addresses, scalar_values);
         std::fs::write(tb_dir.join("tb.cpp"), generator.render_tb()?)?;
         std::fs::write(tb_dir.join("dpi_support.cpp"), "// optional support\n")?;
 
@@ -46,32 +44,48 @@ impl SimRunner for VerilatorRunner {
         }
 
         let top = &spec.top_name;
+        let mut args = vec![
+            "--cc".to_string(),
+            "--top-module".to_string(),
+            top.to_string(),
+            "--no-timing".to_string(),
+            "--exe".to_string(),
+            "tb.cpp".to_string(),
+            "-LDFLAGS".to_string(),
+            self.dpi_lib.to_string_lossy().to_string(),
+            "-Wno-WIDTH".to_string(),
+            "-Wno-UNDRIVEN".to_string(),
+            "-Wno-STMTDLY".to_string(),
+            "-Wno-SYMRSVDWORD".to_string(),
+            "-y".to_string(),
+            rtl_dir.to_string_lossy().to_string(),
+        ];
+        for f in std::fs::read_dir(&rtl_dir)? {
+            let path = f?.path();
+            if path
+                .extension()
+                .and_then(|x| x.to_str())
+                .map(|x| matches!(x, "v" | "sv" | "vh"))
+                .unwrap_or(false)
+            {
+                args.push(path.to_string_lossy().to_string());
+            }
+        }
         let status = Command::new(&self.verilator_bin)
-            .args([
-                "--cc",
-                "--top-module",
-                top,
-                "--no-timing",
-                "--exe",
-                "tb.cpp",
-                "-Wno-WIDTH",
-                "-Wno-UNDRIVEN",
-                "-Wno-STMTDLY",
-                "-y",
-                rtl_dir.to_string_lossy().as_ref(),
-            ])
+            .args(&args)
             .current_dir(tb_dir)
             .status()?;
         if !status.success() {
             return Err(CosimError::SimFailed(status));
         }
-
         let status = Command::new("make")
             .args([
                 "-j",
                 &num_cpus_str(),
                 "-C",
                 "obj_dir",
+                "-f",
+                &format!("V{top}.mk"),
                 &format!("V{top}"),
             ])
             .current_dir(tb_dir)
@@ -90,13 +104,29 @@ impl SimRunner for VerilatorRunner {
             let mut found = None;
             for entry in std::fs::read_dir(tb_dir.join("obj_dir"))? {
                 let entry = entry?;
-                if entry
+                let path = entry.path();
+                let looks_like_verilator_bin = entry
                     .file_name()
                     .to_str()
                     .map(|n| n.starts_with('V'))
-                    .unwrap_or(false)
+                    .unwrap_or(false);
+                let is_executable = path.is_file()
+                    && std::fs::metadata(&path)
+                        .map(|m| {
+                            #[cfg(unix)]
+                            {
+                                use std::os::unix::fs::PermissionsExt;
+                                m.permissions().mode() & 0o111 != 0
+                            }
+                            #[cfg(not(unix))]
+                            {
+                                true
+                            }
+                        })
+                        .unwrap_or(false);
+                if looks_like_verilator_bin && is_executable
                 {
-                    found = Some(entry.path());
+                    found = Some(path);
                     break;
                 }
             }

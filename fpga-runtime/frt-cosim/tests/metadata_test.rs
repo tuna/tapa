@@ -1,4 +1,4 @@
-use frt_cosim::metadata::{self, ArgKind, Mode, StreamDir};
+use frt_cosim::metadata::{self, ArgKind, Mode, StreamDir, StreamProtocol};
 
 const KERNEL_XML: &str = r#"<?xml version="1.0"?>
 <root>
@@ -19,7 +19,13 @@ fn parse_vitis_kernel_xml() {
     assert_eq!(spec.args.len(), 3);
     assert!(matches!(spec.args[0].kind, ArgKind::Mmap { .. }));
     assert!(matches!(spec.args[1].kind, ArgKind::Scalar { .. }));
-    assert!(matches!(spec.args[2].kind, ArgKind::Stream { .. }));
+    assert!(matches!(
+        spec.args[2].kind,
+        ArgKind::Stream {
+            protocol: StreamProtocol::Axis,
+            ..
+        }
+    ));
 }
 
 const GRAPH_YAML: &str = r#"
@@ -55,6 +61,47 @@ fn parse_hls_graph_yaml() {
         &spec.args[2].kind,
         ArgKind::Stream {
             dir: StreamDir::In,
+            protocol: StreamProtocol::ApFifo,
+            ..
+        }
+    ));
+}
+
+const LEGACY_GRAPH_YAML: &str = r#"
+top: vadd
+tasks:
+  vadd:
+    level: lower
+    ports:
+      - name: a
+        cat: mmap
+        width: 32
+      - name: s
+        cat: istream
+        width: 32
+        depth: 8
+      - name: out
+        cat: ostreams
+        width: 32
+        depth: 8
+        chan_count: 2
+"#;
+
+#[test]
+fn parse_legacy_graph_yaml() {
+    let spec = metadata::zip_pkg::parse_graph_yaml(LEGACY_GRAPH_YAML, std::path::Path::new("/tmp"))
+        .expect("parse");
+    assert_eq!(spec.top_name, "vadd");
+    assert_eq!(spec.mode, Mode::Hls);
+    assert_eq!(spec.args[0].name, "a");
+    assert_eq!(spec.args[1].name, "s_s");
+    assert_eq!(spec.args[2].name, "out_0");
+    assert_eq!(spec.args[3].name, "out_1");
+    assert!(matches!(
+        &spec.args[1].kind,
+        ArgKind::Stream {
+            dir: StreamDir::In,
+            protocol: StreamProtocol::ApFifo,
             ..
         }
     ));

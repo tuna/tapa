@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<root>
+  <kernel name="manual_vitis_top">
+    <ports>
+      <port name="m_axi_a" mode="master" dataWidth="32"/>
+      <port name="s_axis_s" mode="read_only" dataWidth="32"/>
+      <port name="s_axi_control" mode="slave" dataWidth="32"/>
+    </ports>
+    <args>
+      <arg name="a" addressQualifier="1" id="0" port="m_axi_a" dataWidth="32" addrWidth="64"/>
+      <arg name="s" addressQualifier="4" id="1" port="s_axis_s" dataWidth="32" depth="16"/>
+      <arg name="n" addressQualifier="0" id="2" port="s_axi_control" width="32"/>
+    </args>
+  </kernel>
+</root>

@@ -28,22 +28,19 @@ impl XsimRunner {
 }
 
 impl SimRunner for XsimRunner {
-    fn build(&self, spec: &KernelSpec, tb_dir: &Path) -> Result<()> {
+    fn build(
+        &self,
+        spec: &KernelSpec,
+        ctx: &CosimContext,
+        scalar_values: &HashMap<u32, u64>,
+        tb_dir: &Path,
+    ) -> Result<()> {
         let part = spec.part_num.as_deref().unwrap_or("xc7a100tcsg324-1");
-        let base_addrs: HashMap<String, u64> = spec
-            .args
-            .iter()
-            .filter_map(|arg| match &arg.kind {
-                crate::metadata::ArgKind::Mmap { .. } => Some((arg.name.clone(), 0x1000_0000)),
-                _ => None,
-            })
-            .collect();
-        let generator = XsimTbGenerator::new(spec, &self.dpi_lib, &base_addrs, part, self.save_waveform);
+        let generator =
+            XsimTbGenerator::new(spec, &self.dpi_lib, &ctx.base_addresses, scalar_values, part, self.save_waveform);
+        let tb_file = format!("tb_{}.sv", spec.top_name);
 
-        std::fs::write(
-            tb_dir.join(format!("tb_{}.sv", spec.top_name)),
-            generator.render_tb()?,
-        )?;
+        std::fs::write(tb_dir.join(&tb_file), generator.render_tb()?)?;
         std::fs::write(tb_dir.join("run_cosim.tcl"), generator.render_tcl(tb_dir)?)?;
         Ok(())
     }

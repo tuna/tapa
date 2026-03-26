@@ -40,7 +40,6 @@ impl CosimDevice {
             }
         };
 
-        runner.build(&spec, tb_dir.path())?;
         Ok(Self {
             spec,
             ctx,
@@ -58,13 +57,22 @@ impl CosimDevice {
 fn dpi_lib_path(variant: &str) -> Result<PathBuf> {
     let exe = std::env::current_exe()?;
     let dir = exe.parent().unwrap_or(Path::new("."));
+    let mut search_dirs = vec![dir.to_path_buf()];
+    if let Some(p) = dir.parent() {
+        search_dirs.push(p.to_path_buf());
+    }
+    if let Some(p) = dir.parent().and_then(|x| x.parent()) {
+        search_dirs.push(p.to_path_buf());
+    }
     for candidate in [
         format!("libfrt_dpi_{variant}.so"),
         format!("libfrt_dpi_{variant}.dylib"),
     ] {
-        let p = dir.join(&candidate);
-        if p.exists() {
-            return Ok(p);
+        for base in &search_dirs {
+            let p = base.join(&candidate);
+            if p.exists() {
+                return Ok(p);
+            }
         }
     }
     Err(FrtError::MetadataParse(format!(
@@ -97,6 +105,22 @@ impl Device for CosimDevice {
     }
 
     fn set_stream_arg(&mut self, _index: u32, _shm_path: &str) -> Result<()> {
+        let index = _index;
+        let shm_path = _shm_path;
+        if shm_path.is_empty() {
+            return Ok(());
+        }
+        let name = self
+            .spec
+            .args
+            .iter()
+            .find(|a| a.id == index)
+            .and_then(|a| match a.kind {
+                frt_cosim::metadata::ArgKind::Stream { .. } => Some(a.name.clone()),
+                _ => None,
+            })
+            .ok_or_else(|| FrtError::MetadataParse(format!("no stream arg at index {index}")))?;
+        self.ctx.bind_stream_path(&name, shm_path)?;
         Ok(())
     }
 
@@ -124,6 +148,8 @@ impl Device for CosimDevice {
     }
 
     fn exec(&mut self) -> Result<()> {
+        self.runner
+            .build(&self.spec, &self.ctx, &self.scalars, self.tb_dir.path())?;
         let result = self.runner.run(&self.ctx, self.tb_dir.path())?;
         self.compute_ns = result.wall_ns;
         Ok(())

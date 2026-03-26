@@ -32,8 +32,8 @@ impl SharedMemoryQueue {
         Ok(Self { seg })
     }
 
-    pub fn open(path: &str, size_bytes: usize) -> std::io::Result<Self> {
-        let seg = MmapSegment::open(path, size_bytes)?;
+    pub fn open(path: &str) -> std::io::Result<Self> {
+        let seg = MmapSegment::open(path, 0)?;
         Ok(Self { seg })
     }
 

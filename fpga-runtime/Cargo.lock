@@ -393,6 +393,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
+ "zip",
 ]
 
 [[package]]

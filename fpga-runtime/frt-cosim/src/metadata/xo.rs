@@ -1,4 +1,4 @@
-use super::{ArgKind, ArgSpec, KernelSpec, Mode, StreamDir};
+use super::{ArgKind, ArgSpec, KernelSpec, Mode, StreamDir, StreamProtocol};
 use crate::error::{CosimError, Result};
 use quick_xml::events::Event;
 use quick_xml::Reader;
@@ -65,6 +65,7 @@ pub fn parse_kernel_xml(xml: &str, _verilog_dir: &Path) -> Result<KernelSpec> {
                                 width: data_width,
                                 depth,
                                 dir,
+                                protocol: StreamProtocol::Axis,
                             }
                         }
                         q => {

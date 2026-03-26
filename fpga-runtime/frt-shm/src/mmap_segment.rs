@@ -1,5 +1,6 @@
 use memmap2::MmapMut;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 pub struct MmapSegment {
     path: PathBuf,
@@ -67,13 +68,25 @@ impl Drop for MmapSegment {
 
 fn shm_path(name: &str) -> PathBuf {
     let pid = std::process::id();
+    static SHM_COUNTER: AtomicU64 = AtomicU64::new(0);
+    let nonce = SHM_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let safe_name: String = name
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
     #[cfg(target_os = "linux")]
     {
-        PathBuf::from(format!("/dev/shm/tapa_{}_{}", name, pid))
+        PathBuf::from(format!("/dev/shm/tapa_{}_{}_{}", safe_name, pid, nonce))
     }
     #[cfg(not(target_os = "linux"))]
     {
-        std::env::temp_dir().join(format!("tapa_{}_{}", name, pid))
+        std::env::temp_dir().join(format!("tapa_{}_{}_{}", safe_name, pid, nonce))
     }
 }
 

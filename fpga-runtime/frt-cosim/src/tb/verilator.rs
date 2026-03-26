@@ -15,7 +15,7 @@ pub struct MmapArg {
 
 pub struct ScalarArg {
     pub name: String,
-    pub value: String,
+    pub value_u64: String,
     pub reg_offset: u32,
 }
 
@@ -39,14 +39,21 @@ pub struct VerilatorTbGenerator<'a> {
     spec: &'a KernelSpec,
     _dpi_lib: &'a Path,
     base_addresses: &'a HashMap<String, u64>,
+    scalar_values: &'a HashMap<u32, u64>,
 }
 
 impl<'a> VerilatorTbGenerator<'a> {
-    pub fn new(spec: &'a KernelSpec, dpi_lib: &'a Path, base_addresses: &'a HashMap<String, u64>) -> Self {
+    pub fn new(
+        spec: &'a KernelSpec,
+        dpi_lib: &'a Path,
+        base_addresses: &'a HashMap<String, u64>,
+        scalar_values: &'a HashMap<u32, u64>,
+    ) -> Self {
         Self {
             spec,
             _dpi_lib: dpi_lib,
             base_addresses,
+            scalar_values,
         }
     }
 
@@ -87,11 +94,16 @@ impl<'a> VerilatorTbGenerator<'a> {
                         .unwrap_or(0);
                     scalar_args.push(ScalarArg {
                         name: arg.name.clone(),
-                        value: "0".into(),
+                        value_u64: format!(
+                            "0x{:016x}ULL",
+                            self.scalar_values.get(&arg.id).copied().unwrap_or(0)
+                        ),
                         reg_offset: offset,
                     });
                 }
-                ArgKind::Stream { width, dir, .. } => {
+                ArgKind::Stream {
+                    width, dir, ..
+                } => {
                     let w = (*width as usize).div_ceil(8);
                     match dir {
                         StreamDir::In => stream_args.push(StreamArg {

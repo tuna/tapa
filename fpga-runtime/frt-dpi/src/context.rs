@@ -44,7 +44,7 @@ impl DpiContext {
 
         let mut streams = HashMap::new();
         for (name, path) in cfg.streams {
-            let q = SharedMemoryQueue::open(&path, 32)?;
+            let q = SharedMemoryQueue::open(&path)?;
             streams.insert(name, std::sync::Mutex::new(q));
         }
 

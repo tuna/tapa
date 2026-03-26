@@ -6,6 +6,7 @@ use std::collections::HashMap;
 pub struct CosimContext {
     pub buffers: HashMap<String, MmapSegment>,
     pub streams: HashMap<String, SharedMemoryQueue>,
+    pub stream_path_overrides: HashMap<String, String>,
     pub base_addresses: HashMap<String, u64>,
 }
 
@@ -38,8 +39,29 @@ impl CosimContext {
         Ok(Self {
             buffers,
             streams,
+            stream_path_overrides: HashMap::new(),
             base_addresses,
         })
+    }
+
+    pub fn bind_stream_path(&mut self, name: &str, path: &str) -> Result<()> {
+        if !self.streams.contains_key(name) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("unknown stream arg '{name}'"),
+            )
+            .into());
+        }
+        if path.is_empty() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "empty stream shm path",
+            )
+            .into());
+        }
+        self.stream_path_overrides
+            .insert(name.to_owned(), path.to_owned());
+        Ok(())
     }
 
     pub fn dpi_config_json(&self) -> String {
@@ -57,9 +79,14 @@ impl CosimContext {
 
         let mut stream_map = serde_json::Map::new();
         for (name, q) in &self.streams {
+            let stream_path = self
+                .stream_path_overrides
+                .get(name)
+                .cloned()
+                .unwrap_or_else(|| q.path().to_string_lossy().to_string());
             stream_map.insert(
                 name.clone(),
-                serde_json::Value::String(q.path().to_string_lossy().to_string()),
+                serde_json::Value::String(stream_path),
             );
         }
 
@@ -100,6 +127,7 @@ mod tests {
                         width: 32,
                         depth: 8,
                         dir: StreamDir::In,
+                        protocol: crate::metadata::StreamProtocol::ApFifo,
                     },
                 },
             ],
