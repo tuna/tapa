@@ -1,5 +1,5 @@
 use crate::cosim::CosimDevice;
-use crate::device::Device;
+use crate::device::{BufferAccess, Device, RuntimeArgInfo};
 use crate::error::{FrtError, Result};
 use crate::xrt::device::XrtDevice;
 use std::marker::PhantomData;
@@ -93,30 +93,61 @@ impl Instance {
     }
 
     pub fn set_scalar_arg(&mut self, index: u32, value: u64) -> Result<()> {
+        self.device.set_scalar_arg(index, &value.to_le_bytes())
+    }
+
+    pub fn set_scalar_arg_bytes(&mut self, index: u32, value: &[u8]) -> Result<()> {
         self.device.set_scalar_arg(index, value)
     }
 
     pub fn set_buffer_arg_raw(&mut self, index: u32, ptr: *mut u8, bytes: usize) -> Result<()> {
-        self.device.set_buffer_arg(index, ptr, bytes)
+        self.device
+            .set_buffer_arg(index, ptr, bytes, BufferAccess::ReadWrite)
+    }
+
+    pub fn set_buffer_arg_raw_with_access(
+        &mut self,
+        index: u32,
+        ptr: *mut u8,
+        bytes: usize,
+        access: BufferAccess,
+    ) -> Result<()> {
+        self.device.set_buffer_arg(index, ptr, bytes, access)
     }
 
     pub fn set_stream_arg_raw(&mut self, index: u32, shm_path: &str) -> Result<()> {
         self.device.set_stream_arg(index, shm_path)
     }
 
+    pub fn suspend_buffer(&mut self, index: u32) -> usize {
+        self.device.suspend_buffer(index)
+    }
+
     pub fn set_read_only_arg<T>(&mut self, index: u32, buf: ReadOnlyBuffer<T>) -> Result<()> {
-        self.device
-            .set_buffer_arg(index, buf.as_ptr() as *mut u8, buf.size_in_bytes())
+        self.device.set_buffer_arg(
+            index,
+            buf.as_ptr() as *mut u8,
+            buf.size_in_bytes(),
+            BufferAccess::ReadOnly,
+        )
     }
 
     pub fn set_write_only_arg<T>(&mut self, index: u32, buf: WriteOnlyBuffer<T>) -> Result<()> {
-        self.device
-            .set_buffer_arg(index, buf.as_ptr() as *mut u8, buf.size_in_bytes())
+        self.device.set_buffer_arg(
+            index,
+            buf.as_ptr() as *mut u8,
+            buf.size_in_bytes(),
+            BufferAccess::WriteOnly,
+        )
     }
 
     pub fn set_read_write_arg<T>(&mut self, index: u32, buf: ReadWriteBuffer<T>) -> Result<()> {
-        self.device
-            .set_buffer_arg(index, buf.as_ptr() as *mut u8, buf.size_in_bytes())
+        self.device.set_buffer_arg(
+            index,
+            buf.as_ptr() as *mut u8,
+            buf.size_in_bytes(),
+            BufferAccess::ReadWrite,
+        )
     }
 
     pub fn write_to_device(&mut self) -> Result<()> {
@@ -133,6 +164,18 @@ impl Instance {
 
     pub fn finish(&mut self) -> Result<()> {
         self.device.finish()
+    }
+
+    pub fn kill(&mut self) -> Result<()> {
+        self.device.kill()
+    }
+
+    pub fn is_finished(&mut self) -> Result<bool> {
+        self.device.is_finished()
+    }
+
+    pub fn args_info(&self) -> Vec<RuntimeArgInfo> {
+        self.device.args_info()
     }
 
     pub fn load_ns(&self) -> u64 {

@@ -27,8 +27,13 @@ pub enum StreamProtocol {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ArgKind {
-    Scalar { width: u32 },
-    Mmap { data_width: u32, addr_width: u32 },
+    Scalar {
+        width: u32,
+    },
+    Mmap {
+        data_width: u32,
+        addr_width: u32,
+    },
     Stream {
         width: u32,
         depth: u32,
@@ -51,6 +56,8 @@ pub struct KernelSpec {
     pub args: Vec<ArgSpec>,
     pub part_num: Option<String>,
     pub verilog_files: Vec<PathBuf>,
+    pub tcl_files: Vec<PathBuf>,
+    pub xci_files: Vec<PathBuf>,
     pub scalar_register_map: HashMap<String, u32>,
 }
 
@@ -68,90 +75,95 @@ pub fn load_spec(path: &Path) -> Result<KernelSpec> {
     }
 }
 
-fn load_xo_spec<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>, src: &Path) -> Result<KernelSpec> {
+fn load_xo_spec<R: Read + std::io::Seek>(
+    zip: &mut zip::ZipArchive<R>,
+    src: &Path,
+) -> Result<KernelSpec> {
     let mut kernel_xml = None;
     let mut verilog_files = Vec::new();
+    let mut tcl_files = Vec::new();
+    let mut xci_files = Vec::new();
     let mut scalar_register_map = HashMap::new();
 
     let out_dir = make_extract_dir("xo")?;
     for i in 0..zip.len() {
-        let mut file = zip.by_index(i).map_err(|e| CosimError::Metadata(e.to_string()))?;
+        let mut file = zip
+            .by_index(i)
+            .map_err(|e| CosimError::Metadata(e.to_string()))?;
         let name = file.name().to_owned();
         if name.ends_with('/') {
             continue;
         }
+        let path = extract_file(&mut file, &name, &out_dir)?;
         if name.ends_with("kernel.xml") {
-            let mut s = String::new();
-            file.read_to_string(&mut s)
-                .map_err(|e| CosimError::Metadata(e.to_string()))?;
-            kernel_xml = Some(s);
+            kernel_xml = Some(std::fs::read_to_string(&path)?);
             continue;
         }
         if name.ends_with("s_axi_control.v") {
-            let mut s = String::new();
-            file.read_to_string(&mut s)
-                .map_err(|e| CosimError::Metadata(e.to_string()))?;
-            scalar_register_map = sax_control::parse_register_map(&s);
-            continue;
+            scalar_register_map = sax_control::parse_register_map(&std::fs::read_to_string(&path)?);
         }
-        if name.ends_with(".v") || name.ends_with(".sv") || name.ends_with(".vh") {
-            let path = out_dir.join(
-                std::path::Path::new(&name)
-                    .file_name()
-                    .unwrap_or_else(|| std::ffi::OsStr::new("rtl.v")),
-            );
-            let mut out = std::fs::File::create(&path)?;
-            std::io::copy(&mut file, &mut out)?;
-            verilog_files.push(path);
+        if has_ext(&name, &["v", "sv", "vh", "dat"]) {
+            verilog_files.push(path.clone());
+        }
+        if has_ext(&name, &["tcl"]) {
+            tcl_files.push(path.clone());
+        }
+        if has_ext(&name, &["xci"]) {
+            xci_files.push(path);
         }
     }
 
-    let xml = kernel_xml.ok_or_else(|| CosimError::Metadata(format!("no kernel.xml in {}", src.display())))?;
+    let xml = kernel_xml
+        .ok_or_else(|| CosimError::Metadata(format!("no kernel.xml in {}", src.display())))?;
     let mut spec = xo::parse_kernel_xml(&xml, &out_dir)?;
     spec.verilog_files = verilog_files;
+    spec.tcl_files = tcl_files;
+    spec.xci_files = xci_files;
     spec.scalar_register_map = scalar_register_map;
     Ok(spec)
 }
 
-fn load_zip_spec<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>, src: &Path) -> Result<KernelSpec> {
+fn load_zip_spec<R: Read + std::io::Seek>(
+    zip: &mut zip::ZipArchive<R>,
+    src: &Path,
+) -> Result<KernelSpec> {
     let mut graph_yaml = None;
     let mut settings_yaml = None;
     let out_dir = make_extract_dir("zip")?;
     let mut verilog_files = Vec::new();
+    let mut tcl_files = Vec::new();
+    let mut xci_files = Vec::new();
 
     for i in 0..zip.len() {
-        let mut file = zip.by_index(i).map_err(|e| CosimError::Metadata(e.to_string()))?;
+        let mut file = zip
+            .by_index(i)
+            .map_err(|e| CosimError::Metadata(e.to_string()))?;
         let name = file.name().to_owned();
         if name.ends_with('/') {
             continue;
         }
+        let path = extract_file(&mut file, &name, &out_dir)?;
         if name.ends_with("graph.yaml") {
-            let mut s = String::new();
-            file.read_to_string(&mut s)
-                .map_err(|e| CosimError::Metadata(e.to_string()))?;
-            graph_yaml = Some(s);
+            graph_yaml = Some(std::fs::read_to_string(&path)?);
             continue;
         }
         if name.ends_with("settings.yaml") {
-            let mut s = String::new();
-            file.read_to_string(&mut s)
-                .map_err(|e| CosimError::Metadata(e.to_string()))?;
-            settings_yaml = Some(s);
+            settings_yaml = Some(std::fs::read_to_string(&path)?);
             continue;
         }
-        if name.ends_with(".v") || name.ends_with(".sv") || name.ends_with(".vh") {
-            let path = out_dir.join(
-                std::path::Path::new(&name)
-                    .file_name()
-                    .unwrap_or_else(|| std::ffi::OsStr::new("rtl.v")),
-            );
-            let mut out = std::fs::File::create(&path)?;
-            std::io::copy(&mut file, &mut out)?;
-            verilog_files.push(path);
+        if has_ext(&name, &["v", "sv", "vh", "dat"]) {
+            verilog_files.push(path.clone());
+        }
+        if has_ext(&name, &["tcl"]) {
+            tcl_files.push(path.clone());
+        }
+        if has_ext(&name, &["xci"]) {
+            xci_files.push(path);
         }
     }
 
-    let yaml = graph_yaml.ok_or_else(|| CosimError::Metadata(format!("no graph.yaml in {}", src.display())))?;
+    let yaml = graph_yaml
+        .ok_or_else(|| CosimError::Metadata(format!("no graph.yaml in {}", src.display())))?;
     let mut spec = zip_pkg::parse_graph_yaml(&yaml, &out_dir)?;
     if spec.part_num.is_none() {
         spec.part_num = settings_yaml
@@ -159,6 +171,8 @@ fn load_zip_spec<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>, src: &Pa
             .and_then(parse_part_from_settings_yaml);
     }
     spec.verilog_files = verilog_files;
+    spec.tcl_files = tcl_files;
+    spec.xci_files = xci_files;
     Ok(spec)
 }
 
@@ -168,11 +182,7 @@ fn make_extract_dir(tag: &str) -> Result<PathBuf> {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos();
-    dir.push(format!(
-        "frt-cosim-{tag}-{}-{}",
-        std::process::id(),
-        nanos
-    ));
+    dir.push(format!("frt-cosim-{tag}-{}-{}", std::process::id(), nanos));
     std::fs::create_dir_all(&dir)?;
     Ok(dir)
 }
@@ -187,4 +197,23 @@ fn parse_part_from_settings_yaml(settings_yaml: &str) -> Option<String> {
                 .and_then(|x| x.as_str())
                 .map(ToOwned::to_owned)
         })
+}
+
+fn has_ext(name: &str, exts: &[&str]) -> bool {
+    let ext = std::path::Path::new(name)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("");
+    exts.iter().any(|x| ext.eq_ignore_ascii_case(x))
+}
+
+fn extract_file(file: &mut zip::read::ZipFile<'_>, name: &str, out_dir: &Path) -> Result<PathBuf> {
+    let rel = Path::new(name);
+    let out = out_dir.join(rel);
+    if let Some(parent) = out.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut fp = std::fs::File::create(&out)?;
+    std::io::copy(file, &mut fp)?;
+    Ok(out)
 }

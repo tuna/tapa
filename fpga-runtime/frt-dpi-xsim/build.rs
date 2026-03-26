@@ -7,7 +7,9 @@ fn main() {
             println!("cargo:rustc-link-search=native={lib_dir}");
             println!("cargo:rustc-link-lib=svdpi");
         } else {
-            println!("cargo:warning=XILINX_VIVADO not set; building frt-dpi-xsim without svdpi linkage");
+            println!(
+                "cargo:warning=XILINX_VIVADO not set; building frt-dpi-xsim without svdpi linkage"
+            );
         }
         println!("cargo:rustc-env=TAPA_XSIM_VARIANT={variant}");
     }

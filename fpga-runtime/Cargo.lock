@@ -386,6 +386,7 @@ version = "0.1.0"
 dependencies = [
  "frt-cosim",
  "frt-shm",
+ "libc",
  "opencl3",
  "quick-xml",
  "serde_json",
@@ -403,6 +404,7 @@ dependencies = [
  "askama",
  "frt-shm",
  "insta",
+ "libc",
  "quick-xml",
  "regex-lite",
  "serde",

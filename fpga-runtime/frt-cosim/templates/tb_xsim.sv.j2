@@ -5,6 +5,7 @@ import "DPI-C" function void tapa_axi_read(input string port, input longint unsi
 import "DPI-C" function void tapa_axi_write(input string port, input longint unsigned addr, input int unsigned width, input byte unsigned data[]);
 import "DPI-C" function bit tapa_stream_try_read(input string port, output byte unsigned out[]);
 import "DPI-C" function bit tapa_stream_try_write(input string port, input byte unsigned data[]);
+import "DPI-C" function bit tapa_stream_can_write(input string port);
 
 reg ap_clk = 0;
 always #5 ap_clk = ~ap_clk;
@@ -187,6 +188,10 @@ reg stream_out_ready_{{ arg.name }} = 1'b1;
   .{{ arg.name }}_dout(stream_in_data_{{ arg.name }}),
   .{{ arg.name }}_empty_n(stream_in_have_{{ arg.name }}),
   .{{ arg.name }}_read(stream_read_{{ arg.name }}),
+{% if arg.has_peek %}
+  .{{ arg.peek_name }}_dout(stream_in_data_{{ arg.name }}),
+  .{{ arg.peek_name }}_empty_n(stream_in_have_{{ arg.name }}),
+{% endif %}
 {% endfor %}
 {% for arg in stream_out_args %}
   .{{ arg.name }}_din(stream_out_data_{{ arg.name }}),
@@ -194,7 +199,7 @@ reg stream_out_ready_{{ arg.name }} = 1'b1;
   .{{ arg.name }}_write(stream_out_write_{{ arg.name }}),
 {% endfor %}
 {% for arg in scalar_args %}
-  .{{ arg.name }}({{ arg.value }}),
+  .{{ arg.name }}({{ arg.value_expr }}),
 {% endfor %}
   .ap_clk(ap_clk),
   .ap_rst_n(ap_rst_n),
@@ -255,7 +260,9 @@ initial begin
   ctrl_write(8'h{{ "{:02x}"|format(arg.reg_offset_hi) }}, 32'h{{ "{:08x}"|format((arg.base_addr >> 32) & 0xffffffff) }});
 {% endfor %}
 {% for arg in scalar_args %}
-  ctrl_write(8'h{{ "{:02x}"|format(arg.reg_offset) }}, 32'h{{ "{:08x}"|format(arg.value_u64 & 0xffffffff) }});
+{% for word in arg.words %}
+  ctrl_write(8'h{{ "{:02x}"|format(word.reg_offset) }}, 32'h{{ "{:08x}"|format(word.value_u32) }});
+{% endfor %}
 {% endfor %}
   ctrl_write(8'h00, 32'h0000_0001);
 {% endif %}
@@ -342,14 +349,20 @@ always @(posedge ap_clk) begin
 
 {% for arg in stream_out_args %}
 {% if mode == "hls" %}
-  if (stream_out_write_{{ arg.name }} && stream_out_full_n_{{ arg.name }}) begin
+  bit can_write_{{ arg.name }};
+  can_write_{{ arg.name }} = tapa_stream_can_write("{{ arg.name }}");
+  stream_out_full_n_{{ arg.name }} <= can_write_{{ arg.name }};
+  if (stream_out_write_{{ arg.name }} && can_write_{{ arg.name }}) begin
     for (i = 0; i < {{ arg.width_bytes }}; i = i + 1) begin
       stream_out_bytes_{{ arg.name }}[i] = stream_out_data_{{ arg.name }}[i*8 +: 8];
     end
     void'(tapa_stream_try_write("{{ arg.name }}", stream_out_bytes_{{ arg.name }}));
   end
 {% else %}
-  if (stream_out_valid_{{ arg.name }} && stream_out_ready_{{ arg.name }}) begin
+  bit can_write_{{ arg.name }};
+  can_write_{{ arg.name }} = tapa_stream_can_write("{{ arg.name }}");
+  stream_out_ready_{{ arg.name }} <= can_write_{{ arg.name }};
+  if (stream_out_valid_{{ arg.name }} && can_write_{{ arg.name }}) begin
     for (i = 0; i < {{ arg.width_bytes }}; i = i + 1) begin
       stream_out_bytes_{{ arg.name }}[i] = stream_out_data_{{ arg.name }}[i*8 +: 8];
     end

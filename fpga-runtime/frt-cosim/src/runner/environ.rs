@@ -2,7 +2,9 @@ use std::collections::HashMap;
 use std::process::Command;
 
 pub fn xilinx_environ() -> HashMap<String, String> {
-    let tool = which::which("vitis_hls").or_else(|_| which::which("vivado")).ok();
+    let tool = which::which("vitis_hls")
+        .or_else(|_| which::which("vivado"))
+        .ok();
     let mut env: HashMap<String, String> = std::env::vars().collect();
 
     if let Some(tool_path) = tool {

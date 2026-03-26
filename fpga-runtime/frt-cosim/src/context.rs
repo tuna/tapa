@@ -84,10 +84,7 @@ impl CosimContext {
                 .get(name)
                 .cloned()
                 .unwrap_or_else(|| q.path().to_string_lossy().to_string());
-            stream_map.insert(
-                name.clone(),
-                serde_json::Value::String(stream_path),
-            );
+            stream_map.insert(name.clone(), serde_json::Value::String(stream_path));
         }
 
         serde_json::json!({
@@ -110,6 +107,8 @@ mod tests {
             mode: Mode::Hls,
             part_num: None,
             verilog_files: vec![],
+            tcl_files: vec![],
+            xci_files: vec![],
             scalar_register_map: HashMap::new(),
             args: vec![
                 ArgSpec {

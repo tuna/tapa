@@ -97,6 +97,8 @@ pub fn parse_kernel_xml(xml: &str, _verilog_dir: &Path) -> Result<KernelSpec> {
         args,
         part_num: None,
         verilog_files: vec![],
+        tcl_files: vec![],
+        xci_files: vec![],
         scalar_register_map: HashMap::new(),
     })
 }

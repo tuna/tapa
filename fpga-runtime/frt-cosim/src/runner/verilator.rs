@@ -1,4 +1,4 @@
-use super::{environ::xilinx_environ, SimResult, SimRunner};
+use super::{configure_sim_command, environ::xilinx_environ, SimRunner};
 use crate::context::CosimContext;
 use crate::error::{CosimError, Result};
 use crate::metadata::KernelSpec;
@@ -28,10 +28,11 @@ impl SimRunner for VerilatorRunner {
         &self,
         spec: &KernelSpec,
         ctx: &CosimContext,
-        scalar_values: &HashMap<u32, u64>,
+        scalar_values: &HashMap<u32, Vec<u8>>,
         tb_dir: &Path,
     ) -> Result<()> {
-        let generator = VerilatorTbGenerator::new(spec, &self.dpi_lib, &ctx.base_addresses, scalar_values);
+        let generator =
+            VerilatorTbGenerator::new(spec, &self.dpi_lib, &ctx.base_addresses, scalar_values);
         std::fs::write(tb_dir.join("tb.cpp"), generator.render_tb()?)?;
         std::fs::write(tb_dir.join("dpi_support.cpp"), "// optional support\n")?;
 
@@ -96,7 +97,7 @@ impl SimRunner for VerilatorRunner {
         Ok(())
     }
 
-    fn run(&self, ctx: &CosimContext, tb_dir: &Path) -> Result<SimResult> {
+    fn spawn(&self, ctx: &CosimContext, tb_dir: &Path) -> Result<std::process::Child> {
         let exe = tb_dir.join("obj_dir").join(format!("V{}", "top"));
         let top = if exe.exists() {
             exe
@@ -124,24 +125,19 @@ impl SimRunner for VerilatorRunner {
                             }
                         })
                         .unwrap_or(false);
-                if looks_like_verilator_bin && is_executable
-                {
+                if looks_like_verilator_bin && is_executable {
                     found = Some(path);
                     break;
                 }
             }
             found.ok_or_else(|| CosimError::ToolNotFound("Verilator binary".into()))?
         };
-        let t0 = std::time::Instant::now();
-        let status = Command::new(top)
-            .env("TAPA_DPI_CONFIG", ctx.dpi_config_json())
-            .envs(xilinx_environ())
-            .status()?;
-        let wall_ns = t0.elapsed().as_nanos() as u64;
-        if !status.success() {
-            return Err(CosimError::SimFailed(status));
-        }
-        Ok(SimResult { wall_ns })
+        let mut cmd = Command::new(top);
+        cmd.env("TAPA_DPI_CONFIG", ctx.dpi_config_json())
+            .envs(xilinx_environ());
+        configure_sim_command(&mut cmd);
+        let child = cmd.spawn()?;
+        Ok(child)
     }
 }
 

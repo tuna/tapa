@@ -8,6 +8,8 @@ fn hls_spec() -> KernelSpec {
         mode: Mode::Hls,
         part_num: None,
         verilog_files: vec![],
+        tcl_files: vec![],
+        xci_files: vec![],
         scalar_register_map: HashMap::from([("n".into(), 0x18u32)]),
         args: vec![
             ArgSpec {
@@ -23,18 +25,18 @@ fn hls_spec() -> KernelSpec {
                 id: 1,
                 kind: ArgKind::Scalar { width: 32 },
             },
-                ArgSpec {
-                    name: "s".into(),
-                    id: 2,
-                    kind: ArgKind::Stream {
-                        width: 32,
-                        depth: 16,
-                        dir: StreamDir::In,
-                        protocol: frt_cosim::metadata::StreamProtocol::ApFifo,
-                    },
+            ArgSpec {
+                name: "s".into(),
+                id: 2,
+                kind: ArgKind::Stream {
+                    width: 32,
+                    depth: 16,
+                    dir: StreamDir::In,
+                    protocol: frt_cosim::metadata::StreamProtocol::ApFifo,
                 },
-            ],
-        }
+            },
+        ],
+    }
 }
 
 fn vitis_spec() -> KernelSpec {
@@ -43,6 +45,8 @@ fn vitis_spec() -> KernelSpec {
         mode: Mode::Vitis,
         part_num: Some("xc7a100tcsg324-1".into()),
         verilog_files: vec![],
+        tcl_files: vec![],
+        xci_files: vec![],
         scalar_register_map: HashMap::from([("a".into(), 0x10u32), ("n".into(), 0x1cu32)]),
         args: vec![
             ArgSpec {
@@ -76,9 +80,13 @@ fn vitis_spec() -> KernelSpec {
 fn verilator_hls_tb_snapshot() {
     let spec = hls_spec();
     let base_addrs = std::collections::HashMap::from([("a".into(), 0x1000_0000u64)]);
-    let scalar_vals = std::collections::HashMap::from([(1u32, 7u64)]);
-    let generator =
-        VerilatorTbGenerator::new(&spec, std::path::Path::new("libfrt_dpi_verilator.so"), &base_addrs, &scalar_vals);
+    let scalar_vals = std::collections::HashMap::from([(1u32, vec![7u8, 0, 0, 0])]);
+    let generator = VerilatorTbGenerator::new(
+        &spec,
+        std::path::Path::new("libfrt_dpi_verilator.so"),
+        &base_addrs,
+        &scalar_vals,
+    );
     let tb = generator.render_tb().expect("render");
     assert!(tb.contains("service_all_axi"));
     assert!(tb.contains("tapa_stream_try_read"));
@@ -90,13 +98,14 @@ fn xsim_hls_tb_snapshot() {
     use frt_cosim::tb::xsim::XsimTbGenerator;
     let spec = hls_spec();
     let base_addrs = std::collections::HashMap::from([("a".into(), 0x1000_0000u64)]);
-    let scalar_vals = std::collections::HashMap::from([(1u32, 3u64)]);
+    let scalar_vals = std::collections::HashMap::from([(1u32, vec![3u8, 0, 0, 0])]);
     let generator = XsimTbGenerator::new(
         &spec,
         std::path::Path::new("/path/to/frt_dpi_xsim.so"),
         &base_addrs,
         &scalar_vals,
         "xc7a100tcsg324-1",
+        false,
         false,
     );
     let tb = generator.render_tb().expect("render tb");
@@ -113,7 +122,7 @@ fn xsim_vitis_tb_contains_control_sequence() {
     use frt_cosim::tb::xsim::XsimTbGenerator;
     let spec = vitis_spec();
     let base_addrs = std::collections::HashMap::from([("a".into(), 0x1000_0000u64)]);
-    let scalar_vals = std::collections::HashMap::from([(2u32, 7u64)]);
+    let scalar_vals = std::collections::HashMap::from([(2u32, vec![7u8, 0, 0, 0])]);
     let generator = XsimTbGenerator::new(
         &spec,
         std::path::Path::new("/path/to/frt_dpi_xsim.so"),
@@ -121,9 +130,39 @@ fn xsim_vitis_tb_contains_control_sequence() {
         &scalar_vals,
         "xc7a100tcsg324-1",
         false,
+        false,
     );
     let tb = generator.render_tb().expect("render tb");
     assert!(tb.contains("task automatic ctrl_write"));
     assert!(tb.contains("ctrl_write(8'h00, 32'h0000_0001);"));
     assert!(tb.contains("if (interrupt) begin"));
+}
+
+#[test]
+fn xsim_tcl_includes_xci_tcl_and_legacy_elab_property() {
+    use frt_cosim::tb::xsim::XsimTbGenerator;
+    let mut spec = vitis_spec();
+    spec.verilog_files = vec![std::path::PathBuf::from("/tmp/rtl/top.v")];
+    spec.xci_files = vec![std::path::PathBuf::from("/tmp/ip/example.xci")];
+    spec.tcl_files = vec![std::path::PathBuf::from("/tmp/ip/setup_ip.tcl")];
+
+    let base_addrs = std::collections::HashMap::from([("a".into(), 0x1000_0000u64)]);
+    let scalar_vals = std::collections::HashMap::from([(2u32, vec![7u8, 0, 0, 0])]);
+    let generator = XsimTbGenerator::new(
+        &spec,
+        std::path::Path::new("/path/to/frt_dpi_xsim.so"),
+        &base_addrs,
+        &scalar_vals,
+        "xc7a100tcsg324-1",
+        true,
+        true,
+    );
+    let tcl = generator
+        .render_tcl(std::path::Path::new("/tmp/tb"))
+        .expect("render tcl");
+    assert!(tcl.contains("add_files -norecurse -scan_for_includes /tmp/ip/example.xci"));
+    assert!(tcl.contains("source /tmp/ip/setup_ip.tcl"));
+    assert!(tcl.contains("upgrade_ip -quiet [get_ips *]"));
+    assert!(tcl.contains("set_property -name {xelab.more_options}"));
+    assert!(tcl.contains("set_property -name {xsim.simulate.wdb}"));
 }

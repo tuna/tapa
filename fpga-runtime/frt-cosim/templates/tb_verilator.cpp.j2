@@ -1,5 +1,6 @@
 #include "V{{ top_name }}.h"
 #include "verilated.h"
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <cstdio>
@@ -10,6 +11,7 @@ void tapa_axi_read(const char* port, uint64_t addr, uint32_t width, uint8_t* out
 void tapa_axi_write(const char* port, uint64_t addr, uint32_t width, const uint8_t* data);
 bool tapa_stream_try_read(const char* port, uint8_t* out);
 bool tapa_stream_try_write(const char* port, const uint8_t* data);
+bool tapa_stream_can_write(const char* port);
 }
 
 static V{{ top_name }}* dut;
@@ -137,16 +139,23 @@ static void service_streams() {
     stream_in_have_{{ arg.name }} = tapa_stream_try_read("{{ arg.name }}", stream_in_data_{{ arg.name }}.data());
   }
   dut->{{ arg.name }}_empty_n = stream_in_have_{{ arg.name }} ? 1 : 0;
+{% if arg.has_peek %}
+  dut->{{ arg.peek_name }}_empty_n = stream_in_have_{{ arg.name }} ? 1 : 0;
+{% endif %}
   if (stream_in_have_{{ arg.name }}) {
     std::memcpy(&dut->{{ arg.name }}_dout, stream_in_data_{{ arg.name }}.data(), {{ arg.width_bytes }});
+{% if arg.has_peek %}
+    std::memcpy(&dut->{{ arg.peek_name }}_dout, stream_in_data_{{ arg.name }}.data(), {{ arg.width_bytes }});
+{% endif %}
   }
   if (stream_in_have_{{ arg.name }} && dut->{{ arg.name }}_read) {
     stream_in_have_{{ arg.name }} = false;
   }
 {% endfor %}
 {% for arg in stream_out_args %}
-  dut->{{ arg.name }}_full_n = 1;
-  if (dut->{{ arg.name }}_write && dut->{{ arg.name }}_full_n) {
+  bool can_write_{{ arg.name }} = tapa_stream_can_write("{{ arg.name }}");
+  dut->{{ arg.name }}_full_n = can_write_{{ arg.name }} ? 1 : 0;
+  if (dut->{{ arg.name }}_write && can_write_{{ arg.name }}) {
     std::array<uint8_t, {{ arg.width_bytes }}> data{};
     std::memcpy(data.data(), &dut->{{ arg.name }}_din, {{ arg.width_bytes }});
     (void)tapa_stream_try_write("{{ arg.name }}", data.data());
@@ -167,7 +176,7 @@ static void service_streams() {
   }
 {% endfor %}
 {% for arg in stream_out_args %}
-  dut->{{ arg.name }}_TREADY = 1;
+  dut->{{ arg.name }}_TREADY = tapa_stream_can_write("{{ arg.name }}") ? 1 : 0;
   if (dut->{{ arg.name }}_TVALID && dut->{{ arg.name }}_TREADY) {
     std::array<uint8_t, {{ arg.width_bytes }}> data{};
     std::memcpy(data.data(), &dut->{{ arg.name }}_TDATA, {{ arg.width_bytes }});
@@ -201,7 +210,14 @@ int main(int argc, char** argv) {
   dut->{{ arg.name }}_offset = 0x{{ "{:016x}"|format(arg.base_addr) }}ULL;
 {% endfor %}
 {% for arg in scalar_args %}
-  dut->{{ arg.name }} = {{ arg.value_u64 }};
+  {
+    const uint8_t scalar_bytes[] = { {{ arg.bytes_initializer }} };
+    std::memset(&dut->{{ arg.name }}, 0, sizeof(dut->{{ arg.name }}));
+    std::memcpy(
+        &dut->{{ arg.name }},
+        scalar_bytes,
+        std::min(sizeof(dut->{{ arg.name }}), sizeof(scalar_bytes)));
+  }
 {% endfor %}
   dut->ap_start = 1;
 {% else %}
@@ -212,7 +228,9 @@ int main(int argc, char** argv) {
   ctrl_write(0x{{ "{:02x}"|format(arg.reg_offset_hi) }}, (uint32_t)(0x{{ "{:016x}"|format(arg.base_addr) }}ULL >> 32));
 {% endfor %}
 {% for arg in scalar_args %}
-  ctrl_write(0x{{ "{:02x}"|format(arg.reg_offset) }}, (uint32_t)({{ arg.value_u64 }}));
+{% for word in arg.words %}
+  ctrl_write(0x{{ "{:02x}"|format(word.reg_offset) }}, 0x{{ "{:08x}"|format(word.value_u32) }});
+{% endfor %}
 {% endfor %}
   ctrl_write(0x00, 1);
 {% endif %}

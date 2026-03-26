@@ -38,4 +38,10 @@ mod imp {
         let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
         stream::stream_try_write_impl(get_or_init(), port, data)
     }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn tapa_stream_can_write(port: *const libc::c_char) -> bool {
+        let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
+        stream::stream_can_write_impl(get_or_init(), port)
+    }
 }

@@ -74,6 +74,8 @@ fn parse_simple_schema(root: &serde_yaml::Value) -> Result<Option<KernelSpec>> {
             .and_then(|x| x.as_str())
             .map(ToOwned::to_owned),
         verilog_files: vec![],
+        tcl_files: vec![],
+        xci_files: vec![],
         scalar_register_map: HashMap::new(),
     }))
 }
@@ -190,6 +192,8 @@ fn parse_legacy_tapa_schema(root: &serde_yaml::Value) -> Result<KernelSpec> {
             .and_then(|x| x.as_str())
             .map(ToOwned::to_owned),
         verilog_files: vec![],
+        tcl_files: vec![],
+        xci_files: vec![],
         scalar_register_map: HashMap::new(),
     })
 }

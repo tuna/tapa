@@ -35,6 +35,8 @@ pub fn parse_embedded_xml(xml: &str) -> Result<XrtMetadata> {
     let mut reader = Reader::from_str(xml);
     reader.config_mut().trim_text(true);
     let mut top_name = String::new();
+    let mut platform = String::new();
+    let mut mode = XclbinMode::Flat;
     let mut args = Vec::new();
     let mut buf = Vec::new();
 
@@ -45,6 +47,35 @@ pub fn parse_embedded_xml(xml: &str) -> Result<XrtMetadata> {
                     for a in e.attributes().flatten() {
                         if a.key.as_ref() == b"name" {
                             top_name = String::from_utf8_lossy(&a.value).into_owned();
+                        }
+                    }
+                }
+                b"platform" => {
+                    if platform.is_empty() {
+                        for a in e.attributes().flatten() {
+                            let key = a.key.as_ref();
+                            if key == b"name" || key == b"vbnv" || key == b"platformVBNV" {
+                                let value = String::from_utf8_lossy(&a.value).trim().to_owned();
+                                if !value.is_empty() {
+                                    platform = value;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                b"core" => {
+                    for a in e.attributes().flatten() {
+                        if a.key.as_ref() == b"target" {
+                            let target = String::from_utf8_lossy(&a.value).to_ascii_lowercase();
+                            if target.contains("hw_em") || target.contains("hw_emu") {
+                                mode = XclbinMode::HwEmu;
+                            } else if target.contains("csim")
+                                || target.contains("sw_emu")
+                                || target.contains("sw_em")
+                            {
+                                mode = XclbinMode::SwEmu;
+                            }
                         }
                     }
                 }
@@ -67,11 +98,7 @@ pub fn parse_embedded_xml(xml: &str) -> Result<XrtMetadata> {
                         0 => XrtArgKind::Scalar { width: data_width },
                         1 => XrtArgKind::Mmap { data_width },
                         4 => XrtArgKind::Stream { width: data_width },
-                        q => {
-                            return Err(FrtError::MetadataParse(format!(
-                                "unknown qualifier {q}"
-                            )))
-                        }
+                        q => return Err(FrtError::MetadataParse(format!("unknown qualifier {q}"))),
                     };
                     args.push(XrtArg { name, id, kind });
                 }
@@ -93,8 +120,8 @@ pub fn parse_embedded_xml(xml: &str) -> Result<XrtMetadata> {
     Ok(XrtMetadata {
         top_name,
         args,
-        platform: String::new(),
-        mode: XclbinMode::Flat,
+        platform,
+        mode,
     })
 }
 
@@ -136,9 +163,9 @@ pub fn extract_embedded_xml(xclbin: &[u8]) -> Result<String> {
                 .map_err(|_| FrtError::MetadataParse("size decode failed".into()))?,
         ) as usize;
         if kind == EMBEDDED_METADATA_KIND {
-            let bytes = xclbin.get(offset..offset + size).ok_or_else(|| {
-                FrtError::MetadataParse("EMBEDDED_METADATA out of bounds".into())
-            })?;
+            let bytes = xclbin
+                .get(offset..offset + size)
+                .ok_or_else(|| FrtError::MetadataParse("EMBEDDED_METADATA out of bounds".into()))?;
             return String::from_utf8(bytes.to_vec())
                 .map_err(|e| FrtError::MetadataParse(e.to_string()));
         }
@@ -159,10 +186,31 @@ mod tests {
   <arg name="n" addressQualifier="0" id="1" dataWidth="32"/>
 </args></kernel></root>"#;
 
+    const TARGETED_XML: &str = r#"<?xml version="1.0"?>
+<project>
+  <platform name="xilinx_u250_gen3x16_xdma_3_1_202020_1">
+    <device>
+      <core target="hw_em">
+        <kernel name="vadd"><args>
+          <arg name="a" addressQualifier="1" id="0" dataWidth="512" />
+        </args></kernel>
+      </core>
+    </device>
+  </platform>
+</project>"#;
+
     #[test]
     fn parse_kernel_xml_extracts_args() {
         let meta = parse_embedded_xml(KERNEL_XML).expect("parse");
         assert_eq!(meta.top_name, "vadd");
         assert_eq!(meta.args.len(), 2);
+    }
+
+    #[test]
+    fn parse_embedded_xml_extracts_platform_and_mode() {
+        let meta = parse_embedded_xml(TARGETED_XML).expect("parse");
+        assert_eq!(meta.top_name, "vadd");
+        assert_eq!(meta.platform, "xilinx_u250_gen3x16_xdma_3_1_202020_1");
+        assert_eq!(meta.mode, XclbinMode::HwEmu);
     }
 }

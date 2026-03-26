@@ -34,6 +34,7 @@ impl SharedMemoryQueue {
 
     pub fn open(path: &str) -> std::io::Result<Self> {
         let seg = MmapSegment::open(path, 0)?;
+        validate_header(seg.as_slice())?;
         Ok(Self { seg })
     }
 
@@ -124,6 +125,41 @@ impl SharedMemoryQueue {
     }
 }
 
+fn validate_header(bytes: &[u8]) -> std::io::Result<()> {
+    if bytes.len() < std::mem::size_of::<QueueHeader>() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("shared-memory queue file is too small: {}", bytes.len()),
+        ));
+    }
+    let hdr = unsafe { &*(bytes.as_ptr() as *const QueueHeader) };
+    if hdr.magic != *b"tapa" {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!(
+                "unexpected magic '{:?}'; want 'tapa'",
+                std::str::from_utf8(&hdr.magic).unwrap_or("????")
+            ),
+        ));
+    }
+    if hdr.version != 0 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("unexpected version {}; want 0", hdr.version),
+        ));
+    }
+    if hdr.depth == 0 || hdr.width == 0 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!(
+                "unexpected non-positive queue shape depth={} width={}",
+                hdr.depth, hdr.width
+            ),
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -173,5 +209,17 @@ mod tests {
         q.push(b"ab").expect("push");
         assert_eq!(q.peek().expect("peek"), b"ab");
         assert_eq!(q.pop().expect("pop"), b"ab");
+    }
+
+    #[test]
+    fn open_rejects_invalid_header() {
+        let seg = MmapSegment::create("test_q_invalid", 32).expect("create");
+        let path = seg.path().to_owned();
+        std::fs::write(&path, [0u8; 32]).expect("write invalid queue");
+        let path_str = path.to_str().expect("utf8").to_owned();
+        match SharedMemoryQueue::open(&path_str) {
+            Ok(_) => panic!("open should fail"),
+            Err(err) => assert_eq!(err.kind(), std::io::ErrorKind::InvalidData),
+        }
     }
 }

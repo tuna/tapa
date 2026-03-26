@@ -75,7 +75,11 @@ pub extern "C" fn frt_shmq_empty(handle: *const c_void) -> c_int {
         let Ok(q) = h.queue.lock() else {
             return -1;
         };
-        if q.is_empty() { 1 } else { 0 }
+        if q.is_empty() {
+            1
+        } else {
+            0
+        }
     })
     .unwrap_or(-1)
 }
@@ -86,7 +90,11 @@ pub extern "C" fn frt_shmq_full(handle: *const c_void) -> c_int {
         let Ok(q) = h.queue.lock() else {
             return -1;
         };
-        if q.is_full() { 1 } else { 0 }
+        if q.is_full() {
+            1
+        } else {
+            0
+        }
     })
     .unwrap_or(-1)
 }
@@ -104,7 +112,11 @@ pub extern "C" fn frt_shmq_push(handle: *mut c_void, data: *const u8, len: usize
             return -1;
         }
         let slice = unsafe { std::slice::from_raw_parts(data, len) };
-        if q.try_push(slice).is_ok() { 0 } else { -1 }
+        if q.try_push(slice).is_ok() {
+            0
+        } else {
+            -1
+        }
     })
     .unwrap_or(-1)
 }

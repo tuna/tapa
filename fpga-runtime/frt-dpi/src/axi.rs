@@ -33,7 +33,8 @@ pub fn axi_write_impl(ctx: &DpiContext, port: &str, addr: u64, width: u32, data:
         eprintln!("frt-dpi: axi_write: out of bounds on '{port}'");
         return;
     }
-    let slice = unsafe { std::slice::from_raw_parts_mut(seg.as_slice().as_ptr() as *mut u8, seg.len()) };
+    let slice =
+        unsafe { std::slice::from_raw_parts_mut(seg.as_slice().as_ptr() as *mut u8, seg.len()) };
     unsafe { std::ptr::copy_nonoverlapping(data, slice.as_mut_ptr().add(offset), len) }
 }
 

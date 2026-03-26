@@ -1,22 +1,28 @@
 use super::metadata::{extract_embedded_xml, parse_embedded_xml, XrtArgKind, XrtMetadata};
-use crate::device::Device;
+use crate::device::{BufferAccess, Device, RuntimeArgCategory, RuntimeArgInfo};
 use crate::error::{FrtError, Result};
-use opencl3::command_queue::{CommandQueue, CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE, CL_QUEUE_PROFILING_ENABLE};
+use frt_cosim::runner::environ::xilinx_environ;
+use opencl3::command_queue::{
+    CommandQueue, CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE, CL_QUEUE_PROFILING_ENABLE,
+};
 use opencl3::context::Context;
 use opencl3::device::{Device as OclDevice, CL_DEVICE_TYPE_ACCELERATOR, CL_DEVICE_TYPE_ALL};
 use opencl3::event::Event;
-use opencl3::kernel::{ExecuteKernel, Kernel};
+use opencl3::kernel::{set_kernel_arg, ExecuteKernel, Kernel};
 use opencl3::memory::{Buffer, CL_MEM_READ_WRITE, CL_MEM_USE_HOST_PTR};
 use opencl3::platform::get_platforms;
 use opencl3::program::Program;
-use opencl3::types::{cl_event, CL_BLOCKING};
+use opencl3::types::{cl_device_id, cl_event, CL_BLOCKING};
+use std::ffi::CStr;
 use std::collections::HashMap;
 use std::ffi::c_void;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
 struct BufferBinding {
     ptr: *mut u8,
     bytes: usize,
+    access: BufferAccess,
     buffer: Buffer<u8>,
 }
 
@@ -25,7 +31,7 @@ pub struct XrtDevice {
     context: Context,
     queue: CommandQueue,
     kernel: Kernel,
-    scalars: HashMap<u32, u64>,
+    scalars: HashMap<u32, Vec<u8>>,
     buffers: HashMap<u32, BufferBinding>,
     load_events: Vec<Event>,
     compute_events: Vec<Event>,
@@ -33,6 +39,7 @@ pub struct XrtDevice {
     load_ns: u64,
     compute_ns: u64,
     store_ns: u64,
+    finished: bool,
 }
 
 unsafe impl Send for XrtDevice {}
@@ -42,8 +49,10 @@ impl XrtDevice {
         let bytes = std::fs::read(xclbin_path)?;
         let xml = extract_embedded_xml(&bytes)?;
         let meta = parse_embedded_xml(&xml)?;
+        apply_emulation_mode_env(meta.mode);
+        ensure_xrt_emulation_bootstrap(&meta)?;
 
-        let device_id = select_device()?;
+        let device_id = select_device(&meta)?;
         let ocl_device = OclDevice::new(device_id);
         let context = ocl_result(Context::from_device(&ocl_device), "create OpenCL context")?;
         let queue = ocl_result(
@@ -81,17 +90,127 @@ impl XrtDevice {
             load_ns: 0,
             compute_ns: 0,
             store_ns: 0,
+            finished: true,
         })
     }
 }
 
+fn apply_emulation_mode_env(mode: super::metadata::XclbinMode) {
+    if std::env::var_os("XCL_EMULATION_MODE").is_some() {
+        return;
+    }
+    match mode {
+        super::metadata::XclbinMode::HwEmu => {
+            std::env::set_var("XCL_EMULATION_MODE", "hw_emu");
+        }
+        super::metadata::XclbinMode::SwEmu => {
+            std::env::set_var("XCL_EMULATION_MODE", "sw_emu");
+        }
+        super::metadata::XclbinMode::Flat => {}
+    }
+}
+
+fn ensure_xrt_emulation_bootstrap(meta: &XrtMetadata) -> Result<()> {
+    if std::env::var_os("XCL_EMULATION_MODE").is_none() {
+        return Ok(());
+    }
+
+    // Preserve parent environment and overlay Xilinx toolchain settings.
+    for (k, v) in xilinx_environ() {
+        std::env::set_var(k, v);
+    }
+
+    let uid = unsafe { libc::geteuid() };
+    let user = current_username().unwrap_or_else(|| uid.to_string());
+    std::env::set_var("USER", user);
+
+    let tmp_root = std::env::var("TMPDIR").unwrap_or_else(|_| "/tmp".to_owned());
+    let frt_tmp = PathBuf::from(tmp_root).join(format!(".frt.{uid}"));
+    std::fs::create_dir_all(&frt_tmp)?;
+    if std::env::var_os("SDACCEL_EM_RUN_DIR").is_none() {
+        std::env::set_var("SDACCEL_EM_RUN_DIR", &frt_tmp);
+    }
+
+    let emconfig_dir = if let Some(path) = env_non_empty("EMCONFIG_PATH") {
+        PathBuf::from(path)
+    } else {
+        let p = frt_tmp.join(format!("emconfig.{}", meta.platform));
+        std::env::set_var("EMCONFIG_PATH", &p);
+        p
+    };
+
+    if meta.platform.is_empty() || emconfig_ready(&emconfig_dir, &meta.platform) {
+        return Ok(());
+    }
+
+    std::fs::create_dir_all(&emconfig_dir)?;
+    let status = Command::new("emconfigutil")
+        .arg("--platform")
+        .arg(&meta.platform)
+        .arg("--od")
+        .arg(&emconfig_dir)
+        .status()?;
+    if !status.success() {
+        return Err(FrtError::MetadataParse(format!(
+            "emconfigutil failed for platform '{}' with status {status}",
+            meta.platform
+        )));
+    }
+    if !emconfig_ready(&emconfig_dir, &meta.platform) {
+        return Err(FrtError::MetadataParse(format!(
+            "emconfigutil did not produce a valid emconfig.json for '{}'",
+            meta.platform
+        )));
+    }
+    Ok(())
+}
+
+fn emconfig_ready(dir: &Path, platform: &str) -> bool {
+    let path = dir.join("emconfig.json");
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return false;
+    };
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return false;
+    };
+    let Some(boards) = v
+        .get("Platform")
+        .and_then(|x| x.get("Boards"))
+        .and_then(|x| x.as_array())
+    else {
+        return false;
+    };
+    for board in boards {
+        let Some(devices) = board.get("Devices").and_then(|x| x.as_array()) else {
+            continue;
+        };
+        for dev in devices {
+            if dev
+                .get("Name")
+                .and_then(|x| x.as_str())
+                .map(|name| name == platform)
+                .unwrap_or(false)
+            {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 impl Device for XrtDevice {
-    fn set_scalar_arg(&mut self, index: u32, value: u64) -> Result<()> {
-        self.scalars.insert(index, value);
+    fn set_scalar_arg(&mut self, index: u32, value: &[u8]) -> Result<()> {
+        self.scalars.insert(index, value.to_vec());
         Ok(())
     }
 
-    fn set_buffer_arg(&mut self, index: u32, ptr: *mut u8, bytes: usize) -> Result<()> {
+    fn set_buffer_arg(
+        &mut self,
+        index: u32,
+        ptr: *mut u8,
+        bytes: usize,
+        access: BufferAccess,
+    ) -> Result<()> {
         if ptr.is_null() && bytes != 0 {
             return Err(FrtError::MetadataParse(format!(
                 "null host pointer for non-empty buffer arg {index}"
@@ -108,7 +227,15 @@ impl Device for XrtDevice {
                 "create OpenCL buffer",
             )?
         };
-        self.buffers.insert(index, BufferBinding { ptr, bytes, buffer });
+        self.buffers.insert(
+            index,
+            BufferBinding {
+                ptr,
+                bytes,
+                access,
+                buffer,
+            },
+        );
         Ok(())
     }
 
@@ -128,14 +255,30 @@ impl Device for XrtDevice {
         )))
     }
 
+    fn suspend_buffer(&mut self, index: u32) -> usize {
+        if self.buffers.remove(&index).is_some() {
+            1
+        } else {
+            0
+        }
+    }
+
     fn write_to_device(&mut self) -> Result<()> {
         self.load_events.clear();
         for binding in self.buffers.values_mut() {
+            if !binding.access.loads_from_host() {
+                continue;
+            }
             let host_slice = unsafe { std::slice::from_raw_parts(binding.ptr, binding.bytes) };
             let event = unsafe {
                 ocl_result(
-                    self.queue
-                        .enqueue_write_buffer(&mut binding.buffer, CL_BLOCKING, 0, host_slice, &[]),
+                    self.queue.enqueue_write_buffer(
+                        &mut binding.buffer,
+                        CL_BLOCKING,
+                        0,
+                        host_slice,
+                        &[],
+                    ),
                     "enqueue OpenCL write buffer",
                 )?
             };
@@ -149,11 +292,19 @@ impl Device for XrtDevice {
         self.store_events.clear();
         let waits: Vec<cl_event> = self.compute_events.iter().map(Event::get).collect();
         for binding in self.buffers.values() {
+            if !binding.access.stores_to_host() {
+                continue;
+            }
             let host_slice = unsafe { std::slice::from_raw_parts_mut(binding.ptr, binding.bytes) };
             let event = unsafe {
                 ocl_result(
-                    self.queue
-                        .enqueue_read_buffer(&binding.buffer, CL_BLOCKING, 0, host_slice, &waits),
+                    self.queue.enqueue_read_buffer(
+                        &binding.buffer,
+                        CL_BLOCKING,
+                        0,
+                        host_slice,
+                        &waits,
+                    ),
                     "enqueue OpenCL read buffer",
                 )?
             };
@@ -164,6 +315,7 @@ impl Device for XrtDevice {
     }
 
     fn exec(&mut self) -> Result<()> {
+        self.finished = false;
         self.compute_events.clear();
 
         let mut args = self._meta.args.clone();
@@ -173,18 +325,29 @@ impl Device for XrtDevice {
         for arg in &args {
             match arg.kind {
                 XrtArgKind::Scalar { width } => {
-                    let v = self.scalars.get(&arg.id).copied().unwrap_or(0);
+                    let raw = normalized_scalar_bytes(
+                        width,
+                        self.scalars.get(&arg.id).map(|bytes| bytes.as_slice()),
+                    );
                     unsafe {
-                        if width <= 32 {
-                            exec.set_arg(&(v as u32));
-                        } else {
-                            exec.set_arg(&v);
-                        }
+                        set_kernel_arg(
+                            self.kernel.get(),
+                            arg.id,
+                            raw.len(),
+                            raw.as_ptr() as *const c_void,
+                        )
+                        .map_err(|code| FrtError::OpenCl {
+                            code,
+                            msg: format!("set OpenCL scalar kernel arg: error code {code}"),
+                        })?;
                     };
                 }
                 XrtArgKind::Mmap { .. } => {
                     let binding = self.buffers.get(&arg.id).ok_or_else(|| {
-                        FrtError::MetadataParse(format!("missing mmap arg binding for id {}", arg.id))
+                        FrtError::MetadataParse(format!(
+                            "missing mmap arg binding for id {}",
+                            arg.id
+                        ))
                     })?;
                     unsafe {
                         exec.set_arg(&binding.buffer);
@@ -214,7 +377,59 @@ impl Device for XrtDevice {
 
     fn finish(&mut self) -> Result<()> {
         ocl_result(self.queue.finish(), "finish OpenCL queue")?;
+        self.finished = true;
         Ok(())
+    }
+
+    fn kill(&mut self) -> Result<()> {
+        // OpenCL kernels do not support forced cancellation in this runtime.
+        self.finished = true;
+        Ok(())
+    }
+
+    fn is_finished(&mut self) -> Result<bool> {
+        if self.finished {
+            return Ok(true);
+        }
+        if self.compute_events.is_empty() {
+            return Ok(true);
+        }
+        let mut all_done = true;
+        for evt in &self.compute_events {
+            let status = ocl_result(
+                evt.command_execution_status(),
+                "query OpenCL event execution status",
+            )?;
+            if status.0 > 0 {
+                all_done = false;
+                break;
+            }
+        }
+        if all_done {
+            self.finished = true;
+        }
+        Ok(all_done)
+    }
+
+    fn args_info(&self) -> Vec<RuntimeArgInfo> {
+        let mut args = Vec::with_capacity(self._meta.args.len());
+        for arg in &self._meta.args {
+            let (type_name, category) = match arg.kind {
+                XrtArgKind::Scalar { width } => {
+                    (scalar_type_name(width), RuntimeArgCategory::Scalar)
+                }
+                XrtArgKind::Mmap { .. } => ("mmap".to_owned(), RuntimeArgCategory::Mmap),
+                XrtArgKind::Stream { .. } => ("stream".to_owned(), RuntimeArgCategory::Stream),
+            };
+            args.push(RuntimeArgInfo {
+                index: arg.id,
+                name: arg.name.clone(),
+                type_name,
+                category,
+            });
+        }
+        args.sort_by_key(|a| a.index);
+        args
     }
 
     fn load_ns(&self) -> u64 {
@@ -230,7 +445,8 @@ impl Device for XrtDevice {
     }
 }
 
-fn select_device() -> Result<opencl3::types::cl_device_id> {
+fn select_device(meta: &XrtMetadata) -> Result<cl_device_id> {
+    let requested_bdf = env_non_empty("FRT_XOCL_BDF").or_else(|| env_non_empty("XOCL_BDF"));
     let platforms = ocl_result(get_platforms(), "enumerate OpenCL platforms")?;
     for p in &platforms {
         let vendor = ocl_result(p.vendor(), "query OpenCL platform vendor")?;
@@ -241,19 +457,182 @@ fn select_device() -> Result<opencl3::types::cl_device_id> {
             p.get_devices(CL_DEVICE_TYPE_ACCELERATOR),
             "enumerate Xilinx OpenCL accelerator devices",
         )?;
-        if let Some(id) = devices.first().copied() {
+        if let Some(id) = pick_device(&devices, meta, requested_bdf.as_deref())? {
             return Ok(id);
         }
     }
     for p in &platforms {
-        let devices = ocl_result(p.get_devices(CL_DEVICE_TYPE_ALL), "enumerate OpenCL devices")?;
-        if let Some(id) = devices.first().copied() {
+        let devices = ocl_result(
+            p.get_devices(CL_DEVICE_TYPE_ALL),
+            "enumerate OpenCL devices",
+        )?;
+        if let Some(id) = pick_device(&devices, meta, requested_bdf.as_deref())? {
             return Ok(id);
         }
+    }
+    if let Some(bdf) = requested_bdf {
+        return Err(FrtError::MetadataParse(format!(
+            "no OpenCL device matching requested XOCL BDF '{bdf}'"
+        )));
     }
     Err(FrtError::MetadataParse(
         "no OpenCL device available for XRT runtime".into(),
     ))
+}
+
+fn pick_device(
+    devices: &[cl_device_id],
+    meta: &XrtMetadata,
+    requested_bdf: Option<&str>,
+) -> Result<Option<cl_device_id>> {
+    for id in devices {
+        let dev = OclDevice::new(*id);
+        if let Some(bdf) = requested_bdf {
+            let got = device_bdf(*id);
+            if got.as_deref() != Some(bdf) {
+                continue;
+            }
+        }
+        if !meta.platform.is_empty() {
+            let name = ocl_result(dev.name(), "query OpenCL device name")?;
+            if !platform_name_matches(&name, &meta.platform) {
+                continue;
+            }
+        }
+        return Ok(Some(*id));
+    }
+    Ok(None)
+}
+
+fn platform_name_matches(device_name: &str, target_platform: &str) -> bool {
+    if device_name == target_platform {
+        return true;
+    }
+    let target: Vec<&str> = target_platform.split('_').collect();
+    let device: Vec<&str> = device_name.split('_').collect();
+    if target.len() < 5 || device.len() < 6 {
+        return false;
+    }
+    for i in 0..4 {
+        if target[i] != device[i] {
+            return false;
+        }
+    }
+    target[4].starts_with(device[5])
+}
+
+fn env_non_empty(name: &str) -> Option<String> {
+    std::env::var(name).ok().and_then(|v| {
+        let trimmed = v.trim().to_owned();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed)
+        }
+    })
+}
+
+fn current_username() -> Option<String> {
+    #[cfg(unix)]
+    unsafe {
+        let uid = libc::geteuid();
+        let mut pwd = std::mem::MaybeUninit::<libc::passwd>::zeroed();
+        let mut result: *mut libc::passwd = std::ptr::null_mut();
+        let mut buf = vec![0u8; 1024];
+
+        loop {
+            let rc = libc::getpwuid_r(
+                uid,
+                pwd.as_mut_ptr(),
+                buf.as_mut_ptr() as *mut libc::c_char,
+                buf.len(),
+                &mut result,
+            );
+            if rc == 0 {
+                if result.is_null() {
+                    break;
+                }
+                let pwd = pwd.assume_init();
+                if pwd.pw_name.is_null() {
+                    break;
+                }
+                let name = CStr::from_ptr(pwd.pw_name);
+                return name.to_str().ok().map(|s| s.to_owned());
+            }
+            if rc == libc::ERANGE {
+                buf.resize(buf.len().saturating_mul(2).max(1024), 0);
+                continue;
+            }
+            break;
+        }
+    }
+
+    if let Some(user) = env_non_empty("USER") {
+        return Some(user);
+    }
+
+    None
+}
+
+fn normalized_scalar_bytes(width_bits: u32, raw: Option<&[u8]>) -> Vec<u8> {
+    let expected = (width_bits as usize).div_ceil(8).max(1);
+    let mut out = raw.map(|x| x.to_vec()).unwrap_or_default();
+    if out.len() < expected {
+        out.resize(expected, 0);
+    } else if out.len() > expected {
+        out.truncate(expected);
+    }
+    out
+}
+
+fn scalar_type_name(width_bits: u32) -> String {
+    match width_bits {
+        0..=32 => "uint32_t".to_owned(),
+        33..=64 => "uint64_t".to_owned(),
+        _ => format!("uint{width_bits}_t"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{normalized_scalar_bytes, scalar_type_name};
+
+    #[test]
+    fn scalar_bytes_are_padded_and_truncated_to_metadata_width() {
+        assert_eq!(
+            normalized_scalar_bytes(16, Some(&[0x12])),
+            vec![0x12, 0x00]
+        );
+        assert_eq!(
+            normalized_scalar_bytes(16, Some(&[0x12, 0x34, 0x56])),
+            vec![0x12, 0x34]
+        );
+        assert_eq!(
+            normalized_scalar_bytes(128, Some(&[1, 2, 3, 4])),
+            vec![1, 2, 3, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        );
+    }
+
+    #[test]
+    fn scalar_type_names_expand_beyond_u64() {
+        assert_eq!(scalar_type_name(1), "uint32_t");
+        assert_eq!(scalar_type_name(64), "uint64_t");
+        assert_eq!(scalar_type_name(128), "uint128_t");
+    }
+}
+
+fn device_bdf(id: cl_device_id) -> Option<String> {
+    // Xilinx extension used by legacy C++ runtime (`CL_DEVICE_PCIE_BDF`).
+    const CL_DEVICE_PCIE_BDF: u32 = 0x4038;
+    let bytes = OclDevice::new(id).get_data(CL_DEVICE_PCIE_BDF as _).ok()?;
+    let end = bytes.iter().position(|b| *b == 0).unwrap_or(bytes.len());
+    let text = String::from_utf8(bytes[..end].to_vec()).ok()?;
+    let bdf = text.trim().to_owned();
+    if bdf.is_empty() {
+        None
+    } else {
+        Some(bdf)
+    }
 }
 
 fn ocl_result<T>(res: opencl3::Result<T>, ctx: &str) -> Result<T> {

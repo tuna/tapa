@@ -131,12 +131,19 @@ fn open_cosim_verilator_zip_mmap_stream_roundtrip() {
 
     let mut mmap_word = [10u32];
     instance
-        .set_buffer_arg_raw(0, mmap_word.as_mut_ptr() as *mut u8, std::mem::size_of_val(&mmap_word))
+        .set_buffer_arg_raw(
+            0,
+            mmap_word.as_mut_ptr() as *mut u8,
+            std::mem::size_of_val(&mmap_word),
+        )
         .expect("set mmap arg");
 
     let stream_name = format!("manual_stream_{}_{}", std::process::id(), mmap_word[0]);
-    let mut stream_q = SharedMemoryQueue::create(&stream_name, 16, 4).expect("create stream shm queue");
-    stream_q.push(&7u32.to_le_bytes()).expect("push stream word");
+    let mut stream_q =
+        SharedMemoryQueue::create(&stream_name, 16, 4).expect("create stream shm queue");
+    stream_q
+        .push(&7u32.to_le_bytes())
+        .expect("push stream word");
     let stream_path = stream_q.path().to_string_lossy().to_string();
     instance
         .set_stream_arg_raw(1, &stream_path)
@@ -164,13 +171,20 @@ fn open_cosim_verilator_xo_mmap_axis_roundtrip() {
 
     let mut mmap_word = [10u32];
     instance
-        .set_buffer_arg_raw(0, mmap_word.as_mut_ptr() as *mut u8, std::mem::size_of_val(&mmap_word))
+        .set_buffer_arg_raw(
+            0,
+            mmap_word.as_mut_ptr() as *mut u8,
+            std::mem::size_of_val(&mmap_word),
+        )
         .expect("set mmap arg");
     instance.set_scalar_arg(2, 2).expect("set scalar arg");
 
     let stream_name = format!("manual_axis_{}_{}", std::process::id(), mmap_word[0]);
-    let mut stream_q = SharedMemoryQueue::create(&stream_name, 16, 4).expect("create stream shm queue");
-    stream_q.push(&7u32.to_le_bytes()).expect("push stream word");
+    let mut stream_q =
+        SharedMemoryQueue::create(&stream_name, 16, 4).expect("create stream shm queue");
+    stream_q
+        .push(&7u32.to_le_bytes())
+        .expect("push stream word");
     let stream_path = stream_q.path().to_string_lossy().to_string();
     instance
         .set_stream_arg_raw(1, &stream_path)

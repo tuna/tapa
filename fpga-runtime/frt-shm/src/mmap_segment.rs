@@ -28,7 +28,10 @@ impl MmapSegment {
 
     pub fn open(path: &str, _size_bytes: usize) -> std::io::Result<Self> {
         let path = PathBuf::from(path);
-        let file = std::fs::OpenOptions::new().read(true).write(true).open(&path)?;
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&path)?;
         let mmap = unsafe { MmapMut::map_mut(&file)? };
         Ok(Self {
             path,
