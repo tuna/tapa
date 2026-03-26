@@ -62,141 +62,141 @@ endtask
 {% endif %}
 
 {% for arg in mmap_args %}
-wire [63:0] m_axi_{{ arg.name }}_ARADDR;
-wire [1:0] m_axi_{{ arg.name }}_ARBURST;
-wire [3:0] m_axi_{{ arg.name }}_ARCACHE;
-wire [0:0] m_axi_{{ arg.name }}_ARID;
-wire [7:0] m_axi_{{ arg.name }}_ARLEN;
-wire [1:0] m_axi_{{ arg.name }}_ARLOCK;
-wire [2:0] m_axi_{{ arg.name }}_ARPROT;
-wire [3:0] m_axi_{{ arg.name }}_ARQOS;
-reg  m_axi_{{ arg.name }}_ARREADY = 0;
-wire [2:0] m_axi_{{ arg.name }}_ARSIZE;
-wire m_axi_{{ arg.name }}_ARVALID;
+wire [63:0] m_axi_{{ arg.ident }}_ARADDR;
+wire [1:0] m_axi_{{ arg.ident }}_ARBURST;
+wire [3:0] m_axi_{{ arg.ident }}_ARCACHE;
+wire [0:0] m_axi_{{ arg.ident }}_ARID;
+wire [7:0] m_axi_{{ arg.ident }}_ARLEN;
+wire [1:0] m_axi_{{ arg.ident }}_ARLOCK;
+wire [2:0] m_axi_{{ arg.ident }}_ARPROT;
+wire [3:0] m_axi_{{ arg.ident }}_ARQOS;
+reg  m_axi_{{ arg.ident }}_ARREADY = 0;
+wire [2:0] m_axi_{{ arg.ident }}_ARSIZE;
+wire m_axi_{{ arg.ident }}_ARVALID;
 
-wire [63:0] m_axi_{{ arg.name }}_AWADDR;
-wire [1:0] m_axi_{{ arg.name }}_AWBURST;
-wire [3:0] m_axi_{{ arg.name }}_AWCACHE;
-wire [0:0] m_axi_{{ arg.name }}_AWID;
-wire [7:0] m_axi_{{ arg.name }}_AWLEN;
-wire [1:0] m_axi_{{ arg.name }}_AWLOCK;
-wire [2:0] m_axi_{{ arg.name }}_AWPROT;
-wire [3:0] m_axi_{{ arg.name }}_AWQOS;
-reg  m_axi_{{ arg.name }}_AWREADY = 1;
-wire [2:0] m_axi_{{ arg.name }}_AWSIZE;
-wire m_axi_{{ arg.name }}_AWVALID;
+wire [63:0] m_axi_{{ arg.ident }}_AWADDR;
+wire [1:0] m_axi_{{ arg.ident }}_AWBURST;
+wire [3:0] m_axi_{{ arg.ident }}_AWCACHE;
+wire [0:0] m_axi_{{ arg.ident }}_AWID;
+wire [7:0] m_axi_{{ arg.ident }}_AWLEN;
+wire [1:0] m_axi_{{ arg.ident }}_AWLOCK;
+wire [2:0] m_axi_{{ arg.ident }}_AWPROT;
+wire [3:0] m_axi_{{ arg.ident }}_AWQOS;
+reg  m_axi_{{ arg.ident }}_AWREADY = 1;
+wire [2:0] m_axi_{{ arg.ident }}_AWSIZE;
+wire m_axi_{{ arg.ident }}_AWVALID;
 
-reg [{{ arg.data_width_bytes * 8 - 1 }}:0] m_axi_{{ arg.name }}_RDATA = 0;
-reg [0:0] m_axi_{{ arg.name }}_RID = 0;
-reg m_axi_{{ arg.name }}_RLAST = 0;
-wire m_axi_{{ arg.name }}_RREADY;
-reg [1:0] m_axi_{{ arg.name }}_RRESP = 0;
-reg m_axi_{{ arg.name }}_RVALID = 0;
+reg [{{ arg.data_width_bytes * 8 - 1 }}:0] m_axi_{{ arg.ident }}_RDATA = 0;
+reg [0:0] m_axi_{{ arg.ident }}_RID = 0;
+reg m_axi_{{ arg.ident }}_RLAST = 0;
+wire m_axi_{{ arg.ident }}_RREADY;
+reg [1:0] m_axi_{{ arg.ident }}_RRESP = 0;
+reg m_axi_{{ arg.ident }}_RVALID = 0;
 
-wire [{{ arg.data_width_bytes * 8 - 1 }}:0] m_axi_{{ arg.name }}_WDATA;
-wire m_axi_{{ arg.name }}_WLAST;
-reg  m_axi_{{ arg.name }}_WREADY = 1;
-wire [{{ arg.data_width_bytes - 1 }}:0] m_axi_{{ arg.name }}_WSTRB;
-wire m_axi_{{ arg.name }}_WVALID;
+wire [{{ arg.data_width_bytes * 8 - 1 }}:0] m_axi_{{ arg.ident }}_WDATA;
+wire m_axi_{{ arg.ident }}_WLAST;
+reg  m_axi_{{ arg.ident }}_WREADY = 1;
+wire [{{ arg.data_width_bytes - 1 }}:0] m_axi_{{ arg.ident }}_WSTRB;
+wire m_axi_{{ arg.ident }}_WVALID;
 
-reg [0:0] m_axi_{{ arg.name }}_BID = 0;
-wire m_axi_{{ arg.name }}_BREADY;
-reg [1:0] m_axi_{{ arg.name }}_BRESP = 0;
-reg m_axi_{{ arg.name }}_BVALID = 0;
+reg [0:0] m_axi_{{ arg.ident }}_BID = 0;
+wire m_axi_{{ arg.ident }}_BREADY;
+reg [1:0] m_axi_{{ arg.ident }}_BRESP = 0;
+reg m_axi_{{ arg.ident }}_BVALID = 0;
 
-byte unsigned axi_{{ arg.name }}_bytes[0:{{ arg.data_width_bytes - 1 }}];
-reg axi_{{ arg.name }}_rd_busy = 0;
-reg [63:0] axi_{{ arg.name }}_rd_addr = 0;
-reg [7:0] axi_{{ arg.name }}_rd_len = 0;
-reg [7:0] axi_{{ arg.name }}_rd_beat = 0;
-reg [0:0] axi_{{ arg.name }}_rd_id = 0;
+byte unsigned axi_{{ arg.ident }}_bytes[0:{{ arg.data_width_bytes - 1 }}];
+reg axi_{{ arg.ident }}_rd_busy = 0;
+reg [63:0] axi_{{ arg.ident }}_rd_addr = 0;
+reg [7:0] axi_{{ arg.ident }}_rd_len = 0;
+reg [7:0] axi_{{ arg.ident }}_rd_beat = 0;
+reg [0:0] axi_{{ arg.ident }}_rd_id = 0;
 
-reg axi_{{ arg.name }}_wr_aw_got = 0;
-reg axi_{{ arg.name }}_wr_b_pending = 0;
-reg [63:0] axi_{{ arg.name }}_wr_addr = 0;
-reg [7:0] axi_{{ arg.name }}_wr_beat = 0;
-reg [0:0] axi_{{ arg.name }}_wr_id = 0;
+reg axi_{{ arg.ident }}_wr_aw_got = 0;
+reg axi_{{ arg.ident }}_wr_b_pending = 0;
+reg [63:0] axi_{{ arg.ident }}_wr_addr = 0;
+reg [7:0] axi_{{ arg.ident }}_wr_beat = 0;
+reg [0:0] axi_{{ arg.ident }}_wr_id = 0;
 {% endfor %}
 
 {% for arg in stream_args %}
-reg [{{ arg.width_bytes * 8 - 1 }}:0] stream_in_data_{{ arg.name }} = 0;
-reg stream_in_have_{{ arg.name }} = 0;
-byte unsigned stream_in_bytes_{{ arg.name }}[0:{{ arg.width_bytes - 1 }}];
+reg [{{ arg.width_bytes * 8 - 1 }}:0] stream_in_data_{{ arg.ident }} = 0;
+reg stream_in_have_{{ arg.ident }} = 0;
+byte unsigned stream_in_bytes_{{ arg.ident }}[0:{{ arg.width_bytes - 1 }}];
 {% if mode == "hls" %}
-wire stream_read_{{ arg.name }};
+wire stream_read_{{ arg.ident }};
 {% else %}
-wire stream_ready_{{ arg.name }};
+wire stream_ready_{{ arg.ident }};
 {% endif %}
 {% endfor %}
 {% for arg in stream_out_args %}
-byte unsigned stream_out_bytes_{{ arg.name }}[0:{{ arg.width_bytes - 1 }}];
-wire [{{ arg.width_bytes * 8 - 1 }}:0] stream_out_data_{{ arg.name }};
+byte unsigned stream_out_bytes_{{ arg.ident }}[0:{{ arg.width_bytes - 1 }}];
+wire [{{ arg.width_bytes * 8 - 1 }}:0] stream_out_data_{{ arg.ident }};
 {% if mode == "hls" %}
-wire stream_out_write_{{ arg.name }};
-reg stream_out_full_n_{{ arg.name }} = 1'b1;
+wire stream_out_write_{{ arg.ident }};
+reg stream_out_full_n_{{ arg.ident }} = 1'b1;
 {% else %}
-wire stream_out_valid_{{ arg.name }};
-reg stream_out_ready_{{ arg.name }} = 1'b1;
+wire stream_out_valid_{{ arg.ident }};
+reg stream_out_ready_{{ arg.ident }} = 1'b1;
 {% endif %}
 {% endfor %}
 
 {{ top_name }} dut (
 {% for arg in mmap_args %}
 {% if mode == "hls" %}
-  .{{ arg.name }}_offset(64'h{{ "{:016x}"|format(arg.base_addr) }}),
+  .{{ arg.offset_name }}(64'h{{ "{:016x}"|format(arg.base_addr) }}),
 {% endif %}
-  .m_axi_{{ arg.name }}_ARADDR(m_axi_{{ arg.name }}_ARADDR),
-  .m_axi_{{ arg.name }}_ARBURST(m_axi_{{ arg.name }}_ARBURST),
-  .m_axi_{{ arg.name }}_ARCACHE(m_axi_{{ arg.name }}_ARCACHE),
-  .m_axi_{{ arg.name }}_ARID(m_axi_{{ arg.name }}_ARID),
-  .m_axi_{{ arg.name }}_ARLEN(m_axi_{{ arg.name }}_ARLEN),
-  .m_axi_{{ arg.name }}_ARLOCK(m_axi_{{ arg.name }}_ARLOCK),
-  .m_axi_{{ arg.name }}_ARPROT(m_axi_{{ arg.name }}_ARPROT),
-  .m_axi_{{ arg.name }}_ARQOS(m_axi_{{ arg.name }}_ARQOS),
-  .m_axi_{{ arg.name }}_ARREADY(m_axi_{{ arg.name }}_ARREADY),
-  .m_axi_{{ arg.name }}_ARSIZE(m_axi_{{ arg.name }}_ARSIZE),
-  .m_axi_{{ arg.name }}_ARVALID(m_axi_{{ arg.name }}_ARVALID),
-  .m_axi_{{ arg.name }}_AWADDR(m_axi_{{ arg.name }}_AWADDR),
-  .m_axi_{{ arg.name }}_AWBURST(m_axi_{{ arg.name }}_AWBURST),
-  .m_axi_{{ arg.name }}_AWCACHE(m_axi_{{ arg.name }}_AWCACHE),
-  .m_axi_{{ arg.name }}_AWID(m_axi_{{ arg.name }}_AWID),
-  .m_axi_{{ arg.name }}_AWLEN(m_axi_{{ arg.name }}_AWLEN),
-  .m_axi_{{ arg.name }}_AWLOCK(m_axi_{{ arg.name }}_AWLOCK),
-  .m_axi_{{ arg.name }}_AWPROT(m_axi_{{ arg.name }}_AWPROT),
-  .m_axi_{{ arg.name }}_AWQOS(m_axi_{{ arg.name }}_AWQOS),
-  .m_axi_{{ arg.name }}_AWREADY(m_axi_{{ arg.name }}_AWREADY),
-  .m_axi_{{ arg.name }}_AWSIZE(m_axi_{{ arg.name }}_AWSIZE),
-  .m_axi_{{ arg.name }}_AWVALID(m_axi_{{ arg.name }}_AWVALID),
-  .m_axi_{{ arg.name }}_BID(m_axi_{{ arg.name }}_BID),
-  .m_axi_{{ arg.name }}_BREADY(m_axi_{{ arg.name }}_BREADY),
-  .m_axi_{{ arg.name }}_BRESP(m_axi_{{ arg.name }}_BRESP),
-  .m_axi_{{ arg.name }}_BVALID(m_axi_{{ arg.name }}_BVALID),
-  .m_axi_{{ arg.name }}_RDATA(m_axi_{{ arg.name }}_RDATA),
-  .m_axi_{{ arg.name }}_RID(m_axi_{{ arg.name }}_RID),
-  .m_axi_{{ arg.name }}_RLAST(m_axi_{{ arg.name }}_RLAST),
-  .m_axi_{{ arg.name }}_RREADY(m_axi_{{ arg.name }}_RREADY),
-  .m_axi_{{ arg.name }}_RRESP(m_axi_{{ arg.name }}_RRESP),
-  .m_axi_{{ arg.name }}_RVALID(m_axi_{{ arg.name }}_RVALID),
-  .m_axi_{{ arg.name }}_WDATA(m_axi_{{ arg.name }}_WDATA),
-  .m_axi_{{ arg.name }}_WLAST(m_axi_{{ arg.name }}_WLAST),
-  .m_axi_{{ arg.name }}_WREADY(m_axi_{{ arg.name }}_WREADY),
-  .m_axi_{{ arg.name }}_WSTRB(m_axi_{{ arg.name }}_WSTRB),
-  .m_axi_{{ arg.name }}_WVALID(m_axi_{{ arg.name }}_WVALID),
+  .{{ arg.araddr }}(m_axi_{{ arg.ident }}_ARADDR),
+  .{{ arg.arburst }}(m_axi_{{ arg.ident }}_ARBURST),
+  .{{ arg.arcache }}(m_axi_{{ arg.ident }}_ARCACHE),
+  .{{ arg.arid }}(m_axi_{{ arg.ident }}_ARID),
+  .{{ arg.arlen }}(m_axi_{{ arg.ident }}_ARLEN),
+  .{{ arg.arlock }}(m_axi_{{ arg.ident }}_ARLOCK),
+  .{{ arg.arprot }}(m_axi_{{ arg.ident }}_ARPROT),
+  .{{ arg.arqos }}(m_axi_{{ arg.ident }}_ARQOS),
+  .{{ arg.arready }}(m_axi_{{ arg.ident }}_ARREADY),
+  .{{ arg.arsize }}(m_axi_{{ arg.ident }}_ARSIZE),
+  .{{ arg.arvalid }}(m_axi_{{ arg.ident }}_ARVALID),
+  .{{ arg.awaddr }}(m_axi_{{ arg.ident }}_AWADDR),
+  .{{ arg.awburst }}(m_axi_{{ arg.ident }}_AWBURST),
+  .{{ arg.awcache }}(m_axi_{{ arg.ident }}_AWCACHE),
+  .{{ arg.awid }}(m_axi_{{ arg.ident }}_AWID),
+  .{{ arg.awlen }}(m_axi_{{ arg.ident }}_AWLEN),
+  .{{ arg.awlock }}(m_axi_{{ arg.ident }}_AWLOCK),
+  .{{ arg.awprot }}(m_axi_{{ arg.ident }}_AWPROT),
+  .{{ arg.awqos }}(m_axi_{{ arg.ident }}_AWQOS),
+  .{{ arg.awready }}(m_axi_{{ arg.ident }}_AWREADY),
+  .{{ arg.awsize }}(m_axi_{{ arg.ident }}_AWSIZE),
+  .{{ arg.awvalid }}(m_axi_{{ arg.ident }}_AWVALID),
+  .{{ arg.bid }}(m_axi_{{ arg.ident }}_BID),
+  .{{ arg.bready }}(m_axi_{{ arg.ident }}_BREADY),
+  .{{ arg.bresp }}(m_axi_{{ arg.ident }}_BRESP),
+  .{{ arg.bvalid }}(m_axi_{{ arg.ident }}_BVALID),
+  .{{ arg.rdata }}(m_axi_{{ arg.ident }}_RDATA),
+  .{{ arg.rid }}(m_axi_{{ arg.ident }}_RID),
+  .{{ arg.rlast }}(m_axi_{{ arg.ident }}_RLAST),
+  .{{ arg.rready }}(m_axi_{{ arg.ident }}_RREADY),
+  .{{ arg.rresp }}(m_axi_{{ arg.ident }}_RRESP),
+  .{{ arg.rvalid }}(m_axi_{{ arg.ident }}_RVALID),
+  .{{ arg.wdata }}(m_axi_{{ arg.ident }}_WDATA),
+  .{{ arg.wlast }}(m_axi_{{ arg.ident }}_WLAST),
+  .{{ arg.wready }}(m_axi_{{ arg.ident }}_WREADY),
+  .{{ arg.wstrb }}(m_axi_{{ arg.ident }}_WSTRB),
+  .{{ arg.wvalid }}(m_axi_{{ arg.ident }}_WVALID),
 {% endfor %}
 {% if mode == "hls" %}
 {% for arg in stream_args %}
-  .{{ arg.name }}_dout(stream_in_data_{{ arg.name }}),
-  .{{ arg.name }}_empty_n(stream_in_have_{{ arg.name }}),
-  .{{ arg.name }}_read(stream_read_{{ arg.name }}),
+  .{{ arg.dout }}(stream_in_data_{{ arg.ident }}),
+  .{{ arg.empty_n }}(stream_in_have_{{ arg.ident }}),
+  .{{ arg.read }}(stream_read_{{ arg.ident }}),
 {% if arg.has_peek %}
-  .{{ arg.peek_name }}_dout(stream_in_data_{{ arg.name }}),
-  .{{ arg.peek_name }}_empty_n(stream_in_have_{{ arg.name }}),
+  .{{ arg.peek_dout }}(stream_in_data_{{ arg.ident }}),
+  .{{ arg.peek_empty_n }}(stream_in_have_{{ arg.ident }}),
 {% endif %}
 {% endfor %}
 {% for arg in stream_out_args %}
-  .{{ arg.name }}_din(stream_out_data_{{ arg.name }}),
-  .{{ arg.name }}_full_n(stream_out_full_n_{{ arg.name }}),
-  .{{ arg.name }}_write(stream_out_write_{{ arg.name }}),
+  .{{ arg.din }}(stream_out_data_{{ arg.ident }}),
+  .{{ arg.full_n }}(stream_out_full_n_{{ arg.ident }}),
+  .{{ arg.write }}(stream_out_write_{{ arg.ident }}),
 {% endfor %}
 {% for arg in scalar_args %}
   .{{ arg.name }}({{ arg.value_expr }}),
@@ -209,16 +209,16 @@ reg stream_out_ready_{{ arg.name }} = 1'b1;
   .ap_idle(ap_idle)
 {% else %}
 {% for arg in stream_args %}
-  .{{ arg.name }}_TDATA(stream_in_data_{{ arg.name }}),
-  .{{ arg.name }}_TVALID(stream_in_have_{{ arg.name }}),
-  .{{ arg.name }}_TREADY(stream_ready_{{ arg.name }}),
-  .{{ arg.name }}_TLAST(),
+  .{{ arg.tdata }}(stream_in_data_{{ arg.ident }}),
+  .{{ arg.tvalid }}(stream_in_have_{{ arg.ident }}),
+  .{{ arg.tready }}(stream_ready_{{ arg.ident }}),
+  .{{ arg.tlast }}(),
 {% endfor %}
 {% for arg in stream_out_args %}
-  .{{ arg.name }}_TDATA(stream_out_data_{{ arg.name }}),
-  .{{ arg.name }}_TVALID(stream_out_valid_{{ arg.name }}),
-  .{{ arg.name }}_TREADY(stream_out_ready_{{ arg.name }}),
-  .{{ arg.name }}_TLAST(),
+  .{{ arg.tdata }}(stream_out_data_{{ arg.ident }}),
+  .{{ arg.tvalid }}(stream_out_valid_{{ arg.ident }}),
+  .{{ arg.tready }}(stream_out_ready_{{ arg.ident }}),
+  .{{ arg.tlast }}(),
 {% endfor %}
   .s_axi_control_AWVALID(s_axi_control_AWVALID),
   .s_axi_control_AWREADY(s_axi_control_AWREADY),
@@ -270,103 +270,103 @@ end
 
 always @(posedge ap_clk) begin
 {% for arg in mmap_args %}
-  m_axi_{{ arg.name }}_ARREADY <= ~axi_{{ arg.name }}_rd_busy;
-  if (m_axi_{{ arg.name }}_ARVALID && m_axi_{{ arg.name }}_ARREADY) begin
-    axi_{{ arg.name }}_rd_busy <= 1'b1;
-    axi_{{ arg.name }}_rd_addr <= m_axi_{{ arg.name }}_ARADDR;
-    axi_{{ arg.name }}_rd_len <= m_axi_{{ arg.name }}_ARLEN;
-    axi_{{ arg.name }}_rd_beat <= 0;
-    axi_{{ arg.name }}_rd_id <= m_axi_{{ arg.name }}_ARID;
+  m_axi_{{ arg.ident }}_ARREADY <= ~axi_{{ arg.ident }}_rd_busy;
+  if (m_axi_{{ arg.ident }}_ARVALID && m_axi_{{ arg.ident }}_ARREADY) begin
+    axi_{{ arg.ident }}_rd_busy <= 1'b1;
+    axi_{{ arg.ident }}_rd_addr <= m_axi_{{ arg.ident }}_ARADDR;
+    axi_{{ arg.ident }}_rd_len <= m_axi_{{ arg.ident }}_ARLEN;
+    axi_{{ arg.ident }}_rd_beat <= 0;
+    axi_{{ arg.ident }}_rd_id <= m_axi_{{ arg.ident }}_ARID;
   end
-  if (axi_{{ arg.name }}_rd_busy) begin
-    tapa_axi_read("{{ arg.name }}", axi_{{ arg.name }}_rd_addr + axi_{{ arg.name }}_rd_beat * {{ arg.data_width_bytes }}, {{ arg.data_width_bytes }}, axi_{{ arg.name }}_bytes);
+  if (axi_{{ arg.ident }}_rd_busy) begin
+    tapa_axi_read("{{ arg.name }}", axi_{{ arg.ident }}_rd_addr + axi_{{ arg.ident }}_rd_beat * {{ arg.data_width_bytes }}, {{ arg.data_width_bytes }}, axi_{{ arg.ident }}_bytes);
     for (i = 0; i < {{ arg.data_width_bytes }}; i = i + 1) begin
-      m_axi_{{ arg.name }}_RDATA[i*8 +: 8] <= axi_{{ arg.name }}_bytes[i];
+      m_axi_{{ arg.ident }}_RDATA[i*8 +: 8] <= axi_{{ arg.ident }}_bytes[i];
     end
-    m_axi_{{ arg.name }}_RVALID <= 1'b1;
-    m_axi_{{ arg.name }}_RLAST <= (axi_{{ arg.name }}_rd_beat == axi_{{ arg.name }}_rd_len);
-    m_axi_{{ arg.name }}_RID <= axi_{{ arg.name }}_rd_id;
-    m_axi_{{ arg.name }}_RRESP <= 2'b00;
-    if (m_axi_{{ arg.name }}_RREADY) begin
-      if (axi_{{ arg.name }}_rd_beat >= axi_{{ arg.name }}_rd_len) begin
-        axi_{{ arg.name }}_rd_busy <= 1'b0;
+    m_axi_{{ arg.ident }}_RVALID <= 1'b1;
+    m_axi_{{ arg.ident }}_RLAST <= (axi_{{ arg.ident }}_rd_beat == axi_{{ arg.ident }}_rd_len);
+    m_axi_{{ arg.ident }}_RID <= axi_{{ arg.ident }}_rd_id;
+    m_axi_{{ arg.ident }}_RRESP <= 2'b00;
+    if (m_axi_{{ arg.ident }}_RREADY) begin
+      if (axi_{{ arg.ident }}_rd_beat >= axi_{{ arg.ident }}_rd_len) begin
+        axi_{{ arg.ident }}_rd_busy <= 1'b0;
       end else begin
-        axi_{{ arg.name }}_rd_beat <= axi_{{ arg.name }}_rd_beat + 1'b1;
+        axi_{{ arg.ident }}_rd_beat <= axi_{{ arg.ident }}_rd_beat + 1'b1;
       end
     end
   end else begin
-    m_axi_{{ arg.name }}_RVALID <= 1'b0;
+    m_axi_{{ arg.ident }}_RVALID <= 1'b0;
   end
 
-  m_axi_{{ arg.name }}_AWREADY <= (~axi_{{ arg.name }}_wr_aw_got && ~axi_{{ arg.name }}_wr_b_pending);
-  if (m_axi_{{ arg.name }}_AWVALID && m_axi_{{ arg.name }}_AWREADY) begin
-    axi_{{ arg.name }}_wr_aw_got <= 1'b1;
-    axi_{{ arg.name }}_wr_addr <= m_axi_{{ arg.name }}_AWADDR;
-    axi_{{ arg.name }}_wr_beat <= 0;
-    axi_{{ arg.name }}_wr_id <= m_axi_{{ arg.name }}_AWID;
+  m_axi_{{ arg.ident }}_AWREADY <= (~axi_{{ arg.ident }}_wr_aw_got && ~axi_{{ arg.ident }}_wr_b_pending);
+  if (m_axi_{{ arg.ident }}_AWVALID && m_axi_{{ arg.ident }}_AWREADY) begin
+    axi_{{ arg.ident }}_wr_aw_got <= 1'b1;
+    axi_{{ arg.ident }}_wr_addr <= m_axi_{{ arg.ident }}_AWADDR;
+    axi_{{ arg.ident }}_wr_beat <= 0;
+    axi_{{ arg.ident }}_wr_id <= m_axi_{{ arg.ident }}_AWID;
   end
-  m_axi_{{ arg.name }}_WREADY <= axi_{{ arg.name }}_wr_aw_got;
-  if (m_axi_{{ arg.name }}_WVALID && m_axi_{{ arg.name }}_WREADY) begin
+  m_axi_{{ arg.ident }}_WREADY <= axi_{{ arg.ident }}_wr_aw_got;
+  if (m_axi_{{ arg.ident }}_WVALID && m_axi_{{ arg.ident }}_WREADY) begin
     for (i = 0; i < {{ arg.data_width_bytes }}; i = i + 1) begin
-      axi_{{ arg.name }}_bytes[i] = m_axi_{{ arg.name }}_WDATA[i*8 +: 8];
+      axi_{{ arg.ident }}_bytes[i] = m_axi_{{ arg.ident }}_WDATA[i*8 +: 8];
     end
-    tapa_axi_write("{{ arg.name }}", axi_{{ arg.name }}_wr_addr + axi_{{ arg.name }}_wr_beat * {{ arg.data_width_bytes }}, {{ arg.data_width_bytes }}, axi_{{ arg.name }}_bytes);
-    axi_{{ arg.name }}_wr_beat <= axi_{{ arg.name }}_wr_beat + 1'b1;
-    if (m_axi_{{ arg.name }}_WLAST) begin
-      axi_{{ arg.name }}_wr_aw_got <= 1'b0;
-      axi_{{ arg.name }}_wr_b_pending <= 1'b1;
+    tapa_axi_write("{{ arg.name }}", axi_{{ arg.ident }}_wr_addr + axi_{{ arg.ident }}_wr_beat * {{ arg.data_width_bytes }}, {{ arg.data_width_bytes }}, axi_{{ arg.ident }}_bytes);
+    axi_{{ arg.ident }}_wr_beat <= axi_{{ arg.ident }}_wr_beat + 1'b1;
+    if (m_axi_{{ arg.ident }}_WLAST) begin
+      axi_{{ arg.ident }}_wr_aw_got <= 1'b0;
+      axi_{{ arg.ident }}_wr_b_pending <= 1'b1;
     end
   end
-  m_axi_{{ arg.name }}_BVALID <= axi_{{ arg.name }}_wr_b_pending;
-  m_axi_{{ arg.name }}_BID <= axi_{{ arg.name }}_wr_id;
-  m_axi_{{ arg.name }}_BRESP <= 2'b00;
-  if (axi_{{ arg.name }}_wr_b_pending && m_axi_{{ arg.name }}_BREADY) begin
-    axi_{{ arg.name }}_wr_b_pending <= 1'b0;
+  m_axi_{{ arg.ident }}_BVALID <= axi_{{ arg.ident }}_wr_b_pending;
+  m_axi_{{ arg.ident }}_BID <= axi_{{ arg.ident }}_wr_id;
+  m_axi_{{ arg.ident }}_BRESP <= 2'b00;
+  if (axi_{{ arg.ident }}_wr_b_pending && m_axi_{{ arg.ident }}_BREADY) begin
+    axi_{{ arg.ident }}_wr_b_pending <= 1'b0;
   end
 {% endfor %}
 
 {% for arg in stream_args %}
-  if (!stream_in_have_{{ arg.name }}) begin
-    bit got_stream_{{ arg.name }};
-    got_stream_{{ arg.name }} = tapa_stream_try_read("{{ arg.name }}", stream_in_bytes_{{ arg.name }});
-    stream_in_have_{{ arg.name }} <= got_stream_{{ arg.name }};
-    if (got_stream_{{ arg.name }}) begin
+  if (!stream_in_have_{{ arg.ident }}) begin
+    bit got_stream_{{ arg.ident }};
+    got_stream_{{ arg.ident }} = tapa_stream_try_read("{{ arg.name }}", stream_in_bytes_{{ arg.ident }});
+    stream_in_have_{{ arg.ident }} <= got_stream_{{ arg.ident }};
+    if (got_stream_{{ arg.ident }}) begin
       for (i = 0; i < {{ arg.width_bytes }}; i = i + 1) begin
-        stream_in_data_{{ arg.name }}[i*8 +: 8] <= stream_in_bytes_{{ arg.name }}[i];
+        stream_in_data_{{ arg.ident }}[i*8 +: 8] <= stream_in_bytes_{{ arg.ident }}[i];
       end
     end
   end
 {% if mode == "hls" %}
-  if (stream_in_have_{{ arg.name }} && stream_read_{{ arg.name }}) begin
-    stream_in_have_{{ arg.name }} <= 1'b0;
+  if (stream_in_have_{{ arg.ident }} && stream_read_{{ arg.ident }}) begin
+    stream_in_have_{{ arg.ident }} <= 1'b0;
   end
 {% else %}
-  if (stream_in_have_{{ arg.name }} && stream_ready_{{ arg.name }}) begin
-    stream_in_have_{{ arg.name }} <= 1'b0;
+  if (stream_in_have_{{ arg.ident }} && stream_ready_{{ arg.ident }}) begin
+    stream_in_have_{{ arg.ident }} <= 1'b0;
   end
 {% endif %}
 {% endfor %}
 
 {% for arg in stream_out_args %}
 {% if mode == "hls" %}
-  bit can_write_{{ arg.name }};
-  can_write_{{ arg.name }} = tapa_stream_can_write("{{ arg.name }}");
-  stream_out_full_n_{{ arg.name }} <= can_write_{{ arg.name }};
-  if (stream_out_write_{{ arg.name }} && can_write_{{ arg.name }}) begin
+  bit can_write_{{ arg.ident }};
+  can_write_{{ arg.ident }} = tapa_stream_can_write("{{ arg.name }}");
+  stream_out_full_n_{{ arg.ident }} <= can_write_{{ arg.ident }};
+  if (stream_out_write_{{ arg.ident }} && can_write_{{ arg.ident }}) begin
     for (i = 0; i < {{ arg.width_bytes }}; i = i + 1) begin
-      stream_out_bytes_{{ arg.name }}[i] = stream_out_data_{{ arg.name }}[i*8 +: 8];
+      stream_out_bytes_{{ arg.ident }}[i] = stream_out_data_{{ arg.ident }}[i*8 +: 8];
     end
-    void'(tapa_stream_try_write("{{ arg.name }}", stream_out_bytes_{{ arg.name }}));
+    void'(tapa_stream_try_write("{{ arg.name }}", stream_out_bytes_{{ arg.ident }}));
   end
 {% else %}
-  bit can_write_{{ arg.name }};
-  can_write_{{ arg.name }} = tapa_stream_can_write("{{ arg.name }}");
-  stream_out_ready_{{ arg.name }} <= can_write_{{ arg.name }};
-  if (stream_out_valid_{{ arg.name }} && can_write_{{ arg.name }}) begin
+  bit can_write_{{ arg.ident }};
+  can_write_{{ arg.ident }} = tapa_stream_can_write("{{ arg.name }}");
+  stream_out_ready_{{ arg.ident }} <= can_write_{{ arg.ident }};
+  if (stream_out_valid_{{ arg.ident }} && can_write_{{ arg.ident }}) begin
     for (i = 0; i < {{ arg.width_bytes }}; i = i + 1) begin
-      stream_out_bytes_{{ arg.name }}[i] = stream_out_data_{{ arg.name }}[i*8 +: 8];
+      stream_out_bytes_{{ arg.ident }}[i] = stream_out_data_{{ arg.ident }}[i*8 +: 8];
     end
-    void'(tapa_stream_try_write("{{ arg.name }}", stream_out_bytes_{{ arg.name }}));
+    void'(tapa_stream_try_write("{{ arg.name }}", stream_out_bytes_{{ arg.ident }}));
   end
 {% endif %}
 {% endfor %}

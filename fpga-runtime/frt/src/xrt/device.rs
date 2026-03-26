@@ -13,9 +13,9 @@ use opencl3::memory::{Buffer, CL_MEM_READ_WRITE, CL_MEM_USE_HOST_PTR};
 use opencl3::platform::get_platforms;
 use opencl3::program::Program;
 use opencl3::types::{cl_device_id, cl_event, CL_BLOCKING};
-use std::ffi::CStr;
 use std::collections::HashMap;
 use std::ffi::c_void;
+use std::ffi::CStr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -599,10 +599,7 @@ mod tests {
 
     #[test]
     fn scalar_bytes_are_padded_and_truncated_to_metadata_width() {
-        assert_eq!(
-            normalized_scalar_bytes(16, Some(&[0x12])),
-            vec![0x12, 0x00]
-        );
+        assert_eq!(normalized_scalar_bytes(16, Some(&[0x12])), vec![0x12, 0x00]);
         assert_eq!(
             normalized_scalar_bytes(16, Some(&[0x12, 0x34, 0x56])),
             vec![0x12, 0x34]

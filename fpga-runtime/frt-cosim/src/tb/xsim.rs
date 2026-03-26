@@ -4,10 +4,50 @@ use std::path::Path;
 
 use crate::error::{CosimError, Result};
 use crate::metadata::{ArgKind, KernelSpec, Mode, StreamDir};
+use crate::tb::names::{escape_verilog_identifier, escaped_verilog_signal, verilator_identifier};
 
 #[derive(Clone)]
 struct MmapArg {
     name: String,
+    ident: String,
+    offset_name: String,
+    araddr: String,
+    arburst: String,
+    arcache: String,
+    arid: String,
+    arlen: String,
+    arlock: String,
+    arprot: String,
+    arqos: String,
+    arready: String,
+    arsize: String,
+    arvalid: String,
+    awaddr: String,
+    awburst: String,
+    awcache: String,
+    awid: String,
+    awlen: String,
+    awlock: String,
+    awprot: String,
+    awqos: String,
+    awready: String,
+    awsize: String,
+    awvalid: String,
+    bid: String,
+    bready: String,
+    bresp: String,
+    bvalid: String,
+    rdata: String,
+    rid: String,
+    rlast: String,
+    rready: String,
+    rresp: String,
+    rvalid: String,
+    wdata: String,
+    wlast: String,
+    wready: String,
+    wstrb: String,
+    wvalid: String,
     data_width_bytes: usize,
     base_addr: u64,
     reg_offset_lo: u32,
@@ -30,9 +70,21 @@ struct ScalarWord {
 #[derive(Clone)]
 struct StreamArg {
     name: String,
+    ident: String,
+    empty_n: String,
+    dout: String,
+    din: String,
+    read: String,
+    full_n: String,
+    write: String,
+    tdata: String,
+    tvalid: String,
+    tready: String,
+    tlast: String,
     width_bytes: usize,
     has_peek: bool,
-    peek_name: String,
+    peek_empty_n: String,
+    peek_dout: String,
 }
 
 #[derive(Template)]
@@ -107,13 +159,12 @@ impl<'a> XsimTbGenerator<'a> {
                         .get(&arg.name)
                         .copied()
                         .unwrap_or(0);
-                    mmap_args.push(MmapArg {
-                        name: arg.name.clone(),
-                        data_width_bytes: (*data_width as usize).div_ceil(8),
-                        base_addr: self.base_addresses.get(&arg.name).copied().unwrap_or(0),
-                        reg_offset_lo: offset,
-                        reg_offset_hi: offset + 4,
-                    });
+                    mmap_args.push(MmapArg::new(
+                        &arg.name,
+                        (*data_width as usize).div_ceil(8),
+                        self.base_addresses.get(&arg.name).copied().unwrap_or(0),
+                        offset,
+                    ));
                 }
                 ArgKind::Scalar { width } => {
                     let offset = self
@@ -126,11 +177,7 @@ impl<'a> XsimTbGenerator<'a> {
                         *width,
                         self.scalar_values.get(&arg.id).map(|x| x.as_slice()),
                     );
-                    scalar_args.push(ScalarArg {
-                        name: arg.name.clone(),
-                        value_expr: sv_literal(*width, &bytes),
-                        words: scalar_words(offset, &bytes),
-                    });
+                    scalar_args.push(ScalarArg::new(&arg.name, *width, &bytes, offset));
                 }
                 ArgKind::Stream { width, dir, .. } => {
                     let peek = if self.spec.mode == Mode::Hls && *dir == StreamDir::In {
@@ -139,12 +186,7 @@ impl<'a> XsimTbGenerator<'a> {
                     } else {
                         None
                     };
-                    let s = StreamArg {
-                        name: arg.name.clone(),
-                        width_bytes: (*width as usize).div_ceil(8),
-                        has_peek: peek.is_some(),
-                        peek_name: peek.unwrap_or_default(),
-                    };
+                    let s = StreamArg::new(&arg.name, (*width as usize).div_ceil(8), peek);
                     if *dir == StreamDir::In {
                         stream_args.push(s);
                     } else {
@@ -273,4 +315,90 @@ fn stream_peek_ports_exist(verilog_files: &[std::path::PathBuf], peek_name: &str
             .map(|text| text.contains(&dout) && text.contains(&empty_n))
             .unwrap_or(false)
     })
+}
+
+impl MmapArg {
+    fn new(name: &str, data_width_bytes: usize, base_addr: u64, reg_offset_lo: u32) -> Self {
+        Self {
+            name: name.to_owned(),
+            ident: verilator_identifier(name),
+            offset_name: escape_verilog_identifier(&format!("{name}_offset")),
+            araddr: escaped_verilog_signal("m_axi_", name, "_ARADDR"),
+            arburst: escaped_verilog_signal("m_axi_", name, "_ARBURST"),
+            arcache: escaped_verilog_signal("m_axi_", name, "_ARCACHE"),
+            arid: escaped_verilog_signal("m_axi_", name, "_ARID"),
+            arlen: escaped_verilog_signal("m_axi_", name, "_ARLEN"),
+            arlock: escaped_verilog_signal("m_axi_", name, "_ARLOCK"),
+            arprot: escaped_verilog_signal("m_axi_", name, "_ARPROT"),
+            arqos: escaped_verilog_signal("m_axi_", name, "_ARQOS"),
+            arready: escaped_verilog_signal("m_axi_", name, "_ARREADY"),
+            arsize: escaped_verilog_signal("m_axi_", name, "_ARSIZE"),
+            arvalid: escaped_verilog_signal("m_axi_", name, "_ARVALID"),
+            awaddr: escaped_verilog_signal("m_axi_", name, "_AWADDR"),
+            awburst: escaped_verilog_signal("m_axi_", name, "_AWBURST"),
+            awcache: escaped_verilog_signal("m_axi_", name, "_AWCACHE"),
+            awid: escaped_verilog_signal("m_axi_", name, "_AWID"),
+            awlen: escaped_verilog_signal("m_axi_", name, "_AWLEN"),
+            awlock: escaped_verilog_signal("m_axi_", name, "_AWLOCK"),
+            awprot: escaped_verilog_signal("m_axi_", name, "_AWPROT"),
+            awqos: escaped_verilog_signal("m_axi_", name, "_AWQOS"),
+            awready: escaped_verilog_signal("m_axi_", name, "_AWREADY"),
+            awsize: escaped_verilog_signal("m_axi_", name, "_AWSIZE"),
+            awvalid: escaped_verilog_signal("m_axi_", name, "_AWVALID"),
+            bid: escaped_verilog_signal("m_axi_", name, "_BID"),
+            bready: escaped_verilog_signal("m_axi_", name, "_BREADY"),
+            bresp: escaped_verilog_signal("m_axi_", name, "_BRESP"),
+            bvalid: escaped_verilog_signal("m_axi_", name, "_BVALID"),
+            rdata: escaped_verilog_signal("m_axi_", name, "_RDATA"),
+            rid: escaped_verilog_signal("m_axi_", name, "_RID"),
+            rlast: escaped_verilog_signal("m_axi_", name, "_RLAST"),
+            rready: escaped_verilog_signal("m_axi_", name, "_RREADY"),
+            rresp: escaped_verilog_signal("m_axi_", name, "_RRESP"),
+            rvalid: escaped_verilog_signal("m_axi_", name, "_RVALID"),
+            wdata: escaped_verilog_signal("m_axi_", name, "_WDATA"),
+            wlast: escaped_verilog_signal("m_axi_", name, "_WLAST"),
+            wready: escaped_verilog_signal("m_axi_", name, "_WREADY"),
+            wstrb: escaped_verilog_signal("m_axi_", name, "_WSTRB"),
+            wvalid: escaped_verilog_signal("m_axi_", name, "_WVALID"),
+            data_width_bytes,
+            base_addr,
+            reg_offset_lo,
+            reg_offset_hi: reg_offset_lo + 4,
+        }
+    }
+}
+
+impl ScalarArg {
+    fn new(name: &str, width_bits: u32, bytes: &[u8], reg_offset: u32) -> Self {
+        Self {
+            name: escape_verilog_identifier(name),
+            value_expr: sv_literal(width_bits, bytes),
+            words: scalar_words(reg_offset, bytes),
+        }
+    }
+}
+
+impl StreamArg {
+    fn new(name: &str, width_bytes: usize, peek: Option<String>) -> Self {
+        let has_peek = peek.is_some();
+        let peek_name = peek.unwrap_or_default();
+        Self {
+            name: name.to_owned(),
+            ident: verilator_identifier(name),
+            empty_n: escaped_verilog_signal("", name, "_empty_n"),
+            dout: escaped_verilog_signal("", name, "_dout"),
+            din: escaped_verilog_signal("", name, "_din"),
+            read: escaped_verilog_signal("", name, "_read"),
+            full_n: escaped_verilog_signal("", name, "_full_n"),
+            write: escaped_verilog_signal("", name, "_write"),
+            tdata: escaped_verilog_signal("", name, "_TDATA"),
+            tvalid: escaped_verilog_signal("", name, "_TVALID"),
+            tready: escaped_verilog_signal("", name, "_TREADY"),
+            tlast: escaped_verilog_signal("", name, "_TLAST"),
+            width_bytes,
+            has_peek,
+            peek_empty_n: escaped_verilog_signal("", &peek_name, "_empty_n"),
+            peek_dout: escaped_verilog_signal("", &peek_name, "_dout"),
+        }
+    }
 }

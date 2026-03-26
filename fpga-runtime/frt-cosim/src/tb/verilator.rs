@@ -4,9 +4,48 @@ use std::path::Path;
 
 use crate::error::{CosimError, Result};
 use crate::metadata::{ArgKind, KernelSpec, Mode, StreamDir};
+use crate::tb::names::{verilator_identifier, verilator_signal};
 
 pub struct MmapArg {
     pub name: String,
+    pub ident: String,
+    pub araddr: String,
+    pub arburst: String,
+    pub arcache: String,
+    pub arid: String,
+    pub arlen: String,
+    pub arlock: String,
+    pub arprot: String,
+    pub arqos: String,
+    pub arready: String,
+    pub arsize: String,
+    pub arvalid: String,
+    pub awaddr: String,
+    pub awburst: String,
+    pub awcache: String,
+    pub awid: String,
+    pub awlen: String,
+    pub awlock: String,
+    pub awprot: String,
+    pub awqos: String,
+    pub awready: String,
+    pub awsize: String,
+    pub awvalid: String,
+    pub bid: String,
+    pub bready: String,
+    pub bresp: String,
+    pub bvalid: String,
+    pub rdata: String,
+    pub rid: String,
+    pub rlast: String,
+    pub rready: String,
+    pub rresp: String,
+    pub rvalid: String,
+    pub wdata: String,
+    pub wlast: String,
+    pub wready: String,
+    pub wstrb: String,
+    pub wvalid: String,
     pub data_width_bytes: usize,
     pub base_addr: u64,
     pub reg_offset_lo: u32,
@@ -15,6 +54,7 @@ pub struct MmapArg {
 
 pub struct ScalarArg {
     pub name: String,
+    pub member: String,
     pub bytes_initializer: String,
     pub words: Vec<ScalarWord>,
 }
@@ -26,9 +66,22 @@ pub struct ScalarWord {
 
 pub struct StreamArg {
     pub name: String,
+    pub ident: String,
+    pub empty_n: String,
+    pub dout: String,
+    pub din: String,
+    pub read: String,
+    pub full_n: String,
+    pub write: String,
+    pub tdata: String,
+    pub tvalid: String,
+    pub tready: String,
+    pub tlast: String,
     pub width_bytes: usize,
     pub has_peek: bool,
     pub peek_name: String,
+    pub peek_empty_n: String,
+    pub peek_dout: String,
 }
 
 #[derive(Template)]
@@ -84,13 +137,12 @@ impl<'a> VerilatorTbGenerator<'a> {
                         .get(&arg.name)
                         .copied()
                         .unwrap_or(0);
-                    mmap_args.push(MmapArg {
-                        name: arg.name.clone(),
-                        data_width_bytes: (*data_width as usize).div_ceil(8),
-                        base_addr: base,
-                        reg_offset_lo: offset,
-                        reg_offset_hi: offset + 4,
-                    });
+                    mmap_args.push(MmapArg::new(
+                        &arg.name,
+                        (*data_width as usize).div_ceil(8),
+                        base,
+                        offset,
+                    ));
                 }
                 ArgKind::Scalar { width } => {
                     let offset = self
@@ -103,11 +155,7 @@ impl<'a> VerilatorTbGenerator<'a> {
                         *width,
                         self.scalar_values.get(&arg.id).map(|x| x.as_slice()),
                     );
-                    scalar_args.push(ScalarArg {
-                        name: arg.name.clone(),
-                        bytes_initializer: bytes_to_cpp_initializer(&bytes),
-                        words: scalar_words(offset, &bytes),
-                    });
+                    scalar_args.push(ScalarArg::new(&arg.name, &bytes, offset));
                 }
                 ArgKind::Stream { width, dir, .. } => {
                     let w = (*width as usize).div_ceil(8);
@@ -117,19 +165,10 @@ impl<'a> VerilatorTbGenerator<'a> {
                     } else {
                         None
                     };
+                    let stream = StreamArg::new(&arg.name, w, peek);
                     match dir {
-                        StreamDir::In => stream_args.push(StreamArg {
-                            name: arg.name.clone(),
-                            width_bytes: w,
-                            has_peek: peek.is_some(),
-                            peek_name: peek.unwrap_or_default(),
-                        }),
-                        StreamDir::Out => stream_out_args.push(StreamArg {
-                            name: arg.name.clone(),
-                            width_bytes: w,
-                            has_peek: false,
-                            peek_name: String::new(),
-                        }),
+                        StreamDir::In => stream_args.push(stream),
+                        StreamDir::Out => stream_out_args.push(stream),
                     }
                 }
             }
@@ -207,4 +246,93 @@ fn stream_peek_ports_exist(verilog_files: &[std::path::PathBuf], peek_name: &str
             .map(|text| text.contains(&dout) && text.contains(&empty_n))
             .unwrap_or(false)
     })
+}
+
+impl MmapArg {
+    fn new(name: &str, data_width_bytes: usize, base_addr: u64, reg_offset_lo: u32) -> Self {
+        let ident = verilator_identifier(name);
+        Self {
+            name: name.to_owned(),
+            ident: ident.clone(),
+            araddr: verilator_signal("m_axi_", name, "_ARADDR"),
+            arburst: verilator_signal("m_axi_", name, "_ARBURST"),
+            arcache: verilator_signal("m_axi_", name, "_ARCACHE"),
+            arid: verilator_signal("m_axi_", name, "_ARID"),
+            arlen: verilator_signal("m_axi_", name, "_ARLEN"),
+            arlock: verilator_signal("m_axi_", name, "_ARLOCK"),
+            arprot: verilator_signal("m_axi_", name, "_ARPROT"),
+            arqos: verilator_signal("m_axi_", name, "_ARQOS"),
+            arready: verilator_signal("m_axi_", name, "_ARREADY"),
+            arsize: verilator_signal("m_axi_", name, "_ARSIZE"),
+            arvalid: verilator_signal("m_axi_", name, "_ARVALID"),
+            awaddr: verilator_signal("m_axi_", name, "_AWADDR"),
+            awburst: verilator_signal("m_axi_", name, "_AWBURST"),
+            awcache: verilator_signal("m_axi_", name, "_AWCACHE"),
+            awid: verilator_signal("m_axi_", name, "_AWID"),
+            awlen: verilator_signal("m_axi_", name, "_AWLEN"),
+            awlock: verilator_signal("m_axi_", name, "_AWLOCK"),
+            awprot: verilator_signal("m_axi_", name, "_AWPROT"),
+            awqos: verilator_signal("m_axi_", name, "_AWQOS"),
+            awready: verilator_signal("m_axi_", name, "_AWREADY"),
+            awsize: verilator_signal("m_axi_", name, "_AWSIZE"),
+            awvalid: verilator_signal("m_axi_", name, "_AWVALID"),
+            bid: verilator_signal("m_axi_", name, "_BID"),
+            bready: verilator_signal("m_axi_", name, "_BREADY"),
+            bresp: verilator_signal("m_axi_", name, "_BRESP"),
+            bvalid: verilator_signal("m_axi_", name, "_BVALID"),
+            rdata: verilator_signal("m_axi_", name, "_RDATA"),
+            rid: verilator_signal("m_axi_", name, "_RID"),
+            rlast: verilator_signal("m_axi_", name, "_RLAST"),
+            rready: verilator_signal("m_axi_", name, "_RREADY"),
+            rresp: verilator_signal("m_axi_", name, "_RRESP"),
+            rvalid: verilator_signal("m_axi_", name, "_RVALID"),
+            wdata: verilator_signal("m_axi_", name, "_WDATA"),
+            wlast: verilator_signal("m_axi_", name, "_WLAST"),
+            wready: verilator_signal("m_axi_", name, "_WREADY"),
+            wstrb: verilator_signal("m_axi_", name, "_WSTRB"),
+            wvalid: verilator_signal("m_axi_", name, "_WVALID"),
+            data_width_bytes,
+            base_addr,
+            reg_offset_lo,
+            reg_offset_hi: reg_offset_lo + 4,
+        }
+    }
+}
+
+impl ScalarArg {
+    fn new(name: &str, bytes: &[u8], reg_offset: u32) -> Self {
+        Self {
+            name: name.to_owned(),
+            member: verilator_identifier(name),
+            bytes_initializer: bytes_to_cpp_initializer(bytes),
+            words: scalar_words(reg_offset, bytes),
+        }
+    }
+}
+
+impl StreamArg {
+    fn new(name: &str, width_bytes: usize, peek: Option<String>) -> Self {
+        let has_peek = peek.is_some();
+        let peek_name = peek.unwrap_or_default();
+        let ident = verilator_identifier(name);
+        Self {
+            name: name.to_owned(),
+            ident: ident.clone(),
+            empty_n: verilator_signal("", name, "_empty_n"),
+            dout: verilator_signal("", name, "_dout"),
+            din: verilator_signal("", name, "_din"),
+            read: verilator_signal("", name, "_read"),
+            full_n: verilator_signal("", name, "_full_n"),
+            write: verilator_signal("", name, "_write"),
+            tdata: verilator_signal("", name, "_TDATA"),
+            tvalid: verilator_signal("", name, "_TVALID"),
+            tready: verilator_signal("", name, "_TREADY"),
+            tlast: verilator_signal("", name, "_TLAST"),
+            width_bytes,
+            has_peek,
+            peek_name: peek_name.clone(),
+            peek_empty_n: verilator_signal("", &peek_name, "_empty_n"),
+            peek_dout: verilator_signal("", &peek_name, "_dout"),
+        }
+    }
 }

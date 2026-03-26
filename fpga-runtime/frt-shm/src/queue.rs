@@ -24,7 +24,7 @@ impl SharedMemoryQueue {
         let mut seg = MmapSegment::create(name, size)?;
         let hdr = unsafe { &mut *(seg.as_mut_slice().as_mut_ptr() as *mut QueueHeader) };
         hdr.magic = *b"tapa";
-        hdr.version = 0;
+        hdr.version = 1;
         hdr.depth = depth;
         hdr.width = width;
         hdr.tail.store(0, Ordering::Relaxed);
@@ -75,13 +75,12 @@ impl SharedMemoryQueue {
         let tail = self.hdr().tail.load(Ordering::Relaxed);
         let slot = (tail % self.depth()) as usize * self.width();
         let w = self.width();
-        let len = data.len().min(w);
+        if data.len() != w {
+            return Err("unexpected input size");
+        }
         let dst = unsafe { self.data_mut_ptr().add(slot) };
         unsafe {
-            std::ptr::copy_nonoverlapping(data.as_ptr(), dst, len);
-            if len < w {
-                std::ptr::write_bytes(dst.add(len), 0, w - len);
-            }
+            std::ptr::copy_nonoverlapping(data.as_ptr(), dst, w);
         }
         self.hdr().tail.store(tail + 1, Ordering::Release);
         Ok(())
@@ -142,10 +141,10 @@ fn validate_header(bytes: &[u8]) -> std::io::Result<()> {
             ),
         ));
     }
-    if hdr.version != 0 {
+    if hdr.version != 1 {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
-            format!("unexpected version {}; want 0", hdr.version),
+            format!("unexpected version {}; want 1", hdr.version),
         ));
     }
     if hdr.depth == 0 || hdr.width == 0 {
@@ -221,5 +220,21 @@ mod tests {
             Ok(_) => panic!("open should fail"),
             Err(err) => assert_eq!(err.kind(), std::io::ErrorKind::InvalidData),
         }
+    }
+
+    #[test]
+    fn create_uses_version_one() {
+        let q = SharedMemoryQueue::create("test_q_version", 2, 4).expect("create");
+        assert_eq!(q.hdr().version, 1);
+        let reopened = SharedMemoryQueue::open(q.path().to_str().expect("utf8")).expect("open");
+        assert_eq!(reopened.hdr().version, 1);
+    }
+
+    #[test]
+    fn push_rejects_short_or_long_payloads() {
+        let mut q = SharedMemoryQueue::create("test_q_exact", 2, 4).expect("create");
+        assert!(q.try_push(b"abc").is_err());
+        assert!(q.try_push(b"abcde").is_err());
+        assert!(q.try_push(b"abcd").is_ok());
     }
 }

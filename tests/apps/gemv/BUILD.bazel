@@ -108,6 +108,7 @@ sh_test(
     data = [
         ":gemv-host",
         ":gemv-zip",
+        "//fpga-runtime:cargo_release_artifacts",
         "@verilator//:verilator_executable",
     ],
     env = {"VERILATOR_BIN": "$(rootpath @verilator//:verilator_executable)"},

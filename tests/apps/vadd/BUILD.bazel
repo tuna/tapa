@@ -109,6 +109,7 @@ sh_test(
     data = [
         ":vadd-host",
         ":vadd-zip",
+        "//fpga-runtime:cargo_release_artifacts",
         "@verilator//:verilator_executable",
     ],
     env = {"VERILATOR_BIN": "$(rootpath @verilator//:verilator_executable)"},

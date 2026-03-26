@@ -14,11 +14,31 @@ fn workspace_root() -> PathBuf {
 }
 
 fn ensure_verilator() -> bool {
+    // Prefer the Bazel-built hermetic verilator
+    if let Some(bin) = find_hermetic_verilator() {
+        std::env::set_var("VERILATOR_BIN", bin);
+        return true;
+    }
     Command::new("verilator")
         .arg("--version")
         .status()
         .map(|s| s.success())
         .unwrap_or(false)
+}
+
+fn find_hermetic_verilator() -> Option<PathBuf> {
+    // Walk up from the workspace root to find the bazel-bin symlink
+    let mut dir = workspace_root();
+    for _ in 0..5 {
+        let candidate = dir.join("../bazel-bin/external/verilator+/bin/verilator");
+        if candidate.exists() {
+            return candidate.canonicalize().ok();
+        }
+        if !dir.pop() {
+            break;
+        }
+    }
+    None
 }
 
 fn dpi_library_name() -> &'static str {

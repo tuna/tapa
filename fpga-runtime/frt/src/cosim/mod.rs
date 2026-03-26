@@ -7,9 +7,9 @@ use frt_cosim::runner::verilator::VerilatorRunner;
 use frt_cosim::runner::xsim::XsimRunner;
 use frt_cosim::runner::SimRunner;
 use std::collections::HashMap;
-use std::process::Command;
 use std::path::{Path, PathBuf};
 use std::process::Child;
+use std::process::Command;
 use std::time::Instant;
 
 enum TbDir {
@@ -40,6 +40,8 @@ struct BufferBinding {
     ptr: *mut u8,
     bytes: usize,
     access: BufferAccess,
+    load_suspended: bool,
+    store_suspended: bool,
 }
 
 struct RunningSimulation {
@@ -114,10 +116,6 @@ impl CosimDevice {
         })
     }
 
-    fn is_simulation_running(&self) -> bool {
-        matches!(self.simulation_state, SimulationState::Running(_))
-    }
-
     fn spawn_noop_process() -> Result<Child> {
         let mut cmd = Command::new("/bin/sh");
         cmd.args(["-c", ":"]);
@@ -137,7 +135,7 @@ impl CosimDevice {
     fn copy_back_to_host(&mut self) -> Result<()> {
         let started = Instant::now();
         for (index, binding) in &self.pending_buffers {
-            if !binding.access.stores_to_host() {
+            if !binding.access.stores_to_host() || binding.store_suspended {
                 continue;
             }
             if binding.ptr.is_null() && binding.bytes != 0 {
@@ -200,7 +198,6 @@ impl CosimDevice {
         }
         Ok(())
     }
-
 }
 
 fn env_bool(name: &str) -> bool {
@@ -255,19 +252,31 @@ fn make_tb_dir(work_dir: Option<&Path>, parallel: bool) -> Result<TbDir> {
 }
 
 fn dpi_lib_path(variant: &str) -> Result<PathBuf> {
-    let exe = std::env::current_exe()?;
-    let dir = exe.parent().unwrap_or(Path::new("."));
-    let mut search_dirs = vec![dir.to_path_buf()];
-    if let Some(p) = dir.parent() {
-        search_dirs.push(p.to_path_buf());
+    dpi_lib_path_from_exe(&std::env::current_exe()?, variant)
+}
+
+fn dpi_lib_path_from_exe(exe: &Path, variant: &str) -> Result<PathBuf> {
+    let mut search_dirs = Vec::new();
+    if let Some(dir) = exe.parent() {
+        search_dirs.push(dir.to_path_buf());
+        for ancestor in dir.ancestors() {
+            search_dirs.push(ancestor.to_path_buf());
+            search_dirs.push(ancestor.join("fpga-runtime/cargo"));
+            search_dirs.push(ancestor.join("cargo"));
+        }
     }
-    if let Some(p) = dir.parent().and_then(|x| x.parent()) {
-        search_dirs.push(p.to_path_buf());
-    }
-    for candidate in [
-        format!("libfrt_dpi_{variant}.so"),
-        format!("libfrt_dpi_{variant}.dylib"),
-    ] {
+    let candidates = if cfg!(target_os = "macos") {
+        [
+            format!("libfrt_dpi_{variant}.dylib"),
+            format!("libfrt_dpi_{variant}.so"),
+        ]
+    } else {
+        [
+            format!("libfrt_dpi_{variant}.so"),
+            format!("libfrt_dpi_{variant}.dylib"),
+        ]
+    };
+    for candidate in candidates {
         for base in &search_dirs {
             let p = base.join(&candidate);
             if p.exists() {
@@ -305,8 +314,17 @@ impl Device for CosimDevice {
                 "arg '{name}' is not an mmap buffer"
             )));
         }
-        self.pending_buffers
-            .insert(index, BufferBinding { ptr, bytes, access });
+        self.ctx.resize_buffer(&name, bytes)?;
+        self.pending_buffers.insert(
+            index,
+            BufferBinding {
+                ptr,
+                bytes,
+                access,
+                load_suspended: false,
+                store_suspended: false,
+            },
+        );
         Ok(())
     }
 
@@ -331,17 +349,25 @@ impl Device for CosimDevice {
     }
 
     fn suspend_buffer(&mut self, index: u32) -> usize {
-        if self.pending_buffers.remove(&index).is_some() {
-            1
-        } else {
-            0
+        let Some(binding) = self.pending_buffers.get_mut(&index) else {
+            return 0;
+        };
+        let mut erased = 0;
+        if binding.access.loads_from_host() && !binding.load_suspended {
+            binding.load_suspended = true;
+            erased += 1;
         }
+        if binding.access.stores_to_host() && !binding.store_suspended {
+            binding.store_suspended = true;
+            erased += 1;
+        }
+        erased
     }
 
     fn write_to_device(&mut self) -> Result<()> {
         let started = Instant::now();
         for (index, binding) in &self.pending_buffers {
-            if !binding.access.loads_from_host() {
+            if !binding.access.loads_from_host() || binding.load_suspended {
                 continue;
             }
             if binding.ptr.is_null() && binding.bytes != 0 {
@@ -371,11 +397,13 @@ impl Device for CosimDevice {
     }
 
     fn read_from_device(&mut self) -> Result<()> {
-        self.readback_scheduled = true;
-        if self.is_simulation_running() {
+        if matches!(self.simulation_state, SimulationState::Running(_)) {
+            self.readback_scheduled = true;
             return Ok(());
         }
-        self.copy_back_to_host()
+        self.copy_back_to_host()?;
+        self.readback_scheduled = false;
+        Ok(())
     }
 
     fn exec(&mut self) -> Result<()> {
@@ -612,7 +640,9 @@ mod tests {
     #[test]
     fn kill_before_exec_marks_finished() {
         let mut dev = make_test_device(0.01);
-        assert!(!dev.is_finished().expect("idle simulation should not be finished"));
+        assert!(!dev
+            .is_finished()
+            .expect("idle simulation should not be finished"));
         dev.kill().expect("kill idle simulation");
         assert!(dev.is_finished().expect("idle kill should mark finished"));
     }
@@ -620,7 +650,9 @@ mod tests {
     #[test]
     fn finish_before_exec_marks_finished() {
         let mut dev = make_test_device(0.01);
-        assert!(!dev.is_finished().expect("idle simulation should not be finished"));
+        assert!(!dev
+            .is_finished()
+            .expect("idle simulation should not be finished"));
         dev.finish().expect("finish idle simulation");
         assert!(dev.is_finished().expect("idle finish should mark finished"));
     }
@@ -653,14 +685,90 @@ mod tests {
     }
 
     #[test]
-    fn suspend_buffer_removes_binding() {
+    fn read_from_device_copies_back_immediately_when_idle() {
         let mut dev = make_test_device_with_mmap(false);
-        let mut data = [1u8; 16];
-        dev.set_buffer_arg(0, data.as_mut_ptr(), data.len(), BufferAccess::ReadWrite)
+        let mut host_word = 10u32;
+        dev.set_buffer_arg(
+            0,
+            (&mut host_word as *mut u32).cast::<u8>(),
+            std::mem::size_of_val(&host_word),
+            BufferAccess::ReadWrite,
+        )
+        .expect("set buffer");
+        dev.ctx
+            .buffers
+            .get_mut("buf0")
+            .expect("mmap buffer")
+            .as_mut_slice()[..4]
+            .copy_from_slice(&42u32.to_le_bytes());
+        dev.read_from_device().expect("schedule readback");
+        assert_eq!(host_word, 42);
+        assert!(dev.store_ns() > 0);
+        dev.finish().expect("finish idle readback");
+        assert_eq!(host_word, 42);
+    }
+
+    #[test]
+    fn large_buffer_is_not_truncated_before_write_to_device() {
+        let mut dev = make_test_device_with_mmap(false);
+        let bytes = 5 * 1024 * 1024 + 7;
+        let mut host = vec![0u8; bytes];
+        host[0] = 0x11;
+        host[bytes - 1] = 0x22;
+        dev.set_buffer_arg(0, host.as_mut_ptr(), host.len(), BufferAccess::ReadWrite)
             .expect("set buffer");
+        assert_eq!(dev.ctx.buffers["buf0"].len(), bytes);
+        dev.write_to_device().expect("write to device");
+        let buf = dev.ctx.buffers.get("buf0").expect("buffer");
+        assert_eq!(buf.len(), bytes);
+        assert_eq!(buf.as_slice()[0], 0x11);
+        assert_eq!(buf.as_slice()[bytes - 1], 0x22);
+    }
+
+    #[test]
+    fn dpi_lib_path_finds_package_cargo_output_dir() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let fake_exe = tmp
+            .path()
+            .join("bazel-bin/tests/apps/bandwidth/bandwidth-host");
+        let cargo_dir = tmp.path().join("bazel-bin/fpga-runtime/cargo");
+        std::fs::create_dir_all(&cargo_dir).expect("create cargo dir");
+        let dylib = cargo_dir.join("libfrt_dpi_verilator.dylib");
+        std::fs::write(&dylib, []).expect("write dylib");
+
+        let found = dpi_lib_path_from_exe(&fake_exe, "verilator").expect("find dpi lib");
+        assert_eq!(found, dylib);
+    }
+
+    #[test]
+    fn suspend_buffer_suppresses_load_and_store_transfers() {
+        let mut dev = make_test_device_with_mmap(false);
+        let mut host_word = 10u32;
+        dev.set_buffer_arg(
+            0,
+            (&mut host_word as *mut u32).cast::<u8>(),
+            std::mem::size_of_val(&host_word),
+            BufferAccess::ReadWrite,
+        )
+        .expect("set buffer");
+        dev.ctx
+            .buffers
+            .get_mut("buf0")
+            .expect("mmap buffer")
+            .as_mut_slice()[..4]
+            .copy_from_slice(&42u32.to_le_bytes());
+
+        assert_eq!(dev.suspend_buffer(0), 2);
         assert_eq!(dev.pending_buffers.len(), 1);
-        assert_eq!(dev.suspend_buffer(0), 1);
-        assert!(dev.pending_buffers.is_empty());
-        assert_eq!(dev.suspend_buffer(0), 0);
+        host_word = 99;
+        dev.write_to_device().expect("write to device");
+        assert_eq!(
+            &dev.ctx.buffers["buf0"].as_slice()[..4],
+            &42u32.to_le_bytes()
+        );
+        dev.read_from_device().expect("read from device");
+        assert_eq!(host_word, 99);
+        dev.finish().expect("finish suspended readback");
+        assert_eq!(host_word, 99);
     }
 }

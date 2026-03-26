@@ -44,6 +44,33 @@ impl CosimContext {
         })
     }
 
+    fn resize_buffer_with<F>(&mut self, name: &str, size: usize, create: F) -> Result<()>
+    where
+        F: FnOnce(&str, usize) -> std::io::Result<MmapSegment>,
+    {
+        let seg = {
+            let Some(old) = self.buffers.get(name) else {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    format!("unknown buffer arg '{name}'"),
+                )
+                .into());
+            };
+            let mut seg = create(name, size.max(1))?;
+            let len = old.len().min(seg.len());
+            if len > 0 {
+                seg.as_mut_slice()[..len].copy_from_slice(&old.as_slice()[..len]);
+            }
+            seg
+        };
+        self.buffers.insert(name.to_owned(), seg);
+        Ok(())
+    }
+
+    pub fn resize_buffer(&mut self, name: &str, size: usize) -> Result<()> {
+        self.resize_buffer_with(name, size, MmapSegment::create)
+    }
+
     pub fn bind_stream_path(&mut self, name: &str, path: &str) -> Result<()> {
         if !self.streams.contains_key(name) {
             return Err(std::io::Error::new(
@@ -156,5 +183,36 @@ mod tests {
         let addrs: Vec<_> = ctx.base_addresses.values().collect();
         assert_eq!(addrs.len(), 1);
         assert_eq!(*addrs[0], 0x1000_0000u64);
+    }
+
+    #[test]
+    fn resize_buffer_updates_config_size() {
+        let mut ctx = CosimContext::new(&make_spec()).expect("new");
+        ctx.resize_buffer("a", 5 * 1024 * 1024).expect("resize");
+        assert_eq!(ctx.buffers["a"].len(), 5 * 1024 * 1024);
+
+        let json = ctx.dpi_config_json();
+        let v: serde_json::Value = serde_json::from_str(&json).expect("json");
+        assert_eq!(
+            v["buffers"]["a"]["size_bytes"].as_u64(),
+            Some(5 * 1024 * 1024)
+        );
+    }
+
+    #[test]
+    fn resize_buffer_failure_preserves_existing_buffer() {
+        let mut ctx = CosimContext::new(&make_spec()).expect("new");
+        ctx.buffers.get_mut("a").expect("buffer").as_mut_slice()[0] = 0xaa;
+        let original_path = ctx.buffers["a"].path().to_owned();
+
+        let err = ctx
+            .resize_buffer_with("a", 5 * 1024 * 1024, |_name, _size| {
+                Err(std::io::Error::other("injected failure"))
+            })
+            .expect_err("resize should fail");
+        assert!(err.to_string().contains("injected failure"));
+        assert_eq!(ctx.buffers["a"].len(), 4 * 1024 * 1024);
+        assert_eq!(ctx.buffers["a"].path(), original_path.as_path());
+        assert_eq!(ctx.buffers["a"].as_slice()[0], 0xaa);
     }
 }

@@ -144,6 +144,7 @@ sh_test(
         "graph.txt",
         ":graph-host",
         ":graph-zip",
+        "//fpga-runtime:cargo_release_artifacts",
         "@verilator//:verilator_executable",
     ],
     env = {"VERILATOR_BIN": "$(rootpath @verilator//:verilator_executable)"},
