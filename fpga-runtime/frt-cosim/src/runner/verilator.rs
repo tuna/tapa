@@ -86,17 +86,23 @@ impl SimRunner for VerilatorRunner {
         scalar_values: &HashMap<u32, Vec<u8>>,
         tb_dir: &Path,
     ) -> Result<()> {
+        let buffer_sizes: HashMap<String, usize> = ctx
+            .buffers
+            .iter()
+            .map(|(name, seg)| (name.clone(), seg.len()))
+            .collect();
         let generator =
-            VerilatorTbGenerator::new(spec, &self.dpi_lib, &ctx.base_addresses, scalar_values);
+            VerilatorTbGenerator::new(spec, &self.dpi_lib, &ctx.base_addresses, &buffer_sizes, scalar_values);
         std::fs::write(tb_dir.join("tb.cpp"), generator.render_tb()?)?;
         let rtl_dir = tb_dir.join("rtl");
         std::fs::create_dir_all(&rtl_dir)?;
-        for f in &spec.verilog_files {
+        for f in spec.verilog_files.iter().chain(spec.tcl_files.iter()) {
             if let Some(fname) = f.file_name() {
                 std::fs::copy(f, rtl_dir.join(fname))?;
             }
         }
         generate_xilinx_fp_ip_models(&rtl_dir)?;
+        fix_combinational_nba(&rtl_dir)?;
         std::fs::write(tb_dir.join("dpi_support.cpp"), generate_dpi_support())?;
 
         let top = &spec.top_name;
@@ -110,14 +116,18 @@ impl SimRunner for VerilatorRunner {
             "dpi_support.cpp".to_string(),
             "-LDFLAGS".to_string(),
             self.dpi_lib.to_string_lossy().to_string(),
-            "-Wno-WIDTH".to_string(),
-            "-Wno-UNDRIVEN".to_string(),
-            "-Wno-STMTDLY".to_string(),
-            "-Wno-SYMRSVDWORD".to_string(),
-            "-Wno-PINMISSING".to_string(),
-            "-Wno-TIMESCALEMOD".to_string(),
-            "-Wno-CASEINCOMPLETE".to_string(),
             "-Wno-fatal".to_string(),
+            "-Wno-PINMISSING".to_string(),
+            "-Wno-WIDTH".to_string(),
+            "-Wno-UNUSEDSIGNAL".to_string(),
+            "-Wno-UNDRIVEN".to_string(),
+            "-Wno-UNOPTFLAT".to_string(),
+            "-Wno-STMTDLY".to_string(),
+            "-Wno-CASEINCOMPLETE".to_string(),
+            "-Wno-SYMRSVDWORD".to_string(),
+            "-Wno-COMBDLY".to_string(),
+            "-Wno-TIMESCALEMOD".to_string(),
+            "-Wno-MULTIDRIVEN".to_string(),
             "-y".to_string(),
             rtl_dir.to_string_lossy().to_string(),
         ];
@@ -262,6 +272,62 @@ fn generate_xilinx_fp_ip_models(rtl_dir: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Fix non-blocking assignments (`<=`) inside combinational `always @(*)`
+/// blocks. HLS-generated RTL sometimes uses NBA in combinational logic, which
+/// Verilator silently converts to blocking `=` with a COMBDLY warning. By
+/// patching the source we ensure identical behavior across all simulators and
+/// silence the warning.
+fn fix_combinational_nba(rtl_dir: &Path) -> Result<()> {
+    // Match NBA statements: `identifier <= expr;` but not comparisons like `(a <= b)`
+    let nba_re = Regex::new(r"^(\s+\w+)\s*<=\s*(.+;)$")
+        .map_err(|e| CosimError::Metadata(format!("regex compile failed: {e}")))?;
+
+    for entry in std::fs::read_dir(rtl_dir)? {
+        let path = entry?.path();
+        if !is_verilog_like(&path) {
+            continue;
+        }
+        let content = match std::fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        if !content.contains("always @(*)") {
+            continue;
+        }
+        let mut result = String::with_capacity(content.len());
+        let mut in_comb_block = false;
+        let mut brace_depth: i32 = 0;
+        for line in content.lines() {
+            let trimmed = line.trim();
+            if trimmed.starts_with("always") && trimmed.contains("@(*)") {
+                in_comb_block = true;
+                brace_depth = 0;
+            }
+            if in_comb_block {
+                if trimmed.contains("begin") {
+                    brace_depth += trimmed.matches("begin").count() as i32;
+                }
+                if trimmed.contains("end") {
+                    brace_depth -= trimmed.matches("end").count() as i32;
+                    if brace_depth <= 0 {
+                        in_comb_block = false;
+                    }
+                }
+                // Replace NBA with blocking assignment inside combinational blocks
+                let fixed = nba_re.replace(line, "$1 = $2");
+                result.push_str(&fixed);
+            } else {
+                result.push_str(line);
+            }
+            result.push('\n');
+        }
+        if result != content {
+            std::fs::write(&path, &result)?;
+        }
+    }
+    Ok(())
+}
+
 fn is_verilog_like(path: &Path) -> bool {
     path.extension()
         .and_then(|x| x.to_str())
@@ -303,22 +369,19 @@ fn parse_xilinx_fp_ip_tcl_text(content: &str) -> Result<Option<XilinxFpIpConfig>
         .unwrap_or_else(|| "single".into());
     let is_double = precision == "double";
 
-    let op = if let Some(add_sub_value) = config.get("add_sub_value") {
-        if add_sub_value.eq_ignore_ascii_case("subtract")
-            || add_sub_value.eq_ignore_ascii_case("sub")
-        {
-            Some("sub")
-        } else {
-            Some("add")
-        }
-    } else if let Some(operation_type) = config.get("operation_type") {
+    let op = if let Some(operation_type) = config.get("operation_type") {
         let operation_type = operation_type.to_ascii_lowercase();
         if operation_type.contains("multiply") {
             Some("mul")
-        } else if operation_type.contains("subtract") {
-            Some("sub")
-        } else if operation_type.contains("add") {
-            Some("add")
+        } else if operation_type.contains("add") || operation_type.contains("subtract") {
+            // For Add_Subtract IPs, check add_sub_value to distinguish add vs sub
+            let add_sub = config.get("add_sub_value").map(|s| s.to_ascii_lowercase());
+            if add_sub.as_deref() == Some("subtract") || add_sub.as_deref() == Some("sub")
+            {
+                Some("sub")
+            } else {
+                Some("add")
+            }
         } else {
             None
         }
@@ -339,10 +402,16 @@ fn parse_xilinx_fp_ip_tcl_text(content: &str) -> Result<Option<XilinxFpIpConfig>
         (true, "mul") => "fp64_mul",
         _ => return Ok(None),
     };
-    let latency = config
-        .get("c_latency")
-        .and_then(|s| s.parse::<usize>().ok())
-        .unwrap_or(5);
+    let latency = match config.get("c_latency") {
+        Some(s) => s.parse::<usize>().map_err(|e| {
+            CosimError::Metadata(format!("invalid c_latency '{s}' in FP IP TCL: {e}"))
+        })?,
+        None => {
+            return Err(CosimError::Metadata(
+                "FP IP TCL missing CONFIG.c_latency".into(),
+            ));
+        }
+    };
 
     Ok(Some(XilinxFpIpConfig {
         dpi_func: dpi_func.to_owned(),
@@ -369,10 +438,13 @@ fn detect_xilinx_fp_ip_model_from_name(ip_module: &str) -> Option<XilinxFpIpConf
     .into_iter()
     .find_map(|(needle, func, width)| lower.contains(needle).then_some((func, width)))?;
 
-    Some(XilinxFpIpConfig {
-        dpi_func: dpi_func.to_owned(),
-        latency: 5,
-    })
+    // No TCL available; cannot determine latency reliably.
+    // Return None so the caller skips replacement rather than guessing.
+    eprintln!(
+        "frt-cosim: FP IP '{}' detected by name but no TCL with c_latency found; skipping replacement",
+        ip_module
+    );
+    None
 }
 
 fn generate_xilinx_fp_ip_replacement(ip_module: &str, model: &XilinxFpIpConfig) -> String {
@@ -382,7 +454,40 @@ fn generate_xilinx_fp_ip_replacement(ip_module: &str, model: &XilinxFpIpConfig) 
     } else {
         "int unsigned"
     };
+    let latency = model.latency;
 
+    if latency == 0 {
+        return format!(
+            r#"`timescale 1ns/1ps
+
+module {ip_module} (
+    input  wire        aclk,
+    input  wire        aclken,
+    input  wire        s_axis_a_tvalid,
+    input  wire [{data_hi}:0] s_axis_a_tdata,
+    input  wire        s_axis_b_tvalid,
+    input  wire [{data_hi}:0] s_axis_b_tdata,
+    output wire        m_axis_result_tvalid,
+    output wire [{data_hi}:0] m_axis_result_tdata
+);
+
+import "DPI-C" function {ret_type} {dpi_func}(
+input {ret_type} a, input {ret_type} b);
+
+assign m_axis_result_tdata = {dpi_func}(s_axis_a_tdata, s_axis_b_tdata);
+assign m_axis_result_tvalid = s_axis_a_tvalid & s_axis_b_tvalid;
+
+endmodule
+"#,
+            ip_module = ip_module,
+            data_hi = bit_width - 1,
+            ret_type = ret_type,
+            dpi_func = model.dpi_func,
+        );
+    }
+
+    let depth = latency;
+    let depth_hi = depth - 1;
     format!(
         r#"`timescale 1ns/1ps
 
@@ -397,26 +502,27 @@ module {ip_module} (
     output wire [{data_hi}:0] m_axis_result_tdata
 );
 
-import "DPI-C" function {ret_type} {dpi_func}(input {ret_type} a, input {ret_type} b);
+import "DPI-C" function {ret_type} {dpi_func}(
+input {ret_type} a, input {ret_type} b);
 
-function automatic [{data_hi}:0] fp_op(input [{data_hi}:0] a, input [{data_hi}:0] b);
-    begin
-        fp_op = {dpi_func}(a, b);
-    end
-endfunction
+reg [{data_hi}:0] pipe [0:{depth_hi}];
+reg [{depth_hi}:0]  valid_pipe;
 
-reg [{data_hi}:0] result;
-integer dbg_count = 0;
+integer i;
+
 always @(posedge aclk) begin
-    if (dbg_count < 3) begin
-        $display("frt_fp_ip {ip_module}: a=%h b=%h r=%h", s_axis_a_tdata, s_axis_b_tdata, fp_op(s_axis_a_tdata, s_axis_b_tdata));
-        dbg_count <= dbg_count + 1;
+    if (aclken) begin
+        pipe[0] <= {dpi_func}(s_axis_a_tdata, s_axis_b_tdata);
+        valid_pipe[0] <= s_axis_a_tvalid & s_axis_b_tvalid;
+        for (i = 1; i < {depth}; i = i + 1) begin
+            pipe[i] <= pipe[i-1];
+            valid_pipe[i] <= valid_pipe[i-1];
+        end
     end
-    result <= fp_op(s_axis_a_tdata, s_axis_b_tdata);
 end
 
-assign m_axis_result_tdata = result;
-assign m_axis_result_tvalid = s_axis_a_tvalid & s_axis_b_tvalid;
+assign m_axis_result_tdata  = pipe[{depth_hi}];
+assign m_axis_result_tvalid = valid_pipe[{depth_hi}];
 
 endmodule
 "#,
@@ -424,6 +530,8 @@ endmodule
         data_hi = bit_width - 1,
         ret_type = ret_type,
         dpi_func = model.dpi_func,
+        depth = depth,
+        depth_hi = depth_hi,
     )
 }
 

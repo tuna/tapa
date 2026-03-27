@@ -58,10 +58,14 @@ fn parse_simulator(sim: Option<&str>) -> Simulator {
 }
 
 fn parse_buffer_access(tag: c_int) -> BufferAccess {
+    // frt tags are host-relative; tapa tags are kernel-relative, so they are
+    // swapped. kReadOnly(1) means "host reads = kernel writes" → stores_to_host;
+    // kWriteOnly(2) means "host writes = kernel reads" → loads_from_host.
+    // This matches the old C++ TapaFastCosimDevice::SetBufferArg convention.
     match tag {
         0 => BufferAccess::PlaceHolder,
-        1 => BufferAccess::ReadOnly,
-        2 => BufferAccess::WriteOnly,
+        1 => BufferAccess::WriteOnly,
+        2 => BufferAccess::ReadOnly,
         3 => BufferAccess::ReadWrite,
         _ => BufferAccess::ReadWrite,
     }

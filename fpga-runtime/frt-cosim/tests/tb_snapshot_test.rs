@@ -107,11 +107,13 @@ fn banked_hls_spec() -> KernelSpec {
 fn verilator_hls_tb_snapshot() {
     let spec = hls_spec();
     let base_addrs = std::collections::HashMap::from([("a".into(), 0x1000_0000u64)]);
+    let buf_sizes = std::collections::HashMap::from([("a".into(), 4096usize)]);
     let scalar_vals = std::collections::HashMap::from([(1u32, vec![7u8, 0, 0, 0])]);
     let generator = VerilatorTbGenerator::new(
         &spec,
         std::path::Path::new("libfrt_dpi_verilator.so"),
         &base_addrs,
+        &buf_sizes,
         &scalar_vals,
     );
     let tb = generator.render_tb().expect("render");
@@ -124,19 +126,21 @@ fn verilator_hls_tb_snapshot() {
 fn verilator_hls_escapes_banked_mmap_names() {
     let spec = banked_hls_spec();
     let base_addrs = std::collections::HashMap::from([("chan[0]".into(), 0x1000_0000u64)]);
+    let buf_sizes = std::collections::HashMap::from([("chan[0]".into(), 4096usize)]);
     let scalar_vals = std::collections::HashMap::from([(1u32, vec![7u8, 0, 0, 0])]);
     let generator = VerilatorTbGenerator::new(
         &spec,
         std::path::Path::new("libfrt_dpi_verilator.so"),
         &base_addrs,
+        &buf_sizes,
         &scalar_vals,
     );
     let tb = generator.render_tb().expect("render");
-    // Verilator mangles chan[0] → chan__05b0__05d in C++ headers
-    assert!(tb.contains("rd_chan__05b0__05d"), "{tb}");
-    assert!(tb.contains("dut->m_axi_chan__05b0__05d_ARREADY"), "{tb}");
-    // The DPI call still uses the original name for port lookup
-    assert!(tb.contains("tapa_axi_read(\"chan[0]\""), "{tb}");
+    // Verilator strips brackets: chan[0] → chan_0 in C++ member names
+    assert!(tb.contains("rd_chan_0"), "{tb}");
+    assert!(tb.contains("dut->m_axi_chan_0_ARREADY"), "{tb}");
+    // The load_from_shm call still uses the original name for port lookup
+    assert!(tb.contains("load_from_shm(\"chan[0]\""), "{tb}");
 }
 
 #[test]
