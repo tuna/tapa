@@ -167,7 +167,7 @@ impl<'a> VerilatorTbGenerator<'a> {
                     let w = (*width as usize).div_ceil(8);
                     let peek = if self.spec.mode == Mode::Hls && *dir == StreamDir::In {
                         infer_peek_name(&arg.name)
-                            .filter(|cand| stream_peek_ports_exist(&self.spec.verilog_files, cand))
+                            .filter(|cand| stream_peek_ports_exist(&self.spec.verilog_files, &self.spec.top_name, cand))
                     } else {
                         None
                     };
@@ -244,12 +244,32 @@ fn infer_peek_name(stream_name: &str) -> Option<String> {
     None
 }
 
-fn stream_peek_ports_exist(verilog_files: &[std::path::PathBuf], peek_name: &str) -> bool {
-    let dout = format!("{peek_name}_dout");
-    let empty_n = format!("{peek_name}_empty_n");
+fn stream_peek_ports_exist(
+    verilog_files: &[std::path::PathBuf],
+    top_name: &str,
+    peek_name: &str,
+) -> bool {
+    let dout_port = format!("{peek_name}_dout");
+    let empty_n_port = format!("{peek_name}_empty_n");
+    let module_decl = format!("module {top_name}");
     verilog_files.iter().any(|file| {
         std::fs::read_to_string(file)
-            .map(|text| text.contains(&dout) && text.contains(&empty_n))
+            .map(|text| {
+                if !text.contains(&module_decl) {
+                    return false;
+                }
+                let has_dout = text.lines().any(|line| {
+                    let t = line.trim();
+                    (t.starts_with("input") || t.starts_with("output"))
+                        && t.contains(&dout_port)
+                });
+                let has_empty_n = text.lines().any(|line| {
+                    let t = line.trim();
+                    (t.starts_with("input") || t.starts_with("output"))
+                        && t.contains(&empty_n_port)
+                });
+                has_dout && has_empty_n
+            })
             .unwrap_or(false)
     })
 }

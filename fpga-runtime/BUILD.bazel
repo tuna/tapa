@@ -36,7 +36,7 @@ genrule(
     ],
     cmd = """
 set -euo pipefail
-export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$$PATH"
+export PATH="$${HOME:-/tmp/home}/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$$PATH"
 export CARGO_TARGET_DIR="$(@D)/cargo-target"
 cargo build --manifest-path "$(location Cargo.toml)" --release \\
   -p frt -p frt-dpi-verilator -p frt-dpi-xsim
@@ -125,7 +125,6 @@ pkg_files(
     srcs = [
         "cargo/libfrt.dylib",
         "cargo/libfrt.so",
-        ":frt",
     ],
     prefix = "usr/lib",
     strip_prefix = strip_prefix.files_only(),

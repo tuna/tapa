@@ -131,6 +131,7 @@ wire stream_ready_{{ arg.ident }};
 {% for arg in stream_out_args %}
 byte unsigned stream_out_bytes_{{ arg.ident }}[0:{{ arg.width_bytes - 1 }}];
 wire [{{ arg.width_bytes * 8 - 1 }}:0] stream_out_data_{{ arg.ident }};
+reg can_write_{{ arg.ident }};
 {% if mode == "hls" %}
 wire stream_out_write_{{ arg.ident }};
 reg stream_out_full_n_{{ arg.ident }} = 1'b1;
@@ -349,7 +350,6 @@ always @(posedge ap_clk) begin
 
 {% for arg in stream_out_args %}
 {% if mode == "hls" %}
-  bit can_write_{{ arg.ident }};
   can_write_{{ arg.ident }} = tapa_stream_can_write("{{ arg.name }}");
   stream_out_full_n_{{ arg.ident }} <= can_write_{{ arg.ident }};
   if (stream_out_write_{{ arg.ident }} && can_write_{{ arg.ident }}) begin
@@ -359,7 +359,6 @@ always @(posedge ap_clk) begin
     void'(tapa_stream_try_write("{{ arg.name }}", stream_out_bytes_{{ arg.ident }}));
   end
 {% else %}
-  bit can_write_{{ arg.ident }};
   can_write_{{ arg.ident }} = tapa_stream_can_write("{{ arg.name }}");
   stream_out_ready_{{ arg.ident }} <= can_write_{{ arg.ident }};
   if (stream_out_valid_{{ arg.ident }} && can_write_{{ arg.ident }}) begin

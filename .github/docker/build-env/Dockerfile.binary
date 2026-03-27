@@ -109,6 +109,12 @@ RUN echo "en_US.UTF-8 UTF-8" > /etc/locale.gen && locale-gen
 # Clean up
 RUN rm -rf /tmp/* /var/tmp/*
 
+# Install Rust toolchain (required by fpga-runtime cargo build)
+ENV RUSTUP_HOME="/tmp/home/.rustup"
+ENV CARGO_HOME="/tmp/home/.cargo"
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+      | sh -s -- -y --default-toolchain stable --profile minimal
+
 # Use /tmp/home as the cache directory
 RUN mkdir -m 755 \
   -p /tmp/home/.cache /tmp/home/.cargo \
