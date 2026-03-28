@@ -125,6 +125,26 @@ pub fn parse_embedded_xml(xml: &str) -> Result<XrtMetadata> {
     })
 }
 
+/// Extract the platform VBNV string from the xclbin2 binary header.
+///
+/// The old C++ runtime read `axlf_top->m_header.m_platformVBNV` (a 64-byte
+/// null-terminated string at offset 352) which always contains the full
+/// platform identifier (e.g. `xilinx_u250_gen3x16_xdma_4_1_202210_1`).
+/// The XML `<platform name="...">` attribute may carry a shorter value in
+/// some xclbin versions, so we prefer the header field.
+pub fn extract_platform_vbnv(xclbin: &[u8]) -> Option<String> {
+    const PLATFORM_VBNV_OFFSET: usize = 352;
+    const PLATFORM_VBNV_LEN: usize = 64;
+
+    if xclbin.len() < PLATFORM_VBNV_OFFSET + PLATFORM_VBNV_LEN {
+        return None;
+    }
+    let raw = &xclbin[PLATFORM_VBNV_OFFSET..PLATFORM_VBNV_OFFSET + PLATFORM_VBNV_LEN];
+    let end = raw.iter().position(|&b| b == 0).unwrap_or(PLATFORM_VBNV_LEN);
+    let s = std::str::from_utf8(&raw[..end]).ok()?.trim().to_owned();
+    if s.is_empty() { None } else { Some(s) }
+}
+
 pub fn extract_embedded_xml(xclbin: &[u8]) -> Result<String> {
     const MAGIC: &[u8; 8] = b"xclbin2\0";
 
@@ -198,5 +218,32 @@ mod tests {
         assert_eq!(meta.top_name, "vadd");
         assert_eq!(meta.platform, "xilinx_u250_gen3x16_xdma_3_1_202020_1");
         assert_eq!(meta.mode, XclbinMode::HwEmu);
+    }
+
+    #[test]
+    fn extract_platform_vbnv_from_header() {
+        // Build a minimal xclbin-like buffer with the VBNV at offset 352.
+        let mut buf = vec![0u8; 416]; // 352 + 64
+        buf[..8].copy_from_slice(b"xclbin2\0");
+        let vbnv = b"xilinx_u250_gen3x16_xdma_4_1_202210_1";
+        buf[352..352 + vbnv.len()].copy_from_slice(vbnv);
+        let result = extract_platform_vbnv(&buf);
+        assert_eq!(
+            result.as_deref(),
+            Some("xilinx_u250_gen3x16_xdma_4_1_202210_1")
+        );
+    }
+
+    #[test]
+    fn extract_platform_vbnv_empty_returns_none() {
+        let mut buf = vec![0u8; 416];
+        buf[..8].copy_from_slice(b"xclbin2\0");
+        assert_eq!(extract_platform_vbnv(&buf), None);
+    }
+
+    #[test]
+    fn extract_platform_vbnv_short_buffer_returns_none() {
+        let buf = vec![0u8; 100]; // Too short
+        assert_eq!(extract_platform_vbnv(&buf), None);
     }
 }

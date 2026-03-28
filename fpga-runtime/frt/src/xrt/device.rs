@@ -1,4 +1,6 @@
-use super::metadata::{extract_embedded_xml, parse_embedded_xml, XrtArgKind, XrtMetadata};
+use super::metadata::{
+    extract_embedded_xml, extract_platform_vbnv, parse_embedded_xml, XrtArgKind, XrtMetadata,
+};
 use crate::device::{BufferAccess, Device, RuntimeArgCategory, RuntimeArgInfo};
 use crate::error::{FrtError, Result};
 use frt_cosim::runner::environ::xilinx_environ;
@@ -48,7 +50,13 @@ impl XrtDevice {
     pub fn open(xclbin_path: &Path) -> Result<Self> {
         let bytes = std::fs::read(xclbin_path)?;
         let xml = extract_embedded_xml(&bytes)?;
-        let meta = parse_embedded_xml(&xml)?;
+        let mut meta = parse_embedded_xml(&xml)?;
+        // Prefer the platform VBNV from the binary header (64-byte field at
+        // offset 352) over the XML <platform> attribute, which may be
+        // truncated in some xclbin versions.
+        if let Some(vbnv) = extract_platform_vbnv(&bytes) {
+            meta.platform = vbnv;
+        }
         apply_emulation_mode_env(meta.mode);
         ensure_xrt_emulation_bootstrap(&meta)?;
 
