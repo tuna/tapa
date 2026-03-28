@@ -41,6 +41,7 @@ runs:
         docker run \
           --rm \
           --init \
+          --shm-size=4g \
           --label="${label}" \
           --mac-address=${{ env.MAC_ADDRESS }} \
           -v "${local_bazelrc}":/etc/bazel.bazelrc:ro \
