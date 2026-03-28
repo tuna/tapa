@@ -3,11 +3,11 @@ set ORIG_RTL_PATH "{{ tb_dir }}"
 {% for f in verilog_files %}
 add_files -norecurse -scan_for_includes {{ f }}
 {% endfor %}
-{% for f in xci_files %}
-add_files -norecurse -scan_for_includes {{ f }}
-{% endfor %}
 {% for f in tcl_files %}
 source {{ f }}
+{% endfor %}
+{% for f in xci_files %}
+add_files -norecurse -scan_for_includes {{ f }}
 {% endfor %}
 upgrade_ip -quiet [get_ips *]
 set_property SOURCE_SET sources_1 [get_filesets sim_1]

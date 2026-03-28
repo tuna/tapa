@@ -51,11 +51,15 @@ impl XrtDevice {
         let bytes = std::fs::read(xclbin_path)?;
         let xml = extract_embedded_xml(&bytes)?;
         let mut meta = parse_embedded_xml(&xml)?;
-        // Prefer the platform VBNV from the binary header (64-byte field at
-        // offset 352) over the XML <platform> attribute, which may be
-        // truncated in some xclbin versions.
+        // The XML <platform name="..."> attribute may be truncated in some
+        // xclbin versions. The binary header has a 64-byte m_platformVBNV
+        // field at offset 352 that always contains the full identifier.
+        // Only override if the header VBNV is longer (more complete) than
+        // what we got from XML.
         if let Some(vbnv) = extract_platform_vbnv(&bytes) {
-            meta.platform = vbnv;
+            if vbnv.len() > meta.platform.len() {
+                meta.platform = vbnv;
+            }
         }
         apply_emulation_mode_env(meta.mode);
         ensure_xrt_emulation_bootstrap(&meta)?;
