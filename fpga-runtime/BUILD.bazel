@@ -38,6 +38,15 @@ genrule(
 set -euo pipefail
 export PATH="$${HOME:-/tmp/home}/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$$PATH"
 export CARGO_TARGET_DIR="$(@D)/cargo-target"
+# Auto-detect XILINX_VIVADO so frt-dpi-xsim can link against libsvdpi.
+if [[ -z "$${XILINX_VIVADO:-}" ]]; then
+  for candidate in /opt/tools/xilinx/Vivado/*/data/xsim/lib/lnx64.o/libsvdpi.so; do
+    if [[ -f "$$candidate" ]]; then
+      export XILINX_VIVADO="$${candidate%%/data/*}"
+      break
+    fi
+  done
+fi
 cargo build --manifest-path "$(location Cargo.toml)" --release \\
   -p frt -p frt-dpi-verilator -p frt-dpi-xsim
 
