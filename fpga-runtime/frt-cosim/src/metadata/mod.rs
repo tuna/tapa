@@ -108,7 +108,11 @@ fn load_xo_spec<R: Read + std::io::Seek>(
         if has_ext(&name, &["tcl"]) {
             tcl_files.push(path.clone());
         }
-        if has_ext(&name, &["xci"]) {
+        // Only collect shallow XCI files (depth <= 2 components), matching
+        // the old Python glob patterns `*.xci` and `*/*.xci`. Deeply nested
+        // XCI files inside ip_repo/ are managed by the TCL create_ip scripts
+        // and must not be added separately to avoid "IP name already in use".
+        if has_ext(&name, &["xci"]) && !is_deeply_nested(&name) {
             xci_files.push(path);
         }
     }
@@ -157,7 +161,7 @@ fn load_zip_spec<R: Read + std::io::Seek>(
         if has_ext(&name, &["tcl"]) {
             tcl_files.push(path.clone());
         }
-        if has_ext(&name, &["xci"]) {
+        if has_ext(&name, &["xci"]) && !is_deeply_nested(&name) {
             xci_files.push(path);
         }
     }
@@ -197,6 +201,14 @@ fn parse_part_from_settings_yaml(settings_yaml: &str) -> Option<String> {
                 .and_then(|x| x.as_str())
                 .map(ToOwned::to_owned)
         })
+}
+
+/// Returns true if the zip entry path has more than 2 directory components.
+/// The old Python cosim used glob `*.xci` and `*/*.xci` which only matched
+/// files at depth 0 or 1. Deeply nested files (e.g. inside ip_repo/
+/// subdirectories) were not included.
+fn is_deeply_nested(zip_name: &str) -> bool {
+    zip_name.matches('/').count() > 2
 }
 
 fn has_ext(name: &str, exts: &[&str]) -> bool {
