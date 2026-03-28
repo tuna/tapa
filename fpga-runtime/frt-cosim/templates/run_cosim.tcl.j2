@@ -14,9 +14,9 @@ set_property SOURCE_SET sources_1 [get_filesets sim_1]
 add_files {{ tb_sv_file }}
 set_property top {{ tb_top }} [get_filesets sim_1]
 {% if legacy %}
-set_property -name {xelab.more_options} -value {-sv_lib {{ dpi_lib_path }}} -objects [get_filesets sim_1]
+set_property -name {xelab.more_options} -value {-sv_root {{ dpi_sv_root }} -sv_lib {{ dpi_sv_lib }}} -objects [get_filesets sim_1]
 {% else %}
-set_property -name {xsim.elaborate.xelab.more_options} -value {-sv_lib {{ dpi_lib_path }}} -objects [get_filesets sim_1]
+set_property -name {xsim.elaborate.xelab.more_options} -value {-sv_root {{ dpi_sv_root }} -sv_lib {{ dpi_sv_lib }}} -objects [get_filesets sim_1]
 {% endif %}
 {% if save_waveform %}
 set_property -name {xsim.simulate.log_all_signals} -value {true} -objects [get_filesets sim_1]

@@ -108,7 +108,8 @@ struct TclTemplate {
     xci_files: Vec<String>,
     tb_sv_file: String,
     tb_top: String,
-    dpi_lib_path: String,
+    dpi_sv_root: String,
+    dpi_sv_lib: String,
     save_waveform: bool,
     legacy: bool,
 }
@@ -244,9 +245,16 @@ impl<'a> XsimTbGenerator<'a> {
                 .to_string_lossy()
                 .to_string(),
             tb_top: format!("tb_{}", self.spec.top_name),
-            dpi_lib_path: self
+            dpi_sv_root: self
                 .dpi_lib
-                .with_extension("") // xelab -sv_lib expects no extension
+                .parent()
+                .unwrap_or(Path::new("."))
+                .to_string_lossy()
+                .to_string(),
+            dpi_sv_lib: self
+                .dpi_lib
+                .file_stem()
+                .unwrap_or_default()
                 .to_string_lossy()
                 .to_string(),
             save_waveform: self.save_waveform,
