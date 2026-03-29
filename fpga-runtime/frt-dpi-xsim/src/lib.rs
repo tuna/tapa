@@ -25,11 +25,7 @@ mod imp {
 
     /// Extract the raw byte pointer from an svOpenArrayHandle.
     unsafe fn sv_array_ptr(h: SvOpenArrayHandle) -> *mut u8 {
-        let ptr = (get_sv_get_array_ptr())(h);
-        if ptr.is_null() {
-            eprintln!("frt-dpi-xsim: svGetArrayPtr returned NULL!");
-        }
-        ptr as *mut u8
+        (get_sv_get_array_ptr())(h) as *mut u8
     }
 
     #[no_mangle]
@@ -58,14 +54,6 @@ mod imp {
 
     // SV `bit` maps to `svBit` (unsigned char) in DPI-C, not C `_Bool`.
     // Use u8 to match the exact ABI expected by xsim.
-
-    static STREAM_LOG_ONCE: std::sync::Once = std::sync::Once::new();
-    fn log_stream_debug(msg: &str) {
-        STREAM_LOG_ONCE.call_once(|| {
-            eprintln!("frt-dpi-xsim: stream DPI active, first call: {msg}");
-        });
-    }
-
     #[no_mangle]
     pub unsafe extern "C" fn tapa_stream_try_read(
         port: *const libc::c_char,
@@ -73,9 +61,7 @@ mod imp {
     ) -> u8 {
         let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
         let ptr = sv_array_ptr(out);
-        let result = stream::stream_try_read_impl(get_or_init(), port, ptr);
-        log_stream_debug(&format!("try_read({port}) = {result}, ptr={ptr:?}"));
-        result as u8
+        stream::stream_try_read_impl(get_or_init(), port, ptr) as u8
     }
 
     #[no_mangle]
@@ -85,16 +71,12 @@ mod imp {
     ) -> u8 {
         let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
         let ptr = sv_array_ptr(data) as *const u8;
-        let result = stream::stream_try_write_impl(get_or_init(), port, ptr);
-        log_stream_debug(&format!("try_write({port}) = {result}, ptr={ptr:?}"));
-        result as u8
+        stream::stream_try_write_impl(get_or_init(), port, ptr) as u8
     }
 
     #[no_mangle]
     pub unsafe extern "C" fn tapa_stream_can_write(port: *const libc::c_char) -> u8 {
         let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
-        let result = stream::stream_can_write_impl(get_or_init(), port);
-        log_stream_debug(&format!("can_write({port}) = {result}"));
-        result as u8
+        stream::stream_can_write_impl(get_or_init(), port) as u8
     }
 }
