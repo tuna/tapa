@@ -42,6 +42,8 @@ runs:
           --rm \
           --init \
           --shm-size=4g \
+          --memory=64g \
+          --cpus=8 \
           --label="${label}" \
           --mac-address=${{ env.MAC_ADDRESS }} \
           -v "${local_bazelrc}":/etc/bazel.bazelrc:ro \
