@@ -356,8 +356,8 @@ def _declare_instance_ports(state: _ChildState, instance: Instance) -> None:
 def _process_instance(state: _ChildState, instance: Instance) -> None:
     child_port_set = set(instance.task.module.ports)
     _declare_instance_inputs(state, instance, child_port_set)
-    _declare_instance_start_logic(state, instance)
     _declare_instance_handshake_signals(state, instance)
+    _declare_instance_start_logic(state, instance)
     _declare_instance_ports(state, instance)
 
 

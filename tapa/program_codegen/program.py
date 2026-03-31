@@ -122,6 +122,8 @@ def instantiate_global_fsm(
         return NonblockingSubstitution(left=STATE, right=state)
 
     module.add_signals([Reg(STATE.name, width=Width.create(2))])
+    module.add_pipeline(program.start_q, init=START)
+    module.add_pipeline(program.done_q, init=is_state(STATE10))
 
     state01_action = set_state(STATE10)
     if is_done_signals:
@@ -159,9 +161,6 @@ def instantiate_global_fsm(
             Assign(lhs=HANDSHAKE_READY, rhs=program.done_q[0].name),
         ],
     )
-
-    module.add_pipeline(program.start_q, init=START)
-    module.add_pipeline(program.done_q, init=is_state(STATE10))
 
 
 def instrument_upper_and_template_task(program: Any, task: Task) -> None:
