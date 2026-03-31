@@ -1,5 +1,5 @@
 use crate::error::Result;
-use crate::metadata::{ArgKind, KernelSpec};
+use crate::metadata::{ArgKind, KernelSpec, StreamProtocol};
 use frt_shm::{MmapSegment, SharedMemoryQueue};
 use std::collections::HashMap;
 
@@ -27,8 +27,15 @@ impl CosimContext {
                     base_addresses.insert(arg.name.clone(), base);
                     mmap_idx += 1;
                 }
-                ArgKind::Stream { width, depth, .. } => {
-                    let width_bytes = (*width).div_ceil(8);
+                ArgKind::Stream { width, depth, protocol, .. } => {
+                    // AXIS streams carry a separate EOS byte alongside the data
+                    // (the host enqueues elem_t<T> = T + bool, sizeof = data + 1).
+                    // ApFifo streams already encode EOS in the data width reported
+                    // by graph.yaml, so no adjustment is needed there.
+                    let width_bytes = match protocol {
+                        StreamProtocol::Axis => (*width).div_ceil(8) + 1,
+                        StreamProtocol::ApFifo => (*width).div_ceil(8),
+                    };
                     let q = SharedMemoryQueue::create(&arg.name, *depth, width_bytes)?;
                     streams.insert(arg.name.clone(), q);
                 }

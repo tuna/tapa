@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use crate::error::{CosimError, Result};
-use crate::metadata::{ArgKind, KernelSpec, Mode, StreamDir};
+use crate::metadata::{ArgKind, KernelSpec, Mode, StreamDir, StreamProtocol};
 use crate::tb::names::{cpp_identifier, cpp_signal};
 
 pub struct MmapArg {
@@ -79,6 +79,8 @@ pub struct StreamArg {
     pub tready: String,
     pub tlast: String,
     pub width_bytes: usize,
+    pub dpi_width_bytes: usize,
+    pub axis: bool,
     pub has_peek: bool,
     pub peek_name: String,
     pub peek_empty_n: String,
@@ -163,15 +165,16 @@ impl<'a> VerilatorTbGenerator<'a> {
                     );
                     scalar_args.push(ScalarArg::new(&arg.name, &bytes, offset));
                 }
-                ArgKind::Stream { width, dir, .. } => {
+                ArgKind::Stream { width, dir, protocol, .. } => {
                     let w = (*width as usize).div_ceil(8);
+                    let axis = *protocol == StreamProtocol::Axis;
                     let peek = if self.spec.mode == Mode::Hls && *dir == StreamDir::In {
                         infer_peek_name(&arg.name)
                             .filter(|cand| stream_peek_ports_exist(&self.spec.verilog_files, &self.spec.top_name, cand))
                     } else {
                         None
                     };
-                    let stream = StreamArg::new(&arg.name, w, peek);
+                    let stream = StreamArg::new(&arg.name, w, peek, axis);
                     match dir {
                         StreamDir::In => stream_args.push(stream),
                         StreamDir::Out => stream_out_args.push(stream),
@@ -338,10 +341,11 @@ impl ScalarArg {
 }
 
 impl StreamArg {
-    fn new(name: &str, width_bytes: usize, peek: Option<String>) -> Self {
+    fn new(name: &str, width_bytes: usize, peek: Option<String>, axis: bool) -> Self {
         let has_peek = peek.is_some();
         let peek_name = peek.unwrap_or_default();
         let ident = cpp_identifier(name);
+        let dpi_width_bytes = if axis { width_bytes + 1 } else { width_bytes };
         Self {
             name: name.to_owned(),
             ident: ident.clone(),
@@ -356,6 +360,8 @@ impl StreamArg {
             tready: cpp_signal("", name, "_TREADY"),
             tlast: cpp_signal("", name, "_TLAST"),
             width_bytes,
+            dpi_width_bytes,
+            axis,
             has_peek,
             peek_name: peek_name.clone(),
             peek_empty_n: cpp_signal("", &peek_name, "_empty_n"),

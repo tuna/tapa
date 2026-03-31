@@ -11,6 +11,10 @@ pub fn parse_kernel_xml(xml: &str, _verilog_dir: &Path) -> Result<KernelSpec> {
     let mut top_name = String::new();
     let mut args = Vec::new();
     let mut buf = Vec::new();
+    // Map from port name to (mode, dataWidth) parsed from <port> elements.
+    // For TAPA-generated kernel.xml, <ports> precedes <args>, so this is
+    // populated before we process any <arg> elements in a single SAX pass.
+    let mut port_info: HashMap<String, (String, u32)> = HashMap::new();
 
     loop {
         match reader.read_event_into(&mut buf) {
@@ -20,6 +24,23 @@ pub fn parse_kernel_xml(xml: &str, _verilog_dir: &Path) -> Result<KernelSpec> {
                         if attr.key.as_ref() == b"name" {
                             top_name = String::from_utf8_lossy(&attr.value).into_owned();
                         }
+                    }
+                }
+                b"port" => {
+                    let mut port_name = String::new();
+                    let mut mode = String::new();
+                    let mut data_width = 32u32;
+                    for attr in e.attributes().flatten() {
+                        let v = String::from_utf8_lossy(&attr.value).into_owned();
+                        match attr.key.as_ref() {
+                            b"name" => port_name = v,
+                            b"mode" => mode = v,
+                            b"dataWidth" => data_width = v.parse().unwrap_or(32),
+                            _ => {}
+                        }
+                    }
+                    if !port_name.is_empty() {
+                        port_info.insert(port_name, (mode, data_width));
                     }
                 }
                 b"arg" => {
@@ -51,18 +72,41 @@ pub fn parse_kernel_xml(xml: &str, _verilog_dir: &Path) -> Result<KernelSpec> {
                         0 => ArgKind::Scalar {
                             width: scalar_width.unwrap_or(data_width),
                         },
-                        1 => ArgKind::Mmap {
-                            data_width,
-                            addr_width,
-                        },
+                        1 => {
+                            // Use dataWidth from the corresponding <port> element when
+                            // available.  TAPA's kernel_metadata.py does not emit
+                            // dataWidth on <arg> for mmap ports; it only appears on
+                            // <port name="m_axi_<name>">.
+                            let resolved_width = port_info
+                                .get(&port)
+                                .map(|(_, w)| *w)
+                                .unwrap_or(data_width);
+                            ArgKind::Mmap {
+                                data_width: resolved_width,
+                                addr_width,
+                            }
+                        }
                         4 => {
-                            let dir = if port.starts_with("s_axis") || port.contains("istream") {
-                                StreamDir::In
+                            // Determine direction from the <port mode="read_only|write_only">
+                            // attribute.  TAPA sets port names to the bare arg name (e.g. "a"),
+                            // so the old s_axis/istream heuristic fails; fall back to it only
+                            // when no <port> entry is found (non-TAPA XO files).
+                            let dir = if let Some((mode, _)) = port_info.get(&port) {
+                                match mode.as_str() {
+                                    "read_only" => StreamDir::In,
+                                    "write_only" => StreamDir::Out,
+                                    _ => fallback_stream_dir(&port),
+                                }
                             } else {
-                                StreamDir::Out
+                                fallback_stream_dir(&port)
                             };
+                            // Use dataWidth from <port> when available.
+                            let resolved_width = port_info
+                                .get(&port)
+                                .map(|(_, w)| *w)
+                                .unwrap_or(data_width);
                             ArgKind::Stream {
-                                width: data_width,
+                                width: resolved_width,
                                 depth,
                                 dir,
                                 protocol: StreamProtocol::Axis,
@@ -101,4 +145,14 @@ pub fn parse_kernel_xml(xml: &str, _verilog_dir: &Path) -> Result<KernelSpec> {
         xci_files: vec![],
         scalar_register_map: HashMap::new(),
     })
+}
+
+/// Heuristic stream direction for non-TAPA XO files that do not have a
+/// <port mode="read_only|write_only"> element (e.g. hand-crafted kernels).
+fn fallback_stream_dir(port: &str) -> StreamDir {
+    if port.starts_with("s_axis") || port.contains("istream") {
+        StreamDir::In
+    } else {
+        StreamDir::Out
+    }
 }

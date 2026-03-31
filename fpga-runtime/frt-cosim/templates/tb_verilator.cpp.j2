@@ -53,7 +53,7 @@ static AxiWritePort wr_{{ arg.ident }};
 
 {% for arg in stream_args %}
 static bool stream_in_have_{{ arg.ident }} = false;
-static std::array<uint8_t, {{ arg.width_bytes }}> stream_in_data_{{ arg.ident }} = {};
+static std::array<uint8_t, {{ arg.dpi_width_bytes }}> stream_in_data_{{ arg.ident }} = {};
 {% endfor %}
 
 static void tick() {
@@ -171,7 +171,11 @@ static void service_streams() {
     stream_in_have_{{ arg.ident }} = tapa_stream_try_read("{{ arg.name }}", stream_in_data_{{ arg.ident }}.data());
   }
   dut->{{ arg.tvalid }} = stream_in_have_{{ arg.ident }} ? 1 : 0;
+{% if arg.axis %}
+  dut->{{ arg.tlast }} = stream_in_have_{{ arg.ident }} ? stream_in_data_{{ arg.ident }}[{{ arg.width_bytes }}] : 0;
+{% else %}
   dut->{{ arg.tlast }} = 0;
+{% endif %}
   if (stream_in_have_{{ arg.ident }}) {
     std::memcpy(&dut->{{ arg.tdata }}, stream_in_data_{{ arg.ident }}.data(), {{ arg.width_bytes }});
   }
@@ -182,8 +186,11 @@ static void service_streams() {
 {% for arg in stream_out_args %}
   dut->{{ arg.tready }} = tapa_stream_can_write("{{ arg.name }}") ? 1 : 0;
   if (dut->{{ arg.tvalid }} && dut->{{ arg.tready }}) {
-    std::array<uint8_t, {{ arg.width_bytes }}> data{};
+    std::array<uint8_t, {{ arg.dpi_width_bytes }}> data{};
     std::memcpy(data.data(), &dut->{{ arg.tdata }}, {{ arg.width_bytes }});
+{% if arg.axis %}
+    data[{{ arg.width_bytes }}] = dut->{{ arg.tlast }};
+{% endif %}
     (void)tapa_stream_try_write("{{ arg.name }}", data.data());
   }
 {% endfor %}

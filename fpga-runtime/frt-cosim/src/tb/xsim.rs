@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use crate::error::{CosimError, Result};
-use crate::metadata::{ArgKind, KernelSpec, Mode, StreamDir};
+use crate::metadata::{ArgKind, KernelSpec, Mode, StreamDir, StreamProtocol};
 use crate::tb::names::{escape_verilog_identifier, escaped_verilog_signal, verilator_identifier};
 
 #[derive(Clone)]
@@ -82,6 +82,13 @@ struct StreamArg {
     tready: String,
     tlast: String,
     width_bytes: usize,
+    /// Total bytes passed to/from the DPI function.  For AXIS streams this is
+    /// `width_bytes + 1` (data + EOS byte); for ApFifo streams the EOS bit is
+    /// already packed into the data width, so it equals `width_bytes`.
+    dpi_width_bytes: usize,
+    /// True when the stream uses AXI-Stream (Vitis mode).  The EOS bit is
+    /// carried as a separate byte in the DPI transfer and maps to TLAST.
+    axis: bool,
     has_peek: bool,
     peek_empty_n: String,
     peek_dout: String,
@@ -180,14 +187,15 @@ impl<'a> XsimTbGenerator<'a> {
                     );
                     scalar_args.push(ScalarArg::new(&arg.name, *width, &bytes, offset));
                 }
-                ArgKind::Stream { width, dir, .. } => {
+                ArgKind::Stream { width, dir, protocol, .. } => {
+                    let axis = *protocol == StreamProtocol::Axis;
                     let peek = if self.spec.mode == Mode::Hls && *dir == StreamDir::In {
                         infer_peek_name(&arg.name)
                             .filter(|cand| stream_peek_ports_exist(&self.spec.verilog_files, &self.spec.top_name, cand))
                     } else {
                         None
                     };
-                    let s = StreamArg::new(&arg.name, (*width as usize).div_ceil(8), peek);
+                    let s = StreamArg::new(&arg.name, (*width as usize).div_ceil(8), peek, axis);
                     if *dir == StreamDir::In {
                         stream_args.push(s);
                     } else {
@@ -412,9 +420,10 @@ impl ScalarArg {
 }
 
 impl StreamArg {
-    fn new(name: &str, width_bytes: usize, peek: Option<String>) -> Self {
+    fn new(name: &str, width_bytes: usize, peek: Option<String>, axis: bool) -> Self {
         let has_peek = peek.is_some();
         let peek_name = peek.unwrap_or_default();
+        let dpi_width_bytes = if axis { width_bytes + 1 } else { width_bytes };
         Self {
             name: name.to_owned(),
             ident: verilator_identifier(name),
@@ -429,6 +438,8 @@ impl StreamArg {
             tready: escaped_verilog_signal("", name, "_TREADY"),
             tlast: escaped_verilog_signal("", name, "_TLAST"),
             width_bytes,
+            dpi_width_bytes,
+            axis,
             has_peek,
             peek_empty_n: escaped_verilog_signal("", &peek_name, "_empty_n"),
             peek_dout: escaped_verilog_signal("", &peek_name, "_dout"),

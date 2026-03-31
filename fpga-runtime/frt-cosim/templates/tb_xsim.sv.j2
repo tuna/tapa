@@ -121,7 +121,10 @@ reg [0:0] axi_{{ arg.ident }}_wr_id = 0;
 {% for arg in stream_args %}
 reg [{{ arg.width_bytes * 8 - 1 }}:0] stream_in_data_{{ arg.ident }} = 0;
 reg stream_in_have_{{ arg.ident }} = 0;
-byte unsigned stream_in_bytes_{{ arg.ident }}[0:{{ arg.width_bytes - 1 }}];
+byte unsigned stream_in_bytes_{{ arg.ident }}[0:{{ arg.dpi_width_bytes - 1 }}];
+{% if arg.axis %}
+reg stream_in_tlast_{{ arg.ident }} = 0;
+{% endif %}
 {% if mode == "hls" %}
 wire stream_read_{{ arg.ident }};
 {% else %}
@@ -129,7 +132,7 @@ wire stream_ready_{{ arg.ident }};
 {% endif %}
 {% endfor %}
 {% for arg in stream_out_args %}
-byte unsigned stream_out_bytes_{{ arg.ident }}[0:{{ arg.width_bytes - 1 }}];
+byte unsigned stream_out_bytes_{{ arg.ident }}[0:{{ arg.dpi_width_bytes - 1 }}];
 wire [{{ arg.width_bytes * 8 - 1 }}:0] stream_out_data_{{ arg.ident }};
 reg can_write_{{ arg.ident }};
 {% if mode == "hls" %}
@@ -138,6 +141,9 @@ reg stream_out_full_n_{{ arg.ident }} = 1'b1;
 {% else %}
 wire stream_out_valid_{{ arg.ident }};
 reg stream_out_ready_{{ arg.ident }} = 1'b1;
+{% if arg.axis %}
+wire stream_out_tlast_{{ arg.ident }};
+{% endif %}
 {% endif %}
 {% endfor %}
 
@@ -213,13 +219,13 @@ reg stream_out_ready_{{ arg.ident }} = 1'b1;
   .{{ arg.tdata }}(stream_in_data_{{ arg.ident }}),
   .{{ arg.tvalid }}(stream_in_have_{{ arg.ident }}),
   .{{ arg.tready }}(stream_ready_{{ arg.ident }}),
-  .{{ arg.tlast }}(),
+  .{{ arg.tlast }}({% if arg.axis %}stream_in_tlast_{{ arg.ident }}{% endif %}),
 {% endfor %}
 {% for arg in stream_out_args %}
   .{{ arg.tdata }}(stream_out_data_{{ arg.ident }}),
   .{{ arg.tvalid }}(stream_out_valid_{{ arg.ident }}),
   .{{ arg.tready }}(stream_out_ready_{{ arg.ident }}),
-  .{{ arg.tlast }}(),
+  .{{ arg.tlast }}({% if arg.axis %}stream_out_tlast_{{ arg.ident }}{% endif %}),
 {% endfor %}
   .s_axi_control_AWVALID(s_axi_control_AWVALID),
   .s_axi_control_AWREADY(s_axi_control_AWREADY),
@@ -335,6 +341,9 @@ always @(posedge ap_clk) begin
       for (i = 0; i < {{ arg.width_bytes }}; i = i + 1) begin
         stream_in_data_{{ arg.ident }}[i*8 +: 8] <= stream_in_bytes_{{ arg.ident }}[i];
       end
+{% if arg.axis %}
+      stream_in_tlast_{{ arg.ident }} <= stream_in_bytes_{{ arg.ident }}[{{ arg.width_bytes }}];
+{% endif %}
     end
   end
 {% if mode == "hls" %}
@@ -365,6 +374,9 @@ always @(posedge ap_clk) begin
     for (i = 0; i < {{ arg.width_bytes }}; i = i + 1) begin
       stream_out_bytes_{{ arg.ident }}[i] = stream_out_data_{{ arg.ident }}[i*8 +: 8];
     end
+{% if arg.axis %}
+    stream_out_bytes_{{ arg.ident }}[{{ arg.width_bytes }}] = stream_out_tlast_{{ arg.ident }};
+{% endif %}
     void'(tapa_stream_try_write("{{ arg.name }}", stream_out_bytes_{{ arg.ident }}));
   end
 {% endif %}
