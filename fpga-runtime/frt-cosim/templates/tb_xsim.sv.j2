@@ -279,7 +279,7 @@ end
 
 always @(posedge ap_clk) begin
 {% for arg in mmap_args %}
-  m_axi_{{ arg.ident }}_ARREADY <= ~axi_{{ arg.ident }}_rd_busy;
+  m_axi_{{ arg.ident }}_ARREADY <= ~axi_{{ arg.ident }}_rd_busy && !(m_axi_{{ arg.ident }}_ARVALID && m_axi_{{ arg.ident }}_ARREADY);
   if (m_axi_{{ arg.ident }}_ARVALID && m_axi_{{ arg.ident }}_ARREADY) begin
     axi_{{ arg.ident }}_rd_busy <= 1'b1;
     axi_{{ arg.ident }}_rd_addr <= m_axi_{{ arg.ident }}_ARADDR;
