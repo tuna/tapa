@@ -153,6 +153,15 @@ def _declare_arg_signal(
             # from a port connection in the original HLS file).
             if upper_name != arg.name:
                 state.fsm_upstream_port_signals[upper_name] = arg.name
+                # Explicitly declare the parent wire if it is not already in the
+                # module signals.  The parent mmap arg (e.g. "a") is only an
+                # implicit wire driven by the ctrl_s_axi portarg in the HLS RTL.
+                # Verilator creates a 1-bit implicit wire when it first encounters
+                # ".a_offset(a)" in the FSM portarg if "a" is not yet known to
+                # be a 64-bit net — causing addr-below-base / wrong simulation
+                # output.  An explicit wire declaration forces the correct width.
+                if arg.name not in state.task.module.signals:
+                    state.task.module.add_signals([Wire(arg.name, Width.create(width))])
         state.task.fsm_module.add_pipeline(q, init=Identifier(id_name))
         state.fsm_downstream_module_ports.append(
             IOPort("output", q[-1].name, Width.create(width))
