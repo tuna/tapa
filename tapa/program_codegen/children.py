@@ -180,7 +180,7 @@ def _declare_instance_inputs(
             continue
 
         is_mmap = arg.cat.is_sync_mmap or arg.cat.is_async_mmap
-        upper_name = f"{arg.name}_offset" if is_mmap else arg.name
+        upper_name = f"{arg.name}_offset" if arg.cat.is_async_mmap else arg.name
         # mmap offset carries an AXI address, always 64-bit regardless of data width.
         arg_width = (
             ADDR_CHANNEL_DATA_WIDTH
