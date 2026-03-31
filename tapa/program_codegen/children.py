@@ -63,6 +63,11 @@ class _ChildState:
     async_mmap_args: dict[Instance.Arg, list[str]]
     fsm_upstream_portargs: list[PortArg]
     fsm_upstream_module_ports: dict[str, IOPort]
+    # Maps FSM input port name (e.g. "a_offset") to the actual wire/signal name
+    # in the parent module (e.g. "a").  Used to build the correct portarg so that
+    # the FSM instance connection is ".a_offset(a)" rather than ".a_offset(a_offset)"
+    # when the two names differ.
+    fsm_upstream_port_signals: dict[str, str]
     fsm_downstream_portargs: list[PortArg]
     fsm_downstream_module_ports: list[IOPort]
 
@@ -81,6 +86,7 @@ def _new_state(
             make_port_arg(x, x) for x in HANDSHAKE_INPUT_PORTS + HANDSHAKE_OUTPUT_PORTS
         ],
         fsm_upstream_module_ports={},
+        fsm_upstream_port_signals={},
         fsm_downstream_portargs=[],
         fsm_downstream_module_ports=[],
     )
@@ -137,16 +143,16 @@ def _declare_arg_signal(
             port = IOPort("input", upper_name, Width.create(width))
             state.fsm_upstream_module_ports[upper_name] = port
             state.task.fsm_module.add_ports([port])
-            # When the FSM input port name (e.g. a_offset) differs from the
-            # HLS-synthesized wire name (e.g. a), add a bridge wire so that the
-            # upstream portarg `.a_offset(a_offset)` in the parent module resolves.
-            # XSim treats an undeclared wire as an implicit 1-bit zero, causing the
-            # mmap base address to always read as 0.
+            # When the FSM port name (e.g. a_offset) differs from the parent
+            # wire name (e.g. a), record the mapping so _finalize_state emits
+            # ".a_offset(a)" rather than ".a_offset(a_offset)".  Connecting
+            # the FSM port directly to the existing parent wire avoids the
+            # need for a bridge wire declaration; adding "assign a_offset = a;"
+            # would require "a" to be an explicitly declared wire, which it
+            # may not be in the generated module (it can be an implicit wire
+            # from a port connection in the original HLS file).
             if upper_name != arg.name:
-                state.task.module.add_signals([Wire(upper_name, Width.create(width))])
-                state.task.module.add_logics(
-                    [Assign(lhs=upper_name, rhs=_CODEGEN.visit(Identifier(arg.name)))]
-                )
+                state.fsm_upstream_port_signals[upper_name] = arg.name
         state.task.fsm_module.add_pipeline(q, init=Identifier(id_name))
         state.fsm_downstream_module_ports.append(
             IOPort("output", q[-1].name, Width.create(width))
@@ -378,7 +384,11 @@ def _process_instance(state: _ChildState, instance: Instance) -> None:
 
 def _finalize_state(state: _ChildState) -> list[Pipeline]:
     state.fsm_upstream_portargs.extend(
-        make_port_arg(x.name, x.name) for x in state.fsm_upstream_module_ports.values()
+        make_port_arg(
+            x.name,
+            state.fsm_upstream_port_signals.get(x.name, x.name),
+        )
+        for x in state.fsm_upstream_module_ports.values()
     )
     # Upstream ports were already added eagerly in _declare_arg_signal.
     state.task.fsm_module.add_ports(state.fsm_downstream_module_ports)
