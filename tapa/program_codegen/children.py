@@ -129,10 +129,15 @@ def _declare_arg_signal(
     state.arg_table[arg.name] = q
     if "'d" not in q.name:
         state.task.module.add_signals([Wire(q[-1].name, Width.create(width))])
+        # Eagerly declare the upstream FSM input port BEFORE add_pipeline, so the
+        # port body declaration appears before the assign that references it.
+        # XSim VRFC 10-3380 creates a disconnected implicit wire if a port is used
+        # before its declaration in the generated file.
+        if upper_name not in state.fsm_upstream_module_ports:
+            port = IOPort("input", upper_name, Width.create(width))
+            state.fsm_upstream_module_ports[upper_name] = port
+            state.task.fsm_module.add_ports([port])
         state.task.fsm_module.add_pipeline(q, init=Identifier(id_name))
-        state.fsm_upstream_module_ports.setdefault(
-            upper_name, IOPort("input", upper_name, Width.create(width))
-        )
         state.fsm_downstream_module_ports.append(
             IOPort("output", q[-1].name, Width.create(width))
         )
@@ -365,7 +370,7 @@ def _finalize_state(state: _ChildState) -> list[Pipeline]:
     state.fsm_upstream_portargs.extend(
         make_port_arg(x.name, x.name) for x in state.fsm_upstream_module_ports.values()
     )
-    state.task.fsm_module.add_ports(state.fsm_upstream_module_ports.values())
+    # Upstream ports were already added eagerly in _declare_arg_signal.
     state.task.fsm_module.add_ports(state.fsm_downstream_module_ports)
     state.task.add_rs_pragmas_to_fsm()
 
