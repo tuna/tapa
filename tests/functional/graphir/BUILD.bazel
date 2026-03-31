@@ -40,6 +40,7 @@ sh_test(
     ],
     data = [
         ":vadd-graphir-xo",
+        "//fpga-runtime:cargo_release_artifacts",
         "//tests/apps/vadd:vadd-host",
     ],
     tags = [
@@ -72,6 +73,7 @@ sh_test(
     ],
     data = [
         ":cannon-graphir-xo",
+        "//fpga-runtime:cargo_release_artifacts",
         "//tests/apps/cannon:cannon-host",
     ],
     tags = [
@@ -107,6 +109,7 @@ sh_test(
     ],
     data = [
         ":graph-graphir-xo",
+        "//fpga-runtime:cargo_release_artifacts",
         "//tests/apps/graph:graph.txt",
         "//tests/apps/graph:graph-host",
     ],
@@ -139,6 +142,7 @@ sh_test(
     ],
     data = [
         ":jacobi-graphir-xo",
+        "//fpga-runtime:cargo_release_artifacts",
         "//tests/apps/jacobi:jacobi-host",
     ],
     tags = [
@@ -170,6 +174,7 @@ sh_test(
     ],
     data = [
         ":network-graphir-xo",
+        "//fpga-runtime:cargo_release_artifacts",
         "//tests/apps/network:network-host",
     ],
     tags = [

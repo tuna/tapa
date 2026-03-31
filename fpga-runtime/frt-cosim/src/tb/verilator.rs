@@ -345,7 +345,7 @@ impl StreamArg {
         let has_peek = peek.is_some();
         let peek_name = peek.unwrap_or_default();
         let ident = cpp_identifier(name);
-        let dpi_width_bytes = if axis { width_bytes + 1 } else { width_bytes };
+        let dpi_width_bytes = width_bytes + 1;
         Self {
             name: name.to_owned(),
             ident: ident.clone(),

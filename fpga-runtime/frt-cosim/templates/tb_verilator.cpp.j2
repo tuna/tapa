@@ -147,9 +147,9 @@ static void service_streams() {
   dut->{{ arg.peek_empty_n }} = stream_in_have_{{ arg.ident }} ? 1 : 0;
 {% endif %}
   if (stream_in_have_{{ arg.ident }}) {
-    std::memcpy(&dut->{{ arg.dout }}, stream_in_data_{{ arg.ident }}.data(), {{ arg.width_bytes }});
+    std::memcpy(&dut->{{ arg.dout }}, stream_in_data_{{ arg.ident }}.data(), {{ arg.dpi_width_bytes }});
 {% if arg.has_peek %}
-    std::memcpy(&dut->{{ arg.peek_dout }}, stream_in_data_{{ arg.ident }}.data(), {{ arg.width_bytes }});
+    std::memcpy(&dut->{{ arg.peek_dout }}, stream_in_data_{{ arg.ident }}.data(), {{ arg.dpi_width_bytes }});
 {% endif %}
   }
   if (stream_in_have_{{ arg.ident }} && dut->{{ arg.read }}) {
@@ -160,8 +160,8 @@ static void service_streams() {
   bool can_write_{{ arg.ident }} = tapa_stream_can_write("{{ arg.name }}");
   dut->{{ arg.full_n }} = can_write_{{ arg.ident }} ? 1 : 0;
   if (dut->{{ arg.write }} && can_write_{{ arg.ident }}) {
-    std::array<uint8_t, {{ arg.width_bytes }}> data{};
-    std::memcpy(data.data(), &dut->{{ arg.din }}, {{ arg.width_bytes }});
+    std::array<uint8_t, {{ arg.dpi_width_bytes }}> data{};
+    std::memcpy(data.data(), &dut->{{ arg.din }}, {{ arg.dpi_width_bytes }});
     (void)tapa_stream_try_write("{{ arg.name }}", data.data());
   }
 {% endfor %}

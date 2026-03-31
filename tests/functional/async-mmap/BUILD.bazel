@@ -37,6 +37,7 @@ sh_test(
     data = [
         ":async-mmap-host",
         ":async-mmap-xo",
+        "//fpga-runtime:cargo_release_artifacts",
     ],
     tags = [
         "cpu:2",

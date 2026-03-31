@@ -37,6 +37,7 @@ sh_test(
     data = [
         ":mmaps-streams-host",
         ":mmaps-streams-xo",
+        "//fpga-runtime:cargo_release_artifacts",
     ],
     tags = [
         "cpu:2",

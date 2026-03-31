@@ -77,9 +77,20 @@ unsafe impl Send for CosimDevice {}
 impl CosimDevice {
     pub fn open(path: &Path, sim: &Simulator) -> Result<Self> {
         let spec = frt_cosim::metadata::load_spec(path)?;
-        let ctx = CosimContext::new(&spec)?;
         let opts = runtime_options();
         let tb_dir = make_tb_dir(opts.work_dir.as_deref(), opts.work_dir_parallel)?;
+        let ctx = if opts.resume_from_post_sim {
+            let config_path = tb_dir.path().join("dpi_config.json");
+            let json = std::fs::read_to_string(&config_path).map_err(|e| {
+                FrtError::MetadataParse(format!(
+                    "failed to read {}: {e}",
+                    config_path.display()
+                ))
+            })?;
+            CosimContext::open_from_config(&spec, &json)?
+        } else {
+            CosimContext::new(&spec)?
+        };
 
         let runner: Box<dyn SimRunner> = match sim {
             Simulator::Verilator => {
@@ -419,6 +430,8 @@ impl Device for CosimDevice {
             return Ok(());
         }
         if self.setup_only {
+            let config_path = self.tb_dir.path().join("dpi_config.json");
+            std::fs::write(&config_path, self.ctx.dpi_config_json())?;
             self.compute_ns = 0;
             self.simulation_state = SimulationState::Finished;
             return Ok(());

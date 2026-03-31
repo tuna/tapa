@@ -177,6 +177,7 @@ APPS = [
                 name = test,
                 idx = idx,
             ),
+            "//fpga-runtime:cargo_release_artifacts",
         ],
         tags = [
             "cpu:2",
@@ -203,6 +204,7 @@ APPS = [
         ],
         data = [
             ":jacobi-floorplan-{}-xo".format(idx),
+            "//fpga-runtime:cargo_release_artifacts",
             "//tests/apps/jacobi:jacobi-host",
         ],
         tags = [
@@ -225,6 +227,7 @@ APPS = [
         ],
         data = [
             ":graph-floorplan-{}-xo".format(idx),
+            "//fpga-runtime:cargo_release_artifacts",
             "//tests/apps/graph:graph.txt",
             "//tests/apps/graph:graph-host",
         ],
@@ -248,6 +251,7 @@ APPS = [
         ],
         data = [
             ":shared-mmap-floorplan-{}-xo".format(idx),
+            "//fpga-runtime:cargo_release_artifacts",
             "//tests/functional/shared-mmap:shared-mmap-host",
         ],
         tags = [
@@ -269,6 +273,7 @@ APPS = [
         ],
         data = [
             ":gemv-floorplan-{}-xo".format(idx),
+            "//fpga-runtime:cargo_release_artifacts",
             "//tests/apps/gemv:gemv-host",
         ],
         tags = [

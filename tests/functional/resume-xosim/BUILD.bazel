@@ -17,6 +17,7 @@ sh_test(
     ],
     data = [
         ":resume-xosim-test.sh",
+        "//fpga-runtime:cargo_release_artifacts",
         "//tests/apps/vadd:vadd-host",
         "//tests/apps/vadd:vadd-xo",
     ],

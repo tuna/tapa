@@ -36,6 +36,7 @@ sh_test(
     data = [
         ":stream-top-host",
         ":stream-top-xo",
+        "//fpga-runtime:cargo_release_artifacts",
     ],
     tags = [
         "cpu:3",
@@ -54,6 +55,7 @@ sh_test(
     data = [
         ":stream-top-hls-zip",
         ":stream-top-host",
+        "//fpga-runtime:cargo_release_artifacts",
     ],
     tags = [
         "cpu:3",

@@ -48,6 +48,7 @@ sh_test(
     data = [
         ":cannon-host",
         ":cannon-xo",
+        "//fpga-runtime:cargo_release_artifacts",
     ],
     tags = [
         "cpu:2",

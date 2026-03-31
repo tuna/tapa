@@ -37,6 +37,7 @@ sh_test(
     data = [
         ":eot-peek-host",
         ":eot-peek-xo",
+        "//fpga-runtime:cargo_release_artifacts",
     ],
     tags = [
         "cpu:2",

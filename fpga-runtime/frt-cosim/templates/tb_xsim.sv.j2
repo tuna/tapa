@@ -126,6 +126,7 @@ byte unsigned stream_in_bytes_{{ arg.ident }}[0:{{ arg.dpi_width_bytes - 1 }}];
 reg stream_in_tlast_{{ arg.ident }} = 0;
 {% endif %}
 {% if mode == "hls" %}
+reg stream_in_eos_{{ arg.ident }} = 0;
 wire stream_read_{{ arg.ident }};
 {% else %}
 wire stream_ready_{{ arg.ident }};
@@ -136,6 +137,7 @@ byte unsigned stream_out_bytes_{{ arg.ident }}[0:{{ arg.dpi_width_bytes - 1 }}];
 wire [{{ arg.width_bytes * 8 - 1 }}:0] stream_out_data_{{ arg.ident }};
 reg can_write_{{ arg.ident }};
 {% if mode == "hls" %}
+wire stream_out_eos_{{ arg.ident }};
 wire stream_out_write_{{ arg.ident }};
 reg stream_out_full_n_{{ arg.ident }} = 1'b1;
 {% else %}
@@ -192,16 +194,16 @@ wire stream_out_tlast_{{ arg.ident }};
 {% endfor %}
 {% if mode == "hls" %}
 {% for arg in stream_args %}
-  .{{ arg.dout }}(stream_in_data_{{ arg.ident }}),
+  .{{ arg.dout }}({stream_in_eos_{{ arg.ident }}, stream_in_data_{{ arg.ident }}}),
   .{{ arg.empty_n }}(stream_in_have_{{ arg.ident }}),
   .{{ arg.read }}(stream_read_{{ arg.ident }}),
 {% if arg.has_peek %}
-  .{{ arg.peek_dout }}(stream_in_data_{{ arg.ident }}),
+  .{{ arg.peek_dout }}({stream_in_eos_{{ arg.ident }}, stream_in_data_{{ arg.ident }}}),
   .{{ arg.peek_empty_n }}(stream_in_have_{{ arg.ident }}),
 {% endif %}
 {% endfor %}
 {% for arg in stream_out_args %}
-  .{{ arg.din }}(stream_out_data_{{ arg.ident }}),
+  .{{ arg.din }}({stream_out_eos_{{ arg.ident }}, stream_out_data_{{ arg.ident }}}),
   .{{ arg.full_n }}(stream_out_full_n_{{ arg.ident }}),
   .{{ arg.write }}(stream_out_write_{{ arg.ident }}),
 {% endfor %}
@@ -333,7 +335,7 @@ always @(posedge ap_clk) begin
 {% endfor %}
 
 {% for arg in stream_args %}
-  if (!stream_in_have_{{ arg.ident }}) begin
+  if (ap_rst_n && !stream_in_have_{{ arg.ident }}) begin
     bit got_stream_{{ arg.ident }};
     got_stream_{{ arg.ident }} = tapa_stream_try_read("{{ arg.name }}", stream_in_bytes_{{ arg.ident }});
     stream_in_have_{{ arg.ident }} <= got_stream_{{ arg.ident }};
@@ -343,6 +345,9 @@ always @(posedge ap_clk) begin
       end
 {% if arg.axis %}
       stream_in_tlast_{{ arg.ident }} <= stream_in_bytes_{{ arg.ident }}[{{ arg.width_bytes }}];
+{% endif %}
+{% if mode == "hls" %}
+      stream_in_eos_{{ arg.ident }} <= stream_in_bytes_{{ arg.ident }}[{{ arg.width_bytes }}][0];
 {% endif %}
     end
   end
@@ -365,6 +370,7 @@ always @(posedge ap_clk) begin
     for (i = 0; i < {{ arg.width_bytes }}; i = i + 1) begin
       stream_out_bytes_{{ arg.ident }}[i] = stream_out_data_{{ arg.ident }}[i*8 +: 8];
     end
+    stream_out_bytes_{{ arg.ident }}[{{ arg.width_bytes }}] = stream_out_eos_{{ arg.ident }};
     void'(tapa_stream_try_write("{{ arg.name }}", stream_out_bytes_{{ arg.ident }}));
   end
 {% else %}

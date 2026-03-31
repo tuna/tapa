@@ -76,6 +76,7 @@ sh_test(
         "graph.txt",
         ":graph-host",
         ":graph-xo",
+        "//fpga-runtime:cargo_release_artifacts",
     ],
     tags = [
         "cpu:2",

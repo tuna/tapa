@@ -40,6 +40,7 @@ sh_test(
         ":gather",
         ":proc-elem",
         ":scatter",
+        "//fpga-runtime:cargo_release_artifacts",
     ],
     env = {"TAPA_CONCURRENCY": "1"},
     tags = ["cpu:8"],
@@ -122,6 +123,7 @@ sh_test(
         ":gather-4x4",
         ":proc-elem-4x4",
         ":scatter-4x4",
+        "//fpga-runtime:cargo_release_artifacts",
     ],
     env = {"TAPA_CONCURRENCY": "1"},
     tags = [

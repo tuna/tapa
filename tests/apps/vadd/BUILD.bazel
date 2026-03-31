@@ -52,6 +52,7 @@ sh_test(
     data = [
         ":vadd-host",
         ":vadd-xo",
+        "//fpga-runtime:cargo_release_artifacts",
     ],
     tags = [
         "cpu:2",
@@ -91,6 +92,7 @@ sh_test(
     data = [
         ":vadd-host",
         ":vadd-zip",
+        "//fpga-runtime:cargo_release_artifacts",
     ],
     tags = ["cpu:2"],
 )

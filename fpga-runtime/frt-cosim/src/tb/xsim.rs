@@ -82,9 +82,9 @@ struct StreamArg {
     tready: String,
     tlast: String,
     width_bytes: usize,
-    /// Total bytes passed to/from the DPI function.  For AXIS streams this is
-    /// `width_bytes + 1` (data + EOS byte); for ApFifo streams the EOS bit is
-    /// already packed into the data width, so it equals `width_bytes`.
+    /// Total bytes passed to/from the DPI function.  Always `width_bytes + 1`:
+    /// the extra byte carries the EOS/TLAST flag.  For AXIS streams this maps
+    /// to TLAST; for ApFifo streams it maps to the MSB of the `dout`/`din` port.
     dpi_width_bytes: usize,
     /// True when the stream uses AXI-Stream (Vitis mode).  The EOS bit is
     /// carried as a separate byte in the DPI transfer and maps to TLAST.
@@ -423,7 +423,7 @@ impl StreamArg {
     fn new(name: &str, width_bytes: usize, peek: Option<String>, axis: bool) -> Self {
         let has_peek = peek.is_some();
         let peek_name = peek.unwrap_or_default();
-        let dpi_width_bytes = if axis { width_bytes + 1 } else { width_bytes };
+        let dpi_width_bytes = width_bytes + 1;
         Self {
             name: name.to_owned(),
             ident: verilator_identifier(name),

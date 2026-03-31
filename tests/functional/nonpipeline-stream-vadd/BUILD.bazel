@@ -29,6 +29,7 @@ sh_test(
     ],
     data = [
         ":nonpipeline-stream-vadd-xo",
+        "//fpga-runtime:cargo_release_artifacts",
         "//tests/apps/vadd:vadd-host",
     ],
     tags = [

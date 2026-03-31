@@ -1,5 +1,5 @@
 use crate::error::Result;
-use crate::metadata::{ArgKind, KernelSpec, StreamProtocol};
+use crate::metadata::{ArgKind, KernelSpec};
 use frt_shm::{MmapSegment, SharedMemoryQueue};
 use std::collections::HashMap;
 
@@ -11,6 +11,38 @@ pub struct CosimContext {
 }
 
 impl CosimContext {
+    pub fn open_from_config(spec: &KernelSpec, config_json: &str) -> Result<Self> {
+        let config: serde_json::Value = serde_json::from_str(config_json)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+
+        let mut buffers = HashMap::new();
+        let mut base_addresses = HashMap::new();
+
+        for arg in &spec.args {
+            if let ArgKind::Mmap { .. } = &arg.kind {
+                let entry = &config["buffers"][&arg.name];
+                let path = entry["path"].as_str().ok_or_else(|| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        format!("missing path for buffer '{}' in dpi_config.json", arg.name),
+                    )
+                })?;
+                let size = entry["size_bytes"].as_u64().unwrap_or(0) as usize;
+                let base = entry["base_addr"].as_u64().unwrap_or(0);
+                let seg = MmapSegment::open(path, size)?;
+                buffers.insert(arg.name.clone(), seg);
+                base_addresses.insert(arg.name.clone(), base);
+            }
+        }
+
+        Ok(Self {
+            buffers,
+            streams: HashMap::new(),
+            stream_path_overrides: HashMap::new(),
+            base_addresses,
+        })
+    }
+
     pub fn new(spec: &KernelSpec) -> Result<Self> {
         let mut buffers = HashMap::new();
         let mut streams = HashMap::new();
@@ -27,15 +59,12 @@ impl CosimContext {
                     base_addresses.insert(arg.name.clone(), base);
                     mmap_idx += 1;
                 }
-                ArgKind::Stream { width, depth, protocol, .. } => {
-                    // AXIS streams carry a separate EOS byte alongside the data
-                    // (the host enqueues elem_t<T> = T + bool, sizeof = data + 1).
-                    // ApFifo streams already encode EOS in the data width reported
-                    // by graph.yaml, so no adjustment is needed there.
-                    let width_bytes = match protocol {
-                        StreamProtocol::Axis => (*width).div_ceil(8) + 1,
-                        StreamProtocol::ApFifo => (*width).div_ceil(8),
-                    };
+                ArgKind::Stream { width, depth, .. } => {
+                    // The host enqueues elem_t<T> = { T val; bool eot; } so each
+                    // element is sizeof(T) + 1 bytes regardless of protocol.
+                    // For AXIS the extra byte carries TLAST; for ApFifo it carries
+                    // the EOS bit that maps to the MSB of the dout/din FIFO port.
+                    let width_bytes = (*width).div_ceil(8) + 1;
                     let q = SharedMemoryQueue::create(&arg.name, *depth, width_bytes)?;
                     streams.insert(arg.name.clone(), q);
                 }
