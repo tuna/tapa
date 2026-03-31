@@ -421,7 +421,7 @@ fn parse_xilinx_fp_ip_tcl_text(content: &str) -> Result<Option<XilinxFpIpConfig>
 
 fn detect_xilinx_fp_ip_model_from_name(ip_module: &str) -> Option<XilinxFpIpConfig> {
     let lower = ip_module.to_ascii_lowercase();
-    let (dpi_func, _bit_width) = [
+    let (_dpi_func, _bit_width) = [
         ("_fadd_", "fp32_add", 32usize),
         ("_fadds_", "fp32_add", 32usize),
         ("_fsub_", "fp32_sub", 32usize),
