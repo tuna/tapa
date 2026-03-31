@@ -99,7 +99,9 @@ fn load_xo_spec<R: Read + std::io::Seek>(
             kernel_xml = Some(std::fs::read_to_string(&path)?);
             continue;
         }
-        if name.ends_with("s_axi_control.v") {
+        // TAPA generates `<TopName>_control_s_axi.v`; hand-crafted XO files
+        // may use the legacy `s_axi_control.v` name.
+        if name.ends_with("_control_s_axi.v") || name.ends_with("s_axi_control.v") {
             scalar_register_map = sax_control::parse_register_map(&std::fs::read_to_string(&path)?);
         }
         if has_ext(&name, &["v", "sv", "vh", "dat"]) {
