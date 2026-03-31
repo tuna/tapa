@@ -137,6 +137,16 @@ def _declare_arg_signal(
             port = IOPort("input", upper_name, Width.create(width))
             state.fsm_upstream_module_ports[upper_name] = port
             state.task.fsm_module.add_ports([port])
+            # When the FSM input port name (e.g. a_offset) differs from the
+            # HLS-synthesized wire name (e.g. a), add a bridge wire so that the
+            # upstream portarg `.a_offset(a_offset)` in the parent module resolves.
+            # XSim treats an undeclared wire as an implicit 1-bit zero, causing the
+            # mmap base address to always read as 0.
+            if upper_name != arg.name:
+                state.task.module.add_signals([Wire(upper_name, Width.create(width))])
+                state.task.module.add_logics(
+                    [Assign(lhs=upper_name, rhs=_CODEGEN.visit(Identifier(arg.name)))]
+                )
         state.task.fsm_module.add_pipeline(q, init=Identifier(id_name))
         state.fsm_downstream_module_ports.append(
             IOPort("output", q[-1].name, Width.create(width))
@@ -180,7 +190,7 @@ def _declare_instance_inputs(
             continue
 
         is_mmap = arg.cat.is_sync_mmap or arg.cat.is_async_mmap
-        upper_name = f"{arg.name}_offset" if arg.cat.is_async_mmap else arg.name
+        upper_name = f"{arg.name}_offset" if is_mmap else arg.name
         # mmap offset carries an AXI address, always 64-bit regardless of data width.
         arg_width = (
             ADDR_CHANNEL_DATA_WIDTH
