@@ -10,8 +10,8 @@ use opencl3::command_queue::{
 use opencl3::context::Context;
 use opencl3::device::{Device as OclDevice, CL_DEVICE_TYPE_ACCELERATOR, CL_DEVICE_TYPE_ALL};
 use opencl3::event::Event;
-use opencl3::kernel::{set_kernel_arg, ExecuteKernel, Kernel};
-use opencl3::memory::{Buffer, CL_MEM_READ_WRITE, CL_MEM_USE_HOST_PTR};
+use opencl3::kernel::{set_kernel_arg, Kernel};
+use opencl3::memory::{Buffer, ClMem, CL_MEM_READ_WRITE, CL_MEM_USE_HOST_PTR};
 use opencl3::platform::get_platforms;
 use opencl3::program::Program;
 use opencl3::types::{cl_device_id, cl_event, CL_BLOCKING};
@@ -333,7 +333,10 @@ impl Device for XrtDevice {
         let mut args = self._meta.args.clone();
         args.sort_by_key(|a| a.id);
 
-        let mut exec = ExecuteKernel::new(&self.kernel);
+        // Set all kernel arguments using clSetKernelArg with explicit indices.
+        // ExecuteKernel::set_arg uses a sequential internal counter (0, 1, 2, …)
+        // which is wrong when scalar and mmap args are interleaved at non-zero
+        // indices.  Use set_kernel_arg directly for both kinds instead.
         for arg in &args {
             match arg.kind {
                 XrtArgKind::Scalar { width } => {
@@ -361,8 +364,20 @@ impl Device for XrtDevice {
                             arg.id
                         ))
                     })?;
+                    // Pass a pointer to the cl_mem handle.  clSetKernelArg
+                    // expects arg_value to point to the cl_mem value itself.
+                    let cl_mem_handle = binding.buffer.get();
                     unsafe {
-                        exec.set_arg(&binding.buffer);
+                        set_kernel_arg(
+                            self.kernel.get(),
+                            arg.id,
+                            std::mem::size_of_val(&cl_mem_handle),
+                            &cl_mem_handle as *const _ as *const c_void,
+                        )
+                        .map_err(|code| FrtError::OpenCl {
+                            code,
+                            msg: format!("set OpenCL mmap kernel arg: error code {code}"),
+                        })?;
                     };
                 }
                 XrtArgKind::Stream { .. } => {
@@ -373,12 +388,18 @@ impl Device for XrtDevice {
             }
         }
 
-        for evt in &self.load_events {
-            exec.set_wait_event(evt);
-        }
+        let waits: Vec<cl_event> = self.load_events.iter().map(Event::get).collect();
+        let global_work_size: usize = 1;
         let evt = unsafe {
             ocl_result(
-                exec.set_global_work_size(1).enqueue_nd_range(&self.queue),
+                self.queue.enqueue_nd_range_kernel(
+                    self.kernel.get(),
+                    1,
+                    std::ptr::null(),
+                    &global_work_size as *const usize as *const _,
+                    std::ptr::null(),
+                    &waits,
+                ),
                 "enqueue OpenCL kernel",
             )?
         };
