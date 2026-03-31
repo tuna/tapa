@@ -122,8 +122,10 @@ def instantiate_global_fsm(
         return NonblockingSubstitution(left=STATE, right=state)
 
     module.add_signals([Reg(STATE.name, width=Width.create(2))])
-    module.add_pipeline(program.start_q, init=START)
-    module.add_pipeline(program.done_q, init=is_state(STATE10))
+    module.add_logics([Assign(lhs=program.start_q[0].name, rhs=_CODEGEN.visit(START))])
+    module.add_logics(
+        [Assign(lhs=program.done_q[0].name, rhs=_CODEGEN.visit(is_state(STATE10)))]
+    )
 
     state01_action = set_state(STATE10)
     if is_done_signals:
@@ -204,6 +206,8 @@ def instrument_upper_and_template_task(program: Any, task: Task) -> None:
             task=task, top=program.top, target=program.target, get_task=program.get_task
         )
         width_table = {port.name: port.width for port in task.ports.values()}
+        task.fsm_module.add_signals(program.start_q.signals)
+        task.fsm_module.add_signals(program.done_q.signals)
         is_done_signals = _instantiate_children(program, task, width_table)
         instantiate_global_fsm(program, task.fsm_module, is_done_signals)
         with open(
