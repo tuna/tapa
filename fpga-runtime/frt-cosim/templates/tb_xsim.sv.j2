@@ -287,21 +287,31 @@ always @(posedge ap_clk) begin
     axi_{{ arg.ident }}_rd_beat <= 0;
     axi_{{ arg.ident }}_rd_id <= m_axi_{{ arg.ident }}_ARID;
   end
-  if (axi_{{ arg.ident }}_rd_busy) begin
-    tapa_axi_read("{{ arg.name }}", axi_{{ arg.ident }}_rd_addr + axi_{{ arg.ident }}_rd_beat * {{ arg.data_width_bytes }}, {{ arg.data_width_bytes }}, axi_{{ arg.ident }}_bytes);
-    for (i = 0; i < {{ arg.data_width_bytes }}; i = i + 1) begin
-      m_axi_{{ arg.ident }}_RDATA[i*8 +: 8] <= axi_{{ arg.ident }}_bytes[i];
-    end
-    m_axi_{{ arg.ident }}_RVALID <= 1'b1;
-    m_axi_{{ arg.ident }}_RLAST <= (axi_{{ arg.ident }}_rd_beat == axi_{{ arg.ident }}_rd_len);
-    m_axi_{{ arg.ident }}_RID <= axi_{{ arg.ident }}_rd_id;
-    m_axi_{{ arg.ident }}_RRESP <= 2'b00;
-    if (m_axi_{{ arg.ident }}_RREADY) begin
+  if (axi_{{ arg.ident }}_rd_busy) begin : rd_{{ arg.ident }}_blk
+    // Track whether this burst just completed so we suppress the next read.
+    automatic bit rd_done = 1'b0;
+    // On R-channel handshake, advance beat (blocking) so the DPI read below
+    // immediately fetches the next beat — matching the combinational model
+    // used by the Verilator testbench and the original axi_ram modules.
+    if (m_axi_{{ arg.ident }}_RVALID && m_axi_{{ arg.ident }}_RREADY) begin
       if (axi_{{ arg.ident }}_rd_beat >= axi_{{ arg.ident }}_rd_len) begin
         axi_{{ arg.ident }}_rd_busy <= 1'b0;
+        rd_done = 1'b1;
       end else begin
-        axi_{{ arg.ident }}_rd_beat <= axi_{{ arg.ident }}_rd_beat + 1'b1;
+        axi_{{ arg.ident }}_rd_beat = axi_{{ arg.ident }}_rd_beat + 1'b1;
       end
+    end
+    if (!rd_done) begin
+      tapa_axi_read("{{ arg.name }}", axi_{{ arg.ident }}_rd_addr + axi_{{ arg.ident }}_rd_beat * {{ arg.data_width_bytes }}, {{ arg.data_width_bytes }}, axi_{{ arg.ident }}_bytes);
+      for (i = 0; i < {{ arg.data_width_bytes }}; i = i + 1) begin
+        m_axi_{{ arg.ident }}_RDATA[i*8 +: 8] <= axi_{{ arg.ident }}_bytes[i];
+      end
+      m_axi_{{ arg.ident }}_RVALID <= 1'b1;
+      m_axi_{{ arg.ident }}_RLAST <= (axi_{{ arg.ident }}_rd_beat == axi_{{ arg.ident }}_rd_len);
+      m_axi_{{ arg.ident }}_RID <= axi_{{ arg.ident }}_rd_id;
+      m_axi_{{ arg.ident }}_RRESP <= 2'b00;
+    end else begin
+      m_axi_{{ arg.ident }}_RVALID <= 1'b0;
     end
   end else begin
     m_axi_{{ arg.ident }}_RVALID <= 1'b0;
@@ -314,7 +324,7 @@ always @(posedge ap_clk) begin
     axi_{{ arg.ident }}_wr_beat <= 0;
     axi_{{ arg.ident }}_wr_id <= m_axi_{{ arg.ident }}_AWID;
   end
-  m_axi_{{ arg.ident }}_WREADY <= axi_{{ arg.ident }}_wr_aw_got;
+  m_axi_{{ arg.ident }}_WREADY <= axi_{{ arg.ident }}_wr_aw_got && !(m_axi_{{ arg.ident }}_WVALID && m_axi_{{ arg.ident }}_WREADY && m_axi_{{ arg.ident }}_WLAST);
   if (m_axi_{{ arg.ident }}_WVALID && m_axi_{{ arg.ident }}_WREADY) begin
     for (i = 0; i < {{ arg.data_width_bytes }}; i = i + 1) begin
       axi_{{ arg.ident }}_bytes[i] = m_axi_{{ arg.ident }}_WDATA[i*8 +: 8];
