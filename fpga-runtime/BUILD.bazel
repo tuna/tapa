@@ -36,7 +36,11 @@ genrule(
     ],
     cmd = """
 set -euo pipefail
-export PATH="$${HOME:-/tmp/home}/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$$PATH"
+CARGO="$(execpath @rules_rust//rust/toolchain:current_cargo_files)"
+RUSTC="$(execpath @rules_rust//rust/toolchain:current_rustc_files)"
+RUST_BIN_DIR="$$(cd "$$(dirname "$$CARGO")" && pwd)"
+RUSTC_BIN_DIR="$$(cd "$$(dirname "$$RUSTC")" && pwd)"
+export PATH="$$RUST_BIN_DIR:$$RUSTC_BIN_DIR:/usr/local/bin:/usr/bin:/bin:$$PATH"
 export CARGO_TARGET_DIR="$(@D)/cargo-target"
 cargo build --manifest-path "$(location Cargo.toml)" --release \\
   -p frt -p frt-dpi-verilator -p frt-dpi-xsim
@@ -76,6 +80,10 @@ fi
 """,
     local = True,
     tags = ["local"],
+    tools = [
+        "@rules_rust//rust/toolchain:current_cargo_files",
+        "@rules_rust//rust/toolchain:current_rustc_files",
+    ],
 )
 
 cc_import(

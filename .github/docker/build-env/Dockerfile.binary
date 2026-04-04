@@ -109,15 +109,10 @@ RUN echo "en_US.UTF-8 UTF-8" > /etc/locale.gen && locale-gen
 # Clean up
 RUN rm -rf /tmp/* /var/tmp/*
 
-# Install Rust toolchain (required by fpga-runtime cargo build)
-ENV RUSTUP_HOME="/tmp/home/.rustup"
-ENV CARGO_HOME="/tmp/home/.cargo"
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-      | sh -s -- -y --default-toolchain stable --profile minimal
-
 # Use /tmp/home as the cache directory
+# Rust toolchain is provided hermetically by rules_rust via Bazel.
 RUN mkdir -m 755 \
-  -p /tmp/home/.cache /tmp/home/.cargo \
+  -p /tmp/home/.cache \
      /tmp/home/.local/ /tmp/home/.nuitka_cache
 
 RUN addgroup --uid ${DOCKER_GROUP_ID} io && \
@@ -127,6 +122,6 @@ RUN chown -R ${DOCKER_USER_ID}:${DOCKER_GROUP_ID} /tmp/home
 
 ENV HOME="/tmp/home"
 ENV NUITKA_CACHE_DIR="/tmp/home/.nuitka_cache"
-ENV PATH="/opt/python/bin:/tmp/home/.cargo/bin:/tmp/home/.local/bin:${PATH}"
+ENV PATH="/opt/python/bin:/tmp/home/.local/bin:${PATH}"
 
 WORKDIR /tmp
