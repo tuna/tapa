@@ -317,7 +317,7 @@ always @(posedge ap_clk) begin
     m_axi_{{ arg.ident }}_RVALID <= 1'b0;
   end
 
-  m_axi_{{ arg.ident }}_AWREADY <= (~axi_{{ arg.ident }}_wr_aw_got && ~axi_{{ arg.ident }}_wr_b_pending);
+  m_axi_{{ arg.ident }}_AWREADY <= (~axi_{{ arg.ident }}_wr_aw_got && ~axi_{{ arg.ident }}_wr_b_pending) && !(m_axi_{{ arg.ident }}_AWVALID && m_axi_{{ arg.ident }}_AWREADY);
   if (m_axi_{{ arg.ident }}_AWVALID && m_axi_{{ arg.ident }}_AWREADY) begin
     axi_{{ arg.ident }}_wr_aw_got <= 1'b1;
     axi_{{ arg.ident }}_wr_addr <= m_axi_{{ arg.ident }}_AWADDR;
