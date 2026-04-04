@@ -68,10 +68,10 @@ impl XrtDevice {
         let ocl_device = OclDevice::new(device_id);
         let context = ocl_result(Context::from_device(&ocl_device), "create OpenCL context")?;
         let queue = ocl_result(
-            CommandQueue::create_default_with_properties(
+            #[allow(deprecated)]
+            CommandQueue::create_default(
                 &context,
                 CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE | CL_QUEUE_PROFILING_ENABLE,
-                0,
             ),
             "create OpenCL command queue",
         )?;
@@ -339,11 +339,12 @@ impl Device for XrtDevice {
         // indices.  Use set_kernel_arg directly for both kinds instead.
         for arg in &args {
             match arg.kind {
-                XrtArgKind::Scalar { width } => {
-                    let raw = normalized_scalar_bytes(
-                        width,
-                        self.scalars.get(&arg.id).map(|bytes| bytes.as_slice()),
-                    );
+                XrtArgKind::Scalar { .. } => {
+                    let raw = self
+                        .scalars
+                        .get(&arg.id)
+                        .map(|v| v.as_slice())
+                        .unwrap_or(&[0u8; 8]);
                     unsafe {
                         set_kernel_arg(
                             self.kernel.get(),
