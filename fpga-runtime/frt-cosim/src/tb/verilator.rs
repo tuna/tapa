@@ -137,10 +137,12 @@ impl<'a> VerilatorTbGenerator<'a> {
             match &arg.kind {
                 ArgKind::Mmap { data_width, .. } => {
                     let base = self.base_addresses.get(&arg.name).copied().unwrap_or(0);
+                    let offset_key = format!("{}_offset", arg.name);
                     let offset = self
                         .spec
                         .scalar_register_map
                         .get(&arg.name)
+                        .or_else(|| self.spec.scalar_register_map.get(&offset_key))
                         .copied()
                         .unwrap_or(0);
                     let data_size = self.buffer_sizes.get(&arg.name).copied().unwrap_or(4 * 1024 * 1024);

@@ -161,10 +161,12 @@ impl<'a> XsimTbGenerator<'a> {
         for arg in &self.spec.args {
             match &arg.kind {
                 ArgKind::Mmap { data_width, .. } => {
+                    let offset_key = format!("{}_offset", arg.name);
                     let offset = self
                         .spec
                         .scalar_register_map
                         .get(&arg.name)
+                        .or_else(|| self.spec.scalar_register_map.get(&offset_key))
                         .copied()
                         .unwrap_or(0);
                     mmap_args.push(MmapArg::new(
