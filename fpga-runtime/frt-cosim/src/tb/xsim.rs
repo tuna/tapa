@@ -1,6 +1,6 @@
 use askama::Template;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::error::{CosimError, Result};
 use crate::metadata::{ArgKind, KernelSpec, Mode, StreamDir, StreamProtocol};
@@ -49,6 +49,7 @@ struct MmapArg {
     wstrb: String,
     wvalid: String,
     data_width_bytes: usize,
+    id_width: usize,
     base_addr: u64,
     reg_offset_lo: u32,
     reg_offset_hi: u32,
@@ -169,9 +170,11 @@ impl<'a> XsimTbGenerator<'a> {
                         .or_else(|| self.spec.scalar_register_map.get(&offset_key))
                         .copied()
                         .unwrap_or(0);
+                    let id_width = detect_axi_id_width(&self.spec.verilog_files, &arg.name);
                     mmap_args.push(MmapArg::new(
                         &arg.name,
                         (*data_width as usize).div_ceil(8),
+                        id_width,
                         self.base_addresses.get(&arg.name).copied().unwrap_or(0),
                         offset,
                     ));
@@ -360,8 +363,29 @@ fn stream_peek_ports_exist(
     })
 }
 
+/// Detect the AXI ID width for a given mmap port by scanning the Verilog
+/// source files for the ARID port declaration.  Returns the bit-width
+/// (e.g. 3 for `[2:0]`).  Defaults to 1 if the port is not found.
+fn detect_axi_id_width(verilog_files: &[PathBuf], mmap_name: &str) -> usize {
+    let escaped = escape_verilog_identifier(&format!("m_axi_{mmap_name}_ARID"));
+    // Match patterns like:  output [2:0] m_axi_foo_ARID  or  wire [2:0] ...
+    // The left bound N in [N:0] gives width = N+1.
+    let pattern = format!(r"\[\s*(\d+)\s*:\s*0\s*\]\s*{}", regex_lite::escape(&escaped));
+    let re = regex_lite::Regex::new(&pattern).unwrap();
+    for file in verilog_files {
+        if let Ok(text) = std::fs::read_to_string(file) {
+            if let Some(caps) = re.captures(&text) {
+                if let Ok(n) = caps[1].parse::<usize>() {
+                    return n + 1;
+                }
+            }
+        }
+    }
+    1
+}
+
 impl MmapArg {
-    fn new(name: &str, data_width_bytes: usize, base_addr: u64, reg_offset_lo: u32) -> Self {
+    fn new(name: &str, data_width_bytes: usize, id_width: usize, base_addr: u64, reg_offset_lo: u32) -> Self {
         Self {
             name: name.to_owned(),
             ident: verilator_identifier(name),
@@ -404,6 +428,7 @@ impl MmapArg {
             wstrb: escaped_verilog_signal("m_axi_", name, "_WSTRB"),
             wvalid: escaped_verilog_signal("m_axi_", name, "_WVALID"),
             data_width_bytes,
+            id_width,
             base_addr,
             reg_offset_lo,
             reg_offset_hi: reg_offset_lo + 4,
