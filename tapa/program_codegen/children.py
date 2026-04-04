@@ -144,15 +144,19 @@ def _declare_arg_signal(
             state.fsm_upstream_module_ports[upper_name] = port
             state.task.fsm_module.add_ports([port])
             # When the FSM port name (e.g. a_offset) differs from the parent
-            # wire name (e.g. a), record the mapping so _finalize_state emits
-            # ".a_offset(a)" rather than ".a_offset(a_offset)".  This only
-            # applies when upper_name is NOT already a direct port of the parent
-            # module (Vitis mode: ctrl_s_axi outputs arg.name as a wire).  In
+            # wire name, record a mapping so _finalize_state can emit the
+            # correct portarg.  Skip the mapping when upper_name is already
+            # a direct port OR an existing signal (wire) in the parent module
+            # — e.g. in Vitis mode ctrl_s_axi outputs "a_offset" as a wire,
+            # so the FSM should connect ".a_offset(a_offset)" directly.  In
             # HLS mode the parent module has a_array_offset as a direct input
             # port, so the FSM connects ".a_array_offset(a_array_offset)" with
-            # no mapping needed — adding a mapping to arg.name would leave
-            # arg.name undriven and deliver 0 as the mmap base address.
-            if upper_name != arg.name and upper_name not in state.task.module.ports:
+            # no mapping needed.
+            if (
+                upper_name != arg.name
+                and upper_name not in state.task.module.ports
+                and upper_name not in state.task.module.signals
+            ):
                 state.fsm_upstream_port_signals[upper_name] = arg.name
                 # Explicitly declare the parent wire if it is not already in the
                 # module signals.  The parent mmap arg (e.g. "a") is only an
