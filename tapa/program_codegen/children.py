@@ -143,28 +143,29 @@ def _declare_arg_signal(
             port = IOPort("input", upper_name, Width.create(width))
             state.fsm_upstream_module_ports[upper_name] = port
             state.task.fsm_module.add_ports([port])
-            # When the FSM port name (e.g. a_offset) differs from the parent
-            # wire name, record a mapping so _finalize_state can emit the
-            # correct portarg.  Skip the mapping when upper_name is already
-            # a direct port OR an existing signal (wire) in the parent module
-            # — e.g. in Vitis mode ctrl_s_axi outputs "a_offset" as a wire,
-            # so the FSM should connect ".a_offset(a_offset)" directly.  In
-            # HLS mode the parent module has a_array_offset as a direct input
-            # port, so the FSM connects ".a_array_offset(a_array_offset)" with
-            # no mapping needed.
+            # Non-top upper tasks also need the offset as a main-module
+            # input port so the PARENT can connect to it via
+            # generate_m_axi_ports (which looks for port + "_offset" in
+            # the child's module.ports).  Skip for the top-level task
+            # where ctrl_s_axi already provides the signal as a wire.
+            if (
+                upper_name not in state.task.module.ports
+                and upper_name not in state.task.module.signals
+            ):
+                state.task.module.add_ports(
+                    [
+                        IOPort("input", upper_name, Width.create(width)),
+                    ]
+                )
+            # Map FSM port to parent signal when names differ and
+            # upper_name is not already a port or signal in the parent.
             if (
                 upper_name != arg.name
                 and upper_name not in state.task.module.ports
                 and upper_name not in state.task.module.signals
             ):
                 state.fsm_upstream_port_signals[upper_name] = arg.name
-                # Explicitly declare the parent wire if it is not already in the
-                # module signals.  The parent mmap arg (e.g. "a") is only an
-                # implicit wire driven by the ctrl_s_axi portarg in the HLS RTL.
-                # Verilator creates a 1-bit implicit wire when it first encounters
-                # ".a_offset(a)" in the FSM portarg if "a" is not yet known to
-                # be a 64-bit net — causing addr-below-base / wrong simulation
-                # output.  An explicit wire declaration forces the correct width.
+                # Force correct wire width for implicit ctrl_s_axi wires.
                 if arg.name not in state.task.module.signals:
                     state.task.module.add_signals([Wire(arg.name, Width.create(width))])
         state.task.fsm_module.add_pipeline(q, init=Identifier(id_name))
