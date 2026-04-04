@@ -42,7 +42,12 @@ sh_test(
         ":scatter",
         "//fpga-runtime:cargo_release_artifacts",
     ],
-    env = {"TAPA_CONCURRENCY": "1"},
+    # Higher timeout for simulation: peer xsim processes build sequentially,
+    # so earlier ones must wait longer for stream data from later ones.
+    env = {
+        "TAPA_CONCURRENCY": "1",
+        "FRT_XOSIM_TIMEOUT_CYCLES": "200000000",
+    },
     tags = ["cpu:8"],
 )
 

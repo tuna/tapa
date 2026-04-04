@@ -429,14 +429,14 @@ end
 
 initial begin
 {% if mode == "hls" %}
-  repeat (20000000) begin
+  repeat ({{ sim_timeout_cycles }}) begin
     @(posedge ap_clk);
     if (ap_done) begin
       $finish;
     end
   end
 {% else %}
-  repeat (20000000) begin
+  repeat ({{ sim_timeout_cycles }}) begin
     @(posedge ap_clk);
     if (interrupt) begin
       $finish;

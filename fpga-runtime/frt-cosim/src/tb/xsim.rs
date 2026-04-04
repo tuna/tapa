@@ -104,6 +104,7 @@ struct SvTemplate<'a> {
     scalar_args: Vec<ScalarArg>,
     stream_args: Vec<StreamArg>,
     stream_out_args: Vec<StreamArg>,
+    sim_timeout_cycles: u64,
 }
 
 #[derive(Template)]
@@ -218,6 +219,12 @@ impl<'a> XsimTbGenerator<'a> {
             Mode::Hls => "hls",
             Mode::Vitis => "vitis",
         };
+        // Default 20M cycles; parallel-emulation may need more time while
+        // peer simulations build.  Allow override via environment variable.
+        let sim_timeout_cycles: u64 = std::env::var("FRT_XOSIM_TIMEOUT_CYCLES")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(20_000_000);
         let template = SvTemplate {
             top_name: &self.spec.top_name,
             mode,
@@ -225,6 +232,7 @@ impl<'a> XsimTbGenerator<'a> {
             scalar_args,
             stream_args,
             stream_out_args,
+            sim_timeout_cycles,
         };
         template
             .render()
