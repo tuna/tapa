@@ -105,17 +105,27 @@ reg [1:0] m_axi_{{ arg.ident }}_BRESP = 0;
 reg m_axi_{{ arg.ident }}_BVALID = 0;
 
 byte unsigned axi_{{ arg.ident }}_bytes[0:{{ arg.data_width_bytes - 1 }}];
-reg axi_{{ arg.ident }}_rd_busy = 0;
-reg [63:0] axi_{{ arg.ident }}_rd_addr = 0;
-reg [7:0] axi_{{ arg.ident }}_rd_len = 0;
-reg [7:0] axi_{{ arg.ident }}_rd_beat = 0;
-reg [0:0] axi_{{ arg.ident }}_rd_id = 0;
 
-reg axi_{{ arg.ident }}_wr_aw_got = 0;
-reg axi_{{ arg.ident }}_wr_b_pending = 0;
-reg [63:0] axi_{{ arg.ident }}_wr_addr = 0;
+// Multi-outstanding read support: AR requests are queued so the DUT can
+// pipeline multiple burst reads (required by AXI crossbar/broadcastor designs).
+typedef struct {
+  logic [63:0] addr;
+  logic [7:0]  len;
+  logic [0:0]  id;
+} axi_{{ arg.ident }}_rd_req_t;
+axi_{{ arg.ident }}_rd_req_t axi_{{ arg.ident }}_rd_q[$];
+reg [7:0] axi_{{ arg.ident }}_rd_beat = 0;
+bit axi_{{ arg.ident }}_rd_active = 0;
+
+// Multi-outstanding write support: AW requests are queued; W data is matched
+// with the head entry.  Completed writes are queued for B responses.
+typedef struct {
+  logic [63:0] addr;
+  logic [0:0]  id;
+} axi_{{ arg.ident }}_wr_req_t;
+axi_{{ arg.ident }}_wr_req_t axi_{{ arg.ident }}_wr_q[$];
+logic [0:0] axi_{{ arg.ident }}_b_q[$];
 reg [7:0] axi_{{ arg.ident }}_wr_beat = 0;
-reg [0:0] axi_{{ arg.ident }}_wr_id = 0;
 {% endfor %}
 
 {% for arg in stream_args %}
@@ -279,36 +289,47 @@ end
 
 always @(posedge ap_clk) begin
 {% for arg in mmap_args %}
-  m_axi_{{ arg.ident }}_ARREADY <= ~axi_{{ arg.ident }}_rd_busy && !(m_axi_{{ arg.ident }}_ARVALID && m_axi_{{ arg.ident }}_ARREADY);
+  // ---- AR channel: accept into queue (up to 16 outstanding) ----
+  m_axi_{{ arg.ident }}_ARREADY <= (axi_{{ arg.ident }}_rd_q.size() < 16) && !(m_axi_{{ arg.ident }}_ARVALID && m_axi_{{ arg.ident }}_ARREADY);
   if (m_axi_{{ arg.ident }}_ARVALID && m_axi_{{ arg.ident }}_ARREADY) begin
-    axi_{{ arg.ident }}_rd_busy <= 1'b1;
-    axi_{{ arg.ident }}_rd_addr <= m_axi_{{ arg.ident }}_ARADDR;
-    axi_{{ arg.ident }}_rd_len <= m_axi_{{ arg.ident }}_ARLEN;
-    axi_{{ arg.ident }}_rd_beat <= 0;
-    axi_{{ arg.ident }}_rd_id <= m_axi_{{ arg.ident }}_ARID;
+    axi_{{ arg.ident }}_rd_q.push_back('{m_axi_{{ arg.ident }}_ARADDR, m_axi_{{ arg.ident }}_ARLEN, m_axi_{{ arg.ident }}_ARID});
   end
-  if (axi_{{ arg.ident }}_rd_busy) begin : rd_{{ arg.ident }}_blk
-    // Track whether this burst just completed so we suppress the next read.
+
+  // ---- R channel: serve data from queue head ----
+  if (axi_{{ arg.ident }}_rd_q.size() > 0 || axi_{{ arg.ident }}_rd_active) begin : rd_{{ arg.ident }}_blk
+    automatic axi_{{ arg.ident }}_rd_req_t req;
     automatic bit rd_done = 1'b0;
+    // Activate the head request if not already serving one.
+    if (!axi_{{ arg.ident }}_rd_active && axi_{{ arg.ident }}_rd_q.size() > 0) begin
+      axi_{{ arg.ident }}_rd_active = 1'b1;
+      axi_{{ arg.ident }}_rd_beat = 0;
+    end
+    req = axi_{{ arg.ident }}_rd_q[0];
     // On R-channel handshake, advance beat (blocking) so the DPI read below
-    // immediately fetches the next beat — matching the combinational model
-    // used by the Verilator testbench and the original axi_ram modules.
+    // immediately fetches the next beat's data.
     if (m_axi_{{ arg.ident }}_RVALID && m_axi_{{ arg.ident }}_RREADY) begin
-      if (axi_{{ arg.ident }}_rd_beat >= axi_{{ arg.ident }}_rd_len) begin
-        axi_{{ arg.ident }}_rd_busy <= 1'b0;
+      if (axi_{{ arg.ident }}_rd_beat >= req.len) begin
+        void'(axi_{{ arg.ident }}_rd_q.pop_front());
+        axi_{{ arg.ident }}_rd_active = 1'b0;
+        axi_{{ arg.ident }}_rd_beat = 0;
         rd_done = 1'b1;
+        // Immediately start the next queued burst if available.
+        if (axi_{{ arg.ident }}_rd_q.size() > 0) begin
+          axi_{{ arg.ident }}_rd_active = 1'b1;
+          req = axi_{{ arg.ident }}_rd_q[0];
+        end
       end else begin
         axi_{{ arg.ident }}_rd_beat = axi_{{ arg.ident }}_rd_beat + 1'b1;
       end
     end
-    if (!rd_done) begin
-      tapa_axi_read("{{ arg.name }}", axi_{{ arg.ident }}_rd_addr + axi_{{ arg.ident }}_rd_beat * {{ arg.data_width_bytes }}, {{ arg.data_width_bytes }}, axi_{{ arg.ident }}_bytes);
+    if (axi_{{ arg.ident }}_rd_active && !rd_done) begin
+      tapa_axi_read("{{ arg.name }}", req.addr + axi_{{ arg.ident }}_rd_beat * {{ arg.data_width_bytes }}, {{ arg.data_width_bytes }}, axi_{{ arg.ident }}_bytes);
       for (i = 0; i < {{ arg.data_width_bytes }}; i = i + 1) begin
         m_axi_{{ arg.ident }}_RDATA[i*8 +: 8] <= axi_{{ arg.ident }}_bytes[i];
       end
       m_axi_{{ arg.ident }}_RVALID <= 1'b1;
-      m_axi_{{ arg.ident }}_RLAST <= (axi_{{ arg.ident }}_rd_beat == axi_{{ arg.ident }}_rd_len);
-      m_axi_{{ arg.ident }}_RID <= axi_{{ arg.ident }}_rd_id;
+      m_axi_{{ arg.ident }}_RLAST <= (axi_{{ arg.ident }}_rd_beat == req.len);
+      m_axi_{{ arg.ident }}_RID <= req.id;
       m_axi_{{ arg.ident }}_RRESP <= 2'b00;
     end else begin
       m_axi_{{ arg.ident }}_RVALID <= 1'b0;
@@ -317,30 +338,37 @@ always @(posedge ap_clk) begin
     m_axi_{{ arg.ident }}_RVALID <= 1'b0;
   end
 
-  m_axi_{{ arg.ident }}_AWREADY <= (~axi_{{ arg.ident }}_wr_aw_got && ~axi_{{ arg.ident }}_wr_b_pending) && !(m_axi_{{ arg.ident }}_AWVALID && m_axi_{{ arg.ident }}_AWREADY);
+  // ---- AW channel: accept into queue (up to 16 outstanding) ----
+  m_axi_{{ arg.ident }}_AWREADY <= (axi_{{ arg.ident }}_wr_q.size() < 16) && !(m_axi_{{ arg.ident }}_AWVALID && m_axi_{{ arg.ident }}_AWREADY);
   if (m_axi_{{ arg.ident }}_AWVALID && m_axi_{{ arg.ident }}_AWREADY) begin
-    axi_{{ arg.ident }}_wr_aw_got <= 1'b1;
-    axi_{{ arg.ident }}_wr_addr <= m_axi_{{ arg.ident }}_AWADDR;
-    axi_{{ arg.ident }}_wr_beat <= 0;
-    axi_{{ arg.ident }}_wr_id <= m_axi_{{ arg.ident }}_AWID;
+    axi_{{ arg.ident }}_wr_q.push_back('{m_axi_{{ arg.ident }}_AWADDR, m_axi_{{ arg.ident }}_AWID});
   end
-  m_axi_{{ arg.ident }}_WREADY <= axi_{{ arg.ident }}_wr_aw_got && !(m_axi_{{ arg.ident }}_WVALID && m_axi_{{ arg.ident }}_WREADY && m_axi_{{ arg.ident }}_WLAST);
-  if (m_axi_{{ arg.ident }}_WVALID && m_axi_{{ arg.ident }}_WREADY) begin
+
+  // ---- W channel: match data with head AW entry ----
+  m_axi_{{ arg.ident }}_WREADY <= (axi_{{ arg.ident }}_wr_q.size() > 0) && !(m_axi_{{ arg.ident }}_WVALID && m_axi_{{ arg.ident }}_WREADY && m_axi_{{ arg.ident }}_WLAST);
+  if (m_axi_{{ arg.ident }}_WVALID && m_axi_{{ arg.ident }}_WREADY && axi_{{ arg.ident }}_wr_q.size() > 0) begin
     for (i = 0; i < {{ arg.data_width_bytes }}; i = i + 1) begin
       axi_{{ arg.ident }}_bytes[i] = m_axi_{{ arg.ident }}_WDATA[i*8 +: 8];
     end
-    tapa_axi_write("{{ arg.name }}", axi_{{ arg.ident }}_wr_addr + axi_{{ arg.ident }}_wr_beat * {{ arg.data_width_bytes }}, {{ arg.data_width_bytes }}, axi_{{ arg.ident }}_bytes);
+    tapa_axi_write("{{ arg.name }}", axi_{{ arg.ident }}_wr_q[0].addr + axi_{{ arg.ident }}_wr_beat * {{ arg.data_width_bytes }}, {{ arg.data_width_bytes }}, axi_{{ arg.ident }}_bytes);
     axi_{{ arg.ident }}_wr_beat <= axi_{{ arg.ident }}_wr_beat + 1'b1;
     if (m_axi_{{ arg.ident }}_WLAST) begin
-      axi_{{ arg.ident }}_wr_aw_got <= 1'b0;
-      axi_{{ arg.ident }}_wr_b_pending <= 1'b1;
+      axi_{{ arg.ident }}_b_q.push_back(axi_{{ arg.ident }}_wr_q[0].id);
+      void'(axi_{{ arg.ident }}_wr_q.pop_front());
+      axi_{{ arg.ident }}_wr_beat <= 0;
     end
   end
-  m_axi_{{ arg.ident }}_BVALID <= axi_{{ arg.ident }}_wr_b_pending;
-  m_axi_{{ arg.ident }}_BID <= axi_{{ arg.ident }}_wr_id;
-  m_axi_{{ arg.ident }}_BRESP <= 2'b00;
-  if (axi_{{ arg.ident }}_wr_b_pending && m_axi_{{ arg.ident }}_BREADY) begin
-    axi_{{ arg.ident }}_wr_b_pending <= 1'b0;
+
+  // ---- B channel: respond from completed-write queue ----
+  if (axi_{{ arg.ident }}_b_q.size() > 0) begin
+    m_axi_{{ arg.ident }}_BVALID <= 1'b1;
+    m_axi_{{ arg.ident }}_BID <= axi_{{ arg.ident }}_b_q[0];
+    m_axi_{{ arg.ident }}_BRESP <= 2'b00;
+    if (m_axi_{{ arg.ident }}_BREADY) begin
+      void'(axi_{{ arg.ident }}_b_q.pop_front());
+    end
+  end else begin
+    m_axi_{{ arg.ident }}_BVALID <= 1'b0;
   end
 {% endfor %}
 
