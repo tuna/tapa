@@ -27,7 +27,7 @@ sh_test(
 sh_test(
     name = "cannon-xosim",
     size = "enormous",
-    timeout = "long",  # 85s without contention
+    timeout = "eternal",  # 85s without contention; builds run sequentially in Rust cosim
     srcs = ["//bazel:v++_env.sh"],
     args = [
         "$(location cannon-host)",
@@ -48,7 +48,10 @@ sh_test(
         "TAPA_CONCURRENCY": "1",
         "FRT_XOSIM_TIMEOUT_CYCLES": "200000000",
     },
-    tags = ["cpu:8"],
+    tags = [
+        "cpu:8",
+        "manual",  # TODO(cosim): needs async build+spawn to run in CI
+    ],
 )
 
 cc_binary(
