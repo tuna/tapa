@@ -48,10 +48,7 @@ sh_test(
         "TAPA_CONCURRENCY": "1",
         "FRT_XOSIM_TIMEOUT_CYCLES": "200000000",
     },
-    tags = [
-        "cpu:8",
-        "manual",  # TODO(cosim): needs async build+spawn to run in CI
-    ],
+    tags = ["cpu:8"],
 )
 
 cc_binary(
