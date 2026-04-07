@@ -1,6 +1,4 @@
 // Copyright (c) 2024 RapidStream Design Automation, Inc. and contributors.
-// All rights reserved. The contributor(s) of this file has/have agreed to the
-// RapidStream Contributor License Agreement.
 
 #ifndef FPGA_RUNTIME_ARG_INFO_H_
 #define FPGA_RUNTIME_ARG_INFO_H_
@@ -17,10 +15,10 @@ struct ArgInfo {
     kStream = 2,
     kStreams = 3,
   };
-  int index;
+  int index = 0;
   std::string name;
   std::string type;
-  Cat cat;
+  Cat cat = kScalar;
 };
 
 std::ostream& operator<<(std::ostream& os, const ArgInfo::Cat& cat);

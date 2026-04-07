@@ -63,6 +63,11 @@ class _ChildState:
     async_mmap_args: dict[Instance.Arg, list[str]]
     fsm_upstream_portargs: list[PortArg]
     fsm_upstream_module_ports: dict[str, IOPort]
+    # Maps FSM input port name (e.g. "a_offset") to the actual wire/signal name
+    # in the parent module (e.g. "a").  Used to build the correct portarg so that
+    # the FSM instance connection is ".a_offset(a)" rather than ".a_offset(a_offset)"
+    # when the two names differ.
+    fsm_upstream_port_signals: dict[str, str]
     fsm_downstream_portargs: list[PortArg]
     fsm_downstream_module_ports: list[IOPort]
 
@@ -81,6 +86,7 @@ def _new_state(
             make_port_arg(x, x) for x in HANDSHAKE_INPUT_PORTS + HANDSHAKE_OUTPUT_PORTS
         ],
         fsm_upstream_module_ports={},
+        fsm_upstream_port_signals={},
         fsm_downstream_portargs=[],
         fsm_downstream_module_ports=[],
     )
@@ -129,10 +135,39 @@ def _declare_arg_signal(
     state.arg_table[arg.name] = q
     if "'d" not in q.name:
         state.task.module.add_signals([Wire(q[-1].name, Width.create(width))])
+        # Eagerly declare the upstream FSM input port BEFORE add_pipeline, so the
+        # port body declaration appears before the assign that references it.
+        # XSim VRFC 10-3380 creates a disconnected implicit wire if a port is used
+        # before its declaration in the generated file.
+        if upper_name not in state.fsm_upstream_module_ports:
+            port = IOPort("input", upper_name, Width.create(width))
+            state.fsm_upstream_module_ports[upper_name] = port
+            state.task.fsm_module.add_ports([port])
+            # When the FSM port name (e.g. a_offset) differs from the parent
+            # wire name, record a mapping so _finalize_state can emit the
+            # correct portarg.  Skip the mapping when upper_name is already
+            # a direct port OR an existing signal (wire) in the parent module
+            # — e.g. in Vitis mode ctrl_s_axi outputs "a_offset" as a wire,
+            # so the FSM should connect ".a_offset(a_offset)" directly.  In
+            # HLS mode the parent module has a_array_offset as a direct input
+            # port, so the FSM connects ".a_array_offset(a_array_offset)" with
+            # no mapping needed.
+            if (
+                upper_name != arg.name
+                and upper_name not in state.task.module.ports
+                and upper_name not in state.task.module.signals
+            ):
+                state.fsm_upstream_port_signals[upper_name] = arg.name
+                # Explicitly declare the parent wire if it is not already in the
+                # module signals.  The parent mmap arg (e.g. "a") is only an
+                # implicit wire driven by the ctrl_s_axi portarg in the HLS RTL.
+                # Verilator creates a 1-bit implicit wire when it first encounters
+                # ".a_offset(a)" in the FSM portarg if "a" is not yet known to
+                # be a 64-bit net — causing addr-below-base / wrong simulation
+                # output.  An explicit wire declaration forces the correct width.
+                if arg.name not in state.task.module.signals:
+                    state.task.module.add_signals([Wire(arg.name, Width.create(width))])
         state.task.fsm_module.add_pipeline(q, init=Identifier(id_name))
-        state.fsm_upstream_module_ports.setdefault(
-            upper_name, IOPort("input", upper_name, Width.create(width))
-        )
         state.fsm_downstream_module_ports.append(
             IOPort("output", q[-1].name, Width.create(width))
         )
@@ -356,16 +391,20 @@ def _declare_instance_ports(state: _ChildState, instance: Instance) -> None:
 def _process_instance(state: _ChildState, instance: Instance) -> None:
     child_port_set = set(instance.task.module.ports)
     _declare_instance_inputs(state, instance, child_port_set)
-    _declare_instance_start_logic(state, instance)
     _declare_instance_handshake_signals(state, instance)
+    _declare_instance_start_logic(state, instance)
     _declare_instance_ports(state, instance)
 
 
 def _finalize_state(state: _ChildState) -> list[Pipeline]:
     state.fsm_upstream_portargs.extend(
-        make_port_arg(x.name, x.name) for x in state.fsm_upstream_module_ports.values()
+        make_port_arg(
+            x.name,
+            state.fsm_upstream_port_signals.get(x.name, x.name),
+        )
+        for x in state.fsm_upstream_module_ports.values()
     )
-    state.task.fsm_module.add_ports(state.fsm_upstream_module_ports.values())
+    # Upstream ports were already added eagerly in _declare_arg_signal.
     state.task.fsm_module.add_ports(state.fsm_downstream_module_ports)
     state.task.add_rs_pragmas_to_fsm()
 

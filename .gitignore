@@ -3,6 +3,7 @@
 *.out
 *.pyc
 *.zip
+*/target/
 .ci-secrets
 .humanize
 .humanize/

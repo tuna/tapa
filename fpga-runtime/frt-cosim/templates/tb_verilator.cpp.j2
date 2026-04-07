@@ -1,0 +1,329 @@
+#include "V{{ top_name }}.h"
+#include "verilated.h"
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <map>
+
+extern "C" {
+void tapa_axi_read(const char* port, uint64_t addr, uint32_t width, uint8_t* out);
+void tapa_axi_write(const char* port, uint64_t addr, uint32_t width, const uint8_t* data);
+bool tapa_stream_try_read(const char* port, uint8_t* out);
+bool tapa_stream_try_write(const char* port, const uint8_t* data);
+bool tapa_stream_can_write(const char* port);
+}
+
+static std::map<uint64_t, uint8_t> memory;
+
+static void mem_read(uint64_t addr, void* buf, size_t nbytes) {
+    auto* dst = reinterpret_cast<uint8_t*>(buf);
+    for (size_t i = 0; i < nbytes; i++)
+        dst[i] = memory[addr + i];
+}
+
+static void mem_write(uint64_t addr, const void* buf, uint64_t strb, size_t nbytes) {
+    auto* src = reinterpret_cast<const uint8_t*>(buf);
+    for (size_t i = 0; i < nbytes; i++)
+        if (strb & (1ULL << i))
+            memory[addr + i] = src[i];
+}
+
+static V{{ top_name }}* dut;
+
+struct AxiReadPort {
+  bool busy = false;
+  uint64_t addr = 0;
+  uint8_t len = 0;
+  uint8_t beat = 0;
+  uint8_t id = 0;
+};
+
+struct AxiWritePort {
+  bool aw_got = false;
+  bool b_pending = false;
+  uint64_t addr = 0;
+  uint8_t beat = 0;
+  uint8_t id = 0;
+};
+
+{% for arg in mmap_args %}
+static AxiReadPort rd_{{ arg.ident }};
+static AxiWritePort wr_{{ arg.ident }};
+{% endfor %}
+
+{% for arg in stream_args %}
+static bool stream_in_have_{{ arg.ident }} = false;
+static std::array<uint8_t, {{ arg.dpi_width_bytes }}> stream_in_data_{{ arg.ident }} = {};
+{% endfor %}
+
+static void tick() {
+  dut->ap_clk = 1;
+  dut->eval();
+  dut->ap_clk = 0;
+  dut->eval();
+}
+
+static void service_all_axi() {
+{% for arg in mmap_args %}
+  // AXI read service for {{ arg.name }}
+  dut->{{ arg.arready }} = !rd_{{ arg.ident }}.busy;
+  if (dut->{{ arg.arvalid }} && !rd_{{ arg.ident }}.busy) {
+    rd_{{ arg.ident }}.busy = true;
+    rd_{{ arg.ident }}.addr = dut->{{ arg.araddr }};
+    rd_{{ arg.ident }}.len = dut->{{ arg.arlen }};
+    rd_{{ arg.ident }}.id = dut->{{ arg.arid }};
+    rd_{{ arg.ident }}.beat = 0;
+  }
+  if (rd_{{ arg.ident }}.busy) {
+    dut->{{ arg.rvalid }} = 1;
+    mem_read(rd_{{ arg.ident }}.addr + (uint64_t)rd_{{ arg.ident }}.beat * {{ arg.data_width_bytes }},
+             &dut->{{ arg.rdata }}, {{ arg.data_width_bytes }});
+    dut->{{ arg.rlast }} = (rd_{{ arg.ident }}.beat == rd_{{ arg.ident }}.len) ? 1 : 0;
+    dut->{{ arg.rid }} = rd_{{ arg.ident }}.id;
+    dut->{{ arg.rresp }} = 0;
+    if (dut->{{ arg.rready }}) {
+      if (rd_{{ arg.ident }}.beat >= rd_{{ arg.ident }}.len) rd_{{ arg.ident }}.busy = false;
+      else rd_{{ arg.ident }}.beat++;
+    }
+  } else {
+    dut->{{ arg.rvalid }} = 0;
+  }
+  // AXI write service for {{ arg.name }}
+  dut->{{ arg.awready }} = (!wr_{{ arg.ident }}.aw_got && !wr_{{ arg.ident }}.b_pending) ? 1 : 0;
+  if (dut->{{ arg.awvalid }} && dut->{{ arg.awready }}) {
+    wr_{{ arg.ident }}.aw_got = true;
+    wr_{{ arg.ident }}.addr = dut->{{ arg.awaddr }};
+    wr_{{ arg.ident }}.id = dut->{{ arg.awid }};
+    wr_{{ arg.ident }}.beat = 0;
+  }
+  dut->{{ arg.wready }} = wr_{{ arg.ident }}.aw_got ? 1 : 0;
+  if (dut->{{ arg.wvalid }} && dut->{{ arg.wready }}) {
+    mem_write(wr_{{ arg.ident }}.addr + (uint64_t)wr_{{ arg.ident }}.beat * {{ arg.data_width_bytes }},
+              &dut->{{ arg.wdata }}, dut->{{ arg.wstrb }},
+              {{ arg.data_width_bytes }});
+    wr_{{ arg.ident }}.beat++;
+    if (dut->{{ arg.wlast }}) {
+      wr_{{ arg.ident }}.aw_got = false;
+      wr_{{ arg.ident }}.b_pending = true;
+    }
+  }
+  dut->{{ arg.bvalid }} = wr_{{ arg.ident }}.b_pending ? 1 : 0;
+  dut->{{ arg.bid }} = wr_{{ arg.ident }}.id;
+  dut->{{ arg.bresp }} = 0;
+  if (wr_{{ arg.ident }}.b_pending && dut->{{ arg.bready }})
+    wr_{{ arg.ident }}.b_pending = false;
+{% endfor %}
+}
+
+{% if mode == "vitis" %}
+static void ctrl_write(uint8_t addr, uint32_t data) {
+  dut->s_axi_control_AWVALID = 1;
+  dut->s_axi_control_AWADDR = addr;
+  dut->s_axi_control_WVALID = 1;
+  dut->s_axi_control_WDATA = data;
+  dut->s_axi_control_WSTRB = 0xF;
+  dut->s_axi_control_BREADY = 1;
+  for (int i = 0; i < 20; ++i) {
+    service_all_axi();
+    tick();
+    if (dut->s_axi_control_BVALID) break;
+  }
+  dut->s_axi_control_AWVALID = 0;
+  dut->s_axi_control_WVALID = 0;
+  dut->s_axi_control_BREADY = 0;
+  service_all_axi();
+  tick();
+}
+{% endif %}
+
+static void service_streams() {
+{% if mode == "hls" %}
+{% for arg in stream_args %}
+  if (!stream_in_have_{{ arg.ident }}) {
+    stream_in_have_{{ arg.ident }} = tapa_stream_try_read("{{ arg.name }}", stream_in_data_{{ arg.ident }}.data());
+  }
+  dut->{{ arg.empty_n }} = stream_in_have_{{ arg.ident }} ? 1 : 0;
+{% if arg.has_peek %}
+  dut->{{ arg.peek_empty_n }} = stream_in_have_{{ arg.ident }} ? 1 : 0;
+{% endif %}
+  if (stream_in_have_{{ arg.ident }}) {
+    std::memcpy(&dut->{{ arg.dout }}, stream_in_data_{{ arg.ident }}.data(), {{ arg.dpi_width_bytes }});
+{% if arg.has_peek %}
+    std::memcpy(&dut->{{ arg.peek_dout }}, stream_in_data_{{ arg.ident }}.data(), {{ arg.dpi_width_bytes }});
+{% endif %}
+  }
+  if (stream_in_have_{{ arg.ident }} && dut->{{ arg.read }}) {
+    stream_in_have_{{ arg.ident }} = false;
+  }
+{% endfor %}
+{% for arg in stream_out_args %}
+  bool can_write_{{ arg.ident }} = tapa_stream_can_write("{{ arg.name }}");
+  dut->{{ arg.full_n }} = can_write_{{ arg.ident }} ? 1 : 0;
+  if (dut->{{ arg.write }} && can_write_{{ arg.ident }}) {
+    std::array<uint8_t, {{ arg.dpi_width_bytes }}> data{};
+    std::memcpy(data.data(), &dut->{{ arg.din }}, {{ arg.dpi_width_bytes }});
+    (void)tapa_stream_try_write("{{ arg.name }}", data.data());
+  }
+{% endfor %}
+{% else %}
+{% for arg in stream_args %}
+  if (!stream_in_have_{{ arg.ident }}) {
+    stream_in_have_{{ arg.ident }} = tapa_stream_try_read("{{ arg.name }}", stream_in_data_{{ arg.ident }}.data());
+  }
+  dut->{{ arg.tvalid }} = stream_in_have_{{ arg.ident }} ? 1 : 0;
+{% if arg.axis %}
+  dut->{{ arg.tlast }} = stream_in_have_{{ arg.ident }} ? stream_in_data_{{ arg.ident }}[{{ arg.width_bytes }}] : 0;
+{% else %}
+  dut->{{ arg.tlast }} = 0;
+{% endif %}
+  if (stream_in_have_{{ arg.ident }}) {
+    std::memcpy(&dut->{{ arg.tdata }}, stream_in_data_{{ arg.ident }}.data(), {{ arg.width_bytes }});
+  }
+  if (stream_in_have_{{ arg.ident }} && dut->{{ arg.tready }}) {
+    stream_in_have_{{ arg.ident }} = false;
+  }
+{% endfor %}
+{% for arg in stream_out_args %}
+  dut->{{ arg.tready }} = tapa_stream_can_write("{{ arg.name }}") ? 1 : 0;
+  if (dut->{{ arg.tvalid }} && dut->{{ arg.tready }}) {
+    std::array<uint8_t, {{ arg.dpi_width_bytes }}> data{};
+    std::memcpy(data.data(), &dut->{{ arg.tdata }}, {{ arg.width_bytes }});
+{% if arg.axis %}
+    data[{{ arg.width_bytes }}] = dut->{{ arg.tlast }};
+{% endif %}
+    (void)tapa_stream_try_write("{{ arg.name }}", data.data());
+  }
+{% endfor %}
+{% endif %}
+}
+
+// Load data from shared memory into in-process memory map via FFI
+static void load_from_shm(const char* port, uint64_t base, size_t size) {
+  for (size_t off = 0; off < size; off += 64) {
+    size_t chunk = (off + 64 <= size) ? 64 : (size - off);
+    uint8_t buf[64];
+    tapa_axi_read(port, base + off, chunk, buf);
+    for (size_t i = 0; i < chunk; i++)
+      memory[base + off + i] = buf[i];
+  }
+}
+
+// Store data from in-process memory map back to shared memory via FFI
+static void store_to_shm(const char* port, uint64_t base, size_t size) {
+  for (size_t off = 0; off < size; off += 64) {
+    size_t chunk = (off + 64 <= size) ? 64 : (size - off);
+    uint8_t buf[64];
+    for (size_t i = 0; i < chunk; i++)
+      buf[i] = memory[base + off + i];
+    tapa_axi_write(port, base + off, chunk, buf);
+  }
+}
+
+int main(int argc, char** argv) {
+  Verilated::commandArgs(argc, argv);
+  dut = new V{{ top_name }};
+
+  dut->ap_clk = 0;
+  dut->ap_rst_n = 0;
+{% if mode == "hls" %}
+  dut->ap_start = 0;
+{% endif %}
+{% if mode == "vitis" %}
+  dut->s_axi_control_AWVALID = 0;
+  dut->s_axi_control_WVALID = 0;
+  dut->s_axi_control_ARVALID = 0;
+  dut->s_axi_control_BREADY = 0;
+  dut->s_axi_control_RREADY = 0;
+{% endif %}
+{% for arg in mmap_args %}
+  dut->{{ arg.arready }} = 0;
+  dut->{{ arg.rvalid }} = 0;
+{% if arg.data_width_bytes > 8 %}
+  std::memset(&dut->{{ arg.rdata }}, 0, sizeof(dut->{{ arg.rdata }}));
+{% else %}
+  dut->{{ arg.rdata }} = 0;
+{% endif %}
+  dut->{{ arg.rlast }} = 0; dut->{{ arg.rid }} = 0; dut->{{ arg.rresp }} = 0;
+  dut->{{ arg.awready }} = 1; dut->{{ arg.wready }} = 1;
+  dut->{{ arg.bvalid }} = 0; dut->{{ arg.bid }} = 0; dut->{{ arg.bresp }} = 0;
+{% endfor %}
+
+  for (int i = 0; i < 10; ++i) tick();
+  dut->ap_rst_n = 1;
+  for (int i = 0; i < 5; ++i) tick();
+
+{% for arg in mmap_args %}
+  load_from_shm("{{ arg.name }}", 0x{{ "{:016x}"|format(arg.base_addr) }}ULL, {{ arg.data_size }});
+{% endfor %}
+
+{% if mode == "hls" %}
+{% for arg in mmap_args %}
+  dut->{{ arg.ident }}_offset = 0x{{ "{:016x}"|format(arg.base_addr) }}ULL;
+{% endfor %}
+{% for arg in scalar_args %}
+  {
+    const uint8_t scalar_bytes[] = { {{ arg.bytes_initializer }} };
+    std::memset(&dut->{{ arg.member }}, 0, sizeof(dut->{{ arg.member }}));
+    std::memcpy(
+        &dut->{{ arg.member }},
+        scalar_bytes,
+        std::min(sizeof(dut->{{ arg.member }}), sizeof(scalar_bytes)));
+  }
+{% endfor %}
+  dut->ap_start = 1;
+  service_all_axi();
+  tick();
+{% else %}
+  ctrl_write(0x04, 1);
+  ctrl_write(0x08, 1);
+{% for arg in mmap_args %}
+  ctrl_write(0x{{ "{:02x}"|format(arg.reg_offset_lo) }}, (uint32_t)(0x{{ "{:016x}"|format(arg.base_addr) }}ULL));
+  ctrl_write(0x{{ "{:02x}"|format(arg.reg_offset_hi) }}, (uint32_t)(0x{{ "{:016x}"|format(arg.base_addr) }}ULL >> 32));
+{% endfor %}
+{% for arg in scalar_args %}
+{% for word in arg.words %}
+  ctrl_write(0x{{ "{:02x}"|format(word.reg_offset) }}, 0x{{ "{:08x}"|format(word.value_u32) }});
+{% endfor %}
+{% endfor %}
+  ctrl_write(0x00, 1);
+{% endif %}
+  std::fprintf(stderr, "Kernel started, running simulation...\n");
+
+  bool done = false;
+  constexpr int kTimeoutCycles = 50000000;
+  for (int cycle = 0; cycle < kTimeoutCycles; ++cycle) {
+    service_all_axi();
+    service_streams();
+    tick();
+{% if mode == "hls" %}
+    if (dut->ap_done) {
+      std::fprintf(stderr, "Kernel done after %d cycles\n", cycle);
+      done = true;
+      break;
+    }
+    if (dut->ap_ready) {
+      dut->ap_start = 0;
+    }
+{% else %}
+    if (dut->__SYM__interrupt) {
+      std::fprintf(stderr, "Kernel done after %d cycles\n", cycle);
+      done = true;
+      break;
+    }
+{% endif %}
+  }
+
+  if (!done) {
+    std::fprintf(stderr, "simulation timeout\n");
+    delete dut;
+    return 1;
+  }
+
+{% for arg in mmap_args %}
+  store_to_shm("{{ arg.name }}", 0x{{ "{:016x}"|format(arg.base_addr) }}ULL, {{ arg.data_size }});
+{% endfor %}
+
+  std::fprintf(stderr, "simulation complete (mode={{ mode }})\n");
+  delete dut;
+  return 0;
+}

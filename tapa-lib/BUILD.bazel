@@ -144,6 +144,7 @@ cc_test(
     name = "tapa-lib-test",
     size = "small",
     srcs = glob(["tapa/**/*_test.cpp"]),
+    linkopts = ["-lstdc++fs"],
     target_compatible_with = ["@platforms//os:linux"],
     visibility = ["//visibility:public"],
     deps = [

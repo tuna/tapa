@@ -1,0 +1,12 @@
+top: manual_hls_top
+tasks:
+  manual_hls_top:
+    level: lower
+    ports:
+      - name: a
+        cat: mmap
+        width: 32
+      - name: s
+        cat: istream
+        width: 32
+        depth: 16

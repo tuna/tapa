@@ -1,0 +1,26 @@
+create_project -force cosim {{ tb_dir }}/run -part {{ part_num }}
+set ORIG_RTL_PATH "{{ tb_dir }}"
+{% for f in verilog_files %}
+add_files -norecurse -scan_for_includes {{ f }}
+{% endfor %}
+{% for f in tcl_files %}
+source {{ f }}
+{% endfor %}
+{% for f in xci_files %}
+add_files -norecurse -scan_for_includes {{ f }}
+{% endfor %}
+upgrade_ip -quiet [get_ips *]
+set_property SOURCE_SET sources_1 [get_filesets sim_1]
+add_files {{ tb_sv_file }}
+set_property top {{ tb_top }} [get_filesets sim_1]
+{% if legacy %}
+set_property -name {xelab.more_options} -value {-sv_root {{ dpi_sv_root }} -sv_lib {{ dpi_sv_lib }}} -objects [get_filesets sim_1]
+{% else %}
+set_property -name {xsim.elaborate.xelab.more_options} -value {-sv_root {{ dpi_sv_root }} -sv_lib {{ dpi_sv_lib }}} -objects [get_filesets sim_1]
+{% endif %}
+{% if save_waveform %}
+set_property -name {xsim.simulate.log_all_signals} -value {true} -objects [get_filesets sim_1]
+set_property -name {xsim.simulate.wdb} -value {wave.wdb} -objects [get_filesets sim_1]
+{% endif %}
+launch_simulation
+run all

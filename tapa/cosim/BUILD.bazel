@@ -233,8 +233,7 @@ py_library(
     srcs = ["vivado.py"],
     data = select({
         "@platforms//os:linux": [
-            "//fpga-runtime:tapa_fast_cosim_dpi_legacy_rdi",
-            "//fpga-runtime:tapa_fast_cosim_dpi_xv",
+            "//fpga-runtime:cargo_release_artifacts",
         ],
         "//conditions:default": [],
     }),

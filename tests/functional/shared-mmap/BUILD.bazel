@@ -41,13 +41,12 @@ sh_test(
     args = [
         "$(location shared-mmap-host)",
         "--bitstream=$(location shared-mmap-xo)",
-        "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
         "1000",
     ],
     data = [
         ":shared-mmap-host",
         ":shared-mmap-xo",
-        "//tapa/cosim:tapa-fast-cosim",
+        "//fpga-runtime:cargo_release_artifacts",
     ],
     tags = [
         "cpu:2",

@@ -1,0 +1,22 @@
+[package]
+name = "frt"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+frt-cosim = { workspace = true }
+frt-shm = { workspace = true }
+libc = { workspace = true }
+opencl3 = { workspace = true }
+quick-xml = { workspace = true }
+serde_json = { workspace = true }
+tempfile = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+zip = { workspace = true }

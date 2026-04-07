@@ -21,6 +21,7 @@ def _make_state(task: Any, program: Any, width_table: dict[str, int]) -> _ChildS
         async_mmap_args={},
         fsm_upstream_portargs=[],
         fsm_upstream_module_ports={},
+        fsm_upstream_port_signals={},
         fsm_downstream_portargs=[],
         fsm_downstream_module_ports=[],
     )

@@ -34,16 +34,19 @@ sh_test(
         "--scatter_bitstream=$(location scatter)",
         "--proc_elem_bitstream=$(location proc-elem)",
         "--gather_bitstream=$(location gather)",
-        "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
     ],
     data = [
         ":cannon-host",
         ":gather",
         ":proc-elem",
         ":scatter",
-        "//tapa/cosim:tapa-fast-cosim",
+        "//fpga-runtime:cargo_release_artifacts",
     ],
-    env = {"TAPA_CONCURRENCY": "1"},
+    env = {
+        "TAPA_CONCURRENCY": "1",
+        "FRT_COSIM_YIELD": "1",
+        "FRT_SHM_MIN_DEPTH": "4096",
+    },
     tags = ["cpu:8"],
 )
 
@@ -118,14 +121,13 @@ sh_test(
         "--scatter_bitstream=$(location scatter-4x4)",
         "--proc_elem_bitstream=$(location proc-elem-4x4)",
         "--gather_bitstream=$(location gather-4x4)",
-        "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
     ],
     data = [
         ":cannon-host-4x4",
         ":gather-4x4",
         ":proc-elem-4x4",
         ":scatter-4x4",
-        "//tapa/cosim:tapa-fast-cosim",
+        "//fpga-runtime:cargo_release_artifacts",
     ],
     env = {"TAPA_CONCURRENCY": "1"},
     tags = [

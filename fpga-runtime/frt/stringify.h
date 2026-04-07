@@ -1,14 +1,9 @@
 // Copyright (c) 2024 RapidStream Design Automation, Inc. and contributors.
-// All rights reserved. The contributor(s) of this file has/have agreed to the
-// RapidStream Contributor License Agreement.
 
 #ifndef FPGA_RUNTIME_STRINGIFY_H_
 #define FPGA_RUNTIME_STRINGIFY_H_
 
-// IWYU pragma: private, include "frt.h"
-
 #include <cstring>
-
 #include <string>
 #include <string_view>
 
@@ -27,7 +22,7 @@ std::string ToBinaryString(const T& val) {
 template <typename T>
 T FromBinaryString(std::string_view bytes) {
   T val;
-  CHECK_EQ(bytes.size(), sizeof(val)) << bytes;
+  CHECK_EQ(bytes.size(), sizeof(val));
   memcpy(&val, bytes.data(), sizeof(val));
   return val;
 }

@@ -1,0 +1,11 @@
+[package]
+name = "frt-dpi"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+frt-shm = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }

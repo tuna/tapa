@@ -44,12 +44,11 @@ sh_test(
     args = [
         "$(location gemv-host)",
         "--bitstream=$(location gemv-xo)",
-        "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
     ],
     data = [
         ":gemv-host",
         ":gemv-xo",
-        "//tapa/cosim:tapa-fast-cosim",
+        "//fpga-runtime:cargo_release_artifacts",
     ],
     tags = [
         "cpu:2",
@@ -105,13 +104,12 @@ sh_test(
     args = [
         "$(location gemv-host)",
         "--bitstream=$(location gemv-zip)",
-        "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
         "--xosim_simulator=verilator",
     ],
     data = [
         ":gemv-host",
         ":gemv-zip",
-        "//tapa/cosim:tapa-fast-cosim",
+        "//fpga-runtime:cargo_release_artifacts",
         "@verilator//:verilator_executable",
     ],
     env = {"VERILATOR_BIN": "$(rootpath @verilator//:verilator_executable)"},

@@ -1,0 +1,11 @@
+[package]
+name = "frt-dpi-verilator"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+frt-dpi = { workspace = true }
+libc = { workspace = true }
