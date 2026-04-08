@@ -147,7 +147,10 @@ pub extern "C" fn frt_instance_close(handle: *mut std::ffi::c_void) {
         return;
     }
     unsafe {
-        let _ = Box::from_raw(handle as *mut FrtInstanceHandle);
+        let mut h = Box::from_raw(handle as *mut FrtInstanceHandle);
+        if !matches!(h.instance.is_finished(), Ok(true)) {
+            let _ = h.instance.kill();
+        }
     }
 }
 

@@ -147,7 +147,13 @@ impl CosimContext {
                 .get(name)
                 .cloned()
                 .unwrap_or_else(|| q.path().to_string_lossy().to_string());
-            stream_map.insert(name.clone(), serde_json::Value::String(stream_path));
+            stream_map.insert(
+                name.clone(),
+                serde_json::json!({
+                    "path": stream_path,
+                    "dpi_width_bytes": q.width(),
+                }),
+            );
         }
 
         serde_json::json!({
@@ -210,7 +216,8 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(&json).expect("json");
         assert!(v["buffers"]["a"]["path"].is_string());
         assert!(v["buffers"]["a"]["size_bytes"].is_number());
-        assert!(v["streams"]["s"].is_string());
+        assert!(v["streams"]["s"]["path"].is_string());
+        assert_eq!(v["streams"]["s"]["dpi_width_bytes"].as_u64(), Some(5));
     }
 
     #[test]

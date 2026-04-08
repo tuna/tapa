@@ -161,6 +161,8 @@ fn xsim_hls_tb_snapshot() {
     let tb = generator.render_tb().expect("render tb");
     assert!(tb.contains("module tb_vadd"));
     assert!(tb.contains("tapa_axi_read"));
+    assert!(tb.contains("wait (ap_done === 1'b1);"));
+    assert!(!tb.contains("simulation timeout"));
     let tcl = generator
         .render_tcl(std::path::Path::new("/tmp/tb"))
         .expect("render tcl");
@@ -206,7 +208,8 @@ fn xsim_vitis_tb_contains_control_sequence() {
     let tb = generator.render_tb().expect("render tb");
     assert!(tb.contains("task automatic ctrl_write"));
     assert!(tb.contains("ctrl_write(8'h00, 32'h0000_0001);"));
-    assert!(tb.contains("if (interrupt) begin"));
+    assert!(tb.contains("wait (interrupt === 1'b1);"));
+    assert!(!tb.contains("simulation timeout"));
 }
 
 #[test]

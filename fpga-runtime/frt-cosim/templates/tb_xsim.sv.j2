@@ -429,21 +429,10 @@ end
 
 initial begin
 {% if mode == "hls" %}
-  repeat (20000000) begin
-    @(posedge ap_clk);
-    if (ap_done) begin
-      $finish;
-    end
-  end
+  wait (ap_done === 1'b1);
 {% else %}
-  repeat (20000000) begin
-    @(posedge ap_clk);
-    if (interrupt) begin
-      $finish;
-    end
-  end
+  wait (interrupt === 1'b1);
 {% endif %}
-  $display("simulation timeout");
   $finish;
 end
 

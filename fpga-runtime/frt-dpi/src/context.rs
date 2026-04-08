@@ -1,6 +1,7 @@
 use frt_shm::{MmapSegment, SharedMemoryQueue};
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::sync::Mutex;
 
 #[derive(Debug, Deserialize)]
 pub struct BufferEntry {
@@ -11,14 +12,48 @@ pub struct BufferEntry {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum StreamEntry {
+    Legacy(String),
+    Detailed {
+        path: String,
+        #[serde(default)]
+        dpi_width_bytes: Option<usize>,
+    },
+}
+
+impl StreamEntry {
+    fn path(&self) -> &str {
+        match self {
+            Self::Legacy(path) => path,
+            Self::Detailed { path, .. } => path,
+        }
+    }
+
+    fn dpi_width_bytes(&self) -> Option<usize> {
+        match self {
+            Self::Legacy(_) => None,
+            Self::Detailed {
+                dpi_width_bytes, ..
+            } => *dpi_width_bytes,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
 pub struct DpiConfig {
     pub buffers: HashMap<String, BufferEntry>,
-    pub streams: HashMap<String, String>,
+    pub streams: HashMap<String, StreamEntry>,
+}
+
+pub struct DpiStream {
+    pub queue: Mutex<SharedMemoryQueue>,
+    pub dpi_width_bytes: usize,
 }
 
 pub struct DpiContext {
     pub buffers: HashMap<String, (MmapSegment, u64)>,
-    pub streams: HashMap<String, std::sync::Mutex<SharedMemoryQueue>>,
+    pub streams: HashMap<String, DpiStream>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -43,9 +78,16 @@ impl DpiContext {
         }
 
         let mut streams = HashMap::new();
-        for (name, path) in cfg.streams {
-            let q = SharedMemoryQueue::open(&path)?;
-            streams.insert(name, std::sync::Mutex::new(q));
+        for (name, entry) in cfg.streams {
+            let q = SharedMemoryQueue::open(entry.path())?;
+            let dpi_width_bytes = entry.dpi_width_bytes().unwrap_or_else(|| q.width());
+            streams.insert(
+                name,
+                DpiStream {
+                    queue: Mutex::new(q),
+                    dpi_width_bytes,
+                },
+            );
         }
 
         Ok(Self { buffers, streams })
@@ -65,7 +107,31 @@ mod tests {
         let cfg: DpiConfig = serde_json::from_str(json).expect("json");
         assert_eq!(cfg.buffers["a"].path, "/tmp/buf_a");
         assert_eq!(cfg.buffers["a"].size_bytes, 4096);
-        assert_eq!(cfg.streams["s"], "/tmp/stream_s");
+        match &cfg.streams["s"] {
+            StreamEntry::Legacy(path) => assert_eq!(path, "/tmp/stream_s"),
+            StreamEntry::Detailed { .. } => panic!("expected legacy stream entry"),
+        }
+    }
+
+    #[test]
+    fn parse_stream_entry_with_width() {
+        let json = r#"{
+          "buffers": {},
+          "streams": {
+            "s": { "path": "/tmp/stream_s", "dpi_width_bytes": 5 }
+          }
+        }"#;
+        let cfg: DpiConfig = serde_json::from_str(json).expect("json");
+        match &cfg.streams["s"] {
+            StreamEntry::Detailed {
+                path,
+                dpi_width_bytes,
+            } => {
+                assert_eq!(path, "/tmp/stream_s");
+                assert_eq!(*dpi_width_bytes, Some(5));
+            }
+            StreamEntry::Legacy(_) => panic!("expected detailed stream entry"),
+        }
     }
 
     #[test]
