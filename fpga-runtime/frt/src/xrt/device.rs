@@ -223,6 +223,11 @@ impl Device for XrtDevice {
         bytes: usize,
         access: BufferAccess,
     ) -> Result<()> {
+        if bytes == 0 {
+            return Err(FrtError::MetadataParse(format!(
+                "zero-length buffer arg {index} is unsupported in XRT runtime"
+            )));
+        }
         if ptr.is_null() && bytes != 0 {
             return Err(FrtError::MetadataParse(format!(
                 "null host pointer for non-empty buffer arg {index}"
@@ -339,12 +344,11 @@ impl Device for XrtDevice {
         // indices.  Use set_kernel_arg directly for both kinds instead.
         for arg in &args {
             match arg.kind {
-                XrtArgKind::Scalar { .. } => {
-                    let raw = self
-                        .scalars
-                        .get(&arg.id)
-                        .map(|v| v.as_slice())
-                        .unwrap_or(&[0u8; 8]);
+                XrtArgKind::Scalar { width } => {
+                    let raw = normalized_scalar_bytes(
+                        width,
+                        self.scalars.get(&arg.id).map(|v| v.as_slice()),
+                    );
                     unsafe {
                         set_kernel_arg(
                             self.kernel.get(),

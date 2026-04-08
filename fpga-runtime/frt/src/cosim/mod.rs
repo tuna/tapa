@@ -57,6 +57,8 @@ enum SimulationState {
 
 pub struct CosimDevice {
     spec: KernelSpec,
+    arg_names: HashMap<u32, String>,
+    stream_arg_names: HashMap<u32, String>,
     ctx: CosimContext,
     runner: Box<dyn SimRunner>,
     tb_dir: TbDir,
@@ -77,15 +79,25 @@ unsafe impl Send for CosimDevice {}
 impl CosimDevice {
     pub fn open(path: &Path, sim: &Simulator) -> Result<Self> {
         let spec = frt_cosim::metadata::load_spec(path)?;
+        let arg_names = spec
+            .args
+            .iter()
+            .map(|arg| (arg.id, arg.name.clone()))
+            .collect();
+        let stream_arg_names = spec
+            .args
+            .iter()
+            .filter_map(|arg| match arg.kind {
+                frt_cosim::metadata::ArgKind::Stream { .. } => Some((arg.id, arg.name.clone())),
+                _ => None,
+            })
+            .collect();
         let opts = runtime_options();
         let tb_dir = make_tb_dir(opts.work_dir.as_deref(), opts.work_dir_parallel)?;
         let ctx = if opts.resume_from_post_sim {
             let config_path = tb_dir.path().join("dpi_config.json");
             let json = std::fs::read_to_string(&config_path).map_err(|e| {
-                FrtError::MetadataParse(format!(
-                    "failed to read {}: {e}",
-                    config_path.display()
-                ))
+                FrtError::MetadataParse(format!("failed to read {}: {e}", config_path.display()))
             })?;
             CosimContext::open_from_config(&spec, &json)?
         } else {
@@ -111,6 +123,8 @@ impl CosimDevice {
 
         Ok(Self {
             spec,
+            arg_names,
+            stream_arg_names,
             ctx,
             runner,
             tb_dir,
@@ -154,13 +168,7 @@ impl CosimDevice {
                     "null pointer for buffer arg {index}"
                 )));
             }
-            let name = self
-                .spec
-                .args
-                .iter()
-                .find(|a| a.id == *index)
-                .map(|a| a.name.clone())
-                .ok_or_else(|| FrtError::MetadataParse(format!("no arg at index {index}")))?;
+            let name = self.arg_name(*index)?.to_owned();
             if let Some(seg) = self.ctx.buffers.get(&name) {
                 let len = binding.bytes.min(seg.len());
                 if len > 0 {
@@ -176,6 +184,20 @@ impl CosimDevice {
             self.store_ns = 1;
         }
         Ok(())
+    }
+
+    fn arg_name(&self, index: u32) -> Result<&str> {
+        self.arg_names
+            .get(&index)
+            .map(String::as_str)
+            .ok_or_else(|| FrtError::MetadataParse(format!("no arg at index {index}")))
+    }
+
+    fn stream_arg_name(&self, index: u32) -> Result<&str> {
+        self.stream_arg_names
+            .get(&index)
+            .map(String::as_str)
+            .ok_or_else(|| FrtError::MetadataParse(format!("no stream arg at index {index}")))
     }
 
     fn poll_simulation(&mut self) -> Result<bool> {
@@ -313,13 +335,7 @@ impl Device for CosimDevice {
         bytes: usize,
         access: BufferAccess,
     ) -> Result<()> {
-        let name = self
-            .spec
-            .args
-            .iter()
-            .find(|a| a.id == index)
-            .map(|a| a.name.clone())
-            .ok_or_else(|| FrtError::MetadataParse(format!("no arg at index {index}")))?;
+        let name = self.arg_name(index)?.to_owned();
         if !self.ctx.buffers.contains_key(&name) {
             return Err(FrtError::MetadataParse(format!(
                 "arg '{name}' is not an mmap buffer"
@@ -345,16 +361,7 @@ impl Device for CosimDevice {
         if shm_path.is_empty() {
             return Ok(());
         }
-        let name = self
-            .spec
-            .args
-            .iter()
-            .find(|a| a.id == index)
-            .and_then(|a| match a.kind {
-                frt_cosim::metadata::ArgKind::Stream { .. } => Some(a.name.clone()),
-                _ => None,
-            })
-            .ok_or_else(|| FrtError::MetadataParse(format!("no stream arg at index {index}")))?;
+        let name = self.stream_arg_name(index)?.to_owned();
         self.ctx.bind_stream_path(&name, shm_path)?;
         Ok(())
     }
@@ -386,13 +393,7 @@ impl Device for CosimDevice {
                     "null pointer for buffer arg {index}"
                 )));
             }
-            let name = self
-                .spec
-                .args
-                .iter()
-                .find(|a| a.id == *index)
-                .map(|a| a.name.clone())
-                .ok_or_else(|| FrtError::MetadataParse(format!("no arg at index {index}")))?;
+            let name = self.arg_name(*index)?.to_owned();
             if let Some(seg) = self.ctx.buffers.get_mut(&name) {
                 let len = binding.bytes.min(seg.len());
                 if len > 0 {
@@ -580,9 +581,13 @@ mod tests {
             xci_files: vec![],
             scalar_register_map: HashMap::new(),
         };
+        let arg_names = HashMap::new();
+        let stream_arg_names = HashMap::new();
         let ctx = CosimContext::new(&spec).expect("create cosim context");
         CosimDevice {
             spec,
+            arg_names,
+            stream_arg_names,
             ctx,
             runner: Box::new(SleepRunner { sleep_seconds }),
             tb_dir: TbDir::Temp(tempfile::tempdir().expect("create temp dir")),
@@ -609,6 +614,13 @@ mod tests {
                 addr_width: 64,
             },
         }];
+        dev.arg_names = dev
+            .spec
+            .args
+            .iter()
+            .map(|arg| (arg.id, arg.name.clone()))
+            .collect();
+        dev.stream_arg_names = HashMap::new();
         dev.ctx = CosimContext::new(&dev.spec).expect("create cosim context");
         dev.resume_from_post_sim = resume_from_post_sim;
         dev

@@ -192,11 +192,21 @@ impl<'a> XsimTbGenerator<'a> {
                     );
                     scalar_args.push(ScalarArg::new(&arg.name, *width, &bytes, offset));
                 }
-                ArgKind::Stream { width, dir, protocol, .. } => {
+                ArgKind::Stream {
+                    width,
+                    dir,
+                    protocol,
+                    ..
+                } => {
                     let axis = *protocol == StreamProtocol::Axis;
                     let peek = if self.spec.mode == Mode::Hls && *dir == StreamDir::In {
-                        infer_peek_name(&arg.name)
-                            .filter(|cand| stream_peek_ports_exist(&self.spec.verilog_files, &self.spec.top_name, cand))
+                        infer_peek_name(&arg.name).filter(|cand| {
+                            stream_peek_ports_exist(
+                                &self.spec.verilog_files,
+                                &self.spec.top_name,
+                                cand,
+                            )
+                        })
                     } else {
                         None
                     };
@@ -349,13 +359,11 @@ fn stream_peek_ports_exist(
                 }
                 let has_dout = text.lines().any(|line| {
                     let t = line.trim();
-                    (t.starts_with("input") || t.starts_with("output"))
-                        && t.contains(&dout_port)
+                    (t.starts_with("input") || t.starts_with("output")) && t.contains(&dout_port)
                 });
                 let has_empty_n = text.lines().any(|line| {
                     let t = line.trim();
-                    (t.starts_with("input") || t.starts_with("output"))
-                        && t.contains(&empty_n_port)
+                    (t.starts_with("input") || t.starts_with("output")) && t.contains(&empty_n_port)
                 });
                 has_dout && has_empty_n
             })
@@ -370,7 +378,10 @@ fn detect_axi_id_width(verilog_files: &[PathBuf], mmap_name: &str) -> usize {
     let escaped = escape_verilog_identifier(&format!("m_axi_{mmap_name}_ARID"));
     // Match patterns like:  output [2:0] m_axi_foo_ARID  or  wire [2:0] ...
     // The left bound N in [N:0] gives width = N+1.
-    let pattern = format!(r"\[\s*(\d+)\s*:\s*0\s*\]\s*{}", regex_lite::escape(&escaped));
+    let pattern = format!(
+        r"\[\s*(\d+)\s*:\s*0\s*\]\s*{}",
+        regex_lite::escape(&escaped)
+    );
     let re = regex_lite::Regex::new(&pattern).unwrap();
     for file in verilog_files {
         if let Ok(text) = std::fs::read_to_string(file) {
@@ -385,7 +396,13 @@ fn detect_axi_id_width(verilog_files: &[PathBuf], mmap_name: &str) -> usize {
 }
 
 impl MmapArg {
-    fn new(name: &str, data_width_bytes: usize, id_width: usize, base_addr: u64, reg_offset_lo: u32) -> Self {
+    fn new(
+        name: &str,
+        data_width_bytes: usize,
+        id_width: usize,
+        base_addr: u64,
+        reg_offset_lo: u32,
+    ) -> Self {
         Self {
             name: name.to_owned(),
             ident: verilator_identifier(name),

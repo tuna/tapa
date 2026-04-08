@@ -61,21 +61,27 @@ fn verilator_root_env(verilator_bin: &Path) -> Option<PathBuf> {
     // Verilator expects when VERILATOR_ROOT is set.
     let candidates: Vec<PathBuf> = [
         // Standard layout: bin is at $ROOT/bin/verilator
-        verilator_bin.parent().and_then(|p| p.parent()).map(PathBuf::from),
-        // Bazel runfiles: bin.runfiles/verilator+/
         verilator_bin
             .parent()
-            .map(|p| {
-                p.join(format!(
-                    "{}.runfiles/verilator+",
-                    verilator_bin.file_name().unwrap_or_default().to_string_lossy()
-                ))
-            }),
+            .and_then(|p| p.parent())
+            .map(PathBuf::from),
+        // Bazel runfiles: bin.runfiles/verilator+/
+        verilator_bin.parent().map(|p| {
+            p.join(format!(
+                "{}.runfiles/verilator+",
+                verilator_bin
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+            ))
+        }),
     ]
     .into_iter()
     .flatten()
     .collect();
-    candidates.into_iter().find(|c| c.join("include/verilated.h").exists())
+    candidates
+        .into_iter()
+        .find(|c| c.join("include/verilated.h").exists())
 }
 
 impl SimRunner for VerilatorRunner {
@@ -91,8 +97,13 @@ impl SimRunner for VerilatorRunner {
             .iter()
             .map(|(name, seg)| (name.clone(), seg.len()))
             .collect();
-        let generator =
-            VerilatorTbGenerator::new(spec, &self.dpi_lib, &ctx.base_addresses, &buffer_sizes, scalar_values);
+        let generator = VerilatorTbGenerator::new(
+            spec,
+            &self.dpi_lib,
+            &ctx.base_addresses,
+            &buffer_sizes,
+            scalar_values,
+        );
         std::fs::write(tb_dir.join("tb.cpp"), generator.render_tb()?)?;
         let rtl_dir = tb_dir.join("rtl");
         std::fs::create_dir_all(&rtl_dir)?;
@@ -202,7 +213,8 @@ impl SimRunner for VerilatorRunner {
                 break;
             }
         }
-        let top = found.ok_or_else(|| CosimError::ToolNotFound("Verilator binary in obj_dir".into()))?;
+        let top =
+            found.ok_or_else(|| CosimError::ToolNotFound("Verilator binary in obj_dir".into()))?;
         let mut cmd = Command::new(top);
         cmd.env("TAPA_DPI_CONFIG", ctx.dpi_config_json())
             .envs(xilinx_environ());
@@ -376,8 +388,7 @@ fn parse_xilinx_fp_ip_tcl_text(content: &str) -> Result<Option<XilinxFpIpConfig>
         } else if operation_type.contains("add") || operation_type.contains("subtract") {
             // For Add_Subtract IPs, check add_sub_value to distinguish add vs sub
             let add_sub = config.get("add_sub_value").map(|s| s.to_ascii_lowercase());
-            if add_sub.as_deref() == Some("subtract") || add_sub.as_deref() == Some("sub")
-            {
+            if add_sub.as_deref() == Some("subtract") || add_sub.as_deref() == Some("sub") {
                 Some("sub")
             } else {
                 Some("add")
@@ -448,7 +459,11 @@ fn detect_xilinx_fp_ip_model_from_name(ip_module: &str) -> Option<XilinxFpIpConf
 }
 
 fn generate_xilinx_fp_ip_replacement(ip_module: &str, model: &XilinxFpIpConfig) -> String {
-    let bit_width = if model.dpi_func.contains("64") { 64 } else { 32 };
+    let bit_width = if model.dpi_func.contains("64") {
+        64
+    } else {
+        32
+    };
     let ret_type = if bit_width == 64 {
         "longint unsigned"
     } else {
@@ -692,7 +707,8 @@ set_property -dict [list CONFIG.a_precision_type Single \
             dpi_func: "fp32_mul".into(),
             latency: 5,
         };
-        let replacement = generate_xilinx_fp_ip_replacement("ProcElem_fmul_32ns_32ns_32_4_max_dsp_1_ip", &model);
+        let replacement =
+            generate_xilinx_fp_ip_replacement("ProcElem_fmul_32ns_32ns_32_4_max_dsp_1_ip", &model);
         assert!(replacement.contains("module ProcElem_fmul_32ns_32ns_32_4_max_dsp_1_ip"));
         assert!(replacement.contains("import \"DPI-C\" function int unsigned fp32_mul"));
         assert!(replacement.contains("m_axis_result_tvalid"));
@@ -701,7 +717,9 @@ set_property -dict [list CONFIG.a_precision_type Single \
     #[test]
     fn generates_behavioral_replacement_files_in_rtl_dir() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let wrapper = include_str!("../../../../tests/functional/custom-rtl/rtl/Add_fadd_32ns_32ns_32_7_full_dsp_1.v");
+        let wrapper = include_str!(
+            "../../../../tests/functional/custom-rtl/rtl/Add_fadd_32ns_32ns_32_7_full_dsp_1.v"
+        );
         let tcl = include_str!(
             "../../../../tests/functional/custom-rtl/rtl/Add_fadd_32ns_32ns_32_7_full_dsp_1_ip.tcl"
         );
@@ -717,10 +735,9 @@ set_property -dict [list CONFIG.a_precision_type Single \
         .expect("write tcl");
 
         generate_xilinx_fp_ip_models(tmp.path()).expect("generate models");
-        let model = std::fs::read_to_string(
-            tmp.path().join("Add_fadd_32ns_32ns_32_7_full_dsp_1_ip.sv"),
-        )
-        .expect("read generated model");
+        let model =
+            std::fs::read_to_string(tmp.path().join("Add_fadd_32ns_32ns_32_7_full_dsp_1_ip.sv"))
+                .expect("read generated model");
         assert!(model.contains("module Add_fadd_32ns_32ns_32_7_full_dsp_1_ip"));
         assert!(model.contains("import \"DPI-C\" function int unsigned fp32_add"));
     }

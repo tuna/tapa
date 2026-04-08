@@ -140,14 +140,20 @@ pub fn extract_platform_vbnv(xclbin: &[u8]) -> Option<String> {
         return None;
     }
     let raw = &xclbin[PLATFORM_VBNV_OFFSET..PLATFORM_VBNV_OFFSET + PLATFORM_VBNV_LEN];
-    let end = raw.iter().position(|&b| b == 0).unwrap_or(PLATFORM_VBNV_LEN);
+    let end = raw
+        .iter()
+        .position(|&b| b == 0)
+        .unwrap_or(PLATFORM_VBNV_LEN);
     let s = std::str::from_utf8(&raw[..end]).ok()?.trim().to_owned();
     if s.is_empty() {
         return None;
     }
     // Validate: a Xilinx VBNV looks like "xilinx_u250_gen3x16_xdma_4_1_202210_1"
     // — only alphanumeric, underscores, hyphens, and dots.
-    if !s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.') {
+    if !s
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.')
+    {
         return None;
     }
     Some(s)

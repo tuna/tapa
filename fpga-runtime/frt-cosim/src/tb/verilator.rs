@@ -145,7 +145,11 @@ impl<'a> VerilatorTbGenerator<'a> {
                         .or_else(|| self.spec.scalar_register_map.get(&offset_key))
                         .copied()
                         .unwrap_or(0);
-                    let data_size = self.buffer_sizes.get(&arg.name).copied().unwrap_or(4 * 1024 * 1024);
+                    let data_size = self
+                        .buffer_sizes
+                        .get(&arg.name)
+                        .copied()
+                        .unwrap_or(4 * 1024 * 1024);
                     mmap_args.push(MmapArg::new(
                         &arg.name,
                         (*data_width as usize).div_ceil(8),
@@ -167,12 +171,22 @@ impl<'a> VerilatorTbGenerator<'a> {
                     );
                     scalar_args.push(ScalarArg::new(&arg.name, &bytes, offset));
                 }
-                ArgKind::Stream { width, dir, protocol, .. } => {
+                ArgKind::Stream {
+                    width,
+                    dir,
+                    protocol,
+                    ..
+                } => {
                     let w = (*width as usize).div_ceil(8);
                     let axis = *protocol == StreamProtocol::Axis;
                     let peek = if self.spec.mode == Mode::Hls && *dir == StreamDir::In {
-                        infer_peek_name(&arg.name)
-                            .filter(|cand| stream_peek_ports_exist(&self.spec.verilog_files, &self.spec.top_name, cand))
+                        infer_peek_name(&arg.name).filter(|cand| {
+                            stream_peek_ports_exist(
+                                &self.spec.verilog_files,
+                                &self.spec.top_name,
+                                cand,
+                            )
+                        })
                     } else {
                         None
                     };
@@ -265,13 +279,11 @@ fn stream_peek_ports_exist(
                 }
                 let has_dout = text.lines().any(|line| {
                     let t = line.trim();
-                    (t.starts_with("input") || t.starts_with("output"))
-                        && t.contains(&dout_port)
+                    (t.starts_with("input") || t.starts_with("output")) && t.contains(&dout_port)
                 });
                 let has_empty_n = text.lines().any(|line| {
                     let t = line.trim();
-                    (t.starts_with("input") || t.starts_with("output"))
-                        && t.contains(&empty_n_port)
+                    (t.starts_with("input") || t.starts_with("output")) && t.contains(&empty_n_port)
                 });
                 has_dout && has_empty_n
             })
@@ -280,7 +292,13 @@ fn stream_peek_ports_exist(
 }
 
 impl MmapArg {
-    fn new(name: &str, data_width_bytes: usize, base_addr: u64, data_size: usize, reg_offset_lo: u32) -> Self {
+    fn new(
+        name: &str,
+        data_width_bytes: usize,
+        base_addr: u64,
+        data_size: usize,
+        reg_offset_lo: u32,
+    ) -> Self {
         let ident = cpp_identifier(name);
         Self {
             name: name.to_owned(),

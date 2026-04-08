@@ -30,7 +30,11 @@ fn maybe_report_progress() {
         .unwrap_or_default()
         .as_secs();
     let last = LAST_REPORT.load(Ordering::Relaxed);
-    if now > last + 10 && LAST_REPORT.compare_exchange(last, now, Ordering::Relaxed, Ordering::Relaxed).is_ok() {
+    if now > last + 10
+        && LAST_REPORT
+            .compare_exchange(last, now, Ordering::Relaxed, Ordering::Relaxed)
+            .is_ok()
+    {
         let rok = READ_OK.load(Ordering::Relaxed);
         let rmiss = READ_MISS.load(Ordering::Relaxed);
         let wok = WRITE_OK.load(Ordering::Relaxed);
@@ -53,7 +57,10 @@ pub fn stream_try_read_impl(ctx: &DpiContext, port: &str, out: *mut u8) -> bool 
     if let Some(data) = q.pop() {
         READ_OK.fetch_add(1, Ordering::Relaxed);
         if stream_debug_enabled() {
-            eprintln!("frt-dpi: stream_try_read '{port}': got {} bytes", data.len());
+            eprintln!(
+                "frt-dpi: stream_try_read '{port}': got {} bytes",
+                data.len()
+            );
         }
         unsafe { std::ptr::copy_nonoverlapping(data.as_ptr(), out, data.len()) }
         true
@@ -103,7 +110,6 @@ pub fn stream_can_write_impl(ctx: &DpiContext, port: &str) -> bool {
     }
     can
 }
-
 
 #[cfg(test)]
 mod tests {

@@ -79,5 +79,4 @@ mod imp {
         let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
         stream::stream_can_write_impl(get_or_init(), port) as u8
     }
-
 }

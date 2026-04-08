@@ -302,7 +302,9 @@ void Instance::Kill() {
 
 bool Instance::IsFinished() const {
   if (impl_->handle != nullptr) {
-    return frt_instance_is_finished(impl_->handle) != 0;
+    int ret = frt_instance_is_finished(impl_->handle);
+    CHECK_GE(ret, 0) << "frt_instance_is_finished failed: " << LastErr();
+    return ret != 0;
   }
   return impl_->finished;
 }

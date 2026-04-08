@@ -410,6 +410,7 @@ pub extern "C" fn frt_instance_kill(handle: *mut std::ffi::c_void) -> c_int {
 
 #[no_mangle]
 pub extern "C" fn frt_instance_is_finished(handle: *mut std::ffi::c_void) -> c_int {
+    clear_last_error();
     if handle.is_null() {
         return 0;
     }
@@ -424,7 +425,7 @@ pub extern "C" fn frt_instance_is_finished(handle: *mut std::ffi::c_void) -> c_i
         }
         Err(e) => {
             set_last_error(e.to_string());
-            1
+            -1
         }
     }
 }

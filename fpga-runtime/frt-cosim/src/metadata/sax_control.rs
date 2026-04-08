@@ -6,9 +6,10 @@ pub fn parse_register_map(verilog: &str) -> HashMap<String, u32> {
     // Vitis HLS 2020.x: `localparam ADDR_A_0 = 6'h10`
     // Vitis HLS 2021+:  `localparam ADDR_A_DATA_0 = 6'h10`
     // Non-greedy capture ensures `_data_0` suffix is consumed, not part of name.
-    let re =
-        regex_lite::Regex::new(r"(?i)localparam\s+addr_(\w+?)_(?:data_)?0\s*=\s*[\d']*h([0-9a-fA-F]+)")
-            .expect("regex");
+    let re = regex_lite::Regex::new(
+        r"(?i)localparam\s+addr_(\w+?)_(?:data_)?0\s*=\s*[\d']*h([0-9a-fA-F]+)",
+    )
+    .expect("regex");
     for cap in re.captures_iter(verilog) {
         let name = cap[1].to_lowercase();
         let offset = u32::from_str_radix(&cap[2], 16).unwrap_or(0);
@@ -18,9 +19,8 @@ pub fn parse_register_map(verilog: &str) -> HashMap<String, u32> {
     // Fallback: parse comments emitted by all known Vitis HLS versions:
     //   `// 0x10 : Data signal of a`
     if map.is_empty() {
-        let comment_re =
-            regex_lite::Regex::new(r"0x([0-9a-fA-F]+)\s*:\s*Data signal of\s+(\w+)")
-                .expect("comment regex");
+        let comment_re = regex_lite::Regex::new(r"0x([0-9a-fA-F]+)\s*:\s*Data signal of\s+(\w+)")
+            .expect("comment regex");
         for cap in comment_re.captures_iter(verilog) {
             let offset = u32::from_str_radix(&cap[1], 16).unwrap_or(0);
             let name = cap[2].to_lowercase();

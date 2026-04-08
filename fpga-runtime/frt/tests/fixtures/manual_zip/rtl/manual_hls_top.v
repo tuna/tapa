@@ -50,7 +50,7 @@ module manual_hls_top (
     output reg [3:0] m_axi_a_WSTRB,
     output reg m_axi_a_WVALID,
 
-    input wire [31:0] s_s_dout,
+    input wire [32:0] s_s_dout,
     input wire s_s_empty_n,
     output reg s_s_read
 );
@@ -145,7 +145,7 @@ module manual_hls_top (
         ST_STREAM: begin
           if (s_s_empty_n) begin
             s_s_read <= 1'b1;
-            stream_word <= s_s_dout;
+            stream_word <= s_s_dout[31:0];
             state <= ST_AW_W;
             aw_sent <= 1'b0;
             w_sent <= 1'b0;

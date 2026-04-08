@@ -137,6 +137,13 @@ fn persist_test_artifact(src: &Path, stem: &str, ext: &str) -> PathBuf {
     persist
 }
 
+fn pack_stream_elem_u32(value: u32, eot: bool) -> [u8; 5] {
+    let mut bytes = [0u8; 5];
+    bytes[..4].copy_from_slice(&value.to_le_bytes());
+    bytes[4] = u8::from(eot);
+    bytes
+}
+
 #[test]
 fn open_cosim_verilator_zip_mmap_stream_roundtrip() {
     if !ensure_verilator() {
@@ -160,9 +167,9 @@ fn open_cosim_verilator_zip_mmap_stream_roundtrip() {
 
     let stream_name = format!("manual_stream_{}_{}", std::process::id(), mmap_word[0]);
     let mut stream_q =
-        SharedMemoryQueue::create(&stream_name, 16, 4).expect("create stream shm queue");
+        SharedMemoryQueue::create(&stream_name, 16, 5).expect("create stream shm queue");
     stream_q
-        .push(&7u32.to_le_bytes())
+        .push(&pack_stream_elem_u32(7, false))
         .expect("push stream word");
     let stream_path = stream_q.path().to_string_lossy().to_string();
     instance
@@ -201,9 +208,9 @@ fn open_cosim_verilator_xo_mmap_axis_roundtrip() {
 
     let stream_name = format!("manual_axis_{}_{}", std::process::id(), mmap_word[0]);
     let mut stream_q =
-        SharedMemoryQueue::create(&stream_name, 16, 4).expect("create stream shm queue");
+        SharedMemoryQueue::create(&stream_name, 16, 5).expect("create stream shm queue");
     stream_q
-        .push(&7u32.to_le_bytes())
+        .push(&pack_stream_elem_u32(7, false))
         .expect("push stream word");
     let stream_path = stream_q.path().to_string_lossy().to_string();
     instance

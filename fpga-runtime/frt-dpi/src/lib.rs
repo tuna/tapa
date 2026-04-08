@@ -14,8 +14,11 @@ pub fn get_or_init() -> &'static DpiContext {
             std::process::exit(1);
         });
         if std::env::var("FRT_STREAM_DEBUG").is_ok() {
-            eprintln!("frt-dpi: init with {} buffers, {} streams",
-                ctx.buffers.len(), ctx.streams.len());
+            eprintln!(
+                "frt-dpi: init with {} buffers, {} streams",
+                ctx.buffers.len(),
+                ctx.streams.len()
+            );
             for (name, _) in &ctx.streams {
                 eprintln!("frt-dpi:   stream '{name}'");
             }

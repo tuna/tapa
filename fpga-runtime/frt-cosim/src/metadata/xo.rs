@@ -77,10 +77,8 @@ pub fn parse_kernel_xml(xml: &str, _verilog_dir: &Path) -> Result<KernelSpec> {
                             // available.  TAPA's kernel_metadata.py does not emit
                             // dataWidth on <arg> for mmap ports; it only appears on
                             // <port name="m_axi_<name>">.
-                            let resolved_width = port_info
-                                .get(&port)
-                                .map(|(_, w)| *w)
-                                .unwrap_or(data_width);
+                            let resolved_width =
+                                port_info.get(&port).map(|(_, w)| *w).unwrap_or(data_width);
                             ArgKind::Mmap {
                                 data_width: resolved_width,
                                 addr_width,
@@ -101,10 +99,8 @@ pub fn parse_kernel_xml(xml: &str, _verilog_dir: &Path) -> Result<KernelSpec> {
                                 fallback_stream_dir(&port)
                             };
                             // Use dataWidth from <port> when available.
-                            let resolved_width = port_info
-                                .get(&port)
-                                .map(|(_, w)| *w)
-                                .unwrap_or(data_width);
+                            let resolved_width =
+                                port_info.get(&port).map(|(_, w)| *w).unwrap_or(data_width);
                             ArgKind::Stream {
                                 width: resolved_width,
                                 depth,
