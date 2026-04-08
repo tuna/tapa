@@ -58,7 +58,7 @@ sh_test(
 )
 
 sh_test(
-    name = "network-cosim",
+    name = "network-xosim",
     size = "enormous",
     timeout = "moderate",
     srcs = ["//bazel:xrt_env.sh"],
@@ -106,7 +106,7 @@ sh_test(
     args = [
         "$(location network-host)",
         "--bitstream=$(location network-zip)",
-        "--xosim_simulator=verilator",
+        "--cosim_simulator=verilator",
     ],
     data = [
         ":network-host",

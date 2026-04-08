@@ -16,22 +16,24 @@
 #include <gflags/gflags.h>
 #include <glog/logging.h>
 
-DEFINE_bool(xosim_start_gui, false,
-            "deprecated: GUI launch control is handled in Rust runtime");
-DEFINE_bool(xosim_save_waveform, false, "save waveform in the work directory");
-DEFINE_string(xosim_work_dir, "",
-              "deprecated: work dir is managed by Rust runtime");
-DEFINE_bool(xosim_work_dir_parallel_cosim, false,
-            "deprecated: parallel work dir is managed by Rust runtime");
-DEFINE_string(xosim_executable, "",
+DEFINE_bool(xsim_start_gui, false,
+            "open the Vivado GUI for interactive xsim debugging");
+DEFINE_bool(xsim_save_waveform, false,
+            "save xsim waveform output in the work directory");
+DEFINE_string(cosim_work_dir, "",
+              "if not empty, keep cosim artifacts in the specified directory");
+DEFINE_bool(cosim_work_dir_parallel, false,
+            "create a unique work directory per concurrent cosim instance");
+DEFINE_string(cosim_executable, "",
               "deprecated: fast cosim is linked in-process via libfrt");
-DEFINE_string(xosim_part_num, "",
-              "deprecated: part number is taken from kernel metadata");
-DEFINE_string(xosim_simulator, "",
+DEFINE_string(xsim_part_num, "",
+              "if not empty, override the FPGA part number for xsim");
+DEFINE_string(cosim_simulator, "",
               "simulator backend to use: 'xsim' (default) or 'verilator'");
-DEFINE_bool(xosim_setup_only, false, "only setup the simulation");
-DEFINE_bool(xosim_resume_from_post_sim, false,
-            "skip simulation and do post-sim checking");
+DEFINE_bool(cosim_setup_only, false,
+            "generate the cosim work directory but do not run the simulator");
+DEFINE_bool(cosim_resume_from_post_sim, false,
+            "skip re-running the simulator and execute only post-sim checks");
 DEFINE_string(xocl_bdf, "",
               "if not empty, use the specified PCIe Bus:Device:Function for "
               "XRT/OpenCL device selection");
@@ -86,8 +88,8 @@ bool IsCosimPackage(const std::string& path) {
 
 const char* SimulatorFlagForPath(const std::string& bitstream) {
   if (!IsCosimPackage(bitstream)) return nullptr;
-  if (FLAGS_xosim_simulator.empty()) return "xsim";
-  return FLAGS_xosim_simulator.c_str();
+  if (FLAGS_cosim_simulator.empty()) return "xsim";
+  return FLAGS_cosim_simulator.c_str();
 }
 
 int64_t NsSince(const std::chrono::steady_clock::time_point& tic) {
@@ -110,24 +112,23 @@ void SetBoolEnv(const char* name, bool value) {
 
 void ConfigureRustCosimEnv(const std::string& bitstream) {
   if (!IsCosimPackage(bitstream)) {
-    unsetenv("FRT_XOSIM_START_GUI");
-    unsetenv("FRT_XOSIM_SAVE_WAVEFORM");
-    unsetenv("FRT_XOSIM_WORK_DIR");
-    unsetenv("FRT_XOSIM_WORK_DIR_PARALLEL");
-    unsetenv("FRT_XOSIM_PART_NUM");
-    unsetenv("FRT_XOSIM_SETUP_ONLY");
-    unsetenv("FRT_XOSIM_RESUME_FROM_POST_SIM");
+    unsetenv("FRT_XSIM_START_GUI");
+    unsetenv("FRT_XSIM_SAVE_WAVEFORM");
+    unsetenv("FRT_COSIM_WORK_DIR");
+    unsetenv("FRT_COSIM_WORK_DIR_PARALLEL");
+    unsetenv("FRT_XSIM_PART_NUM");
+    unsetenv("FRT_COSIM_SETUP_ONLY");
+    unsetenv("FRT_COSIM_RESUME_FROM_POST_SIM");
     return;
   }
-  SetBoolEnv("FRT_XOSIM_START_GUI", FLAGS_xosim_start_gui);
-  SetBoolEnv("FRT_XOSIM_SAVE_WAVEFORM", FLAGS_xosim_save_waveform);
-  SetOrUnsetEnv("FRT_XOSIM_WORK_DIR", FLAGS_xosim_work_dir);
-  SetBoolEnv("FRT_XOSIM_WORK_DIR_PARALLEL",
-             FLAGS_xosim_work_dir_parallel_cosim);
-  SetOrUnsetEnv("FRT_XOSIM_PART_NUM", FLAGS_xosim_part_num);
-  SetBoolEnv("FRT_XOSIM_SETUP_ONLY", FLAGS_xosim_setup_only);
-  SetBoolEnv("FRT_XOSIM_RESUME_FROM_POST_SIM",
-             FLAGS_xosim_resume_from_post_sim);
+  SetBoolEnv("FRT_XSIM_START_GUI", FLAGS_xsim_start_gui);
+  SetBoolEnv("FRT_XSIM_SAVE_WAVEFORM", FLAGS_xsim_save_waveform);
+  SetOrUnsetEnv("FRT_COSIM_WORK_DIR", FLAGS_cosim_work_dir);
+  SetBoolEnv("FRT_COSIM_WORK_DIR_PARALLEL", FLAGS_cosim_work_dir_parallel);
+  SetOrUnsetEnv("FRT_XSIM_PART_NUM", FLAGS_xsim_part_num);
+  SetBoolEnv("FRT_COSIM_SETUP_ONLY", FLAGS_cosim_setup_only);
+  SetBoolEnv("FRT_COSIM_RESUME_FROM_POST_SIM",
+             FLAGS_cosim_resume_from_post_sim);
 }
 
 void ConfigureRustRuntimeEnv(const std::string& bitstream) {
@@ -288,7 +289,7 @@ void Instance::Finish() {
         static_cast<int64_t>(frt_instance_store_ns(impl_->handle));
   }
   impl_->finished = true;
-  if (FLAGS_xosim_setup_only) {
+  if (FLAGS_cosim_setup_only) {
     std::exit(0);
   }
 }

@@ -56,7 +56,7 @@ sh_test(
 )
 
 sh_test(
-    name = "cannon-cosim",
+    name = "cannon-xosim",
     size = "enormous",
     timeout = "long",  # often >300s
     srcs = ["//bazel:xrt_env.sh"],
@@ -104,7 +104,7 @@ sh_test(
     args = [
         "$(location cannon-host)",
         "--bitstream=$(location cannon-zip)",
-        "--xosim_simulator=verilator",
+        "--cosim_simulator=verilator",
     ],
     data = [
         ":cannon-host",

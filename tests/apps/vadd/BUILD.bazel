@@ -60,7 +60,7 @@ sh_test(
 )
 
 sh_test(
-    name = "vadd-cosim",
+    name = "vadd-xosim",
     size = "enormous",
     timeout = "moderate",
     srcs = ["//bazel:xrt_env.sh"],
@@ -105,7 +105,7 @@ sh_test(
     args = [
         "$(location vadd-host)",
         "--bitstream=$(location vadd-zip)",
-        "--xosim_simulator=verilator",
+        "--cosim_simulator=verilator",
         "1000",
     ],
     data = [

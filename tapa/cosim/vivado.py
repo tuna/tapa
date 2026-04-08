@@ -98,7 +98,7 @@ def get_vivado_tcl(
     if not part_num:
         msg = (
             "part_num is not set. Either provide an xo that contains HLS reports or "
-            "use the --xosim-part-num option to specify the part number."
+            "use the --xsim-part-num option to specify the part number."
         )
         raise ValueError(msg)
 

@@ -115,15 +115,15 @@ Pass all three `.xo` files to the host binary. All cosim processes start concurr
 
 ### Preventing work-directory collisions
 
-By default each cosim process uses a temporary directory that is deleted at exit. When multiple processes share an explicit `-xosim_work_dir`, their intermediate files collide. Use `-xosim_work_dir_parallel_cosim` to give each process a unique subdirectory:
+By default each cosim process uses a temporary directory that is deleted at exit. When multiple processes share an explicit `-cosim_work_dir`, their intermediate files collide. Use `-cosim_work_dir_parallel` to give each process a unique subdirectory:
 
 ```bash
 ./cannon-host \
     --scatter_bitstream=scatter.xo \
     --proc_elem_bitstream=proc-elem.xo \
     --gather_bitstream=gather.xo \
-    -xosim_work_dir ./cosim_work \
-    -xosim_work_dir_parallel_cosim
+    -cosim_work_dir ./cosim_work \
+    -cosim_work_dir_parallel
 ```
 
 TAPA creates `./cosim_work/XXXXXX/` per instance so the simulations do not interfere.
@@ -145,7 +145,7 @@ Even with `TAPA_CONCURRENCY=1` the processes exchange data correctly through sha
 
 ## Step 4: Verify
 
-A successful run prints the application's correctness result (e.g., `PASS!`) after all simulation processes finish. Diagnose failures the same way as single-kernel cosim: add `-xosim_work_dir` and `-xosim_save_waveform` to inspect per-kernel waveforms.
+A successful run prints the application's correctness result (e.g., `PASS!`) after all simulation processes finish. Diagnose failures the same way as single-kernel cosim: add `-cosim_work_dir` and `-xsim_save_waveform` to inspect per-kernel waveforms.
 
 ---
 

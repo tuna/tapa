@@ -70,7 +70,7 @@ TAPA generates Verilog targeting recent Verilator versions. If you see Verilog p
 
 ### No waveform support with Verilator
 
-Verilator simulation does not support waveform capture via the Vivado GUI. If you need waveform debugging, use xsim and pass `-xosim_save_waveform` as described below.
+Verilator simulation does not support waveform capture via the Vivado GUI. If you need waveform debugging, use xsim and pass `-xsim_save_waveform` as described below.
 
 ---
 
@@ -80,8 +80,8 @@ Run with waveform capture and a persistent work directory so you can inspect the
 
 ```bash
 ./vadd --bitstream=vadd.xo \
-  -xosim_work_dir ./cosim_work \
-  -xosim_save_waveform \
+  -cosim_work_dir ./cosim_work \
+  -xsim_save_waveform \
   1000
 ```
 

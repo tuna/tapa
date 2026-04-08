@@ -253,13 +253,13 @@ fn env_non_empty(name: &str) -> Option<String> {
 
 fn runtime_options() -> RuntimeOptions {
     RuntimeOptions {
-        start_gui: env_bool("FRT_XOSIM_START_GUI"),
-        save_waveform: env_bool("FRT_XOSIM_SAVE_WAVEFORM"),
-        setup_only: env_bool("FRT_XOSIM_SETUP_ONLY"),
-        resume_from_post_sim: env_bool("FRT_XOSIM_RESUME_FROM_POST_SIM"),
-        work_dir: env_non_empty("FRT_XOSIM_WORK_DIR").map(PathBuf::from),
-        work_dir_parallel: env_bool("FRT_XOSIM_WORK_DIR_PARALLEL"),
-        part_num_override: env_non_empty("FRT_XOSIM_PART_NUM"),
+        start_gui: env_bool("FRT_XSIM_START_GUI"),
+        save_waveform: env_bool("FRT_XSIM_SAVE_WAVEFORM"),
+        setup_only: env_bool("FRT_COSIM_SETUP_ONLY"),
+        resume_from_post_sim: env_bool("FRT_COSIM_RESUME_FROM_POST_SIM"),
+        work_dir: env_non_empty("FRT_COSIM_WORK_DIR").map(PathBuf::from),
+        work_dir_parallel: env_bool("FRT_COSIM_WORK_DIR_PARALLEL"),
+        part_num_override: env_non_empty("FRT_XSIM_PART_NUM"),
     }
 }
 

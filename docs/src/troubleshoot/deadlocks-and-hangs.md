@@ -106,8 +106,8 @@ Run cosim with a persistent work directory and waveform capture enabled so you c
 
 ```bash
 ./vadd --bitstream=vadd.xo \
-  -xosim_work_dir ./cosim_work \
-  -xosim_save_waveform \
+  -cosim_work_dir ./cosim_work \
+  -xsim_save_waveform \
   1000
 ```
 
