@@ -278,6 +278,7 @@ def get_tapa_ldflags() -> tuple[str, ...]:
         *rpath_flags,
         *lib_flags,
         "-ltapa",
+        "-lfrt_cpp",
         "-lcontext",
         "-lthread",
         "-lfrt",

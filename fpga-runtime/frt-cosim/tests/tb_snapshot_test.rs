@@ -210,6 +210,7 @@ fn xsim_vitis_tb_contains_control_sequence() {
     assert!(tb.contains("task automatic ctrl_write"));
     assert!(tb.contains("ctrl_write(8'h00, 32'h0000_0001);"));
     assert!(tb.contains("wait (interrupt === 1'b1);"));
+    assert!(tb.contains("repeat (2) @(posedge ap_clk);"));
     assert!(!tb.contains("simulation timeout"));
 }
 

@@ -110,6 +110,21 @@ cc_library(
 )
 
 cc_library(
+    name = "frt_cpp",
+    srcs = [
+        "frt/arg_info.cpp",
+        "frt_compat.cpp",
+    ],
+    hdrs = _PUBLIC_HEADERS,
+    includes = ["."],
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        ":frt_rust_cdylib",
+        "@glog",
+    ],
+)
+
+cc_library(
     name = "frt-sim",
     srcs = [
         "frt/arg_info.cpp",
@@ -137,6 +152,7 @@ pkg_files(
         "cargo/libfrt_dpi_verilator.so",
         "cargo/libfrt_dpi_xsim.dylib",
         "cargo/libfrt_dpi_xsim.so",
+        ":frt_cpp",
     ],
     prefix = "usr/lib",
     strip_prefix = strip_prefix.files_only(),

@@ -433,6 +433,7 @@ initial begin
   repeat (2) @(posedge ap_clk);
 {% else %}
   wait (interrupt === 1'b1);
+  repeat (2) @(posedge ap_clk);
 {% endif %}
   $finish;
 end

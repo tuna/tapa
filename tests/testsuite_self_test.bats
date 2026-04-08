@@ -25,6 +25,12 @@
   [ -f "${TAPA_HOME}/usr/lib/libfrt_dpi_xsim.so" ]
 }
 
+@test "testsuite: FRT C++ host shim is installed for tapa g++" {
+  find "${TAPA_HOME}/usr/lib" -maxdepth 1 \
+    \( -name "libfrt_cpp.a" -o -name "libfrt_cpp.pic.a" \) \
+    | grep -q .
+}
+
 @test "testsuite: minizip-ng is installed for tapa g++" {
   find "${TAPA_HOME}/usr/lib" -maxdepth 1 \
     \( -name "libminizip_ng.a" -o -name "libminizip_ng.so" -o -name "libminizip_ng.dylib" \) \
