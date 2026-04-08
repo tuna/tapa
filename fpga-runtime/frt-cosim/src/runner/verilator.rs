@@ -10,23 +10,12 @@ use std::process::Command;
 use which::which;
 
 pub struct VerilatorRunner {
-    pub verilator_bin: PathBuf,
     pub dpi_lib: PathBuf,
 }
 
 impl VerilatorRunner {
     pub fn find(dpi_lib: PathBuf) -> Result<Self> {
-        let runfiles_root = std::env::var_os("RUNFILES_DIR")
-            .or_else(|| std::env::var_os("TEST_SRCDIR"))
-            .map(PathBuf::from);
-        let bin = resolve_verilator_bin(
-            std::env::var_os("VERILATOR_BIN").map(PathBuf::from),
-            runfiles_root,
-        )?;
-        Ok(Self {
-            verilator_bin: bin,
-            dpi_lib,
-        })
+        Ok(Self { dpi_lib })
     }
 }
 
@@ -85,7 +74,7 @@ fn verilator_root_env(verilator_bin: &Path) -> Option<PathBuf> {
 }
 
 impl SimRunner for VerilatorRunner {
-    fn build(
+    fn prepare(
         &self,
         spec: &KernelSpec,
         ctx: &CosimContext,
@@ -116,7 +105,25 @@ impl SimRunner for VerilatorRunner {
         fix_combinational_nba(&rtl_dir)?;
         std::fs::write(tb_dir.join("dpi_support.cpp"), generate_dpi_support())?;
 
+        Ok(())
+    }
+
+    fn spawn(
+        &self,
+        spec: &KernelSpec,
+        ctx: &CosimContext,
+        tb_dir: &Path,
+    ) -> Result<std::process::Child> {
+        let runfiles_root = std::env::var_os("RUNFILES_DIR")
+            .or_else(|| std::env::var_os("TEST_SRCDIR"))
+            .map(PathBuf::from);
+        let verilator_bin = resolve_verilator_bin(
+            std::env::var_os("VERILATOR_BIN").map(PathBuf::from),
+            runfiles_root,
+        )?;
+
         let top = &spec.top_name;
+        let rtl_dir = tb_dir.join("rtl");
         let mut args = vec![
             "--cc".to_string(),
             "--top-module".to_string(),
@@ -153,10 +160,10 @@ impl SimRunner for VerilatorRunner {
                 args.push(path.to_string_lossy().to_string());
             }
         }
-        let status = Command::new(&self.verilator_bin)
+        let status = Command::new(&verilator_bin)
             .args(&args)
             .envs(
-                verilator_root_env(&self.verilator_bin)
+                verilator_root_env(&verilator_bin)
                     .into_iter()
                     .map(|root| ("VERILATOR_ROOT", root)),
             )
@@ -180,10 +187,7 @@ impl SimRunner for VerilatorRunner {
         if !status.success() {
             return Err(CosimError::SimFailed(status));
         }
-        Ok(())
-    }
 
-    fn spawn(&self, ctx: &CosimContext, tb_dir: &Path) -> Result<std::process::Child> {
         let obj_dir = tb_dir.join("obj_dir");
         let mut found = None;
         for entry in std::fs::read_dir(&obj_dir)? {

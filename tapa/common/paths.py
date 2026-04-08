@@ -24,7 +24,12 @@ POTENTIAL_PATHS: dict[str, tuple[str, ...]] = {
         "usr/include",
     ),
     "fpga-runtime-lib": (
+        "fpga-runtime/cargo",
         "fpga-runtime",
+        "usr/lib",
+    ),
+    "tapa-fast-cosim-dpi-lib": (
+        "fpga-runtime/cargo",
         "usr/lib",
     ),
     "tapa-cpp-binary": (
@@ -283,7 +288,7 @@ def get_tapa_ldflags() -> tuple[str, ...]:
         "-lOpenCL",
         "-lminizip_ng",
         "-ltinyxml2",
-        "-lzlib",
+        "-lz",
         "-lyaml-cpp",
         "-lstdc++fs",
     )

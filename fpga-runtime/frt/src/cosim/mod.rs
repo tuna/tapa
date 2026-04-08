@@ -419,8 +419,6 @@ impl Device for CosimDevice {
     }
 
     fn exec(&mut self) -> Result<()> {
-        self.runner
-            .build(&self.spec, &self.ctx, &self.scalars, self.tb_dir.path())?;
         if self.resume_from_post_sim {
             let child = Self::spawn_noop_process()?;
             self.simulation_state = SimulationState::Running(RunningSimulation {
@@ -430,6 +428,8 @@ impl Device for CosimDevice {
             self.compute_ns = 0;
             return Ok(());
         }
+        self.runner
+            .prepare(&self.spec, &self.ctx, &self.scalars, self.tb_dir.path())?;
         if self.setup_only {
             let config_path = self.tb_dir.path().join("dpi_config.json");
             std::fs::write(&config_path, self.ctx.dpi_config_json())?;
@@ -437,7 +437,7 @@ impl Device for CosimDevice {
             self.simulation_state = SimulationState::Finished;
             return Ok(());
         }
-        let child = self.runner.spawn(&self.ctx, self.tb_dir.path())?;
+        let child = self.runner.spawn(&self.spec, &self.ctx, self.tb_dir.path())?;
         self.simulation_state = SimulationState::Running(RunningSimulation {
             child,
             started_at: Instant::now(),
@@ -552,7 +552,7 @@ mod tests {
     }
 
     impl SimRunner for SleepRunner {
-        fn build(
+        fn prepare(
             &self,
             _spec: &KernelSpec,
             _ctx: &CosimContext,
@@ -562,7 +562,12 @@ mod tests {
             Ok(())
         }
 
-        fn spawn(&self, _ctx: &CosimContext, _tb_dir: &Path) -> frt_cosim::error::Result<Child> {
+        fn spawn(
+            &self,
+            _spec: &KernelSpec,
+            _ctx: &CosimContext,
+            _tb_dir: &Path,
+        ) -> frt_cosim::error::Result<Child> {
             let child = Command::new("/bin/sh")
                 .args(["-c", &format!("sleep {}", self.sleep_seconds)])
                 .spawn()?;

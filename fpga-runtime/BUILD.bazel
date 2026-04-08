@@ -133,6 +133,10 @@ pkg_files(
     srcs = [
         "cargo/libfrt.dylib",
         "cargo/libfrt.so",
+        "cargo/libfrt_dpi_verilator.dylib",
+        "cargo/libfrt_dpi_verilator.so",
+        "cargo/libfrt_dpi_xsim.dylib",
+        "cargo/libfrt_dpi_xsim.so",
     ],
     prefix = "usr/lib",
     strip_prefix = strip_prefix.files_only(),

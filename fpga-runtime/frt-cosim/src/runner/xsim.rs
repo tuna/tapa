@@ -9,7 +9,6 @@ use std::process::Command;
 use which::which;
 
 pub struct XsimRunner {
-    pub vivado_bin: PathBuf,
     pub dpi_lib: PathBuf,
     pub legacy: bool,
     pub save_waveform: bool,
@@ -25,9 +24,7 @@ impl XsimRunner {
         start_gui: bool,
         part_num_override: Option<String>,
     ) -> Result<Self> {
-        let bin = which("vivado").map_err(|_| CosimError::ToolNotFound("vivado".into()))?;
         Ok(Self {
-            vivado_bin: bin,
             dpi_lib,
             legacy,
             save_waveform,
@@ -38,7 +35,7 @@ impl XsimRunner {
 }
 
 impl SimRunner for XsimRunner {
-    fn build(
+    fn prepare(
         &self,
         spec: &KernelSpec,
         ctx: &CosimContext,
@@ -67,11 +64,17 @@ impl SimRunner for XsimRunner {
         Ok(())
     }
 
-    fn spawn(&self, ctx: &CosimContext, tb_dir: &Path) -> Result<std::process::Child> {
+    fn spawn(
+        &self,
+        _spec: &KernelSpec,
+        ctx: &CosimContext,
+        tb_dir: &Path,
+    ) -> Result<std::process::Child> {
         let mode = if self.start_gui { "gui" } else { "batch" };
         let home = tb_dir.join("run");
         std::fs::create_dir_all(&home)?;
-        let mut cmd = Command::new(&self.vivado_bin);
+        let vivado_bin = which("vivado").map_err(|_| CosimError::ToolNotFound("vivado".into()))?;
+        let mut cmd = Command::new(vivado_bin);
         cmd.args(["-mode", mode, "-source", "run_cosim.tcl"])
             .current_dir(tb_dir)
             .env("HOME", home.as_os_str())

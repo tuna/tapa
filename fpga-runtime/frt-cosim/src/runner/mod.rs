@@ -19,18 +19,19 @@ pub struct SimResult {
 }
 
 pub trait SimRunner {
-    fn build(
+    fn prepare(
         &self,
         spec: &KernelSpec,
         ctx: &CosimContext,
         scalar_values: &HashMap<u32, Vec<u8>>,
         tb_dir: &Path,
     ) -> Result<()>;
-    fn spawn(&self, ctx: &CosimContext, tb_dir: &Path) -> Result<Child>;
+    fn spawn(&self, spec: &KernelSpec, ctx: &CosimContext, tb_dir: &Path) -> Result<Child>;
 
-    fn run(&self, ctx: &CosimContext, tb_dir: &Path) -> Result<SimResult> {
+    fn run(&self, spec: &KernelSpec, ctx: &CosimContext, tb_dir: &Path) -> Result<SimResult> {
         let t0 = std::time::Instant::now();
-        let mut child = self.spawn(ctx, tb_dir)?;
+        self.prepare(spec, ctx, &HashMap::new(), tb_dir)?;
+        let mut child = self.spawn(spec, ctx, tb_dir)?;
         let status = child.wait()?;
         let wall_ns = t0.elapsed().as_nanos() as u64;
         if !status.success() {
