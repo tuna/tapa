@@ -613,14 +613,10 @@ fn current_username() -> Option<String> {
 }
 
 fn normalized_scalar_bytes(width_bits: u32, raw: Option<&[u8]>) -> Vec<u8> {
-    let expected = (width_bits as usize).div_ceil(8).max(1);
-    let mut out = raw.map(|x| x.to_vec()).unwrap_or_default();
-    if out.len() < expected {
-        out.resize(expected, 0);
-    } else if out.len() > expected {
-        out.truncate(expected);
+    if let Some(raw) = raw.filter(|raw| !raw.is_empty()) {
+        return raw.to_vec();
     }
-    out
+    vec![0; (width_bits as usize).div_ceil(8).max(1)]
 }
 
 fn scalar_type_name(width_bits: u32) -> String {
@@ -636,15 +632,24 @@ mod tests {
     use super::{normalized_scalar_bytes, scalar_type_name};
 
     #[test]
-    fn scalar_bytes_are_padded_and_truncated_to_metadata_width() {
-        assert_eq!(normalized_scalar_bytes(16, Some(&[0x12])), vec![0x12, 0x00]);
+    fn scalar_bytes_preserve_explicit_caller_size() {
+        assert_eq!(normalized_scalar_bytes(16, Some(&[0x12])), vec![0x12]);
         assert_eq!(
             normalized_scalar_bytes(16, Some(&[0x12, 0x34, 0x56])),
-            vec![0x12, 0x34]
+            vec![0x12, 0x34, 0x56]
         );
         assert_eq!(
             normalized_scalar_bytes(128, Some(&[1, 2, 3, 4])),
-            vec![1, 2, 3, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            vec![1, 2, 3, 4]
+        );
+    }
+
+    #[test]
+    fn scalar_bytes_default_to_metadata_width_when_unset() {
+        assert_eq!(normalized_scalar_bytes(16, None), vec![0x00, 0x00]);
+        assert_eq!(
+            normalized_scalar_bytes(128, None),
+            vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         );
     }
 
