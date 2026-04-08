@@ -158,6 +158,7 @@ pkg_files(
         "@boost//:filesystem",
         "@gflags",
         "@glog",
+        "@minizip_ng",
         "@tinyxml2",
         "@yaml-cpp",
         "@zlib",
