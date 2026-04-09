@@ -10,6 +10,7 @@ void tapa_axi_read(const char* port, uint64_t addr, uint32_t width, uint8_t* out
 void tapa_axi_write(const char* port, uint64_t addr, uint32_t width, const uint8_t* data);
 bool tapa_stream_istream_step(const char* port, bool consume, uint8_t* out);
 bool tapa_stream_ostream_step(const char* port, bool write, const uint8_t* data);
+bool tapa_hls_stream_ostream_step(const char* port, bool write, const uint8_t* data);
 }
 
 static std::map<uint64_t, uint8_t> memory;
@@ -166,7 +167,7 @@ static void service_streams() {
 {% for arg in stream_out_args %}
   std::array<uint8_t, {{ arg.dpi_width_bytes }}> data{};
   std::memcpy(data.data(), &dut->{{ arg.din }}, {{ arg.dpi_width_bytes }});
-  dut->{{ arg.full_n }} = tapa_stream_ostream_step("{{ arg.name }}", dut->{{ arg.write }}, data.data()) ? 1 : 0;
+  dut->{{ arg.full_n }} = tapa_hls_stream_ostream_step("{{ arg.name }}", dut->{{ arg.write }}, data.data()) ? 1 : 0;
 {% endfor %}
 {% else %}
 {% for arg in stream_args %}

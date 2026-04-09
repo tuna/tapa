@@ -59,3 +59,13 @@ pub unsafe extern "C" fn tapa_stream_ostream_step(
     let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
     stream::stream_ostream_step_impl(get_or_init(), port, write, data)
 }
+
+#[no_mangle]
+pub unsafe extern "C" fn tapa_hls_stream_ostream_step(
+    port: *const libc::c_char,
+    write: bool,
+    data: *const u8,
+) -> bool {
+    let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
+    stream::stream_hls_ostream_step_impl(get_or_init(), port, write, data)
+}

@@ -216,6 +216,46 @@ pub fn stream_ostream_step_impl(ctx: &DpiContext, port: &str, write: bool, data:
     can
 }
 
+pub fn stream_hls_ostream_step_impl(
+    ctx: &DpiContext,
+    port: &str,
+    write: bool,
+    data: *const u8,
+) -> bool {
+    let Some(stream) = ctx.streams.get(port) else {
+        eprintln!("frt-dpi: stream_hls_ostream_step: unknown port '{port}'");
+        return false;
+    };
+    let mut q = match stream.queue.lock() {
+        Ok(guard) => guard,
+        Err(_) => return false,
+    };
+
+    // HLS ap_fifo/full_n uses the queue state visible in the current cycle,
+    // unlike AXIS tready which is sampled from the prior cycle in the Vitis path.
+    if write && !q.is_full() {
+        let w = q.width();
+        let slice = unsafe { std::slice::from_raw_parts(data, w) };
+        if q.try_push(slice).is_ok() {
+            reset_blocked_stream_backoff();
+            WRITE_OK.fetch_add(1, Ordering::Relaxed);
+            if stream_debug_enabled() {
+                eprintln!("frt-dpi: stream_hls_ostream_step '{port}': wrote {w} bytes");
+            }
+        }
+    }
+
+    let can = !q.is_full();
+    if can {
+        reset_blocked_stream_backoff();
+    } else {
+        WRITE_FULL.fetch_add(1, Ordering::Relaxed);
+        maybe_report_progress();
+        maybe_yield();
+    }
+    can
+}
+
 pub fn stream_can_write_impl(ctx: &DpiContext, port: &str) -> bool {
     let Some(stream) = ctx.streams.get(port) else {
         eprintln!("frt-dpi: stream_can_write: unknown port '{port}'");
@@ -418,6 +458,69 @@ mod tests {
             out.as_mut_ptr()
         ));
         assert_eq!(u32::from_le_bytes(out), 7);
+    }
+
+    #[test]
+    fn hls_ostream_step_commits_immediately_when_queue_is_ready() {
+        let ctx = make_ctx_with_stream("stream_hls_ostream_step_immediate", 1, 4, 4);
+        let first = 11u32.to_le_bytes();
+
+        assert!(!stream_try_read_impl(
+            &ctx,
+            "stream_hls_ostream_step_immediate",
+            [0u8; 4].as_ptr() as *mut u8,
+        ));
+
+        assert!(!stream_hls_ostream_step_impl(
+            &ctx,
+            "stream_hls_ostream_step_immediate",
+            true,
+            first.as_ptr()
+        ));
+
+        let mut out = [0u8; 4];
+        assert!(stream_try_read_impl(
+            &ctx,
+            "stream_hls_ostream_step_immediate",
+            out.as_mut_ptr()
+        ));
+        assert_eq!(u32::from_le_bytes(out), 11);
+    }
+
+    #[test]
+    fn hls_ostream_step_does_not_drop_first_write_after_queue_recovers() {
+        let ctx = make_ctx_with_stream("stream_hls_ostream_step_recovery", 1, 4, 4);
+        let first = 21u32.to_le_bytes();
+        let second = 22u32.to_le_bytes();
+
+        assert!(!stream_hls_ostream_step_impl(
+            &ctx,
+            "stream_hls_ostream_step_recovery",
+            true,
+            first.as_ptr()
+        ));
+
+        let mut out = [0u8; 4];
+        assert!(stream_try_read_impl(
+            &ctx,
+            "stream_hls_ostream_step_recovery",
+            out.as_mut_ptr()
+        ));
+        assert_eq!(u32::from_le_bytes(out), 21);
+
+        assert!(!stream_hls_ostream_step_impl(
+            &ctx,
+            "stream_hls_ostream_step_recovery",
+            true,
+            second.as_ptr()
+        ));
+        out.fill(0);
+        assert!(stream_try_read_impl(
+            &ctx,
+            "stream_hls_ostream_step_recovery",
+            out.as_mut_ptr()
+        ));
+        assert_eq!(u32::from_le_bytes(out), 22);
     }
 
     #[test]

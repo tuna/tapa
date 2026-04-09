@@ -148,7 +148,7 @@ fn verilator_hls_tb_snapshot() {
     let tb = generator.render_tb().expect("render");
     assert!(tb.contains("service_all_axi"));
     assert!(tb.contains("tapa_stream_istream_step"));
-    assert!(tb.contains("tapa_stream_ostream_step"));
+    assert!(tb.contains("tapa_hls_stream_ostream_step"));
     assert!(tb.contains("m_axi_a_ARADDR"));
 }
 
@@ -242,7 +242,7 @@ fn xsim_hls_stream_output_is_serviced_on_posedge() {
     );
     let tb = generator.render_tb().expect("render tb");
     assert!(tb.contains("always @(posedge ap_clk) begin"));
-    assert!(tb.contains("stream_out_full_n_s_out <= tapa_stream_ostream_step("));
+    assert!(tb.contains("stream_out_full_n_s_out <= tapa_hls_stream_ostream_step("));
     assert!(tb.contains("stream_out_write_s_out,"));
     assert!(tb.contains("stream_out_bytes_s_out[i] = stream_out_data_s_out[i*8 +: 8];"));
 }

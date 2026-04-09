@@ -94,13 +94,9 @@ void Cannon(tapa::mmap<const float> a_vec, tapa::mmap<const float> b_vec,
   assert(kN % p == 0);
   assert(n <= kN);
 
-  constexpr uint64_t kBlockElems = (kN / p) * (kN / p);
-  // Size only the stage-to-stage queues to hold one block so Scatter/Gather
-  // do not starve ProcElem startup. The inter-PE ring FIFOs stay at 16 to keep
-  // the communication behavior honest.
-  tapa::streams<float, p * p, kBlockElems> a("a");
-  tapa::streams<float, p * p, kBlockElems> b("b");
-  tapa::streams<float, p * p, kBlockElems> c("c");
+  tapa::streams<float, p * p> a("a");
+  tapa::streams<float, p * p> b("b");
+  tapa::streams<float, p * p> c("c");
   /*
       00→01→02→03→
       ↓  ↓  ↓  ↓

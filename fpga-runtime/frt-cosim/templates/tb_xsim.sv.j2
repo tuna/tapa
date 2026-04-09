@@ -5,6 +5,7 @@ import "DPI-C" function void tapa_axi_read(input string port, input longint unsi
 import "DPI-C" function void tapa_axi_write(input string port, input longint unsigned addr, input int unsigned width, input byte unsigned data[]);
 import "DPI-C" function bit tapa_stream_istream_step(input string port, input bit consume, output byte unsigned out[]);
 import "DPI-C" function bit tapa_stream_ostream_step(input string port, input bit write, input byte unsigned data[]);
+import "DPI-C" function bit tapa_hls_stream_ostream_step(input string port, input bit write, input byte unsigned data[]);
 
 reg ap_clk = 0;
 always #5 ap_clk = ~ap_clk;
@@ -399,7 +400,7 @@ always @(posedge ap_clk) begin
     stream_out_bytes_{{ arg.ident }}[i] = stream_out_data_{{ arg.ident }}[i*8 +: 8];
   end
   stream_out_bytes_{{ arg.ident }}[{{ arg.width_bytes }}] = stream_out_eos_{{ arg.ident }};
-  stream_out_full_n_{{ arg.ident }} <= tapa_stream_ostream_step(
+  stream_out_full_n_{{ arg.ident }} <= tapa_hls_stream_ostream_step(
       "{{ arg.name }}",
       stream_out_write_{{ arg.ident }},
       stream_out_bytes_{{ arg.ident }});

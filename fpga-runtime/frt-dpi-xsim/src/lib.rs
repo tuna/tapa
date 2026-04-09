@@ -101,4 +101,15 @@ mod imp {
         let ptr = sv_array_ptr(data) as *const u8;
         stream::stream_ostream_step_impl(get_or_init(), port, write != 0, ptr) as u8
     }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn tapa_hls_stream_ostream_step(
+        port: *const libc::c_char,
+        write: u8,
+        data: SvOpenArrayHandle,
+    ) -> u8 {
+        let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
+        let ptr = sv_array_ptr(data) as *const u8;
+        stream::stream_hls_ostream_step_impl(get_or_init(), port, write != 0, ptr) as u8
+    }
 }
