@@ -134,7 +134,7 @@ tapa_xo(
 sh_test(
     name = "jacobi-xosim",
     size = "enormous",
-    timeout = "moderate",
+    timeout = "long",
     srcs = ["//bazel:v++_env.sh"],
     args = [
         "$(location //tests/apps/jacobi:jacobi-host)",

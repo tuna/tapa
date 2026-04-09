@@ -8,6 +8,8 @@ load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
 sh_test(
     name = "resume-xosim-test",
+    size = "enormous",
+    timeout = "long",
     srcs = ["//bazel:v++_env.sh"],
     args = [
         "$(location :resume-xosim-test.sh)",

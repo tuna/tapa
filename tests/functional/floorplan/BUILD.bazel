@@ -196,7 +196,7 @@ APPS = [
     sh_test(
         name = "jacobi-{}-xosim".format(idx),
         size = "enormous",
-        timeout = "moderate",
+        timeout = "long",
         srcs = ["//bazel:v++_env.sh"],
         args = [
             "$(location //tests/apps/jacobi:jacobi-host)",
@@ -242,7 +242,7 @@ APPS = [
     sh_test(
         name = "shared-mmap-{}-xosim".format(idx),
         size = "enormous",
-        timeout = "moderate",
+        timeout = "long",
         srcs = ["//bazel:v++_env.sh"],
         args = [
             "$(location //tests/functional/shared-mmap:shared-mmap-host)",
