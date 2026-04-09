@@ -19,29 +19,47 @@ module axis_to_stream_adapter #(
   input  wire                  m_stream_read
 );
 
-  reg [DATA_WIDTH:0] buffered_payload;
-  reg                buffered_valid;
+  reg [DATA_WIDTH:0] stage0_payload;
+  reg                stage0_valid;
+  reg [DATA_WIDTH:0] stage1_payload;
+  reg                stage1_valid;
+  wire [DATA_WIDTH:0] s_axis_payload;
 
-  assign s_axis_tready = !buffered_valid || m_stream_read;
-  assign m_stream_empty_n = buffered_valid || s_axis_tvalid;
-  assign m_stream_dout = buffered_valid ? buffered_payload : {s_axis_tlast, s_axis_tdata};
+  assign s_axis_payload = {s_axis_tlast, s_axis_tdata};
+  assign s_axis_tready = !stage1_valid || m_stream_read;
+  assign m_stream_empty_n = stage0_valid || s_axis_tvalid;
+  assign m_stream_dout = stage0_valid ? stage0_payload : s_axis_payload;
 
   always @(posedge clk) begin
     if (reset) begin
-      buffered_payload <= {(DATA_WIDTH + 1){1'b0}};
-      buffered_valid <= 1'b0;
-    end else if (buffered_valid) begin
+      stage0_payload <= {(DATA_WIDTH + 1){1'b0}};
+      stage0_valid <= 1'b0;
+      stage1_payload <= {(DATA_WIDTH + 1){1'b0}};
+      stage1_valid <= 1'b0;
+    end else if (stage0_valid) begin
       if (m_stream_read) begin
-        if (s_axis_tvalid) begin
-          buffered_payload <= {s_axis_tlast, s_axis_tdata};
-          buffered_valid <= 1'b1;
+        if (stage1_valid) begin
+          stage0_payload <= stage1_payload;
+          stage0_valid <= 1'b1;
+          if (s_axis_tvalid) begin
+            stage1_payload <= s_axis_payload;
+            stage1_valid <= 1'b1;
+          end else begin
+            stage1_valid <= 1'b0;
+          end
+        end else if (s_axis_tvalid) begin
+          stage0_payload <= s_axis_payload;
+          stage0_valid <= 1'b1;
         end else begin
-          buffered_valid <= 1'b0;
+          stage0_valid <= 1'b0;
         end
+      end else if (s_axis_tvalid && !stage1_valid) begin
+        stage1_payload <= s_axis_payload;
+        stage1_valid <= 1'b1;
       end
     end else if (s_axis_tvalid && !m_stream_read) begin
-      buffered_payload <= {s_axis_tlast, s_axis_tdata};
-      buffered_valid <= 1'b1;
+      stage0_payload <= s_axis_payload;
+      stage0_valid <= 1'b1;
     end
   end
 
@@ -62,29 +80,45 @@ module stream_to_axis_adapter #(
   output wire                  m_axis_tlast
 );
 
-  reg [DATA_WIDTH:0] axis_payload;
-  reg                axis_valid;
+  reg [DATA_WIDTH:0] stage0_payload;
+  reg                stage0_valid;
+  reg [DATA_WIDTH:0] stage1_payload;
+  reg                stage1_valid;
 
-  assign s_stream_full_n = !axis_valid || m_axis_tready;
-  assign m_axis_tvalid = axis_valid;
-  assign {m_axis_tlast, m_axis_tdata} = axis_payload;
+  assign s_stream_full_n = !stage1_valid || m_axis_tready;
+  assign m_axis_tvalid = stage0_valid || s_stream_write;
+  assign {m_axis_tlast, m_axis_tdata} = stage0_valid ? stage0_payload : s_stream_din;
 
   always @(posedge clk) begin
     if (reset) begin
-      axis_payload <= {(DATA_WIDTH + 1){1'b0}};
-      axis_valid <= 1'b0;
-    end else if (axis_valid) begin
+      stage0_payload <= {(DATA_WIDTH + 1){1'b0}};
+      stage0_valid <= 1'b0;
+      stage1_payload <= {(DATA_WIDTH + 1){1'b0}};
+      stage1_valid <= 1'b0;
+    end else if (stage0_valid) begin
       if (m_axis_tready) begin
-        if (s_stream_write) begin
-          axis_payload <= s_stream_din;
-          axis_valid <= 1'b1;
+        if (stage1_valid) begin
+          stage0_payload <= stage1_payload;
+          stage0_valid <= 1'b1;
+          if (s_stream_write) begin
+            stage1_payload <= s_stream_din;
+            stage1_valid <= 1'b1;
+          end else begin
+            stage1_valid <= 1'b0;
+          end
+        end else if (s_stream_write) begin
+          stage0_payload <= s_stream_din;
+          stage0_valid <= 1'b1;
         end else begin
-          axis_valid <= 1'b0;
+          stage0_valid <= 1'b0;
         end
+      end else if (s_stream_write && !stage1_valid) begin
+        stage1_payload <= s_stream_din;
+        stage1_valid <= 1'b1;
       end
-    end else if (s_stream_write) begin
-      axis_payload <= s_stream_din;
-      axis_valid <= 1'b1;
+    end else if (s_stream_write && !m_axis_tready) begin
+      stage0_payload <= s_stream_din;
+      stage0_valid <= 1'b1;
     end
   end
 

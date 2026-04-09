@@ -101,6 +101,7 @@ impl SimRunner for XsimRunner {
             .current_dir(tb_dir)
             .env("HOME", home.as_os_str())
             .env("TMPDIR", home.as_os_str())
+            .env("FRT_XSIM_WAIT_FOR_GO", "1")
             .env("TAPA_DPI_CONFIG", ctx.dpi_config_json())
             .envs(xilinx_environ());
         configure_sim_command(&mut cmd);

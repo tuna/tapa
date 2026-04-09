@@ -33,7 +33,9 @@ launch_simulation
 set ready_fd [open "{{ ready_file }}" "w"]
 puts $ready_fd "ready"
 close $ready_fd
-while {![file exists "{{ start_go_file }}"]} {
-  after 50
+if {[info exists ::env(FRT_XSIM_WAIT_FOR_GO)] && $::env(FRT_XSIM_WAIT_FOR_GO) ni {"0" "false" "FALSE" "no" "NO"}} {
+  while {![file exists "{{ start_go_file }}"]} {
+    after 50
+  }
 }
 run all

@@ -134,6 +134,6 @@ def test_axis_adapter_asset_uses_explicit_handshake_state() -> None:
 
     assert "module axis_to_stream_adapter" in text
     assert "module stream_to_axis_adapter" in text
-    assert "buffered_valid" in text
-    assert "axis_valid" in text
+    assert "stage0_valid" in text
+    assert "stage1_valid" in text
     assert "fifo #(" not in text
