@@ -5,9 +5,14 @@ use crate::metadata::KernelSpec;
 use crate::tb::verilator::VerilatorTbGenerator;
 use regex_lite::Regex;
 use std::collections::{HashMap, HashSet};
+use std::fs::OpenOptions;
+#[cfg(unix)]
+use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use which::which;
+
+const VERILATOR_BUILD_LOCK_ENV: &str = "FRT_VERILATOR_BUILD_LOCK";
 
 pub struct VerilatorRunner {
     pub dpi_lib: PathBuf,
@@ -121,6 +126,7 @@ impl SimRunner for VerilatorRunner {
             std::env::var_os("VERILATOR_BIN").map(PathBuf::from),
             runfiles_root,
         )?;
+        let _build_gate = VerilatorBuildGate::acquire()?;
 
         let top = &spec.top_name;
         let rtl_dir = tb_dir.join("rtl");
@@ -129,6 +135,11 @@ impl SimRunner for VerilatorRunner {
             "--top-module".to_string(),
             top.to_string(),
             "--no-timing".to_string(),
+            // HLS-generated sequential-init loops can explode during Verilation.
+            // Disabling automatic procedural unrolling keeps compile memory bounded
+            // without changing RTL semantics.
+            "--unroll-count".to_string(),
+            "0".to_string(),
             "--exe".to_string(),
             "tb.cpp".to_string(),
             "dpi_support.cpp".to_string(),
@@ -226,6 +237,43 @@ impl SimRunner for VerilatorRunner {
         let child = cmd.spawn()?;
         Ok(child)
     }
+}
+
+struct VerilatorBuildGate {
+    #[cfg(unix)]
+    _file: std::fs::File,
+}
+
+impl VerilatorBuildGate {
+    fn acquire() -> Result<Self> {
+        #[cfg(unix)]
+        {
+            let lock_path = verilator_build_lock_path();
+            if let Some(parent) = lock_path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            let file = OpenOptions::new()
+                .create(true)
+                .read(true)
+                .write(true)
+                .open(lock_path)?;
+            if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) } != 0 {
+                return Err(std::io::Error::last_os_error().into());
+            }
+            Ok(Self { _file: file })
+        }
+        #[cfg(not(unix))]
+        {
+            Ok(Self {})
+        }
+    }
+}
+
+fn verilator_build_lock_path() -> PathBuf {
+    std::env::var_os(VERILATOR_BUILD_LOCK_ENV)
+        .filter(|path| !path.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| std::env::temp_dir().join("frt-verilator-build.lock"))
 }
 
 fn num_cpus_str() -> String {

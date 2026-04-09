@@ -255,12 +255,12 @@ fn infer_peek_name(stream_name: &str) -> Option<String> {
         return Some(format!("{base}_peek"));
     }
     let mut iter = stream_name.rsplitn(2, '_');
-    let suffix = iter.next()?;
-    let base = iter.next()?;
-    if suffix.chars().all(|c| c.is_ascii_digit()) {
-        return Some(format!("{base}_peek_{suffix}"));
+    if let (Some(suffix), Some(base)) = (iter.next(), iter.next()) {
+        if suffix.chars().all(|c| c.is_ascii_digit()) {
+            return Some(format!("{base}_peek_{suffix}"));
+        }
     }
-    None
+    Some(format!("{stream_name}_peek"))
 }
 
 fn stream_peek_ports_exist(
@@ -289,6 +289,26 @@ fn stream_peek_ports_exist(
             })
             .unwrap_or(false)
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::infer_peek_name;
+
+    #[test]
+    fn infer_peek_name_handles_plain_stream_names() {
+        assert_eq!(infer_peek_name("i_next").as_deref(), Some("i_next_peek"));
+        assert_eq!(infer_peek_name("a").as_deref(), Some("a_peek"));
+    }
+
+    #[test]
+    fn infer_peek_name_preserves_special_suffix_forms() {
+        assert_eq!(infer_peek_name("stream_s").as_deref(), Some("stream_peek"));
+        assert_eq!(
+            infer_peek_name("stream_3").as_deref(),
+            Some("stream_peek_3")
+        );
+    }
 }
 
 impl MmapArg {

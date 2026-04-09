@@ -39,3 +39,23 @@ pub unsafe extern "C" fn tapa_stream_can_write(port: *const libc::c_char) -> boo
     let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
     stream::stream_can_write_impl(get_or_init(), port)
 }
+
+#[no_mangle]
+pub unsafe extern "C" fn tapa_stream_istream_step(
+    port: *const libc::c_char,
+    consume: bool,
+    out: *mut u8,
+) -> bool {
+    let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
+    stream::stream_istream_step_impl(get_or_init(), port, consume, out)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn tapa_stream_ostream_step(
+    port: *const libc::c_char,
+    write: bool,
+    data: *const u8,
+) -> bool {
+    let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
+    stream::stream_ostream_step_impl(get_or_init(), port, write, data)
+}

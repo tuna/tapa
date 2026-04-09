@@ -42,11 +42,7 @@ sh_test(
         ":scatter",
         "//fpga-runtime:cargo_release_artifacts",
     ],
-    env = {
-        "TAPA_CONCURRENCY": "1",
-        "FRT_COSIM_YIELD": "1",
-        "FRT_SHM_MIN_DEPTH": "4096",
-    },
+    env = {"TAPA_CONCURRENCY": "1"},
     tags = ["cpu:8"],
 )
 

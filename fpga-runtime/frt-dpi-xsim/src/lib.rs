@@ -79,4 +79,26 @@ mod imp {
         let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
         stream::stream_can_write_impl(get_or_init(), port) as u8
     }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn tapa_stream_istream_step(
+        port: *const libc::c_char,
+        consume: u8,
+        out: SvOpenArrayHandle,
+    ) -> u8 {
+        let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
+        let ptr = sv_array_ptr(out);
+        stream::stream_istream_step_impl(get_or_init(), port, consume != 0, ptr) as u8
+    }
+
+    #[no_mangle]
+    pub unsafe extern "C" fn tapa_stream_ostream_step(
+        port: *const libc::c_char,
+        write: u8,
+        data: SvOpenArrayHandle,
+    ) -> u8 {
+        let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
+        let ptr = sv_array_ptr(data) as *const u8;
+        stream::stream_ostream_step_impl(get_or_init(), port, write != 0, ptr) as u8
+    }
 }

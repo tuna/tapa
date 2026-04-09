@@ -49,6 +49,13 @@ pub struct DpiConfig {
 pub struct DpiStream {
     pub queue: Mutex<SharedMemoryQueue>,
     pub dpi_width_bytes: usize,
+    pub state: Mutex<DpiStreamState>,
+}
+
+#[derive(Debug, Default)]
+pub struct DpiStreamState {
+    pub last_istream_valid: bool,
+    pub last_ostream_ready: bool,
 }
 
 pub struct DpiContext {
@@ -86,6 +93,7 @@ impl DpiContext {
                 DpiStream {
                     queue: Mutex::new(q),
                     dpi_width_bytes,
+                    state: Mutex::new(DpiStreamState::default()),
                 },
             );
         }

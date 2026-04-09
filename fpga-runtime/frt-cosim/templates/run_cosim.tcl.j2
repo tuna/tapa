@@ -13,6 +13,7 @@ upgrade_ip -quiet [get_ips *]
 set_property SOURCE_SET sources_1 [get_filesets sim_1]
 add_files {{ tb_sv_file }}
 set_property top {{ tb_top }} [get_filesets sim_1]
+set_property XELAB.MT_LEVEL off [get_filesets sim_1]
 {% if legacy %}
 set_property -name {xelab.more_options} -value {-sv_root {{ dpi_sv_root }} -sv_lib {{ dpi_sv_lib }}} -objects [get_filesets sim_1]
 {% else %}
@@ -22,5 +23,17 @@ set_property -name {xsim.elaborate.xelab.more_options} -value {-sv_root {{ dpi_s
 set_property -name {xsim.simulate.log_all_signals} -value {true} -objects [get_filesets sim_1]
 set_property -name {xsim.simulate.wdb} -value {wave.wdb} -objects [get_filesets sim_1]
 {% endif %}
+set custom_tcl "{{ tb_dir }}/xsim_init.tcl"
+set custom_tcl_fd [open $custom_tcl "w"]
+puts $custom_tcl_fd "# XSim custom batch script; run_cosim.tcl controls simulation start."
+close $custom_tcl_fd
+set_property -name {xsim.simulate.custom_tcl} -value $custom_tcl -objects [get_filesets sim_1]
+set_property -name {xsim.simulate.runtime} -value {0ns} -objects [get_filesets sim_1]
 launch_simulation
+set ready_fd [open "{{ ready_file }}" "w"]
+puts $ready_fd "ready"
+close $ready_fd
+while {![file exists "{{ start_go_file }}"]} {
+  after 50
+}
 run all

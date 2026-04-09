@@ -103,6 +103,35 @@ fn banked_hls_spec() -> KernelSpec {
     }
 }
 
+fn hls_stream_out_spec() -> KernelSpec {
+    KernelSpec {
+        top_name: "vadd".into(),
+        mode: Mode::Hls,
+        part_num: None,
+        verilog_files: vec![],
+        tcl_files: vec![],
+        xci_files: vec![],
+        scalar_register_map: HashMap::from([("n".into(), 0x18u32)]),
+        args: vec![
+            ArgSpec {
+                name: "n".into(),
+                id: 0,
+                kind: ArgKind::Scalar { width: 32 },
+            },
+            ArgSpec {
+                name: "s_out".into(),
+                id: 1,
+                kind: ArgKind::Stream {
+                    width: 32,
+                    depth: 16,
+                    dir: StreamDir::Out,
+                    protocol: frt_cosim::metadata::StreamProtocol::ApFifo,
+                },
+            },
+        ],
+    }
+}
+
 #[test]
 fn verilator_hls_tb_snapshot() {
     let spec = hls_spec();
@@ -118,7 +147,8 @@ fn verilator_hls_tb_snapshot() {
     );
     let tb = generator.render_tb().expect("render");
     assert!(tb.contains("service_all_axi"));
-    assert!(tb.contains("tapa_stream_try_read"));
+    assert!(tb.contains("tapa_stream_istream_step"));
+    assert!(tb.contains("tapa_stream_ostream_step"));
     assert!(tb.contains("m_axi_a_ARADDR"));
 }
 
@@ -168,6 +198,100 @@ fn xsim_hls_tb_snapshot() {
         .render_tcl(std::path::Path::new("/tmp/tb"))
         .expect("render tcl");
     assert!(tcl.contains("set_property top tb_vadd"));
+    assert!(tcl.contains("set_property XELAB.MT_LEVEL off [get_filesets sim_1]"));
+    assert!(
+        tcl.contains("set custom_tcl \"/tmp/tb/xsim_init.tcl\""),
+        "{tcl}"
+    );
+    assert!(
+        tcl.contains("set_property -name {xsim.simulate.custom_tcl} -value $custom_tcl"),
+        "{tcl}"
+    );
+    assert!(
+        tcl.contains("set_property -name {xsim.simulate.runtime} -value {0ns}"),
+        "{tcl}"
+    );
+    let ready_marker = "set ready_fd [open \"/tmp/tb/.xsim-ready\" \"w\"]";
+    let start_barrier = "while {![file exists \"";
+    assert!(tcl.contains(ready_marker), "{tcl}");
+    assert!(tcl.contains(start_barrier), "{tcl}");
+    assert!(tcl.contains("frt-xsim-start-go-"), "{tcl}");
+    let launch_idx = tcl.find("launch_simulation").expect("launch");
+    let ready_idx = tcl.find(ready_marker).expect("ready marker");
+    let barrier_idx = tcl.find("while {![file exists").expect("start barrier");
+    let run_idx = tcl.find("run all").expect("run all");
+    assert!(launch_idx < ready_idx, "{tcl}");
+    assert!(ready_idx < barrier_idx, "{tcl}");
+    assert!(barrier_idx < run_idx, "{tcl}");
+}
+
+#[test]
+fn xsim_hls_stream_output_is_serviced_on_posedge() {
+    use frt_cosim::tb::xsim::XsimTbGenerator;
+    let spec = hls_stream_out_spec();
+    let base_addrs = HashMap::new();
+    let scalar_vals = std::collections::HashMap::from([(0u32, vec![3u8, 0, 0, 0])]);
+    let generator = XsimTbGenerator::new(
+        &spec,
+        std::path::Path::new("/path/to/frt_dpi_xsim.so"),
+        &base_addrs,
+        &scalar_vals,
+        "xc7a100tcsg324-1",
+        false,
+        false,
+    );
+    let tb = generator.render_tb().expect("render tb");
+    assert!(tb.contains("always @(posedge ap_clk) begin"));
+    assert!(tb.contains("stream_out_full_n_s_out <= tapa_stream_ostream_step("));
+    assert!(tb.contains("stream_out_write_s_out,"));
+    assert!(tb.contains("stream_out_bytes_s_out[i] = stream_out_data_s_out[i*8 +: 8];"));
+}
+
+#[test]
+fn xsim_hls_stream_input_refills_without_bubble() {
+    use frt_cosim::tb::xsim::XsimTbGenerator;
+    let spec = hls_spec();
+    let base_addrs = std::collections::HashMap::from([("a".into(), 0x1000_0000u64)]);
+    let scalar_vals = std::collections::HashMap::from([(1u32, vec![3u8, 0, 0, 0])]);
+    let generator = XsimTbGenerator::new(
+        &spec,
+        std::path::Path::new("/path/to/frt_dpi_xsim.so"),
+        &base_addrs,
+        &scalar_vals,
+        "xc7a100tcsg324-1",
+        false,
+        false,
+    );
+    let tb = generator.render_tb().expect("render tb");
+    let step_idx = tb
+        .find("stream_in_have_next_s = tapa_stream_istream_step(")
+        .expect("istream step");
+    let posedge_idx = tb[..step_idx]
+        .rfind("always @(posedge ap_clk) begin")
+        .expect("posedge stream block");
+    assert!(tb.contains("stream_in_have_next_s = tapa_stream_istream_step("), "{tb}");
+    assert!(tb.contains("stream_in_have_s && stream_read_s,"), "{tb}");
+    assert!(tb.contains("stream_in_have_s <= stream_in_have_next_s;"), "{tb}");
+    assert!(!tb[..step_idx].contains("always @(negedge ap_clk) begin"));
+    assert!(posedge_idx < step_idx);
+}
+
+#[test]
+fn verilator_hls_stream_input_refills_without_bubble() {
+    let spec = hls_spec();
+    let base_addrs = std::collections::HashMap::from([("a".into(), 0x1000_0000u64)]);
+    let buf_sizes = std::collections::HashMap::from([("a".into(), 4096usize)]);
+    let scalar_vals = std::collections::HashMap::from([(1u32, vec![7u8, 0, 0, 0])]);
+    let generator = VerilatorTbGenerator::new(
+        &spec,
+        std::path::Path::new("libfrt_dpi_verilator.so"),
+        &base_addrs,
+        &buf_sizes,
+        &scalar_vals,
+    );
+    let tb = generator.render_tb().expect("render");
+    assert!(tb.contains("stream_in_have_s = tapa_stream_istream_step("), "{tb}");
+    assert!(tb.contains("stream_in_have_s && dut->s_read"), "{tb}");
 }
 
 #[test]

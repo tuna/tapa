@@ -437,7 +437,9 @@ impl Device for CosimDevice {
             self.simulation_state = SimulationState::Finished;
             return Ok(());
         }
-        let child = self.runner.spawn(&self.spec, &self.ctx, self.tb_dir.path())?;
+        let child = self
+            .runner
+            .spawn(&self.spec, &self.ctx, self.tb_dir.path())?;
         self.simulation_state = SimulationState::Running(RunningSimulation {
             child,
             started_at: Instant::now(),

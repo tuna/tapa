@@ -118,6 +118,8 @@ struct TclTemplate {
     tb_top: String,
     dpi_sv_root: String,
     dpi_sv_lib: String,
+    ready_file: String,
+    start_go_file: String,
     save_waveform: bool,
     legacy: bool,
 }
@@ -280,6 +282,11 @@ impl<'a> XsimTbGenerator<'a> {
                 .unwrap_or_default()
                 .to_string_lossy()
                 .to_string(),
+            ready_file: tb_dir.join(".xsim-ready").to_string_lossy().to_string(),
+            start_go_file: std::env::temp_dir()
+                .join(format!("frt-xsim-start-go-{}", std::process::id()))
+                .to_string_lossy()
+                .to_string(),
             save_waveform: self.save_waveform,
             legacy: self.legacy,
         };
@@ -334,12 +341,12 @@ fn infer_peek_name(stream_name: &str) -> Option<String> {
         return Some(format!("{base}_peek"));
     }
     let mut iter = stream_name.rsplitn(2, '_');
-    let suffix = iter.next()?;
-    let base = iter.next()?;
-    if suffix.chars().all(|c| c.is_ascii_digit()) {
-        return Some(format!("{base}_peek_{suffix}"));
+    if let (Some(suffix), Some(base)) = (iter.next(), iter.next()) {
+        if suffix.chars().all(|c| c.is_ascii_digit()) {
+            return Some(format!("{base}_peek_{suffix}"));
+        }
     }
-    None
+    Some(format!("{stream_name}_peek"))
 }
 
 fn stream_peek_ports_exist(
@@ -393,6 +400,26 @@ fn detect_axi_id_width(verilog_files: &[PathBuf], mmap_name: &str) -> usize {
         }
     }
     1
+}
+
+#[cfg(test)]
+mod tests {
+    use super::infer_peek_name;
+
+    #[test]
+    fn infer_peek_name_handles_plain_stream_names() {
+        assert_eq!(infer_peek_name("i_next").as_deref(), Some("i_next_peek"));
+        assert_eq!(infer_peek_name("a").as_deref(), Some("a_peek"));
+    }
+
+    #[test]
+    fn infer_peek_name_preserves_special_suffix_forms() {
+        assert_eq!(infer_peek_name("stream_s").as_deref(), Some("stream_peek"));
+        assert_eq!(
+            infer_peek_name("stream_3").as_deref(),
+            Some("stream_peek_3")
+        );
+    }
 }
 
 impl MmapArg {
