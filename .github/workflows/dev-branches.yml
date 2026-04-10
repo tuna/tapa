@@ -21,6 +21,9 @@ jobs:
     runs-on: self-hosted
 
     steps:
+      - name: Force Git to HTTP/1.1
+        run: git config --global http.version HTTP/1.1
+
       - name: Checkout myself
         uses: actions/checkout@v4
 
@@ -37,6 +40,9 @@ jobs:
     runs-on: self-hosted
 
     steps:
+      - name: Force Git to HTTP/1.1
+        run: git config --global http.version HTTP/1.1
+
       - name: Checkout myself
         uses: actions/checkout@v4
 
