@@ -19,49 +19,22 @@ module axis_to_stream_adapter #(
   input  wire                  m_stream_read
 );
 
-  reg [DATA_WIDTH:0] stage0_payload;
-  reg                stage0_valid;
-  reg [DATA_WIDTH:0] stage1_payload;
-  reg                stage1_valid;
-  wire [DATA_WIDTH:0] s_axis_payload;
-
-  assign s_axis_payload = {s_axis_tlast, s_axis_tdata};
-  assign s_axis_tready = !stage1_valid || m_stream_read;
-  assign m_stream_empty_n = stage0_valid || s_axis_tvalid;
-  assign m_stream_dout = stage0_valid ? stage0_payload : s_axis_payload;
-
-  always @(posedge clk) begin
-    if (reset) begin
-      stage0_payload <= {(DATA_WIDTH + 1){1'b0}};
-      stage0_valid <= 1'b0;
-      stage1_payload <= {(DATA_WIDTH + 1){1'b0}};
-      stage1_valid <= 1'b0;
-    end else if (stage0_valid) begin
-      if (m_stream_read) begin
-        if (stage1_valid) begin
-          stage0_payload <= stage1_payload;
-          stage0_valid <= 1'b1;
-          if (s_axis_tvalid) begin
-            stage1_payload <= s_axis_payload;
-            stage1_valid <= 1'b1;
-          end else begin
-            stage1_valid <= 1'b0;
-          end
-        end else if (s_axis_tvalid) begin
-          stage0_payload <= s_axis_payload;
-          stage0_valid <= 1'b1;
-        end else begin
-          stage0_valid <= 1'b0;
-        end
-      end else if (s_axis_tvalid && !stage1_valid) begin
-        stage1_payload <= s_axis_payload;
-        stage1_valid <= 1'b1;
-      end
-    end else if (s_axis_tvalid && !m_stream_read) begin
-      stage0_payload <= s_axis_payload;
-      stage0_valid <= 1'b1;
-    end
-  end
+  fifo #(
+    .DATA_WIDTH(DATA_WIDTH + 1),
+    .ADDR_WIDTH(1),
+    .DEPTH(2)
+  ) fifo_unit (
+    .clk        (clk),
+    .reset      (reset),
+    .if_full_n  (s_axis_tready),
+    .if_write_ce(1'b1),
+    .if_write   (s_axis_tvalid),
+    .if_din     ({s_axis_tlast, s_axis_tdata}),
+    .if_empty_n (m_stream_empty_n),
+    .if_read_ce (1'b1),
+    .if_read    (m_stream_read),
+    .if_dout    (m_stream_dout)
+  );
 
 endmodule
 
@@ -80,47 +53,26 @@ module stream_to_axis_adapter #(
   output wire                  m_axis_tlast
 );
 
-  reg [DATA_WIDTH:0] stage0_payload;
-  reg                stage0_valid;
-  reg [DATA_WIDTH:0] stage1_payload;
-  reg                stage1_valid;
+  wire [DATA_WIDTH:0] axis_payload;
 
-  assign s_stream_full_n = !stage1_valid || m_axis_tready;
-  assign m_axis_tvalid = stage0_valid || s_stream_write;
-  assign {m_axis_tlast, m_axis_tdata} = stage0_valid ? stage0_payload : s_stream_din;
+  fifo #(
+    .DATA_WIDTH(DATA_WIDTH + 1),
+    .ADDR_WIDTH(1),
+    .DEPTH(2)
+  ) fifo_unit (
+    .clk        (clk),
+    .reset      (reset),
+    .if_full_n  (s_stream_full_n),
+    .if_write_ce(1'b1),
+    .if_write   (s_stream_write),
+    .if_din     (s_stream_din),
+    .if_empty_n (m_axis_tvalid),
+    .if_read_ce (1'b1),
+    .if_read    (m_axis_tready),
+    .if_dout    (axis_payload)
+  );
 
-  always @(posedge clk) begin
-    if (reset) begin
-      stage0_payload <= {(DATA_WIDTH + 1){1'b0}};
-      stage0_valid <= 1'b0;
-      stage1_payload <= {(DATA_WIDTH + 1){1'b0}};
-      stage1_valid <= 1'b0;
-    end else if (stage0_valid) begin
-      if (m_axis_tready) begin
-        if (stage1_valid) begin
-          stage0_payload <= stage1_payload;
-          stage0_valid <= 1'b1;
-          if (s_stream_write) begin
-            stage1_payload <= s_stream_din;
-            stage1_valid <= 1'b1;
-          end else begin
-            stage1_valid <= 1'b0;
-          end
-        end else if (s_stream_write) begin
-          stage0_payload <= s_stream_din;
-          stage0_valid <= 1'b1;
-        end else begin
-          stage0_valid <= 1'b0;
-        end
-      end else if (s_stream_write && !stage1_valid) begin
-        stage1_payload <= s_stream_din;
-        stage1_valid <= 1'b1;
-      end
-    end else if (s_stream_write && !m_axis_tready) begin
-      stage0_payload <= s_stream_din;
-      stage0_valid <= 1'b1;
-    end
-  end
+  assign {m_axis_tlast, m_axis_tdata} = axis_payload;
 
 endmodule
 

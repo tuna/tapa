@@ -129,11 +129,11 @@ def test_connect_fifo_externally_reuses_module_ports() -> None:
     assert module.add_logics.call_count == len(get_fifo_suffixes("produced_by"))
 
 
-def test_axis_adapter_asset_uses_explicit_handshake_state() -> None:
+def test_axis_adapter_asset_wraps_fifo_behavior_in_named_modules() -> None:
     text = Path("tapa/assets/verilog/axis_adapter.v").read_text(encoding="utf-8")
 
     assert "module axis_to_stream_adapter" in text
     assert "module stream_to_axis_adapter" in text
-    assert "stage0_valid" in text
-    assert "stage1_valid" in text
-    assert "fifo #(" not in text
+    assert "fifo #(" in text
+    assert "if_write_ce(1'b1)" in text
+    assert "if_read_ce (1'b1)" in text or "if_read_ce(1'b1)" in text
