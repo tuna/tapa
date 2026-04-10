@@ -21,11 +21,12 @@ jobs:
     runs-on: self-hosted
 
     steps:
-      - name: Force Git to HTTP/1.1
-        run: git config --global http.version HTTP/1.1
-
       - name: Checkout myself
         uses: actions/checkout@v4
+        env:
+          GIT_CONFIG_COUNT: "1"
+          GIT_CONFIG_KEY_0: http.version
+          GIT_CONFIG_VALUE_0: HTTP/1.1
 
       - name: Run pre-commit
         uses: ./.github/actions/run-command
@@ -40,11 +41,12 @@ jobs:
     runs-on: self-hosted
 
     steps:
-      - name: Force Git to HTTP/1.1
-        run: git config --global http.version HTTP/1.1
-
       - name: Checkout myself
         uses: actions/checkout@v4
+        env:
+          GIT_CONFIG_COUNT: "1"
+          GIT_CONFIG_KEY_0: http.version
+          GIT_CONFIG_VALUE_0: HTTP/1.1
 
       - name: Run bazel
         uses: ./.github/actions/run-command
