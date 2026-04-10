@@ -176,8 +176,9 @@ fn verilator_hls_tb_snapshot() {
     );
     let tb = generator.render_tb().expect("render");
     assert!(tb.contains("service_all_axi"));
-    assert!(tb.contains("tapa_stream_istream_step"));
-    assert!(tb.contains("tapa_hls_stream_ostream_step"));
+    assert!(tb.contains("tapa_stream_try_read"));
+    assert!(tb.contains("tapa_stream_try_write"));
+    assert!(tb.contains("tapa_stream_can_write"));
     assert!(tb.contains("m_axi_a_ARADDR"));
 }
 
@@ -275,8 +276,10 @@ fn xsim_hls_stream_output_is_serviced_on_posedge() {
     );
     let tb = generator.render_tb().expect("render tb");
     assert!(tb.contains("always @(posedge ap_clk) begin"));
-    assert!(tb.contains("stream_out_full_n_s_out <= tapa_hls_stream_ostream_step("));
-    assert!(tb.contains("stream_out_write_s_out,"));
+    assert!(tb.contains("can_write_s_out = tapa_stream_can_write(\"s_out\");"));
+    assert!(tb.contains("stream_out_full_n_s_out <= can_write_s_out;"));
+    assert!(tb.contains("if (stream_out_write_s_out && can_write_s_out) begin"));
+    assert!(tb.contains("void'(tapa_stream_try_write(\"s_out\", stream_out_bytes_s_out));"));
     assert!(tb.contains("stream_out_bytes_s_out[i] = stream_out_data_s_out[i*8 +: 8];"));
 }
 
@@ -296,17 +299,20 @@ fn xsim_hls_stream_input_refills_without_bubble() {
         false,
     );
     let tb = generator.render_tb().expect("render tb");
-    let step_idx = tb
-        .find("stream_in_have_next_s = tapa_stream_istream_step(")
-        .expect("istream step");
-    let posedge_idx = tb[..step_idx]
+    let read_idx = tb
+        .find("got_stream_s = tapa_stream_try_read(\"s\", stream_in_bytes_s);")
+        .expect("try read");
+    let posedge_idx = tb[..read_idx]
         .rfind("always @(posedge ap_clk) begin")
         .expect("posedge stream block");
-    assert!(tb.contains("stream_in_have_next_s = tapa_stream_istream_step("), "{tb}");
-    assert!(tb.contains("stream_in_have_s && stream_read_s,"), "{tb}");
-    assert!(tb.contains("stream_in_have_s <= stream_in_have_next_s;"), "{tb}");
-    assert!(!tb[..step_idx].contains("always @(negedge ap_clk) begin"));
-    assert!(posedge_idx < step_idx);
+    assert!(
+        tb.contains("got_stream_s = tapa_stream_try_read(\"s\", stream_in_bytes_s);"),
+        "{tb}"
+    );
+    assert!(tb.contains("if (stream_in_have_s && stream_read_s) begin"), "{tb}");
+    assert!(!tb.contains("stream_in_have_next_s = tapa_stream_istream_step("), "{tb}");
+    assert!(!tb[..read_idx].contains("always @(negedge ap_clk) begin"));
+    assert!(posedge_idx < read_idx);
 }
 
 #[test]
@@ -323,8 +329,9 @@ fn verilator_hls_stream_input_refills_without_bubble() {
         &scalar_vals,
     );
     let tb = generator.render_tb().expect("render");
-    assert!(tb.contains("stream_in_have_s = tapa_stream_istream_step("), "{tb}");
-    assert!(tb.contains("stream_in_have_s && dut->s_read"), "{tb}");
+    assert!(tb.contains("stream_in_have_s = tapa_stream_try_read(\"s\", stream_in_data_s.data());"), "{tb}");
+    assert!(tb.contains("if (stream_in_have_s && dut->s_read) {"), "{tb}");
+    assert!(!tb.contains("stream_in_have_s = tapa_stream_istream_step("), "{tb}");
 }
 
 #[test]
