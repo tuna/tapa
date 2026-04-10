@@ -3,6 +3,7 @@ module tb_{{ top_name }};
 
 import "DPI-C" function void tapa_axi_read(input string port, input longint unsigned addr, input int unsigned width, output byte unsigned out[]);
 import "DPI-C" function void tapa_axi_write(input string port, input longint unsigned addr, input int unsigned width, input byte unsigned data[]);
+import "DPI-C" function bit tapa_stream_istream_step(input string port, input bit consume, output byte unsigned out[]);
 import "DPI-C" function bit tapa_stream_try_read(input string port, output byte unsigned out[]);
 import "DPI-C" function bit tapa_stream_try_write(input string port, input byte unsigned data[]);
 import "DPI-C" function bit tapa_stream_can_write(input string port);
@@ -131,6 +132,9 @@ reg [7:0] axi_{{ arg.ident }}_wr_beat = 0;
 {% for arg in stream_args %}
 reg [{{ arg.width_bytes * 8 - 1 }}:0] stream_in_data_{{ arg.ident }} = 0;
 reg stream_in_have_{{ arg.ident }} = 0;
+{% if mode == "hls" %}
+reg stream_in_have_next_{{ arg.ident }} = 0;
+{% endif %}
 byte unsigned stream_in_bytes_{{ arg.ident }}[0:{{ arg.dpi_width_bytes - 1 }}];
 {% if arg.axis %}
 reg stream_in_tlast_{{ arg.ident }} = 0;
@@ -377,22 +381,19 @@ end
 {% if mode == "hls" %}
 always @(posedge ap_clk) begin
 {% for arg in stream_args %}
-  if (ap_rst_n && !stream_in_have_{{ arg.ident }}) begin
-    bit got_stream_{{ arg.ident }};
-    got_stream_{{ arg.ident }} = tapa_stream_try_read("{{ arg.name }}", stream_in_bytes_{{ arg.ident }});
-    stream_in_have_{{ arg.ident }} <= got_stream_{{ arg.ident }};
-    if (got_stream_{{ arg.ident }}) begin
-      for (i = 0; i < {{ arg.width_bytes }}; i = i + 1) begin
-        stream_in_data_{{ arg.ident }}[i*8 +: 8] <= stream_in_bytes_{{ arg.ident }}[i];
-      end
-{% if arg.axis %}
-      stream_in_tlast_{{ arg.ident }} <= stream_in_bytes_{{ arg.ident }}[{{ arg.width_bytes }}];
-{% endif %}
-      stream_in_eos_{{ arg.ident }} <= stream_in_bytes_{{ arg.ident }}[{{ arg.width_bytes }}][0];
+  stream_in_have_next_{{ arg.ident }} = tapa_stream_istream_step(
+      "{{ arg.name }}",
+      stream_in_have_{{ arg.ident }} && stream_read_{{ arg.ident }},
+      stream_in_bytes_{{ arg.ident }});
+  stream_in_have_{{ arg.ident }} <= stream_in_have_next_{{ arg.ident }};
+  if (stream_in_have_next_{{ arg.ident }}) begin
+    for (i = 0; i < {{ arg.width_bytes }}; i = i + 1) begin
+      stream_in_data_{{ arg.ident }}[i*8 +: 8] <= stream_in_bytes_{{ arg.ident }}[i];
     end
-  end
-  if (stream_in_have_{{ arg.ident }} && stream_read_{{ arg.ident }}) begin
-    stream_in_have_{{ arg.ident }} <= 1'b0;
+{% if arg.axis %}
+    stream_in_tlast_{{ arg.ident }} <= stream_in_bytes_{{ arg.ident }}[{{ arg.width_bytes }}];
+{% endif %}
+    stream_in_eos_{{ arg.ident }} <= stream_in_bytes_{{ arg.ident }}[{{ arg.width_bytes }}][0];
   end
 {% endfor %}
 

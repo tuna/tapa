@@ -8,6 +8,7 @@
 extern "C" {
 void tapa_axi_read(const char* port, uint64_t addr, uint32_t width, uint8_t* out);
 void tapa_axi_write(const char* port, uint64_t addr, uint32_t width, const uint8_t* data);
+bool tapa_stream_istream_step(const char* port, bool consume, uint8_t* out);
 bool tapa_stream_try_read(const char* port, uint8_t* out);
 bool tapa_stream_try_write(const char* port, const uint8_t* data);
 bool tapa_stream_can_write(const char* port);
@@ -139,9 +140,10 @@ static void ctrl_write(uint8_t addr, uint32_t data) {
 static void service_streams() {
 {% if mode == "hls" %}
 {% for arg in stream_args %}
-  if (!stream_in_have_{{ arg.ident }}) {
-    stream_in_have_{{ arg.ident }} = tapa_stream_try_read("{{ arg.name }}", stream_in_data_{{ arg.ident }}.data());
-  }
+  stream_in_have_{{ arg.ident }} = tapa_stream_istream_step(
+      "{{ arg.name }}",
+      stream_in_have_{{ arg.ident }} && dut->{{ arg.read }},
+      stream_in_data_{{ arg.ident }}.data());
   dut->{{ arg.empty_n }} = stream_in_have_{{ arg.ident }} ? 1 : 0;
 {% if arg.has_peek %}
   dut->{{ arg.peek_empty_n }} = stream_in_have_{{ arg.ident }} ? 1 : 0;
@@ -151,9 +153,6 @@ static void service_streams() {
 {% if arg.has_peek %}
     std::memcpy(&dut->{{ arg.peek_dout }}, stream_in_data_{{ arg.ident }}.data(), {{ arg.dpi_width_bytes }});
 {% endif %}
-  }
-  if (stream_in_have_{{ arg.ident }} && dut->{{ arg.read }}) {
-    stream_in_have_{{ arg.ident }} = false;
   }
 {% endfor %}
 {% for arg in stream_out_args %}
