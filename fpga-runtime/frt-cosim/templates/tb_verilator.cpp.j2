@@ -12,6 +12,7 @@ bool tapa_stream_istream_step(const char* port, bool consume, uint8_t* out);
 bool tapa_stream_try_read(const char* port, uint8_t* out);
 bool tapa_stream_try_write(const char* port, const uint8_t* data);
 bool tapa_stream_can_write(const char* port);
+bool tapa_hls_stream_ostream_step(const char* port, bool write, const uint8_t* data);
 }
 
 static std::map<uint64_t, uint8_t> memory;
@@ -156,13 +157,9 @@ static void service_streams() {
   }
 {% endfor %}
 {% for arg in stream_out_args %}
-  bool can_write_{{ arg.ident }} = tapa_stream_can_write("{{ arg.name }}");
-  dut->{{ arg.full_n }} = can_write_{{ arg.ident }} ? 1 : 0;
-  if (dut->{{ arg.write }} && can_write_{{ arg.ident }}) {
-    std::array<uint8_t, {{ arg.dpi_width_bytes }}> data{};
-    std::memcpy(data.data(), &dut->{{ arg.din }}, {{ arg.dpi_width_bytes }});
-    (void)tapa_stream_try_write("{{ arg.name }}", data.data());
-  }
+  std::array<uint8_t, {{ arg.dpi_width_bytes }}> data{};
+  std::memcpy(data.data(), &dut->{{ arg.din }}, {{ arg.dpi_width_bytes }});
+  dut->{{ arg.full_n }} = tapa_hls_stream_ostream_step("{{ arg.name }}", dut->{{ arg.write }}, data.data()) ? 1 : 0;
 {% endfor %}
 {% else %}
 {% for arg in stream_args %}

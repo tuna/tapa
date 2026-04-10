@@ -7,6 +7,7 @@ import "DPI-C" function bit tapa_stream_istream_step(input string port, input bi
 import "DPI-C" function bit tapa_stream_try_read(input string port, output byte unsigned out[]);
 import "DPI-C" function bit tapa_stream_try_write(input string port, input byte unsigned data[]);
 import "DPI-C" function bit tapa_stream_can_write(input string port);
+import "DPI-C" function bit tapa_hls_stream_ostream_step(input string port, input bit write, input byte unsigned data[]);
 
 reg ap_clk = 0;
 always #5 ap_clk = ~ap_clk;
@@ -398,15 +399,14 @@ always @(posedge ap_clk) begin
 {% endfor %}
 
 {% for arg in stream_out_args %}
-  can_write_{{ arg.ident }} = tapa_stream_can_write("{{ arg.name }}");
-  stream_out_full_n_{{ arg.ident }} <= can_write_{{ arg.ident }};
-  if (stream_out_write_{{ arg.ident }} && can_write_{{ arg.ident }}) begin
-    for (i = 0; i < {{ arg.width_bytes }}; i = i + 1) begin
-      stream_out_bytes_{{ arg.ident }}[i] = stream_out_data_{{ arg.ident }}[i*8 +: 8];
-    end
-    stream_out_bytes_{{ arg.ident }}[{{ arg.width_bytes }}] = stream_out_eos_{{ arg.ident }};
-    void'(tapa_stream_try_write("{{ arg.name }}", stream_out_bytes_{{ arg.ident }}));
+  for (i = 0; i < {{ arg.width_bytes }}; i = i + 1) begin
+    stream_out_bytes_{{ arg.ident }}[i] = stream_out_data_{{ arg.ident }}[i*8 +: 8];
   end
+  stream_out_bytes_{{ arg.ident }}[{{ arg.width_bytes }}] = stream_out_eos_{{ arg.ident }};
+  stream_out_full_n_{{ arg.ident }} <= tapa_hls_stream_ostream_step(
+      "{{ arg.name }}",
+      stream_out_write_{{ arg.ident }},
+      stream_out_bytes_{{ arg.ident }});
 {% endfor %}
 end
 {% else %}
