@@ -54,33 +54,43 @@ runs:
         local_bazelrc=~/.cache/tapa-local/bazelrc
         cp /etc/bazel.bazelrc "${local_bazelrc}" || touch "${local_bazelrc}"
 
+        docker_args=(
+          --rm
+          --init
+          --shm-size=${{ inputs.shmSize }}
+          --cpus=${{ inputs.cpus }}
+          --pids-limit=${{ inputs.pidsLimit }}
+          --label="${label}"
+          --mac-address=${{ env.MAC_ADDRESS }}
+          -v "${local_bazelrc}":/etc/bazel.bazelrc:ro
+          -v ${TAPA_LICENSE_DIR:-/share/software/licenses}:/opt/licenses:ro
+          -v ${TAPA_TOOLS_DIR:-/share/software/tools}:/opt/tools:ro
+          -v ${TAPA_PLATFORMS_DIR:-/share/software/xilinx/platforms}:/opt/xilinx/platforms:ro
+          -v ${{ github.workspace }}:/workspace
+          -v ~/.cache/tapa-cache:/tmp/home/.cache
+          -v ~/.cache/tapa-local:/tmp/home/.local
+          -v ${GITHUB_STEP_SUMMARY}:/workspace/.github_step_summary
+          -w /workspace
+          -e GITHUB_ACTIONS=true
+          -e GITHUB_STEP_SUMMARY=/workspace/.github_step_summary
+          -e LM_LICENSE_FILE=/opt/licenses/xilinx-ci.lic
+          -e VIVADO_IMPL_JOBS=1
+          -e VIVADO_SYNTH_JOBS=1
+          -e VIVADO_MAX_THREADS=1
+          -e USER="$(id -u)"
+          -u $(id -u):$(id -g)
+        )
+
+        if [[ -n "${{ inputs.memory }}" ]]; then
+          docker_args+=(--memory=${{ inputs.memory }})
+        fi
+
+        if [[ -n "${{ inputs.dockerOptions }}" ]]; then
+          docker_args+=(${{ inputs.dockerOptions }})
+        fi
+
         docker run \
-          --rm \
-          --init \
-          --shm-size=${{ inputs.shmSize }} \
-          --memory=${{ inputs.memory }} \
-          --cpus=${{ inputs.cpus }} \
-          --pids-limit=${{ inputs.pidsLimit }} \
-          --label="${label}" \
-          --mac-address=${{ env.MAC_ADDRESS }} \
-          -v "${local_bazelrc}":/etc/bazel.bazelrc:ro \
-          -v ${TAPA_LICENSE_DIR:-/share/software/licenses}:/opt/licenses:ro \
-          -v ${TAPA_TOOLS_DIR:-/share/software/tools}:/opt/tools:ro \
-          -v ${TAPA_PLATFORMS_DIR:-/share/software/xilinx/platforms}:/opt/xilinx/platforms:ro \
-          -v ${{ github.workspace }}:/workspace \
-          -v ~/.cache/tapa-cache:/tmp/home/.cache \
-          -v ~/.cache/tapa-local:/tmp/home/.local \
-          -v ${GITHUB_STEP_SUMMARY}:/workspace/.github_step_summary \
-          -w /workspace \
-          -e GITHUB_ACTIONS=true \
-          -e GITHUB_STEP_SUMMARY=/workspace/.github_step_summary \
-          -e LM_LICENSE_FILE=/opt/licenses/xilinx-ci.lic \
-          -e VIVADO_IMPL_JOBS=1 \
-          -e VIVADO_SYNTH_JOBS=1 \
-          -e VIVADO_MAX_THREADS=1 \
-          -e USER="$(id -u)" \
-          -u $(id -u):$(id -g) \
-          ${{ inputs.dockerOptions }} \
+          "${docker_args[@]}" \
           --entrypoint=/bin/bash \
           ${{ inputs.image }} \
           -c " \
