@@ -1,13 +1,8 @@
 use crate::context::DpiContext;
-use std::cell::Cell;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Duration;
 
 static STREAM_DBG: std::sync::Once = std::sync::Once::new();
 static mut STREAM_DBG_ENABLED: bool = false;
-thread_local! {
-    static BLOCKED_STREAM_STREAK: Cell<u32> = const { Cell::new(0) };
-}
 
 fn stream_debug_enabled() -> bool {
     STREAM_DBG.call_once(|| {
@@ -23,39 +18,12 @@ fn blocked_stream_backoff_enabled_from_env(value: Option<&str>) -> bool {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum BlockedStreamBackoff {
-    Yield,
-    Sleep(Duration),
-}
-
-fn blocked_stream_backoff_for_streak(streak: u32) -> BlockedStreamBackoff {
-    if streak < 64 {
-        BlockedStreamBackoff::Yield
-    } else if streak < 512 {
-        BlockedStreamBackoff::Sleep(Duration::from_micros(50))
-    } else {
-        BlockedStreamBackoff::Sleep(Duration::from_micros(200))
-    }
-}
-
-fn reset_blocked_stream_backoff() {
-    BLOCKED_STREAM_STREAK.with(|streak| streak.set(0));
-}
-
 fn maybe_yield() {
     static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     if *ENABLED.get_or_init(|| {
         blocked_stream_backoff_enabled_from_env(std::env::var("FRT_COSIM_YIELD").ok().as_deref())
     }) {
-        BLOCKED_STREAM_STREAK.with(|streak| {
-            let next = streak.get().saturating_add(1);
-            streak.set(next);
-            match blocked_stream_backoff_for_streak(next) {
-                BlockedStreamBackoff::Yield => std::thread::yield_now(),
-                BlockedStreamBackoff::Sleep(duration) => std::thread::sleep(duration),
-            }
-        });
+        std::thread::yield_now();
     }
 }
 
@@ -104,7 +72,6 @@ pub fn stream_try_read_impl(ctx: &DpiContext, port: &str, out: *mut u8) -> bool 
         Err(_) => return false,
     };
     if let Some(data) = q.pop() {
-        reset_blocked_stream_backoff();
         READ_OK.fetch_add(1, Ordering::Relaxed);
         if stream_debug_enabled() {
             eprintln!(
@@ -138,7 +105,6 @@ pub fn stream_istream_step_impl(ctx: &DpiContext, port: &str, consume: bool, out
 
     if state.last_istream_valid && consume {
         if q.pop().is_some() {
-            reset_blocked_stream_backoff();
             READ_OK.fetch_add(1, Ordering::Relaxed);
         }
     }
@@ -169,7 +135,6 @@ pub fn stream_try_write_impl(ctx: &DpiContext, port: &str, data: *const u8) -> b
     let slice = unsafe { std::slice::from_raw_parts(data, w) };
     let ok = q.try_push(slice).is_ok();
     if ok {
-        reset_blocked_stream_backoff();
         WRITE_OK.fetch_add(1, Ordering::Relaxed);
         if stream_debug_enabled() {
             eprintln!("frt-dpi: stream_try_write '{port}': wrote {w} bytes");
@@ -196,7 +161,6 @@ pub fn stream_ostream_step_impl(ctx: &DpiContext, port: &str, write: bool, data:
         let w = q.width();
         let slice = unsafe { std::slice::from_raw_parts(data, w) };
         if q.try_push(slice).is_ok() {
-            reset_blocked_stream_backoff();
             WRITE_OK.fetch_add(1, Ordering::Relaxed);
             if stream_debug_enabled() {
                 eprintln!("frt-dpi: stream_ostream_step '{port}': wrote {w} bytes");
@@ -206,9 +170,7 @@ pub fn stream_ostream_step_impl(ctx: &DpiContext, port: &str, write: bool, data:
 
     let can = !q.is_full();
     state.last_ostream_ready = can;
-    if can {
-        reset_blocked_stream_backoff();
-    } else {
+    if !can {
         WRITE_FULL.fetch_add(1, Ordering::Relaxed);
         maybe_report_progress();
         maybe_yield();
@@ -237,7 +199,6 @@ pub fn stream_hls_ostream_step_impl(
         let w = q.width();
         let slice = unsafe { std::slice::from_raw_parts(data, w) };
         if q.try_push(slice).is_ok() {
-            reset_blocked_stream_backoff();
             WRITE_OK.fetch_add(1, Ordering::Relaxed);
             if stream_debug_enabled() {
                 eprintln!("frt-dpi: stream_hls_ostream_step '{port}': wrote {w} bytes");
@@ -246,9 +207,7 @@ pub fn stream_hls_ostream_step_impl(
     }
 
     let can = !q.is_full();
-    if can {
-        reset_blocked_stream_backoff();
-    } else {
+    if !can {
         WRITE_FULL.fetch_add(1, Ordering::Relaxed);
         maybe_report_progress();
         maybe_yield();
@@ -266,9 +225,7 @@ pub fn stream_can_write_impl(ctx: &DpiContext, port: &str) -> bool {
         Err(_) => return false,
     };
     let can = !q.is_full();
-    if can {
-        reset_blocked_stream_backoff();
-    } else {
+    if !can {
         WRITE_FULL.fetch_add(1, Ordering::Relaxed);
         maybe_report_progress();
         maybe_yield();
@@ -546,38 +503,6 @@ mod tests {
                 "expected {value} to keep blocked-stream backoff enabled"
             );
         }
-    }
-
-    #[test]
-    fn blocked_stream_backoff_starts_with_yield() {
-        assert_eq!(
-            blocked_stream_backoff_for_streak(1),
-            BlockedStreamBackoff::Yield
-        );
-        assert_eq!(
-            blocked_stream_backoff_for_streak(63),
-            BlockedStreamBackoff::Yield
-        );
-    }
-
-    #[test]
-    fn blocked_stream_backoff_escalates_to_short_sleep() {
-        assert_eq!(
-            blocked_stream_backoff_for_streak(64),
-            BlockedStreamBackoff::Sleep(Duration::from_micros(50))
-        );
-        assert_eq!(
-            blocked_stream_backoff_for_streak(511),
-            BlockedStreamBackoff::Sleep(Duration::from_micros(50))
-        );
-    }
-
-    #[test]
-    fn blocked_stream_backoff_escalates_to_longer_sleep() {
-        assert_eq!(
-            blocked_stream_backoff_for_streak(512),
-            BlockedStreamBackoff::Sleep(Duration::from_micros(200))
-        );
     }
 
 }
