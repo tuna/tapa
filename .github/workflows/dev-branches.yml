@@ -89,7 +89,7 @@ jobs:
       - name: Run bazel
         uses: ./.github/actions/run-command
         with:
-          run: bazel test --jobs=4 --local_test_jobs=2 --test_output=errors //...
+          run: bazel test --jobs=2 --local_test_jobs=1 --test_output=errors //...
         env:
           UBUNTU_PRO_TOKEN: ${{ secrets.UBUNTU_PRO_TOKEN }}
           MAC_ADDRESS: ${{ secrets.MAC_ADDRESS }}
