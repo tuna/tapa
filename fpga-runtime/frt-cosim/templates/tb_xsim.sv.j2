@@ -3,8 +3,9 @@ module tb_{{ top_name }};
 
 import "DPI-C" function void tapa_axi_read(input string port, input longint unsigned addr, input int unsigned width, output byte unsigned out[]);
 import "DPI-C" function void tapa_axi_write(input string port, input longint unsigned addr, input int unsigned width, input byte unsigned data[]);
+import "DPI-C" function bit tapa_stream_try_write(input string port, input byte unsigned data[]);
+import "DPI-C" function bit tapa_stream_can_write(input string port);
 import "DPI-C" function bit tapa_stream_istream_step(input string port, input bit consume, output byte unsigned out[]);
-import "DPI-C" function bit tapa_stream_ostream_step(input string port, input bit write, input byte unsigned data[]);
 import "DPI-C" function bit tapa_hls_stream_ostream_step(input string port, input bit write, input byte unsigned data[]);
 
 reg ap_clk = 0;
@@ -147,6 +148,7 @@ reg stream_in_ready_prev_{{ arg.ident }} = 0;
 {% for arg in stream_out_args %}
 byte unsigned stream_out_bytes_{{ arg.ident }}[0:{{ arg.dpi_width_bytes - 1 }}];
 wire [{{ arg.width_bytes * 8 - 1 }}:0] stream_out_data_{{ arg.ident }};
+reg can_write_{{ arg.ident }};
 {% if mode == "hls" %}
 wire stream_out_eos_{{ arg.ident }};
 wire stream_out_write_{{ arg.ident }};
@@ -154,7 +156,6 @@ reg stream_out_full_n_{{ arg.ident }} = 1'b1;
 {% else %}
 wire stream_out_valid_{{ arg.ident }};
 reg stream_out_ready_{{ arg.ident }} = 1'b1;
-reg stream_out_valid_prev_{{ arg.ident }} = 1'b0;
 {% if arg.axis %}
 wire stream_out_tlast_{{ arg.ident }};
 {% endif %}
@@ -425,17 +426,17 @@ always @(negedge ap_clk) begin
 {% endfor %}
 
 {% for arg in stream_out_args %}
-  stream_out_ready_{{ arg.ident }} = tapa_stream_ostream_step(
-      "{{ arg.name }}",
-      stream_out_valid_prev_{{ arg.ident }},
-      stream_out_bytes_{{ arg.ident }});
+  can_write_{{ arg.ident }} = tapa_stream_can_write("{{ arg.name }}");
+  stream_out_ready_{{ arg.ident }} <= can_write_{{ arg.ident }};
   for (i = 0; i < {{ arg.width_bytes }}; i = i + 1) begin
     stream_out_bytes_{{ arg.ident }}[i] = stream_out_data_{{ arg.ident }}[i*8 +: 8];
   end
 {% if arg.axis %}
   stream_out_bytes_{{ arg.ident }}[{{ arg.width_bytes }}] = stream_out_tlast_{{ arg.ident }};
 {% endif %}
-  stream_out_valid_prev_{{ arg.ident }} = stream_out_valid_{{ arg.ident }};
+  if (stream_out_valid_{{ arg.ident }} && can_write_{{ arg.ident }}) begin
+    void'(tapa_stream_try_write("{{ arg.name }}", stream_out_bytes_{{ arg.ident }}));
+  end
 {% endfor %}
 end
 {% endif %}

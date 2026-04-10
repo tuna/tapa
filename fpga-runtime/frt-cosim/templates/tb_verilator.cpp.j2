@@ -8,8 +8,9 @@
 extern "C" {
 void tapa_axi_read(const char* port, uint64_t addr, uint32_t width, uint8_t* out);
 void tapa_axi_write(const char* port, uint64_t addr, uint32_t width, const uint8_t* data);
+bool tapa_stream_try_write(const char* port, const uint8_t* data);
+bool tapa_stream_can_write(const char* port);
 bool tapa_stream_istream_step(const char* port, bool consume, uint8_t* out);
-bool tapa_stream_ostream_step(const char* port, bool write, const uint8_t* data);
 bool tapa_hls_stream_ostream_step(const char* port, bool write, const uint8_t* data);
 }
 
@@ -58,13 +59,6 @@ static std::array<uint8_t, {{ arg.dpi_width_bytes }}> stream_in_data_{{ arg.iden
 static bool stream_in_ready_prev_{{ arg.ident }} = false;
 {% endif %}
 {% endfor %}
-
-{% if mode != "hls" %}
-{% for arg in stream_out_args %}
-static bool stream_out_valid_prev_{{ arg.ident }} = false;
-static std::array<uint8_t, {{ arg.dpi_width_bytes }}> stream_out_data_prev_{{ arg.ident }} = {};
-{% endfor %}
-{% endif %}
 
 static void tick() {
   dut->ap_clk = 1;
@@ -187,15 +181,16 @@ static void service_streams() {
   stream_in_ready_prev_{{ arg.ident }} = dut->{{ arg.tready }};
 {% endfor %}
 {% for arg in stream_out_args %}
-  dut->{{ arg.tready }} = tapa_stream_ostream_step(
-      "{{ arg.name }}",
-      stream_out_valid_prev_{{ arg.ident }},
-      stream_out_data_prev_{{ arg.ident }}.data()) ? 1 : 0;
-  std::memcpy(stream_out_data_prev_{{ arg.ident }}.data(), &dut->{{ arg.tdata }}, {{ arg.width_bytes }});
+  bool can_write_{{ arg.ident }} = tapa_stream_can_write("{{ arg.name }}");
+  dut->{{ arg.tready }} = can_write_{{ arg.ident }} ? 1 : 0;
+  std::array<uint8_t, {{ arg.dpi_width_bytes }}> data{};
+  std::memcpy(data.data(), &dut->{{ arg.tdata }}, {{ arg.width_bytes }});
 {% if arg.axis %}
-  stream_out_data_prev_{{ arg.ident }}[{{ arg.width_bytes }}] = dut->{{ arg.tlast }};
+  data[{{ arg.width_bytes }}] = dut->{{ arg.tlast }};
 {% endif %}
-  stream_out_valid_prev_{{ arg.ident }} = dut->{{ arg.tvalid }};
+  if (dut->{{ arg.tvalid }} && can_write_{{ arg.ident }}) {
+    (void)tapa_stream_try_write("{{ arg.name }}", data.data());
+  }
 {% endfor %}
 {% endif %}
 }
