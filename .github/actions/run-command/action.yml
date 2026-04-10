@@ -21,6 +21,25 @@ inputs:
     description: "Path to the build context"
     required: false
     default: "./.github/docker/build-env"
+  shmSize:
+    description: "Shared memory size for the docker container"
+    required: false
+    default: "4g"
+  memory:
+    description: "Memory limit for the docker container"
+    required: false
+    default: "96g"
+  cpus:
+    description: "CPU limit for the docker container"
+    required: false
+    default: "16"
+  pidsLimit:
+    description: "PID limit for the docker container"
+    required: false
+    default: "8192"
+  dockerOptions:
+    description: "Additional options to pass to the docker run command"
+    required: false
 
 runs:
   using: "composite"
@@ -37,3 +56,8 @@ runs:
       with:
         run: ${{ inputs.run }}
         image: ${{ inputs.imageTag }}
+        shmSize: ${{ inputs.shmSize }}
+        memory: ${{ inputs.memory }}
+        cpus: ${{ inputs.cpus }}
+        pidsLimit: ${{ inputs.pidsLimit }}
+        dockerOptions: ${{ inputs.dockerOptions }}

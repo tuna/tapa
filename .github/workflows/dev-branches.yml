@@ -89,7 +89,7 @@ jobs:
       - name: Run bazel
         uses: ./.github/actions/run-command
         with:
-          run: bazel test --jobs=1 --local_test_jobs=1 --test_output=errors //... -//tests/functional/parallel-emulation:cannon-xosim
+          run: bazel test --jobs=1 --local_test_jobs=1 --test_output=errors -- //... -//tests/functional/parallel-emulation:cannon-xosim
         env:
           UBUNTU_PRO_TOKEN: ${{ secrets.UBUNTU_PRO_TOKEN }}
           MAC_ADDRESS: ${{ secrets.MAC_ADDRESS }}
@@ -129,6 +129,8 @@ jobs:
         uses: ./.github/actions/run-command
         with:
           run: bazel test --jobs=1 --local_test_jobs=1 --test_output=errors //tests/functional/parallel-emulation:cannon-xosim
+          shmSize: 8g
+          memory: 112g
         env:
           UBUNTU_PRO_TOKEN: ${{ secrets.UBUNTU_PRO_TOKEN }}
           MAC_ADDRESS: ${{ secrets.MAC_ADDRESS }}
