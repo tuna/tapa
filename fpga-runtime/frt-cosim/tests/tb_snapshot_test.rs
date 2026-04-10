@@ -372,6 +372,32 @@ fn xsim_vitis_tb_contains_control_sequence() {
 }
 
 #[test]
+fn xsim_vitis_stream_input_uses_direct_try_read_on_posedge() {
+    use frt_cosim::tb::xsim::XsimTbGenerator;
+    let spec = vitis_spec();
+    let base_addrs = std::collections::HashMap::from([("a".into(), 0x1000_0000u64)]);
+    let scalar_vals = std::collections::HashMap::from([(2u32, vec![7u8, 0, 0, 0])]);
+    let generator = XsimTbGenerator::new(
+        &spec,
+        std::path::Path::new("/path/to/frt_dpi_xsim.so"),
+        &base_addrs,
+        &scalar_vals,
+        "xc7a100tcsg324-1",
+        false,
+        false,
+    );
+    let tb = generator.render_tb().expect("render tb");
+    assert!(tb.contains("always @(posedge ap_clk) begin"), "{tb}");
+    assert!(
+        tb.contains("got_stream_s = tapa_stream_try_read(\"s\", stream_in_bytes_s);"),
+        "{tb}"
+    );
+    assert!(tb.contains("if (stream_in_have_s && stream_ready_s) begin"), "{tb}");
+    assert!(!tb.contains("always @(negedge ap_clk) begin"), "{tb}");
+    assert!(!tb.contains("stream_in_have_s = tapa_stream_istream_step("), "{tb}");
+}
+
+#[test]
 fn xsim_vitis_axis_output_uses_direct_write_handshake() {
     use frt_cosim::tb::xsim::XsimTbGenerator;
     let spec = vitis_stream_out_spec();
@@ -394,6 +420,26 @@ fn xsim_vitis_axis_output_uses_direct_write_handshake() {
         "{tb}"
     );
     assert!(!tb.contains("stream_out_ready_s_out = tapa_stream_ostream_step("), "{tb}");
+}
+
+#[test]
+fn verilator_vitis_tb_uses_direct_axis_input_handshake() {
+    let spec = vitis_spec();
+    let base_addrs = std::collections::HashMap::from([("a".into(), 0x1000_0000u64)]);
+    let buf_sizes = std::collections::HashMap::from([("a".into(), 4096usize)]);
+    let scalar_vals = std::collections::HashMap::from([(2u32, vec![7u8, 0, 0, 0])]);
+    let generator = VerilatorTbGenerator::new(
+        &spec,
+        std::path::Path::new("libfrt_dpi_verilator.so"),
+        &base_addrs,
+        &buf_sizes,
+        &scalar_vals,
+    );
+    let tb = generator.render_tb().expect("render");
+    assert!(tb.contains("bool tapa_stream_try_read(const char* port, uint8_t* out);"), "{tb}");
+    assert!(tb.contains("stream_in_have_s = tapa_stream_try_read(\"s\", stream_in_data_s.data());"), "{tb}");
+    assert!(tb.contains("if (stream_in_have_s && dut->s_TREADY) {"), "{tb}");
+    assert!(!tb.contains("stream_in_have_s = tapa_stream_istream_step("), "{tb}");
 }
 
 #[test]

@@ -8,6 +8,7 @@
 extern "C" {
 void tapa_axi_read(const char* port, uint64_t addr, uint32_t width, uint8_t* out);
 void tapa_axi_write(const char* port, uint64_t addr, uint32_t width, const uint8_t* data);
+bool tapa_stream_try_read(const char* port, uint8_t* out);
 bool tapa_stream_try_write(const char* port, const uint8_t* data);
 bool tapa_stream_can_write(const char* port);
 bool tapa_stream_istream_step(const char* port, bool consume, uint8_t* out);
@@ -55,9 +56,6 @@ static AxiWritePort wr_{{ arg.ident }};
 {% for arg in stream_args %}
 static bool stream_in_have_{{ arg.ident }} = false;
 static std::array<uint8_t, {{ arg.dpi_width_bytes }}> stream_in_data_{{ arg.ident }} = {};
-{% if mode != "hls" %}
-static bool stream_in_ready_prev_{{ arg.ident }} = false;
-{% endif %}
 {% endfor %}
 
 static void tick() {
@@ -165,10 +163,9 @@ static void service_streams() {
 {% endfor %}
 {% else %}
 {% for arg in stream_args %}
-  stream_in_have_{{ arg.ident }} = tapa_stream_istream_step(
-      "{{ arg.name }}",
-      stream_in_have_{{ arg.ident }} && stream_in_ready_prev_{{ arg.ident }},
-      stream_in_data_{{ arg.ident }}.data());
+  if (!stream_in_have_{{ arg.ident }}) {
+    stream_in_have_{{ arg.ident }} = tapa_stream_try_read("{{ arg.name }}", stream_in_data_{{ arg.ident }}.data());
+  }
   dut->{{ arg.tvalid }} = stream_in_have_{{ arg.ident }} ? 1 : 0;
 {% if arg.axis %}
   dut->{{ arg.tlast }} = stream_in_have_{{ arg.ident }} ? stream_in_data_{{ arg.ident }}[{{ arg.width_bytes }}] : 0;
@@ -178,7 +175,9 @@ static void service_streams() {
   if (stream_in_have_{{ arg.ident }}) {
     std::memcpy(&dut->{{ arg.tdata }}, stream_in_data_{{ arg.ident }}.data(), {{ arg.width_bytes }});
   }
-  stream_in_ready_prev_{{ arg.ident }} = dut->{{ arg.tready }};
+  if (stream_in_have_{{ arg.ident }} && dut->{{ arg.tready }}) {
+    stream_in_have_{{ arg.ident }} = false;
+  }
 {% endfor %}
 {% for arg in stream_out_args %}
   bool can_write_{{ arg.ident }} = tapa_stream_can_write("{{ arg.name }}");
