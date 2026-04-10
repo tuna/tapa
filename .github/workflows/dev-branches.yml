@@ -22,11 +22,28 @@ jobs:
 
     steps:
       - name: Checkout myself
+        id: checkout_primary
+        continue-on-error: true
         uses: actions/checkout@v4
         env:
           GIT_CONFIG_COUNT: "1"
           GIT_CONFIG_KEY_0: http.version
           GIT_CONFIG_VALUE_0: HTTP/1.1
+
+      - name: Retry checkout myself
+        id: checkout_retry
+        if: steps.checkout_primary.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/checkout@v4
+        env:
+          GIT_CONFIG_COUNT: "1"
+          GIT_CONFIG_KEY_0: http.version
+          GIT_CONFIG_VALUE_0: HTTP/1.1
+
+      - name: Fail if checkout did not succeed
+        if: steps.checkout_primary.outcome == 'failure' && steps.checkout_retry.outcome == 'failure'
+        run: exit 1
+        shell: bash
 
       - name: Run pre-commit
         uses: ./.github/actions/run-command
@@ -42,11 +59,28 @@ jobs:
 
     steps:
       - name: Checkout myself
+        id: checkout_primary
+        continue-on-error: true
         uses: actions/checkout@v4
         env:
           GIT_CONFIG_COUNT: "1"
           GIT_CONFIG_KEY_0: http.version
           GIT_CONFIG_VALUE_0: HTTP/1.1
+
+      - name: Retry checkout myself
+        id: checkout_retry
+        if: steps.checkout_primary.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/checkout@v4
+        env:
+          GIT_CONFIG_COUNT: "1"
+          GIT_CONFIG_KEY_0: http.version
+          GIT_CONFIG_VALUE_0: HTTP/1.1
+
+      - name: Fail if checkout did not succeed
+        if: steps.checkout_primary.outcome == 'failure' && steps.checkout_retry.outcome == 'failure'
+        run: exit 1
+        shell: bash
 
       - name: Run bazel
         uses: ./.github/actions/run-command
