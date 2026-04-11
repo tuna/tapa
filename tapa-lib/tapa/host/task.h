@@ -13,6 +13,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <chrono>
+#include <cstdlib>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -49,6 +50,19 @@ struct accessor<T, seq> {
 void* allocate(size_t length);
 void deallocate(void* addr, size_t length);
 
+inline std::chrono::milliseconds frt_timeslice() {
+  constexpr long kDefaultTimesliceMs = 20;
+  if (const char* env = std::getenv("TAPA_FRT_TIMESLICE_MS")) {
+    char* end = nullptr;
+    const long parsed = std::strtol(env, &end, 10);
+    if (end != env && *end == '\0' && parsed > 0) {
+      return std::chrono::milliseconds(parsed);
+    }
+    LOG(WARNING) << "ignoring invalid TAPA_FRT_TIMESLICE_MS='" << env << "'";
+  }
+  return std::chrono::milliseconds(kDefaultTimesliceMs);
+}
+
 template <typename InstancePtr>
 void schedule_frt_instance(InstancePtr instance) {
   schedule_cleanup([instance]() { instance->Kill(); });
@@ -56,7 +70,7 @@ void schedule_frt_instance(InstancePtr instance) {
     instance->WriteToDevice();
     instance->Exec();
     instance->ReadFromDevice();
-    constexpr auto kFrtTimeslice = std::chrono::milliseconds(1);
+    const auto kFrtTimeslice = frt_timeslice();
     bool paused = false;
     while (true) {
       if (paused) {

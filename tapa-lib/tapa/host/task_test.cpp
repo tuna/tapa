@@ -278,13 +278,169 @@ TEST(TaskTest, TapaConcurrencyOneTimeSlicesFrtExecLaunches) {
     tapa::internal::schedule_frt_instance(second);
 
     first->WaitUntilExecStarts();
-    std::this_thread::sleep_for(std::chrono::milliseconds(25));
+    std::this_thread::sleep_for(std::chrono::milliseconds(80));
     EXPECT_TRUE(second->HasStarted());
     EXPECT_EQ(max_running_count.load(), 1);
   }
 
   EXPECT_EQ(max_running_count.load(), 1);
   EXPECT_EQ(running_count.load(), 0);
+}
+
+struct ContinuousRunMockFrtInstance {
+  ContinuousRunMockFrtInstance(std::atomic<int>& running_count,
+                               std::atomic<int>& max_running_count,
+                               std::chrono::milliseconds run_quantum,
+                               int quanta_to_finish = 1)
+      : running_count(running_count),
+        max_running_count(max_running_count),
+        run_quantum(run_quantum),
+        remaining_quanta(quanta_to_finish) {}
+
+  ~ContinuousRunMockFrtInstance() { Kill(); }
+
+  void WriteToDevice() {}
+
+  void Exec() {
+    {
+      std::lock_guard<std::mutex> lock(mtx);
+      exec_started = true;
+      running = true;
+    }
+    TrackRunningProcess();
+    worker = std::thread([this] {
+      std::unique_lock<std::mutex> lock(mtx);
+      while (!killed && !finished) {
+        cv.wait(lock, [this] { return killed || running; });
+        if (killed || finished) break;
+
+        const bool interrupted = cv.wait_for(lock, run_quantum, [this] {
+          return killed || finished || !running;
+        });
+        if (interrupted || killed || finished || !running) continue;
+
+        if (--remaining_quanta == 0) {
+          finished = true;
+          running = false;
+          --running_count;
+          cv.notify_all();
+        }
+      }
+    });
+    cv.notify_all();
+  }
+
+  void ReadFromDevice() {}
+
+  void Pause() {
+    std::lock_guard<std::mutex> lock(mtx);
+    if (!running || finished) return;
+    running = false;
+    ++pause_count;
+    --running_count;
+    cv.notify_all();
+  }
+
+  void Resume() {
+    std::lock_guard<std::mutex> lock(mtx);
+    if (running || finished || killed) return;
+    running = true;
+    ++resume_count;
+    TrackRunningProcess();
+    cv.notify_all();
+  }
+
+  bool IsFinished() {
+    std::lock_guard<std::mutex> lock(mtx);
+    return finished;
+  }
+
+  void Finish() {
+    {
+      std::unique_lock<std::mutex> lock(mtx);
+      cv.wait(lock, [this] { return finished || killed; });
+    }
+    JoinWorker();
+  }
+
+  void Kill() {
+    {
+      std::lock_guard<std::mutex> lock(mtx);
+      killed = true;
+      if (running) {
+        running = false;
+        if (!finished) {
+          --running_count;
+        }
+      }
+      cv.notify_all();
+    }
+    JoinWorker();
+  }
+
+  int PauseCount() const { return pause_count.load(); }
+
+  int ResumeCount() const { return resume_count.load(); }
+
+ private:
+  void TrackRunningProcess() {
+    const int running_now = ++running_count;
+    int prev = max_running_count.load();
+    while (running_now > prev &&
+           !max_running_count.compare_exchange_weak(prev, running_now)) {
+    }
+  }
+
+  void JoinWorker() {
+    if (worker.joinable()) {
+      worker.join();
+    }
+  }
+
+  std::atomic<int>& running_count;
+  std::atomic<int>& max_running_count;
+  const std::chrono::milliseconds run_quantum;
+  std::thread worker;
+  mutable std::mutex mtx;
+  std::condition_variable cv;
+  std::atomic<int> pause_count = 0;
+  std::atomic<int> resume_count = 0;
+  bool exec_started = false;
+  bool running = false;
+  bool finished = false;
+  bool killed = false;
+  int remaining_quanta;
+};
+
+TEST(TaskTest, FrtTimesliceEnvAllowsMeaningfulProgress) {
+  tapa_testing::ScopedSetEnv concurrency_env("TAPA_CONCURRENCY", "1");
+  tapa_testing::ScopedSetEnv timeslice_env("TAPA_FRT_TIMESLICE_MS", "20");
+  std::atomic<int> running_count = 0;
+  std::atomic<int> max_running_count = 0;
+  auto first = std::make_shared<ContinuousRunMockFrtInstance>(
+      running_count, max_running_count, std::chrono::milliseconds(10));
+  auto second = std::make_shared<ContinuousRunMockFrtInstance>(
+      running_count, max_running_count, std::chrono::milliseconds(10));
+
+  std::thread watchdog([first, second] {
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    first->Kill();
+    second->Kill();
+  });
+
+  const auto started = std::chrono::steady_clock::now();
+  {
+    tapa::task parent;
+    tapa::internal::schedule_frt_instance(first);
+    tapa::internal::schedule_frt_instance(second);
+  }
+  const auto elapsed = std::chrono::steady_clock::now() - started;
+  watchdog.join();
+
+  EXPECT_LT(elapsed, std::chrono::milliseconds(120));
+  EXPECT_EQ(max_running_count.load(), 1);
+  EXPECT_LE(first->PauseCount() + second->PauseCount(), 1);
+  EXPECT_LE(first->ResumeCount() + second->ResumeCount(), 1);
 }
 
 }  // namespace
