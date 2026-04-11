@@ -412,9 +412,8 @@ struct ContinuousRunMockFrtInstance {
   int remaining_quanta;
 };
 
-TEST(TaskTest, FrtTimesliceEnvAllowsMeaningfulProgress) {
+TEST(TaskTest, FrtYieldOnlyAllowsConcurrentProgress) {
   tapa_testing::ScopedSetEnv concurrency_env("TAPA_CONCURRENCY", "1");
-  tapa_testing::ScopedSetEnv timeslice_env("TAPA_FRT_TIMESLICE_MS", "20");
   std::atomic<int> running_count = 0;
   std::atomic<int> max_running_count = 0;
   auto first = std::make_shared<ContinuousRunMockFrtInstance>(
@@ -438,9 +437,9 @@ TEST(TaskTest, FrtTimesliceEnvAllowsMeaningfulProgress) {
   watchdog.join();
 
   EXPECT_LT(elapsed, std::chrono::milliseconds(120));
-  EXPECT_EQ(max_running_count.load(), 1);
-  EXPECT_LE(first->PauseCount() + second->PauseCount(), 1);
-  EXPECT_LE(first->ResumeCount() + second->ResumeCount(), 1);
+  // Both instances run concurrently; no Pause/Resume calls.
+  EXPECT_EQ(first->PauseCount() + second->PauseCount(), 0);
+  EXPECT_EQ(first->ResumeCount() + second->ResumeCount(), 0);
 }
 
 }  // namespace
