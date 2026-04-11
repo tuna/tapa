@@ -28,6 +28,14 @@ void Instance::ReadFromDevice() {
 
 void Instance::Exec() { LOG(FATAL) << "not supported in simulation-only mode"; }
 
+void Instance::Pause() {
+  LOG(FATAL) << "not supported in simulation-only mode";
+}
+
+void Instance::Resume() {
+  LOG(FATAL) << "not supported in simulation-only mode";
+}
+
 void Instance::Finish() {
   LOG(FATAL) << "not supported in simulation-only mode";
 }

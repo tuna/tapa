@@ -81,6 +81,8 @@ class Instance {
   void WriteToDevice();
   void ReadFromDevice();
   void Exec();
+  void Pause();
+  void Resume();
   void Finish();
   void Kill();
   bool IsFinished() const;

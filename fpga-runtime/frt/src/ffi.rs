@@ -382,6 +382,36 @@ pub extern "C" fn frt_instance_exec(handle: *mut std::ffi::c_void) -> c_int {
 }
 
 #[no_mangle]
+pub extern "C" fn frt_instance_pause(handle: *mut std::ffi::c_void) -> c_int {
+    clear_last_error();
+    if handle.is_null() {
+        set_last_error("handle is null");
+        return -1;
+    }
+    let h = unsafe { &mut *(handle as *mut FrtInstanceHandle) };
+    if let Err(e) = h.instance.pause() {
+        set_last_error(e.to_string());
+        return -1;
+    }
+    0
+}
+
+#[no_mangle]
+pub extern "C" fn frt_instance_resume(handle: *mut std::ffi::c_void) -> c_int {
+    clear_last_error();
+    if handle.is_null() {
+        set_last_error("handle is null");
+        return -1;
+    }
+    let h = unsafe { &mut *(handle as *mut FrtInstanceHandle) };
+    if let Err(e) = h.instance.resume() {
+        set_last_error(e.to_string());
+        return -1;
+    }
+    0
+}
+
+#[no_mangle]
 pub extern "C" fn frt_instance_finish(handle: *mut std::ffi::c_void) -> c_int {
     clear_last_error();
     if handle.is_null() {

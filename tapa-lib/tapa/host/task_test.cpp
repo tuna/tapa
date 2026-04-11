@@ -4,6 +4,9 @@
 
 #include "tapa/host/task.h"
 
+#include <atomic>
+#include <condition_variable>
+#include <mutex>
 #include <thread>
 
 #include <gtest/gtest.h>
@@ -134,6 +137,154 @@ TEST(TaskTest, DetachedInvokeCompletesWithoutWaiting) {
   // even when detached tasks were scheduled.  No assertion on side effects —
   // the test passes if no deadlock or crash occurs.
   tapa::task().invoke<tapa::detach>(DetachedNoOp);
+}
+
+struct MockFrtInstance {
+  explicit MockFrtInstance(std::atomic<int>& running_count,
+                           std::atomic<int>& max_running_count,
+                           int slices_to_finish = 20)
+      : running_count(running_count),
+        max_running_count(max_running_count),
+        remaining_slices(slices_to_finish) {}
+
+  ~MockFrtInstance() { Kill(); }
+
+  void WriteToDevice() {}
+
+  void Exec() {
+    {
+      std::lock_guard<std::mutex> lock(mtx);
+      exec_started = true;
+      running = true;
+    }
+    TrackRunningProcess();
+    worker = std::thread([this] {
+      std::unique_lock<std::mutex> lock(mtx);
+      while (!killed && !finished) {
+        cv.wait(lock, [this] { return killed || running; });
+        if (killed || finished) break;
+
+        lock.unlock();
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        lock.lock();
+
+        if (!running || killed || finished) continue;
+        if (--remaining_slices == 0) {
+          finished = true;
+          running = false;
+          --running_count;
+          cv.notify_all();
+        }
+      }
+    });
+    cv.notify_all();
+  }
+
+  void ReadFromDevice() {}
+
+  void Pause() {
+    std::lock_guard<std::mutex> lock(mtx);
+    if (!running || finished) return;
+    running = false;
+    --running_count;
+    cv.notify_all();
+  }
+
+  void Resume() {
+    std::lock_guard<std::mutex> lock(mtx);
+    if (running || finished || killed) return;
+    running = true;
+    TrackRunningProcess();
+    cv.notify_all();
+  }
+
+  bool IsFinished() {
+    std::lock_guard<std::mutex> lock(mtx);
+    return finished;
+  }
+
+  void Finish() {
+    {
+      std::unique_lock<std::mutex> lock(mtx);
+      cv.wait(lock, [this] { return finished || killed; });
+    }
+    JoinWorker();
+  }
+
+  void Kill() {
+    {
+      std::lock_guard<std::mutex> lock(mtx);
+      killed = true;
+      if (running) {
+        running = false;
+        if (!finished) {
+          --running_count;
+        }
+      }
+      cv.notify_all();
+    }
+    JoinWorker();
+  }
+
+  void WaitUntilExecStarts() {
+    std::unique_lock<std::mutex> lock(mtx);
+    cv.wait(lock, [this] { return exec_started; });
+  }
+
+  bool HasStarted() const {
+    std::lock_guard<std::mutex> lock(mtx);
+    return exec_started;
+  }
+
+ private:
+  void TrackRunningProcess() {
+    const int running_now = ++running_count;
+    int prev = max_running_count.load();
+    while (running_now > prev &&
+           !max_running_count.compare_exchange_weak(prev, running_now)) {
+    }
+  }
+
+  void JoinWorker() {
+    if (worker.joinable()) {
+      worker.join();
+    }
+  }
+
+  std::atomic<int>& running_count;
+  std::atomic<int>& max_running_count;
+  std::thread worker;
+  mutable std::mutex mtx;
+  std::condition_variable cv;
+  bool exec_started = false;
+  bool running = false;
+  bool finished = false;
+  bool killed = false;
+  int remaining_slices;
+};
+
+TEST(TaskTest, TapaConcurrencyOneTimeSlicesFrtExecLaunches) {
+  tapa_testing::ScopedSetEnv env("TAPA_CONCURRENCY", "1");
+  std::atomic<int> running_count = 0;
+  std::atomic<int> max_running_count = 0;
+  auto first =
+      std::make_shared<MockFrtInstance>(running_count, max_running_count);
+  auto second =
+      std::make_shared<MockFrtInstance>(running_count, max_running_count);
+
+  {
+    tapa::task parent;
+    tapa::internal::schedule_frt_instance(first);
+    tapa::internal::schedule_frt_instance(second);
+
+    first->WaitUntilExecStarts();
+    std::this_thread::sleep_for(std::chrono::milliseconds(25));
+    EXPECT_TRUE(second->HasStarted());
+    EXPECT_EQ(max_running_count.load(), 1);
+  }
+
+  EXPECT_EQ(max_running_count.load(), 1);
+  EXPECT_EQ(running_count.load(), 0);
 }
 
 }  // namespace

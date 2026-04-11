@@ -58,6 +58,8 @@ int frt_instance_get_arg(void* handle, uint32_t ordinal, uint32_t* out_index,
 int frt_instance_write_to_device(void* handle);
 int frt_instance_read_from_device(void* handle);
 int frt_instance_exec(void* handle);
+int frt_instance_pause(void* handle);
+int frt_instance_resume(void* handle);
 int frt_instance_finish(void* handle);
 int frt_instance_kill(void* handle);
 int frt_instance_is_finished(void* handle);
@@ -277,6 +279,18 @@ void Instance::Exec() {
   } else {
     impl_->compute_ns = std::max<int64_t>(1, NsSince(tic));
     impl_->finished = true;
+  }
+}
+
+void Instance::Pause() {
+  if (impl_->handle != nullptr) {
+    CheckFfi(frt_instance_pause(impl_->handle), "frt_instance_pause");
+  }
+}
+
+void Instance::Resume() {
+  if (impl_->handle != nullptr) {
+    CheckFfi(frt_instance_resume(impl_->handle), "frt_instance_resume");
   }
 }
 

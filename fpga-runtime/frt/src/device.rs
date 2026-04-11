@@ -48,6 +48,12 @@ pub trait Device: Send {
     fn write_to_device(&mut self) -> Result<()>;
     fn read_from_device(&mut self) -> Result<()>;
     fn exec(&mut self) -> Result<()>;
+    fn pause(&mut self) -> Result<()> {
+        Ok(())
+    }
+    fn resume(&mut self) -> Result<()> {
+        Ok(())
+    }
     fn finish(&mut self) -> Result<()>;
     fn kill(&mut self) -> Result<()>;
     fn is_finished(&mut self) -> Result<bool>;

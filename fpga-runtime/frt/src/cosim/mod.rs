@@ -47,6 +47,7 @@ struct BufferBinding {
 struct RunningSimulation {
     child: Child,
     started_at: Instant,
+    paused: bool,
 }
 
 enum SimulationState {
@@ -231,6 +232,51 @@ impl CosimDevice {
         }
         Ok(())
     }
+
+    fn pause_simulation(&mut self) -> Result<()> {
+        if self.poll_simulation()? {
+            return Ok(());
+        }
+        if let SimulationState::Running(run) = &mut self.simulation_state {
+            if run.paused {
+                return Ok(());
+            }
+            signal_child_group(&run.child, libc::SIGSTOP)?;
+            run.paused = true;
+        }
+        Ok(())
+    }
+
+    fn resume_simulation(&mut self) -> Result<()> {
+        if self.poll_simulation()? {
+            return Ok(());
+        }
+        if let SimulationState::Running(run) = &mut self.simulation_state {
+            if !run.paused {
+                return Ok(());
+            }
+            signal_child_group(&run.child, libc::SIGCONT)?;
+            run.paused = false;
+        }
+        Ok(())
+    }
+}
+
+#[cfg(unix)]
+fn signal_child_group(child: &Child, signal: libc::c_int) -> Result<()> {
+    let pgid = child.id() as i32;
+    if unsafe { libc::killpg(pgid, signal) } != 0 {
+        let err = std::io::Error::last_os_error();
+        if err.raw_os_error() != Some(libc::ESRCH) {
+            return Err(err.into());
+        }
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn signal_child_group(_child: &Child, _signal: libc::c_int) -> Result<()> {
+    Ok(())
 }
 
 fn env_bool(name: &str) -> bool {
@@ -424,6 +470,7 @@ impl Device for CosimDevice {
             self.simulation_state = SimulationState::Running(RunningSimulation {
                 child,
                 started_at: Instant::now(),
+                paused: false,
             });
             self.compute_ns = 0;
             return Ok(());
@@ -443,8 +490,17 @@ impl Device for CosimDevice {
         self.simulation_state = SimulationState::Running(RunningSimulation {
             child,
             started_at: Instant::now(),
+            paused: false,
         });
         Ok(())
+    }
+
+    fn pause(&mut self) -> Result<()> {
+        self.pause_simulation()
+    }
+
+    fn resume(&mut self) -> Result<()> {
+        self.resume_simulation()
     }
 
     fn finish(&mut self) -> Result<()> {
@@ -465,17 +521,12 @@ impl Device for CosimDevice {
     fn kill(&mut self) -> Result<()> {
         match &mut self.simulation_state {
             SimulationState::Running(run) => {
-                #[cfg(unix)]
-                unsafe {
-                    let pgid = run.child.id() as i32;
-                    if libc::killpg(pgid, libc::SIGINT) != 0 {
-                        let err = std::io::Error::last_os_error();
-                        if err.raw_os_error() != Some(libc::ESRCH) {
-                            tracing::warn!(
-                                "failed to send SIGINT to simulator process group: {err}"
-                            );
-                        }
-                    }
+                if run.paused {
+                    let _ = signal_child_group(&run.child, libc::SIGCONT);
+                    run.paused = false;
+                }
+                if let Err(err) = signal_child_group(&run.child, libc::SIGINT) {
+                    tracing::warn!("failed to send SIGINT to simulator process group: {err}");
                 }
                 match run.child.kill() {
                     Ok(()) => {}
@@ -570,9 +621,10 @@ mod tests {
             _ctx: &CosimContext,
             _tb_dir: &Path,
         ) -> frt_cosim::error::Result<Child> {
-            let child = Command::new("/bin/sh")
-                .args(["-c", &format!("sleep {}", self.sleep_seconds)])
-                .spawn()?;
+            let mut cmd = Command::new("/bin/sh");
+            cmd.args(["-c", &format!("sleep {}", self.sleep_seconds)]);
+            frt_cosim::runner::configure_sim_command(&mut cmd);
+            let child = cmd.spawn()?;
             Ok(child)
         }
     }

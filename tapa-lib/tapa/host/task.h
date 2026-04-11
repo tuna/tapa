@@ -16,6 +16,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <thread>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -47,6 +48,31 @@ struct accessor<T, seq> {
 
 void* allocate(size_t length);
 void deallocate(void* addr, size_t length);
+
+template <typename InstancePtr>
+void schedule_frt_instance(InstancePtr instance) {
+  schedule_cleanup([instance]() { instance->Kill(); });
+  schedule(/*detach=*/false, [instance]() {
+    instance->WriteToDevice();
+    instance->Exec();
+    instance->ReadFromDevice();
+    constexpr auto kFrtTimeslice = std::chrono::milliseconds(1);
+    bool paused = false;
+    while (true) {
+      if (paused) {
+        instance->Resume();
+        paused = false;
+      }
+      if (instance->IsFinished()) break;
+      std::this_thread::sleep_for(kFrtTimeslice);
+      if (instance->IsFinished()) break;
+      instance->Pause();
+      paused = true;
+      yield("fpga::Instance() time slice elapsed");
+    }
+    instance->Finish();
+  });
+}
 
 // std::bind wrapper ensuring left-to-right argument evaluation.
 struct binder {

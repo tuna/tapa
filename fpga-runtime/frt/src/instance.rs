@@ -162,6 +162,14 @@ impl Instance {
         self.device.exec()
     }
 
+    pub fn pause(&mut self) -> Result<()> {
+        self.device.pause()
+    }
+
+    pub fn resume(&mut self) -> Result<()> {
+        self.device.resume()
+    }
+
     pub fn finish(&mut self) -> Result<()> {
         self.device.finish()
     }

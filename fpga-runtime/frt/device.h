@@ -25,6 +25,8 @@ class Device {
   virtual void WriteToDevice() = 0;
   virtual void ReadFromDevice() = 0;
   virtual void Exec() = 0;
+  virtual void Pause() {}
+  virtual void Resume() {}
   virtual void Finish() = 0;
   virtual void Kill() = 0;
   virtual bool IsFinished() const = 0;
