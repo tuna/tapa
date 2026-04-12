@@ -338,6 +338,10 @@ fn dpi_lib_path_from_exe(exe: &Path, variant: &str) -> Result<PathBuf> {
     let mut search_dirs = Vec::new();
     if let Some(dir) = exe.parent() {
         search_dirs.push(dir.to_path_buf());
+        // Installed layout: bin/ is sibling of lib/
+        if let Some(parent) = dir.parent() {
+            search_dirs.push(parent.join("lib"));
+        }
         for ancestor in dir.ancestors() {
             search_dirs.push(ancestor.to_path_buf());
             search_dirs.push(ancestor.join("fpga-runtime/cargo"));

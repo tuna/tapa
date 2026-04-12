@@ -10,7 +10,6 @@ _PUBLIC_HEADERS = [
     "frt/arg_info.h",
     "frt/buffer.h",
     "frt/buffer_arg.h",
-    "frt/device.h",
     "frt/stream.h",
     "frt/stream_arg.h",
     "frt/stringify.h",
@@ -97,7 +96,6 @@ cc_import(
 cc_library(
     name = "frt",
     srcs = [
-        "frt/arg_info.cpp",
         "frt_compat.cpp",
     ],
     hdrs = _PUBLIC_HEADERS,
@@ -112,7 +110,6 @@ cc_library(
 cc_library(
     name = "frt_cpp",
     srcs = [
-        "frt/arg_info.cpp",
         "frt_compat.cpp",
     ],
     hdrs = _PUBLIC_HEADERS,
@@ -127,7 +124,6 @@ cc_library(
 cc_library(
     name = "frt-sim",
     srcs = [
-        "frt/arg_info.cpp",
         "frt_compat.cpp",
     ],
     hdrs = _PUBLIC_HEADERS,

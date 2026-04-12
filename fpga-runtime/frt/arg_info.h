@@ -21,8 +21,24 @@ struct ArgInfo {
   Cat cat = kScalar;
 };
 
-std::ostream& operator<<(std::ostream& os, const ArgInfo::Cat& cat);
-std::ostream& operator<<(std::ostream& os, const ArgInfo& arg);
+inline std::ostream& operator<<(std::ostream& os, const ArgInfo::Cat& cat) {
+  switch (cat) {
+    case ArgInfo::kScalar:
+      return os << "scalar";
+    case ArgInfo::kMmap:
+      return os << "mmap";
+    case ArgInfo::kStream:
+      return os << "stream";
+    case ArgInfo::kStreams:
+      return os << "streams";
+  }
+  return os << "unknown";
+}
+
+inline std::ostream& operator<<(std::ostream& os, const ArgInfo& arg) {
+  return os << "ArgInfo(index=" << arg.index << ", name=" << arg.name
+            << ", type=" << arg.type << ", cat=" << arg.cat << ")";
+}
 
 }  // namespace fpga
 
