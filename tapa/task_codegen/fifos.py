@@ -4,22 +4,21 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pyverilog.vparser.ast import IntConst, Plus
+from pyverilog.vparser.ast import IntConst, ParamArg
 
 from tapa.verilog.ast.logic import Assign
-from tapa.verilog.ast.signal import Wire
-from tapa.verilog.util import wire_name
+from tapa.verilog.ast_utils import make_port_arg
+from tapa.verilog.util import sanitize_array_name, wire_name
 from tapa.verilog.xilinx.axis import (
     AXIS_CONSTANTS,
-    STREAM_TO_AXIS,
     get_axis_port_width_int,
 )
 from tapa.verilog.xilinx.const import (
+    HANDSHAKE_CLK,
     ISTREAM_SUFFIXES,
     OSTREAM_SUFFIXES,
     RST,
     STREAM_PORT_DIRECTION,
-    get_stream_width,
 )
 
 if TYPE_CHECKING:
@@ -77,33 +76,76 @@ def _assign_directional(task: Task, a: str, b: str, a_direction: str) -> None:
         task.module.add_logics([Assign(lhs=b, rhs=a)])
 
 
+def _find_axis_port_name(task: Task, axis_name: str, suffix: str) -> str:
+    port_name = task.module.find_port(axis_name, suffix)
+    assert port_name is not None
+    return port_name
+
+
 def convert_axis_to_fifo(task: Task, axis_name: str) -> str:
-    """Convert an AXIS port into a registered FIFO."""
+    """Convert an AXIS port into a dedicated AXIS-stream adapter."""
     directions = get_fifo_directions(task, axis_name)
     assert len(directions) == 1, "axis interfaces should have one direction"
-    direction_axis = {
-        "consumed_by": "produced_by",
-        "produced_by": "consumed_by",
-    }[directions[0]]
+    direction = directions[0]
     data_width = task.ports[axis_name].width
 
-    fifo_name = "tapa_fifo_" + axis_name
-    task.module.add_fifo_instance(
-        name=fifo_name,
-        rst=RST,
-        width=Plus(IntConst(data_width), IntConst(1)),
-        depth=2,
-    )
+    adapter_name = f"tapa_axis_{sanitize_array_name(axis_name)}"
+    ports = [
+        make_port_arg("clk", HANDSHAKE_CLK),
+        make_port_arg("reset", RST),
+    ]
 
-    for suffix in STREAM_PORT_DIRECTION:
-        w_name = wire_name(fifo_name, suffix)
-        wire_width = get_stream_width(suffix, data_width)
-        task.module.add_signals([Wire(name=w_name, width=wire_width)])
+    if direction == "consumed_by":
+        task.module.add_instance(
+            module_name="axis_to_stream_adapter",
+            instance_name=adapter_name,
+            params=(ParamArg("DATA_WIDTH", IntConst(str(data_width))),),
+            ports=(
+                *ports,
+                make_port_arg(
+                    "s_axis_tdata", _find_axis_port_name(task, axis_name, "TDATA")
+                ),
+                make_port_arg(
+                    "s_axis_tvalid", _find_axis_port_name(task, axis_name, "TVALID")
+                ),
+                make_port_arg(
+                    "s_axis_tready", _find_axis_port_name(task, axis_name, "TREADY")
+                ),
+                make_port_arg(
+                    "s_axis_tlast", _find_axis_port_name(task, axis_name, "TLAST")
+                ),
+                make_port_arg("m_stream_dout", wire_name(axis_name, "_dout")),
+                make_port_arg("m_stream_empty_n", wire_name(axis_name, "_empty_n")),
+                make_port_arg("m_stream_read", wire_name(axis_name, "_read")),
+            ),
+        )
+    else:
+        task.module.add_instance(
+            module_name="stream_to_axis_adapter",
+            instance_name=adapter_name,
+            params=(ParamArg("DATA_WIDTH", IntConst(str(data_width))),),
+            ports=(
+                *ports,
+                make_port_arg("s_stream_din", wire_name(axis_name, "_din")),
+                make_port_arg("s_stream_full_n", wire_name(axis_name, "_full_n")),
+                make_port_arg("s_stream_write", wire_name(axis_name, "_write")),
+                make_port_arg(
+                    "m_axis_tdata", _find_axis_port_name(task, axis_name, "TDATA")
+                ),
+                make_port_arg(
+                    "m_axis_tvalid", _find_axis_port_name(task, axis_name, "TVALID")
+                ),
+                make_port_arg(
+                    "m_axis_tready", _find_axis_port_name(task, axis_name, "TREADY")
+                ),
+                make_port_arg(
+                    "m_axis_tlast", _find_axis_port_name(task, axis_name, "TLAST")
+                ),
+            ),
+        )
 
-    if direction_axis == "consumed_by":
         for axis_suffix, bit in AXIS_CONSTANTS.items():
-            port_name = task.module.find_port(axis_name, axis_suffix)
-            assert port_name is not None
+            port_name = _find_axis_port_name(task, axis_name, axis_suffix)
             width = get_axis_port_width_int(axis_suffix, data_width)
             task.module.add_logics(
                 [
@@ -114,26 +156,7 @@ def convert_axis_to_fifo(task: Task, axis_name: str) -> str:
                 ],
             )
 
-    for suffix in get_fifo_suffixes(direction_axis):
-        w_name = wire_name(fifo_name, suffix)
-        offset = 0
-        for axis_suffix in STREAM_TO_AXIS[suffix]:
-            port_name = task.module.find_port(axis_name, axis_suffix)
-            assert port_name is not None
-            width = get_axis_port_width_int(axis_suffix, data_width)
-            if len(STREAM_TO_AXIS[suffix]) > 1:
-                wire = f"{w_name}[{offset + width - 1}:{offset}]"
-            else:
-                wire = w_name
-            _assign_directional(
-                task,
-                port_name,
-                wire,
-                STREAM_PORT_DIRECTION[suffix],
-            )
-            offset += width
-
-    return fifo_name
+    return adapter_name
 
 
 def connect_fifo_externally(task: Task, internal_name: str, axis: bool) -> None:
@@ -141,7 +164,10 @@ def connect_fifo_externally(task: Task, internal_name: str, axis: bool) -> None:
     directions = get_fifo_directions(task, internal_name)
     assert len(directions) == 1, "externally connected fifos should have one direction"
     direction = directions[0]
-    external_name = convert_axis_to_fifo(task, internal_name) if axis else internal_name
+    if axis:
+        convert_axis_to_fifo(task, internal_name)
+        return
+    external_name = internal_name
 
     for suffix in get_fifo_suffixes(direction):
         if external_name == internal_name:

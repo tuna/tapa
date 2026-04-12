@@ -30,6 +30,7 @@ def extract_task_rtl(program: Program) -> None:
     assets_dir = os.path.join(os.path.dirname(__file__), "..", "assets", "verilog")
     for file_name in (
         "arbiter.v",
+        "axis_adapter.v",
         "async_mmap.v",
         "axi_pipeline.v",
         "axi_crossbar_addr.v",
