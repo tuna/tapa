@@ -129,3 +129,27 @@ def test_get_vivado_tcl_tb_rtl_path_appears_in_script() -> None:
     )
     combined = "\n".join(script)
     assert tb_path in combined
+
+
+def test_get_vivado_tcl_uses_rust_xsim_dpi_library_name() -> None:
+    """The fallback xsim TCL should reference the Rust DPI library basename."""
+    script = get_vivado_tcl(
+        config=_make_config(),
+        tb_rtl_path="/fake/tb",
+        save_waveform=False,
+        start_gui=False,
+    )
+    combined = "\n".join(script)
+    assert "-sv_lib frt_dpi_xsim" in combined
+
+
+def test_get_vivado_tcl_uses_modern_xsim_elab_property_for_new_vivado() -> None:
+    """Vivado 2024.2+ uses the scoped xsim elaborate property name."""
+    script = get_vivado_tcl(
+        config=_make_config(),
+        tb_rtl_path="/fake/tb",
+        save_waveform=False,
+        start_gui=False,
+    )
+    combined = "\n".join(script)
+    assert "xsim.elaborate.xelab.more_options" in combined

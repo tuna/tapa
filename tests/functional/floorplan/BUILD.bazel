@@ -169,7 +169,6 @@ APPS = [
                 name = test,
                 idx = idx,
             ),
-            "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
             "1000",
         ],
         data = [
@@ -178,7 +177,7 @@ APPS = [
                 name = test,
                 idx = idx,
             ),
-            "//tapa/cosim:tapa-fast-cosim",
+            "//fpga-runtime:cargo_release_artifacts",
         ],
         tags = [
             "cpu:2",
@@ -197,16 +196,15 @@ APPS = [
     sh_test(
         name = "jacobi-{}-xosim".format(idx),
         size = "enormous",
-        timeout = "moderate",
+        timeout = "long",
         srcs = ["//bazel:v++_env.sh"],
         args = [
             "$(location //tests/apps/jacobi:jacobi-host)",
             "--bitstream=$(location jacobi-floorplan-{}-xo)".format(idx),
-            "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
         ],
         data = [
             ":jacobi-floorplan-{}-xo".format(idx),
-            "//tapa/cosim:tapa-fast-cosim",
+            "//fpga-runtime:cargo_release_artifacts",
             "//tests/apps/jacobi:jacobi-host",
         ],
         tags = [
@@ -225,12 +223,11 @@ APPS = [
         args = [
             "$(location //tests/apps/graph:graph-host)",
             "--bitstream=$(location graph-floorplan-{}-xo)".format(idx),
-            "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
             "$(location //tests/apps/graph:graph.txt)",
         ],
         data = [
             ":graph-floorplan-{}-xo".format(idx),
-            "//tapa/cosim:tapa-fast-cosim",
+            "//fpga-runtime:cargo_release_artifacts",
             "//tests/apps/graph:graph.txt",
             "//tests/apps/graph:graph-host",
         ],
@@ -245,17 +242,16 @@ APPS = [
     sh_test(
         name = "shared-mmap-{}-xosim".format(idx),
         size = "enormous",
-        timeout = "moderate",
+        timeout = "long",
         srcs = ["//bazel:v++_env.sh"],
         args = [
             "$(location //tests/functional/shared-mmap:shared-mmap-host)",
             "--bitstream=$(location shared-mmap-floorplan-{}-xo)".format(idx),
-            "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
             "1000",
         ],
         data = [
             ":shared-mmap-floorplan-{}-xo".format(idx),
-            "//tapa/cosim:tapa-fast-cosim",
+            "//fpga-runtime:cargo_release_artifacts",
             "//tests/functional/shared-mmap:shared-mmap-host",
         ],
         tags = [
@@ -274,11 +270,10 @@ APPS = [
         args = [
             "$(location //tests/apps/gemv:gemv-host)",
             "--bitstream=$(location gemv-floorplan-{}-xo)".format(idx),
-            "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
         ],
         data = [
             ":gemv-floorplan-{}-xo".format(idx),
-            "//tapa/cosim:tapa-fast-cosim",
+            "//fpga-runtime:cargo_release_artifacts",
             "//tests/apps/gemv:gemv-host",
         ],
         tags = [

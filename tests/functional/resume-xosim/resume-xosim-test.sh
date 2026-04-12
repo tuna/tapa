@@ -8,6 +8,8 @@
 
 set -ex
 
-"$@" --xosim_work_dir="${TEST_TMPDIR}" --xosim_setup_only
-vivado -mode batch -source "${TEST_TMPDIR}"/output/run/run_cosim.tcl
-"$@" --xosim_work_dir="${TEST_TMPDIR}" --xosim_resume_from_post_sim
+"$@" --cosim_work_dir="${TEST_TMPDIR}" --cosim_setup_only
+TAPA_DPI_CONFIG=$(cat "${TEST_TMPDIR}/dpi_config.json") \
+  HOME="${TEST_TMPDIR}/run" \
+  vivado -mode batch -source "${TEST_TMPDIR}/run_cosim.tcl"
+"$@" --cosim_work_dir="${TEST_TMPDIR}" --cosim_resume_from_post_sim

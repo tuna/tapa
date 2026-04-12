@@ -162,29 +162,29 @@ When any flag is empty the corresponding kernel runs in software simulation. Thi
 
 ### Work directory
 
-By default each cosim process writes to a temporary directory that is deleted at exit. Provide `-xosim_work_dir` to retain artifacts. When multiple kernels share the same work directory their simulation environments collide; use `-xosim_work_dir_parallel_cosim` to give each process a unique subdirectory:
+By default each cosim process writes to a temporary directory that is deleted at exit. Provide `-cosim_work_dir` to retain artifacts. When multiple kernels share the same work directory their simulation environments collide; use `-cosim_work_dir_parallel` to give each process a unique subdirectory:
 
 ```bash
 ./cannon \
     --scatter_bitstream=scatter.xo \
     --proc_elem_bitstream=proc-elem.xo \
     --gather_bitstream=gather.xo \
-    -xosim_work_dir ./cosim_work \
-    -xosim_work_dir_parallel_cosim
+    -cosim_work_dir ./cosim_work \
+    -cosim_work_dir_parallel
 ```
 
 TAPA creates `./cosim_work/XXXXXX/` (a unique name per instance) so the simulations do not interfere with each other.
 
 ### Simulator backend
 
-The same `-xosim_simulator` flag applies to all instances:
+The same `-cosim_simulator` flag applies to all instances:
 
 ```bash
 ./cannon \
     --scatter_bitstream=scatter.xo \
     --proc_elem_bitstream=proc-elem.xo \
     --gather_bitstream=gather.xo \
-    -xosim_simulator verilator
+    -cosim_simulator verilator
 ```
 
 ### Controlling concurrency
@@ -206,12 +206,12 @@ At `TAPA_CONCURRENCY=1` the processes still exchange data correctly through shar
 
 | Flag | Description |
 |------|-------------|
-| `-xosim_work_dir <dir>` | Persistent working directory for simulation artifacts. |
-| `-xosim_work_dir_parallel_cosim` | Create a unique subdirectory per instance. Required when multiple kernels share `-xosim_work_dir`. |
-| `-xosim_simulator <backend>` | `xsim` (default, Linux only) or `verilator` (cross-platform). Applied to all instances. |
-| `-xosim_save_waveform` | Save simulation waveforms. Pair with `-xosim_work_dir`. |
-| `-xosim_executable <path>` | Path to the `tapa-fast-cosim` binary when it is not on `PATH`. |
-| `-xosim_part_num <part>` | Target FPGA part number (e.g., `xcu280-fsvh2892-2L-e`). |
+| `-cosim_work_dir <dir>` | Persistent working directory for simulation artifacts. |
+| `-cosim_work_dir_parallel` | Create a unique subdirectory per instance. Required when multiple kernels share `-cosim_work_dir`. |
+| `-cosim_simulator <backend>` | `xsim` (default, Linux only) or `verilator` (cross-platform). Applied to all instances. |
+| `-xsim_save_waveform` | Save simulation waveforms. Pair with `-cosim_work_dir`. |
+| `-cosim_executable <path>` | Deprecated. Fast cosim now runs in-process via `libfrt`; this flag is ignored. |
+| `-xsim_part_num <part>` | Target FPGA part number (e.g., `xcu280-fsvh2892-2L-e`). |
 | `TAPA_CONCURRENCY` | Environment variable. Limits the number of cosim processes that run simultaneously. |
 
 ---
@@ -241,12 +241,12 @@ tapa compile --top Gather   -f cannon.cpp -o gather.xo    --part-num xcu280-fsvh
     --scatter_bitstream=scatter.xo \
     --proc_elem_bitstream=proc-elem.xo \
     --gather_bitstream=gather.xo \
-    -xosim_work_dir ./cosim_work \
-    -xosim_work_dir_parallel_cosim
+    -cosim_work_dir ./cosim_work \
+    -cosim_work_dir_parallel
 ```
 
 A successful run prints `PASS!` after all simulation processes finish.
 
 ---
 
-**See also:** [Fast Hardware Simulation](fast-cosim.md) — single-kernel cosim with the same `-xosim_*` flags.
+**See also:** [Fast Hardware Simulation](fast-cosim.md) — single-kernel cosim with the same `-cosim_*` and `-xsim_*` flags.

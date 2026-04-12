@@ -19,7 +19,7 @@ TAPA splits work between local and remote:
 | `tapa analyze` (runs `tapa-cpp` and `tapacc`) | Always local |
 | `tapa synth` (Vitis HLS synthesis) | Remote when `--remote-host` is set |
 | `tapa pack` (IP packaging) | Remote when `--remote-host` is set |
-| `tapa cosim` (fast cosim) | Remote when `--remote-host` is set |
+| Host fast-cosim runtime (`--bitstream=*.xo`) | Remote when `--remote-host` is set |
 | File transfer (`.xo`, `.zip` artifacts) | Handled automatically by TAPA |
 
 ## Commands

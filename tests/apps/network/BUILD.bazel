@@ -39,19 +39,18 @@ sh_test(
 )
 
 sh_test(
-    name = "network-xosim",
+    name = "network-hw-emu",
     size = "enormous",
     timeout = "moderate",
     srcs = ["//bazel:v++_env.sh"],
     args = [
         "$(location network-host)",
         "--bitstream=$(location network-xo)",
-        "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
     ],
     data = [
         ":network-host",
         ":network-xo",
-        "//tapa/cosim:tapa-fast-cosim",
+        "//fpga-runtime:cargo_release_artifacts",
     ],
     tags = [
         "cpu:2",
@@ -59,7 +58,7 @@ sh_test(
 )
 
 sh_test(
-    name = "network-cosim",
+    name = "network-xosim",
     size = "enormous",
     timeout = "moderate",
     srcs = ["//bazel:xrt_env.sh"],
@@ -107,13 +106,12 @@ sh_test(
     args = [
         "$(location network-host)",
         "--bitstream=$(location network-zip)",
-        "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
-        "--xosim_simulator=verilator",
+        "--cosim_simulator=verilator",
     ],
     data = [
         ":network-host",
         ":network-zip",
-        "//tapa/cosim:tapa-fast-cosim",
+        "//fpga-runtime:cargo_release_artifacts",
         "@verilator//:verilator_executable",
     ],
     env = {"VERILATOR_BIN": "$(rootpath @verilator//:verilator_executable)"},

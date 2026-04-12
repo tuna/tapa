@@ -37,19 +37,18 @@ sh_test(
 )
 
 sh_test(
-    name = "cannon-xosim",
+    name = "cannon-hw-emu",
     size = "enormous",
     timeout = "long",  # often >300s
     srcs = ["//bazel:v++_env.sh"],
     args = [
         "$(location cannon-host)",
         "--bitstream=$(location cannon-xo)",
-        "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
     ],
     data = [
         ":cannon-host",
         ":cannon-xo",
-        "//tapa/cosim:tapa-fast-cosim",
+        "//fpga-runtime:cargo_release_artifacts",
     ],
     tags = [
         "cpu:2",
@@ -57,7 +56,7 @@ sh_test(
 )
 
 sh_test(
-    name = "cannon-cosim",
+    name = "cannon-xosim",
     size = "enormous",
     timeout = "long",  # often >300s
     srcs = ["//bazel:xrt_env.sh"],
@@ -105,13 +104,12 @@ sh_test(
     args = [
         "$(location cannon-host)",
         "--bitstream=$(location cannon-zip)",
-        "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
-        "--xosim_simulator=verilator",
+        "--cosim_simulator=verilator",
     ],
     data = [
         ":cannon-host",
         ":cannon-zip",
-        "//tapa/cosim:tapa-fast-cosim",
+        "//fpga-runtime:cargo_release_artifacts",
         "@verilator//:verilator_executable",
     ],
     env = {"VERILATOR_BIN": "$(rootpath @verilator//:verilator_executable)"},

@@ -20,12 +20,25 @@
   [ -d "${TAPA_HOME}/usr/lib" ]
 }
 
-@test "testsuite: tapa is runnable" {
-  tapa --help
+@test "testsuite: FRT DPI backends are installed" {
+  [ -f "${TAPA_HOME}/usr/lib/libfrt_dpi_verilator.so" ]
+  [ -f "${TAPA_HOME}/usr/lib/libfrt_dpi_xsim.so" ]
 }
 
-@test "testsuite: tapa-fast-cosim is runnable" {
-  tapa-fast-cosim --help
+@test "testsuite: FRT C++ host shim is installed for tapa g++" {
+  find "${TAPA_HOME}/usr/lib" -maxdepth 1 \
+    \( -name "libfrt_cpp.a" -o -name "libfrt_cpp.pic.a" \) \
+    | grep -q .
+}
+
+@test "testsuite: minizip-ng is installed for tapa g++" {
+  find "${TAPA_HOME}/usr/lib" -maxdepth 1 \
+    \( -name "libminizip_ng.a" -o -name "libminizip_ng.so" -o -name "libminizip_ng.dylib" \) \
+    | grep -q .
+}
+
+@test "testsuite: tapa is runnable" {
+  tapa --help
 }
 
 @test "testsuite: XILINX_HLS is set" {

@@ -55,6 +55,14 @@ py_library(
 )
 
 py_test(
+    name = "paths_test",
+    srcs = ["paths_test.py"],
+    deps = [
+        ":paths",
+    ],
+)
+
+py_test(
     name = "pyslang_rewriter_test",
     srcs = ["pyslang_rewriter_test.py"],
     deps = [

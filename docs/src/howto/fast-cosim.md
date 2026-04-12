@@ -32,7 +32,7 @@ For the `xilinx-hls` target, a `.zip` file also works:
 The default backend is `xsim`. To switch to Verilator:
 
 ```bash
-./vadd --bitstream VecAdd.xo -xosim_simulator verilator 1000
+./vadd --bitstream VecAdd.xo -cosim_simulator verilator 1000
 ```
 
 ### Saving waveforms
@@ -41,13 +41,13 @@ Specify a persistent work directory and enable waveform saving:
 
 ```bash
 ./vadd --bitstream VecAdd.xo \
-    -xosim_work_dir ./cosim_work \
-    -xosim_save_waveform \
+    -cosim_work_dir ./cosim_work \
+    -xsim_save_waveform \
     1000
 ```
 
 ```admonish warning
-Strongly recommended: pair `-xosim_save_waveform` with `-xosim_work_dir`. Without a persistent work directory, fast cosim uses a temporary directory that is deleted at exit, removing any saved waveforms with it.
+Strongly recommended: pair `-xsim_save_waveform` with `-cosim_work_dir`. Without a persistent work directory, fast cosim uses a temporary directory that is deleted at exit, removing any saved waveforms with it.
 ```
 
 ### Setup-only and resume workflow
@@ -57,14 +57,14 @@ When you want to inspect the generated simulation environment before committing 
 ```bash
 # Step 1: set up the simulation environment and stop before running
 ./vadd --bitstream VecAdd.xo \
-    -xosim_work_dir ./cosim_work \
-    -xosim_setup_only \
+    -cosim_work_dir ./cosim_work \
+    -cosim_setup_only \
     1000
 
 # Step 2: after inspecting, run post-simulation checks without re-simulating
 ./vadd --bitstream VecAdd.xo \
-    -xosim_work_dir ./cosim_work \
-    -xosim_resume_from_post_sim \
+    -cosim_work_dir ./cosim_work \
+    -cosim_resume_from_post_sim \
     1000
 ```
 
@@ -85,14 +85,14 @@ tapa::invoke(Consumer, FLAGS_consumer_bitstream, ...);
 ./app --producer_bitstream=producer.xo --consumer_bitstream=consumer.xo
 ```
 
-If all instances share the same `-xosim_work_dir`, their simulation environments collide. Pass `-xosim_work_dir_parallel_cosim` to give each instance its own uniquely named subdirectory:
+If all instances share the same `-cosim_work_dir`, their simulation environments collide. Pass `-cosim_work_dir_parallel` to give each instance its own uniquely named subdirectory:
 
 ```bash
 ./app \
     --producer_bitstream=producer.xo \
     --consumer_bitstream=consumer.xo \
-    -xosim_work_dir ./cosim_work \
-    -xosim_work_dir_parallel_cosim
+    -cosim_work_dir ./cosim_work \
+    -cosim_work_dir_parallel
 ```
 
 TAPA creates `./cosim_work/XXXXXX/` (a unique name per instance) so that the simulations run without interfering with each other's build artifacts.
@@ -103,15 +103,15 @@ The following flags control fast cosim behavior when passed to the host executab
 
 | Flag | Description |
 |------|-------------|
-| `-xosim_executable <path>` | Path to the `tapa-fast-cosim` binary when it is not in `PATH`. |
-| `-xosim_part_num <part>` | Target FPGA part number for simulation (e.g., `xcu280-fsvh2892-2L-e`). |
-| `-xosim_work_dir <dir>` | Persistent working directory for simulation artifacts. Without this, a temporary directory is used and deleted after the run. |
-| `-xosim_save_waveform` | Save simulation waveforms to a `.wdb` file in the work directory. Requires `-xosim_work_dir`. |
-| `-xosim_start_gui` | Open the Vivado GUI for interactive debugging during simulation. |
-| `-xosim_simulator <backend>` | Simulator backend: `xsim` (default, Linux only) or `verilator` (cross-platform). |
-| `-xosim_setup_only` | Run simulation setup only, then stop before executing the simulation. |
-| `-xosim_resume_from_post_sim` | Skip re-running the simulation; jump directly to post-simulation checks. |
-| `-xosim_work_dir_parallel_cosim` | Create a unique subdirectory per instance when running concurrent simulations. |
+| `-cosim_executable <path>` | Deprecated. Fast cosim now runs in-process via `libfrt`; this flag is ignored. |
+| `-xsim_part_num <part>` | Target FPGA part number for simulation (e.g., `xcu280-fsvh2892-2L-e`). |
+| `-cosim_work_dir <dir>` | Persistent working directory for simulation artifacts. Without this, a temporary directory is used and deleted after the run. |
+| `-xsim_save_waveform` | Save simulation waveforms to a `.wdb` file in the work directory. Requires `-cosim_work_dir`. |
+| `-xsim_start_gui` | Open the Vivado GUI for interactive debugging during simulation. |
+| `-cosim_simulator <backend>` | Simulator backend: `xsim` (default, Linux only) or `verilator` (cross-platform). |
+| `-cosim_setup_only` | Run simulation setup only, then stop before executing the simulation. |
+| `-cosim_resume_from_post_sim` | Skip re-running the simulation; jump directly to post-simulation checks. |
+| `-cosim_work_dir_parallel` | Create a unique subdirectory per instance when running concurrent simulations. |
 
 ## Expected output
 
@@ -121,7 +121,7 @@ Fast cosim completes in seconds for simple designs. A successful run prints the 
 
 If the simulation becomes unresponsive:
 
-1. Run with `-xosim_work_dir` to persist intermediate files.
+1. Run with `-cosim_work_dir` to persist intermediate files.
 2. Abort the simulation with Ctrl-C.
 3. Locate `[work-dir]/output/run/run_cosim.tcl`.
 4. Open Vivado in GUI mode and source the script:

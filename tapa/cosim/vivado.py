@@ -83,11 +83,8 @@ def get_vivado_tcl(
     start_gui: bool,
 ) -> list[str]:
     """Generate a Vivado TCL script for cosimulation."""
-    dpi_version = (
-        "tapa_fast_cosim_dpi_xv"
-        if Version(get_vivado_version()) >= Version("2024.2")
-        else "tapa_fast_cosim_dpi_legacy_rdi"
-    )
+    modern_xsim = Version(get_vivado_version()) >= Version("2024.2")
+    dpi_version = "frt_dpi_xsim"
 
     tapa_hdl_path = config.verilog_path
 
@@ -98,7 +95,7 @@ def get_vivado_tcl(
     if not part_num:
         msg = (
             "part_num is not set. Either provide an xo that contains HLS reports or "
-            "use the --xosim-part-num option to specify the part number."
+            "use the --xsim-part-num option to specify the part number."
         )
         raise ValueError(msg)
 
@@ -138,8 +135,11 @@ def get_vivado_tcl(
         _logger.fatal("DPI directory not found")
     else:
         _logger.debug("DPI directory: %s", dpi_library_dir)
+        more_options_name = (
+            "xsim.elaborate.xelab.more_options" if modern_xsim else "xelab.more_options"
+        )
         script.append(
-            "set_property -name {xelab.more_options} "
+            f"set_property -name {{{more_options_name}}} "
             f"-value {{-sv_root {dpi_library_dir} -sv_lib {dpi_version}}} "
             "-objects [get_filesets sim_1]"
         )

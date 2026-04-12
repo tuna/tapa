@@ -6,6 +6,8 @@
 
 ARG UBUNTU_PRO_TOKEN
 
+COPY bazel-release.pub.gpg /tmp/bazel-release.pub.gpg
+
 # Set the default timezone to UTC
 RUN ln -fs /usr/share/zoneinfo/UTC /etc/localtime
 
@@ -57,8 +59,8 @@ RUN apt-get update && \
       && \
       pro attach ${UBUNTU_PRO_TOKEN} && \
       add-apt-repository ppa:ubuntu-toolchain-r/test && \
-      curl -fsSL https://bazel.build/bazel-release.pub.gpg \
-        | gpg --dearmor > /usr/share/keyrings/bazel-archive-keyring.gpg && \
+      gpg --dearmor < /tmp/bazel-release.pub.gpg > /usr/share/keyrings/bazel-archive-keyring.gpg && \
+      rm -f /tmp/bazel-release.pub.gpg && \
       echo "deb [arch=amd64 signed-by=/usr/share/keyrings/bazel-archive-keyring.gpg] \
           https://storage.googleapis.com/bazel-apt stable jdk1.8"  \
         > /etc/apt/sources.list.d/bazel.list && \

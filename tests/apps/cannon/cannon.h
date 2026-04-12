@@ -16,9 +16,10 @@
 // p x p PEs
 constexpr int p = TAPA_CANNON_P;
 
-// Handles kN x kN matrices maximum. Use fixed value for efficient hardware
-// generation.
-constexpr int kN = p * 16;
+// Keep the functional fixture small enough that each PE-to-PE exchange stays
+// below the native 16-deep inter-PE FIFOs while still exercising the
+// scatter/compute/communicate/gather flow across the whole PE grid.
+constexpr int kN = p * 3;
 
 void Cannon(tapa::mmap<const float> a_vec, tapa::mmap<const float> b_vec,
             tapa::mmap<float> c_vec, uint64_t n);

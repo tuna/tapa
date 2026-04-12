@@ -35,7 +35,7 @@ Synchronous `mmap` accesses stall the task until each memory transaction complet
 FIFOs that are too shallow cause backpressure and reduce throughput when producer and consumer tasks run at different rates. If tasks are frequently stalling:
 
 - Increase the stream depth in your TAPA source: `tapa::stream<T, DEPTH>`.
-- Check waveforms from fast cosim (`-xosim_save_waveform`) to observe backpressure.
+- Check waveforms from fast cosim (`-xsim_save_waveform`) to observe backpressure.
 
 ### 4. Find resource hotspots with `--enable-synth-util`
 

@@ -157,6 +157,13 @@ def sync_remote_vendor_includes(config: RemoteConfig) -> str | None:
 
     os.makedirs(cache_dir, exist_ok=True)
 
+    # Remove stale patch marker so that _patch_vendor_headers_for_macos
+    # re-applies patches after a fresh download (e.g., if a previous run
+    # wrote the marker but crashed before writing .synced).
+    patch_marker = os.path.join(cache_dir, ".patched_macos_complex")
+    if os.path.exists(patch_marker):
+        os.remove(patch_marker)
+
     remote_include = f"{xilinx_tool}/include"
     local_include = os.path.join(cache_dir, "include")
     if not _download_dir(config, remote_include, local_include):

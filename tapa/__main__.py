@@ -13,7 +13,6 @@ import tempfile
 import click
 
 from tapa import __version__
-from tapa.cosim.__main__ import main as cosim
 from tapa.remote.config import RemoteConfig, load_remote_config, set_remote_config
 from tapa.remote.vendor import sync_remote_vendor_includes
 from tapa.steps.analyze import analyze
@@ -190,7 +189,6 @@ entry_point.add_command(generate_floorplan_entry)
 entry_point.add_command(compile_with_floorplan_dse)
 entry_point.add_command(version)
 entry_point.add_command(gcc)
-entry_point.add_command(cosim)
 
 if __name__ == "__main__":
     entry_point(prog_name="tapa")

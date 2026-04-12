@@ -66,10 +66,7 @@ py_binary(
     }),
     main = "__main__.py",
     visibility = ["//visibility:public"],
-    deps = [
-        ":tapa-py-libs",
-        "//tapa/cosim:__main__",
-    ],
+    deps = [":tapa-py-libs"],
 )
 
 py_wheel(

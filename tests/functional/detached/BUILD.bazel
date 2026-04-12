@@ -31,13 +31,12 @@ sh_test(
     args = [
         "$(location detached-host)",
         "--bitstream=$(location detached-xo)",
-        "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
         "1000",
     ],
     data = [
         ":detached-host",
         ":detached-xo",
-        "//tapa/cosim:tapa-fast-cosim",
+        "//fpga-runtime:cargo_release_artifacts",
     ],
 )
 

@@ -36,12 +36,11 @@ sh_test(
     args = [
         "$(location //tests/apps/vadd:vadd-host)",
         "--bitstream=$(location vadd-graphir-xo)",
-        "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
         "1000",
     ],
     data = [
         ":vadd-graphir-xo",
-        "//tapa/cosim:tapa-fast-cosim",
+        "//fpga-runtime:cargo_release_artifacts",
         "//tests/apps/vadd:vadd-host",
     ],
     tags = [
@@ -70,12 +69,11 @@ sh_test(
     args = [
         "$(location //tests/apps/cannon:cannon-host)",
         "--bitstream=$(location cannon-graphir-xo)",
-        "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
         "1000",
     ],
     data = [
         ":cannon-graphir-xo",
-        "//tapa/cosim:tapa-fast-cosim",
+        "//fpga-runtime:cargo_release_artifacts",
         "//tests/apps/cannon:cannon-host",
     ],
     tags = [
@@ -107,12 +105,11 @@ sh_test(
     args = [
         "$(location //tests/apps/graph:graph-host)",
         "--bitstream=$(location graph-graphir-xo)",
-        "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
         "$(location //tests/apps/graph:graph.txt)",
     ],
     data = [
         ":graph-graphir-xo",
-        "//tapa/cosim:tapa-fast-cosim",
+        "//fpga-runtime:cargo_release_artifacts",
         "//tests/apps/graph:graph.txt",
         "//tests/apps/graph:graph-host",
     ],
@@ -137,16 +134,15 @@ tapa_xo(
 sh_test(
     name = "jacobi-xosim",
     size = "enormous",
-    timeout = "moderate",
+    timeout = "long",
     srcs = ["//bazel:v++_env.sh"],
     args = [
         "$(location //tests/apps/jacobi:jacobi-host)",
         "--bitstream=$(location jacobi-graphir-xo)",
-        "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
     ],
     data = [
         ":jacobi-graphir-xo",
-        "//tapa/cosim:tapa-fast-cosim",
+        "//fpga-runtime:cargo_release_artifacts",
         "//tests/apps/jacobi:jacobi-host",
     ],
     tags = [
@@ -175,11 +171,10 @@ sh_test(
     args = [
         "$(location //tests/apps/network:network-host)",
         "--bitstream=$(location network-graphir-xo)",
-        "--xosim_executable=$(location //tapa/cosim:tapa-fast-cosim)",
     ],
     data = [
         ":network-graphir-xo",
-        "//tapa/cosim:tapa-fast-cosim",
+        "//fpga-runtime:cargo_release_artifacts",
         "//tests/apps/network:network-host",
     ],
     tags = [
