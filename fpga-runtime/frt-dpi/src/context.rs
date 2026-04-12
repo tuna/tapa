@@ -88,6 +88,10 @@ impl DpiContext {
         for (name, entry) in cfg.streams {
             let q = SharedMemoryQueue::open(entry.path())?;
             let dpi_width_bytes = entry.dpi_width_bytes().unwrap_or_else(|| q.width());
+            eprintln!(
+                "frt-dpi: stream '{name}' path={} depth={} width={} dpi_width={}",
+                entry.path(), q.depth(), q.width(), dpi_width_bytes,
+            );
             streams.insert(
                 name,
                 DpiStream {

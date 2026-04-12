@@ -33,7 +33,7 @@ static WRITE_OK: AtomicU64 = AtomicU64::new(0);
 static WRITE_FULL: AtomicU64 = AtomicU64::new(0);
 static LAST_REPORT: AtomicU64 = AtomicU64::new(0);
 
-fn maybe_report_progress() {
+fn maybe_report_progress(port: &str) {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -49,7 +49,7 @@ fn maybe_report_progress() {
         let wok = WRITE_OK.load(Ordering::Relaxed);
         let wfull = WRITE_FULL.load(Ordering::Relaxed);
         if rok + rmiss + wok + wfull > 0 {
-            eprintln!("frt-dpi: progress: read_ok={rok} read_empty={rmiss} write_ok={wok} write_full={wfull}");
+            eprintln!("frt-dpi: progress[{port}]: read_ok={rok} read_empty={rmiss} write_ok={wok} write_full={wfull}");
         }
     }
 }
@@ -83,7 +83,7 @@ pub fn stream_try_read_impl(ctx: &DpiContext, port: &str, out: *mut u8) -> bool 
         true
     } else {
         READ_MISS.fetch_add(1, Ordering::Relaxed);
-        maybe_report_progress();
+        maybe_report_progress(port);
         maybe_yield();
         false
     }
@@ -116,7 +116,7 @@ pub fn stream_istream_step_impl(ctx: &DpiContext, port: &str, consume: bool, out
     } else {
         state.last_istream_valid = false;
         READ_MISS.fetch_add(1, Ordering::Relaxed);
-        maybe_report_progress();
+        maybe_report_progress(port);
         maybe_yield();
         false
     }
@@ -172,7 +172,7 @@ pub fn stream_ostream_step_impl(ctx: &DpiContext, port: &str, write: bool, data:
     state.last_ostream_ready = can;
     if !can {
         WRITE_FULL.fetch_add(1, Ordering::Relaxed);
-        maybe_report_progress();
+        maybe_report_progress(port);
         maybe_yield();
     }
     can
@@ -209,7 +209,7 @@ pub fn stream_hls_ostream_step_impl(
     let can = !q.is_full();
     if !can {
         WRITE_FULL.fetch_add(1, Ordering::Relaxed);
-        maybe_report_progress();
+        maybe_report_progress(port);
         maybe_yield();
     }
     can
@@ -227,7 +227,7 @@ pub fn stream_can_write_impl(ctx: &DpiContext, port: &str) -> bool {
     let can = !q.is_full();
     if !can {
         WRITE_FULL.fetch_add(1, Ordering::Relaxed);
-        maybe_report_progress();
+        maybe_report_progress(port);
         maybe_yield();
     }
     can
