@@ -331,7 +331,31 @@ fn make_tb_dir(work_dir: Option<&Path>, parallel: bool) -> Result<TbDir> {
 }
 
 fn dpi_lib_path(variant: &str) -> Result<PathBuf> {
-    dpi_lib_path_from_exe(&std::env::current_exe()?, variant)
+    // Prefer searching relative to libfrt.so itself (covers staging tests
+    // where the host binary is compiled into /tmp but libfrt.so lives in
+    // the install prefix).
+    let self_path = self_lib_path().unwrap_or_else(|| {
+        std::env::current_exe().unwrap_or_default()
+    });
+    dpi_lib_path_from_exe(&self_path, variant)
+}
+
+#[cfg(unix)]
+fn self_lib_path() -> Option<PathBuf> {
+    // Use dladdr to find the path of the shared library containing this function.
+    let mut info: libc::Dl_info = unsafe { std::mem::zeroed() };
+    let ptr = self_lib_path as *const ();
+    if unsafe { libc::dladdr(ptr as *const _, &mut info) } != 0 && !info.dli_fname.is_null() {
+        let path = unsafe { std::ffi::CStr::from_ptr(info.dli_fname) };
+        path.to_str().ok().map(PathBuf::from)
+    } else {
+        None
+    }
+}
+
+#[cfg(not(unix))]
+fn self_lib_path() -> Option<PathBuf> {
+    None
 }
 
 fn dpi_lib_path_from_exe(exe: &Path, variant: &str) -> Result<PathBuf> {
@@ -346,6 +370,14 @@ fn dpi_lib_path_from_exe(exe: &Path, variant: &str) -> Result<PathBuf> {
             search_dirs.push(ancestor.to_path_buf());
             search_dirs.push(ancestor.join("fpga-runtime/cargo"));
             search_dirs.push(ancestor.join("cargo"));
+        }
+    }
+    // Also search LD_LIBRARY_PATH (covers staging tests that copy binaries)
+    if let Ok(ldpath) = std::env::var("LD_LIBRARY_PATH") {
+        for dir in ldpath.split(':') {
+            if !dir.is_empty() {
+                search_dirs.push(PathBuf::from(dir));
+            }
         }
     }
     let candidates = if cfg!(target_os = "macos") {
