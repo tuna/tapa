@@ -1,12 +1,9 @@
-"""FPGA runtime library for TAPA."""
+"""FPGA runtime Bazel targets backed by Rust Cargo crates."""
 
-# Copyright (c) 2024 RapidStream Design Automation, Inc. and contributors.
-# All rights reserved. The contributor(s) of this file has/have agreed to the
-# RapidStream Contributor License Agreement.
-
-load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
+load("@rules_cc//cc:defs.bzl", "cc_import", "cc_library")
 load("@rules_pkg//pkg:mappings.bzl", "pkg_filegroup", "pkg_files", "strip_prefix")
-load("//bazel:dpi_rules.bzl", "dpi_legacy_rdi_library", "dpi_library")
+
+package(default_visibility = ["//visibility:public"])
 
 _PUBLIC_HEADERS = [
     "frt.h",
@@ -14,63 +11,116 @@ _PUBLIC_HEADERS = [
     "frt/buffer.h",
     "frt/buffer_arg.h",
     "frt/device.h",
-    "frt/devices/shared_memory_queue.h",
-    "frt/devices/shared_memory_stream.h",
     "frt/stream.h",
     "frt/stream_arg.h",
     "frt/stringify.h",
     "frt/tag.h",
 ]
 
+genrule(
+    name = "cargo_release_artifacts",
+    srcs = glob(
+        ["**/*"],
+        exclude = [
+            "BUILD.bazel",
+            "target/**",
+        ],
+    ),
+    outs = [
+        "cargo/libfrt.so",
+        "cargo/libfrt.dylib",
+        "cargo/libfrt_dpi_verilator.so",
+        "cargo/libfrt_dpi_verilator.dylib",
+        "cargo/libfrt_dpi_xsim.so",
+        "cargo/libfrt_dpi_xsim.dylib",
+    ],
+    cmd = """
+set -euo pipefail
+CARGO="$(execpath @rules_rust//rust/toolchain:current_cargo_files)"
+RUSTC="$(execpath @rules_rust//rust/toolchain:current_rustc_files)"
+RUST_BIN_DIR="$$(cd "$$(dirname "$$CARGO")" && pwd)"
+RUSTC_BIN_DIR="$$(cd "$$(dirname "$$RUSTC")" && pwd)"
+export PATH="$$RUST_BIN_DIR:$$RUSTC_BIN_DIR:/usr/local/bin:/usr/bin:/bin:$$PATH"
+export CARGO_TARGET_DIR="$(@D)/cargo-target"
+cargo build --manifest-path "$(location Cargo.toml)" --release \\
+  -p frt -p frt-dpi-verilator -p frt-dpi-xsim
+
+if [[ -f "$$CARGO_TARGET_DIR/release/libfrt.so" ]]; then
+  cp "$$CARGO_TARGET_DIR/release/libfrt.so" "$(location cargo/libfrt.so)"
+else
+  : > "$(location cargo/libfrt.so)"
+fi
+if [[ -f "$$CARGO_TARGET_DIR/release/libfrt.dylib" ]]; then
+  cp "$$CARGO_TARGET_DIR/release/libfrt.dylib" "$(location cargo/libfrt.dylib)"
+else
+  : > "$(location cargo/libfrt.dylib)"
+fi
+
+if [[ -f "$$CARGO_TARGET_DIR/release/libfrt_dpi_verilator.so" ]]; then
+  cp "$$CARGO_TARGET_DIR/release/libfrt_dpi_verilator.so" "$(location cargo/libfrt_dpi_verilator.so)"
+else
+  : > "$(location cargo/libfrt_dpi_verilator.so)"
+fi
+if [[ -f "$$CARGO_TARGET_DIR/release/libfrt_dpi_verilator.dylib" ]]; then
+  cp "$$CARGO_TARGET_DIR/release/libfrt_dpi_verilator.dylib" "$(location cargo/libfrt_dpi_verilator.dylib)"
+else
+  : > "$(location cargo/libfrt_dpi_verilator.dylib)"
+fi
+
+if [[ -f "$$CARGO_TARGET_DIR/release/libfrt_dpi_xsim.so" ]]; then
+  cp "$$CARGO_TARGET_DIR/release/libfrt_dpi_xsim.so" "$(location cargo/libfrt_dpi_xsim.so)"
+else
+  : > "$(location cargo/libfrt_dpi_xsim.so)"
+fi
+if [[ -f "$$CARGO_TARGET_DIR/release/libfrt_dpi_xsim.dylib" ]]; then
+  cp "$$CARGO_TARGET_DIR/release/libfrt_dpi_xsim.dylib" "$(location cargo/libfrt_dpi_xsim.dylib)"
+else
+  : > "$(location cargo/libfrt_dpi_xsim.dylib)"
+fi
+""",
+    local = True,
+    tags = ["local"],
+    tools = [
+        "@rules_rust//rust/toolchain:current_cargo_files",
+        "@rules_rust//rust/toolchain:current_rustc_files",
+    ],
+)
+
+cc_import(
+    name = "frt_rust_cdylib",
+    shared_library = select({
+        "//bazel:is_macos": "cargo/libfrt.dylib",
+        "//conditions:default": "cargo/libfrt.so",
+    }),
+)
+
 cc_library(
     name = "frt",
     srcs = [
-        "frt.cpp",
         "frt/arg_info.cpp",
-        "frt/devices/filesystem.h",
-        "frt/devices/intel_opencl_device.cpp",
-        "frt/devices/intel_opencl_device.h",
-        "frt/devices/opencl_device.cpp",
-        "frt/devices/opencl_device.h",
-        "frt/devices/opencl_device_matcher.h",
-        "frt/devices/opencl_util.h",
-        "frt/devices/shared_memory_queue.cpp",
-        "frt/devices/shared_memory_stream.cpp",
-        "frt/devices/tapa_fast_cosim_device.cpp",
-        "frt/devices/tapa_fast_cosim_device.h",
-        "frt/devices/xilinx_environ.cpp",
-        "frt/devices/xilinx_environ.h",
-        "frt/devices/xilinx_opencl_device.cpp",
-        "frt/devices/xilinx_opencl_device.h",
+        "frt_compat.cpp",
     ],
     hdrs = _PUBLIC_HEADERS,
-    copts = [
-        "-DCL_HPP_CL_1_2_DEFAULT_BUILD",
-        "-DCL_HPP_TARGET_OPENCL_VERSION=120",
-        "-DCL_HPP_MINIMUM_OPENCL_VERSION=120",
-        "-DCL_TARGET_OPENCL_VERSION=120",
-        # Suppress warnings from third-party OpenCL and Boost headers
-        "-Wno-deprecated-copy",
-        "-Wno-macro-redefined",
-        "-Wno-missing-field-initializers",
-        "-Wno-unused-but-set-variable",
-    ],
     includes = ["."],
-    linkopts = [
-        "-lstdc++fs",
-        "-lrt",
-    ],
     target_compatible_with = ["@platforms//os:linux"],
-    visibility = ["//visibility:public"],
     deps = [
-        "@boost//:asio",
-        "@boost//:process",
+        ":frt_rust_cdylib",
         "@glog",
-        "@minizip_ng",
-        "@nlohmann_json//:json",
-        "@tinyxml2",
-        "@xilinx_xrt",
-        "@yaml-cpp",
+    ],
+)
+
+cc_library(
+    name = "frt_cpp",
+    srcs = [
+        "frt/arg_info.cpp",
+        "frt_compat.cpp",
+    ],
+    hdrs = _PUBLIC_HEADERS,
+    includes = ["."],
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        ":frt_rust_cdylib",
+        "@glog",
     ],
 )
 
@@ -78,112 +128,35 @@ cc_library(
     name = "frt-sim",
     srcs = [
         "frt/arg_info.cpp",
-        "frt/devices/filesystem.h",
-        "frt/devices/shared_memory_queue.cpp",
-        "frt/devices/shared_memory_stream.cpp",
-        "frt/devices/tapa_fast_cosim_device.cpp",
-        "frt/devices/tapa_fast_cosim_device.h",
-        "frt/devices/xilinx_environ.cpp",
-        "frt/devices/xilinx_environ.h",
-        "frt_cosim.cpp",
+        "frt_compat.cpp",
     ],
     hdrs = _PUBLIC_HEADERS,
-    copts = [
-        # Suppress warnings from third-party Boost headers
-        "-Wno-missing-field-initializers",
-        "-Wno-macro-redefined",
-        "-Wno-unused-but-set-variable",
-    ],
     includes = ["."],
-    linkopts = select({
-        "@platforms//os:linux": [
-            "-lstdc++fs",
-            "-lrt",
-        ],
-        "//conditions:default": [],
-    }),
-    visibility = ["//visibility:public"],
     deps = [
-        "@boost//:asio",
-        "@boost//:process",
-        "@gflags",
+        ":frt_rust_cdylib",
         "@glog",
-        "@minizip_ng",
-        "@nlohmann_json//:json",
-        "@tinyxml2",
-        "@yaml-cpp",
-    ],
-)
-
-cc_test(
-    name = "frt-test",
-    size = "small",
-    srcs = glob(["**/*_test.cpp"]),
-    copts = [
-        # Suppress warnings from third-party googletest headers
-        "-Wno-sign-compare",
-    ],
-    target_compatible_with = ["@platforms//os:linux"],
-    deps = [
-        ":frt",
-        "@googletest//:gtest",
-        "@googletest//:gtest_main",
-    ],
-)
-
-dpi_library(
-    name = "tapa_fast_cosim_dpi_xv",
-    srcs = [
-        "frt/devices/shared_memory_queue.cpp",
-        "frt/devices/tapa_fast_cosim_dpi.cpp",
-    ],
-    hdrs = [
-        "frt/devices/shared_memory_queue.h",
-    ],
-    includes = ["."],
-    target_compatible_with = ["@platforms//os:linux"],
-    visibility = ["//tapa/cosim:__pkg__"],
-    deps = [
-        "@glog",
-        "@xsim_xv//:svdpi",
-    ],
-)
-
-dpi_legacy_rdi_library(
-    name = "tapa_fast_cosim_dpi_legacy_rdi",
-    srcs = [
-        "frt/devices/shared_memory_queue.cpp",
-        "frt/devices/tapa_fast_cosim_dpi.cpp",
-    ],
-    hdrs = [
-        "frt/devices/shared_memory_queue.h",
-    ],
-    includes = ["."],
-    target_compatible_with = ["@platforms//os:linux"],
-    visibility = ["//tapa/cosim:__pkg__"],
-    deps = [
-        "@glog",
-        "@xsim_legacy_rdi//:svdpi",
     ],
 )
 
 filegroup(
     name = "include",
     srcs = _PUBLIC_HEADERS,
-    visibility = ["//visibility:public"],
 )
 
 pkg_files(
     name = "pkg-lib",
     srcs = [
-        ":frt",
-        ":tapa_fast_cosim_dpi_legacy_rdi",
-        ":tapa_fast_cosim_dpi_xv",
+        "cargo/libfrt.dylib",
+        "cargo/libfrt.so",
+        "cargo/libfrt_dpi_verilator.dylib",
+        "cargo/libfrt_dpi_verilator.so",
+        "cargo/libfrt_dpi_xsim.dylib",
+        "cargo/libfrt_dpi_xsim.so",
+        ":frt_cpp",
     ],
     prefix = "usr/lib",
     strip_prefix = strip_prefix.files_only(),
     target_compatible_with = ["@platforms//os:linux"],
-    visibility = ["//visibility:public"],
 )
 
 pkg_files(
@@ -204,11 +177,11 @@ pkg_files(
         "@minizip_ng",
         "@tinyxml2",
         "@yaml-cpp",
+        "@zlib",
     ],
     prefix = "usr/lib",
     strip_prefix = strip_prefix.files_only(),
     target_compatible_with = ["@platforms//os:linux"],
-    visibility = ["//visibility:public"],
 )
 
 pkg_filegroup(
@@ -218,7 +191,6 @@ pkg_filegroup(
         ":pkg-lib",
     ],
     target_compatible_with = ["@platforms//os:linux"],
-    visibility = ["//visibility:public"],
 )
 
 pkg_filegroup(
@@ -228,5 +200,4 @@ pkg_filegroup(
         ":pkg-extra-runtime-deps",
     ],
     target_compatible_with = ["@platforms//os:linux"],
-    visibility = ["//visibility:public"],
 )

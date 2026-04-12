@@ -1,10 +1,6 @@
 // Copyright (c) 2024 RapidStream Design Automation, Inc. and contributors.
-// All rights reserved. The contributor(s) of this file has/have agreed to the
-// RapidStream Contributor License Agreement.
 
 #include "frt/arg_info.h"
-
-#include <ostream>
 
 namespace fpga {
 
@@ -19,12 +15,12 @@ std::ostream& operator<<(std::ostream& os, const ArgInfo::Cat& cat) {
     case ArgInfo::kStreams:
       return os << "streams";
   }
-  return os;
+  return os << "unknown";
 }
 
 std::ostream& operator<<(std::ostream& os, const ArgInfo& arg) {
-  return os << "ArgInfo: {index: " << arg.index << ", name: '" << arg.name
-            << "', type: '" << arg.type << "', category: " << arg.cat << "}";
+  return os << "ArgInfo(index=" << arg.index << ", name=" << arg.name
+            << ", type=" << arg.type << ", cat=" << arg.cat << ")";
 }
 
 }  // namespace fpga

@@ -40,22 +40,22 @@
 #include "frt/devices/xilinx_environ.h"
 #include "frt/stream_arg.h"
 
-DEFINE_bool(xosim_start_gui, false, "start Vivado GUI for simulation");
-DEFINE_bool(xosim_save_waveform, false, "save waveform in the work directory");
-DEFINE_string(xosim_work_dir, "",
+DEFINE_bool(xsim_start_gui, false, "start Vivado GUI for simulation");
+DEFINE_bool(xsim_save_waveform, false, "save waveform in the work directory");
+DEFINE_string(cosim_work_dir, "",
               "if not empty, use the specified work directory instead of a "
               "temporary one");
-DEFINE_bool(xosim_work_dir_parallel_cosim, false,
+DEFINE_bool(cosim_work_dir_parallel, false,
             "create a work directory for each parallel cosim instance");
-DEFINE_string(xosim_executable, "",
+DEFINE_string(cosim_executable, "",
               "if not empty, use the specified executable instead of "
               "`tapa-fast-cosim`");
-DEFINE_string(xosim_part_num, "",
+DEFINE_string(xsim_part_num, "",
               "if not empty, use the specified part number for Vivado");
-DEFINE_string(xosim_simulator, "",
+DEFINE_string(cosim_simulator, "",
               "simulator backend to use: 'xsim' (default) or 'verilator'");
-DEFINE_bool(xosim_setup_only, false, "only setup the simulation");
-DEFINE_bool(xosim_resume_from_post_sim, false,
+DEFINE_bool(cosim_setup_only, false, "only setup the simulation");
+DEFINE_bool(cosim_resume_from_post_sim, false,
             "skip simulation and do post-sim checking");
 
 namespace fpga {
@@ -66,18 +66,18 @@ namespace {
 using clock = std::chrono::steady_clock;
 
 std::string GetWorkDirectory() {
-  if (FLAGS_xosim_work_dir.empty()) {
+  if (FLAGS_cosim_work_dir.empty()) {
     std::string dir =
         (fs::temp_directory_path() / "tapa-fast-cosim.XXXXXX").string();
     LOG_IF(FATAL, ::mkdtemp(&dir[0]) == nullptr)
         << "failed to create work directory";
     return fs::absolute(dir).string();
   }
-  fs::path work_dir = FLAGS_xosim_work_dir;
+  fs::path work_dir = FLAGS_cosim_work_dir;
   if (!fs::exists(work_dir))
     LOG_IF(INFO, fs::create_directories(work_dir))
         << "created directory '" << work_dir << "'";
-  if (FLAGS_xosim_work_dir_parallel_cosim) {
+  if (FLAGS_cosim_work_dir_parallel) {
     std::string dir = (work_dir / "XXXXXX").string();
     LOG_IF(FATAL, ::mkdtemp(&dir[0]) == nullptr)
         << "failed to create work directory";
@@ -234,7 +234,7 @@ void TapaFastCosimDevice::LoadArgsFromTapaYaml() {
 }
 
 TapaFastCosimDevice::~TapaFastCosimDevice() {
-  if (FLAGS_xosim_work_dir.empty()) fs::remove_all(work_dir);
+  if (FLAGS_cosim_work_dir.empty()) fs::remove_all(work_dir);
 }
 
 std::unique_ptr<Device> TapaFastCosimDevice::New(std::string_view path,
@@ -343,31 +343,31 @@ void TapaFastCosimDevice::Exec() {
 
   std::ofstream(GetConfigPath(work_dir)) << json.dump(2);
 
-  std::vector<std::string> argv = {FLAGS_xosim_executable.empty()
+  std::vector<std::string> argv = {FLAGS_cosim_executable.empty()
                                        ? "tapa-fast-cosim"
-                                       : FLAGS_xosim_executable};
+                                       : FLAGS_cosim_executable};
   argv.insert(argv.end(), {
                               "--config-path=" + GetConfigPath(work_dir),
                               "--tb-output-dir=" + work_dir + "/output",
                           });
-  if (FLAGS_xosim_start_gui) {
+  if (FLAGS_xsim_start_gui) {
     argv.push_back("--start-gui");
   }
-  if (FLAGS_xosim_save_waveform) {
+  if (FLAGS_xsim_save_waveform) {
     argv.push_back("--save-waveform");
   }
-  if (!FLAGS_xosim_setup_only) {
+  if (!FLAGS_cosim_setup_only) {
     argv.push_back("--launch-simulation");
   }
-  if (!FLAGS_xosim_part_num.empty()) {
-    argv.push_back("--part-num=" + FLAGS_xosim_part_num);
+  if (!FLAGS_xsim_part_num.empty()) {
+    argv.push_back("--part-num=" + FLAGS_xsim_part_num);
   }
-  if (!FLAGS_xosim_simulator.empty()) {
-    argv.push_back("--simulator=" + FLAGS_xosim_simulator);
+  if (!FLAGS_cosim_simulator.empty()) {
+    argv.push_back("--simulator=" + FLAGS_cosim_simulator);
   }
 
   // launch simulation as a noop if resume from post sim
-  if (FLAGS_xosim_resume_from_post_sim) {
+  if (FLAGS_cosim_resume_from_post_sim) {
     argv = {"/bin/sh", "-c", ":"};
   }
 
@@ -403,7 +403,7 @@ void TapaFastCosimDevice::Finish() {
   }
   LOG(INFO) << "TAPA fast cosim finished successfully";
 
-  if (FLAGS_xosim_setup_only) exit(0);
+  if (FLAGS_cosim_setup_only) exit(0);
 
   compute_time_ = clock::now() - context_->start_timestamp;
   if (is_read_from_device_scheduled_) ReadFromDeviceImpl();

@@ -1,0 +1,460 @@
+`timescale 1ns/1ps
+module tb_{{ top_name }};
+
+import "DPI-C" function void tapa_axi_read(input string port, input longint unsigned addr, input int unsigned width, output byte unsigned out[]);
+import "DPI-C" function void tapa_axi_write(input string port, input longint unsigned addr, input int unsigned width, input byte unsigned data[]);
+import "DPI-C" function bit tapa_stream_istream_step(input string port, input bit consume, output byte unsigned out[]);
+import "DPI-C" function bit tapa_stream_try_read(input string port, output byte unsigned out[]);
+import "DPI-C" function bit tapa_stream_try_write(input string port, input byte unsigned data[]);
+import "DPI-C" function bit tapa_stream_can_write(input string port);
+import "DPI-C" function bit tapa_hls_stream_ostream_step(input string port, input bit write, input byte unsigned data[]);
+
+reg ap_clk = 0;
+always #5 ap_clk = ~ap_clk;
+reg ap_rst_n = 0;
+{% if mode == "hls" %}
+reg ap_start = 0;
+wire ap_done;
+wire ap_ready;
+wire ap_idle;
+{% endif %}
+
+{% if mode == "vitis" %}
+reg s_axi_control_AWVALID = 0;
+wire s_axi_control_AWREADY;
+reg [7:0] s_axi_control_AWADDR = 0;
+reg s_axi_control_WVALID = 0;
+wire s_axi_control_WREADY;
+reg [31:0] s_axi_control_WDATA = 0;
+reg [3:0] s_axi_control_WSTRB = 0;
+reg s_axi_control_ARVALID = 0;
+wire s_axi_control_ARREADY;
+reg [7:0] s_axi_control_ARADDR = 0;
+wire s_axi_control_RVALID;
+reg s_axi_control_RREADY = 0;
+wire [31:0] s_axi_control_RDATA;
+wire [1:0] s_axi_control_RRESP;
+wire s_axi_control_BVALID;
+reg s_axi_control_BREADY = 0;
+wire [1:0] s_axi_control_BRESP;
+wire interrupt;
+{% endif %}
+
+{% if mode == "vitis" %}
+task automatic ctrl_write(input [7:0] addr, input [31:0] data);
+begin
+  s_axi_control_AWVALID <= 1'b1;
+  s_axi_control_AWADDR <= addr;
+  s_axi_control_WVALID <= 1'b1;
+  s_axi_control_WDATA <= data;
+  s_axi_control_WSTRB <= 4'hF;
+  s_axi_control_BREADY <= 1'b1;
+  repeat (64) begin
+    @(posedge ap_clk);
+    if (s_axi_control_BVALID) begin
+      break;
+    end
+  end
+  s_axi_control_AWVALID <= 1'b0;
+  s_axi_control_WVALID <= 1'b0;
+  s_axi_control_BREADY <= 1'b0;
+  @(posedge ap_clk);
+end
+endtask
+{% endif %}
+
+{% for arg in mmap_args %}
+wire [63:0] m_axi_{{ arg.ident }}_ARADDR;
+wire [1:0] m_axi_{{ arg.ident }}_ARBURST;
+wire [3:0] m_axi_{{ arg.ident }}_ARCACHE;
+wire [{{ arg.id_width - 1 }}:0] m_axi_{{ arg.ident }}_ARID;
+wire [7:0] m_axi_{{ arg.ident }}_ARLEN;
+wire [1:0] m_axi_{{ arg.ident }}_ARLOCK;
+wire [2:0] m_axi_{{ arg.ident }}_ARPROT;
+wire [3:0] m_axi_{{ arg.ident }}_ARQOS;
+reg  m_axi_{{ arg.ident }}_ARREADY = 0;
+wire [2:0] m_axi_{{ arg.ident }}_ARSIZE;
+wire m_axi_{{ arg.ident }}_ARVALID;
+
+wire [63:0] m_axi_{{ arg.ident }}_AWADDR;
+wire [1:0] m_axi_{{ arg.ident }}_AWBURST;
+wire [3:0] m_axi_{{ arg.ident }}_AWCACHE;
+wire [{{ arg.id_width - 1 }}:0] m_axi_{{ arg.ident }}_AWID;
+wire [7:0] m_axi_{{ arg.ident }}_AWLEN;
+wire [1:0] m_axi_{{ arg.ident }}_AWLOCK;
+wire [2:0] m_axi_{{ arg.ident }}_AWPROT;
+wire [3:0] m_axi_{{ arg.ident }}_AWQOS;
+reg  m_axi_{{ arg.ident }}_AWREADY = 1;
+wire [2:0] m_axi_{{ arg.ident }}_AWSIZE;
+wire m_axi_{{ arg.ident }}_AWVALID;
+
+reg [{{ arg.data_width_bytes * 8 - 1 }}:0] m_axi_{{ arg.ident }}_RDATA = 0;
+reg [{{ arg.id_width - 1 }}:0] m_axi_{{ arg.ident }}_RID = 0;
+reg m_axi_{{ arg.ident }}_RLAST = 0;
+wire m_axi_{{ arg.ident }}_RREADY;
+reg [1:0] m_axi_{{ arg.ident }}_RRESP = 0;
+reg m_axi_{{ arg.ident }}_RVALID = 0;
+
+wire [{{ arg.data_width_bytes * 8 - 1 }}:0] m_axi_{{ arg.ident }}_WDATA;
+wire m_axi_{{ arg.ident }}_WLAST;
+reg  m_axi_{{ arg.ident }}_WREADY = 1;
+wire [{{ arg.data_width_bytes - 1 }}:0] m_axi_{{ arg.ident }}_WSTRB;
+wire m_axi_{{ arg.ident }}_WVALID;
+
+reg [{{ arg.id_width - 1 }}:0] m_axi_{{ arg.ident }}_BID = 0;
+wire m_axi_{{ arg.ident }}_BREADY;
+reg [1:0] m_axi_{{ arg.ident }}_BRESP = 0;
+reg m_axi_{{ arg.ident }}_BVALID = 0;
+
+byte unsigned axi_{{ arg.ident }}_bytes[0:{{ arg.data_width_bytes - 1 }}];
+
+// Multi-outstanding read support: AR requests are queued so the DUT can
+// pipeline multiple burst reads (required by AXI crossbar/broadcastor designs).
+typedef struct {
+  logic [63:0] addr;
+  logic [7:0]  len;
+  logic [{{ arg.id_width - 1 }}:0]  id;
+} axi_{{ arg.ident }}_rd_req_t;
+axi_{{ arg.ident }}_rd_req_t axi_{{ arg.ident }}_rd_q[$];
+reg [7:0] axi_{{ arg.ident }}_rd_beat = 0;
+bit axi_{{ arg.ident }}_rd_active = 0;
+
+// Multi-outstanding write support: AW requests are queued; W data is matched
+// with the head entry.  Completed writes are queued for B responses.
+typedef struct {
+  logic [63:0] addr;
+  logic [{{ arg.id_width - 1 }}:0]  id;
+} axi_{{ arg.ident }}_wr_req_t;
+axi_{{ arg.ident }}_wr_req_t axi_{{ arg.ident }}_wr_q[$];
+logic [{{ arg.id_width - 1 }}:0] axi_{{ arg.ident }}_b_q[$];
+reg [7:0] axi_{{ arg.ident }}_wr_beat = 0;
+{% endfor %}
+
+{% for arg in stream_args %}
+reg [{{ arg.width_bytes * 8 - 1 }}:0] stream_in_data_{{ arg.ident }} = 0;
+reg stream_in_have_{{ arg.ident }} = 0;
+{% if mode == "hls" %}
+reg stream_in_have_next_{{ arg.ident }} = 0;
+{% endif %}
+byte unsigned stream_in_bytes_{{ arg.ident }}[0:{{ arg.dpi_width_bytes - 1 }}];
+{% if arg.axis %}
+reg stream_in_tlast_{{ arg.ident }} = 0;
+{% endif %}
+{% if mode == "hls" %}
+reg stream_in_eos_{{ arg.ident }} = 0;
+wire stream_read_{{ arg.ident }};
+{% else %}
+wire stream_ready_{{ arg.ident }};
+{% endif %}
+{% endfor %}
+{% for arg in stream_out_args %}
+byte unsigned stream_out_bytes_{{ arg.ident }}[0:{{ arg.dpi_width_bytes - 1 }}];
+wire [{{ arg.width_bytes * 8 - 1 }}:0] stream_out_data_{{ arg.ident }};
+reg can_write_{{ arg.ident }};
+{% if mode == "hls" %}
+wire stream_out_eos_{{ arg.ident }};
+wire stream_out_write_{{ arg.ident }};
+reg stream_out_full_n_{{ arg.ident }} = 1'b1;
+{% else %}
+wire stream_out_valid_{{ arg.ident }};
+reg stream_out_ready_{{ arg.ident }} = 1'b1;
+{% if arg.axis %}
+wire stream_out_tlast_{{ arg.ident }};
+{% endif %}
+{% endif %}
+{% endfor %}
+
+{{ top_name }} dut (
+{% for arg in mmap_args %}
+{% if mode == "hls" %}
+  .{{ arg.offset_name }}(64'h{{ "{:016x}"|format(arg.base_addr) }}),
+{% endif %}
+  .{{ arg.araddr }}(m_axi_{{ arg.ident }}_ARADDR),
+  .{{ arg.arburst }}(m_axi_{{ arg.ident }}_ARBURST),
+  .{{ arg.arcache }}(m_axi_{{ arg.ident }}_ARCACHE),
+  .{{ arg.arid }}(m_axi_{{ arg.ident }}_ARID),
+  .{{ arg.arlen }}(m_axi_{{ arg.ident }}_ARLEN),
+  .{{ arg.arlock }}(m_axi_{{ arg.ident }}_ARLOCK),
+  .{{ arg.arprot }}(m_axi_{{ arg.ident }}_ARPROT),
+  .{{ arg.arqos }}(m_axi_{{ arg.ident }}_ARQOS),
+  .{{ arg.arready }}(m_axi_{{ arg.ident }}_ARREADY),
+  .{{ arg.arsize }}(m_axi_{{ arg.ident }}_ARSIZE),
+  .{{ arg.arvalid }}(m_axi_{{ arg.ident }}_ARVALID),
+  .{{ arg.awaddr }}(m_axi_{{ arg.ident }}_AWADDR),
+  .{{ arg.awburst }}(m_axi_{{ arg.ident }}_AWBURST),
+  .{{ arg.awcache }}(m_axi_{{ arg.ident }}_AWCACHE),
+  .{{ arg.awid }}(m_axi_{{ arg.ident }}_AWID),
+  .{{ arg.awlen }}(m_axi_{{ arg.ident }}_AWLEN),
+  .{{ arg.awlock }}(m_axi_{{ arg.ident }}_AWLOCK),
+  .{{ arg.awprot }}(m_axi_{{ arg.ident }}_AWPROT),
+  .{{ arg.awqos }}(m_axi_{{ arg.ident }}_AWQOS),
+  .{{ arg.awready }}(m_axi_{{ arg.ident }}_AWREADY),
+  .{{ arg.awsize }}(m_axi_{{ arg.ident }}_AWSIZE),
+  .{{ arg.awvalid }}(m_axi_{{ arg.ident }}_AWVALID),
+  .{{ arg.bid }}(m_axi_{{ arg.ident }}_BID),
+  .{{ arg.bready }}(m_axi_{{ arg.ident }}_BREADY),
+  .{{ arg.bresp }}(m_axi_{{ arg.ident }}_BRESP),
+  .{{ arg.bvalid }}(m_axi_{{ arg.ident }}_BVALID),
+  .{{ arg.rdata }}(m_axi_{{ arg.ident }}_RDATA),
+  .{{ arg.rid }}(m_axi_{{ arg.ident }}_RID),
+  .{{ arg.rlast }}(m_axi_{{ arg.ident }}_RLAST),
+  .{{ arg.rready }}(m_axi_{{ arg.ident }}_RREADY),
+  .{{ arg.rresp }}(m_axi_{{ arg.ident }}_RRESP),
+  .{{ arg.rvalid }}(m_axi_{{ arg.ident }}_RVALID),
+  .{{ arg.wdata }}(m_axi_{{ arg.ident }}_WDATA),
+  .{{ arg.wlast }}(m_axi_{{ arg.ident }}_WLAST),
+  .{{ arg.wready }}(m_axi_{{ arg.ident }}_WREADY),
+  .{{ arg.wstrb }}(m_axi_{{ arg.ident }}_WSTRB),
+  .{{ arg.wvalid }}(m_axi_{{ arg.ident }}_WVALID),
+{% endfor %}
+{% if mode == "hls" %}
+{% for arg in stream_args %}
+  .{{ arg.dout }}({stream_in_eos_{{ arg.ident }}, stream_in_data_{{ arg.ident }}}),
+  .{{ arg.empty_n }}(stream_in_have_{{ arg.ident }}),
+  .{{ arg.read }}(stream_read_{{ arg.ident }}),
+{% if arg.has_peek %}
+  .{{ arg.peek_dout }}({stream_in_eos_{{ arg.ident }}, stream_in_data_{{ arg.ident }}}),
+  .{{ arg.peek_empty_n }}(stream_in_have_{{ arg.ident }}),
+{% endif %}
+{% endfor %}
+{% for arg in stream_out_args %}
+  .{{ arg.din }}({stream_out_eos_{{ arg.ident }}, stream_out_data_{{ arg.ident }}}),
+  .{{ arg.full_n }}(stream_out_full_n_{{ arg.ident }}),
+  .{{ arg.write }}(stream_out_write_{{ arg.ident }}),
+{% endfor %}
+{% for arg in scalar_args %}
+  .{{ arg.name }}({{ arg.value_expr }}),
+{% endfor %}
+  .ap_clk(ap_clk),
+  .ap_rst_n(ap_rst_n),
+  .ap_start(ap_start),
+  .ap_done(ap_done),
+  .ap_ready(ap_ready),
+  .ap_idle(ap_idle)
+{% else %}
+{% for arg in stream_args %}
+  .{{ arg.tdata }}(stream_in_data_{{ arg.ident }}),
+  .{{ arg.tvalid }}(stream_in_have_{{ arg.ident }}),
+  .{{ arg.tready }}(stream_ready_{{ arg.ident }}),
+  .{{ arg.tlast }}({% if arg.axis %}stream_in_tlast_{{ arg.ident }}{% endif %}),
+{% endfor %}
+{% for arg in stream_out_args %}
+  .{{ arg.tdata }}(stream_out_data_{{ arg.ident }}),
+  .{{ arg.tvalid }}(stream_out_valid_{{ arg.ident }}),
+  .{{ arg.tready }}(stream_out_ready_{{ arg.ident }}),
+  .{{ arg.tlast }}({% if arg.axis %}stream_out_tlast_{{ arg.ident }}{% endif %}),
+{% endfor %}
+  .s_axi_control_AWVALID(s_axi_control_AWVALID),
+  .s_axi_control_AWREADY(s_axi_control_AWREADY),
+  .s_axi_control_AWADDR(s_axi_control_AWADDR),
+  .s_axi_control_WVALID(s_axi_control_WVALID),
+  .s_axi_control_WREADY(s_axi_control_WREADY),
+  .s_axi_control_WDATA(s_axi_control_WDATA),
+  .s_axi_control_WSTRB(s_axi_control_WSTRB),
+  .s_axi_control_ARVALID(s_axi_control_ARVALID),
+  .s_axi_control_ARREADY(s_axi_control_ARREADY),
+  .s_axi_control_ARADDR(s_axi_control_ARADDR),
+  .s_axi_control_RVALID(s_axi_control_RVALID),
+  .s_axi_control_RREADY(s_axi_control_RREADY),
+  .s_axi_control_RDATA(s_axi_control_RDATA),
+  .s_axi_control_RRESP(s_axi_control_RRESP),
+  .s_axi_control_BVALID(s_axi_control_BVALID),
+  .s_axi_control_BREADY(s_axi_control_BREADY),
+  .s_axi_control_BRESP(s_axi_control_BRESP),
+  .ap_clk(ap_clk),
+  .ap_rst_n(ap_rst_n),
+  .interrupt(interrupt)
+{% endif %}
+);
+
+integer i;
+initial begin
+  repeat (10) @(posedge ap_clk);
+  ap_rst_n = 1'b1;
+  repeat (10) @(posedge ap_clk);
+{% if mode == "hls" %}
+  ap_start = 1'b1;
+  @(posedge ap_clk);
+  ap_start = 1'b0;
+{% else %}
+  ctrl_write(8'h04, 32'h0000_0001);
+  ctrl_write(8'h08, 32'h0000_0001);
+{% for arg in mmap_args %}
+  ctrl_write(8'h{{ "{:02x}"|format(arg.reg_offset_lo) }}, 32'h{{ "{:08x}"|format(arg.base_addr & 0xffffffff) }});
+  ctrl_write(8'h{{ "{:02x}"|format(arg.reg_offset_hi) }}, 32'h{{ "{:08x}"|format((arg.base_addr >> 32) & 0xffffffff) }});
+{% endfor %}
+{% for arg in scalar_args %}
+{% for word in arg.words %}
+  ctrl_write(8'h{{ "{:02x}"|format(word.reg_offset) }}, 32'h{{ "{:08x}"|format(word.value_u32) }});
+{% endfor %}
+{% endfor %}
+  ctrl_write(8'h00, 32'h0000_0001);
+{% endif %}
+end
+
+always @(posedge ap_clk) begin
+{% for arg in mmap_args %}
+  // ---- AR channel: accept into queue (up to 16 outstanding) ----
+  m_axi_{{ arg.ident }}_ARREADY <= (axi_{{ arg.ident }}_rd_q.size() < 16) && !(m_axi_{{ arg.ident }}_ARVALID && m_axi_{{ arg.ident }}_ARREADY);
+  if (m_axi_{{ arg.ident }}_ARVALID && m_axi_{{ arg.ident }}_ARREADY) begin
+    axi_{{ arg.ident }}_rd_q.push_back('{m_axi_{{ arg.ident }}_ARADDR, m_axi_{{ arg.ident }}_ARLEN, m_axi_{{ arg.ident }}_ARID});
+  end
+
+  // ---- R channel: serve data from queue head ----
+  if (axi_{{ arg.ident }}_rd_q.size() > 0 || axi_{{ arg.ident }}_rd_active) begin : rd_{{ arg.ident }}_blk
+    automatic axi_{{ arg.ident }}_rd_req_t req;
+    automatic bit rd_done = 1'b0;
+    // Activate the head request if not already serving one.
+    if (!axi_{{ arg.ident }}_rd_active && axi_{{ arg.ident }}_rd_q.size() > 0) begin
+      axi_{{ arg.ident }}_rd_active = 1'b1;
+      axi_{{ arg.ident }}_rd_beat = 0;
+    end
+    req = axi_{{ arg.ident }}_rd_q[0];
+    // On R-channel handshake, advance beat (blocking) so the DPI read below
+    // immediately fetches the next beat's data.
+    if (m_axi_{{ arg.ident }}_RVALID && m_axi_{{ arg.ident }}_RREADY) begin
+      if (axi_{{ arg.ident }}_rd_beat >= req.len) begin
+        void'(axi_{{ arg.ident }}_rd_q.pop_front());
+        axi_{{ arg.ident }}_rd_active = 1'b0;
+        axi_{{ arg.ident }}_rd_beat = 0;
+        rd_done = 1'b1;
+        // Immediately start the next queued burst if available.
+        if (axi_{{ arg.ident }}_rd_q.size() > 0) begin
+          axi_{{ arg.ident }}_rd_active = 1'b1;
+          req = axi_{{ arg.ident }}_rd_q[0];
+        end
+      end else begin
+        axi_{{ arg.ident }}_rd_beat = axi_{{ arg.ident }}_rd_beat + 1'b1;
+      end
+    end
+    if (axi_{{ arg.ident }}_rd_active && !rd_done) begin
+      tapa_axi_read("{{ arg.name }}", req.addr + axi_{{ arg.ident }}_rd_beat * {{ arg.data_width_bytes }}, {{ arg.data_width_bytes }}, axi_{{ arg.ident }}_bytes);
+      for (i = 0; i < {{ arg.data_width_bytes }}; i = i + 1) begin
+        m_axi_{{ arg.ident }}_RDATA[i*8 +: 8] <= axi_{{ arg.ident }}_bytes[i];
+      end
+      m_axi_{{ arg.ident }}_RVALID <= 1'b1;
+      m_axi_{{ arg.ident }}_RLAST <= (axi_{{ arg.ident }}_rd_beat == req.len);
+      m_axi_{{ arg.ident }}_RID <= req.id;
+      m_axi_{{ arg.ident }}_RRESP <= 2'b00;
+    end else begin
+      m_axi_{{ arg.ident }}_RVALID <= 1'b0;
+    end
+  end else begin
+    m_axi_{{ arg.ident }}_RVALID <= 1'b0;
+  end
+
+  // ---- AW channel: accept into queue (up to 16 outstanding) ----
+  m_axi_{{ arg.ident }}_AWREADY <= (axi_{{ arg.ident }}_wr_q.size() < 16) && !(m_axi_{{ arg.ident }}_AWVALID && m_axi_{{ arg.ident }}_AWREADY);
+  if (m_axi_{{ arg.ident }}_AWVALID && m_axi_{{ arg.ident }}_AWREADY) begin
+    axi_{{ arg.ident }}_wr_q.push_back('{m_axi_{{ arg.ident }}_AWADDR, m_axi_{{ arg.ident }}_AWID});
+  end
+
+  // ---- W channel: match data with head AW entry ----
+  m_axi_{{ arg.ident }}_WREADY <= (axi_{{ arg.ident }}_wr_q.size() > 0) && !(m_axi_{{ arg.ident }}_WVALID && m_axi_{{ arg.ident }}_WREADY && m_axi_{{ arg.ident }}_WLAST);
+  if (m_axi_{{ arg.ident }}_WVALID && m_axi_{{ arg.ident }}_WREADY && axi_{{ arg.ident }}_wr_q.size() > 0) begin
+    for (i = 0; i < {{ arg.data_width_bytes }}; i = i + 1) begin
+      axi_{{ arg.ident }}_bytes[i] = m_axi_{{ arg.ident }}_WDATA[i*8 +: 8];
+    end
+    tapa_axi_write("{{ arg.name }}", axi_{{ arg.ident }}_wr_q[0].addr + axi_{{ arg.ident }}_wr_beat * {{ arg.data_width_bytes }}, {{ arg.data_width_bytes }}, axi_{{ arg.ident }}_bytes);
+    axi_{{ arg.ident }}_wr_beat <= axi_{{ arg.ident }}_wr_beat + 1'b1;
+    if (m_axi_{{ arg.ident }}_WLAST) begin
+      axi_{{ arg.ident }}_b_q.push_back(axi_{{ arg.ident }}_wr_q[0].id);
+      void'(axi_{{ arg.ident }}_wr_q.pop_front());
+      axi_{{ arg.ident }}_wr_beat <= 0;
+    end
+  end
+
+  // ---- B channel: respond from completed-write queue ----
+  if (axi_{{ arg.ident }}_b_q.size() > 0) begin
+    m_axi_{{ arg.ident }}_BVALID <= 1'b1;
+    m_axi_{{ arg.ident }}_BID <= axi_{{ arg.ident }}_b_q[0];
+    m_axi_{{ arg.ident }}_BRESP <= 2'b00;
+    if (m_axi_{{ arg.ident }}_BREADY) begin
+      void'(axi_{{ arg.ident }}_b_q.pop_front());
+    end
+  end else begin
+    m_axi_{{ arg.ident }}_BVALID <= 1'b0;
+  end
+{% endfor %}
+
+end
+
+{% if mode == "hls" %}
+always @(posedge ap_clk) begin
+{% for arg in stream_args %}
+  stream_in_have_next_{{ arg.ident }} = tapa_stream_istream_step(
+      "{{ arg.name }}",
+      stream_in_have_{{ arg.ident }} && stream_read_{{ arg.ident }},
+      stream_in_bytes_{{ arg.ident }});
+  stream_in_have_{{ arg.ident }} <= stream_in_have_next_{{ arg.ident }};
+  if (stream_in_have_next_{{ arg.ident }}) begin
+    for (i = 0; i < {{ arg.width_bytes }}; i = i + 1) begin
+      stream_in_data_{{ arg.ident }}[i*8 +: 8] <= stream_in_bytes_{{ arg.ident }}[i];
+    end
+{% if arg.axis %}
+    stream_in_tlast_{{ arg.ident }} <= stream_in_bytes_{{ arg.ident }}[{{ arg.width_bytes }}];
+{% endif %}
+    stream_in_eos_{{ arg.ident }} <= stream_in_bytes_{{ arg.ident }}[{{ arg.width_bytes }}][0];
+  end
+{% endfor %}
+
+{% for arg in stream_out_args %}
+  for (i = 0; i < {{ arg.width_bytes }}; i = i + 1) begin
+    stream_out_bytes_{{ arg.ident }}[i] = stream_out_data_{{ arg.ident }}[i*8 +: 8];
+  end
+  stream_out_bytes_{{ arg.ident }}[{{ arg.width_bytes }}] = stream_out_eos_{{ arg.ident }};
+  stream_out_full_n_{{ arg.ident }} <= tapa_hls_stream_ostream_step(
+      "{{ arg.name }}",
+      stream_out_write_{{ arg.ident }},
+      stream_out_bytes_{{ arg.ident }});
+{% endfor %}
+end
+{% else %}
+always @(posedge ap_clk) begin
+{% for arg in stream_args %}
+  if (ap_rst_n && !stream_in_have_{{ arg.ident }}) begin
+    bit got_stream_{{ arg.ident }};
+    got_stream_{{ arg.ident }} = tapa_stream_try_read("{{ arg.name }}", stream_in_bytes_{{ arg.ident }});
+    stream_in_have_{{ arg.ident }} <= got_stream_{{ arg.ident }};
+    if (got_stream_{{ arg.ident }}) begin
+      for (i = 0; i < {{ arg.width_bytes }}; i = i + 1) begin
+        stream_in_data_{{ arg.ident }}[i*8 +: 8] <= stream_in_bytes_{{ arg.ident }}[i];
+      end
+{% if arg.axis %}
+      stream_in_tlast_{{ arg.ident }} <= stream_in_bytes_{{ arg.ident }}[{{ arg.width_bytes }}];
+{% endif %}
+    end
+  end
+  if (stream_in_have_{{ arg.ident }} && stream_ready_{{ arg.ident }}) begin
+    stream_in_have_{{ arg.ident }} <= 1'b0;
+  end
+{% endfor %}
+
+{% for arg in stream_out_args %}
+  can_write_{{ arg.ident }} = tapa_stream_can_write("{{ arg.name }}");
+  stream_out_ready_{{ arg.ident }} <= can_write_{{ arg.ident }};
+  if (stream_out_valid_{{ arg.ident }} && can_write_{{ arg.ident }}) begin
+    for (i = 0; i < {{ arg.width_bytes }}; i = i + 1) begin
+      stream_out_bytes_{{ arg.ident }}[i] = stream_out_data_{{ arg.ident }}[i*8 +: 8];
+    end
+{% if arg.axis %}
+    stream_out_bytes_{{ arg.ident }}[{{ arg.width_bytes }}] = stream_out_tlast_{{ arg.ident }};
+{% endif %}
+    void'(tapa_stream_try_write("{{ arg.name }}", stream_out_bytes_{{ arg.ident }}));
+  end
+{% endfor %}
+end
+{% endif %}
+
+initial begin
+{% if mode == "hls" %}
+  wait (ap_done === 1'b1);
+  repeat (16) @(posedge ap_clk);
+{% else %}
+  wait (interrupt === 1'b1);
+  repeat (16) @(posedge ap_clk);
+{% endif %}
+  $finish;
+end
+
+endmodule

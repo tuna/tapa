@@ -1,0 +1,45 @@
+---
+source: frt-cosim/tests/tb_snapshot_test.rs
+assertion_line: 49
+expression: tb
+---
+#include "Vvadd.h"
+#include "verilated.h"
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+
+extern "C" {
+void tapa_axi_read(const char* port, uint64_t addr, uint32_t width, uint8_t* out);
+void tapa_axi_write(const char* port, uint64_t addr, uint32_t width, const uint8_t* data);
+bool tapa_stream_try_read(const char* port, uint8_t* out);
+bool tapa_stream_try_write(const char* port, const uint8_t* data);
+}
+
+static Vvadd* dut;
+static void tick() { dut->ap_clk = 1; dut->eval(); dut->ap_clk = 0; dut->eval(); }
+
+int main(int argc, char** argv) {
+  Verilated::commandArgs(argc, argv);
+  dut = new Vvadd;
+  dut->ap_rst_n = 0;
+  for (int i = 0; i < 10; ++i) tick();
+  dut->ap_rst_n = 1;
+
+
+  // scalar n
+  (void)0;
+
+
+  // mmap a base=0x0000000010000000 bytes=64
+
+
+  // stream-in s bytes=4
+
+
+
+  for (int i = 0; i < 1000; ++i) tick();
+  std::fprintf(stderr, "simulation complete (mode=hls)\n");
+  delete dut;
+  return 0;
+}

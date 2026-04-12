@@ -7,6 +7,7 @@ bazel_dep(name = "aspect_rules_webpack", version = "0.17.1", dev_dependency = Tr
 bazel_dep(name = "bazel_skylib", version = "1.8.2", dev_dependency = True)
 bazel_dep(name = "platforms", version = "1.0.0", dev_dependency = True)
 bazel_dep(name = "rules_cc", version = "0.1.4", dev_dependency = True)
+bazel_dep(name = "rules_rust", version = "0.61.0", dev_dependency = True)
 bazel_dep(name = "rules_nodejs", version = "6.4.0", dev_dependency = True)
 bazel_dep(name = "rules_pkg", version = "1.1.0", dev_dependency = True)
 bazel_dep(name = "rules_python", version = "1.9.0", dev_dependency = True)
@@ -64,6 +65,15 @@ http_archive(
 http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
 
 llvm = use_extension("@toolchains_llvm//toolchain/extensions:llvm.bzl", "llvm", dev_dependency = True)
+
+rust = use_extension("@rules_rust//rust:extensions.bzl", "rust", dev_dependency = True)
+rust.toolchain(
+    edition = "2021",
+    versions = ["1.88.0"],
+)
+use_repo(rust, "rust_toolchains")
+
+register_toolchains("@rust_toolchains//:all")
 
 pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
 

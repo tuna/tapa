@@ -35,6 +35,10 @@ void Instance::ReadFromDevice() { device_->ReadFromDevice(); }
 
 void Instance::Exec() { device_->Exec(); }
 
+void Instance::Pause() { device_->Pause(); }
+
+void Instance::Resume() { device_->Resume(); }
+
 void Instance::Finish() { device_->Finish(); }
 
 void Instance::Kill() { device_->Kill(); }
