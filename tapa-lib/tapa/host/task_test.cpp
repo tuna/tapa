@@ -4,6 +4,9 @@
 
 #include "tapa/host/task.h"
 
+#include <atomic>
+#include <condition_variable>
+#include <mutex>
 #include <thread>
 
 #include <gtest/gtest.h>
@@ -134,6 +137,307 @@ TEST(TaskTest, DetachedInvokeCompletesWithoutWaiting) {
   // even when detached tasks were scheduled.  No assertion on side effects —
   // the test passes if no deadlock or crash occurs.
   tapa::task().invoke<tapa::detach>(DetachedNoOp);
+}
+
+struct MockFrtInstance {
+  explicit MockFrtInstance(std::atomic<int>& running_count,
+                           std::atomic<int>& max_running_count,
+                           int slices_to_finish = 20)
+      : running_count(running_count),
+        max_running_count(max_running_count),
+        remaining_slices(slices_to_finish) {}
+
+  ~MockFrtInstance() { Kill(); }
+
+  void WriteToDevice() {}
+
+  void Exec() {
+    {
+      std::lock_guard<std::mutex> lock(mtx);
+      exec_started = true;
+      running = true;
+    }
+    TrackRunningProcess();
+    worker = std::thread([this] {
+      std::unique_lock<std::mutex> lock(mtx);
+      while (!killed && !finished) {
+        cv.wait(lock, [this] { return killed || running; });
+        if (killed || finished) break;
+
+        lock.unlock();
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        lock.lock();
+
+        if (!running || killed || finished) continue;
+        if (--remaining_slices == 0) {
+          finished = true;
+          running = false;
+          --running_count;
+          cv.notify_all();
+        }
+      }
+    });
+    cv.notify_all();
+  }
+
+  void ReadFromDevice() {}
+
+  void Pause() {
+    std::lock_guard<std::mutex> lock(mtx);
+    if (!running || finished) return;
+    running = false;
+    --running_count;
+    cv.notify_all();
+  }
+
+  void Resume() {
+    std::lock_guard<std::mutex> lock(mtx);
+    if (running || finished || killed) return;
+    running = true;
+    TrackRunningProcess();
+    cv.notify_all();
+  }
+
+  bool IsFinished() {
+    std::lock_guard<std::mutex> lock(mtx);
+    return finished;
+  }
+
+  void Finish() {
+    {
+      std::unique_lock<std::mutex> lock(mtx);
+      cv.wait(lock, [this] { return finished || killed; });
+    }
+    JoinWorker();
+  }
+
+  void Kill() {
+    {
+      std::lock_guard<std::mutex> lock(mtx);
+      killed = true;
+      if (running) {
+        running = false;
+        if (!finished) {
+          --running_count;
+        }
+      }
+      cv.notify_all();
+    }
+    JoinWorker();
+  }
+
+  void WaitUntilExecStarts() {
+    std::unique_lock<std::mutex> lock(mtx);
+    cv.wait(lock, [this] { return exec_started; });
+  }
+
+  bool HasStarted() const {
+    std::lock_guard<std::mutex> lock(mtx);
+    return exec_started;
+  }
+
+ private:
+  void TrackRunningProcess() {
+    const int running_now = ++running_count;
+    int prev = max_running_count.load();
+    while (running_now > prev &&
+           !max_running_count.compare_exchange_weak(prev, running_now)) {
+    }
+  }
+
+  void JoinWorker() {
+    if (worker.joinable()) {
+      worker.join();
+    }
+  }
+
+  std::atomic<int>& running_count;
+  std::atomic<int>& max_running_count;
+  std::thread worker;
+  mutable std::mutex mtx;
+  std::condition_variable cv;
+  bool exec_started = false;
+  bool running = false;
+  bool finished = false;
+  bool killed = false;
+  int remaining_slices;
+};
+
+TEST(TaskTest, TapaConcurrencyOneRunsBothConcurrently) {
+  tapa_testing::ScopedSetEnv env("TAPA_CONCURRENCY", "1");
+  std::atomic<int> running_count = 0;
+  std::atomic<int> max_running_count = 0;
+  auto first =
+      std::make_shared<MockFrtInstance>(running_count, max_running_count);
+  auto second =
+      std::make_shared<MockFrtInstance>(running_count, max_running_count);
+
+  {
+    tapa::task parent;
+    tapa::internal::schedule_frt_instance(first);
+    tapa::internal::schedule_frt_instance(second);
+
+    first->WaitUntilExecStarts();
+    std::this_thread::sleep_for(std::chrono::milliseconds(80));
+    EXPECT_TRUE(second->HasStarted());
+  }
+
+  EXPECT_EQ(running_count.load(), 0);
+}
+
+struct ContinuousRunMockFrtInstance {
+  ContinuousRunMockFrtInstance(std::atomic<int>& running_count,
+                               std::atomic<int>& max_running_count,
+                               std::chrono::milliseconds run_quantum,
+                               int quanta_to_finish = 1)
+      : running_count(running_count),
+        max_running_count(max_running_count),
+        run_quantum(run_quantum),
+        remaining_quanta(quanta_to_finish) {}
+
+  ~ContinuousRunMockFrtInstance() { Kill(); }
+
+  void WriteToDevice() {}
+
+  void Exec() {
+    {
+      std::lock_guard<std::mutex> lock(mtx);
+      exec_started = true;
+      running = true;
+    }
+    TrackRunningProcess();
+    worker = std::thread([this] {
+      std::unique_lock<std::mutex> lock(mtx);
+      while (!killed && !finished) {
+        cv.wait(lock, [this] { return killed || running; });
+        if (killed || finished) break;
+
+        const bool interrupted = cv.wait_for(lock, run_quantum, [this] {
+          return killed || finished || !running;
+        });
+        if (interrupted || killed || finished || !running) continue;
+
+        if (--remaining_quanta == 0) {
+          finished = true;
+          running = false;
+          --running_count;
+          cv.notify_all();
+        }
+      }
+    });
+    cv.notify_all();
+  }
+
+  void ReadFromDevice() {}
+
+  void Pause() {
+    std::lock_guard<std::mutex> lock(mtx);
+    if (!running || finished) return;
+    running = false;
+    ++pause_count;
+    --running_count;
+    cv.notify_all();
+  }
+
+  void Resume() {
+    std::lock_guard<std::mutex> lock(mtx);
+    if (running || finished || killed) return;
+    running = true;
+    ++resume_count;
+    TrackRunningProcess();
+    cv.notify_all();
+  }
+
+  bool IsFinished() {
+    std::lock_guard<std::mutex> lock(mtx);
+    return finished;
+  }
+
+  void Finish() {
+    {
+      std::unique_lock<std::mutex> lock(mtx);
+      cv.wait(lock, [this] { return finished || killed; });
+    }
+    JoinWorker();
+  }
+
+  void Kill() {
+    {
+      std::lock_guard<std::mutex> lock(mtx);
+      killed = true;
+      if (running) {
+        running = false;
+        if (!finished) {
+          --running_count;
+        }
+      }
+      cv.notify_all();
+    }
+    JoinWorker();
+  }
+
+  int PauseCount() const { return pause_count.load(); }
+
+  int ResumeCount() const { return resume_count.load(); }
+
+ private:
+  void TrackRunningProcess() {
+    const int running_now = ++running_count;
+    int prev = max_running_count.load();
+    while (running_now > prev &&
+           !max_running_count.compare_exchange_weak(prev, running_now)) {
+    }
+  }
+
+  void JoinWorker() {
+    if (worker.joinable()) {
+      worker.join();
+    }
+  }
+
+  std::atomic<int>& running_count;
+  std::atomic<int>& max_running_count;
+  const std::chrono::milliseconds run_quantum;
+  std::thread worker;
+  mutable std::mutex mtx;
+  std::condition_variable cv;
+  std::atomic<int> pause_count = 0;
+  std::atomic<int> resume_count = 0;
+  bool exec_started = false;
+  bool running = false;
+  bool finished = false;
+  bool killed = false;
+  int remaining_quanta;
+};
+
+TEST(TaskTest, FrtYieldOnlyAllowsConcurrentProgress) {
+  tapa_testing::ScopedSetEnv concurrency_env("TAPA_CONCURRENCY", "1");
+  std::atomic<int> running_count = 0;
+  std::atomic<int> max_running_count = 0;
+  auto first = std::make_shared<ContinuousRunMockFrtInstance>(
+      running_count, max_running_count, std::chrono::milliseconds(10));
+  auto second = std::make_shared<ContinuousRunMockFrtInstance>(
+      running_count, max_running_count, std::chrono::milliseconds(10));
+
+  std::thread watchdog([first, second] {
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    first->Kill();
+    second->Kill();
+  });
+
+  const auto started = std::chrono::steady_clock::now();
+  {
+    tapa::task parent;
+    tapa::internal::schedule_frt_instance(first);
+    tapa::internal::schedule_frt_instance(second);
+  }
+  const auto elapsed = std::chrono::steady_clock::now() - started;
+  watchdog.join();
+
+  EXPECT_LT(elapsed, std::chrono::milliseconds(120));
+  // Both instances run concurrently; no Pause/Resume calls.
+  EXPECT_EQ(first->PauseCount() + second->PauseCount(), 0);
+  EXPECT_EQ(first->ResumeCount() + second->ResumeCount(), 0);
 }
 
 }  // namespace

@@ -321,18 +321,7 @@ void deallocate(void* addr, size_t length) {
 }  // namespace internal
 
 task& task::invoke_frt(std::shared_ptr<fpga::Instance> instance) {
-  instance->WriteToDevice();
-  instance->Exec();
-  instance->ReadFromDevice();
-  internal::schedule_cleanup([instance]() { instance->Kill(); });
-  internal::schedule(
-      /*detach=*/false, [instance]() {
-        while (!instance->IsFinished()) {
-          reschedule_this_thread();
-          internal::yield("fpga::Instance() is not finished");
-        }
-        instance->Finish();
-      });
+  internal::schedule_frt_instance(std::move(instance));
   return *this;
 }
 

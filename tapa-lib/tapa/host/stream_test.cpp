@@ -16,7 +16,7 @@
 #include <tapa/scoped_log_sink_mock.h>
 #include <tapa/scoped_set_env.h>
 
-#ifdef __cpp_lib_filesystem
+#if __has_include(<filesystem>)
 #include <filesystem>
 namespace fs = std::filesystem;
 #else

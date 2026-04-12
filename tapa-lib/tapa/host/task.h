@@ -48,6 +48,20 @@ struct accessor<T, seq> {
 void* allocate(size_t length);
 void deallocate(void* addr, size_t length);
 
+template <typename InstancePtr>
+void schedule_frt_instance(InstancePtr instance) {
+  schedule_cleanup([instance]() { instance->Kill(); });
+  schedule(/*detach=*/false, [instance]() {
+    instance->WriteToDevice();
+    instance->Exec();
+    instance->ReadFromDevice();
+    while (!instance->IsFinished()) {
+      yield("fpga::Instance() is not finished");
+    }
+    instance->Finish();
+  });
+}
+
 // std::bind wrapper ensuring left-to-right argument evaluation.
 struct binder {
   template <typename F, typename... Args>
