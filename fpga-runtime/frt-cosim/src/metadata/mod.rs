@@ -62,9 +62,9 @@ pub struct KernelSpec {
 }
 
 pub fn load_spec(path: &Path) -> Result<KernelSpec> {
-    let bytes = std::fs::read(path)?;
-    let cursor = std::io::Cursor::new(bytes);
-    let mut zip = zip::ZipArchive::new(cursor).map_err(|e| CosimError::Metadata(e.to_string()))?;
+    let file = std::fs::File::open(path)?;
+    let reader = std::io::BufReader::new(file);
+    let mut zip = zip::ZipArchive::new(reader).map_err(|e| CosimError::Metadata(e.to_string()))?;
 
     match path.extension().and_then(|e| e.to_str()) {
         Some("xo") => load_xo_spec(&mut zip, path),

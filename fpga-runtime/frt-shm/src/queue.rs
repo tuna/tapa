@@ -107,10 +107,6 @@ impl SharedMemoryQueue {
         Ok(())
     }
 
-    pub fn push(&mut self, data: &[u8]) -> Result<(), &'static str> {
-        self.try_push(data)
-    }
-
     pub fn pop(&mut self) -> Option<Vec<u8>> {
         let mut out = vec![0u8; self.width()];
         self.pop_into(&mut out).then_some(out)
@@ -214,7 +210,7 @@ mod tests {
     fn push_pop_roundtrip() {
         let mut q = SharedMemoryQueue::create("test_q_pp", 8, 4).expect("create");
         assert!(q.is_empty());
-        q.push(b"abcd").expect("push");
+        q.try_push(b"abcd").expect("push");
         assert!(!q.is_empty());
         let got = q.pop().expect("pop");
         assert_eq!(got, b"abcd");
@@ -224,8 +220,8 @@ mod tests {
     #[test]
     fn full_blocks_push() {
         let mut q = SharedMemoryQueue::create("test_q_full", 2, 4).expect("create");
-        q.push(b"aaaa").expect("push");
-        q.push(b"bbbb").expect("push");
+        q.try_push(b"aaaa").expect("push");
+        q.try_push(b"bbbb").expect("push");
         assert!(q.is_full());
         assert!(q.try_push(b"cccc").is_err());
     }
@@ -234,19 +230,19 @@ mod tests {
     fn wraparound() {
         let mut q = SharedMemoryQueue::create("test_q_wrap", 4, 2).expect("create");
         for i in 0u8..4 {
-            q.push(&[i, i]).expect("push");
+            q.try_push(&[i, i]).expect("push");
         }
         for i in 0u8..4 {
             assert_eq!(q.pop().expect("pop"), vec![i, i]);
         }
-        q.push(b"xy").expect("push");
+        q.try_push(b"xy").expect("push");
         assert_eq!(q.pop().expect("pop"), b"xy");
     }
 
     #[test]
     fn peek_does_not_consume() {
         let mut q = SharedMemoryQueue::create("test_q_peek", 4, 2).expect("create");
-        q.push(b"ab").expect("push");
+        q.try_push(b"ab").expect("push");
         assert_eq!(q.peek().expect("peek"), b"ab");
         assert_eq!(q.pop().expect("pop"), b"ab");
     }

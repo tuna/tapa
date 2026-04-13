@@ -169,7 +169,7 @@ fn open_cosim_verilator_zip_mmap_stream_roundtrip() {
     let mut stream_q =
         SharedMemoryQueue::create(&stream_name, 16, 5).expect("create stream shm queue");
     stream_q
-        .push(&pack_stream_elem_u32(7, false))
+        .try_push(&pack_stream_elem_u32(7, false))
         .expect("push stream word");
     let stream_path = stream_q.path().to_string_lossy().to_string();
     instance
@@ -210,7 +210,7 @@ fn open_cosim_verilator_xo_mmap_axis_roundtrip() {
     let mut stream_q =
         SharedMemoryQueue::create(&stream_name, 16, 5).expect("create stream shm queue");
     stream_q
-        .push(&pack_stream_elem_u32(7, false))
+        .try_push(&pack_stream_elem_u32(7, false))
         .expect("push stream word");
     let stream_path = stream_q.path().to_string_lossy().to_string();
     instance

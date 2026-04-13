@@ -1,7 +1,13 @@
 use std::collections::HashMap;
 use std::process::Command;
+use std::sync::OnceLock;
 
-pub fn xilinx_environ() -> HashMap<String, String> {
+pub fn xilinx_environ() -> &'static HashMap<String, String> {
+    static CACHE: OnceLock<HashMap<String, String>> = OnceLock::new();
+    CACHE.get_or_init(compute_xilinx_environ)
+}
+
+fn compute_xilinx_environ() -> HashMap<String, String> {
     let tool = which::which("vitis_hls")
         .or_else(|_| which::which("vivado"))
         .ok();

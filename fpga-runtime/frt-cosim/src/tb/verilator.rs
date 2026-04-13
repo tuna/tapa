@@ -125,6 +125,13 @@ impl<'a> VerilatorTbGenerator<'a> {
         let mut stream_args = vec![];
         let mut stream_out_args = vec![];
 
+        let verilog_contents: Vec<String> = self
+            .spec
+            .verilog_files
+            .iter()
+            .filter_map(|f| std::fs::read_to_string(f).ok())
+            .collect();
+
         for arg in &self.spec.args {
             match &arg.kind {
                 ArgKind::Mmap { data_width, .. } => {
@@ -173,11 +180,7 @@ impl<'a> VerilatorTbGenerator<'a> {
                     let axis = *protocol == StreamProtocol::Axis;
                     let peek = if self.spec.mode == Mode::Hls && *dir == StreamDir::In {
                         infer_peek_name(&arg.name).filter(|cand| {
-                            stream_peek_ports_exist(
-                                &self.spec.verilog_files,
-                                &self.spec.top_name,
-                                cand,
-                            )
+                            stream_peek_ports_exist(&verilog_contents, &self.spec.top_name, cand)
                         })
                     } else {
                         None

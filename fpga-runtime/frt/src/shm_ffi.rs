@@ -1,6 +1,5 @@
 use frt_shm::SharedMemoryQueue;
 use std::ffi::{c_char, c_int, c_void};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
 struct QueueHandle {
@@ -42,7 +41,6 @@ pub extern "C" fn frt_shmq_create(
     out_path: *mut c_char,
     out_path_len: usize,
 ) -> *mut c_void {
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
     static MIN_DEPTH: std::sync::OnceLock<u32> = std::sync::OnceLock::new();
     let min = *MIN_DEPTH.get_or_init(|| {
         std::env::var("FRT_SHM_MIN_DEPTH")
@@ -52,12 +50,7 @@ pub extern "C" fn frt_shmq_create(
     });
     let depth = depth.max(min);
     let width = width.max(1);
-    let name = format!(
-        "frt_stream_{}_{}",
-        std::process::id(),
-        COUNTER.fetch_add(1, Ordering::Relaxed)
-    );
-    let Ok(queue) = SharedMemoryQueue::create(&name, depth, width) else {
+    let Ok(queue) = SharedMemoryQueue::create("stream", depth, width) else {
         return std::ptr::null_mut();
     };
     let path = queue.path().to_string_lossy().to_string();

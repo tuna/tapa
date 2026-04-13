@@ -1,6 +1,6 @@
 use askama::Template;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::error::{CosimError, Result};
 use crate::metadata::{ArgKind, KernelSpec, Mode, StreamDir, StreamProtocol};
@@ -159,6 +159,13 @@ impl<'a> XsimTbGenerator<'a> {
         let mut stream_args = vec![];
         let mut stream_out_args = vec![];
 
+        let verilog_contents: Vec<String> = self
+            .spec
+            .verilog_files
+            .iter()
+            .filter_map(|f| std::fs::read_to_string(f).ok())
+            .collect();
+
         for arg in &self.spec.args {
             match &arg.kind {
                 ArgKind::Mmap { data_width, .. } => {
@@ -170,7 +177,7 @@ impl<'a> XsimTbGenerator<'a> {
                         .or_else(|| self.spec.scalar_register_map.get(&offset_key))
                         .copied()
                         .unwrap_or(0);
-                    let id_width = detect_axi_id_width(&self.spec.verilog_files, &arg.name);
+                    let id_width = detect_axi_id_width(&verilog_contents, &arg.name);
                     mmap_args.push(MmapArg::new(
                         &arg.name,
                         (*data_width as usize).div_ceil(8),
@@ -201,11 +208,7 @@ impl<'a> XsimTbGenerator<'a> {
                     let axis = *protocol == StreamProtocol::Axis;
                     let peek = if self.spec.mode == Mode::Hls && *dir == StreamDir::In {
                         infer_peek_name(&arg.name).filter(|cand| {
-                            stream_peek_ports_exist(
-                                &self.spec.verilog_files,
-                                &self.spec.top_name,
-                                cand,
-                            )
+                            stream_peek_ports_exist(&verilog_contents, &self.spec.top_name, cand)
                         })
                     } else {
                         None
@@ -310,7 +313,7 @@ fn sv_literal(width_bits: u32, bytes_le: &[u8]) -> String {
 /// Detect the AXI ID width for a given mmap port by scanning the Verilog
 /// source files for the ARID port declaration.  Returns the bit-width
 /// (e.g. 3 for `[2:0]`).  Defaults to 1 if the port is not found.
-fn detect_axi_id_width(verilog_files: &[PathBuf], mmap_name: &str) -> usize {
+fn detect_axi_id_width(verilog_contents: &[String], mmap_name: &str) -> usize {
     let escaped = escape_verilog_identifier(&format!("m_axi_{mmap_name}_ARID"));
     // Match patterns like:  output [2:0] m_axi_foo_ARID  or  wire [2:0] ...
     // The left bound N in [N:0] gives width = N+1.
@@ -319,12 +322,10 @@ fn detect_axi_id_width(verilog_files: &[PathBuf], mmap_name: &str) -> usize {
         regex_lite::escape(&escaped)
     );
     let re = regex_lite::Regex::new(&pattern).unwrap();
-    for file in verilog_files {
-        if let Ok(text) = std::fs::read_to_string(file) {
-            if let Some(caps) = re.captures(&text) {
-                if let Ok(n) = caps[1].parse::<usize>() {
-                    return n + 1;
-                }
+    for text in verilog_contents {
+        if let Some(caps) = re.captures(text) {
+            if let Ok(n) = caps[1].parse::<usize>() {
+                return n + 1;
             }
         }
     }
