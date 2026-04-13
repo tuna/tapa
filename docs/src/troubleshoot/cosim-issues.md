@@ -95,6 +95,39 @@ In the waveform viewer, add the AXI memory interface signals and compare the exp
 
 ---
 
+## Stream diagnostics
+
+The DPI runtime reports stream progress periodically when a stream stalls (empty on read or full on write). These messages appear on stderr and include the port name and queue state:
+
+```
+frt-dpi: progress[a_fifo_s]: read_ok=16 read_empty=40M write_ok=0 write_full=0 q_head=8 q_tail=8
+```
+
+| Field | Meaning |
+|-------|---------|
+| `progress[port]` | The port that triggered the report (the one currently stalling). |
+| `read_ok` | Total successful reads across all ports in this process. |
+| `read_empty` | Total empty-read attempts (queue had no data). |
+| `write_ok` | Total successful writes across all ports. |
+| `write_full` | Total full-write attempts (queue had no space). |
+| `q_head` / `q_tail` | Shared-memory queue counters for the stalling port. `q_tail` = elements pushed by the producer; `q_head` = elements popped by the consumer. `q_head == q_tail` means the queue is empty. |
+
+### Enabling verbose per-element logging
+
+Set the `FRT_STREAM_DEBUG` environment variable to log every successful stream read and write:
+
+```bash
+FRT_STREAM_DEBUG=1 ./vadd --bitstream=vadd.xo 1000
+```
+
+### Interpreting stall patterns
+
+- **`q_tail=0`** on a consumer port: the producer never wrote to this stream. Check that the producer's xsim started and that stream arguments are bound correctly.
+- **`q_head == q_tail` but `read_ok < expected`**: all produced elements were consumed but not enough were produced. The producer may have exited before flushing all writes.
+- **`write_full` growing**: the consumer is not draining fast enough. Check for deadlocks or increase `TAPA_CONCURRENCY`.
+
+---
+
 ```admonish tip
 Always pass software simulation before running fast cosim. Software simulation runs faster and catches logic bugs in C++. Fast cosim catches RTL bugs introduced by synthesis and scheduling. Skipping software simulation wastes cosim time on bugs that are much faster to fix at the C++ level.
 ```
