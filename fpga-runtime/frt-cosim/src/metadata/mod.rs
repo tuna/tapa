@@ -80,10 +80,8 @@ fn load_xo_spec<R: Read + std::io::Seek>(
     src: &Path,
 ) -> Result<KernelSpec> {
     let mut kernel_xml = None;
-    let mut verilog_files = Vec::new();
-    let mut tcl_files = Vec::new();
-    let mut xci_files = Vec::new();
     let mut scalar_register_map = HashMap::new();
+    let mut files = ExtractedFiles::default();
 
     let out_dir = make_extract_dir("xo")?;
     for i in 0..zip.len() {
@@ -104,27 +102,15 @@ fn load_xo_spec<R: Read + std::io::Seek>(
         if name.ends_with("_control_s_axi.v") || name.ends_with("s_axi_control.v") {
             scalar_register_map = sax_control::parse_register_map(&std::fs::read_to_string(&path)?);
         }
-        if has_ext(&name, &["v", "sv", "vh", "dat"]) {
-            verilog_files.push(path.clone());
-        }
-        if has_ext(&name, &["tcl"]) {
-            tcl_files.push(path.clone());
-        }
-        // Only collect shallow XCI files (depth <= 2 components), matching
-        // the old Python glob patterns `*.xci` and `*/*.xci`. Deeply nested
-        // XCI files inside ip_repo/ are managed by the TCL create_ip scripts
-        // and must not be added separately to avoid "IP name already in use".
-        if has_ext(&name, &["xci"]) && !is_deeply_nested(&name) {
-            xci_files.push(path);
-        }
+        files.classify(&name, path);
     }
 
     let xml = kernel_xml
         .ok_or_else(|| CosimError::Metadata(format!("no kernel.xml in {}", src.display())))?;
     let mut spec = xo::parse_kernel_xml(&xml, &out_dir)?;
-    spec.verilog_files = verilog_files;
-    spec.tcl_files = tcl_files;
-    spec.xci_files = xci_files;
+    spec.verilog_files = files.verilog;
+    spec.tcl_files = files.tcl;
+    spec.xci_files = files.xci;
     spec.scalar_register_map = scalar_register_map;
     Ok(spec)
 }
@@ -136,9 +122,7 @@ fn load_zip_spec<R: Read + std::io::Seek>(
     let mut graph_yaml = None;
     let mut settings_yaml = None;
     let out_dir = make_extract_dir("zip")?;
-    let mut verilog_files = Vec::new();
-    let mut tcl_files = Vec::new();
-    let mut xci_files = Vec::new();
+    let mut files = ExtractedFiles::default();
 
     for i in 0..zip.len() {
         let mut file = zip
@@ -157,15 +141,7 @@ fn load_zip_spec<R: Read + std::io::Seek>(
             settings_yaml = Some(std::fs::read_to_string(&path)?);
             continue;
         }
-        if has_ext(&name, &["v", "sv", "vh", "dat"]) {
-            verilog_files.push(path.clone());
-        }
-        if has_ext(&name, &["tcl"]) {
-            tcl_files.push(path.clone());
-        }
-        if has_ext(&name, &["xci"]) && !is_deeply_nested(&name) {
-            xci_files.push(path);
-        }
+        files.classify(&name, path);
     }
 
     let yaml = graph_yaml
@@ -176,9 +152,9 @@ fn load_zip_spec<R: Read + std::io::Seek>(
             .as_deref()
             .and_then(parse_part_from_settings_yaml);
     }
-    spec.verilog_files = verilog_files;
-    spec.tcl_files = tcl_files;
-    spec.xci_files = xci_files;
+    spec.verilog_files = files.verilog;
+    spec.tcl_files = files.tcl;
+    spec.xci_files = files.xci;
     Ok(spec)
 }
 
@@ -211,6 +187,27 @@ fn parse_part_from_settings_yaml(settings_yaml: &str) -> Option<String> {
 /// subdirectories) were not included.
 fn is_deeply_nested(zip_name: &str) -> bool {
     zip_name.matches('/').count() > 2
+}
+
+#[derive(Default)]
+struct ExtractedFiles {
+    verilog: Vec<PathBuf>,
+    tcl: Vec<PathBuf>,
+    xci: Vec<PathBuf>,
+}
+
+impl ExtractedFiles {
+    fn classify(&mut self, name: &str, path: PathBuf) {
+        if has_ext(name, &["v", "sv", "vh", "dat"]) {
+            self.verilog.push(path.clone());
+        }
+        if has_ext(name, &["tcl"]) {
+            self.tcl.push(path.clone());
+        }
+        if has_ext(name, &["xci"]) && !is_deeply_nested(name) {
+            self.xci.push(path);
+        }
+    }
 }
 
 fn has_ext(name: &str, exts: &[&str]) -> bool {

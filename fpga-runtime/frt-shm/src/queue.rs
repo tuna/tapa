@@ -88,10 +88,11 @@ impl SharedMemoryQueue {
     }
 
     pub fn try_push(&mut self, data: &[u8]) -> Result<(), &'static str> {
-        if self.is_full() {
+        let h = self.hdr();
+        let tail = h.tail.load(Ordering::Acquire);
+        if tail - h.head.load(Ordering::Acquire) >= self.depth() {
             return Err("queue full");
         }
-        let tail = self.hdr().tail.load(Ordering::Relaxed);
         let slot = (tail % self.depth()) as usize * self.width();
         let w = self.width();
         if data.len() != w {
@@ -115,10 +116,11 @@ impl SharedMemoryQueue {
     /// Pop the front element directly into `buf`, returning `true` on success.
     /// `buf` must be at least `self.width()` bytes; only `width` bytes are written.
     pub fn pop_into(&mut self, buf: &mut [u8]) -> bool {
-        if self.is_empty() {
+        let h = self.hdr();
+        let head = h.head.load(Ordering::Acquire);
+        if h.tail.load(Ordering::Acquire) == head {
             return false;
         }
-        let head = self.hdr().head.load(Ordering::Relaxed);
         let slot = (head % self.depth()) as usize * self.width();
         let w = self.width();
         // SAFETY: `slot` is derived from `head % depth * width`, which is always
@@ -139,10 +141,11 @@ impl SharedMemoryQueue {
     /// Peek the front element directly into `buf`, returning `true` on success.
     /// `buf` must be at least `self.width()` bytes; only `width` bytes are written.
     pub fn peek_into(&self, buf: &mut [u8]) -> bool {
-        if self.is_empty() {
+        let h = self.hdr();
+        let head = h.head.load(Ordering::Acquire);
+        if h.tail.load(Ordering::Acquire) == head {
             return false;
         }
-        let head = self.hdr().head.load(Ordering::Acquire);
         let slot = (head % self.depth()) as usize * self.width();
         let w = self.width();
         // SAFETY: `slot` is derived from `head % depth * width`, which is always

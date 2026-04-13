@@ -150,23 +150,7 @@ impl CosimDevice {
     fn spawn_noop_process() -> Result<Child> {
         let mut cmd = Command::new("/bin/sh");
         cmd.args(["-c", ":"]);
-        #[cfg(unix)]
-        {
-            use std::os::unix::process::CommandExt;
-            let hook = || {
-                // SAFETY: setpgid is async-signal-safe and called in
-                // the child process before exec to create a new process
-                // group.
-                if unsafe { libc::setpgid(0, 0) } != 0 {
-                    return Err(std::io::Error::last_os_error());
-                }
-                Ok(())
-            };
-            // SAFETY: pre_exec registers a closure to run in the child
-            // process after fork but before exec.  The closure only
-            // calls the async-signal-safe setpgid.
-            unsafe { cmd.pre_exec(hook) };
-        };
+        frt_cosim::runner::configure_sim_command(&mut cmd);
         Ok(cmd.spawn()?)
     }
 
