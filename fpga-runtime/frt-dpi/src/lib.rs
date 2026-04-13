@@ -14,7 +14,7 @@ pub fn get_or_init() -> &'static DpiContext {
             #[allow(clippy::exit, reason = "fatal: no recovery path inside a DPI callback")]
             std::process::exit(1);
         });
-        if frt_shm::env_bool("FRT_STREAM_DEBUG") {
+        if frt_shm::env_bool(frt_shm::env::FRT_STREAM_DEBUG) {
             eprintln!(
                 "frt-dpi: init with {} buffers, {} streams",
                 ctx.buffers.len(),

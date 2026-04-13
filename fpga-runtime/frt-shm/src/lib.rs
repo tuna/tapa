@@ -1,3 +1,4 @@
+pub mod env;
 pub mod mmap_segment;
 pub mod queue;
 

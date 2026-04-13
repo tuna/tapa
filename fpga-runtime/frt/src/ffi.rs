@@ -75,7 +75,7 @@ fn parse_simulator(sim: Option<&str>) -> Simulator {
         "verilator" => Simulator::Verilator,
         "xsim-legacy" | "xsim_legacy" | "legacy-xsim" => Simulator::Xsim { legacy: true },
         _ => Simulator::Xsim {
-            legacy: env_bool("FRT_XSIM_LEGACY"),
+            legacy: env_bool(frt_shm::env::FRT_XSIM_LEGACY),
         },
     }
 }

@@ -120,7 +120,7 @@ impl CosimDevice {
                 let dpi = dpi_lib_path("xsim")?;
                 Box::new(XsimRunner::find(
                     dpi,
-                    *legacy || env_bool("FRT_XSIM_LEGACY"),
+                    *legacy || env_bool(frt_shm::env::FRT_XSIM_LEGACY),
                     opts.save_waveform,
                     opts.start_gui,
                     opts.part_num_override.clone(),
@@ -286,14 +286,15 @@ use crate::env_bool;
 use frt_shm::env_non_empty;
 
 fn runtime_options() -> RuntimeOptions {
+    use frt_shm::env;
     RuntimeOptions {
-        start_gui: env_bool("FRT_XSIM_START_GUI"),
-        save_waveform: env_bool("FRT_XSIM_SAVE_WAVEFORM"),
-        setup_only: env_bool("FRT_COSIM_SETUP_ONLY"),
-        resume_from_post_sim: env_bool("FRT_COSIM_RESUME_FROM_POST_SIM"),
-        work_dir: env_non_empty("FRT_COSIM_WORK_DIR").map(PathBuf::from),
-        work_dir_parallel: env_bool("FRT_COSIM_WORK_DIR_PARALLEL"),
-        part_num_override: env_non_empty("FRT_XSIM_PART_NUM"),
+        start_gui: env_bool(env::FRT_XSIM_START_GUI),
+        save_waveform: env_bool(env::FRT_XSIM_SAVE_WAVEFORM),
+        setup_only: env_bool(env::FRT_COSIM_SETUP_ONLY),
+        resume_from_post_sim: env_bool(env::FRT_COSIM_RESUME_FROM_POST_SIM),
+        work_dir: env_non_empty(env::FRT_COSIM_WORK_DIR).map(PathBuf::from),
+        work_dir_parallel: env_bool(env::FRT_COSIM_WORK_DIR_PARALLEL),
+        part_num_override: env_non_empty(env::FRT_XSIM_PART_NUM),
     }
 }
 

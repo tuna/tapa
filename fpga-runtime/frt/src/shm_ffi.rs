@@ -43,7 +43,7 @@ pub extern "C" fn frt_shmq_create(
 ) -> *mut c_void {
     static MIN_DEPTH: std::sync::OnceLock<u32> = std::sync::OnceLock::new();
     let min = *MIN_DEPTH.get_or_init(|| {
-        std::env::var("FRT_SHM_MIN_DEPTH")
+        std::env::var(frt_shm::env::FRT_SHM_MIN_DEPTH)
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(1)

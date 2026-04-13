@@ -73,7 +73,8 @@ pub enum DpiError {
 
 impl DpiContext {
     pub fn from_env() -> Result<Self, DpiError> {
-        let raw = std::env::var("TAPA_DPI_CONFIG").map_err(|_e| DpiError::EnvMissing)?;
+        let raw =
+            std::env::var(frt_shm::env::TAPA_DPI_CONFIG).map_err(|_e| DpiError::EnvMissing)?;
         let cfg: DpiConfig = serde_json::from_str(&raw)?;
 
         let mut buffers = HashMap::new();
@@ -86,7 +87,7 @@ impl DpiContext {
         for (name, entry) in cfg.streams {
             let q = SharedMemoryQueue::open(entry.path())?;
             let dpi_width_bytes = entry.dpi_width_bytes().unwrap_or_else(|| q.width());
-            if frt_shm::env_bool("FRT_STREAM_DEBUG") {
+            if frt_shm::env_bool(frt_shm::env::FRT_STREAM_DEBUG) {
                 eprintln!(
                     "frt-dpi: stream '{name}' path={} depth={} width={} dpi_width={}",
                     entry.path(),
@@ -154,14 +155,14 @@ mod tests {
 
     #[test]
     fn from_env_missing_var() {
-        std::env::remove_var("TAPA_DPI_CONFIG");
+        std::env::remove_var(frt_shm::env::TAPA_DPI_CONFIG);
         assert!(DpiContext::from_env().is_err());
     }
 
     #[test]
     fn from_env_malformed_json() {
-        std::env::set_var("TAPA_DPI_CONFIG", "not-json");
+        std::env::set_var(frt_shm::env::TAPA_DPI_CONFIG, "not-json");
         assert!(DpiContext::from_env().is_err());
-        std::env::remove_var("TAPA_DPI_CONFIG");
+        std::env::remove_var(frt_shm::env::TAPA_DPI_CONFIG);
     }
 }

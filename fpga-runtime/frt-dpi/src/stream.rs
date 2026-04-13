@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 fn stream_debug_enabled() -> bool {
     static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *ENABLED.get_or_init(|| frt_shm::env_bool("FRT_STREAM_DEBUG"))
+    *ENABLED.get_or_init(|| frt_shm::env_bool(frt_shm::env::FRT_STREAM_DEBUG))
 }
 
 /// Returns `false` only for explicit falsy values; `true` otherwise (opt-out).
@@ -16,7 +16,8 @@ fn env_opt_out(value: Option<&str>) -> bool {
 
 fn cosim_yield_enabled() -> bool {
     static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *ENABLED.get_or_init(|| env_opt_out(std::env::var("FRT_COSIM_YIELD").ok().as_deref()))
+    *ENABLED
+        .get_or_init(|| env_opt_out(std::env::var(frt_shm::env::FRT_COSIM_YIELD).ok().as_deref()))
 }
 
 fn maybe_yield() {

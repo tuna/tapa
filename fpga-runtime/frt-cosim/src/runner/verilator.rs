@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use which::which;
 
-const VERILATOR_BUILD_LOCK_ENV: &str = "FRT_VERILATOR_BUILD_LOCK";
+const VERILATOR_BUILD_LOCK_ENV: &str = frt_shm::env::FRT_VERILATOR_BUILD_LOCK;
 
 pub struct VerilatorRunner {
     pub dpi_lib: PathBuf,
@@ -214,7 +214,7 @@ impl SimRunner for VerilatorRunner {
         let top =
             found.ok_or_else(|| CosimError::ToolNotFound("Verilator binary in obj_dir".into()))?;
         let mut cmd = Command::new(top);
-        cmd.env("TAPA_DPI_CONFIG", ctx.dpi_config_json())
+        cmd.env(frt_shm::env::TAPA_DPI_CONFIG, ctx.dpi_config_json())
             .envs(xilinx_environ());
         configure_sim_command(&mut cmd);
         let child = cmd.spawn()?;

@@ -510,7 +510,8 @@ impl Device for XrtDevice {
 }
 
 fn select_device(meta: &XrtMetadata) -> Result<cl_device_id> {
-    let requested_bdf = env_non_empty("FRT_XOCL_BDF").or_else(|| env_non_empty("XOCL_BDF"));
+    let requested_bdf =
+        env_non_empty(frt_shm::env::FRT_XOCL_BDF).or_else(|| env_non_empty(frt_shm::env::XOCL_BDF));
     let platforms = ocl_result(get_platforms(), "enumerate OpenCL platforms")?;
     for p in &platforms {
         let vendor = ocl_result(p.vendor(), "query OpenCL platform vendor")?;
