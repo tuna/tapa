@@ -78,7 +78,8 @@ impl SimRunner for XsimRunner {
     ) -> Result<std::process::Child> {
         let ready_file = tb_dir.join(XSIM_READY_FILE);
         let _ = std::fs::remove_file(&ready_file);
-        let (start_go_file, start_stamp_file) = xsim_start_barrier_paths();
+        let start_go_file = tb_dir.join(".xsim-start-go");
+        let start_stamp_file = tb_dir.join(".xsim-start-stamp");
         let start_token = format!(
             "{}",
             SystemTime::now()
@@ -178,15 +179,6 @@ fn xsim_startup_lock_path() -> PathBuf {
             || std::env::temp_dir().join("frt-xsim-startup.lock"),
             PathBuf::from,
         )
-}
-
-fn xsim_start_barrier_paths() -> (PathBuf, PathBuf) {
-    let pid = std::process::id();
-    let tmp = std::env::temp_dir();
-    (
-        tmp.join(format!("frt-xsim-start-go-{pid}")),
-        tmp.join(format!("frt-xsim-start-stamp-{pid}")),
-    )
 }
 
 #[cfg(unix)]

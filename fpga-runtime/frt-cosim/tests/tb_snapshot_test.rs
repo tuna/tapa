@@ -235,7 +235,7 @@ fn xsim_hls_tb_snapshot() {
     assert!(tcl.contains(ready_marker), "{tcl}");
     assert!(tcl.contains(start_gate), "{tcl}");
     assert!(tcl.contains(start_barrier), "{tcl}");
-    assert!(tcl.contains("frt-xsim-start-go-"), "{tcl}");
+    assert!(tcl.contains(".xsim-start-go"), "{tcl}");
     let launch_idx = tcl.find("launch_simulation").expect("launch");
     let ready_idx = tcl.find(ready_marker).expect("ready marker");
     let gate_idx = tcl.find(start_gate).expect("start gate");

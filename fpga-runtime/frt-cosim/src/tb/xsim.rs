@@ -239,10 +239,7 @@ impl<'a> XsimTbGenerator<'a> {
                 .join(crate::runner::xsim::XSIM_READY_FILE)
                 .to_string_lossy()
                 .to_string(),
-            start_go_file: std::env::temp_dir()
-                .join(format!("frt-xsim-start-go-{}", std::process::id()))
-                .to_string_lossy()
-                .to_string(),
+            start_go_file: tb_dir.join(".xsim-start-go").to_string_lossy().to_string(),
             save_waveform: self.save_waveform,
             legacy: self.legacy,
         };
