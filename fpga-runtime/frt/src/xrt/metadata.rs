@@ -173,7 +173,7 @@ pub fn extract_embedded_xml(xclbin: &[u8]) -> Result<String> {
     for start in xclbin
         .windows(xml_header.len())
         .enumerate()
-        .filter_map(|(i, w)| if w == xml_header { Some(i) } else { None })
+        .filter_map(|(i, w)| (w == xml_header).then_some(i))
     {
         // Find the end of this XML document (null terminator or end of valid UTF-8)
         let remaining = &xclbin[start..];

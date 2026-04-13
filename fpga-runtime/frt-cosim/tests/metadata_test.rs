@@ -29,7 +29,7 @@ fn parse_vitis_kernel_xml() {
     ));
 }
 
-const GRAPH_YAML: &str = r"
+const GRAPH_YAML: &str = "
 top: vadd
 args:
   - name: a
@@ -68,7 +68,7 @@ fn parse_hls_graph_yaml() {
     ));
 }
 
-const LEGACY_GRAPH_YAML: &str = r"
+const LEGACY_GRAPH_YAML: &str = "
 top: vadd
 tasks:
   vadd:

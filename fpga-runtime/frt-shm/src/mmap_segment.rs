@@ -18,6 +18,7 @@ impl MmapSegment {
             .truncate(true)
             .open(&path)?;
         file.set_len(size_bytes as u64)?;
+        // SAFETY: The file was just created, truncated, and sized; we hold the only handle.
         let mmap = unsafe { MmapMut::map_mut(&file)? };
         Ok(Self {
             path,
@@ -32,6 +33,7 @@ impl MmapSegment {
             .read(true)
             .write(true)
             .open(&path)?;
+        // SAFETY: The file exists and is opened read-write; the caller ensures correct size.
         let mmap = unsafe { MmapMut::map_mut(&file)? };
         Ok(Self {
             path,
@@ -60,13 +62,15 @@ impl MmapSegment {
     /// `src` must be valid for `len` bytes and `offset + len` must not
     /// exceed the mapping length.
     pub unsafe fn write_at(&self, offset: usize, src: *const u8, len: usize) {
-        unsafe {
-            debug_assert!(offset + len <= self.mmap.len());
-            // Derive the mutable pointer directly from the MmapMut raw pointer
-            // rather than going through &[u8] to avoid violating aliasing rules.
-            let dst = self.mmap.as_ptr().add(offset);
-            std::ptr::copy_nonoverlapping(src, dst.cast_mut(), len);
-        }
+        debug_assert!(offset + len <= self.mmap.len(), "write_at out of bounds");
+        // SAFETY: Caller guarantees `offset + len <= mmap.len()`, so the
+        // pointer arithmetic stays within the allocation.  We derive from
+        // `MmapMut::as_ptr` (not `&[u8]`) to avoid aliasing issues on
+        // MAP_SHARED memory.
+        let dst = unsafe { self.mmap.as_ptr().add(offset) };
+        // SAFETY: Caller guarantees `src` is valid for `len` bytes and the
+        // destination range is in-bounds (checked above via debug_assert).
+        unsafe { std::ptr::copy_nonoverlapping(src, dst.cast_mut(), len) };
     }
 
     pub fn len(&self) -> usize {

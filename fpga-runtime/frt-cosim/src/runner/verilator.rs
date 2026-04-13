@@ -41,7 +41,7 @@ fn resolve_verilator_bin(
         }
         return Ok(bin);
     }
-    which("verilator").map_err(|_| CosimError::ToolNotFound("verilator".into()))
+    which("verilator").map_err(|_e| CosimError::ToolNotFound("verilator".into()))
 }
 
 fn verilator_root_env(verilator_bin: &Path) -> Option<PathBuf> {
@@ -120,33 +120,33 @@ impl SimRunner for VerilatorRunner {
         let top = &spec.top_name;
         let rtl_dir = tb_dir.join("rtl");
         let mut args = vec![
-            "--cc".to_string(),
-            "--top-module".to_string(),
+            "--cc".to_owned(),
+            "--top-module".to_owned(),
             top.clone(),
-            "--no-timing".to_string(),
+            "--no-timing".to_owned(),
             // HLS-generated sequential-init loops can explode during Verilation.
             // Disabling automatic procedural unrolling keeps compile memory bounded
             // without changing RTL semantics.
-            "--unroll-count".to_string(),
-            "0".to_string(),
-            "--exe".to_string(),
-            "tb.cpp".to_string(),
-            "dpi_support.cpp".to_string(),
-            "-LDFLAGS".to_string(),
+            "--unroll-count".to_owned(),
+            "0".to_owned(),
+            "--exe".to_owned(),
+            "tb.cpp".to_owned(),
+            "dpi_support.cpp".to_owned(),
+            "-LDFLAGS".to_owned(),
             self.dpi_lib.to_string_lossy().to_string(),
-            "-Wno-fatal".to_string(),
-            "-Wno-PINMISSING".to_string(),
-            "-Wno-WIDTH".to_string(),
-            "-Wno-UNUSEDSIGNAL".to_string(),
-            "-Wno-UNDRIVEN".to_string(),
-            "-Wno-UNOPTFLAT".to_string(),
-            "-Wno-STMTDLY".to_string(),
-            "-Wno-CASEINCOMPLETE".to_string(),
-            "-Wno-SYMRSVDWORD".to_string(),
-            "-Wno-COMBDLY".to_string(),
-            "-Wno-TIMESCALEMOD".to_string(),
-            "-Wno-MULTIDRIVEN".to_string(),
-            "-y".to_string(),
+            "-Wno-fatal".to_owned(),
+            "-Wno-PINMISSING".to_owned(),
+            "-Wno-WIDTH".to_owned(),
+            "-Wno-UNUSEDSIGNAL".to_owned(),
+            "-Wno-UNDRIVEN".to_owned(),
+            "-Wno-UNOPTFLAT".to_owned(),
+            "-Wno-STMTDLY".to_owned(),
+            "-Wno-CASEINCOMPLETE".to_owned(),
+            "-Wno-SYMRSVDWORD".to_owned(),
+            "-Wno-COMBDLY".to_owned(),
+            "-Wno-TIMESCALEMOD".to_owned(),
+            "-Wno-MULTIDRIVEN".to_owned(),
+            "-y".to_owned(),
             rtl_dir.to_string_lossy().to_string(),
         ];
         for f in std::fs::read_dir(&rtl_dir)? {

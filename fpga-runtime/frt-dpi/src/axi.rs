@@ -15,7 +15,11 @@ pub fn axi_read_impl(ctx: &DpiContext, port: &str, addr: u64, width: u32, out: *
         eprintln!("frt-dpi: axi_read: out of bounds on '{port}' offset={offset} len={len}");
         return;
     }
-    unsafe { std::ptr::copy_nonoverlapping(seg.as_slice().as_ptr().add(offset), out, len) }
+    // SAFETY: `offset` is within the mmap segment (bounds checked above).
+    let src = unsafe { seg.as_slice().as_ptr().add(offset) };
+    // SAFETY: `src` points into the mmap segment with at least `len` bytes
+    // remaining, and `out` is a valid DPI-provided buffer of at least `len` bytes.
+    unsafe { std::ptr::copy_nonoverlapping(src, out, len) }
 }
 
 pub fn axi_write_impl(ctx: &DpiContext, port: &str, addr: u64, width: u32, data: *const u8) {
@@ -50,7 +54,7 @@ mod tests {
         seg.as_mut_slice().copy_from_slice(data);
         let base = 0x1000_0000u64;
         DpiContext {
-            buffers: HashMap::from([(name.to_string(), (seg, base))]),
+            buffers: HashMap::from([(name.to_owned(), (seg, base))]),
             streams: HashMap::new(),
         }
     }

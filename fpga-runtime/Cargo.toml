@@ -62,6 +62,31 @@ option_if_let_else = "allow"
 # Allow: significant_drop_tightening has false positives
 significant_drop_tightening = "allow"
 
+# ── Restriction lints (cherry-picked) ──
+# Safety documentation
+undocumented_unsafe_blocks = "deny"
+multiple_unsafe_ops_per_block = "deny"
+
+# Prefer .to_owned() on &str for clarity
+str_to_string = "deny"
+
+# Style consistency
+semicolon_outside_block = "deny"
+needless_raw_strings = "deny"
+missing_assert_message = "deny"
+if_then_some_else_none = "deny"
+map_err_ignore = "deny"
+
+# Prevent common mistakes
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
+error_impl_error = "deny"
+string_add = "deny"
+verbose_file_reads = "deny"
+unnecessary_safety_comment = "deny"
+fn_to_numeric_cast_any = "deny"
+
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "deny"
 

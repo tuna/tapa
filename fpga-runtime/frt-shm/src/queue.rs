@@ -12,7 +12,10 @@ pub struct QueueHeader {
     head: AtomicU64,
 }
 
-const _: () = assert!(std::mem::size_of::<QueueHeader>() == 32);
+const _: () = assert!(
+    std::mem::size_of::<QueueHeader>() == 32,
+    "QueueHeader must be exactly 32 bytes for shared-memory ABI"
+);
 
 pub struct SharedMemoryQueue {
     seg: MmapSegment,
@@ -22,6 +25,8 @@ impl SharedMemoryQueue {
     pub fn create(name: &str, depth: u32, width: u32) -> std::io::Result<Self> {
         let size = 32 + (depth as usize) * (width as usize);
         let mut seg = MmapSegment::create(name, size)?;
+        // SAFETY: The segment is at least 32 bytes (the header size) and
+        // freshly created with zeroed memory, so the cast is aligned and in-bounds.
         let hdr = unsafe { &mut *seg.as_mut_slice().as_mut_ptr().cast::<QueueHeader>() };
         hdr.magic = *b"tapa";
         hdr.version = 1;
@@ -39,19 +44,25 @@ impl SharedMemoryQueue {
     }
 
     fn hdr(&self) -> &QueueHeader {
+        // SAFETY: The segment is always at least 32 bytes (header size) and
+        // was either initialised by `create` or validated by `open`.
         unsafe { &*self.seg.as_slice().as_ptr().cast::<QueueHeader>() }
     }
 
     fn data_ptr(&self) -> *const u8 {
+        // SAFETY: The segment is at least header (32 bytes) + data; pointer
+        // arithmetic stays within the allocation.
         unsafe { self.seg.as_slice().as_ptr().add(32) }
     }
 
     fn data_mut_ptr(&mut self) -> *mut u8 {
+        // SAFETY: The segment is at least header (32 bytes) + data; pointer
+        // arithmetic stays within the allocation.
         unsafe { self.seg.as_mut_slice().as_mut_ptr().add(32) }
     }
 
     pub fn depth(&self) -> u64 {
-        self.hdr().depth as u64
+        u64::from(self.hdr().depth)
     }
 
     pub fn width(&self) -> usize {
@@ -86,10 +97,12 @@ impl SharedMemoryQueue {
         if data.len() != w {
             return Err("unexpected input size");
         }
+        // SAFETY: `slot` is derived from `tail % depth * width`, which is always
+        // in-bounds of the data region.
         let dst = unsafe { self.data_mut_ptr().add(slot) };
-        unsafe {
-            std::ptr::copy_nonoverlapping(data.as_ptr(), dst, w);
-        }
+        // SAFETY: `data.len() == w` is checked above and `dst` points to a
+        // valid, in-bounds slot in the data region.
+        unsafe { std::ptr::copy_nonoverlapping(data.as_ptr(), dst, w) };
         self.hdr().tail.store(tail + 1, Ordering::Release);
         Ok(())
     }
@@ -112,9 +125,12 @@ impl SharedMemoryQueue {
         let head = self.hdr().head.load(Ordering::Relaxed);
         let slot = (head % self.depth()) as usize * self.width();
         let w = self.width();
-        unsafe {
-            std::ptr::copy_nonoverlapping(self.data_ptr().add(slot), buf.as_mut_ptr(), w);
-        }
+        // SAFETY: `slot` is derived from `head % depth * width`, which is always
+        // in-bounds of the data region.
+        let src = unsafe { self.data_ptr().add(slot) };
+        // SAFETY: `src` points to a valid, in-bounds slot and `buf` is at
+        // least `width` bytes.
+        unsafe { std::ptr::copy_nonoverlapping(src, buf.as_mut_ptr(), w) };
         self.hdr().head.store(head + 1, Ordering::Release);
         true
     }
@@ -133,9 +149,12 @@ impl SharedMemoryQueue {
         let head = self.hdr().head.load(Ordering::Acquire);
         let slot = (head % self.depth()) as usize * self.width();
         let w = self.width();
-        unsafe {
-            std::ptr::copy_nonoverlapping(self.data_ptr().add(slot), buf.as_mut_ptr(), w);
-        }
+        // SAFETY: `slot` is derived from `head % depth * width`, which is always
+        // in-bounds of the data region.
+        let src = unsafe { self.data_ptr().add(slot) };
+        // SAFETY: `src` points to a valid, in-bounds slot and `buf` is at
+        // least `width` bytes.
+        unsafe { std::ptr::copy_nonoverlapping(src, buf.as_mut_ptr(), w) };
         true
     }
 
@@ -151,6 +170,8 @@ fn validate_header(bytes: &[u8]) -> std::io::Result<()> {
             format!("shared-memory queue file is too small: {}", bytes.len()),
         ));
     }
+    // SAFETY: We just verified that `bytes` is at least `size_of::<QueueHeader>()` bytes,
+    // so the cast is in-bounds and aligned (QueueHeader is repr(C) starting with [u8; 4]).
     let hdr = unsafe { &*bytes.as_ptr().cast::<QueueHeader>() };
     if hdr.magic != *b"tapa" {
         return Err(std::io::Error::new(

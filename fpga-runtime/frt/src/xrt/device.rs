@@ -79,6 +79,9 @@ impl XrtDevice {
             "create OpenCL command queue",
         )?;
 
+        // SAFETY: create_from_binary requires a valid OpenCL context and a
+        // device id obtained from the same platform.  Both are guaranteed by
+        // the preceding select_device / Context::from_device calls.
         let mut program = unsafe {
             ocl_result(
                 Program::create_from_binary(&context, &[device_id], &[&bytes]),
@@ -135,6 +138,7 @@ fn ensure_xrt_emulation_bootstrap(meta: &XrtMetadata) -> Result<()> {
         std::env::set_var(k, v);
     }
 
+    // SAFETY: geteuid() is always safe to call; it has no preconditions.
     let uid = unsafe { libc::geteuid() };
     let user = current_username().unwrap_or_else(|| uid.to_string());
     std::env::set_var("USER", user);
@@ -235,6 +239,9 @@ impl Device for XrtDevice {
                 "null host pointer for non-empty buffer arg {index}"
             )));
         }
+        // SAFETY: ptr is non-null (checked above) and points to a host buffer
+        // of at least `bytes` bytes.  CL_MEM_USE_HOST_PTR tells OpenCL to use
+        // that allocation directly.
         let buffer = unsafe {
             ocl_result(
                 Buffer::<u8>::create(
@@ -284,7 +291,11 @@ impl Device for XrtDevice {
             if !binding.access.loads_from_host() {
                 continue;
             }
+            // SAFETY: binding.ptr is non-null (set_buffer_arg checks this) and
+            // binding.bytes is the size of the host allocation.
             let host_slice = unsafe { std::slice::from_raw_parts(binding.ptr, binding.bytes) };
+            // SAFETY: self.queue and binding.buffer are valid OpenCL handles,
+            // and host_slice points to the host allocation.
             let event = unsafe {
                 ocl_result(
                     self.queue.enqueue_write_buffer(
@@ -310,7 +321,11 @@ impl Device for XrtDevice {
             if !binding.access.stores_to_host() {
                 continue;
             }
+            // SAFETY: binding.ptr is non-null (set_buffer_arg checks this) and
+            // binding.bytes is the size of the host allocation.
             let host_slice = unsafe { std::slice::from_raw_parts_mut(binding.ptr, binding.bytes) };
+            // SAFETY: self.queue and binding.buffer are valid OpenCL handles,
+            // and host_slice points to the host allocation for readback.
             let event = unsafe {
                 ocl_result(
                     self.queue.enqueue_read_buffer(
@@ -347,6 +362,9 @@ impl Device for XrtDevice {
                         width,
                         self.scalars.get(&arg.id).map(std::vec::Vec::as_slice),
                     );
+                    // SAFETY: self.kernel is a valid OpenCL kernel,
+                    // arg.id is the correct argument index, and raw is
+                    // a properly-sized byte buffer for the scalar value.
                     unsafe {
                         set_kernel_arg(
                             self.kernel.get(),
@@ -370,6 +388,10 @@ impl Device for XrtDevice {
                     // Pass a pointer to the cl_mem handle.  clSetKernelArg
                     // expects arg_value to point to the cl_mem value itself.
                     let cl_mem_handle = binding.buffer.get();
+                    // SAFETY: self.kernel is a valid OpenCL kernel,
+                    // arg.id is the correct argument index, and
+                    // cl_mem_handle is a valid cl_mem obtained from
+                    // the buffer created earlier.
                     unsafe {
                         set_kernel_arg(
                             self.kernel.get(),
@@ -393,6 +415,9 @@ impl Device for XrtDevice {
 
         let waits: Vec<cl_event> = self.load_events.iter().map(Event::get).collect();
         let global_work_size: usize = 1;
+        // SAFETY: self.kernel and self.queue are valid OpenCL handles,
+        // global_work_size is a valid 1-element array, and waits contains
+        // only events from prior enqueue operations on the same queue.
         let evt = unsafe {
             ocl_result(
                 self.queue.enqueue_nd_range_kernel(
@@ -564,29 +589,40 @@ use frt_shm::env_non_empty;
 
 fn current_username() -> Option<String> {
     #[cfg(unix)]
-    unsafe {
-        let uid = libc::geteuid();
+    {
+        // SAFETY: geteuid() has no preconditions.
+        let uid = unsafe { libc::geteuid() };
         let mut pwd = std::mem::MaybeUninit::<libc::passwd>::zeroed();
         let mut result: *mut libc::passwd = std::ptr::null_mut();
         let mut buf = vec![0u8; 1024];
 
         loop {
-            let rc = libc::getpwuid_r(
-                uid,
-                pwd.as_mut_ptr(),
-                buf.as_mut_ptr().cast::<libc::c_char>(),
-                buf.len(),
-                &raw mut result,
-            );
+            // SAFETY: getpwuid_r is called with a properly-sized buffer,
+            // a zeroed MaybeUninit<passwd>, and a valid result pointer.
+            // The buffer is resized on ERANGE and retried.
+            let rc = unsafe {
+                libc::getpwuid_r(
+                    uid,
+                    pwd.as_mut_ptr(),
+                    buf.as_mut_ptr().cast::<libc::c_char>(),
+                    buf.len(),
+                    &raw mut result,
+                )
+            };
             if rc == 0 {
                 if result.is_null() {
                     break;
                 }
-                let pwd = pwd.assume_init();
+                // SAFETY: getpwuid_r returned 0 with a non-null result,
+                // so pwd is fully initialized and pw_name (if non-null)
+                // points to a NUL-terminated string inside buf.
+                let pwd = unsafe { pwd.assume_init() };
                 if pwd.pw_name.is_null() {
                     break;
                 }
-                let name = CStr::from_ptr(pwd.pw_name);
+                // SAFETY: pw_name is non-null (checked above) and points
+                // to a NUL-terminated string within buf.
+                let name = unsafe { CStr::from_ptr(pwd.pw_name) };
                 return name.to_str().ok().map(std::borrow::ToOwned::to_owned);
             }
             if rc == libc::ERANGE {

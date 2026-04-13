@@ -7,6 +7,8 @@ pub unsafe extern "C" fn tapa_axi_read(
     width: u32,
     out: *mut u8,
 ) {
+    // SAFETY: `port` is a C string provided by the DPI caller; it remains valid
+    // for the duration of this call.
     unsafe {
         let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
         axi::axi_read_impl(get_or_init(), port, addr, width, out);
@@ -20,6 +22,8 @@ pub unsafe extern "C" fn tapa_axi_write(
     width: u32,
     data: *const u8,
 ) {
+    // SAFETY: `port` is a C string provided by the DPI caller; it remains valid
+    // for the duration of this call.
     unsafe {
         let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
         axi::axi_write_impl(get_or_init(), port, addr, width, data);
@@ -28,6 +32,8 @@ pub unsafe extern "C" fn tapa_axi_write(
 
 #[no_mangle]
 pub unsafe extern "C" fn tapa_stream_try_read(port: *const libc::c_char, out: *mut u8) -> bool {
+    // SAFETY: `port` is a C string provided by the DPI caller; it remains valid
+    // for the duration of this call.
     unsafe {
         let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
         stream::stream_try_read_impl(get_or_init(), port, out)
@@ -36,6 +42,8 @@ pub unsafe extern "C" fn tapa_stream_try_read(port: *const libc::c_char, out: *m
 
 #[no_mangle]
 pub unsafe extern "C" fn tapa_stream_try_write(port: *const libc::c_char, data: *const u8) -> bool {
+    // SAFETY: `port` is a C string provided by the DPI caller; it remains valid
+    // for the duration of this call.
     unsafe {
         let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
         stream::stream_try_write_impl(get_or_init(), port, data)
@@ -44,6 +52,8 @@ pub unsafe extern "C" fn tapa_stream_try_write(port: *const libc::c_char, data: 
 
 #[no_mangle]
 pub unsafe extern "C" fn tapa_stream_can_write(port: *const libc::c_char) -> bool {
+    // SAFETY: `port` is a C string provided by the DPI caller; it remains valid
+    // for the duration of this call.
     unsafe {
         let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
         stream::stream_can_write_impl(get_or_init(), port)
@@ -56,6 +66,8 @@ pub unsafe extern "C" fn tapa_stream_istream_step(
     consume: bool,
     out: *mut u8,
 ) -> bool {
+    // SAFETY: `port` is a C string provided by the DPI caller; it remains valid
+    // for the duration of this call.
     unsafe {
         let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
         stream::stream_istream_step_impl(get_or_init(), port, consume, out)
@@ -68,6 +80,8 @@ pub unsafe extern "C" fn tapa_stream_ostream_step(
     write: bool,
     data: *const u8,
 ) -> bool {
+    // SAFETY: `port` is a C string provided by the DPI caller; it remains valid
+    // for the duration of this call.
     unsafe {
         let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
         stream::stream_ostream_step_impl(get_or_init(), port, write, data)
@@ -80,6 +94,8 @@ pub unsafe extern "C" fn tapa_hls_stream_ostream_step(
     write: bool,
     data: *const u8,
 ) -> bool {
+    // SAFETY: `port` is a C string provided by the DPI caller; it remains valid
+    // for the duration of this call.
     unsafe {
         let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
         stream::stream_hls_ostream_step_impl(get_or_init(), port, write, data)

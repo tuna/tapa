@@ -73,7 +73,7 @@ pub enum DpiError {
 
 impl DpiContext {
     pub fn from_env() -> Result<Self, DpiError> {
-        let raw = std::env::var("TAPA_DPI_CONFIG").map_err(|_| DpiError::EnvMissing)?;
+        let raw = std::env::var("TAPA_DPI_CONFIG").map_err(|_e| DpiError::EnvMissing)?;
         let cfg: DpiConfig = serde_json::from_str(&raw)?;
 
         let mut buffers = HashMap::new();

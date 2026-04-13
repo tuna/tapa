@@ -11,6 +11,8 @@ fn with_handle<R>(handle: *const c_void, f: impl FnOnce(&QueueHandle) -> R) -> O
     if handle.is_null() {
         return None;
     }
+    // SAFETY: handle was created by frt_shmq_create via Box::into_raw,
+    // and the caller guarantees it points to a valid QueueHandle.
     let h = unsafe { &*handle.cast::<QueueHandle>() };
     Some(f(h))
 }
@@ -23,10 +25,13 @@ fn write_c_string(buf: *mut c_char, buf_len: usize, text: &str) -> bool {
     if bytes.len() + 1 > buf_len {
         return false;
     }
-    unsafe {
-        std::ptr::copy_nonoverlapping(bytes.as_ptr(), buf.cast::<u8>(), bytes.len());
-        *buf.add(bytes.len()) = 0;
-    }
+    // SAFETY: buf is non-null, buf_len > bytes.len(), and the source is a
+    // valid &[u8] slice.  The two writes do not overlap.
+    unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), buf.cast::<u8>(), bytes.len()) };
+    // SAFETY: buf_len > bytes.len(), so buf.add(bytes.len()) is within bounds.
+    let nul_ptr = unsafe { buf.add(bytes.len()) };
+    // SAFETY: nul_ptr is a valid, aligned, writable location (within buf).
+    unsafe { nul_ptr.write(0) };
     true
 }
 
@@ -70,9 +75,9 @@ pub extern "C" fn frt_shmq_destroy(handle: *mut c_void) {
     if handle.is_null() {
         return;
     }
-    unsafe {
-        drop(Box::from_raw(handle.cast::<QueueHandle>()));
-    }
+    // SAFETY: handle was created by frt_shmq_create via Box::into_raw,
+    // and this function is the only place that reclaims it.
+    let _ = unsafe { Box::from_raw(handle.cast::<QueueHandle>()) };
 }
 
 #[no_mangle]
@@ -109,6 +114,8 @@ pub extern "C" fn frt_shmq_push(handle: *mut c_void, data: *const u8, len: usize
         if q.width() != len {
             return -1;
         }
+        // SAFETY: data is non-null (checked above) and len == q.width(),
+        // so the caller guarantees [data..data+len) is a valid readable region.
         let slice = unsafe { std::slice::from_raw_parts(data, len) };
         if q.try_push(slice).is_ok() {
             0
@@ -131,6 +138,8 @@ pub extern "C" fn frt_shmq_front(handle: *const c_void, out: *mut u8, len: usize
         if q.width() != len {
             return -1;
         }
+        // SAFETY: out is non-null (checked above) and len == q.width(),
+        // so the caller guarantees [out..out+len) is a valid writable region.
         let buf = unsafe { std::slice::from_raw_parts_mut(out, len) };
         if q.peek_into(buf) {
             0
@@ -153,6 +162,8 @@ pub extern "C" fn frt_shmq_pop(handle: *mut c_void, out: *mut u8, len: usize) ->
         if q.width() != len {
             return -1;
         }
+        // SAFETY: out is non-null (checked above) and len == q.width(),
+        // so the caller guarantees [out..out+len) is a valid writable region.
         let buf = unsafe { std::slice::from_raw_parts_mut(out, len) };
         if q.pop_into(buf) {
             0

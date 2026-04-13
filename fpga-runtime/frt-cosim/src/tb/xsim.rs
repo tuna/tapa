@@ -244,7 +244,7 @@ impl<'a> XsimTbGenerator<'a> {
     pub fn render_tcl(&self, tb_dir: &Path) -> Result<String> {
         let template = TclTemplate {
             tb_dir: tb_dir.to_string_lossy().to_string(),
-            part_num: self.part_num.to_string(),
+            part_num: self.part_num.to_owned(),
             verilog_files: self
                 .spec
                 .verilog_files

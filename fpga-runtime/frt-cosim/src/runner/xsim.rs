@@ -92,7 +92,7 @@ impl SimRunner for XsimRunner {
         let mode = if self.start_gui { "gui" } else { "batch" };
         let home = tb_dir.join("run");
         std::fs::create_dir_all(&home)?;
-        let vivado_bin = which("vivado").map_err(|_| CosimError::ToolNotFound("vivado".into()))?;
+        let vivado_bin = which("vivado").map_err(|_e| CosimError::ToolNotFound("vivado".into()))?;
         let mut cmd = Command::new(vivado_bin);
         cmd.args(["-mode", mode, "-source", "run_cosim.tcl"])
             .current_dir(tb_dir)
@@ -191,6 +191,8 @@ fn xsim_start_barrier_paths() -> (PathBuf, PathBuf) {
 
 #[cfg(unix)]
 fn child_still_running(pid: u32) -> bool {
+    // SAFETY: `kill(pid, 0)` sends no signal; it only checks whether the process exists.
+    // The pid comes from a just-spawned child, so the value is a valid process ID.
     let rc = unsafe { libc::kill(pid as i32, 0) };
     if rc == 0 {
         return true;
@@ -231,11 +233,10 @@ mod tests {
         let ready_file = temp.path().join(XSIM_READY_FILE);
         let start_stamp_file = temp.path().join("start.stamp");
         let start_go_file = temp.path().join("start.go");
-        let start_token = "token-1".to_string();
+        let start_token = "token-1".to_owned();
 
-        unsafe {
-            std::env::set_var(XSIM_STARTUP_LOCK_ENV, &lock_path);
-        }
+        // SAFETY: Test is single-threaded and guarded by ENV_LOCK.
+        unsafe { std::env::set_var(XSIM_STARTUP_LOCK_ENV, &lock_path) };
         std::fs::write(&start_stamp_file, &start_token).expect("write stamp");
 
         let gate = XsimStartupGate::acquire().expect("acquire first gate");
@@ -267,8 +268,7 @@ mod tests {
 
         let _ = child.kill();
         let _ = child.wait();
-        unsafe {
-            std::env::remove_var(XSIM_STARTUP_LOCK_ENV);
-        }
+        // SAFETY: Test is single-threaded and guarded by ENV_LOCK.
+        unsafe { std::env::remove_var(XSIM_STARTUP_LOCK_ENV) };
     }
 }

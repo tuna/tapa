@@ -78,6 +78,7 @@ pub fn stream_try_read_impl(ctx: &DpiContext, port: &str, out: *mut u8) -> bool 
         return false;
     }
     let dpi = stream.dpi_width_bytes;
+    // SAFETY: `out` is a DPI-provided buffer of at least `dpi` bytes.
     let buf = unsafe { std::slice::from_raw_parts_mut(out, dpi) };
     buf.fill(0);
     s.queue.pop_into(buf);
@@ -121,6 +122,7 @@ pub fn stream_istream_step_impl(ctx: &DpiContext, port: &str, consume: bool, out
         return false;
     }
     let dpi = stream.dpi_width_bytes;
+    // SAFETY: `out` is a DPI-provided buffer of at least `dpi` bytes.
     let buf = unsafe { std::slice::from_raw_parts_mut(out, dpi) };
     buf.fill(0);
     s.queue.peek_into(buf);
@@ -137,6 +139,7 @@ pub fn stream_try_write_impl(ctx: &DpiContext, port: &str, data: *const u8) -> b
         return false;
     };
     let w = s.queue.width();
+    // SAFETY: `data` is a DPI-provided buffer of at least `w` bytes.
     let slice = unsafe { std::slice::from_raw_parts(data, w) };
     let ok = s.queue.try_push(slice).is_ok();
     if ok {
@@ -164,6 +167,7 @@ pub fn stream_ostream_step_impl(
 
     if s.last_ostream_ready && write {
         let w = s.queue.width();
+        // SAFETY: `data` is a DPI-provided buffer of at least `w` bytes.
         let slice = unsafe { std::slice::from_raw_parts(data, w) };
         if s.queue.try_push(slice).is_ok() {
             WRITE_OK.fetch_add(1, Ordering::Relaxed);
@@ -208,6 +212,7 @@ pub fn stream_hls_ostream_step_impl(
             );
         } else {
             let w = s.queue.width();
+            // SAFETY: `data` is a DPI-provided buffer of at least `w` bytes.
             let slice = unsafe { std::slice::from_raw_parts(data, w) };
             if s.queue.try_push(slice).is_ok() {
                 WRITE_OK.fetch_add(1, Ordering::Relaxed);

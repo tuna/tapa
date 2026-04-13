@@ -150,15 +150,22 @@ impl CosimDevice {
         let mut cmd = Command::new("/bin/sh");
         cmd.args(["-c", ":"]);
         #[cfg(unix)]
-        unsafe {
+        {
             use std::os::unix::process::CommandExt;
-            cmd.pre_exec(|| {
-                if libc::setpgid(0, 0) != 0 {
+            let hook = || {
+                // SAFETY: setpgid is async-signal-safe and called in
+                // the child process before exec to create a new process
+                // group.
+                if unsafe { libc::setpgid(0, 0) } != 0 {
                     return Err(std::io::Error::last_os_error());
                 }
                 Ok(())
-            });
-        }
+            };
+            // SAFETY: pre_exec registers a closure to run in the child
+            // process after fork but before exec.  The closure only
+            // calls the async-signal-safe setpgid.
+            unsafe { cmd.pre_exec(hook) };
+        };
         Ok(cmd.spawn()?)
     }
 
@@ -177,10 +184,11 @@ impl CosimDevice {
             if let Some(seg) = self.ctx.buffers.get(&name) {
                 let len = binding.bytes.min(seg.len());
                 if len > 0 {
-                    unsafe {
-                        std::slice::from_raw_parts_mut(binding.ptr, len)
-                            .copy_from_slice(&seg.as_slice()[..len]);
-                    }
+                    // SAFETY: binding.ptr is non-null (checked above) and
+                    // len <= binding.bytes, so the slice is within the
+                    // caller-provided host buffer.
+                    let dst = unsafe { std::slice::from_raw_parts_mut(binding.ptr, len) };
+                    dst.copy_from_slice(&seg.as_slice()[..len]);
                 }
             }
         }
@@ -271,6 +279,8 @@ impl CosimDevice {
 #[cfg(unix)]
 fn signal_child_group(child: &Child, signal: libc::c_int) -> Result<()> {
     let pgid = child.id() as i32;
+    // SAFETY: killpg sends a signal to a process group; pgid is a valid
+    // process group id obtained from the child we spawned.
     if unsafe { libc::killpg(pgid, signal) } != 0 {
         let err = std::io::Error::last_os_error();
         if err.raw_os_error() != Some(libc::ESRCH) {
@@ -332,9 +342,15 @@ fn dpi_lib_path(variant: &str) -> Result<PathBuf> {
 #[cfg(unix)]
 fn self_lib_path() -> Option<PathBuf> {
     // Use dladdr to find the path of the shared library containing this function.
-    let mut info: libc::Dl_info = unsafe { std::mem::zeroed() };
+    #[allow(clippy::fn_to_numeric_cast_any)]
     let ptr = self_lib_path as *const ();
+    // SAFETY: zeroed is valid for Dl_info (it is a plain-old-data C struct).
+    let mut info: libc::Dl_info = unsafe { std::mem::zeroed() };
+    // SAFETY: dladdr resolves the shared-object path for a given address.
+    // `ptr` is a valid function pointer in the current image.
     if unsafe { libc::dladdr(ptr.cast(), &raw mut info) } != 0 && !info.dli_fname.is_null() {
+        // SAFETY: dli_fname is non-null (checked above) and points to a
+        // NUL-terminated string managed by the dynamic linker.
         let path = unsafe { std::ffi::CStr::from_ptr(info.dli_fname) };
         path.to_str().ok().map(PathBuf::from)
     } else {
@@ -473,10 +489,11 @@ impl Device for CosimDevice {
             if let Some(seg) = self.ctx.buffers.get_mut(&name) {
                 let len = binding.bytes.min(seg.len());
                 if len > 0 {
-                    unsafe {
-                        seg.as_mut_slice()[..len]
-                            .copy_from_slice(std::slice::from_raw_parts(binding.ptr, len));
-                    }
+                    // SAFETY: binding.ptr is non-null (checked above) and
+                    // len <= binding.bytes, so the slice is within the
+                    // caller-provided host buffer.
+                    let src = unsafe { std::slice::from_raw_parts(binding.ptr, len) };
+                    seg.as_mut_slice()[..len].copy_from_slice(src);
                 }
             }
         }

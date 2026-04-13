@@ -14,12 +14,17 @@ mod imp {
     /// loaded in the xsim process when it dlopen()s this DPI library.
     fn get_sv_get_array_ptr() -> SvGetArrayPtrFn {
         static FUNC: OnceLock<SvGetArrayPtrFn> = OnceLock::new();
-        *FUNC.get_or_init(|| unsafe {
-            let sym = libc::dlsym(libc::RTLD_DEFAULT, b"svGetArrayPtr\0".as_ptr() as *const _);
+        *FUNC.get_or_init(|| {
+            // SAFETY: `dlsym(RTLD_DEFAULT, ...)` looks up a symbol in the already-loaded
+            // xsim runtime. The symbol name is a valid NUL-terminated string.
+            let sym =
+                unsafe { libc::dlsym(libc::RTLD_DEFAULT, b"svGetArrayPtr\0".as_ptr() as *const _) };
             if sym.is_null() {
                 panic!("frt-dpi-xsim: cannot resolve svGetArrayPtr from xsim runtime");
             }
-            std::mem::transmute(sym)
+            // SAFETY: `svGetArrayPtr` has the signature `svOpenArrayHandle -> *mut c_void`
+            // which matches `SvGetArrayPtrFn`. The symbol was just successfully resolved.
+            unsafe { std::mem::transmute(sym) }
         })
     }
 
