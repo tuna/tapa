@@ -352,8 +352,11 @@ always @(posedge ap_clk) begin
   // ---- W channel: match data with head AW entry ----
   m_axi_{{ arg.ident }}_WREADY <= (axi_{{ arg.ident }}_wr_q.size() > 0) && !(m_axi_{{ arg.ident }}_WVALID && m_axi_{{ arg.ident }}_WREADY && m_axi_{{ arg.ident }}_WLAST);
   if (m_axi_{{ arg.ident }}_WVALID && m_axi_{{ arg.ident }}_WREADY && axi_{{ arg.ident }}_wr_q.size() > 0) begin
+    // Read-modify-write: fetch current data, apply WSTRB mask, write back.
+    tapa_axi_read("{{ arg.name }}", axi_{{ arg.ident }}_wr_q[0].addr + axi_{{ arg.ident }}_wr_beat * {{ arg.data_width_bytes }}, {{ arg.data_width_bytes }}, axi_{{ arg.ident }}_bytes);
     for (i = 0; i < {{ arg.data_width_bytes }}; i = i + 1) begin
-      axi_{{ arg.ident }}_bytes[i] = m_axi_{{ arg.ident }}_WDATA[i*8 +: 8];
+      if (m_axi_{{ arg.ident }}_WSTRB[i])
+        axi_{{ arg.ident }}_bytes[i] = m_axi_{{ arg.ident }}_WDATA[i*8 +: 8];
     end
     tapa_axi_write("{{ arg.name }}", axi_{{ arg.ident }}_wr_q[0].addr + axi_{{ arg.ident }}_wr_beat * {{ arg.data_width_bytes }}, {{ arg.data_width_bytes }}, axi_{{ arg.ident }}_bytes);
     axi_{{ arg.ident }}_wr_beat <= axi_{{ arg.ident }}_wr_beat + 1'b1;
