@@ -36,7 +36,7 @@ pub type ReadWriteBuffer<T> = Buffer<T, ReadWrite>;
 impl<T> ReadOnlyBuffer<T> {
     pub fn new(slice: &[T]) -> Self {
         Self {
-            ptr: slice.as_ptr() as *mut T,
+            ptr: slice.as_ptr().cast_mut(),
             count: slice.len(),
             _tag: PhantomData,
         }
@@ -86,9 +86,9 @@ impl Instance {
         }
     }
 
-    pub fn open_cosim(path: impl AsRef<Path>, sim: Simulator) -> Result<Self> {
+    pub fn open_cosim(path: impl AsRef<Path>, sim: &Simulator) -> Result<Self> {
         Ok(Self {
-            device: Box::new(CosimDevice::open(path.as_ref(), &sim)?),
+            device: Box::new(CosimDevice::open(path.as_ref(), sim)?),
         })
     }
 
@@ -123,28 +123,28 @@ impl Instance {
         self.device.suspend_buffer(index)
     }
 
-    pub fn set_read_only_arg<T>(&mut self, index: u32, buf: ReadOnlyBuffer<T>) -> Result<()> {
+    pub fn set_read_only_arg<T>(&mut self, index: u32, buf: &ReadOnlyBuffer<T>) -> Result<()> {
         self.device.set_buffer_arg(
             index,
-            buf.as_ptr() as *mut u8,
+            buf.as_ptr().cast::<u8>(),
             buf.size_in_bytes(),
             BufferAccess::ReadOnly,
         )
     }
 
-    pub fn set_write_only_arg<T>(&mut self, index: u32, buf: WriteOnlyBuffer<T>) -> Result<()> {
+    pub fn set_write_only_arg<T>(&mut self, index: u32, buf: &WriteOnlyBuffer<T>) -> Result<()> {
         self.device.set_buffer_arg(
             index,
-            buf.as_ptr() as *mut u8,
+            buf.as_ptr().cast::<u8>(),
             buf.size_in_bytes(),
             BufferAccess::WriteOnly,
         )
     }
 
-    pub fn set_read_write_arg<T>(&mut self, index: u32, buf: ReadWriteBuffer<T>) -> Result<()> {
+    pub fn set_read_write_arg<T>(&mut self, index: u32, buf: &ReadWriteBuffer<T>) -> Result<()> {
         self.device.set_buffer_arg(
             index,
-            buf.as_ptr() as *mut u8,
+            buf.as_ptr().cast::<u8>(),
             buf.size_in_bytes(),
             BufferAccess::ReadWrite,
         )
@@ -212,7 +212,10 @@ mod tests {
 
     #[test]
     fn simulator_enum_variants() {
-        let _v = Simulator::Verilator;
-        let _x = Simulator::Xsim { legacy: false };
+        assert!(matches!(Simulator::Verilator, Simulator::Verilator));
+        assert!(matches!(
+            Simulator::Xsim { legacy: false },
+            Simulator::Xsim { .. }
+        ));
     }
 }

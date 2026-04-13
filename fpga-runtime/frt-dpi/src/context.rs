@@ -25,8 +25,7 @@ pub enum StreamEntry {
 impl StreamEntry {
     fn path(&self) -> &str {
         match self {
-            Self::Legacy(path) => path,
-            Self::Detailed { path, .. } => path,
+            Self::Legacy(path) | Self::Detailed { path, .. } => path,
         }
     }
 
@@ -90,7 +89,10 @@ impl DpiContext {
             if frt_shm::env_bool("FRT_STREAM_DEBUG") {
                 eprintln!(
                     "frt-dpi: stream '{name}' path={} depth={} width={} dpi_width={}",
-                    entry.path(), q.depth(), q.width(), dpi_width_bytes,
+                    entry.path(),
+                    q.depth(),
+                    q.width(),
+                    dpi_width_bytes,
                 );
             }
             streams.insert(

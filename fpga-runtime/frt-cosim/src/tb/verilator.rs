@@ -159,7 +159,7 @@ impl<'a> VerilatorTbGenerator<'a> {
                         .unwrap_or(0);
                     let bytes = normalized_scalar_bytes(
                         *width,
-                        self.scalar_values.get(&arg.id).map(|x| x.as_slice()),
+                        self.scalar_values.get(&arg.id).map(std::vec::Vec::as_slice),
                     );
                     scalar_args.push(ScalarArg::new(&arg.name, &bytes, offset));
                 }
@@ -223,7 +223,7 @@ impl MmapArg {
         let ident = cpp_identifier(name);
         Self {
             name: name.to_owned(),
-            ident: ident.clone(),
+            ident,
             araddr: cpp_signal("m_axi_", name, "_ARADDR"),
             arburst: cpp_signal("m_axi_", name, "_ARBURST"),
             arcache: cpp_signal("m_axi_", name, "_ARCACHE"),
@@ -289,7 +289,7 @@ impl StreamArg {
         let dpi_width_bytes = width_bytes + 1;
         Self {
             name: name.to_owned(),
-            ident: ident.clone(),
+            ident,
             empty_n: cpp_signal("", name, "_empty_n"),
             dout: cpp_signal("", name, "_dout"),
             din: cpp_signal("", name, "_din"),

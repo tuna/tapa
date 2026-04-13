@@ -9,6 +9,62 @@ members = [
   "frt",
 ]
 
+[workspace.lints.clippy]
+# Enable lint groups
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
+
+# Allow: adding doc sections to every fallible/unsafe/panicking fn is too verbose
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+missing_safety_doc = "allow"
+
+# Allow: too many trivial getters to annotate
+must_use_candidate = "allow"
+
+# Allow: const fn changes API semantics and is overzealous
+missing_const_for_fn = "allow"
+
+# Allow: intentional truncation/wrapping in FFI & hardware register code
+cast_possible_truncation = "allow"
+cast_possible_wrap = "allow"
+cast_sign_loss = "allow"
+cast_lossless = "allow"
+
+# Allow: intentional alignment in shared-memory / queue headers
+cast_ptr_alignment = "allow"
+
+# Allow: _meta prefix is intentional (field used but not directly public)
+used_underscore_binding = "allow"
+
+# Allow: common Rust module naming pattern
+module_name_repetitions = "allow"
+
+# Allow: refactoring long functions would add indirection without clarity
+too_many_lines = "allow"
+
+# Allow: struct design choices
+struct_excessive_bools = "allow"
+
+# Allow: extern "C" FFI functions take raw pointers by design
+not_unsafe_ptr_arg_deref = "allow"
+
+# Allow: intentional unsafe impl Send for device handles with raw pointers
+non_send_fields_in_send_ty = "allow"
+
+# Allow: cognitive complexity thresholds are too low for FFI dispatch
+cognitive_complexity = "allow"
+
+# Allow: option_if_let_else often less readable than match
+option_if_let_else = "allow"
+
+# Allow: significant_drop_tightening has false positives
+significant_drop_tightening = "allow"
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
 [workspace.dependencies]
 askama = { version = "0.12", features = ["serde_json"] }
 frt-cosim = { path = "frt-cosim" }

@@ -203,8 +203,7 @@ fn emconfig_ready(dir: &Path, platform: &str) -> bool {
             if dev
                 .get("Name")
                 .and_then(|x| x.as_str())
-                .map(|name| name == platform)
-                .unwrap_or(false)
+                .is_some_and(|name| name == platform)
             {
                 return true;
             }
@@ -242,7 +241,7 @@ impl Device for XrtDevice {
                     &self.context,
                     CL_MEM_READ_WRITE | CL_MEM_USE_HOST_PTR,
                     bytes,
-                    ptr as *mut c_void,
+                    ptr.cast::<c_void>(),
                 ),
                 "create OpenCL buffer",
             )?
@@ -276,11 +275,7 @@ impl Device for XrtDevice {
     }
 
     fn suspend_buffer(&mut self, index: u32) -> usize {
-        if self.buffers.remove(&index).is_some() {
-            1
-        } else {
-            0
-        }
+        usize::from(self.buffers.remove(&index).is_some())
     }
 
     fn write_to_device(&mut self) -> Result<()> {
@@ -350,14 +345,14 @@ impl Device for XrtDevice {
                 XrtArgKind::Scalar { width } => {
                     let raw = normalized_scalar_bytes(
                         width,
-                        self.scalars.get(&arg.id).map(|v| v.as_slice()),
+                        self.scalars.get(&arg.id).map(std::vec::Vec::as_slice),
                     );
                     unsafe {
                         set_kernel_arg(
                             self.kernel.get(),
                             arg.id,
                             raw.len(),
-                            raw.as_ptr() as *const c_void,
+                            raw.as_ptr().cast::<c_void>(),
                         )
                         .map_err(|code| FrtError::OpenCl {
                             code,
@@ -380,7 +375,7 @@ impl Device for XrtDevice {
                             self.kernel.get(),
                             arg.id,
                             std::mem::size_of_val(&cl_mem_handle),
-                            &cl_mem_handle as *const _ as *const c_void,
+                            (&raw const cl_mem_handle).cast::<c_void>(),
                         )
                         .map_err(|code| FrtError::OpenCl {
                             code,
@@ -404,7 +399,7 @@ impl Device for XrtDevice {
                     self.kernel.get(),
                     1,
                     std::ptr::null(),
-                    &global_work_size as *const usize as *const _,
+                    (&raw const global_work_size).cast(),
                     std::ptr::null(),
                     &waits,
                 ),
@@ -579,9 +574,9 @@ fn current_username() -> Option<String> {
             let rc = libc::getpwuid_r(
                 uid,
                 pwd.as_mut_ptr(),
-                buf.as_mut_ptr() as *mut libc::c_char,
+                buf.as_mut_ptr().cast::<libc::c_char>(),
                 buf.len(),
-                &mut result,
+                &raw mut result,
             );
             if rc == 0 {
                 if result.is_null() {
@@ -592,7 +587,7 @@ fn current_username() -> Option<String> {
                     break;
                 }
                 let name = CStr::from_ptr(pwd.pw_name);
-                return name.to_str().ok().map(|s| s.to_owned());
+                return name.to_str().ok().map(std::borrow::ToOwned::to_owned);
             }
             if rc == libc::ERANGE {
                 buf.resize(buf.len().saturating_mul(2).max(1024), 0);
@@ -621,6 +616,46 @@ fn scalar_type_name(width_bits: u32) -> String {
         0..=32 => "uint32_t".to_owned(),
         33..=64 => "uint64_t".to_owned(),
         _ => format!("uint{width_bits}_t"),
+    }
+}
+
+fn device_bdf(id: cl_device_id) -> Option<String> {
+    // Xilinx extension used by legacy C++ runtime (`CL_DEVICE_PCIE_BDF`).
+    const CL_DEVICE_PCIE_BDF: u32 = 0x4038;
+    let bytes = OclDevice::new(id).get_data(CL_DEVICE_PCIE_BDF as _).ok()?;
+    let end = bytes.iter().position(|b| *b == 0).unwrap_or(bytes.len());
+    let text = String::from_utf8(bytes[..end].to_vec()).ok()?;
+    let bdf = text.trim().to_owned();
+    if bdf.is_empty() {
+        None
+    } else {
+        Some(bdf)
+    }
+}
+
+fn ocl_result<T>(res: opencl3::Result<T>, ctx: &str) -> Result<T> {
+    res.map_err(|e| FrtError::OpenCl {
+        code: e.0,
+        msg: format!("{ctx}: {e}"),
+    })
+}
+
+fn elapsed_ns(events: &[Event]) -> u64 {
+    if events.is_empty() {
+        return 0;
+    }
+    let mut start = u64::MAX;
+    let mut end = 0u64;
+    for e in events {
+        if let (Ok(s), Ok(t)) = (e.profiling_command_start(), e.profiling_command_end()) {
+            start = start.min(s);
+            end = end.max(t);
+        }
+    }
+    if start == u64::MAX || end < start {
+        0
+    } else {
+        end - start
     }
 }
 
@@ -655,45 +690,5 @@ mod tests {
         assert_eq!(scalar_type_name(1), "uint32_t");
         assert_eq!(scalar_type_name(64), "uint64_t");
         assert_eq!(scalar_type_name(128), "uint128_t");
-    }
-}
-
-fn device_bdf(id: cl_device_id) -> Option<String> {
-    // Xilinx extension used by legacy C++ runtime (`CL_DEVICE_PCIE_BDF`).
-    const CL_DEVICE_PCIE_BDF: u32 = 0x4038;
-    let bytes = OclDevice::new(id).get_data(CL_DEVICE_PCIE_BDF as _).ok()?;
-    let end = bytes.iter().position(|b| *b == 0).unwrap_or(bytes.len());
-    let text = String::from_utf8(bytes[..end].to_vec()).ok()?;
-    let bdf = text.trim().to_owned();
-    if bdf.is_empty() {
-        None
-    } else {
-        Some(bdf)
-    }
-}
-
-fn ocl_result<T>(res: opencl3::Result<T>, ctx: &str) -> Result<T> {
-    res.map_err(|e| FrtError::OpenCl {
-        code: e.0,
-        msg: format!("{ctx}: {e}"),
-    })
-}
-
-fn elapsed_ns(events: &[Event]) -> u64 {
-    if events.is_empty() {
-        return 0;
-    }
-    let mut start = u64::MAX;
-    let mut end = 0u64;
-    for e in events {
-        if let (Ok(s), Ok(t)) = (e.profiling_command_start(), e.profiling_command_end()) {
-            start = start.min(s as u64);
-            end = end.max(t as u64);
-        }
-    }
-    if start == u64::MAX || end < start {
-        0
-    } else {
-        end - start
     }
 }

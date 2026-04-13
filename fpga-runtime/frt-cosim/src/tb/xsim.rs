@@ -83,7 +83,7 @@ struct StreamArg {
     width_bytes: usize,
     /// Total bytes passed to/from the DPI function.  Always `width_bytes + 1`:
     /// the extra byte carries the EOS/TLAST flag.  For AXIS streams this maps
-    /// to TLAST; for ApFifo streams it maps to the MSB of the `dout`/`din` port.
+    /// to TLAST; for `ApFifo` streams it maps to the MSB of the `dout`/`din` port.
     dpi_width_bytes: usize,
     /// True when the stream uses AXI-Stream (Vitis mode).  The EOS bit is
     /// carried as a separate byte in the DPI transfer and maps to TLAST.
@@ -188,7 +188,7 @@ impl<'a> XsimTbGenerator<'a> {
                         .unwrap_or(0);
                     let bytes = normalized_scalar_bytes(
                         *width,
-                        self.scalar_values.get(&arg.id).map(|x| x.as_slice()),
+                        self.scalar_values.get(&arg.id).map(std::vec::Vec::as_slice),
                     );
                     scalar_args.push(ScalarArg::new(&arg.name, *width, &bytes, offset));
                 }
@@ -271,7 +271,7 @@ impl<'a> XsimTbGenerator<'a> {
             dpi_sv_root: self
                 .dpi_lib
                 .parent()
-                .unwrap_or(Path::new("."))
+                .unwrap_or_else(|| Path::new("."))
                 .to_string_lossy()
                 .to_string(),
             dpi_sv_lib: self
@@ -280,7 +280,10 @@ impl<'a> XsimTbGenerator<'a> {
                 .unwrap_or_default()
                 .to_string_lossy()
                 .to_string(),
-            ready_file: tb_dir.join(crate::runner::xsim::XSIM_READY_FILE).to_string_lossy().to_string(),
+            ready_file: tb_dir
+                .join(crate::runner::xsim::XSIM_READY_FILE)
+                .to_string_lossy()
+                .to_string(),
             start_go_file: std::env::temp_dir()
                 .join(format!("frt-xsim-start-go-{}", std::process::id()))
                 .to_string_lossy()
@@ -295,12 +298,12 @@ impl<'a> XsimTbGenerator<'a> {
 }
 
 fn sv_literal(width_bits: u32, bytes_le: &[u8]) -> String {
+    use std::fmt::Write;
     let width = width_bits.max(1);
-    let hex = bytes_le
-        .iter()
-        .rev()
-        .map(|b| format!("{b:02x}"))
-        .collect::<String>();
+    let hex = bytes_le.iter().rev().fold(String::new(), |mut acc, b| {
+        let _ = write!(acc, "{b:02x}");
+        acc
+    });
     format!("{width}'h{hex}")
 }
 

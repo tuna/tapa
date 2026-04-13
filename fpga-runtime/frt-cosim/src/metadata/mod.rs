@@ -7,25 +7,25 @@ use std::collections::HashMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Mode {
     Hls,
     Vitis,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StreamDir {
     In,
     Out,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StreamProtocol {
     Axis,
     ApFifo,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ArgKind {
     Scalar {
         width: u32,
@@ -42,7 +42,7 @@ pub enum ArgKind {
     },
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArgSpec {
     pub name: String,
     pub id: u32,
@@ -207,7 +207,7 @@ fn parse_part_from_settings_yaml(settings_yaml: &str) -> Option<String> {
 
 /// Returns true if the zip entry path has more than 2 directory components.
 /// The old Python cosim used glob `*.xci` and `*/*.xci` which only matched
-/// files at depth 0 or 1. Deeply nested files (e.g. inside ip_repo/
+/// files at depth 0 or 1. Deeply nested files (e.g. inside `ip_repo`/
 /// subdirectories) were not included.
 fn is_deeply_nested(zip_name: &str) -> bool {
     zip_name.matches('/').count() > 2

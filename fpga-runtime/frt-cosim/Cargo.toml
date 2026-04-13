@@ -3,6 +3,9 @@ name = "frt-cosim"
 version = "0.1.0"
 edition = "2021"
 
+[lints]
+workspace = true
+
 [dependencies]
 askama = { workspace = true }
 frt-shm = { workspace = true }

@@ -41,7 +41,7 @@ fn cross_process_read_write() {
 }
 
 #[test]
-#[ignore]
+#[ignore = "helper for cross_process_read_write; only invoked as a child process"]
 fn child_shm_reader() {
     let Some(path) = std::env::var_os(ENV_PATH) else {
         return;

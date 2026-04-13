@@ -10,7 +10,7 @@ pub struct ScalarWord {
 
 pub fn normalized_scalar_bytes(width_bits: u32, raw: Option<&[u8]>) -> Vec<u8> {
     let expected = (width_bits as usize).div_ceil(8).max(1);
-    let mut out = raw.map(|x| x.to_vec()).unwrap_or_default();
+    let mut out = raw.map(<[u8]>::to_vec).unwrap_or_default();
     if out.len() < expected {
         out.resize(expected, 0);
     } else if out.len() > expected {

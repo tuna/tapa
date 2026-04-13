@@ -2,21 +2,21 @@ use crate::error::{FrtError, Result};
 use quick_xml::events::Event;
 use quick_xml::Reader;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum XrtArgKind {
     Scalar { width: u32 },
     Mmap { data_width: u32 },
     Stream { width: u32 },
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct XrtArg {
     pub name: String,
     pub id: u32,
     pub kind: XrtArgKind,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct XrtMetadata {
     pub top_name: String,
     pub args: Vec<XrtArg>,
@@ -24,7 +24,7 @@ pub struct XrtMetadata {
     pub mode: XclbinMode,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum XclbinMode {
     Flat,
     HwEmu,
@@ -42,7 +42,7 @@ pub fn parse_embedded_xml(xml: &str) -> Result<XrtMetadata> {
 
     loop {
         match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) | Ok(Event::Empty(e)) => match e.name().as_ref() {
+            Ok(Event::Start(e) | Event::Empty(e)) => match e.name().as_ref() {
                 b"kernel" => {
                     for a in e.attributes().flatten() {
                         if a.key.as_ref() == b"name" {

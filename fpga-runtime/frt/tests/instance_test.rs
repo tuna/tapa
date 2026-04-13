@@ -154,13 +154,13 @@ fn open_cosim_verilator_zip_mmap_stream_roundtrip() {
 
     let zip_path = make_manual_zip();
     let mut instance =
-        Instance::open_cosim(&zip_path, Simulator::Verilator).expect("open cosim instance");
+        Instance::open_cosim(&zip_path, &Simulator::Verilator).expect("open cosim instance");
 
     let mut mmap_word = [10u32];
     instance
         .set_buffer_arg_raw(
             0,
-            mmap_word.as_mut_ptr() as *mut u8,
+            mmap_word.as_mut_ptr().cast::<u8>(),
             std::mem::size_of_val(&mmap_word),
         )
         .expect("set mmap arg");
@@ -194,13 +194,13 @@ fn open_cosim_verilator_xo_mmap_axis_roundtrip() {
 
     let xo_path = make_manual_xo();
     let mut instance =
-        Instance::open_cosim(&xo_path, Simulator::Verilator).expect("open cosim instance");
+        Instance::open_cosim(&xo_path, &Simulator::Verilator).expect("open cosim instance");
 
     let mut mmap_word = [10u32];
     instance
         .set_buffer_arg_raw(
             0,
-            mmap_word.as_mut_ptr() as *mut u8,
+            mmap_word.as_mut_ptr().cast::<u8>(),
             std::mem::size_of_val(&mmap_word),
         )
         .expect("set mmap arg");

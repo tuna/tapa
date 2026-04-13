@@ -11,7 +11,7 @@ fn with_handle<R>(handle: *const c_void, f: impl FnOnce(&QueueHandle) -> R) -> O
     if handle.is_null() {
         return None;
     }
-    let h = unsafe { &*(handle as *const QueueHandle) };
+    let h = unsafe { &*handle.cast::<QueueHandle>() };
     Some(f(h))
 }
 
@@ -24,7 +24,7 @@ fn write_c_string(buf: *mut c_char, buf_len: usize, text: &str) -> bool {
         return false;
     }
     unsafe {
-        std::ptr::copy_nonoverlapping(bytes.as_ptr(), buf as *mut u8, bytes.len());
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), buf.cast::<u8>(), bytes.len());
         *buf.add(bytes.len()) = 0;
     }
     true
@@ -52,9 +52,8 @@ pub extern "C" fn frt_shmq_create(
         std::process::id(),
         COUNTER.fetch_add(1, Ordering::Relaxed)
     );
-    let queue = match SharedMemoryQueue::create(&name, depth, width) {
-        Ok(q) => q,
-        Err(_) => return std::ptr::null_mut(),
+    let Ok(queue) = SharedMemoryQueue::create(&name, depth, width) else {
+        return std::ptr::null_mut();
     };
     let path = queue.path().to_string_lossy().to_string();
     if !write_c_string(out_path, out_path_len, &path) {
@@ -63,7 +62,7 @@ pub extern "C" fn frt_shmq_create(
     let handle = Box::new(QueueHandle {
         queue: Mutex::new(queue),
     });
-    Box::into_raw(handle) as *mut c_void
+    Box::into_raw(handle).cast::<c_void>()
 }
 
 #[no_mangle]
@@ -72,7 +71,7 @@ pub extern "C" fn frt_shmq_destroy(handle: *mut c_void) {
         return;
     }
     unsafe {
-        drop(Box::from_raw(handle as *mut QueueHandle));
+        drop(Box::from_raw(handle.cast::<QueueHandle>()));
     }
 }
 
@@ -82,11 +81,7 @@ pub extern "C" fn frt_shmq_empty(handle: *const c_void) -> c_int {
         let Ok(q) = h.queue.lock() else {
             return -1;
         };
-        if q.is_empty() {
-            1
-        } else {
-            0
-        }
+        i32::from(q.is_empty())
     })
     .unwrap_or(-1)
 }
@@ -97,11 +92,7 @@ pub extern "C" fn frt_shmq_full(handle: *const c_void) -> c_int {
         let Ok(q) = h.queue.lock() else {
             return -1;
         };
-        if q.is_full() {
-            1
-        } else {
-            0
-        }
+        i32::from(q.is_full())
     })
     .unwrap_or(-1)
 }
@@ -111,7 +102,7 @@ pub extern "C" fn frt_shmq_push(handle: *mut c_void, data: *const u8, len: usize
     if data.is_null() {
         return -1;
     }
-    with_handle(handle as *const c_void, |h| {
+    with_handle(handle.cast_const(), |h| {
         let Ok(mut q) = h.queue.lock() else {
             return -1;
         };
@@ -141,7 +132,11 @@ pub extern "C" fn frt_shmq_front(handle: *const c_void, out: *mut u8, len: usize
             return -1;
         }
         let buf = unsafe { std::slice::from_raw_parts_mut(out, len) };
-        if q.peek_into(buf) { 0 } else { -1 }
+        if q.peek_into(buf) {
+            0
+        } else {
+            -1
+        }
     })
     .unwrap_or(-1)
 }
@@ -151,7 +146,7 @@ pub extern "C" fn frt_shmq_pop(handle: *mut c_void, out: *mut u8, len: usize) ->
     if out.is_null() {
         return -1;
     }
-    with_handle(handle as *const c_void, |h| {
+    with_handle(handle.cast_const(), |h| {
         let Ok(mut q) = h.queue.lock() else {
             return -1;
         };
@@ -159,7 +154,11 @@ pub extern "C" fn frt_shmq_pop(handle: *mut c_void, out: *mut u8, len: usize) ->
             return -1;
         }
         let buf = unsafe { std::slice::from_raw_parts_mut(out, len) };
-        if q.pop_into(buf) { 0 } else { -1 }
+        if q.pop_into(buf) {
+            0
+        } else {
+            -1
+        }
     })
     .unwrap_or(-1)
 }

@@ -20,8 +20,8 @@ enum TbDir {
 impl TbDir {
     fn path(&self) -> &Path {
         match self {
-            TbDir::Temp(d) => d.path(),
-            TbDir::Fixed(p) => p.as_path(),
+            Self::Temp(d) => d.path(),
+            Self::Fixed(p) => p.as_path(),
         }
     }
 }
@@ -325,9 +325,7 @@ fn dpi_lib_path(variant: &str) -> Result<PathBuf> {
     // Prefer searching relative to libfrt.so itself (covers staging tests
     // where the host binary is compiled into /tmp but libfrt.so lives in
     // the install prefix).
-    let self_path = self_lib_path().unwrap_or_else(|| {
-        std::env::current_exe().unwrap_or_default()
-    });
+    let self_path = self_lib_path().unwrap_or_else(|| std::env::current_exe().unwrap_or_default());
     dpi_lib_path_from_exe(&self_path, variant)
 }
 
@@ -336,7 +334,7 @@ fn self_lib_path() -> Option<PathBuf> {
     // Use dladdr to find the path of the shared library containing this function.
     let mut info: libc::Dl_info = unsafe { std::mem::zeroed() };
     let ptr = self_lib_path as *const ();
-    if unsafe { libc::dladdr(ptr as *const _, &mut info) } != 0 && !info.dli_fname.is_null() {
+    if unsafe { libc::dladdr(ptr.cast(), &raw mut info) } != 0 && !info.dli_fname.is_null() {
         let path = unsafe { std::ffi::CStr::from_ptr(info.dli_fname) };
         path.to_str().ok().map(PathBuf::from)
     } else {
@@ -779,7 +777,7 @@ mod tests {
         let mut host_word = 10u32;
         dev.set_buffer_arg(
             0,
-            (&mut host_word as *mut u32).cast::<u8>(),
+            (&raw mut host_word).cast::<u8>(),
             std::mem::size_of_val(&host_word),
             BufferAccess::ReadWrite,
         )
@@ -806,7 +804,7 @@ mod tests {
         let mut host_word = 10u32;
         dev.set_buffer_arg(
             0,
-            (&mut host_word as *mut u32).cast::<u8>(),
+            (&raw mut host_word).cast::<u8>(),
             std::mem::size_of_val(&host_word),
             BufferAccess::ReadWrite,
         )
@@ -862,7 +860,7 @@ mod tests {
         let mut host_word = 10u32;
         dev.set_buffer_arg(
             0,
-            (&mut host_word as *mut u32).cast::<u8>(),
+            (&raw mut host_word).cast::<u8>(),
             std::mem::size_of_val(&host_word),
             BufferAccess::ReadWrite,
         )

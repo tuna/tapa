@@ -18,7 +18,7 @@ pub fn parse_kernel_xml(xml: &str, _verilog_dir: &Path) -> Result<KernelSpec> {
 
     loop {
         match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) | Ok(Event::Empty(e)) => match e.name().as_ref() {
+            Ok(Event::Start(e) | Event::Empty(e)) => match e.name().as_ref() {
                 b"kernel" => {
                     for attr in e.attributes().flatten() {
                         if attr.key.as_ref() == b"name" {
@@ -78,7 +78,7 @@ pub fn parse_kernel_xml(xml: &str, _verilog_dir: &Path) -> Result<KernelSpec> {
                             // dataWidth on <arg> for mmap ports; it only appears on
                             // <port name="m_axi_<name>">.
                             let resolved_width =
-                                port_info.get(&port).map(|(_, w)| *w).unwrap_or(data_width);
+                                port_info.get(&port).map_or(data_width, |(_, w)| *w);
                             ArgKind::Mmap {
                                 data_width: resolved_width,
                                 addr_width,
@@ -100,7 +100,7 @@ pub fn parse_kernel_xml(xml: &str, _verilog_dir: &Path) -> Result<KernelSpec> {
                             };
                             // Use dataWidth from <port> when available.
                             let resolved_width =
-                                port_info.get(&port).map(|(_, w)| *w).unwrap_or(data_width);
+                                port_info.get(&port).map_or(data_width, |(_, w)| *w);
                             ArgKind::Stream {
                                 width: resolved_width,
                                 depth,

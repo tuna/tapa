@@ -22,7 +22,7 @@ impl SharedMemoryQueue {
     pub fn create(name: &str, depth: u32, width: u32) -> std::io::Result<Self> {
         let size = 32 + (depth as usize) * (width as usize);
         let mut seg = MmapSegment::create(name, size)?;
-        let hdr = unsafe { &mut *(seg.as_mut_slice().as_mut_ptr() as *mut QueueHeader) };
+        let hdr = unsafe { &mut *seg.as_mut_slice().as_mut_ptr().cast::<QueueHeader>() };
         hdr.magic = *b"tapa";
         hdr.version = 1;
         hdr.depth = depth;
@@ -39,7 +39,7 @@ impl SharedMemoryQueue {
     }
 
     fn hdr(&self) -> &QueueHeader {
-        unsafe { &*(self.seg.as_slice().as_ptr() as *const QueueHeader) }
+        unsafe { &*self.seg.as_slice().as_ptr().cast::<QueueHeader>() }
     }
 
     fn data_ptr(&self) -> *const u8 {
@@ -60,7 +60,10 @@ impl SharedMemoryQueue {
 
     pub fn head_tail(&self) -> (u64, u64) {
         let h = self.hdr();
-        (h.head.load(Ordering::Acquire), h.tail.load(Ordering::Acquire))
+        (
+            h.head.load(Ordering::Acquire),
+            h.tail.load(Ordering::Acquire),
+        )
     }
 
     pub fn is_empty(&self) -> bool {
@@ -148,7 +151,7 @@ fn validate_header(bytes: &[u8]) -> std::io::Result<()> {
             format!("shared-memory queue file is too small: {}", bytes.len()),
         ));
     }
-    let hdr = unsafe { &*(bytes.as_ptr() as *const QueueHeader) };
+    let hdr = unsafe { &*bytes.as_ptr().cast::<QueueHeader>() };
     if hdr.magic != *b"tapa" {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,

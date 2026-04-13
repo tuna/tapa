@@ -174,8 +174,10 @@ impl XsimStartupGate {
 fn xsim_startup_lock_path() -> PathBuf {
     std::env::var_os(XSIM_STARTUP_LOCK_ENV)
         .filter(|path| !path.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| std::env::temp_dir().join("frt-xsim-startup.lock"))
+        .map_or_else(
+            || std::env::temp_dir().join("frt-xsim-startup.lock"),
+            PathBuf::from,
+        )
 }
 
 fn xsim_start_barrier_paths() -> (PathBuf, PathBuf) {

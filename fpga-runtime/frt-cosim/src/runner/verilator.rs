@@ -50,7 +50,7 @@ fn verilator_root_env(verilator_bin: &Path) -> Option<PathBuf> {
     }
     // Check candidates that have $ROOT/include/verilated.h — the layout
     // Verilator expects when VERILATOR_ROOT is set.
-    let candidates: Vec<PathBuf> = [
+    [
         // Standard layout: bin is at $ROOT/bin/verilator
         verilator_bin
             .parent()
@@ -69,10 +69,7 @@ fn verilator_root_env(verilator_bin: &Path) -> Option<PathBuf> {
     ]
     .into_iter()
     .flatten()
-    .collect();
-    candidates
-        .into_iter()
-        .find(|c| c.join("include/verilated.h").exists())
+    .find(|c| c.join("include/verilated.h").exists())
 }
 
 impl SimRunner for VerilatorRunner {
@@ -88,12 +85,8 @@ impl SimRunner for VerilatorRunner {
             .iter()
             .map(|(name, seg)| (name.clone(), seg.len()))
             .collect();
-        let generator = VerilatorTbGenerator::new(
-            spec,
-            &ctx.base_addresses,
-            &buffer_sizes,
-            scalar_values,
-        );
+        let generator =
+            VerilatorTbGenerator::new(spec, &ctx.base_addresses, &buffer_sizes, scalar_values);
         std::fs::write(tb_dir.join("tb.cpp"), generator.render_tb()?)?;
         let rtl_dir = tb_dir.join("rtl");
         std::fs::create_dir_all(&rtl_dir)?;
@@ -129,7 +122,7 @@ impl SimRunner for VerilatorRunner {
         let mut args = vec![
             "--cc".to_string(),
             "--top-module".to_string(),
-            top.to_string(),
+            top.clone(),
             "--no-timing".to_string(),
             // HLS-generated sequential-init loops can explode during Verilation.
             // Disabling automatic procedural unrolling keeps compile memory bounded
@@ -198,8 +191,7 @@ impl SimRunner for VerilatorRunner {
             let looks_like_verilator_bin = entry
                 .file_name()
                 .to_str()
-                .map(|n| n.starts_with('V'))
-                .unwrap_or(false);
+                .is_some_and(|n| n.starts_with('V'));
             let is_executable = path.is_file()
                 && std::fs::metadata(&path)
                     .map(|m| {
@@ -252,14 +244,14 @@ impl VerilatorBuildGate {
 fn verilator_build_lock_path() -> PathBuf {
     std::env::var_os(VERILATOR_BUILD_LOCK_ENV)
         .filter(|path| !path.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| std::env::temp_dir().join("frt-verilator-build.lock"))
+        .map_or_else(
+            || std::env::temp_dir().join("frt-verilator-build.lock"),
+            PathBuf::from,
+        )
 }
 
 fn num_cpus_str() -> String {
-    std::thread::available_parallelism()
-        .map(|n| n.to_string())
-        .unwrap_or_else(|_| "4".into())
+    std::thread::available_parallelism().map_or_else(|_| "4".into(), |n| n.to_string())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -279,9 +271,8 @@ fn generate_xilinx_fp_ip_models(rtl_dir: &Path) -> Result<()> {
         if !is_verilog_like(&path) {
             continue;
         }
-        let content = match std::fs::read_to_string(&path) {
-            Ok(content) => content,
-            Err(_) => continue,
+        let Ok(content) = std::fs::read_to_string(&path) else {
+            continue;
         };
         for ip_module in ip_re
             .captures_iter(&content)
@@ -331,9 +322,8 @@ fn fix_combinational_nba(rtl_dir: &Path) -> Result<()> {
         if !is_verilog_like(&path) {
             continue;
         }
-        let content = match std::fs::read_to_string(&path) {
-            Ok(c) => c,
-            Err(_) => continue,
+        let Ok(content) = std::fs::read_to_string(&path) else {
+            continue;
         };
         if !content.contains("always @(*)") {
             continue;
@@ -385,8 +375,7 @@ fn fix_combinational_nba(rtl_dir: &Path) -> Result<()> {
 fn is_verilog_like(path: &Path) -> bool {
     path.extension()
         .and_then(|x| x.to_str())
-        .map(|x| matches!(x, "v" | "sv" | "vh"))
-        .unwrap_or(false)
+        .is_some_and(|x| matches!(x, "v" | "sv" | "vh"))
 }
 
 fn parse_xilinx_fp_ip_model(ip_module: &str, rtl_dir: &Path) -> Result<Option<XilinxFpIpConfig>> {
@@ -419,8 +408,7 @@ fn parse_xilinx_fp_ip_tcl_text(content: &str) -> Result<Option<XilinxFpIpConfig>
 
     let precision = config
         .get("a_precision_type")
-        .map(|s| s.to_ascii_lowercase())
-        .unwrap_or_else(|| "single".into());
+        .map_or_else(|| "single".into(), |s| s.to_ascii_lowercase());
     let is_double = precision == "double";
 
     let op = if let Some(operation_type) = config.get("operation_type") {
@@ -474,8 +462,8 @@ fn parse_xilinx_fp_ip_tcl_text(content: &str) -> Result<Option<XilinxFpIpConfig>
 
 fn detect_xilinx_fp_ip_model_from_name(ip_module: &str) -> Option<XilinxFpIpConfig> {
     const FP_PATTERNS: &[&str] = &[
-        "_fadd_", "_fadds_", "_fsub_", "_fsubs_", "_fmul_", "_fmuls_",
-        "_dadd_", "_dadds_", "_dsub_", "_dsubs_", "_dmul_", "_dmuls_",
+        "_fadd_", "_fadds_", "_fsub_", "_fsubs_", "_fmul_", "_fmuls_", "_dadd_", "_dadds_",
+        "_dsub_", "_dsubs_", "_dmul_", "_dmuls_",
     ];
     let lower = ip_module.to_ascii_lowercase();
     if FP_PATTERNS.iter().any(|p| lower.contains(p)) {
@@ -709,13 +697,13 @@ mod tests {
 
     #[test]
     fn parses_xilinx_floating_point_tcl() {
-        let tcl = r#"
+        let tcl = r"
 create_ip -name floating_point -version 7.1 -vendor xilinx.com -library ip -module_name Add_fadd_32ns_32ns_32_7_full_dsp_1_ip
 set_property -dict [list CONFIG.a_precision_type Single \
                           CONFIG.add_sub_value Add \
                           CONFIG.c_latency 5 \
                           CONFIG.operation_type Add_Subtract] -objects [get_ips Add_fadd_32ns_32ns_32_7_full_dsp_1_ip] -quiet
-"#;
+";
         let model = parse_xilinx_fp_ip_tcl_text(tcl)
             .expect("parse tcl")
             .expect("fp model");

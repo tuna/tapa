@@ -30,13 +30,16 @@ static READ_MISS: AtomicU64 = AtomicU64::new(0);
 static WRITE_OK: AtomicU64 = AtomicU64::new(0);
 static WRITE_FULL: AtomicU64 = AtomicU64::new(0);
 static LAST_REPORT: AtomicU64 = AtomicU64::new(0);
-/// Counter-based pre-check: only call SystemTime::now() every N misses.
+/// Counter-based pre-check: only call `SystemTime::now()` every N misses.
 static MISS_COUNTER: AtomicU64 = AtomicU64::new(0);
 const MISS_CHECK_INTERVAL: u64 = 1_000_000;
 
 fn maybe_report_progress(port: &str, q: &frt_shm::SharedMemoryQueue) {
     // Fast path: only check the wall clock every MISS_CHECK_INTERVAL misses.
-    if MISS_COUNTER.fetch_add(1, Ordering::Relaxed) % MISS_CHECK_INTERVAL != 0 {
+    if !MISS_COUNTER
+        .fetch_add(1, Ordering::Relaxed)
+        .is_multiple_of(MISS_CHECK_INTERVAL)
+    {
         return;
     }
     let now = std::time::SystemTime::now()
@@ -65,9 +68,8 @@ pub fn stream_try_read_impl(ctx: &DpiContext, port: &str, out: *mut u8) -> bool 
         eprintln!("frt-dpi: stream_try_read: unknown port '{port}'");
         return false;
     };
-    let mut s = match stream.inner.lock() {
-        Ok(guard) => guard,
-        Err(_) => return false,
+    let Ok(mut s) = stream.inner.lock() else {
+        return false;
     };
     if s.queue.is_empty() {
         READ_MISS.fetch_add(1, Ordering::Relaxed);
@@ -81,7 +83,10 @@ pub fn stream_try_read_impl(ctx: &DpiContext, port: &str, out: *mut u8) -> bool 
     s.queue.pop_into(buf);
     READ_OK.fetch_add(1, Ordering::Relaxed);
     if stream_debug_enabled() {
-        eprintln!("frt-dpi: stream_try_read '{port}': got {} bytes", s.queue.width());
+        eprintln!(
+            "frt-dpi: stream_try_read '{port}': got {} bytes",
+            s.queue.width()
+        );
     }
     true
 }
@@ -91,9 +96,8 @@ pub fn stream_istream_step_impl(ctx: &DpiContext, port: &str, consume: bool, out
         eprintln!("frt-dpi: stream_istream_step: unknown port '{port}'");
         return false;
     };
-    let mut s = match stream.inner.lock() {
-        Ok(guard) => guard,
-        Err(_) => return false,
+    let Ok(mut s) = stream.inner.lock() else {
+        return false;
     };
 
     if s.last_istream_valid && consume {
@@ -129,9 +133,8 @@ pub fn stream_try_write_impl(ctx: &DpiContext, port: &str, data: *const u8) -> b
         eprintln!("frt-dpi: stream_try_write: unknown port '{port}'");
         return false;
     };
-    let mut s = match stream.inner.lock() {
-        Ok(guard) => guard,
-        Err(_) => return false,
+    let Ok(mut s) = stream.inner.lock() else {
+        return false;
     };
     let w = s.queue.width();
     let slice = unsafe { std::slice::from_raw_parts(data, w) };
@@ -145,14 +148,18 @@ pub fn stream_try_write_impl(ctx: &DpiContext, port: &str, data: *const u8) -> b
     ok
 }
 
-pub fn stream_ostream_step_impl(ctx: &DpiContext, port: &str, write: bool, data: *const u8) -> bool {
+pub fn stream_ostream_step_impl(
+    ctx: &DpiContext,
+    port: &str,
+    write: bool,
+    data: *const u8,
+) -> bool {
     let Some(stream) = ctx.streams.get(port) else {
         eprintln!("frt-dpi: stream_ostream_step: unknown port '{port}'");
         return false;
     };
-    let mut s = match stream.inner.lock() {
-        Ok(guard) => guard,
-        Err(_) => return false,
+    let Ok(mut s) = stream.inner.lock() else {
+        return false;
     };
 
     if s.last_ostream_ready && write {
@@ -186,28 +193,31 @@ pub fn stream_hls_ostream_step_impl(
         eprintln!("frt-dpi: stream_hls_ostream_step: unknown port '{port}'");
         return false;
     };
-    let mut s = match stream.inner.lock() {
-        Ok(guard) => guard,
-        Err(_) => return false,
+    let Ok(mut s) = stream.inner.lock() else {
+        return false;
     };
 
     // HLS ap_fifo/full_n uses the queue state visible in the current cycle,
     // unlike AXIS tready which is sampled from the prior cycle in the Vitis path.
     if write {
-        if !s.queue.is_full() {
+        if s.queue.is_full() {
+            let (h, t) = s.queue.head_tail();
+            eprintln!(
+                "frt-dpi: WARN '{port}': write=1 but queue full! h={h} t={t} depth={}",
+                s.queue.depth()
+            );
+        } else {
             let w = s.queue.width();
             let slice = unsafe { std::slice::from_raw_parts(data, w) };
             if s.queue.try_push(slice).is_ok() {
                 WRITE_OK.fetch_add(1, Ordering::Relaxed);
                 let (h, t) = s.queue.head_tail();
                 if stream_debug_enabled() {
-                    eprintln!("frt-dpi: stream_hls_ostream_step '{port}': wrote {w} bytes (h={h} t={t})");
+                    eprintln!(
+                        "frt-dpi: stream_hls_ostream_step '{port}': wrote {w} bytes (h={h} t={t})"
+                    );
                 }
             }
-        } else {
-            let (h, t) = s.queue.head_tail();
-            eprintln!("frt-dpi: WARN '{port}': write=1 but queue full! h={h} t={t} depth={}",
-                      s.queue.depth());
         }
     }
 
@@ -225,9 +235,8 @@ pub fn stream_can_write_impl(ctx: &DpiContext, port: &str) -> bool {
         eprintln!("frt-dpi: stream_can_write: unknown port '{port}'");
         return false;
     };
-    let s = match stream.inner.lock() {
-        Ok(guard) => guard,
-        Err(_) => return false,
+    let Ok(s) = stream.inner.lock() else {
+        return false;
     };
     let can = !s.queue.is_full();
     if !can {
@@ -349,7 +358,11 @@ mod tests {
         let ctx = make_ctx_with_stream("stream_istream_step_holds_front", 4, 4, 4);
         let first = 1u32.to_le_bytes();
         let second = 2u32.to_le_bytes();
-        assert!(stream_try_write_impl(&ctx, "stream_istream_step_holds_front", first.as_ptr()));
+        assert!(stream_try_write_impl(
+            &ctx,
+            "stream_istream_step_holds_front",
+            first.as_ptr()
+        ));
         assert!(stream_try_write_impl(
             &ctx,
             "stream_istream_step_holds_front",
@@ -433,7 +446,7 @@ mod tests {
         assert!(!stream_try_read_impl(
             &ctx,
             "stream_hls_ostream_step_immediate",
-            [0u8; 4].as_ptr() as *mut u8,
+            [0u8; 4].as_ptr().cast_mut(),
         ));
 
         assert!(!stream_hls_ostream_step_impl(
@@ -496,21 +509,14 @@ mod tests {
     #[test]
     fn env_opt_out_can_be_disabled_explicitly() {
         for value in ["0", "false", "FALSE", "no", "NO"] {
-            assert!(
-                !env_opt_out(Some(value)),
-                "expected {value} to disable"
-            );
+            assert!(!env_opt_out(Some(value)), "expected {value} to disable");
         }
     }
 
     #[test]
     fn env_opt_out_stays_enabled_for_true_values() {
         for value in ["1", "true", "TRUE", "yes", "YES", "maybe"] {
-            assert!(
-                env_opt_out(Some(value)),
-                "expected {value} to keep enabled"
-            );
+            assert!(env_opt_out(Some(value)), "expected {value} to keep enabled");
         }
     }
-
 }

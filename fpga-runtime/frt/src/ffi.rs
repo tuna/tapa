@@ -60,7 +60,6 @@ fn parse_buffer_access(tag: c_int) -> BufferAccess {
         0 => BufferAccess::PlaceHolder,
         1 => BufferAccess::WriteOnly,
         2 => BufferAccess::ReadOnly,
-        3 => BufferAccess::ReadWrite,
         _ => BufferAccess::ReadWrite,
     }
 }
@@ -77,8 +76,8 @@ fn cat_to_c_int(cat: RuntimeArgCategory) -> c_int {
 fn open_instance(path: &str, sim: Option<&str>) -> Result<Instance, String> {
     let p = Path::new(path);
     match p.extension().and_then(|e| e.to_str()) {
-        Some("xo") | Some("zip") => {
-            Instance::open_cosim(p, parse_simulator(sim)).map_err(|e| e.to_string())
+        Some("xo" | "zip") => {
+            Instance::open_cosim(p, &parse_simulator(sim)).map_err(|e| e.to_string())
         }
         _ => Instance::open(p).map_err(|e| e.to_string()),
     }
@@ -132,7 +131,7 @@ pub extern "C" fn frt_instance_open(
         arg_name_cache: None,
         arg_type_cache: None,
     };
-    Box::into_raw(Box::new(handle)) as *mut std::ffi::c_void
+    Box::into_raw(Box::new(handle)).cast::<std::ffi::c_void>()
 }
 
 #[no_mangle]
@@ -141,7 +140,7 @@ pub extern "C" fn frt_instance_close(handle: *mut std::ffi::c_void) {
         return;
     }
     unsafe {
-        let mut h = Box::from_raw(handle as *mut FrtInstanceHandle);
+        let mut h = Box::from_raw(handle.cast::<FrtInstanceHandle>());
         if !matches!(h.instance.is_finished(), Ok(true)) {
             let _ = h.instance.kill();
         }
@@ -162,7 +161,7 @@ pub extern "C" fn frt_instance_get_arg_count(
         set_last_error("out_count is null");
         return -1;
     }
-    let h = unsafe { &mut *(handle as *mut FrtInstanceHandle) };
+    let h = unsafe { &mut *handle.cast::<FrtInstanceHandle>() };
     h.args_cache = h.instance.args_info();
     unsafe {
         *out_count = h.args_cache.len() as u32;
@@ -188,7 +187,7 @@ pub extern "C" fn frt_instance_get_arg(
         set_last_error("output pointer is null");
         return -1;
     }
-    let h = unsafe { &mut *(handle as *mut FrtInstanceHandle) };
+    let h = unsafe { &mut *handle.cast::<FrtInstanceHandle>() };
     if h.args_cache.is_empty() {
         h.args_cache = h.instance.args_info();
     }
@@ -213,13 +212,11 @@ pub extern "C" fn frt_instance_get_arg(
         *out_name = h
             .arg_name_cache
             .as_ref()
-            .map(|s| s.as_ptr())
-            .unwrap_or(std::ptr::null());
+            .map_or(std::ptr::null(), |s| s.as_ptr());
         *out_type = h
             .arg_type_cache
             .as_ref()
-            .map(|s| s.as_ptr())
-            .unwrap_or(std::ptr::null());
+            .map_or(std::ptr::null(), |s| s.as_ptr());
     }
     0
 }
@@ -245,7 +242,7 @@ pub extern "C" fn frt_instance_set_scalar_bytes(
     } else {
         unsafe { std::slice::from_raw_parts(value, size) }
     };
-    let h = unsafe { &mut *(handle as *mut FrtInstanceHandle) };
+    let h = unsafe { &mut *handle.cast::<FrtInstanceHandle>() };
     if let Err(e) = h.instance.set_scalar_arg_bytes(index, bytes) {
         set_last_error(e.to_string());
         return -1;
@@ -281,7 +278,7 @@ pub extern "C" fn frt_instance_set_buffer_arg_typed(
         return -1;
     }
     let access = parse_buffer_access(tag);
-    let h = unsafe { &mut *(handle as *mut FrtInstanceHandle) };
+    let h = unsafe { &mut *handle.cast::<FrtInstanceHandle>() };
     if let Err(e) = h
         .instance
         .set_buffer_arg_raw_with_access(index, ptr, bytes, access)
@@ -311,7 +308,7 @@ pub extern "C" fn frt_instance_set_stream_arg(
             return -1;
         }
     };
-    let h = unsafe { &mut *(handle as *mut FrtInstanceHandle) };
+    let h = unsafe { &mut *handle.cast::<FrtInstanceHandle>() };
     if let Err(e) = h.instance.set_stream_arg_raw(index, path) {
         set_last_error(e.to_string());
         return -1;
@@ -326,7 +323,7 @@ pub extern "C" fn frt_instance_suspend_buffer(handle: *mut std::ffi::c_void, ind
         set_last_error("handle is null");
         return 0;
     }
-    let h = unsafe { &mut *(handle as *mut FrtInstanceHandle) };
+    let h = unsafe { &mut *handle.cast::<FrtInstanceHandle>() };
     h.instance.suspend_buffer(index)
 }
 
@@ -337,7 +334,7 @@ pub extern "C" fn frt_instance_write_to_device(handle: *mut std::ffi::c_void) ->
         set_last_error("handle is null");
         return -1;
     }
-    let h = unsafe { &mut *(handle as *mut FrtInstanceHandle) };
+    let h = unsafe { &mut *handle.cast::<FrtInstanceHandle>() };
     if let Err(e) = h.instance.write_to_device() {
         set_last_error(e.to_string());
         return -1;
@@ -352,7 +349,7 @@ pub extern "C" fn frt_instance_read_from_device(handle: *mut std::ffi::c_void) -
         set_last_error("handle is null");
         return -1;
     }
-    let h = unsafe { &mut *(handle as *mut FrtInstanceHandle) };
+    let h = unsafe { &mut *handle.cast::<FrtInstanceHandle>() };
     if let Err(e) = h.instance.read_from_device() {
         set_last_error(e.to_string());
         return -1;
@@ -367,7 +364,7 @@ pub extern "C" fn frt_instance_exec(handle: *mut std::ffi::c_void) -> c_int {
         set_last_error("handle is null");
         return -1;
     }
-    let h = unsafe { &mut *(handle as *mut FrtInstanceHandle) };
+    let h = unsafe { &mut *handle.cast::<FrtInstanceHandle>() };
     if let Err(e) = h.instance.exec() {
         set_last_error(e.to_string());
         return -1;
@@ -382,7 +379,7 @@ pub extern "C" fn frt_instance_pause(handle: *mut std::ffi::c_void) -> c_int {
         set_last_error("handle is null");
         return -1;
     }
-    let h = unsafe { &mut *(handle as *mut FrtInstanceHandle) };
+    let h = unsafe { &mut *handle.cast::<FrtInstanceHandle>() };
     if let Err(e) = h.instance.pause() {
         set_last_error(e.to_string());
         return -1;
@@ -397,7 +394,7 @@ pub extern "C" fn frt_instance_resume(handle: *mut std::ffi::c_void) -> c_int {
         set_last_error("handle is null");
         return -1;
     }
-    let h = unsafe { &mut *(handle as *mut FrtInstanceHandle) };
+    let h = unsafe { &mut *handle.cast::<FrtInstanceHandle>() };
     if let Err(e) = h.instance.resume() {
         set_last_error(e.to_string());
         return -1;
@@ -412,7 +409,7 @@ pub extern "C" fn frt_instance_finish(handle: *mut std::ffi::c_void) -> c_int {
         set_last_error("handle is null");
         return -1;
     }
-    let h = unsafe { &mut *(handle as *mut FrtInstanceHandle) };
+    let h = unsafe { &mut *handle.cast::<FrtInstanceHandle>() };
     if let Err(e) = h.instance.finish() {
         set_last_error(e.to_string());
         return -1;
@@ -427,7 +424,7 @@ pub extern "C" fn frt_instance_kill(handle: *mut std::ffi::c_void) -> c_int {
         set_last_error("handle is null");
         return -1;
     }
-    let h = unsafe { &mut *(handle as *mut FrtInstanceHandle) };
+    let h = unsafe { &mut *handle.cast::<FrtInstanceHandle>() };
     if let Err(e) = h.instance.kill() {
         set_last_error(e.to_string());
         return -1;
@@ -441,15 +438,9 @@ pub extern "C" fn frt_instance_is_finished(handle: *mut std::ffi::c_void) -> c_i
     if handle.is_null() {
         return 0;
     }
-    let h = unsafe { &mut *(handle as *mut FrtInstanceHandle) };
+    let h = unsafe { &mut *handle.cast::<FrtInstanceHandle>() };
     match h.instance.is_finished() {
-        Ok(done) => {
-            if done {
-                1
-            } else {
-                0
-            }
-        }
+        Ok(done) => i32::from(done),
         Err(e) => {
             set_last_error(e.to_string());
             -1
@@ -462,7 +453,7 @@ pub extern "C" fn frt_instance_load_ns(handle: *mut std::ffi::c_void) -> u64 {
     if handle.is_null() {
         return 0;
     }
-    let h = unsafe { &*(handle as *mut FrtInstanceHandle) };
+    let h = unsafe { &*handle.cast::<FrtInstanceHandle>() };
     h.instance.load_ns()
 }
 
@@ -471,7 +462,7 @@ pub extern "C" fn frt_instance_compute_ns(handle: *mut std::ffi::c_void) -> u64 
     if handle.is_null() {
         return 0;
     }
-    let h = unsafe { &*(handle as *mut FrtInstanceHandle) };
+    let h = unsafe { &*handle.cast::<FrtInstanceHandle>() };
     h.instance.compute_ns()
 }
 
@@ -480,6 +471,6 @@ pub extern "C" fn frt_instance_store_ns(handle: *mut std::ffi::c_void) -> u64 {
     if handle.is_null() {
         return 0;
     }
-    let h = unsafe { &*(handle as *mut FrtInstanceHandle) };
+    let h = unsafe { &*handle.cast::<FrtInstanceHandle>() };
     h.instance.store_ns()
 }

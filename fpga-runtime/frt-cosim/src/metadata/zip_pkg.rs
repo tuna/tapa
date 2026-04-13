@@ -210,5 +210,7 @@ fn required_u32(v: &serde_yaml::Value, key: &str) -> Result<u32> {
 }
 
 fn optional_u32(v: &serde_yaml::Value, key: &str) -> Option<u32> {
-    v.get(key).and_then(|x| x.as_u64()).map(|x| x as u32)
+    v.get(key)
+        .and_then(serde_yaml::Value::as_u64)
+        .map(|x| x as u32)
 }

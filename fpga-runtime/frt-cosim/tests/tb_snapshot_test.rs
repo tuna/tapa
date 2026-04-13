@@ -167,12 +167,7 @@ fn verilator_hls_tb_snapshot() {
     let base_addrs = std::collections::HashMap::from([("a".into(), 0x1000_0000u64)]);
     let buf_sizes = std::collections::HashMap::from([("a".into(), 4096usize)]);
     let scalar_vals = std::collections::HashMap::from([(1u32, vec![7u8, 0, 0, 0])]);
-    let generator = VerilatorTbGenerator::new(
-        &spec,
-        &base_addrs,
-        &buf_sizes,
-        &scalar_vals,
-    );
+    let generator = VerilatorTbGenerator::new(&spec, &base_addrs, &buf_sizes, &scalar_vals);
     let tb = generator.render_tb().expect("render");
     assert!(tb.contains("service_all_axi"));
     assert!(tb.contains("tapa_stream_try_read"));
@@ -187,12 +182,7 @@ fn verilator_hls_escapes_banked_mmap_names() {
     let base_addrs = std::collections::HashMap::from([("chan[0]".into(), 0x1000_0000u64)]);
     let buf_sizes = std::collections::HashMap::from([("chan[0]".into(), 4096usize)]);
     let scalar_vals = std::collections::HashMap::from([(1u32, vec![7u8, 0, 0, 0])]);
-    let generator = VerilatorTbGenerator::new(
-        &spec,
-        &base_addrs,
-        &buf_sizes,
-        &scalar_vals,
-    );
+    let generator = VerilatorTbGenerator::new(&spec, &base_addrs, &buf_sizes, &scalar_vals);
     let tb = generator.render_tb().expect("render");
     // Verilator strips brackets: chan[0] → chan_0 in C++ member names
     assert!(tb.contains("rd_chan_0"), "{tb}");
@@ -301,9 +291,15 @@ fn xsim_hls_stream_input_refills_without_bubble() {
     let posedge_idx = tb[..step_idx]
         .rfind("always @(posedge ap_clk) begin")
         .expect("posedge stream block");
-    assert!(tb.contains("stream_in_have_next_s = tapa_stream_istream_step("), "{tb}");
+    assert!(
+        tb.contains("stream_in_have_next_s = tapa_stream_istream_step("),
+        "{tb}"
+    );
     assert!(tb.contains("stream_in_have_s && stream_read_s,"), "{tb}");
-    assert!(tb.contains("stream_in_have_s <= stream_in_have_next_s;"), "{tb}");
+    assert!(
+        tb.contains("stream_in_have_s <= stream_in_have_next_s;"),
+        "{tb}"
+    );
     assert!(!tb[..step_idx].contains("always @(negedge ap_clk) begin"));
     assert!(posedge_idx < step_idx);
 }
@@ -314,14 +310,12 @@ fn verilator_hls_stream_input_refills_without_bubble() {
     let base_addrs = std::collections::HashMap::from([("a".into(), 0x1000_0000u64)]);
     let buf_sizes = std::collections::HashMap::from([("a".into(), 4096usize)]);
     let scalar_vals = std::collections::HashMap::from([(1u32, vec![7u8, 0, 0, 0])]);
-    let generator = VerilatorTbGenerator::new(
-        &spec,
-        &base_addrs,
-        &buf_sizes,
-        &scalar_vals,
-    );
+    let generator = VerilatorTbGenerator::new(&spec, &base_addrs, &buf_sizes, &scalar_vals);
     let tb = generator.render_tb().expect("render");
-    assert!(tb.contains("stream_in_have_s = tapa_stream_istream_step("), "{tb}");
+    assert!(
+        tb.contains("stream_in_have_s = tapa_stream_istream_step("),
+        "{tb}"
+    );
     assert!(tb.contains("stream_in_have_s && dut->s_read"), "{tb}");
 }
 
@@ -390,9 +384,15 @@ fn xsim_vitis_stream_input_uses_direct_try_read_on_posedge() {
         tb.contains("got_stream_s = tapa_stream_try_read(\"s\", stream_in_bytes_s);"),
         "{tb}"
     );
-    assert!(tb.contains("if (stream_in_have_s && stream_ready_s) begin"), "{tb}");
+    assert!(
+        tb.contains("if (stream_in_have_s && stream_ready_s) begin"),
+        "{tb}"
+    );
     assert!(!tb.contains("always @(negedge ap_clk) begin"), "{tb}");
-    assert!(!tb.contains("stream_in_have_s = tapa_stream_istream_step("), "{tb}");
+    assert!(
+        !tb.contains("stream_in_have_s = tapa_stream_istream_step("),
+        "{tb}"
+    );
 }
 
 #[test]
@@ -411,13 +411,22 @@ fn xsim_vitis_axis_output_uses_direct_write_handshake() {
         false,
     );
     let tb = generator.render_tb().expect("render tb");
-    assert!(tb.contains("can_write_s_out = tapa_stream_can_write(\"s_out\");"), "{tb}");
-    assert!(tb.contains("stream_out_ready_s_out <= can_write_s_out;"), "{tb}");
+    assert!(
+        tb.contains("can_write_s_out = tapa_stream_can_write(\"s_out\");"),
+        "{tb}"
+    );
+    assert!(
+        tb.contains("stream_out_ready_s_out <= can_write_s_out;"),
+        "{tb}"
+    );
     assert!(
         tb.contains("void'(tapa_stream_try_write(\"s_out\", stream_out_bytes_s_out));"),
         "{tb}"
     );
-    assert!(!tb.contains("stream_out_ready_s_out = tapa_stream_ostream_step("), "{tb}");
+    assert!(
+        !tb.contains("stream_out_ready_s_out = tapa_stream_ostream_step("),
+        "{tb}"
+    );
 }
 
 #[test]
@@ -426,17 +435,24 @@ fn verilator_vitis_tb_uses_direct_axis_input_handshake() {
     let base_addrs = std::collections::HashMap::from([("a".into(), 0x1000_0000u64)]);
     let buf_sizes = std::collections::HashMap::from([("a".into(), 4096usize)]);
     let scalar_vals = std::collections::HashMap::from([(2u32, vec![7u8, 0, 0, 0])]);
-    let generator = VerilatorTbGenerator::new(
-        &spec,
-        &base_addrs,
-        &buf_sizes,
-        &scalar_vals,
-    );
+    let generator = VerilatorTbGenerator::new(&spec, &base_addrs, &buf_sizes, &scalar_vals);
     let tb = generator.render_tb().expect("render");
-    assert!(tb.contains("bool tapa_stream_try_read(const char* port, uint8_t* out);"), "{tb}");
-    assert!(tb.contains("stream_in_have_s = tapa_stream_try_read(\"s\", stream_in_data_s.data());"), "{tb}");
-    assert!(tb.contains("if (stream_in_have_s && dut->s_TREADY) {"), "{tb}");
-    assert!(!tb.contains("stream_in_have_s = tapa_stream_istream_step("), "{tb}");
+    assert!(
+        tb.contains("bool tapa_stream_try_read(const char* port, uint8_t* out);"),
+        "{tb}"
+    );
+    assert!(
+        tb.contains("stream_in_have_s = tapa_stream_try_read(\"s\", stream_in_data_s.data());"),
+        "{tb}"
+    );
+    assert!(
+        tb.contains("if (stream_in_have_s && dut->s_TREADY) {"),
+        "{tb}"
+    );
+    assert!(
+        !tb.contains("stream_in_have_s = tapa_stream_istream_step("),
+        "{tb}"
+    );
 }
 
 #[test]
@@ -445,19 +461,32 @@ fn verilator_vitis_tb_uses_direct_axis_write_handshake() {
     let base_addrs = std::collections::HashMap::new();
     let buf_sizes = std::collections::HashMap::new();
     let scalar_vals = std::collections::HashMap::from([(0u32, vec![7u8, 0, 0, 0])]);
-    let generator = VerilatorTbGenerator::new(
-        &spec,
-        &base_addrs,
-        &buf_sizes,
-        &scalar_vals,
-    );
+    let generator = VerilatorTbGenerator::new(&spec, &base_addrs, &buf_sizes, &scalar_vals);
     let tb = generator.render_tb().expect("render");
-    assert!(tb.contains("bool tapa_stream_try_write(const char* port, const uint8_t* data);"), "{tb}");
-    assert!(tb.contains("bool tapa_stream_can_write(const char* port);"), "{tb}");
-    assert!(tb.contains("bool can_write_s_out = tapa_stream_can_write(\"s_out\");"), "{tb}");
-    assert!(tb.contains("dut->s_out_TREADY = can_write_s_out ? 1 : 0;"), "{tb}");
-    assert!(tb.contains("(void)tapa_stream_try_write(\"s_out\", data.data());"), "{tb}");
-    assert!(!tb.contains("dut->s_out_TREADY = tapa_stream_ostream_step("), "{tb}");
+    assert!(
+        tb.contains("bool tapa_stream_try_write(const char* port, const uint8_t* data);"),
+        "{tb}"
+    );
+    assert!(
+        tb.contains("bool tapa_stream_can_write(const char* port);"),
+        "{tb}"
+    );
+    assert!(
+        tb.contains("bool can_write_s_out = tapa_stream_can_write(\"s_out\");"),
+        "{tb}"
+    );
+    assert!(
+        tb.contains("dut->s_out_TREADY = can_write_s_out ? 1 : 0;"),
+        "{tb}"
+    );
+    assert!(
+        tb.contains("(void)tapa_stream_try_write(\"s_out\", data.data());"),
+        "{tb}"
+    );
+    assert!(
+        !tb.contains("dut->s_out_TREADY = tapa_stream_ostream_step("),
+        "{tb}"
+    );
 }
 
 #[test]

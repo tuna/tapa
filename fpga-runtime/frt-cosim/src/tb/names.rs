@@ -6,23 +6,19 @@ pub fn escape_verilog_identifier(name: &str) -> String {
 }
 
 pub fn verilator_identifier(name: &str) -> String {
+    use std::fmt::Write;
     let mut out = String::with_capacity(name.len());
     for ch in name.chars() {
         if ch.is_ascii_alphanumeric() || ch == '_' {
             out.push(ch);
         } else {
-            out.push_str(&format!("__{:03x}", ch as u32));
+            let _ = write!(out, "__{:03x}", ch as u32);
         }
     }
     if out.is_empty() {
         out.push('_');
     }
-    if out
-        .chars()
-        .next()
-        .map(|c| c.is_ascii_digit())
-        .unwrap_or(false)
-    {
+    if out.chars().next().is_some_and(|c| c.is_ascii_digit()) {
         out.insert(0, '_');
     }
     out
@@ -36,7 +32,7 @@ pub fn cpp_identifier(name: &str) -> String {
         } else if ch == '[' {
             out.push('_');
         } else if ch == ']' {
-            continue;
+            // skip closing bracket
         } else {
             out.push('_');
         }
@@ -44,12 +40,7 @@ pub fn cpp_identifier(name: &str) -> String {
     if out.is_empty() {
         out.push('_');
     }
-    if out
-        .chars()
-        .next()
-        .map(|c| c.is_ascii_digit())
-        .unwrap_or(false)
-    {
+    if out.chars().next().is_some_and(|c| c.is_ascii_digit()) {
         out.insert(0, '_');
     }
     out
@@ -100,8 +91,7 @@ pub fn stream_peek_ports_exist(
                 });
                 let has_empty_n = text.lines().any(|line| {
                     let t = line.trim();
-                    (t.starts_with("input") || t.starts_with("output"))
-                        && t.contains(&empty_n_port)
+                    (t.starts_with("input") || t.starts_with("output")) && t.contains(&empty_n_port)
                 });
                 has_dout && has_empty_n
             })

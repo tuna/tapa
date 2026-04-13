@@ -60,11 +60,13 @@ impl MmapSegment {
     /// `src` must be valid for `len` bytes and `offset + len` must not
     /// exceed the mapping length.
     pub unsafe fn write_at(&self, offset: usize, src: *const u8, len: usize) {
-        debug_assert!(offset + len <= self.mmap.len());
-        // Derive the mutable pointer directly from the MmapMut raw pointer
-        // rather than going through &[u8] to avoid violating aliasing rules.
-        let dst = self.mmap.as_ptr().add(offset);
-        std::ptr::copy_nonoverlapping(src, dst as *mut u8, len);
+        unsafe {
+            debug_assert!(offset + len <= self.mmap.len());
+            // Derive the mutable pointer directly from the MmapMut raw pointer
+            // rather than going through &[u8] to avoid violating aliasing rules.
+            let dst = self.mmap.as_ptr().add(offset);
+            std::ptr::copy_nonoverlapping(src, dst.cast_mut(), len);
+        }
     }
 
     pub fn len(&self) -> usize {
@@ -84,9 +86,10 @@ impl Drop for MmapSegment {
     }
 }
 
+static SHM_COUNTER: AtomicU64 = AtomicU64::new(0);
+
 fn shm_path(name: &str) -> PathBuf {
     let pid = std::process::id();
-    static SHM_COUNTER: AtomicU64 = AtomicU64::new(0);
     let nonce = SHM_COUNTER.fetch_add(1, Ordering::Relaxed);
     let safe_name: String = name
         .chars()
@@ -104,7 +107,7 @@ fn shm_path(name: &str) -> PathBuf {
     }
     #[cfg(not(target_os = "linux"))]
     {
-        std::env::temp_dir().join(format!("tapa_{}_{}_{}", safe_name, pid, nonce))
+        std::env::temp_dir().join(format!("tapa_{safe_name}_{pid}_{nonce}"))
     }
 }
 
