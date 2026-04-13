@@ -2,9 +2,9 @@ use askama::Template;
 use std::collections::HashMap;
 
 use crate::error::{CosimError, Result};
-use crate::metadata::{ArgKind, KernelSpec, Mode, StreamDir, StreamProtocol};
-use crate::tb::names::{cpp_identifier, cpp_signal, infer_peek_name, stream_peek_ports_exist};
-use crate::tb::{normalized_scalar_bytes, scalar_words, ScalarWord};
+use crate::metadata::{ArgKind, KernelSpec, Mode};
+use crate::tb::names::{cpp_identifier, cpp_signal};
+use crate::tb::{classify_args, read_verilog_contents, scalar_words, ScalarWord};
 
 pub struct MmapArg {
     pub name: String,
@@ -120,79 +120,34 @@ impl<'a> VerilatorTbGenerator<'a> {
             Mode::Hls => "hls",
             Mode::Vitis => "vitis",
         };
-        let mut mmap_args = vec![];
-        let mut scalar_args = vec![];
-        let mut stream_args = vec![];
-        let mut stream_out_args = vec![];
 
-        let verilog_contents: Vec<String> = self
-            .spec
-            .verilog_files
-            .iter()
-            .filter_map(|f| std::fs::read_to_string(f).ok())
-            .collect();
+        let verilog_contents = read_verilog_contents(self.spec);
+        let base_addresses = self.base_addresses;
+        let buffer_sizes = self.buffer_sizes;
 
-        for arg in &self.spec.args {
-            match &arg.kind {
-                ArgKind::Mmap { data_width, .. } => {
-                    let base = self.base_addresses.get(&arg.name).copied().unwrap_or(0);
-                    let offset_key = format!("{}_offset", arg.name);
-                    let offset = self
-                        .spec
-                        .scalar_register_map
-                        .get(&arg.name)
-                        .or_else(|| self.spec.scalar_register_map.get(&offset_key))
-                        .copied()
-                        .unwrap_or(0);
-                    let data_size = self
-                        .buffer_sizes
-                        .get(&arg.name)
-                        .copied()
-                        .unwrap_or(4 * 1024 * 1024);
-                    mmap_args.push(MmapArg::new(
-                        &arg.name,
-                        (*data_width as usize).div_ceil(8),
-                        base,
-                        data_size,
-                        offset,
-                    ));
-                }
-                ArgKind::Scalar { width } => {
-                    let offset = self
-                        .spec
-                        .scalar_register_map
+        let (mmap_args, scalar_args, stream_args, stream_out_args) = classify_args(
+            self.spec,
+            self.scalar_values,
+            &verilog_contents,
+            |arg, offset| {
+                let data_width = match &arg.kind {
+                    ArgKind::Mmap { data_width, .. } => *data_width,
+                    ArgKind::Scalar { .. } | ArgKind::Stream { .. } => unreachable!(),
+                };
+                MmapArg::new(
+                    &arg.name,
+                    (data_width as usize).div_ceil(8),
+                    base_addresses.get(&arg.name).copied().unwrap_or(0),
+                    buffer_sizes
                         .get(&arg.name)
                         .copied()
-                        .unwrap_or(0);
-                    let bytes = normalized_scalar_bytes(
-                        *width,
-                        self.scalar_values.get(&arg.id).map(std::vec::Vec::as_slice),
-                    );
-                    scalar_args.push(ScalarArg::new(&arg.name, &bytes, offset));
-                }
-                ArgKind::Stream {
-                    width,
-                    dir,
-                    protocol,
-                    ..
-                } => {
-                    let w = (*width as usize).div_ceil(8);
-                    let axis = *protocol == StreamProtocol::Axis;
-                    let peek = if self.spec.mode == Mode::Hls && *dir == StreamDir::In {
-                        infer_peek_name(&arg.name).filter(|cand| {
-                            stream_peek_ports_exist(&verilog_contents, &self.spec.top_name, cand)
-                        })
-                    } else {
-                        None
-                    };
-                    let stream = StreamArg::new(&arg.name, w, peek, axis);
-                    match dir {
-                        StreamDir::In => stream_args.push(stream),
-                        StreamDir::Out => stream_out_args.push(stream),
-                    }
-                }
-            }
-        }
+                        .unwrap_or(4 * 1024 * 1024),
+                    offset,
+                )
+            },
+            |arg, _width, offset, bytes| ScalarArg::new(&arg.name, bytes, offset),
+            |arg, width_bytes, peek, axis| StreamArg::new(&arg.name, width_bytes, peek, axis),
+        );
 
         let tmpl = TbTemplate {
             top_name: &self.spec.top_name,

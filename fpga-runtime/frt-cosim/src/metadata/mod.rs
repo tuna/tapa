@@ -61,7 +61,7 @@ pub struct KernelSpec {
     pub scalar_register_map: HashMap<String, u32>,
 }
 
-pub fn load_spec(path: &Path) -> Result<KernelSpec> {
+pub fn load_spec(path: &Path) -> Result<(KernelSpec, tempfile::TempDir)> {
     let file = std::fs::File::open(path)?;
     let reader = std::io::BufReader::new(file);
     let mut zip = zip::ZipArchive::new(reader).map_err(|e| CosimError::Metadata(e.to_string()))?;
@@ -78,12 +78,12 @@ pub fn load_spec(path: &Path) -> Result<KernelSpec> {
 fn load_xo_spec<R: Read + std::io::Seek>(
     zip: &mut zip::ZipArchive<R>,
     src: &Path,
-) -> Result<KernelSpec> {
+) -> Result<(KernelSpec, tempfile::TempDir)> {
     let mut kernel_xml = None;
     let mut scalar_register_map = HashMap::new();
     let mut files = ExtractedFiles::default();
 
-    let out_dir = make_extract_dir("xo")?;
+    let extract_dir = make_extract_dir("xo")?;
     for i in 0..zip.len() {
         let mut file = zip
             .by_index(i)
@@ -92,7 +92,7 @@ fn load_xo_spec<R: Read + std::io::Seek>(
         if name.ends_with('/') {
             continue;
         }
-        let path = extract_file(&mut file, &name, &out_dir)?;
+        let path = extract_file(&mut file, &name, extract_dir.path())?;
         if name.ends_with("kernel.xml") {
             kernel_xml = Some(std::fs::read_to_string(&path)?);
             continue;
@@ -107,21 +107,21 @@ fn load_xo_spec<R: Read + std::io::Seek>(
 
     let xml = kernel_xml
         .ok_or_else(|| CosimError::Metadata(format!("no kernel.xml in {}", src.display())))?;
-    let mut spec = xo::parse_kernel_xml(&xml, &out_dir)?;
+    let mut spec = xo::parse_kernel_xml(&xml, extract_dir.path())?;
     spec.verilog_files = files.verilog;
     spec.tcl_files = files.tcl;
     spec.xci_files = files.xci;
     spec.scalar_register_map = scalar_register_map;
-    Ok(spec)
+    Ok((spec, extract_dir))
 }
 
 fn load_zip_spec<R: Read + std::io::Seek>(
     zip: &mut zip::ZipArchive<R>,
     src: &Path,
-) -> Result<KernelSpec> {
+) -> Result<(KernelSpec, tempfile::TempDir)> {
     let mut graph_yaml = None;
     let mut settings_yaml = None;
-    let out_dir = make_extract_dir("zip")?;
+    let extract_dir = make_extract_dir("zip")?;
     let mut files = ExtractedFiles::default();
 
     for i in 0..zip.len() {
@@ -132,7 +132,7 @@ fn load_zip_spec<R: Read + std::io::Seek>(
         if name.ends_with('/') {
             continue;
         }
-        let path = extract_file(&mut file, &name, &out_dir)?;
+        let path = extract_file(&mut file, &name, extract_dir.path())?;
         if name.ends_with("graph.yaml") {
             graph_yaml = Some(std::fs::read_to_string(&path)?);
             continue;
@@ -146,7 +146,7 @@ fn load_zip_spec<R: Read + std::io::Seek>(
 
     let yaml = graph_yaml
         .ok_or_else(|| CosimError::Metadata(format!("no graph.yaml in {}", src.display())))?;
-    let mut spec = zip_pkg::parse_graph_yaml(&yaml, &out_dir)?;
+    let mut spec = zip_pkg::parse_graph_yaml(&yaml, extract_dir.path())?;
     if spec.part_num.is_none() {
         spec.part_num = settings_yaml
             .as_deref()
@@ -155,18 +155,13 @@ fn load_zip_spec<R: Read + std::io::Seek>(
     spec.verilog_files = files.verilog;
     spec.tcl_files = files.tcl;
     spec.xci_files = files.xci;
-    Ok(spec)
+    Ok((spec, extract_dir))
 }
 
-fn make_extract_dir(tag: &str) -> Result<PathBuf> {
-    let mut dir = std::env::temp_dir();
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    dir.push(format!("frt-cosim-{tag}-{}-{}", std::process::id(), nanos));
-    std::fs::create_dir_all(&dir)?;
-    Ok(dir)
+fn make_extract_dir(tag: &str) -> Result<tempfile::TempDir> {
+    Ok(tempfile::Builder::new()
+        .prefix(&format!("frt-cosim-{tag}-"))
+        .tempdir()?)
 }
 
 fn parse_part_from_settings_yaml(settings_yaml: &str) -> Option<String> {

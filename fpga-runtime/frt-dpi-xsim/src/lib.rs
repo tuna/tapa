@@ -33,88 +33,85 @@ mod imp {
         (get_sv_get_array_ptr())(h) as *mut u8
     }
 
-    #[no_mangle]
-    pub unsafe extern "C" fn tapa_axi_read(
-        port: *const libc::c_char,
-        addr: u64,
-        width: u32,
-        out: SvOpenArrayHandle,
-    ) {
-        let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
-        let ptr = sv_array_ptr(out);
-        axi::axi_read_impl(get_or_init(), port, addr, width, ptr);
+    macro_rules! dpi_fn {
+        // AXI: array handle is converted to raw pointer
+        (fn $name:ident($($arg:ident : $ty:ty),*; mut $arr:ident) => $impl_fn:expr) => {
+            #[no_mangle]
+            pub unsafe extern "C" fn $name(
+                port: *const libc::c_char, $($arg: $ty,)* $arr: SvOpenArrayHandle,
+            ) {
+                let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
+                let ptr = sv_array_ptr($arr);
+                $impl_fn(get_or_init(), port, $($arg,)* ptr);
+            }
+        };
+        (fn $name:ident($($arg:ident : $ty:ty),*; const $arr:ident) => $impl_fn:expr) => {
+            #[no_mangle]
+            pub unsafe extern "C" fn $name(
+                port: *const libc::c_char, $($arg: $ty,)* $arr: SvOpenArrayHandle,
+            ) {
+                let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
+                let ptr = sv_array_ptr($arr) as *const u8;
+                $impl_fn(get_or_init(), port, $($arg,)* ptr);
+            }
+        };
+        // Stream: array handle converted, u8 args converted from bools, return u8
+        (fn $name:ident(mut $arr:ident) -> u8 => $impl_fn:expr) => {
+            #[no_mangle]
+            pub unsafe extern "C" fn $name(
+                port: *const libc::c_char, $arr: SvOpenArrayHandle,
+            ) -> u8 {
+                let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
+                let ptr = sv_array_ptr($arr);
+                $impl_fn(get_or_init(), port, ptr) as u8
+            }
+        };
+        (fn $name:ident(const $arr:ident) -> u8 => $impl_fn:expr) => {
+            #[no_mangle]
+            pub unsafe extern "C" fn $name(
+                port: *const libc::c_char, $arr: SvOpenArrayHandle,
+            ) -> u8 {
+                let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
+                let ptr = sv_array_ptr($arr) as *const u8;
+                $impl_fn(get_or_init(), port, ptr) as u8
+            }
+        };
+        (fn $name:ident($flag:ident : u8, mut $arr:ident) -> u8 => $impl_fn:expr) => {
+            #[no_mangle]
+            pub unsafe extern "C" fn $name(
+                port: *const libc::c_char, $flag: u8, $arr: SvOpenArrayHandle,
+            ) -> u8 {
+                let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
+                let ptr = sv_array_ptr($arr);
+                $impl_fn(get_or_init(), port, $flag != 0, ptr) as u8
+            }
+        };
+        (fn $name:ident($flag:ident : u8, const $arr:ident) -> u8 => $impl_fn:expr) => {
+            #[no_mangle]
+            pub unsafe extern "C" fn $name(
+                port: *const libc::c_char, $flag: u8, $arr: SvOpenArrayHandle,
+            ) -> u8 {
+                let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
+                let ptr = sv_array_ptr($arr) as *const u8;
+                $impl_fn(get_or_init(), port, $flag != 0, ptr) as u8
+            }
+        };
+        // No-array variant (e.g. can_write)
+        (fn $name:ident() -> u8 => $impl_fn:expr) => {
+            #[no_mangle]
+            pub unsafe extern "C" fn $name(port: *const libc::c_char) -> u8 {
+                let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
+                $impl_fn(get_or_init(), port) as u8
+            }
+        };
     }
 
-    #[no_mangle]
-    pub unsafe extern "C" fn tapa_axi_write(
-        port: *const libc::c_char,
-        addr: u64,
-        width: u32,
-        data: SvOpenArrayHandle,
-    ) {
-        let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
-        let ptr = sv_array_ptr(data) as *const u8;
-        axi::axi_write_impl(get_or_init(), port, addr, width, ptr);
-    }
-
-    // SV `bit` maps to `svBit` (unsigned char) in DPI-C, not C `_Bool`.
-    // Use u8 to match the exact ABI expected by xsim.
-    #[no_mangle]
-    pub unsafe extern "C" fn tapa_stream_try_read(
-        port: *const libc::c_char,
-        out: SvOpenArrayHandle,
-    ) -> u8 {
-        let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
-        let ptr = sv_array_ptr(out);
-        stream::stream_try_read_impl(get_or_init(), port, ptr) as u8
-    }
-
-    #[no_mangle]
-    pub unsafe extern "C" fn tapa_stream_try_write(
-        port: *const libc::c_char,
-        data: SvOpenArrayHandle,
-    ) -> u8 {
-        let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
-        let ptr = sv_array_ptr(data) as *const u8;
-        stream::stream_try_write_impl(get_or_init(), port, ptr) as u8
-    }
-
-    #[no_mangle]
-    pub unsafe extern "C" fn tapa_stream_can_write(port: *const libc::c_char) -> u8 {
-        let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
-        stream::stream_can_write_impl(get_or_init(), port) as u8
-    }
-
-    #[no_mangle]
-    pub unsafe extern "C" fn tapa_stream_istream_step(
-        port: *const libc::c_char,
-        consume: u8,
-        out: SvOpenArrayHandle,
-    ) -> u8 {
-        let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
-        let ptr = sv_array_ptr(out);
-        stream::stream_istream_step_impl(get_or_init(), port, consume != 0, ptr) as u8
-    }
-
-    #[no_mangle]
-    pub unsafe extern "C" fn tapa_stream_ostream_step(
-        port: *const libc::c_char,
-        write: u8,
-        data: SvOpenArrayHandle,
-    ) -> u8 {
-        let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
-        let ptr = sv_array_ptr(data) as *const u8;
-        stream::stream_ostream_step_impl(get_or_init(), port, write != 0, ptr) as u8
-    }
-
-    #[no_mangle]
-    pub unsafe extern "C" fn tapa_hls_stream_ostream_step(
-        port: *const libc::c_char,
-        write: u8,
-        data: SvOpenArrayHandle,
-    ) -> u8 {
-        let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
-        let ptr = sv_array_ptr(data) as *const u8;
-        stream::stream_hls_ostream_step_impl(get_or_init(), port, write != 0, ptr) as u8
-    }
+    dpi_fn!(fn tapa_axi_read(addr: u64, width: u32; mut out) => axi::axi_read_impl);
+    dpi_fn!(fn tapa_axi_write(addr: u64, width: u32; const data) => axi::axi_write_impl);
+    dpi_fn!(fn tapa_stream_try_read(mut out) -> u8 => stream::stream_try_read_impl);
+    dpi_fn!(fn tapa_stream_try_write(const data) -> u8 => stream::stream_try_write_impl);
+    dpi_fn!(fn tapa_stream_can_write() -> u8 => stream::stream_can_write_impl);
+    dpi_fn!(fn tapa_stream_istream_step(consume: u8, mut out) -> u8 => stream::stream_istream_step_impl);
+    dpi_fn!(fn tapa_stream_ostream_step(write: u8, const data) -> u8 => stream::stream_ostream_step_impl);
+    dpi_fn!(fn tapa_hls_stream_ostream_step(write: u8, const data) -> u8 => stream::stream_hls_ostream_step_impl);
 }

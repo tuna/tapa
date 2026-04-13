@@ -3,12 +3,9 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use crate::error::{CosimError, Result};
-use crate::metadata::{ArgKind, KernelSpec, Mode, StreamDir, StreamProtocol};
-use crate::tb::names::{
-    escape_verilog_identifier, escaped_verilog_signal, infer_peek_name, stream_peek_ports_exist,
-    verilator_identifier,
-};
-use crate::tb::{normalized_scalar_bytes, scalar_words, ScalarWord};
+use crate::metadata::{ArgKind, KernelSpec, Mode};
+use crate::tb::names::{escape_verilog_identifier, escaped_verilog_signal, verilator_identifier};
+use crate::tb::{classify_args, read_verilog_contents, scalar_words, ScalarWord};
 
 #[derive(Clone)]
 struct MmapArg {
@@ -154,75 +151,30 @@ impl<'a> XsimTbGenerator<'a> {
     }
 
     fn collect_args(&self) -> (Vec<MmapArg>, Vec<ScalarArg>, Vec<StreamArg>, Vec<StreamArg>) {
-        let mut mmap_args = vec![];
-        let mut scalar_args = vec![];
-        let mut stream_args = vec![];
-        let mut stream_out_args = vec![];
+        let verilog_contents = read_verilog_contents(self.spec);
+        let base_addresses = self.base_addresses;
 
-        let verilog_contents: Vec<String> = self
-            .spec
-            .verilog_files
-            .iter()
-            .filter_map(|f| std::fs::read_to_string(f).ok())
-            .collect();
-
-        for arg in &self.spec.args {
-            match &arg.kind {
-                ArgKind::Mmap { data_width, .. } => {
-                    let offset_key = format!("{}_offset", arg.name);
-                    let offset = self
-                        .spec
-                        .scalar_register_map
-                        .get(&arg.name)
-                        .or_else(|| self.spec.scalar_register_map.get(&offset_key))
-                        .copied()
-                        .unwrap_or(0);
-                    let id_width = detect_axi_id_width(&verilog_contents, &arg.name);
-                    mmap_args.push(MmapArg::new(
-                        &arg.name,
-                        (*data_width as usize).div_ceil(8),
-                        id_width,
-                        self.base_addresses.get(&arg.name).copied().unwrap_or(0),
-                        offset,
-                    ));
-                }
-                ArgKind::Scalar { width } => {
-                    let offset = self
-                        .spec
-                        .scalar_register_map
-                        .get(&arg.name)
-                        .copied()
-                        .unwrap_or(0);
-                    let bytes = normalized_scalar_bytes(
-                        *width,
-                        self.scalar_values.get(&arg.id).map(std::vec::Vec::as_slice),
-                    );
-                    scalar_args.push(ScalarArg::new(&arg.name, *width, &bytes, offset));
-                }
-                ArgKind::Stream {
-                    width,
-                    dir,
-                    protocol,
-                    ..
-                } => {
-                    let axis = *protocol == StreamProtocol::Axis;
-                    let peek = if self.spec.mode == Mode::Hls && *dir == StreamDir::In {
-                        infer_peek_name(&arg.name).filter(|cand| {
-                            stream_peek_ports_exist(&verilog_contents, &self.spec.top_name, cand)
-                        })
-                    } else {
-                        None
-                    };
-                    let s = StreamArg::new(&arg.name, (*width as usize).div_ceil(8), peek, axis);
-                    if *dir == StreamDir::In {
-                        stream_args.push(s);
-                    } else {
-                        stream_out_args.push(s);
-                    }
-                }
-            }
-        }
-        (mmap_args, scalar_args, stream_args, stream_out_args)
+        classify_args(
+            self.spec,
+            self.scalar_values,
+            &verilog_contents,
+            |arg, offset| {
+                let data_width = match &arg.kind {
+                    ArgKind::Mmap { data_width, .. } => *data_width,
+                    ArgKind::Scalar { .. } | ArgKind::Stream { .. } => unreachable!(),
+                };
+                let id_width = detect_axi_id_width(&verilog_contents, &arg.name);
+                MmapArg::new(
+                    &arg.name,
+                    (data_width as usize).div_ceil(8),
+                    id_width,
+                    base_addresses.get(&arg.name).copied().unwrap_or(0),
+                    offset,
+                )
+            },
+            |arg, width, offset, bytes| ScalarArg::new(&arg.name, width, bytes, offset),
+            |arg, width_bytes, peek, axis| StreamArg::new(&arg.name, width_bytes, peek, axis),
+        )
     }
 
     pub fn render_tb(&self) -> Result<String> {

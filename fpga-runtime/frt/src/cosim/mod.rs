@@ -63,6 +63,7 @@ pub struct CosimDevice {
     ctx: CosimContext,
     runner: Box<dyn SimRunner>,
     tb_dir: TbDir,
+    _extract_dir: tempfile::TempDir,
     setup_only: bool,
     resume_from_post_sim: bool,
     scalars: HashMap<u32, Vec<u8>>,
@@ -83,7 +84,7 @@ unsafe impl Send for CosimDevice {}
 
 impl CosimDevice {
     pub fn open(path: &Path, sim: &Simulator) -> Result<Self> {
-        let spec = frt_cosim::metadata::load_spec(path)?;
+        let (spec, extract_dir) = frt_cosim::metadata::load_spec(path)?;
         let arg_names = spec
             .args
             .iter()
@@ -134,6 +135,7 @@ impl CosimDevice {
             ctx,
             runner,
             tb_dir,
+            _extract_dir: extract_dir,
             setup_only: opts.setup_only,
             resume_from_post_sim: opts.resume_from_post_sim,
             scalars: HashMap::new(),
@@ -685,6 +687,7 @@ mod tests {
             ctx,
             runner: Box::new(SleepRunner { sleep_seconds }),
             tb_dir: TbDir::Temp(tempfile::tempdir().expect("create temp dir")),
+            _extract_dir: tempfile::tempdir().expect("create extract dir"),
             setup_only: false,
             resume_from_post_sim: false,
             scalars: HashMap::new(),
