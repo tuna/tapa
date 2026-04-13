@@ -30,7 +30,9 @@ mod imp {
 
     /// Extract the raw byte pointer from an svOpenArrayHandle.
     unsafe fn sv_array_ptr(h: SvOpenArrayHandle) -> *mut u8 {
-        (get_sv_get_array_ptr())(h) as *mut u8
+        // SAFETY: `h` is a valid svOpenArrayHandle from the xsim DPI caller;
+        // `svGetArrayPtr` returns the underlying data pointer.
+        unsafe { (get_sv_get_array_ptr())(h) as *mut u8 }
     }
 
     macro_rules! dpi_fn {
@@ -40,9 +42,13 @@ mod imp {
             pub unsafe extern "C" fn $name(
                 port: *const libc::c_char, $($arg: $ty,)* $arr: SvOpenArrayHandle,
             ) {
-                let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
-                let ptr = sv_array_ptr($arr);
-                $impl_fn(get_or_init(), port, $($arg,)* ptr);
+                // SAFETY: `port` is a DPI-provided C string valid for this call;
+                // `$arr` is an xsim-provided svOpenArrayHandle.
+                unsafe {
+                    let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
+                    let ptr = sv_array_ptr($arr);
+                    $impl_fn(get_or_init(), port, $($arg,)* ptr);
+                }
             }
         };
         (fn $name:ident($($arg:ident : $ty:ty),*; const $arr:ident) => $impl_fn:expr) => {
@@ -50,9 +56,13 @@ mod imp {
             pub unsafe extern "C" fn $name(
                 port: *const libc::c_char, $($arg: $ty,)* $arr: SvOpenArrayHandle,
             ) {
-                let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
-                let ptr = sv_array_ptr($arr) as *const u8;
-                $impl_fn(get_or_init(), port, $($arg,)* ptr);
+                // SAFETY: `port` is a DPI-provided C string valid for this call;
+                // `$arr` is an xsim-provided svOpenArrayHandle.
+                unsafe {
+                    let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
+                    let ptr = sv_array_ptr($arr) as *const u8;
+                    $impl_fn(get_or_init(), port, $($arg,)* ptr);
+                }
             }
         };
         // Stream: array handle converted, u8 args converted from bools, return u8
@@ -61,9 +71,13 @@ mod imp {
             pub unsafe extern "C" fn $name(
                 port: *const libc::c_char, $arr: SvOpenArrayHandle,
             ) -> u8 {
-                let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
-                let ptr = sv_array_ptr($arr);
-                $impl_fn(get_or_init(), port, ptr) as u8
+                // SAFETY: `port` is a DPI-provided C string valid for this call;
+                // `$arr` is an xsim-provided svOpenArrayHandle.
+                unsafe {
+                    let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
+                    let ptr = sv_array_ptr($arr);
+                    $impl_fn(get_or_init(), port, ptr) as u8
+                }
             }
         };
         (fn $name:ident(const $arr:ident) -> u8 => $impl_fn:expr) => {
@@ -71,9 +85,13 @@ mod imp {
             pub unsafe extern "C" fn $name(
                 port: *const libc::c_char, $arr: SvOpenArrayHandle,
             ) -> u8 {
-                let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
-                let ptr = sv_array_ptr($arr) as *const u8;
-                $impl_fn(get_or_init(), port, ptr) as u8
+                // SAFETY: `port` is a DPI-provided C string valid for this call;
+                // `$arr` is an xsim-provided svOpenArrayHandle.
+                unsafe {
+                    let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
+                    let ptr = sv_array_ptr($arr) as *const u8;
+                    $impl_fn(get_or_init(), port, ptr) as u8
+                }
             }
         };
         (fn $name:ident($flag:ident : u8, mut $arr:ident) -> u8 => $impl_fn:expr) => {
@@ -81,9 +99,13 @@ mod imp {
             pub unsafe extern "C" fn $name(
                 port: *const libc::c_char, $flag: u8, $arr: SvOpenArrayHandle,
             ) -> u8 {
-                let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
-                let ptr = sv_array_ptr($arr);
-                $impl_fn(get_or_init(), port, $flag != 0, ptr) as u8
+                // SAFETY: `port` is a DPI-provided C string valid for this call;
+                // `$arr` is an xsim-provided svOpenArrayHandle.
+                unsafe {
+                    let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
+                    let ptr = sv_array_ptr($arr);
+                    $impl_fn(get_or_init(), port, $flag != 0, ptr) as u8
+                }
             }
         };
         (fn $name:ident($flag:ident : u8, const $arr:ident) -> u8 => $impl_fn:expr) => {
@@ -91,17 +113,24 @@ mod imp {
             pub unsafe extern "C" fn $name(
                 port: *const libc::c_char, $flag: u8, $arr: SvOpenArrayHandle,
             ) -> u8 {
-                let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
-                let ptr = sv_array_ptr($arr) as *const u8;
-                $impl_fn(get_or_init(), port, $flag != 0, ptr) as u8
+                // SAFETY: `port` is a DPI-provided C string valid for this call;
+                // `$arr` is an xsim-provided svOpenArrayHandle.
+                unsafe {
+                    let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
+                    let ptr = sv_array_ptr($arr) as *const u8;
+                    $impl_fn(get_or_init(), port, $flag != 0, ptr) as u8
+                }
             }
         };
         // No-array variant (e.g. can_write)
         (fn $name:ident() -> u8 => $impl_fn:expr) => {
             #[no_mangle]
             pub unsafe extern "C" fn $name(port: *const libc::c_char) -> u8 {
-                let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
-                $impl_fn(get_or_init(), port) as u8
+                // SAFETY: `port` is a DPI-provided C string valid for this call.
+                unsafe {
+                    let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
+                    $impl_fn(get_or_init(), port) as u8
+                }
             }
         };
     }
