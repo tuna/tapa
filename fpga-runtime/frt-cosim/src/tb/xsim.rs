@@ -280,7 +280,7 @@ impl<'a> XsimTbGenerator<'a> {
                 .unwrap_or_default()
                 .to_string_lossy()
                 .to_string(),
-            ready_file: tb_dir.join(".xsim-ready").to_string_lossy().to_string(),
+            ready_file: tb_dir.join(crate::runner::xsim::XSIM_READY_FILE).to_string_lossy().to_string(),
             start_go_file: std::env::temp_dir()
                 .join(format!("frt-xsim-start-go-{}", std::process::id()))
                 .to_string_lossy()

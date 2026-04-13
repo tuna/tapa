@@ -47,13 +47,12 @@ pub struct DpiConfig {
 }
 
 pub struct DpiStream {
-    pub queue: Mutex<SharedMemoryQueue>,
+    pub inner: Mutex<DpiStreamInner>,
     pub dpi_width_bytes: usize,
-    pub state: Mutex<DpiStreamState>,
 }
 
-#[derive(Debug, Default)]
-pub struct DpiStreamState {
+pub struct DpiStreamInner {
+    pub queue: SharedMemoryQueue,
     pub last_istream_valid: bool,
     pub last_ostream_ready: bool,
 }
@@ -88,16 +87,21 @@ impl DpiContext {
         for (name, entry) in cfg.streams {
             let q = SharedMemoryQueue::open(entry.path())?;
             let dpi_width_bytes = entry.dpi_width_bytes().unwrap_or_else(|| q.width());
-            eprintln!(
-                "frt-dpi: stream '{name}' path={} depth={} width={} dpi_width={}",
-                entry.path(), q.depth(), q.width(), dpi_width_bytes,
-            );
+            if frt_shm::env_bool("FRT_STREAM_DEBUG") {
+                eprintln!(
+                    "frt-dpi: stream '{name}' path={} depth={} width={} dpi_width={}",
+                    entry.path(), q.depth(), q.width(), dpi_width_bytes,
+                );
+            }
             streams.insert(
                 name,
                 DpiStream {
-                    queue: Mutex::new(q),
+                    inner: Mutex::new(DpiStreamInner {
+                        queue: q,
+                        last_istream_valid: false,
+                        last_ostream_ready: false,
+                    }),
                     dpi_width_bytes,
-                    state: Mutex::new(DpiStreamState::default()),
                 },
             );
         }

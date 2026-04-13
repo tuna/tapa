@@ -41,6 +41,28 @@ pub trait SimRunner {
     }
 }
 
+/// Acquire an exclusive `flock`-based lock on the given path.
+///
+/// Creates the file (and parent directories) if they don't exist.
+/// Returns the open `File` whose lifetime holds the lock.
+#[cfg(unix)]
+pub fn acquire_exclusive_lock(lock_path: &std::path::Path) -> Result<std::fs::File> {
+    use std::os::fd::AsRawFd;
+    if let Some(parent) = lock_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(lock_path)?;
+    if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) } != 0 {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    Ok(file)
+}
+
 pub fn configure_sim_command(cmd: &mut Command) {
     #[cfg(unix)]
     unsafe {

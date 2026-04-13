@@ -65,23 +65,23 @@ pub fn stream_try_read_impl(ctx: &DpiContext, port: &str, out: *mut u8) -> bool 
         eprintln!("frt-dpi: stream_try_read: unknown port '{port}'");
         return false;
     };
-    let mut q = match stream.queue.lock() {
+    let mut s = match stream.inner.lock() {
         Ok(guard) => guard,
         Err(_) => return false,
     };
-    if q.is_empty() {
+    if s.queue.is_empty() {
         READ_MISS.fetch_add(1, Ordering::Relaxed);
-        maybe_report_progress(port, &q);
+        maybe_report_progress(port, &s.queue);
         maybe_yield();
         return false;
     }
     let dpi = stream.dpi_width_bytes;
     let buf = unsafe { std::slice::from_raw_parts_mut(out, dpi) };
     buf.fill(0);
-    q.pop_into(buf);
+    s.queue.pop_into(buf);
     READ_OK.fetch_add(1, Ordering::Relaxed);
     if stream_debug_enabled() {
-        eprintln!("frt-dpi: stream_try_read '{port}': got {} bytes", q.width());
+        eprintln!("frt-dpi: stream_try_read '{port}': got {} bytes", s.queue.width());
     }
     true
 }
@@ -91,40 +91,36 @@ pub fn stream_istream_step_impl(ctx: &DpiContext, port: &str, consume: bool, out
         eprintln!("frt-dpi: stream_istream_step: unknown port '{port}'");
         return false;
     };
-    let mut q = match stream.queue.lock() {
-        Ok(guard) => guard,
-        Err(_) => return false,
-    };
-    let mut state = match stream.state.lock() {
+    let mut s = match stream.inner.lock() {
         Ok(guard) => guard,
         Err(_) => return false,
     };
 
-    if state.last_istream_valid && consume {
+    if s.last_istream_valid && consume {
         // Consume the previously-peeked front element.
         let mut discard = [0u8; 256];
-        let w = q.width();
+        let w = s.queue.width();
         if w <= discard.len() {
-            if q.pop_into(&mut discard[..w]) {
+            if s.queue.pop_into(&mut discard[..w]) {
                 READ_OK.fetch_add(1, Ordering::Relaxed);
             }
-        } else if q.pop().is_some() {
+        } else if s.queue.pop().is_some() {
             READ_OK.fetch_add(1, Ordering::Relaxed);
         }
     }
 
-    if q.is_empty() {
-        state.last_istream_valid = false;
+    if s.queue.is_empty() {
+        s.last_istream_valid = false;
         READ_MISS.fetch_add(1, Ordering::Relaxed);
-        maybe_report_progress(port, &q);
+        maybe_report_progress(port, &s.queue);
         maybe_yield();
         return false;
     }
     let dpi = stream.dpi_width_bytes;
     let buf = unsafe { std::slice::from_raw_parts_mut(out, dpi) };
     buf.fill(0);
-    q.peek_into(buf);
-    state.last_istream_valid = true;
+    s.queue.peek_into(buf);
+    s.last_istream_valid = true;
     true
 }
 
@@ -133,13 +129,13 @@ pub fn stream_try_write_impl(ctx: &DpiContext, port: &str, data: *const u8) -> b
         eprintln!("frt-dpi: stream_try_write: unknown port '{port}'");
         return false;
     };
-    let mut q = match stream.queue.lock() {
+    let mut s = match stream.inner.lock() {
         Ok(guard) => guard,
         Err(_) => return false,
     };
-    let w = q.width();
+    let w = s.queue.width();
     let slice = unsafe { std::slice::from_raw_parts(data, w) };
-    let ok = q.try_push(slice).is_ok();
+    let ok = s.queue.try_push(slice).is_ok();
     if ok {
         WRITE_OK.fetch_add(1, Ordering::Relaxed);
         if stream_debug_enabled() {
@@ -154,19 +150,15 @@ pub fn stream_ostream_step_impl(ctx: &DpiContext, port: &str, write: bool, data:
         eprintln!("frt-dpi: stream_ostream_step: unknown port '{port}'");
         return false;
     };
-    let mut q = match stream.queue.lock() {
-        Ok(guard) => guard,
-        Err(_) => return false,
-    };
-    let mut state = match stream.state.lock() {
+    let mut s = match stream.inner.lock() {
         Ok(guard) => guard,
         Err(_) => return false,
     };
 
-    if state.last_ostream_ready && write {
-        let w = q.width();
+    if s.last_ostream_ready && write {
+        let w = s.queue.width();
         let slice = unsafe { std::slice::from_raw_parts(data, w) };
-        if q.try_push(slice).is_ok() {
+        if s.queue.try_push(slice).is_ok() {
             WRITE_OK.fetch_add(1, Ordering::Relaxed);
             if stream_debug_enabled() {
                 eprintln!("frt-dpi: stream_ostream_step '{port}': wrote {w} bytes");
@@ -174,11 +166,11 @@ pub fn stream_ostream_step_impl(ctx: &DpiContext, port: &str, write: bool, data:
         }
     }
 
-    let can = !q.is_full();
-    state.last_ostream_ready = can;
+    let can = !s.queue.is_full();
+    s.last_ostream_ready = can;
     if !can {
         WRITE_FULL.fetch_add(1, Ordering::Relaxed);
-        maybe_report_progress(port, &q);
+        maybe_report_progress(port, &s.queue);
         maybe_yield();
     }
     can
@@ -194,7 +186,7 @@ pub fn stream_hls_ostream_step_impl(
         eprintln!("frt-dpi: stream_hls_ostream_step: unknown port '{port}'");
         return false;
     };
-    let mut q = match stream.queue.lock() {
+    let mut s = match stream.inner.lock() {
         Ok(guard) => guard,
         Err(_) => return false,
     };
@@ -202,27 +194,27 @@ pub fn stream_hls_ostream_step_impl(
     // HLS ap_fifo/full_n uses the queue state visible in the current cycle,
     // unlike AXIS tready which is sampled from the prior cycle in the Vitis path.
     if write {
-        if !q.is_full() {
-            let w = q.width();
+        if !s.queue.is_full() {
+            let w = s.queue.width();
             let slice = unsafe { std::slice::from_raw_parts(data, w) };
-            if q.try_push(slice).is_ok() {
+            if s.queue.try_push(slice).is_ok() {
                 WRITE_OK.fetch_add(1, Ordering::Relaxed);
-                let (h, t) = q.head_tail();
+                let (h, t) = s.queue.head_tail();
                 if stream_debug_enabled() {
                     eprintln!("frt-dpi: stream_hls_ostream_step '{port}': wrote {w} bytes (h={h} t={t})");
                 }
             }
         } else {
-            let (h, t) = q.head_tail();
+            let (h, t) = s.queue.head_tail();
             eprintln!("frt-dpi: WARN '{port}': write=1 but queue full! h={h} t={t} depth={}",
-                      q.depth());
+                      s.queue.depth());
         }
     }
 
-    let can = !q.is_full();
+    let can = !s.queue.is_full();
     if !can {
         WRITE_FULL.fetch_add(1, Ordering::Relaxed);
-        maybe_report_progress(port, &q);
+        maybe_report_progress(port, &s.queue);
         maybe_yield();
     }
     can
@@ -233,14 +225,14 @@ pub fn stream_can_write_impl(ctx: &DpiContext, port: &str) -> bool {
         eprintln!("frt-dpi: stream_can_write: unknown port '{port}'");
         return false;
     };
-    let q = match stream.queue.lock() {
+    let s = match stream.inner.lock() {
         Ok(guard) => guard,
         Err(_) => return false,
     };
-    let can = !q.is_full();
+    let can = !s.queue.is_full();
     if !can {
         WRITE_FULL.fetch_add(1, Ordering::Relaxed);
-        maybe_report_progress(port, &q);
+        maybe_report_progress(port, &s.queue);
         maybe_yield();
     }
     can
@@ -249,7 +241,7 @@ pub fn stream_can_write_impl(ctx: &DpiContext, port: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::context::{DpiContext, DpiStream};
+    use crate::context::{DpiContext, DpiStream, DpiStreamInner};
     use frt_shm::SharedMemoryQueue;
     use std::collections::HashMap;
     use std::sync::Mutex;
@@ -266,9 +258,12 @@ mod tests {
             streams: HashMap::from([(
                 name.to_owned(),
                 DpiStream {
-                    queue: Mutex::new(q),
+                    inner: Mutex::new(DpiStreamInner {
+                        queue: q,
+                        last_istream_valid: false,
+                        last_ostream_ready: false,
+                    }),
                     dpi_width_bytes,
-                    state: Mutex::new(Default::default()),
                 },
             )]),
         }

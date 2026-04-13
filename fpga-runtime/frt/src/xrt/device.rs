@@ -44,6 +44,9 @@ pub struct XrtDevice {
     finished: bool,
 }
 
+// SAFETY: XrtDevice is only accessed from a single thread at a time.
+// The OpenCL types (Context, CommandQueue, Kernel) are internally
+// reference-counted by the driver; Buffer<u8> wraps a cl_mem handle.
 unsafe impl Send for XrtDevice {}
 
 impl XrtDevice {
@@ -562,16 +565,7 @@ fn platform_name_matches(device_name: &str, target_platform: &str) -> bool {
     target[4] == device[5]
 }
 
-fn env_non_empty(name: &str) -> Option<String> {
-    std::env::var(name).ok().and_then(|v| {
-        let trimmed = v.trim().to_owned();
-        if trimmed.is_empty() {
-            None
-        } else {
-            Some(trimmed)
-        }
-    })
-}
+use frt_shm::env_non_empty;
 
 fn current_username() -> Option<String> {
     #[cfg(unix)]

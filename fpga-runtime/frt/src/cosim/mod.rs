@@ -75,6 +75,10 @@ pub struct CosimDevice {
     store_ns: u64,
 }
 
+// SAFETY: CosimDevice is only accessed from a single owner thread.
+// The raw `*mut u8` pointers in BufferBinding point to host memory whose
+// lifetime is managed by the caller (the C++ compatibility layer) and
+// outlives the device.
 unsafe impl Send for CosimDevice {}
 
 impl CosimDevice {
@@ -181,6 +185,8 @@ impl CosimDevice {
             }
         }
         self.store_ns = started.elapsed().as_nanos() as u64;
+        // Ensure non-zero to signal "copy-back completed" (callers use
+        // store_ns() == 0 to mean "not yet run").
         if self.store_ns == 0 {
             self.store_ns = 1;
         }
@@ -280,17 +286,7 @@ fn signal_child_group(_child: &Child, _signal: libc::c_int) -> Result<()> {
 }
 
 use crate::env_bool;
-
-fn env_non_empty(name: &str) -> Option<String> {
-    std::env::var(name).ok().and_then(|v| {
-        let trimmed = v.trim().to_owned();
-        if trimmed.is_empty() {
-            None
-        } else {
-            Some(trimmed)
-        }
-    })
-}
+use frt_shm::env_non_empty;
 
 fn runtime_options() -> RuntimeOptions {
     RuntimeOptions {

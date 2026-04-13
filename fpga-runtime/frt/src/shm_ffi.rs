@@ -140,13 +140,8 @@ pub extern "C" fn frt_shmq_front(handle: *const c_void, out: *mut u8, len: usize
         if q.width() != len {
             return -1;
         }
-        let Some(data) = q.peek() else {
-            return -1;
-        };
-        unsafe {
-            std::ptr::copy_nonoverlapping(data.as_ptr(), out, len);
-        }
-        0
+        let buf = unsafe { std::slice::from_raw_parts_mut(out, len) };
+        if q.peek_into(buf) { 0 } else { -1 }
     })
     .unwrap_or(-1)
 }
@@ -163,13 +158,8 @@ pub extern "C" fn frt_shmq_pop(handle: *mut c_void, out: *mut u8, len: usize) ->
         if q.width() != len {
             return -1;
         }
-        let Some(data) = q.pop() else {
-            return -1;
-        };
-        unsafe {
-            std::ptr::copy_nonoverlapping(data.as_ptr(), out, len);
-        }
-        0
+        let buf = unsafe { std::slice::from_raw_parts_mut(out, len) };
+        if q.pop_into(buf) { 0 } else { -1 }
     })
     .unwrap_or(-1)
 }

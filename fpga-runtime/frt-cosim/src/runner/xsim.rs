@@ -4,15 +4,12 @@ use crate::error::{CosimError, Result};
 use crate::metadata::KernelSpec;
 use crate::tb::xsim::XsimTbGenerator;
 use std::collections::HashMap;
-use std::fs::OpenOptions;
-#[cfg(unix)]
-use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use which::which;
 
-const XSIM_READY_FILE: &str = ".xsim-ready";
+pub const XSIM_READY_FILE: &str = ".xsim-ready";
 const XSIM_STARTUP_LOCK_ENV: &str = "FRT_XSIM_STARTUP_LOCK";
 const XSIM_STARTUP_POLL: Duration = Duration::from_millis(50);
 const XSIM_START_RELEASE_QUIET_PERIOD: Duration = Duration::from_secs(1);
@@ -126,18 +123,7 @@ impl XsimStartupGate {
     fn acquire() -> Result<Self> {
         #[cfg(unix)]
         {
-            let lock_path = xsim_startup_lock_path();
-            if let Some(parent) = lock_path.parent() {
-                std::fs::create_dir_all(parent)?;
-            }
-            let file = OpenOptions::new()
-                .create(true)
-                .read(true)
-                .write(true)
-                .open(lock_path)?;
-            if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) } != 0 {
-                return Err(std::io::Error::last_os_error().into());
-            }
+            let file = super::acquire_exclusive_lock(&xsim_startup_lock_path())?;
             Ok(Self { file })
         }
         #[cfg(not(unix))]

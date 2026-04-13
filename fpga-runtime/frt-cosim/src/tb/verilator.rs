@@ -1,6 +1,5 @@
 use askama::Template;
 use std::collections::HashMap;
-use std::path::Path;
 
 use crate::error::{CosimError, Result};
 use crate::metadata::{ArgKind, KernelSpec, Mode, StreamDir, StreamProtocol};
@@ -96,7 +95,6 @@ struct TbTemplate<'a> {
 
 pub struct VerilatorTbGenerator<'a> {
     spec: &'a KernelSpec,
-    _dpi_lib: &'a Path,
     base_addresses: &'a HashMap<String, u64>,
     buffer_sizes: &'a HashMap<String, usize>,
     scalar_values: &'a HashMap<u32, Vec<u8>>,
@@ -105,14 +103,12 @@ pub struct VerilatorTbGenerator<'a> {
 impl<'a> VerilatorTbGenerator<'a> {
     pub fn new(
         spec: &'a KernelSpec,
-        dpi_lib: &'a Path,
         base_addresses: &'a HashMap<String, u64>,
         buffer_sizes: &'a HashMap<String, usize>,
         scalar_values: &'a HashMap<u32, Vec<u8>>,
     ) -> Self {
         Self {
             spec,
-            _dpi_lib: dpi_lib,
             base_addresses,
             buffer_sizes,
             scalar_values,

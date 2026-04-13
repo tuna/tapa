@@ -169,7 +169,6 @@ fn verilator_hls_tb_snapshot() {
     let scalar_vals = std::collections::HashMap::from([(1u32, vec![7u8, 0, 0, 0])]);
     let generator = VerilatorTbGenerator::new(
         &spec,
-        std::path::Path::new("libfrt_dpi_verilator.so"),
         &base_addrs,
         &buf_sizes,
         &scalar_vals,
@@ -190,7 +189,6 @@ fn verilator_hls_escapes_banked_mmap_names() {
     let scalar_vals = std::collections::HashMap::from([(1u32, vec![7u8, 0, 0, 0])]);
     let generator = VerilatorTbGenerator::new(
         &spec,
-        std::path::Path::new("libfrt_dpi_verilator.so"),
         &base_addrs,
         &buf_sizes,
         &scalar_vals,
@@ -318,7 +316,6 @@ fn verilator_hls_stream_input_refills_without_bubble() {
     let scalar_vals = std::collections::HashMap::from([(1u32, vec![7u8, 0, 0, 0])]);
     let generator = VerilatorTbGenerator::new(
         &spec,
-        std::path::Path::new("libfrt_dpi_verilator.so"),
         &base_addrs,
         &buf_sizes,
         &scalar_vals,
@@ -431,7 +428,6 @@ fn verilator_vitis_tb_uses_direct_axis_input_handshake() {
     let scalar_vals = std::collections::HashMap::from([(2u32, vec![7u8, 0, 0, 0])]);
     let generator = VerilatorTbGenerator::new(
         &spec,
-        std::path::Path::new("libfrt_dpi_verilator.so"),
         &base_addrs,
         &buf_sizes,
         &scalar_vals,
@@ -451,7 +447,6 @@ fn verilator_vitis_tb_uses_direct_axis_write_handshake() {
     let scalar_vals = std::collections::HashMap::from([(0u32, vec![7u8, 0, 0, 0])]);
     let generator = VerilatorTbGenerator::new(
         &spec,
-        std::path::Path::new("libfrt_dpi_verilator.so"),
         &base_addrs,
         &buf_sizes,
         &scalar_vals,

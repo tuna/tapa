@@ -5,9 +5,6 @@ use crate::metadata::KernelSpec;
 use crate::tb::verilator::VerilatorTbGenerator;
 use regex_lite::Regex;
 use std::collections::{HashMap, HashSet};
-use std::fs::OpenOptions;
-#[cfg(unix)]
-use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use which::which;
@@ -93,7 +90,6 @@ impl SimRunner for VerilatorRunner {
             .collect();
         let generator = VerilatorTbGenerator::new(
             spec,
-            &self.dpi_lib,
             &ctx.base_addresses,
             &buffer_sizes,
             scalar_values,
@@ -243,18 +239,7 @@ impl VerilatorBuildGate {
     fn acquire() -> Result<Self> {
         #[cfg(unix)]
         {
-            let lock_path = verilator_build_lock_path();
-            if let Some(parent) = lock_path.parent() {
-                std::fs::create_dir_all(parent)?;
-            }
-            let file = OpenOptions::new()
-                .create(true)
-                .read(true)
-                .write(true)
-                .open(lock_path)?;
-            if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) } != 0 {
-                return Err(std::io::Error::last_os_error().into());
-            }
+            let file = super::acquire_exclusive_lock(&verilator_build_lock_path())?;
             Ok(Self { _file: file })
         }
         #[cfg(not(unix))]
@@ -488,30 +473,18 @@ fn parse_xilinx_fp_ip_tcl_text(content: &str) -> Result<Option<XilinxFpIpConfig>
 }
 
 fn detect_xilinx_fp_ip_model_from_name(ip_module: &str) -> Option<XilinxFpIpConfig> {
+    const FP_PATTERNS: &[&str] = &[
+        "_fadd_", "_fadds_", "_fsub_", "_fsubs_", "_fmul_", "_fmuls_",
+        "_dadd_", "_dadds_", "_dsub_", "_dsubs_", "_dmul_", "_dmuls_",
+    ];
     let lower = ip_module.to_ascii_lowercase();
-    let (_dpi_func, _bit_width) = [
-        ("_fadd_", "fp32_add", 32usize),
-        ("_fadds_", "fp32_add", 32usize),
-        ("_fsub_", "fp32_sub", 32usize),
-        ("_fsubs_", "fp32_sub", 32usize),
-        ("_fmul_", "fp32_mul", 32usize),
-        ("_fmuls_", "fp32_mul", 32usize),
-        ("_dadd_", "fp64_add", 64usize),
-        ("_dadds_", "fp64_add", 64usize),
-        ("_dsub_", "fp64_sub", 64usize),
-        ("_dsubs_", "fp64_sub", 64usize),
-        ("_dmul_", "fp64_mul", 64usize),
-        ("_dmuls_", "fp64_mul", 64usize),
-    ]
-    .into_iter()
-    .find_map(|(needle, func, width)| lower.contains(needle).then_some((func, width)))?;
-
+    if FP_PATTERNS.iter().any(|p| lower.contains(p)) {
+        eprintln!(
+            "frt-cosim: FP IP '{ip_module}' detected by name but no TCL with c_latency found; \
+             skipping replacement",
+        );
+    }
     // No TCL available; cannot determine latency reliably.
-    // Return None so the caller skips replacement rather than guessing.
-    eprintln!(
-        "frt-cosim: FP IP '{}' detected by name but no TCL with c_latency found; skipping replacement",
-        ip_module
-    );
     None
 }
 
@@ -607,7 +580,7 @@ endmodule
     )
 }
 
-fn generate_dpi_support() -> String {
+fn generate_dpi_support() -> &'static str {
     r#"#include <cstdint>
 #include <cstring>
 
@@ -675,7 +648,6 @@ unsigned long long fp64_mul(unsigned long long a, unsigned long long b) {
 
 }  // extern "C"
 "#
-    .to_owned()
 }
 
 #[cfg(test)]

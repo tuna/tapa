@@ -33,10 +33,9 @@ pub fn axi_write_impl(ctx: &DpiContext, port: &str, addr: u64, width: u32, data:
         eprintln!("frt-dpi: axi_write: out of bounds on '{port}'");
         return;
     }
-    // Write through the raw mmap pointer to avoid creating &mut from &self.
-    // The mmap segment is MAP_SHARED memory that doesn't follow Rust aliasing.
-    let dst = unsafe { (seg.as_slice().as_ptr() as *mut u8).add(offset) };
-    unsafe { std::ptr::copy_nonoverlapping(data, dst, len) }
+    // SAFETY: bounds checked above; MmapSegment::write_at writes through the
+    // raw mmap pointer without creating a &mut reference from &self.
+    unsafe { seg.write_at(offset, data, len) }
 }
 
 #[cfg(test)]

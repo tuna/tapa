@@ -52,6 +52,21 @@ impl MmapSegment {
         &mut self.mmap
     }
 
+    /// Write `len` bytes from `src` into the mmap at `offset` without
+    /// requiring `&mut self`.  This is correct for `MAP_SHARED` memory
+    /// that is concurrently accessed by another process (the simulator).
+    ///
+    /// # Safety
+    /// `src` must be valid for `len` bytes and `offset + len` must not
+    /// exceed the mapping length.
+    pub unsafe fn write_at(&self, offset: usize, src: *const u8, len: usize) {
+        debug_assert!(offset + len <= self.mmap.len());
+        // Derive the mutable pointer directly from the MmapMut raw pointer
+        // rather than going through &[u8] to avoid violating aliasing rules.
+        let dst = self.mmap.as_ptr().add(offset);
+        std::ptr::copy_nonoverlapping(src, dst as *mut u8, len);
+    }
+
     pub fn len(&self) -> usize {
         self.mmap.len()
     }
