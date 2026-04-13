@@ -44,38 +44,13 @@ export CARGO_TARGET_DIR="$(@D)/cargo-target"
 cargo build --manifest-path "$(location Cargo.toml)" --release \\
   -p frt -p frt-dpi-verilator -p frt-dpi-xsim
 
-if [[ -f "$$CARGO_TARGET_DIR/release/libfrt.so" ]]; then
-  cp "$$CARGO_TARGET_DIR/release/libfrt.so" "$(location cargo/libfrt.so)"
-else
-  : > "$(location cargo/libfrt.so)"
-fi
-if [[ -f "$$CARGO_TARGET_DIR/release/libfrt.dylib" ]]; then
-  cp "$$CARGO_TARGET_DIR/release/libfrt.dylib" "$(location cargo/libfrt.dylib)"
-else
-  : > "$(location cargo/libfrt.dylib)"
-fi
-
-if [[ -f "$$CARGO_TARGET_DIR/release/libfrt_dpi_verilator.so" ]]; then
-  cp "$$CARGO_TARGET_DIR/release/libfrt_dpi_verilator.so" "$(location cargo/libfrt_dpi_verilator.so)"
-else
-  : > "$(location cargo/libfrt_dpi_verilator.so)"
-fi
-if [[ -f "$$CARGO_TARGET_DIR/release/libfrt_dpi_verilator.dylib" ]]; then
-  cp "$$CARGO_TARGET_DIR/release/libfrt_dpi_verilator.dylib" "$(location cargo/libfrt_dpi_verilator.dylib)"
-else
-  : > "$(location cargo/libfrt_dpi_verilator.dylib)"
-fi
-
-if [[ -f "$$CARGO_TARGET_DIR/release/libfrt_dpi_xsim.so" ]]; then
-  cp "$$CARGO_TARGET_DIR/release/libfrt_dpi_xsim.so" "$(location cargo/libfrt_dpi_xsim.so)"
-else
-  : > "$(location cargo/libfrt_dpi_xsim.so)"
-fi
-if [[ -f "$$CARGO_TARGET_DIR/release/libfrt_dpi_xsim.dylib" ]]; then
-  cp "$$CARGO_TARGET_DIR/release/libfrt_dpi_xsim.dylib" "$(location cargo/libfrt_dpi_xsim.dylib)"
-else
-  : > "$(location cargo/libfrt_dpi_xsim.dylib)"
-fi
+copy_or_empty() { if [[ -f "$$1" ]]; then cp "$$1" "$$2"; else : > "$$2"; fi; }
+copy_or_empty "$$CARGO_TARGET_DIR/release/libfrt.so" "$(location cargo/libfrt.so)"
+copy_or_empty "$$CARGO_TARGET_DIR/release/libfrt.dylib" "$(location cargo/libfrt.dylib)"
+copy_or_empty "$$CARGO_TARGET_DIR/release/libfrt_dpi_verilator.so" "$(location cargo/libfrt_dpi_verilator.so)"
+copy_or_empty "$$CARGO_TARGET_DIR/release/libfrt_dpi_verilator.dylib" "$(location cargo/libfrt_dpi_verilator.dylib)"
+copy_or_empty "$$CARGO_TARGET_DIR/release/libfrt_dpi_xsim.so" "$(location cargo/libfrt_dpi_xsim.so)"
+copy_or_empty "$$CARGO_TARGET_DIR/release/libfrt_dpi_xsim.dylib" "$(location cargo/libfrt_dpi_xsim.dylib)"
 """,
     local = True,
     tags = ["local"],

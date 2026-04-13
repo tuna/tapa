@@ -4,6 +4,7 @@ use crate::error::{CosimError, Result};
 use crate::metadata::KernelSpec;
 use crate::tb::xsim::XsimTbGenerator;
 use std::collections::HashMap;
+use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -193,6 +194,7 @@ fn child_still_running(pid: u32) -> bool {
 }
 
 fn apply_default_nettype_wire(spec: &KernelSpec) -> Result<()> {
+    const PREFIX: &[u8] = b"`default_nettype";
     for file in &spec.verilog_files {
         let Some(ext) = file.extension().and_then(|e| e.to_str()) else {
             continue;
@@ -200,10 +202,16 @@ fn apply_default_nettype_wire(spec: &KernelSpec) -> Result<()> {
         if !matches!(ext, "v" | "sv") {
             continue;
         }
-        let content = std::fs::read_to_string(file)?;
-        if content.starts_with("`default_nettype") {
-            continue;
+        // Read only enough bytes to check for the prefix, avoiding a full
+        // read_to_string when the directive is already present.
+        {
+            let mut f = std::fs::File::open(file)?;
+            let mut buf = [0u8; PREFIX.len()];
+            if f.read(&mut buf)? == PREFIX.len() && buf == *PREFIX {
+                continue;
+            }
         }
+        let content = std::fs::read_to_string(file)?;
         std::fs::write(file, format!("`default_nettype wire\n{content}"))?;
     }
     Ok(())

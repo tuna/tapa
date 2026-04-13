@@ -6,18 +6,9 @@ fn stream_debug_enabled() -> bool {
     *ENABLED.get_or_init(|| frt_shm::env_bool(frt_shm::env::FRT_STREAM_DEBUG))
 }
 
-/// Returns `false` only for explicit falsy values; `true` otherwise (opt-out).
-fn env_opt_out(value: Option<&str>) -> bool {
-    match value {
-        Some(v) => !matches!(v, "0" | "false" | "FALSE" | "no" | "NO"),
-        None => true,
-    }
-}
-
 fn cosim_yield_enabled() -> bool {
     static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *ENABLED
-        .get_or_init(|| env_opt_out(std::env::var(frt_shm::env::FRT_COSIM_YIELD).ok().as_deref()))
+    *ENABLED.get_or_init(|| frt_shm::env_bool_default_true(frt_shm::env::FRT_COSIM_YIELD))
 }
 
 fn maybe_yield() {
@@ -72,17 +63,20 @@ pub fn stream_try_read_impl(ctx: &DpiContext, port: &str, out: *mut u8) -> bool 
     let Ok(mut s) = stream.inner.lock() else {
         return false;
     };
-    if s.queue.is_empty() {
+    let dpi = stream.dpi_width_bytes;
+    // SAFETY: `out` is a DPI-provided buffer of at least `dpi` bytes.
+    let buf = unsafe { std::slice::from_raw_parts_mut(out, dpi) };
+    // pop_into already checks emptiness internally, so calling it directly
+    // avoids a redundant pair of atomic loads vs a separate is_empty() check.
+    if !s.queue.pop_into(buf) {
         READ_MISS.fetch_add(1, Ordering::Relaxed);
         maybe_report_progress(port, &s.queue);
         maybe_yield();
         return false;
     }
-    let dpi = stream.dpi_width_bytes;
-    // SAFETY: `out` is a DPI-provided buffer of at least `dpi` bytes.
-    let buf = unsafe { std::slice::from_raw_parts_mut(out, dpi) };
-    buf.fill(0);
-    s.queue.pop_into(buf);
+    // Zero trailing DPI bytes beyond the queue width (e.g. eos/tlast byte).
+    let w = s.queue.width();
+    buf[w..].fill(0);
     READ_OK.fetch_add(1, Ordering::Relaxed);
     if stream_debug_enabled() {
         eprintln!(
@@ -115,18 +109,20 @@ pub fn stream_istream_step_impl(ctx: &DpiContext, port: &str, consume: bool, out
         }
     }
 
-    if s.queue.is_empty() {
+    let dpi = stream.dpi_width_bytes;
+    // SAFETY: `out` is a DPI-provided buffer of at least `dpi` bytes.
+    let buf = unsafe { std::slice::from_raw_parts_mut(out, dpi) };
+    // peek_into already checks emptiness internally, avoiding redundant atomic loads.
+    if !s.queue.peek_into(buf) {
         s.last_istream_valid = false;
         READ_MISS.fetch_add(1, Ordering::Relaxed);
         maybe_report_progress(port, &s.queue);
         maybe_yield();
         return false;
     }
-    let dpi = stream.dpi_width_bytes;
-    // SAFETY: `out` is a DPI-provided buffer of at least `dpi` bytes.
-    let buf = unsafe { std::slice::from_raw_parts_mut(out, dpi) };
-    buf.fill(0);
-    s.queue.peek_into(buf);
+    // Zero trailing DPI bytes beyond the queue width (e.g. eos/tlast byte).
+    let w = s.queue.width();
+    buf[w..].fill(0);
     s.last_istream_valid = true;
     true
 }
@@ -205,25 +201,25 @@ pub fn stream_hls_ostream_step_impl(
     // HLS ap_fifo/full_n uses the queue state visible in the current cycle,
     // unlike AXIS tready which is sampled from the prior cycle in the Vitis path.
     if write {
-        if s.queue.is_full() {
+        let w = s.queue.width();
+        // SAFETY: `data` is a DPI-provided buffer of at least `w` bytes.
+        let slice = unsafe { std::slice::from_raw_parts(data, w) };
+        // try_push already checks fullness internally, avoiding a redundant
+        // is_full() call (and its pair of atomic loads) on the success path.
+        if s.queue.try_push(slice).is_ok() {
+            WRITE_OK.fetch_add(1, Ordering::Relaxed);
+            if stream_debug_enabled() {
+                let (h, t) = s.queue.head_tail();
+                eprintln!(
+                    "frt-dpi: stream_hls_ostream_step '{port}': wrote {w} bytes (h={h} t={t})"
+                );
+            }
+        } else {
             let (h, t) = s.queue.head_tail();
             eprintln!(
                 "frt-dpi: WARN '{port}': write=1 but queue full! h={h} t={t} depth={}",
                 s.queue.depth()
             );
-        } else {
-            let w = s.queue.width();
-            // SAFETY: `data` is a DPI-provided buffer of at least `w` bytes.
-            let slice = unsafe { std::slice::from_raw_parts(data, w) };
-            if s.queue.try_push(slice).is_ok() {
-                WRITE_OK.fetch_add(1, Ordering::Relaxed);
-                let (h, t) = s.queue.head_tail();
-                if stream_debug_enabled() {
-                    eprintln!(
-                        "frt-dpi: stream_hls_ostream_step '{port}': wrote {w} bytes (h={h} t={t})"
-                    );
-                }
-            }
         }
     }
 
@@ -505,24 +501,5 @@ mod tests {
             out.as_mut_ptr()
         ));
         assert_eq!(u32::from_le_bytes(out), 22);
-    }
-
-    #[test]
-    fn env_opt_out_defaults_to_enabled() {
-        assert!(env_opt_out(None));
-    }
-
-    #[test]
-    fn env_opt_out_can_be_disabled_explicitly() {
-        for value in ["0", "false", "FALSE", "no", "NO"] {
-            assert!(!env_opt_out(Some(value)), "expected {value} to disable");
-        }
-    }
-
-    #[test]
-    fn env_opt_out_stays_enabled_for_true_values() {
-        for value in ["1", "true", "TRUE", "yes", "YES", "maybe"] {
-            assert!(env_opt_out(Some(value)), "expected {value} to keep enabled");
-        }
     }
 }

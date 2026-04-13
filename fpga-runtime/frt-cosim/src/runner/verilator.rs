@@ -97,8 +97,6 @@ impl SimRunner for VerilatorRunner {
         }
         generate_xilinx_fp_ip_models(&rtl_dir)?;
         fix_combinational_nba(&rtl_dir)?;
-        std::fs::write(tb_dir.join("dpi_support.cpp"), generate_dpi_support())?;
-
         Ok(())
     }
 
@@ -131,7 +129,6 @@ impl SimRunner for VerilatorRunner {
             "0".to_owned(),
             "--exe".to_owned(),
             "tb.cpp".to_owned(),
-            "dpi_support.cpp".to_owned(),
             "-LDFLAGS".to_owned(),
             self.dpi_lib.to_string_lossy().to_string(),
             "-Wno-fatal".to_owned(),
@@ -568,76 +565,6 @@ endmodule
     )
 }
 
-fn generate_dpi_support() -> &'static str {
-    r#"#include <cstdint>
-#include <cstring>
-
-extern "C" {
-
-unsigned int fp32_add(unsigned int a, unsigned int b) {
-    float fa, fb, fc;
-    std::memcpy(&fa, &a, sizeof(float));
-    std::memcpy(&fb, &b, sizeof(float));
-    fc = fa + fb;
-    unsigned int result;
-    std::memcpy(&result, &fc, sizeof(unsigned int));
-    return result;
-}
-
-unsigned int fp32_sub(unsigned int a, unsigned int b) {
-    float fa, fb, fc;
-    std::memcpy(&fa, &a, sizeof(float));
-    std::memcpy(&fb, &b, sizeof(float));
-    fc = fa - fb;
-    unsigned int result;
-    std::memcpy(&result, &fc, sizeof(unsigned int));
-    return result;
-}
-
-unsigned int fp32_mul(unsigned int a, unsigned int b) {
-    float fa, fb, fc;
-    std::memcpy(&fa, &a, sizeof(float));
-    std::memcpy(&fb, &b, sizeof(float));
-    fc = fa * fb;
-    unsigned int result;
-    std::memcpy(&result, &fc, sizeof(unsigned int));
-    return result;
-}
-
-unsigned long long fp64_add(unsigned long long a, unsigned long long b) {
-    double da, db, dc;
-    std::memcpy(&da, &a, sizeof(double));
-    std::memcpy(&db, &b, sizeof(double));
-    dc = da + db;
-    unsigned long long result;
-    std::memcpy(&result, &dc, sizeof(unsigned long long));
-    return result;
-}
-
-unsigned long long fp64_sub(unsigned long long a, unsigned long long b) {
-    double da, db, dc;
-    std::memcpy(&da, &a, sizeof(double));
-    std::memcpy(&db, &b, sizeof(double));
-    dc = da - db;
-    unsigned long long result;
-    std::memcpy(&result, &dc, sizeof(unsigned long long));
-    return result;
-}
-
-unsigned long long fp64_mul(unsigned long long a, unsigned long long b) {
-    double da, db, dc;
-    std::memcpy(&da, &a, sizeof(double));
-    std::memcpy(&db, &b, sizeof(double));
-    dc = da * db;
-    unsigned long long result;
-    std::memcpy(&result, &dc, sizeof(unsigned long long));
-    return result;
-}
-
-}  // extern "C"
-"#
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -709,13 +636,6 @@ set_property -dict [list CONFIG.a_precision_type Single \
             .expect("fp model");
         assert_eq!(model.dpi_func, "fp32_add");
         assert_eq!(model.latency, 5);
-    }
-
-    #[test]
-    fn generates_dpi_support_for_float_and_double() {
-        let support = generate_dpi_support();
-        assert!(support.contains("fp32_add"));
-        assert!(support.contains("fp64_mul"));
     }
 
     #[test]

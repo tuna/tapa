@@ -33,3 +33,20 @@ dpi_fn!(fn tapa_stream_can_write() -> bool => stream::stream_can_write_impl);
 dpi_fn!(fn tapa_stream_istream_step(consume: bool, out: *mut u8) -> bool => stream::stream_istream_step_impl);
 dpi_fn!(fn tapa_stream_ostream_step(write: bool, data: *const u8) -> bool => stream::stream_ostream_step_impl);
 dpi_fn!(fn tapa_hls_stream_ostream_step(write: bool, data: *const u8) -> bool => stream::stream_hls_ostream_step_impl);
+
+// Floating-point DPI support for Xilinx IP behavioral models.
+// Called from generated SystemVerilog via `import "DPI-C"`.
+macro_rules! fp_op {
+    ($name:ident, $uint:ty, $float:ty, $op:tt) => {
+        #[no_mangle]
+        pub extern "C" fn $name(a: $uint, b: $uint) -> $uint {
+            (<$float>::from_bits(a) $op <$float>::from_bits(b)).to_bits()
+        }
+    };
+}
+fp_op!(fp32_add, u32, f32, +);
+fp_op!(fp32_sub, u32, f32, -);
+fp_op!(fp32_mul, u32, f32, *);
+fp_op!(fp64_add, u64, f64, +);
+fp_op!(fp64_sub, u64, f64, -);
+fp_op!(fp64_mul, u64, f64, *);
