@@ -449,10 +449,21 @@ end
 initial begin
 {% if mode == "hls" %}
   wait (ap_done === 1'b1);
-  repeat (64) @(posedge ap_clk);
+  // Drain all pending output stream writes before finishing.
+  begin
+    bit idle;
+    do begin
+      @(posedge ap_clk);
+      idle = 1'b1;
+{% for arg in stream_out_args %}
+      if (stream_out_write_{{ arg.ident }}) idle = 1'b0;
+{% endfor %}
+    end while (!idle);
+  end
+  repeat (2) @(posedge ap_clk);
 {% else %}
   wait (interrupt === 1'b1);
-  repeat (64) @(posedge ap_clk);
+  repeat (2) @(posedge ap_clk);
 {% endif %}
   $finish;
 end
