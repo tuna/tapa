@@ -9,9 +9,4 @@ pub mod xrt;
 pub use error::{FrtError, Result};
 pub use instance::{Instance, ReadOnlyBuffer, ReadWriteBuffer, Simulator, WriteOnlyBuffer};
 
-pub(crate) fn env_bool(name: &str) -> bool {
-    match std::env::var(name) {
-        Ok(v) => matches!(v.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"),
-        Err(_) => false,
-    }
-}
+pub(crate) use frt_shm::env_bool;

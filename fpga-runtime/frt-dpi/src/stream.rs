@@ -3,21 +3,24 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 fn stream_debug_enabled() -> bool {
     static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *ENABLED.get_or_init(|| std::env::var("FRT_STREAM_DEBUG").is_ok())
+    *ENABLED.get_or_init(|| frt_shm::env_bool("FRT_STREAM_DEBUG"))
 }
 
-fn blocked_stream_backoff_enabled_from_env(value: Option<&str>) -> bool {
+/// Returns `false` only for explicit falsy values; `true` otherwise (opt-out).
+fn env_opt_out(value: Option<&str>) -> bool {
     match value {
-        Some(value) => !matches!(value, "0" | "false" | "FALSE" | "no" | "NO"),
+        Some(v) => !matches!(v, "0" | "false" | "FALSE" | "no" | "NO"),
         None => true,
     }
 }
 
-fn maybe_yield() {
+fn cosim_yield_enabled() -> bool {
     static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    if *ENABLED.get_or_init(|| {
-        blocked_stream_backoff_enabled_from_env(std::env::var("FRT_COSIM_YIELD").ok().as_deref())
-    }) {
+    *ENABLED.get_or_init(|| env_opt_out(std::env::var("FRT_COSIM_YIELD").ok().as_deref()))
+}
+
+fn maybe_yield() {
+    if cosim_yield_enabled() {
         std::thread::yield_now();
     }
 }
@@ -27,8 +30,15 @@ static READ_MISS: AtomicU64 = AtomicU64::new(0);
 static WRITE_OK: AtomicU64 = AtomicU64::new(0);
 static WRITE_FULL: AtomicU64 = AtomicU64::new(0);
 static LAST_REPORT: AtomicU64 = AtomicU64::new(0);
+/// Counter-based pre-check: only call SystemTime::now() every N misses.
+static MISS_COUNTER: AtomicU64 = AtomicU64::new(0);
+const MISS_CHECK_INTERVAL: u64 = 1_000_000;
 
 fn maybe_report_progress(port: &str, q: &frt_shm::SharedMemoryQueue) {
+    // Fast path: only check the wall clock every MISS_CHECK_INTERVAL misses.
+    if MISS_COUNTER.fetch_add(1, Ordering::Relaxed) % MISS_CHECK_INTERVAL != 0 {
+        return;
+    }
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -50,14 +60,6 @@ fn maybe_report_progress(port: &str, q: &frt_shm::SharedMemoryQueue) {
     }
 }
 
-fn copy_stream_bytes(out: *mut u8, data: &[u8], dpi_width_bytes: usize) {
-    let copy_len = data.len().min(dpi_width_bytes);
-    unsafe {
-        std::ptr::write_bytes(out, 0, dpi_width_bytes);
-        std::ptr::copy_nonoverlapping(data.as_ptr(), out, copy_len);
-    }
-}
-
 pub fn stream_try_read_impl(ctx: &DpiContext, port: &str, out: *mut u8) -> bool {
     let Some(stream) = ctx.streams.get(port) else {
         eprintln!("frt-dpi: stream_try_read: unknown port '{port}'");
@@ -67,22 +69,21 @@ pub fn stream_try_read_impl(ctx: &DpiContext, port: &str, out: *mut u8) -> bool 
         Ok(guard) => guard,
         Err(_) => return false,
     };
-    if let Some(data) = q.pop() {
-        READ_OK.fetch_add(1, Ordering::Relaxed);
-        if stream_debug_enabled() {
-            eprintln!(
-                "frt-dpi: stream_try_read '{port}': got {} bytes",
-                data.len()
-            );
-        }
-        copy_stream_bytes(out, &data, stream.dpi_width_bytes);
-        true
-    } else {
+    if q.is_empty() {
         READ_MISS.fetch_add(1, Ordering::Relaxed);
         maybe_report_progress(port, &q);
         maybe_yield();
-        false
+        return false;
     }
+    let dpi = stream.dpi_width_bytes;
+    let buf = unsafe { std::slice::from_raw_parts_mut(out, dpi) };
+    buf.fill(0);
+    q.pop_into(buf);
+    READ_OK.fetch_add(1, Ordering::Relaxed);
+    if stream_debug_enabled() {
+        eprintln!("frt-dpi: stream_try_read '{port}': got {} bytes", q.width());
+    }
+    true
 }
 
 pub fn stream_istream_step_impl(ctx: &DpiContext, port: &str, consume: bool, out: *mut u8) -> bool {
@@ -100,22 +101,31 @@ pub fn stream_istream_step_impl(ctx: &DpiContext, port: &str, consume: bool, out
     };
 
     if state.last_istream_valid && consume {
-        if q.pop().is_some() {
+        // Consume the previously-peeked front element.
+        let mut discard = [0u8; 256];
+        let w = q.width();
+        if w <= discard.len() {
+            if q.pop_into(&mut discard[..w]) {
+                READ_OK.fetch_add(1, Ordering::Relaxed);
+            }
+        } else if q.pop().is_some() {
             READ_OK.fetch_add(1, Ordering::Relaxed);
         }
     }
 
-    if let Some(data) = q.peek() {
-        copy_stream_bytes(out, &data, stream.dpi_width_bytes);
-        state.last_istream_valid = true;
-        true
-    } else {
+    if q.is_empty() {
         state.last_istream_valid = false;
         READ_MISS.fetch_add(1, Ordering::Relaxed);
         maybe_report_progress(port, &q);
         maybe_yield();
-        false
+        return false;
     }
+    let dpi = stream.dpi_width_bytes;
+    let buf = unsafe { std::slice::from_raw_parts_mut(out, dpi) };
+    buf.fill(0);
+    q.peek_into(buf);
+    state.last_istream_valid = true;
+    true
 }
 
 pub fn stream_try_write_impl(ctx: &DpiContext, port: &str, data: *const u8) -> bool {
@@ -484,26 +494,26 @@ mod tests {
     }
 
     #[test]
-    fn blocked_stream_backoff_defaults_to_enabled() {
-        assert!(blocked_stream_backoff_enabled_from_env(None));
+    fn env_opt_out_defaults_to_enabled() {
+        assert!(env_opt_out(None));
     }
 
     #[test]
-    fn blocked_stream_backoff_can_be_disabled_explicitly() {
+    fn env_opt_out_can_be_disabled_explicitly() {
         for value in ["0", "false", "FALSE", "no", "NO"] {
             assert!(
-                !blocked_stream_backoff_enabled_from_env(Some(value)),
-                "expected {value} to disable blocked-stream backoff"
+                !env_opt_out(Some(value)),
+                "expected {value} to disable"
             );
         }
     }
 
     #[test]
-    fn blocked_stream_backoff_stays_enabled_for_true_values() {
+    fn env_opt_out_stays_enabled_for_true_values() {
         for value in ["1", "true", "TRUE", "yes", "YES", "maybe"] {
             assert!(
-                blocked_stream_backoff_enabled_from_env(Some(value)),
-                "expected {value} to keep blocked-stream backoff enabled"
+                env_opt_out(Some(value)),
+                "expected {value} to keep enabled"
             );
         }
     }
