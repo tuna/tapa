@@ -1,4 +1,5 @@
 use crate::device::{BufferAccess, RuntimeArgCategory, RuntimeArgInfo};
+use crate::env_bool;
 use crate::instance::{Instance, Simulator};
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int};
@@ -38,13 +39,6 @@ fn to_str<'a>(ptr: *const c_char, field: &str) -> Result<Option<&'a str>, String
     c.to_str()
         .map(Some)
         .map_err(|e| format!("invalid utf-8 in {field}: {e}"))
-}
-
-fn env_bool(name: &str) -> bool {
-    match std::env::var(name) {
-        Ok(v) => matches!(v.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"),
-        Err(_) => false,
-    }
 }
 
 fn parse_simulator(sim: Option<&str>) -> Simulator {

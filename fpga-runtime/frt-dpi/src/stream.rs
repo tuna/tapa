@@ -1,14 +1,9 @@
 use crate::context::DpiContext;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-static STREAM_DBG: std::sync::Once = std::sync::Once::new();
-static mut STREAM_DBG_ENABLED: bool = false;
-
 fn stream_debug_enabled() -> bool {
-    STREAM_DBG.call_once(|| {
-        unsafe { STREAM_DBG_ENABLED = std::env::var("FRT_STREAM_DEBUG").is_ok() };
-    });
-    unsafe { STREAM_DBG_ENABLED }
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ENABLED.get_or_init(|| std::env::var("FRT_STREAM_DEBUG").is_ok())
 }
 
 fn blocked_stream_backoff_enabled_from_env(value: Option<&str>) -> bool {

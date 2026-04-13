@@ -4,7 +4,8 @@ use std::path::Path;
 
 use crate::error::{CosimError, Result};
 use crate::metadata::{ArgKind, KernelSpec, Mode, StreamDir, StreamProtocol};
-use crate::tb::names::{cpp_identifier, cpp_signal};
+use crate::tb::names::{cpp_identifier, cpp_signal, infer_peek_name, stream_peek_ports_exist};
+use crate::tb::{normalized_scalar_bytes, scalar_words, ScalarWord};
 
 pub struct MmapArg {
     pub name: String,
@@ -58,11 +59,6 @@ pub struct ScalarArg {
     pub member: String,
     pub bytes_initializer: String,
     pub words: Vec<ScalarWord>,
-}
-
-pub struct ScalarWord {
-    pub reg_offset: u32,
-    pub value_u32: u32,
 }
 
 pub struct StreamArg {
@@ -212,103 +208,12 @@ impl<'a> VerilatorTbGenerator<'a> {
     }
 }
 
-fn normalized_scalar_bytes(width_bits: u32, raw: Option<&[u8]>) -> Vec<u8> {
-    let expected = (width_bits as usize).div_ceil(8).max(1);
-    let mut out = raw.map(|x| x.to_vec()).unwrap_or_default();
-    if out.len() < expected {
-        out.resize(expected, 0);
-    } else if out.len() > expected {
-        out.truncate(expected);
-    }
-    out
-}
-
 fn bytes_to_cpp_initializer(bytes: &[u8]) -> String {
     bytes
         .iter()
         .map(|b| format!("0x{b:02x}"))
         .collect::<Vec<_>>()
         .join(", ")
-}
-
-fn scalar_words(base_offset: u32, bytes: &[u8]) -> Vec<ScalarWord> {
-    let mut words = Vec::new();
-    for (i, chunk) in bytes.chunks(4).enumerate() {
-        let mut raw = [0u8; 4];
-        raw[..chunk.len()].copy_from_slice(chunk);
-        words.push(ScalarWord {
-            reg_offset: base_offset + (i as u32) * 4,
-            value_u32: u32::from_le_bytes(raw),
-        });
-    }
-    if words.is_empty() {
-        words.push(ScalarWord {
-            reg_offset: base_offset,
-            value_u32: 0,
-        });
-    }
-    words
-}
-
-fn infer_peek_name(stream_name: &str) -> Option<String> {
-    if let Some(base) = stream_name.strip_suffix("_s") {
-        return Some(format!("{base}_peek"));
-    }
-    let mut iter = stream_name.rsplitn(2, '_');
-    if let (Some(suffix), Some(base)) = (iter.next(), iter.next()) {
-        if suffix.chars().all(|c| c.is_ascii_digit()) {
-            return Some(format!("{base}_peek_{suffix}"));
-        }
-    }
-    Some(format!("{stream_name}_peek"))
-}
-
-fn stream_peek_ports_exist(
-    verilog_files: &[std::path::PathBuf],
-    top_name: &str,
-    peek_name: &str,
-) -> bool {
-    let dout_port = format!("{peek_name}_dout");
-    let empty_n_port = format!("{peek_name}_empty_n");
-    let module_decl = format!("module {top_name}");
-    verilog_files.iter().any(|file| {
-        std::fs::read_to_string(file)
-            .map(|text| {
-                if !text.contains(&module_decl) {
-                    return false;
-                }
-                let has_dout = text.lines().any(|line| {
-                    let t = line.trim();
-                    (t.starts_with("input") || t.starts_with("output")) && t.contains(&dout_port)
-                });
-                let has_empty_n = text.lines().any(|line| {
-                    let t = line.trim();
-                    (t.starts_with("input") || t.starts_with("output")) && t.contains(&empty_n_port)
-                });
-                has_dout && has_empty_n
-            })
-            .unwrap_or(false)
-    })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::infer_peek_name;
-
-    #[test]
-    fn infer_peek_name_handles_plain_stream_names() {
-        assert_eq!(infer_peek_name("i_next").as_deref(), Some("i_next_peek"));
-        assert_eq!(infer_peek_name("a").as_deref(), Some("a_peek"));
-    }
-
-    #[test]
-    fn infer_peek_name_preserves_special_suffix_forms() {
-        assert_eq!(infer_peek_name("stream_s").as_deref(), Some("stream_peek"));
-        assert_eq!(
-            infer_peek_name("stream_3").as_deref(),
-            Some("stream_peek_3")
-        );
-    }
 }
 
 impl MmapArg {

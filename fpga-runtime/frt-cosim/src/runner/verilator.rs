@@ -162,12 +162,7 @@ impl SimRunner for VerilatorRunner {
         ];
         for f in std::fs::read_dir(&rtl_dir)? {
             let path = f?.path();
-            if path
-                .extension()
-                .and_then(|x| x.to_str())
-                .map(|x| matches!(x, "v" | "sv" | "vh"))
-                .unwrap_or(false)
-            {
+            if is_verilog_like(&path) {
                 args.push(path.to_string_lossy().to_string());
             }
         }

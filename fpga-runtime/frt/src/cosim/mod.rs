@@ -279,12 +279,7 @@ fn signal_child_group(_child: &Child, _signal: libc::c_int) -> Result<()> {
     Ok(())
 }
 
-fn env_bool(name: &str) -> bool {
-    match std::env::var(name) {
-        Ok(v) => matches!(v.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"),
-        Err(_) => false,
-    }
-}
+use crate::env_bool;
 
 fn env_non_empty(name: &str) -> Option<String> {
     std::env::var(name).ok().and_then(|v| {
@@ -437,9 +432,7 @@ impl Device for CosimDevice {
         Ok(())
     }
 
-    fn set_stream_arg(&mut self, _index: u32, _shm_path: &str) -> Result<()> {
-        let index = _index;
-        let shm_path = _shm_path;
+    fn set_stream_arg(&mut self, index: u32, shm_path: &str) -> Result<()> {
         if shm_path.is_empty() {
             return Ok(());
         }
