@@ -12,6 +12,10 @@ These variables are read by the host executable at startup.
 |----------|---------|-------------|
 | `TAPA_CONCURRENCY` | Number of CPU cores | Number of parallel coroutine threads used by software simulation. Set to `1` for single-threaded, more reproducible simulation runs. Has no effect on HLS compilation parallelism (`-j`). |
 | `TAPA_STREAM_LOG_DIR` | (unset — logging disabled) | Directory for stream transfer logs. When set, TAPA writes one log file per named stream recording each value written to that stream. Useful for tracing data corruption during software simulation. |
+| `FRT_STREAM_DEBUG` | (unset) | When set, log every successful stream read and write in the DPI layer. Produces high-volume output; use only for targeted debugging. |
+| `FRT_COSIM_YIELD` | `1` (enabled) | When enabled, the DPI layer calls `thread::yield_now()` on empty reads or full writes. Disable with `0` to busy-wait instead. |
+| `FRT_XSIM_LEGACY` | `0` | Set to `1` to use the legacy xelab command-line format for older Vivado versions. |
+| `FRT_XOCL_BDF` | (unset) | PCIe Bus:Device:Function for XRT/OpenCL device selection. Equivalent to the `-xocl_bdf` gflag. |
 
 ### Example: reproducible single-threaded simulation
 
