@@ -72,9 +72,12 @@ pub fn configure_sim_command(cmd: &mut Command) {
     // and does not access any shared mutable state.
     unsafe {
         cmd.pre_exec(|| {
+            #[allow(
+                unused_unsafe,
+                reason = "inner unsafe needed for multiple_unsafe_ops_per_block"
+            )]
             // SAFETY: `setpgid(0, 0)` is async-signal-safe and only affects
             // the freshly-forked child process.
-            #[allow(unused_unsafe)]
             if unsafe { libc::setpgid(0, 0) } != 0 {
                 return Err(std::io::Error::last_os_error());
             }

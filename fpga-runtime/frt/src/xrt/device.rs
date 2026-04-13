@@ -71,7 +71,10 @@ impl XrtDevice {
         let ocl_device = OclDevice::new(device_id);
         let context = ocl_result(Context::from_device(&ocl_device), "create OpenCL context")?;
         let queue = ocl_result(
-            #[allow(deprecated)]
+            #[allow(
+                deprecated,
+                reason = "opencl3 CommandQueue::create_default is the stable API for this crate version"
+            )]
             CommandQueue::create_default(
                 &context,
                 CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE | CL_QUEUE_PROFILING_ENABLE,
@@ -658,7 +661,7 @@ fn scalar_type_name(width_bits: u32) -> String {
 fn device_bdf(id: cl_device_id) -> Option<String> {
     // Xilinx extension used by legacy C++ runtime (`CL_DEVICE_PCIE_BDF`).
     const CL_DEVICE_PCIE_BDF: u32 = 0x4038;
-    let bytes = OclDevice::new(id).get_data(CL_DEVICE_PCIE_BDF as _).ok()?;
+    let bytes = OclDevice::new(id).get_data(CL_DEVICE_PCIE_BDF).ok()?;
     let end = bytes.iter().position(|b| *b == 0).unwrap_or(bytes.len());
     let text = String::from_utf8(bytes[..end].to_vec()).ok()?;
     let bdf = text.trim().to_owned();

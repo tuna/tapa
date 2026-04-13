@@ -11,6 +11,7 @@ pub fn get_or_init() -> &'static DpiContext {
     CTX.get_or_init(|| {
         let ctx = DpiContext::from_env().unwrap_or_else(|e| {
             eprintln!("frt-dpi: failed to init DpiContext: {e}");
+            #[allow(clippy::exit, reason = "fatal: no recovery path inside a DPI callback")]
             std::process::exit(1);
         });
         if std::env::var("FRT_STREAM_DEBUG").is_ok() {

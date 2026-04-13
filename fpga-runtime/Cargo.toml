@@ -87,6 +87,45 @@ verbose_file_reads = "deny"
 unnecessary_safety_comment = "deny"
 fn_to_numeric_cast_any = "deny"
 
+# Prevent subtle bugs
+assertions_on_result_states = "deny"
+as_underscore = "deny"
+clone_on_ref_ptr = "deny"
+create_dir = "deny"
+default_union_representation = "deny"
+deref_by_slicing = "deny"
+empty_drop = "deny"
+empty_enum_variants_with_brackets = "deny"
+empty_structs_with_brackets = "deny"
+exit = "deny"
+filetype_is_file = "deny"
+float_cmp_const = "deny"
+get_unwrap = "deny"
+infinite_loop = "deny"
+lossy_float_literal = "deny"
+mem_forget = "deny"
+mixed_read_write_in_expression = "deny"
+mutex_atomic = "deny"
+rc_buffer = "deny"
+rc_mutex = "deny"
+same_name_method = "deny"
+suspicious_xor_used_as_pow = "deny"
+try_err = "deny"
+wildcard_enum_match_arm = "deny"
+
+# Code quality
+allow_attributes_without_reason = "deny"
+pathbuf_init_then_push = "deny"
+redundant_type_annotations = "deny"
+rest_pat_in_fully_bound_structs = "deny"
+string_lit_chars_any = "deny"
+unnecessary_self_imports = "deny"
+unneeded_field_pattern = "deny"
+unused_result_ok = "deny"
+
+# Allow: iteration order over HashMap/HashSet is irrelevant in this codebase
+iter_over_hash_type = "allow"
+
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "deny"
 

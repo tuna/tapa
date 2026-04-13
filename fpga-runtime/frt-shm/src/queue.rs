@@ -276,6 +276,7 @@ mod tests {
         let mut q = SharedMemoryQueue::create("test_q_exact", 2, 4).expect("create");
         assert!(q.try_push(b"abc").is_err());
         assert!(q.try_push(b"abcde").is_err());
-        assert!(q.try_push(b"abcd").is_ok());
+        q.try_push(b"abcd")
+            .expect("exact-width push should succeed");
     }
 }

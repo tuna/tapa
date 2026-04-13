@@ -94,7 +94,8 @@ impl CosimDevice {
             .iter()
             .filter_map(|arg| match arg.kind {
                 frt_cosim::metadata::ArgKind::Stream { .. } => Some((arg.id, arg.name.clone())),
-                _ => None,
+                frt_cosim::metadata::ArgKind::Scalar { .. }
+                | frt_cosim::metadata::ArgKind::Mmap { .. } => None,
             })
             .collect();
         let opts = runtime_options();
@@ -342,7 +343,10 @@ fn dpi_lib_path(variant: &str) -> Result<PathBuf> {
 #[cfg(unix)]
 fn self_lib_path() -> Option<PathBuf> {
     // Use dladdr to find the path of the shared library containing this function.
-    #[allow(clippy::fn_to_numeric_cast_any)]
+    #[allow(
+        clippy::fn_to_numeric_cast_any,
+        reason = "dladdr requires a function address as *const c_void"
+    )]
     let ptr = self_lib_path as *const ();
     // SAFETY: zeroed is valid for Dl_info (it is a plain-old-data C struct).
     let mut info: libc::Dl_info = unsafe { std::mem::zeroed() };
