@@ -366,16 +366,26 @@ fn fix_combinational_nba(rtl_dir: &Path) -> Result<()> {
             if trimmed.starts_with("always") && trimmed.contains("@(*)") {
                 in_comb_block = true;
                 brace_depth = 0;
+                // Check if the always block uses begin/end or is single-statement.
+                if !trimmed.contains("begin") {
+                    // Single-statement: only rewrite this one line (or the next).
+                    brace_depth = -1; // will exit after first non-always line
+                }
             }
             if in_comb_block {
-                if trimmed.contains("begin") {
-                    brace_depth += trimmed.matches("begin").count() as i32;
-                }
-                if trimmed.contains("end") {
-                    brace_depth -= trimmed.matches("end").count() as i32;
-                    if brace_depth <= 0 {
-                        in_comb_block = false;
+                if brace_depth >= 0 {
+                    if trimmed.contains("begin") {
+                        brace_depth += trimmed.matches("begin").count() as i32;
                     }
+                    if trimmed.contains("end") {
+                        brace_depth -= trimmed.matches("end").count() as i32;
+                        if brace_depth <= 0 {
+                            in_comb_block = false;
+                        }
+                    }
+                } else if !trimmed.starts_with("always") {
+                    // Single-statement block: exit after processing this line.
+                    in_comb_block = false;
                 }
                 // Replace NBA with blocking assignment inside combinational blocks
                 let fixed = nba_re.replace(line, "$1 = $2");
