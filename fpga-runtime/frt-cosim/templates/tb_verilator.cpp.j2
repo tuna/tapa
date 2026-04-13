@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <deque>
 #include <map>
 
 extern "C" {
@@ -32,25 +33,25 @@ static void mem_write(uint64_t addr, const void* buf, uint64_t strb, size_t nbyt
 
 static V{{ top_name }}* dut;
 
-struct AxiReadPort {
-  bool busy = false;
-  uint64_t addr = 0;
-  uint8_t len = 0;
-  uint8_t beat = 0;
-  uint8_t id = 0;
+static constexpr int kMaxOutstanding = 16;
+
+struct AxiReadReq {
+  uint64_t addr;
+  uint8_t len;
+  uint8_t id;
+  uint8_t beat;
 };
 
-struct AxiWritePort {
-  bool aw_got = false;
-  bool b_pending = false;
-  uint64_t addr = 0;
-  uint8_t beat = 0;
-  uint8_t id = 0;
+struct AxiWriteReq {
+  uint64_t addr;
+  uint8_t id;
+  uint8_t beat;
 };
 
 {% for arg in mmap_args %}
-static AxiReadPort rd_{{ arg.ident }};
-static AxiWritePort wr_{{ arg.ident }};
+static std::deque<AxiReadReq> rd_q_{{ arg.ident }};
+static std::deque<AxiWriteReq> wr_q_{{ arg.ident }};
+static std::deque<uint8_t> b_q_{{ arg.ident }};
 {% endfor %}
 
 {% for arg in stream_args %}
@@ -67,53 +68,56 @@ static void tick() {
 
 static void service_all_axi() {
 {% for arg in mmap_args %}
-  // AXI read service for {{ arg.name }}
-  dut->{{ arg.arready }} = !rd_{{ arg.ident }}.busy;
-  if (dut->{{ arg.arvalid }} && !rd_{{ arg.ident }}.busy) {
-    rd_{{ arg.ident }}.busy = true;
-    rd_{{ arg.ident }}.addr = dut->{{ arg.araddr }};
-    rd_{{ arg.ident }}.len = dut->{{ arg.arlen }};
-    rd_{{ arg.ident }}.id = dut->{{ arg.arid }};
-    rd_{{ arg.ident }}.beat = 0;
+  // ---- AR channel: accept into queue (up to kMaxOutstanding) ----
+  dut->{{ arg.arready }} = (int(rd_q_{{ arg.ident }}.size()) < kMaxOutstanding) ? 1 : 0;
+  if (dut->{{ arg.arvalid }} && dut->{{ arg.arready }}) {
+    rd_q_{{ arg.ident }}.push_back({dut->{{ arg.araddr }}, (uint8_t)dut->{{ arg.arlen }},
+                                    (uint8_t)dut->{{ arg.arid }}, 0});
   }
-  if (rd_{{ arg.ident }}.busy) {
+  // ---- R channel: serve head of read queue ----
+  if (!rd_q_{{ arg.ident }}.empty()) {
+    auto& r = rd_q_{{ arg.ident }}.front();
     dut->{{ arg.rvalid }} = 1;
-    mem_read(rd_{{ arg.ident }}.addr + (uint64_t)rd_{{ arg.ident }}.beat * {{ arg.data_width_bytes }},
+    mem_read(r.addr + (uint64_t)r.beat * {{ arg.data_width_bytes }},
              &dut->{{ arg.rdata }}, {{ arg.data_width_bytes }});
-    dut->{{ arg.rlast }} = (rd_{{ arg.ident }}.beat == rd_{{ arg.ident }}.len) ? 1 : 0;
-    dut->{{ arg.rid }} = rd_{{ arg.ident }}.id;
+    dut->{{ arg.rlast }} = (r.beat == r.len) ? 1 : 0;
+    dut->{{ arg.rid }} = r.id;
     dut->{{ arg.rresp }} = 0;
     if (dut->{{ arg.rready }}) {
-      if (rd_{{ arg.ident }}.beat >= rd_{{ arg.ident }}.len) rd_{{ arg.ident }}.busy = false;
-      else rd_{{ arg.ident }}.beat++;
+      if (r.beat >= r.len) rd_q_{{ arg.ident }}.pop_front();
+      else r.beat++;
     }
   } else {
     dut->{{ arg.rvalid }} = 0;
   }
-  // AXI write service for {{ arg.name }}
-  dut->{{ arg.awready }} = (!wr_{{ arg.ident }}.aw_got && !wr_{{ arg.ident }}.b_pending) ? 1 : 0;
+  // ---- AW channel: accept into queue ----
+  dut->{{ arg.awready }} = (int(wr_q_{{ arg.ident }}.size()) < kMaxOutstanding) ? 1 : 0;
   if (dut->{{ arg.awvalid }} && dut->{{ arg.awready }}) {
-    wr_{{ arg.ident }}.aw_got = true;
-    wr_{{ arg.ident }}.addr = dut->{{ arg.awaddr }};
-    wr_{{ arg.ident }}.id = dut->{{ arg.awid }};
-    wr_{{ arg.ident }}.beat = 0;
+    wr_q_{{ arg.ident }}.push_back({dut->{{ arg.awaddr }}, (uint8_t)dut->{{ arg.awid }}, 0});
   }
-  dut->{{ arg.wready }} = wr_{{ arg.ident }}.aw_got ? 1 : 0;
-  if (dut->{{ arg.wvalid }} && dut->{{ arg.wready }}) {
-    mem_write(wr_{{ arg.ident }}.addr + (uint64_t)wr_{{ arg.ident }}.beat * {{ arg.data_width_bytes }},
+  // ---- W channel: match data with head AW entry ----
+  dut->{{ arg.wready }} = !wr_q_{{ arg.ident }}.empty() ? 1 : 0;
+  if (dut->{{ arg.wvalid }} && dut->{{ arg.wready }} && !wr_q_{{ arg.ident }}.empty()) {
+    auto& w = wr_q_{{ arg.ident }}.front();
+    mem_write(w.addr + (uint64_t)w.beat * {{ arg.data_width_bytes }},
               &dut->{{ arg.wdata }}, dut->{{ arg.wstrb }},
               {{ arg.data_width_bytes }});
-    wr_{{ arg.ident }}.beat++;
+    w.beat++;
     if (dut->{{ arg.wlast }}) {
-      wr_{{ arg.ident }}.aw_got = false;
-      wr_{{ arg.ident }}.b_pending = true;
+      b_q_{{ arg.ident }}.push_back(w.id);
+      wr_q_{{ arg.ident }}.pop_front();
     }
   }
-  dut->{{ arg.bvalid }} = wr_{{ arg.ident }}.b_pending ? 1 : 0;
-  dut->{{ arg.bid }} = wr_{{ arg.ident }}.id;
-  dut->{{ arg.bresp }} = 0;
-  if (wr_{{ arg.ident }}.b_pending && dut->{{ arg.bready }})
-    wr_{{ arg.ident }}.b_pending = false;
+  // ---- B channel: respond from completed-write queue ----
+  if (!b_q_{{ arg.ident }}.empty()) {
+    dut->{{ arg.bvalid }} = 1;
+    dut->{{ arg.bid }} = b_q_{{ arg.ident }}.front();
+    dut->{{ arg.bresp }} = 0;
+    if (dut->{{ arg.bready }})
+      b_q_{{ arg.ident }}.pop_front();
+  } else {
+    dut->{{ arg.bvalid }} = 0;
+  }
 {% endfor %}
 }
 
