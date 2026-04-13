@@ -443,8 +443,15 @@ impl Device for CosimDevice {
         if shm_path.is_empty() {
             return Ok(());
         }
-        let name = self.stream_arg_name(index)?.to_owned();
-        self.ctx.bind_stream_path(&name, shm_path)?;
+        let name = match self.stream_arg_name(index) {
+            Ok(n) => n.to_owned(),
+            Err(_) if self.resume_from_post_sim => return Ok(()),
+            Err(e) => return Err(e),
+        };
+        // In resume mode the context has no streams; skip binding.
+        if self.ctx.streams.contains_key(&name) {
+            self.ctx.bind_stream_path(&name, shm_path)?;
+        }
         Ok(())
     }
 

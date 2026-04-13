@@ -546,6 +546,8 @@ fn platform_name_matches(device_name: &str, target_platform: &str) -> bool {
     if device_name == target_platform {
         return true;
     }
+    // Fuzzy match: compare vendor_board_iface_type prefix, then check that
+    // the device's shell token exactly matches the target's shell token.
     let target: Vec<&str> = target_platform.split('_').collect();
     let device: Vec<&str> = device_name.split('_').collect();
     if target.len() < 5 || device.len() < 6 {
@@ -556,7 +558,8 @@ fn platform_name_matches(device_name: &str, target_platform: &str) -> bool {
             return false;
         }
     }
-    target[4].starts_with(device[5])
+    // Require exact shell revision match to avoid selecting the wrong board.
+    target[4] == device[5]
 }
 
 fn env_non_empty(name: &str) -> Option<String> {
