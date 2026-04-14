@@ -111,8 +111,17 @@ RUN echo "en_US.UTF-8 UTF-8" > /etc/locale.gen && locale-gen
 # Clean up
 RUN rm -rf /tmp/* /var/tmp/*
 
+# Install Rust toolchain (needed by pre-commit cargo-fmt and cargo-clippy hooks)
+ENV RUSTUP_HOME="/opt/rust/rustup"
+ENV CARGO_HOME="/opt/rust/cargo"
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+      | sh -s -- -y --default-toolchain stable --profile minimal && \
+    /opt/rust/cargo/bin/rustup component add rustfmt clippy && \
+    chmod -R go=u /opt/rust
+ENV PATH="/opt/rust/cargo/bin:${PATH}"
+
 # Use /tmp/home as the cache directory
-# Rust toolchain is provided hermetically by rules_rust via Bazel.
+# Rust toolchain for Bazel builds is provided hermetically by rules_rust.
 RUN mkdir -m 755 \
   -p /tmp/home/.cache \
      /tmp/home/.local/ /tmp/home/.nuitka_cache

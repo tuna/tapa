@@ -9,19 +9,19 @@ mod imp {
     type SvOpenArrayHandle = *mut libc::c_void;
     type SvGetArrayPtrFn = unsafe extern "C" fn(SvOpenArrayHandle) -> *mut libc::c_void;
 
-    /// Resolve svGetArrayPtr from the xsim runtime via dlsym at first call.
-    /// The function is provided by libxv_simulator_kernel.so which is already
-    /// loaded in the xsim process when it dlopen()s this DPI library.
+    /// Resolve `svGetArrayPtr` from the xsim runtime via dlsym at first call.
+    /// The function is provided by `libxv_simulator_kernel.so` which is already
+    /// loaded in the xsim process when it `dlopen()`s this DPI library.
     fn get_sv_get_array_ptr() -> SvGetArrayPtrFn {
         static FUNC: OnceLock<SvGetArrayPtrFn> = OnceLock::new();
         *FUNC.get_or_init(|| {
             // SAFETY: `dlsym(RTLD_DEFAULT, ...)` looks up a symbol in the already-loaded
             // xsim runtime. The symbol name is a valid NUL-terminated string.
-            let sym =
-                unsafe { libc::dlsym(libc::RTLD_DEFAULT, b"svGetArrayPtr\0".as_ptr() as *const _) };
-            if sym.is_null() {
-                panic!("frt-dpi-xsim: cannot resolve svGetArrayPtr from xsim runtime");
-            }
+            let sym = unsafe { libc::dlsym(libc::RTLD_DEFAULT, c"svGetArrayPtr".as_ptr().cast()) };
+            assert!(
+                !sym.is_null(),
+                "frt-dpi-xsim: cannot resolve svGetArrayPtr from xsim runtime"
+            );
             // SAFETY: `svGetArrayPtr` has the signature `svOpenArrayHandle -> *mut c_void`
             // which matches `SvGetArrayPtrFn`. The symbol was just successfully resolved.
             unsafe { std::mem::transmute(sym) }
@@ -32,7 +32,7 @@ mod imp {
     unsafe fn sv_array_ptr(h: SvOpenArrayHandle) -> *mut u8 {
         // SAFETY: `h` is a valid svOpenArrayHandle from the xsim DPI caller;
         // `svGetArrayPtr` returns the underlying data pointer.
-        unsafe { (get_sv_get_array_ptr())(h) as *mut u8 }
+        unsafe { (get_sv_get_array_ptr())(h).cast::<u8>() }
     }
 
     macro_rules! dpi_fn {
@@ -60,7 +60,7 @@ mod imp {
                 // `$arr` is an xsim-provided svOpenArrayHandle.
                 unsafe {
                     let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
-                    let ptr = sv_array_ptr($arr) as *const u8;
+                    let ptr: *const u8 = sv_array_ptr($arr).cast_const();
                     $impl_fn(get_or_init(), port, $($arg,)* ptr);
                 }
             }
@@ -89,7 +89,7 @@ mod imp {
                 // `$arr` is an xsim-provided svOpenArrayHandle.
                 unsafe {
                     let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
-                    let ptr = sv_array_ptr($arr) as *const u8;
+                    let ptr: *const u8 = sv_array_ptr($arr).cast_const();
                     $impl_fn(get_or_init(), port, ptr) as u8
                 }
             }
@@ -117,7 +117,7 @@ mod imp {
                 // `$arr` is an xsim-provided svOpenArrayHandle.
                 unsafe {
                     let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
-                    let ptr = sv_array_ptr($arr) as *const u8;
+                    let ptr: *const u8 = sv_array_ptr($arr).cast_const();
                     $impl_fn(get_or_init(), port, $flag != 0, ptr) as u8
                 }
             }

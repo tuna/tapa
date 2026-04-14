@@ -21,6 +21,9 @@ jobs:
     runs-on: self-hosted
 
     steps:
+      - name: Bootstrap checkout
+        uses: actions/checkout@v4
+
       - name: Checkout myself
         uses: ./.github/actions/checkout-with-retry
 
@@ -37,6 +40,9 @@ jobs:
     runs-on: self-hosted
 
     steps:
+      - name: Bootstrap checkout
+        uses: actions/checkout@v4
+
       - name: Checkout myself
         uses: ./.github/actions/checkout-with-retry
 

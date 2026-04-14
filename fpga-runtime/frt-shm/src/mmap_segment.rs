@@ -107,7 +107,7 @@ fn shm_path(name: &str) -> PathBuf {
         .collect();
     #[cfg(target_os = "linux")]
     {
-        PathBuf::from(format!("/dev/shm/tapa_{}_{}_{}", safe_name, pid, nonce))
+        PathBuf::from(format!("/dev/shm/tapa_{safe_name}_{pid}_{nonce}"))
     }
     #[cfg(not(target_os = "linux"))]
     {

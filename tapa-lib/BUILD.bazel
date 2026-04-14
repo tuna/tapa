@@ -125,6 +125,8 @@ cc_test(
 cc_library(
     name = "scoped_set_env",
     hdrs = ["tapa/scoped_set_env.h"],
+    includes = ["."],
+    visibility = ["//fpga-runtime:__pkg__"],
     deps = [
         "@glog",
     ],
