@@ -94,7 +94,9 @@ def get_project_from_floorplanned_program(  # noqa: PLR0913
             files=[Path(program.get_rtl_path(task.name))],
             is_trimming_enabled=False,
         )
-        leaf_irs[task.name] = get_verilog_module_from_leaf_task(task, task.module.code)
+        leaf_irs[task.name] = get_verilog_module_from_leaf_task(
+            task, task.rtl_module.code
+        )
 
     assert program.slot_task_name_to_fp_region is not None
     slot_irs = {
@@ -118,9 +120,9 @@ def get_project_from_floorplanned_program(  # noqa: PLR0913
         program.slot_task_name_to_fp_region,
     )
 
-    top_fsm_def = get_fsm_def(program.get_rtl_path(top_task.fsm_module.name))
+    top_fsm_def = get_fsm_def(program.get_rtl_path(top_task.rtl_fsm_module.name))
     slot_fsms = [
-        get_fsm_def(program.get_rtl_path(slot_task.fsm_module.name))
+        get_fsm_def(program.get_rtl_path(slot_task.rtl_fsm_module.name))
         for slot_task in slot_tasks.values()
     ]
 

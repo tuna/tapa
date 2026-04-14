@@ -76,7 +76,7 @@ def generate_async_mmap_ports(
             tag=tag,
             suffix=suffix,
         )
-        port_name = instance.task.module.find_port(prefix=prefix, suffix=suffix)
+        port_name = instance.task.rtl_module.find_port(prefix=prefix, suffix=suffix)
         if port_name is not None:
             # Make sure Eot is always 1'b0.
             if suffix == ISTREAM_SUFFIXES[0]:
@@ -93,7 +93,7 @@ def generate_async_mmap_ports(
 
         # Generate peek ports.
         if ASYNC_MMAP_SUFFIXES[tag] is ISTREAM_SUFFIXES:
-            port_name = instance.task.module.find_port(prefix + "_peek", suffix)
+            port_name = instance.task.rtl_module.find_port(prefix + "_peek", suffix)
             if port_name is not None:
                 # Ignore read enable from peek ports.
                 if STREAM_PORT_DIRECTION[suffix] == "input":
@@ -111,7 +111,7 @@ def generate_async_mmap_ports(
 
     # Generate the offset port, which carries the base address of this async_mmap.
     if tag.endswith("_addr"):
-        port_name = instance.task.module.find_port(prefix, suffix="_offset")
+        port_name = instance.task.rtl_module.find_port(prefix, suffix="_offset")
         assert port_name is not None, f"missing async_mmap port `{arg}.offset`"
         _logger.debug(
             "`%s.%s` is connected to async_mmap port `%s.offset`",

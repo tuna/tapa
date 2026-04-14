@@ -43,9 +43,9 @@ def connect_fifos(
             for suffix in get_fifo_suffixes(direction):
                 wire = Wire(
                     wire_name(fifo_name, suffix),
-                    get_task(task_name).module.get_port_of(fifo_port, suffix).width,
+                    get_task(task_name).rtl_module.get_port_of(fifo_port, suffix).width,
                 )
-                task.module.add_signals([wire])
+                task.rtl_module.add_signals([wire])
 
         if is_fifo_external(task, fifo_name):
             connect_fifo_externally(
@@ -65,7 +65,7 @@ def instantiate_fifos(
         if "depth" not in fifo:
             continue
         _logger.debug("    instantiating %s.%s", task.name, fifo_name)
-        task.module.add_fifo_instance(
+        task.rtl_module.add_fifo_instance(
             name=fifo_name,
             rst=RST,
             width=get_fifo_width(task, fifo_name),

@@ -63,7 +63,7 @@ def collect_port_width(program: Program) -> dict[str, int | tuple[int, int]]:
             port_width[port.name] = MMAP_WIDTH
         elif port.is_streams:
             port_width[port.name] = int(port.width) * len(
-                get_streams_fifos(program.top_task.module, port.name)
+                get_streams_fifos(program.top_task.rtl_module, port.name)
             )
         else:
             port_width[port.name] = int(port.width)
@@ -221,9 +221,9 @@ def add_scalar_connections(
 
     top = program.top_task
     fsm_vertex = ABVertex(
-        name=top.fsm_module.name,
+        name=top.rtl_fsm_module.name,
         area=Area(lut=0, ff=0, bram_18k=0, dsp=0, uram=0),
-        sub_cells=(top.fsm_module.name,),
+        sub_cells=(top.rtl_fsm_module.name,),
         target_slot=None,
         reserved_slot=None,
         current_slot=None,
@@ -238,7 +238,7 @@ def add_scalar_connections(
         except AssertionError:
             # scalar might not be connected to any task
             continue
-        vertices[top.fsm_module.name] = fsm_vertex
+        vertices[top.rtl_fsm_module.name] = fsm_vertex
 
         # scalar always points from the FSM to the task
         edges.append(

@@ -82,7 +82,7 @@ def get_slot_module_definition_ports(
         assert child_inst_port in child_module_task.ports
         task_port = child_module_task.ports[child_inst_port]
         port_map = get_child_port_connection_mapping(
-            task_port, child_module_task.module, port, child_inst_port_idx
+            task_port, child_module_task.rtl_module, port, child_inst_port_idx
         )
         for child_port, slot_port in port_map.items():
             child_module_ir_port = child_module_ir.get_port(child_port)

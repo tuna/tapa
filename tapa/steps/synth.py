@@ -205,10 +205,19 @@ def _execute_synth(program: Program, plan: SynthPlan, settings: dict) -> None:
             plan.jobs,
             plan.keep_hls_work_dir,
         )
-        generate_task_rtl(program)
+
+        # Create RTL state for each task now that HLS is complete.
+        from tapa.codegen.task_rtl import TaskRtlState  # noqa: PLC0415
+
+        rtl_states = {
+            name: TaskRtlState(task)
+            for name, task in program._tasks.items()  # noqa: SLF001
+        }
+
+        generate_task_rtl(program, rtl_states)
         if plan.enable_synth_util:
             program.generate_post_synth_util(plan.part_num, plan.jobs)
-        generate_top_rtl(program, plan.override_report_schema_version)
+        generate_top_rtl(program, rtl_states, plan.override_report_schema_version)
 
         if plan.nonpipeline_fifos:
             with open(plan.nonpipeline_fifos, encoding="utf-8") as f:

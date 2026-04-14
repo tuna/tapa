@@ -60,7 +60,7 @@ def infer_fifo_data_range(
     if infer_port_name_from_tapa_module:
         producer_data_port = (
             subtasks[producer_task_name]
-            .module.get_port_of(producer_fifo, STREAM_DATA_SUFFIXES[1])
+            .rtl_module.get_port_of(producer_fifo, STREAM_DATA_SUFFIXES[1])
             .name
         )
     else:

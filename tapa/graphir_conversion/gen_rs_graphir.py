@@ -91,7 +91,7 @@ def get_verilog_module_from_leaf_task(
     if not task.module:
         msg = "Task contains no module"
         raise ValueError(msg)
-    return get_verilog_definition_from_tapa_module(task.module, code)
+    return get_verilog_definition_from_tapa_module(task.rtl_module, code)
 
 
 def get_top_ctrl_s_axi_inst(
@@ -166,8 +166,8 @@ def get_top_module_definition(
     floorplan_task_name_region_mapping: dict[str, str],
 ) -> GroupedModuleDefinition:
     """Get top module definition."""
-    top_ports = get_task_graphir_ports(top.module)
-    top_param = get_task_graphir_parameters(top.module)
+    top_ports = get_task_graphir_ports(top.rtl_module)
+    top_param = get_task_graphir_parameters(top.rtl_module)
     default_region = next(iter(floorplan_task_name_region_mapping.values()))
 
     top_subinsts = get_top_ir_subinsts(

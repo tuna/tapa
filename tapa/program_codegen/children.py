@@ -14,8 +14,6 @@ from tapa.protocol import (
     HANDSHAKE_INPUT_PORTS,
     HANDSHAKE_OUTPUT_PORTS,
 )
-from tapa.task_codegen.fsm import add_rs_pragmas_to_fsm as _add_rs_pragmas_to_fsm
-from tapa.task_codegen.m_axi import add_m_axi as _add_m_axi
 from tapa.util import get_module_name
 from tapa.verilog.ast.ioport import IOPort
 from tapa.verilog.ast.logic import Always, Assign
@@ -35,6 +33,7 @@ from tapa.verilog.xilinx.const import FALSE, RST, RST_N, TRUE
 from tapa.verilog.xilinx.module import generate_m_axi_ports
 
 if TYPE_CHECKING:
+    from tapa.codegen.task_rtl import TaskRtlState
     from tapa.instance import Instance
     from tapa.task import Task
 
@@ -75,6 +74,10 @@ class _ChildState:
 def _new_state(
     program: _ProgramLike, task: Task, width_table: dict[str, int]
 ) -> _ChildState:
+    assert task.rtl_module is not None, f"task {task.name} has no RTL module attached"
+    assert task.rtl_fsm_module is not None, (
+        f"task {task.name} has no FSM module attached"
+    )
     return _ChildState(
         program=program,
         task=task,
@@ -134,7 +137,7 @@ def _declare_arg_signal(
     q = Pipeline(name=instance.get_instance_arg(id_name), width=width)
     state.arg_table[arg.name] = q
     if "'d" not in q.name:
-        state.task.module.add_signals([Wire(q[-1].name, Width.create(width))])
+        state.task.rtl_module.add_signals([Wire(q[-1].name, Width.create(width))])
         # Eagerly declare the upstream FSM input port BEFORE add_pipeline, so the
         # port body declaration appears before the assign that references it.
         # XSim VRFC 10-3380 creates a disconnected implicit wire if a port is used
@@ -142,7 +145,7 @@ def _declare_arg_signal(
         if upper_name not in state.fsm_upstream_module_ports:
             port = IOPort("input", upper_name, Width.create(width))
             state.fsm_upstream_module_ports[upper_name] = port
-            state.task.fsm_module.add_ports([port])
+            state.task.rtl_fsm_module.add_ports([port])
             # When the FSM port name (e.g. a_offset) differs from the parent
             # wire name, record a mapping so _finalize_state can emit the
             # correct portarg.  Skip the mapping when upper_name is already
@@ -154,8 +157,8 @@ def _declare_arg_signal(
             # no mapping needed.
             if (
                 upper_name != arg.name
-                and upper_name not in state.task.module.ports
-                and upper_name not in state.task.module.signals
+                and upper_name not in state.task.rtl_module.ports
+                and upper_name not in state.task.rtl_module.signals
             ):
                 state.fsm_upstream_port_signals[upper_name] = arg.name
                 # Explicitly declare the parent wire if it is not already in the
@@ -165,9 +168,11 @@ def _declare_arg_signal(
                 # ".a_offset(a)" in the FSM portarg if "a" is not yet known to
                 # be a 64-bit net — causing addr-below-base / wrong simulation
                 # output.  An explicit wire declaration forces the correct width.
-                if arg.name not in state.task.module.signals:
-                    state.task.module.add_signals([Wire(arg.name, Width.create(width))])
-        state.task.fsm_module.add_pipeline(q, init=Identifier(id_name))
+                if arg.name not in state.task.rtl_module.signals:
+                    state.task.rtl_module.add_signals(
+                        [Wire(arg.name, Width.create(width))]
+                    )
+        state.task.rtl_fsm_module.add_pipeline(q, init=Identifier(id_name))
         state.fsm_downstream_module_ports.append(
             IOPort("output", q[-1].name, Width.create(width))
         )
@@ -183,7 +188,7 @@ def _bind_async_mmap_tag(
     tag: str,
 ) -> None:
     if state.task.is_upper and instance.task.is_lower:
-        state.task.module.add_signals(
+        state.task.rtl_module.add_signals(
             generate_async_mmap_signals(
                 tag=tag,
                 arg=arg.mmap_name,
@@ -191,7 +196,7 @@ def _bind_async_mmap_tag(
             ),
         )
     else:
-        state.task.module.add_ports(
+        state.task.rtl_module.add_ports(
             generate_async_mmap_ioports(
                 tag=tag,
                 arg=upper_name,
@@ -241,9 +246,9 @@ def _declare_instance_inputs(
 def _declare_instance_start_logic(state: _ChildState, instance: Instance) -> None:
     sig = InstanceSignals(instance)
     start_q = Pipeline(f"{sig.start.name}_global")
-    state.task.fsm_module.add_pipeline(start_q, state.program.start_q[0])
+    state.task.rtl_fsm_module.add_pipeline(start_q, state.program.start_q[0])
     if instance.is_autorun:
-        state.task.fsm_module.add_logics(
+        state.task.rtl_fsm_module.add_logics(
             [
                 Always(
                     sens_list=CLK_SENS_LIST,
@@ -272,8 +277,8 @@ def _declare_instance_start_logic(state: _ChildState, instance: Instance) -> Non
 
     is_done_q = Pipeline(f"{sig.is_done.name}")
     done_q = Pipeline(f"{sig.done.name}_global")
-    state.task.fsm_module.add_pipeline(is_done_q, sig.is_state(STATE10))
-    state.task.fsm_module.add_pipeline(done_q, state.program.done_q[0])
+    state.task.rtl_fsm_module.add_pipeline(is_done_q, sig.is_state(STATE10))
+    state.task.rtl_fsm_module.add_pipeline(done_q, state.program.done_q[0])
     if_branch = sig.set_state(STATE00)
     else_branch = (
         make_if_with_block(
@@ -300,7 +305,7 @@ def _declare_instance_start_logic(state: _ChildState, instance: Instance) -> Non
             true=make_if_with_block(cond=done_q[-1], true=sig.set_state(STATE00)),
         ),
     )
-    state.task.fsm_module.add_logics(
+    state.task.rtl_fsm_module.add_logics(
         [
             Always(
                 sens_list=CLK_SENS_LIST,
@@ -328,10 +333,10 @@ def _declare_instance_handshake_signals(state: _ChildState, instance: Instance) 
     state.fsm_downstream_portargs.extend(
         make_port_arg(x.name, x.name) for x in sig.public_handshake_signals
     )
-    state.task.module.add_signals(
+    state.task.rtl_module.add_signals(
         Wire(x.name, x.width) for x in sig.public_handshake_signals
     )
-    state.task.fsm_module.add_signals(sig.all_handshake_signals)
+    state.task.rtl_fsm_module.add_signals(sig.all_handshake_signals)
     state.fsm_downstream_module_ports.extend(sig.public_handshake_ports)
 
 
@@ -345,7 +350,7 @@ def _build_instance_portargs(state: _ChildState, instance: Instance) -> list[Por
             )
         elif arg.cat.is_istream:
             portargs.extend(
-                instance.task.module.generate_istream_ports(
+                instance.task.rtl_module.generate_istream_ports(
                     port=arg.port,
                     arg=arg.name,
                     ignore_peek_fifos=((arg.port,) if instance.task.is_slot else ()),
@@ -353,7 +358,7 @@ def _build_instance_portargs(state: _ChildState, instance: Instance) -> list[Por
             )
         elif arg.cat.is_ostream:
             portargs.extend(
-                instance.task.module.generate_ostream_ports(
+                instance.task.rtl_module.generate_ostream_ports(
                     port=arg.port,
                     arg=arg.name,
                 ),
@@ -361,7 +366,7 @@ def _build_instance_portargs(state: _ChildState, instance: Instance) -> list[Por
         elif arg.cat.is_sync_mmap:
             portargs.extend(
                 generate_m_axi_ports(
-                    module=instance.task.module,
+                    module=instance.task.rtl_module,
                     port=arg.port,
                     arg=arg.mmap_name,
                     arg_reg=state.arg_table[arg.name][-1].name,
@@ -382,7 +387,7 @@ def _build_instance_portargs(state: _ChildState, instance: Instance) -> list[Por
 
 
 def _declare_instance_ports(state: _ChildState, instance: Instance) -> None:
-    state.task.module.add_instance(
+    state.task.rtl_module.add_instance(
         module_name=get_module_name(instance.task.name),
         instance_name=instance.name,
         ports=_build_instance_portargs(state, instance),
@@ -390,14 +395,17 @@ def _declare_instance_ports(state: _ChildState, instance: Instance) -> None:
 
 
 def _process_instance(state: _ChildState, instance: Instance) -> None:
-    child_port_set = set(instance.task.module.ports)
+    child_port_set = set(instance.task.rtl_module.ports)
     _declare_instance_inputs(state, instance, child_port_set)
     _declare_instance_handshake_signals(state, instance)
     _declare_instance_start_logic(state, instance)
     _declare_instance_ports(state, instance)
 
 
-def _finalize_state(state: _ChildState) -> list[Pipeline]:
+def _finalize_state(
+    state: _ChildState,
+    rtl_states: dict[str, TaskRtlState],
+) -> list[Pipeline]:
     state.fsm_upstream_portargs.extend(
         make_port_arg(
             x.name,
@@ -406,20 +414,20 @@ def _finalize_state(state: _ChildState) -> list[Pipeline]:
         for x in state.fsm_upstream_module_ports.values()
     )
     # Upstream ports were already added eagerly in _declare_arg_signal.
-    state.task.fsm_module.add_ports(state.fsm_downstream_module_ports)
-    _add_rs_pragmas_to_fsm(state.task)
+    state.task.rtl_fsm_module.add_ports(state.fsm_downstream_module_ports)
+    rtl_states[state.task.name].add_rs_pragmas_to_fsm()
 
     if state.task.is_upper:
         for arg, tag in state.async_mmap_args.items():
-            state.task.module.add_async_mmap_instance(
+            state.task.rtl_module.add_async_mmap_instance(
                 name=arg.mmap_name,
                 tags=tag,
                 rst=RST,
                 data_width=state.width_table[arg.name],
                 addr_width=64,
             )
-        state.task.module.add_instance(
-            module_name=state.task.fsm_module.name,
+        state.task.rtl_module.add_instance(
+            module_name=state.task.rtl_fsm_module.name,
             instance_name="__tapa_fsm_unit",
             ports=state.fsm_upstream_portargs + state.fsm_downstream_portargs,
         )
@@ -430,9 +438,10 @@ def instantiate_children_tasks(
     program: _ProgramLike,
     task: Task,
     width_table: dict[str, int],
+    rtl_states: dict[str, TaskRtlState],
 ) -> list[Pipeline]:
     state = _new_state(program, task, width_table)
-    _add_m_axi(task, width_table, program.files)
+    rtl_states[task.name].add_m_axi(width_table, program.files)
     for instance in task.instances:
         _process_instance(state, instance)
-    return _finalize_state(state)
+    return _finalize_state(state, rtl_states)

@@ -134,7 +134,7 @@ def test_synth_routes_to_run_hls_for_hls_target() -> None:
         patch("tapa.steps.synth.generate_task_rtl", mock_gen_task_rtl),
         patch("tapa.steps.synth.generate_top_rtl"),
         patch("tapa.steps.synth.get_rtl_templates_info", return_value={}),
-        patch("tapa.steps.synth.store_design"),
+        patch("tapa.steps.synth.store_design") as mock_store_design,
     ):
         runner = CliRunner()
         result = runner.invoke(
@@ -147,6 +147,7 @@ def test_synth_routes_to_run_hls_for_hls_target() -> None:
     assert result.exit_code == 0, result.output
     program.run_hls.assert_called_once()
     mock_gen_task_rtl.assert_called_once()
+    mock_store_design.assert_called_once()
     program.run_aie.assert_not_called()
 
 

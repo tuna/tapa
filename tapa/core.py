@@ -18,7 +18,6 @@ from types import TracebackType
 from typing import Self
 from xml.etree import ElementTree as ET
 
-from tapa.codegen.task_rtl import TaskRtlState
 from tapa.common.paths import get_tapacc_cflags
 from tapa.common.target import Target
 from tapa.instance import Instance
@@ -114,7 +113,6 @@ class Program(  # TODO: refactor this class
                 target_type=task_properties["target"],
                 is_slot=(name in floorplan_slots),
             )
-            TaskRtlState(task)
             if not task.is_upper or task.tasks:
                 self._tasks[name] = task
 

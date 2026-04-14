@@ -153,7 +153,7 @@ def get_submodule_inst(
 ) -> ModuleInstantiation:
     """Get submodule instantiation."""
     task_name = inst.task.name
-    subtask_module = subtasks[task_name].module
+    subtask_module = subtasks[task_name].rtl_module
 
     def get_stream_port(port_name: str, suffix: str) -> str | None:
         if suffix.startswith("_peek"):
@@ -212,7 +212,7 @@ def get_upper_module_ir_subinsts(
         get_submodule_inst(subtasks, inst, arg_table, floorplan_region)
         for inst in upper_task.instances
     ]
-    ir_insts.append(_make_fsm_inst(upper_task.fsm_module, floorplan_region))
+    ir_insts.append(_make_fsm_inst(upper_task.rtl_fsm_module, floorplan_region))
     for fifo_name, fifo in upper_task.fifos.items():
         if is_fifo_external_codegen(upper_task, fifo_name):
             continue
@@ -277,7 +277,7 @@ def get_top_ir_subinsts(
         )
         for inst in top_task.instances
     ]
-    ir_insts.append(_make_fsm_inst(top_task.fsm_module, fsm_floorplan_region))
+    ir_insts.append(_make_fsm_inst(top_task.rtl_fsm_module, fsm_floorplan_region))
     for fifo_name, fifo in top_task.fifos.items():
         if is_fifo_external_codegen(top_task, fifo_name):
             continue

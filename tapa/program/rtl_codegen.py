@@ -15,6 +15,7 @@ from tapa.instance import Instance
 from tapa.verilog.xilinx.module import Module
 
 if TYPE_CHECKING:
+    from tapa.codegen.task_rtl import TaskRtlState
     from tapa.core import Program
 
 _logger = logging.getLogger().getChild(__name__)
@@ -53,15 +54,22 @@ def extract_task_rtl(program: Program) -> None:
         shutil.copy(os.path.join(assets_dir, file_name), program.rtl_dir)
 
 
-def parse_task_rtl(program: Program) -> None:
+def parse_task_rtl(
+    program: Program,
+    rtl_states: dict[str, TaskRtlState],
+) -> None:
     """Parse RTL files and populate task instances."""
     _logger.info("parsing RTL files and populating tasks")
-    for task in program._tasks.values():
+    for name, task in program._tasks.items():
         _logger.debug("parsing %s", task.name)
-        task.module = Module(
+        # Replace the placeholder module with the real HLS-generated RTL.
+        # Update the retained state holder, then sync to task.
+        module = Module(
             files=[Path(program.get_rtl_path(task.name))],
             is_trimming_enabled=task.is_lower,
         )
+        rtl_states[name].module = module
+        task.module = module
         task.self_area = program.get_area(task.name)
         task.clock_period = program.get_clock_period(task.name)
 
@@ -73,7 +81,10 @@ def parse_task_rtl(program: Program) -> None:
         )
 
 
-def instrument_upper_task_rtl(program: Program) -> None:
+def instrument_upper_task_rtl(
+    program: Program,
+    rtl_states: dict[str, TaskRtlState],
+) -> None:
     """Instrument upper-level RTL (except top-level)."""
     from tapa.program_codegen.program import (  # noqa: PLC0415
         instrument_upper_and_template_task as _instrument,
@@ -82,7 +93,7 @@ def instrument_upper_task_rtl(program: Program) -> None:
     _logger.info("instrumenting upper-level RTL")
     for task in program._tasks.values():
         if task.is_upper and task.name != program.top:
-            _instrument(program, task)
+            _instrument(program, task, rtl_states)
         elif not task.is_upper and task.name in program.gen_templates:
             assert task.ports
-            _instrument(program, task)
+            _instrument(program, task, rtl_states)

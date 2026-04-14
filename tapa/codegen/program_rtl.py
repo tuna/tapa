@@ -16,13 +16,17 @@ from typing import TYPE_CHECKING
 import yaml
 
 if TYPE_CHECKING:
+    from tapa.codegen.task_rtl import TaskRtlState
     from tapa.core import Program
     from tapa.task import Task
 
 _logger = logging.getLogger().getChild(__name__)
 
 
-def generate_task_rtl(program: Program) -> None:
+def generate_task_rtl(
+    program: Program,
+    rtl_states: dict[str, TaskRtlState],
+) -> None:
     """Extract HDL files from tarballs generated from HLS."""
     from tapa.program.rtl_codegen import (  # noqa: PLC0415
         extract_task_rtl,
@@ -31,18 +35,20 @@ def generate_task_rtl(program: Program) -> None:
     )
 
     extract_task_rtl(program)
-    parse_task_rtl(program)
-    instrument_upper_task_rtl(program)
+    parse_task_rtl(program, rtl_states)
+    instrument_upper_task_rtl(program, rtl_states)
 
 
 def generate_top_rtl(
     program: Program,
+    rtl_states: dict[str, TaskRtlState],
     override_report_schema_version: str,
 ) -> None:
     """Instrument HDL files generated from HLS.
 
     Args:
         program: The TAPA Program instance.
+        rtl_states: Map of task names to their RTL state holders.
         override_report_schema_version: Override the schema version with the
             given string, if non-empty.
     """
@@ -58,7 +64,7 @@ def generate_top_rtl(
 
     # instrument the top-level RTL if it is a upper-level task
     if program.top_task.is_upper:
-        _instrument(program, program.top_task)
+        _instrument(program, program.top_task, rtl_states)
 
     _logger.info("generating report")
     task_report = program.top_task.report
@@ -76,10 +82,14 @@ def generate_top_rtl(
             fp.write(content)
 
 
-def instrument_upper_and_template_task(program: Program, task: Task) -> None:
+def instrument_upper_and_template_task(
+    program: Program,
+    task: Task,
+    rtl_states: dict[str, TaskRtlState],
+) -> None:
     """Instrument a single upper-level or template task."""
     from tapa.program_codegen.program import (  # noqa: PLC0415
         instrument_upper_and_template_task as _impl,
     )
 
-    _impl(program, task)
+    _impl(program, task, rtl_states)

@@ -20,10 +20,12 @@ def store_design(program: Program) -> None:
     """Serialize topology-only Program state to design.json."""
     design: dict[str, object] = {
         "top": program.top,
+        "target": str(program.target),
         "tasks": {
             name: task.to_topology_dict()
             for name, task in program._tasks.items()  # noqa: SLF001
         },
+        "slot_task_name_to_fp_region": program.slot_task_name_to_fp_region,
     }
     try:
         store_persistent_context(_DESIGN_CTX_NAME, design)
@@ -32,7 +34,13 @@ def store_design(program: Program) -> None:
 
 
 def load_design() -> dict:
-    """Load topology-only Program state from design.json."""
+    """Load topology-only Program state from design.json.
+
+    Returns a dict with keys: top, target, tasks, slot_task_name_to_fp_region.
+    The tasks dict maps task names to topology dicts compatible with
+    Program.__init__'s expected task_properties schema (including "target"
+    key for target_type).
+    """
     return load_persistent_context(_DESIGN_CTX_NAME)
 
 
@@ -81,14 +89,37 @@ def load_persistent_context(name: str) -> dict:
 
 
 def load_tapa_program() -> Program:
-    """Try load program description from the flow or from the workdir."""
+    """Try load program description from the flow or from the workdir.
+
+    Prefers ``design.json`` (topology bridge) when it exists, falling back
+    to ``graph.json`` for backward compatibility.
+    """
     local_ctx = click.get_current_context().obj
     if "tapa-program" not in local_ctx:
-        local_ctx["tapa-program"] = Program(
-            load_persistent_context("graph"),
-            target=load_persistent_context("settings")["target"],
-            work_dir=local_ctx["work-dir"],
-        )
+        work_dir = local_ctx["work-dir"]
+        design_path = os.path.join(work_dir, "design.json")
+        if os.path.exists(design_path):
+            design = load_persistent_context(_DESIGN_CTX_NAME)
+            # Reconstruct floorplan_slots from per-task is_slot flags.
+            floorplan_slots = [
+                name
+                for name, task_data in design["tasks"].items()
+                if task_data.get("is_slot", False)
+            ]
+            local_ctx["tapa-program"] = Program(
+                {"tasks": design["tasks"], "top": design["top"]},
+                target=design["target"],
+                work_dir=work_dir,
+                floorplan_slots=floorplan_slots,
+                slot_task_name_to_fp_region=design.get("slot_task_name_to_fp_region")
+                or {},
+            )
+        else:
+            local_ctx["tapa-program"] = Program(
+                load_persistent_context("graph"),
+                target=load_persistent_context("settings")["target"],
+                work_dir=work_dir,
+            )
     return local_ctx["tapa-program"]
 
 
@@ -107,8 +138,13 @@ def store_persistent_context(name: str, ctx: dict | None = None) -> None:
 
 
 def store_tapa_program(prog: Program) -> None:
-    """Store program description to the flow for downstream reuse."""
+    """Store program description to the flow for downstream reuse.
+
+    Also writes ``design.json`` so that topology state persists across
+    Rust/Python language boundaries.
+    """
     click.get_current_context().obj["tapa-program"] = prog
+    store_design(prog)
 
 
 def switch_work_dir(path: str) -> None:

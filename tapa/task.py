@@ -95,8 +95,8 @@ class Task:
         elif ports:
             # Nonsynthesizable tasks need ports to generate template
             self.ports = port_dict
-        self.module: Module  # Populated by TaskRtlState
-        self.fsm_module: Module  # Populated by TaskRtlState
+        self.module: Module | None = None  # Populated by TaskRtlState
+        self.fsm_module: Module | None = None  # Populated by TaskRtlState
         self._instances: tuple[Instance, ...] | None = None
         self._args: dict[str, list[Instance.Arg]] | None = None
         self._mmaps: dict[str, MMapConnection] | None = None
@@ -111,6 +111,18 @@ class Task:
     @property
     def is_lower(self) -> bool:
         return self.level == Task.Level.LOWER
+
+    @property
+    def rtl_module(self) -> Module:
+        """Access the RTL module, asserting it has been populated by TaskRtlState."""
+        assert self.module is not None, f"task {self.name}: module not attached"
+        return self.module
+
+    @property
+    def rtl_fsm_module(self) -> Module:
+        """Access the FSM module, asserting it has been populated by TaskRtlState."""
+        assert self.fsm_module is not None, f"task {self.name}: fsm_module not attached"
+        return self.fsm_module
 
     @property
     def instances(self) -> tuple[Instance, ...]:
@@ -336,7 +348,7 @@ class Task:
             "ports": ports_list,
             "tasks": self.tasks,
             "fifos": self.fifos,
-            "target_type": self.target_type,
+            "target": self.target_type,
             "is_slot": self.is_slot,
             "self_area": dict(self._self_area),
             "total_area": dict(self._total_area),

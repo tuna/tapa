@@ -22,19 +22,26 @@ if TYPE_CHECKING:
 
 
 class TaskRtlState:
-    """Owns the codegen-specific setup for a Task's RTL modules.
+    """Retained owner of a Task's RTL modules.
 
-    Creating this object creates the ``module`` and ``fsm_module``
-    :class:`Module` objects on the task and sets up the FSM module with
-    handshake ports for upper-level tasks.
+    ``module`` and ``fsm_module`` live on this state object.  They are
+    also assigned to ``task.module`` / ``task.fsm_module`` so that
+    existing read-through accessors (e.g. ``task.rtl_module``) continue
+    to work without change.
     """
+
+    __slots__ = ("fsm_module", "module", "task")
 
     def __init__(self, task: Task) -> None:
         self.task = task
-        task.module = Module(name=task.name)
-        task.fsm_module = Module(name=f"{task.name}_fsm")
+        self.module: Module = Module(name=task.name)
+        self.fsm_module: Module | None = None
         if task.is_upper:
-            task.fsm_module.add_ports(
+            self.fsm_module = Module(
+                name=f"{task.name}_fsm",
+                is_trimming_enabled=False,
+            )
+            self.fsm_module.add_ports(
                 [
                     IOPort("input", HANDSHAKE_CLK),
                     IOPort("input", HANDSHAKE_RST_N),
@@ -44,6 +51,9 @@ class TaskRtlState:
                     IOPort("output", HANDSHAKE_IDLE),
                 ]
             )
+        # Sync to task for read-through accessors.
+        task.module = self.module
+        task.fsm_module = self.fsm_module
 
     def add_m_axi(self, width_table: dict[str, int], files: dict[str, str]) -> None:
         """Add M-AXI ports and crossbar wiring for upper tasks."""

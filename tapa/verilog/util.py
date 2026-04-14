@@ -40,11 +40,13 @@ class Pipeline:
 
 
 def match_array_name(name: str) -> tuple[str, int] | None:
+    """Deprecated: use tapa.common.base._match_array_name for non-verilog code."""
     match = re.fullmatch(r"(\w+)\[(\d+)\]", name)
     return (match[1], int(match[2])) if match is not None else None
 
 
 def array_name(name: str, idx: int) -> str:
+    """Deprecated: use tapa.common.base._array_name for non-verilog code."""
     return f"{name}[{idx}]"
 
 

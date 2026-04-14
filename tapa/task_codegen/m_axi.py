@@ -46,14 +46,14 @@ def _add_upstream_portargs(
                 axi_arg_name_raw = axi_arg_name
                 if idx is not None and axi_port == "ADDR":
                     axi_arg_name_raw += "_raw"
-                    context.task.module.add_signals(
+                    context.task.rtl_module.add_signals(
                         [Wire(name=axi_arg_name_raw, width=Width.create(64))],
                     )
                     assert context.chan_size is not None
                     addr_width = get_addr_width(
                         context.chan_size, width_table[context.arg_name]
                     )
-                    context.task.module.add_logics(
+                    context.task.rtl_module.add_logics(
                         [
                             Assign(
                                 lhs=axi_arg_name,
@@ -106,7 +106,7 @@ def _add_downstream_portargs(
                         arg=port_arg,
                     ),
                 )
-        context.task.module.add_signals(wires)
+        context.task.rtl_module.add_signals(wires)
 
 
 def _build_paramargs(
@@ -154,7 +154,7 @@ def add_m_axi(task: Task, width_table: dict[str, int], files: dict[str, str]) ->
     for arg_name, mmap in task.mmaps.items():
         m_axi_id_width, m_axi_thread_count, args, chan_count, chan_size = mmap
         for idx in range_or_none(chan_count):
-            task.module.add_m_axi(
+            task.rtl_module.add_m_axi(
                 name=get_indexed_name(arg_name, idx),
                 data_width=width_table[arg_name],
                 id_width=m_axi_id_width or None,
@@ -197,7 +197,7 @@ def add_m_axi(task: Task, width_table: dict[str, int], files: dict[str, str]) ->
 
         module_name = f"axi_crossbar_{len(args)}x{chan_count or 1}"
         _ensure_crossbar_file(files=files, module_name=module_name, context=context)
-        task.module.add_instance(
+        task.rtl_module.add_instance(
             module_name=module_name,
             instance_name=f"{module_name}__{arg_name}",
             ports=portargs,

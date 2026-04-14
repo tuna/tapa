@@ -71,13 +71,13 @@ def is_fifo_external(task: Task, fifo_name: str) -> bool:
 
 def _assign_directional(task: Task, a: str, b: str, a_direction: str) -> None:
     if a_direction == "input":
-        task.module.add_logics([Assign(lhs=a, rhs=b)])
+        task.rtl_module.add_logics([Assign(lhs=a, rhs=b)])
     elif a_direction == "output":
-        task.module.add_logics([Assign(lhs=b, rhs=a)])
+        task.rtl_module.add_logics([Assign(lhs=b, rhs=a)])
 
 
 def _find_axis_port_name(task: Task, axis_name: str, suffix: str) -> str:
-    port_name = task.module.find_port(axis_name, suffix)
+    port_name = task.rtl_module.find_port(axis_name, suffix)
     assert port_name is not None
     return port_name
 
@@ -96,7 +96,7 @@ def convert_axis_to_fifo(task: Task, axis_name: str) -> str:
     ]
 
     if direction == "consumed_by":
-        task.module.add_instance(
+        task.rtl_module.add_instance(
             module_name="axis_to_stream_adapter",
             instance_name=adapter_name,
             params=(ParamArg("DATA_WIDTH", IntConst(str(data_width))),),
@@ -120,7 +120,7 @@ def convert_axis_to_fifo(task: Task, axis_name: str) -> str:
             ),
         )
     else:
-        task.module.add_instance(
+        task.rtl_module.add_instance(
             module_name="stream_to_axis_adapter",
             instance_name=adapter_name,
             params=(ParamArg("DATA_WIDTH", IntConst(str(data_width))),),
@@ -147,7 +147,7 @@ def convert_axis_to_fifo(task: Task, axis_name: str) -> str:
         for axis_suffix, bit in AXIS_CONSTANTS.items():
             port_name = _find_axis_port_name(task, axis_name, axis_suffix)
             width = get_axis_port_width_int(axis_suffix, data_width)
-            task.module.add_logics(
+            task.rtl_module.add_logics(
                 [
                     Assign(
                         lhs=port_name,
@@ -171,7 +171,7 @@ def connect_fifo_externally(task: Task, internal_name: str, axis: bool) -> None:
 
     for suffix in get_fifo_suffixes(direction):
         if external_name == internal_name:
-            rhs = task.module.get_port_of(external_name, suffix).name
+            rhs = task.rtl_module.get_port_of(external_name, suffix).name
         else:
             rhs = wire_name(external_name, suffix)
         _assign_directional(

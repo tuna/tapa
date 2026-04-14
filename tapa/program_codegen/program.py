@@ -47,6 +47,7 @@ if TYPE_CHECKING:
     from collections.abc import Generator
     from pathlib import Path
 
+    from tapa.codegen.task_rtl import TaskRtlState
     from tapa.task import Task
 
 _logger = logging.getLogger().getChild(__name__)
@@ -100,7 +101,7 @@ def replace_custom_rtl(
 
 def get_fifo_width(program: Any, task: Task, fifo: str) -> Plus:
     producer_task, _, fifo_port = get_connection_to_codegen(task, fifo, "produced_by")
-    port = program.get_task(producer_task).module.get_port_of(
+    port = program.get_task(producer_task).rtl_module.get_port_of(
         fifo_port,
         OSTREAM_SUFFIXES[0],
     )
@@ -163,10 +164,14 @@ def instantiate_global_fsm(
     )
 
 
-def instrument_upper_and_template_task(program: Any, task: Task) -> None:
-    task.module.cleanup()
+def instrument_upper_and_template_task(
+    program: Any,
+    task: Task,
+    rtl_states: dict[str, TaskRtlState],
+) -> None:
+    task.rtl_module.cleanup()
     if task.name == program.top and program.target == Target.XILINX_VITIS:
-        task.module.add_rs_pragmas()
+        task.rtl_module.add_rs_pragmas()
 
     if task.name == program.top_task.name:
         _logger.debug("remove top peek ports")
@@ -174,7 +179,7 @@ def instrument_upper_and_template_task(program: Any, task: Task) -> None:
             if port.cat.is_istream:
                 fifos = [port_name]
             elif port.is_istreams:
-                fifos = get_streams_fifos(task.module, port_name)
+                fifos = get_streams_fifos(task.rtl_module, port_name)
             else:
                 continue
             for fifo in fifos:
@@ -186,18 +191,18 @@ def instrument_upper_and_template_task(program: Any, task: Task) -> None:
                         else array_name(f"{match[0]}_peek", match[1])
                     )
                     try:
-                        peek = task.module.get_port_of(peek_port, suffix)
+                        peek = task.rtl_module.get_port_of(peek_port, suffix)
                     except Module.NoMatchingPortError:
                         continue
                     _logger.debug("  remove %s", peek.name)
-                    task.module.del_port(peek.name)
+                    task.rtl_module.del_port(peek.name)
 
     if task.name in program.gen_templates:
         _logger.info("skip instrumenting template task %s", task.name)
         with open(
             program.get_rtl_template_path(task.name), "w", encoding="utf-8"
         ) as rtl_code:
-            rtl_code.write(task.module.get_template_code())
+            rtl_code.write(task.rtl_module.get_template_code())
     else:
         _instantiate_fifos(
             task=task,
@@ -207,16 +212,16 @@ def instrument_upper_and_template_task(program: Any, task: Task) -> None:
             task=task, top=program.top, target=program.target, get_task=program.get_task
         )
         width_table = {port.name: port.width for port in task.ports.values()}
-        task.fsm_module.add_signals(program.start_q.signals)
-        task.fsm_module.add_signals(program.done_q.signals)
-        is_done_signals = _instantiate_children(program, task, width_table)
-        instantiate_global_fsm(program, task.fsm_module, is_done_signals)
+        task.rtl_fsm_module.add_signals(program.start_q.signals)
+        task.rtl_fsm_module.add_signals(program.done_q.signals)
+        is_done_signals = _instantiate_children(program, task, width_table, rtl_states)
+        instantiate_global_fsm(program, task.rtl_fsm_module, is_done_signals)
         with open(
-            program.get_rtl_path(task.fsm_module.name), "w", encoding="utf-8"
+            program.get_rtl_path(task.rtl_fsm_module.name), "w", encoding="utf-8"
         ) as rtl_code:
-            rtl_code.write(task.fsm_module.code)
+            rtl_code.write(task.rtl_fsm_module.code)
     with open(program.get_rtl_path(task.name), "w", encoding="utf-8") as rtl_code:
-        rtl_code.write(task.module.code)
+        rtl_code.write(task.rtl_module.code)
 
 
 def get_grouping_constraints(
