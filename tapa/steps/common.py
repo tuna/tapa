@@ -20,7 +20,7 @@ def store_design(program: Program) -> None:
     """Serialize topology-only Program state to design.json."""
     design: dict[str, object] = {
         "top": program.top,
-        "target": str(program.target),
+        "target": program.target.value,
         "tasks": {
             name: task.to_topology_dict()
             for name, task in program._tasks.items()  # noqa: SLF001

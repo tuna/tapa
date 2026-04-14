@@ -252,7 +252,9 @@ py_test(
     srcs = ["task_test.py"],
     deps = [
         ":codegen",
+        ":core",
         ":task",
+        "//tapa/steps",
     ],
 )
 

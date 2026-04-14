@@ -2,7 +2,7 @@
 
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from tapa.graphir_conversion.pipeline.project_builder import (
     add_pblock_ranges,
@@ -52,3 +52,91 @@ def test_pblock_range_mapping_matches_vadd_fixture() -> None:
     add_pblock_ranges(device_config, project, floorplan_path)
 
     assert project.island_to_pblock_range == expected
+
+
+def test_project_builder_leaf_loop_does_not_mutate_task_module() -> None:
+    """Verify project_builder does not reassign task.module (AC-2).
+
+    Calls get_project_from_floorplanned_program with a minimal
+    top/slot/leaf hierarchy and preattached sentinel leaf.module.
+    Verifies object identity is preserved after the call.
+    """
+    from unittest.mock import MagicMock, patch  # noqa: PLC0415
+
+    from tapa.graphir_conversion.pipeline.project_builder import (  # noqa: PLC0415
+        get_project_from_floorplanned_program,
+    )
+
+    sentinel = MagicMock(name="sentinel_module")
+    sentinel.code = "// sentinel"
+
+    fsm_mock = MagicMock(name="fsm")
+    fsm_mock.name = "top_fsm"
+
+    leaf = SimpleNamespace(
+        name="leaf",
+        is_slot=False,
+        module=sentinel,
+        fsm_module=None,
+    )
+    slot = SimpleNamespace(
+        name="slot",
+        is_slot=True,
+        module=MagicMock(),
+        fsm_module=fsm_mock,
+        instances=(SimpleNamespace(task=leaf),),
+        rtl_fsm_module=fsm_mock,
+    )
+    top = SimpleNamespace(
+        name="top",
+        is_slot=False,
+        module=MagicMock(),
+        fsm_module=fsm_mock,
+        instances=(SimpleNamespace(task=slot),),
+        ports={},
+        rtl_module=MagicMock(),
+        rtl_fsm_module=fsm_mock,
+    )
+    program = SimpleNamespace(
+        top_task=top,
+        top="top",
+        slot_task_name_to_fp_region={"slot": "SLOT_X0Y0:SLOT_X0Y0"},
+        get_rtl_path=lambda name: f"/fake/{name}.v",
+        rtl_dir="/fake/rtl",
+    )
+
+    parsed = MagicMock(name="parsed_module")
+    parsed.code = "// parsed"
+    module_cls = MagicMock(return_value=parsed)
+    project_mock = MagicMock()
+
+    # Patch _get_ctrl_s_axi_definition and add_pblock_ranges to avoid file I/O
+    with (
+        patch(
+            "tapa.graphir_conversion.pipeline.project_builder"
+            "._get_ctrl_s_axi_definition",
+            return_value="ctrl",
+        ),
+        patch(
+            "tapa.graphir_conversion.pipeline.project_builder.add_pblock_ranges",
+        ),
+    ):
+        get_project_from_floorplanned_program(
+            program=cast("Any", program),
+            device_config=Path("/fake/device.json"),
+            floorplan_path=Path("/fake/floorplan.json"),
+            get_verilog_module_from_leaf_task=MagicMock(return_value="leaf_ir"),
+            get_slot_module_definition=MagicMock(return_value="slot_ir"),
+            get_top_module_definition=MagicMock(return_value="top_ir"),
+            get_ctrl_s_axi_def=MagicMock(return_value="ctrl"),
+            get_fsm_def=MagicMock(return_value="fsm"),
+            get_fifo_def=MagicMock(return_value="fifo"),
+            get_reset_inverter_def=MagicMock(return_value="rst"),
+            get_graphir_iface=MagicMock(return_value={}),
+            module_cls=cast("Any", module_cls),
+            modules_cls=cast("Any", MagicMock(return_value="modules")),
+            project_cls=cast("Any", MagicMock(return_value=project_mock)),
+        )
+
+    # Leaf module identity must be unchanged — not replaced by module_cls()
+    assert leaf.module is sentinel, "project_builder must not reassign task.module"

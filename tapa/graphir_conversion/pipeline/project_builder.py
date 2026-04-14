@@ -90,13 +90,13 @@ def get_project_from_floorplanned_program(  # noqa: PLR0913
 
     leaf_irs = {}
     for task in leaf_tasks.values():
-        task.module = module_cls(
+        # Parse leaf RTL from disk without assigning to task.module —
+        # RTL module ownership belongs to TaskRtlState, not ad-hoc parsing.
+        leaf_module = module_cls(
             files=[Path(program.get_rtl_path(task.name))],
             is_trimming_enabled=False,
         )
-        leaf_irs[task.name] = get_verilog_module_from_leaf_task(
-            task, task.rtl_module.code
-        )
+        leaf_irs[task.name] = get_verilog_module_from_leaf_task(task, leaf_module.code)
 
     assert program.slot_task_name_to_fp_region is not None
     slot_irs = {
