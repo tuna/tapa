@@ -16,6 +16,7 @@ from tapa.steps.common import (
     is_pipelined,
     load_persistent_context,
     load_tapa_program,
+    store_design,
     store_persistent_context,
 )
 from tapa.steps.synth_plan import SynthPlan, build_synth_plan
@@ -232,5 +233,6 @@ def _execute_synth(program: Program, plan: SynthPlan, settings: dict) -> None:
         settings["synthed"] = True
         store_persistent_context("settings")
         store_persistent_context("templates_info", program.get_rtl_templates_info())
+        store_design(program)
 
         is_pipelined("synth", True)

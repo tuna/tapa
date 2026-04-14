@@ -8,6 +8,7 @@ from pathlib import Path
 
 import click
 
+from tapa.common.floorplan import convert_region_format
 from tapa.common.graph import Graph as TapaGraph
 from tapa.core import Program
 from tapa.remote.popen import create_tool_process
@@ -143,10 +144,3 @@ def get_slot_to_inst(
         slot_task_name_to_fp_region[slot_name] = convert_region_format(region)
     program.slot_task_name_to_fp_region = slot_task_name_to_fp_region
     return slot_to_insts
-
-
-def convert_region_format(region: str | None) -> str | None:
-    """Convert region format from 'x:y' to 'x_TO_y'."""
-    if region is None:
-        return None
-    return region.replace(":", "_TO_")

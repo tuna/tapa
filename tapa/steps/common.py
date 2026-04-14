@@ -9,6 +9,32 @@ from tapa.core import Program
 
 _logger = logging.getLogger().getChild(__name__)
 
+# ---------------------------------------------------------------------------
+# design.json topology persistence
+# ---------------------------------------------------------------------------
+
+_DESIGN_CTX_NAME = "design"
+
+
+def store_design(program: Program) -> None:
+    """Serialize topology-only Program state to design.json."""
+    design: dict[str, object] = {
+        "top": program.top,
+        "tasks": {
+            name: task.to_topology_dict()
+            for name, task in program._tasks.items()  # noqa: SLF001
+        },
+    }
+    try:
+        store_persistent_context(_DESIGN_CTX_NAME, design)
+    except FileNotFoundError:
+        _logger.debug("work directory does not exist; skipping design.json")
+
+
+def load_design() -> dict:
+    """Load topology-only Program state from design.json."""
+    return load_persistent_context(_DESIGN_CTX_NAME)
+
 
 def forward_applicable(
     ctx: click.Context,

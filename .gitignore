@@ -26,5 +26,6 @@ impl_config.json
 node_modules
 plans/
 run/
+uv.lock
 work.xo
 work.zip

@@ -296,6 +296,49 @@ class Task:
             return self.mmaps[port].thread_count
         return 1
 
+    def to_topology_dict(self) -> dict:
+        """Serialize topology-only state for design.json persistence.
+
+        Returns a dict containing: name, level, code, ports, tasks, fifos,
+        target_type, is_slot, self_area, total_area, and clock_period.
+        """
+        # Build reverse lookup: Cat enum -> canonical string name.
+        # Skip "hmap" since it's an alias for MMAP; prefer the first match.
+        from tapa.instance import Instance  # noqa: PLC0415
+
+        cat_to_str: dict[Instance.Arg.Cat, str] = {}
+        for key, val in Instance.Arg._CAT_LOOKUP.items():  # noqa: SLF001
+            if val not in cat_to_str:
+                cat_to_str[val] = key
+
+        ports_list = []
+        for port in getattr(self, "ports", {}).values():
+            port_dict: dict[str, str | int | None] = {
+                "cat": cat_to_str.get(port.cat, port.cat.name.lower()),
+                "name": port.name,
+                "type": port.ctype,
+                "width": port.width,
+            }
+            if port.chan_count is not None:
+                port_dict["chan_count"] = port.chan_count
+            if port.chan_size is not None:
+                port_dict["chan_size"] = port.chan_size
+            ports_list.append(port_dict)
+
+        return {
+            "name": self.name,
+            "level": "upper" if self.is_upper else "lower",
+            "code": self.code,
+            "ports": ports_list,
+            "tasks": self.tasks,
+            "fifos": self.fifos,
+            "target_type": self.target_type,
+            "is_slot": self.is_slot,
+            "self_area": dict(self._self_area),
+            "total_area": dict(self._total_area),
+            "clock_period": str(self._clock_period),
+        }
+
     def add_m_axi(self, width_table: dict[str, int], files: dict[str, str]) -> None:
         """Add M-AXI ports and crossbar wiring for upper tasks."""
         from tapa.task_codegen.m_axi import add_m_axi as _impl  # noqa: PLC0415

@@ -28,6 +28,7 @@ py_test(
     srcs = ["xilinx_tools_test.py"],
     deps = [
         ":backend",
+        "//tapa:protocol",
         "//tapa/remote",
     ],
 )

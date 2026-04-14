@@ -124,6 +124,7 @@ py_test(
         "//tapa/verilog/xilinx/testdata:UpperLevelTask.v",
     ],
     deps = [
+        "//tapa:protocol",
         "//tapa/verilog/ast:ioport",
         "//tapa/verilog/ast:logic",
         "//tapa/verilog/ast:parameter",

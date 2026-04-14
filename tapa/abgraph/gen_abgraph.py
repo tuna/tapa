@@ -12,9 +12,9 @@ import re
 from pathlib import Path
 
 from tapa.abgraph.ab_graph import ABEdge, ABGraph, ABVertex, Area, convert_area
+from tapa.common.floorplan import convert_region_format
 from tapa.core import Program
 from tapa.instance import Port
-from tapa.steps.floorplan import convert_region_format
 from tapa.util import as_type
 from tapa.verilog.xilinx.module_ops.ports import get_streams_fifos
 
