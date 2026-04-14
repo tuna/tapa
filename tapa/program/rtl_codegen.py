@@ -75,10 +75,14 @@ def parse_task_rtl(program: Program) -> None:
 
 def instrument_upper_task_rtl(program: Program) -> None:
     """Instrument upper-level RTL (except top-level)."""
+    from tapa.program_codegen.program import (  # noqa: PLC0415
+        instrument_upper_and_template_task as _instrument,
+    )
+
     _logger.info("instrumenting upper-level RTL")
     for task in program._tasks.values():
         if task.is_upper and task.name != program.top:
-            program._instrument_upper_and_template_task(task)
+            _instrument(program, task)
         elif not task.is_upper and task.name in program.gen_templates:
             assert task.ports
-            program._instrument_upper_and_template_task(task)
+            _instrument(program, task)

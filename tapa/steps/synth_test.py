@@ -114,6 +114,7 @@ def test_synth_routes_to_run_aie_for_aie_target() -> None:
 def test_synth_routes_to_run_hls_for_hls_target() -> None:
     """synth() calls program.run_hls + generate_task_rtl when target is xilinx-hls."""
     program = _make_program_mock()
+    mock_gen_task_rtl = MagicMock()
 
     with (
         patch("tapa.steps.synth.load_tapa_program", return_value=program),
@@ -130,6 +131,10 @@ def test_synth_routes_to_run_hls_for_hls_target() -> None:
         ),
         patch("tapa.steps.synth.store_persistent_context"),
         patch("tapa.steps.synth.is_pipelined"),
+        patch("tapa.steps.synth.generate_task_rtl", mock_gen_task_rtl),
+        patch("tapa.steps.synth.generate_top_rtl"),
+        patch("tapa.steps.synth.get_rtl_templates_info", return_value={}),
+        patch("tapa.steps.synth.store_design"),
     ):
         runner = CliRunner()
         result = runner.invoke(
@@ -141,13 +146,14 @@ def test_synth_routes_to_run_hls_for_hls_target() -> None:
 
     assert result.exit_code == 0, result.output
     program.run_hls.assert_called_once()
-    program.generate_task_rtl.assert_called_once()
+    mock_gen_task_rtl.assert_called_once()
     program.run_aie.assert_not_called()
 
 
 def test_synth_routes_to_run_hls_for_vitis_target() -> None:
     """synth() calls program.run_hls + generate_task_rtl when target is xilinx-vitis."""
     program = _make_program_mock()
+    mock_gen_task_rtl = MagicMock()
 
     with (
         patch("tapa.steps.synth.load_tapa_program", return_value=program),
@@ -164,6 +170,10 @@ def test_synth_routes_to_run_hls_for_vitis_target() -> None:
         ),
         patch("tapa.steps.synth.store_persistent_context"),
         patch("tapa.steps.synth.is_pipelined"),
+        patch("tapa.steps.synth.generate_task_rtl", mock_gen_task_rtl),
+        patch("tapa.steps.synth.generate_top_rtl"),
+        patch("tapa.steps.synth.get_rtl_templates_info", return_value={}),
+        patch("tapa.steps.synth.store_design"),
     ):
         runner = CliRunner()
         result = runner.invoke(
@@ -175,7 +185,7 @@ def test_synth_routes_to_run_hls_for_vitis_target() -> None:
 
     assert result.exit_code == 0, result.output
     program.run_hls.assert_called_once()
-    program.generate_task_rtl.assert_called_once()
+    mock_gen_task_rtl.assert_called_once()
     program.run_aie.assert_not_called()
 
 

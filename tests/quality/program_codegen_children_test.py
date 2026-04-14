@@ -105,7 +105,7 @@ def test_declare_instance_start_logic_autorun_adds_fsm_logic(monkeypatch) -> Non
     instance = cast(
         "Any",
         SimpleNamespace(
-            start=SimpleNamespace(name="start"),
+            name="test_inst",
             is_autorun=True,
         ),
     )

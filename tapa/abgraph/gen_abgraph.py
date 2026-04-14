@@ -15,6 +15,7 @@ from tapa.abgraph.ab_graph import ABEdge, ABGraph, ABVertex, Area, convert_area
 from tapa.common.floorplan import convert_region_format
 from tapa.core import Program
 from tapa.instance import Port
+from tapa.program_codegen.program import get_fifo_width
 from tapa.util import as_type
 from tapa.verilog.xilinx.module_ops.ports import get_streams_fifos
 
@@ -44,7 +45,7 @@ def collect_fifo_width(program: Program) -> dict[str, int]:
     """Collect the width of the top level FIFOs."""
     fifo_width = {}
     for fifo_name in program.top_task.fifos:
-        node_width = program.get_fifo_width(program.top_task, fifo_name)
+        node_width = get_fifo_width(program, program.top_task, fifo_name)
         num_width = (
             int(node_width.left.left.value) - int(node_width.left.right.value)
         ) + 1

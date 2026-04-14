@@ -1,5 +1,7 @@
 """TAPA Tasks."""
 
+from __future__ import annotations
+
 __copyright__ = """
 Copyright (c) 2025 RapidStream Design Automation, Inc. and contributors.
 All rights reserved. The contributor(s) of this file has/have agreed to the
@@ -10,11 +12,13 @@ import collections
 import decimal
 import enum
 import logging
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
 from tapa import __version__
 from tapa.instance import Instance, Port
-from tapa.verilog.xilinx.module import Module
+
+if TYPE_CHECKING:
+    from tapa.verilog.xilinx.module import Module
 
 _logger = logging.getLogger().getChild(__name__)
 
@@ -60,7 +64,7 @@ class Task:
         self,
         name: str,
         code: str,
-        level: "Task.Level | str",
+        level: Task.Level | str,
         tasks: dict[str, list[dict[str, dict[str, dict[str, object]]]]] | None = None,
         fifos: dict[str, dict[str, tuple[str, int]]] | None = None,
         ports: list[dict[str, str | int]] | None = None,
@@ -91,8 +95,8 @@ class Task:
         elif ports:
             # Nonsynthesizable tasks need ports to generate template
             self.ports = port_dict
-        self.module: Module = Module(name=self.name)
-        self.fsm_module: Module = Module(name=f"{self.name}_fsm")
+        self.module: Module  # Populated by TaskRtlState
+        self.fsm_module: Module  # Populated by TaskRtlState
         self._instances: tuple[Instance, ...] | None = None
         self._args: dict[str, list[Instance.Arg]] | None = None
         self._mmaps: dict[str, MMapConnection] | None = None
@@ -338,17 +342,3 @@ class Task:
             "total_area": dict(self._total_area),
             "clock_period": str(self._clock_period),
         }
-
-    def add_m_axi(self, width_table: dict[str, int], files: dict[str, str]) -> None:
-        """Add M-AXI ports and crossbar wiring for upper tasks."""
-        from tapa.task_codegen.m_axi import add_m_axi as _impl  # noqa: PLC0415
-
-        _impl(self, width_table, files)
-
-    def add_rs_pragmas_to_fsm(self) -> None:
-        """Add RS pragmas to the FSM module."""
-        from tapa.task_codegen.fsm import (  # noqa: PLC0415
-            add_rs_pragmas_to_fsm as _impl,
-        )
-
-        _impl(self)

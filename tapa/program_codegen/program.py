@@ -199,7 +199,10 @@ def instrument_upper_and_template_task(program: Any, task: Task) -> None:
         ) as rtl_code:
             rtl_code.write(task.module.get_template_code())
     else:
-        _instantiate_fifos(task=task, get_fifo_width=program.get_fifo_width)
+        _instantiate_fifos(
+            task=task,
+            get_fifo_width=lambda t, f: get_fifo_width(program, t, f),
+        )
         _connect_fifos(
             task=task, top=program.top, target=program.target, get_task=program.get_task
         )

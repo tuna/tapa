@@ -7,32 +7,15 @@ RapidStream Contributor License Agreement.
 """
 
 import enum
-from collections.abc import Iterator
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 
-from pyverilog.vparser.ast import (
-    Eq,
-    Identifier,
-    Node,
-    NonblockingSubstitution,
-)
-
-from tapa.protocol import (
-    HANDSHAKE_DONE,
-    HANDSHAKE_IDLE,
-    HANDSHAKE_READY,
-    HANDSHAKE_START,
-)
 from tapa.util import (
     as_type,
     as_type_or_none,
     get_indexed_name,
     get_instance_name,
 )
-from tapa.verilog.ast.ioport import IOPort
-from tapa.verilog.ast.signal import Reg, Wire
-from tapa.verilog.ast.width import Width
-from tapa.verilog.util import sanitize_array_name, wire_name
+from tapa.verilog.util import sanitize_array_name
 
 if TYPE_CHECKING:
     from tapa.task import Task
@@ -190,118 +173,6 @@ class Instance:
     @property
     def is_autorun(self) -> bool:
         return self.step < 0
-
-    # TODO(codegen-extraction): The following signal-generation methods
-    # should migrate to tapa.codegen.instance_signals.InstanceSignals.
-    # They produce pyverilog AST nodes and belong in the codegen layer.
-    # Kept here for backward compatibility; new code should prefer
-    # InstanceSignals(instance) from tapa.codegen.instance_signals.
-
-    @property
-    def state(self) -> Identifier:
-        """State of this instance."""
-        return Identifier(f"{self.name}__state")
-
-    def set_state(self, new_state: Node) -> NonblockingSubstitution:
-        return NonblockingSubstitution(left=self.state, right=new_state)
-
-    def is_state(self, state: Node) -> Eq:
-        return Eq(left=self.state, right=state)
-
-    @property
-    def start(self) -> Identifier:
-        """The handshake start signal.
-
-        This signal is asserted until the ready signal is asserted when the instance
-        of task starts.
-
-        Returns:
-          The ast.Identifier node of this signal.
-        """
-        return Identifier(f"{self.name}__{HANDSHAKE_START}")
-
-    @property
-    def done(self) -> Identifier:
-        """The handshake done signal.
-
-        This signal is asserted for 1 cycle when the instance of task finishes.
-
-        Returns:
-          The ast.Identifier node of this signal.
-        """
-        return Identifier(f"{self.name}__{HANDSHAKE_DONE}")
-
-    @property
-    def is_done(self) -> Identifier:
-        """Signal used to determine the upper-level state."""
-        return Identifier(f"{self.name}__is_done")
-
-    @property
-    def idle(self) -> Identifier:
-        """Whether this instance is idle."""
-        return Identifier(f"{self.name}__{HANDSHAKE_IDLE}")
-
-    @property
-    def ready(self) -> Identifier:
-        """Whether this instance is ready to take new input."""
-        return Identifier(f"{self.name}__{HANDSHAKE_READY}")
-
-    @property
-    def _public_handshake_tuples(
-        self,
-    ) -> Iterator[
-        tuple[
-            type[Reg] | type[Wire],  # signal_type
-            Literal["input", "output"],  # direction
-            str,  # name
-        ]
-    ]:
-        """Public handshake information tuples used for this instance."""
-        if self.is_autorun:
-            yield (Reg, "output", self.start.name)
-        else:
-            yield (Wire, "output", self.start.name)
-            yield (Wire, "input", wire_name(self.name, HANDSHAKE_READY))
-            yield (Wire, "input", wire_name(self.name, HANDSHAKE_DONE))
-            yield (Wire, "input", wire_name(self.name, HANDSHAKE_IDLE))
-
-    @property
-    def public_handshake_ports(self) -> Iterator[IOPort]:
-        """Public handshake IO ports used for this instance.
-
-        These include all public IO ports like `ap_start` and `ap_done`.
-
-        Yields:
-          ast.Decl of IO ports.
-        """
-        for _, direction, name in self._public_handshake_tuples:
-            yield IOPort(direction, name, width=None)
-
-    @property
-    def public_handshake_signals(self) -> Iterator[Wire | Reg]:
-        """Public handshake signals used for this instance.
-
-        These include all public signals like `ap_start` and `ap_done`.
-
-        Yields:
-          Union[ast.Wire, ast.Reg] of signals.
-        """
-        for signal_type, _, name in self._public_handshake_tuples:
-            yield signal_type(name)
-
-    @property
-    def all_handshake_signals(self) -> Iterator[Wire | Reg]:
-        """All handshake signals used for this instance.
-
-        These include both public signals like `ap_start` and `ap_done`, and any
-        private state signals.
-
-        Yields:
-          Union[ast.Wire, ast.Reg] of signals.
-        """
-        yield from self.public_handshake_signals
-        if not self.is_autorun:
-            yield Reg(self.state.name, Width.create(2))
 
     def get_instance_arg(self, arg: str) -> str:
         if "'d" in arg:  # Constant literals are passed as-is.

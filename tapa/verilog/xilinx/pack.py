@@ -36,10 +36,17 @@ _logger = logging.getLogger().getChild(__name__)
 def generate_handshake_ports(
     instance: Instance,
     rst: Node,
+    start: Node | None = None,
 ) -> Iterator[PortArg]:
     yield make_port_arg(port=HANDSHAKE_CLK, arg=CLK)
     yield make_port_arg(port=HANDSHAKE_RST_N, arg=rst)
-    yield make_port_arg(port=HANDSHAKE_START, arg=instance.start)
+    if start is None:
+        # Import lazily to avoid hard coupling; callers should migrate to
+        # passing start explicitly via InstanceSignals.
+        from tapa.codegen.instance_signals import InstanceSignals  # noqa: PLC0415
+
+        start = InstanceSignals(instance).start
+    yield make_port_arg(port=HANDSHAKE_START, arg=start)
     for port in HANDSHAKE_OUTPUT_PORTS:
         yield make_port_arg(
             port=port,

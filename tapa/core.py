@@ -18,17 +18,6 @@ from types import TracebackType
 from typing import Self
 from xml.etree import ElementTree as ET
 
-from pyverilog.vparser.ast import Plus
-
-from tapa.codegen.program_rtl import (
-    generate_task_rtl as _generate_task_rtl,
-)
-from tapa.codegen.program_rtl import (
-    generate_top_rtl as _generate_top_rtl,
-)
-from tapa.codegen.program_rtl import (
-    instrument_upper_and_template_task as _instrument_upper_and_template_task,
-)
 from tapa.codegen.task_rtl import TaskRtlState
 from tapa.common.paths import get_tapacc_cflags
 from tapa.common.target import Target
@@ -37,16 +26,6 @@ from tapa.program.directory import ProgramDirectoryMixin
 from tapa.program.hls import ProgramHlsMixin
 from tapa.program.pack import ProgramPackMixin
 from tapa.program.synthesis import ProgramSynthesisMixin
-from tapa.program_codegen.program import get_fifo_width as get_fifo_width_codegen
-from tapa.program_codegen.program import (
-    get_grouping_constraints as get_grouping_constraints_codegen,
-)
-from tapa.program_codegen.program import (
-    get_rtl_templates_info as get_rtl_templates_info_codegen,
-)
-from tapa.program_codegen.program import (
-    replace_custom_rtl as replace_custom_rtl_codegen,
-)
 from tapa.task import Task
 from tapa.verilog.util import Pipeline
 from tapa.verilog.xilinx.const import DONE, START
@@ -224,46 +203,6 @@ class Program(  # TODO: refactor this class
         assert period is not None
         assert period.text is not None
         return decimal.Decimal(period.text)
-
-    # TODO(codegen-extraction): generate_task_rtl, generate_top_rtl, and
-    # _instrument_upper_and_template_task are codegen methods that delegate
-    # to tapa.codegen.program_rtl free functions.  Callers should migrate
-    # to using the free functions directly.
-
-    def generate_task_rtl(self) -> None:
-        """Extract HDL files from tarballs generated from HLS."""
-        _generate_task_rtl(self)
-
-    def generate_top_rtl(
-        self,
-        override_report_schema_version: str,
-    ) -> None:
-        """Instrument HDL files generated from HLS.
-
-        Args:
-            override_report_schema_version: Override the schema version with the
-                given string, if non-empty.
-        """
-        _generate_top_rtl(self, override_report_schema_version)
-
-    def _instrument_upper_and_template_task(self, task: Task) -> None:
-        _instrument_upper_and_template_task(self, task)
-
-    def get_fifo_width(self, task: Task, fifo: str) -> Plus:
-        return get_fifo_width_codegen(self, task, fifo)
-
-    def replace_custom_rtl(
-        self, rtl_paths: tuple[Path, ...], templates_info: dict[str, list[str]]
-    ) -> None:
-        replace_custom_rtl_codegen(self, rtl_paths, templates_info)
-
-    def get_rtl_templates_info(self) -> dict[str, list[str]]:
-        return get_rtl_templates_info_codegen(self)
-
-    def get_grouping_constraints(
-        self, nonpipeline_fifos: list[str] | None = None
-    ) -> list[list[str]]:
-        return get_grouping_constraints_codegen(self, nonpipeline_fifos)
 
     @staticmethod
     def get_inst_by_port_arg_name(

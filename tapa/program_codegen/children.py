@@ -8,11 +8,14 @@ from typing import TYPE_CHECKING, Protocol
 from pyverilog.ast_code_generator.codegen import ASTCodeGenerator
 from pyverilog.vparser.ast import Identifier, IntConst, NonblockingSubstitution, PortArg
 
+from tapa.codegen.instance_signals import InstanceSignals
 from tapa.protocol import (
     CLK_SENS_LIST,
     HANDSHAKE_INPUT_PORTS,
     HANDSHAKE_OUTPUT_PORTS,
 )
+from tapa.task_codegen.fsm import add_rs_pragmas_to_fsm as _add_rs_pragmas_to_fsm
+from tapa.task_codegen.m_axi import add_m_axi as _add_m_axi
 from tapa.util import get_module_name
 from tapa.verilog.ast.ioport import IOPort
 from tapa.verilog.ast.logic import Always, Assign
@@ -236,7 +239,8 @@ def _declare_instance_inputs(
 
 
 def _declare_instance_start_logic(state: _ChildState, instance: Instance) -> None:
-    start_q = Pipeline(f"{instance.start.name}_global")
+    sig = InstanceSignals(instance)
+    start_q = Pipeline(f"{sig.start.name}_global")
     state.task.fsm_module.add_pipeline(start_q, state.program.start_q[0])
     if instance.is_autorun:
         state.task.fsm_module.add_logics(
@@ -248,13 +252,13 @@ def _declare_instance_start_logic(state: _ChildState, instance: Instance) -> Non
                             make_if_with_block(
                                 cond=RST,
                                 true=NonblockingSubstitution(
-                                    left=instance.start,
+                                    left=sig.start,
                                     right=FALSE,
                                 ),
                                 false=make_if_with_block(
                                     cond=start_q[-1],
                                     true=NonblockingSubstitution(
-                                        left=instance.start,
+                                        left=sig.start,
                                         right=TRUE,
                                     ),
                                 ),
@@ -266,36 +270,34 @@ def _declare_instance_start_logic(state: _ChildState, instance: Instance) -> Non
         )
         return
 
-    is_done_q = Pipeline(f"{instance.is_done.name}")
-    done_q = Pipeline(f"{instance.done.name}_global")
-    state.task.fsm_module.add_pipeline(is_done_q, instance.is_state(STATE10))
+    is_done_q = Pipeline(f"{sig.is_done.name}")
+    done_q = Pipeline(f"{sig.done.name}_global")
+    state.task.fsm_module.add_pipeline(is_done_q, sig.is_state(STATE10))
     state.task.fsm_module.add_pipeline(done_q, state.program.done_q[0])
-    if_branch = instance.set_state(STATE00)
+    if_branch = sig.set_state(STATE00)
     else_branch = (
         make_if_with_block(
-            cond=instance.is_state(STATE00),
-            true=make_if_with_block(cond=start_q[-1], true=instance.set_state(STATE01)),
+            cond=sig.is_state(STATE00),
+            true=make_if_with_block(cond=start_q[-1], true=sig.set_state(STATE01)),
         ),
         make_if_with_block(
-            cond=instance.is_state(STATE01),
+            cond=sig.is_state(STATE01),
             true=make_if_with_block(
-                cond=instance.ready,
+                cond=sig.ready,
                 true=make_if_with_block(
-                    cond=instance.done,
-                    true=instance.set_state(STATE10),
-                    false=instance.set_state(STATE11),
+                    cond=sig.done,
+                    true=sig.set_state(STATE10),
+                    false=sig.set_state(STATE11),
                 ),
             ),
         ),
         make_if_with_block(
-            cond=instance.is_state(STATE11),
-            true=make_if_with_block(
-                cond=instance.done, true=instance.set_state(STATE10)
-            ),
+            cond=sig.is_state(STATE11),
+            true=make_if_with_block(cond=sig.done, true=sig.set_state(STATE10)),
         ),
         make_if_with_block(
-            cond=instance.is_state(STATE10),
-            true=make_if_with_block(cond=done_q[-1], true=instance.set_state(STATE00)),
+            cond=sig.is_state(STATE10),
+            true=make_if_with_block(cond=done_q[-1], true=sig.set_state(STATE00)),
         ),
     )
     state.task.fsm_module.add_logics(
@@ -313,8 +315,8 @@ def _declare_instance_start_logic(state: _ChildState, instance: Instance) -> Non
                 ),
             ),
             Assign(
-                lhs=instance.start.name,
-                rhs=_CODEGEN.visit(instance.is_state(STATE01)),
+                lhs=sig.start.name,
+                rhs=_CODEGEN.visit(sig.is_state(STATE01)),
             ),
         ],
     )
@@ -322,18 +324,20 @@ def _declare_instance_start_logic(state: _ChildState, instance: Instance) -> Non
 
 
 def _declare_instance_handshake_signals(state: _ChildState, instance: Instance) -> None:
+    sig = InstanceSignals(instance)
     state.fsm_downstream_portargs.extend(
-        make_port_arg(x.name, x.name) for x in instance.public_handshake_signals
+        make_port_arg(x.name, x.name) for x in sig.public_handshake_signals
     )
     state.task.module.add_signals(
-        Wire(x.name, x.width) for x in instance.public_handshake_signals
+        Wire(x.name, x.width) for x in sig.public_handshake_signals
     )
-    state.task.fsm_module.add_signals(instance.all_handshake_signals)
-    state.fsm_downstream_module_ports.extend(instance.public_handshake_ports)
+    state.task.fsm_module.add_signals(sig.all_handshake_signals)
+    state.fsm_downstream_module_ports.extend(sig.public_handshake_ports)
 
 
 def _build_instance_portargs(state: _ChildState, instance: Instance) -> list[PortArg]:
-    portargs = list(generate_handshake_ports(instance, RST_N))
+    sig = InstanceSignals(instance)
+    portargs = list(generate_handshake_ports(instance, RST_N, start=sig.start))
     for arg in instance.args:
         if arg.cat.is_scalar:
             portargs.append(
@@ -403,7 +407,7 @@ def _finalize_state(state: _ChildState) -> list[Pipeline]:
     )
     # Upstream ports were already added eagerly in _declare_arg_signal.
     state.task.fsm_module.add_ports(state.fsm_downstream_module_ports)
-    state.task.add_rs_pragmas_to_fsm()
+    _add_rs_pragmas_to_fsm(state.task)
 
     if state.task.is_upper:
         for arg, tag in state.async_mmap_args.items():
@@ -428,7 +432,7 @@ def instantiate_children_tasks(
     width_table: dict[str, int],
 ) -> list[Pipeline]:
     state = _new_state(program, task, width_table)
-    task.add_m_axi(width_table, program.files)
+    _add_m_axi(task, width_table, program.files)
     for instance in task.instances:
         _process_instance(state, instance)
     return _finalize_state(state)

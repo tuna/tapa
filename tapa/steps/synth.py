@@ -9,9 +9,17 @@ import click
 
 from tapa.abgraph.gen_abgraph import get_top_level_ab_graph
 from tapa.backend.xilinx import parse_device_info
+from tapa.codegen.program_rtl import (
+    generate_task_rtl,
+    generate_top_rtl,
+)
 from tapa.common.target import Target
 from tapa.core import Program
 from tapa.graphir_conversion.gen_rs_graphir import get_project_from_floorplanned_program
+from tapa.program_codegen.program import (
+    get_grouping_constraints,
+    get_rtl_templates_info,
+)
 from tapa.steps.common import (
     is_pipelined,
     load_persistent_context,
@@ -197,10 +205,10 @@ def _execute_synth(program: Program, plan: SynthPlan, settings: dict) -> None:
             plan.jobs,
             plan.keep_hls_work_dir,
         )
-        program.generate_task_rtl()
+        generate_task_rtl(program)
         if plan.enable_synth_util:
             program.generate_post_synth_util(plan.part_num, plan.jobs)
-        program.generate_top_rtl(plan.override_report_schema_version)
+        generate_top_rtl(program, plan.override_report_schema_version)
 
         if plan.nonpipeline_fifos:
             with open(plan.nonpipeline_fifos, encoding="utf-8") as f:
@@ -208,7 +216,7 @@ def _execute_synth(program: Program, plan: SynthPlan, settings: dict) -> None:
             Path(
                 os.path.join(program.work_dir, "grouping_constraints.json")
             ).write_text(
-                json.dumps(program.get_grouping_constraints(fifos)), encoding="utf-8"
+                json.dumps(get_grouping_constraints(program, fifos)), encoding="utf-8"
             )
 
         if plan.gen_ab_graph:
@@ -232,7 +240,7 @@ def _execute_synth(program: Program, plan: SynthPlan, settings: dict) -> None:
 
         settings["synthed"] = True
         store_persistent_context("settings")
-        store_persistent_context("templates_info", program.get_rtl_templates_info())
+        store_persistent_context("templates_info", get_rtl_templates_info(program))
         store_design(program)
 
         is_pipelined("synth", True)

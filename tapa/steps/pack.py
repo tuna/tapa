@@ -8,6 +8,7 @@ from typing import Literal
 import click
 
 from tapa.common.target import Target
+from tapa.program_codegen.program import replace_custom_rtl
 from tapa.steps.common import is_pipelined, load_persistent_context, load_tapa_program
 
 _logger = logging.getLogger().getChild(__name__)
@@ -92,7 +93,7 @@ def pack(
 
     if custom_rtl:
         templates_info = load_persistent_context("templates_info")
-        program.replace_custom_rtl(custom_rtl, templates_info)
+        replace_custom_rtl(program, custom_rtl, templates_info)
 
     if target == Target.XILINX_VITIS:
         output = _enforce_path_suffix(

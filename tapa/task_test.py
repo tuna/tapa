@@ -24,10 +24,10 @@ def test_add_rs_pragmas_to_fsm_skips_unused_ports() -> None:
             },
         ],
     )
-    TaskRtlState(task)
+    rtl_state = TaskRtlState(task)
     task.instances = ()
 
-    task.add_rs_pragmas_to_fsm()
+    rtl_state.add_rs_pragmas_to_fsm()
 
     ap_ctrl_pragma_lines = [
         line
