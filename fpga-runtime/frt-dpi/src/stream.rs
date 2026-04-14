@@ -13,7 +13,10 @@ fn cosim_yield_enabled() -> bool {
 
 fn maybe_yield() {
     if cosim_yield_enabled() {
-        std::thread::yield_now();
+        // Sleep briefly to yield CPU to other cosim processes so they can
+        // drain/fill shared queues.  Without this, 7+ xsim processes all
+        // spinning on empty/full queues starve the productive processes.
+        std::thread::sleep(std::time::Duration::from_micros(1));
     }
 }
 
