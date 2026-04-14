@@ -8,6 +8,11 @@ from typing import TYPE_CHECKING, Protocol
 from pyverilog.ast_code_generator.codegen import ASTCodeGenerator
 from pyverilog.vparser.ast import Identifier, IntConst, NonblockingSubstitution, PortArg
 
+from tapa.protocol import (
+    CLK_SENS_LIST,
+    HANDSHAKE_INPUT_PORTS,
+    HANDSHAKE_OUTPUT_PORTS,
+)
 from tapa.util import get_module_name
 from tapa.verilog.ast.ioport import IOPort
 from tapa.verilog.ast.logic import Always, Assign
@@ -23,15 +28,7 @@ from tapa.verilog.xilinx.async_mmap import (
     generate_async_mmap_ports,
     generate_async_mmap_signals,
 )
-from tapa.verilog.xilinx.const import (
-    CLK_SENS_LIST,
-    FALSE,
-    HANDSHAKE_INPUT_PORTS,
-    HANDSHAKE_OUTPUT_PORTS,
-    RST,
-    RST_N,
-    TRUE,
-)
+from tapa.verilog.xilinx.const import FALSE, RST, RST_N, TRUE
 from tapa.verilog.xilinx.module import generate_m_axi_ports
 
 if TYPE_CHECKING:

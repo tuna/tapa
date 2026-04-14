@@ -10,8 +10,8 @@ import os
 from abc import abstractmethod
 from typing import NamedTuple
 
+from tapa.protocol import RTL_SUFFIX
 from tapa.util import get_module_name
-from tapa.verilog.xilinx.const import RTL_SUFFIX
 
 
 class ReportPaths(NamedTuple):

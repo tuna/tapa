@@ -6,6 +6,12 @@ from typing import TYPE_CHECKING
 
 from pyverilog.vparser.ast import IntConst, ParamArg
 
+from tapa.protocol import (
+    HANDSHAKE_CLK,
+    ISTREAM_SUFFIXES,
+    OSTREAM_SUFFIXES,
+    STREAM_PORT_DIRECTION,
+)
 from tapa.verilog.ast.logic import Assign
 from tapa.verilog.ast_utils import make_port_arg
 from tapa.verilog.util import sanitize_array_name, wire_name
@@ -13,13 +19,7 @@ from tapa.verilog.xilinx.axis import (
     AXIS_CONSTANTS,
     get_axis_port_width_int,
 )
-from tapa.verilog.xilinx.const import (
-    HANDSHAKE_CLK,
-    ISTREAM_SUFFIXES,
-    OSTREAM_SUFFIXES,
-    RST,
-    STREAM_PORT_DIRECTION,
-)
+from tapa.verilog.xilinx.const import RST
 
 if TYPE_CHECKING:
     from tapa.task import Task

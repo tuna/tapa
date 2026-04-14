@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
     from types import TracebackType
 
-from tapa.backend.kernel_metadata import M_AXI_PREFIX, S_AXI_NAME
+from tapa.protocol import M_AXI_PREFIX, S_AXI_NAME
 from tapa.remote.config import get_remote_config
 from tapa.remote.popen import create_tool_process
 

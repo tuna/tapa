@@ -6,8 +6,9 @@ import io
 from unittest import mock
 
 from tapa.backend import xilinx
-from tapa.backend.kernel_metadata import M_AXI_PREFIX, Arg, Cat, print_kernel_xml
+from tapa.backend.kernel_metadata import Arg, Cat, print_kernel_xml
 from tapa.backend.xilinx_tools import get_cmd_args
+from tapa.protocol import M_AXI_PREFIX
 
 
 def test_xilinx_facade_exports_expected_symbols() -> None:

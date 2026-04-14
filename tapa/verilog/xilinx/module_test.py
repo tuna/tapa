@@ -11,16 +11,16 @@ from pathlib import Path
 import pytest
 from pyverilog.vparser import ast
 
+from tapa.protocol import (
+    CLK_SENS_LIST,
+    HANDSHAKE_CLK,
+    HANDSHAKE_RST_N,
+)
 from tapa.verilog.ast.ioport import IOPort
 from tapa.verilog.ast.logic import Always, Assign
 from tapa.verilog.ast.parameter import Parameter
 from tapa.verilog.ast.signal import Reg, Wire
 from tapa.verilog.ast.width import Width
-from tapa.verilog.xilinx.const import (
-    CLK_SENS_LIST,
-    HANDSHAKE_CLK,
-    HANDSHAKE_RST_N,
-)
 from tapa.verilog.xilinx.module import Module
 from tapa.verilog.xilinx.module_ops.axi import _get_rs_pragma
 

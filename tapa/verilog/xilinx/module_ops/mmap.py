@@ -7,12 +7,11 @@ from typing import TYPE_CHECKING
 
 from pyverilog.vparser.ast import Constant, Node, ParamArg
 
-from tapa.backend.xilinx import M_AXI_PREFIX
+from tapa.protocol import M_AXI_PORTS, M_AXI_PREFIX
 from tapa.verilog.ast_utils import make_port_arg
 from tapa.verilog.util import async_mmap_instance_name
 from tapa.verilog.xilinx.async_mmap import ASYNC_MMAP_SUFFIXES, async_mmap_arg_name
 from tapa.verilog.xilinx.const import CLK
-from tapa.verilog.xilinx.m_axi import M_AXI_PORTS
 
 if TYPE_CHECKING:
     from tapa.verilog.xilinx.module import Module

@@ -14,10 +14,7 @@ from typing import NamedTuple
 
 from tapa import __version__
 from tapa.instance import Instance, Port
-from tapa.task_codegen.fsm import add_rs_pragmas_to_fsm as add_rs_pragmas_to_fsm_codegen
-from tapa.task_codegen.m_axi import add_m_axi as add_m_axi_codegen
-from tapa.verilog.ast.ioport import IOPort
-from tapa.verilog.xilinx.const import (
+from tapa.protocol import (
     HANDSHAKE_CLK,
     HANDSHAKE_DONE,
     HANDSHAKE_IDLE,
@@ -25,6 +22,9 @@ from tapa.verilog.xilinx.const import (
     HANDSHAKE_RST_N,
     HANDSHAKE_START,
 )
+from tapa.task_codegen.fsm import add_rs_pragmas_to_fsm as add_rs_pragmas_to_fsm_codegen
+from tapa.task_codegen.m_axi import add_m_axi as add_m_axi_codegen
+from tapa.verilog.ast.ioport import IOPort
 from tapa.verilog.xilinx.module import Module
 
 _logger = logging.getLogger().getChild(__name__)

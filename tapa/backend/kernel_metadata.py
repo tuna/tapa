@@ -6,6 +6,8 @@ import enum
 import xml.sax.saxutils
 from typing import IO, TYPE_CHECKING, NamedTuple
 
+from tapa.protocol import M_AXI_PREFIX, S_AXI_NAME
+
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
@@ -24,9 +26,6 @@ class Arg(NamedTuple):
     ctype: str
     width: int
 
-
-S_AXI_NAME = "s_axi_control"
-M_AXI_PREFIX = "m_axi_"
 
 KERNEL_XML_TEMPLATE = """
 <?xml version="1.0" encoding="UTF-8"?>

@@ -14,7 +14,7 @@ from tapa.graphir.types import (
     HandShakeInterface,
     Project,
 )
-from tapa.verilog.xilinx.const import (
+from tapa.protocol import (
     HANDSHAKE_CLK,
     HANDSHAKE_DONE,
     HANDSHAKE_IDLE,

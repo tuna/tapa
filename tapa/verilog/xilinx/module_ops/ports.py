@@ -6,17 +6,17 @@ import logging
 import re
 from typing import TYPE_CHECKING
 
+from tapa.protocol import (
+    ISTREAM_SUFFIXES,
+    OSTREAM_SUFFIXES,
+    STREAM_PORT_DIRECTION,
+)
 from tapa.verilog.ast_utils import make_port_arg
 from tapa.verilog.util import (
     array_name,
     match_array_name,
     sanitize_array_name,
     wire_name,
-)
-from tapa.verilog.xilinx.const import (
-    ISTREAM_SUFFIXES,
-    OSTREAM_SUFFIXES,
-    STREAM_PORT_DIRECTION,
 )
 
 if TYPE_CHECKING:

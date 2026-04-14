@@ -19,15 +19,15 @@ from tapa.graphir_conversion.pipeline.iface_builders import (
 )
 from tapa.graphir_conversion.pipeline.iface_roles import set_iface_role
 from tapa.graphir_conversion.utils import get_m_axi_port_name
-from tapa.task import Task
-from tapa.verilog.util import sanitize_array_name
-from tapa.verilog.xilinx.const import (
+from tapa.protocol import (
     HANDSHAKE_CLK,
     HANDSHAKE_RST_N,
     ISTREAM_SUFFIXES,
+    M_AXI_SUFFIXES_BY_CHANNEL,
     OSTREAM_SUFFIXES,
 )
-from tapa.verilog.xilinx.m_axi import M_AXI_SUFFIXES_BY_CHANNEL
+from tapa.task import Task
+from tapa.verilog.util import sanitize_array_name
 
 
 def _apply_iface_roles(

@@ -12,13 +12,13 @@ from tapa.graphir.types import (
 )
 from tapa.graphir_conversion.pipeline.fifo_builder import infer_fifo_data_range
 from tapa.graphir_conversion.utils import get_stream_port_name, get_task_arg_table
-from tapa.task_codegen.fifos import is_fifo_external as is_fifo_external_codegen
-from tapa.verilog.util import sanitize_array_name
-from tapa.verilog.xilinx.const import (
+from tapa.protocol import (
     ISTREAM_SUFFIXES,
     OSTREAM_SUFFIXES,
     STREAM_DATA_SUFFIXES,
 )
+from tapa.task_codegen.fifos import is_fifo_external as is_fifo_external_codegen
+from tapa.verilog.util import sanitize_array_name
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence

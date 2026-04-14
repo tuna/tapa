@@ -13,8 +13,8 @@ from tapa.graphir.types import (
     VerilogModuleDefinition,
 )
 from tapa.graphir_conversion.utils import get_child_port_connection_mapping
+from tapa.protocol import HANDSHAKE_INPUT_PORTS, HANDSHAKE_OUTPUT_PORTS
 from tapa.verilog.util import match_array_name
-from tapa.verilog.xilinx.const import HANDSHAKE_INPUT_PORTS, HANDSHAKE_OUTPUT_PORTS
 
 if TYPE_CHECKING:
     from collections.abc import Callable

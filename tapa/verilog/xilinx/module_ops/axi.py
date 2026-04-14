@@ -4,13 +4,18 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from tapa.backend.xilinx import M_AXI_PREFIX
+from tapa.protocol import (
+    HANDSHAKE_CLK,
+    HANDSHAKE_RST_N,
+    M_AXI_PORTS,
+    M_AXI_PREFIX,
+    M_AXI_SUFFIXES,
+)
 from tapa.verilog.ast.ioport import IOPort
 from tapa.verilog.ast.pragma import Pragma
 from tapa.verilog.ast_utils import make_port_arg
 from tapa.verilog.xilinx.axis import AXIS_PORTS
-from tapa.verilog.xilinx.const import HANDSHAKE_CLK, HANDSHAKE_RST_N
-from tapa.verilog.xilinx.m_axi import M_AXI_PORTS, M_AXI_SUFFIXES, get_m_axi_port_width
+from tapa.verilog.xilinx.m_axi import get_m_axi_port_width
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

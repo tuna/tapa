@@ -17,6 +17,12 @@ from pyverilog.vparser.ast import (
     NonblockingSubstitution,
 )
 
+from tapa.protocol import (
+    HANDSHAKE_DONE,
+    HANDSHAKE_IDLE,
+    HANDSHAKE_READY,
+    HANDSHAKE_START,
+)
 from tapa.util import (
     as_type,
     as_type_or_none,
@@ -27,12 +33,6 @@ from tapa.verilog.ast.ioport import IOPort
 from tapa.verilog.ast.signal import Reg, Wire
 from tapa.verilog.ast.width import Width
 from tapa.verilog.util import sanitize_array_name, wire_name
-from tapa.verilog.xilinx.const import (
-    HANDSHAKE_DONE,
-    HANDSHAKE_IDLE,
-    HANDSHAKE_READY,
-    HANDSHAKE_START,
-)
 
 if TYPE_CHECKING:
     from tapa.task import Task

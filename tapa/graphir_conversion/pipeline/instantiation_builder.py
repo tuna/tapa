@@ -19,14 +19,14 @@ from tapa.graphir_conversion.utils import (
     get_task_arg_table,
 )
 from tapa.instance import Instance
-from tapa.task_codegen.fifos import is_fifo_external as is_fifo_external_codegen
-from tapa.verilog.util import Pipeline, match_array_name
-from tapa.verilog.xilinx.const import (
+from tapa.protocol import (
     ISTREAM_SUFFIXES,
+    M_AXI_SUFFIXES,
     OSTREAM_SUFFIXES,
     STREAM_PORT_DIRECTION,
 )
-from tapa.verilog.xilinx.m_axi import M_AXI_SUFFIXES
+from tapa.task_codegen.fifos import is_fifo_external as is_fifo_external_codegen
+from tapa.verilog.util import Pipeline, match_array_name
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping

@@ -14,9 +14,9 @@ from tapa.graphir.types import (
     Token,
 )
 from tapa.graphir_conversion.utils import get_stream_port_name
+from tapa.protocol import STREAM_DATA_SUFFIXES
 from tapa.task_codegen.fifos import get_connection_to as get_connection_to_codegen
 from tapa.verilog.util import sanitize_array_name
-from tapa.verilog.xilinx.const import STREAM_DATA_SUFFIXES
 
 if TYPE_CHECKING:
     from collections.abc import Mapping

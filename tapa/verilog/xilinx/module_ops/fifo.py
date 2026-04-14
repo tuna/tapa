@@ -6,12 +6,7 @@ from typing import TYPE_CHECKING
 
 from pyverilog.vparser.ast import Constant, Node, ParamArg, PortArg
 
-from tapa.verilog.ast.logic import Assign
-from tapa.verilog.ast.signal import Wire
-from tapa.verilog.ast_utils import make_port_arg
-from tapa.verilog.util import sanitize_array_name, wire_name
-from tapa.verilog.xilinx.const import (
-    CLK,
+from tapa.protocol import (
     FIFO_READ_PORTS,
     FIFO_WRITE_PORTS,
     HANDSHAKE_DONE,
@@ -21,8 +16,12 @@ from tapa.verilog.xilinx.const import (
     HANDSHAKE_RST_N,
     ISTREAM_SUFFIXES,
     OSTREAM_SUFFIXES,
-    TRUE,
 )
+from tapa.verilog.ast.logic import Assign
+from tapa.verilog.ast.signal import Wire
+from tapa.verilog.ast_utils import make_port_arg
+from tapa.verilog.util import sanitize_array_name, wire_name
+from tapa.verilog.xilinx.const import CLK, TRUE
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

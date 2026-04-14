@@ -7,15 +7,14 @@ from typing import TYPE_CHECKING
 
 from pyverilog.vparser.ast import Constant, ParamArg
 
-from tapa.backend.xilinx import M_AXI_PREFIX
+from tapa.protocol import HANDSHAKE_CLK, HANDSHAKE_RST, M_AXI_PORTS, M_AXI_PREFIX
 from tapa.util import get_addr_width, get_indexed_name, range_or_none
 from tapa.verilog.ast.logic import Assign
 from tapa.verilog.ast.signal import Wire
 from tapa.verilog.ast.width import Width
 from tapa.verilog.ast_utils import make_port_arg
 from tapa.verilog.axi_xbar import generate as axi_xbar_generate
-from tapa.verilog.xilinx.const import HANDSHAKE_CLK, HANDSHAKE_RST
-from tapa.verilog.xilinx.m_axi import M_AXI_PORTS, get_m_axi_port_width
+from tapa.verilog.xilinx.m_axi import get_m_axi_port_width
 
 if TYPE_CHECKING:
     from tapa.instance import Instance

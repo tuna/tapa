@@ -6,16 +6,16 @@ from typing import TYPE_CHECKING
 
 from pyverilog.vparser.ast import PortArg
 
+from tapa.protocol import (
+    ISTREAM_SUFFIXES,
+    OSTREAM_SUFFIXES,
+    STREAM_PORT_DIRECTION,
+)
 from tapa.verilog.ast.ioport import IOPort
 from tapa.verilog.ast.signal import Wire
 from tapa.verilog.ast.width import Width
 from tapa.verilog.ast_utils import make_port_arg
 from tapa.verilog.util import wire_name
-from tapa.verilog.xilinx.const import (
-    ISTREAM_SUFFIXES,
-    OSTREAM_SUFFIXES,
-    STREAM_PORT_DIRECTION,
-)
 
 if TYPE_CHECKING:
     from tapa.instance import Instance

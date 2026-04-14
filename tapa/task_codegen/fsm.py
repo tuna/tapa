@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from tapa.verilog.util import wire_name
-from tapa.verilog.xilinx.const import (
+from tapa.protocol import (
     HANDSHAKE_CLK,
     HANDSHAKE_OUTPUT_PORTS,
     HANDSHAKE_RST_N,
     HANDSHAKE_START,
 )
+from tapa.verilog.util import wire_name
 
 if TYPE_CHECKING:
     from tapa.task import Task

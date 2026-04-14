@@ -25,23 +25,21 @@ from tapa.program_codegen.children import (
 from tapa.program_codegen.custom_rtl import replace_custom_rtl as _replace_custom_rtl
 from tapa.program_codegen.fifos import connect_fifos as _connect_fifos
 from tapa.program_codegen.fifos import instantiate_fifos as _instantiate_fifos
-from tapa.task_codegen.fifos import get_connection_to as get_connection_to_codegen
-from tapa.verilog.ast.logic import Always, Assign
-from tapa.verilog.ast.signal import Reg
-from tapa.verilog.ast.width import Width
-from tapa.verilog.ast_utils import make_block, make_case_with_block, make_if_with_block
-from tapa.verilog.util import Pipeline, array_name, match_array_name
-from tapa.verilog.xilinx.const import (
+from tapa.protocol import (
     CLK_SENS_LIST,
     HANDSHAKE_DONE,
     HANDSHAKE_IDLE,
     HANDSHAKE_READY,
     ISTREAM_SUFFIXES,
     OSTREAM_SUFFIXES,
-    RST,
-    START,
-    STATE,
 )
+from tapa.task_codegen.fifos import get_connection_to as get_connection_to_codegen
+from tapa.verilog.ast.logic import Always, Assign
+from tapa.verilog.ast.signal import Reg
+from tapa.verilog.ast.width import Width
+from tapa.verilog.ast_utils import make_block, make_case_with_block, make_if_with_block
+from tapa.verilog.util import Pipeline, array_name, match_array_name
+from tapa.verilog.xilinx.const import RST, START, STATE
 from tapa.verilog.xilinx.module import Module
 from tapa.verilog.xilinx.module_ops.ports import get_streams_fifos
 

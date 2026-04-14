@@ -12,16 +12,16 @@ from typing import IO, TYPE_CHECKING, BinaryIO
 
 from tapa.backend.xilinx import Arg, Cat, PackageXo
 from tapa.backend.xilinx import print_kernel_xml as print_kernel_xml_backend
-from tapa.util import get_indexed_name, range_or_none
-from tapa.verilog.ast_utils import make_port_arg
-from tapa.verilog.util import wire_name
-from tapa.verilog.xilinx.const import (
-    CLK,
+from tapa.protocol import (
     HANDSHAKE_CLK,
     HANDSHAKE_OUTPUT_PORTS,
     HANDSHAKE_RST_N,
     HANDSHAKE_START,
 )
+from tapa.util import get_indexed_name, range_or_none
+from tapa.verilog.ast_utils import make_port_arg
+from tapa.verilog.util import wire_name
+from tapa.verilog.xilinx.const import CLK
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator

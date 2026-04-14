@@ -6,10 +6,11 @@ from unittest.mock import Mock, call
 
 from tapa.common.target import Target
 from tapa.program_codegen.fifos import connect_fifos, instantiate_fifos
+from tapa.protocol import ISTREAM_SUFFIXES, STREAM_PORT_DIRECTION
 from tapa.verilog.ast.logic import Assign
 from tapa.verilog.ast.signal import Wire
 from tapa.verilog.util import wire_name
-from tapa.verilog.xilinx.const import ISTREAM_SUFFIXES, RST, STREAM_PORT_DIRECTION
+from tapa.verilog.xilinx.const import RST
 
 
 class _FakeModule:
