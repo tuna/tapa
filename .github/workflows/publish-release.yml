@@ -18,30 +18,7 @@ jobs:
 
     steps:
       - name: Checkout myself
-        id: checkout_primary
-        continue-on-error: true
-        uses: actions/checkout@v4
-        env:
-          GIT_CONFIG_COUNT: "1"
-          GIT_CONFIG_KEY_0: http.version
-          GIT_CONFIG_VALUE_0: HTTP/1.1
-
-      - name: Retry checkout myself
-        id: checkout_retry
-        if: steps.checkout_primary.outcome == 'failure'
-        continue-on-error: true
-        uses: actions/checkout@v4
-        env:
-          GIT_CONFIG_COUNT: "1"
-          GIT_CONFIG_KEY_0: http.version
-          GIT_CONFIG_VALUE_0: HTTP/1.1
-
-      - name: Verify checkout
-        run: |
-          set -euo pipefail
-          test -d .git
-          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
-        shell: bash
+        uses: ./.github/actions/checkout-with-retry
 
       - name: Run Bazel to build
         uses: ./.github/actions/build-release
