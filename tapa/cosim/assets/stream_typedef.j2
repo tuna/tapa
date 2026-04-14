@@ -1,4 +1,0 @@
-{% for width in ctx.stream_widths %}
-  typedef logic unpacked_uint{{ width }}_t[{{ width - 1 }}:0];
-  typedef logic [{{ width - 1 }}:0] packed_uint{{ width }}_t;
-{% endfor %}

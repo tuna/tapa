@@ -87,13 +87,17 @@ const char* SimulatorFlag(const std::string& bitstream) {
 }
 
 void SetEnvIf(const char* name, const std::string& val) {
-  val.empty() ? unsetenv(name) : setenv(name, val.c_str(), 1);
+  if (!val.empty()) {
+    setenv(name, val.c_str(), 1);
+  }
 }
 
 void SetBoolEnvIf(const char* name, bool val) {
-  // Only set the env var when the flag is true; leave it alone (or unset it)
-  // when false, so that a user-provided env var is not silently overridden.
-  val ? setenv(name, "1", 1) : unsetenv(name);
+  // Only set the env var when the flag is true; when false, preserve any
+  // user-provided env var instead of silently clearing it.
+  if (val) {
+    setenv(name, "1", 1);
+  }
 }
 
 void ForwardFlagsToEnv(const std::string& bitstream) {
@@ -110,6 +114,14 @@ void ForwardFlagsToEnv(const std::string& bitstream) {
 }
 
 }  // namespace
+
+namespace fpga::internal {
+
+void ForwardFlagsToEnvForTest(const std::string& bitstream) {
+  ForwardFlagsToEnv(bitstream);
+}
+
+}  // namespace fpga::internal
 
 struct Instance::Impl {
   void* handle = nullptr;

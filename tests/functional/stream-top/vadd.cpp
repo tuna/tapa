@@ -41,6 +41,6 @@ void StreamAdd_XRT(tapa::istream<input_t>& a, tapa::istream<input_t>& b,
   // TEST 5: Ensure that both leaf and non-leaf FRT kernel invocation work.
   // In Vitis mode, StreamAdd_XRT is invoked by the XRT runtime, which is
   // a non-leaf FRT kernel invocation. In HLS mode, StreamAdd (not _XRT) is
-  // invoked by the tapa-fast-cosim runtime, which is a leaf task.
+  // invoked by the host runtime cosim path, which is a leaf task.
   tapa::task().invoke(StreamAdd, a, b, c);
 }
