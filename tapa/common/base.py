@@ -3,8 +3,18 @@
 from __future__ import annotations
 
 import copy
+import re
 
-from tapa.verilog.util import array_name, match_array_name
+_ARRAY_NAME_RE = re.compile(r"(\w+)\[(\d+)\]")
+
+
+def _match_array_name(name: str) -> tuple[str, int] | None:
+    match = _ARRAY_NAME_RE.fullmatch(name)
+    return (match[1], int(match[2])) if match is not None else None
+
+
+def _array_name(name: str, idx: int) -> str:
+    return f"{name}[{idx}]"
 
 
 class Base:
@@ -39,8 +49,11 @@ class Base:
 
     def _generate_global_name(self) -> str:
         """Return the global name for an object."""
-        if self.name is not None and (match := match_array_name(self.name)) is not None:
-            return array_name(
+        if (
+            self.name is not None
+            and (match := _match_array_name(self.name)) is not None
+        ):
+            return _array_name(
                 self._generate_global_name_without_sub(match[0]), match[1]
             )
         return self._generate_global_name_without_sub(self.name)
