@@ -185,7 +185,7 @@ fn verilator_hls_escapes_banked_mmap_names() {
     let generator = VerilatorTbGenerator::new(&spec, &base_addrs, &buf_sizes, &scalar_vals);
     let tb = generator.render_tb().expect("render");
     // Verilator strips brackets: chan[0] → chan_0 in C++ member names
-    assert!(tb.contains("rd_chan_0"), "{tb}");
+    assert!(tb.contains("rd_q_chan_0"), "{tb}");
     assert!(tb.contains("dut->m_axi_chan_0_ARREADY"), "{tb}");
     // The load_from_shm call still uses the original name for port lookup
     assert!(tb.contains("load_from_shm(\"chan[0]\""), "{tb}");

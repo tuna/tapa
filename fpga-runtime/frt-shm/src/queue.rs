@@ -84,17 +84,25 @@ impl SharedMemoryQueue {
 
     pub fn is_full(&self) -> bool {
         let h = self.hdr();
-        h.tail.load(Ordering::Acquire) - h.head.load(Ordering::Acquire) >= self.depth()
+        h.tail.load(Ordering::Acquire) - h.head.load(Ordering::Acquire) >= h.depth as u64
     }
 
     pub fn try_push(&mut self, data: &[u8]) -> Result<(), &'static str> {
+        self.try_push_check_full(data).map(|_| ())
+    }
+
+    /// Push `data` and return whether the queue is full after the push.
+    /// Returns `Err` if the queue was already full or `data` has wrong length.
+    pub fn try_push_check_full(&mut self, data: &[u8]) -> Result<bool, &'static str> {
         let h = self.hdr();
+        let depth = h.depth as u64;
+        let w = h.width as usize;
         let tail = h.tail.load(Ordering::Acquire);
-        if tail - h.head.load(Ordering::Acquire) >= self.depth() {
+        let head = h.head.load(Ordering::Acquire);
+        if tail - head >= depth {
             return Err("queue full");
         }
-        let slot = (tail % self.depth()) as usize * self.width();
-        let w = self.width();
+        let slot = (tail % depth) as usize * w;
         if data.len() != w {
             return Err("unexpected input size");
         }
@@ -104,8 +112,9 @@ impl SharedMemoryQueue {
         // SAFETY: `data.len() == w` is checked above and `dst` points to a
         // valid, in-bounds slot in the data region.
         unsafe { std::ptr::copy_nonoverlapping(data.as_ptr(), dst, w) };
-        self.hdr().tail.store(tail + 1, Ordering::Release);
-        Ok(())
+        let new_tail = tail + 1;
+        self.hdr().tail.store(new_tail, Ordering::Release);
+        Ok(new_tail - head >= depth)
     }
 
     pub fn pop(&mut self) -> Option<Vec<u8>> {
@@ -117,12 +126,13 @@ impl SharedMemoryQueue {
     /// `buf` must be at least `self.width()` bytes; only `width` bytes are written.
     pub fn pop_into(&mut self, buf: &mut [u8]) -> bool {
         let h = self.hdr();
+        let depth = h.depth as u64;
+        let w = h.width as usize;
         let head = h.head.load(Ordering::Acquire);
         if h.tail.load(Ordering::Acquire) == head {
             return false;
         }
-        let slot = (head % self.depth()) as usize * self.width();
-        let w = self.width();
+        let slot = (head % depth) as usize * w;
         // SAFETY: `slot` is derived from `head % depth * width`, which is always
         // in-bounds of the data region.
         let src = unsafe { self.data_ptr().add(slot) };
@@ -142,12 +152,13 @@ impl SharedMemoryQueue {
     /// `buf` must be at least `self.width()` bytes; only `width` bytes are written.
     pub fn peek_into(&self, buf: &mut [u8]) -> bool {
         let h = self.hdr();
+        let depth = h.depth as u64;
+        let w = h.width as usize;
         let head = h.head.load(Ordering::Acquire);
         if h.tail.load(Ordering::Acquire) == head {
             return false;
         }
-        let slot = (head % self.depth()) as usize * self.width();
-        let w = self.width();
+        let slot = (head % depth) as usize * w;
         // SAFETY: `slot` is derived from `head % depth * width`, which is always
         // in-bounds of the data region.
         let src = unsafe { self.data_ptr().add(slot) };

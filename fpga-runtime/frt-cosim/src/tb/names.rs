@@ -50,10 +50,6 @@ pub fn escaped_verilog_signal(prefix: &str, name: &str, suffix: &str) -> String 
     escape_verilog_identifier(&format!("{prefix}{name}{suffix}"))
 }
 
-pub fn verilator_signal(prefix: &str, name: &str, suffix: &str) -> String {
-    verilator_identifier(&format!("{prefix}{name}{suffix}"))
-}
-
 pub fn cpp_signal(prefix: &str, name: &str, suffix: &str) -> String {
     cpp_identifier(&format!("{prefix}{name}{suffix}"))
 }

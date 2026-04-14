@@ -90,18 +90,23 @@ void SetEnvIf(const char* name, const std::string& val) {
   val.empty() ? unsetenv(name) : setenv(name, val.c_str(), 1);
 }
 
+void SetBoolEnvIf(const char* name, bool val) {
+  // Only set the env var when the flag is true; leave it alone (or unset it)
+  // when false, so that a user-provided env var is not silently overridden.
+  val ? setenv(name, "1", 1) : unsetenv(name);
+}
+
 void ForwardFlagsToEnv(const std::string& bitstream) {
   SetEnvIf("FRT_XOCL_BDF", FLAGS_xocl_bdf);
   if (!IsCosimPackage(bitstream)) return;
-  setenv("FRT_XSIM_START_GUI", FLAGS_xsim_start_gui ? "1" : "0", 1);
-  setenv("FRT_XSIM_SAVE_WAVEFORM", FLAGS_xsim_save_waveform ? "1" : "0", 1);
+  SetBoolEnvIf("FRT_XSIM_START_GUI", FLAGS_xsim_start_gui);
+  SetBoolEnvIf("FRT_XSIM_SAVE_WAVEFORM", FLAGS_xsim_save_waveform);
   SetEnvIf("FRT_COSIM_WORK_DIR", FLAGS_cosim_work_dir);
-  setenv("FRT_COSIM_WORK_DIR_PARALLEL",
-         FLAGS_cosim_work_dir_parallel ? "1" : "0", 1);
+  SetBoolEnvIf("FRT_COSIM_WORK_DIR_PARALLEL", FLAGS_cosim_work_dir_parallel);
   SetEnvIf("FRT_XSIM_PART_NUM", FLAGS_xsim_part_num);
-  setenv("FRT_COSIM_SETUP_ONLY", FLAGS_cosim_setup_only ? "1" : "0", 1);
-  setenv("FRT_COSIM_RESUME_FROM_POST_SIM",
-         FLAGS_cosim_resume_from_post_sim ? "1" : "0", 1);
+  SetBoolEnvIf("FRT_COSIM_SETUP_ONLY", FLAGS_cosim_setup_only);
+  SetBoolEnvIf("FRT_COSIM_RESUME_FROM_POST_SIM",
+               FLAGS_cosim_resume_from_post_sim);
 }
 
 }  // namespace

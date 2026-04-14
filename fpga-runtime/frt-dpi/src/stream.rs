@@ -165,19 +165,26 @@ pub fn stream_ostream_step_impl(
         return false;
     };
 
+    let mut known_full = false;
     if s.last_ostream_ready && write {
         let w = s.queue.width();
         // SAFETY: `data` is a DPI-provided buffer of at least `w` bytes.
         let slice = unsafe { std::slice::from_raw_parts(data, w) };
-        if s.queue.try_push(slice).is_ok() {
-            WRITE_OK.fetch_add(1, Ordering::Relaxed);
-            if stream_debug_enabled() {
-                eprintln!("frt-dpi: stream_ostream_step '{port}': wrote {w} bytes");
+        match s.queue.try_push_check_full(slice) {
+            Ok(full_after) => {
+                WRITE_OK.fetch_add(1, Ordering::Relaxed);
+                known_full = full_after;
+                if stream_debug_enabled() {
+                    eprintln!("frt-dpi: stream_ostream_step '{port}': wrote {w} bytes");
+                }
+            }
+            Err(_) => {
+                known_full = true;
             }
         }
     }
 
-    let can = !s.queue.is_full();
+    let can = !known_full && !s.queue.is_full();
     s.last_ostream_ready = can;
     if !can {
         WRITE_FULL.fetch_add(1, Ordering::Relaxed);
@@ -203,14 +210,14 @@ pub fn stream_hls_ostream_step_impl(
 
     // HLS ap_fifo/full_n uses the queue state visible in the current cycle,
     // unlike AXIS tready which is sampled from the prior cycle in the Vitis path.
+    let mut known_full = false;
     if write {
         let w = s.queue.width();
         // SAFETY: `data` is a DPI-provided buffer of at least `w` bytes.
         let slice = unsafe { std::slice::from_raw_parts(data, w) };
-        // try_push already checks fullness internally, avoiding a redundant
-        // is_full() call (and its pair of atomic loads) on the success path.
-        if s.queue.try_push(slice).is_ok() {
+        if let Ok(full_after) = s.queue.try_push_check_full(slice) {
             WRITE_OK.fetch_add(1, Ordering::Relaxed);
+            known_full = full_after;
             if stream_debug_enabled() {
                 let (h, t) = s.queue.head_tail();
                 eprintln!(
@@ -218,6 +225,7 @@ pub fn stream_hls_ostream_step_impl(
                 );
             }
         } else {
+            known_full = true;
             let (h, t) = s.queue.head_tail();
             eprintln!(
                 "frt-dpi: WARN '{port}': write=1 but queue full! h={h} t={t} depth={}",
@@ -226,7 +234,7 @@ pub fn stream_hls_ostream_step_impl(
         }
     }
 
-    let can = !s.queue.is_full();
+    let can = !known_full && !s.queue.is_full();
     if !can {
         WRITE_FULL.fetch_add(1, Ordering::Relaxed);
         maybe_report_progress(port, &s.queue);
