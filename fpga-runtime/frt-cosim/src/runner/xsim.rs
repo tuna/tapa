@@ -96,13 +96,16 @@ impl SimRunner for XsimRunner {
         std::fs::create_dir_all(&home)?;
         let vivado_bin = which("vivado").map_err(|_e| CosimError::ToolNotFound("vivado".into()))?;
         let mut cmd = Command::new(vivado_bin);
+        // Base environment (incl. Xilinx tool paths) FIRST, then per-instance
+        // overrides LAST — .envs() would overwrite .env() values for keys
+        // already in the parent env (HOME, TMPDIR).
         cmd.args(["-mode", mode, "-source", "run_cosim.tcl"])
             .current_dir(tb_dir)
+            .envs(xilinx_environ())
             .env("HOME", home.as_os_str())
             .env("TMPDIR", home.as_os_str())
             .env(frt_shm::env::FRT_XSIM_WAIT_FOR_GO, "1")
-            .env(frt_shm::env::TAPA_DPI_CONFIG, ctx.dpi_config_json())
-            .envs(xilinx_environ());
+            .env(frt_shm::env::TAPA_DPI_CONFIG, ctx.dpi_config_json());
         configure_sim_command(&mut cmd);
         let child = cmd.spawn()?;
         startup_gate.release_when_ready(

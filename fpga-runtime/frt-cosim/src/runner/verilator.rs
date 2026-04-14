@@ -211,8 +211,8 @@ impl SimRunner for VerilatorRunner {
         let top =
             found.ok_or_else(|| CosimError::ToolNotFound("Verilator binary in obj_dir".into()))?;
         let mut cmd = Command::new(top);
-        cmd.env(frt_shm::env::TAPA_DPI_CONFIG, ctx.dpi_config_json())
-            .envs(xilinx_environ());
+        cmd.envs(xilinx_environ())
+            .env(frt_shm::env::TAPA_DPI_CONFIG, ctx.dpi_config_json());
         configure_sim_command(&mut cmd);
         let child = cmd.spawn()?;
         Ok(child)
