@@ -15,8 +15,6 @@ pub const FRT_XSIM_LEGACY: &str = "FRT_XSIM_LEGACY";
 pub const FRT_XSIM_START_GUI: &str = "FRT_XSIM_START_GUI";
 pub const FRT_XSIM_SAVE_WAVEFORM: &str = "FRT_XSIM_SAVE_WAVEFORM";
 pub const FRT_XSIM_PART_NUM: &str = "FRT_XSIM_PART_NUM";
-pub const FRT_XSIM_STARTUP_LOCK: &str = "FRT_XSIM_STARTUP_LOCK";
-pub const FRT_XSIM_WAIT_FOR_GO: &str = "FRT_XSIM_WAIT_FOR_GO";
 
 // ── Verilator-specific options ──────────────────────────────────────────
 pub const FRT_VERILATOR_BUILD_LOCK: &str = "FRT_VERILATOR_BUILD_LOCK";

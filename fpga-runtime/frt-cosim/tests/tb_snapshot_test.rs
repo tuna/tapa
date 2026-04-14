@@ -229,22 +229,9 @@ fn xsim_hls_tb_snapshot() {
         tcl.contains("set_property -name {xsim.simulate.runtime} -value {0ns}"),
         "{tcl}"
     );
-    let ready_marker = "set ready_fd [open \"/tmp/tb/.xsim-ready\" \"w\"]";
-    let start_gate = "if {[info exists ::env(FRT_XSIM_WAIT_FOR_GO)]";
-    let start_barrier = "while {![file exists \"";
-    assert!(tcl.contains(ready_marker), "{tcl}");
-    assert!(tcl.contains(start_gate), "{tcl}");
-    assert!(tcl.contains(start_barrier), "{tcl}");
-    assert!(tcl.contains(".xsim-start-go"), "{tcl}");
     let launch_idx = tcl.find("launch_simulation").expect("launch");
-    let ready_idx = tcl.find(ready_marker).expect("ready marker");
-    let gate_idx = tcl.find(start_gate).expect("start gate");
-    let barrier_idx = tcl.find("while {![file exists").expect("start barrier");
     let run_idx = tcl.find("run all").expect("run all");
-    assert!(launch_idx < ready_idx, "{tcl}");
-    assert!(ready_idx < gate_idx, "{tcl}");
-    assert!(gate_idx < barrier_idx, "{tcl}");
-    assert!(barrier_idx < run_idx, "{tcl}");
+    assert!(launch_idx < run_idx, "{tcl}");
 }
 
 #[test]

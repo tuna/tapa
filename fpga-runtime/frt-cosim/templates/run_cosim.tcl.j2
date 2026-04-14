@@ -30,12 +30,4 @@ close $custom_tcl_fd
 set_property -name {xsim.simulate.custom_tcl} -value $custom_tcl -objects [get_filesets sim_1]
 set_property -name {xsim.simulate.runtime} -value {0ns} -objects [get_filesets sim_1]
 launch_simulation
-set ready_fd [open "{{ ready_file }}" "w"]
-puts $ready_fd "ready"
-close $ready_fd
-if {[info exists ::env(FRT_XSIM_WAIT_FOR_GO)] && $::env(FRT_XSIM_WAIT_FOR_GO) ni {"0" "false" "FALSE" "no" "NO"}} {
-  while {![file exists "{{ start_go_file }}"]} {
-    after 50
-  }
-}
 run all

@@ -113,8 +113,6 @@ struct TclTemplate {
     tb_top: String,
     dpi_sv_root: String,
     dpi_sv_lib: String,
-    ready_file: String,
-    start_go_file: String,
     save_waveform: bool,
     legacy: bool,
 }
@@ -235,11 +233,6 @@ impl<'a> XsimTbGenerator<'a> {
                 .unwrap_or_default()
                 .to_string_lossy()
                 .to_string(),
-            ready_file: tb_dir
-                .join(crate::runner::xsim::XSIM_READY_FILE)
-                .to_string_lossy()
-                .to_string(),
-            start_go_file: tb_dir.join(".xsim-start-go").to_string_lossy().to_string(),
             save_waveform: self.save_waveform,
             legacy: self.legacy,
         };
