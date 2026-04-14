@@ -110,6 +110,7 @@ py_library(
     name = "core",
     srcs = ["core.py"],
     deps = [
+        ":codegen",
         ":instance",
         ":program_codegen",
         ":task",
@@ -135,9 +136,15 @@ py_library(
 )
 
 py_library(
+    name = "protocol",
+    srcs = ["protocol.py"],
+)
+
+py_library(
     name = "instance",
     srcs = ["instance.py"],
     deps = [
+        ":protocol",
         ":util",
         "//tapa/verilog:util",
         "//tapa/verilog/ast:ioport",
@@ -204,6 +211,23 @@ py_library(
 )
 
 py_library(
+    name = "codegen",
+    srcs = glob(["codegen/*.py"]),
+    deps = [
+        ":instance",
+        ":protocol",
+        ":task_codegen",
+        "//tapa/verilog:util",
+        "//tapa/verilog/ast:ioport",
+        "//tapa/verilog/ast:signal",
+        "//tapa/verilog/ast:width",
+        "//tapa/verilog/xilinx:module",
+        requirement("pyverilog"),
+        requirement("pyyaml"),
+    ],
+)
+
+py_library(
     name = "task_codegen",
     srcs = glob(["task_codegen/*.py"]),
     deps = [
@@ -227,6 +251,7 @@ py_test(
     name = "task_test",
     srcs = ["task_test.py"],
     deps = [
+        ":codegen",
         ":task",
     ],
 )

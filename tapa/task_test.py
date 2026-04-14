@@ -6,6 +6,7 @@ All rights reserved. The contributor(s) of this file has/have agreed to the
 RapidStream Contributor License Agreement.
 """
 
+from tapa.codegen.task_rtl import TaskRtlState
 from tapa.task import Task
 
 
@@ -23,6 +24,7 @@ def test_add_rs_pragmas_to_fsm_skips_unused_ports() -> None:
             },
         ],
     )
+    TaskRtlState(task)
     task.instances = ()
 
     task.add_rs_pragmas_to_fsm()

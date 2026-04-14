@@ -8,7 +8,6 @@ RapidStream Contributor License Agreement.
 
 import decimal
 import functools
-import json
 import logging
 import os
 import shutil
@@ -19,9 +18,18 @@ from types import TracebackType
 from typing import Self
 from xml.etree import ElementTree as ET
 
-import yaml
 from pyverilog.vparser.ast import Plus
 
+from tapa.codegen.program_rtl import (
+    generate_task_rtl as _generate_task_rtl,
+)
+from tapa.codegen.program_rtl import (
+    generate_top_rtl as _generate_top_rtl,
+)
+from tapa.codegen.program_rtl import (
+    instrument_upper_and_template_task as _instrument_upper_and_template_task,
+)
+from tapa.codegen.task_rtl import TaskRtlState
 from tapa.common.paths import get_tapacc_cflags
 from tapa.common.target import Target
 from tapa.instance import Instance
@@ -35,9 +43,6 @@ from tapa.program_codegen.program import (
 )
 from tapa.program_codegen.program import (
     get_rtl_templates_info as get_rtl_templates_info_codegen,
-)
-from tapa.program_codegen.program import (
-    instrument_upper_and_template_task as instrument_upper_and_template_task_codegen,
 )
 from tapa.program_codegen.program import (
     replace_custom_rtl as replace_custom_rtl_codegen,
@@ -130,6 +135,7 @@ class Program(  # TODO: refactor this class
                 target_type=task_properties["target"],
                 is_slot=(name in floorplan_slots),
             )
+            TaskRtlState(task)
             if not task.is_upper or task.tasks:
                 self._tasks[name] = task
 
@@ -219,17 +225,14 @@ class Program(  # TODO: refactor this class
         assert period.text is not None
         return decimal.Decimal(period.text)
 
+    # TODO(codegen-extraction): generate_task_rtl, generate_top_rtl, and
+    # _instrument_upper_and_template_task are codegen methods that delegate
+    # to tapa.codegen.program_rtl free functions.  Callers should migrate
+    # to using the free functions directly.
+
     def generate_task_rtl(self) -> None:
         """Extract HDL files from tarballs generated from HLS."""
-        from tapa.program.rtl_codegen import (  # noqa: PLC0415
-            extract_task_rtl,
-            instrument_upper_task_rtl,
-            parse_task_rtl,
-        )
-
-        extract_task_rtl(self)
-        parse_task_rtl(self)
-        instrument_upper_task_rtl(self)
+        _generate_task_rtl(self)
 
     def generate_top_rtl(
         self,
@@ -241,31 +244,10 @@ class Program(  # TODO: refactor this class
             override_report_schema_version: Override the schema version with the
                 given string, if non-empty.
         """
-        if self.top_task.name in self.gen_templates:
-            msg = "top task cannot be a template"
-            raise ValueError(msg)
-
-        # instrument the top-level RTL if it is a upper-level task
-        if self.top_task.is_upper:
-            self._instrument_upper_and_template_task(self.top_task)
-
-        _logger.info("generating report")
-        task_report = self.top_task.report
-        if override_report_schema_version:
-            task_report["schema"] = override_report_schema_version
-        with open(self.report_paths.yaml, "w", encoding="utf-8") as fp:
-            yaml.dump(task_report, fp, default_flow_style=False, sort_keys=False)
-        with open(self.report_paths.json, "w", encoding="utf-8") as fp:
-            json.dump(task_report, fp, indent=2)
-
-        # self.files won't be populated until all tasks are instrumented
-        _logger.info("writing generated auxiliary RTL files")
-        for name, content in self.files.items():
-            with open(os.path.join(self.rtl_dir, name), "w", encoding="utf-8") as fp:
-                fp.write(content)
+        _generate_top_rtl(self, override_report_schema_version)
 
     def _instrument_upper_and_template_task(self, task: Task) -> None:
-        instrument_upper_and_template_task_codegen(self, task)
+        _instrument_upper_and_template_task(self, task)
 
     def get_fifo_width(self, task: Task, fifo: str) -> Plus:
         return get_fifo_width_codegen(self, task, fifo)

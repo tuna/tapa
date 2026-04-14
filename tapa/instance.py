@@ -191,6 +191,12 @@ class Instance:
     def is_autorun(self) -> bool:
         return self.step < 0
 
+    # TODO(codegen-extraction): The following signal-generation methods
+    # should migrate to tapa.codegen.instance_signals.InstanceSignals.
+    # They produce pyverilog AST nodes and belong in the codegen layer.
+    # Kept here for backward compatibility; new code should prefer
+    # InstanceSignals(instance) from tapa.codegen.instance_signals.
+
     @property
     def state(self) -> Identifier:
         """State of this instance."""

@@ -14,17 +14,6 @@ from typing import NamedTuple
 
 from tapa import __version__
 from tapa.instance import Instance, Port
-from tapa.protocol import (
-    HANDSHAKE_CLK,
-    HANDSHAKE_DONE,
-    HANDSHAKE_IDLE,
-    HANDSHAKE_READY,
-    HANDSHAKE_RST_N,
-    HANDSHAKE_START,
-)
-from tapa.task_codegen.fsm import add_rs_pragmas_to_fsm as add_rs_pragmas_to_fsm_codegen
-from tapa.task_codegen.m_axi import add_m_axi as add_m_axi_codegen
-from tapa.verilog.ast.ioport import IOPort
 from tapa.verilog.xilinx.module import Module
 
 _logger = logging.getLogger().getChild(__name__)
@@ -99,21 +88,11 @@ class Task:
             self.tasks = dict(sorted((tasks or {}).items()))
             self.fifos = dict(sorted((fifos or {}).items()))
             self.ports = port_dict
-            self.fsm_module = Module(name=f"{self.name}_fsm")
-            self.fsm_module.add_ports(
-                [
-                    IOPort("input", HANDSHAKE_CLK),
-                    IOPort("input", HANDSHAKE_RST_N),
-                    IOPort("input", HANDSHAKE_START),
-                    IOPort("output", HANDSHAKE_READY),
-                    IOPort("output", HANDSHAKE_DONE),
-                    IOPort("output", HANDSHAKE_IDLE),
-                ]
-            )
         elif ports:
             # Nonsynthesizable tasks need ports to generate template
             self.ports = port_dict
-        self.module = Module(name=self.name)
+        self.module: Module = Module(name=self.name)
+        self.fsm_module: Module = Module(name=f"{self.name}_fsm")
         self._instances: tuple[Instance, ...] | None = None
         self._args: dict[str, list[Instance.Arg]] | None = None
         self._mmaps: dict[str, MMapConnection] | None = None
@@ -319,8 +298,14 @@ class Task:
 
     def add_m_axi(self, width_table: dict[str, int], files: dict[str, str]) -> None:
         """Add M-AXI ports and crossbar wiring for upper tasks."""
-        add_m_axi_codegen(self, width_table, files)
+        from tapa.task_codegen.m_axi import add_m_axi as _impl  # noqa: PLC0415
+
+        _impl(self, width_table, files)
 
     def add_rs_pragmas_to_fsm(self) -> None:
         """Add RS pragmas to the FSM module."""
-        add_rs_pragmas_to_fsm_codegen(self)
+        from tapa.task_codegen.fsm import (  # noqa: PLC0415
+            add_rs_pragmas_to_fsm as _impl,
+        )
+
+        _impl(self)
