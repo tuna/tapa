@@ -26,7 +26,7 @@ set -ue
 # Default values for the installation options.
 # Support both new and legacy environment variable names.
 TAPA_LOCAL_PACKAGE="${TAPA_LOCAL_PACKAGE:-${RAPIDSTREAM_LOCAL_PACKAGE:-}}"
-TAPA_VERSION="${TAPA_VERSION:-latest}"
+TAPA_VERSION="${TAPA_VERSION:-0.1.20260319}"
 TAPA_DOWNLOAD_TMPFILE=""
 
 if [ "$(id -u)" -eq 0 ]; then
@@ -59,8 +59,9 @@ Options:
       --no-create-symlinks     Do not create symbolic links in the system path.
       --no-modify-path         Do not modify the PATH environment variable.
 
-  -V, --version <version>      Specify the TAPA version to download (default: latest).
+  -V, --version <version>      Specify the TAPA version to download (default: 0.1.20260319).
                                Ignored if TAPA_LOCAL_PACKAGE is set.
+      --beta                   Install the latest (potentially unstable) release.
 
   -q, --quiet                  Disable verbose output.
   -qq, --quiet-all             Disable most of the output.
@@ -69,7 +70,7 @@ Options:
 
 Environment variables:
   TAPA_LOCAL_PACKAGE           Path to a local TAPA tarball (skips download).
-  TAPA_VERSION                 Version to download (default: latest).
+  TAPA_VERSION                 Version to download (default: 0.1.20260319).
 EOF
 }
 
@@ -137,6 +138,10 @@ parse_args() {
       ;;
     --version=*)
       TAPA_VERSION="${1#*=}"
+      shift
+      ;;
+    --beta)
+      TAPA_VERSION="latest"
       shift
       ;;
     -q | --quiet)
