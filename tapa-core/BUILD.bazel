@@ -1,6 +1,5 @@
 """TAPA core Rust schema crates — Bazel build via Cargo."""
 
-load("@rules_python//python:defs.bzl", "py_library")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
 _ALL_SRCS = glob(
@@ -11,7 +10,9 @@ _ALL_SRCS = glob(
     ],
 )
 
-# -- Build: all four crates (schema + bindings) --
+# -- Build: schema crates only (hermetic via rules_rust toolchain) --
+# The py-bindings crate is excluded because it requires Python headers
+# at link time and is not consumed by any Bazel target yet.
 
 genrule(
     name = "cargo_build",
@@ -20,26 +21,21 @@ genrule(
         "cargo/libtapa_protocol.rlib",
         "cargo/libtapa_task_graph.rlib",
         "cargo/libtapa_graphir.rlib",
-        "cargo/libtapa_core.dylib",
-        "cargo/libtapa_core.so",
     ],
     cmd = """
 set -euo pipefail
-CARGO="$$(command -v cargo || echo "$$(cd "$$(dirname "$(execpath @rules_rust//rust/toolchain:current_cargo_files)")" && pwd)/cargo")"
-RUSTC="$$(command -v rustc || echo "$$(cd "$$(dirname "$(execpath @rules_rust//rust/toolchain:current_rustc_files)")" && pwd)/rustc")"
+CARGO="$$(cd "$$(dirname "$(execpath @rules_rust//rust/toolchain:current_cargo_files)")" && pwd)/cargo"
+RUSTC="$$(cd "$$(dirname "$(execpath @rules_rust//rust/toolchain:current_rustc_files)")" && pwd)/rustc"
 export PATH="$$(dirname "$$CARGO"):$$(dirname "$$RUSTC"):$$PATH"
 export CARGO_TARGET_DIR="$(@D)/cargo-target"
-export PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1
-export RUSTFLAGS="-C link-arg=-undefined -C link-arg=dynamic_lookup"
 
-$$CARGO build --manifest-path "$(location Cargo.toml)" --release
+$$CARGO build --manifest-path "$(location Cargo.toml)" --release \
+  -p tapa-protocol -p tapa-task-graph -p tapa-graphir
 
 copy_or_empty() { if [ -f "$$1" ]; then cp "$$1" "$$2"; else : > "$$2"; fi; }
 copy_or_empty "$$CARGO_TARGET_DIR/release/libtapa_protocol.rlib" "$(location cargo/libtapa_protocol.rlib)"
 copy_or_empty "$$CARGO_TARGET_DIR/release/libtapa_task_graph.rlib" "$(location cargo/libtapa_task_graph.rlib)"
 copy_or_empty "$$CARGO_TARGET_DIR/release/libtapa_graphir.rlib" "$(location cargo/libtapa_graphir.rlib)"
-copy_or_empty "$$CARGO_TARGET_DIR/release/libtapa_core.dylib" "$(location cargo/libtapa_core.dylib)"
-copy_or_empty "$$CARGO_TARGET_DIR/release/libtapa_core.so" "$(location cargo/libtapa_core.so)"
 """,
     tools = [
         "@rules_rust//rust/toolchain:current_cargo_files",
@@ -48,26 +44,7 @@ copy_or_empty "$$CARGO_TARGET_DIR/release/libtapa_core.so" "$(location cargo/lib
     visibility = ["//visibility:public"],
 )
 
-# -- Python wrapper: rename the cdylib to tapa_core.so for import --
-
-genrule(
-    name = "tapa_core_ext",
-    srcs = select({
-        "//bazel:is_macos": [":cargo/libtapa_core.dylib"],
-        "//conditions:default": [":cargo/libtapa_core.so"],
-    }),
-    outs = ["tapa_core.so"],
-    cmd = "cp $< $@",
-)
-
-py_library(
-    name = "tapa_core",
-    data = [":tapa_core_ext"],
-    imports = ["."],
-    visibility = ["//visibility:public"],
-)
-
-# -- Test: Rust unit and integration tests --
+# -- Test: Rust unit and integration tests (manual, requires system cargo) --
 
 sh_test(
     name = "cargo_test",
@@ -79,11 +56,10 @@ sh_test(
     env = {
         "CARGO_MANIFEST_DIR": "tapa-core",
     },
-    local = True,
-    tags = ["no-sandbox"],
+    tags = ["manual"],
 )
 
-# -- Test: Python smoke tests --
+# -- Test: Python smoke tests (manual, requires system cargo + python3) --
 
 sh_test(
     name = "python_smoke_test",
@@ -95,6 +71,5 @@ sh_test(
     env = {
         "CARGO_MANIFEST_DIR": "tapa-core",
     },
-    local = True,
-    tags = ["no-sandbox"],
+    tags = ["manual"],
 )
