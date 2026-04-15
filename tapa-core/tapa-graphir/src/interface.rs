@@ -5,25 +5,30 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+/// Common base fields shared by all interface types.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct InterfaceBase {
+    #[serde(default)]
+    pub clk_port: Option<String>,
+    #[serde(default)]
+    pub rst_port: Option<String>,
+    #[serde(default)]
+    pub ports: Vec<String>,
+    #[serde(default)]
+    pub role: String,
+    #[serde(default)]
+    pub origin_info: String,
+}
+
 /// All 11 interface type variants.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "type")]
 pub enum AnyInterface {
     #[serde(rename = "handshake")]
     HandShake {
-        #[serde(default)]
-        clk_port: Option<String>,
-        #[serde(default)]
-        rst_port: Option<String>,
-        #[serde(default)]
-        ports: Vec<String>,
-        #[serde(default)]
-        role: String,
-        #[serde(default)]
-        origin_info: String,
-        #[serde(default)]
+        #[serde(flatten)]
+        base: InterfaceBase,
         ready_port: Option<String>,
-        #[serde(default)]
         valid_port: Option<String>,
         #[serde(default)]
         data_ports: Vec<String>,
@@ -33,160 +38,90 @@ pub enum AnyInterface {
 
     #[serde(rename = "feed_forward")]
     FeedForward {
-        #[serde(default)]
-        clk_port: Option<String>,
-        #[serde(default)]
-        rst_port: Option<String>,
-        #[serde(default)]
-        ports: Vec<String>,
-        #[serde(default)]
-        role: String,
-        #[serde(default)]
-        origin_info: String,
+        #[serde(flatten)]
+        base: InterfaceBase,
         #[serde(flatten)]
         extra: HashMap<String, Value>,
     },
 
     #[serde(rename = "false_path")]
     FalsePath {
-        #[serde(default)]
-        clk_port: Option<String>,
-        #[serde(default)]
-        rst_port: Option<String>,
-        #[serde(default)]
-        ports: Vec<String>,
-        #[serde(default)]
-        role: String,
-        #[serde(default)]
-        origin_info: String,
+        #[serde(flatten)]
+        base: InterfaceBase,
         #[serde(flatten)]
         extra: HashMap<String, Value>,
     },
 
     #[serde(rename = "clock")]
     Clock {
-        #[serde(default)]
-        clk_port: Option<String>,
-        #[serde(default)]
-        rst_port: Option<String>,
-        #[serde(default)]
-        ports: Vec<String>,
-        #[serde(default)]
-        role: String,
-        #[serde(default)]
-        origin_info: String,
+        #[serde(flatten)]
+        base: InterfaceBase,
         #[serde(flatten)]
         extra: HashMap<String, Value>,
     },
 
     #[serde(rename = "fp_reset")]
     FalsePathReset {
-        #[serde(default)]
-        clk_port: Option<String>,
-        #[serde(default)]
-        rst_port: Option<String>,
-        #[serde(default)]
-        ports: Vec<String>,
-        #[serde(default)]
-        role: String,
-        #[serde(default)]
-        origin_info: String,
+        #[serde(flatten)]
+        base: InterfaceBase,
         #[serde(flatten)]
         extra: HashMap<String, Value>,
     },
 
     #[serde(rename = "ff_reset")]
     FeedForwardReset {
-        #[serde(default)]
-        clk_port: Option<String>,
-        #[serde(default)]
-        rst_port: Option<String>,
-        #[serde(default)]
-        ports: Vec<String>,
-        #[serde(default)]
-        role: String,
-        #[serde(default)]
-        origin_info: String,
+        #[serde(flatten)]
+        base: InterfaceBase,
         #[serde(flatten)]
         extra: HashMap<String, Value>,
     },
 
     #[serde(rename = "ap_ctrl")]
     ApCtrl {
+        #[serde(flatten)]
+        base: InterfaceBase,
         #[serde(default)]
-        clk_port: Option<String>,
+        ap_start_port: Option<String>,
         #[serde(default)]
-        rst_port: Option<String>,
+        ap_ready_port: Option<String>,
         #[serde(default)]
-        ports: Vec<String>,
+        ap_done_port: Option<String>,
         #[serde(default)]
-        role: String,
+        ap_idle_port: Option<String>,
         #[serde(default)]
-        origin_info: String,
+        ap_continue_port: Option<String>,
         #[serde(flatten)]
         extra: HashMap<String, Value>,
     },
 
     #[serde(rename = "non_pipeline")]
     NonPipeline {
-        #[serde(default)]
-        clk_port: Option<String>,
-        #[serde(default)]
-        rst_port: Option<String>,
-        #[serde(default)]
-        ports: Vec<String>,
-        #[serde(default)]
-        role: String,
-        #[serde(default)]
-        origin_info: String,
+        #[serde(flatten)]
+        base: InterfaceBase,
         #[serde(flatten)]
         extra: HashMap<String, Value>,
     },
 
     #[serde(rename = "unknown")]
     Unknown {
-        #[serde(default)]
-        clk_port: Option<String>,
-        #[serde(default)]
-        rst_port: Option<String>,
-        #[serde(default)]
-        ports: Vec<String>,
-        #[serde(default)]
-        role: String,
-        #[serde(default)]
-        origin_info: String,
+        #[serde(flatten)]
+        base: InterfaceBase,
         #[serde(flatten)]
         extra: HashMap<String, Value>,
     },
 
     #[serde(rename = "tapa_peek")]
     TapaPeek {
-        #[serde(default)]
-        clk_port: Option<String>,
-        #[serde(default)]
-        rst_port: Option<String>,
-        #[serde(default)]
-        ports: Vec<String>,
-        #[serde(default)]
-        role: String,
-        #[serde(default)]
-        origin_info: String,
+        #[serde(flatten)]
+        base: InterfaceBase,
         #[serde(flatten)]
         extra: HashMap<String, Value>,
     },
 
     #[serde(rename = "aux")]
     Aux {
-        #[serde(default)]
-        clk_port: Option<String>,
-        #[serde(default)]
-        rst_port: Option<String>,
-        #[serde(default)]
-        ports: Vec<String>,
-        #[serde(default)]
-        role: String,
-        #[serde(default)]
-        origin_info: String,
+        #[serde(flatten)]
+        base: InterfaceBase,
         #[serde(flatten)]
         extra: HashMap<String, Value>,
     },

@@ -60,16 +60,48 @@ pub struct Project {
 
 impl Project {
     /// Parse a `graphir.json` payload with field-path error diagnostics.
+    ///
+    /// Runs post-deserialize validation including `BlackBox` payload checks.
     pub fn from_json(json: &str) -> Result<Self, ParseError> {
         let de = &mut serde_json::Deserializer::from_str(json);
-        serde_path_to_error::deserialize(de).map_err(|e| ParseError::Schema {
-            path: e.path().to_string(),
-            message: e.inner().to_string(),
-        })
+        let project: Self =
+            serde_path_to_error::deserialize(de).map_err(|e| ParseError::Schema {
+                path: e.path().to_string(),
+                message: e.inner().to_string(),
+            })?;
+        project.validate_blackboxes()?;
+        Ok(project)
     }
 
-    /// Serialize to JSON string.
+    /// Sort all collections for deterministic serialization output.
+    /// Mirrors Python's `NamespaceModel` sort behavior.
+    pub fn normalize(&mut self) {
+        self.modules.module_definitions.sort_by(|a, b| a.name().cmp(b.name()));
+        for def in &mut self.modules.module_definitions {
+            def.normalize();
+        }
+    }
+
+    /// Serialize to JSON string (with deterministic ordering).
     pub fn to_json(&self) -> Result<String, serde_json::Error> {
+        let mut normalized = self.clone();
+        normalized.normalize();
+        serde_json::to_string_pretty(&normalized)
+    }
+
+    /// Serialize to JSON string without normalization.
+    pub fn to_json_raw(&self) -> Result<String, serde_json::Error> {
         serde_json::to_string_pretty(self)
+    }
+
+    /// Validate all blackbox payloads (base64 decode + zlib decompress).
+    pub fn validate_blackboxes(&self) -> Result<(), ParseError> {
+        for (i, bb) in self.blackboxes.iter().enumerate() {
+            bb.get_binary().map_err(|e| ParseError::Schema {
+                path: format!("blackboxes[{i}].base64"),
+                message: e.to_string(),
+            })?;
+        }
+        Ok(())
     }
 }

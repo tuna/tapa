@@ -20,6 +20,9 @@ build --incompatible_autoload_externally=+@rules_python,+@rules_shell,+@rules_cc
 build --incompatible_default_to_explicit_init_py # Don't overwrite __init__.py files
 build --incompatible_strict_action_env
 
+# Inherit PATH for sh_test targets that need cargo/python3.
+test --test_env=PATH
+
 build:asan --compilation_mode=dbg
 build:asan --copt -fsanitize=address
 build:asan --linkopt -fsanitize=address

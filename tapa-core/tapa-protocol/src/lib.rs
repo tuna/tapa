@@ -217,7 +217,7 @@ pub static M_AXI_SUFFIXES_BY_CHANNEL: LazyLock<HashMap<&'static str, AxiChannelI
                 AxiChannelInfo {
                     ports: &[
                         "_AWADDR", "_AWBURST", "_AWID", "_AWLEN", "_AWREADY",
-                        "_AWSIZE", "_AWVALID", "_AWCACHE", "_AWLOCK", "_AWPROT", "_AWQOS",
+                        "_AWSIZE", "_AWVALID", "_AWLOCK", "_AWPROT", "_AWQOS", "_AWCACHE",
                     ],
                     valid: "_AWVALID",
                     ready: "_AWREADY",

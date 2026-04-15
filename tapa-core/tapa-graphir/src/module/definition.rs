@@ -141,4 +141,28 @@ impl AnyModuleDefinition {
             | Self::InternalGrouped { base, .. } => &base.name,
         }
     }
+
+    /// Sort internal collections for deterministic output.
+    pub fn normalize(&mut self) {
+        match self {
+            Self::Grouped { base, grouped, .. }
+            | Self::InternalGrouped { base, grouped, .. } => {
+                base.ports.sort_by(|a, b| a.name.cmp(&b.name));
+                grouped.submodules.sort_by(|a, b| a.name.cmp(&b.name));
+                grouped.wires.sort_by(|a, b| a.name.cmp(&b.name));
+                for sub in &mut grouped.submodules {
+                    sub.connections.sort_by(|a, b| a.name.cmp(&b.name));
+                    sub.parameters.sort_by(|a, b| a.name.cmp(&b.name));
+                }
+            }
+            Self::Verilog { base, .. }
+            | Self::Aux { base, .. }
+            | Self::AuxSplit { base, .. }
+            | Self::Stub { base, .. }
+            | Self::PassThrough { base, .. }
+            | Self::InternalVerilog { base, .. } => {
+                base.ports.sort_by(|a, b| a.name.cmp(&b.name));
+            }
+        }
+    }
 }

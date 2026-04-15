@@ -1,0 +1,52 @@
+{
+    "cflags": [],
+    "tasks": {
+        "Top": {
+            "code": "",
+            "level": "lower",
+            "ports": [
+                {
+                    "cat": "hmap",
+                    "chan_count": 4,
+                    "chan_size": 1024,
+                    "name": "data",
+                    "type": "float*",
+                    "width": 32
+                },
+                {
+                    "cat": "async_mmap",
+                    "name": "ctrl",
+                    "type": "int*",
+                    "width": 32
+                },
+                {
+                    "cat": "istreams",
+                    "name": "in",
+                    "type": "float",
+                    "width": 32
+                },
+                {
+                    "cat": "ostreams",
+                    "name": "out",
+                    "type": "float",
+                    "width": 32
+                },
+                {
+                    "cat": "immap",
+                    "name": "ro",
+                    "type": "const int*",
+                    "width": 32
+                },
+                {
+                    "cat": "ommap",
+                    "name": "wo",
+                    "type": "int*",
+                    "width": 32
+                }
+            ],
+            "target": "hls",
+            "vendor": "xilinx"
+        }
+    },
+    "top": "Top"
+}
