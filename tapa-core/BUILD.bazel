@@ -1,0 +1,62 @@
+"""TAPA core Rust schema crates — Bazel build via Cargo."""
+
+genrule(
+    name = "cargo_build",
+    srcs = glob(
+        ["**/*"],
+        exclude = [
+            "BUILD.bazel",
+            "target/**",
+        ],
+    ),
+    outs = [
+        "cargo/libtapa_protocol.rlib",
+        "cargo/libtapa_task_graph.rlib",
+        "cargo/libtapa_graphir.rlib",
+    ],
+    cmd = """
+set -euo pipefail
+CARGO="$$(command -v cargo || echo "$$(cd "$$(dirname "$(execpath @rules_rust//rust/toolchain:current_cargo_files)")" && pwd)/cargo")"
+RUSTC="$$(command -v rustc || echo "$$(cd "$$(dirname "$(execpath @rules_rust//rust/toolchain:current_rustc_files)")" && pwd)/rustc")"
+export PATH="$$(dirname "$$CARGO"):$$(dirname "$$RUSTC"):$$PATH"
+export CARGO_TARGET_DIR="$(@D)/cargo-target"
+$$CARGO build --manifest-path "$(location Cargo.toml)" --release \
+  -p tapa-protocol -p tapa-task-graph -p tapa-graphir
+
+copy_or_empty() { if [ -f "$$1" ]; then cp "$$1" "$$2"; else : > "$$2"; fi; }
+copy_or_empty "$$CARGO_TARGET_DIR/release/libtapa_protocol.rlib" "$(location cargo/libtapa_protocol.rlib)"
+copy_or_empty "$$CARGO_TARGET_DIR/release/libtapa_task_graph.rlib" "$(location cargo/libtapa_task_graph.rlib)"
+copy_or_empty "$$CARGO_TARGET_DIR/release/libtapa_graphir.rlib" "$(location cargo/libtapa_graphir.rlib)"
+""",
+    tools = [
+        "@rules_rust//rust/toolchain:current_cargo_files",
+        "@rules_rust//rust/toolchain:current_rustc_files",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+genrule(
+    name = "cargo_test",
+    srcs = glob(
+        ["**/*"],
+        exclude = [
+            "BUILD.bazel",
+            "target/**",
+        ],
+    ),
+    outs = ["test_result.txt"],
+    cmd = """
+set -euo pipefail
+CARGO="$$(command -v cargo || echo "$$(cd "$$(dirname "$(execpath @rules_rust//rust/toolchain:current_cargo_files)")" && pwd)/cargo")"
+RUSTC="$$(command -v rustc || echo "$$(cd "$$(dirname "$(execpath @rules_rust//rust/toolchain:current_rustc_files)")" && pwd)/rustc")"
+export PATH="$$(dirname "$$CARGO"):$$(dirname "$$RUSTC"):$$PATH"
+export CARGO_TARGET_DIR="$(@D)/cargo-target"
+$$CARGO test --manifest-path "$(location Cargo.toml)" \
+  -p tapa-protocol -p tapa-task-graph -p tapa-graphir 2>&1 | tee "$(location test_result.txt)"
+""",
+    tools = [
+        "@rules_rust//rust/toolchain:current_cargo_files",
+        "@rules_rust//rust/toolchain:current_rustc_files",
+    ],
+    visibility = ["//visibility:public"],
+)
