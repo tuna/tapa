@@ -4,6 +4,7 @@
 *.pyc
 *.zip
 */target/
+.DS_Store
 .ci-secrets
 .humanize
 .humanize/
