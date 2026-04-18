@@ -1496,6 +1496,20 @@ def xilinx_mod() -> Any:
         pytest.skip(f"tapa_core.xilinx not importable: {exc}")
 
 
+def _xilinx_internal(xilinx_mod: Any) -> Any:
+    """Access the underscore-prefixed internal parity submodule.
+
+    Parity helpers (parse_csynth_xml, parse_utilization_rpt,
+    emit_kernel_xml, parse_device_info direct) live at
+    `tapa_core.xilinx._internal` so the public `tapa_core.xilinx`
+    surface stays limited to the five documented entry points.
+    """
+    internal = getattr(xilinx_mod, "_internal", None)
+    if internal is None:
+        pytest.skip("tapa_core.xilinx._internal missing — rebuild bindings crate")
+    return internal
+
+
 def test_parity_xilinx_device_info(xilinx_mod: Any) -> None:
     """Rust vs Python parse_device_info on a staged platform directory.
 
@@ -1569,41 +1583,74 @@ def test_parity_xilinx_cflags_tail(xilinx_mod: Any) -> None:
 
 
 def _py_parse_csynth(fixture: Path) -> dict[str, str]:
-    """Reference csynth.xml parser using Python's xml.etree.
+    """Extract csynth fields using the XPath queries from `tapa/core.py`.
 
-    Mirrors the handful of fields `tapa_xilinx::parse_csynth_xml` emits
-    so we can assert cross-language equality against the same source.
+    Python has no single structured `parse_csynth_xml` function — the
+    production code base consumes the XML via `xml.etree` with the
+    exact XPath expressions in `tapa.core.Program`:
+      - `./UserAssignments/Part`                              → part
+      - `./PerformanceEstimates/SummaryOfTimingAnalysis/EstimatedClockPeriod`
+                                                              → estimated_clock_period_ns
+      - `./UserAssignments/TargetClockPeriod`                 → target_clock_period_ns
+      - `.//TopModuleName`                                    → top
+    This helper invokes those production XPaths literally so the
+    parity assertion compares Rust output to the same values Python
+    production code reads at runtime.
     """
-    from xml.etree import ElementTree as ET
+    from xml.etree import ElementTree as ET  # production uses xml.etree
 
     tree = ET.parse(fixture)
     root = tree.getroot()
+
+    def _txt(xpath: str) -> str | None:
+        node = root.find(xpath)
+        if node is None or node.text is None:
+            return None
+        return node.text.strip()
+
     out: dict[str, str] = {}
-    mapping = {
-        "top": ("TopModelName", "TopModuleName"),
-        "part": ("Part",),
-        "target_clock_period_ns": ("TargetClockPeriod", "CTargetClockPeriod"),
-        "estimated_clock_period_ns": ("EstimatedClockPeriod",),
-    }
-    for key, candidates in mapping.items():
-        for tag in candidates:
-            match = root.find(f".//{tag}")
-            if match is not None and match.text:
-                out[key] = match.text.strip()
-                break
+    # XPaths copied verbatim from tapa/core.py.
+    if (v := _txt("./UserAssignments/Part")) is not None:
+        out["part"] = v
+    if (
+        v := _txt("./PerformanceEstimates/SummaryOfTimingAnalysis/EstimatedClockPeriod")
+    ) is not None:
+        out["estimated_clock_period_ns"] = v
+    # TargetClockPeriod is read through _get_hls_report_xml() consumers;
+    # both locations (UserAssignments/TargetClockPeriod and
+    # PerformanceEstimates/SummaryOfTimingAnalysis/CTargetClockPeriod)
+    # are canonical in production reports. Prefer the former.
+    for xp in (
+        "./UserAssignments/TargetClockPeriod",
+        "./PerformanceEstimates/SummaryOfTimingAnalysis/CTargetClockPeriod",
+    ):
+        if (v := _txt(xp)) is not None:
+            out["target_clock_period_ns"] = v
+            break
+    if (v := _txt(".//TopModuleName")) is not None or (
+        v := _txt(".//TopModelName")
+    ) is not None:
+        out["top"] = v
     return out
 
 
 def test_parity_xilinx_csynth_report(xilinx_mod: Any) -> None:
     """Rust vs Python csynth.xml parse on the same fixture.
 
-    Field-for-field comparison against a Python xml.etree reference.
+    Python production has no dedicated `parse_csynth_xml`; instead
+    `tapa.core.Program` pulls the same fields via XPath queries on
+    the raw `xml.etree` tree. The helper above invokes those exact
+    XPaths, so this test compares Rust output against the values
+    Python production code reads at runtime (not against a mini
+    in-test parser).
     """
     fixture = _XILINX_TESTDATA / "sample.csynth.xml"
     if not fixture.is_file():
         pytest.skip(f"missing fixture {fixture}")
-    rust_payload = json.loads(xilinx_mod.parse_csynth_xml(fixture.read_bytes()))
+    internal = _xilinx_internal(xilinx_mod)
+    rust_payload = json.loads(internal.parse_csynth_xml(fixture.read_bytes()))
     py_payload = _py_parse_csynth(fixture)
+    assert py_payload, "py parser returned no fields — fixture or XPaths drifted"
     for key, value in py_payload.items():
         assert rust_payload.get(key) == value, (
             f"csynth field {key}: py={value!r} rust={rust_payload.get(key)!r}"
@@ -1611,68 +1658,46 @@ def test_parity_xilinx_csynth_report(xilinx_mod: Any) -> None:
 
 
 def _py_parse_utilization(text: str) -> dict[str, Any]:
-    """Reference utilization.rpt walker in Python.
+    """Parse utilization via the production Python parser.
 
-    Simplified port of `tapa/backend/report/xilinx/rtl/parser.py`: one
-    root instance, hierarchical children by leading-indent depth.
+    Invokes `tapa.backend.report.xilinx.rtl.parser.parse_hierarchical_utilization_report`
+    — the exact function used by production code paths — and
+    normalizes its object graph into a plain dict for comparison.
     """
-    device = ""
-    schema: list[str] = []
-    state = "prolog"
-    root: dict[str, Any] | None = None
-    stack: list[tuple[int, dict[str, Any]]] = []
-    for line in text.splitlines():
-        stripped = line.strip()
-        words = stripped.split()
-        if len(words) == 4 and words[:3] == ["|", "Device", ":"]:  # noqa: PLR2004
-            device = words[3]
-            continue
-        if stripped and all(c in "+-" for c in stripped):
-            state = {"prolog": "header", "header": "body", "body": "done"}.get(
-                state, state
-            )
-            if state == "done":
-                break
-            continue
-        if not stripped:
-            continue
-        inner = stripped.strip("|")
-        parts = inner.split("|")
-        inst_raw = parts[0]
-        cols = [c.strip() for c in parts[1:]]
-        if state == "header":
-            schema = [c.strip() for c in cols]
-            continue
-        if state == "body":
-            depth = (len(inst_raw) - len(inst_raw.lstrip(" "))) // 2
-            instance = inst_raw.strip()
-            node: dict[str, Any] = {
-                "device": device,
-                "instance": instance,
-                "metrics": dict(zip(schema, cols, strict=False)),
-                "children": [],
-            }
-            while stack and stack[-1][0] >= depth:
-                stack.pop()
-            if stack:
-                stack[-1][1]["children"].append(node)
-            else:
-                root = node
-            stack.append((depth, node))
-    assert root is not None
-    return root
+    import io as _io
+
+    from tapa.backend.report.xilinx.rtl.parser import (
+        HierarchicalUtilization,
+        parse_hierarchical_utilization_report,
+    )
+
+    root = parse_hierarchical_utilization_report(_io.StringIO(text))
+
+    def _normalize(node: HierarchicalUtilization) -> dict[str, Any]:
+        schema_keys = list(node.schema)
+        return {
+            "device": node.device,
+            "instance": node.instance,
+            "metrics": {k: node.items[node.schema[k]] for k in schema_keys},
+            "children": [_normalize(c) for c in node.children],
+        }
+
+    return _normalize(root)
 
 
 def test_parity_xilinx_utilization(xilinx_mod: Any) -> None:
     """Rust vs Python utilization.rpt walker on the same fixture.
 
-    Hierarchical, metric-exact equality.
+    Uses the production Python parser
+    (`parse_hierarchical_utilization_report`) to compute the reference
+    tree; the test enforces metric-exact hierarchical equality.
     """
     fixture = _XILINX_TESTDATA / "sample.utilization.rpt"
     if not fixture.is_file():
         pytest.skip(f"missing fixture {fixture}")
     text = fixture.read_text(encoding="utf-8")
-    rust_payload = json.loads(xilinx_mod.parse_utilization_rpt(text))
+    internal = _xilinx_internal(xilinx_mod)
+    rust_payload = json.loads(internal.parse_utilization_rpt(text))
     py_payload = _py_parse_utilization(text)
     assert rust_payload["device"] == py_payload["device"]
     assert rust_payload["instance"] == py_payload["instance"]
@@ -1729,7 +1754,8 @@ def test_parity_xilinx_kernel_xml_direct(xilinx_mod: Any) -> None:
             },
         ],
     }
-    rust_xml = xilinx_mod.emit_kernel_xml(json.dumps(rust_payload))
+    internal = _xilinx_internal(xilinx_mod)
+    rust_xml = internal.emit_kernel_xml(json.dumps(rust_payload))
 
     py_tokens = " ".join(py_xml.split())
     rust_tokens = " ".join(rust_xml.split())

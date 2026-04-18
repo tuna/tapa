@@ -51,6 +51,24 @@ const UNREACHABLE_PATTERNS: &[&str] = &[
     "network is unreachable",
 ];
 
+/// Map an OpenSSH stderr capture to the corresponding `XilinxError`
+/// variant. Classifies via [`classify_ssh_error`] and routes transient
+/// mux failures to `SshMuxLost`, everything else to `SshConnect`.
+/// Callers pass the configured host so the error carries actionable
+/// context.
+#[must_use]
+pub(crate) fn map_ssh_stderr_to_error(host: &str, stderr: &str) -> XilinxError {
+    match classify_ssh_error(stderr) {
+        SshErrorKind::TransientMux => XilinxError::SshMuxLost {
+            detail: stderr.to_string(),
+        },
+        _ => XilinxError::SshConnect {
+            host: host.to_string(),
+            detail: stderr.to_string(),
+        },
+    }
+}
+
 /// Classify raw OpenSSH stderr into an actionable kind.
 #[must_use]
 pub fn classify_ssh_error(stderr: &str) -> SshErrorKind {
@@ -187,6 +205,70 @@ impl SshSession {
         s.control_path = None;
     }
 
+    /// Tear down the control master end-to-end so the next
+    /// `ensure_established()` creates a fresh socket:
+    ///
+    /// 1. Flip the in-process `ready` flag via [`invalidate`].
+    /// 2. Ask OpenSSH to close the master cleanly via
+    ///    `ssh -O exit <target>`. A dead or missing master produces
+    ///    non-zero exit, ignored.
+    /// 3. Best-effort remove every `cm-*` file under the configured
+    ///    control directory — handles the case where OpenSSH left
+    ///    behind a stale socket whose master process is gone.
+    ///
+    /// Called by `RemoteToolRunner` when an in-flight command fails
+    /// with a transient mux error so the retry path observes a
+    /// clean mux state.
+    pub fn reset_mux(&self) {
+        self.invalidate();
+        if !self.cfg.ssh_multiplex {
+            return;
+        }
+        let mut args = self.build_ssh_args();
+        args.push("-O".into());
+        args.push("exit".into());
+        args.push(self.ssh_target());
+        let _ = std::process::Command::new("ssh")
+            .args(&args)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+        let dir = self.control_dir();
+        if let Ok(entries) = std::fs::read_dir(&dir) {
+            for ent in entries.flatten() {
+                let name = ent.file_name();
+                if let Some(s) = name.to_str() {
+                    if s.starts_with("cm-") {
+                        let _ = std::fs::remove_file(ent.path());
+                    }
+                }
+            }
+        }
+    }
+
+    /// Probe whether the control master is currently healthy by
+    /// invoking `ssh -O check <target>`. Returns `true` when the
+    /// master responds to the control command, `false` otherwise.
+    /// Used in tests and optional health gates; production code
+    /// relies on `ensure_established()`'s spawn-based probe.
+    #[must_use]
+    pub fn control_master_alive(&self) -> bool {
+        if !self.cfg.ssh_multiplex {
+            return false;
+        }
+        let mut args = self.build_ssh_args();
+        args.push("-O".into());
+        args.push("check".into());
+        args.push(self.ssh_target());
+        std::process::Command::new("ssh")
+            .args(&args)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    }
+
     /// Establish (or reuse) the ControlMaster socket.
     ///
     /// Idempotent: if the state flag says "ready" and the socket still
@@ -197,14 +279,15 @@ impl SshSession {
     /// surface as `SshMuxLost`; auth / unreachable faults surface as
     /// `SshConnect`.
     pub fn ensure_established(&self) -> Result<()> {
+        // Short-circuit when the in-process flag says the master is up
+        // AND OpenSSH confirms via `ssh -O check`. Missing the second
+        // probe is the Round-1 bug: the `cm-%C` template never resolves
+        // to an on-disk path, so `cp.exists()` was always false and
+        // every call reconnected needlessly.
         {
             let s = self.state.lock().unwrap();
-            if s.ready {
-                if let Some(cp) = &s.control_path {
-                    if cp.exists() {
-                        return Ok(());
-                    }
-                }
+            if s.ready && self.cfg.ssh_multiplex && self.control_master_alive() {
+                return Ok(());
             }
         }
         if self.cfg.ssh_multiplex {
@@ -212,7 +295,10 @@ impl SshSession {
             if let Err(e) = std::fs::create_dir_all(&dir) {
                 return Err(XilinxError::SshConnect {
                     host: self.cfg.host.clone(),
-                    detail: format!("create control dir {}: {e}", dir.display()),
+                    detail: format!(
+                        "create control dir {}: {e}",
+                        dir.display()
+                    ),
                 });
             }
         }
@@ -228,21 +314,14 @@ impl SshSession {
             })?;
         if !out.status.success() {
             let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
-            return Err(match classify_ssh_error(&stderr) {
-                SshErrorKind::TransientMux => XilinxError::SshMuxLost {
-                    detail: stderr,
-                },
-                _ => XilinxError::SshConnect {
-                    host: self.cfg.host.clone(),
-                    detail: stderr,
-                },
-            });
+            return Err(map_ssh_stderr_to_error(&self.cfg.host, &stderr));
         }
         let mut s = self.state.lock().unwrap();
         s.ready = true;
-        if self.cfg.ssh_multiplex {
-            s.control_path = Some(self.control_dir().join("cm-%C"));
-        }
+        // We do not record a literal control-path template here any
+        // more — the live-check is done through `ssh -O check`, which
+        // is the only way to know whether the master is actually up.
+        s.control_path = None;
         Ok(())
     }
 }

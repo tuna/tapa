@@ -1530,7 +1530,10 @@ def test_xilinx_parse_csynth_xml_round_trips_fixture() -> None:
         / "xilinx"
         / "sample.csynth.xml"
     )
-    payload = json.loads(xilinx.parse_csynth_xml(fixture.read_bytes()))
+    # parse_csynth_xml lives under the internal parity submodule; the
+    # public `tapa_core.xilinx` surface is restricted to the five
+    # documented entry points.
+    payload = json.loads(xilinx._internal.parse_csynth_xml(fixture.read_bytes()))  # noqa: SLF001
     assert payload["top"] == "vadd"
     assert payload["part"] == "xcu250-figd2104-2L-e"
 
@@ -1770,6 +1773,108 @@ def test_xilinx_sync_vendor_includes_surfaces_ssh_prefix() -> None:
         raise AssertionError(msg)
     assert caught_msg.startswith("[ssh]"), f"missing [ssh] prefix: {caught_msg}"
     assert "xilinx_settings" in caught_msg, f"unexpected: {caught_msg}"
+
+
+def test_xilinx_public_surface_is_exactly_five_entry_points() -> None:
+    """AC-12 surface lock.
+
+    `tapa_core.xilinx` exposes only the five documented entry points
+    (plus the `_internal` submodule for parity/triage helpers). Extra
+    public names must be justified in the wrapper's doc-comment — this
+    test fails the build before they leak.
+    """
+    from tapa_core import xilinx  # type: ignore[import-not-found]
+
+    public = {
+        n for n in dir(xilinx) if not n.startswith("_") and callable(getattr(xilinx, n))
+    }
+    assert public == {
+        "run_hls_task",
+        "pack_xo",
+        "parse_device_info",
+        "get_cflags",
+        "sync_vendor_includes",
+    }, f"unexpected public callables: {sorted(public)}"
+
+
+def test_xilinx_flag_off_no_rust_import_needed() -> None:
+    """AC-13 unflagged dispatch.
+
+    With the flag unset, Python call sites must not require
+    `tapa_core` to be importable at all. Exercised here by checking
+    `tapa.common.paths._rust_xilinx_enabled()` with the flag cleared.
+    """
+    import os as _os
+
+    try:
+        from tapa.common import paths as _paths  # type: ignore[import-not-found]
+    except ImportError:
+        # Legacy Python tree not on sys.path in this harness; nothing
+        # to exercise here.
+        return
+    prev = _os.environ.pop("TAPA_USE_RUST_XILINX", None)
+    try:
+        assert _paths._rust_xilinx_enabled() is False  # type: ignore[attr-defined]  # noqa: SLF001
+    finally:
+        if prev is not None:
+            _os.environ["TAPA_USE_RUST_XILINX"] = prev
+
+
+def test_xilinx_flag_on_with_broken_bindings_raises_clear_error() -> None:
+    """AC-13 negative flagged dispatch.
+
+    Invokes a **real** flagged dispatcher —
+    `tapa.common.paths.get_tapacc_cflags()` — under
+    `TAPA_USE_RUST_XILINX=1` while `tapa_core` is shadowed with a
+    module that exposes no `xilinx` attribute. The dispatcher must
+    surface the import failure; it must not silently fall back to the
+    legacy Python path.
+    """
+    import importlib as _importlib
+    import os as _os
+    import sys as _sys
+
+    try:
+        from tapa.common import paths as _paths  # type: ignore[import-not-found]
+    except ImportError:
+        return
+    prev_flag = _os.environ.get("TAPA_USE_RUST_XILINX")
+    _os.environ["TAPA_USE_RUST_XILINX"] = "1"
+    # Shadow `tapa_core` with a module whose `xilinx` attribute is
+    # missing so every bindings lookup fails.
+    broken = _sys.modules.get("tapa_core")
+    _sys.modules["tapa_core"] = type(_sys)("tapa_core_stub")
+    _sys.modules.pop("tapa_core.xilinx", None)
+    _importlib.invalidate_caches()
+    # Clear `@functools.cache` memoization so the flagged branch
+    # actually runs instead of returning a previously-cached value.
+    if hasattr(_paths.get_tapacc_cflags, "cache_clear"):
+        _paths.get_tapacc_cflags.cache_clear()
+    caught: Exception | None = None
+    try:
+        try:
+            _paths.get_tapacc_cflags()
+        except (ImportError, AttributeError, ValueError, ModuleNotFoundError) as exc:
+            caught = exc
+    finally:
+        if broken is not None:
+            _sys.modules["tapa_core"] = broken
+        else:
+            _sys.modules.pop("tapa_core", None)
+        if prev_flag is None:
+            _os.environ.pop("TAPA_USE_RUST_XILINX", None)
+        else:
+            _os.environ["TAPA_USE_RUST_XILINX"] = prev_flag
+        # Bust the `@cache` decorator so subsequent tests don't see a
+        # cached fallback result shaped by this fault-injection.
+        if hasattr(_paths.get_tapacc_cflags, "cache_clear"):
+            _paths.get_tapacc_cflags.cache_clear()
+    # The flagged dispatcher must surface the import failure, not
+    # silently fall back to the legacy Python path.
+    assert caught is not None, (
+        "TAPA_USE_RUST_XILINX=1 + broken tapa_core: get_tapacc_cflags"
+        " must raise, not silently fall back to the Python path"
+    )
 
 
 if __name__ == "__main__":

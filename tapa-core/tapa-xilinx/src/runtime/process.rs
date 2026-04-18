@@ -59,6 +59,25 @@ pub struct ToolOutput {
 
 pub trait ToolRunner: Send + Sync {
     fn run(&self, inv: &ToolInvocation) -> Result<ToolOutput>;
+
+    /// Stage a sub-tree from the runner's execution scope back onto
+    /// the local filesystem. Callers pass a `relative_from_cwd`
+    /// path (e.g. `project/<solution>/syn`) and a `local_root`;
+    /// after a successful return the tree lives at
+    /// `local_root.join(relative_from_cwd)` with files in place.
+    ///
+    /// Default: no-op. `LocalToolRunner` already wrote directly
+    /// under `ToolInvocation::cwd`; `MockToolRunner` leaves the
+    /// simulated stage untouched. `RemoteToolRunner` overrides to
+    /// tar-pipe the remote work directory's subtree into
+    /// `local_root`.
+    fn harvest(
+        &self,
+        _relative_from_cwd: &std::path::Path,
+        _local_root: &std::path::Path,
+    ) -> Result<()> {
+        Ok(())
+    }
 }
 
 /// Local subprocess runner with environment allowlisting and optional
@@ -216,6 +235,18 @@ impl MockToolRunner {
             program: program.into(),
             args: Some(args),
             result: Ok(output),
+            downloads: HashMap::new(),
+        });
+    }
+
+    /// Queue a canned error response. Lets producer tests trigger any
+    /// `XilinxError` variant (not just `ToolFailure`) so the AC-17
+    /// coverage check exercises real `ToolRunner::run` returns.
+    pub fn push_err(&self, program: impl Into<String>, err: XilinxError) {
+        self.responses.lock().unwrap().push(Response {
+            program: program.into(),
+            args: None,
+            result: Err(err),
             downloads: HashMap::new(),
         });
     }
