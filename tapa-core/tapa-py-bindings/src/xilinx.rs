@@ -543,7 +543,7 @@ pub fn register(parent: &Bound<'_, PyModule>) -> PyResult<()> {
             std::env::set_var("TAPA_XILINX_BINDINGS_DIR", dir);
         }
     }
-    // Five canonical Python-facing entry points listed in the plan.
+    // Five canonical Python-facing entry points.
     m.add_function(wrap_pyfunction!(run_hls_task, &m)?)?;
     m.add_function(wrap_pyfunction!(pack_xo, &m)?)?;
     m.add_function(wrap_pyfunction!(get_cflags, &m)?)?;

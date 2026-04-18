@@ -1776,7 +1776,7 @@ def test_xilinx_sync_vendor_includes_surfaces_ssh_prefix() -> None:
 
 
 def test_xilinx_public_surface_is_exactly_five_entry_points() -> None:
-    """AC-12 surface lock.
+    """Public surface lock.
 
     `tapa_core.xilinx` exposes only the five documented entry points
     (plus the `_internal` submodule for parity/triage helpers). Extra
@@ -1798,7 +1798,7 @@ def test_xilinx_public_surface_is_exactly_five_entry_points() -> None:
 
 
 def test_xilinx_flag_off_no_rust_import_needed() -> None:
-    """AC-13 unflagged dispatch.
+    """Unflagged dispatch.
 
     With the flag unset, Python call sites must not require
     `tapa_core` to be importable at all. Exercised here by checking
@@ -1821,7 +1821,7 @@ def test_xilinx_flag_off_no_rust_import_needed() -> None:
 
 
 def test_xilinx_flag_on_with_broken_bindings_raises_clear_error() -> None:
-    """AC-13 negative flagged dispatch.
+    """Negative flagged dispatch.
 
     Invokes a **real** flagged dispatcher —
     `tapa.common.paths.get_tapacc_cflags()` — under

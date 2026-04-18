@@ -295,7 +295,7 @@ impl SshSession {
     pub fn ensure_established(&self) -> Result<()> {
         // Short-circuit when the in-process flag says the master is up
         // AND OpenSSH confirms via `ssh -O check`. Missing the second
-        // probe is the Round-1 bug: the `cm-%C` template never resolves
+        // probe addresses a latent bug: the `cm-%C` template never resolves
         // to an on-disk path, so `cp.exists()` was always false and
         // every call reconnected needlessly.
         {

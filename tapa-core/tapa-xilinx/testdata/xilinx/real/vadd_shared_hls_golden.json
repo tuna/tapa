@@ -1,0 +1,63 @@
+{
+    "csynth": {
+        "estimated_clock_period_ns": null,
+        "part": "xcu250-figd2104-2L-e",
+        "target_clock_period_ns": "3.33",
+        "top": "VecAdd"
+    },
+    "description": "Expected HLS output manifest for tests/apps/vadd/vadd.cpp. Driven by the shared-vadd ignored integration test when TAPA_SHARED_VADD_HLS=1 is set. Captures the semantic-parity contract: per-task module + per-task csynth report + normalized csynth fields + normalized content invariants, matching what the Python `tapa.backend.xilinx_hls::RunHls` flow produces against the same shared fixture.",
+    "hdl_content_markers": {
+        "Add.v": [
+            "module Add",
+            "endmodule"
+        ],
+        "Mmap2Stream.v": [
+            "module Mmap2Stream",
+            "endmodule"
+        ],
+        "Stream2Mmap.v": [
+            "module Stream2Mmap",
+            "endmodule"
+        ],
+        "VecAdd.v": [
+            "module VecAdd",
+            "endmodule"
+        ]
+    },
+    "hdl_module_basenames": [
+        "Add.v",
+        "Mmap2Stream.v",
+        "Stream2Mmap.v",
+        "VecAdd.v"
+    ],
+    "per_task_report_basenames": [
+        "Add_csynth.xml",
+        "Mmap2Stream_csynth.xml",
+        "Stream2Mmap_csynth.xml",
+        "VecAdd_csynth.xml"
+    ],
+    "per_task_report_content_markers": {
+        "Add_csynth.xml": [
+            "<TopModuleName>Add</TopModuleName>",
+            "<Part>xcu250-figd2104-2L-e</Part>"
+        ],
+        "Mmap2Stream_csynth.xml": [
+            "<TopModuleName>Mmap2Stream</TopModuleName>",
+            "<Part>xcu250-figd2104-2L-e</Part>"
+        ],
+        "Stream2Mmap_csynth.xml": [
+            "<TopModuleName>Stream2Mmap</TopModuleName>",
+            "<Part>xcu250-figd2104-2L-e</Part>"
+        ],
+        "VecAdd_csynth.xml": [
+            "<TopModuleName>VecAdd</TopModuleName>",
+            "<Part>xcu250-figd2104-2L-e</Part>"
+        ]
+    },
+    "tasks": [
+        "Add",
+        "Mmap2Stream",
+        "Stream2Mmap",
+        "VecAdd"
+    ]
+}
