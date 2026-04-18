@@ -13,6 +13,7 @@ members = [
   "tapa-graphir-export",
   "tapa-xilinx",
   "tapa-py-bindings",
+  "tapa-cli",
 ]
 
 [workspace.lints.clippy]
@@ -72,7 +73,11 @@ unsafe_op_in_unsafe_fn = "deny"
 
 [workspace.dependencies]
 base64 = "0.22"
+clap = { version = "4", features = ["derive", "env", "wrap_help"] }
+env_logger = "0.11"
 flate2 = "1"
+indexmap = { version = "2", features = ["serde"] }
+log = "0.4"
 pyo3 = { version = "0.24", features = ["extension-module"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -89,6 +94,7 @@ tapa-floorplan = { path = "tapa-floorplan" }
 tapa-lowering = { path = "tapa-lowering" }
 tapa-graphir-export = { path = "tapa-graphir-export" }
 tapa-xilinx = { path = "tapa-xilinx" }
+tapa-cli = { path = "tapa-cli" }
 nom = "8"
 regex = "1"
 tempfile = "3"
