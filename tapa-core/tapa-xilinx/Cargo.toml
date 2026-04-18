@@ -14,6 +14,8 @@ tempfile = { workspace = true }
 regex = { workspace = true }
 sha2 = "0.10"
 nom = { workspace = true }
+flate2 = { workspace = true }
+tar = "0.4"
 
 [dev-dependencies]
 tempfile = { workspace = true }

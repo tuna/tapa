@@ -132,3 +132,106 @@ fn control_master_lifecycle() {
         "`ssh -O check` must report alive after auto-restart"
     );
 }
+
+#[test]
+#[ignore = "requires configured remote host"]
+fn control_master_restart_during_transfer() {
+    // Round-4 coverage: prove the in-runner retry path recovers a
+    // command that carries real uploads *and* downloads, not just an
+    // empty `echo`. We stage a source tree + ask the runner to
+    // download the remote mirror back; between the first successful
+    // round-trip and the second we force-tear-down the master so
+    // the second invocation's upload/exec/download must re-establish
+    // transparently.
+    let Some(cfg) = common::has_remote_config() else {
+        eprintln!(
+            "integration_remote: no REMOTE_HOST; skipping transfer test"
+        );
+        return;
+    };
+    let session = Arc::new(SshSession::new(cfg, SshMuxOptions::default()));
+    session
+        .ensure_established()
+        .expect("first ensure_established must succeed");
+    let runner = RemoteToolRunner::new(Arc::clone(&session));
+
+    let stage = tempfile::tempdir().expect("stage dir");
+    let src_dir = stage.path().join("payload");
+    std::fs::create_dir_all(&src_dir).expect("mkdir src");
+    std::fs::write(src_dir.join("hello.txt"), b"tapa-remote-transfer-ok\n")
+        .expect("write src");
+
+    let run = || -> tapa_xilinx::ToolOutput {
+        let mut inv = ToolInvocation::new("cat");
+        inv.cwd = Some(src_dir.clone());
+        inv.uploads.push(src_dir.clone());
+        inv.downloads.push(src_dir.clone());
+        // `cat payload/hello.txt` is resolved relative to the
+        // rewritten cwd, so the runner must have (a) uploaded the
+        // `payload/` tree, (b) rewritten cwd to the rootfs mirror,
+        // and (c) downloaded the mirror back on return.
+        let _ = inv; // silence unused-mut if the compiler complains
+        let mut inv = ToolInvocation::new("cat")
+            .arg(
+                src_dir
+                    .join("hello.txt")
+                    .display()
+                    .to_string(),
+            );
+        inv.cwd = Some(stage.path().to_path_buf());
+        inv.uploads.push(src_dir.clone());
+        inv.downloads.push(src_dir.clone());
+        runner.run(&inv).expect("remote transfer + cat must succeed")
+    };
+
+    // Baseline round-trip.
+    let first = run();
+    assert!(
+        first.stdout.contains("tapa-remote-transfer-ok"),
+        "unexpected stdout: {}",
+        first.stdout
+    );
+
+    // Tear the master down on disk, emulating a cleanup daemon. The
+    // in-runner retry must survive this during upload + exec +
+    // download.
+    let ctrl_dir = session.control_dir();
+    let mut args = Vec::new();
+    args.push("-o".into());
+    args.push("BatchMode=yes".into());
+    args.push("-o".into());
+    args.push(format!("ControlPath={}/cm-%C", ctrl_dir.display()));
+    args.push("-O".into());
+    args.push("exit".into());
+    args.push(format!(
+        "{}@{}",
+        session.config().user,
+        session.config().host
+    ));
+    let _ = std::process::Command::new("ssh")
+        .args(&args)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+    for s in existing_control_sockets(&ctrl_dir) {
+        let _ = std::fs::remove_file(s);
+    }
+    assert!(
+        !session.control_master_alive(),
+        "`ssh -O check` must report dead after teardown"
+    );
+
+    // Second transfer — the `RemoteToolRunner::run` wrapper must
+    // reset the master mid-pipeline and retry. The caller sees a
+    // clean success, not SshMuxLost.
+    let second = run();
+    assert!(
+        second.stdout.contains("tapa-remote-transfer-ok"),
+        "unexpected stdout after mux teardown: {}",
+        second.stdout
+    );
+    assert!(
+        session.control_master_alive(),
+        "master must be re-established after retry"
+    );
+}
