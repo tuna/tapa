@@ -1,14 +1,15 @@
 //! Cross-language `design.json` round-trip parity (AC-1).
 //!
-//! Two directions are exercised:
-//! 1. Python writes `design.json` via `tapa.task.Task.to_topology_dict`
-//!    + `json.dump` (matching `tapa.steps.common.store_design`'s on-disk
-//!    output verbatim). Rust parses via `Design::from_reader`,
-//!    re-emits via `Design::to_writer`, and asserts the output is
-//!    byte-equal to the file Python wrote.
-//! 2. Rust writes `design.json` via `Design::to_writer`. Python parses
-//!    it via `json.load` (matching `tapa.steps.common.load_design`)
-//!    and reconstructs the same `Program.top` and task name set.
+//! Direction 1 (Python -> Rust): Python writes `design.json` via
+//! `tapa.task.Task.to_topology_dict` + `json.dump`, mirroring
+//! `tapa.steps.common.store_design` byte-for-byte. Rust parses with
+//! `Design::from_reader`, re-emits with `Design::to_writer`, and asserts
+//! the output is byte-equal to the file Python wrote.
+//!
+//! Direction 2 (Rust -> Python): Rust writes `design.json` via
+//! `Design::to_writer`. Python parses it with `json.load` (the load path
+//! used by `tapa.steps.common.load_design`) and reconstructs a
+//! `tapa.core.Program` with the same top + task name set.
 //!
 //! Both directions skip cleanly when Python or the `tapa` package is
 //! not importable from the test environment, so this suite is safe to
