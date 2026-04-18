@@ -43,8 +43,10 @@ done
 # environment. Accepts any amount of whitespace around `=` (the Starlark
 # convention in VARS.local.bzl) and strips surrounding single or double
 # quotes from the value. `REMOTE_*`, `XILINX_*`, and `TAPA_*` names
-# are imported; other entries are ignored. Docstrings/comments/blank
-# lines skipped.
+# are imported; other entries are ignored. The `TAPA_*` namespace
+# carries opt-in shared-vadd flags such as `TAPA_SHARED_VADD_HLS`;
+# the retired `TAPA_USE_RUST_*` flag-parity flow no longer exists.
+# Docstrings/comments/blank lines skipped.
 if [[ -n "$vars_local" ]]; then
   echo "tapa_xilinx_integration_test: loading env from $vars_local" >&2
   while IFS= read -r line; do
@@ -136,8 +138,3 @@ else
 fi
 
 cargo test --manifest-path "$MANIFEST" -p tapa-xilinx -- --ignored
-
-# End-to-end regression: `tapa analyze synth pack` on vadd with
-# the flag on and off must produce semantically equal `.xo` archives.
-# The helper skips cleanly when the Xilinx env isn't available.
-bash "$(dirname "$0")/run_xilinx_vadd_flag_parity.sh"

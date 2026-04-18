@@ -11,8 +11,8 @@ _ALL_SRCS = glob(
 )
 
 # -- Build: library crates only (hermetic via rules_rust toolchain) --
-# The py-bindings crate is excluded because it requires Python headers
-# at link time and is not consumed by any Bazel target yet.
+# Builds the workspace's pure-Rust library crates; the legacy PyO3
+# `tapa-py-bindings` crate was retired in commit 9a83ff94 (AC-7).
 
 genrule(
     name = "cargo_build",
@@ -73,26 +73,6 @@ sh_test(
 sh_test(
     name = "tapa_xilinx_integration_test",
     srcs = ["run_xilinx_integration_test.sh"],
-    data = _ALL_SRCS + [
-        "@rules_rust//rust/toolchain:current_cargo_files",
-        "@rules_rust//rust/toolchain:current_rustc_files",
-        "@rules_rust//rust/toolchain:current_rustdoc_files",
-        # Stage the in-tree `tapa` CLI so the flag-parity harness
-        # can resolve it via `RUNFILES_DIR/_main/tapa/tapa` instead
-        # of relying on a (possibly broken) PATH install.
-        "//tapa",
-    ],
-    env = {
-        "CARGO_MANIFEST_DIR": "tapa-core",
-    },
-    tags = ["manual"],
-)
-
-# -- Test: Python smoke tests (manual, requires system cargo + python3) --
-
-sh_test(
-    name = "python_smoke_test",
-    srcs = ["run_python_smoke_test.sh"],
     data = _ALL_SRCS + [
         "@rules_rust//rust/toolchain:current_cargo_files",
         "@rules_rust//rust/toolchain:current_rustc_files",
