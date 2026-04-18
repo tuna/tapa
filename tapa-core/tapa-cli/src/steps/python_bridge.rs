@@ -50,9 +50,11 @@ pub fn require_enabled(step: &str) -> Result<()> {
     }
 }
 
-/// Invoke `python -m tapa.__main__ <globals> <step> <argv>` with the work
-/// directory wired up. Surfaces non-zero exit as
-/// [`CliError::PythonBridge`].
+/// Invoke the Python CLI for `step` with the work directory wired up.
+///
+/// Captures stderr so a failing subprocess surfaces the real diagnostic
+/// via [`CliError::PythonBridge`]; stdout is streamed through
+/// unmodified so progress is visible.
 pub fn run(step: &str, argv: &[String], ctx: &CliContext) -> Result<()> {
     let python = std::env::var("TAPA_PYTHON").unwrap_or_else(|_| "python3".to_string());
     let mut cmd = Command::new(&python);
@@ -64,26 +66,39 @@ pub fn run(step: &str, argv: &[String], ctx: &CliContext) -> Result<()> {
     for a in argv {
         cmd.arg(a);
     }
-    let status = cmd
-        .status()
+    cmd.stderr(std::process::Stdio::piped());
+    let output = cmd
+        .output()
         .map_err(|e| CliError::PythonBridgeLaunch(e.to_string()))?;
-    if status.success() {
+    // Always replay captured stderr so the user sees the real Python
+    // diagnostic — even on success, since some Python tools emit
+    // progress to stderr.
+    if !output.stderr.is_empty() {
+        let _ = std::io::Write::write_all(&mut std::io::stderr(), &output.stderr);
+    }
+    if output.status.success() {
         Ok(())
     } else {
         Err(CliError::PythonBridge {
             step: step.to_string(),
-            code: status.code().unwrap_or(-1),
-            stderr: format!(
-                "subprocess `{python} -m tapa.__main__ {step}` exited {status}"
-            ),
+            code: output.status.code().unwrap_or(-1),
+            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
         })
     }
 }
 
 /// Render the relevant subset of `CliContext` back into the click flag
 /// shape Python expects. Order matches `entry_point`'s click options.
+/// Includes `--verbose`/`--quiet` count flags so bridged steps inherit
+/// the user's verbosity intent.
 fn globals_to_argv(ctx: &CliContext) -> Vec<String> {
     let mut out = Vec::<String>::new();
+    for _ in 0..ctx.verbose {
+        out.push("--verbose".to_string());
+    }
+    for _ in 0..ctx.quiet {
+        out.push("--quiet".to_string());
+    }
     out.push("--work-dir".to_string());
     out.push(ctx.work_dir.display().to_string());
     if let Some(temp) = &ctx.temp_dir {

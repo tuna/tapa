@@ -1,185 +1,209 @@
-//! Hand-rolled chained-subcommand dispatcher.
+//! Chained-subcommand dispatcher.
 //!
-//! click's chained-group model lets `tapa analyze … synth … pack …` run
-//! the three steps in sequence with per-step flags delimited by the next
-//! known subcommand name. clap has no native equivalent. This module:
+//! `tapa analyze … synth … pack …` runs the three steps in order with
+//! per-step flags delimited by the next subcommand name. clap has no
+//! native chained-group derive, so each step's `Args` struct uses
+//! `trailing_var_arg = true` to capture everything after its own flag
+//! surface; the captured suffix is re-parsed here as the next [`Step`].
 //!
-//! 1. Splits an argv slice into `(name, args)` chunks at every known
-//!    subcommand boundary (see [`split`]).
-//! 2. Detects orphan flags (a `--something` ahead of any subcommand) and
-//!    surfaces them as [`CliError::OrphanFlag`].
-//! 3. Iterates the chunks, parsing each via the corresponding step's
-//!    clap parser and invoking its `run`.
+//! This keeps clap responsible for option-arity decisions: a flag value
+//! that happens to equal a subcommand name (e.g. `--top synth`) is
+//! consumed by clap as the flag value, never as a chunk boundary.
 
-#![allow(
-    clippy::similar_names,
-    reason = "clap-derived `args` and the temporary `argv` differ by one letter \
-              but reflect distinct concepts; renaming would harm clarity"
-)]
-#![allow(
-    clippy::wildcard_enum_match_arm,
-    reason = "the dispatch table enumerates every known subcommand explicitly; \
-              the trailing wildcard exists only to convert programmer error \
-              into a typed `UnknownSubcommand`"
-)]
-
-use clap::Parser;
+use clap::{Parser, Subcommand};
 
 use crate::context::CliContext;
 use crate::error::{CliError, Result};
 use crate::steps::{
-    self, analyze, find_clang_binary, floorplan, gcc, meta, pack, synth, version,
+    analyze, find_clang_binary, floorplan, gcc, meta, pack, synth, version,
 };
 
-/// One chunk emitted by [`split`]: the subcommand name and its argv tail.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Chunk<'a> {
-    pub name: &'a str,
-    pub args: Vec<&'a str>,
+/// One link in the chained-step list. Each variant carries its step's
+/// `Args` (flags) plus a `chain_tail` positional that captures any
+/// remaining argv for re-parsing as the next step.
+#[derive(Debug, Subcommand)]
+pub enum Step {
+    /// Analyze TAPA program and store the program description.
+    Analyze {
+        #[command(flatten)]
+        args: analyze::AnalyzeArgs,
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, hide = true)]
+        chain_tail: Vec<String>,
+    },
+    /// Synthesize the TAPA program into RTL.
+    Synth {
+        #[command(flatten)]
+        args: synth::SynthArgs,
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, hide = true)]
+        chain_tail: Vec<String>,
+    },
+    /// Pack the generated RTL into a Xilinx object file.
+    Pack {
+        #[command(flatten)]
+        args: pack::PackArgs,
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, hide = true)]
+        chain_tail: Vec<String>,
+    },
+    /// Floorplan TAPA program and store the program description.
+    Floorplan {
+        #[command(flatten)]
+        args: floorplan::FloorplanArgs,
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, hide = true)]
+        chain_tail: Vec<String>,
+    },
+    /// Generate floorplan solution(s) via `AutoBridge`.
+    #[command(name = "generate-floorplan")]
+    GenerateFloorplan {
+        #[command(flatten)]
+        args: meta::GenerateFloorplanArgs,
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, hide = true)]
+        chain_tail: Vec<String>,
+    },
+    /// Compile a TAPA program (analyze + synth + pack) in one invocation.
+    Compile {
+        #[command(flatten)]
+        args: meta::CompileArgs,
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, hide = true)]
+        chain_tail: Vec<String>,
+    },
+    /// Compile a TAPA program with floorplan design space exploration.
+    #[command(name = "compile-with-floorplan-dse")]
+    CompileWithFloorplanDse {
+        #[command(flatten)]
+        args: meta::CompileWithFloorplanDseArgs,
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, hide = true)]
+        chain_tail: Vec<String>,
+    },
+    /// Invoke g++ with TAPA include and library paths.
+    ///
+    /// Terminal: `g++`'s own `trailing_var_arg` already consumes any
+    /// tokens that follow, so chaining a subsequent subcommand after
+    /// `g++` is not supported — matching click's
+    /// `nargs=-1, type=UNPROCESSED`.
+    #[command(name = "g++")]
+    Gpp {
+        #[command(flatten)]
+        args: gcc::GccArgs,
+    },
+    /// Print TAPA version to standard output.
+    Version {
+        #[command(flatten)]
+        args: version::VersionArgs,
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, hide = true)]
+        chain_tail: Vec<String>,
+    },
+    /// Resolve a clang-family helper and print its absolute path.
+    #[command(name = "find-clang-binary", hide = true)]
+    FindClangBinary {
+        #[command(flatten)]
+        args: find_clang_binary::FindClangBinaryArgs,
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, hide = true)]
+        chain_tail: Vec<String>,
+    },
 }
 
-/// Tokenize the chained argv into per-subcommand chunks.
-///
-/// `argv` is the suffix of the user's command line *after* the global
-/// flags. Returns one [`Chunk`] per subcommand in left-to-right order.
-pub fn split<'a>(argv: &'a [String]) -> Result<Vec<Chunk<'a>>> {
-    let mut chunks: Vec<Chunk<'a>> = Vec::new();
-    let mut i = 0;
-
-    // Reject orphan flags appearing before any subcommand token.
-    while i < argv.len() {
-        let tok = argv[i].as_str();
-        if tok.starts_with('-') {
-            return Err(CliError::OrphanFlag {
-                flag: tok.to_string(),
-                pos: i,
-            });
-        }
-        if !steps::is_known(tok) {
-            return Err(CliError::UnknownSubcommand {
-                token: tok.to_string(),
-                pos: i,
-            });
-        }
-        // Found the first subcommand; start a chunk and consume tokens
-        // until the next known subcommand.
-        let name = tok;
-        i += 1;
-        let mut args: Vec<&'a str> = Vec::new();
-        while i < argv.len() && !boundary(name, argv[i].as_str()) {
-            args.push(argv[i].as_str());
-            i += 1;
-        }
-        chunks.push(Chunk { name, args });
-    }
-
-    Ok(chunks)
+/// Standalone parser for re-parsing the trailing chain.
+#[derive(Debug, Parser)]
+#[command(name = "tapa", disable_help_subcommand = true)]
+struct ChainParser {
+    #[command(subcommand)]
+    step: Step,
 }
 
-/// Return `true` when `token` should terminate the current chunk.
-///
-/// Tokens that look like another subcommand boundary close the chunk —
-/// except for `g++`, whose argv intentionally swallows everything.
-fn boundary(current: &str, token: &str) -> bool {
-    if current == "g++" {
-        return false;
-    }
-    steps::is_known(token)
-}
-
-/// Run the parsed chunks against `ctx`. Each chunk's step is parsed by
-/// clap and dispatched to its `run` handler.
-pub fn dispatch(chunks: Vec<Chunk<'_>>, ctx: &mut CliContext) -> Result<()> {
-    for chunk in chunks {
-        run_one(&chunk, ctx)?;
-    }
-    Ok(())
-}
-
-fn run_one(chunk: &Chunk<'_>, ctx: &mut CliContext) -> Result<()> {
-    // clap expects argv[0] to be the program name.
-    let mut argv = vec![chunk.name];
-    argv.extend(chunk.args.iter().copied());
-
-    match chunk.name {
-        "version" => {
-            let args = parse_chunk::<version::Args>(chunk.name, &argv)?;
-            version::run(&args, ctx)
-        }
-        "g++" => {
-            let args = parse_chunk::<gcc::Args>(chunk.name, &argv)?;
-            gcc::run(&args, ctx)
-        }
-        "find-clang-binary" => {
-            let args = parse_chunk::<find_clang_binary::Args>(chunk.name, &argv)?;
-            find_clang_binary::run(&args, ctx)
-        }
-        "analyze" => {
-            let args = parse_chunk::<analyze::Args>(chunk.name, &argv)?;
-            analyze::run(&args, ctx)
-        }
-        "synth" => {
-            let args = parse_chunk::<synth::Args>(chunk.name, &argv)?;
-            synth::run(&args, ctx)
-        }
-        "pack" => {
-            let args = parse_chunk::<pack::Args>(chunk.name, &argv)?;
-            pack::run(&args, ctx)
-        }
-        "floorplan" => {
-            let args = parse_chunk::<floorplan::FloorplanArgs>(chunk.name, &argv)?;
-            floorplan::run_floorplan(&args, ctx)
-        }
-        "generate-floorplan" => {
-            let args =
-                parse_chunk::<floorplan::GenerateFloorplanArgs>(chunk.name, &argv)?;
-            floorplan::run_generate_floorplan(&args, ctx)
-        }
-        "compile" => {
-            let args = parse_chunk::<meta::CompileArgs>(chunk.name, &argv)?;
-            meta::run_compile(&args, ctx)
-        }
-        "compile-with-floorplan-dse" => {
-            let args =
-                parse_chunk::<meta::CompileWithFloorplanDseArgs>(chunk.name, &argv)?;
-            meta::run_compile_with_floorplan_dse(&args, ctx)
-        }
-        other => Err(CliError::UnknownSubcommand {
-            token: other.to_string(),
-            pos: 0,
-        }),
-    }
-}
-
-fn parse_chunk<T: Parser>(step: &str, argv: &[&str]) -> Result<T> {
-    match T::try_parse_from(argv) {
-        Ok(v) => Ok(v),
-        Err(e) => match e.kind() {
-            clap::error::ErrorKind::DisplayHelp
-            | clap::error::ErrorKind::DisplayVersion => {
-                // `--help` / `--version` are graceful exits, not errors.
-                let _ = e.print();
-                std::process::exit(0);
+impl Step {
+    /// Walk the chained-step linked list. Each step is invoked in
+    /// order; failures short-circuit (matching click's chained-group
+    /// behavior of aborting on the first error).
+    pub fn execute(self, ctx: &mut CliContext) -> Result<()> {
+        let chain_tail = match self {
+            Self::Analyze { args, chain_tail } => {
+                analyze::run(&args, ctx)?;
+                chain_tail
             }
-            _ => Err(CliError::ClapParse {
-                step: step.to_string(),
-                message: e.to_string(),
-            }),
-        },
+            Self::Synth { args, chain_tail } => {
+                synth::run(&args, ctx)?;
+                chain_tail
+            }
+            Self::Pack { args, chain_tail } => {
+                pack::run(&args, ctx)?;
+                chain_tail
+            }
+            Self::Floorplan { args, chain_tail } => {
+                floorplan::run_floorplan(&args, ctx)?;
+                chain_tail
+            }
+            Self::GenerateFloorplan { args, chain_tail } => {
+                meta::run_generate_floorplan_composite(&args, ctx)?;
+                chain_tail
+            }
+            Self::Compile { args, chain_tail } => {
+                meta::run_compile_composite(&args, ctx)?;
+                chain_tail
+            }
+            Self::CompileWithFloorplanDse { args, chain_tail } => {
+                meta::run_compile_with_floorplan_dse_composite(&args, ctx)?;
+                chain_tail
+            }
+            Self::Gpp { args } => {
+                // `g++` is terminal; its argv already swallows the tail.
+                gcc::run(&args, ctx)?;
+                Vec::new()
+            }
+            Self::Version { args, chain_tail } => {
+                version::run(&args, ctx)?;
+                chain_tail
+            }
+            Self::FindClangBinary { args, chain_tail } => {
+                find_clang_binary::run(&args, ctx)?;
+                chain_tail
+            }
+        };
+
+        if chain_tail.is_empty() {
+            Ok(())
+        } else {
+            let next = parse_chain_tail(&chain_tail)?;
+            next.execute(ctx)
+        }
     }
+}
+
+fn parse_chain_tail(tail: &[String]) -> Result<Step> {
+    // ChainParser expects argv[0] to be the program name.
+    let mut argv: Vec<&str> = Vec::with_capacity(tail.len() + 1);
+    argv.push("tapa");
+    argv.extend(tail.iter().map(String::as_str));
+    let parsed = ChainParser::try_parse_from(&argv).map_err(|e| {
+        if matches!(
+            e.kind(),
+            clap::error::ErrorKind::DisplayHelp
+                | clap::error::ErrorKind::DisplayVersion
+        ) {
+            // `--help` / `--version` in the chain tail are graceful
+            // exits handled the same way as the top-level parser.
+            let _ = e.print();
+            std::process::exit(0);
+        }
+        CliError::ClapParse {
+            step: "<chain>".to_string(),
+            message: e.to_string(),
+        }
+    })?;
+    Ok(parsed.step)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::globals::Cli;
 
-    fn argv(parts: &[&str]) -> Vec<String> {
-        parts.iter().map(|s| (*s).to_string()).collect()
+    fn parse(args: &[&str]) -> std::result::Result<Cli, clap::Error> {
+        Cli::try_parse_from(std::iter::once("tapa").chain(args.iter().copied()))
     }
 
     #[test]
-    fn splits_three_step_chain() {
-        let v = argv(&[
+    fn three_step_chain_parses() {
+        let cli = parse(&[
             "analyze",
             "--input",
             "vadd.cpp",
@@ -191,98 +215,144 @@ mod tests {
             "pack",
             "--output",
             "vadd.xo",
-        ]);
-        let chunks = split(&v).unwrap();
-        assert_eq!(chunks.len(), 3);
-        assert_eq!(chunks[0].name, "analyze");
+        ])
+        .expect("3-step chain must parse");
+        match cli.step {
+            Some(Step::Analyze { args, chain_tail }) => {
+                assert_eq!(args.top, "VecAdd");
+                assert_eq!(chain_tail.first().map(String::as_str), Some("synth"));
+            }
+            other => panic!("expected Analyze, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn flag_value_equal_to_subcommand_name_is_not_a_boundary() {
+        // Regression for Codex bug: `--top synth` keeps `synth` as the
+        // value of `--top`, not as a chained subcommand boundary.
+        let cli = parse(&[
+            "analyze",
+            "--input",
+            "a.cpp",
+            "--top",
+            "synth",
+            "pack",
+            "--output",
+            "out.xo",
+        ])
+        .expect("flag value `synth` must not boundary the chunk");
+        match cli.step {
+            Some(Step::Analyze { args, chain_tail }) => {
+                assert_eq!(args.top, "synth");
+                assert_eq!(chain_tail.first().map(String::as_str), Some("pack"));
+            }
+            other => panic!("expected Analyze, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn global_flag_value_equal_to_subcommand_name_is_not_a_boundary() {
+        let cli = parse(&["--work-dir", "synth", "version"])
+            .expect("global `--work-dir synth` must not boundary on subcommand name");
         assert_eq!(
-            chunks[0].args,
-            vec!["--input", "vadd.cpp", "--top", "VecAdd"]
+            cli.globals.work_dir.display().to_string(),
+            "synth",
+            "the literal `synth` must be captured as the work-dir value",
         );
-        assert_eq!(chunks[1].name, "synth");
-        assert_eq!(chunks[1].args, vec!["--platform", "xilinx_u250"]);
-        assert_eq!(chunks[2].name, "pack");
-        assert_eq!(chunks[2].args, vec!["--output", "vadd.xo"]);
+        assert!(matches!(cli.step, Some(Step::Version { .. })));
     }
 
     #[test]
-    fn unknown_first_token_is_typed_error() {
-        let v = argv(&["bogus", "--flag"]);
-        let err = split(&v).unwrap_err();
-        match err {
-            CliError::UnknownSubcommand { token, pos } => {
-                assert_eq!(token, "bogus");
-                assert_eq!(pos, 0);
-            }
-            other => panic!("expected UnknownSubcommand, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn stray_token_after_step_surfaces_via_clap() {
-        // `bogus` after `analyze --top T` is absorbed into the analyze
-        // chunk; clap will reject it as an unrecognized argument with a
-        // diagnostic that names the offending token.
-        let v = argv(&["analyze", "--top", "T", "bogus"]);
-        let chunks = split(&v).unwrap();
-        assert_eq!(chunks.len(), 1);
-        assert!(chunks[0].args.contains(&"bogus"));
-    }
-
-    #[test]
-    fn orphan_flag_errors_with_position() {
-        let v = argv(&["--top", "T", "analyze"]);
-        let err = split(&v).unwrap_err();
-        match err {
-            CliError::OrphanFlag { flag, pos } => {
-                assert_eq!(flag, "--top");
-                assert_eq!(pos, 0);
-            }
-            other => panic!("expected OrphanFlag, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn gcc_swallows_all_trailing_tokens_including_subcommand_lookalikes() {
-        // `g++` must not let `version` reset the chunk boundary.
-        let v = argv(&[
-            "g++", "-O2", "main.cpp", "-o", "main", "version",
-        ]);
-        let chunks = split(&v).unwrap();
-        assert_eq!(chunks.len(), 1);
-        assert_eq!(chunks[0].name, "g++");
-        assert_eq!(chunks[0].args.last(), Some(&"version"));
-    }
-
-    #[test]
-    fn empty_argv_is_ok() {
-        let v: Vec<String> = Vec::new();
-        let chunks = split(&v).unwrap();
-        assert!(chunks.is_empty());
-    }
-
-    #[test]
-    fn analyze_only_chain() {
-        let v = argv(&["analyze", "--input", "a.cpp", "--top", "T"]);
-        let chunks = split(&v).unwrap();
-        assert_eq!(chunks.len(), 1);
-        assert_eq!(chunks[0].name, "analyze");
+    fn unknown_first_token_errors() {
+        let err = parse(&["bogus-subcommand"]).expect_err("unknown subcommand fails");
+        assert!(
+            err.to_string().contains("unrecognized")
+                || err.to_string().contains("invalid")
+                || err.to_string().contains("unexpected"),
+            "error must point at the bad token; got `{err}`",
+        );
     }
 
     #[test]
     fn analyze_synth_chain() {
-        let v = argv(&[
+        let cli = parse(&[
             "analyze", "--input", "a.cpp", "--top", "T", "synth", "--platform", "p",
-        ]);
-        let chunks = split(&v).unwrap();
-        assert_eq!(chunks.len(), 2);
+        ])
+        .unwrap();
+        match cli.step {
+            Some(Step::Analyze { chain_tail, .. }) => {
+                assert_eq!(chain_tail, vec!["synth", "--platform", "p"]);
+            }
+            other => panic!("expected Analyze, got {other:?}"),
+        }
     }
 
     #[test]
-    fn compile_chain_one_subcommand() {
-        let v = argv(&["compile", "--input", "a.cpp", "--top", "T"]);
-        let chunks = split(&v).unwrap();
-        assert_eq!(chunks.len(), 1);
-        assert_eq!(chunks[0].name, "compile");
+    fn version_subcommand_alone() {
+        let cli = parse(&["version"]).unwrap();
+        assert!(matches!(cli.step, Some(Step::Version { .. })));
+    }
+
+    #[test]
+    fn no_subcommand_yields_none() {
+        let cli = parse(&[]).unwrap();
+        assert!(cli.step.is_none());
+    }
+
+    #[test]
+    fn gcc_swallows_following_subcommand_tokens() {
+        let cli = parse(&["g++", "-O2", "main.cpp", "-o", "main", "version"]).unwrap();
+        match cli.step {
+            Some(Step::Gpp { args }) => {
+                assert!(args.argv.contains(&"version".to_string()));
+            }
+            other => panic!("expected Gpp, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn compile_exposes_unioned_flag_surface() {
+        let cli = parse(&[
+            "compile",
+            "--input",
+            "a.cpp",
+            "--top",
+            "T",
+            "--platform",
+            "p",
+            "--output",
+            "out.xo",
+        ])
+        .expect("compile must accept the unioned flag surface");
+        match cli.step {
+            Some(Step::Compile { args, .. }) => {
+                assert_eq!(args.analyze.top, "T");
+                assert_eq!(args.synth.platform.as_deref(), Some("p"));
+                assert_eq!(
+                    args.pack.output.as_ref().map(|p| p.display().to_string()),
+                    Some("out.xo".to_string()),
+                );
+            }
+            other => panic!("expected Compile, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn generate_floorplan_exposes_unioned_flag_surface() {
+        let cli = parse(&[
+            "generate-floorplan",
+            "--input",
+            "a.cpp",
+            "--top",
+            "T",
+            "--platform",
+            "p",
+            "--device-config",
+            "dev.json",
+            "--floorplan-config",
+            "fp.json",
+        ])
+        .expect("generate-floorplan must accept analyze+synth+autobridge flags");
+        assert!(matches!(cli.step, Some(Step::GenerateFloorplan { .. })));
     }
 }

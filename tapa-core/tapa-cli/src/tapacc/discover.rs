@@ -9,6 +9,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
 
+use regex::Regex;
+
 use crate::error::{CliError, Result};
 
 /// Mirror of `tapa/common/paths.py::POTENTIAL_PATHS`. Order is preserved so
@@ -105,6 +107,15 @@ pub fn find_clang_binary(name: &str) -> Result<PathBuf> {
         .unwrap_or(path))
 }
 
+/// Regex matching Python's `re.compile(R"version (\d+)(\.\d+)*")` from
+/// `tapa/steps/analyze.py::find_clang_binary`. Requires the literal
+/// `"version "` followed by at least one numeric segment so unparseable
+/// `--version` output (e.g. plain "ok") fails fast.
+fn version_regex() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"version (\d+)(\.\d+)*").expect("regex compile"))
+}
+
 fn verify_clang_version(path: &Path) -> Result<()> {
     let output = Command::new(path)
         .arg("--version")
@@ -120,12 +131,14 @@ fn verify_clang_version(path: &Path) -> Result<()> {
         });
     }
     let stdout = String::from_utf8_lossy(&output.stdout);
-    if stdout.contains("version") {
+    if version_regex().is_match(&stdout) {
         Ok(())
     } else {
         Err(CliError::TapaccNotExecutable {
             path: path.to_path_buf(),
-            reason: format!("`--version` output unparseable: {stdout}"),
+            reason: format!(
+                "`--version` output does not match `version (\\d+)(\\.\\d+)*`: {stdout}"
+            ),
         })
     }
 }
@@ -181,5 +194,36 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let err = find_resource_from("does-not-exist", dir.path()).unwrap_err();
         assert!(matches!(err, CliError::TapaccNotFound { .. }));
+    }
+
+    #[test]
+    fn version_regex_matches_clang_output() {
+        assert!(version_regex().is_match("clang version 18.1.0\n"));
+        assert!(version_regex().is_match("Apple clang version 16.0.0 (clang-1600.0.26.6)"));
+    }
+
+    #[test]
+    fn version_regex_rejects_unparseable_output() {
+        // AC-4 negative test: a binary that prints `--version` text
+        // without a parseable `version <num>` token must fail.
+        assert!(!version_regex().is_match(""));
+        assert!(!version_regex().is_match("hello world"));
+        assert!(!version_regex().is_match("version foo"));
+        assert!(!version_regex().is_match("version v18"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn non_executable_binary_yields_typed_error() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("tapacc/tapacc");
+        std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+        // Write a non-executable file (mode 0644).
+        std::fs::write(&target, b"not a real binary").unwrap();
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o644))
+            .unwrap();
+        let err = verify_clang_version(&target).unwrap_err();
+        assert!(matches!(err, CliError::TapaccNotExecutable { .. }));
     }
 }

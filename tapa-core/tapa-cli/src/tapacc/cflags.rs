@@ -95,6 +95,39 @@ pub fn get_system_cflags() -> Vec<String> {
     flags
 }
 
+/// LDFLAGS for linking TAPA programs.
+///
+/// Mirrors `tapa/common/paths.py::get_tapa_ldflags`: derives `-L` and
+/// `-Wl,-rpath` from `find_resource("fpga-runtime-lib")` and
+/// `find_resource("tapa-lib-lib")` (deduped), then appends the link
+/// list verbatim. Bazel external runfiles libraries (Python's
+/// `find_external_lib_in_runfiles`) are intentionally out of scope —
+/// the Rust binary is invoked outside of `bazel run`.
+pub fn get_tapa_ldflags() -> Vec<String> {
+    use std::collections::BTreeSet;
+    let mut libs: BTreeSet<PathBuf> = BTreeSet::new();
+    if let Ok(p) = find_resource("fpga-runtime-lib") {
+        libs.insert(p);
+    }
+    if let Ok(p) = find_resource("tapa-lib-lib") {
+        libs.insert(p);
+    }
+    let mut out = Vec::<String>::new();
+    for lib in &libs {
+        out.push(format!("-Wl,-rpath,{}", lib.display()));
+    }
+    for lib in &libs {
+        out.push(format!("-L{}", lib.display()));
+    }
+    for name in [
+        "tapa", "frt_cpp", "context", "thread", "frt", "asio", "filesystem", "glog",
+        "gflags", "OpenCL", "minizip_ng", "tinyxml2", "z", "yaml-cpp", "stdc++fs",
+    ] {
+        out.push(format!("-l{name}"));
+    }
+    out
+}
+
 fn vendor_include_paths(include_gcc: bool) -> Vec<PathBuf> {
     let mut paths = Vec::new();
     let mut hls_root: Option<PathBuf> = None;

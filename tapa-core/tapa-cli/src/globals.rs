@@ -5,7 +5,25 @@ use std::path::PathBuf;
 
 use clap::Parser;
 
+use crate::chain::Step;
 use crate::options::DEFAULT_CLANG_FORMAT_QUOTA;
+use crate::steps::version::VERSION;
+
+/// Top-level CLI: globals + an optional first chained step.
+#[derive(Debug, Parser)]
+#[command(
+    name = "tapa",
+    about = "The TAPA compiler.",
+    version = VERSION,
+    disable_help_subcommand = true,
+    after_help = SUBCOMMAND_HELP,
+)]
+pub struct Cli {
+    #[command(flatten)]
+    pub globals: GlobalArgs,
+    #[command(subcommand)]
+    pub step: Option<Step>,
+}
 
 /// Global flags accepted before any subcommand. Field names map 1:1 to the
 /// click options on `tapa/__main__.py::entry_point`.
@@ -13,7 +31,7 @@ use crate::options::DEFAULT_CLANG_FORMAT_QUOTA;
 #[command(
     name = "tapa",
     about = "The TAPA compiler.",
-    version,
+    version = VERSION,
     disable_help_subcommand = true,
     after_help = SUBCOMMAND_HELP,
 )]

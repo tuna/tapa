@@ -28,6 +28,9 @@ pub struct CliContext {
     pub options: Options,
     pub remote: RemoteConfigArgs,
     pub flow: RefCell<FlowState>,
+    /// Verbosity counts forwarded to bridged Python invocations.
+    pub verbose: u8,
+    pub quiet: u8,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -59,6 +62,8 @@ impl CliContext {
             options,
             remote,
             flow: RefCell::new(FlowState::default()),
+            verbose: globals.verbose,
+            quiet: globals.quiet,
         }
     }
 
