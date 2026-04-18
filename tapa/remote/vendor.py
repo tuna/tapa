@@ -135,28 +135,6 @@ def sync_remote_vendor_includes(config: RemoteConfig) -> str | None:
 
     Returns the local path mimicking XILINX_HLS, or None on failure.
     """
-    if os.environ.get("TAPA_USE_RUST_XILINX") == "1":
-        import importlib  # noqa: PLC0415
-        import json  # noqa: PLC0415
-
-        xilinx_mod = importlib.import_module("tapa_core.xilinx")
-        cfg_json = json.dumps(
-            {
-                "host": config.host,
-                "user": config.user,
-                "port": int(config.port),
-                "key_file": config.key_file,
-                "xilinx_settings": config.xilinx_settings,
-                "work_dir": getattr(config, "work_dir", "/tmp/tapa-remote"),
-                "ssh_control_dir": getattr(config, "ssh_control_dir", None),
-                "ssh_control_persist": getattr(config, "ssh_control_persist", "30m"),
-                "ssh_multiplex": bool(getattr(config, "ssh_multiplex", True)),
-            }
-        )
-        payload = json.loads(xilinx_mod.sync_vendor_includes(cfg_json))
-        _patch_vendor_headers_for_macos(payload["cache_dir"])
-        return payload["cache_dir"]
-
     if not config.xilinx_settings:
         _logger.info("No xilinx_settings configured; skipping vendor header sync")
         return None

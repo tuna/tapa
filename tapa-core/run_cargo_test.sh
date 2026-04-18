@@ -28,4 +28,5 @@ exec cargo test --manifest-path "$MANIFEST" \
   -p tapa-lowering \
   -p tapa-graphir-export \
   -p tapa-xilinx \
-  -p tapa-py-bindings
+  -p tapa-py-bindings \
+  -p tapa-cli
