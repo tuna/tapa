@@ -1,16 +1,26 @@
 [package]
-name = "tapa-task-graph"
+name = "tapa-cli"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "tapa"
+path = "src/main.rs"
+
 [dependencies]
+clap = { workspace = true }
+env_logger = { workspace = true }
 indexmap = { workspace = true }
+log = { workspace = true }
 serde = { workspace = true }
-# `preserve_order` keeps `serde_json::Value` map keys in insertion order so
-# `Design::to_writer` matches the byte sequence Python's `json.dump` emits.
 serde_json = { workspace = true, features = ["preserve_order"] }
 serde_path_to_error = { workspace = true }
+tapa-task-graph = { workspace = true }
+tempfile = { workspace = true }
 thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
 
 [lints]
 workspace = true
