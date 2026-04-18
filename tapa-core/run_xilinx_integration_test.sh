@@ -40,33 +40,47 @@ for candidate in \
 done
 
 # Parse Starlark-like `NAME = "value"` assignments into the
-# environment. Only REMOTE_* / XILINX_* names are imported; other
-# entries are ignored.
+# environment. Accepts any amount of whitespace around `=` (the Starlark
+# convention in VARS.local.bzl) and strips surrounding single or double
+# quotes from the value. Only REMOTE_* / XILINX_* names are imported;
+# other entries are ignored. Docstrings/comments/blank lines skipped.
 if [[ -n "$vars_local" ]]; then
   echo "tapa_xilinx_integration_test: loading env from $vars_local" >&2
   while IFS= read -r line; do
-    # Strip comments and leading whitespace.
-    trimmed="${line%%#*}"
-    trimmed="${trimmed## }"
-    case "$trimmed" in
-      REMOTE_*\=*|XILINX_*\=*)
-        key="${trimmed%%=*}"
-        key="${key%% }"
-        # Strip surrounding quotes from the value.
-        val="${trimmed#*=}"
-        val="${val## }"
-        val="${val%\"}"
-        val="${val#\"}"
-        val="${val%\'}"
-        val="${val#\'}"
-        # Expand leading ~/ for SSH key paths.
-        if [[ "$val" == "~/"* ]]; then
-          val="${HOME}/${val#~/}"
-        fi
-        export "$key=$val"
-        ;;
-      *) ;;
+    # Drop inline comments (anything after the first `#`).
+    line="${line%%#*}"
+    # Trim leading + trailing whitespace (spaces and tabs).
+    line="${line#"${line%%[![:space:]]*}"}"
+    line="${line%"${line##*[![:space:]]}"}"
+    # Skip blank lines and lines without an `=` (e.g. docstrings).
+    [[ -z "$line" ]] && continue
+    [[ "$line" != *=* ]] && continue
+
+    key="${line%%=*}"
+    val="${line#*=}"
+    # Trim whitespace around key and value.
+    key="${key#"${key%%[![:space:]]*}"}"
+    key="${key%"${key##*[![:space:]]}"}"
+    val="${val#"${val%%[![:space:]]*}"}"
+    val="${val%"${val##*[![:space:]]}"}"
+    # Require an uppercase REMOTE_* / XILINX_* name (skip fields like
+    # `foo = 3` inside a table or other unrelated Starlark).
+    case "$key" in
+      REMOTE_*|XILINX_*) ;;
+      *) continue ;;
     esac
+    # Strip surrounding quotes from the value.
+    case "$val" in
+      \"*\") val="${val#\"}"; val="${val%\"}" ;;
+      \'*\') val="${val#\'}"; val="${val%\'}" ;;
+    esac
+    # Expand leading `~/` for SSH key paths. Use `${val:2}` rather
+    # than `${val#~/}` — bash performs tilde expansion inside parameter
+    # expansion patterns, which breaks the literal match.
+    if [[ "$val" == "~/"* ]]; then
+      val="${HOME}/${val:2}"
+    fi
+    export "$key=$val"
   done < "$vars_local"
 fi
 
@@ -75,4 +89,9 @@ if [[ -z "${XILINX_HLS:-}" ]] && [[ -z "${REMOTE_HOST:-}" ]]; then
   exit 0
 fi
 
-exec cargo test --manifest-path "$MANIFEST" -p tapa-xilinx -- --ignored
+cargo test --manifest-path "$MANIFEST" -p tapa-xilinx -- --ignored
+
+# AC-13 end-to-end regression: `tapa analyze synth pack` on vadd with
+# the flag on and off must produce semantically equal `.xo` archives.
+# The helper skips cleanly when the Xilinx env isn't available.
+bash "$(dirname "$0")/run_xilinx_vadd_flag_parity.sh"

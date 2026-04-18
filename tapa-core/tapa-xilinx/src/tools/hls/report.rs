@@ -44,7 +44,14 @@ pub fn parse_csynth_xml(bytes: &[u8]) -> Result<CsynthReport> {
 
     loop {
         match reader.read_event_into(&mut buf) {
-            Err(e) => return Err(XilinxError::Xml(e)),
+            // Route malformed csynth.xml to the HLS-scoped variant so
+            // the AC-5 negative contract (truncated report surfaces as
+            // `HlsReportParse`) holds end-to-end.
+            Err(e) => {
+                return Err(XilinxError::HlsReportParse(format!(
+                    "csynth.xml parse failed: {e}"
+                )));
+            }
             Ok(Event::Eof) => break,
             Ok(Event::Start(ref e)) => {
                 let name = String::from_utf8_lossy(e.name().as_ref()).into_owned();
@@ -52,7 +59,11 @@ pub fn parse_csynth_xml(bytes: &[u8]) -> Result<CsynthReport> {
                 current_text.clear();
             }
             Ok(Event::Text(t)) => {
-                let s = t.unescape().map_err(XilinxError::Xml)?.into_owned();
+                let s = t.unescape().map_err(|e| {
+                    XilinxError::HlsReportParse(format!(
+                        "csynth.xml text unescape failed: {e}"
+                    ))
+                })?.into_owned();
                 current_text.push_str(&s);
             }
             Ok(Event::End(_)) => {

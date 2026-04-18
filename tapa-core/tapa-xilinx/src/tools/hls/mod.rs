@@ -171,41 +171,120 @@ fn is_transient(job: &HlsJob, stdout: &str, stderr: &str) -> bool {
     }
 }
 
-/// One Vitis HLS invocation — raw ToolOutput form. Used by
-/// `run_hls_with_retry` so stdout and stderr stay separate for the
-/// Python-equivalent retry predicate.
-pub fn run_hls_raw(runner: &dyn ToolRunner, job: &HlsJob) -> Result<ToolOutput> {
+/// Run a single Vitis HLS invocation inside `stage_dir`. The runner
+/// executes with cwd set to `stage_dir`; after the tool exits, the
+/// `project/<solution>/syn/` subtree lives at
+/// `stage_dir/project/<solution>/syn` on local runners or inside
+/// the runner's remote work dir on remote runners. The caller is
+/// responsible for invoking `runner.harvest` before touching the
+/// artifacts on disk.
+fn run_hls_attempt(
+    runner: &dyn ToolRunner,
+    job: &HlsJob,
+    stage_dir: &std::path::Path,
+) -> Result<ToolOutput> {
     let tcl = build_hls_tcl(job);
-    let tmp = tempfile::NamedTempFile::new()?;
-    std::fs::write(tmp.path(), tcl.as_bytes())?;
+    let tcl_path = stage_dir.join("run_hls.tcl");
+    std::fs::write(&tcl_path, tcl.as_bytes())?;
     let mut inv = ToolInvocation::new("vitis_hls")
         .arg("-f")
-        .arg(tmp.path().display().to_string());
-    inv.uploads.push(tmp.path().to_path_buf());
+        .arg(tcl_path.display().to_string());
+    inv.cwd = Some(stage_dir.to_path_buf());
+    inv.uploads.push(tcl_path);
     inv.uploads.push(job.cpp_source.clone());
     inv.uploads.extend(job.uploads.iter().cloned());
-    inv.downloads.push(job.reports_out_dir.clone());
-    inv.downloads.push(job.hdl_out_dir.clone());
     inv.downloads.extend(job.downloads.iter().cloned());
     runner.run(&inv)
 }
 
-/// One Vitis HLS invocation. Returns the parsed report + HDL output
-/// on success and a typed `XilinxError::ToolFailure` on non-zero
-/// exit.
-pub fn run_hls(runner: &dyn ToolRunner, job: &HlsJob) -> Result<HlsOutput> {
-    let out = run_hls_raw(runner, job)?;
-    if out.exit_code != 0 {
-        return Err(XilinxError::ToolFailure {
-            program: "vitis_hls".into(),
-            code: out.exit_code,
-            stderr: out.stderr,
-        });
+/// One Vitis HLS invocation — raw `ToolOutput` form. Kept as a
+/// compatibility shim for callers that only need the raw exit
+/// status (e.g. the per-task retry predicate in Python-equivalent
+/// harnesses); it creates a throw-away staging dir and does *not*
+/// harvest the syn subtree. Prefer [`run_hls`] or
+/// [`run_hls_with_retry`] in production code.
+pub fn run_hls_raw(runner: &dyn ToolRunner, job: &HlsJob) -> Result<ToolOutput> {
+    let stage = tempfile::tempdir()?;
+    run_hls_attempt(runner, job, stage.path())
+}
+
+/// Name of the HLS solution subdirectory — mirrors the TCL template's
+/// `open_solution "<solution>"` value.
+fn solution_name(job: &HlsJob) -> String {
+    if job.solution_name.is_empty() {
+        job.top_name.clone()
+    } else {
+        job.solution_name.clone()
     }
+}
+
+/// Copy every regular file under `src` into `dest`, recreating the
+/// directory layout as it goes. Does nothing if `src` does not exist.
+fn copy_tree(src: &std::path::Path, dest: &std::path::Path) -> std::io::Result<()> {
+    if !src.is_dir() {
+        return Ok(());
+    }
+    for ent in std::fs::read_dir(src)? {
+        let ent = ent?;
+        let sub_src = ent.path();
+        let file_type = ent.file_type()?;
+        let sub_dest = dest.join(ent.file_name());
+        if file_type.is_dir() {
+            std::fs::create_dir_all(&sub_dest)?;
+            copy_tree(&sub_src, &sub_dest)?;
+        } else if file_type.is_file() {
+            if let Some(parent) = sub_dest.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::copy(&sub_src, &sub_dest)?;
+        }
+    }
+    Ok(())
+}
+
+fn harvest_and_stage(
+    runner: &dyn ToolRunner,
+    job: &HlsJob,
+    stage_dir: &std::path::Path,
+    out: ToolOutput,
+) -> Result<HlsOutput> {
+    // Ask the runner to bring the HLS project's syn subtree onto the
+    // local filesystem if it isn't already (no-op for LocalToolRunner).
+    let solution = solution_name(job);
+    let syn_rel: PathBuf =
+        ["project", &solution, "syn"].iter().collect();
+    runner.harvest(&syn_rel, stage_dir)?;
+
+    // Copy the real HLS artifacts into the caller-visible output dirs.
+    let syn_abs = stage_dir.join(&syn_rel);
+    std::fs::create_dir_all(&job.reports_out_dir)?;
+    std::fs::create_dir_all(&job.hdl_out_dir)?;
+    copy_tree(&syn_abs.join("report"), &job.reports_out_dir).map_err(|e| {
+        XilinxError::HlsReportParse(format!(
+            "stage reports {} → {}: {e}",
+            syn_abs.join("report").display(),
+            job.reports_out_dir.display()
+        ))
+    })?;
+    copy_tree(&syn_abs.join("verilog"), &job.hdl_out_dir).map_err(|e| {
+        XilinxError::HlsReportParse(format!(
+            "stage verilog {} → {}: {e}",
+            syn_abs.join("verilog").display(),
+            job.hdl_out_dir.display()
+        ))
+    })?;
 
     let report_xml = job
         .reports_out_dir
+        .join(format!("{}_csynth.xml", job.top_name));
+    let fallback = job
+        .reports_out_dir
         .join(format!("{}.csynth.xml", job.top_name));
+    let report_xml = if report_xml.is_file() {
+        report_xml
+    } else {
+        fallback
+    };
     let bytes = std::fs::read(&report_xml).map_err(|_| {
         XilinxError::HlsReportParse(format!(
             "missing csynth.xml at {}",
@@ -233,6 +312,24 @@ pub fn run_hls(runner: &dyn ToolRunner, job: &HlsJob) -> Result<HlsOutput> {
         stdout: out.stdout,
         stderr: out.stderr,
     })
+}
+
+/// One Vitis HLS invocation. Returns the parsed report + HDL output
+/// on success and a typed `XilinxError::ToolFailure` on non-zero
+/// exit. The HLS project tree lives under a dedicated stage dir that
+/// is cleaned up on return; only the requested reports/HDL paths
+/// survive.
+pub fn run_hls(runner: &dyn ToolRunner, job: &HlsJob) -> Result<HlsOutput> {
+    let stage = tempfile::tempdir()?;
+    let out = run_hls_attempt(runner, job, stage.path())?;
+    if out.exit_code != 0 {
+        return Err(XilinxError::ToolFailure {
+            program: "vitis_hls".into(),
+            code: out.exit_code,
+            stderr: out.stderr,
+        });
+    }
+    harvest_and_stage(runner, job, stage.path(), out)
 }
 
 fn collect_files(dir: &std::path::Path) -> Result<Vec<PathBuf>> {
@@ -250,38 +347,6 @@ fn collect_files(dir: &std::path::Path) -> Result<Vec<PathBuf>> {
     Ok(out)
 }
 
-fn finalize_success(job: &HlsJob, out: ToolOutput) -> Result<HlsOutput> {
-    let report_xml = job
-        .reports_out_dir
-        .join(format!("{}.csynth.xml", job.top_name));
-    let bytes = std::fs::read(&report_xml).map_err(|_| {
-        XilinxError::HlsReportParse(format!(
-            "missing csynth.xml at {}",
-            report_xml.display()
-        ))
-    })?;
-    let csynth = parse_csynth_xml(&bytes)?;
-    let verilog_files = collect_files(&job.hdl_out_dir)?;
-    if verilog_files.is_empty() {
-        return Err(XilinxError::ToolFailure {
-            program: "vitis_hls".into(),
-            code: 0,
-            stderr: format!(
-                "no HDL output produced in {}",
-                job.hdl_out_dir.display()
-            ),
-        });
-    }
-    let report_paths = collect_files(&job.reports_out_dir)?;
-    Ok(HlsOutput {
-        csynth,
-        verilog_files,
-        report_paths,
-        stdout: out.stdout,
-        stderr: out.stderr,
-    })
-}
-
 /// Bounded retry wrapper keyed on the transient-failure predicate. The
 /// default budget is 3 attempts; callers can override per job via
 /// `transient_patterns`.
@@ -292,9 +357,10 @@ pub fn run_hls_with_retry(
 ) -> Result<HlsOutput> {
     let max_attempts = max_attempts.max(1);
     for _ in 0..max_attempts {
-        let out = run_hls_raw(runner, job)?;
+        let stage = tempfile::tempdir()?;
+        let out = run_hls_attempt(runner, job, stage.path())?;
         if out.exit_code == 0 {
-            return finalize_success(job, out);
+            return harvest_and_stage(runner, job, stage.path(), out);
         }
         // Python keys the retry decision off stdout alone; stderr is
         // preserved but intentionally ignored by the default predicate.

@@ -26,23 +26,25 @@
 //! - `sync_vendor_includes(config_json) -> str` — one-shot vendor
 //!   header sync.
 //!
-//! Additional Python-facing functions beyond the five canonical
-//! entry points are restricted to justified helpers:
+//! The public `tapa_core.xilinx` module exposes **only** those five
+//! entry points — `dir(tapa_core.xilinx)` lists exactly those names
+//! (plus the `_internal` submodule described below).
 //!
-//! - `parse_csynth_xml(bytes) -> str` and
-//!   `parse_utilization_rpt(text) -> str` — pure-data aliases that
-//!   the cross-language parity suite drives directly. They replace
-//!   the Python `tapa.backend` parsers in
-//!   `tapa-core/tests/parity_test.py`.
-//! - `emit_kernel_xml(args_json) -> str` — pure-data alias for the
-//!   Rust emitter, used by `test_parity_xilinx_kernel_xml_direct`
-//!   to compare against `tapa.backend.kernel_metadata.print_kernel_xml`
-//!   without relying on a golden-file intermediary.
-//! - `_debug_search_roots() -> list[str]` — underscore-prefixed
-//!   diagnostic helper that reports `runtime::paths::search_roots()`.
-//!   Kept public to accelerate regression triage for
-//!   `TAPA_XILINX_BINDINGS_DIR`-anchored discovery. Not part of the
-//!   stable surface; callers must not depend on it.
+//! Internal (underscore-prefixed) submodule `tapa_core.xilinx._internal`
+//! carries test-only helpers that the cross-language parity suite uses
+//! to drive Rust parsers/emitters directly. These are **not** part of
+//! the stable surface and are not accessible as top-level attributes
+//! of `tapa_core.xilinx`:
+//!
+//! - `_internal.parse_csynth_xml(bytes) -> str`
+//! - `_internal.parse_utilization_rpt(text) -> str`
+//! - `_internal.emit_kernel_xml(args_json) -> str`
+//! - `_internal.parse_device_info(path, overrides_json=None) -> str`
+//! - `_internal.debug_search_roots() -> list[str]` — triage helper.
+//!
+//! Python callers that need these must import them from
+//! `tapa_core.xilinx._internal` and are warned in that module's
+//! docstring that the surface can change without a deprecation cycle.
 //!
 //! Error mapping: every `XilinxError` variant surfaces as
 //! `PyValueError` with the error's `Display` string. SSH / remote
@@ -438,28 +440,54 @@ pub fn register(parent: &Bound<'_, PyModule>) -> PyResult<()> {
             std::env::set_var("TAPA_XILINX_BINDINGS_DIR", dir);
         }
     }
+    // Five canonical Python-facing entry points listed in the plan.
     m.add_function(wrap_pyfunction!(run_hls_task, &m)?)?;
     m.add_function(wrap_pyfunction!(pack_xo, &m)?)?;
-    m.add_function(wrap_pyfunction!(parse_device_info_py, &m)?)?;
     m.add_function(wrap_pyfunction!(get_cflags, &m)?)?;
     m.add_function(wrap_pyfunction!(sync_vendor_includes, &m)?)?;
-    m.add_function(wrap_pyfunction!(parse_csynth_xml_py, &m)?)?;
-    m.add_function(wrap_pyfunction!(parse_utilization_rpt_py, &m)?)?;
-    m.add_function(wrap_pyfunction!(emit_kernel_xml_py, &m)?)?;
-    m.add_function(wrap_pyfunction!(_debug_search_roots, &m)?)?;
-    // Stable Python-facing aliases for parser/emitter helpers. These
-    // are in addition to the five canonical entry points listed in
-    // the plan; the aliases are used by the cross-language parity
-    // suite.
-    m.setattr("parse_csynth_xml", m.getattr("parse_csynth_xml_py")?)?;
-    m.setattr("parse_utilization_rpt", m.getattr("parse_utilization_rpt_py")?)?;
-    m.setattr("emit_kernel_xml", m.getattr("emit_kernel_xml_py")?)?;
-    // Expose `parse_device_info` under its public name; keep the
-    // internal function name distinct from the Rust symbol.
-    m.setattr(
-        "parse_device_info",
-        m.getattr("parse_device_info_py")?,
+    // `parse_device_info` is the fifth canonical entry point; the
+    // Rust function symbol is suffixed `_py` to avoid colliding with
+    // the re-exported core `parse_device_info`. Only the `parse_device_info`
+    // Python name is registered.
+    m.add_function(wrap_pyfunction!(parse_device_info_py, &m)?)?;
+    m.setattr("parse_device_info", m.getattr("parse_device_info_py")?)?;
+    m.delattr("parse_device_info_py")?;
+
+    // Internal submodule for parity/triage helpers (not part of the
+    // stable Python surface). Parity tests import from
+    // `tapa_core.xilinx._internal`.
+    let internal = PyModule::new(py, "_internal")?;
+    internal.setattr(
+        "__doc__",
+        "Internal helpers for cross-language parity and triage.\n\n\
+         NOT STABLE: names under this submodule may be renamed, moved, \
+         or removed without a deprecation cycle. Production code must \
+         use the five documented entry points on `tapa_core.xilinx`.",
     )?;
+    internal.add_function(wrap_pyfunction!(parse_csynth_xml_py, &internal)?)?;
+    internal.add_function(wrap_pyfunction!(parse_utilization_rpt_py, &internal)?)?;
+    internal.add_function(wrap_pyfunction!(emit_kernel_xml_py, &internal)?)?;
+    internal.add_function(wrap_pyfunction!(_debug_search_roots, &internal)?)?;
+    internal.add_function(wrap_pyfunction!(parse_device_info_py, &internal)?)?;
+    internal.setattr("parse_csynth_xml", internal.getattr("parse_csynth_xml_py")?)?;
+    internal.setattr(
+        "parse_utilization_rpt",
+        internal.getattr("parse_utilization_rpt_py")?,
+    )?;
+    internal.setattr("emit_kernel_xml", internal.getattr("emit_kernel_xml_py")?)?;
+    internal.setattr("parse_device_info", internal.getattr("parse_device_info_py")?)?;
+    internal.setattr("debug_search_roots", internal.getattr("_debug_search_roots")?)?;
+    for nm in [
+        "parse_csynth_xml_py",
+        "parse_utilization_rpt_py",
+        "emit_kernel_xml_py",
+        "parse_device_info_py",
+        "_debug_search_roots",
+    ] {
+        internal.delattr(nm)?;
+    }
+    m.add_submodule(&internal)?;
+
     parent.add_submodule(&m)?;
     Ok(())
 }
