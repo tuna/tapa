@@ -1,0 +1,250 @@
+{
+    "slot_task_name_to_fp_region": null,
+    "target": "xilinx-hls",
+    "tasks": {
+        "Add": {
+            "clock_period": "3.125",
+            "code": "void Add() {}",
+            "fifos": {},
+            "is_slot": false,
+            "level": "lower",
+            "name": "Add",
+            "ports": [
+                {
+                    "cat": "istream",
+                    "name": "a",
+                    "type": "float",
+                    "width": 32
+                },
+                {
+                    "cat": "istream",
+                    "name": "b",
+                    "type": "float",
+                    "width": 32
+                },
+                {
+                    "cat": "ostream",
+                    "name": "c",
+                    "type": "float",
+                    "width": 32
+                },
+                {
+                    "cat": "scalar",
+                    "name": "n",
+                    "type": "uint64_t",
+                    "width": 64
+                }
+            ],
+            "self_area": {
+                "DSP": 2,
+                "FF": 100,
+                "LUT": 200
+            },
+            "target": "hls",
+            "tasks": {},
+            "total_area": {
+                "DSP": 2,
+                "FF": 100,
+                "LUT": 200
+            }
+        },
+        "Mmap2Stream": {
+            "clock_period": "2.342",
+            "code": "void Mmap2Stream() {}",
+            "fifos": {},
+            "is_slot": false,
+            "level": "lower",
+            "name": "Mmap2Stream",
+            "ports": [
+                {
+                    "cat": "mmap",
+                    "name": "mmap_port",
+                    "type": "const float*",
+                    "width": 32
+                },
+                {
+                    "cat": "ostream",
+                    "name": "stream_port",
+                    "type": "float",
+                    "width": 32
+                }
+            ],
+            "self_area": {
+                "FF": 502,
+                "LUT": 414
+            },
+            "target": "hls",
+            "tasks": {},
+            "total_area": {
+                "FF": 502,
+                "LUT": 414
+            }
+        },
+        "Stream2Mmap": {
+            "clock_period": "0",
+            "code": "void Stream2Mmap() {}",
+            "fifos": {},
+            "is_slot": false,
+            "level": "lower",
+            "name": "Stream2Mmap",
+            "ports": [
+                {
+                    "cat": "istream",
+                    "name": "stream_port",
+                    "type": "float",
+                    "width": 32
+                },
+                {
+                    "cat": "mmap",
+                    "name": "mmap_port",
+                    "type": "float*",
+                    "width": 32
+                }
+            ],
+            "self_area": {},
+            "target": "hls",
+            "tasks": {},
+            "total_area": {}
+        },
+        "VecAdd": {
+            "clock_period": "0",
+            "code": "void VecAdd() {}",
+            "fifos": {
+                "a_q": {
+                    "consumed_by": [
+                        "Add",
+                        0
+                    ],
+                    "depth": 2,
+                    "produced_by": [
+                        "Mmap2Stream",
+                        0
+                    ]
+                },
+                "b_q": {
+                    "consumed_by": [
+                        "Add",
+                        0
+                    ],
+                    "depth": 2,
+                    "produced_by": [
+                        "Mmap2Stream",
+                        1
+                    ]
+                },
+                "c_q": {
+                    "consumed_by": [
+                        "Stream2Mmap",
+                        0
+                    ],
+                    "depth": 2,
+                    "produced_by": [
+                        "Add",
+                        0
+                    ]
+                }
+            },
+            "is_slot": false,
+            "level": "upper",
+            "name": "VecAdd",
+            "ports": [
+                {
+                    "cat": "mmap",
+                    "name": "a",
+                    "type": "const float*",
+                    "width": 32
+                },
+                {
+                    "cat": "mmap",
+                    "name": "b",
+                    "type": "const float*",
+                    "width": 32
+                },
+                {
+                    "cat": "mmap",
+                    "name": "c",
+                    "type": "float*",
+                    "width": 32
+                },
+                {
+                    "cat": "scalar",
+                    "name": "n",
+                    "type": "uint64_t",
+                    "width": 64
+                }
+            ],
+            "self_area": {},
+            "target": "hls",
+            "tasks": {
+                "Add": [
+                    {
+                        "args": {
+                            "a": {
+                                "arg": "a_q",
+                                "cat": "istream"
+                            },
+                            "b": {
+                                "arg": "b_q",
+                                "cat": "istream"
+                            },
+                            "c": {
+                                "arg": "c_q",
+                                "cat": "ostream"
+                            },
+                            "n": {
+                                "arg": "n",
+                                "cat": "scalar"
+                            }
+                        },
+                        "step": 0
+                    }
+                ],
+                "Mmap2Stream": [
+                    {
+                        "args": {
+                            "mmap_port": {
+                                "arg": "a",
+                                "cat": "mmap"
+                            },
+                            "stream_port": {
+                                "arg": "a_q",
+                                "cat": "ostream"
+                            }
+                        },
+                        "step": 0
+                    },
+                    {
+                        "args": {
+                            "mmap_port": {
+                                "arg": "b",
+                                "cat": "mmap"
+                            },
+                            "stream_port": {
+                                "arg": "b_q",
+                                "cat": "ostream"
+                            }
+                        },
+                        "step": 0
+                    }
+                ],
+                "Stream2Mmap": [
+                    {
+                        "args": {
+                            "mmap_port": {
+                                "arg": "c",
+                                "cat": "mmap"
+                            },
+                            "stream_port": {
+                                "arg": "c_q",
+                                "cat": "istream"
+                            }
+                        },
+                        "step": 0
+                    }
+                ]
+            },
+            "total_area": {}
+        }
+    },
+    "top": "VecAdd"
+}

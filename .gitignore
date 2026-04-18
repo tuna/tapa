@@ -1,10 +1,13 @@
+# Scratch work dir created by tapa/graphir_conversion/project_assembly_test.py
 *.jou
 *.log
 *.out
 *.pyc
 *.zip
 */target/
+.DS_Store
 .ci-secrets
+.claude/
 .humanize
 .humanize/
 .venv*
@@ -26,6 +29,7 @@ impl_config.json
 node_modules
 plans/
 run/
+tapa/graphir_conversion/work_dir_project/
 uv.lock
 work.xo
 work.zip

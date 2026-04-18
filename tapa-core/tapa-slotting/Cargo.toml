@@ -1,0 +1,16 @@
+[package]
+name = "tapa-slotting"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+regex.workspace = true
+serde_json.workspace = true
+streaming-iterator = "0.1"
+thiserror.workspace = true
+tapa-task-graph.workspace = true
+tree-sitter = "0.25"
+tree-sitter-cpp = "0.23"
+
+[lints]
+workspace = true
