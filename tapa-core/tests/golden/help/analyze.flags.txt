@@ -1,0 +1,6 @@
+--cflags
+--flatten-hierarchy
+--input
+--keep-hierarchy
+--target
+--top

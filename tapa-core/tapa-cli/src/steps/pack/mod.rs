@@ -12,19 +12,16 @@ use std::path::PathBuf;
 
 use clap::Parser;
 use serde_json::Value;
-use tapa_task_graph::{
-    port::{ArgCategory, Port},
-    Design,
-};
-use tapa_xilinx::{
-    pack_xo as xilinx_pack_xo, DeviceInfo, KernelXmlArgs, KernelXmlPort, LocalToolRunner,
-    PackageXoInputs, PortCategory, RemoteToolRunner, SshMuxOptions, SshSession,
-};
 
 use crate::context::CliContext;
 use crate::error::{CliError, Result};
 use crate::state::{design as design_io, settings as settings_io};
 use crate::steps::python_bridge;
+
+mod kernel_xml_ports;
+mod vitis_packaging;
+
+use vitis_packaging::pack_vitis;
 
 #[derive(Debug, Clone, Parser)]
 #[command(name = "pack", about = "Pack the generated RTL into a Xilinx object file.")]
@@ -99,175 +96,6 @@ fn run_native(args: &PackArgs, ctx: &CliContext) -> Result<()> {
     }
 }
 
-fn pack_vitis(
-    args: &PackArgs,
-    ctx: &CliContext,
-    design: &Design,
-    settings: &settings_io::Settings,
-) -> Result<()> {
-    let part_num = settings
-        .get("part_num")
-        .and_then(Value::as_str)
-        .ok_or_else(|| {
-            CliError::InvalidArg(
-                "settings.json is missing `part_num`; run `synth` first to populate it."
-                    .to_string(),
-            )
-        })?
-        .to_string();
-    let clock_period = settings
-        .get("clock_period")
-        .and_then(Value::as_str)
-        .ok_or_else(|| {
-            CliError::InvalidArg(
-                "settings.json is missing `clock_period`; run `synth` first to populate it."
-                    .to_string(),
-            )
-        })?
-        .to_string();
-
-    let top_task = design.tasks.get(&design.top).ok_or_else(|| {
-        CliError::InvalidArg(format!(
-            "design.json does not contain the top task `{}`",
-            design.top
-        ))
-    })?;
-
-    let hdl_dir = ctx.work_dir.join("rtl");
-    if !hdl_dir.is_dir() {
-        return Err(CliError::InvalidArg(format!(
-            "RTL directory `{}` does not exist; run `synth` first to generate it. \
-             If you only need parity with the Python flow, rerun with \
-             `TAPA_STEP_PACK_PYTHON=1`.",
-            hdl_dir.display(),
-        )));
-    }
-
-    let kernel_ports = build_kernel_xml_ports(&top_task.ports);
-    if kernel_ports.is_empty() {
-        return Err(CliError::InvalidArg(format!(
-            "top task `{}` has no external ports; cannot emit kernel.xml",
-            design.top,
-        )));
-    }
-    let m_axi_params = m_axi_param_block(&top_task.ports);
-    let output_path = enforce_xo_suffix(args.output.as_ref());
-
-    let inputs = PackageXoInputs {
-        top_name: design.top.clone(),
-        hdl_dir,
-        device_info: DeviceInfo {
-            part_num,
-            clock_period: clock_period.clone(),
-        },
-        clock_period,
-        kernel_xml: KernelXmlArgs {
-            top_name: design.top.clone(),
-            clock_period: settings
-                .get("clock_period")
-                .and_then(Value::as_str)
-                .unwrap_or("3.33")
-                .to_string(),
-            ports: kernel_ports,
-        },
-        kernel_out_path: output_path,
-        cpp_kernels: Vec::new(),
-        m_axi_params,
-        s_axi_ifaces: PackageXoInputs::default_s_axi(),
-    };
-
-    // Mirror synth: use RemoteToolRunner when ~/.taparc / --remote-host
-    // is configured so the .xo packaging step actually runs on the
-    // remote Xilinx host. Codex Round 2 finding: native pack used to
-    // always force LocalToolRunner, ignoring `ctx.remote_config`.
-    if let Some(cfg) = ctx.remote_config.as_ref() {
-        let session = std::sync::Arc::new(SshSession::new(
-            cfg.clone(),
-            SshMuxOptions::default(),
-        ));
-        let runner = RemoteToolRunner::new(session);
-        let _ = xilinx_pack_xo(&runner, &inputs)?;
-    } else {
-        let runner = LocalToolRunner::new();
-        let _ = xilinx_pack_xo(&runner, &inputs)?;
-    }
-
-    let mut flow = ctx.flow.borrow_mut();
-    flow.pipelined.insert("pack".to_string(), true);
-    drop(flow);
-
-    Ok(())
-}
-
-/// Project a `tapa_task_graph::Port` list into the `KernelXmlPort`
-/// shape `tapa_xilinx::emit_kernel_xml` expects. Mirrors the Python
-/// `print_kernel_xml` logic in `tapa/verilog/xilinx/pack.py` plus the
-/// `range_or_none` channel-fan-out unrolling.
-fn build_kernel_xml_ports(ports: &[Port]) -> Vec<KernelXmlPort> {
-    let mut out = Vec::<KernelXmlPort>::new();
-    for port in ports {
-        let chan_count = port.chan_count.unwrap_or(0);
-        let names: Vec<String> = if chan_count == 0 {
-            vec![port.name.clone()]
-        } else {
-            (0..chan_count)
-                .map(|i| format!("{}_{i}", port.name))
-                .collect()
-        };
-        let category = match port.cat {
-            ArgCategory::Scalar => Some(PortCategory::Scalar),
-            ArgCategory::Mmap | ArgCategory::Immap | ArgCategory::Ommap | ArgCategory::AsyncMmap => {
-                Some(PortCategory::MAxi)
-            }
-            ArgCategory::Istream | ArgCategory::Istreams => Some(PortCategory::IStream),
-            ArgCategory::Ostream | ArgCategory::Ostreams => Some(PortCategory::OStream),
-        };
-        let Some(cat) = category else { continue };
-        for name in names {
-            out.push(KernelXmlPort {
-                name,
-                category: cat,
-                width: port.width,
-                port: String::new(),
-                ctype: port.ctype.clone(),
-            });
-        }
-    }
-    out
-}
-
-/// Python `pack` adds two bus parameters per `m_axi` port:
-/// `HAS_BURST=0`, `SUPPORTS_NARROW_BURST=0`. Mirror that here so the
-/// emitted `.xo` matches the Python output.
-fn m_axi_param_block(ports: &[Port]) -> Vec<(String, Vec<(String, String)>)> {
-    let mut out = Vec::<(String, Vec<(String, String)>)>::new();
-    let kv = vec![
-        ("HAS_BURST".to_string(), "0".to_string()),
-        ("SUPPORTS_NARROW_BURST".to_string(), "0".to_string()),
-    ];
-    for port in ports {
-        let is_mmap = matches!(
-            port.cat,
-            ArgCategory::Mmap | ArgCategory::Immap | ArgCategory::Ommap | ArgCategory::AsyncMmap
-        );
-        if !is_mmap {
-            continue;
-        }
-        let chan_count = port.chan_count.unwrap_or(0);
-        let names: Vec<String> = if chan_count == 0 {
-            vec![port.name.clone()]
-        } else {
-            (0..chan_count)
-                .map(|i| format!("{}_{i}", port.name))
-                .collect()
-        };
-        for name in names {
-            out.push((name, kv.clone()));
-        }
-    }
-    out
-}
-
 fn reject_unsupported_flags(args: &PackArgs) -> Result<()> {
     if !args.custom_rtl.is_empty() {
         return Err(CliError::InvalidArg(
@@ -324,7 +152,10 @@ mod tests {
 
     use indexmap::IndexMap;
     use serde_json::json;
-    use tapa_task_graph::TaskTopology;
+    use tapa_task_graph::{
+        port::{ArgCategory, Port},
+        Design, TaskTopology,
+    };
 
     use crate::globals::GlobalArgs;
 
@@ -403,88 +234,6 @@ mod tests {
             enforce_xo_suffix(Some(&PathBuf::from("ok.xo"))),
             PathBuf::from("ok.xo"),
         );
-    }
-
-    #[test]
-    fn build_kernel_xml_ports_translates_categories() {
-        let ports = vec![
-            Port {
-                cat: ArgCategory::Scalar,
-                name: "n".into(),
-                ctype: "int".into(),
-                width: 32,
-                chan_count: None,
-                chan_size: None,
-            },
-            Port {
-                cat: ArgCategory::Mmap,
-                name: "gmem".into(),
-                ctype: "int*".into(),
-                width: 512,
-                chan_count: None,
-                chan_size: None,
-            },
-            Port {
-                cat: ArgCategory::Istream,
-                name: "i0".into(),
-                ctype: "tapa::istream<int>".into(),
-                width: 32,
-                chan_count: None,
-                chan_size: None,
-            },
-        ];
-        let out = build_kernel_xml_ports(&ports);
-        assert_eq!(out.len(), 3);
-        assert!(matches!(out[0].category, PortCategory::Scalar));
-        assert!(matches!(out[1].category, PortCategory::MAxi));
-        assert!(matches!(out[2].category, PortCategory::IStream));
-    }
-
-    #[test]
-    fn build_kernel_xml_ports_unrolls_chan_count() {
-        let ports = vec![Port {
-            cat: ArgCategory::Mmap,
-            name: "gmem".into(),
-            ctype: "int*".into(),
-            width: 64,
-            chan_count: Some(3),
-            chan_size: None,
-        }];
-        let out = build_kernel_xml_ports(&ports);
-        assert_eq!(out.len(), 3);
-        assert_eq!(out[0].name, "gmem_0");
-        assert_eq!(out[1].name, "gmem_1");
-        assert_eq!(out[2].name, "gmem_2");
-    }
-
-    #[test]
-    fn m_axi_param_block_emits_default_burst_params_for_mmap_only() {
-        let ports = vec![
-            Port {
-                cat: ArgCategory::Scalar,
-                name: "n".into(),
-                ctype: "int".into(),
-                width: 32,
-                chan_count: None,
-                chan_size: None,
-            },
-            Port {
-                cat: ArgCategory::Mmap,
-                name: "gmem".into(),
-                ctype: "int*".into(),
-                width: 512,
-                chan_count: None,
-                chan_size: None,
-            },
-        ];
-        let block = m_axi_param_block(&ports);
-        assert_eq!(block.len(), 1);
-        assert_eq!(block[0].0, "gmem");
-        assert!(block[0].1.iter().any(|(k, v)| k == "HAS_BURST" && v == "0"));
-        assert!(block[0]
-            .1
-            .iter()
-            .any(|(k, v)| k == "SUPPORTS_NARROW_BURST" && v == "0"));
     }
 
     #[test]

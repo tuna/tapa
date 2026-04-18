@@ -1,208 +1,32 @@
-//! `tapa synth` — native Rust port of `tapa/steps/synth.py`.
+//! `run_native` orchestrator for `tapa synth`.
 //!
-//! For the vadd-style happy path (`--platform <p>`, no DSE / graphir /
-//! floorplan, leaf children + one upper top), this module drives the
-//! full Vitis HLS + RTL codegen pipeline natively:
-//!
-//!   1. Resolve the device (part / clock / platform) via
-//!      `tapa_xilinx::parse_device_info` and persist into
-//!      `<work_dir>/settings.json`.
-//!   2. Extract per-task C++ from `design.json` to `<work_dir>/cpp/`
-//!      (mirrors `tapa/program/hls.py::ProgramHlsMixin._extract_cpp`).
-//!   3. Run Vitis HLS for each leaf task via `tapa_xilinx::run_hls`,
-//!      harvesting Verilog into `<work_dir>/hls/<task>/verilog/`
-//!      (mirrors `ProgramHlsMixin.run_hls` / `_run_hls_task`).
-//!   4. Drive `tapa_codegen::generate_rtl` to instrument upper tasks
-//!      and emit `<work_dir>/rtl/{<task>.v, <task>_fsm.v, ...}`
-//!      (mirrors `tapa/codegen/program_rtl.py::generate_task_rtl` +
-//!      `generate_top_rtl`).
-//!   5. Persist `<work_dir>/templates_info.json` and re-store the
-//!      design + settings (`synthed=true`).
-//!
-//! Feature flags that require ports we have not yet landed
-//! (`--gen-ab-graph`, `--gen-graphir`, `--floorplan-path`,
-//! `--nonpipeline-fifos`, `--enable-synth-util`) still surface a typed
-//! [`CliError::InvalidArg`] up front. The Python bridge remains
-//! reachable behind `TAPA_STEP_SYNTH_PYTHON=1`.
+//! Threads device resolution → settings persistence → cpp-extract →
+//! HLS runs → RTL codegen → final settings/design persistence. Also
+//! owns the unsupported-flag gating, the HLS cflag construction, and
+//! the recursive Verilog-file walker that feeds the codegen step.
 
 use std::path::{Path, PathBuf};
 
-use clap::Parser;
 use serde_json::{json, Value};
-use tapa_xilinx::{
-    parse_device_info as xilinx_parse_device_info, DeviceInfo, LocalToolRunner,
-    RemoteToolRunner, SshMuxOptions, SshSession, ToolRunner,
-};
+use tapa_xilinx::ToolRunner;
 
 use crate::context::CliContext;
 use crate::error::{CliError, Result};
 use crate::state::{design as design_io, settings as settings_io};
-use crate::steps::python_bridge;
 
-mod cpp_extract;
-mod hls_run;
-mod rtl_codegen;
-
-use cpp_extract::extract_hls_sources;
-use hls_run::{run_hls_for_leaves, HlsRunOptions};
-use rtl_codegen::{generate_rtl_tree, write_templates_info, TaskHdlInputs};
-
-#[allow(
-    clippy::struct_excessive_bools,
-    reason = "mirrors the click flag surface in tapa/steps/synth.py — every bool \
-              is a distinct user-facing flag, so collapsing into an enum would \
-              break parity"
-)]
-#[derive(Debug, Clone, Parser)]
-#[command(name = "synth", about = "Synthesize the TAPA program into RTL code.")]
-pub struct SynthArgs {
-    #[arg(long = "part-num", value_name = "PART")]
-    pub part_num: Option<String>,
-
-    #[arg(short = 'p', long = "platform", value_name = "PLATFORM")]
-    pub platform: Option<String>,
-
-    #[arg(long = "clock-period", value_name = "NS")]
-    pub clock_period: Option<f64>,
-
-    #[arg(short = 'j', long = "jobs", value_name = "N")]
-    pub jobs: Option<u32>,
-
-    #[arg(long = "keep-hls-work-dir", default_value_t = false)]
-    pub keep_hls_work_dir: bool,
-
-    #[arg(long = "remove-hls-work-dir", conflicts_with = "keep_hls_work_dir")]
-    pub remove_hls_work_dir: bool,
-
-    #[arg(long = "skip-hls-based-on-mtime", default_value_t = false)]
-    pub skip_hls_based_on_mtime: bool,
-
-    #[arg(long = "no-skip-hls-based-on-mtime", conflicts_with = "skip_hls_based_on_mtime")]
-    pub no_skip_hls_based_on_mtime: bool,
-
-    #[arg(long = "other-hls-configs", default_value = "")]
-    pub other_hls_configs: String,
-
-    #[arg(long = "enable-synth-util", default_value_t = false)]
-    pub enable_synth_util: bool,
-
-    #[arg(long = "disable-synth-util", conflicts_with = "enable_synth_util")]
-    pub disable_synth_util: bool,
-
-    #[arg(long = "override-report-schema-version", default_value = "")]
-    pub override_report_schema_version: String,
-
-    #[arg(long = "nonpipeline-fifos", value_name = "FILE")]
-    pub nonpipeline_fifos: Option<PathBuf>,
-
-    #[arg(long = "gen-ab-graph", default_value_t = false)]
-    pub gen_ab_graph: bool,
-
-    #[arg(long = "no-gen-ab-graph", conflicts_with = "gen_ab_graph")]
-    pub no_gen_ab_graph: bool,
-
-    #[arg(long = "gen-graphir", default_value_t = false)]
-    pub gen_graphir: bool,
-
-    #[arg(long = "floorplan-config", value_name = "FILE")]
-    pub floorplan_config: Option<PathBuf>,
-
-    #[arg(long = "device-config", value_name = "FILE")]
-    pub device_config: Option<PathBuf>,
-
-    #[arg(long = "floorplan-path", value_name = "FILE")]
-    pub floorplan_path: Option<PathBuf>,
-}
-
-fn opt_str(out: &mut Vec<String>, flag: &str, value: Option<&str>) {
-    if let Some(v) = value {
-        out.push(flag.to_string());
-        out.push(v.to_string());
-    }
-}
-
-fn opt_path(out: &mut Vec<String>, flag: &str, value: Option<&PathBuf>) {
-    if let Some(v) = value {
-        out.push(flag.to_string());
-        out.push(v.display().to_string());
-    }
-}
-
-pub fn to_python_argv(args: &SynthArgs) -> Vec<String> {
-    let mut out = Vec::<String>::new();
-    opt_str(&mut out, "--part-num", args.part_num.as_deref());
-    opt_str(&mut out, "--platform", args.platform.as_deref());
-    if let Some(c) = args.clock_period {
-        out.push("--clock-period".to_string());
-        out.push(c.to_string());
-    }
-    if let Some(j) = args.jobs {
-        out.push("--jobs".to_string());
-        out.push(j.to_string());
-    }
-    out.push(if args.keep_hls_work_dir {
-        "--keep-hls-work-dir"
-    } else {
-        "--remove-hls-work-dir"
-    }
-    .to_string());
-    out.push(if args.skip_hls_based_on_mtime {
-        "--skip-hls-based-on-mtime"
-    } else {
-        "--no-skip-hls-based-on-mtime"
-    }
-    .to_string());
-    out.push("--other-hls-configs".to_string());
-    out.push(args.other_hls_configs.clone());
-    out.push(if args.enable_synth_util {
-        "--enable-synth-util"
-    } else {
-        "--disable-synth-util"
-    }
-    .to_string());
-    out.push("--override-report-schema-version".to_string());
-    out.push(args.override_report_schema_version.clone());
-    opt_path(&mut out, "--nonpipeline-fifos", args.nonpipeline_fifos.as_ref());
-    out.push(if args.gen_ab_graph {
-        "--gen-ab-graph"
-    } else {
-        "--no-gen-ab-graph"
-    }
-    .to_string());
-    if args.gen_graphir {
-        out.push("--gen-graphir".to_string());
-    }
-    opt_path(&mut out, "--floorplan-config", args.floorplan_config.as_ref());
-    opt_path(&mut out, "--device-config", args.device_config.as_ref());
-    opt_path(&mut out, "--floorplan-path", args.floorplan_path.as_ref());
-    out
-}
-
-/// Top-level dispatcher.
-///
-/// Per AC-6, `TAPA_STEP_SYNTH_PYTHON=1` is a no-op for ported steps;
-/// the native HLS + codegen pipeline is the only path. When
-/// `ctx.remote_config` is populated (via `~/.taparc` or
-/// `--remote-host`), HLS dispatches through `RemoteToolRunner`;
-/// otherwise `LocalToolRunner`.
-pub fn run(args: &SynthArgs, ctx: &mut CliContext) -> Result<()> {
-    let _ = python_bridge::is_enabled("synth");
-    if let Some(cfg) = ctx.remote_config.as_ref() {
-        let session = std::sync::Arc::new(SshSession::new(
-            cfg.clone(),
-            SshMuxOptions::default(),
-        ));
-        let runner = RemoteToolRunner::new(session);
-        run_native(args, ctx, &runner)
-    } else {
-        let runner = LocalToolRunner::new();
-        run_native(args, ctx, &runner)
-    }
-}
+use super::cpp_extract::extract_hls_sources;
+use super::device_resolve::resolve_device_info;
+use super::hls_run::{run_hls_for_leaves, HlsRunOptions};
+use super::rtl_codegen::{generate_rtl_tree, write_templates_info, TaskHdlInputs};
+use super::SynthArgs;
 
 /// Native synth: validate the flag surface, resolve the device, persist
 /// settings, then drive cpp-extract → HLS → codegen for the leaf tasks.
-fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -> Result<()> {
+pub(super) fn run_native(
+    args: &SynthArgs,
+    ctx: &CliContext,
+    runner: &dyn ToolRunner,
+) -> Result<()> {
     reject_unsupported_flags(args)?;
 
     let design = design_io::load_design(&ctx.work_dir)?;
@@ -308,83 +132,6 @@ fn reject_unsupported_flags(args: &SynthArgs) -> Result<()> {
     Ok(())
 }
 
-fn resolve_device_info(args: &SynthArgs) -> Result<DeviceInfo> {
-    let part_override = args.part_num.as_deref();
-    let clock_override_owned = args.clock_period.map(|c| format!("{c}"));
-    let clock_override = clock_override_owned.as_deref();
-
-    if let Some(platform) = args.platform.as_deref() {
-        let resolved = resolve_platform_dir(platform).ok_or_else(|| {
-            CliError::InvalidArg(format!(
-                "cannot find the specified platform `{platform}`; are you sure it has \
-                 been installed, e.g., in `/opt/xilinx/platforms`?",
-            ))
-        })?;
-        return Ok(xilinx_parse_device_info(
-            &resolved,
-            part_override,
-            clock_override,
-        )?);
-    }
-
-    let Some(part_num) = part_override else {
-        return Err(CliError::InvalidArg(
-            "cannot determine the target part number; please either specify \
-             `--platform` so the target part number can be extracted from it, or \
-             specify `--part-num` directly."
-                .to_string(),
-        ));
-    };
-    let Some(clock_period) = clock_override else {
-        return Err(CliError::InvalidArg(
-            "cannot determine the target clock period; please either specify \
-             `--platform` so the target clock period can be extracted from it, or \
-             specify `--clock-period` directly."
-                .to_string(),
-        ));
-    };
-    Ok(DeviceInfo {
-        part_num: part_num.to_string(),
-        clock_period: clock_period.to_string(),
-    })
-}
-
-fn resolve_platform_dir(platform: &str) -> Option<PathBuf> {
-    let raw = Path::new(platform);
-    let parent = raw.parent().map(Path::to_path_buf).unwrap_or_default();
-    let basename = raw.file_name().map_or_else(
-        || platform.to_string(),
-        |s| s.to_string_lossy().into_owned(),
-    );
-    let normalized = basename.replace([':', '.'], "_");
-    let direct = if parent.as_os_str().is_empty() {
-        PathBuf::from(&normalized)
-    } else {
-        parent.join(&normalized)
-    };
-    if direct.is_dir() {
-        return Some(direct);
-    }
-    for root in platform_roots() {
-        let candidate = root.join("platforms").join(&normalized);
-        if candidate.is_dir() {
-            return Some(candidate);
-        }
-    }
-    None
-}
-
-fn platform_roots() -> Vec<PathBuf> {
-    let mut out = vec![PathBuf::from("/opt/xilinx")];
-    if let Ok(p) = std::env::var("XILINX_VITIS") {
-        out.push(PathBuf::from(p));
-    }
-    if let Ok(p) = std::env::var("XILINX_SDX") {
-        out.push(PathBuf::from(p));
-    }
-    out
-}
-
 /// Build the HLS CFLAGS that `_build_hls_cflags` constructs in Python.
 /// At this stage we only emit the `-DTAPA_TARGET_*` defines; the full
 /// vendor-include resolution is intentionally out of scope.
@@ -431,6 +178,7 @@ mod tests {
 
     use std::sync::Mutex;
 
+    use clap::Parser;
     use indexmap::IndexMap;
     use tapa_task_graph::{Design, TaskTopology};
     use tapa_xilinx::{ToolInvocation, ToolOutput};
@@ -504,15 +252,6 @@ mod tests {
     }
 
     #[test]
-    fn argv_round_trips_python_shape() {
-        let args = parse_synth(&["--platform", "xilinx_u250", "--clock-period", "3.33"]);
-        let argv = to_python_argv(&args);
-        assert!(argv.contains(&"--platform".to_string()));
-        assert!(argv.contains(&"xilinx_u250".to_string()));
-        assert!(argv.contains(&"--clock-period".to_string()));
-    }
-
-    #[test]
     fn unsupported_flag_surfaces_invalid_arg() {
         let args = parse_synth(&[
             "--platform",
@@ -524,34 +263,6 @@ mod tests {
         let runner = StubHls::new(Vec::new());
         let err = run_native(&args, &ctx, &runner).expect_err("must reject gen-graphir");
         assert!(matches!(err, CliError::InvalidArg(ref m) if m.contains("--gen-graphir")));
-    }
-
-    #[test]
-    fn part_num_without_clock_errors() {
-        let args = parse_synth(&["--part-num", "xcvu37p"]);
-        let err = resolve_device_info(&args).expect_err("missing clock");
-        assert!(matches!(err, CliError::InvalidArg(ref m) if m.contains("clock period")));
-    }
-
-    #[test]
-    fn part_num_and_clock_resolve_without_platform() {
-        let args = parse_synth(&["--part-num", "xcvu37p-fsvh2892-2L-e", "--clock-period", "3.33"]);
-        let info = resolve_device_info(&args).expect("must resolve");
-        assert_eq!(info.part_num, "xcvu37p-fsvh2892-2L-e");
-        assert_eq!(info.clock_period, "3.33");
-    }
-
-    #[test]
-    fn resolve_platform_dir_normalizes_separators() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let raw = "weird_platform:1.0";
-        let normalized = "weird_platform_1_0";
-        let target = dir.path().join(normalized);
-        std::fs::create_dir_all(&target).expect("mkdir");
-        let qualified = dir.path().join(raw);
-        let resolved = resolve_platform_dir(qualified.to_str().expect("utf-8"))
-            .expect("must resolve normalized basename");
-        assert_eq!(resolved, target);
     }
 
     #[test]

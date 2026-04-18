@@ -1,0 +1,11 @@
+--clang-format-quota-in-bytes
+--quiet
+--remote-disable-ssh-mux
+--remote-host
+--remote-key-file
+--remote-ssh-control-dir
+--remote-ssh-control-persist
+--remote-xilinx-settings
+--temp-dir
+--verbose
+--work-dir

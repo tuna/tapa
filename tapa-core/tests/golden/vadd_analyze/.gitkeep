@@ -1,0 +1,5 @@
+# Reserved for the `vadd analyze` golden snapshot
+# (`graph.json`, `design.json`, `settings.json`).
+#
+# Populated by `test_golden_vadd_analyze` when `tapacc` is available
+# on the local host. See `parity_test.py` for the snapshot contract.
