@@ -27,4 +27,5 @@ exec cargo test --manifest-path "$MANIFEST" \
   -p tapa-floorplan \
   -p tapa-lowering \
   -p tapa-graphir-export \
+  -p tapa-xilinx \
   -p tapa-py-bindings

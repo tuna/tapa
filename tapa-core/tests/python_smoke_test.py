@@ -1490,6 +1490,77 @@ def test_lowering_malformed_device_config_raises() -> None:
     assert "JSON" in err_msg or "json" in err_msg or "expected" in err_msg, err_msg
 
 
+def test_xilinx_get_cflags_returns_expected_tail() -> None:
+    """Rust CFLAGS tail matches the warning-suppression block."""
+    from tapa_core import xilinx  # type: ignore[import-not-found]
+
+    flags = list(xilinx.get_cflags("tapa"))
+    tail = [
+        "-Wno-attributes",
+        "-Wno-unknown-pragmas",
+        "-Wno-unused-label",
+        "-D__builtin_FILE()=__FILE__",
+        "-D__builtin_LINE()=__LINE__",
+    ]
+    assert flags[-len(tail) :] == tail, f"unexpected cflags: {flags}"
+
+
+def test_xilinx_get_cflags_unknown_kind_raises() -> None:
+    """Unknown kind strings surface as PyValueError."""
+    from tapa_core import xilinx  # type: ignore[import-not-found]
+
+    try:
+        xilinx.get_cflags("nonsense-kind")
+    except ValueError:
+        return
+    msg = "expected PyValueError for unknown cflags kind"
+    raise AssertionError(msg)
+
+
+def test_xilinx_parse_csynth_xml_round_trips_fixture() -> None:
+    """parse_csynth_xml JSON payload matches the committed fixture."""
+    from pathlib import Path as _Path
+
+    from tapa_core import xilinx  # type: ignore[import-not-found]
+
+    fixture = (
+        _Path(__file__).resolve().parent.parent
+        / "tapa-xilinx"
+        / "testdata"
+        / "xilinx"
+        / "sample.csynth.xml"
+    )
+    payload = json.loads(xilinx.parse_csynth_xml(fixture.read_bytes()))
+    assert payload["top"] == "vadd"
+    assert payload["part"] == "xcu250-figd2104-2L-e"
+
+
+def test_xilinx_parse_device_info_directory_input() -> None:
+    """parse_device_info accepts a platform directory."""
+    import shutil as _shutil
+    import tempfile as _tempfile
+    from pathlib import Path as _Path
+
+    from tapa_core import xilinx  # type: ignore[import-not-found]
+
+    xpfm = (
+        _Path(__file__).resolve().parent.parent
+        / "tapa-xilinx"
+        / "testdata"
+        / "xilinx"
+        / "sample.xpfm"
+    )
+    if not xpfm.is_file():
+        return
+    with _tempfile.TemporaryDirectory() as td:
+        platform_dir = _Path(td) / "shell"
+        (platform_dir / "hw").mkdir(parents=True)
+        _shutil.copy(xpfm, platform_dir / "hw" / "shell.xsa")
+        payload = json.loads(xilinx.parse_device_info(str(platform_dir)))
+    assert payload["part_num"] == "xcu250-figd2104-2L-e"
+    assert payload["clock_period"] == "3.333"
+
+
 if __name__ == "__main__":
     _tests = [(k, v) for k, v in sorted(globals().items()) if k.startswith("test_")]
     _passed = 0

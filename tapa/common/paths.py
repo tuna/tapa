@@ -1,6 +1,7 @@
 """Utility to lookup distribution paths for TAPA."""
 
 import contextlib
+import importlib
 import logging
 import os
 import platform
@@ -247,6 +248,10 @@ def get_remote_hls_cflags() -> tuple[str, ...]:
     expands using macOS's assert.h (calls __assert_rtn), which doesn't exist
     on the Linux HLS host. This includes a compatibility define to fix that.
     """
+    if _rust_xilinx_enabled():
+        rust_xilinx = importlib.import_module("tapa_core.xilinx")
+        return tuple(rust_xilinx.get_cflags("remote_hls"))
+
     assert_compat: tuple[str, ...] = ()
     if platform.system() == "Darwin":
         # assert() on macOS expands to __assert_rtn; remap to Linux's __assert_fail.
@@ -291,6 +296,18 @@ def get_tapa_ldflags() -> tuple[str, ...]:
     )
 
 
+def _rust_xilinx_enabled() -> bool:
+    """Return True when `TAPA_USE_RUST_XILINX=1` is set.
+
+    Dispatches the CFLAGS helpers (and `get_xpfm_path` / device info)
+    through the `tapa_core.xilinx` PyO3 wrapper instead of the legacy
+    Python paths. A broken or missing bindings module while the flag
+    is set surfaces as an ImportError / PyValueError at the call site;
+    there is no silent fallback.
+    """
+    return os.environ.get("TAPA_USE_RUST_XILINX") == "1"
+
+
 @cache
 def get_tapacc_cflags(for_remote_hls: bool = False) -> tuple[str, ...]:
     """Return CFLAGS with vendor libraries for HLS.
@@ -302,6 +319,11 @@ def get_tapacc_cflags(for_remote_hls: bool = False) -> tuple[str, ...]:
             -nostdinc++ even on non-Linux. This is needed when HLS runs on
             a remote Linux host while the local machine is macOS.
     """
+    if _rust_xilinx_enabled():
+        rust_xilinx = importlib.import_module("tapa_core.xilinx")
+        kind = "tapacc_remote" if for_remote_hls else "tapacc"
+        return tuple(rust_xilinx.get_cflags(kind))
+
     include_gcc = platform.system() == "Linux" or for_remote_hls
     vendor_include_paths: tuple[str, ...] = ()
     for vendor_path in _get_vendor_include_paths(include_gcc=include_gcc):

@@ -65,6 +65,25 @@ sh_test(
     tags = ["manual"],
 )
 
+# -- Test: gated tapa-xilinx integration suite (manual) --
+# Reads VARS.local.bzl-style REMOTE_* env vars; runs `cargo test
+# -p tapa-xilinx -- --ignored`. Tagged `manual` so default CI
+# runs remain unblocked.
+
+sh_test(
+    name = "tapa_xilinx_integration_test",
+    srcs = ["run_xilinx_integration_test.sh"],
+    data = _ALL_SRCS + [
+        "@rules_rust//rust/toolchain:current_cargo_files",
+        "@rules_rust//rust/toolchain:current_rustc_files",
+        "@rules_rust//rust/toolchain:current_rustdoc_files",
+    ],
+    env = {
+        "CARGO_MANIFEST_DIR": "tapa-core",
+    },
+    tags = ["manual"],
+)
+
 # -- Test: Python smoke tests (manual, requires system cargo + python3) --
 
 sh_test(

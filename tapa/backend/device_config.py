@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import glob
+import importlib
+import json
 import os
 import zipfile
 from typing import TYPE_CHECKING, NoReturn
@@ -17,6 +19,20 @@ _XD_NS = "{http://www.xilinx.com/xd}"
 
 def get_device_info(platform_path: str) -> dict[str, str]:
     """Extract device part number and target frequency from SDAccel platform."""
+    if os.environ.get("TAPA_USE_RUST_XILINX") == "1":
+        # Dispatch to `tapa_core.xilinx.parse_device_info`. No silent
+        # fallback: if the flag is set and bindings are broken, the
+        # ImportError / PyValueError propagates.
+        #
+        # The Rust wrapper's `parse_device_info` expects the platform
+        # *directory* (same semantics as Python's `get_device_info`).
+        rust_xilinx = importlib.import_module("tapa_core.xilinx")
+        payload = rust_xilinx.parse_device_info(platform_path)
+        parsed = json.loads(payload)
+        return {
+            "clock_period": parsed["clock_period"],
+            "part_num": parsed["part_num"],
+        }
     device_name = os.path.basename(platform_path)
     try:
         platform_file = next(

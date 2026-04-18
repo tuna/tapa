@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<profile>
+  <UserAssignments>
+    <TopModelName>vadd</TopModelName>
+    <Part>xcu250-figd2104-2L-e</Part>
+    <TargetClockPeriod>3.333</TargetClockPeriod>
+  </UserAssignments>
+  <PerformanceEstimates>
+    <SummaryOfTimingAnalysis>
+      <EstimatedClockPeriod>2.871</EstimatedClockPeriod>
+    </SummaryOfTimingAnalysis>
+  </PerformanceEstimates>
+</profile>
