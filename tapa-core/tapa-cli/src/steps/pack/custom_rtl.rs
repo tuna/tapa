@@ -124,7 +124,7 @@ pub(super) fn apply_custom_rtl(
         )));
     }
 
-    check_custom_rtl_format(&files, templates_info)?;
+    check_custom_rtl_format(&files, templates_info);
 
     for src in &files {
         let file_name = src.file_name().ok_or_else(|| {
@@ -152,20 +152,33 @@ pub(super) fn apply_custom_rtl(
     Ok(())
 }
 
-/// Best-effort port-signature check. `.v` files whose module name is
-/// absent from `templates_info` but whose name does not collide with
-/// any known template must error out — the user almost certainly
-/// mistyped the KEY. All other mismatches log a warning only.
-fn check_custom_rtl_format(
-    rtl_files: &[PathBuf],
-    templates_info: &TemplatesInfo,
-) -> Result<()> {
+/// Best-effort port-signature check. Mirrors Python's
+/// `tapa/program_codegen/custom_rtl.py::check_custom_rtl_format`:
+///
+/// * Non-`.v` files log a skip message (Python accepts `.tcl`, `.sv`, etc.).
+/// * Unparsable Verilog logs a skip message and moves on.
+/// * `.v` files whose top module name is NOT a key in
+///   `templates_info` are silently accepted — Python's
+///   `if (task := tasks.get(...)) is None: continue` makes unknown
+///   helper modules a valid input, not an error.
+/// * Port-signature mismatches against a known template key log a
+///   warning and proceed (Python uses `_logger.warning`, never fails).
+fn check_custom_rtl_format(rtl_files: &[PathBuf], templates_info: &TemplatesInfo) {
     for path in rtl_files {
         if path.extension().and_then(|s| s.to_str()) != Some("v") {
-            // non-Verilog overlays (Python accepts .tcl, .sv, etc.)
+            log::warn!(
+                "custom-rtl: skip format check for non-verilog file {}",
+                path.display(),
+            );
             continue;
         }
-        let src = fs::read_to_string(path)?;
+        let Ok(src) = fs::read_to_string(path) else {
+            log::warn!(
+                "custom-rtl: skipping format check for unreadable verilog {}",
+                path.display(),
+            );
+            continue;
+        };
         let Ok(module) = VerilogModule::parse(&src) else {
             log::warn!(
                 "custom-rtl: skipping format check for unparsable verilog {}",
@@ -173,21 +186,10 @@ fn check_custom_rtl_format(
             );
             continue;
         };
+        // Python parity: unknown module names are helper modules,
+        // not mistyped KEYs — skip silently.
         let Some(expected_ports) = templates_info.get(&module.name) else {
-            if templates_info.is_empty() {
-                // No templates were recorded — `synth` emitted no
-                // `target("ignore")` slots. Python silently accepts
-                // any `.v` file in that case because the whole
-                // templates map is missing.
-                continue;
-            }
-            return Err(CliError::InvalidArg(format!(
-                "--custom-rtl: module `{}` from `{}` is not a known \
-                 template key; known keys: {:?}",
-                module.name,
-                path.display(),
-                templates_info.keys().collect::<Vec<_>>(),
-            )));
+            continue;
         };
         let got: Vec<String> = module
             .ports
@@ -209,7 +211,6 @@ fn check_custom_rtl_format(
             );
         }
     }
-    Ok(())
 }
 
 #[cfg(test)]
@@ -277,14 +278,18 @@ mod tests {
         );
     }
 
+    /// Python parity: unknown module names are helper modules, not
+    /// mistyped KEYs. `apply_custom_rtl` must silently copy the file
+    /// through — `check_custom_rtl_format` logs `continue` when
+    /// `tasks.get(rtl_module.name) is None`.
     #[test]
-    fn pack_custom_rtl_unknown_key_surfaces_typed_error() {
+    fn pack_custom_rtl_unknown_module_name_is_copied_through() {
         let dir = tempfile::tempdir().expect("tempdir");
         let rtl_dir = dir.path().join("rtl");
         fs::create_dir_all(&rtl_dir).expect("mkdir rtl");
 
-        let src = dir.path().join("Bogus.v");
-        write(&src, "module Bogus(); endmodule\n");
+        let src = dir.path().join("Helper.v");
+        write(&src, "module Helper(); endmodule\n");
 
         let mut templates = TemplatesInfo::new();
         templates.insert(
@@ -292,11 +297,11 @@ mod tests {
             vec!["clk: input".to_string()],
         );
 
-        let err = apply_custom_rtl(&rtl_dir, &[src], &templates)
-            .expect_err("unknown key must fail");
+        apply_custom_rtl(&rtl_dir, &[src], &templates)
+            .expect("unknown helper module must be copied through, not rejected");
         assert!(
-            matches!(err, CliError::InvalidArg(ref m) if m.contains("Bogus")),
-            "error must name the offending module",
+            rtl_dir.join("Helper.v").is_file(),
+            "helper .v file must end up in the rtl dir",
         );
     }
 

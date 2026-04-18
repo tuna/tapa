@@ -201,13 +201,40 @@ impl MutableModule {
     pub fn emit(&self) -> String {
         let mut out = String::new();
 
-        // Comment pragmas at top
+        // RapidStream pragma lines at the top. Python emits these as
+        // `// pragma RS <content>` line comments (see
+        // `tapa/task_codegen/fsm.py::f"// pragma RS {pragma}"`); using
+        // the Verilog attribute form `(* RS ... *)` trips Vivado's HDL
+        // Parser because `RS <tag>` is not a valid attribute name.
         for comment in &self.added_comments {
-            let _ = writeln!(out, "(* {comment} *)");
+            let _ = writeln!(out, "// pragma RS {comment}");
         }
 
-        // Module declaration
-        let _ = writeln!(out, "module {} (", self.inner.name);
+        // Module declaration — emit parameters in the `#(parameter ...)`
+        // header block BEFORE the port list so port widths that reference
+        // a parameter (e.g. `[C_S_AXI_CONTROL_ADDR_WIDTH-1:0]`) are
+        // resolvable at parse time. Vivado's HDL Parser rejects modules
+        // that emit parameters inside the body after the port list.
+        if self.inner.parameters.is_empty() {
+            let _ = writeln!(out, "module {} (", self.inner.name);
+        } else {
+            let _ = writeln!(out, "module {} #(", self.inner.name);
+            for (i, param) in self.inner.parameters.iter().enumerate() {
+                let _ = write!(out, "  parameter ");
+                if let Some(w) = &param.width {
+                    let _ = write!(out, "{w} ");
+                }
+                let _ = write!(out, "{}", param.name);
+                if !param.default.is_empty() {
+                    let default_str: String =
+                        param.default.iter().map(|t| t.repr.as_str()).collect::<Vec<_>>().join("");
+                    let _ = write!(out, " = {default_str}");
+                }
+                let comma = if i + 1 < self.inner.parameters.len() { "," } else { "" };
+                let _ = writeln!(out, "{comma}");
+            }
+            let _ = writeln!(out, ") (");
+        }
 
         // Collect all ports (original minus removed, plus added)
         let mut all_ports: Vec<&Port> = self
@@ -226,24 +253,6 @@ impl MutableModule {
         }
         let _ = writeln!(out, ");");
         let _ = writeln!(out);
-
-        // Parameters
-        for param in &self.inner.parameters {
-            let _ = write!(out, "parameter ");
-            if let Some(w) = &param.width {
-                let _ = write!(out, "{w} ");
-            }
-            let _ = write!(out, "{}", param.name);
-            if !param.default.is_empty() {
-                let default_str: String =
-                    param.default.iter().map(|t| t.repr.as_str()).collect::<Vec<_>>().join("");
-                let _ = write!(out, " = {default_str}");
-            }
-            let _ = writeln!(out, ";");
-        }
-        if !self.inner.parameters.is_empty() {
-            let _ = writeln!(out);
-        }
 
         // Signals (original minus removed, plus added)
         for sig in &self.inner.signals {
@@ -561,6 +570,61 @@ mod tests {
         assert!(
             !mm.body_text.contains("initial begin"),
             "initial blocks should be removed"
+        );
+    }
+
+    /// Regression for the R7 `vadd_xo` seed failure: Vivado's HDL
+    /// Parser rejected the native top-level RTL because parameters
+    /// like `C_S_AXI_CONTROL_ADDR_WIDTH` were emitted *after* the
+    /// port list used them. `emit()` must now hoist every parameter
+    /// into a `#(parameter ...)` header block before the port list,
+    /// and the resulting module must still re-parse cleanly.
+    #[test]
+    fn emit_hoists_parameters_into_header_before_ports() {
+        use crate::expression::tokenize_expression;
+        use crate::param::Parameter;
+
+        let module = parse_fixture("UpperLevelTask.v");
+        let mut mm = MutableModule::from_parsed(module);
+        mm.inner.parameters.push(Parameter {
+            name: "C_S_AXI_CONTROL_ADDR_WIDTH".to_string(),
+            default: tokenize_expression("6"),
+            width: None,
+        });
+        mm.add_port(wide_port(
+            "s_axi_control_AWADDR",
+            Direction::Input,
+            "C_S_AXI_CONTROL_ADDR_WIDTH-1",
+            "0",
+        ))
+        .unwrap();
+
+        let emitted = mm.emit();
+        let header_idx = emitted
+            .find("module ")
+            .expect("module keyword present");
+        let param_idx = emitted
+            .find("parameter C_S_AXI_CONTROL_ADDR_WIDTH")
+            .expect("parameter must be emitted");
+        let port_idx = emitted
+            .find("s_axi_control_AWADDR")
+            .expect("port using parameter must be emitted");
+        assert!(
+            param_idx > header_idx && param_idx < port_idx,
+            "parameter must appear between `module` and the port that \
+             references it; got param={param_idx} port={port_idx}:\n{emitted}",
+        );
+        assert!(
+            emitted.contains("#("),
+            "parameters must live in the ANSI `#(...)` header block:\n{emitted}",
+        );
+
+        // Round-trip: the emitted module must still re-parse cleanly.
+        let reparsed = VerilogModule::parse(&emitted);
+        assert!(
+            reparsed.is_ok(),
+            "hoisted-parameter emit must reparse, error: {:?}\nemitted:\n{emitted}",
+            reparsed.err(),
         );
     }
 

@@ -83,8 +83,10 @@ fn instrument_upper_task(
         ));
 
         if is_top_task {
-            mm.add_comment("RS clk port=ap_clk".to_owned());
-            mm.add_comment("RS rst port=ap_rst_n active=low".to_owned());
+            // `add_comment` prepends `// pragma RS ` at emit time, so
+            // callers pass raw pragma content without the `RS ` prefix.
+            mm.add_comment("clk port=ap_clk".to_owned());
+            mm.add_comment("rst port=ap_rst_n active=low".to_owned());
 
             // Collect istream/istreams port name prefixes from topology
             // For istream: peek prefix is "{name}_peek"
