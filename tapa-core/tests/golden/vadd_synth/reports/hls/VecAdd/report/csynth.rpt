@@ -1,0 +1,124 @@
+
+
+================================================================
+== Synthesis Summary Report of 'VecAdd'
+================================================================
++ General Information: 
+    * Date: <<redacted>>
+    * Version: <<redacted>>
+    * Project: <<redacted>>
+    * Solution: <<redacted>>
+    * Product family: virtexuplus
+    * Target device:  xcu250-figd2104-2L-e
+    
+
++ Performance & Resource Estimates: 
+    
+    PS: '+' for module; 'o' for loop; '*' for dataflow
+    +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+----+-----+-----+-----+
+    |  Modules | Issue|      | Latency | Latency| Iteration|         | Trip |          |      |    |           |           |     |
+    |  & Loops | Type | Slack| (cycles)|  (ns)  |  Latency | Interval| Count| Pipelined| BRAM | DSP|     FF    |    LUT    | URAM|
+    +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+----+-----+-----+-----+
+    |+ VecAdd  |     -|  1.43|        0|   0.000|         -|        1|     -|        no|     -|   -|  316 (~0%)|  552 (~0%)|    -|
+    +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+----+-----+-----+-----+
+
+
+================================================================
+== HW Interfaces
+================================================================
+* S_AXILITE Interfaces
++-----+-----+-----+-----+-----+
+| Interface     | Data Width | Address Width | Offset | Register |
++-----+-----+-----+-----+-----+
+| s_axi_control | 32         | 6             | 16     | 0        |
++-----+-----+-----+-----+-----+
+
+* S_AXILITE Registers
++-----+-----+-----+-----+-----+-----+-----+
+| Interface     | Register   | Offset | Width | Access | Description                      | Bit Fields                                                           |
++-----+-----+-----+-----+-----+-----+-----+
+| s_axi_control | CTRL       | 0x00   | 32    | RW     | Control signals                  | 0=AP_START 1=AP_DONE 2=AP_IDLE 3=AP_READY 7=AUTO_RESTART 9=INTERRUPT |
+| s_axi_control | GIER       | 0x04   | 32    | RW     | Global Interrupt Enable Register | 0=Enable                                                             |
+| s_axi_control | IP_IER     | 0x08   | 32    | RW     | IP Interrupt Enable Register     | 0=CHAN0_INT_EN 1=CHAN1_INT_EN                                        |
+| s_axi_control | IP_ISR     | 0x0c   | 32    | RW     | IP Interrupt Status Register     | 0=CHAN0_INT_ST 1=CHAN1_INT_ST                                        |
+| s_axi_control | a_offset_1 | 0x10   | 32    | W      | Data signal of a_offset          |                                                                      |
+| s_axi_control | a_offset_2 | 0x14   | 32    | W      | Data signal of a_offset          |                                                                      |
+| s_axi_control | b_offset_1 | 0x1c   | 32    | W      | Data signal of b_offset          |                                                                      |
+| s_axi_control | b_offset_2 | 0x20   | 32    | W      | Data signal of b_offset          |                                                                      |
+| s_axi_control | c_offset_1 | 0x28   | 32    | W      | Data signal of c_offset          |                                                                      |
+| s_axi_control | c_offset_2 | 0x2c   | 32    | W      | Data signal of c_offset          |                                                                      |
+| s_axi_control | n_1        | 0x34   | 32    | W      | Data signal of n                 |                                                                      |
+| s_axi_control | n_2        | 0x38   | 32    | W      | Data signal of n                 |                                                                      |
++-----+-----+-----+-----+-----+-----+-----+
+
+* TOP LEVEL CONTROL
++-----+-----+-----+
+| Interface | Type       | Ports     |
++-----+-----+-----+
+| ap_clk    | clock      | ap_clk    |
+| ap_rst_n  | reset      | ap_rst_n  |
+| interrupt | interrupt  | interrupt |
+| ap_ctrl   | ap_ctrl_hs |           |
++-----+-----+-----+
+
+
+================================================================
+== SW I/O Information
+================================================================
+* Top Function Arguments
++-----+-----+-----+
+| Argument | Direction | Datatype          |
++-----+-----+-----+
+| a_offset | in        | long unsigned int |
+| b_offset | in        | long unsigned int |
+| c_offset | in        | long unsigned int |
+| n        | in        | long unsigned int |
++-----+-----+-----+
+
+* SW-to-HW Mapping
++-----+-----+-----+-----+
+| Argument | HW Interface  | HW Type  | HW Info                              |
++-----+-----+-----+-----+
+| a_offset | s_axi_control | register | name=a_offset_1 offset=0x10 range=32 |
+| a_offset | s_axi_control | register | name=a_offset_2 offset=0x14 range=32 |
+| b_offset | s_axi_control | register | name=b_offset_1 offset=0x1c range=32 |
+| b_offset | s_axi_control | register | name=b_offset_2 offset=0x20 range=32 |
+| c_offset | s_axi_control | register | name=c_offset_1 offset=0x28 range=32 |
+| c_offset | s_axi_control | register | name=c_offset_2 offset=0x2c range=32 |
+| n        | s_axi_control | register | name=n_1 offset=0x34 range=32        |
+| n        | s_axi_control | register | name=n_2 offset=0x38 range=32        |
++-----+-----+-----+-----+
+
+
+================================================================
+== Bind Op Report
+================================================================
+  No bind op info in design
+
+================================================================
+== Storage Report
+================================================================
++-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+| Name              | Usage     | Type      | BRAM | URAM | Pragma | Variable | Impl | Latency | Bitwidth, Depth, |
+|                   |           |           |      |      |        |          |      |         | Banks            |
++-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+| + VecAdd          |           |           | 0    | 0    |        |          |      |         |                  |
+|   control_s_axi_U | interface | s_axilite |      |      |        |          |      |         |                  |
++-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+
+
+================================================================
+== Pragma Report
+================================================================
+* Valid Pragma Syntax
++-----+-----+-----+
+| Type      | Options                                    | Location                                                                                   |
++-----+-----+-----+
+| interface | s_axilite port = a_offset bundle = control | ../pytest-of-tapa/pytest-17/test_cli_golden_vadd_synth0/rs-out/cpp/VecAdd.cpp:31 in vecadd |
+| interface | s_axilite port = b_offset bundle = control | ../pytest-of-tapa/pytest-17/test_cli_golden_vadd_synth0/rs-out/cpp/VecAdd.cpp:34 in vecadd |
+| interface | s_axilite port = c_offset bundle = control | ../pytest-of-tapa/pytest-17/test_cli_golden_vadd_synth0/rs-out/cpp/VecAdd.cpp:37 in vecadd |
+| interface | s_axilite port = n bundle = control        | ../pytest-of-tapa/pytest-17/test_cli_golden_vadd_synth0/rs-out/cpp/VecAdd.cpp:40 in vecadd |
+| interface | s_axilite port = return bundle = control   | ../pytest-of-tapa/pytest-17/test_cli_golden_vadd_synth0/rs-out/cpp/VecAdd.cpp:44 in vecadd |
++-----+-----+-----+
+
+

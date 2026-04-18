@@ -1,0 +1,10 @@
+# Reserved for the `vadd analyze synth` golden snapshot (AC-5.2).
+#
+# Holds `rtl/*.v` (Rust codegen output, deterministic),
+# `templates_info.json`, `design.json`, `settings.json`, and
+# `report_inventory.txt` — the set of HLS report paths produced
+# after `tapa analyze synth`.
+#
+# Populated by `test_cli_golden_vadd_synth` when `tapacc` +
+# `vitis_hls` are available. See `parity_test.py` for the snapshot
+# contract.

@@ -1,0 +1,15 @@
+hls/Add/report/Add_Pipeline_VITIS_LOOP_39_1_csynth.rpt
+hls/Add/report/Add_csynth.rpt
+hls/Add/report/csynth.rpt
+hls/Add/report/csynth_design_size.rpt
+hls/Mmap2Stream/report/Mmap2Stream_Pipeline_VITIS_LOOP_27_1_csynth.rpt
+hls/Mmap2Stream/report/Mmap2Stream_csynth.rpt
+hls/Mmap2Stream/report/csynth.rpt
+hls/Mmap2Stream/report/csynth_design_size.rpt
+hls/Stream2Mmap/report/Stream2Mmap_Pipeline_VITIS_LOOP_32_1_csynth.rpt
+hls/Stream2Mmap/report/Stream2Mmap_csynth.rpt
+hls/Stream2Mmap/report/csynth.rpt
+hls/Stream2Mmap/report/csynth_design_size.rpt
+hls/VecAdd/report/VecAdd_csynth.rpt
+hls/VecAdd/report/csynth.rpt
+hls/VecAdd/report/csynth_design_size.rpt

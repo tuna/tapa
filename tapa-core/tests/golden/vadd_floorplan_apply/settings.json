@@ -1,0 +1,11 @@
+{
+    "clock_period": "3.333333",
+    "floorplan": true,
+    "part_num": "xcu250-figd2104-2L-e",
+    "platform": "/opt/tapa/software/xilinx/platforms/xilinx_u250_gen3x16_xdma_4_1_202210_1",
+    "slot_task_name_to_fp_region": {
+        "0_0": "0_TO_0"
+    },
+    "synthed": true,
+    "target": "xilinx-vitis"
+}

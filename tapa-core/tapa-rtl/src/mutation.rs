@@ -292,7 +292,13 @@ impl MutableModule {
 }
 
 /// Extract body text from raw Verilog source.
-/// Everything after the last signal/port declaration up to `endmodule`.
+///
+/// Everything after the last port/signal/parameter declaration (and
+/// its terminating `);` if present) up to `endmodule`. The `);` line
+/// that closes the ANSI port list is treated as part of the header,
+/// not the body — otherwise re-emitted modules accumulate a stray
+/// closing paren right before the signal declarations, tripping
+/// Vivado's HDL parser.
 fn extract_body_text(source: &str) -> String {
     let endmodule_pos = source.rfind("endmodule").unwrap_or(source.len());
 
@@ -302,14 +308,23 @@ fn extract_body_text(source: &str) -> String {
     for line in source[..endmodule_pos].lines() {
         let line_end = byte_offset + line.len() + 1; // +1 for newline
         let trimmed = line.trim();
-        if trimmed.starts_with("input ")
+        let is_header_line = trimmed.starts_with("input ")
             || trimmed.starts_with("output ")
             || trimmed.starts_with("inout ")
             || trimmed.starts_with("wire ")
             || trimmed.starts_with("reg ")
             || trimmed.starts_with("parameter ")
             || trimmed.starts_with("(* ")
-        {
+            // Line comments (incl. RapidStream `// pragma ...`) belong
+            // to the header, not the body.
+            || trimmed.starts_with("//")
+            // The port-list terminator (`);` or `)(`) is still part of
+            // the module header; keep it out of `body_text` so it
+            // doesn't reappear between signals and body on re-emit.
+            || trimmed == ");"
+            || trimmed == ") ("
+            || trimmed.starts_with(") (");
+        if is_header_line {
             body_start = line_end.min(endmodule_pos);
         }
         byte_offset = line_end;

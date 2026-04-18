@@ -1,0 +1,8 @@
+# Reserved for the standalone `tapa floorplan --floorplan-path`
+# golden snapshot (AC-5.4). Captures the persistent JSON outputs
+# (`graph.json`, `design.json`, `settings.json`, `templates_info.json`)
+# after `apply_floorplan` wraps leaf instances into slot tasks.
+#
+# Seeded by `test_cli_golden_vadd_floorplan_apply` when the Vitis
+# toolchain is available. The apply step rewrites the cached state
+# in place, so the diff also covers the slot-task `code` rewrites.

@@ -1,0 +1,90 @@
+#!/usr/bin/env python3
+"""Deterministic `rapidstream-tapafp` stub for parity tests.
+
+Real `rapidstream-tapafp` is a RapidStream-proprietary binary. The
+`test_cli_golden_vadd_{generate_floorplan,compile_with_floorplan_dse}`
+gates do not need the real tool — they need a reproducible driver
+that writes the same `autobridge/solution_*/floorplan.json` outputs
+every run so the checked-in goldens stay stable. This script does
+exactly that: it parses the same CLI surface the Rust runner hands
+the binary (`--ab-graph-path`, `--work-dir`, `--device-config`,
+`--floorplan-config`, `--run-floorplan`) and emits a single
+`solution_0/floorplan.json` under `--work-dir` whose content is
+derived only from the `ab_graph.json` contents (no timestamps, no
+process IDs). Any drift vs. the in-tree golden therefore reflects a
+real change in tapa-cli's upstream graph emission.
+
+The Rust runner invokes this as `rapidstream-tapafp <flags>`; the
+pytest harness prepends `tests/tools/` to `PATH` inside each
+floorplan/DSE gate.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+
+def _parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Deterministic rapidstream-tapafp stub"
+    )
+    parser.add_argument("--ab-graph-path", type=Path, required=True)
+    parser.add_argument("--work-dir", type=Path, required=True)
+    parser.add_argument("--device-config", type=Path, required=True)
+    parser.add_argument("--floorplan-config", type=Path, required=True)
+    parser.add_argument("--run-floorplan", action="store_true")
+    return parser.parse_args(argv)
+
+
+def _derive_solution(ab_graph_path: Path) -> dict[str, str]:
+    """Build a deterministic floorplan.json payload.
+
+    Matches the schema tapa-cli's downstream `floorplan` +
+    `compile-with-floorplan-dse` stages consume: a flat mapping from
+    top-level instance name → `SLOT_XxYy:SLOT_XxYy` region string
+    (per `tapa-cli/src/steps/floorplan/mod.rs::run_floorplan_native_apply`
+    and `tapa-lowering/src/project_builder.rs::read_device_config`).
+    We pin every instance we can read out of `ab_graph.json` (under
+    the top task's `tasks` map) to `SLOT_X0Y0:SLOT_X0Y0` so the stub
+    is compatible with a 1x1 device_config fixture.
+    """
+    payload: dict[str, str] = {}
+    if ab_graph_path.is_file():
+        try:
+            ab = json.loads(ab_graph_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            ab = {}
+        tasks = ab.get("tasks", {})
+        top = ab.get("top") or next(iter(tasks), "")
+        top_def = tasks.get(top, {})
+        for child_name, instances in top_def.get("tasks", {}).items():
+            n = len(instances) if isinstance(instances, list) else 1
+            for idx in range(n):
+                payload[f"{child_name}_{idx}"] = "SLOT_X0Y0:SLOT_X0Y0"
+    if not payload:
+        # Fallback: at least emit one mapping so the JSON-shape check
+        # downstream sees a non-empty dict.
+        payload["VecAdd"] = "SLOT_X0Y0:SLOT_X0Y0"
+    return payload
+
+
+def main(argv: list[str]) -> int:
+    args = _parse_args(argv)
+    work_dir: Path = args.work_dir
+    work_dir.mkdir(parents=True, exist_ok=True)
+    solution_dir = work_dir / "solution_0"
+    solution_dir.mkdir(parents=True, exist_ok=True)
+    payload = _derive_solution(args.ab_graph_path)
+    floorplan_path = solution_dir / "floorplan.json"
+    floorplan_path.write_text(
+        json.dumps(payload, indent=4, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

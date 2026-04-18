@@ -1,0 +1,149 @@
+
+
+================================================================
+== Synthesis Summary Report of 'Mmap2Stream'
+================================================================
++ General Information: 
+    * Date: <<redacted>>
+    * Version: <<redacted>>
+    * Project: <<redacted>>
+    * Solution: <<redacted>>
+    * Product family: virtexuplus
+    * Target device:  xcu250-figd2104-2L-e
+    
+
++ Performance & Resource Estimates: 
+    
+    PS: '+' for module; 'o' for loop; '*' for dataflow
+    +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+----+-----+-----+-----+
+    |                 Modules                 |  Issue |       | Latency | Latency| Iteration|         | Trip |          |         |    |           |           |     |
+    |                 & Loops                 |  Type  | Slack | (cycles)|  (ns)  |  Latency | Interval| Count| Pipelined|  BRAM   | DSP|     FF    |    LUT    | URAM|
+    +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+----+-----+-----+-----+
+    |+ Mmap2Stream                            |  Timing|  -0.00|        -|       -|         -|        -|     -|        no|  1 (~0%)|   -|  843 (~0%)|  978 (~0%)|    -|
+    | + Mmap2Stream_Pipeline_VITIS_LOOP_27_1  |  Timing|  -0.00|        -|       -|         -|        -|     -|        no|        -|   -|  102 (~0%)|  200 (~0%)|    -|
+    |  o VITIS_LOOP_27_1                      |       -|   2.43|        -|       -|         3|        1|     -|       yes|        -|   -|          -|          -|    -|
+    +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+----+-----+-----+-----+
+
+
+================================================================
+== HW Interfaces
+================================================================
+* M_AXI
++-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+| Interface  | Read/Write | Data Width | Address Width | Latency | Offset | Register | Max Widen | Max Read     | Max Write    | Num Read    | Num Write   | Resource Estimate |
+|            |            | (SW->HW)   |               |         |        |          | Bitwidth  | Burst Length | Burst Length | Outstanding | Outstanding |                   |
++-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+| m_axi_mmap | READ_ONLY  | 32 -> 32   | 64            | 0       | direct | 0        | 0         | 16           | 16           | 16          | 16          | BRAM=1            |
++-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+
+* AP_FIFO
++-----+-----+-----+
+| Interface | Direction | Data Width |
++-----+-----+-----+
+| stream_s  | out       | 33         |
++-----+-----+-----+
+
+* Other Ports
++-----+-----+-----+-----+
+| Port        | Mode    | Direction | Bitwidth |
++-----+-----+-----+-----+
+| mmap_offset | ap_none | in        | 64       |
+| n           | ap_none | in        | 64       |
+| stream_peek | ap_none | in        | 33       |
++-----+-----+-----+-----+
+
+* TOP LEVEL CONTROL
++-----+-----+-----+
+| Interface | Type       | Ports                             |
++-----+-----+-----+
+| ap_clk    | clock      | ap_clk                            |
+| ap_rst_n  | reset      | ap_rst_n                          |
+| ap_ctrl   | ap_ctrl_hs | ap_done ap_idle ap_ready ap_start |
++-----+-----+-----+
+
+
+================================================================
+== SW I/O Information
+================================================================
+* Top Function Arguments
++-----+-----+-----+
+| Argument | Direction | Datatype            |
++-----+-----+-----+
+| mmap     | in        | float const *       |
+| n        | in        | long unsigned int   |
+| stream   | out       | tapa_stream<float>& |
++-----+-----+-----+
+
+* SW-to-HW Mapping
++-----+-----+-----+-----+-----+
+| Argument | HW Interface | HW Type   | HW Usage | HW Info   |
++-----+-----+-----+-----+-----+
+| mmap     | m_axi_mmap   | interface |          | channel=0 |
+| mmap     | mmap_offset  | port      | offset   |           |
+| n        | n            | port      |          |           |
+| stream   | stream_s     | interface |          |           |
+| stream   | stream_peek  | port      |          |           |
++-----+-----+-----+-----+-----+
+
+
+================================================================
+== M_AXI Burst Information
+================================================================
+ Note: All burst requests might be further partitioned into multiple requests during RTL generation based on max_read_burst_length or max_write_burst_length settings.
+
+* Inferred Burst Summary
++-----+-----+-----+-----+-----+-----+
+| HW Interface | Direction | Length   | Width | Loop            | Loop Location                                                                            |
++-----+-----+-----+-----+-----+-----+
+| m_axi_mmap   | read      | variable | 32    | VITIS_LOOP_27_1 | ../pytest-of-tapa/pytest-17/test_cli_golden_vadd_synth0/rs-out/cpp/Mmap2Stream.cpp:27:20 |
++-----+-----+-----+-----+-----+-----+
+
+* All M_AXI Variable Accesses
++-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+| HW Interface | Variable | Access Location                                              | Direction | Burst Status | Length   | Loop            | Loop Location                                                                            | Resolution | Problem                                                                                                 |
++-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+| m_axi_mmap   | mmap     | /home/tapa/tapa-f0a/tapa-lib/tapa/xilinx/hls/stream.h:150:11 | read      | Widen Fail   |          | VITIS_LOOP_27_1 | ../pytest-of-tapa/pytest-17/test_cli_golden_vadd_synth0/rs-out/cpp/Mmap2Stream.cpp:27:20 | 214-353    | Could not widen since type float size is greater than or equal to the max_widen_bitwidth threshold of 0 |
+| m_axi_mmap   | mmap     | /home/tapa/tapa-f0a/tapa-lib/tapa/xilinx/hls/stream.h:150:11 | read      | Inferred     | variable | VITIS_LOOP_27_1 | ../pytest-of-tapa/pytest-17/test_cli_golden_vadd_synth0/rs-out/cpp/Mmap2Stream.cpp:27:20 |            |                                                                                                         |
++-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+
+    * Resolution URL: docs.xilinx.com/access/sources/dita/topic?Doc_Version=2024.2%20English&url=ug1448-hls-guidance&resourceid=XXX-YYY.html (replace XXX-YYY with column value)
+
+================================================================
+== Bind Op Report
+================================================================
++-----+-----+-----+-----+-----+-----+-----+
+| Name                                    | DSP | Pragma | Variable  | Op    | Impl   | Latency |
++-----+-----+-----+-----+-----+-----+-----+
+| + Mmap2Stream                           | 0   |        |           |       |        |         |
+|  + Mmap2Stream_Pipeline_VITIS_LOOP_27_1 | 0   |        |           |       |        |         |
+|    icmp_ln27_fu_88_p2                   |     |        | icmp_ln27 | seteq | auto   | 0       |
+|    i_1_fu_93_p2                         |     |        | i_1       | add   | fabric | 0       |
++-----+-----+-----+-----+-----+-----+-----+
+
+
+================================================================
+== Storage Report
+================================================================
++-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+| Name           | Usage     | Type  | BRAM | URAM | Pragma | Variable | Impl | Latency | Bitwidth, Depth, |
+|                |           |       |      |      |        |          |      |         | Banks            |
++-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+| + Mmap2Stream  |           |       | 1    | 0    |        |          |      |         |                  |
+|   mmap_m_axi_U | interface | m_axi | 1    |      |        |          |      |         |                  |
++-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+
+
+================================================================
+== Pragma Report
+================================================================
+* Valid Pragma Syntax
++-----+-----+-----+
+| Type         | Options                                         | Location                                                                                             |
++-----+-----+-----+
+| interface    | m_axi port = mmap offset = direct bundle = mmap | ../pytest-of-tapa/pytest-17/test_cli_golden_vadd_synth0/rs-out/cpp/Mmap2Stream.cpp:19 in mmap2stream |
+| disaggregate | variable = stream                               | ../pytest-of-tapa/pytest-17/test_cli_golden_vadd_synth0/rs-out/cpp/Mmap2Stream.cpp:22 in mmap2stream |
+| interface    | ap_fifo port = stream._                         | ../pytest-of-tapa/pytest-17/test_cli_golden_vadd_synth0/rs-out/cpp/Mmap2Stream.cpp:23 in mmap2stream |
+| aggregate    | variable = stream._ bit                         | ../pytest-of-tapa/pytest-17/test_cli_golden_vadd_synth0/rs-out/cpp/Mmap2Stream.cpp:24 in mmap2stream |
++-----+-----+-----+
+
+

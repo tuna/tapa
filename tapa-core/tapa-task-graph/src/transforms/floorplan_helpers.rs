@@ -104,6 +104,7 @@ pub(super) fn build_slot_def(
         ports: new_ports,
         tasks: slot_tasks,
         fifos: slot_fifos,
+        extra: std::collections::BTreeMap::new(),
     })
 }
 
