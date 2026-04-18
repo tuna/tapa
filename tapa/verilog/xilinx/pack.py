@@ -161,8 +161,7 @@ def _pack_via_rust(
 
     Under `TAPA_USE_RUST_XILINX=1` the Python path is replaced by the
     PyO3 binding. Binding errors are not swallowed — they surface as
-    `ValueError` to fail hard at the Python layer, matching the plan's
-    no-silent-fallback policy.
+    `ValueError` to fail hard at the Python layer.
     """
     xilinx_mod = importlib.import_module("tapa_core.xilinx")
     rust_ports = [_port_to_rust(p) for p in port_list]
