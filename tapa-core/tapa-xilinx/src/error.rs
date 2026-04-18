@@ -80,8 +80,7 @@ mod tests {
     /// Exhaustive tag list for `XilinxError`. Keep this in lock-step
     /// with the enum. The `match` in `check_tag_matches_variant` below
     /// is `wildcard_enum_match_arm`-deny-clean, so adding a new variant
-    /// without extending this list fails to compile — which satisfies
-    /// AC-17's "every variant covered" negative test.
+    /// without extending this list fails to compile.
     const ALL_TAGS: &[&str] = &[
         "ToolNotFound",
         "MissingXilinxHls",

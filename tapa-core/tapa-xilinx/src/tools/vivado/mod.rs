@@ -16,6 +16,9 @@ pub struct VivadoJob {
     pub downloads: Vec<PathBuf>,
     pub work_dir: Option<PathBuf>,
     pub env: Vec<(String, String)>,
+    /// `-tclargs` forwarded to the TCL script. Ports Python's
+    /// `tapa/backend/xilinx_tools.py::Vivado` trailing tclargs list.
+    pub tclargs: Vec<String>,
 }
 
 impl VivadoJob {
@@ -26,6 +29,7 @@ impl VivadoJob {
             downloads: Vec::new(),
             work_dir: None,
             env: Vec::new(),
+            tclargs: Vec::new(),
         }
     }
 }
@@ -45,6 +49,12 @@ pub fn build_invocation(job: &VivadoJob, tcl_path: &std::path::Path) -> ToolInvo
         .arg(tcl_path.display().to_string())
         .arg("-nojournal")
         .arg("-nolog");
+    if !job.tclargs.is_empty() {
+        inv = inv.arg("-tclargs");
+        for a in &job.tclargs {
+            inv = inv.arg(a.clone());
+        }
+    }
     for (k, v) in &job.env {
         inv = inv.env(k.clone(), v.clone());
     }

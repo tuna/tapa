@@ -187,13 +187,63 @@ impl SshSession {
         s.control_path = None;
     }
 
-    /// Placeholder for the live establish step. Returns a typed error
-    /// until the remote tool runner is wired up end-to-end.
+    /// Establish (or reuse) the ControlMaster socket.
+    ///
+    /// Idempotent: if the state flag says "ready" and the socket still
+    /// exists, returns immediately. Otherwise spawns a no-op `ssh
+    /// <target> true` invocation with ControlMaster=auto — OpenSSH
+    /// opens or reuses the master socket as a side-effect. Transient
+    /// mux errors are classified via [`classify_ssh_error`] and
+    /// surface as `SshMuxLost`; auth / unreachable faults surface as
+    /// `SshConnect`.
     pub fn ensure_established(&self) -> Result<()> {
-        Err(XilinxError::SshConnect {
-            host: self.cfg.host.clone(),
-            detail: "live SshSession.ensure_established not yet implemented".into(),
-        })
+        {
+            let s = self.state.lock().unwrap();
+            if s.ready {
+                if let Some(cp) = &s.control_path {
+                    if cp.exists() {
+                        return Ok(());
+                    }
+                }
+            }
+        }
+        if self.cfg.ssh_multiplex {
+            let dir = self.control_dir();
+            if let Err(e) = std::fs::create_dir_all(&dir) {
+                return Err(XilinxError::SshConnect {
+                    host: self.cfg.host.clone(),
+                    detail: format!("create control dir {}: {e}", dir.display()),
+                });
+            }
+        }
+        let mut args = self.build_ssh_args();
+        args.push(self.ssh_target());
+        args.push("true".into());
+        let out = std::process::Command::new("ssh")
+            .args(&args)
+            .output()
+            .map_err(|e| XilinxError::SshConnect {
+                host: self.cfg.host.clone(),
+                detail: format!("spawn ssh: {e}"),
+            })?;
+        if !out.status.success() {
+            let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
+            return Err(match classify_ssh_error(&stderr) {
+                SshErrorKind::TransientMux => XilinxError::SshMuxLost {
+                    detail: stderr,
+                },
+                _ => XilinxError::SshConnect {
+                    host: self.cfg.host.clone(),
+                    detail: stderr,
+                },
+            });
+        }
+        let mut s = self.state.lock().unwrap();
+        s.ready = true;
+        if self.cfg.ssh_multiplex {
+            s.control_path = Some(self.control_dir().join("cm-%C"));
+        }
+        Ok(())
     }
 }
 
