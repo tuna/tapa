@@ -271,7 +271,13 @@ fn redact_xml_payload(text: &str) -> String {
         .expect("static regex compiles");
     let step2 = re_src.replace_all(&step1, "<SourceLocation>$1</SourceLocation>");
 
-    let re_pid = regex::Regex::new("ProjectID=\"[0-9a-fA-F]{32}\"")
+    // Python matches 32 arbitrary characters inside `ProjectID="..."`
+    // (see `tapa/program/pack.py::_redact_xml`: 32 literal dots, and
+    // `.` in `re` defaults to any-char-except-newline). Rust's
+    // `regex` has the same default, so `.{32}` gives byte-for-byte
+    // parity. Restricting to hex would miss valid XML payloads with
+    // non-hex project identifiers.
+    let re_pid = regex::Regex::new("ProjectID=\".{32}\"")
         .expect("static regex compiles");
     re_pid
         .replace_all(&step2, "ProjectID=\"0123456789abcdef0123456789abcdef\"")

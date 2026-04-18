@@ -1795,3 +1795,356 @@ def test_parity_xilinx_kernel_xml_round_trip() -> None:
         "Python kernel.xml drifted from committed golden — regenerate or "
         "update the fixture before changing emit_kernel_xml."
     )
+
+
+def _build_tiny_xo(path: Path, project_id: str | None = None) -> None:
+    """Build a minimal synthetic `.xo` archive for the redaction parity test.
+
+    Carries one entry per redaction code path exercised by the Rust
+    and Python redactors:
+
+    - A `*.rpt` with a `Date:` timestamp line.
+    - A `*.xml` with xilinx:coreCreationDateTime + absolute-path
+      SourceLocation + (optionally non-hex) ProjectID.
+    - A plain binary file that must pass through unchanged.
+    """
+    import zipfile
+
+    pid = project_id or "deadbeefdeadbeefdeadbeefdeadbeef"
+    assert len(pid) == 32, "ProjectID must be 32 chars"  # noqa: PLR2004
+
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr(
+            "report/kernel.rpt",
+            "Date:           Wed Mar 15 12:34:56 2024\nbody line 1\n",
+        )
+        z.writestr(
+            "ip/component.xml",
+            f"""<?xml version="1.0"?>
+<root>
+  <xilinx:coreCreationDateTime>2026-04-17T00:00:00Z</xilinx:coreCreationDateTime>
+  <SourceLocation>/abs/path/to/cpp/foo/bar.cpp</SourceLocation>
+  <Project ProjectID="{pid}"/>
+</root>
+""",
+        )
+        z.writestr("binary/data.bin", b"\x00\x01\x02raw")
+
+
+def _py_redact(src: Path, dest: Path) -> None:
+    """Invoke the production Python `_redact_and_zip` on `src` → `dest`."""
+    import zipfile
+
+    from tapa.program.pack import _redact_and_zip  # noqa: PLC2701
+
+    with (
+        zipfile.ZipFile(src, "r") as z_in,
+        zipfile.ZipFile(dest, "w") as z_out,
+    ):
+        _redact_and_zip(z_in, z_out)
+
+
+def _zip_inventory(path: Path) -> list[tuple[str, str]]:
+    """Return (filename, sha256(content)) for each entry, sorted by name."""
+    import hashlib as _hashlib
+    import zipfile
+
+    out: list[tuple[str, str]] = []
+    with zipfile.ZipFile(path, "r") as z:
+        for info in sorted(z.infolist(), key=lambda i: i.filename):
+            digest = _hashlib.sha256(z.read(info)).hexdigest()
+            out.append((info.filename, digest))
+    return out
+
+
+def _zip_metadata(path: Path) -> list[tuple[str, int, tuple[int, ...]]]:
+    """Return (filename, file_size, date_time) for each ZIP entry.
+
+    The plan's AC-9 contract calls for `unzip -l`-style listing parity
+    *after* the reproducible-build redaction zeros out timestamps. A
+    consistent `date_time = (1980, 1, 1, 0, 0, 0)` on both sides is
+    what guarantees identical downstream consumers (Vivado, signing).
+    """
+    import zipfile
+
+    out: list[tuple[str, int, tuple[int, ...]]] = []
+    with zipfile.ZipFile(path, "r") as z:
+        out.extend(
+            (info.filename, info.file_size, tuple(info.date_time))
+            for info in sorted(z.infolist(), key=lambda i: i.filename)
+        )
+    return out
+
+
+def _run_xo_parity_once(
+    xilinx_mod: Any,
+    td_path: Path,
+    label: str,
+    project_id: str | None,
+) -> None:
+    """Shared driver for the parametrized .xo parity cases.
+
+    Builds the fixture, runs both redactors, compares contents +
+    listing metadata. Split out so the positive test can sweep
+    multiple `ProjectID` shapes (hex + non-hex) without duplicating
+    the scaffolding.
+    """
+    import json as _json
+
+    src = td_path / f"src-{label}.xo"
+    rust_xo = td_path / f"rust-{label}.xo"
+    py_xo = td_path / f"py-{label}.xo"
+    _build_tiny_xo(src, project_id=project_id)
+    rust_xo.write_bytes(src.read_bytes())
+
+    xilinx_mod.pack_xo(_json.dumps({"kernel_out_path": str(rust_xo), "redact": True}))
+
+    try:
+        _py_redact(src, py_xo)
+    except ImportError as exc:  # pragma: no cover
+        pytest.skip(f"tapa.program.pack not importable: {exc}")
+
+    rust_inventory = _zip_inventory(rust_xo)
+    py_inventory = _zip_inventory(py_xo)
+    assert rust_inventory == py_inventory, (
+        f"[{label}] Rust and Python .xo redaction content drifted.\n"
+        f"  rust = {rust_inventory}\n  py   = {py_inventory}"
+    )
+
+    rust_meta = _zip_metadata(rust_xo)
+    py_meta = _zip_metadata(py_xo)
+    assert rust_meta == py_meta, (
+        f"[{label}] .xo ZIP listing metadata drifted.\n"
+        f"  rust = {rust_meta}\n  py   = {py_meta}"
+    )
+    # AC-9 reproducibility: every entry must carry the MS-DOS epoch
+    # timestamp (1980-01-01) after redaction, on both sides.
+    for _name, _size, dt in rust_meta:
+        assert dt[0] == 1980, f"[{label}] rust kept a non-epoch timestamp: {dt}"  # noqa: PLR2004
+    for _name, _size, dt in py_meta:
+        assert dt[0] == 1980, f"[{label}] py kept a non-epoch timestamp: {dt}"  # noqa: PLR2004
+
+
+@pytest.mark.parametrize(
+    ("label", "project_id"),
+    [
+        ("hex32", "deadbeefdeadbeefdeadbeefdeadbeef"),
+        # Codex round-6 repro case: Python matches any 32 chars in
+        # `ProjectID="..."`; Rust must do the same. Use a non-hex
+        # alphanumeric ID to prove parity.
+        ("non_hex_upper", "ABCDEFGHIJKLMNOPQRSTUVWX12345678"),
+        # Mixed punctuation / whitespace to stress `.` matching.
+        ("mixed_punct", "abcd-efgh_ijkl.mnop=qrstuvwx1234"),
+    ],
+)
+def test_parity_xilinx_xo_redaction(
+    xilinx_mod: Any, label: str, project_id: str
+) -> None:
+    """AC-9 parity: Rust `redact_xo` matches Python `_redact_and_zip`.
+
+    Builds a tiny synthetic `.xo`, redacts two copies — one via
+    `tapa_core.xilinx.pack_xo` (redact-only mode), one via
+    Python's production `_redact_and_zip` — and asserts the two
+    archives carry the same file set, per-file SHA-256, and ZIP
+    listing metadata (names, sizes, normalized timestamps). The
+    parametrized `project_id` cases exercise Python's "any 32 chars"
+    pattern, including non-hex values that previously slipped past
+    Rust's hex-only regex.
+    """
+    import tempfile as _tempfile
+    from pathlib import Path as _Path
+
+    with _tempfile.TemporaryDirectory() as td:
+        _run_xo_parity_once(xilinx_mod, _Path(td), label, project_id)
+
+
+def _build_vivado_like_xo(path: Path, kernel_xml_body: str) -> None:
+    """Build a Vivado-emission-shaped synthetic `.xo`.
+
+    Mirrors the post-`package_xo` layout consumed by the redactor:
+    `kernel.xml` at the root, plus the `ip/component.xml`,
+    `report/*_csynth.rpt`, and `hdl/*.v` entries the Xilinx runtime
+    produces. Used by the full-mode parity test to exercise the real
+    redaction code path against a Python-emitted `kernel.xml` inside
+    the archive — the closest in-sandbox proxy for a live Vivado
+    `package_xo` output.
+    """
+    import zipfile
+
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("kernel.xml", kernel_xml_body)
+        z.writestr(
+            "ip/component.xml",
+            """<?xml version="1.0"?>
+<root>
+  <xilinx:coreCreationDateTime>2026-04-17T00:00:00Z</xilinx:coreCreationDateTime>
+  <SourceLocation>/abs/path/to/cpp/vadd/vadd.cpp</SourceLocation>
+  <Project ProjectID="deadbeefdeadbeefdeadbeefdeadbeef"/>
+</root>
+""",
+        )
+        z.writestr(
+            "report/vadd_csynth.rpt",
+            "Date:           Thu Mar 16 08:09:10 2024\nutil body\n",
+        )
+        z.writestr(
+            "hdl/verilog/vadd.v",
+            "module vadd;\n  // synthetic HDL\nendmodule\n",
+        )
+
+
+def test_parity_xilinx_xo_full_mode(xilinx_mod: Any) -> None:  # noqa: PLR0914
+    """AC-9 full-mode parity: `pack_xo` redaction on a Vivado-shaped `.xo`.
+
+    The plan's AC-9 positive contract calls for four invariants on
+    the packaged artifact:
+
+    - `unzip -l`-style listing parity (names + sizes);
+    - Per-file SHA-256 equality on every entry;
+    - Normalized timestamps (MS-DOS epoch) across the entire
+      archive;
+    - `kernel.xml` inside the `.xo` canonical-XML equal to Python's
+      `print_kernel_xml` output;
+    - Redaction is idempotent.
+
+    In this sandbox we cannot actually invoke Vivado to emit the
+    `.xo`, so the test stages a Vivado-shaped archive whose
+    `kernel.xml` entry comes directly from the production Python
+    emitter. That keeps the Rust-vs-Python comparison honest for
+    every byte the redactor is allowed to touch; the only thing a
+    live Vivado run could additionally cover is the tool-side
+    packaging, which is out of scope for the redactor under test.
+    """
+    import io
+    import json as _json
+    import tempfile as _tempfile
+    from pathlib import Path as _Path
+
+    try:
+        from tapa.backend.kernel_metadata import (  # type: ignore[import-not-found]
+            Arg,
+            Cat,
+            print_kernel_xml,
+        )
+    except ImportError as exc:  # pragma: no cover - import surface varies
+        pytest.skip(f"python kernel_metadata not importable: {exc}")
+    try:
+        from tapa.program.pack import _redact_and_zip  # noqa: PLC2701,F401
+    except ImportError as exc:  # pragma: no cover
+        pytest.skip(f"tapa.program.pack not importable: {exc}")
+
+    # 1. Produce the kernel.xml body via the production Python
+    #    emitter. Its output is what Vivado would package, and the
+    #    test then also compares it to the Rust emitter's output
+    #    under canonical-XML equality.
+    args = [
+        Arg(cat=Cat.MMAP, name="a", port="", ctype="int*", width=512),
+        Arg(cat=Cat.MMAP, name="b", port="", ctype="int*", width=512),
+        Arg(cat=Cat.MMAP, name="c", port="", ctype="int*", width=512),
+        Arg(cat=Cat.SCALAR, name="n", port="", ctype="int", width=32),
+    ]
+    buf = io.StringIO()
+    print_kernel_xml("vadd", args, buf)
+    py_kernel_xml_body = buf.getvalue()
+
+    rust_kernel_xml_body = xilinx_mod._internal.emit_kernel_xml(  # noqa: SLF001
+        _json.dumps(
+            {
+                "top_name": "vadd",
+                "clock_period": "3.33",
+                "ports": [
+                    {
+                        "name": "a",
+                        "category": "MAxi",
+                        "width": 512,
+                        "port": "",
+                        "ctype": "int*",
+                    },
+                    {
+                        "name": "b",
+                        "category": "MAxi",
+                        "width": 512,
+                        "port": "",
+                        "ctype": "int*",
+                    },
+                    {
+                        "name": "c",
+                        "category": "MAxi",
+                        "width": 512,
+                        "port": "",
+                        "ctype": "int*",
+                    },
+                    {
+                        "name": "n",
+                        "category": "Scalar",
+                        "width": 32,
+                        "port": "",
+                        "ctype": "int",
+                    },
+                ],
+            }
+        )
+    )
+    # Canonical-XML equality — same invariant Vivado consumes.
+    assert " ".join(py_kernel_xml_body.split()) == " ".join(
+        rust_kernel_xml_body.split()
+    ), "kernel.xml emitter parity must hold before packaging"
+
+    with _tempfile.TemporaryDirectory() as td:
+        td_path = _Path(td)
+        src = td_path / "src.xo"
+        rust_xo = td_path / "rust.xo"
+        py_xo = td_path / "py.xo"
+        _build_vivado_like_xo(src, py_kernel_xml_body)
+        rust_xo.write_bytes(src.read_bytes())
+
+        # Rust drives the real `pack_xo` redact-only entry — this is
+        # the same function production code calls from `tapa.program.pack`
+        # after Vivado emits the archive.
+        xilinx_mod.pack_xo(
+            _json.dumps({"kernel_out_path": str(rust_xo), "redact": True})
+        )
+        _py_redact(src, py_xo)
+
+        # AC-9 positive contract — name + SHA parity.
+        rust_inventory = _zip_inventory(rust_xo)
+        py_inventory = _zip_inventory(py_xo)
+        assert rust_inventory == py_inventory, (
+            "full-mode redaction content drift: "
+            f"rust={rust_inventory} py={py_inventory}"
+        )
+
+        # Listing-metadata parity (filename, size, date_time).
+        rust_meta = _zip_metadata(rust_xo)
+        py_meta = _zip_metadata(py_xo)
+        assert rust_meta == py_meta, (
+            f"full-mode ZIP listing metadata drift: rust={rust_meta} py={py_meta}"
+        )
+        for _n, _s, dt in rust_meta + py_meta:
+            assert dt == (1980, 1, 1, 0, 0, 0), (
+                f"non-epoch timestamp after redaction: {dt}"
+            )
+
+        # kernel.xml canonical-XML equality INSIDE the packaged
+        # archive (not just emitter-vs-emitter).
+        import zipfile as _zf
+
+        with _zf.ZipFile(rust_xo) as zr, _zf.ZipFile(py_xo) as zp:
+            rust_inner = zr.read("kernel.xml").decode("utf-8")
+            py_inner = zp.read("kernel.xml").decode("utf-8")
+        rust_tokens = " ".join(rust_inner.split())
+        py_tokens = " ".join(py_inner.split())
+        assert rust_tokens == py_tokens, (
+            f"kernel.xml inside .xo drifted:\n  rust={rust_tokens}\n  py  ={py_tokens}"
+        )
+
+        # Redaction idempotence: invoking `redact_xo` on an already-
+        # redacted archive must leave every entry's bytes unchanged.
+        before = _zip_inventory(rust_xo)
+        xilinx_mod.pack_xo(
+            _json.dumps({"kernel_out_path": str(rust_xo), "redact": True})
+        )
+        after = _zip_inventory(rust_xo)
+        assert before == after, (
+            f"redact_xo is not idempotent: before={before} after={after}"
+        )

@@ -133,6 +133,97 @@ fn control_master_lifecycle() {
     );
 }
 
+/// Asynchronously tear the mux master down after `delay_ms`. Used by
+/// the mid-flight recovery test below so the failure happens *during*
+/// the runner's upload/exec/download pipeline (not before
+/// `ensure_established()` has a chance to cold-reconnect).
+fn schedule_mux_teardown(
+    session: Arc<SshSession>,
+    delay_ms: u64,
+) -> std::thread::JoinHandle<()> {
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+        let ctrl_dir = session.control_dir();
+        let mut args = vec![
+            "-o".into(),
+            "BatchMode=yes".into(),
+            "-o".into(),
+            format!("ControlPath={}/cm-%C", ctrl_dir.display()),
+            "-O".into(),
+            "exit".into(),
+            format!(
+                "{}@{}",
+                session.config().user,
+                session.config().host
+            ),
+        ];
+        let _ = std::process::Command::new("ssh")
+            .args(&args)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+        args.clear();
+        for s in existing_control_sockets(&ctrl_dir) {
+            let _ = std::fs::remove_file(s);
+        }
+    })
+}
+
+#[test]
+#[ignore = "requires configured remote host"]
+fn control_master_retry_branch_mid_transfer() {
+    // Best-effort coverage for the `RemoteToolRunner::run` retry
+    // branch as an end-to-end live flow. A background thread tears
+    // the mux down ~50ms after the runner call starts, which gives
+    // the transfer pipeline time to begin uploading before the mux
+    // breaks. The deterministic proof of the retry logic lives in
+    // the `mux_retry_*` unit tests in
+    // `tapa-xilinx/src/runtime/remote.rs`; this integration serves
+    // as the live-host counterpart.
+    let Some(cfg) = common::has_remote_config() else {
+        eprintln!(
+            "integration_remote: no REMOTE_HOST; skipping mid-transfer retry test"
+        );
+        return;
+    };
+    let session = Arc::new(SshSession::new(cfg, SshMuxOptions::default()));
+    session
+        .ensure_established()
+        .expect("first ensure_established must succeed");
+    let runner = RemoteToolRunner::new(Arc::clone(&session));
+
+    // Stage a payload large enough that the tar-pipe upload doesn't
+    // finish in under ~50ms.
+    let stage = tempfile::tempdir().expect("stage");
+    let payload = stage.path().join("payload");
+    std::fs::create_dir_all(&payload).expect("mkdir payload");
+    for i in 0..16 {
+        std::fs::write(
+            payload.join(format!("chunk-{i}.bin")),
+            vec![u8::try_from(i % 251).unwrap_or(0); 128 * 1024],
+        )
+        .expect("write chunk");
+    }
+
+    // Schedule the mux teardown concurrently with the transfer.
+    let handle = schedule_mux_teardown(Arc::clone(&session), 50);
+
+    let mut inv = ToolInvocation::new("cat")
+        .arg(payload.join("chunk-0.bin").display().to_string());
+    inv.cwd = Some(stage.path().to_path_buf());
+    inv.uploads.push(payload.clone());
+    inv.downloads.push(payload);
+    let out = runner
+        .run(&inv)
+        .expect("mid-transfer mux teardown must be recovered by the in-runner retry");
+    let _ = handle.join();
+    assert_eq!(out.exit_code, 0, "stderr: {}", out.stderr);
+    assert!(
+        session.control_master_alive(),
+        "master must be re-established after mid-transfer retry"
+    );
+}
+
 #[test]
 #[ignore = "requires configured remote host"]
 fn control_master_restart_during_transfer() {
