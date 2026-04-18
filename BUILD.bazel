@@ -2,6 +2,15 @@
 
 load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
 
+# Expose `VERSION` so `//tapa-core` cargo genrules can include it in
+# their input set. `tapa-cli::steps::version` pulls the version in
+# via `include_str!("../../../../VERSION")` at compile time, so the
+# Bazel sandbox must materialize it.
+exports_files(
+    ["VERSION"],
+    visibility = ["//tapa-core:__pkg__"],
+)
+
 pkg_tar(
     name = "tapa-pkg-tar",
     srcs = [

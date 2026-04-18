@@ -8,7 +8,19 @@ _ALL_SRCS = glob(
         "BUILD.bazel",
         "target/**",
     ],
-)
+) + [
+    # Files outside `tapa-core/` that crates pull into the binary
+    # via `include_str!`. Without these, the Bazel sandbox runs
+    # cargo with a missing input and fails (`couldn't read ...
+    # fifo.v` / `... VERSION`). The paths are relative to the
+    # workspace root; Bazel places each label at its workspace-
+    # relative path inside the sandbox, so `include_str!` paths
+    # like `../../../../VERSION` and
+    # `../../../tapa/assets/verilog/fifo.v` resolve the same way
+    # they do for a direct `cargo build` at the repo root.
+    "//:VERSION",
+    "//tapa/assets:verilog/fifo.v",
+]
 
 # -- Build: library crates only (hermetic via rules_rust toolchain) --
 # Builds the workspace's pure-Rust library crates; the legacy PyO3

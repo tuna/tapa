@@ -75,8 +75,54 @@ pub struct RemoteConfig {
     #[serde(default = "default_ssh_control_persist")]
     pub ssh_control_persist: String,
 
-    #[serde(default = "default_ssh_multiplex")]
+    #[serde(
+        default = "default_ssh_multiplex",
+        deserialize_with = "deserialize_bool_or_string",
+    )]
     pub ssh_multiplex: bool,
+}
+
+/// Accept either a native YAML `bool` or a quoted string form
+/// (`"true"`/`"false"`/`"yes"`/`"no"`/`"1"`/`"0"`, case-insensitive).
+/// Python's legacy `RemoteConfig` validator parsed these string
+/// shapes, and existing `~/.taparc` files in the wild carry
+/// `ssh_multiplex: "false"`. Without this shim, serde rejects the
+/// entire config and even `tapa version` fails before running.
+fn deserialize_bool_or_string<'de, D>(deserializer: D) -> std::result::Result<bool, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::{Error, Unexpected};
+    let value: serde_yaml::Value = serde::Deserialize::deserialize(deserializer)?;
+    match value {
+        serde_yaml::Value::Bool(b) => Ok(b),
+        serde_yaml::Value::String(s) => match s.trim().to_ascii_lowercase().as_str() {
+            "true" | "yes" | "on" | "1" => Ok(true),
+            "false" | "no" | "off" | "0" => Ok(false),
+            other => Err(Error::invalid_value(
+                Unexpected::Str(other),
+                &"a bool or one of: true/false/yes/no/on/off/1/0",
+            )),
+        },
+        other => Err(Error::invalid_type(
+            match other {
+                serde_yaml::Value::Null => Unexpected::Unit,
+                serde_yaml::Value::Number(ref n) => {
+                    if let Some(i) = n.as_i64() {
+                        Unexpected::Signed(i)
+                    } else if let Some(u) = n.as_u64() {
+                        Unexpected::Unsigned(u)
+                    } else if let Some(f) = n.as_f64() {
+                        Unexpected::Float(f)
+                    } else {
+                        Unexpected::Other("number")
+                    }
+                }
+                _ => Unexpected::Other("value"),
+            },
+            &"a bool or a string like \"true\"/\"false\"",
+        )),
+    }
 }
 
 impl RemoteConfig {
@@ -243,6 +289,42 @@ remote:
         let text = "remote:\n  host: h\n  future_field: yes\n";
         let cfg = RemoteConfig::from_yaml_str(text, "/tmp/.taparc").unwrap();
         assert_eq!(cfg.host, "h");
+    }
+
+    /// Python's legacy `RemoteConfig` validator parsed
+    /// `ssh_multiplex: "false"` (string) as well as the native YAML
+    /// bool form. The Rust port must accept both so a pre-existing
+    /// `~/.taparc` with quoted string booleans doesn't break even
+    /// `tapa version`.
+    #[test]
+    fn ssh_multiplex_accepts_string_and_bool() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        for (raw, expected) in [
+            ("ssh_multiplex: true\n", true),
+            ("ssh_multiplex: false\n", false),
+            ("ssh_multiplex: \"true\"\n", true),
+            ("ssh_multiplex: \"false\"\n", false),
+            ("ssh_multiplex: 'True'\n", true),
+            ("ssh_multiplex: 'no'\n", false),
+            ("ssh_multiplex: \"yes\"\n", true),
+            ("ssh_multiplex: \"1\"\n", true),
+            ("ssh_multiplex: \"0\"\n", false),
+        ] {
+            let text = format!("remote:\n  host: h\n  {raw}");
+            let cfg = RemoteConfig::from_yaml_str(&text, "/tmp/.taparc")
+                .unwrap_or_else(|e| panic!("should parse `{raw}`: {e}"));
+            assert_eq!(cfg.ssh_multiplex, expected, "input was `{raw}`");
+        }
+    }
+
+    /// Garbage string values still fail loudly — the shim only
+    /// accepts the Python validator's known synonyms.
+    #[test]
+    fn ssh_multiplex_rejects_unknown_string() {
+        let text = "remote:\n  host: h\n  ssh_multiplex: \"maybe\"\n";
+        let err = RemoteConfig::from_yaml_str(text, "/tmp/.taparc").unwrap_err();
+        let msg = format!("{err}");
+        assert!(msg.contains("ssh_multiplex") || msg.contains("invalid value"), "got {err}");
     }
 
     #[test]

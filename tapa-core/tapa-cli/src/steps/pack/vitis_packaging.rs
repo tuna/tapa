@@ -79,6 +79,7 @@ pub(super) fn pack_vitis(
         clock_period,
         kernel_ports,
         m_axi_param_block(&top_task.ports),
+        collect_hls_report_paths(&ctx.work_dir),
     );
 
     run_pack_xo(ctx, &inputs)?;
@@ -148,6 +149,7 @@ fn build_package_xo_inputs(
     clock_period: String,
     kernel_ports: Vec<tapa_xilinx::KernelXmlPort>,
     m_axi_params: Vec<(String, Vec<(String, String)>)>,
+    report_paths: Vec<PathBuf>,
 ) -> PackageXoInputs {
     PackageXoInputs {
         top_name: design.top.clone(),
@@ -170,7 +172,43 @@ fn build_package_xo_inputs(
         cpp_kernels: Vec::new(),
         m_axi_params,
         s_axi_ifaces: PackageXoInputs::default_s_axi(),
+        report_paths,
     }
+}
+
+/// Collect the HLS reports that Python's `PackageXo.__init__`
+/// bundles into the `.xo` under `report/`. Walks
+/// `<work_dir>/hls/<task>/report/` for `*_csynth.xml` (the primary
+/// schema downstream tooling reads) plus any `.rpt` sibling files.
+fn collect_hls_report_paths(work_dir: &Path) -> Vec<PathBuf> {
+    let hls_root = work_dir.join("hls");
+    if !hls_root.is_dir() {
+        return Vec::new();
+    }
+    let mut reports = Vec::<PathBuf>::new();
+    let Ok(task_dirs) = std::fs::read_dir(&hls_root) else {
+        return reports;
+    };
+    for task_entry in task_dirs.flatten() {
+        let report_dir = task_entry.path().join("report");
+        if !report_dir.is_dir() {
+            continue;
+        }
+        let Ok(entries) = std::fs::read_dir(&report_dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Some(ext) = path.extension().and_then(|s| s.to_str()) else {
+                continue;
+            };
+            if matches!(ext, "xml" | "rpt") {
+                reports.push(path);
+            }
+        }
+    }
+    reports.sort();
+    reports
 }
 
 fn run_pack_xo(ctx: &CliContext, inputs: &PackageXoInputs) -> Result<PathBuf> {

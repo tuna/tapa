@@ -49,6 +49,29 @@ pub fn topology_program_from_design(design: &Design) -> Result<Program> {
             Value::Object(t.fifos.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
         };
         task_obj.insert("fifos".to_string(), fifos_value);
+        // Preserve area annotations + clock_period so downstream
+        // consumers (AutoBridge area-aware floorplanning via
+        // `collect_task_area()` when `--enable-synth-util` ran, plus
+        // DSE cost models) see non-zero utilization estimates. Previous
+        // conversion dropped these, so every task looked like area 0.
+        if !t.self_area.is_empty() {
+            task_obj.insert(
+                "self_area".to_string(),
+                serde_json::to_value(&t.self_area).map_err(CliError::Json)?,
+            );
+        }
+        if !t.total_area.is_empty() {
+            task_obj.insert(
+                "total_area".to_string(),
+                serde_json::to_value(&t.total_area).map_err(CliError::Json)?,
+            );
+        }
+        if !t.clock_period.is_empty() {
+            task_obj.insert(
+                "clock_period".to_string(),
+                Value::String(t.clock_period.clone()),
+            );
+        }
         tasks.insert(name.clone(), Value::Object(task_obj));
     }
     let program_value = Value::Object(
@@ -239,6 +262,41 @@ mod tests {
         let program = topology_program_from_design(&design).expect("convert");
         assert_eq!(program.top, "VecAdd");
         assert!(program.tasks.contains_key("Add"));
+    }
+
+    /// Regression for the R14→R15 finding: `generate-floorplan` enables
+    /// `--enable-synth-util`, which writes `self/total_area` onto the
+    /// design. The topology conversion must preserve those fields so
+    /// `AutoBridge`'s area-aware floorplanning sees real costs instead of
+    /// default 0.
+    #[test]
+    fn topology_program_preserves_area_annotations() {
+        let mut design = vadd_design();
+        let add = design.tasks.get_mut("Add").unwrap();
+        add.self_area.insert("LUT".into(), json!(11));
+        add.total_area.insert("LUT".into(), json!(22));
+        add.total_area.insert("BRAM_18K".into(), json!(16));
+        add.clock_period = "3.33".into();
+
+        let program = topology_program_from_design(&design).expect("convert");
+        let task = program.tasks.get("Add").expect("Add present");
+        let task_value = serde_json::to_value(task).expect("serialize task");
+        let task_obj = task_value.as_object().unwrap();
+        assert_eq!(
+            task_obj.get("self_area").and_then(|v| v.get("LUT")),
+            Some(&json!(11)),
+            "self_area must round-trip; got {task_value:?}",
+        );
+        assert_eq!(
+            task_obj.get("total_area").and_then(|v| v.get("BRAM_18K")),
+            Some(&json!(16)),
+            "total_area must round-trip; got {task_value:?}",
+        );
+        assert_eq!(
+            task_obj.get("clock_period").and_then(|v| v.as_str()),
+            Some("3.33"),
+            "clock_period must round-trip; got {task_value:?}",
+        );
     }
 
     #[test]

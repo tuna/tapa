@@ -91,6 +91,13 @@ pub struct PackageXoInputs {
     pub m_axi_params: Vec<(String, Vec<(String, String)>)>,
     /// S_AXI interfaces to associate; defaults to `[s_axi_control]`.
     pub s_axi_ifaces: Vec<String>,
+    /// Extra HLS report files to append under the packaged `.xo`'s
+    /// `report/` tree before redaction. Mirrors Python's
+    /// `PackageXo.__init__` which appends `self.report_paths` + every
+    /// `report/*_csynth.xml` into the final archive so downstream
+    /// inspection/debug tooling can read the bundled synthesis
+    /// reports. Empty → skip the bundle step.
+    pub report_paths: Vec<PathBuf>,
 }
 
 impl PackageXoInputs {
@@ -185,8 +192,76 @@ fn format_package_xo_tcl(
 /// `tclargs` to Vivado: `$tmpdir $hdl_dir $xo_file $kernel_xml_path`.
 pub fn pack_xo(runner: &dyn ToolRunner, inputs: &PackageXoInputs) -> Result<PathBuf> {
     let out = pack_xo_without_redaction(runner, inputs)?;
+    // Python parity: bundle the HLS report files (`self.report_paths`
+    // + `report/*_csynth.xml`) into the packaged `.xo` before the
+    // reproducibility redaction pass. Downstream inspection tooling
+    // reads these archived reports; the previous implementation
+    // redacted the raw Vivado `.xo` and dropped them.
+    if !inputs.report_paths.is_empty() {
+        bundle_report_paths_into_xo(&out, &inputs.report_paths)?;
+    }
     redact_xo(&out)?;
     Ok(out)
+}
+
+/// Append each `report_path` into the `.xo` under `report/<basename>`,
+/// matching Python's `PackageXo.__init__` bundling step. Any entry
+/// already present in the archive is overwritten.
+fn bundle_report_paths_into_xo(xo: &std::path::Path, report_paths: &[PathBuf]) -> Result<()> {
+    use std::io::{Read, Write};
+    if report_paths.is_empty() {
+        return Ok(());
+    }
+    let raw = std::fs::read(xo)?;
+    let mut z_in = zip::ZipArchive::new(std::io::Cursor::new(raw))
+        .map_err(|e| XilinxError::XoRedaction(format!("open xo for bundling: {e}")))?;
+    let tmp = tempfile::NamedTempFile::new_in(
+        xo.parent().unwrap_or_else(|| std::path::Path::new(".")),
+    )?;
+    let mut written: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for rpt in report_paths {
+        if let Some(name) = rpt.file_name().and_then(|n| n.to_str()) {
+            written.insert(format!("report/{name}"));
+        }
+    }
+    {
+        let mut z_out = zip::ZipWriter::new(tmp.reopen()?);
+        let opts: zip::write::FileOptions<'_, ()> =
+            zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+        for i in 0..z_in.len() {
+            let mut entry = z_in
+                .by_index(i)
+                .map_err(|e| XilinxError::XoRedaction(format!("read xo entry {i}: {e}")))?;
+            if written.contains(entry.name()) {
+                continue;
+            }
+            z_out
+                .start_file(entry.name().to_owned(), opts)
+                .map_err(|e| XilinxError::XoRedaction(format!("start entry: {e}")))?;
+            let mut buf = Vec::new();
+            entry.read_to_end(&mut buf)?;
+            z_out.write_all(&buf)?;
+        }
+        for rpt in report_paths {
+            if !rpt.is_file() {
+                continue;
+            }
+            let Some(name) = rpt.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
+            z_out
+                .start_file(format!("report/{name}"), opts)
+                .map_err(|e| XilinxError::XoRedaction(format!("bundle entry: {e}")))?;
+            z_out.write_all(&std::fs::read(rpt)?)?;
+        }
+        z_out
+            .finish()
+            .map_err(|e| XilinxError::XoRedaction(format!("finish bundled xo: {e}")))?;
+    }
+    tmp.persist(xo).map_err(|e| {
+        XilinxError::XoRedaction(format!("persist bundled xo: {e}"))
+    })?;
+    Ok(())
 }
 
 /// Same as [`pack_xo`] but returns the raw Vivado-produced `.xo`
@@ -204,6 +279,17 @@ pub fn pack_xo_without_redaction(
             inputs.hdl_dir.display()
         )));
     }
+    // The Vivado job runs with `cwd = tmp.path()`, so a relative
+    // `--output` would end up inside the temp dir and vanish after
+    // run_vivado returns (and the downstream `is_file` / redaction
+    // check would miss it or pick up a stale file from the caller's
+    // cwd). Absolutize before wiring the TCL args and the download
+    // list so remote + local paths agree on one absolute target.
+    let kernel_out_path = if inputs.kernel_out_path.is_absolute() {
+        inputs.kernel_out_path.clone()
+    } else {
+        std::env::current_dir()?.join(&inputs.kernel_out_path)
+    };
     let tmp = tempfile::tempdir()?;
     let kernel_xml_path = tmp.path().join("kernel.xml");
     let xml = emit_kernel_xml(&inputs.kernel_xml)?;
@@ -224,13 +310,13 @@ pub fn pack_xo_without_redaction(
         &inputs.device_info.part_num,
     );
 
-    if let Some(parent) = inputs.kernel_out_path.parent() {
+    if let Some(parent) = kernel_out_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
     let tclargs = [
         tmp.path().display().to_string(),
         inputs.hdl_dir.display().to_string(),
-        inputs.kernel_out_path.display().to_string(),
+        kernel_out_path.display().to_string(),
         kernel_xml_path.display().to_string(),
     ];
 
@@ -241,19 +327,19 @@ pub fn pack_xo_without_redaction(
         tmp.path().to_path_buf(),
         kernel_xml_path,
     ];
-    if let Some(parent) = inputs.kernel_out_path.parent() {
+    if let Some(parent) = kernel_out_path.parent() {
         job.downloads = vec![parent.to_path_buf()];
     }
     job.tclargs = tclargs.to_vec();
 
     let _out = run_vivado(runner, &job)?;
-    if !inputs.kernel_out_path.is_file() {
+    if !kernel_out_path.is_file() {
         return Err(XilinxError::XoRedaction(format!(
             "pack_xo: Vivado returned success but {} is missing",
-            inputs.kernel_out_path.display()
+            kernel_out_path.display()
         )));
     }
-    Ok(inputs.kernel_out_path.clone())
+    Ok(kernel_out_path)
 }
 
 /// Backwards-compatible alias so other modules that took `&Path` still work.
@@ -385,7 +471,55 @@ mod tests {
             cpp_kernels: vec![],
             m_axi_params: vec![],
             s_axi_ifaces: PackageXoInputs::default_s_axi(),
+            report_paths: vec![],
         }
+    }
+
+    /// P1 regression: a relative `--output` path must be absolutized
+    /// before reaching Vivado; otherwise the TCL writes the `.xo`
+    /// into the per-invocation temp `cwd` while the post-run
+    /// existence check looks in the caller's cwd.
+    #[test]
+    fn relative_xo_output_is_absolutized_for_tclargs() {
+        use crate::runtime::process::ToolOutput;
+        let tmp = tempfile::tempdir().unwrap();
+        let hdl_dir = tmp.path().join("hdl");
+        std::fs::create_dir_all(&hdl_dir).unwrap();
+        std::fs::write(hdl_dir.join("top.v"), b"// stub\n").unwrap();
+        // Scope current-dir into the tmp so a relative output still
+        // lands in a writable place.
+        let orig_cwd = std::env::current_dir().unwrap();
+        std::env::set_current_dir(tmp.path()).unwrap();
+        // Stage a minimal .xo the mock runner will "produce".
+        let staged = tmp.path().join("__staged.xo");
+        write_xo(&staged, &[("stub.txt", "ok")]);
+        let staged_bytes = std::fs::read(&staged).unwrap();
+
+        let runner = MockToolRunner::new();
+        runner.push_ok("vivado", ToolOutput::default());
+        let expected_abs = tmp.path().canonicalize().unwrap().join("out.xo");
+        runner.attach_download(&expected_abs, staged_bytes);
+
+        let inputs = minimal_inputs(hdl_dir, PathBuf::from("out.xo"));
+        let out = pack_xo(&runner, &inputs).unwrap();
+
+        std::env::set_current_dir(orig_cwd).unwrap();
+        assert!(
+            out.is_absolute(),
+            "pack_xo must return an absolute path; got `{}`",
+            out.display(),
+        );
+        // The Vivado invocation must have received the absolute form.
+        let call = &runner.calls()[0];
+        let arg = call
+            .args
+            .iter()
+            .find(|a| a.ends_with("out.xo"))
+            .expect("tclargs must mention out.xo");
+        assert!(
+            std::path::Path::new(arg).is_absolute(),
+            "tclargs .xo path must be absolute; got `{arg}`",
+        );
     }
 
     #[test]
