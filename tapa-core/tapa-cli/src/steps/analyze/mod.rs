@@ -55,6 +55,20 @@ pub struct AnalyzeArgs {
     /// Target flow.
     #[arg(long = "target", default_value = "xilinx-vitis")]
     pub target: String,
+
+    /// Explicit path to the `tapacc` binary. Overrides the walk-up
+    /// `find_resource` search anchored at the `tapa` binary. Used by
+    /// Bazel driver rules (`bazel/tapa_rules.bzl::_tapa_xo_impl`)
+    /// that locate the toolchain inputs through their own dep graph
+    /// and pass them down explicitly.
+    #[arg(long = "tapacc", value_name = "FILE")]
+    pub tapacc: Option<PathBuf>,
+
+    /// Explicit path to the `tapa-cpp` (clang) binary. Same rationale
+    /// as `--tapacc`. Accepts the `--tapa-clang` alias for parity with
+    /// the Python-era bazel driver, which used that older spelling.
+    #[arg(long = "tapa-cpp", visible_alias = "tapa-clang", value_name = "FILE")]
+    pub tapa_cpp: Option<PathBuf>,
 }
 
 /// Re-render `args` as the click-flavored argv the Python step expects.
@@ -92,8 +106,20 @@ pub fn run(args: &AnalyzeArgs, ctx: &mut CliContext) -> Result<()> {
 /// Native implementation. Mirrors `tapa.steps.analyze.analyze` minus the
 /// `--flatten-hierarchy` transform and the heavy `Program` orchestration.
 fn run_native(args: &AnalyzeArgs, ctx: &CliContext) -> Result<()> {
-    let tapa_cpp = find_clang_binary("tapa-cpp-binary")?;
-    let tapacc = find_clang_binary("tapacc-binary")?;
+    // `--tapacc`/`--tapa-cpp` override the walk-up `find_resource`
+    // search. Used by the Bazel driver to inject the exact sandbox
+    // paths; direct `tapa analyze` runs on a developer machine still
+    // fall through to the default discovery path.
+    let tapa_cpp = if let Some(p) = args.tapa_cpp.as_ref() {
+        p.clone()
+    } else {
+        find_clang_binary("tapa-cpp-binary")?
+    };
+    let tapacc = if let Some(p) = args.tapacc.as_ref() {
+        p.clone()
+    } else {
+        find_clang_binary("tapacc-binary")?
+    };
 
     // Vitis HLS only supports up to C++14; this matches the Python order.
     let mut user_cflags = args.cflags.clone();

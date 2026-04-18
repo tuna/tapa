@@ -89,89 +89,61 @@ pub fn flatten(graph: &Graph) -> Result<Graph, TransformError> {
         return Err(TransformError::TopIsLeaf(top_name.clone()));
     }
 
-    for child_name in top_def.tasks.keys() {
-        let child_def = graph
-            .tasks
-            .get(child_name)
-            .ok_or_else(|| TransformError::MissingTop(child_name.clone()))?;
-        if child_def.level == TaskLevel::Upper {
-            return Err(TransformError::DeepHierarchyNotSupported(child_name.clone()));
-        }
-    }
+    // Recursively inline every upper descendant: leaf instantiations
+    // float up to the top, FIFOs that live inside nested upper tasks
+    // are rewritten to their global names (`<fifo>_<inst_path>_<top>`)
+    // and stitched back together against the collected leaves.
+    // Mirrors Python's `Graph.get_flatten_graph` +
+    // `TaskInstance.get_leaf_tasks_insts` + `recursive_get_interconnect_insts`.
+    let mut leaves: BTreeMap<String, Vec<TaskInstance>> = BTreeMap::new();
+    let mut fifos: BTreeMap<String, InterconnectDefinition> = BTreeMap::new();
+    collect_leaves_recursive(
+        graph,
+        top_name,
+        top_name,
+        &BTreeMap::new(),
+        &mut leaves,
+        &mut fifos,
+    )?;
 
-    // External-port args keep their original name (matches Python's
-    // `ExternalPort.global_name = name`); only FIFO-bound args get
-    // remapped to `<fifo>_<top>`.
-    let fifo_global: BTreeMap<String, String> = top_def
-        .fifos
-        .keys()
-        .map(|n| (n.clone(), format!("{n}_{top_name}")))
-        .collect();
-
-    // 1. Rewrite each task instantiation's args so that any arg pointing
-    //    at a top-level FIFO uses its new global name.
-    let mut new_instantiations: BTreeMap<String, Vec<TaskInstance>> = BTreeMap::new();
-    for (child_name, instances) in &top_def.tasks {
-        let mut rewritten = Vec::with_capacity(instances.len());
-        for inst in instances {
-            let mut new_args: BTreeMap<String, Arg> = BTreeMap::new();
-            for (port_name, arg) in &inst.args {
-                let new_arg_name = fifo_global
-                    .get(&arg.arg)
-                    .cloned()
-                    .unwrap_or_else(|| arg.arg.clone());
-                new_args.insert(
-                    port_name.clone(),
-                    Arg {
-                        arg: new_arg_name,
-                        cat: arg.cat,
-                    },
-                );
+    // Post-pass: now that every instantiation has its final argument
+    // bindings, fill in each FIFO's `consumed_by` / `produced_by`
+    // against the flattened leaf set. This mirrors the Python side
+    // which recomputes endpoints after `interconnect_global_name=True`
+    // args have been produced.
+    let fifo_names: Vec<String> = fifos.keys().cloned().collect();
+    for fifo_name in fifo_names {
+        let had_consumer = fifos
+            .get(&fifo_name)
+            .and_then(|f| f.consumed_by.as_ref())
+            .is_some();
+        let had_producer = fifos
+            .get(&fifo_name)
+            .and_then(|f| f.produced_by.as_ref())
+            .is_some();
+        if had_consumer {
+            let consumed = find_endpoint(&leaves, &fifo_name, EndpointRole::Consumer);
+            if let Some(entry) = fifos.get_mut(&fifo_name) {
+                entry.consumed_by = consumed;
             }
-            rewritten.push(TaskInstance {
-                args: new_args,
-                step: inst.step,
-            });
         }
-        new_instantiations.insert(child_name.clone(), rewritten);
-    }
-
-    // 2. Recompute consumed_by / produced_by from the rewritten args.
-    let mut new_fifos: BTreeMap<String, InterconnectDefinition> = BTreeMap::new();
-    for (orig_name, fifo_def) in &top_def.fifos {
-        let global_name = fifo_global
-            .get(orig_name)
-            .cloned()
-            .unwrap_or_else(|| orig_name.clone());
-        let new_consumed = if fifo_def.consumed_by.is_some() {
-            find_endpoint(&new_instantiations, &global_name, EndpointRole::Consumer)
-        } else {
-            None
-        };
-        let new_produced = if fifo_def.produced_by.is_some() {
-            find_endpoint(&new_instantiations, &global_name, EndpointRole::Producer)
-        } else {
-            None
-        };
-        new_fifos.insert(
-            global_name,
-            InterconnectDefinition {
-                depth: fifo_def.depth,
-                consumed_by: new_consumed,
-                produced_by: new_produced,
-            },
-        );
+        if had_producer {
+            let produced = find_endpoint(&leaves, &fifo_name, EndpointRole::Producer);
+            if let Some(entry) = fifos.get_mut(&fifo_name) {
+                entry.produced_by = produced;
+            }
+        }
     }
 
     let mut new_tasks = BTreeMap::new();
-    for child_name in top_def.tasks.keys() {
+    for child_name in leaves.keys() {
         if let Some(def) = graph.tasks.get(child_name) {
             new_tasks.insert(child_name.clone(), def.clone());
         }
     }
     let mut new_top_def = top_def.clone();
-    new_top_def.tasks = new_instantiations;
-    new_top_def.fifos = new_fifos;
+    new_top_def.tasks = leaves;
+    new_top_def.fifos = fifos;
     new_tasks.insert(top_name.clone(), new_top_def);
 
     Ok(Graph {
@@ -179,6 +151,126 @@ pub fn flatten(graph: &Graph) -> Result<Graph, TransformError> {
         tasks: new_tasks,
         top: top_name.clone(),
     })
+}
+
+/// Recursive hierarchy-flattening helper. Walks from `task_name`
+/// (starting at the top) and collects every leaf instantiation it
+/// encounters into `leaves`, rewriting args according to FIFO
+/// remapping at this level and the `arg_bindings` handed down from
+/// the parent. FIFOs at this scope are renamed to their global form
+/// and added to `fifos`. Recurses into upper-level children.
+///
+/// `scope_path` is the `parent.global_name` for this call site: the
+/// top-level call uses `top_name`, and each upper-child instantiation
+/// descends with `<inst_name>_<scope_path>`. Matches Python's
+/// `Base._generate_global_name_without_sub` chain.
+///
+/// `arg_bindings` maps *this task's port names* to the globally-
+/// resolved arg names in the caller's scope — that's how leaf
+/// instances deep in the tree pick up their ancestor's FIFO /
+/// external-port bindings.
+fn collect_leaves_recursive(
+    graph: &Graph,
+    task_name: &str,
+    scope_path: &str,
+    arg_bindings: &BTreeMap<String, String>,
+    leaves: &mut BTreeMap<String, Vec<TaskInstance>>,
+    fifos: &mut BTreeMap<String, InterconnectDefinition>,
+) -> Result<(), TransformError> {
+    let def = graph
+        .tasks
+        .get(task_name)
+        .ok_or_else(|| TransformError::MissingTop(task_name.to_string()))?;
+
+    // FIFOs declared at this scope get renamed to their global form.
+    // Top-level FIFOs match the legacy single-level shape
+    // (`<name>_<top>`); nested FIFOs additionally embed the ancestor
+    // instance path (`<name>_<inst_0>_..._<top>`).
+    let mut fifo_global_map: BTreeMap<String, String> = BTreeMap::new();
+    for fifo_name in def.fifos.keys() {
+        let global = format!("{fifo_name}_{scope_path}");
+        fifo_global_map.insert(fifo_name.clone(), global);
+    }
+
+    for (child_def_name, instances) in &def.tasks {
+        for (idx, inst) in instances.iter().enumerate() {
+            // Resolve every arg: first check if it names a local
+            // FIFO (→ global form), then check the parent binding
+            // (→ promoted arg), else leave as-is (scalar or
+            // external port that keeps its name per Python's
+            // `ExternalPort.global_name = name` rule).
+            let mut resolved_args: BTreeMap<String, Arg> = BTreeMap::new();
+            for (port_name, arg) in &inst.args {
+                let resolved = fifo_global_map
+                    .get(&arg.arg)
+                    .cloned()
+                    .or_else(|| arg_bindings.get(&arg.arg).cloned())
+                    .unwrap_or_else(|| arg.arg.clone());
+                resolved_args.insert(
+                    port_name.clone(),
+                    Arg {
+                        arg: resolved,
+                        cat: arg.cat,
+                    },
+                );
+            }
+
+            let child_def = graph
+                .tasks
+                .get(child_def_name)
+                .ok_or_else(|| TransformError::MissingTop(child_def_name.clone()))?;
+            if child_def.level == TaskLevel::Lower {
+                leaves
+                    .entry(child_def_name.clone())
+                    .or_default()
+                    .push(TaskInstance {
+                        args: resolved_args,
+                        step: inst.step,
+                    });
+            } else {
+                // Upper child → descend. Its port bindings become
+                // the `arg_bindings` the recursion uses to resolve
+                // its own sub-instances' args. Its scope path is
+                // prepended with this instance's name.
+                let inst_name = format!("{child_def_name}_{idx}");
+                let child_scope = format!("{inst_name}_{scope_path}");
+                let child_bindings: BTreeMap<String, String> = resolved_args
+                    .iter()
+                    .map(|(p, a)| (p.clone(), a.arg.clone()))
+                    .collect();
+                collect_leaves_recursive(
+                    graph,
+                    child_def_name,
+                    &child_scope,
+                    &child_bindings,
+                    leaves,
+                    fifos,
+                )?;
+            }
+        }
+    }
+
+    // Register this scope's FIFOs now that recursion filled `leaves`.
+    // We can't set `consumed_by` / `produced_by` yet because a FIFO
+    // introduced at this scope may only acquire its endpoints once
+    // deeper recursion adds the leaves that reference it; the caller
+    // (`flatten`) runs a final pass to fill them in.
+    for (local_name, global_name) in &fifo_global_map {
+        let fifo_def = def.fifos.get(local_name).expect("local fifo present");
+        fifos.insert(
+            global_name.clone(),
+            InterconnectDefinition {
+                depth: fifo_def.depth,
+                // Keep the original `Some(_)` presence so the
+                // endpoint-fill pass knows which side to resolve.
+                // Actual endpoint is overwritten there.
+                consumed_by: fifo_def.consumed_by.clone(),
+                produced_by: fifo_def.produced_by.clone(),
+            },
+        );
+    }
+
+    Ok(())
 }
 
 /// Wrap groups of leaf instances under synthetic per-slot upper tasks.

@@ -25,5 +25,8 @@
 --platform
 --remove-hls-work-dir
 --skip-hls-based-on-mtime
+--tapa-clang
+--tapa-cpp
+--tapacc
 --target
 --top

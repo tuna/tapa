@@ -230,6 +230,8 @@ fn build_compile_stage2(
         flatten_hierarchy: true,
         keep_hierarchy: false,
         target: args.target.clone(),
+        tapacc: None,
+        tapa_cpp: None,
     };
     let synth_args = synth::SynthArgs {
         part_num: args.part_num.clone(),

@@ -95,8 +95,13 @@ fn flatten_preserves_top_metadata() {
     assert_eq!(top.vendor, "xilinx");
 }
 
+/// Round-16 regression: the previous port rejected any design where
+/// the top had upper-level children with `DeepHierarchyNotSupported`.
+/// Python's `Graph.get_flatten_graph` recursively collects leaves, so
+/// the Rust port now matches — even an "empty" nested upper must
+/// round-trip cleanly without an error.
 #[test]
-fn flatten_rejects_deep_hierarchy() {
+fn flatten_accepts_nested_upper_without_error() {
     let json = r#"{
         "cflags": [],
         "top": "Outer",
@@ -115,8 +120,60 @@ fn flatten_rejects_deep_hierarchy() {
         }
     }"#;
     let g = Graph::from_json(json).expect("parse");
-    let err = flatten(&g).expect_err("must reject deep");
-    assert!(matches!(err, TransformError::DeepHierarchyNotSupported(_)));
+    let out = flatten(&g).expect("recursive flatten ok");
+    assert_eq!(out.top, "Outer");
+    // Inner has no tasks → no leaves, top's `tasks` map is empty.
+    assert!(out.tasks["Outer"].tasks.is_empty());
+}
+
+/// End-to-end nested flatten: a top that indirects through an upper
+/// child holding a leaf must produce the leaf at the flattened top.
+/// Matches the Python `recursive_get_interconnect_insts` +
+/// `get_leaf_tasks_insts` shape.
+#[test]
+fn flatten_hoists_leaf_under_nested_upper() {
+    let json = r#"{
+        "cflags": [],
+        "top": "Outer",
+        "tasks": {
+            "Outer": {
+                "code": "", "level": "upper", "target": "hls", "vendor": "xilinx",
+                "ports": [
+                    {"cat": "scalar", "name": "n", "type": "uint64_t", "width": 64}
+                ],
+                "tasks": {"Inner": [{"step": 0, "args": {
+                    "p": {"arg": "n", "cat": "scalar"}
+                }}]},
+                "fifos": {}
+            },
+            "Inner": {
+                "code": "", "level": "upper", "target": "hls", "vendor": "xilinx",
+                "ports": [
+                    {"cat": "scalar", "name": "p", "type": "uint64_t", "width": 64}
+                ],
+                "tasks": {"Leaf": [{"step": 0, "args": {
+                    "q": {"arg": "p", "cat": "scalar"}
+                }}]},
+                "fifos": {}
+            },
+            "Leaf": {
+                "code": "void Leaf() {}", "level": "lower", "target": "hls",
+                "vendor": "xilinx",
+                "ports": [
+                    {"cat": "scalar", "name": "q", "type": "uint64_t", "width": 64}
+                ]
+            }
+        }
+    }"#;
+    let g = Graph::from_json(json).expect("parse");
+    let out = flatten(&g).expect("recursive flatten");
+    let top = out.tasks.get("Outer").expect("top");
+    let leaf_insts = top.tasks.get("Leaf").expect("leaf hoisted under top");
+    assert_eq!(leaf_insts.len(), 1);
+    // The leaf's `q` arg must resolve to the outermost `n` binding
+    // (promoted through `p` in Inner → `n` in Outer).
+    let arg = leaf_insts[0].args.get("q").expect("q arg present");
+    assert_eq!(arg.arg, "n", "nested scalar arg must promote to Outer's external port");
 }
 
 #[test]
