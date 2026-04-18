@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use indexmap::IndexMap;
 use serde_json::Value;
 use tapa_task_graph::Design;
+use tapa_xilinx::RemoteConfig;
 
 use crate::globals::GlobalArgs;
 use crate::options::Options;
@@ -27,6 +28,10 @@ pub struct CliContext {
     pub temp_dir: Option<PathBuf>,
     pub options: Options,
     pub remote: RemoteConfigArgs,
+    /// Resolved remote config (`~/.taparc` + CLI overrides). `None`
+    /// means the run is purely local — mirrors Python's
+    /// `get_remote_config() is None`.
+    pub remote_config: Option<RemoteConfig>,
     pub flow: RefCell<FlowState>,
     /// Verbosity counts forwarded to bridged Python invocations.
     pub verbose: u8,
@@ -61,6 +66,7 @@ impl CliContext {
             temp_dir: globals.temp_dir.clone(),
             options,
             remote,
+            remote_config: None,
             flow: RefCell::new(FlowState::default()),
             verbose: globals.verbose,
             quiet: globals.quiet,

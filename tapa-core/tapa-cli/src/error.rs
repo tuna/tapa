@@ -15,6 +15,9 @@ pub enum CliError {
     #[error("invalid CLI argument: {0}")]
     InvalidArg(String),
 
+    #[error("invalid remote config in `{path}`: {message}")]
+    RemoteConfigParse { path: PathBuf, message: String },
+
     #[error(transparent)]
     Io(#[from] std::io::Error),
 

@@ -10,6 +10,7 @@ use tapa_cli::context::CliContext;
 use tapa_cli::error::CliError;
 use tapa_cli::globals::Cli;
 use tapa_cli::logging;
+use tapa_cli::remote::bootstrap_remote;
 
 fn main() -> ExitCode {
     match run() {
@@ -33,6 +34,12 @@ fn run() -> Result<(), CliError> {
     if let Some(temp_dir) = cli.globals.temp_dir.as_deref() {
         std::env::set_var("TMPDIR", temp_dir);
     }
+
+    // Bootstrap remote config (~/.taparc + CLI overrides) before any
+    // native step runs — mirrors `tapa/__main__.py::entry_point`. Sync
+    // failures inside this call are non-fatal so local-only flows are
+    // unaffected.
+    ctx.remote_config = bootstrap_remote(&cli.globals)?;
 
     if let Some(step) = cli.step {
         step.execute(&mut ctx)?;
