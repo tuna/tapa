@@ -6,16 +6,11 @@
 //! formatters. The Python bridge remains reachable behind
 //! `TAPA_STEP_ANALYZE_PYTHON=1` for fallback parity.
 
-use std::fmt::Write as _;
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::path::PathBuf;
 
 use clap::Parser;
-use indexmap::IndexMap;
-use serde_json::{json, Map, Value};
-use sha2::{Digest, Sha256};
-use tapa_task_graph::{flatten, Design, Graph, TaskTopology, TransformError};
+use serde_json::{json, Value};
 
 use crate::context::CliContext;
 use crate::error::{CliError, Result};
@@ -23,6 +18,14 @@ use crate::state::{design as design_io, graph as graph_io, settings as settings_
 use crate::steps::python_bridge;
 use crate::tapacc::cflags::{get_system_cflags, get_tapacc_cflags};
 use crate::tapacc::discover::find_clang_binary;
+
+mod build_design;
+mod run_flatten;
+mod run_tapacc;
+
+use build_design::{build_design, flatten_graph_value, is_top_leaf};
+use run_flatten::run_flatten;
+use run_tapacc::run_tapacc;
 
 #[derive(Debug, Clone, Parser)]
 #[command(
@@ -157,228 +160,6 @@ fn run_native(args: &AnalyzeArgs, ctx: &CliContext) -> Result<()> {
     Ok(())
 }
 
-/// Run `tapa-cpp` once per input file and write the preprocessed source
-/// to `<work_dir>/flatten/flatten-<digest>-<basename>`.
-fn run_flatten(
-    tapa_cpp: &Path,
-    files: &[PathBuf],
-    cflags: &[String],
-    work_dir: &Path,
-) -> Result<Vec<PathBuf>> {
-    let flatten_dir = work_dir.join("flatten");
-    fs::create_dir_all(&flatten_dir)?;
-    let mut out = Vec::<PathBuf>::with_capacity(files.len());
-    for file in files {
-        let abs = fs::canonicalize(file).unwrap_or_else(|_| file.clone());
-        let digest = sha256_truncated_hex(abs.display().to_string().as_bytes());
-        let basename = file.file_name().map_or_else(
-            || "input.cpp".to_string(),
-            |s| s.to_string_lossy().into_owned(),
-        );
-        let flatten_path = flatten_dir.join(format!("flatten-{digest}-{basename}"));
-
-        let mut cmd = Command::new(tapa_cpp);
-        cmd.args([
-            "-x",
-            "c++",
-            "-E",
-            "-CC",
-            "-P",
-            "-fkeep-system-includes",
-            "-D__SYNTHESIS__",
-            "-DAESL_SYN",
-            "-DAP_AUTOCC",
-            "-DTAPA_TARGET_DEVICE_",
-            "-DTAPA_TARGET_STUB_",
-        ]);
-        for flag in cflags {
-            cmd.arg(flag);
-        }
-        cmd.arg(file);
-        cmd.stdout(Stdio::piped());
-        cmd.stderr(Stdio::inherit());
-        let output = cmd.output().map_err(|e| CliError::TapaccNotExecutable {
-            path: tapa_cpp.to_path_buf(),
-            reason: e.to_string(),
-        })?;
-        if !output.status.success() {
-            return Err(CliError::TapaccFailed {
-                code: output.status.code().unwrap_or(-1),
-                stderr: format!("tapa-cpp on {}", file.display()),
-            });
-        }
-        fs::write(&flatten_path, &output.stdout)?;
-        out.push(flatten_path);
-    }
-    Ok(out)
-}
-
-/// Run `tapacc` and parse its JSON stdout.
-fn run_tapacc(
-    tapacc: &Path,
-    files: &[PathBuf],
-    top: &str,
-    cflags: &[String],
-    target: &str,
-) -> Result<Value> {
-    let mut cmd = Command::new(tapacc);
-    for f in files {
-        cmd.arg(f);
-    }
-    cmd.args(["-top", top, "--target", target, "--"]);
-    for f in cflags {
-        cmd.arg(f);
-    }
-    cmd.args(["-DTAPA_TARGET_DEVICE_", "-DTAPA_TARGET_STUB_"]);
-    cmd.stdout(Stdio::piped());
-    cmd.stderr(Stdio::piped());
-    let output = cmd.output().map_err(|e| CliError::TapaccNotExecutable {
-        path: tapacc.to_path_buf(),
-        reason: e.to_string(),
-    })?;
-    if !output.status.success() {
-        return Err(CliError::TapaccFailed {
-            code: output.status.code().unwrap_or(-1),
-            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
-        });
-    }
-    let value: Value = serde_json::from_slice(&output.stdout)?;
-    Ok(value)
-}
-
-/// Truncate a SHA-256 digest to the first 8 hex characters, matching
-/// Python's `hashlib.sha256(...).hexdigest()[:8]`.
-fn sha256_truncated_hex(bytes: &[u8]) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(bytes);
-    let digest = hasher.finalize();
-    let mut s = String::with_capacity(8);
-    for byte in digest.iter().take(4) {
-        let _ = write!(s, "{byte:02x}");
-    }
-    s
-}
-
-/// Round-trip a tapacc graph dict through the typed [`Graph`] schema and
-/// return the result of [`flatten`] re-serialized as `serde_json::Value`.
-///
-/// The CLI keeps the on-disk graph as a `Value` because the legacy
-/// Python pipeline accepts a richer schema in some downstream stages,
-/// but the transform itself is defined on the strict `Graph` type to
-/// maximize Python parity.
-fn flatten_graph_value(graph: &Value) -> Result<Value> {
-    let json = serde_json::to_string(graph)?;
-    let typed = Graph::from_json(&json)?;
-    let flat = flatten(&typed).map_err(|e| match e {
-        TransformError::DeepHierarchyNotSupported(child) => CliError::InvalidArg(format!(
-            "`--flatten-hierarchy` only supports single-level hierarchies for now; \
-             child task `{child}` is itself an upper task. The native port covers \
-             the vadd-shaped case; deeper graphs are pending.",
-        )),
-        other @ (TransformError::MissingTop(_)
-        | TransformError::TopIsLeaf(_)
-        | TransformError::UnknownFloorplanInstance(_)
-        | TransformError::SlotNameCollision(_)
-        | TransformError::Json(_)) => {
-            CliError::InvalidArg(format!("flatten failed: {other}"))
-        }
-    })?;
-    let out_json = flat.to_json()?;
-    let value: Value = serde_json::from_str(&out_json)?;
-    Ok(value)
-}
-
-/// True when the top task in `graph` is a leaf-level task.
-fn is_top_leaf(graph: &Value, top: &str) -> bool {
-    graph
-        .get("tasks")
-        .and_then(|t| t.get(top))
-        .and_then(|task| task.get("level"))
-        .and_then(Value::as_str)
-        .is_some_and(|level| level == "lower")
-}
-
-/// Project the tapacc graph dict into a typed [`Design`] suitable for
-/// `<work_dir>/design.json`. Mirrors the Python `Task.to_topology_dict`
-/// projection, but drops `vendor` and other tapacc-only keys.
-fn build_design(top: &str, target: &str, graph: &Value) -> Result<Design> {
-    let tasks_obj = graph
-        .get("tasks")
-        .and_then(Value::as_object)
-        .ok_or_else(|| CliError::InvalidArg(
-            "tapacc graph is missing the `tasks` object".to_string(),
-        ))?;
-
-    let mut topology: IndexMap<String, TaskTopology> = IndexMap::new();
-    for (name, task) in tasks_obj {
-        topology.insert(name.clone(), task_to_topology(name, task));
-    }
-
-    Ok(Design {
-        top: top.to_string(),
-        target: target.to_string(),
-        tasks: topology,
-        slot_task_name_to_fp_region: None,
-    })
-}
-
-fn task_to_topology(name: &str, task: &Value) -> TaskTopology {
-    let level = task
-        .get("level")
-        .and_then(Value::as_str)
-        .unwrap_or("lower")
-        .to_string();
-    let code = task
-        .get("code")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string();
-    let ports = task
-        .get("ports")
-        .and_then(Value::as_array)
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|p| serde_json::from_value(p.clone()).ok())
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-    let tasks = value_to_indexmap(task.get("tasks"));
-    let fifos = value_to_indexmap(task.get("fifos"));
-    let target = task
-        .get("target")
-        .and_then(Value::as_str)
-        .map(ToString::to_string);
-
-    TaskTopology {
-        name: name.to_string(),
-        level,
-        code,
-        ports,
-        tasks,
-        fifos,
-        target,
-        is_slot: false,
-        self_area: IndexMap::new(),
-        total_area: IndexMap::new(),
-        clock_period: "0".to_string(),
-    }
-}
-
-fn value_to_indexmap(value: Option<&Value>) -> IndexMap<String, Value> {
-    let Some(Value::Object(obj)) = value else {
-        return IndexMap::new();
-    };
-    obj_to_indexmap(obj)
-}
-
-fn obj_to_indexmap(obj: &Map<String, Value>) -> IndexMap<String, Value> {
-    let mut map = IndexMap::new();
-    for (k, v) in obj {
-        map.insert(k.clone(), v.clone());
-    }
-    map
-}
-
 #[cfg(test)]
 mod tests {
     #![allow(
@@ -456,22 +237,6 @@ mod tests {
             !argv.contains(&"--keep-hierarchy".to_string()),
             "the two boolean siblings must not both appear",
         );
-    }
-
-    #[test]
-    fn sha256_truncated_matches_python_eight_hex_chars() {
-        // Python: hashlib.sha256(b"foo").hexdigest()[:8] == "2c26b46b"
-        assert_eq!(sha256_truncated_hex(b"foo"), "2c26b46b");
-    }
-
-    #[test]
-    fn is_top_leaf_detects_lower_level() {
-        let g = json!({"tasks": {"T": {"level": "lower"}}, "top": "T"});
-        assert!(is_top_leaf(&g, "T"));
-        let g = json!({"tasks": {"T": {"level": "upper"}}, "top": "T"});
-        assert!(!is_top_leaf(&g, "T"));
-        // Missing top is treated as upper for safety.
-        assert!(!is_top_leaf(&g, "DoesNotExist"));
     }
 
     #[cfg(unix)]
@@ -591,107 +356,5 @@ mod tests {
         assert!(flow.graph.is_some(), "graph cached for chained steps");
         assert!(flow.settings.is_some(), "settings cached for chained steps");
         assert_eq!(flow.pipelined.get("analyze"), Some(&true));
-    }
-
-    /// `analyze --flatten-hierarchy` exercises the
-    /// [`tapa_task_graph::flatten`] code path on a vadd-shaped graph.
-    /// We hit `flatten_graph_value` directly (the helper invoked from
-    /// `run_native` when `flatten_hierarchy` is set) because the full
-    /// `run_native` path depends on a process-wide `OnceLock` for the
-    /// `find_resource` search anchor — sharing that across tests would
-    /// require more invasive plumbing than this transform-coverage
-    /// check warrants.
-    #[test]
-    fn flatten_graph_value_renames_fifos_for_vadd_shape() {
-        let raw = json!({
-            "cflags": [],
-            "top": "VecAdd",
-            "tasks": {
-                "VecAdd": {
-                    "code": "void VecAdd() {}",
-                    "level": "upper",
-                    "target": "hls",
-                    "vendor": "xilinx",
-                    "ports": [
-                        {"cat": "scalar", "name": "n",
-                         "type": "uint64_t", "width": 64}
-                    ],
-                    "tasks": {
-                        "A": [{"step": 0, "args": {
-                            "n": {"arg": "n", "cat": "scalar"},
-                            "out": {"arg": "fifo", "cat": "ostream"}
-                        }}],
-                        "B": [{"step": 0, "args": {
-                            "n": {"arg": "n", "cat": "scalar"},
-                            "in": {"arg": "fifo", "cat": "istream"}
-                        }}]
-                    },
-                    "fifos": {
-                        "fifo": {"depth": 2, "consumed_by": ["B", 0],
-                                 "produced_by": ["A", 0]}
-                    }
-                },
-                "A": {
-                    "code": "void A() {}", "level": "lower",
-                    "target": "hls", "vendor": "xilinx",
-                    "ports": [
-                        {"cat": "scalar", "name": "n",
-                         "type": "uint64_t", "width": 64},
-                        {"cat": "ostream", "name": "out",
-                         "type": "float", "width": 32}
-                    ]
-                },
-                "B": {
-                    "code": "void B() {}", "level": "lower",
-                    "target": "hls", "vendor": "xilinx",
-                    "ports": [
-                        {"cat": "scalar", "name": "n",
-                         "type": "uint64_t", "width": 64},
-                        {"cat": "istream", "name": "in",
-                         "type": "float", "width": 32}
-                    ]
-                }
-            }
-        });
-
-        let out = flatten_graph_value(&raw).expect("flatten ok");
-        let top = out["tasks"]["VecAdd"]
-            .as_object()
-            .expect("top survives");
-        assert!(
-            top["fifos"].get("fifo_VecAdd").is_some(),
-            "flatten must rename `fifo` to `fifo_VecAdd`; got {top:?}",
-        );
-        let a0 = &top["tasks"]["A"][0]["args"]["out"]["arg"];
-        assert_eq!(a0, &json!("fifo_VecAdd"));
-    }
-
-    /// Deep hierarchies (children that are themselves upper tasks)
-    /// must surface a typed `InvalidArg` rather than crashing.
-    #[test]
-    fn flatten_graph_value_rejects_deep_hierarchy() {
-        let raw = json!({
-            "cflags": [],
-            "top": "Outer",
-            "tasks": {
-                "Outer": {
-                    "code": "", "level": "upper", "target": "hls",
-                    "vendor": "xilinx", "ports": [],
-                    "tasks": {"Inner": [{"args": {}, "step": 0}]},
-                    "fifos": {}
-                },
-                "Inner": {
-                    "code": "", "level": "upper", "target": "hls",
-                    "vendor": "xilinx", "ports": [],
-                    "tasks": {}, "fifos": {}
-                }
-            }
-        });
-        let err = flatten_graph_value(&raw).expect_err("must reject deep");
-        assert!(
-            matches!(err, CliError::InvalidArg(ref m)
-                if m.contains("single-level")),
-            "expected single-level error, got {err:?}",
-        );
     }
 }

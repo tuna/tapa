@@ -1,0 +1,32 @@
+{
+    "raw_argv": [
+        "-w",
+        "/tmp/tapa-parity/graph-workdir",
+        "compile",
+        "--jobs",
+        "2",
+        "--platform",
+        "xilinx_u250_gen3x16_xdma_4_1_202210_1",
+        "-f",
+        "graph.cpp",
+        "-t",
+        "Graph",
+        "-o",
+        "/tmp/tapa-parity/graph.xo"
+    ],
+    "subcommands": [
+        {
+            "flags": [
+                "--jobs",
+                "--platform",
+                "-f",
+                "-o",
+                "-t"
+            ],
+            "name": "compile"
+        }
+    ],
+    "top_level_flags": [
+        "-w"
+    ]
+}
