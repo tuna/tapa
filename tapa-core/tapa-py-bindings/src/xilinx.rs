@@ -157,27 +157,38 @@ struct HlsJobJson {
     auto_prefix: bool,
     #[serde(default = "default_max_attempts")]
     max_attempts: u32,
+    /// Optional remote config. When present, `run_hls_task` dispatches
+    /// through `RemoteToolRunner` instead of `LocalToolRunner`. The
+    /// JSON shape matches `tapa_xilinx::RemoteConfig` so Python
+    /// callers can pass the same dict they already read from
+    /// `~/.taparc` or `VARS.local.bzl`.
+    #[serde(default)]
+    remote: Option<RemoteConfig>,
 }
 
-impl From<HlsJobJson> for HlsJob {
-    fn from(j: HlsJobJson) -> Self {
-        Self {
-            task_name: j.task_name,
-            cpp_source: j.cpp_source,
-            cflags: j.cflags,
-            target_part: j.target_part,
-            top_name: j.top_name,
-            clock_period: j.clock_period,
-            reports_out_dir: j.reports_out_dir,
-            hdl_out_dir: j.hdl_out_dir,
-            uploads: j.uploads,
-            downloads: j.downloads,
-            other_configs: j.other_configs,
-            solution_name: j.solution_name,
-            reset_low: j.reset_low,
-            auto_prefix: j.auto_prefix,
-            transient_patterns: None,
-        }
+impl HlsJobJson {
+    fn into_job(self) -> (HlsJob, Option<RemoteConfig>) {
+        let remote = self.remote.clone();
+        (
+            HlsJob {
+                task_name: self.task_name,
+                cpp_source: self.cpp_source,
+                cflags: self.cflags,
+                target_part: self.target_part,
+                top_name: self.top_name,
+                clock_period: self.clock_period,
+                reports_out_dir: self.reports_out_dir,
+                hdl_out_dir: self.hdl_out_dir,
+                uploads: self.uploads,
+                downloads: self.downloads,
+                other_configs: self.other_configs,
+                solution_name: self.solution_name,
+                reset_low: self.reset_low,
+                auto_prefix: self.auto_prefix,
+                transient_patterns: None,
+            },
+            remote,
+        )
     }
 }
 
@@ -193,11 +204,28 @@ impl From<HlsJobJson> for HlsJob {
 fn run_hls_task(py: Python<'_>, job_json: &str) -> PyResult<String> {
     ensure_bindings_dir(py);
     let parsed: HlsJobJson = serde_json::from_str(job_json)
-        .map_err(|e| PyValueError::new_err(format!("run_hls_task: invalid job JSON: {e}")))?;
+        .map_err(|e| {
+            PyValueError::new_err(format!(
+                "run_hls_task: invalid job JSON: {e}"
+            ))
+        })?;
     let max_attempts = parsed.max_attempts.max(1);
-    let job: HlsJob = parsed.into();
-    let runner = LocalToolRunner::new();
-    let out = run_hls_with_retry(&runner, &job, max_attempts).map_err(|e| to_py_err(&e))?;
+    let (job, remote_cfg) = parsed.into_job();
+    // Dispatch: remote config present → RemoteToolRunner (mirrors
+    // `tapa/remote/popen.py::create_tool_process`); otherwise drive
+    // the local runner. The flag-on Python call site must not lose
+    // remote capability when `remote` is threaded through.
+    let out = if let Some(cfg) = remote_cfg {
+        let session =
+            Arc::new(SshSession::new(cfg, SshMuxOptions::default()));
+        let runner = tapa_xilinx::RemoteToolRunner::new(session);
+        run_hls_with_retry(&runner, &job, max_attempts)
+            .map_err(|e| to_py_err(&e))?
+    } else {
+        let runner = LocalToolRunner::new();
+        run_hls_with_retry(&runner, &job, max_attempts)
+            .map_err(|e| to_py_err(&e))?
+    };
     let payload = serde_json::json!({
         "csynth": out.csynth,
         "verilog_files": out.verilog_files.iter().map(|p| p.display().to_string()).collect::<Vec<_>>(),
@@ -205,7 +233,8 @@ fn run_hls_task(py: Python<'_>, job_json: &str) -> PyResult<String> {
         "stdout": out.stdout,
         "stderr": out.stderr,
     });
-    serde_json::to_string(&payload).map_err(|e| PyValueError::new_err(e.to_string()))
+    serde_json::to_string(&payload)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
 /// JSON adapter for `.xo` packaging.

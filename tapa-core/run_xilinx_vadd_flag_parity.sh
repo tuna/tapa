@@ -24,6 +24,46 @@ if [[ -z "${XILINX_HLS:-}" ]] && [[ -z "${REMOTE_HOST:-}" ]]; then
   exit 0
 fi
 
+# REMOTE-only setups must also supply the auth key + xilinx settings
+# path — the tapa CLI needs these as explicit `--remote-*` args, since
+# Python's `load_remote_config(None)` does not read REMOTE_* env vars.
+# Without these, the script would fall through to the local path and
+# silently skip the flagged remote flow Codex asked for.
+#
+# `REMOTE_XILINX_SETTINGS` (absolute settings script path) wins over
+# `REMOTE_XILINX_TOOL_PATH` (tool-root dir). If only the tool-root is
+# set, we normalize it to `<root>/settings64.sh` — the Rust
+# `resolve_xilinx_settings` helper uses the same rule. Handing the
+# remote runner a bare directory makes `source <dir>` fail silently
+# at bash-time, so we refuse to run in that state.
+REMOTE_CLI_ARGS=()
+if [[ -z "${XILINX_HLS:-}" && -n "${REMOTE_HOST:-}" ]]; then
+  settings=""
+  if [[ -n "${REMOTE_XILINX_SETTINGS:-}" ]]; then
+    settings="$REMOTE_XILINX_SETTINGS"
+  elif [[ -n "${REMOTE_XILINX_TOOL_PATH:-}" ]]; then
+    case "$REMOTE_XILINX_TOOL_PATH" in
+      *.sh) settings="$REMOTE_XILINX_TOOL_PATH" ;;
+      *) settings="${REMOTE_XILINX_TOOL_PATH%/}/settings64.sh" ;;
+    esac
+  fi
+  if [[ -z "${REMOTE_KEY_FILE:-}" || -z "$settings" ]]; then
+    echo "vadd flag-parity: REMOTE_HOST set but REMOTE_KEY_FILE / REMOTE_XILINX_SETTINGS (or _TOOL_PATH) missing; skipping" >&2
+    exit 0
+  fi
+  REMOTE_CLI_ARGS+=(--remote-host "$REMOTE_HOST")
+  REMOTE_CLI_ARGS+=(--remote-key-file "$REMOTE_KEY_FILE")
+  REMOTE_CLI_ARGS+=(--remote-xilinx-settings "$settings")
+  if [[ -n "${REMOTE_SSH_CONTROL_DIR:-}" ]]; then
+    REMOTE_CLI_ARGS+=(--remote-ssh-control-dir "$REMOTE_SSH_CONTROL_DIR")
+  fi
+  if [[ -n "${REMOTE_SSH_CONTROL_PERSIST:-}" ]]; then
+    REMOTE_CLI_ARGS+=(
+      --remote-ssh-control-persist "$REMOTE_SSH_CONTROL_PERSIST"
+    )
+  fi
+fi
+
 workdir="$(mktemp -d)"
 trap 'rm -rf "$workdir"' EXIT
 
@@ -40,6 +80,7 @@ run_one() {
     env TAPA_USE_RUST_XILINX="$flag_value" \
       tapa \
         --work-dir "$outdir/work" \
+        "${REMOTE_CLI_ARGS[@]}" \
         analyze \
           --input vadd.cpp \
           --top "$TOP" \

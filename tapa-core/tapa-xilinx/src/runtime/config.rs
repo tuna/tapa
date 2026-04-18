@@ -142,9 +142,10 @@ impl RemoteConfig {
                 .and_then(|s| s.parse().ok())
                 .unwrap_or_else(default_port),
             key_file: std::env::var("REMOTE_KEY_FILE").ok().map(PathBuf::from),
-            xilinx_settings: std::env::var("REMOTE_XILINX_SETTINGS")
-                .ok()
-                .or_else(|| std::env::var("REMOTE_XILINX_TOOL_PATH").ok()),
+            xilinx_settings: resolve_xilinx_settings(
+                std::env::var("REMOTE_XILINX_SETTINGS").ok().as_deref(),
+                std::env::var("REMOTE_XILINX_TOOL_PATH").ok().as_deref(),
+            ),
             work_dir: std::env::var("REMOTE_WORK_DIR").unwrap_or_else(|_| default_work_dir()),
             ssh_control_dir: std::env::var("REMOTE_SSH_CONTROL_DIR")
                 .ok()
@@ -162,6 +163,39 @@ impl RemoteConfig {
 
 fn missing_mapping_error() -> serde_yaml::Error {
     serde_yaml::from_str::<RemoteConfig>("").unwrap_err()
+}
+
+/// Canonical rule used everywhere we need a remote `xilinx_settings`
+/// path: prefer an explicit settings script, otherwise treat a
+/// tool-root value as `<root>/settings64.sh`. The Rust layer only
+/// ever `source`s the resulting path, so handing it a directory —
+/// as `VARS.local.bzl`'s `REMOTE_XILINX_TOOL_PATH` commonly does —
+/// would otherwise silently fail at bash-time.
+#[must_use]
+pub fn resolve_xilinx_settings(
+    explicit_settings: Option<&str>,
+    tool_root: Option<&str>,
+) -> Option<String> {
+    if let Some(s) = explicit_settings {
+        let s = s.trim();
+        if !s.is_empty() {
+            return Some(s.to_string());
+        }
+    }
+    if let Some(root) = tool_root {
+        let root = root.trim();
+        if root.is_empty() {
+            return None;
+        }
+        // Already looks like a settings script (file ending in .sh)?
+        // Leave it alone so pointing at a custom path still works.
+        if root.ends_with(".sh") {
+            return Some(root.to_string());
+        }
+        let trimmed = root.trim_end_matches('/');
+        return Some(format!("{trimmed}/settings64.sh"));
+    }
+    None
 }
 
 #[cfg(test)]
@@ -248,7 +282,12 @@ remote:
         assert_eq!(cfg.user, "ci");
         assert_eq!(cfg.port, 2323);
         assert_eq!(cfg.key_file.as_deref(), Some(Path::new("/tmp/ci_key")));
-        assert_eq!(cfg.xilinx_settings.as_deref(), Some("/opt/xilinx"));
+        // from_env normalizes a tool-root to `<root>/settings64.sh` so
+        // the remote runner's `source <path>` actually works.
+        assert_eq!(
+            cfg.xilinx_settings.as_deref(),
+            Some("/opt/xilinx/settings64.sh")
+        );
         assert!(!cfg.ssh_multiplex);
 
         for k in [
@@ -268,5 +307,70 @@ remote:
         let _lock = ENV_LOCK.lock().unwrap();
         std::env::remove_var("REMOTE_HOST");
         assert!(RemoteConfig::from_env().is_none());
+    }
+
+    #[test]
+    fn resolve_xilinx_settings_prefers_explicit_script() {
+        let got = resolve_xilinx_settings(
+            Some("/opt/xilinx/Vitis/2023.2/settings64.sh"),
+            Some("/opt/tapa/software/tools/xilinx"),
+        );
+        assert_eq!(
+            got.as_deref(),
+            Some("/opt/xilinx/Vitis/2023.2/settings64.sh")
+        );
+    }
+
+    #[test]
+    fn resolve_xilinx_settings_normalizes_tool_root() {
+        // Matches the shape in this repo's `VARS.local.bzl`:
+        // `REMOTE_XILINX_TOOL_PATH=/opt/tapa/software/tools/xilinx`.
+        let got = resolve_xilinx_settings(
+            None,
+            Some("/opt/tapa/software/tools/xilinx"),
+        );
+        assert_eq!(
+            got.as_deref(),
+            Some("/opt/tapa/software/tools/xilinx/settings64.sh")
+        );
+    }
+
+    #[test]
+    fn resolve_xilinx_settings_strips_trailing_slash_on_tool_root() {
+        let got = resolve_xilinx_settings(None, Some("/opt/x/"));
+        assert_eq!(got.as_deref(), Some("/opt/x/settings64.sh"));
+    }
+
+    #[test]
+    fn resolve_xilinx_settings_accepts_custom_sh_path_via_tool_root() {
+        // A caller that already points at a settings script via the
+        // tool-root variable should not be double-suffixed.
+        let got =
+            resolve_xilinx_settings(None, Some("/opt/my/custom.sh"));
+        assert_eq!(got.as_deref(), Some("/opt/my/custom.sh"));
+    }
+
+    #[test]
+    fn resolve_xilinx_settings_none_when_both_unset_or_blank() {
+        assert!(resolve_xilinx_settings(None, None).is_none());
+        assert!(resolve_xilinx_settings(Some(""), Some("  ")).is_none());
+    }
+
+    #[test]
+    fn from_env_normalizes_tool_root_to_settings_script() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        std::env::remove_var("REMOTE_XILINX_SETTINGS");
+        std::env::set_var("REMOTE_HOST", "h");
+        std::env::set_var(
+            "REMOTE_XILINX_TOOL_PATH",
+            "/opt/tapa/software/tools/xilinx",
+        );
+        let cfg = RemoteConfig::from_env().expect("from_env");
+        assert_eq!(
+            cfg.xilinx_settings.as_deref(),
+            Some("/opt/tapa/software/tools/xilinx/settings64.sh")
+        );
+        std::env::remove_var("REMOTE_HOST");
+        std::env::remove_var("REMOTE_XILINX_TOOL_PATH");
     }
 }

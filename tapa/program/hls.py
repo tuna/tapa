@@ -179,7 +179,7 @@ class ProgramHlsMixin(
         os.makedirs(reports_dir, exist_ok=True)
         os.makedirs(hdl_dir, exist_ok=True)
         cflag_list = [f for f in hls_cflags.split() if f]
-        payload = {
+        payload: dict[str, object] = {
             "task_name": task.name,
             "cpp_source": cpp_source,
             "cflags": cflag_list,
@@ -192,6 +192,27 @@ class ProgramHlsMixin(
             "auto_prefix": True,
             "reset_low": True,
         }
+        # Thread the active remote config (if any) into the Rust
+        # binding so `RemoteToolRunner` — not `LocalToolRunner` — runs
+        # the tool when `~/.taparc` says remote. Without this the
+        # flag-on path would silently lose the remote-HLS capability.
+        from tapa.remote.config import get_remote_config  # noqa: PLC0415
+
+        remote_cfg = get_remote_config()
+        if remote_cfg is not None:
+            payload["remote"] = {
+                "host": remote_cfg.host,
+                "user": remote_cfg.user,
+                "port": int(remote_cfg.port),
+                "key_file": remote_cfg.key_file,
+                "xilinx_settings": remote_cfg.xilinx_settings,
+                "work_dir": getattr(remote_cfg, "work_dir", "/tmp/tapa-remote"),
+                "ssh_control_dir": getattr(remote_cfg, "ssh_control_dir", None),
+                "ssh_control_persist": getattr(
+                    remote_cfg, "ssh_control_persist", "30m"
+                ),
+                "ssh_multiplex": bool(getattr(remote_cfg, "ssh_multiplex", True)),
+            }
         _logger.info("run_hls_task: dispatching %s to Rust binding", task.name)
         xilinx_mod.run_hls_task(json.dumps(payload))
 
