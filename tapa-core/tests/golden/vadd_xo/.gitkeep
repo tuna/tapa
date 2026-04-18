@@ -1,6 +1,6 @@
 # Reserved for the future `vadd analyze synth pack` golden snapshot
 # (`xo_inventory.json`, `xo_metadata.json`).
 #
-# Populated by `test_golden_vadd_xo_flow` when both `tapacc` and
+# Populated by `test_cli_golden_vadd_xo_flow` when both `tapacc` and
 # `vitis_hls` are available. See `parity_test.py` for the snapshot
 # contract.

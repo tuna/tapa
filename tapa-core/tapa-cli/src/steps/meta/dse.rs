@@ -8,11 +8,10 @@ use clap::Parser;
 
 use crate::context::{CliContext, FlowState};
 use crate::error::{CliError, Result};
-use crate::steps::{analyze, floorplan, pack, python_bridge, synth};
+use crate::steps::{analyze, floorplan, pack, synth};
 
 use super::{run_compile_composite, run_generate_floorplan_composite, CompileArgs, GenerateFloorplanArgs};
 
-const STEP: &str = "compile-with-floorplan-dse";
 
 #[allow(
     clippy::struct_excessive_bools,
@@ -116,10 +115,7 @@ pub fn run_compile_with_floorplan_dse_composite(
                 .to_string(),
         ));
     }
-    if python_bridge::is_enabled(STEP) {
-        return python_bridge::run(STEP, &python_argv(args), ctx);
-    }
-
+    // Python bridge is gone as of AC-8; always native.
     let original_work_dir = ctx.work_dir.clone();
 
     // Stage 1: drive generate-floorplan to enumerate floorplans.
@@ -269,27 +265,6 @@ fn build_compile_stage2(
     }
 }
 
-/// Render the DSE composite as the click argv shape Python expects.
-///
-/// We compose by reusing each per-step's `to_python_argv` over a Stage-1
-/// projection of the merged flag surface — the shape matches what
-/// `tapa compile-with-floorplan-dse` accepts via `_extend_params`.
-fn python_argv(args: &CompileWithFloorplanDseArgs) -> Vec<String> {
-    let stage1 = build_generate_floorplan_stage1(args);
-    let mut out = analyze::to_python_argv(&stage1.analyze_args());
-    out.extend(synth::to_python_argv(&stage1.synth_args()));
-    out.extend(floorplan::to_python_argv_run_autobridge(
-        &stage1.run_autobridge_args(),
-    ));
-    let pack_args = pack::PackArgs {
-        output: None,
-        bitstream_script: args.bitstream_script.clone(),
-        custom_rtl: args.custom_rtl.clone(),
-        graphir_path: None,
-    };
-    out.extend(pack::to_python_argv(&pack_args));
-    out
-}
 
 #[cfg(test)]
 mod tests {

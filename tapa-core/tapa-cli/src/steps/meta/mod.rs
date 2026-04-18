@@ -18,7 +18,7 @@ pub use self::dse::{run_compile_with_floorplan_dse_composite, CompileWithFloorpl
 
 use crate::context::CliContext;
 use crate::error::Result;
-use crate::steps::{analyze, floorplan, pack, python_bridge, synth};
+use crate::steps::{analyze, floorplan, pack, synth};
 
 // ---------------------------------------------------------------------
 // `compile` = analyze + synth + pack
@@ -41,19 +41,11 @@ pub struct CompileArgs {
 }
 
 pub fn run_compile_composite(args: &CompileArgs, ctx: &mut CliContext) -> Result<()> {
-    if python_bridge::is_enabled("compile") {
-        return python_bridge::run("compile", &compile_python_argv(args), ctx);
-    }
+    // Python bridge is gone as of AC-8 (`tapa/__main__.py` deleted); the
+    // composite is always native.
     analyze::run(&args.analyze, ctx)?;
     synth::run(&args.synth, ctx)?;
     pack::run(&args.pack, ctx)
-}
-
-fn compile_python_argv(args: &CompileArgs) -> Vec<String> {
-    let mut out = analyze::to_python_argv(&args.analyze);
-    out.extend(synth::to_python_argv(&args.synth));
-    out.extend(pack::to_python_argv(&args.pack));
-    out
 }
 
 // ---------------------------------------------------------------------
@@ -177,25 +169,10 @@ pub fn run_generate_floorplan_composite(
     args: &GenerateFloorplanArgs,
     ctx: &mut CliContext,
 ) -> Result<()> {
-    if python_bridge::is_enabled("generate-floorplan") {
-        return python_bridge::run(
-            "generate-floorplan",
-            &generate_floorplan_python_argv(args),
-            ctx,
-        );
-    }
+    // Python bridge is gone as of AC-8; always native.
     analyze::run(&args.analyze_args(), ctx)?;
     synth::run(&args.synth_args(), ctx)?;
     floorplan::run_run_autobridge(&args.run_autobridge_args(), ctx)
-}
-
-fn generate_floorplan_python_argv(args: &GenerateFloorplanArgs) -> Vec<String> {
-    let mut out = analyze::to_python_argv(&args.analyze_args());
-    out.extend(synth::to_python_argv(&args.synth_args()));
-    out.extend(floorplan::to_python_argv_run_autobridge(
-        &args.run_autobridge_args(),
-    ));
-    out
 }
 
 #[cfg(test)]

@@ -1,0 +1,12 @@
+{
+    "raw_argv": [
+        "version"
+    ],
+    "subcommands": [
+        {
+            "flags": [],
+            "name": "version"
+        }
+    ],
+    "top_level_flags": []
+}

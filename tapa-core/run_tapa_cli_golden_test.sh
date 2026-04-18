@@ -81,21 +81,27 @@ if [[ -x "$binary_path" ]]; then
   export TAPA_CLI_BINARY="$binary_path"
 fi
 
-# Run the native CLI parity gate. The `-k cli` filter selects every
-# `test_parity_cli_*` case in `parity_test.py`, including the new
-# Phase 7 gates:
-#   * test_parity_cli_help_lists_same_subcommands
-#   * test_parity_cli_version_matches
-#   * test_parity_cli_subcommand_help_diff[<subcommand>]   (one per sub)
-#   * test_parity_cli_chained_argv_corpus[<app>]           (one per fixture)
-#   * test_parity_cli_analyze_vadd
-#   * test_parity_cli_vadd_flow                             (full chain)
-#   * test_parity_cli_unknown_first_token_fails
-#   * test_parity_cli_chained_argv_value_collision_does_not_split
+# Run the native CLI golden-snapshot gate. After AC-8 retired the
+# Python click CLI, parity_test.py snapshots the Rust binary surface
+# under `tapa-core/tests/golden/` and diffs every run against those
+# frozen baselines. The `-k cli` filter selects every `test_cli_*`
+# case in `parity_test.py`:
+#   * test_cli_help_lists_expected_subcommands
+#   * test_cli_version_runs
+#   * test_cli_unknown_first_token_fails
+#   * test_cli_chained_argv_value_collision_does_not_split
+#   * test_cli_root_help_flags_match_golden                 (root)
+#   * test_cli_subcommand_help_flags_match_golden[<sub>]    (one per sub)
+#   * test_cli_chained_argv_corpus_matches_golden[<app>]    (one per fixture)
+#   * test_cli_golden_vadd_analyze                          (needs tapacc)
+#   * test_cli_golden_vadd_xo_flow                          (needs vitis_hls)
 #
-# Cases that depend on Vitis HLS / tapacc skip cleanly when the
-# toolchain is missing (developer-machine friendly), but help-diff
-# and chained-argv parity always run because they only need the
-# parsers.
+# The vadd_analyze / vadd_xo cases skip cleanly when the toolchain is
+# missing (developer-machine friendly); the help-flag and argv-shape
+# golden gates always run because they only need the Rust parser.
+#
+# To regenerate a golden after an intentional CLI change, set
+# `TAPA_GOLDEN_REFRESH=1` before invoking pytest — each test will
+# overwrite its golden file in place instead of asserting.
 PYTHONPATH="$repo_root" exec python3 -m pytest \
   "$repo_root/tapa-core/tests/parity_test.py" -k cli -v

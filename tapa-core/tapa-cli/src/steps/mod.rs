@@ -11,6 +11,5 @@ pub mod floorplan;
 pub mod gcc;
 pub mod meta;
 pub mod pack;
-pub mod python_bridge;
 pub mod synth;
 pub mod version;

@@ -27,7 +27,6 @@ use tapa_task_graph::{
 use crate::context::CliContext;
 use crate::error::{CliError, Result};
 use crate::state::{graph as graph_io, settings as settings_io};
-use crate::steps::python_bridge;
 
 const AUTOBRIDGE_WORK_DIR: &str = "autobridge";
 const FLOORPLAN_CONFIG_NO_PRE_ASSIGNMENTS: &str = "floorplan_config_no_pre_assignments.json";
@@ -85,14 +84,10 @@ pub fn to_python_argv_run_autobridge(args: &RunAutobridgeArgs) -> Vec<String> {
 
 /// `tapa floorplan` dispatcher.
 ///
-/// Routes to the Python bridge when explicitly opted in or when
-/// `--floorplan-path` is provided (the floorplan-graph transform still
-/// lives in Python). Otherwise executes the native no-op that just
-/// toggles `settings["floorplan"] = true`.
+/// `--floorplan-path` drives the native `apply_floorplan` transform;
+/// without it, the step is a stateful no-op that just toggles
+/// `settings["floorplan"] = true`. Python bridge is gone as of AC-8.
 pub fn run_floorplan(args: &FloorplanArgs, ctx: &mut CliContext) -> Result<()> {
-    if python_bridge::is_enabled("floorplan") {
-        return python_bridge::run("floorplan", &to_python_argv_floorplan(args), ctx);
-    }
     if let Some(path) = args.floorplan_path.as_ref() {
         return run_floorplan_native_apply(path, ctx);
     }

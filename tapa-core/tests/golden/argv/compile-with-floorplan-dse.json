@@ -1,0 +1,36 @@
+{
+    "raw_argv": [
+        "-w",
+        "/tmp/tapa-parity/dse-workdir",
+        "compile-with-floorplan-dse",
+        "-f",
+        "vadd.cpp",
+        "-t",
+        "VecAdd",
+        "--platform",
+        "xilinx_u250_gen3x16_xdma_4_1_202210_1",
+        "--device-config",
+        "dev.json",
+        "--floorplan-config",
+        "fp.json",
+        "--enable-synth-util",
+        "--gen-ab-graph"
+    ],
+    "subcommands": [
+        {
+            "flags": [
+                "--device-config",
+                "--enable-synth-util",
+                "--floorplan-config",
+                "--gen-ab-graph",
+                "--platform",
+                "-f",
+                "-t"
+            ],
+            "name": "compile-with-floorplan-dse"
+        }
+    ],
+    "top_level_flags": [
+        "-w"
+    ]
+}
