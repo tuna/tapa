@@ -103,14 +103,8 @@ if ! "$TAPA_BIN_RESOLVED" --help >/dev/null 2>&1; then
   exit 0
 fi
 
-# `tapacc-binary` preflight: delegate to a hidden `find-clang-binary`
-# subcommand inside `$TAPA_BIN_RESOLVED` itself. That guarantees the
-# preflight and the real `tapa analyze` run share the same launcher
-# runtime (interpreter, `sys.path`, runfiles). Previous shebang-
-# parsing approaches fell back to ambient `python3` for shell/Bazel
-# wrappers, which could import a different `tapa` package than the
-# launcher will at analyze-time. Running the resolver through the
-# launcher closes that gap.
+# Delegate tapacc-binary resolution to the launcher's own hidden
+# subcommand so preflight and `tapa analyze` share one runtime.
 tapacc_probe_rc=0
 tapacc_probe_out="$("$TAPA_BIN_RESOLVED" find-clang-binary tapacc-binary)" \
   || tapacc_probe_rc=$?

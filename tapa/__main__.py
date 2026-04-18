@@ -8,6 +8,7 @@ RapidStream Contributor License Agreement.
 
 import logging
 import os
+import sys
 import tempfile
 
 import click
@@ -15,7 +16,7 @@ import click
 from tapa import __version__
 from tapa.remote.config import RemoteConfig, load_remote_config, set_remote_config
 from tapa.remote.vendor import sync_remote_vendor_includes
-from tapa.steps.analyze import analyze
+from tapa.steps.analyze import analyze, find_clang_binary
 from tapa.steps.common import switch_work_dir
 from tapa.steps.floorplan import floorplan
 from tapa.steps.gcc import gcc
@@ -183,21 +184,10 @@ def entry_point(  # noqa: PLR0913,PLR0917
 @click.command("find-clang-binary", hidden=True)
 @click.argument("name", type=str)
 def _find_clang_binary_cmd(name: str) -> None:
-    """Resolve a clang-family helper binary and print its absolute path.
-
-    Hidden preflight hook for integration harnesses. Runs inside the
-    same interpreter / `sys.path` as every other subcommand, so the
-    returned resolution matches what `analyze` will use at runtime.
-    Exits non-zero with the underlying exception on stderr if the
-    binary cannot be found.
-    """
-    import sys  # noqa: PLC0415
-
-    from tapa.steps.analyze import find_clang_binary  # noqa: PLC0415
-
+    """Resolve a clang-family helper and print its absolute path."""
     try:
         resolved = find_clang_binary(name)
-    except Exception as exc:
+    except (FileNotFoundError, ValueError) as exc:
         sys.stderr.write(f"find-clang-binary({name!r}) failed: {exc}\n")
         raise SystemExit(1) from exc
     click.echo(resolved, nl=False)
