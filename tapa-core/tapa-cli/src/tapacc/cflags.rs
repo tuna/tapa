@@ -98,11 +98,12 @@ pub fn get_system_cflags() -> Vec<String> {
 /// LDFLAGS for linking TAPA programs.
 ///
 /// Mirrors `tapa/common/paths.py::get_tapa_ldflags`: derives `-L` and
-/// `-Wl,-rpath` from `find_resource("fpga-runtime-lib")` and
-/// `find_resource("tapa-lib-lib")` (deduped), then appends the link
-/// list verbatim. Bazel external runfiles libraries (Python's
-/// `find_external_lib_in_runfiles`) are intentionally out of scope —
-/// the Rust binary is invoked outside of `bazel run`.
+/// `-Wl,-rpath` from `find_resource("fpga-runtime-lib")` /
+/// `find_resource("tapa-lib-lib")`, plus every external library
+/// directory the Bazel runfiles tree provides (gflags, glog,
+/// tinyxml2, yaml-cpp, boost). Without the runfiles dirs, links from
+/// the `bazel run //tapa:tapa -- g++` wrapper would fail to resolve
+/// `-lgflags`, `-lglog`, etc.
 pub fn get_tapa_ldflags() -> Vec<String> {
     use std::collections::BTreeSet;
     let mut libs: BTreeSet<PathBuf> = BTreeSet::new();
@@ -112,6 +113,7 @@ pub fn get_tapa_ldflags() -> Vec<String> {
     if let Ok(p) = find_resource("tapa-lib-lib") {
         libs.insert(p);
     }
+    libs.extend(find_external_lib_in_runfiles());
     let mut out = Vec::<String>::new();
     for lib in &libs {
         out.push(format!("-Wl,-rpath,{}", lib.display()));
@@ -126,6 +128,38 @@ pub fn get_tapa_ldflags() -> Vec<String> {
         out.push(format!("-l{name}"));
     }
     out
+}
+
+/// Port of `tapa.common.paths.find_external_lib_in_runfiles`. Walks
+/// the parents of the binary looking for a `tapa.runfiles` tree and
+/// returns the external library directories Bazel stages there
+/// (gflags, glog, tinyxml2, yaml-cpp, boost). Outside of Bazel, no
+/// `tapa.runfiles` exists and the helper returns an empty vector.
+fn find_external_lib_in_runfiles() -> Vec<PathBuf> {
+    let anchor = std::env::var_os("TAPA_CLI_SEARCH_ANCHOR")
+        .map(PathBuf::from)
+        .or_else(|| std::env::current_exe().ok())
+        .unwrap_or_else(|| PathBuf::from("."));
+
+    let mut cursor: Option<&Path> = Some(anchor.as_path());
+    while let Some(parent) = cursor {
+        let candidate = parent.join("tapa.runfiles");
+        if candidate.is_dir() {
+            return [
+                "gflags+",
+                "glog+",
+                "tinyxml2+",
+                "yaml-cpp+",
+                "rules_boost++non_module_dependencies+boost",
+            ]
+            .iter()
+            .map(|leaf| candidate.join(leaf))
+            .filter(|p| p.exists())
+            .collect();
+        }
+        cursor = parent.parent();
+    }
+    Vec::new()
 }
 
 fn vendor_include_paths(include_gcc: bool) -> Vec<PathBuf> {

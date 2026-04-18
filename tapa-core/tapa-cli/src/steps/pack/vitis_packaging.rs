@@ -149,7 +149,7 @@ fn build_package_xo_inputs(
     clock_period: String,
     kernel_ports: Vec<tapa_xilinx::KernelXmlPort>,
     m_axi_params: Vec<(String, Vec<(String, String)>)>,
-    report_paths: Vec<PathBuf>,
+    report_paths: Vec<(PathBuf, String)>,
 ) -> PackageXoInputs {
     PackageXoInputs {
         top_name: design.top.clone(),
@@ -180,20 +180,29 @@ fn build_package_xo_inputs(
 /// bundles into the `.xo` under `report/`. Walks
 /// `<work_dir>/hls/<task>/report/` for `*_csynth.xml` (the primary
 /// schema downstream tooling reads) plus any `.rpt` sibling files.
-fn collect_hls_report_paths(work_dir: &Path) -> Vec<PathBuf> {
+/// Returns `(source, archive_name)` pairs so the bundler can keep
+/// the per-task layout — without the task subdir, multiple tasks'
+/// `csynth.rpt` / `csynth.xml` files would collapse into a single
+/// archive entry and overwrite each other.
+fn collect_hls_report_paths(work_dir: &Path) -> Vec<(PathBuf, String)> {
     let hls_root = work_dir.join("hls");
     if !hls_root.is_dir() {
         return Vec::new();
     }
-    let mut reports = Vec::<PathBuf>::new();
+    let mut reports = Vec::<(PathBuf, String)>::new();
     let Ok(task_dirs) = std::fs::read_dir(&hls_root) else {
         return reports;
     };
     for task_entry in task_dirs.flatten() {
-        let report_dir = task_entry.path().join("report");
+        let task_dir = task_entry.path();
+        let report_dir = task_dir.join("report");
         if !report_dir.is_dir() {
             continue;
         }
+        let Some(task_name) = task_dir.file_name().and_then(|s| s.to_str()).map(str::to_owned)
+        else {
+            continue;
+        };
         let Ok(entries) = std::fs::read_dir(&report_dir) else {
             continue;
         };
@@ -202,9 +211,14 @@ fn collect_hls_report_paths(work_dir: &Path) -> Vec<PathBuf> {
             let Some(ext) = path.extension().and_then(|s| s.to_str()) else {
                 continue;
             };
-            if matches!(ext, "xml" | "rpt") {
-                reports.push(path);
+            if !matches!(ext, "xml" | "rpt") {
+                continue;
             }
+            let Some(file) = path.file_name().and_then(|s| s.to_str()) else {
+                continue;
+            };
+            let arcname = format!("report/{task_name}/{file}");
+            reports.push((path, arcname));
         }
     }
     reports.sort();

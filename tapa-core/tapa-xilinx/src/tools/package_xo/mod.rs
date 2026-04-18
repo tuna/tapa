@@ -92,12 +92,15 @@ pub struct PackageXoInputs {
     /// S_AXI interfaces to associate; defaults to `[s_axi_control]`.
     pub s_axi_ifaces: Vec<String>,
     /// Extra HLS report files to append under the packaged `.xo`'s
-    /// `report/` tree before redaction. Mirrors Python's
-    /// `PackageXo.__init__` which appends `self.report_paths` + every
-    /// `report/*_csynth.xml` into the final archive so downstream
-    /// inspection/debug tooling can read the bundled synthesis
-    /// reports. Empty → skip the bundle step.
-    pub report_paths: Vec<PathBuf>,
+    /// `report/` tree before redaction. Each entry is `(source_path,
+    /// archive_name)` — the archive name is taken verbatim, so the
+    /// caller is responsible for namespacing per-task reports (e.g.
+    /// `report/<task>/<file>`). Mirrors Python's `PackageXo.__init__`
+    /// which appends per-task `report/<task-rel>/<file>` entries so
+    /// downstream inspection tooling can disambiguate same-basename
+    /// reports across tasks (`csynth.rpt`, `csynth.xml`, …). Empty →
+    /// skip the bundle step.
+    pub report_paths: Vec<(PathBuf, String)>,
 }
 
 impl PackageXoInputs {
@@ -204,10 +207,16 @@ pub fn pack_xo(runner: &dyn ToolRunner, inputs: &PackageXoInputs) -> Result<Path
     Ok(out)
 }
 
-/// Append each `report_path` into the `.xo` under `report/<basename>`,
-/// matching Python's `PackageXo.__init__` bundling step. Any entry
-/// already present in the archive is overwritten.
-fn bundle_report_paths_into_xo(xo: &std::path::Path, report_paths: &[PathBuf]) -> Result<()> {
+/// Append each report into the `.xo` under its caller-provided archive
+/// name, matching Python's `PackageXo.__init__` bundling step. Any
+/// existing archive entry with the same name is overwritten so callers
+/// can use task-relative names (e.g. `report/<task>/csynth.xml`)
+/// without colliding with the basename layout the raw `.xo` already
+/// carries.
+fn bundle_report_paths_into_xo(
+    xo: &std::path::Path,
+    report_paths: &[(PathBuf, String)],
+) -> Result<()> {
     use std::io::{Read, Write};
     if report_paths.is_empty() {
         return Ok(());
@@ -218,12 +227,8 @@ fn bundle_report_paths_into_xo(xo: &std::path::Path, report_paths: &[PathBuf]) -
     let tmp = tempfile::NamedTempFile::new_in(
         xo.parent().unwrap_or_else(|| std::path::Path::new(".")),
     )?;
-    let mut written: std::collections::HashSet<String> = std::collections::HashSet::new();
-    for rpt in report_paths {
-        if let Some(name) = rpt.file_name().and_then(|n| n.to_str()) {
-            written.insert(format!("report/{name}"));
-        }
-    }
+    let written: std::collections::HashSet<&str> =
+        report_paths.iter().map(|(_, name)| name.as_str()).collect();
     {
         let mut z_out = zip::ZipWriter::new(tmp.reopen()?);
         let opts: zip::write::FileOptions<'_, ()> =
@@ -242,15 +247,12 @@ fn bundle_report_paths_into_xo(xo: &std::path::Path, report_paths: &[PathBuf]) -
             entry.read_to_end(&mut buf)?;
             z_out.write_all(&buf)?;
         }
-        for rpt in report_paths {
+        for (rpt, name) in report_paths {
             if !rpt.is_file() {
                 continue;
             }
-            let Some(name) = rpt.file_name().and_then(|n| n.to_str()) else {
-                continue;
-            };
             z_out
-                .start_file(format!("report/{name}"), opts)
+                .start_file(name.clone(), opts)
                 .map_err(|e| XilinxError::XoRedaction(format!("bundle entry: {e}")))?;
             z_out.write_all(&std::fs::read(rpt)?)?;
         }

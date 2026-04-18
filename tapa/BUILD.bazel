@@ -57,12 +57,20 @@ sh_binary(
         "//tapa-system-include",
         "//tapacc",
     ] + select({
-        # `//tapa-system-include:tapa-extra-runtime-include` is gated on
-        # `@platforms//os:linux` (header_extractor pulls Linux-only deps),
-        # so listing it unconditionally would break analysis on macOS/
-        # Windows hosts. Keep it under the same select the retired
-        # `py_binary` used.
-        "@platforms//os:linux": ["//tapa-system-include:tapa-extra-runtime-include"],
+        # The runtime libraries (libtapa, libfrt, gflags, glog,
+        # tinyxml2, yaml-cpp, …) and `tapa-extra-runtime-include` are
+        # all gated on `@platforms//os:linux`, so listing them
+        # unconditionally would break analysis on macOS/Windows. Keep
+        # them under the same select the retired `py_binary` used so
+        # `bazel run //tapa:tapa -- g++` can link host executables on
+        # Linux.
+        "@platforms//os:linux": [
+            "//fpga-runtime:pkg-extra-runtime-deps",
+            "//fpga-runtime:pkg-lib",
+            "//tapa-lib:pkg-extra-runtime-deps",
+            "//tapa-lib:pkg-lib",
+            "//tapa-system-include:tapa-extra-runtime-include",
+        ],
         "//conditions:default": [],
     }),
     visibility = ["//visibility:public"],
