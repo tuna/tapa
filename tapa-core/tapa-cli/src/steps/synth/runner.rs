@@ -12,7 +12,9 @@ use tapa_xilinx::ToolRunner;
 
 use crate::context::CliContext;
 use crate::error::{CliError, Result};
-use crate::state::{design as design_io, settings as settings_io};
+use crate::state::{design as design_io, graph as graph_io, settings as settings_io};
+use crate::tapacc::cflags::get_tapacc_cflags;
+use crate::tapacc::discover::find_resource;
 
 use super::cpp_extract::extract_hls_sources;
 use super::device_resolve::resolve_device_info;
@@ -20,20 +22,20 @@ use super::gen_ab_graph::emit_ab_graph;
 use super::gen_graphir::emit_graphir;
 use super::grouping_constraints::emit_grouping_constraints;
 use super::hls_run::{run_hls_for_leaves, HlsRunOptions};
+use super::post_synth_util::emit_post_synth_util;
 use super::rtl_codegen::{generate_rtl_tree, write_templates_info, TaskHdlInputs};
 use super::SynthArgs;
 
 /// Native synth: validate the flag surface, resolve the device, persist
 /// settings, then drive cpp-extract → HLS → codegen for the leaf tasks.
-pub(super) fn run_native(
+pub fn run_native(
     args: &SynthArgs,
     ctx: &CliContext,
     runner: &dyn ToolRunner,
 ) -> Result<()> {
-    reject_unsupported_flags(args)?;
     validate_optional_flag_combos(args)?;
 
-    let design = design_io::load_design(&ctx.work_dir)?;
+    let mut design = design_io::load_design(&ctx.work_dir)?;
     let mut settings = settings_io::load_settings(&ctx.work_dir)?;
     let target = settings
         .get("target")
@@ -65,10 +67,10 @@ pub(super) fn run_native(
     extract_hls_sources(&ctx.work_dir, &design)?;
 
     let opts = HlsRunOptions {
-        part_num: device.part_num,
-        clock_period: device.clock_period,
+        part_num: device.part_num.clone(),
+        clock_period: device.clock_period.clone(),
         other_configs: args.other_hls_configs.clone(),
-        cflags: build_hls_cflags(),
+        cflags: build_hls_cflags(&ctx.work_dir),
         skip_based_on_mtime: args.skip_hls_based_on_mtime,
     };
     let hls_results = run_hls_for_leaves(runner, &ctx.work_dir, &design, &opts)?;
@@ -82,6 +84,20 @@ pub(super) fn run_native(
         hdl_inputs.insert(task_name.clone(), files);
     }
     generate_rtl_tree(&ctx.work_dir, &design, &hdl_inputs)?;
+
+    // Per-task OOC Vivado synth → hierarchical utilization → `total_area`.
+    // Mirrors `ProgramSynthesisMixin.generate_post_synth_util`. When
+    // disabled (the Python default), the HLS-populated self/total areas
+    // survive untouched.
+    if args.enable_synth_util {
+        emit_post_synth_util(
+            &ctx.work_dir,
+            &mut design,
+            &device.part_num,
+            args.jobs,
+            runner,
+        )?;
+    }
 
     // Post-codegen side effects that mirror the tail of Python's
     // `_execute_synth`: nonpipeline-fifos → grouping_constraints.json,
@@ -128,28 +144,7 @@ pub(super) fn run_native(
     Ok(())
 }
 
-/// Flags that still require tooling we do not drive from Rust yet. Only
-/// `--enable-synth-util` lands here: it spawns per-task Vivado synth runs
-/// via `ReportDirUtil` in Python (`ProgramSynthesisMixin.generate_post_synth_util`),
-/// and there is no Rust-side Vivado harness at this layer. `--nonpipeline-fifos`,
-/// `--gen-ab-graph`, `--gen-graphir`, and `--floorplan-path` are all
-/// wired natively (see `emit_grouping_constraints`, `emit_ab_graph`,
-/// `emit_graphir`, and `apply_floorplan` via the `floorplan` step).
-fn reject_unsupported_flags(args: &SynthArgs) -> Result<()> {
-    if args.enable_synth_util {
-        return Err(CliError::InvalidArg(
-            "`--enable-synth-util` requires Vivado on PATH to drive per-task \
-             out-of-context synth and parse the hierarchical utilization report \
-             (Python `ProgramSynthesisMixin.generate_post_synth_util`). The \
-             native port has no Vivado harness at this layer, so this branch \
-             is unavailable until that harness lands."
-                .to_string(),
-        ));
-    }
-    Ok(())
-}
-
-/// Secondary validation for flag combinations that are accepted natively
+/// Validation for flag combinations that are accepted natively
 /// but depend on sibling flags. Surfaces up front so failures happen
 /// before the (expensive) HLS loop runs.
 fn validate_optional_flag_combos(args: &SynthArgs) -> Result<()> {
@@ -173,18 +168,41 @@ fn validate_optional_flag_combos(args: &SynthArgs) -> Result<()> {
 }
 
 /// Build the HLS CFLAGS that `_build_hls_cflags` constructs in Python.
-/// At this stage we only emit the `-DTAPA_TARGET_*` defines; the full
-/// vendor-include resolution is intentionally out of scope.
 ///
-/// **Limitation**: the analyzer-stored `graph.json::cflags` tuple is
-/// not yet threaded through, so designs that rely on extra `-I` /
-/// `-isystem` entries at HLS time are unsupported until a follow-up
-/// loads those cflags from `<work_dir>/graph.json`.
-fn build_hls_cflags() -> Vec<String> {
-    vec![
-        "-DTAPA_TARGET_DEVICE_".to_string(),
-        "-DTAPA_TARGET_XILINX_HLS_".to_string(),
-    ]
+/// Mirrors `tapa/program/hls.py::ProgramHlsMixin._build_hls_cflags`:
+/// loads the analyzer-stored cflags tuple from
+/// `<work_dir>/graph.json::cflags` (so `-isystem <tapa-lib>` etc. are
+/// forwarded into HLS), then appends the `-DTAPA_TARGET_*` defines and
+/// a `-I <tapa-extra-runtime-include>` entry when the resource can be
+/// resolved (Python's "WORKAROUND: Vitis HLS requires -I or gflags
+/// cannot be found..." branch).
+fn build_hls_cflags(work_dir: &Path) -> Vec<String> {
+    let mut flags: Vec<String> = Vec::new();
+    // Python parity: `tapa/core.py::TapaProgram.__init__` builds
+    // `self.cflags = " ".join((*graph.cflags, *get_tapacc_cflags()))`.
+    // We mirror that here so HLS sees the user's own `-I` / `-D`
+    // entries plus the tapa-lib / vendor-include resolution.
+    //
+    // Missing `graph.json` is tolerated so unit tests that seed only
+    // `design.json` + `settings.json` still drive the runner.
+    if let Ok(graph) = graph_io::load_graph(work_dir) {
+        if let Some(arr) = graph.get("cflags").and_then(Value::as_array) {
+            for item in arr {
+                if let Some(s) = item.as_str() {
+                    flags.push(s.to_string());
+                }
+            }
+        }
+    }
+    flags.extend(get_tapacc_cflags(false));
+    flags.push("-DTAPA_TARGET_DEVICE_".to_string());
+    flags.push("-DTAPA_TARGET_XILINX_HLS_".to_string());
+    // Python `_build_hls_cflags` workaround: Vitis HLS requires `-I`
+    // (not `-isystem`) to locate gflags during build.
+    if let Ok(p) = find_resource("tapa-extra-runtime-include") {
+        flags.push(format!("-I{}", p.display()));
+    }
+    flags
 }
 
 fn walk_verilog_files(dir: &Path) -> Vec<PathBuf> {
@@ -301,14 +319,6 @@ mod tests {
             matches!(err, CliError::InvalidArg(ref m) if m.contains(needle)),
             "error must contain `{needle}`; got: {err}",
         );
-    }
-
-    /// `--enable-synth-util` is the only remaining branch that routes
-    /// to a typed `InvalidArg`: the message names Vivado as the
-    /// concrete native gap.
-    #[test]
-    fn enable_synth_util_surfaces_native_gap() {
-        reject_case(&["--platform", "xilinx_u250", "--enable-synth-util"], "Vivado");
     }
 
     #[test]

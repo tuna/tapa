@@ -21,6 +21,7 @@ serde_yaml = "0.9"
 tapa-codegen = { workspace = true }
 tapa-floorplan = { workspace = true }
 tapa-graphir = { workspace = true }
+tapa-graphir-export = { workspace = true }
 tapa-lowering = { workspace = true }
 tapa-rtl = { workspace = true }
 tapa-task-graph = { workspace = true }

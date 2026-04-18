@@ -746,6 +746,7 @@ dependencies = [
  "tapa-codegen",
  "tapa-floorplan",
  "tapa-graphir",
+ "tapa-graphir-export",
  "tapa-lowering",
  "tapa-rtl",
  "tapa-task-graph",

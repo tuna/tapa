@@ -3,11 +3,20 @@
 //! Reloads `<work_dir>/{graph,design,settings}.json`, projects the top
 //! task's external ports into a [`PackageXoInputs`] block, and drives
 //! `tapa_xilinx::pack_xo` against `<work_dir>/rtl` to produce the
-//! `.xo`. The Python CLI was retired in AC-8, so any branch the
-//! native code does not yet cover (HLS-target `.zip`, `--custom-rtl`
-//! overlays, `GraphIR` embedding, the Vitis bitstream-script emission)
-//! surfaces a typed [`CliError::InvalidArg`] naming the specific
-//! native gap.
+//! `.xo`. Three optional overlays are applied around the core pack:
+//!
+//! * `--custom-rtl <PATH>` (may repeat) — validate user-supplied
+//!   Verilog files against `<work_dir>/templates_info.json` and copy
+//!   them into `<work_dir>/rtl` before Vivado runs.
+//! * `--graphir-path <FILE>` — parse the `GraphIR` JSON, export it via
+//!   `tapa-graphir-export`, and splice the generated Verilog into
+//!   `<work_dir>/rtl` alongside the TAPA-generated modules.
+//! * `--bitstream-script <FILE>` — after `.xo` emission, render the
+//!   Python `get_vitis_script` helper and drop it at the requested
+//!   path (executable on Unix).
+//!
+//! The HLS-target `.zip` packer is still unported and surfaces a
+//! typed [`CliError::InvalidArg`].
 
 use std::path::PathBuf;
 
@@ -18,6 +27,9 @@ use crate::context::CliContext;
 use crate::error::{CliError, Result};
 use crate::state::{design as design_io, settings as settings_io};
 
+mod bitstream_script;
+mod custom_rtl;
+mod graphir_embed;
 mod kernel_xml_ports;
 mod vitis_packaging;
 
@@ -71,8 +83,6 @@ pub fn run(args: &PackArgs, ctx: &mut CliContext) -> Result<()> {
 }
 
 fn run_native(args: &PackArgs, ctx: &CliContext) -> Result<()> {
-    reject_unsupported_flags(args)?;
-
     let design = design_io::load_design(&ctx.work_dir)?;
     let settings = settings_io::load_settings(&ctx.work_dir)?;
     let target = settings
@@ -89,34 +99,6 @@ fn run_native(args: &PackArgs, ctx: &CliContext) -> Result<()> {
              Open a follow-up to port the `xilinx-hls` `.zip` packer."
         ))),
     }
-}
-
-fn reject_unsupported_flags(args: &PackArgs) -> Result<()> {
-    if !args.custom_rtl.is_empty() {
-        return Err(CliError::InvalidArg(
-            "`--custom-rtl` overlay is not yet ported natively; \
-             the native packager cannot splice in user-provided RTL \
-             replacements. Open a follow-up to port \
-             `tapa.program_codegen.program::replace_custom_rtl`."
-                .to_string(),
-        ));
-    }
-    if args.graphir_path.is_some() {
-        return Err(CliError::InvalidArg(
-            "`--graphir-path` embedding is not yet ported natively; \
-             the native packager cannot embed a GraphIR file into \
-             the `.xo`. Open a follow-up to port the GraphIR embed path."
-                .to_string(),
-        ));
-    }
-    if args.bitstream_script.is_some() {
-        return Err(CliError::InvalidArg(
-            "`--bitstream-script` v++ script emission is not yet ported; \
-             `tapa.steps.pack.get_vitis_script` needs a Rust port."
-                .to_string(),
-        ));
-    }
-    Ok(())
 }
 
 /// Match Python's `_enforce_path_suffix(...).xo`. When no `--output`
@@ -258,18 +240,5 @@ mod tests {
         let ctx = ctx_with_work_dir(dir.path());
         let err = run_native(&parse_pack(&[]), &ctx).expect_err("missing rtl dir must fail");
         assert!(matches!(err, CliError::InvalidArg(ref m) if m.contains("rtl")));
-    }
-
-    #[test]
-    fn custom_rtl_surfaces_invalid_arg() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        write_state(dir.path(), "xilinx-vitis");
-        let ctx = ctx_with_work_dir(dir.path());
-        let err = run_native(
-            &parse_pack(&["--custom-rtl", "extra.v"]),
-            &ctx,
-        )
-        .expect_err("custom-rtl must reject");
-        assert!(matches!(err, CliError::InvalidArg(ref m) if m.contains("--custom-rtl")));
     }
 }
