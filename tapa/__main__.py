@@ -180,6 +180,29 @@ def entry_point(  # noqa: PLR0913,PLR0917
     _logger.info("tapa version: %s", __version__)
 
 
+@click.command("find-clang-binary", hidden=True)
+@click.argument("name", type=str)
+def _find_clang_binary_cmd(name: str) -> None:
+    """Resolve a clang-family helper binary and print its absolute path.
+
+    Hidden preflight hook for integration harnesses. Runs inside the
+    same interpreter / `sys.path` as every other subcommand, so the
+    returned resolution matches what `analyze` will use at runtime.
+    Exits non-zero with the underlying exception on stderr if the
+    binary cannot be found.
+    """
+    import sys  # noqa: PLC0415
+
+    from tapa.steps.analyze import find_clang_binary  # noqa: PLC0415
+
+    try:
+        resolved = find_clang_binary(name)
+    except Exception as exc:
+        sys.stderr.write(f"find-clang-binary({name!r}) failed: {exc}\n")
+        raise SystemExit(1) from exc
+    click.echo(resolved, nl=False)
+
+
 entry_point.add_command(analyze)
 entry_point.add_command(floorplan)
 entry_point.add_command(synth)
@@ -189,6 +212,7 @@ entry_point.add_command(generate_floorplan_entry)
 entry_point.add_command(compile_with_floorplan_dse)
 entry_point.add_command(version)
 entry_point.add_command(gcc)
+entry_point.add_command(_find_clang_binary_cmd)
 
 if __name__ == "__main__":
     entry_point(prog_name="tapa")
