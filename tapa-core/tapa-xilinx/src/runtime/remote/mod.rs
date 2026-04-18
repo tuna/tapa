@@ -12,11 +12,18 @@
 //! tears the master down, re-establishes the control socket, and
 //! retries the in-flight command once.
 
+mod transport;
+
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::Arc;
 
+pub(crate) use self::transport::shell_quote;
+use self::transport::{
+    cleanup_session, download_tree, local_to_remote_path, unique_session_id,
+    upload_batch,
+};
 use crate::error::{Result, XilinxError};
 use crate::runtime::process::{ToolInvocation, ToolOutput, ToolRunner};
 use crate::runtime::ssh::{classify_ssh_error, SshErrorKind, SshSession};
@@ -64,157 +71,6 @@ fn remote_work_dir(session: &SshSession) -> String {
     session.config().work_dir.clone()
 }
 
-pub(crate) fn shell_quote(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() + 2);
-    out.push('\'');
-    for c in s.chars() {
-        if c == '\'' {
-            out.push_str("'\\''");
-        } else {
-            out.push(c);
-        }
-    }
-    out.push('\'');
-    out
-}
-
-/// Map a local absolute path to the corresponding remote path under
-/// the session's `rootfs/` prefix. Mirrors
-/// `tapa/remote/popen.py::_local_to_remote_path`: absolute local
-/// paths are pasted verbatim under `<session_dir>/rootfs/` after
-/// stripping the leading `/`.
-fn local_to_remote_path(local: &Path, session_dir: &str) -> String {
-    let s = local.to_string_lossy();
-    let rel = s.trim_start_matches('/');
-    format!("{session_dir}/rootfs/{rel}")
-}
-
-/// Upload a batch of local absolute paths into `session_dir/rootfs`
-/// via a single `tar | ssh tar -xzf -` session. Each path is added
-/// to the archive preserving its absolute layout (minus the leading
-/// `/`) so the remote tree mirrors the local one. Matches
-/// `tapa/remote/popen.py::_upload_paths`.
-#[allow(
-    clippy::too_many_lines,
-    reason = "streams the in-memory tar archive inline for one SSH session; \
-              splitting into helpers would obscure the batched-upload flow"
-)]
-fn upload_batch(
-    session: &SshSession,
-    session_dir: &str,
-    local_paths: &[PathBuf],
-) -> Result<()> {
-    let rootfs = format!("{session_dir}/rootfs");
-    let remote_cmd = format!(
-        "mkdir -p {rf} && tar -xzf - -C {rf} --no-same-owner",
-        rf = shell_quote(&rootfs),
-    );
-    let mut args = session.build_ssh_args();
-    args.push(session.ssh_target());
-    args.push(remote_cmd);
-    let mut ssh_child = Command::new("ssh")
-        .args(&args)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| {
-            XilinxError::RemoteTransfer(format!("spawn ssh for upload: {e}"))
-        })?;
-
-    let ssh_in = ssh_child
-        .stdin
-        .take()
-        .ok_or_else(|| XilinxError::RemoteTransfer("ssh stdin lost".into()))?;
-    // Build the tar archive in-memory from the set of local paths.
-    // Using the `tar` crate keeps the streaming logic in one place
-    // and mirrors Python's `tarfile` batched upload verbatim.
-    let gz = flate2::write::GzEncoder::new(ssh_in, flate2::Compression::fast());
-    let mut builder = tar::Builder::new(gz);
-    builder.follow_symlinks(true);
-    for p in local_paths {
-        if !p.exists() {
-            continue;
-        }
-        let rel = p.to_string_lossy();
-        let rel = rel.trim_start_matches('/');
-        if p.is_dir() {
-            for ent in std::fs::read_dir(p)
-                .map_err(|e| {
-                    XilinxError::RemoteTransfer(format!(
-                        "read_dir {}: {e}",
-                        p.display()
-                    ))
-                })?
-            {
-                let ent = ent.map_err(|e| {
-                    XilinxError::RemoteTransfer(format!("read_dir entry: {e}"))
-                })?;
-                let arc = format!(
-                    "{rel}/{}",
-                    ent.file_name().to_string_lossy()
-                );
-                let ty = ent.file_type().map_err(|e| {
-                    XilinxError::RemoteTransfer(format!("file_type: {e}"))
-                })?;
-                if ty.is_dir() {
-                    builder.append_dir_all(&arc, ent.path()).map_err(|e| {
-                        XilinxError::RemoteTransfer(format!(
-                            "tar append dir {arc}: {e}"
-                        ))
-                    })?;
-                } else if ty.is_file() {
-                    let mut f = std::fs::File::open(ent.path()).map_err(
-                        |e| {
-                            XilinxError::RemoteTransfer(format!(
-                                "open {}: {e}",
-                                ent.path().display()
-                            ))
-                        },
-                    )?;
-                    builder.append_file(&arc, &mut f).map_err(|e| {
-                        XilinxError::RemoteTransfer(format!(
-                            "tar append file {arc}: {e}"
-                        ))
-                    })?;
-                }
-            }
-        } else if p.is_file() {
-            let mut f = std::fs::File::open(p).map_err(|e| {
-                XilinxError::RemoteTransfer(format!(
-                    "open {}: {e}",
-                    p.display()
-                ))
-            })?;
-            builder.append_file(rel, &mut f).map_err(|e| {
-                XilinxError::RemoteTransfer(format!(
-                    "tar append {rel}: {e}"
-                ))
-            })?;
-        }
-    }
-    let gz = builder.into_inner().map_err(|e| {
-        XilinxError::RemoteTransfer(format!("finish tar: {e}"))
-    })?;
-    let stdin_handle = gz.finish().map_err(|e| {
-        XilinxError::RemoteTransfer(format!("finish gz: {e}"))
-    })?;
-    drop(stdin_handle);
-
-    let out = ssh_child.wait_with_output().map_err(|e| {
-        XilinxError::RemoteTransfer(format!("wait ssh upload: {e}"))
-    })?;
-    if !out.status.success() {
-        let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
-        return Err(XilinxError::RemoteTransfer(format!(
-            "remote upload tar-extract failed (exit {}): {}",
-            out.status.code().unwrap_or(-1),
-            stderr.trim()
-        )));
-    }
-    Ok(())
-}
-
 /// Rewrite every occurrence of a local absolute path in `text` to its
 /// session-scoped remote equivalent. Longest-match-first ensures a
 /// path that is a prefix of another (e.g. `/a/b` vs `/a/b/c`) is not
@@ -239,15 +95,12 @@ fn rewrite_abs_paths(
             if ps.is_empty() {
                 continue;
             }
-            if bytes[cursor..]
-                .starts_with(ps.as_bytes())
-            {
+            if bytes[cursor..].starts_with(ps.as_bytes()) {
                 out.push_str(&local_to_remote_path(p, session_dir));
                 cursor += ps.len();
                 continue 'outer;
             }
         }
-        // Safe utf-8 step: append the current code point.
         let rest = &text[cursor..];
         let ch = rest.chars().next().unwrap();
         out.push(ch);
@@ -265,101 +118,6 @@ fn is_forwardable_env(key: &str) -> bool {
     REMOTE_ENV_ALLOWLIST.contains(&key) || key.starts_with("TAPA_")
 }
 
-/// Generate a process-unique id for the per-invocation session dir.
-/// Python uses `uuid.uuid4()`; a combination of pid + monotonic ns +
-/// counter gives comparable uniqueness without adding a uuid crate.
-fn unique_session_id() -> String {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
-    let n = COUNTER.fetch_add(1, Ordering::SeqCst);
-    let pid = std::process::id();
-    let ns = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    format!("tapa-{pid}-{ns}-{n}")
-}
-
-/// Download the contents of a remote directory into `dest` via
-/// `ssh … tar -czf - -C <remote_dir> . | tar -xzf - -C <dest>`. SSH
-/// stderr is captured so transient mux failures surface in the
-/// returned error and the outer retry path can classify them.
-fn download_tree(
-    session: &SshSession,
-    remote_dir: &str,
-    dest: &Path,
-) -> Result<()> {
-    std::fs::create_dir_all(dest).map_err(|e| {
-        XilinxError::RemoteTransfer(format!("mkdir {}: {e}", dest.display()))
-    })?;
-    let remote_cmd =
-        format!("tar -czf - -C {} .", shell_quote(remote_dir));
-    let mut args = session.build_ssh_args();
-    args.push(session.ssh_target());
-    args.push(remote_cmd);
-    let mut ssh_child = Command::new("ssh")
-        .args(&args)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| {
-            XilinxError::RemoteTransfer(format!("spawn ssh for download: {e}"))
-        })?;
-
-    let ssh_out = ssh_child
-        .stdout
-        .take()
-        .ok_or_else(|| XilinxError::RemoteTransfer("ssh stdout lost".into()))?;
-    let ssh_err = ssh_child
-        .stderr
-        .take()
-        .ok_or_else(|| XilinxError::RemoteTransfer("ssh stderr lost".into()))?;
-    let mut tar_local = Command::new("tar")
-        .arg("-xzf")
-        .arg("-")
-        .arg("-C")
-        .arg(dest)
-        .stdin(Stdio::from(ssh_out))
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| {
-            XilinxError::RemoteTransfer(format!(
-                "spawn local tar -xz: {e}"
-            ))
-        })?;
-
-    // Drain ssh stderr concurrently so a busy channel does not stall.
-    let stderr_handle = std::thread::spawn(move || {
-        let mut buf = Vec::new();
-        let mut r = ssh_err;
-        let _ = std::io::Read::read_to_end(&mut r, &mut buf);
-        buf
-    });
-
-    let tar_status = tar_local.wait().map_err(|e| {
-        XilinxError::RemoteTransfer(format!("wait local tar -xz: {e}"))
-    })?;
-    let ssh_status = ssh_child.wait().map_err(|e| {
-        XilinxError::RemoteTransfer(format!("wait ssh download: {e}"))
-    })?;
-    let stderr_bytes = stderr_handle.join().unwrap_or_default();
-    let stderr = String::from_utf8_lossy(&stderr_bytes).into_owned();
-    if !ssh_status.success() {
-        return Err(XilinxError::RemoteTransfer(format!(
-            "remote tar -cz failed (exit {}): {}",
-            ssh_status.code().unwrap_or(-1),
-            stderr.trim()
-        )));
-    }
-    if !tar_status.success() {
-        return Err(XilinxError::RemoteTransfer(format!(
-            "local tar -xz failed: {tar_status}: {}",
-            stderr.trim()
-        )));
-    }
-    Ok(())
-}
-
 impl RemoteToolRunner {
     #[allow(
         clippy::too_many_lines,
@@ -374,19 +132,12 @@ impl RemoteToolRunner {
     /// equivalents, executes the command with the remote working
     /// directory pointed at the rewritten cwd, and then tar-pipes
     /// each requested download path back from its rootfs
-    /// counterpart. The rewrite pass keeps TCL scripts, CFLAGS,
-    /// tool paths, etc. resolvable on the remote host without
-    /// requiring the caller to know anything about the rootfs
-    /// layout.
+    /// counterpart.
     fn run_once(&self, inv: &ToolInvocation) -> Result<ToolOutput> {
         self.session.ensure_established()?;
         let cfg = self.session.config();
         let session_dir = format!("{}/{}", cfg.work_dir, unique_session_id());
 
-        // Collect absolute local paths referenced by this invocation.
-        // The rewrite pass needs *all* of these, including download
-        // targets, so an absolute-path string inside the TCL body
-        // ends up pointing into the same rootfs on both ends.
         let mut referenced: Vec<PathBuf> = Vec::new();
         if let Some(cwd) = inv.cwd.as_ref() {
             if cwd.is_absolute() {
@@ -407,8 +158,6 @@ impl RemoteToolRunner {
             std::collections::HashSet::new();
         referenced.retain(|p| seen.insert(p.clone()));
 
-        // Upload cwd + extras (the download set alone lives on the
-        // remote side, not local).
         let mut to_upload: Vec<PathBuf> = Vec::new();
         if let Some(cwd) = inv.cwd.as_ref() {
             if cwd.is_absolute() && cwd.exists() {
@@ -425,15 +174,11 @@ impl RemoteToolRunner {
         to_upload.retain(|p| seen2.insert(p.clone()));
         upload_batch(&self.session, &session_dir, &to_upload)?;
 
-        // Remote cwd: mirror of local cwd under rootfs.
         let remote_cwd = match inv.cwd.as_ref().filter(|p| p.is_absolute()) {
             Some(cwd) => local_to_remote_path(cwd, &session_dir),
             None => format!("{session_dir}/rootfs"),
         };
 
-        // Build the remote bash command: source xilinx_settings if
-        // configured, export allowlisted env (with paths rewritten),
-        // then cd + exec the rewritten program + args.
         let mut parts: Vec<String> = Vec::new();
         if let Some(xs) = cfg.xilinx_settings.as_ref() {
             if !xs.trim().is_empty() {
@@ -476,9 +221,7 @@ impl RemoteToolRunner {
         if let Some(bytes) = &inv.stdin {
             if let Some(mut si) = child.stdin.take() {
                 si.write_all(bytes).map_err(|e| {
-                    XilinxError::RemoteTransfer(format!(
-                        "write stdin: {e}"
-                    ))
+                    XilinxError::RemoteTransfer(format!("write stdin: {e}"))
                 })?;
             }
         }
@@ -496,9 +239,6 @@ impl RemoteToolRunner {
             return Err(self.classify_remote_failure(&stderr));
         }
 
-        // Download each requested path: its remote source is the
-        // mirror under rootfs, and the local destination is the path
-        // itself (pre-existing or created here).
         for dl in &inv.downloads {
             if !dl.is_absolute() {
                 continue;
@@ -515,21 +255,6 @@ impl RemoteToolRunner {
             stderr,
         })
     }
-}
-
-/// Best-effort teardown of the per-invocation session directory. Run
-/// after every attempt so the remote work dir doesn't accumulate
-/// stale rootfs trees. Errors are ignored — cleanup failures must
-/// not mask the real tool output or swallow a retry trigger.
-fn cleanup_session(session: &SshSession, session_dir: &str) {
-    let mut args = session.build_ssh_args();
-    args.push(session.ssh_target());
-    args.push(format!("rm -rf {}", shell_quote(session_dir)));
-    let _ = Command::new("ssh")
-        .args(&args)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
 }
 
 /// Pure mux-retry driver. Takes two callbacks — the attempt and the
@@ -557,11 +282,6 @@ where
 
 impl ToolRunner for RemoteToolRunner {
     fn run(&self, inv: &ToolInvocation) -> Result<ToolOutput> {
-        // Ports the Python behavior in `tapa/remote/popen.py`: when a
-        // mux failure kills an in-flight invocation, tear the master
-        // down, re-establish the control socket, and retry the command
-        // once. Callers see a single attempted-and-recovered error
-        // path, not `SshMuxLost` requiring an external retry loop.
         run_with_mux_retry(
             || self.run_once(inv),
             || {
@@ -576,11 +296,9 @@ impl ToolRunner for RemoteToolRunner {
         _relative_from_cwd: &Path,
         _local_root: &Path,
     ) -> Result<()> {
-        // The rootfs-based `run_once` already pulls every caller-
-        // requested absolute-local download back into place, so the
-        // explicit harvest step is a no-op on this runner. Kept for
-        // interface symmetry and so tests that rely on the default
-        // trait method still succeed.
+        // `run_once` already pulls every caller-requested absolute-
+        // local download back into place, so this is a no-op on the
+        // remote runner. Kept for interface symmetry.
         Ok(())
     }
 }
@@ -609,8 +327,6 @@ mod tests {
 
     #[test]
     fn mux_retry_recovers_then_returns_success() {
-        // First attempt returns a transient mux error, recovery
-        // fires, second attempt succeeds.
         let call_count = Cell::new(0u32);
         let recover_count = Cell::new(0u32);
         let out = run_with_mux_retry(
@@ -666,8 +382,6 @@ mod tests {
 
     #[test]
     fn mux_retry_transfer_stage_transient_remote_transfer_recovers() {
-        // A `RemoteTransfer` whose stderr classifies as
-        // transient-mux also goes through the retry branch.
         let call_count = Cell::new(0u32);
         let out = run_with_mux_retry(
             || {
