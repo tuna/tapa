@@ -8,12 +8,16 @@
 //! `Args` structs (or, where flag conflicts would arise, by
 //! hand-rolling the merged flag set).
 
+mod dse;
+
 use std::path::PathBuf;
 
 use clap::Parser;
 
+pub use self::dse::{run_compile_with_floorplan_dse_composite, CompileWithFloorplanDseArgs};
+
 use crate::context::CliContext;
-use crate::error::{CliError, Result};
+use crate::error::Result;
 use crate::steps::{analyze, floorplan, pack, python_bridge, synth};
 
 // ---------------------------------------------------------------------
@@ -37,9 +41,19 @@ pub struct CompileArgs {
 }
 
 pub fn run_compile_composite(args: &CompileArgs, ctx: &mut CliContext) -> Result<()> {
+    if python_bridge::is_enabled("compile") {
+        return python_bridge::run("compile", &compile_python_argv(args), ctx);
+    }
     analyze::run(&args.analyze, ctx)?;
     synth::run(&args.synth, ctx)?;
     pack::run(&args.pack, ctx)
+}
+
+fn compile_python_argv(args: &CompileArgs) -> Vec<String> {
+    let mut out = analyze::to_python_argv(&args.analyze);
+    out.extend(synth::to_python_argv(&args.synth));
+    out.extend(pack::to_python_argv(&args.pack));
+    out
 }
 
 // ---------------------------------------------------------------------
@@ -163,162 +177,24 @@ pub fn run_generate_floorplan_composite(
     args: &GenerateFloorplanArgs,
     ctx: &mut CliContext,
 ) -> Result<()> {
+    if python_bridge::is_enabled("generate-floorplan") {
+        return python_bridge::run(
+            "generate-floorplan",
+            &generate_floorplan_python_argv(args),
+            ctx,
+        );
+    }
     analyze::run(&args.analyze_args(), ctx)?;
     synth::run(&args.synth_args(), ctx)?;
     floorplan::run_run_autobridge(&args.run_autobridge_args(), ctx)
 }
 
-// ---------------------------------------------------------------------
-// `compile-with-floorplan-dse` — analyze + floorplan + synth +
-// run_autobridge + pack
-// ---------------------------------------------------------------------
-
-#[allow(
-    clippy::struct_excessive_bools,
-    reason = "merged click flag surface — collapsing into an enum would break parity"
-)]
-#[derive(Debug, Clone, Parser)]
-#[command(
-    name = "compile-with-floorplan-dse",
-    about = "Compile a TAPA program with floorplan design space exploration."
-)]
-pub struct CompileWithFloorplanDseArgs {
-    // analyze
-    #[arg(short = 'f', long = "input", value_name = "FILE", required = true)]
-    pub input_files: Vec<PathBuf>,
-    #[arg(short = 't', long = "top", value_name = "TASK", required = true)]
-    pub top: String,
-    #[arg(short = 'c', long = "cflags", value_name = "FLAG")]
-    pub cflags: Vec<String>,
-    #[arg(long = "target", default_value = "xilinx-vitis")]
-    pub target: String,
-    // synth (omit conflicting flags; provided below)
-    #[arg(long = "part-num", value_name = "PART")]
-    pub part_num: Option<String>,
-    #[arg(short = 'p', long = "platform", value_name = "PLATFORM")]
-    pub platform: Option<String>,
-    #[arg(long = "clock-period", value_name = "NS")]
-    pub clock_period: Option<f64>,
-    #[arg(short = 'j', long = "jobs", value_name = "N")]
-    pub jobs: Option<u32>,
-    #[arg(long = "keep-hls-work-dir", default_value_t = false)]
-    pub keep_hls_work_dir: bool,
-    #[arg(long = "remove-hls-work-dir", conflicts_with = "keep_hls_work_dir")]
-    pub remove_hls_work_dir: bool,
-    #[arg(long = "skip-hls-based-on-mtime", default_value_t = false)]
-    pub skip_hls_based_on_mtime: bool,
-    #[arg(long = "no-skip-hls-based-on-mtime", conflicts_with = "skip_hls_based_on_mtime")]
-    pub no_skip_hls_based_on_mtime: bool,
-    #[arg(long = "other-hls-configs", default_value = "")]
-    pub other_hls_configs: String,
-    #[arg(long = "override-report-schema-version", default_value = "")]
-    pub override_report_schema_version: String,
-    #[arg(long = "nonpipeline-fifos", value_name = "FILE")]
-    pub nonpipeline_fifos: Option<PathBuf>,
-    // floorplan + synth + run_autobridge shared
-    #[arg(long = "device-config", value_name = "FILE", required = true)]
-    pub device_config: PathBuf,
-    #[arg(long = "floorplan-config", value_name = "FILE", required = true)]
-    pub floorplan_config: PathBuf,
-    // pack
-    #[arg(short = 'o', long = "output", value_name = "FILE")]
-    pub output: Option<PathBuf>,
-    #[arg(short = 's', long = "bitstream-script", value_name = "FILE")]
-    pub bitstream_script: Option<PathBuf>,
-    #[arg(long = "custom-rtl", value_name = "PATH")]
-    pub custom_rtl: Vec<PathBuf>,
-}
-
-pub fn run_compile_with_floorplan_dse_composite(
-    args: &CompileWithFloorplanDseArgs,
-    ctx: &mut CliContext,
-) -> Result<()> {
-    if args.output.is_some() {
-        return Err(CliError::InvalidArg(
-            "compile-with-floorplan-dse: --output must not be specified \
-             (each floorplan solution writes its own output)"
-                .to_string(),
-        ));
-    }
-    // Stage 1: full DSE drives generate-floorplan to enumerate floorplans.
-    let gf = GenerateFloorplanArgs {
-        input_files: args.input_files.clone(),
-        top: args.top.clone(),
-        cflags: args.cflags.clone(),
-        flatten_hierarchy: true,
-        keep_hierarchy: false,
-        target: args.target.clone(),
-        part_num: args.part_num.clone(),
-        platform: args.platform.clone(),
-        clock_period: args.clock_period,
-        jobs: args.jobs,
-        keep_hls_work_dir: args.keep_hls_work_dir,
-        remove_hls_work_dir: args.remove_hls_work_dir,
-        skip_hls_based_on_mtime: args.skip_hls_based_on_mtime,
-        no_skip_hls_based_on_mtime: args.no_skip_hls_based_on_mtime,
-        other_hls_configs: args.other_hls_configs.clone(),
-        enable_synth_util: true,
-        disable_synth_util: false,
-        override_report_schema_version: args.override_report_schema_version.clone(),
-        nonpipeline_fifos: args.nonpipeline_fifos.clone(),
-        gen_ab_graph: true,
-        no_gen_ab_graph: false,
-        gen_graphir: false,
-        floorplan_path: None,
-        device_config: args.device_config.clone(),
-        floorplan_config: args.floorplan_config.clone(),
-    };
-    run_generate_floorplan_composite(&gf, ctx)?;
-
-    // Stage 2: re-run compile per floorplan solution. The Python
-    // implementation iterates `<work-dir>/autobridge/solution_*/floorplan.json`
-    // and re-invokes `compile`. While the Rust per-solution loop matures
-    // alongside the native ports, route through the Python composite so
-    // nothing breaks on existing flows.
-    python_bridge::require_enabled("compile-with-floorplan-dse")?;
-    python_bridge::run(
-        "compile-with-floorplan-dse",
-        &compile_with_floorplan_dse_python_argv(args),
-        ctx,
-    )
-}
-
-fn compile_with_floorplan_dse_python_argv(
-    args: &CompileWithFloorplanDseArgs,
-) -> Vec<String> {
-    let mut out = Vec::<String>::new();
-    for f in &args.input_files {
-        out.push("--input".to_string());
-        out.push(f.display().to_string());
-    }
-    out.push("--top".to_string());
-    out.push(args.top.clone());
-    for c in &args.cflags {
-        out.push("--cflags".to_string());
-        out.push(c.clone());
-    }
-    out.push("--target".to_string());
-    out.push(args.target.clone());
-    if let Some(p) = &args.platform {
-        out.push("--platform".to_string());
-        out.push(p.clone());
-    }
-    if let Some(p) = &args.part_num {
-        out.push("--part-num".to_string());
-        out.push(p.clone());
-    }
-    if let Some(c) = args.clock_period {
-        out.push("--clock-period".to_string());
-        out.push(c.to_string());
-    }
-    if let Some(j) = args.jobs {
-        out.push("--jobs".to_string());
-        out.push(j.to_string());
-    }
-    out.push("--device-config".to_string());
-    out.push(args.device_config.display().to_string());
-    out.push("--floorplan-config".to_string());
-    out.push(args.floorplan_config.display().to_string());
+fn generate_floorplan_python_argv(args: &GenerateFloorplanArgs) -> Vec<String> {
+    let mut out = analyze::to_python_argv(&args.analyze_args());
+    out.extend(synth::to_python_argv(&args.synth_args()));
+    out.extend(floorplan::to_python_argv_run_autobridge(
+        &args.run_autobridge_args(),
+    ));
     out
 }
 
@@ -329,7 +205,6 @@ mod tests {
         reason = "args/argv pair matches the production naming"
     )]
     use super::*;
-    use crate::globals::GlobalArgs;
 
     #[test]
     fn compile_args_round_trip_via_clap() {
@@ -377,41 +252,5 @@ mod tests {
         assert!(synth_args.gen_ab_graph);
         assert!(synth_args.enable_synth_util);
         assert!(args.analyze_args().flatten_hierarchy);
-    }
-
-    #[test]
-    fn compile_with_floorplan_dse_rejects_output_flag() {
-        let args = CompileWithFloorplanDseArgs::try_parse_from([
-            "compile-with-floorplan-dse",
-            "--input",
-            "a.cpp",
-            "--top",
-            "T",
-            "--device-config",
-            "dev.json",
-            "--floorplan-config",
-            "fp.json",
-            "--output",
-            "out.xo",
-        ])
-        .expect("clap accepts --output (the runtime check rejects it)");
-        // Build a dummy ctx to drive the runtime check.
-        let globals = GlobalArgs {
-            verbose: 0,
-            quiet: 0,
-            work_dir: std::env::temp_dir(),
-            temp_dir: None,
-            clang_format_quota_in_bytes: 0,
-            remote_host: None,
-            remote_key_file: None,
-            remote_xilinx_settings: None,
-            remote_ssh_control_dir: None,
-            remote_ssh_control_persist: None,
-            remote_disable_ssh_mux: false,
-        };
-        let mut ctx = CliContext::from_globals(&globals);
-        let err = run_compile_with_floorplan_dse_composite(&args, &mut ctx)
-            .expect_err("--output should be rejected");
-        assert!(err.to_string().contains("--output"));
     }
 }
