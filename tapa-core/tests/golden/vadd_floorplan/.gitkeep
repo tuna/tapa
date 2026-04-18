@@ -1,0 +1,8 @@
+# Reserved for the `vadd generate-floorplan` golden snapshot (AC-5.4).
+#
+# Holds every persistent JSON the composite emits: `design.json`,
+# `settings.json`, `templates_info.json`, `ab_graph.json`,
+# `floorplan.json`, and every file under `autobridge/`.
+#
+# Populated by `test_cli_golden_vadd_generate_floorplan` with the
+# deterministic `tests/tools/rapidstream-tapafp` stub on PATH.

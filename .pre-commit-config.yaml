@@ -32,6 +32,11 @@ repos:
       - id: destroyed-symlinks
       - id: detect-private-key
       - id: end-of-file-fixer
+        # Golden snapshots must stay byte-equal with the live
+        # toolchain output; Vitis `.rpt` files do not terminate with
+        # a newline, so auto-appending one would turn every CI run
+        # into fake drift.
+        exclude: ^tapa-core/tests/golden/
       - id: file-contents-sorter
         files: (.gitignore|requirements.(txt|in))$
       - id: fix-byte-order-marker
@@ -42,7 +47,10 @@ repos:
         args:
           - --autofix
           - --indent=4
+        exclude: ^tapa-core/tests/golden/
       - id: trailing-whitespace
+        # Same rationale as end-of-file-fixer above.
+        exclude: ^tapa-core/tests/golden/
 
   #####################
   #  Auto Formatting  #

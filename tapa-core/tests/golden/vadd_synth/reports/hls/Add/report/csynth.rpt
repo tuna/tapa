@@ -1,0 +1,128 @@
+
+
+================================================================
+== Synthesis Summary Report of 'Add'
+================================================================
++ General Information: 
+    * Date: <<redacted>>
+    * Version: <<redacted>>
+    * Project: <<redacted>>
+    * Solution: <<redacted>>
+    * Product family: virtexuplus
+    * Target device:  xcu250-figd2104-2L-e
+    
+
++ Performance & Resource Estimates: 
+    
+    PS: '+' for module; 'o' for loop; '*' for dataflow
+    +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+    |             Modules             | Issue|      | Latency | Latency| Iteration|         | Trip |          |      |         |           |           |     |
+    |             & Loops             | Type | Slack| (cycles)|  (ns)  |  Latency | Interval| Count| Pipelined| BRAM |   DSP   |     FF    |    LUT    | URAM|
+    +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+    |+ Add                            |     -|  0.09|        -|       -|         -|        -|     -|        no|     -|  2 (~0%)|  566 (~0%)|  456 (~0%)|    -|
+    | + Add_Pipeline_VITIS_LOOP_39_1  |     -|  0.09|        -|       -|         -|        -|     -|        no|     -|  2 (~0%)|  498 (~0%)|  409 (~0%)|    -|
+    |  o VITIS_LOOP_39_1              |     -|  2.43|        -|       -|        10|        1|     -|       yes|     -|        -|          -|          -|    -|
+    +-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+
+
+
+================================================================
+== HW Interfaces
+================================================================
+* AP_FIFO
++-----+-----+-----+
+| Interface | Direction | Data Width |
++-----+-----+-----+
+| a_peek    | in        | 33         |
+| a_s       | in        | 33         |
+| b_peek    | in        | 33         |
+| b_s       | in        | 33         |
+| c_s       | out       | 33         |
++-----+-----+-----+
+
+* Other Ports
++-----+-----+-----+-----+
+| Port   | Mode    | Direction | Bitwidth |
++-----+-----+-----+-----+
+| c_peek | ap_none | in        | 33       |
+| n      | ap_none | in        | 64       |
++-----+-----+-----+-----+
+
+* TOP LEVEL CONTROL
++-----+-----+-----+
+| Interface | Type       | Ports                             |
++-----+-----+-----+
+| ap_clk    | clock      | ap_clk                            |
+| ap_rst_n  | reset      | ap_rst_n                          |
+| ap_ctrl   | ap_ctrl_hs | ap_done ap_idle ap_ready ap_start |
++-----+-----+-----+
+
+
+================================================================
+== SW I/O Information
+================================================================
+* Top Function Arguments
++-----+-----+-----+
+| Argument | Direction | Datatype            |
++-----+-----+-----+
+| a        | in        | tapa_stream<float>& |
+| b        | in        | tapa_stream<float>& |
+| c        | out       | tapa_stream<float>& |
+| n        | in        | long unsigned int   |
++-----+-----+-----+
+
+* SW-to-HW Mapping
++-----+-----+-----+
+| Argument | HW Interface | HW Type   |
++-----+-----+-----+
+| a        | a_s          | interface |
+| a        | a_peek       | interface |
+| b        | b_s          | interface |
+| b        | b_peek       | interface |
+| c        | c_s          | interface |
+| c        | c_peek       | port      |
+| n        | n            | port      |
++-----+-----+-----+
+
+
+================================================================
+== Bind Op Report
+================================================================
++-----+-----+-----+-----+-----+-----+-----+
+| Name                                 | DSP | Pragma | Variable  | Op    | Impl    | Latency |
++-----+-----+-----+-----+-----+-----+-----+
+| + Add                                | 2   |        |           |       |         |         |
+|  + Add_Pipeline_VITIS_LOOP_39_1      | 2   |        |           |       |         |         |
+|    icmp_ln39_fu_77_p2                |     |        | icmp_ln39 | seteq | auto    | 0       |
+|    i_1_fu_82_p2                      |     |        | i_1       | add   | fabric  | 0       |
+|    fadd_32ns_32ns_32_7_full_dsp_1_U1 | 2   |        | add       | fadd  | fulldsp | 6       |
++-----+-----+-----+-----+-----+-----+-----+
+
+
+================================================================
+== Storage Report
+================================================================
+  No bind storage info in design
+
+================================================================
+== Pragma Report
+================================================================
+* Valid Pragma Syntax
++-----+-----+-----+
+| Type         | Options                | Location                                                                             |
++-----+-----+-----+
+| disaggregate | variable = a           | ../pytest-of-tapa/pytest-17/test_cli_golden_vadd_synth0/rs-out/cpp/Add.cpp:17 in add |
+| interface    | ap_fifo port = a._     | ../pytest-of-tapa/pytest-17/test_cli_golden_vadd_synth0/rs-out/cpp/Add.cpp:18 in add |
+| aggregate    | variable = a._ bit     | ../pytest-of-tapa/pytest-17/test_cli_golden_vadd_synth0/rs-out/cpp/Add.cpp:19 in add |
+| interface    | ap_fifo port = a._peek | ../pytest-of-tapa/pytest-17/test_cli_golden_vadd_synth0/rs-out/cpp/Add.cpp:20 in add |
+| aggregate    | variable = a._peek bit | ../pytest-of-tapa/pytest-17/test_cli_golden_vadd_synth0/rs-out/cpp/Add.cpp:21 in add |
+| disaggregate | variable = b           | ../pytest-of-tapa/pytest-17/test_cli_golden_vadd_synth0/rs-out/cpp/Add.cpp:25 in add |
+| interface    | ap_fifo port = b._     | ../pytest-of-tapa/pytest-17/test_cli_golden_vadd_synth0/rs-out/cpp/Add.cpp:26 in add |
+| aggregate    | variable = b._ bit     | ../pytest-of-tapa/pytest-17/test_cli_golden_vadd_synth0/rs-out/cpp/Add.cpp:27 in add |
+| interface    | ap_fifo port = b._peek | ../pytest-of-tapa/pytest-17/test_cli_golden_vadd_synth0/rs-out/cpp/Add.cpp:28 in add |
+| aggregate    | variable = b._peek bit | ../pytest-of-tapa/pytest-17/test_cli_golden_vadd_synth0/rs-out/cpp/Add.cpp:29 in add |
+| disaggregate | variable = c           | ../pytest-of-tapa/pytest-17/test_cli_golden_vadd_synth0/rs-out/cpp/Add.cpp:33 in add |
+| interface    | ap_fifo port = c._     | ../pytest-of-tapa/pytest-17/test_cli_golden_vadd_synth0/rs-out/cpp/Add.cpp:34 in add |
+| aggregate    | variable = c._ bit     | ../pytest-of-tapa/pytest-17/test_cli_golden_vadd_synth0/rs-out/cpp/Add.cpp:35 in add |
++-----+-----+-----+
+
+

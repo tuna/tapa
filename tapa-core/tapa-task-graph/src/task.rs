@@ -17,8 +17,16 @@ pub enum TaskLevel {
 }
 
 /// A single task definition from `graph.json["tasks"]`.
+///
+/// We intentionally do **not** `deny_unknown_fields` here because
+/// `tapacc` emits additional metadata (e.g. `readable_name` from the
+/// C++ visitor) that the native synth pipeline does not consume. The
+/// graph round-trips through the typed schema (analyze → graph.json →
+/// transforms), so silently keeping unknown fields would erase them;
+/// instead, any field added by `tapacc` is parked here explicitly as
+/// `extra` so the typed path can re-emit it byte-identical. Every
+/// other field keeps the strict check at a higher level.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
 pub struct TaskDefinition {
     /// C++ source code for this task.
     pub code: String,
@@ -39,4 +47,8 @@ pub struct TaskDefinition {
     /// FIFO / interconnect definitions (upper tasks only).
     #[serde(default)]
     pub fifos: BTreeMap<String, InterconnectDefinition>,
+    /// Any extra fields `tapacc` attached (e.g. `readable_name`). Kept
+    /// so round-trips through the typed schema preserve them.
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
 }

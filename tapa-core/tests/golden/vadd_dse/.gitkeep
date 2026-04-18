@@ -1,0 +1,9 @@
+# Reserved for the `vadd compile-with-floorplan-dse` golden snapshot (AC-5.4).
+#
+# Holds every persistent JSON the DSE composite emits: the top-level
+# work-dir JSONs (`design.json`, `settings.json`, `templates_info.json`,
+# `ab_graph.json`) plus every file under `autobridge/` (including the
+# deterministic `solution_0/floorplan.json` the stub writes).
+#
+# Populated by `test_cli_golden_vadd_compile_with_floorplan_dse` with
+# the deterministic `tests/tools/rapidstream-tapafp` stub on PATH.

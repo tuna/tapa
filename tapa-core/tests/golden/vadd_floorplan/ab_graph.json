@@ -1,0 +1,170 @@
+{
+    "es": [
+        {
+            "index": 0,
+            "source_vertex": "Mmap2Stream_0",
+            "target_vertex": "Add_0",
+            "width": 32
+        },
+        {
+            "index": 1,
+            "source_vertex": "Mmap2Stream_1",
+            "target_vertex": "Add_0",
+            "width": 32
+        },
+        {
+            "index": 2,
+            "source_vertex": "Add_0",
+            "target_vertex": "Stream2Mmap_0",
+            "width": 32
+        },
+        {
+            "index": 3,
+            "source_vertex": "a",
+            "target_vertex": "Mmap2Stream_0",
+            "width": 43
+        },
+        {
+            "index": 4,
+            "source_vertex": "Mmap2Stream_0",
+            "target_vertex": "a",
+            "width": 405
+        },
+        {
+            "index": 5,
+            "source_vertex": "b",
+            "target_vertex": "Mmap2Stream_1",
+            "width": 43
+        },
+        {
+            "index": 6,
+            "source_vertex": "Mmap2Stream_1",
+            "target_vertex": "b",
+            "width": 405
+        },
+        {
+            "index": 7,
+            "source_vertex": "c",
+            "target_vertex": "Stream2Mmap_0",
+            "width": 43
+        },
+        {
+            "index": 8,
+            "source_vertex": "Stream2Mmap_0",
+            "target_vertex": "c",
+            "width": 405
+        },
+        {
+            "index": 9,
+            "source_vertex": "VecAdd_fsm",
+            "target_vertex": "Add_0",
+            "width": 64
+        }
+    ],
+    "vs": [
+        {
+            "area": {
+                "bram_18k": 0,
+                "dsp": 0,
+                "ff": 0,
+                "lut": 0,
+                "uram": 0
+            },
+            "name": "Add_0",
+            "sub_cells": [
+                "Add_0"
+            ]
+        },
+        {
+            "area": {
+                "bram_18k": 0,
+                "dsp": 0,
+                "ff": 0,
+                "lut": 0,
+                "uram": 0
+            },
+            "name": "Mmap2Stream_0",
+            "sub_cells": [
+                "Mmap2Stream_0"
+            ]
+        },
+        {
+            "area": {
+                "bram_18k": 0,
+                "dsp": 0,
+                "ff": 0,
+                "lut": 0,
+                "uram": 0
+            },
+            "name": "Mmap2Stream_1",
+            "sub_cells": [
+                "Mmap2Stream_1"
+            ]
+        },
+        {
+            "area": {
+                "bram_18k": 0,
+                "dsp": 0,
+                "ff": 0,
+                "lut": 0,
+                "uram": 0
+            },
+            "name": "Stream2Mmap_0",
+            "sub_cells": [
+                "Stream2Mmap_0"
+            ]
+        },
+        {
+            "area": {
+                "bram_18k": 0,
+                "dsp": 0,
+                "ff": 0,
+                "lut": 0,
+                "uram": 0
+            },
+            "name": "a",
+            "sub_cells": [
+                "a"
+            ]
+        },
+        {
+            "area": {
+                "bram_18k": 0,
+                "dsp": 0,
+                "ff": 0,
+                "lut": 0,
+                "uram": 0
+            },
+            "name": "b",
+            "sub_cells": [
+                "b"
+            ]
+        },
+        {
+            "area": {
+                "bram_18k": 0,
+                "dsp": 0,
+                "ff": 0,
+                "lut": 0,
+                "uram": 0
+            },
+            "name": "c",
+            "sub_cells": [
+                "c"
+            ]
+        },
+        {
+            "area": {
+                "bram_18k": 0,
+                "dsp": 0,
+                "ff": 0,
+                "lut": 0,
+                "uram": 0
+            },
+            "name": "VecAdd_fsm",
+            "sub_cells": [
+                "VecAdd_fsm"
+            ]
+        }
+    ]
+}

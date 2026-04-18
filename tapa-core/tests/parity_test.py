@@ -61,6 +61,11 @@ _HELP_GOLDEN_DIR = _GOLDEN_DIR / "help"
 _ARGV_GOLDEN_DIR = _GOLDEN_DIR / "argv"
 _VADD_ANALYZE_GOLDEN_DIR = _GOLDEN_DIR / "vadd_analyze"
 _VADD_XO_GOLDEN_DIR = _GOLDEN_DIR / "vadd_xo"
+_VADD_SYNTH_GOLDEN_DIR = _GOLDEN_DIR / "vadd_synth"
+_VADD_FLOORPLAN_GOLDEN_DIR = _GOLDEN_DIR / "vadd_floorplan"
+_VADD_FLOORPLAN_APPLY_GOLDEN_DIR = _GOLDEN_DIR / "vadd_floorplan_apply"
+_VADD_DSE_GOLDEN_DIR = _GOLDEN_DIR / "vadd_dse"
+_TEST_TOOLS_DIR = Path(__file__).resolve().parent / "tools"
 
 _REFRESH = os.environ.get("TAPA_GOLDEN_REFRESH") == "1"
 
@@ -932,3 +937,861 @@ def test_cli_golden_vadd_xo_flow(tmp_path: Path) -> None:
     golden_meta = [(e[0], e[1], tuple(e[2])) for e in _read_json(meta_path)]
     assert inv == golden_inv, "vadd `.xo` content drift vs golden"
     assert meta == golden_meta, "vadd `.xo` listing-metadata drift vs golden"
+
+
+# ---------------------------------------------------------------------
+# Reusable snapshot helpers for native step output trees (AC-5.2 +
+# AC-5.4 JSON parity). Each helper captures a relpath → text dict, so
+# the corresponding `refresh` / `assert` pair can handle arbitrary
+# nested layouts without hand-wiring every file name.
+# ---------------------------------------------------------------------
+
+
+def _json_canon(path: Path, *, normalize_design: bool = False) -> str:
+    """Re-emit a JSON file with canonical formatting for diff-clean goldens."""
+    obj = _read_json(path)
+    if normalize_design:
+        obj = _normalize_design_for_compare(obj)
+    return json.dumps(obj, indent=4, sort_keys=True) + "\n"
+
+
+def _refresh_tree_goldens(root: Path, snap: dict[str, str]) -> None:
+    """Write `snap` to `root`, clearing stale entries first.
+
+    The golden directory owns exactly the files in `snap` plus any
+    seeded `.gitkeep`; any other leftovers from a previous shape (e.g.
+    a renamed RTL file) get pruned so the gate stays authoritative.
+    """
+    root.mkdir(parents=True, exist_ok=True)
+    keep = {root / rel for rel in snap}
+    for existing in list(root.rglob("*")):
+        if existing.is_file() and existing.name != ".gitkeep" and existing not in keep:
+            existing.unlink()
+    # Clean up empty directories that previously held goldens.
+    for existing in sorted(root.rglob("*"), key=lambda p: -len(p.as_posix())):
+        if existing.is_dir() and not any(existing.iterdir()):
+            existing.rmdir()
+    for rel, content in snap.items():
+        target = root / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+
+
+def _assert_tree_goldens(root: Path, snap: dict[str, str], label: str) -> None:
+    """Diff `snap` against files under `root`.
+
+    Two distinct states:
+
+    * **Unseeded** (no golden file present yet under `root` at all):
+      cleanly `pytest.skip()` so a developer can run
+      `TAPA_GOLDEN_REFRESH=1` to populate the directory for the
+      first time. `.gitkeep` placeholders do not count as seeded
+      goldens.
+    * **Seeded** (any golden file already exists): a missing live
+      entry now fails instead of skipping — otherwise a regressed
+      run that silently drops an output could pass the gate
+      by virtue of the hole. Extras on either side (live without
+      golden, or golden without live) are assertion failures.
+    """
+    live_keys = set(snap)
+    golden_keys = {
+        p.relative_to(root).as_posix()
+        for p in root.rglob("*")
+        if p.is_file() and p.name != ".gitkeep"
+    }
+    if not golden_keys:
+        pytest.skip(
+            f"{label} goldens not yet seeded under {root}; rerun with "
+            "TAPA_GOLDEN_REFRESH=1 to populate"
+        )
+    missing = live_keys - golden_keys
+    assert not missing, (
+        f"{label} live run produced entries with no golden: {sorted(missing)}; "
+        "rerun with TAPA_GOLDEN_REFRESH=1 if intentional"
+    )
+    extras = golden_keys - live_keys
+    assert not extras, (
+        f"{label} has stale goldens with no live counterpart: {sorted(extras)}"
+    )
+    for rel, live in snap.items():
+        golden = (root / rel).read_text(encoding="utf-8")
+        assert live == golden, (
+            f"{label} `{rel}` drift vs golden — rerun with "
+            "TAPA_GOLDEN_REFRESH=1 if intentional"
+        )
+
+
+def test_assert_tree_goldens_fails_on_missing_when_seeded(tmp_path: Path) -> None:
+    """Regression for the Round-10 skip-open bug.
+
+    Once any golden exists under `root`, a new live entry without a
+    golden must fail instead of skip. Only a completely empty root
+    (ignoring `.gitkeep`) may still skip.
+    """
+    # Case 1: unseeded root (no golden besides an optional `.gitkeep`)
+    # → skip is still appropriate.
+    empty_root = tmp_path / "empty"
+    empty_root.mkdir()
+    (empty_root / ".gitkeep").write_text("keep\n", encoding="utf-8")
+    with pytest.raises(pytest.skip.Exception):
+        _assert_tree_goldens(empty_root, {"live.json": "{}"}, "probe")
+
+    # Case 2: seeded root with a different key → live-only key is
+    # an assertion failure, not a skip.
+    seeded_root = tmp_path / "seeded"
+    seeded_root.mkdir()
+    (seeded_root / "known.json").write_text("{}\n", encoding="utf-8")
+    with pytest.raises(
+        AssertionError, match="live run produced entries with no golden"
+    ):
+        _assert_tree_goldens(
+            seeded_root, {"known.json": "{}\n", "new.json": "{}\n"}, "probe"
+        )
+
+    # Case 3: seeded root, live matches, no extras → passes cleanly.
+    _assert_tree_goldens(seeded_root, {"known.json": "{}\n"}, "probe")
+
+
+# ---------------------------------------------------------------------
+# vadd `analyze synth` golden snapshot (AC-5.2 artifact parity).
+# Snapshots `rtl/*.v` (Rust codegen output, deterministic),
+# `templates_info.json`, `design.json`, `settings.json`, plus the HLS
+# report file-inventory AND every `.rpt` content after a byte-stable
+# redaction pass that strips the Vitis date/time/version headers.
+# ---------------------------------------------------------------------
+
+
+# Volatile report headers: Vitis emits these lines with wall-clock
+# timestamps, build IDs, project paths, session user names, and a
+# host machine name that all vary from run to run. The previous
+# regex kept the original text after the match; we now REPLACE the
+# whole tail with a fixed `<<redacted>>` sentinel so goldens stay
+# byte-equal across configured-host runs.
+_RPT_HEADER_KEYS = (
+    "Date",
+    "Report date",
+    "Version",
+    "Project",
+    "Solution",
+    "Product version",
+    "User",
+    "Host",
+    "Copyright",
+    "Generated on",
+    "Generated by",
+    "Start of session at",
+)
+_RPT_HEADER_KEYS_ALTERNATION = "|".join(_re.escape(k) for k in _RPT_HEADER_KEYS)
+_RPT_VOLATILE_HEADER_RE = _re.compile(
+    # Optional indent, optional `* ` Vitis leader, one of the header
+    # keys, `:` or `=`, and the remainder of the line.
+    r"^(?P<prefix>\s*(?:\*\s*)?)"
+    rf"(?P<key>{_RPT_HEADER_KEYS_ALTERNATION})"
+    r"\s*[:=].*$",
+    _re.MULTILINE,
+)
+# Vitis HLS peppers the ruler lines with run-specific dashes whose
+# count reflects variable-width module names. Collapse any hyphen
+# run ≥ 5 to a fixed `-----` so golden diffs aren't derailed by
+# incidental column-width drift.
+_RPT_DASH_RULER_RE = _re.compile(r"-{5,}")
+
+_RPT_REDACTED_SENTINEL = "<<redacted>>"
+
+
+def _redact_rpt_content(text: str) -> str:
+    """Stable, reviewer-friendly redaction for `.rpt` diffs.
+
+    A superset of `tapa.program.pack._redact_rpt`: every known
+    volatile header line (timestamps, version strings, project /
+    solution names, session-start markers — with or without Vitis's
+    leading `* `) becomes `<indent><key>: <<redacted>>`. Table body
+    rows round-trip verbatim; the only body-side normalization is
+    collapsing long hyphen rulers whose width follows run-specific
+    module names.
+    """
+
+    def _replace(match: _re.Match[str]) -> str:
+        return f"{match.group('prefix')}{match.group('key')}: {_RPT_REDACTED_SENTINEL}"
+
+    redacted = _RPT_VOLATILE_HEADER_RE.sub(_replace, text)
+    return _RPT_DASH_RULER_RE.sub("-----", redacted)
+
+
+def test_vadd_synth_rpt_goldens_are_fully_redacted() -> None:
+    """Non-Vitis guard on the checked-in `vadd_synth/reports/` goldens.
+
+    Catches the exact "sanitizer fixed but goldens stale" state
+    Codex flagged: every `.rpt` under `tests/golden/vadd_synth/reports/`
+    must round-trip through `_redact_rpt_content` unchanged (i.e. the
+    canonicalization is already at its fixed point). A failure means
+    the goldens still contain live Vitis timestamps / version strings
+    / user names / project paths — regenerate them with
+    `TAPA_GOLDEN_REFRESH=1` on a configured host.
+    """
+    reports_dir = _VADD_SYNTH_GOLDEN_DIR / "reports"
+    if not reports_dir.is_dir():
+        pytest.skip(f"{reports_dir} absent; run TAPA_GOLDEN_REFRESH=1 first")
+    rpts = sorted(reports_dir.rglob("*.rpt"))
+    if not rpts:
+        pytest.skip(f"{reports_dir} contains no `.rpt` files yet")
+    stale: list[tuple[Path, str]] = []
+    for rpt in rpts:
+        text = rpt.read_text(encoding="utf-8", errors="replace")
+        redacted = _redact_rpt_content(text)
+        if text != redacted:
+            rel = rpt.relative_to(_VADD_SYNTH_GOLDEN_DIR).as_posix()
+            stale.append((rpt.relative_to(_VADD_SYNTH_GOLDEN_DIR), "non-fixed-point"))
+            # Also call out known volatile-substring giveaways to make
+            # the failure message actionable without re-reading every
+            # golden file.
+            for volatile in (
+                "Sun Apr",
+                "Mon Apr",
+                "Tue Apr",
+                "Wed Apr",
+                "Thu Apr",
+                "Fri Apr",
+                "Sat Apr",
+                "Build 5238294",
+                "2024.2 (Build",
+            ):
+                if volatile in text:
+                    stale.append(
+                        (
+                            rpt.relative_to(_VADD_SYNTH_GOLDEN_DIR),
+                            f"contains volatile `{volatile}`",
+                        )
+                    )
+                    break
+            _ = rel  # keep `rel` lint-visible when match list is empty
+    assert not stale, (
+        "vadd_synth report goldens contain volatile, unredacted Vitis "
+        "output; regenerate with TAPA_GOLDEN_REFRESH=1:\n  "
+        + "\n  ".join(f"{p}: {reason}" for p, reason in stale)
+    )
+
+
+def test_redact_rpt_content_canonicalizes_volatile_headers() -> None:
+    """Sanitizer regression.
+
+    Every known volatile-header form — with or without Vitis's `* `
+    leader, bare `Date:` included — must collapse to the
+    deterministic sentinel. Body rows unchanged.
+    """
+    raw = (
+        "================================================================\n"
+        "== Vitis HLS Report for 'Add'\n"
+        "================================================================\n"
+        "* Date:           Sun Apr 19 03:50:19 2026\n"
+        "\n"
+        "* Version:        2024.2 (Build 5238294 on Nov  8 2024)\n"
+        "* Project:        project\n"
+        "* Solution:       Add (Vivado IP Flow Target)\n"
+        "Date:           Tue Jan 01 00:00:00 1980\n"
+        "User: tapa\n"
+        "| Total LUTs | FFs | DSP Blocks |\n"
+        "+------+----+---+\n"
+    )
+    redacted = _redact_rpt_content(raw)
+    for key in ("* Date", "* Version", "* Project", "* Solution", "Date", "User"):
+        assert f"{key}: {_RPT_REDACTED_SENTINEL}" in redacted, redacted
+    # Table rows survive verbatim (only the ruler is normalized).
+    assert "| Total LUTs | FFs | DSP Blocks |" in redacted
+    # No run-specific substring may leak through.
+    for volatile in ("2026", "2024.2", "Build", "Sun Apr", "Tue Jan", " tapa"):
+        assert volatile not in redacted, (
+            f"volatile `{volatile}` leaked into redacted output:\n{redacted}"
+        )
+
+
+def _collect_vadd_synth_snapshot(work: Path) -> dict[str, str]:
+    snap: dict[str, str] = {}
+    rtl_dir = work / "rtl"
+    if rtl_dir.is_dir():
+        for v in sorted(rtl_dir.glob("*.v")):
+            snap[f"rtl/{v.name}"] = v.read_text(encoding="utf-8")
+    for fname in ("templates_info.json", "settings.json"):
+        path = work / fname
+        if path.is_file():
+            snap[fname] = _json_canon(path)
+    design_path = work / "design.json"
+    if design_path.is_file():
+        snap["design.json"] = _json_canon(design_path, normalize_design=True)
+    # Full byte-stable `.rpt` content parity (AC-5.2 reports). Every
+    # file goes through `_redact_rpt_content` so Vitis timestamps /
+    # version strings don't turn a clean run into drift noise.
+    rpts = sorted(work.rglob("*.rpt"))
+    for rpt in rpts:
+        rel = rpt.relative_to(work).as_posix()
+        snap[f"reports/{rel}"] = _redact_rpt_content(
+            rpt.read_text(encoding="utf-8", errors="replace")
+        )
+    snap["report_inventory.txt"] = "".join(
+        f"{r.relative_to(work).as_posix()}\n" for r in rpts
+    )
+    return snap
+
+
+def _build_vadd_synth_argv(
+    binary: Path,
+    work: Path,
+    vadd_cpp: Path,
+    platform: str,
+) -> list[str]:
+    return [
+        str(binary),
+        "--work-dir",
+        str(work),
+        "analyze",
+        "--input",
+        str(vadd_cpp),
+        "--top",
+        _VADD_TOP,
+        "synth",
+        "--platform",
+        platform,
+    ]
+
+
+def test_cli_golden_vadd_synth(tmp_path: Path) -> None:
+    """Snapshot/diff native `tapa analyze synth` outputs on vadd.
+
+    Covers AC-5.2 end-to-end: after `synth` runs, the work dir must
+    contain deterministic Rust-codegen RTL under `rtl/`, a
+    Python-parity `templates_info.json`, a synth'd `design.json`, and
+    a `settings.json` flagged `synthed=true`. The suite also records
+    the HLS report file-inventory (names only) so a missing report
+    file surfaces immediately even though `.rpt` contents carry
+    non-deterministic Vitis timestamps.
+
+    Skips when `vitis_hls` or `tapacc` is unavailable.
+    """
+    binary = _skip_if_cli_toolchain_missing()
+    vadd_cpp = _VADD_DIR / "vadd.cpp"
+    if not vadd_cpp.is_file():
+        pytest.skip(f"missing {vadd_cpp}")
+    if not _have("vitis_hls") and "XILINX_HLS" not in os.environ:
+        pytest.skip("vitis_hls not on PATH and `XILINX_HLS` unset")
+    if not _have_tapacc():
+        pytest.skip("tapacc / tapa-cpp not on PATH; synth is unrunnable")
+
+    platform = os.environ.get(
+        "TAPA_PARITY_PLATFORM",
+        "xilinx_u250_gen3x16_xdma_4_1_202210_1",
+    )
+
+    work = tmp_path / "rs-out"
+    work.mkdir()
+    run = _subprocess.run(
+        _build_vadd_synth_argv(binary, work, vadd_cpp, platform),
+        env=_rust_env(),
+        capture_output=True,
+        check=False,
+        timeout=900,
+    )
+    if run.returncode != 0:
+        msg = run.stderr.decode("utf-8", "replace")
+        _maybe_skip_on_vadd_flow_failure(msg)
+        pytest.fail(f"synth chain failed unexpectedly:\n{msg}")
+
+    snap = _collect_vadd_synth_snapshot(work)
+    if _REFRESH:
+        _refresh_tree_goldens(_VADD_SYNTH_GOLDEN_DIR, snap)
+        return
+    _assert_tree_goldens(_VADD_SYNTH_GOLDEN_DIR, snap, "vadd_synth")
+
+
+# ---------------------------------------------------------------------
+# `generate-floorplan` + `compile-with-floorplan-dse` golden snapshots
+# (AC-5.4). Both composites invoke `rapidstream-tapafp`; the suite
+# supplies a deterministic stub under `tests/tools/rapidstream-tapafp`
+# so the gate runs without external infrastructure.
+# ---------------------------------------------------------------------
+
+
+_FLOORPLAN_CONFIG_FIXTURE_NAME = "vadd_floorplan_config.json"
+_DEVICE_CONFIG_FIXTURE_NAME = "vadd_device_config.json"
+
+
+def _write_floorplan_fixtures(dir_: Path) -> tuple[Path, Path]:
+    """Write the floorplan + device config fixtures the stub consumes."""
+    floorplan_cfg = dir_ / _FLOORPLAN_CONFIG_FIXTURE_NAME
+    device_cfg = dir_ / _DEVICE_CONFIG_FIXTURE_NAME
+    floorplan_cfg.write_text(
+        json.dumps(
+            {
+                "dse_region_shrink_factor": 1.0,
+                "cpp_arg_pre_assignments": {},
+                "sys_port_pre_assignments": {},
+                "port_pre_assignments": {},
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    # Device config shape consumed by `tapa-lowering::read_device_config`:
+    # `{ "slots": [{"x": .., "y": .., "pblock_ranges": [..]}], "part_num": ".." }`.
+    # 1x1 single-slot device so the stub's `SLOT_X0Y0` mapping resolves.
+    device_cfg.write_text(
+        json.dumps(
+            {
+                "part_num": "xcu250-figd2104-2L-e",
+                "slots": [
+                    {
+                        "x": 0,
+                        "y": 0,
+                        "pblock_ranges": [
+                            "CLOCKREGION_X0Y0:CLOCKREGION_X7Y3",
+                        ],
+                    }
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    return floorplan_cfg, device_cfg
+
+
+def _stub_tool_env(env: dict[str, str] | None = None) -> dict[str, str]:
+    """Return a copy of `env` (or os.environ) with `tests/tools` first on PATH."""
+    base = dict(env if env is not None else os.environ)
+    path = f"{_TEST_TOOLS_DIR}:{base.get('PATH', '')}"
+    base["PATH"] = path
+    return base
+
+
+def _collect_tree_json_snapshot(root: Path, *, subpaths: list[str]) -> dict[str, str]:
+    """Snapshot every `*.json` under `root`, one entry per relpath.
+
+    `subpaths` enumerates the sub-directories (relative to `root`)
+    the caller cares about. Everything else is ignored to keep the
+    gate focused on the composite's persistent JSON contract.
+    """
+    snap: dict[str, str] = {}
+    for rel in subpaths:
+        sub = root / rel if rel else root
+        if not sub.exists():
+            continue
+        if sub.is_file() and sub.suffix == ".json":
+            snap[rel or sub.name] = _json_canon(
+                sub, normalize_design=sub.name == "design.json"
+            )
+            continue
+        for f in sorted(sub.rglob("*.json")):
+            rel_path = f.relative_to(root).as_posix()
+            snap[rel_path] = _json_canon(f, normalize_design=f.name == "design.json")
+    return snap
+
+
+def _build_vadd_generate_floorplan_argv(  # noqa: PLR0913, PLR0917
+    binary: Path,
+    work: Path,
+    vadd_cpp: Path,
+    platform: str,
+    floorplan_cfg: Path,
+    device_cfg: Path,
+    floorplan_out: Path,
+) -> list[str]:
+    return [
+        str(binary),
+        "--work-dir",
+        str(work),
+        "generate-floorplan",
+        "-f",
+        str(vadd_cpp),
+        "--top",
+        _VADD_TOP,
+        "--platform",
+        platform,
+        "--floorplan-config",
+        str(floorplan_cfg),
+        "--device-config",
+        str(device_cfg),
+        "--floorplan-path",
+        str(floorplan_out),
+    ]
+
+
+def _build_vadd_dse_argv(  # noqa: PLR0913, PLR0917
+    binary: Path,
+    work: Path,
+    vadd_cpp: Path,
+    platform: str,
+    floorplan_cfg: Path,
+    device_cfg: Path,
+) -> list[str]:
+    # DSE forbids `--output` — each floorplan solution writes its own
+    # per-solution `.xo`. We just drive the composite and snapshot the
+    # persistent JSON it produces.
+    return [
+        str(binary),
+        "--work-dir",
+        str(work),
+        "compile-with-floorplan-dse",
+        "-f",
+        str(vadd_cpp),
+        "--top",
+        _VADD_TOP,
+        "--platform",
+        platform,
+        "--floorplan-config",
+        str(floorplan_cfg),
+        "--device-config",
+        str(device_cfg),
+    ]
+
+
+def test_cli_golden_vadd_generate_floorplan(tmp_path: Path) -> None:
+    """Diff `generate-floorplan` persistent JSON outputs (AC-5.4).
+
+    Runs the real `tapa generate-floorplan` composite against a
+    deterministic `rapidstream-tapafp` stub that ships under
+    `tests/tools/`. Snapshots every persistent JSON under the top
+    work dir plus the `autobridge/` sub-tree; diffs them against
+    `tests/golden/vadd_floorplan/`.
+
+    Skips cleanly when `vitis_hls` / `tapacc` is unavailable.
+    """
+    binary = _skip_if_cli_toolchain_missing()
+    vadd_cpp = _VADD_DIR / "vadd.cpp"
+    if not vadd_cpp.is_file():
+        pytest.skip(f"missing {vadd_cpp}")
+    if not _have("vitis_hls") and "XILINX_HLS" not in os.environ:
+        pytest.skip("vitis_hls not on PATH and `XILINX_HLS` unset")
+    if not _have_tapacc():
+        pytest.skip("tapacc / tapa-cpp not on PATH; generate-floorplan unrunnable")
+
+    stub = _TEST_TOOLS_DIR / "rapidstream-tapafp"
+    if not stub.is_file():
+        pytest.skip(f"rapidstream-tapafp stub missing at {stub}")
+
+    platform = os.environ.get(
+        "TAPA_PARITY_PLATFORM",
+        "xilinx_u250_gen3x16_xdma_4_1_202210_1",
+    )
+
+    fixtures = tmp_path / "fixtures"
+    fixtures.mkdir()
+    floorplan_cfg, device_cfg = _write_floorplan_fixtures(fixtures)
+
+    work = tmp_path / "rs-out"
+    work.mkdir()
+    floorplan_out = work / "floorplan.json"
+    run = _subprocess.run(
+        _build_vadd_generate_floorplan_argv(
+            binary,
+            work,
+            vadd_cpp,
+            platform,
+            floorplan_cfg,
+            device_cfg,
+            floorplan_out,
+        ),
+        env=_stub_tool_env(_rust_env()),
+        capture_output=True,
+        check=False,
+        timeout=900,
+    )
+    if run.returncode != 0:
+        msg = run.stderr.decode("utf-8", "replace")
+        _maybe_skip_on_vadd_flow_failure(msg)
+        pytest.fail(f"generate-floorplan failed unexpectedly:\n{msg}")
+
+    snap = _collect_tree_json_snapshot(
+        work,
+        subpaths=[
+            "design.json",
+            "settings.json",
+            "templates_info.json",
+            "ab_graph.json",
+            "floorplan.json",
+            "autobridge",
+        ],
+    )
+    if _REFRESH:
+        _refresh_tree_goldens(_VADD_FLOORPLAN_GOLDEN_DIR, snap)
+        return
+    _assert_tree_goldens(_VADD_FLOORPLAN_GOLDEN_DIR, snap, "vadd_floorplan")
+
+
+def test_cli_golden_vadd_compile_with_floorplan_dse(  # noqa: C901, PLR0914, PLR0915
+    tmp_path: Path,
+) -> None:
+    """Diff `compile-with-floorplan-dse` persistent JSON outputs (AC-5.4).
+
+    Runs the full DSE composite with the deterministic
+    `rapidstream-tapafp` stub and snapshots every persistent JSON
+    under the top-level work dir (plus `autobridge/` and any
+    `solution_*/` sub-trees). Diffs them against
+    `tests/golden/vadd_dse/`.
+    """
+    binary = _skip_if_cli_toolchain_missing()
+    vadd_cpp = _VADD_DIR / "vadd.cpp"
+    if not vadd_cpp.is_file():
+        pytest.skip(f"missing {vadd_cpp}")
+    if not _have("vitis_hls") and "XILINX_HLS" not in os.environ:
+        pytest.skip("vitis_hls not on PATH and `XILINX_HLS` unset")
+    if not _have_tapacc():
+        pytest.skip("tapacc / tapa-cpp not on PATH; dse unrunnable")
+
+    stub = _TEST_TOOLS_DIR / "rapidstream-tapafp"
+    if not stub.is_file():
+        pytest.skip(f"rapidstream-tapafp stub missing at {stub}")
+
+    platform = os.environ.get(
+        "TAPA_PARITY_PLATFORM",
+        "xilinx_u250_gen3x16_xdma_4_1_202210_1",
+    )
+
+    fixtures = tmp_path / "fixtures"
+    fixtures.mkdir()
+    floorplan_cfg, device_cfg = _write_floorplan_fixtures(fixtures)
+
+    work = tmp_path / "rs-out"
+    work.mkdir()
+    run = _subprocess.run(
+        _build_vadd_dse_argv(
+            binary,
+            work,
+            vadd_cpp,
+            platform,
+            floorplan_cfg,
+            device_cfg,
+        ),
+        env=_stub_tool_env(_rust_env()),
+        capture_output=True,
+        check=False,
+        timeout=1800,
+    )
+    if run.returncode != 0:
+        msg = run.stderr.decode("utf-8", "replace")
+        _maybe_skip_on_vadd_flow_failure(msg)
+        pytest.fail(f"compile-with-floorplan-dse failed unexpectedly:\n{msg}")
+
+    # AC-5.4: DSE must emit *terminal* stage-2 compile state under
+    # `solution_*/` — not merely preliminary `analyze` JSON that gets
+    # written before the per-solution synth/pack loop runs. The Rust
+    # DSE composite logs per-solution failures and returns
+    # `Ok(())`, so we need to pin down which solutions actually
+    # reached the end of the pipeline.
+    #
+    # A solution is considered "successful" only if ALL of:
+    #   * `settings.json` has `"synthed": true` (synth committed)
+    #   * `templates_info.json` exists (synth wrote it post-HLS)
+    #   * `graphir.json` exists (stage-2 forces `gen_graphir=true`)
+    #   * one `.xo` file exists (pack succeeded)
+    solution_dirs = sorted(p for p in work.glob("solution_*") if p.is_dir())
+    assert solution_dirs, (
+        "compile-with-floorplan-dse must materialize at least one "
+        "`solution_*/` work dir"
+    )
+
+    def _solution_is_successful(sol: Path) -> bool:
+        settings_path = sol / "settings.json"
+        if not settings_path.is_file():
+            return False
+        try:
+            synthed = _read_json(settings_path).get("synthed") is True
+        except (json.JSONDecodeError, OSError):
+            return False
+        if not synthed:
+            return False
+        if not (sol / "templates_info.json").is_file():
+            return False
+        if not (sol / "graphir.json").is_file():
+            return False
+        return any(sol.rglob("*.xo"))
+
+    successful = [s for s in solution_dirs if _solution_is_successful(s)]
+    assert successful, (
+        "DSE stage 2 produced no terminal artifacts in any "
+        f"`solution_*/` dir (need synthed=true + templates_info.json "
+        f"+ graphir.json + <name>.xo). Got: {[s.name for s in solution_dirs]}"
+    )
+
+    dse_subpaths = [
+        "design.json",
+        "settings.json",
+        "templates_info.json",
+        "ab_graph.json",
+        "autobridge",
+    ]
+    dse_subpaths.extend(s.name for s in solution_dirs)
+    snap = _collect_tree_json_snapshot(work, subpaths=dse_subpaths)
+
+    # AC-9 artifact proof: snapshot every successful solution's `.xo`
+    # content inventory + listing metadata (through the production
+    # `_redact_and_zip` pass). The DSE gate previously only diffed
+    # JSON, which leaves "stage-2 pack actually produced a byte-equal
+    # kernel" unverified. Using the same helpers the `vadd_xo` gate
+    # uses gives us that guarantee without bespoke redaction logic.
+    try:
+        redaction_available = True
+        for sol in successful:
+            xos = sorted(sol.rglob("*.xo"))
+            assert xos, f"successful solution `{sol.name}` has no `.xo` — logic bug"
+            xo_inv_entries: list[tuple[str, str]] = []
+            xo_meta_entries: list[tuple[str, int, tuple[int, ...]]] = []
+            for xo in xos:
+                redacted = tmp_path / f"{sol.name}-{xo.name}.redacted"
+                try:
+                    _py_redact(xo, redacted)
+                except ImportError as exc:
+                    pytest.skip(f"tapa.program.pack not importable: {exc}")
+                xo_inv_entries.extend(
+                    (f"{xo.name}::{name}", sha)
+                    for name, sha in _zip_inventory(redacted)
+                )
+                xo_meta_entries.extend(
+                    (f"{xo.name}::{name}", size, ts)
+                    for name, size, ts in _zip_metadata(redacted)
+                )
+            snap[f"{sol.name}/xo_inventory.json"] = (
+                json.dumps(xo_inv_entries, indent=4) + "\n"
+            )
+            snap[f"{sol.name}/xo_metadata.json"] = (
+                json.dumps(
+                    [[name, size, list(ts)] for name, size, ts in xo_meta_entries],
+                    indent=4,
+                )
+                + "\n"
+            )
+    except ImportError:
+        redaction_available = False
+    if not redaction_available:
+        pytest.skip("tapa.program.pack not importable; .xo proof unavailable")
+
+    if _REFRESH:
+        _refresh_tree_goldens(_VADD_DSE_GOLDEN_DIR, snap)
+        return
+    _assert_tree_goldens(_VADD_DSE_GOLDEN_DIR, snap, "vadd_dse")
+
+
+# ---------------------------------------------------------------------
+# Standalone `tapa floorplan --floorplan-path` golden snapshot
+# (AC-5.4). Exercises the post-autobridge apply path: a prepared
+# `graph.json` + `design.json` + `settings.json` already on disk
+# (from an earlier `analyze synth`) gets rewritten by
+# `apply_floorplan` when the user supplies a floorplan JSON that
+# maps instances to slots.
+# ---------------------------------------------------------------------
+
+
+def _build_vadd_floorplan_apply_argv(
+    binary: Path,
+    work: Path,
+    vadd_cpp: Path,
+    platform: str,
+    floorplan_path: Path,
+) -> list[str]:
+    # Chain: analyze --flatten-hierarchy (so top is upper w/ leaves) →
+    # synth → floorplan --floorplan-path. `apply_floorplan` insists on
+    # the flattened single-level shape.
+    return [
+        str(binary),
+        "--work-dir",
+        str(work),
+        "analyze",
+        "--input",
+        str(vadd_cpp),
+        "--top",
+        _VADD_TOP,
+        "--flatten-hierarchy",
+        "synth",
+        "--platform",
+        platform,
+        "floorplan",
+        "--floorplan-path",
+        str(floorplan_path),
+    ]
+
+
+def _write_vadd_floorplan_apply_fixture(path: Path) -> None:
+    """Write a vadd-shaped floorplan JSON onto disk.
+
+    Maps every top-level vadd instance (`Add_0`, `Mmap2Stream_0`,
+    `Mmap2Stream_1`, `Stream2Mmap_0`) to the single slot `0:0`. That
+    matches what a real autobridge run against a 1x1 device config
+    emits for this fixture — every child ends up in one slot, so the
+    resulting rewritten graph has a single slot task that wraps all
+    four leaves.
+    """
+    path.write_text(
+        json.dumps(
+            {
+                "Add_0": "0:0",
+                "Mmap2Stream_0": "0:0",
+                "Mmap2Stream_1": "0:0",
+                "Stream2Mmap_0": "0:0",
+            },
+            indent=4,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+def test_cli_golden_vadd_floorplan_apply(tmp_path: Path) -> None:
+    """Diff `tapa floorplan --floorplan-path` persistent JSON outputs.
+
+    The standalone apply step rewrites `graph.json` + `design.json` +
+    `settings.json` (adding `floorplan=true` and the slot→region map)
+    after wrapping leaf instances into the slot tasks named in the
+    floorplan fixture. Skips cleanly when `vitis_hls` / `tapacc` are
+    unavailable.
+    """
+    binary = _skip_if_cli_toolchain_missing()
+    vadd_cpp = _VADD_DIR / "vadd.cpp"
+    if not vadd_cpp.is_file():
+        pytest.skip(f"missing {vadd_cpp}")
+    if not _have("vitis_hls") and "XILINX_HLS" not in os.environ:
+        pytest.skip("vitis_hls not on PATH and `XILINX_HLS` unset")
+    if not _have_tapacc():
+        pytest.skip("tapacc / tapa-cpp not on PATH; floorplan-apply unrunnable")
+
+    platform = os.environ.get(
+        "TAPA_PARITY_PLATFORM",
+        "xilinx_u250_gen3x16_xdma_4_1_202210_1",
+    )
+
+    fixtures = tmp_path / "fixtures"
+    fixtures.mkdir()
+    floorplan_path = fixtures / "vadd_floorplan.json"
+    _write_vadd_floorplan_apply_fixture(floorplan_path)
+
+    work = tmp_path / "rs-out"
+    work.mkdir()
+    run = _subprocess.run(
+        _build_vadd_floorplan_apply_argv(
+            binary,
+            work,
+            vadd_cpp,
+            platform,
+            floorplan_path,
+        ),
+        env=_rust_env(),
+        capture_output=True,
+        check=False,
+        timeout=900,
+    )
+    if run.returncode != 0:
+        msg = run.stderr.decode("utf-8", "replace")
+        _maybe_skip_on_vadd_flow_failure(msg)
+        pytest.fail(f"floorplan-apply failed unexpectedly:\n{msg}")
+
+    snap = _collect_tree_json_snapshot(
+        work,
+        subpaths=[
+            "graph.json",
+            "design.json",
+            "settings.json",
+            "templates_info.json",
+        ],
+    )
+    if _REFRESH:
+        _refresh_tree_goldens(_VADD_FLOORPLAN_APPLY_GOLDEN_DIR, snap)
+        return
+    _assert_tree_goldens(_VADD_FLOORPLAN_APPLY_GOLDEN_DIR, snap, "vadd_floorplan_apply")
