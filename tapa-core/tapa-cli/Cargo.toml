@@ -29,6 +29,7 @@ tapa-topology = { workspace = true }
 tapa-xilinx = { workspace = true }
 tempfile = { workspace = true }
 thiserror = { workspace = true }
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
 tempfile = { workspace = true }
