@@ -19,9 +19,10 @@
 //!   5. Persist `<work_dir>/templates_info.json` and re-store the
 //!      design + settings (`synthed=true`).
 //!
-//! Feature flags that still require upstream ports surface a typed
-//! [`CliError::InvalidArg`] up front naming the concrete native gap
-//! (e.g. `--enable-synth-util` needs a Rust Vivado OoC harness).
+//! `--enable-synth-util` additionally drives a per-task Vivado
+//! out-of-context synth pass through
+//! `post_synth_util::emit_post_synth_util` (ports
+//! `ProgramSynthesisMixin.generate_post_synth_util`).
 
 use std::path::PathBuf;
 
@@ -37,10 +38,11 @@ mod gen_ab_graph;
 mod gen_graphir;
 mod grouping_constraints;
 mod hls_run;
+mod post_synth_util;
 mod rtl_codegen;
 mod runner;
 
-use runner::run_native;
+pub(crate) use runner::run_native;
 
 #[allow(
     clippy::struct_excessive_bools,

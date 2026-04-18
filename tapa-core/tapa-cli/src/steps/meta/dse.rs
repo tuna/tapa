@@ -304,6 +304,50 @@ mod tests {
     }
 
     #[test]
+    fn forwards_all_three_pack_overlays_to_stage2() {
+        // Phase-7 regression: every click-surface pack overlay that
+        // used to raise a hard error in `steps::pack::run_native` must
+        // now be threaded through `compile-with-floorplan-dse` stage 2
+        // untouched (composite parity with the retired Python CLI).
+        let args = CompileWithFloorplanDseArgs::try_parse_from([
+            "compile-with-floorplan-dse",
+            "--input",
+            "a.cpp",
+            "--top",
+            "T",
+            "--device-config",
+            "dev.json",
+            "--floorplan-config",
+            "fp.json",
+            "--graphir-path",
+            "graphir.json",
+            "--custom-rtl",
+            "extra.v",
+            "--bitstream-script",
+            "run.sh",
+        ])
+        .expect("parse");
+        let compile = build_compile_stage2(
+            &args,
+            std::path::Path::new("fp.json"),
+            std::path::Path::new("out.xo"),
+        );
+        assert_eq!(
+            compile.pack.graphir_path.as_deref(),
+            Some(std::path::Path::new("graphir.json")),
+        );
+        assert_eq!(
+            compile.pack.bitstream_script.as_deref(),
+            Some(std::path::Path::new("run.sh")),
+        );
+        assert_eq!(compile.pack.custom_rtl.len(), 1);
+        assert_eq!(
+            compile.pack.custom_rtl[0],
+            std::path::PathBuf::from("extra.v"),
+        );
+    }
+
+    #[test]
     fn rejects_output_flag() {
         let args = CompileWithFloorplanDseArgs::try_parse_from([
             "compile-with-floorplan-dse",
