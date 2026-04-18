@@ -1,0 +1,61 @@
+{
+    "slot_task_name_to_fp_region": {
+        "SlotTask": "SLOT_X0Y0:SLOT_X0Y0"
+    },
+    "target": "xilinx-hls",
+    "tasks": {
+        "SlotTask": {
+            "clock_period": "0",
+            "code": "void SlotTask() {}",
+            "fifos": {},
+            "is_slot": true,
+            "level": "lower",
+            "name": "SlotTask",
+            "ports": [
+                {
+                    "cat": "mmap",
+                    "name": "d",
+                    "type": "float*",
+                    "width": 32
+                }
+            ],
+            "self_area": {},
+            "target": "hls",
+            "tasks": {},
+            "total_area": {}
+        },
+        "TopTask": {
+            "clock_period": "0",
+            "code": "void TopTask() {}",
+            "fifos": {},
+            "is_slot": false,
+            "level": "upper",
+            "name": "TopTask",
+            "ports": [
+                {
+                    "cat": "mmap",
+                    "name": "data",
+                    "type": "float*",
+                    "width": 32
+                }
+            ],
+            "self_area": {},
+            "target": "hls",
+            "tasks": {
+                "SlotTask": [
+                    {
+                        "args": {
+                            "d": {
+                                "arg": "data",
+                                "cat": "mmap"
+                            }
+                        },
+                        "step": 0
+                    }
+                ]
+            },
+            "total_area": {}
+        }
+    },
+    "top": "TopTask"
+}

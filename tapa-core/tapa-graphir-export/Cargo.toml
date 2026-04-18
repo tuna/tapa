@@ -1,0 +1,11 @@
+[package]
+name = "tapa-graphir-export"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tapa-graphir = { workspace = true }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true

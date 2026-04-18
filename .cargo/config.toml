@@ -1,0 +1,11 @@
+[env]
+# Allow PyO3 to build against Python 3.14+ using stable ABI.
+PYO3_USE_ABI3_FORWARD_COMPATIBILITY = "1"
+
+# macOS: Python extension modules need dynamic_lookup for unresolved
+# Python symbols that are resolved at load time by the interpreter.
+[target.aarch64-apple-darwin]
+rustflags = ["-C", "link-arg=-undefined", "-C", "link-arg=dynamic_lookup"]
+
+[target.x86_64-apple-darwin]
+rustflags = ["-C", "link-arg=-undefined", "-C", "link-arg=dynamic_lookup"]

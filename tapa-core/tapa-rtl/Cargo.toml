@@ -1,0 +1,14 @@
+[package]
+name = "tapa-rtl"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+nom = { workspace = true }
+regex = { workspace = true }
+serde = { workspace = true }
+tapa-protocol = { workspace = true }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true

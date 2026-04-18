@@ -1,0 +1,82 @@
+"""TAPA core Rust crates — Bazel build via Cargo."""
+
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
+_ALL_SRCS = glob(
+    ["**/*"],
+    exclude = [
+        "BUILD.bazel",
+        "target/**",
+    ],
+)
+
+# -- Build: library crates only (hermetic via rules_rust toolchain) --
+# The py-bindings crate is excluded because it requires Python headers
+# at link time and is not consumed by any Bazel target yet.
+
+genrule(
+    name = "cargo_build",
+    srcs = _ALL_SRCS,
+    outs = [
+        "cargo/libtapa_protocol.rlib",
+        "cargo/libtapa_task_graph.rlib",
+        "cargo/libtapa_graphir.rlib",
+        "cargo/libtapa_rtl.rlib",
+        "cargo/libtapa_topology.rlib",
+    ],
+    cmd = """
+set -euo pipefail
+CARGO="$$(cd "$$(dirname "$(execpath @rules_rust//rust/toolchain:current_cargo_files)")" && pwd)/cargo"
+RUSTC="$$(cd "$$(dirname "$(execpath @rules_rust//rust/toolchain:current_rustc_files)")" && pwd)/rustc"
+export PATH="$$(dirname "$$CARGO"):$$(dirname "$$RUSTC"):$$PATH"
+export CARGO_TARGET_DIR="$(@D)/cargo-target"
+
+$$CARGO build --manifest-path "$(location Cargo.toml)" --release --locked \
+  -p tapa-protocol -p tapa-task-graph -p tapa-graphir -p tapa-rtl -p tapa-topology
+
+copy_or_empty() { if [ -f "$$1" ]; then cp "$$1" "$$2"; else : > "$$2"; fi; }
+copy_or_empty "$$CARGO_TARGET_DIR/release/libtapa_protocol.rlib" "$(location cargo/libtapa_protocol.rlib)"
+copy_or_empty "$$CARGO_TARGET_DIR/release/libtapa_task_graph.rlib" "$(location cargo/libtapa_task_graph.rlib)"
+copy_or_empty "$$CARGO_TARGET_DIR/release/libtapa_graphir.rlib" "$(location cargo/libtapa_graphir.rlib)"
+copy_or_empty "$$CARGO_TARGET_DIR/release/libtapa_rtl.rlib" "$(location cargo/libtapa_rtl.rlib)"
+copy_or_empty "$$CARGO_TARGET_DIR/release/libtapa_topology.rlib" "$(location cargo/libtapa_topology.rlib)"
+""",
+    tags = ["requires-network"],
+    tools = [
+        "@rules_rust//rust/toolchain:current_cargo_files",
+        "@rules_rust//rust/toolchain:current_rustc_files",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+# -- Test: Rust unit and integration tests (manual, requires system cargo) --
+
+sh_test(
+    name = "cargo_test",
+    srcs = ["run_cargo_test.sh"],
+    data = _ALL_SRCS + [
+        "@rules_rust//rust/toolchain:current_cargo_files",
+        "@rules_rust//rust/toolchain:current_rustc_files",
+        "@rules_rust//rust/toolchain:current_rustdoc_files",
+    ],
+    env = {
+        "CARGO_MANIFEST_DIR": "tapa-core",
+    },
+    tags = ["manual"],
+)
+
+# -- Test: Python smoke tests (manual, requires system cargo + python3) --
+
+sh_test(
+    name = "python_smoke_test",
+    srcs = ["run_python_smoke_test.sh"],
+    data = _ALL_SRCS + [
+        "@rules_rust//rust/toolchain:current_cargo_files",
+        "@rules_rust//rust/toolchain:current_rustc_files",
+        "@rules_rust//rust/toolchain:current_rustdoc_files",
+    ],
+    env = {
+        "CARGO_MANIFEST_DIR": "tapa-core",
+    },
+    tags = ["manual"],
+)

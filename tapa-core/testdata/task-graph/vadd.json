@@ -1,0 +1,239 @@
+{
+    "cflags": [
+        "-std=c++17"
+    ],
+    "tasks": {
+        "Add": {
+            "code": "void Add(tapa::istream<float>& a, tapa::istream<float>& b, tapa::ostream<float>& c, uint64_t n) {}",
+            "level": "lower",
+            "ports": [
+                {
+                    "cat": "istream",
+                    "name": "a",
+                    "type": "float",
+                    "width": 32
+                },
+                {
+                    "cat": "istream",
+                    "name": "b",
+                    "type": "float",
+                    "width": 32
+                },
+                {
+                    "cat": "ostream",
+                    "name": "c",
+                    "type": "float",
+                    "width": 32
+                },
+                {
+                    "cat": "scalar",
+                    "name": "n",
+                    "type": "uint64_t",
+                    "width": 64
+                }
+            ],
+            "target": "hls",
+            "vendor": "xilinx"
+        },
+        "Mmap2Stream": {
+            "code": "void Mmap2Stream(tapa::mmap<const float> mmap, tapa::ostream<float>& stream, uint64_t n) {}",
+            "level": "lower",
+            "ports": [
+                {
+                    "cat": "mmap",
+                    "name": "mmap",
+                    "type": "const float*",
+                    "width": 32
+                },
+                {
+                    "cat": "ostream",
+                    "name": "stream",
+                    "type": "float",
+                    "width": 32
+                },
+                {
+                    "cat": "scalar",
+                    "name": "n",
+                    "type": "uint64_t",
+                    "width": 64
+                }
+            ],
+            "target": "hls",
+            "vendor": "xilinx"
+        },
+        "Stream2Mmap": {
+            "code": "void Stream2Mmap(tapa::istream<float>& stream, tapa::mmap<float> mmap, uint64_t n) {}",
+            "level": "lower",
+            "ports": [
+                {
+                    "cat": "istream",
+                    "name": "stream",
+                    "type": "float",
+                    "width": 32
+                },
+                {
+                    "cat": "mmap",
+                    "name": "mmap",
+                    "type": "float*",
+                    "width": 32
+                },
+                {
+                    "cat": "scalar",
+                    "name": "n",
+                    "type": "uint64_t",
+                    "width": 64
+                }
+            ],
+            "target": "hls",
+            "vendor": "xilinx"
+        },
+        "VecAdd": {
+            "code": "void VecAdd(tapa::mmap<const float> a, tapa::mmap<const float> b, tapa::mmap<float> c, uint64_t n) {}",
+            "fifos": {
+                "a_q": {
+                    "consumed_by": [
+                        "Add",
+                        0
+                    ],
+                    "depth": 2,
+                    "produced_by": [
+                        "Mmap2Stream",
+                        0
+                    ]
+                },
+                "b_q": {
+                    "consumed_by": [
+                        "Add",
+                        0
+                    ],
+                    "depth": 2,
+                    "produced_by": [
+                        "Mmap2Stream",
+                        1
+                    ]
+                },
+                "c_q": {
+                    "consumed_by": [
+                        "Stream2Mmap",
+                        0
+                    ],
+                    "depth": 2,
+                    "produced_by": [
+                        "Add",
+                        0
+                    ]
+                }
+            },
+            "level": "upper",
+            "ports": [
+                {
+                    "cat": "mmap",
+                    "name": "a",
+                    "type": "const float*",
+                    "width": 32
+                },
+                {
+                    "cat": "mmap",
+                    "name": "b",
+                    "type": "const float*",
+                    "width": 32
+                },
+                {
+                    "cat": "mmap",
+                    "name": "c",
+                    "type": "float*",
+                    "width": 32
+                },
+                {
+                    "cat": "scalar",
+                    "name": "n",
+                    "type": "uint64_t",
+                    "width": 64
+                }
+            ],
+            "target": "hls",
+            "tasks": {
+                "Add": [
+                    {
+                        "args": {
+                            "a": {
+                                "arg": "a_q",
+                                "cat": "istream"
+                            },
+                            "b": {
+                                "arg": "b_q",
+                                "cat": "istream"
+                            },
+                            "c": {
+                                "arg": "c_q",
+                                "cat": "ostream"
+                            },
+                            "n": {
+                                "arg": "n",
+                                "cat": "scalar"
+                            }
+                        },
+                        "step": 0
+                    }
+                ],
+                "Mmap2Stream": [
+                    {
+                        "args": {
+                            "mmap": {
+                                "arg": "a",
+                                "cat": "mmap"
+                            },
+                            "n": {
+                                "arg": "n",
+                                "cat": "scalar"
+                            },
+                            "stream": {
+                                "arg": "a_q",
+                                "cat": "ostream"
+                            }
+                        },
+                        "step": 0
+                    },
+                    {
+                        "args": {
+                            "mmap": {
+                                "arg": "b",
+                                "cat": "mmap"
+                            },
+                            "n": {
+                                "arg": "n",
+                                "cat": "scalar"
+                            },
+                            "stream": {
+                                "arg": "b_q",
+                                "cat": "ostream"
+                            }
+                        },
+                        "step": 0
+                    }
+                ],
+                "Stream2Mmap": [
+                    {
+                        "args": {
+                            "mmap": {
+                                "arg": "c",
+                                "cat": "mmap"
+                            },
+                            "n": {
+                                "arg": "n",
+                                "cat": "scalar"
+                            },
+                            "stream": {
+                                "arg": "c_q",
+                                "cat": "istream"
+                            }
+                        },
+                        "step": 0
+                    }
+                ]
+            },
+            "vendor": "xilinx"
+        }
+    },
+    "top": "VecAdd"
+}
