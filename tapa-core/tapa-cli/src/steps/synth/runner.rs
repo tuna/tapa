@@ -42,8 +42,9 @@ pub(super) fn run_native(
         .to_string();
     if !matches!(target.as_str(), "xilinx-vitis" | "xilinx-hls") {
         return Err(CliError::InvalidArg(format!(
-            "native synth only supports `xilinx-vitis` / `xilinx-hls` targets; got `{target}`. \
-             Rerun with `TAPA_STEP_SYNTH_PYTHON=1` for AIE / other targets."
+            "native synth only supports the `xilinx-vitis` and `xilinx-hls` \
+             targets; got `{target}`. AIE / Intel / software-emulation \
+             targets are not yet ported."
         )));
     }
 
@@ -175,10 +176,10 @@ fn validate_optional_flag_combos(args: &SynthArgs) -> Result<()> {
 /// At this stage we only emit the `-DTAPA_TARGET_*` defines; the full
 /// vendor-include resolution is intentionally out of scope.
 ///
-/// **Limitation**: production `tapa.cflags` from `graph.json` `cflags`
-/// is not threaded through; designs needing extra `-I` includes need
-/// `TAPA_STEP_SYNTH_PYTHON=1` until a follow-up loads the analyzer's
-/// stored cflags from `<work_dir>/graph.json`.
+/// **Limitation**: the analyzer-stored `graph.json::cflags` tuple is
+/// not yet threaded through, so designs that rely on extra `-I` /
+/// `-isystem` entries at HLS time are unsupported until a follow-up
+/// loads those cflags from `<work_dir>/graph.json`.
 fn build_hls_cflags() -> Vec<String> {
     vec![
         "-DTAPA_TARGET_DEVICE_".to_string(),
@@ -303,8 +304,8 @@ mod tests {
     }
 
     /// `--enable-synth-util` is the only remaining branch that routes
-    /// to a typed `InvalidArg`: the message names Vivado (the concrete
-    /// native gap) rather than the retired `TAPA_STEP_SYNTH_PYTHON=1`.
+    /// to a typed `InvalidArg`: the message names Vivado as the
+    /// concrete native gap.
     #[test]
     fn enable_synth_util_surfaces_native_gap() {
         reject_case(&["--platform", "xilinx_u250", "--enable-synth-util"], "Vivado");

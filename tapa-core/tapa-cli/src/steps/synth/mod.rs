@@ -19,11 +19,9 @@
 //!   5. Persist `<work_dir>/templates_info.json` and re-store the
 //!      design + settings (`synthed=true`).
 //!
-//! Feature flags that require ports we have not yet landed
-//! (`--gen-ab-graph`, `--gen-graphir`, `--floorplan-path`,
-//! `--nonpipeline-fifos`, `--enable-synth-util`) still surface a typed
-//! [`CliError::InvalidArg`] up front. The Python bridge remains
-//! reachable behind `TAPA_STEP_SYNTH_PYTHON=1`.
+//! Feature flags that still require upstream ports surface a typed
+//! [`CliError::InvalidArg`] up front naming the concrete native gap
+//! (e.g. `--enable-synth-util` needs a Rust Vivado OoC harness).
 
 use std::path::PathBuf;
 
@@ -177,8 +175,7 @@ pub fn to_python_argv(args: &SynthArgs) -> Vec<String> {
 
 /// Top-level dispatcher.
 ///
-/// Per AC-6, `TAPA_STEP_SYNTH_PYTHON=1` is a no-op for ported steps;
-/// the native HLS + codegen pipeline is the only path. When
+/// The native HLS + codegen pipeline is the only path. When
 /// `ctx.remote_config` is populated (via `~/.taparc` or
 /// `--remote-host`), HLS dispatches through `RemoteToolRunner`;
 /// otherwise `LocalToolRunner`.

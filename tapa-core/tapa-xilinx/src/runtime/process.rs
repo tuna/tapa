@@ -80,14 +80,17 @@ pub trait ToolRunner: Send + Sync {
     }
 }
 
-/// Local subprocess runner with environment allowlisting and optional
-/// per-invocation timeout.
+/// Local subprocess runner: inherits the parent process's environment
+/// (matching Python's `subprocess.Popen` default) so bare program
+/// names like `vitis_hls` / `vivado` resolve via the caller's `PATH`,
+/// and tools can read `HOME`, `XILINX_*`, `DISPLAY`, and friends.
+/// `ToolInvocation::env` entries overlay the inherited env.
 ///
-/// `env_clear()` is applied so only variables explicitly listed in
-/// `ToolInvocation::env` reach the child — matches the Python remote
-/// layer's env allowlist behavior. When `ToolInvocation::timeout` is
-/// set, the child is killed on expiry and the call returns
-/// `XilinxError::ToolTimeout`.
+/// Remote env allowlisting lives in `RemoteToolRunner` where the env
+/// crosses a machine boundary — inside a single host, Python-parity
+/// demands that the child see the parent shell's state. When
+/// `ToolInvocation::timeout` is set, the child is killed on expiry
+/// and the call returns `XilinxError::ToolTimeout`.
 #[derive(Debug, Default)]
 pub struct LocalToolRunner;
 
@@ -120,7 +123,9 @@ impl ToolRunner for LocalToolRunner {
 
         let mut cmd = Command::new(&inv.program);
         cmd.args(&inv.args);
-        cmd.env_clear();
+        // Inherit the parent's env (Python-parity: `subprocess.Popen`
+        // without an `env=` argument forwards the caller's full env),
+        // then overlay `inv.env` so per-invocation entries win.
         for (k, v) in &inv.env {
             cmd.env(k, v);
         }
@@ -418,5 +423,39 @@ mod tests {
             } => assert_eq!(program, "/bin/sh"),
             other => panic!("expected ToolTimeout, got {other:?}"),
         }
+    }
+
+    /// Bare program names must resolve via the caller's `PATH`
+    /// (Python-parity with `subprocess.Popen`). Without this, bare
+    /// `vitis_hls` / `vivado` spawn calls fail on a configured local
+    /// host because the child has no `PATH` to search.
+    #[test]
+    fn local_runner_inherits_parent_path_for_bare_programs() {
+        let runner = LocalToolRunner::new();
+        // `sh` resolves purely via PATH: if env_clear() were in
+        // effect, this spawn would fail with ENOENT.
+        let inv = ToolInvocation::new("sh").arg("-c").arg("printf ok");
+        let out = runner.run(&inv).expect("bare `sh` must resolve via inherited PATH");
+        assert_eq!(out.exit_code, 0);
+        assert_eq!(out.stdout, "ok");
+    }
+
+    /// `ToolInvocation::env` entries must overlay (not replace) the
+    /// inherited env — so a caller can set `XILINX_HLS=/opt/...` while
+    /// still letting the child see `PATH`, `HOME`, etc.
+    #[test]
+    fn local_runner_invocation_env_overlays_parent() {
+        // Guarantee the parent has a non-empty PATH to inherit; the
+        // test runner always sets it, but assert explicitly.
+        assert!(std::env::var_os("PATH").is_some());
+        let runner = LocalToolRunner::new();
+        let inv = ToolInvocation::new("/bin/sh")
+            .arg("-c")
+            .arg("printf '%s\\n' \"$TAPA_PROBE_VAR\" && test -n \"$PATH\" && echo path-ok")
+            .env("TAPA_PROBE_VAR", "from-inv");
+        let out = runner.run(&inv).unwrap();
+        assert_eq!(out.exit_code, 0);
+        assert!(out.stdout.contains("from-inv"), "overlay lost: {}", out.stdout);
+        assert!(out.stdout.contains("path-ok"), "inherited PATH lost: {}", out.stdout);
     }
 }
