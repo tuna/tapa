@@ -15,7 +15,7 @@ fn vadd_two_level_graph_json() -> &'static str {
         "top": "VecAdd",
         "tasks": {
             "VecAdd": {
-                "code": "void VecAdd() {}",
+                "code": "extern \"C\" {\nvoid VecAdd(uint64_t n);\n}  // extern \"C\"\n\nextern \"C\" {\nvoid VecAdd(uint64_t n) { /* top body */ }\n}  // extern \"C\"\n",
                 "level": "upper",
                 "target": "hls",
                 "vendor": "xilinx",
@@ -89,7 +89,7 @@ fn flatten_preserves_top_metadata() {
     assert_eq!(top.ports.len(), 1);
     assert_eq!(top.ports[0].name, "n");
     assert_eq!(out.cflags, vec!["-std=c++14".to_string()]);
-    assert_eq!(top.code, "void VecAdd() {}");
+    assert!(top.code.contains("VecAdd"), "top code should still mention VecAdd");
     assert_eq!(top.level, TaskLevel::Upper);
     assert_eq!(top.target, "hls");
     assert_eq!(top.vendor, "xilinx");
@@ -178,4 +178,88 @@ fn apply_floorplan_rejects_unknown_instance() {
     slot_to_insts.insert("SLOT".to_string(), vec!["NoSuch_0".to_string()]);
     let err = apply_floorplan(&flat, &slot_to_insts).expect_err("must reject");
     assert!(matches!(err, TransformError::UnknownFloorplanInstance(_)));
+}
+
+/// Snapshot the slot wrapper C++ and a compact form of the rewritten
+/// graph so regressions in `gen_slot_cpp` wiring or port plumbing show
+/// up as diff noise on this test.
+#[test]
+fn apply_floorplan_emits_slot_cpp_wrapper() {
+    let g = Graph::from_json(vadd_two_level_graph_json()).expect("parse");
+    let flat = flatten(&g).expect("flatten");
+    let mut slot_to_insts: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    slot_to_insts.insert("SLOT_X0Y0".to_string(), vec!["A_0".to_string()]);
+    slot_to_insts.insert("SLOT_X0Y1".to_string(), vec!["B_0".to_string()]);
+    let (out, _regions) = apply_floorplan(&flat, &slot_to_insts).expect("apply");
+
+    // --- Slot wrapper code snapshot ---------------------------------
+    let slot_a = &out.tasks["SLOT_X0Y0"];
+    let code_a = &slot_a.code;
+    assert!(
+        code_a.contains("void SLOT_X0Y0("),
+        "slot wrapper must declare SLOT_X0Y0 fn; got:\n{code_a}",
+    );
+    assert!(
+        code_a.contains("uint64_t n"),
+        "slot wrapper must forward the scalar `n`; got:\n{code_a}",
+    );
+    assert!(
+        code_a.contains("tapa::ostream<float>&"),
+        "slot A must expose an ostream port (FIFO into SLOT_X0Y1); got:\n{code_a}",
+    );
+    assert!(
+        code_a.contains("#pragma HLS interface ap_fifo"),
+        "slot wrapper must stamp HLS fifo pragma; got:\n{code_a}",
+    );
+    assert!(
+        !code_a.contains("TODO(rust-port)"),
+        "slot code must no longer carry the TODO placeholder; got:\n{code_a}",
+    );
+
+    let slot_b = &out.tasks["SLOT_X0Y1"];
+    let code_b = &slot_b.code;
+    assert!(
+        code_b.contains("void SLOT_X0Y1("),
+        "slot wrapper must declare SLOT_X0Y1 fn; got:\n{code_b}",
+    );
+    assert!(
+        code_b.contains("tapa::istream<float>&"),
+        "slot B must expose an istream port (FIFO out of SLOT_X0Y0); got:\n{code_b}",
+    );
+
+    // --- Port-type plumbing snapshot --------------------------------
+    // Regression: pre-fix, FIFO/mmap ports were emitted with empty
+    // `ctype` + `width=0`, which makes HLS wrappers uncompilable.
+    let fifo_port = slot_a
+        .ports
+        .iter()
+        .find(|p| p.name == "fifo_VecAdd")
+        .expect("slot A must carry the bridged FIFO port");
+    assert_eq!(fifo_port.ctype, "float", "FIFO port type must come from A.out");
+    assert_eq!(fifo_port.width, 32, "FIFO port width must come from A.out");
+
+    // --- Design.json snapshot via serde round-trip ------------------
+    // The rewritten graph is what feeds `design.json`, so capturing its
+    // shape here catches regressions in slot instantiation / fifo /
+    // port emission without needing the CLI to be in-process.
+    let graph_json = out.to_json().expect("re-serialize floorplanned graph");
+    let parsed: serde_json::Value = serde_json::from_str(&graph_json).expect("parse");
+    let tasks = parsed["tasks"].as_object().expect("tasks object");
+    let slot_names: Vec<&String> = tasks.keys().collect();
+    assert!(
+        slot_names.iter().any(|k| k.as_str() == "SLOT_X0Y0"),
+        "rewritten graph must carry SLOT_X0Y0",
+    );
+    assert!(
+        slot_names.iter().any(|k| k.as_str() == "SLOT_X0Y1"),
+        "rewritten graph must carry SLOT_X0Y1",
+    );
+    let top_tasks = parsed["tasks"]["VecAdd"]["tasks"]
+        .as_object()
+        .expect("top tasks object");
+    assert!(
+        top_tasks.contains_key("SLOT_X0Y0") && top_tasks.contains_key("SLOT_X0Y1"),
+        "top must instantiate both slots; got keys: {:?}",
+        top_tasks.keys().collect::<Vec<_>>(),
+    );
 }

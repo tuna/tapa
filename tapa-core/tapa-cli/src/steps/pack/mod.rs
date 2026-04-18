@@ -3,10 +3,11 @@
 //! Reloads `<work_dir>/{graph,design,settings}.json`, projects the top
 //! task's external ports into a [`PackageXoInputs`] block, and drives
 //! `tapa_xilinx::pack_xo` against `<work_dir>/rtl` to produce the
-//! `.xo`. The Python bridge remains reachable behind
-//! `TAPA_STEP_PACK_PYTHON=1` for parity with paths the native code
-//! does not yet cover (HLS-target `.zip`, `--custom-rtl` overlays,
-//! `GraphIR` embedding, the Vitis bitstream-script emission).
+//! `.xo`. The Python CLI was retired in AC-8, so any branch the
+//! native code does not yet cover (HLS-target `.zip`, `--custom-rtl`
+//! overlays, `GraphIR` embedding, the Vitis bitstream-script emission)
+//! surfaces a typed [`CliError::InvalidArg`] naming the specific
+//! native gap.
 
 use std::path::PathBuf;
 
@@ -63,12 +64,8 @@ pub fn to_python_argv(args: &PackArgs) -> Vec<String> {
     out
 }
 
-/// Top-level dispatcher.
-///
-/// Per AC-6, `TAPA_STEP_PACK_PYTHON=1` is a no-op for ported steps;
-/// the native packaging path is the only path the dispatcher takes.
-/// The bridge shim is kept only for composite forwarding of un-ported
-/// step branches.
+/// Top-level dispatcher. Always runs the native packaging path (the
+/// Python bridge target was retired in AC-8 / AC-6).
 pub fn run(args: &PackArgs, ctx: &mut CliContext) -> Result<()> {
     run_native(args, ctx)
 }
@@ -89,7 +86,7 @@ fn run_native(args: &PackArgs, ctx: &CliContext) -> Result<()> {
         "xilinx-aie" => Ok(()),
         other => Err(CliError::InvalidArg(format!(
             "native pack only supports the `xilinx-vitis` target; got `{other}`. \
-             Rerun with `TAPA_STEP_PACK_PYTHON=1` to use the Python fallback."
+             Open a follow-up to port the `xilinx-hls` `.zip` packer."
         ))),
     }
 }
@@ -97,22 +94,25 @@ fn run_native(args: &PackArgs, ctx: &CliContext) -> Result<()> {
 fn reject_unsupported_flags(args: &PackArgs) -> Result<()> {
     if !args.custom_rtl.is_empty() {
         return Err(CliError::InvalidArg(
-            "`--custom-rtl` overlay is not supported by the native packager; \
-             rerun with `TAPA_STEP_PACK_PYTHON=1`."
+            "`--custom-rtl` overlay is not yet ported natively; \
+             the native packager cannot splice in user-provided RTL \
+             replacements. Open a follow-up to port \
+             `tapa.program_codegen.program::replace_custom_rtl`."
                 .to_string(),
         ));
     }
     if args.graphir_path.is_some() {
         return Err(CliError::InvalidArg(
-            "`--graphir-path` embedding is not supported by the native packager; \
-             rerun with `TAPA_STEP_PACK_PYTHON=1`."
+            "`--graphir-path` embedding is not yet ported natively; \
+             the native packager cannot embed a GraphIR file into \
+             the `.xo`. Open a follow-up to port the GraphIR embed path."
                 .to_string(),
         ));
     }
     if args.bitstream_script.is_some() {
         return Err(CliError::InvalidArg(
-            "`--bitstream-script` v++ emission is not yet ported; \
-             rerun with `TAPA_STEP_PACK_PYTHON=1`."
+            "`--bitstream-script` v++ script emission is not yet ported; \
+             `tapa.steps.pack.get_vitis_script` needs a Rust port."
                 .to_string(),
         ));
     }

@@ -256,7 +256,11 @@ fn build_compile_stage2(
         output: Some(output.to_path_buf()),
         bitstream_script: args.bitstream_script.clone(),
         custom_rtl: args.custom_rtl.clone(),
-        graphir_path: None,
+        // Codex Round 5 finding: DSE advertises `--graphir-path` but
+        // previously forced `None` here, silently dropping the value.
+        // Forward it through so the per-solution pack picks up the
+        // caller-supplied GraphIR path.
+        graphir_path: args.graphir_path.clone(),
     };
     CompileArgs {
         analyze: analyze_args,
@@ -270,6 +274,34 @@ fn build_compile_stage2(
 mod tests {
     use super::*;
     use crate::globals::GlobalArgs;
+
+    #[test]
+    fn forwards_graphir_path_to_stage2_pack() {
+        // Codex Round 5 regression: `compile-with-floorplan-dse` must
+        // thread `--graphir-path` through to the per-solution pack step
+        // instead of silently dropping it.
+        let args = CompileWithFloorplanDseArgs::try_parse_from([
+            "compile-with-floorplan-dse",
+            "--input",
+            "a.cpp",
+            "--top",
+            "T",
+            "--device-config",
+            "dev.json",
+            "--floorplan-config",
+            "fp.json",
+            "--graphir-path",
+            "graphir.json",
+        ])
+        .expect("parse");
+        let compile =
+            build_compile_stage2(&args, std::path::Path::new("fp.json"), std::path::Path::new("out.xo"));
+        assert_eq!(
+            compile.pack.graphir_path.as_deref(),
+            Some(std::path::Path::new("graphir.json")),
+            "DSE must forward `--graphir-path` to stage-2 pack",
+        );
+    }
 
     #[test]
     fn rejects_output_flag() {

@@ -25,9 +25,11 @@ pub(super) fn rewritten_endpoint_idx(
 
 pub(super) fn build_slot_def(
     top_def: &TaskDefinition,
+    top_name: &str,
     slot_name: &str,
     slot_insts: &[String],
     inst_name_to_pos: &BTreeMap<String, (String, usize)>,
+    all_tasks: &BTreeMap<String, TaskDefinition>,
 ) -> Result<TaskDefinition, TransformError> {
     let mut slot_tasks: BTreeMap<String, Vec<TaskInstance>> = BTreeMap::new();
     let mut slot_idx_map: BTreeMap<String, BTreeMap<usize, usize>> = BTreeMap::new();
@@ -66,22 +68,36 @@ pub(super) fn build_slot_def(
         .filter(|p| scalar_args.contains(&p.name))
         .cloned()
         .collect();
-    new_ports.extend(get_used_ports(top_def, slot_insts, &fifo_ports, inst_name_to_pos));
+    new_ports.extend(get_used_ports(
+        top_def,
+        slot_insts,
+        &fifo_ports,
+        inst_name_to_pos,
+        all_tasks,
+    )?);
     new_ports.extend(infer_mmap_ports_from_subtasks(
         slot_insts,
         inst_name_to_pos,
         top_def,
-    ));
+        all_tasks,
+    )?);
 
-    let placeholder_code = format!(
-        "// TODO(rust-port): gen_slot_cpp not yet ported for slot `{slot_name}`.\n\
-         // The original top's body is preserved verbatim below; HLS will \
-         fail until the slot wrapper generator lands.\n{}",
-        top_def.code
-    );
+    let slot_ports: Vec<tapa_slotting::SlotPort> = new_ports
+        .iter()
+        .map(|p| tapa_slotting::SlotPort {
+            cat: arg_category_str(p.cat).to_owned(),
+            name: p.name.clone(),
+            port_type: p.ctype.clone(),
+        })
+        .collect();
+    let new_code = tapa_slotting::gen_slot_cpp(slot_name, top_name, &slot_ports, &top_def.code)
+        .map_err(|source| TransformError::SlotCppGeneration {
+            slot: slot_name.to_owned(),
+            source,
+        })?;
 
     Ok(TaskDefinition {
-        code: placeholder_code,
+        code: new_code,
         level: TaskLevel::Upper,
         target: top_def.target.clone(),
         vendor: top_def.vendor.clone(),
@@ -89,6 +105,20 @@ pub(super) fn build_slot_def(
         tasks: slot_tasks,
         fifos: slot_fifos,
     })
+}
+
+fn arg_category_str(cat: ArgCategory) -> &'static str {
+    match cat {
+        ArgCategory::Istream => "istream",
+        ArgCategory::Ostream => "ostream",
+        ArgCategory::Istreams => "istreams",
+        ArgCategory::Ostreams => "ostreams",
+        ArgCategory::Scalar => "scalar",
+        ArgCategory::Mmap => "mmap",
+        ArgCategory::Immap => "immap",
+        ArgCategory::Ommap => "ommap",
+        ArgCategory::AsyncMmap => "async_mmap",
+    }
 }
 
 pub(super) fn compute_slot_fifos(
@@ -172,8 +202,10 @@ pub(super) fn get_used_ports(
     slot_insts: &[String],
     fifo_ports: &[String],
     inst_name_to_pos: &BTreeMap<String, (String, usize)>,
-) -> Vec<Port> {
+    all_tasks: &BTreeMap<String, TaskDefinition>,
+) -> Result<Vec<Port>, TransformError> {
     let mut out: Vec<Port> = Vec::new();
+    let mut seen: BTreeSet<String> = BTreeSet::new();
     for inst_name in slot_insts {
         let Some((def_name, idx)) = inst_name_to_pos.get(inst_name) else {
             continue;
@@ -181,31 +213,47 @@ pub(super) fn get_used_ports(
         let Some(inst) = top_def.tasks.get(def_name).and_then(|v| v.get(*idx)) else {
             continue;
         };
-        for arg in inst.args.values() {
+        let child_def = all_tasks
+            .get(def_name)
+            .ok_or_else(|| TransformError::UnknownChildTask(def_name.clone()))?;
+        for (port_name, arg) in &inst.args {
             if matches!(arg.cat, ArgCategory::Mmap | ArgCategory::AsyncMmap) {
                 continue;
             }
             if !fifo_ports.iter().any(|f| f == &arg.arg) {
                 continue;
             }
+            if !seen.insert(arg.arg.clone()) {
+                continue;
+            }
+            let port_name_no_idx = strip_trailing_index(port_name);
+            let child_port = child_def
+                .ports
+                .iter()
+                .find(|p| p.name == port_name_no_idx);
+            let (ctype, width, chan_count, chan_size) = child_port.map_or_else(
+                || (String::new(), 0, None, None),
+                |p| (p.ctype.clone(), p.width, p.chan_count, p.chan_size),
+            );
             out.push(Port {
                 cat: arg.cat,
                 name: arg.arg.clone(),
-                ctype: String::new(),
-                width: 0,
-                chan_count: None,
-                chan_size: None,
+                ctype,
+                width,
+                chan_count,
+                chan_size,
             });
         }
     }
-    out
+    Ok(out)
 }
 
 pub(super) fn infer_mmap_ports_from_subtasks(
     slot_insts: &[String],
     inst_name_to_pos: &BTreeMap<String, (String, usize)>,
     top_def: &TaskDefinition,
-) -> Vec<Port> {
+    all_tasks: &BTreeMap<String, TaskDefinition>,
+) -> Result<Vec<Port>, TransformError> {
     let mut out: Vec<Port> = Vec::new();
     for inst_name in slot_insts {
         let Some((def_name, idx)) = inst_name_to_pos.get(inst_name) else {
@@ -214,20 +262,39 @@ pub(super) fn infer_mmap_ports_from_subtasks(
         let Some(inst) = top_def.tasks.get(def_name).and_then(|v| v.get(*idx)) else {
             continue;
         };
+        let child_def = all_tasks
+            .get(def_name)
+            .ok_or_else(|| TransformError::UnknownChildTask(def_name.clone()))?;
         for (port_name, arg) in &inst.args {
             if matches!(arg.cat, ArgCategory::Mmap | ArgCategory::AsyncMmap) {
+                let child_port = child_def.ports.iter().find(|p| p.name == *port_name);
+                let (ctype, width, chan_count, chan_size) = child_port.map_or_else(
+                    || (String::new(), 0, None, None),
+                    |p| (p.ctype.clone(), p.width, p.chan_count, p.chan_size),
+                );
                 out.push(Port {
                     cat: arg.cat,
                     name: format!("{port_name}_{inst_name}"),
-                    ctype: String::new(),
-                    width: 0,
-                    chan_count: None,
-                    chan_size: None,
+                    ctype,
+                    width,
+                    chan_count,
+                    chan_size,
                 });
             }
         }
     }
-    out
+    Ok(out)
+}
+
+/// Strip a trailing `[index]` suffix from a port name (mirrors Python's
+/// `re.sub(r"\[[^\]]+\]$", "", port_name)` used in `_get_used_ports`).
+fn strip_trailing_index(name: &str) -> String {
+    if let Some(bracket) = name.rfind('[') {
+        if name.ends_with(']') {
+            return name[..bracket].to_owned();
+        }
+    }
+    name.to_owned()
 }
 
 pub(super) fn build_top_slot_instantiations(

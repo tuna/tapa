@@ -56,9 +56,9 @@ pub(super) fn pack_vitis(
     let hdl_dir = ctx.work_dir.join("rtl");
     if !hdl_dir.is_dir() {
         return Err(CliError::InvalidArg(format!(
-            "RTL directory `{}` does not exist; run `synth` first to generate it. \
-             If you only need parity with the Python flow, rerun with \
-             `TAPA_STEP_PACK_PYTHON=1`.",
+            "RTL directory `{}` does not exist; run `tapa synth` first \
+             (or chain `tapa analyze synth pack` in one invocation) to \
+             populate the RTL tree before pack runs.",
             hdl_dir.display(),
         )));
     }

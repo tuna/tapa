@@ -10,6 +10,7 @@ serde = { workspace = true }
 # `Design::to_writer` matches the byte sequence Python's `json.dump` emits.
 serde_json = { workspace = true, features = ["preserve_order"] }
 serde_path_to_error = { workspace = true }
+tapa-slotting = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]

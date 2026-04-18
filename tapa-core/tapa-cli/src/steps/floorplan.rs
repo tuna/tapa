@@ -300,7 +300,9 @@ fn map_transform_err(e: TransformError) -> CliError {
         other @ (TransformError::MissingTop(_)
         | TransformError::TopIsLeaf(_)
         | TransformError::UnknownFloorplanInstance(_)
+        | TransformError::UnknownChildTask(_)
         | TransformError::SlotNameCollision(_)
+        | TransformError::SlotCppGeneration { .. }
         | TransformError::Json(_)) => CliError::InvalidArg(other.to_string()),
     }
 }
