@@ -32,7 +32,9 @@ pub(super) fn flatten_graph_value(graph: &Value) -> Result<Value> {
         other @ (TransformError::MissingTop(_)
         | TransformError::TopIsLeaf(_)
         | TransformError::UnknownFloorplanInstance(_)
+        | TransformError::UnknownChildTask(_)
         | TransformError::SlotNameCollision(_)
+        | TransformError::SlotCppGeneration { .. }
         | TransformError::Json(_)) => {
             CliError::InvalidArg(format!("flatten failed: {other}"))
         }

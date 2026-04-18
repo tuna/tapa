@@ -35,6 +35,9 @@ use crate::error::Result;
 
 mod cpp_extract;
 mod device_resolve;
+mod gen_ab_graph;
+mod gen_graphir;
+mod grouping_constraints;
 mod hls_run;
 mod rtl_codegen;
 mod runner;

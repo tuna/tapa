@@ -16,6 +16,9 @@ use crate::state::{design as design_io, settings as settings_io};
 
 use super::cpp_extract::extract_hls_sources;
 use super::device_resolve::resolve_device_info;
+use super::gen_ab_graph::emit_ab_graph;
+use super::gen_graphir::emit_graphir;
+use super::grouping_constraints::emit_grouping_constraints;
 use super::hls_run::{run_hls_for_leaves, HlsRunOptions};
 use super::rtl_codegen::{generate_rtl_tree, write_templates_info, TaskHdlInputs};
 use super::SynthArgs;
@@ -28,6 +31,7 @@ pub(super) fn run_native(
     runner: &dyn ToolRunner,
 ) -> Result<()> {
     reject_unsupported_flags(args)?;
+    validate_optional_flag_combos(args)?;
 
     let design = design_io::load_design(&ctx.work_dir)?;
     let mut settings = settings_io::load_settings(&ctx.work_dir)?;
@@ -78,6 +82,37 @@ pub(super) fn run_native(
     }
     generate_rtl_tree(&ctx.work_dir, &design, &hdl_inputs)?;
 
+    // Post-codegen side effects that mirror the tail of Python's
+    // `_execute_synth`: nonpipeline-fifos → grouping_constraints.json,
+    // gen-ab-graph → ab_graph.json, gen-graphir → graphir.json. Order
+    // matches Python (constraints → ab → graphir). Each branch is a
+    // no-op when its flag is not set.
+    if let Some(fifos_path) = args.nonpipeline_fifos.as_ref() {
+        emit_grouping_constraints(&ctx.work_dir, &design, fifos_path)?;
+    }
+    if args.gen_ab_graph {
+        let Some(fp_cfg) = args.floorplan_config.as_ref() else {
+            return Err(CliError::InvalidArg(
+                "`--gen-ab-graph` requires `--floorplan-config <FILE>` \
+                 (the source of `cpp_arg_pre_assignments`)"
+                    .to_string(),
+            ));
+        };
+        emit_ab_graph(&ctx.work_dir, &design, fp_cfg)?;
+    }
+    if args.gen_graphir {
+        let (Some(dev_cfg), Some(fp_path)) =
+            (args.device_config.as_ref(), args.floorplan_path.as_ref())
+        else {
+            return Err(CliError::InvalidArg(
+                "`--gen-graphir` requires both `--device-config <FILE>` and \
+                 `--floorplan-path <FILE>`"
+                    .to_string(),
+            ));
+        };
+        emit_graphir(&ctx.work_dir, &design, dev_cfg, fp_path)?;
+    }
+
     write_templates_info(&ctx.work_dir, &design)?;
     settings.insert("synthed".to_string(), Value::Bool(true));
     settings_io::store_settings(&ctx.work_dir, &settings)?;
@@ -92,40 +127,44 @@ pub(super) fn run_native(
     Ok(())
 }
 
+/// Flags that still require tooling we do not drive from Rust yet. Only
+/// `--enable-synth-util` lands here: it spawns per-task Vivado synth runs
+/// via `ReportDirUtil` in Python (`ProgramSynthesisMixin.generate_post_synth_util`),
+/// and there is no Rust-side Vivado harness at this layer. `--nonpipeline-fifos`,
+/// `--gen-ab-graph`, `--gen-graphir`, and `--floorplan-path` are all
+/// wired natively (see `emit_grouping_constraints`, `emit_ab_graph`,
+/// `emit_graphir`, and `apply_floorplan` via the `floorplan` step).
 fn reject_unsupported_flags(args: &SynthArgs) -> Result<()> {
-    if args.nonpipeline_fifos.is_some() {
-        return Err(CliError::InvalidArg(
-            "`--nonpipeline-fifos` requires the Python `grouping_constraints.json` \
-             generator; rerun with `TAPA_STEP_SYNTH_PYTHON=1`."
-                .to_string(),
-        ));
-    }
-    if args.gen_ab_graph {
-        return Err(CliError::InvalidArg(
-            "`--gen-ab-graph` requires the Python AutoBridge graph generator; \
-             rerun with `TAPA_STEP_SYNTH_PYTHON=1`."
-                .to_string(),
-        ));
-    }
-    if args.gen_graphir {
-        return Err(CliError::InvalidArg(
-            "`--gen-graphir` requires the Python GraphIR project conversion; \
-             rerun with `TAPA_STEP_SYNTH_PYTHON=1`."
-                .to_string(),
-        ));
-    }
-    if args.floorplan_path.is_some() {
-        return Err(CliError::InvalidArg(
-            "`--floorplan-path` requires the Python floorplan-aware codegen path; \
-             rerun with `TAPA_STEP_SYNTH_PYTHON=1`."
-                .to_string(),
-        ));
-    }
     if args.enable_synth_util {
         return Err(CliError::InvalidArg(
-            "`--enable-synth-util` requires the post-synth utility report path \
-             (`Program.generate_post_synth_util`) which is not yet ported. \
-             Rerun with `TAPA_STEP_SYNTH_PYTHON=1`."
+            "`--enable-synth-util` requires Vivado on PATH to drive per-task \
+             out-of-context synth and parse the hierarchical utilization report \
+             (Python `ProgramSynthesisMixin.generate_post_synth_util`). The \
+             native port has no Vivado harness at this layer, so this branch \
+             is unavailable until that harness lands."
+                .to_string(),
+        ));
+    }
+    Ok(())
+}
+
+/// Secondary validation for flag combinations that are accepted natively
+/// but depend on sibling flags. Surfaces up front so failures happen
+/// before the (expensive) HLS loop runs.
+fn validate_optional_flag_combos(args: &SynthArgs) -> Result<()> {
+    if args.gen_ab_graph && args.floorplan_config.is_none() {
+        return Err(CliError::InvalidArg(
+            "`--gen-ab-graph` requires `--floorplan-config <FILE>` \
+             (source of `cpp_arg_pre_assignments`)"
+                .to_string(),
+        ));
+    }
+    if args.gen_graphir
+        && (args.device_config.is_none() || args.floorplan_path.is_none())
+    {
+        return Err(CliError::InvalidArg(
+            "`--gen-graphir` requires both `--device-config <FILE>` and \
+             `--floorplan-path <FILE>`"
                 .to_string(),
         ));
     }
@@ -251,18 +290,40 @@ mod tests {
         }
     }
 
-    #[test]
-    fn unsupported_flag_surfaces_invalid_arg() {
-        let args = parse_synth(&[
-            "--platform",
-            "xilinx_u250",
-            "--gen-graphir",
-        ]);
+    fn reject_case(extra: &[&str], needle: &str) {
+        let args = parse_synth(extra);
         let dir = tempfile::tempdir().expect("tempdir");
         let ctx = ctx_with_work_dir(dir.path());
         let runner = StubHls::new(Vec::new());
-        let err = run_native(&args, &ctx, &runner).expect_err("must reject gen-graphir");
-        assert!(matches!(err, CliError::InvalidArg(ref m) if m.contains("--gen-graphir")));
+        let err = run_native(&args, &ctx, &runner).expect_err("must reject early");
+        assert!(
+            matches!(err, CliError::InvalidArg(ref m) if m.contains(needle)),
+            "error must contain `{needle}`; got: {err}",
+        );
+    }
+
+    /// `--enable-synth-util` is the only remaining branch that routes
+    /// to a typed `InvalidArg`: the message names Vivado (the concrete
+    /// native gap) rather than the retired `TAPA_STEP_SYNTH_PYTHON=1`.
+    #[test]
+    fn enable_synth_util_surfaces_native_gap() {
+        reject_case(&["--platform", "xilinx_u250", "--enable-synth-util"], "Vivado");
+    }
+
+    #[test]
+    fn gen_ab_graph_without_floorplan_config_rejected_early() {
+        reject_case(
+            &["--platform", "xilinx_u250", "--gen-ab-graph"],
+            "--floorplan-config",
+        );
+    }
+
+    #[test]
+    fn gen_graphir_without_device_or_floorplan_path_rejected_early() {
+        reject_case(
+            &["--platform", "xilinx_u250", "--gen-graphir"],
+            "--device-config",
+        );
     }
 
     #[test]

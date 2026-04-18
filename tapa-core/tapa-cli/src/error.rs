@@ -40,20 +40,11 @@ pub enum CliError {
     TapaccFailed { code: i32, stderr: String },
 
     #[error(
-        "step `{step}` is not yet implemented in Rust; \
-         set `TAPA_STEP_{flag_name}_PYTHON=1` to route it through the Python fallback bridge"
+        "step `{step}` (flag group `{flag_name}`) is not yet fully implemented \
+         natively — the native port is incomplete; file a follow-up for this \
+         branch, the Python CLI was retired in AC-8 and is no longer available"
     )]
     StepUnported { step: String, flag_name: String },
-
-    #[error("python fallback bridge for `{step}` exited {code}:\n{stderr}")]
-    PythonBridge {
-        step: String,
-        code: i32,
-        stderr: String,
-    },
-
-    #[error("python fallback bridge failed to launch: {0}")]
-    PythonBridgeLaunch(String),
 
     #[error("clap parse error in `{step}`: {message}")]
     ClapParse { step: String, message: String },

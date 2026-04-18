@@ -3,8 +3,8 @@
 //! Composes `tapa-cpp` (preprocessor) and `tapacc` (semantic analyzer)
 //! invocations, then writes `graph.json`, `design.json`, and
 //! `settings.json` directly under `work_dir` using the Python-compatible
-//! formatters. The Python bridge remains reachable behind
-//! `TAPA_STEP_ANALYZE_PYTHON=1` for fallback parity.
+//! formatters. The Python CLI was retired in AC-8; this is the only
+//! `analyze` path.
 
 use std::fs;
 use std::path::PathBuf;
@@ -83,13 +83,8 @@ pub fn to_python_argv(args: &AnalyzeArgs) -> Vec<String> {
     out
 }
 
-/// Top-level dispatcher.
-///
-/// `analyze` is a fully ported step (per AC-6), so the
-/// `TAPA_STEP_ANALYZE_PYTHON=1` env flag is a no-op: we always run the
-/// native path. The bridge shim is kept only so `to_python_argv`
-/// remains available for composites that transitively forward to
-/// un-ported step branches.
+/// Top-level dispatcher for `tapa analyze` (always native; Python CLI
+/// was retired in AC-8).
 pub fn run(args: &AnalyzeArgs, ctx: &mut CliContext) -> Result<()> {
     run_native(args, ctx)
 }
@@ -133,8 +128,9 @@ fn run_native(args: &AnalyzeArgs, ctx: &CliContext) -> Result<()> {
 
     if is_top_leaf(&graph_dict, &args.top) && args.target == "xilinx-vitis" {
         return Err(CliError::InvalidArg(
-            "the top task is a leaf task; target `xilinx-vitis` is not supported. \
-             Rerun with `--target xilinx-hls` or set `TAPA_STEP_ANALYZE_PYTHON=1`."
+            "the top task is a leaf task; target `xilinx-vitis` is not supported \
+             (Vitis requires an upper top for kernel.xml generation). \
+             Rerun with `--target xilinx-hls`."
                 .to_string(),
         ));
     }

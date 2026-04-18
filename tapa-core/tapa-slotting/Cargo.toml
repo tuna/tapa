@@ -8,7 +8,6 @@ regex.workspace = true
 serde_json.workspace = true
 streaming-iterator = "0.1"
 thiserror.workspace = true
-tapa-task-graph.workspace = true
 tree-sitter = "0.25"
 tree-sitter-cpp = "0.23"
 

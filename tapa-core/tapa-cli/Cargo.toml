@@ -19,6 +19,9 @@ serde_json = { workspace = true, features = ["preserve_order"] }
 serde_path_to_error = { workspace = true }
 serde_yaml = "0.9"
 tapa-codegen = { workspace = true }
+tapa-floorplan = { workspace = true }
+tapa-graphir = { workspace = true }
+tapa-lowering = { workspace = true }
 tapa-rtl = { workspace = true }
 tapa-task-graph = { workspace = true }
 tapa-topology = { workspace = true }
