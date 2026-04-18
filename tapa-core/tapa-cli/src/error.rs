@@ -24,6 +24,9 @@ pub enum CliError {
     #[error(transparent)]
     Schema(#[from] tapa_task_graph::ParseError),
 
+    #[error(transparent)]
+    Xilinx(#[from] tapa_xilinx::XilinxError),
+
     #[error("`tapacc` resource `{name}` not found; searched: {searched}")]
     TapaccNotFound { name: String, searched: String },
 
