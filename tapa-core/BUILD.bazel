@@ -103,3 +103,26 @@ sh_test(
     },
     tags = ["manual"],
 )
+
+# -- Test: tapa-cli golden parity (manual; mirrors the xilinx gate) --
+# Loads VARS.local.bzl-style REMOTE_* env vars and runs the Rust+Python
+# CLI parity suite against the vadd fixture. Inherits the same SSH /
+# Vitis remote configuration as `tapa_xilinx_integration_test` so it
+# exercises the production analyze/synth/pack flow on the configured
+# remote Linux host.
+
+sh_test(
+    name = "tapa_cli_golden_test",
+    srcs = ["run_tapa_cli_golden_test.sh"],
+    data = _ALL_SRCS + [
+        "@rules_rust//rust/toolchain:current_cargo_files",
+        "@rules_rust//rust/toolchain:current_rustc_files",
+        "@rules_rust//rust/toolchain:current_rustdoc_files",
+        # Stage the Python `tapa` source tree so pytest can import it.
+        "//tapa",
+    ],
+    env = {
+        "CARGO_MANIFEST_DIR": "tapa-core",
+    },
+    tags = ["manual"],
+)

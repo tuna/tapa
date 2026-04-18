@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import copy
-import importlib
-import json
 import logging
 import os
 import shutil
@@ -77,20 +75,6 @@ def pack(
     else:
         xo_file = tempfile.mktemp(prefix="tapa_" + top_name + "_", suffix=".xo")
 
-    if os.environ.get("TAPA_USE_RUST_XILINX") == "1":
-        _pack_via_rust(
-            top_name=top_name,
-            rtl_dir=rtl_dir,
-            port_list=port_list,
-            part_num=part_num,
-            xo_file=xo_file,
-        )
-        if not isinstance(output_file, str):
-            with open(xo_file, "rb") as xo_obj:
-                shutil.copyfileobj(xo_obj, output_file)
-            if os.path.exists(xo_file):
-                os.remove(xo_file)
-        return
     with tempfile.NamedTemporaryFile(
         mode="w+",
         prefix="tapa_" + top_name + "_",
@@ -124,69 +108,6 @@ def pack(
             sys.stderr.write(stderr.decode("utf-8"))
     if not isinstance(output_file, str) and os.path.exists(xo_file):
         os.remove(xo_file)
-
-
-_CAT_TO_RUST = {
-    "is_scalar": "Scalar",
-    "is_mmap": "MAxi",
-    "is_istream": "IStream",
-    "is_ostream": "OStream",
-}
-
-
-def _port_to_rust(port: Port) -> dict:
-    for attr, category in _CAT_TO_RUST.items():
-        if getattr(port.cat, attr):
-            break
-    else:
-        msg = f"unexpected port.cat: {port.cat}"
-        raise ValueError(msg)
-    return {
-        "name": port.name,
-        "category": category,
-        "width": port.width,
-        "port": "",
-        "ctype": port.ctype,
-    }
-
-
-def _pack_via_rust(
-    top_name: str,
-    rtl_dir: str,
-    port_list: list[Port],
-    part_num: str,
-    xo_file: str,
-) -> None:
-    """Drive `tapa_core.xilinx.pack_xo` in full-pack mode.
-
-    Under `TAPA_USE_RUST_XILINX=1` the Python path is replaced by the
-    PyO3 binding. Binding errors are not swallowed — they surface as
-    `ValueError` to fail hard at the Python layer.
-    """
-    xilinx_mod = importlib.import_module("tapa_core.xilinx")
-    rust_ports = [_port_to_rust(p) for p in port_list]
-    m_axi_params = [
-        (p.name, [("HAS_BURST", "0"), ("SUPPORTS_NARROW_BURST", "0")])
-        for p in port_list
-        if p.cat.is_mmap
-    ]
-    inputs = {
-        "kernel_out_path": xo_file,
-        "hdl_dir": rtl_dir,
-        "top_name": top_name,
-        "part_num": part_num,
-        "clock_period": os.environ.get("TAPA_CLOCK_PERIOD", "3.33"),
-        "kernel_xml": {
-            "top_name": top_name,
-            "clock_period": os.environ.get("TAPA_CLOCK_PERIOD", "3.33"),
-            "ports": rust_ports,
-        },
-        "cpp_kernels": [],
-        "m_axi_params": m_axi_params,
-        "s_axi_ifaces": ["s_axi_control"],
-    }
-    _logger.info("pack_xo: dispatching to Rust (TAPA_USE_RUST_XILINX=1)")
-    xilinx_mod.pack_xo(json.dumps(inputs))
 
 
 def print_kernel_xml(name: str, ports: Iterable[Port], kernel_xml: IO[str]) -> None:

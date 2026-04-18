@@ -154,68 +154,6 @@ class ProgramHlsMixin(
             base_cflags = self.cflags
         return f"{base_cflags} {hls_defines} {hls_includes}"
 
-    def _run_hls_task_via_rust(  # noqa: PLR0913, PLR0917
-        self,
-        task: Task,
-        hls_cflags: str,
-        clock_period: str,
-        part_num: str,
-        other_configs: str,
-        work_dir: str | None,
-    ) -> None:
-        """Dispatch per-task HLS to the Rust binding.
-
-        Errors propagate as ValueError (fail-hard, no Python fallback).
-        """
-        import importlib  # noqa: PLC0415
-        import json  # noqa: PLC0415
-
-        xilinx_mod = importlib.import_module("tapa_core.xilinx")
-        cpp_source = self.get_cpp_path(task.name)
-        reports_dir = work_dir or os.path.join(
-            self.work_dir, "hls", task.name, "reports"
-        )
-        hdl_dir = work_dir or os.path.join(self.work_dir, "hls", task.name, "hdl")
-        os.makedirs(reports_dir, exist_ok=True)
-        os.makedirs(hdl_dir, exist_ok=True)
-        cflag_list = [f for f in hls_cflags.split() if f]
-        payload: dict[str, object] = {
-            "task_name": task.name,
-            "cpp_source": cpp_source,
-            "cflags": cflag_list,
-            "target_part": part_num,
-            "top_name": task.name,
-            "clock_period": clock_period,
-            "reports_out_dir": reports_dir,
-            "hdl_out_dir": hdl_dir,
-            "other_configs": other_configs,
-            "auto_prefix": True,
-            "reset_low": True,
-        }
-        # Thread the active remote config (if any) into the Rust
-        # binding so `RemoteToolRunner` — not `LocalToolRunner` — runs
-        # the tool when `~/.taparc` says remote. Without this the
-        # flag-on path would silently lose the remote-HLS capability.
-        from tapa.remote.config import get_remote_config  # noqa: PLC0415
-
-        remote_cfg = get_remote_config()
-        if remote_cfg is not None:
-            payload["remote"] = {
-                "host": remote_cfg.host,
-                "user": remote_cfg.user,
-                "port": int(remote_cfg.port),
-                "key_file": remote_cfg.key_file,
-                "xilinx_settings": remote_cfg.xilinx_settings,
-                "work_dir": getattr(remote_cfg, "work_dir", "/tmp/tapa-remote"),
-                "ssh_control_dir": getattr(remote_cfg, "ssh_control_dir", None),
-                "ssh_control_persist": getattr(
-                    remote_cfg, "ssh_control_persist", "30m"
-                ),
-                "ssh_multiplex": bool(getattr(remote_cfg, "ssh_multiplex", True)),
-            }
-        _logger.info("run_hls_task: dispatching %s to Rust binding", task.name)
-        xilinx_mod.run_hls_task(json.dumps(payload))
-
     def _run_hls_task(  # noqa: PLR0913, PLR0917
         self,
         task: Task,
@@ -226,11 +164,6 @@ class ProgramHlsMixin(
         work_dir: str | None,
     ) -> None:
         """Run HLS for a single task with retry on flaky Pre-synthesis failures."""
-        if os.environ.get("TAPA_USE_RUST_XILINX") == "1":
-            self._run_hls_task_via_rust(
-                task, hls_cflags, clock_period, part_num, other_configs, work_dir
-            )
-            return
         for attempt in range(_HLS_MAX_RETRIES + 1):
             with (
                 open(self.get_tar_path(task.name), "wb") as tarfileobj,

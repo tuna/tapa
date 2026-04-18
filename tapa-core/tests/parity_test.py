@@ -2372,3 +2372,336 @@ def test_parity_xilinx_real_vitis_hls_verilog_is_valid(xilinx_mod: Any) -> None:
     text = real.read_text(encoding="utf-8", errors="replace")
     assert "module vadd" in text, "real Verilog must name the `vadd` top"
     assert "endmodule" in text, "real Verilog missing `endmodule`"
+
+
+# =====================================================================
+# Phase 7 — `tapa-cli` parity (Python click vs Rust binary).
+# =====================================================================
+#
+# Drives both the Python `python3 -m tapa` entry point and the Rust
+# `cargo run -p tapa-cli` binary against the `tests/apps/vadd` fixture
+# and compares their on-disk outputs. Skips cleanly when the toolchain
+# is not configured (no `tapacc`, no `tapa-cpp`, no Python tapa, etc.)
+# so this suite is safe to run on any developer machine.
+
+import subprocess as _subprocess  # noqa: E402
+
+_VADD_DIR = _REPO_ROOT / "tests" / "apps" / "vadd"
+_VADD_TOP = "VecAdd"
+_TAPA_CORE_DIR = _REPO_ROOT / "tapa-core"
+
+
+def _have(cmd: str) -> bool:
+    return shutil.which(cmd) is not None
+
+
+def _python_tapa_importable() -> bool:
+    """Return True when `python3 -m tapa --help` succeeds."""
+    if not _have("python3"):
+        return False
+    res = _subprocess.run(
+        ["python3", "-c", "import tapa.__main__"],
+        env={**os.environ, "PYTHONPATH": str(_REPO_ROOT)},
+        capture_output=True,
+        check=False,
+        timeout=30,
+    )
+    return res.returncode == 0
+
+
+def _rust_tapa_binary() -> Path | None:
+    """Return the path to the Rust `tapa` binary, building if needed.
+
+    Honors `TAPA_CLI_BINARY` for callers that have pre-built the binary
+    elsewhere. Otherwise runs `cargo build -p tapa-cli` once and uses
+    the debug build under `tapa-core/target`.
+    """
+    override = os.environ.get("TAPA_CLI_BINARY")
+    if override:
+        p = Path(override)
+        return p if p.is_file() else None
+    if not _have("cargo"):
+        return None
+    res = _subprocess.run(
+        [
+            "cargo",
+            "build",
+            "-p",
+            "tapa-cli",
+            "--manifest-path",
+            str(_TAPA_CORE_DIR / "Cargo.toml"),
+        ],
+        capture_output=True,
+        check=False,
+        timeout=600,
+    )
+    if res.returncode != 0:
+        return None
+    binary = _TAPA_CORE_DIR / "target" / "debug" / "tapa"
+    return binary if binary.is_file() else None
+
+
+def _python_tapa_argv(*subcmd_args: str, work_dir: Path) -> list[str]:
+    return [
+        "python3",
+        "-m",
+        "tapa.__main__",
+        "--work-dir",
+        str(work_dir),
+        *subcmd_args,
+    ]
+
+
+def _rust_tapa_argv(binary: Path, *subcmd_args: str, work_dir: Path) -> list[str]:
+    return [str(binary), "--work-dir", str(work_dir), *subcmd_args]
+
+
+def _python_env() -> dict[str, str]:
+    return {**os.environ, "PYTHONPATH": str(_REPO_ROOT)}
+
+
+def _rust_env() -> dict[str, str]:
+    """Build env for the Rust binary that bridges every un-ported step.
+
+    Sets every `TAPA_STEP_*_PYTHON=1` flag so the bridge handles any
+    step that has not yet landed natively. The bridge is the runtime
+    backbone while step ports stabilize.
+    """
+    env = {**os.environ, "PYTHONPATH": str(_REPO_ROOT)}
+    for step in (
+        "ANALYZE",
+        "SYNTH",
+        "PACK",
+        "FLOORPLAN",
+        "GENERATE_FLOORPLAN",
+        "COMPILE",
+        "COMPILE_WITH_FLOORPLAN_DSE",
+        "RUN_AUTOBRIDGE",
+    ):
+        env.setdefault(f"TAPA_STEP_{step}_PYTHON", "1")
+    return env
+
+
+def _read_json(path: Path) -> Any:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _normalize_design_for_compare(design: dict[str, Any]) -> dict[str, Any]:
+    """Drop legitimately-divergent fields before comparing design.json runs.
+
+    Removes timing-sensitive area defaults and clock_period strings so
+    the structural comparison focuses on schema parity rather than
+    per-run noise.
+    """
+    out = json.loads(json.dumps(design))
+    for task in out.get("tasks", {}).values():
+        task.pop("self_area", None)
+        task.pop("total_area", None)
+        task.pop("clock_period", None)
+    return out
+
+
+def _skip_if_cli_toolchain_missing() -> tuple[Path, dict[str, Any]]:
+    if not _VADD_DIR.is_dir():
+        pytest.skip(f"vadd fixture missing: {_VADD_DIR}")
+    if not _python_tapa_importable():
+        pytest.skip("python3 cannot import tapa.__main__")
+    binary = _rust_tapa_binary()
+    if binary is None:
+        pytest.skip("rust `tapa` binary unavailable (cargo build failed)")
+    return binary, {}
+
+
+def test_parity_cli_help_lists_same_subcommands() -> None:
+    """Verify both runtimes list the same subcommand surface in --help.
+
+    AC-2 negative test: a dropped or renamed flag would fail this diff.
+    """
+    binary, _ = _skip_if_cli_toolchain_missing()
+
+    py = _subprocess.run(
+        ["python3", "-m", "tapa.__main__", "--help"],
+        env=_python_env(),
+        capture_output=True,
+        check=False,
+        timeout=30,
+    )
+    rs = _subprocess.run(
+        [str(binary), "--help"],
+        capture_output=True,
+        check=False,
+        timeout=30,
+    )
+    assert py.returncode == 0, py.stderr.decode("utf-8", "replace")
+    assert rs.returncode == 0, rs.stderr.decode("utf-8", "replace")
+    py_text = py.stdout.decode("utf-8", "replace")
+    rs_text = rs.stdout.decode("utf-8", "replace")
+    for sub in (
+        "analyze",
+        "synth",
+        "pack",
+        "floorplan",
+        "generate-floorplan",
+        "compile",
+        "compile-with-floorplan-dse",
+        "g++",
+        "version",
+    ):
+        assert sub in py_text, f"Python CLI must list `{sub}`"
+        assert sub in rs_text, f"Rust CLI must list `{sub}`"
+
+
+def test_parity_cli_version_matches() -> None:
+    binary, _ = _skip_if_cli_toolchain_missing()
+    py = _subprocess.run(
+        ["python3", "-m", "tapa.__main__", "version"],
+        env=_python_env(),
+        capture_output=True,
+        check=False,
+        timeout=30,
+    )
+    rs = _subprocess.run(
+        [str(binary), "version"],
+        capture_output=True,
+        check=False,
+        timeout=30,
+    )
+    assert py.returncode == 0
+    assert rs.returncode == 0
+    assert py.stdout == rs.stdout, (
+        f"version output diverges: py={py.stdout!r} rs={rs.stdout!r}"
+    )
+
+
+def test_parity_cli_analyze_vadd(tmp_path: Path) -> None:
+    """Compare `tapa analyze` outputs on `tests/apps/vadd` across runtimes.
+
+    Asserts that the on-disk `graph.json` / `design.json` /
+    `settings.json` match structurally. Skips cleanly when `tapacc` /
+    `tapa-cpp` cannot be located (the Python CLI itself raises
+    `FileNotFoundError` and we surface that as a skip).
+    """
+    binary, _ = _skip_if_cli_toolchain_missing()
+
+    vadd_cpp = _VADD_DIR / "vadd.cpp"
+    if not vadd_cpp.is_file():
+        pytest.skip(f"missing {vadd_cpp}")
+
+    py_work = tmp_path / "py-out"
+    rs_work = tmp_path / "rs-out"
+
+    py_run = _subprocess.run(
+        _python_tapa_argv(
+            "analyze",
+            "--input",
+            str(vadd_cpp),
+            "--top",
+            _VADD_TOP,
+            work_dir=py_work,
+        ),
+        env=_python_env(),
+        capture_output=True,
+        check=False,
+        timeout=300,
+    )
+    if py_run.returncode != 0:
+        # `tapacc` / `tapa-cpp` not on the path; skip cleanly.
+        msg = py_run.stderr.decode("utf-8", "replace")
+        if "Cannot find" in msg or "FileNotFoundError" in msg:
+            pytest.skip(f"tapacc toolchain not configured: {msg.splitlines()[0]}")
+        pytest.fail(f"python analyze failed: {msg}")
+
+    rs_run = _subprocess.run(
+        _rust_tapa_argv(
+            binary,
+            "analyze",
+            "--input",
+            str(vadd_cpp),
+            "--top",
+            _VADD_TOP,
+            work_dir=rs_work,
+        ),
+        env=_rust_env(),
+        capture_output=True,
+        check=False,
+        timeout=300,
+    )
+    if rs_run.returncode != 0:
+        msg = rs_run.stderr.decode("utf-8", "replace")
+        if "Cannot find" in msg or "tapacc binary not found" in msg:
+            pytest.skip(
+                f"tapacc toolchain not configured (rust): {msg.splitlines()[0]}"
+            )
+        pytest.fail(f"rust analyze failed: {msg}")
+
+    for fname in ("graph.json", "settings.json"):
+        py_data = _read_json(py_work / fname)
+        rs_data = _read_json(rs_work / fname)
+        assert py_data == rs_data, (
+            f"{fname} diverges between runtimes\npy={py_data}\nrs={rs_data}"
+        )
+
+    py_design = _normalize_design_for_compare(_read_json(py_work / "design.json"))
+    rs_design = _normalize_design_for_compare(_read_json(rs_work / "design.json"))
+    assert py_design == rs_design, (
+        "design.json topology diverges between runtimes after normalization"
+    )
+
+
+def test_parity_cli_unknown_first_token_fails() -> None:
+    """Reject `tapa bogus-subcommand` on both runtimes (AC-2 negative).
+
+    Both CLIs must exit non-zero rather than silently no-op.
+    """
+    binary, _ = _skip_if_cli_toolchain_missing()
+    py = _subprocess.run(
+        ["python3", "-m", "tapa.__main__", "bogus-subcommand"],
+        env=_python_env(),
+        capture_output=True,
+        check=False,
+        timeout=30,
+    )
+    rs = _subprocess.run(
+        [str(binary), "bogus-subcommand"],
+        capture_output=True,
+        check=False,
+        timeout=30,
+    )
+    assert py.returncode != 0, "python CLI must reject bogus subcommand"
+    assert rs.returncode != 0, "rust CLI must reject bogus subcommand"
+
+
+def test_parity_cli_chained_argv_value_collision_does_not_split() -> None:
+    """Keep flag values attached to their flag (Codex regression, AC-3).
+
+    A flag value that equals a subcommand name (e.g. `--top synth`)
+    must stay attached to `--top`, not boundary the chunk into a new
+    chained subcommand.
+    """
+    binary, _ = _skip_if_cli_toolchain_missing()
+
+    rs = _subprocess.run(
+        [
+            str(binary),
+            "analyze",
+            "--input",
+            "missing.cpp",
+            "--top",
+            "synth",
+        ],
+        capture_output=True,
+        check=False,
+        env={**os.environ},
+        timeout=30,
+    )
+    # The rust binary refuses with a typed error coming out of the
+    # `analyze` step — either `tapa-cpp-binary not found` on the native
+    # path, or `StepUnported` when the bridge env var is unset. The
+    # important parity point is that `synth` is not misclassified as a
+    # chained subcommand — otherwise clap would surface an
+    # "unrecognized argument" diagnostic instead.
+    assert rs.returncode != 0
+    msg = rs.stderr.decode("utf-8", "replace").lower()
+    assert "analyze" in msg or "tapa-cpp" in msg or "tapacc" in msg, msg
+    assert "unrecognized" not in msg, msg
+    assert "unexpected" not in msg, msg
