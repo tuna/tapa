@@ -9,7 +9,7 @@ use crate::context::CliContext;
 use crate::error::Result;
 use crate::steps::python_bridge;
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Clone, Parser)]
 #[command(
     name = "floorplan",
     about = "Floorplan TAPA program and store the program description."
@@ -19,12 +19,12 @@ pub struct FloorplanArgs {
     pub floorplan_path: Option<PathBuf>,
 }
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Clone, Parser)]
 #[command(
-    name = "generate-floorplan",
-    about = "Generate floorplan solution(s) for a TAPA program via AutoBridge."
+    name = "run-autobridge",
+    about = "Run the autobridge tool to generate a floorplan."
 )]
-pub struct GenerateFloorplanArgs {
+pub struct RunAutobridgeArgs {
     /// Path to the device configuration file.
     #[arg(long = "device-config", value_name = "FILE", required = true)]
     pub device_config: PathBuf,
@@ -43,7 +43,7 @@ pub fn to_python_argv_floorplan(args: &FloorplanArgs) -> Vec<String> {
     out
 }
 
-pub fn to_python_argv_generate(args: &GenerateFloorplanArgs) -> Vec<String> {
+pub fn to_python_argv_run_autobridge(args: &RunAutobridgeArgs) -> Vec<String> {
     vec![
         "--device-config".to_string(),
         args.device_config.display().to_string(),
@@ -57,14 +57,10 @@ pub fn run_floorplan(args: &FloorplanArgs, ctx: &mut CliContext) -> Result<()> {
     python_bridge::run("floorplan", &to_python_argv_floorplan(args), ctx)
 }
 
-pub fn run_generate_floorplan(
-    args: &GenerateFloorplanArgs,
+pub fn run_run_autobridge(
+    args: &RunAutobridgeArgs,
     ctx: &mut CliContext,
 ) -> Result<()> {
-    python_bridge::require_enabled("generate-floorplan")?;
-    python_bridge::run(
-        "generate-floorplan",
-        &to_python_argv_generate(args),
-        ctx,
-    )
+    python_bridge::require_enabled("run-autobridge")?;
+    python_bridge::run("run-autobridge", &to_python_argv_run_autobridge(args), ctx)
 }

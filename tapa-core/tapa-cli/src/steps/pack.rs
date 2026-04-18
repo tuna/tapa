@@ -9,9 +9,9 @@ use crate::context::CliContext;
 use crate::error::Result;
 use crate::steps::python_bridge;
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Clone, Parser)]
 #[command(name = "pack", about = "Pack the generated RTL into a Xilinx object file.")]
-pub struct Args {
+pub struct PackArgs {
     /// Output `.xo` (Vitis target) or `.zip` (HLS target).
     #[arg(short = 'o', long = "output", value_name = "FILE")]
     pub output: Option<PathBuf>,
@@ -29,7 +29,7 @@ pub struct Args {
     pub graphir_path: Option<PathBuf>,
 }
 
-pub fn to_python_argv(args: &Args) -> Vec<String> {
+pub fn to_python_argv(args: &PackArgs) -> Vec<String> {
     let mut out = Vec::<String>::new();
     if let Some(p) = &args.output {
         out.push("--output".to_string());
@@ -50,7 +50,7 @@ pub fn to_python_argv(args: &Args) -> Vec<String> {
     out
 }
 
-pub fn run(args: &Args, ctx: &mut CliContext) -> Result<()> {
+pub fn run(args: &PackArgs, ctx: &mut CliContext) -> Result<()> {
     python_bridge::require_enabled("pack")?;
     python_bridge::run("pack", &to_python_argv(args), ctx)
 }

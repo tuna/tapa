@@ -8,14 +8,14 @@ use clap::Parser;
 
 use crate::context::CliContext;
 use crate::error::Result;
-use crate::tapacc::cflags::get_tapa_cflags;
+use crate::tapacc::cflags::{get_tapa_cflags, get_tapa_ldflags};
 
 #[derive(Debug, Parser)]
 #[command(
     name = "g++",
     about = "Invoke g++ with TAPA include and library paths."
 )]
-pub struct Args {
+pub struct GccArgs {
     /// Run the specified executable instead of `g++`.
     #[arg(long = "executable", default_value = "g++")]
     pub executable: PathBuf,
@@ -25,7 +25,7 @@ pub struct Args {
     pub argv: Vec<String>,
 }
 
-pub fn run(args: &Args, _ctx: &mut CliContext) -> Result<()> {
+pub fn run(args: &GccArgs, _ctx: &mut CliContext) -> Result<()> {
     let mut cmd = Command::new(&args.executable);
     cmd.arg("-std=c++17");
     cmd.arg("-DHLS_NO_XIL_FPO_LIB");
@@ -39,22 +39,11 @@ pub fn run(args: &Args, _ctx: &mut CliContext) -> Result<()> {
     }
 
     cmd.args(&args.argv);
-    cmd.args(get_tapa_ldflags_passthrough());
+    cmd.args(get_tapa_ldflags());
 
     let status = cmd.status()?;
     if !status.success() {
         std::process::exit(status.code().unwrap_or(1));
     }
     Ok(())
-}
-
-/// Mirrors `get_tapa_ldflags()` from Python; bridge to the same helper
-/// once the Rust port lands. For now we delegate to the Python side
-/// transparently by emitting the same `-l` flags it does.
-fn get_tapa_ldflags_passthrough() -> Vec<String> {
-    let libs = [
-        "tapa", "frt_cpp", "context", "thread", "frt", "asio", "filesystem", "glog",
-        "gflags", "OpenCL", "minizip_ng", "tinyxml2", "z", "yaml-cpp", "stdc++fs",
-    ];
-    libs.iter().map(|l| format!("-l{l}")).collect()
 }

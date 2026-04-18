@@ -18,12 +18,12 @@ use crate::tapacc::discover::find_clang_binary;
     hide = true,
     about = "Resolve a clang-family helper and print its absolute path."
 )]
-pub struct Args {
+pub struct FindClangBinaryArgs {
     /// `POTENTIAL_PATHS` key (e.g. `tapacc-binary`).
     pub name: String,
 }
 
-pub fn run(args: &Args, _ctx: &mut CliContext) -> Result<()> {
+pub fn run(args: &FindClangBinaryArgs, _ctx: &mut CliContext) -> Result<()> {
     let resolved = find_clang_binary(&args.name)?;
     let mut stdout = std::io::stdout().lock();
     write!(stdout, "{}", resolved.display())?;

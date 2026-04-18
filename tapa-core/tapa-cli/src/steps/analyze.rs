@@ -10,12 +10,12 @@ use crate::context::CliContext;
 use crate::error::Result;
 use crate::steps::python_bridge;
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Clone, Parser)]
 #[command(
     name = "analyze",
     about = "Analyze TAPA program and store the program description."
 )]
-pub struct Args {
+pub struct AnalyzeArgs {
     /// Input file, usually TAPA C++ source code (may repeat).
     #[arg(short = 'f', long = "input", value_name = "FILE", required = true)]
     pub input_files: Vec<PathBuf>,
@@ -42,7 +42,7 @@ pub struct Args {
 }
 
 /// Re-render `args` as the click-flavored argv the Python step expects.
-pub fn to_python_argv(args: &Args) -> Vec<String> {
+pub fn to_python_argv(args: &AnalyzeArgs) -> Vec<String> {
     let mut out = Vec::<String>::new();
     for f in &args.input_files {
         out.push("--input".to_string());
@@ -64,7 +64,7 @@ pub fn to_python_argv(args: &Args) -> Vec<String> {
     out
 }
 
-pub fn run(args: &Args, ctx: &mut CliContext) -> Result<()> {
+pub fn run(args: &AnalyzeArgs, ctx: &mut CliContext) -> Result<()> {
     python_bridge::require_enabled("analyze")?;
     python_bridge::run("analyze", &to_python_argv(args), ctx)
 }
@@ -81,7 +81,7 @@ mod tests {
 
     #[test]
     fn argv_round_trips_python_shape() {
-        let args = Args::try_parse_from([
+        let args = AnalyzeArgs::try_parse_from([
             "analyze",
             "--input",
             "vadd.cpp",

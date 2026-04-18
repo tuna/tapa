@@ -15,9 +15,9 @@ use crate::steps::python_bridge;
               is a distinct user-facing flag, so collapsing into an enum would \
               break parity"
 )]
-#[derive(Debug, Parser)]
+#[derive(Debug, Clone, Parser)]
 #[command(name = "synth", about = "Synthesize the TAPA program into RTL code.")]
-pub struct Args {
+pub struct SynthArgs {
     #[arg(long = "part-num", value_name = "PART")]
     pub part_num: Option<String>,
 
@@ -90,7 +90,7 @@ fn opt_path(out: &mut Vec<String>, flag: &str, value: Option<&PathBuf>) {
     }
 }
 
-pub fn to_python_argv(args: &Args) -> Vec<String> {
+pub fn to_python_argv(args: &SynthArgs) -> Vec<String> {
     let mut out = Vec::<String>::new();
     opt_str(&mut out, "--part-num", args.part_num.as_deref());
     opt_str(&mut out, "--platform", args.platform.as_deref());
@@ -140,7 +140,7 @@ pub fn to_python_argv(args: &Args) -> Vec<String> {
     out
 }
 
-pub fn run(args: &Args, ctx: &mut CliContext) -> Result<()> {
+pub fn run(args: &SynthArgs, ctx: &mut CliContext) -> Result<()> {
     python_bridge::require_enabled("synth")?;
     python_bridge::run("synth", &to_python_argv(args), ctx)
 }
