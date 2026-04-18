@@ -81,7 +81,21 @@ if [[ -x "$binary_path" ]]; then
   export TAPA_CLI_BINARY="$binary_path"
 fi
 
-# Run only the CLI-flavored parity tests; the underlying suite skips
-# cleanly when toolchains are unavailable.
+# Run the native CLI parity gate. The `-k cli` filter selects every
+# `test_parity_cli_*` case in `parity_test.py`, including the new
+# Phase 7 gates:
+#   * test_parity_cli_help_lists_same_subcommands
+#   * test_parity_cli_version_matches
+#   * test_parity_cli_subcommand_help_diff[<subcommand>]   (one per sub)
+#   * test_parity_cli_chained_argv_corpus[<app>]           (one per fixture)
+#   * test_parity_cli_analyze_vadd
+#   * test_parity_cli_vadd_flow                             (full chain)
+#   * test_parity_cli_unknown_first_token_fails
+#   * test_parity_cli_chained_argv_value_collision_does_not_split
+#
+# Cases that depend on Vitis HLS / tapacc skip cleanly when the
+# toolchain is missing (developer-machine friendly), but help-diff
+# and chained-argv parity always run because they only need the
+# parsers.
 PYTHONPATH="$repo_root" exec python3 -m pytest \
   "$repo_root/tapa-core/tests/parity_test.py" -k cli -v
