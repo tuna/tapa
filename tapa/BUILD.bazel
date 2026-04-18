@@ -29,6 +29,19 @@ py_wheel(
     ],
 )
 
+# Back-compat alias for downstream labels that still reference
+# `//tapa:tapa` as an executable/data target (e.g. `tests/apps/*`
+# analyze/simulation gates and the default `tapa_cli` attribute in
+# `bazel/tapa_rules.bzl`). The legacy `py_binary(name = "tapa")` was
+# retired in AC-8; the real entry point is the native Rust binary
+# `//tapa-core:tapa-cli`. Alias keeps existing `bazel build/test`
+# invocations working without touching every consumer.
+alias(
+    name = "tapa",
+    actual = "//tapa-core:tapa-cli",
+    visibility = ["//visibility:public"],
+)
+
 # Library bundle of the surviving Python helpers (program/codegen/AST
 # scaffolding still consumed by tapa-cli's bridge-side tests). The
 # legacy click CLI (`__main__.py`) and step modules (`tapa/steps/*`)

@@ -130,6 +130,8 @@ impl GenerateFloorplanArgs {
             flatten_hierarchy: true,
             keep_hierarchy: false,
             target: self.target.clone(),
+            tapacc: None,
+            tapa_cpp: None,
         }
     }
 

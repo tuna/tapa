@@ -224,10 +224,17 @@ mod tests {
         assert_eq!(a0, &json!("fifo_VecAdd"));
     }
 
-    /// Deep hierarchies (children that are themselves upper tasks)
-    /// must surface a typed `InvalidArg` rather than crashing.
+    /// Regression: nested upper children used to surface
+    /// `DeepHierarchyNotSupported`. Python's
+    /// `Graph.get_flatten_graph` recursively collects every leaf
+    /// under the top, so the Rust port now mirrors that — a deeply
+    /// nested design must round-trip cleanly (no panic, no typed
+    /// `InvalidArg`). For the minimal fixture below, Inner has no
+    /// tasks of its own, so the flattened top's `tasks` map is
+    /// empty; the important contract is that `flatten_graph_value`
+    /// returns `Ok`.
     #[test]
-    fn flatten_graph_value_rejects_deep_hierarchy() {
+    fn flatten_graph_value_accepts_nested_upper() {
         let raw = json!({
             "cflags": [],
             "top": "Outer",
@@ -245,11 +252,11 @@ mod tests {
                 }
             }
         });
-        let err = flatten_graph_value(&raw).expect_err("must reject deep");
+        let out = flatten_graph_value(&raw).expect("recursive flatten ok");
+        let top = out["tasks"]["Outer"].as_object().expect("top survives");
         assert!(
-            matches!(err, CliError::InvalidArg(ref m)
-                if m.contains("single-level")),
-            "expected single-level error, got {err:?}",
+            top.get("tasks").and_then(|v| v.as_object()).is_some(),
+            "top task must keep a `tasks` map after flatten: {top:?}",
         );
     }
 }
