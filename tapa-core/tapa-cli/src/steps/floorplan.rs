@@ -62,6 +62,12 @@ pub fn to_python_argv_floorplan(args: &FloorplanArgs) -> Vec<String> {
     out
 }
 
+/// Render the autobridge args back to Python click flags.
+///
+/// Used by composites (`generate-floorplan`,
+/// `compile-with-floorplan-dse`) when forwarding through the bridge —
+/// `run-autobridge` itself has no top-level Python CLI entry, so this
+/// helper exists for the parent composite's argv builder.
 pub fn to_python_argv_run_autobridge(args: &RunAutobridgeArgs) -> Vec<String> {
     vec![
         "--device-config".to_string(),
@@ -70,6 +76,7 @@ pub fn to_python_argv_run_autobridge(args: &RunAutobridgeArgs) -> Vec<String> {
         args.floorplan_config.display().to_string(),
     ]
 }
+
 
 /// `tapa floorplan` dispatcher.
 ///
@@ -115,22 +122,29 @@ fn run_floorplan_native_noop(ctx: &CliContext) -> Result<()> {
     Ok(())
 }
 
-/// `tapa run-autobridge` dispatcher: opt-in bridge, remote execution, or
-/// the native local subprocess path.
+/// `tapa run-autobridge` dispatcher.
+///
+/// Note: the Python click CLI does NOT register a top-level
+/// `run-autobridge` subcommand — `tapa.steps.floorplan.run_autobridge`
+/// is only reachable from inside `tapa.steps.meta.generate_floorplan_entry`
+/// via `forward_applicable`. There is therefore no working bridge
+/// fallback for this step (`python -m tapa.__main__ run-autobridge`
+/// fails with "No such command"), so we always run the native path
+/// (or surface a typed error for the remote case which still needs
+/// `tapa-xilinx` SSH transport).
 pub fn run_run_autobridge(
     args: &RunAutobridgeArgs,
     ctx: &mut CliContext,
 ) -> Result<()> {
-    if python_bridge::is_enabled("run-autobridge") {
-        return python_bridge::run("run-autobridge", &to_python_argv_run_autobridge(args), ctx);
-    }
     if ctx.remote.host.is_some() {
         // Remote execution still needs the tar-pipe orchestration in
         // `tapa-xilinx`, which `tapa-cli` does not depend on. Surface a
-        // clear opt-in to keep behavior predictable.
+        // clear opt-in so the user knows what's missing.
         return Err(CliError::InvalidArg(
-            "remote `run-autobridge` requires the Python fallback bridge; \
-             rerun with `TAPA_STEP_RUN_AUTOBRIDGE_PYTHON=1`."
+            "remote `run-autobridge` is not yet supported by `tapa-cli`; \
+             native paths cover the local-only case. Run from a host with \
+             `rapidstream-tapafp` installed locally, or use the Python CLI \
+             (`tapa generate-floorplan`) which embeds the autobridge step."
                 .to_string(),
         ));
     }
