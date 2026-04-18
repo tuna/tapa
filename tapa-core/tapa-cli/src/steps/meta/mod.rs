@@ -77,8 +77,8 @@ pub struct GenerateFloorplanArgs {
     pub flatten_hierarchy: bool,
     #[arg(long = "keep-hierarchy", conflicts_with = "flatten_hierarchy")]
     pub keep_hierarchy: bool,
-    #[arg(long = "target", default_value = "xilinx-vitis")]
-    pub target: String,
+    #[arg(long = "target", value_enum, default_value_t = analyze::AnalyzeTarget::XilinxVitis)]
+    pub target: analyze::AnalyzeTarget,
     // ---- synth ----
     #[arg(long = "part-num", value_name = "PART")]
     pub part_num: Option<String>,
@@ -129,7 +129,7 @@ impl GenerateFloorplanArgs {
             cflags: self.cflags.clone(),
             flatten_hierarchy: true,
             keep_hierarchy: false,
-            target: self.target.clone(),
+            target: self.target,
             tapacc: None,
             tapa_cpp: None,
         }

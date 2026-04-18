@@ -39,8 +39,8 @@ pub struct CompileWithFloorplanDseArgs {
     pub flatten_hierarchy: bool,
     #[arg(long = "keep-hierarchy", conflicts_with = "flatten_hierarchy")]
     pub keep_hierarchy: bool,
-    #[arg(long = "target", default_value = "xilinx-vitis")]
-    pub target: String,
+    #[arg(long = "target", value_enum, default_value_t = analyze::AnalyzeTarget::XilinxVitis)]
+    pub target: analyze::AnalyzeTarget,
     // ---- synth (omit shared flags; provided below) ----
     #[arg(long = "part-num", value_name = "PART")]
     pub part_num: Option<String>,
@@ -192,7 +192,7 @@ fn build_generate_floorplan_stage1(
         cflags: args.cflags.clone(),
         flatten_hierarchy: true,
         keep_hierarchy: false,
-        target: args.target.clone(),
+        target: args.target,
         part_num: args.part_num.clone(),
         platform: args.platform.clone(),
         clock_period: args.clock_period,
@@ -229,7 +229,7 @@ fn build_compile_stage2(
         cflags: args.cflags.clone(),
         flatten_hierarchy: true,
         keep_hierarchy: false,
-        target: args.target.clone(),
+        target: args.target,
         tapacc: None,
         tapa_cpp: None,
     };
