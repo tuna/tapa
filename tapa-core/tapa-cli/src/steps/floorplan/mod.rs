@@ -4,22 +4,22 @@
 //! The native paths cover the local-only happy paths:
 //!   * `floorplan` without `--floorplan-path` is a stateful no-op that
 //!     toggles `settings["floorplan"] = true` and marks the step as
-//!     pipelined; the heavy `--floorplan-path` orchestration (which
-//!     requires the Python `tapa.common.graph.Graph::get_floorplan_graph`
-//!     transform) still routes through the bridge.
-//!   * `run-autobridge` shells out to `rapidstream-tapafp`. When no
-//!     `--remote-host` is configured we drive the subprocess directly;
-//!     remote execution still needs the tar-pipe orchestration that
-//!     lives in `tapa-xilinx`, so it falls back to the bridge.
+//!     pipelined; the heavy `--floorplan-path` orchestration drives
+//!     the native `apply_floorplan` transform (no Python bridge).
+//!   * `run-autobridge` shells out to `rapidstream-tapafp` via the
+//!     shared `tapa_xilinx::ToolRunner` abstraction, so the same
+//!     orchestration transparently dispatches locally or over SSH
+//!     (tar-pipe upload of the floorplan project + tar-pipe download
+//!     of `solution_*/floorplan.json` back) when `ctx.remote_config`
+//!     is populated.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use clap::Parser;
 use indexmap::IndexMap;
-use serde_json::{json, Value};
+use serde_json::Value;
 use tapa_task_graph::{
     apply_floorplan, convert_region_format, region_to_slot_name, Graph, TransformError,
 };
@@ -28,9 +28,11 @@ use crate::context::CliContext;
 use crate::error::{CliError, Result};
 use crate::state::{graph as graph_io, settings as settings_io};
 
-const AUTOBRIDGE_WORK_DIR: &str = "autobridge";
-const FLOORPLAN_CONFIG_NO_PRE_ASSIGNMENTS: &str = "floorplan_config_no_pre_assignments.json";
-const RAPIDSTREAM_TAPAFP_BIN: &str = "rapidstream-tapafp";
+mod run_autobridge;
+
+pub use run_autobridge::run_run_autobridge;
+
+pub(crate) const AUTOBRIDGE_WORK_DIR: &str = "autobridge";
 
 #[derive(Debug, Clone, Parser)]
 #[command(
@@ -329,99 +331,6 @@ fn run_floorplan_native_noop(ctx: &CliContext) -> Result<()> {
     flow.settings = Some(settings);
     flow.pipelined.insert("floorplan".to_string(), true);
     Ok(())
-}
-
-/// `tapa run-autobridge` dispatcher.
-///
-/// Note: the Python click CLI does NOT register a top-level
-/// `run-autobridge` subcommand — `tapa.steps.floorplan.run_autobridge`
-/// is only reachable from inside `tapa.steps.meta.generate_floorplan_entry`
-/// via `forward_applicable`. There is therefore no working bridge
-/// fallback for this step (`python -m tapa.__main__ run-autobridge`
-/// fails with "No such command"), so we always run the native path
-/// (or surface a typed error for the remote case which still needs
-/// `tapa-xilinx` SSH transport).
-pub fn run_run_autobridge(
-    args: &RunAutobridgeArgs,
-    ctx: &mut CliContext,
-) -> Result<()> {
-    if ctx.remote.host.is_some() {
-        // Remote execution still needs the tar-pipe orchestration in
-        // `tapa-xilinx`, which `tapa-cli` does not depend on. Surface a
-        // clear opt-in so the user knows what's missing.
-        return Err(CliError::InvalidArg(
-            "remote `run-autobridge` is not yet supported by `tapa-cli`; \
-             native paths cover the local-only case. Run from a host with \
-             `rapidstream-tapafp` installed locally, or use the Python CLI \
-             (`tapa generate-floorplan`) which embeds the autobridge step."
-                .to_string(),
-        ));
-    }
-    run_autobridge_native(args, ctx)
-}
-
-fn run_autobridge_native(args: &RunAutobridgeArgs, ctx: &CliContext) -> Result<()> {
-    let work_dir = ctx.work_dir.as_path();
-    let ab_graph_path = work_dir.join("ab_graph.json");
-    let autobridge_dir = work_dir.join(AUTOBRIDGE_WORK_DIR);
-    fs::create_dir_all(&autobridge_dir)?;
-
-    // Strip pre-assignments from the floorplan config and persist the
-    // sanitized variant. Mirrors the Python preprocessing step.
-    let raw = fs::read_to_string(&args.floorplan_config)?;
-    let mut config: Value = serde_json::from_str(&raw)?;
-    if let Some(obj) = config.as_object_mut() {
-        obj.remove("sys_port_pre_assignments");
-        obj.remove("cpp_arg_pre_assignments");
-        obj.insert("port_pre_assignments".to_string(), json!({}));
-    }
-    let sanitized_path = autobridge_dir.join(FLOORPLAN_CONFIG_NO_PRE_ASSIGNMENTS);
-    fs::write(&sanitized_path, serde_json::to_vec(&config)?)?;
-
-    let mut cmd = Command::new(RAPIDSTREAM_TAPAFP_BIN);
-    cmd.args([
-        "--ab-graph-path",
-        ab_graph_path.display().to_string().as_str(),
-        "--work-dir",
-        autobridge_dir.display().to_string().as_str(),
-        "--device-config",
-        args.device_config.display().to_string().as_str(),
-        "--floorplan-config",
-        sanitized_path.display().to_string().as_str(),
-        "--run-floorplan",
-    ]);
-    let status = cmd.status().map_err(|e| {
-        CliError::TapaccNotExecutable {
-            path: PathBuf::from(RAPIDSTREAM_TAPAFP_BIN),
-            reason: e.to_string(),
-        }
-    })?;
-    if !status.success() {
-        return Err(CliError::TapaccFailed {
-            code: status.code().unwrap_or(-1),
-            stderr: format!("{RAPIDSTREAM_TAPAFP_BIN} failed"),
-        });
-    }
-
-    log_solution_floorplans(&autobridge_dir);
-    Ok(())
-}
-
-fn log_solution_floorplans(autobridge_dir: &Path) {
-    let Ok(entries) = fs::read_dir(autobridge_dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let name = entry.file_name();
-        let name_str = name.to_string_lossy();
-        if !name_str.starts_with("solution_") {
-            continue;
-        }
-        let candidate = entry.path().join("floorplan.json");
-        if candidate.exists() {
-            log::info!("Generated floorplan file: {}", candidate.display());
-        }
-    }
 }
 
 /// Enumerate `<work_dir>/autobridge/solution_*/floorplan.json` files in a

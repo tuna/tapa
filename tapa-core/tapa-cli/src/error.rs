@@ -40,9 +40,9 @@ pub enum CliError {
     TapaccFailed { code: i32, stderr: String },
 
     #[error(
-        "step `{step}` (flag group `{flag_name}`) is not yet fully implemented \
-         natively — the native port is incomplete; file a follow-up for this \
-         branch, the Python CLI was retired in AC-8 and is no longer available"
+        "step `{step}` (flag group `{flag_name}`) is not yet ported to \
+         the native tapa-cli pipeline — file a follow-up issue describing \
+         the design that needs this branch so it can be prioritized"
     )]
     StepUnported { step: String, flag_name: String },
 
