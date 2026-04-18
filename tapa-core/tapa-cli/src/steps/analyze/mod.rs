@@ -9,7 +9,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use serde_json::{json, Value};
 
 use crate::context::CliContext;
@@ -25,6 +25,28 @@ mod run_tapacc;
 use build_design::{build_design, flatten_graph_value, is_top_leaf};
 use run_flatten::run_flatten;
 use run_tapacc::run_tapacc;
+
+/// Target flows accepted by `tapa analyze`. Kebab-case spellings match
+/// the strings persisted into `settings.json` and read by `synth` /
+/// `pack` (`xilinx-vitis`, `xilinx-hls`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum AnalyzeTarget {
+    #[value(name = "xilinx-vitis")]
+    XilinxVitis,
+    #[value(name = "xilinx-hls")]
+    XilinxHls,
+}
+
+impl AnalyzeTarget {
+    /// Canonical string form persisted into `settings.json` /
+    /// `design.json`.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::XilinxVitis => "xilinx-vitis",
+            Self::XilinxHls => "xilinx-hls",
+        }
+    }
+}
 
 #[derive(Debug, Clone, Parser)]
 #[command(
@@ -52,9 +74,15 @@ pub struct AnalyzeArgs {
     #[arg(long = "keep-hierarchy", conflicts_with = "flatten_hierarchy")]
     pub keep_hierarchy: bool,
 
-    /// Target flow.
-    #[arg(long = "target", default_value = "xilinx-vitis")]
-    pub target: String,
+    /// Target flow. Restricted to the targets the native Rust pipeline
+    /// can actually drive end-to-end so typos / unported targets fail
+    /// at parse time instead of producing unusable `settings.json` /
+    /// `design.json` that only blow up later in `synth` or `pack`.
+    /// Mirrors the click `Target` choice list from the retired Python
+    /// CLI; AIE is intentionally omitted because `program.run_aie`
+    /// has not been ported.
+    #[arg(long = "target", value_enum, default_value_t = AnalyzeTarget::XilinxVitis)]
+    pub target: AnalyzeTarget,
 
     /// Explicit path to the `tapacc` binary. Overrides the walk-up
     /// `find_resource` search anchored at the `tapa` binary. Used by
@@ -93,7 +121,7 @@ pub fn to_python_argv(args: &AnalyzeArgs) -> Vec<String> {
         out.push("--keep-hierarchy".to_string());
     }
     out.push("--target".to_string());
-    out.push(args.target.clone());
+    out.push(args.target.as_str().to_string());
     out
 }
 
@@ -138,12 +166,13 @@ fn run_native(args: &AnalyzeArgs, ctx: &CliContext) -> Result<()> {
         work_dir,
         ctx.options.clang_format_quota_in_bytes,
     )?;
+    let target_str = args.target.as_str();
     let mut graph_dict = run_tapacc(
         &tapacc,
         &flatten_files,
         &args.top,
         &all_cflags,
-        &args.target,
+        target_str,
     )?;
 
     // Mirror Python: overwrite cflags with the user's tuple (with c++14).
@@ -158,7 +187,7 @@ fn run_native(args: &AnalyzeArgs, ctx: &CliContext) -> Result<()> {
         graph_dict = flatten_graph_value(&graph_dict)?;
     }
 
-    if is_top_leaf(&graph_dict, &args.top) && args.target == "xilinx-vitis" {
+    if is_top_leaf(&graph_dict, &args.top) && args.target == AnalyzeTarget::XilinxVitis {
         return Err(CliError::InvalidArg(
             "the top task is a leaf task; target `xilinx-vitis` is not supported \
              (Vitis requires an upper top for kernel.xml generation). \
@@ -170,9 +199,9 @@ fn run_native(args: &AnalyzeArgs, ctx: &CliContext) -> Result<()> {
     // Persist all three on-disk artifacts.
     graph_io::store_graph(work_dir, &graph_dict)?;
     let mut settings = settings_io::Settings::new();
-    settings.insert("target".to_string(), json!(args.target.clone()));
+    settings.insert("target".to_string(), json!(target_str));
     settings_io::store_settings(work_dir, &settings)?;
-    let design = build_design(&args.top, &args.target, &graph_dict)?;
+    let design = build_design(&args.top, target_str, &graph_dict)?;
     design_io::store_design(work_dir, &design)?;
 
     // Cache state for downstream chained steps in this process.

@@ -5,7 +5,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use tapa_task_graph::Design;
-use tapa_xilinx::{run_hls_with_retry_in_stage, HlsJob, HlsOutput, ToolRunner};
+use tapa_xilinx::{run_hls_with_retry, run_hls_with_retry_in_stage, HlsJob, HlsOutput, ToolRunner};
 
 use crate::error::{CliError, Result};
 use crate::steps::synth::cpp_extract::cpp_path_for;
@@ -120,24 +120,6 @@ pub fn run_hls_for_leaves(
         fs::create_dir_all(&layout.reports_dir)?;
         fs::create_dir_all(&layout.hdl_dir)?;
 
-        // `--keep-hls-work-dir`: stage under `<work_dir>/hls/<task>/project`
-        // so the Vitis project + logs survive the run for post-mortem
-        // inspection. The plain path still uses a per-job tempdir that
-        // `run_hls_with_retry_in_stage` cleans up on success.
-        let stage_dir = if options.keep_work_dir {
-            let persistent = work_dir.join("hls").join(task_name).join("project");
-            // Clear any leftover from a previous run so retries don't
-            // conflict with Vitis's project-already-open logic.
-            if persistent.exists() {
-                let _ = fs::remove_dir_all(&persistent);
-            }
-            fs::create_dir_all(&persistent)?;
-            persistent
-        } else {
-            // Caller-owned tempdir — drop at end of this function.
-            tempfile::tempdir()?.keep()
-        };
-
         let job = HlsJob {
             task_name: task_name.clone(),
             cpp_source,
@@ -151,22 +133,41 @@ pub fn run_hls_for_leaves(
             ..HlsJob::default()
         };
 
-        plan.push((task_name.clone(), layout, Work::Run(job, stage_dir)));
+        // `--keep-hls-work-dir`: stage under
+        // `<work_dir>/hls/<task>/project` so the Vitis project + logs
+        // survive the run for post-mortem inspection. The retry
+        // wrapper reuses that single dir across attempts (a
+        // partially-failed `project/` may contaminate the next
+        // attempt, but the operator opted in).
+        //
+        // Default path: hand the job off to `run_hls_with_retry`,
+        // which allocates a *fresh* `tempfile::tempdir()` for every
+        // attempt. Mirrors the retired Python flow where each
+        // transient `Pre-synthesis failed.` retry started from a
+        // clean project tree.
+        let work = if options.keep_work_dir {
+            let persistent = work_dir.join("hls").join(task_name).join("project");
+            // Clear any leftover from a previous run so the first
+            // attempt doesn't trip Vitis's project-already-open logic.
+            if persistent.exists() {
+                let _ = fs::remove_dir_all(&persistent);
+            }
+            fs::create_dir_all(&persistent)?;
+            Work::RunInStage(job, persistent)
+        } else {
+            Work::RunFresh(job)
+        };
+
+        plan.push((task_name.clone(), layout, work));
     }
 
     let worker_count = resolve_worker_count(options.jobs, &plan);
     let results: Vec<Result<Option<HlsOutput>>> =
         dispatch_plan(runner, &plan, worker_count);
 
-    // Tempdir cleanup for the non-keep path. Persistent keep-dirs are
-    // kept intentionally — they live under `<work_dir>/hls/<task>/project`.
-    if !options.keep_work_dir {
-        for (_, _, work) in &plan {
-            if let Work::Run(_, stage) = work {
-                let _ = fs::remove_dir_all(stage);
-            }
-        }
-    }
+    // No explicit cleanup: `RunFresh` lets `run_hls_with_retry` own
+    // its per-attempt tempdir and drop it. `RunInStage` is kept on
+    // disk intentionally under `<work_dir>/hls/<task>/project`.
 
     // Assemble output in the original plan order, surfacing the first
     // error.
@@ -174,9 +175,11 @@ pub fn run_hls_for_leaves(
     for ((task_name, layout, work), result) in plan.into_iter().zip(results) {
         let hls_out = match (work, result) {
             (Work::Skip(pre), _) => pre,
-            (Work::Run(_, _), Ok(Some(o))) => o,
-            (Work::Run(_, _), Ok(None)) => unreachable!("Run must yield Some"),
-            (Work::Run(_, _), Err(e)) => return Err(e),
+            (Work::RunInStage(..) | Work::RunFresh(_), Ok(Some(o))) => o,
+            (Work::RunInStage(..) | Work::RunFresh(_), Ok(None)) => {
+                unreachable!("Run must yield Some")
+            }
+            (Work::RunInStage(..) | Work::RunFresh(_), Err(e)) => return Err(e),
         };
         out.push((task_name, layout, hls_out));
     }
@@ -251,7 +254,7 @@ impl PlanEntry for Work {
     fn execute(&self, runner: &dyn ToolRunner) -> Result<Option<HlsOutput>> {
         match self {
             Self::Skip(_) => Ok(None),
-            Self::Run(job, stage_dir) => {
+            Self::RunInStage(job, stage_dir) => {
                 let out = run_hls_with_retry_in_stage(
                     runner,
                     job,
@@ -259,6 +262,14 @@ impl PlanEntry for Work {
                     stage_dir,
                 )
                 .map_err(CliError::from)?;
+                Ok(Some(out))
+            }
+            Self::RunFresh(job) => {
+                // `run_hls_with_retry` allocates a fresh
+                // `tempfile::tempdir()` per attempt — mirrors the
+                // Python non-keep retry path.
+                let out = run_hls_with_retry(runner, job, HLS_MAX_ATTEMPTS)
+                    .map_err(CliError::from)?;
                 Ok(Some(out))
             }
         }
@@ -272,7 +283,12 @@ impl PlanEntry for Work {
     between the large `HlsJob + PathBuf` variant and the trivial Skip")]
 enum Work {
     Skip(HlsOutput),
-    Run(HlsJob, PathBuf),
+    /// `--keep-hls-work-dir`: persistent project under
+    /// `<work_dir>/hls/<task>/project` reused across retries.
+    RunInStage(HlsJob, PathBuf),
+    /// Default: each retry attempt gets its own fresh tempdir so a
+    /// partially-failed `project/` cannot contaminate the next try.
+    RunFresh(HlsJob),
 }
 
 fn hdl_dir_is_newer_than(hdl_dir: &Path, cpp_source: &Path) -> bool {

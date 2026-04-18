@@ -45,8 +45,11 @@ pub fn run_native(
     if !matches!(target.as_str(), "xilinx-vitis" | "xilinx-hls") {
         return Err(CliError::InvalidArg(format!(
             "native synth only supports the `xilinx-vitis` and `xilinx-hls` \
-             targets; got `{target}`. AIE / Intel / software-emulation \
-             targets are not yet ported."
+             targets; got `{target}`. The AIE flow (Python's \
+             `program.run_aie`) was retired and is not accepted by the \
+             native CLI; the analyze step now rejects unsupported targets \
+             up front, so this only triggers on hand-edited \
+             `settings.json`."
         )));
     }
 

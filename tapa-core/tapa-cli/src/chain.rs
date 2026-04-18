@@ -111,59 +111,93 @@ struct ChainParser {
 }
 
 impl Step {
-    /// Walk the chained-step linked list. Each step is invoked in
-    /// order; failures short-circuit (matching click's chained-group
-    /// behavior of aborting on the first error).
+    /// Walk the chained-step linked list. Mirrors click's chained
+    /// group: parse + validate the *entire* chain first, then execute
+    /// each step in order. A parse error or `--help` on a later token
+    /// (e.g. `tapa analyze … synth --help`) must surface before any
+    /// step mutates `work_dir` or shells out to a missing tool.
     pub fn execute(self, ctx: &mut CliContext) -> Result<()> {
-        let chain_tail = match self {
-            Self::Analyze { args, chain_tail } => {
-                analyze::run(&args, ctx)?;
-                chain_tail
-            }
-            Self::Synth { args, chain_tail } => {
-                synth::run(&args, ctx)?;
-                chain_tail
-            }
-            Self::Pack { args, chain_tail } => {
-                pack::run(&args, ctx)?;
-                chain_tail
-            }
-            Self::Floorplan { args, chain_tail } => {
-                floorplan::run_floorplan(&args, ctx)?;
-                chain_tail
-            }
-            Self::GenerateFloorplan { args, chain_tail } => {
-                meta::run_generate_floorplan_composite(&args, ctx)?;
-                chain_tail
-            }
-            Self::Compile { args, chain_tail } => {
-                meta::run_compile_composite(&args, ctx)?;
-                chain_tail
-            }
-            Self::CompileWithFloorplanDse { args, chain_tail } => {
-                meta::run_compile_with_floorplan_dse_composite(&args, ctx)?;
-                chain_tail
-            }
-            Self::Gpp { args } => {
-                // `g++` is terminal; its argv already swallows the tail.
-                gcc::run(&args, ctx)?;
-                Vec::new()
-            }
-            Self::Version { args, chain_tail } => {
-                version::run(&args, ctx)?;
-                chain_tail
-            }
-            Self::FindClangBinary { args, chain_tail } => {
-                find_clang_binary::run(&args, ctx)?;
-                chain_tail
-            }
-        };
+        let mut steps: Vec<Self> = Vec::new();
+        let mut current: Option<Self> = Some(self);
+        while let Some(step) = current {
+            let (head, tail) = step.split_chain();
+            steps.push(head);
+            current = if tail.is_empty() {
+                None
+            } else {
+                Some(parse_chain_tail(&tail)?)
+            };
+        }
+        for step in steps {
+            step.run_one(ctx)?;
+        }
+        Ok(())
+    }
 
-        if chain_tail.is_empty() {
-            Ok(())
-        } else {
-            let next = parse_chain_tail(&chain_tail)?;
-            next.execute(ctx)
+    /// Detach the trailing-vararg payload from this step and return
+    /// the head (with an empty tail) plus the captured tail tokens.
+    /// `g++` is terminal — its own `trailing_var_arg` already
+    /// consumed any chained tokens.
+    fn split_chain(self) -> (Self, Vec<String>) {
+        match self {
+            Self::Analyze { args, chain_tail } => (
+                Self::Analyze { args, chain_tail: Vec::new() },
+                chain_tail,
+            ),
+            Self::Synth { args, chain_tail } => (
+                Self::Synth { args, chain_tail: Vec::new() },
+                chain_tail,
+            ),
+            Self::Pack { args, chain_tail } => (
+                Self::Pack { args, chain_tail: Vec::new() },
+                chain_tail,
+            ),
+            Self::Floorplan { args, chain_tail } => (
+                Self::Floorplan { args, chain_tail: Vec::new() },
+                chain_tail,
+            ),
+            Self::GenerateFloorplan { args, chain_tail } => (
+                Self::GenerateFloorplan { args, chain_tail: Vec::new() },
+                chain_tail,
+            ),
+            Self::Compile { args, chain_tail } => (
+                Self::Compile { args, chain_tail: Vec::new() },
+                chain_tail,
+            ),
+            Self::CompileWithFloorplanDse { args, chain_tail } => (
+                Self::CompileWithFloorplanDse { args, chain_tail: Vec::new() },
+                chain_tail,
+            ),
+            Self::Gpp { args } => (Self::Gpp { args }, Vec::new()),
+            Self::Version { args, chain_tail } => (
+                Self::Version { args, chain_tail: Vec::new() },
+                chain_tail,
+            ),
+            Self::FindClangBinary { args, chain_tail } => (
+                Self::FindClangBinary { args, chain_tail: Vec::new() },
+                chain_tail,
+            ),
+        }
+    }
+
+    /// Dispatch a single step's side-effecting body. Called only
+    /// after the whole chain has been parsed and validated.
+    fn run_one(self, ctx: &mut CliContext) -> Result<()> {
+        match self {
+            Self::Analyze { args, .. } => analyze::run(&args, ctx),
+            Self::Synth { args, .. } => synth::run(&args, ctx),
+            Self::Pack { args, .. } => pack::run(&args, ctx),
+            Self::Floorplan { args, .. } => floorplan::run_floorplan(&args, ctx),
+            Self::GenerateFloorplan { args, .. } => {
+                meta::run_generate_floorplan_composite(&args, ctx)
+            }
+            Self::Compile { args, .. } => meta::run_compile_composite(&args, ctx),
+            Self::CompileWithFloorplanDse { args, .. } => {
+                meta::run_compile_with_floorplan_dse_composite(&args, ctx)
+            }
+            Self::Gpp { args } => gcc::run(&args, ctx),
+            Self::Version { args, .. } => version::run(&args, ctx),
+            Self::FindClangBinary { args, .. } => find_clang_binary::run(&args, ctx),
         }
     }
 }

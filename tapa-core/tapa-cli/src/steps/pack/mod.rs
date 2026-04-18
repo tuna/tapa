@@ -94,10 +94,10 @@ fn run_native(args: &PackArgs, ctx: &CliContext) -> Result<()> {
     match target.as_str() {
         "xilinx-vitis" => pack_vitis(args, ctx, &design, &settings),
         "xilinx-hls" => pack_hls_zip(args, ctx, &settings),
-        "xilinx-aie" => Ok(()),
         other => Err(CliError::InvalidArg(format!(
-            "native pack only supports `xilinx-vitis`, `xilinx-hls`, and \
-             `xilinx-aie`; got `{other}`."
+            "native pack only supports `xilinx-vitis` and `xilinx-hls`; \
+             got `{other}`. (AIE was retired with the Python `program.run_aie` \
+             port; rerun `analyze` with a supported target.)"
         ))),
     }
 }
@@ -456,11 +456,19 @@ mod tests {
     }
 
     #[test]
-    fn aie_target_is_a_no_op() {
+    fn aie_target_is_rejected() {
+        // AIE was retired with `program.run_aie`; analyze rejects it
+        // up front, but a hand-edited `settings.json` (or a stale work
+        // dir from before the change) must still surface a clear error
+        // rather than silently no-op'ing.
         let dir = tempfile::tempdir().expect("tempdir");
         write_state(dir.path(), "xilinx-aie");
         let ctx = ctx_with_work_dir(dir.path());
-        run_native(&parse_pack(&[]), &ctx).expect("AIE pack is a no-op");
+        let err = run_native(&parse_pack(&[]), &ctx).expect_err("AIE must be rejected");
+        assert!(
+            matches!(err, CliError::InvalidArg(ref m) if m.contains("xilinx-aie")),
+            "expected AIE rejection: {err:?}"
+        );
     }
 
     #[test]
