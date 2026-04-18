@@ -11,6 +11,7 @@ members = [
   "tapa-floorplan",
   "tapa-lowering",
   "tapa-graphir-export",
+  "tapa-xilinx",
   "tapa-py-bindings",
 ]
 
@@ -87,6 +88,7 @@ tapa-codegen = { path = "tapa-codegen" }
 tapa-floorplan = { path = "tapa-floorplan" }
 tapa-lowering = { path = "tapa-lowering" }
 tapa-graphir-export = { path = "tapa-graphir-export" }
+tapa-xilinx = { path = "tapa-xilinx" }
 nom = "8"
 regex = "1"
 tempfile = "3"

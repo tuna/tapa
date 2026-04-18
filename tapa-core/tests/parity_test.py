@@ -1479,3 +1479,293 @@ def test_parity_rust_exported_fifo_reparses() -> None:
     assert expected_ports.issubset(rust_ports), (
         f"fifo.v missing expected ports: {expected_ports - rust_ports}"
     )
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Phase 6: tapa_core.xilinx parity (report parser + device info + CFLAGS)
+# ─────────────────────────────────────────────────────────────────────
+
+_XILINX_TESTDATA = _REPO_ROOT / "tapa-core" / "tapa-xilinx" / "testdata" / "xilinx"
+
+
+@pytest.fixture(scope="module")
+def xilinx_mod() -> Any:
+    try:
+        return importlib.import_module("tapa_core.xilinx")
+    except ImportError as exc:  # pragma: no cover - allowed when bindings absent
+        pytest.skip(f"tapa_core.xilinx not importable: {exc}")
+
+
+def test_parity_xilinx_device_info(xilinx_mod: Any) -> None:
+    """Rust vs Python parse_device_info on a staged platform directory.
+
+    Both sides consume the same layout.
+    """
+    from tapa.backend import device_config as py_device_config
+
+    xpfm = _XILINX_TESTDATA / "sample.xpfm"
+    if not xpfm.is_file():
+        pytest.skip(f"missing fixture {xpfm}")
+
+    import shutil
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        platform_dir = Path(td) / "shell"
+        (platform_dir / "hw").mkdir(parents=True)
+        shutil.copy(xpfm, platform_dir / "hw" / "shell.xsa")
+        py_info = py_device_config.get_device_info(str(platform_dir))
+        rust_info_json = xilinx_mod.parse_device_info(str(platform_dir))
+    rust_info = json.loads(rust_info_json)
+    assert py_info["part_num"] == rust_info["part_num"]
+    assert str(py_info["clock_period"]) == rust_info["clock_period"]
+
+
+def test_parity_xilinx_cflags_full_vector_from_tempdir(xilinx_mod: Any) -> None:
+    """AC-2 regression: full CFLAGS parity from an out-of-repo cwd.
+
+    Rust must resolve TAPA runtime include directories via the
+    bindings anchor (set by xilinx::register from the loaded
+    tapa_core extension's __file__) even when the process cwd is
+    outside the repo checkout root.
+    """
+    import tempfile
+
+    from tapa.common.paths import get_tapa_cflags as py_get_tapa_cflags
+
+    prior = os.getcwd()
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            os.chdir(td)
+            rust_flags = list(xilinx_mod.get_cflags("tapa"))
+            py_flags = list(py_get_tapa_cflags())
+    finally:
+        os.chdir(prior)
+    assert rust_flags == py_flags, (
+        f"full cflags diverged from tempdir cwd:\n  py   = {py_flags}\n"
+        f"  rust = {rust_flags}"
+    )
+
+
+def test_parity_xilinx_cflags_tail(xilinx_mod: Any) -> None:
+    """Rust and Python CFLAGS tails match (suppression + builtin-define block).
+
+    Compares the trailing slice of Rust's `get_cflags("tapa")` against
+    Python's `get_tapa_cflags()` tail. The leading `-isystem` entries
+    come from `find_resource()` discovery and vary across host layouts,
+    so only the deterministic tail is asserted.
+    """
+    from tapa.common.paths import get_tapa_cflags as py_get_tapa_cflags
+
+    py_flags = list(py_get_tapa_cflags())
+    rust_flags = list(xilinx_mod.get_cflags("tapa"))
+
+    py_suppressions = [f for f in py_flags if not f.startswith("-isystem")]
+    rust_suppressions = [f for f in rust_flags if not f.startswith("-isystem")]
+    assert py_suppressions == rust_suppressions, (
+        f"non-include flags diverged:\n  py   = {py_suppressions}\n"
+        f"  rust = {rust_suppressions}"
+    )
+
+
+def _py_parse_csynth(fixture: Path) -> dict[str, str]:
+    """Reference csynth.xml parser using Python's xml.etree.
+
+    Mirrors the handful of fields `tapa_xilinx::parse_csynth_xml` emits
+    so we can assert cross-language equality against the same source.
+    """
+    from xml.etree import ElementTree as ET
+
+    tree = ET.parse(fixture)
+    root = tree.getroot()
+    out: dict[str, str] = {}
+    mapping = {
+        "top": ("TopModelName", "TopModuleName"),
+        "part": ("Part",),
+        "target_clock_period_ns": ("TargetClockPeriod", "CTargetClockPeriod"),
+        "estimated_clock_period_ns": ("EstimatedClockPeriod",),
+    }
+    for key, candidates in mapping.items():
+        for tag in candidates:
+            match = root.find(f".//{tag}")
+            if match is not None and match.text:
+                out[key] = match.text.strip()
+                break
+    return out
+
+
+def test_parity_xilinx_csynth_report(xilinx_mod: Any) -> None:
+    """Rust vs Python csynth.xml parse on the same fixture.
+
+    Field-for-field comparison against a Python xml.etree reference.
+    """
+    fixture = _XILINX_TESTDATA / "sample.csynth.xml"
+    if not fixture.is_file():
+        pytest.skip(f"missing fixture {fixture}")
+    rust_payload = json.loads(xilinx_mod.parse_csynth_xml(fixture.read_bytes()))
+    py_payload = _py_parse_csynth(fixture)
+    for key, value in py_payload.items():
+        assert rust_payload.get(key) == value, (
+            f"csynth field {key}: py={value!r} rust={rust_payload.get(key)!r}"
+        )
+
+
+def _py_parse_utilization(text: str) -> dict[str, Any]:
+    """Reference utilization.rpt walker in Python.
+
+    Simplified port of `tapa/backend/report/xilinx/rtl/parser.py`: one
+    root instance, hierarchical children by leading-indent depth.
+    """
+    device = ""
+    schema: list[str] = []
+    state = "prolog"
+    root: dict[str, Any] | None = None
+    stack: list[tuple[int, dict[str, Any]]] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        words = stripped.split()
+        if len(words) == 4 and words[:3] == ["|", "Device", ":"]:  # noqa: PLR2004
+            device = words[3]
+            continue
+        if stripped and all(c in "+-" for c in stripped):
+            state = {"prolog": "header", "header": "body", "body": "done"}.get(
+                state, state
+            )
+            if state == "done":
+                break
+            continue
+        if not stripped:
+            continue
+        inner = stripped.strip("|")
+        parts = inner.split("|")
+        inst_raw = parts[0]
+        cols = [c.strip() for c in parts[1:]]
+        if state == "header":
+            schema = [c.strip() for c in cols]
+            continue
+        if state == "body":
+            depth = (len(inst_raw) - len(inst_raw.lstrip(" "))) // 2
+            instance = inst_raw.strip()
+            node: dict[str, Any] = {
+                "device": device,
+                "instance": instance,
+                "metrics": dict(zip(schema, cols, strict=False)),
+                "children": [],
+            }
+            while stack and stack[-1][0] >= depth:
+                stack.pop()
+            if stack:
+                stack[-1][1]["children"].append(node)
+            else:
+                root = node
+            stack.append((depth, node))
+    assert root is not None
+    return root
+
+
+def test_parity_xilinx_utilization(xilinx_mod: Any) -> None:
+    """Rust vs Python utilization.rpt walker on the same fixture.
+
+    Hierarchical, metric-exact equality.
+    """
+    fixture = _XILINX_TESTDATA / "sample.utilization.rpt"
+    if not fixture.is_file():
+        pytest.skip(f"missing fixture {fixture}")
+    text = fixture.read_text(encoding="utf-8")
+    rust_payload = json.loads(xilinx_mod.parse_utilization_rpt(text))
+    py_payload = _py_parse_utilization(text)
+    assert rust_payload["device"] == py_payload["device"]
+    assert rust_payload["instance"] == py_payload["instance"]
+    assert rust_payload["metrics"] == py_payload["metrics"]
+    assert len(rust_payload["children"]) == len(py_payload["children"])
+    for r_child, p_child in zip(
+        rust_payload["children"], py_payload["children"], strict=False
+    ):
+        assert r_child["instance"] == p_child["instance"]
+        assert r_child["metrics"] == p_child["metrics"]
+
+
+def test_parity_xilinx_kernel_xml_direct(xilinx_mod: Any) -> None:
+    """Direct Rust-vs-Python kernel.xml parity on the same arg list.
+
+    Emits the MMAP + scalar argument set via both
+    `tapa.backend.kernel_metadata.print_kernel_xml` and the Rust
+    `tapa_core.xilinx.emit_kernel_xml`, then compares the
+    whitespace-canonical token streams. Does not depend on the
+    committed golden file.
+    """
+    try:
+        from tapa.backend.kernel_metadata import Arg, Cat, print_kernel_xml
+    except ImportError as exc:  # pragma: no cover
+        pytest.skip(f"python kernel_metadata not importable: {exc}")
+
+    import io
+
+    args = [
+        Arg(cat=Cat.MMAP, name="a", port="", ctype="int*", width=512),
+        Arg(cat=Cat.SCALAR, name="n", port="", ctype="int", width=32),
+    ]
+    buf = io.StringIO()
+    print_kernel_xml("vadd", args, buf)
+    py_xml = buf.getvalue()
+
+    rust_payload = {
+        "top_name": "vadd",
+        "clock_period": "3.33",
+        "ports": [
+            {
+                "name": "a",
+                "category": "MAxi",
+                "width": 512,
+                "port": "",
+                "ctype": "int*",
+            },
+            {
+                "name": "n",
+                "category": "Scalar",
+                "width": 32,
+                "port": "",
+                "ctype": "int",
+            },
+        ],
+    }
+    rust_xml = xilinx_mod.emit_kernel_xml(json.dumps(rust_payload))
+
+    py_tokens = " ".join(py_xml.split())
+    rust_tokens = " ".join(rust_xml.split())
+    assert py_tokens == rust_tokens, (
+        f"kernel.xml parity failed:\n  py   = {py_tokens}\n  rust = {rust_tokens}"
+    )
+
+
+def test_parity_xilinx_kernel_xml_round_trip() -> None:
+    """Python print_kernel_xml output matches the committed golden.
+
+    Ensures the golden file Rust emits against stays in sync with the
+    Python template.
+    """
+    golden = _XILINX_TESTDATA / "kernel_xml.golden.xml"
+    if not golden.is_file():
+        pytest.skip(f"missing golden {golden}")
+    try:
+        from tapa.backend.kernel_metadata import Arg, Cat, print_kernel_xml
+    except ImportError as exc:  # pragma: no cover - import surface varies
+        pytest.skip(f"python kernel_metadata not importable: {exc}")
+
+    import io
+
+    args = [
+        Arg(cat=Cat.MMAP, name="a", port="", ctype="int*", width=512),
+        Arg(cat=Cat.SCALAR, name="n", port="", ctype="int", width=32),
+    ]
+    buf = io.StringIO()
+    print_kernel_xml("vadd", args, buf)
+    py_xml = buf.getvalue().strip()
+    # Strip whitespace differences for canonical comparison.
+    golden_text = golden.read_text(encoding="utf-8").strip()
+    py_tokens = " ".join(py_xml.split())
+    golden_tokens = " ".join(golden_text.split())
+    assert py_tokens == golden_tokens, (
+        "Python kernel.xml drifted from committed golden — regenerate or "
+        "update the fixture before changing emit_kernel_xml."
+    )

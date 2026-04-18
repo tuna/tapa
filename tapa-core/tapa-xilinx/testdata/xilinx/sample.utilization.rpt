@@ -1,0 +1,8 @@
+Hierarchical Utilization Report
+| Device : xcu250
++----------+-------+------+
+| Instance | LUT   | REG  |
++----------+-------+------+
+| top      | 100   | 200  |
+|   sub    | 30    | 40   |
++----------+-------+------+

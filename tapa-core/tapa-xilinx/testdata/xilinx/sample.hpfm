@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xd:platform xmlns:xd="http://www.xilinx.com/xd">
+  <xd:component>
+    <xd:platformInfo>
+      <xd:deviceInfo xd:name="xcu250-figd2104-2L-e"/>
+      <xd:systemClocks>
+        <xd:clock xd:id="0" xd:period="3.333"/>
+      </xd:systemClocks>
+    </xd:platformInfo>
+  </xd:component>
+</xd:platform>

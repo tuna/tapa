@@ -1,0 +1,423 @@
+//! Vitis HLS orchestration.
+//!
+//! Ports `tapa/backend/xilinx_hls.py::RunHls`, `tapa/program/hls.py`,
+//! and `tapa/program/hls_runner.py`: TCL emission, invocation via a
+//! `ToolRunner`, report parsing, and a bounded retry wrapper keyed on
+//! transient-failure substrings lifted verbatim from the Python set.
+
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use crate::error::{Result, XilinxError};
+use crate::runtime::process::{ToolInvocation, ToolOutput, ToolRunner};
+use crate::tools::hls::report::{parse_csynth_xml, CsynthReport};
+
+pub mod report;
+
+/// Substrings the default transient predicate keys off.
+///
+/// Kept for fixture-driven tests and custom predicates. The real
+/// production predicate (`is_transient_hls_output`) matches Python's
+/// logic in `tapa/program/hls.py`: stdout contains `Pre-synthesis
+/// failed.` without a subsequent `\nERROR:` line.
+pub const DEFAULT_TRANSIENT_HLS_PATTERNS: &[&str] = &[
+    "Pre-synthesis failed.",
+    "TCP connection closed",
+    "License checkout failed",
+    "Connection reset by peer",
+    "No license available",
+    "FLEXnet Licensing error",
+];
+
+/// Production retry predicate ported verbatim from
+/// `tapa/program/hls.py::_run_hls_task`: a Vitis HLS invocation is
+/// considered transient iff its stdout contains `Pre-synthesis
+/// failed.` and does **not** contain `\nERROR:`.
+#[must_use]
+pub fn is_transient_hls_output(stdout: &str, _stderr: &str) -> bool {
+    stdout.contains("Pre-synthesis failed.") && !stdout.contains("\nERROR:")
+}
+
+#[derive(Debug, Clone)]
+pub struct HlsJob {
+    pub task_name: String,
+    pub cpp_source: PathBuf,
+    pub cflags: Vec<String>,
+    pub target_part: String,
+    pub top_name: String,
+    pub clock_period: String,
+    pub reports_out_dir: PathBuf,
+    pub hdl_out_dir: PathBuf,
+    /// Additional files the runner needs to stage up (remote tar-pipe
+    /// uploads).
+    pub uploads: Vec<PathBuf>,
+    /// Files the runner must stage down after the tool exits.
+    pub downloads: Vec<PathBuf>,
+    /// Optional HLS `other_configs` TCL fragment. Appended verbatim.
+    pub other_configs: String,
+    /// Solution name; defaults to the task name when empty.
+    pub solution_name: String,
+    /// Reset level for `config_rtl` (ports Python's `reset_low` toggle
+    /// in `_build_rtl_config`); defaults to `low` to match the Python
+    /// `RunHls` default.
+    pub reset_low: bool,
+    /// Enable `-module_auto_prefix` on the `config_rtl` line. Defaults
+    /// to `true`, matching `HlsConfig(auto_prefix=True)` in Python.
+    pub auto_prefix: bool,
+    /// Optional override. When `None`, the production
+    /// `is_transient_hls_output` predicate is used.
+    pub transient_patterns: Option<Arc<Vec<String>>>,
+}
+
+impl Default for HlsJob {
+    fn default() -> Self {
+        Self {
+            task_name: String::new(),
+            cpp_source: PathBuf::new(),
+            cflags: Vec::new(),
+            target_part: String::new(),
+            top_name: String::new(),
+            clock_period: String::new(),
+            reports_out_dir: PathBuf::new(),
+            hdl_out_dir: PathBuf::new(),
+            uploads: Vec::new(),
+            downloads: Vec::new(),
+            other_configs: String::new(),
+            solution_name: String::new(),
+            reset_low: true,
+            auto_prefix: true,
+            transient_patterns: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct HlsOutput {
+    pub csynth: CsynthReport,
+    pub verilog_files: Vec<PathBuf>,
+    pub report_paths: Vec<PathBuf>,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+/// Build the Vitis HLS TCL script for the given job.
+///
+/// Ports the `HLS_COMMANDS` template in
+/// `tapa/backend/xilinx_hls.py`: `open_project` → `set_top` →
+/// `add_files` → `open_solution` → `set_part` → `create_clock` →
+/// `config_compile` → `config_interface` → `{config}` →
+/// `{other_configs}` → `config_rtl` → `csynth_design` → `exit`.
+/// Port of `tapa/backend/xilinx_hls.py::_build_rtl_config`.
+fn build_rtl_config(reset_low: bool, auto_prefix: bool) -> String {
+    let mut line = format!(
+        "config_rtl -reset_level {}",
+        if reset_low { "low" } else { "high" }
+    );
+    if auto_prefix {
+        // Python matches on `hls == "vitis_hls"` → `-module_auto_prefix`.
+        line.push_str(" -module_auto_prefix");
+    }
+    line
+}
+
+#[must_use]
+pub fn build_hls_tcl(job: &HlsJob) -> String {
+    let cflags = job.cflags.join(" ");
+    let solution = if job.solution_name.is_empty() {
+        job.top_name.as_str()
+    } else {
+        job.solution_name.as_str()
+    };
+    let other_configs = if job.other_configs.is_empty() {
+        String::new()
+    } else {
+        format!("{}\n", job.other_configs)
+    };
+    let rtl_config = build_rtl_config(job.reset_low, job.auto_prefix);
+    format!(
+        "cd [pwd]\n\
+         open_project \"project\"\n\
+         set_top {top}\n\
+         add_files \"{src}\" -cflags \"{cflags}\"\n\
+         open_solution \"{solution}\"\n\
+         set_part {{{part}}}\n\
+         create_clock -period {clock} -name default\n\
+         config_compile -name_max_length 253\n\
+         config_interface -m_axi_addr64\n\
+         {other}\
+         set_param hls.enable_hidden_option_error false\n\
+         {rtl}\n\
+         config_rtl -enableFreeRunPipeline=false\n\
+         config_rtl -disableAutoFreeRunPipeline=true\n\
+         csynth_design\n\
+         exit\n",
+        top = job.top_name,
+        src = job.cpp_source.display(),
+        cflags = cflags.trim(),
+        solution = solution,
+        part = job.target_part,
+        clock = job.clock_period,
+        other = other_configs,
+        rtl = rtl_config,
+    )
+}
+
+fn is_transient(job: &HlsJob, stdout: &str, stderr: &str) -> bool {
+    match job.transient_patterns.as_deref() {
+        Some(v) => v
+            .iter()
+            .any(|p| stdout.contains(p.as_str()) || stderr.contains(p.as_str())),
+        None => is_transient_hls_output(stdout, stderr),
+    }
+}
+
+/// One Vitis HLS invocation — raw ToolOutput form. Used by
+/// `run_hls_with_retry` so stdout and stderr stay separate for the
+/// Python-equivalent retry predicate.
+pub fn run_hls_raw(runner: &dyn ToolRunner, job: &HlsJob) -> Result<ToolOutput> {
+    let tcl = build_hls_tcl(job);
+    let tmp = tempfile::NamedTempFile::new()?;
+    std::fs::write(tmp.path(), tcl.as_bytes())?;
+    let mut inv = ToolInvocation::new("vitis_hls")
+        .arg("-f")
+        .arg(tmp.path().display().to_string());
+    inv.uploads.push(tmp.path().to_path_buf());
+    inv.uploads.push(job.cpp_source.clone());
+    inv.uploads.extend(job.uploads.iter().cloned());
+    inv.downloads.push(job.reports_out_dir.clone());
+    inv.downloads.push(job.hdl_out_dir.clone());
+    inv.downloads.extend(job.downloads.iter().cloned());
+    runner.run(&inv)
+}
+
+/// One Vitis HLS invocation. Returns the parsed report + HDL output
+/// on success and a typed `XilinxError::ToolFailure` on non-zero
+/// exit.
+pub fn run_hls(runner: &dyn ToolRunner, job: &HlsJob) -> Result<HlsOutput> {
+    let out = run_hls_raw(runner, job)?;
+    if out.exit_code != 0 {
+        return Err(XilinxError::ToolFailure {
+            program: "vitis_hls".into(),
+            code: out.exit_code,
+            stderr: out.stderr,
+        });
+    }
+
+    let report_xml = job
+        .reports_out_dir
+        .join(format!("{}.csynth.xml", job.top_name));
+    let bytes = std::fs::read(&report_xml).map_err(|_| {
+        XilinxError::HlsReportParse(format!(
+            "missing csynth.xml at {}",
+            report_xml.display()
+        ))
+    })?;
+    let csynth = parse_csynth_xml(&bytes)?;
+
+    let verilog_files = collect_files(&job.hdl_out_dir)?;
+    if verilog_files.is_empty() {
+        return Err(XilinxError::ToolFailure {
+            program: "vitis_hls".into(),
+            code: 0,
+            stderr: format!(
+                "no HDL output produced in {}",
+                job.hdl_out_dir.display()
+            ),
+        });
+    }
+    let report_paths = collect_files(&job.reports_out_dir)?;
+    Ok(HlsOutput {
+        csynth,
+        verilog_files,
+        report_paths,
+        stdout: out.stdout,
+        stderr: out.stderr,
+    })
+}
+
+fn collect_files(dir: &std::path::Path) -> Result<Vec<PathBuf>> {
+    if !dir.exists() {
+        return Ok(Vec::new());
+    }
+    let mut out = Vec::new();
+    for ent in std::fs::read_dir(dir)? {
+        let ent = ent?;
+        if ent.file_type()?.is_file() {
+            out.push(ent.path());
+        }
+    }
+    out.sort();
+    Ok(out)
+}
+
+fn finalize_success(job: &HlsJob, out: ToolOutput) -> Result<HlsOutput> {
+    let report_xml = job
+        .reports_out_dir
+        .join(format!("{}.csynth.xml", job.top_name));
+    let bytes = std::fs::read(&report_xml).map_err(|_| {
+        XilinxError::HlsReportParse(format!(
+            "missing csynth.xml at {}",
+            report_xml.display()
+        ))
+    })?;
+    let csynth = parse_csynth_xml(&bytes)?;
+    let verilog_files = collect_files(&job.hdl_out_dir)?;
+    if verilog_files.is_empty() {
+        return Err(XilinxError::ToolFailure {
+            program: "vitis_hls".into(),
+            code: 0,
+            stderr: format!(
+                "no HDL output produced in {}",
+                job.hdl_out_dir.display()
+            ),
+        });
+    }
+    let report_paths = collect_files(&job.reports_out_dir)?;
+    Ok(HlsOutput {
+        csynth,
+        verilog_files,
+        report_paths,
+        stdout: out.stdout,
+        stderr: out.stderr,
+    })
+}
+
+/// Bounded retry wrapper keyed on the transient-failure predicate. The
+/// default budget is 3 attempts; callers can override per job via
+/// `transient_patterns`.
+pub fn run_hls_with_retry(
+    runner: &dyn ToolRunner,
+    job: &HlsJob,
+    max_attempts: u32,
+) -> Result<HlsOutput> {
+    let max_attempts = max_attempts.max(1);
+    for _ in 0..max_attempts {
+        let out = run_hls_raw(runner, job)?;
+        if out.exit_code == 0 {
+            return finalize_success(job, out);
+        }
+        // Python keys the retry decision off stdout alone; stderr is
+        // preserved but intentionally ignored by the default predicate.
+        let transient = is_transient(job, &out.stdout, &out.stderr);
+        if !transient {
+            return Err(XilinxError::ToolFailure {
+                program: "vitis_hls".into(),
+                code: out.exit_code,
+                stderr: out.stderr,
+            });
+        }
+    }
+    Err(XilinxError::HlsRetryExhausted {
+        attempts: max_attempts,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::runtime::process::{MockToolRunner, ToolOutput};
+
+    fn fixture_job(tmp: &std::path::Path) -> HlsJob {
+        HlsJob {
+            task_name: "k".into(),
+            cpp_source: tmp.join("k.cpp"),
+            cflags: vec!["-I/tmp/inc".into()],
+            target_part: "xcu250-figd2104-2L-e".into(),
+            top_name: "k".into(),
+            clock_period: "3.33".into(),
+            reports_out_dir: tmp.join("report"),
+            hdl_out_dir: tmp.join("hdl"),
+            ..HlsJob::default()
+        }
+    }
+
+    #[test]
+    fn tcl_contains_ported_steps() {
+        let job = fixture_job(std::path::Path::new("/tmp"));
+        let tcl = build_hls_tcl(&job);
+        for step in [
+            "open_project \"project\"",
+            "set_top k",
+            "open_solution \"k\"",
+            "create_clock -period 3.33",
+            "config_compile -name_max_length 253",
+            "config_interface -m_axi_addr64",
+            "config_rtl -reset_level low -module_auto_prefix",
+            "csynth_design",
+        ] {
+            assert!(tcl.contains(step), "missing TCL step: {step}\nfull:\n{tcl}");
+        }
+    }
+
+    #[test]
+    fn stderr_only_error_still_retries_when_stdout_transient() {
+        // Reproduces Python: stderr-only "\nERROR:" does not cancel
+        // the retry when stdout contains `Pre-synthesis failed.`.
+        let tmp = tempfile::tempdir().unwrap();
+        let job = fixture_job(tmp.path());
+        let runner = MockToolRunner::new();
+        for _ in 0..3 {
+            runner.push_ok(
+                "vitis_hls",
+                ToolOutput {
+                    exit_code: 1,
+                    stdout: "Pre-synthesis failed.".into(),
+                    stderr: "\nERROR: spurious stderr line".into(),
+                },
+            );
+        }
+        let err = run_hls_with_retry(&runner, &job, 3).unwrap_err();
+        assert!(
+            matches!(err, XilinxError::HlsRetryExhausted { attempts: 3 }),
+            "expected retry budget to be exhausted, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn production_transient_predicate_matches_python() {
+        assert!(is_transient_hls_output("Pre-synthesis failed.\n", ""));
+        // Plain failure with ERROR: is not transient — matches Python's
+        // `b"\nERROR:" not in stdout` guard.
+        assert!(!is_transient_hls_output(
+            "Pre-synthesis failed.\nERROR: bad\n",
+            ""
+        ));
+        assert!(!is_transient_hls_output("just a regular failure", ""));
+    }
+
+    #[test]
+    fn retry_exhaustion_yields_typed_error() {
+        let tmp = tempfile::tempdir().unwrap();
+        let job = fixture_job(tmp.path());
+        let runner = MockToolRunner::new();
+        for _ in 0..3 {
+            runner.push_ok(
+                "vitis_hls",
+                ToolOutput {
+                    exit_code: 1,
+                    stdout: "Pre-synthesis failed.".into(),
+                    stderr: String::new(),
+                },
+            );
+        }
+        let err = run_hls_with_retry(&runner, &job, 3).unwrap_err();
+        assert!(matches!(err, XilinxError::HlsRetryExhausted { attempts: 3 }));
+    }
+
+    #[test]
+    fn non_transient_failure_short_circuits() {
+        let tmp = tempfile::tempdir().unwrap();
+        let job = fixture_job(tmp.path());
+        let runner = MockToolRunner::new();
+        runner.push_ok(
+            "vitis_hls",
+            ToolOutput {
+                exit_code: 2,
+                stdout: String::new(),
+                stderr: "Syntax error at line 42".into(),
+            },
+        );
+        let err = run_hls_with_retry(&runner, &job, 3).unwrap_err();
+        assert!(matches!(err, XilinxError::ToolFailure { code: 2, .. }));
+    }
+}

@@ -6,6 +6,8 @@
 
 use pyo3::prelude::*;
 
+mod xilinx;
+
 /// Convert a `serde_json::Value` to a Python object via Python's json module.
 fn json_value_to_py(py: Python<'_>, val: &serde_json::Value) -> PyResult<PyObject> {
     let json_str =
@@ -785,6 +787,7 @@ fn tapa_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     floorplan_mod::register(m)?;
     lowering_mod::register(m)?;
     graphir_export_mod::register(m)?;
+    xilinx::register(m)?;
 
     // Register submodules in sys.modules for dotted imports.
     for name in [
@@ -798,6 +801,7 @@ fn tapa_core(m: &Bound<'_, PyModule>) -> PyResult<()> {
         "floorplan",
         "lowering",
         "graphir_export",
+        "xilinx",
     ] {
         register_submodule(m, name)?;
     }
