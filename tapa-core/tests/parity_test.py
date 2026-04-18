@@ -1522,7 +1522,7 @@ def test_parity_xilinx_device_info(xilinx_mod: Any) -> None:
 
 
 def test_parity_xilinx_cflags_full_vector_from_tempdir(xilinx_mod: Any) -> None:
-    """AC-2 regression: full CFLAGS parity from an out-of-repo cwd.
+    """Full CFLAGS parity from an out-of-repo cwd.
 
     Rust must resolve TAPA runtime include directories via the
     bindings anchor (set by xilinx::register from the loaded

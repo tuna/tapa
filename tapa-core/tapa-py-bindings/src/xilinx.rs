@@ -13,7 +13,12 @@
 //!
 //! - `run_hls_task(job_json) -> str` — per-task HLS invocation with
 //!   retries.
-//! - `pack_xo(inputs_json) -> str` — Vivado-backed `.xo` assembly.
+//! - `pack_xo(inputs_json) -> str` — `.xo` reproducibility pass.
+//!   Currently runs the `redact_xo` normalization over an existing
+//!   archive (timestamps + report/XML payload redactions). The full
+//!   Vivado-backed `package_xo` TCL composition is tracked
+//!   separately and will land here without changing the Python
+//!   call surface.
 //! - `parse_device_info(path, overrides_json) -> str` — device info
 //!   lookup.
 //! - `get_cflags(kind) -> list[str]` — dispatcher on `"tapacc"` /
@@ -36,8 +41,8 @@
 //! - `_debug_search_roots() -> list[str]` — underscore-prefixed
 //!   diagnostic helper that reports `runtime::paths::search_roots()`.
 //!   Kept public to accelerate regression triage for
-//!   `TAPA_XILINX_BINDINGS_DIR`-anchored discovery (AC-2). Not part
-//!   of the stable surface; callers must not depend on it.
+//!   `TAPA_XILINX_BINDINGS_DIR`-anchored discovery. Not part of the
+//!   stable surface; callers must not depend on it.
 //!
 //! Error mapping: every `XilinxError` variant surfaces as
 //! `PyValueError` with the error's `Display` string. SSH / remote
@@ -54,9 +59,12 @@ use serde::Deserialize;
 
 use tapa_xilinx::{
     emit_kernel_xml, get_remote_hls_cflags, get_tapa_cflags, get_tapacc_cflags,
-    parse_csynth_xml, parse_device_info, parse_utilization_rpt, redact_xo,
-    run_hls_with_retry, HlsJob, KernelXmlArgs, LocalToolRunner, XilinxError,
+    pack_xo as pack_xo_core, parse_csynth_xml, parse_device_info, parse_utilization_rpt,
+    redact_xo, run_hls_with_retry, sync_remote_vendor_includes, DeviceInfo, HlsJob,
+    KernelXmlArgs, LocalToolRunner, PackageXoInputs, RemoteConfig, SshMuxOptions, SshSession,
+    XilinxError,
 };
+use std::sync::Arc;
 
 /// Populate `TAPA_XILINX_BINDINGS_DIR` from the loaded `tapa_core`
 /// module's `__file__`. Called lazily at the top of every wrapper so
@@ -103,48 +111,50 @@ fn to_py_err(e: &XilinxError) -> PyErr {
     PyValueError::new_err(msg)
 }
 
-/// JSON adapter struct mirroring `tapa_xilinx::HlsJob`. Python passes
-/// a JSON payload; absent fields use `HlsJob::default()`.
+const fn default_true() -> bool {
+    true
+}
+
+const fn default_max_attempts() -> u32 {
+    3
+}
+
+/// JSON adapter struct mirroring `tapa_xilinx::HlsJob`.
+///
+/// Required fields (no default): `task_name`, `cpp_source`,
+/// `target_part`, `top_name`, `clock_period`, `reports_out_dir`,
+/// `hdl_out_dir`. Missing required fields fail JSON-parse with a
+/// schema error before the tool is invoked.
+///
+/// Optional knobs: `cflags`, `uploads`, `downloads`, `other_configs`,
+/// `solution_name`, `reset_low` (default `true`), `auto_prefix`
+/// (default `true`), `max_attempts` (default `3`).
 #[derive(Debug, Deserialize)]
-#[serde(default)]
+#[serde(deny_unknown_fields)]
 struct HlsJobJson {
     task_name: String,
     cpp_source: PathBuf,
+    #[serde(default)]
     cflags: Vec<String>,
     target_part: String,
     top_name: String,
     clock_period: String,
     reports_out_dir: PathBuf,
     hdl_out_dir: PathBuf,
+    #[serde(default)]
     uploads: Vec<PathBuf>,
+    #[serde(default)]
     downloads: Vec<PathBuf>,
+    #[serde(default)]
     other_configs: String,
+    #[serde(default)]
     solution_name: String,
+    #[serde(default = "default_true")]
     reset_low: bool,
+    #[serde(default = "default_true")]
     auto_prefix: bool,
+    #[serde(default = "default_max_attempts")]
     max_attempts: u32,
-}
-
-impl Default for HlsJobJson {
-    fn default() -> Self {
-        Self {
-            task_name: String::new(),
-            cpp_source: PathBuf::new(),
-            cflags: Vec::new(),
-            target_part: String::new(),
-            top_name: String::new(),
-            clock_period: String::new(),
-            reports_out_dir: PathBuf::new(),
-            hdl_out_dir: PathBuf::new(),
-            uploads: Vec::new(),
-            downloads: Vec::new(),
-            other_configs: String::new(),
-            solution_name: String::new(),
-            reset_low: true,
-            auto_prefix: true,
-            max_attempts: 3,
-        }
-    }
 }
 
 impl From<HlsJobJson> for HlsJob {
@@ -196,22 +206,45 @@ fn run_hls_task(py: Python<'_>, job_json: &str) -> PyResult<String> {
     serde_json::to_string(&payload).map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
-/// JSON adapter for the `.xo` packaging path. Currently runs the
-/// `redact_xo` pass only — Vivado-backed `package_xo` TCL assembly
-/// is tracked separately. Passing an existing `.xo` path is the
-/// expected use case; the Vivado orchestration will join up with this
-/// entry point once it lands.
+/// JSON adapter for `.xo` packaging.
+///
+/// Two modes — the binding dispatches on the presence of `hdl_dir`:
+///
+/// 1. **Full pack mode** (`hdl_dir` present): drives
+///    `tapa_xilinx::pack_xo` via `LocalToolRunner`. Emits `kernel.xml`,
+///    formats the `package_xo` TCL, invokes Vivado, asserts the `.xo`
+///    landed, then redacts. Requires `top_name`, `part_num`,
+///    `clock_period`, `kernel_xml`.
+///
+/// 2. **Redact-only mode** (no `hdl_dir`): expects `kernel_out_path`
+///    to point at an already-built `.xo` and runs the redaction pass
+///    over it. Preserves the R8/R9 smoke contract for callers that
+///    still produce `.xo` via the Python backend.
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct PackXoInputs {
     kernel_out_path: String,
-    /// When true (the default), run the redaction pass. Set to
-    /// false if the caller redacts separately.
+    /// When true (the default), run the redaction pass. Ignored in
+    /// full pack mode — redaction always runs there.
     #[serde(default = "default_true")]
     redact: bool,
-}
-
-const fn default_true() -> bool {
-    true
+    /// If present, enter full pack mode and drive Vivado.
+    #[serde(default)]
+    hdl_dir: Option<PathBuf>,
+    #[serde(default)]
+    top_name: Option<String>,
+    #[serde(default)]
+    part_num: Option<String>,
+    #[serde(default)]
+    clock_period: Option<String>,
+    #[serde(default)]
+    kernel_xml: Option<KernelXmlArgs>,
+    #[serde(default)]
+    cpp_kernels: Vec<PathBuf>,
+    #[serde(default)]
+    m_axi_params: Vec<(String, Vec<(String, String)>)>,
+    #[serde(default)]
+    s_axi_ifaces: Vec<String>,
 }
 
 #[pyfunction]
@@ -220,6 +253,50 @@ fn pack_xo(py: Python<'_>, inputs_json: &str) -> PyResult<String> {
     let inputs: PackXoInputs = serde_json::from_str(inputs_json)
         .map_err(|e| PyValueError::new_err(format!("pack_xo: invalid inputs JSON: {e}")))?;
     let path = PathBuf::from(&inputs.kernel_out_path);
+
+    if let Some(hdl_dir) = inputs.hdl_dir {
+        let top_name = inputs.top_name.ok_or_else(|| {
+            PyValueError::new_err("pack_xo: full mode requires `top_name`")
+        })?;
+        let part_num = inputs.part_num.ok_or_else(|| {
+            PyValueError::new_err("pack_xo: full mode requires `part_num`")
+        })?;
+        let clock_period = inputs.clock_period.ok_or_else(|| {
+            PyValueError::new_err("pack_xo: full mode requires `clock_period`")
+        })?;
+        let kernel_xml = inputs.kernel_xml.ok_or_else(|| {
+            PyValueError::new_err("pack_xo: full mode requires `kernel_xml`")
+        })?;
+        let s_axi_ifaces = if inputs.s_axi_ifaces.is_empty() {
+            PackageXoInputs::default_s_axi()
+        } else {
+            inputs.s_axi_ifaces
+        };
+        let core = PackageXoInputs {
+            top_name,
+            hdl_dir,
+            device_info: DeviceInfo {
+                part_num,
+                clock_period: clock_period.clone(),
+            },
+            clock_period,
+            kernel_xml,
+            kernel_out_path: path,
+            cpp_kernels: inputs.cpp_kernels,
+            m_axi_params: inputs.m_axi_params,
+            s_axi_ifaces,
+        };
+        let runner = LocalToolRunner::new();
+        let out = pack_xo_core(&runner, &core).map_err(|e| to_py_err(&e))?;
+        let payload = serde_json::json!({
+            "kernel_out_path": out.display().to_string(),
+            "redacted": true,
+            "mode": "full",
+        });
+        return serde_json::to_string(&payload)
+            .map_err(|e| PyValueError::new_err(e.to_string()));
+    }
+
     if !path.exists() {
         return Err(PyValueError::new_err(format!(
             "pack_xo: kernel_out_path does not exist: {}",
@@ -232,6 +309,7 @@ fn pack_xo(py: Python<'_>, inputs_json: &str) -> PyResult<String> {
     let payload = serde_json::json!({
         "kernel_out_path": inputs.kernel_out_path,
         "redacted": inputs.redact,
+        "mode": "redact_only",
     });
     serde_json::to_string(&payload).map_err(|e| PyValueError::new_err(e.to_string()))
 }
@@ -314,10 +392,16 @@ fn parse_utilization_rpt_py(text: &str) -> PyResult<String> {
 }
 
 #[pyfunction]
-fn sync_vendor_includes(_config_json: &str) -> PyResult<String> {
-    Err(PyValueError::new_err(
-        "[ssh] sync_vendor_includes: remote vendor-header sync not yet implemented",
-    ))
+fn sync_vendor_includes(py: Python<'_>, config_json: &str) -> PyResult<String> {
+    ensure_bindings_dir(py);
+    let cfg: RemoteConfig = serde_json::from_str(config_json)
+        .map_err(|e| PyValueError::new_err(format!("sync_vendor_includes: invalid config JSON: {e}")))?;
+    let session = Arc::new(SshSession::new(cfg, SshMuxOptions::default()));
+    let cache = sync_remote_vendor_includes(session.as_ref()).map_err(|e| to_py_err(&e))?;
+    let payload = serde_json::json!({
+        "cache_dir": cache.display().to_string(),
+    });
+    serde_json::to_string(&payload).map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
 pub fn register(parent: &Bound<'_, PyModule>) -> PyResult<()> {

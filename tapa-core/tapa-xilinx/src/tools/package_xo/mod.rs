@@ -7,42 +7,246 @@
 //! build lands alongside `run_vivado`.
 
 use std::io::{Read, Seek, SeekFrom, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use zip::write::SimpleFileOptions;
 
 use crate::error::{Result, XilinxError};
 use crate::platform::device::DeviceInfo;
-use crate::platform::kernel_xml::{emit_kernel_xml, KernelXmlArgs};
+use crate::platform::kernel_xml::{emit_kernel_xml, KernelXmlArgs, KernelXmlPort, PortCategory};
 use crate::runtime::process::ToolRunner;
+use crate::tools::vivado::{run_vivado, VivadoJob};
+
+const S_AXI_NAME: &str = "s_axi_control";
+const M_AXI_PREFIX: &str = "m_axi_";
+
+/// Ports `tapa/backend/xilinx_tools.py::PACKAGEXO_COMMANDS` byte-for-byte.
+///
+/// `{top_name}`, `{bus_ifaces}`, `{cpp_kernels}`, `{part_num}` placeholders
+/// are substituted by `format_package_xo_tcl`. All other braces are escaped
+/// (`{{`/`}}`) so the Python `.format` semantics carry over cleanly.
+const PACKAGE_XO_TCL: &str = r#"
+# Paths passed via tclargs for remote execution path rewriting:
+# argv[0] = tmpdir, argv[1] = hdl_dir, argv[2] = xo_file, argv[3] = kernel_xml
+set tmpdir [lindex $argv 0]
+set hdl_dir [lindex $argv 1]
+set xo_file [lindex $argv 2]
+set kernel_xml_path [lindex $argv 3]
+set tmp_ip_dir "$tmpdir/tmp_ip_dir"
+set tmp_project "$tmpdir/tmp_project"
+
+create_project -force kernel_pack ${tmp_project}{part_num}
+add_files [glob -nocomplain $hdl_dir/* $hdl_dir/*/* $hdl_dir/*/*/* \
+        $hdl_dir/*/*/*/* $hdl_dir/*/*/*/*/*]
+foreach tcl_file [glob -nocomplain $hdl_dir/*.tcl $hdl_dir/*/*.tcl] {
+  source ${tcl_file}
+}
+set_property top {top_name} [current_fileset]
+update_compile_order -fileset sources_1
+update_compile_order -fileset sim_1
+ipx::package_project -root_dir ${tmp_ip_dir} -vendor tapa \
+        -library xrtl -taxonomy /KernelIP -import_files -set_current false
+ipx::unload_core ${tmp_ip_dir}/component.xml
+ipx::edit_ip_in_project -upgrade true -name tmp_edit_project \
+        -directory ${tmp_ip_dir} ${tmp_ip_dir}/component.xml
+set_property core_revision 2 [ipx::current_core]
+foreach up [ipx::get_user_parameters] {
+  ipx::remove_user_parameter [get_property NAME ${up}] [ipx::current_core]
+}
+set_property sdx_kernel true [ipx::current_core]
+set_property sdx_kernel_type rtl [ipx::current_core]
+ipx::create_xgui_files [ipx::current_core]
+{bus_ifaces}
+set_property xpm_libraries {XPM_CDC XPM_MEMORY XPM_FIFO} [ipx::current_core]
+set_property supported_families { } [ipx::current_core]
+set_property auto_family_support_level level_2 [ipx::current_core]
+ipx::update_checksums [ipx::current_core]
+ipx::save_core [ipx::current_core]
+close_project -delete
+
+package_xo -force -xo_path "$xo_file" -kernel_name {top_name} \
+        -ip_directory ${tmp_ip_dir} -kernel_xml $kernel_xml_path{cpp_kernels}
+"#;
+
+const BUS_IFACE_TCL: &str = "
+ipx::associate_bus_interfaces -busif {iface} -clock ap_clk [ipx::current_core]
+";
+
+const BUS_PARAM_TCL: &str =
+    "set_property value {value} [ipx::add_bus_parameter {key} [ipx::get_bus_interfaces {iface}]]
+";
 
 #[derive(Debug, Clone)]
 pub struct PackageXoInputs {
     pub top_name: String,
-    pub verilog_files: Vec<PathBuf>,
+    /// Directory of Verilog/SystemVerilog sources glob'd by the TCL.
+    pub hdl_dir: PathBuf,
     pub device_info: DeviceInfo,
     pub clock_period: String,
     pub kernel_xml: KernelXmlArgs,
     pub kernel_out_path: PathBuf,
+    /// Optional `-kernel_files` C++ sources appended to `package_xo`.
+    pub cpp_kernels: Vec<PathBuf>,
+    /// Optional per-port bus parameters, keyed by m_axi port name (no prefix).
+    pub m_axi_params: Vec<(String, Vec<(String, String)>)>,
+    /// S_AXI interfaces to associate; defaults to `[s_axi_control]`.
+    pub s_axi_ifaces: Vec<String>,
+}
+
+impl PackageXoInputs {
+    #[must_use]
+    pub fn default_s_axi() -> Vec<String> {
+        vec![S_AXI_NAME.to_string()]
+    }
+}
+
+fn m_axi_port_names(args: &KernelXmlArgs) -> Vec<String> {
+    args.ports
+        .iter()
+        .filter(|p: &&KernelXmlPort| p.category == PortCategory::MAxi)
+        .map(|p| p.name.clone())
+        .collect()
+}
+
+#[allow(
+    clippy::literal_string_with_formatting_args,
+    reason = "{iface}/{key}/{value} are literal TCL template placeholders, not format-args"
+)]
+fn render_bus_ifaces(
+    s_axi: &[String],
+    m_axi: &[String],
+    params: &[(String, Vec<(String, String)>)],
+) -> String {
+    let mut out = String::new();
+    for iface in s_axi {
+        out.push_str(&BUS_IFACE_TCL.replace("{iface}", iface));
+    }
+    let param_map: std::collections::HashMap<&str, &[(String, String)]> =
+        params.iter().map(|(n, kv)| (n.as_str(), kv.as_slice())).collect();
+    for name in m_axi {
+        let full = format!("{M_AXI_PREFIX}{name}");
+        out.push_str(&BUS_IFACE_TCL.replace("{iface}", &full));
+        if let Some(kv) = param_map.get(name.as_str()) {
+            for (k, v) in *kv {
+                out.push_str(
+                    &BUS_PARAM_TCL
+                        .replace("{iface}", &full)
+                        .replace("{key}", k)
+                        .replace("{value}", v),
+                );
+            }
+        }
+    }
+    out
+}
+
+fn render_cpp_kernels(kernels: &[PathBuf]) -> String {
+    let mut out = String::new();
+    for k in kernels {
+        out.push_str(" -kernel_files ");
+        out.push_str(&k.display().to_string());
+    }
+    out
+}
+
+#[allow(
+    clippy::literal_string_with_formatting_args,
+    reason = "{top_name}/{bus_ifaces}/{cpp_kernels}/{part_num} are literal TCL template placeholders"
+)]
+fn format_package_xo_tcl(
+    top_name: &str,
+    bus_ifaces: &str,
+    cpp_kernels: &str,
+    part_num: &str,
+) -> String {
+    let part_arg = if part_num.is_empty() {
+        String::new()
+    } else {
+        format!(" -part {part_num}")
+    };
+    PACKAGE_XO_TCL
+        .replace("{top_name}", top_name)
+        .replace("{bus_ifaces}", bus_ifaces)
+        .replace("{cpp_kernels}", cpp_kernels)
+        .replace("{part_num}", &part_arg)
 }
 
 /// Build the `.xo` for the given inputs using the provided runner.
 ///
-/// The Vivado-backed implementation emits kernel.xml, invokes
-/// `package_xo` via TCL, and then redacts the produced ZIP. Only the
-/// redaction and kernel-xml emission are implemented in this revision;
-/// the TCL runner wire-up lands with the Vivado milestone.
-pub fn pack_xo(_runner: &dyn ToolRunner, inputs: &PackageXoInputs) -> Result<PathBuf> {
-    if inputs.verilog_files.is_empty() {
-        return Err(XilinxError::KernelXml(
-            "pack_xo called with empty verilog_files list".into(),
-        ));
+/// Ports `tapa/backend/xilinx_tools.py::PackageXo` + `tapa/verilog/xilinx/pack.py::pack`:
+///
+/// 1. Allocate a staging tempdir and emit `kernel.xml` into it.
+/// 2. Format `PACKAGE_XO_TCL` with the kernel's `bus_ifaces`, `cpp_kernels`,
+///    and `-part` argument, and invoke Vivado via [`run_vivado`].
+/// 3. Require that Vivado has produced the `.xo` at `kernel_out_path`.
+/// 4. Run [`redact_xo`] on the output so two invocations on the same
+///    inputs are byte-equal.
+///
+/// `tclargs` to Vivado: `$tmpdir $hdl_dir $xo_file $kernel_xml_path`.
+pub fn pack_xo(runner: &dyn ToolRunner, inputs: &PackageXoInputs) -> Result<PathBuf> {
+    if !inputs.hdl_dir.is_dir() {
+        return Err(XilinxError::KernelXml(format!(
+            "pack_xo hdl_dir does not exist: {}",
+            inputs.hdl_dir.display()
+        )));
     }
-    // Ensure kernel.xml would emit successfully before calling Vivado.
-    let _xml = emit_kernel_xml(&inputs.kernel_xml)?;
-    Err(XilinxError::XoRedaction(
-        "pack_xo Vivado backend not yet implemented".into(),
-    ))
+    let tmp = tempfile::tempdir()?;
+    let kernel_xml_path = tmp.path().join("kernel.xml");
+    let xml = emit_kernel_xml(&inputs.kernel_xml)?;
+    std::fs::write(&kernel_xml_path, xml.as_bytes())?;
+
+    let s_axi = if inputs.s_axi_ifaces.is_empty() {
+        PackageXoInputs::default_s_axi()
+    } else {
+        inputs.s_axi_ifaces.clone()
+    };
+    let m_axi = m_axi_port_names(&inputs.kernel_xml);
+    let bus_ifaces = render_bus_ifaces(&s_axi, &m_axi, &inputs.m_axi_params);
+    let cpp_kernels = render_cpp_kernels(&inputs.cpp_kernels);
+    let tcl = format_package_xo_tcl(
+        &inputs.top_name,
+        &bus_ifaces,
+        &cpp_kernels,
+        &inputs.device_info.part_num,
+    );
+
+    if let Some(parent) = inputs.kernel_out_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let tclargs = [
+        tmp.path().display().to_string(),
+        inputs.hdl_dir.display().to_string(),
+        inputs.kernel_out_path.display().to_string(),
+        kernel_xml_path.display().to_string(),
+    ];
+
+    let mut job = VivadoJob::new(tcl);
+    job.work_dir = Some(tmp.path().to_path_buf());
+    job.uploads = vec![
+        inputs.hdl_dir.clone(),
+        tmp.path().to_path_buf(),
+        kernel_xml_path,
+    ];
+    if let Some(parent) = inputs.kernel_out_path.parent() {
+        job.downloads = vec![parent.to_path_buf()];
+    }
+    job.tclargs = tclargs.to_vec();
+
+    let _out = run_vivado(runner, &job)?;
+    if !inputs.kernel_out_path.is_file() {
+        return Err(XilinxError::XoRedaction(format!(
+            "pack_xo: Vivado returned success but {} is missing",
+            inputs.kernel_out_path.display()
+        )));
+    }
+    redact_xo(&inputs.kernel_out_path)?;
+    Ok(inputs.kernel_out_path.clone())
+}
+
+/// Backwards-compatible alias so other modules that took `&Path` still work.
+#[allow(dead_code, reason = "kept for symmetry with other wrappers")]
+fn _pack_xo_path(p: &Path) -> PathBuf {
+    p.to_path_buf()
 }
 
 fn redact_rpt(text: &str) -> String {
@@ -138,26 +342,121 @@ mod tests {
     use super::*;
     use crate::runtime::process::MockToolRunner;
 
-    #[test]
-    fn empty_verilog_list_is_rejected() {
-        let runner = MockToolRunner::new();
-        let inputs = PackageXoInputs {
+    fn minimal_inputs(hdl_dir: PathBuf, kernel_out_path: PathBuf) -> PackageXoInputs {
+        PackageXoInputs {
             top_name: "k".into(),
-            verilog_files: vec![],
+            hdl_dir,
             device_info: DeviceInfo {
-                part_num: "x".into(),
+                part_num: "xcu250-figd2104-2L-e".into(),
                 clock_period: "3.33".into(),
             },
             clock_period: "3.33".into(),
             kernel_xml: KernelXmlArgs {
                 top_name: "k".into(),
                 clock_period: "3.33".into(),
-                ports: vec![],
+                ports: vec![KernelXmlPort {
+                    name: "gmem0".into(),
+                    category: PortCategory::MAxi,
+                    width: 512,
+                    port: String::new(),
+                    ctype: "ap_uint<512>".into(),
+                }],
             },
-            kernel_out_path: PathBuf::from("/tmp/k.xo"),
-        };
+            kernel_out_path,
+            cpp_kernels: vec![],
+            m_axi_params: vec![],
+            s_axi_ifaces: PackageXoInputs::default_s_axi(),
+        }
+    }
+
+    #[test]
+    fn missing_hdl_dir_is_rejected() {
+        let runner = MockToolRunner::new();
+        let inputs = minimal_inputs(
+            PathBuf::from("/nonexistent/tapa-pack-xo-hdl"),
+            PathBuf::from("/tmp/k.xo"),
+        );
         let err = pack_xo(&runner, &inputs).unwrap_err();
         assert!(matches!(err, XilinxError::KernelXml(_)));
+    }
+
+    #[test]
+    fn pack_xo_drives_vivado_and_redacts() {
+        use crate::runtime::process::ToolOutput;
+        let tmp = tempfile::tempdir().unwrap();
+        let hdl_dir = tmp.path().join("hdl");
+        std::fs::create_dir_all(&hdl_dir).unwrap();
+        std::fs::write(hdl_dir.join("top.v"), b"// stub RTL\n").unwrap();
+        let xo_path = tmp.path().join("k.xo");
+
+        // Stage the synthetic .xo we expect Vivado to produce (pre-redaction).
+        let staged = tmp.path().join("staged.xo");
+        write_xo(
+            &staged,
+            &[(
+                "ip/meta.xml",
+                "<xilinx:coreCreationDateTime>2024-05-17T09:15:30Z</xilinx:coreCreationDateTime>",
+            )],
+        );
+        let staged_bytes = std::fs::read(&staged).unwrap();
+
+        let runner = MockToolRunner::new();
+        runner.push_ok("vivado", ToolOutput::default());
+        runner.attach_download(xo_path.clone(), staged_bytes);
+
+        let inputs = minimal_inputs(hdl_dir, xo_path.clone());
+        let out = pack_xo(&runner, &inputs).unwrap();
+        assert_eq!(out, xo_path);
+
+        // Vivado invocation recorded with -tclargs and the xo path.
+        let call = &runner.calls()[0];
+        assert_eq!(call.program, "vivado");
+        assert!(call.args.iter().any(|a| a == "-tclargs"));
+        assert!(call
+            .args
+            .iter()
+            .any(|a| a == &xo_path.display().to_string()));
+        let mut z = zip::ZipArchive::new(std::io::Cursor::new(
+            std::fs::read(&xo_path).unwrap(),
+        ))
+        .unwrap();
+        let mut body = String::new();
+        z.by_name("ip/meta.xml")
+            .unwrap()
+            .read_to_string(&mut body)
+            .unwrap();
+        assert!(body.contains("1980-01-01T00:00:00Z"));
+    }
+
+    #[test]
+    fn format_package_xo_tcl_substitutes_placeholders() {
+        let tcl = format_package_xo_tcl(
+            "my_kernel",
+            "\n# ifaces\n",
+            " -kernel_files /tmp/x.cpp",
+            "xcu250-figd2104-2L-e",
+        );
+        assert!(tcl.contains("set_property top my_kernel"));
+        assert!(tcl.contains("-part xcu250-figd2104-2L-e"));
+        assert!(tcl.contains("# ifaces"));
+        assert!(tcl.contains("-kernel_files /tmp/x.cpp"));
+        // Nothing left unsubstituted.
+        assert!(!tcl.contains("{top_name}"));
+        assert!(!tcl.contains("{bus_ifaces}"));
+        assert!(!tcl.contains("{cpp_kernels}"));
+        assert!(!tcl.contains("{part_num}"));
+    }
+
+    #[test]
+    fn render_bus_ifaces_includes_m_axi_prefix_and_params() {
+        let s = render_bus_ifaces(
+            &["s_axi_control".into()],
+            &["gmem0".into()],
+            &[("gmem0".into(), vec![("OFFSET".into(), "SLAVE".into())])],
+        );
+        assert!(s.contains("-busif s_axi_control"));
+        assert!(s.contains("-busif m_axi_gmem0"));
+        assert!(s.contains("m_axi_gmem0") && s.contains("OFFSET") && s.contains("SLAVE"));
     }
 
     fn write_xo(path: &std::path::Path, entries: &[(&str, &str)]) {

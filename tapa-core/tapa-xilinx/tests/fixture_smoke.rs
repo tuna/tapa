@@ -1,6 +1,6 @@
 //! Fixture smoke tests: exercise parsers/emitters against the committed
 //! testdata files. Any fixture rename or deletion breaks at least one
-//! of these, satisfying AC-16's negative case.
+//! of these.
 
 use std::path::PathBuf;
 

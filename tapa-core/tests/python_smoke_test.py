@@ -1250,7 +1250,7 @@ def test_graphir_export_missing_dest_raises() -> None:
         }
     )
     # Use a path guaranteed not to exist.
-    bogus = "/tmp/tapa-core-rlcr-round1-nonexistent-destination"
+    bogus = "/tmp/tapa-core-nonexistent-destination"
     err_msg = ""
     try:
         graphir_export.export_project(project_json, bogus)
@@ -1559,6 +1559,217 @@ def test_xilinx_parse_device_info_directory_input() -> None:
         payload = json.loads(xilinx.parse_device_info(str(platform_dir)))
     assert payload["part_num"] == "xcu250-figd2104-2L-e"
     assert payload["clock_period"] == "3.333"
+
+
+def test_xilinx_run_hls_task_rejects_missing_fields() -> None:
+    """run_hls_task must fail JSON-schema before spawning vitis_hls."""
+    from tapa_core import xilinx  # type: ignore[import-not-found]
+
+    caught_msg = ""
+    try:
+        xilinx.run_hls_task("{}")
+    except ValueError as exc:
+        caught_msg = str(exc)
+    if not caught_msg:
+        msg = "run_hls_task should reject empty payload"
+        raise AssertionError(msg)
+    # Error must come from JSON parse, not a tool spawn failure.
+    assert "invalid job JSON" in caught_msg or "missing field" in caught_msg, (
+        f"expected JSON schema error, got: {caught_msg}"
+    )
+
+
+def test_xilinx_run_hls_task_rejects_malformed_json() -> None:
+    """run_hls_task raises PyValueError on syntactically invalid JSON."""
+    from tapa_core import xilinx  # type: ignore[import-not-found]
+
+    try:
+        xilinx.run_hls_task("not json")
+    except ValueError:
+        return
+    msg = "run_hls_task should reject malformed JSON"
+    raise AssertionError(msg)
+
+
+def test_xilinx_run_hls_task_rejects_unknown_field() -> None:
+    """Unknown fields are rejected (deny_unknown_fields)."""
+    from tapa_core import xilinx  # type: ignore[import-not-found]
+
+    payload = json.dumps(
+        {
+            "task_name": "k",
+            "cpp_source": "/tmp/k.cc",
+            "target_part": "xcu250-figd2104-2L-e",
+            "top_name": "k",
+            "clock_period": "3.33",
+            "reports_out_dir": "/tmp/r",
+            "hdl_out_dir": "/tmp/h",
+            "unexpected": "yes",
+        }
+    )
+    try:
+        xilinx.run_hls_task(payload)
+    except ValueError:
+        return
+    msg = "run_hls_task should reject unknown fields"
+    raise AssertionError(msg)
+
+
+def test_xilinx_pack_xo_rejects_missing_archive() -> None:
+    """pack_xo surfaces a typed PyValueError when the archive is missing."""
+    from tapa_core import xilinx  # type: ignore[import-not-found]
+
+    caught_msg = ""
+    try:
+        xilinx.pack_xo(json.dumps({"kernel_out_path": "/nope/missing.xo"}))
+    except ValueError as exc:
+        caught_msg = str(exc)
+    if not caught_msg:
+        msg = "pack_xo should reject missing archive"
+        raise AssertionError(msg)
+    assert "does not exist" in caught_msg, f"unexpected: {caught_msg}"
+
+
+def test_xilinx_pack_xo_redacts_real_archive() -> None:
+    """pack_xo rewrites redaction-sensitive .rpt/.xml payloads.
+
+    Stages a synthetic archive with a `Date:` line, a
+    `coreCreationDateTime` element, a `SourceLocation` pointing at
+    an absolute build path, and a 32-hex `ProjectID`, then asserts
+    each token is normalized after pack_xo returns. Also asserts
+    that a plain non-redactable entry is untouched.
+    """
+    import tempfile
+    import zipfile
+    from pathlib import Path as _Path
+
+    from tapa_core import xilinx  # type: ignore[import-not-found]
+
+    rpt_before = "Copyright Xilinx\nDate:           Fri Mar 14 10:20:30 2025\n-----\n"
+    xml_before = (
+        '<?xml version="1.0"?>\n'
+        "<root>\n"
+        "  <xilinx:coreCreationDateTime>"
+        "2024-05-17T09:15:30Z"
+        "</xilinx:coreCreationDateTime>\n"
+        "  <SourceLocation>/work/alice/build/cpp/foo.cc</SourceLocation>\n"
+        '  <meta ProjectID="deadbeefcafebabe0123456789abcdef"/>\n'
+        "</root>\n"
+    )
+    plain_before = b"hello"
+
+    with tempfile.TemporaryDirectory() as td:
+        xo = _Path(td) / "k.xo"
+        with zipfile.ZipFile(xo, "w") as zf:
+            zf.writestr("reports/synth.rpt", rpt_before)
+            zf.writestr("ip/meta.xml", xml_before)
+            zf.writestr("hello.txt", plain_before)
+
+        payload = json.loads(xilinx.pack_xo(json.dumps({"kernel_out_path": str(xo)})))
+        assert payload["redacted"] is True
+
+        with zipfile.ZipFile(xo, "r") as zf:
+            rpt_after = zf.read("reports/synth.rpt").decode("utf-8")
+            xml_after = zf.read("ip/meta.xml").decode("utf-8")
+            plain_after = zf.read("hello.txt")
+
+    assert "Tue Jan 01 00:00:00 1980" in rpt_after
+    assert "Fri Mar 14 10:20:30 2025" not in rpt_after
+    assert "1980-01-01T00:00:00Z" in xml_after
+    assert "2024-05-17T09:15:30Z" not in xml_after
+    assert "<SourceLocation>cpp/foo.cc</SourceLocation>" in xml_after
+    assert "/work/alice/build" not in xml_after
+    assert 'ProjectID="0123456789abcdef0123456789abcdef"' in xml_after
+    assert "deadbeefcafebabe0123456789abcdef" not in xml_after
+    assert plain_after == plain_before
+
+
+def test_xilinx_pack_xo_full_mode_requires_top_name() -> None:
+    """pack_xo full mode (hdl_dir present) validates required fields.
+
+    When hdl_dir is supplied without top_name/part_num/clock_period/
+    kernel_xml, the binding must raise PyValueError naming the
+    missing field rather than silently spawning vivado.
+    """
+    import tempfile
+    from pathlib import Path as _Path
+
+    from tapa_core import xilinx  # type: ignore[import-not-found]
+
+    with tempfile.TemporaryDirectory() as td:
+        hdl_dir = _Path(td) / "hdl"
+        hdl_dir.mkdir()
+        (hdl_dir / "top.v").write_text("// stub\n")
+        caught_msg = ""
+        try:
+            xilinx.pack_xo(
+                json.dumps(
+                    {
+                        "kernel_out_path": str(_Path(td) / "k.xo"),
+                        "hdl_dir": str(hdl_dir),
+                    }
+                )
+            )
+        except ValueError as exc:
+            caught_msg = str(exc)
+    if not caught_msg:
+        msg = "full-mode pack_xo must reject missing top_name"
+        raise AssertionError(msg)
+    assert "top_name" in caught_msg, f"unexpected: {caught_msg}"
+
+
+def test_xilinx_pack_xo_full_mode_missing_hdl_dir_fails() -> None:
+    """Full-mode pack_xo with nonexistent hdl_dir fails with typed error."""
+    import tempfile
+    from pathlib import Path as _Path
+
+    from tapa_core import xilinx  # type: ignore[import-not-found]
+
+    with tempfile.TemporaryDirectory() as td:
+        caught_msg = ""
+        try:
+            xilinx.pack_xo(
+                json.dumps(
+                    {
+                        "kernel_out_path": str(_Path(td) / "k.xo"),
+                        "hdl_dir": str(_Path(td) / "does-not-exist"),
+                        "top_name": "k",
+                        "part_num": "xcu250-figd2104-2L-e",
+                        "clock_period": "3.33",
+                        "kernel_xml": {
+                            "top_name": "k",
+                            "clock_period": "3.33",
+                            "ports": [],
+                        },
+                    }
+                )
+            )
+        except ValueError as exc:
+            caught_msg = str(exc)
+    assert "hdl_dir" in caught_msg, f"unexpected: {caught_msg}"
+
+
+def test_xilinx_sync_vendor_includes_surfaces_ssh_prefix() -> None:
+    """sync_vendor_includes surfaces [ssh]-prefixed PyValueError.
+
+    Uses a valid RemoteConfig with xilinx_settings unset so the
+    binding fails fast on the xilinx_settings check before even
+    attempting SSH. This exercises the real error-mapping code path
+    (no tarpipe required).
+    """
+    from tapa_core import xilinx  # type: ignore[import-not-found]
+
+    cfg = json.dumps({"host": "localhost"})
+    caught_msg = ""
+    try:
+        xilinx.sync_vendor_includes(cfg)
+    except ValueError as exc:
+        caught_msg = str(exc)
+    if not caught_msg:
+        msg = "sync_vendor_includes must raise on missing xilinx_settings"
+        raise AssertionError(msg)
+    assert caught_msg.startswith("[ssh]"), f"missing [ssh] prefix: {caught_msg}"
+    assert "xilinx_settings" in caught_msg, f"unexpected: {caught_msg}"
 
 
 if __name__ == "__main__":
