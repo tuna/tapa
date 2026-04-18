@@ -14,6 +14,7 @@ indexmap = { workspace = true }
 log = { workspace = true }
 regex = { workspace = true }
 serde = { workspace = true }
+sha2 = "0.10"
 serde_json = { workspace = true, features = ["preserve_order"] }
 serde_path_to_error = { workspace = true }
 tapa-task-graph = { workspace = true }

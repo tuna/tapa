@@ -834,6 +834,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_path_to_error",
+ "sha2",
  "tapa-task-graph",
  "tempfile",
  "thiserror",
@@ -962,6 +963,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_path_to_error",
+ "tempfile",
  "thiserror",
 ]
 
