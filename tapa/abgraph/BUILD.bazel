@@ -25,6 +25,5 @@ py_doc_test(
     package = "tapa.abgraph",
     deps = [
         "//tapa/abgraph",
-        "//tapa/steps",
     ],
 )

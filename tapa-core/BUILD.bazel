@@ -49,6 +49,38 @@ copy_or_empty "$$CARGO_TARGET_DIR/release/libtapa_topology.rlib" "$(location car
     visibility = ["//visibility:public"],
 )
 
+# -- Build: native `tapa-cli` binary --
+# Replaces the retired Python+nuitka `tapa-bin` (AC-8). Same hermetic
+# cargo invocation pattern as `cargo_build`. Downstream packagers
+# consume this via `//tapa-core:tapa-cli` and re-wrap as
+# `usr/share/tapa/runtime/tapa` + `usr/bin/tapa` symlink.
+
+genrule(
+    name = "tapa-cli",
+    srcs = _ALL_SRCS,
+    outs = ["cargo/bin/tapa"],
+    cmd = """
+set -euo pipefail
+CARGO="$$(cd "$$(dirname "$(execpath @rules_rust//rust/toolchain:current_cargo_files)")" && pwd)/cargo"
+RUSTC="$$(cd "$$(dirname "$(execpath @rules_rust//rust/toolchain:current_rustc_files)")" && pwd)/rustc"
+export PATH="$$(dirname "$$CARGO"):$$(dirname "$$RUSTC"):$$PATH"
+export CARGO_TARGET_DIR="$(@D)/cargo-target"
+
+$$CARGO build --manifest-path "$(location Cargo.toml)" --release --locked \
+  -p tapa-cli --bin tapa
+
+cp "$$CARGO_TARGET_DIR/release/tapa" "$(location cargo/bin/tapa)"
+chmod +x "$(location cargo/bin/tapa)"
+""",
+    executable = True,
+    tags = ["requires-network"],
+    tools = [
+        "@rules_rust//rust/toolchain:current_cargo_files",
+        "@rules_rust//rust/toolchain:current_rustc_files",
+    ],
+    visibility = ["//visibility:public"],
+)
+
 # -- Test: Rust unit and integration tests (manual, requires system cargo) --
 
 sh_test(

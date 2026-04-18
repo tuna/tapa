@@ -4,14 +4,11 @@
 # All rights reserved. The contributor(s) of this file has/have agreed to the
 # RapidStream Contributor License Agreement.
 
-load("@rules_pkg//pkg:mappings.bzl", "pkg_attributes", "pkg_filegroup", "pkg_files", "pkg_mklink", "strip_prefix")
+load("@rules_pkg//pkg:mappings.bzl", "pkg_attributes", "pkg_filegroup", "pkg_files", "pkg_mklink")
 load("@rules_python//python:defs.bzl", "py_library")
 load("@rules_python//python:packaging.bzl", "py_wheel")
 load("@rules_python//python:pip.bzl", "compile_pip_requirements")
-load("@rules_python//python:py_binary.bzl", "py_binary")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("@tapa_deps//:requirements.bzl", "requirement")
-load("//bazel:nuitka_rules.bzl", "nuitka_binary")
 load("//bazel:pytest_rules.bzl", "py_test")
 
 package(default_visibility = ["//tapa:__subpackages__"])
@@ -20,53 +17,6 @@ compile_pip_requirements(
     name = "requirements",
     src = "requirements.in",
     requirements_txt = "requirements_lock.txt",
-)
-
-nuitka_binary(
-    name = "nuitka",
-    src = ":tapa",
-    flags = [
-        "--deployment",
-        "--include-package-data=pyverilog",
-        "--include-package-data=tapa",
-        # -c is used by tapa but nuitka incorrectly marks it as self-execution
-        "--no-deployment-flag=self-execution",
-        # ply depends on docstrings so no_docstrings is not an option
-        "--python-flag=isolated,no_site",
-    ],
-    output_name = "tapa-bin",
-)
-
-sh_test(
-    name = "nuitka_test",
-    srcs = ["nuitka_test.sh"],
-    args = ["$(location :nuitka)/tapa-bin"],
-    data = [":nuitka"],
-)
-
-py_binary(
-    name = "tapa",
-    srcs = ["__main__.py"],
-    data = [
-        "//fpga-runtime:include",
-        "//tapa-cpp",
-        "//tapa-lib:extra-runtime-include",
-        "//tapa-lib:include",
-        "//tapa-system-include",
-        "//tapacc",
-    ] + select({
-        "@platforms//os:linux": [
-            "//fpga-runtime:pkg-extra-runtime-deps",
-            "//fpga-runtime:pkg-lib",
-            "//tapa-lib:pkg-extra-runtime-deps",
-            "//tapa-lib:pkg-lib",
-            "//tapa-system-include:tapa-extra-runtime-include",
-        ],
-        "//conditions:default": [],
-    }),
-    main = "__main__.py",
-    visibility = ["//visibility:public"],
-    deps = [":tapa-py-libs"],
 )
 
 py_wheel(
@@ -79,6 +29,11 @@ py_wheel(
     ],
 )
 
+# Library bundle of the surviving Python helpers (program/codegen/AST
+# scaffolding still consumed by tapa-cli's bridge-side tests). The
+# legacy click CLI (`__main__.py`) and step modules (`tapa/steps/*`)
+# were retired in AC-8; the runtime entry point is the native Rust
+# binary `//tapa-core:tapa-cli`.
 py_library(
     name = "tapa-py-libs",
     deps = [
@@ -90,7 +45,6 @@ py_library(
         ":util",
         "//tapa/assets",
         "//tapa/common",
-        "//tapa/steps",
         requirement("click"),
     ],
 )
@@ -254,7 +208,6 @@ py_test(
         ":codegen",
         ":core",
         ":task",
-        "//tapa/steps",
     ],
 )
 
@@ -274,20 +227,23 @@ py_test(
     ],
 )
 
+# Ship the native Rust `tapa` binary as `usr/share/tapa/runtime/tapa`
+# (AC-8). The Python+nuitka `tapa-bin` it replaces was retired with
+# `tapa/__main__.py`; the entry point is `//tapa-core:tapa-cli`.
 pkg_files(
     name = "pkg-runtime",
-    srcs = ["//tapa:nuitka"],
+    srcs = ["//tapa-core:tapa-cli"],
     attributes = pkg_attributes(mode = "0755"),
     prefix = "usr/share/tapa/runtime",
-    strip_prefix = strip_prefix.from_pkg("__main__.dist"),
+    renames = {"//tapa-core:tapa-cli": "tapa"},
     visibility = ["//visibility:public"],
 )
 
-# link usr/share/tapa/runtime/tapa-bin to /usr/bin/tapa
+# link usr/share/tapa/runtime/tapa to /usr/bin/tapa
 pkg_mklink(
     name = "pkg-link",
     link_name = "usr/bin/tapa",
-    target = "../share/tapa/runtime/tapa-bin",
+    target = "../share/tapa/runtime/tapa",
     visibility = ["//visibility:public"],
 )
 
