@@ -70,6 +70,39 @@ trap 'rm -rf "$workdir"' EXIT
 PLATFORM="${VADD_PARITY_PLATFORM:-xilinx_u250_gen3x16_xdma_4_1_202210_1}"
 TOP="${VADD_PARITY_TOP:-VecAdd}"
 
+# Resolve the `tapa` binary preferring (1) an explicit `$TAPA_BIN`,
+# (2) a Bazel runfiles-local copy (matches `tests/apps/analyze_test.py::_find_tapa`),
+# (3) the system `tapa` on PATH. Failing those, skip cleanly so the
+# harness never accidentally runs against a broken PATH install.
+TAPA_BIN_RESOLVED=""
+if [[ -n "${TAPA_BIN:-}" && -x "$TAPA_BIN" ]]; then
+  TAPA_BIN_RESOLVED="$TAPA_BIN"
+else
+  for base in "${RUNFILES_DIR:-}" "${TEST_SRCDIR:-}"; do
+    if [[ -n "$base" && -x "$base/_main/tapa/tapa" ]]; then
+      TAPA_BIN_RESOLVED="$base/_main/tapa/tapa"
+      break
+    fi
+  done
+fi
+if [[ -z "$TAPA_BIN_RESOLVED" ]]; then
+  if command -v tapa >/dev/null 2>&1; then
+    TAPA_BIN_RESOLVED="$(command -v tapa)"
+  fi
+fi
+if [[ -z "$TAPA_BIN_RESOLVED" ]]; then
+  echo "vadd flag-parity: no tapa binary found (TAPA_BIN / runfiles / PATH); skipping" >&2
+  exit 0
+fi
+# Sanity check: the resolved binary must actually work. A broken
+# system install (`/opt/homebrew/bin/tapa` with a missing
+# pkg_resources, for example) must trigger a clean skip rather than
+# a false pass.
+if ! "$TAPA_BIN_RESOLVED" --help >/dev/null 2>&1; then
+  echo "vadd flag-parity: resolved tapa binary ($TAPA_BIN_RESOLVED) does not run cleanly; skipping" >&2
+  exit 0
+fi
+
 run_one() {
   local label="$1"
   local flag_value="$2"
@@ -78,7 +111,7 @@ run_one() {
   (
     cd "$vadd_dir"
     env TAPA_USE_RUST_XILINX="$flag_value" \
-      tapa \
+      "$TAPA_BIN_RESOLVED" \
         --work-dir "$outdir/work" \
         "${REMOTE_CLI_ARGS[@]}" \
         analyze \

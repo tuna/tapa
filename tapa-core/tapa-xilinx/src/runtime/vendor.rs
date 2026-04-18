@@ -1,12 +1,12 @@
-//! Vendor-include sync: port of `tapa/remote/vendor.py`.
+//! Vendor-include sync over SSH.
 //!
 //! Exposes one public entry point,
 //! [`sync_remote_vendor_includes`], plus a [`VendorRemoteFs`] trait
 //! so unit tests drive the algorithm without a live `SshSession`.
-//!
-//! Split out of `runtime::remote` during the Phase-6 simplifier
-//! pass (the combined file overran the plan's soft 500 LOC
-//! guideline).
+//! The `SshSession`-backed implementation streams
+//! `$XILINX_HLS/include` and every `$XILINX_HLS/tps/lnx64/gcc-*/include`
+//! directory into a cache keyed by
+//! `sha256(host:port:xilinx_settings)[:16]`.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
