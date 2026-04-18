@@ -105,22 +105,18 @@ def test_program_construction_is_topology_only() -> None:
 
 
 def test_design_json_round_trip_with_slots(tmp_path: object) -> None:
-    """store_design + load via design.json round-trips including is_slot (AC-5)."""
-    import click  # noqa: PLC0415
+    """design.json round-trips Program state including is_slot (AC-5).
 
-    work_dir = str(tmp_path)
-    # store_design needs a click context with work-dir
-    with click.Context(click.Command("test"), obj={"work-dir": work_dir}):
-        _run_design_json_round_trip(work_dir)
-
-
-def _run_design_json_round_trip(work_dir: str) -> None:
+    Inlines `store_design` (formerly `tapa.steps.common.store_design`,
+    retired in AC-8) so the on-disk schema this test pins stays stable
+    after the click step package was removed.
+    """
     import json  # noqa: PLC0415
     import os  # noqa: PLC0415
 
     from tapa.core import Program  # noqa: PLC0415
-    from tapa.steps.common import store_design  # noqa: PLC0415
 
+    work_dir = str(tmp_path)
     graph = {
         "top": "top_task",
         "tasks": {
@@ -151,9 +147,21 @@ def _run_design_json_round_trip(work_dir: str) -> None:
     )
     assert program._tasks["slot_task"].is_slot  # noqa: SLF001
 
-    # Write design.json
-    store_design(program)
+    # Write design.json (inline `store_design` body).
     design_path = os.path.join(work_dir, "design.json")
+    with open(design_path, "w", encoding="utf-8") as out_fp:
+        json.dump(
+            {
+                "top": program.top,
+                "target": program.target.value,
+                "tasks": {
+                    name: task.to_topology_dict()
+                    for name, task in program._tasks.items()  # noqa: SLF001
+                },
+                "slot_task_name_to_fp_region": program.slot_task_name_to_fp_region,
+            },
+            out_fp,
+        )
     assert os.path.exists(design_path)
 
     with open(design_path, encoding="utf-8") as f:
@@ -185,18 +193,17 @@ def _run_design_json_round_trip(work_dir: str) -> None:
 
 
 def test_store_and_load_tapa_program_bridge(tmp_path: object) -> None:
-    """store_tapa_program + load_tapa_program round-trips through design.json (AC-5).
+    """design.json store + load round-trips Program state (AC-5).
 
-    Store and load happen in SEPARATE Click contexts so no in-memory
-    cache (obj["design"], obj["tapa-program"]) leaks between them.
+    Inlines the `store_tapa_program` / `load_tapa_program` helpers
+    formerly in `tapa.steps.common`; AC-8 retired the click step
+    package, so the test now drives the on-disk JSON shape directly.
     """
+    import json  # noqa: PLC0415
     import os  # noqa: PLC0415
-
-    import click  # noqa: PLC0415
 
     from tapa.common.target import Target  # noqa: PLC0415
     from tapa.core import Program  # noqa: PLC0415
-    from tapa.steps.common import load_tapa_program, store_tapa_program  # noqa: PLC0415
 
     work_dir = str(tmp_path)
     graph = {
@@ -221,22 +228,45 @@ def test_store_and_load_tapa_program_bridge(tmp_path: object) -> None:
         },
     }
 
-    # --- Store phase: first Click context ---
-    with click.Context(click.Command("store"), obj={"work-dir": work_dir}):
-        program = Program(
-            graph,
-            target="xilinx-hls",
-            work_dir=work_dir,
-            floorplan_slots=["slot_task"],
-            slot_task_name_to_fp_region={"slot_task": "SLOT_X0Y0:SLOT_X0Y0"},
-        )
-        store_tapa_program(program)
+    # --- Store phase: serialize to design.json directly ---
+    program = Program(
+        graph,
+        target="xilinx-hls",
+        work_dir=work_dir,
+        floorplan_slots=["slot_task"],
+        slot_task_name_to_fp_region={"slot_task": "SLOT_X0Y0:SLOT_X0Y0"},
+    )
+    design = {
+        "top": program.top,
+        "target": program.target.value,
+        "tasks": {
+            name: task.to_topology_dict()
+            for name, task in program._tasks.items()  # noqa: SLF001
+        },
+        "slot_task_name_to_fp_region": program.slot_task_name_to_fp_region,
+    }
+    design_path = os.path.join(work_dir, "design.json")
+    with open(design_path, "w", encoding="utf-8") as out_fp:
+        json.dump(design, out_fp)
 
-    assert os.path.exists(os.path.join(work_dir, "design.json"))
+    assert os.path.exists(design_path)
 
-    # --- Load phase: fresh Click context (no cached state) ---
-    with click.Context(click.Command("load"), obj={"work-dir": work_dir}):
-        loaded = load_tapa_program()
+    # --- Load phase: parse design.json and reconstruct a Program ---
+    with open(design_path, encoding="utf-8") as in_fp:
+        loaded_design = json.load(in_fp)
+    floorplan_slots = [
+        name
+        for name, task_data in loaded_design["tasks"].items()
+        if task_data.get("is_slot", False)
+    ]
+    loaded = Program(
+        {"tasks": loaded_design["tasks"], "top": loaded_design["top"]},
+        target=loaded_design["target"],
+        work_dir=work_dir,
+        floorplan_slots=floorplan_slots,
+        slot_task_name_to_fp_region=loaded_design.get("slot_task_name_to_fp_region")
+        or {},
+    )
 
     assert loaded.top == "top_task"
     assert loaded.target == Target.XILINX_HLS
