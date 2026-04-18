@@ -68,11 +68,35 @@ pub fn build_invocation(job: &VivadoJob, tcl_path: &std::path::Path) -> ToolInvo
 
 /// Invoke Vivado via the provided runner. Writes the TCL script into a
 /// tempfile on the local side and points `vivado -source` at it.
+///
+/// When `job.work_dir` is unset the runner allocates a per-call
+/// `tempfile::TempDir` and uses it as both `cwd` and `HOME`. Mirrors
+/// the Python `Vivado` wrapper that always created a temp cwd and
+/// pinned `HOME` there — Vivado otherwise writes `~/.Xilinx` state
+/// into the caller's home dir, which breaks under sandboxed or
+/// unwritable homes (e.g. Bazel exec) and races between parallel
+/// runs.
 pub fn run_vivado(runner: &dyn ToolRunner, job: &VivadoJob) -> Result<VivadoOutput> {
     let tmp = tempfile::NamedTempFile::new()?;
     std::fs::write(tmp.path(), job.tcl.as_bytes())?;
+    let scratch = if job.work_dir.is_none() {
+        Some(tempfile::tempdir()?)
+    } else {
+        None
+    };
     let mut inv = build_invocation(job, tmp.path());
     inv.uploads.push(tmp.path().to_path_buf());
+    let home_dir = match (&job.work_dir, &scratch) {
+        (Some(p), _) => p.clone(),
+        (None, Some(t)) => {
+            let p = t.path().to_path_buf();
+            inv.cwd = Some(p.clone());
+            p
+        }
+        (None, None) => unreachable!("scratch tempdir is allocated when work_dir is None"),
+    };
+    inv.env
+        .insert("HOME".into(), home_dir.display().to_string());
     let out = runner.run(&inv)?;
     if out.exit_code != 0 {
         return Err(crate::error::XilinxError::ToolFailure {

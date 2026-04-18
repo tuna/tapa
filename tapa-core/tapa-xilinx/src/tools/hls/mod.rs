@@ -246,6 +246,14 @@ fn run_hls_attempt(
         .arg("-f")
         .arg(tcl_path.display().to_string());
     inv.cwd = Some(stage_dir.to_path_buf());
+    // Pin `HOME` to the per-run stage dir (mirrors Python's
+    // `VivadoHls` wrapper). Vitis HLS otherwise writes shared
+    // `~/.Xilinx` state that pollutes the workspace and races under
+    // sandboxed/parallel Bazel builds. Using `inv.env` (vs
+    // `Command::env`) lets the remote runner's path rewriter remap
+    // the value to its rootfs counterpart.
+    inv.env
+        .insert("HOME".into(), stage_dir.display().to_string());
     // Uploads: TCL, the kernel source, every `-I` / `-isystem`
     // include directory referenced by the cflags, plus any caller
     // extras. Mirrors the upload set `tapa/backend/xilinx_hls.py::

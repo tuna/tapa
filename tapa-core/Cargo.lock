@@ -754,6 +754,7 @@ dependencies = [
  "tapa-xilinx",
  "tempfile",
  "thiserror",
+ "zip",
 ]
 
 [[package]]

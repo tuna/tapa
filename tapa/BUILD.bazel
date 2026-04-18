@@ -8,6 +8,7 @@ load("@rules_pkg//pkg:mappings.bzl", "pkg_attributes", "pkg_filegroup", "pkg_fil
 load("@rules_python//python:defs.bzl", "py_library")
 load("@rules_python//python:packaging.bzl", "py_wheel")
 load("@rules_python//python:pip.bzl", "compile_pip_requirements")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@tapa_deps//:requirements.bzl", "requirement")
 load("//bazel:pytest_rules.bzl", "py_test")
 
@@ -29,17 +30,43 @@ py_wheel(
     ],
 )
 
-# Back-compat alias for downstream labels that still reference
-# `//tapa:tapa` as an executable/data target (e.g. `tests/apps/*`
-# analyze/simulation gates and the default `tapa_cli` attribute in
-# `bazel/tapa_rules.bzl`). The legacy `py_binary(name = "tapa")` was
-# retired in AC-8; the real entry point is the native Rust binary
-# `//tapa-core:tapa-cli`. Alias keeps existing `bazel build/test`
-# invocations working without touching every consumer.
-alias(
+# Back-compat executable for downstream labels that still reference
+# `//tapa:tapa` (e.g. `tests/apps/*` analyze/simulation gates and the
+# default `tapa_cli` attribute in `bazel/tapa_rules.bzl`). The legacy
+# `py_binary(name = "tapa")` was retired in AC-8; the real entry point
+# is the native Rust binary `//tapa-core:tapa-cli`.
+#
+# The wrapper adds the full TAPA runtime tree — `tapacc`, `tapa-cpp`,
+# `tapa-system-include` (clang built-ins), `tapa-lib` public headers
+# and extra-runtime-include, and `fpga-runtime` public headers — as
+# runfiles so that `tapa-cli`'s `find_resource` walk-up discovery
+# resolves every `POTENTIAL_PATHS` key (tapacc-binary, tapa-cpp-binary,
+# tapa-system-include, tapa-extra-runtime-include, tapa-lib-include,
+# tapa-lib-lib, fpga-runtime-include, fpga-runtime-lib) when invoked
+# via `bazel run //tapa:tapa`. The retired Python `py_binary` used to
+# provide this transitively via its dependency closure.
+sh_binary(
     name = "tapa",
-    actual = "//tapa-core:tapa-cli",
+    srcs = ["tapa_wrapper.sh"],
+    data = [
+        "//fpga-runtime:include",
+        "//tapa-core:tapa-cli",
+        "//tapa-cpp:gen-tapa-cpp",
+        "//tapa-lib:extra-runtime-include",
+        "//tapa-lib:include",
+        "//tapa-system-include",
+        "//tapacc",
+    ] + select({
+        # `//tapa-system-include:tapa-extra-runtime-include` is gated on
+        # `@platforms//os:linux` (header_extractor pulls Linux-only deps),
+        # so listing it unconditionally would break analysis on macOS/
+        # Windows hosts. Keep it under the same select the retired
+        # `py_binary` used.
+        "@platforms//os:linux": ["//tapa-system-include:tapa-extra-runtime-include"],
+        "//conditions:default": [],
+    }),
     visibility = ["//visibility:public"],
+    deps = ["@bazel_tools//tools/bash/runfiles"],
 )
 
 # Library bundle of the surviving Python helpers (program/codegen/AST

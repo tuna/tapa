@@ -25,7 +25,7 @@ use serde_json::Value;
 
 use crate::context::CliContext;
 use crate::error::{CliError, Result};
-use crate::state::{design as design_io, settings as settings_io};
+use crate::state::{design as design_io, graph as graph_io, settings as settings_io};
 
 mod bitstream_script;
 mod custom_rtl;
@@ -93,11 +93,171 @@ fn run_native(args: &PackArgs, ctx: &CliContext) -> Result<()> {
 
     match target.as_str() {
         "xilinx-vitis" => pack_vitis(args, ctx, &design, &settings),
+        "xilinx-hls" => pack_hls_zip(args, ctx, &settings),
         "xilinx-aie" => Ok(()),
         other => Err(CliError::InvalidArg(format!(
-            "native pack only supports the `xilinx-vitis` target; got `{other}`. \
-             Open a follow-up to port the `xilinx-hls` `.zip` packer."
+            "native pack only supports `xilinx-vitis`, `xilinx-hls`, and \
+             `xilinx-aie`; got `{other}`."
         ))),
+    }
+}
+
+/// Native port of `tapa.program.pack::pack_zip` for the `xilinx-hls`
+/// target. Bundles the synthesized RTL tree under `rtl/`, every HLS
+/// `_csynth.rpt` under `report/` (with timestamp redaction so the
+/// archive is reproducible), the TAPA report yaml at the archive root
+/// when the synth step emitted one, plus `graph.yaml` and
+/// `settings.yaml` snapshots of the persistent contexts that the
+/// Python flow used to ship. Output path defaults to `work.zip` in the
+/// caller's CWD and is always normalized to a `.zip` suffix to match
+/// Python's `_enforce_path_suffix(suffix=".zip")`.
+fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, settings: &settings_io::Settings) -> Result<()> {
+    use std::io::Write as _;
+    let work_dir = ctx.work_dir.as_path();
+    let rtl_dir = work_dir.join("rtl");
+    if !rtl_dir.is_dir() {
+        return Err(CliError::InvalidArg(format!(
+            "RTL directory `{}` does not exist; run `tapa synth` first.",
+            rtl_dir.display(),
+        )));
+    }
+    let output_path = enforce_zip_suffix(args.output.as_ref());
+    if let Some(parent) = output_path.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent)?;
+        }
+    }
+    let file = std::fs::File::create(&output_path)?;
+    let mut z = zip::ZipWriter::new(std::io::BufWriter::new(file));
+    let opts: zip::write::FileOptions<'_, ()> =
+        zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+
+    let mut walk = vec![rtl_dir.clone()];
+    let mut rtl_files: Vec<std::path::PathBuf> = Vec::new();
+    while let Some(dir) = walk.pop() {
+        for entry in std::fs::read_dir(&dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                walk.push(path);
+            } else if path.is_file() {
+                rtl_files.push(path);
+            }
+        }
+    }
+    rtl_files.sort();
+    for rtl_file in &rtl_files {
+        let rel = rtl_file
+            .strip_prefix(&rtl_dir)
+            .map_err(|e| CliError::InvalidArg(format!("rtl strip_prefix: {e}")))?;
+        let name = format!("rtl/{}", rel.to_string_lossy());
+        z.start_file(name, opts)
+            .map_err(|e| CliError::InvalidArg(format!("zip entry: {e}")))?;
+        z.write_all(&std::fs::read(rtl_file)?)?;
+    }
+
+    // TAPA report yaml at archive root, only if the synth step wrote
+    // one. Python always writes it; the Rust port has not ported the
+    // emitter yet, so the file may be absent — silently skip in that
+    // case rather than failing the pack step.
+    let report_yaml = work_dir.join("report.yaml");
+    if report_yaml.is_file() {
+        z.start_file("report.yaml", opts)
+            .map_err(|e| CliError::InvalidArg(format!("zip entry: {e}")))?;
+        z.write_all(&std::fs::read(&report_yaml)?)?;
+    }
+
+    // Mirror Python's `program.pack_zip(..., graph=..., settings=...)`:
+    // serialize the persisted contexts as YAML so downstream consumers
+    // opening the archive can recover the compile metadata.
+    let graph = graph_io::load_graph(work_dir)?;
+    let graph_yaml = serde_yaml::to_string(&graph)
+        .map_err(|e| CliError::InvalidArg(format!("graph yaml: {e}")))?;
+    z.start_file("graph.yaml", opts)
+        .map_err(|e| CliError::InvalidArg(format!("zip entry: {e}")))?;
+    z.write_all(graph_yaml.as_bytes())?;
+    let settings_yaml = serde_yaml::to_string(settings)
+        .map_err(|e| CliError::InvalidArg(format!("settings yaml: {e}")))?;
+    z.start_file("settings.yaml", opts)
+        .map_err(|e| CliError::InvalidArg(format!("zip entry: {e}")))?;
+    z.write_all(settings_yaml.as_bytes())?;
+
+    // HLS `_csynth.rpt` files under `report/<rel>`. Mirror Python's
+    // `_redact_rpt`: replace the per-run `Date:` line with the fixed
+    // 1980-01-01 stamp so re-running HLS produces a byte-identical
+    // archive (the same redaction `program.pack_xo` applies to xo).
+    let hls_root = work_dir.join("hls");
+    if hls_root.is_dir() {
+        let mut rpt_files: Vec<std::path::PathBuf> = Vec::new();
+        let mut walk = vec![hls_root.clone()];
+        while let Some(dir) = walk.pop() {
+            for entry in std::fs::read_dir(&dir)? {
+                let entry = entry?;
+                let path = entry.path();
+                if path.is_dir() {
+                    walk.push(path);
+                } else if path
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .is_some_and(|n| n.ends_with("_csynth.rpt"))
+                {
+                    rpt_files.push(path);
+                }
+            }
+        }
+        rpt_files.sort();
+        for rpt in &rpt_files {
+            let rel = rpt
+                .strip_prefix(&hls_root)
+                .map_err(|e| CliError::InvalidArg(format!("rpt strip_prefix: {e}")))?;
+            let name = format!("report/{}", rel.to_string_lossy());
+            z.start_file(name, opts)
+                .map_err(|e| CliError::InvalidArg(format!("zip entry: {e}")))?;
+            z.write_all(&redact_rpt(&std::fs::read(rpt)?))?;
+        }
+    }
+
+    z.finish()
+        .map_err(|e| CliError::InvalidArg(format!("zip finish: {e}")))?;
+    Ok(())
+}
+
+/// Port of `tapa.program.pack::_redact_rpt`. Replaces the
+/// per-HLS-run `Date:` line with a fixed 1980 stamp so the archive
+/// is reproducible. Non-UTF-8 bytes are returned unchanged (Python
+/// would have raised — neither path is reachable for valid HLS rpt).
+fn redact_rpt(bytes: &[u8]) -> Vec<u8> {
+    use std::sync::OnceLock;
+    static RE: OnceLock<regex::Regex> = OnceLock::new();
+    let re = RE.get_or_init(|| {
+        regex::Regex::new("Date:           ... ... .. ..:..:.. ....")
+            .expect("static date regex must compile")
+    });
+    match std::str::from_utf8(bytes) {
+        Ok(text) => re
+            .replace_all(text, "Date:           Tue Jan 01 00:00:00 1980")
+            .into_owned()
+            .into_bytes(),
+        Err(_) => bytes.to_vec(),
+    }
+}
+
+/// `_enforce_path_suffix(suffix=".zip")` for `--output`. Default to
+/// `work.zip` in the caller's CWD (matches Python and the Vitis
+/// `.xo` default — existing scripts that consume `./work.zip` keep
+/// working).
+fn enforce_zip_suffix(output: Option<&PathBuf>) -> PathBuf {
+    match output {
+        None => PathBuf::from("work.zip"),
+        Some(p) => {
+            if p.extension().and_then(|s| s.to_str()) == Some("zip") {
+                p.clone()
+            } else {
+                let mut s = p.as_os_str().to_owned();
+                s.push(".zip");
+                PathBuf::from(s)
+            }
+        }
     }
 }
 
@@ -193,6 +353,10 @@ mod tests {
         settings.insert("part_num".to_string(), json!("xcu250-figd2104-2L-e"));
         settings.insert("clock_period".to_string(), json!("3.33"));
         settings_io::store_settings(work_dir, &settings).expect("store settings");
+        // `pack_hls_zip` mirrors Python's `pack_zip(..., graph=...)` and
+        // requires `graph.json` to be present so it can emit `graph.yaml`.
+        graph_io::store_graph(work_dir, &json!({"top": "Top", "tasks": {}}))
+            .expect("store graph");
     }
 
     #[test]
@@ -219,10 +383,76 @@ mod tests {
     #[test]
     fn unsupported_target_surfaces_invalid_arg() {
         let dir = tempfile::tempdir().expect("tempdir");
-        write_state(dir.path(), "xilinx-hls");
+        write_state(dir.path(), "cpu-sim");
         let ctx = ctx_with_work_dir(dir.path());
-        let err = run_native(&parse_pack(&[]), &ctx).expect_err("HLS target must reject");
+        let err = run_native(&parse_pack(&[]), &ctx).expect_err("unknown target must reject");
         assert!(matches!(err, CliError::InvalidArg(ref m) if m.contains("xilinx-vitis")));
+    }
+
+    #[test]
+    fn xilinx_hls_target_produces_zip() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write_state(dir.path(), "xilinx-hls");
+
+        // Minimal synthesis artifacts: one RTL file + a csynth report
+        // whose `Date:` line should be normalized by the redactor.
+        let rtl_dir = dir.path().join("rtl");
+        std::fs::create_dir_all(&rtl_dir).expect("mkdir rtl");
+        std::fs::write(rtl_dir.join("Top.v"), b"module Top; endmodule\n")
+            .expect("write rtl stub");
+        let report_dir = dir.path().join("hls/Top/syn/report");
+        std::fs::create_dir_all(&report_dir).expect("mkdir hls report");
+        std::fs::write(
+            report_dir.join("Top_csynth.rpt"),
+            b"== Header\nDate:           Mon Jan 02 03:04:05 2024\n== End\n",
+        )
+        .expect("write csynth stub");
+
+        let output_path = dir.path().join("work.zip");
+        let output_str = output_path.to_str().expect("utf-8 output");
+        let ctx = ctx_with_work_dir(dir.path());
+        run_native(&parse_pack(&["--output", output_str]), &ctx)
+            .expect("xilinx-hls pack must succeed");
+        assert!(output_path.exists(), "expected {output_str} to be written");
+
+        // Inspect the archive: graph/settings yaml metadata are present
+        // and the csynth report has the redacted reproducible Date.
+        let zip_bytes = std::fs::read(&output_path).expect("read zip");
+        let mut zr = zip::ZipArchive::new(std::io::Cursor::new(zip_bytes)).expect("open zip");
+        let names: Vec<String> = (0..zr.len())
+            .map(|i| zr.by_index(i).unwrap().name().to_string())
+            .collect();
+        assert!(names.iter().any(|n| n == "graph.yaml"), "graph.yaml missing: {names:?}");
+        assert!(names.iter().any(|n| n == "settings.yaml"), "settings.yaml missing: {names:?}");
+        assert!(names.iter().any(|n| n == "rtl/Top.v"));
+        assert!(names.iter().any(|n| n == "report/Top/syn/report/Top_csynth.rpt"));
+
+        let mut rpt = String::new();
+        std::io::Read::read_to_string(
+            &mut zr.by_name("report/Top/syn/report/Top_csynth.rpt").unwrap(),
+            &mut rpt,
+        )
+        .expect("read rpt");
+        assert!(
+            rpt.contains("Date:           Tue Jan 01 00:00:00 1980"),
+            "csynth Date not redacted: {rpt}"
+        );
+    }
+
+    #[test]
+    fn enforce_zip_suffix_defaults_to_cwd() {
+        // Default mirrors Python's `_enforce_path_suffix(suffix=".zip")`:
+        // a bare `work.zip` resolved against the caller's CWD, not
+        // <work_dir>/work.zip.
+        assert_eq!(enforce_zip_suffix(None), PathBuf::from("work.zip"));
+        assert_eq!(
+            enforce_zip_suffix(Some(&PathBuf::from("artifact"))),
+            PathBuf::from("artifact.zip"),
+        );
+        assert_eq!(
+            enforce_zip_suffix(Some(&PathBuf::from("ok.zip"))),
+            PathBuf::from("ok.zip"),
+        );
     }
 
     #[test]
