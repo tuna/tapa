@@ -18,7 +18,7 @@ use tapa_task_graph::{
 };
 use tapa_xilinx::{
     pack_xo as xilinx_pack_xo, DeviceInfo, KernelXmlArgs, KernelXmlPort, LocalToolRunner,
-    PackageXoInputs, PortCategory,
+    PackageXoInputs, PortCategory, RemoteToolRunner, SshMuxOptions, SshSession,
 };
 
 use crate::context::CliContext;
@@ -67,12 +67,14 @@ pub fn to_python_argv(args: &PackArgs) -> Vec<String> {
     out
 }
 
-/// Top-level dispatcher: route to the Python bridge when explicitly
-/// opted in, otherwise execute the native packaging path.
+/// Top-level dispatcher.
+///
+/// Per AC-6, `TAPA_STEP_PACK_PYTHON=1` is a no-op for ported steps;
+/// the native packaging path is the only path the dispatcher takes.
+/// The bridge shim is kept only for composite forwarding of un-ported
+/// step branches.
 pub fn run(args: &PackArgs, ctx: &mut CliContext) -> Result<()> {
-    if python_bridge::is_enabled("pack") {
-        return python_bridge::run("pack", &to_python_argv(args), ctx);
-    }
+    let _ = python_bridge::is_enabled("pack");
     run_native(args, ctx)
 }
 
@@ -174,8 +176,21 @@ fn pack_vitis(
         s_axi_ifaces: PackageXoInputs::default_s_axi(),
     };
 
-    let runner = LocalToolRunner::new();
-    let _ = xilinx_pack_xo(&runner, &inputs)?;
+    // Mirror synth: use RemoteToolRunner when ~/.taparc / --remote-host
+    // is configured so the .xo packaging step actually runs on the
+    // remote Xilinx host. Codex Round 2 finding: native pack used to
+    // always force LocalToolRunner, ignoring `ctx.remote_config`.
+    if let Some(cfg) = ctx.remote_config.as_ref() {
+        let session = std::sync::Arc::new(SshSession::new(
+            cfg.clone(),
+            SshMuxOptions::default(),
+        ));
+        let runner = RemoteToolRunner::new(session);
+        let _ = xilinx_pack_xo(&runner, &inputs)?;
+    } else {
+        let runner = LocalToolRunner::new();
+        let _ = xilinx_pack_xo(&runner, &inputs)?;
+    }
 
     let mut flow = ctx.flow.borrow_mut();
     flow.pipelined.insert("pack".to_string(), true);

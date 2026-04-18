@@ -15,7 +15,7 @@ use clap::Parser;
 use indexmap::IndexMap;
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
-use tapa_task_graph::{Design, TaskTopology};
+use tapa_task_graph::{flatten, Design, Graph, TaskTopology, TransformError};
 
 use crate::context::CliContext;
 use crate::error::{CliError, Result};
@@ -81,12 +81,15 @@ pub fn to_python_argv(args: &AnalyzeArgs) -> Vec<String> {
     out
 }
 
-/// Top-level dispatcher: route to the Python bridge when explicitly
-/// opted in, otherwise execute the native path.
+/// Top-level dispatcher.
+///
+/// `analyze` is a fully ported step (per AC-6), so the
+/// `TAPA_STEP_ANALYZE_PYTHON=1` env flag is a no-op: we always run the
+/// native path. The bridge shim is kept only so `to_python_argv`
+/// remains available for composites that transitively forward to
+/// un-ported step branches.
 pub fn run(args: &AnalyzeArgs, ctx: &mut CliContext) -> Result<()> {
-    if python_bridge::is_enabled("analyze") {
-        return python_bridge::run("analyze", &to_python_argv(args), ctx);
-    }
+    let _ = python_bridge::is_enabled("analyze");
     run_native(args, ctx)
 }
 
@@ -124,11 +127,7 @@ fn run_native(args: &AnalyzeArgs, ctx: &CliContext) -> Result<()> {
     }
 
     if args.flatten_hierarchy {
-        return Err(CliError::InvalidArg(
-            "`--flatten-hierarchy` is not yet supported by the native analyzer; \
-             rerun with `TAPA_STEP_ANALYZE_PYTHON=1` to use the Python fallback."
-                .to_string(),
-        ));
+        graph_dict = flatten_graph_value(&graph_dict)?;
     }
 
     if is_top_leaf(&graph_dict, &args.top) && args.target == "xilinx-vitis" {
@@ -258,6 +257,33 @@ fn sha256_truncated_hex(bytes: &[u8]) -> String {
         let _ = write!(s, "{byte:02x}");
     }
     s
+}
+
+/// Round-trip a tapacc graph dict through the typed [`Graph`] schema and
+/// return the result of [`flatten`] re-serialized as `serde_json::Value`.
+///
+/// The CLI keeps the on-disk graph as a `Value` because the legacy
+/// Python pipeline accepts a richer schema in some downstream stages,
+/// but the transform itself is defined on the strict `Graph` type to
+/// maximize Python parity.
+fn flatten_graph_value(graph: &Value) -> Result<Value> {
+    let json = serde_json::to_string(graph)?;
+    let typed = Graph::from_json(&json)?;
+    let flat = flatten(&typed).map_err(|e| match e {
+        TransformError::DeepHierarchyNotSupported(child) => CliError::InvalidArg(format!(
+            "`--flatten-hierarchy` only supports single-level hierarchies for now; \
+             child task `{child}` is itself an upper task. The native port covers \
+             the vadd-shaped case; deeper graphs are pending.",
+        )),
+        other @ (TransformError::UnknownInstance(_)
+        | TransformError::FloorplanNotSupported(_)
+        | TransformError::Other(_)) => {
+            CliError::InvalidArg(format!("flatten failed: {other}"))
+        }
+    })?;
+    let out_json = flat.to_json()?;
+    let value: Value = serde_json::from_str(&out_json)?;
+    Ok(value)
 }
 
 /// True when the top task in `graph` is a leaf-level task.

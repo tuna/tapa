@@ -229,16 +229,24 @@ fn parse_remote_host_spec_variants() {
 }
 
 #[test]
-fn malformed_yaml_surfaces_typed_error() {
-    let _lock = ENV_LOCK.lock().unwrap();
+fn malformed_yaml_warns_and_returns_none() {
+    // Codex Round 2 parity finding: Python's `load_remote_config`
+    // logs a warning and continues when `~/.taparc` is unreadable or
+    // malformed; Rust must do the same so a stale taparc cannot fatally
+    // block `tapa version` for users without an active remote setup.
+    let lock = ENV_LOCK.lock();
+    let _lock = match lock {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
     let mut g = EnvGuard::new();
     let td = tempfile::tempdir().unwrap();
     let p = write_taparc(&td, "remote: : :\nkey: [unterminated\n");
     g.set(TAPARC_PATH_ENV, p.to_str().unwrap());
-    let err = build_remote_config(&make_globals())
-        .expect_err("malformed YAML must surface a typed error");
+    let cfg = build_remote_config(&make_globals())
+        .expect("malformed taparc must warn-and-skip, never error");
     assert!(
-        matches!(err, CliError::RemoteConfigParse { .. }),
-        "wrong variant: {err}",
+        cfg.is_none(),
+        "malformed taparc must yield None (Python parity)",
     );
 }

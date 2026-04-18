@@ -77,39 +77,51 @@ struct RemoteHostSpec {
 }
 
 /// Read `~/.taparc` and return the `remote` mapping as a YAML value.
-/// Returns `None` when the file is absent, unreadable, or its
-/// `remote:` section is missing/empty — Python silently skips these.
-fn load_taparc_remote_section(path: &Path) -> Result<Option<serde_yaml::Value>> {
+/// Returns `None` when the file is absent, unreadable, malformed, or
+/// its `remote:` section is missing — Python's
+/// `tapa.remote.config.load_remote_config` logs a warning and
+/// continues for every one of these cases, and Rust must match that
+/// parity behavior (Codex Round 2 finding: a fatal Rust error
+/// blocked `tapa version` for users with a stale `~/.taparc`).
+fn load_taparc_remote_section(path: &Path) -> Option<serde_yaml::Value> {
     let text = match std::fs::read_to_string(path) {
         Ok(t) => t,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
         Err(e) => {
-            return Err(CliError::RemoteConfigParse {
-                path: path.to_path_buf(),
-                message: format!("read failed: {e}"),
-            });
+            log::warn!(
+                "ignoring `{}`: {} (matching Python's warn-and-skip)",
+                path.display(),
+                e,
+            );
+            return None;
         }
     };
-    let value: serde_yaml::Value =
-        serde_yaml::from_str(&text).map_err(|e| CliError::RemoteConfigParse {
-            path: path.to_path_buf(),
-            message: e.to_string(),
-        })?;
+    let value: serde_yaml::Value = match serde_yaml::from_str(&text) {
+        Ok(v) => v,
+        Err(e) => {
+            log::warn!(
+                "ignoring `{}`: invalid YAML ({e}); proceeding without remote config",
+                path.display(),
+            );
+            return None;
+        }
+    };
     let map = match value {
         serde_yaml::Value::Mapping(m) => m,
-        serde_yaml::Value::Null => return Ok(None),
-        serde_yaml::Value::Bool(_)
+        serde_yaml::Value::Null => return None,
+        other @ (serde_yaml::Value::Bool(_)
         | serde_yaml::Value::Number(_)
         | serde_yaml::Value::String(_)
         | serde_yaml::Value::Sequence(_)
-        | serde_yaml::Value::Tagged(_) => {
-            return Err(CliError::RemoteConfigParse {
-                path: path.to_path_buf(),
-                message: "expected a top-level YAML mapping".into(),
-            });
+        | serde_yaml::Value::Tagged(_)) => {
+            log::warn!(
+                "ignoring `{}`: expected a top-level YAML mapping, got {other:?}",
+                path.display(),
+            );
+            return None;
         }
     };
-    Ok(map.get("remote").cloned())
+    map.get("remote").cloned()
 }
 
 /// Splice the CLI `--remote-host=user@host[:port]` triple into a YAML
@@ -186,10 +198,7 @@ pub fn build_remote_config(globals: &GlobalArgs) -> Result<Option<RemoteConfig>>
         None => None,
     };
 
-    let file_remote = match taparc_path() {
-        Some(p) => load_taparc_remote_section(&p)?,
-        None => None,
-    };
+    let file_remote = taparc_path().and_then(|p| load_taparc_remote_section(&p));
 
     if cli_spec.is_none() && file_remote.is_none() {
         return Ok(None);

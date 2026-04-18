@@ -30,7 +30,8 @@ use std::path::{Path, PathBuf};
 use clap::Parser;
 use serde_json::{json, Value};
 use tapa_xilinx::{
-    parse_device_info as xilinx_parse_device_info, DeviceInfo, LocalToolRunner, ToolRunner,
+    parse_device_info as xilinx_parse_device_info, DeviceInfo, LocalToolRunner,
+    RemoteToolRunner, SshMuxOptions, SshSession, ToolRunner,
 };
 
 use crate::context::CliContext;
@@ -177,15 +178,26 @@ pub fn to_python_argv(args: &SynthArgs) -> Vec<String> {
     out
 }
 
-/// Top-level dispatcher: route to the Python bridge when the user has
-/// opted in via `TAPA_STEP_SYNTH_PYTHON=1`, otherwise execute the full
-/// native HLS + codegen pipeline using a `LocalToolRunner` for HLS.
+/// Top-level dispatcher.
+///
+/// Per AC-6, `TAPA_STEP_SYNTH_PYTHON=1` is a no-op for ported steps;
+/// the native HLS + codegen pipeline is the only path. When
+/// `ctx.remote_config` is populated (via `~/.taparc` or
+/// `--remote-host`), HLS dispatches through `RemoteToolRunner`;
+/// otherwise `LocalToolRunner`.
 pub fn run(args: &SynthArgs, ctx: &mut CliContext) -> Result<()> {
-    if python_bridge::is_enabled("synth") {
-        return python_bridge::run("synth", &to_python_argv(args), ctx);
+    let _ = python_bridge::is_enabled("synth");
+    if let Some(cfg) = ctx.remote_config.as_ref() {
+        let session = std::sync::Arc::new(SshSession::new(
+            cfg.clone(),
+            SshMuxOptions::default(),
+        ));
+        let runner = RemoteToolRunner::new(session);
+        run_native(args, ctx, &runner)
+    } else {
+        let runner = LocalToolRunner::new();
+        run_native(args, ctx, &runner)
     }
-    let runner = LocalToolRunner::new();
-    run_native(args, ctx, &runner)
 }
 
 /// Native synth: validate the flag surface, resolve the device, persist
