@@ -1,0 +1,32 @@
+{
+    "raw_argv": [
+        "-w",
+        "/tmp/tapa-parity/gf-workdir",
+        "generate-floorplan",
+        "-f",
+        "vadd.cpp",
+        "-t",
+        "VecAdd",
+        "--platform",
+        "xilinx_u250_gen3x16_xdma_4_1_202210_1",
+        "--device-config",
+        "dev.json",
+        "--floorplan-config",
+        "fp.json"
+    ],
+    "subcommands": [
+        {
+            "flags": [
+                "--device-config",
+                "--floorplan-config",
+                "--platform",
+                "-f",
+                "-t"
+            ],
+            "name": "generate-floorplan"
+        }
+    ],
+    "top_level_flags": [
+        "-w"
+    ]
+}

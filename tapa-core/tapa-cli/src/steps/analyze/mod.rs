@@ -15,7 +15,6 @@ use serde_json::{json, Value};
 use crate::context::CliContext;
 use crate::error::{CliError, Result};
 use crate::state::{design as design_io, graph as graph_io, settings as settings_io};
-use crate::steps::python_bridge;
 use crate::tapacc::cflags::{get_system_cflags, get_tapacc_cflags};
 use crate::tapacc::discover::find_clang_binary;
 
@@ -92,7 +91,6 @@ pub fn to_python_argv(args: &AnalyzeArgs) -> Vec<String> {
 /// remains available for composites that transitively forward to
 /// un-ported step branches.
 pub fn run(args: &AnalyzeArgs, ctx: &mut CliContext) -> Result<()> {
-    let _ = python_bridge::is_enabled("analyze");
     run_native(args, ctx)
 }
 

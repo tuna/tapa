@@ -1,18 +1,33 @@
-"""Phase 7 — `tapa-cli` parity tests (Python click vs Rust binary).
+"""Phase 7 — `tapa-cli` golden-snapshot tests for the Rust binary.
 
-Drives both the Python `python3 -m tapa` entry point and the Rust
-`cargo run -p tapa-cli` binary against the `tests/apps/*` fixtures and
-compares their on-disk outputs / parsed argv / `--help` flag surfaces.
-Skips cleanly when the toolchain is not configured (no `tapacc`, no
-`tapa-cpp`, no Python tapa, etc.) so this suite is safe to run on any
-developer machine.
+The legacy click-based Python CLI (`tapa/__main__.py` + `tapa/steps/`)
+was retired in commit `222519ce` (AC-8). With the Python entry point
+gone, the original Python-vs-Rust parity gates would silently skip on
+every invocation, so this suite was rewritten as a *golden-snapshot*
+gate: the Rust CLI's observable surface is captured in
+`tests/golden/` and every run diffs the live binary's behavior against
+those frozen baselines. A drift in the Rust output now fails loudly
+instead of slipping past a no-op skip.
 
-The legacy Phase 5b / Phase 6 cross-language tests that drove
-`tapa_core` PyO3 bindings were removed when the bindings crate was
-retired in Phase 7 (AC-7); their cross-language verification reference
-is now the new CLI parity gate plus the
-`tapa-core/tapa-task-graph/tests/python_design_round_trip.rs` Rust
-integration test for the JSON schema bridge.
+What is captured (under `tapa-core/tests/golden/`):
+  * `help/<subcommand>.flags.txt` — sorted long-flag set for every
+    subcommand's `--help` (plus `_root.flags.txt` for the top-level).
+  * `argv/<app>.json` — parsed (top-level + per-subcommand) shape of
+    every `tests/apps/*/run_tapa.bats` `compile_xo` invocation.
+  * `vadd_analyze/{graph,design,settings}.json` — vadd `analyze`
+    outputs, populated lazily when `tapacc` is available.
+  * `vadd_xo/` — placeholder for the future analyze+synth+pack `.xo`
+    snapshot, populated lazily when Vitis HLS is available.
+
+Every test is named `test_cli_*` so the `-k cli` selector used by
+`run_tapa_cli_golden_test.sh` covers the whole suite.
+
+Tests skip cleanly on any developer machine missing `tapacc` /
+`vitis_hls`; help-diff and argv-shape gates always run because they
+only need the Rust parser. To regenerate a golden after an
+intentional CLI change, set `TAPA_GOLDEN_REFRESH=1` and re-run the
+relevant test — it overwrites the golden file in place instead of
+asserting.
 
 Run locally with ``python3 -m pytest tapa-core/tests/parity_test.py``.
 """
@@ -41,24 +56,22 @@ if _REPO_ROOT.is_dir() and str(_REPO_ROOT) not in sys.path:
 _VADD_DIR = _REPO_ROOT / "tests" / "apps" / "vadd"
 _VADD_TOP = "VecAdd"
 _TAPA_CORE_DIR = _REPO_ROOT / "tapa-core"
+_GOLDEN_DIR = Path(__file__).resolve().parent / "golden"
+_HELP_GOLDEN_DIR = _GOLDEN_DIR / "help"
+_ARGV_GOLDEN_DIR = _GOLDEN_DIR / "argv"
+_VADD_ANALYZE_GOLDEN_DIR = _GOLDEN_DIR / "vadd_analyze"
+_VADD_XO_GOLDEN_DIR = _GOLDEN_DIR / "vadd_xo"
+
+_REFRESH = os.environ.get("TAPA_GOLDEN_REFRESH") == "1"
+
+# Length threshold for "real" short options like `-w`; values shorter
+# than this can't be a flag (and we use the constant to dodge ruff's
+# magic-number lint).
+_MIN_SHORT_OPT_LEN = 2
 
 
 def _have(cmd: str) -> bool:
     return shutil.which(cmd) is not None
-
-
-def _python_tapa_importable() -> bool:
-    """Return True when `python3 -m tapa --help` succeeds."""
-    if not _have("python3"):
-        return False
-    res = _subprocess.run(
-        ["python3", "-c", "import tapa.__main__"],
-        env={**os.environ, "PYTHONPATH": str(_REPO_ROOT)},
-        capture_output=True,
-        check=False,
-        timeout=30,
-    )
-    return res.returncode == 0
 
 
 def _rust_tapa_binary() -> Path | None:
@@ -93,71 +106,21 @@ def _rust_tapa_binary() -> Path | None:
     return binary if binary.is_file() else None
 
 
-def _python_tapa_argv(*subcmd_args: str, work_dir: Path) -> list[str]:
-    return [
-        "python3",
-        "-m",
-        "tapa.__main__",
-        "--work-dir",
-        str(work_dir),
-        *subcmd_args,
-    ]
-
-
 def _rust_tapa_argv(binary: Path, *subcmd_args: str, work_dir: Path) -> list[str]:
     return [str(binary), "--work-dir", str(work_dir), *subcmd_args]
 
 
-def _python_env() -> dict[str, str]:
-    return {**os.environ, "PYTHONPATH": str(_REPO_ROOT)}
+def _rust_env() -> dict[str, str]:
+    """Build env for the Rust binary.
 
-
-# Steps where the native Rust port does NOT yet cover the surface this
-# parity suite needs and we therefore still escape to the Python bridge.
-# Every entry below is paired with a Codex Round 1 acknowledgement that
-# the native path is incomplete; once a port closes the gap, drop it
-# from this set so the Rust path is exercised end-to-end.
-_BRIDGE_STILL_REQUIRED: dict[str, str] = {
-    # synth: native port stops after preflight + settings persistence;
-    # the HLS pipeline (`Program.run_hls` + `generate_task_rtl` +
-    # `generate_top_rtl`) is not yet ported, so any test that needs
-    # populated `<work_dir>/rtl` content must opt the bridge back in.
-    "SYNTH": "HLS pipeline + RTL codegen not yet ported (Codex R1 ack)",
-    # compile / compile-with-floorplan-dse: composite drivers that
-    # transitively need the un-ported synth pipeline above. Bridge stays
-    # on until SYNTH lands natively.
-    "COMPILE": "transitively requires un-ported SYNTH pipeline",
-    "COMPILE_WITH_FLOORPLAN_DSE": "transitively requires un-ported SYNTH",
-    # generate-floorplan: AutoBridge driver + un-ported synth flags.
-    "GENERATE_FLOORPLAN": "wraps un-ported SYNTH + AutoBridge driver",
-}
-
-
-def _rust_env(*, bridge_steps: tuple[str, ...] = ()) -> dict[str, str]:
-    """Build env for the Rust binary, bridging only when explicitly asked.
-
-    By default this leaves *every* `TAPA_STEP_*_PYTHON` unset so the
-    parity suite exercises the native Rust path for ported steps
-    (analyze, synth-preflight, pack-preflight, floorplan no-op,
-    run-autobridge local). Pass `bridge_steps=("SYNTH",)` (etc.) to
-    re-enable the Python fallback for steps still listed in
-    [`_BRIDGE_STILL_REQUIRED`].
+    Strips any stray `TAPA_STEP_*_PYTHON` vars from the caller's shell
+    so a leaked bridge env can't silently mask a native-path
+    regression (the bridge no longer exists post-AC-8).
     """
-    env = {**os.environ, "PYTHONPATH": str(_REPO_ROOT)}
-    # Strip any bridge env that may have leaked in from the caller's
-    # shell so a stray `TAPA_STEP_*_PYTHON=1` doesn't silently mask
-    # native-path regressions.
+    env = {**os.environ}
     for key in list(env):
         if key.startswith("TAPA_STEP_") and key.endswith("_PYTHON"):
             env.pop(key, None)
-    for step in bridge_steps:
-        if step not in _BRIDGE_STILL_REQUIRED:
-            msg = (
-                f"refusing to bridge `{step}`: not in `_BRIDGE_STILL_REQUIRED`. "
-                f"Either add it with a Codex-ack reason or stop opting in."
-            )
-            raise AssertionError(msg)
-        env[f"TAPA_STEP_{step}_PYTHON"] = "1"
     return env
 
 
@@ -180,18 +143,22 @@ def _normalize_design_for_compare(design: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def _skip_if_cli_toolchain_missing() -> tuple[Path, dict[str, Any]]:
+def _skip_if_cli_toolchain_missing() -> Path:
+    """Return the Rust `tapa` binary or `pytest.skip()` cleanly.
+
+    The Python click CLI was retired in commit `222519ce` (AC-8); only
+    the Rust binary is checked. `tapacc` / `vitis_hls` availability
+    is checked per-test where it's actually needed.
+    """
     if not _VADD_DIR.is_dir():
         pytest.skip(f"vadd fixture missing: {_VADD_DIR}")
-    if not _python_tapa_importable():
-        pytest.skip("python3 cannot import tapa.__main__")
     binary = _rust_tapa_binary()
     if binary is None:
         pytest.skip("rust `tapa` binary unavailable (cargo build failed)")
-    return binary, {}
+    return binary
 
 
-# `.xo` redaction + inventory helpers used by `test_parity_cli_vadd_flow`.
+# `.xo` redaction + inventory helpers reused across the `.xo` snapshot.
 def _py_redact(src: Path, dest: Path) -> None:
     """Invoke the production Python `_redact_and_zip` on `src` → `dest`."""
     from tapa.program.pack import _redact_and_zip  # noqa: PLC2701, PLC0415
@@ -230,29 +197,16 @@ def _zip_metadata(path: Path) -> list[tuple[str, int, tuple[int, ...]]]:
     return out
 
 
-def test_parity_cli_help_lists_same_subcommands() -> None:
-    """Verify both runtimes list the same subcommand surface in --help.
-
-    AC-2 negative test: a dropped or renamed flag would fail this diff.
-    """
-    binary, _ = _skip_if_cli_toolchain_missing()
-
-    py = _subprocess.run(
-        ["python3", "-m", "tapa.__main__", "--help"],
-        env=_python_env(),
-        capture_output=True,
-        check=False,
-        timeout=30,
-    )
+def test_cli_help_lists_expected_subcommands() -> None:
+    """Verify the Rust CLI advertises the documented subcommand surface."""
+    binary = _skip_if_cli_toolchain_missing()
     rs = _subprocess.run(
         [str(binary), "--help"],
         capture_output=True,
         check=False,
         timeout=30,
     )
-    assert py.returncode == 0, py.stderr.decode("utf-8", "replace")
     assert rs.returncode == 0, rs.stderr.decode("utf-8", "replace")
-    py_text = py.stdout.decode("utf-8", "replace")
     rs_text = rs.stdout.decode("utf-8", "replace")
     for sub in (
         "analyze",
@@ -265,139 +219,42 @@ def test_parity_cli_help_lists_same_subcommands() -> None:
         "g++",
         "version",
     ):
-        assert sub in py_text, f"Python CLI must list `{sub}`"
         assert sub in rs_text, f"Rust CLI must list `{sub}`"
 
 
-def test_parity_cli_version_matches() -> None:
-    binary, _ = _skip_if_cli_toolchain_missing()
-    py = _subprocess.run(
-        ["python3", "-m", "tapa.__main__", "version"],
-        env=_python_env(),
-        capture_output=True,
-        check=False,
-        timeout=30,
-    )
+def test_cli_version_runs() -> None:
+    """`tapa version` must succeed and emit a non-empty version string."""
+    binary = _skip_if_cli_toolchain_missing()
     rs = _subprocess.run(
         [str(binary), "version"],
         capture_output=True,
         check=False,
         timeout=30,
     )
-    assert py.returncode == 0
-    assert rs.returncode == 0
-    assert py.stdout == rs.stdout, (
-        f"version output diverges: py={py.stdout!r} rs={rs.stdout!r}"
-    )
+    assert rs.returncode == 0, rs.stderr.decode("utf-8", "replace")
+    assert rs.stdout.strip(), "version output must not be empty"
 
 
-def test_parity_cli_analyze_vadd(tmp_path: Path) -> None:
-    """Compare `tapa analyze` outputs on `tests/apps/vadd` across runtimes.
-
-    Asserts that the on-disk `graph.json` / `design.json` /
-    `settings.json` match structurally. Skips cleanly when `tapacc` /
-    `tapa-cpp` cannot be located (the Python CLI itself raises
-    `FileNotFoundError` and we surface that as a skip).
-    """
-    binary, _ = _skip_if_cli_toolchain_missing()
-
-    vadd_cpp = _VADD_DIR / "vadd.cpp"
-    if not vadd_cpp.is_file():
-        pytest.skip(f"missing {vadd_cpp}")
-
-    py_work = tmp_path / "py-out"
-    rs_work = tmp_path / "rs-out"
-
-    py_run = _subprocess.run(
-        _python_tapa_argv(
-            "analyze",
-            "--input",
-            str(vadd_cpp),
-            "--top",
-            _VADD_TOP,
-            work_dir=py_work,
-        ),
-        env=_python_env(),
-        capture_output=True,
-        check=False,
-        timeout=300,
-    )
-    if py_run.returncode != 0:
-        # `tapacc` / `tapa-cpp` not on the path; skip cleanly.
-        msg = py_run.stderr.decode("utf-8", "replace")
-        if "Cannot find" in msg or "FileNotFoundError" in msg:
-            pytest.skip(f"tapacc toolchain not configured: {msg.splitlines()[0]}")
-        pytest.fail(f"python analyze failed: {msg}")
-
-    rs_run = _subprocess.run(
-        _rust_tapa_argv(
-            binary,
-            "analyze",
-            "--input",
-            str(vadd_cpp),
-            "--top",
-            _VADD_TOP,
-            work_dir=rs_work,
-        ),
-        env=_rust_env(),
-        capture_output=True,
-        check=False,
-        timeout=300,
-    )
-    if rs_run.returncode != 0:
-        msg = rs_run.stderr.decode("utf-8", "replace")
-        if "Cannot find" in msg or "tapacc binary not found" in msg:
-            pytest.skip(
-                f"tapacc toolchain not configured (rust): {msg.splitlines()[0]}"
-            )
-        pytest.fail(f"rust analyze failed: {msg}")
-
-    for fname in ("graph.json", "settings.json"):
-        py_data = _read_json(py_work / fname)
-        rs_data = _read_json(rs_work / fname)
-        assert py_data == rs_data, (
-            f"{fname} diverges between runtimes\npy={py_data}\nrs={rs_data}"
-        )
-
-    py_design = _normalize_design_for_compare(_read_json(py_work / "design.json"))
-    rs_design = _normalize_design_for_compare(_read_json(rs_work / "design.json"))
-    assert py_design == rs_design, (
-        "design.json topology diverges between runtimes after normalization"
-    )
-
-
-def test_parity_cli_unknown_first_token_fails() -> None:
-    """Reject `tapa bogus-subcommand` on both runtimes (AC-2 negative).
-
-    Both CLIs must exit non-zero rather than silently no-op.
-    """
-    binary, _ = _skip_if_cli_toolchain_missing()
-    py = _subprocess.run(
-        ["python3", "-m", "tapa.__main__", "bogus-subcommand"],
-        env=_python_env(),
-        capture_output=True,
-        check=False,
-        timeout=30,
-    )
+def test_cli_unknown_first_token_fails() -> None:
+    """Reject `tapa bogus-subcommand` (negative parser gate, AC-2)."""
+    binary = _skip_if_cli_toolchain_missing()
     rs = _subprocess.run(
         [str(binary), "bogus-subcommand"],
         capture_output=True,
         check=False,
         timeout=30,
     )
-    assert py.returncode != 0, "python CLI must reject bogus subcommand"
     assert rs.returncode != 0, "rust CLI must reject bogus subcommand"
 
 
-def test_parity_cli_chained_argv_value_collision_does_not_split() -> None:
+def test_cli_chained_argv_value_collision_does_not_split() -> None:
     """Keep flag values attached to their flag (Codex regression, AC-3).
 
     A flag value that equals a subcommand name (e.g. `--top synth`)
     must stay attached to `--top`, not boundary the chunk into a new
     chained subcommand.
     """
-    binary, _ = _skip_if_cli_toolchain_missing()
-
+    binary = _skip_if_cli_toolchain_missing()
     rs = _subprocess.run(
         [
             str(binary),
@@ -409,15 +266,14 @@ def test_parity_cli_chained_argv_value_collision_does_not_split() -> None:
         ],
         capture_output=True,
         check=False,
-        env={**os.environ},
+        env=_rust_env(),
         timeout=30,
     )
     # The rust binary refuses with a typed error coming out of the
-    # `analyze` step — either `tapa-cpp-binary not found` on the native
-    # path, or `StepUnported` when the bridge env var is unset. The
-    # important parity point is that `synth` is not misclassified as a
-    # chained subcommand — otherwise clap would surface an
-    # "unrecognized argument" diagnostic instead.
+    # `analyze` step (e.g. `tapa-cpp-binary not found`). The important
+    # parity point is that `synth` is not misclassified as a chained
+    # subcommand — otherwise clap would surface an "unrecognized
+    # argument" diagnostic instead.
     assert rs.returncode != 0
     msg = rs.stderr.decode("utf-8", "replace").lower()
     assert "analyze" in msg or "tapa-cpp" in msg or "tapacc" in msg, msg
@@ -426,40 +282,41 @@ def test_parity_cli_chained_argv_value_collision_does_not_split() -> None:
 
 
 # ---------------------------------------------------------------------
-# Per-subcommand `--help` diff: every subcommand's long-flag set must
-# be the same on click (Python) and clap (Rust). Help-text wording can
-# diverge; the *flag surface* may not silently shrink or rename.
+# Per-subcommand `--help` golden diff: every subcommand's long-flag
+# set is frozen in `golden/help/<subcommand>.flags.txt`. A drift —
+# either a removed/renamed flag or an undocumented new one — fails
+# the test and prints the diff. Refresh with `TAPA_GOLDEN_REFRESH=1`.
 # ---------------------------------------------------------------------
 
 
 _LONG_FLAG_RE = _re.compile(r"--[A-Za-z][A-Za-z0-9-]+")
 
-# Codex Round 1 acknowledged divergences. Each entry pairs a
-# subcommand with a frozen set of long flags that legitimately exist
-# on one runtime only, plus a one-line reason. The diff test still
-# fails if a *new* divergence appears outside this allowlist.
-_HELP_DIFF_ALLOWLIST: dict[str, dict[str, frozenset[str]]] = {
-    # No allowlisted divergences: the Rust composites mirror the
-    # Python `_extend_params` flag surface exactly. Adding entries
-    # here is a regression — open a bug instead.
-}
-
 
 def _extract_long_flags(help_text: str) -> set[str]:
     """Pull `--long-flag` tokens from a help dump.
 
-    Click and clap render help differently, but both list each long
-    flag verbatim. Strip out common false positives (`--help`,
-    word-wrapped `--keep-hierarchy` continuations) — the test only
-    cares about the documented option names.
+    Strips out common boilerplate (`--help`, `--version`) so the diff
+    focuses on the documented option surface.
     """
     flags = {m.group(0) for m in _LONG_FLAG_RE.finditer(help_text)}
-    # `--help` / `--version` are uninteresting boilerplate present on
-    # both sides; dropping them keeps the diff focused on the real
-    # option surface.
     flags.discard("--help")
     flags.discard("--version")
     return flags
+
+
+def _read_golden_flags(path: Path) -> set[str]:
+    if not path.is_file():
+        return set()
+    return {
+        line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
+    }
+
+
+def _write_golden_flags(path: Path, flags: set[str]) -> None:
+    sorted_flags = sorted(flags)
+    body = "\n".join(sorted_flags) + ("\n" if sorted_flags else "")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(body, encoding="utf-8")
 
 
 _SUBCOMMANDS = (
@@ -475,64 +332,59 @@ _SUBCOMMANDS = (
 )
 
 
-@pytest.mark.parametrize("subcommand", _SUBCOMMANDS)
-def test_parity_cli_subcommand_help_diff(subcommand: str) -> None:
-    """The Python and Rust CLI must enumerate the same long-flag set.
-
-    A renamed or dropped flag immediately fails this test, with a
-    diff showing exactly which side changed. Help-text wording can
-    differ freely — only the `--name` set is compared.
-    """
-    binary, _ = _skip_if_cli_toolchain_missing()
-
-    py = _subprocess.run(
-        ["python3", "-m", "tapa.__main__", subcommand, "--help"],
-        env=_python_env(),
+def test_cli_root_help_flags_match_golden() -> None:
+    """Top-level `tapa --help` long-flag set must match the golden snapshot."""
+    binary = _skip_if_cli_toolchain_missing()
+    rs = _subprocess.run(
+        [str(binary), "--help"],
         capture_output=True,
         check=False,
         timeout=30,
     )
+    assert rs.returncode == 0, rs.stderr.decode("utf-8", "replace")
+    live = _extract_long_flags(rs.stdout.decode("utf-8", "replace"))
+    golden_path = _HELP_GOLDEN_DIR / "_root.flags.txt"
+    if _REFRESH:
+        _write_golden_flags(golden_path, live)
+        return
+    golden = _read_golden_flags(golden_path)
+    assert live == golden, (
+        f"top-level `--help` flag drift\n  added: {sorted(live - golden)}\n"
+        f"  removed: {sorted(golden - live)}\n"
+        f"  refresh: TAPA_GOLDEN_REFRESH=1 pytest -k cli_root_help"
+    )
+
+
+@pytest.mark.parametrize("subcommand", _SUBCOMMANDS)
+def test_cli_subcommand_help_flags_match_golden(subcommand: str) -> None:
+    """Each subcommand's long-flag set must match its golden snapshot.
+
+    The golden files live in `tapa-core/tests/golden/help/` and were
+    seeded from the live Rust binary at the time the Python CLI was
+    retired (commit `222519ce`, AC-8). A flag rename or removal trips
+    this test with an explicit added/removed diff. To intentionally
+    update a golden after a CLI change, set `TAPA_GOLDEN_REFRESH=1`.
+    """
+    binary = _skip_if_cli_toolchain_missing()
     rs = _subprocess.run(
         [str(binary), subcommand, "--help"],
         capture_output=True,
         check=False,
         timeout=30,
     )
-    assert py.returncode == 0, py.stderr.decode("utf-8", "replace")
     assert rs.returncode == 0, rs.stderr.decode("utf-8", "replace")
-
-    py_flags = _extract_long_flags(py.stdout.decode("utf-8", "replace"))
-    rs_flags = _extract_long_flags(rs.stdout.decode("utf-8", "replace"))
-
-    allow = _HELP_DIFF_ALLOWLIST.get(
-        subcommand, {"py_only": frozenset(), "rs_only": frozenset()}
-    )
-    py_only = py_flags - rs_flags - allow["py_only"]
-    rs_only = rs_flags - py_flags - allow["rs_only"]
-    # If the allowlist itself becomes stale (the divergence closed),
-    # surface that loudly so we delete the entry.
-    stale_py = allow["py_only"] - (py_flags - rs_flags)
-    stale_rs = allow["rs_only"] - (rs_flags - py_flags)
-
-    assert not py_only, (
-        f"`{subcommand}`: Python-only flags appeared without an allowlist "
-        f"entry: {sorted(py_only)}. Either port them to Rust or extend "
-        f"`_HELP_DIFF_ALLOWLIST['{subcommand}']['py_only']` with a reason."
-    )
-    assert not rs_only, (
-        f"`{subcommand}`: Rust-only flags appeared without an allowlist "
-        f"entry: {sorted(rs_only)}. Either remove them or extend "
-        f"`_HELP_DIFF_ALLOWLIST['{subcommand}']['rs_only']` with a reason."
-    )
-    assert not stale_py, (
-        f"`{subcommand}`: allowlisted `py_only` flags are now present in "
-        f"both runtimes — drop them from `_HELP_DIFF_ALLOWLIST`: "
-        f"{sorted(stale_py)}"
-    )
-    assert not stale_rs, (
-        f"`{subcommand}`: allowlisted `rs_only` flags are now present in "
-        f"both runtimes — drop them from `_HELP_DIFF_ALLOWLIST`: "
-        f"{sorted(stale_rs)}"
+    live = _extract_long_flags(rs.stdout.decode("utf-8", "replace"))
+    golden_path = _HELP_GOLDEN_DIR / f"{subcommand}.flags.txt"
+    if _REFRESH:
+        _write_golden_flags(golden_path, live)
+        return
+    golden = _read_golden_flags(golden_path)
+    assert live == golden, (
+        f"`{subcommand}` `--help` flag drift\n"
+        f"  added (live - golden): {sorted(live - golden)}\n"
+        f"  removed (golden - live): {sorted(golden - live)}\n"
+        f"  refresh: TAPA_GOLDEN_REFRESH=1 pytest -k "
+        f"cli_subcommand_help -k {subcommand}"
     )
 
 
@@ -540,33 +392,60 @@ def test_parity_cli_subcommand_help_diff(subcommand: str) -> None:
 # Fixture-based chained-argv corpus.
 #
 # Discover every `tests/apps/*/run_tapa.bats` and lift the canonical
-# `compile_xo` argv out of it. Each fixture's argv is then forwarded to
-# both runtimes with `--help` appended so clap/click parse the surface
-# without invoking Vitis. Both must accept the same flag layout
-# (exit 0, no "no such option" / "unrecognized argument" diagnostic).
+# `compile_xo` argv out of it. Each fixture's parsed shape is frozen
+# in `golden/argv/<app>.json` as the canonical structure produced by
+# the Rust parser. The live discovery + parse must match the golden
+# byte-for-byte, modulo `TAPA_GOLDEN_REFRESH=1` updates.
 # ---------------------------------------------------------------------
 
 _APPS_DIR = _REPO_ROOT / "tests" / "apps"
 
+# Tokens that consume the next argv entry as their value. Used by the
+# argv-shape parser to keep flag/value pairs together when summarizing.
+_VALUED_FLAGS = frozenset(
+    {
+        "-w",
+        "--work-dir",
+        "--temp-dir",
+        "--clang-format-quota-in-bytes",
+        "--remote-host",
+        "--remote-key-file",
+        "--remote-xilinx-settings",
+        "--remote-ssh-control-dir",
+        "--remote-ssh-control-persist",
+        "-f",
+        "--input",
+        "-t",
+        "--top",
+        "-c",
+        "--cflags",
+        "--target",
+        "--part-num",
+        "-p",
+        "--platform",
+        "--clock-period",
+        "-j",
+        "--jobs",
+        "--other-hls-configs",
+        "--override-report-schema-version",
+        "--nonpipeline-fifos",
+        "--floorplan-config",
+        "--device-config",
+        "--floorplan-path",
+        "-o",
+        "--output",
+        "-s",
+        "--bitstream-script",
+        "--custom-rtl",
+        "--graphir-path",
+        "--executable",
+    }
+)
+_SUBCOMMAND_NAMES = frozenset(_SUBCOMMANDS)
+
 
 def _discover_app_argvs() -> list[tuple[str, list[str]]]:
-    """Return `(app_name, argv)` for every `run_tapa.bats` we can parse.
-
-    The `compile_xo` body has a uniform shape across the seven app
-    fixtures:
-
-        ${TAPA_HOME}/usr/bin/tapa \
-          -w ${BATS_TMPDIR}/<app>-workdir \
-          compile \
-          --jobs 2 \
-          --platform xilinx_u250_gen3x16_xdma_4_1_202210_1 \
-          -f <app>.cpp \
-          -t <Top> \
-          -o ${BATS_TMPDIR}/<app>.xo
-
-    We strip bats-only `${...}` interpolations to neutral
-    placeholders so both runtimes see syntactically valid tokens.
-    """
+    """Return `(app_name, argv)` for every parsable `run_tapa.bats`."""
     out: list[tuple[str, list[str]]] = []
     if not _APPS_DIR.is_dir():
         return out
@@ -575,7 +454,6 @@ def _discover_app_argvs() -> list[tuple[str, list[str]]]:
         if not bats.is_file():
             continue
         text = bats.read_text(encoding="utf-8")
-        # Locate the `compile_xo()` body and lift the `tapa ... \` block.
         match = _re.search(
             r"compile_xo\s*\(\)\s*\{(.+?)^\}",
             text,
@@ -584,23 +462,14 @@ def _discover_app_argvs() -> list[tuple[str, list[str]]]:
         if match is None:
             continue
         body = match.group(1)
-        # Find the line carrying the `tapa` invocation; flatten
-        # backslash-continued continuations into a single string.
         flat = _re.sub(r"\\\s*\n\s*", " ", body)
         m = _re.search(r"\btapa\b\s+(.*)", flat)
         if m is None:
             continue
-        tail = m.group(1)
-        # Stop at the closing brace's preceding `[ -f ... ]` if
-        # captured. The first line break ends the command.
-        tail = tail.split("\n", 1)[0].strip()
-        # Replace bats placeholders with concrete values that are
-        # syntactically valid for both runtimes.
+        tail = m.group(1).split("\n", 1)[0].strip()
         tail = tail.replace("${BATS_TMPDIR}", "/tmp/tapa-parity")
         tail = tail.replace("${TAPA_HOME}", "/tmp/tapa-home")
         tail = tail.replace("${BATS_TEST_DIRNAME}", str(app_dir))
-        # Tokenize. The bats files use plain whitespace separation,
-        # no quoting, so a simple split is sufficient.
         argv = tail.split()
         if not argv:
             continue
@@ -608,68 +477,323 @@ def _discover_app_argvs() -> list[tuple[str, list[str]]]:
     return out
 
 
+def _is_flag_token(tok: str) -> bool:
+    """True when `tok` looks like a `-x` or `--long-flag` argv token."""
+    if tok.startswith("--"):
+        return True
+    if not tok.startswith("-"):
+        return False
+    if len(tok) < _MIN_SHORT_OPT_LEN:
+        return False
+    return not tok[1].isdigit()
+
+
+def _summarize_section(args: list[str]) -> list[str]:
+    """Reduce a flag/value/positional sequence to a sorted token list."""
+    out: list[str] = []
+    i = 0
+    while i < len(args):
+        tok = args[i]
+        if _is_flag_token(tok):
+            if tok in _VALUED_FLAGS and i + 1 < len(args):
+                out.append(tok)
+                i += 2  # consume "<flag><value>" pair
+                continue
+            out.append(tok)
+            i += 1
+            continue
+        out.append(f"<positional:{tok}>")
+        i += 1
+    return sorted(out)
+
+
+def _parse_argv_shape(argv: list[str]) -> dict[str, Any]:
+    """Decompose `argv` into top-level + per-subcommand sections.
+
+    Splits the argv at known subcommand-name tokens (skipping ones
+    that are the value of a preceding `--flag`). Within each section,
+    flags are preserved (paired with `<positional:NAME>` markers for
+    bare positionals) and sorted for deterministic comparison.
+    """
+    sections: list[dict[str, Any]] = []
+    top: list[str] = []
+    current_sub: str | None = None
+    current_args: list[str] = []
+    target = top
+    i = 0
+    while i < len(argv):
+        tok = argv[i]
+        prev_consumes_value = i > 0 and argv[i - 1] in _VALUED_FLAGS
+        if tok in _SUBCOMMAND_NAMES and not prev_consumes_value:
+            if current_sub is not None:
+                sections.append({"name": current_sub, "args": list(current_args)})
+            current_sub = tok
+            current_args = []
+            target = current_args
+            i += 1
+            continue
+        target.append(tok)
+        i += 1
+    if current_sub is not None:
+        sections.append({"name": current_sub, "args": list(current_args)})
+    return {
+        "raw_argv": list(argv),
+        "top_level_flags": _summarize_section(top),
+        "subcommands": [
+            {"name": s["name"], "flags": _summarize_section(s["args"])}
+            for s in sections
+        ],
+    }
+
+
 _APP_ARGVS = _discover_app_argvs()
+
+# Curated argv fixtures for subcommands NOT covered by the per-app
+# `compile_xo` corpus. AC-11 requires explicit coverage for each major
+# invocation idiom; `tests/apps/*/run_tapa.bats` gives us `compile`
+# (and transitively analyze + synth + pack), but the non-`compile`
+# entry points need hand-rolled fixtures. Each entry lands a golden
+# JSON in `tests/golden/argv/<name>.json` via the same test harness.
+_CURATED_ARGVS: list[tuple[str, list[str]]] = [
+    # `generate-floorplan` — full analyze+synth+autobridge surface.
+    (
+        "generate-floorplan",
+        [
+            "-w",
+            "/tmp/tapa-parity/gf-workdir",
+            "generate-floorplan",
+            "-f",
+            "vadd.cpp",
+            "-t",
+            "VecAdd",
+            "--platform",
+            "xilinx_u250_gen3x16_xdma_4_1_202210_1",
+            "--device-config",
+            "dev.json",
+            "--floorplan-config",
+            "fp.json",
+        ],
+    ),
+    # `compile-with-floorplan-dse` — DSE entry with the union flag set.
+    (
+        "compile-with-floorplan-dse",
+        [
+            "-w",
+            "/tmp/tapa-parity/dse-workdir",
+            "compile-with-floorplan-dse",
+            "-f",
+            "vadd.cpp",
+            "-t",
+            "VecAdd",
+            "--platform",
+            "xilinx_u250_gen3x16_xdma_4_1_202210_1",
+            "--device-config",
+            "dev.json",
+            "--floorplan-config",
+            "fp.json",
+            "--enable-synth-util",
+            "--gen-ab-graph",
+        ],
+    ),
+    # `g++` — host compile pass-through.
+    (
+        "gpp",
+        [
+            "g++",
+            "-std=c++17",
+            "vadd-host.cpp",
+            "-o",
+            "vadd-host",
+            "-lfrt",
+        ],
+    ),
+    # `version` — trivial invocation.
+    (
+        "version",
+        ["version"],
+    ),
+]
 
 
 @pytest.mark.parametrize(
     ("app_name", "argv"),
-    _APP_ARGVS,
-    ids=[name for name, _ in _APP_ARGVS] or ["__no_apps__"],
+    _APP_ARGVS + _CURATED_ARGVS,
+    ids=[name for name, _ in _APP_ARGVS + _CURATED_ARGVS] or ["__no_apps__"],
 )
-def test_parity_cli_chained_argv_corpus(app_name: str, argv: list[str]) -> None:
-    """Every fixture's chained argv must parse identically on both runtimes.
+def test_cli_chained_argv_corpus_matches_golden(
+    app_name: str,
+    argv: list[str],
+) -> None:
+    """Each app's argv shape must match its golden + parse on the Rust binary.
 
-    Appending `--help` short-circuits the actual pipeline so we only
-    exercise the parser. Both runtimes must exit 0; neither may emit
-    a parse-error diagnostic ("unrecognized" / "no such option" /
-    "unexpected").
+    Two assertions:
+
+      1. The shape extracted from `run_tapa.bats` matches the frozen
+         `golden/argv/<app>.json`. A schema drift in the bats files
+         (renamed flag, added subcommand) trips this immediately.
+      2. The Rust parser accepts the same argv with `--help` appended
+         (clap exits 0, no `unrecognized` / `unexpected` diagnostic).
     """
     if not argv:
         pytest.skip(f"empty argv for {app_name}")
-    binary, _ = _skip_if_cli_toolchain_missing()
+    binary = _skip_if_cli_toolchain_missing()
 
-    # Append `--help` to the *subcommand* portion so click/clap print
-    # subcommand-level help and exit 0 without launching the toolchain.
-    py = _subprocess.run(
-        ["python3", "-m", "tapa.__main__", *argv, "--help"],
-        env=_python_env(),
-        capture_output=True,
-        check=False,
-        timeout=30,
-    )
+    live_shape = _parse_argv_shape(argv)
+    golden_path = _ARGV_GOLDEN_DIR / f"{app_name}.json"
+    if _REFRESH:
+        golden_path.parent.mkdir(parents=True, exist_ok=True)
+        golden_path.write_text(
+            json.dumps(live_shape, indent=4, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+    else:
+        assert golden_path.is_file(), (
+            f"missing golden `{golden_path.name}`; refresh with "
+            f"TAPA_GOLDEN_REFRESH=1 pytest -k cli_chained_argv_corpus"
+        )
+        golden = _read_json(golden_path)
+        assert live_shape == golden, (
+            f"[{app_name}] argv shape drift vs golden\n"
+            f"  live={json.dumps(live_shape, indent=4, sort_keys=True)}\n"
+            f"  golden={json.dumps(golden, indent=4, sort_keys=True)}\n"
+            f"  refresh: TAPA_GOLDEN_REFRESH=1 pytest "
+            f"-k 'cli_chained_argv_corpus and {app_name}'"
+        )
+
+    # Live parser gate: the Rust binary must accept the same argv when
+    # we append `--help` (which short-circuits the pipeline). `g++` is
+    # special — its `trailing_var_arg` absorbs everything so appending
+    # `--help` just passes it to the real compiler (which may or may
+    # not be installed), so we skip the live gate for that fixture.
+    if app_name == "gpp":
+        return
     rs = _subprocess.run(
         [str(binary), *argv, "--help"],
         capture_output=True,
         check=False,
+        env=_rust_env(),
         timeout=30,
     )
-
-    py_err = py.stderr.decode("utf-8", "replace").lower()
     rs_err = rs.stderr.decode("utf-8", "replace").lower()
-    py_out = py.stdout.decode("utf-8", "replace").lower()
     rs_out = rs.stdout.decode("utf-8", "replace").lower()
     bad_tokens = ("unrecognized", "no such option", "unexpected argument")
-
-    assert py.returncode == 0, (
-        f"[{app_name}] python rejected the fixture argv: {py_err}"
-    )
     assert rs.returncode == 0, f"[{app_name}] rust rejected the fixture argv: {rs_err}"
     for token in bad_tokens:
-        assert token not in py_err and token not in py_out, (
-            f"[{app_name}] python parser complained about `{token}`: {py_err}"
-        )
         assert token not in rs_err and token not in rs_out, (
             f"[{app_name}] rust parser complained about `{token}`: {rs_err}"
         )
 
 
 # ---------------------------------------------------------------------
-# Real `analyze synth pack` flow on the vadd fixture.
+# vadd `analyze` golden snapshot.
 #
-# When tapacc + Vitis HLS are available, run the full chain natively
-# on both runtimes and assert the produced `.xo` archives are
-# byte-equal after the redaction normalization that already powers
-# `test_parity_xilinx_xo_redaction`. Skip cleanly otherwise.
+# When `tapacc` (and therefore `tapa-cpp`) is available, run the Rust
+# binary's `analyze` step on `tests/apps/vadd` and snapshot
+# `graph.json` / `design.json` / `settings.json` into
+# `golden/vadd_analyze/`. Subsequent runs diff the live JSON against
+# the golden. Skip cleanly when `tapacc` is missing.
+# ---------------------------------------------------------------------
+
+
+def _have_tapacc() -> bool:
+    """Return True when `tapacc` is reachable on PATH."""
+    return _have("tapacc") or _have("tapa-cpp")
+
+
+_VADD_ANALYZE_GOLDEN_FILES = ("graph.json", "settings.json", "design.json")
+
+
+def _collect_vadd_analyze_outputs(work: Path) -> dict[str, dict[str, Any]]:
+    """Read + normalize the JSON outputs produced by `tapa analyze`."""
+    out: dict[str, dict[str, Any]] = {}
+    for fname in _VADD_ANALYZE_GOLDEN_FILES:
+        live = _read_json(work / fname)
+        if fname == "design.json":
+            live = _normalize_design_for_compare(live)
+        out[fname] = live
+    return out
+
+
+def _refresh_vadd_analyze_goldens(files: dict[str, dict[str, Any]]) -> None:
+    _VADD_ANALYZE_GOLDEN_DIR.mkdir(parents=True, exist_ok=True)
+    for fname, data in files.items():
+        (_VADD_ANALYZE_GOLDEN_DIR / fname).write_text(
+            json.dumps(data, indent=4, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+
+
+def _assert_vadd_analyze_goldens(files: dict[str, dict[str, Any]]) -> None:
+    seeded = all((_VADD_ANALYZE_GOLDEN_DIR / fname).is_file() for fname in files)
+    if not seeded:
+        pytest.skip(
+            f"vadd_analyze goldens not yet seeded; run with "
+            f"TAPA_GOLDEN_REFRESH=1 to populate {_VADD_ANALYZE_GOLDEN_DIR}"
+        )
+    for fname, live in files.items():
+        golden = _read_json(_VADD_ANALYZE_GOLDEN_DIR / fname)
+        if fname == "design.json":
+            golden = _normalize_design_for_compare(golden)
+        assert live == golden, (
+            f"vadd_analyze `{fname}` drift vs golden — "
+            f"refresh with TAPA_GOLDEN_REFRESH=1 if intentional"
+        )
+
+
+def test_cli_golden_vadd_analyze(tmp_path: Path) -> None:
+    """Snapshot/diff `tapa analyze` outputs on the vadd fixture.
+
+    Golden files: `graph.json`, `settings.json`, `design.json` in
+    `tapa-core/tests/golden/vadd_analyze/`. The first golden seed
+    happens automatically when `TAPA_GOLDEN_REFRESH=1` is set; the
+    test then asserts subsequent live runs produce identical JSON
+    (after the same `_normalize_design_for_compare` pass that hides
+    timing-noisy fields like `clock_period` / `self_area`).
+
+    Skips cleanly when `tapacc` / `tapa-cpp` is not on PATH.
+    """
+    binary = _skip_if_cli_toolchain_missing()
+    vadd_cpp = _VADD_DIR / "vadd.cpp"
+    if not vadd_cpp.is_file():
+        pytest.skip(f"missing {vadd_cpp}")
+    if not _have_tapacc():
+        pytest.skip("tapacc / tapa-cpp not on PATH; vadd analyze is unrunnable")
+
+    work = tmp_path / "rs-out"
+    rs = _subprocess.run(
+        _rust_tapa_argv(
+            binary,
+            "analyze",
+            "--input",
+            str(vadd_cpp),
+            "--top",
+            _VADD_TOP,
+            work_dir=work,
+        ),
+        env=_rust_env(),
+        capture_output=True,
+        check=False,
+        timeout=300,
+    )
+    if rs.returncode != 0:
+        msg = rs.stderr.decode("utf-8", "replace")
+        if "Cannot find" in msg or "tapacc binary not found" in msg:
+            pytest.skip(f"tapacc toolchain not configured: {msg.splitlines()[0]}")
+        pytest.fail(f"rust analyze failed: {msg}")
+
+    files = _collect_vadd_analyze_outputs(work)
+    if _REFRESH:
+        _refresh_vadd_analyze_goldens(files)
+        return
+    _assert_vadd_analyze_goldens(files)
+
+
+# ---------------------------------------------------------------------
+# vadd `analyze synth pack` `.xo` golden snapshot.
+#
+# Skipped when `vitis_hls` is not on PATH. Documented placeholder under
+# `golden/vadd_xo/` is populated lazily by `TAPA_GOLDEN_REFRESH=1`
+# runs that have the full toolchain available.
 # ---------------------------------------------------------------------
 
 
@@ -679,122 +803,132 @@ def _xo_signature(
     list[tuple[str, str]],
     list[tuple[str, int, tuple[int, ...]]],
 ]:
-    """Return `(content_inventory, listing_metadata)` for `xo_path`.
-
-    Reuses the redaction-test helpers so `.xo` parity is judged on the
-    same axes as `test_parity_xilinx_xo_redaction`: per-entry SHA-256
-    plus listing metadata (name, size, normalized timestamp).
-    """
+    """Return `(content_inventory, listing_metadata)` for `xo_path`."""
     return _zip_inventory(xo_path), _zip_metadata(xo_path)
 
 
-def test_parity_cli_vadd_flow(tmp_path: Path) -> None:
-    """End-to-end native vadd: `analyze synth pack` on both runtimes.
+_VADD_FLOW_SKIP_NEEDLES = (
+    "Cannot find",
+    "tapacc binary not found",
+    "tapa-cpp",
+    "vitis_hls",
+    "XILINX_HLS",
+    "StepUnported",
+    "is not yet ported",
+    "is not yet supported",
+)
 
-    Runs the full chained pipeline against `tests/apps/vadd` with no
-    bridge env, then compares the produced `.xo` archives by content
-    SHA-256 and listing metadata after the standard redaction pass.
-    Skips cleanly when:
-      - tapacc / tapa-cpp is not installed (analyze can't run),
-      - Vitis HLS is unavailable (synth needs `vitis_hls`),
-      - the Rust SYNTH path hasn't landed yet (StepUnported error).
 
-    The skip-on-`StepUnported` branch is what makes this test
-    forward-compatible: the moment SYNTH ports natively, the skip
-    drops away and the assertion goes live without test edits.
+def _maybe_skip_on_vadd_flow_failure(stderr: str) -> None:
+    """Translate a known-toolchain failure into a `pytest.skip()`."""
+    for needle in _VADD_FLOW_SKIP_NEEDLES:
+        if needle in stderr:
+            first = stderr.splitlines()[0] if stderr.strip() else "<no stderr>"
+            pytest.skip(f"vadd flow toolchain/native gap: {needle} | {first}")
+
+
+def _build_vadd_flow_argv(
+    binary: Path,
+    work: Path,
+    vadd_cpp: Path,
+    xo_path: Path,
+    platform: str,
+) -> list[str]:
+    return [
+        str(binary),
+        "--work-dir",
+        str(work),
+        "analyze",
+        "--input",
+        str(vadd_cpp),
+        "--top",
+        _VADD_TOP,
+        "synth",
+        "--platform",
+        platform,
+        "pack",
+        "--output",
+        str(xo_path),
+    ]
+
+
+def _refresh_vadd_xo_goldens(
+    inv: list[tuple[str, str]],
+    meta: list[tuple[str, int, tuple[int, ...]]],
+) -> None:
+    _VADD_XO_GOLDEN_DIR.mkdir(parents=True, exist_ok=True)
+    (_VADD_XO_GOLDEN_DIR / "xo_inventory.json").write_text(
+        json.dumps(inv, indent=4) + "\n", encoding="utf-8"
+    )
+    (_VADD_XO_GOLDEN_DIR / "xo_metadata.json").write_text(
+        json.dumps([list(m) for m in meta], indent=4) + "\n",
+        encoding="utf-8",
+    )
+
+
+def test_cli_golden_vadd_xo_flow(tmp_path: Path) -> None:
+    """Snapshot/diff the `analyze synth pack` `.xo` against a golden.
+
+    Skips on developer machines that don't have Vitis HLS available.
+    On a fully-configured host:
+      - first run with `TAPA_GOLDEN_REFRESH=1` writes
+        `golden/vadd_xo/xo_inventory.json` + `xo_metadata.json`,
+      - subsequent runs assert byte-equal `.xo` (after redaction).
+
+    The redaction pass is the production
+    `tapa.program.pack._redact_and_zip` which zeros embedded timestamps
+    and absolute paths. If `tapa.program.pack` is not importable
+    (e.g. the Python helper has also been retired), this test skips.
     """
-    binary, _ = _skip_if_cli_toolchain_missing()
+    binary = _skip_if_cli_toolchain_missing()
     vadd_cpp = _VADD_DIR / "vadd.cpp"
     if not vadd_cpp.is_file():
         pytest.skip(f"missing {vadd_cpp}")
     if not _have("vitis_hls") and "XILINX_HLS" not in os.environ:
         pytest.skip("vitis_hls not on PATH and `XILINX_HLS` unset")
+    if not _have_tapacc():
+        pytest.skip("tapacc / tapa-cpp not on PATH; vadd flow unrunnable")
 
     platform = os.environ.get(
         "TAPA_PARITY_PLATFORM",
         "xilinx_u250_gen3x16_xdma_4_1_202210_1",
     )
 
-    def _run_chain(work_dir: Path, *, env: dict[str, str], argv0: list[str]) -> Path:
-        """Execute analyze+synth+pack against `work_dir`, return the `.xo`."""
-        xo_path = work_dir / "vadd.xo"
-        full_argv = [
-            *argv0,
-            "--work-dir",
-            str(work_dir),
-            "analyze",
-            "--input",
-            str(vadd_cpp),
-            "--top",
-            _VADD_TOP,
-            "synth",
-            "--platform",
-            platform,
-            "pack",
-            "--output",
-            str(xo_path),
-        ]
-        run = _subprocess.run(
-            full_argv,
-            env=env,
-            capture_output=True,
-            check=False,
-            timeout=900,
-        )
-        if run.returncode != 0:
-            msg = run.stderr.decode("utf-8", "replace")
-            for needle in (
-                "Cannot find",
-                "tapacc binary not found",
-                "tapa-cpp",
-                "vitis_hls",
-                "XILINX_HLS",
-                "StepUnported",
-                "is not yet ported",
-                "is not yet supported",
-            ):
-                if needle in msg:
-                    pytest.skip(
-                        f"vadd flow toolchain/native gap: {needle} | "
-                        f"{msg.splitlines()[0] if msg.strip() else '<no stderr>'}"
-                    )
-            pytest.fail(f"chain failed unexpectedly:\n{msg}")
-        if not xo_path.is_file():
-            pytest.skip(f"chain succeeded but no `.xo` at {xo_path}")
-        return xo_path
-
-    py_work = tmp_path / "py-out"
-    rs_work = tmp_path / "rs-out"
-    py_work.mkdir()
-    rs_work.mkdir()
-
-    py_xo = _run_chain(
-        py_work,
-        env=_python_env(),
-        argv0=["python3", "-m", "tapa.__main__"],
-    )
-    rs_xo = _run_chain(
-        rs_work,
+    work = tmp_path / "rs-out"
+    work.mkdir()
+    xo_path = work / "vadd.xo"
+    run = _subprocess.run(
+        _build_vadd_flow_argv(binary, work, vadd_cpp, xo_path, platform),
         env=_rust_env(),
-        argv0=[str(binary)],
+        capture_output=True,
+        check=False,
+        timeout=900,
     )
+    if run.returncode != 0:
+        msg = run.stderr.decode("utf-8", "replace")
+        _maybe_skip_on_vadd_flow_failure(msg)
+        pytest.fail(f"chain failed unexpectedly:\n{msg}")
+    if not xo_path.is_file():
+        pytest.skip(f"chain succeeded but no `.xo` at {xo_path}")
 
-    # Redact both archives through the production Python path so the
-    # comparison ignores embedded timestamps / abs paths / project IDs.
-    py_redacted = tmp_path / "py-redacted.xo"
-    rs_redacted = tmp_path / "rs-redacted.xo"
+    redacted = tmp_path / "rs-redacted.xo"
     try:
-        _py_redact(py_xo, py_redacted)
-        _py_redact(rs_xo, rs_redacted)
+        _py_redact(xo_path, redacted)
     except ImportError as exc:
         pytest.skip(f"tapa.program.pack not importable: {exc}")
 
-    py_inv, py_meta = _xo_signature(py_redacted)
-    rs_inv, rs_meta = _xo_signature(rs_redacted)
-    assert py_inv == rs_inv, (
-        f"vadd `.xo` content drift after redaction\n  py={py_inv}\n  rs={rs_inv}"
-    )
-    assert py_meta == rs_meta, (
-        f"vadd `.xo` listing-metadata drift after redaction\n"
-        f"  py={py_meta}\n  rs={rs_meta}"
-    )
+    inv, meta = _xo_signature(redacted)
+    inv_path = _VADD_XO_GOLDEN_DIR / "xo_inventory.json"
+    meta_path = _VADD_XO_GOLDEN_DIR / "xo_metadata.json"
+    if _REFRESH:
+        _refresh_vadd_xo_goldens(inv, meta)
+        return
+    if not (inv_path.is_file() and meta_path.is_file()):
+        pytest.skip(
+            "vadd_xo goldens not yet seeded; run with "
+            "TAPA_GOLDEN_REFRESH=1 on a Vitis-equipped host"
+        )
+    golden_inv = [tuple(x) for x in _read_json(inv_path)]
+    golden_meta = [(e[0], e[1], tuple(e[2])) for e in _read_json(meta_path)]
+    assert inv == golden_inv, "vadd `.xo` content drift vs golden"
+    assert meta == golden_meta, "vadd `.xo` listing-metadata drift vs golden"

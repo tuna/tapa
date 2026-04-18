@@ -1,0 +1,22 @@
+{
+    "raw_argv": [
+        "g++",
+        "-std=c++17",
+        "vadd-host.cpp",
+        "-o",
+        "vadd-host",
+        "-lfrt"
+    ],
+    "subcommands": [
+        {
+            "flags": [
+                "-lfrt",
+                "-o",
+                "-std=c++17",
+                "<positional:vadd-host.cpp>"
+            ],
+            "name": "g++"
+        }
+    ],
+    "top_level_flags": []
+}

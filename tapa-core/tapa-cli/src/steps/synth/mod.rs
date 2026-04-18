@@ -32,7 +32,6 @@ use tapa_xilinx::{LocalToolRunner, RemoteToolRunner, SshMuxOptions, SshSession};
 
 use crate::context::CliContext;
 use crate::error::Result;
-use crate::steps::python_bridge;
 
 mod cpp_extract;
 mod device_resolve;
@@ -181,7 +180,6 @@ pub fn to_python_argv(args: &SynthArgs) -> Vec<String> {
 /// `--remote-host`), HLS dispatches through `RemoteToolRunner`;
 /// otherwise `LocalToolRunner`.
 pub fn run(args: &SynthArgs, ctx: &mut CliContext) -> Result<()> {
-    let _ = python_bridge::is_enabled("synth");
     if let Some(cfg) = ctx.remote_config.as_ref() {
         let session = std::sync::Arc::new(SshSession::new(
             cfg.clone(),

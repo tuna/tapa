@@ -117,11 +117,15 @@ sh_test(
 )
 
 # -- Test: tapa-cli golden parity (manual; mirrors the xilinx gate) --
-# Loads VARS.local.bzl-style REMOTE_* env vars and runs the Rust+Python
-# CLI parity suite against the vadd fixture. Inherits the same SSH /
-# Vitis remote configuration as `tapa_xilinx_integration_test` so it
-# exercises the production analyze/synth/pack flow on the configured
-# remote Linux host.
+# Loads VARS.local.bzl-style REMOTE_* env vars and runs the Rust CLI
+# golden-snapshot suite against the vadd fixture + per-app argv
+# corpus + per-subcommand `--help` flag goldens (frozen under
+# `tapa-core/tests/golden/`). Inherits the same SSH / Vitis remote
+# configuration as `tapa_xilinx_integration_test` so the
+# `vadd_xo_flow` case can exercise the production analyze/synth/pack
+# flow on the configured remote Linux host. The Python click CLI was
+# retired in commit `222519ce` (AC-8), so this gate only drives the
+# Rust binary.
 
 sh_test(
     name = "tapa_cli_golden_test",
@@ -132,6 +136,27 @@ sh_test(
         "@rules_rust//rust/toolchain:current_rustdoc_files",
         # Stage the Python `tapa` source tree so pytest can import it.
         "//tapa",
+    ],
+    env = {
+        "CARGO_MANIFEST_DIR": "tapa-core",
+    },
+    tags = ["manual"],
+)
+
+# -- Test: no-Python `cargo install` smoke (manual, AC-7) --
+# Installs the Rust `tapa` binary via `cargo install --path
+# tapa-core/tapa-cli --root <staging>` and runs it under a `PATH`
+# stripped of every python interpreter. Proves the binary has zero
+# runtime Python dependency — the final AC-7 gate after the
+# `tapa-py-bindings` crate + `tapa/__main__.py` deletions.
+
+sh_test(
+    name = "tapa_cli_no_python_install_smoke",
+    srcs = ["run_no_python_install_smoke.sh"],
+    data = _ALL_SRCS + [
+        "@rules_rust//rust/toolchain:current_cargo_files",
+        "@rules_rust//rust/toolchain:current_rustc_files",
+        "@rules_rust//rust/toolchain:current_rustdoc_files",
     ],
     env = {
         "CARGO_MANIFEST_DIR": "tapa-core",

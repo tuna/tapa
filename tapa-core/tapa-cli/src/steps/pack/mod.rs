@@ -16,7 +16,6 @@ use serde_json::Value;
 use crate::context::CliContext;
 use crate::error::{CliError, Result};
 use crate::state::{design as design_io, settings as settings_io};
-use crate::steps::python_bridge;
 
 mod kernel_xml_ports;
 mod vitis_packaging;
@@ -71,7 +70,6 @@ pub fn to_python_argv(args: &PackArgs) -> Vec<String> {
 /// The bridge shim is kept only for composite forwarding of un-ported
 /// step branches.
 pub fn run(args: &PackArgs, ctx: &mut CliContext) -> Result<()> {
-    let _ = python_bridge::is_enabled("pack");
     run_native(args, ctx)
 }
 
