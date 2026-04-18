@@ -13,7 +13,7 @@ use tapa_xilinx::ToolRunner;
 use crate::context::CliContext;
 use crate::error::{CliError, Result};
 use crate::state::{design as design_io, graph as graph_io, settings as settings_io};
-use crate::tapacc::cflags::get_tapacc_cflags;
+use crate::tapacc::cflags::{get_remote_hls_cflags, get_tapacc_cflags};
 use crate::tapacc::discover::find_resource;
 
 use super::cpp_extract::extract_hls_sources;
@@ -70,8 +70,10 @@ pub fn run_native(
         part_num: device.part_num.clone(),
         clock_period: device.clock_period.clone(),
         other_configs: args.other_hls_configs.clone(),
-        cflags: build_hls_cflags(&ctx.work_dir),
+        cflags: build_hls_cflags(&ctx.work_dir, ctx.remote_config.is_some()),
         skip_based_on_mtime: args.skip_hls_based_on_mtime,
+        jobs: args.jobs,
+        keep_work_dir: args.keep_hls_work_dir,
     };
     let hls_results = run_hls_for_leaves(runner, &ctx.work_dir, &design, &opts)?;
 
@@ -176,7 +178,7 @@ fn validate_optional_flag_combos(args: &SynthArgs) -> Result<()> {
 /// a `-I <tapa-extra-runtime-include>` entry when the resource can be
 /// resolved (Python's "WORKAROUND: Vitis HLS requires -I or gflags
 /// cannot be found..." branch).
-fn build_hls_cflags(work_dir: &Path) -> Vec<String> {
+fn build_hls_cflags(work_dir: &Path, remote: bool) -> Vec<String> {
     let mut flags: Vec<String> = Vec::new();
     // Python parity: `tapa/core.py::TapaProgram.__init__` builds
     // `self.cflags = " ".join((*graph.cflags, *get_tapacc_cflags()))`.
@@ -194,7 +196,18 @@ fn build_hls_cflags(work_dir: &Path) -> Vec<String> {
             }
         }
     }
-    flags.extend(get_tapacc_cflags(false));
+    // Remote HLS parity: Python's `_build_hls_cflags` substitutes
+    // `get_tapacc_cflags()` (local vendor/stdlib paths) with
+    // `get_remote_hls_cflags()` when `~/.taparc` is active — the
+    // remote host ships its own vendor headers via `settings64.sh`,
+    // and a host-specific macOS `__assert_rtn` remap is added so
+    // macOS → Linux remote synth does not mis-expand assert() into
+    // `__assert_rtn(func,file,line,expr)`.
+    if remote {
+        flags.extend(get_remote_hls_cflags());
+    } else {
+        flags.extend(get_tapacc_cflags(false));
+    }
     flags.push("-DTAPA_TARGET_DEVICE_".to_string());
     flags.push("-DTAPA_TARGET_XILINX_HLS_".to_string());
     // Python `_build_hls_cflags` workaround: Vitis HLS requires `-I`
@@ -277,9 +290,36 @@ mod tests {
     impl ToolRunner for StubHls {
         fn run(&self, inv: &ToolInvocation) -> tapa_xilinx::Result<ToolOutput> {
             let cwd = inv.cwd.clone().expect("HLS sets cwd");
+            // Route by TAPA_KERNEL_PATH_0's cpp basename so parallel
+            // HLS dispatch (new default) stages each task under the
+            // correct `project/<task>/syn/` tree. Queue is still
+            // consulted for the verilog body content, keyed on top.
+            let inferred_top = inv
+                .env
+                .get("TAPA_KERNEL_PATH_0")
+                .and_then(|p| std::path::Path::new(p).file_stem().and_then(|s| s.to_str()).map(str::to_string));
             let mut q = self.responses.lock().expect("poisoned");
-            let (top, body) = q.first().cloned().expect("StubHls: no response queued");
-            q.remove(0);
+            let (top, body) = if let Some(name) = inferred_top {
+                let body = q
+                    .iter()
+                    .find(|(t, _)| t == &name)
+                    .map(|(_, b)| b.clone())
+                    .or_else(|| q.first().map(|(_, b)| b.clone()))
+                    .unwrap_or_default();
+                // Consume the matching queue entry (or front) for
+                // Python-parity accounting.
+                if let Some(idx) = q.iter().position(|(t, _)| t == &name) {
+                    q.remove(idx);
+                } else if !q.is_empty() {
+                    q.remove(0);
+                }
+                (name, body)
+            } else {
+                let (top, body) =
+                    q.first().cloned().expect("StubHls: no response queued");
+                q.remove(0);
+                (top, body)
+            };
             let syn = cwd.join("project").join(&top).join("syn");
             std::fs::create_dir_all(syn.join("report")).expect("mkdir report");
             std::fs::create_dir_all(syn.join("verilog")).expect("mkdir verilog");

@@ -462,6 +462,39 @@ pub fn run_hls_with_retry(
     })
 }
 
+/// Same as [`run_hls_with_retry`] but uses a caller-owned stage
+/// directory instead of a per-attempt tempdir. Callers that honor
+/// `--keep-hls-work-dir` pass a persistent path here so the Vitis
+/// project / logs survive past `run_hls`. The directory is **not**
+/// cleared between retries — caller is responsible for that (the
+/// `run_hls_for_leaves` wrapper in `tapa-cli` clears it before
+/// creation).
+pub fn run_hls_with_retry_in_stage(
+    runner: &dyn ToolRunner,
+    job: &HlsJob,
+    max_attempts: u32,
+    stage_dir: &std::path::Path,
+) -> Result<HlsOutput> {
+    let max_attempts = max_attempts.max(1);
+    for _ in 0..max_attempts {
+        let out = run_hls_attempt(runner, job, stage_dir)?;
+        if out.exit_code == 0 {
+            return harvest_and_stage(runner, job, stage_dir, out);
+        }
+        let transient = is_transient(job, &out.stdout, &out.stderr);
+        if !transient {
+            return Err(XilinxError::ToolFailure {
+                program: "vitis_hls".into(),
+                code: out.exit_code,
+                stderr: out.stderr,
+            });
+        }
+    }
+    Err(XilinxError::HlsRetryExhausted {
+        attempts: max_attempts,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -693,5 +726,40 @@ mod tests {
         );
         let err = run_hls_with_retry(&runner, &job, 3).unwrap_err();
         assert!(matches!(err, XilinxError::ToolFailure { code: 2, .. }));
+    }
+
+    /// `run_hls_with_retry_in_stage` uses the caller-provided dir
+    /// without creating or deleting a tempdir — lets the `--keep-hls-work-dir`
+    /// flow preserve the Vitis project after a failure.
+    #[test]
+    fn run_hls_with_retry_in_stage_reuses_caller_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let persistent = tmp.path().join("persistent-stage");
+        std::fs::create_dir_all(&persistent).unwrap();
+        // Put a marker file in the stage dir. After the retry loop
+        // exhausts, the dir (and the marker) must still be present —
+        // the Python `--keep-hls-work-dir` contract.
+        let marker = persistent.join("MARKER");
+        std::fs::write(&marker, b"before").unwrap();
+
+        let job = fixture_job(tmp.path());
+        let runner = MockToolRunner::new();
+        for _ in 0..2 {
+            runner.push_ok(
+                "vitis_hls",
+                ToolOutput {
+                    exit_code: 1,
+                    stdout: "Pre-synthesis failed.".into(),
+                    stderr: String::new(),
+                },
+            );
+        }
+        let err = run_hls_with_retry_in_stage(&runner, &job, 2, &persistent)
+            .unwrap_err();
+        assert!(matches!(err, XilinxError::HlsRetryExhausted { attempts: 2 }));
+        assert!(
+            marker.is_file(),
+            "in-stage retry must leave the caller-provided dir intact",
+        );
     }
 }

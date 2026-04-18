@@ -79,7 +79,25 @@ struct HlsAndVivadoStub {
 impl HlsAndVivadoStub {
     fn stage_hls_output(&self, inv: &ToolInvocation) {
         let cwd = inv.cwd.clone().expect("HLS sets cwd");
-        let top = self.hls_q.lock().unwrap().remove(0);
+        // Route by the kernel source the runner embedded in env, not
+        // by FIFO queue order: with parallel HLS dispatch the two
+        // `run_hls` invocations race, and queue-order pop would
+        // misroute "Add" output into "VecAdd"'s stage tree (and
+        // vice versa), causing the csynth.xml harvester to miss.
+        // `TAPA_KERNEL_PATH_0` is the canonical top-name carrier.
+        let top = inv.env.get("TAPA_KERNEL_PATH_0").map_or_else(
+            || self.hls_q.lock().unwrap().remove(0),
+            |p| {
+                std::path::Path::new(p)
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("UNKNOWN")
+                    .to_string()
+            },
+        );
+        // Mirror the queue pop so the existing fixture list stays
+        // non-empty — some callers still rely on the side effect.
+        let _ = self.hls_q.lock().unwrap().pop();
         let syn = cwd.join("project").join(&top).join("syn");
         std::fs::create_dir_all(syn.join("report")).unwrap();
         std::fs::create_dir_all(syn.join("verilog")).unwrap();

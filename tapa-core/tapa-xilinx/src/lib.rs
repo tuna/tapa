@@ -75,8 +75,8 @@ pub use tools::hls::report::{
     parse_csynth_xml, parse_utilization_rpt, CsynthReport, UtilizationReport,
 };
 pub use tools::hls::{
-    build_hls_tcl, run_hls, run_hls_with_retry, HlsJob, HlsOutput,
-    DEFAULT_TRANSIENT_HLS_PATTERNS,
+    build_hls_tcl, run_hls, run_hls_with_retry, run_hls_with_retry_in_stage,
+    HlsJob, HlsOutput, DEFAULT_TRANSIENT_HLS_PATTERNS,
 };
 pub use tools::package_xo::{
     pack_xo, pack_xo_without_redaction, redact_xo, PackageXoInputs,

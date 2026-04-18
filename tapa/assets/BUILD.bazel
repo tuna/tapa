@@ -15,3 +15,13 @@ py_library(
     data = glob(["verilog/*.v"]),
     visibility = ["//tapa:__subpackages__"],
 )
+
+# Expose `verilog/fifo.v` so `//tapa-core` cargo genrules can include
+# it in their input set. `tapa-lowering::module_defs` pulls it in via
+# `include_str!("../../../tapa/assets/verilog/fifo.v")` at compile
+# time, so the Bazel sandbox must materialize it alongside the
+# cargo workspace.
+exports_files(
+    ["verilog/fifo.v"],
+    visibility = ["//tapa-core:__pkg__"],
+)

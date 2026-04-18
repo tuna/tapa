@@ -138,34 +138,47 @@ impl RemoteToolRunner {
         let cfg = self.session.config();
         let session_dir = format!("{}/{}", cfg.work_dir, unique_session_id());
 
+        // Python-parity: accept relative `--work-dir ./work.out` and
+        // relative upload/download paths by absolutizing against the
+        // caller's cwd. Without this, the default `tapa synth` / `pack`
+        // invocation drops the work tree + RTL + C++ sources from the
+        // upload batch, leaving the remote Vitis HLS with nothing to
+        // compile. `canonicalize()` is the preferred form so symlinks
+        // resolve, but a non-existent path still gets a plain join.
+        let absolutize = |p: &Path| -> PathBuf {
+            if p.is_absolute() {
+                p.to_path_buf()
+            } else {
+                let joined = std::env::current_dir()
+                    .unwrap_or_else(|_| PathBuf::from("."))
+                    .join(p);
+                std::fs::canonicalize(&joined).unwrap_or(joined)
+            }
+        };
+        let cwd_abs: Option<PathBuf> = inv.cwd.as_deref().map(absolutize);
+        let uploads_abs: Vec<PathBuf> =
+            inv.uploads.iter().map(|p| absolutize(p)).collect();
+        let downloads_abs: Vec<PathBuf> =
+            inv.downloads.iter().map(|p| absolutize(p)).collect();
+
         let mut referenced: Vec<PathBuf> = Vec::new();
-        if let Some(cwd) = inv.cwd.as_ref() {
-            if cwd.is_absolute() {
-                referenced.push(cwd.clone());
-            }
+        if let Some(cwd) = cwd_abs.as_ref() {
+            referenced.push(cwd.clone());
         }
-        for p in &inv.uploads {
-            if p.is_absolute() {
-                referenced.push(p.clone());
-            }
-        }
-        for p in &inv.downloads {
-            if p.is_absolute() {
-                referenced.push(p.clone());
-            }
-        }
+        referenced.extend(uploads_abs.iter().cloned());
+        referenced.extend(downloads_abs.iter().cloned());
         let mut seen: std::collections::HashSet<PathBuf> =
             std::collections::HashSet::new();
         referenced.retain(|p| seen.insert(p.clone()));
 
         let mut to_upload: Vec<PathBuf> = Vec::new();
-        if let Some(cwd) = inv.cwd.as_ref() {
-            if cwd.is_absolute() && cwd.exists() {
+        if let Some(cwd) = cwd_abs.as_ref() {
+            if cwd.exists() {
                 to_upload.push(cwd.clone());
             }
         }
-        for p in &inv.uploads {
-            if p.is_absolute() && p.exists() {
+        for p in &uploads_abs {
+            if p.exists() {
                 to_upload.push(p.clone());
             }
         }
@@ -174,7 +187,7 @@ impl RemoteToolRunner {
         to_upload.retain(|p| seen2.insert(p.clone()));
         upload_batch(&self.session, &session_dir, &to_upload)?;
 
-        let remote_cwd = match inv.cwd.as_ref().filter(|p| p.is_absolute()) {
+        let remote_cwd = match cwd_abs.as_ref() {
             Some(cwd) => local_to_remote_path(cwd, &session_dir),
             None => format!("{session_dir}/rootfs"),
         };
@@ -239,12 +252,11 @@ impl RemoteToolRunner {
             return Err(self.classify_remote_failure(&stderr));
         }
 
-        for dl in &inv.downloads {
-            if !dl.is_absolute() {
-                continue;
-            }
-            let remote_src = local_to_remote_path(dl, &session_dir);
-            download_tree(&self.session, &remote_src, dl)?;
+        for (raw, abs) in inv.downloads.iter().zip(downloads_abs.iter()) {
+            let remote_src = local_to_remote_path(abs, &session_dir);
+            // Download back to the caller's requested path (raw), which
+            // may be relative — keeping the caller-facing contract.
+            download_tree(&self.session, &remote_src, raw)?;
         }
 
         cleanup_session(&self.session, &session_dir);

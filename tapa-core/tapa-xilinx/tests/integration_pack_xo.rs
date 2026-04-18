@@ -163,6 +163,7 @@ fn live_pack_xo_roundtrips_vadd_rtl() {
         cpp_kernels: vec![],
         m_axi_params: vec![],
         s_axi_ifaces: PackageXoInputs::default_s_axi(),
+        report_paths: vec![],
     };
 
     let session = Arc::new(SshSession::new(cfg, SshMuxOptions::default()));
