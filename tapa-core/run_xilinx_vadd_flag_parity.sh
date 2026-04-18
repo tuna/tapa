@@ -1,5 +1,5 @@
 #!/bin/bash
-# AC-13 end-to-end regression: run `tapa analyze synth pack` on
+# End-to-end flag regression: run `tapa analyze synth pack` on
 # `tests/apps/vadd` twice — once with `TAPA_USE_RUST_XILINX=1`, once
 # without — and assert the produced `.xo` archives are semantically
 # equal under the same redaction pass we apply to reproducible builds.
@@ -28,7 +28,7 @@ fi
 # path — the tapa CLI needs these as explicit `--remote-*` args, since
 # Python's `load_remote_config(None)` does not read REMOTE_* env vars.
 # Without these, the script would fall through to the local path and
-# silently skip the flagged remote flow Codex asked for.
+# silently skip the flagged remote flow.
 #
 # `REMOTE_XILINX_SETTINGS` (absolute settings script path) wins over
 # `REMOTE_XILINX_TOOL_PATH` (tool-root dir). If only the tool-root is
@@ -102,6 +102,84 @@ if ! "$TAPA_BIN_RESOLVED" --help >/dev/null 2>&1; then
   echo "vadd flag-parity: resolved tapa binary ($TAPA_BIN_RESOLVED) does not run cleanly; skipping" >&2
   exit 0
 fi
+
+# `tapacc-binary` preflight via the *exact* production resolver,
+# run inside the *exact* runtime that `$TAPA_BIN_RESOLVED` uses.
+# Ambient `python3 -c` would import whatever `tapa` package
+# happens to be on `sys.path` for the current cwd, which can
+# differ from the `tapa` package `$TAPA_BIN_RESOLVED` will
+# import at analyze-time (workspace checkout vs site-packages).
+# To guarantee one-and-the-same runtime, parse the shebang of
+# `$TAPA_BIN_RESOLVED` and invoke that interpreter directly,
+# using the same `PYTHONPATH` / `PATH` the launcher sets for
+# itself. Failures preserve stderr so reviewers see the real
+# reason — no `/dev/null` redirect.
+tapacc_preflight_python=""
+# Prefer whatever the tapa launcher itself uses. Read the
+# shebang of the resolved launcher (or the launcher it invokes)
+# and extract the interpreter path.
+if head -n1 "$TAPA_BIN_RESOLVED" 2>/dev/null | grep -q '^#!'; then
+  shebang_line="$(head -n1 "$TAPA_BIN_RESOLVED")"
+  # `#!/usr/bin/env python3` → resolve via `env`.
+  case "$shebang_line" in
+    "#!/usr/bin/env "*)
+      # shellcheck disable=SC2206
+      shebang_parts=(${shebang_line#"#!"})
+      tapacc_preflight_python="$(command -v "${shebang_parts[1]:-}" 2>/dev/null || true)"
+      ;;
+    "#!"*)
+      tapacc_preflight_python="$(echo "$shebang_line" | sed -e 's|^#!||' -e 's/[[:space:]].*$//')"
+      ;;
+  esac
+fi
+# If the launcher is itself a shell wrapper, chase it once.
+if [[ -n "$tapacc_preflight_python" && "$tapacc_preflight_python" == */bash ]]; then
+  # Wrappers like our /tmp/tapa_wrapper.sh end with `exec
+  # python3 -m tapa "$@"` — drop into PATH python3.
+  tapacc_preflight_python="$(command -v python3 2>/dev/null || true)"
+fi
+if [[ -z "$tapacc_preflight_python" || ! -x "$tapacc_preflight_python" ]]; then
+  # Fall back to PATH python3 but warn loudly — this is the
+  # divergent path.
+  echo "vadd flag-parity: could not derive Python interpreter from $TAPA_BIN_RESOLVED shebang; falling back to ambient python3 (runtime may differ)" >&2
+  tapacc_preflight_python="${PYTHON3:-python3}"
+fi
+
+tapacc_probe_script=$(cat <<'PY'
+import os
+import sys
+# Emit the site-packages / sys.path so reviewers can confirm the
+# preflight used the same import root as the launcher.
+sys.stderr.write(f"[preflight] sys.executable = {sys.executable}\n")
+sys.stderr.write(f"[preflight] sys.path[:3]   = {sys.path[:3]}\n")
+try:
+    import tapa
+    from tapa.steps.analyze import find_clang_binary
+    sys.stderr.write(f"[preflight] tapa package   = {tapa.__file__}\n")
+except Exception as exc:
+    sys.stderr.write(f"[preflight] import tapa failed: {exc}\n")
+    sys.exit(2)
+try:
+    resolved = find_clang_binary("tapacc-binary")
+except Exception as exc:
+    sys.stderr.write(f"[preflight] find_clang_binary failed: {exc}\n")
+    sys.exit(3)
+sys.stdout.write(resolved)
+PY
+)
+# Capture stdout + exit status without letting `set -e` abort the
+# script when the probe exits non-zero — the failure-handler below
+# must have a chance to print the skip/diagnostic. Run the probe
+# through a branch so the exit status surfaces on `$?` inside the
+# conditional body, and keep the probe's stderr visible to
+# reviewers.
+tapacc_probe_rc=0
+tapacc_probe_out="$("$tapacc_preflight_python" -c "$tapacc_probe_script")" || tapacc_probe_rc=$?
+if [[ $tapacc_probe_rc -ne 0 || -z "$tapacc_probe_out" ]]; then
+  echo "vadd flag-parity: tapacc-binary preflight via $tapacc_preflight_python exited $tapacc_probe_rc; skipping" >&2
+  exit 0
+fi
+TAPACC_BIN_RESOLVED="$tapacc_probe_out"
 
 run_one() {
   local label="$1"

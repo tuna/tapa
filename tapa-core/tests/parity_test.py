@@ -1860,7 +1860,7 @@ def _zip_inventory(path: Path) -> list[tuple[str, str]]:
 def _zip_metadata(path: Path) -> list[tuple[str, int, tuple[int, ...]]]:
     """Return (filename, file_size, date_time) for each ZIP entry.
 
-    The plan's AC-9 contract calls for `unzip -l`-style listing parity
+    The contract calls for `unzip -l`-style listing parity
     *after* the reproducible-build redaction zeros out timestamps. A
     consistent `date_time = (1980, 1, 1, 0, 0, 0)` on both sides is
     what guarantees identical downstream consumers (Vivado, signing).
@@ -1917,7 +1917,7 @@ def _run_xo_parity_once(
         f"[{label}] .xo ZIP listing metadata drifted.\n"
         f"  rust = {rust_meta}\n  py   = {py_meta}"
     )
-    # AC-9 reproducibility: every entry must carry the MS-DOS epoch
+    # Reproducibility: every entry must carry the MS-DOS epoch
     # timestamp (1980-01-01) after redaction, on both sides.
     for _name, _size, dt in rust_meta:
         assert dt[0] == 1980, f"[{label}] rust kept a non-epoch timestamp: {dt}"  # noqa: PLR2004
@@ -1929,7 +1929,7 @@ def _run_xo_parity_once(
     ("label", "project_id"),
     [
         ("hex32", "deadbeefdeadbeefdeadbeefdeadbeef"),
-        # Codex round-6 repro case: Python matches any 32 chars in
+        # Python matches any 32 chars in
         # `ProjectID="..."`; Rust must do the same. Use a non-hex
         # alphanumeric ID to prove parity.
         ("non_hex_upper", "ABCDEFGHIJKLMNOPQRSTUVWX12345678"),
@@ -1940,7 +1940,7 @@ def _run_xo_parity_once(
 def test_parity_xilinx_xo_redaction(
     xilinx_mod: Any, label: str, project_id: str
 ) -> None:
-    """AC-9 parity: Rust `redact_xo` matches Python `_redact_and_zip`.
+    """Parity: Rust `redact_xo` matches Python `_redact_and_zip`.
 
     Builds a tiny synthetic `.xo`, redacts two copies — one via
     `tapa_core.xilinx.pack_xo` (redact-only mode), one via
@@ -1994,9 +1994,9 @@ def _build_vivado_like_xo(path: Path, kernel_xml_body: str) -> None:
 
 
 def test_parity_xilinx_xo_full_mode(xilinx_mod: Any) -> None:  # noqa: PLR0914
-    """AC-9 full-mode parity: `pack_xo` redaction on a Vivado-shaped `.xo`.
+    """Full-mode parity: `pack_xo` redaction on a Vivado-shaped `.xo`.
 
-    The plan's AC-9 positive contract calls for four invariants on
+    The positive contract calls for four invariants on
     the packaged artifact:
 
     - `unzip -l`-style listing parity (names + sizes);
@@ -2106,7 +2106,7 @@ def test_parity_xilinx_xo_full_mode(xilinx_mod: Any) -> None:  # noqa: PLR0914
         )
         _py_redact(src, py_xo)
 
-        # AC-9 positive contract — name + SHA parity.
+        # Positive contract — name + SHA parity.
         rust_inventory = _zip_inventory(rust_xo)
         py_inventory = _zip_inventory(py_xo)
         assert rust_inventory == py_inventory, (
@@ -2188,7 +2188,7 @@ def _build_full_pack_canned_xo(
 
 
 def test_parity_xilinx_xo_full_pack_with_mock(xilinx_mod: Any) -> None:  # noqa: PLR0914
-    """AC-9 full-pack parity: real `pack_xo` full-mode vs Python redactor.
+    """Full-pack parity: real `pack_xo` full-mode vs Python redactor.
 
     Drives the Rust `pack_xo` full-mode path end-to-end through
     `_pack_xo_full_mode_with_mock` — a test-only harness that swaps
@@ -2196,7 +2196,7 @@ def test_parity_xilinx_xo_full_pack_with_mock(xilinx_mod: Any) -> None:  # noqa:
     canned `.xo` so the redactor has a real archive to work on.
     Python's production `_redact_and_zip` redacts an independent
     copy of the same canned archive. The two outputs must then match
-    across the full AC-9 contract: listing + per-file SHA-256 +
+    across the full contract: listing + per-file SHA-256 +
     normalized timestamps + canonical inner `kernel.xml` equality.
     """
     import io
@@ -2265,8 +2265,15 @@ def test_parity_xilinx_xo_full_pack_with_mock(xilinx_mod: Any) -> None:  # noqa:
     with _tempfile.TemporaryDirectory() as td:
         td_path = _Path(td)
         canned = td_path / "canned.xo"
+        # Bake the **Rust-emitted** kernel.xml into the canned
+        # archive so the .xo redaction parity is about a
+        # Rust-produced kernel.xml inside the packaged archive —
+        # not about Python's print_kernel_xml output. The emitter
+        # equality assertion above guarantees both are equal
+        # canonical-form, so this swap is substantively stronger
+        # evidence without weakening anything.
         _build_full_pack_canned_xo(
-            canned, py_kernel_xml, "cafebabecafebabecafebabecafebabe"
+            canned, rust_kernel_xml, "cafebabecafebabecafebabecafebabe"
         )
 
         # 2. Rust full-pack: stage an hdl dir so `pack_xo` full-mode
@@ -2293,7 +2300,7 @@ def test_parity_xilinx_xo_full_pack_with_mock(xilinx_mod: Any) -> None:  # noqa:
         py_xo = td_path / "py.xo"
         _py_redact(canned, py_xo)
 
-        # AC-9 full contract across both sides.
+        # Full contract across both sides.
         rust_inventory = _zip_inventory(rust_xo)
         py_inventory = _zip_inventory(py_xo)
         assert rust_inventory == py_inventory, (
@@ -2320,7 +2327,7 @@ def test_parity_xilinx_xo_full_pack_with_mock(xilinx_mod: Any) -> None:  # noqa:
 
 
 def test_parity_xilinx_real_vitis_hls_csynth_xml(xilinx_mod: Any) -> None:
-    """AC-5 real-tool evidence: parse a genuine Vitis HLS csynth.xml.
+    """Real-tool evidence: parse a genuine Vitis HLS csynth.xml.
 
     The `testdata/xilinx/real/vadd_csynth.xml` fixture is the actual
     csynth.xml Vitis HLS 2023.2 emitted for a minimal `vadd` kernel

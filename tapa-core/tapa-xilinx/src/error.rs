@@ -102,7 +102,7 @@ pub(crate) fn variant_tag(e: &XilinxError) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    //! AC-17 coverage: every `XilinxError` variant must be producible
+    //! Every `XilinxError` variant must be producible
     //! by exercising a real code path (parser / tool runner / SSH
     //! classifier / serde). Each producer below invokes the real
     //! in-crate function and asserts it returns the expected variant.

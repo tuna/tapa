@@ -118,9 +118,13 @@ fn repo_root() -> std::path::PathBuf {
 
 #[test]
 #[ignore = "requires real vitis_hls + TAPA tapa-lib include on the runner"]
+#[allow(
+    clippy::too_many_lines,
+    reason = "shared-fixture flow checks multiple task modules + reports in one linear pass; splitting would hurt readability"
+)]
 fn vitis_hls_round_trips_shared_vadd_fixture() {
-    // The plan's AC-7 positive case mandates exercising the shared
-    // `tests/apps/vadd/vadd.cpp` fixture against real Vitis HLS.
+    // Exercises the shared `tests/apps/vadd/vadd.cpp` fixture
+    // against real Vitis HLS.
     // That source uses `tapa.h`, so the test only runs when the
     // repo's `tapa-lib` include tree is available (which the
     // RemoteToolRunner uploads via `-I<dir>` → rootfs mirror). The
@@ -132,23 +136,33 @@ fn vitis_hls_round_trips_shared_vadd_fixture() {
         );
         return;
     }
-    let tapa_lib = repo_root().join("tapa-lib");
-    if !tapa_lib.join("tapa.h").is_file() {
+    // The shared vadd kernel depends on the full TAPA runtime +
+    // vendor include chain (gflags, glog, `ap_int`, …) being
+    // reachable from HLS. Callers that have staged that on the
+    // runner set `TAPA_SHARED_VADD_HLS=1`; otherwise we can't
+    // distinguish a legitimate HLS regression from a missing
+    // prerequisite (soft-skipping real failures is disallowed).
+    // Gate up front so the test only ever runs when it is
+    // expected to fully succeed.
+    if std::env::var("TAPA_SHARED_VADD_HLS").ok().as_deref() != Some("1") {
         eprintln!(
-            "integration_hls: tapa-lib/tapa.h missing at {}; skipping shared vadd fixture",
-            tapa_lib.display()
+            "integration_hls: TAPA_SHARED_VADD_HLS=1 not set; skipping shared vadd fixture"
         );
         return;
     }
+    let tapa_lib = repo_root().join("tapa-lib");
+    assert!(
+        tapa_lib.join("tapa.h").is_file(),
+        "TAPA_SHARED_VADD_HLS=1 set but tapa-lib/tapa.h missing at {}",
+        tapa_lib.display()
+    );
     let vadd_cpp =
         repo_root().join("tests").join("apps").join("vadd").join("vadd.cpp");
-    if !vadd_cpp.is_file() {
-        eprintln!(
-            "integration_hls: {} missing; skipping shared vadd fixture",
-            vadd_cpp.display()
-        );
-        return;
-    }
+    assert!(
+        vadd_cpp.is_file(),
+        "TAPA_SHARED_VADD_HLS=1 set but {} missing",
+        vadd_cpp.display()
+    );
     let tmp = tempfile::tempdir().expect("tempdir");
     let reports = tmp.path().join("reports");
     let hdl = tmp.path().join("hdl");
@@ -181,38 +195,161 @@ fn vitis_hls_round_trips_shared_vadd_fixture() {
         } else {
             Box::new(LocalToolRunner::new())
         };
-    let out = match run_hls_with_retry(runner.as_ref(), &job, 3) {
-        Ok(out) => out,
-        Err(e) => {
-            // Shared vadd HLS depends on the remote having the full
-            // TAPA / HLS vendor include chain. Rather than pretend
-            // to fail that entire toolchain setup here, skip so the
-            // plumbing-layer test stays the enforced gate.
-            eprintln!(
-                "integration_hls: shared vadd fixture did not run to \
-                 completion ({e}); skipping parity assertion. \
-                 Runner plumbing is still gated by \
-                 vitis_hls_round_trips_vadd_fixture."
-            );
-            return;
-        }
-    };
-    assert!(
-        !out.verilog_files.is_empty(),
-        "shared vadd fixture produced no HDL"
-    );
+    // Once prerequisites (env + tapa-lib + fixture) are all present,
+    // a real HLS failure must fail the test. Soft-skipping would
+    // mask regressions in the shared-fixture code path. If the
+    // remote is missing vendor pieces needed to build the fixture,
+    // gate on that via the explicit skips above instead.
+    let out = run_hls_with_retry(runner.as_ref(), &job, 3)
+        .expect("run_hls_with_retry on shared vadd fixture must succeed");
+
+    // Exact-parity check against the committed golden. The
+    // manifest lists every field of `HlsOutput` plus the expected
+    // report/HDL basenames. Any divergence — extra reports,
+    // missing modules, drifted csynth scalar — fails the test.
     assert!(
         reports.is_dir() && hdl.is_dir(),
         "output dirs missing: {} / {}",
         reports.display(),
         hdl.display()
     );
-    // Normalized semantic check: csynth report must at minimum name
-    // the `VecAdd` top and a non-empty part string. (A golden-file
-    // comparison is deferred to the Python parity suite, which owns
-    // the fixture emitter.)
-    assert_eq!(out.csynth.top, "VecAdd", "csynth top drifted");
-    assert!(!out.csynth.part.is_empty(), "csynth part empty");
+    // Load the committed golden manifest and compare the live
+    // `HlsOutput` to every field it names. The manifest captures
+    // what Python's `tapa.backend.xilinx_hls::RunHls` produces for
+    // the same shared fixture against the same Vitis HLS
+    // toolchain. Keeping the manifest on disk (instead of
+    // hard-coded assertions) lets reviewers update the golden by
+    // editing a JSON file when HLS output evolves, without
+    // touching the Rust test logic.
+    let golden_path = repo_root()
+        .join("tapa-core")
+        .join("tapa-xilinx")
+        .join("testdata")
+        .join("xilinx")
+        .join("real")
+        .join("vadd_shared_hls_golden.json");
+    let golden_text = std::fs::read_to_string(&golden_path)
+        .unwrap_or_else(|e| panic!("read golden {}: {e}", golden_path.display()));
+    let golden: serde_json::Value = serde_json::from_str(&golden_text)
+        .expect("golden manifest must be valid JSON");
+    let expect_csynth = &golden["csynth"];
+    assert_eq!(
+        out.csynth.top,
+        expect_csynth["top"].as_str().expect("golden csynth.top"),
+        "csynth top drifted from golden"
+    );
+    assert_eq!(
+        out.csynth.part,
+        expect_csynth["part"].as_str().expect("golden csynth.part"),
+        "csynth part drifted from golden"
+    );
+    assert_eq!(
+        out.csynth.target_clock_period_ns,
+        expect_csynth["target_clock_period_ns"]
+            .as_str()
+            .expect("golden csynth.target_clock_period_ns"),
+        "csynth target clock period drifted from golden"
+    );
+    // `estimated_clock_period_ns`: may legitimately drift run to
+    // run on real tools, so the golden records `null` to accept
+    // any non-empty value. A string entry in the golden enforces
+    // exact equality; `null` only requires the field to be
+    // non-empty (catches entirely missing reports).
+    if expect_csynth["estimated_clock_period_ns"].is_string() {
+        let expected = expect_csynth["estimated_clock_period_ns"]
+            .as_str()
+            .expect("estimated_clock_period_ns");
+        assert_eq!(
+            out.csynth.estimated_clock_period_ns, expected,
+            "csynth estimated clock period drifted from golden"
+        );
+    } else {
+        assert!(
+            !out.csynth.estimated_clock_period_ns.is_empty(),
+            "csynth estimated_clock_period_ns must be non-empty"
+        );
+    }
+    // Exact HDL inventory — sorted set equality, no extras or
+    // missing modules.
+    let hdl_basenames: std::collections::BTreeSet<String> = out
+        .verilog_files
+        .iter()
+        .filter_map(|p| p.file_name().and_then(|n| n.to_str()).map(String::from))
+        .collect();
+    let expected_hdl: std::collections::BTreeSet<String> = golden
+        ["hdl_module_basenames"]
+        .as_array()
+        .expect("hdl_module_basenames")
+        .iter()
+        .filter_map(|v| v.as_str().map(String::from))
+        .collect();
+    assert_eq!(
+        hdl_basenames, expected_hdl,
+        "HDL inventory drifted from golden (set difference fails exact parity)"
+    );
+    // Exact report inventory — same treatment.
+    let report_basenames: std::collections::BTreeSet<String> = out
+        .report_paths
+        .iter()
+        .filter_map(|p| p.file_name().and_then(|n| n.to_str()).map(String::from))
+        .collect();
+    let expected_reports: std::collections::BTreeSet<String> = golden
+        ["per_task_report_basenames"]
+        .as_array()
+        .expect("per_task_report_basenames")
+        .iter()
+        .filter_map(|v| v.as_str().map(String::from))
+        .collect();
+    assert_eq!(
+        report_basenames, expected_reports,
+        "report inventory drifted from golden (set difference fails exact parity)"
+    );
+    // Normalized report content markers. Each per-task `_csynth.xml`
+    // must contain the TopModuleName + Part markers the golden
+    // lists. This verifies HLS actually synthesized the named task
+    // (not just emitted an empty report) and targeted the right
+    // part, on top of the inventory check above.
+    let report_content_markers = golden["per_task_report_content_markers"]
+        .as_object()
+        .expect("per_task_report_content_markers");
+    for (basename, markers) in report_content_markers {
+        let path = out
+            .report_paths
+            .iter()
+            .find(|p| p.file_name().and_then(|n| n.to_str()) == Some(basename.as_str()))
+            .unwrap_or_else(|| panic!("report {basename} missing from staged outputs"));
+        let body = std::fs::read_to_string(path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        for marker in markers.as_array().expect("markers array") {
+            let needle = marker.as_str().expect("marker string");
+            assert!(
+                body.contains(needle),
+                "report {basename} missing content marker `{needle}`"
+            );
+        }
+    }
+    // Normalized HDL content markers. Each per-task HDL file must
+    // contain `module <Task>` and `endmodule`, so a corrupt or
+    // truncated HDL emission fails the test.
+    let hdl_content_markers = golden["hdl_content_markers"]
+        .as_object()
+        .expect("hdl_content_markers");
+    for (basename, markers) in hdl_content_markers {
+        let path = out
+            .verilog_files
+            .iter()
+            .find(|p| p.file_name().and_then(|n| n.to_str()) == Some(basename.as_str()))
+            .unwrap_or_else(|| panic!("HDL {basename} missing from staged outputs"));
+        let body = std::fs::read_to_string(path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        for marker in markers.as_array().expect("markers array") {
+            let needle = marker.as_str().expect("marker string");
+            assert!(
+                body.contains(needle),
+                "HDL {basename} missing content marker `{needle}`"
+            );
+        }
+    }
 }
 
 #[test]

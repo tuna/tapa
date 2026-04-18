@@ -42,8 +42,9 @@ done
 # Parse Starlark-like `NAME = "value"` assignments into the
 # environment. Accepts any amount of whitespace around `=` (the Starlark
 # convention in VARS.local.bzl) and strips surrounding single or double
-# quotes from the value. Only REMOTE_* / XILINX_* names are imported;
-# other entries are ignored. Docstrings/comments/blank lines skipped.
+# quotes from the value. `REMOTE_*`, `XILINX_*`, and `TAPA_*` names
+# are imported; other entries are ignored. Docstrings/comments/blank
+# lines skipped.
 if [[ -n "$vars_local" ]]; then
   echo "tapa_xilinx_integration_test: loading env from $vars_local" >&2
   while IFS= read -r line; do
@@ -63,10 +64,12 @@ if [[ -n "$vars_local" ]]; then
     key="${key%"${key##*[![:space:]]}"}"
     val="${val#"${val%%[![:space:]]*}"}"
     val="${val%"${val##*[![:space:]]}"}"
-    # Require an uppercase REMOTE_* / XILINX_* name (skip fields like
-    # `foo = 3` inside a table or other unrelated Starlark).
+    # Require an uppercase REMOTE_* / XILINX_* / TAPA_* name (skip
+    # fields like `foo = 3` inside a table or other unrelated
+    # Starlark). `TAPA_*` covers the opt-in flags (e.g.
+    # `TAPA_SHARED_VADD_HLS`) the integration target honors.
     case "$key" in
-      REMOTE_*|XILINX_*) ;;
+      REMOTE_*|XILINX_*|TAPA_*) ;;
       *) continue ;;
     esac
     # Strip surrounding quotes from the value.
@@ -89,9 +92,52 @@ if [[ -z "${XILINX_HLS:-}" ]] && [[ -z "${REMOTE_HOST:-}" ]]; then
   exit 0
 fi
 
+# Pass the shared-vadd HLS opt-in through to the cargo test
+# environment. Callers that have staged the full TAPA runtime +
+# vendor include chain on the runner set `TAPA_SHARED_VADD_HLS=1`
+# (either in their shell, in `VARS.local.bzl`, or via the
+# `TAPA_SHARED_VADD_HLS` env var in CI). When it's not set we print
+# a short rationale so the skip is visible in the gate output.
+#
+# Preflight — catch loader regressions: if `VARS.local.bzl` defined
+# `TAPA_SHARED_VADD_HLS` but our import step failed to surface it
+# into the environment, fail fast so reviewers don't silently see a
+# "skip" line when the env file actually requested the run.
+if [[ -n "$vars_local" ]]; then
+  raw_shared_vadd=""
+  # Read the literal RHS of `TAPA_SHARED_VADD_HLS = "..."` (if any).
+  while IFS= read -r __line; do
+    __line="${__line%%#*}"
+    __line="${__line#"${__line%%[![:space:]]*}"}"
+    __line="${__line%"${__line##*[![:space:]]}"}"
+    case "$__line" in
+      TAPA_SHARED_VADD_HLS[[:space:]]*=*|TAPA_SHARED_VADD_HLS=*)
+        __val="${__line#*=}"
+        __val="${__val#"${__val%%[![:space:]]*}"}"
+        __val="${__val%"${__val##*[![:space:]]}"}"
+        case "$__val" in
+          \"*\") __val="${__val#\"}"; __val="${__val%\"}" ;;
+          \'*\') __val="${__val#\'}"; __val="${__val%\'}" ;;
+        esac
+        raw_shared_vadd="$__val"
+        ;;
+    esac
+  done < "$vars_local"
+  if [[ -n "$raw_shared_vadd" && "${TAPA_SHARED_VADD_HLS:-}" != "$raw_shared_vadd" ]]; then
+    echo "tapa_xilinx_integration_test: TAPA_SHARED_VADD_HLS defined in $vars_local as '$raw_shared_vadd' but env has '${TAPA_SHARED_VADD_HLS:-<unset>}' — loader regression" >&2
+    exit 2
+  fi
+fi
+if [[ "${TAPA_SHARED_VADD_HLS:-}" == "1" ]]; then
+  export TAPA_SHARED_VADD_HLS=1
+  echo "tapa_xilinx_integration_test: TAPA_SHARED_VADD_HLS=1 set — running shared-vadd parity" >&2
+else
+  echo "tapa_xilinx_integration_test: TAPA_SHARED_VADD_HLS unset; shared-vadd fixture test will skip" >&2
+fi
+
 cargo test --manifest-path "$MANIFEST" -p tapa-xilinx -- --ignored
 
-# AC-13 end-to-end regression: `tapa analyze synth pack` on vadd with
+# End-to-end regression: `tapa analyze synth pack` on vadd with
 # the flag on and off must produce semantically equal `.xo` archives.
 # The helper skips cleanly when the Xilinx env isn't available.
 bash "$(dirname "$0")/run_xilinx_vadd_flag_parity.sh"

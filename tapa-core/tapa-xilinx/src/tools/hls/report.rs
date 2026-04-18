@@ -45,7 +45,7 @@ pub fn parse_csynth_xml(bytes: &[u8]) -> Result<CsynthReport> {
     loop {
         match reader.read_event_into(&mut buf) {
             // Route malformed csynth.xml to the HLS-scoped variant so
-            // the AC-5 negative contract (truncated report surfaces as
+            // the spec's negative contract (truncated report surfaces as
             // `HlsReportParse`) holds end-to-end.
             Err(e) => {
                 return Err(XilinxError::HlsReportParse(format!(

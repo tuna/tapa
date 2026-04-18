@@ -184,6 +184,20 @@ fn format_package_xo_tcl(
 ///
 /// `tclargs` to Vivado: `$tmpdir $hdl_dir $xo_file $kernel_xml_path`.
 pub fn pack_xo(runner: &dyn ToolRunner, inputs: &PackageXoInputs) -> Result<PathBuf> {
+    let out = pack_xo_without_redaction(runner, inputs)?;
+    redact_xo(&out)?;
+    Ok(out)
+}
+
+/// Same as [`pack_xo`] but returns the raw Vivado-produced `.xo`
+/// without running the reproducibility redaction pass. Primarily
+/// useful for parity tests that need a pre-redaction artifact to
+/// hand to an alternate redactor (e.g. Python's `_redact_and_zip`)
+/// for direct cross-language comparison.
+pub fn pack_xo_without_redaction(
+    runner: &dyn ToolRunner,
+    inputs: &PackageXoInputs,
+) -> Result<PathBuf> {
     if !inputs.hdl_dir.is_dir() {
         return Err(XilinxError::KernelXml(format!(
             "pack_xo hdl_dir does not exist: {}",
@@ -239,7 +253,6 @@ pub fn pack_xo(runner: &dyn ToolRunner, inputs: &PackageXoInputs) -> Result<Path
             inputs.kernel_out_path.display()
         )));
     }
-    redact_xo(&inputs.kernel_out_path)?;
     Ok(inputs.kernel_out_path.clone())
 }
 

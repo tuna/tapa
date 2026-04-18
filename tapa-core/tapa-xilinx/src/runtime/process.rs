@@ -240,7 +240,7 @@ impl MockToolRunner {
     }
 
     /// Queue a canned error response. Lets producer tests trigger any
-    /// `XilinxError` variant (not just `ToolFailure`) so the AC-17
+    /// `XilinxError` variant (not just `ToolFailure`) so the error
     /// coverage check exercises real `ToolRunner::run` returns.
     pub fn push_err(&self, program: impl Into<String>, err: XilinxError) {
         self.responses.lock().unwrap().push(Response {

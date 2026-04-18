@@ -78,5 +78,7 @@ pub use tools::hls::{
     build_hls_tcl, run_hls, run_hls_with_retry, HlsJob, HlsOutput,
     DEFAULT_TRANSIENT_HLS_PATTERNS,
 };
-pub use tools::package_xo::{pack_xo, redact_xo, PackageXoInputs};
+pub use tools::package_xo::{
+    pack_xo, pack_xo_without_redaction, redact_xo, PackageXoInputs,
+};
 pub use tools::vivado::{run_vivado, VivadoJob, VivadoOutput};
