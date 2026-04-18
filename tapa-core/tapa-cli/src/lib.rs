@@ -7,6 +7,7 @@ pub mod error;
 pub mod globals;
 pub mod logging;
 pub mod options;
+pub mod remote;
 pub mod state;
 pub mod steps;
 pub mod tapacc;
