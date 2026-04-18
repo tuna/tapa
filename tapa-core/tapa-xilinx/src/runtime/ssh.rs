@@ -3,8 +3,9 @@
 //! `classify_ssh_error` is the pure function the reconnect heuristic
 //! keys off; its fixture set is ported from the patterns in
 //! `tapa/remote/ssh.py::_MUX_FAILURE_PATTERNS`. `SshSession` owns the
-//! control-master lifecycle; extending the live connection / auto-
-//! restart logic is deferred to the remote execution milestone.
+//! full control-master lifecycle: lazy open via `ssh … true`, liveness
+//! probe via `ssh -O check`, teardown via `ssh -O exit` plus on-disk
+//! socket unlink, and auto-restart on transient mux classifications.
 
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -36,6 +37,12 @@ const TRANSIENT_PATTERNS: &[&str] = &[
     "stale control socket",
     "master refused session request",
     "broken pipe",
+    // OpenSSH's exit code 255 indicates an SSH-level failure
+    // (connection lost, mux gone, host unreachable mid-command).
+    // The runner wraps those into RemoteTransfer messages carrying
+    // the literal `exit 255` token; treat them as transient so the
+    // in-runner retry covers cleanup-daemon / cross-session races.
+    "exit 255",
 ];
 
 const AUTH_PATTERNS: &[&str] = &[
@@ -70,15 +77,22 @@ pub(crate) fn map_ssh_stderr_to_error(host: &str, stderr: &str) -> XilinxError {
 }
 
 /// Classify raw OpenSSH stderr into an actionable kind.
+///
+/// Priority: auth / host-unreachable / mux-transient. The auth and
+/// host-unreachable buckets are checked first so a permanent failure
+/// that happens to carry the generic `exit 255` token (OpenSSH's
+/// catch-all SSH-level-failure code) is not misclassified as
+/// `TransientMux` and retried. Only after both permanent buckets
+/// miss do we consider the transient patterns.
 #[must_use]
 pub fn classify_ssh_error(stderr: &str) -> SshErrorKind {
     let lower = stderr.to_lowercase();
-    if TRANSIENT_PATTERNS.iter().any(|p| lower.contains(p)) {
-        SshErrorKind::TransientMux
-    } else if AUTH_PATTERNS.iter().any(|p| lower.contains(p)) {
+    if AUTH_PATTERNS.iter().any(|p| lower.contains(p)) {
         SshErrorKind::Auth
     } else if UNREACHABLE_PATTERNS.iter().any(|p| lower.contains(p)) {
         SshErrorKind::HostUnreachable
+    } else if TRANSIENT_PATTERNS.iter().any(|p| lower.contains(p)) {
+        SshErrorKind::TransientMux
     } else {
         SshErrorKind::Unknown
     }
@@ -356,6 +370,40 @@ mod tests {
         assert_eq!(
             classify_ssh_error("something entirely different"),
             SshErrorKind::Unknown
+        );
+    }
+
+    #[test]
+    fn exit_255_with_auth_stays_permanent() {
+        // OpenSSH surfaces auth failures through the generic
+        // `exit 255` token; auth must win over the transient
+        // pattern check so a permanent auth failure does not spur
+        // the in-runner retry.
+        assert_eq!(
+            classify_ssh_error(
+                "remote tar -cz failed (exit 255): Permission denied (publickey)"
+            ),
+            SshErrorKind::Auth
+        );
+    }
+
+    #[test]
+    fn exit_255_with_unreachable_stays_permanent() {
+        assert_eq!(
+            classify_ssh_error(
+                "remote tar -cz failed (exit 255): Could not resolve hostname nope"
+            ),
+            SshErrorKind::HostUnreachable
+        );
+    }
+
+    #[test]
+    fn bare_exit_255_is_transient() {
+        // Without an auth/unreachable marker, `exit 255` is the
+        // canonical SSH-level-failure signal and should retry.
+        assert_eq!(
+            classify_ssh_error("remote tar -cz failed (exit 255): "),
+            SshErrorKind::TransientMux
         );
     }
 

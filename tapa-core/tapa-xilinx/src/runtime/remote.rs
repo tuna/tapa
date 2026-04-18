@@ -1,10 +1,16 @@
 //! Remote tool runner: tar-pipe uploads / downloads and remote
 //! invocation through a shared `SshSession`.
 //!
-//! The live implementation (tar-pipe, env allowlist, reconnect via
-//! `classify_ssh_error`) is deferred to the remote-execution
-//! milestone. This module fixes the type shape the orchestrators and
-//! the PyO3 wrapper compile against.
+//! Each `RemoteToolRunner::run` call opens a per-invocation
+//! `<work_dir>/<session_id>` directory on the remote, mirrors the
+//! caller's `cwd` + uploads under `rootfs/`, rewrites every absolute
+//! local path in the command args / env / stdin to its
+//! session-scoped remote equivalent, executes the tool with the
+//! remote working directory pointed at the rewritten `cwd`, then
+//! tar-pipes each requested download path back from its rootfs
+//! counterpart. On a transient mux failure `run_with_mux_retry`
+//! tears the master down, re-establishes the control socket, and
+//! retries the in-flight command once.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};

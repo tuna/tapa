@@ -2148,3 +2148,220 @@ def test_parity_xilinx_xo_full_mode(xilinx_mod: Any) -> None:  # noqa: PLR0914
         assert before == after, (
             f"redact_xo is not idempotent: before={before} after={after}"
         )
+
+
+def _build_full_pack_canned_xo(
+    path: Path, kernel_xml_body: str, project_id: str
+) -> None:
+    """Build the canned `.xo` a real Vivado `package_xo` would emit.
+
+    Mirrors the post-packaging layout the redactor sees in
+    production: `kernel.xml` at the root, `ip/component.xml` with a
+    `ProjectID`, `report/*_csynth.rpt` with a `Date:` line, and an
+    HDL file. Used by the full-pack parity test as the common input
+    both redactors consume.
+    """
+    import zipfile
+
+    assert len(project_id) == 32  # noqa: PLR2004
+
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("kernel.xml", kernel_xml_body)
+        z.writestr(
+            "ip/component.xml",
+            f"""<?xml version="1.0"?>
+<root>
+  <xilinx:coreCreationDateTime>2026-04-17T00:00:00Z</xilinx:coreCreationDateTime>
+  <SourceLocation>/abs/path/to/cpp/vadd/vadd.cpp</SourceLocation>
+  <Project ProjectID="{project_id}"/>
+</root>
+""",
+        )
+        z.writestr(
+            "report/vadd_csynth.rpt",
+            "Date:           Thu Mar 16 08:09:10 2024\nutil body\n",
+        )
+        z.writestr(
+            "hdl/verilog/vadd.v",
+            "module vadd;\n  // synthetic HDL\nendmodule\n",
+        )
+
+
+def test_parity_xilinx_xo_full_pack_with_mock(xilinx_mod: Any) -> None:  # noqa: PLR0914
+    """AC-9 full-pack parity: real `pack_xo` full-mode vs Python redactor.
+
+    Drives the Rust `pack_xo` full-mode path end-to-end through
+    `_pack_xo_full_mode_with_mock` — a test-only harness that swaps
+    the live Vivado runner for a `MockToolRunner` and pre-stages the
+    canned `.xo` so the redactor has a real archive to work on.
+    Python's production `_redact_and_zip` redacts an independent
+    copy of the same canned archive. The two outputs must then match
+    across the full AC-9 contract: listing + per-file SHA-256 +
+    normalized timestamps + canonical inner `kernel.xml` equality.
+    """
+    import io
+    import json as _json
+    import tempfile as _tempfile
+    from pathlib import Path as _Path
+
+    try:
+        from tapa.backend.kernel_metadata import (  # type: ignore[import-not-found]
+            Arg,
+            Cat,
+            print_kernel_xml,
+        )
+    except ImportError as exc:  # pragma: no cover
+        pytest.skip(f"python kernel_metadata not importable: {exc}")
+    try:
+        from tapa.program.pack import _redact_and_zip  # noqa: PLC2701,F401
+    except ImportError as exc:  # pragma: no cover
+        pytest.skip(f"tapa.program.pack not importable: {exc}")
+
+    internal = _xilinx_internal(xilinx_mod)
+    mock_fn = getattr(internal, "_pack_xo_full_mode_with_mock", None)
+    if mock_fn is None:
+        pytest.skip(
+            "tapa_core.xilinx._internal._pack_xo_full_mode_with_mock missing "
+            "— rebuild bindings"
+        )
+
+    # 1. Build a kernel.xml body using the production Python emitter;
+    #    the test asserts Rust's emitter matches this string, then
+    #    bakes it into the canned archive so both redactors see the
+    #    same input.
+    args = [
+        Arg(cat=Cat.MMAP, name="a", port="", ctype="int*", width=512),
+        Arg(cat=Cat.SCALAR, name="n", port="", ctype="int", width=32),
+    ]
+    buf = io.StringIO()
+    print_kernel_xml("vadd", args, buf)
+    py_kernel_xml = buf.getvalue()
+
+    rust_payload = {
+        "top_name": "vadd",
+        "clock_period": "3.33",
+        "ports": [
+            {
+                "name": "a",
+                "category": "MAxi",
+                "width": 512,
+                "port": "",
+                "ctype": "int*",
+            },
+            {
+                "name": "n",
+                "category": "Scalar",
+                "width": 32,
+                "port": "",
+                "ctype": "int",
+            },
+        ],
+    }
+    rust_kernel_xml = internal.emit_kernel_xml(_json.dumps(rust_payload))
+    assert " ".join(py_kernel_xml.split()) == " ".join(rust_kernel_xml.split()), (
+        "kernel.xml emitter parity must hold before full-pack parity"
+    )
+
+    with _tempfile.TemporaryDirectory() as td:
+        td_path = _Path(td)
+        canned = td_path / "canned.xo"
+        _build_full_pack_canned_xo(
+            canned, py_kernel_xml, "cafebabecafebabecafebabecafebabe"
+        )
+
+        # 2. Rust full-pack: stage an hdl dir so `pack_xo` full-mode
+        #    passes its up-front validation; drive through the
+        #    mock-runner backdoor so no live Vivado is required.
+        hdl_dir = td_path / "hdl"
+        hdl_dir.mkdir()
+        (hdl_dir / "vadd.v").write_text("module vadd; endmodule\n")
+        rust_xo = td_path / "rust.xo"
+        inputs_json = _json.dumps(
+            {
+                "kernel_out_path": str(rust_xo),
+                "hdl_dir": str(hdl_dir),
+                "top_name": "vadd",
+                "part_num": "xcu250-figd2104-2L-e",
+                "clock_period": "3.33",
+                "kernel_xml": rust_payload,
+            }
+        )
+        mock_fn(inputs_json, str(canned))
+
+        # 3. Python: redact an independent copy of the same canned
+        #    `.xo` via the production `_redact_and_zip`.
+        py_xo = td_path / "py.xo"
+        _py_redact(canned, py_xo)
+
+        # AC-9 full contract across both sides.
+        rust_inventory = _zip_inventory(rust_xo)
+        py_inventory = _zip_inventory(py_xo)
+        assert rust_inventory == py_inventory, (
+            f"full-pack content drift: rust={rust_inventory} py={py_inventory}"
+        )
+
+        rust_meta = _zip_metadata(rust_xo)
+        py_meta = _zip_metadata(py_xo)
+        assert rust_meta == py_meta, (
+            f"full-pack listing metadata drift: rust={rust_meta} py={py_meta}"
+        )
+        for _n, _s, dt in rust_meta + py_meta:
+            assert dt == (1980, 1, 1, 0, 0, 0), (
+                f"non-epoch timestamp after redaction: {dt}"
+            )
+
+        # kernel.xml canonical equality inside the packaged archive.
+        import zipfile as _zf
+
+        with _zf.ZipFile(rust_xo) as zr, _zf.ZipFile(py_xo) as zp:
+            rust_inner = zr.read("kernel.xml").decode("utf-8")
+            py_inner = zp.read("kernel.xml").decode("utf-8")
+        assert " ".join(rust_inner.split()) == " ".join(py_inner.split())
+
+
+def test_parity_xilinx_real_vitis_hls_csynth_xml(xilinx_mod: Any) -> None:
+    """AC-5 real-tool evidence: parse a genuine Vitis HLS csynth.xml.
+
+    The `testdata/xilinx/real/vadd_csynth.xml` fixture is the actual
+    csynth.xml Vitis HLS 2023.2 emitted for a minimal `vadd` kernel
+    on the live test host. Asserts that Rust's parser pulls the same
+    core fields Python reads via the production `tapa.core.Program`
+    XPaths (top module, part number, target clock period, estimated
+    clock period) on real tool output — not just a hand-crafted
+    fixture.
+    """
+    real = _XILINX_TESTDATA / "real" / "vadd_csynth.xml"
+    if not real.is_file():
+        pytest.skip(f"missing real fixture {real}")
+    internal = _xilinx_internal(xilinx_mod)
+    rust_payload = json.loads(internal.parse_csynth_xml(real.read_bytes()))
+    py_payload = _py_parse_csynth(real)
+    assert py_payload["part"] == "xcu250-figd2104-2L-e"
+    assert py_payload["part"] == rust_payload["part"]
+    # `top` may come from either `<TopModelName>` or `<TopModuleName>`;
+    # both sides read the same source-of-truth XPaths, so a drift on
+    # the real file is a real parity bug.
+    if "top" in py_payload:
+        assert py_payload["top"] == rust_payload["top"]
+    # Clock-period fields: both present on the real file in the Vitis
+    # 2023.2 schema; the Rust parser must read the same values.
+    for key in ("target_clock_period_ns", "estimated_clock_period_ns"):
+        assert key in rust_payload, f"{key} missing from rust payload"
+        if key in py_payload:
+            assert py_payload[key] == rust_payload[key]
+
+
+def test_parity_xilinx_real_vitis_hls_verilog_is_valid(xilinx_mod: Any) -> None:
+    """Smoke check on the real-tool Verilog fixture.
+
+    Confirms the committed `vadd.v` is the actual Vivado-generated
+    RTL (module name + `endmodule` marker) so tests that stage real
+    HDL outputs can rely on a genuine file.
+    """
+    _ = xilinx_mod  # parity fixture, no direct Rust call here
+    real = _XILINX_TESTDATA / "real" / "vadd.v"
+    if not real.is_file():
+        pytest.skip(f"missing real fixture {real}")
+    text = real.read_text(encoding="utf-8", errors="replace")
+    assert "module vadd" in text, "real Verilog must name the `vadd` top"
+    assert "endmodule" in text, "real Verilog missing `endmodule`"

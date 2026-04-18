@@ -8,17 +8,18 @@
     reason = "docs cite the Python module path literally"
 )]
 //!
-//! Exposes the five orchestration-level entry points named in the
-//! Phase 6 plan:
+//! Exposes five orchestration-level entry points:
 //!
 //! - `run_hls_task(job_json) -> str` — per-task HLS invocation with
-//!   retries.
-//! - `pack_xo(inputs_json) -> str` — `.xo` reproducibility pass.
-//!   Currently runs the `redact_xo` normalization over an existing
-//!   archive (timestamps + report/XML payload redactions). The full
-//!   Vivado-backed `package_xo` TCL composition is tracked
-//!   separately and will land here without changing the Python
-//!   call surface.
+//!   bounded retries. Dispatches to a remote SSH runner when the JSON
+//!   payload carries a `remote` config, else runs locally.
+//! - `pack_xo(inputs_json) -> str` — two modes, dispatched on the
+//!   presence of `hdl_dir` in the payload. With `hdl_dir`: drives the
+//!   Vivado-backed `package_xo` flow (kernel.xml emission, TCL
+//!   formatting, Vivado invocation, reproducibility redaction).
+//!   Without `hdl_dir`: runs the `redact_xo` normalization pass on an
+//!   already-packaged archive (timestamps zeroed, report/XML payloads
+//!   redacted).
 //! - `parse_device_info(path, overrides_json) -> str` — device info
 //!   lookup.
 //! - `get_cflags(kind) -> list[str]` — dispatcher on `"tapacc"` /
@@ -63,8 +64,8 @@ use tapa_xilinx::{
     emit_kernel_xml, get_remote_hls_cflags, get_tapa_cflags, get_tapacc_cflags,
     pack_xo as pack_xo_core, parse_csynth_xml, parse_device_info, parse_utilization_rpt,
     redact_xo, run_hls_with_retry, sync_remote_vendor_includes, DeviceInfo, HlsJob,
-    KernelXmlArgs, LocalToolRunner, PackageXoInputs, RemoteConfig, SshMuxOptions, SshSession,
-    XilinxError,
+    KernelXmlArgs, LocalToolRunner, MockToolRunner, PackageXoInputs, RemoteConfig,
+    SshMuxOptions, SshSession, ToolOutput, XilinxError,
 };
 use std::sync::Arc;
 
@@ -395,6 +396,79 @@ fn get_cflags<'py>(py: Python<'py>, kind: &str) -> PyResult<Bound<'py, PyList>> 
     PyList::new(py, flags)
 }
 
+/// Test-only harness that drives `pack_xo` full-mode with a
+/// `MockToolRunner` standing in for live Vivado. The mock returns
+/// a successful `ToolOutput`; the caller must pre-populate
+/// `kernel_out_path` with the canned `.xo` bytes Vivado would emit
+/// so `pack_xo` enters the redaction pass with a valid archive.
+/// Used by the cross-language parity suite to prove
+/// Rust-vs-Python `.xo` parity without requiring a live Vivado run.
+#[pyfunction]
+fn _pack_xo_full_mode_with_mock(
+    py: Python<'_>,
+    inputs_json: &str,
+    canned_xo_path: &str,
+) -> PyResult<String> {
+    ensure_bindings_dir(py);
+    let inputs: PackXoInputs = serde_json::from_str(inputs_json)
+        .map_err(|e| PyValueError::new_err(format!("inputs_json: {e}")))?;
+    let hdl_dir = inputs.hdl_dir.clone().ok_or_else(|| {
+        PyValueError::new_err("_pack_xo_full_mode_with_mock: hdl_dir required")
+    })?;
+    let top_name = inputs
+        .top_name
+        .clone()
+        .ok_or_else(|| PyValueError::new_err("top_name required"))?;
+    let part_num = inputs
+        .part_num
+        .clone()
+        .ok_or_else(|| PyValueError::new_err("part_num required"))?;
+    let clock_period = inputs
+        .clock_period
+        .clone()
+        .ok_or_else(|| PyValueError::new_err("clock_period required"))?;
+    let kernel_xml = inputs
+        .kernel_xml
+        .clone()
+        .ok_or_else(|| PyValueError::new_err("kernel_xml required"))?;
+    let kernel_out_path = PathBuf::from(&inputs.kernel_out_path);
+
+    // Pre-populate `kernel_out_path` with the canned bytes so the
+    // mock Vivado "run" leaves a valid archive for the redactor.
+    std::fs::copy(canned_xo_path, &kernel_out_path)
+        .map_err(|e| PyValueError::new_err(format!("copy canned xo: {e}")))?;
+
+    let core = PackageXoInputs {
+        top_name,
+        hdl_dir,
+        device_info: tapa_xilinx::DeviceInfo {
+            part_num,
+            clock_period: clock_period.clone(),
+        },
+        clock_period,
+        kernel_xml,
+        kernel_out_path,
+        cpp_kernels: inputs.cpp_kernels,
+        m_axi_params: inputs.m_axi_params,
+        s_axi_ifaces: if inputs.s_axi_ifaces.is_empty() {
+            PackageXoInputs::default_s_axi()
+        } else {
+            inputs.s_axi_ifaces
+        },
+    };
+    let runner = MockToolRunner::new();
+    runner.push_ok(
+        "vivado",
+        ToolOutput {
+            exit_code: 0,
+            stdout: String::new(),
+            stderr: String::new(),
+        },
+    );
+    let out = pack_xo_core(&runner, &core).map_err(|e| to_py_err(&e))?;
+    Ok(out.display().to_string())
+}
+
 #[pyfunction]
 fn _debug_search_roots(py: Python<'_>) -> PyResult<Bound<'_, PyList>> {
     ensure_bindings_dir(py);
@@ -497,6 +571,10 @@ pub fn register(parent: &Bound<'_, PyModule>) -> PyResult<()> {
     internal.add_function(wrap_pyfunction!(parse_utilization_rpt_py, &internal)?)?;
     internal.add_function(wrap_pyfunction!(emit_kernel_xml_py, &internal)?)?;
     internal.add_function(wrap_pyfunction!(_debug_search_roots, &internal)?)?;
+    internal.add_function(wrap_pyfunction!(
+        _pack_xo_full_mode_with_mock,
+        &internal
+    )?)?;
     internal.add_function(wrap_pyfunction!(parse_device_info_py, &internal)?)?;
     internal.setattr("parse_csynth_xml", internal.getattr("parse_csynth_xml_py")?)?;
     internal.setattr(

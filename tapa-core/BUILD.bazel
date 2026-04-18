@@ -77,6 +77,10 @@ sh_test(
         "@rules_rust//rust/toolchain:current_cargo_files",
         "@rules_rust//rust/toolchain:current_rustc_files",
         "@rules_rust//rust/toolchain:current_rustdoc_files",
+        # Stage the in-tree `tapa` CLI so the flag-parity harness
+        # can resolve it via `RUNFILES_DIR/_main/tapa/tapa` instead
+        # of relying on a (possibly broken) PATH install.
+        "//tapa",
     ],
     env = {
         "CARGO_MANIFEST_DIR": "tapa-core",
