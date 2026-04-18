@@ -6,6 +6,7 @@
 
 use std::fmt::Write as _;
 use std::fs;
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -14,15 +15,26 @@ use sha2::{Digest, Sha256};
 use crate::error::{CliError, Result};
 
 /// Run `tapa-cpp` once per input file and write the preprocessed source
-/// to `<work_dir>/flatten/flatten-<digest>-<basename>`.
+/// to `<work_dir>/flatten/flatten-<digest>-<basename>`. When a
+/// `clang-format` binary is on `PATH` (probed in the same order as
+/// Python's `tapa.util.clang_format` — `clang-format-20` …
+/// `clang-format-5`, then `clang-format`), the captured stdout is
+/// pretty-printed before it lands on disk. The running byte counter
+/// is gated on `quota_in_bytes`, mirroring
+/// `--clang-format-quota-in-bytes`: once formatting *this* file would
+/// push the cumulative formatted size past the quota, fall back to
+/// the raw `tapa-cpp` bytes for that file (and every subsequent one).
 pub(super) fn run_flatten(
     tapa_cpp: &Path,
     files: &[PathBuf],
     cflags: &[String],
     work_dir: &Path,
+    quota_in_bytes: u64,
 ) -> Result<Vec<PathBuf>> {
     let flatten_dir = work_dir.join("flatten");
     fs::create_dir_all(&flatten_dir)?;
+    let clang_format = find_clang_format();
+    let mut formatted_total: u64 = 0;
     let mut out = Vec::<PathBuf>::with_capacity(files.len());
     for file in files {
         let abs = fs::canonicalize(file).unwrap_or_else(|_| file.clone());
@@ -63,10 +75,71 @@ pub(super) fn run_flatten(
                 stderr: format!("tapa-cpp on {}", file.display()),
             });
         }
-        fs::write(&flatten_path, &output.stdout)?;
+        let bytes = match clang_format.as_deref() {
+            Some(fmt) => {
+                let new_total = formatted_total.saturating_add(output.stdout.len() as u64);
+                if new_total > quota_in_bytes {
+                    output.stdout
+                } else {
+                    formatted_total = new_total;
+                    run_clang_format(fmt, &output.stdout)?
+                }
+            }
+            None => output.stdout,
+        };
+        fs::write(&flatten_path, &bytes)?;
         out.push(flatten_path);
     }
     Ok(out)
+}
+
+/// Probe `PATH` for the `clang-format` binary the same way
+/// `tapa.util.clang_format` does: try `clang-format-{20..5}` from
+/// newest to oldest, fall back to bare `clang-format`. Returns
+/// `None` when nothing is installed (Python returns the input
+/// unchanged in that case; this matches).
+fn find_clang_format() -> Option<PathBuf> {
+    for v in (5u32..=20).rev() {
+        if let Some(p) = which_in_path(&format!("clang-format-{v}")) {
+            return Some(p);
+        }
+    }
+    which_in_path("clang-format")
+}
+
+fn which_in_path(name: &str) -> Option<PathBuf> {
+    let path = std::env::var_os("PATH")?;
+    for dir in std::env::split_paths(&path) {
+        let candidate = dir.join(name);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+/// Pipe `code` through `clang-format`, returning the formatted bytes.
+/// Errors propagate as `CliError::Io` so an unexpected formatter
+/// failure surfaces (Python's helper would also raise).
+fn run_clang_format(clang_format: &Path, code: &[u8]) -> Result<Vec<u8>> {
+    let mut child = Command::new(clang_format)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .spawn()?;
+    child
+        .stdin
+        .as_mut()
+        .expect("clang-format stdin was piped")
+        .write_all(code)?;
+    let out = child.wait_with_output()?;
+    if !out.status.success() {
+        return Err(CliError::TapaccFailed {
+            code: out.status.code().unwrap_or(-1),
+            stderr: format!("clang-format exited {:?}", out.status.code()),
+        });
+    }
+    Ok(out.stdout)
 }
 
 /// Truncate a SHA-256 digest to the first 8 hex characters, matching

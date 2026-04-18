@@ -131,7 +131,13 @@ fn run_native(args: &AnalyzeArgs, ctx: &CliContext) -> Result<()> {
 
     let work_dir = ctx.work_dir.as_path();
     fs::create_dir_all(work_dir)?;
-    let flatten_files = run_flatten(&tapa_cpp, &args.input_files, &all_cflags, work_dir)?;
+    let flatten_files = run_flatten(
+        &tapa_cpp,
+        &args.input_files,
+        &all_cflags,
+        work_dir,
+        ctx.options.clang_format_quota_in_bytes,
+    )?;
     let mut graph_dict = run_tapacc(
         &tapacc,
         &flatten_files,
