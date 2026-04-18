@@ -24,16 +24,25 @@ const STEP: &str = "compile-with-floorplan-dse";
     about = "Compile a TAPA program with floorplan design space exploration."
 )]
 pub struct CompileWithFloorplanDseArgs {
-    // analyze
+    // ---- analyze ----
     #[arg(short = 'f', long = "input", value_name = "FILE", required = true)]
     pub input_files: Vec<PathBuf>,
     #[arg(short = 't', long = "top", value_name = "TASK", required = true)]
     pub top: String,
     #[arg(short = 'c', long = "cflags", value_name = "FLAG")]
     pub cflags: Vec<String>,
+    /// Click forwards `--flatten-hierarchy` from the unioned analyze
+    /// flag surface; the DSE driver always overrides this to true at
+    /// stage 1 (matching `meta.compile_with_floorplan_dse`'s
+    /// `kwargs["flatten_hierarchy"] = True` line) so the user-visible
+    /// flag is informational + parity-only.
+    #[arg(long = "flatten-hierarchy", default_value_t = false)]
+    pub flatten_hierarchy: bool,
+    #[arg(long = "keep-hierarchy", conflicts_with = "flatten_hierarchy")]
+    pub keep_hierarchy: bool,
     #[arg(long = "target", default_value = "xilinx-vitis")]
     pub target: String,
-    // synth (omit conflicting flags; provided below)
+    // ---- synth (omit shared flags; provided below) ----
     #[arg(long = "part-num", value_name = "PART")]
     pub part_num: Option<String>,
     #[arg(short = 'p', long = "platform", value_name = "PLATFORM")]
@@ -52,22 +61,48 @@ pub struct CompileWithFloorplanDseArgs {
     pub no_skip_hls_based_on_mtime: bool,
     #[arg(long = "other-hls-configs", default_value = "")]
     pub other_hls_configs: String,
+    /// `--enable-synth-util` / `--disable-synth-util` are click flags
+    /// forwarded by the composite. `meta.compile_with_floorplan_dse`
+    /// sets `enable_synth_util=true` for stage-1 generate-floorplan
+    /// and resets to `false` for stage-2 per-solution compile.
+    #[arg(long = "enable-synth-util", default_value_t = false)]
+    pub enable_synth_util: bool,
+    #[arg(long = "disable-synth-util", conflicts_with = "enable_synth_util")]
+    pub disable_synth_util: bool,
     #[arg(long = "override-report-schema-version", default_value = "")]
     pub override_report_schema_version: String,
     #[arg(long = "nonpipeline-fifos", value_name = "FILE")]
     pub nonpipeline_fifos: Option<PathBuf>,
-    // floorplan + synth + run_autobridge shared
+    /// `--gen-ab-graph` / `--no-gen-ab-graph` — composite forces
+    /// `gen_ab_graph=true` for stage 1 and `false` for stage 2.
+    #[arg(long = "gen-ab-graph", default_value_t = false)]
+    pub gen_ab_graph: bool,
+    #[arg(long = "no-gen-ab-graph", conflicts_with = "gen_ab_graph")]
+    pub no_gen_ab_graph: bool,
+    /// `--gen-graphir` — composite sets `gen_graphir=true` for stage 2.
+    #[arg(long = "gen-graphir", default_value_t = false)]
+    pub gen_graphir: bool,
+    /// `--floorplan-path` — composite passes one solution's floorplan
+    /// per stage-2 iteration. Setting this on the composite itself is
+    /// allowed for parity but will be overridden per-solution.
+    #[arg(long = "floorplan-path", value_name = "FILE")]
+    pub floorplan_path: Option<PathBuf>,
+    // ---- floorplan + synth + run_autobridge shared ----
     #[arg(long = "device-config", value_name = "FILE", required = true)]
     pub device_config: PathBuf,
     #[arg(long = "floorplan-config", value_name = "FILE", required = true)]
     pub floorplan_config: PathBuf,
-    // pack
+    // ---- pack ----
     #[arg(short = 'o', long = "output", value_name = "FILE")]
     pub output: Option<PathBuf>,
     #[arg(short = 's', long = "bitstream-script", value_name = "FILE")]
     pub bitstream_script: Option<PathBuf>,
     #[arg(long = "custom-rtl", value_name = "PATH")]
     pub custom_rtl: Vec<PathBuf>,
+    /// `--graphir-path` from `pack.py`; composite forwards through
+    /// stage-2's pack invocation.
+    #[arg(long = "graphir-path", value_name = "FILE")]
+    pub graphir_path: Option<PathBuf>,
 }
 
 pub fn run_compile_with_floorplan_dse_composite(

@@ -102,6 +102,32 @@ repos:
         pass_filenames: false
         files: ^tapa/.*\.py$
 
+      # AC-7/AC-8 retirement guards. The legacy PyO3 `tapa_core`
+      # extension and the `TAPA_USE_RUST_*` flag-parity flow were
+      # removed; these hooks fail any new commit that re-introduces a
+      # runtime reference under `tapa/`. They run on every commit and
+      # do not depend on which files were staged.
+      - id: forbid-tapa-core-runtime-ref
+        name: forbid `tapa_core` references under tapa/
+        entry: bash -c '! grep -r --include="*.py" --include="BUILD.bazel" tapa_core tapa/'
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: forbid-tapa-use-rust-runtime-ref
+        name: forbid `TAPA_USE_RUST_` references under tapa/
+        entry: bash -c '! grep -r --include="*.py" --include="BUILD.bazel" --include="*.sh" TAPA_USE_RUST_ tapa/'
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: forbid-retired-python-cli-paths
+        name: forbid retired Python CLI paths (tapa/__main__.py, tapa/steps/*)
+        entry: bash -c '! { [ -e tapa/__main__.py ] || [ -d tapa/steps ]; }'
+        language: system
+        pass_filenames: false
+        always_run: true
+
   - repo: https://github.com/codespell-project/codespell
     rev: "v2.4.1"
     hooks:

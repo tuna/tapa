@@ -21,7 +21,7 @@ use serde_json::{json, Value};
 
 use crate::context::CliContext;
 use crate::error::{CliError, Result};
-use crate::state::{settings as settings_io};
+use crate::state::settings as settings_io;
 use crate::steps::python_bridge;
 
 const AUTOBRIDGE_WORK_DIR: &str = "autobridge";

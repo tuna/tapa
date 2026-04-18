@@ -439,27 +439,9 @@ _LONG_FLAG_RE = _re.compile(r"--[A-Za-z][A-Za-z0-9-]+")
 # on one runtime only, plus a one-line reason. The diff test still
 # fails if a *new* divergence appears outside this allowlist.
 _HELP_DIFF_ALLOWLIST: dict[str, dict[str, frozenset[str]]] = {
-    "compile-with-floorplan-dse": {
-        # Rust composite intentionally omits the per-step toggles that
-        # only matter for the un-ported synth pipeline (Codex R1 ack:
-        # `compile-with-floorplan-dse` flag surface is a curated
-        # subset until SYNTH lands natively). When SYNTH ports, the
-        # entries below should empty out and this allowance shrinks.
-        "py_only": frozenset(
-            {
-                "--flatten-hierarchy",
-                "--keep-hierarchy",
-                "--enable-synth-util",
-                "--disable-synth-util",
-                "--gen-ab-graph",
-                "--no-gen-ab-graph",
-                "--gen-graphir",
-                "--floorplan-path",
-                "--graphir-path",
-            }
-        ),
-        "rs_only": frozenset(),
-    },
+    # No allowlisted divergences: the Rust composites mirror the
+    # Python `_extend_params` flag surface exactly. Adding entries
+    # here is a regression — open a bug instead.
 }
 
 
