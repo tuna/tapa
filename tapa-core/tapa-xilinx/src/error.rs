@@ -253,8 +253,8 @@ mod tests {
     }
 
     fn produce_remote_transfer() -> XilinxError {
-        use crate::runtime::remote::sync_vendor_includes_impl;
-        use crate::runtime::remote::VendorRemoteFs;
+        use crate::runtime::vendor::sync_vendor_includes_impl;
+        use crate::runtime::vendor::VendorRemoteFs;
         struct Failing;
         impl VendorRemoteFs for Failing {
             fn ssh_exec(&self, _cmd: &str) -> Result<(i32, Vec<u8>, Vec<u8>)> {

@@ -3,3 +3,4 @@ pub mod paths;
 pub mod process;
 pub mod remote;
 pub mod ssh;
+pub mod vendor;
