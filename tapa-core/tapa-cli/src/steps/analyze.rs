@@ -275,9 +275,11 @@ fn flatten_graph_value(graph: &Value) -> Result<Value> {
              child task `{child}` is itself an upper task. The native port covers \
              the vadd-shaped case; deeper graphs are pending.",
         )),
-        other @ (TransformError::UnknownInstance(_)
-        | TransformError::FloorplanNotSupported(_)
-        | TransformError::Other(_)) => {
+        other @ (TransformError::MissingTop(_)
+        | TransformError::TopIsLeaf(_)
+        | TransformError::UnknownFloorplanInstance(_)
+        | TransformError::SlotNameCollision(_)
+        | TransformError::Json(_)) => {
             CliError::InvalidArg(format!("flatten failed: {other}"))
         }
     })?;
@@ -589,5 +591,107 @@ mod tests {
         assert!(flow.graph.is_some(), "graph cached for chained steps");
         assert!(flow.settings.is_some(), "settings cached for chained steps");
         assert_eq!(flow.pipelined.get("analyze"), Some(&true));
+    }
+
+    /// `analyze --flatten-hierarchy` exercises the
+    /// [`tapa_task_graph::flatten`] code path on a vadd-shaped graph.
+    /// We hit `flatten_graph_value` directly (the helper invoked from
+    /// `run_native` when `flatten_hierarchy` is set) because the full
+    /// `run_native` path depends on a process-wide `OnceLock` for the
+    /// `find_resource` search anchor — sharing that across tests would
+    /// require more invasive plumbing than this transform-coverage
+    /// check warrants.
+    #[test]
+    fn flatten_graph_value_renames_fifos_for_vadd_shape() {
+        let raw = json!({
+            "cflags": [],
+            "top": "VecAdd",
+            "tasks": {
+                "VecAdd": {
+                    "code": "void VecAdd() {}",
+                    "level": "upper",
+                    "target": "hls",
+                    "vendor": "xilinx",
+                    "ports": [
+                        {"cat": "scalar", "name": "n",
+                         "type": "uint64_t", "width": 64}
+                    ],
+                    "tasks": {
+                        "A": [{"step": 0, "args": {
+                            "n": {"arg": "n", "cat": "scalar"},
+                            "out": {"arg": "fifo", "cat": "ostream"}
+                        }}],
+                        "B": [{"step": 0, "args": {
+                            "n": {"arg": "n", "cat": "scalar"},
+                            "in": {"arg": "fifo", "cat": "istream"}
+                        }}]
+                    },
+                    "fifos": {
+                        "fifo": {"depth": 2, "consumed_by": ["B", 0],
+                                 "produced_by": ["A", 0]}
+                    }
+                },
+                "A": {
+                    "code": "void A() {}", "level": "lower",
+                    "target": "hls", "vendor": "xilinx",
+                    "ports": [
+                        {"cat": "scalar", "name": "n",
+                         "type": "uint64_t", "width": 64},
+                        {"cat": "ostream", "name": "out",
+                         "type": "float", "width": 32}
+                    ]
+                },
+                "B": {
+                    "code": "void B() {}", "level": "lower",
+                    "target": "hls", "vendor": "xilinx",
+                    "ports": [
+                        {"cat": "scalar", "name": "n",
+                         "type": "uint64_t", "width": 64},
+                        {"cat": "istream", "name": "in",
+                         "type": "float", "width": 32}
+                    ]
+                }
+            }
+        });
+
+        let out = flatten_graph_value(&raw).expect("flatten ok");
+        let top = out["tasks"]["VecAdd"]
+            .as_object()
+            .expect("top survives");
+        assert!(
+            top["fifos"].get("fifo_VecAdd").is_some(),
+            "flatten must rename `fifo` to `fifo_VecAdd`; got {top:?}",
+        );
+        let a0 = &top["tasks"]["A"][0]["args"]["out"]["arg"];
+        assert_eq!(a0, &json!("fifo_VecAdd"));
+    }
+
+    /// Deep hierarchies (children that are themselves upper tasks)
+    /// must surface a typed `InvalidArg` rather than crashing.
+    #[test]
+    fn flatten_graph_value_rejects_deep_hierarchy() {
+        let raw = json!({
+            "cflags": [],
+            "top": "Outer",
+            "tasks": {
+                "Outer": {
+                    "code": "", "level": "upper", "target": "hls",
+                    "vendor": "xilinx", "ports": [],
+                    "tasks": {"Inner": [{"args": {}, "step": 0}]},
+                    "fifos": {}
+                },
+                "Inner": {
+                    "code": "", "level": "upper", "target": "hls",
+                    "vendor": "xilinx", "ports": [],
+                    "tasks": {}, "fifos": {}
+                }
+            }
+        });
+        let err = flatten_graph_value(&raw).expect_err("must reject deep");
+        assert!(
+            matches!(err, CliError::InvalidArg(ref m)
+                if m.contains("single-level")),
+            "expected single-level error, got {err:?}",
+        );
     }
 }

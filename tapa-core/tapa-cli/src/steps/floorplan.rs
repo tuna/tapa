@@ -12,16 +12,21 @@
 //!     remote execution still needs the tar-pipe orchestration that
 //!     lives in `tapa-xilinx`, so it falls back to the bridge.
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use clap::Parser;
+use indexmap::IndexMap;
 use serde_json::{json, Value};
+use tapa_task_graph::{
+    apply_floorplan, convert_region_format, region_to_slot_name, Graph, TransformError,
+};
 
 use crate::context::CliContext;
 use crate::error::{CliError, Result};
-use crate::state::settings as settings_io;
+use crate::state::{graph as graph_io, settings as settings_io};
 use crate::steps::python_bridge;
 
 const AUTOBRIDGE_WORK_DIR: &str = "autobridge";
@@ -88,14 +93,221 @@ pub fn run_floorplan(args: &FloorplanArgs, ctx: &mut CliContext) -> Result<()> {
     if python_bridge::is_enabled("floorplan") {
         return python_bridge::run("floorplan", &to_python_argv_floorplan(args), ctx);
     }
-    if args.floorplan_path.is_some() {
-        return Err(CliError::InvalidArg(
-            "`--floorplan-path` is not yet supported by the native floorplan step; \
-             rerun with `TAPA_STEP_FLOORPLAN_PYTHON=1` to use the Python fallback."
-                .to_string(),
-        ));
+    if let Some(path) = args.floorplan_path.as_ref() {
+        return run_floorplan_native_apply(path, ctx);
     }
     run_floorplan_native_noop(ctx)
+}
+
+/// Apply a floorplan JSON file to the cached graph.
+///
+/// Mirrors `tapa.steps.floorplan.floorplan` and
+/// `tapa.steps.floorplan.get_slot_to_inst`:
+///   1. Read `floorplan_path` as `vertex → "x:y"` JSON.
+///   2. Filter to vertices that match a known top-level instance.
+///   3. Group by `region` with `:` → `_` to derive the slot name.
+///   4. Run [`apply_floorplan`] to wrap leaf instances under slot tasks.
+///   5. Persist the rewritten graph to `<work_dir>/graph.json` and stash
+///      `slot_task_name_to_fp_region` (regions in `_TO_` form) plus the
+///      `floorplan` flag in `settings.json`.
+fn run_floorplan_native_apply(path: &Path, ctx: &CliContext) -> Result<()> {
+    let work_dir = ctx.work_dir.as_path();
+    let graph_value = load_or_cached_graph(ctx)?;
+
+    let graph_json = serde_json::to_string(&graph_value)?;
+    let typed = Graph::from_json(&graph_json)?;
+
+    let raw = fs::read_to_string(path)?;
+    let vertex_to_region: IndexMap<String, String> = serde_json::from_str(&raw)?;
+
+    let top_def = typed.tasks.get(&typed.top).ok_or_else(|| {
+        CliError::InvalidArg(format!(
+            "graph is missing the top task `{}`",
+            typed.top,
+        ))
+    })?;
+    let mut known_inst_names = BTreeSet::<String>::new();
+    for (def_name, insts) in &top_def.tasks {
+        for idx in 0..insts.len() {
+            known_inst_names.insert(format!("{def_name}_{idx}"));
+        }
+    }
+
+    let mut slot_to_insts: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut slot_to_region: IndexMap<String, String> = IndexMap::new();
+    for (vertex, region) in &vertex_to_region {
+        if !known_inst_names.contains(vertex) {
+            continue;
+        }
+        let slot = region_to_slot_name(region);
+        slot_to_insts
+            .entry(slot.clone())
+            .or_default()
+            .push(vertex.clone());
+        slot_to_region.insert(slot, convert_region_format(region));
+    }
+
+    if slot_to_insts.is_empty() {
+        return Err(CliError::InvalidArg(format!(
+            "floorplan file `{}` did not match any top-level instances; \
+             verify the floorplan is for the flattened graph",
+            path.display(),
+        )));
+    }
+
+    let (new_graph, _slot_echo) =
+        apply_floorplan(&typed, &slot_to_insts).map_err(map_transform_err)?;
+
+    let new_json = new_graph
+        .to_json()
+        .map_err(|e| CliError::InvalidArg(format!("re-serialize graph: {e}")))?;
+    let new_value: Value = serde_json::from_str(&new_json)?;
+    graph_io::store_graph(work_dir, &new_value)?;
+
+    // Rebuild design.json so chained downstream steps see slot tasks +
+    // the floorplan region map. Codex Round 3 finding: standalone
+    // `tapa floorplan --floorplan-path` previously left design.json
+    // stale (only graph.json + settings.json were rewritten).
+    let target = match settings_io::load_settings(work_dir) {
+        Ok(s) => s
+            .get("target")
+            .and_then(Value::as_str)
+            .map_or_else(|| typed.tasks.get(&typed.top).map_or("xilinx-vitis", |_| "xilinx-vitis").to_string(), ToString::to_string),
+        Err(_) => "xilinx-vitis".to_string(),
+    };
+    let region_map_for_design: indexmap::IndexMap<String, String> =
+        slot_to_region.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    let design = build_design_with_floorplan(
+        &new_value,
+        &typed.top,
+        &target,
+        Some(&region_map_for_design),
+    )?;
+    crate::state::design::store_design(work_dir, &design)?;
+
+    let mut flow = ctx.flow.borrow_mut();
+    let mut settings = if let Some(s) = flow.settings.take() {
+        s
+    } else {
+        match settings_io::load_settings(work_dir) {
+            Ok(s) => s,
+            Err(CliError::MissingState { .. }) => settings_io::Settings::new(),
+            Err(other) => return Err(other),
+        }
+    };
+    settings.insert("floorplan".to_string(), Value::Bool(true));
+    let region_obj: serde_json::Map<String, Value> = slot_to_region
+        .into_iter()
+        .map(|(k, v)| (k, Value::String(v)))
+        .collect();
+    settings.insert(
+        "slot_task_name_to_fp_region".to_string(),
+        Value::Object(region_obj),
+    );
+    settings_io::store_settings(work_dir, &settings)?;
+    flow.settings = Some(settings);
+    flow.graph = Some(new_value);
+    flow.design = Some(design);
+    flow.pipelined.insert("floorplan".to_string(), true);
+    Ok(())
+}
+
+/// Build a [`tapa_task_graph::Design`] from a (possibly floorplan-rewritten)
+/// graph dict, threading the slot→region echo map through. Mirrors the
+/// projection in `analyze::build_design` but accepts an explicit
+/// `slot_task_name_to_fp_region` so the post-floorplan write captures
+/// the new slot-task identity.
+fn build_design_with_floorplan(
+    graph: &Value,
+    top: &str,
+    target: &str,
+    slot_to_region: Option<&indexmap::IndexMap<String, String>>,
+) -> Result<tapa_task_graph::Design> {
+    use tapa_task_graph::TaskTopology;
+    let tasks_obj = graph
+        .get("tasks")
+        .and_then(Value::as_object)
+        .ok_or_else(|| {
+            CliError::InvalidArg("rewritten graph missing `tasks` object".to_string())
+        })?;
+    let slot_set: std::collections::BTreeSet<&str> = slot_to_region
+        .map(|m| m.keys().map(String::as_str).collect())
+        .unwrap_or_default();
+    let mut topology: indexmap::IndexMap<String, TaskTopology> =
+        indexmap::IndexMap::new();
+    for (name, task) in tasks_obj {
+        topology.insert(
+            name.clone(),
+            TaskTopology {
+                name: name.clone(),
+                level: task
+                    .get("level")
+                    .and_then(Value::as_str)
+                    .unwrap_or("lower")
+                    .to_string(),
+                code: task
+                    .get("code")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+                ports: task
+                    .get("ports")
+                    .and_then(Value::as_array)
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|p| serde_json::from_value(p.clone()).ok())
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default(),
+                tasks: value_to_indexmap(task.get("tasks")),
+                fifos: value_to_indexmap(task.get("fifos")),
+                target: task
+                    .get("target")
+                    .and_then(Value::as_str)
+                    .map(ToString::to_string),
+                is_slot: slot_set.contains(name.as_str()),
+                self_area: indexmap::IndexMap::new(),
+                total_area: indexmap::IndexMap::new(),
+                clock_period: "0".to_string(),
+            },
+        );
+    }
+    Ok(tapa_task_graph::Design {
+        top: top.to_string(),
+        target: target.to_string(),
+        tasks: topology,
+        slot_task_name_to_fp_region: slot_to_region.cloned(),
+    })
+}
+
+fn value_to_indexmap(value: Option<&Value>) -> indexmap::IndexMap<String, Value> {
+    let Some(Value::Object(obj)) = value else {
+        return indexmap::IndexMap::new();
+    };
+    obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+}
+
+fn load_or_cached_graph(ctx: &CliContext) -> Result<Value> {
+    {
+        let flow = ctx.flow.borrow();
+        if let Some(g) = flow.graph.as_ref() {
+            return Ok(g.clone());
+        }
+    }
+    graph_io::load_graph(ctx.work_dir.as_path())
+}
+
+fn map_transform_err(e: TransformError) -> CliError {
+    match e {
+        TransformError::DeepHierarchyNotSupported(child) => CliError::InvalidArg(format!(
+            "floorplan: child `{child}` is upper-level; flatten first",
+        )),
+        other @ (TransformError::MissingTop(_)
+        | TransformError::TopIsLeaf(_)
+        | TransformError::UnknownFloorplanInstance(_)
+        | TransformError::SlotNameCollision(_)
+        | TransformError::Json(_)) => CliError::InvalidArg(other.to_string()),
+    }
 }
 
 /// Native no-op path: load (or initialize) `settings.json`, set
@@ -283,7 +495,13 @@ mod tests {
             floorplan_path: Some(dir.path().join("fp.json")),
         };
         let err = run_floorplan(&args, &mut ctx).expect_err("must reject without bridge");
-        assert!(matches!(err, CliError::InvalidArg(_)));
+        // With native --floorplan-path enabled, the failure is now a
+        // typed graph-load error (no graph.json on disk, no cached
+        // graph in flow state) rather than an `InvalidArg` opt-in stub.
+        assert!(
+            matches!(err, CliError::MissingState { .. } | CliError::Io(_)),
+            "expected typed graph-load failure, got {err:?}",
+        );
     }
 
     #[test]
