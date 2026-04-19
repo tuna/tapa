@@ -32,7 +32,9 @@ impl Area {
     /// # Errors
     ///
     /// Returns an error if any expected key is missing.
-    pub fn from_resource_map(map: &serde_json::Map<String, serde_json::Value>) -> Result<Self, FloorplanError> {
+    pub fn from_resource_map(
+        map: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Self, FloorplanError> {
         let get = |key: &str| -> Result<u64, FloorplanError> {
             map.get(key)
                 .and_then(serde_json::Value::as_u64)
@@ -99,7 +101,10 @@ impl Default for Area {
 /// Sum a slice of areas component-wise.
 #[must_use]
 pub fn sum_area(areas: &[Area]) -> Area {
-    areas.iter().copied().fold(Area::default(), |acc, a| acc + a)
+    areas
+        .iter()
+        .copied()
+        .fold(Area::default(), |acc, a| acc + a)
 }
 
 #[cfg(test)]
@@ -167,10 +172,7 @@ mod tests {
     fn area_from_resource_map_missing_key() {
         let map = serde_json::Map::new();
         let result = Area::from_resource_map(&map);
-        assert!(
-            result.is_err(),
-            "expected error for empty map"
-        );
+        assert!(result.is_err(), "expected error for empty map");
     }
 
     #[test]

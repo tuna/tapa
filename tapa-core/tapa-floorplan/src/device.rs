@@ -47,11 +47,7 @@ impl VirtualSlot {
     /// Slot name in `SLOT_X{x}Y{y}_TO_SLOT_X{x}Y{y}` format.
     #[must_use]
     pub fn get_name(&self) -> String {
-        format!(
-            "SLOT_X{x}Y{y}_TO_SLOT_X{x}Y{y}",
-            x = self.x,
-            y = self.y
-        )
+        format!("SLOT_X{x}Y{y}_TO_SLOT_X{x}Y{y}", x = self.x, y = self.y)
     }
 
     /// Validate and sanitize all pblock-related attributes by merging
@@ -298,10 +294,7 @@ mod tests {
         let mut dev = make_device(2, 2);
         dev.slots.pop();
         let err = dev.validate_and_init().unwrap_err();
-        assert!(
-            err.to_string().contains("slots count"),
-            "got: {err}"
-        );
+        assert!(err.to_string().contains("slots count"), "got: {err}");
     }
 
     #[test]
@@ -318,10 +311,7 @@ mod tests {
         let mut dev = make_device(2, 2);
         dev.validate_and_init().unwrap();
         let err = dev.get_slot(5, 5).unwrap_err();
-        assert!(
-            err.to_string().contains("not found"),
-            "got: {err}"
-        );
+        assert!(err.to_string().contains("not found"), "got: {err}");
     }
 
     #[test]
@@ -352,11 +342,7 @@ mod tests {
         let coor = SlotCoord::new(0, 0, 0, 0);
         let ranges = dev.get_island_pblock_range(&coor).unwrap();
         assert_eq!(ranges.len(), 1);
-        assert!(
-            ranges[0].starts_with("-add"),
-            "got: {}",
-            ranges[0]
-        );
+        assert!(ranges[0].starts_with("-add"), "got: {}", ranges[0]);
     }
 
     #[test]
@@ -375,7 +361,10 @@ mod tests {
         let src = SlotCoord::new(0, 0, 0, 0);
         let sink = SlotCoord::new(1, 0, 1, 0);
         let level = dev.get_pipeline_level(&src, &sink).unwrap();
-        assert!(level >= 1, "adjacent slots should need >= 1 pipeline stage, got {level}");
+        assert!(
+            level >= 1,
+            "adjacent slots should need >= 1 pipeline stage, got {level}"
+        );
     }
 
     #[test]
@@ -392,10 +381,7 @@ mod tests {
         dev.slots[0].tags = vec!["dup".into()];
         dev.slots[1].tags = vec!["dup".into()];
         let err = dev.sanity_check().unwrap_err();
-        assert!(
-            err.to_string().contains("dup"),
-            "got: {err}"
-        );
+        assert!(err.to_string().contains("dup"), "got: {err}");
     }
 
     #[test]
@@ -448,10 +434,7 @@ mod tests {
             tags: Vec::new(),
         };
         let err = slot.sanitize_pblock_range().unwrap_err();
-        assert!(
-            err.to_string().contains("-add or -remove"),
-            "got: {err}"
-        );
+        assert!(err.to_string().contains("-add or -remove"), "got: {err}");
     }
 
     #[test]

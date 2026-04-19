@@ -61,8 +61,13 @@ pub fn collect_fifo_width(program: &Program) -> BTreeMap<String, u64> {
                         if let Some(instances) = top.tasks.get(producer_task_name) {
                             if let Some(inst) = instances.get(producer.1 as usize) {
                                 for (port_name, arg) in &inst.args {
-                                    if arg.arg == *fifo_name && *port_name == port.name {
-                                        widths.insert(fifo_name.clone(), u64::from(port.width));
+                                    if arg.arg == *fifo_name
+                                        && logical_port_base(port_name) == port.name
+                                    {
+                                        widths.insert(
+                                            fifo_name.clone(),
+                                            stream_wire_width(port.width),
+                                        );
                                     }
                                 }
                             }
@@ -88,21 +93,27 @@ pub fn collect_port_width(program: &Program) -> BTreeMap<String, PortWidth> {
     let mut widths = BTreeMap::new();
     for port in &top.ports {
         let w = match port.cat {
-            ArgCategory::Mmap | ArgCategory::AsyncMmap | ArgCategory::Immap | ArgCategory::Ommap => {
-                PortWidth::Mmap(MMAP_WIDTH.0, MMAP_WIDTH.1)
-            }
+            ArgCategory::Mmap
+            | ArgCategory::AsyncMmap
+            | ArgCategory::Immap
+            | ArgCategory::Ommap => PortWidth::Mmap(MMAP_WIDTH.0, MMAP_WIDTH.1),
             ArgCategory::Istreams | ArgCategory::Ostreams => {
                 // Plural streams: width * number of connected FIFOs
                 let fifo_count = count_port_fifos(top, &port.name);
-                PortWidth::Simple(u64::from(port.width) * u64::from(fifo_count.max(1)))
+                PortWidth::Simple(stream_wire_width(port.width) * u64::from(fifo_count.max(1)))
             }
-            ArgCategory::Istream
-            | ArgCategory::Ostream
-            | ArgCategory::Scalar => PortWidth::Simple(u64::from(port.width)),
+            ArgCategory::Istream | ArgCategory::Ostream => {
+                PortWidth::Simple(stream_wire_width(port.width))
+            }
+            ArgCategory::Scalar => PortWidth::Simple(u64::from(port.width)),
         };
-        widths.insert(port.name.clone(), w);
+        widths.insert(ab_port_name(&port.name), w);
     }
     widths
+}
+
+fn stream_wire_width(payload_width: u32) -> u64 {
+    u64::from(payload_width) + 1
 }
 
 /// Count how many FIFOs are connected to a given port name.
@@ -185,7 +196,14 @@ pub fn collect_fifo_width_from_rtl(state: &TopologyWithRtl) -> BTreeMap<String, 
                     if let Some(inst) = instances.get(producer.1 as usize) {
                         for (port_name, arg) in &inst.args {
                             if arg.arg == *fifo_name {
-                                if let Some(w) = find_fifo_port_width(&mm.inner, port_name) {
+                                if let Some(w) =
+                                    find_fifo_port_width(&mm.inner, port_name).or_else(|| {
+                                        find_fifo_port_width(
+                                            &mm.inner,
+                                            &logical_port_base(port_name),
+                                        )
+                                    })
+                                {
                                     widths.insert(fifo_name.clone(), u64::from(w));
                                     break;
                                 }
@@ -237,7 +255,7 @@ pub fn get_basic_ab_graph(
     fifo_widths: &BTreeMap<String, u64>,
 ) -> ABGraph {
     let top = &program.tasks[&program.top];
-    let mut vertices = BTreeMap::new();
+    let mut vertices = Vec::new();
     let mut edges = Vec::new();
 
     // Create one vertex per task instance
@@ -245,16 +263,14 @@ pub fn get_basic_ab_graph(
         let area = areas.get(task_name).copied().unwrap_or_default();
         for (idx, _inst) in instances.iter().enumerate() {
             let inst_name = format!("{task_name}_{idx}");
-            vertices.insert(
-                inst_name.clone(),
-                ABVertex {
-                    name: inst_name.clone(),
-                    sub_cells: vec![inst_name],
-                    area,
-                    target_slot: None,
-                    reserved_slot: None,
-                },
-            );
+            vertices.push(ABVertex {
+                name: inst_name.clone(),
+                sub_cells: vec![inst_name],
+                area,
+                current_slot: None,
+                target_slot: None,
+                reserved_slot: None,
+            });
         }
     }
 
@@ -279,7 +295,7 @@ pub fn get_basic_ab_graph(
     }
 
     ABGraph {
-        vs: vertices.into_values().collect(),
+        vs: vertices,
         es: edges,
     }
 }
@@ -315,19 +331,21 @@ pub fn add_port_iface_connections(
             continue;
         }
 
-        let region = find_preassignment_region(&port.name, preassignments)?;
+        let port_name = ab_port_name(&port.name);
+        let region = find_preassignment_region(&port_name, preassignments)?;
         let target_slot = region.map(|r| convert_region_format(&r));
 
         let dummy = ABVertex {
-            name: port.name.clone(),
-            sub_cells: vec![port.name.clone()],
+            name: port_name.clone(),
+            sub_cells: vec![port_name.clone()],
             area: Area::default(),
+            current_slot: None,
             target_slot,
             reserved_slot: None,
         };
 
         let dummy_idx = graph.vs.len();
-        let dummy_name = format!("{TAPA_PORT_PREFIX}{}", port.name);
+        let dummy_name = format!("{TAPA_PORT_PREFIX}{port_name}");
         vertex_names.insert(dummy_name, dummy_idx);
         graph.vs.push(dummy);
 
@@ -338,14 +356,17 @@ pub fn add_port_iface_connections(
             };
 
             let pw = port_widths
-                .get(&port.name)
+                .get(&port_name)
                 .copied()
                 .unwrap_or_else(|| PortWidth::Simple(u64::from(port.width)));
 
             // Add edges based on port category
             let is_mmap = matches!(
                 port.cat,
-                ArgCategory::Mmap | ArgCategory::AsyncMmap | ArgCategory::Immap | ArgCategory::Ommap
+                ArgCategory::Mmap
+                    | ArgCategory::AsyncMmap
+                    | ArgCategory::Immap
+                    | ArgCategory::Ommap
             );
 
             if is_mmap || port.cat == ArgCategory::Istream || port.cat == ArgCategory::Istreams {
@@ -405,6 +426,7 @@ pub fn add_scalar_connections(
                 name: fsm_name.to_owned(),
                 sub_cells: vec![fsm_name.to_owned()],
                 area: Area::default(),
+                current_slot: None,
                 target_slot: None,
                 reserved_slot: None,
             });
@@ -412,7 +434,7 @@ pub fn add_scalar_connections(
         }
 
         let pw = port_widths
-            .get(&port.name)
+            .get(&ab_port_name(&port.name))
             .copied()
             .unwrap_or_else(|| PortWidth::Simple(u64::from(port.width)));
 
@@ -440,6 +462,15 @@ fn find_instance_for_port(
         }
     }
     None
+}
+
+fn logical_port_base(port_name: &str) -> String {
+    tapa_rtl::module::match_array_name(port_name)
+        .map_or_else(|| port_name.to_owned(), |(base, _)| base.to_owned())
+}
+
+fn ab_port_name(port_name: &str) -> String {
+    tapa_rtl::module::sanitize_array_name(port_name)
 }
 
 /// Find a preassignment region for a port, checking for conflicts.
@@ -592,10 +623,54 @@ mod tests {
         let graph = get_basic_ab_graph(&prog, &areas, &fifo_widths);
 
         // Should have 2 vertices (producer_0, consumer_0)
-        assert_eq!(graph.vs.len(), 2, "vertices: {:?}", graph.vs.iter().map(|v| &v.name).collect::<Vec<_>>());
+        assert_eq!(
+            graph.vs.len(),
+            2,
+            "vertices: {:?}",
+            graph.vs.iter().map(|v| &v.name).collect::<Vec<_>>()
+        );
         // Should have 1 edge (fifo_0)
         assert_eq!(graph.es.len(), 1);
         assert_eq!(graph.es[0].width, 32);
+    }
+
+    #[test]
+    fn basic_ab_graph_orders_instances_by_task_then_numeric_index() {
+        let prog: Program = serde_json::from_str(
+            r#"{
+                "top": "top_task",
+                "target": "xilinx-hls",
+                "tasks": {
+                    "top_task": {
+                        "level": "upper",
+                        "code": "",
+                        "target": "xilinx-hls",
+                        "ports": [],
+                        "tasks": {
+                            "Switch": [
+                                {"args": {}}, {"args": {}}, {"args": {}}, {"args": {}},
+                                {"args": {}}, {"args": {}}, {"args": {}}, {"args": {}},
+                                {"args": {}}, {"args": {}}, {"args": {}}, {"args": {}}
+                            ]
+                        },
+                        "fifos": {}
+                    },
+                    "Switch": {
+                        "level": "lower",
+                        "code": "",
+                        "target": "xilinx-hls",
+                        "ports": [],
+                        "tasks": {},
+                        "fifos": {}
+                    }
+                }
+            }"#,
+        )
+        .expect("parse program");
+        let graph = get_basic_ab_graph(&prog, &BTreeMap::new(), &BTreeMap::new());
+        let names = graph.vs.into_iter().map(|v| v.name).collect::<Vec<_>>();
+        assert_eq!(names[2], "Switch_2");
+        assert_eq!(names[10], "Switch_10");
     }
 
     #[test]
@@ -647,10 +722,7 @@ mod tests {
         preassignments.insert("input_.*".into(), "SLOT_X0Y0:SLOT_X0Y0".into());
         preassignments.insert("input_data".into(), "SLOT_X1Y1:SLOT_X1Y1".into());
         let result = find_preassignment_region("input_data", &preassignments);
-        assert!(
-            result.is_err(),
-            "conflicting preassignments should error"
-        );
+        assert!(result.is_err(), "conflicting preassignments should error");
     }
 
     #[test]
@@ -674,8 +746,83 @@ mod tests {
         let prog = make_program();
         let widths = collect_fifo_width(&prog);
         assert!(widths.contains_key("fifo_0"), "keys: {widths:?}");
-        // Producer port "out" has width 32
-        assert_eq!(widths["fifo_0"], 32);
+        // Stream FIFO data carries payload plus the TAPA eot bit.
+        assert_eq!(widths["fifo_0"], 33);
+    }
+
+    #[test]
+    fn collect_fifo_width_handles_indexed_plural_stream_ports() {
+        let prog: Program = serde_json::from_str(
+            r#"{
+                "top": "top",
+                "target": "xilinx-hls",
+                "tasks": {
+                    "top": {
+                        "level": "upper",
+                        "code": "",
+                        "target": "xilinx-hls",
+                        "ports": [],
+                        "tasks": {
+                            "producer": [{"args": {"out[0]": {"arg": "fifo_0", "cat": "ostream"}}}],
+                            "consumer": [{"args": {"in": {"arg": "fifo_0", "cat": "istream"}}}]
+                        },
+                        "fifos": {
+                            "fifo_0": {"depth": 2, "produced_by": ["producer", 0], "consumed_by": ["consumer", 0]}
+                        }
+                    },
+                    "producer": {
+                        "level": "lower", "code": "", "target": "xilinx-hls",
+                        "ports": [{"cat": "ostreams", "name": "out", "type": "uint64_t", "width": 64}],
+                        "tasks": {}, "fifos": {}
+                    },
+                    "consumer": {
+                        "level": "lower", "code": "", "target": "xilinx-hls",
+                        "ports": [{"cat": "istream", "name": "in", "type": "uint64_t", "width": 64}],
+                        "tasks": {}, "fifos": {}
+                    }
+                }
+            }"#,
+        )
+        .expect("parse program");
+
+        let widths = collect_fifo_width(&prog);
+        assert_eq!(widths["fifo_0"], 65);
+    }
+
+    #[test]
+    fn add_port_iface_connections_sanitizes_indexed_port_vertices() {
+        let prog: Program = serde_json::from_str(
+            r#"{
+                "top": "top",
+                "target": "xilinx-hls",
+                "tasks": {
+                    "top": {
+                        "level": "upper",
+                        "code": "",
+                        "target": "xilinx-hls",
+                        "ports": [{"cat": "mmap", "name": "chan[0]", "type": "float*", "width": 32}],
+                        "tasks": {
+                            "worker": [{"args": {"mem": {"arg": "chan[0]", "cat": "mmap"}}}]
+                        },
+                        "fifos": {}
+                    },
+                    "worker": {
+                        "level": "lower", "code": "", "target": "xilinx-hls",
+                        "ports": [{"cat": "mmap", "name": "mem", "type": "float*", "width": 32}],
+                        "tasks": {}, "fifos": {}
+                    }
+                }
+            }"#,
+        )
+        .expect("parse program");
+        let areas = collect_task_area(&prog);
+        let mut graph = get_basic_ab_graph(&prog, &areas, &BTreeMap::new());
+        let port_widths = collect_port_width(&prog);
+
+        add_port_iface_connections(&prog, &mut graph, &port_widths, &BTreeMap::new()).unwrap();
+
+        assert!(graph.find_vertex("chan_0").is_some(), "{:?}", graph.vs);
+        assert!(graph.find_vertex("chan[0]").is_none(), "{:?}", graph.vs);
     }
 
     #[test]
@@ -699,7 +846,11 @@ mod tests {
         let preassignments = BTreeMap::new();
         let graph = get_top_level_ab_graph(&prog, &preassignments, "top_task_fsm").unwrap();
         // Should have instance vertices + port dummy vertices + FSM vertex
-        assert!(graph.vs.len() >= 3, "should have at least 3 vertices, got {}", graph.vs.len());
+        assert!(
+            graph.vs.len() >= 3,
+            "should have at least 3 vertices, got {}",
+            graph.vs.len()
+        );
         assert!(!graph.es.is_empty(), "should have edges");
     }
 
