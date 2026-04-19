@@ -7,7 +7,7 @@
 //! build lands alongside `run_vivado`.
 
 use std::io::{Read, Seek, SeekFrom, Write};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use zip::write::SimpleFileOptions;
 
@@ -342,12 +342,6 @@ pub fn pack_xo_without_redaction(
         )));
     }
     Ok(kernel_out_path)
-}
-
-/// Backwards-compatible alias so other modules that took `&Path` still work.
-#[allow(dead_code, reason = "kept for symmetry with other wrappers")]
-fn _pack_xo_path(p: &Path) -> PathBuf {
-    p.to_path_buf()
 }
 
 fn redact_rpt(text: &str) -> String {

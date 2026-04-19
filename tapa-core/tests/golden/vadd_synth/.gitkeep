@@ -1,4 +1,4 @@
-# Reserved for the `vadd analyze synth` golden snapshot (AC-5.2).
+# Reserved for the `vadd analyze synth` golden snapshot.
 #
 # Holds `rtl/*.v` (Rust codegen output, deterministic),
 # `templates_info.json`, `design.json`, `settings.json`, and

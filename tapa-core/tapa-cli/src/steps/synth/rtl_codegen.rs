@@ -264,7 +264,7 @@ mod tests {
         assert!(program.tasks.contains_key("Add"));
     }
 
-    /// Regression for the R14→R15 finding: `generate-floorplan` enables
+    /// Regression test: `generate-floorplan` enables
     /// `--enable-synth-util`, which writes `self/total_area` onto the
     /// design. The topology conversion must preserve those fields so
     /// `AutoBridge`'s area-aware floorplanning sees real costs instead of

@@ -4,7 +4,7 @@
 //! Emits a `#!/bin/bash` helper that downstream users can run to
 //! drive `v++ --link` against the just-packaged `.xo`. The script is
 //! a literal transliteration of the Python template (retired in
-//! AC-8 but preserved here for parity with historical build recipes
+//! but is preserved here for parity with historical build recipes
 //! that call into it).
 
 use std::fs;

@@ -115,7 +115,7 @@ pub fn run_compile_with_floorplan_dse_composite(
                 .to_string(),
         ));
     }
-    // Python bridge is gone as of AC-8; always native.
+    // Python bridge is gone; always native.
     let original_work_dir = ctx.work_dir.clone();
 
     // Stage 1: drive generate-floorplan to enumerate floorplans.
@@ -258,7 +258,7 @@ fn build_compile_stage2(
         output: Some(output.to_path_buf()),
         bitstream_script: args.bitstream_script.clone(),
         custom_rtl: args.custom_rtl.clone(),
-        // Codex Round 5 finding: DSE advertises `--graphir-path` but
+        // DSE advertises `--graphir-path` but
         // previously forced `None` here, silently dropping the value.
         // Forward it through so the per-solution pack picks up the
         // caller-supplied GraphIR path.
@@ -279,7 +279,7 @@ mod tests {
 
     #[test]
     fn forwards_graphir_path_to_stage2_pack() {
-        // Codex Round 5 regression: `compile-with-floorplan-dse` must
+        // Regression test: `compile-with-floorplan-dse` must
         // thread `--graphir-path` through to the per-solution pack step
         // instead of silently dropping it.
         let args = CompileWithFloorplanDseArgs::try_parse_from([

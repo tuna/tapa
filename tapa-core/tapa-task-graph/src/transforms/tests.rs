@@ -95,7 +95,7 @@ fn flatten_preserves_top_metadata() {
     assert_eq!(top.vendor, "xilinx");
 }
 
-/// Round-16 regression: the previous port rejected any design where
+/// Regression test: the previous port rejected any design where
 /// the top had upper-level children with `DeepHierarchyNotSupported`.
 /// Python's `Graph.get_flatten_graph` recursively collects leaves, so
 /// the Rust port now matches — even an "empty" nested upper must

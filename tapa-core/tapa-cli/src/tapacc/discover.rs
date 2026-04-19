@@ -204,7 +204,7 @@ mod tests {
 
     #[test]
     fn version_regex_rejects_unparseable_output() {
-        // AC-4 negative test: a binary that prints `--version` text
+        // Negative test: a binary that prints `--version` text
         // without a parseable `version <num>` token must fail.
         assert!(!version_regex().is_match(""));
         assert!(!version_regex().is_match("hello world"));

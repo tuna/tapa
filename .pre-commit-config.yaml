@@ -110,7 +110,7 @@ repos:
         pass_filenames: false
         files: ^tapa/.*\.py$
 
-      # AC-7/AC-8 retirement guards. The legacy PyO3 `tapa_core`
+      # Retirement guards. The legacy PyO3 `tapa_core`
       # extension and the `TAPA_USE_RUST_*` flag-parity flow were
       # removed; these hooks fail any new commit that re-introduces a
       # runtime reference under `tapa/`. They run on every commit and

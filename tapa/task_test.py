@@ -11,7 +11,7 @@ from tapa.task import Task
 
 
 def test_task_topology_only_before_rtl_state() -> None:
-    """Program construction creates topology-only tasks (AC-2)."""
+    """Program construction creates topology-only tasks."""
     task = Task(name="foo", code="", level="lower")
     assert task.module is None
     assert task.fsm_module is None
@@ -20,7 +20,7 @@ def test_task_topology_only_before_rtl_state() -> None:
 
 
 def test_lower_task_has_no_fsm_module() -> None:
-    """Lower tasks keep fsm_module=None even after TaskRtlState (AC-2)."""
+    """Lower tasks keep fsm_module=None even after TaskRtlState."""
     task = Task(name="leaf", code="", level="lower")
     TaskRtlState(task)
     assert task.module is not None
@@ -28,7 +28,7 @@ def test_lower_task_has_no_fsm_module() -> None:
 
 
 def test_upper_task_gets_fsm_module() -> None:
-    """Upper tasks get fsm_module from TaskRtlState (AC-2)."""
+    """Upper tasks get fsm_module from TaskRtlState."""
     task = Task(name="top", code="", level="upper")
     TaskRtlState(task)
     assert task.module is not None
@@ -36,7 +36,7 @@ def test_upper_task_gets_fsm_module() -> None:
 
 
 def test_topology_dict_round_trip() -> None:
-    """Task.to_topology_dict() produces a schema compatible with Program (AC-5)."""
+    """Task.to_topology_dict() produces a schema compatible with Program."""
     task = Task(
         name="my_task",
         code="void my_task() {}",
@@ -67,7 +67,7 @@ def test_topology_dict_round_trip() -> None:
 
 
 def test_program_construction_is_topology_only() -> None:
-    """Program creates topology-only tasks with module=None (AC-2).
+    """Program creates topology-only tasks with module=None.
 
     Both the upper task and the leaf task must be retained and have
     module/fsm_module=None immediately after construction.
@@ -105,10 +105,10 @@ def test_program_construction_is_topology_only() -> None:
 
 
 def test_design_json_round_trip_with_slots(tmp_path: object) -> None:
-    """design.json round-trips Program state including is_slot (AC-5).
+    """design.json round-trips Program state including is_slot.
 
     Inlines `store_design` (formerly `tapa.steps.common.store_design`,
-    retired in AC-8) so the on-disk schema this test pins stays stable
+    retired) so the on-disk schema this test pins stays stable
     after the click step package was removed.
     """
     import json  # noqa: PLC0415
@@ -193,11 +193,11 @@ def test_design_json_round_trip_with_slots(tmp_path: object) -> None:
 
 
 def test_store_and_load_tapa_program_bridge(tmp_path: object) -> None:
-    """design.json store + load round-trips Program state (AC-5).
+    """design.json store + load round-trips Program state.
 
     Inlines the `store_tapa_program` / `load_tapa_program` helpers
-    formerly in `tapa.steps.common`; AC-8 retired the click step
-    package, so the test now drives the on-disk JSON shape directly.
+    formerly in `tapa.steps.common`; the click step package was
+    retired, so the test now drives the on-disk JSON shape directly.
     """
     import json  # noqa: PLC0415
     import os  # noqa: PLC0415

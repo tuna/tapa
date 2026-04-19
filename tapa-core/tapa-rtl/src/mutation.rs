@@ -588,7 +588,7 @@ mod tests {
         );
     }
 
-    /// Regression for the R7 `vadd_xo` seed failure: Vivado's HDL
+    /// Regression for a `vadd_xo` seed failure: Vivado's HDL
     /// Parser rejected the native top-level RTL because parameters
     /// like `C_S_AXI_CONTROL_ADDR_WIDTH` were emitted *after* the
     /// port list used them. `emit()` must now hoist every parameter

@@ -23,6 +23,7 @@ use super::gen_graphir::emit_graphir;
 use super::grouping_constraints::emit_grouping_constraints;
 use super::hls_run::{run_hls_for_leaves, HlsRunOptions};
 use super::post_synth_util::emit_post_synth_util;
+use super::report::write_top_report;
 use super::rtl_codegen::{generate_rtl_tree, write_templates_info, TaskHdlInputs};
 use super::SynthArgs;
 
@@ -103,6 +104,15 @@ pub fn run_native(
             runner,
         )?;
     }
+
+    // Emit `report.{json,yaml}` at the work-dir root once area data
+    // is final. Mirrors the report block in
+    // `tapa/codegen/program_rtl.py::generate_top_rtl`. Both pack
+    // paths (`xilinx-vitis` `.xo` and `xilinx-hls` `.zip`) bundle the
+    // YAML at archive root, so writing it here is what unblocks the
+    // downstream consumers that lost the metadata after the Python
+    // codegen step was retired.
+    write_top_report(&ctx.work_dir, &design, &args.override_report_schema_version)?;
 
     // Post-codegen side effects that mirror the tail of Python's
     // `_execute_synth`: nonpipeline-fifos → grouping_constraints.json,

@@ -3,7 +3,7 @@
 //! Composes `tapa-cpp` (preprocessor) and `tapacc` (semantic analyzer)
 //! invocations, then writes `graph.json`, `design.json`, and
 //! `settings.json` directly under `work_dir` using the Python-compatible
-//! formatters. The Python CLI was retired in AC-8; this is the only
+//! formatters. The Python CLI was retired; this is the only
 //! `analyze` path.
 
 use std::fs;
@@ -126,7 +126,7 @@ pub fn to_python_argv(args: &AnalyzeArgs) -> Vec<String> {
 }
 
 /// Top-level dispatcher for `tapa analyze` (always native; Python CLI
-/// was retired in AC-8).
+/// was retired).
 pub fn run(args: &AnalyzeArgs, ctx: &mut CliContext) -> Result<()> {
     run_native(args, ctx)
 }

@@ -7,7 +7,6 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::error::Result;
 use crate::tapacc::discover::find_resource;
 
 /// Output of [`get_tapa_cflags`]. Mirrors the Python tuple, preserving
@@ -269,11 +268,6 @@ pub fn run_tapacc_argv(
     argv.push("-DTAPA_TARGET_DEVICE_".to_string());
     argv.push("-DTAPA_TARGET_STUB_".to_string());
     argv
-}
-
-/// Convenience for callers that don't need typed CFLAGS.
-pub fn _unused() -> Result<()> {
-    Ok(())
 }
 
 #[cfg(test)]

@@ -55,7 +55,7 @@ def test_pblock_range_mapping_matches_vadd_fixture() -> None:
 
 
 def test_project_builder_leaf_loop_does_not_mutate_task_module() -> None:
-    """Verify project_builder does not reassign task.module (AC-2).
+    """Verify project_builder does not reassign task.module.
 
     Calls get_project_from_floorplanned_program with a minimal
     top/slot/leaf hierarchy and preattached sentinel leaf.module.

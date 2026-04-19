@@ -39,6 +39,7 @@ mod gen_graphir;
 mod grouping_constraints;
 mod hls_run;
 mod post_synth_util;
+mod report;
 mod rtl_codegen;
 mod runner;
 
