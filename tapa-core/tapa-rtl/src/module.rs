@@ -1,6 +1,7 @@
 //! Top-level `VerilogModule` type aggregating parsed interface elements.
 
 use serde::{Deserialize, Serialize};
+use std::sync::LazyLock;
 
 use crate::error::ParseError;
 use crate::param::Parameter;
@@ -34,6 +35,9 @@ pub struct VerilogModule {
 /// logical argument name. Mirrors Python's `_FIFO_INFIXES` in
 /// `tapa/verilog/xilinx/module_ops/ports.py`.
 pub const FIFO_INFIXES: &[&str] = &["_V", "_r", "_s", ""];
+
+static ARRAY_NAME_WITH_SUFFIX_RE: LazyLock<regex::Regex> =
+    LazyLock::new(|| regex::Regex::new(r"^([a-zA-Z_]\w*)\[(\d+)\]([a-zA-Z_]\w*)?$").unwrap());
 
 impl VerilogModule {
     /// Parse a Verilog module header from source text.
@@ -132,7 +136,35 @@ pub fn match_array_name(name: &str) -> Option<(&str, u32)> {
 /// `sanitize_array_name` in `tapa/verilog/util.py`.
 #[must_use]
 pub fn sanitize_array_name(name: &str) -> String {
-    match_array_name(name).map_or_else(|| name.to_owned(), |(base, idx)| format!("{base}_{idx}"))
+    ARRAY_NAME_WITH_SUFFIX_RE.captures(name).map_or_else(
+        || name.to_owned(),
+        |caps| {
+            format!(
+                "{}_{}{}",
+                &caps[1],
+                &caps[2],
+                caps.get(3).map_or("", |m| m.as_str())
+            )
+        },
+    )
+}
+
+/// Convert frontend names into plain Verilog identifiers.
+///
+/// Keeps Python-compatible array-name handling (`foo[3]` -> `foo_3`) before
+/// replacing characters that cannot appear in unescaped Verilog identifiers.
+#[must_use]
+pub fn sanitize_identifier_name(name: &str) -> String {
+    let name = sanitize_array_name(name);
+    let mut out = String::with_capacity(name.len());
+    for (idx, ch) in name.chars().enumerate() {
+        let valid = ch.is_ascii_alphanumeric() || ch == '_' || ch == '$';
+        if idx == 0 && ch.is_ascii_digit() {
+            out.push('_');
+        }
+        out.push(if valid { ch } else { '_' });
+    }
+    out
 }
 
 #[cfg(test)]
@@ -175,7 +207,25 @@ mod tests {
     #[test]
     fn sanitize_array_name_collapses_brackets() {
         assert_eq!(sanitize_array_name("foo[3]"), "foo_3");
+        assert_eq!(sanitize_array_name("foo[3]_bar"), "foo_3_bar");
         assert_eq!(sanitize_array_name("foo"), "foo");
+    }
+
+    #[test]
+    fn sanitize_identifier_name_replaces_invalid_chars() {
+        assert_eq!(sanitize_identifier_name("Module1Func#1"), "Module1Func_1");
+        assert_eq!(sanitize_identifier_name("foo[3]"), "foo_3");
+        assert_eq!(sanitize_identifier_name("1foo"), "_1foo");
+    }
+
+    #[test]
+    fn get_port_of_suffixed_array_name() {
+        let m = module(vec![port("qs_24_Network_s_dout", "output")]);
+        assert_eq!(
+            m.get_port_of("qs[24]_Network", "_dout")
+                .map(|p| p.name.as_str()),
+            Some("qs_24_Network_s_dout"),
+        );
     }
 
     #[test]
