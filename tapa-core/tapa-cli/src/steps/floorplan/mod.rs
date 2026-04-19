@@ -88,7 +88,7 @@ pub fn to_python_argv_run_autobridge(args: &RunAutobridgeArgs) -> Vec<String> {
 ///
 /// `--floorplan-path` drives the native `apply_floorplan` transform;
 /// without it, the step is a stateful no-op that just toggles
-/// `settings["floorplan"] = true`. Python bridge is gone as of AC-8.
+/// `settings["floorplan"] = true`. The Python bridge is gone.
 pub fn run_floorplan(args: &FloorplanArgs, ctx: &mut CliContext) -> Result<()> {
     if let Some(path) = args.floorplan_path.as_ref() {
         return run_floorplan_native_apply(path, ctx);
@@ -162,9 +162,9 @@ fn run_floorplan_native_apply(path: &Path, ctx: &CliContext) -> Result<()> {
     graph_io::store_graph(work_dir, &new_value)?;
 
     // Rebuild design.json so chained downstream steps see slot tasks +
-    // the floorplan region map. Codex Round 3 finding: standalone
-    // `tapa floorplan --floorplan-path` previously left design.json
-    // stale (only graph.json + settings.json were rewritten).
+    // the floorplan region map. Standalone `tapa floorplan
+    // --floorplan-path` previously left design.json stale (only
+    // graph.json + settings.json were rewritten).
     let target = match settings_io::load_settings(work_dir) {
         Ok(s) => s
             .get("target")

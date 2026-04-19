@@ -1,7 +1,7 @@
 """Phase 7 — `tapa-cli` golden-snapshot tests for the Rust binary.
 
 The legacy click-based Python CLI (`tapa/__main__.py` + `tapa/steps/`)
-was retired in commit `222519ce` (AC-8). With the Python entry point
+was retired. With the Python entry point
 gone, the original Python-vs-Rust parity gates would silently skip on
 every invocation, so this suite was rewritten as a *golden-snapshot*
 gate: the Rust CLI's observable surface is captured in
@@ -120,7 +120,7 @@ def _rust_env() -> dict[str, str]:
 
     Strips any stray `TAPA_STEP_*_PYTHON` vars from the caller's shell
     so a leaked bridge env can't silently mask a native-path
-    regression (the bridge no longer exists post-AC-8).
+    regression (the bridge no longer exists).
     """
     env = {**os.environ}
     for key in list(env):
@@ -151,7 +151,7 @@ def _normalize_design_for_compare(design: dict[str, Any]) -> dict[str, Any]:
 def _skip_if_cli_toolchain_missing() -> Path:
     """Return the Rust `tapa` binary or `pytest.skip()` cleanly.
 
-    The Python click CLI was retired in commit `222519ce` (AC-8); only
+    The Python click CLI was retired; only
     the Rust binary is checked. `tapacc` / `vitis_hls` availability
     is checked per-test where it's actually needed.
     """
@@ -241,7 +241,7 @@ def test_cli_version_runs() -> None:
 
 
 def test_cli_unknown_first_token_fails() -> None:
-    """Reject `tapa bogus-subcommand` (negative parser gate, AC-2)."""
+    """Reject `tapa bogus-subcommand` (negative parser gate)."""
     binary = _skip_if_cli_toolchain_missing()
     rs = _subprocess.run(
         [str(binary), "bogus-subcommand"],
@@ -253,7 +253,7 @@ def test_cli_unknown_first_token_fails() -> None:
 
 
 def test_cli_chained_argv_value_collision_does_not_split() -> None:
-    """Keep flag values attached to their flag (Codex regression, AC-3).
+    """Keep flag values attached to their flag.
 
     A flag value that equals a subcommand name (e.g. `--top synth`)
     must stay attached to `--top`, not boundary the chunk into a new
@@ -366,7 +366,7 @@ def test_cli_subcommand_help_flags_match_golden(subcommand: str) -> None:
 
     The golden files live in `tapa-core/tests/golden/help/` and were
     seeded from the live Rust binary at the time the Python CLI was
-    retired (commit `222519ce`, AC-8). A flag rename or removal trips
+    retired. A flag rename or removal trips
     this test with an explicit added/removed diff. To intentionally
     update a golden after a CLI change, set `TAPA_GOLDEN_REFRESH=1`.
     """
@@ -554,7 +554,7 @@ def _parse_argv_shape(argv: list[str]) -> dict[str, Any]:
 _APP_ARGVS = _discover_app_argvs()
 
 # Curated argv fixtures for subcommands NOT covered by the per-app
-# `compile_xo` corpus. AC-11 requires explicit coverage for each major
+# `compile_xo` corpus. Explicit coverage is required for each major
 # invocation idiom; `tests/apps/*/run_tapa.bats` gives us `compile`
 # (and transitively analyze + synth + pack), but the non-`compile`
 # entry points need hand-rolled fixtures. Each entry lands a golden
@@ -940,8 +940,8 @@ def test_cli_golden_vadd_xo_flow(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------
-# Reusable snapshot helpers for native step output trees (AC-5.2 +
-# AC-5.4 JSON parity). Each helper captures a relpath → text dict, so
+# Reusable snapshot helpers for native step output trees. Each helper
+# captures a relpath → text dict, so
 # the corresponding `refresh` / `assert` pair can handle arbitrary
 # nested layouts without hand-wiring every file name.
 # ---------------------------------------------------------------------
@@ -1022,7 +1022,7 @@ def _assert_tree_goldens(root: Path, snap: dict[str, str], label: str) -> None:
 
 
 def test_assert_tree_goldens_fails_on_missing_when_seeded(tmp_path: Path) -> None:
-    """Regression for the Round-10 skip-open bug.
+    """Regression for the skip-open bug.
 
     Once any golden exists under `root`, a new live entry without a
     golden must fail instead of skip. Only a completely empty root
@@ -1053,7 +1053,7 @@ def test_assert_tree_goldens_fails_on_missing_when_seeded(tmp_path: Path) -> Non
 
 
 # ---------------------------------------------------------------------
-# vadd `analyze synth` golden snapshot (AC-5.2 artifact parity).
+# vadd `analyze synth` golden snapshot.
 # Snapshots `rtl/*.v` (Rust codegen output, deterministic),
 # `templates_info.json`, `design.json`, `settings.json`, plus the HLS
 # report file-inventory AND every `.rpt` content after a byte-stable
@@ -1122,7 +1122,7 @@ def test_vadd_synth_rpt_goldens_are_fully_redacted() -> None:
     """Non-Vitis guard on the checked-in `vadd_synth/reports/` goldens.
 
     Catches the exact "sanitizer fixed but goldens stale" state
-    Codex flagged: every `.rpt` under `tests/golden/vadd_synth/reports/`
+    Every `.rpt` under `tests/golden/vadd_synth/reports/`
     must round-trip through `_redact_rpt_content` unchanged (i.e. the
     canonicalization is already at its fixed point). A failure means
     the goldens still contain live Vitis timestamps / version strings
@@ -1218,7 +1218,7 @@ def _collect_vadd_synth_snapshot(work: Path) -> dict[str, str]:
     design_path = work / "design.json"
     if design_path.is_file():
         snap["design.json"] = _json_canon(design_path, normalize_design=True)
-    # Full byte-stable `.rpt` content parity (AC-5.2 reports). Every
+    # Full byte-stable `.rpt` content parity. Every
     # file goes through `_redact_rpt_content` so Vitis timestamps /
     # version strings don't turn a clean run into drift noise.
     rpts = sorted(work.rglob("*.rpt"))
@@ -1257,7 +1257,7 @@ def _build_vadd_synth_argv(
 def test_cli_golden_vadd_synth(tmp_path: Path) -> None:
     """Snapshot/diff native `tapa analyze synth` outputs on vadd.
 
-    Covers AC-5.2 end-to-end: after `synth` runs, the work dir must
+    End-to-end: after `synth` runs, the work dir must
     contain deterministic Rust-codegen RTL under `rtl/`, a
     Python-parity `templates_info.json`, a synth'd `design.json`, and
     a `settings.json` flagged `synthed=true`. The suite also records
@@ -1304,7 +1304,7 @@ def test_cli_golden_vadd_synth(tmp_path: Path) -> None:
 
 # ---------------------------------------------------------------------
 # `generate-floorplan` + `compile-with-floorplan-dse` golden snapshots
-# (AC-5.4). Both composites invoke `rapidstream-tapafp`; the suite
+# Both composites invoke `rapidstream-tapafp`; the suite
 # supplies a deterministic stub under `tests/tools/rapidstream-tapafp`
 # so the gate runs without external infrastructure.
 # ---------------------------------------------------------------------
@@ -1444,7 +1444,7 @@ def _build_vadd_dse_argv(  # noqa: PLR0913, PLR0917
 
 
 def test_cli_golden_vadd_generate_floorplan(tmp_path: Path) -> None:
-    """Diff `generate-floorplan` persistent JSON outputs (AC-5.4).
+    """Diff `generate-floorplan` persistent JSON outputs.
 
     Runs the real `tapa generate-floorplan` composite against a
     deterministic `rapidstream-tapafp` stub that ships under
@@ -1519,7 +1519,7 @@ def test_cli_golden_vadd_generate_floorplan(tmp_path: Path) -> None:
 def test_cli_golden_vadd_compile_with_floorplan_dse(  # noqa: C901, PLR0914, PLR0915
     tmp_path: Path,
 ) -> None:
-    """Diff `compile-with-floorplan-dse` persistent JSON outputs (AC-5.4).
+    """Diff `compile-with-floorplan-dse` persistent JSON outputs.
 
     Runs the full DSE composite with the deterministic
     `rapidstream-tapafp` stub and snapshots every persistent JSON
@@ -1570,7 +1570,7 @@ def test_cli_golden_vadd_compile_with_floorplan_dse(  # noqa: C901, PLR0914, PLR
         _maybe_skip_on_vadd_flow_failure(msg)
         pytest.fail(f"compile-with-floorplan-dse failed unexpectedly:\n{msg}")
 
-    # AC-5.4: DSE must emit *terminal* stage-2 compile state under
+    # DSE must emit *terminal* stage-2 compile state under
     # `solution_*/` — not merely preliminary `analyze` JSON that gets
     # written before the per-solution synth/pack loop runs. The Rust
     # DSE composite logs per-solution failures and returns
@@ -1621,7 +1621,7 @@ def test_cli_golden_vadd_compile_with_floorplan_dse(  # noqa: C901, PLR0914, PLR
     dse_subpaths.extend(s.name for s in solution_dirs)
     snap = _collect_tree_json_snapshot(work, subpaths=dse_subpaths)
 
-    # AC-9 artifact proof: snapshot every successful solution's `.xo`
+    # Artifact proof: snapshot every successful solution's `.xo`
     # content inventory + listing metadata (through the production
     # `_redact_and_zip` pass). The DSE gate previously only diffed
     # JSON, which leaves "stage-2 pack actually produced a byte-equal
@@ -1671,7 +1671,7 @@ def test_cli_golden_vadd_compile_with_floorplan_dse(  # noqa: C901, PLR0914, PLR
 
 # ---------------------------------------------------------------------
 # Standalone `tapa floorplan --floorplan-path` golden snapshot
-# (AC-5.4). Exercises the post-autobridge apply path: a prepared
+# Exercises the post-autobridge apply path: a prepared
 # `graph.json` + `design.json` + `settings.json` already on disk
 # (from an earlier `analyze synth`) gets rewritten by
 # `apply_floorplan` when the user supplies a floorplan JSON that

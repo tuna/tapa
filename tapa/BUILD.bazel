@@ -33,7 +33,7 @@ py_wheel(
 # Back-compat executable for downstream labels that still reference
 # `//tapa:tapa` (e.g. `tests/apps/*` analyze/simulation gates and the
 # default `tapa_cli` attribute in `bazel/tapa_rules.bzl`). The legacy
-# `py_binary(name = "tapa")` was retired in AC-8; the real entry point
+# `py_binary(name = "tapa")` was retired; the real entry point
 # is the native Rust binary `//tapa-core:tapa-cli`.
 #
 # The wrapper adds the full TAPA runtime tree — `tapacc`, `tapa-cpp`,
@@ -80,7 +80,7 @@ sh_binary(
 # Library bundle of the surviving Python helpers (program/codegen/AST
 # scaffolding still consumed by tapa-cli's bridge-side tests). The
 # legacy click CLI (`__main__.py`) and step modules (`tapa/steps/*`)
-# were retired in AC-8; the runtime entry point is the native Rust
+# were retired; the runtime entry point is the native Rust
 # binary `//tapa-core:tapa-cli`.
 py_library(
     name = "tapa-py-libs",
@@ -276,7 +276,7 @@ py_test(
 )
 
 # Ship the native Rust `tapa` binary as `usr/share/tapa/runtime/tapa`
-# (AC-8). The Python+nuitka `tapa-bin` it replaces was retired with
+# The Python+nuitka `tapa-bin` it replaces was retired with
 # `tapa/__main__.py`; the entry point is `//tapa-core:tapa-cli`.
 pkg_files(
     name = "pkg-runtime",

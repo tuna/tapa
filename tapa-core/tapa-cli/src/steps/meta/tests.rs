@@ -1,6 +1,6 @@
 //! Tests for `tapa compile` / `generate-floorplan` composite command
 //! wiring. Split out of `mod.rs` to keep the production module under
-//! the AC-10 450-LOC soft budget.
+//! the 450-LOC soft budget.
 
 #![allow(
     clippy::similar_names,

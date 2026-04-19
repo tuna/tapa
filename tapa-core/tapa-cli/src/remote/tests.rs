@@ -230,7 +230,7 @@ fn parse_remote_host_spec_variants() {
 
 #[test]
 fn malformed_yaml_warns_and_returns_none() {
-    // Codex Round 2 parity finding: Python's `load_remote_config`
+    // Parity finding: Python's `load_remote_config`
     // logs a warning and continues when `~/.taparc` is unreadable or
     // malformed; Rust must do the same so a stale taparc cannot fatally
     // block `tapa version` for users without an active remote setup.

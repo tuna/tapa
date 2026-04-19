@@ -173,13 +173,11 @@ pub fn run_hls_for_leaves(
     // error.
     let mut out = Vec::with_capacity(plan.len());
     for ((task_name, layout, work), result) in plan.into_iter().zip(results) {
-        let hls_out = match (work, result) {
-            (Work::Skip(pre), _) => pre,
-            (Work::RunInStage(..) | Work::RunFresh(_), Ok(Some(o))) => o,
-            (Work::RunInStage(..) | Work::RunFresh(_), Ok(None)) => {
-                unreachable!("Run must yield Some")
+        let hls_out = match work {
+            Work::Skip(pre) => pre,
+            Work::RunInStage(..) | Work::RunFresh(_) => {
+                result?.expect("Run must yield Some")
             }
-            (Work::RunInStage(..) | Work::RunFresh(_), Err(e)) => return Err(e),
         };
         out.push((task_name, layout, hls_out));
     }
@@ -194,12 +192,8 @@ fn resolve_worker_count(jobs: Option<u32>, plan: &[(String, TaskHlsLayout, impl 
     // explicit `--jobs N` wins; otherwise pick the host's physical
     // core count (falling back to 1 if unavailable). Cap by live work
     // so we never spawn more workers than jobs to dispatch.
-    let live_work = plan
-        .iter()
-        .filter(|(_, _, _)| true) // placeholder; caller filters above
-        .count();
     let desired = jobs.map_or_else(default_hls_workers, |j| j.max(1) as usize);
-    desired.min(live_work.max(1))
+    desired.min(plan.len().max(1))
 }
 
 /// Python's `psutil.cpu_count(logical=False)` equivalent. `std`'s
@@ -350,7 +344,7 @@ mod tests {
         }
     }
 
-    /// Regression for Codex Round 15 finding: with `--skip-hls-based-on-mtime`
+    /// Regression test: with `--skip-hls-based-on-mtime`
     /// on a clean work dir, `create_dir_all(hdl_dir)` used to run
     /// BEFORE the cache freshness check, so a freshly-created `hdl_dir`
     /// had a newer mtime than the extracted `.cpp` and every task

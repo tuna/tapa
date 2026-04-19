@@ -77,7 +77,7 @@ pub fn to_python_argv(args: &PackArgs) -> Vec<String> {
 }
 
 /// Top-level dispatcher. Always runs the native packaging path (the
-/// Python bridge target was retired in AC-8 / AC-6).
+/// Python bridge target was retired).
 pub fn run(args: &PackArgs, ctx: &mut CliContext) -> Result<()> {
     run_native(args, ctx)
 }
@@ -242,40 +242,29 @@ fn redact_rpt(bytes: &[u8]) -> Vec<u8> {
     }
 }
 
-/// `_enforce_path_suffix(suffix=".zip")` for `--output`. Default to
-/// `work.zip` in the caller's CWD (matches Python and the Vitis
-/// `.xo` default — existing scripts that consume `./work.zip` keep
-/// working).
-fn enforce_zip_suffix(output: Option<&PathBuf>) -> PathBuf {
+/// Port of Python's `_enforce_path_suffix(...)`. Returns `<default>` in
+/// the caller's CWD when `output` is absent; otherwise appends `.{ext}`
+/// unless the path already carries it. Used for both `--output` shapes
+/// (`.zip` for HLS pack, `.xo` for Vitis pack).
+fn enforce_path_suffix(output: Option<&PathBuf>, ext: &str, default: &str) -> PathBuf {
     match output {
-        None => PathBuf::from("work.zip"),
+        None => PathBuf::from(default),
+        Some(p) if p.extension().and_then(|s| s.to_str()) == Some(ext) => p.clone(),
         Some(p) => {
-            if p.extension().and_then(|s| s.to_str()) == Some("zip") {
-                p.clone()
-            } else {
-                let mut s = p.as_os_str().to_owned();
-                s.push(".zip");
-                PathBuf::from(s)
-            }
+            let mut s = p.as_os_str().to_owned();
+            s.push(".");
+            s.push(ext);
+            PathBuf::from(s)
         }
     }
 }
 
-/// Match Python's `_enforce_path_suffix(...).xo`. When no `--output`
-/// was provided, default to `work.xo` in the current directory.
+fn enforce_zip_suffix(output: Option<&PathBuf>) -> PathBuf {
+    enforce_path_suffix(output, "zip", "work.zip")
+}
+
 fn enforce_xo_suffix(output: Option<&PathBuf>) -> PathBuf {
-    match output {
-        None => PathBuf::from("work.xo"),
-        Some(p) => {
-            if p.extension().and_then(|s| s.to_str()) == Some("xo") {
-                p.clone()
-            } else {
-                let mut s = p.as_os_str().to_owned();
-                s.push(".xo");
-                PathBuf::from(s)
-            }
-        }
-    }
+    enforce_path_suffix(output, "xo", "work.xo")
 }
 
 #[cfg(test)]

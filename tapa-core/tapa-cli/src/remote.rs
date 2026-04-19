@@ -15,7 +15,7 @@
 //!    the in-tree `tapacc` flow can still run.
 //!
 //! The `~/.taparc` location is resolved via:
-//!   - `TAPA_RC_PATH` env var (test override and Codex-friendly), then
+//!   - `TAPA_RC_PATH` env var (test override), then
 //!   - `$HOME/.taparc`, then
 //!   - skipped if `HOME` is unset (matches Python's silent skip).
 //!
@@ -81,8 +81,8 @@ struct RemoteHostSpec {
 /// its `remote:` section is missing — Python's
 /// `tapa.remote.config.load_remote_config` logs a warning and
 /// continues for every one of these cases, and Rust must match that
-/// parity behavior (Codex Round 2 finding: a fatal Rust error
-/// blocked `tapa version` for users with a stale `~/.taparc`).
+/// parity behavior (a fatal Rust error used to block `tapa version`
+/// for users with a stale `~/.taparc`).
 fn load_taparc_remote_section(path: &Path) -> Option<serde_yaml::Value> {
     let text = match std::fs::read_to_string(path) {
         Ok(t) => t,

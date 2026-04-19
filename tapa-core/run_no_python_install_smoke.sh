@@ -1,5 +1,5 @@
 #!/bin/bash
-# AC-7 no-Python install smoke: prove `cargo install --path
+# No-Python install smoke: prove `cargo install --path
 # tapa-core/tapa-cli` yields a usable `tapa` binary on a host with
 # no Python interpreter on `PATH`.
 #

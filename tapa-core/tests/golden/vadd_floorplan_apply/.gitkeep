@@ -1,5 +1,5 @@
 # Reserved for the standalone `tapa floorplan --floorplan-path`
-# golden snapshot (AC-5.4). Captures the persistent JSON outputs
+# golden snapshot. Captures the persistent JSON outputs
 # (`graph.json`, `design.json`, `settings.json`, `templates_info.json`)
 # after `apply_floorplan` wraps leaf instances into slot tasks.
 #

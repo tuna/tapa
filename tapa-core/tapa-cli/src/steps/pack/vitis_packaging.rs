@@ -228,8 +228,8 @@ fn collect_hls_report_paths(work_dir: &Path) -> Vec<(PathBuf, String)> {
 fn run_pack_xo(ctx: &CliContext, inputs: &PackageXoInputs) -> Result<PathBuf> {
     // Mirror synth: use RemoteToolRunner when ~/.taparc / --remote-host
     // is configured so the .xo packaging step actually runs on the
-    // remote Xilinx host. Codex Round 2 finding: native pack used to
-    // always force LocalToolRunner, ignoring `ctx.remote_config`.
+    // remote Xilinx host. Native pack used to always force
+    // LocalToolRunner, ignoring `ctx.remote_config`.
     if let Some(cfg) = ctx.remote_config.as_ref() {
         let session = std::sync::Arc::new(SshSession::new(cfg.clone(), SshMuxOptions::default()));
         let runner = RemoteToolRunner::new(session);

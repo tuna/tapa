@@ -138,45 +138,25 @@ impl Step {
     /// the head (with an empty tail) plus the captured tail tokens.
     /// `g++` is terminal — its own `trailing_var_arg` already
     /// consumed any chained tokens.
-    fn split_chain(self) -> (Self, Vec<String>) {
+    fn split_chain(mut self) -> (Self, Vec<String>) {
+        let tail = self.chain_tail_mut().map(std::mem::take).unwrap_or_default();
+        (self, tail)
+    }
+
+    /// Mutable accessor for the per-variant `chain_tail` field, or
+    /// `None` for terminal variants (`g++`).
+    fn chain_tail_mut(&mut self) -> Option<&mut Vec<String>> {
         match self {
-            Self::Analyze { args, chain_tail } => (
-                Self::Analyze { args, chain_tail: Vec::new() },
-                chain_tail,
-            ),
-            Self::Synth { args, chain_tail } => (
-                Self::Synth { args, chain_tail: Vec::new() },
-                chain_tail,
-            ),
-            Self::Pack { args, chain_tail } => (
-                Self::Pack { args, chain_tail: Vec::new() },
-                chain_tail,
-            ),
-            Self::Floorplan { args, chain_tail } => (
-                Self::Floorplan { args, chain_tail: Vec::new() },
-                chain_tail,
-            ),
-            Self::GenerateFloorplan { args, chain_tail } => (
-                Self::GenerateFloorplan { args, chain_tail: Vec::new() },
-                chain_tail,
-            ),
-            Self::Compile { args, chain_tail } => (
-                Self::Compile { args, chain_tail: Vec::new() },
-                chain_tail,
-            ),
-            Self::CompileWithFloorplanDse { args, chain_tail } => (
-                Self::CompileWithFloorplanDse { args, chain_tail: Vec::new() },
-                chain_tail,
-            ),
-            Self::Gpp { args } => (Self::Gpp { args }, Vec::new()),
-            Self::Version { args, chain_tail } => (
-                Self::Version { args, chain_tail: Vec::new() },
-                chain_tail,
-            ),
-            Self::FindClangBinary { args, chain_tail } => (
-                Self::FindClangBinary { args, chain_tail: Vec::new() },
-                chain_tail,
-            ),
+            Self::Analyze { chain_tail, .. }
+            | Self::Synth { chain_tail, .. }
+            | Self::Pack { chain_tail, .. }
+            | Self::Floorplan { chain_tail, .. }
+            | Self::GenerateFloorplan { chain_tail, .. }
+            | Self::Compile { chain_tail, .. }
+            | Self::CompileWithFloorplanDse { chain_tail, .. }
+            | Self::Version { chain_tail, .. }
+            | Self::FindClangBinary { chain_tail, .. } => Some(chain_tail),
+            Self::Gpp { .. } => None,
         }
     }
 
@@ -262,7 +242,7 @@ mod tests {
 
     #[test]
     fn flag_value_equal_to_subcommand_name_is_not_a_boundary() {
-        // Regression for Codex bug: `--top synth` keeps `synth` as the
+        // Regression test: `--top synth` keeps `synth` as the
         // value of `--top`, not as a chained subcommand boundary.
         let cli = parse(&[
             "analyze",

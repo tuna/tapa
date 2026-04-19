@@ -1,4 +1,4 @@
-# Reserved for the `vadd generate-floorplan` golden snapshot (AC-5.4).
+# Reserved for the `vadd generate-floorplan` golden snapshot.
 #
 # Holds every persistent JSON the composite emits: `design.json`,
 # `settings.json`, `templates_info.json`, `ab_graph.json`,

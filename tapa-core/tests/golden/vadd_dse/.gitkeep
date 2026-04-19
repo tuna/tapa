@@ -1,4 +1,4 @@
-# Reserved for the `vadd compile-with-floorplan-dse` golden snapshot (AC-5.4).
+# Reserved for the `vadd compile-with-floorplan-dse` golden snapshot.
 #
 # Holds every persistent JSON the DSE composite emits: the top-level
 # work-dir JSONs (`design.json`, `settings.json`, `templates_info.json`,

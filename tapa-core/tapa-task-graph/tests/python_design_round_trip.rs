@@ -1,4 +1,4 @@
-//! Cross-language `design.json` round-trip parity (AC-1).
+//! Cross-language `design.json` round-trip parity.
 //!
 //! Direction 1 (Python -> Rust): Python writes `design.json` via
 //! `tapa.task.Task.to_topology_dict` + `json.dump`, mirroring

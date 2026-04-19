@@ -81,7 +81,7 @@ if [[ -x "$binary_path" ]]; then
   export TAPA_CLI_BINARY="$binary_path"
 fi
 
-# Run the native CLI golden-snapshot gate. After AC-8 retired the
+# Run the native CLI golden-snapshot gate. After the
 # Python click CLI, parity_test.py snapshots the Rust binary surface
 # under `tapa-core/tests/golden/` and diffs every run against those
 # frozen baselines. The `-k cli` filter selects every `test_cli_*`
@@ -103,5 +103,15 @@ fi
 # To regenerate a golden after an intentional CLI change, set
 # `TAPA_GOLDEN_REFRESH=1` before invoking pytest — each test will
 # overwrite its golden file in place instead of asserting.
+# Prefer the Bazel-staged hermetic pytest launcher (`:pytest_runner`,
+# a `py_binary` whose runfiles tree carries `pytest` from `@tapa_deps`).
+# That way the gate works in Bazel sandboxes whose system `python3`
+# has no `pytest` installed. Fall back to `python3 -m pytest` for the
+# direct cargo / developer-shell invocation path.
+pytest_launcher="$repo_root/tapa-core/pytest_runner"
+if [[ -x "$pytest_launcher" ]]; then
+  PYTHONPATH="$repo_root" exec "$pytest_launcher" \
+    "$repo_root/tapa-core/tests/parity_test.py" -k cli -v
+fi
 PYTHONPATH="$repo_root" exec python3 -m pytest \
   "$repo_root/tapa-core/tests/parity_test.py" -k cli -v
