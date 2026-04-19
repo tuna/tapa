@@ -367,8 +367,8 @@ fn redact_rpt(text: &str) -> String {
         regex::Regex::new("Date:           ... ... .. ..:..:.. ....")
             .expect("static regex compiles")
     });
-    re.replace_all(text, "Date:           Tue Jan 01 00:00:00 1980")
-        .into_owned()
+    let redacted = re.replace_all(text, "Date:           Tue Jan 01 00:00:00 1980");
+    redact_cpp_paths(&redacted)
 }
 
 fn redact_xml_payload(text: &str) -> String {
@@ -397,9 +397,17 @@ fn redact_xml_payload(text: &str) -> String {
     // `.{32}` matches Python's 32 literal dots inside `ProjectID="..."`.
     let re_pid = RE_PID
         .get_or_init(|| regex::Regex::new("ProjectID=\".{32}\"").expect("static regex compiles"));
-    re_pid
-        .replace_all(&step2, "ProjectID=\"0123456789abcdef0123456789abcdef\"")
-        .into_owned()
+    let step3 = re_pid.replace_all(&step2, "ProjectID=\"0123456789abcdef0123456789abcdef\"");
+    redact_cpp_paths(&step3)
+}
+
+fn redact_cpp_paths(text: &str) -> String {
+    use std::sync::OnceLock;
+    static RE_CPP_PATH: OnceLock<regex::Regex> = OnceLock::new();
+    let re_cpp_path = RE_CPP_PATH.get_or_init(|| {
+        regex::Regex::new(r#"(?:\.\./|/)?(?:[^\s<>"|]*/)+cpp/"#).expect("static regex compiles")
+    });
+    re_cpp_path.replace_all(text, "cpp/").into_owned()
 }
 
 /// Rewrite a `.xo` ZIP in place so two invocations on the same inputs
@@ -609,6 +617,25 @@ mod tests {
             .read_to_string(&mut body)
             .unwrap();
         assert!(body.contains("1980-01-01T00:00:00Z"));
+    }
+
+    #[test]
+    fn redacts_sandbox_cpp_paths_from_reports() {
+        let left =
+            "../home/.cache/bazel/_bazel_1000/sandbox/processwrapper-sandbox/62/execroot/_main/\
+             bazel-out/k8-fastbuild/bin/tests/functional/reproducibility/vadd-xo.tapa/cpp/VecAdd.cpp:31";
+        let right =
+            "../home/.cache/bazel/_bazel_1000/sandbox/processwrapper-sandbox/54/execroot/_main/\
+             bazel-out/k8-fastbuild/bin/tests/apps/vadd/vadd-xo.tapa/cpp/VecAdd.cpp:31";
+
+        assert_eq!(
+            redact_rpt(&format!("| interface | s_axilite | {left} in vecadd |")),
+            redact_rpt(&format!("| interface | s_axilite | {right} in vecadd |")),
+        );
+        assert_eq!(
+            redact_xml_payload(&format!(r#"<Pragma location="{left}" SOURCE="{left}"/>"#)),
+            r#"<Pragma location="cpp/VecAdd.cpp:31" SOURCE="cpp/VecAdd.cpp:31"/>"#,
+        );
     }
 
     #[test]

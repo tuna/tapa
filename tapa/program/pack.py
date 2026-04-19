@@ -154,6 +154,7 @@ def _redact_rpt(content: bytes) -> bytes:
         r"Date:           Tue Jan 01 00:00:00 1980",
         text,
     )
+    text = _redact_cpp_paths(text)
 
     return text.encode()
 
@@ -185,5 +186,10 @@ def _redact_xml(content: bytes) -> bytes:
         r'ProjectID="0123456789abcdef0123456789abcdef"',
         text,
     )
+    text = _redact_cpp_paths(text)
 
     return text.encode()
+
+
+def _redact_cpp_paths(text: str) -> str:
+    return re.sub(r'(?:\.\./|/)?(?:[^\s<>"|]*/)+cpp/', "cpp/", text)
