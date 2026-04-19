@@ -3,13 +3,13 @@
 //! Uses `nom` parser combinators to extract interface elements from
 //! non-ANSI Verilog module declarations (HLS tool output format).
 
-use nom::Parser;
 use nom::branch::alt;
 use nom::bytes::complete::{tag, take_until, take_while1};
 use nom::character::complete::{char, multispace0, multispace1, space0};
 use nom::combinator::{opt, value};
 use nom::sequence::{delimited, pair, preceded, terminated};
 use nom::IResult;
+use nom::Parser;
 
 use crate::error::ParseError;
 use crate::expression::tokenize_expression;
@@ -383,12 +383,15 @@ fn module_header(input: &str) -> IResult<&str, ModuleHeader> {
     if input.starts_with(';') {
         // No port list — `module Name;`
         let (input, _) = char(';').parse(input)?;
-        return Ok((input, ModuleHeader {
-            name: name.to_owned(),
-            port_names: Vec::new(),
-            params,
-            ansi_ports: Vec::new(),
-        }));
+        return Ok((
+            input,
+            ModuleHeader {
+                name: name.to_owned(),
+                port_names: Vec::new(),
+                params,
+                ansi_ports: Vec::new(),
+            },
+        ));
     }
 
     let (input, port_text) = balanced_parens(input)?;
@@ -400,12 +403,15 @@ fn module_header(input: &str) -> IResult<&str, ModuleHeader> {
 
     if is_ansi {
         let ansi_ports = parse_ansi_port_list(trimmed_ports);
-        Ok((input, ModuleHeader {
-            name: name.to_owned(),
-            port_names: Vec::new(),
-            params,
-            ansi_ports,
-        }))
+        Ok((
+            input,
+            ModuleHeader {
+                name: name.to_owned(),
+                port_names: Vec::new(),
+                params,
+                ansi_ports,
+            },
+        ))
     } else {
         // Non-ANSI: comma-separated identifiers.
         let port_names = trimmed_ports
@@ -413,12 +419,15 @@ fn module_header(input: &str) -> IResult<&str, ModuleHeader> {
             .map(|s| s.trim().to_owned())
             .filter(|s| !s.is_empty())
             .collect();
-        Ok((input, ModuleHeader {
-            name: name.to_owned(),
-            port_names,
-            params,
-            ansi_ports: Vec::new(),
-        }))
+        Ok((
+            input,
+            ModuleHeader {
+                name: name.to_owned(),
+                port_names,
+                params,
+                ansi_ports: Vec::new(),
+            },
+        ))
     }
 }
 
@@ -573,9 +582,21 @@ fn parse_ansi_port_list(text: &str) -> Vec<Port> {
         let mut idx = 0;
         let mut has_explicit_dir = false;
         let dir = match tokens.get(idx).copied() {
-            Some("input") => { idx += 1; has_explicit_dir = true; Direction::Input }
-            Some("output") => { idx += 1; has_explicit_dir = true; Direction::Output }
-            Some("inout") => { idx += 1; has_explicit_dir = true; Direction::Inout }
+            Some("input") => {
+                idx += 1;
+                has_explicit_dir = true;
+                Direction::Input
+            }
+            Some("output") => {
+                idx += 1;
+                has_explicit_dir = true;
+                Direction::Output
+            }
+            Some("inout") => {
+                idx += 1;
+                has_explicit_dir = true;
+                Direction::Inout
+            }
             _ => last_dir,
         };
         // Skip wire/reg.
@@ -627,7 +648,10 @@ fn parse_ansi_port_list(text: &str) -> Vec<Port> {
 // ── Top-level parser ────────────────────────────────────────────────
 
 /// Parse a TAPA-generated Verilog module, extracting all interface elements.
-#[allow(clippy::too_many_lines, reason = "main parser entrypoint; splitting would fragment the parse loop")]
+#[allow(
+    clippy::too_many_lines,
+    reason = "main parser entrypoint; splitting would fragment the parse loop"
+)]
 pub fn parse_module(source: &str) -> Result<VerilogModule, ParseError> {
     let work = source.trim();
 
@@ -644,11 +668,10 @@ pub fn parse_module(source: &str) -> Result<VerilogModule, ParseError> {
         .to_owned();
 
     // Parse module header.
-    let (remaining, header) =
-        module_header(header_input).map_err(|e| ParseError::ParseFailed {
-            module: partial_name,
-            message: format!("module header: {e}"),
-        })?;
+    let (remaining, header) = module_header(header_input).map_err(|e| ParseError::ParseFailed {
+        module: partial_name,
+        message: format!("module header: {e}"),
+    })?;
     let name = header.name;
     let port_names = header.port_names;
 
@@ -746,9 +769,7 @@ pub fn parse_module(source: &str) -> Result<VerilogModule, ParseError> {
 
         // Skip block comments (/* ... */).
         if cursor.starts_with("/*") {
-            cursor = cursor
-                .find("*/")
-                .map_or("", |i| &cursor[i + 2..]);
+            cursor = cursor.find("*/").map_or("", |i| &cursor[i + 2..]);
             continue;
         }
 
@@ -935,11 +956,43 @@ fn skip_line(input: &str) -> &str {
 #[must_use]
 pub fn extract_instance_names(source: &str) -> Vec<(String, String)> {
     const EXCLUDED_FIRST_TOKENS: &[&str] = &[
-        "module", "endmodule", "parameter", "wire", "reg", "input", "output", "inout",
-        "assign", "always", "initial", "generate", "endgenerate", "function", "endfunction",
-        "task", "endtask", "if", "else", "for", "while", "begin", "end", "case", "endcase",
-        "default", "return", "localparam", "genvar", "integer", "real", "string", "logic",
-        "typedef", "struct", "union", "enum",
+        "module",
+        "endmodule",
+        "parameter",
+        "wire",
+        "reg",
+        "input",
+        "output",
+        "inout",
+        "assign",
+        "always",
+        "initial",
+        "generate",
+        "endgenerate",
+        "function",
+        "endfunction",
+        "task",
+        "endtask",
+        "if",
+        "else",
+        "for",
+        "while",
+        "begin",
+        "end",
+        "case",
+        "endcase",
+        "default",
+        "return",
+        "localparam",
+        "genvar",
+        "integer",
+        "real",
+        "string",
+        "logic",
+        "typedef",
+        "struct",
+        "union",
+        "enum",
     ];
 
     let mut out: Vec<(String, String)> = Vec::new();

@@ -32,10 +32,7 @@ pub enum Expr {
         else_val: Box<Self>,
     },
     /// Bit index: `base[index]`.
-    Index {
-        base: Box<Self>,
-        index: Box<Self>,
-    },
+    Index { base: Box<Self>, index: Box<Self> },
     /// Bit range: `base[msb:lsb]`.
     Range {
         base: Box<Self>,
@@ -47,10 +44,7 @@ pub enum Expr {
     /// Unary not: `!expr` or `~expr`.
     Not(Box<Self>),
     /// Replication: `{count{expr}}`.
-    Replicate {
-        count: Box<Self>,
-        expr: Box<Self>,
-    },
+    Replicate { count: Box<Self>, expr: Box<Self> },
 }
 
 /// Binary operators.
@@ -234,10 +228,7 @@ pub struct ModuleInstance {
 }
 
 impl ModuleInstance {
-    pub fn new(
-        module_name: impl Into<String>,
-        instance_name: impl Into<String>,
-    ) -> Self {
+    pub fn new(module_name: impl Into<String>, instance_name: impl Into<String>) -> Self {
         Self {
             module_name: module_name.into(),
             instance_name: instance_name.into(),

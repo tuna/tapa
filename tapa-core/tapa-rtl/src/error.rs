@@ -12,10 +12,7 @@ pub enum ParseError {
     NoModuleFound,
 
     #[error("parse error in module `{module}`: {message}")]
-    ParseFailed {
-        module: String,
-        message: String,
-    },
+    ParseFailed { module: String, message: String },
 }
 
 /// Errors from builder validation.

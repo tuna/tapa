@@ -2,9 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 use tapa_protocol::{
-    HANDSHAKE_CLK, HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY, HANDSHAKE_RST,
-    HANDSHAKE_RST_N, HANDSHAKE_START, ISTREAM_SUFFIXES, M_AXI_PREFIX,
-    M_AXI_SUFFIXES_COMPACT, OSTREAM_SUFFIXES,
+    HANDSHAKE_CLK, HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY, HANDSHAKE_RST, HANDSHAKE_RST_N,
+    HANDSHAKE_START, ISTREAM_SUFFIXES, M_AXI_PREFIX, M_AXI_SUFFIXES_COMPACT, OSTREAM_SUFFIXES,
 };
 
 use crate::port::Port;
@@ -122,8 +121,7 @@ fn classify_handshake(name: &str) -> Option<HandshakeRole> {
 fn classify_m_axi(name: &str) -> Option<PortClass> {
     // Optional address-channel attributes not in the compact list.
     const OPTIONAL: &[&str] = &[
-        "_ARLOCK", "_ARPROT", "_ARQOS", "_ARCACHE",
-        "_AWCACHE", "_AWLOCK", "_AWPROT", "_AWQOS",
+        "_ARLOCK", "_ARPROT", "_ARQOS", "_ARCACHE", "_AWCACHE", "_AWLOCK", "_AWPROT", "_AWQOS",
     ];
 
     if !name.starts_with(M_AXI_PREFIX) {

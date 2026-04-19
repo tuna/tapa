@@ -18,11 +18,7 @@ fn write_indent(f: &mut fmt::Formatter<'_>, level: usize) -> fmt::Result {
     Ok(())
 }
 
-fn write_statements(
-    f: &mut fmt::Formatter<'_>,
-    stmts: &[Statement],
-    indent: usize,
-) -> fmt::Result {
+fn write_statements(f: &mut fmt::Formatter<'_>, stmts: &[Statement], indent: usize) -> fmt::Result {
     for stmt in stmts {
         write_statement(f, stmt, indent)?;
     }
@@ -124,8 +120,18 @@ impl fmt::Display for Expr {
 
 impl fmt::Display for Width {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let msb: String = self.msb.iter().map(|t| t.repr.as_str()).collect::<Vec<_>>().join("");
-        let lsb: String = self.lsb.iter().map(|t| t.repr.as_str()).collect::<Vec<_>>().join("");
+        let msb: String = self
+            .msb
+            .iter()
+            .map(|t| t.repr.as_str())
+            .collect::<Vec<_>>()
+            .join("");
+        let lsb: String = self
+            .lsb
+            .iter()
+            .map(|t| t.repr.as_str())
+            .collect::<Vec<_>>()
+            .join("");
         write!(f, "[{msb}:{lsb}]")
     }
 }
@@ -370,7 +376,10 @@ mod tests {
             }],
         );
         let text = block.to_string();
-        assert!(text.contains("always @(posedge ap_clk) begin"), "got: {text}");
+        assert!(
+            text.contains("always @(posedge ap_clk) begin"),
+            "got: {text}"
+        );
         assert!(text.contains("q <= d;"), "got: {text}");
         assert!(text.contains("end"), "got: {text}");
     }

@@ -26,7 +26,11 @@ pub type Expression = Vec<Token>;
 
 /// Classify a string as an identifier token or a literal token.
 fn classify_token(s: &str) -> Token {
-    let kind = if s.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_') {
+    let kind = if s
+        .chars()
+        .next()
+        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+    {
         TokenKind::Identifier
     } else {
         TokenKind::Literal
@@ -50,7 +54,10 @@ pub fn tokenize_expression(input: &str) -> Expression {
     let mut current = String::new();
 
     for ch in input.chars() {
-        if matches!(ch, ':' | '+' | '-' | '*' | '/' | '(' | ')' | '[' | ']' | ' ' | '\t') {
+        if matches!(
+            ch,
+            ':' | '+' | '-' | '*' | '/' | '(' | ')' | '[' | ']' | ' ' | '\t'
+        ) {
             if !current.is_empty() {
                 tokens.push(classify_token(&current));
                 current.clear();

@@ -5,7 +5,7 @@
 //! adding/removing ports, signals, instances, and logic by manipulating
 //! both the structured interface and the raw body text.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
 use regex::Regex;
@@ -37,6 +37,9 @@ static AP_CE_PATTERN: LazyLock<Regex> =
 /// Remove `ap_rst_n_inv` declarations and assignments.
 static RST_INV_PATTERN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?m)^.*\bap_rst_n_inv\b.*$\n?").unwrap());
+/// Remove placeholder top-level handshake assigns from the HLS wrapper.
+static AP_HANDSHAKE_ASSIGN_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?m)^\s*assign\s+ap_(?:done|ready|idle)\s*=.*;\s*\n?").unwrap());
 
 /// A mutable view of a `VerilogModule` that tracks additions and
 /// body text modifications.
@@ -109,6 +112,28 @@ impl MutableModule {
         Ok(())
     }
 
+    /// Ports after removals and additions, in emitted order.
+    pub fn effective_ports(&self) -> Vec<Port> {
+        self.inner
+            .ports
+            .iter()
+            .filter(|p| !self.removed_ports.contains(&p.name))
+            .chain(self.added_ports.iter())
+            .cloned()
+            .collect()
+    }
+
+    /// Signal kind visible in the emitted module.
+    pub fn effective_signal_kind(&self, name: &str) -> Option<SignalKind> {
+        self.inner
+            .signals
+            .iter()
+            .filter(|s| !self.is_signal_removed(&s.name))
+            .chain(self.added_signals.iter())
+            .find(|s| s.name == name)
+            .map(|s| s.kind)
+    }
+
     /// Add a module instance to the body.
     pub fn add_instance(&mut self, instance: ModuleInstance) {
         self.added_instances.push(instance);
@@ -139,6 +164,52 @@ impl MutableModule {
         self.removed_signal_prefixes.push(prefix.to_owned());
     }
 
+    /// Drop stale port-named reg declarations for output ports.
+    ///
+    /// Upper-task instrumentation replaces the original HLS body with
+    /// child/FSM wiring. Output ports that were regs in the removed body
+    /// are then driven by continuous assignments or submodule outputs and
+    /// must be emitted as nets.
+    pub fn demote_output_port_regs_to_wires(&mut self) {
+        let output_ports: BTreeSet<_> = self
+            .inner
+            .ports
+            .iter()
+            .filter(|p| p.direction == Direction::Output)
+            .map(|p| p.name.clone())
+            .collect();
+        self.inner
+            .signals
+            .retain(|s| !(s.kind == SignalKind::Reg && output_ports.contains(s.name.as_str())));
+    }
+
+    /// Convert selected parsed reg signals into wires.
+    pub fn demote_signal_regs_to_wires(&mut self, names: &[&str]) {
+        let names: BTreeSet<_> = names.iter().copied().collect();
+        for signal in &mut self.inner.signals {
+            if names.contains(signal.name.as_str()) && signal.kind == SignalKind::Reg {
+                signal.kind = SignalKind::Wire;
+            }
+        }
+    }
+
+    /// Ensure a 1-bit signal exists with the requested kind.
+    pub fn ensure_signal_kind(&mut self, name: &str, kind: SignalKind) {
+        if let Some(signal) = self.inner.signals.iter_mut().find(|s| s.name == name) {
+            signal.kind = kind;
+            return;
+        }
+        if let Some(signal) = self.added_signals.iter_mut().find(|s| s.name == name) {
+            signal.kind = kind;
+            return;
+        }
+        self.added_signals.push(Signal {
+            name: name.to_owned(),
+            kind,
+            width: None,
+        });
+    }
+
     /// Clean up HLS-generated artifacts from the body text:
     /// - Remove `_regslice_both` instances
     /// - Remove `ap_ST_fsm_stateN_blk` signals
@@ -157,6 +228,7 @@ impl MutableModule {
             &*INITIAL_BLOCK_PATTERN,
             &*AP_CE_PATTERN,
             &*RST_INV_PATTERN,
+            &*AP_HANDSHAKE_ASSIGN_PATTERN,
         ] {
             let result = pattern.replace_all(&self.body_text, "");
             if let std::borrow::Cow::Owned(s) = result {
@@ -175,7 +247,9 @@ impl MutableModule {
         });
 
         // Remove FSM-related parameters
-        self.inner.parameters.retain(|p| !p.name.starts_with("ap_ST_fsm"));
+        self.inner
+            .parameters
+            .retain(|p| !p.name.starts_with("ap_ST_fsm"));
     }
 
     /// Check if a port name exists (original or added).
@@ -226,11 +300,19 @@ impl MutableModule {
                 }
                 let _ = write!(out, "{}", param.name);
                 if !param.default.is_empty() {
-                    let default_str: String =
-                        param.default.iter().map(|t| t.repr.as_str()).collect::<Vec<_>>().join("");
+                    let default_str: String = param
+                        .default
+                        .iter()
+                        .map(|t| t.repr.as_str())
+                        .collect::<Vec<_>>()
+                        .join("");
                     let _ = write!(out, " = {default_str}");
                 }
-                let comma = if i + 1 < self.inner.parameters.len() { "," } else { "" };
+                let comma = if i + 1 < self.inner.parameters.len() {
+                    ","
+                } else {
+                    ""
+                };
                 let _ = writeln!(out, "{comma}");
             }
             let _ = writeln!(out, ") (");
@@ -247,21 +329,43 @@ impl MutableModule {
             all_ports.push(p);
         }
 
+        let signal_kinds: BTreeMap<_, _> = self
+            .inner
+            .signals
+            .iter()
+            .filter(|s| !self.is_signal_removed(&s.name))
+            .chain(self.added_signals.iter())
+            .map(|s| (s.name.as_str(), s.kind))
+            .collect();
+        let port_names: BTreeSet<_> = all_ports.iter().map(|p| p.name.as_str()).collect();
+
         for (i, port) in all_ports.iter().enumerate() {
             let comma = if i + 1 < all_ports.len() { "," } else { "" };
-            let _ = writeln!(out, "  {port}{comma}");
+            if port.direction == Direction::Output
+                && signal_kinds.get(port.name.as_str()) == Some(&SignalKind::Reg)
+            {
+                let _ = write!(out, "  output reg");
+                if let Some(w) = &port.width {
+                    let _ = write!(out, " {w}");
+                }
+                let _ = writeln!(out, " {}{comma}", port.name);
+            } else {
+                let _ = writeln!(out, "  {port}{comma}");
+            }
         }
         let _ = writeln!(out, ");");
         let _ = writeln!(out);
 
         // Signals (original minus removed, plus added)
         for sig in &self.inner.signals {
-            if !self.is_signal_removed(&sig.name) {
+            if !self.is_signal_removed(&sig.name) && !port_names.contains(sig.name.as_str()) {
                 let _ = writeln!(out, "{sig}");
             }
         }
         for sig in &self.added_signals {
-            let _ = writeln!(out, "{sig}");
+            if !port_names.contains(sig.name.as_str()) {
+                let _ = writeln!(out, "{sig}");
+            }
         }
         let _ = writeln!(out);
 
@@ -302,30 +406,42 @@ impl MutableModule {
 fn extract_body_text(source: &str) -> String {
     let endmodule_pos = source.rfind("endmodule").unwrap_or(source.len());
 
-    // Track byte offset alongside line iteration (O(n), not O(n²))
+    // Track byte offset alongside line iteration (O(n), not O(n²)).
+    // Skip exactly the module header plus the contiguous declaration block.
+    // After the first body statement, a bare `);` closes an instance, not
+    // the module header.
     let mut body_start = 0;
     let mut byte_offset = 0;
+    let mut header_closed = false;
     for line in source[..endmodule_pos].lines() {
         let line_end = byte_offset + line.len() + 1; // +1 for newline
         let trimmed = line.trim();
-        let is_header_line = trimmed.starts_with("input ")
-            || trimmed.starts_with("output ")
-            || trimmed.starts_with("inout ")
-            || trimmed.starts_with("wire ")
-            || trimmed.starts_with("reg ")
-            || trimmed.starts_with("parameter ")
+
+        if !header_closed {
+            body_start = line_end.min(endmodule_pos);
+            if trimmed == ");" || (trimmed.starts_with("module ") && trimmed.ends_with(");")) {
+                header_closed = true;
+            }
+            byte_offset = line_end;
+            continue;
+        }
+
+        let is_declaration_line = trimmed.is_empty()
+            || starts_with_decl_keyword(trimmed, "input")
+            || starts_with_decl_keyword(trimmed, "output")
+            || starts_with_decl_keyword(trimmed, "inout")
+            || starts_with_decl_keyword(trimmed, "wire")
+            || starts_with_decl_keyword(trimmed, "reg")
+            || starts_with_decl_keyword(trimmed, "parameter")
+            || starts_with_decl_keyword(trimmed, "localparam")
             || trimmed.starts_with("(* ")
             // Line comments (incl. RapidStream `// pragma ...`) belong
             // to the header, not the body.
-            || trimmed.starts_with("//")
-            // The port-list terminator (`);` or `)(`) is still part of
-            // the module header; keep it out of `body_text` so it
-            // doesn't reappear between signals and body on re-emit.
-            || trimmed == ");"
-            || trimmed == ") ("
-            || trimmed.starts_with(") (");
-        if is_header_line {
+            || trimmed.starts_with("//");
+        if is_declaration_line {
             body_start = line_end.min(endmodule_pos);
+        } else {
+            break;
         }
         byte_offset = line_end;
     }
@@ -335,6 +451,15 @@ fn extract_body_text(source: &str) -> String {
     } else {
         source[body_start..endmodule_pos].to_owned()
     }
+}
+
+fn starts_with_decl_keyword(line: &str, keyword: &str) -> bool {
+    let Some(rest) = line.strip_prefix(keyword) else {
+        return false;
+    };
+    rest.chars()
+        .next()
+        .is_some_and(|c| c.is_ascii_whitespace() || c == '[')
 }
 
 /// Helper to create a simple 1-bit port.
@@ -348,12 +473,7 @@ pub fn simple_port(name: impl Into<String>, direction: Direction) -> Port {
 }
 
 /// Helper to create a port with width.
-pub fn wide_port(
-    name: impl Into<String>,
-    direction: Direction,
-    msb: &str,
-    lsb: &str,
-) -> Port {
+pub fn wide_port(name: impl Into<String>, direction: Direction, msb: &str, lsb: &str) -> Port {
     use crate::expression::tokenize_expression;
     Port {
         name: name.into(),
@@ -420,8 +540,8 @@ mod tests {
             "{}/testdata/rtl/{name}",
             env!("CARGO_MANIFEST_DIR").replace("/tapa-rtl", "")
         );
-        let source = std::fs::read_to_string(&path)
-            .unwrap_or_else(|e| panic!("failed to read {path}: {e}"));
+        let source =
+            std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("failed to read {path}: {e}"));
         VerilogModule::parse(&source).unwrap_or_else(|e| panic!("failed to parse {path}: {e}"))
     }
 
@@ -479,10 +599,214 @@ mod tests {
     }
 
     #[test]
+    fn emit_preserves_instances_before_procedural_body() {
+        let source = r"
+module HasAdapter (
+    ap_clk,
+    out
+);
+input ap_clk;
+output out;
+wire internal;
+
+adapter #(
+    .WIDTH(1))
+adapter_U(
+    .I(ap_clk),
+    .O(internal)
+);
+
+always @(*) begin
+end
+
+assign out = internal;
+endmodule
+";
+        let module = VerilogModule::parse(source).unwrap();
+        let mm = MutableModule::from_parsed(module);
+        let emitted = mm.emit();
+        assert!(
+            emitted.contains("adapter_U"),
+            "body extraction must not drop instances closed by a bare `);`:\n{emitted}"
+        );
+        assert!(
+            emitted.contains("assign out = internal;"),
+            "body after the instance should also be preserved:\n{emitted}"
+        );
+    }
+
+    #[test]
+    fn emit_folds_duplicate_output_reg_port_declarations() {
+        let source = r"
+module HlsStyle (
+    ap_done,
+    ap_ready
+);
+output ap_done;
+output ap_ready;
+reg ap_done;
+wire ap_ready;
+
+always @(*) begin
+    ap_done = 1'b1;
+end
+
+assign ap_ready = ap_done;
+endmodule
+";
+        let module = VerilogModule::parse(source).unwrap();
+        let mm = MutableModule::from_parsed(module);
+        let emitted = mm.emit();
+        assert!(
+            emitted.contains("output reg ap_done"),
+            "procedurally assigned output reg should be folded into the ANSI port:\n{emitted}"
+        );
+        assert!(
+            !emitted.contains("\nreg ap_done;"),
+            "duplicate port-name reg declaration should be skipped:\n{emitted}"
+        );
+        assert!(
+            !emitted.contains("\nwire ap_ready;"),
+            "duplicate port-name wire declaration should be skipped:\n{emitted}"
+        );
+    }
+
+    #[test]
+    fn body_extraction_skips_compact_reg_declarations() {
+        let source = r"
+module CompactHlsStyle (
+    out
+);
+output out;
+reg[3:0] out;
+wire[3:0] tmp;
+
+assign tmp = out;
+endmodule
+";
+        let module = VerilogModule::parse(source).unwrap();
+        let mm = MutableModule::from_parsed(module);
+
+        assert!(
+            !mm.body_text.contains("reg[3:0] out;"),
+            "compact reg declarations are part of the declaration block, not the body"
+        );
+        assert!(
+            !mm.body_text.contains("wire[3:0] tmp;"),
+            "compact wire declarations are part of the declaration block, not the body"
+        );
+        assert!(
+            mm.body_text.contains("assign tmp = out;"),
+            "non-declaration body statements must still be preserved"
+        );
+    }
+
+    #[test]
+    fn emit_folds_added_output_reg_port_declarations() {
+        let module = VerilogModule::parse("module Generated();\nendmodule").unwrap();
+        let mut mm = MutableModule::from_parsed(module);
+        mm.add_port(simple_port("child_ap_start", Direction::Output))
+            .unwrap();
+        mm.add_signal(reg("child_ap_start")).unwrap();
+        let emitted = mm.emit();
+        assert!(
+            emitted.contains("output reg child_ap_start"),
+            "added output reg should be folded into the ANSI port:\n{emitted}"
+        );
+        assert!(
+            !emitted.contains("\nreg child_ap_start;"),
+            "duplicate added reg declaration should be skipped:\n{emitted}"
+        );
+    }
+
+    #[test]
+    fn demote_output_port_regs_emits_net_ports() {
+        let source = r"
+module Upper (
+    out_read
+);
+output out_read;
+reg out_read;
+endmodule
+";
+        let module = VerilogModule::parse(source).unwrap();
+        let mut mm = MutableModule::from_parsed(module);
+        mm.demote_output_port_regs_to_wires();
+
+        let emitted = mm.emit();
+        assert!(
+            emitted.contains("output wire out_read"),
+            "demoted output should be emitted as a net:\n{emitted}"
+        );
+        assert!(
+            !emitted.contains("output reg out_read"),
+            "stale output reg should not remain:\n{emitted}"
+        );
+    }
+
+    #[test]
+    fn demote_signal_regs_to_wires_emits_net_signals() {
+        let source = r"
+module VitisTop (
+    ap_clk
+);
+input ap_clk;
+reg ap_done;
+reg ap_idle;
+reg keep_reg;
+endmodule
+";
+        let module = VerilogModule::parse(source).unwrap();
+        let mut mm = MutableModule::from_parsed(module);
+        mm.demote_signal_regs_to_wires(&["ap_done", "ap_idle"]);
+
+        let emitted = mm.emit();
+        assert!(emitted.contains("wire ap_done;"), "got:\n{emitted}");
+        assert!(emitted.contains("wire ap_idle;"), "got:\n{emitted}");
+        assert!(emitted.contains("reg keep_reg;"), "got:\n{emitted}");
+    }
+
+    #[test]
+    fn effective_ports_include_added_reg_outputs() {
+        let module =
+            VerilogModule::parse("module Generated(input wire ap_clk);\nendmodule").unwrap();
+        let mut mm = MutableModule::from_parsed(module);
+        mm.add_port(simple_port("child_ap_start", Direction::Output))
+            .unwrap();
+        mm.add_signal(reg("child_ap_start")).unwrap();
+
+        let ports = mm.effective_ports();
+        assert!(ports.iter().any(|p| p.name == "child_ap_start"));
+        assert_eq!(
+            mm.effective_signal_kind("child_ap_start"),
+            Some(SignalKind::Reg)
+        );
+    }
+
+    #[test]
+    fn ensure_signal_kind_promotes_existing_signal() {
+        let src = "module Generated(output wire child_ap_start);\nwire child_ap_start;\nendmodule";
+        let mut mm = MutableModule::from_parsed(VerilogModule::parse(src).unwrap());
+
+        mm.ensure_signal_kind("child_ap_start", SignalKind::Reg);
+
+        let emitted = mm.emit();
+        assert!(
+            emitted.contains("output reg child_ap_start"),
+            "got:\n{emitted}"
+        );
+        assert!(
+            !emitted.contains("\nreg child_ap_start;"),
+            "port reg should not be redeclared:\n{emitted}"
+        );
+    }
+
+    #[test]
     fn emit_with_additions() {
         let module = parse_fixture("LowerLevelTask.v");
         let mut mm = MutableModule::from_parsed(module);
-        mm.add_port(simple_port("new_port", Direction::Output)).unwrap();
+        mm.add_port(simple_port("new_port", Direction::Output))
+            .unwrap();
         mm.add_signal(wire("new_wire")).unwrap();
         mm.add_instance(
             ModuleInstance::new("sub_mod", "sub_inst")
@@ -495,9 +819,18 @@ mod tests {
 
         let emitted = mm.emit();
         assert!(emitted.contains("new_port"), "should contain added port");
-        assert!(emitted.contains("wire new_wire;"), "should contain added signal");
-        assert!(emitted.contains("sub_mod sub_inst"), "should contain added instance");
-        assert!(emitted.contains("assign new_wire = ap_clk;"), "should contain added assign");
+        assert!(
+            emitted.contains("wire new_wire;"),
+            "should contain added signal"
+        );
+        assert!(
+            emitted.contains("sub_mod sub_inst"),
+            "should contain added instance"
+        );
+        assert!(
+            emitted.contains("assign new_wire = ap_clk;"),
+            "should contain added assign"
+        );
     }
 
     #[test]
@@ -533,7 +866,8 @@ mod tests {
     fn emit_then_reparse() {
         let module = parse_fixture("LowerLevelTask.v");
         let mut mm = MutableModule::from_parsed(module);
-        mm.add_port(simple_port("test_out", Direction::Output)).unwrap();
+        mm.add_port(simple_port("test_out", Direction::Output))
+            .unwrap();
         mm.add_signal(wire("test_wire")).unwrap();
 
         let emitted = mm.emit();
@@ -544,14 +878,18 @@ mod tests {
             reparsed.err()
         );
         let reparsed = reparsed.unwrap();
-        assert!(reparsed.find_port("test_out").is_some(), "should find added port");
+        assert!(
+            reparsed.find_port("test_out").is_some(),
+            "should find added port"
+        );
     }
 
     #[test]
     fn upper_level_task_parse_and_emit() {
         let module = parse_fixture("UpperLevelTask.v");
         let mut mm = MutableModule::from_parsed(module);
-        mm.add_port(simple_port("extra_out", Direction::Output)).unwrap();
+        mm.add_port(simple_port("extra_out", Direction::Output))
+            .unwrap();
         let emitted = mm.emit();
         let reparsed = VerilogModule::parse(&emitted);
         assert!(
@@ -568,7 +906,10 @@ mod tests {
         mm.cleanup_hls_artifacts();
         // FSM parameter should be removed
         assert!(
-            !mm.inner.parameters.iter().any(|p| p.name.starts_with("ap_ST_fsm")),
+            !mm.inner
+                .parameters
+                .iter()
+                .any(|p| p.name.starts_with("ap_ST_fsm")),
             "FSM parameters should be removed by cleanup"
         );
         // _blk signal should be removed
@@ -578,7 +919,10 @@ mod tests {
         );
         // ap_CS_fsm* should be removed
         assert!(
-            !mm.inner.signals.iter().any(|s| s.name.starts_with("ap_CS_fsm")),
+            !mm.inner
+                .signals
+                .iter()
+                .any(|s| s.name.starts_with("ap_CS_fsm")),
             "ap_CS_fsm signals should be removed by cleanup"
         );
         // Body should not contain initial blocks
@@ -615,9 +959,7 @@ mod tests {
         .unwrap();
 
         let emitted = mm.emit();
-        let header_idx = emitted
-            .find("module ")
-            .expect("module keyword present");
+        let header_idx = emitted.find("module ").expect("module keyword present");
         let param_idx = emitted
             .find("parameter C_S_AXI_CONTROL_ADDR_WIDTH")
             .expect("parameter must be emitted");
@@ -648,7 +990,8 @@ mod tests {
         let module = parse_fixture("LowerLevelTask.v");
         let mut mm = MutableModule::from_parsed(module);
         mm.cleanup_hls_artifacts();
-        mm.add_port(simple_port("new_sig", Direction::Output)).unwrap();
+        mm.add_port(simple_port("new_sig", Direction::Output))
+            .unwrap();
         mm.add_signal(wire("added_wire")).unwrap();
         let emitted = mm.emit();
         let reparsed = VerilogModule::parse(&emitted);

@@ -140,12 +140,42 @@ fn classify_handshake_ports_complete() {
     let idle = classify_port(m.find_port("ap_idle").unwrap());
     let ready = classify_port(m.find_port("ap_ready").unwrap());
 
-    assert_eq!(clk, PortClass::Handshake { role: HandshakeRole::Clock });
-    assert_eq!(rst, PortClass::Handshake { role: HandshakeRole::ResetN });
-    assert_eq!(start, PortClass::Handshake { role: HandshakeRole::Start });
-    assert_eq!(done, PortClass::Handshake { role: HandshakeRole::Done });
-    assert_eq!(idle, PortClass::Handshake { role: HandshakeRole::Idle });
-    assert_eq!(ready, PortClass::Handshake { role: HandshakeRole::Ready });
+    assert_eq!(
+        clk,
+        PortClass::Handshake {
+            role: HandshakeRole::Clock
+        }
+    );
+    assert_eq!(
+        rst,
+        PortClass::Handshake {
+            role: HandshakeRole::ResetN
+        }
+    );
+    assert_eq!(
+        start,
+        PortClass::Handshake {
+            role: HandshakeRole::Start
+        }
+    );
+    assert_eq!(
+        done,
+        PortClass::Handshake {
+            role: HandshakeRole::Done
+        }
+    );
+    assert_eq!(
+        idle,
+        PortClass::Handshake {
+            role: HandshakeRole::Idle
+        }
+    );
+    assert_eq!(
+        ready,
+        PortClass::Handshake {
+            role: HandshakeRole::Ready
+        }
+    );
 }
 
 #[test]
@@ -218,7 +248,10 @@ fn malformed_port_declaration_rejected() {
     let err = VerilogModule::parse(src).unwrap_err();
     let msg = err.to_string();
     assert!(msg.contains("Broken"), "error includes module name: {msg}");
-    assert!(msg.contains("malformed port"), "error describes malformed port: {msg}");
+    assert!(
+        msg.contains("malformed port"),
+        "error describes malformed port: {msg}"
+    );
 }
 
 #[test]
@@ -226,8 +259,14 @@ fn malformed_parameter_rejected() {
     let src = "module BadParam (a);\nparameter = ;\ninput a;\nendmodule\n";
     let err = VerilogModule::parse(src).unwrap_err();
     let msg = err.to_string();
-    assert!(msg.contains("BadParam"), "error includes module name: {msg}");
-    assert!(msg.contains("malformed parameter"), "error describes malformed param: {msg}");
+    assert!(
+        msg.contains("BadParam"),
+        "error includes module name: {msg}"
+    );
+    assert!(
+        msg.contains("malformed parameter"),
+        "error describes malformed param: {msg}"
+    );
 }
 
 #[test]
@@ -260,7 +299,10 @@ fn malformed_leading_pragma_preserved_as_raw() {
     let m = VerilogModule::parse(src).expect("parse with malformed pragma");
     assert!(!m.pragmas.is_empty(), "malformed pragma preserved");
     let raw = &m.pragmas[0];
-    assert!(raw.raw_line.contains("BROKEN"), "raw_line has original text");
+    assert!(
+        raw.raw_line.contains("BROKEN"),
+        "raw_line has original text"
+    );
 }
 
 #[test]
