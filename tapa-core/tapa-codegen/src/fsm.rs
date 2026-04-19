@@ -25,7 +25,7 @@ pub fn add_rs_pragmas_to_fsm(
     fsm_module.add_comment(format!("rst port={HANDSHAKE_RST_N} active=low"));
 
     // Main ap-ctrl pragma
-    let handshake_ports = "start=ap_start ready=ap_ready done=ap_done idle=ap_idle";
+    let handshake_ports = "ap_start=ap_start ap_done=ap_done ap_idle=ap_idle ap_ready=ap_ready";
     let scalar_str = if scalar_ports.is_empty() {
         String::new()
     } else {
@@ -40,11 +40,12 @@ pub fn add_rs_pragmas_to_fsm(
             format!("{HANDSHAKE_START}={}", sig.start_name())
         } else {
             format!(
-                "{HANDSHAKE_START}={} ready={} done={} idle={}",
+                "{HANDSHAKE_START}={} ap_done={} ap_idle={} ap_ready={} scalar={}___.*",
                 sig.start_name(),
-                sig.ready_name(),
                 sig.done_name(),
-                sig.idle_name()
+                sig.idle_name(),
+                sig.ready_name(),
+                inst_name
             )
         };
         fsm_module.add_comment(format!("ap-ctrl {port_map}"));
@@ -57,7 +58,8 @@ mod tests {
     use tapa_rtl::VerilogModule;
 
     fn empty_fsm_module() -> MutableModule {
-        let source = "module test_fsm (\n  input wire ap_clk,\n  input wire ap_rst_n\n);\nendmodule";
+        let source =
+            "module test_fsm (\n  input wire ap_clk,\n  input wire ap_rst_n\n);\nendmodule";
         MutableModule::from_parsed(VerilogModule::parse(source).unwrap())
     }
 
@@ -67,7 +69,10 @@ mod tests {
         add_rs_pragmas_to_fsm(&mut fsm, &[], &[]);
         let emitted = fsm.emit();
         assert!(emitted.contains("clk port=ap_clk"), "got:\n{emitted}");
-        assert!(emitted.contains("rst port=ap_rst_n active=low"), "got:\n{emitted}");
+        assert!(
+            emitted.contains("rst port=ap_rst_n active=low"),
+            "got:\n{emitted}"
+        );
     }
 
     #[test]
@@ -75,7 +80,10 @@ mod tests {
         let mut fsm = empty_fsm_module();
         add_rs_pragmas_to_fsm(&mut fsm, &[], &[]);
         let emitted = fsm.emit();
-        assert!(emitted.contains("ap-ctrl start=ap_start"), "got:\n{emitted}");
+        assert!(
+            emitted.contains("ap-ctrl ap_start=ap_start"),
+            "got:\n{emitted}"
+        );
     }
 
     #[test]
@@ -83,7 +91,10 @@ mod tests {
         let mut fsm = empty_fsm_module();
         add_rs_pragmas_to_fsm(&mut fsm, &["offset_a".into(), "size_b".into()], &[]);
         let emitted = fsm.emit();
-        assert!(emitted.contains("scalar=(offset_a|size_b)"), "got:\n{emitted}");
+        assert!(
+            emitted.contains("scalar=(offset_a|size_b)"),
+            "got:\n{emitted}"
+        );
     }
 
     #[test]
@@ -92,15 +103,44 @@ mod tests {
         add_rs_pragmas_to_fsm(
             &mut fsm,
             &[],
-            &[
-                ("child_0".into(), false),
-                ("auto_1".into(), true),
-            ],
+            &[("child_0".into(), false), ("auto_1".into(), true)],
         );
         let emitted = fsm.emit();
-        assert!(emitted.contains("start=child_0__ap_start"), "got:\n{emitted}");
-        assert!(emitted.contains("done=child_0__ap_done"), "got:\n{emitted}");
+        assert!(
+            emitted.contains("ap_start=child_0__ap_start"),
+            "got:\n{emitted}"
+        );
+        assert!(
+            emitted.contains("ap_done=child_0__ap_done"),
+            "got:\n{emitted}"
+        );
         // Autorun instance should only have start
-        assert!(emitted.contains("start=auto_1__ap_start"), "got:\n{emitted}");
+        assert!(
+            emitted.contains("ap_start=auto_1__ap_start"),
+            "got:\n{emitted}"
+        );
+    }
+
+    #[test]
+    fn adds_python_compatible_ap_ctrl_pragmas() {
+        let mut fsm = empty_fsm_module();
+        add_rs_pragmas_to_fsm(
+            &mut fsm,
+            &["srcs_offset".into(), "n".into()],
+            &[("child_0".into(), false)],
+        );
+        let emitted = fsm.emit();
+        assert!(
+            emitted.contains(
+                "ap-ctrl ap_start=ap_start ap_done=ap_done ap_idle=ap_idle ap_ready=ap_ready scalar=(srcs_offset|n)"
+            ),
+            "got:\n{emitted}"
+        );
+        assert!(
+            emitted.contains(
+                "ap-ctrl ap_start=child_0__ap_start ap_done=child_0__ap_done ap_idle=child_0__ap_idle ap_ready=child_0__ap_ready scalar=child_0___.*"
+            ),
+            "got:\n{emitted}"
+        );
     }
 }

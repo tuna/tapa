@@ -6,21 +6,24 @@ use tapa_protocol::{
     FIFO_READ_PORTS, FIFO_WRITE_PORTS, ISTREAM_SUFFIXES, OSTREAM_SUFFIXES, STREAM_PORT_DIRECTION,
 };
 use tapa_rtl::builder::{ContinuousAssign, Expr, ModuleInstance, ParamArg, PortArg};
+use tapa_rtl::module::sanitize_array_name;
 
 /// Build a FIFO module instance with WIDTH and DEPTH parameters.
 ///
 /// The FIFO module has internal port names like `if_dout`, `if_read`, etc.
 /// The connection side uses stream suffix naming: `{name}_dout`, `{name}_read`.
 /// This matches how children and `connect_fifos` declare wires.
-pub fn build_fifo_instance(
-    name: &str,
-    rst: Expr,
-    width: Expr,
-    depth: u32,
-) -> ModuleInstance {
+pub fn build_fifo_instance(name: &str, rst: Expr, width: Expr, depth: u32) -> ModuleInstance {
+    let name = sanitize_array_name(name);
+    let addr_width = if depth <= 1 {
+        1
+    } else {
+        u64::from(depth - 1).ilog2() + 1
+    };
     ModuleInstance::new("fifo", format!("{name}_fifo"))
         .with_params(vec![
             ParamArg::new("DATA_WIDTH", width),
+            ParamArg::new("ADDR_WIDTH", Expr::int(u64::from(addr_width))),
             ParamArg::new("DEPTH", Expr::int(u64::from(depth))),
         ])
         .with_ports({
@@ -32,17 +35,21 @@ pub fn build_fifo_instance(
             // if_dout -> {name}_dout, if_empty_n -> {name}_empty_n, etc.
             for port_name in FIFO_READ_PORTS {
                 let wire_suffix = port_name.strip_prefix("if").unwrap_or(port_name);
-                ports.push(PortArg::new(
-                    *port_name,
-                    Expr::ident(format!("{name}{wire_suffix}")),
-                ));
+                let expr = if *port_name == "if_read_ce" {
+                    Expr::lit("1'b1")
+                } else {
+                    Expr::ident(format!("{name}{wire_suffix}"))
+                };
+                ports.push(PortArg::new(*port_name, expr));
             }
             for port_name in FIFO_WRITE_PORTS {
                 let wire_suffix = port_name.strip_prefix("if").unwrap_or(port_name);
-                ports.push(PortArg::new(
-                    *port_name,
-                    Expr::ident(format!("{name}{wire_suffix}")),
-                ));
+                let expr = if *port_name == "if_write_ce" {
+                    Expr::lit("1'b1")
+                } else {
+                    Expr::ident(format!("{name}{wire_suffix}"))
+                };
+                ports.push(PortArg::new(*port_name, expr));
             }
             ports
         })
@@ -70,6 +77,8 @@ pub fn build_external_fifo_assigns(
     external_name: &str,
     is_consumed: bool,
 ) -> Vec<ContinuousAssign> {
+    let internal_name = sanitize_array_name(internal_name);
+    let external_name = sanitize_array_name(external_name);
     if internal_name == external_name {
         return Vec::new(); // Names match, no assigns needed
     }
@@ -105,50 +114,54 @@ pub fn build_external_fifo_assigns(
 /// Build an AXIS-to-stream or stream-to-AXIS adapter instance.
 ///
 /// `is_input`: true for `axis_to_stream_adapter`, false for `stream_to_axis_adapter`.
-pub fn build_axis_adapter(
-    fifo_name: &str,
-    is_input: bool,
-) -> ModuleInstance {
+pub fn build_axis_adapter(fifo_name: &str, data_width: u32, is_input: bool) -> ModuleInstance {
+    let fifo_name = sanitize_array_name(fifo_name);
     let module_name = if is_input {
         "axis_to_stream_adapter"
     } else {
         "stream_to_axis_adapter"
     };
-    let instance_name = format!("{fifo_name}_{module_name}");
+    let instance_name = format!("tapa_axis_{fifo_name}");
 
     let mut ports = vec![
         PortArg::new("clk", Expr::ident("ap_clk")),
         PortArg::new("reset", Expr::ident("ap_rst")),
     ];
 
-    // Stream-side ports
-    let stream_suffixes: &[&str] = if is_input {
-        ISTREAM_SUFFIXES
+    if is_input {
+        ports.extend([
+            PortArg::new("s_axis_tdata", Expr::ident(format!("{fifo_name}_TDATA"))),
+            PortArg::new("s_axis_tvalid", Expr::ident(format!("{fifo_name}_TVALID"))),
+            PortArg::new("s_axis_tready", Expr::ident(format!("{fifo_name}_TREADY"))),
+            PortArg::new("s_axis_tlast", Expr::ident(format!("{fifo_name}_TLAST"))),
+            PortArg::new("m_stream_dout", Expr::ident(format!("{fifo_name}_dout"))),
+            PortArg::new(
+                "m_stream_empty_n",
+                Expr::ident(format!("{fifo_name}_empty_n")),
+            ),
+            PortArg::new("m_stream_read", Expr::ident(format!("{fifo_name}_read"))),
+        ]);
     } else {
-        OSTREAM_SUFFIXES
-    };
-    for suffix in stream_suffixes {
-        ports.push(PortArg::new(
-            format!("stream_{suffix}"),
-            Expr::ident(format!("{fifo_name}_{suffix}")),
-        ));
+        ports.extend([
+            PortArg::new("s_stream_din", Expr::ident(format!("{fifo_name}_din"))),
+            PortArg::new(
+                "s_stream_full_n",
+                Expr::ident(format!("{fifo_name}_full_n")),
+            ),
+            PortArg::new("s_stream_write", Expr::ident(format!("{fifo_name}_write"))),
+            PortArg::new("m_axis_tdata", Expr::ident(format!("{fifo_name}_TDATA"))),
+            PortArg::new("m_axis_tvalid", Expr::ident(format!("{fifo_name}_TVALID"))),
+            PortArg::new("m_axis_tready", Expr::ident(format!("{fifo_name}_TREADY"))),
+            PortArg::new("m_axis_tlast", Expr::ident(format!("{fifo_name}_TLAST"))),
+        ]);
     }
 
-    // AXIS-side ports
-    ports.push(PortArg::new(
-        "axis_tdata",
-        Expr::ident(format!("{fifo_name}_TDATA")),
-    ));
-    ports.push(PortArg::new(
-        "axis_tvalid",
-        Expr::ident(format!("{fifo_name}_TVALID")),
-    ));
-    ports.push(PortArg::new(
-        "axis_tready",
-        Expr::ident(format!("{fifo_name}_TREADY")),
-    ));
-
-    ModuleInstance::new(module_name, instance_name).with_ports(ports)
+    ModuleInstance::new(module_name, instance_name)
+        .with_params(vec![ParamArg::new(
+            "DATA_WIDTH",
+            Expr::int(u64::from(data_width)),
+        )])
+        .with_ports(ports)
 }
 
 #[cfg(test)]
@@ -160,9 +173,33 @@ mod tests {
         let inst = build_fifo_instance("data_q", Expr::ident("ap_rst"), Expr::int(32), 16);
         assert_eq!(inst.module_name, "fifo");
         assert_eq!(inst.instance_name, "data_q_fifo");
-        assert_eq!(inst.params.len(), 2);
+        assert_eq!(inst.params.len(), 3);
         // clk + reset + 4 read + 4 write = 10
         assert_eq!(inst.ports.len(), 10);
+        let text = inst.to_string();
+        assert!(text.contains(".ADDR_WIDTH(4)"), "got:\n{text}");
+        assert!(text.contains(".if_read_ce(1'b1)"), "got:\n{text}");
+        assert!(text.contains(".if_write_ce(1'b1)"), "got:\n{text}");
+    }
+
+    #[test]
+    fn fifo_instance_addr_width_matches_depth() {
+        let inst = build_fifo_instance("deep_q", Expr::ident("ap_rst"), Expr::int(65), 4096);
+        let text = inst.to_string();
+        assert!(text.contains(".ADDR_WIDTH(12)"), "got:\n{text}");
+        assert!(text.contains(".DEPTH(4096)"), "got:\n{text}");
+    }
+
+    #[test]
+    fn fifo_instance_sanitizes_indexed_names() {
+        let inst = build_fifo_instance("qs[24]_Network", Expr::ident("ap_rst"), Expr::int(32), 16);
+        let text = inst.to_string();
+        assert!(text.contains("qs_24_Network_fifo"), "got:\n{text}");
+        assert!(
+            text.contains(".if_dout(qs_24_Network_dout)"),
+            "got:\n{text}"
+        );
+        assert!(!text.contains("qs[24]"), "got:\n{text}");
     }
 
     #[test]
@@ -183,16 +220,30 @@ mod tests {
 
     #[test]
     fn axis_input_adapter() {
-        let inst = build_axis_adapter("data_in", true);
+        let inst = build_axis_adapter("data_in", 32, true);
         assert_eq!(inst.module_name, "axis_to_stream_adapter");
         let text = inst.to_string();
-        assert!(text.contains("axis_tdata"), "got:\n{text}");
+        assert!(text.contains(".DATA_WIDTH(32)"), "got:\n{text}");
+        assert!(
+            text.contains(".s_axis_tdata(data_in_TDATA)"),
+            "got:\n{text}"
+        );
+        assert!(
+            text.contains(".m_stream_dout(data_in_dout)"),
+            "got:\n{text}"
+        );
     }
 
     #[test]
     fn axis_output_adapter() {
-        let inst = build_axis_adapter("data_out", false);
+        let inst = build_axis_adapter("data_out", 64, false);
         assert_eq!(inst.module_name, "stream_to_axis_adapter");
+        let text = inst.to_string();
+        assert!(text.contains(".DATA_WIDTH(64)"), "got:\n{text}");
+        assert!(text.contains(".s_stream_din(data_out_din)"), "got:\n{text}");
+        assert!(
+            text.contains(".m_axis_tlast(data_out_TLAST)"),
+            "got:\n{text}"
+        );
     }
-
 }

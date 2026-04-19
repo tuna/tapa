@@ -141,7 +141,11 @@ mod tests {
     fn non_autorun_signals() {
         let sig = InstanceSignals::new("child_0", false);
         let signals = sig.all_signals();
-        assert_eq!(signals.len(), 6, "should have state, start, done, is_done, idle, ready");
+        assert_eq!(
+            signals.len(),
+            6,
+            "should have state, start, done, is_done, idle, ready"
+        );
         assert_eq!(signals[0].name, "child_0__state");
         assert_eq!(signals[1].name, "child_0__ap_start");
     }
@@ -157,7 +161,10 @@ mod tests {
     fn set_state_produces_nonblocking_assign() {
         let sig = InstanceSignals::new("inst", false);
         let stmt = sig.set_state(Expr::int_const(2, 1));
-        let text = format!("{}", tapa_rtl::builder::AlwaysBlock::posedge("clk", vec![stmt]));
+        let text = format!(
+            "{}",
+            tapa_rtl::builder::AlwaysBlock::posedge("clk", vec![stmt])
+        );
         assert!(text.contains("inst__state <= 2'd1"), "got: {text}");
     }
 

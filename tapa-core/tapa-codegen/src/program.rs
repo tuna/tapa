@@ -4,9 +4,7 @@
 //! upper-task orchestration, template task output.
 
 use tapa_protocol::{HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY};
-use tapa_rtl::builder::{
-    AlwaysBlock, CaseItem, ContinuousAssign, Expr, Statement,
-};
+use tapa_rtl::builder::{AlwaysBlock, CaseItem, ContinuousAssign, Expr, Statement};
 use tapa_rtl::mutation::{wide_reg, wire, MutableModule};
 
 /// FSM state constants for the global program FSM (2-bit).
@@ -21,9 +19,7 @@ pub const GLOBAL_STATE_DONE: &str = "2'b10";
 ///
 /// Returns the always block for the FSM, plus continuous assigns for
 /// handshake output signals.
-pub fn generate_global_fsm(
-    is_done_signal_names: &[String],
-) -> GlobalFsmOutput {
+pub fn generate_global_fsm(is_done_signal_names: &[String]) -> GlobalFsmOutput {
     let state = Expr::ident("__tapa_state");
 
     // Build the RUNNING->DONE transition condition
@@ -90,10 +86,7 @@ pub fn generate_global_fsm(
     // Handshake output assigns
     let idle_assign = ContinuousAssign::new(
         Expr::ident(HANDSHAKE_IDLE),
-        Expr::eq(
-            Expr::ident("__tapa_state"),
-            Expr::lit(GLOBAL_STATE_IDLE),
-        ),
+        Expr::eq(Expr::ident("__tapa_state"), Expr::lit(GLOBAL_STATE_IDLE)),
     );
 
     GlobalFsmOutput {
@@ -122,10 +115,7 @@ pub const DONE_Q: &str = "__tapa_done_q";
 /// - `ap_ready = done_q` (immediate completion signal)
 ///
 /// Children use `start_q` for IDLE->RUNNING and `done_q` for DONE->IDLE.
-pub fn apply_global_fsm(
-    fsm_module: &mut MutableModule,
-    is_done_signal_names: &[String],
-) {
+pub fn apply_global_fsm(fsm_module: &mut MutableModule, is_done_signal_names: &[String]) {
     // Add top-level handshake ports to FSM module interface
     let _ = fsm_module.add_port(tapa_rtl::mutation::simple_port(
         "ap_start",
@@ -174,10 +164,7 @@ pub fn apply_global_fsm(
     // done_q = (state == STATE_DONE) — combinational from FSM
     fsm_module.add_assign(ContinuousAssign::new(
         Expr::ident(DONE_Q),
-        Expr::eq(
-            Expr::ident("__tapa_state"),
-            Expr::lit(GLOBAL_STATE_DONE),
-        ),
+        Expr::eq(Expr::ident("__tapa_state"), Expr::lit(GLOBAL_STATE_DONE)),
     ));
 
     // ap_done driven from done_q (pipelined output)
@@ -208,10 +195,7 @@ mod tests {
 
     #[test]
     fn global_fsm_gates_on_is_done() {
-        let output = generate_global_fsm(&[
-            "child_a__is_done".into(),
-            "child_b__is_done".into(),
-        ]);
+        let output = generate_global_fsm(&["child_a__is_done".into(), "child_b__is_done".into()]);
         let text = output.fsm_block.to_string();
         assert!(text.contains("child_a__is_done"), "got:\n{text}");
         assert!(text.contains("child_b__is_done"), "got:\n{text}");
@@ -234,10 +218,19 @@ mod tests {
         let emitted = mm.emit();
         assert!(emitted.contains("__tapa_state"), "got:\n{emitted}");
         assert!(emitted.contains("ap_idle"), "got:\n{emitted}");
-        assert!(emitted.contains("always @(posedge ap_clk)"), "got:\n{emitted}");
+        assert!(
+            emitted.contains("always @(posedge ap_clk)"),
+            "got:\n{emitted}"
+        );
         // Pipeline signals
-        assert!(emitted.contains(START_Q), "should have start_q pipeline, got:\n{emitted}");
-        assert!(emitted.contains(DONE_Q), "should have done_q pipeline, got:\n{emitted}");
+        assert!(
+            emitted.contains(START_Q),
+            "should have start_q pipeline, got:\n{emitted}"
+        );
+        assert!(
+            emitted.contains(DONE_Q),
+            "should have done_q pipeline, got:\n{emitted}"
+        );
         // ap_done driven from done_q, NOT directly from state
         assert!(
             emitted.contains(&format!("assign {HANDSHAKE_DONE} = {DONE_Q}")),
@@ -250,6 +243,9 @@ mod tests {
         let output = generate_global_fsm(&[]);
         let text = output.fsm_block.to_string();
         // With no children, should transition immediately from RUNNING to DONE
-        assert!(text.contains("1'b1"), "should have unconditional done, got:\n{text}");
+        assert!(
+            text.contains("1'b1"),
+            "should have unconditional done, got:\n{text}"
+        );
     }
 }
