@@ -59,9 +59,7 @@ impl Serialize for ArgCategory {
 impl<'de> Deserialize<'de> for ArgCategory {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let s = String::deserialize(deserializer)?;
-        Self::from_str(&s).ok_or_else(|| {
-            serde::de::Error::custom(format!("unknown category: {s}"))
-        })
+        Self::from_str(&s).ok_or_else(|| serde::de::Error::custom(format!("unknown category: {s}")))
     }
 }
 
@@ -127,8 +125,8 @@ mod tests {
         ];
         for (s, expected) in cases {
             let json = format!(r#""{s}""#);
-            let cat: ArgCategory = serde_json::from_str(&json)
-                .unwrap_or_else(|e| panic!("failed to parse {s}: {e}"));
+            let cat: ArgCategory =
+                serde_json::from_str(&json).unwrap_or_else(|e| panic!("failed to parse {s}: {e}"));
             assert_eq!(cat, expected, "category {s}");
         }
     }

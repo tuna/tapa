@@ -170,8 +170,7 @@ fn rust_design_round_trips_through_python_load_design() {
         tasks,
         slot_task_name_to_fp_region: None,
     };
-    std::fs::write(&dest, design.to_json().expect("rust serialize"))
-        .expect("write design.json");
+    std::fs::write(&dest, design.to_json().expect("rust serialize")).expect("write design.json");
 
     // Have Python's `tapa.steps.common.load_design`-equivalent path
     // (i.e. plain `json.load`) read the file and assert the program

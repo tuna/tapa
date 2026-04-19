@@ -174,19 +174,17 @@ pub static M_AXI_PORTS: LazyLock<HashMap<&'static str, &'static [AxiPortEntry]>>
 
 /// Compact suffix set (29 entries) — no optional address-channel attributes.
 pub const M_AXI_SUFFIXES_COMPACT: &[&str] = &[
-    "_ARADDR", "_ARBURST", "_ARID", "_ARLEN", "_ARREADY", "_ARSIZE", "_ARVALID",
-    "_AWADDR", "_AWBURST", "_AWID", "_AWLEN", "_AWREADY", "_AWSIZE", "_AWVALID",
-    "_BID", "_BREADY", "_BRESP", "_BVALID",
-    "_RDATA", "_RID", "_RLAST", "_RREADY", "_RRESP", "_RVALID",
-    "_WDATA", "_WLAST", "_WREADY", "_WSTRB", "_WVALID",
+    "_ARADDR", "_ARBURST", "_ARID", "_ARLEN", "_ARREADY", "_ARSIZE", "_ARVALID", "_AWADDR",
+    "_AWBURST", "_AWID", "_AWLEN", "_AWREADY", "_AWSIZE", "_AWVALID", "_BID", "_BREADY", "_BRESP",
+    "_BVALID", "_RDATA", "_RID", "_RLAST", "_RREADY", "_RRESP", "_RVALID", "_WDATA", "_WLAST",
+    "_WREADY", "_WSTRB", "_WVALID",
 ];
 
 /// Full suffix set (37 entries) — compact + 8 optional address-channel attributes.
 pub static M_AXI_SUFFIXES: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
     let mut v = M_AXI_SUFFIXES_COMPACT.to_vec();
     v.extend_from_slice(&[
-        "_ARLOCK", "_ARPROT", "_ARQOS", "_ARCACHE",
-        "_AWCACHE", "_AWLOCK", "_AWPROT", "_AWQOS",
+        "_ARLOCK", "_ARPROT", "_ARQOS", "_ARCACHE", "_AWCACHE", "_AWLOCK", "_AWPROT", "_AWQOS",
     ]);
     v
 });
@@ -205,8 +203,8 @@ pub static M_AXI_SUFFIXES_BY_CHANNEL: LazyLock<HashMap<&'static str, AxiChannelI
                 "AR",
                 AxiChannelInfo {
                     ports: &[
-                        "_ARADDR", "_ARBURST", "_ARID", "_ARLEN", "_ARREADY",
-                        "_ARSIZE", "_ARVALID", "_ARLOCK", "_ARPROT", "_ARQOS", "_ARCACHE",
+                        "_ARADDR", "_ARBURST", "_ARID", "_ARLEN", "_ARREADY", "_ARSIZE",
+                        "_ARVALID", "_ARLOCK", "_ARPROT", "_ARQOS", "_ARCACHE",
                     ],
                     valid: "_ARVALID",
                     ready: "_ARREADY",
@@ -216,8 +214,8 @@ pub static M_AXI_SUFFIXES_BY_CHANNEL: LazyLock<HashMap<&'static str, AxiChannelI
                 "AW",
                 AxiChannelInfo {
                     ports: &[
-                        "_AWADDR", "_AWBURST", "_AWID", "_AWLEN", "_AWREADY",
-                        "_AWSIZE", "_AWVALID", "_AWLOCK", "_AWPROT", "_AWQOS", "_AWCACHE",
+                        "_AWADDR", "_AWBURST", "_AWID", "_AWLEN", "_AWREADY", "_AWSIZE",
+                        "_AWVALID", "_AWLOCK", "_AWPROT", "_AWQOS", "_AWCACHE",
                     ],
                     valid: "_AWVALID",
                     ready: "_AWREADY",
@@ -292,9 +290,21 @@ mod tests {
 
     #[test]
     fn stream_suffixes() {
-        assert_eq!(ISTREAM_SUFFIXES, &["_dout", "_empty_n", "_read"], "ISTREAM_SUFFIXES");
-        assert_eq!(OSTREAM_SUFFIXES, &["_din", "_full_n", "_write"], "OSTREAM_SUFFIXES");
-        assert_eq!(STREAM_DATA_SUFFIXES, &["_dout", "_din"], "STREAM_DATA_SUFFIXES");
+        assert_eq!(
+            ISTREAM_SUFFIXES,
+            &["_dout", "_empty_n", "_read"],
+            "ISTREAM_SUFFIXES"
+        );
+        assert_eq!(
+            OSTREAM_SUFFIXES,
+            &["_din", "_full_n", "_write"],
+            "OSTREAM_SUFFIXES"
+        );
+        assert_eq!(
+            STREAM_DATA_SUFFIXES,
+            &["_dout", "_din"],
+            "STREAM_DATA_SUFFIXES"
+        );
     }
 
     #[test]
@@ -304,7 +314,10 @@ mod tests {
         assert_eq!(STREAM_PORT_DIRECTION["_din"], "output", "din direction");
 
         assert_eq!(STREAM_PORT_OPPOSITE["_dout"], "_din", "dout opposite");
-        assert_eq!(STREAM_PORT_OPPOSITE["_empty_n"], "_write", "empty_n opposite");
+        assert_eq!(
+            STREAM_PORT_OPPOSITE["_empty_n"], "_write",
+            "empty_n opposite"
+        );
 
         assert_eq!(STREAM_PORT_WIDTH["_dout"], 0, "dout width");
         assert_eq!(STREAM_PORT_WIDTH["_read"], 1, "read width");

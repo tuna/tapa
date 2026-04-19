@@ -13,17 +13,14 @@ impl Design {
     /// Parse a `design.json` string into a typed Design.
     pub fn from_json(json: &str) -> Result<Self, ParseError> {
         let deserializer = &mut serde_json::Deserializer::from_str(json);
-        let program: Program =
-            serde_path_to_error::deserialize(deserializer).map_err(|e| {
-                ParseError::Json(e.to_string())
-            })?;
+        let program: Program = serde_path_to_error::deserialize(deserializer)
+            .map_err(|e| ParseError::Json(e.to_string()))?;
         Ok(Self { program })
     }
 
     /// Serialize back to a JSON string.
     pub fn to_json(&self) -> Result<String, ParseError> {
-        serde_json::to_string_pretty(&self.program)
-            .map_err(|e| ParseError::Json(e.to_string()))
+        serde_json::to_string_pretty(&self.program).map_err(|e| ParseError::Json(e.to_string()))
     }
 
     /// Get the list of slot task names (tasks with `is_slot` = true).

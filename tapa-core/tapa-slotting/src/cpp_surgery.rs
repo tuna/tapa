@@ -181,7 +181,8 @@ pub fn replace_function(
     if let Some(new_def) = new_def {
         // 4-argument mode: remove old extern "C" blocks, append new ones.
         let new_decl = new_body_or_decl;
-        let mut linkage_nodes = find_extern_c_linkage_nodes(tree.root_node(), source_bytes, func_name);
+        let mut linkage_nodes =
+            find_extern_c_linkage_nodes(tree.root_node(), source_bytes, func_name);
         if linkage_nodes.is_empty() {
             return Err(SlottingError::FunctionNotFound(func_name.to_owned()));
         }
@@ -198,19 +199,13 @@ pub fn replace_function(
             bytes = [&bytes[..node.start_byte()], &bytes[end..]].concat();
         }
 
-        let mut code = String::from_utf8(bytes)
-            .map_err(|e| SlottingError::TreeSitter(e.to_string()))?;
+        let mut code =
+            String::from_utf8(bytes).map_err(|e| SlottingError::TreeSitter(e.to_string()))?;
         let trimmed_len = code.trim_end().len();
         code.truncate(trimmed_len);
 
-        let decl_block = format!(
-            "extern \"C\" {{\n{}\n}}  // extern \"C\"",
-            new_decl.trim()
-        );
-        let def_block = format!(
-            "extern \"C\" {{\n{}\n}}  // extern \"C\"",
-            new_def.trim()
-        );
+        let decl_block = format!("extern \"C\" {{\n{}\n}}  // extern \"C\"", new_decl.trim());
+        let def_block = format!("extern \"C\" {{\n{}\n}}  // extern \"C\"", new_def.trim());
         code.push_str("\n\n");
         code.push_str(&decl_block);
         code.push_str("\n\n");
@@ -229,8 +224,8 @@ pub fn replace_function(
         result.push_str("{\n    ");
         result.push_str(new_body_or_decl);
         result.push_str("\n}");
-        let after_str = std::str::from_utf8(after)
-            .map_err(|e| SlottingError::TreeSitter(e.to_string()))?;
+        let after_str =
+            std::str::from_utf8(after).map_err(|e| SlottingError::TreeSitter(e.to_string()))?;
         result.push_str(after_str);
         Ok(result)
     }
@@ -352,7 +347,10 @@ void simple_func(int x) {
     #[test]
     fn empty_source_rejected() {
         let err = replace_function("", "func", "body", None).unwrap_err();
-        assert!(err.to_string().contains("empty"), "should reject empty source, got: {err}");
+        assert!(
+            err.to_string().contains("empty"),
+            "should reject empty source, got: {err}"
+        );
     }
 
     #[test]
@@ -363,7 +361,8 @@ void simple_func(int x) {
     #[test]
     fn four_arg_missing_function_rejected() {
         let source = "int helper() { return 1; }";
-        let err = replace_function(source, "top", "void top();", Some("void top() {}")).unwrap_err();
+        let err =
+            replace_function(source, "top", "void top();", Some("void top() {}")).unwrap_err();
         assert!(
             err.to_string().contains("not found"),
             "should reject missing function in 4-arg mode, got: {err}"

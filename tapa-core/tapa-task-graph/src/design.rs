@@ -97,8 +97,7 @@ impl Design {
 
     /// Serialize to any writer.
     pub fn to_writer<W: Write>(&self, writer: &mut W) -> Result<(), ParseError> {
-        let mut serializer =
-            serde_json::Serializer::with_formatter(writer, PythonFormatter);
+        let mut serializer = serde_json::Serializer::with_formatter(writer, PythonFormatter);
         self.serialize(&mut serializer)?;
         Ok(())
     }
@@ -143,10 +142,7 @@ impl serde_json::ser::Formatter for PythonFormatter {
         }
     }
 
-    fn begin_object_value<W: io::Write + ?Sized>(
-        &mut self,
-        writer: &mut W,
-    ) -> io::Result<()> {
+    fn begin_object_value<W: io::Write + ?Sized>(&mut self, writer: &mut W) -> io::Result<()> {
         writer.write_all(b": ")
     }
 }
@@ -200,8 +196,7 @@ mod tests {
     #[test]
     fn unknown_task_topology_field_rejected() {
         let json = r#"{"top": "T", "target": "xilinx-hls", "tasks": {"T": {"name": "T", "level": "lower", "code": "", "ports": [], "tasks": {}, "fifos": {}, "target": null, "is_slot": false, "self_area": {}, "total_area": {}, "clock_period": "0", "bogus_field": 1}}, "slot_task_name_to_fp_region": null}"#;
-        let err = Design::from_json(json)
-            .expect_err("unknown task-topology field must fail");
+        let err = Design::from_json(json).expect_err("unknown task-topology field must fail");
         let message = err.to_string();
         assert!(
             message.contains("bogus_field") || message.contains("unknown field"),

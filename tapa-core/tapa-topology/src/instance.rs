@@ -20,6 +20,9 @@ pub struct ArgDesign {
 /// A single instantiation of a child task.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InstanceDesign {
+    /// Optional explicit instance name emitted by tapacc/floorplan transforms.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
     /// Arguments: maps child-port name → connection info.
     #[serde(default)]
     pub args: BTreeMap<String, ArgDesign>,

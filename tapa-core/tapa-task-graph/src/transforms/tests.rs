@@ -2,9 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use super::{
-    apply_floorplan, convert_region_format, flatten, region_to_slot_name, TransformError,
-};
+use super::{apply_floorplan, convert_region_format, flatten, region_to_slot_name, TransformError};
 use crate::graph::Graph;
 use crate::interconnect::EndpointRef;
 use crate::task::TaskLevel;
@@ -89,7 +87,10 @@ fn flatten_preserves_top_metadata() {
     assert_eq!(top.ports.len(), 1);
     assert_eq!(top.ports[0].name, "n");
     assert_eq!(out.cflags, vec!["-std=c++14".to_string()]);
-    assert!(top.code.contains("VecAdd"), "top code should still mention VecAdd");
+    assert!(
+        top.code.contains("VecAdd"),
+        "top code should still mention VecAdd"
+    );
     assert_eq!(top.level, TaskLevel::Upper);
     assert_eq!(top.target, "hls");
     assert_eq!(top.vendor, "xilinx");
@@ -173,7 +174,68 @@ fn flatten_hoists_leaf_under_nested_upper() {
     // The leaf's `q` arg must resolve to the outermost `n` binding
     // (promoted through `p` in Inner → `n` in Outer).
     let arg = leaf_insts[0].args.get("q").expect("q arg present");
-    assert_eq!(arg.arg, "n", "nested scalar arg must promote to Outer's external port");
+    assert_eq!(
+        arg.arg, "n",
+        "nested scalar arg must promote to Outer's external port"
+    );
+}
+
+#[test]
+fn flatten_resolves_indexed_stream_bundle_args_through_parent_binding() {
+    let json = r#"{
+        "cflags": [],
+        "top": "Outer",
+        "tasks": {
+            "Outer": {
+                "code": "", "level": "upper", "target": "hls", "vendor": "xilinx",
+                "ports": [],
+                "tasks": {"Stage": [{"step": 0, "args": {
+                    "in_q[0]": {"arg": "qs[4]", "cat": "istream"},
+                    "in_q[1]": {"arg": "qs[5]", "cat": "istream"},
+                    "in_q[2]": {"arg": "qs[6]", "cat": "istream"},
+                    "in_q[3]": {"arg": "qs[7]", "cat": "istream"}
+                }}]},
+                "fifos": {
+                    "qs[4]": {"depth": 2, "consumed_by": ["Stage", 0]},
+                    "qs[5]": {"depth": 2, "consumed_by": ["Stage", 0]},
+                    "qs[6]": {"depth": 2, "consumed_by": ["Stage", 0]},
+                    "qs[7]": {"depth": 2, "consumed_by": ["Stage", 0]}
+                }
+            },
+            "Stage": {
+                "code": "", "level": "upper", "target": "hls", "vendor": "xilinx",
+                "ports": [
+                    {"cat": "istreams", "name": "in_q", "type": "uint64_t", "width": 64}
+                ],
+                "tasks": {"Leaf": [{"step": 0, "args": {
+                    "pkt_in": {"arg": "in_q[3]", "cat": "istream"}
+                }}]},
+                "fifos": {
+                    "in_q[0]": {"consumed_by": ["Leaf", 0]},
+                    "in_q[1]": {"consumed_by": ["Leaf", 0]},
+                    "in_q[2]": {"consumed_by": ["Leaf", 0]},
+                    "in_q[3]": {"consumed_by": ["Leaf", 0]}
+                }
+            },
+            "Leaf": {
+                "code": "", "level": "lower", "target": "hls", "vendor": "xilinx",
+                "ports": [
+                    {"cat": "istream", "name": "pkt_in", "type": "uint64_t", "width": 64}
+                ]
+            }
+        }
+    }"#;
+    let g = Graph::from_json(json).expect("parse");
+    let out = flatten(&g).expect("flatten");
+    let top = out.tasks.get("Outer").expect("top survives");
+    let leaf = &top.tasks["Leaf"][0];
+    assert_eq!(
+        leaf.args["pkt_in"].arg, "qs[7]_Outer",
+        "leaf indexed stream arg must resolve through Stage.in_q[3] -> qs[7]"
+    );
+
+    let fifo = top.fifos.get("qs[7]_Outer").expect("fifo renamed");
+    assert_eq!(fifo.consumed_by, Some(EndpointRef("Leaf".to_string(), 0)));
 }
 
 #[test]
@@ -292,7 +354,10 @@ fn apply_floorplan_emits_slot_cpp_wrapper() {
         .iter()
         .find(|p| p.name == "fifo_VecAdd")
         .expect("slot A must carry the bridged FIFO port");
-    assert_eq!(fifo_port.ctype, "float", "FIFO port type must come from A.out");
+    assert_eq!(
+        fifo_port.ctype, "float",
+        "FIFO port type must come from A.out"
+    );
     assert_eq!(fifo_port.width, 32, "FIFO port width must come from A.out");
 
     // --- Design.json snapshot via serde round-trip ------------------

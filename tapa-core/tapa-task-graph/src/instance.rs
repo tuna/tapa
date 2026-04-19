@@ -20,6 +20,9 @@ pub struct Arg {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct TaskInstance {
+    /// Optional instance name emitted by newer tapacc/floorplan paths.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
     /// Arguments: maps child-port name → connection info.
     pub args: BTreeMap<String, Arg>,
     /// Bulk-synchronous step (can be negative for autorun tasks).

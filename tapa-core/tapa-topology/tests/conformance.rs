@@ -49,7 +49,10 @@ fn vadd_rtl_annotations_preserved() {
     let lut = self_area.get("LUT").expect("has LUT");
     assert_eq!(lut, 414, "LUT value");
 
-    let clock = m2s.annotations.get("clock_period").expect("has clock_period");
+    let clock = m2s
+        .annotations
+        .get("clock_period")
+        .expect("has clock_period");
     assert_eq!(clock.as_str().unwrap(), "2.342", "clock_period");
 }
 
@@ -91,7 +94,11 @@ fn slots_design_is_slot_flag() {
 #[test]
 fn slots_floorplan_region() {
     let d = Design::from_json(&fixture("slots_design.json")).expect("parse");
-    let regions = d.program.slot_task_name_to_fp_region.as_ref().expect("has regions");
+    let regions = d
+        .program
+        .slot_task_name_to_fp_region
+        .as_ref()
+        .expect("has regions");
     assert_eq!(regions["SlotTask"], "SLOT_X0Y0:SLOT_X0Y0");
 }
 
@@ -113,7 +120,11 @@ fn vadd_round_trip() {
     let d2 = Design::from_json(&serialized).expect("parse 2");
     assert_eq!(d1.program.top, d2.program.top, "top round-trips");
     assert_eq!(d1.program.target, d2.program.target, "target round-trips");
-    assert_eq!(d1.program.tasks.len(), d2.program.tasks.len(), "task count round-trips");
+    assert_eq!(
+        d1.program.tasks.len(),
+        d2.program.tasks.len(),
+        "task count round-trips"
+    );
 }
 
 #[test]
@@ -122,8 +133,14 @@ fn slots_round_trip() {
     let d1 = Design::from_json(&json).expect("parse 1");
     let serialized = d1.to_json().expect("serialize");
     let d2 = Design::from_json(&serialized).expect("parse 2");
-    assert_eq!(d1.program.tasks["SlotTask"].is_slot, d2.program.tasks["SlotTask"].is_slot);
-    assert_eq!(d1.program.slot_task_name_to_fp_region, d2.program.slot_task_name_to_fp_region);
+    assert_eq!(
+        d1.program.tasks["SlotTask"].is_slot,
+        d2.program.tasks["SlotTask"].is_slot
+    );
+    assert_eq!(
+        d1.program.slot_task_name_to_fp_region,
+        d2.program.slot_task_name_to_fp_region
+    );
 }
 
 #[test]
@@ -140,8 +157,14 @@ fn unknown_fields_preserved() {
     }"#;
     let d = Design::from_json(json).expect("parse with extras");
     let serialized = d.to_json().expect("serialize");
-    assert!(serialized.contains("extra_top_field"), "top-level extra preserved");
-    assert!(serialized.contains("custom_field"), "task-level extra preserved");
+    assert!(
+        serialized.contains("extra_top_field"),
+        "top-level extra preserved"
+    );
+    assert!(
+        serialized.contains("custom_field"),
+        "task-level extra preserved"
+    );
 }
 
 #[test]
@@ -153,7 +176,10 @@ fn annotation_round_trip() {
 
     let m2s_1 = &d1.program.tasks["Mmap2Stream"];
     let m2s_2 = &d2.program.tasks["Mmap2Stream"];
-    assert_eq!(m2s_1.annotations, m2s_2.annotations, "annotations round-trip");
+    assert_eq!(
+        m2s_1.annotations, m2s_2.annotations,
+        "annotations round-trip"
+    );
 }
 
 // ── Negative tests ──────────────────────────────────────────────────
@@ -163,7 +189,10 @@ fn missing_top_field() {
     let json = r#"{"target": "hls", "tasks": {}}"#;
     let err = Design::from_json(json).unwrap_err();
     let msg = err.to_string();
-    assert!(msg.contains("top") || msg.contains("missing"), "error about top: {msg}");
+    assert!(
+        msg.contains("top") || msg.contains("missing"),
+        "error about top: {msg}"
+    );
 }
 
 #[test]
@@ -225,7 +254,11 @@ fn hmap_port_category_round_trips_as_mmap() {
             "ports": [{"cat": "hmap", "name": "data", "type": "float*", "width": 32}]}}
     }"#;
     let d = Design::from_json(json).expect("parse hmap port");
-    assert_eq!(d.program.tasks["T"].ports[0].cat, ArgCategory::Mmap, "hmap -> Mmap");
+    assert_eq!(
+        d.program.tasks["T"].ports[0].cat,
+        ArgCategory::Mmap,
+        "hmap -> Mmap"
+    );
     let serialized = d.to_json().expect("serialize");
     assert!(serialized.contains(r#""mmap""#), "round-trips as mmap");
     assert!(!serialized.contains(r#""hmap""#), "no hmap in output");

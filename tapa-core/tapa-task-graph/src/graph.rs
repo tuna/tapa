@@ -34,3 +34,41 @@ impl Graph {
         serde_json::to_string_pretty(self)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_named_child_instances() {
+        Graph::from_json(
+            r#"{
+              "cflags": [],
+              "top": "Top",
+              "tasks": {
+                "Leaf": {
+                  "code": "void Leaf() {}",
+                  "level": "lower",
+                  "target": "hls",
+                  "ports": [],
+                  "tasks": {},
+                  "fifos": {}
+                },
+                "Top": {
+                  "code": "void Top() {}",
+                  "level": "upper",
+                  "target": "hls",
+                  "ports": [],
+                  "tasks": {
+                    "Leaf": [
+                      {"name": "Leaf_0", "args": {}, "step": 0}
+                    ]
+                  },
+                  "fifos": {}
+                }
+              }
+            }"#,
+        )
+        .expect("graph parses");
+    }
+}

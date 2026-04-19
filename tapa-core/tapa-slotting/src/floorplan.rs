@@ -95,7 +95,10 @@ fn build_floorplan_slot(
                 .insert(top_idx, slot_idx);
             // Connect mmap ports to slot-level ports using ORIGINAL instance name
             let new_inst = connect_subinst_mmap_to_slot_port(inst, &inst_name);
-            new_tasks.entry(task_name.clone()).or_default().push(new_inst);
+            new_tasks
+                .entry(task_name.clone())
+                .or_default()
+                .push(new_inst);
             original_inst_names.push(inst_name);
         }
     }
@@ -104,8 +107,7 @@ fn build_floorplan_slot(
 
     // Rewrite FIFOs
     let top_fifos = top_task["fifos"].as_object().cloned().unwrap_or_default();
-    let (new_fifos, fifo_ports) =
-        get_slot_fifos(&top_fifos, &top_to_slot_idx, &inst_set);
+    let (new_fifos, fifo_ports) = get_slot_fifos(&top_fifos, &top_to_slot_idx, &inst_set);
     new_obj["fifos"] = json!(new_fifos);
 
     // Build ports: scalar args + FIFO-connected ports + inferred mmap ports
@@ -142,7 +144,11 @@ fn build_floorplan_slot(
     new_ports.extend(get_used_ports(graph, top_name, &new_tasks, &fifo_ports));
 
     // Add inferred mmap ports (using original top-level instance names)
-    new_ports.extend(infer_mmap_ports_from_subtasks(graph, &new_tasks, &original_inst_names));
+    new_ports.extend(infer_mmap_ports_from_subtasks(
+        graph,
+        &new_tasks,
+        &original_inst_names,
+    ));
 
     new_obj["ports"] = json!(new_ports);
 
@@ -306,10 +312,7 @@ fn update_endpoint_idx(
 }
 
 /// Update FIFO instance indices from top to slot.
-fn update_fifo_inst_idx(
-    fifo: &Value,
-    idx_map: &BTreeMap<String, BTreeMap<usize, usize>>,
-) -> Value {
+fn update_fifo_inst_idx(fifo: &Value, idx_map: &BTreeMap<String, BTreeMap<usize, usize>>) -> Value {
     let mut result = fifo.clone();
     if let Some(consumed) = fifo.get("consumed_by") {
         result["consumed_by"] = update_endpoint_idx(Some(consumed), idx_map);
@@ -511,10 +514,7 @@ fn update_cross_slot_fifos(
 }
 
 /// Remap a FIFO endpoint from (task, idx) to (slot, 0).
-fn remap_endpoint_to_slot(
-    endpoint: &Value,
-    inst_to_slot: &BTreeMap<String, String>,
-) -> Value {
+fn remap_endpoint_to_slot(endpoint: &Value, inst_to_slot: &BTreeMap<String, String>) -> Value {
     if let Some(arr) = endpoint.as_array() {
         if arr.len() >= 2 {
             let task_name = arr[0].as_str().unwrap_or("");
@@ -638,10 +638,7 @@ mod tests {
             "slot task should exist"
         );
         // Slot task should be upper level
-        assert_eq!(
-            result["tasks"]["SLOT_X0Y0_TO_SLOT_X1Y1"]["level"],
-            "upper"
-        );
+        assert_eq!(result["tasks"]["SLOT_X0Y0_TO_SLOT_X1Y1"]["level"], "upper");
     }
 
     #[test]
@@ -813,14 +810,8 @@ mod tests {
 
         // Put producer and consumer in different slots
         let mut slot_to_insts = BTreeMap::new();
-        slot_to_insts.insert(
-            "SLOT_A".to_owned(),
-            vec!["producer_0".to_owned()],
-        );
-        slot_to_insts.insert(
-            "SLOT_B".to_owned(),
-            vec!["consumer_0".to_owned()],
-        );
+        slot_to_insts.insert("SLOT_A".to_owned(), vec!["producer_0".to_owned()]);
+        slot_to_insts.insert("SLOT_B".to_owned(), vec!["consumer_0".to_owned()]);
 
         let result = get_floorplan_graph(&graph, &slot_to_insts).unwrap();
         let top = &result["tasks"]["top_func"];
@@ -836,15 +827,21 @@ mod tests {
         let cross = &top_fifos["cross_fifo"];
 
         // Endpoints should reference slot names, not original task names
-        let consumed = cross["consumed_by"].as_array().expect("consumed_by should be array");
-        let produced = cross["produced_by"].as_array().expect("produced_by should be array");
+        let consumed = cross["consumed_by"]
+            .as_array()
+            .expect("consumed_by should be array");
+        let produced = cross["produced_by"]
+            .as_array()
+            .expect("produced_by should be array");
 
         assert_eq!(
-            consumed[0].as_str().unwrap(), "SLOT_B",
+            consumed[0].as_str().unwrap(),
+            "SLOT_B",
             "consumed_by should reference SLOT_B, got: {consumed:?}"
         );
         assert_eq!(
-            produced[0].as_str().unwrap(), "SLOT_A",
+            produced[0].as_str().unwrap(),
+            "SLOT_A",
             "produced_by should reference SLOT_A, got: {produced:?}"
         );
 
@@ -934,10 +931,7 @@ mod tests {
             "SLOT_LEFT".to_owned(),
             vec!["task_a_0".to_owned(), "task_b_0".to_owned()],
         );
-        slot_to_insts.insert(
-            "SLOT_RIGHT".to_owned(),
-            vec!["task_c_0".to_owned()],
-        );
+        slot_to_insts.insert("SLOT_RIGHT".to_owned(), vec!["task_c_0".to_owned()]);
 
         let result = get_floorplan_graph(&graph, &slot_to_insts).unwrap();
 
@@ -952,8 +946,14 @@ mod tests {
         );
 
         // Both should be upper level
-        assert_eq!(result["tasks"]["SLOT_LEFT"]["level"], "upper", "SLOT_LEFT should be upper");
-        assert_eq!(result["tasks"]["SLOT_RIGHT"]["level"], "upper", "SLOT_RIGHT should be upper");
+        assert_eq!(
+            result["tasks"]["SLOT_LEFT"]["level"], "upper",
+            "SLOT_LEFT should be upper"
+        );
+        assert_eq!(
+            result["tasks"]["SLOT_RIGHT"]["level"], "upper",
+            "SLOT_RIGHT should be upper"
+        );
 
         // Top task should instantiate both slots
         let top = &result["tasks"]["top_func"];
@@ -1005,9 +1005,7 @@ mod tests {
 
         let result = get_floorplan_graph(&graph, &slot_to_insts).unwrap();
         let slot = &result["tasks"]["SLOT_X0Y0_TO_SLOT_X1Y1"];
-        let slot_ports = slot["ports"]
-            .as_array()
-            .expect("slot should have ports");
+        let slot_ports = slot["ports"].as_array().expect("slot should have ports");
 
         // The "size" scalar port is used by both producer and consumer
         let scalar_port_names: Vec<&str> = slot_ports
@@ -1027,11 +1025,13 @@ mod tests {
             .find(|p| p["name"].as_str() == Some("size"))
             .expect("size port should exist");
         assert_eq!(
-            size_port["type"].as_str().unwrap(), "int",
+            size_port["type"].as_str().unwrap(),
+            "int",
             "size port should retain type 'int'"
         );
         assert_eq!(
-            size_port["width"].as_u64().unwrap(), 32,
+            size_port["width"].as_u64().unwrap(),
+            32,
             "size port should retain width 32"
         );
     }
@@ -1042,10 +1042,7 @@ mod tests {
     fn test_floorplan_empty_slot_rejected() {
         let graph = sample_graph();
         let mut slot_to_insts = BTreeMap::new();
-        slot_to_insts.insert(
-            "EMPTY_SLOT".to_owned(),
-            vec![],
-        );
+        slot_to_insts.insert("EMPTY_SLOT".to_owned(), vec![]);
 
         let result = get_floorplan_graph(&graph, &slot_to_insts);
 

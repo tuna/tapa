@@ -136,10 +136,10 @@ pub(super) fn compute_slot_fifos(
         }
         let consumer = fifo.consumed_by.as_ref();
         let producer = fifo.produced_by.as_ref();
-        let src_in = consumer
-            .is_some_and(|EndpointRef(n, i)| in_slot.contains(&endpoint_inst_name(n, *i)));
-        let dst_in = producer
-            .is_some_and(|EndpointRef(n, i)| in_slot.contains(&endpoint_inst_name(n, *i)));
+        let src_in =
+            consumer.is_some_and(|EndpointRef(n, i)| in_slot.contains(&endpoint_inst_name(n, *i)));
+        let dst_in =
+            producer.is_some_and(|EndpointRef(n, i)| in_slot.contains(&endpoint_inst_name(n, *i)));
 
         let mut maybe_new = None;
         if src_in && dst_in {
@@ -193,6 +193,7 @@ pub(super) fn connect_subinst_mmap_to_slot_port(
         }
     }
     TaskInstance {
+        name: Some(inst_name.to_owned()),
         args: new_args,
         step: inst.step,
     }
@@ -228,10 +229,7 @@ pub(super) fn get_used_ports(
                 continue;
             }
             let port_name_no_idx = strip_trailing_index(port_name);
-            let child_port = child_def
-                .ports
-                .iter()
-                .find(|p| p.name == port_name_no_idx);
+            let child_port = child_def.ports.iter().find(|p| p.name == port_name_no_idx);
             let (ctype, width, chan_count, chan_size) = child_port.map_or_else(
                 || (String::new(), 0, None, None),
                 |p| (p.ctype.clone(), p.width, p.chan_count, p.chan_size),
@@ -311,8 +309,7 @@ pub(super) fn build_top_slot_instantiations(
                 continue;
             }
             let port_name_formatted = format_array_suffix(&port.name);
-            let cat = infer_arg_cat_from_subinst(&port.name, &slot_def.tasks)
-                .unwrap_or(port.cat);
+            let cat = infer_arg_cat_from_subinst(&port.name, &slot_def.tasks).unwrap_or(port.cat);
             args.insert(
                 port_name_formatted,
                 Arg {
@@ -321,14 +318,16 @@ pub(super) fn build_top_slot_instantiations(
                 },
             );
         }
-        for (port_name, arg) in
-            slot_inst_mmap_port_args(slot_name, &top_def.tasks, inst_to_slot)
-        {
+        for (port_name, arg) in slot_inst_mmap_port_args(slot_name, &top_def.tasks, inst_to_slot) {
             args.insert(port_name, arg);
         }
         new_top.insert(
             slot_name.clone(),
-            vec![TaskInstance { args, step: 0 }],
+            vec![TaskInstance {
+                name: Some(format!("{slot_name}_0")),
+                args,
+                step: 0,
+            }],
         );
     }
     new_top

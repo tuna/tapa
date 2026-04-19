@@ -5,7 +5,10 @@ use tapa_task_graph::port::ArgCategory;
 use tapa_task_graph::task::TaskLevel;
 
 fn fixture(name: &str) -> String {
-    let path = format!("{}/../testdata/task-graph/{name}", env!("CARGO_MANIFEST_DIR"));
+    let path = format!(
+        "{}/../testdata/task-graph/{name}",
+        env!("CARGO_MANIFEST_DIR")
+    );
     std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path}: {e}"))
 }
 
@@ -56,7 +59,11 @@ fn vadd_leaf_task() {
 fn hmap_port_deserializes_to_mmap() {
     let g = Graph::from_json(&fixture("hmap_ports.json")).expect("parse hmap");
     let top = &g.tasks["Top"];
-    let data_port = top.ports.iter().find(|p| p.name == "data").expect("data port");
+    let data_port = top
+        .ports
+        .iter()
+        .find(|p| p.name == "data")
+        .expect("data port");
     assert_eq!(data_port.cat, ArgCategory::Mmap, "hmap -> Mmap");
     assert_eq!(data_port.chan_count, Some(4), "chan_count preserved");
     assert_eq!(data_port.chan_size, Some(1024), "chan_size preserved");
@@ -117,7 +124,10 @@ fn hmap_round_trip_canonical() {
     let g = Graph::from_json(&json).expect("parse");
     let serialized = g.to_json().expect("serialize");
     // After round-trip, "hmap" should appear as "mmap"
-    assert!(!serialized.contains(r#""hmap""#), "hmap should not appear in output");
+    assert!(
+        !serialized.contains(r#""hmap""#),
+        "hmap should not appear in output"
+    );
     assert!(serialized.contains(r#""mmap""#), "mmap should appear");
 }
 
@@ -128,7 +138,10 @@ fn unknown_top_level_field_rejected() {
     let json = r#"{"cflags": [], "top": "T", "tasks": {}, "bogus": true}"#;
     let err = Graph::from_json(json).unwrap_err();
     let msg = err.to_string();
-    assert!(msg.contains("bogus") || msg.contains("unknown"), "error mentions field: {msg}");
+    assert!(
+        msg.contains("bogus") || msg.contains("unknown"),
+        "error mentions field: {msg}"
+    );
 }
 
 #[test]
@@ -139,7 +152,10 @@ fn invalid_level_rejected() {
     }"#;
     let err = Graph::from_json(json).unwrap_err();
     let msg = err.to_string();
-    assert!(msg.contains("level") || msg.contains("invalid"), "error mentions level: {msg}");
+    assert!(
+        msg.contains("level") || msg.contains("invalid"),
+        "error mentions level: {msg}"
+    );
 }
 
 #[test]
@@ -151,7 +167,10 @@ fn invalid_category_rejected_with_path() {
     }"#;
     let err = Graph::from_json(json).unwrap_err();
     let msg = err.to_string();
-    assert!(msg.contains("nonexistent") || msg.contains("cat"), "error about cat: {msg}");
+    assert!(
+        msg.contains("nonexistent") || msg.contains("cat"),
+        "error about cat: {msg}"
+    );
 }
 
 #[test]

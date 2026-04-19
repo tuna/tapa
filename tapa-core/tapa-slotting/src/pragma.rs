@@ -55,7 +55,7 @@ fn stream_port(cat: &str, port_type: &str, name: &str) -> String {
 // ── Port processing ──────────────────────────────────────────────────
 
 static INDEXED_PORT_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^([a-zA-Z_]\w*)\[(\d+)\]$").unwrap());
+    LazyLock::new(|| Regex::new(r"^([a-zA-Z_]\w*)\[(\d+)\]([a-zA-Z_]\w*)?$").unwrap());
 
 static SCALAR_TYPE_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?:tapa::)?(\w+)<([^,>]+)").unwrap());
@@ -76,9 +76,14 @@ pub fn process_port(
     name: &str,
     port_type: &str,
 ) -> Result<ProcessedPort, SlottingError> {
-    // Normalize indexed names: port[0] -> port_0
+    // Normalize indexed names: port[0] -> port_0, port[0]_inst -> port_0_inst
     let normalized_name = if let Some(caps) = INDEXED_PORT_RE.captures(name) {
-        format!("{}_{}", &caps[1], &caps[2])
+        format!(
+            "{}_{}{}",
+            &caps[1],
+            &caps[2],
+            caps.get(3).map_or("", |m| m.as_str())
+        )
     } else if name.contains('[') {
         return Err(SlottingError::InvalidPortIndex(name.to_owned()));
     } else {
@@ -170,6 +175,13 @@ mod tests {
     fn indexed_port() {
         let p = process_port("scalar", "arr[10]", "int").unwrap();
         assert_eq!(p.cpp_port, "int arr_10");
+    }
+
+    #[test]
+    fn indexed_port_with_suffix() {
+        let p = process_port("ostream", "qs[24]_Network", "int").unwrap();
+        assert_eq!(p.cpp_port, "tapa::ostream<int>& qs_24_Network");
+        assert!(p.cpp_pragma.contains("ap_fifo port = qs_24_Network._"));
     }
 
     #[test]

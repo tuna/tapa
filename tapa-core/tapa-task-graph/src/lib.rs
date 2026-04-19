@@ -4,8 +4,8 @@
 
 pub mod design;
 pub mod graph;
-pub mod interconnect;
 pub mod instance;
+pub mod interconnect;
 pub mod port;
 pub mod task;
 pub mod transforms;

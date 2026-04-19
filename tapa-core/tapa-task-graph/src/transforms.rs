@@ -187,7 +187,11 @@ fn collect_leaves_recursive(
     // (`<name>_<top>`); nested FIFOs additionally embed the ancestor
     // instance path (`<name>_<inst_0>_..._<top>`).
     let mut fifo_global_map: BTreeMap<String, String> = BTreeMap::new();
-    for fifo_name in def.fifos.keys() {
+    let is_top_scope = scope_path == task_name && arg_bindings.is_empty();
+    for (fifo_name, fifo_def) in &def.fifos {
+        if !should_materialize_fifo(fifo_def, is_top_scope) {
+            continue;
+        }
         let global = format!("{fifo_name}_{scope_path}");
         fifo_global_map.insert(fifo_name.clone(), global);
     }
@@ -201,11 +205,7 @@ fn collect_leaves_recursive(
             // `ExternalPort.global_name = name` rule).
             let mut resolved_args: BTreeMap<String, Arg> = BTreeMap::new();
             for (port_name, arg) in &inst.args {
-                let resolved = fifo_global_map
-                    .get(&arg.arg)
-                    .cloned()
-                    .or_else(|| arg_bindings.get(&arg.arg).cloned())
-                    .unwrap_or_else(|| arg.arg.clone());
+                let resolved = resolve_scoped_arg(&arg.arg, &fifo_global_map, arg_bindings);
                 resolved_args.insert(
                     port_name.clone(),
                     Arg {
@@ -224,6 +224,7 @@ fn collect_leaves_recursive(
                     .entry(child_def_name.clone())
                     .or_default()
                     .push(TaskInstance {
+                        name: inst.name.clone(),
                         args: resolved_args,
                         step: inst.step,
                     });
@@ -271,6 +272,51 @@ fn collect_leaves_recursive(
     }
 
     Ok(())
+}
+
+fn should_materialize_fifo(fifo: &InterconnectDefinition, is_top_scope: bool) -> bool {
+    is_top_scope || fifo.depth.is_some()
+}
+
+fn resolve_scoped_arg(
+    local_name: &str,
+    fifo_global_map: &BTreeMap<String, String>,
+    arg_bindings: &BTreeMap<String, String>,
+) -> String {
+    if let Some(global) = fifo_global_map.get(local_name) {
+        return global.clone();
+    }
+    if let Some(global) = arg_bindings.get(local_name) {
+        return global.clone();
+    }
+
+    if let Some((base, idx, suffix)) = split_array_index(local_name) {
+        if suffix.is_empty() {
+            if let Some(bound) = arg_bindings.get(base) {
+                return offset_array_binding(bound, idx);
+            }
+            if let Some(bound) = fifo_global_map.get(base) {
+                return offset_array_binding(bound, idx);
+            }
+        }
+    }
+
+    local_name.to_owned()
+}
+
+fn split_array_index(name: &str) -> Option<(&str, u32, &str)> {
+    let open = name.find('[')?;
+    let close_rel = name[open + 1..].find(']')?;
+    let close = open + 1 + close_rel;
+    let idx = name[open + 1..close].parse().ok()?;
+    Some((&name[..open], idx, &name[close + 1..]))
+}
+
+fn offset_array_binding(bound: &str, offset: u32) -> String {
+    if let Some((base, base_idx, suffix)) = split_array_index(bound) {
+        return format!("{base}[{}]{suffix}", base_idx + offset);
+    }
+    format!("{bound}[{offset}]")
 }
 
 /// Wrap groups of leaf instances under synthetic per-slot upper tasks.
@@ -386,8 +432,8 @@ pub fn region_to_slot_name(region: &str) -> String {
 /// Convenience wrapper: round-trip a `serde_json::Value` graph through
 /// the typed [`Graph`] schema and apply [`flatten`].
 pub fn flatten_value(value: &Value) -> Result<Value, TransformError> {
-    let typed: Graph = serde_json::from_value(value.clone())
-        .map_err(|e| TransformError::Json(e.to_string()))?;
+    let typed: Graph =
+        serde_json::from_value(value.clone()).map_err(|e| TransformError::Json(e.to_string()))?;
     let flat = flatten(&typed)?;
     serde_json::to_value(&flat).map_err(|e| TransformError::Json(e.to_string()))
 }
