@@ -97,10 +97,14 @@ pub fn get_ctrl_s_axi_def(
         use tapa_task_graph::port::ArgCategory;
         let port_name = match port.cat {
             ArgCategory::Scalar => port.name.clone(),
-            ArgCategory::Mmap | ArgCategory::AsyncMmap
-            | ArgCategory::Immap | ArgCategory::Ommap => format!("{}_offset", port.name),
-            ArgCategory::Istream | ArgCategory::Ostream
-            | ArgCategory::Istreams | ArgCategory::Ostreams => continue,
+            ArgCategory::Mmap
+            | ArgCategory::AsyncMmap
+            | ArgCategory::Immap
+            | ArgCategory::Ommap => format!("{}_offset", port.name),
+            ArgCategory::Istream
+            | ArgCategory::Ostream
+            | ArgCategory::Istreams
+            | ArgCategory::Ostreams => continue,
         };
         ports.push(output_wire(&port_name, bit64_range.clone()));
     }
@@ -248,12 +252,18 @@ mod tests {
 
     #[test]
     fn ctrl_s_axi_def_includes_scalar_ports() {
-        let top_ports: Vec<tapa_topology::task::PortDesign> = serde_json::from_str(r#"[
+        let top_ports: Vec<tapa_topology::task::PortDesign> = serde_json::from_str(
+            r#"[
             {"cat": "scalar", "name": "n", "type": "int", "width": 32}
-        ]"#).unwrap();
+        ]"#,
+        )
+        .unwrap();
         let def = get_ctrl_s_axi_def("ctrl_s_axi", "// dummy", &top_ports);
         let port_names: Vec<_> = def.ports().iter().map(|p| p.name.clone()).collect();
-        assert!(port_names.contains(&"n".to_owned()), "should include scalar port n, got: {port_names:?}");
+        assert!(
+            port_names.contains(&"n".to_owned()),
+            "should include scalar port n, got: {port_names:?}"
+        );
     }
 
     #[test]

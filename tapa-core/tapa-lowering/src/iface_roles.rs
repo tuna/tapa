@@ -33,8 +33,11 @@ pub fn apply_iface_roles(
         let Some(module) = modules_by_name.get(module_name.as_str()) else {
             continue;
         };
-        let ports_by_name: HashMap<&str, &ModulePort> =
-            module.ports().iter().map(|p| (p.name.as_str(), p)).collect();
+        let ports_by_name: HashMap<&str, &ModulePort> = module
+            .ports()
+            .iter()
+            .map(|p| (p.name.as_str(), p))
+            .collect();
         for iface in module_ifaces.iter_mut() {
             let role = infer_role(iface, &ports_by_name, module_name)?;
             if let Some(role) = role {
@@ -55,7 +58,14 @@ fn infer_role(
             valid_port,
             ready_port,
             ..
-        } => infer_handshake_role(iface, ports, module_name, valid_port.as_ref(), ready_port.as_ref()).map(Some),
+        } => infer_handshake_role(
+            iface,
+            ports,
+            module_name,
+            valid_port.as_ref(),
+            ready_port.as_ref(),
+        )
+        .map(Some),
         AnyInterface::ApCtrl {
             ap_start_port,
             ap_ready_port,
@@ -94,7 +104,10 @@ fn infer_handshake_role(
     valid_port: Option<&String>,
     ready_port: Option<&String>,
 ) -> Result<&'static str, LoweringError> {
-    let (Some(valid), Some(ready)) = (valid_port.map(String::as_str), ready_port.map(String::as_str)) else {
+    let (Some(valid), Some(ready)) = (
+        valid_port.map(String::as_str),
+        ready_port.map(String::as_str),
+    ) else {
         return Err(LoweringError::InterfaceDirection(format!(
             "handshake in {module_name} missing valid/ready port"
         )));
@@ -165,7 +178,11 @@ fn infer_ap_ctrl_role(
     let validate = |name: Option<&str>, expect_input: bool| -> Result<(), LoweringError> {
         if let Some(n) = name {
             let p = lookup(ports, n, module_name)?;
-            let ok = if expect_input { p.is_input() } else { p.is_output() };
+            let ok = if expect_input {
+                p.is_input()
+            } else {
+                p.is_output()
+            };
             if !ok {
                 return Err(LoweringError::InterfaceDirection(format!(
                     "Incorrect ap_ctrl direction in {module_name}: port {n} has wrong direction \
@@ -304,7 +321,13 @@ mod tests {
     fn handshake_sink_gets_sink_role() {
         let module = mk_module(
             "m",
-            vec![input("clk"), input("rst"), input("valid"), output("ready"), input("data")],
+            vec![
+                input("clk"),
+                input("rst"),
+                input("valid"),
+                output("ready"),
+                input("data"),
+            ],
         );
         let mut ifaces = std::collections::BTreeMap::from([(
             "m".to_owned(),
@@ -328,7 +351,13 @@ mod tests {
     fn handshake_mixed_direction_fails() {
         let module = mk_module(
             "m",
-            vec![input("clk"), input("rst"), input("valid"), output("ready"), output("data")],
+            vec![
+                input("clk"),
+                input("rst"),
+                input("valid"),
+                output("ready"),
+                output("data"),
+            ],
         );
         let mut ifaces = std::collections::BTreeMap::from([(
             "m".to_owned(),
@@ -344,8 +373,8 @@ mod tests {
                 ],
             )],
         )]);
-        let err = apply_iface_roles(&[module], &mut ifaces)
-            .expect_err("mixed directions should fail");
+        let err =
+            apply_iface_roles(&[module], &mut ifaces).expect_err("mixed directions should fail");
         assert!(err.to_string().contains("data ports"), "got: {err}");
     }
 
@@ -353,7 +382,13 @@ mod tests {
     fn handshake_source_gets_source_role() {
         let module = mk_module(
             "m",
-            vec![input("clk"), input("rst"), output("valid"), input("ready"), output("data")],
+            vec![
+                input("clk"),
+                input("rst"),
+                output("valid"),
+                input("ready"),
+                output("data"),
+            ],
         );
         let mut ifaces = std::collections::BTreeMap::from([(
             "m".to_owned(),
@@ -387,8 +422,11 @@ mod tests {
                 vec!["clk".into(), "rst".into(), "valid".into(), "ready".into()],
             )],
         )]);
-        let err = apply_iface_roles(&[module], &mut ifaces)
-            .expect_err("invalid directions should fail");
-        assert!(err.to_string().contains("opposite directions"), "got: {err}");
+        let err =
+            apply_iface_roles(&[module], &mut ifaces).expect_err("invalid directions should fail");
+        assert!(
+            err.to_string().contains("opposite directions"),
+            "got: {err}"
+        );
     }
 }

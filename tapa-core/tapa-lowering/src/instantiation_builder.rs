@@ -2,10 +2,10 @@
 
 use tapa_graphir::{Expression, HierarchicalName, ModuleConnection, ModuleInstantiation};
 use tapa_task_graph::port::ArgCategory;
-use tapa_topology::instance::ArgDesign;
+use tapa_topology::instance::{ArgDesign, InstanceDesign};
 
 use crate::utils::{
-    make_connection, m_axi_port_name, stream_port_name, ISTREAM_SUFFIXES, M_AXI_READ_SUFFIXES,
+    m_axi_port_name, make_connection, stream_port_name, ISTREAM_SUFFIXES, M_AXI_READ_SUFFIXES,
     M_AXI_WRITE_SUFFIXES, OSTREAM_SUFFIXES,
 };
 
@@ -21,6 +21,13 @@ use crate::utils::{
 /// child port name.
 pub type ArgTable = std::collections::BTreeMap<String, std::collections::BTreeMap<String, String>>;
 
+#[must_use]
+pub fn instance_name(task_name: &str, idx: usize, inst: &InstanceDesign) -> String {
+    inst.name
+        .clone()
+        .unwrap_or_else(|| format!("{task_name}_{idx}"))
+}
+
 /// Build an arg table for an upper task's instances.
 ///
 /// For each instance's scalar/mmap arguments, produces the queue-tail
@@ -29,15 +36,16 @@ pub type ArgTable = std::collections::BTreeMap<String, std::collections::BTreeMa
 /// is the parent-visible arg name (`arg.arg`), matching Python's
 /// `arg_table[inst_name][arg.name]` indexing in `wire_builder.py`.
 #[must_use]
-pub fn build_arg_table(
-    top: &tapa_topology::task::TaskDesign,
-) -> ArgTable {
+pub fn build_arg_table(top: &tapa_topology::task::TaskDesign) -> ArgTable {
     let mut table = ArgTable::new();
     for (task_name, instances) in &top.tasks {
         for (idx, inst) in instances.iter().enumerate() {
-            let inst_name = format!("{task_name}_{idx}");
+            let inst_name = instance_name(task_name, idx, inst);
             let mut inst_table = std::collections::BTreeMap::new();
             for arg in inst.args.values() {
+                if is_literal_arg(&arg.arg) {
+                    continue;
+                }
                 // Scalar: {inst}___{arg}__q0; MMAP: {inst}___{arg}_offset__q0.
                 // Streams have no arg-table entry.
                 let wire = match arg.cat {
@@ -87,7 +95,10 @@ pub fn collect_arg_table_wires(arg_table: &ArgTable) -> Vec<String> {
 /// When `child_rtl_ports` is provided, MMAP AXI channels are filtered to
 /// only include suffixes that actually exist on the child's RTL module,
 /// matching Python's `get_child_port_connection_mapping` behavior.
-#[allow(clippy::implicit_hasher, reason = "Option<&HashSet> is simpler than generic S")]
+#[allow(
+    clippy::implicit_hasher,
+    reason = "Option<&HashSet> is simpler than generic S"
+)]
 pub fn build_port_connections(
     port_name: &str,
     arg: &ArgDesign,
@@ -110,14 +121,21 @@ pub fn build_port_connections(
     let resolve_peek = |name: &str, suffix: &str| -> Option<String> {
         let module = child_rtl?;
         let peek_name = format!("{name}_peek");
-        module.get_port_of(&peek_name, suffix).map(|p| p.name.clone())
+        module
+            .get_port_of(&peek_name, suffix)
+            .map(|p| p.name.clone())
     };
     match arg.cat {
         ArgCategory::Scalar => {
             let signal = arg_table_entry
                 .and_then(|t| t.get(&arg.arg))
                 .map_or_else(|| arg.arg.clone(), Clone::clone);
-            vec![make_connection(port_name, Expression::new_id(&signal))]
+            let expr = if is_literal_arg(&signal) {
+                Expression::new_lit(&signal)
+            } else {
+                Expression::new_id(&signal)
+            };
+            vec![make_connection(port_name, expr)]
         }
         ArgCategory::Istream | ArgCategory::Istreams => {
             // Python `_connect_istream` emits a base connection per
@@ -132,26 +150,21 @@ pub fn build_port_connections(
                 // from FIFO); emit peek variant if declared.
                 if matches!(*suffix, "_dout" | "_empty_n") {
                     if let Some(peek_port) = resolve_peek(port_name, suffix) {
-                        conns.push(make_connection(
-                            &peek_port,
-                            Expression::new_id(&wire),
-                        ));
+                        conns.push(make_connection(&peek_port, Expression::new_id(&wire)));
                     }
                 }
             }
             conns
         }
-        ArgCategory::Ostream | ArgCategory::Ostreams => {
-            OSTREAM_SUFFIXES
-                .iter()
-                .map(|suffix| {
-                    make_connection(
-                        &resolve(port_name, suffix),
-                        Expression::new_id(&stream_port_name(&arg.arg, suffix)),
-                    )
-                })
-                .collect()
-        }
+        ArgCategory::Ostream | ArgCategory::Ostreams => OSTREAM_SUFFIXES
+            .iter()
+            .map(|suffix| {
+                make_connection(
+                    &resolve(port_name, suffix),
+                    Expression::new_id(&stream_port_name(&arg.arg, suffix)),
+                )
+            })
+            .collect(),
         ArgCategory::Mmap | ArgCategory::AsyncMmap | ArgCategory::Immap | ArgCategory::Ommap => {
             let offset_port = format!("{port_name}_offset");
             let offset_signal = arg_table_entry
@@ -181,6 +194,15 @@ pub fn build_port_connections(
     }
 }
 
+#[must_use]
+pub fn is_literal_arg(name: &str) -> bool {
+    let trimmed = name.trim();
+    trimmed.contains("'d")
+        || trimmed.contains("'h")
+        || trimmed.contains("'b")
+        || trimmed.parse::<u64>().is_ok()
+}
+
 /// Build a task instance with standard control connections.
 #[must_use]
 pub fn build_task_instance(
@@ -192,10 +214,22 @@ pub fn build_task_instance(
     let mut connections = vec![
         make_connection("ap_clk", Expression::new_id("ap_clk")),
         make_connection("ap_rst_n", Expression::new_id("ap_rst_n")),
-        make_connection("ap_start", Expression::new_id(&format!("{inst_name}__ap_start"))),
-        make_connection("ap_done", Expression::new_id(&format!("{inst_name}__ap_done"))),
-        make_connection("ap_idle", Expression::new_id(&format!("{inst_name}__ap_idle"))),
-        make_connection("ap_ready", Expression::new_id(&format!("{inst_name}__ap_ready"))),
+        make_connection(
+            "ap_start",
+            Expression::new_id(&format!("{inst_name}__ap_start")),
+        ),
+        make_connection(
+            "ap_done",
+            Expression::new_id(&format!("{inst_name}__ap_done")),
+        ),
+        make_connection(
+            "ap_idle",
+            Expression::new_id(&format!("{inst_name}__ap_idle")),
+        ),
+        make_connection(
+            "ap_ready",
+            Expression::new_id(&format!("{inst_name}__ap_ready")),
+        ),
     ];
     connections.extend(arg_connections);
 
@@ -244,16 +278,26 @@ pub fn build_fifo_instance(
             tapa_graphir::Token::new_id("ap_rst_n"),
         ])
     };
+    let fifo_name = tapa_rtl::module::sanitize_array_name(fifo_name);
 
     let connections = vec![
         make_connection("clk", Expression::new_id("ap_clk")),
         make_connection("reset", reset_expr),
         make_connection("if_dout", Expression::new_id(&format!("{fifo_name}_dout"))),
-        make_connection("if_empty_n", Expression::new_id(&format!("{fifo_name}_empty_n"))),
+        make_connection(
+            "if_empty_n",
+            Expression::new_id(&format!("{fifo_name}_empty_n")),
+        ),
         make_connection("if_read", Expression::new_id(&format!("{fifo_name}_read"))),
         make_connection("if_din", Expression::new_id(&format!("{fifo_name}_din"))),
-        make_connection("if_full_n", Expression::new_id(&format!("{fifo_name}_full_n"))),
-        make_connection("if_write", Expression::new_id(&format!("{fifo_name}_write"))),
+        make_connection(
+            "if_full_n",
+            Expression::new_id(&format!("{fifo_name}_full_n")),
+        ),
+        make_connection(
+            "if_write",
+            Expression::new_id(&format!("{fifo_name}_write")),
+        ),
         make_connection("if_read_ce", Expression::new_lit("1'b1")),
         make_connection("if_write_ce", Expression::new_lit("1'b1")),
     ];
@@ -267,8 +311,8 @@ pub fn build_fifo_instance(
     ];
 
     ModuleInstantiation {
-        hierarchical_name: HierarchicalName::get_name(fifo_name),
-        name: fifo_name.to_owned(),
+        hierarchical_name: HierarchicalName::get_name(&fifo_name),
+        name: fifo_name,
         module: "fifo".to_owned(),
         connections,
         parameters,
@@ -343,9 +387,18 @@ mod tests {
         };
         let conns = build_port_connections("data_in", &arg, None, None, None);
         assert_eq!(conns.len(), 3);
-        assert!(conns.iter().any(|c| c.name == "data_in_dout"), "conns: {conns:?}");
-        assert!(conns.iter().any(|c| c.name == "data_in_empty_n"), "conns: {conns:?}");
-        assert!(conns.iter().any(|c| c.name == "data_in_read"), "conns: {conns:?}");
+        assert!(
+            conns.iter().any(|c| c.name == "data_in_dout"),
+            "conns: {conns:?}"
+        );
+        assert!(
+            conns.iter().any(|c| c.name == "data_in_empty_n"),
+            "conns: {conns:?}"
+        );
+        assert!(
+            conns.iter().any(|c| c.name == "data_in_read"),
+            "conns: {conns:?}"
+        );
     }
 
     #[test]
@@ -357,7 +410,10 @@ mod tests {
         };
         let conns = build_port_connections("data_out", &arg, None, None, None);
         assert_eq!(conns.len(), 3);
-        assert!(conns.iter().any(|c| c.name == "data_out_din"), "conns: {conns:?}");
+        assert!(
+            conns.iter().any(|c| c.name == "data_out_din"),
+            "conns: {conns:?}"
+        );
     }
 
     #[test]
@@ -369,9 +425,19 @@ mod tests {
         };
         let conns = build_port_connections("ptr", &arg, None, None, None);
         // offset + 18 read + 21 write = 40 connections
-        assert!(conns.len() > 30, "should have many mmap connections, got {}", conns.len());
-        assert!(conns.iter().any(|c| c.name == "ptr_offset"), "should have offset");
-        assert!(conns.iter().any(|c| c.name == "m_axi_ptr_ARVALID"), "should have AXI");
+        assert!(
+            conns.len() > 30,
+            "should have many mmap connections, got {}",
+            conns.len()
+        );
+        assert!(
+            conns.iter().any(|c| c.name == "ptr_offset"),
+            "should have offset"
+        );
+        assert!(
+            conns.iter().any(|c| c.name == "m_axi_ptr_ARVALID"),
+            "should have AXI"
+        );
     }
 
     #[test]
@@ -392,7 +458,11 @@ mod tests {
         assert_eq!(reset.expr.0[0].repr, "~");
         assert_eq!(reset.expr.0[1].repr, "ap_rst_n");
         // DATA_WIDTH is folded to literal `33`.
-        let dw = inst.parameters.iter().find(|p| p.name == "DATA_WIDTH").unwrap();
+        let dw = inst
+            .parameters
+            .iter()
+            .find(|p| p.name == "DATA_WIDTH")
+            .unwrap();
         assert_eq!(dw.expr.0.len(), 1);
         assert_eq!(dw.expr.0[0].repr, "33");
     }
@@ -406,29 +476,85 @@ mod tests {
     }
 
     #[test]
+    fn fifo_instance_sanitizes_indexed_fifo_names() {
+        let inst = build_fifo_instance("c[1]_Cannon", None, 16, None, false);
+        assert_eq!(inst.name, "c_1_Cannon");
+
+        let expr_for = |name: &str| {
+            inst.connections
+                .iter()
+                .find(|c| c.name == name)
+                .and_then(|c| c.expr.0.first())
+                .map(|t| t.repr.as_str())
+        };
+        assert_eq!(expr_for("if_dout"), Some("c_1_Cannon_dout"));
+        assert_eq!(expr_for("if_empty_n"), Some("c_1_Cannon_empty_n"));
+        assert_eq!(expr_for("if_read"), Some("c_1_Cannon_read"));
+        assert_eq!(expr_for("if_din"), Some("c_1_Cannon_din"));
+        assert_eq!(expr_for("if_full_n"), Some("c_1_Cannon_full_n"));
+        assert_eq!(expr_for("if_write"), Some("c_1_Cannon_write"));
+    }
+
+    #[test]
     fn task_instance_has_control_ports() {
         let inst = build_task_instance("child_0", "child", Vec::new(), None);
         assert_eq!(inst.name, "child_0");
         // Should have ap_clk, ap_rst_n, ap_start, ap_done, ap_idle, ap_ready
-        assert!(inst.connections.len() >= 6, "got {}", inst.connections.len());
+        assert!(
+            inst.connections.len() >= 6,
+            "got {}",
+            inst.connections.len()
+        );
     }
 
     #[test]
     fn arg_table_includes_scalars() {
-        let top: tapa_topology::task::TaskDesign = serde_json::from_str(r#"{
+        let top: tapa_topology::task::TaskDesign = serde_json::from_str(
+            r#"{
             "level": "upper", "code": "", "target": "xilinx-hls",
             "ports": [{"cat": "scalar", "name": "n", "type": "int", "width": 32}],
             "tasks": {
                 "child": [{"args": {"count": {"arg": "n", "cat": "scalar"}}}]
             },
             "fifos": {}
-        }"#).unwrap();
+        }"#,
+        )
+        .unwrap();
         let table = build_arg_table(&top);
         let child_0 = &table["child_0"];
         assert_eq!(
             child_0["n"], "child_0___n__q0",
             "scalar should be in arg table with Python's __q0 queue-tail suffix"
         );
+    }
+
+    #[test]
+    fn arg_table_skips_literal_scalars() {
+        let top: tapa_topology::task::TaskDesign = serde_json::from_str(
+            r#"{
+            "level": "upper", "code": "", "target": "xilinx-hls",
+            "ports": [],
+            "tasks": {
+                "child": [{"args": {"count": {"arg": "64'd1", "cat": "scalar"}}}]
+            },
+            "fifos": {}
+        }"#,
+        )
+        .unwrap();
+        let table = build_arg_table(&top);
+        assert!(
+            table["child_0"].is_empty(),
+            "literal args must not become Verilog signal names: {table:?}"
+        );
+
+        let arg = ArgDesign {
+            arg: "64'd1".into(),
+            cat: ArgCategory::Scalar,
+            extra: std::collections::BTreeMap::default(),
+        };
+        let conns = build_port_connections("count", &arg, Some(&table["child_0"]), None, None);
+        assert_eq!(conns[0].expr.0[0].repr, "64'd1");
+        assert_eq!(conns[0].expr.0[0].kind, tapa_graphir::TokenKind::Literal);
     }
 
     #[test]
@@ -440,8 +566,14 @@ mod tests {
         };
         // Only include ARVALID, ARREADY, ARADDR from the child RTL + offset
         let known: std::collections::HashSet<String> = [
-            "ptr_offset", "m_axi_ptr_ARVALID", "m_axi_ptr_ARREADY", "m_axi_ptr_ARADDR",
-        ].into_iter().map(String::from).collect();
+            "ptr_offset",
+            "m_axi_ptr_ARVALID",
+            "m_axi_ptr_ARREADY",
+            "m_axi_ptr_ARADDR",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
         let conns = build_port_connections("ptr", &arg, None, Some(&known), None);
         // Should only have offset + 3 AXI channels = 4
         assert_eq!(conns.len(), 4, "filtered conns: {conns:?}");
@@ -453,14 +585,17 @@ mod tests {
 
     #[test]
     fn arg_table_includes_mmap_offsets() {
-        let top: tapa_topology::task::TaskDesign = serde_json::from_str(r#"{
+        let top: tapa_topology::task::TaskDesign = serde_json::from_str(
+            r#"{
             "level": "upper", "code": "", "target": "xilinx-hls",
             "ports": [{"cat": "mmap", "name": "mem", "type": "int*", "width": 64}],
             "tasks": {
                 "child": [{"args": {"ptr": {"arg": "mem", "cat": "mmap"}}}]
             },
             "fifos": {}
-        }"#).unwrap();
+        }"#,
+        )
+        .unwrap();
         let table = build_arg_table(&top);
         let child_0 = &table["child_0"];
         assert_eq!(

@@ -48,9 +48,7 @@ impl<'a> LoweringInputs<'a> {
     ) -> Result<Self, LoweringError> {
         let rtl_dir = rtl_dir.as_ref().to_path_buf();
         if !rtl_dir.exists() {
-            return Err(LoweringError::PathNotFound(
-                rtl_dir.display().to_string(),
-            ));
+            return Err(LoweringError::PathNotFound(rtl_dir.display().to_string()));
         }
         Ok(Self {
             state,
@@ -67,9 +65,8 @@ impl<'a> LoweringInputs<'a> {
     /// Returns `LoweringError::MissingLeafRtl` if the file is absent.
     pub fn read_leaf_rtl(&self, task_name: &str) -> Result<String, LoweringError> {
         let path = self.rtl_dir.join(format!("{task_name}.v"));
-        std::fs::read_to_string(&path).map_err(|_| {
-            LoweringError::MissingLeafRtl(path.display().to_string())
-        })
+        std::fs::read_to_string(&path)
+            .map_err(|_| LoweringError::MissingLeafRtl(path.display().to_string()))
     }
 
     /// Read the `{top}_control_s_axi.v` RTL source.
@@ -80,9 +77,8 @@ impl<'a> LoweringInputs<'a> {
     pub fn read_ctrl_s_axi(&self) -> Result<String, LoweringError> {
         let top = &self.state.program.top;
         let path = self.rtl_dir.join(format!("{top}_control_s_axi.v"));
-        std::fs::read_to_string(&path).map_err(|_| {
-            LoweringError::MissingCtrlSAxi(path.display().to_string())
-        })
+        std::fs::read_to_string(&path)
+            .map_err(|_| LoweringError::MissingCtrlSAxi(path.display().to_string()))
     }
 
     /// Access the topology program.
@@ -101,11 +97,9 @@ impl<'a> LoweringInputs<'a> {
     ///
     /// Returns an error if `floorplan.json` cannot be read or parsed.
     pub fn read_slot_to_instances(&self) -> Result<BTreeMap<String, Vec<String>>, LoweringError> {
-        let text = std::fs::read_to_string(&self.floorplan).map_err(|_| {
-            LoweringError::PathNotFound(self.floorplan.display().to_string())
-        })?;
-        let vertex_to_region: BTreeMap<String, String> =
-            serde_json::from_str(&text)?;
+        let text = std::fs::read_to_string(&self.floorplan)
+            .map_err(|_| LoweringError::PathNotFound(self.floorplan.display().to_string()))?;
+        let vertex_to_region: BTreeMap<String, String> = serde_json::from_str(&text)?;
         let mut slot_to_insts: BTreeMap<String, Vec<String>> = BTreeMap::new();
         for (vertex, region) in vertex_to_region {
             let slot_name = region.replace(':', "_");
@@ -126,12 +120,10 @@ impl<'a> LoweringInputs<'a> {
     pub fn read_island_to_pblock_range(
         &self,
     ) -> Result<BTreeMap<String, Vec<String>>, LoweringError> {
-        let device_text = std::fs::read_to_string(&self.device_config).map_err(|_| {
-            LoweringError::PathNotFound(self.device_config.display().to_string())
-        })?;
-        let floorplan_text = std::fs::read_to_string(&self.floorplan).map_err(|_| {
-            LoweringError::PathNotFound(self.floorplan.display().to_string())
-        })?;
+        let device_text = std::fs::read_to_string(&self.device_config)
+            .map_err(|_| LoweringError::PathNotFound(self.device_config.display().to_string()))?;
+        let floorplan_text = std::fs::read_to_string(&self.floorplan)
+            .map_err(|_| LoweringError::PathNotFound(self.floorplan.display().to_string()))?;
         let device: DeviceConfig = serde_json::from_str(&device_text)?;
         let floorplan: BTreeMap<String, String> = serde_json::from_str(&floorplan_text)?;
         let used_slots: std::collections::HashSet<String> = floorplan.into_values().collect();
@@ -154,9 +146,8 @@ impl<'a> LoweringInputs<'a> {
     ///
     /// Returns an error if the file cannot be read or parsed.
     pub fn read_part_num(&self) -> Result<Option<String>, LoweringError> {
-        let text = std::fs::read_to_string(&self.device_config).map_err(|_| {
-            LoweringError::PathNotFound(self.device_config.display().to_string())
-        })?;
+        let text = std::fs::read_to_string(&self.device_config)
+            .map_err(|_| LoweringError::PathNotFound(self.device_config.display().to_string()))?;
         let cfg: DeviceConfig = serde_json::from_str(&text)?;
         Ok(cfg.part_num)
     }
@@ -286,11 +277,7 @@ mod tests {
         let mut state = make_state();
         let tmp = tempfile::tempdir().unwrap();
         let floorplan = tmp.path().join("floorplan.json");
-        std::fs::write(
-            &floorplan,
-            r#"{"child_0": "SLOT_X0Y0:SLOT_X0Y0"}"#,
-        )
-        .unwrap();
+        std::fs::write(&floorplan, r#"{"child_0": "SLOT_X0Y0:SLOT_X0Y0"}"#).unwrap();
         let device = tmp.path().join("device.json");
         std::fs::write(
             &device,
@@ -327,7 +314,10 @@ mod tests {
         let err = inputs
             .read_island_to_pblock_range()
             .expect_err("missing device_config must error");
-        assert!(err.to_string().contains("missing_device.json"), "got: {err}");
+        assert!(
+            err.to_string().contains("missing_device.json"),
+            "got: {err}"
+        );
     }
 
     #[test]

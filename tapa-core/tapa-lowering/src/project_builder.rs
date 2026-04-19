@@ -1,17 +1,16 @@
 //! Top-level project assembly: builds a `GraphIR` Project from topology + RTL.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
-use tapa_graphir::{
-    AnyModuleDefinition, BaseFields, Expression, GroupedFields, HierarchicalName, ModulePort,
-    Modules, Project, interface::AnyInterface,
-};
 use tapa_codegen::rtl_state::TopologyWithRtl;
+use tapa_graphir::{
+    interface::AnyInterface, AnyModuleDefinition, BaseFields, Expression, GroupedFields,
+    HierarchicalName, ModulePort, Modules, Project, Range,
+};
 use tapa_topology::program::Program;
 
 use crate::instantiation_builder::{
-    build_arg_table, build_fifo_instance, build_port_connections, build_task_instance,
-    ArgTable,
+    build_arg_table, build_fifo_instance, build_port_connections, build_task_instance, ArgTable,
 };
 use crate::module_defs::{get_fifo_def, get_reset_inverter_def, get_reset_inverter_inst};
 use crate::utils::{input_wire, make_wire, range_msb};
@@ -70,8 +69,21 @@ pub fn build_project_from_state(
     let mut fsm_modules = BTreeMap::new();
     for (name, mm) in &state.fsm_modules {
         let fsm_name = format!("{name}_fsm");
-        let ports: Vec<ModulePort> = mm.inner.ports.iter()
-            .map(crate::utils::rtl_port_to_graphir)
+        let ports: Vec<ModulePort> = mm
+            .effective_ports()
+            .iter()
+            .map(|port| {
+                let port_type = match (port.direction, mm.effective_signal_kind(&port.name)) {
+                    (tapa_rtl::port::Direction::Input, _) => "input wire",
+                    (
+                        tapa_rtl::port::Direction::Output,
+                        Some(tapa_rtl::signal::SignalKind::Reg),
+                    ) => "output reg",
+                    (tapa_rtl::port::Direction::Output, _) => "output wire",
+                    (tapa_rtl::port::Direction::Inout, _) => "inout wire",
+                };
+                crate::utils::rtl_port_to_graphir_with_type(port, port_type)
+            })
             .collect();
         fsm_modules.insert(
             fsm_name.clone(),
@@ -174,9 +186,7 @@ pub fn build_project_from_state(
         .iter()
         .filter_map(|m| {
             if let AnyModuleDefinition::Grouped { base, .. } = m {
-                if base.name != state.program.top
-                    && state.program.tasks.contains_key(&base.name)
-                {
+                if base.name != state.program.top && state.program.tasks.contains_key(&base.name) {
                     return Some(base.name.clone());
                 }
             }
@@ -184,11 +194,9 @@ pub fn build_project_from_state(
         })
         .collect();
     for slot_name in slot_names {
-        let Some(new_ports) = crate::slot_ports::build_slot_ports_python_equivalent(
-            &slot_name,
-            state,
-            &leaf_modules,
-        ) else {
+        let Some(new_ports) =
+            crate::slot_ports::build_slot_ports_python_equivalent(&slot_name, state, &leaf_modules)
+        else {
             continue;
         };
         let Some(slot_task) = state.program.tasks.get(&slot_name) else {
@@ -204,13 +212,35 @@ pub fn build_project_from_state(
             &[],
             &leaf_modules,
         );
+        let mut new_wires = new_wires;
+        let mut declared: std::collections::BTreeSet<String> =
+            new_ports.iter().map(|p| p.name.clone()).collect();
+        declared.extend(new_wires.iter().map(|w| w.name.clone()));
+        let fsm_name = format!("{slot_name}_fsm");
+        if let Some(fsm_def) = project
+            .modules
+            .module_definitions
+            .iter()
+            .find(|m| m.name() == fsm_name)
+        {
+            for port in fsm_def.ports() {
+                if declared.insert(port.name.clone()) {
+                    new_wires.push(crate::utils::make_wire(&port.name, port.range.clone()));
+                }
+            }
+        }
         if let Some((base, grouped)) =
             find_grouped_mut(&mut project.modules.module_definitions, &slot_name)
         {
             base.ports.clone_from(&new_ports);
             grouped.wires.clone_from(&new_wires);
+            let port_names: std::collections::BTreeSet<String> =
+                new_ports.iter().map(|p| p.name.clone()).collect();
+            crate::slot_ports::declare_missing_connection_wires(grouped, &port_names);
         }
     }
+
+    refresh_top_slot_instance_connections(&mut project.modules.module_definitions, &state.program);
 
     // Top-wire rewrite: must run AFTER slots are finalized so
     // `build_upper_task_ir_wires` sees the slot grouped defs as the
@@ -263,14 +293,31 @@ pub fn build_project_from_state(
                 &ctrl_s_axi_ports,
                 &ir_defs,
             );
-            new_wires.extend(crate::upper_wires::build_top_extra_wires(
-                &ctrl_s_axi_ports,
-            ));
+            new_wires.extend(crate::upper_wires::build_top_extra_wires(&ctrl_s_axi_ports));
+            let mut declared: std::collections::BTreeSet<String> =
+                top_rtl_ports.iter().map(|p| p.name.clone()).collect();
+            declared.extend(new_wires.iter().map(|w| w.name.clone()));
+            let fsm_name = format!("{top_name}_fsm");
+            if let Some(fsm_def) = project
+                .modules
+                .module_definitions
+                .iter()
+                .find(|m| m.name() == fsm_name)
+            {
+                for port in fsm_def.ports() {
+                    if declared.insert(port.name.clone()) {
+                        new_wires.push(crate::utils::make_wire(&port.name, port.range.clone()));
+                    }
+                }
+            }
             new_wires.push(crate::utils::make_wire("rst", None));
             if let Some((_, grouped)) =
                 find_grouped_mut(&mut project.modules.module_definitions, top_name)
             {
                 grouped.wires.clone_from(&new_wires);
+                let port_names: std::collections::BTreeSet<String> =
+                    top_rtl_ports.iter().map(|p| p.name.clone()).collect();
+                crate::slot_ports::declare_missing_connection_wires(grouped, &port_names);
             }
         }
     }
@@ -280,11 +327,7 @@ pub fn build_project_from_state(
     // slot task, walk the child leaf tasks (via the slot's `tasks`
     // dictionary), collect their RTL parameter lists from
     // `state.module_map`, and dedupe by name.
-    aggregate_slot_leaf_parameters(
-        &mut project,
-        state,
-        slot_to_instances,
-    );
+    aggregate_slot_leaf_parameters(&mut project, state, slot_to_instances);
 
     // Rebuild slot-module interfaces on the finalized slot-port lists.
     // `build_project` runs before `build_slot_ports_python_equivalent`,
@@ -321,6 +364,70 @@ pub fn build_project_from_state(
     }
 
     Ok(project)
+}
+
+fn refresh_top_slot_instance_connections(
+    module_defs: &mut [AnyModuleDefinition],
+    program: &Program,
+) {
+    let Some(top_task) = program.tasks.get(&program.top) else {
+        return;
+    };
+    let top_arg_table = build_arg_table(top_task);
+    let slot_port_names: BTreeMap<String, std::collections::HashSet<String>> = module_defs
+        .iter()
+        .filter_map(|module| {
+            let AnyModuleDefinition::Grouped { base, .. } = module else {
+                return None;
+            };
+            if base.name == program.top || !top_task.tasks.contains_key(&base.name) {
+                return None;
+            }
+            Some((
+                base.name.clone(),
+                module.ports().iter().map(|p| p.name.clone()).collect(),
+            ))
+        })
+        .collect();
+
+    let Some((_, grouped)) = find_grouped_mut(module_defs, &program.top) else {
+        return;
+    };
+
+    for inst in &mut grouped.submodules {
+        let Some(known_ports) = slot_port_names.get(&inst.module) else {
+            continue;
+        };
+        let Some(slot_instances) = top_task.tasks.get(&inst.module) else {
+            continue;
+        };
+        let Some(slot_task_inst) =
+            slot_instances
+                .iter()
+                .enumerate()
+                .find_map(|(idx, candidate)| {
+                    let expected =
+                        crate::instantiation_builder::instance_name(&inst.module, idx, candidate);
+                    (expected == inst.name).then_some(candidate)
+                })
+        else {
+            continue;
+        };
+        let arg_table_entry = top_arg_table.get(&inst.name);
+        for (port_name, arg) in &slot_task_inst.args {
+            let conns =
+                build_port_connections(port_name, arg, arg_table_entry, Some(known_ports), None);
+            for conn in conns {
+                if !inst
+                    .connections
+                    .iter()
+                    .any(|existing| existing.name == conn.name)
+                {
+                    inst.connections.push(conn);
+                }
+            }
+        }
+    }
 }
 
 /// Aggregate leaf RTL parameters onto slot grouped modules.
@@ -360,11 +467,10 @@ fn aggregate_slot_leaf_parameters(
     // for each leaf (in slot.tasks order), collect RTL parameters,
     // preserving the first `ModuleParameter` seen for each name.
     let mut aggregated: Vec<tapa_graphir::ModuleParameter> = Vec::new();
-    let mut seen: std::collections::BTreeSet<String> =
-        std::collections::BTreeSet::new();
+    let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     let push_params_of = |task_name: &str,
-                              aggregated: &mut Vec<tapa_graphir::ModuleParameter>,
-                              seen: &mut std::collections::BTreeSet<String>| {
+                          aggregated: &mut Vec<tapa_graphir::ModuleParameter>,
+                          seen: &mut std::collections::BTreeSet<String>| {
         let Some(mm) = state.module_map.get(task_name) else {
             return;
         };
@@ -428,9 +534,7 @@ pub fn build_project_from_inputs(
     island_to_pblock_range: Option<BTreeMap<String, Vec<String>>>,
     part_num: Option<String>,
 ) -> Result<Project, LoweringError> {
-    if ctrl_s_axi_verilog.trim().is_empty()
-        || !ctrl_s_axi_verilog.contains("module")
-    {
+    if ctrl_s_axi_verilog.trim().is_empty() || !ctrl_s_axi_verilog.contains("module") {
         return Err(LoweringError::MissingCtrlSAxi(format!(
             "no `{}_control_s_axi` RTL source provided; pass the real \
              Verilog via ctrl_s_axi_verilog or use build_project_from_paths",
@@ -484,9 +588,33 @@ pub fn build_project_from_paths(
         let path = rtl_dir.join(format!("{name}.v"));
         let body = std::fs::read_to_string(&path)
             .map_err(|_| LoweringError::MissingLeafRtl(path.display().to_string()))?;
-        let module = tapa_rtl::VerilogModule::parse(&body).map_err(|e| {
-            LoweringError::MissingLeafRtl(format!("{}: {e}", path.display()))
-        })?;
+        let module = tapa_rtl::VerilogModule::parse(&body)
+            .map_err(|e| LoweringError::MissingLeafRtl(format!("{}: {e}", path.display())))?;
+        state
+            .attach_module(name, module)
+            .map_err(|e| LoweringError::MissingLeafRtl(format!("{name}: {e}")))?;
+    }
+
+    // Attach generated upper RTL when present. The post-pass in
+    // `build_project_from_state` uses the real top module ports as the
+    // boundary and rebuilds Python-equivalent top wires. Without this,
+    // GraphIR export keeps the topology-only top definition and misses
+    // slot queue-tail / cross-slot FIFO wires referenced by submodules.
+    let upper_rtl_task_names: Vec<String> = state
+        .program
+        .tasks
+        .keys()
+        .filter(|name| state.is_upper_task(name) && !state.module_map.contains_key(*name))
+        .cloned()
+        .collect();
+    for name in &upper_rtl_task_names {
+        let path = rtl_dir.join(format!("{name}.v"));
+        if !path.is_file() {
+            continue;
+        }
+        let body = std::fs::read_to_string(&path)?;
+        let module = tapa_rtl::VerilogModule::parse(&body)
+            .map_err(|e| LoweringError::MissingLeafRtl(format!("{}: {e}", path.display())))?;
         state
             .attach_module(name, module)
             .map_err(|e| LoweringError::MissingLeafRtl(format!("{name}: {e}")))?;
@@ -516,14 +644,13 @@ pub fn build_project_from_paths(
         let fsm_path = rtl_dir.join(format!("{task_name}_fsm.v"));
         let body = std::fs::read_to_string(&fsm_path)
             .map_err(|_| LoweringError::MissingFsmRtl(fsm_path.display().to_string()))?;
-        let module = tapa_rtl::VerilogModule::parse(&body).map_err(|e| {
-            LoweringError::MissingFsmRtl(format!("{}: {e}", fsm_path.display()))
-        })?;
+        let module = tapa_rtl::VerilogModule::parse(&body)
+            .map_err(|e| LoweringError::MissingFsmRtl(format!("{}: {e}", fsm_path.display())))?;
+        let mut fsm_module = tapa_rtl::mutation::MutableModule::from_parsed(module);
+        promote_procedural_output_ports(&mut fsm_module, &body);
         // Drop any stub that was already attached so the real RTL wins.
         state.fsm_modules.remove(task_name);
-        state
-            .fsm_modules
-            .insert(task_name.clone(), tapa_rtl::mutation::MutableModule::from_parsed(module));
+        state.fsm_modules.insert(task_name.clone(), fsm_module);
     }
 
     // Read the config inputs using the bundled paths. `?` propagates both
@@ -554,13 +681,33 @@ pub fn build_project_from_paths(
     )
 }
 
+fn promote_procedural_output_ports(module: &mut tapa_rtl::mutation::MutableModule, body: &str) {
+    for port in module.effective_ports() {
+        if port.direction == tapa_rtl::port::Direction::Output
+            && contains_nonblocking_assignment_to(body, &port.name)
+        {
+            module.ensure_signal_kind(&port.name, tapa_rtl::signal::SignalKind::Reg);
+        }
+    }
+}
+
+fn contains_nonblocking_assignment_to(body: &str, name: &str) -> bool {
+    body.match_indices(name).any(|(idx, _)| {
+        let before = body[..idx].chars().next_back();
+        let after = body[idx + name.len()..].trim_start();
+        is_verilog_boundary(before) && after.starts_with("<=")
+    })
+}
+
+fn is_verilog_boundary(ch: Option<char>) -> bool {
+    ch.is_none_or(|c| !(c.is_ascii_alphanumeric() || c == '_' || c == '$'))
+}
+
 /// Derive slot → instance mapping from the pre-baked slot-task hierarchy in
 /// the program. Slot module names are the slot task names themselves (e.g.,
 /// `SLOT_X0Y2_SLOT_X0Y2`), and each slot's instances come from its child
 /// task definitions. Matches Python's `_build_program` convention.
-fn slot_to_instances_from_topology(
-    program: &Program,
-) -> BTreeMap<String, Vec<String>> {
+fn slot_to_instances_from_topology(program: &Program) -> BTreeMap<String, Vec<String>> {
     let mut out: BTreeMap<String, Vec<String>> = BTreeMap::new();
     let Some(region_map) = program.slot_task_name_to_fp_region.as_ref() else {
         return out;
@@ -573,7 +720,9 @@ fn slot_to_instances_from_topology(
             .tasks
             .iter()
             .flat_map(|(child_task_name, insts)| {
-                (0..insts.len()).map(move |idx| format!("{child_task_name}_{idx}"))
+                insts.iter().enumerate().map(move |(idx, inst)| {
+                    crate::instantiation_builder::instance_name(child_task_name, idx, inst)
+                })
             })
             .collect();
         instances.sort();
@@ -819,6 +968,7 @@ fn build_slot_module(
     ];
     let mut submodules = Vec::new();
     let mut wires = Vec::new();
+    let mut direct_assigns = Vec::new();
 
     // Python's slot grouped modules do not contain a reset_inverter
     // instance; the reset_inverter is a top-level instance only. Keep the
@@ -848,10 +998,9 @@ fn build_slot_module(
             }
 
             // Collect child RTL port names for MMAP filtering
-            let child_rtl_ports: Option<std::collections::HashSet<String>> =
-                leaf_modules.get(&task_name).map(|def| {
-                    def.ports().iter().map(|p| p.name.clone()).collect()
-                });
+            let child_rtl_ports: Option<std::collections::HashSet<String>> = leaf_modules
+                .get(&task_name)
+                .map(|def| def.ports().iter().map(|p| p.name.clone()).collect());
 
             // Find the instance's args in the SLOT task, using the
             // slot-local arg table for pipeline routing. Mirrors Python's
@@ -861,7 +1010,8 @@ fn build_slot_module(
             let mut arg_connections = Vec::new();
             if let Some(instances) = slot_task_ref.tasks.get(&task_name) {
                 for (idx, inst) in instances.iter().enumerate() {
-                    let expected_name = format!("{task_name}_{idx}");
+                    let expected_name =
+                        crate::instantiation_builder::instance_name(&task_name, idx, inst);
                     if expected_name == *inst_name {
                         for (port_name, arg) in &inst.args {
                             // Connect child port through the slot-local arg
@@ -883,11 +1033,10 @@ fn build_slot_module(
                             arg_connections.extend(slot_conns);
 
                             // Expose slot ports using the PARENT-VISIBLE arg name
-                            if matches!(
-                                arg.cat,
-                                tapa_task_graph::port::ArgCategory::Scalar
-                            ) {
-                                let width = task.ports.iter()
+                            if matches!(arg.cat, tapa_task_graph::port::ArgCategory::Scalar) {
+                                let width = task
+                                    .ports
+                                    .iter()
                                     .find(|p| p.name == *port_name)
                                     .map_or(32, |p| p.width);
                                 let port_def = input_wire(&arg.arg, port_range(width));
@@ -916,10 +1065,23 @@ fn build_slot_module(
                 if matches!(
                     port.cat,
                     tapa_task_graph::port::ArgCategory::Mmap
-                    | tapa_task_graph::port::ArgCategory::AsyncMmap
-                    | tapa_task_graph::port::ArgCategory::Immap
-                    | tapa_task_graph::port::ArgCategory::Ommap
+                        | tapa_task_graph::port::ArgCategory::AsyncMmap
+                        | tapa_task_graph::port::ArgCategory::Immap
+                        | tapa_task_graph::port::ArgCategory::Ommap
                 ) {
+                    if port.cat == tapa_task_graph::port::ArgCategory::AsyncMmap {
+                        // Async mmap leaves expose FIFO-style channels to the
+                        // generated async_mmap bridge, but the slot boundary
+                        // must expose the bridge's parent-facing M-AXI ports.
+                        for expanded in
+                            crate::utils::expand_port_to_signals(&arg_name, port.cat, port.width)
+                        {
+                            if !ports.iter().any(|p: &ModulePort| p.name == expanded.name) {
+                                ports.push(expanded);
+                            }
+                        }
+                        continue;
+                    }
                     // For MMAP: filter AXI channels against child RTL ports
                     if let Some(ref known) = child_rtl_ports {
                         // Offset port always present
@@ -939,8 +1101,11 @@ fn build_slot_module(
                             let slot_port = crate::utils::m_axi_port_name(&arg_name, suffix);
                             if !ports.iter().any(|p: &ModulePort| p.name == slot_port) {
                                 // Slot port direction matches child RTL port direction.
-                                let is_child_output = leaf_modules.get(&task_name)
-                                    .and_then(|def| def.ports().iter().find(|p| p.name == child_port))
+                                let is_child_output = leaf_modules
+                                    .get(&task_name)
+                                    .and_then(|def| {
+                                        def.ports().iter().find(|p| p.name == child_port)
+                                    })
                                     .is_some_and(ModulePort::is_output);
                                 let port = if is_child_output {
                                     crate::utils::output_wire(&slot_port, None)
@@ -954,7 +1119,9 @@ fn build_slot_module(
                     }
                 }
                 // For streams (and MMAP without RTL info): use static expansion
-                for expanded in crate::utils::expand_port_to_signals(&arg_name, port.cat, port.width) {
+                for expanded in
+                    crate::utils::expand_port_to_signals(&arg_name, port.cat, port.width)
+                {
                     if !ports.iter().any(|p: &ModulePort| p.name == expanded.name) {
                         ports.push(expanded);
                     }
@@ -1002,6 +1169,11 @@ fn build_slot_module(
             pragmas: Vec::new(),
             extra: BTreeMap::default(),
         });
+        direct_assigns.extend(build_arg_pipeline_assigns(
+            slot_task_ref,
+            fsm_def,
+            &slot_arg_table,
+        ));
     }
 
     // Add FIFO instances for FIFOs whose producer and consumer both live
@@ -1015,6 +1187,13 @@ fn build_slot_module(
             if fifo.produced_by.is_none() || fifo.consumed_by.is_none() {
                 continue;
             }
+            let data_range = crate::upper_wires::infer_fifo_data_range(
+                fifo_name,
+                fifo,
+                slot_task,
+                leaf_modules,
+                false,
+            );
             // Ensure wire declarations for the FIFO data/handshake signals
             // so the exporter's DRC finds every identifier referenced by
             // the FIFO instance's connection list.
@@ -1023,19 +1202,15 @@ fn build_slot_module(
                 if !ports.iter().any(|p| p.name == wire_name)
                     && !wires.iter().any(|w| w.name == wire_name)
                 {
-                    wires.push(make_wire(&wire_name, None));
+                    wires.push(make_wire(
+                        &wire_name,
+                        fifo_wire_range(suffix, data_range.as_ref()),
+                    ));
                 }
             }
             let depth = fifo.depth.unwrap_or(32);
             // Producer is a child leaf; look up the _din range on the
             // child RTL via get_port_of normalization.
-            let data_range = crate::upper_wires::infer_fifo_data_range(
-                fifo_name,
-                fifo,
-                slot_task,
-                leaf_modules,
-                false,
-            );
             submodules.push(build_fifo_instance(
                 fifo_name,
                 data_range.as_ref(),
@@ -1046,19 +1221,16 @@ fn build_slot_module(
         }
     }
 
-    AnyModuleDefinition::new_grouped(
-        slot_name.to_owned(),
-        ports,
-        submodules,
-        wires,
-    )
+    let mut module =
+        AnyModuleDefinition::new_grouped(slot_name.to_owned(), ports, submodules, wires);
+    attach_grouped_assigns(&mut module, direct_assigns);
+    module
 }
 
 /// S-AXI control port names (AXI-Lite interface to host).
 const S_AXI_CTRL_PORTS: &[&str] = &[
-    "AWVALID", "AWREADY", "AWADDR", "WVALID", "WREADY", "WDATA", "WSTRB",
-    "ARVALID", "ARREADY", "ARADDR", "RVALID", "RREADY", "RDATA", "RRESP",
-    "BVALID", "BREADY", "BRESP",
+    "AWVALID", "AWREADY", "AWADDR", "WVALID", "WREADY", "WDATA", "WSTRB", "ARVALID", "ARREADY",
+    "ARADDR", "RVALID", "RREADY", "RDATA", "RRESP", "BVALID", "BREADY", "BRESP",
 ];
 
 /// Returns true if the named AXI-Lite control port is an input on the
@@ -1067,8 +1239,15 @@ const S_AXI_CTRL_PORTS: &[&str] = &[
 fn is_s_axi_slave_input(axi_port: &str) -> bool {
     matches!(
         axi_port,
-        "AWVALID" | "AWADDR" | "WVALID" | "WDATA" | "WSTRB"
-        | "ARVALID" | "ARADDR" | "BREADY" | "RREADY"
+        "AWVALID"
+            | "AWADDR"
+            | "WVALID"
+            | "WDATA"
+            | "WSTRB"
+            | "ARVALID"
+            | "ARADDR"
+            | "BREADY"
+            | "RREADY"
     )
 }
 
@@ -1095,7 +1274,10 @@ fn ctrl_s_axi_port_expr(port_name: &str) -> Expression {
 
 /// Build the top-level module definition with slot instances, FSM, and `ctrl_s_axi`.
 #[allow(clippy::too_many_lines, reason = "sequential top-module assembly")]
-#[allow(clippy::too_many_arguments, reason = "top-module assembly orchestrator")]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "top-module assembly orchestrator"
+)]
 fn build_top_module(
     program: &Program,
     top: &tapa_topology::task::TaskDesign,
@@ -1114,10 +1296,7 @@ fn build_top_module(
         .slot_task_name_to_fp_region
         .as_ref()
         .and_then(|m| m.values().next().cloned());
-    let mut ports = vec![
-        input_wire("ap_clk", None),
-        input_wire("ap_rst_n", None),
-    ];
+    let mut ports = vec![input_wire("ap_clk", None), input_wire("ap_rst_n", None)];
 
     // Add s_axi_control_* ports (AXI-Lite slave interface) if ctrl_s_axi is
     // present. Directions match the ctrl_s_axi module's own port list:
@@ -1159,6 +1338,8 @@ fn build_top_module(
         make_wire("ap_ready", None),
         make_wire("interrupt", None),
     ];
+    let top_arg_table = crate::instantiation_builder::build_arg_table(top);
+    let mut direct_assigns = Vec::new();
 
     // FSM instance — self-connect every port in the FSM module definition
     // the way Python's `_make_fsm_inst` does (each port expression is just
@@ -1176,16 +1357,19 @@ fn build_top_module(
                     wires.push(make_wire(name, p.range.clone()));
                 }
             }
+            direct_assigns.extend(build_arg_pipeline_assigns(top, fsm_def, &top_arg_table));
             fsm_def
                 .ports()
                 .iter()
                 .map(|p| crate::utils::make_connection(&p.name, Expression::new_id(&p.name)))
                 .collect()
         } else {
-            ["ap_clk", "ap_rst_n", "ap_start", "ap_done", "ap_idle", "ap_ready"]
-                .iter()
-                .map(|&name| crate::utils::make_connection(name, Expression::new_id(name)))
-                .collect()
+            [
+                "ap_clk", "ap_rst_n", "ap_start", "ap_done", "ap_idle", "ap_ready",
+            ]
+            .iter()
+            .map(|&name| crate::utils::make_connection(name, Expression::new_id(name)))
+            .collect()
         };
     submodules.push(tapa_graphir::ModuleInstantiation {
         name: format!("{fsm_name}_0"),
@@ -1221,10 +1405,14 @@ fn build_top_module(
             use tapa_task_graph::port::ArgCategory;
             let ctrl_port_name = match port.cat {
                 ArgCategory::Scalar => port.name.clone(),
-                ArgCategory::Mmap | ArgCategory::AsyncMmap
-                | ArgCategory::Immap | ArgCategory::Ommap => format!("{}_offset", port.name),
-                ArgCategory::Istream | ArgCategory::Ostream
-                | ArgCategory::Istreams | ArgCategory::Ostreams => continue,
+                ArgCategory::Mmap
+                | ArgCategory::AsyncMmap
+                | ArgCategory::Immap
+                | ArgCategory::Ommap => format!("{}_offset", port.name),
+                ArgCategory::Istream
+                | ArgCategory::Ostream
+                | ArgCategory::Istreams
+                | ArgCategory::Ostreams => continue,
             };
             ctrl_connections.push(crate::utils::make_connection(
                 &ctrl_port_name,
@@ -1273,7 +1461,7 @@ fn build_top_module(
             module: format!("{}_control_s_axi", program.top),
             connections: ctrl_connections,
             parameters: ctrl_parameters,
-            floorplan_region: default_region,
+            floorplan_region: default_region.clone(),
             area: None,
             pragmas: Vec::new(),
             extra: BTreeMap::default(),
@@ -1288,12 +1476,18 @@ fn build_top_module(
     // queue-tail wires (`{slot_inst}___{arg}[_offset]__q0`), streams
     // through the slot's own boundary port names, and mmap AXI channels
     // through the parent-visible `m_axi_{arg}_*` wire names.
-    let top_arg_table = crate::instantiation_builder::build_arg_table(top);
     for slot_name in slot_to_instances.keys() {
         let slot_def = slot_defs.iter().find(|d| d.name() == slot_name);
-        let slot_port_names: Option<std::collections::HashSet<String>> = slot_def
-            .map(|d| d.ports().iter().map(|p| p.name.clone()).collect());
-        let slot_inst_name = format!("{slot_name}_0");
+        let slot_port_names: Option<std::collections::HashSet<String>> =
+            slot_def.map(|d| d.ports().iter().map(|p| p.name.clone()).collect());
+        let slot_inst_name = top
+            .tasks
+            .get(slot_name)
+            .and_then(|v| v.first())
+            .map_or_else(
+                || format!("{slot_name}_0"),
+                |inst| crate::instantiation_builder::instance_name(slot_name, 0, inst),
+            );
 
         // Find the SLOT's args in the top task. Slot tasks are
         // instantiated under top.tasks[slot_name] with a single instance
@@ -1360,62 +1554,67 @@ fn build_top_module(
     // `get_top_ir_subinsts` adds one `fifo` instance per such FIFO,
     // assigned to the consumer's slot region. Matching Python here closes
     // the submodule-count parity gap on the shared fixture.
-    if let Some(region_map) = program.slot_task_name_to_fp_region.as_ref() {
-        for (fifo_name, fifo) in &top.fifos {
-            let consumer_slot = fifo.consumed_by.as_ref().map(|e| &e.0);
-            let producer_slot = fifo.produced_by.as_ref().map(|e| &e.0);
-            let cross_slot = matches!(
-                (consumer_slot, producer_slot),
-                (Some(c), Some(p)) if c != p
-            );
-            if !cross_slot {
-                continue;
-            }
-            // Ensure the top module declares the data/handshake wires
-            // every cross-slot FIFO needs for its connections. Without
-            // these the exporter's DRC fails because the FIFO instance
-            // references undeclared identifiers.
-            for suffix in ["_din", "_dout", "_empty_n", "_full_n", "_read", "_write"] {
-                let wire_name = format!("{fifo_name}{suffix}");
-                if !ports.iter().any(|p| p.name == wire_name)
-                    && !wires.iter().any(|w| w.name == wire_name)
-                {
-                    wires.push(make_wire(&wire_name, None));
-                }
-            }
-            let depth = fifo.depth.unwrap_or(32);
-            // Cross-slot FIFO: drill into the producer slot's child leaf
-            // RTL to get the `_din` port range (Python looks up the
-            // slot-def port, but at this point the slot defs have not
-            // yet been rewritten with Python-equivalent ports).
-            let data_range = crate::upper_wires::infer_top_fifo_data_range_via_leaf(
-                fifo_name,
-                fifo,
-                program,
-                leaf_modules,
-            );
-            // Region: use the consumer's slot region (matches Python's
-            // `floorplan_task_name_region_mapping[fifo['consumed_by'][0]]`).
-            let fifo_region = consumer_slot
-                .and_then(|c| region_map.get(c).cloned())
-                .or_else(|| region_map.values().next().cloned());
-            let fifo_inst = build_fifo_instance(
-                fifo_name,
-                data_range.as_ref(),
-                depth,
-                fifo_region.as_deref(),
-                true,
-            );
-            submodules.push(fifo_inst);
+    let region_map = program.slot_task_name_to_fp_region.as_ref();
+    for (fifo_name, fifo) in &top.fifos {
+        let consumer_slot = fifo.consumed_by.as_ref().map(|e| &e.0);
+        let producer_slot = fifo.produced_by.as_ref().map(|e| &e.0);
+        let cross_slot = matches!(
+            (consumer_slot, producer_slot),
+            (Some(c), Some(p)) if c != p
+        );
+        if !cross_slot {
+            continue;
         }
+        // Cross-slot FIFO: drill into the producer slot's child leaf
+        // RTL to get the `_din` port range (Python looks up the
+        // slot-def port, but at this point the slot defs have not
+        // yet been rewritten with Python-equivalent ports).
+        let data_range = crate::upper_wires::infer_top_fifo_data_range_via_leaf(
+            fifo_name,
+            fifo,
+            program,
+            leaf_modules,
+        );
+        // Ensure the top module declares the data/handshake wires
+        // every cross-slot FIFO needs for its connections. Without
+        // these the exporter's DRC fails because the FIFO instance
+        // references undeclared identifiers.
+        for suffix in ["_din", "_dout", "_empty_n", "_full_n", "_read", "_write"] {
+            let wire_name = format!("{fifo_name}{suffix}");
+            if !ports.iter().any(|p| p.name == wire_name)
+                && !wires.iter().any(|w| w.name == wire_name)
+            {
+                wires.push(make_wire(
+                    &wire_name,
+                    fifo_wire_range(suffix, data_range.as_ref()),
+                ));
+            }
+        }
+        let depth = fifo.depth.unwrap_or(32);
+        // Region: prefer the consumer's explicit slot region; if the
+        // floorplanned topology carries slot endpoints but no region map,
+        // use the consumer slot name as a stable fallback.
+        let fifo_region = consumer_slot
+            .and_then(|c| {
+                region_map
+                    .and_then(|m| m.get(c).cloned())
+                    .or_else(|| Some(c.clone()))
+            })
+            .or_else(|| default_region.clone());
+        let fifo_inst = build_fifo_instance(
+            fifo_name,
+            data_range.as_ref(),
+            depth,
+            fifo_region.as_deref(),
+            true,
+        );
+        submodules.push(fifo_inst);
     }
 
-    AnyModuleDefinition::new_grouped(
-        program.top.clone(),
-        ports,
-        submodules,
-        wires,
-    )
+    let mut module =
+        AnyModuleDefinition::new_grouped(program.top.clone(), ports, submodules, wires);
+    attach_grouped_assigns(&mut module, direct_assigns);
+    module
 }
 
 /// Find the parent-visible arg name for a child port in a given task.
@@ -1427,7 +1626,7 @@ fn find_arg_name_in_task(
 ) -> Option<String> {
     let instances = parent.tasks.get(task_name)?;
     for (idx, inst) in instances.iter().enumerate() {
-        if format!("{task_name}_{idx}") == inst_name {
+        if crate::instantiation_builder::instance_name(task_name, idx, inst) == inst_name {
             for (child_port, arg) in &inst.args {
                 if child_port == port_name {
                     return Some(arg.arg.clone());
@@ -1455,6 +1654,102 @@ fn find_grouped_mut<'a>(
     None
 }
 
+fn attach_grouped_assigns(module: &mut AnyModuleDefinition, assigns: Vec<(String, String)>) {
+    if assigns.is_empty() {
+        return;
+    }
+    let value = serde_json::Value::Array(
+        assigns
+            .into_iter()
+            .map(|(lhs, rhs)| serde_json::json!({ "lhs": lhs, "rhs": rhs }))
+            .collect(),
+    );
+    if let AnyModuleDefinition::Grouped { extra, .. } = module {
+        extra.insert("assigns".to_owned(), value);
+    }
+}
+
+fn build_arg_pipeline_assigns(
+    upper_task: &tapa_topology::task::TaskDesign,
+    fsm_def: &AnyModuleDefinition,
+    arg_table: &ArgTable,
+) -> Vec<(String, String)> {
+    let fsm_ports: BTreeSet<&str> = fsm_def.ports().iter().map(|p| p.name.as_str()).collect();
+    let mut assigns = Vec::new();
+
+    for (child_task_name, insts) in &upper_task.tasks {
+        for (idx, inst) in insts.iter().enumerate() {
+            let inst_name = crate::instantiation_builder::instance_name(child_task_name, idx, inst);
+            let Some(inst_arg_table) = arg_table.get(&inst_name) else {
+                continue;
+            };
+
+            for (port_name, arg) in &inst.args {
+                let (fsm_in, fsm_out, source) = match arg.cat {
+                    tapa_task_graph::port::ArgCategory::Scalar => (
+                        format!("{inst_name}__{port_name}_in"),
+                        format!("{inst_name}__{port_name}"),
+                        scalar_or_literal_source(&arg.arg),
+                    ),
+                    tapa_task_graph::port::ArgCategory::Mmap
+                    | tapa_task_graph::port::ArgCategory::AsyncMmap
+                    | tapa_task_graph::port::ArgCategory::Immap
+                    | tapa_task_graph::port::ArgCategory::Ommap => (
+                        format!("{inst_name}__{port_name}_offset_in"),
+                        format!("{inst_name}__{port_name}_offset"),
+                        mmap_offset_source(upper_task, &arg.arg),
+                    ),
+                    tapa_task_graph::port::ArgCategory::Istream
+                    | tapa_task_graph::port::ArgCategory::Ostream
+                    | tapa_task_graph::port::ArgCategory::Istreams
+                    | tapa_task_graph::port::ArgCategory::Ostreams => continue,
+                };
+
+                if !fsm_ports.contains(fsm_in.as_str()) || !fsm_ports.contains(fsm_out.as_str()) {
+                    continue;
+                }
+                let Some(queue_tail) = inst_arg_table.get(&arg.arg) else {
+                    continue;
+                };
+                assigns.push((fsm_in, source));
+                assigns.push((queue_tail.clone(), fsm_out));
+            }
+        }
+    }
+
+    assigns
+}
+
+fn scalar_or_literal_source(name: &str) -> String {
+    if crate::instantiation_builder::is_literal_arg(name) {
+        name.to_owned()
+    } else {
+        tapa_rtl::module::sanitize_array_name(name)
+    }
+}
+
+fn mmap_offset_source(upper_task: &tapa_topology::task::TaskDesign, arg_name: &str) -> String {
+    let sanitized = tapa_rtl::module::sanitize_array_name(arg_name);
+    let chan_count = upper_task
+        .ports
+        .iter()
+        .find(|p| p.name == arg_name)
+        .and_then(|p| p.chan_count);
+    if matches!(chan_count, Some(count) if count > 1) {
+        format!("{sanitized}_0_offset")
+    } else {
+        format!("{sanitized}_offset")
+    }
+}
+
+fn fifo_wire_range(suffix: &str, data_range: Option<&Range>) -> Option<Range> {
+    if matches!(suffix, "_din" | "_dout") {
+        data_range.cloned()
+    } else {
+        None
+    }
+}
+
 /// Parse `taskname_idx` into `(task_name, idx)`.
 fn parse_instance_name(name: &str) -> (String, u32) {
     if let Some(last_underscore) = name.rfind('_') {
@@ -1479,7 +1774,10 @@ fn port_range(width: u32) -> Option<tapa_graphir::Range> {
 /// Python-equivalent interface assembly: dedicated builders for FIFO,
 /// `reset_inverter`, FSM, `ctrl_s_axi`, slot/top tasks. Each builder
 /// produces the correct interface types with valid/ready ports.
-#[allow(clippy::too_many_lines, reason = "sequential interface assembly per module type")]
+#[allow(
+    clippy::too_many_lines,
+    reason = "sequential interface assembly per module type"
+)]
 fn build_interfaces(
     module_defs: &[AnyModuleDefinition],
     program: &Program,
@@ -1488,8 +1786,12 @@ fn build_interfaces(
     use tapa_graphir::interface::InterfaceBase;
     let mut ifaces = BTreeMap::new();
 
-    let make_hs = |ports: Vec<String>, clk: Option<&str>, rst: Option<&str>,
-                   valid: &str, ready: &str| -> AnyInterface {
+    let make_hs = |ports: Vec<String>,
+                   clk: Option<&str>,
+                   rst: Option<&str>,
+                   valid: &str,
+                   ready: &str|
+     -> AnyInterface {
         AnyInterface::HandShake {
             base: InterfaceBase {
                 clk_port: clk.map(str::to_owned),
@@ -1515,41 +1817,67 @@ fn build_interfaces(
             vec![
                 AnyInterface::Clock {
                     base: InterfaceBase {
-                        clk_port: None, rst_port: None,
+                        clk_port: None,
+                        rst_port: None,
                         ports: vec!["clk".into()],
-                        role: String::new(), origin_info: String::new(),
+                        role: String::new(),
+                        origin_info: String::new(),
                     },
                     extra: BTreeMap::default(),
                 },
                 AnyInterface::FeedForwardReset {
                     base: InterfaceBase {
-                        clk_port: Some("clk".into()), rst_port: None,
+                        clk_port: Some("clk".into()),
+                        rst_port: None,
                         ports: vec!["clk".into(), "reset".into()],
-                        role: String::new(), origin_info: String::new(),
+                        role: String::new(),
+                        origin_info: String::new(),
                     },
                     extra: BTreeMap::default(),
                 },
                 make_hs(
-                    vec!["if_din".into(), "if_full_n".into(), "if_write".into(), "clk".into(), "reset".into()],
-                    Some("clk"), Some("reset"), "if_write", "if_full_n",
+                    vec![
+                        "if_din".into(),
+                        "if_full_n".into(),
+                        "if_write".into(),
+                        "clk".into(),
+                        "reset".into(),
+                    ],
+                    Some("clk"),
+                    Some("reset"),
+                    "if_write",
+                    "if_full_n",
                 ),
                 make_hs(
-                    vec!["if_dout".into(), "if_empty_n".into(), "if_read".into(), "clk".into(), "reset".into()],
-                    Some("clk"), Some("reset"), "if_empty_n", "if_read",
+                    vec![
+                        "if_dout".into(),
+                        "if_empty_n".into(),
+                        "if_read".into(),
+                        "clk".into(),
+                        "reset".into(),
+                    ],
+                    Some("clk"),
+                    Some("reset"),
+                    "if_empty_n",
+                    "if_read",
                 ),
                 AnyInterface::FalsePath {
                     base: InterfaceBase {
-                        clk_port: None, rst_port: None,
+                        clk_port: None,
+                        rst_port: None,
                         ports: vec!["if_read_ce".into()],
-                        role: String::new(), origin_info: String::new(),
+                        role: String::new(),
+                        origin_info: String::new(),
                     },
                     extra: BTreeMap::default(),
                 },
                 AnyInterface::FalsePath {
                     base: InterfaceBase {
-                        clk_port: None, rst_port: None,
+                        clk_port: None,
+                        rst_port: None,
                         ports: vec!["if_write_ce".into()],
-                        role: String::new(), origin_info: String::new(),
+                        role: String::new(),
+                        origin_info: String::new(),
                     },
                     extra: BTreeMap::default(),
                 },
@@ -1559,25 +1887,31 @@ fn build_interfaces(
             vec![
                 AnyInterface::Clock {
                     base: InterfaceBase {
-                        clk_port: None, rst_port: None,
+                        clk_port: None,
+                        rst_port: None,
                         ports: vec!["clk".into()],
-                        role: String::new(), origin_info: String::new(),
+                        role: String::new(),
+                        origin_info: String::new(),
                     },
                     extra: BTreeMap::default(),
                 },
                 AnyInterface::FeedForwardReset {
                     base: InterfaceBase {
-                        clk_port: Some("clk".into()), rst_port: None,
+                        clk_port: Some("clk".into()),
+                        rst_port: None,
                         ports: vec!["clk".into(), "rst_n".into()],
-                        role: String::new(), origin_info: String::new(),
+                        role: String::new(),
+                        origin_info: String::new(),
                     },
                     extra: BTreeMap::default(),
                 },
                 AnyInterface::FeedForwardReset {
                     base: InterfaceBase {
-                        clk_port: Some("clk".into()), rst_port: None,
+                        clk_port: Some("clk".into()),
+                        rst_port: None,
                         ports: vec!["clk".into(), "rst".into()],
-                        role: String::new(), origin_info: String::new(),
+                        role: String::new(),
+                        origin_info: String::new(),
                     },
                     extra: BTreeMap::default(),
                 },
@@ -1587,25 +1921,31 @@ fn build_interfaces(
             let mut ci = vec![
                 AnyInterface::Clock {
                     base: InterfaceBase {
-                        clk_port: None, rst_port: None,
+                        clk_port: None,
+                        rst_port: None,
                         ports: vec!["ACLK".into()],
-                        role: String::new(), origin_info: String::new(),
+                        role: String::new(),
+                        origin_info: String::new(),
                     },
                     extra: BTreeMap::default(),
                 },
                 AnyInterface::FeedForwardReset {
                     base: InterfaceBase {
-                        clk_port: Some("ACLK".into()), rst_port: None,
+                        clk_port: Some("ACLK".into()),
+                        rst_port: None,
                         ports: vec!["ACLK".into(), "ARESET".into()],
-                        role: String::new(), origin_info: String::new(),
+                        role: String::new(),
+                        origin_info: String::new(),
                     },
                     extra: BTreeMap::default(),
                 },
                 AnyInterface::FalsePath {
                     base: InterfaceBase {
-                        clk_port: None, rst_port: None,
+                        clk_port: None,
+                        rst_port: None,
                         ports: vec!["ACLK_EN".into()],
-                        role: String::new(), origin_info: String::new(),
+                        role: String::new(),
+                        origin_info: String::new(),
                     },
                     extra: BTreeMap::default(),
                 },
@@ -1615,33 +1955,56 @@ fn build_interfaces(
                 (vec!["ARADDR", "ARREADY", "ARVALID"], "ARVALID", "ARREADY"),
                 (vec!["AWADDR", "AWREADY", "AWVALID"], "AWVALID", "AWREADY"),
                 (vec!["BREADY", "BRESP", "BVALID"], "BVALID", "BREADY"),
-                (vec!["RDATA", "RREADY", "RRESP", "RVALID"], "RVALID", "RREADY"),
-                (vec!["WDATA", "WREADY", "WSTRB", "WVALID"], "WVALID", "WREADY"),
+                (
+                    vec!["RDATA", "RREADY", "RRESP", "RVALID"],
+                    "RVALID",
+                    "RREADY",
+                ),
+                (
+                    vec!["WDATA", "WREADY", "WSTRB", "WVALID"],
+                    "WVALID",
+                    "WREADY",
+                ),
             ] {
                 ci.push(make_hs(
                     ports_list.iter().map(|&s| s.to_owned()).collect(),
-                    Some("ACLK"), Some("ARESET"), valid, ready,
+                    Some("ACLK"),
+                    Some("ARESET"),
+                    valid,
+                    ready,
                 ));
             }
             ci.push(AnyInterface::FeedForward {
                 base: InterfaceBase {
-                    clk_port: Some("ACLK".into()), rst_port: Some("ARESET".into()),
+                    clk_port: Some("ACLK".into()),
+                    rst_port: Some("ARESET".into()),
                     ports: vec!["ACLK".into(), "ARESET".into(), "interrupt".into()],
-                    role: String::new(), origin_info: String::new(),
+                    role: String::new(),
+                    origin_info: String::new(),
                 },
                 extra: BTreeMap::default(),
             });
             // ApCtrl with scalar ports + control
-            let mut ap_ports: Vec<String> = def.ports().iter()
+            let mut ap_ports: Vec<String> = def
+                .ports()
+                .iter()
                 .map(|p| p.name.clone())
                 .filter(|n| !CTRL_S_AXI_FIXED_PORTS.contains(&n.as_str()))
                 .collect();
-            ap_ports.extend(["ACLK", "ARESET", "ap_start", "ap_done", "ap_ready", "ap_idle"]
-                .iter().map(|&s| s.to_owned()));
+            ap_ports.extend(
+                [
+                    "ACLK", "ARESET", "ap_start", "ap_done", "ap_ready", "ap_idle",
+                ]
+                .iter()
+                .map(|&s| s.to_owned()),
+            );
             ci.push(AnyInterface::ApCtrl {
                 base: InterfaceBase {
-                    clk_port: Some("ACLK".into()), rst_port: Some("ARESET".into()),
-                    ports: ap_ports, role: String::new(), origin_info: String::new(),
+                    clk_port: Some("ACLK".into()),
+                    rst_port: Some("ARESET".into()),
+                    ports: ap_ports,
+                    role: String::new(),
+                    origin_info: String::new(),
                 },
                 ap_start_port: Some("ap_start".into()),
                 ap_done_port: Some("ap_done".into()),
@@ -1662,8 +2025,16 @@ fn build_interfaces(
                     (&["ARADDR", "ARREADY", "ARVALID"][..], "ARVALID", "ARREADY"),
                     (&["AWADDR", "AWREADY", "AWVALID"][..], "AWVALID", "AWREADY"),
                     (&["BREADY", "BRESP", "BVALID"][..], "BVALID", "BREADY"),
-                    (&["RDATA", "RREADY", "RRESP", "RVALID"][..], "RVALID", "RREADY"),
-                    (&["WDATA", "WREADY", "WSTRB", "WVALID"][..], "WVALID", "WREADY"),
+                    (
+                        &["RDATA", "RREADY", "RRESP", "RVALID"][..],
+                        "RVALID",
+                        "RREADY",
+                    ),
+                    (
+                        &["WDATA", "WREADY", "WSTRB", "WVALID"][..],
+                        "WVALID",
+                        "WREADY",
+                    ),
                 ] {
                     let mut ports: Vec<String> = channel
                         .iter()
@@ -1687,12 +2058,20 @@ fn build_interfaces(
             build_task_port_ifaces_with_scalars(def, &port_names, &mut si, &mut scalars);
             // Python: get_slot_task_ifaces(scalars)
             let mut ap_ports = scalars;
-            ap_ports.extend(["ap_clk", "ap_rst_n", "ap_start", "ap_done", "ap_ready", "ap_idle"]
-                .iter().map(|&s| s.to_owned()));
+            ap_ports.extend(
+                [
+                    "ap_clk", "ap_rst_n", "ap_start", "ap_done", "ap_ready", "ap_idle",
+                ]
+                .iter()
+                .map(|&s| s.to_owned()),
+            );
             si.push(AnyInterface::ApCtrl {
                 base: InterfaceBase {
-                    clk_port: Some("ap_clk".into()), rst_port: Some("ap_rst_n".into()),
-                    ports: ap_ports, role: String::new(), origin_info: String::new(),
+                    clk_port: Some("ap_clk".into()),
+                    rst_port: Some("ap_rst_n".into()),
+                    ports: ap_ports,
+                    role: String::new(),
+                    origin_info: String::new(),
                 },
                 ap_start_port: Some("ap_start".into()),
                 ap_done_port: Some("ap_done".into()),
@@ -1703,17 +2082,21 @@ fn build_interfaces(
             });
             si.push(AnyInterface::Clock {
                 base: InterfaceBase {
-                    clk_port: None, rst_port: None,
+                    clk_port: None,
+                    rst_port: None,
                     ports: vec!["ap_clk".into()],
-                    role: String::new(), origin_info: String::new(),
+                    role: String::new(),
+                    origin_info: String::new(),
                 },
                 extra: BTreeMap::default(),
             });
             si.push(AnyInterface::FeedForwardReset {
                 base: InterfaceBase {
-                    clk_port: Some("ap_clk".into()), rst_port: None,
+                    clk_port: Some("ap_clk".into()),
+                    rst_port: None,
                     ports: vec!["ap_clk".into(), "ap_rst_n".into()],
-                    role: String::new(), origin_info: String::new(),
+                    role: String::new(),
+                    origin_info: String::new(),
                 },
                 extra: BTreeMap::default(),
             });
@@ -1779,9 +2162,11 @@ fn build_interfaces(
                 .collect();
             let mut top_ap_ports = fsm_scalars;
             top_ap_ports.extend(
-                ["ap_clk", "ap_rst_n", "ap_start", "ap_done", "ap_ready", "ap_idle"]
-                    .iter()
-                    .map(|&s| s.to_owned()),
+                [
+                    "ap_clk", "ap_rst_n", "ap_start", "ap_done", "ap_ready", "ap_idle",
+                ]
+                .iter()
+                .map(|&s| s.to_owned()),
             );
             fi.push(AnyInterface::ApCtrl {
                 base: InterfaceBase {
@@ -1814,11 +2199,31 @@ fn build_interfaces(
 
 /// Fixed ports for `ctrl_s_axi` module (excluded from scalar interface).
 const CTRL_S_AXI_FIXED_PORTS: &[&str] = &[
-    "ACLK", "ACLK_EN", "ARESET", "interrupt",
-    "ARADDR", "ARREADY", "ARVALID", "AWADDR", "AWREADY", "AWVALID",
-    "BREADY", "BRESP", "BVALID", "RDATA", "RREADY", "RRESP", "RVALID",
-    "WDATA", "WREADY", "WSTRB", "WVALID",
-    "ap_start", "ap_done", "ap_ready", "ap_idle",
+    "ACLK",
+    "ACLK_EN",
+    "ARESET",
+    "interrupt",
+    "ARADDR",
+    "ARREADY",
+    "ARVALID",
+    "AWADDR",
+    "AWREADY",
+    "AWVALID",
+    "BREADY",
+    "BRESP",
+    "BVALID",
+    "RDATA",
+    "RREADY",
+    "RRESP",
+    "RVALID",
+    "WDATA",
+    "WREADY",
+    "WSTRB",
+    "WVALID",
+    "ap_start",
+    "ap_done",
+    "ap_ready",
+    "ap_idle",
 ];
 
 /// Build stream and MMAP handshake interfaces for a task module's ports.
@@ -1853,9 +2258,11 @@ fn build_task_port_ifaces_with_scalars(
         }
 
         // Detect stream triplets
-        let is_istream = port.name.ends_with("_dout") || port.name.ends_with("_empty_n")
+        let is_istream = port.name.ends_with("_dout")
+            || port.name.ends_with("_empty_n")
             || port.name.ends_with("_read");
-        let is_output_stream = port.name.ends_with("_din") || port.name.ends_with("_full_n")
+        let is_output_stream = port.name.ends_with("_din")
+            || port.name.ends_with("_full_n")
             || port.name.ends_with("_write");
         let is_mmap = port.name.starts_with("m_axi_") || port.name.ends_with("_offset");
 
@@ -1882,8 +2289,11 @@ fn build_task_port_ifaces_with_scalars(
             ps.extend(["ap_clk".into(), "ap_rst_n".into()]);
             ifaces.push(AnyInterface::HandShake {
                 base: InterfaceBase {
-                    clk_port: Some("ap_clk".into()), rst_port: Some("ap_rst_n".into()),
-                    ports: ps, role: String::new(), origin_info: String::new(),
+                    clk_port: Some("ap_clk".into()),
+                    rst_port: Some("ap_rst_n".into()),
+                    ports: ps,
+                    role: String::new(),
+                    origin_info: String::new(),
                 },
                 valid_port: Some(format!("{base}{valid_suffix}")),
                 ready_port: Some(format!("{base}{ready_suffix}")),
@@ -1909,26 +2319,76 @@ fn build_task_port_ifaces_with_scalars(
         scalars.push(format!("{base}_offset"));
         // Per-channel MMAP handshakes
         for (channel_ports, valid_suffix, ready_suffix) in [
-            (&["_ARVALID", "_ARREADY", "_ARADDR", "_ARID", "_ARLEN", "_ARSIZE", "_ARBURST", "_ARLOCK", "_ARCACHE", "_ARPROT", "_ARQOS", "_ARREGION"][..], "_ARVALID", "_ARREADY"),
-            (&["_RVALID", "_RREADY", "_RDATA", "_RLAST", "_RID", "_RRESP"][..], "_RVALID", "_RREADY"),
-            (&["_AWVALID", "_AWREADY", "_AWADDR", "_AWID", "_AWLEN", "_AWSIZE", "_AWBURST", "_AWLOCK", "_AWCACHE", "_AWPROT", "_AWQOS", "_AWREGION"][..], "_AWVALID", "_AWREADY"),
-            (&["_WVALID", "_WREADY", "_WDATA", "_WSTRB", "_WLAST"][..], "_WVALID", "_WREADY"),
-            (&["_BVALID", "_BREADY", "_BID", "_BRESP"][..], "_BVALID", "_BREADY"),
+            (
+                &[
+                    "_ARVALID",
+                    "_ARREADY",
+                    "_ARADDR",
+                    "_ARID",
+                    "_ARLEN",
+                    "_ARSIZE",
+                    "_ARBURST",
+                    "_ARLOCK",
+                    "_ARCACHE",
+                    "_ARPROT",
+                    "_ARQOS",
+                    "_ARREGION",
+                ][..],
+                "_ARVALID",
+                "_ARREADY",
+            ),
+            (
+                &["_RVALID", "_RREADY", "_RDATA", "_RLAST", "_RID", "_RRESP"][..],
+                "_RVALID",
+                "_RREADY",
+            ),
+            (
+                &[
+                    "_AWVALID",
+                    "_AWREADY",
+                    "_AWADDR",
+                    "_AWID",
+                    "_AWLEN",
+                    "_AWSIZE",
+                    "_AWBURST",
+                    "_AWLOCK",
+                    "_AWCACHE",
+                    "_AWPROT",
+                    "_AWQOS",
+                    "_AWREGION",
+                ][..],
+                "_AWVALID",
+                "_AWREADY",
+            ),
+            (
+                &["_WVALID", "_WREADY", "_WDATA", "_WSTRB", "_WLAST"][..],
+                "_WVALID",
+                "_WREADY",
+            ),
+            (
+                &["_BVALID", "_BREADY", "_BID", "_BRESP"][..],
+                "_BVALID",
+                "_BREADY",
+            ),
         ] {
             let valid_port = format!("m_axi_{base}{valid_suffix}");
             let ready_port = format!("m_axi_{base}{ready_suffix}");
             if !port_names.contains(&valid_port) || !port_names.contains(&ready_port) {
                 continue;
             }
-            let mut ch_ports: Vec<String> = channel_ports.iter()
+            let mut ch_ports: Vec<String> = channel_ports
+                .iter()
                 .map(|s| format!("m_axi_{base}{s}"))
                 .filter(|n| port_names.contains(n))
                 .collect();
             ch_ports.extend(["ap_clk".into(), "ap_rst_n".into()]);
             ifaces.push(AnyInterface::HandShake {
                 base: InterfaceBase {
-                    clk_port: Some("ap_clk".into()), rst_port: Some("ap_rst_n".into()),
-                    ports: ch_ports, role: String::new(), origin_info: String::new(),
+                    clk_port: Some("ap_clk".into()),
+                    rst_port: Some("ap_rst_n".into()),
+                    ports: ch_ports,
+                    role: String::new(),
+                    origin_info: String::new(),
                 },
                 valid_port: Some(valid_port),
                 ready_port: Some(ready_port),
@@ -1981,6 +2441,36 @@ mod tests {
     }
 
     #[test]
+    fn promotes_fsm_outputs_assigned_in_always_blocks() {
+        let source = r"
+module slot_fsm (
+  input wire ap_clk,
+  output wire child__ap_start,
+  output wire child__done
+);
+assign child__done = 1'b1;
+always @(posedge ap_clk) begin
+  child__ap_start <= 1'b1;
+end
+endmodule
+";
+        let module = tapa_rtl::VerilogModule::parse(source).unwrap();
+        let mut module = tapa_rtl::mutation::MutableModule::from_parsed(module);
+
+        promote_procedural_output_ports(&mut module, source);
+
+        let emitted = module.emit();
+        assert!(
+            emitted.contains("output reg child__ap_start"),
+            "got:\n{emitted}"
+        );
+        assert!(
+            emitted.contains("output wire child__done"),
+            "continuous assignment output should remain a wire:\n{emitted}"
+        );
+    }
+
+    #[test]
     fn build_project_produces_modules() {
         let prog = make_program();
         let leaf_mods = BTreeMap::from([(
@@ -1994,13 +2484,26 @@ mod tests {
         let fsm_mods = BTreeMap::new();
         let slot_to_insts = BTreeMap::from([("SLOT_0".into(), vec!["child_0".into()])]);
 
-        let project = build_project(&prog, &leaf_mods, &fsm_mods, None, &slot_to_insts, None, None, None).unwrap();
+        let project = build_project(
+            &prog,
+            &leaf_mods,
+            &fsm_mods,
+            None,
+            &slot_to_insts,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
 
         assert!(project.has_module("top_task"), "should have top module");
         assert!(project.has_module("SLOT_0"), "should have slot module");
         assert!(project.has_module("child"), "should have leaf module");
         assert!(project.has_module("fifo"), "should have fifo template");
-        assert!(project.has_module("reset_inverter"), "should have reset_inverter");
+        assert!(
+            project.has_module("reset_inverter"),
+            "should have reset_inverter"
+        );
     }
 
     #[test]
@@ -2011,13 +2514,36 @@ mod tests {
     }
 
     #[test]
+    fn fifo_wire_range_only_applies_to_data_wires() {
+        let range = range_msb(64);
+
+        assert_eq!(fifo_wire_range("_din", Some(&range)), Some(range.clone()));
+        assert_eq!(fifo_wire_range("_dout", Some(&range)), Some(range.clone()));
+        assert_eq!(fifo_wire_range("_read", Some(&range)), None);
+        assert_eq!(fifo_wire_range("_write", Some(&range)), None);
+        assert_eq!(fifo_wire_range("_din", None), None);
+    }
+
+    #[test]
     fn build_project_missing_top_task() {
-        let prog: Program = serde_json::from_str(r#"{
+        let prog: Program = serde_json::from_str(
+            r#"{
             "top": "nonexistent",
             "target": "xilinx-hls",
             "tasks": {}
-        }"#).unwrap();
-        let result = build_project(&prog, &BTreeMap::new(), &BTreeMap::new(), None, &BTreeMap::new(), None, None, None);
+        }"#,
+        )
+        .unwrap();
+        let result = build_project(
+            &prog,
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+            None,
+            &BTreeMap::new(),
+            None,
+            None,
+            None,
+        );
         assert!(result.is_err(), "should fail for missing top task");
     }
 
@@ -2035,9 +2561,17 @@ mod tests {
         let fsm_mods = BTreeMap::new();
         let slot_to_insts = BTreeMap::from([("SLOT_0".into(), vec!["child_0".into()])]);
 
-        let project =
-            build_project(&prog, &leaf_mods, &fsm_mods, None, &slot_to_insts, None, None, None)
-                .expect("build succeeded");
+        let project = build_project(
+            &prog,
+            &leaf_mods,
+            &fsm_mods,
+            None,
+            &slot_to_insts,
+            None,
+            None,
+            None,
+        )
+        .expect("build succeeded");
         let ifaces = project.ifaces.as_ref().expect("project has interfaces");
         // The FIFO module has handshake interfaces — roles must be source/sink
         // after inference, never the default.
@@ -2053,6 +2587,196 @@ mod tests {
     }
 
     #[test]
+    fn async_mmap_slot_exposes_axi_ports_to_top_instance() {
+        let prog: Program = serde_json::from_str(
+            r#"{
+                "top": "top_task",
+                "target": "xilinx-hls",
+                "slot_task_name_to_fp_region": {"SLOT_X0Y0_SLOT_X0Y0": "SLOT_X0Y0:SLOT_X0Y0"},
+                "tasks": {
+                    "top_task": {
+                        "level": "upper",
+                        "code": "",
+                        "target": "xilinx-hls",
+                        "ports": [
+                            {"cat": "async_mmap", "name": "chan[0]", "type": "int*", "width": 512}
+                        ],
+                        "tasks": {
+                            "SLOT_X0Y0_SLOT_X0Y0": [
+                                {
+                                    "name": "SLOT_X0Y0_SLOT_X0Y0_0",
+                                    "args": {
+                                        "mem_Copy_0": {"arg": "chan[0]", "cat": "async_mmap"}
+                                    }
+                                }
+                            ]
+                        },
+                        "fifos": {}
+                    },
+                    "SLOT_X0Y0_SLOT_X0Y0": {
+                        "level": "upper",
+                        "code": "",
+                        "target": "xilinx-hls",
+                        "is_slot": true,
+                        "ports": [
+                            {"cat": "async_mmap", "name": "mem_Copy_0", "type": "int*", "width": 512}
+                        ],
+                        "tasks": {
+                            "Copy": [
+                                {
+                                    "name": "Copy_0",
+                                    "args": {
+                                        "mem": {"arg": "mem_Copy_0", "cat": "async_mmap"}
+                                    }
+                                }
+                            ]
+                        },
+                        "fifos": {}
+                    },
+                    "Copy": {
+                        "level": "lower",
+                        "code": "",
+                        "target": "xilinx-hls",
+                        "ports": [
+                            {"cat": "async_mmap", "name": "mem", "type": "int*", "width": 512}
+                        ],
+                        "tasks": {},
+                        "fifos": {}
+                    }
+                }
+            }"#,
+        )
+        .unwrap();
+        let copy_ports = vec![
+            crate::utils::output_wire("mem_read_addr_s_din", Some(range_msb(63))),
+            crate::utils::input_wire("mem_read_addr_s_full_n", None),
+            crate::utils::output_wire("mem_read_addr_s_write", None),
+            crate::utils::output_wire("mem_write_data_s_din", Some(range_msb(512))),
+            crate::utils::input_wire("mem_write_data_s_full_n", None),
+            crate::utils::output_wire("mem_write_data_s_write", None),
+        ];
+        let leaf_mods = BTreeMap::from([(
+            "Copy".into(),
+            AnyModuleDefinition::new_verilog(
+                "Copy".into(),
+                copy_ports,
+                "module Copy(); endmodule".into(),
+            ),
+        )]);
+        let slot_to_insts = BTreeMap::from([("SLOT_X0Y0_SLOT_X0Y0".into(), vec!["Copy_0".into()])]);
+
+        let project = build_project(
+            &prog,
+            &leaf_mods,
+            &BTreeMap::new(),
+            None,
+            &slot_to_insts,
+            None,
+            None,
+            None,
+        )
+        .expect("build project");
+
+        let slot_def = project
+            .modules
+            .module_definitions
+            .iter()
+            .find(|m| m.name() == "SLOT_X0Y0_SLOT_X0Y0")
+            .expect("slot module");
+        assert!(
+            slot_def
+                .ports()
+                .iter()
+                .any(|p| p.name == "m_axi_mem_Copy_0_AWADDR"),
+            "slot boundary must expose the async bridge AXI ports"
+        );
+
+        let top_def = project
+            .modules
+            .module_definitions
+            .iter()
+            .find(|m| m.name() == "top_task")
+            .expect("top module");
+        let AnyModuleDefinition::Grouped { grouped, .. } = top_def else {
+            panic!("top should be grouped");
+        };
+        let slot_inst = grouped
+            .submodules
+            .iter()
+            .find(|m| m.name == "SLOT_X0Y0_SLOT_X0Y0_0")
+            .expect("slot instance");
+        assert!(
+            slot_inst
+                .connections
+                .iter()
+                .any(|c| c.name == "m_axi_mem_Copy_0_AWADDR"
+                    && c.expr.0.len() == 1
+                    && c.expr.0[0].repr == "m_axi_chan_0_AWADDR"),
+            "top slot instance must connect async mmap AXI ports, got {:?}",
+            slot_inst.connections
+        );
+
+        let mut state = TopologyWithRtl::new(prog);
+        state
+            .attach_module(
+                "top_task",
+                tapa_rtl::VerilogModule::parse(
+                    "module top_task(input wire ap_clk, input wire ap_rst_n); endmodule",
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        state
+            .attach_module(
+                "Copy",
+                tapa_rtl::VerilogModule::parse(
+                    "module Copy(\n\
+                     output wire [63:0] mem_read_addr_s_din,\n\
+                     input wire mem_read_addr_s_full_n,\n\
+                     output wire mem_read_addr_s_write,\n\
+                     output wire [512:0] mem_write_data_s_din,\n\
+                     input wire mem_write_data_s_full_n,\n\
+                     output wire mem_write_data_s_write\n\
+                     ); endmodule",
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        let rewritten_project = build_project_from_state(
+            &state,
+            "module top_task_control_s_axi(); endmodule",
+            &slot_to_insts,
+            None,
+            None,
+        )
+        .expect("build project from state");
+        let rewritten_top = rewritten_project
+            .modules
+            .module_definitions
+            .iter()
+            .find(|m| m.name() == "top_task")
+            .expect("rewritten top module");
+        let AnyModuleDefinition::Grouped { grouped, .. } = rewritten_top else {
+            panic!("rewritten top should be grouped");
+        };
+        let rewritten_slot_inst = grouped
+            .submodules
+            .iter()
+            .find(|m| m.name == "SLOT_X0Y0_SLOT_X0Y0_0")
+            .expect("rewritten slot instance");
+        assert!(
+            rewritten_slot_inst
+                .connections
+                .iter()
+                .any(|c| c.name == "m_axi_mem_Copy_0_AWADDR"
+                    && c.expr.0.len() == 1
+                    && c.expr.0[0].repr == "m_axi_chan_0_AWADDR"),
+            "slot-port rewrite must preserve async mmap AXI top connections, got {:?}",
+            rewritten_slot_inst.connections
+        );
+    }
+
+    #[test]
     fn build_project_rejects_invalid_interface_direction() {
         let prog = make_program();
         let leaf_mods = BTreeMap::new();
@@ -2062,9 +2786,17 @@ mod tests {
 
         // Build the project normally, then deliberately corrupt the fifo's
         // if_write port direction so role inference fails.
-        let mut project =
-            build_project(&prog, &leaf_mods, &fsm_mods, None, &slot_to_insts, None, None, None)
-                .expect("build succeeded");
+        let mut project = build_project(
+            &prog,
+            &leaf_mods,
+            &fsm_mods,
+            None,
+            &slot_to_insts,
+            None,
+            None,
+            None,
+        )
+        .expect("build succeeded");
         for def in &mut project.modules.module_definitions {
             if let AnyModuleDefinition::Verilog { base, .. } = def {
                 if base.name == "fifo" {
@@ -2145,9 +2877,7 @@ mod tests {
         // should pick the first-seen (alphabetical = `aleaf`) expression.
         let mut state = tapa_codegen::rtl_state::TopologyWithRtl::new(prog);
         let make_rtl = |mod_name: &str, p_val: &str| -> tapa_rtl::VerilogModule {
-            let src = format!(
-                "module {mod_name} #(parameter P = {p_val}) (); endmodule\n"
-            );
+            let src = format!("module {mod_name} #(parameter P = {p_val}) (); endmodule\n");
             tapa_rtl::VerilogModule::parse(&src).unwrap()
         };
         state
@@ -2157,11 +2887,26 @@ mod tests {
             .attach_module("aleaf", make_rtl("aleaf", "3'd1"))
             .expect("attach aleaf");
 
-        let slot_to_insts = BTreeMap::from([("slot_A".into(), vec!["aleaf_0".into(), "zleaf_0".into()])]);
+        let slot_to_insts =
+            BTreeMap::from([("slot_A".into(), vec!["aleaf_0".into(), "zleaf_0".into()])]);
         let fsm_mods = BTreeMap::new();
         let leaf_mods = BTreeMap::from([
-            ("zleaf".into(), AnyModuleDefinition::new_verilog("zleaf".into(), Vec::new(), "module zleaf; endmodule".into())),
-            ("aleaf".into(), AnyModuleDefinition::new_verilog("aleaf".into(), Vec::new(), "module aleaf; endmodule".into())),
+            (
+                "zleaf".into(),
+                AnyModuleDefinition::new_verilog(
+                    "zleaf".into(),
+                    Vec::new(),
+                    "module zleaf; endmodule".into(),
+                ),
+            ),
+            (
+                "aleaf".into(),
+                AnyModuleDefinition::new_verilog(
+                    "aleaf".into(),
+                    Vec::new(),
+                    "module aleaf; endmodule".into(),
+                ),
+            ),
         ]);
 
         let project = build_project(

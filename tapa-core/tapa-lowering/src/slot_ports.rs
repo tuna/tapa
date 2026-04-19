@@ -31,7 +31,20 @@ pub fn build_slot_ports_python_equivalent(
             continue;
         };
         let child_task = program.tasks.get(&child_task_name)?;
-        let task_port = child_task.ports.iter().find(|p| p.name == child_inst_port)?;
+        let task_port = child_task
+            .ports
+            .iter()
+            .find(|p| p.name == child_inst_port)?;
+        if task_port.cat == tapa_task_graph::port::ArgCategory::AsyncMmap {
+            for port in
+                crate::utils::expand_port_to_signals(&port_def.name, task_port.cat, task_port.width)
+            {
+                if seen.insert(port.name.clone()) {
+                    ports.push(port);
+                }
+            }
+            continue;
+        }
         let child_rtl = state.module_map.get(&child_task_name)?;
         let child_ir = leaf_modules.get(&child_task_name)?;
         let port_map = get_child_port_connection_mapping_rs(
@@ -41,10 +54,7 @@ pub fn build_slot_ports_python_equivalent(
             child_inst_port_idx,
         );
         for (child_port_name, slot_port_name) in port_map {
-            let Some(child_ir_port) = child_ir
-                .ports()
-                .iter()
-                .find(|p| p.name == child_port_name)
+            let Some(child_ir_port) = child_ir.ports().iter().find(|p| p.name == child_port_name)
             else {
                 continue;
             };
@@ -95,20 +105,35 @@ fn get_child_port_connection_mapping_rs(
     let mut mapping: Vec<(String, String)> = Vec::new();
     match task_port.cat {
         Cat::Scalar => {
-            mapping.push((task_port.name.clone(), arg.to_owned()));
+            mapping.push((
+                task_port.name.clone(),
+                tapa_rtl::module::sanitize_array_name(arg),
+            ));
         }
         Cat::Istream | Cat::Istreams => {
-            emit_stream_mapping(&mut mapping, task_module_rtl, task_port, arg, idx,
-                crate::utils::ISTREAM_SUFFIXES);
+            emit_stream_mapping(
+                &mut mapping,
+                task_module_rtl,
+                task_port,
+                arg,
+                idx,
+                crate::utils::ISTREAM_SUFFIXES,
+            );
         }
         Cat::Ostream | Cat::Ostreams => {
-            emit_stream_mapping(&mut mapping, task_module_rtl, task_port, arg, idx,
-                crate::utils::OSTREAM_SUFFIXES);
+            emit_stream_mapping(
+                &mut mapping,
+                task_module_rtl,
+                task_port,
+                arg,
+                idx,
+                crate::utils::OSTREAM_SUFFIXES,
+            );
         }
         Cat::Mmap | Cat::AsyncMmap | Cat::Immap | Cat::Ommap => {
             mapping.push((
                 format!("{}_offset", task_port.name),
-                format!("{arg}_offset"),
+                crate::utils::stream_port_name(arg, "_offset"),
             ));
             let rtl_port_names: std::collections::BTreeSet<&str> = task_module_rtl
                 .ports
@@ -122,10 +147,7 @@ fn get_child_port_connection_mapping_rs(
                 let m_axi_port =
                     format!("{}{}{}", crate::utils::M_AXI_PREFIX, task_port.name, suffix);
                 if rtl_port_names.contains(m_axi_port.as_str()) {
-                    mapping.push((
-                        m_axi_port,
-                        format!("{}{}{}", crate::utils::M_AXI_PREFIX, arg, suffix),
-                    ));
+                    mapping.push((m_axi_port, crate::utils::m_axi_port_name(arg, suffix)));
                 }
             }
         }
@@ -178,7 +200,10 @@ fn emit_stream_mapping(
     };
     for suffix in suffixes {
         if let Some(rtl_port) = task_module_rtl.get_port_of(&full, suffix) {
-            mapping.push((rtl_port.name.clone(), format!("{arg}{suffix}")));
+            mapping.push((
+                rtl_port.name.clone(),
+                crate::utils::stream_port_name(arg, suffix),
+            ));
         }
     }
 }
@@ -217,5 +242,179 @@ pub fn declare_missing_connection_wires(
     for name in to_add {
         wire_names.insert(name.clone());
         grouped.wires.push(crate::utils::make_wire(&name, None));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeMap;
+
+    use tapa_rtl::port::{Direction, Port};
+    use tapa_task_graph::port::ArgCategory;
+    use tapa_topology::task::PortDesign;
+
+    fn port(name: &str) -> Port {
+        Port {
+            name: name.to_owned(),
+            direction: Direction::Input,
+            width: None,
+            pragma: None,
+        }
+    }
+
+    fn module_with_ports(names: &[&str]) -> tapa_rtl::VerilogModule {
+        tapa_rtl::VerilogModule {
+            name: "Child".to_owned(),
+            ports: names.iter().map(|name| port(name)).collect(),
+            parameters: Vec::new(),
+            signals: Vec::new(),
+            pragmas: Vec::new(),
+            source: String::new(),
+        }
+    }
+
+    fn task_port(name: &str, cat: ArgCategory) -> PortDesign {
+        PortDesign {
+            cat,
+            name: name.to_owned(),
+            ctype: "int".to_owned(),
+            width: 32,
+            chan_count: None,
+            chan_size: None,
+            extra: BTreeMap::default(),
+        }
+    }
+
+    #[test]
+    fn stream_slot_ports_sanitize_indexed_arg_names() {
+        let module = module_with_ports(&["a_0_dout", "a_0_empty_n", "a_0_read"]);
+        let mapping = get_child_port_connection_mapping_rs(
+            &task_port("a", ArgCategory::Istreams),
+            &module,
+            "a[0]_Cannon",
+            Some(0),
+        );
+
+        assert_eq!(
+            mapping,
+            vec![
+                ("a_0_dout".to_owned(), "a_0_Cannon_dout".to_owned()),
+                ("a_0_empty_n".to_owned(), "a_0_Cannon_empty_n".to_owned()),
+                ("a_0_read".to_owned(), "a_0_Cannon_read".to_owned()),
+            ],
+        );
+    }
+
+    #[test]
+    fn mmap_slot_ports_sanitize_indexed_arg_names() {
+        let module = module_with_ports(&["mem_offset", "m_axi_mem_ARVALID"]);
+        let mapping = get_child_port_connection_mapping_rs(
+            &task_port("mem", ArgCategory::Mmap),
+            &module,
+            "mem[1]_Cannon",
+            None,
+        );
+
+        assert_eq!(
+            mapping,
+            vec![
+                ("mem_offset".to_owned(), "mem_1_Cannon_offset".to_owned()),
+                (
+                    "m_axi_mem_ARVALID".to_owned(),
+                    "m_axi_mem_1_Cannon_ARVALID".to_owned()
+                ),
+            ],
+        );
+    }
+
+    #[test]
+    fn async_mmap_slot_ports_expose_bridge_axi_boundary() {
+        let prog: tapa_topology::program::Program = serde_json::from_str(
+            r#"{
+                "top": "top",
+                "target": "xilinx-hls",
+                "tasks": {
+                    "top": {
+                        "level": "upper",
+                        "code": "",
+                        "target": "xilinx-hls",
+                        "ports": [],
+                        "tasks": {},
+                        "fifos": {}
+                    },
+                    "slot": {
+                        "level": "upper",
+                        "code": "",
+                        "target": "xilinx-hls",
+                        "ports": [
+                            {"cat": "async_mmap", "name": "mem_Copy_0", "type": "int*", "width": 512}
+                        ],
+                        "tasks": {
+                            "Copy": [
+                                {"name": "Copy_0", "args": {"mem": {"arg": "mem_Copy_0", "cat": "async_mmap"}}}
+                            ]
+                        },
+                        "fifos": {}
+                    },
+                    "Copy": {
+                        "level": "lower",
+                        "code": "",
+                        "target": "xilinx-hls",
+                        "ports": [
+                            {"cat": "async_mmap", "name": "mem", "type": "int*", "width": 512}
+                        ],
+                        "tasks": {},
+                        "fifos": {}
+                    }
+                }
+            }"#,
+        )
+        .unwrap();
+        let mut state = TopologyWithRtl::new(prog);
+        state
+            .attach_module(
+                "Copy",
+                tapa_rtl::VerilogModule::parse(
+                    "module Copy(\n\
+                     output wire [63:0] mem_read_addr_s_din,\n\
+                     input wire mem_read_addr_s_full_n,\n\
+                     output wire mem_read_addr_s_write,\n\
+                     output wire [512:0] mem_write_data_s_din,\n\
+                     input wire mem_write_data_s_full_n,\n\
+                     output wire mem_write_data_s_write\n\
+                     ); endmodule",
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        let leaf_modules = BTreeMap::from([(
+            "Copy".to_owned(),
+            AnyModuleDefinition::new_verilog(
+                "Copy".to_owned(),
+                vec![
+                    crate::utils::output_wire(
+                        "mem_read_addr_s_din",
+                        Some(crate::utils::range_msb(63)),
+                    ),
+                    crate::utils::input_wire("mem_read_addr_s_full_n", None),
+                    crate::utils::output_wire("mem_read_addr_s_write", None),
+                    crate::utils::output_wire(
+                        "mem_write_data_s_din",
+                        Some(crate::utils::range_msb(512)),
+                    ),
+                    crate::utils::input_wire("mem_write_data_s_full_n", None),
+                    crate::utils::output_wire("mem_write_data_s_write", None),
+                ],
+                "module Copy(); endmodule".to_owned(),
+            ),
+        )]);
+
+        let ports = build_slot_ports_python_equivalent("slot", &state, &leaf_modules).unwrap();
+        let port_names = ports.iter().map(|p| p.name.as_str()).collect::<Vec<_>>();
+        assert!(
+            port_names.contains(&"m_axi_mem_Copy_0_AWADDR"),
+            "async mmap slot boundary must expose bridge AXI ports, got {port_names:?}"
+        );
     }
 }

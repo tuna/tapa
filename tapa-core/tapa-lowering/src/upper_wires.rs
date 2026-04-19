@@ -5,9 +5,7 @@
 
 use std::collections::BTreeMap;
 
-use tapa_graphir::{
-    AnyModuleDefinition, HierarchicalName, ModuleNet, ModulePort, Range,
-};
+use tapa_graphir::{AnyModuleDefinition, HierarchicalName, ModuleNet, ModulePort, Range};
 use tapa_task_graph::port::ArgCategory;
 use tapa_topology::task::TaskDesign;
 
@@ -68,8 +66,11 @@ pub fn build_upper_task_ir_wires(
     // 2. Arg-table queue-tail wires.
     for (child_task_name, insts) in &upper_task.tasks {
         for (idx, inst) in insts.iter().enumerate() {
-            let inst_name = format!("{child_task_name}_{idx}");
+            let inst_name = crate::instantiation_builder::instance_name(child_task_name, idx, inst);
             for arg in inst.args.values() {
+                if crate::instantiation_builder::is_literal_arg(&arg.arg) {
+                    continue;
+                }
                 let wire_name = match arg.cat {
                     ArgCategory::Scalar => format!("{inst_name}___{}__q0", arg.arg),
                     ArgCategory::Mmap
@@ -98,8 +99,8 @@ pub fn build_upper_task_ir_wires(
 
     // 3. Per-instance control wires.
     for (child_task_name, insts) in &upper_task.tasks {
-        for idx in 0..insts.len() {
-            let inst_name = format!("{child_task_name}_{idx}");
+        for (idx, inst) in insts.iter().enumerate() {
+            let inst_name = crate::instantiation_builder::instance_name(child_task_name, idx, inst);
             for &sig in &["ap_start", "ap_done", "ap_ready", "ap_idle"] {
                 wires.push(make_net(&format!("{inst_name}__{sig}"), None));
             }
@@ -126,8 +127,8 @@ pub fn build_upper_task_ir_wires(
 #[must_use]
 pub fn build_top_extra_wires(ctrl_s_axi_ports: &[ModulePort]) -> Vec<ModuleNet> {
     let axi_ports: &[&str] = &[
-        "AWVALID", "AWREADY", "AWADDR", "WVALID", "WREADY", "WDATA", "WSTRB", "ARVALID",
-        "ARREADY", "ARADDR", "RVALID", "RREADY", "RDATA", "RRESP", "BVALID", "BREADY", "BRESP",
+        "AWVALID", "AWREADY", "AWADDR", "WVALID", "WREADY", "WDATA", "WSTRB", "ARVALID", "ARREADY",
+        "ARADDR", "RVALID", "RREADY", "RDATA", "RRESP", "BVALID", "BREADY", "BRESP",
     ];
     let mapped: std::collections::BTreeSet<&str> = axi_ports
         .iter()
@@ -176,19 +177,18 @@ pub fn infer_fifo_data_range(
 
     // Slot-local FIFO: find the child arg name, then try each FIFO_INFIXES
     // suffix pattern (matches Python's `rtl_module.get_port_of(arg, "_din")`).
+    let producer_idx = usize::try_from(endpoint.1).ok()?;
     let producer_port_name = upper_task
         .tasks
         .get(producer_task_name)
-        .and_then(|insts| {
-            insts.iter().find_map(|inst| {
-                inst.args
-                    .iter()
-                    .find(|(_, arg)| arg.arg == *fifo_name)
-                    .map(|(child_port, _)| child_port.clone())
-            })
+        .and_then(|insts| insts.get(producer_idx))
+        .and_then(|inst| {
+            inst.args
+                .iter()
+                .find(|(_, arg)| arg.arg == *fifo_name)
+                .map(|(child_port, _)| child_port.clone())
         })?;
-    find_port_with_infixes(producer_def, &producer_port_name, "_din")
-        .and_then(|p| p.range.clone())
+    find_port_with_infixes(producer_def, &producer_port_name, "_din").and_then(|p| p.range.clone())
 }
 
 fn find_port_with_infixes<'a>(
@@ -246,5 +246,178 @@ fn make_net(name: &str, range: Option<Range>) -> ModuleNet {
         hierarchical_name: HierarchicalName::get_name(name),
         range,
         extra: BTreeMap::default(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tapa_task_graph::port::ArgCategory;
+    use tapa_task_graph::task::TaskLevel;
+    use tapa_topology::instance::{ArgDesign, InstanceDesign};
+
+    #[test]
+    fn upper_task_wires_use_explicit_instance_name() {
+        let mut args = BTreeMap::new();
+        args.insert(
+            "ptr".to_owned(),
+            ArgDesign {
+                arg: "data".to_owned(),
+                cat: ArgCategory::Mmap,
+                extra: BTreeMap::new(),
+            },
+        );
+        let mut tasks = BTreeMap::new();
+        tasks.insert(
+            "Leaf".to_owned(),
+            vec![InstanceDesign {
+                name: Some("Leaf_custom_7".to_owned()),
+                args,
+                step: 0,
+                extra: BTreeMap::new(),
+            }],
+        );
+        let task = TaskDesign {
+            name: None,
+            level: TaskLevel::Upper,
+            code: String::new(),
+            target: "hls".to_owned(),
+            is_slot: false,
+            ports: Vec::new(),
+            tasks,
+            fifos: BTreeMap::new(),
+            annotations: BTreeMap::new(),
+        };
+
+        let names: Vec<_> = build_upper_task_ir_wires(&task, &[], &[], &BTreeMap::new())
+            .into_iter()
+            .map(|w| w.name)
+            .collect();
+        assert!(names.contains(&"Leaf_custom_7___data_offset__q0".to_owned()));
+        assert!(!names.contains(&"Leaf_0___data_offset__q0".to_owned()));
+    }
+
+    #[test]
+    fn upper_task_wires_skip_literal_scalars() {
+        let mut args = BTreeMap::new();
+        args.insert(
+            "count".to_owned(),
+            ArgDesign {
+                arg: "64'd1".to_owned(),
+                cat: ArgCategory::Scalar,
+                extra: BTreeMap::new(),
+            },
+        );
+        let mut tasks = BTreeMap::new();
+        tasks.insert(
+            "Leaf".to_owned(),
+            vec![InstanceDesign {
+                name: Some("Leaf_0".to_owned()),
+                args,
+                step: 0,
+                extra: BTreeMap::new(),
+            }],
+        );
+        let task = TaskDesign {
+            name: None,
+            level: TaskLevel::Upper,
+            code: String::new(),
+            target: "hls".to_owned(),
+            is_slot: false,
+            ports: Vec::new(),
+            tasks,
+            fifos: BTreeMap::new(),
+            annotations: BTreeMap::new(),
+        };
+
+        let names: Vec<_> = build_upper_task_ir_wires(&task, &[], &[], &BTreeMap::new())
+            .into_iter()
+            .map(|w| w.name)
+            .collect();
+        assert!(!names.iter().any(|name| name.contains("64'd1")));
+    }
+
+    #[test]
+    fn infer_fifo_data_range_uses_producer_endpoint_index() {
+        let range = Range {
+            left: tapa_graphir::Expression::new_lit("64"),
+            right: tapa_graphir::Expression::new_lit("0"),
+        };
+        let leaf = AnyModuleDefinition::new_verilog(
+            "Switch".to_owned(),
+            vec![ModulePort {
+                name: "pkt_out_q_0_din".to_owned(),
+                hierarchical_name: HierarchicalName::get_name("pkt_out_q_0_din"),
+                port_type: "output wire".to_owned(),
+                range: Some(range.clone()),
+                extra: BTreeMap::new(),
+            }],
+            "module Switch(); endmodule".to_owned(),
+        );
+        let mut leaf_modules = BTreeMap::new();
+        leaf_modules.insert("Switch".to_owned(), leaf);
+
+        let mut consumer_args = BTreeMap::new();
+        consumer_args.insert(
+            "pkt_in_q1".to_owned(),
+            ArgDesign {
+                arg: "fifo".to_owned(),
+                cat: ArgCategory::Istream,
+                extra: BTreeMap::new(),
+            },
+        );
+        let mut producer_args = BTreeMap::new();
+        producer_args.insert(
+            "pkt_out_q[0]".to_owned(),
+            ArgDesign {
+                arg: "fifo".to_owned(),
+                cat: ArgCategory::Ostream,
+                extra: BTreeMap::new(),
+            },
+        );
+        let task = TaskDesign {
+            name: None,
+            level: TaskLevel::Upper,
+            code: String::new(),
+            target: "hls".to_owned(),
+            is_slot: false,
+            ports: Vec::new(),
+            tasks: BTreeMap::from([(
+                "Switch".to_owned(),
+                vec![
+                    InstanceDesign {
+                        name: Some("Switch_0".to_owned()),
+                        args: consumer_args,
+                        step: 0,
+                        extra: BTreeMap::new(),
+                    },
+                    InstanceDesign {
+                        name: Some("Switch_1".to_owned()),
+                        args: producer_args,
+                        step: 0,
+                        extra: BTreeMap::new(),
+                    },
+                ],
+            )]),
+            fifos: BTreeMap::new(),
+            annotations: BTreeMap::new(),
+        };
+        let fifo = tapa_topology::task::FifoDesign {
+            depth: Some(32),
+            consumed_by: Some(tapa_task_graph::interconnect::EndpointRef(
+                "Switch".to_owned(),
+                0,
+            )),
+            produced_by: Some(tapa_task_graph::interconnect::EndpointRef(
+                "Switch".to_owned(),
+                1,
+            )),
+            extra: BTreeMap::new(),
+        };
+
+        assert_eq!(
+            infer_fifo_data_range("fifo", &fifo, &task, &leaf_modules, false),
+            Some(range)
+        );
     }
 }

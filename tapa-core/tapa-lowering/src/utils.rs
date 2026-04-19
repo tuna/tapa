@@ -19,8 +19,7 @@ pub const M_AXI_PREFIX: &str = "m_axi_";
 /// never emits.
 pub const M_AXI_READ_SUFFIXES: &[&str] = &[
     "_ARVALID", "_ARREADY", "_ARADDR", "_ARID", "_ARLEN", "_ARSIZE", "_ARBURST", "_ARLOCK",
-    "_ARCACHE", "_ARPROT", "_ARQOS", "_RVALID", "_RREADY", "_RDATA", "_RLAST",
-    "_RID", "_RRESP",
+    "_ARCACHE", "_ARPROT", "_ARQOS", "_RVALID", "_RREADY", "_RDATA", "_RLAST", "_RID", "_RRESP",
 ];
 
 /// M-AXI write channel suffixes.
@@ -29,8 +28,8 @@ pub const M_AXI_READ_SUFFIXES: &[&str] = &[
 /// notably does NOT include `_AWREGION`.
 pub const M_AXI_WRITE_SUFFIXES: &[&str] = &[
     "_AWVALID", "_AWREADY", "_AWADDR", "_AWID", "_AWLEN", "_AWSIZE", "_AWBURST", "_AWLOCK",
-    "_AWCACHE", "_AWPROT", "_AWQOS", "_WVALID", "_WREADY", "_WDATA", "_WSTRB",
-    "_WLAST", "_BVALID", "_BREADY", "_BID", "_BRESP",
+    "_AWCACHE", "_AWPROT", "_AWQOS", "_WVALID", "_WREADY", "_WDATA", "_WSTRB", "_WLAST", "_BVALID",
+    "_BREADY", "_BID", "_BRESP",
 ];
 
 /// Build a `ModulePort` with the given type string.
@@ -123,7 +122,10 @@ pub fn expression_from_str(s: &str) -> Expression {
     let tokens: Vec<tapa_graphir::Token> = s
         .split_whitespace()
         .map(|t| {
-            if t.chars().next().is_some_and(|c| c.is_alphabetic() || c == '_') {
+            if t.chars()
+                .next()
+                .is_some_and(|c| c.is_alphabetic() || c == '_')
+            {
                 tapa_graphir::Token::new_id(t)
             } else {
                 tapa_graphir::Token::new_lit(t)
@@ -140,12 +142,14 @@ pub fn expression_from_str(s: &str) -> Expression {
 /// Get stream port name: `{base}{suffix}`.
 #[must_use]
 pub fn stream_port_name(base: &str, suffix: &str) -> String {
+    let base = tapa_rtl::module::sanitize_array_name(base);
     format!("{base}{suffix}")
 }
 
 /// Get M-AXI port name: `m_axi_{base}{suffix}`.
 #[must_use]
 pub fn m_axi_port_name(base: &str, suffix: &str) -> String {
+    let base = tapa_rtl::module::sanitize_array_name(base);
     format!("{M_AXI_PREFIX}{base}{suffix}")
 }
 
@@ -175,28 +179,40 @@ pub fn expand_port_to_signals(
     width: u32,
 ) -> Vec<ModulePort> {
     use tapa_task_graph::port::ArgCategory;
+    let name = tapa_rtl::module::sanitize_array_name(name);
     match cat {
         ArgCategory::Scalar => {
-            vec![input_wire(name, if width > 1 { Some(range_msb(width - 1)) } else { None })]
+            vec![input_wire(
+                &name,
+                if width > 1 {
+                    Some(range_msb(width - 1))
+                } else {
+                    None
+                },
+            )]
         }
         ArgCategory::Istream | ArgCategory::Istreams => {
             vec![
-                input_wire(&format!("{name}_dout"), Some(range_msb(width.saturating_sub(1)))),
+                input_wire(
+                    &format!("{name}_dout"),
+                    Some(range_msb(width.saturating_sub(1))),
+                ),
                 input_wire(&format!("{name}_empty_n"), None),
                 output_wire(&format!("{name}_read"), None),
             ]
         }
         ArgCategory::Ostream | ArgCategory::Ostreams => {
             vec![
-                output_wire(&format!("{name}_din"), Some(range_msb(width.saturating_sub(1)))),
+                output_wire(
+                    &format!("{name}_din"),
+                    Some(range_msb(width.saturating_sub(1))),
+                ),
                 input_wire(&format!("{name}_full_n"), None),
                 output_wire(&format!("{name}_write"), None),
             ]
         }
         ArgCategory::Mmap | ArgCategory::AsyncMmap | ArgCategory::Immap | ArgCategory::Ommap => {
-            let mut ports = vec![
-                input_wire(&format!("{name}_offset"), Some(range_msb(63))),
-            ];
+            let mut ports = vec![input_wire(&format!("{name}_offset"), Some(range_msb(63)))];
             // Add M-AXI channel ports with correct directions per AXI protocol.
             //
             // AXI master port-direction rules (top-level has master-facing ports):
@@ -208,8 +224,11 @@ pub fn expand_port_to_signals(
             //     *VALID     → master input (slave sends valid)
             //     *READY     → master output (master sends ready)
             //     data/resp  → master input
-            for suffix in M_AXI_READ_SUFFIXES.iter().chain(M_AXI_WRITE_SUFFIXES.iter()) {
-                let port_name = m_axi_port_name(name, suffix);
+            for suffix in M_AXI_READ_SUFFIXES
+                .iter()
+                .chain(M_AXI_WRITE_SUFFIXES.iter())
+            {
+                let port_name = m_axi_port_name(&name, suffix);
                 if is_m_axi_master_output(suffix) {
                     ports.push(output_wire(&port_name, None));
                 } else {
@@ -235,6 +254,13 @@ pub fn rtl_port_to_graphir(port: &tapa_rtl::port::Port) -> ModulePort {
         tapa_rtl::port::Direction::Output => "output wire",
         tapa_rtl::port::Direction::Inout => "inout wire",
     };
+    rtl_port_to_graphir_with_type(port, port_type)
+}
+
+/// Convert a `tapa_rtl::Port` to a `tapa_graphir::ModulePort` with an
+/// explicit Verilog port type string.
+#[must_use]
+pub fn rtl_port_to_graphir_with_type(port: &tapa_rtl::port::Port, port_type: &str) -> ModulePort {
     let range = port.width.as_ref().map(|w| Range {
         left: tokens_to_expression(&w.msb),
         right: tokens_to_expression(&w.lsb),
@@ -252,8 +278,12 @@ pub fn mutable_module_to_verilog_def(
     mm: &tapa_rtl::mutation::MutableModule,
 ) -> tapa_graphir::AnyModuleDefinition {
     let ports: Vec<ModulePort> = mm.inner.ports.iter().map(rtl_port_to_graphir).collect();
-    let parameters: Vec<tapa_graphir::ModuleParameter> =
-        mm.inner.parameters.iter().map(rtl_parameter_to_graphir).collect();
+    let parameters: Vec<tapa_graphir::ModuleParameter> = mm
+        .inner
+        .parameters
+        .iter()
+        .map(rtl_parameter_to_graphir)
+        .collect();
     tapa_graphir::AnyModuleDefinition::Verilog {
         base: tapa_graphir::BaseFields {
             name: mm.inner.name.clone(),
@@ -298,13 +328,15 @@ pub fn rtl_parameter_to_graphir(
 /// single literal token, mirroring pyverilog's constant folding that
 /// Python inherits when parsing declarations like
 /// `parameter X = (32 / 8);` into a literal `4`.
-fn tokens_to_expression(
-    tokens: &[tapa_rtl::expression::Token],
-) -> Expression {
+fn tokens_to_expression(tokens: &[tapa_rtl::expression::Token]) -> Expression {
     let graphir_tokens: Vec<tapa_graphir::Token> = tokens
         .iter()
         .map(|t| {
-            if t.repr.chars().next().is_some_and(|c| c.is_alphabetic() || c == '_') {
+            if t.repr
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_alphabetic() || c == '_')
+            {
                 tapa_graphir::Token::new_id(&t.repr)
             } else {
                 tapa_graphir::Token::new_lit(&t.repr)
@@ -380,6 +412,11 @@ mod tests {
     }
 
     #[test]
+    fn stream_port_name_sanitizes_indexed_names() {
+        assert_eq!(stream_port_name("a[0]_Cannon", "_din"), "a_0_Cannon_din");
+    }
+
+    #[test]
     fn m_axi_port_name_format() {
         assert_eq!(m_axi_port_name("a", "_ARVALID"), "m_axi_a_ARVALID");
     }
@@ -393,8 +430,14 @@ mod tests {
 
     #[test]
     fn is_master_output_aw_channel() {
-        assert!(is_m_axi_master_output("_AWVALID"), "AWVALID is master output");
-        assert!(!is_m_axi_master_output("_AWREADY"), "AWREADY is master input");
+        assert!(
+            is_m_axi_master_output("_AWVALID"),
+            "AWVALID is master output"
+        );
+        assert!(
+            !is_m_axi_master_output("_AWREADY"),
+            "AWREADY is master input"
+        );
         assert!(is_m_axi_master_output("_AWADDR"), "AWADDR is master output");
         assert!(is_m_axi_master_output("_AWLEN"), "AWLEN is master output");
     }
@@ -410,8 +453,14 @@ mod tests {
 
     #[test]
     fn is_master_output_ar_channel() {
-        assert!(is_m_axi_master_output("_ARVALID"), "ARVALID is master output");
-        assert!(!is_m_axi_master_output("_ARREADY"), "ARREADY is master input");
+        assert!(
+            is_m_axi_master_output("_ARVALID"),
+            "ARVALID is master output"
+        );
+        assert!(
+            !is_m_axi_master_output("_ARREADY"),
+            "ARREADY is master input"
+        );
         assert!(is_m_axi_master_output("_ARADDR"), "ARADDR is master output");
     }
 
@@ -447,16 +496,40 @@ mod tests {
             .map(|p| (p.name.clone(), p.port_type.starts_with("output")))
             .collect();
         // R channel VALID must be input.
-        assert_eq!(by_name.get("m_axi_b_RVALID"), Some(&false), "RVALID must be input");
+        assert_eq!(
+            by_name.get("m_axi_b_RVALID"),
+            Some(&false),
+            "RVALID must be input"
+        );
         // B channel VALID must be input.
-        assert_eq!(by_name.get("m_axi_b_BVALID"), Some(&false), "BVALID must be input");
+        assert_eq!(
+            by_name.get("m_axi_b_BVALID"),
+            Some(&false),
+            "BVALID must be input"
+        );
         // R channel READY must be output.
-        assert_eq!(by_name.get("m_axi_b_RREADY"), Some(&true), "RREADY must be output");
+        assert_eq!(
+            by_name.get("m_axi_b_RREADY"),
+            Some(&true),
+            "RREADY must be output"
+        );
         // B channel READY must be output.
-        assert_eq!(by_name.get("m_axi_b_BREADY"), Some(&true), "BREADY must be output");
+        assert_eq!(
+            by_name.get("m_axi_b_BREADY"),
+            Some(&true),
+            "BREADY must be output"
+        );
         // AW channel VALID must be output.
-        assert_eq!(by_name.get("m_axi_b_AWVALID"), Some(&true), "AWVALID must be output");
+        assert_eq!(
+            by_name.get("m_axi_b_AWVALID"),
+            Some(&true),
+            "AWVALID must be output"
+        );
         // AW channel READY must be input.
-        assert_eq!(by_name.get("m_axi_b_AWREADY"), Some(&false), "AWREADY must be input");
+        assert_eq!(
+            by_name.get("m_axi_b_AWREADY"),
+            Some(&false),
+            "AWREADY must be input"
+        );
     }
 }
