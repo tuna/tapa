@@ -802,6 +802,7 @@ dependencies = [
 name = "tapa-graphir-export"
 version = "0.1.0"
 dependencies = [
+ "serde_json",
  "tapa-graphir",
  "thiserror",
 ]

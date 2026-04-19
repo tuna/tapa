@@ -17,8 +17,7 @@ pub struct BlackBox {
 impl BlackBox {
     /// Decode and decompress the stored content.
     pub fn get_binary(&self) -> Result<Vec<u8>, ParseError> {
-        let compressed = base64::engine::general_purpose::STANDARD
-            .decode(&self.base64)?;
+        let compressed = base64::engine::general_purpose::STANDARD.decode(&self.base64)?;
         let mut decoder = flate2::read::ZlibDecoder::new(&compressed[..]);
         let mut out = Vec::new();
         std::io::Read::read_to_end(&mut decoder, &mut out)
@@ -32,7 +31,9 @@ impl BlackBox {
         use flate2::write::ZlibEncoder;
         use std::io::Write;
         let mut encoder = ZlibEncoder::new(Vec::new(), flate2::Compression::default());
-        encoder.write_all(data).expect("zlib compression should not fail on in-memory data");
+        encoder
+            .write_all(data)
+            .expect("zlib compression should not fail on in-memory data");
         let compressed = encoder.finish().expect("zlib finish should not fail");
         let b64 = base64::engine::general_purpose::STANDARD.encode(&compressed);
         Self { path, base64: b64 }

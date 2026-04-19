@@ -1,7 +1,7 @@
 //! Conformance and round-trip tests for `tapa-graphir`.
 
-use tapa_graphir::module::definition::AnyModuleDefinition as ModDef;
 use tapa_graphir::interface::AnyInterface as Iface;
+use tapa_graphir::module::definition::AnyModuleDefinition as ModDef;
 use tapa_graphir::project::Project;
 
 fn fixture(name: &str) -> String {
@@ -14,7 +14,11 @@ fn fixture(name: &str) -> String {
 #[test]
 fn parse_vadd_project() {
     let p = Project::from_json(&fixture("vadd_project.json")).expect("parse");
-    assert_eq!(p.part_num.as_deref(), Some("xcu280-fsvh2892-2L-e"), "part_num");
+    assert_eq!(
+        p.part_num.as_deref(),
+        Some("xcu280-fsvh2892-2L-e"),
+        "part_num"
+    );
     assert_eq!(p.modules.top_name.as_deref(), Some("VecAdd"), "top_name");
     assert_eq!(p.modules.module_definitions.len(), 3, "module count");
 }
@@ -22,8 +26,12 @@ fn parse_vadd_project() {
 #[test]
 fn grouped_module_structure() {
     let p = Project::from_json(&fixture("vadd_project.json")).expect("parse");
-    let vecadd = p.modules.module_definitions.iter()
-        .find(|m| m.name() == "VecAdd").expect("VecAdd");
+    let vecadd = p
+        .modules
+        .module_definitions
+        .iter()
+        .find(|m| m.name() == "VecAdd")
+        .expect("VecAdd");
     match vecadd {
         ModDef::Grouped { base, grouped, .. } => {
             assert_eq!(base.ports.len(), 3, "port count");
@@ -32,9 +40,13 @@ fn grouped_module_structure() {
             let area = grouped.submodules[0].area.as_ref().expect("area");
             assert_eq!(area.ff, 150, "ff");
         }
-        ModDef::Verilog { .. } | ModDef::Aux { .. } | ModDef::AuxSplit { .. }
-        | ModDef::Stub { .. } | ModDef::PassThrough { .. }
-        | ModDef::InternalVerilog { .. } | ModDef::InternalGrouped { .. } => {
+        ModDef::Verilog { .. }
+        | ModDef::Aux { .. }
+        | ModDef::AuxSplit { .. }
+        | ModDef::Stub { .. }
+        | ModDef::PassThrough { .. }
+        | ModDef::InternalVerilog { .. }
+        | ModDef::InternalGrouped { .. } => {
             panic!("VecAdd should be Grouped")
         }
     }
@@ -43,15 +55,23 @@ fn grouped_module_structure() {
 #[test]
 fn verilog_module_structure() {
     let p = Project::from_json(&fixture("vadd_project.json")).expect("parse");
-    let add = p.modules.module_definitions.iter()
-        .find(|m| m.name() == "Add").expect("Add");
+    let add = p
+        .modules
+        .module_definitions
+        .iter()
+        .find(|m| m.name() == "Add")
+        .expect("Add");
     match add {
         ModDef::Verilog { verilog, .. } => {
             assert!(verilog.verilog.contains("module Add"), "has Verilog source");
         }
-        ModDef::Grouped { .. } | ModDef::Aux { .. } | ModDef::AuxSplit { .. }
-        | ModDef::Stub { .. } | ModDef::PassThrough { .. }
-        | ModDef::InternalVerilog { .. } | ModDef::InternalGrouped { .. } => {
+        ModDef::Grouped { .. }
+        | ModDef::Aux { .. }
+        | ModDef::AuxSplit { .. }
+        | ModDef::Stub { .. }
+        | ModDef::PassThrough { .. }
+        | ModDef::InternalVerilog { .. }
+        | ModDef::InternalGrouped { .. } => {
             panic!("Add should be Verilog")
         }
     }
@@ -60,15 +80,26 @@ fn verilog_module_structure() {
 #[test]
 fn stub_module_structure() {
     let p = Project::from_json(&fixture("vadd_project.json")).expect("parse");
-    let fifo = p.modules.module_definitions.iter()
-        .find(|m| m.name() == "fifo_w32_d2").expect("fifo stub");
+    let fifo = p
+        .modules
+        .module_definitions
+        .iter()
+        .find(|m| m.name() == "fifo_w32_d2")
+        .expect("fifo stub");
     match fifo {
         ModDef::Stub { base, .. } => {
-            assert!(base.hierarchical_name.is_none(), "stub has null hierarchical_name");
+            assert!(
+                base.hierarchical_name.is_none(),
+                "stub has null hierarchical_name"
+            );
         }
-        ModDef::Grouped { .. } | ModDef::Verilog { .. } | ModDef::Aux { .. }
-        | ModDef::AuxSplit { .. } | ModDef::PassThrough { .. }
-        | ModDef::InternalVerilog { .. } | ModDef::InternalGrouped { .. } => {
+        ModDef::Grouped { .. }
+        | ModDef::Verilog { .. }
+        | ModDef::Aux { .. }
+        | ModDef::AuxSplit { .. }
+        | ModDef::PassThrough { .. }
+        | ModDef::InternalVerilog { .. }
+        | ModDef::InternalGrouped { .. } => {
             panic!("fifo should be Stub")
         }
     }
@@ -77,10 +108,18 @@ fn stub_module_structure() {
 #[test]
 fn expression_tokens_parse() {
     let p = Project::from_json(&fixture("vadd_project.json")).expect("parse");
-    let vecadd = p.modules.module_definitions.iter()
-        .find(|m| m.name() == "VecAdd").expect("VecAdd");
+    let vecadd = p
+        .modules
+        .module_definitions
+        .iter()
+        .find(|m| m.name() == "VecAdd")
+        .expect("VecAdd");
     if let ModDef::Grouped { base, .. } = vecadd {
-        let port = base.ports.iter().find(|p| p.name == "a_offset").expect("a_offset");
+        let port = base
+            .ports
+            .iter()
+            .find(|p| p.name == "a_offset")
+            .expect("a_offset");
         let range = port.range.as_ref().expect("has range");
         assert_eq!(range.left.0[0].repr, "63", "left value");
         assert_eq!(range.right.0[0].repr, "0", "right value");
@@ -100,14 +139,25 @@ fn ap_ctrl_interface_typed_fields() {
     let ifaces = p.ifaces.as_ref().expect("ifaces");
     let ctrl = &ifaces["VecAdd"][0];
     match ctrl {
-        Iface::ApCtrl { ap_start_port, ap_ready_port, ap_done_port, .. } => {
+        Iface::ApCtrl {
+            ap_start_port,
+            ap_ready_port,
+            ap_done_port,
+            ..
+        } => {
             assert_eq!(ap_start_port.as_deref(), Some("ap_start"), "ap_start_port");
             assert_eq!(ap_ready_port.as_deref(), Some("ap_ready"), "ap_ready_port");
             assert_eq!(ap_done_port.as_deref(), Some("ap_done"), "ap_done_port");
         }
-        Iface::HandShake { .. } | Iface::FeedForward { .. } | Iface::FalsePath { .. }
-        | Iface::Clock { .. } | Iface::FalsePathReset { .. } | Iface::FeedForwardReset { .. }
-        | Iface::NonPipeline { .. } | Iface::Unknown { .. } | Iface::TapaPeek { .. }
+        Iface::HandShake { .. }
+        | Iface::FeedForward { .. }
+        | Iface::FalsePath { .. }
+        | Iface::Clock { .. }
+        | Iface::FalsePathReset { .. }
+        | Iface::FeedForwardReset { .. }
+        | Iface::NonPipeline { .. }
+        | Iface::Unknown { .. }
+        | Iface::TapaPeek { .. }
         | Iface::Aux { .. } => panic!("should be ApCtrl"),
     }
 }
@@ -118,13 +168,23 @@ fn handshake_interface_typed_fields() {
     let ifaces = p.ifaces.as_ref().expect("ifaces");
     let hs = &ifaces["VecAdd"][1];
     match hs {
-        Iface::HandShake { valid_port, data_ports, .. } => {
+        Iface::HandShake {
+            valid_port,
+            data_ports,
+            ..
+        } => {
             assert_eq!(valid_port.as_deref(), Some("a_offset_ap_vld"), "valid_port");
             assert_eq!(data_ports, &["a_offset"], "data_ports");
         }
-        Iface::FeedForward { .. } | Iface::FalsePath { .. } | Iface::Clock { .. }
-        | Iface::FalsePathReset { .. } | Iface::FeedForwardReset { .. } | Iface::ApCtrl { .. }
-        | Iface::NonPipeline { .. } | Iface::Unknown { .. } | Iface::TapaPeek { .. }
+        Iface::FeedForward { .. }
+        | Iface::FalsePath { .. }
+        | Iface::Clock { .. }
+        | Iface::FalsePathReset { .. }
+        | Iface::FeedForwardReset { .. }
+        | Iface::ApCtrl { .. }
+        | Iface::NonPipeline { .. }
+        | Iface::Unknown { .. }
+        | Iface::TapaPeek { .. }
         | Iface::Aux { .. } => panic!("should be HandShake"),
     }
 }
@@ -134,22 +194,37 @@ fn handshake_interface_typed_fields() {
 #[test]
 fn all_8_module_discriminators_parse() {
     let p = Project::from_json(&fixture("all_variants.json")).expect("parse");
-    assert_eq!(p.modules.module_definitions.len(), 8, "must have 8 module defs");
+    assert_eq!(
+        p.modules.module_definitions.len(),
+        8,
+        "must have 8 module defs"
+    );
 
-    let types: Vec<&str> = p.modules.module_definitions.iter().map(|m| match m {
-        ModDef::Grouped { .. } => "grouped_module",
-        ModDef::Verilog { .. } => "verilog_module",
-        ModDef::Aux { .. } => "aux_module",
-        ModDef::AuxSplit { .. } => "aux_split_module",
-        ModDef::Stub { .. } => "stub_module",
-        ModDef::PassThrough { .. } => "pass_through_module",
-        ModDef::InternalVerilog { .. } => "internal_verilog_module",
-        ModDef::InternalGrouped { .. } => "internal_grouped_module",
-    }).collect();
+    let types: Vec<&str> = p
+        .modules
+        .module_definitions
+        .iter()
+        .map(|m| match m {
+            ModDef::Grouped { .. } => "grouped_module",
+            ModDef::Verilog { .. } => "verilog_module",
+            ModDef::Aux { .. } => "aux_module",
+            ModDef::AuxSplit { .. } => "aux_split_module",
+            ModDef::Stub { .. } => "stub_module",
+            ModDef::PassThrough { .. } => "pass_through_module",
+            ModDef::InternalVerilog { .. } => "internal_verilog_module",
+            ModDef::InternalGrouped { .. } => "internal_grouped_module",
+        })
+        .collect();
 
     for expected in [
-        "grouped_module", "verilog_module", "aux_module", "aux_split_module",
-        "stub_module", "pass_through_module", "internal_verilog_module", "internal_grouped_module",
+        "grouped_module",
+        "verilog_module",
+        "aux_module",
+        "aux_split_module",
+        "stub_module",
+        "pass_through_module",
+        "internal_verilog_module",
+        "internal_grouped_module",
     ] {
         assert!(types.contains(&expected), "missing module type: {expected}");
     }
@@ -162,25 +237,40 @@ fn all_11_interface_discriminators_parse() {
     let top_ifaces = &ifaces["Top"];
     assert_eq!(top_ifaces.len(), 11, "must have 11 interfaces");
 
-    let types: Vec<&str> = top_ifaces.iter().map(|i| match i {
-        Iface::HandShake { .. } => "handshake",
-        Iface::FeedForward { .. } => "feed_forward",
-        Iface::FalsePath { .. } => "false_path",
-        Iface::Clock { .. } => "clock",
-        Iface::FalsePathReset { .. } => "fp_reset",
-        Iface::FeedForwardReset { .. } => "ff_reset",
-        Iface::ApCtrl { .. } => "ap_ctrl",
-        Iface::NonPipeline { .. } => "non_pipeline",
-        Iface::Unknown { .. } => "unknown",
-        Iface::TapaPeek { .. } => "tapa_peek",
-        Iface::Aux { .. } => "aux",
-    }).collect();
+    let types: Vec<&str> = top_ifaces
+        .iter()
+        .map(|i| match i {
+            Iface::HandShake { .. } => "handshake",
+            Iface::FeedForward { .. } => "feed_forward",
+            Iface::FalsePath { .. } => "false_path",
+            Iface::Clock { .. } => "clock",
+            Iface::FalsePathReset { .. } => "fp_reset",
+            Iface::FeedForwardReset { .. } => "ff_reset",
+            Iface::ApCtrl { .. } => "ap_ctrl",
+            Iface::NonPipeline { .. } => "non_pipeline",
+            Iface::Unknown { .. } => "unknown",
+            Iface::TapaPeek { .. } => "tapa_peek",
+            Iface::Aux { .. } => "aux",
+        })
+        .collect();
 
     for expected in [
-        "handshake", "feed_forward", "false_path", "clock", "fp_reset",
-        "ff_reset", "ap_ctrl", "non_pipeline", "unknown", "tapa_peek", "aux",
+        "handshake",
+        "feed_forward",
+        "false_path",
+        "clock",
+        "fp_reset",
+        "ff_reset",
+        "ap_ctrl",
+        "non_pipeline",
+        "unknown",
+        "tapa_peek",
+        "aux",
     ] {
-        assert!(types.contains(&expected), "missing interface type: {expected}");
+        assert!(
+            types.contains(&expected),
+            "missing interface type: {expected}"
+        );
     }
 }
 
@@ -190,7 +280,11 @@ fn all_variants_round_trip() {
     let p1 = Project::from_json(&json).expect("parse 1");
     let serialized = p1.to_json().expect("serialize");
     let p2 = Project::from_json(&serialized).expect("parse 2");
-    assert_eq!(p1.modules.module_definitions.len(), p2.modules.module_definitions.len(), "modules");
+    assert_eq!(
+        p1.modules.module_definitions.len(),
+        p2.modules.module_definitions.len(),
+        "modules"
+    );
     let n1 = p1.ifaces.as_ref().unwrap()["Top"].len();
     let n2 = p2.ifaces.as_ref().unwrap()["Top"].len();
     assert_eq!(n1, n2, "interfaces round-trip");
@@ -204,7 +298,11 @@ fn vadd_project_round_trip() {
     let p1 = Project::from_json(&json).expect("parse 1");
     let serialized = p1.to_json().expect("serialize");
     let p2 = Project::from_json(&serialized).expect("parse 2");
-    assert_eq!(p1.modules.module_definitions.len(), p2.modules.module_definitions.len(), "modules");
+    assert_eq!(
+        p1.modules.module_definitions.len(),
+        p2.modules.module_definitions.len(),
+        "modules"
+    );
     assert_eq!(p1.part_num, p2.part_num, "part_num");
     assert_eq!(p1.modules.top_name, p2.modules.top_name, "top_name");
 }
@@ -215,7 +313,12 @@ fn normalized_output_is_sorted() {
     let p = Project::from_json(&json).expect("parse");
     let serialized = p.to_json().expect("serialize");
     let p2 = Project::from_json(&serialized).expect("re-parse");
-    let names: Vec<_> = p2.modules.module_definitions.iter().map(|m| m.name().to_string()).collect();
+    let names: Vec<_> = p2
+        .modules
+        .module_definitions
+        .iter()
+        .map(|m| m.name().to_string())
+        .collect();
     let mut sorted = names.clone();
     sorted.sort();
     assert_eq!(names, sorted, "sorted by name");
@@ -308,8 +411,14 @@ fn module_port_is_input_output() {
     let vecadd = p.get_module("VecAdd").expect("VecAdd");
     let ports = vecadd.ports();
     // VecAdd fixture has all input ports
-    assert!(ports.iter().any(tapa_graphir::ModulePort::is_input), "should have input ports");
-    assert!(!ports.iter().any(tapa_graphir::ModulePort::is_output), "VecAdd should have no output ports");
+    assert!(
+        ports.iter().any(tapa_graphir::ModulePort::is_input),
+        "should have input ports"
+    );
+    assert!(
+        !ports.iter().any(tapa_graphir::ModulePort::is_output),
+        "VecAdd should have no output ports"
+    );
     // ap_clk is input
     let clk = ports.iter().find(|p| p.name == "ap_clk").unwrap();
     assert!(clk.is_input());
@@ -320,9 +429,16 @@ fn module_port_is_input_output() {
 fn module_port_get_width_expr() {
     let p = Project::from_json(&fixture("vadd_project.json")).expect("parse");
     let vecadd = p.get_module("VecAdd").expect("VecAdd");
-    let port = vecadd.ports().iter().find(|p| p.name == "a_offset").expect("a_offset");
+    let port = vecadd
+        .ports()
+        .iter()
+        .find(|p| p.name == "a_offset")
+        .expect("a_offset");
     let width = port.get_width_expr().expect("has width");
-    assert!(width.is_identifier() || !width.is_empty(), "width expr should be non-empty");
+    assert!(
+        width.is_identifier() || !width.is_empty(),
+        "width expr should be non-empty"
+    );
 }
 
 #[test]
@@ -386,8 +502,7 @@ fn unknown_fields_preserved_through_round_trip() {
 
     // Round-trip through serialize/parse.
     let serialized = p.to_json().expect("serialize");
-    let reparsed: serde_json::Value =
-        serde_json::from_str(&serialized).expect("re-parse as Value");
+    let reparsed: serde_json::Value = serde_json::from_str(&serialized).expect("re-parse as Value");
 
     // Project-level unknown field preserved.
     assert_eq!(

@@ -15,10 +15,7 @@ pub enum ExportError {
     Io(#[from] std::io::Error),
 
     #[error("DRC failure in module {module}: undefined wires: {wires:?}")]
-    MissingWire {
-        module: String,
-        wires: Vec<String>,
-    },
+    MissingWire { module: String, wires: Vec<String> },
 
     #[error("export destination does not exist: {0}")]
     MissingDestination(String),

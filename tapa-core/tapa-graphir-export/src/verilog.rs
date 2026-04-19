@@ -2,10 +2,10 @@
 
 use std::fmt::Write;
 
+use serde_json::Value;
 use tapa_graphir::{
-    AnyModuleDefinition, BaseFields, Expression, GroupedFields, HierarchicalName,
-    ModuleConnection, ModuleInstantiation, ModuleNet, ModuleParameter, ModulePort, Range,
-    VerilogFields,
+    AnyModuleDefinition, BaseFields, Expression, GroupedFields, HierarchicalName, ModuleConnection,
+    ModuleInstantiation, ModuleNet, ModuleParameter, ModulePort, Range, VerilogFields,
 };
 
 const TIMESCALE: &str = "`timescale 1 ns / 1 ps";
@@ -21,10 +21,16 @@ const COMMON_HEADER: &str = "\
 #[must_use]
 pub fn render_module(module: &AnyModuleDefinition) -> String {
     match module {
-        AnyModuleDefinition::Grouped { base, grouped, .. }
-        | AnyModuleDefinition::InternalGrouped { base, grouped, .. } => {
-            render_grouped(base, grouped)
+        AnyModuleDefinition::Grouped {
+            base,
+            grouped,
+            extra,
         }
+        | AnyModuleDefinition::InternalGrouped {
+            base,
+            grouped,
+            extra,
+        } => render_grouped(base, grouped, extra),
 
         AnyModuleDefinition::Verilog { base, verilog, .. }
         | AnyModuleDefinition::PassThrough { base, verilog, .. }
@@ -41,7 +47,11 @@ pub fn render_module(module: &AnyModuleDefinition) -> String {
 }
 
 /// Render a grouped module to formatted Verilog.
-fn render_grouped(base: &BaseFields, grouped: &GroupedFields) -> String {
+fn render_grouped(
+    base: &BaseFields,
+    grouped: &GroupedFields,
+    extra: &std::collections::BTreeMap<String, Value>,
+) -> String {
     let mut out = String::with_capacity(4096);
 
     // Common header
@@ -76,6 +86,8 @@ fn render_grouped(base: &BaseFields, grouped: &GroupedFields) -> String {
         write_wires(&mut out, &grouped.wires);
     }
 
+    write_extra_assigns(&mut out, extra);
+
     // Submodule instantiations
     for inst in &grouped.submodules {
         out.push('\n');
@@ -86,6 +98,25 @@ fn render_grouped(base: &BaseFields, grouped: &GroupedFields) -> String {
     writeln!(out).unwrap();
     writeln!(out, "endmodule  // {}", base.name).unwrap();
     out
+}
+
+fn write_extra_assigns(out: &mut String, extra: &std::collections::BTreeMap<String, Value>) {
+    let Some(assigns) = extra.get("assigns").and_then(Value::as_array) else {
+        return;
+    };
+    if assigns.is_empty() {
+        return;
+    }
+    out.push('\n');
+    for assign in assigns {
+        let Some(lhs) = assign.get("lhs").and_then(Value::as_str) else {
+            continue;
+        };
+        let Some(rhs) = assign.get("rhs").and_then(Value::as_str) else {
+            continue;
+        };
+        writeln!(out, "assign {lhs} = {rhs};").unwrap();
+    }
 }
 
 /// Render a raw Verilog module (prepend timescale if needed).
@@ -276,7 +307,11 @@ fn write_range_aligned(out: &mut String, range: Option<&Range>, max_range: usize
 
 /// Format an expression as a string (concatenating token reprs).
 fn format_expr(expr: &Expression) -> String {
-    expr.tokens().iter().map(|t| t.repr.as_str()).collect::<Vec<_>>().join(" ")
+    expr.tokens()
+        .iter()
+        .map(|t| t.repr.as_str())
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// DRC: check that all identifiers used in submodule connections are defined.
@@ -384,7 +419,10 @@ mod tests {
             "module leaf(); endmodule".into(),
         );
         let out = render_module(&module);
-        assert!(out.starts_with(TIMESCALE), "should prepend timescale, got:\n{out}");
+        assert!(
+            out.starts_with(TIMESCALE),
+            "should prepend timescale, got:\n{out}"
+        );
         assert!(out.contains("module leaf"), "got:\n{out}");
     }
 
@@ -430,6 +468,29 @@ mod tests {
         assert!(out.contains("child_mod"), "got:\n{out}");
         assert!(out.contains("child_0"), "got:\n{out}");
         assert!(out.contains(".clk (clk)"), "got:\n{out}");
+    }
+
+    #[test]
+    fn render_grouped_with_extra_assigns() {
+        let mut module =
+            AnyModuleDefinition::new_grouped("parent".into(), Vec::new(), Vec::new(), Vec::new());
+        let AnyModuleDefinition::Grouped { extra, .. } = &mut module else {
+            panic!("expected grouped module");
+        };
+        extra.insert(
+            "assigns".into(),
+            serde_json::json!([
+                {"lhs": "child_0__n_in", "rhs": "n"},
+                {"lhs": "child_0___n__q0", "rhs": "child_0__n"}
+            ]),
+        );
+
+        let out = render_module(&module);
+        assert!(out.contains("assign child_0__n_in = n;"), "got:\n{out}");
+        assert!(
+            out.contains("assign child_0___n__q0 = child_0__n;"),
+            "got:\n{out}"
+        );
     }
 
     #[test]

@@ -243,7 +243,11 @@ impl AnyModuleDefinition {
 
     /// Build a new Verilog module definition from raw source code.
     #[must_use]
-    pub fn new_verilog(name: String, ports: Vec<super::support::ModulePort>, verilog: String) -> Self {
+    pub fn new_verilog(
+        name: String,
+        ports: Vec<super::support::ModulePort>,
+        verilog: String,
+    ) -> Self {
         Self::Verilog {
             base: BaseFields {
                 name,
@@ -278,10 +282,11 @@ impl AnyModuleDefinition {
     /// Sort internal collections for deterministic output.
     pub fn normalize(&mut self) {
         match self {
-            Self::Grouped { base, grouped, .. }
-            | Self::InternalGrouped { base, grouped, .. } => {
+            Self::Grouped { base, grouped, .. } | Self::InternalGrouped { base, grouped, .. } => {
                 base.ports.sort_unstable_by(|a, b| a.name.cmp(&b.name));
-                grouped.submodules.sort_unstable_by(|a, b| a.name.cmp(&b.name));
+                grouped
+                    .submodules
+                    .sort_unstable_by(|a, b| a.name.cmp(&b.name));
                 grouped.wires.sort_unstable_by(|a, b| a.name.cmp(&b.name));
                 for sub in &mut grouped.submodules {
                     sub.connections.sort_unstable_by(|a, b| a.name.cmp(&b.name));

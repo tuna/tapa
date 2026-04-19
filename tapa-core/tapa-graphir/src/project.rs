@@ -78,7 +78,9 @@ impl Project {
     /// Sort all collections for deterministic serialization output.
     /// Mirrors Python's `NamespaceModel` sort behavior.
     pub fn normalize(&mut self) {
-        self.modules.module_definitions.sort_unstable_by(|a, b| a.name().cmp(b.name()));
+        self.modules
+            .module_definitions
+            .sort_unstable_by(|a, b| a.name().cmp(b.name()));
         for def in &mut self.modules.module_definitions {
             def.normalize();
         }
