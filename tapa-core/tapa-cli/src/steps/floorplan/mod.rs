@@ -26,7 +26,7 @@ use tapa_task_graph::{
 
 use crate::context::CliContext;
 use crate::error::{CliError, Result};
-use crate::state::{graph as graph_io, settings as settings_io};
+use crate::state::{graph as graph_io, settings as settings_io, value_to_indexmap};
 
 mod run_autobridge;
 
@@ -277,12 +277,6 @@ fn build_design_with_floorplan(
     })
 }
 
-fn value_to_indexmap(value: Option<&Value>) -> indexmap::IndexMap<String, Value> {
-    let Some(Value::Object(obj)) = value else {
-        return indexmap::IndexMap::new();
-    };
-    obj.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
-}
 
 fn load_or_cached_graph(ctx: &CliContext) -> Result<Value> {
     {

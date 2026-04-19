@@ -345,35 +345,43 @@ pub fn pack_xo_without_redaction(
 }
 
 fn redact_rpt(text: &str) -> String {
-    // Matches Python's `Date:           <Day Mon DD HH:MM:SS YYYY>` pattern.
-    let re = regex::Regex::new("Date:           ... ... .. ..:..:.. ....")
-        .expect("static regex compiles");
+    use std::sync::OnceLock;
+    static RE: OnceLock<regex::Regex> = OnceLock::new();
+    let re = RE.get_or_init(|| {
+        regex::Regex::new("Date:           ... ... .. ..:..:.. ....")
+            .expect("static regex compiles")
+    });
     re.replace_all(text, "Date:           Tue Jan 01 00:00:00 1980")
         .into_owned()
 }
 
 fn redact_xml_payload(text: &str) -> String {
-    let re_time = regex::Regex::new(
-        "<xilinx:coreCreationDateTime>....-..-..T..:..:..Z</xilinx:coreCreationDateTime>",
-    )
-    .expect("static regex compiles");
+    use std::sync::OnceLock;
+    static RE_TIME: OnceLock<regex::Regex> = OnceLock::new();
+    static RE_SRC: OnceLock<regex::Regex> = OnceLock::new();
+    static RE_PID: OnceLock<regex::Regex> = OnceLock::new();
+
+    let re_time = RE_TIME.get_or_init(|| {
+        regex::Regex::new(
+            "<xilinx:coreCreationDateTime>....-..-..T..:..:..Z</xilinx:coreCreationDateTime>",
+        )
+        .expect("static regex compiles")
+    });
     let step1 = re_time.replace_all(
         text,
         "<xilinx:coreCreationDateTime>1980-01-01T00:00:00Z</xilinx:coreCreationDateTime>",
     );
 
-    let re_src = regex::Regex::new("<SourceLocation>.*/(cpp/[^<]*)</SourceLocation>")
-        .expect("static regex compiles");
+    let re_src = RE_SRC.get_or_init(|| {
+        regex::Regex::new("<SourceLocation>.*/(cpp/[^<]*)</SourceLocation>")
+            .expect("static regex compiles")
+    });
     let step2 = re_src.replace_all(&step1, "<SourceLocation>$1</SourceLocation>");
 
-    // Python matches 32 arbitrary characters inside `ProjectID="..."`
-    // (see `tapa/program/pack.py::_redact_xml`: 32 literal dots, and
-    // `.` in `re` defaults to any-char-except-newline). Rust's
-    // `regex` has the same default, so `.{32}` gives byte-for-byte
-    // parity. Restricting to hex would miss valid XML payloads with
-    // non-hex project identifiers.
-    let re_pid = regex::Regex::new("ProjectID=\".{32}\"")
-        .expect("static regex compiles");
+    // `.{32}` matches Python's 32 literal dots inside `ProjectID="..."`.
+    let re_pid = RE_PID.get_or_init(|| {
+        regex::Regex::new("ProjectID=\".{32}\"").expect("static regex compiles")
+    });
     re_pid
         .replace_all(&step2, "ProjectID=\"0123456789abcdef0123456789abcdef\"")
         .into_owned()
