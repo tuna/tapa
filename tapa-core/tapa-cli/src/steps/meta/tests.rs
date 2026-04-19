@@ -168,10 +168,10 @@ impl ToolRunner for HlsAndVivadoStub {
 }
 
 fn seed_vadd_work_dir(work: &std::path::Path) {
+    use crate::state::{design as design_io, settings as settings_io};
     use indexmap::IndexMap;
     use serde_json::json;
     use tapa_task_graph::{Design, TaskTopology};
-    use crate::state::{design as design_io, settings as settings_io};
 
     let mut tasks = IndexMap::new();
     tasks.insert(
@@ -221,11 +221,8 @@ fn seed_vadd_work_dir(work: &std::path::Path) {
 
     // `synth_args()` forces `gen_ab_graph=true` which reads
     // `cpp_arg_pre_assignments` from the floorplan config.
-    std::fs::write(
-        work.join("fp.json"),
-        br#"{"cpp_arg_pre_assignments": {}}"#,
-    )
-    .expect("seed fp.json");
+    std::fs::write(work.join("fp.json"), br#"{"cpp_arg_pre_assignments": {}}"#)
+        .expect("seed fp.json");
 }
 
 /// Regression: `generate-floorplan` forces `enable_synth_util =
@@ -241,12 +238,8 @@ fn generate_floorplan_synth_step_with_enable_synth_util() {
     let work = tmp.path();
     seed_vadd_work_dir(work);
 
-    let globals = GlobalArgs::try_parse_from([
-        "tapa",
-        "--work-dir",
-        work.to_str().expect("utf-8"),
-    ])
-    .expect("parse globals");
+    let globals = GlobalArgs::try_parse_from(["tapa", "--work-dir", work.to_str().expect("utf-8")])
+        .expect("parse globals");
     let ctx = CliContext::from_globals(&globals);
 
     let fp_args = GenerateFloorplanArgs::try_parse_from([
@@ -278,8 +271,7 @@ fn generate_floorplan_synth_step_with_enable_synth_util() {
         .expect("synth with enable_synth_util must no longer reject");
 
     // The post-synth-util fold must have rewritten `Add.total_area`.
-    let reloaded =
-        design_io::load_design(work).expect("reload design after synth");
+    let reloaded = design_io::load_design(work).expect("reload design after synth");
     let add = reloaded.tasks.get("Add").expect("Add present");
     assert_eq!(
         add.total_area.get("LUT"),
@@ -287,8 +279,5 @@ fn generate_floorplan_synth_step_with_enable_synth_util() {
         "post-synth-util must update LUT from the Vivado rpt",
     );
     // BRAM_18K = RAMB36*2 + RAMB18 = 5*2 + 6 = 16
-    assert_eq!(
-        add.total_area.get("BRAM_18K"),
-        Some(&serde_json::json!(16)),
-    );
+    assert_eq!(add.total_area.get("BRAM_18K"), Some(&serde_json::json!(16)),);
 }

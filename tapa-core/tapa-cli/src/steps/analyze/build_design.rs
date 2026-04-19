@@ -36,9 +36,7 @@ pub(super) fn flatten_graph_value(graph: &Value) -> Result<Value> {
         | TransformError::UnknownChildTask(_)
         | TransformError::SlotNameCollision(_)
         | TransformError::SlotCppGeneration { .. }
-        | TransformError::Json(_)) => {
-            CliError::InvalidArg(format!("flatten failed: {other}"))
-        }
+        | TransformError::Json(_)) => CliError::InvalidArg(format!("flatten failed: {other}")),
     })?;
     let out_json = flat.to_json()?;
     let value: Value = serde_json::from_str(&out_json)?;
@@ -62,9 +60,9 @@ pub(super) fn build_design(top: &str, target: &str, graph: &Value) -> Result<Des
     let tasks_obj = graph
         .get("tasks")
         .and_then(Value::as_object)
-        .ok_or_else(|| CliError::InvalidArg(
-            "tapacc graph is missing the `tasks` object".to_string(),
-        ))?;
+        .ok_or_else(|| {
+            CliError::InvalidArg("tapacc graph is missing the `tasks` object".to_string())
+        })?;
 
     let mut topology: IndexMap<String, TaskTopology> = IndexMap::new();
     for (name, task) in tasks_obj {
@@ -199,9 +197,7 @@ mod tests {
         });
 
         let out = flatten_graph_value(&raw).expect("flatten ok");
-        let top = out["tasks"]["VecAdd"]
-            .as_object()
-            .expect("top survives");
+        let top = out["tasks"]["VecAdd"].as_object().expect("top survives");
         assert!(
             top["fifos"].get("fifo_VecAdd").is_some(),
             "flatten must rename `fifo` to `fifo_VecAdd`; got {top:?}",

@@ -10,8 +10,9 @@ use crate::context::{CliContext, FlowState};
 use crate::error::{CliError, Result};
 use crate::steps::{analyze, floorplan, pack, synth};
 
-use super::{run_compile_composite, run_generate_floorplan_composite, CompileArgs, GenerateFloorplanArgs};
-
+use super::{
+    run_compile_composite, run_generate_floorplan_composite, CompileArgs, GenerateFloorplanArgs,
+};
 
 #[allow(
     clippy::struct_excessive_bools,
@@ -56,7 +57,10 @@ pub struct CompileWithFloorplanDseArgs {
     pub remove_hls_work_dir: bool,
     #[arg(long = "skip-hls-based-on-mtime", default_value_t = false)]
     pub skip_hls_based_on_mtime: bool,
-    #[arg(long = "no-skip-hls-based-on-mtime", conflicts_with = "skip_hls_based_on_mtime")]
+    #[arg(
+        long = "no-skip-hls-based-on-mtime",
+        conflicts_with = "skip_hls_based_on_mtime"
+    )]
     pub no_skip_hls_based_on_mtime: bool,
     #[arg(long = "other-hls-configs", default_value = "")]
     pub other_hls_configs: String,
@@ -183,9 +187,7 @@ pub fn run_compile_with_floorplan_dse_composite(
     Ok(())
 }
 
-fn build_generate_floorplan_stage1(
-    args: &CompileWithFloorplanDseArgs,
-) -> GenerateFloorplanArgs {
+fn build_generate_floorplan_stage1(args: &CompileWithFloorplanDseArgs) -> GenerateFloorplanArgs {
     GenerateFloorplanArgs {
         input_files: args.input_files.clone(),
         top: args.top.clone(),
@@ -271,7 +273,6 @@ fn build_compile_stage2(
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -296,8 +297,11 @@ mod tests {
             "graphir.json",
         ])
         .expect("parse");
-        let compile =
-            build_compile_stage2(&args, std::path::Path::new("fp.json"), std::path::Path::new("out.xo"));
+        let compile = build_compile_stage2(
+            &args,
+            std::path::Path::new("fp.json"),
+            std::path::Path::new("out.xo"),
+        );
         assert_eq!(
             compile.pack.graphir_path.as_deref(),
             Some(std::path::Path::new("graphir.json")),

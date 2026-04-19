@@ -59,8 +59,10 @@ pub(super) fn render_vitis_script(
         format!("XO='{}'", absolutize(output_file).display()),
     ];
 
-    let mut vitis_command: Vec<String> =
-        VITIS_COMMAND_BASIC.iter().map(|s| (*s).to_string()).collect();
+    let mut vitis_command: Vec<String> = VITIS_COMMAND_BASIC
+        .iter()
+        .map(|s| (*s).to_string())
+        .collect();
 
     if let Some(conn) = connectivity {
         lines.push(format!("CONFIG_FILE='{}'", absolutize(conn).display()));
@@ -80,9 +82,7 @@ pub(super) fn render_vitis_script(
             vitis_command.push(CLOCK_OPTION.to_string());
         }
     } else {
-        lines.push(
-            r#">&2 echo "Using the default clock target of the platform.""#.to_string(),
-        );
+        lines.push(r#">&2 echo "Using the default clock target of the platform.""#.to_string());
     }
 
     if let Some(p) = platform {
@@ -162,13 +162,7 @@ mod tests {
 
     #[test]
     fn renders_minimum_script_skeleton() {
-        let script = render_vitis_script(
-            "VecAdd",
-            Path::new("/tmp/out.xo"),
-            None,
-            None,
-            None,
-        );
+        let script = render_vitis_script("VecAdd", Path::new("/tmp/out.xo"), None, None, None);
         assert!(script.starts_with("#!/bin/bash"));
         assert!(script.contains("TOP=VecAdd"));
         assert!(script.contains("XO='/tmp/out.xo'"));
@@ -189,13 +183,7 @@ mod tests {
 
     #[test]
     fn emits_target_frequency_from_clock_period() {
-        let script = render_vitis_script(
-            "Top",
-            Path::new("/tmp/a.xo"),
-            None,
-            Some("3.33"),
-            None,
-        );
+        let script = render_vitis_script("Top", Path::new("/tmp/a.xo"), None, Some("3.33"), None);
         assert!(
             script.contains("TARGET_FREQUENCY=300"),
             "expected round(1000/3.33)=300, got: {script}",

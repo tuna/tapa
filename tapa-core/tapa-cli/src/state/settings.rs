@@ -74,10 +74,7 @@ impl serde_json::ser::Formatter for PythonFormatter {
         }
     }
 
-    fn begin_object_value<W: io::Write + ?Sized>(
-        &mut self,
-        writer: &mut W,
-    ) -> io::Result<()> {
+    fn begin_object_value<W: io::Write + ?Sized>(&mut self, writer: &mut W) -> io::Result<()> {
         writer.write_all(b": ")
     }
 }

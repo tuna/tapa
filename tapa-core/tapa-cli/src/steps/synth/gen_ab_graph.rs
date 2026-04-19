@@ -21,11 +21,7 @@ const OUTPUT_FILENAME: &str = "ab_graph.json";
 /// `<work_dir>/ab_graph.json`.
 ///
 /// Python parity: `tapa.abgraph.gen_abgraph.get_top_level_ab_graph`.
-pub fn emit_ab_graph(
-    work_dir: &Path,
-    design: &Design,
-    floorplan_config: &Path,
-) -> Result<()> {
+pub fn emit_ab_graph(work_dir: &Path, design: &Design, floorplan_config: &Path) -> Result<()> {
     let program = topology_program_from_design(design)?;
     let preassignments = read_cpp_arg_pre_assignments(floorplan_config)?;
     let fsm_name = format!("{}_fsm", program.top);
@@ -42,9 +38,7 @@ pub fn emit_ab_graph(
 /// Read `cpp_arg_pre_assignments` from the floorplan config. Missing or
 /// non-object values yield an empty map (matching Python's `.get(...) or {}`
 /// semantics — the key is optional on early-stage floorplan configs).
-fn read_cpp_arg_pre_assignments(
-    floorplan_config: &Path,
-) -> Result<BTreeMap<String, String>> {
+fn read_cpp_arg_pre_assignments(floorplan_config: &Path) -> Result<BTreeMap<String, String>> {
     let raw = fs::read_to_string(floorplan_config).map_err(|e| {
         CliError::InvalidArg(format!(
             "failed to read `--floorplan-config` file `{}`: {e}",
@@ -57,7 +51,10 @@ fn read_cpp_arg_pre_assignments(
             floorplan_config.display(),
         ))
     })?;
-    let Some(obj) = cfg.get("cpp_arg_pre_assignments").and_then(Value::as_object) else {
+    let Some(obj) = cfg
+        .get("cpp_arg_pre_assignments")
+        .and_then(Value::as_object)
+    else {
         return Ok(BTreeMap::new());
     };
     let mut out = BTreeMap::new();

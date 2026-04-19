@@ -36,7 +36,10 @@ mod vitis_packaging;
 use vitis_packaging::pack_vitis;
 
 #[derive(Debug, Clone, Parser)]
-#[command(name = "pack", about = "Pack the generated RTL into a Xilinx object file.")]
+#[command(
+    name = "pack",
+    about = "Pack the generated RTL into a Xilinx object file."
+)]
 pub struct PackArgs {
     /// Output `.xo` (Vitis target) or `.zip` (HLS target).
     #[arg(short = 'o', long = "output", value_name = "FILE")]
@@ -344,8 +347,7 @@ mod tests {
         settings_io::store_settings(work_dir, &settings).expect("store settings");
         // `pack_hls_zip` mirrors Python's `pack_zip(..., graph=...)` and
         // requires `graph.json` to be present so it can emit `graph.yaml`.
-        graph_io::store_graph(work_dir, &json!({"top": "Top", "tasks": {}}))
-            .expect("store graph");
+        graph_io::store_graph(work_dir, &json!({"top": "Top", "tasks": {}})).expect("store graph");
     }
 
     #[test]
@@ -387,8 +389,7 @@ mod tests {
         // whose `Date:` line should be normalized by the redactor.
         let rtl_dir = dir.path().join("rtl");
         std::fs::create_dir_all(&rtl_dir).expect("mkdir rtl");
-        std::fs::write(rtl_dir.join("Top.v"), b"module Top; endmodule\n")
-            .expect("write rtl stub");
+        std::fs::write(rtl_dir.join("Top.v"), b"module Top; endmodule\n").expect("write rtl stub");
         let report_dir = dir.path().join("hls/Top/syn/report");
         std::fs::create_dir_all(&report_dir).expect("mkdir hls report");
         std::fs::write(
@@ -411,10 +412,18 @@ mod tests {
         let names: Vec<String> = (0..zr.len())
             .map(|i| zr.by_index(i).unwrap().name().to_string())
             .collect();
-        assert!(names.iter().any(|n| n == "graph.yaml"), "graph.yaml missing: {names:?}");
-        assert!(names.iter().any(|n| n == "settings.yaml"), "settings.yaml missing: {names:?}");
+        assert!(
+            names.iter().any(|n| n == "graph.yaml"),
+            "graph.yaml missing: {names:?}"
+        );
+        assert!(
+            names.iter().any(|n| n == "settings.yaml"),
+            "settings.yaml missing: {names:?}"
+        );
         assert!(names.iter().any(|n| n == "rtl/Top.v"));
-        assert!(names.iter().any(|n| n == "report/Top/syn/report/Top_csynth.rpt"));
+        assert!(names
+            .iter()
+            .any(|n| n == "report/Top/syn/report/Top_csynth.rpt"));
 
         let mut rpt = String::new();
         std::io::Read::read_to_string(

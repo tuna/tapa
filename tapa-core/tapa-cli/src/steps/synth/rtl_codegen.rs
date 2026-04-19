@@ -19,6 +19,89 @@ use crate::error::{CliError, Result};
 
 pub type TaskHdlInputs = BTreeMap<String, Vec<PathBuf>>;
 
+const VERILOG_SUPPORT_ASSETS: &[(&str, &str)] = &[
+    (
+        "arbiter.v",
+        include_str!("../../../../../tapa/assets/verilog/arbiter.v"),
+    ),
+    (
+        "axis_adapter.v",
+        include_str!("../../../../../tapa/assets/verilog/axis_adapter.v"),
+    ),
+    (
+        "async_mmap.v",
+        include_str!("../../../../../tapa/assets/verilog/async_mmap.v"),
+    ),
+    (
+        "axi_pipeline.v",
+        include_str!("../../../../../tapa/assets/verilog/axi_pipeline.v"),
+    ),
+    (
+        "axi_crossbar_addr.v",
+        include_str!("../../../../../tapa/assets/verilog/axi_crossbar_addr.v"),
+    ),
+    (
+        "axi_crossbar_rd.v",
+        include_str!("../../../../../tapa/assets/verilog/axi_crossbar_rd.v"),
+    ),
+    (
+        "axi_crossbar_wr.v",
+        include_str!("../../../../../tapa/assets/verilog/axi_crossbar_wr.v"),
+    ),
+    (
+        "axi_crossbar.v",
+        include_str!("../../../../../tapa/assets/verilog/axi_crossbar.v"),
+    ),
+    (
+        "axi_register_rd.v",
+        include_str!("../../../../../tapa/assets/verilog/axi_register_rd.v"),
+    ),
+    (
+        "axi_register_wr.v",
+        include_str!("../../../../../tapa/assets/verilog/axi_register_wr.v"),
+    ),
+    (
+        "detect_burst.v",
+        include_str!("../../../../../tapa/assets/verilog/detect_burst.v"),
+    ),
+    (
+        "fifo.v",
+        include_str!("../../../../../tapa/assets/verilog/fifo.v"),
+    ),
+    (
+        "fifo_bram.v",
+        include_str!("../../../../../tapa/assets/verilog/fifo_bram.v"),
+    ),
+    (
+        "fifo_fwd.v",
+        include_str!("../../../../../tapa/assets/verilog/fifo_fwd.v"),
+    ),
+    (
+        "fifo_srl.v",
+        include_str!("../../../../../tapa/assets/verilog/fifo_srl.v"),
+    ),
+    (
+        "generate_last.v",
+        include_str!("../../../../../tapa/assets/verilog/generate_last.v"),
+    ),
+    (
+        "priority_encoder.v",
+        include_str!("../../../../../tapa/assets/verilog/priority_encoder.v"),
+    ),
+    (
+        "relay_station.v",
+        include_str!("../../../../../tapa/assets/verilog/relay_station.v"),
+    ),
+    (
+        "a_axi_write_broadcastor_1_to_3.v",
+        include_str!("../../../../../tapa/assets/verilog/a_axi_write_broadcastor_1_to_3.v"),
+    ),
+    (
+        "a_axi_write_broadcastor_1_to_4.v",
+        include_str!("../../../../../tapa/assets/verilog/a_axi_write_broadcastor_1_to_4.v"),
+    ),
+];
+
 /// Build a typed `tapa_topology::Program` from the JSON-flavored
 /// `tapa_task_graph::Design` the CLI persists. Both schemas overlap on
 /// the wire, so we round-trip through `serde_json::Value`.
@@ -40,13 +123,23 @@ pub fn topology_program_from_design(design: &Design) -> Result<Program> {
         let tasks_value = if t.tasks.is_empty() {
             Value::Object(serde_json::Map::new())
         } else {
-            Value::Object(t.tasks.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+            Value::Object(
+                t.tasks
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect(),
+            )
         };
         task_obj.insert("tasks".to_string(), tasks_value);
         let fifos_value = if t.fifos.is_empty() {
             Value::Object(serde_json::Map::new())
         } else {
-            Value::Object(t.fifos.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+            Value::Object(
+                t.fifos
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect(),
+            )
         };
         task_obj.insert("fifos".to_string(), fifos_value);
         // Preserve area annotations + clock_period so downstream
@@ -94,12 +187,15 @@ pub fn generate_rtl_tree(
 ) -> Result<Vec<PathBuf>> {
     let rtl_dir = work_dir.join("rtl");
     fs::create_dir_all(&rtl_dir)?;
+    let mut written = write_verilog_support_assets(&rtl_dir)?;
 
     let program = topology_program_from_design(design)?;
     let mut state = TopologyWithRtl::new(program);
 
     for (task_name, files) in hdl_inputs {
-        let Some(module_path) = pick_top_verilog(files, task_name) else { continue };
+        let Some(module_path) = pick_top_verilog(files, task_name) else {
+            continue;
+        };
         let source = fs::read_to_string(&module_path)?;
         let parsed = VerilogModule::parse(&source).map_err(|e| {
             CliError::InvalidArg(format!(
@@ -111,7 +207,9 @@ pub fn generate_rtl_tree(
             .attach_module(task_name, parsed)
             .map_err(|e| codegen_to_cli_error("attach", task_name, &e))?;
         for src in files {
-            let Some(name) = src.file_name() else { continue };
+            let Some(name) = src.file_name() else {
+                continue;
+            };
             let dest = rtl_dir.join(name);
             if dest == src.as_path() {
                 continue;
@@ -122,8 +220,17 @@ pub fn generate_rtl_tree(
 
     generate_rtl(&mut state).map_err(|e| codegen_to_cli_error("generate", &design.top, &e))?;
 
-    let mut written = Vec::new();
     for (name, content) in &state.generated_files {
+        let path = rtl_dir.join(name);
+        fs::write(&path, content)?;
+        written.push(path);
+    }
+    Ok(written)
+}
+
+fn write_verilog_support_assets(rtl_dir: &Path) -> Result<Vec<PathBuf>> {
+    let mut written = Vec::new();
+    for (name, content) in VERILOG_SUPPORT_ASSETS {
         let path = rtl_dir.join(name);
         fs::write(&path, content)?;
         written.push(path);
@@ -154,8 +261,12 @@ fn cat_python_name(cat: tapa_task_graph::ArgCategory) -> &'static str {
 /// `cat`, `name`, `ctype`, `width`, `chan_count`, `chan_size`, with
 /// `None` for unset optional fields (Python's `None` repr).
 fn python_port_str(p: &tapa_task_graph::Port) -> String {
-    let chan_count = p.chan_count.map_or_else(|| "None".to_string(), |v| v.to_string());
-    let chan_size = p.chan_size.map_or_else(|| "None".to_string(), |v| v.to_string());
+    let chan_count = p
+        .chan_count
+        .map_or_else(|| "None".to_string(), |v| v.to_string());
+    let chan_size = p
+        .chan_size
+        .map_or_else(|| "None".to_string(), |v| v.to_string());
     format!(
         "cat: {}, name: {}, ctype: {}, width: {}, chan_count: {}, chan_size: {}",
         cat_python_name(p.cat),
@@ -303,9 +414,24 @@ mod tests {
     fn templates_info_empty_for_vadd() {
         let dir = tempfile::tempdir().expect("tempdir");
         write_templates_info(dir.path(), &vadd_design()).expect("write");
-        let raw = fs::read_to_string(dir.path().join("templates_info.json"))
-            .expect("read");
+        let raw = fs::read_to_string(dir.path().join("templates_info.json")).expect("read");
         assert_eq!(raw, "{}");
+    }
+
+    #[test]
+    fn generate_rtl_tree_copies_verilog_support_assets() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let written =
+            generate_rtl_tree(dir.path(), &vadd_design(), &TaskHdlInputs::new()).expect("generate");
+
+        let rtl_dir = dir.path().join("rtl");
+        let fifo = fs::read_to_string(rtl_dir.join("fifo.v")).expect("fifo.v");
+        assert!(fifo.contains("module fifo"), "got:\n{fifo}");
+        assert!(rtl_dir.join("fifo_srl.v").is_file());
+        assert!(rtl_dir.join("fifo_bram.v").is_file());
+        assert!(rtl_dir.join("fifo_fwd.v").is_file());
+        assert!(rtl_dir.join("axis_adapter.v").is_file());
+        assert!(written.iter().any(|p| p.ends_with("fifo.v")));
     }
 
     /// Python parity: `str(port)` emits every `Instance.Arg.Port`
@@ -373,8 +499,7 @@ mod tests {
         );
         let dir = tempfile::tempdir().expect("tempdir");
         write_templates_info(dir.path(), &design).expect("write");
-        let raw = fs::read_to_string(dir.path().join("templates_info.json"))
-            .expect("read");
+        let raw = fs::read_to_string(dir.path().join("templates_info.json")).expect("read");
         assert_eq!(
             raw,
             "{\"Stub\":[\"cat: Cat.SCALAR, name: n, ctype: uint64_t, width: 64, \

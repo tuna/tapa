@@ -94,7 +94,10 @@ pub struct GenerateFloorplanArgs {
     pub remove_hls_work_dir: bool,
     #[arg(long = "skip-hls-based-on-mtime", default_value_t = false)]
     pub skip_hls_based_on_mtime: bool,
-    #[arg(long = "no-skip-hls-based-on-mtime", conflicts_with = "skip_hls_based_on_mtime")]
+    #[arg(
+        long = "no-skip-hls-based-on-mtime",
+        conflicts_with = "skip_hls_based_on_mtime"
+    )]
     pub no_skip_hls_based_on_mtime: bool,
     #[arg(long = "other-hls-configs", default_value = "")]
     pub other_hls_configs: String,
@@ -176,7 +179,6 @@ pub fn run_generate_floorplan_composite(
     synth::run(&args.synth_args(), ctx)?;
     floorplan::run_run_autobridge(&args.run_autobridge_args(), ctx)
 }
-
 
 #[cfg(test)]
 mod tests;

@@ -167,13 +167,7 @@ fn run_native(args: &AnalyzeArgs, ctx: &CliContext) -> Result<()> {
         ctx.options.clang_format_quota_in_bytes,
     )?;
     let target_str = args.target.as_str();
-    let mut graph_dict = run_tapacc(
-        &tapacc,
-        &flatten_files,
-        &args.top,
-        &all_cflags,
-        target_str,
-    )?;
+    let mut graph_dict = run_tapacc(&tapacc, &flatten_files, &args.top, &all_cflags, target_str)?;
 
     // Mirror Python: overwrite cflags with the user's tuple (with c++14).
     if let Some(obj) = graph_dict.as_object_mut() {
@@ -253,14 +247,9 @@ mod tests {
 
     #[test]
     fn to_python_argv_includes_keep_hierarchy_when_default() {
-        let args = AnalyzeArgs::try_parse_from([
-            "analyze",
-            "--input",
-            "vadd.cpp",
-            "--top",
-            "VecAdd",
-        ])
-        .unwrap();
+        let args =
+            AnalyzeArgs::try_parse_from(["analyze", "--input", "vadd.cpp", "--top", "VecAdd"])
+                .unwrap();
         let argv = to_python_argv(&args);
         assert!(
             argv.contains(&"--keep-hierarchy".to_string()),
@@ -328,8 +317,7 @@ mod tests {
              cat \"$last\"\n",
         )
         .expect("write tapa-cpp");
-        fs::set_permissions(&tapa_cpp, fs::Permissions::from_mode(0o755))
-            .expect("chmod tapa-cpp");
+        fs::set_permissions(&tapa_cpp, fs::Permissions::from_mode(0o755)).expect("chmod tapa-cpp");
 
         // tapacc: `--version` is parseable; otherwise it emits a fixed
         // tapacc-shaped graph.json on stdout.
@@ -346,8 +334,7 @@ mod tests {
             ),
         )
         .expect("write tapacc");
-        fs::set_permissions(&tapacc, fs::Permissions::from_mode(0o755))
-            .expect("chmod tapacc");
+        fs::set_permissions(&tapacc, fs::Permissions::from_mode(0o755)).expect("chmod tapacc");
 
         // Plant a trivial input file under the same root.
         let input_file = root.join("vadd.cpp");

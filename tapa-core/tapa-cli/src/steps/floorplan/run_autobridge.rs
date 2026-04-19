@@ -18,8 +18,8 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
 use tapa_xilinx::{
-    LocalToolRunner, RemoteToolRunner, SshMuxOptions, SshSession, ToolInvocation,
-    ToolRunner, XilinxError,
+    LocalToolRunner, RemoteToolRunner, SshMuxOptions, SshSession, ToolInvocation, ToolRunner,
+    XilinxError,
 };
 
 use crate::context::CliContext;
@@ -27,8 +27,7 @@ use crate::error::{CliError, Result};
 
 use super::{RunAutobridgeArgs, AUTOBRIDGE_WORK_DIR};
 
-const FLOORPLAN_CONFIG_NO_PRE_ASSIGNMENTS: &str =
-    "floorplan_config_no_pre_assignments.json";
+const FLOORPLAN_CONFIG_NO_PRE_ASSIGNMENTS: &str = "floorplan_config_no_pre_assignments.json";
 const RAPIDSTREAM_TAPAFP_BIN: &str = "rapidstream-tapafp";
 
 /// `tapa run-autobridge` dispatcher.
@@ -38,16 +37,10 @@ const RAPIDSTREAM_TAPAFP_BIN: &str = "rapidstream-tapafp";
 /// on `ctx.remote_config`. On success, `solution_*/floorplan.json`
 /// files land under `<work_dir>/autobridge/` (directly for local; via
 /// tar-pipe download for remote).
-pub fn run_run_autobridge(
-    args: &RunAutobridgeArgs,
-    ctx: &mut CliContext,
-) -> Result<()> {
+pub fn run_run_autobridge(args: &RunAutobridgeArgs, ctx: &mut CliContext) -> Result<()> {
     let prepared = prepare_inputs(args, ctx.work_dir.as_path())?;
     if let Some(cfg) = ctx.remote_config.as_ref() {
-        let session = std::sync::Arc::new(SshSession::new(
-            cfg.clone(),
-            SshMuxOptions::default(),
-        ));
+        let session = std::sync::Arc::new(SshSession::new(cfg.clone(), SshMuxOptions::default()));
         let runner = RemoteToolRunner::new(session);
         run_with(&runner, &prepared)
     } else {
@@ -171,9 +164,7 @@ fn map_runner_err(err: XilinxError) -> CliError {
                 reason: format!("exit code {code}: {stderr}"),
             }
         }
-        XilinxError::ToolFailure { code, stderr, .. } => {
-            CliError::TapaccFailed { code, stderr }
-        }
+        XilinxError::ToolFailure { code, stderr, .. } => CliError::TapaccFailed { code, stderr },
         XilinxError::ToolSignaled { program } => CliError::TapaccFailed {
             code: -1,
             stderr: format!("{program} killed by signal"),
@@ -257,7 +248,10 @@ mod tests {
     fn prepare_strips_pre_assignments_and_creates_work_dir() {
         let tmp = tempfile::tempdir().unwrap();
         let prep = make_prepared(tmp.path());
-        assert!(prep.autobridge_dir.is_dir(), "autobridge dir must be created");
+        assert!(
+            prep.autobridge_dir.is_dir(),
+            "autobridge dir must be created"
+        );
         assert!(
             prep.sanitized_config.is_file(),
             "sanitized config must be written",
@@ -306,7 +300,10 @@ mod tests {
 
         // Downloads list the autobridge dir so `solution_*/floorplan.json`
         // tar-pipes back.
-        assert_eq!(inv.downloads.as_slice(), std::slice::from_ref(&prep.autobridge_dir));
+        assert_eq!(
+            inv.downloads.as_slice(),
+            std::slice::from_ref(&prep.autobridge_dir)
+        );
     }
 
     #[test]
@@ -334,7 +331,10 @@ mod tests {
             inv.args,
         );
         assert_eq!(inv.cwd.as_deref(), Some(prep.work_dir.as_path()));
-        assert_eq!(inv.downloads.as_slice(), std::slice::from_ref(&prep.autobridge_dir));
+        assert_eq!(
+            inv.downloads.as_slice(),
+            std::slice::from_ref(&prep.autobridge_dir)
+        );
     }
 
     /// A remote-style failure (non-zero exit) must surface as a typed

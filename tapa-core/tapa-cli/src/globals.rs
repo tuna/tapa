@@ -49,7 +49,7 @@ pub struct GlobalArgs {
         short = 'w',
         long = "work-dir",
         value_name = "DIR",
-        default_value = "./work.out/",
+        default_value = "./work.out/"
     )]
     pub work_dir: PathBuf,
 

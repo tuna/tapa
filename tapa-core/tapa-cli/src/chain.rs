@@ -14,9 +14,7 @@ use clap::{Parser, Subcommand};
 
 use crate::context::CliContext;
 use crate::error::{CliError, Result};
-use crate::steps::{
-    analyze, find_clang_binary, floorplan, gcc, meta, pack, synth, version,
-};
+use crate::steps::{analyze, find_clang_binary, floorplan, gcc, meta, pack, synth, version};
 
 /// One link in the chained-step list. Each variant carries its step's
 /// `Args` (flags) plus a `chain_tail` positional that captures any
@@ -139,7 +137,10 @@ impl Step {
     /// `g++` is terminal — its own `trailing_var_arg` already
     /// consumed any chained tokens.
     fn split_chain(mut self) -> (Self, Vec<String>) {
-        let tail = self.chain_tail_mut().map(std::mem::take).unwrap_or_default();
+        let tail = self
+            .chain_tail_mut()
+            .map(std::mem::take)
+            .unwrap_or_default();
         (self, tail)
     }
 
@@ -190,8 +191,7 @@ fn parse_chain_tail(tail: &[String]) -> Result<Step> {
     let parsed = ChainParser::try_parse_from(&argv).map_err(|e| {
         if matches!(
             e.kind(),
-            clap::error::ErrorKind::DisplayHelp
-                | clap::error::ErrorKind::DisplayVersion
+            clap::error::ErrorKind::DisplayHelp | clap::error::ErrorKind::DisplayVersion
         ) {
             // `--help` / `--version` in the chain tail are graceful
             // exits handled the same way as the top-level parser.
@@ -245,14 +245,7 @@ mod tests {
         // Regression test: `--top synth` keeps `synth` as the
         // value of `--top`, not as a chained subcommand boundary.
         let cli = parse(&[
-            "analyze",
-            "--input",
-            "a.cpp",
-            "--top",
-            "synth",
-            "pack",
-            "--output",
-            "out.xo",
+            "analyze", "--input", "a.cpp", "--top", "synth", "pack", "--output", "out.xo",
         ])
         .expect("flag value `synth` must not boundary the chunk");
         match cli.step {
@@ -290,7 +283,14 @@ mod tests {
     #[test]
     fn analyze_synth_chain() {
         let cli = parse(&[
-            "analyze", "--input", "a.cpp", "--top", "T", "synth", "--platform", "p",
+            "analyze",
+            "--input",
+            "a.cpp",
+            "--top",
+            "T",
+            "synth",
+            "--platform",
+            "p",
         ])
         .unwrap();
         match cli.step {

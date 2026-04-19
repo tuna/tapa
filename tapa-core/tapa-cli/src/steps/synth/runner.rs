@@ -29,11 +29,7 @@ use super::SynthArgs;
 
 /// Native synth: validate the flag surface, resolve the device, persist
 /// settings, then drive cpp-extract → HLS → codegen for the leaf tasks.
-pub fn run_native(
-    args: &SynthArgs,
-    ctx: &CliContext,
-    runner: &dyn ToolRunner,
-) -> Result<()> {
+pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -> Result<()> {
     validate_optional_flag_combos(args)?;
 
     let mut design = design_io::load_design(&ctx.work_dir)?;
@@ -62,10 +58,7 @@ pub fn run_native(
             .as_ref()
             .map_or(Value::Null, |p| Value::String(p.clone())),
     );
-    settings.insert(
-        "clock_period".to_string(),
-        json!(&device.clock_period),
-    );
+    settings.insert("clock_period".to_string(), json!(&device.clock_period));
     settings_io::store_settings(&ctx.work_dir, &settings)?;
 
     extract_hls_sources(&ctx.work_dir, &design)?;
@@ -170,9 +163,7 @@ fn validate_optional_flag_combos(args: &SynthArgs) -> Result<()> {
                 .to_string(),
         ));
     }
-    if args.gen_graphir
-        && (args.device_config.is_none() || args.floorplan_path.is_none())
-    {
+    if args.gen_graphir && (args.device_config.is_none() || args.floorplan_path.is_none()) {
         return Err(CliError::InvalidArg(
             "`--gen-graphir` requires both `--device-config <FILE>` and \
              `--floorplan-path <FILE>`"
@@ -307,10 +298,12 @@ mod tests {
             // HLS dispatch (new default) stages each task under the
             // correct `project/<task>/syn/` tree. Queue is still
             // consulted for the verilog body content, keyed on top.
-            let inferred_top = inv
-                .env
-                .get("TAPA_KERNEL_PATH_0")
-                .and_then(|p| std::path::Path::new(p).file_stem().and_then(|s| s.to_str()).map(str::to_string));
+            let inferred_top = inv.env.get("TAPA_KERNEL_PATH_0").and_then(|p| {
+                std::path::Path::new(p)
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .map(str::to_string)
+            });
             let mut q = self.responses.lock().expect("poisoned");
             let (top, body) = if let Some(name) = inferred_top {
                 let body = q
@@ -328,8 +321,7 @@ mod tests {
                 }
                 (name, body)
             } else {
-                let (top, body) =
-                    q.first().cloned().expect("StubHls: no response queued");
+                let (top, body) = q.first().cloned().expect("StubHls: no response queued");
                 q.remove(0);
                 (top, body)
             };
@@ -351,9 +343,9 @@ mod tests {
     </SummaryOfTimingAnalysis>
   </PerformanceEstimates>
 </profile>"#,
-            ).expect("csynth.xml");
-            std::fs::write(syn.join("verilog").join(format!("{top}.v")), body)
-                .expect("write v");
+            )
+            .expect("csynth.xml");
+            std::fs::write(syn.join("verilog").join(format!("{top}.v")), body).expect("write v");
             Ok(ToolOutput {
                 exit_code: 0,
                 stdout: String::new(),
@@ -412,8 +404,10 @@ mod tests {
             },
         );
         let mut child_tasks = IndexMap::new();
-        child_tasks
-            .insert("Add".to_string(), serde_json::json!([{"args": {}, "step": 0}]));
+        child_tasks.insert(
+            "Add".to_string(),
+            serde_json::json!([{"args": {}, "step": 0}]),
+        );
         tasks.insert(
             "VecAdd".to_string(),
             TaskTopology {
@@ -464,12 +458,27 @@ mod tests {
         ]);
         run_native(&args, &ctx, &runner).expect("native synth must succeed end-to-end");
 
-        assert!(work.join("design.json").is_file(), "design.json must persist");
-        assert!(work.join("settings.json").is_file(), "settings.json must persist");
-        assert!(work.join("templates_info.json").is_file(), "templates_info.json must persist");
-        assert!(work.join("hls/Add/verilog").is_dir(), "hls/Add/verilog must exist");
+        assert!(
+            work.join("design.json").is_file(),
+            "design.json must persist"
+        );
+        assert!(
+            work.join("settings.json").is_file(),
+            "settings.json must persist"
+        );
+        assert!(
+            work.join("templates_info.json").is_file(),
+            "templates_info.json must persist"
+        );
+        assert!(
+            work.join("hls/Add/verilog").is_dir(),
+            "hls/Add/verilog must exist"
+        );
         assert!(work.join("rtl").is_dir(), "rtl directory must exist");
-        assert!(work.join("rtl/VecAdd.v").is_file(), "rtl/VecAdd.v must be emitted");
+        assert!(
+            work.join("rtl/VecAdd.v").is_file(),
+            "rtl/VecAdd.v must be emitted"
+        );
         assert!(
             work.join("rtl/VecAdd_fsm.v").is_file(),
             "rtl/VecAdd_fsm.v must be emitted (upper task FSM)",

@@ -24,9 +24,7 @@
 
 use std::path::{Path, PathBuf};
 
-use tapa_xilinx::{
-    sync_remote_vendor_includes, RemoteConfig, SshMuxOptions, SshSession,
-};
+use tapa_xilinx::{sync_remote_vendor_includes, RemoteConfig, SshMuxOptions, SshSession};
 
 use crate::error::{CliError, Result};
 use crate::globals::GlobalArgs;
@@ -47,9 +45,7 @@ fn taparc_path() -> Option<PathBuf> {
 
 /// Parse `user@host[:port]` into the three optional pieces.
 /// Mirrors `tapa/remote/config.py::_parse_remote_host`.
-fn parse_remote_host_spec(
-    spec: &str,
-) -> std::result::Result<RemoteHostSpec, String> {
+fn parse_remote_host_spec(spec: &str) -> std::result::Result<RemoteHostSpec, String> {
     let (user, rest) = match spec.split_once('@') {
         Some((u, r)) => (Some(u.to_string()), r),
         None => (None, spec),
@@ -192,9 +188,7 @@ fn apply_cli_overrides(cfg: &mut RemoteConfig, globals: &GlobalArgs) {
 /// the CLI override flags. Pure: does not touch the network or env.
 pub fn build_remote_config(globals: &GlobalArgs) -> Result<Option<RemoteConfig>> {
     let cli_spec = match globals.remote_host.as_deref() {
-        Some(s) => Some(
-            parse_remote_host_spec(s).map_err(CliError::InvalidArg)?,
-        ),
+        Some(s) => Some(parse_remote_host_spec(s).map_err(CliError::InvalidArg)?),
         None => None,
     };
 
@@ -224,16 +218,18 @@ pub fn build_remote_config(globals: &GlobalArgs) -> Result<Option<RemoteConfig>>
         serde_yaml::Value::String("remote".into()),
         serde_yaml::Value::Mapping(map),
     );
-    let yaml_text = serde_yaml::to_string(&serde_yaml::Value::Mapping(top))
-        .map_err(|e| CliError::RemoteConfigParse {
+    let yaml_text = serde_yaml::to_string(&serde_yaml::Value::Mapping(top)).map_err(|e| {
+        CliError::RemoteConfigParse {
             path: PathBuf::from("<merged>"),
             message: e.to_string(),
-        })?;
-    let mut cfg = RemoteConfig::from_yaml_str(&yaml_text, "<merged>")
-        .map_err(|e| CliError::RemoteConfigParse {
+        }
+    })?;
+    let mut cfg = RemoteConfig::from_yaml_str(&yaml_text, "<merged>").map_err(|e| {
+        CliError::RemoteConfigParse {
             path: PathBuf::from("<merged>"),
             message: e.to_string(),
-        })?;
+        }
+    })?;
     apply_cli_overrides(&mut cfg, globals);
     Ok(Some(cfg))
 }

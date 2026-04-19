@@ -140,8 +140,12 @@ fn optional_mtime(path: &Path) -> Option<SystemTime> {
 /// the side of running — matching Python's `os.path.getmtime(...) >
 /// rpt_path_mtime` with `rpt_path_mtime = 0.0` when the file is absent.
 fn should_run_vivado(cpp_path: &Path, rpt_mtime: Option<SystemTime>) -> bool {
-    let Ok(cpp_meta) = fs::metadata(cpp_path) else { return true };
-    let Ok(cpp_mtime) = cpp_meta.modified() else { return true };
+    let Ok(cpp_meta) = fs::metadata(cpp_path) else {
+        return true;
+    };
+    let Ok(cpp_mtime) = cpp_meta.modified() else {
+        return true;
+    };
     match rpt_mtime {
         None => true,
         Some(prev) => cpp_mtime > prev,
@@ -152,7 +156,9 @@ fn should_run_vivado(cpp_path: &Path, rpt_mtime: Option<SystemTime>) -> bool {
 /// newer than it was before the run. Python raises `ValueError` on
 /// failure; we surface the same condition as an `InvalidArg` caller-side.
 fn report_is_fresh(rpt_path: &Path, prev_mtime: Option<SystemTime>) -> bool {
-    let Some(new_mtime) = optional_mtime(rpt_path) else { return false };
+    let Some(new_mtime) = optional_mtime(rpt_path) else {
+        return false;
+    };
     match prev_mtime {
         None => true,
         Some(prev) => new_mtime > prev,
@@ -181,10 +187,7 @@ fn run_one(
 
     let tcl = build_report_util_tcl(module_name, part_num);
     let mut job = VivadoJob::new(tcl);
-    job.tclargs = vec![
-        abs_hdl.display().to_string(),
-        abs_rpt.display().to_string(),
-    ];
+    job.tclargs = vec![abs_hdl.display().to_string(), abs_rpt.display().to_string()];
     job.uploads = vec![abs_hdl];
     if let Some(parent) = abs_rpt.parent() {
         job.downloads = vec![parent.to_path_buf()];
@@ -209,8 +212,7 @@ fn run_one(
     reason = "{part_num}/{synth_args}/{report_util_args} are literal TCL template placeholders, not format-args"
 )]
 fn build_report_util_tcl(module_name: &str, part_num: &str) -> String {
-    let synth_args =
-        format!("-mode out_of_context -top {module_name} -part {part_num}");
+    let synth_args = format!("-mode out_of_context -top {module_name} -part {part_num}");
     let report_util_args = "-hierarchical";
     REPORT_UTIL_TCL
         .replace("{part_num}", part_num)
@@ -234,7 +236,9 @@ fn build_report_util_tcl(module_name: &str, part_num: &str) -> String {
 /// `KeyError`; in practice the hierarchical report's top row is always
 /// the `-top` module we passed in, i.e. the task name).
 fn apply_total_area(design: &mut Design, util: &UtilizationReport) {
-    let Some(task) = design.tasks.get_mut(&util.instance) else { return };
+    let Some(task) = design.tasks.get_mut(&util.instance) else {
+        return;
+    };
     let ramb36 = get_metric_int(util, "RAMB36");
     let ramb18 = get_metric_int(util, "RAMB18");
     let bram = ramb36.saturating_mul(2).saturating_add(ramb18);
@@ -244,11 +248,13 @@ fn apply_total_area(design: &mut Design, util: &UtilizationReport) {
     let uram = get_metric_int(util, "URAM");
 
     task.total_area.clear();
-    task.total_area.insert("BRAM_18K".to_string(), Value::from(bram));
+    task.total_area
+        .insert("BRAM_18K".to_string(), Value::from(bram));
     task.total_area.insert("DSP".to_string(), Value::from(dsp));
     task.total_area.insert("FF".to_string(), Value::from(ff));
     task.total_area.insert("LUT".to_string(), Value::from(lut));
-    task.total_area.insert("URAM".to_string(), Value::from(uram));
+    task.total_area
+        .insert("URAM".to_string(), Value::from(uram));
 }
 
 fn get_metric_int(util: &UtilizationReport, key: &str) -> i64 {
@@ -300,8 +306,7 @@ mod tests {
             },
         );
         let mut child_tasks = IndexMap::new();
-        child_tasks
-            .insert("Add".to_string(), json!([{"args": {}, "step": 0}]));
+        child_tasks.insert("Add".to_string(), json!([{"args": {}, "step": 0}]));
         tasks.insert(
             "VecAdd".to_string(),
             TaskTopology {
@@ -330,8 +335,7 @@ mod tests {
         fs::create_dir_all(dir.join("cpp")).expect("mkdir cpp");
         fs::create_dir_all(dir.join("rtl")).expect("mkdir rtl");
         for (name, body) in cpp_contents {
-            fs::write(dir.join("cpp").join(format!("{name}.cpp")), body)
-                .expect("write cpp");
+            fs::write(dir.join("cpp").join(format!("{name}.cpp")), body).expect("write cpp");
         }
     }
 
@@ -347,10 +351,7 @@ mod tests {
         let runner = MockToolRunner::new();
         runner.push_ok("vivado", ToolOutput::default());
         let rpt_path = work.join("report").join("Add.hier.util.rpt");
-        runner.attach_download(
-            rpt_path.clone(),
-            sample_rpt("Add").into_bytes(),
-        );
+        runner.attach_download(rpt_path.clone(), sample_rpt("Add").into_bytes());
 
         emit_post_synth_util(work, &mut design, "xcu250-figd2104-2L-e", None, &runner)
             .expect("emit_post_synth_util");

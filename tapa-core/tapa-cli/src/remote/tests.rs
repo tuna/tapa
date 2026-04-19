@@ -220,8 +220,7 @@ fn parse_remote_host_spec_variants() {
     assert_eq!(full.host, "h.example");
     assert_eq!(full.port, Some(2222));
 
-    let bad_port =
-        parse_remote_host_spec("h:notaport").expect_err("bad port must fail");
+    let bad_port = parse_remote_host_spec("h:notaport").expect_err("bad port must fail");
     assert!(
         bad_port.contains("invalid port"),
         "error must point at port: `{bad_port}`",

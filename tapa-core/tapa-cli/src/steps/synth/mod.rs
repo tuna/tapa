@@ -75,7 +75,10 @@ pub struct SynthArgs {
     #[arg(long = "skip-hls-based-on-mtime", default_value_t = false)]
     pub skip_hls_based_on_mtime: bool,
 
-    #[arg(long = "no-skip-hls-based-on-mtime", conflicts_with = "skip_hls_based_on_mtime")]
+    #[arg(
+        long = "no-skip-hls-based-on-mtime",
+        conflicts_with = "skip_hls_based_on_mtime"
+    )]
     pub no_skip_hls_based_on_mtime: bool,
 
     #[arg(long = "other-hls-configs", default_value = "")]
@@ -138,39 +141,55 @@ pub fn to_python_argv(args: &SynthArgs) -> Vec<String> {
         out.push("--jobs".to_string());
         out.push(j.to_string());
     }
-    out.push(if args.keep_hls_work_dir {
-        "--keep-hls-work-dir"
-    } else {
-        "--remove-hls-work-dir"
-    }
-    .to_string());
-    out.push(if args.skip_hls_based_on_mtime {
-        "--skip-hls-based-on-mtime"
-    } else {
-        "--no-skip-hls-based-on-mtime"
-    }
-    .to_string());
+    out.push(
+        if args.keep_hls_work_dir {
+            "--keep-hls-work-dir"
+        } else {
+            "--remove-hls-work-dir"
+        }
+        .to_string(),
+    );
+    out.push(
+        if args.skip_hls_based_on_mtime {
+            "--skip-hls-based-on-mtime"
+        } else {
+            "--no-skip-hls-based-on-mtime"
+        }
+        .to_string(),
+    );
     out.push("--other-hls-configs".to_string());
     out.push(args.other_hls_configs.clone());
-    out.push(if args.enable_synth_util {
-        "--enable-synth-util"
-    } else {
-        "--disable-synth-util"
-    }
-    .to_string());
+    out.push(
+        if args.enable_synth_util {
+            "--enable-synth-util"
+        } else {
+            "--disable-synth-util"
+        }
+        .to_string(),
+    );
     out.push("--override-report-schema-version".to_string());
     out.push(args.override_report_schema_version.clone());
-    opt_path(&mut out, "--nonpipeline-fifos", args.nonpipeline_fifos.as_ref());
-    out.push(if args.gen_ab_graph {
-        "--gen-ab-graph"
-    } else {
-        "--no-gen-ab-graph"
-    }
-    .to_string());
+    opt_path(
+        &mut out,
+        "--nonpipeline-fifos",
+        args.nonpipeline_fifos.as_ref(),
+    );
+    out.push(
+        if args.gen_ab_graph {
+            "--gen-ab-graph"
+        } else {
+            "--no-gen-ab-graph"
+        }
+        .to_string(),
+    );
     if args.gen_graphir {
         out.push("--gen-graphir".to_string());
     }
-    opt_path(&mut out, "--floorplan-config", args.floorplan_config.as_ref());
+    opt_path(
+        &mut out,
+        "--floorplan-config",
+        args.floorplan_config.as_ref(),
+    );
     opt_path(&mut out, "--device-config", args.device_config.as_ref());
     opt_path(&mut out, "--floorplan-path", args.floorplan_path.as_ref());
     out
@@ -184,10 +203,7 @@ pub fn to_python_argv(args: &SynthArgs) -> Vec<String> {
 /// otherwise `LocalToolRunner`.
 pub fn run(args: &SynthArgs, ctx: &mut CliContext) -> Result<()> {
     if let Some(cfg) = ctx.remote_config.as_ref() {
-        let session = std::sync::Arc::new(SshSession::new(
-            cfg.clone(),
-            SshMuxOptions::default(),
-        ));
+        let session = std::sync::Arc::new(SshSession::new(cfg.clone(), SshMuxOptions::default()));
         let runner = RemoteToolRunner::new(session);
         run_native(args, ctx, &runner)
     } else {

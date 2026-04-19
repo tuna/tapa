@@ -21,7 +21,10 @@ pub static POTENTIAL_PATHS: &[(&str, &[&str])] = &[
         "fpga-runtime-lib",
         &["fpga-runtime/cargo", "fpga-runtime", "usr/lib"],
     ),
-    ("tapa-cpp-binary", &["tapa-cpp/tapa-cpp", "usr/bin/tapa-cpp"]),
+    (
+        "tapa-cpp-binary",
+        &["tapa-cpp/tapa-cpp", "usr/bin/tapa-cpp"],
+    ),
     (
         "tapa-extra-runtime-include",
         &[
@@ -40,8 +43,7 @@ pub static POTENTIAL_PATHS: &[(&str, &[&str])] = &[
         ],
     ),
     ("tapacc-binary", &["tapacc/tapacc", "usr/bin/tapacc"]),
-]
-;
+];
 
 /// Override the search anchor for tests. Mirrors Python's
 /// `Path(__file__).absolute().parents` walk: when the override is set, we
@@ -71,11 +73,9 @@ pub fn find_resource_from(name: &str, anchor: &Path) -> Result<PathBuf> {
         .iter()
         .find(|(k, _)| *k == name)
         .map(|(_, v)| *v)
-        .ok_or_else(|| {
-            CliError::TapaccNotFound {
-                name: name.to_string(),
-                searched: format!("unknown resource key `{name}`"),
-            }
+        .ok_or_else(|| CliError::TapaccNotFound {
+            name: name.to_string(),
+            searched: format!("unknown resource key `{name}`"),
         })?;
 
     let mut tried: Vec<String> = Vec::new();
@@ -102,9 +102,7 @@ pub fn find_resource_from(name: &str, anchor: &Path) -> Result<PathBuf> {
 pub fn find_clang_binary(name: &str) -> Result<PathBuf> {
     let path = find_resource(name)?;
     verify_clang_version(&path)?;
-    Ok(path
-        .canonicalize()
-        .unwrap_or(path))
+    Ok(path.canonicalize().unwrap_or(path))
 }
 
 /// Regex matching Python's `re.compile(R"version (\d+)(\.\d+)*")` from
@@ -117,13 +115,12 @@ fn version_regex() -> &'static Regex {
 }
 
 fn verify_clang_version(path: &Path) -> Result<()> {
-    let output = Command::new(path)
-        .arg("--version")
-        .output()
-        .map_err(|e| CliError::TapaccNotExecutable {
+    let output = Command::new(path).arg("--version").output().map_err(|e| {
+        CliError::TapaccNotExecutable {
             path: path.to_path_buf(),
             reason: e.to_string(),
-        })?;
+        }
+    })?;
     if !output.status.success() {
         return Err(CliError::TapaccNotExecutable {
             path: path.to_path_buf(),
@@ -221,8 +218,7 @@ mod tests {
         std::fs::create_dir_all(target.parent().unwrap()).unwrap();
         // Write a non-executable file (mode 0644).
         std::fs::write(&target, b"not a real binary").unwrap();
-        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o644))
-            .unwrap();
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o644)).unwrap();
         let err = verify_clang_version(&target).unwrap_err();
         assert!(matches!(err, CliError::TapaccNotExecutable { .. }));
     }

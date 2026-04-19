@@ -243,8 +243,8 @@ mod tests {
 
     #[test]
     fn rejects_missing_path() {
-        let err = expand_custom_rtl_paths(&[PathBuf::from("/nope")])
-            .expect_err("missing path must fail");
+        let err =
+            expand_custom_rtl_paths(&[PathBuf::from("/nope")]).expect_err("missing path must fail");
         assert!(matches!(err, CliError::InvalidArg(ref m) if m.contains("does not exist")));
     }
 
@@ -292,10 +292,7 @@ mod tests {
         write(&src, "module Helper(); endmodule\n");
 
         let mut templates = TemplatesInfo::new();
-        templates.insert(
-            "Foo".to_string(),
-            vec!["clk: input".to_string()],
-        );
+        templates.insert("Foo".to_string(), vec!["clk: input".to_string()]);
 
         apply_custom_rtl(&rtl_dir, &[src], &templates)
             .expect("unknown helper module must be copied through, not rejected");

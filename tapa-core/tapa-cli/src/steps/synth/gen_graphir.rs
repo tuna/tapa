@@ -38,15 +38,12 @@ pub fn emit_graphir(
         )));
     }
 
-    let inputs = LoweringInputs::new(&mut state, device_config, floorplan_path, &rtl_dir)
-        .map_err(|e| {
-            CliError::InvalidArg(format!(
-                "failed to prepare graphir lowering inputs: {e}"
-            ))
+    let inputs =
+        LoweringInputs::new(&mut state, device_config, floorplan_path, &rtl_dir).map_err(|e| {
+            CliError::InvalidArg(format!("failed to prepare graphir lowering inputs: {e}"))
         })?;
-    let project = build_project_from_paths(inputs).map_err(|e| {
-        CliError::InvalidArg(format!("failed to build graphir project: {e}"))
-    })?;
+    let project = build_project_from_paths(inputs)
+        .map_err(|e| CliError::InvalidArg(format!("failed to build graphir project: {e}")))?;
 
     let path = work_dir.join(OUTPUT_FILENAME);
     let bytes = serde_json::to_vec(&project)?;

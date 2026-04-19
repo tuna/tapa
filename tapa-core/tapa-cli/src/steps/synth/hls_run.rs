@@ -162,8 +162,7 @@ pub fn run_hls_for_leaves(
     }
 
     let worker_count = resolve_worker_count(options.jobs, &plan);
-    let results: Vec<Result<Option<HlsOutput>>> =
-        dispatch_plan(runner, &plan, worker_count);
+    let results: Vec<Result<Option<HlsOutput>>> = dispatch_plan(runner, &plan, worker_count);
 
     // No explicit cleanup: `RunFresh` lets `run_hls_with_retry` own
     // its per-attempt tempdir and drop it. `RunInStage` is kept on
@@ -175,9 +174,7 @@ pub fn run_hls_for_leaves(
     for ((task_name, layout, work), result) in plan.into_iter().zip(results) {
         let hls_out = match work {
             Work::Skip(pre) => pre,
-            Work::RunInStage(..) | Work::RunFresh(_) => {
-                result?.expect("Run must yield Some")
-            }
+            Work::RunInStage(..) | Work::RunFresh(_) => result?.expect("Run must yield Some"),
         };
         out.push((task_name, layout, hls_out));
     }
@@ -249,21 +246,16 @@ impl PlanEntry for Work {
         match self {
             Self::Skip(_) => Ok(None),
             Self::RunInStage(job, stage_dir) => {
-                let out = run_hls_with_retry_in_stage(
-                    runner,
-                    job,
-                    HLS_MAX_ATTEMPTS,
-                    stage_dir,
-                )
-                .map_err(CliError::from)?;
+                let out = run_hls_with_retry_in_stage(runner, job, HLS_MAX_ATTEMPTS, stage_dir)
+                    .map_err(CliError::from)?;
                 Ok(Some(out))
             }
             Self::RunFresh(job) => {
                 // `run_hls_with_retry` allocates a fresh
                 // `tempfile::tempdir()` per attempt — mirrors the
                 // Python non-keep retry path.
-                let out = run_hls_with_retry(runner, job, HLS_MAX_ATTEMPTS)
-                    .map_err(CliError::from)?;
+                let out =
+                    run_hls_with_retry(runner, job, HLS_MAX_ATTEMPTS).map_err(CliError::from)?;
                 Ok(Some(out))
             }
         }
@@ -272,9 +264,12 @@ impl PlanEntry for Work {
 
 /// Internal work state for the plan pass. Kept module-private —
 /// `PlanEntry` is the caller-visible marker.
-#[allow(clippy::large_enum_variant, reason = "Work is held briefly; \
+#[allow(
+    clippy::large_enum_variant,
+    reason = "Work is held briefly; \
     boxing adds allocations without removing the size difference \
-    between the large `HlsJob + PathBuf` variant and the trivial Skip")]
+    between the large `HlsJob + PathBuf` variant and the trivial Skip"
+)]
 enum Work {
     Skip(HlsOutput),
     /// `--keep-hls-work-dir`: persistent project under
@@ -286,8 +281,12 @@ enum Work {
 }
 
 fn hdl_dir_is_newer_than(hdl_dir: &Path, cpp_source: &Path) -> bool {
-    let Ok(hdl_meta) = fs::metadata(hdl_dir) else { return false };
-    let Ok(cpp_meta) = fs::metadata(cpp_source) else { return false };
+    let Ok(hdl_meta) = fs::metadata(hdl_dir) else {
+        return false;
+    };
+    let Ok(cpp_meta) = fs::metadata(cpp_source) else {
+        return false;
+    };
     let (Ok(hdl_t), Ok(cpp_t)) = (hdl_meta.modified(), cpp_meta.modified()) else {
         return false;
     };
@@ -423,8 +422,8 @@ mod tests {
             jobs: Some(1),
             keep_work_dir: false,
         };
-        let out = run_hls_for_leaves(&runner, work, &design, &opts)
-            .expect("cache hit path must succeed");
+        let out =
+            run_hls_for_leaves(&runner, work, &design, &opts).expect("cache hit path must succeed");
         assert_eq!(out.len(), 1);
         let (_, _, hls_out) = &out[0];
         assert!(

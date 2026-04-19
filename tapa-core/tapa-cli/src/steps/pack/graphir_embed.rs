@@ -46,8 +46,7 @@ pub(super) fn embed_graphir(
     if !export_root.exists() {
         fs::create_dir_all(&export_root)?;
     }
-    export_project(&project, &export_root)
-        .map_err(|e| graphir_export_to_cli_error(&e))?;
+    export_project(&project, &export_root).map_err(|e| graphir_export_to_cli_error(&e))?;
 
     if !rtl_dir.is_dir() {
         return Err(CliError::InvalidArg(format!(
@@ -66,7 +65,9 @@ fn copy_exported_rtl(from: &Path, to: &Path) -> Result<()> {
         if !src.is_file() {
             continue;
         }
-        let Some(name) = src.file_name() else { continue };
+        let Some(name) = src.file_name() else {
+            continue;
+        };
         let dest = to.join(name);
         fs::copy(&src, &dest)?;
     }
@@ -133,11 +134,8 @@ mod tests {
         fs::create_dir_all(&rtl_dir).expect("mkdir rtl");
         let bad = dir.path().join("bad.json");
         fs::write(&bad, "{ not valid").expect("write");
-        let err = embed_graphir(dir.path(), &rtl_dir, &bad)
-            .expect_err("bad json must fail");
-        assert!(
-            matches!(err, CliError::InvalidArg(ref m) if m.contains("valid GraphIR"))
-        );
+        let err = embed_graphir(dir.path(), &rtl_dir, &bad).expect_err("bad json must fail");
+        assert!(matches!(err, CliError::InvalidArg(ref m) if m.contains("valid GraphIR")));
     }
 
     #[test]

@@ -63,8 +63,7 @@ pub fn get_tapacc_cflags(for_remote_hls: bool) -> Vec<String> {
 
     if for_remote_hls && is_macos() {
         flags.push(
-            "-D__assert_rtn(func,file,line,expr)=__assert_fail(expr,file,line,func)"
-                .to_string(),
+            "-D__assert_rtn(func,file,line,expr)=__assert_fail(expr,file,line,func)".to_string(),
         );
     }
 
@@ -76,8 +75,7 @@ pub fn get_remote_hls_cflags() -> Vec<String> {
     let mut flags = get_tapa_cflags();
     if is_macos() {
         flags.push(
-            "-D__assert_rtn(func,file,line,expr)=__assert_fail(expr,file,line,func)"
-                .to_string(),
+            "-D__assert_rtn(func,file,line,expr)=__assert_fail(expr,file,line,func)".to_string(),
         );
     }
     flags
@@ -121,8 +119,21 @@ pub fn get_tapa_ldflags() -> Vec<String> {
         out.push(format!("-L{}", lib.display()));
     }
     for name in [
-        "tapa", "frt_cpp", "context", "thread", "frt", "asio", "filesystem", "glog",
-        "gflags", "OpenCL", "minizip_ng", "tinyxml2", "z", "yaml-cpp", "stdc++fs",
+        "tapa",
+        "frt_cpp",
+        "context",
+        "thread",
+        "frt",
+        "asio",
+        "filesystem",
+        "glog",
+        "gflags",
+        "OpenCL",
+        "minizip_ng",
+        "tinyxml2",
+        "z",
+        "yaml-cpp",
+        "stdc++fs",
     ] {
         out.push(format!("-l{name}"));
     }

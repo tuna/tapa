@@ -83,7 +83,6 @@ pub fn to_python_argv_run_autobridge(args: &RunAutobridgeArgs) -> Vec<String> {
     ]
 }
 
-
 /// `tapa floorplan` dispatcher.
 ///
 /// `--floorplan-path` drives the native `apply_floorplan` transform;
@@ -118,10 +117,7 @@ fn run_floorplan_native_apply(path: &Path, ctx: &CliContext) -> Result<()> {
     let vertex_to_region: IndexMap<String, String> = serde_json::from_str(&raw)?;
 
     let top_def = typed.tasks.get(&typed.top).ok_or_else(|| {
-        CliError::InvalidArg(format!(
-            "graph is missing the top task `{}`",
-            typed.top,
-        ))
+        CliError::InvalidArg(format!("graph is missing the top task `{}`", typed.top,))
     })?;
     let mut known_inst_names = BTreeSet::<String>::new();
     for (def_name, insts) in &top_def.tasks {
@@ -166,14 +162,22 @@ fn run_floorplan_native_apply(path: &Path, ctx: &CliContext) -> Result<()> {
     // --floorplan-path` previously left design.json stale (only
     // graph.json + settings.json were rewritten).
     let target = match settings_io::load_settings(work_dir) {
-        Ok(s) => s
-            .get("target")
-            .and_then(Value::as_str)
-            .map_or_else(|| typed.tasks.get(&typed.top).map_or("xilinx-vitis", |_| "xilinx-vitis").to_string(), ToString::to_string),
+        Ok(s) => s.get("target").and_then(Value::as_str).map_or_else(
+            || {
+                typed
+                    .tasks
+                    .get(&typed.top)
+                    .map_or("xilinx-vitis", |_| "xilinx-vitis")
+                    .to_string()
+            },
+            ToString::to_string,
+        ),
         Err(_) => "xilinx-vitis".to_string(),
     };
-    let region_map_for_design: indexmap::IndexMap<String, String> =
-        slot_to_region.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    let region_map_for_design: indexmap::IndexMap<String, String> = slot_to_region
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
     let design = build_design_with_floorplan(
         &new_value,
         &typed.top,
@@ -230,8 +234,7 @@ fn build_design_with_floorplan(
     let slot_set: std::collections::BTreeSet<&str> = slot_to_region
         .map(|m| m.keys().map(String::as_str).collect())
         .unwrap_or_default();
-    let mut topology: indexmap::IndexMap<String, TaskTopology> =
-        indexmap::IndexMap::new();
+    let mut topology: indexmap::IndexMap<String, TaskTopology> = indexmap::IndexMap::new();
     for (name, task) in tasks_obj {
         topology.insert(
             name.clone(),
@@ -276,7 +279,6 @@ fn build_design_with_floorplan(
         slot_task_name_to_fp_region: slot_to_region.cloned(),
     })
 }
-
 
 fn load_or_cached_graph(ctx: &CliContext) -> Result<Value> {
     {
@@ -378,7 +380,9 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         std::env::remove_var("TAPA_STEP_FLOORPLAN_PYTHON");
         let mut ctx = ctx_with_work_dir(dir.path());
-        let args = FloorplanArgs { floorplan_path: None };
+        let args = FloorplanArgs {
+            floorplan_path: None,
+        };
         run_floorplan(&args, &mut ctx).expect("native floorplan no-op");
         let settings = settings_io::load_settings(dir.path()).expect("load settings");
         assert_eq!(settings.get("floorplan"), Some(&Value::Bool(true)));

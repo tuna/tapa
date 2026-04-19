@@ -111,7 +111,12 @@ mod tests {
 
     #[test]
     fn part_num_and_clock_resolve_without_platform() {
-        let args = parse_synth(&["--part-num", "xcvu37p-fsvh2892-2L-e", "--clock-period", "3.33"]);
+        let args = parse_synth(&[
+            "--part-num",
+            "xcvu37p-fsvh2892-2L-e",
+            "--clock-period",
+            "3.33",
+        ]);
         let info = resolve_device_info(&args).expect("must resolve");
         assert_eq!(info.part_num, "xcvu37p-fsvh2892-2L-e");
         assert_eq!(info.clock_period, "3.33");

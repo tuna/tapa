@@ -34,11 +34,7 @@ use crate::steps::version::VERSION as TAPA_VERSION;
 /// Write `<work_dir>/report.{json,yaml}` for the design's top task.
 /// `override_schema` (mirrors `--override-report-schema-version`) wins
 /// over the baked `VERSION` constant when non-empty.
-pub fn write_top_report(
-    work_dir: &Path,
-    design: &Design,
-    override_schema: &str,
-) -> Result<()> {
+pub fn write_top_report(work_dir: &Path, design: &Design, override_schema: &str) -> Result<()> {
     let schema = if override_schema.is_empty() {
         TAPA_VERSION
     } else {
@@ -64,9 +60,7 @@ pub fn write_top_report(
 /// is read by downstream consumers).
 fn build_task_report(design: &Design, task_name: &str, schema: &str) -> Result<Value> {
     let task = design.tasks.get(task_name).ok_or_else(|| {
-        CliError::InvalidArg(format!(
-            "report: task `{task_name}` not found in design",
-        ))
+        CliError::InvalidArg(format!("report: task `{task_name}` not found in design",))
     })?;
     let mut performance = serde_json::Map::new();
     performance.insert("source".to_string(), json!("hls"));
@@ -193,10 +187,7 @@ mod tests {
                 clock_period: "3.33".to_string(),
             },
         );
-        tasks.insert(
-            "Add".to_string(),
-            leaf("Add", "3.33", json!({"LUT": 50})),
-        );
+        tasks.insert("Add".to_string(), leaf("Add", "3.33", json!({"LUT": 50})));
         let design = Design {
             top: "VecAdd".to_string(),
             target: "xilinx-vitis".to_string(),
@@ -208,7 +199,10 @@ mod tests {
         assert!(yaml.contains("name: VecAdd"));
         assert!(yaml.contains("breakdown:"));
         assert!(yaml.contains("Add:"));
-        assert!(yaml.contains("count: 2"), "report missing breakdown count: {yaml}");
+        assert!(
+            yaml.contains("count: 2"),
+            "report missing breakdown count: {yaml}"
+        );
         let json_str = fs::read_to_string(dir.path().join("report.json")).expect("read json");
         let parsed: Value = serde_json::from_str(&json_str).expect("valid json");
         assert_eq!(parsed["name"], "VecAdd");

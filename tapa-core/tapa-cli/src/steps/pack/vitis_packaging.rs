@@ -18,7 +18,9 @@
 //!   `.xo` is on disk, so the script points at a real artifact.
 
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
 
+use regex::Regex;
 use serde_json::Value;
 use tapa_task_graph::Design;
 use tapa_xilinx::{
@@ -33,7 +35,7 @@ use crate::state::settings as settings_io;
 use super::bitstream_script::write_vitis_script;
 use super::custom_rtl::{apply_custom_rtl, load_templates_info};
 use super::graphir_embed::embed_graphir;
-use super::kernel_xml_ports::{build_kernel_xml_ports, m_axi_param_block};
+use super::kernel_xml_ports::{build_kernel_xml_ports_for_rtl, m_axi_param_block_for_rtl};
 use super::{enforce_xo_suffix, PackArgs};
 
 pub(super) fn pack_vitis(
@@ -62,7 +64,8 @@ pub(super) fn pack_vitis(
 
     apply_pack_overlays(args, ctx, &hdl_dir)?;
 
-    let kernel_ports = build_kernel_xml_ports(&top_task.ports);
+    let top_m_axi_bases = top_rtl_m_axi_bases(&hdl_dir, &design.top)?;
+    let kernel_ports = build_kernel_xml_ports_for_rtl(&top_task.ports, &top_m_axi_bases);
     if kernel_ports.is_empty() {
         return Err(CliError::InvalidArg(format!(
             "top task `{}` has no external ports; cannot emit kernel.xml",
@@ -78,8 +81,8 @@ pub(super) fn pack_vitis(
         part_num,
         clock_period,
         kernel_ports,
-        m_axi_param_block(&top_task.ports),
-        collect_hls_report_paths(&ctx.work_dir),
+        m_axi_param_block_for_rtl(&top_task.ports, &top_m_axi_bases),
+        collect_hls_report_paths(&ctx.work_dir)?,
     );
 
     run_pack_xo(ctx, &inputs)?;
@@ -135,6 +138,86 @@ fn apply_pack_overlays(args: &PackArgs, ctx: &CliContext, hdl_dir: &Path) -> Res
     Ok(())
 }
 
+const M_AXI_SUFFIXES: &[&str] = &[
+    "_AWVALID",
+    "_AWREADY",
+    "_AWADDR",
+    "_AWID",
+    "_AWLEN",
+    "_AWSIZE",
+    "_AWBURST",
+    "_AWLOCK",
+    "_AWCACHE",
+    "_AWPROT",
+    "_AWQOS",
+    "_AWREGION",
+    "_WVALID",
+    "_WREADY",
+    "_WDATA",
+    "_WSTRB",
+    "_WLAST",
+    "_BVALID",
+    "_BREADY",
+    "_BID",
+    "_BRESP",
+    "_ARVALID",
+    "_ARREADY",
+    "_ARADDR",
+    "_ARID",
+    "_ARLEN",
+    "_ARSIZE",
+    "_ARBURST",
+    "_ARLOCK",
+    "_ARCACHE",
+    "_ARPROT",
+    "_ARQOS",
+    "_ARREGION",
+    "_RVALID",
+    "_RREADY",
+    "_RDATA",
+    "_RLAST",
+    "_RID",
+    "_RRESP",
+];
+
+static TAPA_LIB_RUNFILES_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?:(?:\.\./)*/?)[^\s"<>\|,]*tapa\.runfiles/_main/tapa-lib/"#).unwrap()
+});
+static HLS_XML_ROW_ID_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"<row id="\d+""#).unwrap());
+
+fn top_rtl_m_axi_bases(
+    hdl_dir: &Path,
+    top_name: &str,
+) -> Result<std::collections::BTreeSet<String>> {
+    let rtl_path = hdl_dir.join(format!("{top_name}.v"));
+    let source = std::fs::read_to_string(&rtl_path).map_err(|e| {
+        CliError::InvalidArg(format!(
+            "failed to read top RTL `{}` for kernel.xml port projection: {e}",
+            rtl_path.display(),
+        ))
+    })?;
+    let module = tapa_rtl::VerilogModule::parse(&source).map_err(|e| {
+        CliError::InvalidArg(format!(
+            "failed to parse top RTL `{}` for kernel.xml port projection: {e}",
+            rtl_path.display(),
+        ))
+    })?;
+    let mut out = std::collections::BTreeSet::new();
+    for port in &module.ports {
+        let Some(rest) = port.name.strip_prefix("m_axi_") else {
+            continue;
+        };
+        for suffix in M_AXI_SUFFIXES {
+            if let Some(base) = rest.strip_suffix(suffix) {
+                out.insert(base.to_owned());
+                break;
+            }
+        }
+    }
+    Ok(out)
+}
+
 #[allow(
     clippy::too_many_arguments,
     reason = "aggregating these into a struct would bounce values through \
@@ -184,14 +267,24 @@ fn build_package_xo_inputs(
 /// the per-task layout — without the task subdir, multiple tasks'
 /// `csynth.rpt` / `csynth.xml` files would collapse into a single
 /// archive entry and overwrite each other.
-fn collect_hls_report_paths(work_dir: &Path) -> Vec<(PathBuf, String)> {
+fn collect_hls_report_paths(work_dir: &Path) -> Result<Vec<(PathBuf, String)>> {
     let hls_root = work_dir.join("hls");
-    if !hls_root.is_dir() {
-        return Vec::new();
+    let staged_root = work_dir.join("pack_reports");
+    if staged_root.exists() {
+        std::fs::remove_dir_all(&staged_root)?;
     }
     let mut reports = Vec::<(PathBuf, String)>::new();
+    for file in ["report.json", "report.yaml"] {
+        let path = work_dir.join(file);
+        if path.is_file() {
+            reports.push((path, file.to_owned()));
+        }
+    }
+    if !hls_root.is_dir() {
+        return Ok(reports);
+    }
     let Ok(task_dirs) = std::fs::read_dir(&hls_root) else {
-        return reports;
+        return Ok(reports);
     };
     for task_entry in task_dirs.flatten() {
         let task_dir = task_entry.path();
@@ -199,7 +292,10 @@ fn collect_hls_report_paths(work_dir: &Path) -> Vec<(PathBuf, String)> {
         if !report_dir.is_dir() {
             continue;
         }
-        let Some(task_name) = task_dir.file_name().and_then(|s| s.to_str()).map(str::to_owned)
+        let Some(task_name) = task_dir
+            .file_name()
+            .and_then(|s| s.to_str())
+            .map(str::to_owned)
         else {
             continue;
         };
@@ -217,12 +313,92 @@ fn collect_hls_report_paths(work_dir: &Path) -> Vec<(PathBuf, String)> {
             let Some(file) = path.file_name().and_then(|s| s.to_str()) else {
                 continue;
             };
+            let staged_path = staged_root.join(&task_name).join(file);
+            if let Some(parent) = staged_path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            let text = std::fs::read_to_string(&path)?;
+            std::fs::write(&staged_path, sanitize_hls_report_text(&text, work_dir))?;
             let arcname = format!("report/{task_name}/{file}");
-            reports.push((path, arcname));
+            reports.push((staged_path, arcname));
         }
     }
     reports.sort();
-    reports
+    Ok(reports)
+}
+
+fn sanitize_hls_report_text(text: &str, work_dir: &Path) -> String {
+    let abs_work_dir = std::fs::canonicalize(work_dir).unwrap_or_else(|_| work_dir.to_path_buf());
+    let mut out = text.to_owned();
+    for base in [abs_work_dir.as_path(), work_dir] {
+        let base = base.to_string_lossy();
+        if let Some(stripped) = base.strip_prefix('/') {
+            replace_report_cpp_prefixes(&mut out, stripped);
+        }
+        replace_report_cpp_prefixes(&mut out, &base);
+    }
+    out = TAPA_LIB_RUNFILES_RE
+        .replace_all(&out, "tapa-lib/")
+        .into_owned();
+    out = HLS_XML_ROW_ID_RE
+        .replace_all(&out, r#"<row id="0""#)
+        .into_owned();
+    canonicalize_report_tables(&out)
+}
+
+fn replace_report_cpp_prefixes(text: &mut String, base: &str) {
+    if base.is_empty() {
+        return;
+    }
+    let normalized = base.replace('\\', "/");
+    let prefix = format!("{normalized}/cpp/");
+    if normalized.starts_with('/') {
+        *text = text.replace(&prefix, "cpp/");
+    } else {
+        for ups in (1..=8).rev() {
+            let relative_prefix = format!("{}{}", "../".repeat(ups), prefix);
+            *text = text.replace(&relative_prefix, "cpp/");
+        }
+    }
+}
+
+fn canonicalize_report_tables(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if is_report_table_rule(trimmed) {
+            let cols = trimmed.matches('+').count().saturating_sub(1).max(1);
+            for _ in 0..cols {
+                out.push_str("+---");
+            }
+            out.push_str("+\n");
+        } else if trimmed.starts_with('|') && trimmed.ends_with('|') {
+            let cells: Vec<_> = trimmed
+                .trim_matches('|')
+                .split('|')
+                .map(str::trim)
+                .collect();
+            out.push('|');
+            for cell in cells {
+                out.push(' ');
+                out.push_str(cell);
+                out.push(' ');
+                out.push('|');
+            }
+            out.push('\n');
+        } else {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    if !text.ends_with('\n') {
+        out.pop();
+    }
+    out
+}
+
+fn is_report_table_rule(line: &str) -> bool {
+    !line.is_empty() && line.starts_with('+') && line.chars().all(|c| c == '+' || c == '-')
 }
 
 fn run_pack_xo(ctx: &CliContext, inputs: &PackageXoInputs) -> Result<PathBuf> {
@@ -255,4 +431,54 @@ fn emit_bitstream_script(
     write_vitis_script(script_dest, top, output_path, platform, clock, connectivity)?;
     log::info!("generate the v++ script at {}", script_dest.display());
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sanitize_hls_report_text_removes_work_dir_paths() {
+        let work_dir =
+            Path::new("/home/tapa/execroot/_main/bazel-out/bin/tests/apps/vadd/vadd-xo.tapa");
+        let text = "\
+SOURCE=\"/home/tapa/execroot/_main/bazel-out/bin/tests/apps/vadd/vadd-xo.tapa/cpp/Add.cpp:39\"\n\
+| ../../home/tapa/execroot/_main/bazel-out/bin/tests/apps/vadd/vadd-xo.tapa/cpp/Add.cpp:17 in add |\n";
+
+        let sanitized = sanitize_hls_report_text(text, work_dir);
+        assert!(!sanitized.contains("vadd-xo.tapa"));
+        assert!(sanitized.contains("SOURCE=\"cpp/Add.cpp:39\""));
+        assert!(sanitized.contains("| cpp/Add.cpp:17 in add |"));
+    }
+
+    #[test]
+    fn sanitize_hls_report_text_removes_tool_runfiles_and_table_padding() {
+        let work_dir = Path::new("/work/vadd-xo.tapa");
+        let text = "\
++--------------+------------------------------------------------------------------------------------------------------------------------------------+\n\
+| Location     | Access Location                                                                                                                    |\n\
++--------------+------------------------------------------------------------------------------------------------------------------------------------+\n\
+| cpp/Add.cpp  | /home/tapa/.cache/bazel/x/sandbox/processwrapper-sandbox/8697/execroot/_main/bazel-out/k8-opt-exec/bin/tapa/tapa.runfiles/_main/tapa-lib/tapa/xilinx/hls/stream.h:150:11     |\n\
++--------------+------------------------------------------------------------------------------------------------------------------------------------+\n";
+
+        let sanitized = sanitize_hls_report_text(text, work_dir);
+        assert!(!sanitized.contains("processwrapper-sandbox"));
+        assert!(sanitized.contains("tapa-lib/tapa/xilinx/hls/stream.h:150:11"));
+        assert!(sanitized.contains("+---+---+"));
+        assert!(sanitized.contains("| Location | Access Location |"));
+    }
+
+    #[test]
+    fn sanitize_hls_report_text_normalizes_xml_row_ids() {
+        let work_dir = Path::new("/work/vadd-xo.tapa");
+        let text = r#"<row id="2" col0="operator&gt;&gt;">
+  <row id="1" col0="read"/>
+</row>
+"#;
+
+        let sanitized = sanitize_hls_report_text(text, work_dir);
+        assert!(!sanitized.contains(r#"row id="1""#));
+        assert!(!sanitized.contains(r#"row id="2""#));
+        assert_eq!(sanitized.matches(r#"row id="0""#).count(), 2);
+    }
 }
