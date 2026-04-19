@@ -30,7 +30,7 @@ py_test(
         ":vadd-abgraph-json",
     ],
     deps = [
-        "//tapa",
+        "//tapa/abgraph",
         "@rules_python//python/runfiles",
     ],
 )
@@ -61,7 +61,7 @@ py_test(
         ":bandwidth-abgraph-json",
     ],
     deps = [
-        "//tapa",
+        "//tapa/abgraph",
         "@rules_python//python/runfiles",
     ],
 )
@@ -91,7 +91,7 @@ py_test(
         ":cannon-abgraph-json",
     ],
     deps = [
-        "//tapa",
+        "//tapa/abgraph",
         "@rules_python//python/runfiles",
     ],
 )
@@ -121,7 +121,7 @@ py_test(
         ":network-abgraph-json",
     ],
     deps = [
-        "//tapa",
+        "//tapa/abgraph",
         "@rules_python//python/runfiles",
     ],
 )

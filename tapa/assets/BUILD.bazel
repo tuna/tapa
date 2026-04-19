@@ -6,6 +6,29 @@
 
 load("@rules_python//python:defs.bzl", "py_library")
 
+_VERILOG_ASSETS = [
+    "verilog/a_axi_write_broadcastor_1_to_3.v",
+    "verilog/a_axi_write_broadcastor_1_to_4.v",
+    "verilog/arbiter.v",
+    "verilog/async_mmap.v",
+    "verilog/axi_crossbar.v",
+    "verilog/axi_crossbar_addr.v",
+    "verilog/axi_crossbar_rd.v",
+    "verilog/axi_crossbar_wr.v",
+    "verilog/axi_pipeline.v",
+    "verilog/axi_register_rd.v",
+    "verilog/axi_register_wr.v",
+    "verilog/axis_adapter.v",
+    "verilog/detect_burst.v",
+    "verilog/fifo.v",
+    "verilog/fifo_bram.v",
+    "verilog/fifo_fwd.v",
+    "verilog/fifo_srl.v",
+    "verilog/generate_last.v",
+    "verilog/priority_encoder.v",
+    "verilog/relay_station.v",
+]
+
 py_library(
     name = "assets",
     srcs = [
@@ -16,12 +39,11 @@ py_library(
     visibility = ["//tapa:__subpackages__"],
 )
 
-# Expose `verilog/fifo.v` so `//tapa-core` cargo genrules can include
-# it in their input set. `tapa-lowering::module_defs` pulls it in via
-# `include_str!("../../../tapa/assets/verilog/fifo.v")` at compile
-# time, so the Bazel sandbox must materialize it alongside the
-# cargo workspace.
+# Expose Verilog assets so `//tapa-core` cargo genrules can include
+# them in their input set. Rust crates pull these in via `include_str!`
+# at compile time, so the Bazel sandbox must materialize them alongside
+# the cargo workspace.
 exports_files(
-    ["verilog/fifo.v"],
+    _VERILOG_ASSETS,
     visibility = ["//tapa-core:__pkg__"],
 )

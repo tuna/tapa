@@ -43,11 +43,8 @@ $(location //bazel:vitis_hls_env) $(location //tapa) --work-dir . \
     analyze --input $< --top TopLevelTask \
     synth --part-num xcu250-figd2104-2l-e --clock-period 3.33 \
 
-for f in tar/*.tar; do
-    tar xf $$f
-done
 for f in $(OUTS); do
-    cp hdl/$${f##*/} $$f
+    cp rtl/$${f##*/} $$f
 done
 """,
     target_compatible_with = ["@platforms//os:linux"],

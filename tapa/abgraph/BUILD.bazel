@@ -11,10 +11,14 @@ load("//bazel:pytest_rules.bzl", "py_doc_test")
 py_library(
     name = "abgraph",
     srcs = glob(["**/*.py"]),
-    visibility = ["//tapa:__subpackages__"],
+    visibility = [
+        "//tapa:__subpackages__",
+        "//tests/functional/abgraph:__pkg__",
+    ],
     deps = [
         "//tapa:core",
         "//tapa:util",
+        "//tapa/common",
         requirement("networkx"),
         requirement("pydantic"),
     ],
