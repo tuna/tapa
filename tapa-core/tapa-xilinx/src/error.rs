@@ -23,10 +23,7 @@ pub enum XilinxError {
     },
 
     #[error("tool `{program}` timed out after {timeout_secs}s")]
-    ToolTimeout {
-        program: String,
-        timeout_secs: u64,
-    },
+    ToolTimeout { program: String, timeout_secs: u64 },
 
     #[error("tool `{program}` was killed by signal")]
     ToolSignaled { program: String },
@@ -148,10 +145,7 @@ mod tests {
         LOCK.lock().unwrap_or_else(|p| p.into_inner())
     }
 
-    fn with_envs<T>(
-        updates: &[(&str, Option<&str>)],
-        body: impl FnOnce() -> T,
-    ) -> T {
+    fn with_envs<T>(updates: &[(&str, Option<&str>)], body: impl FnOnce() -> T) -> T {
         let _g = env_lock();
         let mut prev: Vec<(String, Option<std::ffi::OsString>)> = Vec::new();
         for (k, v) in updates {
@@ -191,11 +185,8 @@ mod tests {
 
     fn produce_config() -> XilinxError {
         // Real config loader on a malformed YAML body.
-        RemoteConfig::from_yaml_str(
-            "port: \"not-a-number\"\nhost: 1",
-            "/tmp/.taparc",
-        )
-        .expect_err("bad yaml must error")
+        RemoteConfig::from_yaml_str("port: \"not-a-number\"\nhost: 1", "/tmp/.taparc")
+            .expect_err("bad yaml must error")
     }
 
     fn mock_run(program: &str, err: XilinxError) -> XilinxError {
@@ -278,11 +269,8 @@ mod tests {
         let xpfm = td.path().join("bad.xpfm");
         let f = std::fs::File::create(&xpfm).unwrap();
         let mut z = zip::ZipWriter::new(f);
-        z.start_file::<_, ()>(
-            "not_hpfm.txt",
-            zip::write::SimpleFileOptions::default(),
-        )
-        .unwrap();
+        z.start_file::<_, ()>("not_hpfm.txt", zip::write::SimpleFileOptions::default())
+            .unwrap();
         z.write_all(b"no xml here").unwrap();
         z.finish().unwrap();
         parse_xpfm(&std::fs::read(&xpfm).unwrap()).expect_err("missing .hpfm")
@@ -445,10 +433,8 @@ mod tests {
 
     #[test]
     fn producer_set_covers_every_declared_variant() {
-        let produced_tags: std::collections::HashSet<&'static str> = producers()
-            .into_iter()
-            .map(|(tag, _)| tag)
-            .collect();
+        let produced_tags: std::collections::HashSet<&'static str> =
+            producers().into_iter().map(|(tag, _)| tag).collect();
         for t in ALL_TAGS {
             assert!(
                 produced_tags.contains(t),

@@ -59,11 +59,12 @@ pub fn parse_csynth_xml(bytes: &[u8]) -> Result<CsynthReport> {
                 current_text.clear();
             }
             Ok(Event::Text(t)) => {
-                let s = t.unescape().map_err(|e| {
-                    XilinxError::HlsReportParse(format!(
-                        "csynth.xml text unescape failed: {e}"
-                    ))
-                })?.into_owned();
+                let s = t
+                    .unescape()
+                    .map_err(|e| {
+                        XilinxError::HlsReportParse(format!("csynth.xml text unescape failed: {e}"))
+                    })?
+                    .into_owned();
                 current_text.push_str(&s);
             }
             Ok(Event::End(_)) => {
@@ -103,9 +104,8 @@ pub fn parse_csynth_xml(bytes: &[u8]) -> Result<CsynthReport> {
         top: top.ok_or_else(|| {
             XilinxError::HlsReportParse("csynth.xml: TopModuleName not found".into())
         })?,
-        part: part.ok_or_else(|| {
-            XilinxError::HlsReportParse("csynth.xml: Part not found".into())
-        })?,
+        part: part
+            .ok_or_else(|| XilinxError::HlsReportParse("csynth.xml: Part not found".into()))?,
         target_clock_period_ns: target_cp.ok_or_else(|| {
             XilinxError::HlsReportParse("csynth.xml: TargetClockPeriod not found".into())
         })?,
@@ -138,7 +138,7 @@ pub fn parse_utilization_rpt(text: &str) -> Result<UtilizationReport> {
             device = words[3].to_string();
             continue;
         }
-        if !line.is_empty() && line.chars().all(|c| c == '+' || c == '-') {
+        if is_ascii_table_rule(line) {
             state = match state {
                 State::Prolog => State::Header,
                 State::Header => State::Body,
@@ -207,6 +207,14 @@ fn split_row(line: &str) -> (&str, Vec<&str>) {
     (instance, cols)
 }
 
+fn is_ascii_table_rule(line: &str) -> bool {
+    !line.is_empty()
+        && line.starts_with('+')
+        && line
+            .chars()
+            .all(|c| c == '+' || c == '-' || c.is_ascii_whitespace())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -236,7 +244,8 @@ mod tests {
 
     #[test]
     fn csynth_missing_field_is_typed_error() {
-        let xml = "<profile><UserAssignments><TopModelName>k</TopModelName></UserAssignments></profile>";
+        let xml =
+            "<profile><UserAssignments><TopModelName>k</TopModelName></UserAssignments></profile>";
         let err = parse_csynth_xml(xml.as_bytes()).unwrap_err();
         assert!(matches!(err, XilinxError::HlsReportParse(_)));
     }
@@ -259,5 +268,33 @@ mod tests {
         assert_eq!(r.children.len(), 1);
         assert_eq!(r.children[0].instance, "sub");
         assert_eq!(r.children[0].metrics.get("REG").unwrap(), "40");
+    }
+
+    #[test]
+    fn parses_vivado_report_with_banner_rules() {
+        const RPT: &str = "\
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.\n\
+--------------------------------------------------------------------\n\
+| Tool Version : Vivado v.2024.2\n\
+| Device       : xcv80-lsva4737-2MHP-e-S\n\
+| Design State : Optimized\n\
+--------------------------------------------------------------------\n\
+\n\
+Utilization Design Information\n\
+\n\
++----------+--------+------------+-----+------+--------+--------+------+\n\
+| Instance | Module | Total LUTs | FFs | URAM | RAMB36 | RAMB18 | DSP Blocks |\n\
++----------+--------+------------+-----+------+--------+--------+------+\n\
+| Add      |  (top) |        107 | 140 |    0 |      0 |      0 |          1 |\n\
+|   child  |    Add |          5 |   6 |    0 |      0 |      0 |          0 |\n\
++----------+--------+------------+-----+------+--------+--------+------+\n";
+
+        let r = parse_utilization_rpt(RPT).unwrap();
+        assert_eq!(r.device, "xcv80-lsva4737-2MHP-e-S");
+        assert_eq!(r.instance, "Add");
+        assert_eq!(r.metrics.get("Total LUTs").unwrap(), "107");
+        assert_eq!(r.metrics.get("FFs").unwrap(), "140");
+        assert_eq!(r.metrics.get("DSP Blocks").unwrap(), "1");
+        assert_eq!(r.children[0].instance, "child");
     }
 }

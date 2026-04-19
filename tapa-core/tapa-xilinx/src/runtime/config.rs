@@ -77,7 +77,7 @@ pub struct RemoteConfig {
 
     #[serde(
         default = "default_ssh_multiplex",
-        deserialize_with = "deserialize_bool_or_string",
+        deserialize_with = "deserialize_bool_or_string"
     )]
     pub ssh_multiplex: bool,
 }
@@ -140,17 +140,15 @@ impl RemoteConfig {
     /// `RemoteConfig` mapping.
     pub fn from_yaml_str(text: &str, path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref().to_path_buf();
-        let value: serde_yaml::Value = serde_yaml::from_str(text).map_err(|source| {
-            XilinxError::Config {
+        let value: serde_yaml::Value =
+            serde_yaml::from_str(text).map_err(|source| XilinxError::Config {
                 path: path.clone(),
                 source,
-            }
-        })?;
+            })?;
         let inner = match value {
-            serde_yaml::Value::Mapping(ref m) if m.contains_key("remote") => m
-                .get("remote")
-                .cloned()
-                .unwrap_or(serde_yaml::Value::Null),
+            serde_yaml::Value::Mapping(ref m) if m.contains_key("remote") => {
+                m.get("remote").cloned().unwrap_or(serde_yaml::Value::Null)
+            }
             serde_yaml::Value::Null => {
                 return Err(XilinxError::Config {
                     path,
@@ -164,12 +162,11 @@ impl RemoteConfig {
             | serde_yaml::Value::Sequence(_)
             | serde_yaml::Value::Tagged(_) => value,
         };
-        let mut cfg: Self = serde_yaml::from_value(inner).map_err(|source| {
-            XilinxError::Config {
+        let mut cfg: Self =
+            serde_yaml::from_value(inner).map_err(|source| XilinxError::Config {
                 path: path.clone(),
                 source,
-            }
-        })?;
+            })?;
         cfg.normalize_paths();
         Ok(cfg)
     }
@@ -199,7 +196,10 @@ impl RemoteConfig {
             ssh_control_persist: std::env::var("REMOTE_SSH_CONTROL_PERSIST")
                 .unwrap_or_else(|_| default_ssh_control_persist()),
             ssh_multiplex: std::env::var("REMOTE_SSH_MULTIPLEX").ok().is_none_or(|s| {
-                matches!(s.trim().to_lowercase().as_str(), "true" | "yes" | "1" | "on")
+                matches!(
+                    s.trim().to_lowercase().as_str(),
+                    "true" | "yes" | "1" | "on"
+                )
             }),
         };
         cfg.normalize_paths();
@@ -324,7 +324,10 @@ remote:
         let text = "remote:\n  host: h\n  ssh_multiplex: \"maybe\"\n";
         let err = RemoteConfig::from_yaml_str(text, "/tmp/.taparc").unwrap_err();
         let msg = format!("{err}");
-        assert!(msg.contains("ssh_multiplex") || msg.contains("invalid value"), "got {err}");
+        assert!(
+            msg.contains("ssh_multiplex") || msg.contains("invalid value"),
+            "got {err}"
+        );
     }
 
     #[test]
@@ -407,10 +410,7 @@ remote:
     fn resolve_xilinx_settings_normalizes_tool_root() {
         // Matches the shape in this repo's `VARS.local.bzl`:
         // `REMOTE_XILINX_TOOL_PATH=/opt/tapa/software/tools/xilinx`.
-        let got = resolve_xilinx_settings(
-            None,
-            Some("/opt/tapa/software/tools/xilinx"),
-        );
+        let got = resolve_xilinx_settings(None, Some("/opt/tapa/software/tools/xilinx"));
         assert_eq!(
             got.as_deref(),
             Some("/opt/tapa/software/tools/xilinx/settings64.sh")
@@ -427,8 +427,7 @@ remote:
     fn resolve_xilinx_settings_accepts_custom_sh_path_via_tool_root() {
         // A caller that already points at a settings script via the
         // tool-root variable should not be double-suffixed.
-        let got =
-            resolve_xilinx_settings(None, Some("/opt/my/custom.sh"));
+        let got = resolve_xilinx_settings(None, Some("/opt/my/custom.sh"));
         assert_eq!(got.as_deref(), Some("/opt/my/custom.sh"));
     }
 
@@ -443,10 +442,7 @@ remote:
         let _lock = ENV_LOCK.lock().unwrap();
         std::env::remove_var("REMOTE_XILINX_SETTINGS");
         std::env::set_var("REMOTE_HOST", "h");
-        std::env::set_var(
-            "REMOTE_XILINX_TOOL_PATH",
-            "/opt/tapa/software/tools/xilinx",
-        );
+        std::env::set_var("REMOTE_XILINX_TOOL_PATH", "/opt/tapa/software/tools/xilinx");
         let cfg = RemoteConfig::from_env().expect("from_env");
         assert_eq!(
             cfg.xilinx_settings.as_deref(),

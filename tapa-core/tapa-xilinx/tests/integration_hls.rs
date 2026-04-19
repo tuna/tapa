@@ -13,8 +13,8 @@ mod common;
 use std::sync::Arc;
 
 use tapa_xilinx::{
-    run_hls_with_retry, HlsJob, LocalToolRunner, RemoteToolRunner, SshMuxOptions,
-    SshSession, ToolInvocation, ToolRunner,
+    run_hls_with_retry, HlsJob, LocalToolRunner, RemoteToolRunner, SshMuxOptions, SshSession,
+    ToolInvocation, ToolRunner,
 };
 
 fn write_standalone_kernel(dir: &std::path::Path) -> std::path::PathBuf {
@@ -131,9 +131,7 @@ fn vitis_hls_round_trips_shared_vadd_fixture() {
     // simpler self-contained `vitis_hls_round_trips_vadd_fixture`
     // above stays in place for the runner-plumbing check.
     if common::should_skip_without_env() {
-        eprintln!(
-            "integration_hls: no XILINX_HLS and no REMOTE_HOST; skipping"
-        );
+        eprintln!("integration_hls: no XILINX_HLS and no REMOTE_HOST; skipping");
         return;
     }
     // The shared vadd kernel depends on the full TAPA runtime +
@@ -145,9 +143,7 @@ fn vitis_hls_round_trips_shared_vadd_fixture() {
     // Gate up front so the test only ever runs when it is
     // expected to fully succeed.
     if std::env::var("TAPA_SHARED_VADD_HLS").ok().as_deref() != Some("1") {
-        eprintln!(
-            "integration_hls: TAPA_SHARED_VADD_HLS=1 not set; skipping shared vadd fixture"
-        );
+        eprintln!("integration_hls: TAPA_SHARED_VADD_HLS=1 not set; skipping shared vadd fixture");
         return;
     }
     let tapa_lib = repo_root().join("tapa-lib");
@@ -156,8 +152,11 @@ fn vitis_hls_round_trips_shared_vadd_fixture() {
         "TAPA_SHARED_VADD_HLS=1 set but tapa-lib/tapa.h missing at {}",
         tapa_lib.display()
     );
-    let vadd_cpp =
-        repo_root().join("tests").join("apps").join("vadd").join("vadd.cpp");
+    let vadd_cpp = repo_root()
+        .join("tests")
+        .join("apps")
+        .join("vadd")
+        .join("vadd.cpp");
     assert!(
         vadd_cpp.is_file(),
         "TAPA_SHARED_VADD_HLS=1 set but {} missing",
@@ -187,14 +186,13 @@ fn vitis_hls_round_trips_shared_vadd_fixture() {
         auto_prefix: true,
         transient_patterns: None,
     };
-    let runner: Box<dyn ToolRunner> =
-        if let Some(cfg) = common::has_remote_config() {
-            let session = Arc::new(SshSession::new(cfg, SshMuxOptions::default()));
-            session.ensure_established().expect("ssh setup");
-            Box::new(RemoteToolRunner::new(session))
-        } else {
-            Box::new(LocalToolRunner::new())
-        };
+    let runner: Box<dyn ToolRunner> = if let Some(cfg) = common::has_remote_config() {
+        let session = Arc::new(SshSession::new(cfg, SshMuxOptions::default()));
+        session.ensure_established().expect("ssh setup");
+        Box::new(RemoteToolRunner::new(session))
+    } else {
+        Box::new(LocalToolRunner::new())
+    };
     // Once prerequisites (env + tapa-lib + fixture) are all present,
     // a real HLS failure must fail the test. Soft-skipping would
     // mask regressions in the shared-fixture code path. If the
@@ -230,8 +228,8 @@ fn vitis_hls_round_trips_shared_vadd_fixture() {
         .join("vadd_shared_hls_golden.json");
     let golden_text = std::fs::read_to_string(&golden_path)
         .unwrap_or_else(|e| panic!("read golden {}: {e}", golden_path.display()));
-    let golden: serde_json::Value = serde_json::from_str(&golden_text)
-        .expect("golden manifest must be valid JSON");
+    let golden: serde_json::Value =
+        serde_json::from_str(&golden_text).expect("golden manifest must be valid JSON");
     let expect_csynth = &golden["csynth"];
     assert_eq!(
         out.csynth.top,
@@ -276,8 +274,7 @@ fn vitis_hls_round_trips_shared_vadd_fixture() {
         .iter()
         .filter_map(|p| p.file_name().and_then(|n| n.to_str()).map(String::from))
         .collect();
-    let expected_hdl: std::collections::BTreeSet<String> = golden
-        ["hdl_module_basenames"]
+    let expected_hdl: std::collections::BTreeSet<String> = golden["hdl_module_basenames"]
         .as_array()
         .expect("hdl_module_basenames")
         .iter()
@@ -293,8 +290,7 @@ fn vitis_hls_round_trips_shared_vadd_fixture() {
         .iter()
         .filter_map(|p| p.file_name().and_then(|n| n.to_str()).map(String::from))
         .collect();
-    let expected_reports: std::collections::BTreeSet<String> = golden
-        ["per_task_report_basenames"]
+    let expected_reports: std::collections::BTreeSet<String> = golden["per_task_report_basenames"]
         .as_array()
         .expect("per_task_report_basenames")
         .iter()

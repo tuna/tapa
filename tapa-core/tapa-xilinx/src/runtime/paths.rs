@@ -66,8 +66,7 @@ fn latest_vendor_gcc(hls_root: &Path) -> Option<(String, PathBuf)> {
     for ent in entries.flatten() {
         let name = ent.file_name().to_string_lossy().into_owned();
         if let Some(rest) = name.strip_prefix("gcc-") {
-            let parts: std::result::Result<Vec<u32>, _> =
-                rest.split('.').map(str::parse).collect();
+            let parts: std::result::Result<Vec<u32>, _> = rest.split('.').map(str::parse).collect();
             if let Ok(parts) = parts {
                 versions.push((parts, rest.to_string(), ent.path()));
             }
@@ -371,7 +370,10 @@ mod tests {
         let _lock = ENV_LOCK.lock().unwrap();
         let _g = EnvGuard::unset("XILINX_HLS");
         let _g2 = EnvGuard::unset("XILINX_VITIS");
-        assert!(matches!(get_xilinx_hls(), Err(XilinxError::MissingXilinxHls)));
+        assert!(matches!(
+            get_xilinx_hls(),
+            Err(XilinxError::MissingXilinxHls)
+        ));
     }
 
     #[test]

@@ -108,18 +108,12 @@ fn localname(qname: &str) -> &str {
     qname.rsplit_once(':').map_or(qname, |(_, n)| n)
 }
 
-fn attr_value(
-    e: &quick_xml::events::BytesStart<'_>,
-    name: &str,
-) -> Result<Option<String>> {
+fn attr_value(e: &quick_xml::events::BytesStart<'_>, name: &str) -> Result<Option<String>> {
     for attr in e.attributes() {
         let attr = attr.map_err(|err| XilinxError::HlsReportParse(err.to_string()))?;
         let key = std::str::from_utf8(attr.key.as_ref()).unwrap_or("");
         if localname(key) == name {
-            let val = attr
-                .unescape_value()
-                .map_err(XilinxError::Xml)?
-                .to_string();
+            let val = attr.unescape_value().map_err(XilinxError::Xml)?.to_string();
             return Ok(Some(val));
         }
     }
@@ -129,11 +123,12 @@ fn attr_value(
 /// Parse an `.xpfm`-adjacent ZIP (`.xsa` / `.dsa`) that holds one
 /// `.hpfm` XML entry.
 pub fn parse_xpfm(bytes: &[u8]) -> Result<DeviceInfo> {
-    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
-        .map_err(|e| XilinxError::DeviceConfig {
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|e| {
+        XilinxError::DeviceConfig {
             path: PathBuf::new(),
             detail: format!("open archive: {e}"),
-        })?;
+        }
+    })?;
 
     let hpfm_idx = (0..archive.len()).find(|&i| {
         archive
@@ -254,11 +249,8 @@ mod tests {
         let mut out = std::io::Cursor::new(Vec::<u8>::new());
         {
             let mut zw = zip::ZipWriter::new(&mut out);
-            zw.start_file(
-                "shell.hpfm",
-                zip::write::SimpleFileOptions::default(),
-            )
-            .unwrap();
+            zw.start_file("shell.hpfm", zip::write::SimpleFileOptions::default())
+                .unwrap();
             zw.write_all(hpfm.as_bytes()).unwrap();
             zw.finish().unwrap();
         }

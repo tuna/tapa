@@ -21,8 +21,7 @@ use std::sync::Arc;
 
 pub(crate) use self::transport::shell_quote;
 use self::transport::{
-    cleanup_session, download_tree, local_to_remote_path, unique_session_id,
-    upload_batch,
+    cleanup_session, download_tree, local_to_remote_path, unique_session_id, upload_batch,
 };
 use crate::error::{Result, XilinxError};
 use crate::runtime::process::{ToolInvocation, ToolOutput, ToolRunner};
@@ -65,8 +64,11 @@ impl RemoteToolRunner {
     }
 }
 
-#[allow(dead_code, reason = "retained for future diagnostic paths; \
-         run_once now routes everything through session_dir")]
+#[allow(
+    dead_code,
+    reason = "retained for future diagnostic paths; \
+         run_once now routes everything through session_dir"
+)]
 fn remote_work_dir(session: &SshSession) -> String {
     session.config().work_dir.clone()
 }
@@ -75,11 +77,7 @@ fn remote_work_dir(session: &SshSession) -> String {
 /// session-scoped remote equivalent. Longest-match-first ensures a
 /// path that is a prefix of another (e.g. `/a/b` vs `/a/b/c`) is not
 /// double-replaced. Mirrors `tapa/remote/popen.py::_rewrite_paths_in_string`.
-fn rewrite_abs_paths(
-    text: &str,
-    local_paths: &[PathBuf],
-    session_dir: &str,
-) -> String {
+fn rewrite_abs_paths(text: &str, local_paths: &[PathBuf], session_dir: &str) -> String {
     if local_paths.is_empty() {
         return text.to_string();
     }
@@ -156,10 +154,8 @@ impl RemoteToolRunner {
             }
         };
         let cwd_abs: Option<PathBuf> = inv.cwd.as_deref().map(absolutize);
-        let uploads_abs: Vec<PathBuf> =
-            inv.uploads.iter().map(|p| absolutize(p)).collect();
-        let downloads_abs: Vec<PathBuf> =
-            inv.downloads.iter().map(|p| absolutize(p)).collect();
+        let uploads_abs: Vec<PathBuf> = inv.uploads.iter().map(|p| absolutize(p)).collect();
+        let downloads_abs: Vec<PathBuf> = inv.downloads.iter().map(|p| absolutize(p)).collect();
 
         let mut referenced: Vec<PathBuf> = Vec::new();
         if let Some(cwd) = cwd_abs.as_ref() {
@@ -167,8 +163,7 @@ impl RemoteToolRunner {
         }
         referenced.extend(uploads_abs.iter().cloned());
         referenced.extend(downloads_abs.iter().cloned());
-        let mut seen: std::collections::HashSet<PathBuf> =
-            std::collections::HashSet::new();
+        let mut seen: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
         referenced.retain(|p| seen.insert(p.clone()));
 
         let mut to_upload: Vec<PathBuf> = Vec::new();
@@ -182,8 +177,7 @@ impl RemoteToolRunner {
                 to_upload.push(p.clone());
             }
         }
-        let mut seen2: std::collections::HashSet<PathBuf> =
-            std::collections::HashSet::new();
+        let mut seen2: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
         to_upload.retain(|p| seen2.insert(p.clone()));
         upload_batch(&self.session, &session_dir, &to_upload)?;
 
@@ -214,11 +208,7 @@ impl RemoteToolRunner {
             .chain(rewritten_args.iter().map(|a| shell_quote(a)))
             .collect::<Vec<_>>()
             .join(" ");
-        parts.push(format!(
-            "cd {} && exec {}",
-            shell_quote(&remote_cwd),
-            exec
-        ));
+        parts.push(format!("cd {} && exec {}", shell_quote(&remote_cwd), exec));
         let full_cmd = parts.join(" ; ");
         let wrapped = format!("bash -c {}", shell_quote(&full_cmd));
 
@@ -228,19 +218,18 @@ impl RemoteToolRunner {
         if inv.stdin.is_some() {
             ssh.stdin(Stdio::piped());
         }
-        let mut child = ssh.spawn().map_err(|e| {
-            XilinxError::RemoteTransfer(format!("spawn ssh exec: {e}"))
-        })?;
+        let mut child = ssh
+            .spawn()
+            .map_err(|e| XilinxError::RemoteTransfer(format!("spawn ssh exec: {e}")))?;
         if let Some(bytes) = &inv.stdin {
             if let Some(mut si) = child.stdin.take() {
-                si.write_all(bytes).map_err(|e| {
-                    XilinxError::RemoteTransfer(format!("write stdin: {e}"))
-                })?;
+                si.write_all(bytes)
+                    .map_err(|e| XilinxError::RemoteTransfer(format!("write stdin: {e}")))?;
             }
         }
-        let out = child.wait_with_output().map_err(|e| {
-            XilinxError::RemoteTransfer(format!("wait ssh exec: {e}"))
-        })?;
+        let out = child
+            .wait_with_output()
+            .map_err(|e| XilinxError::RemoteTransfer(format!("wait ssh exec: {e}")))?;
         let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
         let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
         let code = out.status.code().unwrap_or(-1);
@@ -303,11 +292,7 @@ impl ToolRunner for RemoteToolRunner {
         )
     }
 
-    fn harvest(
-        &self,
-        _relative_from_cwd: &Path,
-        _local_root: &Path,
-    ) -> Result<()> {
+    fn harvest(&self, _relative_from_cwd: &Path, _local_root: &Path) -> Result<()> {
         // `run_once` already pulls every caller-requested absolute-
         // local download back into place, so this is a no-op on the
         // remote runner. Kept for interface symmetry.
@@ -318,9 +303,7 @@ impl ToolRunner for RemoteToolRunner {
 fn is_recoverable_mux_error(err: &XilinxError) -> bool {
     match err {
         XilinxError::SshMuxLost { .. } => true,
-        XilinxError::RemoteTransfer(msg) => {
-            classify_ssh_error(msg) == SshErrorKind::TransientMux
-        }
+        XilinxError::RemoteTransfer(msg) => classify_ssh_error(msg) == SshErrorKind::TransientMux,
         _ => false,
     }
 }

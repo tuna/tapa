@@ -22,9 +22,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use tapa_xilinx::{
-    emit_kernel_xml, pack_xo_without_redaction, redact_xo, DeviceInfo,
-    KernelXmlArgs, KernelXmlPort, PackageXoInputs, PortCategory,
-    RemoteToolRunner, SshMuxOptions, SshSession,
+    emit_kernel_xml, pack_xo_without_redaction, redact_xo, DeviceInfo, KernelXmlArgs,
+    KernelXmlPort, PackageXoInputs, PortCategory, RemoteToolRunner, SshMuxOptions, SshSession,
 };
 
 fn repo_root() -> PathBuf {
@@ -38,8 +37,7 @@ fn repo_root() -> PathBuf {
 /// Per-entry metadata captured for the single-artifact `.xo`
 /// parity comparison: filename, size, MS-DOS timestamp tuple, and
 /// the SHA-256 hex digest of the content.
-type ZipEntryInventory =
-    (String, u64, (u16, u8, u8, u8, u8, u8), String);
+type ZipEntryInventory = (String, u64, (u16, u8, u8, u8, u8, u8), String);
 
 /// Sorted `ZipEntryInventory` values for every entry in a `.xo`
 /// archive. Used to compare Rust- and Python-redacted archives as
@@ -47,8 +45,8 @@ type ZipEntryInventory =
 fn zip_inventory(bytes: &[u8]) -> Vec<ZipEntryInventory> {
     use sha2::{Digest, Sha256};
     use std::io::Read;
-    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
-        .expect("open archive for inventory");
+    let mut archive =
+        zip::ZipArchive::new(std::io::Cursor::new(bytes)).expect("open archive for inventory");
     let mut out = Vec::with_capacity(archive.len());
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i).expect("archive index");
@@ -125,9 +123,7 @@ fn live_pack_xo_roundtrips_vadd_rtl() {
     // invocation goes through `RemoteToolRunner`. A local-Vivado
     // path is out of scope here.
     let Some(cfg) = common::has_remote_config() else {
-        eprintln!(
-            "integration_pack_xo: no REMOTE_HOST; skipping live package_xo"
-        );
+        eprintln!("integration_pack_xo: no REMOTE_HOST; skipping live package_xo");
         return;
     };
     let real_hdl = repo_root()
@@ -147,8 +143,7 @@ fn live_pack_xo_roundtrips_vadd_rtl() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let hdl_dir = tmp.path().join("hdl");
     std::fs::create_dir_all(&hdl_dir).expect("mkdir hdl");
-    std::fs::copy(real_hdl.join("vadd.v"), hdl_dir.join("vadd.v"))
-        .expect("stage HDL fixture");
+    std::fs::copy(real_hdl.join("vadd.v"), hdl_dir.join("vadd.v")).expect("stage HDL fixture");
     let xo_out = tmp.path().join("vadd.xo");
     let inputs = PackageXoInputs {
         top_name: "vadd".into(),
@@ -229,8 +224,7 @@ fn live_pack_xo_roundtrips_vadd_rtl() {
 
     // Canonical inner kernel.xml equality + Rust-emitter parity.
     let archive_bytes = std::fs::read(&rust_xo).expect("read produced .xo");
-    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(archive_bytes))
-        .expect("open .xo");
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(archive_bytes)).expect("open .xo");
     // Vivado `package_xo` stores `kernel.xml` under a directory
     // path inside the produced `.xo`; scan the archive for the
     // canonical entry rather than assuming a root-level filename.
@@ -252,8 +246,14 @@ fn live_pack_xo_roundtrips_vadd_rtl() {
         .read_to_string(&mut kernel_xml_body)
         .expect("read kernel.xml");
     let rust_emitted = emit_kernel_xml(&kernel_xml_args()).expect("emit");
-    let lhs: String = kernel_xml_body.split_whitespace().collect::<Vec<_>>().join(" ");
-    let rhs: String = rust_emitted.split_whitespace().collect::<Vec<_>>().join(" ");
+    let lhs: String = kernel_xml_body
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    let rhs: String = rust_emitted
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
     assert_eq!(
         lhs, rhs,
         "kernel.xml inside live-packaged .xo must match Rust emit_kernel_xml"

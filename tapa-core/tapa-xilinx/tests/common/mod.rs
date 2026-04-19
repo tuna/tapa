@@ -7,7 +7,10 @@
 
 use tapa_xilinx::RemoteConfig;
 
-#[allow(dead_code, reason = "used by integration_{hls,vivado} but not integration_remote")]
+#[allow(
+    dead_code,
+    reason = "used by integration_{hls,vivado} but not integration_remote"
+)]
 pub fn has_local_xilinx() -> bool {
     cfg!(target_os = "linux") && std::env::var("XILINX_HLS").is_ok()
 }
@@ -16,7 +19,10 @@ pub fn has_remote_config() -> Option<RemoteConfig> {
     RemoteConfig::from_env()
 }
 
-#[allow(dead_code, reason = "used by integration_{hls,vivado} but not integration_remote")]
+#[allow(
+    dead_code,
+    reason = "used by integration_{hls,vivado} but not integration_remote"
+)]
 pub fn should_skip_without_env() -> bool {
     !has_local_xilinx() && has_remote_config().is_none()
 }

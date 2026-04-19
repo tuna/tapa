@@ -5,8 +5,7 @@ mod common;
 use std::sync::Arc;
 
 use tapa_xilinx::{
-    run_vivado, LocalToolRunner, RemoteToolRunner, SshMuxOptions, SshSession, ToolRunner,
-    VivadoJob,
+    run_vivado, LocalToolRunner, RemoteToolRunner, SshMuxOptions, SshSession, ToolRunner, VivadoJob,
 };
 
 #[test]

@@ -309,10 +309,7 @@ impl SshSession {
             if let Err(e) = std::fs::create_dir_all(&dir) {
                 return Err(XilinxError::SshConnect {
                     host: self.cfg.host.clone(),
-                    detail: format!(
-                        "create control dir {}: {e}",
-                        dir.display()
-                    ),
+                    detail: format!("create control dir {}: {e}", dir.display()),
                 });
             }
         }
@@ -380,9 +377,7 @@ mod tests {
         // pattern check so a permanent auth failure does not spur
         // the in-runner retry.
         assert_eq!(
-            classify_ssh_error(
-                "remote tar -cz failed (exit 255): Permission denied (publickey)"
-            ),
+            classify_ssh_error("remote tar -cz failed (exit 255): Permission denied (publickey)"),
             SshErrorKind::Auth
         );
     }
@@ -390,9 +385,7 @@ mod tests {
     #[test]
     fn exit_255_with_unreachable_stays_permanent() {
         assert_eq!(
-            classify_ssh_error(
-                "remote tar -cz failed (exit 255): Could not resolve hostname nope"
-            ),
+            classify_ssh_error("remote tar -cz failed (exit 255): Could not resolve hostname nope"),
             SshErrorKind::HostUnreachable
         );
     }
@@ -428,7 +421,8 @@ mod tests {
         assert!(args.iter().any(|a| a == "ControlMaster=auto"));
         assert!(args.iter().any(|a| a == "/tmp/key"));
         assert!(
-            args.iter().any(|a| a.starts_with("ControlPath=") && a.ends_with("/cm-%C")),
+            args.iter()
+                .any(|a| a.starts_with("ControlPath=") && a.ends_with("/cm-%C")),
             "missing ControlPath; args = {args:?}"
         );
     }

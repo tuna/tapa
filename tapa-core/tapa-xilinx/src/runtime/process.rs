@@ -230,12 +230,7 @@ impl MockToolRunner {
     }
 
     /// Queue a canned response that only matches exact `(program, args)`.
-    pub fn push_ok_for(
-        &self,
-        program: impl Into<String>,
-        args: Vec<String>,
-        output: ToolOutput,
-    ) {
+    pub fn push_ok_for(&self, program: impl Into<String>, args: Vec<String>, output: ToolOutput) {
         self.responses.lock().unwrap().push(Response {
             program: program.into(),
             args: Some(args),
@@ -295,8 +290,7 @@ impl ToolRunner for MockToolRunner {
         self.calls.lock().unwrap().push(inv.clone());
         let mut responses = self.responses.lock().unwrap();
         let idx = responses.iter().position(|r| {
-            r.program == inv.program
-                && r.args.as_ref().is_none_or(|args| args == &inv.args)
+            r.program == inv.program && r.args.as_ref().is_none_or(|args| args == &inv.args)
         });
         let Some(idx) = idx else {
             return Err(XilinxError::ToolFailure {
@@ -435,7 +429,9 @@ mod tests {
         // `sh` resolves purely via PATH: if env_clear() were in
         // effect, this spawn would fail with ENOENT.
         let inv = ToolInvocation::new("sh").arg("-c").arg("printf ok");
-        let out = runner.run(&inv).expect("bare `sh` must resolve via inherited PATH");
+        let out = runner
+            .run(&inv)
+            .expect("bare `sh` must resolve via inherited PATH");
         assert_eq!(out.exit_code, 0);
         assert_eq!(out.stdout, "ok");
     }
@@ -455,7 +451,15 @@ mod tests {
             .env("TAPA_PROBE_VAR", "from-inv");
         let out = runner.run(&inv).unwrap();
         assert_eq!(out.exit_code, 0);
-        assert!(out.stdout.contains("from-inv"), "overlay lost: {}", out.stdout);
-        assert!(out.stdout.contains("path-ok"), "inherited PATH lost: {}", out.stdout);
+        assert!(
+            out.stdout.contains("from-inv"),
+            "overlay lost: {}",
+            out.stdout
+        );
+        assert!(
+            out.stdout.contains("path-ok"),
+            "inherited PATH lost: {}",
+            out.stdout
+        );
     }
 }

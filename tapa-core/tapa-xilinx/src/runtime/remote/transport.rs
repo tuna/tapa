@@ -80,9 +80,7 @@ pub(super) fn upload_batch(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| {
-            XilinxError::RemoteTransfer(format!("spawn ssh for upload: {e}"))
-        })?;
+        .map_err(|e| XilinxError::RemoteTransfer(format!("spawn ssh for upload: {e}")))?;
 
     let ssh_in = ssh_child
         .stdin
@@ -98,71 +96,47 @@ pub(super) fn upload_batch(
         let rel = p.to_string_lossy();
         let rel = rel.trim_start_matches('/');
         if p.is_dir() {
-            for ent in std::fs::read_dir(p)
-                .map_err(|e| {
-                    XilinxError::RemoteTransfer(format!(
-                        "read_dir {}: {e}",
-                        p.display()
-                    ))
-                })?
-            {
-                let ent = ent.map_err(|e| {
-                    XilinxError::RemoteTransfer(format!("read_dir entry: {e}"))
-                })?;
-                let arc = format!(
-                    "{rel}/{}",
-                    ent.file_name().to_string_lossy()
-                );
-                let ty = ent.file_type().map_err(|e| {
-                    XilinxError::RemoteTransfer(format!("file_type: {e}"))
-                })?;
+            for ent in std::fs::read_dir(p).map_err(|e| {
+                XilinxError::RemoteTransfer(format!("read_dir {}: {e}", p.display()))
+            })? {
+                let ent =
+                    ent.map_err(|e| XilinxError::RemoteTransfer(format!("read_dir entry: {e}")))?;
+                let arc = format!("{rel}/{}", ent.file_name().to_string_lossy());
+                let ty = ent
+                    .file_type()
+                    .map_err(|e| XilinxError::RemoteTransfer(format!("file_type: {e}")))?;
                 if ty.is_dir() {
                     builder.append_dir_all(&arc, ent.path()).map_err(|e| {
-                        XilinxError::RemoteTransfer(format!(
-                            "tar append dir {arc}: {e}"
-                        ))
+                        XilinxError::RemoteTransfer(format!("tar append dir {arc}: {e}"))
                     })?;
                 } else if ty.is_file() {
-                    let mut f = std::fs::File::open(ent.path()).map_err(
-                        |e| {
-                            XilinxError::RemoteTransfer(format!(
-                                "open {}: {e}",
-                                ent.path().display()
-                            ))
-                        },
-                    )?;
+                    let mut f = std::fs::File::open(ent.path()).map_err(|e| {
+                        XilinxError::RemoteTransfer(format!("open {}: {e}", ent.path().display()))
+                    })?;
                     builder.append_file(&arc, &mut f).map_err(|e| {
-                        XilinxError::RemoteTransfer(format!(
-                            "tar append file {arc}: {e}"
-                        ))
+                        XilinxError::RemoteTransfer(format!("tar append file {arc}: {e}"))
                     })?;
                 }
             }
         } else if p.is_file() {
-            let mut f = std::fs::File::open(p).map_err(|e| {
-                XilinxError::RemoteTransfer(format!(
-                    "open {}: {e}",
-                    p.display()
-                ))
-            })?;
-            builder.append_file(rel, &mut f).map_err(|e| {
-                XilinxError::RemoteTransfer(format!(
-                    "tar append {rel}: {e}"
-                ))
-            })?;
+            let mut f = std::fs::File::open(p)
+                .map_err(|e| XilinxError::RemoteTransfer(format!("open {}: {e}", p.display())))?;
+            builder
+                .append_file(rel, &mut f)
+                .map_err(|e| XilinxError::RemoteTransfer(format!("tar append {rel}: {e}")))?;
         }
     }
-    let gz = builder.into_inner().map_err(|e| {
-        XilinxError::RemoteTransfer(format!("finish tar: {e}"))
-    })?;
-    let stdin_handle = gz.finish().map_err(|e| {
-        XilinxError::RemoteTransfer(format!("finish gz: {e}"))
-    })?;
+    let gz = builder
+        .into_inner()
+        .map_err(|e| XilinxError::RemoteTransfer(format!("finish tar: {e}")))?;
+    let stdin_handle = gz
+        .finish()
+        .map_err(|e| XilinxError::RemoteTransfer(format!("finish gz: {e}")))?;
     drop(stdin_handle);
 
-    let out = ssh_child.wait_with_output().map_err(|e| {
-        XilinxError::RemoteTransfer(format!("wait ssh upload: {e}"))
-    })?;
+    let out = ssh_child
+        .wait_with_output()
+        .map_err(|e| XilinxError::RemoteTransfer(format!("wait ssh upload: {e}")))?;
     if !out.status.success() {
         let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
         return Err(XilinxError::RemoteTransfer(format!(
@@ -178,16 +152,10 @@ pub(super) fn upload_batch(
 /// `ssh … tar -czf - -C <remote_dir> . | tar -xzf - -C <dest>`. SSH
 /// stderr is captured so transient mux failures surface in the
 /// returned error and the outer retry path can classify them.
-pub(super) fn download_tree(
-    session: &SshSession,
-    remote_dir: &str,
-    dest: &Path,
-) -> Result<()> {
-    std::fs::create_dir_all(dest).map_err(|e| {
-        XilinxError::RemoteTransfer(format!("mkdir {}: {e}", dest.display()))
-    })?;
-    let remote_cmd =
-        format!("tar -czf - -C {} .", shell_quote(remote_dir));
+pub(super) fn download_tree(session: &SshSession, remote_dir: &str, dest: &Path) -> Result<()> {
+    std::fs::create_dir_all(dest)
+        .map_err(|e| XilinxError::RemoteTransfer(format!("mkdir {}: {e}", dest.display())))?;
+    let remote_cmd = format!("tar -czf - -C {} .", shell_quote(remote_dir));
     let mut args = session.build_ssh_args();
     args.push(session.ssh_target());
     args.push(remote_cmd);
@@ -196,9 +164,7 @@ pub(super) fn download_tree(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| {
-            XilinxError::RemoteTransfer(format!("spawn ssh for download: {e}"))
-        })?;
+        .map_err(|e| XilinxError::RemoteTransfer(format!("spawn ssh for download: {e}")))?;
 
     let ssh_out = ssh_child
         .stdout
@@ -216,11 +182,7 @@ pub(super) fn download_tree(
         .stdin(Stdio::from(ssh_out))
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| {
-            XilinxError::RemoteTransfer(format!(
-                "spawn local tar -xz: {e}"
-            ))
-        })?;
+        .map_err(|e| XilinxError::RemoteTransfer(format!("spawn local tar -xz: {e}")))?;
 
     let stderr_handle = std::thread::spawn(move || {
         let mut buf = Vec::new();
@@ -229,12 +191,12 @@ pub(super) fn download_tree(
         buf
     });
 
-    let tar_status = tar_local.wait().map_err(|e| {
-        XilinxError::RemoteTransfer(format!("wait local tar -xz: {e}"))
-    })?;
-    let ssh_status = ssh_child.wait().map_err(|e| {
-        XilinxError::RemoteTransfer(format!("wait ssh download: {e}"))
-    })?;
+    let tar_status = tar_local
+        .wait()
+        .map_err(|e| XilinxError::RemoteTransfer(format!("wait local tar -xz: {e}")))?;
+    let ssh_status = ssh_child
+        .wait()
+        .map_err(|e| XilinxError::RemoteTransfer(format!("wait ssh download: {e}")))?;
     let stderr_bytes = stderr_handle.join().unwrap_or_default();
     let stderr = String::from_utf8_lossy(&stderr_bytes).into_owned();
     if !ssh_status.success() {

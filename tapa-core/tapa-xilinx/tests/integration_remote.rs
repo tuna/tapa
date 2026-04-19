@@ -19,9 +19,7 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::Arc;
 
-use tapa_xilinx::{
-    RemoteToolRunner, SshMuxOptions, SshSession, ToolInvocation, ToolRunner,
-};
+use tapa_xilinx::{RemoteToolRunner, SshMuxOptions, SshSession, ToolInvocation, ToolRunner};
 
 fn existing_control_sockets(dir: &PathBuf) -> Vec<PathBuf> {
     let Ok(entries) = std::fs::read_dir(dir) else {
@@ -110,9 +108,7 @@ fn control_master_lifecycle() {
     //    clean success, not `SshMuxLost`.
     let out2 = runner
         .run(&ToolInvocation::new("echo").arg("post-restart"))
-        .expect(
-            "remote echo after mux teardown must succeed via auto-restart",
-        );
+        .expect("remote echo after mux teardown must succeed via auto-restart");
     assert_eq!(out2.exit_code, 0, "stderr after restart: {}", out2.stderr);
     assert!(
         out2.stdout.contains("post-restart"),
@@ -137,10 +133,7 @@ fn control_master_lifecycle() {
 /// the mid-flight recovery test below so the failure happens *during*
 /// the runner's upload/exec/download pipeline (not before
 /// `ensure_established()` has a chance to cold-reconnect).
-fn schedule_mux_teardown(
-    session: Arc<SshSession>,
-    delay_ms: u64,
-) -> std::thread::JoinHandle<()> {
+fn schedule_mux_teardown(session: Arc<SshSession>, delay_ms: u64) -> std::thread::JoinHandle<()> {
     std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_millis(delay_ms));
         let ctrl_dir = session.control_dir();
@@ -151,11 +144,7 @@ fn schedule_mux_teardown(
             format!("ControlPath={}/cm-%C", ctrl_dir.display()),
             "-O".into(),
             "exit".into(),
-            format!(
-                "{}@{}",
-                session.config().user,
-                session.config().host
-            ),
+            format!("{}@{}", session.config().user, session.config().host),
         ];
         let _ = std::process::Command::new("ssh")
             .args(&args)
@@ -181,9 +170,7 @@ fn control_master_retry_branch_mid_transfer() {
     // `tapa-xilinx/src/runtime/remote.rs`; this integration serves
     // as the live-host counterpart.
     let Some(cfg) = common::has_remote_config() else {
-        eprintln!(
-            "integration_remote: no REMOTE_HOST; skipping mid-transfer retry test"
-        );
+        eprintln!("integration_remote: no REMOTE_HOST; skipping mid-transfer retry test");
         return;
     };
     let session = Arc::new(SshSession::new(cfg, SshMuxOptions::default()));
@@ -208,8 +195,7 @@ fn control_master_retry_branch_mid_transfer() {
     // Schedule the mux teardown concurrently with the transfer.
     let handle = schedule_mux_teardown(Arc::clone(&session), 50);
 
-    let mut inv = ToolInvocation::new("cat")
-        .arg(payload.join("chunk-0.bin").display().to_string());
+    let mut inv = ToolInvocation::new("cat").arg(payload.join("chunk-0.bin").display().to_string());
     inv.cwd = Some(stage.path().to_path_buf());
     inv.uploads.push(payload.clone());
     inv.downloads.push(payload);
@@ -235,9 +221,7 @@ fn control_master_restart_during_transfer() {
     // the second invocation's upload/exec/download must re-establish
     // transparently.
     let Some(cfg) = common::has_remote_config() else {
-        eprintln!(
-            "integration_remote: no REMOTE_HOST; skipping transfer test"
-        );
+        eprintln!("integration_remote: no REMOTE_HOST; skipping transfer test");
         return;
     };
     let session = Arc::new(SshSession::new(cfg, SshMuxOptions::default()));
@@ -249,8 +233,7 @@ fn control_master_restart_during_transfer() {
     let stage = tempfile::tempdir().expect("stage dir");
     let src_dir = stage.path().join("payload");
     std::fs::create_dir_all(&src_dir).expect("mkdir src");
-    std::fs::write(src_dir.join("hello.txt"), b"tapa-remote-transfer-ok\n")
-        .expect("write src");
+    std::fs::write(src_dir.join("hello.txt"), b"tapa-remote-transfer-ok\n").expect("write src");
 
     let run = || -> tapa_xilinx::ToolOutput {
         let mut inv = ToolInvocation::new("cat");
@@ -262,17 +245,14 @@ fn control_master_restart_during_transfer() {
         // `payload/` tree, (b) rewritten cwd to the rootfs mirror,
         // and (c) downloaded the mirror back on return.
         let _ = inv; // silence unused-mut if the compiler complains
-        let mut inv = ToolInvocation::new("cat")
-            .arg(
-                src_dir
-                    .join("hello.txt")
-                    .display()
-                    .to_string(),
-            );
+        let mut inv =
+            ToolInvocation::new("cat").arg(src_dir.join("hello.txt").display().to_string());
         inv.cwd = Some(stage.path().to_path_buf());
         inv.uploads.push(src_dir.clone());
         inv.downloads.push(src_dir.clone());
-        runner.run(&inv).expect("remote transfer + cat must succeed")
+        runner
+            .run(&inv)
+            .expect("remote transfer + cat must succeed")
     };
 
     // Baseline round-trip.

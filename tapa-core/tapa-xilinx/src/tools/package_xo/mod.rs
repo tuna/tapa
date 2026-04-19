@@ -131,8 +131,10 @@ fn render_bus_ifaces(
     for iface in s_axi {
         out.push_str(&BUS_IFACE_TCL.replace("{iface}", iface));
     }
-    let param_map: std::collections::HashMap<&str, &[(String, String)]> =
-        params.iter().map(|(n, kv)| (n.as_str(), kv.as_slice())).collect();
+    let param_map: std::collections::HashMap<&str, &[(String, String)]> = params
+        .iter()
+        .map(|(n, kv)| (n.as_str(), kv.as_slice()))
+        .collect();
     for name in m_axi {
         let full = format!("{M_AXI_PREFIX}{name}");
         out.push_str(&BUS_IFACE_TCL.replace("{iface}", &full));
@@ -224,24 +226,34 @@ fn bundle_report_paths_into_xo(
     let raw = std::fs::read(xo)?;
     let mut z_in = zip::ZipArchive::new(std::io::Cursor::new(raw))
         .map_err(|e| XilinxError::XoRedaction(format!("open xo for bundling: {e}")))?;
-    let tmp = tempfile::NamedTempFile::new_in(
-        xo.parent().unwrap_or_else(|| std::path::Path::new(".")),
-    )?;
+    let tmp =
+        tempfile::NamedTempFile::new_in(xo.parent().unwrap_or_else(|| std::path::Path::new(".")))?;
     let written: std::collections::HashSet<&str> =
         report_paths.iter().map(|(_, name)| name.as_str()).collect();
     {
         let mut z_out = zip::ZipWriter::new(tmp.reopen()?);
-        let opts: zip::write::FileOptions<'_, ()> =
-            zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+        let dir_opts = SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated)
+            .unix_permissions(0o755);
         for i in 0..z_in.len() {
             let mut entry = z_in
                 .by_index(i)
                 .map_err(|e| XilinxError::XoRedaction(format!("read xo entry {i}: {e}")))?;
-            if written.contains(entry.name()) {
+            let name = entry.name().to_owned();
+            if written.contains(name.as_str()) {
                 continue;
             }
+            if name.ends_with('/') {
+                z_out
+                    .add_directory(name, dir_opts)
+                    .map_err(|e| XilinxError::XoRedaction(format!("copy directory entry: {e}")))?;
+                continue;
+            }
+            let file_opts = SimpleFileOptions::default()
+                .compression_method(zip::CompressionMethod::Deflated)
+                .unix_permissions(entry.unix_mode().unwrap_or(0o644) & 0o777);
             z_out
-                .start_file(entry.name().to_owned(), opts)
+                .start_file(name, file_opts)
                 .map_err(|e| XilinxError::XoRedaction(format!("start entry: {e}")))?;
             let mut buf = Vec::new();
             entry.read_to_end(&mut buf)?;
@@ -252,7 +264,12 @@ fn bundle_report_paths_into_xo(
                 continue;
             }
             z_out
-                .start_file(name.clone(), opts)
+                .start_file(
+                    name.clone(),
+                    SimpleFileOptions::default()
+                        .compression_method(zip::CompressionMethod::Deflated)
+                        .unix_permissions(0o644),
+                )
                 .map_err(|e| XilinxError::XoRedaction(format!("bundle entry: {e}")))?;
             z_out.write_all(&std::fs::read(rpt)?)?;
         }
@@ -260,9 +277,8 @@ fn bundle_report_paths_into_xo(
             .finish()
             .map_err(|e| XilinxError::XoRedaction(format!("finish bundled xo: {e}")))?;
     }
-    tmp.persist(xo).map_err(|e| {
-        XilinxError::XoRedaction(format!("persist bundled xo: {e}"))
-    })?;
+    tmp.persist(xo)
+        .map_err(|e| XilinxError::XoRedaction(format!("persist bundled xo: {e}")))?;
     Ok(())
 }
 
@@ -379,9 +395,8 @@ fn redact_xml_payload(text: &str) -> String {
     let step2 = re_src.replace_all(&step1, "<SourceLocation>$1</SourceLocation>");
 
     // `.{32}` matches Python's 32 literal dots inside `ProjectID="..."`.
-    let re_pid = RE_PID.get_or_init(|| {
-        regex::Regex::new("ProjectID=\".{32}\"").expect("static regex compiles")
-    });
+    let re_pid = RE_PID
+        .get_or_init(|| regex::Regex::new("ProjectID=\".{32}\"").expect("static regex compiles"));
     re_pid
         .replace_all(&step2, "ProjectID=\"0123456789abcdef0123456789abcdef\"")
         .into_owned()
@@ -414,9 +429,22 @@ pub fn redact_xo(path: &std::path::Path) -> Result<()> {
             let mut entry = archive
                 .by_name(name)
                 .map_err(|e| XilinxError::XoRedaction(format!("entry {name}: {e}")))?;
+            let is_dir = name.ends_with('/');
+            let unix_mode = if is_dir {
+                0o755
+            } else {
+                entry.unix_mode().unwrap_or(0o644) & 0o777
+            };
             let opts = SimpleFileOptions::default()
                 .compression_method(zip::CompressionMethod::Deflated)
-                .last_modified_time(zip::DateTime::default());
+                .last_modified_time(zip::DateTime::default())
+                .unix_permissions(unix_mode);
+            if is_dir {
+                writer
+                    .add_directory(name.clone(), opts)
+                    .map_err(|e| XilinxError::XoRedaction(format!("directory: {e}")))?;
+                continue;
+            }
             let mut buf = Vec::with_capacity(entry.size() as usize);
             entry.read_to_end(&mut buf)?;
             let redacted: Vec<u8> = if name.ends_with(".rpt") {
@@ -573,10 +601,8 @@ mod tests {
             .args
             .iter()
             .any(|a| a == &xo_path.display().to_string()));
-        let mut z = zip::ZipArchive::new(std::io::Cursor::new(
-            std::fs::read(&xo_path).unwrap(),
-        ))
-        .unwrap();
+        let mut z =
+            zip::ZipArchive::new(std::io::Cursor::new(std::fs::read(&xo_path).unwrap())).unwrap();
         let mut body = String::new();
         z.by_name("ip/meta.xml")
             .unwrap()
@@ -674,13 +700,46 @@ Date:           Fri Mar 14 10:20:30 2025\n\
             )],
         );
         redact_xo(&path).unwrap();
-        let mut z = zip::ZipArchive::new(std::io::Cursor::new(std::fs::read(&path).unwrap()))
-            .unwrap();
+        let mut z =
+            zip::ZipArchive::new(std::io::Cursor::new(std::fs::read(&path).unwrap())).unwrap();
         let mut body = String::new();
         z.by_name("ip/meta.xml")
             .unwrap()
             .read_to_string(&mut body)
             .unwrap();
         assert!(body.contains("1980-01-01T00:00:00Z"));
+    }
+
+    #[test]
+    fn redact_xo_preserves_directory_entry_modes() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("k.xo");
+        let f = std::fs::File::create(&path).unwrap();
+        let mut zw = zip::ZipWriter::new(f);
+        zw.add_directory(
+            "ip_repo/tapa_xrtl_Cannon_1_0/src/",
+            SimpleFileOptions::default().unix_permissions(0o755),
+        )
+        .unwrap();
+        zw.start_file(
+            "ip_repo/tapa_xrtl_Cannon_1_0/src/Cannon.v",
+            SimpleFileOptions::default().unix_permissions(0o644),
+        )
+        .unwrap();
+        zw.write_all(b"module Cannon; endmodule\n").unwrap();
+        zw.finish().unwrap();
+
+        redact_xo(&path).unwrap();
+
+        let mut z =
+            zip::ZipArchive::new(std::io::Cursor::new(std::fs::read(&path).unwrap())).unwrap();
+        let dir = z.by_name("ip_repo/tapa_xrtl_Cannon_1_0/src/").unwrap();
+        let mode = dir.unix_mode().unwrap_or_default();
+        assert_ne!(
+            mode & 0o170000,
+            0o100000,
+            "directory entry was rewritten as a regular file: {mode:o}",
+        );
+        assert_eq!(mode & 0o777, 0o755);
     }
 }

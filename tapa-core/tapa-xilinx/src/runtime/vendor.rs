@@ -39,21 +39,18 @@ impl VendorRemoteFs for SshVendorFs<'_> {
         let mut args = self.session.build_ssh_args();
         args.push(self.session.ssh_target());
         args.push(cmd.to_string());
-        let out = Command::new("ssh").args(&args).output().map_err(|e| {
-            XilinxError::RemoteTransfer(format!("spawn ssh exec: {e}"))
-        })?;
+        let out = Command::new("ssh")
+            .args(&args)
+            .output()
+            .map_err(|e| XilinxError::RemoteTransfer(format!("spawn ssh exec: {e}")))?;
         Ok((out.status.code().unwrap_or(-1), out.stdout, out.stderr))
     }
 
     fn download_dir(&self, remote_path: &str, local_dest: &Path) -> Result<()> {
         std::fs::create_dir_all(local_dest).map_err(|e| {
-            XilinxError::RemoteTransfer(format!(
-                "mkdir {}: {e}",
-                local_dest.display()
-            ))
+            XilinxError::RemoteTransfer(format!("mkdir {}: {e}", local_dest.display()))
         })?;
-        let remote_cmd =
-            format!("tar -czf - -C {} .", shell_quote(remote_path));
+        let remote_cmd = format!("tar -czf - -C {} .", shell_quote(remote_path));
         let mut args = self.session.build_ssh_args();
         args.push(self.session.ssh_target());
         args.push(remote_cmd);
@@ -62,14 +59,11 @@ impl VendorRemoteFs for SshVendorFs<'_> {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .map_err(|e| {
-                XilinxError::RemoteTransfer(format!(
-                    "spawn ssh download: {e}"
-                ))
-            })?;
-        let ssh_stdout = ssh.stdout.take().ok_or_else(|| {
-            XilinxError::RemoteTransfer("ssh stdout lost".into())
-        })?;
+            .map_err(|e| XilinxError::RemoteTransfer(format!("spawn ssh download: {e}")))?;
+        let ssh_stdout = ssh
+            .stdout
+            .take()
+            .ok_or_else(|| XilinxError::RemoteTransfer("ssh stdout lost".into()))?;
         let mut tar_local = Command::new("tar")
             .arg("-xzf")
             .arg("-")
@@ -78,17 +72,13 @@ impl VendorRemoteFs for SshVendorFs<'_> {
             .stdin(Stdio::from(ssh_stdout))
             .stderr(Stdio::piped())
             .spawn()
-            .map_err(|e| {
-                XilinxError::RemoteTransfer(format!(
-                    "spawn local tar -xz: {e}"
-                ))
-            })?;
-        let tar_status = tar_local.wait().map_err(|e| {
-            XilinxError::RemoteTransfer(format!("wait tar -xz: {e}"))
-        })?;
-        let ssh_status = ssh.wait().map_err(|e| {
-            XilinxError::RemoteTransfer(format!("wait ssh download: {e}"))
-        })?;
+            .map_err(|e| XilinxError::RemoteTransfer(format!("spawn local tar -xz: {e}")))?;
+        let tar_status = tar_local
+            .wait()
+            .map_err(|e| XilinxError::RemoteTransfer(format!("wait tar -xz: {e}")))?;
+        let ssh_status = ssh
+            .wait()
+            .map_err(|e| XilinxError::RemoteTransfer(format!("wait ssh download: {e}")))?;
         if !ssh_status.success() {
             return Err(XilinxError::RemoteTransfer(format!(
                 "remote tar -cz failed: {ssh_status}"
@@ -106,9 +96,7 @@ impl VendorRemoteFs for SshVendorFs<'_> {
 /// Parse the `KEY=VAL` lines produced by the remote
 /// `echo XILINX_HLS=$XILINX_HLS && echo XILINX_VITIS=$XILINX_VITIS`
 /// probe. Empty values are dropped (matches the Python loader).
-pub(crate) fn parse_remote_xilinx_paths(
-    stdout: &str,
-) -> std::collections::HashMap<String, String> {
+pub(crate) fn parse_remote_xilinx_paths(stdout: &str) -> std::collections::HashMap<String, String> {
     let mut out = std::collections::HashMap::new();
     for line in stdout.lines() {
         if let Some((k, v)) = line.split_once('=') {
@@ -125,11 +113,7 @@ pub(crate) fn parse_remote_xilinx_paths(
 /// `$XDG_CACHE_HOME/tapa/vendor-headers/<key>` where `<key>` is the
 /// first 16 hex chars of `sha256(host:port:xilinx_settings)` (matches
 /// `tapa/remote/vendor.py::_cache_key`).
-pub(crate) fn vendor_cache_dir(
-    host: &str,
-    port: u16,
-    xilinx_settings: &str,
-) -> Result<PathBuf> {
+pub(crate) fn vendor_cache_dir(host: &str, port: u16, xilinx_settings: &str) -> Result<PathBuf> {
     use sha2::{Digest, Sha256};
     let base = std::env::var_os("XDG_CACHE_HOME")
         .map(PathBuf::from)
@@ -183,15 +167,11 @@ pub(crate) fn apply_macos_vendor_patch(cache_dir: &Path) -> Result<()> {
     .expect("static macOS patch pattern must compile");
     let replacement = "#include <complex>";
     let mut any = false;
-    for entry in std::fs::read_dir(&etc_dir).map_err(|e| {
-        XilinxError::RemoteTransfer(format!(
-            "read_dir {}: {e}",
-            etc_dir.display()
-        ))
-    })? {
-        let entry = entry.map_err(|e| {
-            XilinxError::RemoteTransfer(format!("read_dir entry: {e}"))
-        })?;
+    for entry in std::fs::read_dir(&etc_dir)
+        .map_err(|e| XilinxError::RemoteTransfer(format!("read_dir {}: {e}", etc_dir.display())))?
+    {
+        let entry =
+            entry.map_err(|e| XilinxError::RemoteTransfer(format!("read_dir entry: {e}")))?;
         let path = entry.path();
         let Some(name) = path.file_name().and_then(|s| s.to_str()) else {
             continue;
@@ -199,29 +179,19 @@ pub(crate) fn apply_macos_vendor_patch(cache_dir: &Path) -> Result<()> {
         if !(name.starts_with("ap_") && name.ends_with("_special.h")) {
             continue;
         }
-        let content = std::fs::read_to_string(&path).map_err(|e| {
-            XilinxError::RemoteTransfer(format!(
-                "read {}: {e}",
-                path.display()
-            ))
-        })?;
+        let content = std::fs::read_to_string(&path)
+            .map_err(|e| XilinxError::RemoteTransfer(format!("read {}: {e}", path.display())))?;
         let new_content = pattern.replace(&content, replacement);
         if new_content != content {
             std::fs::write(&path, new_content.as_bytes()).map_err(|e| {
-                XilinxError::RemoteTransfer(format!(
-                    "write {}: {e}",
-                    path.display()
-                ))
+                XilinxError::RemoteTransfer(format!("write {}: {e}", path.display()))
             })?;
             any = true;
         }
     }
     if any {
-        std::fs::write(&marker, b"patched\n").map_err(|e| {
-            XilinxError::RemoteTransfer(format!(
-                "write macOS patch marker: {e}"
-            ))
-        })?;
+        std::fs::write(&marker, b"patched\n")
+            .map_err(|e| XilinxError::RemoteTransfer(format!("write macOS patch marker: {e}")))?;
     }
     Ok(())
 }
@@ -295,21 +265,15 @@ pub fn sync_vendor_includes_impl<F: VendorRemoteFs>(
         })?;
 
     std::fs::create_dir_all(&cache_dir).map_err(|e| {
-        XilinxError::RemoteTransfer(format!(
-            "mkdir cache {}: {e}",
-            cache_dir.display()
-        ))
+        XilinxError::RemoteTransfer(format!("mkdir cache {}: {e}", cache_dir.display()))
     })?;
 
     // Remove any stale macOS patch marker so the patch re-applies
     // after a fresh header download.
     let patch_marker = cache_dir.join(".patched_macos_complex");
     if patch_marker.exists() {
-        std::fs::remove_file(&patch_marker).map_err(|e| {
-            XilinxError::RemoteTransfer(format!(
-                "remove stale patch marker: {e}"
-            ))
-        })?;
+        std::fs::remove_file(&patch_marker)
+            .map_err(|e| XilinxError::RemoteTransfer(format!("remove stale patch marker: {e}")))?;
     }
 
     // Download include/.
@@ -338,9 +302,8 @@ pub fn sync_vendor_includes_impl<F: VendorRemoteFs>(
     }
 
     apply_macos_vendor_patch(&cache_dir)?;
-    std::fs::write(&marker, format!("{xilinx_tool}\n")).map_err(|e| {
-        XilinxError::RemoteTransfer(format!("write synced marker: {e}"))
-    })?;
+    std::fs::write(&marker, format!("{xilinx_tool}\n"))
+        .map_err(|e| XilinxError::RemoteTransfer(format!("write synced marker: {e}")))?;
     Ok(cache_dir)
 }
 
@@ -381,16 +344,10 @@ mod tests {
                 .borrow_mut()
                 .pop_front()
                 .ok_or_else(|| {
-                    XilinxError::RemoteTransfer(
-                        "MockFs: no more canned ssh responses".into(),
-                    )
+                    XilinxError::RemoteTransfer("MockFs: no more canned ssh responses".into())
                 })
         }
-        fn download_dir(
-            &self,
-            remote_path: &str,
-            local_dest: &Path,
-        ) -> Result<()> {
+        fn download_dir(&self, remote_path: &str, local_dest: &Path) -> Result<()> {
             self.recorded_downloads
                 .borrow_mut()
                 .push(remote_path.to_string());
@@ -404,15 +361,10 @@ mod tests {
                 )));
             }
             std::fs::create_dir_all(local_dest).map_err(|e| {
-                XilinxError::RemoteTransfer(format!(
-                    "mock mkdir {}: {e}",
-                    local_dest.display()
-                ))
+                XilinxError::RemoteTransfer(format!("mock mkdir {}: {e}", local_dest.display()))
             })?;
             std::fs::write(local_dest.join(".mock_download"), remote_path)
-                .map_err(|e| {
-                    XilinxError::RemoteTransfer(format!("mock write: {e}"))
-                })?;
+                .map_err(|e| XilinxError::RemoteTransfer(format!("mock write: {e}")))?;
             if self.write_ap_special && local_dest.ends_with("include") {
                 let etc = local_dest.join("etc");
                 std::fs::create_dir_all(&etc).unwrap();
@@ -483,9 +435,8 @@ mod tests {
                 Vec::new(),
             ),
         ]);
-        let out =
-            sync_vendor_includes_impl(&mock, "/opt/settings64.sh", &cache)
-                .expect("sync must succeed");
+        let out = sync_vendor_includes_impl(&mock, "/opt/settings64.sh", &cache)
+            .expect("sync must succeed");
         assert_eq!(out, cache);
         assert!(cache.join("include").join(".mock_download").is_file());
         assert!(cache
@@ -511,9 +462,8 @@ mod tests {
             b"XILINX_HLS=\nXILINX_VITIS=\n".to_vec(),
             Vec::new(),
         )]);
-        let err =
-            sync_vendor_includes_impl(&mock, "/opt/settings64.sh", &cache)
-                .expect_err("must error when no tool paths");
+        let err = sync_vendor_includes_impl(&mock, "/opt/settings64.sh", &cache)
+            .expect_err("must error when no tool paths");
         match err {
             XilinxError::RemoteTransfer(msg) => {
                 assert!(msg.contains("XILINX_HLS"));
@@ -531,9 +481,8 @@ mod tests {
             Vec::new(),
             b"settings64.sh: not found".to_vec(),
         )]);
-        let err =
-            sync_vendor_includes_impl(&mock, "/opt/settings64.sh", &cache)
-                .expect_err("probe nonzero must error");
+        let err = sync_vendor_includes_impl(&mock, "/opt/settings64.sh", &cache)
+            .expect_err("probe nonzero must error");
         match err {
             XilinxError::RemoteTransfer(msg) => {
                 assert!(msg.contains("probe"));
@@ -552,9 +501,8 @@ mod tests {
             Vec::new(),
         )]);
         mock.download_fail_on = Some("/include".to_string());
-        let err =
-            sync_vendor_includes_impl(&mock, "/opt/settings64.sh", &cache)
-                .expect_err("download failure must error");
+        let err = sync_vendor_includes_impl(&mock, "/opt/settings64.sh", &cache)
+            .expect_err("download failure must error");
         assert!(matches!(err, XilinxError::RemoteTransfer(_)));
     }
 
@@ -565,18 +513,11 @@ mod tests {
             (0, b"XILINX_HLS=/opt/xilinx/hls\n".to_vec(), Vec::new()),
             (0, b"".to_vec(), Vec::new()),
         ]);
-        let cache1 =
-            sync_vendor_includes_impl(&mock, "/opt/settings64.sh", &cache)
-                .unwrap();
+        let cache1 = sync_vendor_includes_impl(&mock, "/opt/settings64.sh", &cache).unwrap();
         let remaining_before = mock.ssh_exec_responses.borrow().len();
-        let cache2 =
-            sync_vendor_includes_impl(&mock, "/opt/settings64.sh", &cache)
-                .unwrap();
+        let cache2 = sync_vendor_includes_impl(&mock, "/opt/settings64.sh", &cache).unwrap();
         assert_eq!(cache1, cache2);
-        assert_eq!(
-            remaining_before,
-            mock.ssh_exec_responses.borrow().len()
-        );
+        assert_eq!(remaining_before, mock.ssh_exec_responses.borrow().len());
     }
 
     #[test]
@@ -588,13 +529,10 @@ mod tests {
             (0, b"".to_vec(), Vec::new()),
         ]);
         mock.write_ap_special = true;
-        let out =
-            sync_vendor_includes_impl(&mock, "/opt/settings64.sh", &cache)
-                .unwrap();
-        let patched = std::fs::read_to_string(
-            out.join("include").join("etc").join("ap_fixed_special.h"),
-        )
-        .expect("header");
+        let out = sync_vendor_includes_impl(&mock, "/opt/settings64.sh", &cache).unwrap();
+        let patched =
+            std::fs::read_to_string(out.join("include").join("etc").join("ap_fixed_special.h"))
+                .expect("header");
         assert!(patched.contains("#include <complex>"));
         assert!(!patched.contains("template<typename _Tp> class complex"));
         assert!(out.join(".patched_macos_complex").is_file());

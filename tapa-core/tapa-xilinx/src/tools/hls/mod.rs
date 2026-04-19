@@ -378,10 +378,7 @@ fn harvest_and_stage(
         fallback
     };
     let bytes = std::fs::read(&report_xml).map_err(|_| {
-        XilinxError::HlsReportParse(format!(
-            "missing csynth.xml at {}",
-            report_xml.display()
-        ))
+        XilinxError::HlsReportParse(format!("missing csynth.xml at {}", report_xml.display()))
     })?;
     let csynth = parse_csynth_xml(&bytes)?;
 
@@ -390,10 +387,7 @@ fn harvest_and_stage(
         return Err(XilinxError::ToolFailure {
             program: "vitis_hls".into(),
             code: 0,
-            stderr: format!(
-                "no HDL output produced in {}",
-                job.hdl_out_dir.display()
-            ),
+            stderr: format!("no HDL output produced in {}", job.hdl_out_dir.display()),
         });
     }
     let report_paths = collect_files(&job.reports_out_dir)?;
@@ -548,10 +542,7 @@ mod tests {
         // makes the TCL non-portable to a remote rootfs.
         let mut job = fixture_job(std::path::Path::new("/tmp"));
         job.cpp_source = PathBuf::from("/abs/local/kernel/k.cpp");
-        job.cflags = vec![
-            "-I/abs/local/kernel/include".into(),
-            "-DSOMETHING=1".into(),
-        ];
+        job.cflags = vec!["-I/abs/local/kernel/include".into(), "-DSOMETHING=1".into()];
         let tcl = build_hls_tcl(&job);
         assert!(
             !tcl.contains("/abs/local/kernel/k.cpp"),
@@ -645,7 +636,10 @@ mod tests {
         let inv = &calls[0];
         assert_eq!(inv.program, "vitis_hls");
         assert_eq!(inv.cwd.as_deref(), Some(stage.path()));
-        assert_eq!(inv.env.get("TAPA_KERNEL_COUNT").map(String::as_str), Some("1"));
+        assert_eq!(
+            inv.env.get("TAPA_KERNEL_COUNT").map(String::as_str),
+            Some("1")
+        );
         assert_eq!(
             inv.env.get("TAPA_KERNEL_PATH_0").map(PathBuf::from),
             Some(src)
@@ -716,7 +710,10 @@ mod tests {
             );
         }
         let err = run_hls_with_retry(&runner, &job, 3).unwrap_err();
-        assert!(matches!(err, XilinxError::HlsRetryExhausted { attempts: 3 }));
+        assert!(matches!(
+            err,
+            XilinxError::HlsRetryExhausted { attempts: 3 }
+        ));
     }
 
     #[test]
@@ -762,9 +759,11 @@ mod tests {
                 },
             );
         }
-        let err = run_hls_with_retry_in_stage(&runner, &job, 2, &persistent)
-            .unwrap_err();
-        assert!(matches!(err, XilinxError::HlsRetryExhausted { attempts: 2 }));
+        let err = run_hls_with_retry_in_stage(&runner, &job, 2, &persistent).unwrap_err();
+        assert!(matches!(
+            err,
+            XilinxError::HlsRetryExhausted { attempts: 2 }
+        ));
         assert!(
             marker.is_file(),
             "in-stage retry must leave the caller-provided dir intact",

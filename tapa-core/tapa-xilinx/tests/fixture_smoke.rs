@@ -46,7 +46,10 @@ fn fixture_transient_stderr_matches_default_predicate() {
     let matched = tapa_xilinx::DEFAULT_TRANSIENT_HLS_PATTERNS
         .iter()
         .any(|p| text.contains(p));
-    assert!(matched, "captured stderr fixture should match a transient pattern");
+    assert!(
+        matched,
+        "captured stderr fixture should match a transient pattern"
+    );
 }
 
 #[test]
