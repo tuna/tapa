@@ -99,12 +99,18 @@ pub(super) fn run_flatten(
 /// `None` when nothing is installed (Python returns the input
 /// unchanged in that case; this matches).
 fn find_clang_format() -> Option<PathBuf> {
-    for v in (5u32..=20).rev() {
-        if let Some(p) = which_in_path(&format!("clang-format-{v}")) {
-            return Some(p);
-        }
-    }
-    which_in_path("clang-format")
+    use std::sync::OnceLock;
+    static CACHED: OnceLock<Option<PathBuf>> = OnceLock::new();
+    CACHED
+        .get_or_init(|| {
+            for v in (5u32..=20).rev() {
+                if let Some(p) = which_in_path(&format!("clang-format-{v}")) {
+                    return Some(p);
+                }
+            }
+            which_in_path("clang-format")
+        })
+        .clone()
 }
 
 fn which_in_path(name: &str) -> Option<PathBuf> {

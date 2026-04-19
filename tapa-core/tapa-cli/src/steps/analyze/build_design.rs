@@ -8,10 +8,11 @@
 //! [`flatten`].
 
 use indexmap::IndexMap;
-use serde_json::{Map, Value};
+use serde_json::Value;
 use tapa_task_graph::{flatten, Design, Graph, TaskTopology, TransformError};
 
 use crate::error::{CliError, Result};
+use crate::state::value_to_indexmap;
 
 /// Round-trip a tapacc graph dict through the typed [`Graph`] schema and
 /// return the result of [`flatten`] re-serialized as `serde_json::Value`.
@@ -118,21 +119,6 @@ fn task_to_topology(name: &str, task: &Value) -> TaskTopology {
         total_area: IndexMap::new(),
         clock_period: "0".to_string(),
     }
-}
-
-fn value_to_indexmap(value: Option<&Value>) -> IndexMap<String, Value> {
-    let Some(Value::Object(obj)) = value else {
-        return IndexMap::new();
-    };
-    obj_to_indexmap(obj)
-}
-
-fn obj_to_indexmap(obj: &Map<String, Value>) -> IndexMap<String, Value> {
-    let mut map = IndexMap::new();
-    for (k, v) in obj {
-        map.insert(k.clone(), v.clone());
-    }
-    map
 }
 
 #[cfg(test)]
