@@ -36,7 +36,7 @@ While Bazel automatically installs required Python dependencies during build and
 test, you can manually install them for IDE access:
 
 ```bash
-pip install -r tapa/requirements_lock.txt
+pip install -r bazel/requirements_lock.txt
 ```
 
 ### Setting C++ Compiler Options for IDEs
@@ -94,13 +94,14 @@ The TAPA codebase is organized into several key directories:
   and `tapacc` compilers. It includes standard C++ headers, TAPA
   dependencies, and TAPA-specific headers for the compilers to run on every OS.
 
-- `tapa/`: Contains the core TAPA compiler and runtime library.
+- `tapa-core/`: Contains the supported Rust TAPA compiler implementation.
 
   The TAPA compiler serves as the entry point for the TAPA framework. It
   invokes `tapa-cpp` and `tapacc` compilers, synthesizes tasks into RTL
   using HLS tools, and generates system interconnect and XO object file for
   FPGA. For the `xilinx-hls` target, a `.zip` RTL archive is generated
-  instead.
+  instead. The Bazel `//tapa-core:tapa` target provides the command wrapper
+  and `tapa-core/assets` contains shared Verilog templates.
 
 - `tapacc/`: Implements the TAPA C++ compiler to translate TAPA tasks to JSON.
 
@@ -170,10 +171,10 @@ To update Python packages:
 
 ```bash
 # Clear existing lock file
-echo > tapa/requirements_lock.txt
+echo > bazel/requirements_lock.txt
 
 # Update the dependencies
-bazel run //tapa:requirements.update
+bazel run //bazel:requirements.update
 ```
 
 This will regenerate the `requirements_lock.txt` file with the latest

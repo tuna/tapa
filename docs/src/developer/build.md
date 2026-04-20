@@ -108,7 +108,7 @@ For building a specific target, replace `//...` with the desired target
 name. For instance, to build only the TAPA compiler:
 
 ```bash
-bazel build //tapa
+bazel build //tapa-core:tapa
 ```
 
 ```admonish note
@@ -123,7 +123,7 @@ bazel build //... -- -//tests/...
 
 After the build process completes, you can find the compiled binaries in the
 `bazel-bin` directory. For example, the TAPA compiler binary is located at
-`bazel-bin/tapa/tapa`.
+`bazel-bin/tapa-core/tapa`.
 
 ```admonish note
 The build process duration may vary depending on your system's performance.
@@ -141,7 +141,7 @@ Once TAPA is built, you can use the compiled TAPA compiler to compile your
 designs. For example:
 
 ```bash
-bazel-bin/tapa/tapa compile \
+bazel-bin/tapa-core/tapa compile \
  -f tests/apps/bandwidth/bandwidth.cpp \
  --cflags -Itests/apps/bandwidth/ \
  -t Bandwidth \
