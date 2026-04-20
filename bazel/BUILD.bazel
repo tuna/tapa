@@ -16,8 +16,6 @@ config_setting(
 )
 
 exports_files([
-    "doctest_wrapper.py",
-    "pytest_wrapper.py",
     "sim_env.sh",
 ])
 
