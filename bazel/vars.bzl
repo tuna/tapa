@@ -1,41 +1,29 @@
 """Resolve VARS.bzl with optional VARS.local.bzl overrides."""
 
-_MERGE_SCRIPT = """\
-import sys, os
-defaults = {}
-local_overrides = {}
-exec(open(sys.argv[1]).read(), defaults)
-if os.path.exists(sys.argv[2]):
-    exec(open(sys.argv[2]).read(), local_overrides)
-merged = {}
-for k, v in defaults.items():
-    if not k.startswith('_') and k == k.upper():
-        merged[k] = v
-for k, v in local_overrides.items():
-    if not k.startswith('_') and k == k.upper():
-        merged[k] = v
-lines = []
-for k in sorted(merged.keys()):
-    v = merged[k]
-    if isinstance(v, bool):
-        lines.append(f'{k} = {"True" if v else "False"}')
-    elif isinstance(v, str):
-        lines.append(f'{k} = "{v}"')
-    else:
-        lines.append(f'{k} = {v!r}')
-print('\\n'.join(lines))
-"""
+def _parse_vars(contents):
+    vars = {}
+    for raw_line in contents.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        name, value = [part.strip() for part in line.split("=", 1)]
+        if not name.isupper() or name.startswith("_"):
+            continue
+        vars[name] = value
+    return vars
+
+def _format_vars(vars):
+    return "\n".join(["{} = {}".format(key, vars[key]) for key in sorted(vars.keys())])
 
 def _vars_repository_impl(rctx):
     """Repository rule that merges VARS.bzl with VARS.local.bzl overrides."""
-    defaults = str(rctx.path(rctx.attr.defaults))
-    local = defaults.replace("VARS.bzl", "VARS.local.bzl")
+    defaults = rctx.path(rctx.attr.defaults)
+    local = rctx.path(str(defaults).replace("VARS.bzl", "VARS.local.bzl"))
+    merged = _parse_vars(rctx.read(defaults))
+    if local.exists:
+        merged.update(_parse_vars(rctx.read(local)))
 
-    result = rctx.execute(["python3", "-c", _MERGE_SCRIPT, defaults, local])
-    if result.return_code != 0:
-        fail("Failed to resolve VARS: " + result.stderr)
-
-    rctx.file("vars.bzl", result.stdout)
+    rctx.file("vars.bzl", _format_vars(merged))
     rctx.file("BUILD.bazel", "")
 
 _vars_repository = repository_rule(

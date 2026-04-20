@@ -155,11 +155,10 @@ pub fn debug_search_roots() -> Vec<PathBuf> {
 
 fn search_roots() -> Vec<PathBuf> {
     let mut roots: Vec<PathBuf> = Vec::new();
-    // Walk parents of the loaded-extension location when known
-    // (matches `Path(__file__).absolute().parents`). The
-    // native wrapper exports `TAPA_XILINX_BINDINGS_DIR` pointing at the
-    // directory holding the `tapa_core` extension, so installed
-    // packages can resolve their sibling `tapa-lib/` include dir.
+    // Walk parents of the native runtime location when known. The
+    // launcher exports `TAPA_XILINX_BINDINGS_DIR` pointing near the
+    // installed runtime, so packages can resolve their sibling
+    // `tapa-lib/` include dir.
     if let Ok(dir) = std::env::var("TAPA_XILINX_BINDINGS_DIR") {
         let mut p = PathBuf::from(dir);
         loop {

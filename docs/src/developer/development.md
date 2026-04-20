@@ -14,29 +14,16 @@ quality. Follow these steps to set up your development environment.
 ### Install Pre-Commit Hooks
 
 ```bash
-pip install pre-commit
+pre-commit --version
 pre-commit install
 ```
 
-```admonish note
-The latest version of pre-commit is required, which depends on a newer
-Python version. Some hooks may fail if your Python version is outdated.
-```
-
-Pre-commit hooks run automatically before each commit to ensure code compliance
-with style guidelines. To manually run the checks:
+Install `pre-commit` with your OS package manager if the command is not
+available. Pre-commit hooks run automatically before each commit to ensure code
+compliance with style guidelines. To manually run the checks:
 
 ```bash
 pre-commit run --all-files
-```
-
-### Install Python Dependencies for IDEs
-
-While Bazel automatically installs required Python dependencies during build and
-test, you can manually install them for IDE access:
-
-```bash
-pip install -r bazel/requirements_lock.txt
 ```
 
 ### Setting C++ Compiler Options for IDEs
@@ -145,40 +132,11 @@ For Bazel dependencies:
 
 3. Remove `MODULE.bazel.lock` to force regeneration.
 
-For Python and Node.js toolchains in `MODULE.bazel`:
+For the Node.js toolchain in `MODULE.bazel`:
 
-```python
-# Update Python version
-python.toolchain(
-    python_version = "3.13.2",  # Update version here
-    ...
-)
-use_repo(python, python_3_13 = "python_3_13_2")  # Update repo name too
-
-# Update Python version in pip declaration
-pip.parse(
-    python_version = "3.13.2",  # Update version here
-    ...
-)
-
-# Update Node.js version
+```starlark
 node.toolchain(node_version = "17.9.1")
 ```
-
-### Python Dependencies
-
-To update Python packages:
-
-```bash
-# Clear existing lock file
-echo > bazel/requirements_lock.txt
-
-# Update the dependencies
-bazel run //bazel:requirements.update
-```
-
-This will regenerate the `requirements_lock.txt` file with the latest
-compatible versions.
 
 ### XRT Dependency
 
@@ -189,7 +147,7 @@ For XRT (Xilinx Runtime):
 
 2. Update the version and SHA256 checksum in `MODULE.bazel`:
 
-   ```python
+   ```starlark
    XRT_VERSION = "202420.2.18.179"  # Update version
    XRT_SHA256 = "..."  # Update SHA256 checksum
    ```
@@ -209,7 +167,7 @@ To update the LLVM version:
 
 2. Update the version numbers in `MODULE.bazel`:
 
-   ```python
+   ```starlark
    LLVM_VERSION_MAJOR = 20
    LLVM_VERSION_MINOR = 1
    LLVM_VERSION_PATCH = 4
@@ -217,7 +175,7 @@ To update the LLVM version:
 
 3. Update the SHA256 checksum after downloading the new version:
 
-   ```python
+   ```starlark
    LLVM_SHA256 = "<new_sha256_checksum>"
    ```
 

@@ -22,9 +22,7 @@ To build TAPA from source, you need:
 - [Git](https://git-scm.com)
 - [Libstdc++](https://gcc.gnu.org/libstdc++/) matching the most recent GCC
   version installed on your system
-- [Python](https://www.python.org) 3.13 or later (Bazel fetches its own
-  managed toolchain; this version applies to the Bazel-managed Python, not
-  necessarily the host system Python)
+- [Python](https://www.python.org) 3 or later for Bazel
 - [Other TAPA dependencies](../start/installation.md)
 
 Install these tools using your OS package manager. For Ubuntu:

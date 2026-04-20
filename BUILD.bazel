@@ -29,8 +29,3 @@ pkg_tar(
     name = "tapa-visualizer-tar",
     srcs = ["//tapa-visualizer"],
 )
-
-# refresh_compile_commands is temporarily disabled: the hedron macro uses
-# native.py_binary which was removed from Bazel 9 builtins when
-# --incompatible_autoload_externally=+@rules_python is set.
-# TODO: re-enable once hedron_compile_commands is updated for Bazel 9.

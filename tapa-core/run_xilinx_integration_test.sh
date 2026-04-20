@@ -44,8 +44,7 @@ done
 # convention in VARS.local.bzl) and strips surrounding single or double
 # quotes from the value. `REMOTE_*`, `XILINX_*`, and `TAPA_*` names
 # are imported; other entries are ignored. The `TAPA_*` namespace
-# carries opt-in shared-vadd flags such as `TAPA_SHARED_VADD_HLS`;
-# the unsupported `TAPA_USE_RUST_*` flag-compatibility flow no longer exists.
+# carries opt-in shared-vadd flags such as `TAPA_SHARED_VADD_HLS`.
 # Docstrings/comments/blank lines skipped.
 if [[ -n "$vars_local" ]]; then
   echo "tapa_xilinx_integration_test: loading env from $vars_local" >&2

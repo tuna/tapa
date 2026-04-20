@@ -75,10 +75,6 @@ use_repo(rust, "rust_toolchains")
 
 register_toolchains("@rust_toolchains//:all")
 
-pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
-
-python = use_extension("@rules_python//python/extensions:python.bzl", "python")
-
 llvm.toolchain(
     llvm_versions = {
         # Latest version supporting Ubuntus
@@ -120,22 +116,8 @@ register_toolchains(
     dev_dependency = True,
 )
 
-python.toolchain(
-    configure_coverage_tool = True,
-    is_default = True,
-    python_version = "3.13.4",
-)
-use_repo(python, python_3_13 = "python_3_13_4")
-
 node = use_extension("@rules_nodejs//nodejs:extensions.bzl", "node", dev_dependency = True)
 node.toolchain(node_version = "17.9.1")  # Latest version supporting Ubuntu 18.04
-
-pip.parse(
-    hub_name = "tapa_deps",
-    python_version = "3.13.4",
-    requirements_lock = "//bazel:requirements_lock.txt",
-)
-use_repo(pip, "tapa_deps")
 
 bazel_dep(name = "nlohmann_json", version = "3.12.0")  # Required by tapacc
 bazel_dep(name = "rules_boost", repo_name = "com_github_nelhage_rules_boost")

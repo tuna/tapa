@@ -93,7 +93,7 @@ RUN curl -sSL \
     ln -s /opt/python/bin/pre-commit /usr/local/bin/pre-commit && \
     chmod -R go=u /opt/python
 
-# Install Node.js (required by pre-commit pyright hook)
+# Install Node.js
 # Node.js 16.x is the last major version supporting glibc 2.27 (Ubuntu Bionic).
 RUN curl -sSL \
         https://nodejs.org/dist/v16.20.2/node-v16.20.2-linux-x64.tar.xz \
