@@ -1,14 +1,16 @@
 """Tests for TAPA analyze step on sample apps."""
 
-load("//bazel:pytest_rules.bzl", "py_test")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
-py_test(
+sh_test(
     name = "analyze_test",
     size = "large",
-    srcs = ["analyze_test.py"],
+    srcs = ["analyze_test.sh"],
+    args = ["$(location //tools:test_tools)"],
     data = [
         "//tapa-core:tapa",
         "//tapa-lib:include",
+        "//tools:test_tools",
         # vadd
         "//tests/apps/vadd:vadd.cpp",
         "//tests/apps/vadd:vadd.h",

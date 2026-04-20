@@ -1,0 +1,16 @@
+"""Hardware-quality smoke tests."""
+
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
+sh_test(
+    name = "axis_adapter_behavior_test",
+    srcs = ["axis_adapter_behavior_test.sh"],
+    data = [
+        "axis_adapter_smoke_tb.sv",
+        "//tapa-core:assets/verilog/axis_adapter.v",
+        "//tapa-core:assets/verilog/fifo.v",
+        "//tapa-core:assets/verilog/fifo_bram.v",
+        "//tapa-core:assets/verilog/fifo_fwd.v",
+        "//tapa-core:assets/verilog/fifo_srl.v",
+    ],
+)

@@ -1,4 +1,4 @@
-# Scratch work dir created by tapa/graphir_conversion/project_assembly_test.py
+# Generated and local-only files.
 *.jou
 *.log
 *.out
@@ -19,6 +19,7 @@
 /bazel-*
 /build/
 /compile_commands.json
+/tools/test-tools/target/
 __pycache__
 a.out
 artifacts.out/

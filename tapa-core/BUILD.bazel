@@ -4,6 +4,14 @@ load("@rules_pkg//pkg:mappings.bzl", "pkg_attributes", "pkg_filegroup", "pkg_fil
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
+exports_files([
+    "assets/verilog/axis_adapter.v",
+    "assets/verilog/fifo.v",
+    "assets/verilog/fifo_bram.v",
+    "assets/verilog/fifo_fwd.v",
+    "assets/verilog/fifo_srl.v",
+])
+
 _ALL_SRCS = glob(
     ["**/*"],
     exclude = [

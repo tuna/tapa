@@ -4,7 +4,7 @@
 # All rights reserved. The contributor(s) of this file has/have agreed to the
 # RapidStream Contributor License Agreement.
 
-load("//bazel:pytest_rules.bzl", "py_test")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//bazel:tapa_rules.bzl", "tapa_xo")
 
 # vadd test
@@ -20,16 +20,18 @@ tapa_xo(
     top_name = "VecAdd",
 )
 
-py_test(
+sh_test(
     name = "vadd-abgraph-test",
-    srcs = ["abgraph-test.py"],
-    args = ["--test=vadd"],
+    srcs = ["abgraph_test.sh"],
+    args = [
+        "$(location //tools:test_tools)",
+        "vadd",
+    ],
     data = [
-        "conftest.py",
         "golden/vadd.json",
         ":vadd-abgraph-json",
+        "//tools:test_tools",
     ],
-    deps = ["@rules_python//python/runfiles"],
 )
 
 # bandwidth test
@@ -48,16 +50,18 @@ tapa_xo(
     top_name = "Bandwidth",
 )
 
-py_test(
+sh_test(
     name = "bandwidth-abgraph-test",
-    srcs = ["abgraph-test.py"],
-    args = ["--test=bandwidth"],
+    srcs = ["abgraph_test.sh"],
+    args = [
+        "$(location //tools:test_tools)",
+        "bandwidth",
+    ],
     data = [
-        "conftest.py",
         "golden/bandwidth.json",
         ":bandwidth-abgraph-json",
+        "//tools:test_tools",
     ],
-    deps = ["@rules_python//python/runfiles"],
 )
 
 # cannon test
@@ -75,16 +79,18 @@ tapa_xo(
     top_name = "Cannon",
 )
 
-py_test(
+sh_test(
     name = "cannon-abgraph-test",
-    srcs = ["abgraph-test.py"],
-    args = ["--test=cannon"],
+    srcs = ["abgraph_test.sh"],
+    args = [
+        "$(location //tools:test_tools)",
+        "cannon",
+    ],
     data = [
-        "conftest.py",
         "golden/cannon.json",
         ":cannon-abgraph-json",
+        "//tools:test_tools",
     ],
-    deps = ["@rules_python//python/runfiles"],
 )
 
 # network test
@@ -102,14 +108,16 @@ tapa_xo(
     top_name = "Network",
 )
 
-py_test(
+sh_test(
     name = "network-abgraph-test",
-    srcs = ["abgraph-test.py"],
-    args = ["--test=network"],
+    srcs = ["abgraph_test.sh"],
+    args = [
+        "$(location //tools:test_tools)",
+        "network",
+    ],
     data = [
-        "conftest.py",
         "golden/network.json",
         ":network-abgraph-json",
+        "//tools:test_tools",
     ],
-    deps = ["@rules_python//python/runfiles"],
 )

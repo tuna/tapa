@@ -4,16 +4,8 @@
 # All rights reserved. The contributor(s) of this file has/have agreed to the
 # RapidStream Contributor License Agreement.
 
-# TODO: Synthetic test
-
-load("@rules_python//python:defs.bzl", "py_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//bazel:tapa_rules.bzl", "tapa_xo")
-
-py_binary(
-    name = "gen_random_floorplan",
-    srcs = ["gen_random_floorplan.py"],
-)
 
 APPS = [
     "bandwidth",
@@ -30,8 +22,8 @@ APPS = [
     genrule(
         name = "gen_random_floorplan_{}_{}".format(app, i),
         outs = ["floorplan_{}_{}.json".format(app, i)],
-        cmd = "$(location :gen_random_floorplan) {} {} $@".format(i, app),
-        tools = [":gen_random_floorplan"],
+        cmd = "$(location //tools:test_tools) gen-floorplan {} {} $@".format(i, app),
+        tools = ["//tools:test_tools"],
     )
     for app in APPS
     for i in range(1)

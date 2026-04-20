@@ -1,15 +1,15 @@
-"""Development and test harness tools."""
+"""Development and test tools."""
 
 package(default_visibility = ["//visibility:public"])
 
 genrule(
-    name = "pytest_runner",
-    testonly = True,
+    name = "test_tools",
     srcs = [
-        "test-harness/Cargo.toml",
-        "test-harness/src/main.rs",
+        "test-tools/Cargo.lock",
+        "test-tools/Cargo.toml",
+        "test-tools/src/main.rs",
     ],
-    outs = ["bin/pytest_runner"],
+    outs = ["bin/tapa-test-tools"],
     cmd = """
 RUST_TOOLCHAIN_BIN="$$(cd "$$(dirname "$(execpath @rules_rust//rust/toolchain:current_cargo_files)")" && pwd)"
 CARGO="$$RUST_TOOLCHAIN_BIN/cargo"
@@ -17,11 +17,12 @@ export RUSTC="$(execpath @rules_rust//rust/toolchain:current_rustc_files)"
 export PATH="$$RUST_TOOLCHAIN_BIN:$$PATH"
 export CARGO_HOME="$(@D)/cargo-home"
 export CARGO_TARGET_DIR="$(@D)/cargo-target"
-"$$CARGO" build --manifest-path "$(location test-harness/Cargo.toml)" --release
-cp "$$CARGO_TARGET_DIR/release/tapa-test-harness" "$@"
+"$$CARGO" build --manifest-path "$(location test-tools/Cargo.toml)" --release --locked
+cp "$$CARGO_TARGET_DIR/release/tapa-test-tools" "$@"
 chmod +x "$@"
 """,
     executable = True,
+    tags = ["requires-network"],
     tools = [
         "@rules_rust//rust/toolchain:current_cargo_files",
         "@rules_rust//rust/toolchain:current_rustc_files",

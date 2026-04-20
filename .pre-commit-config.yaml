@@ -38,7 +38,7 @@ repos:
         # into fake drift.
         exclude: ^tapa-core/tests/golden/
       - id: file-contents-sorter
-        files: (.gitignore|requirements.(txt|in))$
+        files: ^\.gitignore$
       - id: fix-byte-order-marker
       - id: forbid-new-submodules
       - id: forbid-submodules
@@ -68,13 +68,6 @@ repos:
       - id: buildifier
       - id: buildifier-lint
 
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.12.4
-    hooks:
-      - id: ruff
-        args: [ --fix, --unsafe-fixes ]
-      - id: ruff-format
-
   - repo: local
     hooks:
       - id: cargo-fmt
@@ -91,71 +84,12 @@ repos:
         types: [rust]
         pass_filenames: false
 
-  #############
-  #  Linting  #
-  #############
-
-  - repo: local
-    hooks:
-      - id: file-budget
-        name: file budget
-        entry: python3 tools/quality/file_budget.py --mode staged
-        language: system
-        pass_filenames: false
-        files: ^(tapa/.*\.py|tapa-visualizer/src/.*\.(js|mjs|cjs))$
-      - id: lint-budget
-        name: lint budget (ruff regression)
-        entry: python3 tools/quality/lint_budget.py --mode staged
-        language: system
-        pass_filenames: false
-        files: ^tapa/.*\.py$
-
-      # Retirement guards. The legacy Python implementation under
-      # `tapa/` was removed; these hooks fail any new commit that
-      # re-introduces retired runtime paths or bridge references.
-      # They run on every commit and do not depend on which files were
-      # staged.
-      - id: forbid-tapa-core-runtime-ref
-        name: forbid `tapa_core` references under tapa/
-        entry: bash -c '! grep -r --include="*.py" --include="BUILD.bazel" tapa_core tapa/'
-        language: system
-        pass_filenames: false
-        always_run: true
-
-      - id: forbid-tapa-use-rust-runtime-ref
-        name: forbid `TAPA_USE_RUST_` references under tapa/
-        entry: bash -c '! grep -r --include="*.py" --include="BUILD.bazel" --include="*.sh" TAPA_USE_RUST_ tapa/'
-        language: system
-        pass_filenames: false
-        always_run: true
-
-      - id: forbid-retired-python-cli-paths
-        name: forbid retired Python CLI paths (tapa/__main__.py, tapa/steps/*)
-        entry: bash -c '! { [ -e tapa/__main__.py ] || [ -d tapa/steps ]; }'
-        language: system
-        pass_filenames: false
-        always_run: true
-
   - repo: https://github.com/codespell-project/codespell
     rev: "v2.4.1"
     hooks:
       - id: codespell
-        types_or: [asciidoc, python, markdown, rst]
+        types_or: [asciidoc, markdown, rst]
         additional_dependencies: [tomli]
-
-  ###################
-  #  Type Checking  #
-  ###################
-
-  - repo: https://github.com/RobertCraigie/pyright-python
-    rev: v1.1.403
-    hooks:
-      - id: pyright
-        # reading deps from file is not supported to ensure caching correctness
-        additional_dependencies:
-          - click
-          - pytest
-          - pyyaml
 
   ##################
   #  Link Checks  #

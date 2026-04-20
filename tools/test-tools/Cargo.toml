@@ -1,0 +1,10 @@
+[package]
+name = "tapa-test-tools"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde_json = "1"
+serde_yaml = "0.9"
+tempfile = "3"
+zip = { version = "2", default-features = false, features = ["deflate"] }

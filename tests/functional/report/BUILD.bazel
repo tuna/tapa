@@ -4,8 +4,7 @@
 # All rights reserved. The contributor(s) of this file has/have agreed to the
 # RapidStream Contributor License Agreement.
 
-load("@tapa_deps//:requirements.bzl", "requirement")
-load("//bazel:pytest_rules.bzl", "py_test")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//bazel:tapa_rules.bzl", "tapa_xo")
 
 tapa_xo(
@@ -18,21 +17,12 @@ tapa_xo(
     top_name = "VecAdd",
 )
 
-py_test(
-    name = "enable-synth-util-test",
-    srcs = ["enable-synth-util-test.py"],
-    data = [":enable-synth-util-xo"],
-    deps = [
-        "@rules_python//python/runfiles",
-        requirement("pyyaml"),
-    ],
-)
-
-py_test(
-    name = "report-file-existence-test",
-    srcs = ["report-file-existence-test.py"],
-    data = [":enable-synth-util-xo"],
-    deps = [
-        "@rules_python//python/runfiles",
+sh_test(
+    name = "report-test",
+    srcs = ["report_test.sh"],
+    args = ["$(location //tools:test_tools)"],
+    data = [
+        ":enable-synth-util-xo",
+        "//tools:test_tools",
     ],
 )
