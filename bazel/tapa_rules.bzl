@@ -239,7 +239,7 @@ tapa_reuse_work_dir_xo = rule(
         "clock_period": attr.string(default = "3.33"),
         "tapa_cli": attr.label(
             cfg = "exec",
-            default = Label("//tapa"),
+            default = Label("//tapa-core:tapa"),
             executable = True,
         ),
         "ssh_key": attr.label(
@@ -266,7 +266,7 @@ tapa_xo = rule(
         "output_file": attr.output(),
         "tapa_cli": attr.label(
             cfg = "exec",
-            default = Label("//tapa"),
+            default = Label("//tapa-core:tapa"),
             executable = True,
         ),
         "tapacc": attr.label(allow_single_file = True),

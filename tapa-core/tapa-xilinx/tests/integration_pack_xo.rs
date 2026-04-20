@@ -8,12 +8,9 @@
 //! Vivado `package_xo` TCL → real Vivado invocation via
 //! `RemoteToolRunner` → download → reproducibility redaction.
 //! After the Rust pipeline finishes, the test takes the
-//! pre-redaction `.xo` Rust just produced, hands one copy to
-//! Rust's `redact_xo` and another to Python's production
-//! `_redact_and_zip`, and compares entry listing, per-entry
-//! SHA-256, normalized timestamps, and the canonical inner
-//! `kernel.xml` byte-for-byte. That is the single-artifact
-//! Rust-vs-Python `.xo` parity proof.
+//! pre-redaction `.xo` Rust just produced, redacts it with Rust's
+//! supported `redact_xo`, checks redaction idempotence, and verifies
+//! the canonical inner `kernel.xml` byte-for-byte.
 
 mod common;
 
@@ -34,14 +31,13 @@ fn repo_root() -> PathBuf {
         .to_path_buf()
 }
 
-/// Per-entry metadata captured for the single-artifact `.xo`
-/// parity comparison: filename, size, MS-DOS timestamp tuple, and
-/// the SHA-256 hex digest of the content.
+/// Per-entry metadata captured for the `.xo` redaction check:
+/// filename, size, MS-DOS timestamp tuple, and the SHA-256 hex digest
+/// of the content.
 type ZipEntryInventory = (String, u64, (u16, u8, u8, u8, u8, u8), String);
 
 /// Sorted `ZipEntryInventory` values for every entry in a `.xo`
-/// archive. Used to compare Rust- and Python-redacted archives as
-/// the single-artifact `.xo` parity check.
+/// archive. Used to verify redaction idempotence.
 fn zip_inventory(bytes: &[u8]) -> Vec<ZipEntryInventory> {
     use sha2::{Digest, Sha256};
     use std::io::Read;
@@ -116,7 +112,7 @@ fn kernel_xml_args() -> KernelXmlArgs {
 #[ignore = "requires real Vivado or configured remote host"]
 #[allow(
     clippy::too_many_lines,
-    reason = "single-artifact .xoparity flow is linear; splitting would obscure the inputs→outputs pipeline"
+    reason = "live package_xo flow is linear; splitting would obscure the inputs-to-outputs pipeline"
 )]
 fn live_pack_xo_roundtrips_vadd_rtl() {
     // This module is intentionally remote-only: the Vivado
@@ -166,10 +162,8 @@ fn live_pack_xo_roundtrips_vadd_rtl() {
     let runner = RemoteToolRunner::new(session);
 
     // Drive Rust's live `pack_xo` pipeline but stop short of the
-    // reproducibility redaction pass: that gives us a pristine,
-    // pre-redaction Rust-produced `.xo` we can hand to **both** the
-    // Rust redactor and Python's production `_redact_and_zip` for a
-    // single-artifact Rust-vs-Python parity comparison.
+    // reproducibility redaction pass so the test can exercise
+    // `redact_xo` directly.
     let produced = pack_xo_without_redaction(&runner, &inputs)
         .expect("live pack_xo_without_redaction must succeed");
     assert!(
@@ -178,48 +172,17 @@ fn live_pack_xo_roundtrips_vadd_rtl() {
         produced.display()
     );
 
-    // Split the pre-redaction artifact into two independent copies:
-    // one for Rust `redact_xo`, one for Python `_redact_and_zip`.
     let rust_xo = tmp.path().join("rust.xo");
-    let py_xo = tmp.path().join("py.xo");
     std::fs::copy(&produced, &rust_xo).expect("copy to rust side");
-    std::fs::copy(&produced, &py_xo).expect("copy to python side");
 
     redact_xo(&rust_xo).expect("rust redact_xo must succeed");
-
-    // Redact the other copy through Python's production
-    // `_redact_and_zip` via an inline `python3` subprocess. This is
-    // the single-artifact Rust-vs-Python parity path .xoasks for
-    // — both sides see the exact same input bytes, so any
-    // observable divergence is a real parity bug.
-    let py_script = "import zipfile, shutil, sys\n\
-         from tapa.program.pack import _redact_and_zip\n\
-         src = sys.argv[1]\n\
-         staging = src + '.staging'\n\
-         shutil.copy(src, staging)\n\
-         with zipfile.ZipFile(staging, 'r') as zi, zipfile.ZipFile(src, 'w') as zo:\n\
-         \x20   _redact_and_zip(zi, zo)\n";
-    let repo_env_pp = repo_root();
-    let py_status = std::process::Command::new("python3")
-        .env("PYTHONPATH", repo_env_pp.as_os_str())
-        .arg("-c")
-        .arg(py_script)
-        .arg(py_xo.as_os_str())
-        .status()
-        .expect("python3 must be on PATH for .xoparity");
-    assert!(
-        py_status.success(),
-        "python `_redact_and_zip` exited with {py_status}"
-    );
-
-    // .xoparity: listing + per-entry SHA-256 + normalized
-    // timestamps + canonical inner kernel.xml.
+    let once_inventory = zip_inventory(&std::fs::read(&rust_xo).expect("read rust.xo"));
+    redact_xo(&rust_xo).expect("rust redact_xo must be idempotent");
     let rust_archive = std::fs::read(&rust_xo).expect("read rust.xo");
-    let py_archive = std::fs::read(&py_xo).expect("read py.xo");
     assert_eq!(
+        once_inventory,
         zip_inventory(&rust_archive),
-        zip_inventory(&py_archive),
-        "Rust and Python .xo redaction listings drifted"
+        "redact_xo changed the archive on a second pass"
     );
 
     // Canonical inner kernel.xml equality + Rust-emitter parity.

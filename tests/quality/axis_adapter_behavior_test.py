@@ -16,11 +16,11 @@ VERILATOR = shutil.which("verilator")
 def _run_verilator_testbench(tb_source: str) -> None:
     assert VERILATOR is not None
     rtl_files = [
-        Path("tapa/assets/verilog/axis_adapter.v").resolve(),
-        Path("tapa/assets/verilog/fifo.v").resolve(),
-        Path("tapa/assets/verilog/fifo_fwd.v").resolve(),
-        Path("tapa/assets/verilog/fifo_srl.v").resolve(),
-        Path("tapa/assets/verilog/fifo_bram.v").resolve(),
+        Path("tapa-core/assets/verilog/axis_adapter.v").resolve(),
+        Path("tapa-core/assets/verilog/fifo.v").resolve(),
+        Path("tapa-core/assets/verilog/fifo_fwd.v").resolve(),
+        Path("tapa-core/assets/verilog/fifo_srl.v").resolve(),
+        Path("tapa-core/assets/verilog/fifo_bram.v").resolve(),
     ]
     with tempfile.TemporaryDirectory(prefix="axis-adapter-") as temp_dir:
         temp = Path(temp_dir)

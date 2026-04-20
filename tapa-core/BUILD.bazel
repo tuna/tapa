@@ -1,6 +1,8 @@
 """TAPA core Rust crates — Bazel build via Cargo."""
 
+load("@rules_pkg//pkg:mappings.bzl", "pkg_attributes", "pkg_filegroup", "pkg_files", "pkg_mklink")
 load("@rules_python//python:defs.bzl", "py_binary")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("@tapa_deps//:requirements.bzl", "requirement")
 
@@ -11,34 +13,9 @@ _ALL_SRCS = glob(
         "target/**",
     ],
 ) + [
-    # Files outside `tapa-core/` that crates pull into the binary
-    # via `include_str!`. Without these, the Bazel sandbox runs cargo
-    # with missing inputs (`couldn't read ...`). The paths are relative to the
-    # workspace root; Bazel places each label at its workspace-
-    # relative path inside the sandbox, so `include_str!` paths
-    # resolve the same way they do for a direct `cargo build` at the
-    # repo root.
+    # Version file outside `tapa-core/`; the Verilog templates live
+    # under `tapa-core/assets` and are covered by the glob above.
     "//:VERSION",
-    "//tapa/assets:verilog/a_axi_write_broadcastor_1_to_3.v",
-    "//tapa/assets:verilog/a_axi_write_broadcastor_1_to_4.v",
-    "//tapa/assets:verilog/arbiter.v",
-    "//tapa/assets:verilog/async_mmap.v",
-    "//tapa/assets:verilog/axi_crossbar.v",
-    "//tapa/assets:verilog/axi_crossbar_addr.v",
-    "//tapa/assets:verilog/axi_crossbar_rd.v",
-    "//tapa/assets:verilog/axi_crossbar_wr.v",
-    "//tapa/assets:verilog/axi_pipeline.v",
-    "//tapa/assets:verilog/axi_register_rd.v",
-    "//tapa/assets:verilog/axi_register_wr.v",
-    "//tapa/assets:verilog/axis_adapter.v",
-    "//tapa/assets:verilog/detect_burst.v",
-    "//tapa/assets:verilog/fifo.v",
-    "//tapa/assets:verilog/fifo_bram.v",
-    "//tapa/assets:verilog/fifo_fwd.v",
-    "//tapa/assets:verilog/fifo_srl.v",
-    "//tapa/assets:verilog/generate_last.v",
-    "//tapa/assets:verilog/priority_encoder.v",
-    "//tapa/assets:verilog/relay_station.v",
 ]
 
 # -- Build: library crates only (hermetic via rules_rust toolchain) --
@@ -81,9 +58,9 @@ copy_or_empty "$$CARGO_TARGET_DIR/release/libtapa_topology.rlib" "$(location car
 )
 
 # -- Build: native `tapa-cli` binary --
-# Replaces the retired Python+nuitka `tapa-bin`. Same hermetic
-# cargo invocation pattern as `cargo_build`. Downstream packagers
-# consume this via `//tapa-core:tapa-cli` and re-wrap as
+# Replaces the retired Python compiler binary. Same hermetic cargo
+# invocation pattern as `cargo_build`. Downstream packagers consume
+# this via `//tapa-core:tapa-cli` and re-wrap as
 # `usr/share/tapa/runtime/tapa` + `usr/bin/tapa` symlink.
 
 genrule(
@@ -108,6 +85,67 @@ chmod +x "$(location cargo/bin/tapa)"
     tools = [
         "@rules_rust//rust/toolchain:current_cargo_files",
         "@rules_rust//rust/toolchain:current_rustc_files",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+# -- Command wrapper with full runtime runfiles --
+# Bazel rules and tests execute `//tapa-core:tapa`, which delegates to
+# the Rust `tapa-cli` binary while staging sibling tools and headers
+# that `tapa-cli` discovers by walking up from its runfiles path.
+
+sh_binary(
+    name = "tapa",
+    srcs = ["tapa_wrapper.sh"],
+    data = [
+        ":tapa-cli",
+        "//fpga-runtime:include",
+        "//tapa-cpp:gen-tapa-cpp",
+        "//tapa-lib:extra-runtime-include",
+        "//tapa-lib:include",
+        "//tapa-system-include",
+        "//tapacc",
+    ] + select({
+        # The runtime libraries and extra runtime include are Linux-only
+        # in their defining packages, so keep them behind the same platform
+        # guard used by those packages.
+        "@platforms//os:linux": [
+            "//fpga-runtime:pkg-extra-runtime-deps",
+            "//fpga-runtime:pkg-lib",
+            "//tapa-lib:pkg-extra-runtime-deps",
+            "//tapa-lib:pkg-lib",
+            "//tapa-system-include:tapa-extra-runtime-include",
+        ],
+        "//conditions:default": [],
+    }),
+    visibility = ["//visibility:public"],
+    deps = ["@bazel_tools//tools/bash/runfiles"],
+)
+
+# Ship the native Rust `tapa` binary as `usr/share/tapa/runtime/tapa`;
+# `/usr/bin/tapa` is a symlink to that binary in the assembled package.
+
+pkg_files(
+    name = "pkg-runtime",
+    srcs = [":tapa-cli"],
+    attributes = pkg_attributes(mode = "0755"),
+    prefix = "usr/share/tapa/runtime",
+    renames = {"//tapa-core:tapa-cli": "tapa"},
+    visibility = ["//visibility:public"],
+)
+
+pkg_mklink(
+    name = "pkg-link",
+    link_name = "usr/bin/tapa",
+    target = "../share/tapa/runtime/tapa",
+    visibility = ["//visibility:public"],
+)
+
+pkg_filegroup(
+    name = "pkg",
+    srcs = [
+        ":pkg-link",
+        ":pkg-runtime",
     ],
     visibility = ["//visibility:public"],
 )
@@ -175,8 +213,6 @@ sh_test(
         "@rules_rust//rust/toolchain:current_cargo_files",
         "@rules_rust//rust/toolchain:current_rustc_files",
         "@rules_rust//rust/toolchain:current_rustdoc_files",
-        # Stage the Python `tapa` source tree so pytest can import it.
-        "//tapa",
         # Hermetic pytest launcher (see `pytest_runner.py`).
         ":pytest_runner",
     ],
@@ -191,7 +227,7 @@ sh_test(
 # tapa-core/tapa-cli --root <staging>` and runs it under a `PATH`
 # stripped of every python interpreter. Proves the binary has zero
 # runtime Python dependency — the final gate after the
-# `tapa-py-bindings` crate + `tapa/__main__.py` deletions.
+# legacy Python compiler deletion.
 
 sh_test(
     name = "tapa_cli_no_python_install_smoke",

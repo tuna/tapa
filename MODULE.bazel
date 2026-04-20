@@ -133,7 +133,7 @@ node.toolchain(node_version = "17.9.1")  # Latest version supporting Ubuntu 18.0
 pip.parse(
     hub_name = "tapa_deps",
     python_version = "3.13.4",
-    requirements_lock = "//tapa:requirements_lock.txt",
+    requirements_lock = "//bazel:requirements_lock.txt",
 )
 use_repo(pip, "tapa_deps")
 
@@ -335,48 +335,6 @@ EOF
     sha256 = "a901127412261d4ad8c1c6978f1d69680573af33a8702366031805c6acf42ebd",
     strip_prefix = "XRT-202510.2.19.194",
     urls = ["https://github.com/Xilinx/XRT/archive/refs/tags/202510.2.19.194.tar.gz"],
-)
-
-# Required by nuitka build
-bazel_dep(name = "patchelf", version = "0.18.0")
-
-# For compatibility with GCC7
-# Based on patches from https://github.com/bazelbuild/bazel-central-registry/tree/4f4bad8f463685498cf9e0a4ba45ffe9e290a853/modules/patchelf/0.18.0/patches
-git_override(
-    module_name = "patchelf",
-    commit = "769337c227799aa60911562b6940530f4a86eb3c",
-    patch_cmds = [
-        # 0001-Add-MODULE.bazel.patch
-        """
-        cat >BUILD.bazel <<EOF
-cc_binary(
-    name = "patchelf",
-    srcs = glob([
-        "src/*.cc",
-        "src/*.h",
-    ]),
-    copts = [
-        "-std=c++17",
-    ],
-    local_defines = [
-        "D_FILE_OFFSET_BITS=64",
-    ],
-    visibility = ["//visibility:public"],
-)
-EOF
-""",
-        # 0002-Add-BUILD.bazel.patch
-        """
-        cat >MODULE.bazel <<EOF
-module(
-    name = "patchelf",
-    version = "0.18.0",
-    compatibility_level = 0,
-)
-EOF
-""",
-    ],
-    remote = "https://github.com/NixOS/patchelf.git",
 )
 
 LLVM_VERSION_MAJOR = 20

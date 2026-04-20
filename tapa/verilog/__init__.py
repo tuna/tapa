@@ -1,1 +1,0 @@
-"""Verilog manipulation of TAPA."""

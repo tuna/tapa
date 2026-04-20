@@ -111,8 +111,8 @@ ignore = [
   "Q001",
   "Q002",
   "Q003",
-  "UP046",  # Nuitka doesn't support PEP 695, https://github.com/Nuitka/Nuitka/issues/3423
-  "UP047",  # Nuitka doesn't support PEP 695 generic functions, https://github.com/Nuitka/Nuitka/issues/3423
+  "UP046",  # Keep generic syntax migration separate from this cleanup.
+  "UP047",  # Keep generic function syntax migration separate from this cleanup.
   "W191",
 ]
 

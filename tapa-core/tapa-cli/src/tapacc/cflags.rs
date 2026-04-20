@@ -99,7 +99,7 @@ pub fn get_system_cflags() -> Vec<String> {
 /// `find_resource("tapa-lib-lib")`, plus every external library
 /// directory the Bazel runfiles tree provides (gflags, glog,
 /// tinyxml2, yaml-cpp, boost). Without the runfiles dirs, links from
-/// the `bazel run //tapa:tapa -- g++` wrapper would fail to resolve
+/// the `bazel run //tapa-core:tapa -- g++` wrapper would fail to resolve
 /// `-lgflags`, `-lglog`, etc.
 pub fn get_tapa_ldflags() -> Vec<String> {
     use std::collections::BTreeSet;

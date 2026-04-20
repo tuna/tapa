@@ -7,7 +7,7 @@ py_test(
     size = "large",
     srcs = ["analyze_test.py"],
     data = [
-        "//tapa",
+        "//tapa-core:tapa",
         "//tapa-lib:include",
         # vadd
         "//tests/apps/vadd:vadd.cpp",

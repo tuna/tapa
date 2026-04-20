@@ -1,1 +1,0 @@
-"""Xilinx RTL report utilities."""

@@ -15,7 +15,7 @@ pkg_tar(
     name = "tapa-pkg-tar",
     srcs = [
         "//fpga-runtime:pkg-portable",
-        "//tapa:pkg",
+        "//tapa-core:pkg",
         "//tapa-cpp:pkg",
         "//tapa-lib:pkg-portable",
         "//tapa-system-include:pkg",

@@ -284,9 +284,8 @@ fn bundle_report_paths_into_xo(
 
 /// Same as [`pack_xo`] but returns the raw Vivado-produced `.xo`
 /// without running the reproducibility redaction pass. Primarily
-/// useful for parity tests that need a pre-redaction artifact to
-/// hand to an alternate redactor (e.g. Python's `_redact_and_zip`)
-/// for direct cross-language comparison.
+/// useful for tests that need a pre-redaction artifact to exercise
+/// [`redact_xo`] directly.
 pub fn pack_xo_without_redaction(
     runner: &dyn ToolRunner,
     inputs: &PackageXoInputs,
@@ -412,9 +411,6 @@ fn redact_cpp_paths(text: &str) -> String {
 
 /// Rewrite a `.xo` ZIP in place so two invocations on the same inputs
 /// produce semantically-equal outputs.
-///
-/// Matches the Python `_redact_and_zip` / `_redact_rpt` /
-/// `_redact_xml` triple in `tapa/program/pack.py`:
 ///
 ///   - ZIP timestamps are zeroed to the MS-DOS epoch.
 ///   - `*.rpt` `Date:` lines are rewritten to the epoch.

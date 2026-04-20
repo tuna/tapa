@@ -163,18 +163,6 @@ def _skip_if_cli_toolchain_missing() -> Path:
     return binary
 
 
-# `.xo` redaction + inventory helpers reused across the `.xo` snapshot.
-def _py_redact(src: Path, dest: Path) -> None:
-    """Invoke the production Python `_redact_and_zip` on `src` → `dest`."""
-    from tapa.program.pack import _redact_and_zip  # noqa: PLC2701, PLC0415
-
-    with (
-        _zipfile.ZipFile(src, "r") as z_in,
-        _zipfile.ZipFile(dest, "w") as z_out,
-    ):
-        _redact_and_zip(z_in, z_out)
-
-
 def _zip_inventory(path: Path) -> list[tuple[str, str]]:
     """Return (filename, sha256(content)) for each entry, sorted by name."""
     out: list[tuple[str, str]] = []
@@ -880,10 +868,9 @@ def test_cli_golden_vadd_xo_flow(tmp_path: Path) -> None:
         `golden/vadd_xo/xo_inventory.json` + `xo_metadata.json`,
       - subsequent runs assert byte-equal `.xo` (after redaction).
 
-    The redaction pass is the production
-    `tapa.program.pack._redact_and_zip` which zeros embedded timestamps
-    and absolute paths. If `tapa.program.pack` is not importable
-    (e.g. the Python helper has also been retired), this test skips.
+    The Rust pack step performs reproducibility redaction before
+    writing the final `.xo`, so the snapshot records the archive
+    exactly as the supported CLI emits it.
     """
     binary = _skip_if_cli_toolchain_missing()
     vadd_cpp = _VADD_DIR / "vadd.cpp"
@@ -916,13 +903,7 @@ def test_cli_golden_vadd_xo_flow(tmp_path: Path) -> None:
     if not xo_path.is_file():
         pytest.skip(f"chain succeeded but no `.xo` at {xo_path}")
 
-    redacted = tmp_path / "rs-redacted.xo"
-    try:
-        _py_redact(xo_path, redacted)
-    except ImportError as exc:
-        pytest.skip(f"tapa.program.pack not importable: {exc}")
-
-    inv, meta = _xo_signature(redacted)
+    inv, meta = _xo_signature(xo_path)
     inv_path = _VADD_XO_GOLDEN_DIR / "xo_inventory.json"
     meta_path = _VADD_XO_GOLDEN_DIR / "xo_metadata.json"
     if _REFRESH:
@@ -1102,13 +1083,12 @@ _RPT_REDACTED_SENTINEL = "<<redacted>>"
 def _redact_rpt_content(text: str) -> str:
     """Stable, reviewer-friendly redaction for `.rpt` diffs.
 
-    A superset of `tapa.program.pack._redact_rpt`: every known
-    volatile header line (timestamps, version strings, project /
-    solution names, session-start markers — with or without Vitis's
-    leading `* `) becomes `<indent><key>: <<redacted>>`. Table body
-    rows round-trip verbatim; the only body-side normalization is
-    collapsing long hyphen rulers whose width follows run-specific
-    module names.
+    Every known volatile header line (timestamps, version strings,
+    project / solution names, session-start markers — with or without
+    Vitis's leading `* `) becomes `<indent><key>: <<redacted>>`.
+    Table body rows round-trip verbatim; the only body-side
+    normalization is collapsing long hyphen rulers whose width follows
+    run-specific module names.
     """
 
     def _replace(match: _re.Match[str]) -> str:
@@ -1516,7 +1496,7 @@ def test_cli_golden_vadd_generate_floorplan(tmp_path: Path) -> None:
     _assert_tree_goldens(_VADD_FLOORPLAN_GOLDEN_DIR, snap, "vadd_floorplan")
 
 
-def test_cli_golden_vadd_compile_with_floorplan_dse(  # noqa: C901, PLR0914, PLR0915
+def test_cli_golden_vadd_compile_with_floorplan_dse(  # noqa: C901, PLR0914
     tmp_path: Path,
 ) -> None:
     """Diff `compile-with-floorplan-dse` persistent JSON outputs.
@@ -1622,46 +1602,33 @@ def test_cli_golden_vadd_compile_with_floorplan_dse(  # noqa: C901, PLR0914, PLR
     snap = _collect_tree_json_snapshot(work, subpaths=dse_subpaths)
 
     # Artifact proof: snapshot every successful solution's `.xo`
-    # content inventory + listing metadata (through the production
-    # `_redact_and_zip` pass). The DSE gate previously only diffed
-    # JSON, which leaves "stage-2 pack actually produced a byte-equal
-    # kernel" unverified. Using the same helpers the `vadd_xo` gate
-    # uses gives us that guarantee without bespoke redaction logic.
-    try:
-        redaction_available = True
-        for sol in successful:
-            xos = sorted(sol.rglob("*.xo"))
-            assert xos, f"successful solution `{sol.name}` has no `.xo` — logic bug"
-            xo_inv_entries: list[tuple[str, str]] = []
-            xo_meta_entries: list[tuple[str, int, tuple[int, ...]]] = []
-            for xo in xos:
-                redacted = tmp_path / f"{sol.name}-{xo.name}.redacted"
-                try:
-                    _py_redact(xo, redacted)
-                except ImportError as exc:
-                    pytest.skip(f"tapa.program.pack not importable: {exc}")
-                xo_inv_entries.extend(
-                    (f"{xo.name}::{name}", sha)
-                    for name, sha in _zip_inventory(redacted)
-                )
-                xo_meta_entries.extend(
-                    (f"{xo.name}::{name}", size, ts)
-                    for name, size, ts in _zip_metadata(redacted)
-                )
-            snap[f"{sol.name}/xo_inventory.json"] = (
-                json.dumps(xo_inv_entries, indent=4) + "\n"
+    # content inventory + listing metadata. The DSE gate previously
+    # only diffed JSON, which leaves "stage-2 pack actually produced a
+    # byte-equal kernel" unverified. The supported Rust pack path
+    # redacts `.xo` archives before writing them, so the snapshot uses
+    # those final artifacts directly.
+    for sol in successful:
+        xos = sorted(sol.rglob("*.xo"))
+        assert xos, f"successful solution `{sol.name}` has no `.xo` — logic bug"
+        xo_inv_entries: list[tuple[str, str]] = []
+        xo_meta_entries: list[tuple[str, int, tuple[int, ...]]] = []
+        for xo in xos:
+            xo_inv_entries.extend(
+                (f"{xo.name}::{name}", sha) for name, sha in _zip_inventory(xo)
             )
-            snap[f"{sol.name}/xo_metadata.json"] = (
-                json.dumps(
-                    [[name, size, list(ts)] for name, size, ts in xo_meta_entries],
-                    indent=4,
-                )
-                + "\n"
+            xo_meta_entries.extend(
+                (f"{xo.name}::{name}", size, ts) for name, size, ts in _zip_metadata(xo)
             )
-    except ImportError:
-        redaction_available = False
-    if not redaction_available:
-        pytest.skip("tapa.program.pack not importable; .xo proof unavailable")
+        snap[f"{sol.name}/xo_inventory.json"] = (
+            json.dumps(xo_inv_entries, indent=4) + "\n"
+        )
+        snap[f"{sol.name}/xo_metadata.json"] = (
+            json.dumps(
+                [[name, size, list(ts)] for name, size, ts in xo_meta_entries],
+                indent=4,
+            )
+            + "\n"
+        )
 
     if _REFRESH:
         _refresh_tree_goldens(_VADD_DSE_GOLDEN_DIR, snap)

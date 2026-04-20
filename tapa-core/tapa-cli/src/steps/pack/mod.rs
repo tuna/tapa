@@ -105,8 +105,8 @@ fn run_native(args: &PackArgs, ctx: &CliContext) -> Result<()> {
     }
 }
 
-/// Native port of `tapa.program.pack::pack_zip` for the `xilinx-hls`
-/// target. Bundles the synthesized RTL tree under `rtl/`, every HLS
+/// Native pack implementation for the `xilinx-hls` target. Bundles
+/// the synthesized RTL tree under `rtl/`, every HLS
 /// `_csynth.rpt` under `report/` (with timestamp redaction so the
 /// archive is reproducible), the TAPA report yaml at the archive root
 /// when the synth step emitted one, plus `graph.yaml` and
@@ -225,10 +225,9 @@ fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, settings: &settings_io::Setti
     Ok(())
 }
 
-/// Port of `tapa.program.pack::_redact_rpt`. Replaces the
-/// per-HLS-run `Date:` line with a fixed 1980 stamp so the archive
-/// is reproducible. Non-UTF-8 bytes are returned unchanged (Python
-/// would have raised — neither path is reachable for valid HLS rpt).
+/// Replace the per-HLS-run `Date:` line with a fixed 1980 stamp so
+/// the archive is reproducible. Non-UTF-8 bytes are returned
+/// unchanged; valid HLS reports are UTF-8.
 fn redact_rpt(bytes: &[u8]) -> Vec<u8> {
     use std::sync::OnceLock;
     static RE: OnceLock<regex::Regex> = OnceLock::new();

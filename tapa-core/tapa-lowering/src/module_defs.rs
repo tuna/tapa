@@ -7,7 +7,7 @@ use tapa_graphir::{
 use crate::utils::{input_wire, make_connection, output_wire, range_expr, range_msb};
 
 /// Embedded copy of the canonical FIFO Verilog template (shared with Python pipeline).
-const FIFO_TEMPLATE: &str = include_str!("../../../tapa/assets/verilog/fifo.v");
+const FIFO_TEMPLATE: &str = include_str!("../../assets/verilog/fifo.v");
 
 /// Embedded reset-inverter Verilog body (matches Python `RESET_INVERTER_TEMPLATE`).
 const RESET_INVERTER_TEMPLATE: &str = "

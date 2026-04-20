@@ -29,10 +29,7 @@ py_test(
         "golden/vadd.json",
         ":vadd-abgraph-json",
     ],
-    deps = [
-        "//tapa/abgraph",
-        "@rules_python//python/runfiles",
-    ],
+    deps = ["@rules_python//python/runfiles"],
 )
 
 # bandwidth test
@@ -60,10 +57,7 @@ py_test(
         "golden/bandwidth.json",
         ":bandwidth-abgraph-json",
     ],
-    deps = [
-        "//tapa/abgraph",
-        "@rules_python//python/runfiles",
-    ],
+    deps = ["@rules_python//python/runfiles"],
 )
 
 # cannon test
@@ -90,10 +84,7 @@ py_test(
         "golden/cannon.json",
         ":cannon-abgraph-json",
     ],
-    deps = [
-        "//tapa/abgraph",
-        "@rules_python//python/runfiles",
-    ],
+    deps = ["@rules_python//python/runfiles"],
 )
 
 # network test
@@ -120,8 +111,5 @@ py_test(
         "golden/network.json",
         ":network-abgraph-json",
     ],
-    deps = [
-        "//tapa/abgraph",
-        "@rules_python//python/runfiles",
-    ],
+    deps = ["@rules_python//python/runfiles"],
 )

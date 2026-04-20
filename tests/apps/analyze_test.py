@@ -81,7 +81,7 @@ def _find_tapa() -> str:
     for env_var in ("RUNFILES_DIR", "TEST_SRCDIR"):
         base = os.environ.get(env_var, "")
         if base:
-            tapa = os.path.join(base, "_main", "tapa", "tapa")
+            tapa = os.path.join(base, "_main", "tapa-core", "tapa")
             if os.path.isfile(tapa):
                 return tapa
     return "tapa"
