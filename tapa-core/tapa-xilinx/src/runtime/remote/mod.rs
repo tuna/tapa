@@ -187,6 +187,10 @@ impl RemoteToolRunner {
         };
 
         let mut parts: Vec<String> = Vec::new();
+        for dl in &downloads_abs {
+            let remote_dl = local_to_remote_path(dl, &session_dir);
+            parts.push(format!("mkdir -p {}", shell_quote(&remote_dl)));
+        }
         if let Some(xs) = cfg.xilinx_settings.as_ref() {
             if !xs.trim().is_empty() {
                 parts.push(format!("source {}", shell_quote(xs)));
@@ -241,11 +245,13 @@ impl RemoteToolRunner {
             return Err(self.classify_remote_failure(&stderr));
         }
 
-        for (raw, abs) in inv.downloads.iter().zip(downloads_abs.iter()) {
-            let remote_src = local_to_remote_path(abs, &session_dir);
-            // Download back to the caller's requested path (raw), which
-            // may be relative — keeping the caller-facing contract.
-            download_tree(&self.session, &remote_src, raw)?;
+        if code == 0 {
+            for (raw, abs) in inv.downloads.iter().zip(downloads_abs.iter()) {
+                let remote_src = local_to_remote_path(abs, &session_dir);
+                // Download back to the caller's requested path (raw), which
+                // may be relative — keeping the caller-facing contract.
+                download_tree(&self.session, &remote_src, raw)?;
+            }
         }
 
         cleanup_session(&self.session, &session_dir);

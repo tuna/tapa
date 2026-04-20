@@ -109,20 +109,14 @@ pub(crate) fn parse_remote_xilinx_paths(stdout: &str) -> std::collections::HashM
     out
 }
 
-/// Compute the deterministic cache directory under
-/// `$XDG_CACHE_HOME/tapa/vendor-headers/<key>` where `<key>` is the
-/// first 16 hex chars of `sha256(host:port:xilinx_settings)` (matches
-/// the implementation).
+/// Compute the deterministic cache directory under the user cache root, where
+/// `<key>` is the first 16 hex chars of `sha256(host:port:xilinx_settings)`.
 pub(crate) fn vendor_cache_dir(host: &str, port: u16, xilinx_settings: &str) -> Result<PathBuf> {
     use sha2::{Digest, Sha256};
     let base = std::env::var_os("XDG_CACHE_HOME")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")))
-        .ok_or_else(|| {
-            XilinxError::RemoteTransfer(
-                "vendor cache dir: neither XDG_CACHE_HOME nor HOME is set".into(),
-            )
-        })?;
+        .unwrap_or_else(|| std::env::temp_dir().join("tapa-cache"));
     let raw = format!("{host}:{port}:{xilinx_settings}");
     let hash = Sha256::digest(raw.as_bytes());
     let mut key = String::with_capacity(16);

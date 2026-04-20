@@ -96,22 +96,26 @@ pub(super) fn upload_batch(
         let rel = p.to_string_lossy();
         let rel = rel.trim_start_matches('/');
         if p.is_dir() {
+            builder
+                .append_dir(rel, p)
+                .map_err(|e| XilinxError::RemoteTransfer(format!("tar append dir {rel}: {e}")))?;
             for ent in std::fs::read_dir(p).map_err(|e| {
                 XilinxError::RemoteTransfer(format!("read_dir {}: {e}", p.display()))
             })? {
                 let ent =
                     ent.map_err(|e| XilinxError::RemoteTransfer(format!("read_dir entry: {e}")))?;
                 let arc = format!("{rel}/{}", ent.file_name().to_string_lossy());
-                let ty = ent
-                    .file_type()
-                    .map_err(|e| XilinxError::RemoteTransfer(format!("file_type: {e}")))?;
-                if ty.is_dir() {
-                    builder.append_dir_all(&arc, ent.path()).map_err(|e| {
+                let ent_path = ent.path();
+                let metadata = std::fs::metadata(&ent_path).map_err(|e| {
+                    XilinxError::RemoteTransfer(format!("metadata {}: {e}", ent_path.display()))
+                })?;
+                if metadata.is_dir() {
+                    builder.append_dir_all(&arc, &ent_path).map_err(|e| {
                         XilinxError::RemoteTransfer(format!("tar append dir {arc}: {e}"))
                     })?;
-                } else if ty.is_file() {
-                    let mut f = std::fs::File::open(ent.path()).map_err(|e| {
-                        XilinxError::RemoteTransfer(format!("open {}: {e}", ent.path().display()))
+                } else if metadata.is_file() {
+                    let mut f = std::fs::File::open(&ent_path).map_err(|e| {
+                        XilinxError::RemoteTransfer(format!("open {}: {e}", ent_path.display()))
                     })?;
                     builder.append_file(&arc, &mut f).map_err(|e| {
                         XilinxError::RemoteTransfer(format!("tar append file {arc}: {e}"))

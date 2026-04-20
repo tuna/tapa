@@ -405,10 +405,15 @@ pub fn run_hls(runner: &dyn ToolRunner, job: &HlsJob) -> Result<HlsOutput> {
     let stage = tempfile::tempdir()?;
     let out = run_hls_attempt(runner, job, stage.path())?;
     if out.exit_code != 0 {
+        let stderr = if out.stderr.is_empty() {
+            out.stdout
+        } else {
+            out.stderr
+        };
         return Err(XilinxError::ToolFailure {
             program: "vitis_hls".into(),
             code: out.exit_code,
-            stderr: out.stderr,
+            stderr,
         });
     }
     harvest_and_stage(runner, job, stage.path(), out)
@@ -448,10 +453,15 @@ pub fn run_hls_with_retry(
         // preserved but intentionally ignored by the default predicate.
         let transient = is_transient(job, &out.stdout, &out.stderr);
         if !transient {
+            let stderr = if out.stderr.is_empty() {
+                out.stdout
+            } else {
+                out.stderr
+            };
             return Err(XilinxError::ToolFailure {
                 program: "vitis_hls".into(),
                 code: out.exit_code,
-                stderr: out.stderr,
+                stderr,
             });
         }
     }
@@ -481,10 +491,15 @@ pub fn run_hls_with_retry_in_stage(
         }
         let transient = is_transient(job, &out.stdout, &out.stderr);
         if !transient {
+            let stderr = if out.stderr.is_empty() {
+                out.stdout
+            } else {
+                out.stderr
+            };
             return Err(XilinxError::ToolFailure {
                 program: "vitis_hls".into(),
                 code: out.exit_code,
-                stderr: out.stderr,
+                stderr,
             });
         }
     }
