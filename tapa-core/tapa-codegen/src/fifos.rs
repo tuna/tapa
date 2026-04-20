@@ -1,6 +1,4 @@
 //! FIFO instantiation and connection.
-//!
-//! Ports `tapa/task_codegen/fifos.py` and `tapa/program_codegen/fifos.py`.
 
 use tapa_protocol::{
     FIFO_READ_PORTS, FIFO_WRITE_PORTS, ISTREAM_SUFFIXES, OSTREAM_SUFFIXES, STREAM_PORT_DIRECTION,

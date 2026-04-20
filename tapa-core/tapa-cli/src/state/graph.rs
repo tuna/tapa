@@ -1,8 +1,8 @@
 //! `graph.json` read / write helpers.
 //!
 //! Uses `serde_json::Value` instead of the strict `tapa_task_graph::Graph`
-//! type because the legacy Python `tapa.common.graph.Graph` class accepts
-//! a richer schema than the tapacc-output flavor.
+//! type because downstream steps accept a richer schema than the
+//! tapacc-output flavor.
 
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Write};
@@ -31,20 +31,19 @@ pub fn load_graph(work_dir: &Path) -> Result<Value> {
     Ok(value)
 }
 
-/// Persist the graph using compact JSON (no separator-with-space; matches
-/// `json.dump` defaults — see [`crate::state::settings`] for the rationale).
+/// Persist the graph using the same spaced compact formatter as settings.
 pub fn store_graph(work_dir: &Path, graph: &Value) -> Result<()> {
     std::fs::create_dir_all(work_dir)?;
     let path = path_in(work_dir);
     let mut writer = BufWriter::new(File::create(&path)?);
-    write_python_json(&mut writer, graph)?;
+    write_json_value(&mut writer, graph)?;
     Ok(())
 }
 
-/// Serialize `value` with the Python-style separators `, ` and `: `.
-pub(crate) fn write_python_json<W: Write>(writer: &mut W, value: &Value) -> Result<()> {
+/// Serialize `value` with `, ` and `: ` separators.
+pub(crate) fn write_json_value<W: Write>(writer: &mut W, value: &Value) -> Result<()> {
     use serde::Serialize;
-    let formatter = crate::state::settings::PythonFormatter;
+    let formatter = crate::state::settings::JsonFormatter;
     let mut ser = serde_json::Serializer::with_formatter(writer, formatter);
     value.serialize(&mut ser)?;
     Ok(())

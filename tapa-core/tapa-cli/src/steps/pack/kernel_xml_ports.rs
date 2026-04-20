@@ -2,8 +2,8 @@
 //! `tapa pack`.
 //!
 //! Mirrors the `print_kernel_xml` projection in
-//! `tapa/verilog/xilinx/pack.py` plus the `range_or_none` channel
-//! fan-out unrolling, and the bus-parameter emission that Python adds
+//! the implementation plus the `range_or_none` channel
+//! fan-out unrolling, and the bus-parameter emission that adds
 //! for every `m_axi` port.
 
 use std::collections::BTreeSet;
@@ -12,8 +12,8 @@ use tapa_task_graph::port::{ArgCategory, Port};
 use tapa_xilinx::{KernelXmlPort, PortCategory};
 
 /// Project a `tapa_task_graph::Port` list into the `KernelXmlPort`
-/// shape `tapa_xilinx::emit_kernel_xml` expects. Mirrors the Python
-/// `print_kernel_xml` logic in `tapa/verilog/xilinx/pack.py` plus the
+/// shape `tapa_xilinx::emit_kernel_xml` expects. Mirrors the current
+/// `print_kernel_xml` logic in the implementation plus the
 /// `range_or_none` channel-fan-out unrolling.
 #[cfg(test)]
 pub(super) fn build_kernel_xml_ports(ports: &[Port]) -> Vec<KernelXmlPort> {
@@ -56,9 +56,9 @@ fn build_kernel_xml_ports_impl(
     out
 }
 
-/// Python `pack` adds two bus parameters per `m_axi` port:
+/// `pack` adds two bus parameters per `m_axi` port:
 /// `HAS_BURST=0`, `SUPPORTS_NARROW_BURST=0`. Mirror that here so the
-/// emitted `.xo` matches the Python output.
+/// emitted `.xo` matches the output.
 #[cfg(test)]
 pub(super) fn m_axi_param_block(ports: &[Port]) -> Vec<(String, Vec<(String, String)>)> {
     m_axi_param_block_impl(ports, None)

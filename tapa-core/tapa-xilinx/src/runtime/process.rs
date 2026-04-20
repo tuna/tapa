@@ -81,13 +81,13 @@ pub trait ToolRunner: Send + Sync {
 }
 
 /// Local subprocess runner: inherits the parent process's environment
-/// (matching Python's `subprocess.Popen` default) so bare program
+/// (matching `subprocess.Popen` default) so bare program
 /// names like `vitis_hls` / `vivado` resolve via the caller's `PATH`,
 /// and tools can read `HOME`, `XILINX_*`, `DISPLAY`, and friends.
 /// `ToolInvocation::env` entries overlay the inherited env.
 ///
 /// Remote env allowlisting lives in `RemoteToolRunner` where the env
-/// crosses a machine boundary — inside a single host, Python-parity
+/// crosses a machine boundary — inside a single host, compatibility
 /// demands that the child see the parent shell's state. When
 /// `ToolInvocation::timeout` is set, the child is killed on expiry
 /// and the call returns `XilinxError::ToolTimeout`.
@@ -123,7 +123,7 @@ impl ToolRunner for LocalToolRunner {
 
         let mut cmd = Command::new(&inv.program);
         cmd.args(&inv.args);
-        // Inherit the parent's env (Python-parity: `subprocess.Popen`
+        // Inherit the parent's env (compatibility: `subprocess.Popen`
         // without an `env=` argument forwards the caller's full env),
         // then overlay `inv.env` so per-invocation entries win.
         for (k, v) in &inv.env {
@@ -420,7 +420,7 @@ mod tests {
     }
 
     /// Bare program names must resolve via the caller's `PATH`
-    /// (Python-parity with `subprocess.Popen`). Without this, bare
+    /// (compatibility with `subprocess.Popen`). Without this, bare
     /// `vitis_hls` / `vivado` spawn calls fail on a configured local
     /// host because the child has no `PATH` to search.
     #[test]

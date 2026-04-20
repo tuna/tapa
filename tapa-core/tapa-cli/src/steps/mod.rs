@@ -1,4 +1,4 @@
-//! Subcommand handlers — one module per click command.
+//! Subcommand handlers — one module per CLI command.
 //!
 //! Each module exposes a clap `Args` struct (named `<Step>Args` to keep
 //! clap's argument-group names unique under flatten) and a

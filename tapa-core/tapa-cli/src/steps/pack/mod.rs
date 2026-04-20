@@ -1,4 +1,4 @@
-//! `tapa pack` — native Rust port of `tapa/steps/pack.py`.
+//! `tapa pack` — native Rust port of the implementation.
 //!
 //! Reloads `<work_dir>/{graph,design,settings}.json`, projects the top
 //! task's external ports into a [`PackageXoInputs`] block, and drives
@@ -12,7 +12,7 @@
 //!   `tapa-graphir-export`, and splice the generated Verilog into
 //!   `<work_dir>/rtl` alongside the TAPA-generated modules.
 //! * `--bitstream-script <FILE>` — after `.xo` emission, render the
-//!   Python `get_vitis_script` helper and drop it at the requested
+//!   `get_vitis_script` helper and drop it at the requested
 //!   path (executable on Unix).
 //!
 //! The HLS-target `.zip` packer is still unported and surfaces a
@@ -58,7 +58,7 @@ pub struct PackArgs {
     pub graphir_path: Option<PathBuf>,
 }
 
-pub fn to_python_argv(args: &PackArgs) -> Vec<String> {
+pub fn to_cli_argv(args: &PackArgs) -> Vec<String> {
     let mut out = Vec::<String>::new();
     if let Some(p) = &args.output {
         out.push("--output".to_string());
@@ -80,7 +80,7 @@ pub fn to_python_argv(args: &PackArgs) -> Vec<String> {
 }
 
 /// Top-level dispatcher. Always runs the native packaging path (the
-/// Python bridge target was retired).
+/// bridge target was unsupported).
 pub fn run(args: &PackArgs, ctx: &mut CliContext) -> Result<()> {
     run_native(args, ctx)
 }
@@ -99,7 +99,7 @@ fn run_native(args: &PackArgs, ctx: &CliContext) -> Result<()> {
         "xilinx-hls" => pack_hls_zip(args, ctx, &settings),
         other => Err(CliError::InvalidArg(format!(
             "native pack only supports `xilinx-vitis` and `xilinx-hls`; \
-             got `{other}`. (AIE was retired with the Python `program.run_aie` \
+             got `{other}`. (AIE was unsupported with the `program.run_aie` \
              port; rerun `analyze` with a supported target.)"
         ))),
     }
@@ -111,9 +111,9 @@ fn run_native(args: &PackArgs, ctx: &CliContext) -> Result<()> {
 /// archive is reproducible), the TAPA report yaml at the archive root
 /// when the synth step emitted one, plus `graph.yaml` and
 /// `settings.yaml` snapshots of the persistent contexts that the
-/// Python flow used to ship. Output path defaults to `work.zip` in the
+/// flow used to ship. Output path defaults to `work.zip` in the
 /// caller's CWD and is always normalized to a `.zip` suffix to match
-/// Python's `_enforce_path_suffix(suffix=".zip")`.
+/// `_enforce_path_suffix(suffix=".zip")`.
 fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, settings: &settings_io::Settings) -> Result<()> {
     use std::io::Write as _;
     let work_dir = ctx.work_dir.as_path();
@@ -160,7 +160,7 @@ fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, settings: &settings_io::Setti
     }
 
     // TAPA report yaml at archive root, only if the synth step wrote
-    // one. Python always writes it; the Rust port has not ported the
+    // one. always writes it; the Rust port has not ported the
     // emitter yet, so the file may be absent — silently skip in that
     // case rather than failing the pack step.
     let report_yaml = work_dir.join("report.yaml");
@@ -170,7 +170,7 @@ fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, settings: &settings_io::Setti
         z.write_all(&std::fs::read(&report_yaml)?)?;
     }
 
-    // Mirror Python's `program.pack_zip(..., graph=..., settings=...)`:
+    // Mirror `program.pack_zip(..., graph=..., settings=...)`:
     // serialize the persisted contexts as YAML so downstream consumers
     // opening the archive can recover the compile metadata.
     let graph = graph_io::load_graph(work_dir)?;
@@ -185,7 +185,7 @@ fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, settings: &settings_io::Setti
         .map_err(|e| CliError::InvalidArg(format!("zip entry: {e}")))?;
     z.write_all(settings_yaml.as_bytes())?;
 
-    // HLS `_csynth.rpt` files under `report/<rel>`. Mirror Python's
+    // HLS `_csynth.rpt` files under `report/<rel>`. Mirror current
     // `_redact_rpt`: replace the per-run `Date:` line with the fixed
     // 1980-01-01 stamp so re-running HLS produces a byte-identical
     // archive (the same redaction `program.pack_xo` applies to xo).
@@ -244,7 +244,7 @@ fn redact_rpt(bytes: &[u8]) -> Vec<u8> {
     }
 }
 
-/// Port of Python's `_enforce_path_suffix(...)`. Returns `<default>` in
+/// Port of `_enforce_path_suffix(...)`. Returns `<default>` in
 /// the caller's CWD when `output` is absent; otherwise appends `.{ext}`
 /// unless the path already carries it. Used for both `--output` shapes
 /// (`.zip` for HLS pack, `.xo` for Vitis pack).
@@ -344,15 +344,15 @@ mod tests {
         settings.insert("part_num".to_string(), json!("xcu250-figd2104-2L-e"));
         settings.insert("clock_period".to_string(), json!("3.33"));
         settings_io::store_settings(work_dir, &settings).expect("store settings");
-        // `pack_hls_zip` mirrors Python's `pack_zip(..., graph=...)` and
+        // `pack_hls_zip` mirrors `pack_zip(..., graph=...)` and
         // requires `graph.json` to be present so it can emit `graph.yaml`.
         graph_io::store_graph(work_dir, &json!({"top": "Top", "tasks": {}})).expect("store graph");
     }
 
     #[test]
-    fn argv_round_trips_python_shape() {
+    fn argv_round_trips_current_shape() {
         let args = parse_pack(&["--output", "vadd.xo"]);
-        let argv = to_python_argv(&args);
+        let argv = to_cli_argv(&args);
         assert!(argv.contains(&"--output".to_string()));
         assert!(argv.contains(&"vadd.xo".to_string()));
     }
@@ -438,7 +438,7 @@ mod tests {
 
     #[test]
     fn enforce_zip_suffix_defaults_to_cwd() {
-        // Default mirrors Python's `_enforce_path_suffix(suffix=".zip")`:
+        // Default mirrors `_enforce_path_suffix(suffix=".zip")`:
         // a bare `work.zip` resolved against the caller's CWD, not
         // <work_dir>/work.zip.
         assert_eq!(enforce_zip_suffix(None), PathBuf::from("work.zip"));
@@ -454,7 +454,7 @@ mod tests {
 
     #[test]
     fn aie_target_is_rejected() {
-        // AIE was retired with `program.run_aie`; analyze rejects it
+        // AIE was unsupported with `program.run_aie`; analyze rejects it
         // up front, but a hand-edited `settings.json` (or a stale work
         // dir from before the change) must still surface a clear error
         // rather than silently no-op'ing.

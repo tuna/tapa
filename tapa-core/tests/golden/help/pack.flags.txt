@@ -1,4 +1,0 @@
---bitstream-script
---custom-rtl
---graphir-path
---output

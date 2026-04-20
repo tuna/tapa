@@ -1,10 +1,5 @@
-//! Per-task out-of-context Vivado synth + hierarchical utilization
-//! parsing. Ports `tapa/program/synthesis.py::ProgramSynthesisMixin
-//! ::generate_post_synth_util` (the `worker` inner function plus the
-//! `ThreadPoolExecutor.map` result fold) and
-//! `tapa/backend/report/xilinx/rtl/generator.py::ReportDirUtil` (the
-//! `REPORT_UTIL_COMMANDS` TCL template plus the hdl-dir / rpt-path
-//! staging logic).
+//! Per-task out-of-context Vivado synth and hierarchical utilization
+//! parsing.
 //!
 //! Given the work directory layout produced by `generate_rtl_tree`
 //! (`<work_dir>/rtl/*.v`) and the per-task C++ sources written by
@@ -13,19 +8,19 @@
 //!
 //!   1. Consults the mtime of `<work_dir>/report/<task>.hier.util.rpt`
 //!      and skips the re-synth when the report is newer than the
-//!      matching `<work_dir>/cpp/<task>.cpp` (Python parity with the
+//!      matching `<work_dir>/cpp/<task>.cpp` (compatibility with the
 //!      `os.path.getmtime(...) > rpt_mtime` guard).
 //!   2. Otherwise builds an out-of-context `synth_design` TCL, drives
 //!      it through [`run_vivado`], and requires that the `.rpt` now
 //!      exists and is strictly newer than it was before.
 //!   3. Parses the hierarchical utilization `.rpt` via
 //!      [`parse_utilization_rpt`] and updates the task's `total_area`
-//!      dict with the Python formula:
+//!      dict with the formula:
 //!      `BRAM_18K = RAMB36*2 + RAMB18`, `DSP = "DSP Blocks"`,
 //!      `FF = FFs`, `LUT = "Total LUTs"`, `URAM = URAM`.
 //!
-//! Serial execution only; the Python `jobs` flag is accepted for API
-//! parity but currently unused. A rayon-based fan-out is a follow-up.
+//! Serial execution only; the `jobs` flag is accepted for API
+//! compatibility but currently unused. A rayon-based fan-out is a follow-up.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -39,14 +34,14 @@ use crate::error::{CliError, Result};
 
 use super::cpp_extract::cpp_path_for;
 
-/// Ports `tapa/backend/report/xilinx/rtl/generator.py::REPORT_UTIL_COMMANDS`.
+/// Implements.
 ///
-/// The Python template uses a Python-side `{part_num}` / `{synth_args}`
+/// The template uses a current-side `{part_num}` / `{synth_args}`
 /// / `{report_util_args}` / `{set_parallel}` substitution before
 /// feeding Vivado, and passes `hdl_dir` / `rpt_file` in as `argv[0]` /
 /// `argv[1]`. We do the same here — the `{...}` placeholders below are
 /// replaced before the string hits Vivado; all other `{...}` pairs in
-/// the TCL itself are escaped as `{{...}}` in the Python source.
+/// the TCL itself are escaped as `{{...}}` in the source.
 const REPORT_UTIL_TCL: &str = "\
 set hdl_dir [lindex $argv 0]
 set rpt_file [lindex $argv 1]
@@ -107,12 +102,12 @@ pub(super) fn emit_post_synth_util(
     Ok(())
 }
 
-/// Child-task names of the top task. Mirrors Python's
+/// Child-task names of the top task. Mirrors current
 /// `{x.task.name for x in self.top_task.instances}` — the unique set of
 /// instantiated task names directly under `design.top`.
 ///
 /// Uses `IndexMap` insertion order so the iteration is deterministic;
-/// Python's `set` is unordered but `ThreadPoolExecutor.map` doesn't
+/// `set` is unordered but `ThreadPoolExecutor.map` doesn't
 /// depend on iteration order — neither does the fold since each task's
 /// `total_area` is written independently.
 fn top_task_child_names(design: &Design) -> Vec<String> {
@@ -135,9 +130,9 @@ fn optional_mtime(path: &Path) -> Option<SystemTime> {
     fs::metadata(path).and_then(|m| m.modified()).ok()
 }
 
-/// Python parity: re-run Vivado if the C++ source is strictly newer
+/// compatibility: re-run Vivado if the C++ source is strictly newer
 /// than the cached report. When either mtime is unreadable we err on
-/// the side of running — matching Python's `os.path.getmtime(...) >
+/// the side of running — matching `os.path.getmtime(...) >
 /// rpt_path_mtime` with `rpt_path_mtime = 0.0` when the file is absent.
 fn should_run_vivado(cpp_path: &Path, rpt_mtime: Option<SystemTime>) -> bool {
     let Ok(cpp_meta) = fs::metadata(cpp_path) else {
@@ -153,7 +148,7 @@ fn should_run_vivado(cpp_path: &Path, rpt_mtime: Option<SystemTime>) -> bool {
 }
 
 /// After Vivado returns success, the report must exist and be strictly
-/// newer than it was before the run. Python raises `ValueError` on
+/// newer than it was before the run. raises `ValueError` on
 /// failure; we surface the same condition as an `InvalidArg` caller-side.
 fn report_is_fresh(rpt_path: &Path, prev_mtime: Option<SystemTime>) -> bool {
     let Some(new_mtime) = optional_mtime(rpt_path) else {
@@ -197,7 +192,7 @@ fn run_one(
 }
 
 /// Format the `synth_args` / `report_util_args` / `part_num` into the
-/// `REPORT_UTIL_TCL` template. Python always passes
+/// `REPORT_UTIL_TCL` template. always passes
 /// `synth_kwargs={"mode": "out_of_context"}` and lets `ReportDirUtil`
 /// append `-top <module> -part <part>`, plus the
 /// `report_util_kwargs.setdefault("hierarchical", "")` for the utilization
@@ -220,7 +215,7 @@ fn build_report_util_tcl(module_name: &str, part_num: &str) -> String {
         .replace("{report_util_args}", report_util_args)
 }
 
-/// Apply the Python total-area formula to `design.tasks[instance]`:
+/// Apply the total-area formula to `design.tasks[instance]`:
 ///
 /// - `BRAM_18K = RAMB36 * 2 + RAMB18`
 /// - `DSP      = "DSP Blocks"`
@@ -228,11 +223,11 @@ fn build_report_util_tcl(module_name: &str, part_num: &str) -> String {
 /// - `LUT      = "Total LUTs"`
 /// - `URAM     = URAM`
 ///
-/// Missing / non-integer cells fall through as `0` to match Python's
+/// Missing / non-integer cells fall through as `0` to match current
 /// eventual `int(utilization[...])` — which would itself raise, so the
 /// permissive fallback surfaces a well-formed dict instead of aborting
 /// the whole synth. If the instance from the report doesn't match any
-/// task in `design.tasks` we silently skip it (Python would raise
+/// task in `design.tasks` we silently skip it (would raise
 /// `KeyError`; in practice the hierarchical report's top row is always
 /// the `-top` module we passed in, i.e. the task name).
 fn apply_total_area(design: &mut Design, util: &UtilizationReport) {
@@ -418,7 +413,7 @@ mod tests {
         assert!(tcl.contains("set_part xcvu37p-fsvh2892-2L-e"));
         assert!(tcl.contains("-mode out_of_context -top Add -part xcvu37p-fsvh2892-2L-e"));
         assert!(tcl.contains("report_utilization -file $rpt_file -hierarchical"));
-        // No leftover Python-style placeholders.
+        // No leftover placeholders.
         assert!(!tcl.contains("{part_num}"));
         assert!(!tcl.contains("{synth_args}"));
         assert!(!tcl.contains("{report_util_args}"));

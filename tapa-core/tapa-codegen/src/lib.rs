@@ -1,9 +1,7 @@
 //! RTL code generation from the TAPA topology model.
 //!
-//! This crate replaces the Python codegen pipeline
-//! (`tapa/program_codegen/`, `tapa/task_codegen/`, `tapa/codegen/`).
-//! It uses the `tapa-rtl` builder API to construct Verilog fragments
-//! and the hybrid mutation API to modify existing HLS modules.
+//! It uses the `tapa-rtl` builder API to construct Verilog fragments and the
+//! hybrid mutation API to modify existing HLS modules.
 
 pub mod async_mmap;
 pub mod children;
@@ -699,7 +697,7 @@ fn instantiate_top_control_s_axi(state: &mut TopologyWithRtl, task_name: &str) {
 /// - FSM module gets an input port for the parent arg and an output port for the pipeline signal
 /// - Parent module gets a wire for the pipeline output
 /// - The FSM module uses a registered pipeline (always @(posedge clk)) to
-///   delay the signal by one cycle, matching Python's `add_pipeline` behavior
+///   delay the signal by one cycle, matching `add_pipeline` behavior
 fn declare_instance_pipeline_signals(
     state: &mut TopologyWithRtl,
     task_name: &str,
@@ -2016,14 +2014,14 @@ mod tests {
                 && top_v.contains(".DATA_WIDTH(48)")
                 && top_v.contains(".s_axis_tdata(a_TDATA)")
                 && top_v.contains(".m_stream_dout(a_dout)"),
-            "input AXIS adapter should be instantiated with Python-compatible ports:\n{top_v}"
+            "input AXIS adapter should be instantiated with compatible ports:\n{top_v}"
         );
         assert!(
             top_v.contains("stream_to_axis_adapter #(")
                 && top_v.contains(".DATA_WIDTH(64)")
                 && top_v.contains(".s_stream_din(c_din)")
                 && top_v.contains(".m_axis_tlast(c_TLAST)"),
-            "output AXIS adapter should be instantiated with Python-compatible ports:\n{top_v}"
+            "output AXIS adapter should be instantiated with compatible ports:\n{top_v}"
         );
         assert!(
             top_v.contains("assign c_TKEEP = 8'b11111111;"),

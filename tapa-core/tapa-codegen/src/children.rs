@@ -1,6 +1,6 @@
 //! Child task instantiation with FSM/port wiring.
 //!
-//! Ports `tapa/program_codegen/children.py`: handles per-instance FSM
+//! Implements: handles per-instance FSM
 //! generation, argument pipelines, handshake wiring, and portarg assembly.
 
 use std::collections::BTreeMap;
@@ -660,11 +660,11 @@ mod tests {
         let text = inst.to_string();
         assert!(
             text.contains(".in_q_peek_0_dout(fifo_0_dout)"),
-            "array peek dout should use Python-compatible name ordering:\n{text}"
+            "array peek dout should use compatible name ordering:\n{text}"
         );
         assert!(
             text.contains(".in_q_peek_0_empty_n(fifo_0_empty_n)"),
-            "array peek empty_n should use Python-compatible name ordering:\n{text}"
+            "array peek empty_n should use compatible name ordering:\n{text}"
         );
     }
 

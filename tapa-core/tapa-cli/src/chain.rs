@@ -76,7 +76,7 @@ pub enum Step {
     ///
     /// Terminal: `g++`'s own `trailing_var_arg` already consumes any
     /// tokens that follow, so chaining a subsequent subcommand after
-    /// `g++` is not supported — matching click's
+    /// `g++` is not supported — matching CLI
     /// `nargs=-1, type=UNPROCESSED`.
     #[command(name = "g++")]
     Gpp {
@@ -109,7 +109,7 @@ struct ChainParser {
 }
 
 impl Step {
-    /// Walk the chained-step linked list. Mirrors click's chained
+    /// Walk the chained-step linked list. Mirrors CLI chained
     /// group: parse + validate the *entire* chain first, then execute
     /// each step in order. A parse error or `--help` on a later token
     /// (e.g. `tapa analyze … synth --help`) must surface before any

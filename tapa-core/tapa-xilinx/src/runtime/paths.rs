@@ -1,10 +1,8 @@
 //! Xilinx tool discovery and CFLAGS construction.
 //!
-//! Ports `tapa/common/paths.py::get_xilinx_tool_path`,
-//! `_get_vendor_include_paths`, `get_tapa_cflags`, `get_tapacc_cflags`,
-//! and `get_remote_hls_cflags`. The flag ordering mirrors the Python
-//! tuple returns exactly so parity tests can compare vectors
-//! element-by-element.
+//! Implements vendor include discovery plus TAPA, tapacc, and remote-HLS
+//! CFLAGS construction. The flag ordering is stable so tests can compare
+//! vectors element-by-element.
 
 use std::path::{Path, PathBuf};
 
@@ -117,9 +115,9 @@ pub fn get_vendor_include_paths() -> Vec<PathBuf> {
     vendor_include_paths_inner(cfg!(target_os = "linux"))
 }
 
-/// TAPA runtime include directories in the order Python prepends them.
+/// TAPA runtime include directories in the order prepends them.
 ///
-/// Mirrors `tapa/common/paths.py::get_tapa_cflags`: `tapa-lib-include`
+/// Matches the behavior: `tapa-lib-include`
 /// first (required to make Vitis happy), then the optional
 /// `fpga-runtime-include` and `tapa-extra-runtime-include` when they
 /// exist. Each slot is resolved in order from:
@@ -127,7 +125,7 @@ pub fn get_vendor_include_paths() -> Vec<PathBuf> {
 ///    primary include directory.
 /// 2. `TAPA_INCLUDE_DIRS` — a `:`-separated list, first entry used.
 ///
-/// When nothing resolves, the slot is skipped (matches Python's
+/// When nothing resolves, the slot is skipped (matches current
 /// "warn and continue" semantics when TAPA runtime libs are not
 /// installed).
 fn resolve_tapa_include(env_key: &str) -> Option<PathBuf> {
@@ -141,7 +139,7 @@ fn resolve_tapa_include(env_key: &str) -> Option<PathBuf> {
 }
 
 /// Candidate subpaths for each logical include slot. Mirrors
-/// `POTENTIAL_PATHS` in `tapa/common/paths.py`.
+/// `POTENTIAL_PATHS` in the implementation.
 const TAPA_LIB_INCLUDE_SUBPATHS: &[&str] = &["tapa-lib", "usr/include"];
 const FPGA_RUNTIME_INCLUDE_SUBPATHS: &[&str] = &["fpga-runtime", "usr/include"];
 const TAPA_EXTRA_RUNTIME_INCLUDE_SUBPATHS: &[&str] = &[
@@ -158,8 +156,8 @@ pub fn debug_search_roots() -> Vec<PathBuf> {
 fn search_roots() -> Vec<PathBuf> {
     let mut roots: Vec<PathBuf> = Vec::new();
     // Walk parents of the loaded-extension location when known
-    // (matches Python's `Path(__file__).absolute().parents`). The
-    // PyO3 wrapper exports `TAPA_XILINX_BINDINGS_DIR` pointing at the
+    // (matches `Path(__file__).absolute().parents`). The
+    // native wrapper exports `TAPA_XILINX_BINDINGS_DIR` pointing at the
     // directory holding the `tapa_core` extension, so installed
     // packages can resolve their sibling `tapa-lib/` include dir.
     if let Ok(dir) = std::env::var("TAPA_XILINX_BINDINGS_DIR") {
@@ -180,7 +178,7 @@ fn search_roots() -> Vec<PathBuf> {
             p = parent;
         }
     }
-    // Also walk parents of the current working directory as a
+    // Also walk parents of the working directory as a
     // fallback for repo-checkout runs invoking cargo from tapa-core/.
     if let Ok(cwd) = std::env::current_dir() {
         let mut p = cwd.as_path();
@@ -227,7 +225,7 @@ fn tapa_include_dirs() -> Vec<PathBuf> {
     };
 
     // tapa-lib-include: env override first, then auto-discovery
-    // requiring `tapa.h` as a sentinel (matches Python's extra
+    // requiring `tapa.h` as a sentinel (matches extra
     // validation step).
     let tapa_lib = resolve_tapa_include("TAPA_LIB_INCLUDE")
         .or_else(|| auto(TAPA_LIB_INCLUDE_SUBPATHS, Some("tapa.h")));
@@ -268,7 +266,7 @@ fn tapa_include_dirs() -> Vec<PathBuf> {
 /// Base TAPA CFLAGS: TAPA runtime includes + warning suppressions +
 /// builtin-define shims.
 ///
-/// Mirrors `tapa/common/paths.py::get_tapa_cflags`, including the
+/// Matches the behavior, including the
 /// leading `-isystem` entries for TAPA runtime include directories.
 pub fn get_tapa_cflags() -> Vec<String> {
     let mut out = Vec::new();
@@ -291,7 +289,7 @@ fn darwin_assert_compat() -> String {
 
 /// CFLAGS for `tapacc` with HLS vendor libraries.
 ///
-/// Mirrors `tapa/common/paths.py::get_tapacc_cflags(for_remote_hls)`.
+/// Matches the behavior.
 /// When `for_remote_hls` is true, GCC vendor stdlib headers are
 /// included regardless of the local OS; this matches running HLS on a
 /// remote Linux host from a macOS workstation.
@@ -316,9 +314,9 @@ pub fn get_tapacc_cflags(for_remote_hls: bool) -> Vec<String> {
     out
 }
 
-/// CFLAGS for remote HLS compilation from the current host.
+/// CFLAGS for remote HLS compilation from the host.
 ///
-/// Mirrors `tapa/common/paths.py::get_remote_hls_cflags`: base TAPA
+/// Matches the behavior: base TAPA
 /// CFLAGS plus the Darwin `__assert_rtn` compatibility define when
 /// running on macOS.
 pub fn get_remote_hls_cflags() -> Vec<String> {
@@ -388,7 +386,7 @@ mod tests {
     }
 
     #[test]
-    fn tapa_cflags_shape_matches_python_when_include_unset() {
+    fn tapa_cflags_shape_matches_current_when_include_unset() {
         let _lock = ENV_LOCK.lock().unwrap();
         let _g1 = EnvGuard::unset("TAPA_LIB_INCLUDE");
         let _g2 = EnvGuard::unset("TAPA_FPGA_RUNTIME_INCLUDE");

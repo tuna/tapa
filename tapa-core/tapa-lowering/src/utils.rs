@@ -13,9 +13,9 @@ pub const M_AXI_PREFIX: &str = "m_axi_";
 
 /// M-AXI read channel suffixes.
 ///
-/// Matches Python's `tapa.protocol.M_AXI_SUFFIXES` on the read side —
+/// Matches `tapa.protocol.M_AXI_SUFFIXES` on the read side —
 /// notably does NOT include `_ARREGION`, which the Vitis top RTL
-/// declares on scalar/mmap ports but Python's grouped-module lowering
+/// declares on scalar/mmap ports but grouped-module lowering
 /// never emits.
 pub const M_AXI_READ_SUFFIXES: &[&str] = &[
     "_ARVALID", "_ARREADY", "_ARADDR", "_ARID", "_ARLEN", "_ARSIZE", "_ARBURST", "_ARLOCK",
@@ -24,7 +24,7 @@ pub const M_AXI_READ_SUFFIXES: &[&str] = &[
 
 /// M-AXI write channel suffixes.
 ///
-/// Matches Python's `tapa.protocol.M_AXI_SUFFIXES` on the write side —
+/// Matches `tapa.protocol.M_AXI_SUFFIXES` on the write side —
 /// notably does NOT include `_AWREGION`.
 pub const M_AXI_WRITE_SUFFIXES: &[&str] = &[
     "_AWVALID", "_AWREADY", "_AWADDR", "_AWID", "_AWLEN", "_AWSIZE", "_AWBURST", "_AWLOCK",
@@ -35,7 +35,7 @@ pub const M_AXI_WRITE_SUFFIXES: &[&str] = &[
 /// Build a `ModulePort` with the given type string.
 ///
 /// The `hierarchical_name` defaults to `HierarchicalName::get_name(name)`,
-/// matching Python's `HierarchicalName.get_name(port.name)` used
+/// matching `HierarchicalName.get_name(port.name)` used
 /// throughout the pipeline.
 #[must_use]
 pub fn make_port(name: &str, port_type: &str, range: Option<Range>) -> ModulePort {
@@ -61,7 +61,7 @@ pub fn output_wire(name: &str, range: Option<Range>) -> ModulePort {
 }
 
 /// Build a `ModuleNet` (internal wire). The `hierarchical_name` defaults
-/// to `HierarchicalName::get_name(name)`, matching Python's
+/// to `HierarchicalName::get_name(name)`, matching current
 /// `HierarchicalName.get_name(net.name)` used throughout the pipeline.
 #[must_use]
 pub fn make_wire(name: &str, range: Option<Range>) -> ModuleNet {
@@ -76,7 +76,7 @@ pub fn make_wire(name: &str, range: Option<Range>) -> ModuleNet {
 /// Build a `ModuleConnection`.
 ///
 /// The `hierarchical_name` defaults to `HierarchicalName::get_name(name)`,
-/// matching Python's `HierarchicalName.get_name(conn.name)` used when
+/// matching `HierarchicalName.get_name(conn.name)` used when
 /// emitting `ModuleConnection` objects in the graphir conversion
 /// pipeline.
 #[must_use]
@@ -102,9 +102,9 @@ pub fn range_msb(msb: u32) -> Range {
 ///
 /// Each `left` / `right` string is tokenized on whitespace — tokens are
 /// classified as identifier (alphabetic start or underscore) or literal
-/// (otherwise). Mirrors Python's `Expression.from_str_to_tokens`, so
+/// (otherwise). Mirrors `Expression.from_str_to_tokens`, so
 /// `"C_S_AXI_ADDR_WIDTH - 1"` becomes the three-token stream
-/// `[id("C_S_AXI_ADDR_WIDTH"), lit("-"), lit("1")]` — matching Python's
+/// `[id("C_S_AXI_ADDR_WIDTH"), lit("-"), lit("1")]` — matching current
 /// `GraphIR` expression shape for `ctrl_s_axi` ADDR/DATA/STRB ranges.
 #[must_use]
 pub fn range_expr(left: &str, right: &str) -> Range {
@@ -242,11 +242,11 @@ pub fn expand_port_to_signals(
 
 /// Convert a `tapa_rtl::Port` to a `tapa_graphir::ModulePort`.
 ///
-/// Width expressions keep Python's tokenized shape: each RTL token
+/// Width expressions keep tokenized shape: each RTL token
 /// becomes a `GraphIR` [`Token`] classified as identifier (alphabetic
-/// start or underscore) or literal (otherwise). Mirrors Python's
+/// start or underscore) or literal (otherwise). Mirrors current
 /// `Expression.from_str_to_tokens` used by `get_task_graphir_ports` in
-/// `tapa/graphir_conversion/utils.py`.
+/// the implementation.
 #[must_use]
 pub fn rtl_port_to_graphir(port: &tapa_rtl::port::Port) -> ModulePort {
     let port_type = match port.direction {
@@ -271,7 +271,7 @@ pub fn rtl_port_to_graphir_with_type(port: &tapa_rtl::port::Port, port_type: &st
 /// Convert a `tapa_rtl::MutableModule` to a `tapa_graphir::AnyModuleDefinition::Verilog`.
 ///
 /// Translates ports **and** parameters from the parsed RTL module into
-/// `GraphIR` structures — matching Python's
+/// `GraphIR` structures — matching current
 /// `get_verilog_definition_from_tapa_module(...)`.
 #[must_use]
 pub fn mutable_module_to_verilog_def(
@@ -321,12 +321,12 @@ pub fn rtl_parameter_to_graphir(
 
 /// Convert a sequence of RTL tokens into a `GraphIR` `Expression`.
 ///
-/// Performs the same Python classification as
+/// Performs the same classification as
 /// `Expression.from_str_to_tokens` (identifier vs literal). If the
 /// token stream is a pure arithmetic expression on integer literals —
 /// with optional surrounding parentheses — the result is collapsed to a
-/// single literal token, mirroring pyverilog's constant folding that
-/// Python inherits when parsing declarations like
+/// single literal token, matching the frontend range folding that
+/// inherits when parsing declarations like
 /// `parameter X = (32 / 8);` into a literal `4`.
 fn tokens_to_expression(tokens: &[tapa_rtl::expression::Token]) -> Expression {
     let graphir_tokens: Vec<tapa_graphir::Token> = tokens

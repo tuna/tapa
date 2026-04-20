@@ -1,8 +1,7 @@
 //! `.xo` packaging: kernel.xml + Vivado `package_xo` + ZIP redaction.
 //!
-//! Ports `tapa/backend/xilinx_tools.py::PackageXo`,
-//! `tapa/verilog/xilinx/pack.py`, and `tapa/program/pack.py` redaction.
-//! The kernel.xml emission is delegated to
+//! Implements kernel.xml emission, Vivado package generation, and archive
+//! redaction. The kernel.xml emission is delegated to
 //! `platform::kernel_xml::emit_kernel_xml`; the full Vivado-backed
 //! build lands alongside `run_vivado`.
 
@@ -20,11 +19,11 @@ use crate::tools::vivado::{run_vivado, VivadoJob};
 const S_AXI_NAME: &str = "s_axi_control";
 const M_AXI_PREFIX: &str = "m_axi_";
 
-/// Ports `tapa/backend/xilinx_tools.py::PACKAGEXO_COMMANDS` byte-for-byte.
+/// Implements byte-for-byte.
 ///
 /// `{top_name}`, `{bus_ifaces}`, `{cpp_kernels}`, `{part_num}` placeholders
 /// are substituted by `format_package_xo_tcl`. All other braces are escaped
-/// (`{{`/`}}`) so the Python `.format` semantics carry over cleanly.
+/// (`{{`/`}}`) so the `.format` semantics carry over cleanly.
 const PACKAGE_XO_TCL: &str = r#"
 # Paths passed via tclargs for remote execution path rewriting:
 # argv[0] = tmpdir, argv[1] = hdl_dir, argv[2] = xo_file, argv[3] = kernel_xml
@@ -95,7 +94,7 @@ pub struct PackageXoInputs {
     /// `report/` tree before redaction. Each entry is `(source_path,
     /// archive_name)` — the archive name is taken verbatim, so the
     /// caller is responsible for namespacing per-task reports (e.g.
-    /// `report/<task>/<file>`). Mirrors Python's `PackageXo.__init__`
+    /// `report/<task>/<file>`). Mirrors `PackageXo.__init__`
     /// which appends per-task `report/<task-rel>/<file>` entries so
     /// downstream inspection tooling can disambiguate same-basename
     /// reports across tasks (`csynth.rpt`, `csynth.xml`, …). Empty →
@@ -185,7 +184,7 @@ fn format_package_xo_tcl(
 
 /// Build the `.xo` for the given inputs using the provided runner.
 ///
-/// Ports `tapa/backend/xilinx_tools.py::PackageXo` + `tapa/verilog/xilinx/pack.py::pack`:
+/// Implements + the implementation:
 ///
 /// 1. Allocate a staging tempdir and emit `kernel.xml` into it.
 /// 2. Format `PACKAGE_XO_TCL` with the kernel's `bus_ifaces`, `cpp_kernels`,
@@ -197,7 +196,7 @@ fn format_package_xo_tcl(
 /// `tclargs` to Vivado: `$tmpdir $hdl_dir $xo_file $kernel_xml_path`.
 pub fn pack_xo(runner: &dyn ToolRunner, inputs: &PackageXoInputs) -> Result<PathBuf> {
     let out = pack_xo_without_redaction(runner, inputs)?;
-    // Python parity: bundle the HLS report files (`self.report_paths`
+    // compatibility: bundle the HLS report files (`self.report_paths`
     // + `report/*_csynth.xml`) into the packaged `.xo` before the
     // reproducibility redaction pass. Downstream inspection tooling
     // reads these archived reports; the previous implementation
@@ -210,7 +209,7 @@ pub fn pack_xo(runner: &dyn ToolRunner, inputs: &PackageXoInputs) -> Result<Path
 }
 
 /// Append each report into the `.xo` under its caller-provided archive
-/// name, matching Python's `PackageXo.__init__` bundling step. Any
+/// name, matching `PackageXo.__init__` bundling step. Any
 /// existing archive entry with the same name is overwritten so callers
 /// can use task-relative names (e.g. `report/<task>/csynth.xml`)
 /// without colliding with the basename layout the raw `.xo` already
@@ -393,7 +392,7 @@ fn redact_xml_payload(text: &str) -> String {
     });
     let step2 = re_src.replace_all(&step1, "<SourceLocation>$1</SourceLocation>");
 
-    // `.{32}` matches Python's 32 literal dots inside `ProjectID="..."`.
+    // `.{32}` matches 32 literal dots inside `ProjectID="..."`.
     let re_pid = RE_PID
         .get_or_init(|| regex::Regex::new("ProjectID=\".{32}\"").expect("static regex compiles"));
     let step3 = re_pid.replace_all(&step2, "ProjectID=\"0123456789abcdef0123456789abcdef\"");

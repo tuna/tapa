@@ -1,6 +1,6 @@
 //! Mirror of `tapa.util.Options` — global per-process knobs.
 
-/// Default `--clang-format-quota-in-bytes` (matches the Python value).
+/// Default `--clang-format-quota-in-bytes` (matches the current value).
 pub const DEFAULT_CLANG_FORMAT_QUOTA: u64 = 1_000_000;
 
 #[derive(Debug, Clone, Copy)]

@@ -285,7 +285,7 @@ pub(super) fn infer_mmap_ports_from_subtasks(
     Ok(out)
 }
 
-/// Strip a trailing `[index]` suffix from a port name (mirrors Python's
+/// Strip a trailing `[index]` suffix from a port name (mirrors current
 /// `re.sub(r"\[[^\]]+\]$", "", port_name)` used in `_get_used_ports`).
 fn strip_trailing_index(name: &str) -> String {
     if let Some(bracket) = name.rfind('[') {

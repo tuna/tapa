@@ -6,10 +6,10 @@ use log::LevelFilter;
 
 /// Translate `--verbose -v` count and `--quiet -q` count to a `LevelFilter`.
 ///
-/// Mirrors Python's `(quiet - verbose) * 10 + INFO`, clamped to
+/// Mirrors `(quiet - verbose) * 10 + INFO`, clamped to
 /// `[DEBUG, CRITICAL]`. CRITICAL has no `log` crate analogue so it folds
 /// into `Error`. DEBUG is the floor: more verbose flags cannot reach
-/// `Trace` — Python's `logging` module has no level below DEBUG.
+/// `Trace` — `logging` module has no level below DEBUG.
 pub fn level_for(verbose: u8, quiet: u8) -> LevelFilter {
     let raw = i32::from(quiet) - i32::from(verbose);
     let raw = raw.clamp(-1, 3);
@@ -39,7 +39,7 @@ mod tests {
     fn verbose_bumps_below_info() {
         assert_eq!(level_for(0, 0), LevelFilter::Info);
         assert_eq!(level_for(1, 0), LevelFilter::Debug);
-        // Python clamps at DEBUG, so further -v stays at Debug.
+        // clamps at DEBUG, so further -v stays at Debug.
         assert_eq!(level_for(2, 0), LevelFilter::Debug);
     }
 

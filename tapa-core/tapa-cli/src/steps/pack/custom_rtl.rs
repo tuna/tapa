@@ -2,18 +2,18 @@
 //! `<work_dir>/rtl` after validating their port signatures match the
 //! template slot recorded in `templates_info.json`.
 //!
-//! Ports `tapa/program_codegen/custom_rtl.py::replace_custom_rtl`:
+//! Implements:
 //!
 //! 1. Expand each CLI path: files are accepted verbatim, directories
 //!    are globbed recursively.
 //! 2. For each `.v` file whose module name appears in
 //!    `templates_info.json`, compare the parsed port set with the
 //!    recorded template ports. Mismatches log a warning (matching
-//!    Python's behaviour). Unknown keys fail fast.
+//!    behaviour). Unknown keys fail fast.
 //! 3. Copy every collected file into `<work_dir>/rtl` (overwriting
 //!    generated templates when names collide).
 //!
-//! The Python code only *warns* on port mismatches and silently
+//! The code only *warns* on port mismatches and silently
 //! accepts non-Verilog files; we preserve that behaviour so users
 //! can drop `.tcl` helpers alongside `.v` overrides.
 
@@ -40,7 +40,7 @@ use crate::error::{CliError, Result};
 pub(super) type TemplatesInfo = BTreeMap<String, Vec<String>>;
 
 /// Load `<work_dir>/templates_info.json` if it exists; otherwise
-/// return an empty map (matching the Python flow where `synth` may
+/// return an empty map (matching the flow where `synth` may
 /// not have emitted a templates entry when no task uses `target(
 /// "ignore")`).
 pub(super) fn load_templates_info(work_dir: &Path) -> Result<TemplatesInfo> {
@@ -107,7 +107,7 @@ pub(super) fn expand_custom_rtl_paths(rtl_paths: &[PathBuf]) -> Result<Vec<PathB
 /// Returns an error when a `.v` file names a module that is *not* in
 /// `templates_info` and no matching template ever existed (the user
 /// targeted the wrong KEY). Port-shape mismatches only log a warning
-/// to match Python's `check_custom_rtl_format`.
+/// to match `check_custom_rtl_format`.
 pub(super) fn apply_custom_rtl(
     rtl_dir: &Path,
     custom_rtl_paths: &[PathBuf],
@@ -152,17 +152,17 @@ pub(super) fn apply_custom_rtl(
     Ok(())
 }
 
-/// Best-effort port-signature check. Mirrors Python's
-/// `tapa/program_codegen/custom_rtl.py::check_custom_rtl_format`:
+/// Best-effort port-signature check. Mirrors current
+/// the implementation:
 ///
-/// * Non-`.v` files log a skip message (Python accepts `.tcl`, `.sv`, etc.).
+/// * Non-`.v` files log a skip message (accepts `.tcl`, `.sv`, etc.).
 /// * Unparsable Verilog logs a skip message and moves on.
 /// * `.v` files whose top module name is NOT a key in
-///   `templates_info` are silently accepted — Python's
+///   `templates_info` are silently accepted — current
 ///   `if (task := tasks.get(...)) is None: continue` makes unknown
 ///   helper modules a valid input, not an error.
 /// * Port-signature mismatches against a known template key log a
-///   warning and proceed (Python uses `_logger.warning`, never fails).
+///   warning and proceed (uses `_logger.warning`, never fails).
 fn check_custom_rtl_format(rtl_files: &[PathBuf], templates_info: &TemplatesInfo) {
     for path in rtl_files {
         if path.extension().and_then(|s| s.to_str()) != Some("v") {
@@ -186,7 +186,7 @@ fn check_custom_rtl_format(rtl_files: &[PathBuf], templates_info: &TemplatesInfo
             );
             continue;
         };
-        // Python parity: unknown module names are helper modules,
+        // compatibility: unknown module names are helper modules,
         // not mistyped KEYs — skip silently.
         let Some(expected_ports) = templates_info.get(&module.name) else {
             continue;
@@ -278,7 +278,7 @@ mod tests {
         );
     }
 
-    /// Python parity: unknown module names are helper modules, not
+    /// compatibility: unknown module names are helper modules, not
     /// mistyped KEYs. `apply_custom_rtl` must silently copy the file
     /// through — `check_custom_rtl_format` logs `continue` when
     /// `tasks.get(rtl_module.name) is None`.

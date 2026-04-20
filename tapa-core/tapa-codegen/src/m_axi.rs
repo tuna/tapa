@@ -1,6 +1,6 @@
 //! M-AXI port generation and AXI crossbar.
 //!
-//! Ports `tapa/task_codegen/m_axi.py`: single-port M-AXI generation,
+//! Implements: single-port M-AXI generation,
 //! multi-port AXI crossbar with parameterized module emission.
 
 use tapa_protocol::{
@@ -125,7 +125,7 @@ pub fn build_crossbar_params(conn: &MMapConnection) -> Vec<ParamArg> {
 
     // Per-slave thread parameters — each slave gets at least 1 thread
     for idx in 0..conn.thread_count {
-        // In the full Python implementation, this comes from per-child port metadata.
+        // In the full implementation, this comes from per-child port metadata.
         // For now, use 1 thread per slave (the common case for simple designs).
         let threads = 1_u64;
         params.push(ParamArg::new(

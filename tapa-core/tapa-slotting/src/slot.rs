@@ -298,7 +298,7 @@ mod tests {
         assert!(!left.is_vertical_neighbor(&right));
     }
 
-    // -- has_overlap tests (from Python Coor doctests) --
+    // -- has_overlap tests (from current Coor doctests) --
 
     #[test]
     fn has_overlap_identical() {

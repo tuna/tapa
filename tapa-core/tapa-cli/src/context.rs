@@ -1,5 +1,5 @@
 //! Per-invocation execution context shared by the chained step pipeline.
-//! Mirrors click's `ctx.obj` dict from `tapa/__main__.py`.
+//! Mirrors CLI `ctx.obj` dict from the implementation.
 
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -12,13 +12,13 @@ use tapa_xilinx::RemoteConfig;
 use crate::globals::GlobalArgs;
 use crate::options::Options;
 
-/// In-memory flow state — the Rust analogue of click's `ctx.obj` dict.
+/// In-memory flow state — the Rust analogue of CLI `ctx.obj` dict.
 #[derive(Debug, Default)]
 pub struct FlowState {
     pub design: Option<Design>,
     pub graph: Option<Value>,
     pub settings: Option<IndexMap<String, Value>>,
-    /// Per-step `is_pipelined` markers (mirrors `is_pipelined()` in Python).
+    /// Per-step `is_pipelined` markers (mirrors `is_pipelined()` in current).
     pub pipelined: IndexMap<String, bool>,
 }
 
@@ -29,11 +29,11 @@ pub struct CliContext {
     pub options: Options,
     pub remote: RemoteConfigArgs,
     /// Resolved remote config (`~/.taparc` + CLI overrides). `None`
-    /// means the run is purely local — mirrors Python's
+    /// means the run is purely local — mirrors current
     /// `get_remote_config() is None`.
     pub remote_config: Option<RemoteConfig>,
     pub flow: RefCell<FlowState>,
-    /// Verbosity counts forwarded to bridged Python invocations.
+    /// Verbosity counts for downstream command invocations.
     pub verbose: u8,
     pub quiet: u8,
 }
@@ -86,7 +86,7 @@ impl CliContext {
 /// storage time. The remote transport rewrites absolute local paths
 /// into the remote rootfs; a relative `./work.out` would sneak
 /// through unrewritten, leaving the remote command looking for
-/// `work.out/cpp/Foo.cpp` in its temporary cwd and failing. Python
+/// `work.out/cpp/Foo.cpp` in its temporary cwd and failing. current
 /// `tapa` stored `os.path.abspath(work_dir)`; we match that.
 ///
 /// Non-existent paths still get a plain `current_dir().join(...)` —

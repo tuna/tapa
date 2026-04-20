@@ -1,9 +1,0 @@
---cflags
---flatten-hierarchy
---input
---keep-hierarchy
---tapa-clang
---tapa-cpp
---tapacc
---target
---top

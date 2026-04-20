@@ -5,11 +5,11 @@
 //! every `solution_*/floorplan.json` the tool emits. Dispatch goes
 //! through `tapa_xilinx::ToolRunner` so the same code path covers:
 //!
-//!   * `LocalToolRunner` — spawn locally (Python-parity
+//!   * `LocalToolRunner` — spawn locally (compatibility
 //!     `subprocess.run`).
 //!   * `RemoteToolRunner` — tar-pipe the floorplan project dir + the
 //!     device config up, run `rapidstream-tapafp` over SSH-mux, and
-//!     tar-pipe `autobridge/` back (Python-parity
+//!     tar-pipe `autobridge/` back (compatibility
 //!     `tapa.remote.popen.create_tool_process` with
 //!     `extra_download_paths=(autobridge_work_dir,)`).
 
@@ -58,7 +58,7 @@ struct Prepared {
     sanitized_config: PathBuf,
 }
 
-/// Mirror the Python preprocessing: ensure the autobridge work dir
+/// Mirror the preprocessing: ensure the autobridge work dir
 /// exists, strip pre-assignment keys from the floorplan config, and
 /// persist the sanitized variant.
 fn prepare_inputs(args: &RunAutobridgeArgs, work_dir: &Path) -> Result<Prepared> {
@@ -149,7 +149,7 @@ fn run_with(runner: &dyn ToolRunner, prep: &Prepared) -> Result<()> {
 /// Map low-level `XilinxError` variants from the tool runner to typed
 /// CLI errors that explicitly name the failure mode (spawn / transfer
 /// / signal). Previously the remote branch hard-errored with "use the
-/// Python CLI"; now failures surface the concrete runtime gap.
+/// CLI"; now failures surface the concrete runtime gap.
 fn map_runner_err(err: XilinxError) -> CliError {
     match err {
         // Spawn failure from `LocalToolRunner` when `rapidstream-tapafp`
@@ -266,13 +266,13 @@ mod tests {
     }
 
     #[test]
-    fn invocation_shape_matches_python_flags() {
+    fn invocation_shape_matches_current_flags() {
         let tmp = tempfile::tempdir().unwrap();
         let prep = make_prepared(tmp.path());
         let inv = build_invocation(&prep);
 
         assert_eq!(inv.program, RAPIDSTREAM_TAPAFP_BIN);
-        // The argv must match the Python `cmd` list verbatim (in order).
+        // The argv must match the `cmd` list verbatim (in order).
         assert_eq!(
             inv.args,
             vec![
@@ -339,7 +339,7 @@ mod tests {
 
     /// A remote-style failure (non-zero exit) must surface as a typed
     /// `CliError::TapaccFailed` carrying the remote stderr — **not** a
-    /// "use the Python CLI" string.
+    /// "use the CLI" string.
     #[test]
     fn mock_runner_nonzero_exit_surfaces_tapacc_failed() {
         let tmp = tempfile::tempdir().unwrap();
@@ -366,7 +366,7 @@ mod tests {
 
     /// A transport-layer failure (the SSH mux dies mid-run) must
     /// surface as a typed `CliError::Xilinx(SshMuxLost)` rather than
-    /// being collapsed onto `TapaccFailed` or a "use the Python CLI"
+    /// being collapsed onto `TapaccFailed` or a "use the CLI"
     /// string.
     #[test]
     fn mock_runner_transport_failure_surfaces_typed_ssh_error() {

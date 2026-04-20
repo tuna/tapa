@@ -5,7 +5,7 @@
         "target_clock_period_ns": "3.33",
         "top": "VecAdd"
     },
-    "description": "Expected HLS output manifest for tests/apps/vadd/vadd.cpp. Driven by the shared-vadd ignored integration test when TAPA_SHARED_VADD_HLS=1 is set. Captures the semantic-parity contract: per-task module + per-task csynth report + normalized csynth fields + normalized content invariants, matching what the Python `tapa.backend.xilinx_hls::RunHls` flow produces against the same shared fixture.",
+    "description": "Expected HLS output manifest for tests/apps/vadd/vadd.cpp. Driven by the shared-vadd ignored integration test when TAPA_SHARED_VADD_HLS=1 is set. Captures the semantic-compatibility contract: per-task module + per-task csynth report + normalized csynth fields + normalized content invariants, matching what the `tapa.backend.xilinx_hls::RunHls` flow produces against the same shared fixture.",
     "hdl_content_markers": {
         "Add.v": [
             "module Add",

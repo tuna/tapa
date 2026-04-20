@@ -12,7 +12,7 @@ use crate::utils::{
 /// Arg-table entry mapping a parent-visible argument name to its
 /// queue-tail wire name.
 ///
-/// Mirrors Python's `get_task_arg_table(task)[inst_name][arg][-1].name`:
+/// Mirrors `get_task_arg_table(task)[inst_name][arg][-1].name`:
 ///   * scalar → `{inst_name}___{arg}__q0`
 ///   * mmap → `{inst_name}___{arg}_offset__q0`
 ///
@@ -31,10 +31,10 @@ pub fn instance_name(task_name: &str, idx: usize, inst: &InstanceDesign) -> Stri
 /// Build an arg table for an upper task's instances.
 ///
 /// For each instance's scalar/mmap arguments, produces the queue-tail
-/// wire name Python's `get_task_arg_table(upper_task)` emits
+/// wire name `get_task_arg_table(upper_task)` emits
 /// (`Pipeline(instance.get_instance_arg(id_name))[-1].name`). The key
-/// is the parent-visible arg name (`arg.arg`), matching Python's
-/// `arg_table[inst_name][arg.name]` indexing in `wire_builder.py`.
+/// is the parent-visible arg name (`arg.arg`), matching current
+/// `arg_table[inst_name][arg.name]` indexing in `wire_builder`.
 #[must_use]
 pub fn build_arg_table(top: &tapa_topology::task::TaskDesign) -> ArgTable {
     let mut table = ArgTable::new();
@@ -89,12 +89,12 @@ pub fn collect_arg_table_wires(arg_table: &ArgTable) -> Vec<String> {
 /// names. When `child_rtl` is provided, stream suffixes are resolved
 /// against the child RTL via `get_port_of` (handles `_V` / `_r` / `_s` /
 /// bare infix), and istream input suffixes also emit an extra `_peek`
-/// variant when the RTL declares one — matching Python's
-/// `_connect_istream` path in `instantiation_builder.py`.
+/// variant when the RTL declares one — matching current
+/// `_connect_istream` path in `instantiation_builder`.
 ///
 /// When `child_rtl_ports` is provided, MMAP AXI channels are filtered to
 /// only include suffixes that actually exist on the child's RTL module,
-/// matching Python's `get_child_port_connection_mapping` behavior.
+/// matching `get_child_port_connection_mapping` behavior.
 #[allow(
     clippy::implicit_hasher,
     reason = "Option<&HashSet> is simpler than generic S"
@@ -106,7 +106,7 @@ pub fn build_port_connections(
     child_rtl_ports: Option<&std::collections::HashSet<String>>,
     child_rtl: Option<&tapa_rtl::VerilogModule>,
 ) -> Vec<ModuleConnection> {
-    // Resolve a child RTL stream port name via Python-equivalent
+    // Resolve a child RTL stream port name via equivalent
     // get_port_of (with the `_FIFO_INFIXES` + singleton array fallback).
     // Fallback: the raw `{port}{suffix}` concat when no RTL is available.
     let resolve = |name: &str, suffix: &str| -> String {
@@ -138,7 +138,7 @@ pub fn build_port_connections(
             vec![make_connection(port_name, expr)]
         }
         ArgCategory::Istream | ArgCategory::Istreams => {
-            // Python `_connect_istream` emits a base connection per
+            // `_connect_istream` emits a base connection per
             // ISTREAM suffix and an extra `_peek{suffix}` connection
             // for every input-direction suffix when the RTL has it.
             let mut conns = Vec::new();
@@ -248,9 +248,9 @@ pub fn build_task_instance(
 
 /// Build a FIFO instance with `DATA_WIDTH`, `ADDR_WIDTH`, `DEPTH` parameters.
 ///
-/// Mirrors Python's `tapa.graphir_conversion.pipeline.fifo_builder::get_fifo_inst`.
+/// Mirrors `tapa.graphir_conversion.pipeline.fifo_builder::get_fifo_inst`.
 /// `data_range` is the producer RTL's `_din` / `_dout` port range; the
-/// `DATA_WIDTH` expression is `(left) - (right) + 1`, which Python
+/// `DATA_WIDTH` expression is `(left) - (right) + 1`, which current
 /// collapses to a single literal via `eval_verilog_const_no_exception`
 /// when both endpoints are integer literals. `is_top` controls the
 /// reset wiring — `rst` for top FIFOs, `~ap_rst_n` for slot-local
@@ -325,9 +325,9 @@ pub fn build_fifo_instance(
 
 /// Build the `DATA_WIDTH` expression for a FIFO from its data range.
 ///
-/// Python emits `(left) - (right) + 1` tokens and folds to a literal when
-/// both endpoints are integer literals via pyverilog evaluation. If the
-/// range is missing we conservatively emit `32` (matches the legacy
+/// emits `(left) - (right) + 1` tokens and folds to a literal when
+/// both endpoints are integer literals after range evaluation. If the
+/// range is missing we conservatively emit `32` (matches the current
 /// topology-derived fallback).
 fn compute_data_width_expr(data_range: Option<&tapa_graphir::Range>) -> Expression {
     let Some(range) = data_range else {
@@ -340,7 +340,7 @@ fn compute_data_width_expr(data_range: Option<&tapa_graphir::Range>) -> Expressi
     ) {
         return Expression::new_lit(&(l - r + 1).to_string());
     }
-    // Fallback: emit the full 9-token stream Python uses. If pyverilog
+    // Fallback: emit the full 9-token stream. If range evaluation
     // couldn't fold it either, Rust should emit it verbatim.
     let mut toks: Vec<tapa_graphir::Token> = Vec::new();
     toks.push(tapa_graphir::Token::new_lit("("));
@@ -524,7 +524,7 @@ mod tests {
         let child_0 = &table["child_0"];
         assert_eq!(
             child_0["n"], "child_0___n__q0",
-            "scalar should be in arg table with Python's __q0 queue-tail suffix"
+            "scalar should be in arg table with __q0 queue-tail suffix"
         );
     }
 
@@ -600,7 +600,7 @@ mod tests {
         let child_0 = &table["child_0"];
         assert_eq!(
             child_0["mem"], "child_0___mem_offset__q0",
-            "mmap should be keyed on arg.arg and emit Python's _offset__q0 queue-tail wire"
+            "mmap should be keyed on arg.arg and emit _offset__q0 queue-tail wire"
         );
     }
 }

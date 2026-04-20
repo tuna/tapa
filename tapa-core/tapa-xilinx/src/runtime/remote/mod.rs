@@ -76,7 +76,7 @@ fn remote_work_dir(session: &SshSession) -> String {
 /// Rewrite every occurrence of a local absolute path in `text` to its
 /// session-scoped remote equivalent. Longest-match-first ensures a
 /// path that is a prefix of another (e.g. `/a/b` vs `/a/b/c`) is not
-/// double-replaced. Mirrors `tapa/remote/popen.py::_rewrite_paths_in_string`.
+/// double-replaced. Matches the behavior.
 fn rewrite_abs_paths(text: &str, local_paths: &[PathBuf], session_dir: &str) -> String {
     if local_paths.is_empty() {
         return text.to_string();
@@ -108,7 +108,7 @@ fn rewrite_abs_paths(text: &str, local_paths: &[PathBuf], session_dir: &str) -> 
 }
 
 /// Environment variable allowlist mirroring
-/// `tapa/remote/popen.py::_REMOTE_ENV_ALLOWLIST`. Anything else is
+/// the implementation. Anything else is
 /// dropped unless the key begins with `TAPA_`.
 const REMOTE_ENV_ALLOWLIST: &[&str] = &["HOME", "LANG", "LC_ALL", "LC_CTYPE"];
 
@@ -119,10 +119,10 @@ fn is_forwardable_env(key: &str) -> bool {
 impl RemoteToolRunner {
     #[allow(
         clippy::too_many_lines,
-        reason = "mirrors `tapa/remote/popen.py::RemoteToolProcess.communicate` \
-                  verbatim; splitting further would obscure the Python parity"
+        reason = "mirrors the implementation \
+                  verbatim; splitting further would obscure the compatibility"
     )]
-    /// Ports `tapa/remote/popen.py::RemoteToolProcess.communicate`:
+    /// Implements:
     /// opens a per-invocation session directory with a `rootfs/`
     /// subtree, mirrors the local `cwd` plus any extra uploads under
     /// that rootfs, rewrites absolute local paths in the command
@@ -136,7 +136,7 @@ impl RemoteToolRunner {
         let cfg = self.session.config();
         let session_dir = format!("{}/{}", cfg.work_dir, unique_session_id());
 
-        // Python-parity: accept relative `--work-dir ./work.out` and
+        // compatibility: accept relative `--work-dir ./work.out` and
         // relative upload/download paths by absolutizing against the
         // caller's cwd. Without this, the default `tapa synth` / `pack`
         // invocation drops the work tree + RTL + C++ sources from the
@@ -265,7 +265,7 @@ impl RemoteToolRunner {
 /// caller runs `recover` (typically `reset_mux` + `ensure_established`)
 /// and then retries `attempt` exactly once. Non-recoverable errors
 /// pass through unchanged, matching
-/// `tapa/remote/popen.py::RemoteToolProcess` semantics.
+/// the implementation semantics.
 fn run_with_mux_retry<A, R>(mut attempt: A, mut recover: R) -> Result<ToolOutput>
 where
     A: FnMut() -> Result<ToolOutput>,

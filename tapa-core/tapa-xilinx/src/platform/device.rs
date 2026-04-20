@@ -1,6 +1,6 @@
 //! `.xpfm` / `.hpfm` device config parsing.
 //!
-//! Ports `tapa/backend/device_config.py::get_device_info`: the `.xpfm`
+//! Implements: the `.xpfm`
 //! directory contains a ZIP (`.xsa`/`.dsa`) holding a `<name>.hpfm` XML
 //! document; we extract `part_num` and `clock_period` from the
 //! `xd:platformInfo` node, following the `xd:` namespace used by the
@@ -24,7 +24,7 @@ pub struct DeviceInfo {
 /// Parse the `.hpfm` XML document body (namespace-aware).
 ///
 /// Accepts any namespace prefix bound to
-/// `http://www.xilinx.com/xd` (Python keys off an `xd:` prefix but the
+/// `http://www.xilinx.com/xd` (keys off an `xd:` prefix but the
 /// underlying `ElementTree.find` call is namespace-URI driven).
 pub fn parse_hpfm_xml(xml: &[u8]) -> Result<DeviceInfo> {
     let mut reader = Reader::from_reader(xml);
@@ -154,7 +154,7 @@ pub fn parse_xpfm(bytes: &[u8]) -> Result<DeviceInfo> {
 }
 
 /// Resolve the `.xsa`/`.dsa` file under `<platform_path>/hw/`, then
-/// parse it. Matches `tapa/backend/device_config.py::get_device_info`.
+/// parse it. Matches the behavior.
 pub fn parse_device_info(
     platform_path: &Path,
     part_num_override: Option<&str>,

@@ -1,5 +1,5 @@
 //! Global flags shared by every subcommand. Mirrors the
-//! `entry_point` click group in `tapa/__main__.py`.
+//! `entry_point` CLI group in the implementation.
 
 use std::path::PathBuf;
 
@@ -26,7 +26,7 @@ pub struct Cli {
 }
 
 /// Global flags accepted before any subcommand. Field names map 1:1 to the
-/// click options on `tapa/__main__.py::entry_point`.
+/// CLI options on the implementation.
 #[derive(Debug, Clone, Parser)]
 #[command(
     name = "tapa",
@@ -90,7 +90,7 @@ pub struct GlobalArgs {
 }
 
 const SUBCOMMAND_HELP: &str = "\
-Subcommands (chainable, processed left-to-right like click's chained group):
+Subcommands (chainable, processed left-to-right like CLI chained group):
 
   analyze                       Analyze a TAPA program; persist graph.json + design.json.
   synth                         Synthesize the analyzed program into RTL.

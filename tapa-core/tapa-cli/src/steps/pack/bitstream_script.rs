@@ -1,10 +1,10 @@
 //! `--bitstream-script` emission: port of
-//! `tapa/steps/pack.py::get_vitis_script`.
+//! the implementation.
 //!
 //! Emits a `#!/bin/bash` helper that downstream users can run to
 //! drive `v++ --link` against the just-packaged `.xo`. The script is
-//! a literal transliteration of the Python template (retired in
-//! but is preserved here for parity with historical build recipes
+//! a literal transliteration of the template (unsupported in
+//! but is preserved here for compatibility with historical build recipes
 //! that call into it).
 
 use std::fs;
@@ -38,8 +38,8 @@ const VITIS_COMMAND_BASIC: &[&str] = &[
 const CONFIG_OPTION: &str = "  --config \"${CONFIG_FILE}\" \\";
 const CLOCK_OPTION: &str = "  --kernel_frequency ${TARGET_FREQUENCY} \\";
 
-/// Render the `#!/bin/bash` v++ script mirroring Python's
-/// `get_vitis_script`. `output_file` is absolutised exactly as Python
+/// Render the `#!/bin/bash` v++ script mirroring current
+/// `get_vitis_script`. `output_file` is absolutised exactly as current
 /// did via `os.path.abspath`.
 #[must_use]
 pub(super) fn render_vitis_script(
@@ -74,7 +74,7 @@ pub(super) fn render_vitis_script(
             #[allow(
                 clippy::cast_possible_truncation,
                 clippy::cast_sign_loss,
-                reason = "Python uses `round(1000 / float(clock_period))` → int; \
+                reason = "uses `round(1000 / float(clock_period))` → int; \
                           the i64 roundtrip mirrors that truncation"
             )]
             let target = (1000.0_f64 / period).round() as i64;
@@ -110,7 +110,7 @@ pub(super) fn render_vitis_script(
 }
 
 /// Write the script to `dest`, making it executable on Unix
-/// (`chmod 0o755`). Mirrors Python's `open(...).write(script)` plus
+/// (`chmod 0o755`). Mirrors `open(...).write(script)` plus
 /// the implicit `+x` that the shell-script-emission recipe expects.
 pub(super) fn write_vitis_script(
     dest: &Path,
@@ -144,7 +144,7 @@ fn set_executable(_dest: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Match Python's `os.path.abspath`: absolute paths stay, relative
+/// Match `os.path.abspath`: absolute paths stay, relative
 /// paths are resolved against `std::env::current_dir()` with no
 /// symlink resolution. We intentionally do not use
 /// `std::fs::canonicalize` because the target `.xo` may not yet

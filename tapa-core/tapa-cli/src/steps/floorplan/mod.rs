@@ -1,11 +1,10 @@
-//! `tapa floorplan` and `tapa run-autobridge` — clap parity with
-//! `tapa/steps/floorplan.py`.
+//! `tapa floorplan` and `tapa run-autobridge`.
 //!
 //! The native paths cover the local-only happy paths:
 //!   * `floorplan` without `--floorplan-path` is a stateful no-op that
 //!     toggles `settings["floorplan"] = true` and marks the step as
 //!     pipelined; the heavy `--floorplan-path` orchestration drives
-//!     the native `apply_floorplan` transform (no Python bridge).
+//!     the native `apply_floorplan` transform.
 //!   * `run-autobridge` shells out to `rapidstream-tapafp` via the
 //!     shared `tapa_xilinx::ToolRunner` abstraction, so the same
 //!     orchestration transparently dispatches locally or over SSH
@@ -59,7 +58,7 @@ pub struct RunAutobridgeArgs {
     pub floorplan_config: PathBuf,
 }
 
-pub fn to_python_argv_floorplan(args: &FloorplanArgs) -> Vec<String> {
+pub fn to_cli_argv_floorplan(args: &FloorplanArgs) -> Vec<String> {
     let mut out = Vec::<String>::new();
     if let Some(p) = &args.floorplan_path {
         out.push("--floorplan-path".to_string());
@@ -68,13 +67,11 @@ pub fn to_python_argv_floorplan(args: &FloorplanArgs) -> Vec<String> {
     out
 }
 
-/// Render the autobridge args back to Python click flags.
+/// Render the autobridge args back to normalized CLI flags.
 ///
 /// Used by composites (`generate-floorplan`,
-/// `compile-with-floorplan-dse`) when forwarding through the bridge —
-/// `run-autobridge` itself has no top-level Python CLI entry, so this
-/// helper exists for the parent composite's argv builder.
-pub fn to_python_argv_run_autobridge(args: &RunAutobridgeArgs) -> Vec<String> {
+/// `compile-with-floorplan-dse`) for the parent composite's argv builder.
+pub fn to_cli_argv_run_autobridge(args: &RunAutobridgeArgs) -> Vec<String> {
     vec![
         "--device-config".to_string(),
         args.device_config.display().to_string(),
@@ -87,7 +84,7 @@ pub fn to_python_argv_run_autobridge(args: &RunAutobridgeArgs) -> Vec<String> {
 ///
 /// `--floorplan-path` drives the native `apply_floorplan` transform;
 /// without it, the step is a stateful no-op that just toggles
-/// `settings["floorplan"] = true`. The Python bridge is gone.
+/// `settings["floorplan"] = true`.
 pub fn run_floorplan(args: &FloorplanArgs, ctx: &mut CliContext) -> Result<()> {
     if let Some(path) = args.floorplan_path.as_ref() {
         return run_floorplan_native_apply(path, ctx);
@@ -378,7 +375,6 @@ mod tests {
     #[test]
     fn floorplan_no_arg_writes_settings_flag() {
         let dir = tempfile::tempdir().expect("tempdir");
-        std::env::remove_var("TAPA_STEP_FLOORPLAN_PYTHON");
         let mut ctx = ctx_with_work_dir(dir.path());
         let args = FloorplanArgs {
             floorplan_path: None,
@@ -391,14 +387,13 @@ mod tests {
     }
 
     #[test]
-    fn floorplan_with_path_errors_without_bridge() {
+    fn floorplan_with_path_errors_without_graph() {
         let dir = tempfile::tempdir().expect("tempdir");
-        std::env::remove_var("TAPA_STEP_FLOORPLAN_PYTHON");
         let mut ctx = ctx_with_work_dir(dir.path());
         let args = FloorplanArgs {
             floorplan_path: Some(dir.path().join("fp.json")),
         };
-        let err = run_floorplan(&args, &mut ctx).expect_err("must reject without bridge");
+        let err = run_floorplan(&args, &mut ctx).expect_err("must reject without graph");
         // With native --floorplan-path enabled, the failure is now a
         // typed graph-load error (no graph.json on disk, no cached
         // graph in flow state) rather than an `InvalidArg` opt-in stub.

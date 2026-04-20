@@ -32,8 +32,8 @@ pub struct VerilogModule {
 }
 
 /// Vitis-generated RTL infixes tried when looking up a FIFO port by its
-/// logical argument name. Mirrors Python's `_FIFO_INFIXES` in
-/// `tapa/verilog/xilinx/module_ops/ports.py`.
+/// logical argument name. Mirrors `_FIFO_INFIXES` in
+/// the implementation.
 pub const FIFO_INFIXES: &[&str] = &["_V", "_r", "_s", ""];
 
 static ARRAY_NAME_WITH_SUFFIX_RE: LazyLock<regex::Regex> =
@@ -64,7 +64,7 @@ impl VerilogModule {
     /// Resolve a FIFO / stream port by its logical base name and a suffix
     /// like `_din`, `_dout`, `_full_n`, `_empty_n`, `_read`, `_write`.
     ///
-    /// Mirrors Python's `tapa.verilog.xilinx.module_ops.ports.get_port_of`:
+    /// Mirrors `tapa.verilog.xilinx.module_ops.ports.get_port_of`:
     ///
     /// 1. Sanitize array-style names (`a[3]` → `a_3`).
     /// 2. Try each `FIFO_INFIXES` entry in order (`_V`, `_r`, `_s`, `""`)
@@ -96,8 +96,8 @@ impl VerilogModule {
     ///
     /// Returns a list of `(module_name, instance_name)` pairs for every
     /// `module_name #(...) instance_name (...);` occurrence in the
-    /// module body. Used by cross-language grouped-Verilog parity tests
-    /// so Python and Rust exports can be compared on the shape of their
+    /// module body. Used by cross-language grouped-Verilog compatibility tests
+    /// so and Rust exports can be compared on the shape of their
     /// instance lists without a full syntactic roundtrip.
     ///
     /// Implementation: a minimal token scan that recognizes an
@@ -111,8 +111,8 @@ impl VerilogModule {
     }
 }
 
-/// Match `name[idx]` and return `(name, idx)`. Mirrors Python's
-/// `match_array_name` in `tapa/verilog/util.py`.
+/// Match `name[idx]` and return `(name, idx)`. Mirrors current
+/// `match_array_name` in the implementation.
 #[must_use]
 pub fn match_array_name(name: &str) -> Option<(&str, u32)> {
     let lb = name.find('[')?;
@@ -132,8 +132,8 @@ pub fn match_array_name(name: &str) -> Option<(&str, u32)> {
     Some((base, idx))
 }
 
-/// Collapse `name[idx]` into `name_{idx}`. Mirrors Python's
-/// `sanitize_array_name` in `tapa/verilog/util.py`.
+/// Collapse `name[idx]` into `name_{idx}`. Mirrors current
+/// `sanitize_array_name` in the implementation.
 #[must_use]
 pub fn sanitize_array_name(name: &str) -> String {
     ARRAY_NAME_WITH_SUFFIX_RE.captures(name).map_or_else(
@@ -151,7 +151,7 @@ pub fn sanitize_array_name(name: &str) -> String {
 
 /// Convert frontend names into plain Verilog identifiers.
 ///
-/// Keeps Python-compatible array-name handling (`foo[3]` -> `foo_3`) before
+/// Keeps compatible array-name handling (`foo[3]` -> `foo_3`) before
 /// replacing characters that cannot appear in unescaped Verilog identifiers.
 #[must_use]
 pub fn sanitize_identifier_name(name: &str) -> String {

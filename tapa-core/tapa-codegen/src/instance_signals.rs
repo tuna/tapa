@@ -1,6 +1,6 @@
 //! Instance handshake signal generation.
 //!
-//! Ports `tapa/codegen/instance_signals.py`: generates state, start,
+//! Implements: generates state, start,
 //! done, idle, ready signals for task instances.
 
 use tapa_rtl::builder::{Expr, PortArg};

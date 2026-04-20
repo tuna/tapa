@@ -1,6 +1,6 @@
 //! Interface role inference from port directions.
 //!
-//! Mirrors Python `tapa/graphir_conversion/pipeline/iface_roles.py`: roles are
+//! Mirrors the implementation: roles are
 //! derived from the direction of the interface's data ports. Handshake and
 //! `ap_ctrl` interfaces also validate direction consistency and raise an error
 //! if the valid/ready or `ap_start` / `ap_ready` / `ap_done` / `ap_idle` ports disagree.
@@ -18,7 +18,7 @@ pub const ROLE_SINK: &str = "sink";
 
 /// Apply a role to every interface of every module that has ports.
 ///
-/// Mirrors Python's `_apply_iface_roles`: for each module with interfaces,
+/// Mirrors `_apply_iface_roles`: for each module with interfaces,
 /// walk the interfaces and replace `role` with "source"/"sink" based on
 /// port directions. Non-data interfaces (`NonPipeline`, `Unknown`, …) keep
 /// their default role.
@@ -219,7 +219,7 @@ fn infer_data_role(
 ) -> Result<&'static str, LoweringError> {
     let data = data_port_directions(iface, ports, module_name)?;
     if data.is_empty() {
-        // Mirrors Python behavior: if no data ports, default to sink.
+        // Mirrors behavior: if no data ports, default to sink.
         return Ok(ROLE_SINK);
     }
     if data.iter().all(|p| p.is_input()) {

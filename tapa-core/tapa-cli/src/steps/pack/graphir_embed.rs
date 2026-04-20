@@ -4,7 +4,7 @@
 //! `<work_dir>/rtl` so the `.xo` ships with graphir-derived modules
 //! alongside the TAPA-generated ones.
 //!
-//! Ports `tapa/program/pack.py::ProgramPackMixin.pack_xo`'s
+//! Implements's
 //! `graphir_path` branch (line ~46), minus the graphir-json archive
 //! copy — downstream tools consume the emitted `.v` files, not the
 //! JSON itself.

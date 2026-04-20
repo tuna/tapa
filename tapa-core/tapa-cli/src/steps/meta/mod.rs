@@ -1,10 +1,10 @@
-//! Composite click commands.
+//! Composite CLI commands.
 //!
 //! `tapa compile`, `tapa generate-floorplan`, and
-//! `tapa compile-with-floorplan-dse` mirror the click commands of the
-//! same names in `tapa/steps/meta.py`. Each composite materializes the
-//! union of its constituent click commands' flag surfaces — exactly
-//! what `_extend_params` does in Python — by flattening the underlying
+//! `tapa compile-with-floorplan-dse` mirror the CLI commands of the
+//! same names in the implementation. Each composite materializes the
+//! union of its constituent CLI commands' flag surfaces — exactly
+//! what `_extend_params` does in — by flattening the underlying
 //! `Args` structs (or, where flag conflicts would arise, by
 //! hand-rolling the merged flag set).
 
@@ -41,8 +41,7 @@ pub struct CompileArgs {
 }
 
 pub fn run_compile_composite(args: &CompileArgs, ctx: &mut CliContext) -> Result<()> {
-    // Python bridge is gone (`tapa/__main__.py` deleted); the
-    // composite is always native.
+    // The composite is always native.
     analyze::run(&args.analyze, ctx)?;
     synth::run(&args.synth, ctx)?;
     pack::run(&args.pack, ctx)
@@ -58,7 +57,7 @@ pub fn run_compile_composite(args: &CompileArgs, ctx: &mut CliContext) -> Result
 
 #[allow(
     clippy::struct_excessive_bools,
-    reason = "merged click flag surface — collapsing into an enum would break parity"
+    reason = "merged CLI flag surface — collapsing into an enum would break compatibility"
 )]
 #[derive(Debug, Clone, Parser)]
 #[command(
@@ -174,7 +173,7 @@ pub fn run_generate_floorplan_composite(
     args: &GenerateFloorplanArgs,
     ctx: &mut CliContext,
 ) -> Result<()> {
-    // Python bridge is gone; always native.
+    // Always native.
     analyze::run(&args.analyze_args(), ctx)?;
     synth::run(&args.synth_args(), ctx)?;
     floorplan::run_run_autobridge(&args.run_autobridge_args(), ctx)

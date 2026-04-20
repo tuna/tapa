@@ -45,7 +45,7 @@ done
 # quotes from the value. `REMOTE_*`, `XILINX_*`, and `TAPA_*` names
 # are imported; other entries are ignored. The `TAPA_*` namespace
 # carries opt-in shared-vadd flags such as `TAPA_SHARED_VADD_HLS`;
-# the retired `TAPA_USE_RUST_*` flag-parity flow no longer exists.
+# the unsupported `TAPA_USE_RUST_*` flag-compatibility flow no longer exists.
 # Docstrings/comments/blank lines skipped.
 if [[ -n "$vars_local" ]]; then
   echo "tapa_xilinx_integration_test: loading env from $vars_local" >&2
@@ -132,7 +132,7 @@ if [[ -n "$vars_local" ]]; then
 fi
 if [[ "${TAPA_SHARED_VADD_HLS:-}" == "1" ]]; then
   export TAPA_SHARED_VADD_HLS=1
-  echo "tapa_xilinx_integration_test: TAPA_SHARED_VADD_HLS=1 set — running shared-vadd parity" >&2
+  echo "tapa_xilinx_integration_test: TAPA_SHARED_VADD_HLS=1 set — running shared-vadd compatibility" >&2
 else
   echo "tapa_xilinx_integration_test: TAPA_SHARED_VADD_HLS unset; shared-vadd fixture test will skip" >&2
 fi

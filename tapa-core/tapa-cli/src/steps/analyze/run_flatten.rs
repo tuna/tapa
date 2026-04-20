@@ -17,7 +17,7 @@ use crate::error::{CliError, Result};
 /// Run `tapa-cpp` once per input file and write the preprocessed source
 /// to `<work_dir>/flatten/flatten-<digest>-<basename>`. When a
 /// `clang-format` binary is on `PATH` (probed in the same order as
-/// Python's `tapa.util.clang_format` — `clang-format-20` …
+/// `tapa.util.clang_format` — `clang-format-20` …
 /// `clang-format-5`, then `clang-format`), the captured stdout is
 /// pretty-printed before it lands on disk. The running byte counter
 /// is gated on `quota_in_bytes`, mirroring
@@ -96,7 +96,7 @@ pub(super) fn run_flatten(
 /// Probe `PATH` for the `clang-format` binary the same way
 /// `tapa.util.clang_format` does: try `clang-format-{20..5}` from
 /// newest to oldest, fall back to bare `clang-format`. Returns
-/// `None` when nothing is installed (Python returns the input
+/// `None` when nothing is installed (returns the input
 /// unchanged in that case; this matches).
 fn find_clang_format() -> Option<PathBuf> {
     use std::sync::OnceLock;
@@ -126,7 +126,7 @@ fn which_in_path(name: &str) -> Option<PathBuf> {
 
 /// Pipe `code` through `clang-format`, returning the formatted bytes.
 /// Errors propagate as `CliError::Io` so an unexpected formatter
-/// failure surfaces (Python's helper would also raise).
+/// failure surfaces (helper would also raise).
 fn run_clang_format(clang_format: &Path, code: &[u8]) -> Result<Vec<u8>> {
     let mut child = Command::new(clang_format)
         .stdin(Stdio::piped())
@@ -149,7 +149,7 @@ fn run_clang_format(clang_format: &Path, code: &[u8]) -> Result<Vec<u8>> {
 }
 
 /// Truncate a SHA-256 digest to the first 8 hex characters, matching
-/// Python's `hashlib.sha256(...).hexdigest()[:8]`.
+/// `hashlib.sha256(...).hexdigest()[:8]`.
 pub(super) fn sha256_truncated_hex(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
@@ -166,8 +166,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn sha256_truncated_matches_python_eight_hex_chars() {
-        // Python: hashlib.sha256(b"foo").hexdigest()[:8] == "2c26b46b"
+    fn sha256_truncated_matches_current_eight_hex_chars() {
+        // current: hashlib.sha256(b"foo").hexdigest()[:8] == "2c26b46b"
         assert_eq!(sha256_truncated_hex(b"foo"), "2c26b46b");
     }
 }

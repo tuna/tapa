@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 
 /// Argument / port category.
 ///
-/// Covers all 10 wire strings from Python's `Instance.Arg._CAT_LOOKUP`.
-/// `"hmap"` is an alias that deserializes to `Mmap` (matching Python behavior).
+/// Covers all 10 wire strings from `Instance.Arg._CAT_LOOKUP`.
+/// `"hmap"` is an alias that deserializes to `Mmap` (matching behavior).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ArgCategory {
     Istream,

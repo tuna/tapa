@@ -1,7 +1,7 @@
 //! Extract per-task HLS C++ source files from `design.json` into
 //! `<work_dir>/cpp/<task>.cpp`.
 //!
-//! Mirrors `tapa/program/hls.py::ProgramHlsMixin._extract_cpp("hls")`.
+//! Matches the behavior.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -11,9 +11,9 @@ use tapa_task_graph::Design;
 use crate::error::{CliError, Result};
 
 /// Argument names that Vitis HLS treats as reserved keywords. Same set
-/// as Python's `tapa.safety_check::DISABLED_MMAP_NAME_LIST`. Using one
+/// as `tapa.safety_check::DISABLED_MMAP_NAME_LIST`. Using one
 /// of these as a port name produces inconsistent AXI/interface naming
-/// downstream, so reject up front (Python ran the same check before
+/// downstream, so reject up front (ran the same check before
 /// extracting C++).
 const DISABLED_MMAP_NAMES: &[&str] = &[
     "begin", "end", "in", "input", "out", "output", "reg", "wire",

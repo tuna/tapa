@@ -1,8 +1,7 @@
-//! `design.json` topology bridge — typed mirror of the dict produced by
-//! `tapa/steps/common.py::store_design`.
+//! `design.json` topology model.
 //!
-//! Field declaration order matches Python's literal dict construction so
-//! [`Design::to_writer`] re-emits keys in the same order Python writes them.
+//! Field declaration order is stable so [`Design::to_writer`] re-emits keys
+//! deterministically.
 
 use std::io::{self, Read, Write};
 
@@ -13,7 +12,7 @@ use serde_json::Value;
 use crate::error::ParseError;
 use crate::port::Port;
 
-/// Per-task topology dict. Mirrors `tapa/task.py::Task.to_topology_dict`.
+/// Per-task topology dict. Matches the behavior.
 #[allow(
     clippy::derive_partial_eq_without_eq,
     reason = "fields hold serde_json::Value, which is not Eq (Number may be f64)"
@@ -33,7 +32,7 @@ pub struct TaskTopology {
     /// FIFO definitions; `{}` for leaf tasks.
     #[serde(default)]
     pub fifos: IndexMap<String, Value>,
-    /// `target_type` from the Python `Task` constructor; may be absent.
+    /// `target_type` from the `Task` constructor; may be absent.
     pub target: Option<String>,
     pub is_slot: bool,
     /// Per-task self area dict (resource → number).
@@ -42,11 +41,11 @@ pub struct TaskTopology {
     /// Per-task total area dict (self + descendants).
     #[serde(default)]
     pub total_area: IndexMap<String, Value>,
-    /// Stringified clock period (Python writes `str(decimal.Decimal(...))`).
+    /// Stringified clock period (writes `str(decimal.Decimal(...))`).
     pub clock_period: String,
 }
 
-/// Root `design.json` payload. Mirrors `tapa/steps/common.py::store_design`.
+/// Root `design.json` payload.
 #[allow(
     clippy::derive_partial_eq_without_eq,
     reason = "transitively holds serde_json::Value through TaskTopology"
@@ -58,10 +57,10 @@ pub struct Design {
     pub top: String,
     /// Target flow string, e.g. `"xilinx-vitis"`.
     pub target: String,
-    /// Tasks keyed by name. Insertion order matches Python's topological
-    /// sort so a Rust → Rust round-trip preserves byte-equality.
+    /// Tasks keyed by name. Insertion order follows the topological sort so a
+    /// Rust -> Rust round-trip preserves byte-equality.
     pub tasks: IndexMap<String, TaskTopology>,
-    /// Floorplan slot → region mapping. Python writes `null` when unset.
+    /// Floorplan slot -> region mapping.
     pub slot_task_name_to_fp_region: Option<IndexMap<String, String>>,
 }
 
@@ -82,10 +81,9 @@ impl Design {
         Self::from_json(&buf)
     }
 
-    /// Serialize using the Python-compatible compact formatter.
+    /// Serialize using the spaced compact formatter.
     ///
-    /// Matches `json.dump(..., default=...)` byte-for-byte: separators
-    /// `", "` and `": "`, no indentation, no trailing newline.
+    /// Uses separators `", "` and `": "`, no indentation, no trailing newline.
     pub fn to_json(&self) -> Result<String, ParseError> {
         let mut buf = Vec::new();
         self.to_writer(&mut buf)?;
@@ -97,7 +95,7 @@ impl Design {
 
     /// Serialize to any writer.
     pub fn to_writer<W: Write>(&self, writer: &mut W) -> Result<(), ParseError> {
-        let mut serializer = serde_json::Serializer::with_formatter(writer, PythonFormatter);
+        let mut serializer = serde_json::Serializer::with_formatter(writer, JsonFormatter);
         self.serialize(&mut serializer)?;
         Ok(())
     }
@@ -112,12 +110,12 @@ impl From<io::Error> for ParseError {
     }
 }
 
-/// JSON formatter matching `json.dump(...)` defaults from `CPython` 3.7+:
-/// `, ` between items, `: ` between key and value, no indentation.
+/// JSON formatter using `, ` between items, `: ` between key and value,
+/// no indentation, and no trailing newline.
 #[derive(Debug, Default)]
-struct PythonFormatter;
+struct JsonFormatter;
 
-impl serde_json::ser::Formatter for PythonFormatter {
+impl serde_json::ser::Formatter for JsonFormatter {
     fn begin_array_value<W: io::Write + ?Sized>(
         &mut self,
         writer: &mut W,
@@ -151,10 +149,10 @@ impl serde_json::ser::Formatter for PythonFormatter {
 mod tests {
     use super::*;
 
-    /// A minimal Python-shaped `design.json` payload for round-trip tests.
-    /// Constructed verbatim like `json.dump({...}, fp)` would emit.
+    /// A minimal `design.json` payload for round-trip tests.
+    /// Constructed verbatim with the spaced compact formatter.
     fn sample_design_json() -> String {
-        // Note: separators ", " and ": " mirror CPython json defaults.
+        // Note: separators ", " and ": " mirror serde_json json defaults.
         r#"{"top": "VecAdd", "target": "xilinx-vitis", "tasks": {"Add": {"name": "Add", "level": "lower", "code": "void Add() {}", "ports": [{"cat": "istream", "name": "a", "type": "float", "width": 32}], "tasks": {}, "fifos": {}, "target": "hls", "is_slot": false, "self_area": {}, "total_area": {}, "clock_period": "0"}, "VecAdd": {"name": "VecAdd", "level": "upper", "code": "void VecAdd() {}", "ports": [], "tasks": {"Add": [{"args": {"a": {"arg": "a_q", "cat": "istream"}}, "step": 0}]}, "fifos": {"a_q": {"depth": 2, "produced_by": ["A", 0], "consumed_by": ["Add", 0]}}, "target": "hls", "is_slot": false, "self_area": {}, "total_area": {}, "clock_period": "3.33"}}, "slot_task_name_to_fp_region": null}"#
             .to_string()
     }
@@ -164,10 +162,7 @@ mod tests {
         let json = sample_design_json();
         let design = Design::from_json(&json).expect("parse design.json");
         let emitted = design.to_json().expect("serialize design.json");
-        assert_eq!(
-            emitted, json,
-            "Rust round-trip must preserve Python's byte sequence",
-        );
+        assert_eq!(emitted, json, "round-trip must preserve byte sequence");
     }
 
     #[test]

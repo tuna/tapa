@@ -185,7 +185,7 @@ fn live_pack_xo_roundtrips_vadd_rtl() {
         "redact_xo changed the archive on a second pass"
     );
 
-    // Canonical inner kernel.xml equality + Rust-emitter parity.
+    // Canonical inner kernel.xml equality + Rust-emitter compatibility.
     let archive_bytes = std::fs::read(&rust_xo).expect("read produced .xo");
     let mut archive = zip::ZipArchive::new(std::io::Cursor::new(archive_bytes)).expect("open .xo");
     // Vivado `package_xo` stores `kernel.xml` under a directory

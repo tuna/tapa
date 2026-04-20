@@ -1,6 +1,6 @@
 //! Lowering input validation and bundling.
 //!
-//! Mirrors Python's `get_project_from_floorplanned_program(device_config,
+//! Mirrors `get_project_from_floorplanned_program(device_config,
 //! floorplan_path, ...)` boundary: the lowering pass consumes paths, reads
 //! `device_config.json`, `floorplan.json`, the `{top}_control_s_axi.v` file,
 //! and the leaf RTL sources itself rather than having the caller pre-extract
@@ -112,7 +112,7 @@ impl<'a> LoweringInputs<'a> {
     }
 
     /// Read and parse `device_config.json` + `floorplan.json` into island →
-    /// pblock range mapping. Mirrors Python's `get_island_to_pblock_range`.
+    /// pblock range mapping. Mirrors `get_island_to_pblock_range`.
     ///
     /// # Errors
     ///

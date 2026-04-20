@@ -95,7 +95,7 @@ impl VendorRemoteFs for SshVendorFs<'_> {
 
 /// Parse the `KEY=VAL` lines produced by the remote
 /// `echo XILINX_HLS=$XILINX_HLS && echo XILINX_VITIS=$XILINX_VITIS`
-/// probe. Empty values are dropped (matches the Python loader).
+/// probe. Empty values are dropped (matches the loader).
 pub(crate) fn parse_remote_xilinx_paths(stdout: &str) -> std::collections::HashMap<String, String> {
     let mut out = std::collections::HashMap::new();
     for line in stdout.lines() {
@@ -112,7 +112,7 @@ pub(crate) fn parse_remote_xilinx_paths(stdout: &str) -> std::collections::HashM
 /// Compute the deterministic cache directory under
 /// `$XDG_CACHE_HOME/tapa/vendor-headers/<key>` where `<key>` is the
 /// first 16 hex chars of `sha256(host:port:xilinx_settings)` (matches
-/// `tapa/remote/vendor.py::_cache_key`).
+/// the implementation).
 pub(crate) fn vendor_cache_dir(host: &str, port: u16, xilinx_settings: &str) -> Result<PathBuf> {
     use sha2::{Digest, Sha256};
     let base = std::env::var_os("XDG_CACHE_HOME")
@@ -135,7 +135,7 @@ pub(crate) fn vendor_cache_dir(host: &str, port: u16, xilinx_settings: &str) -> 
 
 /// Apply the macOS libc++ compatibility patch to
 /// `<cache_dir>/include/etc/ap_*_special.h`. Replaces the forward-
-/// declaration block (see `tapa/remote/vendor.py::_patch_vendor_headers_for_macos`)
+/// declaration block (see the implementation)
 /// with `#include <complex>`. Idempotent: writes a marker
 /// `.patched_macos_complex` to skip on subsequent calls. On non-macOS
 /// hosts this is a no-op.
@@ -154,7 +154,7 @@ pub(crate) fn apply_macos_vendor_patch(cache_dir: &Path) -> Result<()> {
     #[allow(
         clippy::trivial_regex,
         reason = "literal multi-line match ported verbatim from the \
-                  Python counterpart for source-of-truth parity"
+                  counterpart for source-of-truth compatibility"
     )]
     let pattern = regex::Regex::new(concat!(
         r"// FIXME AP_AUTOCC cannot handle many standard headers, so declare instead of\n",
@@ -198,7 +198,7 @@ pub(crate) fn apply_macos_vendor_patch(cache_dir: &Path) -> Result<()> {
 
 /// One-shot vendor header sync from the configured remote.
 ///
-/// Ports `tapa/remote/vendor.py::sync_remote_vendor_includes`.
+/// Implements.
 ///
 /// 1. Source the remote `xilinx_settings` script and read back
 ///    `XILINX_HLS` / `XILINX_VITIS`.

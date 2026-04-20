@@ -1,10 +1,8 @@
-//! `tapa analyze` — native Rust port of `tapa/steps/analyze.py`.
+//! `tapa analyze` — native Rust port of the implementation.
 //!
 //! Composes `tapa-cpp` (preprocessor) and `tapacc` (semantic analyzer)
 //! invocations, then writes `graph.json`, `design.json`, and
-//! `settings.json` directly under `work_dir` using the Python-compatible
-//! formatters. The Python CLI was retired; this is the only
-//! `analyze` path.
+//! `settings.json` directly under `work_dir`.
 
 use std::fs;
 use std::path::PathBuf;
@@ -78,9 +76,8 @@ pub struct AnalyzeArgs {
     /// can actually drive end-to-end so typos / unported targets fail
     /// at parse time instead of producing unusable `settings.json` /
     /// `design.json` that only blow up later in `synth` or `pack`.
-    /// Mirrors the click `Target` choice list from the retired Python
-    /// CLI; AIE is intentionally omitted because `program.run_aie`
-    /// has not been ported.
+    /// Target choices supported by the native pipeline. AIE is intentionally
+    /// omitted because that flow is not implemented.
     #[arg(long = "target", value_enum, default_value_t = AnalyzeTarget::XilinxVitis)]
     pub target: AnalyzeTarget,
 
@@ -93,14 +90,14 @@ pub struct AnalyzeArgs {
     pub tapacc: Option<PathBuf>,
 
     /// Explicit path to the `tapa-cpp` (clang) binary. Same rationale
-    /// as `--tapacc`. Accepts the `--tapa-clang` alias for parity with
-    /// the Python-era bazel driver, which used that older spelling.
+    /// as `--tapacc`. Accepts the `--tapa-clang` alias used by older
+    /// Bazel driver rules.
     #[arg(long = "tapa-cpp", visible_alias = "tapa-clang", value_name = "FILE")]
     pub tapa_cpp: Option<PathBuf>,
 }
 
-/// Re-render `args` as the click-flavored argv the Python step expects.
-pub fn to_python_argv(args: &AnalyzeArgs) -> Vec<String> {
+/// Re-render `args` as normalized CLI flags.
+pub fn to_cli_argv(args: &AnalyzeArgs) -> Vec<String> {
     let mut out = Vec::<String>::new();
     for f in &args.input_files {
         out.push("--input".to_string());
@@ -115,9 +112,8 @@ pub fn to_python_argv(args: &AnalyzeArgs) -> Vec<String> {
     if args.flatten_hierarchy {
         out.push("--flatten-hierarchy".to_string());
     } else {
-        // Default Python behavior is `--keep-hierarchy`; emit it explicitly
-        // so the bridged invocation sees the same boolean shape regardless
-        // of whether the user passed `--keep-hierarchy` on the Rust side.
+        // Emit the default explicitly so composite argv builders preserve the
+        // same boolean shape regardless of user spelling.
         out.push("--keep-hierarchy".to_string());
     }
     out.push("--target".to_string());
@@ -125,13 +121,12 @@ pub fn to_python_argv(args: &AnalyzeArgs) -> Vec<String> {
     out
 }
 
-/// Top-level dispatcher for `tapa analyze` (always native; Python CLI
-/// was retired).
+/// Top-level dispatcher for `tapa analyze`.
 pub fn run(args: &AnalyzeArgs, ctx: &mut CliContext) -> Result<()> {
     run_native(args, ctx)
 }
 
-/// Native implementation. Mirrors `tapa.steps.analyze.analyze` minus the
+/// Native implementation. Matches the behavior minus the
 /// `--flatten-hierarchy` transform and the heavy `Program` orchestration.
 fn run_native(args: &AnalyzeArgs, ctx: &CliContext) -> Result<()> {
     // `--tapacc`/`--tapa-cpp` override the walk-up `find_resource`
@@ -149,7 +144,7 @@ fn run_native(args: &AnalyzeArgs, ctx: &CliContext) -> Result<()> {
         find_clang_binary("tapacc-binary")?
     };
 
-    // Vitis HLS only supports up to C++14; this matches the Python order.
+    // Vitis HLS only supports up to C++14; keep it after user flags.
     let mut user_cflags = args.cflags.clone();
     user_cflags.push("-std=c++14".to_string());
 
@@ -169,7 +164,7 @@ fn run_native(args: &AnalyzeArgs, ctx: &CliContext) -> Result<()> {
     let target_str = args.target.as_str();
     let mut graph_dict = run_tapacc(&tapacc, &flatten_files, &args.top, &all_cflags, target_str)?;
 
-    // Mirror Python: overwrite cflags with the user's tuple (with c++14).
+    // Persist the user tuple plus the required C++ standard flag.
     if let Some(obj) = graph_dict.as_object_mut() {
         obj.insert(
             "cflags".to_string(),
@@ -225,7 +220,7 @@ mod tests {
     use crate::globals::GlobalArgs;
 
     #[test]
-    fn argv_round_trips_python_shape() {
+    fn argv_round_trips_cli_shape() {
         let args = AnalyzeArgs::try_parse_from([
             "analyze",
             "--input",
@@ -236,7 +231,7 @@ mod tests {
             "xilinx-hls",
         ])
         .unwrap();
-        let argv = to_python_argv(&args);
+        let argv = to_cli_argv(&args);
         assert!(argv.contains(&"--input".to_string()));
         assert!(argv.contains(&"vadd.cpp".to_string()));
         assert!(argv.contains(&"--top".to_string()));
@@ -246,14 +241,14 @@ mod tests {
     }
 
     #[test]
-    fn to_python_argv_includes_keep_hierarchy_when_default() {
+    fn to_cli_argv_includes_keep_hierarchy_when_default() {
         let args =
             AnalyzeArgs::try_parse_from(["analyze", "--input", "vadd.cpp", "--top", "VecAdd"])
                 .unwrap();
-        let argv = to_python_argv(&args);
+        let argv = to_cli_argv(&args);
         assert!(
             argv.contains(&"--keep-hierarchy".to_string()),
-            "default analyze must propagate `--keep-hierarchy` to the bridge",
+            "default analyze must include `--keep-hierarchy`",
         );
         assert!(
             !argv.contains(&"--flatten-hierarchy".to_string()),
@@ -262,7 +257,7 @@ mod tests {
     }
 
     #[test]
-    fn to_python_argv_includes_flatten_hierarchy_when_set() {
+    fn to_cli_argv_includes_flatten_hierarchy_when_set() {
         let args = AnalyzeArgs::try_parse_from([
             "analyze",
             "--input",
@@ -272,7 +267,7 @@ mod tests {
             "--flatten-hierarchy",
         ])
         .unwrap();
-        let argv = to_python_argv(&args);
+        let argv = to_cli_argv(&args);
         assert!(
             argv.contains(&"--flatten-hierarchy".to_string()),
             "`--flatten-hierarchy` must be forwarded to the bridge",
@@ -342,9 +337,6 @@ mod tests {
 
         // Steer `find_resource` at `root` so the planted binaries win.
         std::env::set_var("TAPA_CLI_SEARCH_ANCHOR", root);
-        // Make sure no parent invocation accidentally enabled the bridge.
-        std::env::remove_var("TAPA_STEP_ANALYZE_PYTHON");
-
         let work_dir = root.join("work");
         let globals = GlobalArgs::try_parse_from([
             "tapa",

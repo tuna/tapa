@@ -1,9 +1,7 @@
 //! Vitis HLS orchestration.
 //!
-//! Ports `tapa/backend/xilinx_hls.py::RunHls`, `tapa/program/hls.py`,
-//! and `tapa/program/hls_runner.py`: TCL emission, invocation via a
-//! `ToolRunner`, report parsing, and a bounded retry wrapper keyed on
-//! transient-failure substrings lifted verbatim from the Python set.
+//! Implements TCL emission, invocation via a `ToolRunner`, report parsing,
+//! and a bounded retry wrapper keyed on transient-failure substrings.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -17,8 +15,8 @@ pub mod report;
 /// Substrings the default transient predicate keys off.
 ///
 /// Kept for fixture-driven tests and custom predicates. The real
-/// production predicate (`is_transient_hls_output`) matches Python's
-/// logic in `tapa/program/hls.py`: stdout contains `Pre-synthesis
+/// production predicate (`is_transient_hls_output`) matches current
+/// logic in the implementation: stdout contains `Pre-synthesis
 /// failed.` without a subsequent `\nERROR:` line.
 pub const DEFAULT_TRANSIENT_HLS_PATTERNS: &[&str] = &[
     "Pre-synthesis failed.",
@@ -30,7 +28,7 @@ pub const DEFAULT_TRANSIENT_HLS_PATTERNS: &[&str] = &[
 ];
 
 /// Production retry predicate ported verbatim from
-/// `tapa/program/hls.py::_run_hls_task`: a Vitis HLS invocation is
+/// the implementation: a Vitis HLS invocation is
 /// considered transient iff its stdout contains `Pre-synthesis
 /// failed.` and does **not** contain `\nERROR:`.
 #[must_use]
@@ -57,12 +55,12 @@ pub struct HlsJob {
     pub other_configs: String,
     /// Solution name; defaults to the task name when empty.
     pub solution_name: String,
-    /// Reset level for `config_rtl` (ports Python's `reset_low` toggle
-    /// in `_build_rtl_config`); defaults to `low` to match the Python
+    /// Reset level for `config_rtl` (ports `reset_low` toggle
+    /// in `_build_rtl_config`); defaults to `low` to match the current
     /// `RunHls` default.
     pub reset_low: bool,
     /// Enable `-module_auto_prefix` on the `config_rtl` line. Defaults
-    /// to `true`, matching `HlsConfig(auto_prefix=True)` in Python.
+    /// to `true`, matching `HlsConfig(auto_prefix=True)` in current.
     pub auto_prefix: bool,
     /// Optional override. When `None`, the production
     /// `is_transient_hls_output` predicate is used.
@@ -103,18 +101,18 @@ pub struct HlsOutput {
 /// Build the Vitis HLS TCL script for the given job.
 ///
 /// Ports the `HLS_COMMANDS` template in
-/// `tapa/backend/xilinx_hls.py`: `open_project` → `set_top` →
+/// the implementation: `open_project` → `set_top` →
 /// `add_files` → `open_solution` → `set_part` → `create_clock` →
 /// `config_compile` → `config_interface` → `{config}` →
 /// `{other_configs}` → `config_rtl` → `csynth_design` → `exit`.
-/// Port of `tapa/backend/xilinx_hls.py::_build_rtl_config`.
+/// Implementation of.
 fn build_rtl_config(reset_low: bool, auto_prefix: bool) -> String {
     let mut line = format!(
         "config_rtl -reset_level {}",
         if reset_low { "low" } else { "high" }
     );
     if auto_prefix {
-        // Python matches on `hls == "vitis_hls"` → `-module_auto_prefix`.
+        // matches on `hls == "vitis_hls"` → `-module_auto_prefix`.
         line.push_str(" -module_auto_prefix");
     }
     line
@@ -124,7 +122,7 @@ fn build_rtl_config(reset_low: bool, auto_prefix: bool) -> String {
 /// job's CFLAGS that points at an existing absolute directory. These
 /// need to be uploaded verbatim so the remote `vitis_hls` resolves
 /// sibling headers the same way the local run would. Mirrors
-/// `tapa/backend/xilinx_hls.py::_build_kernel_env`.
+/// the implementation.
 fn kernel_include_dirs(cflags: &[String]) -> Vec<PathBuf> {
     let mut out: Vec<PathBuf> = Vec::new();
     for raw in cflags {
@@ -147,9 +145,9 @@ fn kernel_include_dirs(cflags: &[String]) -> Vec<PathBuf> {
     out
 }
 
-/// Kernel metadata the TCL template loops over. Mirrors Python's
+/// Kernel metadata the TCL template loops over. Mirrors current
 /// `TAPA_KERNEL_COUNT / TAPA_KERNEL_PATH_$i / TAPA_KERNEL_CFLAGS_$i`
-/// env contract from `tapa/backend/xilinx_hls.py`. Keeping the
+/// env contract from the implementation. Keeping the
 /// per-task paths in env entries (instead of baking them into the
 /// TCL body) lets the remote runner rewrite them through its
 /// rootfs-mirroring path-rewriter just like every other absolute
@@ -246,7 +244,7 @@ fn run_hls_attempt(
         .arg("-f")
         .arg(tcl_path.display().to_string());
     inv.cwd = Some(stage_dir.to_path_buf());
-    // Pin `HOME` to the per-run stage dir (mirrors Python's
+    // Pin `HOME` to the per-run stage dir (mirrors current
     // `VivadoHls` wrapper). Vitis HLS otherwise writes shared
     // `~/.Xilinx` state that pollutes the workspace and races under
     // sandboxed/parallel Bazel builds. Using `inv.env` (vs
@@ -255,9 +253,7 @@ fn run_hls_attempt(
     inv.env
         .insert("HOME".into(), stage_dir.display().to_string());
     // Uploads: TCL, the kernel source, every `-I` / `-isystem`
-    // include directory referenced by the cflags, plus any caller
-    // extras. Mirrors the upload set `tapa/backend/xilinx_hls.py::
-    // _build_kernel_env` returns.
+    // include directory referenced by the cflags, plus any caller extras.
     inv.uploads.push(tcl_path);
     if let Some(src_dir) = job.cpp_source.parent() {
         if src_dir.is_absolute() && src_dir.is_dir() {
@@ -291,7 +287,7 @@ fn run_hls_attempt(
 
 /// One Vitis HLS invocation — raw `ToolOutput` form. Kept as a
 /// compatibility shim for callers that only need the raw exit
-/// status (e.g. the per-task retry predicate in Python-equivalent
+/// status (e.g. the per-task retry predicate in equivalent
 /// harnesses); it creates a throw-away staging dir and does *not*
 /// harvest the syn subtree. Prefer [`run_hls`] or
 /// [`run_hls_with_retry`] in production code.
@@ -448,7 +444,7 @@ pub fn run_hls_with_retry(
         if out.exit_code == 0 {
             return harvest_and_stage(runner, job, stage.path(), out);
         }
-        // Python keys the retry decision off stdout alone; stderr is
+        // keys the retry decision off stdout alone; stderr is
         // preserved but intentionally ignored by the default predicate.
         let transient = is_transient(job, &out.stdout, &out.stderr);
         if !transient {
@@ -536,7 +532,7 @@ mod tests {
 
     #[test]
     fn tcl_body_does_not_bake_absolute_kernel_paths() {
-        // Python-parity: the TCL template must iterate the
+        // compatibility: the TCL template must iterate the
         // `TAPA_KERNEL_*` env entries instead of splicing absolute
         // `cpp_source` / cflags into the body. Baking absolute paths
         // makes the TCL non-portable to a remote rootfs.
@@ -567,7 +563,7 @@ mod tests {
     }
 
     #[test]
-    fn kernel_env_entries_mirror_python_contract() {
+    fn kernel_env_entries_mirror_current_contract() {
         let mut job = fixture_job(std::path::Path::new("/tmp"));
         job.cpp_source = PathBuf::from("/abs/src/k.cpp");
         job.cflags = vec!["-I/abs/inc".into(), "-DFOO".into()];
@@ -660,7 +656,7 @@ mod tests {
 
     #[test]
     fn stderr_only_error_still_retries_when_stdout_transient() {
-        // Reproduces Python: stderr-only "\nERROR:" does not cancel
+        // Reproduces current: stderr-only "\nERROR:" does not cancel
         // the retry when stdout contains `Pre-synthesis failed.`.
         let tmp = tempfile::tempdir().unwrap();
         let job = fixture_job(tmp.path());
@@ -683,9 +679,9 @@ mod tests {
     }
 
     #[test]
-    fn production_transient_predicate_matches_python() {
+    fn production_transient_predicate_matches_current() {
         assert!(is_transient_hls_output("Pre-synthesis failed.\n", ""));
-        // Plain failure with ERROR: is not transient — matches Python's
+        // Plain failure with ERROR: is not transient — matches current
         // `b"\nERROR:" not in stdout` guard.
         assert!(!is_transient_hls_output(
             "Pre-synthesis failed.\nERROR: bad\n",
@@ -743,7 +739,7 @@ mod tests {
         std::fs::create_dir_all(&persistent).unwrap();
         // Put a marker file in the stage dir. After the retry loop
         // exhausts, the dir (and the marker) must still be present —
-        // the Python `--keep-hls-work-dir` contract.
+        // the `--keep-hls-work-dir` contract.
         let marker = persistent.join("MARKER");
         std::fs::write(&marker, b"before").unwrap();
 

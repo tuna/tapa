@@ -2,7 +2,7 @@
 //!
 //! Single source of truth for handshake, stream, FIFO, and M-AXI naming
 //! conventions shared across the TAPA toolchain.  This crate has zero
-//! dependencies and mirrors `tapa/protocol.py` exactly.
+//! dependencies and mirrors `tapa/protocol` exactly.
 
 use std::collections::HashMap;
 use std::sync::LazyLock;

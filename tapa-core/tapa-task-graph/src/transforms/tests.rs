@@ -98,7 +98,7 @@ fn flatten_preserves_top_metadata() {
 
 /// Regression test: the previous port rejected any design where
 /// the top had upper-level children with `DeepHierarchyNotSupported`.
-/// Python's `Graph.get_flatten_graph` recursively collects leaves, so
+/// `Graph.get_flatten_graph` recursively collects leaves, so
 /// the Rust port now matches — even an "empty" nested upper must
 /// round-trip cleanly without an error.
 #[test]
@@ -129,7 +129,7 @@ fn flatten_accepts_nested_upper_without_error() {
 
 /// End-to-end nested flatten: a top that indirects through an upper
 /// child holding a leaf must produce the leaf at the flattened top.
-/// Matches the Python `recursive_get_interconnect_insts` +
+/// Matches the `recursive_get_interconnect_insts` +
 /// `get_leaf_tasks_insts` shape.
 #[test]
 fn flatten_hoists_leaf_under_nested_upper() {

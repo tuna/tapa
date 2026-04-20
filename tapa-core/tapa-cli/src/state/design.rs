@@ -30,7 +30,7 @@ pub fn load_design(work_dir: &Path) -> Result<Design> {
 }
 
 /// Persist `design` to `<work_dir>/design.json` using the
-/// Python-compatible JSON formatter.
+/// compatible JSON formatter.
 pub fn store_design(work_dir: &Path, design: &Design) -> Result<()> {
     std::fs::create_dir_all(work_dir)?;
     let path = path_in(work_dir);

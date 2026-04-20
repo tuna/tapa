@@ -27,7 +27,7 @@ pub fn shell_quote(s: &str) -> String {
 
 /// Map a local absolute path to the corresponding remote path under
 /// the session's `rootfs/` prefix. Mirrors
-/// `tapa/remote/popen.py::_local_to_remote_path`: absolute local
+/// the implementation: absolute local
 /// paths are pasted verbatim under `<session_dir>/rootfs/` after
 /// stripping the leading `/`.
 pub(super) fn local_to_remote_path(local: &Path, session_dir: &str) -> String {
@@ -37,7 +37,7 @@ pub(super) fn local_to_remote_path(local: &Path, session_dir: &str) -> String {
 }
 
 /// Generate a process-unique id for the per-invocation session dir.
-/// Python uses `uuid.uuid4()`; a combination of pid + monotonic ns +
+/// uses `uuid.uuid4()`; a combination of pid + monotonic ns +
 /// counter gives comparable uniqueness without adding a uuid crate.
 pub(super) fn unique_session_id() -> String {
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -55,7 +55,7 @@ pub(super) fn unique_session_id() -> String {
 /// via a single `tar | ssh tar -xzf -` session. Each path is added
 /// to the archive preserving its absolute layout (minus the leading
 /// `/`) so the remote tree mirrors the local one. Matches
-/// `tapa/remote/popen.py::_upload_paths`.
+/// the implementation.
 #[allow(
     clippy::too_many_lines,
     reason = "streams the in-memory tar archive inline for one SSH session; \

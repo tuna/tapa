@@ -1,5 +1,5 @@
-//! `settings.json` read / write. The Python writer emits whatever dict
-//! analyze / synth / pack stored, so the Rust shape is `IndexMap` of
+//! `settings.json` read / write. Steps may store heterogeneous values,
+//! so the Rust shape is `IndexMap` of
 //! `serde_json::Value`.
 
 use std::fs::File;
@@ -36,20 +36,20 @@ pub fn store_settings(work_dir: &Path, settings: &Settings) -> Result<()> {
     std::fs::create_dir_all(work_dir)?;
     let path = path_in(work_dir);
     let mut writer = BufWriter::new(File::create(&path)?);
-    let mut ser = serde_json::Serializer::with_formatter(&mut writer, PythonFormatter);
+    let mut ser = serde_json::Serializer::with_formatter(&mut writer, JsonFormatter);
     serde::Serialize::serialize(settings, &mut ser)?;
     Ok(())
 }
 
-/// JSON formatter matching `json.dump(...)` defaults from `CPython` 3.7+:
-/// `, ` between items, `: ` between key and value, no indentation.
+/// JSON formatter that uses `, ` between items, `: ` between key and value,
+/// no indentation, and no trailing newline.
 ///
 /// Re-defined here (and not imported from `tapa_task_graph::design`) because
 /// `serde_json::ser::Formatter` is not `pub` in that crate's API surface.
 #[derive(Debug, Default)]
-pub(crate) struct PythonFormatter;
+pub(crate) struct JsonFormatter;
 
-impl serde_json::ser::Formatter for PythonFormatter {
+impl serde_json::ser::Formatter for JsonFormatter {
     fn begin_array_value<W: io::Write + ?Sized>(
         &mut self,
         writer: &mut W,
@@ -104,7 +104,7 @@ mod tests {
     }
 
     #[test]
-    fn writer_uses_python_separators() {
+    fn writer_uses_spaced_separators() {
         let dir = tempfile::tempdir().unwrap();
         let mut s = Settings::new();
         s.insert("a".to_string(), json!(1));

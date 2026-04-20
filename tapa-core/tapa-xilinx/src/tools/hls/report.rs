@@ -4,7 +4,7 @@
 //! consumes (top module name, target part, target and estimated clock
 //! periods) out of the HLS report XML. `parse_utilization_rpt` ports
 //! the hierarchical ASCII-table walk from
-//! `tapa/backend/report/xilinx/rtl/parser.py`.
+//! the implementation.
 
 use std::collections::HashMap;
 
@@ -116,7 +116,7 @@ pub fn parse_csynth_xml(bytes: &[u8]) -> Result<CsynthReport> {
 }
 
 /// Parse a Vivado hierarchical utilization `.rpt`. Ports
-/// `tapa/backend/report/xilinx/rtl/parser.py`.
+/// the implementation.
 pub fn parse_utilization_rpt(text: &str) -> Result<UtilizationReport> {
     #[derive(Clone, Copy, PartialEq, Eq)]
     enum State {

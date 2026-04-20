@@ -1,6 +1,6 @@
 //! Remote-config bootstrap for the `tapa` CLI entry.
 //!
-//! Mirrors `tapa/__main__.py::entry_point` lines 130-181:
+//! Matches the behavior lines 130-181:
 //!
 //! 1. `load_remote_config(remote_host)` — read `~/.taparc` (YAML),
 //!    optionally splice in `--remote-host=user@host[:port]`. Returns
@@ -11,13 +11,13 @@
 //!    active, mirror `$XILINX_HLS/include` (and `gcc-*/include`)
 //!    into a local cache and export `XILINX_HLS` / `XILINX_VITIS`
 //!    via `setenv`-with-default semantics. Sync failures are
-//!    non-fatal: the Python loader logs a warning and continues so
+//!    non-fatal: the loader logs a warning and continues so
 //!    the in-tree `tapacc` flow can still run.
 //!
 //! The `~/.taparc` location is resolved via:
 //!   - `TAPA_RC_PATH` env var (test override), then
 //!   - `$HOME/.taparc`, then
-//!   - skipped if `HOME` is unset (matches Python's silent skip).
+//!   - skipped if `HOME` is unset (matches silent skip).
 //!
 //! The function is deliberately small — anything more complex belongs
 //! in `tapa-xilinx` (where the `RemoteConfig` schema lives).
@@ -35,7 +35,7 @@ use crate::globals::GlobalArgs;
 pub const TAPARC_PATH_ENV: &str = "TAPA_RC_PATH";
 
 /// Resolve the on-disk path to `~/.taparc`. Returns `None` when neither
-/// `TAPA_RC_PATH` nor `HOME` is set — matches Python's silent skip.
+/// `TAPA_RC_PATH` nor `HOME` is set — matches silent skip.
 fn taparc_path() -> Option<PathBuf> {
     if let Some(p) = std::env::var_os(TAPARC_PATH_ENV) {
         return Some(PathBuf::from(p));
@@ -44,7 +44,7 @@ fn taparc_path() -> Option<PathBuf> {
 }
 
 /// Parse `user@host[:port]` into the three optional pieces.
-/// Mirrors `tapa/remote/config.py::_parse_remote_host`.
+/// Matches the behavior.
 fn parse_remote_host_spec(spec: &str) -> std::result::Result<RemoteHostSpec, String> {
     let (user, rest) = match spec.split_once('@') {
         Some((u, r)) => (Some(u.to_string()), r),
@@ -74,10 +74,10 @@ struct RemoteHostSpec {
 
 /// Read `~/.taparc` and return the `remote` mapping as a YAML value.
 /// Returns `None` when the file is absent, unreadable, malformed, or
-/// its `remote:` section is missing — Python's
+/// its `remote:` section is missing — current
 /// `tapa.remote.config.load_remote_config` logs a warning and
 /// continues for every one of these cases, and Rust must match that
-/// parity behavior (a fatal Rust error used to block `tapa version`
+/// compatibility behavior (a fatal Rust error used to block `tapa version`
 /// for users with a stale `~/.taparc`).
 fn load_taparc_remote_section(path: &Path) -> Option<serde_yaml::Value> {
     let text = match std::fs::read_to_string(path) {
@@ -85,7 +85,7 @@ fn load_taparc_remote_section(path: &Path) -> Option<serde_yaml::Value> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
         Err(e) => {
             log::warn!(
-                "ignoring `{}`: {} (matching Python's warn-and-skip)",
+                "ignoring `{}`: {} (matching warn-and-skip)",
                 path.display(),
                 e,
             );
@@ -165,7 +165,7 @@ fn expand_home(input: &str) -> PathBuf {
 }
 
 /// Apply the remaining CLI override flags. Mirrors
-/// `tapa/__main__.py::_apply_remote_overrides`.
+/// the implementation.
 fn apply_cli_overrides(cfg: &mut RemoteConfig, globals: &GlobalArgs) {
     if let Some(p) = globals.remote_key_file.as_deref() {
         cfg.key_file = Some(expand_home(p));
@@ -234,7 +234,7 @@ pub fn build_remote_config(globals: &GlobalArgs) -> Result<Option<RemoteConfig>>
     Ok(Some(cfg))
 }
 
-/// Side effects after a config is resolved: mirror the Python
+/// Side effects after a config is resolved: mirror the current
 /// `sync_remote_vendor_includes` + `os.environ.setdefault` block.
 /// Sync failures are logged and swallowed so test environments
 /// without SSH still run.

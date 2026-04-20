@@ -1,6 +1,6 @@
 //! Hidden `find-clang-binary` subcommand.
 //!
-//! Mirrors `tapa/__main__.py::_find_clang_binary_cmd`: resolves a
+//! Matches the behavior: resolves a
 //! clang-family helper and prints its absolute path with no trailing
 //! newline.
 

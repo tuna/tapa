@@ -1,7 +1,7 @@
 //! Graph-dict to typed [`Design`] projection plus the
 //! `--flatten-hierarchy` round-trip helper for `tapa analyze`.
 //!
-//! Mirrors the Python `Task.to_topology_dict` projection but drops
+//! Mirrors the `Task.to_topology_dict` projection but drops
 //! `vendor` and other tapacc-only keys, and provides
 //! [`flatten_graph_value`] which round-trips a tapacc graph dict
 //! through the typed [`Graph`] schema and re-serializes the result of
@@ -17,10 +17,10 @@ use crate::state::value_to_indexmap;
 /// Round-trip a tapacc graph dict through the typed [`Graph`] schema and
 /// return the result of [`flatten`] re-serialized as `serde_json::Value`.
 ///
-/// The CLI keeps the on-disk graph as a `Value` because the legacy
-/// Python pipeline accepts a richer schema in some downstream stages,
+/// The CLI keeps the on-disk graph as a `Value` because the current
+/// pipeline accepts a richer schema in some downstream stages,
 /// but the transform itself is defined on the strict `Graph` type to
-/// maximize Python parity.
+/// maximize compatibility.
 pub(super) fn flatten_graph_value(graph: &Value) -> Result<Value> {
     let json = serde_json::to_string(graph)?;
     let typed = Graph::from_json(&json)?;
@@ -54,7 +54,7 @@ pub(super) fn is_top_leaf(graph: &Value, top: &str) -> bool {
 }
 
 /// Project the tapacc graph dict into a typed [`Design`] suitable for
-/// `<work_dir>/design.json`. Mirrors the Python `Task.to_topology_dict`
+/// `<work_dir>/design.json`. Mirrors the `Task.to_topology_dict`
 /// projection, but drops `vendor` and other tapacc-only keys.
 pub(super) fn build_design(top: &str, target: &str, graph: &Value) -> Result<Design> {
     let tasks_obj = graph
@@ -207,7 +207,7 @@ mod tests {
     }
 
     /// Regression: nested upper children used to surface
-    /// `DeepHierarchyNotSupported`. Python's
+    /// `DeepHierarchyNotSupported`. current
     /// `Graph.get_flatten_graph` recursively collects every leaf
     /// under the top, so the Rust port now mirrors that — a deeply
     /// nested design must round-trip cleanly (no panic, no typed

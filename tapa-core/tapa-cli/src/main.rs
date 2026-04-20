@@ -25,7 +25,7 @@ fn main() -> ExitCode {
 fn run() -> Result<(), CliError> {
     let cli = Cli::parse();
 
-    // Python click's group default: a bare `tapa` invocation with no
+    // CLI group default: a bare `tapa` invocation with no
     // subcommand prints `--help` and exits non-zero (`no_args_is_help`).
     // Without this branch the Rust CLI silently exited 0, hiding
     // genuine "user forgot to type a subcommand" mistakes.
@@ -50,7 +50,7 @@ fn run() -> Result<(), CliError> {
     }
 
     // Bootstrap remote config (~/.taparc + CLI overrides) before any
-    // native step runs — mirrors `tapa/__main__.py::entry_point`. Sync
+    // native step runs — mirrors the implementation. Sync
     // failures inside this call are non-fatal so local-only flows are
     // unaffected.
     ctx.remote_config = bootstrap_remote(&cli.globals)?;

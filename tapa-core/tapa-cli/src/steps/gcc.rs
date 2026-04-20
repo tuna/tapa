@@ -1,5 +1,5 @@
 //! `tapa g++` — invokes `g++` with TAPA include / link flags. Mirrors
-//! `tapa/steps/gcc.py`.
+//! the implementation.
 
 use std::path::PathBuf;
 use std::process::Command;

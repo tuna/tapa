@@ -1,6 +1,6 @@
 //! Vivado TCL runner.
 //!
-//! Ports `tapa/backend/xilinx_tools.py::Vivado` — `vivado -mode batch
+//! Implements — `vivado -mode batch
 //! -source <tcl>`. The orchestrator skeleton is wired up; the live TCL
 //! emission for `package_xo` lands with the `.xo` packaging module.
 
@@ -16,8 +16,8 @@ pub struct VivadoJob {
     pub downloads: Vec<PathBuf>,
     pub work_dir: Option<PathBuf>,
     pub env: Vec<(String, String)>,
-    /// `-tclargs` forwarded to the TCL script. Ports Python's
-    /// `tapa/backend/xilinx_tools.py::Vivado` trailing tclargs list.
+    /// `-tclargs` forwarded to the TCL script. Ports current
+    /// the implementation trailing tclargs list.
     pub tclargs: Vec<String>,
 }
 
@@ -71,7 +71,7 @@ pub fn build_invocation(job: &VivadoJob, tcl_path: &std::path::Path) -> ToolInvo
 ///
 /// When `job.work_dir` is unset the runner allocates a per-call
 /// `tempfile::TempDir` and uses it as both `cwd` and `HOME`. Mirrors
-/// the Python `Vivado` wrapper that always created a temp cwd and
+/// the `Vivado` wrapper that always created a temp cwd and
 /// pinned `HOME` there — Vivado otherwise writes `~/.Xilinx` state
 /// into the caller's home dir, which breaks under sandboxed or
 /// unwritable homes (e.g. Bazel exec) and races between parallel

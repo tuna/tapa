@@ -6,7 +6,7 @@
 //! The input is a JSON list of `"<task>.<fifo>"` strings. For every
 //! FIFO listed, we walk every path from the top task to its defining
 //! task and emit a triple `[producer_path, fifo_path, consumer_path]`
-//! matching the Python emit shape. Producer / consumer path resolution
+//! matching the current emit shape. Producer / consumer path resolution
 //! mirrors `Program.get_inst_by_port_arg_name`.
 
 use std::fs;
@@ -133,7 +133,7 @@ pub fn compute_grouping_constraints(
 }
 
 /// Find the `{child_task}_{idx}` instance within `parent` whose `args`
-/// contain a binding to `arg_name` (mirrors Python
+/// contain a binding to `arg_name` (mirrors current
 /// `Program.get_inst_by_port_arg_name`; `arg.name == arg_name`).
 fn find_instance_for_arg(
     parent: &tapa_topology::task::TaskDesign,

@@ -20,7 +20,7 @@ const OUTPUT_FILENAME: &str = "ab_graph.json";
 /// Build the top-level `AutoBridge` graph and persist it as
 /// `<work_dir>/ab_graph.json`.
 ///
-/// Python parity: `tapa.abgraph.gen_abgraph.get_top_level_ab_graph`.
+/// compatibility: `tapa.abgraph.gen_abgraph.get_top_level_ab_graph`.
 pub fn emit_ab_graph(work_dir: &Path, design: &Design, floorplan_config: &Path) -> Result<()> {
     let program = topology_program_from_design(design)?;
     let preassignments = read_cpp_arg_pre_assignments(floorplan_config)?;
@@ -36,7 +36,7 @@ pub fn emit_ab_graph(work_dir: &Path, design: &Design, floorplan_config: &Path) 
 }
 
 /// Read `cpp_arg_pre_assignments` from the floorplan config. Missing or
-/// non-object values yield an empty map (matching Python's `.get(...) or {}`
+/// non-object values yield an empty map (matching `.get(...) or {}`
 /// semantics — the key is optional on early-stage floorplan configs).
 fn read_cpp_arg_pre_assignments(floorplan_config: &Path) -> Result<BTreeMap<String, String>> {
     let raw = fs::read_to_string(floorplan_config).map_err(|e| {

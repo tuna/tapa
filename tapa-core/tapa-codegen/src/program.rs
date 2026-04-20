@@ -1,6 +1,6 @@
 //! Top-level program RTL assembly and global FSM.
 //!
-//! Ports `tapa/program_codegen/program.py`: global FSM generation,
+//! Implements: global FSM generation,
 //! upper-task orchestration, template task output.
 
 use tapa_protocol::{HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY};

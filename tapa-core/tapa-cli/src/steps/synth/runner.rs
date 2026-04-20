@@ -42,8 +42,8 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
     if !matches!(target.as_str(), "xilinx-vitis" | "xilinx-hls") {
         return Err(CliError::InvalidArg(format!(
             "native synth only supports the `xilinx-vitis` and `xilinx-hls` \
-             targets; got `{target}`. The AIE flow (Python's \
-             `program.run_aie`) was retired and is not accepted by the \
+             targets; got `{target}`. The AIE flow (\
+             `program.run_aie`) was unsupported and is not accepted by the \
              native CLI; the analyze step now rejects unsupported targets \
              up front, so this only triggers on hand-edited \
              `settings.json`."
@@ -85,8 +85,8 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
     generate_rtl_tree(&ctx.work_dir, &design, &hdl_inputs)?;
 
     // Per-task OOC Vivado synth → hierarchical utilization → `total_area`.
-    // Mirrors `ProgramSynthesisMixin.generate_post_synth_util`. When
-    // disabled (the Python default), the HLS-populated self/total areas
+    // Matches the behavior. When
+    // disabled (the default), the HLS-populated self/total areas
     // survive untouched.
     if args.enable_synth_util {
         emit_post_synth_util(
@@ -100,17 +100,17 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
 
     // Emit `report.{json,yaml}` at the work-dir root once area data
     // is final. Mirrors the report block in
-    // `tapa/codegen/program_rtl.py::generate_top_rtl`. Both pack
+    // the implementation. Both pack
     // paths (`xilinx-vitis` `.xo` and `xilinx-hls` `.zip`) bundle the
     // YAML at archive root, so writing it here is what unblocks the
-    // downstream consumers that lost the metadata after the Python
-    // codegen step was retired.
+    // downstream consumers that lost the metadata after the current
+    // codegen step was unsupported.
     write_top_report(&ctx.work_dir, &design, &args.override_report_schema_version)?;
 
-    // Post-codegen side effects that mirror the tail of Python's
+    // Post-codegen side effects that mirror the tail of current
     // `_execute_synth`: nonpipeline-fifos → grouping_constraints.json,
     // gen-ab-graph → ab_graph.json, gen-graphir → graphir.json. Order
-    // matches Python (constraints → ab → graphir). Each branch is a
+    // matches (constraints → ab → graphir). Each branch is a
     // no-op when its flag is not set.
     if let Some(fifos_path) = args.nonpipeline_fifos.as_ref() {
         emit_grouping_constraints(&ctx.work_dir, &design, fifos_path)?;
@@ -173,18 +173,18 @@ fn validate_optional_flag_combos(args: &SynthArgs) -> Result<()> {
     Ok(())
 }
 
-/// Build the HLS CFLAGS that `_build_hls_cflags` constructs in Python.
+/// Build the HLS CFLAGS that `_build_hls_cflags` constructs in current.
 ///
-/// Mirrors `tapa/program/hls.py::ProgramHlsMixin._build_hls_cflags`:
+/// Matches the behavior:
 /// loads the analyzer-stored cflags tuple from
 /// `<work_dir>/graph.json::cflags` (so `-isystem <tapa-lib>` etc. are
 /// forwarded into HLS), then appends the `-DTAPA_TARGET_*` defines and
 /// a `-I <tapa-extra-runtime-include>` entry when the resource can be
-/// resolved (Python's "WORKAROUND: Vitis HLS requires -I or gflags
+/// resolved ("WORKAROUND: Vitis HLS requires -I or gflags
 /// cannot be found..." branch).
 fn build_hls_cflags(work_dir: &Path, remote: bool) -> Vec<String> {
     let mut flags: Vec<String> = Vec::new();
-    // Python parity: `tapa/core.py::TapaProgram.__init__` builds
+    // compatibility: `tapa/core::TapaProgram.__init__` builds
     // `self.cflags = " ".join((*graph.cflags, *get_tapacc_cflags()))`.
     // We mirror that here so HLS sees the user's own `-I` / `-D`
     // entries plus the tapa-lib / vendor-include resolution.
@@ -200,7 +200,7 @@ fn build_hls_cflags(work_dir: &Path, remote: bool) -> Vec<String> {
             }
         }
     }
-    // Remote HLS parity: Python's `_build_hls_cflags` substitutes
+    // Remote HLS compatibility: `_build_hls_cflags` substitutes
     // `get_tapacc_cflags()` (local vendor/stdlib paths) with
     // `get_remote_hls_cflags()` when `~/.taparc` is active — the
     // remote host ships its own vendor headers via `settings64.sh`,
@@ -214,7 +214,7 @@ fn build_hls_cflags(work_dir: &Path, remote: bool) -> Vec<String> {
     }
     flags.push("-DTAPA_TARGET_DEVICE_".to_string());
     flags.push("-DTAPA_TARGET_XILINX_HLS_".to_string());
-    // Python `_build_hls_cflags` workaround: Vitis HLS requires `-I`
+    // `_build_hls_cflags` workaround: Vitis HLS requires `-I`
     // (not `-isystem`) to locate gflags during build.
     if let Ok(p) = find_resource("tapa-extra-runtime-include") {
         flags.push(format!("-I{}", p.display()));
@@ -313,7 +313,7 @@ mod tests {
                     .or_else(|| q.first().map(|(_, b)| b.clone()))
                     .unwrap_or_default();
                 // Consume the matching queue entry (or front) for
-                // Python-parity accounting.
+                // compatibility accounting.
                 if let Some(idx) = q.iter().position(|(t, _)| t == &name) {
                     q.remove(idx);
                 } else if !q.is_empty() {
@@ -437,7 +437,7 @@ mod tests {
 
         // Two HLS invocations: the leaf `Add` and the upper-task shell
         // `VecAdd`. Iteration order matches `IndexMap` insertion order,
-        // which mirrors Python's `Task` topological sort.
+        // which mirrors `Task` topological sort.
         let stub_module = |name: &str| -> String {
             format!(
                 "module {name}(\n  input wire ap_clk,\n  input wire ap_rst_n,\n  \

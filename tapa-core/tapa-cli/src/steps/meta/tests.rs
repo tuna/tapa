@@ -55,7 +55,7 @@ fn generate_floorplan_args_parse() {
     assert_eq!(args.top, "T");
     let synth_args = args.synth_args();
     // Composites force flatten_hierarchy / enable_synth_util / gen_ab_graph
-    // per Python `kwargs[...] = True` assignments in `meta.py`.
+    // per `kwargs[...] = True` assignments in `meta`.
     assert!(synth_args.gen_ab_graph);
     assert!(synth_args.enable_synth_util);
     assert!(args.analyze_args().flatten_hierarchy);

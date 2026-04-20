@@ -16,7 +16,7 @@ use super::{
 
 #[allow(
     clippy::struct_excessive_bools,
-    reason = "merged click flag surface — collapsing into an enum would break parity"
+    reason = "merged CLI flag surface — collapsing into an enum would break compatibility"
 )]
 #[derive(Debug, Clone, Parser)]
 #[command(
@@ -35,7 +35,7 @@ pub struct CompileWithFloorplanDseArgs {
     /// flag surface; the DSE driver always overrides this to true at
     /// stage 1 (matching `meta.compile_with_floorplan_dse`'s
     /// `kwargs["flatten_hierarchy"] = True` line) so the user-visible
-    /// flag is informational + parity-only.
+    /// flag is informational + compatibility-only.
     #[arg(long = "flatten-hierarchy", default_value_t = false)]
     pub flatten_hierarchy: bool,
     #[arg(long = "keep-hierarchy", conflicts_with = "flatten_hierarchy")]
@@ -64,7 +64,7 @@ pub struct CompileWithFloorplanDseArgs {
     pub no_skip_hls_based_on_mtime: bool,
     #[arg(long = "other-hls-configs", default_value = "")]
     pub other_hls_configs: String,
-    /// `--enable-synth-util` / `--disable-synth-util` are click flags
+    /// `--enable-synth-util` / `--disable-synth-util` are CLI flags
     /// forwarded by the composite. `meta.compile_with_floorplan_dse`
     /// sets `enable_synth_util=true` for stage-1 generate-floorplan
     /// and resets to `false` for stage-2 per-solution compile.
@@ -87,7 +87,7 @@ pub struct CompileWithFloorplanDseArgs {
     pub gen_graphir: bool,
     /// `--floorplan-path` — composite passes one solution's floorplan
     /// per stage-2 iteration. Setting this on the composite itself is
-    /// allowed for parity but will be overridden per-solution.
+    /// allowed for compatibility but will be overridden per-solution.
     #[arg(long = "floorplan-path", value_name = "FILE")]
     pub floorplan_path: Option<PathBuf>,
     // ---- floorplan + synth + run_autobridge shared ----
@@ -102,7 +102,7 @@ pub struct CompileWithFloorplanDseArgs {
     pub bitstream_script: Option<PathBuf>,
     #[arg(long = "custom-rtl", value_name = "PATH")]
     pub custom_rtl: Vec<PathBuf>,
-    /// `--graphir-path` from `pack.py`; composite forwards through
+    /// `--graphir-path` from `pack`; composite forwards through
     /// stage-2's pack invocation.
     #[arg(long = "graphir-path", value_name = "FILE")]
     pub graphir_path: Option<PathBuf>,
@@ -119,7 +119,7 @@ pub fn run_compile_with_floorplan_dse_composite(
                 .to_string(),
         ));
     }
-    // Python bridge is gone; always native.
+    // Always native.
     let original_work_dir = ctx.work_dir.clone();
 
     // Stage 1: drive generate-floorplan to enumerate floorplans.
@@ -143,7 +143,7 @@ pub fn run_compile_with_floorplan_dse_composite(
         let compile = build_compile_stage2(args, &floorplan_file, &output);
 
         // Reset the in-process flow state between solutions so each
-        // sub-compile starts from a clean slate (matches the Python
+        // sub-compile starts from a clean slate (matches the current
         // `clean_obj` per-iteration context). Switch the work dir so
         // every step writes under `<orig_work_dir>/<solution_name>/`.
         ctx.flow.replace(FlowState::default());
@@ -222,7 +222,7 @@ fn build_compile_stage2(
     floorplan_path: &Path,
     output: &Path,
 ) -> CompileArgs {
-    // Stage 2 mirrors Python's `kwargs[...] = ...` overrides: enable
+    // Stage 2 mirrors `kwargs[...] = ...` overrides: enable
     // graphir generation, disable utilization estimates and ab-graph
     // generation, and apply the per-solution floorplan_path / output.
     let analyze_args = analyze::AnalyzeArgs {
@@ -311,10 +311,10 @@ mod tests {
 
     #[test]
     fn forwards_all_three_pack_overlays_to_stage2() {
-        // Phase-7 regression: every click-surface pack overlay that
+        // Phase-7 regression: every CLI-surface pack overlay that
         // used to raise a hard error in `steps::pack::run_native` must
         // now be threaded through `compile-with-floorplan-dse` stage 2
-        // untouched (composite parity with the retired Python CLI).
+        // untouched across each sub-compile.
         let args = CompileWithFloorplanDseArgs::try_parse_from([
             "compile-with-floorplan-dse",
             "--input",

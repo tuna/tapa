@@ -275,9 +275,9 @@ impl MutableModule {
     pub fn emit(&self) -> String {
         let mut out = String::new();
 
-        // RapidStream pragma lines at the top. Python emits these as
+        // RapidStream pragma lines at the top. emits these as
         // `// pragma RS <content>` line comments (see
-        // `tapa/task_codegen/fsm.py::f"// pragma RS {pragma}"`); using
+        // the implementation); using
         // the Verilog attribute form `(* RS ... *)` trips Vivado's HDL
         // Parser because `RS <tag>` is not a valid attribute name.
         for comment in &self.added_comments {

@@ -9,7 +9,7 @@ use std::process::Command;
 
 use crate::tapacc::discover::find_resource;
 
-/// Output of [`get_tapa_cflags`]. Mirrors the Python tuple, preserving
+/// Output of [`get_tapa_cflags`]. Mirrors the tuple, preserving
 /// order so vendor headers cascade correctly through `tapacc`.
 pub fn get_tapa_cflags() -> Vec<String> {
     let mut flags = Vec::<String>::new();
@@ -94,7 +94,7 @@ pub fn get_system_cflags() -> Vec<String> {
 
 /// LDFLAGS for linking TAPA programs.
 ///
-/// Mirrors `tapa/common/paths.py::get_tapa_ldflags`: derives `-L` and
+/// Matches the behavior: derives `-L` and
 /// `-Wl,-rpath` from `find_resource("fpga-runtime-lib")` /
 /// `find_resource("tapa-lib-lib")`, plus every external library
 /// directory the Bazel runfiles tree provides (gflags, glog,
@@ -140,7 +140,7 @@ pub fn get_tapa_ldflags() -> Vec<String> {
     out
 }
 
-/// Port of `tapa.common.paths.find_external_lib_in_runfiles`. Walks
+/// Implementation of. Walks
 /// the parents of the binary looking for a `tapa.runfiles` tree and
 /// returns the external library directories Bazel stages there
 /// (gflags, glog, tinyxml2, yaml-cpp, boost). Outside of Bazel, no
@@ -259,7 +259,7 @@ fn is_macos() -> bool {
 }
 
 /// Full `tapacc` argv (without the binary path itself). Mirrors the
-/// argument tuple in `tapa/steps/analyze.py::run_tapacc`.
+/// argument tuple in the implementation.
 pub fn run_tapacc_argv(
     files: &[PathBuf],
     top: &str,
@@ -286,7 +286,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn run_tapacc_argv_matches_python_shape() {
+    fn run_tapacc_argv_matches_current_shape() {
         let argv = run_tapacc_argv(
             &[PathBuf::from("a.cpp"), PathBuf::from("b.cpp")],
             "Top",

@@ -76,7 +76,7 @@ impl Project {
     }
 
     /// Sort all collections for deterministic serialization output.
-    /// Mirrors Python's `NamespaceModel` sort behavior.
+    /// Mirrors `NamespaceModel` sort behavior.
     pub fn normalize(&mut self) {
         self.modules
             .module_definitions

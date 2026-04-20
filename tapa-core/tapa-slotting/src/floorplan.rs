@@ -1,9 +1,9 @@
 //! Floorplan graph rewrite: group task instances into slots.
 //!
-//! Ports `tapa/common/graph.py`: `get_floorplan_slot`, `get_floorplan_top`,
+//! Implements: `get_floorplan_slot`, `get_floorplan_top`,
 //! `get_floorplan_graph`, and their helper functions.
 //!
-//! Operates on `serde_json::Value` to match the Python dict manipulation
+//! Operates on `serde_json::Value` to match the current dict manipulation
 //! pattern, since graph.json has many fields that need flexible access.
 
 use std::collections::{BTreeMap, BTreeSet};

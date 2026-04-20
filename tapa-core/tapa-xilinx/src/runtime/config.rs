@@ -1,9 +1,9 @@
 //! `~/.taparc` YAML schema for remote Xilinx tool execution.
 //!
-//! Mirrors the Pydantic model in `tapa/remote/config.py::RemoteConfig`:
-//! - `user` defaults to the current login name, not `None`;
+//! Mirrors the runtime config schema:
+//! - `user` defaults to the login name, not `None`;
 //! - `~` is expanded in `key_file` and `ssh_control_dir`;
-//! - unknown fields are ignored so Python additions do not fault the
+//! - unknown fields are ignored so additions do not fault the
 //!   Rust loader;
 //! - `from_env` seeds from the `REMOTE_*` names used in `VARS.local.bzl`.
 
@@ -84,7 +84,7 @@ pub struct RemoteConfig {
 
 /// Accept either a native YAML `bool` or a quoted string form
 /// (`"true"`/`"false"`/`"yes"`/`"no"`/`"1"`/`"0"`, case-insensitive).
-/// Python's legacy `RemoteConfig` validator parsed these string
+/// `RemoteConfig` validator parsed these string
 /// shapes, and existing `~/.taparc` files in the wild carry
 /// `ssh_multiplex: "false"`. Without this shim, serde rejects the
 /// entire config and even `tapa version` fails before running.
@@ -285,13 +285,13 @@ remote:
 
     #[test]
     fn unknown_fields_are_accepted() {
-        // Python's pydantic model silently ignores unknown keys; match that.
+        // Unknown keys are ignored so newer config files remain readable.
         let text = "remote:\n  host: h\n  future_field: yes\n";
         let cfg = RemoteConfig::from_yaml_str(text, "/tmp/.taparc").unwrap();
         assert_eq!(cfg.host, "h");
     }
 
-    /// Python's legacy `RemoteConfig` validator parsed
+    /// `RemoteConfig` validator parsed
     /// `ssh_multiplex: "false"` (string) as well as the native YAML
     /// bool form. The Rust port must accept both so a pre-existing
     /// `~/.taparc` with quoted string booleans doesn't break even
@@ -318,7 +318,7 @@ remote:
     }
 
     /// Garbage string values still fail loudly — the shim only
-    /// accepts the Python validator's known synonyms.
+    /// accepts the validator's known synonyms.
     #[test]
     fn ssh_multiplex_rejects_unknown_string() {
         let text = "remote:\n  host: h\n  ssh_multiplex: \"maybe\"\n";

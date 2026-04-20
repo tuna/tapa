@@ -1,5 +1,5 @@
 //! Per-task Vitis HLS invocation, ported from
-//! `tapa/program/hls.py::ProgramHlsMixin._run_hls_task` + `.run_hls`.
+//! the implementation + `.run_hls`.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -10,7 +10,7 @@ use tapa_xilinx::{run_hls_with_retry, run_hls_with_retry_in_stage, HlsJob, HlsOu
 use crate::error::{CliError, Result};
 use crate::steps::synth::cpp_extract::cpp_path_for;
 
-/// Python parity: `tapa/program/hls.py` uses `_HLS_MAX_RETRIES = 2`
+/// compatibility: the implementation uses `_HLS_MAX_RETRIES = 2`
 /// → up to 3 attempts total. Vitis HLS occasionally fails with a
 /// transient `Pre-synthesis failed.` diagnostic that re-runs clean,
 /// so the retry wrapper keys off that substring.
@@ -39,22 +39,22 @@ pub struct HlsRunOptions {
     pub other_configs: String,
     pub cflags: Vec<String>,
     pub skip_based_on_mtime: bool,
-    /// Mirror of the click `--jobs N` flag. Python parity:
+    /// Mirror of the CLI `--jobs N` flag. compatibility:
     /// `ThreadPoolExecutor(max_workers=jobs)`. `None` or 1 → serial.
     pub jobs: Option<u32>,
-    /// Mirror of the click `--keep-hls-work-dir` flag. When true,
+    /// Mirror of the CLI `--keep-hls-work-dir` flag. When true,
     /// `run_hls` stages under `<work_dir>/hls/<task>/project` (kept
     /// on disk) instead of a tempdir so the Vitis project + logs
-    /// survive after a failure. Matches Python's
+    /// survive after a failure. Matches current
     /// `ProgramHlsMixin.run_hls(work_dir=...)`.
     pub keep_work_dir: bool,
 }
 
-/// Run HLS for every task that targets HLS. Mirrors Python's
+/// Run HLS for every task that targets HLS. Mirrors current
 /// `ProgramHlsMixin.run_hls`, which iterates **all** `_tasks.values()`
 /// (not just leaves) — the upper-task shell is needed by codegen so
 /// the parent module's port surface is parseable. Tasks whose
-/// `target == "ignore"` are skipped (Python promotes them to
+/// `target == "ignore"` are skipped (promotes them to
 /// `gen_templates`).
 pub fn run_hls_for_leaves(
     runner: &dyn ToolRunner,
@@ -142,9 +142,8 @@ pub fn run_hls_for_leaves(
         //
         // Default path: hand the job off to `run_hls_with_retry`,
         // which allocates a *fresh* `tempfile::tempdir()` for every
-        // attempt. Mirrors the retired Python flow where each
-        // transient `Pre-synthesis failed.` retry started from a
-        // clean project tree.
+        // attempt. Each transient `Pre-synthesis failed.` retry starts
+        // from a clean project tree.
         let work = if options.keep_work_dir {
             let persistent = work_dir.join("hls").join(task_name).join("project");
             // Clear any leftover from a previous run so the first
@@ -182,7 +181,7 @@ pub fn run_hls_for_leaves(
 }
 
 fn resolve_worker_count(jobs: Option<u32>, plan: &[(String, TaskHlsLayout, impl Sized)]) -> usize {
-    // Python parity: `tapa/program/hls.py` evaluates
+    // compatibility: the implementation evaluates
     // `jobs = jobs or cpu_count(logical=False)` before
     // `ThreadPoolExecutor(max_workers=jobs)`, so the default on a
     // multi-core machine synthesizes tasks in parallel. Mirror that:
@@ -193,7 +192,7 @@ fn resolve_worker_count(jobs: Option<u32>, plan: &[(String, TaskHlsLayout, impl 
     desired.min(plan.len().max(1))
 }
 
-/// Python's `psutil.cpu_count(logical=False)` equivalent. `std`'s
+/// `psutil.cpu_count(logical=False)` equivalent. `std`'s
 /// `available_parallelism` returns logical cores; that's a safe upper
 /// bound that still parallelizes well for HLS (IO-bound per task),
 /// and it avoids pulling in `num_cpus` as a new dep.
@@ -253,7 +252,7 @@ impl PlanEntry for Work {
             Self::RunFresh(job) => {
                 // `run_hls_with_retry` allocates a fresh
                 // `tempfile::tempdir()` per attempt — mirrors the
-                // Python non-keep retry path.
+                // non-keep retry path.
                 let out =
                     run_hls_with_retry(runner, job, HLS_MAX_ATTEMPTS).map_err(CliError::from)?;
                 Ok(Some(out))

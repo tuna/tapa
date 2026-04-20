@@ -6,10 +6,10 @@ use tapa_graphir::{
 
 use crate::utils::{input_wire, make_connection, output_wire, range_expr, range_msb};
 
-/// Embedded copy of the canonical FIFO Verilog template (shared with Python pipeline).
+/// Embedded copy of the canonical FIFO Verilog template (shared with pipeline).
 const FIFO_TEMPLATE: &str = include_str!("../../assets/verilog/fifo.v");
 
-/// Embedded reset-inverter Verilog body (matches Python `RESET_INVERTER_TEMPLATE`).
+/// Embedded reset-inverter Verilog body (matches `RESET_INVERTER_TEMPLATE`).
 const RESET_INVERTER_TEMPLATE: &str = "
 // Copyright (c) 2025 RapidStream Design Automation, Inc. and contributors.
 // All rights reserved. The contributor(s) of this file has/have agreed to the
@@ -30,7 +30,7 @@ endmodule
 ///
 /// Creates a `VerilogModuleDefinition` with fixed AXI control parameters and ports,
 /// plus dynamic output ports for each top-level task scalar/MMAP-offset arg.
-/// Matches Python's `get_ctrl_s_axi_def` which adds a 64-bit output for each
+/// Matches `get_ctrl_s_axi_def` which adds a 64-bit output for each
 /// top port (scalars as-is, MMAP as `{name}_offset`).
 #[must_use]
 pub fn get_ctrl_s_axi_def(
@@ -90,7 +90,7 @@ pub fn get_ctrl_s_axi_def(
     ];
 
     // Add dynamic output ports for each top-level scalar/MMAP arg.
-    // Python: for port_name, port in top.ports.items(): ...
+    // current: for port_name, port in top.ports.items(): ...
     // Streams are not exposed through ctrl_s_axi.
     let bit64_range = Some(range_msb(63));
     for port in top_ports {
@@ -161,7 +161,7 @@ pub fn get_fifo_def() -> AnyModuleDefinition {
         right: Expression::new_lit("0"),
     };
 
-    // Python's `get_fifo_def` uses `hierarchical_name = rst` for the
+    // `get_fifo_def` uses `hierarchical_name = rst` for the
     // `reset` port (the downstream reset wire name). Everything else
     // uses name==hierarchical_name.
     let reset_port = tapa_graphir::ModulePort {
@@ -216,8 +216,8 @@ pub fn get_reset_inverter_def() -> AnyModuleDefinition {
 
 /// Build a reset inverter instantiation.
 ///
-/// Port connections match Python's `get_reset_inverter_inst` in
-/// `tapa/graphir_conversion/module_definitions.py`: `clk` → `ap_clk`,
+/// Port connections match `get_reset_inverter_inst` in
+/// the implementation: `clk` → `ap_clk`,
 /// `rst_n` → `ap_rst_n`, and the inverter output port `rst` → the
 /// top-level `rst` wire (not `ap_rst`).
 #[must_use]

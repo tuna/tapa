@@ -1,6 +1,6 @@
 //! Lowers a floorplanned topology + RTL state into a `GraphIR` Project.
 //!
-//! Replaces Python `tapa/graphir_conversion/`.
+//! Implements.
 
 pub mod iface_roles;
 pub mod inputs;

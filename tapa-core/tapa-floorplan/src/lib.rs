@@ -1,6 +1,6 @@
 //! TAPA floorplan: device model, `ABGraph` generation, and slot utilities.
 //!
-//! Replaces Python `tapa/abgraph/` and device model code.
+//! Floorplanning and device-model helpers.
 
 pub mod abgraph;
 pub mod area;

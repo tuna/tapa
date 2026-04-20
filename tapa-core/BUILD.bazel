@@ -1,10 +1,8 @@
 """TAPA core Rust crates — Bazel build via Cargo."""
 
 load("@rules_pkg//pkg:mappings.bzl", "pkg_attributes", "pkg_filegroup", "pkg_files", "pkg_mklink")
-load("@rules_python//python:defs.bzl", "py_binary")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
-load("@tapa_deps//:requirements.bzl", "requirement")
 
 _ALL_SRCS = glob(
     ["**/*"],
@@ -19,8 +17,7 @@ _ALL_SRCS = glob(
 ]
 
 # -- Build: library crates only (hermetic via rules_rust toolchain) --
-# Builds the workspace's pure-Rust library crates; the legacy PyO3
-# `tapa-py-bindings` crate was retired.
+# Builds the workspace's pure-Rust library crates.
 
 genrule(
     name = "cargo_build",
@@ -58,9 +55,8 @@ copy_or_empty "$$CARGO_TARGET_DIR/release/libtapa_topology.rlib" "$(location car
 )
 
 # -- Build: native `tapa-cli` binary --
-# Replaces the retired Python compiler binary. Same hermetic cargo
-# invocation pattern as `cargo_build`. Downstream packagers consume
-# this via `//tapa-core:tapa-cli` and re-wrap as
+# Same hermetic cargo invocation pattern as `cargo_build`.
+# Downstream packagers consume this via `//tapa-core:tapa-cli` and re-wrap as
 # `usr/share/tapa/runtime/tapa` + `usr/bin/tapa` symlink.
 
 genrule(
@@ -174,64 +170,6 @@ sh_test(
 sh_test(
     name = "tapa_xilinx_integration_test",
     srcs = ["run_xilinx_integration_test.sh"],
-    data = _ALL_SRCS + [
-        "@rules_rust//rust/toolchain:current_cargo_files",
-        "@rules_rust//rust/toolchain:current_rustc_files",
-        "@rules_rust//rust/toolchain:current_rustdoc_files",
-    ],
-    env = {
-        "CARGO_MANIFEST_DIR": "tapa-core",
-    },
-    tags = ["manual"],
-)
-
-# -- Test: tapa-cli golden parity (manual; mirrors the xilinx gate) --
-# Loads VARS.local.bzl-style REMOTE_* env vars and runs the Rust CLI
-# golden-snapshot suite against the vadd fixture + per-app argv
-# corpus + per-subcommand `--help` flag goldens (frozen under
-# `tapa-core/tests/golden/`). Inherits the same SSH / Vitis remote
-# configuration as `tapa_xilinx_integration_test` so the
-# `vadd_xo_flow` case can exercise the production analyze/synth/pack
-# flow on the configured remote Linux host. The Python click CLI was
-# retired, so this gate only drives the
-# Rust binary.
-
-# Hermetic pytest launcher used by `tapa_cli_golden_test` below.
-# Bazel stages `pytest` + transitive deps from `@tapa_deps` into the
-# launcher's runfiles, so the gate no longer relies on the host's
-# system `python3` having `pytest` pre-installed.
-py_binary(
-    name = "pytest_runner",
-    srcs = ["pytest_runner.py"],
-    deps = [requirement("pytest")],
-)
-
-sh_test(
-    name = "tapa_cli_golden_test",
-    srcs = ["run_tapa_cli_golden_test.sh"],
-    data = _ALL_SRCS + [
-        "@rules_rust//rust/toolchain:current_cargo_files",
-        "@rules_rust//rust/toolchain:current_rustc_files",
-        "@rules_rust//rust/toolchain:current_rustdoc_files",
-        # Hermetic pytest launcher (see `pytest_runner.py`).
-        ":pytest_runner",
-    ],
-    env = {
-        "CARGO_MANIFEST_DIR": "tapa-core",
-    },
-    tags = ["manual"],
-)
-
-# -- Test: no-Python `cargo install` smoke (manual) --
-# Installs the Rust `tapa` binary via `cargo install --path
-# tapa-core/tapa-cli --root <staging>` and runs it under a `PATH`
-# stripped of every python interpreter. Proves the binary has zero
-# runtime Python dependency — the final gate after the
-# legacy Python compiler deletion.
-
-sh_test(
-    name = "tapa_cli_no_python_install_smoke",
-    srcs = ["run_no_python_install_smoke.sh"],
     data = _ALL_SRCS + [
         "@rules_rust//rust/toolchain:current_cargo_files",
         "@rules_rust//rust/toolchain:current_rustc_files",

@@ -5,7 +5,7 @@
 //! against `<work_dir>/rtl` to produce the `.xo`. The runner picks
 //! between local and remote dispatch based on `ctx.remote_config`.
 //!
-//! Also threads the three click-surface overlays:
+//! Also threads the three CLI-surface overlays:
 //!
 //! * `--custom-rtl` overlays via [`super::custom_rtl::apply_custom_rtl`]
 //!   *before* Vivado scans `rtl_dir`.
@@ -89,7 +89,7 @@ pub(super) fn pack_vitis(
 
     // --bitstream-script: emit helper pointing at the just-packaged
     // `.xo`. Done after pack so the script text references a real
-    // artifact path (Python did the same).
+    // artifact path (did the same).
     if let Some(script_dest) = args.bitstream_script.as_deref() {
         emit_bitstream_script(settings, script_dest, &design.top, &output_path)?;
     }
@@ -259,7 +259,7 @@ fn build_package_xo_inputs(
     }
 }
 
-/// Collect the HLS reports that Python's `PackageXo.__init__`
+/// Collect the HLS reports that `PackageXo.__init__`
 /// bundles into the `.xo` under `report/`. Walks
 /// `<work_dir>/hls/<task>/report/` for `*_csynth.xml` (the primary
 /// schema downstream tooling reads) plus any `.rpt` sibling files.

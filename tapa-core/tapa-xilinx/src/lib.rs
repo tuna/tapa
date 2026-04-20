@@ -2,11 +2,11 @@
 // cover idiomatic-in-this-crate patterns that don't add reader value.
 #![allow(
     clippy::too_many_arguments,
-    reason = "arg_xml mirrors the Python template parameter list verbatim"
+    reason = "kernel XML argument records carry many schema fields"
 )]
 #![allow(
     clippy::doc_markdown,
-    reason = "doc-comments reference the Python source of truth by path"
+    reason = "doc comments include tool names and file-like identifiers"
 )]
 #![allow(
     clippy::assigning_clones,
@@ -30,7 +30,7 @@
 )]
 #![allow(
     clippy::too_long_first_doc_paragraph,
-    reason = "module docs intentionally cite the Python counterpart up front"
+    reason = "module docs summarize several Xilinx tool responsibilities"
 )]
 #![allow(
     clippy::wildcard_enum_match_arm,

@@ -1,7 +1,7 @@
 //! Drive `tapa_codegen::generate_rtl` against the HLS-produced Verilog
 //! and persist the resulting RTL tree under `<work_dir>/rtl/`.
 //!
-//! Mirrors `tapa/codegen/program_rtl.py::generate_task_rtl` +
+//! Matches the behavior +
 //! `generate_top_rtl` for the leaf-only vadd happy path.
 
 use std::collections::BTreeMap;
@@ -64,10 +64,7 @@ const VERILOG_SUPPORT_ASSETS: &[(&str, &str)] = &[
         "detect_burst.v",
         include_str!("../../../../assets/verilog/detect_burst.v"),
     ),
-    (
-        "fifo.v",
-        include_str!("../../../../assets/verilog/fifo.v"),
-    ),
+    ("fifo.v", include_str!("../../../../assets/verilog/fifo.v")),
     (
         "fifo_bram.v",
         include_str!("../../../../assets/verilog/fifo_bram.v"),
@@ -238,11 +235,11 @@ fn write_verilog_support_assets(rtl_dir: &Path) -> Result<Vec<PathBuf>> {
     Ok(written)
 }
 
-/// Mirror of Python's `Instance.Arg.Cat` enum name. `str(Cat.XYZ)` in
-/// Python returns `"Cat.XYZ"`; the `templates_info.json` schema
+/// Mirror of `Instance.Arg.Cat` enum name. `str(Cat.XYZ)` in
+/// returns `"Cat.XYZ"`; the `templates_info.json` schema
 /// depends on exactly that string. Keep in sync with
 /// `tapa-task-graph::port::ArgCategory`.
-fn cat_python_name(cat: tapa_task_graph::ArgCategory) -> &'static str {
+fn cat_schema_name(cat: tapa_task_graph::ArgCategory) -> &'static str {
     match cat {
         tapa_task_graph::ArgCategory::Istream => "Cat.ISTREAM",
         tapa_task_graph::ArgCategory::Ostream => "Cat.OSTREAM",
@@ -256,11 +253,11 @@ fn cat_python_name(cat: tapa_task_graph::ArgCategory) -> &'static str {
     }
 }
 
-/// Mirror of Python `instance.Port.__str__` — `", ".join(f"{k}: {v}"
+/// Mirror of `instance.Port.__str__` — `", ".join(f"{k}: {v}"
 /// for k, v in self.__dict__.items())`. Emits, in order:
 /// `cat`, `name`, `ctype`, `width`, `chan_count`, `chan_size`, with
-/// `None` for unset optional fields (Python's `None` repr).
-fn python_port_str(p: &tapa_task_graph::Port) -> String {
+/// `None` for unset optional fields (`None` repr).
+fn schema_port_str(p: &tapa_task_graph::Port) -> String {
     let chan_count = p
         .chan_count
         .map_or_else(|| "None".to_string(), |v| v.to_string());
@@ -269,7 +266,7 @@ fn python_port_str(p: &tapa_task_graph::Port) -> String {
         .map_or_else(|| "None".to_string(), |v| v.to_string());
     format!(
         "cat: {}, name: {}, ctype: {}, width: {}, chan_count: {}, chan_size: {}",
-        cat_python_name(p.cat),
+        cat_schema_name(p.cat),
         p.name,
         p.ctype,
         p.width,
@@ -278,12 +275,12 @@ fn python_port_str(p: &tapa_task_graph::Port) -> String {
     )
 }
 
-/// Port of Python `tapa/program_codegen/program.py::get_rtl_templates_info`:
+/// Port of the implementation:
 /// `{name: [str(port) for port in task.ports.values()]
 ///   for name, task in program._tasks.items()
 ///   if name in program.gen_templates}`.
 ///
-/// Python's `gen_templates` is the union of user-supplied template
+/// `gen_templates` is the union of user-supplied template
 /// names (not surfaced in tapa-cli today) and every task whose
 /// `target == "ignore"`. The resulting schema is consumed by
 /// `--custom-rtl` at pack time to validate port-signature drift.
@@ -293,7 +290,7 @@ pub fn write_templates_info(work_dir: &Path, design: &Design) -> Result<()> {
         .iter()
         .filter(|(_, t)| t.target.as_deref() == Some("ignore"))
         .map(|(name, t)| {
-            let port_strs: Vec<String> = t.ports.iter().map(python_port_str).collect();
+            let port_strs: Vec<String> = t.ports.iter().map(schema_port_str).collect();
             (name.clone(), port_strs)
         })
         .collect();
@@ -434,13 +431,13 @@ mod tests {
         assert!(written.iter().any(|p| p.ends_with("fifo.v")));
     }
 
-    /// Python parity: `str(port)` emits every `Instance.Arg.Port`
+    /// compatibility: `str(port)` emits every `Instance.Arg.Port`
     /// field in dict-insertion order with an `Enum.__str__` for `cat`
     /// and `None` for unset chan_* fields. The `templates_info.json`
     /// schema depends on the exact string shape; `--custom-rtl`
     /// downstream diffs against it.
     #[test]
-    fn python_port_str_matches_expected_schema() {
+    fn schema_port_str_matches_expected_schema() {
         use tapa_task_graph::{ArgCategory, Port};
         let p = Port {
             cat: ArgCategory::Mmap,
@@ -451,7 +448,7 @@ mod tests {
             chan_size: None,
         };
         assert_eq!(
-            python_port_str(&p),
+            schema_port_str(&p),
             "cat: Cat.MMAP, name: a, ctype: float, width: 32, chan_count: None, chan_size: None",
         );
         let stream = Port {
@@ -463,13 +460,13 @@ mod tests {
             chan_size: Some(8),
         };
         assert_eq!(
-            python_port_str(&stream),
+            schema_port_str(&stream),
             "cat: Cat.ISTREAM, name: in, ctype: uint64_t, width: 64, chan_count: 4, chan_size: 8",
         );
     }
 
     #[test]
-    fn templates_info_emits_python_port_str_for_ignore_tasks() {
+    fn templates_info_emits_schema_port_str_for_ignore_tasks() {
         use tapa_task_graph::{ArgCategory, Port};
         let mut design = vadd_design();
         // Drop a `target(\"ignore\")` task that carries a port so the

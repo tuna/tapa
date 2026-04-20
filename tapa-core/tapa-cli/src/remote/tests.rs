@@ -80,7 +80,7 @@ fn taparc_without_host_returns_none() {
     let cfg = build_remote_config(&make_globals()).unwrap();
     assert!(
         cfg.is_none(),
-        "taparc without `host` must yield None to match Python",
+        "taparc without `host` must yield None to match current",
     );
 }
 
@@ -229,7 +229,7 @@ fn parse_remote_host_spec_variants() {
 
 #[test]
 fn malformed_yaml_warns_and_returns_none() {
-    // Parity finding: Python's `load_remote_config`
+    // Compatibility finding: `load_remote_config`
     // logs a warning and continues when `~/.taparc` is unreadable or
     // malformed; Rust must do the same so a stale taparc cannot fatally
     // block `tapa version` for users without an active remote setup.
@@ -246,6 +246,6 @@ fn malformed_yaml_warns_and_returns_none() {
         .expect("malformed taparc must warn-and-skip, never error");
     assert!(
         cfg.is_none(),
-        "malformed taparc must yield None (Python parity)",
+        "malformed taparc must yield None (compatibility)",
     );
 }

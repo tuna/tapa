@@ -79,7 +79,7 @@ fn run_vadd_hls<R: ToolRunner>(runner: &R) {
         out.stdout
     );
     // Real HLS artifacts must land in the caller-visible output dirs
-    // (Python parity: `tapa/backend/xilinx_hls.py` copies
+    // (compatibility: the implementation copies
     // `project/<solution>/syn/report` and `.../syn/verilog` onto the
     // paths the caller provides).
     assert!(
@@ -89,9 +89,9 @@ fn run_vadd_hls<R: ToolRunner>(runner: &R) {
     );
     assert!(hdl.is_dir(), "hdl_out_dir missing: {}", hdl.display());
     let csynth_xml_canonical = reports.join("vadd_csynth.xml");
-    let csynth_xml_legacy = reports.join("vadd.csynth.xml");
+    let csynth_xml_current = reports.join("vadd.csynth.xml");
     assert!(
-        csynth_xml_canonical.is_file() || csynth_xml_legacy.is_file(),
+        csynth_xml_canonical.is_file() || csynth_xml_current.is_file(),
         "csynth.xml not staged under {}",
         reports.display()
     );
@@ -201,7 +201,7 @@ fn vitis_hls_round_trips_shared_vadd_fixture() {
     let out = run_hls_with_retry(runner.as_ref(), &job, 3)
         .expect("run_hls_with_retry on shared vadd fixture must succeed");
 
-    // Exact-parity check against the committed golden. The
+    // Exact-compatibility check against the committed golden. The
     // manifest lists every field of `HlsOutput` plus the expected
     // report/HDL basenames. Any divergence — extra reports,
     // missing modules, drifted csynth scalar — fails the test.
@@ -213,7 +213,7 @@ fn vitis_hls_round_trips_shared_vadd_fixture() {
     );
     // Load the committed golden manifest and compare the live
     // `HlsOutput` to every field it names. The manifest captures
-    // what Python's `tapa.backend.xilinx_hls::RunHls` produces for
+    // what `tapa.backend.xilinx_hls::RunHls` produces for
     // the same shared fixture against the same Vitis HLS
     // toolchain. Keeping the manifest on disk (instead of
     // hard-coded assertions) lets reviewers update the golden by
@@ -282,7 +282,7 @@ fn vitis_hls_round_trips_shared_vadd_fixture() {
         .collect();
     assert_eq!(
         hdl_basenames, expected_hdl,
-        "HDL inventory drifted from golden (set difference fails exact parity)"
+        "HDL inventory drifted from golden (set difference fails exact compatibility)"
     );
     // Exact report inventory — same treatment.
     let report_basenames: std::collections::BTreeSet<String> = out
@@ -298,7 +298,7 @@ fn vitis_hls_round_trips_shared_vadd_fixture() {
         .collect();
     assert_eq!(
         report_basenames, expected_reports,
-        "report inventory drifted from golden (set difference fails exact parity)"
+        "report inventory drifted from golden (set difference fails exact compatibility)"
     );
     // Normalized report content markers. Each per-task `_csynth.xml`
     // must contain the TopModuleName + Part markers the golden

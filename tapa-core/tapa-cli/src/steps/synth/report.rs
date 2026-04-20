@@ -1,12 +1,12 @@
 //! Top-task `report.json` / `report.yaml` emitter.
 //!
-//! Ports `tapa/codegen/program_rtl.py::generate_top_rtl`'s report
-//! step + `tapa/task.py::Task.report`. Synth writes the report after
+//! Implements's report
+//! step + the implementation. Synth writes the report after
 //! RTL codegen so downstream pack flows (xilinx-vitis `.xo` and
 //! xilinx-hls `.zip`) can include it as `report.yaml` at archive
 //! root and `report.json` alongside.
 //!
-//! Schema (matches Python):
+//! Schema (matches current):
 //! ```yaml
 //! schema: <tapa version>
 //! name: <top task name>
@@ -54,9 +54,9 @@ pub fn write_top_report(work_dir: &Path, design: &Design, override_schema: &str)
     Ok(())
 }
 
-/// Recursively build a task-report dict mirroring Python's
+/// Recursively build a task-report dict mirroring current
 /// `Task.report`. Only recurses one level for `critical_path` /
-/// `breakdown` (Python's report itself recurses, but only top-level
+/// `breakdown` (report itself recurses, but only top-level
 /// is read by downstream consumers).
 fn build_task_report(design: &Design, task_name: &str, schema: &str) -> Result<Value> {
     let task = design.tasks.get(task_name).ok_or_else(|| {
@@ -67,11 +67,11 @@ fn build_task_report(design: &Design, task_name: &str, schema: &str) -> Result<V
     performance.insert("clock_period".to_string(), json!(task.clock_period));
 
     let mut area = serde_json::Map::new();
-    // Python: `source = "synth" if self._total_area else "hls"`. The
+    // current: `source = "synth" if self._total_area else "hls"`. The
     // Rust port records explicit per-task `total_area` only after the
     // post-Vivado utilization pass runs (`emit_post_synth_util`); use
     // the presence of any non-empty `total_area` value as the proxy
-    // (matches Python's behavior — `_total_area` is set at the same
+    // (matches behavior — `_total_area` is set at the same
     // point).
     let area_source = if has_synth_area(task) { "synth" } else { "hls" };
     area.insert("source".to_string(), json!(area_source));
@@ -85,7 +85,7 @@ fn build_task_report(design: &Design, task_name: &str, schema: &str) -> Result<V
                 continue;
             };
             let count = instances.as_array().map_or(0, Vec::len);
-            // Python keys breakdown by `instance.task.name` (the child
+            // keys breakdown by `instance.task.name` (the child
             // task's own name, which matches the IndexMap key here),
             // dedup'd via `setdefault`. Always emit at least 1.
             let count = count.max(1);

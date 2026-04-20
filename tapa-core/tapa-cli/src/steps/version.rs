@@ -1,5 +1,5 @@
 //! `tapa version` — prints the contents of the `VERSION` file with no
-//! trailing newline. Mirrors `tapa/steps/version.py`.
+//! trailing newline. Matches the behavior.
 
 use std::io::Write;
 
@@ -64,8 +64,8 @@ mod tests {
     }
 
     #[test]
-    fn version_matches_python_format() {
-        // Mirrors `0.1.YYYYMMDD` shape from `tapa/_version.py`.
+    fn version_matches_current_format() {
+        // Matches the behavior shape from `tapa/_version`.
         let segment_count = VERSION.split('.').count();
         assert!(segment_count >= 3, "version must have at least 3 segments");
     }

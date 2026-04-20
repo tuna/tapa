@@ -22,7 +22,7 @@ use crate::LoweringError;
 /// and FSM modules from the state, and takes the real `{top}_control_s_axi.v`
 /// text as input rather than fabricating a placeholder.
 ///
-/// Callers that want the Python-equivalent path boundary should instead use
+/// Callers that want the equivalent path boundary should instead use
 /// `build_project_from_paths` via `LoweringInputs`.
 #[allow(clippy::too_many_lines, reason = "sequential grouped-module post-pass")]
 pub fn build_project_from_state(
@@ -45,7 +45,7 @@ pub fn build_project_from_state(
     }
 
     // Collect parameter lists for upper tasks (top + slots) from their
-    // attached RTL. Python's `get_task_graphir_parameters(task_module)` does
+    // attached RTL. `get_task_graphir_parameters(task_module)` does
     // the same on the upper task's parsed RTL, so the grouped `VecAdd` and
     // each `SLOT_*_SLOT_*` module exposes the parameters the Vitis RTL
     // declares.
@@ -114,7 +114,7 @@ pub fn build_project_from_state(
 
     // Inject upper-task parameter lists onto the corresponding grouped
     // module definitions. Grouped modules constructed by build_project
-    // default to empty parameters; Python's `VecAdd` / `SLOT_*_SLOT_*`
+    // default to empty parameters; `VecAdd` / `SLOT_*_SLOT_*`
     // grouped modules carry the parameter declarations from the Vitis RTL.
     for module in &mut project.modules.module_definitions {
         if let AnyModuleDefinition::Grouped { base, .. } = module {
@@ -127,7 +127,7 @@ pub fn build_project_from_state(
     }
 
     // Replace the synthesized top-module port list with the parsed top
-    // RTL's own ports, matching Python's `get_task_graphir_ports(top.rtl_module)`
+    // RTL's own ports, matching `get_task_graphir_ports(top.rtl_module)`
     // in `gen_rs_graphir.get_top_module_definition`. This removes synthetic
     // ports the topology-based expansion adds but the Vitis top RTL does
     // not (e.g. `a`, `b`, `c` scalar offsets, `*_offset`, `*_ARREGION`).
@@ -138,7 +138,7 @@ pub fn build_project_from_state(
     // instantiation binds to) so DRC stays clean.
     // Initial top-port replacement with parsed top RTL. The top-wire
     // rewrite is deferred until after slot grouped modules have been
-    // rewritten, so Python's `get_upper_task_ir_wires(top, slot_defs, ...)`
+    // rewritten, so `get_upper_task_ir_wires(top, slot_defs, ...)`
     // can use the finalized slot defs for FIFO data-range inference.
     if let Some(top_mm) = state.module_map.get(&state.program.top) {
         let top_rtl_ports: Vec<ModulePort> = top_mm
@@ -154,17 +154,15 @@ pub fn build_project_from_state(
         {
             base.ports.clone_from(&top_rtl_ports);
             // Drop any wire now declared as a top port to avoid duplicate
-            // identifiers; the full Python-equivalent wire list is
+            // identifiers; the full equivalent wire list is
             // installed after the slot rewrite below.
             grouped.wires.retain(|w| !top_port_names.contains(&w.name));
         }
     }
 
-    // Replace slot grouped-module port lists with the Python-equivalent
-    // output. Mirrors `tapa/graphir_conversion/pipeline/ports_builder.py::
-    // get_slot_module_definition_ports`:
+    // Replace slot grouped-module port lists with the equivalent output:
     //   * For each slot port, find a child instance whose arg.arg equals
-    //     the slot port name (Python's `_find_port_child`).
+    //     the slot port name (`_find_port_child`).
     //   * Derive slot-visible ports from the child port category via the
     //     Rust equivalent of `get_child_port_connection_mapping`:
     //     - scalar → `{child_port: arg}`
@@ -179,7 +177,7 @@ pub fn build_project_from_state(
     //   * Append handshake ports (ap_clk, ap_rst_n, ap_start, ap_done,
     //     ap_ready, ap_idle).
     // Slot ports whose names don't match any child arg are skipped,
-    // mirroring Python's skip behavior.
+    // mirroring skip behavior.
     let slot_names: Vec<String> = project
         .modules
         .module_definitions
@@ -194,17 +192,16 @@ pub fn build_project_from_state(
         })
         .collect();
     for slot_name in slot_names {
-        let Some(new_ports) =
-            crate::slot_ports::build_slot_ports_python_equivalent(&slot_name, state, &leaf_modules)
+        let Some(new_ports) = crate::slot_ports::build_slot_ports(&slot_name, state, &leaf_modules)
         else {
             continue;
         };
         let Some(slot_task) = state.program.tasks.get(&slot_name) else {
             continue;
         };
-        // Python-equivalent slot wires from `get_upper_task_ir_wires`.
-        // We do NOT auto-declare wires for Vitis FSM RTL ports the Python
-        // wire builder never emits — parity with Python's strict
+        // equivalent slot wires from `get_upper_task_ir_wires`.
+        // We do NOT auto-declare wires for Vitis FSM RTL ports the current
+        // wire builder never emits — compatibility with strict
         // `get_upper_task_ir_wires` output is the contract.
         let new_wires = crate::upper_wires::build_upper_task_ir_wires(
             slot_task,
@@ -244,7 +241,7 @@ pub fn build_project_from_state(
 
     // Top-wire rewrite: must run AFTER slots are finalized so
     // `build_upper_task_ir_wires` sees the slot grouped defs as the
-    // top task's submodule IR defs (Python passes `slot_defs` here,
+    // top task's submodule IR defs (passes `slot_defs` here,
     // not leaf defs — top-level FIFOs are produced/consumed by slots).
     let top_name = &state.program.top;
     if state.module_map.contains_key(top_name) {
@@ -253,7 +250,7 @@ pub fn build_project_from_state(
             // defs. The wire builder's FIFO data-range inference walks
             // the producer's IR-def ports; top FIFOs' producers are
             // slots, so including slot defs is what makes the range
-            // match Python.
+            // match current.
             let mut ir_defs: BTreeMap<String, AnyModuleDefinition> = BTreeMap::new();
             for module in &project.modules.module_definitions {
                 if let AnyModuleDefinition::Grouped { base, .. } = module {
@@ -323,17 +320,17 @@ pub fn build_project_from_state(
     }
 
     // Aggregate slot module parameters from each slot's child leaf RTL —
-    // matches Python's `get_slot_module_definition_parameters`. For every
+    // matches `get_slot_module_definition_parameters`. For every
     // slot task, walk the child leaf tasks (via the slot's `tasks`
     // dictionary), collect their RTL parameter lists from
     // `state.module_map`, and dedupe by name.
     aggregate_slot_leaf_parameters(&mut project, state, slot_to_instances);
 
     // Rebuild slot-module interfaces on the finalized slot-port lists.
-    // `build_project` runs before `build_slot_ports_python_equivalent`,
+    // `build_project` runs before `build_slot_ports`,
     // so its slot ifaces reflect the topology-synthesized port list —
     // which includes internal FIFO signals (e.g. `b_q_VecAdd_din` on
-    // SLOT_X3Y3) that Python never exposes on the slot boundary and
+    // SLOT_X3Y3) that never exposes on the slot boundary and
     // therefore never emits a handshake iface for. Rebuilding only the
     // slot entries drops the stale handshakes without touching the top
     // or infrastructure module ifaces (whose port basis did not
@@ -432,13 +429,13 @@ fn refresh_top_slot_instance_connections(
 
 /// Aggregate leaf RTL parameters onto slot grouped modules.
 ///
-/// Mirrors Python's `get_slot_module_definition_parameters(leaf_ir_defs)`:
-/// iterate every leaf module's parameters in the SAME order Python does
+/// Mirrors `get_slot_module_definition_parameters(leaf_ir_defs)`:
+/// iterate every leaf module's parameters in the SAME order does
 /// and keep the first-seen `ModuleParameter` for each name verbatim.
-/// Python's `Task.__init__` in `tapa/task.py` calls
+/// `Task.__init__` in the implementation calls
 /// `dict(sorted(tasks.items()))` on each upper task's children, so
 /// `task.instances` (built from this sorted dict in
-/// `tapa/program/rtl_codegen.py`) iterates child task names
+/// the implementation) iterates child task names
 /// alphabetically. `leaf_ir_defs` is built by walking
 /// `top_task.instances` → each slot's `slot_task.instances`, both
 /// alphabetical-by-task-name. Our `BTreeMap<String, Vec<InstanceDesign>>`
@@ -448,7 +445,7 @@ fn refresh_top_slot_instance_connections(
 /// `SLOT_X0Y2`, whose alphabetical name starts with `SLOT_X0`) as the
 /// first-seen leaf — winning `ap_ST_fsm_state*` = `10'd*` over `Add`'s
 /// `3'd*`. For a slot with `zleaf` listed before `aleaf` in the raw
-/// JSON, Python sorts them so `aleaf` wins (alphabetical).
+/// JSON, sorts them so `aleaf` wins (alphabetical).
 ///
 /// Since `leaf_ir_defs` is the full project leaf set, every slot ends
 /// up with the same parameter list; we compute it once and apply it to
@@ -463,7 +460,7 @@ fn aggregate_slot_leaf_parameters(
         return;
     };
 
-    // Python-equivalent iteration: for each slot (in top.tasks order),
+    // equivalent iteration: for each slot (in top.tasks order),
     // for each leaf (in slot.tasks order), collect RTL parameters,
     // preserving the first `ModuleParameter` seen for each name.
     let mut aggregated: Vec<tapa_graphir::ModuleParameter> = Vec::new();
@@ -553,7 +550,7 @@ pub fn build_project_from_inputs(
 /// Build a `GraphIR` Project from `LoweringInputs`.
 ///
 /// Reads `floorplan.json`, `device_config.json`, and `{top}_control_s_axi.v`
-/// from disk. Matches the Python `get_project_from_floorplanned_program`
+/// from disk. Matches the `get_project_from_floorplanned_program`
 /// boundary.
 ///
 /// # Errors
@@ -597,7 +594,7 @@ pub fn build_project_from_paths(
 
     // Attach generated upper RTL when present. The post-pass in
     // `build_project_from_state` uses the real top module ports as the
-    // boundary and rebuilds Python-equivalent top wires. Without this,
+    // boundary and rebuilds equivalent top wires. Without this,
     // GraphIR export keeps the topology-only top definition and misses
     // slot queue-tail / cross-slot FIFO wires referenced by submodules.
     let upper_rtl_task_names: Vec<String> = state
@@ -625,13 +622,13 @@ pub fn build_project_from_paths(
     // whose FSM module definitions carry the full Vitis port list
     // (ap_start, ap_done, slot-prefixed handshake ports, …) instead
     // of the 6-port stub the fallback `create_fsm_module`
-    // synthesizes. Matches Python's
+    // synthesizes. Matches current
     // `get_fsm_def(program.get_rtl_path(task.rtl_fsm_module.name))`.
     //
     // Missing or malformed FSM RTL is surfaced as
     // `LoweringError::MissingFsmRtl` rather than silently falling
     // back to the 6-port stub — otherwise downstream wiring / iface
-    // parity would silently diverge from Python with the root cause
+    // compatibility would silently diverge from with the root cause
     // hidden.
     let upper_task_names: Vec<String> = state
         .program
@@ -662,7 +659,7 @@ pub fn build_project_from_paths(
 
     // Derive slot-to-instances. When the program's topology carries
     // `slot_task_name_to_fp_region`, use the slot-task hierarchy as
-    // authoritative (matching Python's pre-baked slot task names like
+    // authoritative (matching pre-baked slot task names like
     // `SLOT_X0Y2_SLOT_X0Y2`). Otherwise fall back to floorplan-region
     // derivation.
     let slot_to_instances = if state.program.slot_task_name_to_fp_region.is_some() {
@@ -706,7 +703,7 @@ fn is_verilog_boundary(ch: Option<char>) -> bool {
 /// Derive slot → instance mapping from the pre-baked slot-task hierarchy in
 /// the program. Slot module names are the slot task names themselves (e.g.,
 /// `SLOT_X0Y2_SLOT_X0Y2`), and each slot's instances come from its child
-/// task definitions. Matches Python's `_build_program` convention.
+/// task definitions. Matches `_build_program` convention.
 fn slot_to_instances_from_topology(program: &Program) -> BTreeMap<String, Vec<String>> {
     let mut out: BTreeMap<String, Vec<String>> = BTreeMap::new();
     let Some(region_map) = program.slot_task_name_to_fp_region.as_ref() else {
@@ -872,7 +869,7 @@ pub fn build_project(
     // Build top module definition with FSM and ctrl_s_axi instances.
     // Pre-compute top RTL parameters (same ones the post-pass injects into
     // the grouped top base.parameters) so `control_s_axi_U` can copy the
-    // actual parameter expressions, matching Python's
+    // actual parameter expressions, matching current
     // `Expression(top_param_by_name[value].expr.root)`.
     let fsm_name = format!("{}_fsm", program.top);
     let top_rtl_params: Vec<tapa_graphir::ModuleParameter> = state
@@ -938,19 +935,19 @@ fn build_slot_module(
     // Physical floorplan region for child instances: when the slot task
     // is pre-baked (slot_task_name_to_fp_region maps slot_name → region),
     // use the region string verbatim ("SLOT_X0Y0:SLOT_X0Y0"). Otherwise
-    // fall back to the slot name. This matches Python's
+    // fall back to the slot name. This matches current
     // program.slot_task_name_to_fp_region lookup.
     let fp_region = program
         .slot_task_name_to_fp_region
         .as_ref()
         .and_then(|m| m.get(slot_name).cloned())
         .unwrap_or_else(|| slot_name.to_owned());
-    // Slot-local arg table for this slot's children. Mirrors Python's
-    // `get_task_arg_table(slot)` used in instantiation_builder.py
+    // Slot-local arg table for this slot's children. Mirrors current
+    // `get_task_arg_table(slot)` used in instantiation_builder
     // for slot grouped modules — Rust previously built arg tables from
     // the top task, which means child leaf instances inside a slot had
     // no arg entries and `build_port_connections` fell back to raw arg
-    // names instead of Python's `{inst}___{arg}[_offset]__q0` queue-tail
+    // names instead of `{inst}___{arg}[_offset]__q0` queue-tail
     // signals. When a slot_name does not correspond to a registered
     // program task (small test fixtures), fall back to the top task for
     // the arg-table context so the builder still produces a compatible
@@ -970,7 +967,7 @@ fn build_slot_module(
     let mut wires = Vec::new();
     let mut direct_assigns = Vec::new();
 
-    // Python's slot grouped modules do not contain a reset_inverter
+    // slot grouped modules do not contain a reset_inverter
     // instance; the reset_inverter is a top-level instance only. Keep the
     // `ap_rst` wire declaration for local signals that reference it, but
     // skip the per-slot instantiation.
@@ -1003,7 +1000,7 @@ fn build_slot_module(
                 .map(|def| def.ports().iter().map(|p| p.name.clone()).collect());
 
             // Find the instance's args in the SLOT task, using the
-            // slot-local arg table for pipeline routing. Mirrors Python's
+            // slot-local arg table for pipeline routing. Mirrors current
             // `get_upper_module_ir_subinsts(slot, ...)` which walks
             // `slot.instances`, not the top's.
             let inst_arg_table = slot_arg_table.get(inst_name);
@@ -1018,7 +1015,7 @@ fn build_slot_module(
                             // table for all categories. Scalars route through
                             // queue-tail wires ({inst}___{arg}__q0); mmap
                             // offsets through ({inst}___{arg}_offset__q0),
-                            // matching Python's `_connect_scalar` +
+                            // matching `_connect_scalar` +
                             // `_connect_mmap_offset` + FIFO-handshake flows.
                             let child_rtl_ref = state
                                 .and_then(|s| s.module_map.get(&task_name))
@@ -1056,7 +1053,7 @@ fn build_slot_module(
                 }
                 // Use the arg name (parent-visible) for port expansion.
                 // Look in the slot task's own task map first (pre-baked slot
-                // hierarchy), then fall back to the top task's map. Python's
+                // hierarchy), then fall back to the top task's map. current
                 // `_find_port_child` walks `slot.instances`; we mirror that
                 // by preferring the slot task's own `tasks` dict.
                 let arg_name =
@@ -1137,7 +1134,7 @@ fn build_slot_module(
         }
     }
 
-    // Add the slot FSM instance unconditionally. Python's
+    // Add the slot FSM instance unconditionally. current
     // `get_upper_module_ir_subinsts` appends
     // `_make_fsm_inst(upper_task.rtl_fsm_module, floorplan_region)` at
     // this point — a self-connected instance named `{slot}_fsm_0` that
@@ -1177,7 +1174,7 @@ fn build_slot_module(
     }
 
     // Add FIFO instances for FIFOs whose producer and consumer both live
-    // inside this slot. Python's `get_upper_module_ir_subinsts` iterates
+    // inside this slot. `get_upper_module_ir_subinsts` iterates
     // `upper_task.fifos` (the slot's own FIFO map, not the top task's)
     // and keeps only the internal ones via `is_fifo_external_codegen`.
     // Intra-slot FIFOs are those with both `produced_by` and `consumed_by`
@@ -1252,11 +1249,11 @@ fn is_s_axi_slave_input(axi_port: &str) -> bool {
 }
 
 /// Port mapping from `ctrl_s_axi` internal name → top-level expression.
-/// Python's `_CTRL_S_AXI_PORT_MAPPING` in `gen_rs_graphir.py`.
+/// `_CTRL_S_AXI_PORT_MAPPING` in `gen_rs_graphir`.
 fn ctrl_s_axi_port_expr(port_name: &str) -> Expression {
     match port_name {
         "ACLK" => Expression::new_id("ap_clk"),
-        // Python routes ctrl_s_axi.ARESET through `rst` (output of
+        // routes ctrl_s_axi.ARESET through `rst` (output of
         // reset_inverter), same as reset_inverter_0.rst → `rst`.
         "ARESET" => Expression::new_id("rst"),
         "ACLK_EN" => Expression::new_lit("1'b1"),
@@ -1290,7 +1287,7 @@ fn build_top_module(
     leaf_modules: &BTreeMap<String, AnyModuleDefinition>,
 ) -> AnyModuleDefinition {
     // Default region for top-level system instances (top FSM, ctrl_s_axi,
-    // reset_inverter). Python's get_top_module_definition uses the first
+    // reset_inverter). get_top_module_definition uses the first
     // value of slot_task_name_to_fp_region as default_region; we do the same.
     let default_region = program
         .slot_task_name_to_fp_region
@@ -1325,9 +1322,9 @@ fn build_top_module(
 
     let mut submodules = vec![get_reset_inverter_inst(default_region.as_deref())];
     // `rst` is the output of reset_inverter; `ap_rst` is the same signal
-    // under the Vitis-generated name. Python names the wire `rst`; for
+    // under the Vitis-generated name. names the wire `rst`; for
     // compatibility we emit both `ap_rst` (in-flight Rust code uses it)
-    // and `rst` (Python-equivalent name for ctrl_s_axi's ARESET and the
+    // and `rst` (equivalent name for ctrl_s_axi's ARESET and the
     // reset_inverter.rst connection).
     let mut wires = vec![
         make_wire("ap_rst", None),
@@ -1342,7 +1339,7 @@ fn build_top_module(
     let mut direct_assigns = Vec::new();
 
     // FSM instance — self-connect every port in the FSM module definition
-    // the way Python's `_make_fsm_inst` does (each port expression is just
+    // the way `_make_fsm_inst` does (each port expression is just
     // an identifier for the same name). For any FSM port that isn't
     // already declared as a top-level port or wire (e.g. slot-prefixed
     // handshake signals like `SLOT_X0Y2_SLOT_X0Y2_0__ap_start`), emit a
@@ -1400,7 +1397,7 @@ fn build_top_module(
             ctrl_connections.push(crate::utils::make_connection(sig, Expression::new_id(sig)));
         }
         // Dynamic scalar/MMAP-offset ports — connect to same-name top-level wires
-        // Python: _CTRL_S_AXI_PORT_MAPPING defaults unknown ports to Token.new_id(port.name)
+        // current: _CTRL_S_AXI_PORT_MAPPING defaults unknown ports to Token.new_id(port.name)
         for port in &top.ports {
             use tapa_task_graph::port::ArgCategory;
             let ctrl_port_name = match port.cat {
@@ -1424,12 +1421,12 @@ fn build_top_module(
             }
         }
 
-        // Python's get_top_ctrl_s_axi_inst (gen_rs_graphir.py) passes two
+        // get_top_ctrl_s_axi_inst (gen_rs_graphir) passes two
         // parameter assignments: the ctrl_s_axi module exposes
         // C_S_AXI_ADDR_WIDTH / C_S_AXI_DATA_WIDTH, which the top
         // instantiation ties to the top task's
         // C_S_AXI_CONTROL_ADDR_WIDTH / C_S_AXI_CONTROL_DATA_WIDTH.
-        // Python copies `Expression(top_param_by_name[value].expr.root)`,
+        // copies `Expression(top_param_by_name[value].expr.root)`,
         // i.e., it substitutes the literal token stream of the outer
         // parameter's default expression (e.g., `6`, `32`) rather than
         // referencing the outer parameter by name.
@@ -1468,7 +1465,7 @@ fn build_top_module(
         });
     }
 
-    // Slot instances — Python-equivalent `get_top_level_slot_inst`:
+    // Slot instances — equivalent `get_top_level_slot_inst`:
     // build connections by walking each slot's args in the TOP task and
     // running them through the same `_connect_scalar` / `_connect_istream`
     // / `_connect_ostream` / `_connect_mmap` flow as child instances.
@@ -1510,7 +1507,7 @@ fn build_top_module(
         }
         // Append clock/reset; the four ap_* control connections use
         // per-instance wires when the top task has a slot hierarchy
-        // registered (matches Python's `get_top_level_slot_inst`), or
+        // registered (matches `get_top_level_slot_inst`), or
         // the top-level wires otherwise (for trivial fixtures that
         // synthesize "slot" names from floorplan regions rather than
         // from task names).
@@ -1550,10 +1547,10 @@ fn build_top_module(
     }
 
     // Top-level FIFO instances: FIFOs whose producer and consumer are in
-    // different slots become top-level submodules. Python's
+    // different slots become top-level submodules. current
     // `get_top_ir_subinsts` adds one `fifo` instance per such FIFO,
-    // assigned to the consumer's slot region. Matching Python here closes
-    // the submodule-count parity gap on the shared fixture.
+    // assigned to the consumer's slot region. Matching here closes
+    // the submodule-count compatibility gap on the shared fixture.
     let region_map = program.slot_task_name_to_fp_region.as_ref();
     for (fifo_name, fifo) in &top.fifos {
         let consumer_slot = fifo.consumed_by.as_ref().map(|e| &e.0);
@@ -1566,9 +1563,9 @@ fn build_top_module(
             continue;
         }
         // Cross-slot FIFO: drill into the producer slot's child leaf
-        // RTL to get the `_din` port range (Python looks up the
+        // RTL to get the `_din` port range (looks up the
         // slot-def port, but at this point the slot defs have not
-        // yet been rewritten with Python-equivalent ports).
+        // yet been rewritten with equivalent ports).
         let data_range = crate::upper_wires::infer_top_fifo_data_range_via_leaf(
             fifo_name,
             fifo,
@@ -1771,7 +1768,7 @@ fn port_range(width: u32) -> Option<tapa_graphir::Range> {
 
 /// Build interfaces for all module definitions.
 ///
-/// Python-equivalent interface assembly: dedicated builders for FIFO,
+/// equivalent interface assembly: dedicated builders for FIFO,
 /// `reset_inverter`, FSM, `ctrl_s_axi`, slot/top tasks. Each builder
 /// produces the correct interface types with valid/ready ports.
 #[allow(
@@ -1813,7 +1810,7 @@ fn build_interfaces(
             def.ports().iter().map(|p| p.name.clone()).collect();
 
         let module_ifaces = if name == "fifo" {
-            // Python: get_fifo_ifaces()
+            // current: get_fifo_ifaces()
             vec![
                 AnyInterface::Clock {
                     base: InterfaceBase {
@@ -1883,7 +1880,7 @@ fn build_interfaces(
                 },
             ]
         } else if name == "reset_inverter" {
-            // Python: get_reset_inverter_ifaces()
+            // current: get_reset_inverter_ifaces()
             vec![
                 AnyInterface::Clock {
                     base: InterfaceBase {
@@ -1917,7 +1914,7 @@ fn build_interfaces(
                 },
             ]
         } else if name.ends_with("_control_s_axi") {
-            // Python: get_ctrl_s_axi_ifaces()
+            // current: get_ctrl_s_axi_ifaces()
             let mut ci = vec![
                 AnyInterface::Clock {
                     base: InterfaceBase {
@@ -2056,7 +2053,7 @@ fn build_interfaces(
             let mut si = Vec::new();
             let mut scalars = Vec::new();
             build_task_port_ifaces_with_scalars(def, &port_names, &mut si, &mut scalars);
-            // Python: get_slot_task_ifaces(scalars)
+            // current: get_slot_task_ifaces(scalars)
             let mut ap_ports = scalars;
             ap_ports.extend(
                 [
@@ -2103,7 +2100,7 @@ fn build_interfaces(
             si
         } else if name.ends_with("_fsm") && name == format!("{}_fsm", program.top) {
             // Top-level FSM: emit per-slot ApCtrl interfaces plus the
-            // FSM-top ApCtrl (matches Python get_fsm_ifaces).
+            // FSM-top ApCtrl (matches get_fsm_ifaces).
             let mut fi = Vec::new();
             let slot_names: Vec<String> = slot_to_instances.keys().cloned().collect();
 
@@ -2114,7 +2111,7 @@ fn build_interfaces(
                 let ready = format!("{slot_prefix}__ap_ready");
                 let idle = format!("{slot_prefix}__ap_idle");
                 // Only emit a per-slot ApCtrl if the FSM actually exposes the
-                // slot-prefixed handshake ports. Python's equivalent always
+                // slot-prefixed handshake ports. equivalent always
                 // emits it; we guard here so that minimal test fixtures
                 // without slot instantiations still produce a valid project.
                 if !port_names.contains(&start) || !port_names.contains(&done) {
@@ -2145,7 +2142,7 @@ fn build_interfaces(
             }
 
             // FSM-top ApCtrl: scalar ports (excluding clock/reset/per-slot-prefixed) + ap_*.
-            // Matches Python `get_fsm_ifaces`, which emits this interface
+            // Matches `get_fsm_ifaces`, which emits this interface
             // unconditionally on the top FSM module. Role inference then
             // validates the directions.
             let fsm_scalars: Vec<String> = def
@@ -2239,7 +2236,7 @@ fn build_task_port_ifaces(
 
 /// Build stream/MMAP interfaces and collect scalar port names.
 ///
-/// Matches Python's `_append_task_port_ifaces` + `_append_stream_iface`
+/// Matches `_append_task_port_ifaces` + `_append_stream_iface`
 /// + `_append_mmap_ifaces`.
 fn build_task_port_ifaces_with_scalars(
     def: &AnyModuleDefinition,
@@ -2820,12 +2817,12 @@ endmodule
     }
 
     #[test]
-    fn aggregate_slot_params_matches_python_alphabetical_order() {
+    fn aggregate_slot_params_matches_current_alphabetical_order() {
         // Slot-parameter aggregation must iterate child tasks
-        // alphabetically to match Python's `dict(sorted(tasks.items()))`
-        // in `tapa/task.py`. The JSON lists `zleaf` first and `aleaf`
-        // second, but Python sorts them so `aleaf` wins as the
-        // first-seen parameter source. Verified against Python: for
+        // alphabetically to match `dict(sorted(tasks.items()))`
+        // in the implementation. The JSON lists `zleaf` first and `aleaf`
+        // second, but sorts them so `aleaf` wins as the
+        // first-seen parameter source. Verified against current: for
         // this exact JSON, `task.instances == ['aleaf_0', 'zleaf_0']`
         // and the aggregated `P = 3'd1` (from `aleaf`). Rust must
         // produce the same.
@@ -2863,13 +2860,13 @@ endmodule
         }"#;
         let prog: Program = serde_json::from_str(prog_json).unwrap();
         // Slot's children iterate alphabetically — `aleaf` before
-        // `zleaf` — matching Python's `dict(sorted(...))` semantics.
+        // `zleaf` — matching `dict(sorted(...))` semantics.
         let slot_a = prog.tasks.get("slot_A").unwrap();
         let keys: Vec<&String> = slot_a.tasks.keys().collect();
         assert_eq!(
             keys,
             vec!["aleaf", "zleaf"],
-            "BTreeMap must iterate alphabetically (Python-equivalent)"
+            "BTreeMap must iterate alphabetically (equivalent)"
         );
 
         // Build a minimal TopologyWithRtl where each leaf carries a
@@ -2948,7 +2945,7 @@ endmodule
         );
         assert_eq!(
             p_param.expr.0[0].repr, "3'd1",
-            "alphabetical-first leaf `aleaf` (P = 3'd1) should win, matching Python's \
+            "alphabetical-first leaf `aleaf` (P = 3'd1) should win, matching \
              dict(sorted(...)) semantics — not `zleaf`'s 10'd1"
         );
     }

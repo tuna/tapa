@@ -1,7 +1,7 @@
-//! Python-equivalent wire synthesis for upper (slot + top) grouped modules.
+//! equivalent wire synthesis for upper (slot + top) grouped modules.
 //!
-//! Mirrors `tapa/graphir_conversion/pipeline/wire_builder.py::get_upper_task_ir_wires`
-//! and `tapa/graphir_conversion/gen_rs_graphir.py::get_top_extra_wires`.
+//! Matches the behavior
+//! and the implementation.
 
 use std::collections::BTreeMap;
 
@@ -9,7 +9,7 @@ use tapa_graphir::{AnyModuleDefinition, HierarchicalName, ModuleNet, ModulePort,
 use tapa_task_graph::port::ArgCategory;
 use tapa_topology::task::TaskDesign;
 
-/// Build the three-category wire list Python's `get_upper_task_ir_wires`
+/// Build the three-category wire list `get_upper_task_ir_wires`
 /// emits for an upper task (slot or top):
 ///
 /// 1. Local FIFO wires (non-external FIFOs) — six wires per FIFO:
@@ -26,7 +26,7 @@ use tapa_topology::task::TaskDesign;
 ///    `{inst}__ap_start`, `{inst}__ap_done`, `{inst}__ap_ready`,
 ///    `{inst}__ap_idle`.
 ///
-/// The returned list preserves Python's emission order (FIFOs → arg-table
+/// The returned list preserves emission order (FIFOs → arg-table
 /// wires → per-instance controls).
 #[must_use]
 pub fn build_upper_task_ir_wires(
@@ -38,7 +38,7 @@ pub fn build_upper_task_ir_wires(
     let mut wires: Vec<ModuleNet> = Vec::new();
 
     // 1. Local FIFO wires. Intra-upper-task FIFOs have both `produced_by`
-    //    and `consumed_by` set. `is_fifo_external_codegen` (Python) treats
+    //    and `consumed_by` set. `is_fifo_external_codegen` (current) treats
     //    only those as internal.
     for (fifo_name, fifo) in &upper_task.fifos {
         if fifo.produced_by.is_none() || fifo.consumed_by.is_none() {
@@ -82,7 +82,7 @@ pub fn build_upper_task_ir_wires(
                     | ArgCategory::Istreams
                     | ArgCategory::Ostreams => continue,
                 };
-                // Python: port_range_key = arg if arg in mapping else f"{arg}_offset"
+                // current: port_range_key = arg if arg in mapping else f"{arg}_offset"
                 let range = port_range_mapping
                     .get(&arg.arg)
                     .cloned()
@@ -113,7 +113,7 @@ pub fn build_upper_task_ir_wires(
 /// Extra top-only wires contributed by the `ctrl_s_axi` module.
 ///
 /// Every port of `ctrl_s_axi` that is not in the port-mapping set
-/// Python's `gen_rs_graphir._CTRL_S_AXI_PORT_MAPPING` covers becomes an
+/// `gen_rs_graphir._CTRL_S_AXI_PORT_MAPPING` covers becomes an
 /// internal top-module wire. The mapping keys are:
 ///
 ///   * the 17 `s_axi_control_*` AXI-Lite port names (which get routed to
@@ -143,10 +143,10 @@ pub fn build_top_extra_wires(ctrl_s_axi_ports: &[ModulePort]) -> Vec<ModuleNet> 
 }
 
 /// Try to infer the data range of a FIFO by looking up the producer's
-/// `_din` port on the submodule IR. Mirrors Python's
+/// `_din` port on the submodule IR. Mirrors current
 /// `tapa.graphir_conversion.pipeline.fifo_builder.infer_fifo_data_range`.
 ///
-/// `is_top` mirrors Python's `infer_port_name_from_tapa_module=not is_top`:
+/// `is_top` mirrors `infer_port_name_from_tapa_module=not is_top`:
 ///   * `is_top=false`: use the producer's child RTL `get_port_of` lookup
 ///     (applies `_FIFO_INFIXES` normalization) for slot-local FIFOs.
 ///   * `is_top=true`: use the plain `{fifo_name}_din` port name, since the
@@ -165,7 +165,7 @@ pub fn infer_fifo_data_range(
     let producer_def = submodule_ir_defs.get(producer_task_name)?;
 
     if is_top {
-        // Python: producer_data_port = get_stream_port_name(producer_fifo, "_din")
+        // current: producer_data_port = get_stream_port_name(producer_fifo, "_din")
         let sanitized = tapa_rtl::module::sanitize_array_name(fifo_name);
         let data_port_name = format!("{sanitized}_din");
         return producer_def
@@ -176,7 +176,7 @@ pub fn infer_fifo_data_range(
     }
 
     // Slot-local FIFO: find the child arg name, then try each FIFO_INFIXES
-    // suffix pattern (matches Python's `rtl_module.get_port_of(arg, "_din")`).
+    // suffix pattern (matches `rtl_module.get_port_of(arg, "_din")`).
     let producer_idx = usize::try_from(endpoint.1).ok()?;
     let producer_port_name = upper_task
         .tasks
@@ -210,7 +210,7 @@ fn find_port_with_infixes<'a>(
 ///
 /// Drills into the producer slot's child leaf RTL that actually
 /// produces the FIFO. The slot's topology-synthesized port ranges
-/// aren't Python-equivalent at the time `build_top_module` runs (slot
+/// aren't equivalent at the time `build_top_module` runs (slot
 /// ports get rewritten in a later post-pass), so we bypass the slot
 /// def and look up the leaf producer directly.
 #[must_use]

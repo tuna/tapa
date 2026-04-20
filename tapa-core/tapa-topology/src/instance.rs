@@ -10,7 +10,7 @@ use tapa_task_graph::port::ArgCategory;
 pub struct ArgDesign {
     /// Resolved name in parent scope (port/FIFO name or literal).
     pub arg: String,
-    /// Category (typed enum matching Python semantics).
+    /// Category (typed enum matching current semantics).
     pub cat: ArgCategory,
     /// Extra unknown fields.
     #[serde(flatten)]

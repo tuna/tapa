@@ -1,6 +1,6 @@
 //! Verilog file export from a `GraphIR` Project.
 //!
-//! Replaces Python `tapa/verilog/graphir_exporter/`.
+//! Implements.
 
 pub mod verilog;
 
@@ -83,7 +83,7 @@ fn export_module(module: &AnyModuleDefinition, dest: &Path) -> Result<(), Export
 
     let content = verilog::render_module(module);
 
-    // Write all modules including stubs (matching Python dispatcher behavior)
+    // Write all modules including stubs (matching current dispatcher behavior)
     let file_path = dest.join(format!("{}.v", module.name()));
     std::fs::write(file_path, content)?;
     Ok(())

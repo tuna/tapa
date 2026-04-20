@@ -1,7 +1,7 @@
-//! Verbatim port of `tapa/common/paths.py::find_resource` and
-//! `tapa/steps/analyze.py::find_clang_binary`.
+//! Implementation of and
+//! the implementation.
 //!
-//! The Python implementation walks every parent of `__file__` and tries
+//! The implementation walks every parent of `__file__` and tries
 //! each entry from `POTENTIAL_PATHS`, returning the first match. Bazel
 //! runfiles support is intentionally out of scope — see the plan.
 
@@ -13,8 +13,8 @@ use regex::Regex;
 
 use crate::error::{CliError, Result};
 
-/// Mirror of `tapa/common/paths.py::POTENTIAL_PATHS`. Order is preserved so
-/// a higher-priority match wins (matches the Python tuple-iteration order).
+/// Mirror of the implementation. Order is preserved so
+/// a higher-priority match wins (matches the tuple-iteration order).
 pub static POTENTIAL_PATHS: &[(&str, &[&str])] = &[
     ("fpga-runtime-include", &["fpga-runtime", "usr/include"]),
     (
@@ -45,7 +45,7 @@ pub static POTENTIAL_PATHS: &[(&str, &[&str])] = &[
     ("tapacc-binary", &["tapacc/tapacc", "usr/bin/tapacc"]),
 ];
 
-/// Override the search anchor for tests. Mirrors Python's
+/// Override the search anchor for tests. Mirrors current
 /// `Path(__file__).absolute().parents` walk: when the override is set, we
 /// walk its parents instead of the binary's parents.
 fn search_anchor() -> PathBuf {
@@ -105,8 +105,8 @@ pub fn find_clang_binary(name: &str) -> Result<PathBuf> {
     Ok(path.canonicalize().unwrap_or(path))
 }
 
-/// Regex matching Python's `re.compile(R"version (\d+)(\.\d+)*")` from
-/// `tapa/steps/analyze.py::find_clang_binary`. Requires the literal
+/// Regex matching `re.compile(R"version (\d+)(\.\d+)*")` from
+/// the implementation. Requires the literal
 /// `"version "` followed by at least one numeric segment so unparseable
 /// `--version` output (e.g. plain "ok") fails fast.
 fn version_regex() -> &'static Regex {

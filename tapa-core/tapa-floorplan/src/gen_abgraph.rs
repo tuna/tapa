@@ -172,7 +172,7 @@ pub fn get_top_level_ab_graph_from_rtl(
 /// Collect FIFO widths from attached RTL modules.
 ///
 /// For each FIFO, finds the producer task's RTL module and extracts the
-/// port width from the parsed Verilog, matching Python's `get_fifo_width`.
+/// port width from the parsed Verilog, matching `get_fifo_width`.
 #[must_use]
 pub fn collect_fifo_width_from_rtl(state: &TopologyWithRtl) -> BTreeMap<String, u64> {
     let program = &state.program;
@@ -184,7 +184,7 @@ pub fn collect_fifo_width_from_rtl(state: &TopologyWithRtl) -> BTreeMap<String, 
             let producer_task_name = &producer.0;
             // Try to get width from RTL module's parsed port widths.
             //
-            // Mirrors Python `tapa.verilog.xilinx.module_ops.ports.get_port_of`,
+            // Mirrors `tapa.verilog.xilinx.module_ops.ports.get_port_of`,
             // which probes the producer's ports through the same
             // `("_V", "_r", "_s", "")` infix set. The slot-wrapper Verilog
             // exposes stream ports as `{port}_s_din` / `{port}_s_dout` (33
@@ -475,7 +475,7 @@ fn ab_port_name(port_name: &str) -> String {
 
 /// Find a preassignment region for a port, checking for conflicts.
 ///
-/// Uses full-match semantics (like Python `re.fullmatch`) by anchoring patterns
+/// Uses full-match semantics (like `re.fullmatch`) by anchoring patterns
 /// with `^` and `$`.
 fn find_preassignment_region(
     port_name: &str,
@@ -483,7 +483,7 @@ fn find_preassignment_region(
 ) -> Result<Option<String>, FloorplanError> {
     let mut region: Option<String> = None;
     for (pattern, current_region) in preassignments {
-        // Anchor the pattern for full-match semantics (Python re.fullmatch)
+        // Anchor the pattern for full-match semantics (re.fullmatch)
         let anchored = if pattern.starts_with('^') && pattern.ends_with('$') {
             pattern.clone()
         } else {
@@ -510,7 +510,7 @@ fn find_preassignment_region(
 /// Look up a FIFO data port's bit-width on a producer RTL module, trying
 /// both `_din` (producer write side) and `_dout` (consumer read side on
 /// pass-through wrappers). Delegates to `tapa_rtl::VerilogModule::get_port_of`,
-/// which implements Python's `get_port_of` infix-lookup and singleton-array
+/// which implements `get_port_of` infix-lookup and singleton-array
 /// fallback semantics.
 fn find_fifo_port_width(module: &tapa_rtl::VerilogModule, port_name: &str) -> Option<u32> {
     for suffix in ["_din", "_dout"] {

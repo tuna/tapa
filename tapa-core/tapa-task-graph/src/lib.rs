@@ -1,6 +1,6 @@
 //! TAPA task graph schema — serde structs for `graph.json` (tapacc output)
-//! and `design.json` (the topology bridge written by Python's
-//! `tapa/steps/common.py::store_design`).
+//! and `design.json` (the topology bridge written by current
+//! the implementation).
 
 pub mod design;
 pub mod graph;

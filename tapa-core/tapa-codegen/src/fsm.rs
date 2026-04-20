@@ -1,6 +1,6 @@
 //! FSM pragma and control logic generation.
 //!
-//! Ports `tapa/task_codegen/fsm.py`: `RapidStream` pragma emission
+//! Implements: `RapidStream` pragma emission
 //! for clock, reset, ap-ctrl, and per-instance ap-ctrl.
 
 use tapa_protocol::{HANDSHAKE_CLK, HANDSHAKE_RST_N, HANDSHAKE_START};
@@ -122,7 +122,7 @@ mod tests {
     }
 
     #[test]
-    fn adds_python_compatible_ap_ctrl_pragmas() {
+    fn adds_current_compatible_ap_ctrl_pragmas() {
         let mut fsm = empty_fsm_module();
         add_rs_pragmas_to_fsm(
             &mut fsm,

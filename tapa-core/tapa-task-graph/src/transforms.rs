@@ -93,7 +93,7 @@ pub fn flatten(graph: &Graph) -> Result<Graph, TransformError> {
     // float up to the top, FIFOs that live inside nested upper tasks
     // are rewritten to their global names (`<fifo>_<inst_path>_<top>`)
     // and stitched back together against the collected leaves.
-    // Mirrors Python's `Graph.get_flatten_graph` +
+    // Mirrors `Graph.get_flatten_graph` +
     // `TaskInstance.get_leaf_tasks_insts` + `recursive_get_interconnect_insts`.
     let mut leaves: BTreeMap<String, Vec<TaskInstance>> = BTreeMap::new();
     let mut fifos: BTreeMap<String, InterconnectDefinition> = BTreeMap::new();
@@ -108,7 +108,7 @@ pub fn flatten(graph: &Graph) -> Result<Graph, TransformError> {
 
     // Post-pass: now that every instantiation has its final argument
     // bindings, fill in each FIFO's `consumed_by` / `produced_by`
-    // against the flattened leaf set. This mirrors the Python side
+    // against the flattened leaf set. This mirrors the side
     // which recomputes endpoints after `interconnect_global_name=True`
     // args have been produced.
     let fifo_names: Vec<String> = fifos.keys().cloned().collect();
@@ -162,7 +162,7 @@ pub fn flatten(graph: &Graph) -> Result<Graph, TransformError> {
 ///
 /// `scope_path` is the `parent.global_name` for this call site: the
 /// top-level call uses `top_name`, and each upper-child instantiation
-/// descends with `<inst_name>_<scope_path>`. Matches Python's
+/// descends with `<inst_name>_<scope_path>`. Matches current
 /// `Base._generate_global_name_without_sub` chain.
 ///
 /// `arg_bindings` maps *this task's port names* to the globally-
@@ -183,7 +183,7 @@ fn collect_leaves_recursive(
         .ok_or_else(|| TransformError::MissingTop(task_name.to_string()))?;
 
     // FIFOs declared at this scope get renamed to their global form.
-    // Top-level FIFOs match the legacy single-level shape
+    // Top-level FIFOs match the single-level shape
     // (`<name>_<top>`); nested FIFOs additionally embed the ancestor
     // instance path (`<name>_<inst_0>_..._<top>`).
     let mut fifo_global_map: BTreeMap<String, String> = BTreeMap::new();
@@ -201,7 +201,7 @@ fn collect_leaves_recursive(
             // Resolve every arg: first check if it names a local
             // FIFO (→ global form), then check the parent binding
             // (→ promoted arg), else leave as-is (scalar or
-            // external port that keeps its name per Python's
+            // external port that keeps its name per current
             // `ExternalPort.global_name = name` rule).
             let mut resolved_args: BTreeMap<String, Arg> = BTreeMap::new();
             for (port_name, arg) in &inst.args {
@@ -413,7 +413,7 @@ pub fn apply_floorplan(
     Ok((new_graph, region_map))
 }
 
-/// Convert a floorplan region string from Python's `"x:y"` form to the
+/// Convert a floorplan region string from `"x:y"` form to the
 /// canonical `"x_TO_y"` form used by `slot_task_name_to_fp_region`.
 ///
 /// Mirrors `tapa.common.floorplan.convert_region_format`.
@@ -422,7 +422,7 @@ pub fn convert_region_format(region: &str) -> String {
     region.replace(':', "_TO_")
 }
 
-/// Compute the slot name from a Python-style region by replacing `:`
+/// Compute the slot name from a region by replacing `:`
 /// with `_` (mirrors `slot_name = "_".join(region.split(":"))`).
 #[must_use]
 pub fn region_to_slot_name(region: &str) -> String {
@@ -447,9 +447,9 @@ enum EndpointRole {
 impl EndpointRole {
     fn matches(self, cat: ArgCategory) -> bool {
         match self {
-            // Python: `arg["cat"].startswith("is")` → istream/istreams.
+            // current: `arg["cat"].startswith("is")` → istream/istreams.
             Self::Consumer => matches!(cat, ArgCategory::Istream | ArgCategory::Istreams),
-            // Python: `arg["cat"].startswith("os")` → ostream/ostreams.
+            // current: `arg["cat"].startswith("os")` → ostream/ostreams.
             Self::Producer => matches!(cat, ArgCategory::Ostream | ArgCategory::Ostreams),
         }
     }

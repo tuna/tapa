@@ -1,4 +1,4 @@
-//! `tapa synth` — native Rust port of `tapa/steps/synth.py`.
+//! `tapa synth` — native Rust port of the implementation.
 //!
 //! For the vadd-style happy path (`--platform <p>`, no DSE / graphir /
 //! floorplan, leaf children + one upper top), this module drives the
@@ -8,13 +8,13 @@
 //!      `tapa_xilinx::parse_device_info` and persist into
 //!      `<work_dir>/settings.json`.
 //!   2. Extract per-task C++ from `design.json` to `<work_dir>/cpp/`
-//!      (mirrors `tapa/program/hls.py::ProgramHlsMixin._extract_cpp`).
+//!      (mirrors the implementation).
 //!   3. Run Vitis HLS for each leaf task via `tapa_xilinx::run_hls`,
 //!      harvesting Verilog into `<work_dir>/hls/<task>/verilog/`
 //!      (mirrors `ProgramHlsMixin.run_hls` / `_run_hls_task`).
 //!   4. Drive `tapa_codegen::generate_rtl` to instrument upper tasks
 //!      and emit `<work_dir>/rtl/{<task>.v, <task>_fsm.v, ...}`
-//!      (mirrors `tapa/codegen/program_rtl.py::generate_task_rtl` +
+//!      (mirrors the implementation +
 //!      `generate_top_rtl`).
 //!   5. Persist `<work_dir>/templates_info.json` and re-store the
 //!      design + settings (`synthed=true`).
@@ -47,9 +47,9 @@ pub(crate) use runner::run_native;
 
 #[allow(
     clippy::struct_excessive_bools,
-    reason = "mirrors the click flag surface in tapa/steps/synth.py — every bool \
+    reason = "mirrors the CLI flag surface in implementation — every bool \
               is a distinct user-facing flag, so collapsing into an enum would \
-              break parity"
+              break compatibility"
 )]
 #[derive(Debug, Clone, Parser)]
 #[command(name = "synth", about = "Synthesize the TAPA program into RTL code.")]
@@ -129,7 +129,7 @@ fn opt_path(out: &mut Vec<String>, flag: &str, value: Option<&PathBuf>) {
     }
 }
 
-pub fn to_python_argv(args: &SynthArgs) -> Vec<String> {
+pub fn to_cli_argv(args: &SynthArgs) -> Vec<String> {
     let mut out = Vec::<String>::new();
     opt_str(&mut out, "--part-num", args.part_num.as_deref());
     opt_str(&mut out, "--platform", args.platform.as_deref());
@@ -229,9 +229,9 @@ mod tests {
     }
 
     #[test]
-    fn argv_round_trips_python_shape() {
+    fn argv_round_trips_current_shape() {
         let args = parse_synth(&["--platform", "xilinx_u250", "--clock-period", "3.33"]);
-        let argv = to_python_argv(&args);
+        let argv = to_cli_argv(&args);
         assert!(argv.contains(&"--platform".to_string()));
         assert!(argv.contains(&"xilinx_u250".to_string()));
         assert!(argv.contains(&"--clock-period".to_string()));

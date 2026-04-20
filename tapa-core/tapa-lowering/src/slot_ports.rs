@@ -1,21 +1,20 @@
-//! Python-equivalent slot grouped-module port synthesis.
+//! equivalent slot grouped-module port synthesis.
 //!
-//! Mirrors `tapa/graphir_conversion/pipeline/ports_builder.py::
-//! get_slot_module_definition_ports` and
-//! `tapa/graphir_conversion/utils.py::get_child_port_connection_mapping`.
-//! See [`build_slot_ports_python_equivalent`] for the entry point.
+//! Builds slot grouped-module ports from child port categories and
+//! slot-local connection metadata.
+//! See [`build_slot_ports`] for the entry point.
 
 use std::collections::BTreeMap;
 
 use tapa_codegen::rtl_state::TopologyWithRtl;
 use tapa_graphir::{AnyModuleDefinition, HierarchicalName, ModulePort};
 
-/// Build the slot grouped-module ports by mirroring Python's
+/// Build the slot grouped-module ports by mirroring current
 /// `get_slot_module_definition_ports`.
 ///
 /// Returns `None` when any required lookup (slot task, child task,
 /// child RTL, child IR) is missing — caller keeps the prior port list.
-pub fn build_slot_ports_python_equivalent(
+pub fn build_slot_ports(
     slot_name: &str,
     state: &TopologyWithRtl,
     leaf_modules: &BTreeMap<String, AnyModuleDefinition>,
@@ -70,7 +69,7 @@ pub fn build_slot_ports_python_equivalent(
             });
         }
     }
-    // Append handshake ports in Python's order.
+    // Append handshake ports in order.
     for &(name, is_input) in &[
         ("ap_clk", true),
         ("ap_rst_n", true),
@@ -91,7 +90,7 @@ pub fn build_slot_ports_python_equivalent(
     Some(ports)
 }
 
-/// Rust port of `tapa/graphir_conversion/utils.py::get_child_port_connection_mapping`.
+/// Rust port of the implementation.
 ///
 /// Returns an ordered list of `(child_rtl_port_name, slot_port_name)`
 /// pairs.
@@ -155,7 +154,7 @@ fn get_child_port_connection_mapping_rs(
     mapping
 }
 
-/// Mirror Python's `_find_port_child`: locate any child instance whose
+/// Mirror `_find_port_child`: locate any child instance whose
 /// `arg.arg` equals `slot_port_name`, returning `(child_task, child_port,
 /// array_idx)`. The `array_idx` is present when the child port name is
 /// array-subscripted (e.g. `stream_q[3]`), and the returned `child_port`
@@ -211,7 +210,7 @@ fn emit_stream_mapping(
 /// Auto-declare wires for submodule-connection identifiers missing from ports.
 ///
 /// Walks each submodule's connection expressions; any bare identifier
-/// that is not yet declared as a port in the current port-name set and
+/// that is not yet declared as a port in the port-name set and
 /// not already present in `grouped.wires` gets appended as a new wire
 /// (with no range). This preserves the post-port-replacement invariant
 /// that every submodule connection references a declared signal, which
@@ -410,7 +409,7 @@ mod tests {
             ),
         )]);
 
-        let ports = build_slot_ports_python_equivalent("slot", &state, &leaf_modules).unwrap();
+        let ports = build_slot_ports("slot", &state, &leaf_modules).unwrap();
         let port_names = ports.iter().map(|p| p.name.as_str()).collect::<Vec<_>>();
         assert!(
             port_names.contains(&"m_axi_mem_Copy_0_AWADDR"),

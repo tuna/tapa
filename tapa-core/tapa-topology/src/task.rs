@@ -13,7 +13,7 @@ use crate::instance::InstanceDesign;
 /// A port in the topology model (same schema as graph.json ports).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PortDesign {
-    /// Port category (typed enum matching Python semantics).
+    /// Port category (typed enum matching semantics).
     pub cat: ArgCategory,
     /// Port name.
     pub name: String,
@@ -71,8 +71,8 @@ pub struct TaskDesign {
     /// Child task instantiations (upper tasks only).
     ///
     /// Uses [`BTreeMap`] so iteration is alphabetical by task name,
-    /// matching Python's `dict(sorted(tasks.items()))` behavior in
-    /// `tapa/task.py::Task.__init__`. Slot-parameter aggregation and
+    /// matching `dict(sorted(tasks.items()))` behavior in
+    /// the implementation. Slot-parameter aggregation and
     /// other iteration-order-sensitive traversals depend on this.
     #[serde(default)]
     pub tasks: BTreeMap<String, Vec<InstanceDesign>>,
