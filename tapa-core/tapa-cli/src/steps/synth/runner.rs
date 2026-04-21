@@ -5,7 +5,8 @@
 //! owns the unsupported-flag gating, the HLS cflag construction, and
 //! the recursive Verilog-file walker that feeds the codegen step.
 
-use std::path::{Path, PathBuf};
+use camino::Utf8PathBuf;
+use std::path::Path;
 
 use serde_json::{json, Value};
 use tapa_xilinx::ToolRunner;
@@ -222,7 +223,7 @@ fn build_hls_cflags(work_dir: &Path, remote: bool) -> Vec<String> {
     flags
 }
 
-fn walk_verilog_files(dir: &Path) -> Vec<PathBuf> {
+fn walk_verilog_files(dir: &camino::Utf8Path) -> Vec<Utf8PathBuf> {
     let mut out = Vec::new();
     if !dir.is_dir() {
         return out;
@@ -233,9 +234,9 @@ fn walk_verilog_files(dir: &Path) -> Vec<PathBuf> {
     for ent in entries.flatten() {
         let path = ent.path();
         if path.is_dir() {
-            out.extend(walk_verilog_files(&path));
+            out.extend(walk_verilog_files(&Utf8PathBuf::from_path_buf(path.clone()).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()))));
         } else if path.extension().and_then(|s| s.to_str()) == Some("v") {
-            out.push(path);
+            out.push(Utf8PathBuf::from_path_buf(path).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())));
         }
     }
     out

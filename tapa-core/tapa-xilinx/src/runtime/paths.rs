@@ -4,7 +4,7 @@
 //! CFLAGS construction. The flag ordering is stable so tests can compare
 //! vectors element-by-element.
 
-use std::path::{Path, PathBuf};
+use camino::Utf8PathBuf;
 
 use crate::error::{Result, XilinxError};
 
@@ -24,28 +24,28 @@ impl XilinxToolPath {
     }
 }
 
-fn resolve_tool(kind: XilinxToolPath) -> Result<PathBuf> {
+fn resolve_tool(kind: XilinxToolPath) -> Result<Utf8PathBuf> {
     let var = kind.env_var();
     let raw = std::env::var(var).map_err(|_| match kind {
         XilinxToolPath::Hls => XilinxError::MissingXilinxHls,
         XilinxToolPath::Vitis => XilinxError::ToolNotFound(var.into()),
     })?;
-    let path = PathBuf::from(raw);
+    let path = Utf8PathBuf::from(raw);
     if !path.exists() {
-        return Err(XilinxError::ToolNotFound(path.display().to_string()));
+        return Err(XilinxError::ToolNotFound(path.to_string()));
     }
     Ok(path)
 }
 
-pub fn get_xilinx_hls() -> Result<PathBuf> {
+pub fn get_xilinx_hls() -> Result<Utf8PathBuf> {
     resolve_tool(XilinxToolPath::Hls)
 }
 
-pub fn get_xilinx_vitis() -> Result<PathBuf> {
+pub fn get_xilinx_vitis() -> Result<Utf8PathBuf> {
     resolve_tool(XilinxToolPath::Vitis)
 }
 
-fn pick_hls_include_root() -> Option<PathBuf> {
+fn pick_hls_include_root() -> Option<Utf8PathBuf> {
     for kind in [XilinxToolPath::Hls, XilinxToolPath::Vitis] {
         if let Ok(root) = resolve_tool(kind) {
             let inc = root.join("include");
@@ -57,25 +57,24 @@ fn pick_hls_include_root() -> Option<PathBuf> {
     None
 }
 
-fn latest_vendor_gcc(hls_root: &Path) -> Option<(String, PathBuf)> {
+fn latest_vendor_gcc(hls_root: &Utf8PathBuf) -> Option<(String, Utf8PathBuf)> {
     let tps_lnx64 = hls_root.join("tps").join("lnx64");
     let entries = std::fs::read_dir(&tps_lnx64).ok()?;
-    let mut versions: Vec<(Vec<u32>, String, PathBuf)> = Vec::new();
+    let mut versions: Vec<(semver::Version, Utf8PathBuf)> = Vec::new();
     for ent in entries.flatten() {
         let name = ent.file_name().to_string_lossy().into_owned();
         if let Some(rest) = name.strip_prefix("gcc-") {
-            let parts: std::result::Result<Vec<u32>, _> = rest.split('.').map(str::parse).collect();
-            if let Ok(parts) = parts {
-                versions.push((parts, rest.to_string(), ent.path()));
+            if let Ok(ver) = semver::Version::parse(rest) {
+                versions.push((ver, Utf8PathBuf::from_path_buf(ent.path()).ok()?));
             }
         }
     }
     versions.sort_by(|a, b| a.0.cmp(&b.0));
-    let (_, ver, path) = versions.into_iter().last()?;
-    Some((ver, path))
+    let (ver, path) = versions.into_iter().last()?;
+    Some((ver.to_string(), path))
 }
 
-fn vendor_include_paths_inner(include_gcc: bool) -> Vec<PathBuf> {
+fn vendor_include_paths_inner(include_gcc: bool) -> Vec<Utf8PathBuf> {
     let mut out = Vec::new();
     let Some(inc) = pick_hls_include_root() else {
         return out;
@@ -86,7 +85,7 @@ fn vendor_include_paths_inner(include_gcc: bool) -> Vec<PathBuf> {
         return out;
     }
 
-    let Some(hls_root) = inc.parent().map(Path::to_path_buf) else {
+    let Some(hls_root) = inc.parent().map(|p| p.to_path_buf()) else {
         return out;
     };
     let Some((gcc_ver, gcc_path)) = latest_vendor_gcc(&hls_root) else {
@@ -111,7 +110,7 @@ fn vendor_include_paths_inner(include_gcc: bool) -> Vec<PathBuf> {
 ///
 /// GCC C++ headers are Linux-only (they require glibc); non-Linux hosts
 /// get only the HLS `include/` directory.
-pub fn get_vendor_include_paths() -> Vec<PathBuf> {
+pub fn get_vendor_include_paths() -> Vec<Utf8PathBuf> {
     vendor_include_paths_inner(cfg!(target_os = "linux"))
 }
 
@@ -128,9 +127,9 @@ pub fn get_vendor_include_paths() -> Vec<PathBuf> {
 /// When nothing resolves, the slot is skipped (matches current
 /// "warn and continue" semantics when TAPA runtime libs are not
 /// installed).
-fn resolve_tapa_include(env_key: &str) -> Option<PathBuf> {
+fn resolve_tapa_include(env_key: &str) -> Option<Utf8PathBuf> {
     if let Ok(raw) = std::env::var(env_key) {
-        let p = PathBuf::from(raw);
+        let p = Utf8PathBuf::from(raw);
         if p.exists() {
             return Some(p);
         }
@@ -149,18 +148,18 @@ const TAPA_EXTRA_RUNTIME_INCLUDE_SUBPATHS: &[&str] = &[
 ];
 
 #[cfg(debug_assertions)]
-pub fn debug_search_roots() -> Vec<PathBuf> {
+pub fn debug_search_roots() -> Vec<Utf8PathBuf> {
     search_roots()
 }
 
-fn search_roots() -> Vec<PathBuf> {
-    let mut roots: Vec<PathBuf> = Vec::new();
+fn search_roots() -> Vec<Utf8PathBuf> {
+    let mut roots: Vec<Utf8PathBuf> = Vec::new();
     // Walk parents of the native runtime location when known. The
     // launcher exports `TAPA_XILINX_BINDINGS_DIR` pointing near the
     // installed runtime, so packages can resolve their sibling
     // `tapa-lib/` include dir.
     if let Ok(dir) = std::env::var("TAPA_XILINX_BINDINGS_DIR") {
-        let mut p = PathBuf::from(dir);
+        let mut p = Utf8PathBuf::from(dir);
         loop {
             roots.push(p.clone());
             match p.parent() {
@@ -173,7 +172,7 @@ fn search_roots() -> Vec<PathBuf> {
     if let Ok(exe) = std::env::current_exe() {
         let mut p = exe.as_path();
         while let Some(parent) = p.parent() {
-            roots.push(parent.to_path_buf());
+            roots.push(Utf8PathBuf::from_path_buf(parent.to_path_buf()).unwrap_or_else(|_| Utf8PathBuf::from(".")));
             p = parent;
         }
     }
@@ -182,7 +181,7 @@ fn search_roots() -> Vec<PathBuf> {
     if let Ok(cwd) = std::env::current_dir() {
         let mut p = cwd.as_path();
         loop {
-            roots.push(p.to_path_buf());
+            roots.push(Utf8PathBuf::from_path_buf(p.to_path_buf()).unwrap_or_else(|_| Utf8PathBuf::from(".")));
             match p.parent() {
                 Some(next) => p = next,
                 None => break,
@@ -192,7 +191,7 @@ fn search_roots() -> Vec<PathBuf> {
     roots
 }
 
-fn find_resource(subpaths: &[&str], sentinel: Option<&str>) -> Option<PathBuf> {
+fn find_resource(subpaths: &[&str], sentinel: Option<&str>) -> Option<Utf8PathBuf> {
     for root in search_roots() {
         for sub in subpaths {
             let candidate = root.join(sub);
@@ -210,7 +209,7 @@ fn find_resource(subpaths: &[&str], sentinel: Option<&str>) -> Option<PathBuf> {
     None
 }
 
-fn tapa_include_dirs() -> Vec<PathBuf> {
+fn tapa_include_dirs() -> Vec<Utf8PathBuf> {
     let mut out = Vec::new();
     let mut seen = std::collections::HashSet::new();
 
@@ -253,7 +252,7 @@ fn tapa_include_dirs() -> Vec<PathBuf> {
 
     if let Ok(dirs) = std::env::var("TAPA_INCLUDE_DIRS") {
         for part in dirs.split(':').filter(|s| !s.is_empty()) {
-            let p = PathBuf::from(part);
+            let p = Utf8PathBuf::from(part);
             if p.exists() && seen.insert(p.clone()) {
                 out.push(p);
             }
@@ -270,7 +269,7 @@ fn tapa_include_dirs() -> Vec<PathBuf> {
 pub fn get_tapa_cflags() -> Vec<String> {
     let mut out = Vec::new();
     for p in tapa_include_dirs() {
-        out.push(format!("-isystem{}", p.display()));
+        out.push(format!("-isystem{p}"));
     }
     out.extend([
         "-Wno-attributes".into(),
@@ -298,7 +297,7 @@ pub fn get_tapacc_cflags(for_remote_hls: bool) -> Vec<String> {
 
     let mut vendor_flags: Vec<String> = Vec::new();
     for p in &vendor {
-        vendor_flags.push(format!("-isystem{}", p.display()));
+        vendor_flags.push(format!("-isystem{p}"));
     }
 
     let mut out = Vec::new();
@@ -329,6 +328,7 @@ pub fn get_remote_hls_cflags() -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
     use std::sync::Mutex;
     use tempfile::TempDir;
 
@@ -376,8 +376,8 @@ mod tests {
     #[test]
     fn nonexistent_xilinx_hls_returns_tool_not_found() {
         let _lock = ENV_LOCK.lock().unwrap();
-        let bogus = PathBuf::from("/definitely/not/a/real/xilinx/install");
-        let _g = EnvGuard::set("XILINX_HLS", &bogus);
+        let bogus = Utf8PathBuf::from("/definitely/not/a/real/xilinx/install");
+        let _g = EnvGuard::set("XILINX_HLS", std::path::Path::new(bogus.as_str()));
         assert!(matches!(
             get_xilinx_hls(),
             Err(XilinxError::ToolNotFound(_))
@@ -391,8 +391,8 @@ mod tests {
         let _g2 = EnvGuard::unset("TAPA_FPGA_RUNTIME_INCLUDE");
         let _g3 = EnvGuard::unset("TAPA_EXTRA_RUNTIME_INCLUDE");
         let _g4 = EnvGuard::unset("TAPA_INCLUDE_DIRS");
-        let bogus = PathBuf::from("/tmp/tapa-xilinx-no-autodiscovery");
-        let _g5 = EnvGuard::set("TAPA_DISABLE_INCLUDE_AUTODISCOVERY", &bogus);
+        let bogus = Utf8PathBuf::from("/tmp/tapa-xilinx-no-autodiscovery");
+        let _g5 = EnvGuard::set("TAPA_DISABLE_INCLUDE_AUTODISCOVERY", bogus.as_std_path());
         let expected = vec![
             "-Wno-attributes",
             "-Wno-unknown-pragmas",
@@ -415,8 +415,8 @@ mod tests {
         let _g2 = EnvGuard::unset("TAPA_FPGA_RUNTIME_INCLUDE");
         let _g3 = EnvGuard::unset("TAPA_EXTRA_RUNTIME_INCLUDE");
         let _g4 = EnvGuard::unset("TAPA_INCLUDE_DIRS");
-        let bogus = PathBuf::from("/tmp/tapa-xilinx-no-autodiscovery");
-        let _g5 = EnvGuard::set("TAPA_DISABLE_INCLUDE_AUTODISCOVERY", &bogus);
+        let bogus = Utf8PathBuf::from("/tmp/tapa-xilinx-no-autodiscovery");
+        let _g5 = EnvGuard::set("TAPA_DISABLE_INCLUDE_AUTODISCOVERY", bogus.as_std_path());
         let flags = get_tapa_cflags();
         assert!(flags[0].starts_with("-isystem"));
         assert!(flags[0].contains("tapa-lib"));
@@ -440,8 +440,8 @@ mod tests {
         std::fs::create_dir_all(&gcc).unwrap();
         let _g = EnvGuard::set("XILINX_HLS", root);
         let _g2 = EnvGuard::unset("XILINX_VITIS");
-        let bogus = PathBuf::from("/tmp/tapa-xilinx-no-autodiscovery");
-        let _g3 = EnvGuard::set("TAPA_DISABLE_INCLUDE_AUTODISCOVERY", &bogus);
+        let bogus = Utf8PathBuf::from("/tmp/tapa-xilinx-no-autodiscovery");
+        let _g3 = EnvGuard::set("TAPA_DISABLE_INCLUDE_AUTODISCOVERY", bogus.as_std_path());
         let _g4 = EnvGuard::unset("TAPA_LIB_INCLUDE");
         let _g5 = EnvGuard::unset("TAPA_FPGA_RUNTIME_INCLUDE");
         let _g6 = EnvGuard::unset("TAPA_EXTRA_RUNTIME_INCLUDE");
@@ -465,8 +465,8 @@ mod tests {
         let _lock = ENV_LOCK.lock().unwrap();
         let _g = EnvGuard::unset("XILINX_HLS");
         let _g2 = EnvGuard::unset("XILINX_VITIS");
-        let bogus = PathBuf::from("/tmp/tapa-xilinx-no-autodiscovery");
-        let _g3 = EnvGuard::set("TAPA_DISABLE_INCLUDE_AUTODISCOVERY", &bogus);
+        let bogus = Utf8PathBuf::from("/tmp/tapa-xilinx-no-autodiscovery");
+        let _g3 = EnvGuard::set("TAPA_DISABLE_INCLUDE_AUTODISCOVERY", bogus.as_std_path());
         let _g4 = EnvGuard::unset("TAPA_LIB_INCLUDE");
         let _g5 = EnvGuard::unset("TAPA_FPGA_RUNTIME_INCLUDE");
         let _g6 = EnvGuard::unset("TAPA_EXTRA_RUNTIME_INCLUDE");
@@ -482,6 +482,6 @@ mod tests {
         std::fs::create_dir_all(tmp.path().join("include")).unwrap();
         let _g = EnvGuard::set("XILINX_HLS", tmp.path());
         let _g2 = EnvGuard::unset("XILINX_VITIS");
-        assert_eq!(get_xilinx_hls().unwrap(), tmp.path());
+        assert_eq!(get_xilinx_hls().unwrap(), Utf8PathBuf::from_path_buf(tmp.path().to_path_buf()).unwrap());
     }
 }

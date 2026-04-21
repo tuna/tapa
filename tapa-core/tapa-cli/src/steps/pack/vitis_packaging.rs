@@ -17,7 +17,8 @@
 //!   [`super::bitstream_script::write_vitis_script`] *after* the
 //!   `.xo` is on disk, so the script points at a real artifact.
 
-use std::path::{Path, PathBuf};
+use camino::Utf8PathBuf;
+use std::path::Path;
 use std::sync::LazyLock;
 
 use regex::Regex;
@@ -232,11 +233,11 @@ fn build_package_xo_inputs(
     clock_period: String,
     kernel_ports: Vec<tapa_xilinx::KernelXmlPort>,
     m_axi_params: Vec<(String, Vec<(String, String)>)>,
-    report_paths: Vec<(PathBuf, String)>,
+    report_paths: Vec<(Utf8PathBuf, String)>,
 ) -> PackageXoInputs {
     PackageXoInputs {
         top_name: design.top.clone(),
-        hdl_dir: hdl_dir.to_path_buf(),
+        hdl_dir: Utf8PathBuf::from_path_buf(hdl_dir.to_path_buf()).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
         device_info: DeviceInfo {
             part_num,
             clock_period: clock_period.clone(),
@@ -251,7 +252,7 @@ fn build_package_xo_inputs(
                 .to_string(),
             ports: kernel_ports,
         },
-        kernel_out_path: output_path.to_path_buf(),
+        kernel_out_path: Utf8PathBuf::from_path_buf(output_path.to_path_buf()).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
         cpp_kernels: Vec::new(),
         m_axi_params,
         s_axi_ifaces: PackageXoInputs::default_s_axi(),
@@ -267,17 +268,17 @@ fn build_package_xo_inputs(
 /// the per-task layout — without the task subdir, multiple tasks'
 /// `csynth.rpt` / `csynth.xml` files would collapse into a single
 /// archive entry and overwrite each other.
-fn collect_hls_report_paths(work_dir: &Path) -> Result<Vec<(PathBuf, String)>> {
+fn collect_hls_report_paths(work_dir: &Path) -> Result<Vec<(Utf8PathBuf, String)>> {
     let hls_root = work_dir.join("hls");
     let staged_root = work_dir.join("pack_reports");
     if staged_root.exists() {
         std::fs::remove_dir_all(&staged_root)?;
     }
-    let mut reports = Vec::<(PathBuf, String)>::new();
+    let mut reports = Vec::<(Utf8PathBuf, String)>::new();
     for file in ["report.json", "report.yaml"] {
         let path = work_dir.join(file);
         if path.is_file() {
-            reports.push((path, file.to_owned()));
+            reports.push((Utf8PathBuf::from_path_buf(path).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())), file.to_owned()));
         }
     }
     if !hls_root.is_dir() {
@@ -320,7 +321,7 @@ fn collect_hls_report_paths(work_dir: &Path) -> Result<Vec<(PathBuf, String)>> {
             let text = std::fs::read_to_string(&path)?;
             std::fs::write(&staged_path, sanitize_hls_report_text(&text, work_dir))?;
             let arcname = format!("report/{task_name}/{file}");
-            reports.push((staged_path, arcname));
+            reports.push((Utf8PathBuf::from_path_buf(staged_path).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())), arcname));
         }
     }
     reports.sort();
@@ -401,7 +402,7 @@ fn is_report_table_rule(line: &str) -> bool {
     !line.is_empty() && line.starts_with('+') && line.chars().all(|c| c == '+' || c == '-')
 }
 
-fn run_pack_xo(ctx: &CliContext, inputs: &PackageXoInputs) -> Result<PathBuf> {
+fn run_pack_xo(ctx: &CliContext, inputs: &PackageXoInputs) -> Result<Utf8PathBuf> {
     // Mirror synth: use RemoteToolRunner when ~/.taparc / --remote-host
     // is configured so the .xo packaging step actually runs on the
     // remote Xilinx host. Native pack used to always force

@@ -73,7 +73,7 @@ unsafe_op_in_unsafe_fn = "deny"
 [workspace.dependencies]
 base64 = "0.22"
 backon = "1"
-camino = "1"
+camino = { version = "1", features = ["serde1"] }
 clap = { version = "4", features = ["derive", "env", "wrap_help"] }
 const-str = "0.6"
 directories = "6"

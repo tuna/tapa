@@ -1,8 +1,9 @@
 //! Per-task Vitis HLS invocation, ported from
 //! the implementation + `.run_hls`.
 
+use camino::Utf8PathBuf;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use tapa_task_graph::Design;
 use tapa_xilinx::{run_hls_with_retry, run_hls_with_retry_in_stage, HlsJob, HlsOutput, ToolRunner};
@@ -18,16 +19,16 @@ const HLS_MAX_ATTEMPTS: u32 = 3;
 
 #[derive(Debug, Clone)]
 pub struct TaskHlsLayout {
-    pub reports_dir: PathBuf,
-    pub hdl_dir: PathBuf,
+    pub reports_dir: Utf8PathBuf,
+    pub hdl_dir: Utf8PathBuf,
 }
 
 impl TaskHlsLayout {
     pub fn new(work_dir: &Path, task_name: &str) -> Self {
         let base = work_dir.join("hls").join(task_name);
         Self {
-            reports_dir: base.join("report"),
-            hdl_dir: base.join("verilog"),
+            reports_dir: Utf8PathBuf::from_path_buf(base.join("report")).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
+            hdl_dir: Utf8PathBuf::from_path_buf(base.join("verilog")).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
         }
     }
 }
@@ -75,10 +76,11 @@ pub fn run_hls_for_leaves(
         let layout = TaskHlsLayout::new(work_dir, task_name);
 
         let cpp_source = cpp_path_for(work_dir, task_name);
+        let cpp_source = Utf8PathBuf::from_path_buf(cpp_source).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
         if !cpp_source.is_file() {
             return Err(CliError::InvalidArg(format!(
                 "missing extracted C++ source `{}` for task `{task_name}`",
-                cpp_source.display(),
+                cpp_source.as_str(),
             )));
         }
 
@@ -97,7 +99,7 @@ pub fn run_hls_for_leaves(
             if !verilog_files.is_empty() {
                 log::info!(
                     "skipping HLS for `{task_name}` (mtime cache hit at {})",
-                    layout.hdl_dir.display(),
+                    layout.hdl_dir.as_str(),
                 );
                 // `reports_dir` must still exist for downstream
                 // readers; the skip path does not touch `hdl_dir`.
@@ -145,7 +147,8 @@ pub fn run_hls_for_leaves(
         // attempt. Each transient `Pre-synthesis failed.` retry starts
         // from a clean project tree.
         let work = if options.keep_work_dir {
-            let persistent = work_dir.join("hls").join(task_name).join("project");
+            let persistent = Utf8PathBuf::from_path_buf(work_dir.join("hls").join(task_name).join("project"))
+                .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
             // Clear any leftover from a previous run so the first
             // attempt doesn't trip Vitis's project-already-open logic.
             if persistent.exists() {
@@ -273,13 +276,13 @@ enum Work {
     Skip(HlsOutput),
     /// `--keep-hls-work-dir`: persistent project under
     /// `<work_dir>/hls/<task>/project` reused across retries.
-    RunInStage(HlsJob, PathBuf),
+    RunInStage(HlsJob, Utf8PathBuf),
     /// Default: each retry attempt gets its own fresh tempdir so a
     /// partially-failed `project/` cannot contaminate the next try.
     RunFresh(HlsJob),
 }
 
-fn hdl_dir_is_newer_than(hdl_dir: &Path, cpp_source: &Path) -> bool {
+fn hdl_dir_is_newer_than(hdl_dir: &camino::Utf8Path, cpp_source: &camino::Utf8Path) -> bool {
     let Ok(hdl_meta) = fs::metadata(hdl_dir) else {
         return false;
     };
@@ -292,7 +295,7 @@ fn hdl_dir_is_newer_than(hdl_dir: &Path, cpp_source: &Path) -> bool {
     hdl_t > cpp_t
 }
 
-fn list_verilog_files(dir: &Path) -> Result<Vec<PathBuf>> {
+fn list_verilog_files(dir: &camino::Utf8Path) -> Result<Vec<Utf8PathBuf>> {
     let mut out = Vec::new();
     if !dir.is_dir() {
         return Ok(out);
@@ -301,7 +304,7 @@ fn list_verilog_files(dir: &Path) -> Result<Vec<PathBuf>> {
         let ent = ent?;
         let p = ent.path();
         if p.extension().and_then(|s| s.to_str()) == Some("v") {
-            out.push(p);
+            out.push(Utf8PathBuf::from_path_buf(p).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())));
         }
     }
     out.sort();

@@ -15,9 +15,10 @@
 mod transport;
 
 use std::io::Write;
-use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::Arc;
+
+use camino::Utf8PathBuf;
 
 pub(crate) use self::transport::shell_quote;
 use self::transport::{
@@ -77,19 +78,18 @@ fn remote_work_dir(session: &SshSession) -> String {
 /// session-scoped remote equivalent. Longest-match-first ensures a
 /// path that is a prefix of another (e.g. `/a/b` vs `/a/b/c`) is not
 /// double-replaced. Matches the behavior.
-fn rewrite_abs_paths(text: &str, local_paths: &[PathBuf], session_dir: &str) -> String {
+fn rewrite_abs_paths(text: &str, local_paths: &[Utf8PathBuf], session_dir: &str) -> String {
     if local_paths.is_empty() {
         return text.to_string();
     }
-    let mut sorted: Vec<&PathBuf> = local_paths.iter().collect();
-    sorted.sort_by_key(|p| std::cmp::Reverse(p.as_os_str().len()));
+    let mut sorted: Vec<&Utf8PathBuf> = local_paths.iter().collect();
+    sorted.sort_by_key(|p| std::cmp::Reverse(p.as_str().len()));
     let mut out = String::with_capacity(text.len());
     let mut cursor = 0usize;
     let bytes = text.as_bytes();
     'outer: while cursor < bytes.len() {
         for p in &sorted {
-            let ps = p.to_string_lossy();
-            let ps = ps.as_ref();
+            let ps = p.as_str();
             if ps.is_empty() {
                 continue;
             }
@@ -143,30 +143,32 @@ impl RemoteToolRunner {
         // upload batch, leaving the remote Vitis HLS with nothing to
         // compile. `canonicalize()` is the preferred form so symlinks
         // resolve, but a non-existent path still gets a plain join.
-        let absolutize = |p: &Path| -> PathBuf {
+        let absolutize = |p: &Utf8PathBuf| -> Utf8PathBuf {
             if p.is_absolute() {
-                p.to_path_buf()
+                p.clone()
             } else {
                 let joined = std::env::current_dir()
-                    .unwrap_or_else(|_| PathBuf::from("."))
-                    .join(p);
-                std::fs::canonicalize(&joined).unwrap_or(joined)
+                    .map(|cwd| Utf8PathBuf::from_path_buf(cwd).unwrap_or_else(|_| Utf8PathBuf::from(".")).join(p))
+                    .unwrap_or_else(|_| Utf8PathBuf::from(".").join(p));
+                std::fs::canonicalize(&joined)
+                    .map(|p| Utf8PathBuf::from_path_buf(p).unwrap_or_else(|_| joined.clone()))
+                    .unwrap_or(joined)
             }
         };
-        let cwd_abs: Option<PathBuf> = inv.cwd.as_deref().map(absolutize);
-        let uploads_abs: Vec<PathBuf> = inv.uploads.iter().map(|p| absolutize(p)).collect();
-        let downloads_abs: Vec<PathBuf> = inv.downloads.iter().map(|p| absolutize(p)).collect();
+        let cwd_abs: Option<Utf8PathBuf> = inv.cwd.as_ref().map(absolutize);
+        let uploads_abs: Vec<Utf8PathBuf> = inv.uploads.iter().map(absolutize).collect();
+        let downloads_abs: Vec<Utf8PathBuf> = inv.downloads.iter().map(absolutize).collect();
 
-        let mut referenced: Vec<PathBuf> = Vec::new();
+        let mut referenced: Vec<Utf8PathBuf> = Vec::new();
         if let Some(cwd) = cwd_abs.as_ref() {
             referenced.push(cwd.clone());
         }
         referenced.extend(uploads_abs.iter().cloned());
         referenced.extend(downloads_abs.iter().cloned());
-        let mut seen: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
+        let mut seen: std::collections::HashSet<Utf8PathBuf> = std::collections::HashSet::new();
         referenced.retain(|p| seen.insert(p.clone()));
 
-        let mut to_upload: Vec<PathBuf> = Vec::new();
+        let mut to_upload: Vec<Utf8PathBuf> = Vec::new();
         if let Some(cwd) = cwd_abs.as_ref() {
             if cwd.exists() {
                 to_upload.push(cwd.clone());
@@ -177,7 +179,7 @@ impl RemoteToolRunner {
                 to_upload.push(p.clone());
             }
         }
-        let mut seen2: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
+        let mut seen2: std::collections::HashSet<Utf8PathBuf> = std::collections::HashSet::new();
         to_upload.retain(|p| seen2.insert(p.clone()));
         upload_batch(&self.session, &session_dir, &to_upload)?;
 
@@ -250,7 +252,7 @@ impl RemoteToolRunner {
                 let remote_src = local_to_remote_path(abs, &session_dir);
                 // Download back to the caller's requested path (raw), which
                 // may be relative — keeping the caller-facing contract.
-                download_tree(&self.session, &remote_src, raw)?;
+                download_tree(&self.session, &remote_src, raw.as_std_path())?;
             }
         }
 
@@ -298,7 +300,7 @@ impl ToolRunner for RemoteToolRunner {
         )
     }
 
-    fn harvest(&self, _relative_from_cwd: &Path, _local_root: &Path) -> Result<()> {
+    fn harvest(&self, _relative_from_cwd: &std::path::Path, _local_root: &std::path::Path) -> Result<()> {
         // `run_once` already pulls every caller-requested absolute-
         // local download back into place, so this is a no-op on the
         // remote runner. Kept for interface symmetry.

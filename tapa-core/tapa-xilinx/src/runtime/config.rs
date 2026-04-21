@@ -7,8 +7,7 @@
 //!   Rust loader;
 //! - `from_env` seeds from the `REMOTE_*` names used in `VARS.local.bzl`.
 
-use std::path::{Path, PathBuf};
-
+use camino::Utf8PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Result, XilinxError};
@@ -36,18 +35,10 @@ fn current_username() -> String {
         .unwrap_or_else(|_| "unknown".to_string())
 }
 
-fn expand_tilde(p: &Path) -> PathBuf {
-    let s = p.to_string_lossy();
-    if let Some(rest) = s.strip_prefix("~/") {
-        if let Some(home) = std::env::var_os("HOME") {
-            return PathBuf::from(home).join(rest);
-        }
-    } else if s == "~" {
-        if let Some(home) = std::env::var_os("HOME") {
-            return PathBuf::from(home);
-        }
-    }
-    p.to_path_buf()
+fn expand_tilde(p: &Utf8PathBuf) -> Utf8PathBuf {
+    let s = p.as_str();
+    let expanded = shellexpand::tilde(s);
+    Utf8PathBuf::from(expanded.as_ref())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -61,7 +52,7 @@ pub struct RemoteConfig {
     pub port: u16,
 
     #[serde(default)]
-    pub key_file: Option<PathBuf>,
+    pub key_file: Option<Utf8PathBuf>,
 
     #[serde(default)]
     pub xilinx_settings: Option<String>,
@@ -70,7 +61,7 @@ pub struct RemoteConfig {
     pub work_dir: String,
 
     #[serde(default)]
-    pub ssh_control_dir: Option<PathBuf>,
+    pub ssh_control_dir: Option<Utf8PathBuf>,
 
     #[serde(default = "default_ssh_control_persist")]
     pub ssh_control_persist: String,
@@ -138,7 +129,7 @@ impl RemoteConfig {
     /// Parse a `.taparc`-style YAML document. Accepts either
     /// `{remote: {...}}` (the `~/.taparc` top-level shape) or a bare
     /// `RemoteConfig` mapping.
-    pub fn from_yaml_str(text: &str, path: impl AsRef<Path>) -> Result<Self> {
+    pub fn from_yaml_str(text: &str, path: impl AsRef<camino::Utf8Path>) -> Result<Self> {
         let path = path.as_ref().to_path_buf();
         let value: serde_yaml::Value =
             serde_yaml::from_str(text).map_err(|source| XilinxError::Config {
@@ -184,7 +175,7 @@ impl RemoteConfig {
                 .ok()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or_else(default_port),
-            key_file: std::env::var("REMOTE_KEY_FILE").ok().map(PathBuf::from),
+            key_file: std::env::var("REMOTE_KEY_FILE").ok().map(Utf8PathBuf::from),
             xilinx_settings: resolve_xilinx_settings(
                 std::env::var("REMOTE_XILINX_SETTINGS").ok().as_deref(),
                 std::env::var("REMOTE_XILINX_TOOL_PATH").ok().as_deref(),
@@ -192,7 +183,7 @@ impl RemoteConfig {
             work_dir: std::env::var("REMOTE_WORK_DIR").unwrap_or_else(|_| default_work_dir()),
             ssh_control_dir: std::env::var("REMOTE_SSH_CONTROL_DIR")
                 .ok()
-                .map(PathBuf::from),
+                .map(Utf8PathBuf::from),
             ssh_control_persist: std::env::var("REMOTE_SSH_CONTROL_PERSIST")
                 .unwrap_or_else(|_| default_ssh_control_persist()),
             ssh_multiplex: std::env::var("REMOTE_SSH_MULTIPLEX").ok().is_none_or(|s| {
@@ -270,7 +261,7 @@ remote:
         assert_eq!(cfg.port, 2222);
         assert_eq!(
             cfg.key_file.as_deref(),
-            Some(Path::new("/home/alice/.ssh/id_ed25519"))
+            Some(Utf8PathBuf::from("/home/alice/.ssh/id_ed25519").as_path())
         );
         assert!(cfg.ssh_multiplex);
     }
@@ -366,7 +357,7 @@ remote:
         assert_eq!(cfg.host, "fpga-ci.example.com");
         assert_eq!(cfg.user, "ci");
         assert_eq!(cfg.port, 2323);
-        assert_eq!(cfg.key_file.as_deref(), Some(Path::new("/tmp/ci_key")));
+        assert_eq!(cfg.key_file.as_deref(), Some(Utf8PathBuf::from("/tmp/ci_key").as_path()));
         // from_env normalizes a tool-root to `<root>/settings64.sh` so
         // the remote runner's `source <path>` actually works.
         assert_eq!(

@@ -22,6 +22,7 @@
 //! Serial execution only; the `jobs` flag is accepted for API
 //! compatibility but currently unused. A rayon-based fan-out is a follow-up.
 
+use camino::Utf8PathBuf;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
@@ -170,19 +171,20 @@ fn run_one(
     if let Some(parent) = rpt_path.parent() {
         fs::create_dir_all(parent)?;
     }
-    let abs_hdl = fs::canonicalize(rtl_dir).unwrap_or_else(|_| rtl_dir.to_path_buf());
+    let abs_hdl = Utf8PathBuf::from_path_buf(fs::canonicalize(rtl_dir).unwrap_or_else(|_| rtl_dir.to_path_buf()))
+        .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
     let abs_rpt = if rpt_path.is_absolute() {
-        rpt_path.to_path_buf()
+        Utf8PathBuf::from_path_buf(rpt_path.to_path_buf()).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()))
     } else {
         match std::env::current_dir() {
-            Ok(cwd) => cwd.join(rpt_path),
-            Err(_) => rpt_path.to_path_buf(),
+            Ok(cwd) => Utf8PathBuf::from_path_buf(cwd.join(rpt_path)).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
+            Err(_) => Utf8PathBuf::from_path_buf(rpt_path.to_path_buf()).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
         }
     };
 
     let tcl = build_report_util_tcl(module_name, part_num);
     let mut job = VivadoJob::new(tcl);
-    job.tclargs = vec![abs_hdl.display().to_string(), abs_rpt.display().to_string()];
+    job.tclargs = vec![abs_hdl.as_str().to_string(), abs_rpt.as_str().to_string()];
     job.uploads = vec![abs_hdl];
     if let Some(parent) = abs_rpt.parent() {
         job.downloads = vec![parent.to_path_buf()];

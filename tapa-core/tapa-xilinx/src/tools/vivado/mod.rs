@@ -4,7 +4,7 @@
 //! -source <tcl>`. The orchestrator skeleton is wired up; the live TCL
 //! emission for `package_xo` lands with the `.xo` packaging module.
 
-use std::path::PathBuf;
+use camino::Utf8PathBuf;
 
 use crate::error::Result;
 use crate::runtime::process::{ToolInvocation, ToolRunner};
@@ -12,9 +12,9 @@ use crate::runtime::process::{ToolInvocation, ToolRunner};
 #[derive(Debug, Clone)]
 pub struct VivadoJob {
     pub tcl: String,
-    pub uploads: Vec<PathBuf>,
-    pub downloads: Vec<PathBuf>,
-    pub work_dir: Option<PathBuf>,
+    pub uploads: Vec<Utf8PathBuf>,
+    pub downloads: Vec<Utf8PathBuf>,
+    pub work_dir: Option<Utf8PathBuf>,
     pub env: Vec<(String, String)>,
     /// `-tclargs` forwarded to the TCL script. Ports current
     /// the implementation trailing tclargs list.
@@ -38,15 +38,15 @@ impl VivadoJob {
 pub struct VivadoOutput {
     pub stdout: String,
     pub stderr: String,
-    pub produced: Vec<PathBuf>,
+    pub produced: Vec<Utf8PathBuf>,
 }
 
-pub fn build_invocation(job: &VivadoJob, tcl_path: &std::path::Path) -> ToolInvocation {
+pub fn build_invocation(job: &VivadoJob, tcl_path: &camino::Utf8Path) -> ToolInvocation {
     let mut inv = ToolInvocation::new("vivado")
         .arg("-mode")
         .arg("batch")
         .arg("-source")
-        .arg(tcl_path.display().to_string())
+        .arg(tcl_path.as_str())
         .arg("-nojournal")
         .arg("-nolog");
     if !job.tclargs.is_empty() {
@@ -79,24 +79,25 @@ pub fn build_invocation(job: &VivadoJob, tcl_path: &std::path::Path) -> ToolInvo
 pub fn run_vivado(runner: &dyn ToolRunner, job: &VivadoJob) -> Result<VivadoOutput> {
     let tmp = tempfile::NamedTempFile::new()?;
     std::fs::write(tmp.path(), job.tcl.as_bytes())?;
+    let tmp_path = Utf8PathBuf::from_path_buf(tmp.path().to_path_buf()).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
     let scratch = if job.work_dir.is_none() {
         Some(tempfile::tempdir()?)
     } else {
         None
     };
-    let mut inv = build_invocation(job, tmp.path());
-    inv.uploads.push(tmp.path().to_path_buf());
+    let mut inv = build_invocation(job, &tmp_path);
+    inv.uploads.push(tmp_path);
     let home_dir = match (&job.work_dir, &scratch) {
         (Some(p), _) => p.clone(),
         (None, Some(t)) => {
-            let p = t.path().to_path_buf();
+            let p = Utf8PathBuf::from_path_buf(t.path().to_path_buf()).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
             inv.cwd = Some(p.clone());
             p
         }
         (None, None) => unreachable!("scratch tempdir is allocated when work_dir is None"),
     };
     inv.env
-        .insert("HOME".into(), home_dir.display().to_string());
+        .insert("HOME".into(), home_dir.as_str().to_string());
     let out = runner.run(&inv)?;
     if out.exit_code != 0 {
         return Err(crate::error::XilinxError::ToolFailure {

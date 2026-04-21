@@ -7,7 +7,7 @@
 //! Xilinx tooling.
 
 use std::io::Read;
-use std::path::{Path, PathBuf};
+use camino::Utf8PathBuf;
 
 use quick_xml::events::Event;
 use quick_xml::Reader;
@@ -94,11 +94,11 @@ pub fn parse_hpfm_xml(xml: &[u8]) -> Result<DeviceInfo> {
             clock_period,
         }),
         (None, _) => Err(XilinxError::DeviceConfig {
-            path: PathBuf::new(),
+            path: Utf8PathBuf::new(),
             detail: "cannot find part number in platform".into(),
         }),
         (_, None) => Err(XilinxError::DeviceConfig {
-            path: PathBuf::new(),
+            path: Utf8PathBuf::new(),
             detail: "cannot find clock period in platform".into(),
         }),
     }
@@ -125,7 +125,7 @@ fn attr_value(e: &quick_xml::events::BytesStart<'_>, name: &str) -> Result<Optio
 pub fn parse_xpfm(bytes: &[u8]) -> Result<DeviceInfo> {
     let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|e| {
         XilinxError::DeviceConfig {
-            path: PathBuf::new(),
+            path: Utf8PathBuf::new(),
             detail: format!("open archive: {e}"),
         }
     })?;
@@ -138,14 +138,14 @@ pub fn parse_xpfm(bytes: &[u8]) -> Result<DeviceInfo> {
     });
     let Some(idx) = hpfm_idx else {
         return Err(XilinxError::DeviceConfig {
-            path: PathBuf::new(),
+            path: Utf8PathBuf::new(),
             detail: "archive missing .hpfm entry".into(),
         });
     };
     let mut entry = archive
         .by_index(idx)
         .map_err(|e| XilinxError::DeviceConfig {
-            path: PathBuf::new(),
+            path: Utf8PathBuf::new(),
             detail: format!("open .hpfm entry: {e}"),
         })?;
     let mut xml = Vec::with_capacity(entry.size() as usize);
@@ -156,21 +156,20 @@ pub fn parse_xpfm(bytes: &[u8]) -> Result<DeviceInfo> {
 /// Resolve the `.xsa`/`.dsa` file under `<platform_path>/hw/`, then
 /// parse it. Matches the behavior.
 pub fn parse_device_info(
-    platform_path: &Path,
+    platform_path: &Utf8PathBuf,
     part_num_override: Option<&str>,
     clock_period_override: Option<&str>,
 ) -> Result<DeviceInfo> {
     if !platform_path.is_dir() {
-        return Err(XilinxError::PlatformNotFound(platform_path.to_path_buf()));
+        return Err(XilinxError::PlatformNotFound(platform_path.clone()));
     }
     let hw = platform_path.join("hw");
     let entries = std::fs::read_dir(&hw).map_err(|_| XilinxError::PlatformNotFound(hw.clone()))?;
     let archive_path = entries
         .filter_map(|e| e.ok())
-        .map(|e| e.path())
+        .map(|e| Utf8PathBuf::from_path_buf(e.path()).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())))
         .find(|p| {
             p.extension()
-                .and_then(|x| x.to_str())
                 .is_some_and(|x| x == "xsa" || x == "dsa")
         })
         .ok_or_else(|| XilinxError::PlatformNotFound(hw.clone()))?;
@@ -282,7 +281,7 @@ mod tests {
     #[test]
     fn parse_device_info_nonexistent_path_is_typed_error() {
         let err =
-            parse_device_info(Path::new("/definitely/not/a/platform"), None, None).unwrap_err();
+            parse_device_info(&Utf8PathBuf::from("/definitely/not/a/platform"), None, None).unwrap_err();
         assert!(matches!(err, XilinxError::PlatformNotFound(_)));
     }
 }

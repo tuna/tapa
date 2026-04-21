@@ -5,8 +5,10 @@
 //! focus on the invocation lifecycle (rootfs layout, path
 //! rewriting, retry) without the batched-tar mechanics mixed in.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Stdio};
+
+use camino::Utf8PathBuf;
 
 use crate::error::{Result, XilinxError};
 use crate::runtime::ssh::SshSession;
@@ -30,8 +32,8 @@ pub fn shell_quote(s: &str) -> String {
 /// the implementation: absolute local
 /// paths are pasted verbatim under `<session_dir>/rootfs/` after
 /// stripping the leading `/`.
-pub(super) fn local_to_remote_path(local: &Path, session_dir: &str) -> String {
-    let s = local.to_string_lossy();
+pub(super) fn local_to_remote_path(local: &Utf8PathBuf, session_dir: &str) -> String {
+    let s = local.as_str();
     let rel = s.trim_start_matches('/');
     format!("{session_dir}/rootfs/{rel}")
 }
@@ -64,7 +66,7 @@ pub(super) fn unique_session_id() -> String {
 pub(super) fn upload_batch(
     session: &SshSession,
     session_dir: &str,
-    local_paths: &[PathBuf],
+    local_paths: &[Utf8PathBuf],
 ) -> Result<()> {
     let rootfs = format!("{session_dir}/rootfs");
     let remote_cmd = format!(
@@ -93,14 +95,14 @@ pub(super) fn upload_batch(
         if !p.exists() {
             continue;
         }
-        let rel = p.to_string_lossy();
+        let rel = p.as_str();
         let rel = rel.trim_start_matches('/');
         if p.is_dir() {
             builder
-                .append_dir(rel, p)
+                .append_dir(rel, p.as_std_path())
                 .map_err(|e| XilinxError::RemoteTransfer(format!("tar append dir {rel}: {e}")))?;
             for ent in std::fs::read_dir(p).map_err(|e| {
-                XilinxError::RemoteTransfer(format!("read_dir {}: {e}", p.display()))
+                XilinxError::RemoteTransfer(format!("read_dir {}: {e}", p))
             })? {
                 let ent =
                     ent.map_err(|e| XilinxError::RemoteTransfer(format!("read_dir entry: {e}")))?;
@@ -123,8 +125,8 @@ pub(super) fn upload_batch(
                 }
             }
         } else if p.is_file() {
-            let mut f = std::fs::File::open(p)
-                .map_err(|e| XilinxError::RemoteTransfer(format!("open {}: {e}", p.display())))?;
+            let mut f = std::fs::File::open(p.as_std_path())
+                .map_err(|e| XilinxError::RemoteTransfer(format!("open {}: {e}", p)))?;
             builder
                 .append_file(rel, &mut f)
                 .map_err(|e| XilinxError::RemoteTransfer(format!("tar append {rel}: {e}")))?;
@@ -266,7 +268,7 @@ mod tests {
     #[test]
     fn local_to_remote_path_strips_leading_slash() {
         assert_eq!(
-            local_to_remote_path(Path::new("/home/alice/project"), "/tmp/session"),
+            local_to_remote_path(&Utf8PathBuf::from("/home/alice/project"), "/tmp/session"),
             "/tmp/session/rootfs/home/alice/project"
         );
     }
@@ -274,7 +276,7 @@ mod tests {
     #[test]
     fn local_to_remote_path_preserves_relative() {
         assert_eq!(
-            local_to_remote_path(Path::new("relative/path"), "/tmp/session"),
+            local_to_remote_path(&Utf8PathBuf::from("relative/path"), "/tmp/session"),
             "/tmp/session/rootfs/relative/path"
         );
     }

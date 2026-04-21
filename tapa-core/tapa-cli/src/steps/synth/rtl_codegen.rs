@@ -17,7 +17,9 @@ use tapa_topology::program::Program;
 
 use crate::error::{CliError, Result};
 
-pub type TaskHdlInputs = BTreeMap<String, Vec<PathBuf>>;
+use camino::Utf8PathBuf;
+
+pub type TaskHdlInputs = BTreeMap<String, Vec<Utf8PathBuf>>;
 
 /// Build a typed `tapa_topology::Program` from the JSON-flavored
 /// `tapa_task_graph::Design` the CLI persists. Both schemas overlap on
@@ -117,7 +119,7 @@ pub fn generate_rtl_tree(
         let parsed = VerilogModule::parse(&source).map_err(|e| {
             CliError::InvalidArg(format!(
                 "failed to parse HLS Verilog `{}` for task `{task_name}`: {e}",
-                module_path.display(),
+                module_path.as_str(),
             ))
         })?;
         state
@@ -220,10 +222,10 @@ pub fn write_templates_info(work_dir: &Path, design: &Design) -> Result<()> {
     Ok(())
 }
 
-fn pick_top_verilog(files: &[PathBuf], task_name: &str) -> Option<PathBuf> {
+fn pick_top_verilog(files: &[Utf8PathBuf], task_name: &str) -> Option<Utf8PathBuf> {
     files
         .iter()
-        .find(|p| p.file_stem().and_then(|s| s.to_str()) == Some(task_name))
+        .find(|p| p.file_stem() == Some(task_name))
         .cloned()
 }
 

@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use camino::Utf8PathBuf;
 
 #[derive(Debug, thiserror::Error)]
 pub enum XilinxError {
@@ -10,7 +10,7 @@ pub enum XilinxError {
 
     #[error("malformed .taparc config at {path}: {source}")]
     Config {
-        path: PathBuf,
+        path: Utf8PathBuf,
         #[source]
         source: serde_yaml::Error,
     },
@@ -38,10 +38,10 @@ pub enum XilinxError {
     RemoteTransfer(String),
 
     #[error("device config parse error at {path}: {detail}")]
-    DeviceConfig { path: PathBuf, detail: String },
+    DeviceConfig { path: Utf8PathBuf, detail: String },
 
     #[error("platform file not found: {0}")]
-    PlatformNotFound(PathBuf),
+    PlatformNotFound(Utf8PathBuf),
 
     #[error("HLS report parse error: {0}")]
     HlsReportParse(String),
@@ -278,7 +278,7 @@ mod tests {
 
     fn produce_platform_not_found() -> XilinxError {
         use crate::platform::device::parse_device_info;
-        parse_device_info(std::path::Path::new("/no/such/platform.xpfm"), None, None)
+        parse_device_info(&Utf8PathBuf::from("/no/such/platform.xpfm"), None, None)
             .expect_err("missing platform must error")
     }
 
@@ -310,13 +310,13 @@ mod tests {
         std::fs::write(&cpp, b"void foo() {}").unwrap();
         let job = HlsJob {
             task_name: "foo".into(),
-            cpp_source: cpp,
+            cpp_source: Utf8PathBuf::from_path_buf(cpp).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
             cflags: vec![],
             target_part: "part".into(),
             top_name: "foo".into(),
             clock_period: "3.33".into(),
-            reports_out_dir: td.path().join("reports"),
-            hdl_out_dir: td.path().join("hdl"),
+            reports_out_dir: Utf8PathBuf::from_path_buf(td.path().join("reports")).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
+            hdl_out_dir: Utf8PathBuf::from_path_buf(td.path().join("hdl")).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
             uploads: vec![],
             downloads: vec![],
             other_configs: String::new(),
@@ -342,7 +342,7 @@ mod tests {
         let td = tempfile::tempdir().unwrap();
         let p = td.path().join("bad.xo");
         std::fs::write(&p, b"not a zip").unwrap();
-        redact_xo(&p).expect_err("corrupt zip must error")
+        redact_xo(&Utf8PathBuf::from_path_buf(p).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()))).expect_err("corrupt zip must error")
     }
 
     fn produce_io() -> XilinxError {

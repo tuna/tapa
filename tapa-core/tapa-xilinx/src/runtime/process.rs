@@ -5,9 +5,10 @@
 //! need `vitis_hls` or `vivado` on the host.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::Duration;
+
+use camino::Utf8PathBuf;
 
 use crate::error::{Result, XilinxError};
 
@@ -17,9 +18,9 @@ pub struct ToolInvocation {
     pub args: Vec<String>,
     pub env: HashMap<String, String>,
     pub stdin: Option<Vec<u8>>,
-    pub cwd: Option<PathBuf>,
-    pub uploads: Vec<PathBuf>,
-    pub downloads: Vec<PathBuf>,
+    pub cwd: Option<Utf8PathBuf>,
+    pub uploads: Vec<Utf8PathBuf>,
+    pub downloads: Vec<Utf8PathBuf>,
     pub timeout: Option<Duration>,
 }
 
@@ -130,7 +131,7 @@ impl ToolRunner for LocalToolRunner {
             cmd.env(k, v);
         }
         if let Some(cwd) = &inv.cwd {
-            cmd.current_dir(cwd);
+            cmd.current_dir(cwd.as_str());
         }
         cmd.stdin(if inv.stdin.is_some() {
             Stdio::piped()
@@ -208,7 +209,7 @@ struct Response {
     program: String,
     args: Option<Vec<String>>,
     result: Result<ToolOutput>,
-    downloads: HashMap<PathBuf, Vec<u8>>,
+    downloads: HashMap<Utf8PathBuf, Vec<u8>>,
 }
 
 impl MockToolRunner {
@@ -266,7 +267,7 @@ impl MockToolRunner {
         });
     }
 
-    pub fn attach_download(&self, path: impl Into<PathBuf>, bytes: impl Into<Vec<u8>>) {
+    pub fn attach_download(&self, path: impl Into<Utf8PathBuf>, bytes: impl Into<Vec<u8>>) {
         let mut rs = self.responses.lock().unwrap();
         let last = rs
             .last_mut()
@@ -382,7 +383,7 @@ mod tests {
     #[test]
     fn mock_writes_attached_downloads() {
         let tmp = tempfile::tempdir().unwrap();
-        let dl = tmp.path().join("nested").join("out.txt");
+        let dl = Utf8PathBuf::from_path_buf(tmp.path().join("nested").join("out.txt")).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
         let runner = MockToolRunner::new();
         runner.push_ok("vitis_hls", ToolOutput::default());
         runner.attach_download(&dl, b"hello".to_vec());
@@ -447,7 +448,7 @@ mod tests {
         let runner = LocalToolRunner::new();
         let inv = ToolInvocation::new("/bin/sh")
             .arg("-c")
-            .arg("printf '%s\\n' \"$TAPA_PROBE_VAR\" && test -n \"$PATH\" && echo path-ok")
+            .arg("printf '%s\n' \"$TAPA_PROBE_VAR\" && test -n \"$PATH\" && echo path-ok")
             .env("TAPA_PROBE_VAR", "from-inv");
         let out = runner.run(&inv).unwrap();
         assert_eq!(out.exit_code, 0);

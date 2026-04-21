@@ -7,8 +7,9 @@
 //! probe via `ssh -O check`, teardown via `ssh -O exit` plus on-disk
 //! socket unlink, and auto-restart on transient mux classifications.
 
-use std::path::PathBuf;
 use std::sync::Mutex;
+
+use camino::Utf8PathBuf;
 
 use crate::error::{Result, XilinxError};
 use crate::runtime::config::RemoteConfig;
@@ -129,7 +130,7 @@ pub struct SshSession {
 
 #[derive(Debug, Default)]
 struct SessionState {
-    control_path: Option<PathBuf>,
+    control_path: Option<Utf8PathBuf>,
     ready: bool,
 }
 
@@ -157,14 +158,16 @@ impl SshSession {
     /// `RemoteConfig` wins; otherwise `$XDG_RUNTIME_DIR/tapa/ssh` when
     /// set, else `/tmp/tapa-ssh-mux`.
     #[must_use]
-    pub fn control_dir(&self) -> PathBuf {
+    pub fn control_dir(&self) -> Utf8PathBuf {
         if let Some(dir) = self.cfg.ssh_control_dir.as_ref() {
             return dir.clone();
         }
         if let Some(xdg) = std::env::var_os("XDG_RUNTIME_DIR") {
-            return PathBuf::from(xdg).join("tapa").join("ssh");
+            return Utf8PathBuf::from(xdg.to_string_lossy().into_owned())
+                .join("tapa")
+                .join("ssh");
         }
-        PathBuf::from("/tmp/tapa-ssh-mux")
+        Utf8PathBuf::from("/tmp/tapa-ssh-mux")
     }
 
     /// Build the base OpenSSH CLI argument vector. Matches
@@ -183,7 +186,7 @@ impl SshSession {
         ];
         if let Some(key) = self.cfg.key_file.as_ref() {
             args.push("-i".into());
-            args.push(key.display().to_string());
+            args.push(key.as_str().to_string());
         }
         if self.cfg.ssh_multiplex {
             let control_path = self.control_dir().join("cm-%C");
@@ -191,7 +194,7 @@ impl SshSession {
                 "-o".into(),
                 "ControlMaster=auto".into(),
                 "-o".into(),
-                format!("ControlPath={}", control_path.display()),
+                format!("ControlPath={}", control_path),
                 "-o".into(),
                 format!("ControlPersist={}", self.cfg.ssh_control_persist),
                 "-o".into(),
@@ -309,7 +312,7 @@ impl SshSession {
             if let Err(e) = std::fs::create_dir_all(&dir) {
                 return Err(XilinxError::SshConnect {
                     host: self.cfg.host.clone(),
-                    detail: format!("create control dir {}: {e}", dir.display()),
+                    detail: format!("create control dir {}: {e}", dir),
                 });
             }
         }
@@ -405,7 +408,7 @@ mod tests {
             host: "h".into(),
             user: "u".into(),
             port: 22,
-            key_file: Some(PathBuf::from("/tmp/key")),
+            key_file: Some(Utf8PathBuf::from("/tmp/key")),
             xilinx_settings: None,
             work_dir: "/tmp/tapa-remote".into(),
             ssh_control_dir: None,
@@ -430,7 +433,7 @@ mod tests {
     #[test]
     fn ssh_args_use_configured_control_dir() {
         let mut cfg = base_cfg();
-        cfg.ssh_control_dir = Some(PathBuf::from("/var/run/taparc"));
+        cfg.ssh_control_dir = Some(Utf8PathBuf::from("/var/run/taparc"));
         let sess = SshSession::new(cfg, SshMuxOptions::default());
         let args = sess.build_ssh_args();
         assert!(args

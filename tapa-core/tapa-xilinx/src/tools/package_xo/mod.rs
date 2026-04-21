@@ -6,8 +6,8 @@
 //! build lands alongside `run_vivado`.
 
 use std::io::{Read, Seek, SeekFrom, Write};
-use std::path::PathBuf;
 
+use camino::Utf8PathBuf;
 use zip::write::SimpleFileOptions;
 
 use crate::error::{Result, XilinxError};
@@ -79,13 +79,13 @@ const BUS_PARAM_TCL: &str =
 pub struct PackageXoInputs {
     pub top_name: String,
     /// Directory of Verilog/SystemVerilog sources glob'd by the TCL.
-    pub hdl_dir: PathBuf,
+    pub hdl_dir: Utf8PathBuf,
     pub device_info: DeviceInfo,
     pub clock_period: String,
     pub kernel_xml: KernelXmlArgs,
-    pub kernel_out_path: PathBuf,
+    pub kernel_out_path: Utf8PathBuf,
     /// Optional `-kernel_files` C++ sources appended to `package_xo`.
-    pub cpp_kernels: Vec<PathBuf>,
+    pub cpp_kernels: Vec<Utf8PathBuf>,
     /// Optional per-port bus parameters, keyed by m_axi port name (no prefix).
     pub m_axi_params: Vec<(String, Vec<(String, String)>)>,
     /// S_AXI interfaces to associate; defaults to `[s_axi_control]`.
@@ -99,7 +99,7 @@ pub struct PackageXoInputs {
     /// downstream inspection tooling can disambiguate same-basename
     /// reports across tasks (`csynth.rpt`, `csynth.xml`, …). Empty →
     /// skip the bundle step.
-    pub report_paths: Vec<(PathBuf, String)>,
+    pub report_paths: Vec<(Utf8PathBuf, String)>,
 }
 
 impl PackageXoInputs {
@@ -151,11 +151,11 @@ fn render_bus_ifaces(
     out
 }
 
-fn render_cpp_kernels(kernels: &[PathBuf]) -> String {
+fn render_cpp_kernels(kernels: &[Utf8PathBuf]) -> String {
     let mut out = String::new();
     for k in kernels {
         out.push_str(" -kernel_files ");
-        out.push_str(&k.display().to_string());
+        out.push_str(k.as_str());
     }
     out
 }
@@ -194,7 +194,7 @@ fn format_package_xo_tcl(
 ///    inputs are byte-equal.
 ///
 /// `tclargs` to Vivado: `$tmpdir $hdl_dir $xo_file $kernel_xml_path`.
-pub fn pack_xo(runner: &dyn ToolRunner, inputs: &PackageXoInputs) -> Result<PathBuf> {
+pub fn pack_xo(runner: &dyn ToolRunner, inputs: &PackageXoInputs) -> Result<Utf8PathBuf> {
     let out = pack_xo_without_redaction(runner, inputs)?;
     // compatibility: bundle the HLS report files (`self.report_paths`
     // + `report/*_csynth.xml`) into the packaged `.xo` before the
@@ -215,8 +215,8 @@ pub fn pack_xo(runner: &dyn ToolRunner, inputs: &PackageXoInputs) -> Result<Path
 /// without colliding with the basename layout the raw `.xo` already
 /// carries.
 fn bundle_report_paths_into_xo(
-    xo: &std::path::Path,
-    report_paths: &[(PathBuf, String)],
+    xo: &camino::Utf8Path,
+    report_paths: &[(Utf8PathBuf, String)],
 ) -> Result<()> {
     use std::io::{Read, Write};
     if report_paths.is_empty() {
@@ -226,7 +226,7 @@ fn bundle_report_paths_into_xo(
     let mut z_in = zip::ZipArchive::new(std::io::Cursor::new(raw))
         .map_err(|e| XilinxError::XoRedaction(format!("open xo for bundling: {e}")))?;
     let tmp =
-        tempfile::NamedTempFile::new_in(xo.parent().unwrap_or_else(|| std::path::Path::new(".")))?;
+        tempfile::NamedTempFile::new_in(xo.parent().unwrap_or_else(|| camino::Utf8Path::new(".")).as_std_path())?;
     let written: std::collections::HashSet<&str> =
         report_paths.iter().map(|(_, name)| name.as_str()).collect();
     {
@@ -288,11 +288,11 @@ fn bundle_report_paths_into_xo(
 pub fn pack_xo_without_redaction(
     runner: &dyn ToolRunner,
     inputs: &PackageXoInputs,
-) -> Result<PathBuf> {
+) -> Result<Utf8PathBuf> {
     if !inputs.hdl_dir.is_dir() {
         return Err(XilinxError::KernelXml(format!(
             "pack_xo hdl_dir does not exist: {}",
-            inputs.hdl_dir.display()
+            inputs.hdl_dir.as_str()
         )));
     }
     // The Vivado job runs with `cwd = tmp.path()`, so a relative
@@ -304,10 +304,12 @@ pub fn pack_xo_without_redaction(
     let kernel_out_path = if inputs.kernel_out_path.is_absolute() {
         inputs.kernel_out_path.clone()
     } else {
-        std::env::current_dir()?.join(&inputs.kernel_out_path)
+        Utf8PathBuf::from_path_buf(std::env::current_dir()?.join(&inputs.kernel_out_path))
+            .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()))
     };
     let tmp = tempfile::tempdir()?;
-    let kernel_xml_path = tmp.path().join("kernel.xml");
+    let kernel_xml_path = Utf8PathBuf::from_path_buf(tmp.path().join("kernel.xml"))
+        .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
     let xml = emit_kernel_xml(&inputs.kernel_xml)?;
     std::fs::write(&kernel_xml_path, xml.as_bytes())?;
 
@@ -329,18 +331,20 @@ pub fn pack_xo_without_redaction(
     if let Some(parent) = kernel_out_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
+    let tmp_path = Utf8PathBuf::from_path_buf(tmp.path().to_path_buf())
+        .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
     let tclargs = [
-        tmp.path().display().to_string(),
-        inputs.hdl_dir.display().to_string(),
-        kernel_out_path.display().to_string(),
-        kernel_xml_path.display().to_string(),
+        tmp_path.as_str().to_string(),
+        inputs.hdl_dir.as_str().to_string(),
+        kernel_out_path.as_str().to_string(),
+        kernel_xml_path.as_str().to_string(),
     ];
 
     let mut job = VivadoJob::new(tcl);
-    job.work_dir = Some(tmp.path().to_path_buf());
+    job.work_dir = Some(tmp_path.clone());
     job.uploads = vec![
         inputs.hdl_dir.clone(),
-        tmp.path().to_path_buf(),
+        tmp_path,
         kernel_xml_path,
     ];
     if let Some(parent) = kernel_out_path.parent() {
@@ -352,7 +356,7 @@ pub fn pack_xo_without_redaction(
     if !kernel_out_path.is_file() {
         return Err(XilinxError::XoRedaction(format!(
             "pack_xo: Vivado returned success but {} is missing",
-            kernel_out_path.display()
+            kernel_out_path.as_str()
         )));
     }
     Ok(kernel_out_path)
@@ -418,7 +422,7 @@ fn redact_cpp_paths(text: &str) -> String {
 ///     `SourceLocation` absolute paths, and `ProjectID` redacted.
 ///
 /// Idempotent.
-pub fn redact_xo(path: &std::path::Path) -> Result<()> {
+pub fn redact_xo(path: &camino::Utf8Path) -> Result<()> {
     let bytes = std::fs::read(path)?;
     let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
         .map_err(|e| XilinxError::XoRedaction(format!("read zip: {e}")))?;
@@ -483,7 +487,7 @@ mod tests {
     use super::*;
     use crate::runtime::process::MockToolRunner;
 
-    fn minimal_inputs(hdl_dir: PathBuf, kernel_out_path: PathBuf) -> PackageXoInputs {
+    fn minimal_inputs(hdl_dir: Utf8PathBuf, kernel_out_path: Utf8PathBuf) -> PackageXoInputs {
         PackageXoInputs {
             top_name: "k".into(),
             hdl_dir,
@@ -519,7 +523,7 @@ mod tests {
     fn relative_xo_output_is_absolutized_for_tclargs() {
         use crate::runtime::process::ToolOutput;
         let tmp = tempfile::tempdir().unwrap();
-        let hdl_dir = tmp.path().join("hdl");
+        let hdl_dir = Utf8PathBuf::from_path_buf(tmp.path().join("hdl")).unwrap();
         std::fs::create_dir_all(&hdl_dir).unwrap();
         std::fs::write(hdl_dir.join("top.v"), b"// stub\n").unwrap();
         // Scope current-dir into the tmp so a relative output still
@@ -527,23 +531,23 @@ mod tests {
         let orig_cwd = std::env::current_dir().unwrap();
         std::env::set_current_dir(tmp.path()).unwrap();
         // Stage a minimal .xo the mock runner will "produce".
-        let staged = tmp.path().join("__staged.xo");
+        let staged = Utf8PathBuf::from_path_buf(tmp.path().join("__staged.xo")).unwrap();
         write_xo(&staged, &[("stub.txt", "ok")]);
         let staged_bytes = std::fs::read(&staged).unwrap();
 
         let runner = MockToolRunner::new();
         runner.push_ok("vivado", ToolOutput::default());
-        let expected_abs = tmp.path().canonicalize().unwrap().join("out.xo");
+        let expected_abs = Utf8PathBuf::from_path_buf(tmp.path().canonicalize().unwrap().join("out.xo")).unwrap();
         runner.attach_download(&expected_abs, staged_bytes);
 
-        let inputs = minimal_inputs(hdl_dir, PathBuf::from("out.xo"));
+        let inputs = minimal_inputs(hdl_dir, Utf8PathBuf::from("out.xo"));
         let out = pack_xo(&runner, &inputs).unwrap();
 
         std::env::set_current_dir(orig_cwd).unwrap();
         assert!(
             out.is_absolute(),
             "pack_xo must return an absolute path; got `{}`",
-            out.display(),
+            out.as_str(),
         );
         // The Vivado invocation must have received the absolute form.
         let call = &runner.calls()[0];
@@ -553,7 +557,7 @@ mod tests {
             .find(|a| a.ends_with("out.xo"))
             .expect("tclargs must mention out.xo");
         assert!(
-            std::path::Path::new(arg).is_absolute(),
+            camino::Utf8Path::new(arg).is_absolute(),
             "tclargs .xo path must be absolute; got `{arg}`",
         );
     }
@@ -562,8 +566,8 @@ mod tests {
     fn missing_hdl_dir_is_rejected() {
         let runner = MockToolRunner::new();
         let inputs = minimal_inputs(
-            PathBuf::from("/nonexistent/tapa-pack-xo-hdl"),
-            PathBuf::from("/tmp/k.xo"),
+            Utf8PathBuf::from("/nonexistent/tapa-pack-xo-hdl"),
+            Utf8PathBuf::from("/tmp/k.xo"),
         );
         let err = pack_xo(&runner, &inputs).unwrap_err();
         assert!(matches!(err, XilinxError::KernelXml(_)));
@@ -573,13 +577,13 @@ mod tests {
     fn pack_xo_drives_vivado_and_redacts() {
         use crate::runtime::process::ToolOutput;
         let tmp = tempfile::tempdir().unwrap();
-        let hdl_dir = tmp.path().join("hdl");
+        let hdl_dir = Utf8PathBuf::from_path_buf(tmp.path().join("hdl")).unwrap();
         std::fs::create_dir_all(&hdl_dir).unwrap();
         std::fs::write(hdl_dir.join("top.v"), b"// stub RTL\n").unwrap();
-        let xo_path = tmp.path().join("k.xo");
+        let xo_path = Utf8PathBuf::from_path_buf(tmp.path().join("k.xo")).unwrap();
 
         // Stage the synthetic .xo we expect Vivado to produce (pre-redaction).
-        let staged = tmp.path().join("staged.xo");
+        let staged = Utf8PathBuf::from_path_buf(tmp.path().join("staged.xo")).unwrap();
         write_xo(
             &staged,
             &[(
@@ -604,7 +608,7 @@ mod tests {
         assert!(call
             .args
             .iter()
-            .any(|a| a == &xo_path.display().to_string()));
+            .any(|a| a == xo_path.as_str()));
         let mut z =
             zip::ZipArchive::new(std::io::Cursor::new(std::fs::read(&xo_path).unwrap())).unwrap();
         let mut body = String::new();
@@ -665,7 +669,7 @@ mod tests {
         assert!(s.contains("m_axi_gmem0") && s.contains("OFFSET") && s.contains("SLAVE"));
     }
 
-    fn write_xo(path: &std::path::Path, entries: &[(&str, &str)]) {
+    fn write_xo(path: &camino::Utf8Path, entries: &[(&str, &str)]) {
         let f = std::fs::File::create(path).unwrap();
         let mut zw = zip::ZipWriter::new(f);
         let opts = SimpleFileOptions::default();
@@ -679,7 +683,7 @@ mod tests {
     #[test]
     fn redact_xo_is_idempotent() {
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("k.xo");
+        let path = Utf8PathBuf::from_path_buf(tmp.path().join("k.xo")).unwrap();
         write_xo(&path, &[("hello.txt", "hi")]);
         redact_xo(&path).unwrap();
         let first = std::fs::read(&path).unwrap();
@@ -724,7 +728,7 @@ Date:           Fri Mar 14 10:20:30 2025\n\
     #[test]
     fn redact_xo_applies_payload_redaction() {
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("k.xo");
+        let path = Utf8PathBuf::from_path_buf(tmp.path().join("k.xo")).unwrap();
         write_xo(
             &path,
             &[(
@@ -746,7 +750,7 @@ Date:           Fri Mar 14 10:20:30 2025\n\
     #[test]
     fn redact_xo_preserves_directory_entry_modes() {
         let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().join("k.xo");
+        let path = Utf8PathBuf::from_path_buf(tmp.path().join("k.xo")).unwrap();
         let f = std::fs::File::create(&path).unwrap();
         let mut zw = zip::ZipWriter::new(f);
         zw.add_directory(

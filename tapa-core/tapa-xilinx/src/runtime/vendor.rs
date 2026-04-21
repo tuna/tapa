@@ -8,8 +8,10 @@
 //! directory into a cache keyed by
 //! `sha256(host:port:xilinx_settings)[:16]`.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Stdio};
+
+use camino::Utf8PathBuf;
 
 use crate::error::{Result, XilinxError};
 use crate::runtime::remote::shell_quote;
@@ -111,12 +113,13 @@ pub(crate) fn parse_remote_xilinx_paths(stdout: &str) -> std::collections::HashM
 
 /// Compute the deterministic cache directory under the user cache root, where
 /// `<key>` is the first 16 hex chars of `sha256(host:port:xilinx_settings)`.
-pub(crate) fn vendor_cache_dir(host: &str, port: u16, xilinx_settings: &str) -> Result<PathBuf> {
+pub(crate) fn vendor_cache_dir(host: &str, port: u16, xilinx_settings: &str) -> Result<Utf8PathBuf> {
     use sha2::{Digest, Sha256};
-    let base = std::env::var_os("XDG_CACHE_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")))
-        .unwrap_or_else(|| std::env::temp_dir().join("tapa-cache"));
+    let base = directories::BaseDirs::new()
+        .map(|d| Utf8PathBuf::from(d.cache_dir().to_string_lossy().into_owned()))
+        .or_else(|| std::env::var_os("XDG_CACHE_HOME").map(|h| Utf8PathBuf::from(h.to_string_lossy().into_owned())))
+        .or_else(|| std::env::var_os("HOME").map(|h| Utf8PathBuf::from(h.to_string_lossy().into_owned()).join(".cache")))
+        .unwrap_or_else(|| Utf8PathBuf::from(std::env::temp_dir().to_string_lossy().into_owned()).join("tapa-cache"));
     let raw = format!("{host}:{port}:{xilinx_settings}");
     let hash = Sha256::digest(raw.as_bytes());
     let mut key = String::with_capacity(16);
@@ -206,7 +209,7 @@ pub(crate) fn apply_macos_vendor_patch(cache_dir: &Path) -> Result<()> {
 /// `sha256(host:port:xilinx_settings)[:16]` so distinct remote
 /// toolchains don't collide. Writing a `.synced` marker makes the
 /// function idempotent.
-pub fn sync_remote_vendor_includes(session: &SshSession) -> Result<PathBuf> {
+pub fn sync_remote_vendor_includes(session: &SshSession) -> Result<Utf8PathBuf> {
     let cfg = session.config();
     let xilinx_settings = cfg.xilinx_settings.clone().ok_or_else(|| {
         XilinxError::RemoteTransfer(
@@ -216,7 +219,8 @@ pub fn sync_remote_vendor_includes(session: &SshSession) -> Result<PathBuf> {
     session.ensure_established()?;
     let fs = SshVendorFs { session };
     let cache_dir = vendor_cache_dir(&cfg.host, cfg.port, &xilinx_settings)?;
-    sync_vendor_includes_impl(&fs, &xilinx_settings, &cache_dir)
+    sync_vendor_includes_impl(&fs, &xilinx_settings, cache_dir.as_std_path())
+        .map(|_| cache_dir)
 }
 
 /// Pure algorithm driving the vendor include sync, parameterized
@@ -227,12 +231,12 @@ pub fn sync_vendor_includes_impl<F: VendorRemoteFs>(
     fs: &F,
     xilinx_settings: &str,
     cache_dir: &Path,
-) -> Result<PathBuf> {
+) -> Result<()> {
     let cache_dir = cache_dir.to_path_buf();
     let marker = cache_dir.join(".synced");
     if marker.is_file() {
         apply_macos_vendor_patch(&cache_dir)?;
-        return Ok(cache_dir);
+        return Ok(());
     }
 
     // Probe remote XILINX_HLS / XILINX_VITIS.
@@ -298,7 +302,7 @@ pub fn sync_vendor_includes_impl<F: VendorRemoteFs>(
     apply_macos_vendor_patch(&cache_dir)?;
     std::fs::write(&marker, format!("{xilinx_tool}\n"))
         .map_err(|e| XilinxError::RemoteTransfer(format!("write synced marker: {e}")))?;
-    Ok(cache_dir)
+    Ok(())
 }
 
 #[cfg(test)]
@@ -377,7 +381,7 @@ mod tests {
         }
     }
 
-    fn isolate_cache() -> (tempfile::TempDir, PathBuf) {
+    fn isolate_cache() -> (tempfile::TempDir, std::path::PathBuf) {
         let td = tempfile::tempdir().expect("tempdir");
         let key = td.path().join("tapa").join("vendor-headers").join("k");
         (td, key)
@@ -409,7 +413,7 @@ mod tests {
         drop(td);
         assert_eq!(a, b);
         assert_ne!(a, c);
-        let key = a.file_name().unwrap().to_string_lossy();
+        let key = a.file_name().unwrap();
         assert_eq!(key.len(), 16);
         assert!(key.chars().all(|ch| ch.is_ascii_hexdigit()));
     }
@@ -429,9 +433,8 @@ mod tests {
                 Vec::new(),
             ),
         ]);
-        let out = sync_vendor_includes_impl(&mock, "/opt/settings64.sh", &cache)
+        sync_vendor_includes_impl(&mock, "/opt/settings64.sh", &cache)
             .expect("sync must succeed");
-        assert_eq!(out, cache);
         assert!(cache.join("include").join(".mock_download").is_file());
         assert!(cache
             .join("tps/lnx64/gcc-6.2.0/include")
@@ -507,10 +510,9 @@ mod tests {
             (0, b"XILINX_HLS=/opt/xilinx/hls\n".to_vec(), Vec::new()),
             (0, b"".to_vec(), Vec::new()),
         ]);
-        let cache1 = sync_vendor_includes_impl(&mock, "/opt/settings64.sh", &cache).unwrap();
+        sync_vendor_includes_impl(&mock, "/opt/settings64.sh", &cache).unwrap();
         let remaining_before = mock.ssh_exec_responses.borrow().len();
-        let cache2 = sync_vendor_includes_impl(&mock, "/opt/settings64.sh", &cache).unwrap();
-        assert_eq!(cache1, cache2);
+        sync_vendor_includes_impl(&mock, "/opt/settings64.sh", &cache).unwrap();
         assert_eq!(remaining_before, mock.ssh_exec_responses.borrow().len());
     }
 
@@ -523,13 +525,13 @@ mod tests {
             (0, b"".to_vec(), Vec::new()),
         ]);
         mock.write_ap_special = true;
-        let out = sync_vendor_includes_impl(&mock, "/opt/settings64.sh", &cache).unwrap();
+        sync_vendor_includes_impl(&mock, "/opt/settings64.sh", &cache).unwrap();
         let patched =
-            std::fs::read_to_string(out.join("include").join("etc").join("ap_fixed_special.h"))
+            std::fs::read_to_string(cache.join("include").join("etc").join("ap_fixed_special.h"))
                 .expect("header");
         assert!(patched.contains("#include <complex>"));
         assert!(!patched.contains("template<typename _Tp> class complex"));
-        assert!(out.join(".patched_macos_complex").is_file());
+        assert!(cache.join(".patched_macos_complex").is_file());
     }
 
     #[test]

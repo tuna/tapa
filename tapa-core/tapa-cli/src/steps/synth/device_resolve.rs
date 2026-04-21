@@ -5,7 +5,8 @@
 //! `--platform` / `--part-num` / `--clock-period` precedence rules out
 //! of `mod.rs` so the dispatcher stays focused on flow.
 
-use std::path::{Path, PathBuf};
+use camino::Utf8PathBuf;
+use std::path::Path;
 
 use tapa_xilinx::{parse_device_info as xilinx_parse_device_info, DeviceInfo};
 
@@ -54,7 +55,7 @@ pub(super) fn resolve_device_info(args: &SynthArgs) -> Result<DeviceInfo> {
     })
 }
 
-fn resolve_platform_dir(platform: &str) -> Option<PathBuf> {
+fn resolve_platform_dir(platform: &str) -> Option<Utf8PathBuf> {
     let raw = Path::new(platform);
     let parent = raw.parent().map(Path::to_path_buf).unwrap_or_default();
     let basename = raw.file_name().map_or_else(
@@ -63,9 +64,10 @@ fn resolve_platform_dir(platform: &str) -> Option<PathBuf> {
     );
     let normalized = basename.replace([':', '.'], "_");
     let direct = if parent.as_os_str().is_empty() {
-        PathBuf::from(&normalized)
+        Utf8PathBuf::from(&normalized)
     } else {
-        parent.join(&normalized)
+        Utf8PathBuf::from_path_buf(parent.join(&normalized))
+            .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()))
     };
     if direct.is_dir() {
         return Some(direct);
@@ -79,13 +81,13 @@ fn resolve_platform_dir(platform: &str) -> Option<PathBuf> {
     None
 }
 
-fn platform_roots() -> Vec<PathBuf> {
-    let mut out = vec![PathBuf::from("/opt/xilinx")];
+fn platform_roots() -> Vec<Utf8PathBuf> {
+    let mut out = vec![Utf8PathBuf::from("/opt/xilinx")];
     if let Ok(p) = std::env::var("XILINX_VITIS") {
-        out.push(PathBuf::from(p));
+        out.push(Utf8PathBuf::from(p));
     }
     if let Ok(p) = std::env::var("XILINX_SDX") {
-        out.push(PathBuf::from(p));
+        out.push(Utf8PathBuf::from(p));
     }
     out
 }

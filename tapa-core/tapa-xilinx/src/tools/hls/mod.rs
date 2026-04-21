@@ -3,8 +3,9 @@
 //! Implements TCL emission, invocation via a `ToolRunner`, report parsing,
 //! and a bounded retry wrapper keyed on transient-failure substrings.
 
-use std::path::PathBuf;
 use std::sync::Arc;
+
+use camino::Utf8PathBuf;
 
 use crate::error::{Result, XilinxError};
 use crate::runtime::process::{ToolInvocation, ToolOutput, ToolRunner};
@@ -39,18 +40,18 @@ pub fn is_transient_hls_output(stdout: &str, _stderr: &str) -> bool {
 #[derive(Debug, Clone)]
 pub struct HlsJob {
     pub task_name: String,
-    pub cpp_source: PathBuf,
+    pub cpp_source: Utf8PathBuf,
     pub cflags: Vec<String>,
     pub target_part: String,
     pub top_name: String,
     pub clock_period: String,
-    pub reports_out_dir: PathBuf,
-    pub hdl_out_dir: PathBuf,
+    pub reports_out_dir: Utf8PathBuf,
+    pub hdl_out_dir: Utf8PathBuf,
     /// Additional files the runner needs to stage up (remote tar-pipe
     /// uploads).
-    pub uploads: Vec<PathBuf>,
+    pub uploads: Vec<Utf8PathBuf>,
     /// Files the runner must stage down after the tool exits.
-    pub downloads: Vec<PathBuf>,
+    pub downloads: Vec<Utf8PathBuf>,
     /// Optional HLS `other_configs` TCL fragment. Appended verbatim.
     pub other_configs: String,
     /// Solution name; defaults to the task name when empty.
@@ -71,13 +72,13 @@ impl Default for HlsJob {
     fn default() -> Self {
         Self {
             task_name: String::new(),
-            cpp_source: PathBuf::new(),
+            cpp_source: Utf8PathBuf::new(),
             cflags: Vec::new(),
             target_part: String::new(),
             top_name: String::new(),
             clock_period: String::new(),
-            reports_out_dir: PathBuf::new(),
-            hdl_out_dir: PathBuf::new(),
+            reports_out_dir: Utf8PathBuf::new(),
+            hdl_out_dir: Utf8PathBuf::new(),
             uploads: Vec::new(),
             downloads: Vec::new(),
             other_configs: String::new(),
@@ -92,8 +93,8 @@ impl Default for HlsJob {
 #[derive(Debug, Clone)]
 pub struct HlsOutput {
     pub csynth: CsynthReport,
-    pub verilog_files: Vec<PathBuf>,
-    pub report_paths: Vec<PathBuf>,
+    pub verilog_files: Vec<Utf8PathBuf>,
+    pub report_paths: Vec<Utf8PathBuf>,
     pub stdout: String,
     pub stderr: String,
 }
@@ -123,8 +124,8 @@ fn build_rtl_config(reset_low: bool, auto_prefix: bool) -> String {
 /// need to be uploaded verbatim so the remote `vitis_hls` resolves
 /// sibling headers the same way the local run would. Mirrors
 /// the implementation.
-fn kernel_include_dirs(cflags: &[String]) -> Vec<PathBuf> {
-    let mut out: Vec<PathBuf> = Vec::new();
+fn kernel_include_dirs(cflags: &[String]) -> Vec<Utf8PathBuf> {
+    let mut out: Vec<Utf8PathBuf> = Vec::new();
     for raw in cflags {
         let trimmed = raw.trim();
         let dir_str = if let Some(rest) = trimmed.strip_prefix("-isystem") {
@@ -137,7 +138,7 @@ fn kernel_include_dirs(cflags: &[String]) -> Vec<PathBuf> {
         if dir_str.is_empty() {
             continue;
         }
-        let p = PathBuf::from(dir_str);
+        let p = Utf8PathBuf::from(dir_str);
         if p.is_absolute() && p.is_dir() {
             out.push(p);
         }
@@ -157,7 +158,7 @@ fn kernel_env_entries(job: &HlsJob) -> Vec<(String, String)> {
     env.push(("TAPA_KERNEL_COUNT".into(), "1".into()));
     env.push((
         "TAPA_KERNEL_PATH_0".into(),
-        job.cpp_source.display().to_string(),
+        job.cpp_source.as_str().to_string(),
     ));
     let cflags = job
         .cflags
@@ -235,15 +236,15 @@ fn is_transient(job: &HlsJob, stdout: &str, stderr: &str) -> bool {
 fn run_hls_attempt(
     runner: &dyn ToolRunner,
     job: &HlsJob,
-    stage_dir: &std::path::Path,
+    stage_dir: &camino::Utf8Path,
 ) -> Result<ToolOutput> {
     let tcl = build_hls_tcl(job);
     let tcl_path = stage_dir.join("run_hls.tcl");
     std::fs::write(&tcl_path, tcl.as_bytes())?;
     let mut inv = ToolInvocation::new("vitis_hls")
         .arg("-f")
-        .arg(tcl_path.display().to_string());
-    inv.cwd = Some(stage_dir.to_path_buf());
+        .arg(tcl_path.as_str());
+    inv.cwd = Some(tcl_path.clone());
     // Pin `HOME` to the per-run stage dir (mirrors current
     // `VivadoHls` wrapper). Vitis HLS otherwise writes shared
     // `~/.Xilinx` state that pollutes the workspace and races under
@@ -251,7 +252,7 @@ fn run_hls_attempt(
     // `Command::env`) lets the remote runner's path rewriter remap
     // the value to its rootfs counterpart.
     inv.env
-        .insert("HOME".into(), stage_dir.display().to_string());
+        .insert("HOME".into(), stage_dir.as_str().to_string());
     // Uploads: TCL, the kernel source, every `-I` / `-isystem`
     // include directory referenced by the cflags, plus any caller extras.
     inv.uploads.push(tcl_path);
@@ -293,7 +294,8 @@ fn run_hls_attempt(
 /// [`run_hls_with_retry`] in production code.
 pub fn run_hls_raw(runner: &dyn ToolRunner, job: &HlsJob) -> Result<ToolOutput> {
     let stage = tempfile::tempdir()?;
-    run_hls_attempt(runner, job, stage.path())
+    let stage_path = Utf8PathBuf::from_path_buf(stage.path().to_path_buf()).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
+    run_hls_attempt(runner, job, &stage_path)
 }
 
 /// Name of the HLS solution subdirectory — mirrors the TCL template's
@@ -308,15 +310,15 @@ fn solution_name(job: &HlsJob) -> String {
 
 /// Copy every regular file under `src` into `dest`, recreating the
 /// directory layout as it goes. Does nothing if `src` does not exist.
-fn copy_tree(src: &std::path::Path, dest: &std::path::Path) -> std::io::Result<()> {
+fn copy_tree(src: &camino::Utf8Path, dest: &camino::Utf8Path) -> std::io::Result<()> {
     if !src.is_dir() {
         return Ok(());
     }
     for ent in std::fs::read_dir(src)? {
         let ent = ent?;
-        let sub_src = ent.path();
+        let sub_src = Utf8PathBuf::from_path_buf(ent.path()).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
         let file_type = ent.file_type()?;
-        let sub_dest = dest.join(ent.file_name());
+        let sub_dest = dest.join(ent.file_name().to_string_lossy().into_owned());
         if file_type.is_dir() {
             std::fs::create_dir_all(&sub_dest)?;
             copy_tree(&sub_src, &sub_dest)?;
@@ -333,7 +335,7 @@ fn copy_tree(src: &std::path::Path, dest: &std::path::Path) -> std::io::Result<(
 fn harvest_and_stage(
     _runner: &dyn ToolRunner,
     job: &HlsJob,
-    stage_dir: &std::path::Path,
+    stage_dir: &camino::Utf8Path,
     out: ToolOutput,
 ) -> Result<HlsOutput> {
     // The runner already ensured the HLS project tree is on the
@@ -341,7 +343,7 @@ fn harvest_and_stage(
     // `run_once` downloaded `cwd` back into place via the rootfs
     // mirror). We just need to copy the caller-facing slices out.
     let solution = solution_name(job);
-    let syn_rel: PathBuf = ["project", &solution, "syn"].iter().collect();
+    let syn_rel: Utf8PathBuf = ["project", &solution, "syn"].iter().collect();
 
     // Copy the real HLS artifacts into the caller-visible output dirs.
     let syn_abs = stage_dir.join(&syn_rel);
@@ -350,15 +352,15 @@ fn harvest_and_stage(
     copy_tree(&syn_abs.join("report"), &job.reports_out_dir).map_err(|e| {
         XilinxError::HlsReportParse(format!(
             "stage reports {} → {}: {e}",
-            syn_abs.join("report").display(),
-            job.reports_out_dir.display()
+            syn_abs.join("report").as_str(),
+            job.reports_out_dir.as_str()
         ))
     })?;
     copy_tree(&syn_abs.join("verilog"), &job.hdl_out_dir).map_err(|e| {
         XilinxError::HlsReportParse(format!(
             "stage verilog {} → {}: {e}",
-            syn_abs.join("verilog").display(),
-            job.hdl_out_dir.display()
+            syn_abs.join("verilog").as_str(),
+            job.hdl_out_dir.as_str()
         ))
     })?;
 
@@ -374,7 +376,7 @@ fn harvest_and_stage(
         fallback
     };
     let bytes = std::fs::read(&report_xml).map_err(|_| {
-        XilinxError::HlsReportParse(format!("missing csynth.xml at {}", report_xml.display()))
+        XilinxError::HlsReportParse(format!("missing csynth.xml at {}", report_xml.as_str()))
     })?;
     let csynth = parse_csynth_xml(&bytes)?;
 
@@ -383,7 +385,7 @@ fn harvest_and_stage(
         return Err(XilinxError::ToolFailure {
             program: "vitis_hls".into(),
             code: 0,
-            stderr: format!("no HDL output produced in {}", job.hdl_out_dir.display()),
+            stderr: format!("no HDL output produced in {}", job.hdl_out_dir.as_str()),
         });
     }
     let report_paths = collect_files(&job.reports_out_dir)?;
@@ -403,7 +405,8 @@ fn harvest_and_stage(
 /// survive.
 pub fn run_hls(runner: &dyn ToolRunner, job: &HlsJob) -> Result<HlsOutput> {
     let stage = tempfile::tempdir()?;
-    let out = run_hls_attempt(runner, job, stage.path())?;
+    let stage_path = Utf8PathBuf::from_path_buf(stage.path().to_path_buf()).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
+    let out = run_hls_attempt(runner, job, &stage_path)?;
     if out.exit_code != 0 {
         let stderr = if out.stderr.is_empty() {
             out.stdout
@@ -416,10 +419,10 @@ pub fn run_hls(runner: &dyn ToolRunner, job: &HlsJob) -> Result<HlsOutput> {
             stderr,
         });
     }
-    harvest_and_stage(runner, job, stage.path(), out)
+    harvest_and_stage(runner, job, &stage_path, out)
 }
 
-fn collect_files(dir: &std::path::Path) -> Result<Vec<PathBuf>> {
+fn collect_files(dir: &camino::Utf8Path) -> Result<Vec<Utf8PathBuf>> {
     if !dir.exists() {
         return Ok(Vec::new());
     }
@@ -427,7 +430,7 @@ fn collect_files(dir: &std::path::Path) -> Result<Vec<PathBuf>> {
     for ent in std::fs::read_dir(dir)? {
         let ent = ent?;
         if ent.file_type()?.is_file() {
-            out.push(ent.path());
+            out.push(Utf8PathBuf::from_path_buf(ent.path()).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())));
         }
     }
     out.sort();
@@ -445,9 +448,10 @@ pub fn run_hls_with_retry(
     let max_attempts = max_attempts.max(1);
     for _ in 0..max_attempts {
         let stage = tempfile::tempdir()?;
-        let out = run_hls_attempt(runner, job, stage.path())?;
+        let stage_path = Utf8PathBuf::from_path_buf(stage.path().to_path_buf()).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
+    let out = run_hls_attempt(runner, job, &stage_path)?;
         if out.exit_code == 0 {
-            return harvest_and_stage(runner, job, stage.path(), out);
+            return harvest_and_stage(runner, job, &stage_path, out);
         }
         // keys the retry decision off stdout alone; stderr is
         // preserved but intentionally ignored by the default predicate.
@@ -481,7 +485,7 @@ pub fn run_hls_with_retry_in_stage(
     runner: &dyn ToolRunner,
     job: &HlsJob,
     max_attempts: u32,
-    stage_dir: &std::path::Path,
+    stage_dir: &camino::Utf8Path,
 ) -> Result<HlsOutput> {
     let max_attempts = max_attempts.max(1);
     for _ in 0..max_attempts {
@@ -514,7 +518,7 @@ mod tests {
     use crate::runtime::process::{MockToolRunner, ToolOutput};
     use std::time::Duration;
 
-    fn fixture_job(tmp: &std::path::Path) -> HlsJob {
+    fn fixture_job(tmp: &camino::Utf8Path) -> HlsJob {
         HlsJob {
             task_name: "k".into(),
             cpp_source: tmp.join("k.cpp"),
@@ -530,7 +534,7 @@ mod tests {
 
     #[test]
     fn tcl_contains_ported_steps() {
-        let job = fixture_job(std::path::Path::new("/tmp"));
+        let job = fixture_job(camino::Utf8Path::new("/tmp"));
         let tcl = build_hls_tcl(&job);
         for step in [
             "open_project \"project\"",
@@ -552,8 +556,8 @@ mod tests {
         // `TAPA_KERNEL_*` env entries instead of splicing absolute
         // `cpp_source` / cflags into the body. Baking absolute paths
         // makes the TCL non-portable to a remote rootfs.
-        let mut job = fixture_job(std::path::Path::new("/tmp"));
-        job.cpp_source = PathBuf::from("/abs/local/kernel/k.cpp");
+        let mut job = fixture_job(camino::Utf8Path::new("/tmp"));
+        job.cpp_source = Utf8PathBuf::from("/abs/local/kernel/k.cpp");
         job.cflags = vec!["-I/abs/local/kernel/include".into(), "-DSOMETHING=1".into()];
         let tcl = build_hls_tcl(&job);
         assert!(
@@ -580,8 +584,8 @@ mod tests {
 
     #[test]
     fn kernel_env_entries_mirror_current_contract() {
-        let mut job = fixture_job(std::path::Path::new("/tmp"));
-        job.cpp_source = PathBuf::from("/abs/src/k.cpp");
+        let mut job = fixture_job(camino::Utf8Path::new("/tmp"));
+        job.cpp_source = Utf8PathBuf::from("/abs/src/k.cpp");
         job.cflags = vec!["-I/abs/inc".into(), "-DFOO".into()];
         let env = kernel_env_entries(&job);
         let lookup = |key: &str| {
@@ -598,11 +602,11 @@ mod tests {
     #[test]
     fn kernel_include_dirs_picks_abs_directories_only() {
         let td = tempfile::tempdir().unwrap();
-        let existing = td.path().join("inc");
+        let existing = Utf8PathBuf::from_path_buf(td.path().join("inc")).unwrap();
         std::fs::create_dir_all(&existing).unwrap();
         let cflags = vec![
-            format!("-I{}", existing.display()),
-            format!("-isystem{}", existing.display()),
+            format!("-I{}", existing.as_str()),
+            format!("-isystem{}", existing.as_str()),
             "-Irelative/should/be/ignored".into(),
             "-I/nonexistent/should/be/ignored".into(),
             "-DJUST_A_DEFINE".into(),
@@ -610,7 +614,7 @@ mod tests {
         let dirs = kernel_include_dirs(&cflags);
         assert_eq!(dirs.len(), 2);
         for d in &dirs {
-            assert_eq!(d, &existing);
+            assert_eq!(d, existing.as_path());
         }
     }
 
@@ -621,16 +625,16 @@ mod tests {
         // and every include dir referenced by `-I/-isystem`, and that
         // the env carries the TAPA_KERNEL_* entries.
         let td = tempfile::tempdir().unwrap();
-        let src_dir = td.path().join("src");
-        let inc_dir = td.path().join("inc");
+        let src_dir = Utf8PathBuf::from_path_buf(td.path().join("src")).unwrap();
+        let inc_dir = Utf8PathBuf::from_path_buf(td.path().join("inc")).unwrap();
         std::fs::create_dir_all(&src_dir).unwrap();
         std::fs::create_dir_all(&inc_dir).unwrap();
         let src = src_dir.join("k.cpp");
         std::fs::write(&src, b"void k(){}").unwrap();
 
-        let mut job = fixture_job(td.path());
+        let mut job = fixture_job(&Utf8PathBuf::from_path_buf(td.path().to_path_buf()).unwrap());
         job.cpp_source = src.clone();
-        job.cflags = vec![format!("-I{}", inc_dir.display())];
+        job.cflags = vec![format!("-I{}", inc_dir.as_str())];
 
         let runner = MockToolRunner::new();
         runner.push_ok(
@@ -642,30 +646,31 @@ mod tests {
             },
         );
         let stage = tempfile::tempdir().unwrap();
-        let _ = run_hls_attempt(&runner, &job, stage.path());
+        let stage_path = Utf8PathBuf::from_path_buf(stage.path().to_path_buf()).unwrap();
+        let _ = run_hls_attempt(&runner, &job, &stage_path);
         let calls = runner.calls();
         assert_eq!(calls.len(), 1);
         let inv = &calls[0];
         assert_eq!(inv.program, "vitis_hls");
-        assert_eq!(inv.cwd.as_deref(), Some(stage.path()));
+        assert_eq!(inv.cwd.as_deref(), Some(stage_path.as_path()));
         assert_eq!(
             inv.env.get("TAPA_KERNEL_COUNT").map(String::as_str),
             Some("1")
         );
         assert_eq!(
-            inv.env.get("TAPA_KERNEL_PATH_0").map(PathBuf::from),
+            inv.env.get("TAPA_KERNEL_PATH_0").map(Utf8PathBuf::from),
             Some(src)
         );
         assert!(
             inv.env
                 .get("TAPA_KERNEL_CFLAGS_0")
-                .is_some_and(|c| c.contains(&format!("-I{}", inc_dir.display()))),
+                .is_some_and(|c| c.contains(&format!("-I{}", inc_dir.as_str()))),
             "TAPA_KERNEL_CFLAGS_0 must carry the `-I<inc>` flag"
         );
         assert!(inv.uploads.contains(&src_dir), "src dir not uploaded");
         assert!(inv.uploads.contains(&inc_dir), "include dir not uploaded");
         assert!(
-            inv.downloads.contains(&stage.path().to_path_buf()),
+            inv.downloads.contains(&stage_path),
             "stage dir must be in downloads so remote HLS output lands locally"
         );
     }
@@ -675,7 +680,7 @@ mod tests {
         // Reproduces current: stderr-only "\nERROR:" does not cancel
         // the retry when stdout contains `Pre-synthesis failed.`.
         let tmp = tempfile::tempdir().unwrap();
-        let job = fixture_job(tmp.path());
+        let job = fixture_job(&Utf8PathBuf::from_path_buf(tmp.path().to_path_buf()).unwrap());
         let runner = MockToolRunner::new();
         for _ in 0..3 {
             runner.push_ok(
@@ -709,7 +714,7 @@ mod tests {
     #[test]
     fn retry_exhaustion_yields_typed_error() {
         let tmp = tempfile::tempdir().unwrap();
-        let job = fixture_job(tmp.path());
+        let job = fixture_job(&Utf8PathBuf::from_path_buf(tmp.path().to_path_buf()).unwrap());
         let runner = MockToolRunner::new();
         for _ in 0..3 {
             runner.push_ok(
@@ -731,7 +736,7 @@ mod tests {
     #[test]
     fn non_transient_failure_short_circuits() {
         let tmp = tempfile::tempdir().unwrap();
-        let job = fixture_job(tmp.path());
+        let job = fixture_job(&Utf8PathBuf::from_path_buf(tmp.path().to_path_buf()).unwrap());
         let runner = MockToolRunner::new();
         runner.push_ok(
             "vitis_hls",
@@ -751,7 +756,7 @@ mod tests {
     #[test]
     fn run_hls_with_retry_in_stage_reuses_caller_dir() {
         let tmp = tempfile::tempdir().unwrap();
-        let persistent = tmp.path().join("persistent-stage");
+        let persistent = Utf8PathBuf::from_path_buf(tmp.path().join("persistent-stage")).unwrap();
         std::fs::create_dir_all(&persistent).unwrap();
         // Put a marker file in the stage dir. After the retry loop
         // exhausts, the dir (and the marker) must still be present —
@@ -759,7 +764,7 @@ mod tests {
         let marker = persistent.join("MARKER");
         std::fs::write(&marker, b"before").unwrap();
 
-        let job = fixture_job(tmp.path());
+        let job = fixture_job(&Utf8PathBuf::from_path_buf(tmp.path().to_path_buf()).unwrap());
         let runner = MockToolRunner::new();
         for _ in 0..2 {
             runner.push_ok(
@@ -785,7 +790,7 @@ mod tests {
     #[test]
     fn retry_budget_exhausted_with_zero_delay() {
         let tmp = tempfile::tempdir().unwrap();
-        let job = fixture_job(tmp.path());
+        let job = fixture_job(&Utf8PathBuf::from_path_buf(tmp.path().to_path_buf()).unwrap());
         let runner = MockToolRunner::new();
         for _ in 0..5 {
             runner.push_ok(
@@ -810,7 +815,7 @@ mod tests {
     #[test]
     fn custom_transient_patterns_match_both_stdout_and_stderr() {
         let tmp = tempfile::tempdir().unwrap();
-        let mut job = fixture_job(tmp.path());
+        let mut job = fixture_job(&Utf8PathBuf::from_path_buf(tmp.path().to_path_buf()).unwrap());
         job.transient_patterns = Some(Arc::new(vec!["custom-pattern".into()]));
         let runner = MockToolRunner::new();
         for _ in 0..3 {
@@ -830,7 +835,7 @@ mod tests {
     #[test]
     fn cflags_with_spaces_preserved_in_kernel_env() {
         let tmp = tempfile::tempdir().unwrap();
-        let mut job = fixture_job(tmp.path());
+        let mut job = fixture_job(&Utf8PathBuf::from_path_buf(tmp.path().to_path_buf()).unwrap());
         job.cflags = vec!["-I/tmp/inc".into(), "-DMSG=\"hello world\"".into()];
         let env = kernel_env_entries(&job);
         let cflags = env

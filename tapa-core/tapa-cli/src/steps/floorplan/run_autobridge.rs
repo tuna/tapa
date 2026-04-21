@@ -16,6 +16,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use camino::Utf8PathBuf;
+
 use serde_json::{json, Value};
 use tapa_xilinx::{
     LocalToolRunner, RemoteToolRunner, SshMuxOptions, SshSession, ToolInvocation, ToolRunner,
@@ -104,26 +106,26 @@ fn build_invocation(prep: &Prepared) -> ToolInvocation {
     //     read it at the rewritten path.
     // Downloads list the full `autobridge/` dir so the remote tool's
     // `solution_*/floorplan.json` outputs tar-pipe back into place.
-    let mut uploads: Vec<PathBuf> = Vec::new();
+    let mut uploads: Vec<Utf8PathBuf> = Vec::new();
     if prep.device_config.is_absolute() && prep.device_config.exists() {
-        uploads.push(prep.device_config.clone());
+        uploads.push(Utf8PathBuf::from_path_buf(prep.device_config.clone()).unwrap_or_else(|p: PathBuf| Utf8PathBuf::from(p.to_string_lossy().into_owned())));
     }
     ToolInvocation {
         program: RAPIDSTREAM_TAPAFP_BIN.to_string(),
         args: vec![
             "--ab-graph-path".to_string(),
-            prep.ab_graph_path.display().to_string(),
+            prep.ab_graph_path.as_os_str().to_string_lossy().into_owned(),
             "--work-dir".to_string(),
-            prep.autobridge_dir.display().to_string(),
+            prep.autobridge_dir.as_os_str().to_string_lossy().into_owned(),
             "--device-config".to_string(),
-            prep.device_config.display().to_string(),
+            prep.device_config.as_os_str().to_string_lossy().into_owned(),
             "--floorplan-config".to_string(),
-            prep.sanitized_config.display().to_string(),
+            prep.sanitized_config.as_os_str().to_string_lossy().into_owned(),
             "--run-floorplan".to_string(),
         ],
-        cwd: Some(prep.work_dir.clone()),
+        cwd: Some(Utf8PathBuf::from_path_buf(prep.work_dir.clone()).unwrap_or_else(|p: PathBuf| Utf8PathBuf::from(p.to_string_lossy().into_owned()))),
         uploads,
-        downloads: vec![prep.autobridge_dir.clone()],
+        downloads: vec![Utf8PathBuf::from_path_buf(prep.autobridge_dir.clone()).unwrap_or_else(|p: PathBuf| Utf8PathBuf::from(p.to_string_lossy().into_owned()))],
         ..ToolInvocation::default()
     }
 }

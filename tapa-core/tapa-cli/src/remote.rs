@@ -22,6 +22,7 @@
 //! The function is deliberately small — anything more complex belongs
 //! in `tapa-xilinx` (where the `RemoteConfig` schema lives).
 
+use camino::Utf8PathBuf;
 use std::path::{Path, PathBuf};
 
 use tapa_xilinx::{sync_remote_vendor_includes, RemoteConfig, SshMuxOptions, SshSession};
@@ -151,17 +152,19 @@ fn apply_remote_host_to_yaml(
 
 /// Expand a leading `~` against `$HOME`. Mirrors
 /// `os.path.expanduser` for the two paths the override layer touches.
-fn expand_home(input: &str) -> PathBuf {
+fn expand_home(input: &str) -> Utf8PathBuf {
     if let Some(rest) = input.strip_prefix("~/") {
         if let Some(home) = std::env::var_os("HOME") {
-            return PathBuf::from(home).join(rest);
+            return Utf8PathBuf::from_path_buf(PathBuf::from(home).join(rest))
+                .unwrap_or_else(|p: PathBuf| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
         }
     } else if input == "~" {
         if let Some(home) = std::env::var_os("HOME") {
-            return PathBuf::from(home);
+            return Utf8PathBuf::from_path_buf(PathBuf::from(home))
+                .unwrap_or_else(|p: PathBuf| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
         }
     }
-    PathBuf::from(input)
+    Utf8PathBuf::from(input)
 }
 
 /// Apply the remaining CLI override flags. Mirrors
@@ -224,7 +227,7 @@ pub fn build_remote_config(globals: &GlobalArgs) -> Result<Option<RemoteConfig>>
             message: e.to_string(),
         }
     })?;
-    let mut cfg = RemoteConfig::from_yaml_str(&yaml_text, "<merged>").map_err(|e| {
+    let mut cfg = RemoteConfig::from_yaml_str(&yaml_text, &Utf8PathBuf::from("<merged>")).map_err(|e| {
         CliError::RemoteConfigParse {
             path: PathBuf::from("<merged>"),
             message: e.to_string(),
@@ -242,7 +245,7 @@ fn sync_and_export_env(cfg: &RemoteConfig) {
     let session = SshSession::new(cfg.clone(), SshMuxOptions::default());
     match sync_remote_vendor_includes(&session) {
         Ok(cache_dir) => {
-            let s = cache_dir.to_string_lossy().into_owned();
+            let s = cache_dir.as_str().to_string();
             // `setdefault` semantics: never clobber an explicit
             // `XILINX_HLS=...` already exported by the user.
             if std::env::var_os("XILINX_HLS").is_none() {
