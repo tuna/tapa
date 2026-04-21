@@ -9,7 +9,9 @@ pub mod floorplan;
 pub mod pragma;
 pub mod slot;
 
-use error::SlottingError;
+pub use floorplan::{convert_region_format, get_floorplan_graph, region_to_slot_name};
+
+pub use error::SlottingError;
 use pragma::process_port;
 
 /// A port specification for slot C++ generation.

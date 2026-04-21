@@ -18,4 +18,16 @@ pub enum SlottingError {
 
     #[error("tree-sitter error: {0}")]
     TreeSitter(String),
+
+    #[error("floorplan: graph missing '{0}' field")]
+    MissingGraphField(String),
+
+    #[error("floorplan: top task `{0}` is a leaf; cannot transform")]
+    TopIsLeaf(String),
+
+    #[error("floorplan: instance `{0}` not found among top's leaf children")]
+    UnknownFloorplanInstance(String),
+
+    #[error("floorplan: slot name `{0}` collides with an existing task")]
+    SlotNameCollision(String),
 }

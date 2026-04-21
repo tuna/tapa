@@ -29,6 +29,7 @@ tapa-graphir = { workspace = true }
 tapa-graphir-export = { workspace = true }
 tapa-lowering = { workspace = true }
 tapa-rtl = { workspace = true }
+tapa-slotting = { workspace = true }
 tapa-task-graph = { workspace = true }
 tapa-topology = { workspace = true }
 tapa-xilinx = { workspace = true }

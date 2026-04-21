@@ -31,12 +31,48 @@ pub fn get_floorplan_graph(
     let mut new_graph = graph.clone();
     let tasks = new_graph["tasks"]
         .as_object_mut()
-        .ok_or_else(|| SlottingError::TreeSitter("graph missing 'tasks' field".into()))?;
+        .ok_or_else(|| SlottingError::MissingGraphField("tasks".into()))?;
 
     let top_name = graph["top"]
         .as_str()
-        .ok_or_else(|| SlottingError::TreeSitter("graph missing 'top' field".into()))?
+        .ok_or_else(|| SlottingError::MissingGraphField("top".into()))?
         .to_owned();
+
+    let top_task = tasks.get(&top_name).ok_or_else(|| {
+        SlottingError::MissingGraphField(format!("top task `{}`", top_name))
+    })?;
+
+    // Floorplan requires an upper-level top.
+    if top_task["level"].as_str() == Some("lower") {
+        return Err(SlottingError::TopIsLeaf(top_name.clone()));
+    }
+
+    // Build the set of known instance names under the top task.
+    let top_tasks = top_task["tasks"]
+        .as_object()
+        .ok_or_else(|| SlottingError::MissingGraphField(format!("top task `{}` tasks", top_name)))?;
+    let mut known_inst_names = BTreeSet::new();
+    for (def_name, insts_val) in top_tasks {
+        let empty = Vec::new();
+        let insts = insts_val.as_array().unwrap_or(&empty);
+        for idx in 0..insts.len() {
+            known_inst_names.insert(format!("{def_name}_{idx}"));
+        }
+    }
+
+    // Validate every instance referenced in the floorplan exists.
+    for inst_name in slot_to_insts.values().flatten() {
+        if !known_inst_names.contains(inst_name) {
+            return Err(SlottingError::UnknownFloorplanInstance(inst_name.clone()));
+        }
+    }
+
+    // Validate slot names do not collide with existing tasks.
+    for slot_name in slot_to_insts.keys() {
+        if tasks.contains_key(slot_name) {
+            return Err(SlottingError::SlotNameCollision(slot_name.clone()));
+        }
+    }
 
     // Build slot definitions
     let mut slot_defs: BTreeMap<String, Value> = BTreeMap::new();
@@ -337,7 +373,7 @@ fn get_used_ports(
         let task_ports = &graph["tasks"][task_name.as_str()]["ports"];
         for inst in insts {
             if let Some(args) = inst["args"].as_object() {
-                for arg in args.values() {
+                for (port_name, arg) in args {
                     let cat = arg["cat"].as_str().unwrap_or("");
                     if cat == "mmap" || cat == "async_mmap" {
                         continue;
@@ -346,13 +382,13 @@ fn get_used_ports(
                     if !fifo_set.contains(arg_name) {
                         continue;
                     }
-                    // Find matching port in task definition
+                    // Find matching port in task definition by port_name (arg key).
                     if let Some(ports) = task_ports.as_array() {
                         for port in ports {
-                            if port["name"].as_str() == Some(arg_name)
+                            if port["name"].as_str() == Some(port_name)
                                 || port["name"].as_str().is_some_and(|n| {
                                     // Match without array index
-                                    arg_name.starts_with(n)
+                                    port_name.starts_with(n)
                                 })
                             {
                                 let mut new_port = port.clone();
@@ -561,6 +597,22 @@ fn get_slot_inst_mmap_port_args(
         }
     }
     args
+}
+
+/// Convert a floorplan region string from `"x:y"` form to the
+/// canonical `"x_TO_y"` form used by `slot_task_name_to_fp_region`.
+///
+/// Mirrors `tapa.common.floorplan.convert_region_format`.
+#[must_use]
+pub fn convert_region_format(region: &str) -> String {
+    region.replace(':', "_TO_")
+}
+
+/// Compute the slot name from a region by replacing `:`
+/// with `_` (mirrors `slot_name = "_".join(region.split(":"))`).
+#[must_use]
+pub fn region_to_slot_name(region: &str) -> String {
+    region.replace(':', "_")
 }
 
 #[cfg(test)]
@@ -1034,6 +1086,172 @@ mod tests {
             32,
             "size port should retain width 32"
         );
+    }
+
+    /// Reject floorplans that reference an unknown instance name.
+    #[test]
+    fn test_floorplan_rejects_unknown_instance() {
+        let graph = sample_graph();
+        let mut slot_to_insts = BTreeMap::new();
+        slot_to_insts.insert("SLOT".to_owned(), vec!["NoSuch_0".to_owned()]);
+        let err = get_floorplan_graph(&graph, &slot_to_insts).expect_err("must reject");
+        assert!(
+            matches!(err, SlottingError::UnknownFloorplanInstance(_)),
+            "expected UnknownFloorplanInstance, got: {err:?}"
+        );
+    }
+
+    /// Snapshot the slot wrapper C++ and a compact form of the rewritten
+    /// graph so regressions in `gen_slot_cpp` wiring or port plumbing show
+    /// up as diff noise on this test.
+    #[test]
+    fn test_floorplan_emits_slot_cpp_wrapper() {
+        let graph = json!({
+            "top": "VecAdd",
+            "tasks": {
+                "VecAdd": {
+                    "code": "extern \"C\" {\nvoid VecAdd(uint64_t n);\n}  // extern \"C\"\n\nextern \"C\" {\nvoid VecAdd(uint64_t n) { /* top body */ }\n}  // extern \"C\"\n",
+                    "level": "upper",
+                    "target": "hls",
+                    "vendor": "xilinx",
+                    "ports": [
+                        {"cat": "scalar", "name": "n", "type": "uint64_t", "width": 64}
+                    ],
+                    "tasks": {
+                        "A": [{"args": {
+                            "n": {"arg": "n", "cat": "scalar"},
+                            "out": {"arg": "fifo", "cat": "ostream"}
+                        }, "step": 0}],
+                        "B": [{"args": {
+                            "n": {"arg": "n", "cat": "scalar"},
+                            "in": {"arg": "fifo", "cat": "istream"}
+                        }, "step": 0}]
+                    },
+                    "fifos": {
+                        "fifo": {
+                            "depth": 2,
+                            "consumed_by": ["B", 0],
+                            "produced_by": ["A", 0]
+                        }
+                    }
+                },
+                "A": {
+                    "code": "void A() {}",
+                    "level": "lower",
+                    "target": "hls",
+                    "vendor": "xilinx",
+                    "ports": [
+                        {"cat": "scalar", "name": "n", "type": "uint64_t", "width": 64},
+                        {"cat": "ostream", "name": "out", "type": "float", "width": 32}
+                    ],
+                    "tasks": {},
+                    "fifos": {}
+                },
+                "B": {
+                    "code": "void B() {}",
+                    "level": "lower",
+                    "target": "hls",
+                    "vendor": "xilinx",
+                    "ports": [
+                        {"cat": "scalar", "name": "n", "type": "uint64_t", "width": 64},
+                        {"cat": "istream", "name": "in", "type": "float", "width": 32}
+                    ],
+                    "tasks": {},
+                    "fifos": {}
+                }
+            }
+        });
+
+        let mut slot_to_insts = BTreeMap::new();
+        slot_to_insts.insert("SLOT_X0Y0".to_owned(), vec!["A_0".to_owned()]);
+        slot_to_insts.insert("SLOT_X0Y1".to_owned(), vec!["B_0".to_owned()]);
+        let result = get_floorplan_graph(&graph, &slot_to_insts).expect("apply");
+
+        // --- Slot wrapper code snapshot ---------------------------------
+        let slot_a = &result["tasks"]["SLOT_X0Y0"];
+        let code_a = slot_a["code"].as_str().expect("slot code should be string");
+        assert!(
+            code_a.contains("void SLOT_X0Y0("),
+            "slot wrapper must declare SLOT_X0Y0 fn; got:\n{code_a}",
+        );
+        assert!(
+            code_a.contains("uint64_t n"),
+            "slot wrapper must forward the scalar `n`; got:\n{code_a}",
+        );
+        assert!(
+            code_a.contains("tapa::ostream<float>&"),
+            "slot A must expose an ostream port (FIFO into SLOT_X0Y1); got:\n{code_a}",
+        );
+        assert!(
+            code_a.contains("#pragma HLS interface ap_fifo"),
+            "slot wrapper must stamp HLS fifo pragma; got:\n{code_a}",
+        );
+        assert!(
+            !code_a.contains("TODO(rust-port)"),
+            "slot code must no longer carry the TODO placeholder; got:\n{code_a}",
+        );
+
+        let slot_b = &result["tasks"]["SLOT_X0Y1"];
+        let code_b = slot_b["code"].as_str().expect("slot code should be string");
+        assert!(
+            code_b.contains("void SLOT_X0Y1("),
+            "slot wrapper must declare SLOT_X0Y1 fn; got:\n{code_b}",
+        );
+        assert!(
+            code_b.contains("tapa::istream<float>&"),
+            "slot B must expose an istream port (FIFO out of SLOT_X0Y0); got:\n{code_b}",
+        );
+
+        // --- Port-type plumbing snapshot --------------------------------
+        // Regression: pre-fix, FIFO/mmap ports were emitted with empty
+        // `ctype` + `width=0`, which makes HLS wrappers uncompilable.
+        let slot_a_ports = slot_a["ports"].as_array().expect("slot_a should have ports");
+        let fifo_port = slot_a_ports
+            .iter()
+            .find(|p| p["name"].as_str() == Some("fifo"))
+            .expect("slot A must carry the bridged FIFO port");
+        assert_eq!(
+            fifo_port["type"].as_str().unwrap_or(""),
+            "float",
+            "FIFO port type must come from A.out"
+        );
+        assert_eq!(
+            fifo_port["width"].as_u64().unwrap_or(0),
+            32,
+            "FIFO port width must come from A.out"
+        );
+
+        // --- Design.json snapshot via serde round-trip ------------------
+        let tasks = result["tasks"].as_object().expect("tasks object");
+        assert!(
+            tasks.contains_key("SLOT_X0Y0"),
+            "rewritten graph must carry SLOT_X0Y0",
+        );
+        assert!(
+            tasks.contains_key("SLOT_X0Y1"),
+            "rewritten graph must carry SLOT_X0Y1",
+        );
+        let top_tasks = result["tasks"]["VecAdd"]["tasks"]
+            .as_object()
+            .expect("top tasks object");
+        assert!(
+            top_tasks.contains_key("SLOT_X0Y0") && top_tasks.contains_key("SLOT_X0Y1"),
+            "top must instantiate both slots; got keys: {:?}",
+            top_tasks.keys().collect::<Vec<_>>(),
+        );
+    }
+
+    #[test]
+    fn region_format_helpers() {
+        assert_eq!(
+            region_to_slot_name("SLOT_X0Y0:SLOT_X0Y1"),
+            "SLOT_X0Y0_SLOT_X0Y1",
+        );
+        assert_eq!(
+            convert_region_format("SLOT_X0Y0:SLOT_X0Y1"),
+            "SLOT_X0Y0_TO_SLOT_X0Y1",
+        );
+        assert_eq!(convert_region_format("solo"), "solo");
     }
 
     /// An empty slot instance list should produce an error or result in

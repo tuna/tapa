@@ -4,7 +4,7 @@
 //!   * `floorplan` without `--floorplan-path` is a stateful no-op that
 //!     toggles `settings["floorplan"] = true` and marks the step as
 //!     pipelined; the heavy `--floorplan-path` orchestration drives
-//!     the native `apply_floorplan` transform.
+//!     the native `get_floorplan_graph` transform in `tapa_slotting`.
 //!   * `run-autobridge` shells out to `rapidstream-tapafp` via the
 //!     shared `tapa_xilinx::ToolRunner` abstraction, so the same
 //!     orchestration transparently dispatches locally or over SSH
@@ -19,8 +19,8 @@ use std::path::{Path, PathBuf};
 use clap::Parser;
 use indexmap::IndexMap;
 use serde_json::Value;
-use tapa_task_graph::{
-    apply_floorplan, convert_region_format, region_to_slot_name, Graph, TransformError,
+use tapa_slotting::{
+    convert_region_format, get_floorplan_graph, region_to_slot_name, SlottingError,
 };
 
 use crate::context::CliContext;
@@ -99,7 +99,7 @@ pub fn run_floorplan(args: &FloorplanArgs, ctx: &mut CliContext) -> Result<()> {
 ///   1. Read `floorplan_path` as `vertex → "x:y"` JSON.
 ///   2. Filter to vertices that match a known top-level instance.
 ///   3. Group by `region` with `:` → `_` to derive the slot name.
-///   4. Run [`apply_floorplan`] to wrap leaf instances under slot tasks.
+///   4. Run [`get_floorplan_graph`] to wrap leaf instances under slot tasks.
 ///   5. Persist the rewritten graph to `<work_dir>/graph.json` and stash
 ///      `slot_task_name_to_fp_region` (regions in `_TO_` form) plus the
 ///      `floorplan` flag in `settings.json`.
@@ -107,17 +107,25 @@ fn run_floorplan_native_apply(path: &Path, ctx: &CliContext) -> Result<()> {
     let work_dir = ctx.work_dir.as_path();
     let graph_value = load_or_cached_graph(ctx)?;
 
-    let graph_json = serde_json::to_string(&graph_value)?;
-    let typed = Graph::from_json(&graph_json)?;
+    let top_name = graph_value["top"]
+        .as_str()
+        .ok_or_else(|| CliError::InvalidArg("graph missing 'top' field".to_string()))?;
 
     let raw = fs::read_to_string(path)?;
     let vertex_to_region: IndexMap<String, String> = serde_json::from_str(&raw)?;
 
-    let top_def = typed.tasks.get(&typed.top).ok_or_else(|| {
-        CliError::InvalidArg(format!("graph is missing the top task `{}`", typed.top,))
-    })?;
+    let top_tasks = graph_value["tasks"][top_name]["tasks"]
+        .as_object()
+        .ok_or_else(|| {
+            CliError::InvalidArg(format!(
+                "top task `{}` missing 'tasks' field",
+                top_name
+            ))
+        })?;
     let mut known_inst_names = BTreeSet::<String>::new();
-    for (def_name, insts) in &top_def.tasks {
+    for (def_name, insts_val) in top_tasks {
+        let empty = Vec::new();
+        let insts = insts_val.as_array().unwrap_or(&empty);
         for idx in 0..insts.len() {
             known_inst_names.insert(format!("{def_name}_{idx}"));
         }
@@ -145,13 +153,9 @@ fn run_floorplan_native_apply(path: &Path, ctx: &CliContext) -> Result<()> {
         )));
     }
 
-    let (new_graph, _slot_echo) =
-        apply_floorplan(&typed, &slot_to_insts).map_err(map_transform_err)?;
+    let new_value =
+        get_floorplan_graph(&graph_value, &slot_to_insts).map_err(map_slotting_err)?;
 
-    let new_json = new_graph
-        .to_json()
-        .map_err(|e| CliError::InvalidArg(format!("re-serialize graph: {e}")))?;
-    let new_value: Value = serde_json::from_str(&new_json)?;
     graph_io::store_graph(work_dir, &new_value)?;
 
     // Rebuild design.json so chained downstream steps see slot tasks +
@@ -160,13 +164,7 @@ fn run_floorplan_native_apply(path: &Path, ctx: &CliContext) -> Result<()> {
     // graph.json + settings.json were rewritten).
     let target = match settings_io::load_settings(work_dir) {
         Ok(s) => s.get("target").and_then(Value::as_str).map_or_else(
-            || {
-                typed
-                    .tasks
-                    .get(&typed.top)
-                    .map_or("xilinx-vitis", |_| "xilinx-vitis")
-                    .to_string()
-            },
+            || "xilinx-vitis".to_string(),
             ToString::to_string,
         ),
         Err(_) => "xilinx-vitis".to_string(),
@@ -177,7 +175,7 @@ fn run_floorplan_native_apply(path: &Path, ctx: &CliContext) -> Result<()> {
         .collect();
     let design = build_design_with_floorplan(
         &new_value,
-        &typed.top,
+        top_name,
         &target,
         Some(&region_map_for_design),
     )?;
@@ -287,18 +285,9 @@ fn load_or_cached_graph(ctx: &CliContext) -> Result<Value> {
     graph_io::load_graph(ctx.work_dir.as_path())
 }
 
-fn map_transform_err(e: TransformError) -> CliError {
+fn map_slotting_err(e: SlottingError) -> CliError {
     match e {
-        TransformError::DeepHierarchyNotSupported(child) => CliError::InvalidArg(format!(
-            "floorplan: child `{child}` is upper-level; flatten first",
-        )),
-        other @ (TransformError::MissingTop(_)
-        | TransformError::TopIsLeaf(_)
-        | TransformError::UnknownFloorplanInstance(_)
-        | TransformError::UnknownChildTask(_)
-        | TransformError::SlotNameCollision(_)
-        | TransformError::SlotCppGeneration { .. }
-        | TransformError::Json(_)) => CliError::InvalidArg(other.to_string()),
+        other => CliError::InvalidArg(other.to_string()),
     }
 }
 

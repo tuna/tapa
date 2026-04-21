@@ -16,6 +16,4 @@ pub use design::{Design, TaskTopology};
 pub use error::ParseError;
 pub use graph::Graph;
 pub use port::{ArgCategory, Port};
-pub use transforms::{
-    apply_floorplan, convert_region_format, flatten, region_to_slot_name, TransformError,
-};
+pub use transforms::{flatten, TransformError};
