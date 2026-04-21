@@ -4,18 +4,18 @@ module(name = "tapa")
 
 bazel_dep(name = "aspect_rules_js", version = "3.0.3", dev_dependency = True)
 bazel_dep(name = "aspect_rules_webpack", version = "0.17.1", dev_dependency = True)
-bazel_dep(name = "bazel_skylib", version = "1.8.2", dev_dependency = True)
+bazel_dep(name = "bazel_skylib", version = "1.9.0", dev_dependency = True)
 bazel_dep(name = "platforms", version = "1.0.0", dev_dependency = True)
-bazel_dep(name = "rules_cc", version = "0.2.17", dev_dependency = True)
-bazel_dep(name = "rules_rust", version = "0.61.0", dev_dependency = True)
-bazel_dep(name = "rules_nodejs", version = "6.7.3", dev_dependency = True)
-bazel_dep(name = "rules_pkg", version = "1.1.0", dev_dependency = True)
-bazel_dep(name = "rules_python", version = "1.9.0", dev_dependency = True)
-bazel_dep(name = "rules_shell", version = "0.6.1", dev_dependency = True)
-bazel_dep(name = "rules_verilator", version = "0.2.1", dev_dependency = True)
-bazel_dep(name = "rules_verilog", version = "0.1.0", dev_dependency = True)
-bazel_dep(name = "toolchains_llvm", version = "1.6.0", dev_dependency = True)
-bazel_dep(name = "verilator", version = "5.044", dev_dependency = True)
+bazel_dep(name = "rules_cc", version = "0.2.18", dev_dependency = True)
+bazel_dep(name = "rules_rust", version = "0.69.0", dev_dependency = True)
+bazel_dep(name = "rules_nodejs", version = "6.7.4", dev_dependency = True)
+bazel_dep(name = "rules_pkg", version = "1.2.0", dev_dependency = True)
+bazel_dep(name = "rules_python", version = "2.0.0-rc3", dev_dependency = True)
+bazel_dep(name = "rules_shell", version = "0.8.0", dev_dependency = True)
+bazel_dep(name = "rules_verilator", version = "0.3.2", dev_dependency = True)
+bazel_dep(name = "rules_verilog", version = "1.1.1", dev_dependency = True)
+bazel_dep(name = "toolchains_llvm", version = "1.7.0", dev_dependency = True)
+bazel_dep(name = "verilator", version = "5.046.bcr.3", dev_dependency = True)
 
 http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
@@ -119,7 +119,7 @@ register_toolchains(
 node = use_extension("@rules_nodejs//nodejs:extensions.bzl", "node", dev_dependency = True)
 node.toolchain(node_version = "17.9.1")  # Latest version supporting Ubuntu 18.04
 
-bazel_dep(name = "nlohmann_json", version = "3.12.0")  # Required by tapacc
+bazel_dep(name = "nlohmann_json", version = "3.12.0.bcr.1")  # Required by tapacc
 bazel_dep(name = "rules_boost", repo_name = "com_github_nelhage_rules_boost")
 git_override(
     module_name = "rules_boost",
@@ -137,8 +137,8 @@ non_module_boost_repositories = use_extension("@com_github_nelhage_rules_boost//
 use_repo(non_module_boost_repositories, "boost")
 
 bazel_dep(name = "gflags", version = "2.2.2.bcr.1")
-bazel_dep(name = "glog", version = "0.5.0")  # Must be 0.5.0; later versions require Bazel for host headers
-bazel_dep(name = "googletest", version = "1.17.0")
+bazel_dep(name = "glog", version = "0.5.0")  # Must be 0.5.0; dpi requires this version.
+bazel_dep(name = "googletest", version = "1.17.0.bcr.2")
 
 single_version_override(
     module_name = "glog",
@@ -155,7 +155,7 @@ load_dependencies = use_extension(
 )
 use_repo(load_dependencies, "ssh_key", "vitis_hls", "xsim_legacy_rdi", "xsim_xv")
 
-bazel_dep(name = "libuuid", version = "2.39.3.bcr.1")
+bazel_dep(name = "libuuid", version = "2.41.2")
 
 LLVM_VERSION_MAJOR = 20
 
