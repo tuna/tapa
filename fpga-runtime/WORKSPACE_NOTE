@@ -1,2 +1,0 @@
-# fpga-runtime and cosim are implemented in the Rust Cargo workspace.
-# See fpga-runtime/Cargo.toml and crates under fpga-runtime/.

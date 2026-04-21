@@ -7,10 +7,10 @@ sh_test(
     srcs = ["axis_adapter_behavior_test.sh"],
     data = [
         "axis_adapter_smoke_tb.sv",
-        "//tapa-core:assets/verilog/axis_adapter.v",
-        "//tapa-core:assets/verilog/fifo.v",
-        "//tapa-core:assets/verilog/fifo_bram.v",
-        "//tapa-core:assets/verilog/fifo_fwd.v",
-        "//tapa-core:assets/verilog/fifo_srl.v",
+        "//tapa-core:tapa-codegen/assets/verilog/axis_adapter.v",
+        "//tapa-core:tapa-codegen/assets/verilog/fifo.v",
+        "//tapa-core:tapa-codegen/assets/verilog/fifo_bram.v",
+        "//tapa-core:tapa-codegen/assets/verilog/fifo_fwd.v",
+        "//tapa-core:tapa-codegen/assets/verilog/fifo_srl.v",
     ],
 )

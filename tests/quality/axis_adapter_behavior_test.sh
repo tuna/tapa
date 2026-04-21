@@ -45,11 +45,11 @@ verilator \
   --sv \
   --timing \
   -Wno-fatal \
-  "$(resolve_runfile tapa-core/assets/verilog/axis_adapter.v)" \
-  "$(resolve_runfile tapa-core/assets/verilog/fifo.v)" \
-  "$(resolve_runfile tapa-core/assets/verilog/fifo_fwd.v)" \
-  "$(resolve_runfile tapa-core/assets/verilog/fifo_srl.v)" \
-  "$(resolve_runfile tapa-core/assets/verilog/fifo_bram.v)" \
+  "$(resolve_runfile tapa-core/tapa-codegen/assets/verilog/axis_adapter.v)" \
+  "$(resolve_runfile tapa-core/tapa-codegen/assets/verilog/fifo.v)" \
+  "$(resolve_runfile tapa-core/tapa-codegen/assets/verilog/fifo_fwd.v)" \
+  "$(resolve_runfile tapa-core/tapa-codegen/assets/verilog/fifo_srl.v)" \
+  "$(resolve_runfile tapa-core/tapa-codegen/assets/verilog/fifo_bram.v)" \
   "$(resolve_runfile tests/quality/axis_adapter_smoke_tb.sv)" \
   --Mdir "${tmp}/obj_dir" \
   --top-module tb

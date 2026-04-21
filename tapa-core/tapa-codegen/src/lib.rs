@@ -12,6 +12,7 @@ pub mod instance_signals;
 pub mod m_axi;
 pub mod program;
 pub mod rtl_state;
+pub mod support_assets;
 
 use tapa_rtl::builder::{ContinuousAssign, Expr, ParamArg, PortArg};
 use tapa_rtl::mutation::{wide_wire, wire};

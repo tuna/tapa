@@ -6,11 +6,11 @@ load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//bazel:cargo_rules.bzl", "cargo_artifacts")
 
 exports_files([
-    "assets/verilog/axis_adapter.v",
-    "assets/verilog/fifo.v",
-    "assets/verilog/fifo_bram.v",
-    "assets/verilog/fifo_fwd.v",
-    "assets/verilog/fifo_srl.v",
+    "tapa-codegen/assets/verilog/axis_adapter.v",
+    "tapa-codegen/assets/verilog/fifo.v",
+    "tapa-codegen/assets/verilog/fifo_bram.v",
+    "tapa-codegen/assets/verilog/fifo_fwd.v",
+    "tapa-codegen/assets/verilog/fifo_srl.v",
 ])
 
 _ALL_SRCS = glob(
