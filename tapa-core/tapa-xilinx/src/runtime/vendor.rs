@@ -531,4 +531,78 @@ mod tests {
         assert!(!patched.contains("template<typename _Tp> class complex"));
         assert!(out.join(".patched_macos_complex").is_file());
     }
+
+    #[test]
+    fn synced_marker_skips_download_but_still_applies_patch() {
+        let (_td, cache) = isolate_cache();
+        std::fs::create_dir_all(&cache).unwrap();
+        std::fs::write(cache.join(".synced"), b"/opt/xilinx/hls\n").unwrap();
+        let etc = cache.join("include").join("etc");
+        std::fs::create_dir_all(&etc).unwrap();
+        let body = concat!(
+            "// FIXME AP_AUTOCC cannot handle many standard headers, so declare instead of\n",
+            "// include.\n",
+            "// #include <complex>\n",
+            "namespace std {\n",
+            "template<typename _Tp> class complex;\n",
+            "}\n",
+        );
+        std::fs::write(etc.join("ap_fixed_special.h"), body).unwrap();
+
+        apply_macos_vendor_patch(&cache).unwrap();
+
+        if cfg!(target_os = "macos") {
+            assert!(cache.join(".patched_macos_complex").is_file());
+            let patched = std::fs::read_to_string(etc.join("ap_fixed_special.h")).unwrap();
+            assert!(patched.contains("#include <complex>"));
+        }
+    }
+
+    #[test]
+    fn fresh_sync_removes_stale_patch_marker() {
+        let (_td, cache) = isolate_cache();
+        let mut mock = MockFs::new(vec![
+            (0, b"XILINX_HLS=/opt/xilinx/hls\n".to_vec(), Vec::new()),
+            (0, b"".to_vec(), Vec::new()),
+        ]);
+        mock.write_ap_special = true;
+        std::fs::create_dir_all(&cache).unwrap();
+        std::fs::write(cache.join(".patched_macos_complex"), b"stale\n").unwrap();
+
+        sync_vendor_includes_impl(&mock, "/opt/settings64.sh", &cache).unwrap();
+
+        if cfg!(target_os = "macos") {
+            let marker_content =
+                std::fs::read_to_string(cache.join(".patched_macos_complex")).unwrap();
+            assert_eq!(marker_content, "patched\n");
+        } else {
+            // On non-macOS the stale marker is removed during fresh sync
+            // but not recreated because apply_macos_vendor_patch is a no-op.
+            assert!(!cache.join(".patched_macos_complex").exists());
+        }
+    }
+
+    #[test]
+    fn patch_marker_prevents_repeated_patching() {
+        let (_td, cache) = isolate_cache();
+        std::fs::create_dir_all(&cache).unwrap();
+        std::fs::write(cache.join(".patched_macos_complex"), b"patched\n").unwrap();
+        let etc = cache.join("include").join("etc");
+        std::fs::create_dir_all(&etc).unwrap();
+        let body = concat!(
+            "// FIXME AP_AUTOCC cannot handle many standard headers, so declare instead of\n",
+            "// include.\n",
+            "// #include <complex>\n",
+            "namespace std {\n",
+            "template<typename _Tp> class complex;\n",
+            "}\n",
+        );
+        std::fs::write(etc.join("ap_fixed_special.h"), body).unwrap();
+
+        let before = std::fs::metadata(etc.join("ap_fixed_special.h")).unwrap().modified().unwrap();
+        apply_macos_vendor_patch(&cache).unwrap();
+        let after = std::fs::metadata(etc.join("ap_fixed_special.h")).unwrap().modified().unwrap();
+
+        assert_eq!(before, after, "marker must prevent file modification");
+    }
 }

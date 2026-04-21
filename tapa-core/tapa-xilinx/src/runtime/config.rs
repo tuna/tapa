@@ -451,4 +451,60 @@ remote:
         std::env::remove_var("REMOTE_HOST");
         std::env::remove_var("REMOTE_XILINX_TOOL_PATH");
     }
+
+    #[test]
+    fn yaml_defaults_are_applied_for_missing_fields() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        std::env::set_var("HOME", "/home/test");
+        let cfg = RemoteConfig::from_yaml_str("remote:\n  host: h\n", "/tmp/.taparc").unwrap();
+        assert_eq!(cfg.host, "h");
+        assert_eq!(cfg.port, 22);
+        assert_eq!(cfg.work_dir, "/tmp/tapa-remote");
+        assert_eq!(cfg.ssh_control_persist, "30m");
+        assert!(cfg.ssh_multiplex);
+        assert_eq!(cfg.user, current_username());
+    }
+
+    #[test]
+    fn env_precedence_overrides_yaml_defaults_and_explicit_values() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        std::env::set_var("HOME", "/home/test");
+        std::env::set_var("REMOTE_HOST", "env-host");
+        std::env::set_var("REMOTE_USER", "env-user");
+        std::env::set_var("REMOTE_PORT", "9999");
+        std::env::set_var("REMOTE_WORK_DIR", "/env/work");
+        std::env::set_var("REMOTE_SSH_CONTROL_PERSIST", "1h");
+        std::env::set_var("REMOTE_SSH_MULTIPLEX", "false");
+        let cfg = RemoteConfig::from_env().unwrap();
+        assert_eq!(cfg.host, "env-host");
+        assert_eq!(cfg.user, "env-user");
+        assert_eq!(cfg.port, 9999);
+        assert_eq!(cfg.work_dir, "/env/work");
+        assert_eq!(cfg.ssh_control_persist, "1h");
+        assert!(!cfg.ssh_multiplex);
+        for k in [
+            "REMOTE_HOST",
+            "REMOTE_USER",
+            "REMOTE_PORT",
+            "REMOTE_WORK_DIR",
+            "REMOTE_SSH_CONTROL_PERSIST",
+            "REMOTE_SSH_MULTIPLEX",
+        ] {
+            std::env::remove_var(k);
+        }
+    }
+
+    #[test]
+    fn from_env_uses_defaults_for_optional_missing_vars() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        std::env::set_var("REMOTE_HOST", "h");
+        let cfg = RemoteConfig::from_env().unwrap();
+        assert_eq!(cfg.port, 22);
+        assert_eq!(cfg.work_dir, "/tmp/tapa-remote");
+        assert_eq!(cfg.ssh_control_persist, "30m");
+        assert!(cfg.ssh_multiplex);
+        assert!(cfg.key_file.is_none());
+        assert!(cfg.xilinx_settings.is_none());
+        std::env::remove_var("REMOTE_HOST");
+    }
 }

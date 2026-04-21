@@ -462,4 +462,44 @@ mod tests {
             out.stdout
         );
     }
+
+    #[test]
+    fn local_runner_preserves_args_with_spaces() {
+        let runner = LocalToolRunner::new();
+        let inv = ToolInvocation::new("/bin/sh")
+            .arg("-c")
+            .arg("printf '%s' \"$1\"")
+            .arg("dummy")
+            .arg("hello world");
+        let out = runner.run(&inv).unwrap();
+        assert_eq!(out.exit_code, 0);
+        assert_eq!(out.stdout, "hello world");
+    }
+
+    #[test]
+    fn local_runner_preserves_args_with_single_quotes() {
+        let runner = LocalToolRunner::new();
+        let inv = ToolInvocation::new("/bin/sh")
+            .arg("-c")
+            .arg("printf '%s' \"$1\"")
+            .arg("dummy")
+            .arg("it's working");
+        let out = runner.run(&inv).unwrap();
+        assert_eq!(out.exit_code, 0);
+        assert_eq!(out.stdout, "it's working");
+    }
+
+    #[test]
+    fn local_runner_timeout_fires_quickly() {
+        let runner = LocalToolRunner::new();
+        let inv = ToolInvocation::new("/bin/sh")
+            .arg("-c")
+            .arg("sleep 10")
+            .timeout(Duration::from_millis(50));
+        let start = std::time::Instant::now();
+        let err = runner.run(&inv).unwrap_err();
+        let elapsed = start.elapsed();
+        assert!(matches!(err, XilinxError::ToolTimeout { program, .. } if program == "/bin/sh"));
+        assert!(elapsed < Duration::from_secs(2), "timeout should fire quickly, took {elapsed:?}");
+    }
 }

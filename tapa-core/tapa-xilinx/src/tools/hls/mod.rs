@@ -512,6 +512,7 @@ pub fn run_hls_with_retry_in_stage(
 mod tests {
     use super::*;
     use crate::runtime::process::{MockToolRunner, ToolOutput};
+    use std::time::Duration;
 
     fn fixture_job(tmp: &std::path::Path) -> HlsJob {
         HlsJob {
@@ -778,6 +779,68 @@ mod tests {
         assert!(
             marker.is_file(),
             "in-stage retry must leave the caller-provided dir intact",
+        );
+    }
+
+    #[test]
+    fn retry_budget_exhausted_with_zero_delay() {
+        let tmp = tempfile::tempdir().unwrap();
+        let job = fixture_job(tmp.path());
+        let runner = MockToolRunner::new();
+        for _ in 0..5 {
+            runner.push_ok(
+                "vitis_hls",
+                ToolOutput {
+                    exit_code: 1,
+                    stdout: "Pre-synthesis failed.".into(),
+                    stderr: String::new(),
+                },
+            );
+        }
+        let start = std::time::Instant::now();
+        let err = run_hls_with_retry(&runner, &job, 5).unwrap_err();
+        let elapsed = start.elapsed();
+        assert!(matches!(err, XilinxError::HlsRetryExhausted { attempts: 5 }));
+        assert!(
+            elapsed < Duration::from_millis(100),
+            "retry loop must not insert delays, took {elapsed:?}"
+        );
+    }
+
+    #[test]
+    fn custom_transient_patterns_match_both_stdout_and_stderr() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut job = fixture_job(tmp.path());
+        job.transient_patterns = Some(Arc::new(vec!["custom-pattern".into()]));
+        let runner = MockToolRunner::new();
+        for _ in 0..3 {
+            runner.push_ok(
+                "vitis_hls",
+                ToolOutput {
+                    exit_code: 1,
+                    stdout: String::new(),
+                    stderr: "custom-pattern".into(),
+                },
+            );
+        }
+        let err = run_hls_with_retry(&runner, &job, 3).unwrap_err();
+        assert!(matches!(err, XilinxError::HlsRetryExhausted { attempts: 3 }));
+    }
+
+    #[test]
+    fn cflags_with_spaces_preserved_in_kernel_env() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut job = fixture_job(tmp.path());
+        job.cflags = vec!["-I/tmp/inc".into(), "-DMSG=\"hello world\"".into()];
+        let env = kernel_env_entries(&job);
+        let cflags = env
+            .iter()
+            .find(|(k, _)| k == "TAPA_KERNEL_CFLAGS_0")
+            .map(|(_, v)| v.clone())
+            .unwrap();
+        assert!(
+            cflags.contains("-DMSG=\"hello world\""),
+            "spaces preserved: {cflags}"
         );
     }
 }

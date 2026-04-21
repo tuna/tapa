@@ -233,3 +233,58 @@ pub(super) fn cleanup_session(session: &SshSession, session_dir: &str) {
         .stderr(Stdio::null())
         .status();
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shell_quote_empty_string() {
+        assert_eq!(shell_quote(""), "''");
+    }
+
+    #[test]
+    fn shell_quote_simple_word() {
+        assert_eq!(shell_quote("hello"), "'hello'");
+    }
+
+    #[test]
+    fn shell_quote_preserves_spaces() {
+        assert_eq!(shell_quote("hello world"), "'hello world'");
+    }
+
+    #[test]
+    fn shell_quote_escapes_single_quotes() {
+        assert_eq!(shell_quote("it's"), "'it'\\''s'");
+    }
+
+    #[test]
+    fn shell_quote_multiple_single_quotes() {
+        assert_eq!(shell_quote("a'b'c"), "'a'\\''b'\\''c'");
+    }
+
+    #[test]
+    fn local_to_remote_path_strips_leading_slash() {
+        assert_eq!(
+            local_to_remote_path(Path::new("/home/alice/project"), "/tmp/session"),
+            "/tmp/session/rootfs/home/alice/project"
+        );
+    }
+
+    #[test]
+    fn local_to_remote_path_preserves_relative() {
+        assert_eq!(
+            local_to_remote_path(Path::new("relative/path"), "/tmp/session"),
+            "/tmp/session/rootfs/relative/path"
+        );
+    }
+
+    #[test]
+    fn unique_session_ids_are_unique() {
+        let a = unique_session_id();
+        let b = unique_session_id();
+        assert_ne!(a, b);
+        assert!(a.starts_with("tapa-"));
+        assert!(b.starts_with("tapa-"));
+    }
+}

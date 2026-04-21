@@ -249,3 +249,71 @@ fn malformed_yaml_warns_and_returns_none() {
         "malformed taparc must yield None (compatibility)",
     );
 }
+
+#[test]
+fn cli_does_not_read_remote_env_vars() {
+    let _lock = ENV_LOCK.lock().unwrap();
+    let mut g = EnvGuard::new();
+    g.set("REMOTE_HOST", "env-host.example.com");
+    g.set("REMOTE_USER", "env-user");
+    let td = tempfile::tempdir().unwrap();
+    g.set(
+        TAPARC_PATH_ENV,
+        td.path().join(".taparc-missing").to_str().unwrap(),
+    );
+    let cfg = build_remote_config(&make_globals()).unwrap();
+    assert!(
+        cfg.is_none(),
+        "CLI assembly must not consume REMOTE_* env vars"
+    );
+}
+
+#[test]
+fn taparc_explicit_values_override_defaults() {
+    let _lock = ENV_LOCK.lock().unwrap();
+    let mut g = EnvGuard::new();
+    g.set("HOME", "/home/alice");
+    let td = tempfile::tempdir().unwrap();
+    let p = write_taparc(
+        &td,
+        "remote:\n  host: h\n  user: u\n  port: 2222\n  work_dir: /custom/work\n",
+    );
+    g.set(TAPARC_PATH_ENV, p.to_str().unwrap());
+    let cfg = build_remote_config(&make_globals()).unwrap().unwrap();
+    assert_eq!(cfg.host, "h");
+    assert_eq!(cfg.user, "u");
+    assert_eq!(cfg.port, 2222);
+    assert_eq!(cfg.work_dir, "/custom/work");
+    assert_eq!(cfg.ssh_control_persist, "30m");
+    assert!(cfg.ssh_multiplex);
+}
+
+#[test]
+fn precedence_taparc_then_cli_overrides() {
+    let _lock = ENV_LOCK.lock().unwrap();
+    let mut g = EnvGuard::new();
+    g.set("HOME", "/home/alice");
+    let td = tempfile::tempdir().unwrap();
+    let p = write_taparc(
+        &td,
+        "remote:\n  host: file-host\n  user: file-user\n  port: 2222\n  key_file: /file/key\n  xilinx_settings: /file/settings.sh\n  ssh_control_dir: /file/ctl\n  ssh_control_persist: 1h\n  ssh_multiplex: true\n",
+    );
+    g.set(TAPARC_PATH_ENV, p.to_str().unwrap());
+    let mut globals = make_globals();
+    globals.remote_host = Some("cli-user@cli-host:3333".into());
+    globals.remote_key_file = Some("/cli/key".into());
+    globals.remote_xilinx_settings = Some("/cli/settings.sh".into());
+    globals.remote_ssh_control_dir = Some("/cli/ctl".into());
+    globals.remote_ssh_control_persist = Some("5m".into());
+    globals.remote_disable_ssh_mux = true;
+
+    let cfg = build_remote_config(&globals).unwrap().unwrap();
+    assert_eq!(cfg.host, "cli-host");
+    assert_eq!(cfg.user, "cli-user");
+    assert_eq!(cfg.port, 3333);
+    assert_eq!(cfg.key_file.as_deref(), Some(Path::new("/cli/key")));
+    assert_eq!(cfg.xilinx_settings.as_deref(), Some("/cli/settings.sh"));
+    assert_eq!(cfg.ssh_control_dir.as_deref(), Some(Path::new("/cli/ctl")));
+    assert_eq!(cfg.ssh_control_persist, "5m");
+    assert!(!cfg.ssh_multiplex);
+}
