@@ -2,8 +2,19 @@
 
 load("@rules_pkg//pkg:mappings.bzl", "pkg_attributes", "pkg_filegroup", "pkg_files", "pkg_mklink")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
-load("//bazel:cargo_rules.bzl", "cargo_artifacts")
+load(
+    "@vars//:vars.bzl",
+    "REMOTE_HOST",
+    "REMOTE_KEY_FILE",
+    "REMOTE_PORT",
+    "REMOTE_SSH_CONTROL_DIR",
+    "REMOTE_SSH_CONTROL_PERSIST",
+    "REMOTE_USER",
+    "REMOTE_XILINX_SETTINGS",
+    "REMOTE_XILINX_TOOL_PATH",
+    "XILINX_TOOL_VERSION",
+)
+load("//bazel:cargo_rules.bzl", "cargo_artifacts", "cargo_test")
 
 exports_files([
     "tapa-codegen/assets/verilog/axis_adapter.v",
@@ -24,6 +35,13 @@ _ALL_SRCS = glob(
     # under `tapa-core/assets` and are covered by the glob above.
     "//:VERSION",
 ]
+
+_REMOTE_XILINX_SETTINGS = REMOTE_XILINX_SETTINGS or (
+    REMOTE_XILINX_TOOL_PATH +
+    ("/Vitis/" if XILINX_TOOL_VERSION >= "2024.2" else "/Vitis_HLS/") +
+    XILINX_TOOL_VERSION +
+    "/settings64.sh" if REMOTE_XILINX_TOOL_PATH else ""
+)
 
 # -- Build: library crates only (Cargo backed by the rules_rust toolchain) --
 # Builds the workspace's pure-Rust library crates.
@@ -146,37 +164,71 @@ pkg_filegroup(
     visibility = ["//visibility:public"],
 )
 
-# -- Test: Rust unit and integration tests (manual, requires system cargo) --
+CARGO_TEST_PACKAGES = [
+    "-p",
+    "tapa-protocol",
+    "-p",
+    "tapa-task-graph",
+    "-p",
+    "tapa-graphir",
+    "-p",
+    "tapa-rtl",
+    "-p",
+    "tapa-topology",
+    "-p",
+    "tapa-slotting",
+    "-p",
+    "tapa-codegen",
+    "-p",
+    "tapa-floorplan",
+    "-p",
+    "tapa-lowering",
+    "-p",
+    "tapa-graphir-export",
+    "-p",
+    "tapa-xilinx",
+    "-p",
+    "tapa-cli",
+]
 
-sh_test(
+# -- Test: Rust unit and integration tests --
+
+cargo_test(
     name = "cargo_test",
-    srcs = ["run_cargo_test.sh"],
-    data = _ALL_SRCS + [
-        "@rules_rust//rust/toolchain:current_cargo_files",
-        "@rules_rust//rust/toolchain:current_rustc_files",
-        "@rules_rust//rust/toolchain:current_rustdoc_files",
-    ],
-    env = {
-        "CARGO_MANIFEST_DIR": "tapa-core",
-    },
+    srcs = _ALL_SRCS,
+    cargo_args = CARGO_TEST_PACKAGES,
+    manifest = "Cargo.toml",
     tags = ["manual"],
 )
 
 # -- Test: gated tapa-xilinx integration suite (manual) --
-# Reads VARS.local.bzl-style REMOTE_* env vars; runs `cargo test
-# -p tapa-xilinx -- --ignored`. Tagged `manual` so default CI
-# runs remain unblocked.
+# Imports configured REMOTE_* values and runs `cargo test -p tapa-xilinx -- --ignored`.
+# Tagged `manual` so default CI runs remain unblocked.
 
-sh_test(
+cargo_test(
     name = "tapa_xilinx_integration_test",
-    srcs = ["run_xilinx_integration_test.sh"],
-    data = _ALL_SRCS + [
-        "@rules_rust//rust/toolchain:current_cargo_files",
-        "@rules_rust//rust/toolchain:current_rustc_files",
-        "@rules_rust//rust/toolchain:current_rustdoc_files",
+    srcs = _ALL_SRCS,
+    cargo_args = [
+        "-p",
+        "tapa-xilinx",
     ],
-    env = {
-        "CARGO_MANIFEST_DIR": "tapa-core",
+    cargo_env = {
+        "REMOTE_HOST": REMOTE_HOST,
+        "REMOTE_PORT": REMOTE_PORT,
+        "REMOTE_SSH_CONTROL_DIR": REMOTE_SSH_CONTROL_DIR,
+        "REMOTE_SSH_CONTROL_PERSIST": REMOTE_SSH_CONTROL_PERSIST,
+        "REMOTE_USER": REMOTE_USER,
+        "REMOTE_XILINX_SETTINGS": _REMOTE_XILINX_SETTINGS,
+        "REMOTE_XILINX_TOOL_PATH": REMOTE_XILINX_TOOL_PATH,
     },
+    cargo_env_files = {
+        "@ssh_key//:key": "REMOTE_KEY_FILE",
+    } if REMOTE_KEY_FILE else {},
+    manifest = "Cargo.toml",
+    skip_without_xilinx_env = True,
     tags = ["manual"],
+    test_args = [
+        "--",
+        "--ignored",
+    ],
 )
