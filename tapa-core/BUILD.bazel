@@ -24,7 +24,7 @@ _ALL_SRCS = glob(
     "//:VERSION",
 ]
 
-# -- Build: library crates only (hermetic via rules_rust toolchain) --
+# -- Build: library crates only (Cargo backed by the rules_rust toolchain) --
 # Builds the workspace's pure-Rust library crates.
 
 genrule(
@@ -41,18 +41,19 @@ genrule(
 set -euo pipefail
 CARGO="$$(cd "$$(dirname "$(execpath @rules_rust//rust/toolchain:current_cargo_files)")" && pwd)/cargo"
 RUSTC="$$(cd "$$(dirname "$(execpath @rules_rust//rust/toolchain:current_rustc_files)")" && pwd)/rustc"
-export PATH="$$(dirname "$$CARGO"):$$(dirname "$$RUSTC"):$$PATH"
+export PATH="$$(dirname "$$CARGO"):$$(dirname "$$RUSTC"):/usr/bin:/bin"
+export CARGO_HOME="$(@D)/cargo-home"
 export CARGO_TARGET_DIR="$(@D)/cargo-target"
 
 $$CARGO build --manifest-path "$(location Cargo.toml)" --release --locked \
   -p tapa-protocol -p tapa-task-graph -p tapa-graphir -p tapa-rtl -p tapa-topology
 
-copy_or_empty() { if [ -f "$$1" ]; then cp "$$1" "$$2"; else : > "$$2"; fi; }
-copy_or_empty "$$CARGO_TARGET_DIR/release/libtapa_protocol.rlib" "$(location cargo/libtapa_protocol.rlib)"
-copy_or_empty "$$CARGO_TARGET_DIR/release/libtapa_task_graph.rlib" "$(location cargo/libtapa_task_graph.rlib)"
-copy_or_empty "$$CARGO_TARGET_DIR/release/libtapa_graphir.rlib" "$(location cargo/libtapa_graphir.rlib)"
-copy_or_empty "$$CARGO_TARGET_DIR/release/libtapa_rtl.rlib" "$(location cargo/libtapa_rtl.rlib)"
-copy_or_empty "$$CARGO_TARGET_DIR/release/libtapa_topology.rlib" "$(location cargo/libtapa_topology.rlib)"
+copy_required() { test -f "$$1" || { echo "missing Rust artifact: $$1" >&2; exit 1; }; cp "$$1" "$$2"; }
+copy_required "$$CARGO_TARGET_DIR/release/libtapa_protocol.rlib" "$(location cargo/libtapa_protocol.rlib)"
+copy_required "$$CARGO_TARGET_DIR/release/libtapa_task_graph.rlib" "$(location cargo/libtapa_task_graph.rlib)"
+copy_required "$$CARGO_TARGET_DIR/release/libtapa_graphir.rlib" "$(location cargo/libtapa_graphir.rlib)"
+copy_required "$$CARGO_TARGET_DIR/release/libtapa_rtl.rlib" "$(location cargo/libtapa_rtl.rlib)"
+copy_required "$$CARGO_TARGET_DIR/release/libtapa_topology.rlib" "$(location cargo/libtapa_topology.rlib)"
 """,
     tags = ["requires-network"],
     tools = [
@@ -63,7 +64,7 @@ copy_or_empty "$$CARGO_TARGET_DIR/release/libtapa_topology.rlib" "$(location car
 )
 
 # -- Build: native `tapa-cli` binary --
-# Same hermetic cargo invocation pattern as `cargo_build`.
+# Same Cargo invocation pattern as `cargo_build`.
 # Downstream packagers consume this via `//tapa-core:tapa-cli` and re-wrap as
 # `usr/share/tapa/runtime/tapa` + `usr/bin/tapa` symlink.
 
@@ -75,7 +76,8 @@ genrule(
 set -euo pipefail
 CARGO="$$(cd "$$(dirname "$(execpath @rules_rust//rust/toolchain:current_cargo_files)")" && pwd)/cargo"
 RUSTC="$$(cd "$$(dirname "$(execpath @rules_rust//rust/toolchain:current_rustc_files)")" && pwd)/rustc"
-export PATH="$$(dirname "$$CARGO"):$$(dirname "$$RUSTC"):$$PATH"
+export PATH="$$(dirname "$$CARGO"):$$(dirname "$$RUSTC"):/usr/bin:/bin"
+export CARGO_HOME="$(@D)/cargo-home"
 export CARGO_TARGET_DIR="$(@D)/cargo-target"
 
 $$CARGO build --manifest-path "$(location Cargo.toml)" --release --locked \

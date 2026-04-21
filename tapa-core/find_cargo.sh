@@ -2,7 +2,7 @@
 # Shared helper: locate cargo from Bazel runfiles, PATH, or common install paths.
 # Source this file from test scripts: source "$(dirname "$0")/find_cargo.sh"
 
-find_cargo() {
+find_runfiles_cargo() {
   for base in "${RUNFILES_DIR:-}" "${TEST_SRCDIR:-}" \
               "${BASH_SOURCE[0]%/*}" "${0%.runfiles/*}.runfiles"; do
     [[ -z "$base" || ! -d "$base" ]] && continue
@@ -13,6 +13,10 @@ find_cargo() {
       fi
     done < <(find "$base" -path '*/bin/cargo' -print0 2>/dev/null)
   done
+  return 1
+}
+
+find_fallback_cargo() {
   for candidate in "$HOME/.cargo/bin/cargo" "$HOME/.rustup/toolchains"/*/bin/cargo; do
     if [[ -x "$candidate" ]]; then
       export PATH="$(dirname "$candidate"):$PATH"
@@ -22,6 +26,8 @@ find_cargo() {
   return 1
 }
 
-if ! command -v cargo > /dev/null 2>&1; then
-  find_cargo || true
+if ! find_runfiles_cargo; then
+  if ! command -v cargo > /dev/null 2>&1; then
+    find_fallback_cargo || true
+  fi
 fi

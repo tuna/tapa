@@ -11,10 +11,11 @@ genrule(
     ],
     outs = ["bin/tapa-test-tools"],
     cmd = """
+set -euo pipefail
 RUST_TOOLCHAIN_BIN="$$(cd "$$(dirname "$(execpath @rules_rust//rust/toolchain:current_cargo_files)")" && pwd)"
 CARGO="$$RUST_TOOLCHAIN_BIN/cargo"
 export RUSTC="$(execpath @rules_rust//rust/toolchain:current_rustc_files)"
-export PATH="$$RUST_TOOLCHAIN_BIN:$$PATH"
+export PATH="$$RUST_TOOLCHAIN_BIN:/usr/bin:/bin"
 export CARGO_HOME="$(@D)/cargo-home"
 export CARGO_TARGET_DIR="$(@D)/cargo-target"
 "$$CARGO" build --manifest-path "$(location test-tools/Cargo.toml)" --release --locked
