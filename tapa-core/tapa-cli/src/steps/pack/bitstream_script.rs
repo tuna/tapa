@@ -220,4 +220,37 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn includes_connectivity_config_option() {
+        let script = render_vitis_script(
+            "Top",
+            Path::new("/tmp/a.xo"),
+            None,
+            None,
+            Some(Path::new("/tmp/conn.ini")),
+        );
+        assert!(script.contains("CONFIG_FILE='/tmp/conn.ini'"));
+        assert!(script.contains("--config \"${CONFIG_FILE}\""));
+    }
+
+    #[test]
+    fn default_platform_warning_emitted() {
+        let script = render_vitis_script("Top", Path::new("/tmp/a.xo"), None, None, None);
+        assert!(script.contains("PLATFORM=\"\""));
+        assert!(script.contains("Please edit this file and set a valid PLATFORM"));
+    }
+
+    #[test]
+    fn invalid_clock_period_is_ignored() {
+        let script = render_vitis_script("Top", Path::new("/tmp/a.xo"), None, Some("fast"), None);
+        assert!(!script.contains("TARGET_FREQUENCY"));
+        assert!(!script.contains("--kernel_frequency"));
+    }
+
+    #[test]
+    fn absolutize_keeps_absolute_paths() {
+        let abs = Path::new("/tmp/out.xo");
+        assert_eq!(absolutize(abs), abs.to_path_buf());
+    }
 }

@@ -1290,4 +1290,168 @@ endmodule
     fn non_verilog_rejected() {
         parse_module("hello world this is not verilog").unwrap_err();
     }
+
+    #[test]
+    fn parse_ansi_ports_with_direction_and_width() {
+        let src = "
+module AnsiMod (
+  input wire [31:0] a,
+  output [7:0] b,
+  c
+);
+endmodule
+";
+        let m = parse_module(src).unwrap();
+        assert_eq!(m.name, "AnsiMod");
+        assert_eq!(m.ports.len(), 3);
+        let a = m.ports.iter().find(|p| p.name == "a").unwrap();
+        assert_eq!(a.direction, Direction::Input);
+        assert!(a.width.is_some());
+        let b = m.ports.iter().find(|p| p.name == "b").unwrap();
+        assert_eq!(b.direction, Direction::Output);
+        assert!(b.width.is_some());
+        let c = m.ports.iter().find(|p| p.name == "c").unwrap();
+        assert_eq!(c.direction, Direction::Output);
+        // Width is inherited across comma-separated ANSI ports
+        assert!(c.width.is_some());
+    }
+
+    #[test]
+    fn parse_ansi_ports_with_pragma() {
+        let src = r#"
+module AnsiPragma (
+  (* RS_CLK *) input ap_clk,
+  output ap_done
+);
+endmodule
+"#;
+        let m = parse_module(src).unwrap();
+        let clk = m.ports.iter().find(|p| p.name == "ap_clk").unwrap();
+        assert!(clk.pragma.is_some());
+    }
+
+    #[test]
+    fn parse_parameter_block_in_header() {
+        let src = "
+module ParamMod #(
+  parameter WIDTH = 32,
+  parameter [7:0] MASK = 8'hFF
+) (
+  input [WIDTH-1:0] data
+);
+endmodule
+";
+        let m = parse_module(src).unwrap();
+        assert_eq!(m.parameters.len(), 2);
+        assert_eq!(m.parameters[0].name, "WIDTH");
+        assert_eq!(m.parameters[1].name, "MASK");
+        let data = m.ports.iter().find(|p| p.name == "data").unwrap();
+        assert!(data.width.is_some());
+    }
+
+    #[test]
+    fn parse_module_with_comments() {
+        let src = "
+// Leading comment
+module CommentMod (
+  ap_clk,
+  ap_rst_n
+);
+input ap_clk;
+// this is a comment
+input ap_rst_n;
+endmodule
+";
+        let m = parse_module(src).unwrap();
+        assert_eq!(m.name, "CommentMod");
+        assert_eq!(m.ports.len(), 2);
+    }
+
+    #[test]
+    fn parse_signal_with_balanced_assignment() {
+        let src = r#"
+module SigAssign;
+  wire [31:0] w = {1'b1, 2'b10};
+endmodule
+"#;
+        let m = parse_module(src).unwrap();
+        assert_eq!(m.signals.len(), 1);
+        assert_eq!(m.signals[0].name, "w");
+    }
+
+    #[test]
+    fn parse_multiple_pragmas_in_body() {
+        let src = r#"
+module PragmaMod (
+  ap_clk
+);
+input ap_clk;
+(* DONT_TOUCH = "yes" *)
+(* KEEP *)
+wire net;
+endmodule
+"#;
+        let m = parse_module(src).unwrap();
+        assert!(m.pragmas.iter().any(|p| p.key == "DONT_TOUCH"));
+        assert!(m.pragmas.iter().any(|p| p.key == "KEEP"));
+    }
+
+    #[test]
+    fn extract_instances_skips_declarations() {
+        let src = r#"
+module top;
+  wire w;
+  // comment
+  /* block */
+  child child_inst (
+    .a(1'b1)
+  );
+  assign w = 1;
+endmodule
+"#;
+        let insts = extract_instance_names(src);
+        assert_eq!(insts.len(), 1);
+        assert_eq!(insts[0].0, "child");
+        assert_eq!(insts[0].1, "child_inst");
+    }
+
+    #[test]
+    fn extract_instances_ignores_strings_with_parens() {
+        let src = r#"
+module top;
+  child u1 (.msg(")"));
+endmodule
+"#;
+        let insts = extract_instance_names(src);
+        assert_eq!(insts.len(), 1);
+        assert_eq!(insts[0].1, "u1");
+    }
+
+    #[test]
+    fn balanced_parens_handles_comment_inside() {
+        let src = r#"
+module Balanced (
+  input a,
+  output b // ) not a paren
+);
+endmodule
+"#;
+        let m = parse_module(src).unwrap();
+        assert_eq!(m.ports.len(), 2);
+    }
+
+    #[test]
+    fn parse_parameter_with_nested_parens() {
+        let src = r#"
+module NestParam #(
+  parameter DEPTH = (1 + (2))
+) (
+  input a
+);
+endmodule
+"#;
+        let m = parse_module(src).unwrap();
+        assert_eq!(m.parameters.len(), 1);
+        assert_eq!(m.parameters[0].name, "DEPTH");
+    }
 }

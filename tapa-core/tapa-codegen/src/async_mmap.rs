@@ -210,3 +210,105 @@ pub fn build_bridge_instance(
         .with_params(std::mem::take(&mut params))
         .with_ports(ports)
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeSet;
+    use tapa_rtl::VerilogModule;
+
+    #[test]
+    fn active_tags_detects_present_ports() {
+        let module = VerilogModule::parse(
+            "module child(\n\
+             input wire ap_clk,\n\
+             output wire [63:0] mem_read_addr_s_din,\n\
+             input wire mem_read_data_s_dout,\n\
+             output wire mem_write_addr_s_din,\n\
+             output wire mem_write_data_s_din,\n\
+             input wire mem_write_resp_s_dout\n\
+             ); endmodule",
+        )
+        .unwrap();
+        let tags = active_tags(&module, "mem");
+        assert!(tags.contains(READ_ADDR));
+        assert!(tags.contains(READ_DATA));
+        assert!(tags.contains(WRITE_ADDR));
+        assert!(tags.contains(WRITE_DATA));
+        assert!(tags.contains(WRITE_RESP));
+    }
+
+    #[test]
+    fn active_tags_empty_when_no_ports() {
+        let module = VerilogModule::parse("module child(input wire ap_clk); endmodule").unwrap();
+        let tags = active_tags(&module, "mem");
+        assert!(tags.is_empty());
+    }
+
+    #[test]
+    fn child_connection_expr_prepends_eot_for_data() {
+        let expr = child_connection_expr("base", READ_DATA, "_dout");
+        let text = expr.to_string();
+        assert!(text.contains("1'b0"), "expected EOT prepend, got: {text}");
+        assert!(text.contains("base_read_data__dout"), "got: {text}");
+    }
+
+    #[test]
+    fn child_connection_expr_no_eot_for_addr() {
+        let expr = child_connection_expr("base", READ_ADDR, "_din");
+        let text = expr.to_string();
+        assert_eq!(text, "base_read_addr__din");
+    }
+
+    #[test]
+    fn child_portargs_maps_peek_for_istream() {
+        let module = VerilogModule::parse(
+            "module child(\n\
+             input wire ap_clk,\n\
+             input wire [63:0] mem_read_data_s_dout,\n\
+             input wire mem_read_data_s_empty_n,\n\
+             output wire mem_read_data_s_read,\n\
+             input wire [63:0] mem_read_data_peek_dout,\n\
+             input wire mem_read_data_peek_empty_n\n\
+             ); endmodule",
+        )
+        .unwrap();
+        let ports = child_portargs(&module, "mem", "chan", "chan_offset");
+        let names: Vec<_> = ports.iter().map(|p| p.port_name.clone()).collect();
+        assert!(names.contains(&"mem_read_data_s_dout".to_string()));
+        assert!(names.contains(&"mem_read_data_peek_dout".to_string()));
+    }
+
+    #[test]
+    fn add_bridge_signals_creates_wires() {
+        let module = VerilogModule::parse("module top(); endmodule").unwrap();
+        let mut mm = tapa_rtl::mutation::MutableModule::from_parsed(module);
+        let mut tags = BTreeSet::new();
+        tags.insert(READ_ADDR);
+        tags.insert(READ_DATA);
+        add_bridge_signals(&mut mm, "chan", &tags, 64);
+        let emitted = mm.emit();
+        assert!(emitted.contains("chan_read_addr__din"), "got:\n{emitted}");
+        assert!(emitted.contains("chan_read_data__dout"), "got:\n{emitted}");
+    }
+
+    #[test]
+    fn build_bridge_instance_has_async_mmap_params() {
+        let mut tags = BTreeSet::new();
+        tags.insert(READ_ADDR);
+        tags.insert(READ_DATA);
+        let inst = build_bridge_instance("chan", "m_axi_chan", &tags, 512, false);
+        let text = inst.to_string();
+        assert!(text.contains("async_mmap"), "got:\n{text}");
+        assert!(text.contains("DataWidth(512)"), "got:\n{text}");
+        assert!(text.contains("EnableReadChannel(1)"), "got:\n{text}");
+        assert!(text.contains("EnableWriteChannel(0)"), "got:\n{text}");
+    }
+
+    #[test]
+    fn bridge_base_from_prefix_strips_m_axi() {
+        assert_eq!(bridge_base_from_m_axi_prefix("m_axi_mem"), "mem");
+        assert_eq!(bridge_base_from_m_axi_prefix("mem"), "mem");
+    }
+}

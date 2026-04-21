@@ -272,4 +272,73 @@ mod tests {
         let xml = emit_kernel_xml(&args).unwrap();
         assert!(xml.contains("std::vector&lt;int&gt; &amp;"));
     }
+
+    #[test]
+    fn scalar_port_generates_s_axi_control_and_offset() {
+        let args = KernelXmlArgs {
+            top_name: "k".into(),
+            clock_period: "3.33".into(),
+            ports: vec![KernelXmlPort {
+                name: "n".into(),
+                category: PortCategory::Scalar,
+                width: 32,
+                port: String::new(),
+                ctype: "int".into(),
+            }],
+        };
+        let xml = emit_kernel_xml(&args).unwrap();
+        assert!(xml.contains("<port name=\"s_axi_control\""));
+        assert!(xml.contains("addressQualifier=\"0\""));
+        assert!(xml.contains("port=\"s_axi_control\""));
+        assert!(xml.contains("hwControlProtocol=\"ap_ctrl_hs\""));
+        assert!(xml.contains("size=\"0x4\""));
+        assert!(xml.contains("offset=\"0x10\""));
+    }
+
+    #[test]
+    fn mixed_ports_produce_correct_qualifiers() {
+        let args = KernelXmlArgs {
+            top_name: "mix".into(),
+            clock_period: "5".into(),
+            ports: vec![
+                KernelXmlPort {
+                    name: "a".into(),
+                    category: PortCategory::Scalar,
+                    width: 64,
+                    port: String::new(),
+                    ctype: "long".into(),
+                },
+                KernelXmlPort {
+                    name: "b".into(),
+                    category: PortCategory::MAxi,
+                    width: 512,
+                    port: String::new(),
+                    ctype: "void*".into(),
+                },
+                KernelXmlPort {
+                    name: "c".into(),
+                    category: PortCategory::IStream,
+                    width: 32,
+                    port: String::new(),
+                    ctype: "tapa::istream<int>".into(),
+                },
+            ],
+        };
+        let xml = emit_kernel_xml(&args).unwrap();
+        assert!(xml.contains("addressQualifier=\"0\""));
+        assert!(xml.contains("addressQualifier=\"1\""));
+        assert!(xml.contains("addressQualifier=\"4\""));
+        assert!(xml.contains("port=\"m_axi_b\""));
+        assert!(xml.contains("mode=\"read_only\""));
+    }
+
+    #[test]
+    fn xml_escape_escapes_all_five_chars() {
+        assert_eq!(xml_escape("&"), "&amp;");
+        assert_eq!(xml_escape("<"), "&lt;");
+        assert_eq!(xml_escape(">"), "&gt;");
+        assert_eq!(xml_escape("\""), "&quot;");
+        assert_eq!(xml_escape("'"), "&apos;");
+        assert_eq!(xml_escape("a & b"), "a &amp; b");
+    }
 }
