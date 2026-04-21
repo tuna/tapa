@@ -1,6 +1,7 @@
 """Build rules for the final package."""
 
 load("@rules_pkg//pkg:tar.bzl", "pkg_tar")
+load("//bazel:test_tool_rules.bzl", "test_tool_test")
 
 # Expose `VERSION` so `//tapa-core` Cargo-backed Bazel rules can include it in
 # their input set. `tapa-cli::steps::version` pulls the version in
@@ -23,6 +24,13 @@ pkg_tar(
     ],
     allow_duplicates_from_deps = True,
     allow_duplicates_with_different_content = False,
+)
+
+test_tool_test(
+    name = "tapa-pkg-layout-test",
+    command = "check-package-layout",
+    data_args = [":tapa-pkg-tar"],
+    target_compatible_with = ["@platforms//os:linux"],
 )
 
 pkg_tar(

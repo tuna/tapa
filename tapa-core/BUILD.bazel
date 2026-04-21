@@ -1,6 +1,6 @@
 """TAPA core Rust crates — Bazel build via Cargo."""
 
-load("@rules_pkg//pkg:mappings.bzl", "pkg_attributes", "pkg_filegroup", "pkg_files", "pkg_mklink")
+load("@rules_pkg//pkg:mappings.bzl", "pkg_attributes", "pkg_filegroup", "pkg_files")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load(
     "@vars//:vars.bzl",
@@ -82,8 +82,8 @@ cargo_artifacts(
 
 # -- Build: native `tapa-cli` binary --
 # Same Cargo invocation pattern as `cargo_build`.
-# Downstream packagers consume this via `//tapa-core:tapa-cli` and re-wrap as
-# `usr/share/tapa/runtime/tapa` + `usr/bin/tapa` symlink.
+# Downstream packagers consume this via `//tapa-core:tapa-cli` and install it
+# directly as `usr/bin/tapa`.
 
 cargo_artifacts(
     name = "tapa-cli",
@@ -136,31 +136,20 @@ sh_binary(
     deps = ["@bazel_tools//tools/bash/runfiles"],
 )
 
-# Ship the native Rust `tapa` binary as `usr/share/tapa/runtime/tapa`;
-# `/usr/bin/tapa` is a symlink to that binary in the assembled package.
+# Ship the native Rust `tapa` binary directly as `/usr/bin/tapa`.
 
 pkg_files(
-    name = "pkg-runtime",
+    name = "pkg-bin",
     srcs = [":tapa-cli"],
     attributes = pkg_attributes(mode = "0755"),
-    prefix = "usr/share/tapa/runtime",
+    prefix = "usr/bin",
     renames = {"//tapa-core:tapa-cli": "tapa"},
-    visibility = ["//visibility:public"],
-)
-
-pkg_mklink(
-    name = "pkg-link",
-    link_name = "usr/bin/tapa",
-    target = "../share/tapa/runtime/tapa",
     visibility = ["//visibility:public"],
 )
 
 pkg_filegroup(
     name = "pkg",
-    srcs = [
-        ":pkg-link",
-        ":pkg-runtime",
-    ],
+    srcs = [":pkg-bin"],
     visibility = ["//visibility:public"],
 )
 

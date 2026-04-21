@@ -2,6 +2,7 @@ mod abgraph;
 mod analyze;
 mod common;
 mod floorplan;
+mod package_layout;
 mod reports;
 mod shared_mmap;
 mod zip_diff;
@@ -53,11 +54,15 @@ fn run(args: Vec<OsString>) -> Result<()> {
             let xo = arg_str(&args, 1, "check-shared-mmap-pragmas <xo>")?;
             shared_mmap::check_shared_mmap_pragmas(&common::workspace_path(xo))
         }
+        "check-package-layout" => {
+            let tar = arg_str(&args, 1, "check-package-layout <tar>")?;
+            package_layout::check_package_layout(&common::workspace_path(tar))
+        }
         _ => Err(usage()),
     }
 }
 
 fn usage() -> String {
-    "usage: tapa-test-tools <analyze-smoke|compare-abgraph|gen-floorplan|check-xo-reports|zip-diff|check-shared-mmap-pragmas> ..."
+    "usage: tapa-test-tools <analyze-smoke|compare-abgraph|gen-floorplan|check-xo-reports|zip-diff|check-shared-mmap-pragmas|check-package-layout> ..."
         .to_string()
 }

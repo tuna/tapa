@@ -1,9 +1,9 @@
-//! Implementation of and
-//! the implementation.
+//! Resource discovery for sibling TAPA tools and headers.
 //!
-//! The implementation walks every parent of `__file__` and tries
-//! each entry from `POTENTIAL_PATHS`, returning the first match. Bazel
-//! runfiles support is intentionally out of scope — see the plan.
+//! The installed package places the CLI at `usr/bin/tapa` and shared
+//! resources under the same install prefix. Bazel runfiles and source-tree
+//! layouts are handled by walking parent directories and trying each resource
+//! suffix below.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -80,20 +80,50 @@ pub fn find_resource_from(name: &str, anchor: &Path) -> Result<PathBuf> {
 
     let mut tried: Vec<String> = Vec::new();
     for suffix in suffixes {
-        let mut cursor: Option<&Path> = Some(anchor);
-        while let Some(parent) = cursor {
-            let candidate = parent.join(suffix);
+        for root in search_roots(anchor) {
+            let candidate = root.join(suffix);
             if candidate.exists() {
                 return Ok(candidate);
             }
             tried.push(candidate.display().to_string());
-            cursor = parent.parent();
         }
     }
     Err(CliError::TapaccNotFound {
         name: name.to_string(),
         searched: tried.join(", "),
     })
+}
+
+fn search_roots(anchor: &Path) -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    if let Some(prefix) = install_prefix_from_usr_bin(anchor) {
+        roots.push(prefix);
+    }
+
+    let mut cursor = Some(anchor);
+    while let Some(path) = cursor {
+        push_unique(&mut roots, path.to_path_buf());
+        cursor = path.parent();
+    }
+    roots
+}
+
+fn install_prefix_from_usr_bin(anchor: &Path) -> Option<PathBuf> {
+    let bin = anchor.parent()?;
+    if bin.file_name()? != "bin" {
+        return None;
+    }
+    let usr = bin.parent()?;
+    if usr.file_name()? != "usr" {
+        return None;
+    }
+    usr.parent().map(Path::to_path_buf)
+}
+
+fn push_unique(paths: &mut Vec<PathBuf>, path: PathBuf) {
+    if !paths.iter().any(|existing| existing == &path) {
+        paths.push(path);
+    }
 }
 
 /// Resolve a clang-family helper (`tapacc-binary`, `tapa-cpp-binary`).
@@ -169,6 +199,24 @@ mod tests {
 
         let resolved = find_resource_from("tapacc-binary", &nested).unwrap();
         assert_eq!(resolved, target);
+    }
+
+    #[test]
+    fn direct_usr_bin_tapa_anchor_resolves_install_prefix_resources() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("usr/bin");
+        let system_include = dir.path().join("usr/share/tapa/system-include");
+        fs::create_dir_all(&bin).unwrap();
+        fs::create_dir_all(&system_include).unwrap();
+        let tapa_cpp = bin.join("tapa-cpp");
+        fs::write(&tapa_cpp, b"#!/bin/sh\nexit 0").unwrap();
+
+        let anchor = bin.join("tapa");
+
+        let resolved_cpp = find_resource_from("tapa-cpp-binary", &anchor).unwrap();
+        assert_eq!(resolved_cpp, tapa_cpp);
+        let resolved_include = find_resource_from("tapa-system-include", &anchor).unwrap();
+        assert_eq!(resolved_include, system_include);
     }
 
     #[test]
