@@ -4,8 +4,8 @@
 # All rights reserved. The contributor(s) of this file has/have agreed to the
 # RapidStream Contributor License Agreement.
 
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//bazel:tapa_rules.bzl", "tapa_reuse_work_dir_xo", "tapa_xo")
+load("//bazel:test_tool_rules.bzl", "test_tool_test")
 
 tapa_xo(
     name = "vadd-xo",
@@ -15,14 +15,14 @@ tapa_xo(
     top_name = "VecAdd",
 )
 
-sh_test(
+test_tool_test(
     name = "reproducible-xo-test",
-    srcs = ["zip-diff.sh"],
-    args = [
-        "$(location :vadd-xo)",
-        "$(location //tests/apps/vadd:vadd-xo)",
-    ],
+    command = "zip-diff",
     data = [
+        ":vadd-xo",
+        "//tests/apps/vadd:vadd-xo",
+    ],
+    data_args = [
         ":vadd-xo",
         "//tests/apps/vadd:vadd-xo",
     ],
@@ -37,14 +37,14 @@ tapa_xo(
     top_name = "VecAdd",
 )
 
-sh_test(
+test_tool_test(
     name = "reproducible-zip-test",
-    srcs = ["zip-diff.sh"],
-    args = [
-        "$(location :vadd-zip)",
-        "$(location //tests/apps/vadd:vadd-zip)",
-    ],
+    command = "zip-diff",
     data = [
+        ":vadd-zip",
+        "//tests/apps/vadd:vadd-zip",
+    ],
+    data_args = [
         ":vadd-zip",
         "//tests/apps/vadd:vadd-zip",
     ],
@@ -59,14 +59,14 @@ tapa_reuse_work_dir_xo(
 )
 
 # XO generated step-by-step should be the same as XO generated in one step.
-sh_test(
+test_tool_test(
     name = "reuse-work-dir-test",
-    srcs = ["zip-diff.sh"],
-    args = [
-        "$(location :reuse-work-dir-vadd-xo)",
-        "$(location //tests/apps/vadd:vadd-xo)",
-    ],
+    command = "zip-diff",
     data = [
+        ":reuse-work-dir-vadd-xo",
+        "//tests/apps/vadd:vadd-xo",
+    ],
+    data_args = [
         ":reuse-work-dir-vadd-xo",
         "//tests/apps/vadd:vadd-xo",
     ],

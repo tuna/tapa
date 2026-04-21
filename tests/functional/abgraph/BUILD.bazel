@@ -4,8 +4,8 @@
 # All rights reserved. The contributor(s) of this file has/have agreed to the
 # RapidStream Contributor License Agreement.
 
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//bazel:tapa_rules.bzl", "tapa_xo")
+load("//bazel:test_tool_rules.bzl", "test_tool_test")
 
 # vadd test
 tapa_xo(
@@ -20,18 +20,14 @@ tapa_xo(
     top_name = "VecAdd",
 )
 
-sh_test(
+test_tool_test(
     name = "vadd-abgraph-test",
-    srcs = ["abgraph_test.sh"],
-    args = [
-        "$(location //tools:test_tools)",
-        "vadd",
-    ],
+    command = "compare-abgraph",
     data = [
         "golden/vadd.json",
         ":vadd-abgraph-json",
-        "//tools:test_tools",
     ],
+    tool_args = ["vadd"],
 )
 
 # bandwidth test
@@ -50,18 +46,14 @@ tapa_xo(
     top_name = "Bandwidth",
 )
 
-sh_test(
+test_tool_test(
     name = "bandwidth-abgraph-test",
-    srcs = ["abgraph_test.sh"],
-    args = [
-        "$(location //tools:test_tools)",
-        "bandwidth",
-    ],
+    command = "compare-abgraph",
     data = [
         "golden/bandwidth.json",
         ":bandwidth-abgraph-json",
-        "//tools:test_tools",
     ],
+    tool_args = ["bandwidth"],
 )
 
 # cannon test
@@ -79,18 +71,14 @@ tapa_xo(
     top_name = "Cannon",
 )
 
-sh_test(
+test_tool_test(
     name = "cannon-abgraph-test",
-    srcs = ["abgraph_test.sh"],
-    args = [
-        "$(location //tools:test_tools)",
-        "cannon",
-    ],
+    command = "compare-abgraph",
     data = [
         "golden/cannon.json",
         ":cannon-abgraph-json",
-        "//tools:test_tools",
     ],
+    tool_args = ["cannon"],
 )
 
 # network test
@@ -108,16 +96,12 @@ tapa_xo(
     top_name = "Network",
 )
 
-sh_test(
+test_tool_test(
     name = "network-abgraph-test",
-    srcs = ["abgraph_test.sh"],
-    args = [
-        "$(location //tools:test_tools)",
-        "network",
-    ],
+    command = "compare-abgraph",
     data = [
         "golden/network.json",
         ":network-abgraph-json",
-        "//tools:test_tools",
     ],
+    tool_args = ["network"],
 )

@@ -7,6 +7,7 @@
 load("@rules_cc//cc:defs.bzl", "cc_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//bazel:tapa_rules.bzl", "tapa_xo")
+load("//bazel:test_tool_rules.bzl", "test_tool_test")
 
 exports_files(
     [
@@ -72,13 +73,11 @@ tapa_xo(
     top_name = "VecAddShared",
 )
 
-sh_test(
+test_tool_test(
     name = "shared-mmap-pragma-test",
-    srcs = ["shared-mmap-pragma-test.sh"],
-    args = [
-        "$(location :shared-mmap-xo)",
-    ],
+    command = "check-shared-mmap-pragmas",
     data = [
         ":shared-mmap-xo",
     ],
+    data_args = [":shared-mmap-xo"],
 )

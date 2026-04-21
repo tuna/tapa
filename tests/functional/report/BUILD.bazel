@@ -4,8 +4,8 @@
 # All rights reserved. The contributor(s) of this file has/have agreed to the
 # RapidStream Contributor License Agreement.
 
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//bazel:tapa_rules.bzl", "tapa_xo")
+load("//bazel:test_tool_rules.bzl", "test_tool_test")
 
 tapa_xo(
     name = "enable-synth-util-xo",
@@ -17,15 +17,11 @@ tapa_xo(
     top_name = "VecAdd",
 )
 
-sh_test(
+test_tool_test(
     name = "report-test",
-    srcs = ["report_test.sh"],
-    args = [
-        "$(location //tools:test_tools)",
-        "$(location :enable-synth-util-xo)",
-    ],
+    command = "check-xo-reports",
     data = [
         ":enable-synth-util-xo",
-        "//tools:test_tools",
     ],
+    data_args = [":enable-synth-util-xo"],
 )

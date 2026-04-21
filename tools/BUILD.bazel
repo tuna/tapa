@@ -9,8 +9,9 @@ cargo_artifacts(
     srcs = [
         "test-tools/Cargo.lock",
         "test-tools/Cargo.toml",
-        "test-tools/src/main.rs",
-    ],
+    ] + glob([
+        "test-tools/src/**/*.rs",
+    ]),
     outs = ["bin/tapa-test-tools"],
     artifacts = ["tapa-test-tools:bin/tapa-test-tools"],
     build_args = [],

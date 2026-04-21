@@ -1,16 +1,14 @@
 """Tests for TAPA analyze step on sample apps."""
 
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
+load("//bazel:test_tool_rules.bzl", "test_tool_test")
 
-sh_test(
+test_tool_test(
     name = "analyze_test",
     size = "large",
-    srcs = ["analyze_test.sh"],
-    args = ["$(location //tools:test_tools)"],
+    command = "analyze-smoke",
     data = [
         "//tapa-core:tapa",
         "//tapa-lib:include",
-        "//tools:test_tools",
         # vadd
         "//tests/apps/vadd:vadd.cpp",
         "//tests/apps/vadd:vadd.h",
