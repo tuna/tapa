@@ -1,0 +1,40 @@
+# Paths passed via tclargs for remote execution path rewriting:
+# argv[0] = tmpdir, argv[1] = hdl_dir, argv[2] = xo_file, argv[3] = kernel_xml
+set tmpdir [lindex $argv 0]
+set hdl_dir [lindex $argv 1]
+set xo_file [lindex $argv 2]
+set kernel_xml_path [lindex $argv 3]
+set tmp_ip_dir "$tmpdir/tmp_ip_dir"
+set tmp_project "$tmpdir/tmp_project"
+
+create_project -force kernel_pack ${tmp_project}{{ part_arg }}
+add_files [glob -nocomplain $hdl_dir/* $hdl_dir/*/* $hdl_dir/*/*/* \
+        $hdl_dir/*/*/*/* $hdl_dir/*/*/*/*/*]
+foreach tcl_file [glob -nocomplain $hdl_dir/*.tcl $hdl_dir/*/*.tcl] {
+  source ${tcl_file}
+}
+set_property top {{ top_name }} [current_fileset]
+update_compile_order -fileset sources_1
+update_compile_order -fileset sim_1
+ipx::package_project -root_dir ${tmp_ip_dir} -vendor tapa \
+        -library xrtl -taxonomy /KernelIP -import_files -set_current false
+ipx::unload_core ${tmp_ip_dir}/component.xml
+ipx::edit_ip_in_project -upgrade true -name tmp_edit_project \
+        -directory ${tmp_ip_dir} ${tmp_ip_dir}/component.xml
+set_property core_revision 2 [ipx::current_core]
+foreach up [ipx::get_user_parameters] {
+  ipx::remove_user_parameter [get_property NAME ${up}] [ipx::current_core]
+}
+set_property sdx_kernel true [ipx::current_core]
+set_property sdx_kernel_type rtl [ipx::current_core]
+ipx::create_xgui_files [ipx::current_core]
+{{ bus_ifaces }}
+set_property xpm_libraries {XPM_CDC XPM_MEMORY XPM_FIFO} [ipx::current_core]
+set_property supported_families { } [ipx::current_core]
+set_property auto_family_support_level level_2 [ipx::current_core]
+ipx::update_checksums [ipx::current_core]
+ipx::save_core [ipx::current_core]
+close_project -delete
+
+package_xo -force -xo_path "$xo_file" -kernel_name {{ top_name }} \
+        -ip_directory ${tmp_ip_dir} -kernel_xml $kernel_xml_path{{ cpp_kernels }}

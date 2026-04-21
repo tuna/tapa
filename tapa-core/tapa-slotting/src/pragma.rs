@@ -7,38 +7,41 @@ use crate::error::SlottingError;
 
 // ── Pragma templates ─────────────────────────────────────────────────
 
+fn render_pragma(template_name: &str, name: &str, port_type: Option<&str>) -> String {
+    let mut env = minijinja::Environment::new();
+    let source = match template_name {
+        "scalar" => include_str!("templates/scalar_pragma.cpp.j2"),
+        "mmap" => include_str!("templates/mmap_pragma.cpp.j2"),
+        "fifo_in" => include_str!("templates/fifo_in_pragma.cpp.j2"),
+        "fifo_out" => include_str!("templates/fifo_out_pragma.cpp.j2"),
+        _ => unreachable!(),
+    };
+    env.add_template(template_name, source).expect("template parses");
+    let ctx = if let Some(pt) = port_type {
+        minijinja::context! { name, port_type => pt }
+    } else {
+        minijinja::context! { name }
+    };
+    env.get_template(template_name)
+        .expect("template exists")
+        .render(ctx)
+        .expect("render succeeds")
+}
+
 fn scalar_pragma(name: &str) -> String {
-    format!(
-        "#pragma HLS interface ap_none port = {name} register\n\
-         {{ auto val = reinterpret_cast<volatile uint8_t &>({name}); }}"
-    )
+    render_pragma("scalar", name, None)
 }
 
 fn mmap_pragma(name: &str) -> String {
-    format!(
-        "#pragma HLS interface ap_none port = {name}_offset register\n\
-         {{ auto val = reinterpret_cast<volatile uint8_t &>({name}_offset); }}"
-    )
+    render_pragma("mmap", name, None)
 }
 
 fn fifo_in_pragma(name: &str) -> String {
-    format!(
-        "#pragma HLS disaggregate variable = {name}\n\
-         #pragma HLS interface ap_fifo port = {name}._\n\
-         #pragma HLS aggregate variable = {name}._ bit\n\
-         void({name}._.empty());\n\
-         {{ auto val = {name}.read(); }}\n"
-    )
+    render_pragma("fifo_in", name, None)
 }
 
 fn fifo_out_pragma(name: &str, port_type: &str) -> String {
-    format!(
-        "#pragma HLS disaggregate variable = {name}\n\
-         #pragma HLS interface ap_fifo port = {name}._\n\
-         #pragma HLS aggregate variable = {name}._ bit\n\
-         void({name}._.full());\n\
-         {name}.write({port_type}());"
-    )
+    render_pragma("fifo_out", name, Some(port_type))
 }
 
 // ── Port templates ───────────────────────────────────────────────────

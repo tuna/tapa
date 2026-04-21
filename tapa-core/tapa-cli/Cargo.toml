@@ -36,6 +36,7 @@ tapa-task-graph = { workspace = true }
 tapa-topology = { workspace = true }
 tapa-xilinx = { workspace = true }
 tempfile = { workspace = true }
+minijinja = { workspace = true }
 thiserror = { workspace = true }
 which = { workspace = true }
 zip = { workspace = true }

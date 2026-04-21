@@ -21,6 +21,16 @@ use tapa_task_graph::task::TaskLevel;
 use crate::error::CodegenError;
 use crate::rtl_state::TopologyWithRtl;
 
+fn render_template_module(name: &str, ports: &[String]) -> String {
+    let mut env = minijinja::Environment::new();
+    env.add_template("template_module", include_str!("templates/template_module.v.j2"))
+        .expect("template parses");
+    env.get_template("template_module")
+        .expect("template exists")
+        .render(minijinja::context! { name, ports })
+        .expect("render succeeds")
+}
+
 /// Run the full RTL codegen orchestration pipeline.
 ///
 /// For each upper-level task:
@@ -142,18 +152,8 @@ fn instrument_upper_task(state: &mut TopologyWithRtl, task_name: &str) -> Result
     if is_template {
         if let Some(mm) = state.module_map.get_mut(task_name) {
             // Build port-declaration-only template (just the module shell)
-            use std::fmt::Write;
-            let mut template = String::new();
-            let _ = writeln!(template, "module {} (", mm.inner.name);
-            for (i, port) in mm.inner.ports.iter().enumerate() {
-                let comma = if i + 1 < mm.inner.ports.len() {
-                    ","
-                } else {
-                    ""
-                };
-                let _ = writeln!(template, "  {port}{comma}");
-            }
-            template.push_str(");\nendmodule\n");
+            let ports: Vec<String> = mm.inner.ports.iter().map(|p| p.to_string()).collect();
+            let template = render_template_module(&mm.inner.name, &ports);
             state
                 .generated_files
                 .insert(format!("{task_name}_template.v"), template);

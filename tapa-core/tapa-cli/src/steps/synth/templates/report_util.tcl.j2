@@ -1,0 +1,17 @@
+set hdl_dir [lindex $argv 0]
+set rpt_file [lindex $argv 1]
+set_param general.maxThreads 1
+set_part {{ part_num }}
+read_verilog [ glob $hdl_dir/*.v ]
+set ips [ glob -nocomplain $hdl_dir/*/*.xci ]
+if { $ips ne "" } {
+  import_ip $ips
+  upgrade_ip [get_ips *]
+  generate_target synthesis [ get_files *.xci ]
+}
+foreach tcl_file [glob -nocomplain $hdl_dir/*.tcl] {
+  source $tcl_file
+}
+synth_design {{ synth_args }}
+opt_design
+report_utilization -file $rpt_file {{ report_util_args }}

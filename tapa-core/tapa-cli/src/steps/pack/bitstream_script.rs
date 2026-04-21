@@ -15,29 +15,6 @@ use std::os::unix::fs::PermissionsExt;
 
 use crate::error::Result;
 
-const VITIS_COMMAND_BASIC: &[&str] = &[
-    "v++ ${DEBUG} \\",
-    "  --link \\",
-    "  --output \"${OUTPUT_DIR}/${TOP}_${PLATFORM}.xclbin\" \\",
-    "  --kernel ${TOP} \\",
-    "  --platform ${PLATFORM} \\",
-    "  --target ${TARGET} \\",
-    "  --report_level 2 \\",
-    "  --temp_dir \"${OUTPUT_DIR}/${TOP}_${PLATFORM}.temp\" \\",
-    "  --optimize 3 \\",
-    "  --connectivity.nk ${TOP}:1:${TOP} \\",
-    "  --save-temps \\",
-    "  \"${XO}\" \\",
-    "  --vivado.synth.jobs ${MAX_SYNTH_JOBS} \\",
-    "  --vivado.prop=run.impl_1.STEPS.PHYS_OPT_DESIGN.IS_ENABLED=1 \\",
-    "  --vivado.prop=run.impl_1.STEPS.OPT_DESIGN.ARGS.DIRECTIVE=$STRATEGY \\",
-    "  --vivado.prop=run.impl_1.STEPS.PLACE_DESIGN.ARGS.DIRECTIVE=$PLACEMENT_STRATEGY \\",
-    "  --vivado.prop=run.impl_1.STEPS.PHYS_OPT_DESIGN.ARGS.DIRECTIVE=$STRATEGY \\",
-    "  --vivado.prop=run.impl_1.STEPS.ROUTE_DESIGN.ARGS.DIRECTIVE=$STRATEGY \\",
-];
-const CONFIG_OPTION: &str = "  --config \"${CONFIG_FILE}\" \\";
-const CLOCK_OPTION: &str = "  --kernel_frequency ${TARGET_FREQUENCY} \\";
-
 /// Render the `#!/bin/bash` v++ script mirroring current
 /// `get_vitis_script`. `output_file` is absolutised exactly as current
 /// did via `os.path.abspath`.
@@ -49,28 +26,17 @@ pub(super) fn render_vitis_script(
     clock_period: Option<&str>,
     connectivity: Option<&Path>,
 ) -> String {
-    let mut lines: Vec<String> = vec![
-        "#!/bin/bash".to_string(),
-        "TARGET=hw".to_string(),
-        "# TARGET=hw_emu".to_string(),
-        "# DEBUG=-g".to_string(),
-        String::new(),
-        format!("TOP={top}"),
-        format!("XO='{}'", absolutize(output_file).display()),
-    ];
+    let mut env = minijinja::Environment::new();
+    env.add_template(
+        "vitis_script",
+        include_str!("templates/vitis_script.sh.j2"),
+    )
+    .expect("template parses");
 
-    let mut vitis_command: Vec<String> = VITIS_COMMAND_BASIC
-        .iter()
-        .map(|s| (*s).to_string())
-        .collect();
-
-    if let Some(conn) = connectivity {
-        lines.push(format!("CONFIG_FILE='{}'", absolutize(conn).display()));
-        vitis_command.push(CONFIG_OPTION.to_string());
-    }
-
-    if let Some(clock) = clock_period {
-        if let Ok(period) = clock.parse::<f64>() {
+    let xo = absolutize(output_file).display().to_string();
+    let config_file = connectivity.map(|conn| absolutize(conn).display().to_string());
+    let target_frequency = clock_period.and_then(|clock| {
+        clock.parse::<f64>().ok().map(|period| {
             #[allow(
                 clippy::cast_possible_truncation,
                 clippy::cast_sign_loss,
@@ -78,35 +44,24 @@ pub(super) fn render_vitis_script(
                           the i64 roundtrip mirrors that truncation"
             )]
             let target = (1000.0_f64 / period).round() as i64;
-            lines.push(format!("TARGET_FREQUENCY={target}"));
-            vitis_command.push(CLOCK_OPTION.to_string());
-        }
-    } else {
-        lines.push(r#">&2 echo "Using the default clock target of the platform.""#.to_string());
-    }
+            target.to_string()
+        })
+    });
 
-    if let Some(p) = platform {
-        lines.push(format!("PLATFORM={p}"));
-    } else {
-        lines.push("PLATFORM=\"\"".to_string());
-        lines.push(
-            "if [ -z $PLATFORM ]; then echo 'Please edit this file and set a valid \
-             PLATFORM= on line \"${LINENO}\"'; exit; fi"
-                .to_string(),
-        );
-        lines.push(String::new());
-    }
-
-    lines.push("OUTPUT_DIR=\"$(pwd)/vitis_run_${TARGET}\"".to_string());
-    lines.push(String::new());
-    lines.push("MAX_SYNTH_JOBS=8".to_string());
-    lines.push("STRATEGY=\"Explore\"".to_string());
-    lines.push("PLACEMENT_STRATEGY=\"EarlyBlockPlacement\"".to_string());
-    lines.push(String::new());
-    lines.extend(vitis_command);
-    lines.push(String::new());
-
-    lines.join("\n")
+    let ctx = minijinja::context! {
+        top,
+        xo,
+        config_file,
+        target_frequency,
+        platform,
+    };
+    format!(
+        "#!/bin/bash\n{}",
+        env.get_template("vitis_script")
+            .expect("template exists")
+            .render(ctx)
+            .expect("render succeeds")
+    )
 }
 
 /// Write the script to `dest`, making it executable on Unix

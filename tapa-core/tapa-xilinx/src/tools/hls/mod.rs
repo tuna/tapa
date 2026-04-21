@@ -177,44 +177,26 @@ pub fn build_hls_tcl(job: &HlsJob) -> String {
     } else {
         job.solution_name.as_str()
     };
-    let other_configs = if job.other_configs.is_empty() {
+    let other = if job.other_configs.is_empty() {
         String::new()
     } else {
         format!("{}\n", job.other_configs)
     };
-    let rtl_config = build_rtl_config(job.reset_low, job.auto_prefix);
-    // Per-kernel paths/CFLAGS come from the remote-safe
-    // `TAPA_KERNEL_*` env entries — the body no longer hard-codes
-    // local absolute paths, so the TCL uploads cleanly to any
-    // host without a post-upload rewrite pass.
-    format!(
-        "cd [pwd]\n\
-         open_project \"project\"\n\
-         set_top {top}\n\
-         for {{set i 0}} {{$i < $::env(TAPA_KERNEL_COUNT)}} {{incr i}} {{\n\
-             set kpath [set ::env(TAPA_KERNEL_PATH_$i)]\n\
-             set kcflags [set ::env(TAPA_KERNEL_CFLAGS_$i)]\n\
-             add_files \"$kpath\" -cflags \"$kcflags\"\n\
-         }}\n\
-         open_solution \"{solution}\"\n\
-         set_part {{{part}}}\n\
-         create_clock -period {clock} -name default\n\
-         config_compile -name_max_length 253\n\
-         config_interface -m_axi_addr64\n\
-         {other}\
-         set_param hls.enable_hidden_option_error false\n\
-         {rtl}\n\
-         config_rtl -enableFreeRunPipeline=false\n\
-         config_rtl -disableAutoFreeRunPipeline=true\n\
-         csynth_design\n\
-         exit\n",
-        top = job.top_name,
-        solution = solution,
-        part = job.target_part,
-        clock = job.clock_period,
-        other = other_configs,
-        rtl = rtl_config,
-    )
+    let rtl = build_rtl_config(job.reset_low, job.auto_prefix);
+    let mut env = minijinja::Environment::new();
+    env.add_template("run_hls", include_str!("templates/run_hls.tcl.j2"))
+        .expect("template parses");
+    env.get_template("run_hls")
+        .expect("template exists")
+        .render(minijinja::context! {
+            top => job.top_name,
+            solution,
+            part => job.target_part,
+            clock => job.clock_period,
+            other,
+            rtl,
+        })
+        .expect("render succeeds")
 }
 
 fn is_transient(job: &HlsJob, stdout: &str, stderr: &str) -> bool {

@@ -16,6 +16,16 @@ use tapa_topology::program::Program;
 
 use crate::error::CodegenError;
 
+fn render_fsm_module(fsm_name: &str) -> String {
+    let mut env = minijinja::Environment::new();
+    env.add_template("fsm_module", include_str!("templates/fsm_module.v.j2"))
+        .expect("template parses");
+    env.get_template("fsm_module")
+        .expect("template exists")
+        .render(minijinja::context! { fsm_name })
+        .expect("render succeeds")
+}
+
 /// Aggregated M-AXI memory-mapped connection info for a single argument.
 #[derive(Debug, Clone)]
 pub struct MMapConnection {
@@ -107,17 +117,7 @@ impl TopologyWithRtl {
         // reference ap_start / ap_done / ap_ready / ap_idle, so they must
         // be present on the FSM module definition.
         let fsm_name = format!("{task_name}_fsm");
-        let fsm_source = format!(
-            "module {fsm_name} (\n\
-             input wire ap_clk,\n\
-             input wire ap_rst_n,\n\
-             input wire ap_start,\n\
-             output wire ap_done,\n\
-             output wire ap_ready,\n\
-             output wire ap_idle\n\
-             );\n\
-             endmodule //{fsm_name}\n"
-        );
+        let fsm_source = render_fsm_module(&fsm_name);
         let parsed = VerilogModule::parse(&fsm_source)?;
         self.fsm_modules
             .insert(task_name.to_owned(), MutableModule::from_parsed(parsed));

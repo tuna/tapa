@@ -1,0 +1,20 @@
+cd [pwd]
+open_project "project"
+set_top {{ top }}
+for {set i 0} {$i < $::env(TAPA_KERNEL_COUNT)} {incr i} {
+    set kpath [set ::env(TAPA_KERNEL_PATH_$i)]
+    set kcflags [set ::env(TAPA_KERNEL_CFLAGS_$i)]
+    add_files "$kpath" -cflags "$kcflags"
+}
+open_solution "{{ solution }}"
+set_part {{ part }}
+create_clock -period {{ clock }} -name default
+config_compile -name_max_length 253
+config_interface -m_axi_addr64
+{% if other %}{{ other }}{% endif %}
+set_param hls.enable_hidden_option_error false
+{{ rtl }}
+config_rtl -enableFreeRunPipeline=false
+config_rtl -disableAutoFreeRunPipeline=true
+csynth_design
+exit

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root versionMajor="1" versionMinor="6">
+  <kernel name="{{ name }}" language="ip_c" vlnv="tapa:xrtl:{{ name }}:1.0" attributes="" preferredWorkGroupSizeMultiple="0" workGroupSize="1" interrupt="true" hwControlProtocol="{{ hw_ctrl_protocol }}">
+    <ports>{% for port in ports %}
+      <port name="{{ port.name }}" mode="{{ port.mode }}"{% if port.range %} range="{{ port.range }}"{% endif %} dataWidth="{{ port.data_width }}" portType="{{ port.port_type }}"{% if port.base %} base="{{ port.base }}"{% endif %}/>{% endfor %}
+    </ports>
+    <args>{% for arg in args %}
+      <arg name="{{ arg.name }}" addressQualifier="{{ arg.addr_qualifier }}" id="{{ arg.id }}" port="{{ arg.port }}" size="{{ arg.size }}" offset="{{ arg.offset }}" hostOffset="{{ arg.host_offset }}" hostSize="{{ arg.host_size }}" type="{{ arg.type }}"/>{% endfor %}
+    </args>
+  </kernel>
+</root>

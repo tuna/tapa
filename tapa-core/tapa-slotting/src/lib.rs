@@ -14,6 +14,26 @@ pub use floorplan::{convert_region_format, get_floorplan_graph, region_to_slot_n
 pub use error::SlottingError;
 use pragma::process_port;
 
+fn render_slot_def(slot_name: &str, ports: &str, pragma_body: &str) -> String {
+    let mut env = minijinja::Environment::new();
+    env.add_template("slot_def", include_str!("templates/slot_def.cpp.j2"))
+        .expect("template parses");
+    env.get_template("slot_def")
+        .expect("template exists")
+        .render(minijinja::context! { slot_name, ports, pragma_body })
+        .expect("render succeeds")
+}
+
+fn render_slot_decl(slot_name: &str, ports: &str) -> String {
+    let mut env = minijinja::Environment::new();
+    env.add_template("slot_decl", include_str!("templates/slot_decl.cpp.j2"))
+        .expect("template parses");
+    env.get_template("slot_decl")
+        .expect("template exists")
+        .render(minijinja::context! { slot_name, ports })
+        .expect("render succeeds")
+}
+
 /// A port specification for slot C++ generation.
 pub struct SlotPort {
     /// Port category: istream, ostream, scalar, mmap, `async_mmap`, hmap, istreams, ostreams.
@@ -48,10 +68,8 @@ pub fn gen_slot_cpp(
     let ports_str = cpp_ports.join(", ");
     let pragma_body = cpp_pragmas.join("\n");
 
-    // slot_def.j2: void {{ name }}({{ ports }}) { {{ pragma }} }
-    let new_def = format!("void {slot_name}({ports_str}) {{\n    {pragma_body}\n}}");
-    // slot_decl.j2: void {{ name }}({{ ports }});
-    let new_decl = format!("void {slot_name}({ports_str});");
+    let new_def = render_slot_def(slot_name, &ports_str, &pragma_body);
+    let new_decl = render_slot_decl(slot_name, &ports_str);
 
     cpp_surgery::replace_function(top_cpp, top_name, &new_decl, Some(&new_def))
 }

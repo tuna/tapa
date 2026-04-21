@@ -1,0 +1,6 @@
+{% for iface in s_axi %}ipx::associate_bus_interfaces -busif {{ iface }} -clock ap_clk [ipx::current_core]
+{% endfor %}
+{% for name in m_axi %}{% set full = m_axi_prefix ~ name %}ipx::associate_bus_interfaces -busif {{ full }} -clock ap_clk [ipx::current_core]
+{% if params[name] %}{% for k, v in params[name] %}set_property value {{ v }} [ipx::add_bus_parameter {{ k }} [ipx::get_bus_interfaces {{ full }}]]
+{% endfor %}{% endif %}
+{% endfor %}

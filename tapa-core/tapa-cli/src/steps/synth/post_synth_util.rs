@@ -43,25 +43,22 @@ use super::cpp_extract::cpp_path_for;
 /// `argv[1]`. We do the same here — the `{...}` placeholders below are
 /// replaced before the string hits Vivado; all other `{...}` pairs in
 /// the TCL itself are escaped as `{{...}}` in the source.
-const REPORT_UTIL_TCL: &str = "\
-set hdl_dir [lindex $argv 0]
-set rpt_file [lindex $argv 1]
-set_param general.maxThreads 1
-set_part {part_num}
-read_verilog [ glob $hdl_dir/*.v ]
-set ips [ glob -nocomplain $hdl_dir/*/*.xci ]
-if { $ips ne \"\" } {
-  import_ip $ips
-  upgrade_ip [get_ips *]
-  generate_target synthesis [ get_files *.xci ]
+fn render_report_util_tcl(part_num: &str, synth_args: &str, report_util_args: &str) -> String {
+    let mut env = minijinja::Environment::new();
+    env.add_template(
+        "report_util",
+        include_str!("templates/report_util.tcl.j2"),
+    )
+    .expect("template parses");
+    env.get_template("report_util")
+        .expect("template exists")
+        .render(minijinja::context! {
+            part_num,
+            synth_args,
+            report_util_args,
+        })
+        .expect("render succeeds")
 }
-foreach tcl_file [glob -nocomplain $hdl_dir/*.tcl] {
-  source $tcl_file
-}
-synth_design {synth_args}
-opt_design
-report_utilization -file $rpt_file {report_util_args}
-";
 
 /// Drive per-task out-of-context Vivado synth against `<work_dir>/rtl`
 /// and fold the hierarchical utilization result into each task's
@@ -204,17 +201,10 @@ fn run_one(
 /// -mode out_of_context -top <module> -part <part_num>
 /// -hierarchical
 /// ```
-#[allow(
-    clippy::literal_string_with_formatting_args,
-    reason = "{part_num}/{synth_args}/{report_util_args} are literal TCL template placeholders, not format-args"
-)]
 fn build_report_util_tcl(module_name: &str, part_num: &str) -> String {
     let synth_args = format!("-mode out_of_context -top {module_name} -part {part_num}");
     let report_util_args = "-hierarchical";
-    REPORT_UTIL_TCL
-        .replace("{part_num}", part_num)
-        .replace("{synth_args}", &synth_args)
-        .replace("{report_util_args}", report_util_args)
+    render_report_util_tcl(part_num, &synth_args, report_util_args)
 }
 
 /// Apply the total-area formula to `design.tasks[instance]`:

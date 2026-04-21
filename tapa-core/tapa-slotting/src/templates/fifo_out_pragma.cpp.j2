@@ -1,0 +1,5 @@
+#pragma HLS disaggregate variable = {{ name }}
+#pragma HLS interface ap_fifo port = {{ name }}._
+#pragma HLS aggregate variable = {{ name }}._ bit
+void({{ name }}._.full());
+{{ name }}.write({{ port_type }}());

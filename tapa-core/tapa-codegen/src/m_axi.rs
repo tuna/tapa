@@ -258,42 +258,26 @@ pub fn validate_mmap_connection(conn: &MMapConnection) -> Result<(), CodegenErro
 /// Produces a parameterized crossbar module with port declarations
 /// for all upstream master and downstream slave AXI channels.
 pub fn generate_crossbar_rtl(conn: &MMapConnection) -> String {
-    use std::fmt::Write;
-
     let module_name = crossbar_module_name(conn);
     let slaves = conn.thread_count;
     let channels = conn.chan_count;
 
-    let mut rtl = String::new();
-
-    let _ = writeln!(
-        rtl,
-        "// Auto-generated AXI crossbar: {slaves} slaves x {channels} channels"
-    );
-    let _ = writeln!(rtl, "module {module_name} #(");
-    let _ = writeln!(rtl, "  parameter DATA_WIDTH = 32,");
-    let _ = writeln!(rtl, "  parameter ADDR_WIDTH = 64,");
-    let _ = writeln!(rtl, "  parameter S_ID_WIDTH = 1,");
-    let _ = writeln!(rtl, "  parameter M_ID_WIDTH = S_ID_WIDTH+$clog2({slaves}),");
+    let mut params: Vec<String> = vec![
+        "parameter DATA_WIDTH = 32".to_string(),
+        "parameter ADDR_WIDTH = 64".to_string(),
+        "parameter S_ID_WIDTH = 1".to_string(),
+        format!("parameter M_ID_WIDTH = S_ID_WIDTH+$clog2({slaves})"),
+    ];
     for idx in 0..channels {
-        let comma = if idx + 1 == channels && slaves == 0 {
-            ""
-        } else {
-            ","
-        };
-        let _ = writeln!(rtl, "  parameter M{idx:02}_BASE_ADDR = 0,");
-        let _ = writeln!(rtl, "  parameter M{idx:02}_ADDR_WIDTH = ADDR_WIDTH,");
-        let _ = writeln!(rtl, "  parameter M{idx:02}_ISSUE = 16{comma}");
+        params.push(format!("parameter M{idx:02}_BASE_ADDR = 0"));
+        params.push(format!("parameter M{idx:02}_ADDR_WIDTH = ADDR_WIDTH"));
+        params.push(format!("parameter M{idx:02}_ISSUE = 16"));
     }
     for idx in 0..slaves {
-        let comma = if idx + 1 < slaves { "," } else { "" };
-        let _ = writeln!(rtl, "  parameter S{idx:02}_THREADS = 1{comma}");
+        params.push(format!("parameter S{idx:02}_THREADS = 1"));
     }
-    let _ = writeln!(rtl, ") (");
-    let _ = writeln!(rtl, "  input wire clk,");
-    let _ = writeln!(rtl, "  input wire rst,");
 
-    // Master-facing ports to the external memory channels.
+    let mut ports: Vec<String> = vec!["input wire clk".to_string(), "input wire rst".to_string()];
     for ch_idx in 0..channels {
         for suffix in M_AXI_SUFFIXES_COMPACT {
             let direction = if is_master_output_suffix(suffix) {
@@ -302,15 +286,12 @@ pub fn generate_crossbar_rtl(conn: &MMapConnection) -> String {
                 "input"
             };
             let width = crossbar_port_width(suffix, true);
-            let _ = writeln!(
-                rtl,
-                "  {direction} wire{} m{ch_idx:02}{suffix},",
-                width_decl(&width)
-            );
+            ports.push(format!(
+                "{direction} wire{width_decl} m{ch_idx:02}{suffix}",
+                width_decl = width_decl(&width)
+            ));
         }
     }
-
-    // Slave-facing ports from child AXI masters.
     for s_idx in 0..slaves {
         for suffix in M_AXI_SUFFIXES_COMPACT {
             let direction = if is_master_output_suffix(suffix) {
@@ -319,22 +300,13 @@ pub fn generate_crossbar_rtl(conn: &MMapConnection) -> String {
                 "output"
             };
             let width = crossbar_port_width(suffix, false);
-            let _ = writeln!(
-                rtl,
-                "  {direction} wire{} s{s_idx:02}{suffix},",
-                width_decl(&width)
-            );
+            ports.push(format!(
+                "{direction} wire{width_decl} s{s_idx:02}{suffix}",
+                width_decl = width_decl(&width)
+            ));
         }
     }
 
-    // Remove trailing comma from last port
-    if rtl.ends_with(",\n") {
-        rtl.truncate(rtl.len() - 2);
-        rtl.push('\n');
-    }
-
-    let _ = writeln!(rtl, ");");
-    let _ = writeln!(rtl);
     let m_base_addr = (0..channels)
         .rev()
         .map(|idx| format!("M{idx:02}_BASE_ADDR"))
@@ -355,43 +327,81 @@ pub fn generate_crossbar_rtl(conn: &MMapConnection) -> String {
         .map(|idx| format!("S{idx:02}_THREADS"))
         .collect::<Vec<_>>()
         .join(", ");
-    let _ = writeln!(rtl, "axi_crossbar #(");
-    let _ = writeln!(rtl, "  .S_COUNT({slaves}),");
-    let _ = writeln!(rtl, "  .M_COUNT({channels}),");
-    let _ = writeln!(rtl, "  .DATA_WIDTH(DATA_WIDTH),");
-    let _ = writeln!(rtl, "  .ADDR_WIDTH(ADDR_WIDTH),");
-    let _ = writeln!(rtl, "  .S_ID_WIDTH(S_ID_WIDTH),");
-    let _ = writeln!(rtl, "  .M_ID_WIDTH(M_ID_WIDTH),");
-    let _ = writeln!(rtl, "  .S_THREADS({{{s_threads}}}),");
-    let _ = writeln!(rtl, "  .S_ACCEPT({{{slaves}{{32'd16}}}}),");
-    let _ = writeln!(rtl, "  .M_REGIONS(1),");
-    let _ = writeln!(rtl, "  .M_BASE_ADDR({{{m_base_addr}}}),");
-    let _ = writeln!(rtl, "  .M_ADDR_WIDTH({{{m_addr_width}}}),");
     let connect_bits = channels * slaves;
-    let _ = writeln!(rtl, "  .M_CONNECT_READ({{{connect_bits}{{1'b1}}}}),");
-    let _ = writeln!(rtl, "  .M_CONNECT_WRITE({{{connect_bits}{{1'b1}}}}),");
-    let _ = writeln!(rtl, "  .M_ISSUE({{{m_issue}}})");
-    let _ = writeln!(rtl, ") xbar (");
-    let _ = writeln!(rtl, "  .clk(clk),");
-    let _ = writeln!(rtl, "  .rst(rst),");
-    write_axi_crossbar_port_connections(&mut rtl, "s_axi", "s", slaves, true);
-    write_axi_crossbar_port_connections(&mut rtl, "m_axi", "m", channels, false);
-    let _ = writeln!(rtl, "  .s_axi_awuser({slaves}'b0),");
-    let _ = writeln!(rtl, "  .s_axi_wuser({slaves}'b0),");
-    let _ = writeln!(rtl, "  .s_axi_aruser({slaves}'b0),");
-    let _ = writeln!(rtl, "  .m_axi_awregion(),");
-    let _ = writeln!(rtl, "  .m_axi_awuser(),");
-    let _ = writeln!(rtl, "  .m_axi_arregion(),");
-    let _ = writeln!(rtl, "  .m_axi_aruser(),");
-    let _ = writeln!(rtl, "  .s_axi_buser(),");
-    let _ = writeln!(rtl, "  .s_axi_ruser(),");
-    let _ = writeln!(rtl, "  .m_axi_buser({channels}'b0),");
-    let _ = writeln!(rtl, "  .m_axi_ruser({channels}'b0)");
-    let _ = writeln!(rtl, ");");
-    let _ = writeln!(rtl);
-    let _ = writeln!(rtl, "endmodule //{module_name}");
 
-    rtl
+    let axi_params: Vec<String> = vec![
+        format!(".S_COUNT({slaves})"),
+        format!(".M_COUNT({channels})"),
+        ".DATA_WIDTH(DATA_WIDTH)".to_string(),
+        ".ADDR_WIDTH(ADDR_WIDTH)".to_string(),
+        ".S_ID_WIDTH(S_ID_WIDTH)".to_string(),
+        ".M_ID_WIDTH(M_ID_WIDTH)".to_string(),
+        format!(".S_THREADS({{{s_threads}}})"),
+        format!(".S_ACCEPT({{{slaves}{{32'd16}}}})"),
+        ".M_REGIONS(1)".to_string(),
+        format!(".M_BASE_ADDR({{{m_base_addr}}})"),
+        format!(".M_ADDR_WIDTH({{{m_addr_width}}})"),
+        format!(".M_CONNECT_READ({{{connect_bits}{{1'b1}}}})"),
+        format!(".M_CONNECT_WRITE({{{connect_bits}{{1'b1}}}})"),
+        format!(".M_ISSUE({{{m_issue}}})"),
+    ];
+
+    let mut axi_ports: Vec<String> = vec![".clk(clk)".to_string(), ".rst(rst)".to_string()];
+
+    let optional_addr_ports = [
+        ("awlock", "1'b0"),
+        ("awcache", "4'b0011"),
+        ("awprot", "3'b000"),
+        ("awqos", "4'b0000"),
+        ("arlock", "1'b0"),
+        ("arcache", "4'b0011"),
+        ("arprot", "3'b000"),
+        ("arqos", "4'b0000"),
+    ];
+    for (name, value) in optional_addr_ports {
+        axi_ports.push(format!(".s_axi_{name}({{{slaves}{{{value}}}}})"));
+    }
+    for suffix in M_AXI_SUFFIXES_COMPACT {
+        let signal = concat_ports("s", slaves, suffix);
+        let axi_suffix = suffix.trim_start_matches('_').to_ascii_lowercase();
+        axi_ports.push(format!(".s_axi_{axi_suffix}({signal})"));
+    }
+    for (name, _value) in optional_addr_ports {
+        axi_ports.push(format!(".m_axi_{name}()"));
+    }
+    for suffix in M_AXI_SUFFIXES_COMPACT {
+        let signal = concat_ports("m", channels, suffix);
+        let axi_suffix = suffix.trim_start_matches('_').to_ascii_lowercase();
+        axi_ports.push(format!(".m_axi_{axi_suffix}({signal})"));
+    }
+
+    axi_ports.push(format!(".s_axi_awuser({slaves}'b0)"));
+    axi_ports.push(format!(".s_axi_wuser({slaves}'b0)"));
+    axi_ports.push(format!(".s_axi_aruser({slaves}'b0)"));
+    axi_ports.push(".m_axi_awregion()".to_string());
+    axi_ports.push(".m_axi_awuser()".to_string());
+    axi_ports.push(".m_axi_arregion()".to_string());
+    axi_ports.push(".m_axi_aruser()".to_string());
+    axi_ports.push(".s_axi_buser()".to_string());
+    axi_ports.push(".s_axi_ruser()".to_string());
+    axi_ports.push(format!(".m_axi_buser({channels}'b0)"));
+    axi_ports.push(format!(".m_axi_ruser({channels}'b0)"));
+
+    let mut env = minijinja::Environment::new();
+    env.add_template("crossbar_rtl", include_str!("templates/crossbar_rtl.v.j2"))
+        .expect("template parses");
+    env.get_template("crossbar_rtl")
+        .expect("template exists")
+        .render(minijinja::context! {
+            module_name,
+            slaves,
+            channels,
+            params,
+            ports,
+            axi_params,
+            axi_ports,
+        })
+        .expect("render succeeds")
 }
 
 fn is_master_output_suffix(suffix: &str) -> bool {
@@ -454,40 +464,6 @@ fn concat_ports(prefix: &str, count: u32, suffix: &str) -> String {
                 .collect::<Vec<_>>()
                 .join(", ")
         )
-    }
-}
-
-fn write_axi_crossbar_port_connections(
-    rtl: &mut String,
-    axi_prefix: &str,
-    port_prefix: &str,
-    count: u32,
-    slave_side: bool,
-) {
-    use std::fmt::Write;
-
-    let optional_addr_ports = [
-        ("awlock", "1'b0"),
-        ("awcache", "4'b0011"),
-        ("awprot", "3'b000"),
-        ("awqos", "4'b0000"),
-        ("arlock", "1'b0"),
-        ("arcache", "4'b0011"),
-        ("arprot", "3'b000"),
-        ("arqos", "4'b0000"),
-    ];
-    for (name, value) in optional_addr_ports {
-        if slave_side {
-            let _ = writeln!(rtl, "  .{axi_prefix}_{name}({{{count}{{{value}}}}}),");
-        } else {
-            let _ = writeln!(rtl, "  .{axi_prefix}_{name}(),");
-        }
-    }
-
-    for suffix in M_AXI_SUFFIXES_COMPACT {
-        let signal = concat_ports(port_prefix, count, suffix);
-        let axi_suffix = suffix.trim_start_matches('_').to_ascii_lowercase();
-        let _ = writeln!(rtl, "  .{axi_prefix}_{axi_suffix}({signal}),");
     }
 }
 

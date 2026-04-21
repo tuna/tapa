@@ -10,6 +10,16 @@ use tree_sitter::{Language, Node, Parser, Query, QueryCursor};
 
 use crate::error::SlottingError;
 
+fn render_extern_c_block(body: &str) -> String {
+    let mut env = minijinja::Environment::new();
+    env.add_template("extern_c", include_str!("templates/extern_c_block.cpp.j2"))
+        .expect("template parses");
+    env.get_template("extern_c")
+        .expect("template exists")
+        .render(minijinja::context! { body })
+        .expect("render succeeds")
+}
+
 fn cpp_language() -> Language {
     tree_sitter_cpp::LANGUAGE.into()
 }
@@ -204,8 +214,8 @@ pub fn replace_function(
         let trimmed_len = code.trim_end().len();
         code.truncate(trimmed_len);
 
-        let decl_block = format!("extern \"C\" {{\n{}\n}}  // extern \"C\"", new_decl.trim());
-        let def_block = format!("extern \"C\" {{\n{}\n}}  // extern \"C\"", new_def.trim());
+        let decl_block = render_extern_c_block(new_decl.trim());
+        let def_block = render_extern_c_block(new_def.trim());
         code.push_str("\n\n");
         code.push_str(&decl_block);
         code.push_str("\n\n");

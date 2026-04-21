@@ -60,49 +60,30 @@ fn xml_escape(s: &str) -> String {
     out
 }
 
-const KERNEL_XML_TEMPLATE: &str = r#"
-<?xml version="1.0" encoding="UTF-8"?>
-<root versionMajor="1" versionMinor="6">
-  <kernel name="{name}"           language="ip_c"           vlnv="tapa:xrtl:{name}:1.0"           attributes=""           preferredWorkGroupSizeMultiple="0"           workGroupSize="1"           interrupt="true"           hwControlProtocol="{hw_ctrl_protocol}">
-    <ports>{ports}
-    </ports>
-    <args>{args}
-    </args>
-  </kernel>
-</root>
-"#;
-
-fn s_axi_port() -> String {
-    format!(
-        "\n      <port name=\"{S_AXI_NAME}\"             mode=\"slave\"             range=\"0x1000\"             dataWidth=\"32\"             portType=\"addressable\"             base=\"0x0\"/>"
-    )
+#[derive(Debug, Clone, serde::Serialize)]
+struct XmlPort {
+    name: String,
+    mode: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    range: Option<String>,
+    data_width: u32,
+    port_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    base: Option<String>,
 }
 
-fn m_axi_port(name: &str, width: u32) -> String {
-    format!(
-        "\n      <port name=\"{M_AXI_PREFIX}{name}\"             mode=\"master\"             range=\"0xFFFFFFFFFFFFFFFF\"             dataWidth=\"{width}\"             portType=\"addressable\"             base=\"0x0\"/>"
-    )
-}
-
-fn axis_port(name: &str, mode: &str, width: u32) -> String {
-    format!(
-        "\n      <port name=\"{name}\"             mode=\"{mode}\"             dataWidth=\"{width}\"             portType=\"stream\"/>"
-    )
-}
-
-fn arg_xml(
-    name: &str,
+#[derive(Debug, Clone, serde::Serialize)]
+struct XmlArg {
+    name: String,
     addr_qualifier: u8,
-    arg_id: usize,
-    port_name: &str,
-    ctype: &str,
-    size: u64,
-    offset: u64,
-    host_size: u64,
-) -> String {
-    format!(
-        "\n      <arg name=\"{name}\"           addressQualifier=\"{addr_qualifier}\"           id=\"{arg_id}\"           port=\"{port_name}\"           size=\"{size:#x}\"           offset=\"{offset:#x}\"           hostOffset=\"0x0\"           hostSize=\"{host_size:#x}\"           type=\"{ctype}\"/>"
-    )
+    id: usize,
+    port: String,
+    size: String,
+    offset: String,
+    host_offset: String,
+    host_size: String,
+    #[serde(rename = "type")]
+    arg_type: String,
 }
 
 pub fn emit_kernel_xml(args: &KernelXmlArgs) -> Result<String> {
@@ -113,8 +94,8 @@ pub fn emit_kernel_xml(args: &KernelXmlArgs) -> Result<String> {
         )));
     }
 
-    let mut kernel_ports = String::new();
-    let mut kernel_args = String::new();
+    let mut ports: Vec<XmlPort> = Vec::new();
+    let mut xml_args: Vec<XmlArg> = Vec::new();
     let mut offset: u64 = 0x10;
     let mut has_s_axi_control = false;
 
@@ -139,7 +120,14 @@ pub fn emit_kernel_xml(args: &KernelXmlArgs) -> Result<String> {
                 let size = 8u64;
                 let host_size = 8u64;
                 let base = user_port.unwrap_or(port.name.as_str());
-                kernel_ports.push_str(&m_axi_port(base, port.width));
+                ports.push(XmlPort {
+                    name: format!("{M_AXI_PREFIX}{base}"),
+                    mode: "master".into(),
+                    range: Some("0xFFFFFFFFFFFFFFFF".into()),
+                    data_width: port.width,
+                    port_type: "addressable".into(),
+                    base: Some("0x0".into()),
+                });
                 let pname = format!("{M_AXI_PREFIX}{base}");
                 let off = offset;
                 offset += size + 4;
@@ -154,42 +142,59 @@ pub fn emit_kernel_xml(args: &KernelXmlArgs) -> Result<String> {
                 } else {
                     "write_only"
                 };
-                kernel_ports.push_str(&axis_port(&port.name, mode, port.width));
+                ports.push(XmlPort {
+                    name: port.name.clone(),
+                    mode: mode.into(),
+                    range: None,
+                    data_width: port.width,
+                    port_type: "stream".into(),
+                    base: None,
+                });
                 (4u8, size, host_size, pname, 0u64)
             }
         };
-        kernel_args.push_str(&arg_xml(
-            &port.name,
+        xml_args.push(XmlArg {
+            name: port.name.clone(),
             addr_qualifier,
-            arg_id,
-            &port_name,
-            &xml_escape(&port.ctype),
-            size,
-            arg_offset,
-            host_size,
-        ));
+            id: arg_id,
+            port: port_name,
+            size: format!("{size:#x}"),
+            offset: format!("{arg_offset:#x}"),
+            host_offset: "0x0".into(),
+            host_size: format!("{host_size:#x}"),
+            arg_type: xml_escape(&port.ctype),
+        });
     }
 
     if has_s_axi_control {
-        kernel_ports.push_str(&s_axi_port());
+        ports.push(XmlPort {
+            name: S_AXI_NAME.into(),
+            mode: "slave".into(),
+            range: Some("0x1000".into()),
+            data_width: 32,
+            port_type: "addressable".into(),
+            base: Some("0x0".into()),
+        });
     }
 
-    let hw_ctrl = if has_s_axi_control {
+    let hw_ctrl_protocol = if has_s_axi_control {
         "ap_ctrl_hs"
     } else {
         "ap_ctrl_none"
     };
 
-    #[allow(
-        clippy::literal_string_with_formatting_args,
-        reason = "placeholders are template tags, not format-macro args"
-    )]
-    let result = KERNEL_XML_TEMPLATE
-        .replace("{name}", &args.top_name)
-        .replace("{hw_ctrl_protocol}", hw_ctrl)
-        .replace("{ports}", &kernel_ports)
-        .replace("{args}", &kernel_args);
-    Ok(result)
+    let mut env = minijinja::Environment::new();
+    env.add_template("kernel_xml", include_str!("templates/kernel.xml.j2"))
+        .expect("template parses");
+    env.get_template("kernel_xml")
+        .expect("template exists")
+        .render(minijinja::context! {
+            name => args.top_name,
+            hw_ctrl_protocol,
+            ports,
+            args => xml_args,
+        })
+        .map_err(|e| XilinxError::KernelXml(e.to_string()))
 }
 
 #[cfg(test)]

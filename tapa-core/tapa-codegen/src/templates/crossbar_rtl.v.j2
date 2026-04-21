@@ -1,0 +1,22 @@
+// Auto-generated AXI crossbar: {{ slaves }} slaves x {{ channels }} channels
+module {{ module_name }} #(
+{% for p in params %}
+  {{ p }}{% if not loop.last %},{% endif %}
+{% endfor %}
+) (
+{% for p in ports %}
+  {{ p }}{% if not loop.last %},{% endif %}
+{% endfor %}
+);
+
+axi_crossbar #(
+{% for p in axi_params %}
+  {{ p }}{% if not loop.last %},{% endif %}
+{% endfor %}
+) xbar (
+{% for p in axi_ports %}
+  {{ p }}{% if not loop.last %},{% endif %}
+{% endfor %}
+);
+
+endmodule //{{ module_name }}

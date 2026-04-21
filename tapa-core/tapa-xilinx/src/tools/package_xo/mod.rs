@@ -24,57 +24,6 @@ const M_AXI_PREFIX: &str = "m_axi_";
 /// `{top_name}`, `{bus_ifaces}`, `{cpp_kernels}`, `{part_num}` placeholders
 /// are substituted by `format_package_xo_tcl`. All other braces are escaped
 /// (`{{`/`}}`) so the `.format` semantics carry over cleanly.
-const PACKAGE_XO_TCL: &str = r#"
-# Paths passed via tclargs for remote execution path rewriting:
-# argv[0] = tmpdir, argv[1] = hdl_dir, argv[2] = xo_file, argv[3] = kernel_xml
-set tmpdir [lindex $argv 0]
-set hdl_dir [lindex $argv 1]
-set xo_file [lindex $argv 2]
-set kernel_xml_path [lindex $argv 3]
-set tmp_ip_dir "$tmpdir/tmp_ip_dir"
-set tmp_project "$tmpdir/tmp_project"
-
-create_project -force kernel_pack ${tmp_project}{part_num}
-add_files [glob -nocomplain $hdl_dir/* $hdl_dir/*/* $hdl_dir/*/*/* \
-        $hdl_dir/*/*/*/* $hdl_dir/*/*/*/*/*]
-foreach tcl_file [glob -nocomplain $hdl_dir/*.tcl $hdl_dir/*/*.tcl] {
-  source ${tcl_file}
-}
-set_property top {top_name} [current_fileset]
-update_compile_order -fileset sources_1
-update_compile_order -fileset sim_1
-ipx::package_project -root_dir ${tmp_ip_dir} -vendor tapa \
-        -library xrtl -taxonomy /KernelIP -import_files -set_current false
-ipx::unload_core ${tmp_ip_dir}/component.xml
-ipx::edit_ip_in_project -upgrade true -name tmp_edit_project \
-        -directory ${tmp_ip_dir} ${tmp_ip_dir}/component.xml
-set_property core_revision 2 [ipx::current_core]
-foreach up [ipx::get_user_parameters] {
-  ipx::remove_user_parameter [get_property NAME ${up}] [ipx::current_core]
-}
-set_property sdx_kernel true [ipx::current_core]
-set_property sdx_kernel_type rtl [ipx::current_core]
-ipx::create_xgui_files [ipx::current_core]
-{bus_ifaces}
-set_property xpm_libraries {XPM_CDC XPM_MEMORY XPM_FIFO} [ipx::current_core]
-set_property supported_families { } [ipx::current_core]
-set_property auto_family_support_level level_2 [ipx::current_core]
-ipx::update_checksums [ipx::current_core]
-ipx::save_core [ipx::current_core]
-close_project -delete
-
-package_xo -force -xo_path "$xo_file" -kernel_name {top_name} \
-        -ip_directory ${tmp_ip_dir} -kernel_xml $kernel_xml_path{cpp_kernels}
-"#;
-
-const BUS_IFACE_TCL: &str = "
-ipx::associate_bus_interfaces -busif {iface} -clock ap_clk [ipx::current_core]
-";
-
-const BUS_PARAM_TCL: &str =
-    "set_property value {value} [ipx::add_bus_parameter {key} [ipx::get_bus_interfaces {iface}]]
-";
-
 #[derive(Debug, Clone)]
 pub struct PackageXoInputs {
     pub top_name: String,
@@ -117,38 +66,30 @@ fn m_axi_port_names(args: &KernelXmlArgs) -> Vec<String> {
         .collect()
 }
 
-#[allow(
-    clippy::literal_string_with_formatting_args,
-    reason = "{iface}/{key}/{value} are literal TCL template placeholders, not format-args"
-)]
 fn render_bus_ifaces(
     s_axi: &[String],
     m_axi: &[String],
     params: &[(String, Vec<(String, String)>)],
 ) -> String {
-    let mut out = String::new();
-    for iface in s_axi {
-        out.push_str(&BUS_IFACE_TCL.replace("{iface}", iface));
-    }
-    let param_map: std::collections::HashMap<&str, &[(String, String)]> = params
+    let param_map: std::collections::HashMap<String, Vec<(String, String)>> = params
         .iter()
-        .map(|(n, kv)| (n.as_str(), kv.as_slice()))
+        .map(|(n, kv)| (n.clone(), kv.clone()))
         .collect();
-    for name in m_axi {
-        let full = format!("{M_AXI_PREFIX}{name}");
-        out.push_str(&BUS_IFACE_TCL.replace("{iface}", &full));
-        if let Some(kv) = param_map.get(name.as_str()) {
-            for (k, v) in *kv {
-                out.push_str(
-                    &BUS_PARAM_TCL
-                        .replace("{iface}", &full)
-                        .replace("{key}", k)
-                        .replace("{value}", v),
-                );
-            }
-        }
-    }
-    out
+    let mut env = minijinja::Environment::new();
+    env.add_template(
+        "bus_ifaces",
+        include_str!("templates/bus_ifaces.tcl.j2"),
+    )
+    .expect("template parses");
+    env.get_template("bus_ifaces")
+        .expect("template exists")
+        .render(minijinja::context! {
+            s_axi,
+            m_axi,
+            m_axi_prefix => M_AXI_PREFIX,
+            params => param_map,
+        })
+        .expect("render succeeds")
 }
 
 fn render_cpp_kernels(kernels: &[Utf8PathBuf]) -> String {
@@ -160,10 +101,6 @@ fn render_cpp_kernels(kernels: &[Utf8PathBuf]) -> String {
     out
 }
 
-#[allow(
-    clippy::literal_string_with_formatting_args,
-    reason = "{top_name}/{bus_ifaces}/{cpp_kernels}/{part_num} are literal TCL template placeholders"
-)]
 fn format_package_xo_tcl(
     top_name: &str,
     bus_ifaces: &str,
@@ -175,11 +112,21 @@ fn format_package_xo_tcl(
     } else {
         format!(" -part {part_num}")
     };
-    PACKAGE_XO_TCL
-        .replace("{top_name}", top_name)
-        .replace("{bus_ifaces}", bus_ifaces)
-        .replace("{cpp_kernels}", cpp_kernels)
-        .replace("{part_num}", &part_arg)
+    let mut env = minijinja::Environment::new();
+    env.add_template(
+        "package_xo",
+        include_str!("templates/package_xo.tcl.j2"),
+    )
+    .expect("template parses");
+    env.get_template("package_xo")
+        .expect("template exists")
+        .render(minijinja::context! {
+            top_name,
+            bus_ifaces,
+            cpp_kernels,
+            part_arg,
+        })
+        .expect("render succeeds")
 }
 
 /// Build the `.xo` for the given inputs using the provided runner.
