@@ -387,7 +387,7 @@ fn redact_xml_payload(text: &str) -> String {
     );
 
     let re_src = RE_SRC.get_or_init(|| {
-        regex::Regex::new("<SourceLocation>.*/(cpp/[^<]*)</SourceLocation>")
+        regex::Regex::new("<SourceLocation>.*/((?:cpp|rootfscpp)/[^<]*)</SourceLocation>")
             .expect("static regex compiles")
     });
     let step2 = re_src.replace_all(&step1, "<SourceLocation>$1</SourceLocation>");
@@ -403,9 +403,10 @@ fn redact_cpp_paths(text: &str) -> String {
     use std::sync::OnceLock;
     static RE_CPP_PATH: OnceLock<regex::Regex> = OnceLock::new();
     let re_cpp_path = RE_CPP_PATH.get_or_init(|| {
-        regex::Regex::new(r#"(?:\.\./|/)?(?:[^\s<>"|]*/)+cpp/"#).expect("static regex compiles")
+        regex::Regex::new(r#"(?:\.\./|/)?(?:[^\s<>"|]*/)+((?:cpp|rootfscpp)/)"#)
+            .expect("static regex compiles")
     });
-    re_cpp_path.replace_all(text, "cpp/").into_owned()
+    re_cpp_path.replace_all(text, "$1").into_owned()
 }
 
 /// Rewrite a `.xo` ZIP in place so two invocations on the same inputs
@@ -698,6 +699,16 @@ mod tests {
         assert!(out.contains("<xilinx:coreCreationDateTime>1980-01-01T00:00:00Z"));
         assert!(out.contains("<SourceLocation>cpp/foo.cc</SourceLocation>"));
         assert!(out.contains(r#"ProjectID="0123456789abcdef0123456789abcdef""#));
+    }
+
+    #[test]
+    fn redaction_rewrites_remote_rootfscpp_paths() {
+        let input = "\
+<SourceLocation>/tmp/tapa-remote/tapa-1-2-0/rootfscpp/Add.cpp:15</SourceLocation>\n\
+| /tmp/tapa-remote/tapa-1-2-0/rootfscpp/Mmap2Stream.cpp:27:20 |\n";
+        let xml = redact_xml_payload(input);
+        assert!(xml.contains("<SourceLocation>rootfscpp/Add.cpp:15</SourceLocation>"));
+        assert!(xml.contains("| rootfscpp/Mmap2Stream.cpp:27:20 |"));
     }
 
     #[test]
