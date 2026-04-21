@@ -35,7 +35,7 @@ impl ArgCategory {
         }
     }
 
-    fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Istream => "istream",
             Self::Ostream => "ostream",

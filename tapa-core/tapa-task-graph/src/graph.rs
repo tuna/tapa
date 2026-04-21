@@ -12,6 +12,7 @@ use crate::task::TaskDefinition;
 #[serde(deny_unknown_fields)]
 pub struct Graph {
     /// C++ compiler flags.
+    #[serde(default)]
     pub cflags: Vec<String>,
     /// Task definitions keyed by task name.
     pub tasks: BTreeMap<String, TaskDefinition>,

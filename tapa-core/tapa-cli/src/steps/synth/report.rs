@@ -25,11 +25,44 @@
 use std::fs;
 use std::path::Path;
 
-use serde_json::{json, Value};
+use indexmap::IndexMap;
+use serde::Serialize;
+use serde_json::Value;
 use tapa_task_graph::{Design, TaskTopology};
 
 use crate::error::{CliError, Result};
 use crate::steps::version::VERSION as TAPA_VERSION;
+
+/// Typed report schema mirroring the on-disk format.
+#[derive(Debug, Clone, Serialize)]
+struct Report {
+    schema: String,
+    name: String,
+    performance: Performance,
+    area: Area,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct Performance {
+    source: String,
+    clock_period: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    critical_path: Option<IndexMap<String, Performance>>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct Area {
+    source: String,
+    total: IndexMap<String, Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    breakdown: Option<IndexMap<String, BreakdownEntry>>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct BreakdownEntry {
+    count: usize,
+    area: Area,
+}
 
 /// Write `<work_dir>/report.{json,yaml}` for the design's top task.
 /// `override_schema` (mirrors `--override-report-schema-version`) wins
@@ -54,69 +87,73 @@ pub fn write_top_report(work_dir: &Path, design: &Design, override_schema: &str)
     Ok(())
 }
 
-/// Recursively build a task-report dict mirroring current
+/// Recursively build a task-report struct mirroring current
 /// `Task.report`. Only recurses one level for `critical_path` /
 /// `breakdown` (report itself recurses, but only top-level
 /// is read by downstream consumers).
-fn build_task_report(design: &Design, task_name: &str, schema: &str) -> Result<Value> {
+fn build_task_report(design: &Design, task_name: &str, schema: &str) -> Result<Report> {
     let task = design.tasks.get(task_name).ok_or_else(|| {
         CliError::InvalidArg(format!("report: task `{task_name}` not found in design",))
     })?;
-    let mut performance = serde_json::Map::new();
-    performance.insert("source".to_string(), json!("hls"));
-    performance.insert("clock_period".to_string(), json!(task.clock_period));
 
-    let mut area = serde_json::Map::new();
-    // current: `source = "synth" if self._total_area else "hls"`. The
-    // Rust port records explicit per-task `total_area` only after the
-    // post-Vivado utilization pass runs (`emit_post_synth_util`); use
-    // the presence of any non-empty `total_area` value as the proxy
-    // (matches behavior — `_total_area` is set at the same
-    // point).
     let area_source = if has_synth_area(task) { "synth" } else { "hls" };
-    area.insert("source".to_string(), json!(area_source));
-    area.insert("total".to_string(), json!(task.total_area));
 
-    if task.level == "upper" {
-        let mut critical_path = serde_json::Map::new();
-        let mut breakdown = serde_json::Map::new();
+    let (performance, area_breakdown) = if task.level == "upper" {
+        let mut critical_path = IndexMap::new();
+        let mut breakdown = IndexMap::new();
         for (child_name, instances) in &task.tasks {
             let Some(child_task) = design.tasks.get(child_name) else {
                 continue;
             };
             let count = instances.as_array().map_or(0, Vec::len);
-            // keys breakdown by `instance.task.name` (the child
-            // task's own name, which matches the IndexMap key here),
-            // dedup'd via `setdefault`. Always emit at least 1.
             let count = count.max(1);
 
             let child_report = build_task_report(design, child_name, schema)?;
             if task.clock_period == child_task.clock_period {
-                if let Some(child_performance) = child_report.get("performance") {
-                    critical_path
-                        .entry(child_name.clone())
-                        .or_insert_with(|| child_performance.clone());
-                }
+                critical_path.insert(child_name.clone(), child_report.performance);
             }
-            let child_area = child_report
-                .get("area")
-                .cloned()
-                .unwrap_or_else(|| json!({}));
+            let child_area = Area {
+                source: if has_synth_area(child_task) { "synth" } else { "hls" }.to_string(),
+                total: child_task.total_area.clone(),
+                breakdown: None,
+            };
             breakdown.insert(
                 child_name.clone(),
-                json!({"count": count, "area": child_area}),
+                BreakdownEntry {
+                    count,
+                    area: child_area,
+                },
             );
         }
-        performance.insert("critical_path".to_string(), Value::Object(critical_path));
-        area.insert("breakdown".to_string(), Value::Object(breakdown));
-    }
+        (
+            Performance {
+                source: "hls".to_string(),
+                clock_period: task.clock_period.clone(),
+                critical_path: Some(critical_path),
+            },
+            Some(breakdown),
+        )
+    } else {
+        (
+            Performance {
+                source: "hls".to_string(),
+                clock_period: task.clock_period.clone(),
+                critical_path: None,
+            },
+            None,
+        )
+    };
 
-    Ok(json!({
-        "schema": schema,
-        "name": task_name,
-        "performance": Value::Object(performance),
-        "area": Value::Object(area),
-    }))
+    Ok(Report {
+        schema: schema.to_string(),
+        name: task_name.to_string(),
+        performance,
+        area: Area {
+            source: area_source.to_string(),
+            total: task.total_area.clone(),
+            breakdown: area_breakdown,
+        },
+    })
 }
 
 fn has_synth_area(task: &TaskTopology) -> bool {
@@ -175,7 +212,7 @@ mod tests {
                     let mut m = IndexMap::new();
                     m.insert(
                         "Add".to_string(),
-                        json!([{"args": {}, "step": 0}, {"args": {}, "step": 0}]),
+                        serde_json::json!([{"args": {}, "step": 0}, {"args": {}, "step": 0}]),
                     );
                     m
                 },
@@ -183,11 +220,11 @@ mod tests {
                 target: Some("hls".to_string()),
                 is_slot: false,
                 self_area: IndexMap::new(),
-                total_area: area_to_map(json!({"LUT": 100})),
+                total_area: area_to_map(serde_json::json!({"LUT": 100})),
                 clock_period: "3.33".to_string(),
             },
         );
-        tasks.insert("Add".to_string(), leaf("Add", "3.33", json!({"LUT": 50})));
+        tasks.insert("Add".to_string(), leaf("Add", "3.33", serde_json::json!({"LUT": 50})));
         let design = Design {
             top: "VecAdd".to_string(),
             target: "xilinx-vitis".to_string(),
@@ -215,7 +252,7 @@ mod tests {
     fn override_schema_wins() {
         let dir = tempfile::tempdir().expect("tempdir");
         let mut tasks = IndexMap::new();
-        tasks.insert("T".to_string(), leaf("T", "3.33", json!({})));
+        tasks.insert("T".to_string(), leaf("T", "3.33", serde_json::json!({})));
         let design = Design {
             top: "T".to_string(),
             target: "xilinx-hls".to_string(),

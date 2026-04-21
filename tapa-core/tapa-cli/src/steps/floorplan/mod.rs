@@ -22,10 +22,11 @@ use serde_json::Value;
 use tapa_slotting::{
     convert_region_format, get_floorplan_graph, region_to_slot_name, SlottingError,
 };
+use tapa_task_graph::Graph;
 
 use crate::context::CliContext;
 use crate::error::{CliError, Result};
-use crate::state::{graph as graph_io, settings as settings_io, value_to_indexmap};
+use crate::state::{graph as graph_io, settings as settings_io};
 
 mod run_autobridge;
 
@@ -107,25 +108,25 @@ fn run_floorplan_native_apply(path: &Path, ctx: &CliContext) -> Result<()> {
     let work_dir = ctx.work_dir.as_path();
     let graph_value = load_or_cached_graph(ctx)?;
 
-    let top_name = graph_value["top"]
-        .as_str()
-        .ok_or_else(|| CliError::InvalidArg("graph missing 'top' field".to_string()))?;
+    // Parse graph with path-to-error diagnostics for precise malformed-input
+    // reporting.
+    let graph: Graph = serde_json::from_value(graph_value.clone()).map_err(|e| {
+        CliError::InvalidArg(format!("graph schema error: {e}"))
+    })?;
+
+    let top_name = &graph.top;
 
     let raw = fs::read_to_string(path)?;
     let vertex_to_region: IndexMap<String, String> = serde_json::from_str(&raw)?;
 
-    let top_tasks = graph_value["tasks"][top_name]["tasks"]
-        .as_object()
-        .ok_or_else(|| {
-            CliError::InvalidArg(format!(
-                "top task `{}` missing 'tasks' field",
-                top_name
-            ))
-        })?;
+    let top_task = graph.tasks.get(top_name).ok_or_else(|| {
+        CliError::InvalidArg(format!(
+            "top task `{}` not found in graph",
+            top_name
+        ))
+    })?;
     let mut known_inst_names = BTreeSet::<String>::new();
-    for (def_name, insts_val) in top_tasks {
-        let empty = Vec::new();
-        let insts = insts_val.as_array().unwrap_or(&empty);
+    for (def_name, insts) in &top_task.tasks {
         for idx in 0..insts.len() {
             known_inst_names.insert(format!("{def_name}_{idx}"));
         }
@@ -153,8 +154,10 @@ fn run_floorplan_native_apply(path: &Path, ctx: &CliContext) -> Result<()> {
         )));
     }
 
-    let new_value =
-        get_floorplan_graph(&graph_value, &slot_to_insts).map_err(map_slotting_err)?;
+    let new_graph =
+        get_floorplan_graph(&graph, &slot_to_insts).map_err(map_slotting_err)?;
+    let new_value = serde_json::to_value(&new_graph)
+        .map_err(|e| CliError::InvalidArg(format!("graph re-serialize: {e}")))?;
 
     graph_io::store_graph(work_dir, &new_value)?;
 
@@ -174,7 +177,7 @@ fn run_floorplan_native_apply(path: &Path, ctx: &CliContext) -> Result<()> {
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
     let design = build_design_with_floorplan(
-        &new_value,
+        &new_graph,
         top_name,
         &target,
         Some(&region_map_for_design),
@@ -209,57 +212,43 @@ fn run_floorplan_native_apply(path: &Path, ctx: &CliContext) -> Result<()> {
 }
 
 /// Build a [`tapa_task_graph::Design`] from a (possibly floorplan-rewritten)
-/// graph dict, threading the slot→region echo map through. Mirrors the
+/// typed graph, threading the slot→region echo map through. Mirrors the
 /// projection in `analyze::build_design` but accepts an explicit
 /// `slot_task_name_to_fp_region` so the post-floorplan write captures
 /// the new slot-task identity.
 fn build_design_with_floorplan(
-    graph: &Value,
+    graph: &Graph,
     top: &str,
     target: &str,
     slot_to_region: Option<&indexmap::IndexMap<String, String>>,
 ) -> Result<tapa_task_graph::Design> {
     use tapa_task_graph::TaskTopology;
-    let tasks_obj = graph
-        .get("tasks")
-        .and_then(Value::as_object)
-        .ok_or_else(|| {
-            CliError::InvalidArg("rewritten graph missing `tasks` object".to_string())
-        })?;
     let slot_set: std::collections::BTreeSet<&str> = slot_to_region
         .map(|m| m.keys().map(String::as_str).collect())
         .unwrap_or_default();
     let mut topology: indexmap::IndexMap<String, TaskTopology> = indexmap::IndexMap::new();
-    for (name, task) in tasks_obj {
+    for (name, task) in &graph.tasks {
         topology.insert(
             name.clone(),
             TaskTopology {
                 name: name.clone(),
-                level: task
-                    .get("level")
-                    .and_then(Value::as_str)
-                    .unwrap_or("lower")
-                    .to_string(),
-                code: task
-                    .get("code")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default()
-                    .to_string(),
-                ports: task
-                    .get("ports")
-                    .and_then(Value::as_array)
-                    .map(|arr| {
-                        arr.iter()
-                            .filter_map(|p| serde_json::from_value(p.clone()).ok())
-                            .collect::<Vec<_>>()
-                    })
+                level: match task.level {
+                    tapa_task_graph::TaskLevel::Lower => "lower".to_string(),
+                    tapa_task_graph::TaskLevel::Upper => "upper".to_string(),
+                },
+                code: task.code.clone(),
+                ports: task.ports.clone(),
+                tasks: serde_json::to_value(&task.tasks)
+                    .ok()
+                    .and_then(|v| v.as_object().cloned())
+                    .map(|o| o.into_iter().collect())
                     .unwrap_or_default(),
-                tasks: value_to_indexmap(task.get("tasks")),
-                fifos: value_to_indexmap(task.get("fifos")),
-                target: task
-                    .get("target")
-                    .and_then(Value::as_str)
-                    .map(ToString::to_string),
+                fifos: serde_json::to_value(&task.fifos)
+                    .ok()
+                    .and_then(|v| v.as_object().cloned())
+                    .map(|o| o.into_iter().collect())
+                    .unwrap_or_default(),
+                target: Some(task.target.clone()),
                 is_slot: slot_set.contains(name.as_str()),
                 self_area: indexmap::IndexMap::new(),
                 total_area: indexmap::IndexMap::new(),

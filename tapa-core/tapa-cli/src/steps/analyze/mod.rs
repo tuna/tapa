@@ -9,6 +9,7 @@ use std::path::PathBuf;
 
 use clap::{Parser, ValueEnum};
 use serde_json::{json, Value};
+use tapa_task_graph::Graph;
 
 use crate::context::CliContext;
 use crate::error::{CliError, Result};
@@ -172,11 +173,16 @@ fn run_native(args: &AnalyzeArgs, ctx: &CliContext) -> Result<()> {
         );
     }
 
+    let mut graph: Graph = serde_json::from_value(graph_dict.clone())
+        .map_err(|e| CliError::InvalidArg(format!("graph schema error: {e}")))?;
+
     if args.flatten_hierarchy {
-        graph_dict = flatten_graph_value(&graph_dict)?;
+        graph = flatten_graph_value(&graph)?;
+        graph_dict = serde_json::to_value(&graph)
+            .map_err(|e| CliError::InvalidArg(format!("graph re-serialize: {e}")))?;
     }
 
-    if is_top_leaf(&graph_dict, &args.top) && args.target == AnalyzeTarget::XilinxVitis {
+    if is_top_leaf(&graph, &args.top) && args.target == AnalyzeTarget::XilinxVitis {
         return Err(CliError::InvalidArg(
             "the top task is a leaf task; target `xilinx-vitis` is not supported \
              (Vitis requires an upper top for kernel.xml generation). \
@@ -190,7 +196,7 @@ fn run_native(args: &AnalyzeArgs, ctx: &CliContext) -> Result<()> {
     let mut settings = settings_io::Settings::new();
     settings.insert("target".to_string(), json!(target_str));
     settings_io::store_settings(work_dir, &settings)?;
-    let design = build_design(&args.top, target_str, &graph_dict)?;
+    let design = build_design(&args.top, target_str, &graph)?;
     design_io::store_design(work_dir, &design)?;
 
     // Cache state for downstream chained steps in this process.

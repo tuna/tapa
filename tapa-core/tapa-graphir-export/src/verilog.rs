@@ -2,6 +2,7 @@
 
 use std::fmt::Write;
 
+use serde::Deserialize;
 use serde_json::Value;
 use tapa_graphir::{
     AnyModuleDefinition, BaseFields, Expression, GroupedFields, HierarchicalName, ModuleConnection,
@@ -100,8 +101,18 @@ fn render_grouped(
     out
 }
 
+/// Typed representation of an `assign` entry in the `extra` map.
+#[derive(Debug, Clone, Deserialize)]
+struct AssignEntry {
+    lhs: String,
+    rhs: String,
+}
+
 fn write_extra_assigns(out: &mut String, extra: &std::collections::BTreeMap<String, Value>) {
-    let Some(assigns) = extra.get("assigns").and_then(Value::as_array) else {
+    let Some(assigns_val) = extra.get("assigns") else {
+        return;
+    };
+    let Ok(assigns) = serde_json::from_value::<Vec<AssignEntry>>(assigns_val.clone()) else {
         return;
     };
     if assigns.is_empty() {
@@ -109,13 +120,7 @@ fn write_extra_assigns(out: &mut String, extra: &std::collections::BTreeMap<Stri
     }
     out.push('\n');
     for assign in assigns {
-        let Some(lhs) = assign.get("lhs").and_then(Value::as_str) else {
-            continue;
-        };
-        let Some(rhs) = assign.get("rhs").and_then(Value::as_str) else {
-            continue;
-        };
-        writeln!(out, "assign {lhs} = {rhs};").unwrap();
+        writeln!(out, "assign {} = {};", assign.lhs, assign.rhs).unwrap();
     }
 }
 

@@ -15,5 +15,8 @@ mod error;
 pub use design::{Design, TaskTopology};
 pub use error::ParseError;
 pub use graph::Graph;
+pub use instance::{Arg, TaskInstance};
+pub use interconnect::{EndpointRef, InterconnectDefinition};
 pub use port::{ArgCategory, Port};
+pub use task::{TaskDefinition, TaskLevel};
 pub use transforms::{flatten, TransformError};
