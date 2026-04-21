@@ -74,9 +74,8 @@ pub fn parse_kernel_xml(xml: &str, _verilog_dir: &Path) -> Result<KernelSpec> {
                         },
                         1 => {
                             // Use dataWidth from the corresponding <port> element when
-                            // available.  TAPA's kernel_metadata.py does not emit
-                            // dataWidth on <arg> for mmap ports; it only appears on
-                            // <port name="m_axi_<name>">.
+                            // available. Mmap port widths are recorded on
+                            // <port name="m_axi_<name>"> rather than <arg>.
                             let resolved_width =
                                 port_info.get(&port).map_or(data_width, |(_, w)| *w);
                             ArgKind::Mmap {
