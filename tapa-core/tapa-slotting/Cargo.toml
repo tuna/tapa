@@ -6,10 +6,10 @@ edition = "2021"
 [dependencies]
 regex.workspace = true
 serde_json.workspace = true
-streaming-iterator = "0.1"
+streaming-iterator = { workspace = true }
 thiserror.workspace = true
-tree-sitter = "0.25"
-tree-sitter-cpp = "0.23"
+tree-sitter = { workspace = true }
+tree-sitter-cpp = { workspace = true }
 
 [lints]
 workspace = true

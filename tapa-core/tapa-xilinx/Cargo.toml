@@ -6,16 +6,16 @@ edition = "2021"
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
-serde_yaml = "0.9"
+serde_yaml = { workspace = true }
 thiserror = { workspace = true }
-quick-xml = { version = "0.36", features = ["serialize"] }
-zip = { version = "2", default-features = false, features = ["deflate"] }
+quick-xml = { workspace = true }
+zip = { workspace = true }
 tempfile = { workspace = true }
 regex = { workspace = true }
-sha2 = "0.10"
+sha2 = { workspace = true }
 nom = { workspace = true }
 flate2 = { workspace = true }
-tar = "0.4"
+tar = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
