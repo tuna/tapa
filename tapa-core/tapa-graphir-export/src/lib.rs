@@ -4,6 +4,7 @@
 
 pub mod verilog;
 
+use fs_err;
 use std::path::Path;
 
 use tapa_graphir::{AnyModuleDefinition, Project};
@@ -50,10 +51,10 @@ pub fn export_project(project: &Project, dest: &Path) -> Result<(), ExportError>
     for bb in &project.blackboxes {
         let file_path = dest.join(&bb.path);
         if let Some(parent) = file_path.parent() {
-            std::fs::create_dir_all(parent)?;
+            fs_err::create_dir_all(parent)?;
         }
         if let Ok(data) = bb.get_binary() {
-            std::fs::write(&file_path, data)?;
+            fs_err::write(&file_path, data)?;
         }
     }
 
@@ -85,7 +86,7 @@ fn export_module(module: &AnyModuleDefinition, dest: &Path) -> Result<(), Export
 
     // Write all modules including stubs (matching current dispatcher behavior)
     let file_path = dest.join(format!("{}.v", module.name()));
-    std::fs::write(file_path, content)?;
+    fs_err::write(file_path, content)?;
     Ok(())
 }
 
@@ -106,27 +107,27 @@ fn create_stub_files(dest: &Path) -> Result<(), ExportError> {
     // Write Xilinx primitive stubs
     for (name, body) in XILINX_PRIMITIVE_STUBS {
         let path = dest.join(format!("{name}.v"));
-        std::fs::write(path, body)?;
+        fs_err::write(path, body)?;
     }
     Ok(())
 }
 
 /// Recursively find `.xci` files and generate matching `.v` stub modules.
 fn generate_xci_stubs(dest: &Path, dir: &Path) -> Result<(), ExportError> {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return Ok(());
-    };
-    for entry in entries {
-        let entry = entry?;
+    for entry in walkdir::WalkDir::new(dir) {
+        let entry = entry.map_err(|e| {
+            std::io::Error::new(std::io::ErrorKind::Other, e)
+        })?;
+        if !entry.file_type().is_file() {
+            continue;
+        }
         let path = entry.path();
-        if path.is_dir() {
-            generate_xci_stubs(dest, &path)?;
-        } else if path.extension().is_some_and(|e| e == "xci") {
+        if path.extension().is_some_and(|e| e == "xci") {
             if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
                 // Generate a simple stub module for this XCI
                 let stub = format!("module {stem} ();\nendmodule\n");
                 let stub_path = dest.join(format!("{stem}.v"));
-                std::fs::write(stub_path, stub)?;
+                fs_err::write(stub_path, stub)?;
             }
         }
     }
@@ -182,21 +183,21 @@ endmodule
 
 /// Recursively find and relocate `.xci` files.
 fn collect_xci_files(base: &Path, dir: &Path) -> Result<(), ExportError> {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return Ok(());
-    };
-    for entry in entries {
-        let entry = entry?;
+    for entry in walkdir::WalkDir::new(dir) {
+        let entry = entry.map_err(|e| {
+            std::io::Error::new(std::io::ErrorKind::Other, e)
+        })?;
+        if !entry.file_type().is_file() {
+            continue;
+        }
         let path = entry.path();
-        if path.is_dir() {
-            collect_xci_files(base, &path)?;
-        } else if path.extension().is_some_and(|e| e == "xci") {
+        if path.extension().is_some_and(|e| e == "xci") {
             if let (Some(stem), Some(name)) = (path.file_stem(), path.file_name()) {
                 let target_dir = base.join(stem);
-                std::fs::create_dir_all(&target_dir)?;
+                fs_err::create_dir_all(&target_dir)?;
                 let target = target_dir.join(name);
                 if target != path {
-                    std::fs::rename(&path, target)?;
+                    fs_err::rename(path, target)?;
                 }
             }
         }

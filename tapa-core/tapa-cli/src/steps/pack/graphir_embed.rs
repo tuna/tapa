@@ -9,7 +9,6 @@
 //! copy — downstream tools consume the emitted `.v` files, not the
 //! JSON itself.
 
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use tapa_graphir::Project;
@@ -34,7 +33,7 @@ pub(super) fn embed_graphir(
             graphir_path.display()
         )));
     }
-    let raw = fs::read_to_string(graphir_path)?;
+    let raw = fs_err::read_to_string(graphir_path)?;
     let project = Project::from_json(&raw).map_err(|e| {
         CliError::InvalidArg(format!(
             "--graphir-path: {} is not a valid GraphIR project: {e}",
@@ -44,7 +43,7 @@ pub(super) fn embed_graphir(
 
     let export_root = work_dir.join(GRAPHIR_EXPORT_DIR);
     if !export_root.exists() {
-        fs::create_dir_all(&export_root)?;
+        fs_err::create_dir_all(&export_root)?;
     }
     export_project(&project, &export_root).map_err(|e| graphir_export_to_cli_error(&e))?;
 
@@ -59,7 +58,7 @@ pub(super) fn embed_graphir(
 }
 
 fn copy_exported_rtl(from: &Path, to: &Path) -> Result<()> {
-    for entry in fs::read_dir(from)? {
+    for entry in fs_err::read_dir(from)? {
         let entry = entry?;
         let src = entry.path();
         if !src.is_file() {
@@ -69,7 +68,7 @@ fn copy_exported_rtl(from: &Path, to: &Path) -> Result<()> {
             continue;
         };
         let dest = to.join(name);
-        fs::copy(&src, &dest)?;
+        fs_err::copy(&src, &dest)?;
     }
     Ok(())
 }
@@ -117,7 +116,7 @@ mod tests {
     fn rejects_missing_file() {
         let dir = tempfile::tempdir().expect("tempdir");
         let rtl_dir = dir.path().join("rtl");
-        fs::create_dir_all(&rtl_dir).expect("mkdir rtl");
+        fs_err::create_dir_all(&rtl_dir).expect("mkdir rtl");
         let err = embed_graphir(
             dir.path(),
             &rtl_dir,
@@ -131,9 +130,9 @@ mod tests {
     fn rejects_invalid_json() {
         let dir = tempfile::tempdir().expect("tempdir");
         let rtl_dir = dir.path().join("rtl");
-        fs::create_dir_all(&rtl_dir).expect("mkdir rtl");
+        fs_err::create_dir_all(&rtl_dir).expect("mkdir rtl");
         let bad = dir.path().join("bad.json");
-        fs::write(&bad, "{ not valid").expect("write");
+        fs_err::write(&bad, "{ not valid").expect("write");
         let err = embed_graphir(dir.path(), &rtl_dir, &bad).expect_err("bad json must fail");
         assert!(matches!(err, CliError::InvalidArg(ref m) if m.contains("valid GraphIR")));
     }
@@ -142,10 +141,10 @@ mod tests {
     fn pack_graphir_embeds_user_path() {
         let dir = tempfile::tempdir().expect("tempdir");
         let rtl_dir = dir.path().join("rtl");
-        fs::create_dir_all(&rtl_dir).expect("mkdir rtl");
+        fs_err::create_dir_all(&rtl_dir).expect("mkdir rtl");
 
         let graphir = dir.path().join("graphir.json");
-        fs::write(&graphir, minimal_graphir_json()).expect("write json");
+        fs_err::write(&graphir, minimal_graphir_json()).expect("write json");
 
         let staging = embed_graphir(dir.path(), &rtl_dir, &graphir).expect("embed");
         assert!(staging.exists(), "staging dir must persist");
@@ -155,7 +154,7 @@ mod tests {
             merged.is_file(),
             "graphir exports must be spliced into rtl_dir",
         );
-        let body = fs::read_to_string(&merged).expect("read");
+        let body = fs_err::read_to_string(&merged).expect("read");
         assert!(
             body.contains("module graphir_top"),
             "graphir body must reach rtl_dir",

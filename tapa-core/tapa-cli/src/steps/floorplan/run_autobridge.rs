@@ -289,7 +289,10 @@ mod tests {
                 "--run-floorplan".to_string(),
             ],
         );
-        assert_eq!(inv.cwd.as_deref(), Some(prep.work_dir.as_path()));
+        assert_eq!(
+            inv.cwd.as_deref(),
+            camino::Utf8Path::from_path(prep.work_dir.as_path())
+        );
 
         // Uploads include the device config (outside the cwd); cwd
         // itself is uploaded by `RemoteToolRunner::run_once` so no
@@ -332,7 +335,10 @@ mod tests {
             "`--run-floorplan` flag must be present: {:?}",
             inv.args,
         );
-        assert_eq!(inv.cwd.as_deref(), Some(prep.work_dir.as_path()));
+        assert_eq!(
+            inv.cwd.as_deref(),
+            camino::Utf8Path::from_path(prep.work_dir.as_path())
+        );
         assert_eq!(
             inv.downloads.as_slice(),
             std::slice::from_ref(&prep.autobridge_dir)

@@ -228,15 +228,14 @@ fn walk_verilog_files(dir: &camino::Utf8Path) -> Vec<Utf8PathBuf> {
     if !dir.is_dir() {
         return out;
     }
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return out;
-    };
-    for ent in entries.flatten() {
-        let path = ent.path();
-        if path.is_dir() {
-            out.extend(walk_verilog_files(&Utf8PathBuf::from_path_buf(path.clone()).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()))));
-        } else if path.extension().and_then(|s| s.to_str()) == Some("v") {
-            out.push(Utf8PathBuf::from_path_buf(path).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())));
+    for entry in walkdir::WalkDir::new(dir)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+    {
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) == Some("v") {
+            out.push(Utf8PathBuf::from_path_buf(path.to_path_buf()).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())));
         }
     }
     out
@@ -327,9 +326,9 @@ mod tests {
                 (top, body)
             };
             let syn = cwd.join("project").join(&top).join("syn");
-            std::fs::create_dir_all(syn.join("report")).expect("mkdir report");
-            std::fs::create_dir_all(syn.join("verilog")).expect("mkdir verilog");
-            std::fs::write(
+            fs_err::create_dir_all(syn.join("report")).expect("mkdir report");
+            fs_err::create_dir_all(syn.join("verilog")).expect("mkdir verilog");
+            fs_err::write(
                 syn.join("report").join(format!("{top}_csynth.xml")),
                 br#"<?xml version="1.0"?>
 <profile>
@@ -346,7 +345,7 @@ mod tests {
 </profile>"#,
             )
             .expect("csynth.xml");
-            std::fs::write(syn.join("verilog").join(format!("{top}.v")), body).expect("write v");
+            fs_err::write(syn.join("verilog").join(format!("{top}.v")), body).expect("write v");
             Ok(ToolOutput {
                 exit_code: 0,
                 stdout: String::new(),

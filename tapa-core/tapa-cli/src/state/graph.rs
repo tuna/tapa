@@ -4,7 +4,6 @@
 //! type because downstream steps accept a richer schema than the
 //! tapacc-output flavor.
 
-use std::fs::File;
 use std::io::{BufReader, BufWriter, Write};
 use std::path::Path;
 
@@ -26,17 +25,21 @@ pub fn load_graph(work_dir: &Path) -> Result<Value> {
             path,
         });
     }
-    let reader = BufReader::new(File::open(&path)?);
+    let reader = BufReader::new(fs_err::File::open(&path)?);
     let value: Value = serde_json::from_reader(reader)?;
     Ok(value)
 }
 
 /// Persist the graph using the same spaced compact formatter as settings.
 pub fn store_graph(work_dir: &Path, graph: &Value) -> Result<()> {
-    std::fs::create_dir_all(work_dir)?;
+    fs_err::create_dir_all(work_dir)?;
     let path = path_in(work_dir);
-    let mut writer = BufWriter::new(File::create(&path)?);
-    write_json_value(&mut writer, graph)?;
+    let mut temp = tempfile::NamedTempFile::new_in(work_dir)?;
+    {
+        let mut writer = BufWriter::new(&mut temp);
+        write_json_value(&mut writer, graph)?;
+    }
+    fs_err::rename(temp.path(), &path)?;
     Ok(())
 }
 

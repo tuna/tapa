@@ -7,6 +7,7 @@ edition = "2021"
 camino = { workspace = true }
 directories = { workspace = true }
 flate2 = { workspace = true }
+fs-err = { workspace = true }
 nom = { workspace = true }
 path-slash = { workspace = true }
 quick-xml = { workspace = true }
@@ -20,6 +21,7 @@ shellexpand = { workspace = true }
 tar = { workspace = true }
 tempfile = { workspace = true }
 thiserror = { workspace = true }
+walkdir = { workspace = true }
 which = { workspace = true }
 zip = { workspace = true }
 

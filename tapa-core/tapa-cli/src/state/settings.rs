@@ -2,7 +2,6 @@
 //! so the Rust shape is `IndexMap` of
 //! `serde_json::Value`.
 
-use std::fs::File;
 use std::io::{self, BufReader, BufWriter};
 use std::path::Path;
 
@@ -27,17 +26,21 @@ pub fn load_settings(work_dir: &Path) -> Result<Settings> {
             path,
         });
     }
-    let reader = BufReader::new(File::open(&path)?);
+    let reader = BufReader::new(fs_err::File::open(&path)?);
     let settings: Settings = serde_json::from_reader(reader)?;
     Ok(settings)
 }
 
 pub fn store_settings(work_dir: &Path, settings: &Settings) -> Result<()> {
-    std::fs::create_dir_all(work_dir)?;
+    fs_err::create_dir_all(work_dir)?;
     let path = path_in(work_dir);
-    let mut writer = BufWriter::new(File::create(&path)?);
-    let mut ser = serde_json::Serializer::with_formatter(&mut writer, JsonFormatter);
-    serde::Serialize::serialize(settings, &mut ser)?;
+    let mut temp = tempfile::NamedTempFile::new_in(work_dir)?;
+    {
+        let mut writer = BufWriter::new(&mut temp);
+        let mut ser = serde_json::Serializer::with_formatter(&mut writer, JsonFormatter);
+        serde::Serialize::serialize(settings, &mut ser)?;
+    }
+    fs_err::rename(temp.path(), &path)?;
     Ok(())
 }
 
@@ -110,7 +113,7 @@ mod tests {
         s.insert("a".to_string(), json!(1));
         s.insert("b".to_string(), json!(2));
         store_settings(dir.path(), &s).unwrap();
-        let raw = std::fs::read_to_string(path_in(dir.path())).unwrap();
+        let raw = fs_err::read_to_string(path_in(dir.path())).unwrap();
         assert_eq!(raw, r#"{"a": 1, "b": 2}"#);
     }
 }

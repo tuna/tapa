@@ -116,7 +116,7 @@ fn taparc_defaults_flow_through() {
     assert_eq!(cfg.port, 2222);
     assert_eq!(
         cfg.key_file.as_deref(),
-        Some(Path::new("/home/alice/.ssh/id_ed25519")),
+        Some(camino::Utf8Path::new("/home/alice/.ssh/id_ed25519")),
         "key_file must be tilde-expanded by RemoteConfig::from_yaml_str",
     );
     assert_eq!(
@@ -185,7 +185,7 @@ fn cli_overrides_take_precedence_for_individual_flags() {
     let cfg = build_remote_config(&globals).unwrap().unwrap();
     assert_eq!(
         cfg.key_file.as_deref(),
-        Some(Path::new("/home/alice/cli-key")),
+        Some(camino::Utf8Path::new("/home/alice/cli-key")),
         "CLI --remote-key-file must override and tilde-expand",
     );
     assert_eq!(
@@ -195,7 +195,7 @@ fn cli_overrides_take_precedence_for_individual_flags() {
     );
     assert_eq!(
         cfg.ssh_control_dir.as_deref(),
-        Some(Path::new("/home/alice/cli-ctl")),
+        Some(camino::Utf8Path::new("/home/alice/cli-ctl")),
     );
     assert_eq!(cfg.ssh_control_persist, "15m");
     assert!(
@@ -311,9 +311,9 @@ fn precedence_taparc_then_cli_overrides() {
     assert_eq!(cfg.host, "cli-host");
     assert_eq!(cfg.user, "cli-user");
     assert_eq!(cfg.port, 3333);
-    assert_eq!(cfg.key_file.as_deref(), Some(Path::new("/cli/key")));
+    assert_eq!(cfg.key_file.as_deref(), Some(camino::Utf8Path::new("/cli/key")));
     assert_eq!(cfg.xilinx_settings.as_deref(), Some("/cli/settings.sh"));
-    assert_eq!(cfg.ssh_control_dir.as_deref(), Some(Path::new("/cli/ctl")));
+    assert_eq!(cfg.ssh_control_dir.as_deref(), Some(camino::Utf8Path::new("/cli/ctl")));
     assert_eq!(cfg.ssh_control_persist, "5m");
     assert!(!cfg.ssh_multiplex);
 }

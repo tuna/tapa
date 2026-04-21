@@ -21,6 +21,7 @@
 use std::path::PathBuf;
 
 use clap::Parser;
+use fs_err;
 use serde_json::Value;
 
 use crate::context::CliContext;
@@ -127,25 +128,21 @@ fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, settings: &settings_io::Setti
     let output_path = enforce_zip_suffix(args.output.as_ref());
     if let Some(parent) = output_path.parent() {
         if !parent.as_os_str().is_empty() {
-            std::fs::create_dir_all(parent)?;
+            fs_err::create_dir_all(parent)?;
         }
     }
-    let file = std::fs::File::create(&output_path)?;
+    let file = fs_err::File::create(&output_path)?;
     let mut z = zip::ZipWriter::new(std::io::BufWriter::new(file));
     let opts: zip::write::FileOptions<'_, ()> =
         zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
 
-    let mut walk = vec![rtl_dir.clone()];
     let mut rtl_files: Vec<std::path::PathBuf> = Vec::new();
-    while let Some(dir) = walk.pop() {
-        for entry in std::fs::read_dir(&dir)? {
-            let entry = entry?;
-            let path = entry.path();
-            if path.is_dir() {
-                walk.push(path);
-            } else if path.is_file() {
-                rtl_files.push(path);
-            }
+    for entry in walkdir::WalkDir::new(&rtl_dir) {
+        let entry = entry.map_err(|e| {
+            std::io::Error::new(std::io::ErrorKind::Other, e)
+        })?;
+        if entry.file_type().is_file() {
+            rtl_files.push(entry.path().to_path_buf());
         }
     }
     rtl_files.sort();
@@ -156,7 +153,7 @@ fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, settings: &settings_io::Setti
         let name = format!("rtl/{}", rel.to_string_lossy());
         z.start_file(name, opts)
             .map_err(|e| CliError::InvalidArg(format!("zip entry: {e}")))?;
-        z.write_all(&std::fs::read(rtl_file)?)?;
+        z.write_all(&fs_err::read(rtl_file)?)?;
     }
 
     // TAPA report yaml at archive root, only if the synth step wrote
@@ -167,7 +164,7 @@ fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, settings: &settings_io::Setti
     if report_yaml.is_file() {
         z.start_file("report.yaml", opts)
             .map_err(|e| CliError::InvalidArg(format!("zip entry: {e}")))?;
-        z.write_all(&std::fs::read(&report_yaml)?)?;
+        z.write_all(&fs_err::read(&report_yaml)?)?;
     }
 
     // Mirror `program.pack_zip(..., graph=..., settings=...)`:
@@ -192,20 +189,20 @@ fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, settings: &settings_io::Setti
     let hls_root = work_dir.join("hls");
     if hls_root.is_dir() {
         let mut rpt_files: Vec<std::path::PathBuf> = Vec::new();
-        let mut walk = vec![hls_root.clone()];
-        while let Some(dir) = walk.pop() {
-            for entry in std::fs::read_dir(&dir)? {
-                let entry = entry?;
-                let path = entry.path();
-                if path.is_dir() {
-                    walk.push(path);
-                } else if path
-                    .file_name()
-                    .and_then(|s| s.to_str())
-                    .is_some_and(|n| n.ends_with("_csynth.rpt"))
-                {
-                    rpt_files.push(path);
-                }
+        for entry in walkdir::WalkDir::new(&hls_root) {
+            let entry = entry.map_err(|e| {
+                std::io::Error::new(std::io::ErrorKind::Other, e)
+            })?;
+            if !entry.file_type().is_file() {
+                continue;
+            }
+            let path = entry.path();
+            if path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .is_some_and(|n| n.ends_with("_csynth.rpt"))
+            {
+                rpt_files.push(path.to_path_buf());
             }
         }
         rpt_files.sort();
@@ -216,7 +213,7 @@ fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, settings: &settings_io::Setti
             let name = format!("report/{}", rel.to_string_lossy());
             z.start_file(name, opts)
                 .map_err(|e| CliError::InvalidArg(format!("zip entry: {e}")))?;
-            z.write_all(&redact_rpt(&std::fs::read(rpt)?))?;
+            z.write_all(&redact_rpt(&fs_err::read(rpt)?))?;
         }
     }
 
@@ -307,7 +304,7 @@ mod tests {
     }
 
     fn write_state(work_dir: &Path, target: &str) {
-        std::fs::create_dir_all(work_dir).expect("mkdir work");
+        fs_err::create_dir_all(work_dir).expect("mkdir work");
         let mut tasks = IndexMap::new();
         tasks.insert(
             "Top".to_string(),
@@ -387,11 +384,11 @@ mod tests {
         // Minimal synthesis artifacts: one RTL file + a csynth report
         // whose `Date:` line should be normalized by the redactor.
         let rtl_dir = dir.path().join("rtl");
-        std::fs::create_dir_all(&rtl_dir).expect("mkdir rtl");
-        std::fs::write(rtl_dir.join("Top.v"), b"module Top; endmodule\n").expect("write rtl stub");
+        fs_err::create_dir_all(&rtl_dir).expect("mkdir rtl");
+        fs_err::write(rtl_dir.join("Top.v"), b"module Top; endmodule\n").expect("write rtl stub");
         let report_dir = dir.path().join("hls/Top/syn/report");
-        std::fs::create_dir_all(&report_dir).expect("mkdir hls report");
-        std::fs::write(
+        fs_err::create_dir_all(&report_dir).expect("mkdir hls report");
+        fs_err::write(
             report_dir.join("Top_csynth.rpt"),
             b"== Header\nDate:           Mon Jan 02 03:04:05 2024\n== End\n",
         )
@@ -406,7 +403,7 @@ mod tests {
 
         // Inspect the archive: graph/settings yaml metadata are present
         // and the csynth report has the redacted reproducible Date.
-        let zip_bytes = std::fs::read(&output_path).expect("read zip");
+        let zip_bytes = fs_err::read(&output_path).expect("read zip");
         let mut zr = zip::ZipArchive::new(std::io::Cursor::new(zip_bytes)).expect("open zip");
         let names: Vec<String> = (0..zr.len())
             .map(|i| zr.by_index(i).unwrap().name().to_string())

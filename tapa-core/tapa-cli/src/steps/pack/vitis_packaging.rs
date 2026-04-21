@@ -272,7 +272,7 @@ fn collect_hls_report_paths(work_dir: &Path) -> Result<Vec<(Utf8PathBuf, String)
     let hls_root = work_dir.join("hls");
     let staged_root = work_dir.join("pack_reports");
     if staged_root.exists() {
-        std::fs::remove_dir_all(&staged_root)?;
+        fs_err::remove_dir_all(&staged_root)?;
     }
     let mut reports = Vec::<(Utf8PathBuf, String)>::new();
     for file in ["report.json", "report.yaml"] {
@@ -284,7 +284,7 @@ fn collect_hls_report_paths(work_dir: &Path) -> Result<Vec<(Utf8PathBuf, String)
     if !hls_root.is_dir() {
         return Ok(reports);
     }
-    let Ok(task_dirs) = std::fs::read_dir(&hls_root) else {
+    let Ok(task_dirs) = fs_err::read_dir(&hls_root) else {
         return Ok(reports);
     };
     for task_entry in task_dirs.flatten() {
@@ -300,7 +300,7 @@ fn collect_hls_report_paths(work_dir: &Path) -> Result<Vec<(Utf8PathBuf, String)
         else {
             continue;
         };
-        let Ok(entries) = std::fs::read_dir(&report_dir) else {
+        let Ok(entries) = fs_err::read_dir(&report_dir) else {
             continue;
         };
         for entry in entries.flatten() {
@@ -316,10 +316,10 @@ fn collect_hls_report_paths(work_dir: &Path) -> Result<Vec<(Utf8PathBuf, String)
             };
             let staged_path = staged_root.join(&task_name).join(file);
             if let Some(parent) = staged_path.parent() {
-                std::fs::create_dir_all(parent)?;
+                fs_err::create_dir_all(parent)?;
             }
-            let text = std::fs::read_to_string(&path)?;
-            std::fs::write(&staged_path, sanitize_hls_report_text(&text, work_dir))?;
+            let text = fs_err::read_to_string(&path)?;
+            fs_err::write(&staged_path, sanitize_hls_report_text(&text, work_dir))?;
             let arcname = format!("report/{task_name}/{file}");
             reports.push((Utf8PathBuf::from_path_buf(staged_path).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())), arcname));
         }
@@ -329,7 +329,7 @@ fn collect_hls_report_paths(work_dir: &Path) -> Result<Vec<(Utf8PathBuf, String)
 }
 
 fn sanitize_hls_report_text(text: &str, work_dir: &Path) -> String {
-    let abs_work_dir = std::fs::canonicalize(work_dir).unwrap_or_else(|_| work_dir.to_path_buf());
+    let abs_work_dir = fs_err::canonicalize(work_dir).unwrap_or_else(|_| work_dir.to_path_buf());
     let mut out = text.to_owned();
     for base in [abs_work_dir.as_path(), work_dir] {
         let base = base.to_string_lossy();

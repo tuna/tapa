@@ -348,7 +348,11 @@ mod tests {
         let runner = MockToolRunner::new();
         runner.push_ok("vivado", ToolOutput::default());
         let rpt_path = work.join("report").join("Add.hier.util.rpt");
-        runner.attach_download(rpt_path.clone(), sample_rpt("Add").into_bytes());
+        runner.attach_download(
+            camino::Utf8PathBuf::from_path_buf(rpt_path.clone())
+                .unwrap_or_else(|p| camino::Utf8PathBuf::from(p.to_string_lossy().into_owned())),
+            sample_rpt("Add").into_bytes(),
+        );
 
         emit_post_synth_util(work, &mut design, "xcu250-figd2104-2L-e", None, &runner)
             .expect("emit_post_synth_util");

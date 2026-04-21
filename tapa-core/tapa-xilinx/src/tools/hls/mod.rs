@@ -240,11 +240,11 @@ fn run_hls_attempt(
 ) -> Result<ToolOutput> {
     let tcl = build_hls_tcl(job);
     let tcl_path = stage_dir.join("run_hls.tcl");
-    std::fs::write(&tcl_path, tcl.as_bytes())?;
+    fs_err::write(&tcl_path, tcl.as_bytes())?;
     let mut inv = ToolInvocation::new("vitis_hls")
         .arg("-f")
         .arg(tcl_path.as_str());
-    inv.cwd = Some(tcl_path.clone());
+    inv.cwd = Some(stage_dir.to_path_buf());
     // Pin `HOME` to the per-run stage dir (mirrors current
     // `VivadoHls` wrapper). Vitis HLS otherwise writes shared
     // `~/.Xilinx` state that pollutes the workspace and races under
@@ -314,20 +314,19 @@ fn copy_tree(src: &camino::Utf8Path, dest: &camino::Utf8Path) -> std::io::Result
     if !src.is_dir() {
         return Ok(());
     }
-    for ent in std::fs::read_dir(src)? {
-        let ent = ent?;
-        let sub_src = Utf8PathBuf::from_path_buf(ent.path()).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
-        let file_type = ent.file_type()?;
-        let sub_dest = dest.join(ent.file_name().to_string_lossy().into_owned());
-        if file_type.is_dir() {
-            std::fs::create_dir_all(&sub_dest)?;
-            copy_tree(&sub_src, &sub_dest)?;
-        } else if file_type.is_file() {
-            if let Some(parent) = sub_dest.parent() {
-                std::fs::create_dir_all(parent)?;
-            }
-            std::fs::copy(&sub_src, &sub_dest)?;
+    for entry in walkdir::WalkDir::new(src) {
+        let entry = entry?;
+        if !entry.file_type().is_file() {
+            continue;
         }
+        let src_path = entry.path();
+        let rel = src_path.strip_prefix(src).expect("prefix must match");
+        let rel = Utf8PathBuf::from_path_buf(rel.to_path_buf()).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
+        let dest_path = dest.join(&rel);
+        if let Some(parent) = dest_path.parent() {
+            fs_err::create_dir_all(parent)?;
+        }
+        fs_err::copy(src_path, dest_path)?;
     }
     Ok(())
 }
@@ -347,8 +346,8 @@ fn harvest_and_stage(
 
     // Copy the real HLS artifacts into the caller-visible output dirs.
     let syn_abs = stage_dir.join(&syn_rel);
-    std::fs::create_dir_all(&job.reports_out_dir)?;
-    std::fs::create_dir_all(&job.hdl_out_dir)?;
+    fs_err::create_dir_all(&job.reports_out_dir)?;
+    fs_err::create_dir_all(&job.hdl_out_dir)?;
     copy_tree(&syn_abs.join("report"), &job.reports_out_dir).map_err(|e| {
         XilinxError::HlsReportParse(format!(
             "stage reports {} → {}: {e}",
@@ -375,7 +374,7 @@ fn harvest_and_stage(
     } else {
         fallback
     };
-    let bytes = std::fs::read(&report_xml).map_err(|_| {
+    let bytes = fs_err::read(&report_xml).map_err(|_| {
         XilinxError::HlsReportParse(format!("missing csynth.xml at {}", report_xml.as_str()))
     })?;
     let csynth = parse_csynth_xml(&bytes)?;
@@ -427,7 +426,7 @@ fn collect_files(dir: &camino::Utf8Path) -> Result<Vec<Utf8PathBuf>> {
         return Ok(Vec::new());
     }
     let mut out = Vec::new();
-    for ent in std::fs::read_dir(dir)? {
+    for ent in fs_err::read_dir(dir)? {
         let ent = ent?;
         if ent.file_type()?.is_file() {
             out.push(Utf8PathBuf::from_path_buf(ent.path()).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())));
@@ -603,7 +602,7 @@ mod tests {
     fn kernel_include_dirs_picks_abs_directories_only() {
         let td = tempfile::tempdir().unwrap();
         let existing = Utf8PathBuf::from_path_buf(td.path().join("inc")).unwrap();
-        std::fs::create_dir_all(&existing).unwrap();
+        fs_err::create_dir_all(&existing).unwrap();
         let cflags = vec![
             format!("-I{}", existing.as_str()),
             format!("-isystem{}", existing.as_str()),
@@ -630,7 +629,7 @@ mod tests {
         std::fs::create_dir_all(&src_dir).unwrap();
         std::fs::create_dir_all(&inc_dir).unwrap();
         let src = src_dir.join("k.cpp");
-        std::fs::write(&src, b"void k(){}").unwrap();
+        fs_err::write(&src, b"void k(){}").unwrap();
 
         let mut job = fixture_job(&Utf8PathBuf::from_path_buf(td.path().to_path_buf()).unwrap());
         job.cpp_source = src.clone();
@@ -757,12 +756,12 @@ mod tests {
     fn run_hls_with_retry_in_stage_reuses_caller_dir() {
         let tmp = tempfile::tempdir().unwrap();
         let persistent = Utf8PathBuf::from_path_buf(tmp.path().join("persistent-stage")).unwrap();
-        std::fs::create_dir_all(&persistent).unwrap();
+        fs_err::create_dir_all(&persistent).unwrap();
         // Put a marker file in the stage dir. After the retry loop
         // exhausts, the dir (and the marker) must still be present —
         // the `--keep-hls-work-dir` contract.
         let marker = persistent.join("MARKER");
-        std::fs::write(&marker, b"before").unwrap();
+        fs_err::write(&marker, b"before").unwrap();
 
         let job = fixture_job(&Utf8PathBuf::from_path_buf(tmp.path().to_path_buf()).unwrap());
         let runner = MockToolRunner::new();

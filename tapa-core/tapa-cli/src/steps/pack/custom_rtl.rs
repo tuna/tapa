@@ -18,7 +18,6 @@
 //! can drop `.tcl` helpers alongside `.v` overrides.
 
 use std::collections::BTreeMap;
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use tapa_rtl::port::Direction;
@@ -48,7 +47,7 @@ pub(super) fn load_templates_info(work_dir: &Path) -> Result<TemplatesInfo> {
     if !path.exists() {
         return Ok(TemplatesInfo::new());
     }
-    let raw = fs::read_to_string(&path)?;
+    let raw = fs_err::read_to_string(&path)?;
     let parsed: TemplatesInfo = serde_json::from_str(&raw)?;
     Ok(parsed)
 }
@@ -71,18 +70,14 @@ pub(super) fn expand_custom_rtl_paths(rtl_paths: &[PathBuf]) -> Result<Vec<PathB
             continue;
         }
         if path.is_dir() {
-            let mut stack = vec![path.clone()];
             let mut had_file = false;
-            while let Some(dir) = stack.pop() {
-                for entry in fs::read_dir(&dir)? {
-                    let entry = entry?;
-                    let sub = entry.path();
-                    if sub.is_dir() {
-                        stack.push(sub);
-                    } else if sub.is_file() {
-                        out.push(sub);
-                        had_file = true;
-                    }
+            for entry in walkdir::WalkDir::new(path) {
+                let entry = entry.map_err(|e| {
+                    std::io::Error::new(std::io::ErrorKind::Other, e)
+                })?;
+                if entry.file_type().is_file() {
+                    out.push(entry.path().to_path_buf());
+                    had_file = true;
                 }
             }
             if !had_file {
@@ -134,7 +129,7 @@ pub(super) fn apply_custom_rtl(
             ))
         })?;
         let dest = rtl_dir.join(file_name);
-        fs::copy(src, &dest)?;
+        fs_err::copy(src, &dest)?;
         if dest.exists() {
             log::info!(
                 "custom-rtl: replaced {} with {}",
@@ -172,7 +167,7 @@ fn check_custom_rtl_format(rtl_files: &[PathBuf], templates_info: &TemplatesInfo
             );
             continue;
         }
-        let Ok(src) = fs::read_to_string(path) else {
+        let Ok(src) = fs_err::read_to_string(path) else {
             log::warn!(
                 "custom-rtl: skipping format check for unreadable verilog {}",
                 path.display(),
@@ -221,9 +216,9 @@ mod tests {
 
     fn write(path: &Path, body: &str) {
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).expect("mkdir");
+            fs_err::create_dir_all(parent).expect("mkdir");
         }
-        fs::write(path, body).expect("write");
+        fs_err::write(path, body).expect("write");
     }
 
     #[test]
@@ -232,7 +227,7 @@ mod tests {
         let file = dir.path().join("a.v");
         write(&file, "module a(); endmodule\n");
         let sub = dir.path().join("sub");
-        fs::create_dir_all(&sub).expect("mkdir");
+        fs_err::create_dir_all(&sub).expect("mkdir");
         let nested = sub.join("b.v");
         write(&nested, "module b(); endmodule\n");
 
@@ -252,7 +247,7 @@ mod tests {
     fn pack_custom_rtl_replaces_placeholder() {
         let dir = tempfile::tempdir().expect("tempdir");
         let rtl_dir = dir.path().join("rtl");
-        fs::create_dir_all(&rtl_dir).expect("mkdir rtl");
+        fs_err::create_dir_all(&rtl_dir).expect("mkdir rtl");
 
         let seed = rtl_dir.join("Foo.v");
         write(&seed, "module Foo(input wire clk); endmodule\n");
@@ -271,7 +266,7 @@ mod tests {
 
         apply_custom_rtl(&rtl_dir, std::slice::from_ref(&src), &templates).expect("apply");
 
-        let copied = fs::read_to_string(rtl_dir.join("Foo.v")).expect("read");
+        let copied = fs_err::read_to_string(rtl_dir.join("Foo.v")).expect("read");
         assert!(
             copied.contains("rst"),
             "placeholder template must be overwritten by the overlay"
@@ -286,7 +281,7 @@ mod tests {
     fn pack_custom_rtl_unknown_module_name_is_copied_through() {
         let dir = tempfile::tempdir().expect("tempdir");
         let rtl_dir = dir.path().join("rtl");
-        fs::create_dir_all(&rtl_dir).expect("mkdir rtl");
+        fs_err::create_dir_all(&rtl_dir).expect("mkdir rtl");
 
         let src = dir.path().join("Helper.v");
         write(&src, "module Helper(); endmodule\n");
@@ -306,7 +301,7 @@ mod tests {
     fn empty_templates_info_accepts_any_file() {
         let dir = tempfile::tempdir().expect("tempdir");
         let rtl_dir = dir.path().join("rtl");
-        fs::create_dir_all(&rtl_dir).expect("mkdir rtl");
+        fs_err::create_dir_all(&rtl_dir).expect("mkdir rtl");
         let src = dir.path().join("Anything.v");
         write(&src, "module Anything(); endmodule\n");
         let templates = BTreeMap::new();

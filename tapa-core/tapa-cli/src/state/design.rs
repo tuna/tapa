@@ -1,7 +1,6 @@
 //! `design.json` read / write — wraps `tapa_task_graph::Design` with
 //! work-directory path conventions.
 
-use std::fs::File;
 use std::io::BufWriter;
 use std::path::Path;
 
@@ -25,17 +24,21 @@ pub fn load_design(work_dir: &Path) -> Result<Design> {
             path,
         });
     }
-    let file = File::open(&path)?;
+    let file = fs_err::File::open(&path)?;
     Ok(Design::from_reader(file)?)
 }
 
 /// Persist `design` to `<work_dir>/design.json` using the
 /// compatible JSON formatter.
 pub fn store_design(work_dir: &Path, design: &Design) -> Result<()> {
-    std::fs::create_dir_all(work_dir)?;
+    fs_err::create_dir_all(work_dir)?;
     let path = path_in(work_dir);
-    let mut writer = BufWriter::new(File::create(&path)?);
-    design.to_writer(&mut writer)?;
+    let mut temp = tempfile::NamedTempFile::new_in(work_dir)?;
+    {
+        let mut writer = BufWriter::new(&mut temp);
+        design.to_writer(&mut writer)?;
+    }
+    fs_err::rename(temp.path(), &path)?;
     Ok(())
 }
 
