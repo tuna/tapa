@@ -20,7 +20,10 @@ tapa_xo(
 sh_test(
     name = "report-test",
     srcs = ["report_test.sh"],
-    args = ["$(location //tools:test_tools)"],
+    args = [
+        "$(location //tools:test_tools)",
+        "$(location :enable-synth-util-xo)",
+    ],
     data = [
         ":enable-synth-util-xo",
         "//tools:test_tools",

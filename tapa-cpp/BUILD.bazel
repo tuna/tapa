@@ -5,12 +5,12 @@
 # RapidStream Contributor License Agreement.
 
 load("@rules_pkg//pkg:mappings.bzl", "pkg_attributes", "pkg_files", "strip_prefix")
+load("//bazel:file_rules.bzl", "renamed_executable")
 
-genrule(
+renamed_executable(
     name = "gen-tapa-cpp",
-    srcs = ["@tapa-llvm-project//clang"],
-    outs = ["tapa-cpp"],
-    cmd = "cp -r $< $@",
+    src = "@tapa-llvm-project//clang",
+    out = "tapa-cpp",
     visibility = ["//visibility:public"],
 )
 

@@ -2,6 +2,7 @@
 
 load("@rules_cc//cc:defs.bzl", "cc_import", "cc_library", "cc_test")
 load("@rules_pkg//pkg:mappings.bzl", "pkg_filegroup", "pkg_files", "strip_prefix")
+load("//bazel:cargo_rules.bzl", "cargo_platform_artifacts")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -16,7 +17,7 @@ _PUBLIC_HEADERS = [
     "frt/tag.h",
 ]
 
-genrule(
+cargo_platform_artifacts(
     name = "cargo_release_artifacts",
     srcs = glob(
         ["**/*"],
@@ -26,56 +27,34 @@ genrule(
         ],
     ),
     outs = [
-        "cargo/libfrt.so",
         "cargo/libfrt.dylib",
-        "cargo/libfrt_dpi_verilator.so",
+        "cargo/libfrt.so",
         "cargo/libfrt_dpi_verilator.dylib",
-        "cargo/libfrt_dpi_xsim.so",
+        "cargo/libfrt_dpi_verilator.so",
         "cargo/libfrt_dpi_xsim.dylib",
+        "cargo/libfrt_dpi_xsim.so",
     ],
-    cmd = """
-set -euo pipefail
-CARGO="$(execpath @rules_rust//rust/toolchain:current_cargo_files)"
-RUSTC="$(execpath @rules_rust//rust/toolchain:current_rustc_files)"
-RUST_BIN_DIR="$$(cd "$$(dirname "$$CARGO")" && pwd)"
-RUSTC_BIN_DIR="$$(cd "$$(dirname "$$RUSTC")" && pwd)"
-export PATH="$$RUST_BIN_DIR:$$RUSTC_BIN_DIR:/usr/bin:/bin"
-export CARGO_HOME="$(@D)/cargo-home"
-export CARGO_TARGET_DIR="$(@D)/cargo-target"
-"$$CARGO" build --manifest-path "$(location Cargo.toml)" --release --locked \\
-  -p frt -p frt-dpi-verilator -p frt-dpi-xsim
-
-copy_required() { test -f "$$1" || { echo "missing Rust artifact: $$1" >&2; exit 1; }; cp "$$1" "$$2"; }
-empty() { : > "$$1"; }
-case "$$(uname -s)" in
-  Darwin)
-    copy_required "$$CARGO_TARGET_DIR/release/libfrt.dylib" "$(location cargo/libfrt.dylib)"
-    copy_required "$$CARGO_TARGET_DIR/release/libfrt_dpi_verilator.dylib" "$(location cargo/libfrt_dpi_verilator.dylib)"
-    copy_required "$$CARGO_TARGET_DIR/release/libfrt_dpi_xsim.dylib" "$(location cargo/libfrt_dpi_xsim.dylib)"
-    empty "$(location cargo/libfrt.so)"
-    empty "$(location cargo/libfrt_dpi_verilator.so)"
-    empty "$(location cargo/libfrt_dpi_xsim.so)"
-    ;;
-  Linux)
-    copy_required "$$CARGO_TARGET_DIR/release/libfrt.so" "$(location cargo/libfrt.so)"
-    copy_required "$$CARGO_TARGET_DIR/release/libfrt_dpi_verilator.so" "$(location cargo/libfrt_dpi_verilator.so)"
-    copy_required "$$CARGO_TARGET_DIR/release/libfrt_dpi_xsim.so" "$(location cargo/libfrt_dpi_xsim.so)"
-    empty "$(location cargo/libfrt.dylib)"
-    empty "$(location cargo/libfrt_dpi_verilator.dylib)"
-    empty "$(location cargo/libfrt_dpi_xsim.dylib)"
-    ;;
-  *)
-    echo "unsupported Rust artifact platform: $$(uname -s)" >&2
-    exit 1
-    ;;
-esac
-""",
+    build_args = [
+        "-p",
+        "frt",
+        "-p",
+        "frt-dpi-verilator",
+        "-p",
+        "frt-dpi-xsim",
+    ],
+    darwin_artifacts = [
+        "libfrt.dylib:cargo/libfrt.dylib",
+        "libfrt_dpi_verilator.dylib:cargo/libfrt_dpi_verilator.dylib",
+        "libfrt_dpi_xsim.dylib:cargo/libfrt_dpi_xsim.dylib",
+    ],
+    linux_artifacts = [
+        "libfrt.so:cargo/libfrt.so",
+        "libfrt_dpi_verilator.so:cargo/libfrt_dpi_verilator.so",
+        "libfrt_dpi_xsim.so:cargo/libfrt_dpi_xsim.so",
+    ],
     local = True,
+    manifest = "Cargo.toml",
     tags = ["local"],
-    tools = [
-        "@rules_rust//rust/toolchain:current_cargo_files",
-        "@rules_rust//rust/toolchain:current_rustc_files",
-    ],
 )
 
 cc_import(

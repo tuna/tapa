@@ -3,6 +3,7 @@
 load("@rules_pkg//pkg:mappings.bzl", "pkg_attributes", "pkg_filegroup", "pkg_files", "pkg_mklink")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
+load("//bazel:cargo_rules.bzl", "cargo_artifacts")
 
 exports_files([
     "assets/verilog/axis_adapter.v",
@@ -27,39 +28,37 @@ _ALL_SRCS = glob(
 # -- Build: library crates only (Cargo backed by the rules_rust toolchain) --
 # Builds the workspace's pure-Rust library crates.
 
-genrule(
+cargo_artifacts(
     name = "cargo_build",
     srcs = _ALL_SRCS,
     outs = [
-        "cargo/libtapa_protocol.rlib",
-        "cargo/libtapa_task_graph.rlib",
         "cargo/libtapa_graphir.rlib",
+        "cargo/libtapa_protocol.rlib",
         "cargo/libtapa_rtl.rlib",
+        "cargo/libtapa_task_graph.rlib",
         "cargo/libtapa_topology.rlib",
     ],
-    cmd = """
-set -euo pipefail
-CARGO="$$(cd "$$(dirname "$(execpath @rules_rust//rust/toolchain:current_cargo_files)")" && pwd)/cargo"
-RUSTC="$$(cd "$$(dirname "$(execpath @rules_rust//rust/toolchain:current_rustc_files)")" && pwd)/rustc"
-export PATH="$$(dirname "$$CARGO"):$$(dirname "$$RUSTC"):/usr/bin:/bin"
-export CARGO_HOME="$(@D)/cargo-home"
-export CARGO_TARGET_DIR="$(@D)/cargo-target"
-
-$$CARGO build --manifest-path "$(location Cargo.toml)" --release --locked \
-  -p tapa-protocol -p tapa-task-graph -p tapa-graphir -p tapa-rtl -p tapa-topology
-
-copy_required() { test -f "$$1" || { echo "missing Rust artifact: $$1" >&2; exit 1; }; cp "$$1" "$$2"; }
-copy_required "$$CARGO_TARGET_DIR/release/libtapa_protocol.rlib" "$(location cargo/libtapa_protocol.rlib)"
-copy_required "$$CARGO_TARGET_DIR/release/libtapa_task_graph.rlib" "$(location cargo/libtapa_task_graph.rlib)"
-copy_required "$$CARGO_TARGET_DIR/release/libtapa_graphir.rlib" "$(location cargo/libtapa_graphir.rlib)"
-copy_required "$$CARGO_TARGET_DIR/release/libtapa_rtl.rlib" "$(location cargo/libtapa_rtl.rlib)"
-copy_required "$$CARGO_TARGET_DIR/release/libtapa_topology.rlib" "$(location cargo/libtapa_topology.rlib)"
-""",
-    tags = ["requires-network"],
-    tools = [
-        "@rules_rust//rust/toolchain:current_cargo_files",
-        "@rules_rust//rust/toolchain:current_rustc_files",
+    artifacts = [
+        "libtapa_protocol.rlib:cargo/libtapa_protocol.rlib",
+        "libtapa_task_graph.rlib:cargo/libtapa_task_graph.rlib",
+        "libtapa_graphir.rlib:cargo/libtapa_graphir.rlib",
+        "libtapa_rtl.rlib:cargo/libtapa_rtl.rlib",
+        "libtapa_topology.rlib:cargo/libtapa_topology.rlib",
     ],
+    build_args = [
+        "-p",
+        "tapa-protocol",
+        "-p",
+        "tapa-task-graph",
+        "-p",
+        "tapa-graphir",
+        "-p",
+        "tapa-rtl",
+        "-p",
+        "tapa-topology",
+    ],
+    manifest = "Cargo.toml",
+    tags = ["requires-network"],
     visibility = ["//visibility:public"],
 )
 
@@ -68,30 +67,21 @@ copy_required "$$CARGO_TARGET_DIR/release/libtapa_topology.rlib" "$(location car
 # Downstream packagers consume this via `//tapa-core:tapa-cli` and re-wrap as
 # `usr/share/tapa/runtime/tapa` + `usr/bin/tapa` symlink.
 
-genrule(
+cargo_artifacts(
     name = "tapa-cli",
     srcs = _ALL_SRCS,
     outs = ["cargo/bin/tapa"],
-    cmd = """
-set -euo pipefail
-CARGO="$$(cd "$$(dirname "$(execpath @rules_rust//rust/toolchain:current_cargo_files)")" && pwd)/cargo"
-RUSTC="$$(cd "$$(dirname "$(execpath @rules_rust//rust/toolchain:current_rustc_files)")" && pwd)/rustc"
-export PATH="$$(dirname "$$CARGO"):$$(dirname "$$RUSTC"):/usr/bin:/bin"
-export CARGO_HOME="$(@D)/cargo-home"
-export CARGO_TARGET_DIR="$(@D)/cargo-target"
-
-$$CARGO build --manifest-path "$(location Cargo.toml)" --release --locked \
-  -p tapa-cli --bin tapa
-
-cp "$$CARGO_TARGET_DIR/release/tapa" "$(location cargo/bin/tapa)"
-chmod +x "$(location cargo/bin/tapa)"
-""",
-    executable = True,
-    tags = ["requires-network"],
-    tools = [
-        "@rules_rust//rust/toolchain:current_cargo_files",
-        "@rules_rust//rust/toolchain:current_rustc_files",
+    artifacts = ["tapa:cargo/bin/tapa"],
+    build_args = [
+        "-p",
+        "tapa-cli",
+        "--bin",
+        "tapa",
     ],
+    executable = True,
+    executable_outputs = ["cargo/bin/tapa"],
+    manifest = "Cargo.toml",
+    tags = ["requires-network"],
     visibility = ["//visibility:public"],
 )
 

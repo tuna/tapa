@@ -7,6 +7,7 @@
 load("@rules_cc//cc:defs.bzl", "cc_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("@vars//:vars.bzl", "HAS_XRT")
+load("//bazel:file_rules.bzl", "facebook_txt")
 load("//bazel:tapa_rules.bzl", "tapa_xo")
 load("//bazel:v++_rules.bzl", "vpp_xclbin")
 
@@ -173,11 +174,8 @@ vpp_xclbin(
     xo = ":graph-xo",
 )
 
-genrule(
+facebook_txt(
     name = "process_facebook_txt",
-    srcs = ["@facebook_combined//file:facebook.txt.gz"],
-    outs = ["facebook.txt"],
-    cmd = """
-        gzip -cd $(location @facebook_combined//file:facebook.txt.gz) | sed 's/^0 /4039 /' > $@
-    """,
+    src = "@facebook_combined//file:facebook.txt.gz",
+    out = "facebook.txt",
 )

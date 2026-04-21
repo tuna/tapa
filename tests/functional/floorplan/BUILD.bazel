@@ -5,6 +5,7 @@
 # RapidStream Contributor License Agreement.
 
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
+load("//bazel:file_rules.bzl", "random_floorplan")
 load("//bazel:tapa_rules.bzl", "tapa_xo")
 
 APPS = [
@@ -19,11 +20,11 @@ APPS = [
 ]
 
 [
-    genrule(
+    random_floorplan(
         name = "gen_random_floorplan_{}_{}".format(app, i),
-        outs = ["floorplan_{}_{}.json".format(app, i)],
-        cmd = "$(location //tools:test_tools) gen-floorplan {} {} $@".format(i, app),
-        tools = ["//tools:test_tools"],
+        out = "floorplan_{}_{}.json".format(app, i),
+        app = app,
+        seed = i,
     )
     for app in APPS
     for i in range(1)
