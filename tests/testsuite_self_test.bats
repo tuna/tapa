@@ -31,12 +31,6 @@
     | grep -q .
 }
 
-@test "testsuite: minizip-ng is installed for tapa g++" {
-  find "${TAPA_HOME}/usr/lib" -maxdepth 1 \
-    \( -name "libminizip_ng.a" -o -name "libminizip_ng.so" -o -name "libminizip_ng.dylib" \) \
-    | grep -q .
-}
-
 @test "testsuite: tapa is runnable" {
   tapa --help
 }

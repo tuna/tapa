@@ -97,8 +97,8 @@ pub fn get_system_cflags() -> Vec<String> {
 /// Matches the behavior: derives `-L` and
 /// `-Wl,-rpath` from `find_resource("fpga-runtime-lib")` /
 /// `find_resource("tapa-lib-lib")`, plus every external library
-/// directory the Bazel runfiles tree provides (gflags, glog,
-/// tinyxml2, yaml-cpp, boost). Without the runfiles dirs, links from
+/// directory the Bazel runfiles tree provides (gflags, glog, boost).
+/// Without the runfiles dirs, links from
 /// the `bazel run //tapa-core:tapa -- g++` wrapper would fail to resolve
 /// `-lgflags`, `-lglog`, etc.
 pub fn get_tapa_ldflags() -> Vec<String> {
@@ -119,21 +119,7 @@ pub fn get_tapa_ldflags() -> Vec<String> {
         out.push(format!("-L{}", lib.display()));
     }
     for name in [
-        "tapa",
-        "frt_cpp",
-        "context",
-        "thread",
-        "frt",
-        "asio",
-        "filesystem",
-        "glog",
-        "gflags",
-        "OpenCL",
-        "minizip_ng",
-        "tinyxml2",
-        "z",
-        "yaml-cpp",
-        "stdc++fs",
+        "tapa", "frt_cpp", "context", "thread", "frt", "glog", "gflags", "stdc++fs",
     ] {
         out.push(format!("-l{name}"));
     }
@@ -143,8 +129,8 @@ pub fn get_tapa_ldflags() -> Vec<String> {
 /// Implementation of. Walks
 /// the parents of the binary looking for a `tapa.runfiles` tree and
 /// returns the external library directories Bazel stages there
-/// (gflags, glog, tinyxml2, yaml-cpp, boost). Outside of Bazel, no
-/// `tapa.runfiles` exists and the helper returns an empty vector.
+/// (gflags, glog, boost). Outside of Bazel, no `tapa.runfiles` exists
+/// and the helper returns an empty vector.
 fn find_external_lib_in_runfiles() -> Vec<PathBuf> {
     let anchor = std::env::var_os("TAPA_CLI_SEARCH_ANCHOR")
         .map(PathBuf::from)
@@ -158,8 +144,6 @@ fn find_external_lib_in_runfiles() -> Vec<PathBuf> {
             return [
                 "gflags+",
                 "glog+",
-                "tinyxml2+",
-                "yaml-cpp+",
                 "rules_boost++non_module_dependencies+boost",
             ]
             .iter()
@@ -319,5 +303,39 @@ mod tests {
             .collect::<Vec<_>>();
         versions.sort_by_key(|v| version_key(v));
         assert_eq!(versions, vec!["9.5.0", "10.2.0", "11.0.1"]);
+    }
+
+    #[test]
+    fn tapa_ldflags_do_not_reference_unbundled_runtime_deps() {
+        let flags = get_tapa_ldflags();
+        for removed in [
+            "-lasio",
+            "-lfilesystem",
+            "-lOpenCL",
+            "-lminizip_ng",
+            "-ltinyxml2",
+            "-lz",
+            "-lyaml-cpp",
+        ] {
+            assert!(
+                !flags.contains(&removed.to_string()),
+                "unexpected removed linker flag {removed}"
+            );
+        }
+        for kept in [
+            "-ltapa",
+            "-lfrt_cpp",
+            "-lcontext",
+            "-lthread",
+            "-lfrt",
+            "-lglog",
+            "-lgflags",
+            "-lstdc++fs",
+        ] {
+            assert!(
+                flags.contains(&kept.to_string()),
+                "missing linker flag {kept}"
+            );
+        }
     }
 }

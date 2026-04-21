@@ -50,6 +50,26 @@ pub fn check_package_layout(path: &Path) -> Result<()> {
                 .to_string(),
         );
     }
+    for path in [
+        "usr/lib/libOpenCL.a",
+        "usr/lib/libOpenCL.so",
+        "usr/lib/libasio.a",
+        "usr/lib/libasio.so",
+        "usr/lib/libfilesystem.a",
+        "usr/lib/libfilesystem.so",
+        "usr/lib/libminizip_ng.a",
+        "usr/lib/libminizip_ng.so",
+        "usr/lib/libtinyxml2.a",
+        "usr/lib/libtinyxml2.so",
+        "usr/lib/libyaml-cpp.a",
+        "usr/lib/libyaml-cpp.so",
+        "usr/lib/libz.a",
+        "usr/lib/libz.so",
+    ] {
+        if entries.contains_key(path) {
+            return Err(format!("package must not ship {path}"));
+        }
+    }
 
     Ok(())
 }
