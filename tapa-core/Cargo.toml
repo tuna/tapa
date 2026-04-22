@@ -111,7 +111,7 @@ tempfile = "3"
 thiserror = "2"
 tree-sitter = "0.25"
 tree-sitter-cpp = "0.23"
-tree-sitter-systemverilog = "1"
+tree-sitter-systemverilog = "0.3"
 typed-builder = "0.21"
 uuid = { version = "1", features = ["v4", "serde"] }
 walkdir = "2"

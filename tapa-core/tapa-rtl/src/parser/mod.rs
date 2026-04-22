@@ -19,6 +19,9 @@ use crate::port::{Direction, Port, Width};
 use crate::pragma::Pragma;
 use crate::signal::{Signal, SignalKind};
 
+#[cfg(test)]
+mod tree_sitter_spike;
+
 // ── Utility parsers ─────────────────────────────────────────────────
 
 fn ws(input: &str) -> IResult<&str, &str> {

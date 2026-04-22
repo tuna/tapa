@@ -9,6 +9,9 @@ regex = { workspace = true }
 serde = { workspace = true }
 tapa-protocol = { workspace = true }
 thiserror = { workspace = true }
+streaming-iterator = { workspace = true }
+tree-sitter = { workspace = true }
+tree-sitter-systemverilog = { workspace = true }
 
 [lints]
 workspace = true
