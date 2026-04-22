@@ -136,12 +136,14 @@ fn build_rtl_config(reset_low: bool, auto_prefix: bool) -> String {
 }
 
 /// Collect every `-I<dir>` / `-isystem<dir>` destination from the
-/// job's CFLAGS that points at an existing absolute directory. These
-/// need to be uploaded verbatim so the remote `vitis_hls` resolves
-/// sibling headers the same way the local run would. Handles both
-/// fused (`-I/dir`) and split (`-I`, `/dir`) forms.
+/// job's CFLAGS.  Existing directories are uploaded verbatim so the
+/// remote `vitis_hls` resolves sibling headers the same way the local
+/// run would.  Relative paths are absolutized against the current
+/// working directory (matching the old `os.path.abspath` behaviour).
+/// Handles both fused (`-I/dir`) and split (`-I`, `/dir`) forms.
 fn kernel_include_dirs(cflags: &[String]) -> Vec<Utf8PathBuf> {
     let mut out: Vec<Utf8PathBuf> = Vec::new();
+    let cwd = std::env::current_dir().ok();
     let mut i = 0;
     while i < cflags.len() {
         let trimmed = cflags[i].trim();
@@ -165,7 +167,14 @@ fn kernel_include_dirs(cflags: &[String]) -> Vec<Utf8PathBuf> {
         };
         if !dir_str.is_empty() {
             let p = Utf8PathBuf::from(dir_str);
-            if p.is_absolute() && p.is_dir() {
+            let p = if p.is_absolute() {
+                p
+            } else if let Some(ref cwd) = cwd {
+                Utf8PathBuf::from_path_buf(cwd.join(p.as_std_path())).unwrap_or(p)
+            } else {
+                p
+            };
+            if p.is_dir() {
                 out.push(p);
             }
         }
@@ -188,10 +197,10 @@ fn kernel_env_entries(job: &HlsJob) -> Vec<(String, String)> {
         "TAPA_KERNEL_PATH_0".into(),
         job.cpp_source.as_str().to_string(),
     ));
-    let cflags = shlex::try_join(job.cflags.iter().map(String::as_str)).unwrap_or_else(|_| {
-        // Fallback: if an argument contains a nul byte, join lossily.
-        job.cflags.join(" ")
-    });
+    // Vitis `add_files -cflags` receives the value as a Tcl string,
+    // not a shell command — shell quoting is treated literally and
+    // breaks flags like `-D__builtin_FILE()=__FILE__`.
+    let cflags = job.cflags.join(" ");
     env.push(("TAPA_KERNEL_CFLAGS_0".into(), cflags));
     env
 }
@@ -663,13 +672,15 @@ mod tests {
     }
 
     #[test]
-    fn kernel_include_dirs_picks_abs_directories_only() {
+    fn kernel_include_dirs_absolutizes_relative_dirs() {
         let td = tempfile::tempdir().unwrap();
         let existing = Utf8PathBuf::from_path_buf(td.path().join("inc")).unwrap();
         fs_err::create_dir_all(&existing).unwrap();
         let cflags = vec![
             format!("-I{}", existing.as_str()),
             format!("-isystem{}", existing.as_str()),
+            // Relative paths are now absolutized against cwd so they can be
+            // uploaded for remote HLS runs.
             "-Irelative/should/be/ignored".into(),
             "-I/nonexistent/should/be/ignored".into(),
             "-DJUST_A_DEFINE".into(),
@@ -679,6 +690,8 @@ mod tests {
             existing.as_str().into(),
         ];
         let dirs = kernel_include_dirs(&cflags);
+        // 4 absolute + 1 absolutized relative (if it exists under cwd)
+        // The relative one won't exist, so still 4.
         assert_eq!(dirs.len(), 4);
         for d in &dirs {
             assert_eq!(d, existing.as_path());
@@ -923,10 +936,12 @@ mod tests {
     }
 
     #[test]
-    fn cflags_path_with_spaces_is_quoted() {
+    fn cflags_path_with_spaces_not_shell_quoted() {
         let tmp = tempfile::tempdir().unwrap();
         let mut job = fixture_job(&Utf8PathBuf::from_path_buf(tmp.path().to_path_buf()).unwrap());
-        // Fused form: include path contains spaces
+        // Fused form: include path contains spaces — we do NOT shell-quote
+        // because Vitis `add_files -cflags` is a Tcl string, not a shell
+        // command.  Quoting would be treated literally and break compilation.
         job.cflags = vec!["-I/path with spaces/include".into()];
         let env = kernel_env_entries(&job);
         let cflags = env
@@ -935,16 +950,16 @@ mod tests {
             .map(|(_, v)| v.clone())
             .unwrap();
         assert!(
-            cflags.contains("'-I/path with spaces/include'"),
-            "path with spaces must be quoted: {cflags}"
+            cflags.contains("-I/path with spaces/include"),
+            "raw join (no shell quoting): {cflags}"
         );
     }
 
     #[test]
-    fn cflags_split_include_with_spaces_is_quoted() {
+    fn cflags_split_include_with_spaces_not_shell_quoted() {
         let tmp = tempfile::tempdir().unwrap();
         let mut job = fixture_job(&Utf8PathBuf::from_path_buf(tmp.path().to_path_buf()).unwrap());
-        // Split form: -I and path are separate arguments
+        // Split form: -I and path are separate arguments — joined raw.
         job.cflags = vec!["-I".into(), "/path with spaces/include".into()];
         let env = kernel_env_entries(&job);
         let cflags = env
@@ -953,13 +968,13 @@ mod tests {
             .map(|(_, v)| v.clone())
             .unwrap();
         assert!(
-            cflags.contains("-I '/path with spaces/include'"),
-            "split include with spaces must be quoted: {cflags}"
+            cflags.contains("-I /path with spaces/include"),
+            "raw join (no shell quoting): {cflags}"
         );
     }
 
     #[test]
-    fn cflags_single_quotes_are_escaped() {
+    fn cflags_single_quotes_not_shell_escaped() {
         let tmp = tempfile::tempdir().unwrap();
         let mut job = fixture_job(&Utf8PathBuf::from_path_buf(tmp.path().to_path_buf()).unwrap());
         job.cflags = vec!["-DMSG='hello'".into()];
@@ -969,10 +984,10 @@ mod tests {
             .find(|(k, _)| k == "TAPA_KERNEL_CFLAGS_0")
             .map(|(_, v)| v.clone())
             .unwrap();
-        // shlex uses double quotes when single quotes are present
+        // Raw join — no shell escaping because Vitis Tcl does not shell-parse.
         assert!(
-            cflags.contains("\"-DMSG='hello'\""),
-            "single quotes must be preserved inside double quotes: {cflags}"
+            cflags.contains("-DMSG='hello'"),
+            "raw join (no shell quoting): {cflags}"
         );
     }
 }
