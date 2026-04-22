@@ -247,13 +247,13 @@ impl RemoteToolRunner {
             return Err(self.classify_remote_failure(&stderr));
         }
 
-        if code == 0 {
-            for (raw, abs) in inv.downloads.iter().zip(downloads_abs.iter()) {
-                let remote_src = local_to_remote_path(abs, &session_dir);
-                // Download back to the caller's requested path (raw), which
-                // may be relative — keeping the caller-facing contract.
-                download_tree(&self.session, &remote_src, raw.as_std_path())?;
-            }
+        // Download artifacts regardless of exit code so that failure logs
+        // and `--keep-hls-work-dir` project trees are preserved locally.
+        for (raw, abs) in inv.downloads.iter().zip(downloads_abs.iter()) {
+            let remote_src = local_to_remote_path(abs, &session_dir);
+            // Download back to the caller's requested path (raw), which
+            // may be relative — keeping the caller-facing contract.
+            download_tree(&self.session, &remote_src, raw.as_std_path())?;
         }
 
         cleanup_session(&self.session, &session_dir);
