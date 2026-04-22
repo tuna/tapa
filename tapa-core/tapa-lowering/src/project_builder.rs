@@ -1125,9 +1125,12 @@ fn build_slot_module(
                 }
             }
 
+            let module_name = leaf_modules
+                .get(&task_name)
+                .map_or(task_name.as_str(), AnyModuleDefinition::name);
             submodules.push(build_task_instance(
                 inst_name,
-                &task_name,
+                module_name,
                 arg_connections,
                 Some(&fp_region),
             ));
@@ -2506,6 +2509,48 @@ endmodule
             project.has_module("reset_inverter"),
             "should have reset_inverter"
         );
+    }
+
+    #[test]
+    fn slot_child_instances_use_exported_leaf_module_name() {
+        let prog = make_program();
+        let leaf_mods = BTreeMap::from([(
+            "child".into(),
+            AnyModuleDefinition::new_verilog(
+                "child_rtl".into(),
+                Vec::new(),
+                "module child_rtl(); endmodule".into(),
+            ),
+        )]);
+        let slot_to_insts = BTreeMap::from([("SLOT_0".into(), vec!["child_0".into()])]);
+
+        let project = build_project(
+            &prog,
+            &leaf_mods,
+            &BTreeMap::new(),
+            None,
+            &slot_to_insts,
+            None,
+            None,
+            None,
+        )
+        .expect("build project");
+
+        let slot = project
+            .modules
+            .module_definitions
+            .iter()
+            .find(|m| m.name() == "SLOT_0")
+            .expect("slot module");
+        let AnyModuleDefinition::Grouped { grouped, .. } = slot else {
+            panic!("slot should be grouped");
+        };
+        let child_inst = grouped
+            .submodules
+            .iter()
+            .find(|m| m.name == "child_0")
+            .expect("child instance");
+        assert_eq!(child_inst.module, "child_rtl");
     }
 
     #[test]
