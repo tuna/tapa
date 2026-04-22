@@ -82,11 +82,8 @@ fn render_bus_ifaces(
         .map(|(n, kv)| (n.clone(), kv.clone()))
         .collect();
     let mut env = minijinja::Environment::new();
-    env.add_template(
-        "bus_ifaces",
-        include_str!("templates/bus_ifaces.tcl.j2"),
-    )
-    .expect("template parses");
+    env.add_template("bus_ifaces", include_str!("templates/bus_ifaces.tcl.j2"))
+        .expect("template parses");
     env.get_template("bus_ifaces")
         .expect("template exists")
         .render(minijinja::context! {
@@ -119,11 +116,8 @@ fn format_package_xo_tcl(
         format!(" -part {part_num}")
     };
     let mut env = minijinja::Environment::new();
-    env.add_template(
-        "package_xo",
-        include_str!("templates/package_xo.tcl.j2"),
-    )
-    .expect("template parses");
+    env.add_template("package_xo", include_str!("templates/package_xo.tcl.j2"))
+        .expect("template parses");
     env.get_template("package_xo")
         .expect("template exists")
         .render(minijinja::context! {
@@ -178,8 +172,11 @@ fn bundle_report_paths_into_xo(
     let raw = std::fs::read(xo)?;
     let mut z_in = zip::ZipArchive::new(std::io::Cursor::new(raw))
         .map_err(|e| XilinxError::XoRedaction(format!("open xo for bundling: {e}")))?;
-    let tmp =
-        tempfile::NamedTempFile::new_in(xo.parent().unwrap_or_else(|| camino::Utf8Path::new(".")).as_std_path())?;
+    let tmp = tempfile::NamedTempFile::new_in(
+        xo.parent()
+            .unwrap_or_else(|| camino::Utf8Path::new("."))
+            .as_std_path(),
+    )?;
     let written: std::collections::HashSet<&str> =
         report_paths.iter().map(|(_, name)| name.as_str()).collect();
     {
@@ -295,11 +292,7 @@ pub fn pack_xo_without_redaction(
 
     let mut job = VivadoJob::new(tcl);
     job.work_dir = Some(tmp_path.clone());
-    job.uploads = vec![
-        inputs.hdl_dir.clone(),
-        tmp_path,
-        kernel_xml_path,
-    ];
+    job.uploads = vec![inputs.hdl_dir.clone(), tmp_path, kernel_xml_path];
     if let Some(parent) = kernel_out_path.parent() {
         job.downloads = vec![parent.to_path_buf()];
     }
@@ -334,7 +327,7 @@ fn redact_xml_payload(text: &str) -> String {
 }
 
 fn redact_xml_event_based(text: &str) -> std::result::Result<String, quick_xml::Error> {
-    use quick_xml::events::{Event, BytesText};
+    use quick_xml::events::{BytesText, Event};
     use quick_xml::{Reader, Writer};
 
     let mut reader = Reader::from_str(text);
@@ -361,7 +354,7 @@ fn redact_xml_event_based(text: &str) -> std::result::Result<String, quick_xml::
                 let text_content = t.unescape()?.into_owned();
                 let redacted = if matches!(
                     stack.last().map(String::as_str),
-                    Some("xilinx:coreCreationDateTime") | Some("coreCreationDateTime")
+                    Some("xilinx:coreCreationDateTime" | "coreCreationDateTime")
                 ) {
                     "1980-01-01T00:00:00Z".to_string()
                 } else {
@@ -389,7 +382,9 @@ fn redact_element_attrs(elem: &mut BytesStart<'_>) {
         .attributes()
         .filter_map(|a| a.ok())
         .map(|attr| {
-            let key = std::str::from_utf8(attr.key.as_ref()).unwrap_or("").to_string();
+            let key = std::str::from_utf8(attr.key.as_ref())
+                .unwrap_or("")
+                .to_string();
             let value = attr
                 .unescape_value()
                 .unwrap_or_else(|_| std::str::from_utf8(&attr.value).unwrap_or("").into())
@@ -547,7 +542,8 @@ mod tests {
 
         let runner = MockToolRunner::new();
         runner.push_ok("vivado", ToolOutput::default());
-        let expected_abs = Utf8PathBuf::from_path_buf(tmp.path().canonicalize().unwrap().join("out.xo")).unwrap();
+        let expected_abs =
+            Utf8PathBuf::from_path_buf(tmp.path().canonicalize().unwrap().join("out.xo")).unwrap();
         runner.attach_download(&expected_abs, staged_bytes);
 
         let inputs = minimal_inputs(hdl_dir, Utf8PathBuf::from("out.xo"));
@@ -615,10 +611,7 @@ mod tests {
         let call = &runner.calls()[0];
         assert_eq!(call.program, "vivado");
         assert!(call.args.iter().any(|a| a == "-tclargs"));
-        assert!(call
-            .args
-            .iter()
-            .any(|a| a == xo_path.as_str()));
+        assert!(call.args.iter().any(|a| a == xo_path.as_str()));
         let mut z =
             zip::ZipArchive::new(std::io::Cursor::new(std::fs::read(&xo_path).unwrap())).unwrap();
         let mut body = String::new();
@@ -642,8 +635,7 @@ mod tests {
             redact_rpt(&format!("| interface | s_axilite | {left} in vecadd |")),
             redact_rpt(&format!("| interface | s_axilite | {right} in vecadd |")),
         );
-        let xml =
-            redact_xml_payload(&format!(r#"<Pragma location="{left}" SOURCE="{left}"/>"#));
+        let xml = redact_xml_payload(&format!(r#"<Pragma location="{left}" SOURCE="{left}"/>"#));
         assert!(xml.contains(r#"location="cpp/VecAdd.cpp:31""#));
         assert!(xml.contains(r#"SOURCE="cpp/VecAdd.cpp:31""#));
     }
@@ -783,8 +775,8 @@ Date:           Fri Mar 14 10:20:30 2025\n\
         let dir = z.by_name("ip_repo/tapa_xrtl_Cannon_1_0/src/").unwrap();
         let mode = dir.unix_mode().unwrap_or_default();
         assert_ne!(
-            mode & 0o170000,
-            0o100000,
+            mode & 0o170_000,
+            0o100_000,
             "directory entry was rewritten as a regular file: {mode:o}",
         );
         assert_eq!(mode & 0o777, 0o755);

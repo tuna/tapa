@@ -237,7 +237,10 @@ fn build_package_xo_inputs(
 ) -> PackageXoInputs {
     PackageXoInputs::builder()
         .top_name(design.top.clone())
-        .hdl_dir(Utf8PathBuf::from_path_buf(hdl_dir.to_path_buf()).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())))
+        .hdl_dir(
+            Utf8PathBuf::from_path_buf(hdl_dir.to_path_buf())
+                .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
+        )
         .device_info(DeviceInfo {
             part_num,
             clock_period: clock_period.clone(),
@@ -252,7 +255,10 @@ fn build_package_xo_inputs(
                 .to_string(),
             ports: kernel_ports,
         })
-        .kernel_out_path(Utf8PathBuf::from_path_buf(output_path.to_path_buf()).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())))
+        .kernel_out_path(
+            Utf8PathBuf::from_path_buf(output_path.to_path_buf())
+                .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
+        )
         .m_axi_params(m_axi_params)
         .report_paths(report_paths)
         .build()
@@ -276,7 +282,11 @@ fn collect_hls_report_paths(work_dir: &Path) -> Result<Vec<(Utf8PathBuf, String)
     for file in ["report.json", "report.yaml"] {
         let path = work_dir.join(file);
         if path.is_file() {
-            reports.push((Utf8PathBuf::from_path_buf(path).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())), file.to_owned()));
+            reports.push((
+                Utf8PathBuf::from_path_buf(path)
+                    .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
+                file.to_owned(),
+            ));
         }
     }
     if !hls_root.is_dir() {
@@ -319,7 +329,11 @@ fn collect_hls_report_paths(work_dir: &Path) -> Result<Vec<(Utf8PathBuf, String)
             let text = fs_err::read_to_string(&path)?;
             fs_err::write(&staged_path, sanitize_hls_report_text(&text, work_dir))?;
             let arcname = format!("report/{task_name}/{file}");
-            reports.push((Utf8PathBuf::from_path_buf(staged_path).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())), arcname));
+            reports.push((
+                Utf8PathBuf::from_path_buf(staged_path)
+                    .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
+                arcname,
+            ));
         }
     }
     reports.sort();

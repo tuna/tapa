@@ -4,7 +4,6 @@
 
 pub mod verilog;
 
-use fs_err;
 use std::path::Path;
 
 use tapa_graphir::{AnyModuleDefinition, Project};
@@ -115,9 +114,7 @@ fn create_stub_files(dest: &Path) -> Result<(), ExportError> {
 /// Recursively find `.xci` files and generate matching `.v` stub modules.
 fn generate_xci_stubs(dest: &Path, dir: &Path) -> Result<(), ExportError> {
     for entry in walkdir::WalkDir::new(dir) {
-        let entry = entry.map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::Other, e)
-        })?;
+        let entry = entry.map_err(std::io::Error::other)?;
         if !entry.file_type().is_file() {
             continue;
         }
@@ -184,9 +181,7 @@ endmodule
 /// Recursively find and relocate `.xci` files.
 fn collect_xci_files(base: &Path, dir: &Path) -> Result<(), ExportError> {
     for entry in walkdir::WalkDir::new(dir) {
-        let entry = entry.map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::Other, e)
-        })?;
+        let entry = entry.map_err(std::io::Error::other)?;
         if !entry.file_type().is_file() {
             continue;
         }

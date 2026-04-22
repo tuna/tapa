@@ -257,6 +257,11 @@ pub fn validate_mmap_connection(conn: &MMapConnection) -> Result<(), CodegenErro
 ///
 /// Produces a parameterized crossbar module with port declarations
 /// for all upstream master and downstream slave AXI channels.
+#[allow(
+    clippy::too_many_lines,
+    reason = "crossbar RTL emission is inherently sequential; \
+              splitting would fragment the AXI channel wiring"
+)]
 pub fn generate_crossbar_rtl(conn: &MMapConnection) -> String {
     let module_name = crossbar_module_name(conn);
     let slaves = conn.thread_count;

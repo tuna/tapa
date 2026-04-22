@@ -227,12 +227,13 @@ pub fn build_remote_config(globals: &GlobalArgs) -> Result<Option<RemoteConfig>>
             message: e.to_string(),
         }
     })?;
-    let mut cfg = RemoteConfig::from_yaml_str(&yaml_text, &Utf8PathBuf::from("<merged>")).map_err(|e| {
-        CliError::RemoteConfigParse {
-            path: PathBuf::from("<merged>"),
-            message: e.to_string(),
-        }
-    })?;
+    let mut cfg =
+        RemoteConfig::from_yaml_str(&yaml_text, Utf8PathBuf::from("<merged>")).map_err(|e| {
+            CliError::RemoteConfigParse {
+                path: PathBuf::from("<merged>"),
+                message: e.to_string(),
+            }
+        })?;
     apply_cli_overrides(&mut cfg, globals);
     Ok(Some(cfg))
 }

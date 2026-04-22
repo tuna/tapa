@@ -106,8 +106,6 @@ impl std::fmt::Debug for HlsJob {
     }
 }
 
-
-
 #[derive(Debug, Clone)]
 pub struct HlsOutput {
     pub csynth: CsynthReport,
@@ -238,6 +236,11 @@ fn is_transient(job: &HlsJob, stdout: &str, stderr: &str) -> bool {
     }
 }
 
+enum RetryError {
+    Transient,
+    Fatal(XilinxError),
+}
+
 /// Run a single Vitis HLS invocation inside `stage_dir`. The runner
 /// executes with cwd set to `stage_dir`; after the tool exits, the
 /// `project/<solution>/syn/` subtree lives at
@@ -306,7 +309,8 @@ fn run_hls_attempt(
 /// [`run_hls_with_retry`] in production code.
 pub fn run_hls_raw(runner: &dyn ToolRunner, job: &HlsJob) -> Result<ToolOutput> {
     let stage = tempfile::tempdir()?;
-    let stage_path = Utf8PathBuf::from_path_buf(stage.path().to_path_buf()).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
+    let stage_path = Utf8PathBuf::from_path_buf(stage.path().to_path_buf())
+        .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
     run_hls_attempt(runner, job, &stage_path)
 }
 
@@ -333,7 +337,8 @@ fn copy_tree(src: &camino::Utf8Path, dest: &camino::Utf8Path) -> std::io::Result
         }
         let src_path = entry.path();
         let rel = src_path.strip_prefix(src).expect("prefix must match");
-        let rel = Utf8PathBuf::from_path_buf(rel.to_path_buf()).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
+        let rel = Utf8PathBuf::from_path_buf(rel.to_path_buf())
+            .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
         let dest_path = dest.join(&rel);
         if let Some(parent) = dest_path.parent() {
             fs_err::create_dir_all(parent)?;
@@ -416,7 +421,8 @@ fn harvest_and_stage(
 /// survive.
 pub fn run_hls(runner: &dyn ToolRunner, job: &HlsJob) -> Result<HlsOutput> {
     let stage = tempfile::tempdir()?;
-    let stage_path = Utf8PathBuf::from_path_buf(stage.path().to_path_buf()).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
+    let stage_path = Utf8PathBuf::from_path_buf(stage.path().to_path_buf())
+        .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
     let out = run_hls_attempt(runner, job, &stage_path)?;
     if out.exit_code != 0 {
         let stderr = if out.stderr.is_empty() {
@@ -441,7 +447,10 @@ fn collect_files(dir: &camino::Utf8Path) -> Result<Vec<Utf8PathBuf>> {
     for ent in fs_err::read_dir(dir)? {
         let ent = ent?;
         if ent.file_type()?.is_file() {
-            out.push(Utf8PathBuf::from_path_buf(ent.path()).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())));
+            out.push(
+                Utf8PathBuf::from_path_buf(ent.path())
+                    .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
+            );
         }
     }
     out.sort();
@@ -462,16 +471,10 @@ pub fn run_hls_with_retry(
         .with_max_delay(Duration::from_secs(30))
         .with_max_times(max_attempts.saturating_sub(1) as usize);
 
-    enum RetryError {
-        Transient,
-        Fatal(XilinxError),
-    }
-
     let delay_fn = job.delay_fn.clone();
 
     let result = (|| -> std::result::Result<HlsOutput, RetryError> {
-        let stage = tempfile::tempdir()
-            .map_err(|e| RetryError::Fatal(XilinxError::Io(e)))?;
+        let stage = tempfile::tempdir().map_err(|e| RetryError::Fatal(XilinxError::Io(e)))?;
         let stage_path = Utf8PathBuf::from_path_buf(stage.path().to_path_buf())
             .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
         let out = run_hls_attempt(runner, job, &stage_path).map_err(RetryError::Fatal)?;
@@ -531,11 +534,6 @@ pub fn run_hls_with_retry_in_stage(
         .with_min_delay(Duration::from_millis(500))
         .with_max_delay(Duration::from_secs(30))
         .with_max_times(max_attempts.saturating_sub(1) as usize);
-
-    enum RetryError {
-        Transient,
-        Fatal(XilinxError),
-    }
 
     let delay_fn = job.delay_fn.clone();
 
@@ -876,7 +874,10 @@ mod tests {
         let start = std::time::Instant::now();
         let err = run_hls_with_retry(&runner, &job, 5).unwrap_err();
         let elapsed = start.elapsed();
-        assert!(matches!(err, XilinxError::HlsRetryExhausted { attempts: 5 }));
+        assert!(matches!(
+            err,
+            XilinxError::HlsRetryExhausted { attempts: 5 }
+        ));
         assert!(
             elapsed < Duration::from_millis(100),
             "retry loop must not insert delays, took {elapsed:?}"
@@ -900,7 +901,10 @@ mod tests {
             );
         }
         let err = run_hls_with_retry(&runner, &job, 3).unwrap_err();
-        assert!(matches!(err, XilinxError::HlsRetryExhausted { attempts: 3 }));
+        assert!(matches!(
+            err,
+            XilinxError::HlsRetryExhausted { attempts: 3 }
+        ));
     }
 
     #[test]

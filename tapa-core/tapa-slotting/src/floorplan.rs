@@ -9,8 +9,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use tapa_task_graph::{
-    Arg, ArgCategory, EndpointRef, Graph, InterconnectDefinition, Port, TaskDefinition, TaskInstance,
-    TaskLevel,
+    Arg, ArgCategory, EndpointRef, Graph, InterconnectDefinition, Port, TaskDefinition,
+    TaskInstance, TaskLevel,
 };
 
 use crate::error::SlottingError;
@@ -29,9 +29,10 @@ pub fn get_floorplan_graph(
     let mut new_graph = graph.clone();
     let top_name = &graph.top;
 
-    let top_task = new_graph.tasks.get(top_name).ok_or_else(|| {
-        SlottingError::MissingGraphField(format!("top task `{}`", top_name))
-    })?;
+    let top_task = new_graph
+        .tasks
+        .get(top_name)
+        .ok_or_else(|| SlottingError::MissingGraphField(format!("top task `{top_name}`")))?;
 
     // Floorplan requires an upper-level top.
     if top_task.level == TaskLevel::Lower {
@@ -149,7 +150,12 @@ fn build_floorplan_slot(
     }
 
     // Add FIFO-connected ports
-    new_ports.extend(get_used_ports(graph, top_name, &slot_def.tasks, &fifo_ports));
+    new_ports.extend(get_used_ports(
+        graph,
+        top_name,
+        &slot_def.tasks,
+        &fifo_ports,
+    ));
 
     // Add inferred mmap ports (using original top-level instance names)
     new_ports.extend(infer_mmap_ports_from_subtasks(
@@ -313,7 +319,12 @@ fn update_endpoint_idx(
         idx_map
             .get(name)
             .and_then(|m| m.get(&top_idx))
-            .map(|&slot_idx| EndpointRef(name.clone(), slot_idx as u32))
+            .map(|&slot_idx| {
+                EndpointRef(
+                    name.clone(),
+                    u32::try_from(slot_idx).expect("slot index fits in u32"),
+                )
+            })
     })
 }
 
@@ -348,8 +359,9 @@ fn get_used_ports(
         let task_ports = graph
             .tasks
             .get(task_name)
-            .map(|t| t.ports.as_slice())
-            .unwrap_or(&[]);
+            .map_or(&[] as &[tapa_task_graph::port::Port], |t| {
+                t.ports.as_slice()
+            });
         for inst in insts {
             for (port_name, arg) in &inst.args {
                 if arg.cat == ArgCategory::Mmap || arg.cat == ArgCategory::AsyncMmap {
@@ -363,7 +375,7 @@ fn get_used_ports(
                 for port in task_ports {
                     if port.name == *port_name || port_name.starts_with(&port.name) {
                         let mut new_port = port.clone();
-                        new_port.name = arg_name.clone();
+                        new_port.name.clone_from(arg_name);
                         new_ports.push(new_port);
                         break;
                     }
@@ -390,8 +402,9 @@ fn infer_mmap_ports_from_subtasks(
         let task_ports = graph
             .tasks
             .get(task_name)
-            .map(|t| t.ports.as_slice())
-            .unwrap_or(&[]);
+            .map_or(&[] as &[tapa_task_graph::port::Port], |t| {
+                t.ports.as_slice()
+            });
         for _inst in insts {
             // Use original top-level instance name, NOT slot-local index
             let inst_name = match name_iter.next() {
@@ -424,11 +437,8 @@ fn build_top_slot_insts(
     let mut new_top_insts: BTreeMap<String, Vec<TaskInstance>> = BTreeMap::new();
 
     for (slot_name, slot_def) in slot_defs {
-        let slot_ports: BTreeMap<String, &Port> = slot_def
-            .ports
-            .iter()
-            .map(|p| (p.name.clone(), p))
-            .collect();
+        let slot_ports: BTreeMap<String, &Port> =
+            slot_def.ports.iter().map(|p| (p.name.clone(), p)).collect();
 
         let slot_subtasks = &slot_def.tasks;
 
@@ -442,8 +452,7 @@ fn build_top_slot_insts(
                 continue;
             }
             let formatted = port_name.replace('[', "_").replace(']', "");
-            let inferred_cat =
-                infer_arg_cat_from_subinst(port_name, slot_subtasks);
+            let inferred_cat = infer_arg_cat_from_subinst(port_name, slot_subtasks);
             args.insert(
                 formatted,
                 Arg {
@@ -1048,6 +1057,7 @@ mod tests {
     /// graph so regressions in `gen_slot_cpp` wiring or port plumbing show
     /// up as diff noise on this test.
     #[test]
+    #[allow(clippy::too_many_lines, reason = "snapshot test for slot C++ wrapper")]
     fn test_floorplan_emits_slot_cpp_wrapper() {
         let graph = graph_from_value(json!({
             "top": "VecAdd",
@@ -1157,10 +1167,7 @@ mod tests {
             fifo_port.ctype, "float",
             "FIFO port type must come from A.out"
         );
-        assert_eq!(
-            fifo_port.width, 32,
-            "FIFO port width must come from A.out"
-        );
+        assert_eq!(fifo_port.width, 32, "FIFO port width must come from A.out");
 
         // --- Design.json snapshot via serde round-trip ------------------
         assert!(

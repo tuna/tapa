@@ -108,24 +108,43 @@ fn build_invocation(prep: &Prepared) -> ToolInvocation {
     // `solution_*/floorplan.json` outputs tar-pipe back into place.
     let mut uploads: Vec<Utf8PathBuf> = Vec::new();
     if prep.device_config.is_absolute() && prep.device_config.exists() {
-        uploads.push(Utf8PathBuf::from_path_buf(prep.device_config.clone()).unwrap_or_else(|p: PathBuf| Utf8PathBuf::from(p.to_string_lossy().into_owned())));
+        uploads.push(
+            Utf8PathBuf::from_path_buf(prep.device_config.clone())
+                .unwrap_or_else(|p: PathBuf| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
+        );
     }
     ToolInvocation {
         program: RAPIDSTREAM_TAPAFP_BIN.to_string(),
         args: vec![
             "--ab-graph-path".to_string(),
-            prep.ab_graph_path.as_os_str().to_string_lossy().into_owned(),
+            prep.ab_graph_path
+                .as_os_str()
+                .to_string_lossy()
+                .into_owned(),
             "--work-dir".to_string(),
-            prep.autobridge_dir.as_os_str().to_string_lossy().into_owned(),
+            prep.autobridge_dir
+                .as_os_str()
+                .to_string_lossy()
+                .into_owned(),
             "--device-config".to_string(),
-            prep.device_config.as_os_str().to_string_lossy().into_owned(),
+            prep.device_config
+                .as_os_str()
+                .to_string_lossy()
+                .into_owned(),
             "--floorplan-config".to_string(),
-            prep.sanitized_config.as_os_str().to_string_lossy().into_owned(),
+            prep.sanitized_config
+                .as_os_str()
+                .to_string_lossy()
+                .into_owned(),
             "--run-floorplan".to_string(),
         ],
-        cwd: Some(Utf8PathBuf::from_path_buf(prep.work_dir.clone()).unwrap_or_else(|p: PathBuf| Utf8PathBuf::from(p.to_string_lossy().into_owned()))),
+        cwd: Some(
+            Utf8PathBuf::from_path_buf(prep.work_dir.clone())
+                .unwrap_or_else(|p: PathBuf| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
+        ),
         uploads,
-        downloads: vec![Utf8PathBuf::from_path_buf(prep.autobridge_dir.clone()).unwrap_or_else(|p: PathBuf| Utf8PathBuf::from(p.to_string_lossy().into_owned()))],
+        downloads: vec![Utf8PathBuf::from_path_buf(prep.autobridge_dir.clone())
+            .unwrap_or_else(|p: PathBuf| Utf8PathBuf::from(p.to_string_lossy().into_owned()))],
         ..ToolInvocation::default()
     }
 }

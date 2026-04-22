@@ -75,6 +75,11 @@ struct XmlArg {
     arg_type: String,
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "kernel.xml emission is inherently sequential; \
+              splitting would fragment the element tree construction"
+)]
 pub fn emit_kernel_xml(args: &KernelXmlArgs) -> Result<String> {
     if args.ports.is_empty() {
         return Err(XilinxError::KernelXml(format!(

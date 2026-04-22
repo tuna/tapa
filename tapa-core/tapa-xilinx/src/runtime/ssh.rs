@@ -195,8 +195,16 @@ impl SshSession {
             push_ssh_opt(&mut args, "ControlMaster", "auto");
             push_ssh_opt(&mut args, "ControlPath", &control_path);
             push_ssh_opt(&mut args, "ControlPersist", &self.cfg.ssh_control_persist);
-            push_ssh_opt(&mut args, "ServerAliveInterval", self.options.server_alive_interval);
-            push_ssh_opt(&mut args, "ServerAliveCountMax", self.options.server_alive_count_max);
+            push_ssh_opt(
+                &mut args,
+                "ServerAliveInterval",
+                self.options.server_alive_interval,
+            );
+            push_ssh_opt(
+                &mut args,
+                "ServerAliveCountMax",
+                self.options.server_alive_count_max,
+            );
         }
         args
     }
@@ -328,7 +336,7 @@ impl SshSession {
             if let Err(e) = std::fs::create_dir_all(&dir) {
                 return Err(XilinxError::SshConnect {
                     host: self.cfg.host.clone(),
-                    detail: format!("create control dir {}: {e}", dir),
+                    detail: format!("create control dir {dir}: {e}"),
                 });
             }
         }

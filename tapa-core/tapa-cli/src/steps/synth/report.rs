@@ -47,7 +47,7 @@ struct Performance {
     source: String,
     clock_period: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    critical_path: Option<IndexMap<String, Performance>>,
+    critical_path: Option<IndexMap<String, Self>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -113,7 +113,12 @@ fn build_task_report(design: &Design, task_name: &str, schema: &str) -> Result<R
                 critical_path.insert(child_name.clone(), child_report.performance);
             }
             let child_area = Area {
-                source: if has_synth_area(child_task) { "synth" } else { "hls" }.to_string(),
+                source: if has_synth_area(child_task) {
+                    "synth"
+                } else {
+                    "hls"
+                }
+                .to_string(),
                 total: child_task.total_area.clone(),
                 breakdown: None,
             };
@@ -224,7 +229,10 @@ mod tests {
                 clock_period: "3.33".to_string(),
             },
         );
-        tasks.insert("Add".to_string(), leaf("Add", "3.33", serde_json::json!({"LUT": 50})));
+        tasks.insert(
+            "Add".to_string(),
+            leaf("Add", "3.33", serde_json::json!({"LUT": 50})),
+        );
         let design = Design {
             top: "VecAdd".to_string(),
             target: "xilinx-vitis".to_string(),

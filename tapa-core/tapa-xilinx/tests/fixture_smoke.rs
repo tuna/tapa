@@ -84,11 +84,16 @@ fn kernel_xml_matches_golden_fixture() {
     };
     let xml = emit_kernel_xml(&args).unwrap();
     let golden = std::fs::read_to_string(testdata("kernel_xml.golden.xml")).unwrap();
-    // Trim surrounding whitespace for newline tolerance.
+    // Semantic comparison: parse both and compare kernel name/ports/args.
+    // Formatting differences (attribute spacing, indentation) are acceptable
+    // after the minijinja migration.
+    let parsed: serde_json::Value =
+        quick_xml::de::from_str(&xml).expect("generated xml parses");
+    let golden_parsed: serde_json::Value =
+        quick_xml::de::from_str(&golden).expect("golden xml parses");
     assert_eq!(
-        xml.trim(),
-        golden.trim(),
-        "kernel.xml drifted from golden fixture"
+        parsed, golden_parsed,
+        "kernel.xml semantic drift from golden fixture"
     );
 }
 

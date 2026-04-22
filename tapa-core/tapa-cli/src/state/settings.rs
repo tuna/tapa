@@ -31,6 +31,10 @@ pub fn load_settings(work_dir: &Path) -> Result<Settings> {
     Ok(settings)
 }
 
+#[allow(
+    clippy::semicolon_outside_block,
+    reason = "scoping block for BufWriter drop"
+)]
 pub fn store_settings(work_dir: &Path, settings: &Settings) -> Result<()> {
     fs_err::create_dir_all(work_dir)?;
     let path = path_in(work_dir);

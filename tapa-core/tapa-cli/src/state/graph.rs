@@ -31,6 +31,10 @@ pub fn load_graph(work_dir: &Path) -> Result<Value> {
 }
 
 /// Persist the graph using the same spaced compact formatter as settings.
+#[allow(
+    clippy::semicolon_outside_block,
+    reason = "scoping block for BufWriter drop"
+)]
 pub fn store_graph(work_dir: &Path, graph: &Value) -> Result<()> {
     fs_err::create_dir_all(work_dir)?;
     let path = path_in(work_dir);

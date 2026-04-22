@@ -27,11 +27,8 @@ pub(super) fn render_vitis_script(
     connectivity: Option<&Path>,
 ) -> String {
     let mut env = minijinja::Environment::new();
-    env.add_template(
-        "vitis_script",
-        include_str!("templates/vitis_script.sh.j2"),
-    )
-    .expect("template parses");
+    env.add_template("vitis_script", include_str!("templates/vitis_script.sh.j2"))
+        .expect("template parses");
 
     let xo = absolutize(output_file).display().to_string();
     let config_file = connectivity.map(|conn| absolutize(conn).display().to_string());

@@ -16,7 +16,8 @@ fn render_pragma(template_name: &str, name: &str, port_type: Option<&str>) -> St
         "fifo_out" => include_str!("templates/fifo_out_pragma.cpp.j2"),
         _ => unreachable!(),
     };
-    env.add_template(template_name, source).expect("template parses");
+    env.add_template(template_name, source)
+        .expect("template parses");
     let ctx = if let Some(pt) = port_type {
         minijinja::context! { name, port_type => pt }
     } else {

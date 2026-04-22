@@ -138,9 +138,7 @@ fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, settings: &settings_io::Setti
 
     let mut rtl_files: Vec<std::path::PathBuf> = Vec::new();
     for entry in walkdir::WalkDir::new(&rtl_dir) {
-        let entry = entry.map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::Other, e)
-        })?;
+        let entry = entry.map_err(std::io::Error::other)?;
         if entry.file_type().is_file() {
             rtl_files.push(entry.path().to_path_buf());
         }
@@ -190,9 +188,7 @@ fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, settings: &settings_io::Setti
     if hls_root.is_dir() {
         let mut rpt_files: Vec<std::path::PathBuf> = Vec::new();
         for entry in walkdir::WalkDir::new(&hls_root) {
-            let entry = entry.map_err(|e| {
-                std::io::Error::new(std::io::ErrorKind::Other, e)
-            })?;
+            let entry = entry.map_err(std::io::Error::other)?;
             if !entry.file_type().is_file() {
                 continue;
             }

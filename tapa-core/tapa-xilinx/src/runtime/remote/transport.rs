@@ -98,9 +98,9 @@ pub(super) fn upload_batch(
             builder
                 .append_dir(rel, p.as_std_path())
                 .map_err(|e| XilinxError::RemoteTransfer(format!("tar append dir {rel}: {e}")))?;
-            for ent in std::fs::read_dir(p).map_err(|e| {
-                XilinxError::RemoteTransfer(format!("read_dir {}: {e}", p))
-            })? {
+            for ent in std::fs::read_dir(p)
+                .map_err(|e| XilinxError::RemoteTransfer(format!("read_dir {p}: {e}")))?
+            {
                 let ent =
                     ent.map_err(|e| XilinxError::RemoteTransfer(format!("read_dir entry: {e}")))?;
                 let arc = format!("{rel}/{}", ent.file_name().to_string_lossy());
@@ -123,7 +123,7 @@ pub(super) fn upload_batch(
             }
         } else if p.is_file() {
             let mut f = std::fs::File::open(p.as_std_path())
-                .map_err(|e| XilinxError::RemoteTransfer(format!("open {}: {e}", p)))?;
+                .map_err(|e| XilinxError::RemoteTransfer(format!("open {p}: {e}")))?;
             builder
                 .append_file(rel, &mut f)
                 .map_err(|e| XilinxError::RemoteTransfer(format!("tar append {rel}: {e}")))?;

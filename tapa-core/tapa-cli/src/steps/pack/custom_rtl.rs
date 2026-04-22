@@ -72,9 +72,7 @@ pub(super) fn expand_custom_rtl_paths(rtl_paths: &[PathBuf]) -> Result<Vec<PathB
         if path.is_dir() {
             let mut had_file = false;
             for entry in walkdir::WalkDir::new(path) {
-                let entry = entry.map_err(|e| {
-                    std::io::Error::new(std::io::ErrorKind::Other, e)
-                })?;
+                let entry = entry.map_err(std::io::Error::other)?;
                 if entry.file_type().is_file() {
                     out.push(entry.path().to_path_buf());
                     had_file = true;

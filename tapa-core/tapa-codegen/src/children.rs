@@ -159,6 +159,11 @@ impl ChildMmapBindings {
     }
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "child instance assembly is inherently sequential; \
+              splitting would fragment the port-arg wiring logic"
+)]
 pub fn build_child_instance(
     child_task_name: &str,
     instance_name: &str,
@@ -313,6 +318,10 @@ fn child_has_direct_mmap_ports(child_rtl: Option<&VerilogModule>, child_port: &s
         })
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "mmap port arg wiring needs all 8 parameters"
+)]
 fn add_direct_mmap_portargs(
     port_args: &mut Vec<PortArg>,
     child_port: &str,

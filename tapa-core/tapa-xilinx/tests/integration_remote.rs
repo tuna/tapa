@@ -15,24 +15,21 @@
 
 mod common;
 
-use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::Arc;
 
+use camino::Utf8PathBuf;
 use tapa_xilinx::{RemoteToolRunner, SshMuxOptions, SshSession, ToolInvocation, ToolRunner};
 
-fn existing_control_sockets(dir: &PathBuf) -> Vec<PathBuf> {
+fn existing_control_sockets(dir: &Utf8PathBuf) -> Vec<Utf8PathBuf> {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return Vec::new();
     };
     entries
         .filter_map(Result::ok)
         .map(|e| e.path())
-        .filter(|p| {
-            p.file_name()
-                .and_then(|n| n.to_str())
-                .is_some_and(|s| s.starts_with("cm-"))
-        })
+        .filter_map(|p| Utf8PathBuf::from_path_buf(p).ok())
+        .filter(|p| p.file_name().is_some_and(|s| s.starts_with("cm-")))
         .collect()
 }
 
@@ -78,7 +75,7 @@ fn control_master_lifecycle() {
         args.push("-o".into());
         args.push("BatchMode=yes".into());
         args.push("-o".into());
-        args.push(format!("ControlPath={}/cm-%C", ctrl_dir.display()));
+        args.push(format!("ControlPath={}/cm-%C", ctrl_dir.as_str()));
         args.push("-O".into());
         args.push("exit".into());
         args.push(format!(
@@ -95,7 +92,7 @@ fn control_master_lifecycle() {
     let _ = exit_status; // may or may not succeed depending on race
     for s in existing_control_sockets(&ctrl_dir) {
         std::fs::remove_file(&s).expect("unlink control socket must succeed");
-        assert!(!s.exists(), "socket still present: {}", s.display());
+        assert!(!s.exists(), "socket still present: {}", s.as_str());
     }
     assert!(
         !session.control_master_alive(),
@@ -121,7 +118,7 @@ fn control_master_lifecycle() {
     assert!(
         !restored.is_empty(),
         "no control socket re-created under {}",
-        ctrl_dir.display()
+        ctrl_dir.as_str()
     );
     assert!(
         session.control_master_alive(),
@@ -141,7 +138,7 @@ fn schedule_mux_teardown(session: Arc<SshSession>, delay_ms: u64) -> std::thread
             "-o".into(),
             "BatchMode=yes".into(),
             "-o".into(),
-            format!("ControlPath={}/cm-%C", ctrl_dir.display()),
+            format!("ControlPath={}/cm-%C", ctrl_dir.as_str()),
             "-O".into(),
             "exit".into(),
             format!("{}@{}", session.config().user, session.config().host),
@@ -196,9 +193,18 @@ fn control_master_retry_branch_mid_transfer() {
     let handle = schedule_mux_teardown(Arc::clone(&session), 50);
 
     let mut inv = ToolInvocation::new("cat").arg(payload.join("chunk-0.bin").display().to_string());
-    inv.cwd = Some(stage.path().to_path_buf());
-    inv.uploads.push(payload.clone());
-    inv.downloads.push(payload);
+    inv.cwd = Some(
+        Utf8PathBuf::from_path_buf(stage.path().to_path_buf())
+            .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
+    );
+    inv.uploads.push(
+        Utf8PathBuf::from_path_buf(payload.clone())
+            .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
+    );
+    inv.downloads.push(
+        Utf8PathBuf::from_path_buf(payload)
+            .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
+    );
     let out = runner
         .run(&inv)
         .expect("mid-transfer mux teardown must be recovered by the in-runner retry");
@@ -231,7 +237,8 @@ fn control_master_restart_during_transfer() {
     let runner = RemoteToolRunner::new(Arc::clone(&session));
 
     let stage = tempfile::tempdir().expect("stage dir");
-    let src_dir = stage.path().join("payload");
+    let src_dir = Utf8PathBuf::from_path_buf(stage.path().join("payload"))
+        .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
     std::fs::create_dir_all(&src_dir).expect("mkdir src");
     std::fs::write(src_dir.join("hello.txt"), b"tapa-remote-transfer-ok\n").expect("write src");
 
@@ -246,8 +253,11 @@ fn control_master_restart_during_transfer() {
         // and (c) downloaded the mirror back on return.
         let _ = inv; // silence unused-mut if the compiler complains
         let mut inv =
-            ToolInvocation::new("cat").arg(src_dir.join("hello.txt").display().to_string());
-        inv.cwd = Some(stage.path().to_path_buf());
+            ToolInvocation::new("cat").arg(src_dir.join("hello.txt").as_str().to_string());
+        inv.cwd = Some(
+            Utf8PathBuf::from_path_buf(stage.path().to_path_buf())
+                .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
+        );
         inv.uploads.push(src_dir.clone());
         inv.downloads.push(src_dir.clone());
         runner
@@ -271,7 +281,7 @@ fn control_master_restart_during_transfer() {
     args.push("-o".into());
     args.push("BatchMode=yes".into());
     args.push("-o".into());
-    args.push(format!("ControlPath={}/cm-%C", ctrl_dir.display()));
+    args.push(format!("ControlPath={}/cm-%C", ctrl_dir.as_str()));
     args.push("-O".into());
     args.push("exit".into());
     args.push(format!(

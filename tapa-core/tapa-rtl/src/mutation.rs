@@ -600,7 +600,7 @@ mod tests {
 
     #[test]
     fn emit_preserves_instances_before_procedural_body() {
-        let source = r"
+        let source = "
 module HasAdapter (
     ap_clk,
     out
@@ -637,7 +637,7 @@ endmodule
 
     #[test]
     fn emit_folds_duplicate_output_reg_port_declarations() {
-        let source = r"
+        let source = "
 module HlsStyle (
     ap_done,
     ap_ready
@@ -673,7 +673,7 @@ endmodule
 
     #[test]
     fn body_extraction_skips_compact_reg_declarations() {
-        let source = r"
+        let source = "
 module CompactHlsStyle (
     out
 );
@@ -721,7 +721,7 @@ endmodule
 
     #[test]
     fn demote_output_port_regs_emits_net_ports() {
-        let source = r"
+        let source = "
 module Upper (
     out_read
 );
@@ -746,7 +746,7 @@ endmodule
 
     #[test]
     fn demote_signal_regs_to_wires_emits_net_signals() {
-        let source = r"
+        let source = "
 module VitisTop (
     ap_clk
 );

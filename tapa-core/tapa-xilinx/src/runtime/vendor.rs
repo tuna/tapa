@@ -113,13 +113,22 @@ pub(crate) fn parse_remote_xilinx_paths(stdout: &str) -> std::collections::HashM
 
 /// Compute the deterministic cache directory under the user cache root, where
 /// `<key>` is the first 16 hex chars of `sha256(host:port:xilinx_settings)`.
-pub(crate) fn vendor_cache_dir(host: &str, port: u16, xilinx_settings: &str) -> Result<Utf8PathBuf> {
+pub(crate) fn vendor_cache_dir(host: &str, port: u16, xilinx_settings: &str) -> Utf8PathBuf {
     use sha2::{Digest, Sha256};
     let base = directories::BaseDirs::new()
         .map(|d| Utf8PathBuf::from(d.cache_dir().to_string_lossy().into_owned()))
-        .or_else(|| std::env::var_os("XDG_CACHE_HOME").map(|h| Utf8PathBuf::from(h.to_string_lossy().into_owned())))
-        .or_else(|| std::env::var_os("HOME").map(|h| Utf8PathBuf::from(h.to_string_lossy().into_owned()).join(".cache")))
-        .unwrap_or_else(|| Utf8PathBuf::from(std::env::temp_dir().to_string_lossy().into_owned()).join("tapa-cache"));
+        .or_else(|| {
+            std::env::var_os("XDG_CACHE_HOME")
+                .map(|h| Utf8PathBuf::from(h.to_string_lossy().into_owned()))
+        })
+        .or_else(|| {
+            std::env::var_os("HOME")
+                .map(|h| Utf8PathBuf::from(h.to_string_lossy().into_owned()).join(".cache"))
+        })
+        .unwrap_or_else(|| {
+            Utf8PathBuf::from(std::env::temp_dir().to_string_lossy().into_owned())
+                .join("tapa-cache")
+        });
     let raw = format!("{host}:{port}:{xilinx_settings}");
     let hash = Sha256::digest(raw.as_bytes());
     let mut key = String::with_capacity(16);
@@ -127,7 +136,7 @@ pub(crate) fn vendor_cache_dir(host: &str, port: u16, xilinx_settings: &str) -> 
         use std::fmt::Write as _;
         let _ = write!(key, "{b:02x}");
     }
-    Ok(base.join("tapa").join("vendor-headers").join(key))
+    base.join("tapa").join("vendor-headers").join(key)
 }
 
 /// Apply the macOS libc++ compatibility patch to
@@ -218,9 +227,8 @@ pub fn sync_remote_vendor_includes(session: &SshSession) -> Result<Utf8PathBuf> 
     })?;
     session.ensure_established()?;
     let fs = SshVendorFs { session };
-    let cache_dir = vendor_cache_dir(&cfg.host, cfg.port, &xilinx_settings)?;
-    sync_vendor_includes_impl(&fs, &xilinx_settings, cache_dir.as_std_path())
-        .map(|_| cache_dir)
+    let cache_dir = vendor_cache_dir(&cfg.host, cfg.port, &xilinx_settings);
+    sync_vendor_includes_impl(&fs, &xilinx_settings, cache_dir.as_std_path()).map(|()| cache_dir)
 }
 
 /// Pure algorithm driving the vendor include sync, parameterized
@@ -241,6 +249,7 @@ pub fn sync_vendor_includes_impl<F: VendorRemoteFs>(
     let lock_path = cache_dir.join(".sync.lock");
     let lock_file = std::fs::OpenOptions::new()
         .create(true)
+        .truncate(true)
         .write(true)
         .open(&lock_path)
         .map_err(|e| XilinxError::RemoteTransfer(format!("open vendor lock: {e}")))?;
@@ -412,9 +421,9 @@ mod tests {
         let td = tempfile::tempdir().expect("tempdir");
         let prev = std::env::var_os("XDG_CACHE_HOME");
         std::env::set_var("XDG_CACHE_HOME", td.path());
-        let a = vendor_cache_dir("h1", 22, "/opt/settings64.sh").unwrap();
-        let b = vendor_cache_dir("h1", 22, "/opt/settings64.sh").unwrap();
-        let c = vendor_cache_dir("h2", 22, "/opt/settings64.sh").unwrap();
+        let a = vendor_cache_dir("h1", 22, "/opt/settings64.sh");
+        let b = vendor_cache_dir("h1", 22, "/opt/settings64.sh");
+        let c = vendor_cache_dir("h2", 22, "/opt/settings64.sh");
         if let Some(p) = prev {
             std::env::set_var("XDG_CACHE_HOME", p);
         } else {
@@ -443,8 +452,7 @@ mod tests {
                 Vec::new(),
             ),
         ]);
-        sync_vendor_includes_impl(&mock, "/opt/settings64.sh", &cache)
-            .expect("sync must succeed");
+        sync_vendor_includes_impl(&mock, "/opt/settings64.sh", &cache).expect("sync must succeed");
         assert!(cache.join("include").join(".mock_download").is_file());
         assert!(cache
             .join("tps/lnx64/gcc-6.2.0/include")
@@ -611,9 +619,15 @@ mod tests {
         );
         std::fs::write(etc.join("ap_fixed_special.h"), body).unwrap();
 
-        let before = std::fs::metadata(etc.join("ap_fixed_special.h")).unwrap().modified().unwrap();
+        let before = std::fs::metadata(etc.join("ap_fixed_special.h"))
+            .unwrap()
+            .modified()
+            .unwrap();
         apply_macos_vendor_patch(&cache).unwrap();
-        let after = std::fs::metadata(etc.join("ap_fixed_special.h")).unwrap().modified().unwrap();
+        let after = std::fs::metadata(etc.join("ap_fixed_special.h"))
+            .unwrap()
+            .modified()
+            .unwrap();
 
         assert_eq!(before, after, "marker must prevent file modification");
     }

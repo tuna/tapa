@@ -357,7 +357,10 @@ remote:
         assert_eq!(cfg.host, "fpga-ci.example.com");
         assert_eq!(cfg.user, "ci");
         assert_eq!(cfg.port, 2323);
-        assert_eq!(cfg.key_file.as_deref(), Some(Utf8PathBuf::from("/tmp/ci_key").as_path()));
+        assert_eq!(
+            cfg.key_file.as_deref(),
+            Some(Utf8PathBuf::from("/tmp/ci_key").as_path())
+        );
         // from_env normalizes a tool-root to `<root>/settings64.sh` so
         // the remote runner's `source <path>` actually works.
         assert_eq!(

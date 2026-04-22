@@ -218,7 +218,7 @@ fn extract_ansi_port(
 
     if has_type_spec || width.is_some() {
         *last_dir = direction;
-        *last_width = width.clone();
+        *last_width = width;
     }
     let final_width = last_width.clone();
 
@@ -236,7 +236,6 @@ fn extract_ansi_port(
 
 fn parse_direction(text: &str) -> Direction {
     match text {
-        "input" => Direction::Input,
         "output" => Direction::Output,
         "inout" => Direction::Inout,
         _ => Direction::Input,
@@ -244,7 +243,6 @@ fn parse_direction(text: &str) -> Direction {
 }
 
 fn extract_identifiers(node: Node, src: &[u8]) -> Vec<String> {
-    let mut ids = Vec::new();
     fn walk(node: Node, src: &[u8], ids: &mut Vec<String>) {
         if node.kind() == "simple_identifier" || node.kind() == "escaped_identifier" {
             ids.push(text_of(node, src).to_owned());
@@ -253,6 +251,7 @@ fn extract_identifiers(node: Node, src: &[u8]) -> Vec<String> {
             walk(node.child(i).unwrap(), src, ids);
         }
     }
+    let mut ids = Vec::new();
     walk(node, src, &mut ids);
     ids
 }
@@ -278,10 +277,17 @@ fn extract_parameters_from_node(node: Node, src: &[u8]) -> Vec<Parameter> {
                         let d = c.child(k).unwrap();
                         match d.kind() {
                             "simple_identifier" => name = Some(text_of(d, src).to_owned()),
-                            "constant_param_expression" | "constant_mintypmax_expression"
-                            | "constant_expression" | "constant_primary" | "primary_literal"
-                            | "integral_number" | "decimal_number" | "octal_number"
-                            | "binary_number" | "hex_number" | "real_number"
+                            "constant_param_expression"
+                            | "constant_mintypmax_expression"
+                            | "constant_expression"
+                            | "constant_primary"
+                            | "primary_literal"
+                            | "integral_number"
+                            | "decimal_number"
+                            | "octal_number"
+                            | "binary_number"
+                            | "hex_number"
+                            | "real_number"
                             | "unbased_unsized_literal" => {
                                 if default_str.is_none() {
                                     default_str = Some(text_of(d, src).trim().to_owned());
@@ -366,11 +372,6 @@ pub enum ParseIssue {
 /// Ignores ERROR nodes inside procedural blocks, assignments, and
 /// instantiations — those are skipped by the body loop anyway.
 pub fn first_parse_error(source: &str) -> Option<ParseIssue> {
-    let mut parser = sv_parser();
-    let tree = parser.parse(source.as_bytes(), None)?;
-    let root = tree.root_node();
-    let src = source.as_bytes();
-
     fn walk(node: Node, src: &[u8]) -> Option<ParseIssue> {
         if node.kind() == "ERROR" || node.is_error() {
             let text = text_of(node, src);
@@ -396,6 +397,10 @@ pub fn first_parse_error(source: &str) -> Option<ParseIssue> {
         None
     }
 
+    let mut parser = sv_parser();
+    let tree = parser.parse(source.as_bytes(), None)?;
+    let root = tree.root_node();
+    let src = source.as_bytes();
     walk(root, src)
 }
 
@@ -422,15 +427,11 @@ pub fn parse_module_info(source: &str) -> Option<ModuleInfo> {
     let m = matches.next()?;
     let mod_node = m.captures.first()?.node;
 
-    let header = mod_node
-        .child_by_field_name("header")
-        .or_else(|| {
-            (0..mod_node.child_count())
-                .map(|i| mod_node.child(i).unwrap())
-                .find(|n| {
-                    n.kind() == "module_nonansi_header" || n.kind() == "module_ansi_header"
-                })
-        })?;
+    let header = mod_node.child_by_field_name("header").or_else(|| {
+        (0..mod_node.child_count())
+            .map(|i| mod_node.child(i).unwrap())
+            .find(|n| n.kind() == "module_nonansi_header" || n.kind() == "module_ansi_header")
+    })?;
 
     let name = (0..header.child_count())
         .map(|i| header.child(i).unwrap())
@@ -468,7 +469,8 @@ pub fn parse_module_info(source: &str) -> Option<ModuleInfo> {
                         }
                     }
                     "ansi_port_declaration" => {
-                        let mut port_list = extract_ansi_port(c, src, &mut last_dir, &mut last_width);
+                        let mut port_list =
+                            extract_ansi_port(c, src, &mut last_dir, &mut last_width);
                         if let Some(ref p) = pending_pragma {
                             if let Some(first) = port_list.first_mut() {
                                 first.pragma = Some(p.clone());

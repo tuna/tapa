@@ -110,21 +110,18 @@ fn run_floorplan_native_apply(path: &Path, ctx: &CliContext) -> Result<()> {
 
     // Parse graph with path-to-error diagnostics for precise malformed-input
     // reporting.
-    let graph: Graph = serde_json::from_value(graph_value.clone()).map_err(|e| {
-        CliError::InvalidArg(format!("graph schema error: {e}"))
-    })?;
+    let graph: Graph = serde_json::from_value(graph_value)
+        .map_err(|e| CliError::InvalidArg(format!("graph schema error: {e}")))?;
 
     let top_name = &graph.top;
 
     let raw = fs::read_to_string(path)?;
     let vertex_to_region: IndexMap<String, String> = serde_json::from_str(&raw)?;
 
-    let top_task = graph.tasks.get(top_name).ok_or_else(|| {
-        CliError::InvalidArg(format!(
-            "top task `{}` not found in graph",
-            top_name
-        ))
-    })?;
+    let top_task = graph
+        .tasks
+        .get(top_name)
+        .ok_or_else(|| CliError::InvalidArg(format!("top task `{top_name}` not found in graph")))?;
     let mut known_inst_names = BTreeSet::<String>::new();
     for (def_name, insts) in &top_task.tasks {
         for idx in 0..insts.len() {
@@ -155,7 +152,7 @@ fn run_floorplan_native_apply(path: &Path, ctx: &CliContext) -> Result<()> {
     }
 
     let new_graph =
-        get_floorplan_graph(&graph, &slot_to_insts).map_err(map_slotting_err)?;
+        get_floorplan_graph(&graph, &slot_to_insts).map_err(|e| map_slotting_err(&e))?;
     let new_value = serde_json::to_value(&new_graph)
         .map_err(|e| CliError::InvalidArg(format!("graph re-serialize: {e}")))?;
 
@@ -166,22 +163,18 @@ fn run_floorplan_native_apply(path: &Path, ctx: &CliContext) -> Result<()> {
     // --floorplan-path` previously left design.json stale (only
     // graph.json + settings.json were rewritten).
     let target = match settings_io::load_settings(work_dir) {
-        Ok(s) => s.get("target").and_then(Value::as_str).map_or_else(
-            || "xilinx-vitis".to_string(),
-            ToString::to_string,
-        ),
+        Ok(s) => s
+            .get("target")
+            .and_then(Value::as_str)
+            .map_or_else(|| "xilinx-vitis".to_string(), ToString::to_string),
         Err(_) => "xilinx-vitis".to_string(),
     };
     let region_map_for_design: indexmap::IndexMap<String, String> = slot_to_region
         .iter()
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
-    let design = build_design_with_floorplan(
-        &new_graph,
-        top_name,
-        &target,
-        Some(&region_map_for_design),
-    )?;
+    let design =
+        build_design_with_floorplan(&new_graph, top_name, &target, Some(&region_map_for_design));
     crate::state::design::store_design(work_dir, &design)?;
 
     let mut flow = ctx.flow.borrow_mut();
@@ -221,7 +214,7 @@ fn build_design_with_floorplan(
     top: &str,
     target: &str,
     slot_to_region: Option<&indexmap::IndexMap<String, String>>,
-) -> Result<tapa_task_graph::Design> {
+) -> tapa_task_graph::Design {
     use tapa_task_graph::TaskTopology;
     let slot_set: std::collections::BTreeSet<&str> = slot_to_region
         .map(|m| m.keys().map(String::as_str).collect())
@@ -256,12 +249,12 @@ fn build_design_with_floorplan(
             },
         );
     }
-    Ok(tapa_task_graph::Design {
+    tapa_task_graph::Design {
         top: top.to_string(),
         target: target.to_string(),
         tasks: topology,
         slot_task_name_to_fp_region: slot_to_region.cloned(),
-    })
+    }
 }
 
 fn load_or_cached_graph(ctx: &CliContext) -> Result<Value> {
@@ -274,10 +267,8 @@ fn load_or_cached_graph(ctx: &CliContext) -> Result<Value> {
     graph_io::load_graph(ctx.work_dir.as_path())
 }
 
-fn map_slotting_err(e: SlottingError) -> CliError {
-    match e {
-        other => CliError::InvalidArg(other.to_string()),
-    }
+fn map_slotting_err(e: &SlottingError) -> CliError {
+    CliError::InvalidArg(e.to_string())
 }
 
 /// Native no-op path: load (or initialize) `settings.json`, set

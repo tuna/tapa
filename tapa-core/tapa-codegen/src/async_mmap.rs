@@ -159,10 +159,13 @@ pub fn build_bridge_instance(
         ParamArg::new("MaxWaitTime", Expr::int(3)),
         ParamArg::new("BurstLenWidth", Expr::int(9)),
         ParamArg::new("MaxBurstLen", Expr::int(u64::from(max_burst_len))),
-        ParamArg::new("EnableReadChannel", Expr::int(u64::from(enable_read as u8))),
+        ParamArg::new(
+            "EnableReadChannel",
+            Expr::int(u64::from(u8::from(enable_read))),
+        ),
         ParamArg::new(
             "EnableWriteChannel",
-            Expr::int(u64::from(enable_write as u8)),
+            Expr::int(u64::from(u8::from(enable_write))),
         ),
     ];
 
@@ -210,7 +213,6 @@ pub fn build_bridge_instance(
         .with_params(std::mem::take(&mut params))
         .with_ports(ports)
 }
-
 
 #[cfg(test)]
 mod tests {

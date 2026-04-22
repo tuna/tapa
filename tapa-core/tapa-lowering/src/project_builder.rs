@@ -2238,6 +2238,11 @@ fn build_task_port_ifaces(
 ///
 /// Matches `_append_task_port_ifaces` + `_append_stream_iface`
 /// + `_append_mmap_ifaces`.
+#[allow(
+    clippy::too_many_lines,
+    reason = "port interface assembly is inherently sequential; \
+              splitting would fragment the scalar/stream/mmap wiring"
+)]
 fn build_task_port_ifaces_with_scalars(
     def: &AnyModuleDefinition,
     port_names: &std::collections::HashSet<String>,
@@ -2439,7 +2444,7 @@ mod tests {
 
     #[test]
     fn promotes_fsm_outputs_assigned_in_always_blocks() {
-        let source = r"
+        let source = "
 module slot_fsm (
   input wire ap_clk,
   output wire child__ap_start,
@@ -2584,6 +2589,10 @@ endmodule
     }
 
     #[test]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "integration test with many assertions"
+    )]
     fn async_mmap_slot_exposes_axi_ports_to_top_instance() {
         let prog: Program = serde_json::from_str(
             r#"{
@@ -2817,6 +2826,10 @@ endmodule
     }
 
     #[test]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "integration test with many assertions"
+    )]
     fn aggregate_slot_params_matches_current_alphabetical_order() {
         // Slot-parameter aggregation must iterate child tasks
         // alphabetically to match `dict(sorted(tasks.items()))`

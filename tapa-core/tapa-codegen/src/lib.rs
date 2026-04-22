@@ -23,8 +23,11 @@ use crate::rtl_state::TopologyWithRtl;
 
 fn render_template_module(name: &str, ports: &[String]) -> String {
     let mut env = minijinja::Environment::new();
-    env.add_template("template_module", include_str!("templates/template_module.v.j2"))
-        .expect("template parses");
+    env.add_template(
+        "template_module",
+        include_str!("templates/template_module.v.j2"),
+    )
+    .expect("template parses");
     env.get_template("template_module")
         .expect("template exists")
         .render(minijinja::context! { name, ports })
@@ -152,7 +155,12 @@ fn instrument_upper_task(state: &mut TopologyWithRtl, task_name: &str) -> Result
     if is_template {
         if let Some(mm) = state.module_map.get_mut(task_name) {
             // Build port-declaration-only template (just the module shell)
-            let ports: Vec<String> = mm.inner.ports.iter().map(|p| p.to_string()).collect();
+            let ports: Vec<String> = mm
+                .inner
+                .ports
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect();
             let template = render_template_module(&mm.inner.name, &ports);
             state
                 .generated_files
@@ -336,17 +344,14 @@ fn generate_child_signals(
 
             // FSM/autorun logic goes into the FSM MODULE
             if let Some(fsm_mm) = state.fsm_modules.get_mut(task_name) {
+                for signal in sig.all_signals() {
+                    let _ = fsm_mm.add_signal(signal);
+                }
                 if is_autorun {
-                    for signal in sig.all_signals() {
-                        let _ = fsm_mm.add_signal(signal);
-                    }
                     fsm_mm.ensure_signal_kind(&sig.start_name(), tapa_rtl::signal::SignalKind::Reg);
                     fsm_mm.add_always(children::generate_autorun_start(&sig));
                 } else {
                     // State register and FSM logic owned by FSM module
-                    for signal in sig.all_signals() {
-                        let _ = fsm_mm.add_signal(signal);
-                    }
                     // Use pipelined start_q/done_q from global FSM
                     let start_input = Expr::ident(program::START_Q);
                     let done_release = Expr::ident(program::DONE_Q);
@@ -726,7 +731,7 @@ fn declare_instance_pipeline_signals(
             | tapa_task_graph::port::ArgCategory::Immap
             | tapa_task_graph::port::ArgCategory::Ommap => continue,
         };
-        add_pipeline_stage(state, task_name, &pipeline_out, &fsm_in, width);
+        add_pipeline_stage(state, task_name, &pipeline_out, &fsm_in, width.as_ref());
     }
 }
 
@@ -736,11 +741,11 @@ fn add_pipeline_stage(
     task_name: &str,
     pipeline_out: &str,
     fsm_in_port: &str,
-    width: Option<(String, String)>, // None = 1-bit, Some((msb, lsb))
+    width: Option<&(String, String)>, // None = 1-bit, Some((msb, lsb))
 ) {
     // Parent: wire for pipeline output
     if let Some(mm) = state.module_map.get_mut(task_name) {
-        let sig = match width.as_ref() {
+        let sig = match width {
             Some((msb, lsb)) => tapa_rtl::mutation::wide_wire(pipeline_out, msb, lsb),
             None => tapa_rtl::mutation::wire(pipeline_out),
         };
@@ -886,6 +891,10 @@ fn instantiate_fifos(state: &mut TopologyWithRtl, task_name: &str) {
     }
 }
 
+#[allow(
+    clippy::single_option_map,
+    reason = "keeping the Option in the signature lets both callers avoid inline duplication"
+)]
 fn fifo_producer_for(
     task: &tapa_topology::task::TaskDesign,
     fifo_name: &str,
@@ -988,6 +997,11 @@ fn parse_verilog_u32(expr: &[tapa_rtl::expression::Token]) -> Option<u32> {
 /// proper width using stream suffixes so child instances can connect.
 /// For external FIFOs: connect to parent module ports, potentially
 /// through AXIS adapters.
+#[allow(
+    clippy::too_many_lines,
+    reason = "FIFO connection orchestration is inherently sequential; \
+              splitting would fragment the wiring logic"
+)]
 fn connect_fifos(state: &mut TopologyWithRtl, task_name: &str) {
     use tapa_protocol::{ISTREAM_SUFFIXES, OSTREAM_SUFFIXES, STREAM_PORT_DIRECTION};
     use tapa_rtl::signal::{Signal, SignalKind};
@@ -1145,15 +1159,7 @@ fn add_m_axi_and_crossbars(
                         conn.id_width,
                     );
                 }
-            } else if m_axi::needs_crossbar(conn) {
-                m_axi::add_m_axi_ports_with_id_width(
-                    mm,
-                    &conn.arg_name,
-                    conn.data_width,
-                    64,
-                    conn.id_width,
-                );
-            } else if conn.id_width > 1 {
+            } else if m_axi::needs_crossbar(conn) || conn.id_width > 1 {
                 m_axi::add_m_axi_ports_with_id_width(
                     mm,
                     &conn.arg_name,
@@ -1922,6 +1928,10 @@ mod tests {
     }
 
     #[test]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "integration test with many assertions"
+    )]
     fn test_generate_rtl_vitis_top_streams_use_axis_adapters() {
         let prog = program_from_json(serde_json::json!({
             "top": "top",
@@ -2200,6 +2210,10 @@ mod tests {
     }
 
     #[test]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "integration test with many assertions"
+    )]
     fn test_generate_rtl_fifo_width_uses_bound_producer_port() {
         let prog = program_from_json(serde_json::json!({
             "top": "top",
@@ -2585,6 +2599,10 @@ mod tests {
     }
 
     #[test]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "integration test with many assertions"
+    )]
     fn test_generate_rtl_parent_crossbar_slices_generated_narrow_upper_child_ids() {
         let prog = program_from_json(serde_json::json!({
             "top": "VecTop",
@@ -2950,6 +2968,10 @@ mod tests {
     }
 
     #[test]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "integration test with many assertions"
+    )]
     fn test_generate_rtl_top_instantiates_control_s_axi() {
         let prog = program_from_json(serde_json::json!({
             "top": "top",

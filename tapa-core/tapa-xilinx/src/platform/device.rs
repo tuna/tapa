@@ -6,9 +6,11 @@
 //! `xd:platformInfo` node, following the `xd:` namespace used by the
 //! Xilinx tooling.
 
-use std::io::Read;
 use camino::Utf8PathBuf;
+use quick_xml::events::Event;
+use quick_xml::Reader;
 use serde::{Deserialize, Serialize};
+use std::io::Read;
 
 use crate::error::{Result, XilinxError};
 
@@ -18,68 +20,96 @@ pub struct DeviceInfo {
     pub clock_period: String,
 }
 
-#[derive(Debug, Deserialize)]
-struct HpfmXml {
-    #[serde(alias = "platformInfo", alias = "xd:platformInfo")]
-    platform_info: PlatformInfo,
+/// Local-name helper: strips any namespace prefix.
+fn local_name(qname: &str) -> &str {
+    qname.rsplit_once(':').map_or(qname, |(_, n)| n)
 }
 
-#[derive(Debug, Deserialize)]
-struct PlatformInfo {
-    #[serde(alias = "deviceInfo", alias = "xd:deviceInfo")]
-    device_info: DeviceInfoNode,
-    #[serde(alias = "systemClocks", alias = "xd:systemClocks")]
-    system_clocks: SystemClocks,
-}
-
-#[derive(Debug, Deserialize)]
-struct DeviceInfoNode {
-    #[serde(rename = "@name")]
-    name: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct SystemClocks {
-    #[serde(alias = "clock", alias = "xd:clock", default)]
-    clock: Vec<Clock>,
-}
-
-#[derive(Debug, Deserialize)]
-struct Clock {
-    #[serde(rename = "@id")]
-    id: String,
-    #[serde(rename = "@period")]
-    period: String,
+/// Extract an attribute value by its local name.
+fn attr_value(e: &quick_xml::events::BytesStart<'_>, name: &str) -> Result<Option<String>> {
+    for attr in e.attributes() {
+        let attr = attr.map_err(|err| XilinxError::HlsReportParse(err.to_string()))?;
+        let key = std::str::from_utf8(attr.key.as_ref()).unwrap_or("");
+        if local_name(key) == name {
+            let val = attr.unescape_value().map_err(XilinxError::Xml)?.to_string();
+            return Ok(Some(val));
+        }
+    }
+    Ok(None)
 }
 
 /// Parse the `.hpfm` XML document body (namespace-aware).
 ///
-/// Accepts any namespace prefix bound to
-/// `http://www.xilinx.com/xd` (keys off an `xd:` prefix but the
-/// underlying `ElementTree.find` call is namespace-URI driven).
+/// Scans for `platformInfo` / `xd:platformInfo` and extracts
+/// `deviceInfo@name` and the first `clock@period` where `clock@id == "0"`.
+/// This is resilient to different nesting depths (e.g. root `platform`
+/// vs root `component`).
 pub fn parse_hpfm_xml(xml: &[u8]) -> Result<DeviceInfo> {
-    let parsed: HpfmXml = quick_xml::de::from_reader(xml).map_err(|e| {
-        XilinxError::DeviceConfig {
-            path: Utf8PathBuf::new(),
-            detail: format!("cannot parse hpfm xml: {e}"),
-        }
-    })?;
+    let mut reader = Reader::from_reader(xml);
+    reader.config_mut().trim_text(true);
 
-    let clock = parsed
-        .platform_info
-        .system_clocks
-        .clock
-        .into_iter()
-        .find(|c| c.id == "0")
-        .ok_or_else(|| XilinxError::DeviceConfig {
+    let mut buf = Vec::new();
+    let mut part_num: Option<String> = None;
+    let mut clock_period: Option<String> = None;
+    let mut in_platform_info = false;
+
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Err(e) => {
+                return Err(XilinxError::DeviceConfig {
+                    path: Utf8PathBuf::new(),
+                    detail: format!("hpfm xml parse error: {e}"),
+                });
+            }
+            Ok(Event::Eof) => break,
+            Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e)) => {
+                let name_bytes = e.name().as_ref().to_vec();
+                let qname = String::from_utf8_lossy(&name_bytes);
+                let name = local_name(&qname);
+                if name == "platformInfo" {
+                    in_platform_info = true;
+
+                } else if in_platform_info {
+                    match name {
+                        "deviceInfo" => {
+                            part_num = attr_value(e, "name")?;
+                        }
+                        "clock" => {
+                            if attr_value(e, "id")?.as_deref() == Some("0") {
+                                clock_period = attr_value(e, "period")?;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            Ok(Event::End(ref e)) => {
+                let name_bytes = e.name().as_ref().to_vec();
+                let qname = String::from_utf8_lossy(&name_bytes);
+                let name = local_name(&qname);
+                if name == "platformInfo" {
+                    in_platform_info = false;
+                }
+            }
+            Ok(_) => {}
+        }
+        buf.clear();
+    }
+
+    match (part_num, clock_period) {
+        (Some(part_num), Some(clock_period)) => Ok(DeviceInfo {
+            part_num,
+            clock_period,
+        }),
+        (None, _) => Err(XilinxError::DeviceConfig {
+            path: Utf8PathBuf::new(),
+            detail: "cannot find part number in platform".into(),
+        }),
+        (_, None) => Err(XilinxError::DeviceConfig {
             path: Utf8PathBuf::new(),
             detail: "cannot find clock period in platform".into(),
-        })?;
-
-    Ok(DeviceInfo {
-        part_num: parsed.platform_info.device_info.name,
-        clock_period: clock.period,
-    })
+        }),
+    }
 }
 
 /// Parse an `.xpfm`-adjacent ZIP (`.xsa` / `.dsa`) that holds one
@@ -129,11 +159,11 @@ pub fn parse_device_info(
     let entries = std::fs::read_dir(&hw).map_err(|_| XilinxError::PlatformNotFound(hw.clone()))?;
     let archive_path = entries
         .filter_map(|e| e.ok())
-        .map(|e| Utf8PathBuf::from_path_buf(e.path()).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())))
-        .find(|p| {
-            p.extension()
-                .is_some_and(|x| x == "xsa" || x == "dsa")
+        .map(|e| {
+            Utf8PathBuf::from_path_buf(e.path())
+                .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()))
         })
+        .find(|p| p.extension().is_some_and(|x| x == "xsa" || x == "dsa"))
         .ok_or_else(|| XilinxError::PlatformNotFound(hw.clone()))?;
 
     let bytes = std::fs::read(&archive_path)?;
@@ -242,8 +272,8 @@ mod tests {
 
     #[test]
     fn parse_device_info_nonexistent_path_is_typed_error() {
-        let err =
-            parse_device_info(&Utf8PathBuf::from("/definitely/not/a/platform"), None, None).unwrap_err();
+        let err = parse_device_info(&Utf8PathBuf::from("/definitely/not/a/platform"), None, None)
+            .unwrap_err();
         assert!(matches!(err, XilinxError::PlatformNotFound(_)));
     }
 }

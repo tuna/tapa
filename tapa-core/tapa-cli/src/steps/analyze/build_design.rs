@@ -44,18 +44,18 @@ pub(super) fn is_top_leaf(graph: &Graph, top: &str) -> bool {
 /// Project the tapacc graph dict into a typed [`Design`] suitable for
 /// `<work_dir>/design.json`. Mirrors the `Task.to_topology_dict`
 /// projection, but drops `vendor` and other tapacc-only keys.
-pub(super) fn build_design(top: &str, target: &str, graph: &Graph) -> Result<Design> {
+pub(super) fn build_design(top: &str, target: &str, graph: &Graph) -> Design {
     let mut topology: IndexMap<String, TaskTopology> = IndexMap::new();
     for (name, task) in &graph.tasks {
         topology.insert(name.clone(), task_to_topology(name, task));
     }
 
-    Ok(Design {
+    Design {
         top: top.to_string(),
         target: target.to_string(),
         tasks: topology,
         slot_task_name_to_fp_region: None,
-    })
+    }
 }
 
 fn task_to_topology(name: &str, task: &tapa_task_graph::TaskDefinition) -> TaskTopology {
@@ -168,7 +168,8 @@ mod tests {
                     ]
                 }
             }
-        })).expect("valid graph");
+        }))
+        .expect("valid graph");
 
         let out = flatten_graph_value(&raw).expect("flatten ok");
         let top = out.tasks.get("VecAdd").expect("top survives");
@@ -207,7 +208,8 @@ mod tests {
                     "tasks": {}, "fifos": {}
                 }
             }
-        })).expect("valid graph");
+        }))
+        .expect("valid graph");
         let out = flatten_graph_value(&raw).expect("recursive flatten ok");
         let top = out.tasks.get("Outer").expect("top survives");
         assert!(

@@ -15,20 +15,23 @@
 mod common;
 
 use std::io::Read;
-use std::path::PathBuf;
 use std::sync::Arc;
 
+use camino::Utf8PathBuf;
 use tapa_xilinx::{
     emit_kernel_xml, pack_xo_without_redaction, redact_xo, DeviceInfo, KernelXmlArgs,
     KernelXmlPort, PackageXoInputs, PortCategory, RemoteToolRunner, SshMuxOptions, SshSession,
 };
 
-fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(std::path::Path::parent)
-        .expect("manifest parent")
-        .to_path_buf()
+fn repo_root() -> Utf8PathBuf {
+    Utf8PathBuf::from_path_buf(
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(std::path::Path::parent)
+            .expect("manifest parent")
+            .to_path_buf(),
+    )
+    .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()))
 }
 
 /// Per-entry metadata captured for the `.xo` redaction check:
@@ -131,16 +134,18 @@ fn live_pack_xo_roundtrips_vadd_rtl() {
     if !real_hdl.join("vadd.v").is_file() {
         eprintln!(
             "integration_pack_xo: real vadd.v fixture missing at {}; skipping",
-            real_hdl.display()
+            real_hdl.as_str()
         );
         return;
     }
 
     let tmp = tempfile::tempdir().expect("tempdir");
-    let hdl_dir = tmp.path().join("hdl");
+    let hdl_dir = Utf8PathBuf::from_path_buf(tmp.path().join("hdl"))
+        .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
     std::fs::create_dir_all(&hdl_dir).expect("mkdir hdl");
     std::fs::copy(real_hdl.join("vadd.v"), hdl_dir.join("vadd.v")).expect("stage HDL fixture");
-    let xo_out = tmp.path().join("vadd.xo");
+    let xo_out = Utf8PathBuf::from_path_buf(tmp.path().join("vadd.xo"))
+        .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
     let inputs = PackageXoInputs::builder()
         .top_name("vadd".into())
         .hdl_dir(hdl_dir)
@@ -165,16 +170,18 @@ fn live_pack_xo_roundtrips_vadd_rtl() {
     assert!(
         produced.is_file(),
         "pack_xo returned {} but the file is missing",
-        produced.display()
+        produced.as_str()
     );
 
-    let rust_xo = tmp.path().join("rust.xo");
+    let rust_xo = Utf8PathBuf::from_path_buf(tmp.path().join("rust.xo"))
+        .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
     std::fs::copy(&produced, &rust_xo).expect("copy to rust side");
 
     redact_xo(&rust_xo).expect("rust redact_xo must succeed");
-    let once_inventory = zip_inventory(&std::fs::read(&rust_xo).expect("read rust.xo"));
+    let once_inventory =
+        zip_inventory(&std::fs::read(rust_xo.as_std_path()).expect("read rust.xo"));
     redact_xo(&rust_xo).expect("rust redact_xo must be idempotent");
-    let rust_archive = std::fs::read(&rust_xo).expect("read rust.xo");
+    let rust_archive = std::fs::read(rust_xo.as_std_path()).expect("read rust.xo");
     assert_eq!(
         once_inventory,
         zip_inventory(&rust_archive),

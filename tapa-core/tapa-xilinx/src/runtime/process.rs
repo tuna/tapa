@@ -150,7 +150,7 @@ impl ToolRunner for LocalToolRunner {
                         nix::unistd::Pid::from_raw(0),
                         nix::unistd::Pid::from_raw(0),
                     )
-                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+                    .map_err(std::io::Error::other)
                 });
             }
         }
@@ -190,8 +190,9 @@ impl ToolRunner for LocalToolRunner {
             #[cfg(unix)]
             {
                 let pid = child.id();
-                let pgid = nix::unistd::Pid::from_raw(pid as i32);
-                let _ = nix::sys::signal::killpg(pgid, nix::sys::signal::Signal::SIGKILL);
+                let process_group_id = nix::unistd::Pid::from_raw(pid.cast_signed());
+                let _ =
+                    nix::sys::signal::killpg(process_group_id, nix::sys::signal::Signal::SIGKILL);
             }
             #[cfg(not(unix))]
             {
@@ -406,7 +407,8 @@ mod tests {
     #[test]
     fn mock_writes_attached_downloads() {
         let tmp = tempfile::tempdir().unwrap();
-        let dl = Utf8PathBuf::from_path_buf(tmp.path().join("nested").join("out.txt")).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
+        let dl = Utf8PathBuf::from_path_buf(tmp.path().join("nested").join("out.txt"))
+            .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
         let runner = MockToolRunner::new();
         runner.push_ok("vitis_hls", ToolOutput::default());
         runner.attach_download(&dl, b"hello".to_vec());
@@ -524,6 +526,9 @@ mod tests {
         let err = runner.run(&inv).unwrap_err();
         let elapsed = start.elapsed();
         assert!(matches!(err, XilinxError::ToolTimeout { program, .. } if program == "/bin/sh"));
-        assert!(elapsed < Duration::from_secs(2), "timeout should fire quickly, took {elapsed:?}");
+        assert!(
+            elapsed < Duration::from_secs(2),
+            "timeout should fire quickly, took {elapsed:?}"
+        );
     }
 }

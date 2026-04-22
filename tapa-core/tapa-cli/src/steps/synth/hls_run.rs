@@ -28,8 +28,10 @@ impl TaskHlsLayout {
     pub fn new(work_dir: &Path, task_name: &str) -> Self {
         let base = work_dir.join("hls").join(task_name);
         Self {
-            reports_dir: Utf8PathBuf::from_path_buf(base.join("report")).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
-            hdl_dir: Utf8PathBuf::from_path_buf(base.join("verilog")).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
+            reports_dir: Utf8PathBuf::from_path_buf(base.join("report"))
+                .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
+            hdl_dir: Utf8PathBuf::from_path_buf(base.join("verilog"))
+                .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
         }
     }
 }
@@ -77,7 +79,8 @@ pub fn run_hls_for_leaves(
         let layout = TaskHlsLayout::new(work_dir, task_name);
 
         let cpp_source = cpp_path_for(work_dir, task_name);
-        let cpp_source = Utf8PathBuf::from_path_buf(cpp_source).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
+        let cpp_source = Utf8PathBuf::from_path_buf(cpp_source)
+            .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
         if !cpp_source.is_file() {
             return Err(CliError::InvalidArg(format!(
                 "missing extracted C++ source `{}` for task `{task_name}`",
@@ -147,8 +150,9 @@ pub fn run_hls_for_leaves(
         // attempt. Each transient `Pre-synthesis failed.` retry starts
         // from a clean project tree.
         let work = if options.keep_work_dir {
-            let persistent = Utf8PathBuf::from_path_buf(work_dir.join("hls").join(task_name).join("project"))
-                .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
+            let persistent =
+                Utf8PathBuf::from_path_buf(work_dir.join("hls").join(task_name).join("project"))
+                    .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
             // Clear any leftover from a previous run so the first
             // attempt doesn't trip Vitis's project-already-open logic.
             if persistent.exists() {
@@ -284,7 +288,10 @@ fn list_verilog_files(dir: &camino::Utf8Path) -> Result<Vec<Utf8PathBuf>> {
         let ent = ent?;
         let p = ent.path();
         if p.extension().and_then(|s| s.to_str()) == Some("v") {
-            out.push(Utf8PathBuf::from_path_buf(p).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())));
+            out.push(
+                Utf8PathBuf::from_path_buf(p)
+                    .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
+            );
         }
     }
     out.sort();

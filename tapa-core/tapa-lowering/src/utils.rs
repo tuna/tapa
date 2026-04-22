@@ -355,7 +355,11 @@ fn tokens_to_expression(tokens: &[tapa_rtl::expression::Token]) -> Expression {
 /// Attempt to evaluate a simple arithmetic expression on integer
 /// literals. Delegates to `evalexpr` for safe evaluation.
 fn try_evaluate_literal_expr(tokens: &[tapa_graphir::Token]) -> Option<i64> {
-    let expr = tokens.iter().map(|t| t.repr.as_str()).collect::<Vec<_>>().join(" ");
+    let expr = tokens
+        .iter()
+        .map(|t| t.repr.as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
     match evalexpr::eval(&expr) {
         Ok(evalexpr::Value::Int(n)) => Some(n),
         _ => None,

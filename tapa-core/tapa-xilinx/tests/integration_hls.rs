@@ -17,10 +17,11 @@ use tapa_xilinx::{
     ToolInvocation, ToolRunner,
 };
 
-fn write_standalone_kernel(dir: &std::path::Path) -> std::path::PathBuf {
+fn write_standalone_kernel(dir: &std::path::Path) -> camino::Utf8PathBuf {
     // Tiny C++ kernel HLS synthesises cleanly without any TAPA or
     // vendor headers. Pinned top name is `vadd`.
-    let src = dir.join("vadd.cpp");
+    let src = camino::Utf8PathBuf::from_path_buf(dir.join("vadd.cpp"))
+        .unwrap_or_else(|p| camino::Utf8PathBuf::from(p.to_string_lossy().into_owned()));
     std::fs::write(
         &src,
         b"void vadd(const int* a, const int* b, int* c, int n) {\n\
@@ -42,8 +43,10 @@ fn write_standalone_kernel(dir: &std::path::Path) -> std::path::PathBuf {
 fn run_vadd_hls<R: ToolRunner>(runner: &R) {
     let tmp = tempfile::tempdir().expect("tempdir");
     let src = write_standalone_kernel(tmp.path());
-    let reports = tmp.path().join("reports");
-    let hdl = tmp.path().join("hdl");
+    let reports = camino::Utf8PathBuf::from_path_buf(tmp.path().join("reports"))
+        .unwrap_or_else(|p| camino::Utf8PathBuf::from(p.to_string_lossy().into_owned()));
+    let hdl = camino::Utf8PathBuf::from_path_buf(tmp.path().join("hdl"))
+        .unwrap_or_else(|p| camino::Utf8PathBuf::from(p.to_string_lossy().into_owned()));
     let job = HlsJob::builder()
         .task_name("vadd".into())
         .cpp_source(src)
@@ -79,15 +82,15 @@ fn run_vadd_hls<R: ToolRunner>(runner: &R) {
     assert!(
         reports.is_dir(),
         "reports_out_dir missing: {}",
-        reports.display()
+        reports.as_str()
     );
-    assert!(hdl.is_dir(), "hdl_out_dir missing: {}", hdl.display());
+    assert!(hdl.is_dir(), "hdl_out_dir missing: {}", hdl.as_str());
     let csynth_xml_canonical = reports.join("vadd_csynth.xml");
     let csynth_xml_current = reports.join("vadd.csynth.xml");
     assert!(
         csynth_xml_canonical.is_file() || csynth_xml_current.is_file(),
         "csynth.xml not staged under {}",
-        reports.display()
+        reports.as_str()
     );
     let has_verilog = std::fs::read_dir(&hdl)
         .expect("read hdl_out_dir")
@@ -98,16 +101,19 @@ fn run_vadd_hls<R: ToolRunner>(runner: &R) {
                 .and_then(|e| e.to_str())
                 .is_some_and(|e| e == "v" || e == "sv" || e == "vhd")
         });
-    assert!(has_verilog, "no HDL files under {}", hdl.display());
+    assert!(has_verilog, "no HDL files under {}", hdl.as_str());
 }
 
-fn repo_root() -> std::path::PathBuf {
+fn repo_root() -> camino::Utf8PathBuf {
     // tapa-core/tapa-xilinx/tests/ → …/tapa (repo root)
-    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(std::path::Path::parent)
-        .expect("manifest parent")
-        .to_path_buf()
+    camino::Utf8PathBuf::from_path_buf(
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(std::path::Path::parent)
+            .expect("manifest parent")
+            .to_path_buf(),
+    )
+    .unwrap_or_else(|p| camino::Utf8PathBuf::from(p.to_string_lossy().into_owned()))
 }
 
 #[test]
@@ -144,7 +150,7 @@ fn vitis_hls_round_trips_shared_vadd_fixture() {
     assert!(
         tapa_lib.join("tapa.h").is_file(),
         "TAPA_SHARED_VADD_HLS=1 set but tapa-lib/tapa.h missing at {}",
-        tapa_lib.display()
+        tapa_lib.as_str()
     );
     let vadd_cpp = repo_root()
         .join("tests")
@@ -154,17 +160,19 @@ fn vitis_hls_round_trips_shared_vadd_fixture() {
     assert!(
         vadd_cpp.is_file(),
         "TAPA_SHARED_VADD_HLS=1 set but {} missing",
-        vadd_cpp.display()
+        vadd_cpp.as_str()
     );
     let tmp = tempfile::tempdir().expect("tempdir");
-    let reports = tmp.path().join("reports");
-    let hdl = tmp.path().join("hdl");
+    let reports = camino::Utf8PathBuf::from_path_buf(tmp.path().join("reports"))
+        .unwrap_or_else(|p| camino::Utf8PathBuf::from(p.to_string_lossy().into_owned()));
+    let hdl = camino::Utf8PathBuf::from_path_buf(tmp.path().join("hdl"))
+        .unwrap_or_else(|p| camino::Utf8PathBuf::from(p.to_string_lossy().into_owned()));
     let job = HlsJob::builder()
         .task_name("vadd".into())
         .cpp_source(vadd_cpp)
         .cflags(vec![
             "-std=c++17".into(),
-            format!("-I{}", tapa_lib.display()),
+            format!("-I{}", tapa_lib.as_str()),
             "-DAP_INT_MAX_W=4096".into(),
         ])
         .target_part("xcu250-figd2104-2L-e".into())
@@ -196,8 +204,8 @@ fn vitis_hls_round_trips_shared_vadd_fixture() {
     assert!(
         reports.is_dir() && hdl.is_dir(),
         "output dirs missing: {} / {}",
-        reports.display(),
-        hdl.display()
+        reports.as_str(),
+        hdl.as_str()
     );
     // Load the committed golden manifest and compare the live
     // `HlsOutput` to every field it names. The manifest captures
@@ -215,7 +223,7 @@ fn vitis_hls_round_trips_shared_vadd_fixture() {
         .join("real")
         .join("vadd_shared_hls_golden.json");
     let golden_text = std::fs::read_to_string(&golden_path)
-        .unwrap_or_else(|e| panic!("read golden {}: {e}", golden_path.display()));
+        .unwrap_or_else(|e| panic!("read golden {}: {e}", golden_path.as_str()));
     let golden: serde_json::Value =
         serde_json::from_str(&golden_text).expect("golden manifest must be valid JSON");
     let expect_csynth = &golden["csynth"];
@@ -260,7 +268,7 @@ fn vitis_hls_round_trips_shared_vadd_fixture() {
     let hdl_basenames: std::collections::BTreeSet<String> = out
         .verilog_files
         .iter()
-        .filter_map(|p| p.file_name().and_then(|n| n.to_str()).map(String::from))
+        .filter_map(|p| p.file_name().map(String::from))
         .collect();
     let expected_hdl: std::collections::BTreeSet<String> = golden["hdl_module_basenames"]
         .as_array()
@@ -276,7 +284,7 @@ fn vitis_hls_round_trips_shared_vadd_fixture() {
     let report_basenames: std::collections::BTreeSet<String> = out
         .report_paths
         .iter()
-        .filter_map(|p| p.file_name().and_then(|n| n.to_str()).map(String::from))
+        .filter_map(|p| p.file_name().map(String::from))
         .collect();
     let expected_reports: std::collections::BTreeSet<String> = golden["per_task_report_basenames"]
         .as_array()
@@ -300,10 +308,10 @@ fn vitis_hls_round_trips_shared_vadd_fixture() {
         let path = out
             .report_paths
             .iter()
-            .find(|p| p.file_name().and_then(|n| n.to_str()) == Some(basename.as_str()))
+            .find(|p| p.file_name() == Some(basename.as_str()))
             .unwrap_or_else(|| panic!("report {basename} missing from staged outputs"));
-        let body = std::fs::read_to_string(path)
-            .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        let body =
+            std::fs::read_to_string(path).unwrap_or_else(|e| panic!("read {}: {e}", path.as_str()));
         for marker in markers.as_array().expect("markers array") {
             let needle = marker.as_str().expect("marker string");
             assert!(
@@ -322,10 +330,10 @@ fn vitis_hls_round_trips_shared_vadd_fixture() {
         let path = out
             .verilog_files
             .iter()
-            .find(|p| p.file_name().and_then(|n| n.to_str()) == Some(basename.as_str()))
+            .find(|p| p.file_name() == Some(basename.as_str()))
             .unwrap_or_else(|| panic!("HDL {basename} missing from staged outputs"));
-        let body = std::fs::read_to_string(path)
-            .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        let body =
+            std::fs::read_to_string(path).unwrap_or_else(|e| panic!("read {}: {e}", path.as_str()));
         for marker in markers.as_array().expect("markers array") {
             let needle = marker.as_str().expect("marker string");
             assert!(

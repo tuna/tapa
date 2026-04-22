@@ -142,9 +142,14 @@ impl RemoteToolRunner {
             if p.is_absolute() {
                 p.clone()
             } else {
-                let joined = std::env::current_dir()
-                    .map(|cwd| Utf8PathBuf::from_path_buf(cwd).unwrap_or_else(|_| Utf8PathBuf::from(".")).join(p))
-                    .unwrap_or_else(|_| Utf8PathBuf::from(".").join(p));
+                let joined = std::env::current_dir().map_or_else(
+                    |_| Utf8PathBuf::from(".").join(p),
+                    |cwd| {
+                        Utf8PathBuf::from_path_buf(cwd)
+                            .unwrap_or_else(|_| Utf8PathBuf::from("."))
+                            .join(p)
+                    },
+                );
                 std::fs::canonicalize(&joined)
                     .map(|p| Utf8PathBuf::from_path_buf(p).unwrap_or_else(|_| joined.clone()))
                     .unwrap_or(joined)
@@ -295,7 +300,11 @@ impl ToolRunner for RemoteToolRunner {
         )
     }
 
-    fn harvest(&self, _relative_from_cwd: &std::path::Path, _local_root: &std::path::Path) -> Result<()> {
+    fn harvest(
+        &self,
+        _relative_from_cwd: &std::path::Path,
+        _local_root: &std::path::Path,
+    ) -> Result<()> {
         // `run_once` already pulls every caller-requested absolute-
         // local download back into place, so this is a no-op on the
         // remote runner. Kept for interface symmetry.

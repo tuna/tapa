@@ -45,11 +45,8 @@ use super::cpp_extract::cpp_path_for;
 /// the TCL itself are escaped as `{{...}}` in the source.
 fn render_report_util_tcl(part_num: &str, synth_args: &str, report_util_args: &str) -> String {
     let mut env = minijinja::Environment::new();
-    env.add_template(
-        "report_util",
-        include_str!("templates/report_util.tcl.j2"),
-    )
-    .expect("template parses");
+    env.add_template("report_util", include_str!("templates/report_util.tcl.j2"))
+        .expect("template parses");
     env.get_template("report_util")
         .expect("template exists")
         .render(minijinja::context! {
@@ -168,14 +165,19 @@ fn run_one(
     if let Some(parent) = rpt_path.parent() {
         fs::create_dir_all(parent)?;
     }
-    let abs_hdl = Utf8PathBuf::from_path_buf(fs::canonicalize(rtl_dir).unwrap_or_else(|_| rtl_dir.to_path_buf()))
-        .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
+    let abs_hdl = Utf8PathBuf::from_path_buf(
+        fs::canonicalize(rtl_dir).unwrap_or_else(|_| rtl_dir.to_path_buf()),
+    )
+    .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
     let abs_rpt = if rpt_path.is_absolute() {
-        Utf8PathBuf::from_path_buf(rpt_path.to_path_buf()).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()))
+        Utf8PathBuf::from_path_buf(rpt_path.to_path_buf())
+            .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()))
     } else {
         match std::env::current_dir() {
-            Ok(cwd) => Utf8PathBuf::from_path_buf(cwd.join(rpt_path)).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
-            Err(_) => Utf8PathBuf::from_path_buf(rpt_path.to_path_buf()).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
+            Ok(cwd) => Utf8PathBuf::from_path_buf(cwd.join(rpt_path))
+                .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
+            Err(_) => Utf8PathBuf::from_path_buf(rpt_path.to_path_buf())
+                .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
         }
     };
 

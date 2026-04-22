@@ -40,12 +40,11 @@ impl<'de> Deserialize<'de> for ArgCategory {
 impl ArgCategory {
     #[must_use]
     pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Mmap => "mmap",
-            _ => {
-                let s: &'static str = self.into();
-                s
-            }
+        if self == Self::Mmap {
+            "mmap"
+        } else {
+            let s: &'static str = self.into();
+            s
         }
     }
 }

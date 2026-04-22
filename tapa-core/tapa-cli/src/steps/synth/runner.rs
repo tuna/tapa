@@ -230,12 +230,15 @@ fn walk_verilog_files(dir: &camino::Utf8Path) -> Vec<Utf8PathBuf> {
     }
     for entry in walkdir::WalkDir::new(dir)
         .into_iter()
-        .filter_map(|e| e.ok())
+        .filter_map(std::result::Result::ok)
         .filter(|e| e.file_type().is_file())
     {
         let path = entry.path();
         if path.extension().and_then(|s| s.to_str()) == Some("v") {
-            out.push(Utf8PathBuf::from_path_buf(path.to_path_buf()).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())));
+            out.push(
+                Utf8PathBuf::from_path_buf(path.to_path_buf())
+                    .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
+            );
         }
     }
     out
@@ -383,6 +386,10 @@ mod tests {
     }
 
     #[test]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "integration test with many assertions"
+    )]
     fn native_synth_writes_full_pipeline_artifacts() {
         let dir = tempfile::tempdir().expect("tempdir");
         let work = dir.path();

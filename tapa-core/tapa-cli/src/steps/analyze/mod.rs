@@ -196,7 +196,7 @@ fn run_native(args: &AnalyzeArgs, ctx: &CliContext) -> Result<()> {
     let mut settings = settings_io::Settings::new();
     settings.insert("target".to_string(), json!(target_str));
     settings_io::store_settings(work_dir, &settings)?;
-    let design = build_design(&args.top, target_str, &graph)?;
+    let design = build_design(&args.top, target_str, &graph);
     design_io::store_design(work_dir, &design)?;
 
     // Cache state for downstream chained steps in this process.

@@ -249,14 +249,10 @@ pub fn parse_module(source: &str) -> Result<VerilogModule, ParseError> {
     // declarations that error-recovery would otherwise swallow).
     if let Some(issue) = tree_sitter::first_parse_error(source) {
         return Err(ParseError::ParseFailed {
-            module: partial_name.clone(),
+            module: partial_name,
             message: match issue {
-                tree_sitter::ParseIssue::MalformedPort => {
-                    "malformed port declaration".to_string()
-                }
-                tree_sitter::ParseIssue::MalformedParameter => {
-                    "malformed parameter".to_string()
-                }
+                tree_sitter::ParseIssue::MalformedPort => "malformed port declaration".to_string(),
+                tree_sitter::ParseIssue::MalformedParameter => "malformed parameter".to_string(),
             },
         });
     }
@@ -617,13 +613,13 @@ endmodule
 
     #[test]
     fn parse_ansi_ports_with_pragma() {
-        let src = r#"
+        let src = "
 module AnsiPragma (
   (* RS_CLK *) input ap_clk,
   output ap_done
 );
 endmodule
-"#;
+";
         let m = parse_module(src).unwrap();
         let clk = m.ports.iter().find(|p| p.name == "ap_clk").unwrap();
         assert!(clk.pragma.is_some());
@@ -668,11 +664,11 @@ endmodule
 
     #[test]
     fn parse_signal_with_balanced_assignment() {
-        let src = r#"
+        let src = "
 module SigAssign;
   wire [31:0] w = {1'b1, 2'b10};
 endmodule
-"#;
+";
         let m = parse_module(src).unwrap();
         assert_eq!(m.signals.len(), 1);
         assert_eq!(m.signals[0].name, "w");
@@ -697,7 +693,7 @@ endmodule
 
     #[test]
     fn extract_instances_skips_declarations() {
-        let src = r#"
+        let src = "
 module top;
   wire w;
   // comment
@@ -707,7 +703,7 @@ module top;
   );
   assign w = 1;
 endmodule
-"#;
+";
         let insts = extract_instance_names(src);
         assert_eq!(insts.len(), 1);
         assert_eq!(insts[0].0, "child");
@@ -728,14 +724,14 @@ endmodule
 
     #[test]
     fn parse_parameter_with_nested_parens() {
-        let src = r#"
+        let src = "
 module NestParam #(
   parameter DEPTH = (1 + (2))
 ) (
   input a
 );
 endmodule
-"#;
+";
         let m = parse_module(src).unwrap();
         assert_eq!(m.parameters.len(), 1);
         assert_eq!(m.parameters[0].name, "DEPTH");

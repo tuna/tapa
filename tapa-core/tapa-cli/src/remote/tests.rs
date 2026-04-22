@@ -311,9 +311,15 @@ fn precedence_taparc_then_cli_overrides() {
     assert_eq!(cfg.host, "cli-host");
     assert_eq!(cfg.user, "cli-user");
     assert_eq!(cfg.port, 3333);
-    assert_eq!(cfg.key_file.as_deref(), Some(camino::Utf8Path::new("/cli/key")));
+    assert_eq!(
+        cfg.key_file.as_deref(),
+        Some(camino::Utf8Path::new("/cli/key"))
+    );
     assert_eq!(cfg.xilinx_settings.as_deref(), Some("/cli/settings.sh"));
-    assert_eq!(cfg.ssh_control_dir.as_deref(), Some(camino::Utf8Path::new("/cli/ctl")));
+    assert_eq!(
+        cfg.ssh_control_dir.as_deref(),
+        Some(camino::Utf8Path::new("/cli/ctl"))
+    );
     assert_eq!(cfg.ssh_control_persist, "5m");
     assert!(!cfg.ssh_multiplex);
 }

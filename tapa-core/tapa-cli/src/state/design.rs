@@ -30,6 +30,10 @@ pub fn load_design(work_dir: &Path) -> Result<Design> {
 
 /// Persist `design` to `<work_dir>/design.json` using the
 /// compatible JSON formatter.
+#[allow(
+    clippy::semicolon_outside_block,
+    reason = "scoping block for BufWriter drop"
+)]
 pub fn store_design(work_dir: &Path, design: &Design) -> Result<()> {
     fs_err::create_dir_all(work_dir)?;
     let path = path_in(work_dir);

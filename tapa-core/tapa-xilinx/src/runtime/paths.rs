@@ -172,7 +172,10 @@ fn search_roots() -> Vec<Utf8PathBuf> {
     if let Ok(exe) = std::env::current_exe() {
         let mut p = exe.as_path();
         while let Some(parent) = p.parent() {
-            roots.push(Utf8PathBuf::from_path_buf(parent.to_path_buf()).unwrap_or_else(|_| Utf8PathBuf::from(".")));
+            roots.push(
+                Utf8PathBuf::from_path_buf(parent.to_path_buf())
+                    .unwrap_or_else(|_| Utf8PathBuf::from(".")),
+            );
             p = parent;
         }
     }
@@ -181,7 +184,10 @@ fn search_roots() -> Vec<Utf8PathBuf> {
     if let Ok(cwd) = std::env::current_dir() {
         let mut p = cwd.as_path();
         loop {
-            roots.push(Utf8PathBuf::from_path_buf(p.to_path_buf()).unwrap_or_else(|_| Utf8PathBuf::from(".")));
+            roots.push(
+                Utf8PathBuf::from_path_buf(p.to_path_buf())
+                    .unwrap_or_else(|_| Utf8PathBuf::from(".")),
+            );
             match p.parent() {
                 Some(next) => p = next,
                 None => break,
@@ -482,6 +488,9 @@ mod tests {
         std::fs::create_dir_all(tmp.path().join("include")).unwrap();
         let _g = EnvGuard::set("XILINX_HLS", tmp.path());
         let _g2 = EnvGuard::unset("XILINX_VITIS");
-        assert_eq!(get_xilinx_hls().unwrap(), Utf8PathBuf::from_path_buf(tmp.path().to_path_buf()).unwrap());
+        assert_eq!(
+            get_xilinx_hls().unwrap(),
+            Utf8PathBuf::from_path_buf(tmp.path().to_path_buf()).unwrap()
+        );
     }
 }
