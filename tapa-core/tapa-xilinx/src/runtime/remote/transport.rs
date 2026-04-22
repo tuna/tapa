@@ -6,7 +6,7 @@
 //! rewriting, retry) without the batched-tar mechanics mixed in.
 
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 use camino::Utf8PathBuf;
 
@@ -73,11 +73,8 @@ pub(super) fn upload_batch(
         "mkdir -p {rf} && tar -xzf - -C {rf} --no-same-owner",
         rf = shell_quote(&rootfs),
     );
-    let mut args = session.build_ssh_args();
-    args.push(session.ssh_target());
-    args.push(remote_cmd);
-    let mut ssh_child = Command::new("ssh")
-        .args(&args)
+    let mut ssh_child = session
+        .exec_cmd(&remote_cmd)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -163,11 +160,8 @@ pub(super) fn download_tree(session: &SshSession, remote_dir: &str, dest: &Path)
     std::fs::create_dir_all(dest)
         .map_err(|e| XilinxError::RemoteTransfer(format!("mkdir {}: {e}", dest.display())))?;
     let remote_cmd = format!("tar -czf - -C {} .", shell_quote(remote_dir));
-    let mut args = session.build_ssh_args();
-    args.push(session.ssh_target());
-    args.push(remote_cmd);
-    let mut ssh_child = Command::new("ssh")
-        .args(&args)
+    let mut ssh_child = session
+        .exec_cmd(&remote_cmd)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -214,11 +208,9 @@ pub(super) fn download_tree(session: &SshSession, remote_dir: &str, dest: &Path)
 /// stale rootfs trees. Errors are ignored — cleanup failures must
 /// not mask the real tool output or swallow a retry trigger.
 pub(super) fn cleanup_session(session: &SshSession, session_dir: &str) {
-    let mut args = session.build_ssh_args();
-    args.push(session.ssh_target());
-    args.push(format!("rm -rf {}", shell_quote(session_dir)));
-    let _ = Command::new("ssh")
-        .args(&args)
+    let remote_cmd = format!("rm -rf {}", shell_quote(session_dir));
+    let _ = session
+        .exec_cmd(&remote_cmd)
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status();

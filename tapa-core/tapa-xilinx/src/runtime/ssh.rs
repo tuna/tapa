@@ -7,12 +7,18 @@
 //! probe via `ssh -O check`, teardown via `ssh -O exit` plus on-disk
 //! socket unlink, and auto-restart on transient mux classifications.
 
+use std::process::{Command, Stdio};
 use std::sync::Mutex;
 
 use camino::Utf8PathBuf;
 
 use crate::error::{Result, XilinxError};
 use crate::runtime::config::RemoteConfig;
+
+fn push_ssh_opt(args: &mut Vec<String>, key: &str, val: impl std::fmt::Display) {
+    args.push("-o".into());
+    args.push(format!("{key}={val}"));
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SshErrorKind {
@@ -174,39 +180,58 @@ impl SshSession {
     /// the implementation, including the
     /// `ControlPath=<dir>/cm-%C` entry when multiplexing is enabled.
     pub fn build_ssh_args(&self) -> Vec<String> {
-        let mut args = vec![
-            "-o".into(),
-            "BatchMode=yes".into(),
-            "-o".into(),
-            "StrictHostKeyChecking=accept-new".into(),
-            "-o".into(),
-            "ConnectTimeout=10".into(),
-            "-p".into(),
-            self.cfg.port.to_string(),
-        ];
+        let mut args = Vec::new();
+        push_ssh_opt(&mut args, "BatchMode", "yes");
+        push_ssh_opt(&mut args, "StrictHostKeyChecking", "accept-new");
+        push_ssh_opt(&mut args, "ConnectTimeout", "10");
+        args.push("-p".into());
+        args.push(self.cfg.port.to_string());
         if let Some(key) = self.cfg.key_file.as_ref() {
             args.push("-i".into());
             args.push(key.as_str().to_string());
         }
         if self.cfg.ssh_multiplex {
             let control_path = self.control_dir().join("cm-%C");
-            args.extend([
-                "-o".into(),
-                "ControlMaster=auto".into(),
-                "-o".into(),
-                format!("ControlPath={}", control_path),
-                "-o".into(),
-                format!("ControlPersist={}", self.cfg.ssh_control_persist),
-                "-o".into(),
-                format!("ServerAliveInterval={}", self.options.server_alive_interval),
-                "-o".into(),
-                format!(
-                    "ServerAliveCountMax={}",
-                    self.options.server_alive_count_max
-                ),
-            ]);
+            push_ssh_opt(&mut args, "ControlMaster", "auto");
+            push_ssh_opt(&mut args, "ControlPath", &control_path);
+            push_ssh_opt(&mut args, "ControlPersist", &self.cfg.ssh_control_persist);
+            push_ssh_opt(&mut args, "ServerAliveInterval", self.options.server_alive_interval);
+            push_ssh_opt(&mut args, "ServerAliveCountMax", self.options.server_alive_count_max);
         }
         args
+    }
+
+    /// Build a base `ssh` [`Command`] pre-populated with the session's
+    /// connection and multiplexing arguments.
+    pub fn base_cmd(&self) -> Command {
+        let mut cmd = Command::new("ssh");
+        cmd.args(self.build_ssh_args());
+        cmd
+    }
+
+    /// Build an `ssh` command that executes `remote_cmd` on the target host.
+    pub fn exec_cmd(&self, remote_cmd: &str) -> Command {
+        let mut cmd = self.base_cmd();
+        cmd.arg(self.ssh_target());
+        cmd.arg(remote_cmd);
+        cmd
+    }
+
+    /// Build an `ssh` control command (`-O check` / `-O exit`).
+    pub fn control_cmd(&self, op: &str) -> Command {
+        let mut cmd = self.base_cmd();
+        cmd.arg("-O");
+        cmd.arg(op);
+        cmd.arg(self.ssh_target());
+        cmd
+    }
+
+    /// Build an `ssh` probe command (`ssh … true`) for establishing the mux.
+    pub fn probe_cmd(&self) -> Command {
+        let mut cmd = self.base_cmd();
+        cmd.arg(self.ssh_target());
+        cmd.arg("true");
+        cmd
     }
 
     pub fn ssh_target(&self) -> String {
@@ -241,14 +266,10 @@ impl SshSession {
         if !self.cfg.ssh_multiplex {
             return;
         }
-        let mut args = self.build_ssh_args();
-        args.push("-O".into());
-        args.push("exit".into());
-        args.push(self.ssh_target());
-        let _ = std::process::Command::new("ssh")
-            .args(&args)
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
+        let _ = self
+            .control_cmd("exit")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
             .status();
         let dir = self.control_dir();
         if let Ok(entries) = std::fs::read_dir(&dir) {
@@ -273,14 +294,9 @@ impl SshSession {
         if !self.cfg.ssh_multiplex {
             return false;
         }
-        let mut args = self.build_ssh_args();
-        args.push("-O".into());
-        args.push("check".into());
-        args.push(self.ssh_target());
-        std::process::Command::new("ssh")
-            .args(&args)
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
+        self.control_cmd("check")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
             .status()
             .map(|s| s.success())
             .unwrap_or(false)
@@ -316,11 +332,8 @@ impl SshSession {
                 });
             }
         }
-        let mut args = self.build_ssh_args();
-        args.push(self.ssh_target());
-        args.push("true".into());
-        let out = std::process::Command::new("ssh")
-            .args(&args)
+        let out = self
+            .probe_cmd()
             .output()
             .map_err(|e| XilinxError::SshConnect {
                 host: self.cfg.host.clone(),

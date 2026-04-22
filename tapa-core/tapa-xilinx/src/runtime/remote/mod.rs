@@ -44,12 +44,7 @@ impl RemoteToolRunner {
     /// Build the base `ssh <target>` command populated with the
     /// session's multiplexing args.
     fn ssh_cmd(&self, remote_cmd: &str) -> Command {
-        let mut args = self.session.build_ssh_args();
-        args.push(self.session.ssh_target());
-        args.push(remote_cmd.to_string());
-        let mut cmd = Command::new("ssh");
-        cmd.args(&args);
-        cmd
+        self.session.exec_cmd(remote_cmd)
     }
 
     fn classify_remote_failure(&self, stderr: &str) -> XilinxError {

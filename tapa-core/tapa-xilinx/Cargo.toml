@@ -10,7 +10,6 @@ directories = { workspace = true }
 flate2 = { workspace = true }
 fs-err = { workspace = true }
 nom = { workspace = true }
-openssh = { version = "0.11", default-features = false, features = ["process-mux"] }
 path-slash = { workspace = true }
 quick-xml = { workspace = true }
 regex = { workspace = true }
@@ -23,7 +22,6 @@ shellexpand = { workspace = true }
 tar = { workspace = true }
 tempfile = { workspace = true }
 thiserror = { workspace = true }
-tokio = { version = "1", features = ["rt-multi-thread"] }
 walkdir = { workspace = true }
 which = { workspace = true }
 zip = { workspace = true }

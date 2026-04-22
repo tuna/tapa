@@ -9,7 +9,7 @@
 //! `sha256(host:port:xilinx_settings)[:16]`.
 
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 use camino::Utf8PathBuf;
 
@@ -38,11 +38,9 @@ struct SshVendorFs<'a> {
 
 impl VendorRemoteFs for SshVendorFs<'_> {
     fn ssh_exec(&self, cmd: &str) -> Result<(i32, Vec<u8>, Vec<u8>)> {
-        let mut args = self.session.build_ssh_args();
-        args.push(self.session.ssh_target());
-        args.push(cmd.to_string());
-        let out = Command::new("ssh")
-            .args(&args)
+        let out = self
+            .session
+            .exec_cmd(cmd)
             .output()
             .map_err(|e| XilinxError::RemoteTransfer(format!("spawn ssh exec: {e}")))?;
         Ok((out.status.code().unwrap_or(-1), out.stdout, out.stderr))
@@ -53,11 +51,9 @@ impl VendorRemoteFs for SshVendorFs<'_> {
             XilinxError::RemoteTransfer(format!("mkdir {}: {e}", local_dest.display()))
         })?;
         let remote_cmd = format!("tar -czf - -C {} .", shell_quote(remote_path));
-        let mut args = self.session.build_ssh_args();
-        args.push(self.session.ssh_target());
-        args.push(remote_cmd);
-        let mut ssh = Command::new("ssh")
-            .args(&args)
+        let mut ssh = self
+            .session
+            .exec_cmd(&remote_cmd)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
