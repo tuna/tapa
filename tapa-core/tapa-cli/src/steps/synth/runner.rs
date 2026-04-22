@@ -30,6 +30,7 @@ use super::SynthArgs;
 
 /// Native synth: validate the flag surface, resolve the device, persist
 /// settings, then drive cpp-extract → HLS → codegen for the leaf tasks.
+#[allow(clippy::too_many_lines, reason = "orchestrator function; refactored extract would bounce values through another builder without adding clarity")]
 pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -> Result<()> {
     validate_optional_flag_combos(args)?;
 
@@ -82,6 +83,19 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
         files.sort();
         files.dedup();
         hdl_inputs.insert(task_name.clone(), files);
+
+        if let Some(task) = design.tasks.get_mut(task_name) {
+            task.clock_period.clone_from(&out.csynth.target_clock_period_ns);
+            task.self_area.clear();
+            for (k, v) in &out.csynth.area {
+                if let Ok(n) = v.parse::<i64>() {
+                    task.self_area.insert(k.clone(), serde_json::Value::from(n));
+                } else {
+                    task.self_area
+                        .insert(k.clone(), serde_json::Value::String(v.clone()));
+                }
+            }
+        }
     }
     generate_rtl_tree(&ctx.work_dir, &design, &hdl_inputs)?;
 

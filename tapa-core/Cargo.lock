@@ -1264,6 +1264,7 @@ dependencies = [
  "flate2",
  "fs-err",
  "fs2",
+ "indexmap",
  "minijinja",
  "nix",
  "nom",

@@ -35,6 +35,7 @@ mod graphir_embed;
 mod kernel_xml_ports;
 mod vitis_packaging;
 
+use custom_rtl::{apply_custom_rtl, load_templates_info};
 use vitis_packaging::pack_vitis;
 
 #[derive(Debug, Clone, Parser)]
@@ -125,6 +126,10 @@ fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, settings: &settings_io::Setti
             "RTL directory `{}` does not exist; run `tapa synth` first.",
             rtl_dir.display(),
         )));
+    }
+    if !args.custom_rtl.is_empty() {
+        let templates = load_templates_info(&ctx.work_dir)?;
+        apply_custom_rtl(&rtl_dir, &args.custom_rtl, &templates)?;
     }
     let output_path = enforce_zip_suffix(args.output.as_ref());
     if let Some(parent) = output_path.parent() {

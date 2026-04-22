@@ -8,6 +8,7 @@
 
 use std::collections::HashMap;
 
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Result, XilinxError};
@@ -18,6 +19,8 @@ pub struct CsynthReport {
     pub part: String,
     pub target_clock_period_ns: String,
     pub estimated_clock_period_ns: String,
+    #[serde(default)]
+    pub area: IndexMap<String, String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -34,6 +37,8 @@ struct CsynthXml {
     user_assignments: UserAssignments,
     #[serde(rename = "PerformanceEstimates")]
     performance_estimates: PerformanceEstimates,
+    #[serde(rename = "AreaEstimates", default)]
+    area_estimates: Option<AreaEstimates>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -62,6 +67,26 @@ struct SummaryOfTimingAnalysis {
     estimated_clock_period: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct AreaEstimates {
+    #[serde(rename = "Resources")]
+    resources: Option<Resources>,
+}
+
+#[derive(Debug, Deserialize)]
+struct Resources {
+    #[serde(rename = "BRAM_18K", default)]
+    bram_18k: Option<String>,
+    #[serde(rename = "DSP", default)]
+    dsp: Option<String>,
+    #[serde(rename = "FF", default)]
+    ff: Option<String>,
+    #[serde(rename = "LUT", default)]
+    lut: Option<String>,
+    #[serde(rename = "URAM", default)]
+    uram: Option<String>,
+}
+
 pub fn parse_csynth_xml(bytes: &[u8]) -> Result<CsynthReport> {
     let parsed: CsynthXml = quick_xml::de::from_reader(bytes)
         .map_err(|e| XilinxError::HlsReportParse(format!("csynth.xml parse failed: {e}")))?;
@@ -82,6 +107,27 @@ pub fn parse_csynth_xml(bytes: &[u8]) -> Result<CsynthReport> {
             XilinxError::HlsReportParse("csynth.xml: TargetClockPeriod not found".into())
         })?;
 
+    let mut area = IndexMap::new();
+    if let Some(ae) = parsed.area_estimates {
+        if let Some(res) = ae.resources {
+            if let Some(v) = res.bram_18k {
+                area.insert("BRAM_18K".to_string(), v.trim().to_string());
+            }
+            if let Some(v) = res.dsp {
+                area.insert("DSP".to_string(), v.trim().to_string());
+            }
+            if let Some(v) = res.ff {
+                area.insert("FF".to_string(), v.trim().to_string());
+            }
+            if let Some(v) = res.lut {
+                area.insert("LUT".to_string(), v.trim().to_string());
+            }
+            if let Some(v) = res.uram {
+                area.insert("URAM".to_string(), v.trim().to_string());
+            }
+        }
+    }
+
     Ok(CsynthReport {
         top: top.trim().to_string(),
         part: parsed.user_assignments.part.trim().to_string(),
@@ -92,6 +138,7 @@ pub fn parse_csynth_xml(bytes: &[u8]) -> Result<CsynthReport> {
             .estimated_clock_period
             .trim()
             .to_string(),
+        area,
     })
 }
 
@@ -220,6 +267,39 @@ mod tests {
         assert_eq!(r.part, "xcu250-figd2104-2L-e");
         assert_eq!(r.target_clock_period_ns, "3.333");
         assert_eq!(r.estimated_clock_period_ns, "2.871");
+        assert!(r.area.is_empty(), "fixture has no AreaEstimates");
+    }
+
+    #[test]
+    fn parses_csynth_area_fields() {
+        let xml = "<?xml version=\"1.0\"?>\
+<profile>\
+  <UserAssignments>\
+    <TopModelName>vadd</TopModelName>\
+    <Part>xcu250-figd2104-2L-e</Part>\
+    <TargetClockPeriod>3.333</TargetClockPeriod>\
+  </UserAssignments>\
+  <PerformanceEstimates>\
+    <SummaryOfTimingAnalysis>\
+      <EstimatedClockPeriod>2.871</EstimatedClockPeriod>\
+    </SummaryOfTimingAnalysis>\
+  </PerformanceEstimates>\
+  <AreaEstimates>\
+    <Resources>\
+      <BRAM_18K>1</BRAM_18K>\
+      <DSP>2</DSP>\
+      <FF>3</FF>\
+      <LUT>4</LUT>\
+      <URAM>5</URAM>\
+    </Resources>\
+  </AreaEstimates>\
+</profile>";
+        let r = parse_csynth_xml(xml.as_bytes()).unwrap();
+        assert_eq!(r.area.get("BRAM_18K"), Some(&"1".to_string()));
+        assert_eq!(r.area.get("DSP"), Some(&"2".to_string()));
+        assert_eq!(r.area.get("FF"), Some(&"3".to_string()));
+        assert_eq!(r.area.get("LUT"), Some(&"4".to_string()));
+        assert_eq!(r.area.get("URAM"), Some(&"5".to_string()));
     }
 
     #[test]
