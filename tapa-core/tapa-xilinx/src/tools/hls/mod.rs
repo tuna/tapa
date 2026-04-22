@@ -4,7 +4,9 @@
 //! and a bounded retry wrapper keyed on transient-failure substrings.
 
 use std::sync::Arc;
+use std::time::Duration;
 
+use backon::{BlockingRetryable, ExponentialBuilder};
 use camino::Utf8PathBuf;
 
 use crate::error::{Result, XilinxError};
@@ -37,7 +39,7 @@ pub fn is_transient_hls_output(stdout: &str, _stderr: &str) -> bool {
     stdout.contains("Pre-synthesis failed.") && !stdout.contains("\nERROR:")
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct HlsJob {
     pub task_name: String,
     pub cpp_source: Utf8PathBuf,
@@ -66,6 +68,32 @@ pub struct HlsJob {
     /// Optional override. When `None`, the production
     /// `is_transient_hls_output` predicate is used.
     pub transient_patterns: Option<Arc<Vec<String>>>,
+    /// Injectable delay function for retry backoff. Defaults to
+    /// `std::thread::sleep` when `None`.
+    pub delay_fn: Option<Arc<dyn Fn(Duration) + Send + Sync>>,
+}
+
+impl std::fmt::Debug for HlsJob {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HlsJob")
+            .field("task_name", &self.task_name)
+            .field("cpp_source", &self.cpp_source)
+            .field("cflags", &self.cflags)
+            .field("target_part", &self.target_part)
+            .field("top_name", &self.top_name)
+            .field("clock_period", &self.clock_period)
+            .field("reports_out_dir", &self.reports_out_dir)
+            .field("hdl_out_dir", &self.hdl_out_dir)
+            .field("uploads", &self.uploads)
+            .field("downloads", &self.downloads)
+            .field("other_configs", &self.other_configs)
+            .field("solution_name", &self.solution_name)
+            .field("reset_low", &self.reset_low)
+            .field("auto_prefix", &self.auto_prefix)
+            .field("transient_patterns", &self.transient_patterns)
+            .field("delay_fn", &self.delay_fn.is_some())
+            .finish()
+    }
 }
 
 impl Default for HlsJob {
@@ -86,6 +114,7 @@ impl Default for HlsJob {
             reset_low: true,
             auto_prefix: true,
             transient_patterns: None,
+            delay_fn: None,
         }
     }
 }
@@ -427,15 +456,27 @@ pub fn run_hls_with_retry(
     max_attempts: u32,
 ) -> Result<HlsOutput> {
     let max_attempts = max_attempts.max(1);
-    for _ in 0..max_attempts {
-        let stage = tempfile::tempdir()?;
-        let stage_path = Utf8PathBuf::from_path_buf(stage.path().to_path_buf()).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
-    let out = run_hls_attempt(runner, job, &stage_path)?;
+    let backoff = ExponentialBuilder::default()
+        .with_min_delay(Duration::from_millis(500))
+        .with_max_delay(Duration::from_secs(30))
+        .with_max_times(max_attempts.saturating_sub(1) as usize);
+
+    enum RetryError {
+        Transient,
+        Fatal(XilinxError),
+    }
+
+    let delay_fn = job.delay_fn.clone();
+
+    let result = (|| -> std::result::Result<HlsOutput, RetryError> {
+        let stage = tempfile::tempdir()
+            .map_err(|e| RetryError::Fatal(XilinxError::Io(e)))?;
+        let stage_path = Utf8PathBuf::from_path_buf(stage.path().to_path_buf())
+            .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
+        let out = run_hls_attempt(runner, job, &stage_path).map_err(RetryError::Fatal)?;
         if out.exit_code == 0 {
-            return harvest_and_stage(runner, job, &stage_path, out);
+            return harvest_and_stage(runner, job, &stage_path, out).map_err(RetryError::Fatal);
         }
-        // keys the retry decision off stdout alone; stderr is
-        // preserved but intentionally ignored by the default predicate.
         let transient = is_transient(job, &out.stdout, &out.stderr);
         if !transient {
             let stderr = if out.stderr.is_empty() {
@@ -443,16 +484,32 @@ pub fn run_hls_with_retry(
             } else {
                 out.stderr
             };
-            return Err(XilinxError::ToolFailure {
+            return Err(RetryError::Fatal(XilinxError::ToolFailure {
                 program: "vitis_hls".into(),
                 code: out.exit_code,
                 stderr,
-            });
+            }));
         }
-    }
-    Err(XilinxError::HlsRetryExhausted {
-        attempts: max_attempts,
+        Err(RetryError::Transient)
     })
+    .retry(backoff)
+    .when(|err| matches!(err, RetryError::Transient))
+    .sleep(move |dur| {
+        if let Some(f) = &delay_fn {
+            f(dur);
+        } else {
+            std::thread::sleep(dur);
+        }
+    })
+    .call();
+
+    match result {
+        Ok(output) => Ok(output),
+        Err(RetryError::Fatal(e)) => Err(e),
+        Err(RetryError::Transient) => Err(XilinxError::HlsRetryExhausted {
+            attempts: max_attempts,
+        }),
+    }
 }
 
 /// Same as [`run_hls_with_retry`] but uses a caller-owned stage
@@ -469,10 +526,22 @@ pub fn run_hls_with_retry_in_stage(
     stage_dir: &camino::Utf8Path,
 ) -> Result<HlsOutput> {
     let max_attempts = max_attempts.max(1);
-    for _ in 0..max_attempts {
-        let out = run_hls_attempt(runner, job, stage_dir)?;
+    let backoff = ExponentialBuilder::default()
+        .with_min_delay(Duration::from_millis(500))
+        .with_max_delay(Duration::from_secs(30))
+        .with_max_times(max_attempts.saturating_sub(1) as usize);
+
+    enum RetryError {
+        Transient,
+        Fatal(XilinxError),
+    }
+
+    let delay_fn = job.delay_fn.clone();
+
+    let result = (|| -> std::result::Result<HlsOutput, RetryError> {
+        let out = run_hls_attempt(runner, job, stage_dir).map_err(RetryError::Fatal)?;
         if out.exit_code == 0 {
-            return harvest_and_stage(runner, job, stage_dir, out);
+            return harvest_and_stage(runner, job, stage_dir, out).map_err(RetryError::Fatal);
         }
         let transient = is_transient(job, &out.stdout, &out.stderr);
         if !transient {
@@ -481,16 +550,32 @@ pub fn run_hls_with_retry_in_stage(
             } else {
                 out.stderr
             };
-            return Err(XilinxError::ToolFailure {
+            return Err(RetryError::Fatal(XilinxError::ToolFailure {
                 program: "vitis_hls".into(),
                 code: out.exit_code,
                 stderr,
-            });
+            }));
         }
-    }
-    Err(XilinxError::HlsRetryExhausted {
-        attempts: max_attempts,
+        Err(RetryError::Transient)
     })
+    .retry(backoff)
+    .when(|err| matches!(err, RetryError::Transient))
+    .sleep(move |dur| {
+        if let Some(f) = &delay_fn {
+            f(dur);
+        } else {
+            std::thread::sleep(dur);
+        }
+    })
+    .call();
+
+    match result {
+        Ok(output) => Ok(output),
+        Err(RetryError::Fatal(e)) => Err(e),
+        Err(RetryError::Transient) => Err(XilinxError::HlsRetryExhausted {
+            attempts: max_attempts,
+        }),
+    }
 }
 
 #[cfg(test)]
@@ -509,6 +594,7 @@ mod tests {
             clock_period: "3.33".into(),
             reports_out_dir: tmp.join("report"),
             hdl_out_dir: tmp.join("hdl"),
+            delay_fn: Some(Arc::new(|_| {})),
             ..HlsJob::default()
         }
     }

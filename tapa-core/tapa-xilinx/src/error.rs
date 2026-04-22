@@ -324,6 +324,7 @@ mod tests {
             reset_low: true,
             auto_prefix: true,
             transient_patterns: Some(Arc::new(vec!["unexpected error".into()])),
+            delay_fn: Some(Arc::new(|_| {})),
         };
         run_hls_with_retry(&runner, &job, 2).expect_err("retry exhausted")
     }

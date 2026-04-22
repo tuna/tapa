@@ -2,6 +2,7 @@
 //! the implementation + `.run_hls`.
 
 use camino::Utf8PathBuf;
+use rayon::prelude::*;
 use std::fs;
 use std::path::Path;
 
@@ -208,35 +209,15 @@ fn dispatch_plan(
     plan: &[(String, TaskHlsLayout, impl PlanEntry)],
     worker_count: usize,
 ) -> Vec<Result<Option<HlsOutput>>> {
-    // Parallel dispatch via `std::thread::scope`. The `ToolRunner`
-    // trait carries `Send + Sync`, so we can share `&dyn ToolRunner`
-    // across threads without `Arc`.
-    let len = plan.len();
-    let results: std::sync::Mutex<Vec<Option<Result<Option<HlsOutput>>>>> =
-        std::sync::Mutex::new((0..len).map(|_| None).collect());
-    let next = std::sync::atomic::AtomicUsize::new(0);
-
-    std::thread::scope(|s| {
-        for _ in 0..worker_count.max(1) {
-            s.spawn(|| loop {
-                let idx = next.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                if idx >= len {
-                    return;
-                }
-                let (_, _, work) = &plan[idx];
-                let r = work.execute(runner);
-                let mut guard = results.lock().unwrap();
-                guard[idx] = Some(r);
-            });
-        }
-    });
-
-    results
-        .into_inner()
-        .unwrap()
-        .into_iter()
-        .map(|r| r.unwrap_or(Ok(None)))
-        .collect()
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(worker_count.max(1))
+        .build()
+        .expect("rayon thread pool builds");
+    pool.install(|| {
+        plan.par_iter()
+            .map(|(_, _, work)| work.execute(runner))
+            .collect()
+    })
 }
 
 trait PlanEntry: Sync {

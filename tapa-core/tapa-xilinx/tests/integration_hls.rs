@@ -60,6 +60,7 @@ fn run_vadd_hls<R: ToolRunner>(runner: &R) {
         reset_low: true,
         auto_prefix: true,
         transient_patterns: None,
+        delay_fn: None,
     };
     let out = match run_hls_with_retry(runner, &job, 3) {
         Ok(out) => out,
@@ -185,6 +186,7 @@ fn vitis_hls_round_trips_shared_vadd_fixture() {
         reset_low: true,
         auto_prefix: true,
         transient_patterns: None,
+        delay_fn: None,
     };
     let runner: Box<dyn ToolRunner> = if let Some(cfg) = common::has_remote_config() {
         let session = Arc::new(SshSession::new(cfg, SshMuxOptions::default()));

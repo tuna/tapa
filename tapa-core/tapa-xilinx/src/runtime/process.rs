@@ -141,6 +141,20 @@ impl ToolRunner for LocalToolRunner {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            unsafe {
+                cmd.pre_exec(|| {
+                    nix::unistd::setpgid(
+                        nix::unistd::Pid::from_raw(0),
+                        nix::unistd::Pid::from_raw(0),
+                    )
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+                });
+            }
+        }
+
         let mut child = cmd.spawn().map_err(|e| XilinxError::ToolFailure {
             program: inv.program.clone(),
             code: -1,
@@ -173,7 +187,16 @@ impl ToolRunner for LocalToolRunner {
                     }),
                 };
             }
-            let _ = child.kill();
+            #[cfg(unix)]
+            {
+                let pid = child.id();
+                let pgid = nix::unistd::Pid::from_raw(pid as i32);
+                let _ = nix::sys::signal::killpg(pgid, nix::sys::signal::Signal::SIGKILL);
+            }
+            #[cfg(not(unix))]
+            {
+                let _ = child.kill();
+            }
             let _ = child.wait();
             return Err(XilinxError::ToolTimeout {
                 program: inv.program.clone(),
