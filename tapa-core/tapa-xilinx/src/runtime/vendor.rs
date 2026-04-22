@@ -66,31 +66,35 @@ impl VendorRemoteFs for SshVendorFs<'_> {
             .stdout
             .take()
             .ok_or_else(|| XilinxError::RemoteTransfer("ssh stdout lost".into()))?;
-        let mut tar_local = Command::new("tar")
-            .arg("-xzf")
-            .arg("-")
-            .arg("-C")
-            .arg(local_dest)
-            .stdin(Stdio::from(ssh_stdout))
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| XilinxError::RemoteTransfer(format!("spawn local tar -xz: {e}")))?;
-        let tar_status = tar_local
-            .wait()
-            .map_err(|e| XilinxError::RemoteTransfer(format!("wait tar -xz: {e}")))?;
+        let mut ssh_stderr = ssh
+            .stderr
+            .take()
+            .ok_or_else(|| XilinxError::RemoteTransfer("ssh stderr lost".into()))?;
+
+        let stderr_handle = std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            let _ = std::io::Read::read_to_end(&mut ssh_stderr, &mut buf);
+            buf
+        });
+
+        let unpack_result = {
+            let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(ssh_stdout));
+            archive.unpack(local_dest)
+        };
         let ssh_status = ssh
             .wait()
             .map_err(|e| XilinxError::RemoteTransfer(format!("wait ssh download: {e}")))?;
+        let stderr_bytes = stderr_handle.join().unwrap_or_default();
+        let stderr = String::from_utf8_lossy(&stderr_bytes).into_owned();
         if !ssh_status.success() {
             return Err(XilinxError::RemoteTransfer(format!(
-                "remote tar -cz failed: {ssh_status}"
+                "remote tar -cz failed (exit {}): {}",
+                ssh_status.code().unwrap_or(-1),
+                stderr.trim()
             )));
         }
-        if !tar_status.success() {
-            return Err(XilinxError::RemoteTransfer(format!(
-                "local tar -xz failed: {tar_status}"
-            )));
-        }
+        unpack_result
+            .map_err(|e| XilinxError::RemoteTransfer(format!("unpack tar download: {e}")))?;
         Ok(())
     }
 }
@@ -233,6 +237,20 @@ pub fn sync_vendor_includes_impl<F: VendorRemoteFs>(
     cache_dir: &Path,
 ) -> Result<()> {
     let cache_dir = cache_dir.to_path_buf();
+    std::fs::create_dir_all(&cache_dir).map_err(|e| {
+        XilinxError::RemoteTransfer(format!("mkdir cache {}: {e}", cache_dir.display()))
+    })?;
+
+    // Advisory lock to prevent concurrent sync corruption.
+    let lock_path = cache_dir.join(".sync.lock");
+    let lock_file = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .open(&lock_path)
+        .map_err(|e| XilinxError::RemoteTransfer(format!("open vendor lock: {e}")))?;
+    fs2::FileExt::lock_exclusive(&lock_file)
+        .map_err(|e| XilinxError::RemoteTransfer(format!("lock vendor cache: {e}")))?;
+
     let marker = cache_dir.join(".synced");
     if marker.is_file() {
         apply_macos_vendor_patch(&cache_dir)?;
@@ -261,10 +279,6 @@ pub fn sync_vendor_includes_impl<F: VendorRemoteFs>(
                 "remote XILINX_HLS / XILINX_VITIS not set after sourcing xilinx_settings".into(),
             )
         })?;
-
-    std::fs::create_dir_all(&cache_dir).map_err(|e| {
-        XilinxError::RemoteTransfer(format!("mkdir cache {}: {e}", cache_dir.display()))
-    })?;
 
     // Remove any stale macOS patch marker so the patch re-applies
     // after a fresh header download.

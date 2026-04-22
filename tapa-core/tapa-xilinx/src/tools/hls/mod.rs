@@ -151,26 +151,38 @@ fn build_rtl_config(reset_low: bool, auto_prefix: bool) -> String {
 /// Collect every `-I<dir>` / `-isystem<dir>` destination from the
 /// job's CFLAGS that points at an existing absolute directory. These
 /// need to be uploaded verbatim so the remote `vitis_hls` resolves
-/// sibling headers the same way the local run would. Mirrors
-/// the implementation.
+/// sibling headers the same way the local run would. Handles both
+/// fused (`-I/dir`) and split (`-I`, `/dir`) forms.
 fn kernel_include_dirs(cflags: &[String]) -> Vec<Utf8PathBuf> {
     let mut out: Vec<Utf8PathBuf> = Vec::new();
-    for raw in cflags {
-        let trimmed = raw.trim();
-        let dir_str = if let Some(rest) = trimmed.strip_prefix("-isystem") {
-            rest.trim()
+    let mut i = 0;
+    while i < cflags.len() {
+        let trimmed = cflags[i].trim();
+        let (dir_str, consumed) = if let Some(rest) = trimmed.strip_prefix("-isystem") {
+            let rest = rest.trim();
+            if rest.is_empty() && i + 1 < cflags.len() {
+                (cflags[i + 1].trim(), 2)
+            } else {
+                (rest, 1)
+            }
         } else if let Some(rest) = trimmed.strip_prefix("-I") {
-            rest.trim()
+            let rest = rest.trim();
+            if rest.is_empty() && i + 1 < cflags.len() {
+                (cflags[i + 1].trim(), 2)
+            } else {
+                (rest, 1)
+            }
         } else {
+            i += 1;
             continue;
         };
-        if dir_str.is_empty() {
-            continue;
+        if !dir_str.is_empty() {
+            let p = Utf8PathBuf::from(dir_str);
+            if p.is_absolute() && p.is_dir() {
+                out.push(p);
+            }
         }
-        let p = Utf8PathBuf::from(dir_str);
-        if p.is_absolute() && p.is_dir() {
-            out.push(p);
-        }
+        i += consumed;
     }
     out
 }
@@ -677,9 +689,13 @@ mod tests {
             "-Irelative/should/be/ignored".into(),
             "-I/nonexistent/should/be/ignored".into(),
             "-DJUST_A_DEFINE".into(),
+            "-I".into(),
+            existing.as_str().into(),
+            "-isystem".into(),
+            existing.as_str().into(),
         ];
         let dirs = kernel_include_dirs(&cflags);
-        assert_eq!(dirs.len(), 2);
+        assert_eq!(dirs.len(), 4);
         for d in &dirs {
             assert_eq!(d, existing.as_path());
         }

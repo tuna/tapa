@@ -25,6 +25,7 @@ thiserror = { workspace = true }
 walkdir = { workspace = true }
 which = { workspace = true }
 zip = { workspace = true }
+fs2 = "0.4"
 minijinja = { workspace = true }
 nix = { workspace = true }
 

@@ -155,9 +155,10 @@ pub(super) fn upload_batch(
 }
 
 /// Download the contents of a remote directory into `dest` via
-/// `ssh … tar -czf - -C <remote_dir> . | tar -xzf - -C <dest>`. SSH
-/// stderr is captured so transient mux failures surface in the
-/// returned error and the outer retry path can classify them.
+/// `ssh … tar -czf - -C <remote_dir> .` decoded in-process with
+/// `flate2`/`tar`. SSH stderr is captured so transient mux failures
+/// surface in the returned error and the outer retry path can classify
+/// them.
 pub(super) fn download_tree(session: &SshSession, remote_dir: &str, dest: &Path) -> Result<()> {
     std::fs::create_dir_all(dest)
         .map_err(|e| XilinxError::RemoteTransfer(format!("mkdir {}: {e}", dest.display())))?;
@@ -176,30 +177,22 @@ pub(super) fn download_tree(session: &SshSession, remote_dir: &str, dest: &Path)
         .stdout
         .take()
         .ok_or_else(|| XilinxError::RemoteTransfer("ssh stdout lost".into()))?;
-    let ssh_err = ssh_child
+    let mut ssh_err = ssh_child
         .stderr
         .take()
         .ok_or_else(|| XilinxError::RemoteTransfer("ssh stderr lost".into()))?;
-    let mut tar_local = Command::new("tar")
-        .arg("-xzf")
-        .arg("-")
-        .arg("-C")
-        .arg(dest)
-        .stdin(Stdio::from(ssh_out))
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| XilinxError::RemoteTransfer(format!("spawn local tar -xz: {e}")))?;
 
     let stderr_handle = std::thread::spawn(move || {
         let mut buf = Vec::new();
-        let mut r = ssh_err;
-        let _ = std::io::Read::read_to_end(&mut r, &mut buf);
+        let _ = std::io::Read::read_to_end(&mut ssh_err, &mut buf);
         buf
     });
 
-    let tar_status = tar_local
-        .wait()
-        .map_err(|e| XilinxError::RemoteTransfer(format!("wait local tar -xz: {e}")))?;
+    let unpack_result = {
+        let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(ssh_out));
+        archive.unpack(dest)
+    };
+
     let ssh_status = ssh_child
         .wait()
         .map_err(|e| XilinxError::RemoteTransfer(format!("wait ssh download: {e}")))?;
@@ -212,12 +205,7 @@ pub(super) fn download_tree(session: &SshSession, remote_dir: &str, dest: &Path)
             stderr.trim()
         )));
     }
-    if !tar_status.success() {
-        return Err(XilinxError::RemoteTransfer(format!(
-            "local tar -xz failed: {tar_status}: {}",
-            stderr.trim()
-        )));
-    }
+    unpack_result.map_err(|e| XilinxError::RemoteTransfer(format!("unpack tar download: {e}")))?;
     Ok(())
 }
 
