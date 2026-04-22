@@ -10,6 +10,7 @@ serde = { workspace = true }
 # `Design::to_writer` preserves insertion order in the emitted JSON.
 serde_json = { workspace = true, features = ["preserve_order"] }
 serde_path_to_error = { workspace = true }
+strum = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]

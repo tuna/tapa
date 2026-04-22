@@ -1,53 +1,27 @@
 //! Port and category types.
 
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
+use strum::{EnumString, IntoStaticStr};
 
 /// Argument / port category.
 ///
 /// Covers all 10 wire strings from `Instance.Arg._CAT_LOOKUP`.
 /// `"hmap"` is an alias that deserializes to `Mmap` (matching behavior).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, IntoStaticStr, EnumString)]
+#[strum(serialize_all = "snake_case")]
 pub enum ArgCategory {
     Istream,
     Ostream,
     Istreams,
     Ostreams,
     Scalar,
+    #[strum(serialize = "mmap", serialize = "hmap")]
     Mmap,
     Immap,
     Ommap,
+    #[strum(serialize = "async_mmap")]
     AsyncMmap,
-}
-
-impl ArgCategory {
-    fn from_str(s: &str) -> Option<Self> {
-        match s {
-            "istream" => Some(Self::Istream),
-            "ostream" => Some(Self::Ostream),
-            "istreams" => Some(Self::Istreams),
-            "ostreams" => Some(Self::Ostreams),
-            "scalar" => Some(Self::Scalar),
-            "mmap" | "hmap" => Some(Self::Mmap),
-            "immap" => Some(Self::Immap),
-            "ommap" => Some(Self::Ommap),
-            "async_mmap" => Some(Self::AsyncMmap),
-            _ => None,
-        }
-    }
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Istream => "istream",
-            Self::Ostream => "ostream",
-            Self::Istreams => "istreams",
-            Self::Ostreams => "ostreams",
-            Self::Scalar => "scalar",
-            Self::Mmap => "mmap",
-            Self::Immap => "immap",
-            Self::Ommap => "ommap",
-            Self::AsyncMmap => "async_mmap",
-        }
-    }
 }
 
 impl Serialize for ArgCategory {
@@ -59,7 +33,20 @@ impl Serialize for ArgCategory {
 impl<'de> Deserialize<'de> for ArgCategory {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let s = String::deserialize(deserializer)?;
-        Self::from_str(&s).ok_or_else(|| serde::de::Error::custom(format!("unknown category: {s}")))
+        Self::from_str(&s).map_err(|_| serde::de::Error::custom(format!("unknown category: {s}")))
+    }
+}
+
+impl ArgCategory {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Mmap => "mmap",
+            _ => {
+                let s: &'static str = self.into();
+                s
+            }
+        }
     }
 }
 

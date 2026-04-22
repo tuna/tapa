@@ -353,53 +353,13 @@ fn tokens_to_expression(tokens: &[tapa_rtl::expression::Token]) -> Expression {
 }
 
 /// Attempt to evaluate a simple arithmetic expression on integer
-/// literals. Returns `None` if any token is non-literal or the
-/// expression shape is anything other than a flat `lit OP lit [OP lit ...]`
-/// (optionally wrapped in one pair of parens). Covers `+`, `-`, `*`, `/`.
+/// literals. Delegates to `evalexpr` for safe evaluation.
 fn try_evaluate_literal_expr(tokens: &[tapa_graphir::Token]) -> Option<i64> {
-    // Strip a single outer paren pair if present.
-    let slice = match (tokens.first(), tokens.last()) {
-        (Some(a), Some(b)) if a.repr == "(" && b.repr == ")" => &tokens[1..tokens.len() - 1],
-        _ => tokens,
-    };
-    if slice.is_empty() {
-        return None;
+    let expr = tokens.iter().map(|t| t.repr.as_str()).collect::<Vec<_>>().join(" ");
+    match evalexpr::eval(&expr) {
+        Ok(evalexpr::Value::Int(n)) => Some(n),
+        _ => None,
     }
-    // Must be alternating literal / operator / literal / ...
-    let mut acc: Option<i64> = None;
-    let mut pending_op: Option<&str> = None;
-    for tok in slice {
-        if tok.kind != tapa_graphir::TokenKind::Literal {
-            return None;
-        }
-        if let Ok(n) = tok.repr.parse::<i64>() {
-            acc = Some(match (acc, pending_op) {
-                (None, None) => n,
-                (Some(a), Some("+")) => a.checked_add(n)?,
-                (Some(a), Some("-")) => a.checked_sub(n)?,
-                (Some(a), Some("*")) => a.checked_mul(n)?,
-                (Some(a), Some("/")) => {
-                    if n == 0 {
-                        return None;
-                    }
-                    a.checked_div(n)?
-                }
-                _ => return None,
-            });
-            pending_op = None;
-        } else if matches!(tok.repr.as_str(), "+" | "-" | "*" | "/") {
-            if pending_op.is_some() || acc.is_none() {
-                return None;
-            }
-            pending_op = Some(tok.repr.as_str());
-        } else {
-            return None;
-        }
-    }
-    if pending_op.is_some() {
-        return None;
-    }
-    acc
 }
 
 #[cfg(test)]

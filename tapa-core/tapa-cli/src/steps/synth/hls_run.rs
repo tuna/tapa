@@ -123,18 +123,17 @@ pub fn run_hls_for_leaves(
         fs::create_dir_all(&layout.reports_dir)?;
         fs::create_dir_all(&layout.hdl_dir)?;
 
-        let job = HlsJob {
-            task_name: task_name.clone(),
-            cpp_source,
-            cflags: options.cflags.clone(),
-            target_part: options.part_num.clone(),
-            top_name: task_name.clone(),
-            clock_period: options.clock_period.clone(),
-            reports_out_dir: layout.reports_dir.clone(),
-            hdl_out_dir: layout.hdl_dir.clone(),
-            other_configs: options.other_configs.clone(),
-            ..HlsJob::default()
-        };
+        let job = HlsJob::builder()
+            .task_name(task_name.clone())
+            .cpp_source(cpp_source)
+            .cflags(options.cflags.clone())
+            .target_part(options.part_num.clone())
+            .top_name(task_name.clone())
+            .clock_period(options.clock_period.clone())
+            .reports_out_dir(layout.reports_dir.clone())
+            .hdl_out_dir(layout.hdl_dir.clone())
+            .other_configs(options.other_configs.clone())
+            .build();
 
         // `--keep-hls-work-dir`: stage under
         // `<work_dir>/hls/<task>/project` so the Vitis project + logs

@@ -9,6 +9,7 @@ use std::io::{Read, Seek, SeekFrom, Write};
 
 use camino::Utf8PathBuf;
 use quick_xml::events::BytesStart;
+use typed_builder::TypedBuilder;
 use zip::write::SimpleFileOptions;
 
 use crate::error::{Result, XilinxError};
@@ -25,7 +26,7 @@ const M_AXI_PREFIX: &str = "m_axi_";
 /// `{top_name}`, `{bus_ifaces}`, `{cpp_kernels}`, `{part_num}` placeholders
 /// are substituted by `format_package_xo_tcl`. All other braces are escaped
 /// (`{{`/`}}`) so the `.format` semantics carry over cleanly.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, TypedBuilder)]
 pub struct PackageXoInputs {
     pub top_name: String,
     /// Directory of Verilog/SystemVerilog sources glob'd by the TCL.
@@ -35,10 +36,13 @@ pub struct PackageXoInputs {
     pub kernel_xml: KernelXmlArgs,
     pub kernel_out_path: Utf8PathBuf,
     /// Optional `-kernel_files` C++ sources appended to `package_xo`.
+    #[builder(default)]
     pub cpp_kernels: Vec<Utf8PathBuf>,
     /// Optional per-port bus parameters, keyed by m_axi port name (no prefix).
+    #[builder(default)]
     pub m_axi_params: Vec<(String, Vec<(String, String)>)>,
     /// S_AXI interfaces to associate; defaults to `[s_axi_control]`.
+    #[builder(default = vec![S_AXI_NAME.to_string()])]
     pub s_axi_ifaces: Vec<String>,
     /// Extra HLS report files to append under the packaged `.xo`'s
     /// `report/` tree before redaction. Each entry is `(source_path,
@@ -49,6 +53,7 @@ pub struct PackageXoInputs {
     /// downstream inspection tooling can disambiguate same-basename
     /// reports across tasks (`csynth.rpt`, `csynth.xml`, …). Empty →
     /// skip the bundle step.
+    #[builder(default)]
     pub report_paths: Vec<(Utf8PathBuf, String)>,
 }
 
@@ -497,15 +502,15 @@ mod tests {
     use crate::runtime::process::MockToolRunner;
 
     fn minimal_inputs(hdl_dir: Utf8PathBuf, kernel_out_path: Utf8PathBuf) -> PackageXoInputs {
-        PackageXoInputs {
-            top_name: "k".into(),
-            hdl_dir,
-            device_info: DeviceInfo {
+        PackageXoInputs::builder()
+            .top_name("k".into())
+            .hdl_dir(hdl_dir)
+            .device_info(DeviceInfo {
                 part_num: "xcu250-figd2104-2L-e".into(),
                 clock_period: "3.33".into(),
-            },
-            clock_period: "3.33".into(),
-            kernel_xml: KernelXmlArgs {
+            })
+            .clock_period("3.33".into())
+            .kernel_xml(KernelXmlArgs {
                 top_name: "k".into(),
                 clock_period: "3.33".into(),
                 ports: vec![KernelXmlPort {
@@ -515,13 +520,9 @@ mod tests {
                     port: String::new(),
                     ctype: "ap_uint<512>".into(),
                 }],
-            },
-            kernel_out_path,
-            cpp_kernels: vec![],
-            m_axi_params: vec![],
-            s_axi_ifaces: PackageXoInputs::default_s_axi(),
-            report_paths: vec![],
-        }
+            })
+            .kernel_out_path(kernel_out_path)
+            .build()
     }
 
     /// P1 regression: a relative `--output` path must be absolutized

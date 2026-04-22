@@ -141,21 +141,17 @@ fn live_pack_xo_roundtrips_vadd_rtl() {
     std::fs::create_dir_all(&hdl_dir).expect("mkdir hdl");
     std::fs::copy(real_hdl.join("vadd.v"), hdl_dir.join("vadd.v")).expect("stage HDL fixture");
     let xo_out = tmp.path().join("vadd.xo");
-    let inputs = PackageXoInputs {
-        top_name: "vadd".into(),
-        hdl_dir,
-        device_info: DeviceInfo {
+    let inputs = PackageXoInputs::builder()
+        .top_name("vadd".into())
+        .hdl_dir(hdl_dir)
+        .device_info(DeviceInfo {
             part_num: "xcu250-figd2104-2L-e".into(),
             clock_period: "3.33".into(),
-        },
-        clock_period: "3.33".into(),
-        kernel_xml: kernel_xml_args(),
-        kernel_out_path: xo_out,
-        cpp_kernels: vec![],
-        m_axi_params: vec![],
-        s_axi_ifaces: PackageXoInputs::default_s_axi(),
-        report_paths: vec![],
-    };
+        })
+        .clock_period("3.33".into())
+        .kernel_xml(kernel_xml_args())
+        .kernel_out_path(xo_out)
+        .build();
 
     let session = Arc::new(SshSession::new(cfg, SshMuxOptions::default()));
     session.ensure_established().expect("ssh setup");

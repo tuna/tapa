@@ -4,9 +4,6 @@
 //! conventions shared across the TAPA toolchain.  This crate has zero
 //! dependencies and mirrors `tapa/protocol` exactly.
 
-use std::collections::HashMap;
-use std::sync::LazyLock;
-
 // ── Handshake port names ────────────────────────────────────────────
 
 pub const HANDSHAKE_CLK: &str = "ap_clk";
@@ -25,8 +22,7 @@ pub const HANDSHAKE_OUTPUT_PORTS: &[&str] = &[HANDSHAKE_DONE, HANDSHAKE_IDLE, HA
 pub const SENS_TYPE: &str = "posedge";
 
 /// `"posedge ap_clk"` — used as a sensitivity list in always blocks.
-pub static CLK_SENS_LIST: LazyLock<String> =
-    LazyLock::new(|| format!("{SENS_TYPE} {HANDSHAKE_CLK}"));
+pub const CLK_SENS_LIST: &str = "posedge ap_clk";
 
 // ── RTL file extension ──────────────────────────────────────────────
 
@@ -39,43 +35,35 @@ pub const OSTREAM_SUFFIXES: &[&str] = &["_din", "_full_n", "_write"];
 pub const STREAM_DATA_SUFFIXES: &[&str] = &["_dout", "_din"];
 
 /// Port-name suffix → wire direction (`"input"` or `"output"`).
-pub static STREAM_PORT_DIRECTION: LazyLock<HashMap<&'static str, &'static str>> =
-    LazyLock::new(|| {
-        HashMap::from([
-            ("_dout", "input"),
-            ("_empty_n", "input"),
-            ("_read", "output"),
-            ("_din", "output"),
-            ("_full_n", "input"),
-            ("_write", "output"),
-        ])
-    });
+pub static STREAM_PORT_DIRECTION: phf::Map<&'static str, &'static str> = phf::phf_map! {
+    "_dout" => "input",
+    "_empty_n" => "input",
+    "_read" => "output",
+    "_din" => "output",
+    "_full_n" => "input",
+    "_write" => "output",
+};
 
 /// Each stream suffix mapped to its opposite-side counterpart.
-pub static STREAM_PORT_OPPOSITE: LazyLock<HashMap<&'static str, &'static str>> =
-    LazyLock::new(|| {
-        HashMap::from([
-            ("_dout", "_din"),
-            ("_din", "_dout"),
-            ("_empty_n", "_write"),
-            ("_write", "_empty_n"),
-            ("_read", "_full_n"),
-            ("_full_n", "_read"),
-        ])
-    });
+pub static STREAM_PORT_OPPOSITE: phf::Map<&'static str, &'static str> = phf::phf_map! {
+    "_dout" => "_din",
+    "_din" => "_dout",
+    "_empty_n" => "_write",
+    "_write" => "_empty_n",
+    "_read" => "_full_n",
+    "_full_n" => "_read",
+};
 
 /// Bit width for each stream suffix.  `0` means width is determined by
 /// the data type (variable).
-pub static STREAM_PORT_WIDTH: LazyLock<HashMap<&'static str, u32>> = LazyLock::new(|| {
-    HashMap::from([
-        ("_dout", 0),
-        ("_din", 0),
-        ("_empty_n", 1),
-        ("_full_n", 1),
-        ("_read", 1),
-        ("_write", 1),
-    ])
-});
+pub static STREAM_PORT_WIDTH: phf::Map<&'static str, u32> = phf::phf_map! {
+    "_dout" => 0,
+    "_din" => 0,
+    "_empty_n" => 1,
+    "_full_n" => 1,
+    "_read" => 1,
+    "_write" => 1,
+};
 
 // ── FIFO interface ports ────────────────────────────────────────────
 
@@ -92,25 +80,23 @@ pub const M_AXI_PARAM_PREFIX: &str = "C_M_AXI_";
 
 /// Default bit width for each M-AXI sub-port.  `0` means the width is
 /// parameterised (ADDR, DATA) or derived (STRB = DATA / 8).
-pub static M_AXI_PORT_WIDTHS: LazyLock<HashMap<&'static str, u32>> = LazyLock::new(|| {
-    HashMap::from([
-        ("ADDR", 0),
-        ("BURST", 2),
-        ("CACHE", 4),
-        ("DATA", 0),
-        ("ID", 1),
-        ("LAST", 1),
-        ("LEN", 8),
-        ("LOCK", 1),
-        ("PROT", 3),
-        ("QOS", 4),
-        ("READY", 1),
-        ("RESP", 2),
-        ("SIZE", 3),
-        ("STRB", 0),
-        ("VALID", 1),
-    ])
-});
+pub static M_AXI_PORT_WIDTHS: phf::Map<&'static str, u32> = phf::phf_map! {
+    "ADDR" => 0,
+    "BURST" => 2,
+    "CACHE" => 4,
+    "DATA" => 0,
+    "ID" => 1,
+    "LAST" => 1,
+    "LEN" => 8,
+    "LOCK" => 1,
+    "PROT" => 3,
+    "QOS" => 4,
+    "READY" => 1,
+    "RESP" => 2,
+    "SIZE" => 3,
+    "STRB" => 0,
+    "VALID" => 1,
+};
 
 /// Direction: `"output"` means the master drives the signal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -138,37 +124,31 @@ pub const M_AXI_ADDR_PORTS: &[AxiPortEntry] = &[
 ];
 
 /// All five M-AXI channels → their sub-port lists.
-pub static M_AXI_PORTS: LazyLock<HashMap<&'static str, &'static [AxiPortEntry]>> =
-    LazyLock::new(|| {
-        let b: &'static [AxiPortEntry] = &[
-            ("ID", PortDir::Input),
-            ("READY", PortDir::Output),
-            ("RESP", PortDir::Input),
-            ("VALID", PortDir::Input),
-        ];
-        let r: &'static [AxiPortEntry] = &[
-            ("DATA", PortDir::Input),
-            ("ID", PortDir::Input),
-            ("LAST", PortDir::Input),
-            ("READY", PortDir::Output),
-            ("RESP", PortDir::Input),
-            ("VALID", PortDir::Input),
-        ];
-        let w: &'static [AxiPortEntry] = &[
-            ("DATA", PortDir::Output),
-            ("LAST", PortDir::Output),
-            ("READY", PortDir::Input),
-            ("STRB", PortDir::Output),
-            ("VALID", PortDir::Output),
-        ];
-        HashMap::from([
-            ("AR", M_AXI_ADDR_PORTS),
-            ("AW", M_AXI_ADDR_PORTS),
-            ("B", b),
-            ("R", r),
-            ("W", w),
-        ])
-    });
+pub static M_AXI_PORTS: phf::Map<&'static str, &'static [AxiPortEntry]> = phf::phf_map! {
+    "AR" => M_AXI_ADDR_PORTS,
+    "AW" => M_AXI_ADDR_PORTS,
+    "B" => &[
+        ("ID", PortDir::Input),
+        ("READY", PortDir::Output),
+        ("RESP", PortDir::Input),
+        ("VALID", PortDir::Input),
+    ],
+    "R" => &[
+        ("DATA", PortDir::Input),
+        ("ID", PortDir::Input),
+        ("LAST", PortDir::Input),
+        ("READY", PortDir::Output),
+        ("RESP", PortDir::Input),
+        ("VALID", PortDir::Input),
+    ],
+    "W" => &[
+        ("DATA", PortDir::Output),
+        ("LAST", PortDir::Output),
+        ("READY", PortDir::Input),
+        ("STRB", PortDir::Output),
+        ("VALID", PortDir::Output),
+    ],
+};
 
 // ── M-AXI suffixes ──────────────────────────────────────────────────
 
@@ -181,13 +161,13 @@ pub const M_AXI_SUFFIXES_COMPACT: &[&str] = &[
 ];
 
 /// Full suffix set (37 entries) — compact + 8 optional address-channel attributes.
-pub static M_AXI_SUFFIXES: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
-    let mut v = M_AXI_SUFFIXES_COMPACT.to_vec();
-    v.extend_from_slice(&[
-        "_ARLOCK", "_ARPROT", "_ARQOS", "_ARCACHE", "_AWCACHE", "_AWLOCK", "_AWPROT", "_AWQOS",
-    ]);
-    v
-});
+pub const M_AXI_SUFFIXES: &[&str] = &[
+    "_ARADDR", "_ARBURST", "_ARID", "_ARLEN", "_ARREADY", "_ARSIZE", "_ARVALID", "_AWADDR",
+    "_AWBURST", "_AWID", "_AWLEN", "_AWREADY", "_AWSIZE", "_AWVALID", "_BID", "_BREADY", "_BRESP",
+    "_BVALID", "_RDATA", "_RID", "_RLAST", "_RREADY", "_RRESP", "_RVALID", "_WDATA", "_WLAST",
+    "_WREADY", "_WSTRB", "_WVALID", "_ARLOCK", "_ARPROT", "_ARQOS", "_ARCACHE", "_AWCACHE",
+    "_AWLOCK", "_AWPROT", "_AWQOS",
+];
 
 /// Per-channel suffix groupings with valid/ready markers.
 pub struct AxiChannelInfo {
@@ -196,57 +176,39 @@ pub struct AxiChannelInfo {
     pub ready: &'static str,
 }
 
-pub static M_AXI_SUFFIXES_BY_CHANNEL: LazyLock<HashMap<&'static str, AxiChannelInfo>> =
-    LazyLock::new(|| {
-        HashMap::from([
-            (
-                "AR",
-                AxiChannelInfo {
-                    ports: &[
-                        "_ARADDR", "_ARBURST", "_ARID", "_ARLEN", "_ARREADY", "_ARSIZE",
-                        "_ARVALID", "_ARLOCK", "_ARPROT", "_ARQOS", "_ARCACHE",
-                    ],
-                    valid: "_ARVALID",
-                    ready: "_ARREADY",
-                },
-            ),
-            (
-                "AW",
-                AxiChannelInfo {
-                    ports: &[
-                        "_AWADDR", "_AWBURST", "_AWID", "_AWLEN", "_AWREADY", "_AWSIZE",
-                        "_AWVALID", "_AWLOCK", "_AWPROT", "_AWQOS", "_AWCACHE",
-                    ],
-                    valid: "_AWVALID",
-                    ready: "_AWREADY",
-                },
-            ),
-            (
-                "B",
-                AxiChannelInfo {
-                    ports: &["_BID", "_BREADY", "_BRESP", "_BVALID"],
-                    valid: "_BVALID",
-                    ready: "_BREADY",
-                },
-            ),
-            (
-                "R",
-                AxiChannelInfo {
-                    ports: &["_RDATA", "_RID", "_RLAST", "_RREADY", "_RRESP", "_RVALID"],
-                    valid: "_RVALID",
-                    ready: "_RREADY",
-                },
-            ),
-            (
-                "W",
-                AxiChannelInfo {
-                    ports: &["_WDATA", "_WLAST", "_WREADY", "_WSTRB", "_WVALID"],
-                    valid: "_WVALID",
-                    ready: "_WREADY",
-                },
-            ),
-        ])
-    });
+pub static M_AXI_SUFFIXES_BY_CHANNEL: phf::Map<&'static str, AxiChannelInfo> = phf::phf_map! {
+    "AR" => AxiChannelInfo {
+        ports: &[
+            "_ARADDR", "_ARBURST", "_ARID", "_ARLEN", "_ARREADY", "_ARSIZE",
+            "_ARVALID", "_ARLOCK", "_ARPROT", "_ARQOS", "_ARCACHE",
+        ],
+        valid: "_ARVALID",
+        ready: "_ARREADY",
+    },
+    "AW" => AxiChannelInfo {
+        ports: &[
+            "_AWADDR", "_AWBURST", "_AWID", "_AWLEN", "_AWREADY", "_AWSIZE",
+            "_AWVALID", "_AWLOCK", "_AWPROT", "_AWQOS", "_AWCACHE",
+        ],
+        valid: "_AWVALID",
+        ready: "_AWREADY",
+    },
+    "B" => AxiChannelInfo {
+        ports: &["_BID", "_BREADY", "_BRESP", "_BVALID"],
+        valid: "_BVALID",
+        ready: "_BREADY",
+    },
+    "R" => AxiChannelInfo {
+        ports: &["_RDATA", "_RID", "_RLAST", "_RREADY", "_RRESP", "_RVALID"],
+        valid: "_RVALID",
+        ready: "_RREADY",
+    },
+    "W" => AxiChannelInfo {
+        ports: &["_WDATA", "_WLAST", "_WREADY", "_WSTRB", "_WVALID"],
+        valid: "_WVALID",
+        ready: "_WREADY",
+    },
+};
 
 // ── M-AXI parameter suffixes ────────────────────────────────────────
 
@@ -285,7 +247,7 @@ mod tests {
 
     #[test]
     fn clk_sens_list() {
-        assert_eq!(*CLK_SENS_LIST, "posedge ap_clk", "CLK_SENS_LIST");
+        assert_eq!(CLK_SENS_LIST, "posedge ap_clk", "CLK_SENS_LIST");
     }
 
     #[test]

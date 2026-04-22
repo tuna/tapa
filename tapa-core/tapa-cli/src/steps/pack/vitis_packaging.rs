@@ -235,15 +235,15 @@ fn build_package_xo_inputs(
     m_axi_params: Vec<(String, Vec<(String, String)>)>,
     report_paths: Vec<(Utf8PathBuf, String)>,
 ) -> PackageXoInputs {
-    PackageXoInputs {
-        top_name: design.top.clone(),
-        hdl_dir: Utf8PathBuf::from_path_buf(hdl_dir.to_path_buf()).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
-        device_info: DeviceInfo {
+    PackageXoInputs::builder()
+        .top_name(design.top.clone())
+        .hdl_dir(Utf8PathBuf::from_path_buf(hdl_dir.to_path_buf()).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())))
+        .device_info(DeviceInfo {
             part_num,
             clock_period: clock_period.clone(),
-        },
-        clock_period,
-        kernel_xml: KernelXmlArgs {
+        })
+        .clock_period(clock_period)
+        .kernel_xml(KernelXmlArgs {
             top_name: design.top.clone(),
             clock_period: settings
                 .get("clock_period")
@@ -251,13 +251,11 @@ fn build_package_xo_inputs(
                 .unwrap_or("3.33")
                 .to_string(),
             ports: kernel_ports,
-        },
-        kernel_out_path: Utf8PathBuf::from_path_buf(output_path.to_path_buf()).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
-        cpp_kernels: Vec::new(),
-        m_axi_params,
-        s_axi_ifaces: PackageXoInputs::default_s_axi(),
-        report_paths,
-    }
+        })
+        .kernel_out_path(Utf8PathBuf::from_path_buf(output_path.to_path_buf()).unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())))
+        .m_axi_params(m_axi_params)
+        .report_paths(report_paths)
+        .build()
 }
 
 /// Collect the HLS reports that `PackageXo.__init__`

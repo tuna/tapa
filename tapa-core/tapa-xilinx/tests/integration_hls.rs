@@ -44,24 +44,17 @@ fn run_vadd_hls<R: ToolRunner>(runner: &R) {
     let src = write_standalone_kernel(tmp.path());
     let reports = tmp.path().join("reports");
     let hdl = tmp.path().join("hdl");
-    let job = HlsJob {
-        task_name: "vadd".into(),
-        cpp_source: src,
-        cflags: vec!["-std=c++17".into()],
-        target_part: "xcu250-figd2104-2L-e".into(),
-        top_name: "vadd".into(),
-        clock_period: "3.33".into(),
-        reports_out_dir: reports.clone(),
-        hdl_out_dir: hdl.clone(),
-        uploads: vec![],
-        downloads: vec![],
-        other_configs: String::new(),
-        solution_name: "solution1".into(),
-        reset_low: true,
-        auto_prefix: true,
-        transient_patterns: None,
-        delay_fn: None,
-    };
+    let job = HlsJob::builder()
+        .task_name("vadd".into())
+        .cpp_source(src)
+        .cflags(vec!["-std=c++17".into()])
+        .target_part("xcu250-figd2104-2L-e".into())
+        .top_name("vadd".into())
+        .clock_period("3.33".into())
+        .reports_out_dir(reports.clone())
+        .hdl_out_dir(hdl.clone())
+        .solution_name("solution1".into())
+        .build();
     let out = match run_hls_with_retry(runner, &job, 3) {
         Ok(out) => out,
         Err(e) => panic!(
@@ -166,28 +159,21 @@ fn vitis_hls_round_trips_shared_vadd_fixture() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let reports = tmp.path().join("reports");
     let hdl = tmp.path().join("hdl");
-    let job = HlsJob {
-        task_name: "vadd".into(),
-        cpp_source: vadd_cpp,
-        cflags: vec![
+    let job = HlsJob::builder()
+        .task_name("vadd".into())
+        .cpp_source(vadd_cpp)
+        .cflags(vec![
             "-std=c++17".into(),
             format!("-I{}", tapa_lib.display()),
             "-DAP_INT_MAX_W=4096".into(),
-        ],
-        target_part: "xcu250-figd2104-2L-e".into(),
-        top_name: "VecAdd".into(),
-        clock_period: "3.33".into(),
-        reports_out_dir: reports.clone(),
-        hdl_out_dir: hdl.clone(),
-        uploads: vec![],
-        downloads: vec![],
-        other_configs: String::new(),
-        solution_name: "solution1".into(),
-        reset_low: true,
-        auto_prefix: true,
-        transient_patterns: None,
-        delay_fn: None,
-    };
+        ])
+        .target_part("xcu250-figd2104-2L-e".into())
+        .top_name("VecAdd".into())
+        .clock_period("3.33".into())
+        .reports_out_dir(reports.clone())
+        .hdl_out_dir(hdl.clone())
+        .solution_name("solution1".into())
+        .build();
     let runner: Box<dyn ToolRunner> = if let Some(cfg) = common::has_remote_config() {
         let session = Arc::new(SshSession::new(cfg, SshMuxOptions::default()));
         session.ensure_established().expect("ssh setup");

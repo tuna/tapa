@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use backon::{BlockingRetryable, ExponentialBuilder};
 use camino::Utf8PathBuf;
+use typed_builder::TypedBuilder;
 
 use crate::error::{Result, XilinxError};
 use crate::runtime::process::{ToolInvocation, ToolOutput, ToolRunner};
@@ -39,37 +40,46 @@ pub fn is_transient_hls_output(stdout: &str, _stderr: &str) -> bool {
     stdout.contains("Pre-synthesis failed.") && !stdout.contains("\nERROR:")
 }
 
-#[derive(Clone)]
+#[derive(Clone, TypedBuilder)]
 pub struct HlsJob {
     pub task_name: String,
     pub cpp_source: Utf8PathBuf,
-    pub cflags: Vec<String>,
     pub target_part: String,
     pub top_name: String,
     pub clock_period: String,
     pub reports_out_dir: Utf8PathBuf,
     pub hdl_out_dir: Utf8PathBuf,
+    #[builder(default)]
+    pub cflags: Vec<String>,
     /// Additional files the runner needs to stage up (remote tar-pipe
     /// uploads).
+    #[builder(default)]
     pub uploads: Vec<Utf8PathBuf>,
     /// Files the runner must stage down after the tool exits.
+    #[builder(default)]
     pub downloads: Vec<Utf8PathBuf>,
     /// Optional HLS `other_configs` TCL fragment. Appended verbatim.
+    #[builder(default)]
     pub other_configs: String,
     /// Solution name; defaults to the task name when empty.
+    #[builder(default)]
     pub solution_name: String,
     /// Reset level for `config_rtl` (ports `reset_low` toggle
     /// in `_build_rtl_config`); defaults to `low` to match the current
     /// `RunHls` default.
+    #[builder(default = true)]
     pub reset_low: bool,
     /// Enable `-module_auto_prefix` on the `config_rtl` line. Defaults
     /// to `true`, matching `HlsConfig(auto_prefix=True)` in current.
+    #[builder(default = true)]
     pub auto_prefix: bool,
     /// Optional override. When `None`, the production
     /// `is_transient_hls_output` predicate is used.
+    #[builder(default)]
     pub transient_patterns: Option<Arc<Vec<String>>>,
     /// Injectable delay function for retry backoff. Defaults to
     /// `std::thread::sleep` when `None`.
+    #[builder(default)]
     pub delay_fn: Option<Arc<dyn Fn(Duration) + Send + Sync>>,
 }
 
@@ -96,28 +106,7 @@ impl std::fmt::Debug for HlsJob {
     }
 }
 
-impl Default for HlsJob {
-    fn default() -> Self {
-        Self {
-            task_name: String::new(),
-            cpp_source: Utf8PathBuf::new(),
-            cflags: Vec::new(),
-            target_part: String::new(),
-            top_name: String::new(),
-            clock_period: String::new(),
-            reports_out_dir: Utf8PathBuf::new(),
-            hdl_out_dir: Utf8PathBuf::new(),
-            uploads: Vec::new(),
-            downloads: Vec::new(),
-            other_configs: String::new(),
-            solution_name: String::new(),
-            reset_low: true,
-            auto_prefix: true,
-            transient_patterns: None,
-            delay_fn: None,
-        }
-    }
-}
+
 
 #[derive(Debug, Clone)]
 pub struct HlsOutput {
@@ -597,18 +586,17 @@ mod tests {
     use std::time::Duration;
 
     fn fixture_job(tmp: &camino::Utf8Path) -> HlsJob {
-        HlsJob {
-            task_name: "k".into(),
-            cpp_source: tmp.join("k.cpp"),
-            cflags: vec!["-I/tmp/inc".into()],
-            target_part: "xcu250-figd2104-2L-e".into(),
-            top_name: "k".into(),
-            clock_period: "3.33".into(),
-            reports_out_dir: tmp.join("report"),
-            hdl_out_dir: tmp.join("hdl"),
-            delay_fn: Some(Arc::new(|_| {})),
-            ..HlsJob::default()
-        }
+        HlsJob::builder()
+            .task_name("k".into())
+            .cpp_source(tmp.join("k.cpp"))
+            .cflags(vec!["-I/tmp/inc".into()])
+            .target_part("xcu250-figd2104-2L-e".into())
+            .top_name("k".into())
+            .clock_period("3.33".into())
+            .reports_out_dir(tmp.join("report"))
+            .hdl_out_dir(tmp.join("hdl"))
+            .delay_fn(Some(Arc::new(|_| {})))
+            .build()
     }
 
     #[test]
