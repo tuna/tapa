@@ -31,10 +31,13 @@ pub fn run(args: &GccArgs, _ctx: &mut CliContext) -> Result<()> {
     cmd.arg("-DHLS_NO_XIL_FPO_LIB");
     cmd.args(get_tapa_cflags());
 
-    if let Some(xilinx_hls) = std::env::var_os("XILINX_HLS") {
-        let include = PathBuf::from(xilinx_hls).join("include");
-        if include.exists() {
-            cmd.arg(format!("-isystem{}", include.display()));
+    for env_name in ["XILINX_HLS", "XILINX_VITIS"] {
+        if let Some(root) = std::env::var_os(env_name) {
+            let include = PathBuf::from(root).join("include");
+            if include.exists() {
+                cmd.arg(format!("-isystem{}", include.display()));
+            }
+            break;
         }
     }
 
