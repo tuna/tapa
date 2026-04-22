@@ -80,6 +80,7 @@ directories = "6"
 dotenvy = "0.15"
 env_logger = "0.11"
 evalexpr = "12"
+fs2 = "0.4"
 figment = { version = "0.10", features = ["env", "toml"] }
 flate2 = "1"
 fs-err = "3"

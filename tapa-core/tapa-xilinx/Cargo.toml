@@ -29,7 +29,7 @@ typed-builder = { workspace = true }
 walkdir = { workspace = true }
 which = { workspace = true }
 zip = { workspace = true }
-fs2 = "0.4"
+fs2 = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
