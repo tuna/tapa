@@ -108,13 +108,30 @@ pub fn run_hls_for_leaves(
                 // `reports_dir` must still exist for downstream
                 // readers; the skip path does not touch `hdl_dir`.
                 fs::create_dir_all(&layout.reports_dir)?;
+                // Reload existing csynth data so downstream report
+                // generation and design.json keep correct metrics.
+                let csynth = find_and_parse_csynth(&layout.reports_dir).unwrap_or_else(|e| {
+                    log::warn!(
+                        "could not reload cached csynth for `{task_name}`: {e}; using defaults"
+                    );
+                    tapa_xilinx::CsynthReport::default()
+                });
+                let report_paths = walkdir::WalkDir::new(&layout.reports_dir)
+                    .into_iter()
+                    .filter_map(std::result::Result::ok)
+                    .filter(|e| e.file_type().is_file())
+                    .map(|e| {
+                        Utf8PathBuf::from_path_buf(e.path().to_path_buf())
+                            .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()))
+                    })
+                    .collect();
                 plan.push((
                     task_name.clone(),
                     layout,
                     Work::Skip(HlsOutput {
-                        csynth: tapa_xilinx::CsynthReport::default(),
+                        csynth,
                         verilog_files,
-                        report_paths: Vec::new(),
+                        report_paths,
                         stdout: String::new(),
                         stderr: String::new(),
                     }),
@@ -296,6 +313,25 @@ fn list_verilog_files(dir: &camino::Utf8Path) -> Result<Vec<Utf8PathBuf>> {
     }
     out.sort();
     Ok(out)
+}
+
+/// Find the first `*_csynth.xml` file under `reports_dir` and parse it.
+fn find_and_parse_csynth(reports_dir: &camino::Utf8Path) -> Result<tapa_xilinx::CsynthReport> {
+    for ent in fs::read_dir(reports_dir)? {
+        let ent = ent?;
+        let p = ent.path();
+        if p.file_name()
+            .and_then(|s| s.to_str())
+            .is_some_and(|n| n.ends_with("_csynth.xml"))
+        {
+            let bytes = fs::read(&p)?;
+            return tapa_xilinx::parse_csynth_xml(&bytes)
+                .map_err(|e| CliError::InvalidArg(format!("parse cached csynth: {e}")));
+        }
+    }
+    Err(CliError::InvalidArg(
+        "no cached _csynth.xml found in reports dir".into(),
+    ))
 }
 
 #[cfg(test)]
