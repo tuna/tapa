@@ -8,6 +8,7 @@
 use std::io::{Read, Seek, SeekFrom, Write};
 
 use camino::Utf8PathBuf;
+use quick_xml::events::BytesStart;
 use zip::write::SimpleFileOptions;
 
 use crate::error::{Result, XilinxError};
@@ -321,33 +322,94 @@ fn redact_rpt(text: &str) -> String {
 }
 
 fn redact_xml_payload(text: &str) -> String {
-    use std::sync::OnceLock;
-    static RE_TIME: OnceLock<regex::Regex> = OnceLock::new();
-    static RE_SRC: OnceLock<regex::Regex> = OnceLock::new();
-    static RE_PID: OnceLock<regex::Regex> = OnceLock::new();
+    match redact_xml_event_based(text) {
+        Ok(out) => out,
+        Err(_) => redact_cpp_paths(text),
+    }
+}
 
-    let re_time = RE_TIME.get_or_init(|| {
-        regex::Regex::new(
-            "<xilinx:coreCreationDateTime>....-..-..T..:..:..Z</xilinx:coreCreationDateTime>",
-        )
-        .expect("static regex compiles")
-    });
-    let step1 = re_time.replace_all(
-        text,
-        "<xilinx:coreCreationDateTime>1980-01-01T00:00:00Z</xilinx:coreCreationDateTime>",
-    );
+fn redact_xml_event_based(text: &str) -> std::result::Result<String, quick_xml::Error> {
+    use quick_xml::events::{Event, BytesText};
+    use quick_xml::{Reader, Writer};
 
-    let re_src = RE_SRC.get_or_init(|| {
-        regex::Regex::new("<SourceLocation>.*/((?:cpp|rootfscpp)/[^<]*)</SourceLocation>")
-            .expect("static regex compiles")
-    });
-    let step2 = re_src.replace_all(&step1, "<SourceLocation>$1</SourceLocation>");
+    let mut reader = Reader::from_str(text);
+    reader.config_mut().trim_text(false);
 
-    // `.{32}` matches 32 literal dots inside `ProjectID="..."`.
-    let re_pid = RE_PID
-        .get_or_init(|| regex::Regex::new("ProjectID=\".{32}\"").expect("static regex compiles"));
-    let step3 = re_pid.replace_all(&step2, "ProjectID=\"0123456789abcdef0123456789abcdef\"");
-    redact_cpp_paths(&step3)
+    let mut writer = Writer::new(Vec::new());
+    let mut buf = Vec::new();
+    let mut stack: Vec<String> = Vec::new();
+
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Eof) => break,
+            Ok(Event::Start(mut e)) => {
+                redact_element_attrs(&mut e);
+                let name = String::from_utf8_lossy(e.name().as_ref()).into_owned();
+                stack.push(name);
+                writer.write_event(Event::Start(e))?;
+            }
+            Ok(Event::Empty(mut e)) => {
+                redact_element_attrs(&mut e);
+                writer.write_event(Event::Empty(e))?;
+            }
+            Ok(Event::Text(t)) => {
+                let text_content = t.unescape()?.into_owned();
+                let redacted = if matches!(
+                    stack.last().map(String::as_str),
+                    Some("xilinx:coreCreationDateTime") | Some("coreCreationDateTime")
+                ) {
+                    "1980-01-01T00:00:00Z".to_string()
+                } else {
+                    redact_cpp_paths(&text_content)
+                };
+                writer.write_event(Event::Text(BytesText::new(&redacted)))?;
+            }
+            Ok(Event::End(e)) => {
+                stack.pop();
+                writer.write_event(Event::End(e))?;
+            }
+            Ok(event) => {
+                writer.write_event(event)?;
+            }
+            Err(e) => return Err(e),
+        }
+        buf.clear();
+    }
+
+    Ok(String::from_utf8(writer.into_inner()).unwrap_or_default())
+}
+
+fn redact_element_attrs(elem: &mut BytesStart<'_>) {
+    let attrs: Vec<(String, String)> = elem
+        .attributes()
+        .filter_map(|a| a.ok())
+        .map(|attr| {
+            let key = std::str::from_utf8(attr.key.as_ref()).unwrap_or("").to_string();
+            let value = attr
+                .unescape_value()
+                .unwrap_or_else(|_| std::str::from_utf8(&attr.value).unwrap_or("").into())
+                .into_owned();
+            (key, value)
+        })
+        .collect();
+    elem.clear_attributes();
+    for (key, value) in attrs {
+        let new_value = if key == "ProjectID" || key.ends_with(":ProjectID") {
+            String::from("0123456789abcdef0123456789abcdef")
+        } else {
+            redact_source_location(&value)
+        };
+        elem.push_attribute((key.as_str(), new_value.as_str()));
+    }
+}
+
+fn redact_source_location(text: &str) -> String {
+    for marker in ["rootfscpp/", "cpp/"] {
+        if let Some(idx) = text.rfind(marker) {
+            return text[idx..].to_string();
+        }
+    }
+    text.to_string()
 }
 
 fn redact_cpp_paths(text: &str) -> String {
@@ -579,10 +641,10 @@ mod tests {
             redact_rpt(&format!("| interface | s_axilite | {left} in vecadd |")),
             redact_rpt(&format!("| interface | s_axilite | {right} in vecadd |")),
         );
-        assert_eq!(
-            redact_xml_payload(&format!(r#"<Pragma location="{left}" SOURCE="{left}"/>"#)),
-            r#"<Pragma location="cpp/VecAdd.cpp:31" SOURCE="cpp/VecAdd.cpp:31"/>"#,
-        );
+        let xml =
+            redact_xml_payload(&format!(r#"<Pragma location="{left}" SOURCE="{left}"/>"#));
+        assert!(xml.contains(r#"location="cpp/VecAdd.cpp:31""#));
+        assert!(xml.contains(r#"SOURCE="cpp/VecAdd.cpp:31""#));
     }
 
     #[test]

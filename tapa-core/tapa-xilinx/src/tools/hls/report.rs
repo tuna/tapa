@@ -8,8 +8,6 @@
 
 use std::collections::HashMap;
 
-use quick_xml::events::Event;
-use quick_xml::Reader;
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Result, XilinxError};
@@ -30,88 +28,73 @@ pub struct UtilizationReport {
     pub children: Vec<Self>,
 }
 
+#[derive(Debug, Deserialize)]
+struct CsynthXml {
+    #[serde(rename = "UserAssignments")]
+    user_assignments: UserAssignments,
+    #[serde(rename = "PerformanceEstimates")]
+    performance_estimates: PerformanceEstimates,
+}
+
+#[derive(Debug, Deserialize)]
+struct UserAssignments {
+    #[serde(rename = "TopModelName", default)]
+    top_model_name: Option<String>,
+    #[serde(rename = "TopModuleName", default)]
+    top_module_name: Option<String>,
+    #[serde(rename = "Part")]
+    part: String,
+    #[serde(rename = "TargetClockPeriod", default)]
+    target_clock_period: Option<String>,
+    #[serde(rename = "CTargetClockPeriod", default)]
+    c_target_clock_period: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PerformanceEstimates {
+    #[serde(rename = "SummaryOfTimingAnalysis")]
+    summary_of_timing_analysis: SummaryOfTimingAnalysis,
+}
+
+#[derive(Debug, Deserialize)]
+struct SummaryOfTimingAnalysis {
+    #[serde(rename = "EstimatedClockPeriod")]
+    estimated_clock_period: String,
+}
+
 pub fn parse_csynth_xml(bytes: &[u8]) -> Result<CsynthReport> {
-    let mut reader = Reader::from_reader(bytes);
-    reader.config_mut().trim_text(true);
+    let parsed: CsynthXml = quick_xml::de::from_reader(bytes).map_err(|e| {
+        XilinxError::HlsReportParse(format!("csynth.xml parse failed: {e}"))
+    })?;
 
-    let mut path: Vec<String> = Vec::new();
-    let mut top: Option<String> = None;
-    let mut part: Option<String> = None;
-    let mut target_cp: Option<String> = None;
-    let mut estimated_cp: Option<String> = None;
-    let mut buf = Vec::new();
-    let mut current_text = String::new();
+    let top = parsed
+        .user_assignments
+        .top_model_name
+        .or(parsed.user_assignments.top_module_name)
+        .filter(|s| !s.trim().is_empty())
+        .ok_or_else(|| {
+            XilinxError::HlsReportParse("csynth.xml: TopModuleName not found".into())
+        })?;
 
-    loop {
-        match reader.read_event_into(&mut buf) {
-            // Route malformed csynth.xml to the HLS-scoped variant so
-            // the spec's negative contract (truncated report surfaces as
-            // `HlsReportParse`) holds end-to-end.
-            Err(e) => {
-                return Err(XilinxError::HlsReportParse(format!(
-                    "csynth.xml parse failed: {e}"
-                )));
-            }
-            Ok(Event::Eof) => break,
-            Ok(Event::Start(ref e)) => {
-                let name = String::from_utf8_lossy(e.name().as_ref()).into_owned();
-                path.push(name);
-                current_text.clear();
-            }
-            Ok(Event::Text(t)) => {
-                let s = t
-                    .unescape()
-                    .map_err(|e| {
-                        XilinxError::HlsReportParse(format!("csynth.xml text unescape failed: {e}"))
-                    })?
-                    .into_owned();
-                current_text.push_str(&s);
-            }
-            Ok(Event::End(_)) => {
-                let leaf = path.last().map_or("", String::as_str);
-                match leaf {
-                    "TopModelName" | "TopModuleName" => {
-                        if top.is_none() && !current_text.is_empty() {
-                            top = Some(current_text.trim().to_string());
-                        }
-                    }
-                    "Part" => {
-                        if part.is_none() && !current_text.is_empty() {
-                            part = Some(current_text.trim().to_string());
-                        }
-                    }
-                    "TargetClockPeriod" | "CTargetClockPeriod" => {
-                        if target_cp.is_none() && !current_text.is_empty() {
-                            target_cp = Some(current_text.trim().to_string());
-                        }
-                    }
-                    "EstimatedClockPeriod" => {
-                        if estimated_cp.is_none() && !current_text.is_empty() {
-                            estimated_cp = Some(current_text.trim().to_string());
-                        }
-                    }
-                    _ => {}
-                }
-                path.pop();
-                current_text.clear();
-            }
-            Ok(_) => {}
-        }
-        buf.clear();
-    }
+    let target_cp = parsed
+        .user_assignments
+        .target_clock_period
+        .or(parsed.user_assignments.c_target_clock_period)
+        .filter(|s| !s.trim().is_empty())
+        .ok_or_else(|| {
+            XilinxError::HlsReportParse("csynth.xml: TargetClockPeriod not found".into())
+        })?;
 
     Ok(CsynthReport {
-        top: top.ok_or_else(|| {
-            XilinxError::HlsReportParse("csynth.xml: TopModuleName not found".into())
-        })?,
-        part: part
-            .ok_or_else(|| XilinxError::HlsReportParse("csynth.xml: Part not found".into()))?,
-        target_clock_period_ns: target_cp.ok_or_else(|| {
-            XilinxError::HlsReportParse("csynth.xml: TargetClockPeriod not found".into())
-        })?,
-        estimated_clock_period_ns: estimated_cp.ok_or_else(|| {
-            XilinxError::HlsReportParse("csynth.xml: EstimatedClockPeriod not found".into())
-        })?,
+        top: top.trim().to_string(),
+        part: parsed.user_assignments.part.trim().to_string(),
+        target_clock_period_ns: target_cp.trim().to_string(),
+        estimated_clock_period_ns: parsed
+            .performance_estimates
+            .summary_of_timing_analysis
+            .estimated_clock_period
+            .trim()
+            .to_string(),
     })
 }
 
