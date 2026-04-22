@@ -86,15 +86,17 @@ pub fn topology_program_from_design(design: &Design) -> Result<Program> {
         }
         tasks.insert(name.clone(), Value::Object(task_obj));
     }
-    let program_value = Value::Object(
-        [
-            ("top".to_string(), Value::String(design.top.clone())),
-            ("target".to_string(), Value::String(design.target.clone())),
-            ("tasks".to_string(), Value::Object(tasks)),
-        ]
-        .into_iter()
-        .collect(),
-    );
+    let mut program_map = serde_json::Map::new();
+    program_map.insert("top".to_string(), Value::String(design.top.clone()));
+    program_map.insert("target".to_string(), Value::String(design.target.clone()));
+    program_map.insert("tasks".to_string(), Value::Object(tasks));
+    if let Some(ref region_map) = design.slot_task_name_to_fp_region {
+        program_map.insert(
+            "slot_task_name_to_fp_region".to_string(),
+            serde_json::to_value(region_map).map_err(CliError::Json)?,
+        );
+    }
+    let program_value = Value::Object(program_map);
     let program: Program = serde_json::from_value(program_value).map_err(CliError::Json)?;
     Ok(program)
 }
