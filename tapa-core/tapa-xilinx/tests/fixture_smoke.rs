@@ -87,8 +87,7 @@ fn kernel_xml_matches_golden_fixture() {
     // Semantic comparison: parse both and compare kernel name/ports/args.
     // Formatting differences (attribute spacing, indentation) are acceptable
     // after the minijinja migration.
-    let parsed: serde_json::Value =
-        quick_xml::de::from_str(&xml).expect("generated xml parses");
+    let parsed: serde_json::Value = quick_xml::de::from_str(&xml).expect("generated xml parses");
     let golden_parsed: serde_json::Value =
         quick_xml::de::from_str(&golden).expect("golden xml parses");
     assert_eq!(

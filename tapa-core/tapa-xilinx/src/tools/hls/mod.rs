@@ -188,12 +188,10 @@ fn kernel_env_entries(job: &HlsJob) -> Vec<(String, String)> {
         "TAPA_KERNEL_PATH_0".into(),
         job.cpp_source.as_str().to_string(),
     ));
-    let cflags = job
-        .cflags
-        .iter()
-        .map(String::as_str)
-        .collect::<Vec<_>>()
-        .join(" ");
+    let cflags = shlex::try_join(job.cflags.iter().map(String::as_str)).unwrap_or_else(|_| {
+        // Fallback: if an argument contains a nul byte, join lossily.
+        job.cflags.join(" ")
+    });
     env.push(("TAPA_KERNEL_CFLAGS_0".into(), cflags));
     env
 }
@@ -921,6 +919,60 @@ mod tests {
         assert!(
             cflags.contains("-DMSG=\"hello world\""),
             "spaces preserved: {cflags}"
+        );
+    }
+
+    #[test]
+    fn cflags_path_with_spaces_is_quoted() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut job = fixture_job(&Utf8PathBuf::from_path_buf(tmp.path().to_path_buf()).unwrap());
+        // Fused form: include path contains spaces
+        job.cflags = vec!["-I/path with spaces/include".into()];
+        let env = kernel_env_entries(&job);
+        let cflags = env
+            .iter()
+            .find(|(k, _)| k == "TAPA_KERNEL_CFLAGS_0")
+            .map(|(_, v)| v.clone())
+            .unwrap();
+        assert!(
+            cflags.contains("'-I/path with spaces/include'"),
+            "path with spaces must be quoted: {cflags}"
+        );
+    }
+
+    #[test]
+    fn cflags_split_include_with_spaces_is_quoted() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut job = fixture_job(&Utf8PathBuf::from_path_buf(tmp.path().to_path_buf()).unwrap());
+        // Split form: -I and path are separate arguments
+        job.cflags = vec!["-I".into(), "/path with spaces/include".into()];
+        let env = kernel_env_entries(&job);
+        let cflags = env
+            .iter()
+            .find(|(k, _)| k == "TAPA_KERNEL_CFLAGS_0")
+            .map(|(_, v)| v.clone())
+            .unwrap();
+        assert!(
+            cflags.contains("-I '/path with spaces/include'"),
+            "split include with spaces must be quoted: {cflags}"
+        );
+    }
+
+    #[test]
+    fn cflags_single_quotes_are_escaped() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut job = fixture_job(&Utf8PathBuf::from_path_buf(tmp.path().to_path_buf()).unwrap());
+        job.cflags = vec!["-DMSG='hello'".into()];
+        let env = kernel_env_entries(&job);
+        let cflags = env
+            .iter()
+            .find(|(k, _)| k == "TAPA_KERNEL_CFLAGS_0")
+            .map(|(_, v)| v.clone())
+            .unwrap();
+        // shlex uses double quotes when single quotes are present
+        assert!(
+            cflags.contains("\"-DMSG='hello'\""),
+            "single quotes must be preserved inside double quotes: {cflags}"
         );
     }
 }

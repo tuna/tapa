@@ -22,6 +22,7 @@ use std::path::PathBuf;
 
 use clap::Parser;
 use fs_err;
+use path_slash::PathExt;
 use serde_json::Value;
 
 use crate::context::CliContext;
@@ -148,7 +149,7 @@ fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, settings: &settings_io::Setti
         let rel = rtl_file
             .strip_prefix(&rtl_dir)
             .map_err(|e| CliError::InvalidArg(format!("rtl strip_prefix: {e}")))?;
-        let name = format!("rtl/{}", rel.to_string_lossy());
+        let name = format!("rtl/{}", rel.to_slash_lossy());
         z.start_file(name, opts)
             .map_err(|e| CliError::InvalidArg(format!("zip entry: {e}")))?;
         z.write_all(&fs_err::read(rtl_file)?)?;
@@ -206,7 +207,7 @@ fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, settings: &settings_io::Setti
             let rel = rpt
                 .strip_prefix(&hls_root)
                 .map_err(|e| CliError::InvalidArg(format!("rpt strip_prefix: {e}")))?;
-            let name = format!("report/{}", rel.to_string_lossy());
+            let name = format!("report/{}", rel.to_slash_lossy());
             z.start_file(name, opts)
                 .map_err(|e| CliError::InvalidArg(format!("zip entry: {e}")))?;
             z.write_all(&redact_rpt(&fs_err::read(rpt)?))?;
@@ -416,6 +417,13 @@ mod tests {
         assert!(names
             .iter()
             .any(|n| n == "report/Top/syn/report/Top_csynth.rpt"));
+        // AC-2: ZIP entry names must never contain platform separators.
+        for name in &names {
+            assert!(
+                !name.contains('\\'),
+                "ZIP entry name must use forward slashes: {name}"
+            );
+        }
 
         let mut rpt = String::new();
         std::io::Read::read_to_string(

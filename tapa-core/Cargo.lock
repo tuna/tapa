@@ -1276,6 +1276,7 @@ dependencies = [
  "serde_yaml",
  "sha2",
  "shellexpand",
+ "shlex",
  "tar",
  "tempfile",
  "thiserror",

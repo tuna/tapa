@@ -14,17 +14,17 @@ use crate::error::{Result, XilinxError};
 use crate::runtime::ssh::SshSession;
 
 pub fn shell_quote(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() + 2);
-    out.push('\'');
-    for c in s.chars() {
-        if c == '\'' {
-            out.push_str("'\\''");
-        } else {
-            out.push(c);
-        }
-    }
-    out.push('\'');
-    out
+    shlex::try_quote(s)
+        .unwrap_or_else(|_| std::borrow::Cow::Owned(format!("{s:?}")))
+        .into_owned()
+}
+
+#[allow(
+    dead_code,
+    reason = "deprecated shlex::quote wrapper kept for API compat"
+)]
+fn _deprecated_shlex_quote(s: &str) -> String {
+    shell_quote(s)
 }
 
 /// Map a local absolute path to the corresponding remote path under
@@ -227,7 +227,8 @@ mod tests {
 
     #[test]
     fn shell_quote_simple_word() {
-        assert_eq!(shell_quote("hello"), "'hello'");
+        // shlex omits quotes for words that don't need them
+        assert_eq!(shell_quote("hello"), "hello");
     }
 
     #[test]
@@ -237,12 +238,14 @@ mod tests {
 
     #[test]
     fn shell_quote_escapes_single_quotes() {
-        assert_eq!(shell_quote("it's"), "'it'\\''s'");
+        // shlex uses double quotes when single quotes are present
+        assert_eq!(shell_quote("it's"), "\"it's\"");
     }
 
     #[test]
     fn shell_quote_multiple_single_quotes() {
-        assert_eq!(shell_quote("a'b'c"), "'a'\\''b'\\''c'");
+        // shlex uses double quotes when single quotes are present
+        assert_eq!(shell_quote("a'b'c"), "\"a'b'c\"");
     }
 
     #[test]

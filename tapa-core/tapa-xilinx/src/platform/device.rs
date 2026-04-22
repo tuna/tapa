@@ -62,13 +62,12 @@ pub fn parse_hpfm_xml(xml: &[u8]) -> Result<DeviceInfo> {
                 });
             }
             Ok(Event::Eof) => break,
-            Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e)) => {
+            Ok(Event::Start(ref e) | Event::Empty(ref e)) => {
                 let name_bytes = e.name().as_ref().to_vec();
                 let qname = String::from_utf8_lossy(&name_bytes);
                 let name = local_name(&qname);
                 if name == "platformInfo" {
                     in_platform_info = true;
-
                 } else if in_platform_info {
                     match name {
                         "deviceInfo" => {
