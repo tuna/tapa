@@ -403,9 +403,8 @@ fn refresh_top_slot_instance_connections(
                 .iter()
                 .enumerate()
                 .find_map(|(idx, candidate)| {
-                    let expected =
-                        crate::instantiation_builder::instance_name(&inst.module, idx, candidate);
-                    (expected == inst.name).then_some(candidate)
+                    instance_matches_name(&inst.module, idx, candidate, &inst.name)
+                        .then_some(candidate)
                 })
         else {
             continue;
@@ -975,7 +974,12 @@ fn build_slot_module(
 
     // Add pipeline wires from arg table for instances in this slot
     for inst_name in inst_names {
-        if let Some(inst_signals) = arg_table.get(inst_name) {
+        let canonical_inst_name = resolve_instance_in_task(slot_task_ref, inst_name)
+            .map_or_else(|| inst_name.clone(), |(_, canonical)| canonical);
+        if let Some(inst_signals) = slot_arg_table
+            .get(&canonical_inst_name)
+            .or_else(|| arg_table.get(&canonical_inst_name))
+        {
             for signal in inst_signals.values() {
                 if !wires.iter().any(|w| w.name == *signal) {
                     wires.push(make_wire(signal, None));
@@ -986,8 +990,16 @@ fn build_slot_module(
 
     // Add task instances belonging to this slot
     for inst_name in inst_names {
-        // Parse "taskname_idx" format
-        let (task_name, _idx) = parse_instance_name(inst_name);
+        // Resolve explicit instance labels through the parent task's
+        // child map before falling back to the legacy "taskname_idx"
+        // parse. Labels like `Module2Func_1` may still instantiate
+        // task/module `Module1Func`.
+        let (task_name, canonical_inst_name) = resolve_instance_in_task(slot_task_ref, inst_name)
+            .unwrap_or_else(|| {
+                let (task_name, _idx) = parse_instance_name(inst_name);
+                (task_name, inst_name.clone())
+            });
+        let inst_name = &canonical_inst_name;
         if let Some(task) = program.tasks.get(&task_name) {
             // Add control wires for this instance
             for suffix in &["__ap_start", "__ap_done", "__ap_idle", "__ap_ready"] {
@@ -1007,9 +1019,7 @@ fn build_slot_module(
             let mut arg_connections = Vec::new();
             if let Some(instances) = slot_task_ref.tasks.get(&task_name) {
                 for (idx, inst) in instances.iter().enumerate() {
-                    let expected_name =
-                        crate::instantiation_builder::instance_name(&task_name, idx, inst);
-                    if expected_name == *inst_name {
+                    if instance_matches_name(&task_name, idx, inst, inst_name) {
                         for (port_name, arg) in &inst.args {
                             // Connect child port through the slot-local arg
                             // table for all categories. Scalars route through
@@ -1617,6 +1627,31 @@ fn build_top_module(
     module
 }
 
+fn resolve_instance_in_task(
+    parent: &tapa_topology::task::TaskDesign,
+    inst_name: &str,
+) -> Option<(String, String)> {
+    for (task_name, instances) in &parent.tasks {
+        for (idx, inst) in instances.iter().enumerate() {
+            if instance_matches_name(task_name, idx, inst, inst_name) {
+                let canonical = crate::instantiation_builder::instance_name(task_name, idx, inst);
+                return Some((task_name.clone(), canonical));
+            }
+        }
+    }
+    None
+}
+
+fn instance_matches_name(
+    task_name: &str,
+    idx: usize,
+    inst: &tapa_topology::instance::InstanceDesign,
+    inst_name: &str,
+) -> bool {
+    crate::instantiation_builder::instance_name(task_name, idx, inst) == inst_name
+        || format!("{task_name}_{idx}") == inst_name
+}
+
 /// Find the parent-visible arg name for a child port in a given task.
 fn find_arg_name_in_task(
     parent: &tapa_topology::task::TaskDesign,
@@ -1626,7 +1661,7 @@ fn find_arg_name_in_task(
 ) -> Option<String> {
     let instances = parent.tasks.get(task_name)?;
     for (idx, inst) in instances.iter().enumerate() {
-        if crate::instantiation_builder::instance_name(task_name, idx, inst) == inst_name {
+        if instance_matches_name(task_name, idx, inst, inst_name) {
             for (child_port, arg) in &inst.args {
                 if child_port == port_name {
                     return Some(arg.arg.clone());
@@ -2551,6 +2586,87 @@ endmodule
             .find(|m| m.name == "child_0")
             .expect("child instance");
         assert_eq!(child_inst.module, "child_rtl");
+    }
+
+    #[test]
+    fn slot_child_instances_resolve_explicit_instance_label_to_task() {
+        let prog: Program = serde_json::from_str(
+            r#"{
+                "top": "top_task",
+                "target": "xilinx-hls",
+                "slot_task_name_to_fp_region": {
+                    "SLOT_0": "SLOT_0:SLOT_0"
+                },
+                "tasks": {
+                    "top_task": {
+                        "level": "upper", "code": "", "target": "xilinx-hls",
+                        "ports": [
+                            {"cat": "scalar", "name": "n", "type": "int", "width": 32}
+                        ],
+                        "tasks": {
+                            "SLOT_0": [{"args": {"n": {"arg": "n", "cat": "scalar"}}}]
+                        },
+                        "fifos": {}
+                    },
+                    "SLOT_0": {
+                        "level": "upper", "code": "", "target": "xilinx-hls",
+                        "ports": [
+                            {"cat": "scalar", "name": "n", "type": "int", "width": 32}
+                        ],
+                        "tasks": {
+                            "RealFunc": [{
+                                "name": "AliasFunc#1",
+                                "args": {"n": {"arg": "n", "cat": "scalar"}}
+                            }]
+                        },
+                        "fifos": {}
+                    },
+                    "RealFunc": {
+                        "level": "lower", "code": "", "target": "xilinx-hls",
+                        "ports": [{"cat": "scalar", "name": "n", "type": "int", "width": 32}],
+                        "tasks": {}, "fifos": {}
+                    }
+                }
+            }"#,
+        )
+        .unwrap();
+        let leaf_mods = BTreeMap::from([(
+            "RealFunc".into(),
+            AnyModuleDefinition::new_verilog(
+                "RealFunc".into(),
+                Vec::new(),
+                "module RealFunc(); endmodule".into(),
+            ),
+        )]);
+        let slot_to_insts = BTreeMap::from([("SLOT_0".into(), vec!["AliasFunc_1".into()])]);
+
+        let project = build_project(
+            &prog,
+            &leaf_mods,
+            &BTreeMap::new(),
+            None,
+            &slot_to_insts,
+            None,
+            None,
+            None,
+        )
+        .expect("build project");
+
+        let slot = project
+            .modules
+            .module_definitions
+            .iter()
+            .find(|m| m.name() == "SLOT_0")
+            .expect("slot module");
+        let AnyModuleDefinition::Grouped { grouped, .. } = slot else {
+            panic!("slot should be grouped");
+        };
+        let child_inst = grouped
+            .submodules
+            .iter()
+            .find(|m| m.name == "AliasFunc_1")
+            .expect("explicitly named child instance");
+        assert_eq!(child_inst.module, "RealFunc");
     }
 
     #[test]

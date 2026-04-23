@@ -24,7 +24,8 @@ pub type ArgTable = std::collections::BTreeMap<String, std::collections::BTreeMa
 #[must_use]
 pub fn instance_name(task_name: &str, idx: usize, inst: &InstanceDesign) -> String {
     inst.name
-        .clone()
+        .as_deref()
+        .map(tapa_rtl::module::sanitize_identifier_name)
         .unwrap_or_else(|| format!("{task_name}_{idx}"))
 }
 
@@ -505,6 +506,17 @@ mod tests {
             "got {}",
             inst.connections.len()
         );
+    }
+
+    #[test]
+    fn instance_name_sanitizes_explicit_labels() {
+        let inst = InstanceDesign {
+            name: Some("Module2Func#1".into()),
+            args: std::collections::BTreeMap::default(),
+            step: 0,
+            extra: std::collections::BTreeMap::default(),
+        };
+        assert_eq!(instance_name("Module1Func", 2, &inst), "Module2Func_1");
     }
 
     #[test]
