@@ -1648,8 +1648,11 @@ fn instance_matches_name(
     inst: &tapa_topology::instance::InstanceDesign,
     inst_name: &str,
 ) -> bool {
-    crate::instantiation_builder::instance_name(task_name, idx, inst) == inst_name
-        || format!("{task_name}_{idx}") == inst_name
+    if inst.name.is_some() {
+        crate::instantiation_builder::instance_name(task_name, idx, inst) == inst_name
+    } else {
+        format!("{task_name}_{idx}") == inst_name
+    }
 }
 
 /// Find the parent-visible arg name for a child port in a given task.
@@ -2667,6 +2670,110 @@ endmodule
             .find(|m| m.name == "AliasFunc_1")
             .expect("explicitly named child instance");
         assert_eq!(child_inst.module, "RealFunc");
+    }
+
+    #[test]
+    fn explicit_instance_label_collision_does_not_duplicate_slot_connections() {
+        let prog: Program = serde_json::from_str(
+            r#"{
+                "top": "top_task",
+                "target": "xilinx-hls",
+                "slot_task_name_to_fp_region": {
+                    "SLOT_0": "SLOT_0:SLOT_0"
+                },
+                "tasks": {
+                    "top_task": {
+                        "level": "upper", "code": "", "target": "xilinx-hls",
+                        "ports": [],
+                        "tasks": {},
+                        "fifos": {}
+                    },
+                    "SLOT_0": {
+                        "level": "upper", "code": "", "target": "xilinx-hls",
+                        "is_slot": true,
+                        "ports": [
+                            {"cat": "istream", "name": "from_a", "type": "int", "width": 32},
+                            {"cat": "ostream", "name": "to_a", "type": "int", "width": 32},
+                            {"cat": "istream", "name": "from_b", "type": "int", "width": 32},
+                            {"cat": "ostream", "name": "to_b", "type": "int", "width": 32}
+                        ],
+                        "tasks": {
+                            "Leaf": [
+                                {
+                                    "name": "Leaf#1",
+                                    "args": {
+                                        "fifo_ld_0": {"arg": "from_a", "cat": "istream"},
+                                        "fifo_st_0": {"arg": "to_a", "cat": "ostream"}
+                                    }
+                                },
+                                {
+                                    "name": "Leaf#3",
+                                    "args": {
+                                        "fifo_ld_0": {"arg": "from_b", "cat": "istream"},
+                                        "fifo_st_0": {"arg": "to_b", "cat": "ostream"}
+                                    }
+                                }
+                            ]
+                        },
+                        "fifos": {}
+                    },
+                    "Leaf": {
+                        "level": "lower", "code": "", "target": "xilinx-hls",
+                        "ports": [
+                            {"cat": "istream", "name": "fifo_ld_0", "type": "int", "width": 32},
+                            {"cat": "ostream", "name": "fifo_st_0", "type": "int", "width": 32}
+                        ],
+                        "tasks": {}, "fifos": {}
+                    }
+                }
+            }"#,
+        )
+        .unwrap();
+        let leaf_mods = BTreeMap::from([(
+            "Leaf".into(),
+            AnyModuleDefinition::new_verilog(
+                "Leaf".into(),
+                Vec::new(),
+                "module Leaf(); endmodule".into(),
+            ),
+        )]);
+        let top_arg_table = crate::instantiation_builder::build_arg_table(&prog.tasks[&prog.top]);
+        let slot = build_slot_module(
+            &prog,
+            "SLOT_0",
+            &["Leaf_1".into()],
+            &leaf_mods,
+            &BTreeMap::new(),
+            &top_arg_table,
+            None,
+        );
+
+        let AnyModuleDefinition::Grouped { grouped, .. } = slot else {
+            panic!("slot should be grouped");
+        };
+        let child_inst = grouped
+            .submodules
+            .iter()
+            .find(|m| m.name == "Leaf_1")
+            .expect("explicitly named child instance");
+        let mut seen = std::collections::BTreeSet::new();
+        let duplicates: Vec<_> = child_inst
+            .connections
+            .iter()
+            .filter_map(|conn| (!seen.insert(conn.name.clone())).then_some(conn.name.clone()))
+            .collect();
+        assert!(
+            duplicates.is_empty(),
+            "explicit label Leaf#1 must not also match positional Leaf_1; \
+             duplicates: {duplicates:?}; connections: {:?}",
+            child_inst.connections
+        );
+        let dout = child_inst
+            .connections
+            .iter()
+            .find(|c| c.name == "fifo_ld_0_dout")
+            .expect("istream data connection");
+        assert_eq!(dout.expr.0[0].repr, "from_a_dout");
     }
 
     #[test]
