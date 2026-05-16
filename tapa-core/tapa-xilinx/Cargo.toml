@@ -12,7 +12,6 @@ indexmap = { workspace = true }
 fs-err = { workspace = true }
 minijinja = { workspace = true }
 nix = { workspace = true }
-nom = { workspace = true }
 path-slash = { workspace = true }
 quick-xml = { workspace = true }
 regex = { workspace = true }
@@ -28,7 +27,6 @@ tempfile = { workspace = true }
 thiserror = { workspace = true }
 typed-builder = { workspace = true }
 walkdir = { workspace = true }
-which = { workspace = true }
 zip = { workspace = true }
 fs2 = { workspace = true }
 

@@ -4,7 +4,6 @@
 *.out
 *.pyc
 *.zip
-*/target/
 .DS_Store
 .ci-secrets
 .claude/
@@ -19,6 +18,8 @@
 /bazel-*
 /build/
 /compile_commands.json
+/fpga-runtime/target/
+/tapa-core/target/
 /tools/test-tools/target/
 __pycache__
 a.out

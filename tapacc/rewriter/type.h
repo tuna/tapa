@@ -43,11 +43,11 @@ inline bool IsTapaType(const clang::ParmVarDecl* param,
   return IsTapaType(param->getType(), type_name);
 }
 
-inline std::string ArrayNameAt(const std::string& name, int idx) {
+inline std::string ArrayNameAt(const std::string& name, int64_t idx) {
   return name + "[" + std::to_string(idx) + "]";
 }
 
-inline std::string GetArrayElem(const std::string& name, int idx) {
+inline std::string GetArrayElem(const std::string& name, int64_t idx) {
   return name + "_" + std::to_string(idx) + "_offset";
 }
 

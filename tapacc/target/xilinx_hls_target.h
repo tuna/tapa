@@ -52,7 +52,8 @@ class XilinxHLSTarget : public BaseTarget {
   XilinxHLSTarget(bool is_vitis) : is_vitis(is_vitis) {}
 
  private:
-  bool is_vitis = false;  // True if the target is Vitis instead of Vitis HLS.
+  bool is_vitis = false;  // True if generating for Xilinx Vitis (s_axilite)
+                          // instead of Xilinx HLS.
 };
 
 }  // namespace internal

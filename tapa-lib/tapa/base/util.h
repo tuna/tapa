@@ -38,12 +38,12 @@ inline constexpr int widthof(T object) {
 
 template <uint64_t N>
 inline constexpr uint64_t round_up_div(uint64_t i) {
-  return ((i - 1) / N + 1);
+  return i == 0 ? 0 : ((i - 1) / N + 1);
 }
 
 template <uint64_t N>
 inline constexpr uint64_t round_up(uint64_t i) {
-  return ((i - 1) / N + 1) * N;
+  return i == 0 ? 0 : ((i - 1) / N + 1) * N;
 }
 
 template <typename To, typename From>

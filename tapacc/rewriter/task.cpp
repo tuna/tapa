@@ -396,14 +396,12 @@ void Visitor::ProcessUpperLevelTaskFunc(const ExprWithCleanups* task_obj,
       if (const auto var_decl = dyn_cast<VarDecl>(*decl_stmt->decl_begin())) {
         if (auto decl = GetTapaStreamDecl(var_decl->getType())) {
           const auto args = decl->getTemplateArgs().asArray();
-          const string elem_type = GetTemplateArgName(args[0]);
           const uint64_t fifo_depth{*args[1].getAsIntegral().getRawData()};
           const string var_name{var_decl->getNameAsString()};
           metadata["fifos"][var_name]["depth"] = fifo_depth;
           fifo_decls[var_name] = var_decl;
         } else if (auto decl = GetTapaStreamsDecl(var_decl->getType())) {
           const auto args = decl->getTemplateArgs().asArray();
-          const string elem_type = GetTemplateArgName(args[0]);
           const uint64_t fifo_depth = *args[2].getAsIntegral().getRawData();
           for (size_t i = 0; i < GetArraySize(decl); ++i) {
             const string var_name = ArrayNameAt(var_decl->getNameAsString(), i);
@@ -415,7 +413,7 @@ void Visitor::ProcessUpperLevelTaskFunc(const ExprWithCleanups* task_obj,
     }
   }
 
-  // Instanciate tasks.
+  // Instantiate tasks.
   vector<const CXXMemberCallExpr*> invokes = GetTapaInvokes(task_obj);
 
   unordered_map<string, int> istreams_access_pos;
@@ -431,13 +429,12 @@ void Visitor::ProcessUpperLevelTaskFunc(const ExprWithCleanups* task_obj,
     if (const auto method = dyn_cast<CXXMethodDecl>(invoke->getCalleeDecl())) {
       auto args = method->getTemplateSpecializationArgs()->asArray();
       if (args.size() > 0 && args[0].getKind() == TemplateArgument::Integral) {
-        step =
-            *reinterpret_cast<const int*>(args[0].getAsIntegral().getRawData());
+        step = args[0].getAsIntegral().getExtValue();
       } else {
         step = 0;  // default to join
       }
       if (args.size() > 1 && args[1].getKind() == TemplateArgument::Integral) {
-        vec_length = *args[1].getAsIntegral().getRawData();
+        vec_length = args[1].getAsIntegral().getExtValue();
       }
       if (args.rbegin()->getKind() == TemplateArgument::Integral) {
         has_name = true;
@@ -529,16 +526,17 @@ void Visitor::ProcessUpperLevelTaskFunc(const ExprWithCleanups* task_obj,
           }
 
           if (i == 0) {
-            auto func_decl = decl_ref->getDecl()->getAsFunction();
-            if (func_decl->isFunctionTemplateSpecialization()) {
+            auto func_decl =
+                decl_ref ? decl_ref->getDecl()->getAsFunction() : nullptr;
+            if (func_decl && func_decl->isFunctionTemplateSpecialization()) {
               // use mangled name for template specialization
               task_name = GetMangledFuncName(func_decl);
             } else {
               task_name = arg_name;
             }
             metadata["tasks"][task_name].push_back({{"step", step}});
-            task = decl_ref->getDecl()->getAsFunction();
-          } else {
+            task = func_decl;
+          } else if (i > 0) {
             assert(task != nullptr);
             auto skip_params = (has_name ? 1 : 0) + (has_executable ? 1 : 0);
             auto param = task->getParamDecl(i - 1 - skip_params);
@@ -554,7 +552,7 @@ void Visitor::ProcessUpperLevelTaskFunc(const ExprWithCleanups* task_obj,
                   {"cat", param_cat}, {"arg", arg}};
             };
 
-            // regsiter stream info to task
+            // register stream info to task
             auto register_consumer = [&, ast_arg = arg](string arg = "") {
               // use global arg_name by default
               if (arg.empty()) arg = arg_name;
@@ -679,11 +677,13 @@ void Visitor::ProcessUpperLevelTaskFunc(const ExprWithCleanups* task_obj,
     if (!is_consumed && !is_produced) {
       static const auto diagnostic_id = diagnostics.getCustomDiagID(
           clang::DiagnosticsEngine::Warning, "unused stream: %0");
-      auto diagnostics_builder =
-          diagnostics.Report(fifo_decl->second->getBeginLoc(), diagnostic_id);
-      diagnostics_builder.AddString(fifo_name);
-      diagnostics_builder.AddSourceRange(
-          GetCharSourceRange(fifo_decl->second->getSourceRange()));
+      if (fifo_decl != fifo_decls.end()) {
+        auto diagnostics_builder =
+            diagnostics.Report(fifo_decl->second->getBeginLoc(), diagnostic_id);
+        diagnostics_builder.AddString(fifo_name);
+        diagnostics_builder.AddSourceRange(
+            GetCharSourceRange(fifo_decl->second->getSourceRange()));
+      }
       fifo = metadata["fifos"].erase(fifo);
     } else {
       ++fifo;

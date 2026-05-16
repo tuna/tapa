@@ -52,8 +52,9 @@ struct TapaTask {
         is_template_specialization(is_template_specialization) {}
 
   bool operator<(const TapaTask& other) const {
-    return std::tie(func, is_template_specialization) <
-           std::tie(other.func, is_template_specialization);
+    return std::tie(func, invoker_func, is_template_specialization) <
+           std::tie(other.func, other.invoker_func,
+                    other.is_template_specialization);
   }
 };
 
@@ -194,7 +195,7 @@ inline bool IsFuncIgnored(const clang::FunctionDecl* func) {
 }
 
 // Find for a given upper-level task, return all direct children tasks (e.g.
-// tasks instanciated directly in upper).
+// tasks instantiated directly in upper).
 // Lower-level tasks or non-task functions return an empty vector.
 inline std::vector<TapaTask> FindChildrenTasks(
     const clang::FunctionDecl* upper_func) {
@@ -214,7 +215,7 @@ inline std::vector<TapaTask> FindChildrenTasks(
         auto func_decl =
             llvm::dyn_cast<clang::FunctionDecl>(decl_ref->getDecl());
 
-        // skip function definitions that has no body.
+        // skip forward declarations.
         if (!func_decl->isThisDeclarationADefinition()) continue;
 
         // If the function is a template instantiation, get the specialization
@@ -231,7 +232,7 @@ inline std::vector<TapaTask> FindChildrenTasks(
   return {};
 }
 
-// Find all tasks instanciated using breadth-first search.
+// Find all tasks instantiated using breadth-first search.
 // If a task is instantiated more than once, it will only appear once.
 // Lower-level tasks or non-task functions return an empty vector.
 inline std::vector<TapaTask> FindAllTasks(

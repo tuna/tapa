@@ -118,8 +118,7 @@ struct invoker {
   }
 
   template <typename... Args>
-  static int64_t invoke(bool run_in_new_process, F&& f,
-                        const std::string& bitstream, Args&&... args) {
+  static int64_t invoke(F&& f, const std::string& bitstream, Args&&... args) {
     if (bitstream.empty()) {
       LOG(INFO) << "running software simulation with TAPA library";
       const auto tic = std::chrono::steady_clock::now();
@@ -128,27 +127,7 @@ struct invoker {
       return std::chrono::duration_cast<std::chrono::nanoseconds>(toc - tic)
           .count();
     } else {
-      if (run_in_new_process) {
-        auto kernel_time_ns_raw = allocate(sizeof(int64_t));
-        auto deleter = [](int64_t* p) { deallocate(p, sizeof(int64_t)); };
-        std::unique_ptr<int64_t, decltype(deleter)> kernel_time_ns(
-            reinterpret_cast<int64_t*>(kernel_time_ns_raw), deleter);
-        if (pid_t pid = fork()) {
-          // Parent.
-          PCHECK(pid != -1);
-          int status = 0;
-          CHECK_EQ(wait(&status), pid);
-          CHECK(WIFEXITED(status));
-          CHECK_EQ(WEXITSTATUS(status), EXIT_SUCCESS);
-          return *kernel_time_ns;
-        }
-
-        // Child.
-        *kernel_time_ns = invoke(f, bitstream, std::forward<Args>(args)...);
-        exit(EXIT_SUCCESS);
-      } else {
-        return invoke(f, bitstream, std::forward<Args>(args)...);
-      }
+      return invoke(f, bitstream, std::forward<Args>(args)...);
     }
   }
 
@@ -280,7 +259,7 @@ struct task {
             size_t name_size>
   task& invoke(Func&& func, const char (&name)[name_size], Args&&... args) {
     for (int i = 0; i < n; ++i) {
-      invoke<mode>(std::forward<Func>(func), std::forward<Args>(args)...);
+      invoke<mode>(func, args...);
     }
     return *this;
   }

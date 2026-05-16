@@ -206,6 +206,7 @@ task::~task() {
     unique_lock lock(internal::mtx);
     delete internal::pool;
     internal::pool = nullptr;
+    internal::top_task = nullptr;
   }
 }
 
@@ -230,7 +231,7 @@ namespace {
 
 std::deque<std::thread>* threads = nullptr;
 const task* top_task = nullptr;
-int active_task_count = 0;
+std::atomic<int> active_task_count{0};
 std::mutex mtx;
 
 }  // namespace

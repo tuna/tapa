@@ -147,7 +147,7 @@ struct vec_t : protected std::array<T, N> {
     set(N - 1, val);
   }
 
-  bool has(const T& val) {
+  bool has(const T& val) const {
     for (size_type i = 0; i < N; ++i) {
       if (val == get(i)) return true;
     }

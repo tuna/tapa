@@ -18,8 +18,6 @@
 #include <utility>
 #include <vector>
 
-#include <sys/types.h>
-
 #include "tapa/base/tapa.h"
 
 #include "tapa/host/coroutine.h"
@@ -36,25 +34,10 @@ namespace tapa {
 /// kernel time in nanoseconds. If empty, runs software simulation.
 template <typename Func, typename... Args>
 inline int64_t invoke(Func&& f, const std::string& bitstream, Args&&... args) {
-  static_assert(std::is_function_v<typename std::remove_reference_t<Func>>,
+  static_assert(std::is_function_v<std::remove_reference_t<Func>>,
                 "the first argument for tapa::invoke() must be a function");
-  return internal::invoker<Func>::template invoke<Args...>(
-      /*run_in_new_process*/ false, std::forward<Func>(f), bitstream,
-      std::forward<Args>(args)...);
-}
-
-// Workaround for the fact that Xilinx's cosim cannot run for more than once in
-// each process. The mmap pointers MUST be allocated via mmap, or the updates
-// won't be seen by the caller process!
-template <typename Func, typename... Args>
-inline int64_t invoke_in_new_process(Func&& f, const std::string& bitstream,
-                                     Args&&... args) {
-  static_assert(std::is_function_v<typename std::remove_reference_t<Func>>,
-                "the first argument for tapa::invoke_in_new_process() must be "
-                "a function");
-  return internal::invoker<Func>::template invoke<Args...>(
-      /*run_in_new_process*/ true, std::forward<Func>(f), bitstream,
-      std::forward<Args>(args)...);
+  return internal::invoker<Func>::invoke(std::forward<Func>(f), bitstream,
+                                         std::forward<Args>(args)...);
 }
 
 template <typename T>

@@ -11,7 +11,7 @@
 
 #include "type.h"
 
-// Works for both mmap and async_mmap.
+// Works for mmap, mmaps, async_mmap, async_mmaps, hmap, immap, and ommap.
 std::string GetMmapElemType(const clang::ParmVarDecl* param);
 
 #endif  // TAPA_MMAP_H_

@@ -51,7 +51,7 @@ const TemplateArgument* GetTemplateArg(QualType qual_type, size_t idx) {
 
   if (auto type = qual_type->getAs<TemplateSpecializationType>()) {
     auto args = type->template_arguments();
-    if (idx >= 0 && idx < args.size()) {
+    if (idx < args.size()) {
       return &(args.data()[idx]);
     }
   }
@@ -60,7 +60,7 @@ const TemplateArgument* GetTemplateArg(QualType qual_type, size_t idx) {
     if (auto record_decl = llvm::dyn_cast<ClassTemplateSpecializationDecl>(
             record->getDecl())) {
       auto& args = record_decl->getTemplateArgs();
-      if (idx >= 0 && idx < args.size()) {
+      if (idx < args.size()) {
         return &(args.data()[idx]);
       }
     }

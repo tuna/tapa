@@ -7,5 +7,4 @@ edition = "2021"
 workspace = true
 
 [dependencies]
-libc = { workspace = true }
 memmap2 = { workspace = true }

@@ -10,20 +10,17 @@ path = "src/main.rs"
 [dependencies]
 camino = { workspace = true }
 clap = { workspace = true }
-directories = { workspace = true }
 env_logger = { workspace = true }
 fs-err = { workspace = true }
 indexmap = { workspace = true }
 log = { workspace = true }
 path-slash = { workspace = true }
 regex = { workspace = true }
-semver = { workspace = true }
 serde = { workspace = true }
 sha2 = { workspace = true }
 serde_json = { workspace = true, features = ["preserve_order"] }
 serde_path_to_error = { workspace = true }
 serde_yaml = { workspace = true }
-shellexpand = { workspace = true }
 walkdir = { workspace = true }
 tapa-codegen = { workspace = true }
 tapa-floorplan = { workspace = true }
@@ -39,7 +36,6 @@ tempfile = { workspace = true }
 minijinja = { workspace = true }
 rayon = { workspace = true }
 thiserror = { workspace = true }
-which = { workspace = true }
 zip = { workspace = true }
 
 [dev-dependencies]

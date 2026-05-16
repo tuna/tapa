@@ -46,7 +46,7 @@ void GetTapaStreamOps(const Stmt* stmt,
   }
 }
 
-// Given a Stmt, return all tapa::istream and tapa::ostream opreations via DFS.
+// Given a Stmt, return all tapa::istream and tapa::ostream operations via DFS.
 vector<const CXXMemberCallExpr*> GetTapaStreamOps(const Stmt* stmt) {
   vector<const CXXMemberCallExpr*> stream_ops;
   GetTapaStreamOps(stmt, stream_ops, /* init = */ true);

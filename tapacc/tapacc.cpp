@@ -25,14 +25,10 @@
 
 #include "rewriter/task.h"
 
-using std::make_shared;
 using std::map;
 using std::regex;
 using std::regex_match;
-using std::regex_replace;
 using std::set;
-using std::shared_ptr;
-using std::stoi;
 using std::string;
 using std::tie;
 using std::tuple;
@@ -40,7 +36,6 @@ using std::unique_ptr;
 using std::vector;
 
 using clang::ASTConsumer;
-using clang::ASTContext;
 using clang::ASTFrontendAction;
 using clang::CompilerInstance;
 using clang::FunctionDecl;
@@ -88,7 +83,7 @@ class Consumer : public ASTConsumer {
     map<string, vector<const FunctionDecl*>> func_table;
     for (auto func : funcs_) {
       auto func_name = func->getNameAsString();
-      // skip function definitions.
+      // skip forward declarations.
       if (!func->isThisDeclarationADefinition()) continue;
       // If a key exists, its corresponding value won't be empty.
       func_table[func_name].push_back(func);
@@ -194,7 +189,7 @@ static llvm::cl::opt<TapaTargetAttr::TargetType> tapa_opt_target(
     llvm::cl::values(
         llvm::cl::OptionEnumValue{"xilinx-aie",
                                   TapaTargetAttr::TargetType::XilinxAIE,
-                                  "Xilina AI Engine target"},
+                                  "Xilinx AI Engine target"},
         llvm::cl::OptionEnumValue{"xilinx-hls",
                                   TapaTargetAttr::TargetType::XilinxHLS,
                                   "Xilinx HLS target (default)"},

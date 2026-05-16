@@ -41,10 +41,6 @@ inline bool IsStreamsInterface(T obj) {
   return IsTapaType(obj, "(i|o)streams");
 }
 template <typename T>
-inline bool IsStreamInstance(T obj) {
-  return IsTapaType(obj, "stream");
-}
-template <typename T>
 inline bool IsStream(T obj) {
   return IsTapaType(obj, "(i|o)?stream");
 }
@@ -56,12 +52,6 @@ inline std::string GetStreamElemType(const clang::ParmVarDecl* param) {
     }
   }
   return "";
-}
-inline uint64_t GetStreamsSize(const clang::ParmVarDecl* param) {
-  if (IsTapaType(param, "(i|o)streams")) {
-    return GetIntegralTemplateArg<1>(param->getType());
-  }
-  return 0;
 }
 
 #endif  // TAPA_STREAM_H_

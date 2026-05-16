@@ -18,6 +18,7 @@
 #include <mutex>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <variant>
 #include <vector>
 
@@ -160,7 +161,7 @@ class frt_queue : public base_queue<T> {
   bool empty() const override {
     if (this->stream_.empty()) {
       if (is_frt_arg_.load(std::memory_order_relaxed)) {
-        sleep(0);
+        std::this_thread::yield();
       }
       return true;
     }
@@ -169,7 +170,7 @@ class frt_queue : public base_queue<T> {
   bool full() const override {
     if (this->stream_.full()) {
       if (is_frt_arg_.load(std::memory_order_relaxed)) {
-        sleep(0);
+        std::this_thread::yield();
       }
       return true;
     }
@@ -285,16 +286,18 @@ struct has_ostream_overload<
 template <typename T>
 std::ostream& operator<<(std::ostream& os, const elem_t<T>& elem) {
   if (elem.eot) {
-    // EoT: emit an empty line.
+    // EoT: nothing to display for the value.
   } else if constexpr (has_ostream_overload<T>::value) {
     os << elem.val;
   } else {
-    // Dump bytes in hex for types without operator<<.
-    auto bytes = bit_cast<std::array<char, sizeof(elem.val)>>(elem.val);
+    auto bytes =
+        bit_cast<std::array<unsigned char, sizeof(elem.val)>>(elem.val);
+    auto flags = os.flags();
     os << "0x" << std::hex;
-    for (int byte : bytes) {
-      os << std::setfill('0') << std::setw(2) << byte;
+    for (unsigned char b : bytes) {
+      os << std::setfill('0') << std::setw(2) << static_cast<unsigned>(b);
     }
+    os.flags(flags);
   }
   return os;
 }
@@ -529,7 +532,7 @@ template <typename T, uint64_t N = kStreamDefaultDepth,
           uint64_t SimulationDepth = N>
 class stream : public internal::unbound_stream<T> {
  public:
-  constexpr static int depth = N;
+  constexpr static uint64_t depth = N;
 
   stream() : internal::basic_stream<T>("", SimulationDepth) {}
 
@@ -655,8 +658,8 @@ template <typename T, uint64_t S, uint64_t N = kStreamDefaultDepth,
           uint64_t SimulationDepth = N>
 class streams : public internal::unbound_streams<T, S> {
  public:
-  constexpr static int length = S;
-  constexpr static int depth = N;
+  constexpr static uint64_t length = S;
+  constexpr static uint64_t depth = N;
 
   streams()
       : internal::basic_streams<T>(
@@ -826,7 +829,7 @@ struct accessor<ostream<T>&, ostream<T>&> {
   }
 };
 
-#define TAPA_DEFINE_ACCESSER(io, reference) /********************************/ \
+#define TAPA_DEFINE_ACCESSOR(io, reference) /********************************/ \
   /* param = i/ostream, arg = streams */                                       \
   template <typename T, uint64_t length, uint64_t depth>                       \
   struct accessor<io##stream<T> reference, streams<T, length, depth>&> {       \
@@ -876,14 +879,19 @@ struct accessor<ostream<T>&, ostream<T>&> {
     }                                                                          \
   };
 
-TAPA_DEFINE_ACCESSER(i, )
-TAPA_DEFINE_ACCESSER(i, &)
-TAPA_DEFINE_ACCESSER(i, &&)
-TAPA_DEFINE_ACCESSER(o, )
-TAPA_DEFINE_ACCESSER(o, &)
-TAPA_DEFINE_ACCESSER(o, &&)
+TAPA_DEFINE_ACCESSOR(i, )
 
-#undef TAPA_DEFINE_ACCESSER
+TAPA_DEFINE_ACCESSOR(i, &)
+
+TAPA_DEFINE_ACCESSOR(i, &&)
+
+TAPA_DEFINE_ACCESSOR(o, )
+
+TAPA_DEFINE_ACCESSOR(o, &)
+
+TAPA_DEFINE_ACCESSOR(o, &&)
+
+#undef TAPA_DEFINE_ACCESSOR
 
 }  // namespace internal
 

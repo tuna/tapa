@@ -75,7 +75,7 @@ void BaseTarget::AddCodeForTopLevelParameter(ADD_FOR_PARAMS_ARGS_DEF) {
     AddCodeForTopLevelStream(param, add_line, add_pragma);
   } else if (IsTapaType(param, "async_mmaps?")) {
     AddCodeForTopLevelAsyncMmap(param, add_line, add_pragma);
-  } else if (IsTapaType(param, "(mmaps?|hmap)")) {
+  } else if (IsTapaType(param, "(mmaps?|hmap|[io]mmap)")) {
     AddCodeForTopLevelMmap(param, add_line, add_pragma);
   } else {
     AddCodeForTopLevelScalar(param, add_line, add_pragma);
@@ -86,7 +86,7 @@ void BaseTarget::AddCodeForMiddleLevelParameter(ADD_FOR_PARAMS_ARGS_DEF) {
     AddCodeForMiddleLevelStream(param, add_line, add_pragma);
   } else if (IsTapaType(param, "async_mmaps?")) {
     AddCodeForMiddleLevelAsyncMmap(param, add_line, add_pragma);
-  } else if (IsTapaType(param, "(mmaps?|hmap)")) {
+  } else if (IsTapaType(param, "(mmaps?|hmap|[io]mmap)")) {
     AddCodeForMiddleLevelMmap(param, add_line, add_pragma);
   } else {
     AddCodeForMiddleLevelScalar(param, add_line, add_pragma);
@@ -97,7 +97,7 @@ void BaseTarget::AddCodeForLowerLevelParameter(ADD_FOR_PARAMS_ARGS_DEF) {
     AddCodeForLowerLevelStream(param, add_line, add_pragma);
   } else if (IsTapaType(param, "async_mmaps?")) {
     AddCodeForLowerLevelAsyncMmap(param, add_line, add_pragma);
-  } else if (IsTapaType(param, "(mmaps?|hmap)")) {
+  } else if (IsTapaType(param, "(mmaps?|hmap|[io]mmap)")) {
     AddCodeForLowerLevelMmap(param, add_line, add_pragma);
   } else {
     AddCodeForLowerLevelScalar(param, add_line, add_pragma);
@@ -108,7 +108,7 @@ void BaseTarget::AddCodeForOtherParameter(ADD_FOR_PARAMS_ARGS_DEF) {
     AddCodeForOtherStream(param, add_line, add_pragma);
   } else if (IsTapaType(param, "async_mmaps?")) {
     AddCodeForOtherAsyncMmap(param, add_line, add_pragma);
-  } else if (IsTapaType(param, "(mmaps?|hmap)")) {
+  } else if (IsTapaType(param, "(mmaps?|hmap|[io]mmap)")) {
     AddCodeForOtherMmap(param, add_line, add_pragma);
   } else {
     AddCodeForOtherScalar(param, add_line, add_pragma);
@@ -334,23 +334,6 @@ void AddPragmaAfterStmt(clang::Rewriter& rewriter, const clang::Stmt* stmt,
                         std::string pragma) {
   rewriter.InsertTextAfterToken(stmt->getEndLoc(),
                                 std::string("\n#pragma ") + pragma + "\n");
-}
-
-void AddPipelinePragma(clang::Rewriter& rewriter,
-                       const clang::TapaPipelineAttr* attr,
-                       const clang::Stmt* body) {
-  auto II = attr->getII();
-  std::string pragma = "HLS pipeline";
-  if (II) pragma += std::string(" II = ") + std::to_string(II);
-  AddPragmaToBody(rewriter, body, pragma);
-}
-
-void AddStreamDepthPragma(clang::Rewriter& rewriter, const clang::Stmt* stmt,
-                          std::string name, int depth) {
-  std::string pragma = "HLS STREAM";
-  pragma += " variable = " + name + "._";
-  pragma += " depth = " + std::to_string(depth);
-  AddPragmaAfterStmt(rewriter, stmt, pragma);
 }
 
 }  // namespace internal

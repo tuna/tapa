@@ -12,14 +12,6 @@
 using clang::TapaTargetAttr;
 using llvm::StringRef;
 
-#ifdef TAPA_AIE_DEBUG_LOG
-#include <fstream>
-void aie_log_out(std::string path, std::string str, bool append) {
-  std::ofstream file(path, append ? std::ios::app : std::ios::out);
-  file << str << std::endl;
-}
-#endif
-
 namespace tapa {
 namespace internal {
 
@@ -136,15 +128,8 @@ void XilinxAIETarget::ProcessNonCurrentTask(REWRITE_FUNC_ARGS_DEF,
   if (IsTapaTopLevel == true) {
     rewriter.ReplaceText(func->getBody()->getSourceRange(), ";\n");
     RewriteFuncArguments(func, rewriter, false);
-#ifdef TAPA_AIE_DEBUG_LOG
-    ::aie_log_out("aielog.txt", func->getNameAsString() + " is top task", true);
-#endif
   } else {
     rewriter.RemoveText(func->getSourceRange());
-#ifdef TAPA_AIE_DEBUG_LOG
-    ::aie_log_out("aielog.txt", func->getNameAsString() + " is not top task",
-                  true);
-#endif
   }
 
   if (auto attr = func->getAttr<TapaTargetAttr>()) {

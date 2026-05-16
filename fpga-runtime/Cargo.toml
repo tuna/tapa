@@ -134,7 +134,6 @@ askama = { version = "0.12", features = ["serde_json"] }
 frt-cosim = { path = "frt-cosim" }
 frt-dpi = { path = "frt-dpi" }
 frt-shm = { path = "frt-shm" }
-insta = { version = "1", features = ["yaml"] }
 libc = "0.2"
 memmap2 = "0.9"
 opencl3 = "0.10"
@@ -145,7 +144,6 @@ serde_json = "1"
 serde_yaml = "0.9"
 tempfile = "3"
 thiserror = "2"
-tokio = { version = "1", features = ["rt", "rt-multi-thread"] }
 tracing = "0.1"
 which = "7"
 zip = "2"

@@ -37,7 +37,7 @@ class addr_ostream {
     return *this;
   }
 
-  bool try_close() {}
+  bool try_close() { return true; }
 
   void close() {}
 

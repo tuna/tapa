@@ -57,8 +57,8 @@ class mmap {
     --ptr_;
     return *this;
   }
-  mmap operator++(int) { return mmap(ptr_++); }
-  mmap operator--(int) { return mmap(ptr_--); }
+  mmap operator++(int) { return mmap(ptr_++, size_); }
+  mmap operator--(int) { return mmap(ptr_--, size_); }
 
   T* data() const { return ptr_; }
   T* get() const { return ptr_; }
@@ -501,7 +501,7 @@ struct accessor<async_mmap<T>&, mmaps<T, S>&> {
   }
 };
 
-#define TAPA_DEFINE_ACCESSER(tag, tag_ref, frt_tag)                       \
+#define TAPA_DEFINE_ACCESSOR(tag, tag_ref, frt_tag)                       \
   template <typename T>                                                   \
   struct accessor<mmap<T>, tag##mmap<T> tag_ref> {                        \
     static mmap<T> access(tag##mmap<T> tag_ref arg, bool) { return arg; } \
@@ -531,16 +531,17 @@ struct accessor<async_mmap<T>&, mmaps<T, S>&> {
       }                                                                   \
     }                                                                     \
   }
-TAPA_DEFINE_ACCESSER(placeholder_, , Placeholder);
-// read/write are kernel-relative in tapa but host-relative in frt, hence
-// swapped.
-TAPA_DEFINE_ACCESSER(read_only_, , WriteOnly);
-TAPA_DEFINE_ACCESSER(write_only_, , ReadOnly);
-TAPA_DEFINE_ACCESSER(read_write_, , ReadWrite);
-// tapa::task.invoke() passes mmap by reference; used for simulation as
-// read-write.
-TAPA_DEFINE_ACCESSER(, &, ReadWrite);
-#undef TAPA_DEFINE_ACCESSER
+TAPA_DEFINE_ACCESSOR(placeholder_, , Placeholder);
+
+// mmap accessors
+TAPA_DEFINE_ACCESSOR(read_only_, , WriteOnly);
+TAPA_DEFINE_ACCESSOR(write_only_, , ReadOnly);
+TAPA_DEFINE_ACCESSOR(read_write_, , ReadWrite);
+
+// mmaps accessors
+TAPA_DEFINE_ACCESSOR(, &, ReadWrite);
+
+#undef TAPA_DEFINE_ACCESSOR
 
 // Passing mmap/mmaps by value in tapa::invoke is an error; must use typed
 // variants.

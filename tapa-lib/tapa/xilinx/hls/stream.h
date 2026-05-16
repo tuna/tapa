@@ -29,10 +29,13 @@ class tapa_stream {
 
   bool try_eot(bool& is_eot) const {
 #pragma HLS inline
-    internal::elem_t<T> elem;
-    const bool is_success = !empty() && _peek.read_nb(elem);
-    is_eot = elem.eot;
-    return is_success;
+    if (!empty()) {
+      internal::elem_t<T> elem;
+      _peek.read_nb(elem);
+      is_eot = elem.eot;
+      return true;
+    }
+    return false;
   }
 
   bool eot(bool& is_success) const {
@@ -50,10 +53,13 @@ class tapa_stream {
 
   bool try_peek(T& value) const {
 #pragma HLS inline
-    internal::elem_t<T> elem;
-    const bool is_success = !empty() && _peek.read_nb(elem);
-    value = elem.val;
-    return is_success;
+    if (!empty()) {
+      internal::elem_t<T> elem;
+      _peek.read_nb(elem);
+      value = elem.val;
+      return true;
+    }
+    return false;
   }
 
   T peek(bool& is_success) const {
@@ -73,9 +79,13 @@ class tapa_stream {
   T peek(bool& is_success, bool& is_eot) const {
 #pragma HLS inline
     internal::elem_t<T> peek_val;
-    (is_success = !empty()) && _peek.read_nb(peek_val);
-    is_eot = peek_val.eot && is_success;
-    return peek_val.val;
+    is_success = !empty() && _peek.read_nb(peek_val);
+    if (is_success) {
+      is_eot = peek_val.eot;
+      return peek_val.val;
+    }
+    is_eot = false;
+    return T{};
   }
 
   bool try_read(T& value) {
