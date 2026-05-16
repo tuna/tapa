@@ -75,7 +75,7 @@ void CPSR_matrix_loader(
       ML_to_SF_1_stream[k].write(EDGE_PLD_SOD);
     }
 
-  // TODO: maunally control the burst length will help?
+  // TODO: manually control the burst length will help?
   loop_matrix_loader:
     for (unsigned i = 0; i < num_reads; i++) {
 #pragma HLS PIPELINE II = 1
