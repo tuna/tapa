@@ -127,7 +127,7 @@ struct invoker {
       return std::chrono::duration_cast<std::chrono::nanoseconds>(toc - tic)
           .count();
     } else {
-      return invoke(f, bitstream, std::forward<Args>(args)...);
+      return invoke_frt(f, bitstream, std::forward<Args>(args)...);
     }
   }
 
@@ -143,7 +143,8 @@ struct invoker {
 
  private:
   template <typename... Args>
-  static int64_t invoke(F&& f, const std::string& bitstream, Args&&... args) {
+  static int64_t invoke_frt(F&& f, const std::string& bitstream,
+                            Args&&... args) {
     auto instance = fpga::Instance(bitstream);
 
     // Register SIGINT handler to kill the kernel.
@@ -259,7 +260,10 @@ struct task {
             size_t name_size>
   task& invoke(Func&& func, const char (&name)[name_size], Args&&... args) {
     for (int i = 0; i < n; ++i) {
-      invoke<mode>(func, args...);
+      // Forwarding inside the loop is load-bearing: accessor<T, seq> only
+      // matches rvalue `seq&&` and increments the shared position counter on
+      // each replica; the accessors never move from the forwarded arguments.
+      invoke<mode>(std::forward<Func>(func), std::forward<Args>(args)...);
     }
     return *this;
   }
