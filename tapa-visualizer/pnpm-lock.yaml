@@ -35,9 +35,6 @@ importers:
       globals:
         specifier: ^16.2.0
         version: 16.2.0
-      html-webpack-loader:
-        specifier: ^0.0.5
-        version: 0.0.5
       html-webpack-plugin:
         specifier: ^5.6.3
         version: 5.6.3(webpack@5.99.9)
@@ -1702,9 +1699,6 @@ packages:
     engines: {node: '>=12'}
     hasBin: true
 
-  html-webpack-loader@0.0.5:
-    resolution: {integrity: sha512-gIZju7N8HxpI5bBgl5/5PJsozoy/dTt3pSb/O1B1mTiT8qyKs3fmZri90ULaBcyYUb2H9cDIX8JhHYkoTjnyaQ==}
-
   html-webpack-plugin@5.6.3:
     resolution: {integrity: sha512-QSf1yjtSAsmf7rYBV7XX86uua4W/vkhIt0xNXKbsi2foEeW7vjJQz4bhnpL3xH+l1ryl1680uNv968Z+X6jSYg==}
     engines: {node: '>=10.13.0'}
@@ -2681,6 +2675,7 @@ packages:
 
   uuid@8.3.2:
     resolution: {integrity: sha512-+NYs2QeMWy+GWFOEm9xnn6HCDp0l7QBD7ml8zLUmJ+93Q5NF0NocErnwkTkXVFNiX3/fpC6afS8Dhb/gz7R7eg==}
+    deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
     hasBin: true
 
   vary@1.1.2:
@@ -4646,8 +4641,6 @@ snapshots:
       param-case: 3.0.4
       relateurl: 0.2.7
       terser: 5.40.0
-
-  html-webpack-loader@0.0.5: {}
 
   html-webpack-plugin@5.6.3(webpack@5.99.9):
     dependencies:
