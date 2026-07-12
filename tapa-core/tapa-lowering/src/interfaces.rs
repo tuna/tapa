@@ -510,7 +510,7 @@ pub fn build_task_port_ifaces_with_scalars(
     }
 
     // MMAP interfaces: group by arg name, per AXI channel
-    let mut mmap_bases = std::collections::HashSet::new();
+    let mut mmap_bases = std::collections::BTreeSet::new();
     for port in ports {
         if port.name.ends_with("_offset") && !port.name.starts_with(M_AXI_PREFIX) {
             let base = port.name.trim_end_matches("_offset");
@@ -624,4 +624,36 @@ fn extract_stream_base(name: &str) -> Option<&str> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mmap_interfaces_are_ordered_by_port_name() {
+        let ports = vec![
+            crate::utils::input_wire("z_offset", None),
+            crate::utils::output_wire("m_axi_z_AWVALID", None),
+            crate::utils::input_wire("m_axi_z_AWREADY", None),
+            crate::utils::input_wire("a_offset", None),
+            crate::utils::output_wire("m_axi_a_AWVALID", None),
+            crate::utils::input_wire("m_axi_a_AWREADY", None),
+        ];
+        let def = AnyModuleDefinition::new_verilog("task".to_owned(), ports, String::new());
+        let port_names = def.ports().iter().map(|p| p.name.clone()).collect();
+
+        let ifaces = build_task_port_ifaces(&def, &port_names);
+        let valid_ports: Vec<&str> = ifaces
+            .iter()
+            .map(|iface| {
+                let AnyInterface::HandShake { valid_port, .. } = iface else {
+                    panic!("expected only mmap handshakes, got {iface:?}");
+                };
+                valid_port.as_deref().expect("handshake valid port")
+            })
+            .collect();
+
+        assert_eq!(valid_ports, ["m_axi_a_AWVALID", "m_axi_z_AWVALID"],);
+    }
 }
