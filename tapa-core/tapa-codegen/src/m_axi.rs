@@ -4,7 +4,8 @@
 //! multi-port AXI crossbar with parameterized module emission.
 
 use tapa_protocol::{
-    PortDir, M_AXI_PORTS, M_AXI_PORT_WIDTHS, M_AXI_PREFIX, M_AXI_SUFFIXES_COMPACT,
+    PortDir, HANDSHAKE_CLK, HANDSHAKE_RST, M_AXI_PORTS, M_AXI_PORT_WIDTHS, M_AXI_PREFIX,
+    M_AXI_SUFFIXES_COMPACT,
 };
 use tapa_rtl::builder::{Expr, ModuleInstance, ParamArg, PortArg};
 use tapa_rtl::module::sanitize_array_name;
@@ -159,8 +160,8 @@ pub fn build_crossbar_instance(conn: &MMapConnection) -> ModuleInstance {
     let params = build_crossbar_params(conn);
 
     let mut ports = vec![
-        PortArg::new("clk", Expr::ident("ap_clk")),
-        PortArg::new("rst", Expr::ident("ap_rst")),
+        PortArg::new("clk", Expr::ident(HANDSHAKE_CLK)),
+        PortArg::new("rst", Expr::ident(HANDSHAKE_RST)),
     ];
 
     // Upstream master ports.

@@ -15,6 +15,10 @@ use crate::instantiation_builder::{
 use crate::module_defs::{get_fifo_def, get_reset_inverter_def, get_reset_inverter_inst};
 use crate::utils::{input_wire, make_wire, range_msb};
 use crate::LoweringError;
+use tapa_protocol::{
+    HANDSHAKE_CLK, HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY, HANDSHAKE_RST, HANDSHAKE_RST_N,
+    HANDSHAKE_START,
+};
 
 /// Build a `GraphIR` Project from a `TopologyWithRtl` state.
 ///
@@ -947,12 +951,12 @@ fn build_slot_module(
     let slot_task_ref = program.tasks.get(slot_name).unwrap_or(top);
     let slot_arg_table = crate::instantiation_builder::build_arg_table(slot_task_ref);
     let mut ports = vec![
-        input_wire("ap_clk", None),
-        input_wire("ap_rst_n", None),
-        input_wire("ap_start", None),
-        crate::utils::output_wire("ap_done", None),
-        crate::utils::output_wire("ap_idle", None),
-        crate::utils::output_wire("ap_ready", None),
+        input_wire(HANDSHAKE_CLK, None),
+        input_wire(HANDSHAKE_RST_N, None),
+        input_wire(HANDSHAKE_START, None),
+        crate::utils::output_wire(HANDSHAKE_DONE, None),
+        crate::utils::output_wire(HANDSHAKE_IDLE, None),
+        crate::utils::output_wire(HANDSHAKE_READY, None),
     ];
     let mut submodules = Vec::new();
     let mut wires = Vec::new();
@@ -962,7 +966,7 @@ fn build_slot_module(
     // instance; the reset_inverter is a top-level instance only. Keep the
     // `ap_rst` wire declaration for local signals that reference it, but
     // skip the per-slot instantiation.
-    wires.push(make_wire("ap_rst", None));
+    wires.push(make_wire(HANDSHAKE_RST, None));
 
     // Add pipeline wires from arg table for instances in this slot
     for inst_name in inst_names {
@@ -1257,7 +1261,7 @@ fn is_s_axi_slave_input(axi_port: &str) -> bool {
 /// `_CTRL_S_AXI_PORT_MAPPING` in `gen_rs_graphir`.
 fn ctrl_s_axi_port_expr(port_name: &str) -> Expression {
     match port_name {
-        "ACLK" => Expression::new_id("ap_clk"),
+        "ACLK" => Expression::new_id(HANDSHAKE_CLK),
         // routes ctrl_s_axi.ARESET through `rst` (output of
         // reset_inverter), same as reset_inverter_0.rst → `rst`.
         "ARESET" => Expression::new_id("rst"),
@@ -1298,7 +1302,10 @@ fn build_top_module(
         .slot_task_name_to_fp_region
         .as_ref()
         .and_then(|m| m.values().next().cloned());
-    let mut ports = vec![input_wire("ap_clk", None), input_wire("ap_rst_n", None)];
+    let mut ports = vec![
+        input_wire(HANDSHAKE_CLK, None),
+        input_wire(HANDSHAKE_RST_N, None),
+    ];
 
     // Add s_axi_control_* ports (AXI-Lite slave interface) if ctrl_s_axi is
     // present. Directions match the ctrl_s_axi module's own port list:
@@ -1332,12 +1339,12 @@ fn build_top_module(
     // and `rst` (equivalent name for ctrl_s_axi's ARESET and the
     // reset_inverter.rst connection).
     let mut wires = vec![
-        make_wire("ap_rst", None),
+        make_wire(HANDSHAKE_RST, None),
         make_wire("rst", None),
-        make_wire("ap_start", None),
-        make_wire("ap_done", None),
-        make_wire("ap_idle", None),
-        make_wire("ap_ready", None),
+        make_wire(HANDSHAKE_START, None),
+        make_wire(HANDSHAKE_DONE, None),
+        make_wire(HANDSHAKE_IDLE, None),
+        make_wire(HANDSHAKE_READY, None),
         make_wire("interrupt", None),
     ];
     let top_arg_table = crate::instantiation_builder::build_arg_table(top);
@@ -1367,7 +1374,12 @@ fn build_top_module(
                 .collect()
         } else {
             [
-                "ap_clk", "ap_rst_n", "ap_start", "ap_done", "ap_idle", "ap_ready",
+                HANDSHAKE_CLK,
+                HANDSHAKE_RST_N,
+                HANDSHAKE_START,
+                HANDSHAKE_DONE,
+                HANDSHAKE_IDLE,
+                HANDSHAKE_READY,
             ]
             .iter()
             .map(|&name| crate::utils::make_connection(name, Expression::new_id(name)))
@@ -1398,7 +1410,13 @@ fn build_top_module(
             ));
         }
         // Control signal wires (internal, between FSM and ctrl_s_axi)
-        for &sig in &["ap_start", "ap_done", "ap_idle", "ap_ready", "interrupt"] {
+        for &sig in &[
+            HANDSHAKE_START,
+            HANDSHAKE_DONE,
+            HANDSHAKE_IDLE,
+            HANDSHAKE_READY,
+            "interrupt",
+        ] {
             ctrl_connections.push(crate::utils::make_connection(sig, Expression::new_id(sig)));
         }
         // Dynamic scalar/MMAP-offset ports — connect to same-name top-level wires
@@ -1517,14 +1535,19 @@ fn build_top_module(
         // synthesize "slot" names from floorplan regions rather than
         // from task names).
         slot_connections.push(crate::utils::make_connection(
-            "ap_clk",
-            Expression::new_id("ap_clk"),
+            HANDSHAKE_CLK,
+            Expression::new_id(HANDSHAKE_CLK),
         ));
         slot_connections.push(crate::utils::make_connection(
-            "ap_rst_n",
-            Expression::new_id("ap_rst_n"),
+            HANDSHAKE_RST_N,
+            Expression::new_id(HANDSHAKE_RST_N),
         ));
-        for sig in &["ap_start", "ap_done", "ap_ready", "ap_idle"] {
+        for sig in &[
+            HANDSHAKE_START,
+            HANDSHAKE_DONE,
+            HANDSHAKE_READY,
+            HANDSHAKE_IDLE,
+        ] {
             let expr = if has_slot_hierarchy {
                 Expression::new_id(&format!("{slot_inst_name}__{sig}"))
             } else {
@@ -2023,7 +2046,12 @@ fn build_interfaces(
                 .collect();
             ap_ports.extend(
                 [
-                    "ACLK", "ARESET", "ap_start", "ap_done", "ap_ready", "ap_idle",
+                    "ACLK",
+                    "ARESET",
+                    HANDSHAKE_START,
+                    HANDSHAKE_DONE,
+                    HANDSHAKE_READY,
+                    HANDSHAKE_IDLE,
                 ]
                 .iter()
                 .map(|&s| s.to_owned()),
@@ -2036,10 +2064,10 @@ fn build_interfaces(
                     role: String::new(),
                     origin_info: String::new(),
                 },
-                ap_start_port: Some("ap_start".into()),
-                ap_done_port: Some("ap_done".into()),
-                ap_ready_port: Some("ap_ready".into()),
-                ap_idle_port: Some("ap_idle".into()),
+                ap_start_port: Some(HANDSHAKE_START.into()),
+                ap_done_port: Some(HANDSHAKE_DONE.into()),
+                ap_ready_port: Some(HANDSHAKE_READY.into()),
+                ap_idle_port: Some(HANDSHAKE_IDLE.into()),
                 ap_continue_port: None,
                 extra: BTreeMap::default(),
             });
@@ -2070,11 +2098,11 @@ fn build_interfaces(
                         .iter()
                         .map(|&s| format!("s_axi_control_{s}"))
                         .collect();
-                    ports.extend(["ap_clk".into(), "ap_rst_n".into()]);
+                    ports.extend([HANDSHAKE_CLK.into(), HANDSHAKE_RST_N.into()]);
                     ti.push(make_hs(
                         ports,
-                        Some("ap_clk"),
-                        Some("ap_rst_n"),
+                        Some(HANDSHAKE_CLK),
+                        Some(HANDSHAKE_RST_N),
                         &format!("s_axi_control_{valid}"),
                         &format!("s_axi_control_{ready}"),
                     ));
@@ -2090,23 +2118,28 @@ fn build_interfaces(
             let mut ap_ports = scalars;
             ap_ports.extend(
                 [
-                    "ap_clk", "ap_rst_n", "ap_start", "ap_done", "ap_ready", "ap_idle",
+                    HANDSHAKE_CLK,
+                    HANDSHAKE_RST_N,
+                    HANDSHAKE_START,
+                    HANDSHAKE_DONE,
+                    HANDSHAKE_READY,
+                    HANDSHAKE_IDLE,
                 ]
                 .iter()
                 .map(|&s| s.to_owned()),
             );
             si.push(AnyInterface::ApCtrl {
                 base: InterfaceBase {
-                    clk_port: Some("ap_clk".into()),
-                    rst_port: Some("ap_rst_n".into()),
+                    clk_port: Some(HANDSHAKE_CLK.into()),
+                    rst_port: Some(HANDSHAKE_RST_N.into()),
                     ports: ap_ports,
                     role: String::new(),
                     origin_info: String::new(),
                 },
-                ap_start_port: Some("ap_start".into()),
-                ap_done_port: Some("ap_done".into()),
-                ap_ready_port: Some("ap_ready".into()),
-                ap_idle_port: Some("ap_idle".into()),
+                ap_start_port: Some(HANDSHAKE_START.into()),
+                ap_done_port: Some(HANDSHAKE_DONE.into()),
+                ap_ready_port: Some(HANDSHAKE_READY.into()),
+                ap_idle_port: Some(HANDSHAKE_IDLE.into()),
                 ap_continue_port: None,
                 extra: BTreeMap::default(),
             });
@@ -2114,7 +2147,7 @@ fn build_interfaces(
                 base: InterfaceBase {
                     clk_port: None,
                     rst_port: None,
-                    ports: vec!["ap_clk".into()],
+                    ports: vec![HANDSHAKE_CLK.into()],
                     role: String::new(),
                     origin_info: String::new(),
                 },
@@ -2122,9 +2155,9 @@ fn build_interfaces(
             });
             si.push(AnyInterface::FeedForwardReset {
                 base: InterfaceBase {
-                    clk_port: Some("ap_clk".into()),
+                    clk_port: Some(HANDSHAKE_CLK.into()),
                     rst_port: None,
-                    ports: vec!["ap_clk".into(), "ap_rst_n".into()],
+                    ports: vec![HANDSHAKE_CLK.into(), HANDSHAKE_RST_N.into()],
                     role: String::new(),
                     origin_info: String::new(),
                 },
@@ -2150,7 +2183,7 @@ fn build_interfaces(
                 if !port_names.contains(&start) || !port_names.contains(&done) {
                     continue;
                 }
-                let mut ap_ports: Vec<String> = vec!["ap_clk".into(), "ap_rst_n".into()];
+                let mut ap_ports: Vec<String> = vec![HANDSHAKE_CLK.into(), HANDSHAKE_RST_N.into()];
                 ap_ports.extend(
                     def.ports()
                         .iter()
@@ -2159,8 +2192,8 @@ fn build_interfaces(
                 );
                 fi.push(AnyInterface::ApCtrl {
                     base: InterfaceBase {
-                        clk_port: Some("ap_clk".into()),
-                        rst_port: Some("ap_rst_n".into()),
+                        clk_port: Some(HANDSHAKE_CLK.into()),
+                        rst_port: Some(HANDSHAKE_RST_N.into()),
                         ports: ap_ports,
                         role: String::new(),
                         origin_info: String::new(),
@@ -2183,8 +2216,8 @@ fn build_interfaces(
                 .iter()
                 .map(|p| p.name.clone())
                 .filter(|pn| {
-                    pn != "ap_clk"
-                        && pn != "ap_rst_n"
+                    pn != HANDSHAKE_CLK
+                        && pn != HANDSHAKE_RST_N
                         && !slot_names
                             .iter()
                             .any(|slot| pn.starts_with(&format!("{slot}_0")))
@@ -2193,23 +2226,28 @@ fn build_interfaces(
             let mut top_ap_ports = fsm_scalars;
             top_ap_ports.extend(
                 [
-                    "ap_clk", "ap_rst_n", "ap_start", "ap_done", "ap_ready", "ap_idle",
+                    HANDSHAKE_CLK,
+                    HANDSHAKE_RST_N,
+                    HANDSHAKE_START,
+                    HANDSHAKE_DONE,
+                    HANDSHAKE_READY,
+                    HANDSHAKE_IDLE,
                 ]
                 .iter()
                 .map(|&s| s.to_owned()),
             );
             fi.push(AnyInterface::ApCtrl {
                 base: InterfaceBase {
-                    clk_port: Some("ap_clk".into()),
-                    rst_port: Some("ap_rst_n".into()),
+                    clk_port: Some(HANDSHAKE_CLK.into()),
+                    rst_port: Some(HANDSHAKE_RST_N.into()),
                     ports: top_ap_ports,
                     role: String::new(),
                     origin_info: String::new(),
                 },
-                ap_start_port: Some("ap_start".into()),
-                ap_done_port: Some("ap_done".into()),
-                ap_ready_port: Some("ap_ready".into()),
-                ap_idle_port: Some("ap_idle".into()),
+                ap_start_port: Some(HANDSHAKE_START.into()),
+                ap_done_port: Some(HANDSHAKE_DONE.into()),
+                ap_ready_port: Some(HANDSHAKE_READY.into()),
+                ap_idle_port: Some(HANDSHAKE_IDLE.into()),
                 ap_continue_port: None,
                 extra: BTreeMap::default(),
             });
@@ -2250,10 +2288,10 @@ const CTRL_S_AXI_FIXED_PORTS: &[&str] = &[
     "WREADY",
     "WSTRB",
     "WVALID",
-    "ap_start",
-    "ap_done",
-    "ap_ready",
-    "ap_idle",
+    HANDSHAKE_START,
+    HANDSHAKE_DONE,
+    HANDSHAKE_READY,
+    HANDSHAKE_IDLE,
 ];
 
 /// Build stream and MMAP handshake interfaces for a task module's ports.
@@ -2321,11 +2359,11 @@ fn build_task_port_ifaces_with_scalars(
                 (&["_dout", "_empty_n", "_read"], "_empty_n", "_read")
             };
             let mut ps: Vec<String> = suffixes.iter().map(|s| format!("{base}{s}")).collect();
-            ps.extend(["ap_clk".into(), "ap_rst_n".into()]);
+            ps.extend([HANDSHAKE_CLK.into(), HANDSHAKE_RST_N.into()]);
             ifaces.push(AnyInterface::HandShake {
                 base: InterfaceBase {
-                    clk_port: Some("ap_clk".into()),
-                    rst_port: Some("ap_rst_n".into()),
+                    clk_port: Some(HANDSHAKE_CLK.into()),
+                    rst_port: Some(HANDSHAKE_RST_N.into()),
                     ports: ps,
                     role: String::new(),
                     origin_info: String::new(),
@@ -2416,11 +2454,11 @@ fn build_task_port_ifaces_with_scalars(
                 .map(|s| format!("m_axi_{base}{s}"))
                 .filter(|n| port_names.contains(n))
                 .collect();
-            ch_ports.extend(["ap_clk".into(), "ap_rst_n".into()]);
+            ch_ports.extend([HANDSHAKE_CLK.into(), HANDSHAKE_RST_N.into()]);
             ifaces.push(AnyInterface::HandShake {
                 base: InterfaceBase {
-                    clk_port: Some("ap_clk".into()),
-                    rst_port: Some("ap_rst_n".into()),
+                    clk_port: Some(HANDSHAKE_CLK.into()),
+                    rst_port: Some(HANDSHAKE_RST_N.into()),
                     ports: ch_ports,
                     role: String::new(),
                     origin_info: String::new(),

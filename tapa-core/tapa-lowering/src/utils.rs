@@ -2,35 +2,9 @@
 
 use tapa_graphir::{Expression, HierarchicalName, ModuleConnection, ModuleNet, ModulePort, Range};
 
-/// Stream port suffixes for istream (consumer side).
-pub const ISTREAM_SUFFIXES: &[&str] = &["_dout", "_empty_n", "_read"];
-
-/// Stream port suffixes for ostream (producer side).
-pub const OSTREAM_SUFFIXES: &[&str] = &["_din", "_full_n", "_write"];
-
-/// M-AXI port name prefix.
-pub const M_AXI_PREFIX: &str = "m_axi_";
-
-/// M-AXI read channel suffixes.
-///
-/// The read-side subset of `tapa_protocol::M_AXI_SUFFIXES` —
-/// notably does NOT include `_ARREGION`, which the Vitis top RTL
-/// declares on scalar/mmap ports but grouped-module lowering
-/// never emits.
-pub const M_AXI_READ_SUFFIXES: &[&str] = &[
-    "_ARVALID", "_ARREADY", "_ARADDR", "_ARID", "_ARLEN", "_ARSIZE", "_ARBURST", "_ARLOCK",
-    "_ARCACHE", "_ARPROT", "_ARQOS", "_RVALID", "_RREADY", "_RDATA", "_RLAST", "_RID", "_RRESP",
-];
-
-/// M-AXI write channel suffixes.
-///
-/// The write-side subset of `tapa_protocol::M_AXI_SUFFIXES` —
-/// notably does NOT include `_AWREGION`.
-pub const M_AXI_WRITE_SUFFIXES: &[&str] = &[
-    "_AWVALID", "_AWREADY", "_AWADDR", "_AWID", "_AWLEN", "_AWSIZE", "_AWBURST", "_AWLOCK",
-    "_AWCACHE", "_AWPROT", "_AWQOS", "_WVALID", "_WREADY", "_WDATA", "_WSTRB", "_WLAST", "_BVALID",
-    "_BREADY", "_BID", "_BRESP",
-];
+pub use tapa_protocol::{
+    ISTREAM_SUFFIXES, M_AXI_PREFIX, M_AXI_READ_SUFFIXES, M_AXI_WRITE_SUFFIXES, OSTREAM_SUFFIXES,
+};
 
 /// Build a `ModulePort` with the given type string.
 ///

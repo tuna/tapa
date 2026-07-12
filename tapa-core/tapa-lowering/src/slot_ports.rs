@@ -8,6 +8,10 @@ use std::collections::BTreeMap;
 
 use tapa_codegen::rtl_state::TopologyWithRtl;
 use tapa_graphir::{AnyModuleDefinition, HierarchicalName, ModulePort};
+use tapa_protocol::{
+    HANDSHAKE_CLK, HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY, HANDSHAKE_RST_N,
+    HANDSHAKE_START,
+};
 
 /// Build the slot grouped-module ports by mirroring current
 /// `get_slot_module_definition_ports`.
@@ -71,12 +75,12 @@ pub fn build_slot_ports(
     }
     // Append handshake ports in order.
     for &(name, is_input) in &[
-        ("ap_clk", true),
-        ("ap_rst_n", true),
-        ("ap_start", true),
-        ("ap_done", false),
-        ("ap_ready", false),
-        ("ap_idle", false),
+        (HANDSHAKE_CLK, true),
+        (HANDSHAKE_RST_N, true),
+        (HANDSHAKE_START, true),
+        (HANDSHAKE_DONE, false),
+        (HANDSHAKE_READY, false),
+        (HANDSHAKE_IDLE, false),
     ] {
         if seen.insert(name.to_owned()) {
             let port = if is_input {

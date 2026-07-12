@@ -3,6 +3,7 @@
 //! Implements: generates state, start,
 //! done, idle, ready signals for task instances.
 
+use tapa_protocol::{HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY, HANDSHAKE_START};
 use tapa_rtl::builder::{Expr, PortArg};
 use tapa_rtl::mutation::{reg, simple_port, wide_reg, wire};
 use tapa_rtl::port::Direction;
@@ -107,12 +108,12 @@ impl InstanceSignals {
 
     /// Generate public handshake port arguments for connecting to the child instance.
     pub fn instance_portargs(&self) -> Vec<PortArg> {
-        let mut args = vec![PortArg::new("ap_start", self.start_expr())];
+        let mut args = vec![PortArg::new(HANDSHAKE_START, self.start_expr())];
         if !self.is_autorun {
             args.extend([
-                PortArg::new("ap_done", self.done_expr()),
-                PortArg::new("ap_idle", Expr::ident(self.idle_name())),
-                PortArg::new("ap_ready", Expr::ident(self.ready_name())),
+                PortArg::new(HANDSHAKE_DONE, self.done_expr()),
+                PortArg::new(HANDSHAKE_IDLE, Expr::ident(self.idle_name())),
+                PortArg::new(HANDSHAKE_READY, Expr::ident(self.ready_name())),
             ]);
         }
         args

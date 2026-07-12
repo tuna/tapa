@@ -1170,6 +1170,7 @@ dependencies = [
  "serde_json",
  "tapa-codegen",
  "tapa-graphir",
+ "tapa-protocol",
  "tapa-rtl",
  "tapa-task-graph",
  "tapa-topology",

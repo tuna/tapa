@@ -3,6 +3,7 @@
 use std::collections::BTreeMap;
 
 use tapa_graphir::{AnyModuleDefinition, HierarchicalName, ModuleNet, ModulePort, Range};
+use tapa_protocol::{HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY, HANDSHAKE_START};
 use tapa_task_graph::port::ArgCategory;
 use tapa_topology::task::TaskDesign;
 
@@ -98,7 +99,12 @@ pub fn build_upper_task_ir_wires(
     for (child_task_name, insts) in &upper_task.tasks {
         for (idx, inst) in insts.iter().enumerate() {
             let inst_name = crate::instantiation_builder::instance_name(child_task_name, idx, inst);
-            for &sig in &["ap_start", "ap_done", "ap_ready", "ap_idle"] {
+            for &sig in &[
+                HANDSHAKE_START,
+                HANDSHAKE_DONE,
+                HANDSHAKE_READY,
+                HANDSHAKE_IDLE,
+            ] {
                 wires.push(make_net(&format!("{inst_name}__{sig}"), None));
             }
         }

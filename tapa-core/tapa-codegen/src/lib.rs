@@ -20,6 +20,10 @@ use tapa_task_graph::task::TaskLevel;
 
 use crate::error::CodegenError;
 use crate::rtl_state::TopologyWithRtl;
+use tapa_protocol::{
+    HANDSHAKE_CLK, HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY, HANDSHAKE_RST, HANDSHAKE_RST_N,
+    HANDSHAKE_START,
+};
 
 fn render_template_module(name: &str, ports: &[String]) -> String {
     let mut env = minijinja::Environment::new();
@@ -93,11 +97,11 @@ fn instrument_upper_task(state: &mut TopologyWithRtl, task_name: &str) -> Result
         mm.cleanup_hls_artifacts();
         mm.body_text.clear();
         mm.demote_output_port_regs_to_wires();
-        mm.demote_signal_regs_to_wires(&["ap_done", "ap_idle", "ap_ready"]);
-        let _ = mm.add_signal(wire("ap_rst"));
+        mm.demote_signal_regs_to_wires(&[HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY]);
+        let _ = mm.add_signal(wire(HANDSHAKE_RST));
         mm.add_assign(ContinuousAssign::new(
-            Expr::ident("ap_rst"),
-            Expr::logical_not(Expr::ident("ap_rst_n")),
+            Expr::ident(HANDSHAKE_RST),
+            Expr::logical_not(Expr::ident(HANDSHAKE_RST_N)),
         ));
 
         if is_top_task {
@@ -511,13 +515,13 @@ fn generate_child_signals(
     // Instantiate FSM module into parent task module
     let fsm_module_name = format!("{task_name}_fsm");
     let mut fsm_inst_ports = vec![
-        tapa_rtl::builder::PortArg::new("ap_clk", Expr::ident("ap_clk")),
-        tapa_rtl::builder::PortArg::new("ap_rst_n", Expr::ident("ap_rst_n")),
+        tapa_rtl::builder::PortArg::new(HANDSHAKE_CLK, Expr::ident(HANDSHAKE_CLK)),
+        tapa_rtl::builder::PortArg::new(HANDSHAKE_RST_N, Expr::ident(HANDSHAKE_RST_N)),
         // Top-level handshake ports
-        tapa_rtl::builder::PortArg::new("ap_start", Expr::ident("ap_start")),
-        tapa_rtl::builder::PortArg::new("ap_done", Expr::ident("ap_done")),
-        tapa_rtl::builder::PortArg::new("ap_idle", Expr::ident("ap_idle")),
-        tapa_rtl::builder::PortArg::new("ap_ready", Expr::ident("ap_ready")),
+        tapa_rtl::builder::PortArg::new(HANDSHAKE_START, Expr::ident(HANDSHAKE_START)),
+        tapa_rtl::builder::PortArg::new(HANDSHAKE_DONE, Expr::ident(HANDSHAKE_DONE)),
+        tapa_rtl::builder::PortArg::new(HANDSHAKE_IDLE, Expr::ident(HANDSHAKE_IDLE)),
+        tapa_rtl::builder::PortArg::new(HANDSHAKE_READY, Expr::ident(HANDSHAKE_READY)),
     ];
     // Add child-specific handshake portargs (child_0__ap_start, etc.)
     fsm_inst_ports.extend(fsm_portargs);
@@ -621,8 +625,8 @@ fn instantiate_top_control_s_axi(state: &mut TopologyWithRtl, task_name: &str) {
     }
 
     let mut ports = vec![
-        PortArg::new("ACLK", Expr::ident("ap_clk")),
-        PortArg::new("ARESET", Expr::ident("ap_rst")),
+        PortArg::new("ACLK", Expr::ident(HANDSHAKE_CLK)),
+        PortArg::new("ARESET", Expr::ident(HANDSHAKE_RST)),
         PortArg::new("ACLK_EN", Expr::lit("1'b1")),
     ];
     for &axi_port in S_AXI_CTRL_PORTS {
@@ -631,7 +635,13 @@ fn instantiate_top_control_s_axi(state: &mut TopologyWithRtl, task_name: &str) {
             Expr::ident(format!("s_axi_control_{axi_port}")),
         ));
     }
-    for &sig in &["ap_start", "ap_done", "ap_idle", "ap_ready", "interrupt"] {
+    for &sig in &[
+        HANDSHAKE_START,
+        HANDSHAKE_DONE,
+        HANDSHAKE_IDLE,
+        HANDSHAKE_READY,
+        "interrupt",
+    ] {
         ports.push(PortArg::new(sig, Expr::ident(sig)));
     }
 
@@ -781,7 +791,7 @@ fn add_pipeline_stage(
         let _ = fsm_mm.add_port(out_port);
         let _ = fsm_mm.add_signal(reg_sig);
         fsm_mm.add_always(tapa_rtl::builder::AlwaysBlock::posedge(
-            "ap_clk",
+            HANDSHAKE_CLK,
             vec![tapa_rtl::builder::Statement::NonblockingAssign {
                 lhs: Expr::ident(&reg_name),
                 rhs: Expr::ident(fsm_in_port),
@@ -872,7 +882,7 @@ fn instantiate_fifos(state: &mut TopologyWithRtl, task_name: &str) {
             let width = resolve_fifo_width(state, producer.as_ref());
             let fifo_inst = fifos::build_fifo_instance(
                 &fifo_name,
-                Expr::ident("ap_rst"),
+                Expr::ident(HANDSHAKE_RST),
                 Expr::int(u64::from(width)),
                 depth,
             );

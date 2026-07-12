@@ -3,7 +3,8 @@
 use serde::{Deserialize, Serialize};
 use tapa_protocol::{
     HANDSHAKE_CLK, HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY, HANDSHAKE_RST, HANDSHAKE_RST_N,
-    HANDSHAKE_START, ISTREAM_SUFFIXES, M_AXI_PREFIX, M_AXI_SUFFIXES_COMPACT, OSTREAM_SUFFIXES,
+    HANDSHAKE_START, HLS_RST_INV, ISTREAM_SUFFIXES, M_AXI_PREFIX, M_AXI_SUFFIXES_COMPACT,
+    OSTREAM_SUFFIXES,
 };
 
 use crate::port::Port;
@@ -101,7 +102,7 @@ pub fn classify_ports(ports: &[Port]) -> Vec<(String, PortClass)> {
 fn classify_handshake(name: &str) -> Option<HandshakeRole> {
     if name == HANDSHAKE_CLK {
         Some(HandshakeRole::Clock)
-    } else if name == HANDSHAKE_RST {
+    } else if name == HANDSHAKE_RST || name == HLS_RST_INV {
         Some(HandshakeRole::Reset)
     } else if name == HANDSHAKE_RST_N {
         Some(HandshakeRole::ResetN)

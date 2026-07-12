@@ -6,6 +6,10 @@ use tapa_graphir::{
 
 use crate::utils::{input_wire, make_connection, output_wire, range_expr, range_msb};
 use tapa_codegen::support_assets::FIFO_TEMPLATE;
+use tapa_protocol::{
+    HANDSHAKE_CLK, HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY, HANDSHAKE_RST_N,
+    HANDSHAKE_START,
+};
 
 /// Embedded reset-inverter Verilog body (matches `RESET_INVERTER_TEMPLATE`).
 const RESET_INVERTER_TEMPLATE: &str = "
@@ -80,10 +84,10 @@ pub fn get_ctrl_s_axi_def(
         input_wire("BREADY", None),
         output_wire("BRESP", Some(range_msb(1))),
         // Control signals
-        output_wire("ap_start", None),
-        input_wire("ap_done", None),
-        input_wire("ap_ready", None),
-        input_wire("ap_idle", None),
+        output_wire(HANDSHAKE_START, None),
+        input_wire(HANDSHAKE_DONE, None),
+        input_wire(HANDSHAKE_READY, None),
+        input_wire(HANDSHAKE_IDLE, None),
         output_wire("interrupt", None),
     ];
 
@@ -225,8 +229,8 @@ pub fn get_reset_inverter_inst(region: Option<&str>) -> ModuleInstantiation {
         hierarchical_name: HierarchicalName::get_name("reset_inverter_0"),
         module: "reset_inverter".into(),
         connections: vec![
-            make_connection("clk", Expression::new_id("ap_clk")),
-            make_connection("rst_n", Expression::new_id("ap_rst_n")),
+            make_connection("clk", Expression::new_id(HANDSHAKE_CLK)),
+            make_connection("rst_n", Expression::new_id(HANDSHAKE_RST_N)),
             make_connection("rst", Expression::new_id("rst")),
         ],
         parameters: Vec::new(),

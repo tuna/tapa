@@ -3,7 +3,10 @@
 //! Implements: global FSM generation,
 //! upper-task orchestration, template task output.
 
-use tapa_protocol::{HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY};
+use tapa_protocol::{
+    HANDSHAKE_CLK, HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY, HANDSHAKE_RST, HANDSHAKE_RST_N,
+    HANDSHAKE_START,
+};
 use tapa_rtl::builder::{AlwaysBlock, CaseItem, ContinuousAssign, Expr, Statement};
 use tapa_rtl::mutation::{wide_reg, wire, MutableModule};
 
@@ -35,9 +38,9 @@ pub fn generate_global_fsm(is_done_signal_names: &[String]) -> GlobalFsmOutput {
 
     // FSM always block
     let fsm_block = AlwaysBlock::posedge(
-        "ap_clk",
+        HANDSHAKE_CLK,
         vec![Statement::If {
-            cond: Expr::ident("ap_rst"),
+            cond: Expr::ident(HANDSHAKE_RST),
             then_body: vec![Statement::NonblockingAssign {
                 lhs: state.clone(),
                 rhs: Expr::lit(GLOBAL_STATE_IDLE),
@@ -49,7 +52,7 @@ pub fn generate_global_fsm(is_done_signal_names: &[String]) -> GlobalFsmOutput {
                     CaseItem::new(
                         Expr::lit(GLOBAL_STATE_IDLE),
                         vec![Statement::If {
-                            cond: Expr::ident("ap_start"),
+                            cond: Expr::ident(HANDSHAKE_START),
                             then_body: vec![Statement::NonblockingAssign {
                                 lhs: state.clone(),
                                 rhs: Expr::lit(GLOBAL_STATE_RUNNING),
@@ -118,7 +121,7 @@ pub const DONE_Q: &str = "__tapa_done_q";
 pub fn apply_global_fsm(fsm_module: &mut MutableModule, is_done_signal_names: &[String]) {
     // Add top-level handshake ports to FSM module interface
     let _ = fsm_module.add_port(tapa_rtl::mutation::simple_port(
-        "ap_start",
+        HANDSHAKE_START,
         tapa_rtl::port::Direction::Input,
     ));
     let _ = fsm_module.add_port(tapa_rtl::mutation::simple_port(
@@ -138,7 +141,7 @@ pub fn apply_global_fsm(fsm_module: &mut MutableModule, is_done_signal_names: &[
     let _ = fsm_module.add_signal(wide_reg("__tapa_state", "1", "0"));
 
     // Add reset wire
-    let _ = fsm_module.add_signal(wire("ap_rst"));
+    let _ = fsm_module.add_signal(wire(HANDSHAKE_RST));
 
     // Add pipeline signals
     let _ = fsm_module.add_signal(wire(START_Q));
@@ -146,14 +149,14 @@ pub fn apply_global_fsm(fsm_module: &mut MutableModule, is_done_signal_names: &[
 
     // assign ap_rst = ~ap_rst_n
     fsm_module.add_assign(ContinuousAssign::new(
-        Expr::ident("ap_rst"),
-        Expr::logical_not(Expr::ident("ap_rst_n")),
+        Expr::ident(HANDSHAKE_RST),
+        Expr::logical_not(Expr::ident(HANDSHAKE_RST_N)),
     ));
 
     // start_q = ap_start (pipeline stage 0 = raw input)
     fsm_module.add_assign(ContinuousAssign::new(
         Expr::ident(START_Q),
-        Expr::ident("ap_start"),
+        Expr::ident(HANDSHAKE_START),
     ));
 
     // Generate and apply FSM

@@ -5,7 +5,10 @@
 
 use std::collections::BTreeMap;
 
-use tapa_protocol::{ISTREAM_SUFFIXES, OSTREAM_SUFFIXES};
+use tapa_protocol::{
+    HANDSHAKE_CLK, HANDSHAKE_RST, HANDSHAKE_RST_N, HANDSHAKE_START, ISTREAM_SUFFIXES,
+    OSTREAM_SUFFIXES,
+};
 use tapa_rtl::builder::{
     AlwaysBlock, CaseItem, ContinuousAssign, Expr, ModuleInstance, PortArg, Sensitivity, Statement,
 };
@@ -40,9 +43,9 @@ pub fn generate_child_fsm(
     let ready = Expr::ident(sig.ready_name());
 
     AlwaysBlock::posedge(
-        "ap_clk",
+        HANDSHAKE_CLK,
         vec![Statement::If {
-            cond: Expr::ident("ap_rst"),
+            cond: Expr::ident(HANDSHAKE_RST),
             then_body: vec![sig.set_state(Expr::lit(STATE_IDLE))],
             else_body: vec![Statement::Case {
                 expr: state,
@@ -109,16 +112,16 @@ pub fn generate_is_done_assign(sig: &InstanceSignals) -> ContinuousAssign {
 /// Autorun instances start when the global `ap_start` is asserted.
 pub fn generate_autorun_start(sig: &InstanceSignals) -> AlwaysBlock {
     AlwaysBlock::new(
-        Sensitivity::Posedge("ap_clk".into()),
+        Sensitivity::Posedge(HANDSHAKE_CLK.into()),
         vec![Statement::If {
-            cond: Expr::ident("ap_rst"),
+            cond: Expr::ident(HANDSHAKE_RST),
             then_body: vec![Statement::NonblockingAssign {
                 lhs: sig.start_expr(),
                 rhs: Expr::lit("1'b0"),
             }],
             else_body: vec![Statement::NonblockingAssign {
                 lhs: sig.start_expr(),
-                rhs: Expr::ident("ap_start"),
+                rhs: Expr::ident(HANDSHAKE_START),
             }],
         }],
     )
@@ -175,8 +178,8 @@ pub fn build_child_instance(
     let mut port_args = Vec::new();
 
     // Clock and reset
-    port_args.push(PortArg::new("ap_clk", Expr::ident("ap_clk")));
-    port_args.push(PortArg::new("ap_rst_n", Expr::ident("ap_rst_n")));
+    port_args.push(PortArg::new(HANDSHAKE_CLK, Expr::ident(HANDSHAKE_CLK)));
+    port_args.push(PortArg::new(HANDSHAKE_RST_N, Expr::ident(HANDSHAKE_RST_N)));
 
     // Handshake signals from InstanceSignals
     port_args.extend(sig.instance_portargs());

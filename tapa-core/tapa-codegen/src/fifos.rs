@@ -1,7 +1,8 @@
 //! FIFO instantiation and connection.
 
 use tapa_protocol::{
-    FIFO_READ_PORTS, FIFO_WRITE_PORTS, ISTREAM_SUFFIXES, OSTREAM_SUFFIXES, STREAM_PORT_DIRECTION,
+    FIFO_READ_PORTS, FIFO_WRITE_PORTS, HANDSHAKE_CLK, HANDSHAKE_RST, ISTREAM_SUFFIXES,
+    OSTREAM_SUFFIXES, STREAM_PORT_DIRECTION,
 };
 use tapa_rtl::builder::{ContinuousAssign, Expr, ModuleInstance, ParamArg, PortArg};
 use tapa_rtl::module::sanitize_array_name;
@@ -26,7 +27,7 @@ pub fn build_fifo_instance(name: &str, rst: Expr, width: Expr, depth: u32) -> Mo
         ])
         .with_ports({
             let mut ports = vec![
-                PortArg::new("clk", Expr::ident("ap_clk")),
+                PortArg::new("clk", Expr::ident(HANDSHAKE_CLK)),
                 PortArg::new("reset", rst),
             ];
             // FIFO_READ_PORTS are if_* names; strip "if" prefix for wire names
@@ -122,8 +123,8 @@ pub fn build_axis_adapter(fifo_name: &str, data_width: u32, is_input: bool) -> M
     let instance_name = format!("tapa_axis_{fifo_name}");
 
     let mut ports = vec![
-        PortArg::new("clk", Expr::ident("ap_clk")),
-        PortArg::new("reset", Expr::ident("ap_rst")),
+        PortArg::new("clk", Expr::ident(HANDSHAKE_CLK)),
+        PortArg::new("reset", Expr::ident(HANDSHAKE_RST)),
     ];
 
     if is_input {

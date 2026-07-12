@@ -34,9 +34,10 @@ static INITIAL_BLOCK_PATTERN: LazyLock<Regex> =
 /// Remove `ap_ce_reg` declarations.
 static AP_CE_PATTERN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?m)^.*\bap_ce_reg\b.*$\n?").unwrap());
-/// Remove `ap_rst_n_inv` declarations and assignments.
-static RST_INV_PATTERN: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?m)^.*\bap_rst_n_inv\b.*$\n?").unwrap());
+/// Remove HLS-internal inverted-reset declarations and assignments.
+static RST_INV_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(&format!(r"(?m)^.*\b{}\b.*$\n?", tapa_protocol::HLS_RST_INV)).unwrap()
+});
 /// Remove placeholder top-level handshake assigns from the HLS wrapper.
 static AP_HANDSHAKE_ASSIGN_PATTERN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?m)^\s*assign\s+ap_(?:done|ready|idle)\s*=.*;\s*\n?").unwrap());

@@ -1,6 +1,10 @@
 //! Builds `ModuleInstantiation` for tasks, slots, FSMs, and FIFOs.
 
 use tapa_graphir::{Expression, HierarchicalName, ModuleConnection, ModuleInstantiation};
+use tapa_protocol::{
+    HANDSHAKE_CLK, HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY, HANDSHAKE_RST_N,
+    HANDSHAKE_START,
+};
 use tapa_task_graph::port::ArgCategory;
 use tapa_topology::instance::{ArgDesign, InstanceDesign};
 
@@ -213,22 +217,22 @@ pub fn build_task_instance(
     region: Option<&str>,
 ) -> ModuleInstantiation {
     let mut connections = vec![
-        make_connection("ap_clk", Expression::new_id("ap_clk")),
-        make_connection("ap_rst_n", Expression::new_id("ap_rst_n")),
+        make_connection(HANDSHAKE_CLK, Expression::new_id(HANDSHAKE_CLK)),
+        make_connection(HANDSHAKE_RST_N, Expression::new_id(HANDSHAKE_RST_N)),
         make_connection(
-            "ap_start",
+            HANDSHAKE_START,
             Expression::new_id(&format!("{inst_name}__ap_start")),
         ),
         make_connection(
-            "ap_done",
+            HANDSHAKE_DONE,
             Expression::new_id(&format!("{inst_name}__ap_done")),
         ),
         make_connection(
-            "ap_idle",
+            HANDSHAKE_IDLE,
             Expression::new_id(&format!("{inst_name}__ap_idle")),
         ),
         make_connection(
-            "ap_ready",
+            HANDSHAKE_READY,
             Expression::new_id(&format!("{inst_name}__ap_ready")),
         ),
     ];
@@ -276,13 +280,13 @@ pub fn build_fifo_instance(
     } else {
         Expression(vec![
             tapa_graphir::Token::new_lit("~"),
-            tapa_graphir::Token::new_id("ap_rst_n"),
+            tapa_graphir::Token::new_id(HANDSHAKE_RST_N),
         ])
     };
     let fifo_name = tapa_rtl::module::sanitize_array_name(fifo_name);
 
     let connections = vec![
-        make_connection("clk", Expression::new_id("ap_clk")),
+        make_connection("clk", Expression::new_id(HANDSHAKE_CLK)),
         make_connection("reset", reset_expr),
         make_connection("if_dout", Expression::new_id(&format!("{fifo_name}_dout"))),
         make_connection(

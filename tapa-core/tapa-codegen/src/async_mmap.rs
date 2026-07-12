@@ -6,7 +6,9 @@
 
 use std::collections::BTreeSet;
 
-use tapa_protocol::{ISTREAM_SUFFIXES, M_AXI_PORTS, OSTREAM_SUFFIXES};
+use tapa_protocol::{
+    HANDSHAKE_CLK, HANDSHAKE_RST, ISTREAM_SUFFIXES, M_AXI_PORTS, OSTREAM_SUFFIXES,
+};
 use tapa_rtl::builder::{Expr, ModuleInstance, ParamArg, PortArg};
 use tapa_rtl::module::sanitize_array_name;
 use tapa_rtl::mutation::{wide_wire, wire, MutableModule};
@@ -170,8 +172,8 @@ pub fn build_bridge_instance(
     ];
 
     let mut ports = vec![
-        PortArg::new("clk", Expr::ident("ap_clk")),
-        PortArg::new("rst", Expr::ident("ap_rst")),
+        PortArg::new("clk", Expr::ident(HANDSHAKE_CLK)),
+        PortArg::new("rst", Expr::ident(HANDSHAKE_RST)),
     ];
 
     for channel in ["AW", "W", "B", "AR", "R"] {
