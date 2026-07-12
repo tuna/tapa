@@ -218,10 +218,15 @@ pub fn try_build_crossbar_instance(conn: &MMapConnection) -> Result<ModuleInstan
         .with_ports(ports))
 }
 
-/// Compute address width from valid channel geometry.
+/// Compute address width from a channel size and data width.
+///
+/// A zero channel size denotes a plain mmap with the full address space.
 #[must_use]
-pub fn get_addr_width(chan_size: Option<u32>, data_width: u32) -> u32 {
-    try_get_addr_width(chan_size, data_width).expect("invalid mmap channel geometry")
+pub fn get_addr_width(chan_size: u32, data_width: u32) -> u32 {
+    if chan_size == 0 {
+        return 64;
+    }
+    try_get_addr_width(Some(chan_size), data_width).expect("invalid mmap channel geometry")
 }
 
 /// Compute address width while reporting invalid channel geometry.
@@ -824,8 +829,8 @@ mod tests {
 
     #[test]
     fn addr_width_calculation() {
-        assert_eq!(get_addr_width(None, 32), 64);
-        assert_eq!(get_addr_width(Some(1024), 32), 12);
+        assert_eq!(get_addr_width(0, 32), 64);
+        assert_eq!(get_addr_width(1024, 32), 12);
     }
 
     #[test]
