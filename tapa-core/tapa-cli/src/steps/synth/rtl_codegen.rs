@@ -14,6 +14,8 @@ use tapa_topology::program::Program;
 
 use crate::error::{CliError, Result};
 
+use super::metrics::effective_total_area;
+
 use camino::Utf8PathBuf;
 
 pub type TaskHdlInputs = BTreeMap<String, Vec<Utf8PathBuf>>;
@@ -66,10 +68,11 @@ pub fn topology_program_from_design(design: &Design) -> Result<Program> {
                 serde_json::to_value(&t.self_area).map_err(CliError::Json)?,
             );
         }
-        if !t.total_area.is_empty() {
+        let total_area = effective_total_area(design, name)?;
+        if !total_area.is_empty() {
             task_obj.insert(
                 "total_area".to_string(),
-                serde_json::to_value(&t.total_area).map_err(CliError::Json)?,
+                serde_json::to_value(total_area).map_err(CliError::Json)?,
             );
         }
         if !t.clock_period.is_empty() {
@@ -314,6 +317,68 @@ mod tests {
             task_obj.get("clock_period").and_then(|v| v.as_str()),
             Some("3.33"),
             "clock_period must round-trip; got {task_value:?}",
+        );
+    }
+
+    #[test]
+    fn topology_program_derives_recursive_area_for_ab_graph() {
+        use tapa_floorplan::{gen_abgraph::collect_task_area, Area};
+
+        let area = |lut, ff, bram, dsp, uram| {
+            IndexMap::from([
+                ("LUT".to_string(), json!(lut)),
+                ("FF".to_string(), json!(ff)),
+                ("BRAM_18K".to_string(), json!(bram)),
+                ("DSP".to_string(), json!(dsp)),
+                ("URAM".to_string(), json!(uram)),
+            ])
+        };
+        let mut design = vadd_design();
+        design.tasks.insert(
+            "Multiply".to_string(),
+            TaskTopology {
+                name: "Multiply".to_string(),
+                level: "lower".to_string(),
+                code: String::new(),
+                ports: Vec::new(),
+                tasks: IndexMap::new(),
+                fifos: IndexMap::new(),
+                target: Some("hls".to_string()),
+                is_slot: false,
+                self_area: area(3, 4, 2, 1, 1),
+                total_area: IndexMap::new(),
+                clock_period: "2.0".to_string(),
+            },
+        );
+        let add = design.tasks.get_mut("Add").expect("Add task");
+        add.level = "upper".to_string();
+        add.self_area = area(10, 20, 1, 2, 0);
+        add.tasks.insert(
+            "Multiply".to_string(),
+            json!([{"args": {}, "step": 0}, {"args": {}, "step": 0}]),
+        );
+        assert!(
+            add.total_area.is_empty(),
+            "test requires no stored override"
+        );
+
+        let program = topology_program_from_design(&design).expect("convert");
+        let add = program.tasks.get("Add").expect("Add present");
+        let annotation = add
+            .annotations
+            .get("total_area")
+            .expect("derived total_area annotation");
+        assert_eq!(annotation["LUT"], 16);
+        assert_eq!(annotation["FF"], 28);
+        assert_eq!(annotation["BRAM_18K"], 5);
+        assert_eq!(annotation["DSP"], 4);
+        assert_eq!(annotation["URAM"], 2);
+
+        let ab_areas = collect_task_area(&program);
+        assert_eq!(
+            ab_areas.get("Add"),
+            Some(&Area::new(16, 28, 5, 4, 2)),
+            "AutoBridge must receive the recursively derived child-task area"
         );
     }
 
