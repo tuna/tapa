@@ -551,7 +551,7 @@ pub(crate) fn generate_child_signals(
                         let offset_source = mmap_conns.get(&arg.arg).map_or_else(
                             || Expr::ident(format!("{arg_name}_offset")),
                             |conn| {
-                                if conn.channel_count() > 1 {
+                                if conn.chan_count.is_some() {
                                     Expr::lit("64'd0")
                                 } else {
                                     Expr::ident(format!("{arg_name}_offset"))

@@ -1646,6 +1646,78 @@ fn test_generate_rtl_hmap_uses_parent_channels() {
 }
 
 #[test]
+fn test_generate_rtl_single_channel_hmap_keeps_indexed_channel() {
+    let prog = program_from_json(serde_json::json!({
+        "top": "top",
+        "target": "xilinx-hls",
+        "tasks": {
+            "top": {
+                "level": "upper",
+                "code": "",
+                "target": "xilinx-hls",
+                "ports": [
+                    {
+                        "cat": "mmap",
+                        "name": "mem",
+                        "type": "float*",
+                        "width": 32,
+                        "chan_count": 1,
+                        "chan_size": 1024
+                    }
+                ],
+                "tasks": {
+                    "worker": [
+                        {"args": {"data": {"arg": "mem", "cat": "mmap"}}}
+                    ]
+                },
+                "fifos": {}
+            },
+            "worker": {
+                "level": "lower",
+                "code": "",
+                "target": "xilinx-hls",
+                "ports": [
+                    {"cat": "mmap", "name": "data", "type": "float*", "width": 32}
+                ],
+                "tasks": {},
+                "fifos": {}
+            }
+        }
+    }));
+
+    let mut state = TopologyWithRtl::new(prog);
+    state
+        .attach_module(
+            "top",
+            parse_module(
+                "module top(input wire ap_clk, input wire ap_rst_n, input wire [63:0] mem_0_offset); endmodule",
+            ),
+        )
+        .unwrap();
+    state
+        .attach_module(
+            "worker",
+            parse_module("module worker(input wire ap_clk, input wire ap_rst_n); endmodule"),
+        )
+        .unwrap();
+
+    generate_rtl(&mut state).unwrap();
+
+    let top_v = &state.generated_files["top.v"];
+    assert!(top_v.contains("m_axi_mem_0_ARADDR"), "got:\n{top_v}");
+    assert!(top_v.contains("m_axi_mem_0_ARADDR_raw"), "got:\n{top_v}");
+    assert!(
+        top_v.contains("assign m_axi_mem_0_ARADDR = (mem_0_offset + m_axi_mem_0_ARADDR_raw[11:0])"),
+        "got:\n{top_v}"
+    );
+    assert!(
+        top_v.contains(".worker_0__data_offset_in(64'd0)"),
+        "got:\n{top_v}"
+    );
+    assert!(!top_v.contains("output wire [63:0] m_axi_mem_ARADDR"));
+}
+
+#[test]
 fn test_generate_rtl_sanitizes_indexed_mmap_names() {
     let prog = program_from_json(serde_json::json!({
         "top": "top",

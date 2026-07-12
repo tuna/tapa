@@ -183,14 +183,15 @@ pub fn try_build_crossbar_instance(conn: &MMapConnection) -> Result<ModuleInstan
 
     // Upstream master ports.
     let chan_count = conn.channel_count();
+    let is_hmap = conn.chan_count.is_some();
     for channel_idx in 0..chan_count {
-        let m_prefix = if chan_count > 1 {
+        let m_prefix = if is_hmap {
             format!("{M_AXI_PREFIX}{arg_name}_{channel_idx}")
         } else {
             format!("{M_AXI_PREFIX}{arg_name}")
         };
         for suffix in M_AXI_SUFFIXES_COMPACT {
-            let signal = if chan_count > 1 && suffix.ends_with("ADDR") {
+            let signal = if is_hmap && suffix.ends_with("ADDR") {
                 crossbar_master_addr_raw(&arg_name, channel_idx, suffix)
             } else {
                 format!("{m_prefix}{suffix}")
@@ -590,7 +591,7 @@ pub(crate) fn add_m_axi_and_crossbars(
 
     for conn in mmap_conns.values() {
         if let Some(mm) = state.module_map.get_mut(task_name) {
-            if conn.channel_count() > 1 {
+            if conn.chan_count.is_some() {
                 for channel_idx in 0..conn.channel_count() {
                     add_m_axi_ports_with_id_width(
                         mm,
@@ -616,7 +617,7 @@ pub(crate) fn add_m_axi_and_crossbars(
             // Declare downstream m_axi_{arg}_{idx}_* wires in parent
             // Size each wire using protocol metadata for correct widths
             if let Some(mm) = state.module_map.get_mut(task_name) {
-                if conn.channel_count() > 1 {
+                if conn.chan_count.is_some() {
                     let addr_width = try_get_addr_width(conn.chan_size, conn.data_width)?;
                     for channel_idx in 0..conn.channel_count() {
                         let channel_prefix = format!(
