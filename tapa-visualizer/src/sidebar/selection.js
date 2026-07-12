@@ -17,13 +17,13 @@ import {
   task,
   ul,
 } from "./dom.js";
-import { getExplorerItems, getExplorerSelectionStates } from "./explorer.js";
 import { getComboInfo, getNodeInfo, getTaskInfo } from "./info.js";
 import {
   getComboSidebarModel,
   getEdgeSidebarModel,
   getNodeSidebarModel,
 } from "./models.js";
+import { getExplorerItems, getExplorerSelectionStates } from "./explorer.js";
 
 const sourcesTitle = append($("p", { textContent: "Sources" }), $("br"),
   $("code", { className: "hint", textContent: "Format: connection name -> target name" }));

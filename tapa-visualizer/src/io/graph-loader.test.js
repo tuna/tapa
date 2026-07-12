@@ -10,8 +10,8 @@ vi.mock("../graph-config.js", () => ({
   color: { edgeB: "#000000" },
 }));
 
-import { resetSidebar } from "../sidebar.js";
 import { getEmptyGraphData, resetGraphLoaderState, setupGraphLoader } from "./graph-loader.js";
+import { resetSidebar } from "../sidebar.js";
 
 describe("graph loader state", () => {
   it("returns a fresh empty graph data shape", () => {

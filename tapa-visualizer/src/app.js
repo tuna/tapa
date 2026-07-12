@@ -8,22 +8,22 @@
 
 import { createIcons, icons } from "lucide";
 
-createIcons({ icons });
-
-import { setupFileInput } from "./app/file-loader.js";
-import { createGraph } from "./app/graph.js";
-import { setupCodeDialog, setupGraphButtons, setupSidebarToggle } from "./app/ui.js";
 import { antvDagre, dagre, forceAtlas2 } from "./graph-config.js";
-import { getEmptyGraphData } from "./io/graph-loader.js";
 import {
   createSidebarController,
   resetInstance,
   resetSidebar,
 } from "./sidebar.js";
+import { setupCodeDialog, setupGraphButtons, setupSidebarToggle } from "./app/ui.js";
+import { createGraph } from "./app/graph.js";
 import { getComboId } from "./helper.js";
+import { getEmptyGraphData } from "./io/graph-loader.js";
 import { getGraphData } from "./parser.js";
+import { setupFileInput } from "./app/file-loader.js";
 
 import "../css/style.css";
+
+createIcons({ icons });
 
 /** @type {{
  *   filename: string | undefined,

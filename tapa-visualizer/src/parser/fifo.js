@@ -6,7 +6,7 @@
 
 "use strict";
 
-import { fifoGroups, getIndexRange, addFifo } from "./fifo-utils.js";
+import { addFifo, fifoGroups, getIndexRange } from "./fifo-utils.js";
 
 /** @param {UpperTask} task
  * @param {string} taskName

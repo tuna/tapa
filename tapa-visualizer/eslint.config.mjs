@@ -136,7 +136,10 @@ export default [
     rules: {
       ...css.configs.recommended.rules,
       "css/no-invalid-properties": ["error", { allowUnknownVariables: true }],
-      "css/use-baseline": "warn",
+      "css/use-baseline": ["warn", {
+        allowProperties: ["resize", "scrollbar-width"],
+        allowSelectors: ["has", "selection"],
+      }],
     },
   },
 

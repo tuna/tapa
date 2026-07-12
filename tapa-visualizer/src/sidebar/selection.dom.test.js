@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
-import { within } from "@testing-library/dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { within } from "@testing-library/dom";
 
 const mountSidebarDom = () => {
   document.body.innerHTML = `
