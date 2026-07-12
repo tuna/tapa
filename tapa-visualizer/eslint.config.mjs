@@ -30,6 +30,10 @@ const globalIgnoresR =
 const globalVariablesR =
   (name, globals, files) => globalVariables(files, globals, name);
 
+const javaScriptFiles = ["**/*.{js,mjs,cjs}"];
+const typeScriptFiles = ["**/*.{ts,tsx,mts,cts}"];
+const sourceFiles = [...javaScriptFiles, ...typeScriptFiles];
+
 
 /** @type {import("typescript-eslint").ConfigArray} */
 export default [
@@ -49,11 +53,13 @@ export default [
 
   // JavaScript
   {
-    name: "@eslint/js/recommended",
     ...js.configs.recommended,
+    name: "@eslint/js/recommended",
+    files: javaScriptFiles,
   },
   {
     name: "@eslint/js/custom",
+    files: sourceFiles,
     rules: {
       'no-undef': "off",
       "complexity": ["error", 12],
@@ -68,9 +74,13 @@ export default [
   },
 
   // TypeScript
-  ...ts.configs.recommendedTypeChecked,
+  ...ts.configs.recommendedTypeChecked.map(config => ({
+    ...config,
+    files: typeScriptFiles,
+  })),
   {
     name: "typescript-eslint/custom",
+    files: typeScriptFiles,
     languageOptions: {
       parserOptions: {
         project: true,
@@ -122,7 +132,12 @@ export default [
       "css/**/*.css",
     ],
     language: "css/css",
-		...css.configs.recommended,
+    ...css.configs.recommended,
+    rules: {
+      ...css.configs.recommended.rules,
+      "css/no-invalid-properties": ["error", { allowUnknownVariables: true }],
+      "css/use-baseline": "warn",
+    },
   },
 
 ];

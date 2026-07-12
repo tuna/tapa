@@ -12,8 +12,8 @@ importers:
         specifier: ^5.0.48
         version: 5.0.48(workerize-loader@2.0.2(webpack@5.99.9))
       '@eslint/css':
-        specifier: ^0.8.1
-        version: 0.8.1
+        specifier: ^0.14.1
+        version: 0.14.1
       '@eslint/js':
         specifier: ^9.28.0
         version: 9.28.0
@@ -380,12 +380,16 @@ packages:
     resolution: {integrity: sha512-qIbV0/JZr7iSDjqAc60IqbLdsj9GDt16xQtWD+B78d/HAlvysGdZZ6rpJHGAc2T0FQx1X6thsSPdnoiGKdNtdg==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
 
-  '@eslint/css-tree@3.5.4':
-    resolution: {integrity: sha512-n+YfV26/+xZzOUen8IewwmB4A7uqBo2uaahFv8lqF1sIBsSG8BW4u98EW38xFUsvYz2N6p9yWqpqxuZAkm7CKw==}
+  '@eslint/core@0.17.0':
+    resolution: {integrity: sha512-yL/sLrpmtDaFEiUj1osRP4TI2MDz1AddJL+jZ7KSqvBuliN4xqYY54IfdN8qD8Toa6g1iloph1fxQNkjOxrrpQ==}
+    engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+
+  '@eslint/css-tree@3.6.9':
+    resolution: {integrity: sha512-3D5/OHibNEGk+wKwNwMbz63NMf367EoR4mVNNpxddCHKEb2Nez7z62J2U6YjtErSsZDoY0CsccmoUpdEbkogNA==}
     engines: {node: ^10 || ^12.20.0 || ^14.13.0 || >=15.0.0}
 
-  '@eslint/css@0.8.1':
-    resolution: {integrity: sha512-674JJD1q8sDlJORLep+gGnm3VRCQo/qLmKQgCIf2LnUK/tHf96StWjLX2IF3yyp3yeU9npZ6ixySMr2G256eiQ==}
+  '@eslint/css@0.14.1':
+    resolution: {integrity: sha512-NXiteSacmpaXqgyIW3+GcNzexXyfC0kd+gig6WTjD4A74kBGJeNx1tV0Hxa0v7x0+mnIyKfGPhGNs1uhRFdh+w==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
 
   '@eslint/eslintrc@3.3.1':
@@ -402,6 +406,10 @@ packages:
 
   '@eslint/plugin-kit@0.3.1':
     resolution: {integrity: sha512-0J+zgWxHN+xXONWIyPWKFMgVuJoZuGiIFu8yxk7RJjxkzpGmyja5wRFqZIVtjDVOQpV+Rw0iOAjYPE2eQyjr0w==}
+    engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+
+  '@eslint/plugin-kit@0.4.1':
+    resolution: {integrity: sha512-43/qtrDUokr7LJqoF2c3+RInu/t4zfrpYdoSDfYyhg52rwLV6TnOvdG4fXm7IkSB3wErkcmJS9iEhjVtOSEjjA==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
 
   '@humanfs/core@0.19.1':
@@ -1977,8 +1985,8 @@ packages:
     resolution: {integrity: sha512-/IXtbwEk5HTPyEwyKX6hGkYXxM9nbj64B+ilVJnC/R6B0pH5G4V3b0pVbL7DBj4tkhBAppbQUlf6F6Xl9LHu1g==}
     engines: {node: '>= 0.4'}
 
-  mdn-data@2.20.0:
-    resolution: {integrity: sha512-/d3otgvmquUkAN2RVxSg6lIbQrYX7isR4aC5Hvw8JuHvzctR3eUG50WmsAZjb9MkbJ5LbijPSy7uIxEtQDGI0w==}
+  mdn-data@2.23.0:
+    resolution: {integrity: sha512-786vq1+4079JSeu2XdcDjrhi/Ry7BWtjDl9WtGPWLiIHb2T66GvIVflZTBoSNZ5JqTtJGYEVMuFA/lbQlMOyDQ==}
 
   media-typer@0.3.0:
     resolution: {integrity: sha512-dq+qelQ9akHpcOl/gUVRTxVIOkAJ1wR3QAvb4RsVjS8oVoFjDGTc679wJYmUmknUF5HwMLOgb5O+a3KxfWapPQ==}
@@ -3266,16 +3274,20 @@ snapshots:
     dependencies:
       '@types/json-schema': 7.0.15
 
-  '@eslint/css-tree@3.5.4':
+  '@eslint/core@0.17.0':
     dependencies:
-      mdn-data: 2.20.0
+      '@types/json-schema': 7.0.15
+
+  '@eslint/css-tree@3.6.9':
+    dependencies:
+      mdn-data: 2.23.0
       source-map-js: 1.2.1
 
-  '@eslint/css@0.8.1':
+  '@eslint/css@0.14.1':
     dependencies:
-      '@eslint/core': 0.14.0
-      '@eslint/css-tree': 3.5.4
-      '@eslint/plugin-kit': 0.3.1
+      '@eslint/core': 0.17.0
+      '@eslint/css-tree': 3.6.9
+      '@eslint/plugin-kit': 0.4.1
 
   '@eslint/eslintrc@3.3.1':
     dependencies:
@@ -3298,6 +3310,11 @@ snapshots:
   '@eslint/plugin-kit@0.3.1':
     dependencies:
       '@eslint/core': 0.14.0
+      levn: 0.4.1
+
+  '@eslint/plugin-kit@0.4.1':
+    dependencies:
+      '@eslint/core': 0.17.0
       levn: 0.4.1
 
   '@humanfs/core@0.19.1': {}
@@ -4907,7 +4924,7 @@ snapshots:
 
   math-intrinsics@1.1.0: {}
 
-  mdn-data@2.20.0: {}
+  mdn-data@2.23.0: {}
 
   media-typer@0.3.0: {}
 

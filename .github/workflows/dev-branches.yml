@@ -71,7 +71,7 @@ jobs:
       - name: Run JS lint
         run: |
           pnpm --dir tapa-visualizer install --frozen-lockfile
-          pnpm --dir tapa-visualizer lint src
+          pnpm --dir tapa-visualizer lint
 
   docs:
     name: Build Documentation
