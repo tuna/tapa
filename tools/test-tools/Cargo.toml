@@ -32,3 +32,10 @@ todo = "deny"
 unimplemented = "deny"
 error_impl_error = "deny"
 string_add = "deny"
+assertions_on_result_states = "deny"
+wildcard_enum_match_arm = "deny"
+allow_attributes_without_reason = "deny"
+redundant_type_annotations = "deny"
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
