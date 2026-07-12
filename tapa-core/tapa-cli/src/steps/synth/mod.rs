@@ -33,6 +33,7 @@ mod gen_ab_graph;
 mod gen_graphir;
 mod grouping_constraints;
 mod hls_run;
+mod metrics;
 mod post_synth_util;
 mod report;
 mod rtl_codegen;

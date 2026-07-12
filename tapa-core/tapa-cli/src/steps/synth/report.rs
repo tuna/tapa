@@ -26,10 +26,12 @@ use std::path::Path;
 use indexmap::IndexMap;
 use serde::Serialize;
 use serde_json::Value;
-use tapa_task_graph::{Design, TaskTopology};
+use tapa_task_graph::Design;
 
 use crate::error::{CliError, Result};
 use crate::steps::version::VERSION as TAPA_VERSION;
+
+use super::metrics::effective_total_area;
 
 /// Typed report schema mirroring the on-disk format.
 #[derive(Debug, Clone, Serialize)]
@@ -62,6 +64,13 @@ struct BreakdownEntry {
     area: Area,
 }
 
+struct ChildReport<'a> {
+    name: &'a str,
+    count: usize,
+    clock: f64,
+    report: Report,
+}
+
 /// Write `<work_dir>/report.{json,yaml}` for the design's top task.
 /// `override_schema` (mirrors `--override-report-schema-version`) wins
 /// over the baked `VERSION` constant when non-empty.
@@ -85,52 +94,70 @@ pub fn write_top_report(work_dir: &Path, design: &Design, override_schema: &str)
     Ok(())
 }
 
-/// Recursively build a task report. Only one level of
-/// `critical_path` and `breakdown` is retained because downstream
-/// consumers read those fields only from the top-level report.
+/// Recursively build a task report.
+///
+/// `TaskTopology::clock_period` and `total_area` contain the task-local HLS
+/// estimate and an optional post-synthesis override, respectively. The
+/// effective values are derived here in the same way as the original Python
+/// task properties: an upper task's clock is the maximum of its own estimate
+/// and all descendants, while an empty `total_area` is computed as
+/// `self_area` plus every child instance's effective total.
 fn build_task_report(design: &Design, task_name: &str, schema: &str) -> Result<Report> {
     let task = design.tasks.get(task_name).ok_or_else(|| {
         CliError::InvalidArg(format!("report: task `{task_name}` not found in design"))
     })?;
 
-    let area_source = if has_synth_area(task) { "synth" } else { "hls" };
+    let has_explicit_total = !task.total_area.is_empty();
+    let area_source = if has_explicit_total { "synth" } else { "hls" };
+
+    let mut child_reports = Vec::new();
+    if task.level == "upper" {
+        for (child_name, instances) in &task.tasks {
+            let count = instances.as_array().map_or(0, Vec::len);
+            if count == 0 || !design.tasks.contains_key(child_name) {
+                continue;
+            }
+            let report = build_task_report(design, child_name, schema)?;
+            let clock = parse_clock_period(child_name, &report.performance.clock_period)?;
+            child_reports.push(ChildReport {
+                name: child_name,
+                count,
+                clock,
+                report,
+            });
+        }
+    }
+
+    let mut clock_period = task.clock_period.clone();
+    let mut clock = parse_clock_period(task_name, &clock_period)?;
+    for child in &child_reports {
+        if child.clock.total_cmp(&clock).is_gt() {
+            clock = child.clock;
+            clock_period.clone_from(&child.report.performance.clock_period);
+        }
+    }
+
+    let total_area = effective_total_area(design, task_name)?;
 
     let (performance, area_breakdown) = if task.level == "upper" {
         let mut critical_path = IndexMap::new();
         let mut breakdown = IndexMap::new();
-        for (child_name, instances) in &task.tasks {
-            let Some(child_task) = design.tasks.get(child_name) else {
-                continue;
-            };
-            let count = instances.as_array().map_or(0, Vec::len);
-            let count = count.max(1);
-
-            let child_report = build_task_report(design, child_name, schema)?;
-            if task.clock_period == child_task.clock_period {
-                critical_path.insert(child_name.clone(), child_report.performance);
+        for child in child_reports {
+            if child.clock.total_cmp(&clock).is_eq() {
+                critical_path.insert(child.name.to_string(), child.report.performance);
             }
-            let child_area = Area {
-                source: if has_synth_area(child_task) {
-                    "synth"
-                } else {
-                    "hls"
-                }
-                .to_string(),
-                total: child_task.total_area.clone(),
-                breakdown: None,
-            };
             breakdown.insert(
-                child_name.clone(),
+                child.name.to_string(),
                 BreakdownEntry {
-                    count,
-                    area: child_area,
+                    count: child.count,
+                    area: child.report.area,
                 },
             );
         }
         (
             Performance {
                 source: "hls".to_string(),
-                clock_period: task.clock_period.clone(),
+                clock_period,
                 critical_path: Some(critical_path),
             },
             Some(breakdown),
@@ -139,7 +166,7 @@ fn build_task_report(design: &Design, task_name: &str, schema: &str) -> Result<R
         (
             Performance {
                 source: "hls".to_string(),
-                clock_period: task.clock_period.clone(),
+                clock_period,
                 critical_path: None,
             },
             None,
@@ -152,18 +179,24 @@ fn build_task_report(design: &Design, task_name: &str, schema: &str) -> Result<R
         performance,
         area: Area {
             source: area_source.to_string(),
-            total: task.total_area.clone(),
+            total: total_area,
             breakdown: area_breakdown,
         },
     })
 }
 
-fn has_synth_area(task: &TaskTopology) -> bool {
-    task.total_area.values().any(|v| match v {
-        Value::Number(n) => n.as_f64().is_some_and(|f| f != 0.0),
-        Value::Null => false,
-        Value::Bool(_) | Value::String(_) | Value::Array(_) | Value::Object(_) => true,
-    })
+fn parse_clock_period(task_name: &str, period: &str) -> Result<f64> {
+    let parsed = period.parse::<f64>().map_err(|error| {
+        CliError::InvalidArg(format!(
+            "report: task `{task_name}` has invalid clock period `{period}`: {error}"
+        ))
+    })?;
+    if !parsed.is_finite() {
+        return Err(CliError::InvalidArg(format!(
+            "report: task `{task_name}` has non-finite clock period `{period}`"
+        )));
+    }
+    Ok(parsed)
 }
 
 #[cfg(test)]
@@ -197,6 +230,113 @@ mod tests {
             | Value::String(_)
             | Value::Array(_) => IndexMap::new(),
         }
+    }
+
+    fn derived_task(
+        name: &str,
+        clock: &str,
+        self_area: Value,
+        tasks: IndexMap<String, Value>,
+    ) -> TaskTopology {
+        TaskTopology {
+            name: name.to_string(),
+            level: if tasks.is_empty() { "lower" } else { "upper" }.to_string(),
+            code: format!("void {name}() {{}}\n"),
+            ports: Vec::new(),
+            tasks,
+            fifos: IndexMap::new(),
+            target: Some("hls".to_string()),
+            is_slot: false,
+            self_area: area_to_map(self_area),
+            total_area: IndexMap::new(),
+            clock_period: clock.to_string(),
+        }
+    }
+
+    #[test]
+    fn derives_recursive_metrics_when_total_area_is_empty() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut tasks = IndexMap::new();
+        tasks.insert(
+            "Leaf".to_string(),
+            derived_task(
+                "Leaf",
+                "4.0",
+                serde_json::json!({"LUT": 11, "FF": 1}),
+                IndexMap::new(),
+            ),
+        );
+        tasks.insert(
+            "Middle".to_string(),
+            derived_task(
+                "Middle",
+                "2.5",
+                serde_json::json!({"LUT": 7, "FF": 2}),
+                IndexMap::from([(
+                    "Leaf".to_string(),
+                    serde_json::json!([
+                        {"args": {}, "step": 0},
+                        {"args": {}, "step": 0},
+                        {"args": {}, "step": 0}
+                    ]),
+                )]),
+            ),
+        );
+        tasks.insert(
+            "Top".to_string(),
+            derived_task(
+                "Top",
+                "2.0",
+                serde_json::json!({"LUT": 5, "FF": 3}),
+                IndexMap::from([(
+                    "Middle".to_string(),
+                    serde_json::json!([
+                        {"args": {}, "step": 0},
+                        {"args": {}, "step": 0}
+                    ]),
+                )]),
+            ),
+        );
+        let design = Design {
+            top: "Top".to_string(),
+            target: "xilinx-hls".to_string(),
+            tasks,
+            slot_task_name_to_fp_region: None,
+        };
+
+        write_top_report(dir.path(), &design, "").expect("write report");
+        let parsed: Value = serde_json::from_str(
+            &fs::read_to_string(dir.path().join("report.json")).expect("read report"),
+        )
+        .expect("valid report json");
+
+        assert_eq!(parsed["performance"]["clock_period"], "4.0");
+        assert_eq!(
+            parsed["performance"]["critical_path"]["Middle"]["clock_period"],
+            "4.0"
+        );
+        assert_eq!(
+            parsed["performance"]["critical_path"]["Middle"]["critical_path"]["Leaf"]
+                ["clock_period"],
+            "4.0"
+        );
+        assert_eq!(parsed["area"]["source"], "hls");
+        assert_eq!(parsed["area"]["total"]["LUT"], 85);
+        assert_eq!(parsed["area"]["total"]["FF"], 13);
+        assert_eq!(parsed["area"]["breakdown"]["Middle"]["count"], 2);
+        assert_eq!(
+            parsed["area"]["breakdown"]["Middle"]["area"]["total"]["LUT"],
+            40
+        );
+        assert_eq!(
+            parsed["area"]["breakdown"]["Middle"]["area"]["breakdown"]["Leaf"]["count"],
+            3
+        );
+        assert_eq!(
+            parsed["area"]["breakdown"]["Middle"]["area"]["breakdown"]["Leaf"]["area"]["total"]
+                ["LUT"],
+            11
+        );
     }
 
     #[test]

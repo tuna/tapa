@@ -9,7 +9,8 @@ use camino::Utf8PathBuf;
 use std::path::Path;
 
 use serde_json::{json, Value};
-use tapa_xilinx::ToolRunner;
+use tapa_task_graph::TaskTopology;
+use tapa_xilinx::{CsynthReport, ToolRunner};
 
 use crate::context::CliContext;
 use crate::error::{CliError, Result};
@@ -84,24 +85,14 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
         hdl_inputs.insert(task_name.clone(), files);
 
         if let Some(task) = design.tasks.get_mut(task_name) {
-            task.clock_period
-                .clone_from(&out.csynth.target_clock_period_ns);
-            task.self_area.clear();
-            for (k, v) in &out.csynth.area {
-                if let Ok(n) = v.parse::<i64>() {
-                    task.self_area.insert(k.clone(), serde_json::Value::from(n));
-                } else {
-                    task.self_area
-                        .insert(k.clone(), serde_json::Value::String(v.clone()));
-                }
-            }
+            apply_hls_metrics(task, &out.csynth);
         }
     }
     generate_rtl_tree(&ctx.work_dir, &design, &hdl_inputs)?;
 
     // Per-task OOC Vivado synth → hierarchical utilization → `total_area`.
-    // When disabled (the default), the HLS-populated self/total areas
-    // survive untouched.
+    // When disabled (the default), reports and topology consumers derive
+    // effective totals recursively from the HLS-populated `self_area` maps.
     if args.enable_synth_util {
         emit_post_synth_util(
             &ctx.work_dir,
@@ -159,6 +150,27 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
     drop(flow);
 
     Ok(())
+}
+
+/// Apply the raw metrics reported by HLS to a task.
+///
+/// `clock_period` stores the achieved estimate, not the requested target.
+/// `total_area` is cleared because it is either re-populated by optional
+/// out-of-context synthesis or derived recursively from `self_area` by report
+/// and topology consumers.
+fn apply_hls_metrics(task: &mut TaskTopology, report: &CsynthReport) {
+    task.clock_period
+        .clone_from(&report.estimated_clock_period_ns);
+    task.self_area.clear();
+    task.total_area.clear();
+    for (key, value) in &report.area {
+        if let Ok(value) = value.parse::<i64>() {
+            task.self_area.insert(key.clone(), Value::from(value));
+        } else {
+            task.self_area
+                .insert(key.clone(), Value::String(value.clone()));
+        }
+    }
 }
 
 /// Validate flag combinations that depend on sibling flags. This runs
@@ -375,6 +387,43 @@ mod tests {
     }
 
     #[test]
+    fn hls_metrics_use_estimated_clock_and_clear_stale_total() {
+        let mut task = TaskTopology {
+            name: "Add".to_string(),
+            level: "lower".to_string(),
+            code: "void Add() {}\n".to_string(),
+            ports: Vec::new(),
+            tasks: IndexMap::new(),
+            fifos: IndexMap::new(),
+            target: Some("hls".to_string()),
+            is_slot: false,
+            self_area: IndexMap::from([("LUT".to_string(), json!(999))]),
+            total_area: IndexMap::from([("LUT".to_string(), json!(999))]),
+            clock_period: "9.99".to_string(),
+        };
+        let report = CsynthReport {
+            top: "Add".to_string(),
+            part: "xcvu37p".to_string(),
+            target_clock_period_ns: "3.33".to_string(),
+            estimated_clock_period_ns: "1.25".to_string(),
+            area: IndexMap::from([
+                ("LUT".to_string(), "42".to_string()),
+                ("FF".to_string(), "21".to_string()),
+            ]),
+        };
+
+        apply_hls_metrics(&mut task, &report);
+
+        assert_eq!(task.clock_period, "1.25");
+        assert_eq!(task.self_area.get("LUT"), Some(&json!(42)));
+        assert_eq!(task.self_area.get("FF"), Some(&json!(21)));
+        assert!(
+            task.total_area.is_empty(),
+            "stale post-synthesis totals must not survive a new HLS run"
+        );
+    }
+
+    #[test]
     fn gen_ab_graph_without_floorplan_config_rejected_early() {
         reject_case(
             &["--platform", "xilinx_u250", "--gen-ab-graph"],
@@ -507,6 +556,15 @@ mod tests {
 
         let templates = std::fs::read_to_string(work.join("templates_info.json")).expect("read");
         assert_eq!(templates, "{}");
+
+        let persisted_design = design_io::load_design(work).expect("load persisted design");
+        assert_eq!(persisted_design.tasks["Add"].clock_period, "1.0");
+        assert_eq!(persisted_design.tasks["VecAdd"].clock_period, "1.0");
+        let report: Value = serde_json::from_str(
+            &std::fs::read_to_string(work.join("report.json")).expect("read report"),
+        )
+        .expect("parse report");
+        assert_eq!(report["performance"]["clock_period"], "1.0");
 
         let flow = ctx.flow.borrow();
         assert!(flow.design.is_some());
