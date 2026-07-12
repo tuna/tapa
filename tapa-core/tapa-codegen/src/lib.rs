@@ -185,8 +185,6 @@ fn instrument_upper_task(state: &mut TopologyWithRtl, task_name: &str) -> Result
     // This maps (parent_arg, child_task, inst_idx) -> slave_idx
     let mut mmap_slave_map: std::collections::BTreeMap<(String, String, usize), usize> =
         std::collections::BTreeMap::new();
-    let mut mmap_channel_map: std::collections::BTreeMap<(String, String, usize), usize> =
-        std::collections::BTreeMap::new();
     for conn in mmap_conns.values() {
         if m_axi::needs_crossbar(conn) {
             for (slave_idx, slave) in conn.slaves.iter().enumerate() {
@@ -197,25 +195,11 @@ fn instrument_upper_task(state: &mut TopologyWithRtl, task_name: &str) -> Result
                     slave_idx,
                 );
             }
-        } else if conn.channel_count() > 1 {
-            for (channel_idx, slave) in conn.slaves.iter().enumerate() {
-                #[allow(clippy::cast_possible_truncation, reason = "index fits")]
-                let idx_usize = slave.inst_idx as usize;
-                mmap_channel_map.insert(
-                    (conn.arg_name.clone(), slave.task.clone(), idx_usize),
-                    channel_idx,
-                );
-            }
         }
     }
 
-    let (is_done_signals, instance_infos) = children::generate_child_signals(
-        state,
-        task_name,
-        &mmap_conns,
-        &mmap_slave_map,
-        &mmap_channel_map,
-    );
+    let (is_done_signals, instance_infos) =
+        children::generate_child_signals(state, task_name, &mmap_conns, &mmap_slave_map);
 
     fifos::instantiate_fifos(state, task_name);
 

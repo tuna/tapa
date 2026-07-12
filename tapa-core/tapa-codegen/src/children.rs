@@ -149,14 +149,13 @@ pub fn generate_start_assign(sig: &InstanceSignals) -> ContinuousAssign {
 #[derive(Debug, Default)]
 pub struct ChildMmapBindings {
     pub slave_indices: BTreeMap<String, usize>,
-    pub channel_indices: BTreeMap<String, usize>,
     pub wire_id_widths: BTreeMap<String, u32>,
     pub child_id_widths: BTreeMap<String, u32>,
 }
 
 impl ChildMmapBindings {
     pub fn wire_prefix(&self, arg_name: &str) -> String {
-        mmap_wire_prefix(arg_name, &self.slave_indices, &self.channel_indices)
+        mmap_wire_prefix(arg_name, &self.slave_indices)
     }
 
     pub fn wire_id_width(&self, arg_name: &str) -> Option<u32> {
@@ -399,12 +398,9 @@ fn direct_mmap_connection_expr(
 pub fn mmap_wire_prefix(
     arg_name: &str,
     mmap_slave_indices: &std::collections::BTreeMap<String, usize>,
-    mmap_channel_indices: &std::collections::BTreeMap<String, usize>,
 ) -> String {
     let sanitized_arg = sanitize_array_name(arg_name);
-    if let Some(channel_idx) = mmap_channel_indices.get(arg_name) {
-        format!("m_axi_{sanitized_arg}_{channel_idx}")
-    } else if let Some(slave_idx) = mmap_slave_indices.get(arg_name) {
+    if let Some(slave_idx) = mmap_slave_indices.get(arg_name) {
         crate::m_axi::crossbar_slave_prefix(&sanitized_arg, *slave_idx)
     } else {
         format!("m_axi_{sanitized_arg}")
@@ -427,7 +423,6 @@ pub(crate) fn generate_child_signals(
     task_name: &str,
     mmap_conns: &std::collections::BTreeMap<String, crate::rtl_state::MMapConnection>,
     mmap_slave_map: &std::collections::BTreeMap<(String, String, usize), usize>,
-    mmap_channel_map: &std::collections::BTreeMap<(String, String, usize), usize>,
 ) -> (Vec<String>, Vec<(String, bool)>) {
     type ChildEntry = (usize, Option<String>, bool, BTreeMap<String, ArgDesign>);
 
@@ -556,11 +551,8 @@ pub(crate) fn generate_child_signals(
                         let offset_source = mmap_conns.get(&arg.arg).map_or_else(
                             || Expr::ident(format!("{arg_name}_offset")),
                             |conn| {
-                                let chan_count = conn.channel_count();
-                                if chan_count > 1 && m_axi::needs_crossbar(conn) {
+                                if conn.channel_count() > 1 {
                                     Expr::lit("64'd0")
-                                } else if chan_count > 1 {
-                                    Expr::ident(format!("{arg_name}_0_offset"))
                                 } else {
                                     Expr::ident(format!("{arg_name}_offset"))
                                 }
@@ -606,13 +598,6 @@ pub(crate) fn generate_child_signals(
                                     .insert(arg.arg.clone(), slave.id_width);
                             }
                         }
-                    }
-                    if let Some(&channel_idx) =
-                        mmap_channel_map.get(&(arg.arg.clone(), child_name.clone(), idx))
-                    {
-                        mmap_bindings
-                            .channel_indices
-                            .insert(arg.arg.clone(), channel_idx);
                     }
                 }
             }
