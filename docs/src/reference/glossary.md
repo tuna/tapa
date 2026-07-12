@@ -88,7 +88,7 @@ The number of elements the FIFO can hold before the producer blocks. Declared as
 
 **synth**
 
-The `tapa synth` step. Runs Vitis HLS on each leaf task extracted during `tapa analyze` to produce per-task Verilog RTL. Results are stored in `tar/` and `hdl/` under the work directory.
+The `tapa synth` step. Runs Vitis HLS on each non-ignored task extracted during `tapa analyze`, then generates the connected Verilog hierarchy. Per-task HLS results are stored under `hls/`, and the complete RTL tree is stored under `rtl/` in the work directory.
 
 ---
 

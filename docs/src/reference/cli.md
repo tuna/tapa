@@ -47,7 +47,7 @@ Run the full compilation pipeline (analyze → synth → pack) in a single comma
 | `--part-num PART` | Target FPGA part number (e.g., `xcu250-figd2104-2L-e`). |
 | `--platform PLATFORM` | Vitis platform string. Alternative to `--part-num`. |
 | `--clock-period NS` | Target clock period in nanoseconds. |
-| `--target {xilinx-vitis,xilinx-hls,xilinx-aie}` | Output target (default: `xilinx-vitis`). `xilinx-aie` is experimental. |
+| `--target {xilinx-vitis,xilinx-hls}` | Output target (default: `xilinx-vitis`). |
 | `-j N` | Number of parallel HLS jobs. |
 | `--custom-rtl PATH` | Custom RTL file or directory to include in the XO. |
 
@@ -79,7 +79,7 @@ Parse C++ source and extract the task graph to a JSON file in the work directory
 
 | Flag | Description |
 |------|-------------|
-| `--target {xilinx-vitis,xilinx-hls,xilinx-aie}` | Output target (default: `xilinx-vitis`). Controls the synthesis flow. `xilinx-aie` is experimental. |
+| `--target {xilinx-vitis,xilinx-hls}` | Output target (default: `xilinx-vitis`). Controls the synthesis flow. |
 
 ### Example
 
@@ -105,7 +105,7 @@ Run Vitis HLS on each task to produce per-task Verilog RTL. Reads the task graph
 | Flag | Description |
 |------|-------------|
 | `--clock-period NS` | Target clock period in nanoseconds. Can be derived from `--platform` if not set explicitly. |
-| `-j N` | Number of parallel HLS jobs (default: number of physical CPU cores). |
+| `-j N` | Number of parallel HLS and post-synthesis jobs (default: available logical CPU count). |
 | `--enable-synth-util` | Run post-HLS RTL synthesis to produce per-task resource utilization estimates. |
 | `--nonpipeline-fifos JSON` | JSON specification of FIFOs for which pipeline registers should be suppressed. |
 | `--gen-ab-graph` | Generate `ab_graph.json` for AutoBridge/RapidStream floorplanning. |
