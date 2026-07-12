@@ -150,6 +150,25 @@ pub fn is_m_axi_master_output(suffix: &str) -> bool {
     }
 }
 
+fn m_axi_port_width(suffix: &str, data_width: u32) -> u32 {
+    let suffix = suffix
+        .strip_prefix('_')
+        .expect("M-AXI suffix starts with an underscore");
+    let subport = ["AR", "AW", "B", "R", "W"]
+        .iter()
+        .find_map(|channel| suffix.strip_prefix(channel))
+        .expect("M-AXI suffix starts with a channel name");
+
+    match subport {
+        "ADDR" => 64,
+        "DATA" => data_width,
+        "STRB" => data_width.div_ceil(8),
+        _ => *tapa_protocol::M_AXI_PORT_WIDTHS
+            .get(subport)
+            .expect("M-AXI sub-port has a declared width"),
+    }
+}
+
 /// Expand a topology-level port into its RTL-level signal ports.
 ///
 /// Scalars produce a single port. Streams produce `_dout/_empty_n/_read`
@@ -210,10 +229,11 @@ pub fn expand_port_to_signals(
                 .chain(M_AXI_WRITE_SUFFIXES.iter())
             {
                 let port_name = m_axi_port_name(&name, suffix);
+                let range = port_range(m_axi_port_width(suffix, width));
                 if is_m_axi_master_output(suffix) {
-                    ports.push(output_wire(&port_name, None));
+                    ports.push(output_wire(&port_name, range));
                 } else {
-                    ports.push(input_wire(&port_name, None));
+                    ports.push(input_wire(&port_name, range));
                 }
             }
             ports
@@ -678,5 +698,28 @@ mod tests {
             Some(&false),
             "AWREADY must be input"
         );
+    }
+
+    #[test]
+    fn expand_port_mmap_widths() {
+        use tapa_task_graph::port::ArgCategory;
+
+        let ports = expand_port_to_signals("mem", ArgCategory::Mmap, 512);
+        let msb = |name: &str| {
+            ports
+                .iter()
+                .find(|port| port.name == name)
+                .and_then(|port| port.range.as_ref())
+                .and_then(|range| range.left.0.first())
+                .map(|token| token.repr.as_str())
+        };
+
+        assert_eq!(msb("m_axi_mem_AWADDR"), Some("63"));
+        assert_eq!(msb("m_axi_mem_WDATA"), Some("511"));
+        assert_eq!(msb("m_axi_mem_RDATA"), Some("511"));
+        assert_eq!(msb("m_axi_mem_WSTRB"), Some("63"));
+        assert_eq!(msb("m_axi_mem_AWLEN"), Some("7"));
+        assert_eq!(msb("m_axi_mem_RRESP"), Some("1"));
+        assert_eq!(msb("m_axi_mem_AWVALID"), None);
     }
 }

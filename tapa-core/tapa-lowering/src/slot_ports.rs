@@ -419,5 +419,21 @@ mod tests {
             port_names.contains(&"m_axi_mem_Copy_0_AWADDR"),
             "async mmap slot boundary must expose bridge AXI ports, got {port_names:?}"
         );
+
+        let msb = |name: &str| {
+            ports
+                .iter()
+                .find(|port| port.name == name)
+                .and_then(|port| port.range.as_ref())
+                .and_then(|range| range.left.0.first())
+                .map(|token| token.repr.as_str())
+        };
+        assert_eq!(msb("m_axi_mem_Copy_0_AWADDR"), Some("63"));
+        assert_eq!(msb("m_axi_mem_Copy_0_WDATA"), Some("511"));
+        assert_eq!(msb("m_axi_mem_Copy_0_RDATA"), Some("511"));
+        assert_eq!(msb("m_axi_mem_Copy_0_WSTRB"), Some("63"));
+        assert_eq!(msb("m_axi_mem_Copy_0_AWLEN"), Some("7"));
+        assert_eq!(msb("m_axi_mem_Copy_0_RRESP"), Some("1"));
+        assert_eq!(msb("m_axi_mem_Copy_0_AWVALID"), None);
     }
 }
