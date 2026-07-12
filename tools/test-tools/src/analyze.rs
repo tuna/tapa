@@ -89,7 +89,7 @@ pub fn analyze_smoke() -> Result<()> {
 
 fn run_analyze_app(app: &AnalyzeApp, tapa: &Path, tapa_lib: &Path) -> Result<()> {
     let source = workspace_path(app.source);
-    let work_dir = TempDir::with_prefix(&format!("tapa-analyze-{}-", app.name))
+    let work_dir = TempDir::with_prefix(format!("tapa-analyze-{}-", app.name))
         .map_err(|error| format!("failed to create temp dir: {error}"))?;
     let source_dir = source
         .parent()

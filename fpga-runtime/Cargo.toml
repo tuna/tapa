@@ -9,6 +9,9 @@ members = [
   "frt",
 ]
 
+# Superset of the baseline policy in tapa-core/Cargo.toml: adds
+# FFI/shared-memory-specific allows (raw casts, Send impls) and a
+# broader restriction-lint set hardened during the frt campaign.
 [workspace.lints.clippy]
 # Enable lint groups
 all = { level = "deny", priority = -1 }

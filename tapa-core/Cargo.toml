@@ -15,6 +15,10 @@ members = [
   "tapa-cli",
 ]
 
+# Baseline clippy policy for TAPA Rust code. `tools/test-tools` mirrors
+# this table (kept in sync manually); `fpga-runtime` extends it with
+# FFI-specific allows and a broader restriction-lint set — divergence
+# from this baseline is intentional there, see fpga-runtime/Cargo.toml.
 [workspace.lints.clippy]
 # Enable lint groups
 all = { level = "deny", priority = -1 }

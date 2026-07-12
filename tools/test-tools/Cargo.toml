@@ -9,3 +9,26 @@ serde_yaml = "0.9"
 tar = "0.4"
 tempfile = "3"
 zip = { version = "2", default-features = false, features = ["deflate"] }
+
+# Keep in sync with [workspace.lints.clippy] in tapa-core/Cargo.toml.
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+missing_const_for_fn = "allow"
+module_name_repetitions = "allow"
+option_if_let_else = "allow"
+must_use_candidate = "allow"
+cognitive_complexity = "allow"
+significant_drop_tightening = "allow"
+iter_over_hash_type = "allow"
+semicolon_outside_block = "deny"
+needless_raw_strings = "deny"
+missing_assert_message = "deny"
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
+error_impl_error = "deny"
+string_add = "deny"

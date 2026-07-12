@@ -2,12 +2,6 @@
 # All rights reserved. The contributor(s) of this file has/have agreed to the
 # RapidStream Contributor License Agreement.
 
-
-################
-#  Formatting  #
-###############
-
-
-[tool.codespell]
+[codespell]
 # 'Implmentation' is intended here as it is a typo by Xilinx and we have conform lol
-ignore-words-list = "din,dout,edn,inout,pres,implmentation,cips,ket,fpt"
+ignore-words-list = din,dout,edn,inout,pres,implmentation,cips,ket,fpt

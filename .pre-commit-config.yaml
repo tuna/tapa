@@ -103,7 +103,6 @@ repos:
     hooks:
       - id: codespell
         types_or: [asciidoc, markdown, rst]
-        additional_dependencies: [tomli]
 
   ##################
   #  Link Checks  #
