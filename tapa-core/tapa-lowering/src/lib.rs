@@ -5,9 +5,12 @@
 pub mod iface_roles;
 pub mod inputs;
 pub mod instantiation_builder;
+mod interfaces;
 pub mod module_defs;
 pub mod project_builder;
+mod slot_module;
 pub mod slot_ports;
+mod top_module;
 pub mod upper_wires;
 pub mod utils;
 

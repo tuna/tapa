@@ -1,5 +1,6 @@
 //! FIFO instantiation and connection.
 
+use crate::rtl_state::TopologyWithRtl;
 use tapa_protocol::{
     FIFO_READ_PORTS, FIFO_WRITE_PORTS, HANDSHAKE_CLK, HANDSHAKE_RST, ISTREAM_SUFFIXES,
     OSTREAM_SUFFIXES, STREAM_PORT_DIRECTION,
@@ -161,6 +162,292 @@ pub fn build_axis_adapter(fifo_name: &str, data_width: u32, is_input: bool) -> M
             Expr::int(u64::from(data_width)),
         )])
         .with_ports(ports)
+}
+
+/// Producer endpoint for a FIFO in the parent task.
+#[derive(Clone, Debug)]
+struct FifoProducer {
+    task_name: String,
+    port_name: Option<String>,
+}
+
+/// FIFO entry: (name, depth, `is_consumed`, `producer_endpoint`).
+type FifoEntry = (String, Option<u32>, bool, Option<FifoProducer>);
+/// FIFO connection entry: (name, depth, `has_consumer`, `has_producer`, `producer_endpoint`).
+type FifoConnEntry = (String, Option<u32>, bool, bool, Option<FifoProducer>);
+
+/// Instantiate FIFOs for a task.
+///
+/// Internal FIFOs (with depth) get a `fifo` module instance.
+/// External FIFOs (no depth) get wire assignments connecting to external ports.
+/// FIFO width is resolved from the producer child's attached RTL module ports.
+pub(crate) fn instantiate_fifos(state: &mut TopologyWithRtl, task_name: &str) {
+    let task = &state.program.tasks[task_name];
+
+    // Collect FIFO info before mutating
+    let fifo_entries: Vec<FifoEntry> = task
+        .fifos
+        .iter()
+        .map(|(name, fifo)| {
+            let is_consumed = fifo.consumed_by.is_some();
+            let producer = fifo_producer_for(task, name, fifo.produced_by.as_ref());
+            (name.clone(), fifo.depth, is_consumed, producer)
+        })
+        .collect();
+
+    for (fifo_name, depth, is_consumed, producer) in fifo_entries {
+        if let Some(depth) = depth {
+            // Resolve FIFO width from producer child's attached RTL port
+            let width = resolve_fifo_width(state, producer.as_ref());
+            let fifo_inst = build_fifo_instance(
+                &fifo_name,
+                Expr::ident(HANDSHAKE_RST),
+                Expr::int(u64::from(width)),
+                depth,
+            );
+            if let Some(mm) = state.module_map.get_mut(task_name) {
+                mm.add_instance(fifo_inst);
+            }
+        } else {
+            // External FIFO: wire assigns if internal/external names differ
+            let assigns = build_external_fifo_assigns(&fifo_name, &fifo_name, is_consumed);
+            if let Some(mm) = state.module_map.get_mut(task_name) {
+                for assign in assigns {
+                    mm.add_assign(assign);
+                }
+            }
+        }
+    }
+}
+
+#[allow(
+    clippy::single_option_map,
+    reason = "keeping the Option in the signature lets both callers avoid inline duplication"
+)]
+fn fifo_producer_for(
+    task: &tapa_topology::task::TaskDesign,
+    fifo_name: &str,
+    endpoint: Option<&tapa_task_graph::interconnect::EndpointRef>,
+) -> Option<FifoProducer> {
+    endpoint.map(|ep| {
+        let port_name = task
+            .tasks
+            .get(&ep.0)
+            .and_then(|instances| instances.get(ep.1 as usize))
+            .and_then(|instance| {
+                instance
+                    .args
+                    .iter()
+                    .find(|(_, arg)| arg.arg == fifo_name)
+                    .map(|(port_name, _)| port_name.clone())
+            });
+        FifoProducer {
+            task_name: ep.0.clone(),
+            port_name,
+        }
+    })
+}
+
+/// Resolve FIFO width from the producer child's attached RTL module.
+///
+/// Looks for the producer's bound stream port on the parsed child RTL
+/// and uses its width. Falls back to topology port width, then 32.
+fn resolve_fifo_width(state: &TopologyWithRtl, producer: Option<&FifoProducer>) -> u32 {
+    if let Some(producer) = producer {
+        // Check attached RTL module for producer port width
+        if let Some(mm) = state.module_map.get(producer.task_name.as_str()) {
+            if let Some(port_name) = producer.port_name.as_deref() {
+                for suffix in ["_din", "_dout"] {
+                    if let Some(port) = mm.inner.get_port_of(port_name, suffix) {
+                        if let Some(width) = port.bit_width() {
+                            return width;
+                        }
+                    }
+                }
+            } else {
+                // Keep the old best-effort behavior for incomplete topology data.
+                for port in &mm.inner.ports {
+                    if port.name.ends_with("_dout") || port.name.ends_with("_din") {
+                        if let Some(width) = port.bit_width() {
+                            return width;
+                        }
+                    }
+                }
+            }
+        }
+        // Fallback: check topology port definitions for the producer task
+        if let Some(task) = state.program.tasks.get(producer.task_name.as_str()) {
+            if let Some(port_name) = producer.port_name.as_deref() {
+                if let Some(port) = task.ports.iter().find(|port| {
+                    port.name == port_name
+                        && matches!(
+                            port.cat,
+                            tapa_task_graph::port::ArgCategory::Ostream
+                                | tapa_task_graph::port::ArgCategory::Ostreams
+                        )
+                }) {
+                    return port.width;
+                }
+            }
+            for port in &task.ports {
+                if matches!(
+                    port.cat,
+                    tapa_task_graph::port::ArgCategory::Ostream
+                        | tapa_task_graph::port::ArgCategory::Ostreams
+                ) {
+                    return port.width;
+                }
+            }
+        }
+    }
+    32 // Ultimate fallback
+}
+
+/// Connect FIFOs: declare inter-task wires and connect external FIFOs.
+///
+/// For internal FIFOs (both endpoints in this task): declare wires with
+/// proper width using stream suffixes so child instances can connect.
+/// For external FIFOs: connect to parent module ports, potentially
+/// through AXIS adapters.
+#[allow(
+    clippy::too_many_lines,
+    reason = "FIFO connection orchestration is inherently sequential; \
+              splitting would fragment the wiring logic"
+)]
+pub(crate) fn connect_fifos(state: &mut TopologyWithRtl, task_name: &str) {
+    use tapa_protocol::{ISTREAM_SUFFIXES, OSTREAM_SUFFIXES, STREAM_PORT_DIRECTION};
+    use tapa_rtl::signal::{Signal, SignalKind};
+
+    let task = &state.program.tasks[task_name];
+
+    // Collect FIFO connection info with producer endpoint for width resolution
+    let fifo_entries: Vec<FifoConnEntry> = task
+        .fifos
+        .iter()
+        .map(|(name, fifo)| {
+            let has_consumer = fifo.consumed_by.is_some();
+            let has_producer = fifo.produced_by.is_some();
+            let producer = fifo_producer_for(task, name, fifo.produced_by.as_ref());
+            (
+                name.clone(),
+                fifo.depth,
+                has_consumer,
+                has_producer,
+                producer,
+            )
+        })
+        .collect();
+
+    for (fifo_name, depth, has_consumer, has_producer, producer) in &fifo_entries {
+        let sanitized_fifo_name = tapa_rtl::module::sanitize_array_name(fifo_name);
+        // Resolve width from producer child's attached RTL
+        let width = resolve_fifo_width(state, producer.as_ref());
+
+        if depth.is_some() && *has_consumer && *has_producer {
+            // Internal FIFO: declare wires for both read and write sides
+            if let Some(mm) = state.module_map.get_mut(task_name) {
+                // Declare wires for each FIFO suffix (read side)
+                for suffix in ISTREAM_SUFFIXES {
+                    let wire_name = format!("{sanitized_fifo_name}{suffix}");
+                    let sig = if suffix.contains("dout") {
+                        tapa_rtl::mutation::wide_wire(&wire_name, &(width - 1).to_string(), "0")
+                    } else {
+                        tapa_rtl::mutation::wire(&wire_name)
+                    };
+                    let _ = mm.add_signal(sig);
+                }
+                // Declare wires for write side
+                for suffix in OSTREAM_SUFFIXES {
+                    let wire_name = format!("{sanitized_fifo_name}{suffix}");
+                    let sig = if suffix.contains("din") {
+                        tapa_rtl::mutation::wide_wire(&wire_name, &(width - 1).to_string(), "0")
+                    } else {
+                        tapa_rtl::mutation::wire(&wire_name)
+                    };
+                    let _ = mm.add_signal(sig);
+                }
+            }
+        } else if depth.is_none() {
+            // External FIFO: parent module ports exist, just need to ensure
+            // wires exist for child instance connections.
+            let stream_width = task
+                .ports
+                .iter()
+                .find(|p| p.name == *fifo_name)
+                .map_or(32, |p| p.width);
+            let is_vitis_top_axis =
+                task_name == state.program.top && state.program.target == "xilinx-vitis";
+            if let Some(mm) = state.module_map.get_mut(task_name) {
+                let suffixes: &[&str] = if *has_consumer {
+                    ISTREAM_SUFFIXES
+                } else {
+                    OSTREAM_SUFFIXES
+                };
+                let canonical_base = tapa_rtl::module::sanitize_array_name(fifo_name);
+                for suffix in suffixes {
+                    let canonical = format!("{canonical_base}{suffix}");
+                    let signal_width = if suffix.ends_with("dout") || suffix.ends_with("din") {
+                        Some(tapa_rtl::port::Width {
+                            msb: tapa_rtl::expression::tokenize_expression(
+                                &stream_width.to_string(),
+                            ),
+                            lsb: tapa_rtl::expression::tokenize_expression("0"),
+                        })
+                    } else {
+                        None
+                    };
+                    let _ = mm.add_signal(Signal {
+                        name: canonical.clone(),
+                        kind: SignalKind::Wire,
+                        width: signal_width,
+                    });
+                    let Some(parent_port) = mm.inner.get_port_of(fifo_name, suffix).cloned() else {
+                        continue;
+                    };
+                    if parent_port.name == canonical {
+                        continue;
+                    }
+                    let parent = Expr::ident(parent_port.name);
+                    let internal = Expr::ident(canonical);
+                    let is_input_dir = STREAM_PORT_DIRECTION
+                        .get(suffix)
+                        .is_some_and(|&d| d == "input");
+                    if is_input_dir {
+                        mm.add_assign(ContinuousAssign::new(internal, parent));
+                    } else {
+                        mm.add_assign(ContinuousAssign::new(parent, internal));
+                    }
+                }
+            }
+
+            // Check if this should be an AXIS adapter
+            if is_vitis_top_axis {
+                // Instantiate AXIS adapter
+                let is_input = *has_consumer;
+                let adapter = build_axis_adapter(fifo_name, stream_width, is_input);
+                if let Some(mm) = state.module_map.get_mut(task_name) {
+                    mm.add_instance(adapter);
+                    if !is_input {
+                        let canonical_base = tapa_rtl::module::sanitize_array_name(fifo_name);
+                        if mm
+                            .inner
+                            .find_port(&format!("{canonical_base}_TKEEP"))
+                            .is_some()
+                        {
+                            let keep_width = stream_width.div_ceil(8).max(1);
+                            mm.add_assign(ContinuousAssign::new(
+                                Expr::ident(format!("{canonical_base}_TKEEP")),
+                                Expr::lit(format!(
+                                    "{keep_width}'b{}",
+                                    "1".repeat(keep_width as usize)
+                                )),
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]

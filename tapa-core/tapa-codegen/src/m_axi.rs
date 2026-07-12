@@ -7,12 +7,14 @@ use tapa_protocol::{
     PortDir, HANDSHAKE_CLK, HANDSHAKE_RST, M_AXI_PORTS, M_AXI_PORT_WIDTHS, M_AXI_PREFIX,
     M_AXI_SUFFIXES_COMPACT,
 };
-use tapa_rtl::builder::{Expr, ModuleInstance, ParamArg, PortArg};
+use tapa_rtl::builder::{ContinuousAssign, Expr, ModuleInstance, ParamArg, PortArg};
 use tapa_rtl::module::sanitize_array_name;
 use tapa_rtl::mutation::{simple_port, wide_port, MutableModule};
 use tapa_rtl::port::Direction;
 
+use crate::children;
 use crate::error::CodegenError;
+use crate::rtl_state::TopologyWithRtl;
 use crate::rtl_state::{routing_id_bits, MMapConnection};
 
 const M_AXI_CHANNEL_ORDER: &[&str] = &["AR", "AW", "B", "R", "W"];
@@ -501,6 +503,174 @@ fn concat_ports(prefix: &str, count: u32, suffix: &str) -> String {
                 .join(", ")
         )
     }
+}
+
+pub(crate) fn resolve_mmap_data_width(
+    state: &TopologyWithRtl,
+    parent_task_name: &str,
+    child_task_name: &str,
+    parent_arg_name: &str,
+    child_port_name: &str,
+) -> u32 {
+    state
+        .program
+        .tasks
+        .get(parent_task_name)
+        .and_then(|task| task.ports.iter().find(|p| p.name == parent_arg_name))
+        .or_else(|| {
+            state
+                .program
+                .tasks
+                .get(child_task_name)
+                .and_then(|task| task.ports.iter().find(|p| p.name == child_port_name))
+        })
+        .map_or(64, |p| p.width)
+}
+
+pub(crate) fn add_crossbar_slave_id_padding(
+    state: &mut TopologyWithRtl,
+    task_name: &str,
+    args: &std::collections::BTreeMap<String, tapa_topology::instance::ArgDesign>,
+    mmap_bindings: &children::ChildMmapBindings,
+) {
+    let mut assigns = Vec::new();
+    for arg in args.values() {
+        if !matches!(
+            arg.cat,
+            tapa_task_graph::port::ArgCategory::Mmap
+                | tapa_task_graph::port::ArgCategory::AsyncMmap
+        ) {
+            continue;
+        }
+        let Some(&slave_idx) = mmap_bindings.slave_indices.get(&arg.arg) else {
+            continue;
+        };
+        let Some(target_width) = mmap_bindings.wire_id_width(&arg.arg) else {
+            continue;
+        };
+        let Some(child_width) = mmap_bindings.child_id_width(&arg.arg) else {
+            continue;
+        };
+        if child_width >= target_width {
+            continue;
+        }
+        let wire_prefix = crossbar_slave_prefix(&arg.arg, slave_idx);
+        for suffix in ["_ARID", "_AWID"] {
+            let wire_name = format!("{wire_prefix}{suffix}");
+            assigns.push(ContinuousAssign::new(
+                Expr::range(
+                    Expr::ident(wire_name),
+                    Expr::int(u64::from(target_width - 1)),
+                    Expr::int(u64::from(child_width)),
+                ),
+                Expr::int_const(target_width - child_width, 0),
+            ));
+        }
+    }
+    if let Some(mm) = state.module_map.get_mut(task_name) {
+        for assign in assigns {
+            mm.add_assign(assign);
+        }
+    }
+}
+
+/// Add M-AXI ports, crossbar instances, and emit crossbar aux files.
+pub(crate) fn add_m_axi_and_crossbars(
+    state: &mut TopologyWithRtl,
+    task_name: &str,
+    mmap_conns: &std::collections::BTreeMap<String, crate::rtl_state::MMapConnection>,
+) -> Result<(), CodegenError> {
+    for conn in mmap_conns.values() {
+        // Validate before generating
+        validate_mmap_connection(conn)?;
+
+        if let Some(mm) = state.module_map.get_mut(task_name) {
+            if conn.chan_count.unwrap_or(1) > 1 {
+                for channel_idx in 0..conn.chan_count.unwrap_or(1) {
+                    add_m_axi_ports_with_id_width(
+                        mm,
+                        &format!("{}_{}", conn.arg_name, channel_idx),
+                        conn.data_width,
+                        64,
+                        conn.id_width,
+                    );
+                }
+            } else if needs_crossbar(conn) || conn.id_width > 1 {
+                add_m_axi_ports_with_id_width(
+                    mm,
+                    &conn.arg_name,
+                    conn.data_width,
+                    64,
+                    conn.id_width,
+                );
+            } else {
+                add_m_axi_ports(mm, &conn.arg_name, conn.data_width, 64);
+            }
+        }
+        if needs_crossbar(conn) {
+            // Declare downstream m_axi_{arg}_{idx}_* wires in parent
+            // Size each wire using protocol metadata for correct widths
+            if let Some(mm) = state.module_map.get_mut(task_name) {
+                if conn.chan_count.unwrap_or(1) > 1 {
+                    let addr_width = get_addr_width(conn.chan_size, conn.data_width);
+                    for channel_idx in 0..conn.chan_count.unwrap_or(1) {
+                        let channel_prefix = format!(
+                            "m_axi_{}_{}",
+                            tapa_rtl::module::sanitize_array_name(&conn.arg_name),
+                            channel_idx
+                        );
+                        let offset_name = format!(
+                            "{}_{}_offset",
+                            tapa_rtl::module::sanitize_array_name(&conn.arg_name),
+                            channel_idx
+                        );
+                        for suffix in ["_ARADDR", "_AWADDR"] {
+                            let raw = crossbar_master_addr_raw(&conn.arg_name, channel_idx, suffix);
+                            let _ = mm.add_signal(tapa_rtl::mutation::wide_wire(&raw, "63", "0"));
+                            let local_addr = if addr_width >= 64 {
+                                Expr::ident(&raw)
+                            } else {
+                                Expr::range(
+                                    Expr::ident(&raw),
+                                    Expr::int(u64::from(addr_width - 1)),
+                                    Expr::int(0),
+                                )
+                            };
+                            let rhs = Expr::plus(Expr::ident(&offset_name), local_addr);
+                            mm.add_assign(ContinuousAssign::new(
+                                Expr::ident(format!("{channel_prefix}{suffix}")),
+                                rhs,
+                            ));
+                        }
+                    }
+                }
+
+                for (slave_idx, _) in conn.args.iter().enumerate() {
+                    let wire_prefix = crossbar_slave_prefix(&conn.arg_name, slave_idx);
+                    for suffix in tapa_protocol::M_AXI_SUFFIXES_COMPACT {
+                        let wire_name = format!("{wire_prefix}{suffix}");
+                        // Resolve width from suffix name using protocol constants
+                        let width = crossbar_slave_suffix_width(conn, suffix);
+                        let sig = if width > 1 {
+                            tapa_rtl::mutation::wide_wire(&wire_name, &(width - 1).to_string(), "0")
+                        } else {
+                            tapa_rtl::mutation::wire(&wire_name)
+                        };
+                        let _ = mm.add_signal(sig);
+                    }
+                }
+            }
+
+            let crossbar_inst = build_crossbar_instance(conn);
+            if let Some(mm) = state.module_map.get_mut(task_name) {
+                mm.add_instance(crossbar_inst);
+            }
+            let crossbar_rtl = generate_crossbar_rtl(conn);
+            let file_name = format!("{}.v", crossbar_module_name(conn));
+            state.generated_files.insert(file_name, crossbar_rtl);
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
