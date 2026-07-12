@@ -513,7 +513,7 @@ fn find_preassignment_region(
 fn find_fifo_port_width(module: &tapa_rtl::VerilogModule, port_name: &str) -> Option<u32> {
     for suffix in ["_din", "_dout"] {
         if let Some(port) = module.get_port_of(port_name, suffix) {
-            return port.width.as_ref()?.bit_count();
+            return port.bit_width();
         }
     }
     None
@@ -734,6 +734,17 @@ mod tests {
         assert!(widths.contains_key("fifo_0"), "keys: {widths:?}");
         // Stream FIFO data carries payload plus the TAPA eot bit.
         assert_eq!(widths["fifo_0"], 33);
+    }
+
+    #[test]
+    fn fifo_rtl_width_handles_scalar_and_ascending_ranges() {
+        let module = tapa_rtl::VerilogModule::parse(
+            "module producer(output wire flag_din, output wire [0:7] data_din); endmodule",
+        )
+        .expect("parse producer RTL");
+
+        assert_eq!(find_fifo_port_width(&module, "flag"), Some(1));
+        assert_eq!(find_fifo_port_width(&module, "data"), Some(8));
     }
 
     #[test]
