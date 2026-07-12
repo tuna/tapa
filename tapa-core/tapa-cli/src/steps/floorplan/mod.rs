@@ -22,7 +22,7 @@ use serde_json::Value;
 use tapa_slotting::{
     convert_region_format, get_floorplan_graph, region_to_slot_name, SlottingError,
 };
-use tapa_task_graph::Graph;
+use tapa_task_graph::{Graph, TaskLevel};
 
 use crate::context::CliContext;
 use crate::error::{CliError, Result};
@@ -119,6 +119,24 @@ fn run_floorplan_native_apply(path: &Path, ctx: &CliContext) -> Result<()> {
         .tasks
         .get(top_name)
         .ok_or_else(|| CliError::InvalidArg(format!("top task `{top_name}` not found in graph")))?;
+    let upper_children: Vec<&str> = top_task
+        .tasks
+        .keys()
+        .filter(|child_name| {
+            graph
+                .tasks
+                .get(child_name.as_str())
+                .is_some_and(|task| task.level == TaskLevel::Upper)
+        })
+        .map(String::as_str)
+        .collect();
+    if !upper_children.is_empty() {
+        return Err(CliError::InvalidArg(format!(
+            "floorplan can only be applied to a flattened graph; top task `{top_name}` still has \
+             upper-level children: {}",
+            upper_children.join(", ")
+        )));
+    }
     let mut known_inst_names = BTreeSet::<String>::new();
     for (def_name, insts) in &top_task.tasks {
         for (idx, inst) in insts.iter().enumerate() {
@@ -437,6 +455,58 @@ mod tests {
         assert_eq!(
             settings["slot_task_name_to_fp_region"][slot_name],
             Value::String("SLOT_X0Y0_TO_SLOT_X0Y0".to_owned())
+        );
+    }
+
+    #[test]
+    fn floorplan_rejects_nonflattened_graph() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let graph = serde_json::json!({
+            "top": "Top",
+            "tasks": {
+                "Top": {
+                    "code": "void Top() {}",
+                    "level": "upper",
+                    "target": "hls",
+                    "ports": [],
+                    "tasks": {"Middle": [{"args": {}, "step": 0}]},
+                    "fifos": {}
+                },
+                "Middle": {
+                    "code": "void Middle() {}",
+                    "level": "upper",
+                    "target": "hls",
+                    "ports": [],
+                    "tasks": {"Leaf": [{"args": {}, "step": 0}]},
+                    "fifos": {}
+                },
+                "Leaf": {
+                    "code": "void Leaf() {}",
+                    "level": "lower",
+                    "target": "hls",
+                    "ports": [],
+                    "tasks": {},
+                    "fifos": {}
+                }
+            }
+        });
+        graph_io::store_graph(dir.path(), &graph).expect("store graph");
+        let floorplan_path = dir.path().join("floorplan.json");
+        fs::write(&floorplan_path, br#"{"Middle_0":"SLOT_X0Y0:SLOT_X0Y0"}"#)
+            .expect("write floorplan");
+        let mut ctx = ctx_with_work_dir(dir.path());
+
+        let err = run_floorplan(
+            &FloorplanArgs {
+                floorplan_path: Some(floorplan_path),
+            },
+            &mut ctx,
+        )
+        .expect_err("hierarchical graph must be flattened first");
+
+        assert!(
+            matches!(err, CliError::InvalidArg(ref message) if message.contains("flattened graph") && message.contains("Middle")),
+            "unexpected error: {err:?}"
         );
     }
 
