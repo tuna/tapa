@@ -31,13 +31,20 @@ pub fn build_project_from_state(
     island_to_pblock_range: Option<BTreeMap<String, Vec<String>>>,
     part_num: Option<String>,
 ) -> Result<Project, LoweringError> {
-    tapa_rtl::VerilogModule::parse(ctrl_s_axi_verilog).map_err(|e| {
+    let ctrl_s_axi = tapa_rtl::VerilogModule::parse(ctrl_s_axi_verilog).map_err(|e| {
         LoweringError::MissingCtrlSAxi(format!(
             "invalid `{}_control_s_axi` RTL source ({e}); pass the real \
              Verilog via ctrl_s_axi_verilog or use build_project_from_paths",
             state.program.top
         ))
     })?;
+    let expected_ctrl_s_axi = format!("{}_control_s_axi", state.program.top);
+    if ctrl_s_axi.name != expected_ctrl_s_axi {
+        return Err(LoweringError::MissingCtrlSAxi(format!(
+            "expected module `{expected_ctrl_s_axi}`, found `{}`",
+            ctrl_s_axi.name
+        )));
+    }
     // Derive leaf module definitions from TopologyWithRtl.module_map
     // Lower tasks have their RTL already parsed and attached.
     let mut leaf_modules = BTreeMap::new();

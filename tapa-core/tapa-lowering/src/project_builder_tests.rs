@@ -366,6 +366,25 @@ fn build_project_missing_top_task() {
 }
 
 #[test]
+fn build_project_rejects_misnamed_ctrl_s_axi_module() {
+    let state = TopologyWithRtl::new(make_program());
+    let err = build_project_from_state(
+        &state,
+        "module wrong_name(); endmodule",
+        &BTreeMap::new(),
+        None,
+        None,
+    )
+    .expect_err("control module name must match the top task");
+
+    assert!(
+        err.to_string()
+            .contains("expected module `top_task_control_s_axi`, found `wrong_name`"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
 fn build_project_applies_interface_roles() {
     let prog = make_program();
     let leaf_mods = BTreeMap::from([(
