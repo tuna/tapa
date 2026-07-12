@@ -28,6 +28,9 @@ pub enum SlottingError {
     #[error("floorplan: instance `{0}` not found among top's leaf children")]
     UnknownFloorplanInstance(String),
 
+    #[error("floorplan: top contains more than one instance named `{0}`")]
+    DuplicateGraphInstanceName(String),
+
     #[error("floorplan: slot `{0}` has no assigned instances")]
     EmptyFloorplanSlot(String),
 

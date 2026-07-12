@@ -42,8 +42,11 @@ pub fn get_floorplan_graph(
     // Build the set of known instance names under the top task.
     let mut known_inst_names = BTreeSet::new();
     for (def_name, insts) in &top_task.tasks {
-        for idx in 0..insts.len() {
-            known_inst_names.insert(format!("{def_name}_{idx}"));
+        for (idx, inst) in insts.iter().enumerate() {
+            let inst_name = inst.canonical_name(def_name, idx).into_owned();
+            if !known_inst_names.insert(inst_name.clone()) {
+                return Err(SlottingError::DuplicateGraphInstanceName(inst_name));
+            }
         }
     }
 
@@ -116,7 +119,7 @@ fn build_floorplan_slot(
 
     for (task_name, insts) in &top_task.tasks {
         for (top_idx, inst) in insts.iter().enumerate() {
-            let inst_name = get_instance_name(task_name, top_idx);
+            let inst_name = inst.canonical_name(task_name, top_idx).into_owned();
             if !inst_set.contains(inst_name.as_str()) {
                 continue;
             }
@@ -138,7 +141,12 @@ fn build_floorplan_slot(
     slot_def.tasks = new_tasks;
 
     // Rewrite FIFOs
-    let (new_fifos, fifo_ports) = get_slot_fifos(&top_task.fifos, &top_to_slot_idx, &inst_set);
+    let (new_fifos, fifo_ports) = get_slot_fifos(
+        &top_task.fifos,
+        &top_task.tasks,
+        &top_to_slot_idx,
+        &inst_set,
+    );
     slot_def.fifos = new_fifos;
 
     // Build ports: scalar args + FIFO-connected ports + inferred mmap ports
@@ -228,18 +236,18 @@ fn build_floorplan_top(
     }
 
     // Update cross-slot FIFOs
-    let new_fifos = update_cross_slot_fifos(&top_task.fifos, &in_slot_fifos, inst_to_slot);
+    let new_fifos = update_cross_slot_fifos(
+        &top_task.fifos,
+        &top_task.tasks,
+        &in_slot_fifos,
+        inst_to_slot,
+    );
     new_top.fifos = new_fifos;
 
     new_top
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
-
-/// Get instance name from task name and index: `{task}_{idx}`.
-fn get_instance_name(task_name: &str, idx: usize) -> String {
-    format!("{task_name}_{idx}")
-}
 
 fn is_mmap_category(cat: ArgCategory) -> bool {
     matches!(
@@ -272,6 +280,7 @@ fn connect_subinst_mmap_to_slot_port(inst: &TaskInstance, inst_name: &str) -> Ta
 /// Get slot FIFOs: internal FIFOs stay, cross-slot become external.
 fn get_slot_fifos(
     top_fifos: &BTreeMap<String, InterconnectDefinition>,
+    top_tasks: &BTreeMap<String, Vec<TaskInstance>>,
     top_to_slot_idx: &BTreeMap<String, BTreeMap<usize, usize>>,
     inst_set: &BTreeSet<&str>,
 ) -> (BTreeMap<String, InterconnectDefinition>, Vec<String>) {
@@ -284,8 +293,8 @@ fn get_slot_fifos(
             continue;
         }
 
-        let src_in_slot = endpoint_in_set(fifo.consumed_by.as_ref(), inst_set);
-        let dst_in_slot = endpoint_in_set(fifo.produced_by.as_ref(), inst_set);
+        let src_in_slot = endpoint_in_set(fifo.consumed_by.as_ref(), top_tasks, inst_set);
+        let dst_in_slot = endpoint_in_set(fifo.produced_by.as_ref(), top_tasks, inst_set);
 
         if src_in_slot && dst_in_slot {
             // Internal: update indices
@@ -322,11 +331,23 @@ fn get_slot_fifos(
 }
 
 /// Check if a FIFO endpoint is in the instance set.
-fn endpoint_in_set(endpoint: Option<&EndpointRef>, inst_set: &BTreeSet<&str>) -> bool {
-    endpoint.is_some_and(|ep| {
-        let inst_name = get_instance_name(&ep.0, ep.1 as usize);
-        inst_set.contains(inst_name.as_str())
-    })
+fn endpoint_in_set(
+    endpoint: Option<&EndpointRef>,
+    top_tasks: &BTreeMap<String, Vec<TaskInstance>>,
+    inst_set: &BTreeSet<&str>,
+) -> bool {
+    endpoint
+        .and_then(|endpoint| endpoint_instance_name(top_tasks, endpoint))
+        .is_some_and(|inst_name| inst_set.contains(inst_name.as_str()))
+}
+
+fn endpoint_instance_name(
+    top_tasks: &BTreeMap<String, Vec<TaskInstance>>,
+    endpoint: &EndpointRef,
+) -> Option<String> {
+    let idx = usize::try_from(endpoint.1).ok()?;
+    let inst = top_tasks.get(&endpoint.0)?.get(idx)?;
+    Some(inst.canonical_name(&endpoint.0, idx).into_owned())
 }
 
 /// Update FIFO endpoint indices from top to slot.
@@ -529,6 +550,7 @@ fn infer_arg_cat_from_subinst(
 /// Update cross-slot FIFOs: remap endpoints to slot instances.
 fn update_cross_slot_fifos(
     top_fifos: &BTreeMap<String, InterconnectDefinition>,
+    top_tasks: &BTreeMap<String, Vec<TaskInstance>>,
     in_slot_fifos: &BTreeSet<String>,
     inst_to_slot: &BTreeMap<String, String>,
 ) -> BTreeMap<String, InterconnectDefinition> {
@@ -539,10 +561,10 @@ fn update_cross_slot_fifos(
         }
         let mut updated = fifo.clone();
         if let Some(consumed) = &fifo.consumed_by {
-            updated.consumed_by = Some(remap_endpoint_to_slot(consumed, inst_to_slot));
+            updated.consumed_by = Some(remap_endpoint_to_slot(consumed, top_tasks, inst_to_slot));
         }
         if let Some(produced) = &fifo.produced_by {
-            updated.produced_by = Some(remap_endpoint_to_slot(produced, inst_to_slot));
+            updated.produced_by = Some(remap_endpoint_to_slot(produced, top_tasks, inst_to_slot));
         }
         new_fifos.insert(name.clone(), updated);
     }
@@ -552,10 +574,13 @@ fn update_cross_slot_fifos(
 /// Remap a FIFO endpoint from (task, idx) to (slot, 0).
 fn remap_endpoint_to_slot(
     endpoint: &EndpointRef,
+    top_tasks: &BTreeMap<String, Vec<TaskInstance>>,
     inst_to_slot: &BTreeMap<String, String>,
 ) -> EndpointRef {
-    let inst_name = get_instance_name(&endpoint.0, endpoint.1 as usize);
-    if let Some(slot) = inst_to_slot.get(&inst_name) {
+    if let Some(slot) = endpoint_instance_name(top_tasks, endpoint)
+        .as_ref()
+        .and_then(|inst_name| inst_to_slot.get(inst_name))
+    {
         EndpointRef(slot.clone(), 0)
     } else {
         endpoint.clone()
@@ -571,8 +596,8 @@ fn get_slot_inst_mmap_port_args(
     let mut args = BTreeMap::new();
     for (task_name, insts) in top_tasks {
         for (idx, inst) in insts.iter().enumerate() {
-            let inst_name = get_instance_name(task_name, idx);
-            if inst_to_slot.get(&inst_name).map(String::as_str) != Some(slot_name) {
+            let inst_name = inst.canonical_name(task_name, idx);
+            if inst_to_slot.get(inst_name.as_ref()).map(String::as_str) != Some(slot_name) {
                 continue;
             }
             for (port_name, arg) in &inst.args {
@@ -729,9 +754,129 @@ mod tests {
     }
 
     #[test]
-    fn instance_name_format() {
-        assert_eq!(get_instance_name("producer", 0), "producer_0");
-        assert_eq!(get_instance_name("task", 5), "task_5");
+    fn canonical_instance_name_prefers_explicit_name() {
+        let unnamed = TaskInstance {
+            name: None,
+            args: BTreeMap::new(),
+            step: 0,
+        };
+        let named = TaskInstance {
+            name: Some("writer_alpha".to_owned()),
+            args: BTreeMap::new(),
+            step: 0,
+        };
+        assert_eq!(unnamed.canonical_name("producer", 0), "producer_0");
+        assert_eq!(named.canonical_name("producer", 0), "writer_alpha");
+    }
+
+    #[test]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "end-to-end named floorplan graph fixture"
+    )]
+    fn floorplan_uses_explicit_instance_names_for_slots_fifos_and_mmaps() {
+        let graph = graph_from_value(json!({
+            "top": "top_func",
+            "tasks": {
+                "top_func": {
+                    "level": "upper",
+                    "code": "extern \"C\" {\nvoid top_func() {}\n}  // extern \"C\"\n",
+                    "target": "xilinx-hls",
+                    "ports": [
+                        {"cat": "mmap", "name": "memory", "type": "uint64_t", "width": 64}
+                    ],
+                    "tasks": {
+                        "Writer": [{
+                            "name": "load_left",
+                            "args": {
+                                "data": {"arg": "memory", "cat": "mmap"},
+                                "out": {"arg": "cross_fifo", "cat": "ostream"}
+                            },
+                            "step": 0
+                        }],
+                        "Reader": [{
+                            "name": "store_right",
+                            "args": {
+                                "in": {"arg": "cross_fifo", "cat": "istream"}
+                            },
+                            "step": 0
+                        }]
+                    },
+                    "fifos": {
+                        "cross_fifo": {
+                            "depth": 8,
+                            "consumed_by": ["Reader", 0],
+                            "produced_by": ["Writer", 0]
+                        }
+                    }
+                },
+                "Writer": {
+                    "level": "lower",
+                    "code": "",
+                    "target": "xilinx-hls",
+                    "ports": [
+                        {"cat": "mmap", "name": "data", "type": "uint64_t", "width": 64},
+                        {"cat": "ostream", "name": "out", "type": "uint32_t", "width": 32}
+                    ],
+                    "tasks": {},
+                    "fifos": {}
+                },
+                "Reader": {
+                    "level": "lower",
+                    "code": "",
+                    "target": "xilinx-hls",
+                    "ports": [
+                        {"cat": "istream", "name": "in", "type": "uint32_t", "width": 32}
+                    ],
+                    "tasks": {},
+                    "fifos": {}
+                }
+            }
+        }));
+        let slot_to_insts = BTreeMap::from([
+            ("SLOT_SOURCE".to_owned(), vec!["load_left".to_owned()]),
+            ("SLOT_SINK".to_owned(), vec!["store_right".to_owned()]),
+        ]);
+
+        let result = get_floorplan_graph(&graph, &slot_to_insts).expect("apply floorplan");
+        let source = &result.tasks["SLOT_SOURCE"];
+        let sink = &result.tasks["SLOT_SINK"];
+        assert_eq!(source.tasks["Writer"].len(), 1);
+        assert_eq!(source.tasks["Writer"][0].name.as_deref(), Some("load_left"));
+        assert!(!source.tasks.contains_key("Reader"));
+        assert_eq!(sink.tasks["Reader"].len(), 1);
+        assert_eq!(source.tasks["Writer"][0].args["data"].arg, "data_load_left");
+        assert!(source
+            .ports
+            .iter()
+            .any(|port| port.name == "data_load_left" && port.cat == ArgCategory::Mmap));
+
+        let source_fifo = &source.fifos["cross_fifo"];
+        assert_eq!(source_fifo.depth, None);
+        assert_eq!(
+            source_fifo.produced_by,
+            Some(EndpointRef("Writer".to_owned(), 0))
+        );
+        let sink_fifo = &sink.fifos["cross_fifo"];
+        assert_eq!(sink_fifo.depth, None);
+        assert_eq!(
+            sink_fifo.consumed_by,
+            Some(EndpointRef("Reader".to_owned(), 0))
+        );
+
+        let top = &result.tasks["top_func"];
+        assert_eq!(
+            top.tasks["SLOT_SOURCE"][0].args["data_load_left"].arg,
+            "memory"
+        );
+        assert_eq!(
+            top.fifos["cross_fifo"].produced_by,
+            Some(EndpointRef("SLOT_SOURCE".to_owned(), 0))
+        );
+        assert_eq!(
+            top.fifos["cross_fifo"].consumed_by,
+            Some(EndpointRef("SLOT_SINK".to_owned(), 0))
+        );
     }
 
     #[test]
@@ -1212,6 +1357,24 @@ mod tests {
         assert!(
             matches!(err, SlottingError::UnknownFloorplanInstance(_)),
             "expected UnknownFloorplanInstance, got: {err:?}"
+        );
+    }
+
+    #[test]
+    fn test_floorplan_rejects_duplicate_explicit_instance_names() {
+        let mut graph = graph_from_value(sample_graph());
+        let top = graph.tasks.get_mut("top_func").expect("top task");
+        top.tasks.get_mut("producer").expect("producer")[0].name = Some("duplicate".to_owned());
+        top.tasks.get_mut("consumer").expect("consumer")[0].name = Some("duplicate".to_owned());
+        let slot_to_insts = BTreeMap::from([("SLOT".to_owned(), vec!["duplicate".to_owned()])]);
+
+        let err = get_floorplan_graph(&graph, &slot_to_insts).expect_err("must reject");
+        assert!(
+            matches!(
+                err,
+                SlottingError::DuplicateGraphInstanceName(ref name) if name == "duplicate"
+            ),
+            "expected duplicate graph instance name, got: {err:?}"
         );
     }
 
