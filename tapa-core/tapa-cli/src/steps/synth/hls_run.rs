@@ -87,12 +87,9 @@ pub fn run_hls_for_leaves(
         // Check freshness before creating `layout.hdl_dir`, and require
         // at least one `.v` file so an empty directory is not a cache
         // hit.
-        if options.skip_based_on_mtime
-            && layout.hdl_dir.is_dir()
-            && hdl_dir_is_newer_than(&layout.hdl_dir, &cpp_source)
-        {
+        if options.skip_based_on_mtime && layout.hdl_dir.is_dir() {
             let verilog_files = list_verilog_files(&layout.hdl_dir)?;
-            if !verilog_files.is_empty() {
+            if hdl_files_are_newer_than(&verilog_files, &cpp_source) {
                 log::info!(
                     "skipping HLS for `{task_name}` (mtime cache hit at {})",
                     layout.hdl_dir.as_str(),
@@ -197,11 +194,13 @@ pub fn run_hls_for_leaves(
 }
 
 fn resolve_worker_count(jobs: Option<u32>, plan: &[(String, TaskHlsLayout, impl Sized)]) -> usize {
-    // Explicit `--jobs N` wins; otherwise pick the host's physical
-    // core count (falling back to 1 if unavailable) so a multi-core
-    // machine synthesizes tasks in parallel. Cap by live work
-    // so we never spawn more workers than jobs to dispatch.
-    let desired = jobs.map_or_else(default_hls_workers, |j| j.max(1) as usize);
+    // A positive `--jobs N` wins; zero retains the historical "use the
+    // default" behavior. Cap by live work so we never spawn more workers
+    // than jobs to dispatch.
+    let desired = match jobs {
+        None | Some(0) => default_hls_workers(),
+        Some(jobs) => jobs as usize,
+    };
     desired.min(plan.len().max(1))
 }
 
@@ -268,17 +267,21 @@ enum Work {
     RunFresh(HlsJob),
 }
 
-fn hdl_dir_is_newer_than(hdl_dir: &camino::Utf8Path, cpp_source: &camino::Utf8Path) -> bool {
-    let Ok(hdl_meta) = fs::metadata(hdl_dir) else {
+fn hdl_files_are_newer_than(verilog_files: &[Utf8PathBuf], cpp_source: &camino::Utf8Path) -> bool {
+    if verilog_files.is_empty() {
         return false;
-    };
+    }
     let Ok(cpp_meta) = fs::metadata(cpp_source) else {
         return false;
     };
-    let (Ok(hdl_t), Ok(cpp_t)) = (hdl_meta.modified(), cpp_meta.modified()) else {
+    let Ok(cpp_t) = cpp_meta.modified() else {
         return false;
     };
-    hdl_t > cpp_t
+    verilog_files.iter().all(|hdl| {
+        fs::metadata(hdl)
+            .and_then(|metadata| metadata.modified())
+            .is_ok_and(|hdl_t| hdl_t > cpp_t)
+    })
 }
 
 fn list_verilog_files(dir: &camino::Utf8Path) -> Result<Vec<Utf8PathBuf>> {
@@ -286,10 +289,16 @@ fn list_verilog_files(dir: &camino::Utf8Path) -> Result<Vec<Utf8PathBuf>> {
     if !dir.is_dir() {
         return Ok(out);
     }
-    for ent in fs::read_dir(dir)? {
-        let ent = ent?;
-        let p = ent.path();
-        if p.extension().and_then(|s| s.to_str()) == Some("v") {
+    for ent in walkdir::WalkDir::new(dir) {
+        let ent = ent.map_err(|e| {
+            CliError::InvalidArg(format!(
+                "failed to inspect cached HDL directory `{}`: {e}",
+                dir.as_str()
+            ))
+        })?;
+        if ent.file_type().is_file() && ent.path().extension().and_then(|s| s.to_str()) == Some("v")
+        {
+            let p = ent.path().to_path_buf();
             out.push(
                 Utf8PathBuf::from_path_buf(p)
                     .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
@@ -351,6 +360,25 @@ mod tests {
             tasks,
             slot_task_name_to_fp_region: None,
         }
+    }
+
+    #[test]
+    fn worker_count_treats_zero_as_default_and_caps_at_live_work() {
+        let plan = (0..3)
+            .map(|idx| {
+                (
+                    format!("task_{idx}"),
+                    TaskHlsLayout::new(Path::new("work"), &format!("task_{idx}")),
+                    (),
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            resolve_worker_count(Some(0), &plan),
+            resolve_worker_count(None, &plan)
+        );
+        assert_eq!(resolve_worker_count(Some(1), &plan), 1);
+        assert_eq!(resolve_worker_count(Some(8), &plan), 3);
     }
 
     /// A cache hit requires an existing HDL directory containing at
@@ -436,5 +464,76 @@ mod tests {
             "cache hit must carry the existing HDL files forward",
         );
         assert!(runner.calls().is_empty(), "cache hit must not call Vitis");
+    }
+
+    #[test]
+    fn overwritten_hdl_file_refreshes_cache_without_touching_parent_dir() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let work = tmp.path();
+        let hdl = work.join("hls").join("Add").join("verilog");
+        fs::create_dir_all(&hdl).unwrap();
+        fs::write(hdl.join("Add.v"), b"module Add(); endmodule\n").unwrap();
+        let dir_mtime_before = fs::metadata(&hdl).unwrap().modified().unwrap();
+
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        fs::create_dir_all(work.join("cpp")).unwrap();
+        fs::write(work.join("cpp").join("Add.cpp"), b"int main(){}\n").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        fs::write(hdl.join("Add.v"), b"module Add(); wire fresh; endmodule\n").unwrap();
+
+        let dir_mtime_after = fs::metadata(&hdl).unwrap().modified().unwrap();
+        assert_eq!(
+            dir_mtime_after, dir_mtime_before,
+            "overwriting an existing HDL file should leave the directory mtime unchanged"
+        );
+
+        let opts = HlsRunOptions {
+            part_num: "xcvu37p".to_string(),
+            clock_period: "3.33".to_string(),
+            other_configs: String::new(),
+            cflags: Vec::new(),
+            skip_based_on_mtime: true,
+            jobs: Some(1),
+            keep_work_dir: false,
+        };
+        let runner = MockToolRunner::new();
+        let out = run_hls_for_leaves(&runner, work, &leaf_design(), &opts)
+            .expect("fresh emitted file must produce a cache hit");
+        assert_eq!(out.len(), 1);
+        assert!(
+            runner.calls().is_empty(),
+            "freshness must use the emitted file mtime, not its parent directory"
+        );
+    }
+
+    #[test]
+    fn every_emitted_hdl_file_must_be_newer_than_cpp() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let work = tmp.path();
+        let hdl = work.join("hls").join("Add").join("verilog");
+        fs::create_dir_all(&hdl).unwrap();
+        fs::write(hdl.join("Add.v"), b"module Add(); endmodule\n").unwrap();
+        fs::write(
+            hdl.join("stale_helper.v"),
+            b"module stale_helper(); endmodule\n",
+        )
+        .unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        fs::create_dir_all(work.join("cpp")).unwrap();
+        fs::write(work.join("cpp").join("Add.cpp"), b"int main(){}\n").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        fs::write(hdl.join("Add.v"), b"module Add(); wire fresh; endmodule\n").unwrap();
+
+        let files = list_verilog_files(
+            &Utf8PathBuf::from_path_buf(hdl)
+                .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
+        )
+        .unwrap();
+        let cpp = Utf8PathBuf::from_path_buf(work.join("cpp").join("Add.cpp"))
+            .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
+        assert!(
+            !hdl_files_are_newer_than(&files, &cpp),
+            "one stale emitted file must invalidate the HLS cache"
+        );
     }
 }
