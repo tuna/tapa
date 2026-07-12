@@ -36,6 +36,13 @@ pub fn build_project_from_state(
     island_to_pblock_range: Option<BTreeMap<String, Vec<String>>>,
     part_num: Option<String>,
 ) -> Result<Project, LoweringError> {
+    if ctrl_s_axi_verilog.trim().is_empty() || !ctrl_s_axi_verilog.contains("module") {
+        return Err(LoweringError::MissingCtrlSAxi(format!(
+            "no `{}_control_s_axi` RTL source provided; pass the real \
+             Verilog via ctrl_s_axi_verilog or use build_project_from_paths",
+            state.program.top
+        )));
+    }
     // Derive leaf module definitions from TopologyWithRtl.module_map
     // Lower tasks have their RTL already parsed and attached.
     let mut leaf_modules = BTreeMap::new();
@@ -522,29 +529,6 @@ fn aggregate_slot_leaf_parameters(
 ///
 /// Returns [`LoweringError::MissingCtrlSAxi`] when `ctrl_s_axi_verilog`
 /// is empty or lacks a `module` declaration.
-pub fn build_project_from_inputs(
-    state: &TopologyWithRtl,
-    ctrl_s_axi_verilog: &str,
-    slot_to_instances: &BTreeMap<String, Vec<String>>,
-    island_to_pblock_range: Option<BTreeMap<String, Vec<String>>>,
-    part_num: Option<String>,
-) -> Result<Project, LoweringError> {
-    if ctrl_s_axi_verilog.trim().is_empty() || !ctrl_s_axi_verilog.contains("module") {
-        return Err(LoweringError::MissingCtrlSAxi(format!(
-            "no `{}_control_s_axi` RTL source provided; pass the real \
-             Verilog via ctrl_s_axi_verilog or use build_project_from_paths",
-            state.program.top
-        )));
-    }
-    build_project_from_state(
-        state,
-        ctrl_s_axi_verilog,
-        slot_to_instances,
-        island_to_pblock_range,
-        part_num,
-    )
-}
-
 /// Build a `GraphIR` Project from `LoweringInputs`.
 ///
 /// Reads `floorplan.json`, `device_config.json`, and `{top}_control_s_axi.v`
@@ -640,7 +624,7 @@ pub fn build_project_from_paths(
         let module = tapa_rtl::VerilogModule::parse(&body)
             .map_err(|e| LoweringError::MissingFsmRtl(format!("{}: {e}", fsm_path.display())))?;
         let mut fsm_module = tapa_rtl::mutation::MutableModule::from_parsed(module);
-        promote_procedural_output_ports(&mut fsm_module, &body);
+        fsm_module.promote_procedural_output_ports(&body);
         // Drop any stub that was already attached so the real RTL wins.
         state.fsm_modules.remove(task_name);
         state.fsm_modules.insert(task_name.clone(), fsm_module);
@@ -672,28 +656,6 @@ pub fn build_project_from_paths(
         Some(pblock_ranges),
         part_num,
     )
-}
-
-fn promote_procedural_output_ports(module: &mut tapa_rtl::mutation::MutableModule, body: &str) {
-    for port in module.effective_ports() {
-        if port.direction == tapa_rtl::port::Direction::Output
-            && contains_nonblocking_assignment_to(body, &port.name)
-        {
-            module.ensure_signal_kind(&port.name, tapa_rtl::signal::SignalKind::Reg);
-        }
-    }
-}
-
-fn contains_nonblocking_assignment_to(body: &str, name: &str) -> bool {
-    body.match_indices(name).any(|(idx, _)| {
-        let before = body[..idx].chars().next_back();
-        let after = body[idx + name.len()..].trim_start();
-        is_verilog_boundary(before) && after.starts_with("<=")
-    })
-}
-
-fn is_verilog_boundary(ch: Option<char>) -> bool {
-    ch.is_none_or(|c| !(c.is_ascii_alphanumeric() || c == '_' || c == '$'))
 }
 
 /// Derive slot → instance mapping from the pre-baked slot-task hierarchy in
@@ -2530,7 +2492,7 @@ endmodule
         let module = tapa_rtl::VerilogModule::parse(source).unwrap();
         let mut module = tapa_rtl::mutation::MutableModule::from_parsed(module);
 
-        promote_procedural_output_ports(&mut module, source);
+        module.promote_procedural_output_ports(source);
 
         let emitted = module.emit();
         assert!(

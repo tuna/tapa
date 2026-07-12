@@ -24,6 +24,20 @@ pub enum TokenKind {
 /// An expression is a sequence of tokens.
 pub type Expression = Vec<Token>;
 
+/// Concatenate an expression's token representations back into source
+/// text (no separators; tokenization preserved operator characters).
+#[must_use]
+pub fn expression_source(expr: &Expression) -> String {
+    expr.iter().map(|t| t.repr.as_str()).collect()
+}
+
+/// Evaluate an expression as a plain unsigned integer, when it is one.
+/// Returns `None` for anything symbolic (`WIDTH-1`, parameters, ...).
+#[must_use]
+pub fn expression_as_u32(expr: &Expression) -> Option<u32> {
+    expression_source(expr).parse().ok()
+}
+
 /// Classify a string as an identifier token or a literal token.
 fn classify_token(s: &str) -> Token {
     let kind = if s

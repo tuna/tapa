@@ -23,6 +23,17 @@ pub struct Width {
     pub lsb: Expression,
 }
 
+impl Width {
+    /// Number of bits spanned, when both endpoints are integer
+    /// literals; `None` for symbolic widths.
+    #[must_use]
+    pub fn bit_count(&self) -> Option<u32> {
+        let msb = crate::expression::expression_as_u32(&self.msb)?;
+        let lsb = crate::expression::expression_as_u32(&self.lsb)?;
+        Some(msb.abs_diff(lsb) + 1)
+    }
+}
+
 /// A port extracted from a Verilog module declaration.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Port {
@@ -35,4 +46,16 @@ pub struct Port {
     /// Optional pragma attached to this port.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pragma: Option<Pragma>,
+}
+
+impl Port {
+    /// Bit width of the port: 1 when no width is declared, the literal
+    /// span when both endpoints are integers, `None` when symbolic.
+    #[must_use]
+    pub fn bit_width(&self) -> Option<u32> {
+        match self.width.as_ref() {
+            None => Some(1),
+            Some(w) => w.bit_count(),
+        }
+    }
 }

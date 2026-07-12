@@ -5,10 +5,8 @@
 
 use std::collections::BTreeMap;
 
-use tapa_rtl::expression::Expression;
 use tapa_rtl::module::sanitize_array_name;
 use tapa_rtl::mutation::MutableModule;
-use tapa_rtl::port::Width;
 use tapa_rtl::VerilogModule;
 use tapa_task_graph::port::ArgCategory;
 use tapa_task_graph::task::TaskLevel;
@@ -259,7 +257,7 @@ impl TopologyWithRtl {
                         module
                             .inner
                             .find_port(&format!("{prefix}{suffix}"))
-                            .and_then(|port| port_bit_width(port.width.as_ref()))
+                            .and_then(tapa_rtl::port::Port::bit_width)
                     })
                     .max()
             })
@@ -304,23 +302,6 @@ pub fn routing_id_bits(n: u32) -> u32 {
         return 0;
     }
     u32::BITS - (n - 1).leading_zeros()
-}
-
-fn port_bit_width(width: Option<&Width>) -> Option<u32> {
-    let Some(width) = width else {
-        return Some(1);
-    };
-    let msb = expression_u32(&width.msb)?;
-    let lsb = expression_u32(&width.lsb)?;
-    Some(msb.abs_diff(lsb) + 1)
-}
-
-fn expression_u32(expr: &Expression) -> Option<u32> {
-    expr.iter()
-        .map(|token| token.repr.as_str())
-        .collect::<String>()
-        .parse()
-        .ok()
 }
 
 #[cfg(test)]

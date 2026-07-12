@@ -38,6 +38,9 @@ static AP_CE_PATTERN: LazyLock<Regex> =
 static RST_INV_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(&format!(r"(?m)^.*\b{}\b.*$\n?", tapa_protocol::HLS_RST_INV)).unwrap()
 });
+/// Identifiers immediately preceding a nonblocking-assignment operator.
+static NBA_TARGET_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?:^|[^A-Za-z0-9_$])([A-Za-z_$][A-Za-z0-9_$]*)\s*<=").unwrap());
 /// Remove placeholder top-level handshake assigns from the HLS wrapper.
 static AP_HANDSHAKE_ASSIGN_PATTERN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?m)^\s*assign\s+ap_(?:done|ready|idle)\s*=.*;\s*\n?").unwrap());
@@ -195,6 +198,28 @@ impl MutableModule {
     }
 
     /// Ensure a 1-bit signal exists with the requested kind.
+    /// Promote output ports that receive a nonblocking assignment
+    /// (`name <= ...`) anywhere in `body` to `reg` declarations, so the
+    /// emitted module header stays legal Verilog for procedurally
+    /// driven outputs.
+    pub fn promote_procedural_output_ports(&mut self, body: &str) {
+        let assigned: std::collections::HashSet<&str> = NBA_TARGET_PATTERN
+            .captures_iter(body)
+            .filter_map(|c| c.get(1).map(|m| m.as_str()))
+            .collect();
+        let to_promote: Vec<String> = self
+            .effective_ports()
+            .into_iter()
+            .filter(|p| {
+                p.direction == crate::port::Direction::Output && assigned.contains(p.name.as_str())
+            })
+            .map(|p| p.name)
+            .collect();
+        for name in to_promote {
+            self.ensure_signal_kind(&name, SignalKind::Reg);
+        }
+    }
+
     pub fn ensure_signal_kind(&mut self, name: &str, kind: SignalKind) {
         if let Some(signal) = self.inner.signals.iter_mut().find(|s| s.name == name) {
             signal.kind = kind;

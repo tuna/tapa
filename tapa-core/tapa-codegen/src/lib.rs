@@ -814,8 +814,8 @@ fn resolve_child_scalar_width(
         if let Some(port) = module.inner.find_port(port_name) {
             return port.width.as_ref().map(|width| {
                 (
-                    rtl_expr_to_string(&width.msb),
-                    rtl_expr_to_string(&width.lsb),
+                    tapa_rtl::expression::expression_source(&width.msb),
+                    tapa_rtl::expression::expression_source(&width.lsb),
                 )
             });
         }
@@ -837,13 +837,6 @@ fn resolve_child_scalar_width(
                 None
             }
         })
-}
-
-fn rtl_expr_to_string(expr: &tapa_rtl::expression::Expression) -> String {
-    expr.iter()
-        .map(|token| token.repr.as_str())
-        .collect::<Vec<_>>()
-        .join("")
 }
 
 /// Producer endpoint for a FIFO in the parent task.
@@ -941,7 +934,7 @@ fn resolve_fifo_width(state: &TopologyWithRtl, producer: Option<&FifoProducer>) 
             if let Some(port_name) = producer.port_name.as_deref() {
                 for suffix in ["_din", "_dout"] {
                     if let Some(port) = mm.inner.get_port_of(port_name, suffix) {
-                        if let Some(width) = verilog_port_width(port) {
+                        if let Some(width) = port.bit_width() {
                             return width;
                         }
                     }
@@ -950,7 +943,7 @@ fn resolve_fifo_width(state: &TopologyWithRtl, producer: Option<&FifoProducer>) 
                 // Keep the old best-effort behavior for incomplete topology data.
                 for port in &mm.inner.ports {
                     if port.name.ends_with("_dout") || port.name.ends_with("_din") {
-                        if let Some(width) = verilog_port_width(port) {
+                        if let Some(width) = port.bit_width() {
                             return width;
                         }
                     }
@@ -983,23 +976,6 @@ fn resolve_fifo_width(state: &TopologyWithRtl, producer: Option<&FifoProducer>) 
         }
     }
     32 // Ultimate fallback
-}
-
-fn verilog_port_width(port: &tapa_rtl::port::Port) -> Option<u32> {
-    let Some(width) = port.width.as_ref() else {
-        return Some(1);
-    };
-    let msb = parse_verilog_u32(&width.msb)?;
-    let lsb = parse_verilog_u32(&width.lsb)?;
-    Some(msb.saturating_sub(lsb) + 1)
-}
-
-fn parse_verilog_u32(expr: &[tapa_rtl::expression::Token]) -> Option<u32> {
-    if expr.len() == 1 {
-        expr[0].repr.parse::<u32>().ok()
-    } else {
-        None
-    }
 }
 
 /// Connect FIFOs: declare inter-task wires and connect external FIFOs.
