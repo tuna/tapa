@@ -434,23 +434,33 @@ fn test_generate_rtl_upper_output_regs_become_nets() {
 }
 
 // ------------------------------------------------------------------
-// 2. Template task: upper task with no children (template)
+// 2. Ignored task: custom RTL port shell
 // ------------------------------------------------------------------
 
 #[test]
 fn test_generate_rtl_template_task() {
     let prog = program_from_json(serde_json::json!({
-        "top": "shell",
+        "top": "top",
         "target": "xilinx-hls",
         "tasks": {
             "shell": {
-                "level": "upper",
+                "level": "lower",
                 "code": "",
-                "target": "xilinx-hls",
+                "target": "ignore",
                 "ports": [
                     {"cat": "scalar", "name": "n", "type": "int", "width": 32}
                 ],
                 "tasks": {},
+                "fifos": {}
+            },
+            "top": {
+                "level": "upper",
+                "code": "",
+                "target": "xilinx-hls",
+                "ports": [],
+                "tasks": {
+                    "shell": [{"args": {"n": {"arg": "1", "cat": "scalar"}}}]
+                },
                 "fifos": {}
             }
         }
@@ -459,12 +469,15 @@ fn test_generate_rtl_template_task() {
     let mut state = TopologyWithRtl::new(prog);
     state
         .attach_module(
-            "shell",
+            "top",
             parse_module(
-                "module shell(\n\
+                "module top(\n\
                  input wire ap_clk,\n\
                  input wire ap_rst_n,\n\
-                 input wire [31:0] n\n\
+                 input wire ap_start,\n\
+                 output wire ap_done,\n\
+                 output wire ap_idle,\n\
+                 output wire ap_ready\n\
                  );\nendmodule",
             ),
         )
@@ -472,13 +485,14 @@ fn test_generate_rtl_template_task() {
 
     generate_rtl(&mut state).unwrap();
 
-    // Template task generates a _template.v file
+    // The ignored task is emitted both as a package placeholder and as an
+    // author-facing template. It must not create an FSM implementation.
     assert!(
-        state.generated_files.contains_key("shell_template.v"),
-        "should emit shell_template.v, got keys: {:?}",
-        state.generated_files.keys().collect::<Vec<_>>()
+        state.generated_files.contains_key("shell.v"),
+        "should emit a shell placeholder, got keys: {:?}",
+        state.generated_files.keys().collect::<Vec<_>>(),
     );
-    let template_v = &state.generated_files["shell_template.v"];
+    let template_v = &state.template_files["shell.v"];
     assert!(
         template_v.contains("module shell"),
         "template should contain module declaration, got:\n{template_v}"

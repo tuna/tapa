@@ -170,6 +170,8 @@ pub struct TopologyWithRtl {
     pub fsm_modules: BTreeMap<String, MutableModule>,
     /// Generated auxiliary RTL files, keyed by file path.
     pub generated_files: BTreeMap<String, String>,
+    /// Port-only custom RTL templates, keyed by `<task>.v`.
+    pub template_files: BTreeMap<String, String>,
 }
 
 impl TopologyWithRtl {
@@ -180,6 +182,7 @@ impl TopologyWithRtl {
             module_map: BTreeMap::new(),
             fsm_modules: BTreeMap::new(),
             generated_files: BTreeMap::new(),
+            template_files: BTreeMap::new(),
         }
     }
 

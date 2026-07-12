@@ -1,5 +1,6 @@
 //! Drive `tapa_codegen::generate_rtl` against the HLS-produced Verilog
-//! and persist the resulting RTL tree under `<work_dir>/rtl/`.
+//! and persist the resulting RTL tree under `<work_dir>/rtl/`, plus
+//! custom-RTL port shells under `<work_dir>/template/`.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -142,6 +143,15 @@ pub fn generate_rtl_tree(
         let path = rtl_dir.join(name);
         fs::write(&path, content)?;
         written.push(path);
+    }
+    if !state.template_files.is_empty() {
+        let template_dir = work_dir.join("template");
+        fs::create_dir_all(&template_dir)?;
+        for (name, content) in &state.template_files {
+            let path = template_dir.join(name);
+            fs::write(&path, content)?;
+            written.push(path);
+        }
     }
     Ok(written)
 }
@@ -404,6 +414,77 @@ mod tests {
         assert!(rtl_dir.join("fifo_fwd.v").is_file());
         assert!(rtl_dir.join("axis_adapter.v").is_file());
         assert!(written.iter().any(|p| p.ends_with("fifo.v")));
+    }
+
+    #[test]
+    fn generate_rtl_tree_writes_ignored_task_template_and_placeholder() {
+        use tapa_task_graph::{ArgCategory, Port};
+
+        let mut design = vadd_design();
+        design.tasks.insert(
+            "Add_Upper".to_string(),
+            TaskTopology {
+                name: "Add_Upper".to_string(),
+                level: "lower".to_string(),
+                code: String::new(),
+                ports: vec![Port {
+                    cat: ArgCategory::Scalar,
+                    name: "n".to_string(),
+                    ctype: "uint64_t".to_string(),
+                    width: 64,
+                    chan_count: None,
+                    chan_size: None,
+                }],
+                tasks: IndexMap::new(),
+                fifos: IndexMap::new(),
+                target: Some("ignore".to_string()),
+                is_slot: false,
+                self_area: IndexMap::new(),
+                total_area: IndexMap::new(),
+                clock_period: "0".to_string(),
+            },
+        );
+        let top = design.tasks.get_mut("VecAdd").expect("top task");
+        top.tasks = IndexMap::from_iter([(
+            "Add_Upper".to_string(),
+            json!([{"args": {"n": {"arg": "1", "cat": "scalar"}}, "step": 0}]),
+        )]);
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let top_rtl = dir.path().join("VecAdd.v");
+        fs::write(
+            &top_rtl,
+            "module VecAdd(\n\
+             input wire ap_clk, input wire ap_rst_n, input wire ap_start,\n\
+             output wire ap_done, output wire ap_idle, output wire ap_ready\n\
+             ); endmodule\n",
+        )
+        .expect("write top RTL");
+        let top_rtl = Utf8PathBuf::from_path_buf(top_rtl).expect("UTF-8 path");
+        let hdl_inputs = TaskHdlInputs::from_iter([("VecAdd".to_string(), vec![top_rtl])]);
+
+        let written = generate_rtl_tree(dir.path(), &design, &hdl_inputs).expect("generate");
+        let template_path = dir.path().join("template/Add_Upper.v");
+        let placeholder_path = dir.path().join("rtl/Add_Upper.v");
+        let template = fs::read_to_string(&template_path).expect("author template");
+        let placeholder = fs::read_to_string(&placeholder_path).expect("package placeholder");
+        let top = fs::read_to_string(dir.path().join("rtl/VecAdd.v")).expect("generated top");
+
+        assert!(template.contains("module Add_Upper"), "got:\n{template}");
+        assert!(template.contains("input wire [63:0] n"), "got:\n{template}");
+        assert_eq!(placeholder, template);
+        assert!(
+            top.contains("Add_Upper Add_Upper_0"),
+            "top should instantiate the ignored task:\n{top}",
+        );
+        assert!(
+            written.contains(&template_path) && written.contains(&placeholder_path),
+            "template and its package placeholder must both be reported: {written:?}",
+        );
+        assert!(
+            !dir.path().join("rtl/Add_Upper_template.v").exists(),
+            "the authoring copy belongs under work/template, not rtl/",
+        );
     }
 
     /// The `templates_info.json` port strings emit every field in

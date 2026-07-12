@@ -14,6 +14,7 @@ pub mod program;
 pub mod rtl_state;
 mod s_axi;
 pub mod support_assets;
+mod template;
 
 use tapa_rtl::builder::{ContinuousAssign, Expr};
 use tapa_rtl::mutation::wire;
@@ -24,19 +25,6 @@ use crate::rtl_state::TopologyWithRtl;
 use tapa_protocol::{
     HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY, HANDSHAKE_RST, HANDSHAKE_RST_N,
 };
-
-fn render_template_module(name: &str, ports: &[String]) -> String {
-    let mut env = minijinja::Environment::new();
-    env.add_template(
-        "template_module",
-        include_str!("templates/template_module.v.j2"),
-    )
-    .expect("template parses");
-    env.get_template("template_module")
-        .expect("template exists")
-        .render(minijinja::context! { name, ports })
-        .expect("render succeeds")
-}
 
 /// Run the full RTL codegen orchestration pipeline.
 ///
@@ -54,8 +42,31 @@ fn render_template_module(name: &str, ports: &[String]) -> String {
 pub fn generate_rtl(state: &mut TopologyWithRtl) -> Result<(), CodegenError> {
     let task_names: Vec<String> = state.program.tasks.keys().cloned().collect();
 
+    // Ignored tasks have no HLS result to attach. Build their authoritative
+    // port-only shell from topology so parents can resolve the module while
+    // the user authors the replacement RTL.
     for task_name in &task_names {
         let task = &state.program.tasks[task_name];
+        if task.target != "ignore" {
+            continue;
+        }
+        let source = template::render_task_template(task_name, task);
+        let module = tapa_rtl::VerilogModule::parse(&source)?;
+        state.module_map.insert(
+            task_name.clone(),
+            tapa_rtl::mutation::MutableModule::from_parsed(module),
+        );
+    }
+
+    for task_name in &task_names {
+        let task = &state.program.tasks[task_name];
+        if task.target == "ignore" {
+            let template = state.module_map[task_name].emit();
+            state
+                .template_files
+                .insert(format!("{task_name}.v"), template);
+            continue;
+        }
         if task.level != TaskLevel::Upper {
             continue;
         }
@@ -70,7 +81,7 @@ pub fn generate_rtl(state: &mut TopologyWithRtl) -> Result<(), CodegenError> {
             .program
             .tasks
             .get(name.as_str())
-            .is_some_and(|task| task.level == TaskLevel::Upper)
+            .is_some_and(|task| task.level == TaskLevel::Upper || task.target == "ignore")
         {
             state.generated_files.insert(format!("{name}.v"), mm.emit());
         }
@@ -89,9 +100,6 @@ pub fn generate_rtl(state: &mut TopologyWithRtl) -> Result<(), CodegenError> {
 fn instrument_upper_task(state: &mut TopologyWithRtl, task_name: &str) -> Result<(), CodegenError> {
     let is_top_task = task_name == state.program.top;
     let task = &state.program.tasks[task_name];
-
-    // Check if this is a template task (no child instances)
-    let is_template = task.tasks.is_empty();
 
     // Reject malformed memory geometry before mutating any RTL state.
     let mmap_conns = state.aggregate_mmap_connections(task_name)?;
@@ -159,24 +167,6 @@ fn instrument_upper_task(state: &mut TopologyWithRtl, task_name: &str) -> Result
                 mm.remove_port(&port_name);
             }
         }
-    }
-
-    // Template task: emit port-declaration-only template, NO FSM module
-    if is_template {
-        if let Some(mm) = state.module_map.get_mut(task_name) {
-            // Build port-declaration-only template (just the module shell)
-            let ports: Vec<String> = mm
-                .inner
-                .ports
-                .iter()
-                .map(std::string::ToString::to_string)
-                .collect();
-            let template = render_template_module(&mm.inner.name, &ports);
-            state
-                .generated_files
-                .insert(format!("{task_name}_template.v"), template);
-        }
-        return Ok(());
     }
 
     state.create_fsm_module(task_name)?;
