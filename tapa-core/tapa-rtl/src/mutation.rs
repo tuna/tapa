@@ -13,6 +13,7 @@ use std::sync::LazyLock;
 
 use crate::builder::{AlwaysBlock, ContinuousAssign, ModuleInstance};
 use crate::error::BuilderError;
+use crate::parser::nonblocking_assignment_targets;
 use crate::port::{Direction, Port, Width};
 use crate::signal::{Signal, SignalKind};
 use crate::VerilogModule;
@@ -38,9 +39,6 @@ static AP_CE_PATTERN: LazyLock<Regex> =
 static RST_INV_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(&format!(r"(?m)^.*\b{}\b.*$\n?", tapa_protocol::HLS_RST_INV)).unwrap()
 });
-/// Identifiers immediately preceding a nonblocking-assignment operator.
-static NBA_TARGET_PATTERN: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?:^|[^A-Za-z0-9_$])([A-Za-z_$][A-Za-z0-9_$]*)\s*<=").unwrap());
 /// Remove placeholder top-level handshake assigns from the HLS wrapper.
 static AP_HANDSHAKE_ASSIGN_PATTERN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?m)^\s*assign\s+ap_(?:done|ready|idle)\s*=.*;\s*\n?").unwrap());
@@ -202,10 +200,7 @@ impl MutableModule {
     /// emitted module header stays legal Verilog for procedurally
     /// driven outputs.
     pub fn promote_procedural_output_ports(&mut self, body: &str) {
-        let assigned: std::collections::HashSet<&str> = NBA_TARGET_PATTERN
-            .captures_iter(body)
-            .filter_map(|c| c.get(1).map(|m| m.as_str()))
-            .collect();
+        let assigned = nonblocking_assignment_targets(body);
         let to_promote: Vec<String> = self
             .effective_ports()
             .into_iter()
@@ -692,6 +687,46 @@ endmodule
         assert!(
             !emitted.contains("\nwire ap_ready;"),
             "duplicate port-name wire declaration should be skipped:\n{emitted}"
+        );
+    }
+
+    #[test]
+    fn procedural_output_promotion_uses_assignment_syntax() {
+        let source = "
+module AssignmentKinds (
+    input wire ap_clk,
+    input wire index,
+    output wire [1:0] indexed,
+    output wire compared,
+    output wire commented
+);
+always @(posedge ap_clk) begin
+    if (compared <= index) begin
+        indexed[index] <= 1'b1;
+    end
+    // commented <= 1'b1;
+end
+endmodule
+";
+        let module = VerilogModule::parse(source).unwrap();
+        let mut module = MutableModule::from_parsed(module);
+
+        module.promote_procedural_output_ports(source);
+
+        assert_eq!(
+            module.effective_signal_kind("indexed"),
+            Some(SignalKind::Reg),
+            "indexed nonblocking-assignment targets must be procedural outputs"
+        );
+        assert_eq!(
+            module.effective_signal_kind("compared"),
+            None,
+            "comparison operands are not assignment targets"
+        );
+        assert_eq!(
+            module.effective_signal_kind("commented"),
+            None,
+            "comment text is not an assignment target"
         );
     }
 

@@ -4,6 +4,7 @@
 //! parameter declarations, and submodule instantiations.  Keeps the
 //! traversal style consistent with `tapa-slotting/src/cpp_surgery.rs`.
 
+use std::collections::BTreeSet;
 use std::sync::LazyLock;
 
 use streaming_iterator::StreamingIterator;
@@ -41,6 +42,14 @@ static Q_PARAMS: LazyLock<Query> = LazyLock::new(|| {
 
 static Q_INSTANCES: LazyLock<Query> = LazyLock::new(|| {
     Query::new(&sv_language(), "(module_instantiation) @inst").expect("Q_INSTANCES parses")
+});
+
+static Q_NONBLOCKING_ASSIGNMENTS: LazyLock<Query> = LazyLock::new(|| {
+    Query::new(
+        &sv_language(),
+        "(nonblocking_assignment (variable_lvalue) @lhs)",
+    )
+    .expect("Q_NONBLOCKING_ASSIGNMENTS parses")
 });
 
 // ── Text helpers ────────────────────────────────────────────────────
@@ -532,4 +541,56 @@ pub fn extract_instance_names(source: &str) -> Vec<(String, String)> {
         out.extend(extract_instances_from_node(inst_node, src));
     }
     out
+}
+
+/// Return the base identifiers assigned by procedural nonblocking assignments.
+///
+/// The CST distinguishes `<=` assignments from comparison expressions and
+/// comments. Walking the captured lvalue also handles indexed targets such as
+/// `result[index]` without mistaking `index` for an assigned signal.
+pub fn nonblocking_assignment_targets(source: &str) -> BTreeSet<String> {
+    fn first_identifier(node: Node, src: &[u8]) -> Option<String> {
+        if matches!(node.kind(), "simple_identifier" | "escaped_identifier") {
+            return Some(text_of(node, src).to_owned());
+        }
+        for child in node.named_children(&mut node.walk()) {
+            if let Some(identifier) = first_identifier(child, src) {
+                return Some(identifier);
+            }
+        }
+        None
+    }
+
+    fn collect_lvalue_targets(node: Node, src: &[u8], targets: &mut BTreeSet<String>) {
+        for child in node.named_children(&mut node.walk()) {
+            match child.kind() {
+                "hierarchical_identifier" => {
+                    if let Some(identifier) = first_identifier(child, src) {
+                        targets.insert(identifier);
+                    }
+                }
+                // Concatenated and assignment-pattern lvalues contain nested
+                // variable_lvalue nodes. A select contains index expressions,
+                // which are deliberately not assignment targets.
+                "variable_lvalue"
+                | "assignment_pattern_variable_lvalue"
+                | "streaming_concatenation" => collect_lvalue_targets(child, src, targets),
+                _ => {}
+            }
+        }
+    }
+
+    let mut parser = sv_parser();
+    let Some(tree) = parser.parse(source.as_bytes(), None) else {
+        return BTreeSet::new();
+    };
+    let root = tree.root_node();
+    let src = source.as_bytes();
+    let mut targets = BTreeSet::new();
+    let mut cursor = QueryCursor::new();
+    let mut matches = cursor.matches(&Q_NONBLOCKING_ASSIGNMENTS, root, src);
+    while let Some(m) = matches.next() {
+        collect_lvalue_targets(m.captures[0].node, src, &mut targets);
+    }
+    targets
 }

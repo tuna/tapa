@@ -21,6 +21,8 @@ use crate::signal::{Signal, SignalKind};
 
 mod tree_sitter;
 
+pub(crate) use tree_sitter::nonblocking_assignment_targets;
+
 // ── Utility parsers ─────────────────────────────────────────────────
 
 fn ws(input: &str) -> IResult<&str, &str> {
