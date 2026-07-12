@@ -197,7 +197,6 @@ impl MutableModule {
         }
     }
 
-    /// Ensure a 1-bit signal exists with the requested kind.
     /// Promote output ports that receive a nonblocking assignment
     /// (`name <= ...`) anywhere in `body` to `reg` declarations, so the
     /// emitted module header stays legal Verilog for procedurally
@@ -220,6 +219,7 @@ impl MutableModule {
         }
     }
 
+    /// Ensure a 1-bit signal exists with the requested kind.
     pub fn ensure_signal_kind(&mut self, name: &str, kind: SignalKind) {
         if let Some(signal) = self.inner.signals.iter_mut().find(|s| s.name == name) {
             signal.kind = kind;
@@ -301,11 +301,9 @@ impl MutableModule {
     pub fn emit(&self) -> String {
         let mut out = String::new();
 
-        // RapidStream pragma lines at the top. emits these as
-        // `// pragma RS <content>` line comments (see
-        // the implementation); using
-        // the Verilog attribute form `(* RS ... *)` trips Vivado's HDL
-        // Parser because `RS <tag>` is not a valid attribute name.
+        // Vivado accepts RapidStream pragmas as line comments. The attribute
+        // form `(* RS ... *)` is invalid because `RS <tag>` is not an
+        // attribute name.
         for comment in &self.added_comments {
             let _ = writeln!(out, "// pragma RS {comment}");
         }

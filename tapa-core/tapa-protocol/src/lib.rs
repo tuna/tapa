@@ -1,8 +1,7 @@
 //! TAPA protocol constants.
 //!
 //! Single source of truth for handshake, stream, FIFO, and M-AXI naming
-//! conventions shared across the TAPA toolchain.  This crate has zero
-//! dependencies (beyond `phf`).
+//! conventions shared across the TAPA toolchain.
 
 // ── Handshake port names ────────────────────────────────────────────
 

@@ -3,5 +3,5 @@
 # RapidStream Contributor License Agreement.
 
 [codespell]
-# 'Implmentation' is intended here as it is a typo by Xilinx and we have conform lol
+# Keep Xilinx's misspelled "Implmentation" fixture text byte-for-byte.
 ignore-words-list = din,dout,edn,inout,pres,implmentation,cips,ket,fpt

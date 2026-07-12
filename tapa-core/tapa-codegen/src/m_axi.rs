@@ -1,7 +1,4 @@
-//! M-AXI port generation and AXI crossbar.
-//!
-//! Implements: single-port M-AXI generation,
-//! multi-port AXI crossbar with parameterized module emission.
+//! M-AXI port generation and parameterized AXI crossbar emission.
 
 use tapa_protocol::{
     PortDir, HANDSHAKE_CLK, HANDSHAKE_RST, M_AXI_PORTS, M_AXI_PORT_WIDTHS, M_AXI_PREFIX,

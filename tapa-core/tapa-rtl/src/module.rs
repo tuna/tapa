@@ -97,8 +97,8 @@ impl VerilogModule {
     /// the shape of their instance lists without a full syntactic
     /// roundtrip.
     ///
-    /// Implementation: a minimal token scan that recognizes an
-    /// instantiation as `ident [#(parens)] ident (parens);`. Comments,
+    /// A minimal token scan recognizes an instantiation as
+    /// `ident [#(parens)] ident (parens);`. Comments,
     /// `module`/`endmodule`, parameter/port/signal declarations, and
     /// procedural blocks are skipped — only full instantiation
     /// statements at the module body level are returned.
