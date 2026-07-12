@@ -18,9 +18,11 @@
 //!      `BRAM_18K = RAMB36*2 + RAMB18`, `DSP = "DSP Blocks"`,
 //!      `FF = FFs`, `LUT = "Total LUTs"`, `URAM = URAM`.
 //!
-//! Execution is serial; the `jobs` argument is accepted but ignored.
+//! Independent Vivado runs honor the requested `jobs` limit; parsed
+//! results are folded into the design in task order.
 
 use camino::Utf8PathBuf;
+use rayon::prelude::*;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
@@ -57,7 +59,7 @@ pub(super) fn emit_post_synth_util(
     work_dir: &Path,
     design: &mut Design,
     part_num: &str,
-    _jobs: Option<u32>,
+    jobs: Option<u32>,
     runner: &dyn ToolRunner,
 ) -> Result<()> {
     let rtl_dir = work_dir.join("rtl");
@@ -65,28 +67,64 @@ pub(super) fn emit_post_synth_util(
     fs::create_dir_all(&report_dir)?;
 
     let module_names: Vec<String> = top_task_child_names(design);
-    for module_name in &module_names {
-        let rpt_path = post_syn_rpt_path(work_dir, module_name);
-        let cpp_path = cpp_path_for(work_dir, module_name);
-        let prev_mtime = optional_mtime(&rpt_path);
+    if module_names.is_empty() {
+        return Ok(());
+    }
+    let worker_count = resolve_worker_count(jobs, module_names.len());
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(worker_count)
+        .build()
+        .expect("post-synth utilization thread pool builds");
+    let results: Vec<Result<UtilizationReport>> = pool.install(|| {
+        module_names
+            .par_iter()
+            .map(|module_name| run_and_parse_one(runner, work_dir, &rtl_dir, module_name, part_num))
+            .collect()
+    });
 
-        if should_run_vivado(&cpp_path, prev_mtime) {
-            run_one(runner, &rtl_dir, &rpt_path, module_name, part_num)?;
-            if !report_is_fresh(&rpt_path, prev_mtime) {
-                return Err(CliError::InvalidArg(format!(
-                    "post-synth util: Vivado returned success but the \
-                     utilization report for `{module_name}` was not \
-                     (re)written at {}",
-                    rpt_path.display(),
-                )));
-            }
-        }
-
-        let text = fs::read_to_string(&rpt_path)?;
-        let util = parse_utilization_rpt(&text)?;
-        apply_total_area(design, &util);
+    // Indexed parallel iteration preserves `module_names` order.
+    // Fold only after all workers finish so design mutation and error
+    // selection remain deterministic regardless of completion order.
+    for result in results {
+        apply_total_area(design, &result?);
     }
     Ok(())
+}
+
+fn resolve_worker_count(jobs: Option<u32>, task_count: usize) -> usize {
+    let default = || std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
+    let desired = match jobs {
+        None | Some(0) => default(),
+        Some(count) => count as usize,
+    };
+    desired.min(task_count.max(1))
+}
+
+fn run_and_parse_one(
+    runner: &dyn ToolRunner,
+    work_dir: &Path,
+    rtl_dir: &Path,
+    module_name: &str,
+    part_num: &str,
+) -> Result<UtilizationReport> {
+    let rpt_path = post_syn_rpt_path(work_dir, module_name);
+    let cpp_path = cpp_path_for(work_dir, module_name);
+    let prev_mtime = optional_mtime(&rpt_path);
+
+    if should_run_vivado(&cpp_path, prev_mtime) {
+        run_one(runner, rtl_dir, &rpt_path, module_name, part_num)?;
+        if !report_is_fresh(&rpt_path, prev_mtime) {
+            return Err(CliError::InvalidArg(format!(
+                "post-synth util: Vivado returned success but the \
+                 utilization report for `{module_name}` was not \
+                 (re)written at {}",
+                rpt_path.display(),
+            )));
+        }
+    }
+
+    let text = fs::read_to_string(&rpt_path)?;
+    parse_utilization_rpt(&text).map_err(CliError::from)
 }
 
 /// Child-task names of the top task — the unique set of
@@ -234,12 +272,14 @@ fn get_metric_int(util: &UtilizationReport, key: &str) -> i64 {
 mod tests {
     use super::*;
 
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Condvar, Mutex};
     use std::time::Duration;
 
     use indexmap::IndexMap;
     use serde_json::json;
     use tapa_task_graph::TaskTopology;
-    use tapa_xilinx::{MockToolRunner, ToolOutput};
+    use tapa_xilinx::{MockToolRunner, ToolInvocation, ToolOutput, XilinxError};
 
     fn sample_rpt(instance: &str) -> String {
         format!(
@@ -294,6 +334,78 @@ mod tests {
             target: "xilinx-hls".to_string(),
             tasks,
             slot_task_name_to_fp_region: None,
+        }
+    }
+
+    fn two_child_design() -> Design {
+        let mut design = vadd_design();
+        let mut mul = design.tasks["Add"].clone();
+        mul.name = "Mul".to_string();
+        mul.code = "void Mul() {}\n".to_string();
+        design.tasks.insert("Mul".to_string(), mul);
+        design.tasks["VecAdd"]
+            .tasks
+            .insert("Mul".to_string(), json!([{"args": {}, "step": 0}]));
+        design
+    }
+
+    struct ConcurrentVivadoRunner {
+        expected: usize,
+        active: AtomicUsize,
+        max_active: AtomicUsize,
+        entered: Mutex<usize>,
+        entered_cv: Condvar,
+    }
+
+    impl ConcurrentVivadoRunner {
+        fn new(expected: usize) -> Self {
+            Self {
+                expected,
+                active: AtomicUsize::new(0),
+                max_active: AtomicUsize::new(0),
+                entered: Mutex::new(0),
+                entered_cv: Condvar::new(),
+            }
+        }
+    }
+
+    impl ToolRunner for ConcurrentVivadoRunner {
+        fn run(&self, inv: &ToolInvocation) -> tapa_xilinx::Result<ToolOutput> {
+            let active = self.active.fetch_add(1, Ordering::SeqCst) + 1;
+            self.max_active.fetch_max(active, Ordering::SeqCst);
+            {
+                let mut entered = self.entered.lock().unwrap();
+                *entered += 1;
+                self.entered_cv.notify_all();
+                while *entered < self.expected {
+                    let (next, timeout) = self
+                        .entered_cv
+                        .wait_timeout(entered, Duration::from_secs(1))
+                        .unwrap();
+                    entered = next;
+                    if timeout.timed_out() {
+                        break;
+                    }
+                }
+            }
+
+            let rpt_path = inv.args.last().ok_or_else(|| XilinxError::ToolFailure {
+                program: inv.program.clone(),
+                code: -1,
+                stderr: "missing report path argument".to_string(),
+            })?;
+            let instance = Path::new(rpt_path)
+                .file_name()
+                .and_then(|name| name.to_str())
+                .and_then(|name| name.split('.').next())
+                .ok_or_else(|| XilinxError::ToolFailure {
+                    program: inv.program.clone(),
+                    code: -1,
+                    stderr: format!("invalid report path: {rpt_path}"),
+                })?;
+            fs::write(rpt_path, sample_rpt(instance))?;
+            self.active.fetch_sub(1, Ordering::SeqCst);
+            Ok(ToolOutput::default())
         }
     }
 
@@ -380,6 +492,45 @@ mod tests {
         // But the rpt is still parsed and applied.
         let add = design.tasks.get("Add").expect("Add task");
         assert_eq!(add.total_area.get("LUT"), Some(&json!(100)));
+    }
+
+    #[test]
+    fn post_synth_util_honors_parallel_jobs() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let work = tmp.path();
+        setup_work_dir(
+            work,
+            &[("Add", "void Add() {}\n"), ("Mul", "void Mul() {}\n")],
+        );
+        let mut design = two_child_design();
+        let runner = ConcurrentVivadoRunner::new(2);
+
+        emit_post_synth_util(work, &mut design, "xcu250-figd2104-2L-e", Some(2), &runner)
+            .expect("parallel post-synth utilization");
+
+        assert_eq!(
+            runner.max_active.load(Ordering::SeqCst),
+            2,
+            "--jobs=2 must allow two concurrent Vivado runs"
+        );
+        for task in ["Add", "Mul"] {
+            assert_eq!(
+                design.tasks[task].total_area.get("LUT"),
+                Some(&json!(100)),
+                "result for {task} must be folded into the matching task"
+            );
+        }
+    }
+
+    #[test]
+    fn post_synth_worker_count_honors_limit_and_task_count() {
+        assert_eq!(resolve_worker_count(Some(1), 4), 1);
+        assert_eq!(resolve_worker_count(Some(2), 4), 2);
+        assert_eq!(resolve_worker_count(Some(8), 3), 3);
+        assert_eq!(
+            resolve_worker_count(Some(0), 3),
+            resolve_worker_count(None, 3)
+        );
     }
 
     #[test]
