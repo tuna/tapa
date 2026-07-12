@@ -367,6 +367,43 @@ fn expression_as_int(expr: &Expression) -> Option<i64> {
     expr.0[0].repr.parse::<i64>().ok()
 }
 
+/// Build a self-connected FSM instantiation named `{fsm_name}_0`.
+///
+/// Every FSM port maps to an identically named identifier; any port
+/// not already declared as a module port or wire gains a wire
+/// declaration so the exporter's DRC resolves all identifiers.
+pub fn build_self_connected_fsm_inst(
+    fsm_def: &tapa_graphir::AnyModuleDefinition,
+    fsm_name: &str,
+    floorplan_region: Option<String>,
+    ports: &[tapa_graphir::ModulePort],
+    wires: &mut Vec<tapa_graphir::ModuleNet>,
+) -> ModuleInstantiation {
+    for p in fsm_def.ports() {
+        let already_declared =
+            ports.iter().any(|port| port.name == p.name) || wires.iter().any(|w| w.name == p.name);
+        if !already_declared {
+            wires.push(crate::utils::make_wire(&p.name, p.range.clone()));
+        }
+    }
+    let connections: Vec<ModuleConnection> = fsm_def
+        .ports()
+        .iter()
+        .map(|p| make_connection(&p.name, Expression::new_id(&p.name)))
+        .collect();
+    ModuleInstantiation {
+        name: format!("{fsm_name}_0"),
+        hierarchical_name: HierarchicalName::get_name(&format!("{fsm_name}_0")),
+        module: fsm_name.to_owned(),
+        connections,
+        parameters: Vec::new(),
+        floorplan_region,
+        area: None,
+        pragmas: Vec::new(),
+        extra: std::collections::BTreeMap::default(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

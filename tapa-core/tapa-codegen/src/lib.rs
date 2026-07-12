@@ -12,7 +12,7 @@ pub mod instance_signals;
 pub mod m_axi;
 pub mod program;
 pub mod rtl_state;
-pub mod s_axi;
+mod s_axi;
 pub mod support_assets;
 
 use tapa_rtl::builder::{ContinuousAssign, Expr};
@@ -184,17 +184,20 @@ fn instrument_upper_task(state: &mut TopologyWithRtl, task_name: &str) -> Result
         std::collections::BTreeMap::new();
     for conn in mmap_conns.values() {
         if m_axi::needs_crossbar(conn) {
-            for (slave_idx, (task, idx, _port)) in conn.args.iter().enumerate() {
+            for (slave_idx, slave) in conn.slaves.iter().enumerate() {
                 #[allow(clippy::cast_possible_truncation, reason = "index fits")]
-                let idx_usize = *idx as usize;
-                mmap_slave_map.insert((conn.arg_name.clone(), task.clone(), idx_usize), slave_idx);
+                let idx_usize = slave.inst_idx as usize;
+                mmap_slave_map.insert(
+                    (conn.arg_name.clone(), slave.task.clone(), idx_usize),
+                    slave_idx,
+                );
             }
-        } else if conn.chan_count.unwrap_or(1) > 1 {
-            for (channel_idx, (task, idx, _port)) in conn.args.iter().enumerate() {
+        } else if conn.channel_count() > 1 {
+            for (channel_idx, slave) in conn.slaves.iter().enumerate() {
                 #[allow(clippy::cast_possible_truncation, reason = "index fits")]
-                let idx_usize = *idx as usize;
+                let idx_usize = slave.inst_idx as usize;
                 mmap_channel_map.insert(
-                    (conn.arg_name.clone(), task.clone(), idx_usize),
+                    (conn.arg_name.clone(), slave.task.clone(), idx_usize),
                     channel_idx,
                 );
             }

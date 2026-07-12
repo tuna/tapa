@@ -243,7 +243,7 @@ impl MutableModule {
     /// - Remove `ap_CS_fsm` / `ap_NS_fsm` declarations and assignments
     /// - Remove `initial begin` blocks (power-on initialization)
     /// - Remove `ap_ce_reg` declarations
-    /// - Remove `ap_rst_n_inv` declarations and assignments
+    /// - Remove HLS-internal inverted-reset declarations and assignments
     pub fn cleanup_hls_artifacts(&mut self) {
         // Use Cow to avoid allocation when pattern has no matches
         for pattern in [
@@ -269,7 +269,7 @@ impl MutableModule {
                 && !s.name.starts_with("ap_ST_fsm")
                 && !s.name.contains("_blk")
                 && s.name != "ap_ce_reg"
-                && s.name != "ap_rst_n_inv"
+                && s.name != tapa_protocol::HLS_RST_INV
         });
 
         // Remove FSM-related parameters

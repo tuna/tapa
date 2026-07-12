@@ -3,14 +3,14 @@
 use std::collections::BTreeMap;
 
 use tapa_codegen::rtl_state::TopologyWithRtl;
-use tapa_graphir::{AnyModuleDefinition, Expression, HierarchicalName, ModulePort};
+use tapa_graphir::{AnyModuleDefinition, ModulePort};
 use tapa_topology::program::Program;
 
 use crate::instantiation_builder::{
     build_fifo_instance, build_port_connections, build_task_instance, ArgTable,
 };
-use crate::project_builder::{
-    attach_grouped_assigns, build_arg_pipeline_assigns, fifo_wire_range, find_arg_name_in_task,
+use crate::utils::{
+    attach_grouped_assigns, build_arg_pipeline_assigns, find_arg_name_in_task,
     instance_matches_name, parse_instance_name, port_range, resolve_instance_in_task,
 };
 use crate::utils::{input_wire, make_wire, range_msb};
@@ -100,8 +100,13 @@ pub fn build_slot_module(
         let inst_name = &canonical_inst_name;
         if let Some(task) = program.tasks.get(&task_name) {
             // Add control wires for this instance
-            for suffix in &["__ap_start", "__ap_done", "__ap_idle", "__ap_ready"] {
-                wires.push(make_wire(&format!("{inst_name}{suffix}"), None));
+            for sig in &[
+                HANDSHAKE_START,
+                HANDSHAKE_DONE,
+                HANDSHAKE_IDLE,
+                HANDSHAKE_READY,
+            ] {
+                wires.push(make_wire(&format!("{inst_name}__{sig}"), None));
             }
 
             // Collect child RTL port names for MMAP filtering
@@ -254,29 +259,13 @@ pub fn build_slot_module(
     // every identifier.
     let slot_fsm_name = format!("{slot_name}_fsm");
     if let Some(fsm_def) = fsm_modules.get(&slot_fsm_name) {
-        for p in fsm_def.ports() {
-            let already_declared = ports.iter().any(|port| port.name == p.name)
-                || wires.iter().any(|w| w.name == p.name);
-            if !already_declared {
-                wires.push(make_wire(&p.name, p.range.clone()));
-            }
-        }
-        let fsm_connections: Vec<tapa_graphir::ModuleConnection> = fsm_def
-            .ports()
-            .iter()
-            .map(|p| crate::utils::make_connection(&p.name, Expression::new_id(&p.name)))
-            .collect();
-        submodules.push(tapa_graphir::ModuleInstantiation {
-            name: format!("{slot_fsm_name}_0"),
-            hierarchical_name: HierarchicalName::get_name(&format!("{slot_fsm_name}_0")),
-            module: slot_fsm_name.clone(),
-            connections: fsm_connections,
-            parameters: Vec::new(),
-            floorplan_region: Some(fp_region.clone()),
-            area: None,
-            pragmas: Vec::new(),
-            extra: BTreeMap::default(),
-        });
+        submodules.push(crate::instantiation_builder::build_self_connected_fsm_inst(
+            fsm_def,
+            &slot_fsm_name,
+            Some(fp_region.clone()),
+            &ports,
+            &mut wires,
+        ));
         direct_assigns.extend(build_arg_pipeline_assigns(
             slot_task_ref,
             fsm_def,
@@ -302,20 +291,7 @@ pub fn build_slot_module(
                 leaf_modules,
                 false,
             );
-            // Ensure wire declarations for the FIFO data/handshake signals
-            // so the exporter's DRC finds every identifier referenced by
-            // the FIFO instance's connection list.
-            for suffix in ["_din", "_dout", "_empty_n", "_full_n", "_read", "_write"] {
-                let wire_name = format!("{fifo_name}{suffix}");
-                if !ports.iter().any(|p| p.name == wire_name)
-                    && !wires.iter().any(|w| w.name == wire_name)
-                {
-                    wires.push(make_wire(
-                        &wire_name,
-                        fifo_wire_range(suffix, data_range.as_ref()),
-                    ));
-                }
-            }
+            crate::utils::declare_fifo_wires(&mut wires, &ports, fifo_name, data_range.as_ref());
             let depth = fifo.depth.unwrap_or(32);
             // Producer is a child leaf; look up the _din range on the
             // child RTL via get_port_of normalization.

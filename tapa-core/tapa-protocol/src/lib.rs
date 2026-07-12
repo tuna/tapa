@@ -78,6 +78,43 @@ pub const FIFO_WRITE_PORTS: &[&str] = &["if_din", "if_full_n", "if_write", "if_w
 // ── AXI naming prefixes ─────────────────────────────────────────────
 
 pub const S_AXI_NAME: &str = "s_axi_control";
+
+/// AXI-Lite control port names (without the `s_axi_control_` prefix),
+/// as exposed by the HLS-generated top-level control interface.
+pub const S_AXI_LITE_CTRL_PORTS: &[&str] = &[
+    "AWVALID", "AWREADY", "AWADDR", "WVALID", "WREADY", "WDATA", "WSTRB", "ARVALID", "ARREADY",
+    "ARADDR", "RVALID", "RREADY", "RDATA", "RRESP", "BVALID", "BREADY", "BRESP",
+];
+
+/// Per-channel groupings of the AXI-Lite control ports with their
+/// valid/ready markers (ports listed alphabetically per channel).
+pub const S_AXI_LITE_CHANNELS: &[AxiChannelInfo] = &[
+    AxiChannelInfo {
+        ports: &["ARADDR", "ARREADY", "ARVALID"],
+        valid: "ARVALID",
+        ready: "ARREADY",
+    },
+    AxiChannelInfo {
+        ports: &["AWADDR", "AWREADY", "AWVALID"],
+        valid: "AWVALID",
+        ready: "AWREADY",
+    },
+    AxiChannelInfo {
+        ports: &["BREADY", "BRESP", "BVALID"],
+        valid: "BVALID",
+        ready: "BREADY",
+    },
+    AxiChannelInfo {
+        ports: &["RDATA", "RREADY", "RRESP", "RVALID"],
+        valid: "RVALID",
+        ready: "RREADY",
+    },
+    AxiChannelInfo {
+        ports: &["WDATA", "WREADY", "WSTRB", "WVALID"],
+        valid: "WVALID",
+        ready: "WREADY",
+    },
+];
 pub const M_AXI_PREFIX: &str = "m_axi_";
 pub const M_AXI_PARAM_PREFIX: &str = "C_M_AXI_";
 

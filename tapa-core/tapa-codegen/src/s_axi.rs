@@ -2,18 +2,14 @@
 
 use tapa_protocol::{
     HANDSHAKE_CLK, HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY, HANDSHAKE_RST, HANDSHAKE_START,
+    S_AXI_LITE_CTRL_PORTS, S_AXI_NAME,
 };
 use tapa_rtl::builder::{Expr, ParamArg, PortArg};
 use tapa_rtl::mutation::{wide_wire, wire};
 
 use crate::rtl_state::TopologyWithRtl;
 
-const S_AXI_CTRL_PORTS: &[&str] = &[
-    "AWVALID", "AWREADY", "AWADDR", "WVALID", "WREADY", "WDATA", "WSTRB", "ARVALID", "ARREADY",
-    "ARADDR", "RVALID", "RREADY", "RDATA", "RRESP", "BVALID", "BREADY", "BRESP",
-];
-
-pub(crate) fn instantiate_top_control_s_axi(state: &mut TopologyWithRtl, task_name: &str) {
+pub fn instantiate_top_control_s_axi(state: &mut TopologyWithRtl, task_name: &str) {
     let Some(task) = state.program.tasks.get(task_name) else {
         return;
     };
@@ -24,7 +20,7 @@ pub(crate) fn instantiate_top_control_s_axi(state: &mut TopologyWithRtl, task_na
         .inner
         .ports
         .iter()
-        .any(|p| p.name == "s_axi_control_AWVALID")
+        .any(|p| p.name == format!("{S_AXI_NAME}_AWVALID"))
     {
         return;
     }
@@ -34,10 +30,10 @@ pub(crate) fn instantiate_top_control_s_axi(state: &mut TopologyWithRtl, task_na
         PortArg::new("ARESET", Expr::ident(HANDSHAKE_RST)),
         PortArg::new("ACLK_EN", Expr::lit("1'b1")),
     ];
-    for &axi_port in S_AXI_CTRL_PORTS {
+    for &axi_port in S_AXI_LITE_CTRL_PORTS {
         ports.push(PortArg::new(
             axi_port,
-            Expr::ident(format!("s_axi_control_{axi_port}")),
+            Expr::ident(format!("{S_AXI_NAME}_{axi_port}")),
         ));
     }
     for &sig in &[

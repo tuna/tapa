@@ -7,18 +7,12 @@ use tapa_topology::program::Program;
 
 use crate::instantiation_builder::build_fifo_instance;
 use crate::module_defs::get_reset_inverter_inst;
-use crate::project_builder::{attach_grouped_assigns, build_arg_pipeline_assigns, fifo_wire_range};
+use crate::utils::{attach_grouped_assigns, build_arg_pipeline_assigns};
 use crate::utils::{input_wire, make_wire, range_msb};
 use tapa_protocol::{
     HANDSHAKE_CLK, HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY, HANDSHAKE_RST, HANDSHAKE_RST_N,
-    HANDSHAKE_START,
+    HANDSHAKE_START, S_AXI_LITE_CTRL_PORTS, S_AXI_NAME,
 };
-
-/// S-AXI control port names (AXI-Lite interface to host).
-const S_AXI_CTRL_PORTS: &[&str] = &[
-    "AWVALID", "AWREADY", "AWADDR", "WVALID", "WREADY", "WDATA", "WSTRB", "ARVALID", "ARREADY",
-    "ARADDR", "RVALID", "RREADY", "RDATA", "RRESP", "BVALID", "BREADY", "BRESP",
-];
 
 /// Returns true if the named AXI-Lite control port is an input on the
 /// slave (top-level) side: master→slave address/data/valid channels and
@@ -49,8 +43,8 @@ fn ctrl_s_axi_port_expr(port_name: &str) -> Expression {
         "ACLK_EN" => Expression::new_lit("1'b1"),
         _ => {
             // AXI-Lite ports map to s_axi_control_{name} at top level
-            if S_AXI_CTRL_PORTS.contains(&port_name) {
-                Expression::new_id(&format!("s_axi_control_{port_name}"))
+            if S_AXI_LITE_CTRL_PORTS.contains(&port_name) {
+                Expression::new_id(&format!("{S_AXI_NAME}_{port_name}"))
             } else {
                 // Control/scalar ports (ap_start, ap_done, etc.) connect to internal wires
                 Expression::new_id(port_name)
@@ -94,8 +88,8 @@ pub fn build_top_module(
     // RREADY); slave→master ports are outputs (AW/W/AR READY, R VALID+DATA+
     // RESP, B VALID+RESP).
     if has_ctrl_s_axi {
-        for &axi_port in S_AXI_CTRL_PORTS {
-            let port_name = format!("s_axi_control_{axi_port}");
+        for &axi_port in S_AXI_LITE_CTRL_PORTS {
+            let port_name = format!("{S_AXI_NAME}_{axi_port}");
             if is_s_axi_slave_input(axi_port) {
                 ports.push(input_wire(&port_name, None));
             } else {
@@ -137,54 +131,50 @@ pub fn build_top_module(
     // already declared as a top-level port or wire (e.g. slot-prefixed
     // handshake signals like `SLOT_X0Y2_SLOT_X0Y2_0__ap_start`), emit a
     // matching wire so the exporter's DRC can find every identifier.
-    let top_fsm_connections: Vec<tapa_graphir::ModuleConnection> =
-        if let Some(fsm_def) = fsm_modules.get(fsm_name) {
-            for p in fsm_def.ports() {
-                let name = &p.name;
-                let already_declared = ports.iter().any(|port| port.name == *name)
-                    || wires.iter().any(|w| w.name == *name);
-                if !already_declared {
-                    wires.push(make_wire(name, p.range.clone()));
-                }
-            }
-            direct_assigns.extend(build_arg_pipeline_assigns(top, fsm_def, &top_arg_table));
-            fsm_def
-                .ports()
-                .iter()
-                .map(|p| crate::utils::make_connection(&p.name, Expression::new_id(&p.name)))
-                .collect()
-        } else {
-            [
-                HANDSHAKE_CLK,
-                HANDSHAKE_RST_N,
-                HANDSHAKE_START,
-                HANDSHAKE_DONE,
-                HANDSHAKE_IDLE,
-                HANDSHAKE_READY,
-            ]
-            .iter()
-            .map(|&name| crate::utils::make_connection(name, Expression::new_id(name)))
-            .collect()
-        };
-    submodules.push(tapa_graphir::ModuleInstantiation {
-        name: format!("{fsm_name}_0"),
-        hierarchical_name: HierarchicalName::get_name(&format!("{fsm_name}_0")),
-        module: fsm_name.to_owned(),
-        connections: top_fsm_connections,
-        parameters: Vec::new(),
-        floorplan_region: default_region.clone(),
-        area: None,
-        pragmas: Vec::new(),
-        extra: BTreeMap::default(),
-    });
+    if let Some(fsm_def) = fsm_modules.get(fsm_name) {
+        direct_assigns.extend(build_arg_pipeline_assigns(top, fsm_def, &top_arg_table));
+        submodules.push(crate::instantiation_builder::build_self_connected_fsm_inst(
+            fsm_def,
+            fsm_name,
+            default_region.clone(),
+            &ports,
+            &mut wires,
+        ));
+    } else {
+        let top_fsm_connections: Vec<tapa_graphir::ModuleConnection> = [
+            HANDSHAKE_CLK,
+            HANDSHAKE_RST_N,
+            HANDSHAKE_START,
+            HANDSHAKE_DONE,
+            HANDSHAKE_IDLE,
+            HANDSHAKE_READY,
+        ]
+        .iter()
+        .map(|&name| crate::utils::make_connection(name, Expression::new_id(name)))
+        .collect();
+        submodules.push(tapa_graphir::ModuleInstantiation {
+            name: format!("{fsm_name}_0"),
+            hierarchical_name: HierarchicalName::get_name(&format!("{fsm_name}_0")),
+            module: fsm_name.to_owned(),
+            connections: top_fsm_connections,
+            parameters: Vec::new(),
+            floorplan_region: default_region.clone(),
+            area: None,
+            pragmas: Vec::new(),
+            extra: BTreeMap::default(),
+        });
+    }
 
     // ctrl_s_axi instance — maps AXI-Lite ports through s_axi_control_* top ports
     if has_ctrl_s_axi {
         let mut ctrl_connections = Vec::new();
         // Fixed port mappings (clock, reset, enable) + AXI-Lite channel ports.
         // `ctrl_s_axi_port_expr` routes ACLK/ARESET/ACLK_EN and the
-        // S_AXI_CTRL_PORTS set; each gets mapped to its top-level wire.
-        for &axi_port in ["ACLK", "ARESET", "ACLK_EN"].iter().chain(S_AXI_CTRL_PORTS) {
+        // S_AXI_LITE_CTRL_PORTS set; each gets mapped to its top-level wire.
+        for &axi_port in ["ACLK", "ARESET", "ACLK_EN"]
+            .iter()
+            .chain(S_AXI_LITE_CTRL_PORTS)
+        {
             ctrl_connections.push(crate::utils::make_connection(
                 axi_port,
                 ctrl_s_axi_port_expr(axi_port),
@@ -381,21 +371,7 @@ pub fn build_top_module(
             program,
             leaf_modules,
         );
-        // Ensure the top module declares the data/handshake wires
-        // every cross-slot FIFO needs for its connections. Without
-        // these the exporter's DRC fails because the FIFO instance
-        // references undeclared identifiers.
-        for suffix in ["_din", "_dout", "_empty_n", "_full_n", "_read", "_write"] {
-            let wire_name = format!("{fifo_name}{suffix}");
-            if !ports.iter().any(|p| p.name == wire_name)
-                && !wires.iter().any(|w| w.name == wire_name)
-            {
-                wires.push(make_wire(
-                    &wire_name,
-                    fifo_wire_range(suffix, data_range.as_ref()),
-                ));
-            }
-        }
+        crate::utils::declare_fifo_wires(&mut wires, &ports, fifo_name, data_range.as_ref());
         let depth = fifo.depth.unwrap_or(32);
         // Region: prefer the consumer's explicit slot region; if the
         // floorplanned topology carries slot endpoints but no region map,

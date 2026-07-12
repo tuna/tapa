@@ -2,6 +2,8 @@
 
 use super::*;
 
+use crate::utils::{fifo_wire_range, parse_instance_name, range_msb};
+
 fn make_program() -> Program {
     serde_json::from_str(
         r#"{

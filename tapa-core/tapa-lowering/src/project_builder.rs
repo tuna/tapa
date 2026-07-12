@@ -1,26 +1,25 @@
 //! Top-level project assembly: builds a `GraphIR` Project from topology + RTL.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use tapa_codegen::rtl_state::TopologyWithRtl;
-use tapa_graphir::{
-    AnyModuleDefinition, BaseFields, GroupedFields, ModulePort, Modules, Project, Range,
-};
+use tapa_graphir::{AnyModuleDefinition, ModulePort, Modules, Project};
 use tapa_topology::program::Program;
 
-use crate::instantiation_builder::{build_arg_table, build_port_connections, ArgTable};
-pub(crate) use crate::interfaces::build_interfaces;
+use crate::instantiation_builder::{build_arg_table, build_port_connections};
+use crate::interfaces::build_interfaces;
 use crate::module_defs::{get_fifo_def, get_reset_inverter_def};
-pub(crate) use crate::slot_module::build_slot_module;
-pub(crate) use crate::top_module::build_top_module;
-use crate::utils::range_msb;
+use crate::slot_module::build_slot_module;
+use crate::top_module::build_top_module;
+use crate::utils::{find_grouped_mut, instance_matches_name};
 use crate::LoweringError;
 
 /// Build a `GraphIR` Project from a `TopologyWithRtl` state.
 ///
 /// This is the lowest-level RTL-bearing entrypoint. It derives leaf modules
 /// and FSM modules from the state, and takes the real `{top}_control_s_axi.v`
-/// text as input rather than fabricating a placeholder.
+/// text as input rather than fabricating a placeholder; the source is
+/// parse-validated before it is embedded in the project.
 ///
 /// Callers that want the equivalent path boundary should instead use
 /// `build_project_from_paths` via `LoweringInputs`.
@@ -32,13 +31,13 @@ pub fn build_project_from_state(
     island_to_pblock_range: Option<BTreeMap<String, Vec<String>>>,
     part_num: Option<String>,
 ) -> Result<Project, LoweringError> {
-    if ctrl_s_axi_verilog.trim().is_empty() || !ctrl_s_axi_verilog.contains("module") {
-        return Err(LoweringError::MissingCtrlSAxi(format!(
-            "no `{}_control_s_axi` RTL source provided; pass the real \
+    tapa_rtl::VerilogModule::parse(ctrl_s_axi_verilog).map_err(|e| {
+        LoweringError::MissingCtrlSAxi(format!(
+            "invalid `{}_control_s_axi` RTL source ({e}); pass the real \
              Verilog via ctrl_s_axi_verilog or use build_project_from_paths",
             state.program.top
-        )));
-    }
+        ))
+    })?;
     // Derive leaf module definitions from TopologyWithRtl.module_map
     // Lower tasks have their RTL already parsed and attached.
     let mut leaf_modules = BTreeMap::new();
@@ -511,24 +510,12 @@ fn aggregate_slot_leaf_parameters(
     }
 }
 
-/// Build a `GraphIR` Project with the `{top}_control_s_axi.v` RTL
-/// source supplied explicitly.
-///
-/// Callers must supply the real `ctrl_s_axi` Verilog text. Emitting a
-/// placeholder body leaked through the exporter as a `.v` file with
-/// no `module ... endmodule`, which downstream tools rejected as
-/// invalid Verilog — so this entrypoint requires the real source up
-/// front. Use [`build_project_from_paths`] when the source lives on
-/// disk.
-///
-/// # Errors
-///
-/// Returns [`LoweringError::MissingCtrlSAxi`] when `ctrl_s_axi_verilog`
-/// is empty or lacks a `module` declaration.
 /// Build a `GraphIR` Project from `LoweringInputs`.
 ///
 /// Reads `floorplan.json`, `device_config.json`, and `{top}_control_s_axi.v`
-/// from disk.
+/// from disk. The real `ctrl_s_axi` Verilog is required: a placeholder
+/// body would leak through the exporter as a `.v` file downstream
+/// tools reject.
 ///
 /// # Errors
 ///
@@ -873,192 +860,6 @@ pub fn build_project(
         cut_to_crossing_count: None,
         extra: BTreeMap::new(),
     })
-}
-
-pub(crate) fn resolve_instance_in_task(
-    parent: &tapa_topology::task::TaskDesign,
-    inst_name: &str,
-) -> Option<(String, String)> {
-    for (task_name, instances) in &parent.tasks {
-        for (idx, inst) in instances.iter().enumerate() {
-            if instance_matches_name(task_name, idx, inst, inst_name) {
-                let canonical = crate::instantiation_builder::instance_name(task_name, idx, inst);
-                return Some((task_name.clone(), canonical));
-            }
-        }
-    }
-    None
-}
-
-pub(crate) fn instance_matches_name(
-    task_name: &str,
-    idx: usize,
-    inst: &tapa_topology::instance::InstanceDesign,
-    inst_name: &str,
-) -> bool {
-    if inst.name.is_some() {
-        crate::instantiation_builder::instance_name(task_name, idx, inst) == inst_name
-    } else {
-        format!("{task_name}_{idx}") == inst_name
-    }
-}
-
-/// Find the parent-visible arg name for a child port in a given task.
-pub(crate) fn find_arg_name_in_task(
-    parent: &tapa_topology::task::TaskDesign,
-    task_name: &str,
-    inst_name: &str,
-    port_name: &str,
-) -> Option<String> {
-    let instances = parent.tasks.get(task_name)?;
-    for (idx, inst) in instances.iter().enumerate() {
-        if instance_matches_name(task_name, idx, inst, inst_name) {
-            for (child_port, arg) in &inst.args {
-                if child_port == port_name {
-                    return Some(arg.arg.clone());
-                }
-            }
-        }
-    }
-    None
-}
-
-/// Find the grouped module named `name` and return mutable references to its
-/// base + grouped fields. Centralizes the `AnyModuleDefinition::Grouped`
-/// pattern used by several post-pass rewrites in `build_project_from_state`.
-pub(crate) fn find_grouped_mut<'a>(
-    defs: &'a mut [AnyModuleDefinition],
-    name: &str,
-) -> Option<(&'a mut BaseFields, &'a mut GroupedFields)> {
-    for module in defs {
-        if let AnyModuleDefinition::Grouped { base, grouped, .. } = module {
-            if base.name == name {
-                return Some((base, grouped));
-            }
-        }
-    }
-    None
-}
-
-pub(crate) fn attach_grouped_assigns(
-    module: &mut AnyModuleDefinition,
-    assigns: Vec<(String, String)>,
-) {
-    if assigns.is_empty() {
-        return;
-    }
-    let value = serde_json::Value::Array(
-        assigns
-            .into_iter()
-            .map(|(lhs, rhs)| serde_json::json!({ "lhs": lhs, "rhs": rhs }))
-            .collect(),
-    );
-    if let AnyModuleDefinition::Grouped { extra, .. } = module {
-        extra.insert("assigns".to_owned(), value);
-    }
-}
-
-pub(crate) fn build_arg_pipeline_assigns(
-    upper_task: &tapa_topology::task::TaskDesign,
-    fsm_def: &AnyModuleDefinition,
-    arg_table: &ArgTable,
-) -> Vec<(String, String)> {
-    let fsm_ports: BTreeSet<&str> = fsm_def.ports().iter().map(|p| p.name.as_str()).collect();
-    let mut assigns = Vec::new();
-
-    for (child_task_name, insts) in &upper_task.tasks {
-        for (idx, inst) in insts.iter().enumerate() {
-            let inst_name = crate::instantiation_builder::instance_name(child_task_name, idx, inst);
-            let Some(inst_arg_table) = arg_table.get(&inst_name) else {
-                continue;
-            };
-
-            for (port_name, arg) in &inst.args {
-                let (fsm_in, fsm_out, source) = match arg.cat {
-                    tapa_task_graph::port::ArgCategory::Scalar => (
-                        format!("{inst_name}__{port_name}_in"),
-                        format!("{inst_name}__{port_name}"),
-                        scalar_or_literal_source(&arg.arg),
-                    ),
-                    tapa_task_graph::port::ArgCategory::Mmap
-                    | tapa_task_graph::port::ArgCategory::AsyncMmap
-                    | tapa_task_graph::port::ArgCategory::Immap
-                    | tapa_task_graph::port::ArgCategory::Ommap => (
-                        format!("{inst_name}__{port_name}_offset_in"),
-                        format!("{inst_name}__{port_name}_offset"),
-                        mmap_offset_source(upper_task, &arg.arg),
-                    ),
-                    tapa_task_graph::port::ArgCategory::Istream
-                    | tapa_task_graph::port::ArgCategory::Ostream
-                    | tapa_task_graph::port::ArgCategory::Istreams
-                    | tapa_task_graph::port::ArgCategory::Ostreams => continue,
-                };
-
-                if !fsm_ports.contains(fsm_in.as_str()) || !fsm_ports.contains(fsm_out.as_str()) {
-                    continue;
-                }
-                let Some(queue_tail) = inst_arg_table.get(&arg.arg) else {
-                    continue;
-                };
-                assigns.push((fsm_in, source));
-                assigns.push((queue_tail.clone(), fsm_out));
-            }
-        }
-    }
-
-    assigns
-}
-
-pub(crate) fn scalar_or_literal_source(name: &str) -> String {
-    if crate::instantiation_builder::is_literal_arg(name) {
-        name.to_owned()
-    } else {
-        tapa_rtl::module::sanitize_array_name(name)
-    }
-}
-
-pub(crate) fn mmap_offset_source(
-    upper_task: &tapa_topology::task::TaskDesign,
-    arg_name: &str,
-) -> String {
-    let sanitized = tapa_rtl::module::sanitize_array_name(arg_name);
-    let chan_count = upper_task
-        .ports
-        .iter()
-        .find(|p| p.name == arg_name)
-        .and_then(|p| p.chan_count);
-    if matches!(chan_count, Some(count) if count > 1) {
-        format!("{sanitized}_0_offset")
-    } else {
-        format!("{sanitized}_offset")
-    }
-}
-
-pub(crate) fn fifo_wire_range(suffix: &str, data_range: Option<&Range>) -> Option<Range> {
-    if matches!(suffix, "_din" | "_dout") {
-        data_range.cloned()
-    } else {
-        None
-    }
-}
-
-/// Parse `taskname_idx` into `(task_name, idx)`.
-pub(crate) fn parse_instance_name(name: &str) -> (String, u32) {
-    if let Some(last_underscore) = name.rfind('_') {
-        if let Ok(idx) = name[last_underscore + 1..].parse::<u32>() {
-            return (name[..last_underscore].to_owned(), idx);
-        }
-    }
-    (name.to_owned(), 0)
-}
-
-/// Build a port range `[width-1:0]` if width > 1.
-pub(crate) fn port_range(width: u32) -> Option<tapa_graphir::Range> {
-    if width > 1 {
-        Some(range_msb(width - 1))
-    } else {
-        None
-    }
 }
 
 #[cfg(test)]

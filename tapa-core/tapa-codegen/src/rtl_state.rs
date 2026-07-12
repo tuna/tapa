@@ -24,22 +24,34 @@ fn render_fsm_module(fsm_name: &str) -> String {
         .expect("render succeeds")
 }
 
+/// One crossbar slave: a child port bound to a shared mmap argument.
+#[derive(Debug, Clone)]
+pub struct MMapSlave {
+    /// Child task name.
+    pub task: String,
+    /// Instance index within the child task's instantiation list.
+    pub inst_idx: u32,
+    /// Child-side port name.
+    pub port: String,
+    /// Aggregated AXI thread count this port presents: a leaf child
+    /// contributes 1; an upper child that internally shares the mmap
+    /// contributes its own aggregated total, so the crossbar's
+    /// `S*_THREADS` can track every outstanding ID.
+    pub threads: u32,
+    /// AXI ID width the child port presents (from its RTL module and
+    /// any nested aggregation).
+    pub id_width: u32,
+}
+
 /// Aggregated M-AXI memory-mapped connection info for a single argument.
 #[derive(Debug, Clone)]
 pub struct MMapConnection {
     /// Argument name.
     pub arg_name: String,
-    /// AXI ID width (log2 of total ports + 1).
+    /// Parent-facing AXI ID width (widest child + routing bits).
     pub id_width: u32,
-    /// Number of connected child ports (crossbar slave count).
-    pub thread_count: u32,
-    /// Aggregated AXI thread count per slave, aligned with `args`.
-    /// A leaf child contributes 1; an upper child that internally
-    /// shares the mmap contributes its own aggregated total, so the
-    /// crossbar's `S*_THREADS` can track every outstanding ID.
-    pub slave_threads: Vec<u32>,
-    /// Per-instance argument bindings: (`task_name`, `instance_idx`, `port_name`).
-    pub args: Vec<(String, u32, String)>,
+    /// The child ports sharing this argument, one crossbar slave each.
+    pub slaves: Vec<MMapSlave>,
     /// Channel count; `None` for a plain (non-hmap) mmap. `Some(1)`
     /// is a single-channel hmap, which still gets a crossbar.
     pub chan_count: Option<u32>,
@@ -47,6 +59,29 @@ pub struct MMapConnection {
     pub chan_size: Option<u32>,
     /// Data width in bits.
     pub data_width: u32,
+}
+
+impl MMapConnection {
+    /// Crossbar slave count.
+    #[must_use]
+    pub fn thread_count(&self) -> u32 {
+        #[allow(clippy::cast_possible_truncation, reason = "slave count fits in u32")]
+        {
+            self.slaves.len() as u32
+        }
+    }
+
+    /// Upstream channel count; a plain mmap behaves as one channel.
+    #[must_use]
+    pub fn channel_count(&self) -> u32 {
+        self.chan_count.unwrap_or(1)
+    }
+
+    /// Sum of the per-slave aggregated thread counts.
+    #[must_use]
+    pub fn total_threads(&self) -> u32 {
+        self.slaves.iter().map(|s| s.threads).sum()
+    }
 }
 
 /// Enriched state combining topology with RTL modules.
@@ -136,6 +171,17 @@ impl TopologyWithRtl {
         &self,
         task_name: &str,
     ) -> Result<BTreeMap<String, MMapConnection>, CodegenError> {
+        self.aggregate_mmap_connections_cached(task_name, &mut BTreeMap::new())
+    }
+
+    /// Recursive worker for [`Self::aggregate_mmap_connections`]. The
+    /// cache holds each upper task's finished aggregation so nested
+    /// hierarchies are aggregated once per task, not once per lookup.
+    fn aggregate_mmap_connections_cached(
+        &self,
+        task_name: &str,
+        cache: &mut BTreeMap<String, BTreeMap<String, MMapConnection>>,
+    ) -> Result<BTreeMap<String, MMapConnection>, CodegenError> {
         let task = self
             .program
             .tasks
@@ -156,9 +202,8 @@ impl TopologyWithRtl {
                     let child_task = self.program.tasks.get(child_task_name.as_str());
                     let port = child_task
                         .and_then(|t| t.ports.iter().find(|p| p.name == *child_port_name));
-                    let child_id_width = self.child_mmap_id_width(child_task_name, child_port_name);
-                    let child_threads =
-                        self.child_mmap_thread_count(child_task_name, child_port_name);
+                    let (child_id_width, child_threads) =
+                        self.child_mmap_summary(child_task_name, child_port_name, cache)?;
 
                     // Group by parent scope arg name (arg.arg), not child port name
                     let parent_arg_name = &arg.arg;
@@ -182,9 +227,7 @@ impl TopologyWithRtl {
                         .or_insert_with(|| MMapConnection {
                             arg_name: parent_arg_name.clone(),
                             id_width: 1,
-                            thread_count: 0,
-                            slave_threads: Vec::new(),
-                            args: Vec::new(),
+                            slaves: Vec::new(),
                             chan_count,
                             chan_size,
                             data_width,
@@ -197,16 +240,19 @@ impl TopologyWithRtl {
                             conn.chan_count, conn.chan_size
                         )));
                     }
-                    conn.thread_count += 1;
-                    conn.slave_threads.push(child_threads);
                     conn.id_width = conn.id_width.max(child_id_width);
                     #[allow(
                         clippy::cast_possible_truncation,
                         reason = "instance index fits in u32"
                     )]
                     let idx = inst_idx as u32;
-                    conn.args
-                        .push((child_task_name.clone(), idx, child_port_name.clone()));
+                    conn.slaves.push(MMapSlave {
+                        task: child_task_name.clone(),
+                        inst_idx: idx,
+                        port: child_port_name.clone(),
+                        threads: child_threads,
+                        id_width: child_id_width,
+                    });
                 }
             }
         }
@@ -215,36 +261,37 @@ impl TopologyWithRtl {
         // 1-bit ID field, and the crossbar appends enough routing bits to
         // identify the originating slave when returning responses.
         for conn in connections.values_mut() {
-            conn.id_width = id_width_for_child_threads(conn.id_width, conn.thread_count);
+            conn.id_width = id_width_for_child_threads(conn.id_width, conn.thread_count());
+        }
+
+        // An hmap whose single child port internally shares the mmap
+        // would need per-channel routing of an already-multiplexed ID
+        // stream, which the crossbar wrapper does not implement.
+        for conn in connections.values() {
+            let total_threads = conn.total_threads();
+            if conn.slaves.len() == 1 && conn.chan_count.is_some() && total_threads > 1 {
+                return Err(CodegenError::InvalidMmapConnection(format!(
+                    "hmap argument '{}' is driven by a single child port that \
+                     internally shares the mmap ({total_threads} threads); this \
+                     combination is not supported",
+                    conn.arg_name
+                )));
+            }
         }
 
         Ok(connections)
     }
 
-    /// Aggregated AXI thread count a child port presents to its parent:
-    /// 1 for a leaf child, or the sum of the child's own per-slave
-    /// thread counts when the child is an upper task that internally
-    /// shares the mmap.
-    pub(crate) fn child_mmap_thread_count(
+    /// The `(id_width, threads)` a child port presents to its parent:
+    /// the RTL module's AXI ID port width combined with the child's own
+    /// nested aggregation (an upper child sharing the mmap internally
+    /// presents its aggregated totals; a leaf presents 1 thread).
+    fn child_mmap_summary(
         &self,
         child_task_name: &str,
         child_port_name: &str,
-    ) -> u32 {
-        self.program
-            .tasks
-            .get(child_task_name)
-            .filter(|task| task.level == TaskLevel::Upper)
-            .and_then(|_| self.aggregate_mmap_connections(child_task_name).ok())
-            .and_then(|conns| {
-                conns
-                    .get(child_port_name)
-                    .map(|conn| conn.slave_threads.iter().sum())
-            })
-            .unwrap_or(1)
-            .max(1)
-    }
-
-    pub(crate) fn child_mmap_id_width(&self, child_task_name: &str, child_port_name: &str) -> u32 {
+        cache: &mut BTreeMap<String, BTreeMap<String, MMapConnection>>,
+    ) -> Result<(u32, u32), CodegenError> {
         let child_port = sanitize_array_name(child_port_name);
         let prefix = format!("m_axi_{child_port}");
         let module_id_width = self
@@ -262,15 +309,24 @@ impl TopologyWithRtl {
                     .max()
             })
             .unwrap_or(1);
-        let nested_id_width = self
+
+        let is_upper = self
             .program
             .tasks
             .get(child_task_name)
-            .filter(|task| task.level == TaskLevel::Upper)
-            .and_then(|_| self.aggregate_mmap_connections(child_task_name).ok())
-            .and_then(|conns| conns.get(child_port_name).map(|conn| conn.id_width))
-            .unwrap_or(1);
-        module_id_width.max(nested_id_width)
+            .is_some_and(|task| task.level == TaskLevel::Upper);
+        let (nested_id_width, threads) = if is_upper {
+            if !cache.contains_key(child_task_name) {
+                let conns = self.aggregate_mmap_connections_cached(child_task_name, cache)?;
+                cache.insert(child_task_name.to_owned(), conns);
+            }
+            cache[child_task_name]
+                .get(child_port_name)
+                .map_or((1, 1), |conn| (conn.id_width, conn.total_threads()))
+        } else {
+            (1, 1)
+        };
+        Ok((module_id_width.max(nested_id_width), threads))
     }
 
     /// Get the top task name.
@@ -496,14 +552,73 @@ mod tests {
         let state = TopologyWithRtl::new(program);
 
         let mid_conns = state.aggregate_mmap_connections("mid").unwrap();
-        assert_eq!(mid_conns["data"].slave_threads, vec![1, 1]);
+        let mid_threads: Vec<u32> = mid_conns["data"].slaves.iter().map(|s| s.threads).collect();
+        assert_eq!(mid_threads, vec![1, 1]);
 
         let top_conns = state.aggregate_mmap_connections("top").unwrap();
         let conn = &top_conns["elems"];
-        assert_eq!(conn.thread_count, 2, "two slave ports at top level");
+        assert_eq!(conn.thread_count(), 2, "two slave ports at top level");
         // Task iteration is alphabetical: `leaf` (1 thread) then `mid`
         // (2 aggregated threads).
-        assert_eq!(conn.slave_threads, vec![1, 2]);
+        let threads: Vec<u32> = conn.slaves.iter().map(|s| s.threads).collect();
+        assert_eq!(threads, vec![1, 2]);
+    }
+
+    #[test]
+    fn aggregate_rejects_hmap_with_internally_shared_child() {
+        // A single hmap child port whose task internally shares the
+        // mmap: unsupported, rejected at aggregation time.
+        let program = serde_json::from_value(serde_json::json!({
+            "top": "top",
+            "target": "xilinx-hls",
+            "tasks": {
+                "top": {
+                    "level": "upper",
+                    "code": "",
+                    "target": "xilinx-hls",
+                    "ports": [
+                        {"cat": "mmap", "name": "elems", "type": "float*", "width": 32,
+                         "chan_count": 2, "chan_size": 1024}
+                    ],
+                    "tasks": {
+                        "mid": [{"args": {"data": {"arg": "elems", "cat": "mmap"}}}]
+                    },
+                    "fifos": {}
+                },
+                "mid": {
+                    "level": "upper",
+                    "code": "",
+                    "target": "xilinx-hls",
+                    "ports": [
+                        {"cat": "mmap", "name": "data", "type": "float*", "width": 32}
+                    ],
+                    "tasks": {
+                        "leaf": [
+                            {"args": {"d": {"arg": "data", "cat": "mmap"}}},
+                            {"args": {"d": {"arg": "data", "cat": "mmap"}}}
+                        ]
+                    },
+                    "fifos": {}
+                },
+                "leaf": {
+                    "level": "lower",
+                    "code": "",
+                    "target": "xilinx-hls",
+                    "ports": [
+                        {"cat": "mmap", "name": "d", "type": "float*", "width": 32}
+                    ],
+                    "tasks": {},
+                    "fifos": {}
+                }
+            }
+        }))
+        .unwrap();
+        let state = TopologyWithRtl::new(program);
+        let result = state.aggregate_mmap_connections("top");
+        assert!(
+            matches!(result, Err(CodegenError::InvalidMmapConnection(_))),
+            "got: {result:?}"
+        );
     }
 
     #[test]

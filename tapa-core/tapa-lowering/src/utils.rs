@@ -1,6 +1,13 @@
 //! Port naming, arg table, and connection helpers.
 
-use tapa_graphir::{Expression, HierarchicalName, ModuleConnection, ModuleNet, ModulePort, Range};
+use std::collections::BTreeSet;
+
+use tapa_graphir::{
+    AnyModuleDefinition, BaseFields, Expression, GroupedFields, HierarchicalName, ModuleConnection,
+    ModuleNet, ModulePort, Range,
+};
+
+use crate::instantiation_builder::ArgTable;
 
 pub use tapa_protocol::{
     ISTREAM_SUFFIXES, M_AXI_PREFIX, M_AXI_READ_SUFFIXES, M_AXI_WRITE_SUFFIXES, OSTREAM_SUFFIXES,
@@ -337,6 +344,211 @@ fn try_evaluate_literal_expr(tokens: &[tapa_graphir::Token]) -> Option<i64> {
     match evalexpr::eval(&expr) {
         Ok(evalexpr::Value::Int(n)) => Some(n),
         _ => None,
+    }
+}
+
+pub(crate) fn resolve_instance_in_task(
+    parent: &tapa_topology::task::TaskDesign,
+    inst_name: &str,
+) -> Option<(String, String)> {
+    for (task_name, instances) in &parent.tasks {
+        for (idx, inst) in instances.iter().enumerate() {
+            if instance_matches_name(task_name, idx, inst, inst_name) {
+                let canonical = crate::instantiation_builder::instance_name(task_name, idx, inst);
+                return Some((task_name.clone(), canonical));
+            }
+        }
+    }
+    None
+}
+
+pub(crate) fn instance_matches_name(
+    task_name: &str,
+    idx: usize,
+    inst: &tapa_topology::instance::InstanceDesign,
+    inst_name: &str,
+) -> bool {
+    if inst.name.is_some() {
+        crate::instantiation_builder::instance_name(task_name, idx, inst) == inst_name
+    } else {
+        format!("{task_name}_{idx}") == inst_name
+    }
+}
+
+/// Find the parent-visible arg name for a child port in a given task.
+pub(crate) fn find_arg_name_in_task(
+    parent: &tapa_topology::task::TaskDesign,
+    task_name: &str,
+    inst_name: &str,
+    port_name: &str,
+) -> Option<String> {
+    let instances = parent.tasks.get(task_name)?;
+    for (idx, inst) in instances.iter().enumerate() {
+        if instance_matches_name(task_name, idx, inst, inst_name) {
+            for (child_port, arg) in &inst.args {
+                if child_port == port_name {
+                    return Some(arg.arg.clone());
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Find the grouped module named `name` and return mutable references to its
+/// base + grouped fields. Centralizes the `AnyModuleDefinition::Grouped`
+/// pattern used by several post-pass rewrites in `build_project_from_state`.
+pub(crate) fn find_grouped_mut<'a>(
+    defs: &'a mut [AnyModuleDefinition],
+    name: &str,
+) -> Option<(&'a mut BaseFields, &'a mut GroupedFields)> {
+    for module in defs {
+        if let AnyModuleDefinition::Grouped { base, grouped, .. } = module {
+            if base.name == name {
+                return Some((base, grouped));
+            }
+        }
+    }
+    None
+}
+
+pub(crate) fn attach_grouped_assigns(
+    module: &mut AnyModuleDefinition,
+    assigns: Vec<(String, String)>,
+) {
+    if assigns.is_empty() {
+        return;
+    }
+    let value = serde_json::Value::Array(
+        assigns
+            .into_iter()
+            .map(|(lhs, rhs)| serde_json::json!({ "lhs": lhs, "rhs": rhs }))
+            .collect(),
+    );
+    if let AnyModuleDefinition::Grouped { extra, .. } = module {
+        extra.insert("assigns".to_owned(), value);
+    }
+}
+
+pub(crate) fn build_arg_pipeline_assigns(
+    upper_task: &tapa_topology::task::TaskDesign,
+    fsm_def: &AnyModuleDefinition,
+    arg_table: &ArgTable,
+) -> Vec<(String, String)> {
+    let fsm_ports: BTreeSet<&str> = fsm_def.ports().iter().map(|p| p.name.as_str()).collect();
+    let mut assigns = Vec::new();
+
+    for (child_task_name, insts) in &upper_task.tasks {
+        for (idx, inst) in insts.iter().enumerate() {
+            let inst_name = crate::instantiation_builder::instance_name(child_task_name, idx, inst);
+            let Some(inst_arg_table) = arg_table.get(&inst_name) else {
+                continue;
+            };
+
+            for (port_name, arg) in &inst.args {
+                let (fsm_in, fsm_out, source) = match arg.cat {
+                    tapa_task_graph::port::ArgCategory::Scalar => (
+                        format!("{inst_name}__{port_name}_in"),
+                        format!("{inst_name}__{port_name}"),
+                        scalar_or_literal_source(&arg.arg),
+                    ),
+                    tapa_task_graph::port::ArgCategory::Mmap
+                    | tapa_task_graph::port::ArgCategory::AsyncMmap
+                    | tapa_task_graph::port::ArgCategory::Immap
+                    | tapa_task_graph::port::ArgCategory::Ommap => (
+                        format!("{inst_name}__{port_name}_offset_in"),
+                        format!("{inst_name}__{port_name}_offset"),
+                        mmap_offset_source(upper_task, &arg.arg),
+                    ),
+                    tapa_task_graph::port::ArgCategory::Istream
+                    | tapa_task_graph::port::ArgCategory::Ostream
+                    | tapa_task_graph::port::ArgCategory::Istreams
+                    | tapa_task_graph::port::ArgCategory::Ostreams => continue,
+                };
+
+                if !fsm_ports.contains(fsm_in.as_str()) || !fsm_ports.contains(fsm_out.as_str()) {
+                    continue;
+                }
+                let Some(queue_tail) = inst_arg_table.get(&arg.arg) else {
+                    continue;
+                };
+                assigns.push((fsm_in, source));
+                assigns.push((queue_tail.clone(), fsm_out));
+            }
+        }
+    }
+
+    assigns
+}
+
+pub(crate) fn scalar_or_literal_source(name: &str) -> String {
+    if crate::instantiation_builder::is_literal_arg(name) {
+        name.to_owned()
+    } else {
+        tapa_rtl::module::sanitize_array_name(name)
+    }
+}
+
+pub(crate) fn mmap_offset_source(
+    upper_task: &tapa_topology::task::TaskDesign,
+    arg_name: &str,
+) -> String {
+    let sanitized = tapa_rtl::module::sanitize_array_name(arg_name);
+    let chan_count = upper_task
+        .ports
+        .iter()
+        .find(|p| p.name == arg_name)
+        .and_then(|p| p.chan_count);
+    if matches!(chan_count, Some(count) if count > 1) {
+        format!("{sanitized}_0_offset")
+    } else {
+        format!("{sanitized}_offset")
+    }
+}
+
+pub(crate) fn fifo_wire_range(suffix: &str, data_range: Option<&Range>) -> Option<Range> {
+    if matches!(suffix, "_din" | "_dout") {
+        data_range.cloned()
+    } else {
+        None
+    }
+}
+
+/// Parse `taskname_idx` into `(task_name, idx)`.
+pub(crate) fn parse_instance_name(name: &str) -> (String, u32) {
+    if let Some(last_underscore) = name.rfind('_') {
+        if let Ok(idx) = name[last_underscore + 1..].parse::<u32>() {
+            return (name[..last_underscore].to_owned(), idx);
+        }
+    }
+    (name.to_owned(), 0)
+}
+
+/// Build a port range `[width-1:0]` if width > 1.
+pub(crate) fn port_range(width: u32) -> Option<tapa_graphir::Range> {
+    if width > 1 {
+        Some(range_msb(width - 1))
+    } else {
+        None
+    }
+}
+
+/// Declare the six FIFO data/handshake wires for `fifo_name` unless an
+/// identically named port or wire already exists (the exporter's DRC
+/// requires every referenced identifier to be declared). Data suffixes
+/// get the FIFO data range; control suffixes are 1-bit.
+pub(crate) fn declare_fifo_wires(
+    wires: &mut Vec<ModuleNet>,
+    ports: &[ModulePort],
+    fifo_name: &str,
+    data_range: Option<&Range>,
+) {
+    for suffix in ["_din", "_dout", "_empty_n", "_full_n", "_read", "_write"] {
+        let wire_name = format!("{fifo_name}{suffix}");
+        if !ports.iter().any(|p| p.name == wire_name) && !wires.iter().any(|w| w.name == wire_name)
+        {
+            wires.push(make_wire(&wire_name, fifo_wire_range(suffix, data_range)));
+        }
     }
 }
 

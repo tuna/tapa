@@ -129,11 +129,7 @@ pub fn build_upper_task_ir_wires(
 /// grouped module.
 #[must_use]
 pub fn build_top_extra_wires(ctrl_s_axi_ports: &[ModulePort]) -> Vec<ModuleNet> {
-    let axi_ports: &[&str] = &[
-        "AWVALID", "AWREADY", "AWADDR", "WVALID", "WREADY", "WDATA", "WSTRB", "ARVALID", "ARREADY",
-        "ARADDR", "RVALID", "RREADY", "RDATA", "RRESP", "BVALID", "BREADY", "BRESP",
-    ];
-    let mapped: std::collections::BTreeSet<&str> = axi_ports
+    let mapped: std::collections::BTreeSet<&str> = tapa_protocol::S_AXI_LITE_CTRL_PORTS
         .iter()
         .copied()
         .chain(["ACLK", "ARESET", "ACLK_EN"])

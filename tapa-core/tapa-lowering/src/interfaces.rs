@@ -7,7 +7,7 @@ use tapa_topology::program::Program;
 
 use tapa_protocol::{
     HANDSHAKE_CLK, HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY, HANDSHAKE_RST_N,
-    HANDSHAKE_START,
+    HANDSHAKE_START, ISTREAM_SUFFIXES, M_AXI_PREFIX, OSTREAM_SUFFIXES, S_AXI_NAME,
 };
 
 /// Build interfaces for all module definitions: dedicated builders for
@@ -190,23 +190,10 @@ pub fn build_interfaces(
                 },
             ];
             // 5 AXI-Lite channel handshakes
-            for (ports_list, valid, ready) in [
-                (vec!["ARADDR", "ARREADY", "ARVALID"], "ARVALID", "ARREADY"),
-                (vec!["AWADDR", "AWREADY", "AWVALID"], "AWVALID", "AWREADY"),
-                (vec!["BREADY", "BRESP", "BVALID"], "BVALID", "BREADY"),
-                (
-                    vec!["RDATA", "RREADY", "RRESP", "RVALID"],
-                    "RVALID",
-                    "RREADY",
-                ),
-                (
-                    vec!["WDATA", "WREADY", "WSTRB", "WVALID"],
-                    "WVALID",
-                    "WREADY",
-                ),
-            ] {
+            for ch in tapa_protocol::S_AXI_LITE_CHANNELS {
+                let (valid, ready) = (ch.valid, ch.ready);
                 ci.push(make_hs(
-                    ports_list.iter().map(|&s| s.to_owned()).collect(),
+                    ch.ports.iter().map(|&s| s.to_owned()).collect(),
                     Some("ACLK"),
                     Some("ARESET"),
                     valid,
@@ -263,34 +250,22 @@ pub fn build_interfaces(
             // channel handshakes (only if the top module actually exposes
             // the `s_axi_control_*` ports — i.e. ctrl_s_axi is present).
             let mut ti = build_task_port_ifaces(def, &port_names);
-            let has_s_axi_ports = port_names.contains("s_axi_control_ARVALID");
+            let has_s_axi_ports = port_names.contains(format!("{S_AXI_NAME}_ARVALID").as_str());
             if has_s_axi_ports {
-                for (channel, valid, ready) in [
-                    (&["ARADDR", "ARREADY", "ARVALID"][..], "ARVALID", "ARREADY"),
-                    (&["AWADDR", "AWREADY", "AWVALID"][..], "AWVALID", "AWREADY"),
-                    (&["BREADY", "BRESP", "BVALID"][..], "BVALID", "BREADY"),
-                    (
-                        &["RDATA", "RREADY", "RRESP", "RVALID"][..],
-                        "RVALID",
-                        "RREADY",
-                    ),
-                    (
-                        &["WDATA", "WREADY", "WSTRB", "WVALID"][..],
-                        "WVALID",
-                        "WREADY",
-                    ),
-                ] {
-                    let mut ports: Vec<String> = channel
+                for ch in tapa_protocol::S_AXI_LITE_CHANNELS {
+                    let (valid, ready) = (ch.valid, ch.ready);
+                    let mut ports: Vec<String> = ch
+                        .ports
                         .iter()
-                        .map(|&s| format!("s_axi_control_{s}"))
+                        .map(|&s| format!("{S_AXI_NAME}_{s}"))
                         .collect();
                     ports.extend([HANDSHAKE_CLK.into(), HANDSHAKE_RST_N.into()]);
                     ti.push(make_hs(
                         ports,
                         Some(HANDSHAKE_CLK),
                         Some(HANDSHAKE_RST_N),
-                        &format!("s_axi_control_{valid}"),
-                        &format!("s_axi_control_{ready}"),
+                        &format!("{S_AXI_NAME}_{valid}"),
+                        &format!("{S_AXI_NAME}_{ready}"),
                     ));
                 }
             }
@@ -358,10 +333,10 @@ pub fn build_interfaces(
 
             for slot_name in &slot_names {
                 let slot_prefix = format!("{slot_name}_0");
-                let start = format!("{slot_prefix}__ap_start");
-                let done = format!("{slot_prefix}__ap_done");
-                let ready = format!("{slot_prefix}__ap_ready");
-                let idle = format!("{slot_prefix}__ap_idle");
+                let start = format!("{slot_prefix}__{HANDSHAKE_START}");
+                let done = format!("{slot_prefix}__{HANDSHAKE_DONE}");
+                let ready = format!("{slot_prefix}__{HANDSHAKE_READY}");
+                let idle = format!("{slot_prefix}__{HANDSHAKE_IDLE}");
                 // Only emit a per-slot ApCtrl if the FSM actually exposes the
                 // slot-prefixed handshake ports. equivalent always
                 // emits it; we guard here so that minimal test fixtures
@@ -540,9 +515,9 @@ pub fn build_task_port_ifaces_with_scalars(
             // ostream: valid=_write, ready=_full_n; istream: valid=_empty_n, ready=_read.
             let is_out = port_names.contains(&format!("{base}_din"));
             let (suffixes, valid_suffix, ready_suffix): (&[&str], &str, &str) = if is_out {
-                (&["_din", "_full_n", "_write"], "_write", "_full_n")
+                (OSTREAM_SUFFIXES, "_write", "_full_n")
             } else {
-                (&["_dout", "_empty_n", "_read"], "_empty_n", "_read")
+                (ISTREAM_SUFFIXES, "_empty_n", "_read")
             };
             let mut ps: Vec<String> = suffixes.iter().map(|s| format!("{base}{s}")).collect();
             ps.extend([HANDSHAKE_CLK.into(), HANDSHAKE_RST_N.into()]);
@@ -569,7 +544,7 @@ pub fn build_task_port_ifaces_with_scalars(
     // MMAP interfaces: group by arg name, per AXI channel
     let mut mmap_bases = std::collections::HashSet::new();
     for port in ports {
-        if port.name.ends_with("_offset") && !port.name.starts_with("m_axi_") {
+        if port.name.ends_with("_offset") && !port.name.starts_with(M_AXI_PREFIX) {
             let base = port.name.trim_end_matches("_offset");
             mmap_bases.insert(base.to_owned());
         }
@@ -660,7 +635,7 @@ pub fn build_task_port_ifaces_with_scalars(
 
 /// Extract stream base name from a suffixed port name.
 fn extract_stream_base(name: &str) -> Option<&str> {
-    for suffix in &["_dout", "_empty_n", "_read", "_din", "_full_n", "_write"] {
+    for suffix in ISTREAM_SUFFIXES.iter().chain(OSTREAM_SUFFIXES) {
         if let Some(base) = name.strip_suffix(suffix) {
             return Some(base);
         }

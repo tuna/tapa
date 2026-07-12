@@ -378,7 +378,7 @@ fn direct_mmap_connection_expr(
         .or_else(|| {
             child_rtl
                 .and_then(|module| module.find_port(child_axi_port))
-                .and_then(|port| verilog_width_bits(port.width.as_ref()))
+                .and_then(tapa_rtl::port::Port::bit_width)
         })
         .unwrap_or(target_width);
     if child_width >= target_width {
@@ -389,23 +389,6 @@ fn direct_mmap_connection_expr(
         Expr::int(u64::from(child_width - 1)),
         Expr::int(0),
     )
-}
-
-fn verilog_width_bits(width: Option<&tapa_rtl::port::Width>) -> Option<u32> {
-    let Some(width) = width else {
-        return Some(1);
-    };
-    let msb = expression_u32(&width.msb)?;
-    let lsb = expression_u32(&width.lsb)?;
-    Some(msb.abs_diff(lsb) + 1)
-}
-
-fn expression_u32(expr: &tapa_rtl::expression::Expression) -> Option<u32> {
-    expr.iter()
-        .map(|token| token.repr.as_str())
-        .collect::<String>()
-        .parse()
-        .ok()
 }
 
 pub fn mmap_wire_prefix(
@@ -441,9 +424,6 @@ pub(crate) fn generate_child_signals(
     mmap_slave_map: &std::collections::BTreeMap<(String, String, usize), usize>,
     mmap_channel_map: &std::collections::BTreeMap<(String, String, usize), usize>,
 ) -> (Vec<String>, Vec<(String, bool)>) {
-    use std::collections::BTreeMap;
-    use tapa_topology::instance::ArgDesign;
-
     type ChildEntry = (usize, Option<String>, bool, BTreeMap<String, ArgDesign>);
 
     let task = &state.program.tasks[task_name];
@@ -465,6 +445,12 @@ pub(crate) fn generate_child_signals(
         .collect();
 
     for (child_name, entries) in child_entries {
+        // One clone per distinct child task (shared across instances):
+        // `VerilogModule` carries the full RTL source text.
+        let child_rtl = state
+            .module_map
+            .get(&child_name)
+            .map(|module| module.inner.clone());
         for (idx, explicit_name, is_autorun, args) in entries {
             let inst_name = explicit_name.map_or_else(
                 || format!("{child_name}_{idx}"),
@@ -593,11 +579,7 @@ pub(crate) fn generate_child_signals(
 
             // Build per-instance mmap slave index map for crossbar routing
             let mut mmap_bindings = ChildMmapBindings::default();
-            let child_rtl = state
-                .module_map
-                .get(&child_name)
-                .map(|module| module.inner.clone());
-            for (child_port, arg) in &args {
+            for arg in args.values() {
                 if matches!(
                     arg.cat,
                     tapa_task_graph::port::ArgCategory::Mmap
@@ -613,11 +595,12 @@ pub(crate) fn generate_child_signals(
                             mmap_bindings
                                 .wire_id_widths
                                 .insert(arg.arg.clone(), m_axi::crossbar_slave_id_width(conn));
+                            if let Some(slave) = conn.slaves.get(slave_idx) {
+                                mmap_bindings
+                                    .child_id_widths
+                                    .insert(arg.arg.clone(), slave.id_width);
+                            }
                         }
-                        mmap_bindings.child_id_widths.insert(
-                            arg.arg.clone(),
-                            state.child_mmap_id_width(&child_name, child_port),
-                        );
                     }
                     if let Some(&channel_idx) =
                         mmap_channel_map.get(&(arg.arg.clone(), child_name.clone(), idx))
