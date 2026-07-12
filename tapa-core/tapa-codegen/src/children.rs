@@ -110,7 +110,8 @@ pub fn generate_is_done_assign(sig: &InstanceSignals) -> ContinuousAssign {
 
 /// Generate the start logic for an autorun child instance.
 ///
-/// Autorun instances start when the global `ap_start` is asserted.
+/// Autorun instances latch their start signal when the global `ap_start`
+/// is first asserted and keep it high until reset.
 pub fn generate_autorun_start(sig: &InstanceSignals) -> AlwaysBlock {
     AlwaysBlock::new(
         Sensitivity::Posedge(HANDSHAKE_CLK.into()),
@@ -120,9 +121,13 @@ pub fn generate_autorun_start(sig: &InstanceSignals) -> AlwaysBlock {
                 lhs: sig.start_expr(),
                 rhs: Expr::lit("1'b0"),
             }],
-            else_body: vec![Statement::NonblockingAssign {
-                lhs: sig.start_expr(),
-                rhs: Expr::ident(HANDSHAKE_START),
+            else_body: vec![Statement::If {
+                cond: Expr::ident(HANDSHAKE_START),
+                then_body: vec![Statement::NonblockingAssign {
+                    lhs: sig.start_expr(),
+                    rhs: Expr::lit("1'b1"),
+                }],
+                else_body: vec![],
             }],
         }],
     )
@@ -846,13 +851,19 @@ mod tests {
     }
 
     #[test]
-    fn autorun_start_uses_ap_start() {
+    fn autorun_start_latches_until_reset() {
         let sig = InstanceSignals::new("auto_inst", true);
         let block = generate_autorun_start(&sig);
         let text = block.to_string();
         assert!(
-            text.contains("auto_inst__ap_start <= ap_start"),
+            text.contains("if (ap_start)")
+                && text.contains("auto_inst__ap_start <= 1'b1")
+                && text.contains("auto_inst__ap_start <= 1'b0"),
             "got:\n{text}"
+        );
+        assert!(
+            !text.contains("auto_inst__ap_start <= ap_start"),
+            "autorun start must not deassert with the host start pulse:\n{text}"
         );
     }
 
