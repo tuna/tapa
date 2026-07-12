@@ -72,7 +72,8 @@ pub struct ProcessedPort {
 
 /// Process a single port dict into C++ port declaration and HLS pragma.
 ///
-/// `cat`: port category (istream, ostream, scalar, mmap, `async_mmap`, hmap, istreams, ostreams)
+/// `cat`: port category (istream, ostream, scalar, mmap, immap, ommap,
+/// `async_mmap`, hmap, istreams, ostreams)
 /// `name`: port name, possibly with array index like `port[0]`
 /// `port_type`: C++ type string
 pub fn process_port(
@@ -116,7 +117,9 @@ pub fn process_port(
 
     let cpp_port = match effective_cat.as_str() {
         "scalar" | "hmap" => format!("{effective_type} {normalized_name}"),
-        "mmap" | "async_mmap" => format!("{effective_type} {normalized_name}_offset"),
+        "mmap" | "immap" | "ommap" | "async_mmap" => {
+            format!("{effective_type} {normalized_name}_offset")
+        }
         "istream" | "ostream" | "istreams" | "ostreams" => {
             stream_port(&effective_cat, &effective_type, &normalized_name)
         }
@@ -125,7 +128,7 @@ pub fn process_port(
 
     let cpp_pragma = match effective_cat.as_str() {
         "scalar" | "hmap" => scalar_pragma(&normalized_name),
-        "mmap" | "async_mmap" => mmap_pragma(&normalized_name),
+        "mmap" | "immap" | "ommap" | "async_mmap" => mmap_pragma(&normalized_name),
         "istream" | "istreams" => fifo_in_pragma(&normalized_name),
         "ostream" | "ostreams" => fifo_out_pragma(&normalized_name, &effective_type),
         _ => return Err(SlottingError::UnknownPortCategory(effective_cat)),
@@ -159,6 +162,15 @@ mod tests {
     fn async_mmap_port() {
         let p = process_port("async_mmap", "mem", "uint64_t").unwrap();
         assert_eq!(p.cpp_port, "uint64_t mem_offset");
+    }
+
+    #[test]
+    fn directional_mmap_ports() {
+        for cat in ["immap", "ommap"] {
+            let p = process_port(cat, "mem", "uint64_t").unwrap();
+            assert_eq!(p.cpp_port, "uint64_t mem_offset");
+            assert!(p.cpp_pragma.contains("mem_offset register"));
+        }
     }
 
     #[test]

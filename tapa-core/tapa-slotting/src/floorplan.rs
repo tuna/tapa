@@ -227,12 +227,19 @@ fn get_instance_name(task_name: &str, idx: usize) -> String {
     format!("{task_name}_{idx}")
 }
 
+fn is_mmap_category(cat: ArgCategory) -> bool {
+    matches!(
+        cat,
+        ArgCategory::Mmap | ArgCategory::AsyncMmap | ArgCategory::Immap | ArgCategory::Ommap
+    )
+}
+
 /// Connect mmap args in a sub-instance to slot-level port names.
 fn connect_subinst_mmap_to_slot_port(inst: &TaskInstance, inst_name: &str) -> TaskInstance {
     let mut new_inst = inst.clone();
     let mut new_args = BTreeMap::new();
     for (port_name, arg) in &inst.args {
-        if arg.cat == ArgCategory::Mmap || arg.cat == ArgCategory::AsyncMmap {
+        if is_mmap_category(arg.cat) {
             new_args.insert(
                 port_name.clone(),
                 Arg {
@@ -364,7 +371,7 @@ fn get_used_ports(
             });
         for inst in insts {
             for (port_name, arg) in &inst.args {
-                if arg.cat == ArgCategory::Mmap || arg.cat == ArgCategory::AsyncMmap {
+                if is_mmap_category(arg.cat) {
                     continue;
                 }
                 let arg_name = &arg.arg;
@@ -412,7 +419,7 @@ fn infer_mmap_ports_from_subtasks(
                 None => task_name.clone(),
             };
             for port in task_ports {
-                if port.cat == ArgCategory::Mmap || port.cat == ArgCategory::AsyncMmap {
+                if is_mmap_category(port.cat) {
                     ports.push(Port {
                         cat: port.cat,
                         name: format!("{}_{}", port.name, inst_name),
@@ -444,11 +451,7 @@ fn build_top_slot_insts(
 
         let mut args = BTreeMap::new();
         for (port_name, port) in &slot_ports {
-            if port.cat == ArgCategory::Mmap
-                || port.cat == ArgCategory::Immap
-                || port.cat == ArgCategory::Ommap
-                || port.cat == ArgCategory::AsyncMmap
-            {
+            if is_mmap_category(port.cat) {
                 continue;
             }
             let formatted = port_name.replace('[', "_").replace(']', "");
@@ -548,7 +551,7 @@ fn get_slot_inst_mmap_port_args(
                 continue;
             }
             for (port_name, arg) in &inst.args {
-                if arg.cat == ArgCategory::Mmap || arg.cat == ArgCategory::AsyncMmap {
+                if is_mmap_category(arg.cat) {
                     let slot_port_name = format!("{port_name}_{inst_name}");
                     args.insert(slot_port_name, arg.clone());
                 }
@@ -766,6 +769,68 @@ mod tests {
         assert!(
             !mmap_ports.iter().any(|n| n.contains("worker_0")),
             "mmap port should NOT use slot-local index worker_0, got: {mmap_ports:?}"
+        );
+    }
+
+    #[test]
+    fn floorplan_preserves_directional_mmap_ports() {
+        let graph = graph_from_value(json!({
+            "top": "top_func",
+            "tasks": {
+                "top_func": {
+                    "level": "upper",
+                    "code": "extern \"C\" {\nvoid top_func() {}\n}  // extern \"C\"\n",
+                    "target": "xilinx-hls",
+                    "ports": [
+                        {"cat": "immap", "name": "src", "type": "uint64_t", "width": 64},
+                        {"cat": "ommap", "name": "dst", "type": "uint64_t", "width": 64}
+                    ],
+                    "tasks": {
+                        "worker": [{"args": {
+                            "input_mem": {"arg": "src", "cat": "immap"},
+                            "output_mem": {"arg": "dst", "cat": "ommap"}
+                        }, "step": 0}]
+                    },
+                    "fifos": {}
+                },
+                "worker": {
+                    "level": "lower",
+                    "code": "",
+                    "target": "xilinx-hls",
+                    "ports": [
+                        {"cat": "immap", "name": "input_mem", "type": "uint64_t", "width": 64},
+                        {"cat": "ommap", "name": "output_mem", "type": "uint64_t", "width": 64}
+                    ],
+                    "tasks": {},
+                    "fifos": {}
+                }
+            }
+        }));
+        let slot_name = "SLOT_X0Y0_TO_SLOT_X0Y0";
+        let slot_to_insts = BTreeMap::from([(slot_name.to_owned(), vec!["worker_0".to_owned()])]);
+
+        let result = get_floorplan_graph(&graph, &slot_to_insts).unwrap();
+        let slot = &result.tasks[slot_name];
+        assert!(slot
+            .ports
+            .iter()
+            .any(|p| p.name == "input_mem_worker_0" && p.cat == ArgCategory::Immap));
+        assert!(slot
+            .ports
+            .iter()
+            .any(|p| p.name == "output_mem_worker_0" && p.cat == ArgCategory::Ommap));
+
+        let worker = &slot.tasks["worker"][0];
+        assert_eq!(worker.args["input_mem"].arg, "input_mem_worker_0");
+        assert_eq!(worker.args["output_mem"].arg, "output_mem_worker_0");
+
+        let slot_inst = &result.tasks["top_func"].tasks[slot_name][0];
+        assert_eq!(slot_inst.args["input_mem_worker_0"].arg, "src");
+        assert_eq!(slot_inst.args["input_mem_worker_0"].cat, ArgCategory::Immap);
+        assert_eq!(slot_inst.args["output_mem_worker_0"].arg, "dst");
+        assert_eq!(
+            slot_inst.args["output_mem_worker_0"].cat,
+            ArgCategory::Ommap
         );
     }
 
