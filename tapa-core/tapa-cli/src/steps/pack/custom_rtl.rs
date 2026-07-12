@@ -1,13 +1,13 @@
 //! `--custom-rtl` overlay: copy user-provided RTL files into
-//! `<work_dir>/rtl` after validating their port signatures match the
-//! template slot recorded in `templates_info.json`.
+//! `<work_dir>/rtl` after validating their port signatures against the
+//! generated placeholder module.
 //!
 //! 1. Expand each CLI path: files are accepted verbatim, directories
 //!    are globbed recursively.
 //! 2. For each `.v` file whose module name appears in
-//!    `templates_info.json`, compare the parsed port set with the
-//!    recorded template ports. Mismatches log a warning; unknown
-//!    modules are accepted as helpers.
+//!    `templates_info.json`, compare the parsed port set with the generated
+//!    `<work_dir>/rtl/<module>.v` placeholder. Mismatches log a warning;
+//!    unknown modules are accepted as helpers.
 //! 3. Copy every collected file into `<work_dir>/rtl` (overwriting
 //!    generated templates when names collide).
 //!
@@ -17,16 +17,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use tapa_rtl::port::Direction;
 use tapa_rtl::VerilogModule;
-
-fn direction_str(dir: Direction) -> &'static str {
-    match dir {
-        Direction::Input => "input",
-        Direction::Output => "output",
-        Direction::Inout => "inout",
-    }
-}
 
 use crate::error::{CliError, Result};
 
@@ -116,7 +107,7 @@ pub(super) fn apply_custom_rtl(
         )));
     }
 
-    check_custom_rtl_format(&files, templates_info);
+    check_custom_rtl_format(&files, rtl_dir, templates_info);
 
     for src in &files {
         let file_name = src.file_name().ok_or_else(|| {
@@ -160,7 +151,17 @@ fn copy_overlay(src: &Path, dest: &Path) -> Result<CopyOutcome> {
 ///   `templates_info` are silently accepted as helper modules.
 /// * Port-signature mismatches against a known template key log a
 ///   warning and proceed.
-fn check_custom_rtl_format(rtl_files: &[PathBuf], templates_info: &TemplatesInfo) {
+fn module_port_shape(
+    module: &VerilogModule,
+) -> BTreeMap<String, (tapa_rtl::port::Direction, Option<tapa_rtl::port::Width>)> {
+    module
+        .ports
+        .iter()
+        .map(|port| (port.name.clone(), (port.direction, port.width.clone())))
+        .collect()
+}
+
+fn check_custom_rtl_format(rtl_files: &[PathBuf], rtl_dir: &Path, templates_info: &TemplatesInfo) {
     for path in rtl_files {
         if path.extension().and_then(|s| s.to_str()) != Some("v") {
             log::warn!(
@@ -185,25 +186,34 @@ fn check_custom_rtl_format(rtl_files: &[PathBuf], templates_info: &TemplatesInfo
         };
         // Unknown module names are helper modules,
         // not mistyped keys — skip silently.
-        let Some(expected_ports) = templates_info.get(&module.name) else {
+        if !templates_info.contains_key(&module.name) {
+            continue;
+        }
+        let placeholder_path = rtl_dir.join(format!("{}.v", module.name));
+        let Ok(placeholder_source) = fs_err::read_to_string(&placeholder_path) else {
+            log::warn!(
+                "custom-rtl: cannot check {} because placeholder {} is missing",
+                path.display(),
+                placeholder_path.display(),
+            );
             continue;
         };
-        let got: Vec<String> = module
-            .ports
-            .iter()
-            .map(|p| format!("{}: {}", p.name, direction_str(p.direction)))
-            .collect();
-        let mut expected_sorted = expected_ports.clone();
-        expected_sorted.sort();
-        let mut got_sorted = got.clone();
-        got_sorted.sort();
-        if expected_sorted != got_sorted {
+        let Ok(placeholder) = VerilogModule::parse(&placeholder_source) else {
+            log::warn!(
+                "custom-rtl: cannot parse generated placeholder {}",
+                placeholder_path.display(),
+            );
+            continue;
+        };
+        let expected = module_port_shape(&placeholder);
+        let got = module_port_shape(&module);
+        if expected != got {
             log::warn!(
                 "custom-rtl: {} does not match template {} ports. \
                  Expected: {:?} Got: {:?}",
                 path.display(),
                 module.name,
-                expected_ports,
+                expected,
                 got,
             );
         }
@@ -267,7 +277,10 @@ mod tests {
         fs_err::create_dir_all(&rtl_dir).expect("mkdir rtl");
 
         let seed = rtl_dir.join("Foo.v");
-        write(&seed, "module Foo(input wire clk); endmodule\n");
+        write(
+            &seed,
+            "module Foo(input wire clk, input wire rst); endmodule\n",
+        );
 
         let src = dir.path().join("overlay").join("Foo.v");
         write(
@@ -288,6 +301,25 @@ mod tests {
             copied.contains("rst"),
             "placeholder template must be overwritten by the overlay"
         );
+    }
+
+    #[test]
+    fn port_shape_matches_ansi_and_nonansi_declarations() {
+        let ansi = VerilogModule::parse(
+            "module Foo(input wire clk, input wire [31:0] data, output wire done); endmodule\n",
+        )
+        .expect("parse ANSI module");
+        let nonansi = VerilogModule::parse(
+            "module Foo(clk, data, done); input clk; input [31:0] data; output done; endmodule\n",
+        )
+        .expect("parse non-ANSI module");
+        assert_eq!(module_port_shape(&ansi), module_port_shape(&nonansi));
+
+        let wrong_width = VerilogModule::parse(
+            "module Foo(input wire clk, input wire [15:0] data, output wire done); endmodule\n",
+        )
+        .expect("parse mismatched module");
+        assert_ne!(module_port_shape(&ansi), module_port_shape(&wrong_width));
     }
 
     /// Unknown module names are helper modules, not mistyped keys:
