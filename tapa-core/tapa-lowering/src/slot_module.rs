@@ -15,7 +15,7 @@ use crate::utils::{
 };
 use crate::utils::{input_wire, make_wire, range_msb};
 use tapa_protocol::{
-    HANDSHAKE_CLK, HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY, HANDSHAKE_RST, HANDSHAKE_RST_N,
+    HANDSHAKE_CLK, HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY, HANDSHAKE_RST_N,
     HANDSHAKE_START,
 };
 
@@ -61,14 +61,8 @@ pub fn build_slot_module(
         crate::utils::output_wire(HANDSHAKE_READY, None),
     ];
     let mut submodules = Vec::new();
-    let mut wires = Vec::new();
+    let mut wires: Vec<tapa_graphir::ModuleNet> = Vec::new();
     let mut direct_assigns = Vec::new();
-
-    // slot grouped modules do not contain a reset_inverter
-    // instance; the reset_inverter is a top-level instance only. Keep the
-    // `ap_rst` wire declaration for local signals that reference it, but
-    // skip the per-slot instantiation.
-    wires.push(make_wire(HANDSHAKE_RST, None));
 
     // Add pipeline wires from arg table for instances in this slot
     for inst_name in inst_names {

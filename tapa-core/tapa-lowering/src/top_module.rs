@@ -10,7 +10,7 @@ use crate::module_defs::get_reset_inverter_inst;
 use crate::utils::{attach_grouped_assigns, build_arg_pipeline_assigns};
 use crate::utils::{input_wire, make_wire, range_msb};
 use tapa_protocol::{
-    HANDSHAKE_CLK, HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY, HANDSHAKE_RST, HANDSHAKE_RST_N,
+    HANDSHAKE_CLK, HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY, HANDSHAKE_RST_N,
     HANDSHAKE_START, S_AXI_LITE_CTRL_PORTS, S_AXI_NAME,
 };
 
@@ -99,12 +99,7 @@ pub fn build_top_module(
     }
 
     let mut submodules = vec![get_reset_inverter_inst(default_region.as_deref())];
-    // `rst` is the output of reset_inverter; `ap_rst` is the same signal
-    // Two spellings of the active-high reset coexist: `ap_rst` (used by
-    // TAPA codegen) and `rst` (used by ctrl_s_axi's ARESET and the
-    // reset_inverter.rst connection).
     let mut wires = vec![
-        make_wire(HANDSHAKE_RST, None),
         make_wire("rst", None),
         make_wire(HANDSHAKE_START, None),
         make_wire(HANDSHAKE_DONE, None),

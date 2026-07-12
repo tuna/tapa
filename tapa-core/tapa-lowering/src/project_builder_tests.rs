@@ -95,6 +95,21 @@ fn build_project_produces_modules() {
         project.has_module("reset_inverter"),
         "should have reset_inverter"
     );
+    for module_name in ["top_task", "SLOT_0"] {
+        let module = project
+            .modules
+            .module_definitions
+            .iter()
+            .find(|module| module.name() == module_name)
+            .expect("grouped module");
+        let AnyModuleDefinition::Grouped { grouped, .. } = module else {
+            panic!("{module_name} should be grouped");
+        };
+        assert!(
+            grouped.wires.iter().all(|wire| wire.name != "ap_rst"),
+            "{module_name} should not declare an undriven ap_rst net"
+        );
+    }
 }
 
 #[test]
