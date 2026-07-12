@@ -1,7 +1,5 @@
 //! Extract per-task HLS C++ source files from `design.json` into
 //! `<work_dir>/cpp/<task>.cpp`.
-//!
-//! Matches the behavior.
 
 use std::fs;
 use std::path::{Path, PathBuf};

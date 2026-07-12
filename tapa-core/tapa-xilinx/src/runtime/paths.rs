@@ -114,9 +114,8 @@ pub fn get_vendor_include_paths() -> Vec<Utf8PathBuf> {
     vendor_include_paths_inner(cfg!(target_os = "linux"))
 }
 
-/// TAPA runtime include directories in the order prepends them.
-///
-/// Matches the behavior: `tapa-lib-include`
+/// TAPA runtime include directories, in prepend order:
+/// `tapa-lib-include`
 /// first (required to make Vitis happy), then the optional
 /// `fpga-runtime-include` and `tapa-extra-runtime-include` when they
 /// exist. Each slot is resolved in order from:
@@ -124,9 +123,8 @@ pub fn get_vendor_include_paths() -> Vec<Utf8PathBuf> {
 ///    primary include directory.
 /// 2. `TAPA_INCLUDE_DIRS` — a `:`-separated list, first entry used.
 ///
-/// When nothing resolves, the slot is skipped (matches current
-/// "warn and continue" semantics when TAPA runtime libs are not
-/// installed).
+/// When nothing resolves, the slot is skipped ("warn and continue"
+/// semantics for hosts without the TAPA runtime libs installed).
 fn resolve_tapa_include(env_key: &str) -> Option<Utf8PathBuf> {
     if let Ok(raw) = std::env::var(env_key) {
         let p = Utf8PathBuf::from(raw);
@@ -137,8 +135,8 @@ fn resolve_tapa_include(env_key: &str) -> Option<Utf8PathBuf> {
     None
 }
 
-/// Candidate subpaths for each logical include slot. Mirrors
-/// `POTENTIAL_PATHS` in the implementation.
+/// Candidate subpaths for each logical include slot, probed in order
+/// against every search root.
 const TAPA_LIB_INCLUDE_SUBPATHS: &[&str] = &["tapa-lib", "usr/include"];
 const FPGA_RUNTIME_INCLUDE_SUBPATHS: &[&str] = &["fpga-runtime", "usr/include"];
 const TAPA_EXTRA_RUNTIME_INCLUDE_SUBPATHS: &[&str] = &[
@@ -229,8 +227,8 @@ fn tapa_include_dirs() -> Vec<Utf8PathBuf> {
     };
 
     // tapa-lib-include: env override first, then auto-discovery
-    // requiring `tapa.h` as a sentinel (matches extra
-    // validation step).
+    // requiring `tapa.h` as a sentinel that the directory really is
+    // the TAPA library include root.
     let tapa_lib = resolve_tapa_include("TAPA_LIB_INCLUDE")
         .or_else(|| auto(TAPA_LIB_INCLUDE_SUBPATHS, Some("tapa.h")));
     if let Some(p) = tapa_lib {
@@ -267,11 +265,8 @@ fn tapa_include_dirs() -> Vec<Utf8PathBuf> {
     out
 }
 
-/// Base TAPA CFLAGS: TAPA runtime includes + warning suppressions +
-/// builtin-define shims.
-///
-/// Matches the behavior, including the
-/// leading `-isystem` entries for TAPA runtime include directories.
+/// Base TAPA CFLAGS: `-isystem` entries for the TAPA runtime include
+/// directories, warning suppressions, and builtin-define shims.
 pub fn get_tapa_cflags() -> Vec<String> {
     let mut out = Vec::new();
     for p in tapa_include_dirs() {
@@ -293,7 +288,6 @@ fn darwin_assert_compat() -> String {
 
 /// CFLAGS for `tapacc` with HLS vendor libraries.
 ///
-/// Matches the behavior.
 /// When `for_remote_hls` is true, GCC vendor stdlib headers are
 /// included regardless of the local OS; this matches running HLS on a
 /// remote Linux host from a macOS workstation.
@@ -318,11 +312,9 @@ pub fn get_tapacc_cflags(for_remote_hls: bool) -> Vec<String> {
     out
 }
 
-/// CFLAGS for remote HLS compilation from the host.
-///
-/// Matches the behavior: base TAPA
-/// CFLAGS plus the Darwin `__assert_rtn` compatibility define when
-/// running on macOS.
+/// CFLAGS for remote HLS compilation from the host: base TAPA CFLAGS
+/// plus the Darwin `__assert_rtn` compatibility define when running on
+/// macOS.
 pub fn get_remote_hls_cflags() -> Vec<String> {
     let mut out = get_tapa_cflags();
     if cfg!(target_os = "macos") {

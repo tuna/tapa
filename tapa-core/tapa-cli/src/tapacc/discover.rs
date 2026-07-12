@@ -13,8 +13,8 @@ use regex::Regex;
 
 use crate::error::{CliError, Result};
 
-/// Mirror of the implementation. Order is preserved so
-/// a higher-priority match wins (matches the tuple-iteration order).
+/// Resource-name → candidate relative paths, in priority order: the
+/// first existing match wins.
 pub static POTENTIAL_PATHS: &[(&str, &[&str])] = &[
     ("fpga-runtime-include", &["fpga-runtime", "usr/include"]),
     (

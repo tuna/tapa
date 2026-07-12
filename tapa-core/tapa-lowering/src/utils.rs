@@ -13,7 +13,7 @@ pub const M_AXI_PREFIX: &str = "m_axi_";
 
 /// M-AXI read channel suffixes.
 ///
-/// Matches `tapa.protocol.M_AXI_SUFFIXES` on the read side —
+/// The read-side subset of `tapa_protocol::M_AXI_SUFFIXES` —
 /// notably does NOT include `_ARREGION`, which the Vitis top RTL
 /// declares on scalar/mmap ports but grouped-module lowering
 /// never emits.
@@ -24,7 +24,7 @@ pub const M_AXI_READ_SUFFIXES: &[&str] = &[
 
 /// M-AXI write channel suffixes.
 ///
-/// Matches `tapa.protocol.M_AXI_SUFFIXES` on the write side —
+/// The write-side subset of `tapa_protocol::M_AXI_SUFFIXES` —
 /// notably does NOT include `_AWREGION`.
 pub const M_AXI_WRITE_SUFFIXES: &[&str] = &[
     "_AWVALID", "_AWREADY", "_AWADDR", "_AWID", "_AWLEN", "_AWSIZE", "_AWBURST", "_AWLOCK",

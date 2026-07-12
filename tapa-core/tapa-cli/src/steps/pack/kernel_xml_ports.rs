@@ -12,9 +12,8 @@ use tapa_task_graph::port::{ArgCategory, Port};
 use tapa_xilinx::{KernelXmlPort, PortCategory};
 
 /// Project a `tapa_task_graph::Port` list into the `KernelXmlPort`
-/// shape `tapa_xilinx::emit_kernel_xml` expects. Mirrors the current
-/// `print_kernel_xml` logic in the implementation plus the
-/// `range_or_none` channel-fan-out unrolling.
+/// shape `tapa_xilinx::emit_kernel_xml` expects, including the
+/// channel fan-out unrolling for hmap ports.
 #[cfg(test)]
 pub(super) fn build_kernel_xml_ports(ports: &[Port]) -> Vec<KernelXmlPort> {
     build_kernel_xml_ports_impl(ports, None)

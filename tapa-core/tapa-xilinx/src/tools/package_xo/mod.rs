@@ -143,11 +143,10 @@ fn format_package_xo_tcl(
 /// `tclargs` to Vivado: `$tmpdir $hdl_dir $xo_file $kernel_xml_path`.
 pub fn pack_xo(runner: &dyn ToolRunner, inputs: &PackageXoInputs) -> Result<Utf8PathBuf> {
     let out = pack_xo_without_redaction(runner, inputs)?;
-    // compatibility: bundle the HLS report files (`self.report_paths`
-    // + `report/*_csynth.xml`) into the packaged `.xo` before the
-    // reproducibility redaction pass. Downstream inspection tooling
-    // reads these archived reports; the previous implementation
-    // redacted the raw Vivado `.xo` and dropped them.
+    // Bundle the HLS report files (report.{json,yaml} +
+    // `report/*_csynth.xml`) into the packaged `.xo` before the
+    // reproducibility redaction pass; downstream inspection tooling
+    // reads these archived reports.
     if !inputs.report_paths.is_empty() {
         bundle_report_paths_into_xo(&out, &inputs.report_paths)?;
     }

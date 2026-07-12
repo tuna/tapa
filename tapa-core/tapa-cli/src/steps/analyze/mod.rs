@@ -127,8 +127,9 @@ pub fn run(args: &AnalyzeArgs, ctx: &mut CliContext) -> Result<()> {
     run_native(args, ctx)
 }
 
-/// Native implementation. Matches the behavior minus the
-/// `--flatten-hierarchy` transform and the heavy `Program` orchestration.
+/// Run tapacc on each input, merge the task graphs, and write
+/// `<work_dir>/graph.json` (plus the flattened sources when
+/// `--flatten-hierarchy` is set).
 fn run_native(args: &AnalyzeArgs, ctx: &CliContext) -> Result<()> {
     // `--tapacc`/`--tapa-cpp` override the walk-up `find_resource`
     // search. Used by the Bazel driver to inject the exact sandbox

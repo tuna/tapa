@@ -143,7 +143,7 @@ pub fn parse_xpfm(bytes: &[u8]) -> Result<DeviceInfo> {
 }
 
 /// Resolve the `.xsa`/`.dsa` file under `<platform_path>/hw/`, then
-/// parse it. Matches the behavior.
+/// parse it.
 pub fn parse_device_info(
     platform_path: &Utf8PathBuf,
     part_num_override: Option<&str>,

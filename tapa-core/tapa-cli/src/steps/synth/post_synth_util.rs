@@ -125,10 +125,9 @@ fn optional_mtime(path: &Path) -> Option<SystemTime> {
     fs::metadata(path).and_then(|m| m.modified()).ok()
 }
 
-/// compatibility: re-run Vivado if the C++ source is strictly newer
-/// than the cached report. When either mtime is unreadable we err on
-/// the side of running — matching `os.path.getmtime(...) >
-/// rpt_path_mtime` with `rpt_path_mtime = 0.0` when the file is absent.
+/// Re-run Vivado if the C++ source is strictly newer than the cached
+/// report. When either mtime is unreadable we err on the side of
+/// running (a missing report counts as infinitely old).
 fn should_run_vivado(cpp_path: &Path, rpt_mtime: Option<SystemTime>) -> bool {
     let Ok(cpp_meta) = fs::metadata(cpp_path) else {
         return true;

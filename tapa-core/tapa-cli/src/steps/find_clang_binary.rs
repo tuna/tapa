@@ -1,8 +1,5 @@
-//! Hidden `find-clang-binary` subcommand.
-//!
-//! Matches the behavior: resolves a
-//! clang-family helper and prints its absolute path with no trailing
-//! newline.
+//! Hidden `find-clang-binary` subcommand: resolves a clang-family
+//! helper and prints its absolute path with no trailing newline.
 
 use std::io::Write;
 

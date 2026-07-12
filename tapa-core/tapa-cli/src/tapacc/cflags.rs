@@ -1,5 +1,4 @@
-//! Pure-function ports of `tapa.common.paths.{get_tapa_cflags,
-//! get_tapacc_cflags, get_remote_hls_cflags, get_system_cflags}`.
+//! CFLAGS/LDFLAGS construction for compiling TAPA programs.
 //!
 //! The vendor include resolution and macOS sysroot probe live behind
 //! pluggable closures so unit tests can drive deterministic fixtures.
@@ -9,8 +8,8 @@ use std::process::Command;
 
 use crate::tapacc::discover::find_resource;
 
-/// Output of [`get_tapa_cflags`]. Mirrors the tuple, preserving
-/// order so vendor headers cascade correctly through `tapacc`.
+/// Base TAPA include flags plus warning suppressions. Order is
+/// significant so vendor headers cascade correctly through `tapacc`.
 pub fn get_tapa_cflags() -> Vec<String> {
     let mut flags = Vec::<String>::new();
 
@@ -42,8 +41,7 @@ pub fn get_tapa_cflags() -> Vec<String> {
     flags
 }
 
-/// Compose the CFLAGS that `tapacc` itself wants. Mirrors
-/// `get_tapacc_cflags(for_remote_hls)`.
+/// Compose the CFLAGS that `tapacc` itself wants.
 pub fn get_tapacc_cflags(for_remote_hls: bool) -> Vec<String> {
     let include_gcc = is_linux() || for_remote_hls;
     let mut flags = Vec::<String>::new();
@@ -81,9 +79,9 @@ pub fn get_remote_hls_cflags() -> Vec<String> {
     flags
 }
 
-/// CFLAGS for compiling C++ with the system clang/llvm. Mirrors
-/// `get_system_cflags()`: `-isysroot` from `xcrun --show-sdk-path` on
-/// macOS plus `-idirafter <tapa-system-include>` if available.
+/// CFLAGS for compiling C++ with the system clang/llvm: `-isysroot`
+/// from `xcrun --show-sdk-path` on macOS plus
+/// `-idirafter <tapa-system-include>` if available.
 pub fn get_system_cflags() -> Vec<String> {
     let mut flags = macos_sysroot_flags();
     if let Ok(p) = find_resource("tapa-system-include") {
@@ -94,7 +92,7 @@ pub fn get_system_cflags() -> Vec<String> {
 
 /// LDFLAGS for linking TAPA programs.
 ///
-/// Matches the behavior: derives `-L` and
+/// Derives `-L` and
 /// `-Wl,-rpath` from `find_resource("fpga-runtime-lib")` /
 /// `find_resource("tapa-lib-lib")`, plus every external library
 /// directory the Bazel runfiles tree provides (gflags, glog, boost).
@@ -126,7 +124,7 @@ pub fn get_tapa_ldflags() -> Vec<String> {
     out
 }
 
-/// Implementation of. Walks
+/// Walks
 /// the parents of the binary looking for a `tapa.runfiles` tree and
 /// returns the external library directories Bazel stages there
 /// (gflags, glog, boost). Outside of Bazel, no `tapa.runfiles` exists
@@ -242,8 +240,7 @@ fn is_macos() -> bool {
     cfg!(target_os = "macos")
 }
 
-/// Full `tapacc` argv (without the binary path itself). Mirrors the
-/// argument tuple in the implementation.
+/// Full `tapacc` argv (without the binary path itself).
 pub fn run_tapacc_argv(
     files: &[PathBuf],
     top: &str,

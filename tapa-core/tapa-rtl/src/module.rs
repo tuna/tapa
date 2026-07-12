@@ -32,8 +32,7 @@ pub struct VerilogModule {
 }
 
 /// Vitis-generated RTL infixes tried when looking up a FIFO port by its
-/// logical argument name. Mirrors `_FIFO_INFIXES` in
-/// the implementation.
+/// logical argument name.
 pub const FIFO_INFIXES: &[&str] = &["_V", "_r", "_s", ""];
 
 static ARRAY_NAME_WITH_SUFFIX_RE: LazyLock<regex::Regex> =
@@ -63,8 +62,6 @@ impl VerilogModule {
 
     /// Resolve a FIFO / stream port by its logical base name and a suffix
     /// like `_din`, `_dout`, `_full_n`, `_empty_n`, `_read`, `_write`.
-    ///
-    /// Mirrors `tapa.verilog.xilinx.module_ops.ports.get_port_of`:
     ///
     /// 1. Sanitize array-style names (`a[3]` → `a_3`).
     /// 2. Try each `FIFO_INFIXES` entry in order (`_V`, `_r`, `_s`, `""`)
@@ -96,9 +93,9 @@ impl VerilogModule {
     ///
     /// Returns a list of `(module_name, instance_name)` pairs for every
     /// `module_name #(...) instance_name (...);` occurrence in the
-    /// module body. Used by cross-language grouped-Verilog compatibility tests
-    /// so and Rust exports can be compared on the shape of their
-    /// instance lists without a full syntactic roundtrip.
+    /// module body. Used by grouped-Verilog tests to compare exports on
+    /// the shape of their instance lists without a full syntactic
+    /// roundtrip.
     ///
     /// Implementation: a minimal token scan that recognizes an
     /// instantiation as `ident [#(parens)] ident (parens);`. Comments,
@@ -111,8 +108,7 @@ impl VerilogModule {
     }
 }
 
-/// Match `name[idx]` and return `(name, idx)`. Mirrors current
-/// `match_array_name` in the implementation.
+/// Match `name[idx]` and return `(name, idx)`.
 #[must_use]
 pub fn match_array_name(name: &str) -> Option<(&str, u32)> {
     let lb = name.find('[')?;
@@ -132,8 +128,7 @@ pub fn match_array_name(name: &str) -> Option<(&str, u32)> {
     Some((base, idx))
 }
 
-/// Collapse `name[idx]` into `name_{idx}`. Mirrors current
-/// `sanitize_array_name` in the implementation.
+/// Collapse `name[idx]` into `name_{idx}`.
 #[must_use]
 pub fn sanitize_array_name(name: &str) -> String {
     ARRAY_NAME_WITH_SUFFIX_RE.captures(name).map_or_else(

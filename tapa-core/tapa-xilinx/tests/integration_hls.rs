@@ -75,10 +75,9 @@ fn run_vadd_hls<R: ToolRunner>(runner: &R) {
         "no reports produced; stdout={}",
         out.stdout
     );
-    // Real HLS artifacts must land in the caller-visible output dirs
-    // (compatibility: the implementation copies
-    // `project/<solution>/syn/report` and `.../syn/verilog` onto the
-    // paths the caller provides).
+    // Real HLS artifacts must land in the caller-visible output dirs:
+    // `run_hls` copies `project/<solution>/syn/report` and
+    // `.../syn/verilog` onto the paths the caller provides.
     assert!(
         reports.is_dir(),
         "reports_out_dir missing: {}",

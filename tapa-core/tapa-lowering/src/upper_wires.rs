@@ -1,7 +1,4 @@
-//! equivalent wire synthesis for upper (slot + top) grouped modules.
-//!
-//! Matches the behavior
-//! and the implementation.
+//! Wire synthesis for upper (slot + top) grouped modules.
 
 use std::collections::BTreeMap;
 
@@ -143,10 +140,9 @@ pub fn build_top_extra_wires(ctrl_s_axi_ports: &[ModulePort]) -> Vec<ModuleNet> 
 }
 
 /// Try to infer the data range of a FIFO by looking up the producer's
-/// `_din` port on the submodule IR. Mirrors current
-/// `tapa.graphir_conversion.pipeline.fifo_builder.infer_fifo_data_range`.
+/// `_din` port on the submodule IR.
 ///
-/// `is_top` mirrors `infer_port_name_from_tapa_module=not is_top`:
+/// `is_top` selects the port-name resolution strategy:
 ///   * `is_top=false`: use the producer's child RTL `get_port_of` lookup
 ///     (applies `_FIFO_INFIXES` normalization) for slot-local FIFOs.
 ///   * `is_top=true`: use the plain `{fifo_name}_din` port name, since the

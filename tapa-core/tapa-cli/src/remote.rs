@@ -1,6 +1,6 @@
 //! Remote-config bootstrap for the `tapa` CLI entry.
 //!
-//! Matches the behavior lines 130-181:
+//! Resolution happens in three stages:
 //!
 //! 1. `load_remote_config(remote_host)` — read `~/.taparc` (YAML),
 //!    optionally splice in `--remote-host=user@host[:port]`. Returns
@@ -17,7 +17,7 @@
 //! The `~/.taparc` location is resolved via:
 //!   - `TAPA_RC_PATH` env var (test override), then
 //!   - `$HOME/.taparc`, then
-//!   - skipped if `HOME` is unset (matches silent skip).
+//!   - silently skipped if `HOME` is unset.
 //!
 //! The function is deliberately small — anything more complex belongs
 //! in `tapa-xilinx` (where the `RemoteConfig` schema lives).
@@ -45,7 +45,6 @@ fn taparc_path() -> Option<PathBuf> {
 }
 
 /// Parse `user@host[:port]` into the three optional pieces.
-/// Matches the behavior.
 fn parse_remote_host_spec(spec: &str) -> std::result::Result<RemoteHostSpec, String> {
     let (user, rest) = match spec.split_once('@') {
         Some((u, r)) => (Some(u.to_string()), r),
@@ -75,11 +74,9 @@ struct RemoteHostSpec {
 
 /// Read `~/.taparc` and return the `remote` mapping as a YAML value.
 /// Returns `None` when the file is absent, unreadable, malformed, or
-/// its `remote:` section is missing — current
-/// `tapa.remote.config.load_remote_config` logs a warning and
-/// continues for every one of these cases, and Rust must match that
-/// compatibility behavior (a fatal Rust error used to block `tapa version`
-/// for users with a stale `~/.taparc`).
+/// its `remote:` section is missing. Every one of these cases is
+/// deliberately non-fatal (warn and continue): a stale `~/.taparc`
+/// must not block unrelated commands like `tapa version`.
 fn load_taparc_remote_section(path: &Path) -> Option<serde_yaml::Value> {
     let text = match std::fs::read_to_string(path) {
         Ok(t) => t,
@@ -238,10 +235,10 @@ pub fn build_remote_config(globals: &GlobalArgs) -> Result<Option<RemoteConfig>>
     Ok(Some(cfg))
 }
 
-/// Side effects after a config is resolved: mirror the current
-/// `sync_remote_vendor_includes` + `os.environ.setdefault` block.
-/// Sync failures are logged and swallowed so test environments
-/// without SSH still run.
+/// Side effects after a config is resolved: sync vendor includes from
+/// the remote and export `XILINX_HLS`/`XILINX_VITIS` defaults into the
+/// process environment. Sync failures are logged and swallowed so test
+/// environments without SSH still run.
 fn sync_and_export_env(cfg: &RemoteConfig) {
     let session = SshSession::new(cfg.clone(), SshMuxOptions::default());
     match sync_remote_vendor_includes(&session) {

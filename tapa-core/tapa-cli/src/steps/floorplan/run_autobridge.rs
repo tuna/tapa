@@ -1,17 +1,14 @@
 //! `tapa run-autobridge` orchestration (local + remote).
 //!
-//! Ports `tapa.steps.floorplan.run_autobridge`: sanitize the floorplan
-//! config (drop pre-assignments), spawn `rapidstream-tapafp`, and log
-//! every `solution_*/floorplan.json` the tool emits. Dispatch goes
-//! through `tapa_xilinx::ToolRunner` so the same code path covers:
+//! Sanitize the floorplan config (drop pre-assignments), spawn
+//! `rapidstream-tapafp`, and log every `solution_*/floorplan.json` the
+//! tool emits. Dispatch goes through `tapa_xilinx::ToolRunner` so the
+//! same code path covers:
 //!
-//!   * `LocalToolRunner` — spawn locally (compatibility
-//!     `subprocess.run`).
+//!   * `LocalToolRunner` — spawn locally.
 //!   * `RemoteToolRunner` — tar-pipe the floorplan project dir + the
 //!     device config up, run `rapidstream-tapafp` over SSH-mux, and
-//!     tar-pipe `autobridge/` back (compatibility
-//!     `tapa.remote.popen.create_tool_process` with
-//!     `extra_download_paths=(autobridge_work_dir,)`).
+//!     tar-pipe `autobridge/` back down.
 
 use std::fs;
 use std::path::{Path, PathBuf};

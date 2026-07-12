@@ -1,5 +1,4 @@
-//! Verbosity → log-level mapping. Mirrors
-//! `tapa.util.setup_logging`'s `(quiet - verbose) * 10 + INFO` formula
+//! Verbosity → log-level mapping: `(quiet - verbose) * 10 + INFO`,
 //! clamped to `[DEBUG, CRITICAL]`.
 
 use log::LevelFilter;

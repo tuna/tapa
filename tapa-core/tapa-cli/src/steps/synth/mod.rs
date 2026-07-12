@@ -7,15 +7,11 @@
 //!   1. Resolve the device (part / clock / platform) via
 //!      `tapa_xilinx::parse_device_info` and persist into
 //!      `<work_dir>/settings.json`.
-//!   2. Extract per-task C++ from `design.json` to `<work_dir>/cpp/`
-//!      (mirrors the implementation).
+//!   2. Extract per-task C++ from `design.json` to `<work_dir>/cpp/`.
 //!   3. Run Vitis HLS for each leaf task via `tapa_xilinx::run_hls`,
-//!      harvesting Verilog into `<work_dir>/hls/<task>/verilog/`
-//!      (mirrors `ProgramHlsMixin.run_hls` / `_run_hls_task`).
+//!      harvesting Verilog into `<work_dir>/hls/<task>/verilog/`.
 //!   4. Drive `tapa_codegen::generate_rtl` to instrument upper tasks
-//!      and emit `<work_dir>/rtl/{<task>.v, <task>_fsm.v, ...}`
-//!      (mirrors the implementation +
-//!      `generate_top_rtl`).
+//!      and emit `<work_dir>/rtl/{<task>.v, <task>_fsm.v, ...}`.
 //!   5. Persist `<work_dir>/templates_info.json` and re-store the
 //!      design + settings (`synthed=true`).
 //!

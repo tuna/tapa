@@ -1,8 +1,5 @@
 //! Drive `tapa_codegen::generate_rtl` against the HLS-produced Verilog
 //! and persist the resulting RTL tree under `<work_dir>/rtl/`.
-//!
-//! Matches the behavior +
-//! `generate_top_rtl` for the leaf-only vadd happy path.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -159,9 +156,8 @@ fn write_verilog_support_assets(rtl_dir: &Path) -> Result<Vec<PathBuf>> {
     Ok(written)
 }
 
-/// Mirror of `Instance.Arg.Cat` enum name. `str(Cat.XYZ)` in
-/// returns `"Cat.XYZ"`; the `templates_info.json` schema
-/// depends on exactly that string. Keep in sync with
+/// Category name as serialized in `templates_info.json`: the schema
+/// depends on exactly the `"Cat.XYZ"` string shape. Keep in sync with
 /// `tapa-task-graph::port::ArgCategory`.
 fn cat_schema_name(cat: tapa_task_graph::ArgCategory) -> &'static str {
     match cat {
@@ -177,10 +173,9 @@ fn cat_schema_name(cat: tapa_task_graph::ArgCategory) -> &'static str {
     }
 }
 
-/// Mirror of `instance.Port.__str__` — `", ".join(f"{k}: {v}"
-/// for k, v in self.__dict__.items())`. Emits, in order:
-/// `cat`, `name`, `ctype`, `width`, `chan_count`, `chan_size`, with
-/// `None` for unset optional fields (`None` repr).
+/// Port string as serialized in `templates_info.json`. Emits, in
+/// order: `cat`, `name`, `ctype`, `width`, `chan_count`, `chan_size`,
+/// with `None` for unset optional fields.
 fn schema_port_str(p: &tapa_task_graph::Port) -> String {
     let chan_count = p
         .chan_count
@@ -355,9 +350,8 @@ mod tests {
         assert!(written.iter().any(|p| p.ends_with("fifo.v")));
     }
 
-    /// compatibility: `str(port)` emits every `Instance.Arg.Port`
-    /// field in dict-insertion order with an `Enum.__str__` for `cat`
-    /// and `None` for unset chan_* fields. The `templates_info.json`
+    /// The `templates_info.json` port strings emit every field in
+    /// insertion order, with `None` for unset chan_* fields. The
     /// schema depends on the exact string shape; `--custom-rtl`
     /// downstream diffs against it.
     #[test]

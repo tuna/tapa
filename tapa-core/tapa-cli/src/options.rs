@@ -1,6 +1,8 @@
-//! Mirror of `tapa.util.Options` — global per-process knobs.
+//! Global per-process knobs.
 
-/// Default `--clang-format-quota-in-bytes` (matches the current value).
+/// Default `--clang-format-quota-in-bytes`. Only the first megabyte of
+/// generated code is clang-formatted to bound formatting time on large
+/// designs.
 pub const DEFAULT_CLANG_FORMAT_QUOTA: u64 = 1_000_000;
 
 #[derive(Debug, Clone, Copy)]

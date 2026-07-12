@@ -328,8 +328,8 @@ pub fn build_fifo_instance(
 ///
 /// emits `(left) - (right) + 1` tokens and folds to a literal when
 /// both endpoints are integer literals after range evaluation. If the
-/// range is missing we conservatively emit `32` (matches the current
-/// topology-derived fallback).
+/// range is missing we conservatively emit `32`, the topology-derived
+/// fallback width.
 fn compute_data_width_expr(data_range: Option<&tapa_graphir::Range>) -> Expression {
     let Some(range) = data_range else {
         return Expression::new_lit("32");

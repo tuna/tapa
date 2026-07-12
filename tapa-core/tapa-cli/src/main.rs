@@ -50,9 +50,8 @@ fn run() -> Result<(), CliError> {
     }
 
     // Bootstrap remote config (~/.taparc + CLI overrides) before any
-    // native step runs — mirrors the implementation. Sync
-    // failures inside this call are non-fatal so local-only flows are
-    // unaffected.
+    // native step runs. Sync failures inside this call are non-fatal so
+    // local-only flows are unaffected.
     ctx.remote_config = bootstrap_remote(&cli.globals)?;
 
     if let Some(step) = cli.step {

@@ -1,8 +1,7 @@
 //! SSH multiplexing helpers.
 //!
 //! `classify_ssh_error` is the pure function the reconnect heuristic
-//! keys off; its fixture set is ported from the patterns in
-//! the implementation. `SshSession` owns the
+//! keys off. `SshSession` owns the
 //! full control-master lifecycle: lazy open via `ssh … true`, liveness
 //! probe via `ssh -O check`, teardown via `ssh -O exit` plus on-disk
 //! socket unlink, and auto-restart on transient mux classifications.
@@ -105,8 +104,7 @@ pub fn classify_ssh_error(stderr: &str) -> SshErrorKind {
     }
 }
 
-/// Options that tweak the ControlMaster invocation. Defaults match the
-/// loader.
+/// Options that tweak the ControlMaster invocation.
 #[derive(Debug, Clone)]
 pub struct SshMuxOptions {
     pub control_persist: String,
@@ -157,12 +155,9 @@ impl SshSession {
         &self.options
     }
 
-    /// Directory holding control-master sockets.
-    ///
-    /// Matches the behavior +
-    /// `get_ssh_control_dir`: the user-supplied `ssh_control_dir` from
-    /// `RemoteConfig` wins; otherwise `$XDG_RUNTIME_DIR/tapa/ssh` when
-    /// set, else `/tmp/tapa-ssh-mux`.
+    /// Directory holding control-master sockets: the user-supplied
+    /// `ssh_control_dir` from `RemoteConfig` wins; otherwise
+    /// `$XDG_RUNTIME_DIR/tapa/ssh` when set, else `/tmp/tapa-ssh-mux`.
     #[must_use]
     pub fn control_dir(&self) -> Utf8PathBuf {
         if let Some(dir) = self.cfg.ssh_control_dir.as_ref() {
@@ -176,8 +171,7 @@ impl SshSession {
         Utf8PathBuf::from("/tmp/tapa-ssh-mux")
     }
 
-    /// Build the base OpenSSH CLI argument vector. Matches
-    /// the implementation, including the
+    /// Build the base OpenSSH CLI argument vector, including the
     /// `ControlPath=<dir>/cm-%C` entry when multiplexing is enabled.
     pub fn build_ssh_args(&self) -> Vec<String> {
         let mut args = Vec::new();

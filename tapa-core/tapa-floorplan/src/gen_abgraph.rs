@@ -182,10 +182,8 @@ pub fn collect_fifo_width_from_rtl(state: &TopologyWithRtl) -> BTreeMap<String, 
     for (fifo_name, fifo) in &top.fifos {
         if let Some(ref producer) = fifo.produced_by {
             let producer_task_name = &producer.0;
-            // Try to get width from RTL module's parsed port widths.
-            //
-            // Mirrors `tapa.verilog.xilinx.module_ops.ports.get_port_of`,
-            // which probes the producer's ports through the same
+            // Try to get width from RTL module's parsed port widths,
+            // probing the producer's ports through the
             // `("_V", "_r", "_s", "")` infix set. The slot-wrapper Verilog
             // exposes stream ports as `{port}_s_din` / `{port}_s_dout` (33
             // bits for a 32-bit payload + "eot" flag); without probing the

@@ -1,6 +1,6 @@
 //! Interface role inference from port directions.
 //!
-//! Mirrors the implementation: roles are
+//! Roles are
 //! derived from the direction of the interface's data ports. Handshake and
 //! `ap_ctrl` interfaces also validate direction consistency and raise an error
 //! if the valid/ready or `ap_start` / `ap_ready` / `ap_done` / `ap_idle` ports disagree.

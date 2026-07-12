@@ -1,12 +1,10 @@
 //! Composite CLI commands.
 //!
 //! `tapa compile`, `tapa generate-floorplan`, and
-//! `tapa compile-with-floorplan-dse` mirror the CLI commands of the
-//! same names in the implementation. Each composite materializes the
-//! union of its constituent CLI commands' flag surfaces — exactly
-//! what `_extend_params` does in — by flattening the underlying
-//! `Args` structs (or, where flag conflicts would arise, by
-//! hand-rolling the merged flag set).
+//! `tapa compile-with-floorplan-dse` each materialize the union of
+//! their constituent commands' flag surfaces by flattening the
+//! underlying `Args` structs (or, where flag conflicts would arise,
+//! by hand-rolling the merged flag set).
 
 mod dse;
 

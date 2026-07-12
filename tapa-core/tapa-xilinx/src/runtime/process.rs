@@ -124,9 +124,8 @@ impl ToolRunner for LocalToolRunner {
 
         let mut cmd = Command::new(&inv.program);
         cmd.args(&inv.args);
-        // Inherit the parent's env (compatibility: `subprocess.Popen`
-        // without an `env=` argument forwards the caller's full env),
-        // then overlay `inv.env` so per-invocation entries win.
+        // Inherit the parent's full env, then overlay `inv.env` so
+        // per-invocation entries win.
         for (k, v) in &inv.env {
             cmd.env(k, v);
         }

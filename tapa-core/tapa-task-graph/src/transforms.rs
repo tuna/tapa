@@ -1,4 +1,4 @@
-//! Graph transforms ported from `tapa.common.graph.Graph`.
+//! Task-graph transforms: hierarchy flattening and global naming.
 //!
 //! - [`flatten`] — port of `Graph::get_flatten_graph`. Implements the
 //!   single-level (vadd-shaped) case where every child of the top is
@@ -132,8 +132,7 @@ pub fn flatten(graph: &Graph) -> Result<Graph, TransformError> {
 ///
 /// `scope_path` is the `parent.global_name` for this call site: the
 /// top-level call uses `top_name`, and each upper-child instantiation
-/// descends with `<inst_name>_<scope_path>`. Matches current
-/// `Base._generate_global_name_without_sub` chain.
+/// descends with `<inst_name>_<scope_path>`.
 ///
 /// `arg_bindings` maps *this task's port names* to the globally-
 /// resolved arg names in the caller's scope — that's how leaf

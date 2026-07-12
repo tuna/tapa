@@ -104,8 +104,7 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
     generate_rtl_tree(&ctx.work_dir, &design, &hdl_inputs)?;
 
     // Per-task OOC Vivado synth → hierarchical utilization → `total_area`.
-    // Matches the behavior. When
-    // disabled (the default), the HLS-populated self/total areas
+    // When disabled (the default), the HLS-populated self/total areas
     // survive untouched.
     if args.enable_synth_util {
         emit_post_synth_util(
@@ -192,9 +191,7 @@ fn validate_optional_flag_combos(args: &SynthArgs) -> Result<()> {
     Ok(())
 }
 
-/// Build the HLS CFLAGS that `_build_hls_cflags` constructs in current.
-///
-/// Matches the behavior:
+/// Build the HLS CFLAGS:
 /// loads the analyzer-stored cflags tuple from
 /// `<work_dir>/graph.json::cflags` (so `-isystem <tapa-lib>` etc. are
 /// forwarded into HLS), then appends the `-DTAPA_TARGET_*` defines and
@@ -203,9 +200,8 @@ fn validate_optional_flag_combos(args: &SynthArgs) -> Result<()> {
 /// cannot be found..." branch).
 fn build_hls_cflags(work_dir: &Path, remote: bool) -> Vec<String> {
     let mut flags: Vec<String> = Vec::new();
-    // compatibility: `tapa/core::TapaProgram.__init__` builds
-    // `self.cflags = " ".join((*graph.cflags, *get_tapacc_cflags()))`.
-    // We mirror that here so HLS sees the user's own `-I` / `-D`
+    // HLS cflags = the analyzer-stored graph cflags followed by
+    // `get_tapacc_cflags()`, so HLS sees the user's own `-I` / `-D`
     // entries plus the tapa-lib / vendor-include resolution.
     //
     // Missing `graph.json` is tolerated so unit tests that seed only
@@ -219,9 +215,9 @@ fn build_hls_cflags(work_dir: &Path, remote: bool) -> Vec<String> {
             }
         }
     }
-    // Remote HLS compatibility: `_build_hls_cflags` substitutes
-    // `get_tapacc_cflags()` (local vendor/stdlib paths) with
-    // `get_remote_hls_cflags()` when `~/.taparc` is active — the
+    // Remote HLS substitutes `get_tapacc_cflags()` (local
+    // vendor/stdlib paths) with `get_remote_hls_cflags()` when
+    // `~/.taparc` is active — the
     // remote host ships its own vendor headers via `settings64.sh`,
     // and a host-specific macOS `__assert_rtn` remap is added so
     // macOS → Linux remote synth does not mis-expand assert() into

@@ -1,12 +1,10 @@
 //! Top-task `report.json` / `report.yaml` emitter.
 //!
-//! Implements's report
-//! step + the implementation. Synth writes the report after
-//! RTL codegen so downstream pack flows (xilinx-vitis `.xo` and
-//! xilinx-hls `.zip`) can include it as `report.yaml` at archive
-//! root and `report.json` alongside.
+//! Synth writes the report after RTL codegen so downstream pack flows
+//! (xilinx-vitis `.xo` and xilinx-hls `.zip`) can include it as
+//! `report.yaml` at archive root and `report.json` alongside.
 //!
-//! Schema (matches current):
+//! Schema:
 //! ```yaml
 //! schema: <tapa version>
 //! name: <top task name>

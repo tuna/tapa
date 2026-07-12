@@ -1,13 +1,9 @@
 //! `--nonpipeline-fifos` → `<work_dir>/grouping_constraints.json`.
 //!
-//! Ports `tapa.program_codegen.program.get_grouping_constraints` plus
-//! the `_find_task_inst_hierarchy` walker from the same module.
-//!
 //! The input is a JSON list of `"<task>.<fifo>"` strings. For every
 //! FIFO listed, we walk every path from the top task to its defining
 //! task and emit a triple `[producer_path, fifo_path, consumer_path]`
-//! matching the current emit shape. Producer / consumer path resolution
-//! mirrors `Program.get_inst_by_port_arg_name`.
+//! that downstream floorplanning groups together.
 
 use std::fs;
 use std::path::Path;
@@ -149,10 +145,10 @@ fn find_instance_for_arg(
     None
 }
 
-/// Replicate `tapa.program_codegen.program._find_task_inst_hierarchy`: yield
-/// every path from the top task down to `target_task`, where each path is
-/// `[top_inst, …, parent_inst]` (the parent hierarchy stops one level above
-/// the target so callers can append the producer / consumer / fifo leaf).
+/// Yield every path from the top task down to `target_task`, where each
+/// path is `[top_inst, …, parent_inst]` (the parent hierarchy stops one
+/// level above the target so callers can append the producer / consumer
+/// / fifo leaf).
 fn find_task_inst_hierarchy(
     program: &Program,
     target_task: &str,

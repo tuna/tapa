@@ -54,8 +54,7 @@ pub(super) fn load_templates_info(work_dir: &Path) -> Result<TemplatesInfo> {
 
 /// Expand user-supplied `--custom-rtl` CLI paths. Files are accepted
 /// verbatim; directories are walked recursively for any regular-file
-/// entries. Mirrors
-/// `tapa.core.TapaProgram._get_custom_rtl_files`.
+/// entries.
 pub(super) fn expand_custom_rtl_paths(rtl_paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
     let mut out = Vec::<PathBuf>::new();
     for path in rtl_paths {
@@ -179,8 +178,8 @@ fn check_custom_rtl_format(rtl_files: &[PathBuf], templates_info: &TemplatesInfo
             );
             continue;
         };
-        // compatibility: unknown module names are helper modules,
-        // not mistyped KEYs — skip silently.
+        // Unknown module names are helper modules,
+        // not mistyped keys — skip silently.
         let Some(expected_ports) = templates_info.get(&module.name) else {
             continue;
         };
@@ -271,10 +270,8 @@ mod tests {
         );
     }
 
-    /// compatibility: unknown module names are helper modules, not
-    /// mistyped KEYs. `apply_custom_rtl` must silently copy the file
-    /// through — `check_custom_rtl_format` logs `continue` when
-    /// `tasks.get(rtl_module.name) is None`.
+    /// Unknown module names are helper modules, not mistyped keys:
+    /// `apply_custom_rtl` must silently copy the file through.
     #[test]
     fn pack_custom_rtl_unknown_module_name_is_copied_through() {
         let dir = tempfile::tempdir().expect("tempdir");

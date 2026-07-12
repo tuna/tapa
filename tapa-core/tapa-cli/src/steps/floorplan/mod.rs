@@ -93,10 +93,7 @@ pub fn run_floorplan(args: &FloorplanArgs, ctx: &mut CliContext) -> Result<()> {
     run_floorplan_native_noop(ctx)
 }
 
-/// Apply a floorplan JSON file to the cached graph.
-///
-/// Mirrors `tapa.steps.floorplan.floorplan` and
-/// `tapa.steps.floorplan.get_slot_to_inst`:
+/// Apply a floorplan JSON file to the cached graph:
 ///   1. Read `floorplan_path` as `vertex → "x:y"` JSON.
 ///   2. Filter to vertices that match a known top-level instance.
 ///   3. Group by `region` with `:` → `_` to derive the slot name.

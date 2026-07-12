@@ -1,5 +1,5 @@
-//! Per-task Vitis HLS invocation, ported from
-//! the implementation + `.run_hls`.
+//! Per-task Vitis HLS invocation with parallel dispatch and
+//! mtime-based skipping.
 
 use camino::Utf8PathBuf;
 use rayon::prelude::*;
@@ -12,8 +12,7 @@ use tapa_xilinx::{run_hls_with_retry, run_hls_with_retry_in_stage, HlsJob, HlsOu
 use crate::error::{CliError, Result};
 use crate::steps::synth::cpp_extract::cpp_path_for;
 
-/// compatibility: the implementation uses `_HLS_MAX_RETRIES = 2`
-/// → up to 3 attempts total. Vitis HLS occasionally fails with a
+/// Up to 3 attempts total. Vitis HLS occasionally fails with a
 /// transient `Pre-synthesis failed.` diagnostic that re-runs clean,
 /// so the retry wrapper keys off that substring.
 const HLS_MAX_ATTEMPTS: u32 = 3;
@@ -43,14 +42,13 @@ pub struct HlsRunOptions {
     pub other_configs: String,
     pub cflags: Vec<String>,
     pub skip_based_on_mtime: bool,
-    /// Mirror of the CLI `--jobs N` flag. compatibility:
-    /// `ThreadPoolExecutor(max_workers=jobs)`. `None` or 1 → serial.
+    /// Mirror of the CLI `--jobs N` flag: the number of HLS runs
+    /// executed in parallel. `None` or 1 → serial.
     pub jobs: Option<u32>,
     /// Mirror of the CLI `--keep-hls-work-dir` flag. When true,
     /// `run_hls` stages under `<work_dir>/hls/<task>/project` (kept
     /// on disk) instead of a tempdir so the Vitis project + logs
-    /// survive after a failure. Matches current
-    /// `ProgramHlsMixin.run_hls(work_dir=...)`.
+    /// survive after a failure.
     pub keep_work_dir: bool,
 }
 
@@ -205,12 +203,9 @@ pub fn run_hls_for_leaves(
 }
 
 fn resolve_worker_count(jobs: Option<u32>, plan: &[(String, TaskHlsLayout, impl Sized)]) -> usize {
-    // compatibility: the implementation evaluates
-    // `jobs = jobs or cpu_count(logical=False)` before
-    // `ThreadPoolExecutor(max_workers=jobs)`, so the default on a
-    // multi-core machine synthesizes tasks in parallel. Mirror that:
-    // explicit `--jobs N` wins; otherwise pick the host's physical
-    // core count (falling back to 1 if unavailable). Cap by live work
+    // Explicit `--jobs N` wins; otherwise pick the host's physical
+    // core count (falling back to 1 if unavailable) so a multi-core
+    // machine synthesizes tasks in parallel. Cap by live work
     // so we never spawn more workers than jobs to dispatch.
     let desired = jobs.map_or_else(default_hls_workers, |j| j.max(1) as usize);
     desired.min(plan.len().max(1))

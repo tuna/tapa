@@ -16,12 +16,11 @@ use crate::error::{CliError, Result};
 
 /// Run `tapa-cpp` once per input file and write the preprocessed source
 /// to `<work_dir>/flatten/flatten-<digest>-<basename>`. When a
-/// `clang-format` binary is on `PATH` (probed in the same order as
-/// `tapa.util.clang_format` — `clang-format-20` …
-/// `clang-format-5`, then `clang-format`), the captured stdout is
+/// `clang-format` binary is on `PATH` (probed `clang-format-20` …
+/// `clang-format-5`, then bare `clang-format`), the captured stdout is
 /// pretty-printed before it lands on disk. The running byte counter
-/// is gated on `quota_in_bytes`, mirroring
-/// `--clang-format-quota-in-bytes`: once formatting *this* file would
+/// is gated on `quota_in_bytes`
+/// (`--clang-format-quota-in-bytes`): once formatting *this* file would
 /// push the cumulative formatted size past the quota, fall back to
 /// the raw `tapa-cpp` bytes for that file (and every subsequent one).
 pub(super) fn run_flatten(
@@ -93,11 +92,10 @@ pub(super) fn run_flatten(
     Ok(out)
 }
 
-/// Probe `PATH` for the `clang-format` binary the same way
-/// `tapa.util.clang_format` does: try `clang-format-{20..5}` from
-/// newest to oldest, fall back to bare `clang-format`. Returns
-/// `None` when nothing is installed (returns the input
-/// unchanged in that case; this matches).
+/// Probe `PATH` for a `clang-format` binary: try `clang-format-{20..5}`
+/// from newest to oldest, fall back to bare `clang-format`. Returns
+/// `None` when nothing is installed (callers then leave the input
+/// unformatted).
 fn find_clang_format() -> Option<PathBuf> {
     use std::sync::OnceLock;
     static CACHED: OnceLock<Option<PathBuf>> = OnceLock::new();

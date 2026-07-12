@@ -1,5 +1,4 @@
-//! Global flags shared by every subcommand. Mirrors the
-//! `entry_point` CLI group in the implementation.
+//! Global flags shared by every subcommand.
 
 use std::path::PathBuf;
 

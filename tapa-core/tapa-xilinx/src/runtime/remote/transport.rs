@@ -55,8 +55,7 @@ pub(super) fn unique_session_id() -> String {
 /// Upload a batch of local absolute paths into `session_dir/rootfs`
 /// via a single `tar | ssh tar -xzf -` session. Each path is added
 /// to the archive preserving its absolute layout (minus the leading
-/// `/`) so the remote tree mirrors the local one. Matches
-/// the implementation.
+/// `/`) so the remote tree mirrors the local one.
 #[allow(
     clippy::too_many_lines,
     reason = "streams the in-memory tar archive inline for one SSH session; \

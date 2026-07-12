@@ -97,7 +97,7 @@ impl VendorRemoteFs for SshVendorFs<'_> {
 
 /// Parse the `KEY=VAL` lines produced by the remote
 /// `echo XILINX_HLS=$XILINX_HLS && echo XILINX_VITIS=$XILINX_VITIS`
-/// probe. Empty values are dropped (matches the loader).
+/// probe. Empty values are dropped.
 pub(crate) fn parse_remote_xilinx_paths(stdout: &str) -> std::collections::HashMap<String, String> {
     let mut out = std::collections::HashMap::new();
     for line in stdout.lines() {

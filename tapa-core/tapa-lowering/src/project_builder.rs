@@ -428,17 +428,12 @@ fn refresh_top_slot_instance_connections(
 
 /// Aggregate leaf RTL parameters onto slot grouped modules.
 ///
-/// Mirrors `get_slot_module_definition_parameters(leaf_ir_defs)`:
-/// iterate every leaf module's parameters in the SAME order does
+/// Iterate every leaf module's parameters in a deterministic order
 /// and keep the first-seen `ModuleParameter` for each name verbatim.
-/// `Task.__init__` in the implementation calls
-/// `dict(sorted(tasks.items()))` on each upper task's children, so
-/// `task.instances` (built from this sorted dict in
-/// the implementation) iterates child task names
-/// alphabetically. `leaf_ir_defs` is built by walking
-/// `top_task.instances` → each slot's `slot_task.instances`, both
-/// alphabetical-by-task-name. Our `BTreeMap<String, Vec<InstanceDesign>>`
-/// iteration matches this.
+/// Child tasks iterate alphabetically by task name (the design task
+/// map is sorted), so the alphabetically-first leaf wins as the
+/// parameter source; `BTreeMap<String, Vec<InstanceDesign>>`
+/// iteration preserves exactly that order.
 ///
 /// For the `VecAdd` shared fixture this produces `Mmap2Stream` (in
 /// `SLOT_X0Y2`, whose alphabetical name starts with `SLOT_X0`) as the
@@ -549,8 +544,7 @@ pub fn build_project_from_inputs(
 /// Build a `GraphIR` Project from `LoweringInputs`.
 ///
 /// Reads `floorplan.json`, `device_config.json`, and `{top}_control_s_axi.v`
-/// from disk. Matches the `get_project_from_floorplanned_program`
-/// boundary.
+/// from disk.
 ///
 /// # Errors
 ///
@@ -621,8 +615,7 @@ pub fn build_project_from_paths(
     // whose FSM module definitions carry the full Vitis port list
     // (ap_start, ap_done, slot-prefixed handshake ports, …) instead
     // of the 6-port stub the fallback `create_fsm_module`
-    // synthesizes. Matches current
-    // `get_fsm_def(program.get_rtl_path(task.rtl_fsm_module.name))`.
+    // synthesizes.
     //
     // Missing or malformed FSM RTL is surfaced as
     // `LoweringError::MissingFsmRtl` rather than silently falling
@@ -934,8 +927,7 @@ fn build_slot_module(
     // Physical floorplan region for child instances: when the slot task
     // is pre-baked (slot_task_name_to_fp_region maps slot_name → region),
     // use the region string verbatim ("SLOT_X0Y0:SLOT_X0Y0"). Otherwise
-    // fall back to the slot name. This matches current
-    // program.slot_task_name_to_fp_region lookup.
+    // fall back to the slot name.
     let fp_region = program
         .slot_task_name_to_fp_region
         .as_ref()
@@ -3100,11 +3092,9 @@ endmodule
     )]
     fn aggregate_slot_params_matches_current_alphabetical_order() {
         // Slot-parameter aggregation must iterate child tasks
-        // alphabetically to match `dict(sorted(tasks.items()))`
-        // in the implementation. The JSON lists `zleaf` first and `aleaf`
-        // second, but sorts them so `aleaf` wins as the
-        // first-seen parameter source. Verified against current: for
-        // this exact JSON, `task.instances == ['aleaf_0', 'zleaf_0']`
+        // alphabetically. The JSON lists `zleaf` first and `aleaf`
+        // second, but sorting makes `aleaf` win as the first-seen
+        // parameter source: `task.instances == ['aleaf_0', 'zleaf_0']`
         // and the aggregated `P = 3'd1` (from `aleaf`). Rust must
         // produce the same.
         let prog_json = r#"{

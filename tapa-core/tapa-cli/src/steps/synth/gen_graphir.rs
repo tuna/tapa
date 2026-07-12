@@ -3,8 +3,7 @@
 //! Wires `tapa_lowering::build_project_from_paths` against the current
 //! design plus the `--device-config` / `--floorplan-path` inputs and
 //! the `<work_dir>/rtl/` directory populated by the preceding RTL
-//! codegen step. Matches current
-//! `tapa.graphir_conversion.gen_rs_graphir.get_project_from_floorplanned_program`.
+//! codegen step.
 
 use std::fs;
 use std::path::Path;

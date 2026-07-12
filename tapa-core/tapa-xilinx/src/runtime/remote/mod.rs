@@ -72,7 +72,7 @@ fn remote_work_dir(session: &SshSession) -> String {
 /// Rewrite every occurrence of a local absolute path in `text` to its
 /// session-scoped remote equivalent. Longest-match-first ensures a
 /// path that is a prefix of another (e.g. `/a/b` vs `/a/b/c`) is not
-/// double-replaced. Matches the behavior.
+/// double-replaced.
 fn rewrite_abs_paths(text: &str, local_paths: &[Utf8PathBuf], session_dir: &str) -> String {
     if local_paths.is_empty() {
         return text.to_string();
@@ -102,8 +102,7 @@ fn rewrite_abs_paths(text: &str, local_paths: &[Utf8PathBuf], session_dir: &str)
     out
 }
 
-/// Environment variable allowlist mirroring
-/// the implementation. Anything else is
+/// Environment variables forwarded to the remote. Anything else is
 /// dropped unless the key begins with `TAPA_`.
 const REMOTE_ENV_ALLOWLIST: &[&str] = &["HOME", "LANG", "LC_ALL", "LC_CTYPE"];
 
@@ -114,11 +113,9 @@ fn is_forwardable_env(key: &str) -> bool {
 impl RemoteToolRunner {
     #[allow(
         clippy::too_many_lines,
-        reason = "mirrors the implementation \
-                  verbatim; splitting further would obscure the compatibility"
+        reason = "sequential session lifecycle: upload, rewrite, exec, download"
     )]
-    /// Implements:
-    /// opens a per-invocation session directory with a `rootfs/`
+    /// Opens a per-invocation session directory with a `rootfs/`
     /// subtree, mirrors the local `cwd` plus any extra uploads under
     /// that rootfs, rewrites absolute local paths in the command
     /// args / env / stdin to their session-relative remote
@@ -131,7 +128,7 @@ impl RemoteToolRunner {
         let cfg = self.session.config();
         let session_dir = format!("{}/{}", cfg.work_dir, unique_session_id());
 
-        // compatibility: accept relative `--work-dir ./work.out` and
+        // Accept relative `--work-dir ./work.out` and
         // relative upload/download paths by absolutizing against the
         // caller's cwd. Without this, the default `tapa synth` / `pack`
         // invocation drops the work tree + RTL + C++ sources from the

@@ -12,7 +12,7 @@ use serde_json::Value;
 use crate::error::ParseError;
 use crate::port::Port;
 
-/// Per-task topology dict. Matches the behavior.
+/// Per-task topology dict, as serialized in `graph.json` / `design.json`.
 #[allow(
     clippy::derive_partial_eq_without_eq,
     reason = "fields hold serde_json::Value, which is not Eq (Number may be f64)"

@@ -19,8 +19,6 @@ const OUTPUT_FILENAME: &str = "ab_graph.json";
 
 /// Build the top-level `AutoBridge` graph and persist it as
 /// `<work_dir>/ab_graph.json`.
-///
-/// compatibility: `tapa.abgraph.gen_abgraph.get_top_level_ab_graph`.
 pub fn emit_ab_graph(work_dir: &Path, design: &Design, floorplan_config: &Path) -> Result<()> {
     let program = topology_program_from_design(design)?;
     let preassignments = read_cpp_arg_pre_assignments(floorplan_config)?;

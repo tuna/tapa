@@ -560,8 +560,6 @@ fn get_slot_inst_mmap_port_args(
 
 /// Convert a floorplan region string from `"x:y"` form to the
 /// canonical `"x_TO_y"` form used by `slot_task_name_to_fp_region`.
-///
-/// Mirrors `tapa.common.floorplan.convert_region_format`.
 #[must_use]
 pub fn convert_region_format(region: &str) -> String {
     region.replace(':', "_TO_")

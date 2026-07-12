@@ -1,9 +1,8 @@
 //! `kernel.xml` emission for `.xo` packaging.
 //!
-//! Implements — the
-//! element tree and attribute ordering matter for Vivado's
-//! `package_xo`, so the emitted text matches the template
-//! byte-for-byte (modulo XML-escaping invariants).
+//! The element tree and attribute ordering matter for Vivado's
+//! `package_xo`, so the emitted text follows the `kernel.xml.j2`
+//! template byte-for-byte (modulo XML-escaping invariants).
 
 use serde::{Deserialize, Serialize};
 
@@ -31,7 +30,7 @@ pub struct KernelXmlPort {
     /// channel, etc.
     pub width: u32,
     /// Optional user-specified port name override. Empty string means
-    /// "use `name`" (matches the `arg.port` fallback).
+    /// "use `name`".
     #[serde(default)]
     pub port: String,
     /// C type string (escaped on emission).

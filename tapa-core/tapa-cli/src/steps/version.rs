@@ -1,5 +1,5 @@
 //! `tapa version` — prints the contents of the `VERSION` file with no
-//! trailing newline. Matches the behavior.
+//! trailing newline.
 
 use std::io::Write;
 
@@ -65,7 +65,7 @@ mod tests {
 
     #[test]
     fn version_matches_current_format() {
-        // Matches the behavior shape from `tapa/_version`.
+        // The version is `major.minor.date[.patch]` — at least 3 segments.
         let segment_count = VERSION.split('.').count();
         assert!(segment_count >= 3, "version must have at least 3 segments");
     }

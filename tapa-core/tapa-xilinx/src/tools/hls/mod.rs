@@ -19,9 +19,9 @@ pub mod report;
 /// Substrings the default transient predicate keys off.
 ///
 /// Kept for fixture-driven tests and custom predicates. The real
-/// production predicate (`is_transient_hls_output`) matches current
-/// logic in the implementation: stdout contains `Pre-synthesis
-/// failed.` without a subsequent `\nERROR:` line.
+/// production predicate (`is_transient_hls_output`) treats a run as
+/// transient when stdout contains `Pre-synthesis failed.` without a
+/// subsequent `\nERROR:` line.
 pub const DEFAULT_TRANSIENT_HLS_PATTERNS: &[&str] = &[
     "Pre-synthesis failed.",
     "TCP connection closed",
@@ -624,7 +624,7 @@ mod tests {
 
     #[test]
     fn tcl_body_does_not_bake_absolute_kernel_paths() {
-        // compatibility: the TCL template must iterate the
+        // The TCL template must iterate the
         // `TAPA_KERNEL_*` env entries instead of splicing absolute
         // `cpp_source` / cflags into the body. Baking absolute paths
         // makes the TCL non-portable to a remote rootfs.
@@ -782,8 +782,7 @@ mod tests {
     #[test]
     fn production_transient_predicate_matches_current() {
         assert!(is_transient_hls_output("Pre-synthesis failed.\n", ""));
-        // Plain failure with ERROR: is not transient — matches current
-        // `b"\nERROR:" not in stdout` guard.
+        // Plain failure with ERROR: is not transient.
         assert!(!is_transient_hls_output(
             "Pre-synthesis failed.\nERROR: bad\n",
             ""
