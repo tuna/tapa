@@ -181,33 +181,45 @@ fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, settings: &settings_io::Setti
         .map_err(|e| CliError::InvalidArg(format!("zip entry: {e}")))?;
     z.write_all(settings_yaml.as_bytes())?;
 
-    // Store HLS `_csynth.rpt` files under `report/<rel>` and replace
-    // the per-run `Date:` line with the fixed
+    // Store the curated per-task HLS `_csynth.rpt` files under
+    // `report/<task>/<file>` and replace the per-run `Date:` line with the fixed
     // 1980-01-01 stamp so re-running HLS produces a byte-identical
     // archive (the same redaction `program.pack_xo` applies to xo).
     let hls_root = work_dir.join("hls");
     if hls_root.is_dir() {
-        let mut rpt_files: Vec<std::path::PathBuf> = Vec::new();
-        for entry in walkdir::WalkDir::new(&hls_root) {
-            let entry = entry.map_err(std::io::Error::other)?;
-            if !entry.file_type().is_file() {
+        let mut rpt_files: Vec<(std::path::PathBuf, String)> = Vec::new();
+        for task_entry in fs_err::read_dir(&hls_root)? {
+            let task_entry = task_entry?;
+            if !task_entry.file_type()?.is_dir() {
                 continue;
             }
-            let path = entry.path();
-            if path
-                .file_name()
-                .and_then(|s| s.to_str())
-                .is_some_and(|n| n.ends_with("_csynth.rpt"))
-            {
-                rpt_files.push(path.to_path_buf());
+            let task_name = task_entry.file_name().to_string_lossy().into_owned();
+            let report_root = task_entry.path().join("report");
+            if !report_root.is_dir() {
+                continue;
+            }
+            for entry in walkdir::WalkDir::new(&report_root) {
+                let entry = entry.map_err(std::io::Error::other)?;
+                if !entry.file_type().is_file() {
+                    continue;
+                }
+                let path = entry.path();
+                if !path
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .is_some_and(|n| n.ends_with("_csynth.rpt"))
+                {
+                    continue;
+                }
+                let rel = path
+                    .strip_prefix(&report_root)
+                    .map_err(|e| CliError::InvalidArg(format!("rpt strip_prefix: {e}")))?;
+                let name = format!("report/{task_name}/{}", rel.to_slash_lossy());
+                rpt_files.push((path.to_path_buf(), name));
             }
         }
         rpt_files.sort();
-        for rpt in &rpt_files {
-            let rel = rpt
-                .strip_prefix(&hls_root)
-                .map_err(|e| CliError::InvalidArg(format!("rpt strip_prefix: {e}")))?;
-            let name = format!("report/{}", rel.to_slash_lossy());
+        for (rpt, name) in &rpt_files {
             z.start_file(name, opts)
                 .map_err(|e| CliError::InvalidArg(format!("zip entry: {e}")))?;
             z.write_all(&redact_rpt(&fs_err::read(rpt)?))?;
@@ -383,13 +395,22 @@ mod tests {
         let rtl_dir = dir.path().join("rtl");
         fs_err::create_dir_all(&rtl_dir).expect("mkdir rtl");
         fs_err::write(rtl_dir.join("Top.v"), b"module Top; endmodule\n").expect("write rtl stub");
-        let report_dir = dir.path().join("hls/Top/syn/report");
+        let report_dir = dir.path().join("hls/Top/report");
         fs_err::create_dir_all(&report_dir).expect("mkdir hls report");
         fs_err::write(
             report_dir.join("Top_csynth.rpt"),
             b"== Header\nDate:           Mon Jan 02 03:04:05 2024\n== End\n",
         )
         .expect("write csynth stub");
+        // Kept HLS projects may contain another copy of the report. It must
+        // not leak into the public archive alongside the curated report.
+        let project_report_dir = dir.path().join("hls/Top/project/Top/syn/report");
+        fs_err::create_dir_all(&project_report_dir).expect("mkdir project report");
+        fs_err::write(
+            project_report_dir.join("Top_csynth.rpt"),
+            b"project-internal duplicate\n",
+        )
+        .expect("write project report stub");
 
         let output_path = dir.path().join("work.zip");
         let output_str = output_path.to_str().expect("utf-8 output");
@@ -414,9 +435,15 @@ mod tests {
             "settings.yaml missing: {names:?}"
         );
         assert!(names.iter().any(|n| n == "rtl/Top.v"));
-        assert!(names
-            .iter()
-            .any(|n| n == "report/Top/syn/report/Top_csynth.rpt"));
+        assert!(names.iter().any(|n| n == "report/Top/Top_csynth.rpt"));
+        assert_eq!(
+            names
+                .iter()
+                .filter(|n| n.ends_with("/Top_csynth.rpt"))
+                .count(),
+            1,
+            "kept HLS project reports must not be duplicated: {names:?}"
+        );
         // AC-2: ZIP entry names must never contain platform separators.
         for name in &names {
             assert!(
@@ -427,7 +454,7 @@ mod tests {
 
         let mut rpt = String::new();
         std::io::Read::read_to_string(
-            &mut zr.by_name("report/Top/syn/report/Top_csynth.rpt").unwrap(),
+            &mut zr.by_name("report/Top/Top_csynth.rpt").unwrap(),
             &mut rpt,
         )
         .expect("read rpt");
