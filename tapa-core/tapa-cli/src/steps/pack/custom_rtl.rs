@@ -144,8 +144,7 @@ pub(super) fn apply_custom_rtl(
     Ok(())
 }
 
-/// Best-effort port-signature check. Mirrors current
-/// the implementation:
+/// Best-effort port-signature check:
 ///
 /// * Non-`.v` files log a skip message (accepts `.tcl`, `.sv`, etc.).
 /// * Unparsable Verilog logs a skip message and moves on.

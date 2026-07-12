@@ -52,8 +52,7 @@ pub struct HlsRunOptions {
     pub keep_work_dir: bool,
 }
 
-/// Run HLS for every task that targets HLS. Mirrors current
-/// `ProgramHlsMixin.run_hls`, which iterates **all** `_tasks.values()`
+/// Run HLS for every task that targets HLS — **all** tasks
 /// (not just leaves) — the upper-task shell is needed by codegen so
 /// the parent module's port surface is parseable. Tasks whose
 /// `target == "ignore"` are skipped (promotes them to

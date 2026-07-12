@@ -1,6 +1,4 @@
 //! Lowers a floorplanned topology + RTL state into a `GraphIR` Project.
-//!
-//! Implements.
 
 pub mod iface_roles;
 pub mod inputs;

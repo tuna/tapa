@@ -61,38 +61,36 @@ pub fn get_ctrl_s_axi_def(
         input_wire("ACLK", None),
         input_wire("ARESET", None),
         input_wire("ACLK_EN", None),
-        // AXI write address
-        input_wire("AWVALID", None),
-        output_wire("AWREADY", None),
-        input_wire("AWADDR", Some(range_expr("C_S_AXI_ADDR_WIDTH - 1", "0"))),
-        // AXI write data
-        input_wire("WVALID", None),
-        output_wire("WREADY", None),
-        input_wire("WDATA", Some(range_expr("C_S_AXI_DATA_WIDTH - 1", "0"))),
-        input_wire("WSTRB", Some(range_expr("C_S_AXI_DATA_WIDTH / 8 - 1", "0"))),
-        // AXI read address
-        input_wire("ARVALID", None),
-        output_wire("ARREADY", None),
-        input_wire("ARADDR", Some(range_expr("C_S_AXI_ADDR_WIDTH - 1", "0"))),
-        // AXI read data
-        output_wire("RVALID", None),
-        input_wire("RREADY", None),
-        output_wire("RDATA", Some(range_expr("C_S_AXI_DATA_WIDTH - 1", "0"))),
-        output_wire("RRESP", Some(range_msb(1))),
-        // AXI write response
-        output_wire("BVALID", None),
-        input_wire("BREADY", None),
-        output_wire("BRESP", Some(range_msb(1))),
+    ];
+    // AXI-Lite channel ports, in protocol order; directions come from
+    // the shared table, ranges from the ctrl_s_axi parameterization.
+    ports.extend(
+        tapa_protocol::S_AXI_LITE_PORT_DIRS
+            .iter()
+            .map(|&(name, dir)| {
+                let range = match name {
+                    "AWADDR" | "ARADDR" => Some(range_expr("C_S_AXI_ADDR_WIDTH - 1", "0")),
+                    "WDATA" | "RDATA" => Some(range_expr("C_S_AXI_DATA_WIDTH - 1", "0")),
+                    "WSTRB" => Some(range_expr("C_S_AXI_DATA_WIDTH / 8 - 1", "0")),
+                    "RRESP" | "BRESP" => Some(range_msb(1)),
+                    _ => None,
+                };
+                match dir {
+                    tapa_protocol::PortDir::Input => input_wire(name, range),
+                    tapa_protocol::PortDir::Output => output_wire(name, range),
+                }
+            }),
+    );
+    ports.extend([
         // Control signals
         output_wire(HANDSHAKE_START, None),
         input_wire(HANDSHAKE_DONE, None),
         input_wire(HANDSHAKE_READY, None),
         input_wire(HANDSHAKE_IDLE, None),
         output_wire("interrupt", None),
-    ];
+    ]);
 
     // Add dynamic output ports for each top-level scalar/MMAP arg.
-    // current: for port_name, port in top.ports.items(): ...
     // Streams are not exposed through ctrl_s_axi.
     let bit64_range = Some(range_msb(63));
     for port in top_ports {

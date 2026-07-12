@@ -7,7 +7,8 @@ use tapa_topology::program::Program;
 
 use tapa_protocol::{
     HANDSHAKE_CLK, HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY, HANDSHAKE_RST_N,
-    HANDSHAKE_START, ISTREAM_SUFFIXES, M_AXI_PREFIX, OSTREAM_SUFFIXES, S_AXI_NAME,
+    HANDSHAKE_START, ISTREAM_SUFFIXES, M_AXI_PREFIX, OSTREAM_SUFFIXES, S_AXI_LITE_CTRL_PORTS,
+    S_AXI_NAME,
 };
 
 /// Build interfaces for all module definitions: dedicated builders for
@@ -52,7 +53,6 @@ pub fn build_interfaces(
             def.ports().iter().map(|p| p.name.clone()).collect();
 
         let module_ifaces = if name == "fifo" {
-            // current: get_fifo_ifaces()
             vec![
                 AnyInterface::Clock {
                     base: InterfaceBase {
@@ -122,7 +122,6 @@ pub fn build_interfaces(
                 },
             ]
         } else if name == "reset_inverter" {
-            // current: get_reset_inverter_ifaces()
             vec![
                 AnyInterface::Clock {
                     base: InterfaceBase {
@@ -156,7 +155,6 @@ pub fn build_interfaces(
                 },
             ]
         } else if name.ends_with("_control_s_axi") {
-            // current: get_ctrl_s_axi_ifaces()
             let mut ci = vec![
                 AnyInterface::Clock {
                     base: InterfaceBase {
@@ -215,7 +213,7 @@ pub fn build_interfaces(
                 .ports()
                 .iter()
                 .map(|p| p.name.clone())
-                .filter(|n| !CTRL_S_AXI_FIXED_PORTS.contains(&n.as_str()))
+                .filter(|n| !ctrl_s_axi_fixed_ports().contains(n.as_str()))
                 .collect();
             ap_ports.extend(
                 [
@@ -275,7 +273,6 @@ pub fn build_interfaces(
             let mut si = Vec::new();
             let mut scalars = Vec::new();
             build_task_port_ifaces_with_scalars(def, &port_names, &mut si, &mut scalars);
-            // current: get_slot_task_ifaces(scalars)
             let mut ap_ports = scalars;
             ap_ports.extend(
                 [
@@ -425,35 +422,6 @@ pub fn build_interfaces(
     }
     ifaces
 }
-
-/// Fixed ports for `ctrl_s_axi` module (excluded from scalar interface).
-const CTRL_S_AXI_FIXED_PORTS: &[&str] = &[
-    "ACLK",
-    "ACLK_EN",
-    "ARESET",
-    "interrupt",
-    "ARADDR",
-    "ARREADY",
-    "ARVALID",
-    "AWADDR",
-    "AWREADY",
-    "AWVALID",
-    "BREADY",
-    "BRESP",
-    "BVALID",
-    "RDATA",
-    "RREADY",
-    "RRESP",
-    "RVALID",
-    "WDATA",
-    "WREADY",
-    "WSTRB",
-    "WVALID",
-    HANDSHAKE_START,
-    HANDSHAKE_DONE,
-    HANDSHAKE_READY,
-    HANDSHAKE_IDLE,
-];
 
 /// Build stream and MMAP handshake interfaces for a task module's ports.
 pub fn build_task_port_ifaces(
@@ -631,6 +599,21 @@ pub fn build_task_port_ifaces_with_scalars(
             });
         }
     }
+}
+
+/// Fixed (non-scalar) `ctrl_s_axi` ports: clocking/reset/interrupt,
+/// the AXI-Lite channel ports, and the ap-ctrl handshakes.
+fn ctrl_s_axi_fixed_ports() -> std::collections::BTreeSet<&'static str> {
+    ["ACLK", "ACLK_EN", "ARESET", "interrupt"]
+        .into_iter()
+        .chain(S_AXI_LITE_CTRL_PORTS.iter().copied())
+        .chain([
+            HANDSHAKE_START,
+            HANDSHAKE_DONE,
+            HANDSHAKE_IDLE,
+            HANDSHAKE_READY,
+        ])
+        .collect()
 }
 
 /// Extract stream base name from a suffixed port name.

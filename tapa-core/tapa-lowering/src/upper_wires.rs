@@ -2,8 +2,11 @@
 
 use std::collections::BTreeMap;
 
-use tapa_graphir::{AnyModuleDefinition, HierarchicalName, ModuleNet, ModulePort, Range};
-use tapa_protocol::{HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY, HANDSHAKE_START};
+use tapa_graphir::{AnyModuleDefinition, ModuleNet, ModulePort, Range};
+use tapa_protocol::{
+    HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY, HANDSHAKE_START, ISTREAM_SUFFIXES,
+    OSTREAM_SUFFIXES,
+};
 use tapa_task_graph::port::ArgCategory;
 use tapa_topology::task::TaskDesign;
 
@@ -44,14 +47,12 @@ pub fn build_upper_task_ir_wires(
         }
         let sanitized = tapa_rtl::module::sanitize_array_name(fifo_name);
         let data_range = infer_fifo_data_range(fifo_name, fifo, upper_task, leaf_modules, false);
-        for &suffix in &["_dout", "_empty_n", "_read", "_din", "_full_n", "_write"] {
+        for suffix in ISTREAM_SUFFIXES.iter().chain(OSTREAM_SUFFIXES) {
             let wire_name = format!("{sanitized}{suffix}");
-            let range = if matches!(suffix, "_dout" | "_din") {
-                data_range.clone()
-            } else {
-                None
-            };
-            wires.push(make_net(&wire_name, range));
+            wires.push(crate::utils::make_wire(
+                &wire_name,
+                crate::utils::fifo_wire_range(suffix, data_range.as_ref()),
+            ));
         }
     }
 
@@ -80,7 +81,6 @@ pub fn build_upper_task_ir_wires(
                     | ArgCategory::Istreams
                     | ArgCategory::Ostreams => continue,
                 };
-                // current: port_range_key = arg if arg in mapping else f"{arg}_offset"
                 let range = port_range_mapping
                     .get(&arg.arg)
                     .cloned()
@@ -90,7 +90,7 @@ pub fn build_upper_task_ir_wires(
                             .cloned()
                             .unwrap_or(None)
                     });
-                wires.push(make_net(&wire_name, range));
+                wires.push(crate::utils::make_wire(&wire_name, range));
             }
         }
     }
@@ -105,7 +105,10 @@ pub fn build_upper_task_ir_wires(
                 HANDSHAKE_READY,
                 HANDSHAKE_IDLE,
             ] {
-                wires.push(make_net(&format!("{inst_name}__{sig}"), None));
+                wires.push(crate::utils::make_wire(
+                    &format!("{inst_name}__{sig}"),
+                    None,
+                ));
             }
         }
     }
@@ -137,7 +140,7 @@ pub fn build_top_extra_wires(ctrl_s_axi_ports: &[ModulePort]) -> Vec<ModuleNet> 
     ctrl_s_axi_ports
         .iter()
         .filter(|p| !mapped.contains(p.name.as_str()))
-        .map(|p| make_net(&p.name, p.range.clone()))
+        .map(|p| crate::utils::make_wire(&p.name, p.range.clone()))
         .collect()
 }
 
@@ -163,7 +166,6 @@ pub fn infer_fifo_data_range(
     let producer_def = submodule_ir_defs.get(producer_task_name)?;
 
     if is_top {
-        // current: producer_data_port = get_stream_port_name(producer_fifo, "_din")
         let sanitized = tapa_rtl::module::sanitize_array_name(fifo_name);
         let data_port_name = format!("{sanitized}_din");
         return producer_def
@@ -238,18 +240,10 @@ pub fn infer_top_fifo_data_range_via_leaf(
     None
 }
 
-fn make_net(name: &str, range: Option<Range>) -> ModuleNet {
-    ModuleNet {
-        name: name.to_owned(),
-        hierarchical_name: HierarchicalName::get_name(name),
-        range,
-        extra: BTreeMap::default(),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tapa_graphir::HierarchicalName;
     use tapa_task_graph::port::ArgCategory;
     use tapa_task_graph::task::TaskLevel;
     use tapa_topology::instance::{ArgDesign, InstanceDesign};

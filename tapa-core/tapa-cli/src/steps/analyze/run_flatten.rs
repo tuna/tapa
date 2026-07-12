@@ -165,7 +165,7 @@ mod tests {
 
     #[test]
     fn sha256_truncated_matches_current_eight_hex_chars() {
-        // current: hashlib.sha256(b"foo").hexdigest()[:8] == "2c26b46b"
+        // sha256("foo") truncated to the first 8 hex chars.
         assert_eq!(sha256_truncated_hex(b"foo"), "2c26b46b");
     }
 }

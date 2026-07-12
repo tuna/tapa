@@ -39,7 +39,7 @@ pub fn build_slot_module(
         .as_ref()
         .and_then(|m| m.get(slot_name).cloned())
         .unwrap_or_else(|| slot_name.to_owned());
-    // Slot-local arg table for this slot's children. Mirrors current
+    // Slot-local arg table for this slot's children:
     // `get_task_arg_table(slot)` used in instantiation_builder
     // for slot grouped modules — Rust previously built arg tables from
     // the top task, which means child leaf instances inside a slot had
@@ -115,7 +115,7 @@ pub fn build_slot_module(
                 .map(|def| def.ports().iter().map(|p| p.name.clone()).collect());
 
             // Find the instance's args in the SLOT task, using the
-            // slot-local arg table for pipeline routing. Mirrors current
+            // slot-local arg table for pipeline routing:
             // `get_upper_module_ir_subinsts(slot, ...)` which walks
             // `slot.instances`, not the top's.
             let inst_arg_table = slot_arg_table.get(inst_name);

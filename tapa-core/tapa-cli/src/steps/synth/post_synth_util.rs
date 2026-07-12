@@ -97,8 +97,7 @@ pub(super) fn emit_post_synth_util(
     Ok(())
 }
 
-/// Child-task names of the top task. Mirrors current
-/// `{x.task.name for x in self.top_task.instances}` — the unique set of
+/// Child-task names of the top task — the unique set of
 /// instantiated task names directly under `design.top`.
 ///
 /// Uses `IndexMap` insertion order so the iteration is deterministic;

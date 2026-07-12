@@ -86,6 +86,29 @@ pub const S_AXI_LITE_CTRL_PORTS: &[&str] = &[
     "ARADDR", "RVALID", "RREADY", "RDATA", "RRESP", "BVALID", "BREADY", "BRESP",
 ];
 
+/// AXI-Lite control ports with their slave-side direction (`Input` =
+/// driven by the host master into `ctrl_s_axi`). Same order as
+/// [`S_AXI_LITE_CTRL_PORTS`].
+pub const S_AXI_LITE_PORT_DIRS: &[AxiPortEntry] = &[
+    ("AWVALID", PortDir::Input),
+    ("AWREADY", PortDir::Output),
+    ("AWADDR", PortDir::Input),
+    ("WVALID", PortDir::Input),
+    ("WREADY", PortDir::Output),
+    ("WDATA", PortDir::Input),
+    ("WSTRB", PortDir::Input),
+    ("ARVALID", PortDir::Input),
+    ("ARREADY", PortDir::Output),
+    ("ARADDR", PortDir::Input),
+    ("RVALID", PortDir::Output),
+    ("RREADY", PortDir::Input),
+    ("RDATA", PortDir::Output),
+    ("RRESP", PortDir::Output),
+    ("BVALID", PortDir::Output),
+    ("BREADY", PortDir::Input),
+    ("BRESP", PortDir::Output),
+];
+
 /// Per-channel groupings of the AXI-Lite control ports with their
 /// valid/ready markers (ports listed alphabetically per channel).
 pub const S_AXI_LITE_CHANNELS: &[AxiChannelInfo] = &[

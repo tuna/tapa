@@ -221,19 +221,19 @@ pub fn build_task_instance(
         make_connection(HANDSHAKE_RST_N, Expression::new_id(HANDSHAKE_RST_N)),
         make_connection(
             HANDSHAKE_START,
-            Expression::new_id(&format!("{inst_name}__ap_start")),
+            Expression::new_id(&format!("{inst_name}__{HANDSHAKE_START}")),
         ),
         make_connection(
             HANDSHAKE_DONE,
-            Expression::new_id(&format!("{inst_name}__ap_done")),
+            Expression::new_id(&format!("{inst_name}__{HANDSHAKE_DONE}")),
         ),
         make_connection(
             HANDSHAKE_IDLE,
-            Expression::new_id(&format!("{inst_name}__ap_idle")),
+            Expression::new_id(&format!("{inst_name}__{HANDSHAKE_IDLE}")),
         ),
         make_connection(
             HANDSHAKE_READY,
-            Expression::new_id(&format!("{inst_name}__ap_ready")),
+            Expression::new_id(&format!("{inst_name}__{HANDSHAKE_READY}")),
         ),
     ];
     connections.extend(arg_connections);

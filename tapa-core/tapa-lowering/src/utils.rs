@@ -41,9 +41,9 @@ pub fn output_wire(name: &str, range: Option<Range>) -> ModulePort {
     make_port(name, "output wire", range)
 }
 
-/// Build a `ModuleNet` (internal wire). The `hierarchical_name` defaults
-/// to `HierarchicalName::get_name(name)`, matching current
-/// `HierarchicalName.get_name(net.name)` used throughout the pipeline.
+/// Build a `ModuleNet` (internal wire). The `hierarchical_name`
+/// defaults to `HierarchicalName::get_name(name)`, the convention used
+/// throughout the pipeline.
 #[must_use]
 pub fn make_wire(name: &str, range: Option<Range>) -> ModuleNet {
     ModuleNet {
@@ -85,7 +85,7 @@ pub fn range_msb(msb: u32) -> Range {
 /// classified as identifier (alphabetic start or underscore) or literal
 /// (otherwise). Mirrors `Expression.from_str_to_tokens`, so
 /// `"C_S_AXI_ADDR_WIDTH - 1"` becomes the three-token stream
-/// `[id("C_S_AXI_ADDR_WIDTH"), lit("-"), lit("1")]` — matching current
+/// `[id("C_S_AXI_ADDR_WIDTH"), lit("-"), lit("1")]` — the
 /// `GraphIR` expression shape for `ctrl_s_axi` ADDR/DATA/STRB ranges.
 #[must_use]
 pub fn range_expr(left: &str, right: &str) -> Range {
@@ -225,9 +225,7 @@ pub fn expand_port_to_signals(
 ///
 /// Width expressions keep tokenized shape: each RTL token
 /// becomes a `GraphIR` [`Token`] classified as identifier (alphabetic
-/// start or underscore) or literal (otherwise). Mirrors current
-/// `Expression.from_str_to_tokens` used by `get_task_graphir_ports` in
-/// the implementation.
+/// start or underscore) or literal (otherwise).
 #[must_use]
 pub fn rtl_port_to_graphir(port: &tapa_rtl::port::Port) -> ModulePort {
     let port_type = match port.direction {
@@ -252,8 +250,7 @@ pub fn rtl_port_to_graphir_with_type(port: &tapa_rtl::port::Port, port_type: &st
 /// Convert a `tapa_rtl::MutableModule` to a `tapa_graphir::AnyModuleDefinition::Verilog`.
 ///
 /// Translates ports **and** parameters from the parsed RTL module into
-/// `GraphIR` structures — matching current
-/// `get_verilog_definition_from_tapa_module(...)`.
+/// `GraphIR` structures.
 #[must_use]
 pub fn mutable_module_to_verilog_def(
     mm: &tapa_rtl::mutation::MutableModule,

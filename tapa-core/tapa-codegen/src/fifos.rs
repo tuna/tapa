@@ -3,7 +3,7 @@
 use crate::rtl_state::TopologyWithRtl;
 use tapa_protocol::{
     FIFO_READ_PORTS, FIFO_WRITE_PORTS, HANDSHAKE_CLK, HANDSHAKE_RST, ISTREAM_SUFFIXES,
-    OSTREAM_SUFFIXES, STREAM_PORT_DIRECTION,
+    OSTREAM_SUFFIXES, STREAM_DATA_SUFFIXES, STREAM_PORT_DIRECTION,
 };
 use tapa_rtl::builder::{ContinuousAssign, Expr, ModuleInstance, ParamArg, PortArg};
 use tapa_rtl::module::sanitize_array_name;
@@ -315,7 +315,6 @@ fn resolve_fifo_width(state: &TopologyWithRtl, producer: Option<&FifoProducer>) 
               splitting would fragment the wiring logic"
 )]
 pub(crate) fn connect_fifos(state: &mut TopologyWithRtl, task_name: &str) {
-    use tapa_protocol::{ISTREAM_SUFFIXES, OSTREAM_SUFFIXES, STREAM_PORT_DIRECTION};
     use tapa_rtl::signal::{Signal, SignalKind};
 
     let task = &state.program.tasks[task_name];
@@ -346,20 +345,11 @@ pub(crate) fn connect_fifos(state: &mut TopologyWithRtl, task_name: &str) {
         if depth.is_some() && *has_consumer && *has_producer {
             // Internal FIFO: declare wires for both read and write sides
             if let Some(mm) = state.module_map.get_mut(task_name) {
-                // Declare wires for each FIFO suffix (read side)
-                for suffix in ISTREAM_SUFFIXES {
+                // Declare wires for both read and write sides; the data
+                // suffixes (`_dout`/`_din`) carry the FIFO width.
+                for suffix in ISTREAM_SUFFIXES.iter().chain(OSTREAM_SUFFIXES) {
                     let wire_name = format!("{sanitized_fifo_name}{suffix}");
-                    let sig = if suffix.contains("dout") {
-                        tapa_rtl::mutation::wide_wire(&wire_name, &(width - 1).to_string(), "0")
-                    } else {
-                        tapa_rtl::mutation::wire(&wire_name)
-                    };
-                    let _ = mm.add_signal(sig);
-                }
-                // Declare wires for write side
-                for suffix in OSTREAM_SUFFIXES {
-                    let wire_name = format!("{sanitized_fifo_name}{suffix}");
-                    let sig = if suffix.contains("din") {
+                    let sig = if STREAM_DATA_SUFFIXES.contains(suffix) {
                         tapa_rtl::mutation::wide_wire(&wire_name, &(width - 1).to_string(), "0")
                     } else {
                         tapa_rtl::mutation::wire(&wire_name)

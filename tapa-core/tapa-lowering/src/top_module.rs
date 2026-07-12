@@ -18,18 +18,9 @@ use tapa_protocol::{
 /// slave (top-level) side: master→slave address/data/valid channels and
 /// the response-channel READY ports.
 fn is_s_axi_slave_input(axi_port: &str) -> bool {
-    matches!(
-        axi_port,
-        "AWVALID"
-            | "AWADDR"
-            | "WVALID"
-            | "WDATA"
-            | "WSTRB"
-            | "ARVALID"
-            | "ARADDR"
-            | "BREADY"
-            | "RREADY"
-    )
+    tapa_protocol::S_AXI_LITE_PORT_DIRS
+        .iter()
+        .any(|&(name, dir)| name == axi_port && dir == tapa_protocol::PortDir::Input)
 }
 
 /// Port mapping from `ctrl_s_axi` internal name → top-level expression.
@@ -109,9 +100,8 @@ pub fn build_top_module(
 
     let mut submodules = vec![get_reset_inverter_inst(default_region.as_deref())];
     // `rst` is the output of reset_inverter; `ap_rst` is the same signal
-    // under the Vitis-generated name. names the wire `rst`; for
-    // compatibility we emit both `ap_rst` (in-flight Rust code uses it)
-    // and `rst` (equivalent name for ctrl_s_axi's ARESET and the
+    // Two spellings of the active-high reset coexist: `ap_rst` (used by
+    // TAPA codegen) and `rst` (used by ctrl_s_axi's ARESET and the
     // reset_inverter.rst connection).
     let mut wires = vec![
         make_wire(HANDSHAKE_RST, None),
@@ -126,7 +116,7 @@ pub fn build_top_module(
     let mut direct_assigns = Vec::new();
 
     // FSM instance — self-connect every port in the FSM module definition
-    // the way `_make_fsm_inst` does (each port expression is just
+    // (each port expression is just
     // an identifier for the same name). For any FSM port that isn't
     // already declared as a top-level port or wire (e.g. slot-prefixed
     // handshake signals like `SLOT_X0Y2_SLOT_X0Y2_0__ap_start`), emit a

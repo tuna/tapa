@@ -110,7 +110,7 @@ pub fn build_crossbar_params(conn: &MMapConnection) -> Vec<ParamArg> {
             "S_ID_WIDTH",
             Expr::int(u64::from(crossbar_slave_id_width(conn))),
         ),
-        ParamArg::new("M_ID_WIDTH", Expr::int(u64::from(conn.id_width))),
+        ParamArg::new("M_ID_WIDTH", Expr::int(u64::from(conn.id_width()))),
     ];
 
     for idx in 0..conn.channel_count() {
@@ -146,7 +146,7 @@ pub fn build_crossbar_params(conn: &MMapConnection) -> Vec<ParamArg> {
 }
 
 pub fn crossbar_slave_id_width(conn: &MMapConnection) -> u32 {
-    conn.id_width
+    conn.id_width()
         .saturating_sub(routing_id_bits(conn.thread_count()))
         .max(1)
 }
@@ -487,28 +487,6 @@ fn concat_ports(prefix: &str, count: u32, suffix: &str) -> String {
     }
 }
 
-pub(crate) fn resolve_mmap_data_width(
-    state: &TopologyWithRtl,
-    parent_task_name: &str,
-    child_task_name: &str,
-    parent_arg_name: &str,
-    child_port_name: &str,
-) -> u32 {
-    state
-        .program
-        .tasks
-        .get(parent_task_name)
-        .and_then(|task| task.ports.iter().find(|p| p.name == parent_arg_name))
-        .or_else(|| {
-            state
-                .program
-                .tasks
-                .get(child_task_name)
-                .and_then(|task| task.ports.iter().find(|p| p.name == child_port_name))
-        })
-        .map_or(64, |p| p.width)
-}
-
 pub(crate) fn add_crossbar_slave_id_padding(
     state: &mut TopologyWithRtl,
     task_name: &str,
@@ -574,16 +552,16 @@ pub(crate) fn add_m_axi_and_crossbars(
                         &format!("{}_{}", conn.arg_name, channel_idx),
                         conn.data_width,
                         64,
-                        conn.id_width,
+                        conn.id_width(),
                     );
                 }
-            } else if needs_crossbar(conn) || conn.id_width > 1 {
+            } else if needs_crossbar(conn) || conn.id_width() > 1 {
                 add_m_axi_ports_with_id_width(
                     mm,
                     &conn.arg_name,
                     conn.data_width,
                     64,
-                    conn.id_width,
+                    conn.id_width(),
                 );
             } else {
                 add_m_axi_ports(mm, &conn.arg_name, conn.data_width, 64);
@@ -660,6 +638,16 @@ mod tests {
     use super::*;
     use crate::rtl_state::MMapSlave;
 
+    fn slave_w(task: &str, inst_idx: u32, port: &str, threads: u32, id_width: u32) -> MMapSlave {
+        MMapSlave {
+            task: task.into(),
+            inst_idx,
+            port: port.into(),
+            threads,
+            id_width,
+        }
+    }
+
     fn slave(task: &str, inst_idx: u32, port: &str, threads: u32) -> MMapSlave {
         MMapSlave {
             task: task.into(),
@@ -674,7 +662,6 @@ mod tests {
     fn crossbar_needed_for_multiple_threads() {
         let conn = MMapConnection {
             arg_name: "mem".into(),
-            id_width: 2,
             slaves: vec![slave("task_a", 0, "data", 1), slave("task_b", 0, "data", 1)],
             chan_count: None,
             chan_size: None,
@@ -687,7 +674,6 @@ mod tests {
     fn no_crossbar_for_single_thread() {
         let conn = MMapConnection {
             arg_name: "mem".into(),
-            id_width: 1,
             slaves: vec![slave("task_a", 0, "data", 1)],
             chan_count: None,
             chan_size: None,
@@ -702,7 +688,6 @@ mod tests {
         // (a plain mmap has chan_count = None).
         let conn = MMapConnection {
             arg_name: "mem".into(),
-            id_width: 1,
             slaves: vec![slave("task_a", 0, "data", 1)],
             chan_count: Some(1),
             chan_size: Some(1024),
@@ -715,8 +700,7 @@ mod tests {
     fn crossbar_params_use_nested_slave_threads() {
         let conn = MMapConnection {
             arg_name: "mem".into(),
-            id_width: 3,
-            slaves: vec![slave("leaf", 0, "d", 1), slave("mid", 0, "data", 2)],
+            slaves: vec![slave_w("leaf", 0, "d", 1, 2), slave("mid", 0, "data", 2)],
             chan_count: None,
             chan_size: None,
             data_width: 32,
@@ -737,7 +721,6 @@ mod tests {
     fn crossbar_needed_for_hmap_channels() {
         let conn = MMapConnection {
             arg_name: "mem".into(),
-            id_width: 2,
             slaves: vec![slave("task_a", 0, "data", 1), slave("task_a", 1, "data", 1)],
             chan_count: Some(2),
             chan_size: Some(1024),
@@ -750,7 +733,6 @@ mod tests {
     fn crossbar_params_structure() {
         let conn = MMapConnection {
             arg_name: "mem".into(),
-            id_width: 2,
             slaves: vec![slave("task_a", 0, "data", 1), slave("task_b", 0, "data", 1)],
             chan_count: None,
             chan_size: None,
@@ -768,7 +750,6 @@ mod tests {
     fn crossbar_params_expand_master_id_width_for_slave_routing() {
         let conn = MMapConnection {
             arg_name: "mem".into(),
-            id_width: 3,
             slaves: vec![
                 slave("task_a", 0, "data", 1),
                 slave("task_b", 0, "data", 1),
@@ -787,9 +768,8 @@ mod tests {
     fn crossbar_module_name_format() {
         let conn = MMapConnection {
             arg_name: "mem".into(),
-            id_width: 2,
             slaves: vec![
-                slave("a", 0, "d", 1),
+                slave_w("a", 0, "d", 1, 0),
                 slave("b", 0, "d", 1),
                 slave("c", 0, "d", 1),
             ],
@@ -825,8 +805,10 @@ mod tests {
     fn crossbar_slave_suffix_width_only_widens_id_ports() {
         let conn = MMapConnection {
             arg_name: "mem".into(),
-            id_width: 3,
-            slaves: vec![slave("task_a", 0, "data", 1), slave("task_b", 0, "data", 1)],
+            slaves: vec![
+                slave_w("task_a", 0, "data", 1, 2),
+                slave("task_b", 0, "data", 1),
+            ],
             chan_count: None,
             chan_size: None,
             data_width: 32,
@@ -880,7 +862,6 @@ mod tests {
     fn crossbar_instance_sanitizes_indexed_names() {
         let conn = MMapConnection {
             arg_name: "chan[0]".into(),
-            id_width: 1,
             slaves: vec![slave("task_a", 0, "mem", 1)],
             chan_count: None,
             chan_size: None,
@@ -896,7 +877,6 @@ mod tests {
     fn crossbar_instance_connects_multiple_parent_channels() {
         let conn = MMapConnection {
             arg_name: "mat_a".into(),
-            id_width: 2,
             slaves: vec![slave("task_a", 0, "mem", 1), slave("task_a", 1, "mem", 1)],
             chan_count: Some(2),
             chan_size: Some(1024),
@@ -922,7 +902,6 @@ mod tests {
     fn validate_rejects_zero_data_width() {
         let conn = MMapConnection {
             arg_name: "mem".into(),
-            id_width: 1,
             slaves: vec![slave("task_a", 0, "data", 1)],
             chan_count: None,
             chan_size: None,
@@ -936,7 +915,6 @@ mod tests {
         // An hmap port with no downstream child connections.
         let conn = MMapConnection {
             arg_name: "mem".into(),
-            id_width: 2,
             slaves: vec![],
             chan_count: Some(1),
             chan_size: None,
@@ -949,7 +927,6 @@ mod tests {
     fn crossbar_rtl_generation() {
         let conn = MMapConnection {
             arg_name: "mem".into(),
-            id_width: 2,
             slaves: vec![slave("task_a", 0, "data", 1), slave("task_b", 0, "data", 1)],
             chan_count: None,
             chan_size: None,
@@ -971,7 +948,6 @@ mod tests {
     fn crossbar_rtl_exposes_multi_channel_base_addresses() {
         let conn = MMapConnection {
             arg_name: "mem".into(),
-            id_width: 2,
             slaves: vec![slave("task_a", 0, "data", 1), slave("task_b", 0, "data", 1)],
             chan_count: Some(2),
             chan_size: Some(1024),

@@ -45,8 +45,7 @@ pub static POTENTIAL_PATHS: &[(&str, &[&str])] = &[
     ("tapacc-binary", &["tapacc/tapacc", "usr/bin/tapacc"]),
 ];
 
-/// Override the search anchor for tests. Mirrors current
-/// `Path(__file__).absolute().parents` walk: when the override is set, we
+/// Override the search anchor for tests: when the override is set, we
 /// walk its parents instead of the binary's parents.
 fn search_anchor() -> PathBuf {
     static OVERRIDE: OnceLock<Option<PathBuf>> = OnceLock::new();

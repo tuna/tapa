@@ -551,7 +551,7 @@ pub(crate) fn generate_child_signals(
                         let offset_source = mmap_conns.get(&arg.arg).map_or_else(
                             || Expr::ident(format!("{arg_name}_offset")),
                             |conn| {
-                                let chan_count = conn.chan_count.unwrap_or(1);
+                                let chan_count = conn.channel_count();
                                 if chan_count > 1 && m_axi::needs_crossbar(conn) {
                                     Expr::lit("64'd0")
                                 } else if chan_count > 1 {
@@ -624,13 +624,9 @@ pub(crate) fn generate_child_signals(
                     }
                     let m_axi_wire_prefix = mmap_bindings.wire_prefix(&arg.arg);
                     let bridge_base = async_mmap::bridge_base_from_m_axi_prefix(&m_axi_wire_prefix);
-                    let data_width = crate::m_axi::resolve_mmap_data_width(
-                        state,
-                        task_name,
-                        &child_name,
-                        &arg.arg,
-                        child_port,
-                    );
+                    // Aggregation already derived the width with the same
+                    // parent-then-child port precedence.
+                    let data_width = mmap_conns.get(&arg.arg).map_or(64, |c| c.data_width);
                     let connect_optional_axi_ports =
                         !mmap_bindings.slave_indices.contains_key(&arg.arg);
                     if let Some(mm) = state.module_map.get_mut(task_name) {

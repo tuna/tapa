@@ -216,22 +216,12 @@ pub fn build_project_from_state(
             &leaf_modules,
         );
         let mut new_wires = new_wires;
-        let mut declared: std::collections::BTreeSet<String> =
-            new_ports.iter().map(|p| p.name.clone()).collect();
-        declared.extend(new_wires.iter().map(|w| w.name.clone()));
-        let fsm_name = format!("{slot_name}_fsm");
-        if let Some(fsm_def) = project
-            .modules
-            .module_definitions
-            .iter()
-            .find(|m| m.name() == fsm_name)
-        {
-            for port in fsm_def.ports() {
-                if declared.insert(port.name.clone()) {
-                    new_wires.push(crate::utils::make_wire(&port.name, port.range.clone()));
-                }
-            }
-        }
+        backfill_fsm_port_wires(
+            &project.modules.module_definitions,
+            &format!("{slot_name}_fsm"),
+            &new_ports,
+            &mut new_wires,
+        );
         if let Some((base, grouped)) =
             find_grouped_mut(&mut project.modules.module_definitions, &slot_name)
         {
@@ -297,22 +287,12 @@ pub fn build_project_from_state(
                 &ir_defs,
             );
             new_wires.extend(crate::upper_wires::build_top_extra_wires(&ctrl_s_axi_ports));
-            let mut declared: std::collections::BTreeSet<String> =
-                top_rtl_ports.iter().map(|p| p.name.clone()).collect();
-            declared.extend(new_wires.iter().map(|w| w.name.clone()));
-            let fsm_name = format!("{top_name}_fsm");
-            if let Some(fsm_def) = project
-                .modules
-                .module_definitions
-                .iter()
-                .find(|m| m.name() == fsm_name)
-            {
-                for port in fsm_def.ports() {
-                    if declared.insert(port.name.clone()) {
-                        new_wires.push(crate::utils::make_wire(&port.name, port.range.clone()));
-                    }
-                }
-            }
+            backfill_fsm_port_wires(
+                &project.modules.module_definitions,
+                &format!("{top_name}_fsm"),
+                &top_rtl_ports,
+                &mut new_wires,
+            );
             new_wires.push(crate::utils::make_wire("rst", None));
             if let Some((_, grouped)) =
                 find_grouped_mut(&mut project.modules.module_definitions, top_name)
@@ -860,6 +840,27 @@ pub fn build_project(
         cut_to_crossing_count: None,
         extra: BTreeMap::new(),
     })
+}
+
+/// Declare a wire for every `{name}_fsm` port not already present as a
+/// module port or wire, so the exporter's DRC resolves the FSM
+/// instantiation's self-connections.
+fn backfill_fsm_port_wires(
+    module_definitions: &[AnyModuleDefinition],
+    fsm_name: &str,
+    ports: &[ModulePort],
+    wires: &mut Vec<tapa_graphir::ModuleNet>,
+) {
+    let mut declared: std::collections::BTreeSet<String> =
+        ports.iter().map(|p| p.name.clone()).collect();
+    declared.extend(wires.iter().map(|w| w.name.clone()));
+    if let Some(fsm_def) = module_definitions.iter().find(|m| m.name() == fsm_name) {
+        for port in fsm_def.ports() {
+            if declared.insert(port.name.clone()) {
+                wires.push(crate::utils::make_wire(&port.name, port.range.clone()));
+            }
+        }
+    }
 }
 
 #[cfg(test)]

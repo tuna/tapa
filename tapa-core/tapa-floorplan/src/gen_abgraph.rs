@@ -513,22 +513,10 @@ fn find_preassignment_region(
 fn find_fifo_port_width(module: &tapa_rtl::VerilogModule, port_name: &str) -> Option<u32> {
     for suffix in ["_din", "_dout"] {
         if let Some(port) = module.get_port_of(port_name, suffix) {
-            let w = port.width.as_ref()?;
-            let msb = parse_expr_as_u32(&w.msb)?;
-            let lsb = parse_expr_as_u32(&w.lsb)?;
-            return Some(msb.saturating_sub(lsb) + 1);
+            return port.width.as_ref()?.bit_count();
         }
     }
     None
-}
-
-/// Try to parse a simple expression (single numeric literal) as u32.
-fn parse_expr_as_u32(expr: &[tapa_rtl::expression::Token]) -> Option<u32> {
-    if expr.len() == 1 {
-        expr[0].repr.parse::<u32>().ok()
-    } else {
-        None
-    }
 }
 
 /// Convert a region format string (e.g., `SLOT_X0Y0:SLOT_X0Y0`) to slot name format.

@@ -48,8 +48,6 @@ pub struct MMapSlave {
 pub struct MMapConnection {
     /// Argument name.
     pub arg_name: String,
-    /// Parent-facing AXI ID width (widest child + routing bits).
-    pub id_width: u32,
     /// The child ports sharing this argument, one crossbar slave each.
     pub slaves: Vec<MMapSlave>,
     /// Channel count; `None` for a plain (non-hmap) mmap. `Some(1)`
@@ -62,6 +60,14 @@ pub struct MMapConnection {
 }
 
 impl MMapConnection {
+    /// Parent-facing AXI ID width: the widest child ID plus enough
+    /// routing bits to identify the originating slave.
+    #[must_use]
+    pub fn id_width(&self) -> u32 {
+        let widest_child = self.slaves.iter().map(|s| s.id_width).max().unwrap_or(1);
+        id_width_for_child_threads(widest_child, self.thread_count())
+    }
+
     /// Crossbar slave count.
     #[must_use]
     pub fn thread_count(&self) -> u32 {
@@ -226,7 +232,6 @@ impl TopologyWithRtl {
                         .entry(parent_arg_name.clone())
                         .or_insert_with(|| MMapConnection {
                             arg_name: parent_arg_name.clone(),
-                            id_width: 1,
                             slaves: Vec::new(),
                             chan_count,
                             chan_size,
@@ -240,7 +245,6 @@ impl TopologyWithRtl {
                             conn.chan_count, conn.chan_size
                         )));
                     }
-                    conn.id_width = conn.id_width.max(child_id_width);
                     #[allow(
                         clippy::cast_possible_truncation,
                         reason = "instance index fits in u32"
@@ -257,25 +261,20 @@ impl TopologyWithRtl {
             }
         }
 
-        // Compute parent-facing AXI ID width. Child HLS AXI ports use a
-        // 1-bit ID field, and the crossbar appends enough routing bits to
-        // identify the originating slave when returning responses.
-        for conn in connections.values_mut() {
-            conn.id_width = id_width_for_child_threads(conn.id_width, conn.thread_count());
-        }
-
         // An hmap whose single child port internally shares the mmap
         // would need per-channel routing of an already-multiplexed ID
         // stream, which the crossbar wrapper does not implement.
         for conn in connections.values() {
             let total_threads = conn.total_threads();
-            if conn.slaves.len() == 1 && conn.chan_count.is_some() && total_threads > 1 {
-                return Err(CodegenError::InvalidMmapConnection(format!(
-                    "hmap argument '{}' is driven by a single child port that \
-                     internally shares the mmap ({total_threads} threads); this \
-                     combination is not supported",
-                    conn.arg_name
-                )));
+            if let [slave] = conn.slaves.as_slice() {
+                if conn.chan_count.is_some() && total_threads > 1 {
+                    return Err(CodegenError::InvalidMmapConnection(format!(
+                        "hmap argument '{}' is driven only by '{}.{}', which \
+                         internally shares the mmap ({total_threads} threads); \
+                         this combination is not supported",
+                        conn.arg_name, slave.task, slave.port
+                    )));
+                }
             }
         }
 
@@ -322,7 +321,7 @@ impl TopologyWithRtl {
             }
             cache[child_task_name]
                 .get(child_port_name)
-                .map_or((1, 1), |conn| (conn.id_width, conn.total_threads()))
+                .map_or((1, 1), |conn| (conn.id_width(), conn.total_threads()))
         } else {
             (1, 1)
         };
@@ -493,7 +492,8 @@ mod tests {
 
         let conns = state.aggregate_mmap_connections("top").unwrap();
         assert_eq!(
-            conns["elems"].id_width, 2,
+            conns["elems"].id_width(),
+            2,
             "parent-facing ID width must be at least as wide as the child AXI port"
         );
     }
@@ -720,7 +720,8 @@ mod tests {
 
         let conns = state.aggregate_mmap_connections("top").unwrap();
         assert_eq!(
-            conns["elems"].id_width, 2,
+            conns["elems"].id_width(),
+            2,
             "parent-facing ID width should preserve nested child crossbar routing bits"
         );
     }
@@ -776,7 +777,8 @@ mod tests {
 
         let conns = state.aggregate_mmap_connections("top").unwrap();
         assert_eq!(
-            conns["elems"].id_width, 3,
+            conns["elems"].id_width(),
+            3,
             "parent crossbar should append routing bits to the widest child AXI ID"
         );
     }
