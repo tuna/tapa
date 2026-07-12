@@ -5,6 +5,7 @@
 //! need `vitis_hls` or `vivado` on the host.
 
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -81,11 +82,11 @@ pub trait ToolRunner: Send + Sync {
     }
 }
 
-/// Local subprocess runner: inherits the parent process's environment
-/// so bare program
-/// names like `vitis_hls` / `vivado` resolve via the caller's `PATH`,
-/// and tools can read `HOME`, `XILINX_*`, `DISPLAY`, and friends.
-/// `ToolInvocation::env` entries overlay the inherited env.
+/// Local subprocess runner: inherits the parent process's environment.
+/// For Xilinx tools, an existing `settings64.sh` under the applicable
+/// `XILINX_*` root is sourced before execution; otherwise bare program names
+/// resolve through the caller's `PATH`. `ToolInvocation::env` entries overlay
+/// the inherited environment.
 ///
 /// Remote env allowlisting lives in `RemoteToolRunner` where the env
 /// crosses a machine boundary. On a single host, the child sees the
@@ -99,6 +100,61 @@ impl LocalToolRunner {
     pub const fn new() -> Self {
         Self
     }
+}
+
+fn xilinx_settings_envs(program: &str) -> &'static [&'static str] {
+    let tool = Path::new(program)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(program)
+        .trim_end_matches(".exe");
+    match tool {
+        "vitis_hls" => &["XILINX_HLS", "XILINX_VITIS"],
+        "vivado" => &["XILINX_VIVADO", "XILINX_VITIS"],
+        "v++" | "xocc" => &["XILINX_VITIS"],
+        _ => &[],
+    }
+}
+
+fn invocation_env_path(inv: &ToolInvocation, name: &str) -> Option<PathBuf> {
+    if let Some(value) = inv.env.get(name) {
+        return (!value.trim().is_empty()).then(|| PathBuf::from(value));
+    }
+    std::env::var_os(name)
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+}
+
+fn local_xilinx_settings(inv: &ToolInvocation) -> Option<PathBuf> {
+    xilinx_settings_envs(&inv.program).iter().find_map(|name| {
+        let root = invocation_env_path(inv, name)?;
+        if root.is_file() && root.extension().is_some_and(|ext| ext == "sh") {
+            return Some(root);
+        }
+        let settings = root.join("settings64.sh");
+        settings.is_file().then_some(settings)
+    })
+}
+
+fn local_command(inv: &ToolInvocation) -> std::process::Command {
+    let Some(settings) = local_xilinx_settings(inv) else {
+        let mut cmd = std::process::Command::new(&inv.program);
+        cmd.args(&inv.args);
+        return cmd;
+    };
+
+    // Keep the settings path and tool argv out of the shell program
+    // text. Positional parameters preserve spaces and shell
+    // metacharacters exactly while settings64.sh populates PATH and
+    // the XILINX_* environment before exec.
+    let mut cmd = std::process::Command::new("bash");
+    cmd.arg("-c")
+        .arg("source \"$1\" && shift && exec \"$@\"")
+        .arg("tapa-xilinx-settings")
+        .arg(settings)
+        .arg(&inv.program)
+        .args(&inv.args);
+    cmd
 }
 
 fn wait_with_deadline(
@@ -120,10 +176,9 @@ fn wait_with_deadline(
 impl ToolRunner for LocalToolRunner {
     fn run(&self, inv: &ToolInvocation) -> Result<ToolOutput> {
         use std::io::{Read, Write};
-        use std::process::{Command, Stdio};
+        use std::process::Stdio;
 
-        let mut cmd = Command::new(&inv.program);
-        cmd.args(&inv.args);
+        let mut cmd = local_command(inv);
         // Inherit the parent's full env, then overlay `inv.env` so
         // per-invocation entries win.
         for (k, v) in &inv.env {
@@ -459,6 +514,68 @@ mod tests {
             .expect("bare `sh` must resolve via inherited PATH");
         assert_eq!(out.exit_code, 0);
         assert_eq!(out.stdout, "ok");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn local_runner_activates_xilinx_settings_for_local_tools() {
+        use std::os::unix::fs::PermissionsExt;
+
+        for (tool, root_env) in [
+            ("vitis_hls", "XILINX_HLS"),
+            ("vitis_hls", "XILINX_VITIS"),
+            ("vivado", "XILINX_VIVADO"),
+            ("vivado", "XILINX_VITIS"),
+            ("v++", "XILINX_VITIS"),
+        ] {
+            let tmp = tempfile::tempdir().unwrap();
+            let root = tmp.path().join("Xilinx Tools");
+            let bin = root.join("bin");
+            std::fs::create_dir_all(&bin).unwrap();
+            std::fs::write(
+                root.join("settings64.sh"),
+                format!(
+                    "export TAPA_SETTINGS_MARKER=activated\nexport PATH='{}':\"$PATH\"\n",
+                    bin.display()
+                ),
+            )
+            .unwrap();
+            let executable = bin.join(tool);
+            std::fs::write(
+                &executable,
+                "#!/bin/sh\nprintf '%s|%s' \"$TAPA_SETTINGS_MARKER\" \"$1\"\n",
+            )
+            .unwrap();
+            let mut permissions = std::fs::metadata(&executable).unwrap().permissions();
+            permissions.set_mode(0o755);
+            std::fs::set_permissions(&executable, permissions).unwrap();
+
+            let mut inv = ToolInvocation::new(tool)
+                .arg("argument with spaces")
+                .env("XILINX_HLS", "")
+                .env("XILINX_VITIS", "")
+                .env("XILINX_VIVADO", "");
+            inv.env
+                .insert(root_env.to_string(), root.display().to_string());
+
+            let out = LocalToolRunner::new()
+                .run(&inv)
+                .unwrap_or_else(|e| panic!("{root_env} did not activate {tool}: {e}"));
+            assert_eq!(out.exit_code, 0, "{root_env} / {tool}");
+            assert_eq!(
+                out.stdout, "activated|argument with spaces",
+                "{root_env} / {tool}"
+            );
+        }
+    }
+
+    #[test]
+    fn local_runner_ignores_xilinx_roots_for_unrelated_tools() {
+        let inv = ToolInvocation::new("sh").env("XILINX_HLS", "/definitely/missing");
+        assert!(
+            local_xilinx_settings(&inv).is_none(),
+            "only Xilinx tool invocations should source settings64.sh"
+        );
     }
 
     /// `ToolInvocation::env` entries must overlay (not replace) the
