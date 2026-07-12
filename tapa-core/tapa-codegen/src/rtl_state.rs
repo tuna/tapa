@@ -24,6 +24,76 @@ fn render_fsm_module(fsm_name: &str) -> String {
         .expect("render succeeds")
 }
 
+fn validate_mmap_channel_geometry(
+    parent_task_name: &str,
+    parent_port_name: &str,
+    parent: &tapa_topology::task::PortDesign,
+    child_task_name: &str,
+    child_port_name: &str,
+    child: &tapa_topology::task::PortDesign,
+) -> Result<(), CodegenError> {
+    match (parent.chan_count, child.chan_count) {
+        (Some(parent_count), Some(child_count)) if parent_count != child_count => {
+            return Err(CodegenError::InvalidMmapConnection(format!(
+                "mmap channel-count mismatch: '{parent_task_name}.{parent_port_name}' declares \
+                 {parent_count}, but '{child_task_name}.{child_port_name}' declares {child_count}",
+            )));
+        }
+        _ => {}
+    }
+    match (parent.chan_size, child.chan_size) {
+        (Some(parent_size), Some(child_size)) if parent_size != child_size => {
+            return Err(CodegenError::InvalidMmapConnection(format!(
+                "mmap channel-size mismatch: '{parent_task_name}.{parent_port_name}' declares \
+                 {parent_size}, but '{child_task_name}.{child_port_name}' declares {child_size}",
+            )));
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn merge_mmap_port_metadata(
+    parent_task_name: &str,
+    parent_port_name: &str,
+    parent: Option<&tapa_topology::task::PortDesign>,
+    child_task_name: &str,
+    child_port_name: &str,
+    child: Option<&tapa_topology::task::PortDesign>,
+) -> Result<(u32, Option<u32>, Option<u32>), CodegenError> {
+    if let (Some(parent), Some(child)) = (parent, child) {
+        if parent.width != child.width {
+            return Err(CodegenError::InvalidMmapConnection(format!(
+                "mmap width mismatch: '{parent_task_name}.{parent_port_name}' is {} bits, but \
+                 '{child_task_name}.{child_port_name}' is {} bits",
+                parent.width, child.width,
+            )));
+        }
+        validate_mmap_channel_geometry(
+            parent_task_name,
+            parent_port_name,
+            parent,
+            child_task_name,
+            child_port_name,
+            child,
+        )?;
+    }
+
+    let data_width = parent.or(child).map(|port| port.width).ok_or_else(|| {
+        CodegenError::InvalidMmapConnection(format!(
+            "no port named '{parent_port_name}' on task '{parent_task_name}' or \
+             '{child_port_name}' on child '{child_task_name}' to derive the mmap data width from",
+        ))
+    })?;
+    let chan_count = parent
+        .and_then(|port| port.chan_count)
+        .or_else(|| child.and_then(|port| port.chan_count));
+    let chan_size = parent
+        .and_then(|port| port.chan_size)
+        .or_else(|| child.and_then(|port| port.chan_size));
+    Ok((data_width, chan_count, chan_size))
+}
+
 /// One crossbar slave: a child port bound to a shared mmap argument.
 #[derive(Debug, Clone)]
 pub struct MMapSlave {
@@ -215,32 +285,14 @@ impl TopologyWithRtl {
                     let parent_arg_name = &arg.arg;
                     let parent_port = task.ports.iter().find(|p| p.name == *parent_arg_name);
 
-                    if let (Some(parent), Some(child)) = (parent_port, port) {
-                        if parent.width != child.width {
-                            return Err(CodegenError::InvalidMmapConnection(format!(
-                                "mmap width mismatch: '{}.{}' is {} bits, but '{}.{}' is {} bits",
-                                task_name,
-                                parent_arg_name,
-                                parent.width,
-                                child_task_name,
-                                child_port_name,
-                                child.width
-                            )));
-                        }
-                    }
-                    let data_width = parent_port.or(port).map(|p| p.width).ok_or_else(|| {
-                        CodegenError::InvalidMmapConnection(format!(
-                            "no port named '{parent_arg_name}' on task '{task_name}' \
-                                 or '{child_port_name}' on child '{child_task_name}' \
-                                 to derive the mmap data width from"
-                        ))
-                    })?;
-                    let chan_count = parent_port
-                        .and_then(|p| p.chan_count)
-                        .or_else(|| port.and_then(|p| p.chan_count));
-                    let chan_size = parent_port
-                        .and_then(|p| p.chan_size)
-                        .or_else(|| port.and_then(|p| p.chan_size));
+                    let (data_width, chan_count, chan_size) = merge_mmap_port_metadata(
+                        task_name,
+                        parent_arg_name,
+                        parent_port,
+                        child_task_name,
+                        child_port_name,
+                        port,
+                    )?;
                     let conn = connections
                         .entry(parent_arg_name.clone())
                         .or_insert_with(|| MMapConnection {
@@ -409,6 +461,55 @@ mod tests {
             }
         }"#;
         serde_json::from_str(json).unwrap()
+    }
+
+    fn mmap_geometry_program(
+        parent_chan_count: Option<u32>,
+        parent_chan_size: Option<u32>,
+        child_chan_count: Option<u32>,
+        child_chan_size: Option<u32>,
+    ) -> Program {
+        serde_json::from_value(serde_json::json!({
+            "top": "top",
+            "target": "xilinx-hls",
+            "tasks": {
+                "top": {
+                    "level": "upper",
+                    "code": "",
+                    "target": "xilinx-hls",
+                    "ports": [{
+                        "cat": "mmap",
+                        "name": "elems",
+                        "type": "float*",
+                        "width": 32,
+                        "chan_count": parent_chan_count,
+                        "chan_size": parent_chan_size
+                    }],
+                    "tasks": {
+                        "leaf": [{"args": {
+                            "data": {"arg": "elems", "cat": "mmap"}
+                        }}]
+                    },
+                    "fifos": {}
+                },
+                "leaf": {
+                    "level": "lower",
+                    "code": "",
+                    "target": "xilinx-hls",
+                    "ports": [{
+                        "cat": "mmap",
+                        "name": "data",
+                        "type": "float*",
+                        "width": 32,
+                        "chan_count": child_chan_count,
+                        "chan_size": child_chan_size
+                    }],
+                    "tasks": {},
+                    "fifos": {}
+                }
+            }
+        }))
+        .unwrap()
     }
 
     #[test]
@@ -728,6 +829,40 @@ mod tests {
             .expect_err("mismatched AXI widths must be rejected");
         assert!(err.to_string().contains("64 bits"), "got: {err}");
         assert!(err.to_string().contains("32 bits"), "got: {err}");
+    }
+
+    #[test]
+    fn aggregate_rejects_parent_child_channel_count_mismatch() {
+        let state = TopologyWithRtl::new(mmap_geometry_program(
+            Some(2),
+            Some(1024),
+            Some(4),
+            Some(1024),
+        ));
+
+        let err = state
+            .aggregate_mmap_connections("top")
+            .expect_err("mismatched channel counts must be rejected");
+        assert!(err.to_string().contains("channel-count mismatch"));
+        assert!(err.to_string().contains("top.elems' declares 2"));
+        assert!(err.to_string().contains("leaf.data' declares 4"));
+    }
+
+    #[test]
+    fn aggregate_rejects_parent_child_channel_size_mismatch() {
+        let state = TopologyWithRtl::new(mmap_geometry_program(
+            Some(2),
+            Some(1024),
+            Some(2),
+            Some(2048),
+        ));
+
+        let err = state
+            .aggregate_mmap_connections("top")
+            .expect_err("mismatched channel sizes must be rejected");
+        assert!(err.to_string().contains("channel-size mismatch"));
+        assert!(err.to_string().contains("top.elems' declares 1024"));
+        assert!(err.to_string().contains("leaf.data' declares 2048"));
     }
 
     #[test]
