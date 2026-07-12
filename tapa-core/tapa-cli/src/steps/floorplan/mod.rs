@@ -121,8 +121,8 @@ fn run_floorplan_native_apply(path: &Path, ctx: &CliContext) -> Result<()> {
         .ok_or_else(|| CliError::InvalidArg(format!("top task `{top_name}` not found in graph")))?;
     let mut known_inst_names = BTreeSet::<String>::new();
     for (def_name, insts) in &top_task.tasks {
-        for idx in 0..insts.len() {
-            known_inst_names.insert(format!("{def_name}_{idx}"));
+        for (idx, inst) in insts.iter().enumerate() {
+            known_inst_names.insert(inst.canonical_name(def_name, idx).into_owned());
         }
     }
 
@@ -361,6 +361,82 @@ mod tests {
         assert!(
             matches!(err, CliError::MissingState { .. } | CliError::Io(_)),
             "expected typed graph-load failure, got {err:?}",
+        );
+    }
+
+    #[test]
+    fn floorplan_with_explicit_instance_name_is_applied_and_persisted() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let graph = serde_json::json!({
+            "top": "Top",
+            "tasks": {
+                "Top": {
+                    "code": "extern \"C\" {\nvoid Top() {}\n}  // extern \"C\"\n",
+                    "level": "upper",
+                    "target": "hls",
+                    "ports": [],
+                    "tasks": {
+                        "Worker": [{
+                            "name": "named_worker",
+                            "args": {},
+                            "step": 0
+                        }]
+                    },
+                    "fifos": {}
+                },
+                "Worker": {
+                    "code": "void Worker() {}",
+                    "level": "lower",
+                    "target": "hls",
+                    "ports": [],
+                    "tasks": {},
+                    "fifos": {}
+                }
+            }
+        });
+        graph_io::store_graph(dir.path(), &graph).expect("store graph");
+        settings_io::store_settings(
+            dir.path(),
+            &settings_io::Settings::from_iter([(
+                "target".to_owned(),
+                Value::String("xilinx-hls".to_owned()),
+            )]),
+        )
+        .expect("store settings");
+        let floorplan_path = dir.path().join("floorplan.json");
+        fs::write(
+            &floorplan_path,
+            br#"{"named_worker":"SLOT_X0Y0:SLOT_X0Y0"}"#,
+        )
+        .expect("write floorplan");
+        let mut ctx = ctx_with_work_dir(dir.path());
+
+        run_floorplan(
+            &FloorplanArgs {
+                floorplan_path: Some(floorplan_path),
+            },
+            &mut ctx,
+        )
+        .expect("apply floorplan");
+
+        let slot_name = "SLOT_X0Y0_SLOT_X0Y0";
+        let persisted_graph = graph_io::load_graph(dir.path()).expect("load graph");
+        assert!(persisted_graph["tasks"].get(slot_name).is_some());
+        assert!(persisted_graph["tasks"]["Top"]["tasks"]
+            .get(slot_name)
+            .is_some());
+
+        let design = crate::state::design::load_design(dir.path()).expect("load design");
+        assert!(design.tasks[slot_name].is_slot);
+        assert_eq!(
+            design.slot_task_name_to_fp_region.as_ref().unwrap()[slot_name],
+            "SLOT_X0Y0_TO_SLOT_X0Y0"
+        );
+        let settings = settings_io::load_settings(dir.path()).expect("load settings");
+        assert_eq!(settings["floorplan"], Value::Bool(true));
+        assert_eq!(
+            settings["slot_task_name_to_fp_region"][slot_name],
+            Value::String("SLOT_X0Y0_TO_SLOT_X0Y0".to_owned())
         );
     }
 
