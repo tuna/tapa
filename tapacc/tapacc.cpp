@@ -36,6 +36,7 @@ using std::unique_ptr;
 using std::vector;
 
 using clang::ASTConsumer;
+using clang::ASTContext;
 using clang::ASTFrontendAction;
 using clang::CompilerInstance;
 using clang::FunctionDecl;
