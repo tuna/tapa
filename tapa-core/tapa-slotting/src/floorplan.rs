@@ -366,6 +366,17 @@ fn update_fifo_inst_idx(
     result
 }
 
+fn task_port_matches_instance_port(task_port: &str, instance_port: &str) -> bool {
+    if task_port == instance_port {
+        return true;
+    }
+    instance_port
+        .strip_prefix(task_port)
+        .and_then(|suffix| suffix.strip_prefix('['))
+        .and_then(|index| index.strip_suffix(']'))
+        .is_some_and(|index| !index.is_empty() && index.chars().all(|c| c.is_ascii_digit()))
+}
+
 /// Find ports connected to FIFO endpoints.
 fn get_used_ports(
     graph: &Graph,
@@ -394,7 +405,7 @@ fn get_used_ports(
                 }
                 // Find matching port in task definition by port_name (arg key).
                 for port in task_ports {
-                    if port.name == *port_name || port_name.starts_with(&port.name) {
+                    if task_port_matches_instance_port(&port.name, port_name) {
                         let mut new_port = port.clone();
                         new_port.name.clone_from(arg_name);
                         new_ports.push(new_port);
@@ -724,6 +735,15 @@ mod tests {
     }
 
     #[test]
+    fn task_port_matching_accepts_only_exact_or_array_elements() {
+        assert!(task_port_matches_instance_port("in", "in"));
+        assert!(task_port_matches_instance_port("in", "in[12]"));
+        assert!(!task_port_matches_instance_port("in", "input"));
+        assert!(!task_port_matches_instance_port("in", "in[0]_suffix"));
+        assert!(!task_port_matches_instance_port("in", "in[]"));
+    }
+
+    #[test]
     fn floorplan_mmap_ports_use_original_instance_names() {
         // Test with nonzero instance index and mmap ports
         let graph = graph_from_value(json!({
@@ -958,6 +978,70 @@ mod tests {
                 "cross-slot FIFO in SLOT_B should not have depth"
             );
         }
+    }
+
+    #[test]
+    fn floorplan_fifo_port_matching_rejects_plain_prefixes() {
+        let graph = graph_from_value(json!({
+            "top": "top_func",
+            "tasks": {
+                "top_func": {
+                    "level": "upper",
+                    "code": "extern \"C\" {\nvoid top_func() {}\n}  // extern \"C\"\n",
+                    "target": "xilinx-hls",
+                    "ports": [],
+                    "tasks": {
+                        "consumer": [{"args": {
+                            "input": {"arg": "cross_fifo", "cat": "istream"}
+                        }, "step": 0}],
+                        "producer": [{"args": {
+                            "output": {"arg": "cross_fifo", "cat": "ostream"}
+                        }, "step": 0}]
+                    },
+                    "fifos": {
+                        "cross_fifo": {
+                            "depth": 2,
+                            "consumed_by": ["consumer", 0],
+                            "produced_by": ["producer", 0]
+                        }
+                    }
+                },
+                "consumer": {
+                    "level": "lower",
+                    "code": "",
+                    "target": "xilinx-hls",
+                    "ports": [
+                        {"cat": "istream", "name": "in", "type": "uint8_t", "width": 8},
+                        {"cat": "istream", "name": "input", "type": "uint64_t", "width": 64}
+                    ],
+                    "tasks": {},
+                    "fifos": {}
+                },
+                "producer": {
+                    "level": "lower",
+                    "code": "",
+                    "target": "xilinx-hls",
+                    "ports": [
+                        {"cat": "ostream", "name": "output", "type": "uint64_t", "width": 64}
+                    ],
+                    "tasks": {},
+                    "fifos": {}
+                }
+            }
+        }));
+        let slot_to_insts = BTreeMap::from([
+            ("SLOT_A".to_owned(), vec!["producer_0".to_owned()]),
+            ("SLOT_B".to_owned(), vec!["consumer_0".to_owned()]),
+        ]);
+
+        let result = get_floorplan_graph(&graph, &slot_to_insts).unwrap();
+        let port = result.tasks["SLOT_B"]
+            .ports
+            .iter()
+            .find(|port| port.name == "cross_fifo")
+            .expect("consumer slot exposes cross-slot FIFO");
+        assert_eq!(port.ctype, "uint64_t");
+        assert_eq!(port.width, 64);
     }
 
     /// Verify that multiple slots are created and the top task instantiates both.
