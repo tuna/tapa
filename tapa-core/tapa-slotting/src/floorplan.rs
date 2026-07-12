@@ -47,11 +47,25 @@ pub fn get_floorplan_graph(
         }
     }
 
-    // Validate every instance referenced in the floorplan exists.
-    for inst_name in slot_to_insts.values().flatten() {
-        if !known_inst_names.contains(inst_name) {
-            return Err(SlottingError::UnknownFloorplanInstance(inst_name.clone()));
+    // Every top-level instance must be assigned to exactly one non-empty slot.
+    let mut assigned_inst_names = BTreeSet::new();
+    for (slot_name, inst_names) in slot_to_insts {
+        if inst_names.is_empty() {
+            return Err(SlottingError::EmptyFloorplanSlot(slot_name.clone()));
         }
+        for inst_name in inst_names {
+            if !known_inst_names.contains(inst_name) {
+                return Err(SlottingError::UnknownFloorplanInstance(inst_name.clone()));
+            }
+            if !assigned_inst_names.insert(inst_name.clone()) {
+                return Err(SlottingError::DuplicateFloorplanInstance(inst_name.clone()));
+            }
+        }
+    }
+    if let Some(unassigned) = known_inst_names.difference(&assigned_inst_names).next() {
+        return Err(SlottingError::UnassignedFloorplanInstance(
+            unassigned.clone(),
+        ));
     }
 
     // Validate slot names do not collide with existing tasks.
@@ -743,12 +757,13 @@ mod tests {
             }
         }));
 
-        // Put only worker_1 (not worker_0) in the slot
+        // Put worker_1 in the slot under test and worker_0 in a different slot.
         let mut slot_to_insts = BTreeMap::new();
         slot_to_insts.insert(
             "SLOT_X0Y0_TO_SLOT_X1Y1".to_owned(),
             vec!["worker_1".to_owned()],
         );
+        slot_to_insts.insert("OTHER_SLOT".to_owned(), vec!["worker_0".to_owned()]);
 
         let result = get_floorplan_graph(&graph, &slot_to_insts).unwrap();
         let slot = &result.tasks["SLOT_X0Y0_TO_SLOT_X1Y1"];
@@ -1116,6 +1131,42 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_floorplan_rejects_unassigned_instance() {
+        let graph = graph_from_value(sample_graph());
+        let slot_to_insts = BTreeMap::from([("SLOT".to_owned(), vec!["producer_0".to_owned()])]);
+
+        let err = get_floorplan_graph(&graph, &slot_to_insts).expect_err("must reject");
+        assert!(
+            matches!(
+                err,
+                SlottingError::UnassignedFloorplanInstance(ref name) if name == "consumer_0"
+            ),
+            "expected unassigned consumer_0, got: {err:?}"
+        );
+    }
+
+    #[test]
+    fn test_floorplan_rejects_duplicate_instance_assignment() {
+        let graph = graph_from_value(sample_graph());
+        let slot_to_insts = BTreeMap::from([
+            (
+                "SLOT_A".to_owned(),
+                vec!["producer_0".to_owned(), "consumer_0".to_owned()],
+            ),
+            ("SLOT_B".to_owned(), vec!["producer_0".to_owned()]),
+        ]);
+
+        let err = get_floorplan_graph(&graph, &slot_to_insts).expect_err("must reject");
+        assert!(
+            matches!(
+                err,
+                SlottingError::DuplicateFloorplanInstance(ref name) if name == "producer_0"
+            ),
+            "expected duplicate producer_0, got: {err:?}"
+        );
+    }
+
     /// Snapshot the slot wrapper C++ and a compact form of the rewritten
     /// graph so regressions in `gen_slot_cpp` wiring or port plumbing show
     /// up as diff noise on this test.
@@ -1262,30 +1313,19 @@ mod tests {
         assert_eq!(convert_region_format("solo"), "solo");
     }
 
-    /// An empty slot instance list should produce an error or result in
-    /// no meaningful slot task being created.
     #[test]
     fn test_floorplan_empty_slot_rejected() {
         let graph = graph_from_value(sample_graph());
-        let mut slot_to_insts = BTreeMap::new();
-        slot_to_insts.insert("EMPTY_SLOT".to_owned(), vec![]);
+        let slot_to_insts = BTreeMap::from([("EMPTY_SLOT".to_owned(), vec![])]);
 
-        let result = get_floorplan_graph(&graph, &slot_to_insts);
-
-        match result {
-            Err(_) => {
-                // An error is acceptable for empty slots
-            }
-            Ok(value) => {
-                // If no error, the empty slot should have no child tasks
-                let slot = &value.tasks["EMPTY_SLOT"];
-                assert!(
-                    slot.tasks.is_empty(),
-                    "empty slot should have no child tasks, got: {:?}",
-                    slot.tasks.keys().collect::<Vec<_>>()
-                );
-            }
-        }
+        let err = get_floorplan_graph(&graph, &slot_to_insts).expect_err("must reject");
+        assert!(
+            matches!(
+                err,
+                SlottingError::EmptyFloorplanSlot(ref name) if name == "EMPTY_SLOT"
+            ),
+            "expected EmptyFloorplanSlot, got: {err:?}"
+        );
     }
 
     /// Malformed graph JSON should surface a precise typed error via

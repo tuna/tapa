@@ -28,6 +28,15 @@ pub enum SlottingError {
     #[error("floorplan: instance `{0}` not found among top's leaf children")]
     UnknownFloorplanInstance(String),
 
+    #[error("floorplan: slot `{0}` has no assigned instances")]
+    EmptyFloorplanSlot(String),
+
+    #[error("floorplan: instance `{0}` is assigned to more than one slot")]
+    DuplicateFloorplanInstance(String),
+
+    #[error("floorplan: instance `{0}` is not assigned to any slot")]
+    UnassignedFloorplanInstance(String),
+
     #[error("floorplan: slot name `{0}` collides with an existing task")]
     SlotNameCollision(String),
 }
