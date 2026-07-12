@@ -150,7 +150,7 @@ export CARGO_TARGET_DIR="${{TEST_TMPDIR}}/cargo-target"
 {env_exports}
 {env_file_exports}
 {maybe_skip}
-exec "$CARGO" test --manifest-path "$MANIFEST" {cargo_args} {test_args}
+exec "$CARGO" test --manifest-path "$MANIFEST" --locked {cargo_args} {test_args}
 """.format(
         resolver = _runfiles_resolver(),
         cargo = _sh_quote(ctx.file._cargo.short_path),
