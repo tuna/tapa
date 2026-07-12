@@ -2438,6 +2438,97 @@ mod tests {
     }
 
     #[test]
+    fn test_generate_rtl_nested_shared_mmap_threads() {
+        // `mid` internally shares its mmap between two leaves; `top`
+        // shares `mem` between `mid` and a plain leaf. The top-level
+        // crossbar must provision the aggregated per-slave thread
+        // counts (leaf: 1, mid: 2), not a flat 1.
+        let prog = program_from_json(serde_json::json!({
+            "top": "top",
+            "target": "xilinx-hls",
+            "tasks": {
+                "top": {
+                    "level": "upper",
+                    "code": "",
+                    "target": "xilinx-hls",
+                    "ports": [
+                        {"cat": "mmap", "name": "mem", "type": "float*", "width": 32}
+                    ],
+                    "tasks": {
+                        "leaf": [{"args": {"d": {"arg": "mem", "cat": "mmap"}}}],
+                        "mid": [{"args": {"data": {"arg": "mem", "cat": "mmap"}}}]
+                    },
+                    "fifos": {}
+                },
+                "mid": {
+                    "level": "upper",
+                    "code": "",
+                    "target": "xilinx-hls",
+                    "ports": [
+                        {"cat": "mmap", "name": "data", "type": "float*", "width": 32}
+                    ],
+                    "tasks": {
+                        "leaf": [
+                            {"args": {"d": {"arg": "data", "cat": "mmap"}}},
+                            {"args": {"d": {"arg": "data", "cat": "mmap"}}}
+                        ]
+                    },
+                    "fifos": {}
+                },
+                "leaf": {
+                    "level": "lower",
+                    "code": "",
+                    "target": "xilinx-hls",
+                    "ports": [
+                        {"cat": "mmap", "name": "d", "type": "float*", "width": 32}
+                    ],
+                    "tasks": {},
+                    "fifos": {}
+                }
+            }
+        }));
+
+        let mut state = TopologyWithRtl::new(prog);
+        for (name, module) in [
+            (
+                "top",
+                "module top(\n  input wire ap_clk,\n  input wire ap_rst_n\n);\nendmodule",
+            ),
+            (
+                "mid",
+                "module mid(\n  input wire ap_clk,\n  input wire ap_rst_n\n);\nendmodule",
+            ),
+            (
+                "leaf",
+                "module leaf(\n  input wire ap_clk,\n  input wire ap_rst_n\n);\nendmodule",
+            ),
+        ] {
+            state.attach_module(name, parse_module(module)).unwrap();
+        }
+
+        generate_rtl(&mut state).unwrap();
+
+        // mid's own crossbar arbitrates two leaves, 1 thread each.
+        let mid_v = &state.generated_files["mid.v"];
+        assert!(
+            mid_v.contains("S00_THREADS(1)") && mid_v.contains("S01_THREADS(1)"),
+            "mid crossbar should provision 1 thread per leaf slave, got:\n{mid_v}"
+        );
+
+        // top's crossbar: slave 0 = leaf (1 thread), slave 1 = mid
+        // (2 aggregated threads). Task iteration is alphabetical.
+        let top_v = &state.generated_files["top.v"];
+        assert!(
+            top_v.contains("S00_THREADS(1)"),
+            "leaf slave should provision 1 thread, got:\n{top_v}"
+        );
+        assert!(
+            top_v.contains("S01_THREADS(2)"),
+            "mid slave should provision its aggregated 2 threads, got:\n{top_v}"
+        );
+    }
+
+    #[test]
     fn test_generate_rtl_single_child_mmap_preserves_child_id_width() {
         let prog = program_from_json(serde_json::json!({
             "top": "top",
