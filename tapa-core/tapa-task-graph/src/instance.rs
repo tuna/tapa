@@ -1,5 +1,6 @@
 //! Task instantiation types.
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
@@ -28,4 +29,16 @@ pub struct TaskInstance {
     /// Bulk-synchronous step (can be negative for autorun tasks).
     #[serde(default)]
     pub step: i64,
+}
+
+impl TaskInstance {
+    /// Return the explicit instance name, or the legacy
+    /// `{definition_name}_{index}` name when no name was emitted.
+    #[must_use]
+    pub fn canonical_name(&self, definition_name: &str, index: usize) -> Cow<'_, str> {
+        self.name.as_deref().map_or_else(
+            || Cow::Owned(format!("{definition_name}_{index}")),
+            Cow::Borrowed,
+        )
+    }
 }

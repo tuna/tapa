@@ -179,6 +179,85 @@ fn flatten_hoists_leaf_under_nested_upper() {
 }
 
 #[test]
+fn flatten_uses_explicit_upper_instance_names_in_nested_fifo_paths() {
+    let json = r#"{
+        "cflags": [],
+        "top": "Outer",
+        "tasks": {
+            "Outer": {
+                "code": "", "level": "upper", "target": "hls", "vendor": "xilinx",
+                "ports": [],
+                "tasks": {"Cluster": [
+                    {"name": "west_cluster", "step": 0, "args": {}},
+                    {"name": "east_cluster", "step": 0, "args": {}}
+                ]},
+                "fifos": {}
+            },
+            "Cluster": {
+                "code": "", "level": "upper", "target": "hls", "vendor": "xilinx",
+                "ports": [],
+                "tasks": {"Stage": [{
+                    "name": "compute_stage", "step": 0, "args": {}
+                }]},
+                "fifos": {}
+            },
+            "Stage": {
+                "code": "", "level": "upper", "target": "hls", "vendor": "xilinx",
+                "ports": [],
+                "tasks": {
+                    "Source": [{"step": 0, "args": {
+                        "out": {"arg": "q", "cat": "ostream"}
+                    }}],
+                    "Sink": [{"step": 0, "args": {
+                        "in": {"arg": "q", "cat": "istream"}
+                    }}]
+                },
+                "fifos": {"q": {
+                    "depth": 4,
+                    "consumed_by": ["Sink", 0],
+                    "produced_by": ["Source", 0]
+                }}
+            },
+            "Source": {
+                "code": "", "level": "lower", "target": "hls", "vendor": "xilinx",
+                "ports": [{"cat": "ostream", "name": "out", "type": "int", "width": 32}]
+            },
+            "Sink": {
+                "code": "", "level": "lower", "target": "hls", "vendor": "xilinx",
+                "ports": [{"cat": "istream", "name": "in", "type": "int", "width": 32}]
+            }
+        }
+    }"#;
+    let graph = Graph::from_json(json).expect("parse");
+    let flattened = flatten(&graph).expect("flatten");
+    let top = &flattened.tasks["Outer"];
+
+    let west_fifo = "q_compute_stage_west_cluster_Outer";
+    let east_fifo = "q_compute_stage_east_cluster_Outer";
+    assert_eq!(top.tasks["Source"][0].args["out"].arg, west_fifo);
+    assert_eq!(top.tasks["Sink"][0].args["in"].arg, west_fifo);
+    assert_eq!(top.tasks["Source"][1].args["out"].arg, east_fifo);
+    assert_eq!(top.tasks["Sink"][1].args["in"].arg, east_fifo);
+
+    assert_eq!(
+        top.fifos[west_fifo].produced_by,
+        Some(EndpointRef("Source".to_owned(), 0))
+    );
+    assert_eq!(
+        top.fifos[west_fifo].consumed_by,
+        Some(EndpointRef("Sink".to_owned(), 0))
+    );
+    assert_eq!(
+        top.fifos[east_fifo].produced_by,
+        Some(EndpointRef("Source".to_owned(), 1))
+    );
+    assert_eq!(
+        top.fifos[east_fifo].consumed_by,
+        Some(EndpointRef("Sink".to_owned(), 1))
+    );
+}
+
+#[test]
 fn flatten_resolves_indexed_stream_bundle_args_through_parent_binding() {
     let json = r#"{
         "cflags": [],

@@ -202,7 +202,7 @@ fn collect_leaves_recursive(
                 // the `arg_bindings` the recursion uses to resolve
                 // its own sub-instances' args. Its scope path is
                 // prepended with this instance's name.
-                let inst_name = format!("{child_def_name}_{idx}");
+                let inst_name = inst.canonical_name(child_def_name, idx);
                 let child_scope = format!("{inst_name}_{scope_path}");
                 let child_bindings: BTreeMap<String, String> = resolved_args
                     .iter()
