@@ -74,10 +74,9 @@ pub fn build_slot_module(
 
     // Add task instances belonging to this slot
     for inst_name in inst_names {
-        // Resolve explicit instance labels through the parent task's
-        // child map before falling back to the legacy "taskname_idx"
-        // parse. Labels like `Module2Func_1` may still instantiate
-        // task/module `Module1Func`.
+        // Resolve explicit instance labels through the parent task's child map.
+        // Generated `{task}_{index}` names remain directly parseable; labels
+        // like `Module2Func_1` may instantiate task/module `Module1Func`.
         let (task_name, canonical_inst_name) = resolve_instance_in_task(slot_task_ref, inst_name)
             .unwrap_or_else(|| {
                 let (task_name, _idx) = parse_instance_name(inst_name);

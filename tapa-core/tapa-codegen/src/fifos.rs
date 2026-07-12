@@ -265,7 +265,8 @@ fn resolve_fifo_width(state: &TopologyWithRtl, producer: Option<&FifoProducer>) 
                     }
                 }
             } else {
-                // Keep the old best-effort behavior for incomplete topology data.
+                // Incomplete external topology may not identify the logical port;
+                // use the first matching stream signal as a best-effort width.
                 for port in &mm.inner.ports {
                     if port.name.ends_with("_dout") || port.name.ends_with("_din") {
                         if let Some(width) = port.bit_width() {

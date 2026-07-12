@@ -267,7 +267,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn run_tapacc_argv_matches_current_shape() {
+    fn run_tapacc_argv_has_expected_shape() {
         let argv = run_tapacc_argv(
             &[PathBuf::from("a.cpp"), PathBuf::from("b.cpp")],
             "Top",

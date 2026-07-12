@@ -395,7 +395,7 @@ mod tests {
         clippy::too_many_lines,
         reason = "integration test with many assertions"
     )]
-    fn native_synth_writes_full_pipeline_artifacts() {
+    fn synth_writes_full_pipeline_artifacts() {
         let dir = tempfile::tempdir().expect("tempdir");
         let work = dir.path();
         let mut tasks = IndexMap::new();

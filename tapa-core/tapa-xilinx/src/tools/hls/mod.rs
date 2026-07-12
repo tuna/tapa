@@ -599,7 +599,7 @@ mod tests {
     }
 
     #[test]
-    fn tcl_contains_ported_steps() {
+    fn tcl_contains_required_steps() {
         let job = fixture_job(camino::Utf8Path::new("/tmp"));
         let tcl = build_hls_tcl(&job);
         for step in [
@@ -774,7 +774,7 @@ mod tests {
     }
 
     #[test]
-    fn production_transient_predicate_matches_current() {
+    fn default_transient_predicate_classifies_failures() {
         assert!(is_transient_hls_output("Pre-synthesis failed.\n", ""));
         // Plain failure with ERROR: is not transient.
         assert!(!is_transient_hls_output(

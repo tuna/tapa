@@ -286,7 +286,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn native_run_writes_graph_design_settings() {
+    fn analyze_writes_graph_design_settings() {
         use std::os::unix::fs::PermissionsExt;
 
         // Build an isolated tempdir that doubles as both:

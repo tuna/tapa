@@ -64,7 +64,7 @@ mod tests {
     }
 
     #[test]
-    fn version_matches_current_format() {
+    fn version_uses_expected_format() {
         // The version is `major.minor.date[.patch]` — at least 3 segments.
         let segment_count = VERSION.split('.').count();
         assert!(segment_count >= 3, "version must have at least 3 segments");

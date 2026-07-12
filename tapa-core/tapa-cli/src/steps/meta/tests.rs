@@ -91,8 +91,8 @@ impl HlsAndVivadoStub {
                     .to_string()
             },
         );
-        // Mirror the queue pop so the existing fixture list stays
-        // non-empty — some callers still rely on the side effect.
+        // Consume the queued fixture while retaining the list for callers that
+        // inspect it after synthesis.
         let _ = self.hls_q.lock().unwrap().pop();
         let syn = cwd.join("project").join(&top).join("syn");
         std::fs::create_dir_all(syn.join("report")).unwrap();

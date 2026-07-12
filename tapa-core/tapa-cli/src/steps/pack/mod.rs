@@ -454,10 +454,8 @@ mod tests {
 
     #[test]
     fn aie_target_is_rejected() {
-        // AIE was unsupported with `program.run_aie`; analyze rejects it
-        // up front, but a hand-edited `settings.json` (or a stale work
-        // dir from before the change) must still surface a clear error
-        // rather than silently no-op'ing.
+        // Pack validates persisted state independently of analyze so a
+        // hand-edited or stale settings file still produces a clear error.
         let dir = tempfile::tempdir().expect("tempdir");
         write_state(dir.path(), "xilinx-aie");
         let ctx = ctx_with_work_dir(dir.path());

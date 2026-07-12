@@ -281,13 +281,13 @@ mod tests {
     }
 
     #[test]
-    fn invocation_shape_matches_current_flags() {
+    fn invocation_uses_expected_flags() {
         let tmp = tempfile::tempdir().unwrap();
         let prep = make_prepared(tmp.path());
         let inv = build_invocation(&prep);
 
         assert_eq!(inv.program, RAPIDSTREAM_TAPAFP_BIN);
-        // The argv must match the `cmd` list verbatim (in order).
+        // Argument order is part of the tool invocation contract.
         assert_eq!(
             inv.args,
             vec![

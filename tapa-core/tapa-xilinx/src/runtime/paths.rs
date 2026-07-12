@@ -383,7 +383,7 @@ mod tests {
     }
 
     #[test]
-    fn tapa_cflags_shape_matches_current_when_include_unset() {
+    fn tapa_cflags_without_include_has_expected_shape() {
         let _lock = ENV_LOCK.lock().unwrap();
         let _g1 = EnvGuard::unset("TAPA_LIB_INCLUDE");
         let _g2 = EnvGuard::unset("TAPA_FPGA_RUNTIME_INCLUDE");

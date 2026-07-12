@@ -333,7 +333,7 @@ pub fn build_project_from_state(
     Ok(project)
 }
 
-// Compatibility name retained for callers of the original public API.
+/// Alias for [`build_project_from_state`].
 pub use build_project_from_state as build_project_from_inputs;
 
 fn refresh_top_slot_instance_connections(
