@@ -184,10 +184,14 @@ CARGO_TEST_PACKAGES = [
 
 cargo_test(
     name = "cargo_test",
+    size = "enormous",
     srcs = _ALL_SRCS,
     cargo_args = CARGO_TEST_PACKAGES,
     manifest = "Cargo.toml",
-    tags = ["manual"],
+    tags = [
+        "cpu:8",
+        "requires-network",
+    ],
 )
 
 # -- Test: gated tapa-xilinx integration suite (manual) --

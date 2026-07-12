@@ -2,7 +2,7 @@
 
 load("@rules_cc//cc:defs.bzl", "cc_import", "cc_library", "cc_test")
 load("@rules_pkg//pkg:mappings.bzl", "pkg_filegroup", "pkg_files", "strip_prefix")
-load("//bazel:cargo_rules.bzl", "cargo_platform_artifacts")
+load("//bazel:cargo_rules.bzl", "cargo_platform_artifacts", "cargo_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -55,6 +55,39 @@ cargo_platform_artifacts(
     local = True,
     manifest = "Cargo.toml",
     tags = ["local"],
+)
+
+# -- Test: Rust unit tests for the frt workspace --
+
+cargo_test(
+    name = "cargo_test",
+    size = "enormous",
+    srcs = glob(
+        ["**/*"],
+        exclude = [
+            "BUILD.bazel",
+            "target/**",
+        ],
+    ),
+    cargo_args = [
+        "-p",
+        "frt-shm",
+        "-p",
+        "frt-dpi",
+        "-p",
+        "frt-dpi-verilator",
+        "-p",
+        "frt-dpi-xsim",
+        "-p",
+        "frt-cosim",
+        "-p",
+        "frt",
+    ],
+    manifest = "Cargo.toml",
+    tags = [
+        "cpu:8",
+        "requires-network",
+    ],
 )
 
 cc_import(

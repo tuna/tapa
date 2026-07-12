@@ -71,15 +71,29 @@ repos:
   - repo: local
     hooks:
       - id: cargo-fmt
-        name: cargo fmt
+        name: cargo fmt (fpga-runtime)
         entry: cargo fmt --manifest-path fpga-runtime/Cargo.toml --all --
         language: system
         types: [rust]
         pass_filenames: false
 
       - id: cargo-clippy
-        name: cargo clippy
+        name: cargo clippy (fpga-runtime)
         entry: cargo clippy --manifest-path fpga-runtime/Cargo.toml --all-targets
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      - id: cargo-fmt-tapa-core
+        name: cargo fmt (tapa-core)
+        entry: cargo fmt --manifest-path tapa-core/Cargo.toml --all --
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      - id: cargo-clippy-tapa-core
+        name: cargo clippy (tapa-core)
+        entry: cargo clippy --manifest-path tapa-core/Cargo.toml --all-targets
         language: system
         types: [rust]
         pass_filenames: false
