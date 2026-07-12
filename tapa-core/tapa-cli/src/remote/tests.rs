@@ -229,10 +229,8 @@ fn parse_remote_host_spec_variants() {
 
 #[test]
 fn malformed_yaml_warns_and_returns_none() {
-    // Compatibility finding: `load_remote_config`
-    // logs a warning and continues when `~/.taparc` is unreadable or
-    // malformed; Rust must do the same so a stale taparc cannot fatally
-    // block `tapa version` for users without an active remote setup.
+    // Malformed `.taparc` files warn and disable remote execution so
+    // unrelated commands such as `tapa version` still run.
     let lock = ENV_LOCK.lock();
     let _lock = match lock {
         Ok(g) => g,

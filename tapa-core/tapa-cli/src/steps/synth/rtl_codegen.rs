@@ -58,11 +58,8 @@ pub fn topology_program_from_design(design: &Design) -> Result<Program> {
             )
         };
         task_obj.insert("fifos".to_string(), fifos_value);
-        // Preserve area annotations + clock_period so downstream
-        // consumers (AutoBridge area-aware floorplanning via
-        // `collect_task_area()` when `--enable-synth-util` ran, plus
-        // DSE cost models) see non-zero utilization estimates. Previous
-        // conversion dropped these, so every task looked like area 0.
+        // Preserve area annotations and clock_period for AutoBridge
+        // area-aware floorplanning and DSE cost models.
         if !t.self_area.is_empty() {
             task_obj.insert(
                 "self_area".to_string(),
@@ -194,15 +191,9 @@ fn schema_port_str(p: &tapa_task_graph::Port) -> String {
     )
 }
 
-/// Port of the implementation:
-/// `{name: [str(port) for port in task.ports.values()]
-///   for name, task in program._tasks.items()
-///   if name in program.gen_templates}`.
-///
-/// `gen_templates` is the union of user-supplied template
-/// names (not surfaced in tapa-cli today) and every task whose
-/// `target == "ignore"`. The resulting schema is consumed by
-/// `--custom-rtl` at pack time to validate port-signature drift.
+/// Write port signatures for tasks whose target is `ignore`. The
+/// resulting schema is consumed by `--custom-rtl` at pack time to
+/// validate port-signature drift.
 pub fn write_templates_info(work_dir: &Path, design: &Design) -> Result<()> {
     let templates: BTreeMap<String, Vec<String>> = design
         .tasks
@@ -291,8 +282,8 @@ mod tests {
         assert!(program.tasks.contains_key("Add"));
     }
 
-    /// Regression test: `generate-floorplan` enables
-    /// `--enable-synth-util`, which writes `self/total_area` onto the
+    /// `generate-floorplan --enable-synth-util` writes
+    /// `self/total_area` onto the
     /// design. The topology conversion must preserve those fields so
     /// `AutoBridge`'s area-aware floorplanning sees real costs instead of
     /// default 0.

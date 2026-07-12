@@ -14,7 +14,7 @@
 //!   critical_path:        # only when top is upper
 //!     <child_task_name>: { ...child performance dict... }
 //! area:
-//!   source: hls            # "synth" once Vivado utilization populates total_area
+//!   source: hls            # "synth" when total_area has non-zero utilization
 //!   total: { ...resource dict... }
 //!   breakdown:             # only when top is upper
 //!     <child_task_name>: { count: <n>, area: { ... } }
@@ -85,10 +85,9 @@ pub fn write_top_report(work_dir: &Path, design: &Design, override_schema: &str)
     Ok(())
 }
 
-/// Recursively build a task-report struct mirroring current
-/// `Task.report`. Only recurses one level for `critical_path` /
-/// `breakdown` (report itself recurses, but only top-level
-/// is read by downstream consumers).
+/// Recursively build a task report. Only one level of
+/// `critical_path` and `breakdown` is retained because downstream
+/// consumers read those fields only from the top-level report.
 fn build_task_report(design: &Design, task_name: &str, schema: &str) -> Result<Report> {
     let task = design.tasks.get(task_name).ok_or_else(|| {
         CliError::InvalidArg(format!("report: task `{task_name}` not found in design"))

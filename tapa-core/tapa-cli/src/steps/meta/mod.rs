@@ -39,7 +39,6 @@ pub struct CompileArgs {
 }
 
 pub fn run_compile_composite(args: &CompileArgs, ctx: &mut CliContext) -> Result<()> {
-    // The composite is always native.
     analyze::run(&args.analyze, ctx)?;
     synth::run(&args.synth, ctx)?;
     pack::run(&args.pack, ctx)
@@ -171,7 +170,6 @@ pub fn run_generate_floorplan_composite(
     args: &GenerateFloorplanArgs,
     ctx: &mut CliContext,
 ) -> Result<()> {
-    // Always native.
     analyze::run(&args.analyze_args(), ctx)?;
     synth::run(&args.synth_args(), ctx)?;
     floorplan::run_run_autobridge(&args.run_autobridge_args(), ctx)

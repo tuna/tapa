@@ -1,11 +1,9 @@
 //! Graph-dict to typed [`Design`] projection plus the
 //! `--flatten-hierarchy` round-trip helper for `tapa analyze`.
 //!
-//! Mirrors the `Task.to_topology_dict` projection but drops
-//! `vendor` and other tapacc-only keys, and provides
-//! [`flatten_graph_value`] which round-trips a tapacc graph dict
-//! through the typed [`Graph`] schema and re-serializes the result of
-//! [`flatten`].
+//! Drops `vendor` and other tapacc-only keys while projecting a task
+//! graph into a [`Design`], and provides [`flatten_graph_value`] for
+//! hierarchy flattening through the typed [`Graph`] schema.
 
 use indexmap::IndexMap;
 use tapa_task_graph::{flatten, Design, Graph, TaskLevel, TaskTopology, TransformError};
@@ -15,10 +13,8 @@ use crate::error::{CliError, Result};
 /// Round-trip a tapacc graph dict through the typed [`Graph`] schema and
 /// return the result of [`flatten`] re-serialized as `serde_json::Value`.
 ///
-/// The CLI keeps the on-disk graph as a `Value` because the current
-/// pipeline accepts a richer schema in some downstream stages,
-/// but the transform itself is defined on the strict `Graph` type to
-/// maximize compatibility.
+/// The transform is defined on the strict [`Graph`] type used by the
+/// CLI's graph reader and writer.
 pub(super) fn flatten_graph_value(graph: &Graph) -> Result<Graph> {
     let flat = flatten(graph).map_err(|e| match e {
         TransformError::DeepHierarchyNotSupported(child) => CliError::InvalidArg(format!(
@@ -41,9 +37,9 @@ pub(super) fn is_top_leaf(graph: &Graph, top: &str) -> bool {
         .is_some_and(|task| task.level == TaskLevel::Lower)
 }
 
-/// Project the tapacc graph dict into a typed [`Design`] suitable for
-/// `<work_dir>/design.json`. Mirrors the `Task.to_topology_dict`
-/// projection, but drops `vendor` and other tapacc-only keys.
+/// Project the tapacc graph into a typed [`Design`] suitable for
+/// `<work_dir>/design.json`, dropping `vendor` and other analyzer-only
+/// keys.
 pub(super) fn build_design(top: &str, target: &str, graph: &Graph) -> Design {
     let mut topology: IndexMap<String, TaskTopology> = IndexMap::new();
     for (name, task) in &graph.tasks {
@@ -181,15 +177,10 @@ mod tests {
         assert_eq!(a0.args["out"].arg, "fifo_VecAdd");
     }
 
-    /// Regression: nested upper children used to surface
-    /// `DeepHierarchyNotSupported`. current
-    /// `Graph.get_flatten_graph` recursively collects every leaf
-    /// under the top, so the Rust port now mirrors that — a deeply
-    /// nested design must round-trip cleanly (no panic, no typed
-    /// `InvalidArg`). For the minimal fixture below, Inner has no
-    /// tasks of its own, so the flattened top's `tasks` map is
-    /// empty; the important contract is that `flatten_graph_value`
-    /// returns `Ok`.
+    /// Nested upper children are recursively flattened. In this
+    /// minimal fixture, `Inner` has no tasks of its own, so the
+    /// flattened top's `tasks` map is empty; the transform must still
+    /// return `Ok`.
     #[test]
     fn flatten_graph_value_accepts_nested_upper() {
         let raw: Graph = serde_json::from_value(json!({

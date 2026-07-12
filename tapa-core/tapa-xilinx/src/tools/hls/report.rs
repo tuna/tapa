@@ -2,9 +2,8 @@
 //!
 //! `parse_csynth_xml` pulls the well-known top-level scalars that TAPA
 //! consumes (top module name, target part, target and estimated clock
-//! periods) out of the HLS report XML. `parse_utilization_rpt` ports
-//! the hierarchical ASCII-table walk from
-//! the implementation.
+//! periods) out of the HLS report XML. `parse_utilization_rpt` walks
+//! Vivado's hierarchical ASCII table.
 
 use std::collections::HashMap;
 
@@ -142,8 +141,7 @@ pub fn parse_csynth_xml(bytes: &[u8]) -> Result<CsynthReport> {
     })
 }
 
-/// Parse a Vivado hierarchical utilization `.rpt`. Ports
-/// the implementation.
+/// Parse a Vivado hierarchical utilization `.rpt`.
 pub fn parse_utilization_rpt(text: &str) -> Result<UtilizationReport> {
     #[derive(Clone, Copy, PartialEq, Eq)]
     enum State {

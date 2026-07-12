@@ -76,8 +76,7 @@ pub enum Step {
     ///
     /// Terminal: `g++`'s own `trailing_var_arg` already consumes any
     /// tokens that follow, so chaining a subsequent subcommand after
-    /// `g++` is not supported — matching CLI
-    /// `nargs=-1, type=UNPROCESSED`.
+    /// `g++` is not supported.
     #[command(name = "g++")]
     Gpp {
         #[command(flatten)]
@@ -109,8 +108,8 @@ struct ChainParser {
 }
 
 impl Step {
-    /// Walk the chained-step linked list. Mirrors CLI chained
-    /// group: parse + validate the *entire* chain first, then execute
+    /// Walk the chained-step linked list: parse and validate the
+    /// *entire* chain first, then execute
     /// each step in order. A parse error or `--help` on a later token
     /// (e.g. `tapa analyze … synth --help`) must surface before any
     /// step mutates `work_dir` or shells out to a missing tool.
@@ -242,8 +241,8 @@ mod tests {
 
     #[test]
     fn flag_value_equal_to_subcommand_name_is_not_a_boundary() {
-        // Regression test: `--top synth` keeps `synth` as the
-        // value of `--top`, not as a chained subcommand boundary.
+        // `synth` is the value of `--top`, not a chained subcommand
+        // boundary.
         let cli = parse(&[
             "analyze", "--input", "a.cpp", "--top", "synth", "pack", "--output", "out.xo",
         ])

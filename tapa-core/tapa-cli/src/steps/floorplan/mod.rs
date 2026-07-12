@@ -1,10 +1,10 @@
 //! `tapa floorplan` and `tapa run-autobridge`.
 //!
-//! The native paths cover the local-only happy paths:
+//! The two commands share floorplan state and dispatch:
 //!   * `floorplan` without `--floorplan-path` is a stateful no-op that
 //!     toggles `settings["floorplan"] = true` and marks the step as
 //!     pipelined; the heavy `--floorplan-path` orchestration drives
-//!     the native `get_floorplan_graph` transform in `tapa_slotting`.
+//!     the `get_floorplan_graph` transform in `tapa_slotting`.
 //!   * `run-autobridge` shells out to `rapidstream-tapafp` via the
 //!     shared `tapa_xilinx::ToolRunner` abstraction, so the same
 //!     orchestration transparently dispatches locally or over SSH
@@ -83,7 +83,7 @@ pub fn to_cli_argv_run_autobridge(args: &RunAutobridgeArgs) -> Vec<String> {
 
 /// `tapa floorplan` dispatcher.
 ///
-/// `--floorplan-path` drives the native `apply_floorplan` transform;
+/// `--floorplan-path` drives the graph rewrite;
 /// without it, the step is a stateful no-op that just toggles
 /// `settings["floorplan"] = true`.
 pub fn run_floorplan(args: &FloorplanArgs, ctx: &mut CliContext) -> Result<()> {
@@ -155,10 +155,8 @@ fn run_floorplan_native_apply(path: &Path, ctx: &CliContext) -> Result<()> {
 
     graph_io::store_graph(work_dir, &new_value)?;
 
-    // Rebuild design.json so chained downstream steps see slot tasks +
-    // the floorplan region map. Standalone `tapa floorplan
-    // --floorplan-path` previously left design.json stale (only
-    // graph.json + settings.json were rewritten).
+    // Rebuild design.json so chained downstream steps see slot tasks
+    // and the floorplan region map.
     let target = match settings_io::load_settings(work_dir) {
         Ok(s) => s
             .get("target")
@@ -201,11 +199,9 @@ fn run_floorplan_native_apply(path: &Path, ctx: &CliContext) -> Result<()> {
     Ok(())
 }
 
-/// Build a [`tapa_task_graph::Design`] from a (possibly floorplan-rewritten)
-/// typed graph, threading the slot→region echo map through. Mirrors the
-/// projection in `analyze::build_design` but accepts an explicit
-/// `slot_task_name_to_fp_region` so the post-floorplan write captures
-/// the new slot-task identity.
+/// Build a [`tapa_task_graph::Design`] from a floorplan-rewritten graph
+/// and attach the slot-to-region map so downstream stages see the new
+/// slot-task identities.
 fn build_design_with_floorplan(
     graph: &Graph,
     top: &str,
@@ -268,7 +264,7 @@ fn map_slotting_err(e: &SlottingError) -> CliError {
     CliError::InvalidArg(e.to_string())
 }
 
-/// Native no-op path: load (or initialize) `settings.json`, set
+/// No-op path: load (or initialize) `settings.json`, set
 /// `floorplan = true`, persist, and mark the step as pipelined.
 fn run_floorplan_native_noop(ctx: &CliContext) -> Result<()> {
     let work_dir = ctx.work_dir.as_path();
@@ -360,9 +356,8 @@ mod tests {
             floorplan_path: Some(dir.path().join("fp.json")),
         };
         let err = run_floorplan(&args, &mut ctx).expect_err("must reject without graph");
-        // With native --floorplan-path enabled, the failure is now a
-        // typed graph-load error (no graph.json on disk, no cached
-        // graph in flow state) rather than an `InvalidArg` opt-in stub.
+        // A missing on-disk and in-memory graph is a typed graph-load
+        // error.
         assert!(
             matches!(err, CliError::MissingState { .. } | CliError::Io(_)),
             "expected typed graph-load failure, got {err:?}",

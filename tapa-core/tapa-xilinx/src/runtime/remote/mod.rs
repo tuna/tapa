@@ -62,8 +62,7 @@ impl RemoteToolRunner {
 
 #[allow(
     dead_code,
-    reason = "retained for future diagnostic paths; \
-         run_once now routes everything through session_dir"
+    reason = "keeps configured-root access separate from per-session paths"
 )]
 fn remote_work_dir(session: &SshSession) -> String {
     session.config().work_dir.clone()
@@ -268,9 +267,8 @@ impl RemoteToolRunner {
 /// `SshSession`. `attempt` is invoked once; if it returns a
 /// recoverable mux error (per [`is_recoverable_mux_error`]) the
 /// caller runs `recover` (typically `reset_mux` + `ensure_established`)
-/// and then retries `attempt` exactly once. Non-recoverable errors
-/// pass through unchanged, matching
-/// the implementation semantics.
+/// and then retries `attempt` exactly once. Non-recoverable errors pass
+/// through unchanged.
 fn run_with_mux_retry<A, R>(mut attempt: A, mut recover: R) -> Result<ToolOutput>
 where
     A: FnMut() -> Result<ToolOutput>,

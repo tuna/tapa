@@ -24,8 +24,7 @@ pub struct Cli {
     pub step: Option<Step>,
 }
 
-/// Global flags accepted before any subcommand. Field names map 1:1 to the
-/// CLI options on the implementation.
+/// Global flags accepted before any subcommand.
 #[derive(Debug, Clone, Parser)]
 #[command(
     name = "tapa",
@@ -52,7 +51,7 @@ pub struct GlobalArgs {
     )]
     pub work_dir: PathBuf,
 
-    /// Specify temporary directory; cleaned up after execution.
+    /// Specify the temporary directory exported through `TMPDIR`.
     #[arg(long = "temp-dir", value_name = "DIR")]
     pub temp_dir: Option<PathBuf>,
 

@@ -82,14 +82,14 @@ pub trait ToolRunner: Send + Sync {
 }
 
 /// Local subprocess runner: inherits the parent process's environment
-/// (matching `subprocess.Popen` default) so bare program
+/// so bare program
 /// names like `vitis_hls` / `vivado` resolve via the caller's `PATH`,
 /// and tools can read `HOME`, `XILINX_*`, `DISPLAY`, and friends.
 /// `ToolInvocation::env` entries overlay the inherited env.
 ///
 /// Remote env allowlisting lives in `RemoteToolRunner` where the env
-/// crosses a machine boundary — inside a single host, compatibility
-/// demands that the child see the parent shell's state. When
+/// crosses a machine boundary. On a single host, the child sees the
+/// parent shell's state. When
 /// `ToolInvocation::timeout` is set, the child is killed on expiry
 /// and the call returns `XilinxError::ToolTimeout`.
 #[derive(Debug, Default)]

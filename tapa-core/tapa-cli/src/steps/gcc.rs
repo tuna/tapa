@@ -1,5 +1,4 @@
-//! `tapa g++` — invokes `g++` with TAPA include / link flags. Mirrors
-//! the implementation.
+//! `tapa g++` — invokes `g++` with TAPA include and link flags.
 
 use std::path::PathBuf;
 use std::process::Command;

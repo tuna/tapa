@@ -31,11 +31,8 @@ pub struct CompileWithFloorplanDseArgs {
     pub top: String,
     #[arg(short = 'c', long = "cflags", value_name = "FLAG")]
     pub cflags: Vec<String>,
-    /// Click forwards `--flatten-hierarchy` from the unioned analyze
-    /// flag surface; the DSE driver always overrides this to true at
-    /// stage 1 (matching `meta.compile_with_floorplan_dse`'s
-    /// `kwargs["flatten_hierarchy"] = True` line) so the user-visible
-    /// flag is informational + compatibility-only.
+    /// Stage 1 always enables hierarchy flattening, so this composite
+    /// flag is informational only.
     #[arg(long = "flatten-hierarchy", default_value_t = false)]
     pub flatten_hierarchy: bool,
     #[arg(long = "keep-hierarchy", conflicts_with = "flatten_hierarchy")]
@@ -119,7 +116,6 @@ pub fn run_compile_with_floorplan_dse_composite(
                 .to_string(),
         ));
     }
-    // Always native.
     let original_work_dir = ctx.work_dir.clone();
 
     // Stage 1: drive generate-floorplan to enumerate floorplans.
@@ -142,9 +138,8 @@ pub fn run_compile_with_floorplan_dse_composite(
         let output = solution_work_dir.join(format!("{solution_name}.xo"));
         let compile = build_compile_stage2(args, &floorplan_file, &output);
 
-        // Reset the in-process flow state between solutions so each
-        // sub-compile starts from a clean slate (matches the current
-        // `clean_obj` per-iteration context). Switch the work dir so
+        // Reset in-process state between solutions so each sub-compile
+        // starts from a clean slate. Switch the work dir so
         // every step writes under `<orig_work_dir>/<solution_name>/`.
         ctx.flow.replace(FlowState::default());
         if let Err(e) = ctx.switch_work_dir(solution_work_dir.clone()) {
@@ -222,9 +217,8 @@ fn build_compile_stage2(
     floorplan_path: &Path,
     output: &Path,
 ) -> CompileArgs {
-    // Stage 2 mirrors `kwargs[...] = ...` overrides: enable
-    // graphir generation, disable utilization estimates and ab-graph
-    // generation, and apply the per-solution floorplan_path / output.
+    // Stage 2 enables GraphIR, disables utilization and AB-graph
+    // generation, and applies the selected floorplan and output.
     let analyze_args = analyze::AnalyzeArgs {
         input_files: args.input_files.clone(),
         top: args.top.clone(),
@@ -260,10 +254,8 @@ fn build_compile_stage2(
         output: Some(output.to_path_buf()),
         bitstream_script: args.bitstream_script.clone(),
         custom_rtl: args.custom_rtl.clone(),
-        // DSE advertises `--graphir-path` but
-        // previously forced `None` here, silently dropping the value.
-        // Forward it through so the per-solution pack picks up the
-        // caller-supplied GraphIR path.
+        // Forward the caller's GraphIR path to each solution's pack
+        // step.
         graphir_path: args.graphir_path.clone(),
     };
     CompileArgs {
@@ -280,9 +272,7 @@ mod tests {
 
     #[test]
     fn forwards_graphir_path_to_stage2_pack() {
-        // Regression test: `compile-with-floorplan-dse` must
-        // thread `--graphir-path` through to the per-solution pack step
-        // instead of silently dropping it.
+        // `--graphir-path` is forwarded to every solution's pack step.
         let args = CompileWithFloorplanDseArgs::try_parse_from([
             "compile-with-floorplan-dse",
             "--input",
@@ -311,10 +301,7 @@ mod tests {
 
     #[test]
     fn forwards_all_three_pack_overlays_to_stage2() {
-        // Phase-7 regression: every CLI-surface pack overlay that
-        // used to raise a hard error in `steps::pack::run_native` must
-        // now be threaded through `compile-with-floorplan-dse` stage 2
-        // untouched across each sub-compile.
+        // Every pack overlay is forwarded unchanged to stage 2.
         let args = CompileWithFloorplanDseArgs::try_parse_from([
             "compile-with-floorplan-dse",
             "--input",

@@ -31,12 +31,12 @@ use crate::error::{CliError, Result};
 use crate::globals::GlobalArgs;
 
 /// Env var consulted before falling back to `$HOME/.taparc`. Tests use
-/// this to point the loader at a tempdir; production users do not need
-/// to set it. Mirrors a common pattern in this repo (`REMOTE_*`).
+/// this to point the loader at a temporary directory; production users
+/// do not need to set it.
 pub const TAPARC_PATH_ENV: &str = "TAPA_RC_PATH";
 
 /// Resolve the on-disk path to `~/.taparc`. Returns `None` when neither
-/// `TAPA_RC_PATH` nor `HOME` is set — matches silent skip.
+/// `TAPA_RC_PATH` nor `HOME` is set.
 fn taparc_path() -> Option<PathBuf> {
     if let Some(p) = std::env::var_os(TAPARC_PATH_ENV) {
         return Some(PathBuf::from(p));
@@ -147,8 +147,7 @@ fn apply_remote_host_to_yaml(
     map
 }
 
-/// Expand a leading `~` against `$HOME`. Mirrors
-/// `os.path.expanduser` for the two paths the override layer touches.
+/// Expand `~` and `~/…` against `$HOME` for override paths.
 fn expand_home(input: &str) -> Utf8PathBuf {
     if let Some(rest) = input.strip_prefix("~/") {
         if let Some(home) = std::env::var_os("HOME") {
@@ -164,8 +163,7 @@ fn expand_home(input: &str) -> Utf8PathBuf {
     Utf8PathBuf::from(input)
 }
 
-/// Apply the remaining CLI override flags. Mirrors
-/// the implementation.
+/// Apply non-host CLI overrides to the resolved remote configuration.
 fn apply_cli_overrides(cfg: &mut RemoteConfig, globals: &GlobalArgs) {
     if let Some(p) = globals.remote_key_file.as_deref() {
         cfg.key_file = Some(expand_home(p));

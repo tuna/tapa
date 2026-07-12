@@ -54,20 +54,16 @@ fn generate_floorplan_args_parse() {
     .expect("parse");
     assert_eq!(args.top, "T");
     let synth_args = args.synth_args();
-    // Composites force flatten_hierarchy / enable_synth_util / gen_ab_graph
-    // per `kwargs[...] = True` assignments in `meta`.
+    // The composite forces hierarchy flattening, utilization
+    // synthesis, and AB-graph generation.
     assert!(synth_args.gen_ab_graph);
     assert!(synth_args.enable_synth_util);
     assert!(args.analyze_args().flatten_hierarchy);
 }
 
-// --- Regression fixture for `generate-floorplan` + --enable-synth-util ---
-//
-// Before the post-synth-util port landed, `synth_args().enable_synth_util = true`
-// aborted the composite with `CliError::InvalidArg("... requires Vivado on PATH ...")`.
-// These helpers stand up a minimal analyze-output fixture + a combined
-// HLS/Vivado mock runner so the synth step runs end-to-end with the
-// post-synth-util branch live.
+// Fixture for `generate-floorplan` + --enable-synth-util. These
+// helpers provide minimal analyzed state and a combined HLS/Vivado
+// runner so post-synth utilization executes end to end.
 
 /// Dispatch by `inv.program`: `vitis_hls` stages the HLS
 /// output tree, `vivado` writes a canned hierarchical
@@ -225,9 +221,8 @@ fn seed_vadd_work_dir(work: &std::path::Path) {
         .expect("seed fp.json");
 }
 
-/// Regression: `generate-floorplan` forces `enable_synth_util =
-/// true`. This test drives the native synth step through a
-/// combined HLS+Vivado mock so the enable-synth-util path runs to
+/// `generate-floorplan` forces `enable_synth_util = true`. This test
+/// drives synth through a combined HLS+Vivado mock so that path runs to
 /// completion and updates `design.tasks[top].total_area`.
 #[test]
 fn generate_floorplan_synth_step_with_enable_synth_util() {

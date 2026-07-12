@@ -88,9 +88,8 @@ pub(super) fn pack_vitis(
 
     run_pack_xo(ctx, &inputs)?;
 
-    // --bitstream-script: emit helper pointing at the just-packaged
-    // `.xo`. Done after pack so the script text references a real
-    // artifact path (did the same).
+    // Emit the bitstream helper after packaging so it points at the
+    // completed `.xo`.
     if let Some(script_dest) = args.bitstream_script.as_deref() {
         emit_bitstream_script(settings, script_dest, &design.top, &output_path)?;
     }
@@ -264,8 +263,7 @@ fn build_package_xo_inputs(
         .build()
 }
 
-/// Collect the HLS reports that `PackageXo.__init__`
-/// bundles into the `.xo` under `report/`. Walks
+/// Collect HLS reports for the `.xo` under `report/`. Walks
 /// `<work_dir>/hls/<task>/report/` for `*_csynth.xml` (the primary
 /// schema downstream tooling reads) plus any `.rpt` sibling files.
 /// Returns `(source, archive_name)` pairs so the bundler can keep
@@ -415,10 +413,8 @@ fn is_report_table_rule(line: &str) -> bool {
 }
 
 fn run_pack_xo(ctx: &CliContext, inputs: &PackageXoInputs) -> Result<Utf8PathBuf> {
-    // Mirror synth: use RemoteToolRunner when ~/.taparc / --remote-host
-    // is configured so the .xo packaging step actually runs on the
-    // remote Xilinx host. Native pack used to always force
-    // LocalToolRunner, ignoring `ctx.remote_config`.
+    // Use the remote runner when remote configuration is active;
+    // otherwise package locally.
     if let Some(cfg) = ctx.remote_config.as_ref() {
         let session = std::sync::Arc::new(SshSession::new(cfg.clone(), SshMuxOptions::default()));
         let runner = RemoteToolRunner::new(session);

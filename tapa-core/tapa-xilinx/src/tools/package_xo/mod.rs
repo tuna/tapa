@@ -2,8 +2,8 @@
 //!
 //! Implements kernel.xml emission, Vivado package generation, and archive
 //! redaction. The kernel.xml emission is delegated to
-//! `platform::kernel_xml::emit_kernel_xml`; the full Vivado-backed
-//! build lands alongside `run_vivado`.
+//! `platform::kernel_xml::emit_kernel_xml` and Vivado execution to
+//! `run_vivado`.
 
 use std::io::{Read, Seek, SeekFrom, Write};
 
@@ -21,8 +21,6 @@ use crate::tools::vivado::{run_vivado, VivadoJob};
 const S_AXI_NAME: &str = "s_axi_control";
 const M_AXI_PREFIX: &str = "m_axi_";
 
-/// Implements byte-for-byte.
-///
 /// `{top_name}`, `{bus_ifaces}`, `{cpp_kernels}`, `{part_num}` placeholders
 /// are substituted by `format_package_xo_tcl`. All other braces are escaped
 /// (`{{`/`}}`) so the `.format` semantics carry over cleanly.
@@ -48,9 +46,8 @@ pub struct PackageXoInputs {
     /// `report/` tree before redaction. Each entry is `(source_path,
     /// archive_name)` — the archive name is taken verbatim, so the
     /// caller is responsible for namespacing per-task reports (e.g.
-    /// `report/<task>/<file>`). Mirrors `PackageXo.__init__`
-    /// which appends per-task `report/<task-rel>/<file>` entries so
-    /// downstream inspection tooling can disambiguate same-basename
+    /// `report/<task>/<file>`). Per-task paths let downstream
+    /// inspection tooling disambiguate same-basename
     /// reports across tasks (`csynth.rpt`, `csynth.xml`, …). Empty →
     /// skip the bundle step.
     #[builder(default)]
@@ -131,8 +128,6 @@ fn format_package_xo_tcl(
 
 /// Build the `.xo` for the given inputs using the provided runner.
 ///
-/// Implements + the implementation:
-///
 /// 1. Allocate a staging tempdir and emit `kernel.xml` into it.
 /// 2. Format `PACKAGE_XO_TCL` with the kernel's `bus_ifaces`, `cpp_kernels`,
 ///    and `-part` argument, and invoke Vivado via [`run_vivado`].
@@ -155,7 +150,7 @@ pub fn pack_xo(runner: &dyn ToolRunner, inputs: &PackageXoInputs) -> Result<Utf8
 }
 
 /// Append each report into the `.xo` under its caller-provided archive
-/// name, matching `PackageXo.__init__` bundling step. Any
+/// name. Any
 /// existing archive entry with the same name is overwritten so callers
 /// can use task-relative names (e.g. `report/<task>/csynth.xml`)
 /// without colliding with the basename layout the raw `.xo` already
@@ -519,8 +514,8 @@ mod tests {
             .build()
     }
 
-    /// P1 regression: a relative `--output` path must be absolutized
-    /// before reaching Vivado; otherwise the TCL writes the `.xo`
+    /// A relative `--output` path is absolutized before reaching
+    /// Vivado; otherwise the TCL writes the `.xo`
     /// into the per-invocation temp `cwd` while the post-run
     /// existence check looks in the caller's cwd.
     #[test]

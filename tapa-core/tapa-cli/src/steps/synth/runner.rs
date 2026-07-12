@@ -28,8 +28,8 @@ use super::report::write_top_report;
 use super::rtl_codegen::{generate_rtl_tree, write_templates_info, TaskHdlInputs};
 use super::SynthArgs;
 
-/// Native synth: validate the flag surface, resolve the device, persist
-/// settings, then drive cpp-extract → HLS → codegen for the leaf tasks.
+/// Validate the flag surface, resolve the device, persist settings,
+/// then drive cpp-extract → HLS → codegen for the leaf tasks.
 #[allow(
     clippy::too_many_lines,
     reason = "orchestrator function; refactored extract would bounce values through another builder without adding clarity"
@@ -116,20 +116,15 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
         )?;
     }
 
-    // Emit `report.{json,yaml}` at the work-dir root once area data
-    // is final. Mirrors the report block in
-    // the implementation. Both pack
-    // paths (`xilinx-vitis` `.xo` and `xilinx-hls` `.zip`) bundle the
-    // YAML at archive root, so writing it here is what unblocks the
-    // downstream consumers that lost the metadata after the current
-    // codegen step was unsupported.
+    // Emit `report.{json,yaml}` at the work-dir root once area data is
+    // final. Both pack paths (`xilinx-vitis` `.xo` and `xilinx-hls`
+    // `.zip`) bundle the YAML at archive root.
     write_top_report(&ctx.work_dir, &design, &args.override_report_schema_version)?;
 
-    // Post-codegen side effects that mirror the tail of current
-    // `_execute_synth`: nonpipeline-fifos → grouping_constraints.json,
-    // gen-ab-graph → ab_graph.json, gen-graphir → graphir.json. Order
-    // matches (constraints → ab → graphir). Each branch is a
-    // no-op when its flag is not set.
+    // Post-codegen side effects run in dependency order:
+    // nonpipeline-fifos → grouping_constraints.json, gen-ab-graph →
+    // ab_graph.json, gen-graphir → graphir.json. Each branch is a no-op
+    // when its flag is not set.
     if let Some(fifos_path) = args.nonpipeline_fifos.as_ref() {
         emit_grouping_constraints(&ctx.work_dir, &design, fifos_path)?;
     }
@@ -170,8 +165,8 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
     Ok(())
 }
 
-/// Validation for flag combinations that are accepted natively
-/// but depend on sibling flags. Surfaces up front so failures happen
+/// Validate flag combinations that depend on sibling flags. This runs
+/// up front so failures happen
 /// before the (expensive) HLS loop runs.
 fn validate_optional_flag_combos(args: &SynthArgs) -> Result<()> {
     if args.gen_ab_graph && args.floorplan_config.is_none() {

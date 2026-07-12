@@ -134,9 +134,8 @@ pub fn find_clang_binary(name: &str) -> Result<PathBuf> {
     Ok(path.canonicalize().unwrap_or(path))
 }
 
-/// Regex matching `re.compile(R"version (\d+)(\.\d+)*")` from
-/// the implementation. Requires the literal
-/// `"version "` followed by at least one numeric segment so unparseable
+/// Require the literal `"version "` followed by at least one numeric
+/// segment so unparseable
 /// `--version` output (e.g. plain "ok") fails fast.
 fn version_regex() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();

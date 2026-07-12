@@ -28,19 +28,16 @@ fn _deprecated_shlex_quote(s: &str) -> String {
 }
 
 /// Map a local absolute path to the corresponding remote path under
-/// the session's `rootfs/` prefix. Mirrors
-/// the implementation: absolute local
-/// paths are pasted verbatim under `<session_dir>/rootfs/` after
-/// stripping the leading `/`.
+/// the session's `rootfs/` prefix, preserving its layout after the
+/// leading `/`.
 pub(super) fn local_to_remote_path(local: &Utf8PathBuf, session_dir: &str) -> String {
     let s = local.as_str();
     let rel = s.trim_start_matches('/');
     format!("{session_dir}/rootfs/{rel}")
 }
 
-/// Generate a process-unique id for the per-invocation session dir.
-/// uses `uuid.uuid4()`; a combination of pid + monotonic ns +
-/// counter gives comparable uniqueness without adding a uuid crate.
+/// Generate a process-unique id for the per-invocation session
+/// directory from the process id, current nanoseconds, and a counter.
 pub(super) fn unique_session_id() -> String {
     use std::sync::atomic::{AtomicU64, Ordering};
     static COUNTER: AtomicU64 = AtomicU64::new(0);

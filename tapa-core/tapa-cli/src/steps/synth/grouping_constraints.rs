@@ -128,9 +128,8 @@ pub fn compute_grouping_constraints(
     Ok(out)
 }
 
-/// Find the `{child_task}_{idx}` instance within `parent` whose `args`
-/// contain a binding to `arg_name` (mirrors current
-/// `Program.get_inst_by_port_arg_name`; `arg.name == arg_name`).
+/// Find the `{child_task}_{idx}` instance within `parent` whose
+/// arguments contain a binding to `arg_name`.
 fn find_instance_for_arg(
     parent: &tapa_topology::task::TaskDesign,
     child_task: &str,

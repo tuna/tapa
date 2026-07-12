@@ -31,9 +31,8 @@ pub const DEFAULT_TRANSIENT_HLS_PATTERNS: &[&str] = &[
     "FLEXnet Licensing error",
 ];
 
-/// Production retry predicate ported verbatim from
-/// the implementation: a Vitis HLS invocation is
-/// considered transient iff its stdout contains `Pre-synthesis
+/// A Vitis HLS invocation is considered transient iff its stdout
+/// contains `Pre-synthesis
 /// failed.` and does **not** contain `\nERROR:`.
 #[must_use]
 pub fn is_transient_hls_output(stdout: &str, _stderr: &str) -> bool {
@@ -64,13 +63,11 @@ pub struct HlsJob {
     /// Solution name; defaults to the task name when empty.
     #[builder(default)]
     pub solution_name: String,
-    /// Reset level for `config_rtl` (ports `reset_low` toggle
-    /// in `_build_rtl_config`); defaults to `low` to match the current
-    /// `RunHls` default.
+    /// Reset level for `config_rtl`; defaults to `low`.
     #[builder(default = true)]
     pub reset_low: bool,
     /// Enable `-module_auto_prefix` on the `config_rtl` line. Defaults
-    /// to `true`, matching `HlsConfig(auto_prefix=True)` in current.
+    /// to `true`.
     #[builder(default = true)]
     pub auto_prefix: bool,
     /// Optional override. When `None`, the production
@@ -117,19 +114,17 @@ pub struct HlsOutput {
 
 /// Build the Vitis HLS TCL script for the given job.
 ///
-/// Ports the `HLS_COMMANDS` template in
-/// the implementation: `open_project` → `set_top` →
+/// Build the HLS command sequence: `open_project` → `set_top` →
 /// `add_files` → `open_solution` → `set_part` → `create_clock` →
 /// `config_compile` → `config_interface` → `{config}` →
 /// `{other_configs}` → `config_rtl` → `csynth_design` → `exit`.
-/// Implementation of.
 fn build_rtl_config(reset_low: bool, auto_prefix: bool) -> String {
     let mut line = format!(
         "config_rtl -reset_level {}",
         if reset_low { "low" } else { "high" }
     );
     if auto_prefix {
-        // matches on `hls == "vitis_hls"` → `-module_auto_prefix`.
+        // Vitis HLS accepts `-module_auto_prefix` here.
         line.push_str(" -module_auto_prefix");
     }
     line
@@ -138,8 +133,8 @@ fn build_rtl_config(reset_low: bool, auto_prefix: bool) -> String {
 /// Collect every `-I<dir>` / `-isystem<dir>` destination from the
 /// job's CFLAGS.  Existing directories are uploaded verbatim so the
 /// remote `vitis_hls` resolves sibling headers the same way the local
-/// run would.  Relative paths are absolutized against the current
-/// working directory (matching the old `os.path.abspath` behaviour).
+/// run would. Relative paths are absolutized against the current
+/// working directory.
 /// Handles both fused (`-I/dir`) and split (`-I`, `/dir`) forms.
 fn kernel_include_dirs(cflags: &[String]) -> Vec<Utf8PathBuf> {
     let mut out: Vec<Utf8PathBuf> = Vec::new();
@@ -183,9 +178,9 @@ fn kernel_include_dirs(cflags: &[String]) -> Vec<Utf8PathBuf> {
     out
 }
 
-/// Kernel metadata the TCL template loops over. Mirrors current
+/// Kernel metadata passed through the
 /// `TAPA_KERNEL_COUNT / TAPA_KERNEL_PATH_$i / TAPA_KERNEL_CFLAGS_$i`
-/// env contract from the implementation. Keeping the
+/// environment contract. Keeping the
 /// per-task paths in env entries (instead of baking them into the
 /// TCL body) lets the remote runner rewrite them through its
 /// rootfs-mirroring path-rewriter just like every other absolute
@@ -267,8 +262,7 @@ fn run_hls_attempt(
         .arg("-f")
         .arg(tcl_path.as_str());
     inv.cwd = Some(stage_dir.to_path_buf());
-    // Pin `HOME` to the per-run stage dir (mirrors current
-    // `VivadoHls` wrapper). Vitis HLS otherwise writes shared
+    // Pin `HOME` to the per-run stage dir. Vitis HLS otherwise writes shared
     // `~/.Xilinx` state that pollutes the workspace and races under
     // sandboxed/parallel Bazel builds. Using `inv.env` (vs
     // `Command::env`) lets the remote runner's path rewriter remap
@@ -757,8 +751,8 @@ mod tests {
 
     #[test]
     fn stderr_only_error_still_retries_when_stdout_transient() {
-        // Reproduces current: stderr-only "\nERROR:" does not cancel
-        // the retry when stdout contains `Pre-synthesis failed.`.
+        // Stderr-only "\nERROR:" does not cancel the retry when
+        // stdout contains `Pre-synthesis failed.`.
         let tmp = tempfile::tempdir().unwrap();
         let job = fixture_job(&Utf8PathBuf::from_path_buf(tmp.path().to_path_buf()).unwrap());
         let runner = MockToolRunner::new();

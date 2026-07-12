@@ -1,4 +1,4 @@
-//! `tapa pack` — native Rust port of the implementation.
+//! `tapa pack` orchestration.
 //!
 //! Reloads `<work_dir>/{graph,design,settings}.json`, projects the top
 //! task's external ports into a [`PackageXoInputs`] block, and drives
@@ -15,8 +15,8 @@
 //!   `get_vitis_script` helper and drop it at the requested
 //!   path (executable on Unix).
 //!
-//! The HLS-target `.zip` packer is still unported and surfaces a
-//! typed [`CliError::InvalidArg`].
+//! The Vitis target emits an `.xo`; the HLS target emits a
+//! reproducible `.zip` archive.
 
 use std::path::PathBuf;
 
@@ -82,8 +82,7 @@ pub fn to_cli_argv(args: &PackArgs) -> Vec<String> {
     out
 }
 
-/// Top-level dispatcher. Always runs the native packaging path (the
-/// bridge target was unsupported).
+/// Dispatch packaging according to the target stored by `analyze`.
 pub fn run(args: &PackArgs, ctx: &mut CliContext) -> Result<()> {
     run_native(args, ctx)
 }
@@ -108,15 +107,14 @@ fn run_native(args: &PackArgs, ctx: &CliContext) -> Result<()> {
     }
 }
 
-/// Native pack implementation for the `xilinx-hls` target. Bundles
-/// the synthesized RTL tree under `rtl/`, every HLS
+/// Package the `xilinx-hls` target. Bundles the synthesized RTL tree
+/// under `rtl/`, every HLS
 /// `_csynth.rpt` under `report/` (with timestamp redaction so the
 /// archive is reproducible), the TAPA report yaml at the archive root
 /// when the synth step emitted one, plus `graph.yaml` and
-/// `settings.yaml` snapshots of the persistent contexts that the
-/// flow used to ship. Output path defaults to `work.zip` in the
-/// caller's CWD and is always normalized to a `.zip` suffix to match
-/// `_enforce_path_suffix(suffix=".zip")`.
+/// `settings.yaml` snapshots of the persistent compile context. Output
+/// defaults to `work.zip` in the caller's CWD and is always normalized
+/// to a `.zip` suffix.
 fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, settings: &settings_io::Settings) -> Result<()> {
     use std::io::Write as _;
     let work_dir = ctx.work_dir.as_path();
@@ -160,10 +158,9 @@ fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, settings: &settings_io::Setti
         z.write_all(&fs_err::read(rtl_file)?)?;
     }
 
-    // TAPA report yaml at archive root, only if the synth step wrote
-    // one. always writes it; the Rust port has not ported the
-    // emitter yet, so the file may be absent — silently skip in that
-    // case rather than failing the pack step.
+    // Include the TAPA report at archive root when synth emitted it.
+    // Its absence does not make an otherwise complete RTL archive
+    // invalid.
     let report_yaml = work_dir.join("report.yaml");
     if report_yaml.is_file() {
         z.start_file("report.yaml", opts)
@@ -171,9 +168,8 @@ fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, settings: &settings_io::Setti
         z.write_all(&fs_err::read(&report_yaml)?)?;
     }
 
-    // Mirror `program.pack_zip(..., graph=..., settings=...)`:
-    // serialize the persisted contexts as YAML so downstream consumers
-    // opening the archive can recover the compile metadata.
+    // Serialize the persisted graph and settings as YAML so downstream
+    // consumers can recover compile metadata from the archive.
     let graph = graph_io::load_graph(work_dir)?;
     let graph_yaml = serde_yaml::to_string(&graph)
         .map_err(|e| CliError::InvalidArg(format!("graph yaml: {e}")))?;
@@ -186,8 +182,8 @@ fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, settings: &settings_io::Setti
         .map_err(|e| CliError::InvalidArg(format!("zip entry: {e}")))?;
     z.write_all(settings_yaml.as_bytes())?;
 
-    // HLS `_csynth.rpt` files under `report/<rel>`. Mirror current
-    // `_redact_rpt`: replace the per-run `Date:` line with the fixed
+    // Store HLS `_csynth.rpt` files under `report/<rel>` and replace
+    // the per-run `Date:` line with the fixed
     // 1980-01-01 stamp so re-running HLS produces a byte-identical
     // archive (the same redaction `program.pack_xo` applies to xo).
     let hls_root = work_dir.join("hls");
@@ -243,8 +239,8 @@ fn redact_rpt(bytes: &[u8]) -> Vec<u8> {
     }
 }
 
-/// Port of `_enforce_path_suffix(...)`. Returns `<default>` in
-/// the caller's CWD when `output` is absent; otherwise appends `.{ext}`
+/// Return `<default>` in the caller's CWD when `output` is absent;
+/// otherwise append `.{ext}`
 /// unless the path already carries it. Used for both `--output` shapes
 /// (`.zip` for HLS pack, `.xo` for Vitis pack).
 fn enforce_path_suffix(output: Option<&PathBuf>, ext: &str, default: &str) -> PathBuf {
@@ -343,8 +339,8 @@ mod tests {
         settings.insert("part_num".to_string(), json!("xcu250-figd2104-2L-e"));
         settings.insert("clock_period".to_string(), json!("3.33"));
         settings_io::store_settings(work_dir, &settings).expect("store settings");
-        // `pack_hls_zip` mirrors `pack_zip(..., graph=...)` and
-        // requires `graph.json` to be present so it can emit `graph.yaml`.
+        // `pack_hls_zip` requires `graph.json` so it can emit
+        // `graph.yaml`.
         graph_io::store_graph(work_dir, &json!({"top": "Top", "tasks": {}})).expect("store graph");
     }
 
@@ -444,8 +440,7 @@ mod tests {
 
     #[test]
     fn enforce_zip_suffix_defaults_to_cwd() {
-        // Default mirrors `_enforce_path_suffix(suffix=".zip")`:
-        // a bare `work.zip` resolved against the caller's CWD, not
+        // A bare `work.zip` resolves against the caller's CWD, not
         // <work_dir>/work.zip.
         assert_eq!(enforce_zip_suffix(None), PathBuf::from("work.zip"));
         assert_eq!(

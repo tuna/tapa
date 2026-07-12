@@ -1,11 +1,7 @@
-//! `--bitstream-script` emission: port of
-//! the implementation.
+//! `--bitstream-script` emission.
 //!
-//! Emits a `#!/bin/bash` helper that downstream users can run to
-//! drive `v++ --link` against the just-packaged `.xo`. The script is
-//! a literal transliteration of the template (unsupported in
-//! but is preserved here for compatibility with historical build recipes
-//! that call into it).
+//! Emits an executable Bash helper that downstream users can run to
+//! drive `v++ --link` against the packaged `.xo`.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -15,9 +11,7 @@ use std::os::unix::fs::PermissionsExt;
 
 use crate::error::Result;
 
-/// Render the `#!/bin/bash` v++ script mirroring current
-/// `get_vitis_script`. `output_file` is absolutised exactly as current
-/// did via `os.path.abspath`.
+/// Render the `#!/bin/bash` v++ script with an absolute `.xo` path.
 #[must_use]
 pub(super) fn render_vitis_script(
     top: &str,
@@ -62,8 +56,7 @@ pub(super) fn render_vitis_script(
 }
 
 /// Write the script to `dest`, making it executable on Unix
-/// (`chmod 0o755`). Mirrors `open(...).write(script)` plus
-/// the implicit `+x` that the shell-script-emission recipe expects.
+/// (`chmod 0o755`).
 pub(super) fn write_vitis_script(
     dest: &Path,
     top: &str,

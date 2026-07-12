@@ -5,10 +5,8 @@ use log::LevelFilter;
 
 /// Translate `--verbose -v` count and `--quiet -q` count to a `LevelFilter`.
 ///
-/// Mirrors `(quiet - verbose) * 10 + INFO`, clamped to
-/// `[DEBUG, CRITICAL]`. CRITICAL has no `log` crate analogue so it folds
-/// into `Error`. DEBUG is the floor: more verbose flags cannot reach
-/// `Trace` — `logging` module has no level below DEBUG.
+/// Clamp `(quiet - verbose)` to the `Debug`–`Error` range. Additional
+/// verbosity does not enable `Trace`.
 pub fn level_for(verbose: u8, quiet: u8) -> LevelFilter {
     let raw = i32::from(quiet) - i32::from(verbose);
     let raw = raw.clamp(-1, 3);

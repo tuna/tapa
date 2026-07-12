@@ -42,10 +42,9 @@ pub struct HlsRunOptions {
     pub other_configs: String,
     pub cflags: Vec<String>,
     pub skip_based_on_mtime: bool,
-    /// Mirror of the CLI `--jobs N` flag: the number of HLS runs
-    /// executed in parallel. `None` or 1 → serial.
+    /// Number of HLS runs executed in parallel. `None` or 1 → serial.
     pub jobs: Option<u32>,
-    /// Mirror of the CLI `--keep-hls-work-dir` flag. When true,
+    /// When `--keep-hls-work-dir` is set,
     /// `run_hls` stages under `<work_dir>/hls/<task>/project` (kept
     /// on disk) instead of a tempdir so the Vitis project + logs
     /// survive after a failure.
@@ -85,13 +84,9 @@ pub fn run_hls_for_leaves(
             )));
         }
 
-        // Cache-hit check BEFORE creating `layout.hdl_dir`: the
-        // earlier `create_dir_all` raced with
-        // `hdl_dir_is_newer_than`, making every task on a clean work
-        // dir look cached against the just-extracted `.cpp` source
-        // and skipping the run with an empty `verilog_files` list.
-        // Also require at least one `.v` file, so an empty leftover
-        // directory does not trip the skip either.
+        // Check freshness before creating `layout.hdl_dir`, and require
+        // at least one `.v` file so an empty directory is not a cache
+        // hit.
         if options.skip_based_on_mtime
             && layout.hdl_dir.is_dir()
             && hdl_dir_is_newer_than(&layout.hdl_dir, &cpp_source)
@@ -210,10 +205,8 @@ fn resolve_worker_count(jobs: Option<u32>, plan: &[(String, TaskHlsLayout, impl 
     desired.min(plan.len().max(1))
 }
 
-/// `psutil.cpu_count(logical=False)` equivalent. `std`'s
-/// `available_parallelism` returns logical cores; that's a safe upper
-/// bound that still parallelizes well for HLS (IO-bound per task),
-/// and it avoids pulling in `num_cpus` as a new dep.
+/// Use the host's available logical parallelism as the default worker
+/// count.
 fn default_hls_workers() -> usize {
     std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get)
 }
@@ -248,9 +241,7 @@ impl PlanEntry for Work {
                 Ok(Some(out))
             }
             Self::RunFresh(job) => {
-                // `run_hls_with_retry` allocates a fresh
-                // `tempfile::tempdir()` per attempt — mirrors the
-                // non-keep retry path.
+                // Each retry gets a fresh temporary staging directory.
                 let out =
                     run_hls_with_retry(runner, job, HLS_MAX_ATTEMPTS).map_err(CliError::from)?;
                 Ok(Some(out))
@@ -362,13 +353,8 @@ mod tests {
         }
     }
 
-    /// Regression test: with `--skip-hls-based-on-mtime`
-    /// on a clean work dir, `create_dir_all(hdl_dir)` used to run
-    /// BEFORE the cache freshness check, so a freshly-created `hdl_dir`
-    /// had a newer mtime than the extracted `.cpp` and every task
-    /// looked cached — with an empty `verilog_files` list. The runner
-    /// must now require an EXISTING `hdl_dir` that ALREADY contains
-    /// at least one `.v` file before honoring the skip.
+    /// A cache hit requires an existing HDL directory containing at
+    /// least one Verilog file.
     #[test]
     fn fresh_hdl_dir_does_not_falsely_look_cached() {
         let tmp = tempfile::tempdir().expect("tempdir");

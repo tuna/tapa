@@ -1,6 +1,6 @@
 //! `~/.taparc` YAML schema for remote Xilinx tool execution.
 //!
-//! Mirrors the runtime config schema:
+//! The runtime config schema:
 //! - `user` defaults to the login name, not `None`;
 //! - `~` is expanded in `key_file` and `ssh_control_dir`;
 //! - unknown fields are ignored so additions do not fault the
@@ -282,11 +282,8 @@ remote:
         assert_eq!(cfg.host, "h");
     }
 
-    /// `RemoteConfig` validator parsed
-    /// `ssh_multiplex: "false"` (string) as well as the native YAML
-    /// bool form. The Rust port must accept both so a pre-existing
-    /// `~/.taparc` with quoted string booleans doesn't break even
-    /// `tapa version`.
+    /// Accept quoted string booleans as well as native YAML booleans so
+    /// existing `.taparc` files remain readable.
     #[test]
     fn ssh_multiplex_accepts_string_and_bool() {
         let _lock = ENV_LOCK.lock().unwrap();

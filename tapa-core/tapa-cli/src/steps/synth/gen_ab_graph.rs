@@ -41,8 +41,8 @@ struct FloorplanConfig {
 }
 
 /// Read `cpp_arg_pre_assignments` from the floorplan config. Missing or
-/// non-object values yield an empty map (matching `.get(...) or {}`
-/// semantics — the key is optional on early-stage floorplan configs).
+/// non-object values yield an empty map because the key is optional on
+/// early-stage floorplan configs.
 fn read_cpp_arg_pre_assignments(floorplan_config: &Path) -> Result<BTreeMap<String, String>> {
     let raw = fs::read_to_string(floorplan_config).map_err(|e| {
         CliError::InvalidArg(format!(

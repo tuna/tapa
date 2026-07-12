@@ -4,10 +4,8 @@
 //! `<work_dir>/rtl` so the `.xo` ships with graphir-derived modules
 //! alongside the TAPA-generated ones.
 //!
-//! Implements's
-//! `graphir_path` branch (line ~46), minus the graphir-json archive
-//! copy — downstream tools consume the emitted `.v` files, not the
-//! JSON itself.
+//! The source JSON is not archived; downstream tools consume the
+//! emitted Verilog files.
 
 use std::path::{Path, PathBuf};
 
@@ -82,8 +80,7 @@ mod tests {
     use super::*;
 
     fn minimal_graphir_json() -> String {
-        // Mirrors the smallest valid Project shape used by
-        // `tapa-graphir` fixture tests: a single `$root` namespace
+        // A minimal Project has a single `$root` namespace
         // with one `Verilog`-variant module definition whose source
         // we can read back verbatim after export.
         serde_json::json!({

@@ -141,8 +141,7 @@ pub(crate) fn vendor_cache_dir(host: &str, port: u16, xilinx_settings: &str) -> 
 
 /// Apply the macOS libc++ compatibility patch to
 /// `<cache_dir>/include/etc/ap_*_special.h`. Replaces the forward-
-/// declaration block (see the implementation)
-/// with `#include <complex>`. Idempotent: writes a marker
+/// declaration block with `#include <complex>`. Idempotent: writes a marker
 /// `.patched_macos_complex` to skip on subsequent calls. On non-macOS
 /// hosts this is a no-op.
 pub(crate) fn apply_macos_vendor_patch(cache_dir: &Path) -> Result<()> {
@@ -159,8 +158,7 @@ pub(crate) fn apply_macos_vendor_patch(cache_dir: &Path) -> Result<()> {
     }
     #[allow(
         clippy::trivial_regex,
-        reason = "literal multi-line match ported verbatim from the \
-                  counterpart for source-of-truth compatibility"
+        reason = "the vendor header block is a fixed multi-line literal"
     )]
     let pattern = regex::Regex::new(concat!(
         r"// FIXME AP_AUTOCC cannot handle many standard headers, so declare instead of\n",
@@ -203,8 +201,6 @@ pub(crate) fn apply_macos_vendor_patch(cache_dir: &Path) -> Result<()> {
 }
 
 /// One-shot vendor header sync from the configured remote.
-///
-/// Implements.
 ///
 /// 1. Source the remote `xilinx_settings` script and read back
 ///    `XILINX_HLS` / `XILINX_VITIS`.

@@ -1,10 +1,8 @@
 //! `kernel.xml` port projection + `m_axi` bus-parameter block for
 //! `tapa pack`.
 //!
-//! Mirrors the `print_kernel_xml` projection in
-//! the implementation plus the `range_or_none` channel
-//! fan-out unrolling, and the bus-parameter emission that adds
-//! for every `m_axi` port.
+//! Projects task ports into kernel XML, expands channel arrays, and
+//! emits bus parameters for every `m_axi` port.
 
 use std::collections::BTreeSet;
 use tapa_rtl::module::sanitize_array_name;
@@ -55,9 +53,8 @@ fn build_kernel_xml_ports_impl(
     out
 }
 
-/// `pack` adds two bus parameters per `m_axi` port:
-/// `HAS_BURST=0`, `SUPPORTS_NARROW_BURST=0`. Mirror that here so the
-/// emitted `.xo` matches the output.
+/// Add `HAS_BURST=0` and `SUPPORTS_NARROW_BURST=0` to each `m_axi`
+/// port.
 #[cfg(test)]
 pub(super) fn m_axi_param_block(ports: &[Port]) -> Vec<(String, Vec<(String, String)>)> {
     m_axi_param_block_impl(ports, None)

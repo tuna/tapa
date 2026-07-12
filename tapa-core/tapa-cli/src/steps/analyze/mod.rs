@@ -1,4 +1,4 @@
-//! `tapa analyze` — native Rust port of the implementation.
+//! `tapa analyze` orchestration.
 //!
 //! Composes `tapa-cpp` (preprocessor) and `tapacc` (semantic analyzer)
 //! invocations, then writes `graph.json`, `design.json`, and
@@ -73,12 +73,11 @@ pub struct AnalyzeArgs {
     #[arg(long = "keep-hierarchy", conflicts_with = "flatten_hierarchy")]
     pub keep_hierarchy: bool,
 
-    /// Target flow. Restricted to the targets the native Rust pipeline
-    /// can actually drive end-to-end so typos / unported targets fail
+    /// Target flow. Restricted to targets the pipeline can drive
+    /// end-to-end so typos and unsupported targets fail
     /// at parse time instead of producing unusable `settings.json` /
     /// `design.json` that only blow up later in `synth` or `pack`.
-    /// Target choices supported by the native pipeline. AIE is intentionally
-    /// omitted because that flow is not implemented.
+    /// AIE is omitted because that flow is not implemented.
     #[arg(long = "target", value_enum, default_value_t = AnalyzeTarget::XilinxVitis)]
     pub target: AnalyzeTarget,
 
@@ -373,7 +372,7 @@ mod tests {
             serde_json::from_str(&fs::read_to_string(&graph_path).expect("read graph"))
                 .expect("parse graph.json");
         assert_eq!(graph_v["top"], json!("VecAdd"));
-        // Native analyze overwrites cflags with the user tuple +
+        // Analyze stores the user cflags plus
         // `-std=c++14`. The user passed no `-c`, so we expect just that.
         assert_eq!(graph_v["cflags"], json!(["-std=c++14"]));
 

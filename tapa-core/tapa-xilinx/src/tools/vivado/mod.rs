@@ -1,8 +1,4 @@
-//! Vivado TCL runner.
-//!
-//! Implements — `vivado -mode batch
-//! -source <tcl>`. The orchestrator skeleton is wired up; the live TCL
-//! emission for `package_xo` lands with the `.xo` packaging module.
+//! Vivado TCL runner for `vivado -mode batch -source <tcl>`.
 
 use camino::Utf8PathBuf;
 
@@ -16,8 +12,7 @@ pub struct VivadoJob {
     pub downloads: Vec<Utf8PathBuf>,
     pub work_dir: Option<Utf8PathBuf>,
     pub env: Vec<(String, String)>,
-    /// `-tclargs` forwarded to the TCL script. Ports current
-    /// the implementation trailing tclargs list.
+    /// Arguments forwarded to the TCL script after `-tclargs`.
     pub tclargs: Vec<String>,
 }
 
@@ -69,10 +64,9 @@ pub fn build_invocation(job: &VivadoJob, tcl_path: &camino::Utf8Path) -> ToolInv
 /// Invoke Vivado via the provided runner. Writes the TCL script into a
 /// tempfile on the local side and points `vivado -source` at it.
 ///
-/// When `job.work_dir` is unset the runner allocates a per-call
-/// `tempfile::TempDir` and uses it as both `cwd` and `HOME`. Mirrors
-/// the `Vivado` wrapper that always created a temp cwd and
-/// pinned `HOME` there — Vivado otherwise writes `~/.Xilinx` state
+/// When `job.work_dir` is unset, the runner allocates a per-call
+/// temporary directory and uses it as both `cwd` and `HOME`. Vivado
+/// otherwise writes `~/.Xilinx` state
 /// into the caller's home dir, which breaks under sandboxed or
 /// unwritable homes (e.g. Bazel exec) and races between parallel
 /// runs.

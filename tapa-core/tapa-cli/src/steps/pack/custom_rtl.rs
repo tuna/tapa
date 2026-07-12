@@ -2,20 +2,17 @@
 //! `<work_dir>/rtl` after validating their port signatures match the
 //! template slot recorded in `templates_info.json`.
 //!
-//! Implements:
-//!
 //! 1. Expand each CLI path: files are accepted verbatim, directories
 //!    are globbed recursively.
 //! 2. For each `.v` file whose module name appears in
 //!    `templates_info.json`, compare the parsed port set with the
-//!    recorded template ports. Mismatches log a warning (matching
-//!    behaviour). Unknown keys fail fast.
+//!    recorded template ports. Mismatches log a warning; unknown
+//!    modules are accepted as helpers.
 //! 3. Copy every collected file into `<work_dir>/rtl` (overwriting
 //!    generated templates when names collide).
 //!
-//! The code only *warns* on port mismatches and silently
-//! accepts non-Verilog files; we preserve that behaviour so users
-//! can drop `.tcl` helpers alongside `.v` overrides.
+//! Port mismatches only warn, and non-Verilog files are accepted so
+//! users can drop `.tcl` helpers alongside `.v` overrides.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -34,14 +31,13 @@ fn direction_str(dir: Direction) -> &'static str {
 use crate::error::{CliError, Result};
 
 /// Deserialised shape of `<work_dir>/templates_info.json` — a mapping
-/// from task (module) name to the list of port signatures the native
-/// synth step emitted for that template.
+/// from task (module) name to the list of port signatures synth emitted
+/// for that template.
 pub(super) type TemplatesInfo = BTreeMap<String, Vec<String>>;
 
 /// Load `<work_dir>/templates_info.json` if it exists; otherwise
-/// return an empty map (matching the flow where `synth` may
-/// not have emitted a templates entry when no task uses `target(
-/// "ignore")`).
+/// return an empty map. Synth may not emit any template entries when no
+/// task uses `target("ignore")`.
 pub(super) fn load_templates_info(work_dir: &Path) -> Result<TemplatesInfo> {
     let path = work_dir.join("templates_info.json");
     if !path.exists() {
@@ -96,10 +92,8 @@ pub(super) fn expand_custom_rtl_paths(rtl_paths: &[PathBuf]) -> Result<Vec<PathB
 /// Apply a list of custom RTL files to `rtl_dir`, validating each
 /// `.v` file's module-name/port shape against `templates_info`.
 ///
-/// Returns an error when a `.v` file names a module that is *not* in
-/// `templates_info` and no matching template ever existed (the user
-/// targeted the wrong KEY). Port-shape mismatches only log a warning
-/// to match `check_custom_rtl_format`.
+/// Unknown module names are copied as helpers; port-shape mismatches
+/// against known templates only log a warning.
 pub(super) fn apply_custom_rtl(
     rtl_dir: &Path,
     custom_rtl_paths: &[PathBuf],
@@ -148,12 +142,10 @@ pub(super) fn apply_custom_rtl(
 ///
 /// * Non-`.v` files log a skip message (accepts `.tcl`, `.sv`, etc.).
 /// * Unparsable Verilog logs a skip message and moves on.
-/// * `.v` files whose top module name is NOT a key in
-///   `templates_info` are silently accepted — current
-///   `if (task := tasks.get(...)) is None: continue` makes unknown
-///   helper modules a valid input, not an error.
+/// * `.v` files whose top module name is not a key in
+///   `templates_info` are silently accepted as helper modules.
 /// * Port-signature mismatches against a known template key log a
-///   warning and proceed (uses `_logger.warning`, never fails).
+///   warning and proceed.
 fn check_custom_rtl_format(rtl_files: &[PathBuf], templates_info: &TemplatesInfo) {
     for path in rtl_files {
         if path.extension().and_then(|s| s.to_str()) != Some("v") {

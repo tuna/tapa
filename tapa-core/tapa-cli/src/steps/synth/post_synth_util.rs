@@ -8,8 +8,7 @@
 //!
 //!   1. Consults the mtime of `<work_dir>/report/<task>.hier.util.rpt`
 //!      and skips the re-synth when the report is newer than the
-//!      matching `<work_dir>/cpp/<task>.cpp` (compatibility with the
-//!      `os.path.getmtime(...) > rpt_mtime` guard).
+//!      matching `<work_dir>/cpp/<task>.cpp`.
 //!   2. Otherwise builds an out-of-context `synth_design` TCL, drives
 //!      it through [`run_vivado`], and requires that the `.rpt` now
 //!      exists and is strictly newer than it was before.
@@ -19,8 +18,7 @@
 //!      `BRAM_18K = RAMB36*2 + RAMB18`, `DSP = "DSP Blocks"`,
 //!      `FF = FFs`, `LUT = "Total LUTs"`, `URAM = URAM`.
 //!
-//! Serial execution only; the `jobs` flag is accepted for API
-//! compatibility but currently unused. A rayon-based fan-out is a follow-up.
+//! Execution is serial; the `jobs` argument is accepted but ignored.
 
 use camino::Utf8PathBuf;
 use std::fs;
@@ -35,14 +33,9 @@ use crate::error::{CliError, Result};
 
 use super::cpp_extract::cpp_path_for;
 
-/// Implements.
-///
-/// The template uses a current-side `{part_num}` / `{synth_args}`
-/// / `{report_util_args}` / `{set_parallel}` substitution before
-/// feeding Vivado, and passes `hdl_dir` / `rpt_file` in as `argv[0]` /
-/// `argv[1]`. We do the same here — the `{...}` placeholders below are
-/// replaced before the string hits Vivado; all other `{...}` pairs in
-/// the TCL itself are escaped as `{{...}}` in the source.
+/// Render the report-utilization TCL. The template substitutes
+/// `{part_num}`, `{synth_args}`, and `{report_util_args}` before
+/// invocation; literal TCL braces are escaped in the template source.
 fn render_report_util_tcl(part_num: &str, synth_args: &str, report_util_args: &str) -> String {
     let mut env = minijinja::Environment::new();
     env.add_template("report_util", include_str!("templates/report_util.tcl.j2"))
@@ -57,10 +50,9 @@ fn render_report_util_tcl(part_num: &str, synth_args: &str, report_util_args: &s
         .expect("render succeeds")
 }
 
-/// Drive per-task out-of-context Vivado synth against `<work_dir>/rtl`
-/// and fold the hierarchical utilization result into each task's
-/// `total_area` dict on `design`. Ports
-/// `ProgramSynthesisMixin.generate_post_synth_util`.
+/// Drive per-task out-of-context Vivado synthesis against
+/// `<work_dir>/rtl` and fold each hierarchical utilization result into
+/// the corresponding task's `total_area` map.
 pub(super) fn emit_post_synth_util(
     work_dir: &Path,
     design: &mut Design,
@@ -100,10 +92,7 @@ pub(super) fn emit_post_synth_util(
 /// Child-task names of the top task — the unique set of
 /// instantiated task names directly under `design.top`.
 ///
-/// Uses `IndexMap` insertion order so the iteration is deterministic;
-/// `set` is unordered but `ThreadPoolExecutor.map` doesn't
-/// depend on iteration order — neither does the fold since each task's
-/// `total_area` is written independently.
+/// Uses `IndexMap` insertion order so iteration is deterministic.
 fn top_task_child_names(design: &Design) -> Vec<String> {
     design
         .tasks
@@ -112,8 +101,7 @@ fn top_task_child_names(design: &Design) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// `<work_dir>/report/<module>.hier.util.rpt` — ports
-/// `ProgramDirectoryMixin.get_post_syn_rpt_path`.
+/// Return `<work_dir>/report/<module>.hier.util.rpt`.
 fn post_syn_rpt_path(work_dir: &Path, module_name: &str) -> PathBuf {
     work_dir
         .join("report")
@@ -140,9 +128,8 @@ fn should_run_vivado(cpp_path: &Path, rpt_mtime: Option<SystemTime>) -> bool {
     }
 }
 
-/// After Vivado returns success, the report must exist and be strictly
-/// newer than it was before the run. raises `ValueError` on
-/// failure; we surface the same condition as an `InvalidArg` caller-side.
+/// After Vivado returns success, require the report to exist and be
+/// strictly newer than it was before the run.
 fn report_is_fresh(rpt_path: &Path, prev_mtime: Option<SystemTime>) -> bool {
     let Some(new_mtime) = optional_mtime(rpt_path) else {
         return false;
@@ -190,12 +177,8 @@ fn run_one(
     Ok(())
 }
 
-/// Format the `synth_args` / `report_util_args` / `part_num` into the
-/// `REPORT_UTIL_TCL` template. always passes
-/// `synth_kwargs={"mode": "out_of_context"}` and lets `ReportDirUtil`
-/// append `-top <module> -part <part>`, plus the
-/// `report_util_kwargs.setdefault("hierarchical", "")` for the utilization
-/// report — so the rendered arg strings are:
+/// Format the out-of-context synthesis and hierarchical utilization
+/// arguments into the report-utilization TCL template:
 ///
 /// ```text
 /// -mode out_of_context -top <module> -part <part_num>
@@ -215,13 +198,9 @@ fn build_report_util_tcl(module_name: &str, part_num: &str) -> String {
 /// - `LUT      = "Total LUTs"`
 /// - `URAM     = URAM`
 ///
-/// Missing / non-integer cells fall through as `0` to match current
-/// eventual `int(utilization[...])` — which would itself raise, so the
-/// permissive fallback surfaces a well-formed dict instead of aborting
-/// the whole synth. If the instance from the report doesn't match any
-/// task in `design.tasks` we silently skip it (would raise
-/// `KeyError`; in practice the hierarchical report's top row is always
-/// the `-top` module we passed in, i.e. the task name).
+/// Missing or non-integer cells become `0`, keeping the area map
+/// well-formed. An instance absent from `design.tasks` is ignored; the
+/// report's top row normally names the `-top` module passed to Vivado.
 fn apply_total_area(design: &mut Design, util: &UtilizationReport) {
     let Some(task) = design.tasks.get_mut(&util.instance) else {
         return;

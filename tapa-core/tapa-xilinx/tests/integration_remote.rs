@@ -210,7 +210,7 @@ fn control_master_retry_branch_mid_transfer() {
         .expect("mid-transfer mux teardown must be recovered by the in-runner retry");
     let _ = handle.join();
     assert_eq!(out.exit_code, 0, "stderr: {}", out.stderr);
-    // The retry completing successfully is the proof; a follow-up
+    // The successful retry is sufficient proof; an additional
     // `control_master_alive()` probe would race with the background
     // teardown thread (which may fire again after run() returned),
     // so we don't assert on it here.

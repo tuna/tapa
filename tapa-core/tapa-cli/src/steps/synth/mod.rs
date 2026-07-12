@@ -1,4 +1,4 @@
-//! `tapa synth` — native Rust port of the implementation.
+//! `tapa synth` orchestration.
 //!
 //! For the vadd-style happy path (`--platform <p>`, no DSE / graphir /
 //! floorplan, leaf children + one upper top), this module drives the
@@ -16,9 +16,8 @@
 //!      design + settings (`synthed=true`).
 //!
 //! `--enable-synth-util` additionally drives a per-task Vivado
-//! out-of-context synth pass through
-//! `post_synth_util::emit_post_synth_util` (ports
-//! `ProgramSynthesisMixin.generate_post_synth_util`).
+//! out-of-context synthesis pass through
+//! `post_synth_util::emit_post_synth_util`.
 
 use std::path::PathBuf;
 
@@ -43,8 +42,7 @@ pub(crate) use runner::run_native;
 
 #[allow(
     clippy::struct_excessive_bools,
-    reason = "mirrors the CLI flag surface in implementation — every bool \
-              is a distinct user-facing flag, so collapsing into an enum would \
+    reason = "every bool is a distinct user-facing flag, so collapsing into an enum would \
               break compatibility"
 )]
 #[derive(Debug, Clone, Parser)]
@@ -193,7 +191,7 @@ pub fn to_cli_argv(args: &SynthArgs) -> Vec<String> {
 
 /// Top-level dispatcher.
 ///
-/// The native HLS + codegen pipeline is the only path. When
+/// The HLS + codegen pipeline is the only path. When
 /// `ctx.remote_config` is populated (via `~/.taparc` or
 /// `--remote-host`), HLS dispatches through `RemoteToolRunner`;
 /// otherwise `LocalToolRunner`.

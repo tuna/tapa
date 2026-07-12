@@ -122,10 +122,8 @@ impl Default for SshMuxOptions {
     }
 }
 
-/// Live ControlMaster session. The establish/restart lifecycle is
-/// implemented incrementally — for now the struct tracks the config,
-/// the resolved control-path, and a mutable "master-ready" flag so the
-/// remote tool runner can wire up reconnection when it lands.
+/// Live ControlMaster session with lazy establishment, health checks,
+/// teardown, and reconnection after transient mux failures.
 pub struct SshSession {
     cfg: RemoteConfig,
     options: SshMuxOptions,

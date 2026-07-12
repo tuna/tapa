@@ -57,9 +57,8 @@ struct Prepared {
     sanitized_config: PathBuf,
 }
 
-/// Mirror the preprocessing: ensure the autobridge work dir
-/// exists, strip pre-assignment keys from the floorplan config, and
-/// persist the sanitized variant.
+/// Ensure the `AutoBridge` work directory exists, strip pre-assignment
+/// keys from the floorplan config, and persist the sanitized variant.
 fn prepare_inputs(args: &RunAutobridgeArgs, work_dir: &Path) -> Result<Prepared> {
     let ab_graph_path = work_dir.join("ab_graph.json");
     let autobridge_dir = work_dir.join(AUTOBRIDGE_WORK_DIR);
@@ -164,10 +163,8 @@ fn run_with(runner: &dyn ToolRunner, prep: &Prepared) -> Result<()> {
     Ok(())
 }
 
-/// Map low-level `XilinxError` variants from the tool runner to typed
-/// CLI errors that explicitly name the failure mode (spawn / transfer
-/// / signal). Previously the remote branch hard-errored with "use the
-/// CLI"; now failures surface the concrete runtime gap.
+/// Map low-level runner failures to typed spawn, transfer, signal, and
+/// tool errors.
 fn map_runner_err(err: XilinxError) -> CliError {
     match err {
         // Spawn failure from `LocalToolRunner` when `rapidstream-tapafp`
