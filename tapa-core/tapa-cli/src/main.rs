@@ -17,7 +17,7 @@ fn main() -> ExitCode {
         Ok(()) => ExitCode::SUCCESS,
         Err(err) => {
             eprintln!("tapa: {err}");
-            ExitCode::FAILURE
+            ExitCode::from(err.exit_code())
         }
     }
 }

@@ -52,4 +52,82 @@ pub enum CliError {
     OrphanFlag { flag: String, pos: usize },
 }
 
+impl CliError {
+    /// Process exit status that preserves child-tool failures and uses the
+    /// conventional status 2 for command-line usage errors.
+    #[must_use]
+    pub fn exit_code(&self) -> u8 {
+        match self {
+            Self::TapaccFailed { code, .. }
+            | Self::Xilinx(tapa_xilinx::XilinxError::ToolFailure { code, .. }) => {
+                normalize_child_exit_code(*code)
+            }
+            Self::ClapParse { .. }
+            | Self::UnknownSubcommand { .. }
+            | Self::OrphanFlag { .. }
+            | Self::WorkDir(..)
+            | Self::MissingState { .. }
+            | Self::InvalidArg(..)
+            | Self::RemoteConfigParse { .. }
+            | Self::TapaccNotFound { .. }
+            | Self::TapaccNotExecutable { .. } => 2,
+            Self::Io(..) | Self::Json(..) | Self::Schema(..) | Self::Xilinx(..) => 1,
+        }
+    }
+}
+
+fn normalize_child_exit_code(code: i32) -> u8 {
+    match u8::try_from(code) {
+        Ok(0) | Err(_) => 1,
+        Ok(code) => code,
+    }
+}
+
 pub type Result<T> = std::result::Result<T, CliError>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn usage_errors_exit_two() {
+        assert_eq!(
+            CliError::UnknownSubcommand {
+                token: "bogus".to_owned(),
+                pos: 1,
+            }
+            .exit_code(),
+            2
+        );
+        assert_eq!(CliError::InvalidArg("bad value".to_owned()).exit_code(), 2);
+    }
+
+    #[test]
+    fn child_tool_exit_status_is_preserved() {
+        assert_eq!(
+            CliError::TapaccFailed {
+                code: 7,
+                stderr: "failed".to_owned(),
+            }
+            .exit_code(),
+            7
+        );
+        assert_eq!(
+            CliError::Xilinx(tapa_xilinx::XilinxError::ToolFailure {
+                program: "vivado".to_owned(),
+                code: 3,
+                stderr: "failed".to_owned(),
+            })
+            .exit_code(),
+            3
+        );
+        assert_eq!(
+            CliError::TapaccFailed {
+                code: -1,
+                stderr: "signal".to_owned(),
+            }
+            .exit_code(),
+            1
+        );
+    }
+}
