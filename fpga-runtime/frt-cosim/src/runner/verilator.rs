@@ -190,19 +190,17 @@ impl SimRunner for VerilatorRunner {
                 .to_str()
                 .is_some_and(|n| n.starts_with('V'));
             let is_executable = path.is_file()
-                && std::fs::metadata(&path)
-                    .map(|m| {
-                        #[cfg(unix)]
-                        {
-                            use std::os::unix::fs::PermissionsExt;
-                            m.permissions().mode() & 0o111 != 0
-                        }
-                        #[cfg(not(unix))]
-                        {
-                            true
-                        }
-                    })
-                    .unwrap_or(false);
+                && std::fs::metadata(&path).is_ok_and(|m| {
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::fs::PermissionsExt;
+                        m.permissions().mode() & 0o111 != 0
+                    }
+                    #[cfg(not(unix))]
+                    {
+                        true
+                    }
+                });
             if looks_like_verilator_bin && is_executable {
                 found = Some(path);
                 break;

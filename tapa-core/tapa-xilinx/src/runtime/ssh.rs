@@ -306,8 +306,7 @@ impl SshSession {
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status()
-            .map(|s| s.success())
-            .unwrap_or(false)
+            .is_ok_and(|s| s.success())
     }
 
     /// Establish (or reuse) the ControlMaster socket.

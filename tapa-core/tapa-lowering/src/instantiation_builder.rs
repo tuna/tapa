@@ -23,10 +23,10 @@ pub type ArgTable = std::collections::BTreeMap<String, std::collections::BTreeMa
 
 #[must_use]
 pub fn instance_name(task_name: &str, idx: usize, inst: &InstanceDesign) -> String {
-    inst.name
-        .as_deref()
-        .map(tapa_rtl::module::sanitize_identifier_name)
-        .unwrap_or_else(|| format!("{task_name}_{idx}"))
+    inst.name.as_deref().map_or_else(
+        || format!("{task_name}_{idx}"),
+        tapa_rtl::module::sanitize_identifier_name,
+    )
 }
 
 /// Build an arg table for an upper task's instances.

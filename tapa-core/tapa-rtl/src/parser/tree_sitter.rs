@@ -288,10 +288,10 @@ fn extract_parameters_from_node(node: Node, src: &[u8]) -> Vec<Parameter> {
                             | "binary_number"
                             | "hex_number"
                             | "real_number"
-                            | "unbased_unsized_literal" => {
-                                if default_str.is_none() {
-                                    default_str = Some(text_of(d, src).trim().to_owned());
-                                }
+                            | "unbased_unsized_literal"
+                                if default_str.is_none() =>
+                            {
+                                default_str = Some(text_of(d, src).trim().to_owned());
                             }
                             _ => {}
                         }

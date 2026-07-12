@@ -22,8 +22,7 @@ fn ensure_verilator() -> bool {
     Command::new("verilator")
         .arg("--version")
         .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+        .is_ok_and(|s| s.success())
 }
 
 fn find_hermetic_verilator() -> Option<PathBuf> {

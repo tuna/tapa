@@ -73,10 +73,8 @@ pub fn parse_hpfm_xml(xml: &[u8]) -> Result<DeviceInfo> {
                         "deviceInfo" => {
                             part_num = attr_value(e, "name")?;
                         }
-                        "clock" => {
-                            if attr_value(e, "id")?.as_deref() == Some("0") {
-                                clock_period = attr_value(e, "period")?;
-                            }
+                        "clock" if attr_value(e, "id")?.as_deref() == Some("0") => {
+                            clock_period = attr_value(e, "period")?;
                         }
                         _ => {}
                     }

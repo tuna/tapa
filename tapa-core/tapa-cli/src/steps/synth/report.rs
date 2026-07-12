@@ -93,7 +93,7 @@ pub fn write_top_report(work_dir: &Path, design: &Design, override_schema: &str)
 /// is read by downstream consumers).
 fn build_task_report(design: &Design, task_name: &str, schema: &str) -> Result<Report> {
     let task = design.tasks.get(task_name).ok_or_else(|| {
-        CliError::InvalidArg(format!("report: task `{task_name}` not found in design",))
+        CliError::InvalidArg(format!("report: task `{task_name}` not found in design"))
     })?;
 
     let area_source = if has_synth_area(task) { "synth" } else { "hls" };
