@@ -189,7 +189,7 @@ fn instrument_upper_task(state: &mut TopologyWithRtl, task_name: &str) -> Result
                 let idx_usize = *idx as usize;
                 mmap_slave_map.insert((conn.arg_name.clone(), task.clone(), idx_usize), slave_idx);
             }
-        } else if conn.chan_count > 1 {
+        } else if conn.chan_count.unwrap_or(1) > 1 {
             for (channel_idx, (task, idx, _port)) in conn.args.iter().enumerate() {
                 #[allow(clippy::cast_possible_truncation, reason = "index fits")]
                 let idx_usize = *idx as usize;
@@ -397,9 +397,10 @@ fn generate_child_signals(
                         let offset_source = mmap_conns.get(&arg.arg).map_or_else(
                             || Expr::ident(format!("{arg_name}_offset")),
                             |conn| {
-                                if conn.chan_count > 1 && m_axi::needs_crossbar(conn) {
+                                let chan_count = conn.chan_count.unwrap_or(1);
+                                if chan_count > 1 && m_axi::needs_crossbar(conn) {
                                     Expr::lit("64'd0")
-                                } else if conn.chan_count > 1 {
+                                } else if chan_count > 1 {
                                     Expr::ident(format!("{arg_name}_0_offset"))
                                 } else {
                                     Expr::ident(format!("{arg_name}_offset"))
@@ -1159,8 +1160,8 @@ fn add_m_axi_and_crossbars(
         m_axi::validate_mmap_connection(conn)?;
 
         if let Some(mm) = state.module_map.get_mut(task_name) {
-            if conn.chan_count > 1 {
-                for channel_idx in 0..conn.chan_count {
+            if conn.chan_count.unwrap_or(1) > 1 {
+                for channel_idx in 0..conn.chan_count.unwrap_or(1) {
                     m_axi::add_m_axi_ports_with_id_width(
                         mm,
                         &format!("{}_{}", conn.arg_name, channel_idx),
@@ -1185,9 +1186,9 @@ fn add_m_axi_and_crossbars(
             // Declare downstream m_axi_{arg}_{idx}_* wires in parent
             // Size each wire using protocol metadata for correct widths
             if let Some(mm) = state.module_map.get_mut(task_name) {
-                if conn.chan_count > 1 {
+                if conn.chan_count.unwrap_or(1) > 1 {
                     let addr_width = m_axi::get_addr_width(conn.chan_size, conn.data_width);
-                    for channel_idx in 0..conn.chan_count {
+                    for channel_idx in 0..conn.chan_count.unwrap_or(1) {
                         let channel_prefix = format!(
                             "m_axi_{}_{}",
                             tapa_rtl::module::sanitize_array_name(&conn.arg_name),

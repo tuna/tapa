@@ -13,6 +13,9 @@ pub enum CodegenError {
     #[error("cannot create FSM module for lower-level task '{0}'")]
     FsmForLowerTask(String),
 
+    #[error("invalid mmap connection: {0}")]
+    InvalidMmapConnection(String),
+
     #[error("RTL parse error: {0}")]
     RtlParse(#[from] tapa_rtl::ParseError),
 

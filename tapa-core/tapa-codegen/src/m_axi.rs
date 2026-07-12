@@ -67,14 +67,20 @@ pub fn add_m_axi_ports_with_id_width(
     }
 }
 
-/// Determine if an AXI crossbar is needed for an mmap connection.
+/// Determine if an AXI crossbar is needed for an mmap connection:
+/// multiple child ports share the argument, or the port is an hmap
+/// (any explicit channel count, including 1).
 pub fn needs_crossbar(conn: &MMapConnection) -> bool {
-    conn.thread_count > 1 || conn.chan_count > 1
+    conn.thread_count > 1 || conn.chan_count.is_some()
 }
 
 /// Build crossbar module name: `axi_crossbar_{slaves}x{channels}`.
 pub fn crossbar_module_name(conn: &MMapConnection) -> String {
-    format!("axi_crossbar_{}x{}", conn.thread_count, conn.chan_count)
+    format!(
+        "axi_crossbar_{}x{}",
+        conn.thread_count,
+        conn.chan_count.unwrap_or(1)
+    )
 }
 
 /// Internal wire prefix for a crossbar slave-side child connection.
@@ -105,7 +111,7 @@ pub fn build_crossbar_params(conn: &MMapConnection) -> Vec<ParamArg> {
         ParamArg::new("M_ID_WIDTH", Expr::int(u64::from(conn.id_width))),
     ];
 
-    for idx in 0..conn.chan_count {
+    for idx in 0..conn.chan_count.unwrap_or(1) {
         let addr_width = get_addr_width(conn.chan_size, conn.data_width);
         let base = if addr_width >= 64 {
             "64'd0".to_owned()
@@ -124,14 +130,19 @@ pub fn build_crossbar_params(conn: &MMapConnection) -> Vec<ParamArg> {
         params.push(ParamArg::new(format!("M{idx:02}_ISSUE"), Expr::int(16)));
     }
 
-    // Per-slave thread parameters — each slave gets at least 1 thread
+    // Per-slave thread parameters: a leaf slave tracks 1 in-flight
+    // thread; an upper child that internally shares the mmap needs its
+    // aggregated total so the crossbar can track every outstanding ID.
     for idx in 0..conn.thread_count {
-        // In the full implementation, this comes from per-child port metadata.
-        // For now, use 1 thread per slave (the common case for simple designs).
-        let threads = 1_u64;
+        let threads = conn
+            .slave_threads
+            .get(idx as usize)
+            .copied()
+            .unwrap_or(1)
+            .max(1);
         params.push(ParamArg::new(
             format!("S{idx:02}_THREADS"),
-            Expr::int(threads),
+            Expr::int(u64::from(threads)),
         ));
     }
 
@@ -165,14 +176,15 @@ pub fn build_crossbar_instance(conn: &MMapConnection) -> ModuleInstance {
     ];
 
     // Upstream master ports.
-    for channel_idx in 0..conn.chan_count {
-        let m_prefix = if conn.chan_count > 1 {
+    let chan_count = conn.chan_count.unwrap_or(1);
+    for channel_idx in 0..chan_count {
+        let m_prefix = if chan_count > 1 {
             format!("{M_AXI_PREFIX}{arg_name}_{channel_idx}")
         } else {
             format!("{M_AXI_PREFIX}{arg_name}")
         };
         for suffix in M_AXI_SUFFIXES_COMPACT {
-            let signal = if conn.chan_count > 1 && suffix.ends_with("ADDR") {
+            let signal = if chan_count > 1 && suffix.ends_with("ADDR") {
                 crossbar_master_addr_raw(&arg_name, channel_idx, suffix)
             } else {
                 format!("{m_prefix}{suffix}")
@@ -201,15 +213,21 @@ pub fn build_crossbar_instance(conn: &MMapConnection) -> ModuleInstance {
 }
 
 /// Compute address width from channel size and data width.
-pub fn get_addr_width(chan_size: u32, data_width: u32) -> u32 {
-    if chan_size == 0 {
+pub fn get_addr_width(chan_size: Option<u32>, data_width: u32) -> u32 {
+    let Some(chan_size) = chan_size else {
         return 64;
-    }
+    };
     let bytes = chan_size * (data_width / 8);
     if bytes == 0 {
         return 64;
     }
-    32 - (bytes - 1).leading_zeros()
+    let addr_width = 32 - (bytes - 1).leading_zeros();
+    assert!(
+        1_u64 << addr_width == u64::from(bytes),
+        "hmap channel byte size must be a power of two: \
+         chan_size={chan_size} * data_width={data_width} / 8 = {bytes} bytes"
+    );
+    addr_width
 }
 
 /// Resolve the width of an M-AXI suffix from protocol metadata.
@@ -240,14 +258,26 @@ pub fn resolve_suffix_width(suffix: &str, data_width: u32) -> u32 {
 /// Validate an mmap connection before crossbar generation.
 pub fn validate_mmap_connection(conn: &MMapConnection) -> Result<(), CodegenError> {
     if conn.data_width == 0 {
-        return Err(CodegenError::TaskNotFound(format!(
+        return Err(CodegenError::InvalidMmapConnection(format!(
             "M-AXI data_width is 0 for argument '{}'",
             conn.arg_name
         )));
     }
     if needs_crossbar(conn) && conn.args.is_empty() {
-        return Err(CodegenError::TaskNotFound(format!(
+        return Err(CodegenError::InvalidMmapConnection(format!(
             "crossbar has no downstream connections for argument '{}'",
+            conn.arg_name
+        )));
+    }
+    // An hmap whose single child port internally shares the mmap would
+    // need per-channel routing of an already-multiplexed ID stream,
+    // which the crossbar wrapper does not implement.
+    let total_threads: u32 = conn.slave_threads.iter().sum();
+    if conn.args.len() == 1 && conn.chan_count.is_some() && total_threads > 1 {
+        return Err(CodegenError::InvalidMmapConnection(format!(
+            "hmap argument '{}' is driven by a single child port that \
+             internally shares the mmap ({total_threads} threads); this \
+             combination is not supported",
             conn.arg_name
         )));
     }
@@ -266,7 +296,7 @@ pub fn validate_mmap_connection(conn: &MMapConnection) -> Result<(), CodegenErro
 pub fn generate_crossbar_rtl(conn: &MMapConnection) -> String {
     let module_name = crossbar_module_name(conn);
     let slaves = conn.thread_count;
-    let channels = conn.chan_count;
+    let channels = conn.chan_count.unwrap_or(1);
 
     let mut params: Vec<String> = vec![
         "parameter DATA_WIDTH = 32".to_string(),
@@ -483,12 +513,13 @@ mod tests {
             arg_name: "mem".into(),
             id_width: 2,
             thread_count: 2,
+            slave_threads: vec![1, 1],
             args: vec![
                 ("task_a".into(), 0, "data".into()),
                 ("task_b".into(), 0, "data".into()),
             ],
-            chan_count: 1,
-            chan_size: 0,
+            chan_count: None,
+            chan_size: None,
             data_width: 32,
         };
         assert!(needs_crossbar(&conn));
@@ -500,12 +531,72 @@ mod tests {
             arg_name: "mem".into(),
             id_width: 1,
             thread_count: 1,
+            slave_threads: vec![1],
             args: vec![("task_a".into(), 0, "data".into())],
-            chan_count: 1,
-            chan_size: 0,
+            chan_count: None,
+            chan_size: None,
             data_width: 32,
         };
         assert!(!needs_crossbar(&conn));
+    }
+
+    #[test]
+    fn crossbar_needed_for_single_channel_hmap() {
+        // chan_count = Some(1) is still an hmap and needs the crossbar
+        // (a plain mmap has chan_count = None).
+        let conn = MMapConnection {
+            arg_name: "mem".into(),
+            id_width: 1,
+            thread_count: 1,
+            slave_threads: vec![1],
+            args: vec![("task_a".into(), 0, "data".into())],
+            chan_count: Some(1),
+            chan_size: Some(1024),
+            data_width: 32,
+        };
+        assert!(needs_crossbar(&conn));
+    }
+
+    #[test]
+    fn crossbar_params_use_nested_slave_threads() {
+        let conn = MMapConnection {
+            arg_name: "mem".into(),
+            id_width: 3,
+            thread_count: 2,
+            slave_threads: vec![1, 2],
+            args: vec![
+                ("leaf".into(), 0, "d".into()),
+                ("mid".into(), 0, "data".into()),
+            ],
+            chan_count: None,
+            chan_size: None,
+            data_width: 32,
+        };
+        let params = build_crossbar_params(&conn);
+        let rendered: Vec<String> = params.iter().map(|p| format!("{p}")).collect();
+        assert!(
+            rendered.iter().any(|p| p.contains("S00_THREADS(1)")),
+            "got: {rendered:?}"
+        );
+        assert!(
+            rendered.iter().any(|p| p.contains("S01_THREADS(2)")),
+            "got: {rendered:?}"
+        );
+    }
+
+    #[test]
+    fn validate_rejects_hmap_with_internally_shared_child() {
+        let conn = MMapConnection {
+            arg_name: "mem".into(),
+            id_width: 2,
+            thread_count: 1,
+            slave_threads: vec![2],
+            args: vec![("mid".into(), 0, "data".into())],
+            chan_count: Some(2),
+            chan_size: Some(1024),
+            data_width: 32,
+        };
+        validate_mmap_connection(&conn).unwrap_err();
     }
 
     #[test]
@@ -514,12 +605,13 @@ mod tests {
             arg_name: "mem".into(),
             id_width: 2,
             thread_count: 2,
+            slave_threads: vec![1, 1],
             args: vec![
                 ("task_a".into(), 0, "data".into()),
                 ("task_a".into(), 1, "data".into()),
             ],
-            chan_count: 2,
-            chan_size: 1024,
+            chan_count: Some(2),
+            chan_size: Some(1024),
             data_width: 32,
         };
         assert!(needs_crossbar(&conn));
@@ -531,12 +623,13 @@ mod tests {
             arg_name: "mem".into(),
             id_width: 2,
             thread_count: 2,
+            slave_threads: vec![1, 1],
             args: vec![
                 ("task_a".into(), 0, "data".into()),
                 ("task_b".into(), 0, "data".into()),
             ],
-            chan_count: 1,
-            chan_size: 0,
+            chan_count: None,
+            chan_size: None,
             data_width: 64,
         };
         let params = build_crossbar_params(&conn);
@@ -553,13 +646,14 @@ mod tests {
             arg_name: "mem".into(),
             id_width: 3,
             thread_count: 3,
+            slave_threads: vec![1, 1, 1],
             args: vec![
                 ("task_a".into(), 0, "data".into()),
                 ("task_b".into(), 0, "data".into()),
                 ("task_c".into(), 0, "data".into()),
             ],
-            chan_count: 1,
-            chan_size: 0,
+            chan_count: None,
+            chan_size: None,
             data_width: 64,
         };
         let text = build_crossbar_instance(&conn).to_string();
@@ -573,9 +667,10 @@ mod tests {
             arg_name: "mem".into(),
             id_width: 2,
             thread_count: 3,
+            slave_threads: vec![1, 1, 1],
             args: vec![],
-            chan_count: 2,
-            chan_size: 0,
+            chan_count: Some(2),
+            chan_size: None,
             data_width: 32,
         };
         assert_eq!(crossbar_module_name(&conn), "axi_crossbar_3x2");
@@ -583,8 +678,14 @@ mod tests {
 
     #[test]
     fn addr_width_calculation() {
-        assert_eq!(get_addr_width(0, 32), 64);
-        assert_eq!(get_addr_width(1024, 32), 12);
+        assert_eq!(get_addr_width(None, 32), 64);
+        assert_eq!(get_addr_width(Some(1024), 32), 12);
+    }
+
+    #[test]
+    #[should_panic(expected = "power of two")]
+    fn addr_width_rejects_non_power_of_two_channel_bytes() {
+        let _ = get_addr_width(Some(3), 24);
     }
 
     #[test]
@@ -602,12 +703,13 @@ mod tests {
             arg_name: "mem".into(),
             id_width: 3,
             thread_count: 2,
+            slave_threads: vec![1, 1],
             args: vec![
                 ("task_a".into(), 0, "data".into()),
                 ("task_b".into(), 0, "data".into()),
             ],
-            chan_count: 1,
-            chan_size: 0,
+            chan_count: None,
+            chan_size: None,
             data_width: 32,
         };
 
@@ -661,9 +763,10 @@ mod tests {
             arg_name: "chan[0]".into(),
             id_width: 1,
             thread_count: 1,
+            slave_threads: vec![1],
             args: vec![("task_a".into(), 0, "mem".into())],
-            chan_count: 1,
-            chan_size: 0,
+            chan_count: None,
+            chan_size: None,
             data_width: 32,
         };
         let text = build_crossbar_instance(&conn).to_string();
@@ -678,12 +781,13 @@ mod tests {
             arg_name: "mat_a".into(),
             id_width: 2,
             thread_count: 2,
+            slave_threads: vec![1, 1],
             args: vec![
                 ("task_a".into(), 0, "mem".into()),
                 ("task_a".into(), 1, "mem".into()),
             ],
-            chan_count: 2,
-            chan_size: 1024,
+            chan_count: Some(2),
+            chan_size: Some(1024),
             data_width: 512,
         };
         let text = build_crossbar_instance(&conn).to_string();
@@ -708,9 +812,10 @@ mod tests {
             arg_name: "mem".into(),
             id_width: 1,
             thread_count: 1,
+            slave_threads: vec![1],
             args: vec![("task_a".into(), 0, "data".into())],
-            chan_count: 1,
-            chan_size: 0,
+            chan_count: None,
+            chan_size: None,
             data_width: 0,
         };
         validate_mmap_connection(&conn).unwrap_err();
@@ -722,9 +827,10 @@ mod tests {
             arg_name: "mem".into(),
             id_width: 2,
             thread_count: 2,
+            slave_threads: vec![1, 1],
             args: vec![],
-            chan_count: 1,
-            chan_size: 0,
+            chan_count: None,
+            chan_size: None,
             data_width: 32,
         };
         validate_mmap_connection(&conn).unwrap_err();
@@ -736,12 +842,13 @@ mod tests {
             arg_name: "mem".into(),
             id_width: 2,
             thread_count: 2,
+            slave_threads: vec![1, 1],
             args: vec![
                 ("task_a".into(), 0, "data".into()),
                 ("task_b".into(), 0, "data".into()),
             ],
-            chan_count: 1,
-            chan_size: 0,
+            chan_count: None,
+            chan_size: None,
             data_width: 32,
         };
         let rtl = generate_crossbar_rtl(&conn);
@@ -762,12 +869,13 @@ mod tests {
             arg_name: "mem".into(),
             id_width: 2,
             thread_count: 2,
+            slave_threads: vec![1, 1],
             args: vec![
                 ("task_a".into(), 0, "data".into()),
                 ("task_b".into(), 0, "data".into()),
             ],
-            chan_count: 2,
-            chan_size: 1024,
+            chan_count: Some(2),
+            chan_size: Some(1024),
             data_width: 32,
         };
         let rtl = generate_crossbar_rtl(&conn);

@@ -33,14 +33,20 @@ pub struct MMapConnection {
     pub arg_name: String,
     /// AXI ID width (log2 of total ports + 1).
     pub id_width: u32,
-    /// Number of child instances using this mmap.
+    /// Number of connected child ports (crossbar slave count).
     pub thread_count: u32,
+    /// Aggregated AXI thread count per slave, aligned with `args`.
+    /// A leaf child contributes 1; an upper child that internally
+    /// shares the mmap contributes its own aggregated total, so the
+    /// crossbar's `S*_THREADS` can track every outstanding ID.
+    pub slave_threads: Vec<u32>,
     /// Per-instance argument bindings: (`task_name`, `instance_idx`, `port_name`).
     pub args: Vec<(String, u32, String)>,
-    /// Channel count (for hierarchical memory ports).
-    pub chan_count: u32,
-    /// Channel size.
-    pub chan_size: u32,
+    /// Channel count; `None` for a plain (non-hmap) mmap. `Some(1)`
+    /// is a single-channel hmap, which still gets a crossbar.
+    pub chan_count: Option<u32>,
+    /// Channel size in elements; `None` for a plain mmap.
+    pub chan_size: Option<u32>,
     /// Data width in bits.
     pub data_width: u32,
 }
@@ -153,32 +159,48 @@ impl TopologyWithRtl {
                     let port = child_task
                         .and_then(|t| t.ports.iter().find(|p| p.name == *child_port_name));
                     let child_id_width = self.child_mmap_id_width(child_task_name, child_port_name);
+                    let child_threads =
+                        self.child_mmap_thread_count(child_task_name, child_port_name);
 
                     // Group by parent scope arg name (arg.arg), not child port name
                     let parent_arg_name = &arg.arg;
                     let parent_port = task.ports.iter().find(|p| p.name == *parent_arg_name);
 
-                    let data_width = parent_port.or(port).map_or(64, |p| p.width);
+                    let data_width = parent_port.or(port).map(|p| p.width).ok_or_else(|| {
+                        CodegenError::InvalidMmapConnection(format!(
+                            "no port named '{parent_arg_name}' on task '{task_name}' \
+                                 or '{child_port_name}' on child '{child_task_name}' \
+                                 to derive the mmap data width from"
+                        ))
+                    })?;
                     let chan_count = parent_port
                         .and_then(|p| p.chan_count)
-                        .or_else(|| port.and_then(|p| p.chan_count))
-                        .unwrap_or(1);
+                        .or_else(|| port.and_then(|p| p.chan_count));
                     let chan_size = parent_port
                         .and_then(|p| p.chan_size)
-                        .or_else(|| port.and_then(|p| p.chan_size))
-                        .unwrap_or(0);
+                        .or_else(|| port.and_then(|p| p.chan_size));
                     let conn = connections
                         .entry(parent_arg_name.clone())
                         .or_insert_with(|| MMapConnection {
                             arg_name: parent_arg_name.clone(),
                             id_width: 1,
                             thread_count: 0,
+                            slave_threads: Vec::new(),
                             args: Vec::new(),
                             chan_count,
                             chan_size,
                             data_width,
                         });
+                    if conn.chan_count != chan_count || conn.chan_size != chan_size {
+                        return Err(CodegenError::InvalidMmapConnection(format!(
+                            "mmap argument '{task_name}.{parent_arg_name}' has conflicting \
+                             channel shapes: ({:?}, {:?}) vs ({chan_count:?}, {chan_size:?}) \
+                             at '{child_task_name}.{child_port_name}'",
+                            conn.chan_count, conn.chan_size
+                        )));
+                    }
                     conn.thread_count += 1;
+                    conn.slave_threads.push(child_threads);
                     conn.id_width = conn.id_width.max(child_id_width);
                     #[allow(
                         clippy::cast_possible_truncation,
@@ -199,6 +221,29 @@ impl TopologyWithRtl {
         }
 
         Ok(connections)
+    }
+
+    /// Aggregated AXI thread count a child port presents to its parent:
+    /// 1 for a leaf child, or the sum of the child's own per-slave
+    /// thread counts when the child is an upper task that internally
+    /// shares the mmap.
+    pub(crate) fn child_mmap_thread_count(
+        &self,
+        child_task_name: &str,
+        child_port_name: &str,
+    ) -> u32 {
+        self.program
+            .tasks
+            .get(child_task_name)
+            .filter(|task| task.level == TaskLevel::Upper)
+            .and_then(|_| self.aggregate_mmap_connections(child_task_name).ok())
+            .and_then(|conns| {
+                conns
+                    .get(child_port_name)
+                    .map(|conn| conn.slave_threads.iter().sum())
+            })
+            .unwrap_or(1)
+            .max(1)
     }
 
     pub(crate) fn child_mmap_id_width(&self, child_task_name: &str, child_port_name: &str) -> u32 {
@@ -413,6 +458,119 @@ mod tests {
         assert_eq!(
             conns["elems"].id_width, 2,
             "parent-facing ID width must be at least as wide as the child AXI port"
+        );
+    }
+
+    #[test]
+    fn aggregate_propagates_nested_slave_threads() {
+        // top shares `elems` between a leaf child and an upper child
+        // (`mid`) that internally shares its `data` port between two
+        // leaves. The parent-facing connection must report the
+        // aggregated per-slave thread counts, not a flat 1.
+        let program = serde_json::from_value(serde_json::json!({
+            "top": "top",
+            "target": "xilinx-hls",
+            "tasks": {
+                "top": {
+                    "level": "upper",
+                    "code": "",
+                    "target": "xilinx-hls",
+                    "ports": [
+                        {"cat": "mmap", "name": "elems", "type": "float*", "width": 32}
+                    ],
+                    "tasks": {
+                        "leaf": [{"args": {"d": {"arg": "elems", "cat": "mmap"}}}],
+                        "mid": [{"args": {"data": {"arg": "elems", "cat": "mmap"}}}]
+                    },
+                    "fifos": {}
+                },
+                "mid": {
+                    "level": "upper",
+                    "code": "",
+                    "target": "xilinx-hls",
+                    "ports": [
+                        {"cat": "mmap", "name": "data", "type": "float*", "width": 32}
+                    ],
+                    "tasks": {
+                        "leaf": [
+                            {"args": {"d": {"arg": "data", "cat": "mmap"}}},
+                            {"args": {"d": {"arg": "data", "cat": "mmap"}}}
+                        ]
+                    },
+                    "fifos": {}
+                },
+                "leaf": {
+                    "level": "lower",
+                    "code": "",
+                    "target": "xilinx-hls",
+                    "ports": [
+                        {"cat": "mmap", "name": "d", "type": "float*", "width": 32}
+                    ],
+                    "tasks": {},
+                    "fifos": {}
+                }
+            }
+        }))
+        .unwrap();
+        let state = TopologyWithRtl::new(program);
+
+        let mid_conns = state.aggregate_mmap_connections("mid").unwrap();
+        assert_eq!(mid_conns["data"].slave_threads, vec![1, 1]);
+
+        let top_conns = state.aggregate_mmap_connections("top").unwrap();
+        let conn = &top_conns["elems"];
+        assert_eq!(conn.thread_count, 2, "two slave ports at top level");
+        // Task iteration is alphabetical: `leaf` (1 thread) then `mid`
+        // (2 aggregated threads).
+        assert_eq!(conn.slave_threads, vec![1, 2]);
+    }
+
+    #[test]
+    fn aggregate_rejects_conflicting_channel_shapes() {
+        let program = serde_json::from_value(serde_json::json!({
+            "top": "top",
+            "target": "xilinx-hls",
+            "tasks": {
+                "top": {
+                    "level": "upper",
+                    "code": "",
+                    "target": "xilinx-hls",
+                    "ports": [],
+                    "tasks": {
+                        "chan_leaf": [{"args": {"d": {"arg": "elems", "cat": "mmap"}}}],
+                        "plain_leaf": [{"args": {"d": {"arg": "elems", "cat": "mmap"}}}]
+                    },
+                    "fifos": {}
+                },
+                "chan_leaf": {
+                    "level": "lower",
+                    "code": "",
+                    "target": "xilinx-hls",
+                    "ports": [
+                        {"cat": "mmap", "name": "d", "type": "float*", "width": 32,
+                         "chan_count": 2, "chan_size": 1024}
+                    ],
+                    "tasks": {},
+                    "fifos": {}
+                },
+                "plain_leaf": {
+                    "level": "lower",
+                    "code": "",
+                    "target": "xilinx-hls",
+                    "ports": [
+                        {"cat": "mmap", "name": "d", "type": "float*", "width": 32}
+                    ],
+                    "tasks": {},
+                    "fifos": {}
+                }
+            }
+        }))
+        .unwrap();
+        let state = TopologyWithRtl::new(program);
+        let result = state.aggregate_mmap_connections("top");
+        assert!(
+            matches!(result, Err(CodegenError::InvalidMmapConnection(_))),
+            "got: {result:?}"
         );
     }
 
