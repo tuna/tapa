@@ -356,6 +356,9 @@ pub fn build_project_from_state(
     Ok(project)
 }
 
+// Compatibility name retained for callers of the original public API.
+pub use build_project_from_state as build_project_from_inputs;
+
 fn refresh_top_slot_instance_connections(
     module_defs: &mut [AnyModuleDefinition],
     program: &Program,
@@ -723,7 +726,7 @@ fn read_device_config(
 /// Build a `GraphIR` Project from a floorplanned program.
 ///
 /// Lower-level entrypoint accepting pre-extracted components. Prefer
-/// `build_project_from_inputs` when working with `LoweringInputs`.
+/// [`build_project_from_paths`] when working with [`crate::LoweringInputs`].
 /// It assembles:
 /// - Leaf module definitions (from RTL files)
 /// - Slot grouped module definitions

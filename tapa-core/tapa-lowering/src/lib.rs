@@ -13,7 +13,9 @@ pub mod upper_wires;
 pub mod utils;
 
 pub use inputs::LoweringInputs;
-pub use project_builder::{build_project, build_project_from_paths, build_project_from_state};
+pub use project_builder::{
+    build_project, build_project_from_inputs, build_project_from_paths, build_project_from_state,
+};
 
 /// Errors from lowering operations.
 #[derive(Debug, thiserror::Error)]
