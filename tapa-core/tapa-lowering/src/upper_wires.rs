@@ -38,9 +38,7 @@ pub fn build_upper_task_ir_wires(
 ) -> Vec<ModuleNet> {
     let mut wires: Vec<ModuleNet> = Vec::new();
 
-    // 1. Local FIFO wires. Intra-upper-task FIFOs have both `produced_by`
-    //    and `consumed_by` set. `is_fifo_external_codegen` (current) treats
-    //    only those as internal.
+    // 1. Local FIFO wires have both producer and consumer endpoints.
     for (fifo_name, fifo) in &upper_task.fifos {
         if fifo.produced_by.is_none() || fifo.consumed_by.is_none() {
             continue;
@@ -175,8 +173,7 @@ pub fn infer_fifo_data_range(
             .and_then(|p| p.range.clone());
     }
 
-    // Slot-local FIFO: find the child arg name, then try each FIFO_INFIXES
-    // suffix pattern (matches `rtl_module.get_port_of(arg, "_din")`).
+    // Slot-local FIFO: find the child argument, then try each HLS stream infix.
     let producer_idx = usize::try_from(endpoint.1).ok()?;
     let producer_port_name = upper_task
         .tasks
@@ -209,10 +206,8 @@ fn find_port_with_infixes<'a>(
 /// Infer a top-level cross-slot FIFO's data range via the leaf producer.
 ///
 /// Drills into the producer slot's child leaf RTL that actually
-/// produces the FIFO. The slot's topology-synthesized port ranges
-/// aren't equivalent at the time `build_top_module` runs (slot
-/// ports get rewritten in a later post-pass), so we bypass the slot
-/// def and look up the leaf producer directly.
+/// produces the FIFO. Slot ports are finalized later, so the leaf producer is
+/// the authoritative source at this stage.
 #[must_use]
 pub fn infer_top_fifo_data_range_via_leaf(
     fifo_name: &str,

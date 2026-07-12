@@ -323,8 +323,7 @@ pub fn build_interfaces(
             });
             si
         } else if name.ends_with("_fsm") && name == format!("{}_fsm", program.top) {
-            // Top-level FSM: emit per-slot ApCtrl interfaces plus the
-            // FSM-top ApCtrl (matches get_fsm_ifaces).
+            // Top-level FSM: emit per-slot and top-level ApCtrl interfaces.
             let mut fi = Vec::new();
             let slot_names: Vec<String> = slot_to_instances.keys().cloned().collect();
 
@@ -334,10 +333,7 @@ pub fn build_interfaces(
                 let done = format!("{slot_prefix}__{HANDSHAKE_DONE}");
                 let ready = format!("{slot_prefix}__{HANDSHAKE_READY}");
                 let idle = format!("{slot_prefix}__{HANDSHAKE_IDLE}");
-                // Only emit a per-slot ApCtrl if the FSM actually exposes the
-                // slot-prefixed handshake ports. equivalent always
-                // emits it; we guard here so that minimal test fixtures
-                // without slot instantiations still produce a valid project.
+                // Minimal fixtures may omit slot-prefixed handshake ports.
                 if !port_names.contains(&start) || !port_names.contains(&done) {
                     continue;
                 }

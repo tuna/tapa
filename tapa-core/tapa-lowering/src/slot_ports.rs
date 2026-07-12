@@ -1,4 +1,4 @@
-//! equivalent slot grouped-module port synthesis.
+//! Slot grouped-module port synthesis.
 //!
 //! Builds slot grouped-module ports from child port categories and
 //! slot-local connection metadata.
@@ -13,9 +13,6 @@ use tapa_protocol::{
     HANDSHAKE_START,
 };
 
-/// Build the slot grouped-module ports by mirroring current
-/// `get_slot_module_definition_ports`.
-///
 /// Returns `None` when any required lookup (slot task, child task,
 /// child RTL, child IR) is missing — caller keeps the prior port list.
 pub fn build_slot_ports(
@@ -50,7 +47,7 @@ pub fn build_slot_ports(
         }
         let child_rtl = state.module_map.get(&child_task_name)?;
         let child_ir = leaf_modules.get(&child_task_name)?;
-        let port_map = get_child_port_connection_mapping_rs(
+        let port_map = get_child_port_connection_mapping(
             task_port,
             &child_rtl.inner,
             &port_def.name,
@@ -94,11 +91,9 @@ pub fn build_slot_ports(
     Some(ports)
 }
 
-/// Rust port of the implementation.
-///
 /// Returns an ordered list of `(child_rtl_port_name, slot_port_name)`
 /// pairs.
-fn get_child_port_connection_mapping_rs(
+fn get_child_port_connection_mapping(
     task_port: &tapa_topology::task::PortDesign,
     task_module_rtl: &tapa_rtl::VerilogModule,
     arg: &str,
@@ -292,7 +287,7 @@ mod tests {
     #[test]
     fn stream_slot_ports_sanitize_indexed_arg_names() {
         let module = module_with_ports(&["a_0_dout", "a_0_empty_n", "a_0_read"]);
-        let mapping = get_child_port_connection_mapping_rs(
+        let mapping = get_child_port_connection_mapping(
             &task_port("a", ArgCategory::Istreams),
             &module,
             "a[0]_Cannon",
@@ -312,7 +307,7 @@ mod tests {
     #[test]
     fn mmap_slot_ports_sanitize_indexed_arg_names() {
         let module = module_with_ports(&["mem_offset", "m_axi_mem_ARVALID"]);
-        let mapping = get_child_port_connection_mapping_rs(
+        let mapping = get_child_port_connection_mapping(
             &task_port("mem", ArgCategory::Mmap),
             &module,
             "mem[1]_Cannon",

@@ -39,16 +39,8 @@ pub fn build_slot_module(
         .as_ref()
         .and_then(|m| m.get(slot_name).cloned())
         .unwrap_or_else(|| slot_name.to_owned());
-    // Slot-local arg table for this slot's children:
-    // `get_task_arg_table(slot)` used in instantiation_builder
-    // for slot grouped modules — Rust previously built arg tables from
-    // the top task, which means child leaf instances inside a slot had
-    // no arg entries and `build_port_connections` fell back to raw arg
-    // names instead of `{inst}___{arg}[_offset]__q0` queue-tail
-    // signals. When a slot_name does not correspond to a registered
-    // program task (small test fixtures), fall back to the top task for
-    // the arg-table context so the builder still produces a compatible
-    // shape.
+    // Build queue-tail names in the slot's own argument scope. Small test
+    // fixtures without an explicit slot task fall back to the top scope.
     let top = &program.tasks[&program.top];
     let slot_task_ref = program.tasks.get(slot_name).unwrap_or(top);
     let slot_arg_table = crate::instantiation_builder::build_arg_table(slot_task_ref);
@@ -160,9 +152,7 @@ pub fn build_slot_module(
                 }
                 // Use the arg name (parent-visible) for port expansion.
                 // Look in the slot task's own task map first (pre-baked slot
-                // hierarchy), then fall back to the top task's map. current
-                // `_find_port_child` walks `slot.instances`; we mirror that
-                // by preferring the slot task's own `tasks` dict.
+                // hierarchy), then fall back to the top task's map.
                 let arg_name =
                     find_arg_name_in_task(slot_task_ref, &task_name, inst_name, &port.name)
                         .unwrap_or_else(|| port.name.clone());
@@ -244,13 +234,8 @@ pub fn build_slot_module(
         }
     }
 
-    // Add the slot FSM instance unconditionally. current
-    // `get_upper_module_ir_subinsts` appends
-    // `_make_fsm_inst(upper_task.rtl_fsm_module, floorplan_region)` at
-    // this point — a self-connected instance named `{slot}_fsm_0` that
-    // references every FSM port. Any FSM port that isn't already a slot
-    // port or wire gets added as a wire so the exporter's DRC can find
-    // every identifier.
+    // When an FSM definition is available, self-connect it and declare any
+    // FSM signal that is not already a slot port or wire.
     let slot_fsm_name = format!("{slot_name}_fsm");
     if let Some(fsm_def) = fsm_modules.get(&slot_fsm_name) {
         submodules.push(crate::instantiation_builder::build_self_connected_fsm_inst(

@@ -680,13 +680,9 @@ fn build_project_rejects_invalid_interface_direction() {
     clippy::too_many_lines,
     reason = "integration test with many assertions"
 )]
-fn aggregate_slot_params_matches_current_alphabetical_order() {
-    // Slot-parameter aggregation must iterate child tasks
-    // alphabetically. The JSON lists `zleaf` first and `aleaf`
-    // second, but sorting makes `aleaf` win as the first-seen
-    // parameter source: `task.instances == ['aleaf_0', 'zleaf_0']`
-    // and the aggregated `P = 3'd1` (from `aleaf`). Rust must
-    // produce the same.
+fn aggregate_slot_params_use_alphabetical_order() {
+    // The input lists `zleaf` first, but `BTreeMap` iteration makes
+    // `aleaf` the first parameter source.
     let prog_json = r#"{
         "top": "top_task",
         "target": "xilinx-hls",
@@ -720,14 +716,13 @@ fn aggregate_slot_params_matches_current_alphabetical_order() {
         }
     }"#;
     let prog: Program = serde_json::from_str(prog_json).unwrap();
-    // Slot's children iterate alphabetically — `aleaf` before
-    // `zleaf` — matching `dict(sorted(...))` semantics.
+    // Slot children iterate alphabetically.
     let slot_a = prog.tasks.get("slot_A").unwrap();
     let keys: Vec<&String> = slot_a.tasks.keys().collect();
     assert_eq!(
         keys,
         vec!["aleaf", "zleaf"],
-        "BTreeMap must iterate alphabetically (equivalent)"
+        "BTreeMap must iterate alphabetically"
     );
 
     // Build a minimal TopologyWithRtl where each leaf carries a

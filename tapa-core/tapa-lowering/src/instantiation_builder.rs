@@ -16,7 +16,6 @@ use crate::utils::{
 /// Arg-table entry mapping a parent-visible argument name to its
 /// queue-tail wire name.
 ///
-/// Mirrors `get_task_arg_table(task)[inst_name][arg][-1].name`:
 ///   * scalar → `{inst_name}___{arg}__q0`
 ///   * mmap → `{inst_name}___{arg}_offset__q0`
 ///
@@ -35,11 +34,8 @@ pub fn instance_name(task_name: &str, idx: usize, inst: &InstanceDesign) -> Stri
 
 /// Build an arg table for an upper task's instances.
 ///
-/// For each instance's scalar/mmap arguments, produces the queue-tail
-/// wire name `get_task_arg_table(upper_task)` emits
-/// (`Pipeline(instance.get_instance_arg(id_name))[-1].name`). The key
-/// is the parent-visible arg name (`arg.arg`), matching current
-/// `arg_table[inst_name][arg.name]` indexing in `wire_builder`.
+/// For each scalar or mmap argument, records its final queue-tail wire under
+/// the parent-visible argument name (`arg.arg`).
 #[must_use]
 pub fn build_arg_table(top: &tapa_topology::task::TaskDesign) -> ArgTable {
     let mut table = ArgTable::new();
@@ -94,12 +90,10 @@ pub fn collect_arg_table_wires(arg_table: &ArgTable) -> Vec<String> {
 /// names. When `child_rtl` is provided, stream suffixes are resolved
 /// against the child RTL via `get_port_of` (handles `_V` / `_r` / `_s` /
 /// bare infix), and istream input suffixes also emit an extra `_peek`
-/// variant when the RTL declares one — matching current
-/// `_connect_istream` path in `instantiation_builder`.
+/// variant when the RTL declares one.
 ///
 /// When `child_rtl_ports` is provided, MMAP AXI channels are filtered to
-/// only include suffixes that actually exist on the child's RTL module,
-/// matching `get_child_port_connection_mapping` behavior.
+/// only include suffixes that actually exist on the child's RTL module.
 #[allow(
     clippy::implicit_hasher,
     reason = "Option<&HashSet> is simpler than generic S"
@@ -111,8 +105,8 @@ pub fn build_port_connections(
     child_rtl_ports: Option<&std::collections::HashSet<String>>,
     child_rtl: Option<&tapa_rtl::VerilogModule>,
 ) -> Vec<ModuleConnection> {
-    // Resolve a child RTL stream port name via equivalent
-    // get_port_of (with the `_FIFO_INFIXES` + singleton array fallback).
+    // Resolve a child RTL stream port with the infix and singleton-array
+    // fallbacks used by `get_port_of`.
     // Fallback: the raw `{port}{suffix}` concat when no RTL is available.
     let resolve = |name: &str, suffix: &str| -> String {
         if let Some(module) = child_rtl {
@@ -253,11 +247,9 @@ pub fn build_task_instance(
 
 /// Build a FIFO instance with `DATA_WIDTH`, `ADDR_WIDTH`, `DEPTH` parameters.
 ///
-/// Mirrors `tapa.graphir_conversion.pipeline.fifo_builder::get_fifo_inst`.
 /// `data_range` is the producer RTL's `_din` / `_dout` port range; the
-/// `DATA_WIDTH` expression is `(left) - (right) + 1`, which current
-/// collapses to a single literal via `eval_verilog_const_no_exception`
-/// when both endpoints are integer literals. `is_top` controls the
+/// `DATA_WIDTH` expression is `(left) - (right) + 1` and is folded when both
+/// endpoints are integer literals. `is_top` controls the
 /// reset wiring — `rst` for top FIFOs, `~ap_rst_n` for slot-local
 /// FIFOs — matching `_get_fifo_connections(is_top=...)`.
 #[must_use]
@@ -345,8 +337,7 @@ fn compute_data_width_expr(data_range: Option<&tapa_graphir::Range>) -> Expressi
     ) {
         return Expression::new_lit(&(l - r + 1).to_string());
     }
-    // Fallback: emit the full 9-token stream. If range evaluation
-    // couldn't fold it either, Rust should emit it verbatim.
+    // Preserve the expression when either endpoint is symbolic.
     let mut toks: Vec<tapa_graphir::Token> = Vec::new();
     toks.push(tapa_graphir::Token::new_lit("("));
     toks.extend(range.left.0.iter().cloned());

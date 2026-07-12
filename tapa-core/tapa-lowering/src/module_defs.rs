@@ -11,7 +11,7 @@ use tapa_protocol::{
     HANDSHAKE_START,
 };
 
-/// Embedded reset-inverter Verilog body (matches `RESET_INVERTER_TEMPLATE`).
+/// Embedded reset-inverter Verilog body.
 const RESET_INVERTER_TEMPLATE: &str = "
 // Copyright (c) 2025 RapidStream Design Automation, Inc. and contributors.
 // All rights reserved. The contributor(s) of this file has/have agreed to the
@@ -31,9 +31,7 @@ endmodule
 /// Build the `ctrl_s_axi` module definition from raw Verilog source.
 ///
 /// Creates a `VerilogModuleDefinition` with fixed AXI control parameters and ports,
-/// plus dynamic output ports for each top-level task scalar/MMAP-offset arg.
-/// Matches `get_ctrl_s_axi_def` which adds a 64-bit output for each
-/// top port (scalars as-is, MMAP as `{name}_offset`).
+/// plus a 64-bit output for each top-level scalar or mmap offset.
 #[must_use]
 pub fn get_ctrl_s_axi_def(
     name: &str,
@@ -216,10 +214,8 @@ pub fn get_reset_inverter_def() -> AnyModuleDefinition {
 
 /// Build a reset inverter instantiation.
 ///
-/// Port connections match `get_reset_inverter_inst` in
-/// the implementation: `clk` → `ap_clk`,
-/// `rst_n` → `ap_rst_n`, and the inverter output port `rst` → the
-/// top-level `rst` wire (not `ap_rst`).
+/// Connects `clk` to `ap_clk`, `rst_n` to `ap_rst_n`, and the inverter
+/// output to the top-level `rst` wire.
 #[must_use]
 pub fn get_reset_inverter_inst(region: Option<&str>) -> ModuleInstantiation {
     ModuleInstantiation {

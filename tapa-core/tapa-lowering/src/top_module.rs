@@ -23,8 +23,7 @@ fn is_s_axi_slave_input(axi_port: &str) -> bool {
         .any(|&(name, dir)| name == axi_port && dir == tapa_protocol::PortDir::Input)
 }
 
-/// Port mapping from `ctrl_s_axi` internal name → top-level expression.
-/// `_CTRL_S_AXI_PORT_MAPPING` in `gen_rs_graphir`.
+/// Map a `ctrl_s_axi` port to its top-level expression.
 fn ctrl_s_axi_port_expr(port_name: &str) -> Expression {
     match port_name {
         "ACLK" => Expression::new_id(HANDSHAKE_CLK),
@@ -175,8 +174,7 @@ pub fn build_top_module(
         ] {
             ctrl_connections.push(crate::utils::make_connection(sig, Expression::new_id(sig)));
         }
-        // Dynamic scalar/MMAP-offset ports — connect to same-name top-level wires
-        // current: _CTRL_S_AXI_PORT_MAPPING defaults unknown ports to Token.new_id(port.name)
+        // Dynamic scalar/MMAP-offset ports connect to same-name wires.
         for port in &top.ports {
             use tapa_task_graph::port::ArgCategory;
             let ctrl_port_name = match port.cat {
@@ -200,15 +198,11 @@ pub fn build_top_module(
             }
         }
 
-        // get_top_ctrl_s_axi_inst (gen_rs_graphir) passes two
-        // parameter assignments: the ctrl_s_axi module exposes
+        // The ctrl_s_axi module exposes
         // C_S_AXI_ADDR_WIDTH / C_S_AXI_DATA_WIDTH, which the top
         // instantiation ties to the top task's
         // C_S_AXI_CONTROL_ADDR_WIDTH / C_S_AXI_CONTROL_DATA_WIDTH.
-        // copies `Expression(top_param_by_name[value].expr.root)`,
-        // i.e., it substitutes the literal token stream of the outer
-        // parameter's default expression (e.g., `6`, `32`) rather than
-        // referencing the outer parameter by name.
+        // Use the outer parameter's expression directly when available.
         let ctrl_param_map = [
             ("C_S_AXI_ADDR_WIDTH", "C_S_AXI_CONTROL_ADDR_WIDTH"),
             ("C_S_AXI_DATA_WIDTH", "C_S_AXI_CONTROL_DATA_WIDTH"),
@@ -244,10 +238,7 @@ pub fn build_top_module(
         });
     }
 
-    // Slot instances — equivalent `get_top_level_slot_inst`:
-    // build connections by walking each slot's args in the TOP task and
-    // running them through the same `_connect_scalar` / `_connect_istream`
-    // / `_connect_ostream` / `_connect_mmap` flow as child instances.
+    // Build slot connections from each slot's arguments in the top task.
     // Scalars and mmap offsets route through the TOP task's arg-table
     // queue-tail wires (`{slot_inst}___{arg}[_offset]__q0`), streams
     // through the slot's own boundary port names, and mmap AXI channels
@@ -286,7 +277,7 @@ pub fn build_top_module(
         }
         // Append clock/reset; the four ap_* control connections use
         // per-instance wires when the top task has a slot hierarchy
-        // registered (matches `get_top_level_slot_inst`), or
+        // registered, or
         // the top-level wires otherwise (for trivial fixtures that
         // synthesize "slot" names from floorplan regions rather than
         // from task names).
@@ -330,11 +321,8 @@ pub fn build_top_module(
         });
     }
 
-    // Top-level FIFO instances: FIFOs whose producer and consumer are in
-    // different slots become top-level submodules. current
-    // `get_top_ir_subinsts` adds one `fifo` instance per such FIFO,
-    // assigned to the consumer's slot region. Matching here closes
-    // the submodule-count compatibility gap on the shared fixture.
+    // FIFOs that cross slot boundaries become top-level submodules in the
+    // consumer's region.
     let region_map = program.slot_task_name_to_fp_region.as_ref();
     for (fifo_name, fifo) in &top.fifos {
         let consumer_slot = fifo.consumed_by.as_ref().map(|e| &e.0);
@@ -348,8 +336,7 @@ pub fn build_top_module(
         }
         // Cross-slot FIFO: drill into the producer slot's child leaf
         // RTL to get the `_din` port range (looks up the
-        // slot-def port, but at this point the slot defs have not
-        // yet been rewritten with equivalent ports).
+        // slot-def port, but at this point the slot ports are not finalized).
         let data_range = crate::upper_wires::infer_top_fifo_data_range_via_leaf(
             fifo_name,
             fifo,

@@ -21,8 +21,7 @@ use crate::LoweringError;
 /// text as input rather than fabricating a placeholder; the source is
 /// parse-validated before it is embedded in the project.
 ///
-/// Callers that want the equivalent path boundary should instead use
-/// `build_project_from_paths` via `LoweringInputs`.
+/// Use [`build_project_from_paths`] when the inputs still live on disk.
 #[allow(clippy::too_many_lines, reason = "sequential grouped-module post-pass")]
 pub fn build_project_from_state(
     state: &TopologyWithRtl,
@@ -57,11 +56,7 @@ pub fn build_project_from_state(
         }
     }
 
-    // Collect parameter lists for upper tasks (top + slots) from their
-    // attached RTL. `get_task_graphir_parameters(task_module)` does
-    // the same on the upper task's parsed RTL, so the grouped `VecAdd` and
-    // each `SLOT_*_SLOT_*` module exposes the parameters the Vitis RTL
-    // declares.
+    // Collect parameters declared by the attached upper-task RTL.
     let mut upper_parameters: BTreeMap<String, Vec<tapa_graphir::ModuleParameter>> =
         BTreeMap::new();
     for (task_name, mm) in &state.module_map {
@@ -125,10 +120,8 @@ pub fn build_project_from_state(
         Some(state),
     )?;
 
-    // Inject upper-task parameter lists onto the corresponding grouped
-    // module definitions. Grouped modules constructed by build_project
-    // default to empty parameters; `VecAdd` / `SLOT_*_SLOT_*`
-    // grouped modules carry the parameter declarations from the Vitis RTL.
+    // Grouped modules start with no parameters; copy in the declarations
+    // collected from their attached RTL.
     for module in &mut project.modules.module_definitions {
         if let AnyModuleDefinition::Grouped { base, .. } = module {
             if let Some(params) = upper_parameters.get(&base.name) {
@@ -139,20 +132,15 @@ pub fn build_project_from_state(
         }
     }
 
-    // Replace the synthesized top-module port list with the parsed top
-    // RTL's own ports, matching `get_task_graphir_ports(top.rtl_module)`
-    // in `gen_rs_graphir.get_top_module_definition`. This removes synthetic
-    // ports the topology-based expansion adds but the Vitis top RTL does
-    // not (e.g. `a`, `b`, `c` scalar offsets, `*_offset`, `*_ARREGION`).
+    // Replace the synthesized top-module port list with the parsed RTL ports.
+    // This drops synthetic ports that are absent from the Vitis boundary.
     //
     // Applied unconditionally when the top RTL is attached — callers must
     // supply a Vitis-complete top RTL (declaring `ap_clk`, `ap_rst_n`, and
     // the `s_axi_control_*` AXI-Lite ports that the `ctrl_s_axi`
     // instantiation binds to) so DRC stays clean.
-    // Initial top-port replacement with parsed top RTL. The top-wire
-    // rewrite is deferred until after slot grouped modules have been
-    // rewritten, so `get_upper_task_ir_wires(top, slot_defs, ...)`
-    // can use the finalized slot defs for FIFO data-range inference.
+    // Defer the wire rewrite until slot modules are finalized so FIFO
+    // ranges can be inferred from their final port definitions.
     if let Some(top_mm) = state.module_map.get(&state.program.top) {
         let top_rtl_ports: Vec<ModulePort> = top_mm
             .inner
@@ -166,18 +154,16 @@ pub fn build_project_from_state(
             find_grouped_mut(&mut project.modules.module_definitions, &state.program.top)
         {
             base.ports.clone_from(&top_rtl_ports);
-            // Drop any wire now declared as a top port to avoid duplicate
-            // identifiers; the full equivalent wire list is
+            // Drop wires that are now top ports; the complete wire list is
             // installed after the slot rewrite below.
             grouped.wires.retain(|w| !top_port_names.contains(&w.name));
         }
     }
 
-    // Replace slot grouped-module port lists with the equivalent output:
+    // Rebuild slot grouped-module port lists from their child bindings:
     //   * For each slot port, find a child instance whose arg.arg equals
     //     the slot port name (`_find_port_child`).
-    //   * Derive slot-visible ports from the child port category via the
-    //     Rust equivalent of `get_child_port_connection_mapping`:
+    //   * Derive slot-visible ports from the child port category:
     //     - scalar → `{child_port: arg}`
     //     - i/ostream → for each suffix in ISTREAM/OSTREAM_SUFFIXES,
     //       look up the child RTL port via `VerilogModule::get_port_of`
@@ -189,8 +175,7 @@ pub fn build_project_from_state(
     //     port entry.
     //   * Append handshake ports (ap_clk, ap_rst_n, ap_start, ap_done,
     //     ap_ready, ap_idle).
-    // Slot ports whose names don't match any child arg are skipped,
-    // mirroring skip behavior.
+    // Slot ports with no matching child argument are skipped.
     let slot_names: Vec<String> = project
         .modules
         .module_definitions
@@ -212,10 +197,8 @@ pub fn build_project_from_state(
         let Some(slot_task) = state.program.tasks.get(&slot_name) else {
             continue;
         };
-        // equivalent slot wires from `get_upper_task_ir_wires`.
-        // We do NOT auto-declare wires for Vitis FSM RTL ports the current
-        // wire builder never emits — compatibility with strict
-        // `get_upper_task_ir_wires` output is the contract.
+        // Build topology-derived wires first; FSM-only ports are backfilled
+        // immediately afterward.
         let new_wires = crate::upper_wires::build_upper_task_ir_wires(
             slot_task,
             &new_ports,
@@ -250,10 +233,8 @@ pub fn build_project_from_state(
     if state.module_map.contains_key(top_name) {
         if let Some(top_task) = state.program.tasks.get(top_name) {
             // Build a merged `ir_defs` map: slot grouped defs plus leaf
-            // defs. The wire builder's FIFO data-range inference walks
-            // the producer's IR-def ports; top FIFOs' producers are
-            // slots, so including slot defs is what makes the range
-            // match current.
+            // defs. FIFO range inference reads the producer definition, and
+            // top-level FIFO producers are slots.
             let mut ir_defs: BTreeMap<String, AnyModuleDefinition> = BTreeMap::new();
             for module in &project.modules.module_definitions {
                 if let AnyModuleDefinition::Grouped { base, .. } = module {
@@ -312,11 +293,7 @@ pub fn build_project_from_state(
         }
     }
 
-    // Aggregate slot module parameters from each slot's child leaf RTL —
-    // matches `get_slot_module_definition_parameters`. For every
-    // slot task, walk the child leaf tasks (via the slot's `tasks`
-    // dictionary), collect their RTL parameter lists from
-    // `state.module_map`, and dedupe by name.
+    // Aggregate each slot's leaf RTL parameters, deduplicated by name.
     aggregate_slot_leaf_parameters(&mut project, state, slot_to_instances);
 
     // Rebuild slot-module interfaces on the finalized slot-port lists.
@@ -424,22 +401,9 @@ fn refresh_top_slot_instance_connections(
 
 /// Aggregate leaf RTL parameters onto slot grouped modules.
 ///
-/// Iterate every leaf module's parameters in a deterministic order
-/// and keep the first-seen `ModuleParameter` for each name verbatim.
-/// Child tasks iterate alphabetically by task name (the design task
-/// map is sorted), so the alphabetically-first leaf wins as the
-/// parameter source; `BTreeMap<String, Vec<InstanceDesign>>`
-/// iteration preserves exactly that order.
-///
-/// For the `VecAdd` shared fixture this produces `Mmap2Stream` (in
-/// `SLOT_X0Y2`, whose alphabetical name starts with `SLOT_X0`) as the
-/// first-seen leaf — winning `ap_ST_fsm_state*` = `10'd*` over `Add`'s
-/// `3'd*`. For a slot with `zleaf` listed before `aleaf` in the raw
-/// JSON, sorts them so `aleaf` wins (alphabetical).
-///
-/// Since `leaf_ir_defs` is the full project leaf set, every slot ends
-/// up with the same parameter list; we compute it once and apply it to
-/// each slot module.
+/// Tasks iterate in `BTreeMap` order. When leaves declare the same
+/// parameter, the first declaration wins; the resulting list is applied to
+/// every slot module.
 fn aggregate_slot_leaf_parameters(
     project: &mut Project,
     state: &TopologyWithRtl,
@@ -450,9 +414,7 @@ fn aggregate_slot_leaf_parameters(
         return;
     };
 
-    // equivalent iteration: for each slot (in top.tasks order),
-    // for each leaf (in slot.tasks order), collect RTL parameters,
-    // preserving the first `ModuleParameter` seen for each name.
+    // Walk slots and leaves in their deterministic map order.
     let mut aggregated: Vec<tapa_graphir::ModuleParameter> = Vec::new();
     let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     let push_params_of = |task_name: &str,
@@ -546,11 +508,8 @@ pub fn build_project_from_paths(
             .map_err(|e| LoweringError::MissingLeafRtl(format!("{name}: {e}")))?;
     }
 
-    // Attach generated upper RTL when present. The post-pass in
-    // `build_project_from_state` uses the real top module ports as the
-    // boundary and rebuilds equivalent top wires. Without this,
-    // GraphIR export keeps the topology-only top definition and misses
-    // slot queue-tail / cross-slot FIFO wires referenced by submodules.
+    // Attach generated upper RTL when present so the final boundary and
+    // wire set come from the emitted design rather than topology alone.
     let upper_rtl_task_names: Vec<String> = state
         .program
         .tasks
@@ -578,11 +537,8 @@ pub fn build_project_from_paths(
     // of the 6-port stub the fallback `create_fsm_module`
     // synthesizes.
     //
-    // Missing or malformed FSM RTL is surfaced as
-    // `LoweringError::MissingFsmRtl` rather than silently falling
-    // back to the 6-port stub — otherwise downstream wiring / iface
-    // compatibility would silently diverge from with the root cause
-    // hidden.
+    // Missing or malformed FSM RTL is an error; silently using the fallback
+    // stub would leave its instance wiring incomplete.
     let upper_task_names: Vec<String> = state
         .program
         .tasks
@@ -798,10 +754,8 @@ pub fn build_project(
     module_defs.extend(slot_defs.iter().cloned());
 
     // Build top module definition with FSM and ctrl_s_axi instances.
-    // Pre-compute top RTL parameters (same ones the post-pass injects into
-    // the grouped top base.parameters) so `control_s_axi_U` can copy the
-    // actual parameter expressions, matching current
-    // `Expression(top_param_by_name[value].expr.root)`.
+    // Pre-compute top RTL parameters so `control_s_axi_U` can reuse their
+    // actual expressions.
     let fsm_name = format!("{}_fsm", program.top);
     let top_rtl_params: Vec<tapa_graphir::ModuleParameter> = state
         .and_then(|s| s.module_map.get(&program.top))
