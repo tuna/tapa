@@ -652,12 +652,8 @@ set_property -dict [list CONFIG.a_precision_type Single \
     #[test]
     fn generates_behavioral_replacement_files_in_rtl_dir() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let wrapper = include_str!(
-            "../../../../tests/functional/custom-rtl/rtl/Add_fadd_32ns_32ns_32_7_full_dsp_1.v"
-        );
-        let tcl = include_str!(
-            "../../../../tests/functional/custom-rtl/rtl/Add_fadd_32ns_32ns_32_7_full_dsp_1_ip.tcl"
-        );
+        let wrapper = include_str!("../../testdata/Add_fadd_32ns_32ns_32_7_full_dsp_1.v");
+        let tcl = include_str!("../../testdata/Add_fadd_32ns_32ns_32_7_full_dsp_1_ip.tcl");
         std::fs::write(
             tmp.path().join("Add_fadd_32ns_32ns_32_7_full_dsp_1.v"),
             wrapper,
