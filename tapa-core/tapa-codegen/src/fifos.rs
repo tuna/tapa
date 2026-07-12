@@ -278,15 +278,17 @@ fn resolve_fifo_width(state: &TopologyWithRtl, producer: Option<&FifoProducer>) 
         // Fallback: check topology port definitions for the producer task
         if let Some(task) = state.program.tasks.get(producer.task_name.as_str()) {
             if let Some(port_name) = producer.port_name.as_deref() {
+                let logical_port_name = tapa_rtl::module::match_array_name(port_name)
+                    .map_or(port_name, |(base, _)| base);
                 if let Some(port) = task.ports.iter().find(|port| {
-                    port.name == port_name
+                    port.name == logical_port_name
                         && matches!(
                             port.cat,
                             tapa_task_graph::port::ArgCategory::Ostream
                                 | tapa_task_graph::port::ArgCategory::Ostreams
                         )
                 }) {
-                    return port.width;
+                    return port.width.saturating_add(1);
                 }
             }
             for port in &task.ports {
@@ -295,7 +297,7 @@ fn resolve_fifo_width(state: &TopologyWithRtl, producer: Option<&FifoProducer>) 
                     tapa_task_graph::port::ArgCategory::Ostream
                         | tapa_task_graph::port::ArgCategory::Ostreams
                 ) {
-                    return port.width;
+                    return port.width.saturating_add(1);
                 }
             }
         }
@@ -520,6 +522,100 @@ mod tests {
         assert!(
             text.contains(".m_axis_tlast(data_out_TLAST)"),
             "got:\n{text}"
+        );
+    }
+
+    #[test]
+    fn fifo_width_topology_fallback_uses_bound_wire_width() {
+        let program = serde_json::from_value(serde_json::json!({
+            "top": "top",
+            "target": "xilinx-hls",
+            "tasks": {
+                "top": {
+                    "level": "upper",
+                    "code": "",
+                    "target": "xilinx-hls",
+                    "ports": [],
+                    "tasks": {
+                        "consumer": [{"args": {
+                            "narrow_in": {"arg": "narrow_fifo", "cat": "istream"},
+                            "wide_in[0]": {"arg": "wide_fifo", "cat": "istream"}
+                        }}],
+                        "producer": [{"args": {
+                            "narrow": {"arg": "narrow_fifo", "cat": "ostream"},
+                            "wide[0]": {"arg": "wide_fifo", "cat": "ostream"}
+                        }}]
+                    },
+                    "fifos": {
+                        "narrow_fifo": {
+                            "depth": 2,
+                            "produced_by": ["producer", 0],
+                            "consumed_by": ["consumer", 0]
+                        },
+                        "wide_fifo": {
+                            "depth": 2,
+                            "produced_by": ["producer", 0],
+                            "consumed_by": ["consumer", 0]
+                        }
+                    }
+                },
+                "consumer": {
+                    "level": "lower",
+                    "code": "",
+                    "target": "xilinx-hls",
+                    "ports": [
+                        {"cat": "istream", "name": "narrow_in", "type": "uint8_t", "width": 8},
+                        {"cat": "istreams", "name": "wide_in", "type": "uint32_t", "width": 32}
+                    ],
+                    "tasks": {},
+                    "fifos": {}
+                },
+                "producer": {
+                    "level": "lower",
+                    "code": "",
+                    "target": "xilinx-hls",
+                    "ports": [
+                        {"cat": "ostream", "name": "narrow", "type": "uint8_t", "width": 8},
+                        {"cat": "ostreams", "name": "wide", "type": "uint32_t", "width": 32}
+                    ],
+                    "tasks": {},
+                    "fifos": {}
+                }
+            }
+        }))
+        .unwrap();
+        let mut state = TopologyWithRtl::new(program);
+
+        let top = &state.program.tasks["top"];
+        let narrow = fifo_producer_for(
+            top,
+            "narrow_fifo",
+            top.fifos["narrow_fifo"].produced_by.as_ref(),
+        )
+        .unwrap();
+        let wide = fifo_producer_for(
+            top,
+            "wide_fifo",
+            top.fifos["wide_fifo"].produced_by.as_ref(),
+        )
+        .unwrap();
+        assert_eq!(resolve_fifo_width(&state, Some(&narrow)), 9);
+        assert_eq!(resolve_fifo_width(&state, Some(&wide)), 33);
+
+        state
+            .attach_module(
+                "producer",
+                tapa_rtl::VerilogModule::parse(
+                    "module producer #(parameter WIDTH = 32) \
+                     (output wire [WIDTH:0] wide_0_s_din); endmodule",
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        assert_eq!(
+            resolve_fifo_width(&state, Some(&wide)),
+            33,
+            "symbolic RTL width must fall back to the bound topology port"
         );
     }
 }
