@@ -376,17 +376,7 @@ fn dpi_lib_path_from_exe(exe: &Path, variant: &str) -> Result<PathBuf> {
             }
         }
     }
-    let candidates = if cfg!(target_os = "macos") {
-        [
-            format!("libfrt_dpi_{variant}.dylib"),
-            format!("libfrt_dpi_{variant}.so"),
-        ]
-    } else {
-        [
-            format!("libfrt_dpi_{variant}.so"),
-            format!("libfrt_dpi_{variant}.dylib"),
-        ]
-    };
+    let candidates = dpi_library_candidates(variant);
     for candidate in candidates {
         for base in &search_dirs {
             let p = base.join(&candidate);
@@ -398,6 +388,20 @@ fn dpi_lib_path_from_exe(exe: &Path, variant: &str) -> Result<PathBuf> {
     Err(FrtError::MetadataParse(format!(
         "libfrt_dpi_{variant} shared library not found next to executable"
     )))
+}
+
+fn dpi_library_candidates(variant: &str) -> [String; 2] {
+    let native = format!(
+        "{}frt_dpi_{variant}{}",
+        std::env::consts::DLL_PREFIX,
+        std::env::consts::DLL_SUFFIX,
+    );
+    let fallback_suffix = if std::env::consts::DLL_SUFFIX == ".so" {
+        ".dylib"
+    } else {
+        ".so"
+    };
+    [native, format!("libfrt_dpi_{variant}{fallback_suffix}")]
 }
 
 impl Device for CosimDevice {
@@ -856,11 +860,11 @@ mod tests {
             .join("bazel-bin/tests/apps/bandwidth/bandwidth-host");
         let cargo_dir = tmp.path().join("bazel-bin/fpga-runtime/cargo");
         std::fs::create_dir_all(&cargo_dir).expect("create cargo dir");
-        let dylib = cargo_dir.join("libfrt_dpi_verilator.dylib");
-        std::fs::write(&dylib, []).expect("write dylib");
+        let library = cargo_dir.join(&dpi_library_candidates("verilator")[0]);
+        std::fs::write(&library, []).expect("write DPI library");
 
         let found = dpi_lib_path_from_exe(&fake_exe, "verilator").expect("find dpi lib");
-        assert_eq!(found, dylib);
+        assert_eq!(found, library);
     }
 
     #[test]
