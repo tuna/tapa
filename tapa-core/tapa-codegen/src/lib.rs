@@ -93,6 +93,12 @@ fn instrument_upper_task(state: &mut TopologyWithRtl, task_name: &str) -> Result
     // Check if this is a template task (no child instances)
     let is_template = task.tasks.is_empty();
 
+    // Reject malformed memory geometry before mutating any RTL state.
+    let mmap_conns = state.aggregate_mmap_connections(task_name)?;
+    for conn in mmap_conns.values() {
+        m_axi::validate_mmap_connection(conn)?;
+    }
+
     if let Some(mm) = state.module_map.get_mut(task_name) {
         mm.cleanup_hls_artifacts();
         mm.body_text.clear();
@@ -177,7 +183,6 @@ fn instrument_upper_task(state: &mut TopologyWithRtl, task_name: &str) -> Result
 
     // Pre-compute M-AXI slave indices for crossbar-connected mmaps
     // This maps (parent_arg, child_task, inst_idx) -> slave_idx
-    let mmap_conns = state.aggregate_mmap_connections(task_name)?;
     let mut mmap_slave_map: std::collections::BTreeMap<(String, String, usize), usize> =
         std::collections::BTreeMap::new();
     let mut mmap_channel_map: std::collections::BTreeMap<(String, String, usize), usize> =

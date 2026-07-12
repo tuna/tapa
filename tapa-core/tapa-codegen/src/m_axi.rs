@@ -102,7 +102,15 @@ pub fn crossbar_master_addr_raw(arg_name: &str, channel_idx: u32, suffix: &str) 
 }
 
 /// Build crossbar parameter arguments.
+#[must_use]
 pub fn build_crossbar_params(conn: &MMapConnection) -> Vec<ParamArg> {
+    try_build_crossbar_params(conn).expect("invalid mmap connection")
+}
+
+/// Build crossbar parameter arguments after validating the connection.
+pub fn try_build_crossbar_params(conn: &MMapConnection) -> Result<Vec<ParamArg>, CodegenError> {
+    validate_mmap_connection(conn)?;
+    let addr_width = try_get_addr_width(conn.chan_size, conn.data_width)?;
     let mut params = vec![
         ParamArg::new("DATA_WIDTH", Expr::int(u64::from(conn.data_width))),
         ParamArg::new("ADDR_WIDTH", Expr::int(64)),
@@ -114,7 +122,6 @@ pub fn build_crossbar_params(conn: &MMapConnection) -> Vec<ParamArg> {
     ];
 
     for idx in 0..conn.channel_count() {
-        let addr_width = get_addr_width(conn.chan_size, conn.data_width);
         let base = if addr_width >= 64 {
             "64'd0".to_owned()
         } else {
@@ -142,7 +149,7 @@ pub fn build_crossbar_params(conn: &MMapConnection) -> Vec<ParamArg> {
         ));
     }
 
-    params
+    Ok(params)
 }
 
 pub fn crossbar_slave_id_width(conn: &MMapConnection) -> u32 {
@@ -160,11 +167,17 @@ pub fn crossbar_slave_suffix_width(conn: &MMapConnection, suffix: &str) -> u32 {
 }
 
 /// Build a crossbar module instance with port connections.
+#[must_use]
 pub fn build_crossbar_instance(conn: &MMapConnection) -> ModuleInstance {
+    try_build_crossbar_instance(conn).expect("invalid mmap connection")
+}
+
+/// Build a crossbar instance after validating the connection.
+pub fn try_build_crossbar_instance(conn: &MMapConnection) -> Result<ModuleInstance, CodegenError> {
     let module_name = crossbar_module_name(conn);
     let arg_name = sanitize_array_name(&conn.arg_name);
     let instance_name = format!("axi_crossbar__{arg_name}");
-    let params = build_crossbar_params(conn);
+    let params = try_build_crossbar_params(conn)?;
 
     let mut ports = vec![
         PortArg::new("clk", Expr::ident(HANDSHAKE_CLK)),
@@ -203,27 +216,40 @@ pub fn build_crossbar_instance(conn: &MMapConnection) -> ModuleInstance {
         }
     }
 
-    ModuleInstance::new(module_name, instance_name)
+    Ok(ModuleInstance::new(module_name, instance_name)
         .with_params(params)
-        .with_ports(ports)
+        .with_ports(ports))
 }
 
-/// Compute address width from channel size and data width.
+/// Compute address width from valid channel geometry.
+#[must_use]
 pub fn get_addr_width(chan_size: Option<u32>, data_width: u32) -> u32 {
-    let Some(chan_size) = chan_size else {
-        return 64;
-    };
-    let bytes = chan_size * (data_width / 8);
-    if bytes == 0 {
-        return 64;
+    try_get_addr_width(chan_size, data_width).expect("invalid mmap channel geometry")
+}
+
+/// Compute address width while reporting invalid channel geometry.
+pub fn try_get_addr_width(chan_size: Option<u32>, data_width: u32) -> Result<u32, CodegenError> {
+    if data_width == 0 || !data_width.is_multiple_of(8) {
+        return Err(CodegenError::InvalidMmapConnection(format!(
+            "M-AXI data width must be a nonzero multiple of 8 bits, got {data_width}"
+        )));
     }
-    let addr_width = 32 - (bytes - 1).leading_zeros();
-    assert!(
-        1_u64 << addr_width == u64::from(bytes),
-        "hmap channel byte size must be a power of two: \
-         chan_size={chan_size} * data_width={data_width} / 8 = {bytes} bytes"
-    );
-    addr_width
+    let Some(chan_size) = chan_size else {
+        return Ok(64);
+    };
+    let bytes = u64::from(chan_size) * u64::from(data_width / 8);
+    if bytes == 0 {
+        return Err(CodegenError::InvalidMmapConnection(
+            "hmap channel size must be greater than zero".to_owned(),
+        ));
+    }
+    if !bytes.is_power_of_two() {
+        return Err(CodegenError::InvalidMmapConnection(format!(
+            "hmap channel byte size must be a power of two: \
+             chan_size={chan_size} * data_width={data_width} / 8 = {bytes} bytes"
+        )));
+    }
+    Ok(bytes.ilog2())
 }
 
 /// Resolve the width of an M-AXI suffix from protocol metadata.
@@ -253,12 +279,28 @@ pub fn resolve_suffix_width(suffix: &str, data_width: u32) -> u32 {
 
 /// Validate an mmap connection before crossbar generation.
 pub fn validate_mmap_connection(conn: &MMapConnection) -> Result<(), CodegenError> {
-    if conn.data_width == 0 {
+    match (conn.chan_count, conn.chan_size) {
+        (Some(0), _) => {
+            return Err(CodegenError::InvalidMmapConnection(format!(
+                "hmap channel count is 0 for argument '{}'",
+                conn.arg_name
+            )));
+        }
+        (None, None) | (Some(_), Some(_)) => {}
+        _ => {
+            return Err(CodegenError::InvalidMmapConnection(format!(
+                "hmap argument '{}' must specify both chan_count and chan_size",
+                conn.arg_name
+            )));
+        }
+    }
+    if conn.slaves.iter().any(|slave| slave.threads == 0) {
         return Err(CodegenError::InvalidMmapConnection(format!(
-            "M-AXI data_width is 0 for argument '{}'",
+            "M-AXI slave thread count is 0 for argument '{}'",
             conn.arg_name
         )));
     }
+    try_get_addr_width(conn.chan_size, conn.data_width)?;
     if needs_crossbar(conn) && conn.slaves.is_empty() {
         return Err(CodegenError::InvalidMmapConnection(format!(
             "crossbar has no downstream connections for argument '{}'",
@@ -541,9 +583,10 @@ pub(crate) fn add_m_axi_and_crossbars(
     mmap_conns: &std::collections::BTreeMap<String, crate::rtl_state::MMapConnection>,
 ) -> Result<(), CodegenError> {
     for conn in mmap_conns.values() {
-        // Validate before generating
         validate_mmap_connection(conn)?;
+    }
 
+    for conn in mmap_conns.values() {
         if let Some(mm) = state.module_map.get_mut(task_name) {
             if conn.channel_count() > 1 {
                 for channel_idx in 0..conn.channel_count() {
@@ -572,7 +615,7 @@ pub(crate) fn add_m_axi_and_crossbars(
             // Size each wire using protocol metadata for correct widths
             if let Some(mm) = state.module_map.get_mut(task_name) {
                 if conn.channel_count() > 1 {
-                    let addr_width = get_addr_width(conn.chan_size, conn.data_width);
+                    let addr_width = try_get_addr_width(conn.chan_size, conn.data_width)?;
                     for channel_idx in 0..conn.channel_count() {
                         let channel_prefix = format!(
                             "m_axi_{}_{}",
@@ -621,7 +664,7 @@ pub(crate) fn add_m_axi_and_crossbars(
                 }
             }
 
-            let crossbar_inst = build_crossbar_instance(conn);
+            let crossbar_inst = try_build_crossbar_instance(conn)?;
             if let Some(mm) = state.module_map.get_mut(task_name) {
                 mm.add_instance(crossbar_inst);
             }
@@ -705,7 +748,7 @@ mod tests {
             chan_size: None,
             data_width: 32,
         };
-        let params = build_crossbar_params(&conn);
+        let params = try_build_crossbar_params(&conn).expect("valid crossbar parameters");
         let rendered: Vec<String> = params.iter().map(|p| format!("{p}")).collect();
         assert!(
             rendered.iter().any(|p| p.contains("S00_THREADS(1)")),
@@ -738,7 +781,7 @@ mod tests {
             chan_size: None,
             data_width: 64,
         };
-        let params = build_crossbar_params(&conn);
+        let params = try_build_crossbar_params(&conn).expect("valid crossbar parameters");
         assert!(
             params.len() >= 4,
             "should have at least DATA/ADDR/S_ID/M_ID"
@@ -759,7 +802,9 @@ mod tests {
             chan_size: None,
             data_width: 64,
         };
-        let text = build_crossbar_instance(&conn).to_string();
+        let text = try_build_crossbar_instance(&conn)
+            .expect("valid crossbar instance")
+            .to_string();
         assert!(text.contains(".S_ID_WIDTH(1)"), "got:\n{text}");
         assert!(text.contains(".M_ID_WIDTH(3)"), "got:\n{text}");
     }
@@ -787,9 +832,9 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "power of two")]
     fn addr_width_rejects_non_power_of_two_channel_bytes() {
-        let _ = get_addr_width(Some(3), 24);
+        let err = try_get_addr_width(Some(3), 32).expect_err("12 bytes is not a power of two");
+        assert!(err.to_string().contains("power of two"), "got: {err}");
     }
 
     #[test]
@@ -867,7 +912,9 @@ mod tests {
             chan_size: None,
             data_width: 32,
         };
-        let text = build_crossbar_instance(&conn).to_string();
+        let text = try_build_crossbar_instance(&conn)
+            .expect("valid crossbar instance")
+            .to_string();
         assert!(text.contains("axi_crossbar__chan_0"), "got:\n{text}");
         assert!(text.contains("m_axi_chan_0_ARADDR"), "got:\n{text}");
         assert!(!text.contains("chan[0]"), "got:\n{text}");
@@ -882,7 +929,9 @@ mod tests {
             chan_size: Some(1024),
             data_width: 512,
         };
-        let text = build_crossbar_instance(&conn).to_string();
+        let text = try_build_crossbar_instance(&conn)
+            .expect("valid crossbar instance")
+            .to_string();
         assert!(
             text.contains(".m00_ARADDR(m_axi_mat_a_0_ARADDR_raw)"),
             "got:\n{text}"
@@ -908,6 +957,48 @@ mod tests {
             data_width: 0,
         };
         validate_mmap_connection(&conn).unwrap_err();
+    }
+
+    #[test]
+    fn validate_rejects_incomplete_hmap_shape() {
+        let conn = MMapConnection {
+            arg_name: "mem".into(),
+            slaves: vec![slave("task_a", 0, "data", 1)],
+            chan_count: Some(2),
+            chan_size: None,
+            data_width: 32,
+        };
+        let err = validate_mmap_connection(&conn).expect_err("chan_size is required");
+        assert!(
+            err.to_string().contains("both chan_count and chan_size"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_rejects_zero_hmap_channels() {
+        let conn = MMapConnection {
+            arg_name: "mem".into(),
+            slaves: vec![slave("task_a", 0, "data", 1)],
+            chan_count: Some(0),
+            chan_size: Some(1024),
+            data_width: 32,
+        };
+        let err = validate_mmap_connection(&conn).expect_err("channel count must be nonzero");
+        assert!(err.to_string().contains("channel count is 0"), "got: {err}");
+    }
+
+    #[test]
+    fn validate_rejects_zero_slave_threads() {
+        let conn = MMapConnection {
+            arg_name: "mem".into(),
+            slaves: vec![slave("task_a", 0, "data", 0)],
+            chan_count: None,
+            chan_size: None,
+            data_width: 32,
+        };
+        let err = validate_mmap_connection(&conn).expect_err("thread count must be nonzero");
+        assert!(err.to_string().contains("thread count is 0"), "got: {err}");
     }
 
     #[test]
