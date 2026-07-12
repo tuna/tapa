@@ -35,6 +35,12 @@ use crate::error::{CliError, Result};
 /// for that template.
 pub(super) type TemplatesInfo = BTreeMap<String, Vec<String>>;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CopyOutcome {
+    Added,
+    Replaced,
+}
+
 /// Load `<work_dir>/templates_info.json` if it exists; otherwise
 /// return an empty map. Synth may not emit any template entries when no
 /// task uses `target("ignore")`.
@@ -120,22 +126,30 @@ pub(super) fn apply_custom_rtl(
             ))
         })?;
         let dest = rtl_dir.join(file_name);
-        fs_err::copy(src, &dest)?;
-        if dest.exists() {
-            log::info!(
-                "custom-rtl: replaced {} with {}",
-                dest.display(),
-                src.display(),
-            );
-        } else {
-            log::info!(
+        match copy_overlay(src, &dest)? {
+            CopyOutcome::Added => log::info!(
                 "custom-rtl: added {} from {}",
                 dest.display(),
                 src.display(),
-            );
+            ),
+            CopyOutcome::Replaced => log::info!(
+                "custom-rtl: replaced {} with {}",
+                dest.display(),
+                src.display(),
+            ),
         }
     }
     Ok(())
+}
+
+fn copy_overlay(src: &Path, dest: &Path) -> Result<CopyOutcome> {
+    let outcome = if dest.try_exists()? {
+        CopyOutcome::Replaced
+    } else {
+        CopyOutcome::Added
+    };
+    fs_err::copy(src, dest)?;
+    Ok(outcome)
 }
 
 /// Best-effort port-signature check:
@@ -229,6 +243,21 @@ mod tests {
         let err =
             expand_custom_rtl_paths(&[PathBuf::from("/nope")]).expect_err("missing path must fail");
         assert!(matches!(err, CliError::InvalidArg(ref m) if m.contains("does not exist")));
+    }
+
+    #[test]
+    fn copy_overlay_reports_pre_copy_destination_state() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let src = dir.path().join("src.v");
+        let dest = dir.path().join("dest.v");
+        write(&src, "first");
+
+        assert_eq!(copy_overlay(&src, &dest).unwrap(), CopyOutcome::Added);
+        assert_eq!(fs_err::read_to_string(&dest).unwrap(), "first");
+
+        write(&src, "second");
+        assert_eq!(copy_overlay(&src, &dest).unwrap(), CopyOutcome::Replaced);
+        assert_eq!(fs_err::read_to_string(&dest).unwrap(), "second");
     }
 
     #[test]
