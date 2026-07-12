@@ -215,6 +215,19 @@ impl TopologyWithRtl {
                     let parent_arg_name = &arg.arg;
                     let parent_port = task.ports.iter().find(|p| p.name == *parent_arg_name);
 
+                    if let (Some(parent), Some(child)) = (parent_port, port) {
+                        if parent.width != child.width {
+                            return Err(CodegenError::InvalidMmapConnection(format!(
+                                "mmap width mismatch: '{}.{}' is {} bits, but '{}.{}' is {} bits",
+                                task_name,
+                                parent_arg_name,
+                                parent.width,
+                                child_task_name,
+                                child_port_name,
+                                child.width
+                            )));
+                        }
+                    }
                     let data_width = parent_port.or(port).map(|p| p.width).ok_or_else(|| {
                         CodegenError::InvalidMmapConnection(format!(
                             "no port named '{parent_arg_name}' on task '{task_name}' \
@@ -237,6 +250,13 @@ impl TopologyWithRtl {
                             chan_size,
                             data_width,
                         });
+                    if conn.data_width != data_width {
+                        return Err(CodegenError::InvalidMmapConnection(format!(
+                            "mmap argument '{task_name}.{parent_arg_name}' has conflicting data \
+                             widths: {} vs {data_width} at '{child_task_name}.{child_port_name}'",
+                            conn.data_width
+                        )));
+                    }
                     if conn.chan_count != chan_count || conn.chan_size != chan_size {
                         return Err(CodegenError::InvalidMmapConnection(format!(
                             "mmap argument '{task_name}.{parent_arg_name}' has conflicting \
@@ -668,6 +688,46 @@ mod tests {
             matches!(result, Err(CodegenError::InvalidMmapConnection(_))),
             "got: {result:?}"
         );
+    }
+
+    #[test]
+    fn aggregate_rejects_parent_child_data_width_mismatch() {
+        let program = serde_json::from_value(serde_json::json!({
+            "top": "top",
+            "target": "xilinx-hls",
+            "tasks": {
+                "top": {
+                    "level": "upper",
+                    "code": "",
+                    "target": "xilinx-hls",
+                    "ports": [
+                        {"cat": "mmap", "name": "elems", "type": "long*", "width": 64}
+                    ],
+                    "tasks": {
+                        "leaf": [{"args": {"data": {"arg": "elems", "cat": "mmap"}}}]
+                    },
+                    "fifos": {}
+                },
+                "leaf": {
+                    "level": "lower",
+                    "code": "",
+                    "target": "xilinx-hls",
+                    "ports": [
+                        {"cat": "mmap", "name": "data", "type": "int*", "width": 32}
+                    ],
+                    "tasks": {},
+                    "fifos": {}
+                }
+            }
+        }))
+        .unwrap();
+        let state = TopologyWithRtl::new(program);
+
+        let err = state
+            .aggregate_mmap_connections("top")
+            .expect_err("mismatched AXI widths must be rejected");
+        assert!(err.to_string().contains("64 bits"), "got: {err}");
+        assert!(err.to_string().contains("32 bits"), "got: {err}");
     }
 
     #[test]
