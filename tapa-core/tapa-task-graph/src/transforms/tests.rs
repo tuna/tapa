@@ -94,11 +94,7 @@ fn flatten_preserves_top_metadata() {
     assert_eq!(top.vendor, "xilinx");
 }
 
-/// Regression test: the previous port rejected any design where
-/// the top had upper-level children with `DeepHierarchyNotSupported`.
-/// `Graph.get_flatten_graph` recursively collects leaves, so
-/// the Rust port now matches — even an "empty" nested upper must
-/// round-trip cleanly without an error.
+/// Even an empty nested upper task must flatten without an error.
 #[test]
 fn flatten_accepts_nested_upper_without_error() {
     let json = r#"{

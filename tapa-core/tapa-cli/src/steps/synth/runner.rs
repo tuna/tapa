@@ -46,12 +46,8 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
         .to_string();
     if !matches!(target.as_str(), "xilinx-vitis" | "xilinx-hls") {
         return Err(CliError::InvalidArg(format!(
-            "native synth only supports the `xilinx-vitis` and `xilinx-hls` \
-             targets; got `{target}`. The AIE flow (\
-             `program.run_aie`) was unsupported and is not accepted by the \
-             native CLI; the analyze step now rejects unsupported targets \
-             up front, so this only triggers on hand-edited \
-             `settings.json`."
+            "synth only supports the `xilinx-vitis` and `xilinx-hls` targets; \
+             got `{target}` in settings.json"
         )));
     }
 

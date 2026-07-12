@@ -6,7 +6,7 @@
 //! hierarchy flattening through the typed [`Graph`] schema.
 
 use indexmap::IndexMap;
-use tapa_task_graph::{flatten, Design, Graph, TaskLevel, TaskTopology, TransformError};
+use tapa_task_graph::{flatten, Design, Graph, TaskLevel, TaskTopology};
 
 use crate::error::{CliError, Result};
 
@@ -16,16 +16,8 @@ use crate::error::{CliError, Result};
 /// The transform is defined on the strict [`Graph`] type used by the
 /// CLI's graph reader and writer.
 pub(super) fn flatten_graph_value(graph: &Graph) -> Result<Graph> {
-    let flat = flatten(graph).map_err(|e| match e {
-        TransformError::DeepHierarchyNotSupported(child) => CliError::InvalidArg(format!(
-            "`--flatten-hierarchy` only supports single-level hierarchies for now; \
-             child task `{child}` is itself an upper task. The native port covers \
-             the vadd-shaped case; deeper graphs are pending.",
-        )),
-        other @ (TransformError::MissingTop(_)
-        | TransformError::TopIsLeaf(_)
-        | TransformError::Json(_)) => CliError::InvalidArg(format!("flatten failed: {other}")),
-    })?;
+    let flat =
+        flatten(graph).map_err(|error| CliError::InvalidArg(format!("flatten failed: {error}")))?;
     Ok(flat)
 }
 

@@ -1,9 +1,7 @@
 //! Task-graph transforms: hierarchy flattening and global naming.
 //!
-//! - [`flatten`] — port of `Graph::get_flatten_graph`. Implements the
-//!   single-level (vadd-shaped) case where every child of the top is
-//!   already a leaf-level (`lower`) task. Multi-level hierarchies
-//!   surface a typed [`TransformError::DeepHierarchyNotSupported`].
+//! - [`flatten`] recursively lifts every leaf-task instance under the
+//!   top task while preserving FIFO connectivity and global names.
 
 #[cfg(test)]
 mod tests;
@@ -29,15 +27,6 @@ pub enum TransformError {
     #[error("top task `{0}` is a leaf; cannot transform")]
     TopIsLeaf(String),
 
-    /// Flatten encountered a child task that is itself upper-level.
-    /// Only the single-level (vadd-shaped) case is supported today.
-    #[error(
-        "flatten currently only supports single-level hierarchies; \
-         child task `{0}` is `upper` and must be inlined first \
-         (port `Graph::get_flatten_graph` recursive case to lift this)"
-    )]
-    DeepHierarchyNotSupported(String),
-
     /// JSON conversion failure (used by [`flatten_value`]).
     #[error("transform JSON failure: {0}")]
     Json(String),
@@ -46,9 +35,8 @@ pub enum TransformError {
 /// Build a fresh [`Graph`] with all leaf-task instances re-parented under
 /// the top task.
 ///
-/// Mirrors `Graph::get_flatten_graph`. Implements the single-level case
-/// where every child of the top is already a leaf (`lower`). Deeper
-/// nesting surfaces [`TransformError::DeepHierarchyNotSupported`].
+/// Upper-level descendants are traversed recursively; their leaf tasks and
+/// FIFO connections are rewritten into the top task's scope.
 pub fn flatten(graph: &Graph) -> Result<Graph, TransformError> {
     let top_name = &graph.top;
     let top_def = graph
@@ -63,8 +51,6 @@ pub fn flatten(graph: &Graph) -> Result<Graph, TransformError> {
     // float up to the top, FIFOs that live inside nested upper tasks
     // are rewritten to their global names (`<fifo>_<inst_path>_<top>`)
     // and stitched back together against the collected leaves.
-    // Mirrors `Graph.get_flatten_graph` +
-    // `TaskInstance.get_leaf_tasks_insts` + `recursive_get_interconnect_insts`.
     let mut leaves: BTreeMap<String, Vec<TaskInstance>> = BTreeMap::new();
     let mut fifos: BTreeMap<String, InterconnectDefinition> = BTreeMap::new();
     collect_leaves_recursive(
@@ -78,9 +64,8 @@ pub fn flatten(graph: &Graph) -> Result<Graph, TransformError> {
 
     // Post-pass: now that every instantiation has its final argument
     // bindings, fill in each FIFO's `consumed_by` / `produced_by`
-    // against the flattened leaf set. This mirrors the side
-    // which recomputes endpoints after `interconnect_global_name=True`
-    // args have been produced.
+    // against the flattened leaf set after all globally named arguments have
+    // been produced.
     let fifo_names: Vec<String> = fifos.keys().cloned().collect();
     for fifo_name in fifo_names {
         let had_consumer = fifos

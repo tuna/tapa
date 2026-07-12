@@ -100,9 +100,8 @@ fn run_native(args: &PackArgs, ctx: &CliContext) -> Result<()> {
         "xilinx-vitis" => pack_vitis(args, ctx, &design, &settings),
         "xilinx-hls" => pack_hls_zip(args, ctx, &settings),
         other => Err(CliError::InvalidArg(format!(
-            "native pack only supports `xilinx-vitis` and `xilinx-hls`; \
-             got `{other}`. (AIE was unsupported with the `program.run_aie` \
-             port; rerun `analyze` with a supported target.)"
+            "pack only supports `xilinx-vitis` and `xilinx-hls`; \
+             got `{other}` in settings.json"
         ))),
     }
 }

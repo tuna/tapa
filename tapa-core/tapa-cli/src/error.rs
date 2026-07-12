@@ -39,13 +39,6 @@ pub enum CliError {
     #[error("`tapacc` exited {code}:\n{stderr}")]
     TapaccFailed { code: i32, stderr: String },
 
-    #[error(
-        "step `{step}` (flag group `{flag_name}`) is not yet ported to \
-         the native tapa-cli pipeline — file a follow-up issue describing \
-         the design that needs this branch so it can be prioritized"
-    )]
-    StepUnported { step: String, flag_name: String },
-
     #[error("clap parse error in `{step}`: {message}")]
     ClapParse { step: String, message: String },
 
