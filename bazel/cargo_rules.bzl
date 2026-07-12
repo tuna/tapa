@@ -104,12 +104,17 @@ def _cargo_test_impl(ctx):
     ])
     env_files = []
     env_file_exports = []
+    env_file_runfiles = []
     for target, name in ctx.attr.cargo_env_files.items():
         file = _single_file(target, "cargo_env_files")
         env_files.append(file)
         env_file_exports.append(
             "export {}=\"$(resolve_runfile {})\"".format(name, _sh_quote(file.short_path)),
         )
+        env_file_runfiles.extend([
+            target[DefaultInfo].default_runfiles,
+            target[DefaultInfo].data_runfiles,
+        ])
     maybe_skip = ""
     if ctx.attr.skip_without_xilinx_env:
         maybe_skip = """
@@ -164,7 +169,7 @@ exec "$CARGO" test --manifest-path "$MANIFEST" {cargo_args} {test_args}
         ctx.file._cargo,
         ctx.file._rustc,
         ctx.file._rustdoc,
-    ] + env_files)
+    ] + env_files).merge_all(env_file_runfiles)
     return [DefaultInfo(executable = script, runfiles = runfiles)]
 
 cargo_test = rule(

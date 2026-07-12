@@ -14,30 +14,24 @@ fn workspace_root() -> PathBuf {
 }
 
 fn ensure_verilator() -> bool {
-    // Prefer the Bazel-built hermetic verilator
-    if let Some(bin) = find_hermetic_verilator() {
-        std::env::set_var("VERILATOR_BIN", bin);
+    if let Some(bin) = std::env::var_os("VERILATOR_BIN") {
+        let status = Command::new(&bin)
+            .arg("--version")
+            .status()
+            .unwrap_or_else(|error| {
+                panic!("failed to run VERILATOR_BIN={}: {error}", bin.display())
+            });
+        assert!(
+            status.success(),
+            "VERILATOR_BIN={} exited with {status}",
+            bin.display()
+        );
         return true;
     }
     Command::new("verilator")
         .arg("--version")
         .status()
         .is_ok_and(|s| s.success())
-}
-
-fn find_hermetic_verilator() -> Option<PathBuf> {
-    // Walk up from the workspace root to find the bazel-bin symlink
-    let mut dir = workspace_root();
-    for _ in 0..5 {
-        let candidate = dir.join("../bazel-bin/external/verilator+/bin/verilator");
-        if candidate.exists() {
-            return candidate.canonicalize().ok();
-        }
-        if !dir.pop() {
-            break;
-        }
-    }
-    None
 }
 
 fn dpi_library_name() -> &'static str {
@@ -52,17 +46,22 @@ fn dpi_library_name() -> &'static str {
 }
 
 fn ensure_dpi_lib_built() {
-    let root = workspace_root();
-    let target_lib = root.join("target").join("debug").join(dpi_library_name());
-    if target_lib.exists() {
-        return;
-    }
-    let status = Command::new("cargo")
-        .args(["build", "-p", "frt-dpi-verilator"])
-        .current_dir(&root)
-        .status()
-        .expect("spawn cargo build for frt-dpi-verilator");
-    assert!(status.success(), "failed to build frt-dpi-verilator");
+    static READY: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+    READY.get_or_init(|| {
+        let root = workspace_root();
+        let target_dir =
+            std::env::var_os("CARGO_TARGET_DIR").map_or_else(|| root.join("target"), PathBuf::from);
+        let target_lib = target_dir.join("debug").join(dpi_library_name());
+        if target_lib.exists() {
+            return;
+        }
+        let status = Command::new("cargo")
+            .args(["build", "-p", "frt-dpi-verilator"])
+            .current_dir(&root)
+            .status()
+            .expect("spawn cargo build for frt-dpi-verilator");
+        assert!(status.success(), "failed to build frt-dpi-verilator");
+    });
 }
 
 fn make_manual_zip() -> PathBuf {

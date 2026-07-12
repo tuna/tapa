@@ -83,6 +83,9 @@ cargo_test(
         "-p",
         "frt",
     ],
+    cargo_env_files = {
+        "@verilator//:verilator_executable": "VERILATOR_BIN",
+    },
     manifest = "Cargo.toml",
     tags = [
         "cpu:8",
