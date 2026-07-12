@@ -227,6 +227,10 @@ EOF
 npm = use_extension("@aspect_rules_js//npm:extensions.bzl", "npm", dev_dependency = True)
 npm.npm_translate_lock(
     name = "npm",
+    data = [
+        "//tapa-visualizer:package.json",
+        "//tapa-visualizer:pnpm-workspace.yaml",
+    ],
     pnpm_lock = "//tapa-visualizer:pnpm-lock.yaml",
     verify_node_modules_ignored = "//:.bazelignore",
 )
