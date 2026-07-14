@@ -65,8 +65,6 @@ pub struct MutableModule {
     added_comments: Vec<String>,
     /// Ports removed by name.
     removed_ports: BTreeSet<String>,
-    /// Signal name prefixes to remove.
-    removed_signal_prefixes: Vec<String>,
 }
 
 impl MutableModule {
@@ -86,7 +84,6 @@ impl MutableModule {
             added_always: Vec::new(),
             added_comments: Vec::new(),
             removed_ports: BTreeSet::new(),
-            removed_signal_prefixes: Vec::new(),
         }
     }
 
@@ -130,7 +127,6 @@ impl MutableModule {
         self.inner
             .signals
             .iter()
-            .filter(|s| !self.is_signal_removed(&s.name))
             .chain(self.added_signals.iter())
             .find(|s| s.name == name)
             .map(|s| s.kind)
@@ -159,11 +155,6 @@ impl MutableModule {
     /// Mark a port for removal by name.
     pub fn remove_port(&mut self, name: &str) {
         self.removed_ports.insert(name.to_owned());
-    }
-
-    /// Mark signals for removal by prefix.
-    pub fn remove_signals_by_prefix(&mut self, prefix: &str) {
-        self.removed_signal_prefixes.push(prefix.to_owned());
     }
 
     /// Drop stale port-named reg declarations for output ports.
@@ -285,13 +276,6 @@ impl MutableModule {
             || self.added_signals.iter().any(|s| s.name == name)
     }
 
-    /// Should this signal be removed?
-    fn is_signal_removed(&self, name: &str) -> bool {
-        self.removed_signal_prefixes
-            .iter()
-            .any(|prefix| name.starts_with(prefix.as_str()))
-    }
-
     /// Emit the complete module as Verilog text.
     pub fn emit(&self) -> String {
         let mut out = String::new();
@@ -352,7 +336,6 @@ impl MutableModule {
             .inner
             .signals
             .iter()
-            .filter(|s| !self.is_signal_removed(&s.name))
             .chain(self.added_signals.iter())
             .map(|s| (s.name.as_str(), s.kind))
             .collect();
@@ -375,9 +358,9 @@ impl MutableModule {
         let _ = writeln!(out, ");");
         let _ = writeln!(out);
 
-        // Signals (original minus removed, plus added)
+        // Signals (original minus ports, plus added)
         for sig in &self.inner.signals {
-            if !self.is_signal_removed(&sig.name) && !port_names.contains(sig.name.as_str()) {
+            if !port_names.contains(sig.name.as_str()) {
                 let _ = writeln!(out, "{sig}");
             }
         }
