@@ -12,31 +12,10 @@ pub struct BufferEntry {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(untagged)]
-pub enum StreamEntry {
-    Legacy(String),
-    Detailed {
-        path: String,
-        #[serde(default)]
-        dpi_width_bytes: Option<usize>,
-    },
-}
-
-impl StreamEntry {
-    fn path(&self) -> &str {
-        match self {
-            Self::Legacy(path) | Self::Detailed { path, .. } => path,
-        }
-    }
-
-    fn dpi_width_bytes(&self) -> Option<usize> {
-        match self {
-            Self::Legacy(_) => None,
-            Self::Detailed {
-                dpi_width_bytes, ..
-            } => *dpi_width_bytes,
-        }
-    }
+pub struct StreamEntry {
+    pub path: String,
+    /// Byte width of the DPI-side payload, always emitted by `frt-cosim`.
+    pub dpi_width_bytes: usize,
 }
 
 #[derive(Debug, Deserialize)]
@@ -85,15 +64,14 @@ impl DpiContext {
 
         let mut streams = HashMap::new();
         for (name, entry) in cfg.streams {
-            let q = SharedMemoryQueue::open(entry.path())?;
-            let dpi_width_bytes = entry.dpi_width_bytes().unwrap_or_else(|| q.width());
+            let q = SharedMemoryQueue::open(&entry.path)?;
             if frt_shm::env_bool(frt_shm::env::FRT_STREAM_DEBUG) {
                 eprintln!(
                     "frt-dpi: stream '{name}' path={} depth={} width={} dpi_width={}",
-                    entry.path(),
+                    entry.path,
                     q.depth(),
                     q.width(),
-                    dpi_width_bytes,
+                    entry.dpi_width_bytes,
                 );
             }
             streams.insert(
@@ -104,7 +82,7 @@ impl DpiContext {
                         last_istream_valid: false,
                         last_ostream_ready: false,
                     }),
-                    dpi_width_bytes,
+                    dpi_width_bytes: entry.dpi_width_bytes,
                 },
             );
         }
@@ -121,36 +99,15 @@ mod tests {
     fn parse_valid_config() {
         let json = r#"{
           "buffers": { "a": { "path": "/tmp/buf_a", "size_bytes": 4096 } },
-          "streams": { "s": "/tmp/stream_s" }
-        }"#;
-        let cfg: DpiConfig = serde_json::from_str(json).expect("json");
-        assert_eq!(cfg.buffers["a"].path, "/tmp/buf_a");
-        assert_eq!(cfg.buffers["a"].size_bytes, 4096);
-        match &cfg.streams["s"] {
-            StreamEntry::Legacy(path) => assert_eq!(path, "/tmp/stream_s"),
-            StreamEntry::Detailed { .. } => panic!("expected legacy stream entry"),
-        }
-    }
-
-    #[test]
-    fn parse_stream_entry_with_width() {
-        let json = r#"{
-          "buffers": {},
           "streams": {
             "s": { "path": "/tmp/stream_s", "dpi_width_bytes": 5 }
           }
         }"#;
         let cfg: DpiConfig = serde_json::from_str(json).expect("json");
-        match &cfg.streams["s"] {
-            StreamEntry::Detailed {
-                path,
-                dpi_width_bytes,
-            } => {
-                assert_eq!(path, "/tmp/stream_s");
-                assert_eq!(*dpi_width_bytes, Some(5));
-            }
-            StreamEntry::Legacy(_) => panic!("expected detailed stream entry"),
-        }
+        assert_eq!(cfg.buffers["a"].path, "/tmp/buf_a");
+        assert_eq!(cfg.buffers["a"].size_bytes, 4096);
+        assert_eq!(cfg.streams["s"].path, "/tmp/stream_s");
+        assert_eq!(cfg.streams["s"].dpi_width_bytes, 5);
     }
 
     #[test]
