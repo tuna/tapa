@@ -66,7 +66,11 @@ jobs:
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 9
+          # Read the pinned pnpm version from the project's `packageManager`
+          # field (pnpm 10) rather than hardcoding it here — a separate `9`
+          # pin drifted out of sync and could not parse the pnpm-10
+          # `pnpm-workspace.yaml`.
+          package_json_file: tapa-visualizer/package.json
 
       - name: Run JS lint
         run: |
