@@ -23,8 +23,6 @@ pub const HANDSHAKE_OUTPUT_PORTS: &[&str] = &[HANDSHAKE_DONE, HANDSHAKE_IDLE, HA
 
 // ── Clock / reset / sensitivity ─────────────────────────────────────
 
-pub const SENS_TYPE: &str = "posedge";
-
 /// `"posedge ap_clk"` — used as a sensitivity list in always blocks.
 pub const CLK_SENS_LIST: &str = "posedge ap_clk";
 

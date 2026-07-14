@@ -99,10 +99,6 @@ impl Expr {
         Self::Lit(format!("{width}'d{val}"))
     }
 
-    pub fn hex_const(width: u32, val: u64) -> Self {
-        Self::Lit(format!("{width}'h{val:x}"))
-    }
-
     pub fn bin_op(lhs: Self, op: BinOperator, rhs: Self) -> Self {
         Self::BinOp {
             lhs: Box::new(lhs),
@@ -115,10 +111,6 @@ impl Expr {
         Self::bin_op(lhs, BinOperator::Eq, rhs)
     }
 
-    pub fn ne(lhs: Self, rhs: Self) -> Self {
-        Self::bin_op(lhs, BinOperator::Ne, rhs)
-    }
-
     pub fn plus(lhs: Self, rhs: Self) -> Self {
         Self::bin_op(lhs, BinOperator::Plus, rhs)
     }
@@ -129,18 +121,6 @@ impl Expr {
 
     pub fn logical_and(lhs: Self, rhs: Self) -> Self {
         Self::bin_op(lhs, BinOperator::And, rhs)
-    }
-
-    pub fn logical_or(lhs: Self, rhs: Self) -> Self {
-        Self::bin_op(lhs, BinOperator::Or, rhs)
-    }
-
-    pub fn bit_and(lhs: Self, rhs: Self) -> Self {
-        Self::bin_op(lhs, BinOperator::BitAnd, rhs)
-    }
-
-    pub fn bit_or(lhs: Self, rhs: Self) -> Self {
-        Self::bin_op(lhs, BinOperator::BitOr, rhs)
     }
 
     pub fn logical_not(inner: Self) -> Self {
@@ -172,13 +152,6 @@ impl Expr {
 
     pub fn concat(exprs: Vec<Self>) -> Self {
         Self::Concat(exprs)
-    }
-
-    pub fn replicate(count: Self, expr: Self) -> Self {
-        Self::Replicate {
-            count: Box::new(count),
-            expr: Box::new(expr),
-        }
     }
 }
 
