@@ -1249,7 +1249,6 @@ dependencies = [
  "indexmap",
  "minijinja",
  "nix",
- "path-slash",
  "quick-xml",
  "regex",
  "semver",

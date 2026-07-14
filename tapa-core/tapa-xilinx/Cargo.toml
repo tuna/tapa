@@ -12,7 +12,6 @@ indexmap = { workspace = true }
 fs-err = { workspace = true }
 minijinja = { workspace = true }
 nix = { workspace = true }
-path-slash = { workspace = true }
 quick-xml = { workspace = true }
 regex = { workspace = true }
 semver = { workspace = true }
