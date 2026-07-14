@@ -432,8 +432,8 @@ pub fn build_task_port_ifaces(
 
 /// Build stream/MMAP interfaces and collect scalar port names.
 ///
-/// Matches `_append_task_port_ifaces` + `_append_stream_iface`
-/// + `_append_mmap_ifaces`.
+/// Scalar ports (and MMAP `_offset` scalars) are appended to `scalars`;
+/// stream and MMAP handshake interfaces are appended to `ifaces`.
 #[allow(
     clippy::too_many_lines,
     reason = "port interface assembly is inherently sequential; \

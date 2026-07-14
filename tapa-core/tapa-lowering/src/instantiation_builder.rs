@@ -251,7 +251,7 @@ pub fn build_task_instance(
 /// `DATA_WIDTH` expression is `(left) - (right) + 1` and is folded when both
 /// endpoints are integer literals. `is_top` controls the
 /// reset wiring — `rst` for top FIFOs, `~ap_rst_n` for slot-local
-/// FIFOs — matching `_get_fifo_connections(is_top=...)`.
+/// FIFOs.
 #[must_use]
 pub fn build_fifo_instance(
     fifo_name: &str,

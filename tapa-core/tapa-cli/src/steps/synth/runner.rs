@@ -232,8 +232,7 @@ fn build_hls_cflags(work_dir: &Path, remote: bool) -> Vec<String> {
     }
     flags.push("-DTAPA_TARGET_DEVICE_".to_string());
     flags.push("-DTAPA_TARGET_XILINX_HLS_".to_string());
-    // `_build_hls_cflags` workaround: Vitis HLS requires `-I`
-    // (not `-isystem`) to locate gflags during build.
+    // Vitis HLS requires `-I` (not `-isystem`) to locate gflags during build.
     if let Ok(p) = find_resource("tapa-extra-runtime-include") {
         flags.push(format!("-I{}", p.display()));
     }

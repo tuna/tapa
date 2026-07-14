@@ -590,7 +590,7 @@ pub fn build_project_from_paths(
 /// Derive slot → instance mapping from the pre-baked slot-task hierarchy in
 /// the program. Slot module names are the slot task names themselves (e.g.,
 /// `SLOT_X0Y2_SLOT_X0Y2`), and each slot's instances come from its child
-/// task definitions. Matches `_build_program` convention.
+/// task definitions.
 fn slot_to_instances_from_topology(program: &Program) -> BTreeMap<String, Vec<String>> {
     let mut out: BTreeMap<String, Vec<String>> = BTreeMap::new();
     let Some(region_map) = program.slot_task_name_to_fp_region.as_ref() else {

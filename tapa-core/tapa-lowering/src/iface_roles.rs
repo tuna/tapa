@@ -18,10 +18,9 @@ pub const ROLE_SINK: &str = "sink";
 
 /// Apply a role to every interface of every module that has ports.
 ///
-/// Mirrors `_apply_iface_roles`: for each module with interfaces,
-/// walk the interfaces and replace `role` with "source"/"sink" based on
-/// port directions. Non-data interfaces (`NonPipeline`, `Unknown`, …) keep
-/// their default role.
+/// For each module with interfaces, walk the interfaces and replace `role`
+/// with "source"/"sink" based on port directions. Non-data interfaces
+/// (`NonPipeline`, `Unknown`, …) keep their default role.
 pub fn apply_iface_roles(
     module_defs: &[AnyModuleDefinition],
     ifaces: &mut std::collections::BTreeMap<String, Vec<AnyInterface>>,

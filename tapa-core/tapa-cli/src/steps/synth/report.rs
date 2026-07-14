@@ -98,10 +98,9 @@ pub fn write_top_report(work_dir: &Path, design: &Design, override_schema: &str)
 ///
 /// `TaskTopology::clock_period` and `total_area` contain the task-local HLS
 /// estimate and an optional post-synthesis override, respectively. The
-/// effective values are derived here in the same way as the original Python
-/// task properties: an upper task's clock is the maximum of its own estimate
-/// and all descendants, while an empty `total_area` is computed as
-/// `self_area` plus every child instance's effective total.
+/// effective values are derived here: an upper task's clock is the maximum
+/// of its own estimate and all descendants, while an empty `total_area` is
+/// computed as `self_area` plus every child instance's effective total.
 fn build_task_report(design: &Design, task_name: &str, schema: &str) -> Result<Report> {
     let task = design.tasks.get(task_name).ok_or_else(|| {
         CliError::InvalidArg(format!("report: task `{task_name}` not found in design"))

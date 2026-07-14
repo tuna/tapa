@@ -10,8 +10,7 @@ use crate::error::{CliError, Result};
 ///
 /// A stored `total_area` is an explicit post-synthesis override. When it is
 /// empty, derive the total recursively from the task's HLS `self_area` and
-/// every instantiated child, matching the original Python `Task.total_area`
-/// property.
+/// every instantiated child.
 pub(super) fn effective_total_area(
     design: &Design,
     task_name: &str,

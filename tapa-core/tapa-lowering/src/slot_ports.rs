@@ -153,7 +153,7 @@ fn get_child_port_connection_mapping(
     mapping
 }
 
-/// Mirror `_find_port_child`: locate any child instance whose
+/// Locate any child instance whose
 /// `arg.arg` equals `slot_port_name`, returning `(child_task, child_port,
 /// array_idx)`. The `array_idx` is present when the child port name is
 /// array-subscripted (e.g. `stream_q[3]`), and the returned `child_port`
