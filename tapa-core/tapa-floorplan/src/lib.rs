@@ -24,6 +24,9 @@ pub enum FloorplanError {
     #[error("slot not found: ({0}, {1})")]
     SlotNotFound(u32, u32),
 
+    #[error("cannot resolve width of FIFO '{0}' for its placement edge")]
+    FifoWidthUnresolved(String),
+
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
 }

@@ -43,7 +43,10 @@ pub fn collect_task_area(program: &Program) -> BTreeMap<String, Area> {
 
 /// Collect FIFO widths from topology port definitions.
 ///
-/// For each FIFO in the top task, uses the port width from the topology.
+/// Records the wire width (payload + eot bit) for every FIFO whose producer
+/// stream port can be resolved. FIFOs without a producer are never turned into
+/// placement edges, so they are omitted rather than given a placeholder width;
+/// [`get_basic_ab_graph`] then fails loudly if an actual edge lacks a width.
 #[must_use]
 pub fn collect_fifo_width(program: &Program) -> BTreeMap<String, u64> {
     let top = &program.tasks[&program.top];
@@ -75,8 +78,6 @@ pub fn collect_fifo_width(program: &Program) -> BTreeMap<String, u64> {
                 }
             }
         }
-        // Fallback: use a default width if not found
-        widths.entry(fifo_name.clone()).or_insert(32);
     }
     widths
 }
@@ -143,7 +144,7 @@ pub fn get_top_level_ab_graph(
     let areas = collect_task_area(program);
     let fifo_widths = collect_fifo_width(program);
     let port_widths = collect_port_width(program);
-    let mut graph = get_basic_ab_graph(program, &areas, &fifo_widths);
+    let mut graph = get_basic_ab_graph(program, &areas, &fifo_widths)?;
     add_port_iface_connections(program, &mut graph, &port_widths, preassignments)?;
     add_scalar_connections(program, &mut graph, &port_widths, fsm_name);
     Ok(graph)
@@ -171,12 +172,15 @@ impl PortWidth {
 }
 
 /// Build the basic `ABGraph` with vertices for task instances and edges for FIFOs.
-#[must_use]
+///
+/// Every FIFO that becomes a placement edge (it has both a producer and a
+/// consumer) must have a resolved width in `fifo_widths`; a missing entry is a
+/// malformed program and is reported rather than silently defaulted.
 pub fn get_basic_ab_graph(
     program: &Program,
     areas: &BTreeMap<String, Area>,
     fifo_widths: &BTreeMap<String, u64>,
-) -> ABGraph {
+) -> Result<ABGraph, FloorplanError> {
     let top = &program.tasks[&program.top];
     let mut vertices = Vec::new();
     let mut edges = Vec::new();
@@ -207,7 +211,10 @@ pub fn get_basic_ab_graph(
         };
         let consumer_inst = format!("{}_{}", consumer.0, consumer.1);
         let producer_inst = format!("{}_{}", producer.0, producer.1);
-        let width = fifo_widths.get(fifo_name).copied().unwrap_or(32);
+        let width = fifo_widths
+            .get(fifo_name)
+            .copied()
+            .ok_or_else(|| FloorplanError::FifoWidthUnresolved(fifo_name.clone()))?;
 
         edges.push(ABEdge {
             source_vertex: producer_inst,
@@ -217,10 +224,10 @@ pub fn get_basic_ab_graph(
         });
     }
 
-    ABGraph {
+    Ok(ABGraph {
         vs: vertices,
         es: edges,
-    }
+    })
 }
 
 /// Add port interface connections (dummy vertices + edges) for stream/mmap ports.
@@ -517,7 +524,7 @@ mod tests {
         let mut fifo_widths = BTreeMap::new();
         fifo_widths.insert("fifo_0".into(), 32_u64);
 
-        let graph = get_basic_ab_graph(&prog, &areas, &fifo_widths);
+        let graph = get_basic_ab_graph(&prog, &areas, &fifo_widths).unwrap();
 
         // Should have 2 vertices (producer_0, consumer_0)
         assert_eq!(
@@ -564,7 +571,7 @@ mod tests {
             }"#,
         )
         .expect("parse program");
-        let graph = get_basic_ab_graph(&prog, &BTreeMap::new(), &BTreeMap::new());
+        let graph = get_basic_ab_graph(&prog, &BTreeMap::new(), &BTreeMap::new()).unwrap();
         let names = graph.vs.into_iter().map(|v| v.name).collect::<Vec<_>>();
         assert_eq!(names[2], "Switch_2");
         assert_eq!(names[10], "Switch_10");
@@ -577,7 +584,7 @@ mod tests {
         let fifo_widths = BTreeMap::from([("fifo_0".into(), 32_u64)]);
         let port_widths = collect_port_width(&prog);
 
-        let mut graph = get_basic_ab_graph(&prog, &areas, &fifo_widths);
+        let mut graph = get_basic_ab_graph(&prog, &areas, &fifo_widths).unwrap();
         let preassignments = BTreeMap::new();
 
         add_port_iface_connections(&prog, &mut graph, &port_widths, &preassignments).unwrap();
@@ -597,7 +604,7 @@ mod tests {
         let fifo_widths = BTreeMap::from([("fifo_0".into(), 32_u64)]);
         let port_widths = collect_port_width(&prog);
 
-        let mut graph = get_basic_ab_graph(&prog, &areas, &fifo_widths);
+        let mut graph = get_basic_ab_graph(&prog, &areas, &fifo_widths).unwrap();
         add_scalar_connections(&prog, &mut graph, &port_widths, "top_task_fsm");
 
         // Should have FSM vertex
@@ -713,7 +720,7 @@ mod tests {
         )
         .expect("parse program");
         let areas = collect_task_area(&prog);
-        let mut graph = get_basic_ab_graph(&prog, &areas, &BTreeMap::new());
+        let mut graph = get_basic_ab_graph(&prog, &areas, &BTreeMap::new()).unwrap();
         let port_widths = collect_port_width(&prog);
 
         add_port_iface_connections(&prog, &mut graph, &port_widths, &BTreeMap::new()).unwrap();
@@ -738,6 +745,20 @@ mod tests {
     }
 
     #[test]
+    fn basic_ab_graph_fails_when_edge_fifo_width_missing() {
+        // `fifo_0` has both a producer and consumer, so it becomes a placement
+        // edge; an empty width map must be rejected, not defaulted to 32.
+        let prog = make_program();
+        let areas = collect_task_area(&prog);
+        let err = get_basic_ab_graph(&prog, &areas, &BTreeMap::new())
+            .expect_err("edge FIFO without a width must fail");
+        assert!(
+            matches!(err, FloorplanError::FifoWidthUnresolved(ref f) if f == "fifo_0"),
+            "expected FifoWidthUnresolved(fifo_0), got {err:?}"
+        );
+    }
+
+    #[test]
     fn get_top_level_ab_graph_works() {
         let prog = make_program();
         let preassignments = BTreeMap::new();
@@ -756,7 +777,7 @@ mod tests {
         let prog = make_program();
         let areas = collect_task_area(&prog);
         let fifo_widths = BTreeMap::from([("fifo_0".into(), 32_u64)]);
-        let graph = get_basic_ab_graph(&prog, &areas, &fifo_widths);
+        let graph = get_basic_ab_graph(&prog, &areas, &fifo_widths).unwrap();
 
         let json = serde_json::to_string(&graph).unwrap();
         let graph2: ABGraph = serde_json::from_str(&json).unwrap();
