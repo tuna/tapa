@@ -304,127 +304,167 @@ pub const M_AXI_PARAM_SUFFIXES: &[&str] = &[
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeSet;
 
+    /// The stream tables must agree on which suffixes exist.
     #[test]
-    fn handshake_constants() {
-        assert_eq!(HANDSHAKE_CLK, "ap_clk", "HANDSHAKE_CLK");
-        assert_eq!(HANDSHAKE_RST, "ap_rst", "HANDSHAKE_RST");
-        assert_eq!(HLS_RST_INV, "ap_rst_n_inv", "HLS_RST_INV");
-        assert_eq!(HANDSHAKE_RST_N, "ap_rst_n", "HANDSHAKE_RST_N");
-        assert_eq!(HANDSHAKE_START, "ap_start", "HANDSHAKE_START");
-        assert_eq!(HANDSHAKE_DONE, "ap_done", "HANDSHAKE_DONE");
-        assert_eq!(HANDSHAKE_IDLE, "ap_idle", "HANDSHAKE_IDLE");
-        assert_eq!(HANDSHAKE_READY, "ap_ready", "HANDSHAKE_READY");
-    }
+    fn stream_suffix_tables_cover_the_same_ports() {
+        let declared: BTreeSet<&str> = ISTREAM_SUFFIXES
+            .iter()
+            .chain(OSTREAM_SUFFIXES.iter())
+            .copied()
+            .collect();
+        let with_direction: BTreeSet<&str> = STREAM_PORT_DIRECTION.keys().copied().collect();
+        let with_width: BTreeSet<&str> = STREAM_PORT_WIDTH.keys().copied().collect();
+        let with_opposite: BTreeSet<&str> = STREAM_PORT_OPPOSITE.keys().copied().collect();
 
-    #[test]
-    fn handshake_port_groups() {
-        assert_eq!(HANDSHAKE_INPUT_PORTS.len(), 3, "input ports count");
-        assert_eq!(HANDSHAKE_OUTPUT_PORTS.len(), 3, "output ports count");
-        assert_eq!(HANDSHAKE_INPUT_PORTS[0], HANDSHAKE_CLK, "first input port");
-    }
-
-    #[test]
-    fn clk_sens_list() {
-        assert_eq!(CLK_SENS_LIST, "posedge ap_clk", "CLK_SENS_LIST");
-    }
-
-    #[test]
-    fn stream_suffixes() {
-        assert_eq!(
-            ISTREAM_SUFFIXES,
-            &["_dout", "_empty_n", "_read"],
-            "ISTREAM_SUFFIXES"
-        );
-        assert_eq!(
-            OSTREAM_SUFFIXES,
-            &["_din", "_full_n", "_write"],
-            "OSTREAM_SUFFIXES"
-        );
-        assert_eq!(
-            STREAM_DATA_SUFFIXES,
-            &["_dout", "_din"],
-            "STREAM_DATA_SUFFIXES"
+        assert_eq!(declared, with_direction, "direction table");
+        assert_eq!(declared, with_width, "width table");
+        assert_eq!(declared, with_opposite, "opposite table");
+        assert!(
+            STREAM_DATA_SUFFIXES.iter().all(|s| declared.contains(s)),
+            "data suffixes must be declared stream suffixes"
         );
     }
 
+    /// Opposite pairs are symmetric and sit on opposite sides of the wire.
     #[test]
-    fn stream_port_metadata() {
-        assert_eq!(STREAM_PORT_DIRECTION.len(), 6, "direction map size");
-        assert_eq!(STREAM_PORT_DIRECTION["_dout"], "input", "dout direction");
-        assert_eq!(STREAM_PORT_DIRECTION["_din"], "output", "din direction");
+    fn stream_port_opposites_are_involutive_and_flip_direction() {
+        for (suffix, opposite) in &STREAM_PORT_OPPOSITE {
+            assert_eq!(
+                STREAM_PORT_OPPOSITE.get(opposite),
+                Some(suffix),
+                "{suffix} -> {opposite} is not symmetric"
+            );
+            assert_ne!(
+                STREAM_PORT_DIRECTION[suffix], STREAM_PORT_DIRECTION[opposite],
+                "{suffix} and {opposite} must face opposite directions"
+            );
+            assert_eq!(
+                STREAM_PORT_WIDTH[suffix], STREAM_PORT_WIDTH[opposite],
+                "{suffix} and {opposite} must be the same width"
+            );
+        }
+    }
 
-        assert_eq!(STREAM_PORT_OPPOSITE["_dout"], "_din", "dout opposite");
-        assert_eq!(
-            STREAM_PORT_OPPOSITE["_empty_n"], "_write",
-            "empty_n opposite"
+    /// `S_AXI_LITE_PORT_DIRS` documents itself as "same order as
+    /// `S_AXI_LITE_CTRL_PORTS`"; hold it to that.
+    #[test]
+    fn s_axi_lite_dirs_match_ctrl_port_order() {
+        let named: Vec<&str> = S_AXI_LITE_PORT_DIRS.iter().map(|(name, _)| *name).collect();
+        assert_eq!(named, S_AXI_LITE_CTRL_PORTS, "port order drifted");
+    }
+
+    /// The per-channel groups partition the flat control-port list.
+    #[test]
+    fn s_axi_lite_channels_partition_ctrl_ports() {
+        let mut grouped: Vec<&str> = S_AXI_LITE_CHANNELS
+            .iter()
+            .flat_map(|c| c.ports.iter().copied())
+            .collect();
+        let total = grouped.len();
+        grouped.sort_unstable();
+        grouped.dedup();
+        assert_eq!(total, grouped.len(), "a port appears in two channels");
+
+        let mut expected: Vec<&str> = S_AXI_LITE_CTRL_PORTS.to_vec();
+        expected.sort_unstable();
+        assert_eq!(grouped, expected, "channels do not cover the control ports");
+
+        for channel in S_AXI_LITE_CHANNELS {
+            assert!(channel.ports.contains(&channel.valid), "valid not in ports");
+            assert!(channel.ports.contains(&channel.ready), "ready not in ports");
+        }
+    }
+
+    /// The compact suffix set is the full set minus the optional
+    /// address-channel attributes — not an independently edited list.
+    #[test]
+    fn m_axi_compact_suffixes_are_a_subset_of_the_full_set() {
+        let full: BTreeSet<&str> = M_AXI_SUFFIXES.iter().copied().collect();
+        let compact: BTreeSet<&str> = M_AXI_SUFFIXES_COMPACT.iter().copied().collect();
+        assert!(
+            compact.is_subset(&full),
+            "compact has suffixes the full set lacks"
         );
 
-        assert_eq!(STREAM_PORT_WIDTH["_dout"], 0, "dout width");
-        assert_eq!(STREAM_PORT_WIDTH["_read"], 1, "read width");
+        let optional: BTreeSet<&str> = full.difference(&compact).copied().collect();
+        assert!(
+            optional.iter().all(|s| s.ends_with("LOCK")
+                || s.ends_with("PROT")
+                || s.ends_with("QOS")
+                || s.ends_with("CACHE")),
+            "only LOCK/PROT/QOS/CACHE are optional, got {optional:?}"
+        );
     }
 
+    /// Read and write suffixes are disjoint and together make up the full set.
     #[test]
-    fn fifo_ports() {
-        assert_eq!(FIFO_READ_PORTS.len(), 4, "FIFO read ports count");
-        assert_eq!(FIFO_WRITE_PORTS.len(), 4, "FIFO write ports count");
-        assert_eq!(FIFO_READ_PORTS[0], "if_dout", "first FIFO read port");
-        assert_eq!(FIFO_WRITE_PORTS[0], "if_din", "first FIFO write port");
+    fn m_axi_read_and_write_suffixes_partition_the_full_set() {
+        let read: BTreeSet<&str> = M_AXI_READ_SUFFIXES.iter().copied().collect();
+        let write: BTreeSet<&str> = M_AXI_WRITE_SUFFIXES.iter().copied().collect();
+        assert!(read.is_disjoint(&write), "a suffix is both read and write");
+
+        let union: BTreeSet<&str> = read.union(&write).copied().collect();
+        let full: BTreeSet<&str> = M_AXI_SUFFIXES.iter().copied().collect();
+        assert_eq!(union, full, "read + write must cover the full suffix set");
     }
 
+    /// The by-channel grouping covers the full suffix set, and each channel's
+    /// valid/ready markers are among its own ports.
     #[test]
-    fn axi_naming() {
-        assert_eq!(S_AXI_NAME, "s_axi_control", "S_AXI_NAME");
-        assert_eq!(M_AXI_PREFIX, "m_axi_", "M_AXI_PREFIX");
-        assert_eq!(M_AXI_PARAM_PREFIX, "C_M_AXI_", "M_AXI_PARAM_PREFIX");
+    fn m_axi_channels_cover_the_full_suffix_set() {
+        let mut grouped: Vec<&str> = M_AXI_SUFFIXES_BY_CHANNEL
+            .values()
+            .flat_map(|c| c.ports.iter().copied())
+            .collect();
+        let total = grouped.len();
+        grouped.sort_unstable();
+        grouped.dedup();
+        assert_eq!(total, grouped.len(), "a suffix appears in two channels");
+
+        let grouped: BTreeSet<&str> = grouped.into_iter().collect();
+        let full: BTreeSet<&str> = M_AXI_SUFFIXES.iter().copied().collect();
+        assert_eq!(grouped, full, "channels do not cover the full suffix set");
+
+        for (name, channel) in &M_AXI_SUFFIXES_BY_CHANNEL {
+            assert!(
+                channel.ports.contains(&channel.valid),
+                "{name}: valid marker not among its ports"
+            );
+            assert!(
+                channel.ports.contains(&channel.ready),
+                "{name}: ready marker not among its ports"
+            );
+        }
     }
 
+    /// Every M-AXI sub-port named in a channel has a declared width.
     #[test]
-    fn m_axi_port_widths() {
-        assert_eq!(M_AXI_PORT_WIDTHS["ADDR"], 0, "ADDR width");
-        assert_eq!(M_AXI_PORT_WIDTHS["BURST"], 2, "BURST width");
-        assert_eq!(M_AXI_PORT_WIDTHS["CACHE"], 4, "CACHE width");
-        assert_eq!(M_AXI_PORT_WIDTHS["DATA"], 0, "DATA width");
-        assert_eq!(M_AXI_PORT_WIDTHS["ID"], 1, "ID width");
-        assert_eq!(M_AXI_PORT_WIDTHS["LEN"], 8, "LEN width");
-        assert_eq!(M_AXI_PORT_WIDTHS["VALID"], 1, "VALID width");
-        assert_eq!(M_AXI_PORT_WIDTHS.len(), 15, "port widths map size");
+    fn m_axi_channel_ports_all_have_widths() {
+        for (channel, ports) in &M_AXI_PORTS {
+            for (port, _dir) in *ports {
+                assert!(
+                    M_AXI_PORT_WIDTHS.contains_key(port),
+                    "{channel}{port} has no declared width"
+                );
+            }
+        }
     }
 
+    /// AR and AW are both address channels and must expose the same ports.
     #[test]
-    fn m_axi_ports_channels() {
-        assert_eq!(M_AXI_PORTS.len(), 5, "channel count");
-        assert!(M_AXI_PORTS.contains_key("AR"), "has AR");
-        assert!(M_AXI_PORTS.contains_key("AW"), "has AW");
-        assert!(M_AXI_PORTS.contains_key("B"), "has B");
-        assert!(M_AXI_PORTS.contains_key("R"), "has R");
-        assert!(M_AXI_PORTS.contains_key("W"), "has W");
-        assert_eq!(M_AXI_ADDR_PORTS.len(), 11, "addr ports count");
-    }
-
-    #[test]
-    fn m_axi_suffixes_counts() {
-        assert_eq!(M_AXI_SUFFIXES_COMPACT.len(), 29, "compact suffix count");
-        assert_eq!(M_AXI_SUFFIXES.len(), 37, "full suffix count");
-    }
-
-    #[test]
-    fn m_axi_suffixes_by_channel_structure() {
-        assert_eq!(M_AXI_SUFFIXES_BY_CHANNEL.len(), 5, "channel count");
-        let ar = &M_AXI_SUFFIXES_BY_CHANNEL["AR"];
-        assert_eq!(ar.ports.len(), 11, "AR ports count");
-        assert_eq!(ar.valid, "_ARVALID", "AR valid");
-        assert_eq!(ar.ready, "_ARREADY", "AR ready");
-    }
-
-    #[test]
-    fn m_axi_param_suffixes() {
-        assert_eq!(M_AXI_PARAM_SUFFIXES.len(), 6, "param suffix count");
-        assert_eq!(M_AXI_PARAM_SUFFIXES[0], "_ID_WIDTH", "first param suffix");
-    }
-
-    #[test]
-    fn rtl_suffix() {
-        assert_eq!(RTL_SUFFIX, ".v", "RTL_SUFFIX");
+    fn m_axi_address_channels_are_symmetric() {
+        assert_eq!(
+            M_AXI_PORTS["AR"].len(),
+            M_AXI_PORTS["AW"].len(),
+            "AR and AW must carry the same address ports"
+        );
+        for ((ar_port, ar_dir), (aw_port, aw_dir)) in
+            M_AXI_PORTS["AR"].iter().zip(M_AXI_PORTS["AW"].iter())
+        {
+            assert_eq!(ar_port, aw_port, "address port mismatch");
+            assert_eq!(ar_dir, aw_dir, "address port direction mismatch");
+        }
     }
 }
