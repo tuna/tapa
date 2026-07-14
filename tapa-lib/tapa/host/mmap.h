@@ -564,17 +564,4 @@ struct accessor<mmaps<T, S>, mmaps<T, S>> {
 
 }  // namespace tapa
 
-template <typename T>
-T window_readincr(tapa::immap<const T>& mem) {
-  T res = *mem;
-  mem++;
-  return res;
-}
-
-template <typename T>
-void window_writeincr(tapa::ommap<T>& mem, const T& val) {
-  *mem = val;
-  mem++;
-}
-
 #endif  // TAPA_HOST_MMAP_H_

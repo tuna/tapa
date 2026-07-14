@@ -98,16 +98,3 @@ class hmap : public mmap<T> {
 };
 
 }  // namespace tapa
-
-template <typename Mem>
-auto window_readincr(Mem& mem) -> decltype(*mem) {
-  auto value = *mem;
-  ++mem;
-  return value;
-}
-
-template <typename Mem, typename T>
-void window_writeincr(Mem& mem, const T& value) {
-  *mem = value;
-  ++mem;
-}

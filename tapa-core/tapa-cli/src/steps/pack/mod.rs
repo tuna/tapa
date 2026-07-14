@@ -480,20 +480,6 @@ mod tests {
     }
 
     #[test]
-    fn aie_target_is_rejected() {
-        // Pack validates persisted state independently of analyze so a
-        // hand-edited or stale settings file still produces a clear error.
-        let dir = tempfile::tempdir().expect("tempdir");
-        write_state(dir.path(), "xilinx-aie");
-        let ctx = ctx_with_work_dir(dir.path());
-        let err = run_native(&parse_pack(&[]), &ctx).expect_err("AIE must be rejected");
-        assert!(
-            matches!(err, CliError::InvalidArg(ref m) if m.contains("xilinx-aie")),
-            "expected AIE rejection: {err:?}"
-        );
-    }
-
-    #[test]
     fn missing_rtl_dir_surfaces_invalid_arg() {
         let dir = tempfile::tempdir().expect("tempdir");
         write_state(dir.path(), "xilinx-vitis");

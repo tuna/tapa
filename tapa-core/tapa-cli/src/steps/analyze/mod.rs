@@ -77,7 +77,6 @@ pub struct AnalyzeArgs {
     /// end-to-end so typos and unsupported targets fail
     /// at parse time instead of producing unusable `settings.json` /
     /// `design.json` that only blow up later in `synth` or `pack`.
-    /// AIE is omitted because that flow is not implemented.
     #[arg(long = "target", value_enum, default_value_t = AnalyzeTarget::XilinxVitis)]
     pub target: AnalyzeTarget,
 
