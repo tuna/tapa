@@ -17,8 +17,10 @@ These options must appear before the subcommand name.
 | Flag | Description |
 |------|-------------|
 | `--work-dir DIR` / `-w DIR` | Working directory for intermediate artifacts (default: `./work.out/`). |
+| `--temp-dir DIR` | Temporary directory, exported to child tools through `TMPDIR`. |
 | `--verbose` / `-v` | Increase logging verbosity. Repeatable (e.g., `-vv`). |
 | `--quiet` / `-q` | Decrease logging verbosity. |
+| `--clang-format-quota-in-bytes N` | Only run `clang-format` over the first `N` bytes of generated code (default: `1000000`). Lower it to speed up runs on very large designs. |
 | `--remote-host user@host[:port]` | Remote Linux host where vendor tools run. |
 | `--remote-key-file PATH` | SSH private key file for authenticating to the remote host. |
 | `--remote-xilinx-settings PATH` | Path to `settings64.sh` on the remote host. |
@@ -141,6 +143,59 @@ Package per-task RTL from the work directory into a single output artifact. For 
 ```bash
 tapa --work-dir work.out pack -o vadd.xo
 ```
+
+## tapa floorplan
+
+Apply an existing floorplan to the stored program description. Run it between `tapa analyze` and `tapa synth` when you already hold a `floorplan.json` — for example one written by hand, or one produced by `tapa generate-floorplan`.
+
+### Optional flags
+
+| Flag | Description |
+|------|-------------|
+| `--floorplan-path FILE` | Floorplan to apply to the program description. |
+
+### Example
+
+```bash
+tapa --work-dir work.out analyze -f vadd.cpp -t VecAdd \
+  floorplan --floorplan-path floorplan.json \
+  synth --part-num xcu250-figd2104-2L-e --clock-period 3.33
+```
+
+---
+
+## tapa generate-floorplan
+
+Search for floorplan solutions with AutoBridge and write them out. Takes the same inputs as `tapa synth` (it runs HLS to obtain per-task areas), plus a device config and a floorplan config.
+
+```admonish note
+This step requires `rapidstream-tapaopt`, which is no longer publicly available. Without it, write a `floorplan.json` yourself and apply it with `tapa floorplan`. See [Lab 6: Floorplan & DSE](../tutorials/lab-06-floorplan.md).
+```
+
+### Required flags
+
+| Flag | Description |
+|------|-------------|
+| `-f, --input FILE` | TAPA C++ source file. |
+| `-t, --top TASK` | Name of the top-level task. |
+| `--device-config FILE` | Device description used by the floorplanner. |
+| `--floorplan-config FILE` | Floorplanner configuration. |
+
+It also accepts the `tapa synth` flags (`--part-num`, `--platform`, `--clock-period`, `-j`, `--gen-ab-graph`, and so on), since it drives HLS to derive task areas.
+
+---
+
+## tapa compile-with-floorplan-dse
+
+Run floorplan design-space exploration end to end: generate candidate floorplans, then compile each one. Stage 1 calls `generate-floorplan`; stage 2 compiles once per solution, overriding `--floorplan-path` for each.
+
+Required flags match `tapa generate-floorplan` (`-f`, `-t`, `--device-config`, `--floorplan-config`). It additionally takes the `pack` flags (`-o`, `--custom-rtl`, `--bitstream-script`, `--graphir-path`) and forwards them to each stage-2 compile.
+
+```admonish note
+Because the composite drives both stages, it overrides some flags you may pass it directly: `--gen-ab-graph` is forced on for stage 1 and off for stage 2, and `--floorplan-path` is replaced per solution.
+```
+
+---
 
 ## tapa g++
 
