@@ -57,10 +57,4 @@ impl ModuleInstantiation {
     pub fn get_connection(&self, port_name: &str) -> Option<&ModuleConnection> {
         self.connections.iter().find(|c| c.name == port_name)
     }
-
-    /// Find a parameter by name.
-    #[must_use]
-    pub fn get_parameter(&self, param_name: &str) -> Option<&ModuleConnection> {
-        self.parameters.iter().find(|p| p.name == param_name)
-    }
 }

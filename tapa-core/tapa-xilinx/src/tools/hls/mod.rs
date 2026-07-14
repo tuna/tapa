@@ -302,19 +302,6 @@ fn run_hls_attempt(
     runner.run(&inv)
 }
 
-/// One Vitis HLS invocation — raw `ToolOutput` form. Kept as a
-/// compatibility shim for callers that only need the raw exit
-/// status (e.g. the per-task retry predicate in equivalent
-/// harnesses); it creates a throw-away staging dir and does *not*
-/// harvest the syn subtree. Prefer [`run_hls`] or
-/// [`run_hls_with_retry`] in production code.
-pub fn run_hls_raw(runner: &dyn ToolRunner, job: &HlsJob) -> Result<ToolOutput> {
-    let stage = tempfile::tempdir()?;
-    let stage_path = Utf8PathBuf::from_path_buf(stage.path().to_path_buf())
-        .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
-    run_hls_attempt(runner, job, &stage_path)
-}
-
 /// Name of the HLS solution subdirectory — mirrors the TCL template's
 /// `open_solution "<solution>"` value.
 fn solution_name(job: &HlsJob) -> String {

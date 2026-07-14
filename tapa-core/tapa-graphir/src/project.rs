@@ -93,11 +93,6 @@ impl Project {
         serde_json::to_string_pretty(&normalized)
     }
 
-    /// Serialize to JSON string without normalization.
-    pub fn to_json_raw(&self) -> Result<String, serde_json::Error> {
-        serde_json::to_string_pretty(self)
-    }
-
     /// Validate that module port types are valid Verilog directions.
     fn validate_port_types(&self) -> Result<(), ParseError> {
         const VALID_PORT_TYPES: &[&str] = &[

@@ -70,19 +70,6 @@ pub fn build_arg_table(top: &tapa_topology::task::TaskDesign) -> ArgTable {
 
 /// Collect all pipeline wire names from the arg table for wire generation.
 #[must_use]
-pub fn collect_arg_table_wires(arg_table: &ArgTable) -> Vec<String> {
-    let mut wires = Vec::new();
-    for inst_table in arg_table.values() {
-        for signal in inst_table.values() {
-            if !wires.contains(signal) {
-                wires.push(signal.clone());
-            }
-        }
-    }
-    wires.sort();
-    wires
-}
-
 /// Build connections for a child instance port based on its category.
 ///
 /// When `arg_table_entry` is provided, scalar and mmap offset connections

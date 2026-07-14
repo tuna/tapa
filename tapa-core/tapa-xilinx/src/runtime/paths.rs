@@ -145,11 +145,6 @@ const TAPA_EXTRA_RUNTIME_INCLUDE_SUBPATHS: &[&str] = &[
     "usr/include",
 ];
 
-#[cfg(debug_assertions)]
-pub fn debug_search_roots() -> Vec<Utf8PathBuf> {
-    search_roots()
-}
-
 fn search_roots() -> Vec<Utf8PathBuf> {
     let mut roots: Vec<Utf8PathBuf> = Vec::new();
     // Walk parents of the native runtime location when known. The

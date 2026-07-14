@@ -98,12 +98,6 @@ pub fn crossbar_master_addr_raw(arg_name: &str, channel_idx: u32, suffix: &str) 
     )
 }
 
-/// Build crossbar parameter arguments.
-#[must_use]
-pub fn build_crossbar_params(conn: &MMapConnection) -> Vec<ParamArg> {
-    try_build_crossbar_params(conn).expect("invalid mmap connection")
-}
-
 /// Build crossbar parameter arguments after validating the connection.
 pub fn try_build_crossbar_params(conn: &MMapConnection) -> Result<Vec<ParamArg>, CodegenError> {
     validate_mmap_connection(conn)?;
@@ -161,12 +155,6 @@ pub fn crossbar_slave_suffix_width(conn: &MMapConnection, suffix: &str) -> u32 {
     } else {
         resolve_suffix_width(suffix, conn.data_width)
     }
-}
-
-/// Build a crossbar module instance with port connections.
-#[must_use]
-pub fn build_crossbar_instance(conn: &MMapConnection) -> ModuleInstance {
-    try_build_crossbar_instance(conn).expect("invalid mmap connection")
 }
 
 /// Build a crossbar instance after validating the connection.

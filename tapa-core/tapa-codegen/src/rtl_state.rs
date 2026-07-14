@@ -205,17 +205,6 @@ impl TopologyWithRtl {
         Ok(())
     }
 
-    /// Attach multiple modules at once.
-    pub fn attach_modules(
-        &mut self,
-        modules: BTreeMap<String, VerilogModule>,
-    ) -> Result<(), CodegenError> {
-        for (name, module) in modules {
-            self.attach_module(&name, module)?;
-        }
-        Ok(())
-    }
-
     /// Create an FSM module for an upper-level task.
     ///
     /// Rejects lower-level tasks.
