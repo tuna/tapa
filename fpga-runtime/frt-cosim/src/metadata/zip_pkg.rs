@@ -15,73 +15,16 @@ fn default_addr_width() -> u32 {
     64
 }
 
+/// Parse the `graph.yaml` that `tapa pack` writes into the archive.
+///
+/// This is the serialized TAPA task graph: a `tasks` mapping whose top task
+/// carries a `ports` array of `cat`-tagged entries. Each port expands into one
+/// or more flat kernel arguments, numbered in declaration order.
 pub fn parse_graph_yaml(yaml: &str, _verilog_dir: &Path) -> Result<KernelSpec> {
     let root: serde_yaml::Value =
         serde_yaml::from_str(yaml).map_err(|e| CosimError::Metadata(e.to_string()))?;
-    if let Some(spec) = parse_simple_schema(&root)? {
-        return Ok(spec);
-    }
 
-    parse_legacy_tapa_schema(&root)
-}
-
-fn parse_simple_schema(root: &serde_yaml::Value) -> Result<Option<KernelSpec>> {
-    let Some(top) = root.get("top").and_then(|v| v.as_str()) else {
-        return Ok(None);
-    };
-    let Some(args_yaml) = root.get("args").and_then(|v| v.as_sequence()) else {
-        return Ok(None);
-    };
-
-    let mut args = Vec::with_capacity(args_yaml.len());
-    for entry in args_yaml {
-        let name = required_str(entry, "name")?.to_owned();
-        let id = required_u32(entry, "id")?;
-        let kind_name = required_str(entry, "type")?;
-        let width = optional_u32(entry, "width").unwrap_or_else(default_width);
-        let depth = optional_u32(entry, "depth").unwrap_or_else(default_depth);
-        let addr_width = optional_u32(entry, "addr_width").unwrap_or_else(default_addr_width);
-
-        let kind = match kind_name {
-            "scalar" => ArgKind::Scalar { width },
-            "mmap" => ArgKind::Mmap {
-                data_width: width,
-                addr_width,
-            },
-            "stream" => {
-                let dir = match entry.get("dir").and_then(|x| x.as_str()).unwrap_or("in") {
-                    "out" => StreamDir::Out,
-                    _ => StreamDir::In,
-                };
-                ArgKind::Stream {
-                    width,
-                    depth,
-                    dir,
-                    protocol: StreamProtocol::ApFifo,
-                }
-            }
-            other => return Err(CosimError::Metadata(format!("unknown arg type: {other}"))),
-        };
-        args.push(ArgSpec { name, id, kind });
-    }
-
-    Ok(Some(KernelSpec {
-        top_name: top.to_owned(),
-        mode: Mode::Hls,
-        args,
-        part_num: root
-            .get("part")
-            .and_then(|x| x.as_str())
-            .map(ToOwned::to_owned),
-        verilog_files: vec![],
-        tcl_files: vec![],
-        xci_files: vec![],
-        scalar_register_map: HashMap::new(),
-    }))
-}
-
-fn parse_legacy_tapa_schema(root: &serde_yaml::Value) -> Result<KernelSpec> {
-    let top = required_str(root, "top")?.to_owned();
+    let top = required_str(&root, "top")?.to_owned();
     let tasks = root
         .get("tasks")
         .and_then(|x| x.as_mapping())
@@ -177,7 +120,7 @@ fn parse_legacy_tapa_schema(root: &serde_yaml::Value) -> Result<KernelSpec> {
             }
             other => {
                 return Err(CosimError::Metadata(format!(
-                    "unsupported legacy port category '{other}'"
+                    "unsupported port category '{other}'"
                 )));
             }
         }
@@ -202,11 +145,6 @@ fn required_str<'a>(v: &'a serde_yaml::Value, key: &str) -> Result<&'a str> {
     v.get(key)
         .and_then(|x| x.as_str())
         .ok_or_else(|| CosimError::Metadata(format!("required string field '{key}' missing")))
-}
-
-fn required_u32(v: &serde_yaml::Value, key: &str) -> Result<u32> {
-    optional_u32(v, key)
-        .ok_or_else(|| CosimError::Metadata(format!("required integer field '{key}' missing")))
 }
 
 fn optional_u32(v: &serde_yaml::Value, key: &str) -> Option<u32> {

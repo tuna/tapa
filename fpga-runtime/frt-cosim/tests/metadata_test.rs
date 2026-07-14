@@ -29,46 +29,9 @@ fn parse_vitis_kernel_xml() {
     ));
 }
 
+/// The task graph `tapa pack` serializes into `graph.yaml`: `cat`-tagged
+/// ports on the top task, with plural categories fanning out per channel.
 const GRAPH_YAML: &str = "
-top: vadd
-args:
-  - name: a
-    id: 0
-    type: mmap
-    width: 512
-    addr_width: 64
-  - name: n
-    id: 1
-    type: scalar
-    width: 32
-  - name: s
-    id: 2
-    type: stream
-    width: 32
-    depth: 16
-    dir: in
-";
-
-#[test]
-fn parse_hls_graph_yaml() {
-    let spec = metadata::zip_pkg::parse_graph_yaml(GRAPH_YAML, std::path::Path::new("/tmp"))
-        .expect("parse");
-    assert_eq!(spec.top_name, "vadd");
-    assert_eq!(spec.mode, Mode::Hls);
-    assert_eq!(spec.args.len(), 3);
-    assert!(matches!(spec.args[0].kind, ArgKind::Mmap { .. }));
-    assert!(matches!(spec.args[1].kind, ArgKind::Scalar { .. }));
-    assert!(matches!(
-        &spec.args[2].kind,
-        ArgKind::Stream {
-            dir: StreamDir::In,
-            protocol: StreamProtocol::ApFifo,
-            ..
-        }
-    ));
-}
-
-const LEGACY_GRAPH_YAML: &str = "
 top: vadd
 tasks:
   vadd:
@@ -89,8 +52,8 @@ tasks:
 ";
 
 #[test]
-fn parse_legacy_graph_yaml() {
-    let spec = metadata::zip_pkg::parse_graph_yaml(LEGACY_GRAPH_YAML, std::path::Path::new("/tmp"))
+fn parse_hls_graph_yaml() {
+    let spec = metadata::zip_pkg::parse_graph_yaml(GRAPH_YAML, std::path::Path::new("/tmp"))
         .expect("parse");
     assert_eq!(spec.top_name, "vadd");
     assert_eq!(spec.mode, Mode::Hls);
