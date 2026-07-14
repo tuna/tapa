@@ -14,7 +14,6 @@ cc_library(
     deps = [
         ":base_target",
         ":ignore_target",
-        ":xilinx_aie_target",
         ":xilinx_hls_target",
     ],
 )
@@ -35,13 +34,6 @@ cc_library(
     name = "xilinx_hls_target",
     srcs = ["xilinx_hls_target.cpp"],
     hdrs = ["xilinx_hls_target.h"],
-    deps = [":base_target"],
-)
-
-cc_library(
-    name = "xilinx_aie_target",
-    srcs = ["xilinx_aie_target.cpp"],
-    hdrs = ["xilinx_aie_target.h"],
     deps = [":base_target"],
 )
 

@@ -56,7 +56,6 @@ namespace internal {
 
 extern TapaTargetAttr::TargetType target;
 static std::map<TapaTargetAttr::TargetType, Target*> target_map{
-    {TapaTargetAttr::TargetType::XilinxAIE, XilinxAIETarget::GetInstance()},
     {TapaTargetAttr::TargetType::XilinxHLS,
      XilinxHLSTarget::GetInstance(/*is_vitis=*/false)},
     {TapaTargetAttr::TargetType::XilinxVitis,
@@ -222,10 +221,9 @@ bool Visitor::VisitFunctionDecl(FunctionDecl* func) {
       }
 
       if ((is_upper_level_task || is_lower_level_task) && !is_current_task) {
-        // If the function is a tapa task but not the current task,
-        // We deal with AIE and HLS differently.
-        // For HLS, we reserve the function signature and remove the body.
-        // For AIE, we remove the function signature and body.
+        // If the function is a tapa task but not the current task, reserve the
+        // function signature and remove the body so the vendor toolchain sees
+        // a declaration only.
         // TODO: If the non current task is the invoker of the current task,
         // we should create a specialized version of the function right before
         // the task declaration.

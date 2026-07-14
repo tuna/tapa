@@ -35,8 +35,8 @@ index 46d0a66d59c3..4e4c52ced4f8 100644
 +                   CXX11<"tapa","target">,
 +                   C23<"tapa", "target">];
 +  let Args = [EnumArgument<"Target", "TargetType", /*is_string=*/true,
-+                           ["xilinx_aie", "xilinx_hls", "xilinx_vitis", "ignore"],
-+                           ["XilinxAIE", "XilinxHLS", "XilinxVitis", "Ignore"]>];
++                           ["xilinx_hls", "xilinx_vitis", "ignore"],
++                           ["XilinxHLS", "XilinxVitis", "Ignore"]>];
 +  let Documentation = [Undocumented];
 +}
 +

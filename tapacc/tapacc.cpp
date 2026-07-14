@@ -188,9 +188,6 @@ static llvm::cl::opt<TapaTargetAttr::TargetType> tapa_opt_target(
     "target", llvm::cl::desc("The target type, default to HLS"),
     llvm::cl::cat(tapa_option_category),
     llvm::cl::values(
-        llvm::cl::OptionEnumValue{"xilinx-aie",
-                                  TapaTargetAttr::TargetType::XilinxAIE,
-                                  "Xilinx AI Engine target"},
         llvm::cl::OptionEnumValue{"xilinx-hls",
                                   TapaTargetAttr::TargetType::XilinxHLS,
                                   "Xilinx HLS target (default)"},
