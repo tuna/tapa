@@ -42,10 +42,6 @@ const fn trim_ascii_end(input: &str) -> &str {
     }
 }
 
-pub fn version_string() -> &'static str {
-    VERSION
-}
-
 pub fn run(_args: &VersionArgs, _ctx: &mut CliContext) -> Result<()> {
     let mut stdout = std::io::stdout().lock();
     stdout.write_all(VERSION.as_bytes())?;

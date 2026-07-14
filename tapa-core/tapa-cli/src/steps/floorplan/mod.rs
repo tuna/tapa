@@ -59,28 +59,6 @@ pub struct RunAutobridgeArgs {
     pub floorplan_config: PathBuf,
 }
 
-pub fn to_cli_argv_floorplan(args: &FloorplanArgs) -> Vec<String> {
-    let mut out = Vec::<String>::new();
-    if let Some(p) = &args.floorplan_path {
-        out.push("--floorplan-path".to_string());
-        out.push(p.display().to_string());
-    }
-    out
-}
-
-/// Render the autobridge args back to normalized CLI flags.
-///
-/// Used by composites (`generate-floorplan`,
-/// `compile-with-floorplan-dse`) for the parent composite's argv builder.
-pub fn to_cli_argv_run_autobridge(args: &RunAutobridgeArgs) -> Vec<String> {
-    vec![
-        "--device-config".to_string(),
-        args.device_config.display().to_string(),
-        "--floorplan-config".to_string(),
-        args.floorplan_config.display().to_string(),
-    ]
-}
-
 /// `tapa floorplan` dispatcher.
 ///
 /// `--floorplan-path` drives the graph rewrite;
