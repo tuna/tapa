@@ -1129,7 +1129,6 @@ dependencies = [
  "regex",
  "serde",
  "serde_json",
- "tapa-codegen",
  "tapa-rtl",
  "tapa-slotting",
  "tapa-task-graph",

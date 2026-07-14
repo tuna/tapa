@@ -5,7 +5,6 @@
 use std::collections::BTreeMap;
 
 use regex::Regex;
-use tapa_codegen::rtl_state::TopologyWithRtl;
 use tapa_task_graph::port::ArgCategory;
 use tapa_topology::program::Program;
 
@@ -148,80 +147,6 @@ pub fn get_top_level_ab_graph(
     add_port_iface_connections(program, &mut graph, &port_widths, preassignments)?;
     add_scalar_connections(program, &mut graph, &port_widths, fsm_name);
     Ok(graph)
-}
-
-/// Top-level `ABGraph` generation from RTL-bearing state.
-///
-/// Like `get_top_level_ab_graph`, but derives FIFO widths from attached
-/// RTL module ports instead of topology-only metadata.
-pub fn get_top_level_ab_graph_from_rtl(
-    state: &TopologyWithRtl,
-    preassignments: &BTreeMap<String, String>,
-    fsm_name: &str,
-) -> Result<ABGraph, FloorplanError> {
-    let program = &state.program;
-    let areas = collect_task_area(program);
-    let fifo_widths = collect_fifo_width_from_rtl(state);
-    let port_widths = collect_port_width(program);
-    let mut graph = get_basic_ab_graph(program, &areas, &fifo_widths);
-    add_port_iface_connections(program, &mut graph, &port_widths, preassignments)?;
-    add_scalar_connections(program, &mut graph, &port_widths, fsm_name);
-    Ok(graph)
-}
-
-/// Collect FIFO widths from attached RTL modules.
-///
-/// For each FIFO, finds the producer task's RTL module and extracts the
-/// port width from the parsed Verilog, matching `get_fifo_width`.
-#[must_use]
-pub fn collect_fifo_width_from_rtl(state: &TopologyWithRtl) -> BTreeMap<String, u64> {
-    let program = &state.program;
-    let top = &program.tasks[&program.top];
-    let mut widths = BTreeMap::new();
-
-    for (fifo_name, fifo) in &top.fifos {
-        if let Some(ref producer) = fifo.produced_by {
-            let producer_task_name = &producer.0;
-            // Try to get width from RTL module's parsed port widths,
-            // probing the producer's ports through the
-            // `("_V", "_r", "_s", "")` infix set. The slot-wrapper Verilog
-            // exposes stream ports as `{port}_s_din` / `{port}_s_dout` (33
-            // bits for a 32-bit payload + "eot" flag); without probing the
-            // `_s` infix, Rust falls back to the topology width and emits
-            // a FIFO edge one bit too narrow.
-            if let Some(mm) = state.module_map.get(producer_task_name) {
-                if let Some(instances) = top.tasks.get(producer_task_name) {
-                    if let Some(inst) = instances.get(producer.1 as usize) {
-                        for (port_name, arg) in &inst.args {
-                            if arg.arg == *fifo_name {
-                                if let Some(w) =
-                                    find_fifo_port_width(&mm.inner, port_name).or_else(|| {
-                                        find_fifo_port_width(
-                                            &mm.inner,
-                                            &logical_port_base(port_name),
-                                        )
-                                    })
-                                {
-                                    widths.insert(fifo_name.clone(), u64::from(w));
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        // Fallback to topology-based width
-        if !widths.contains_key(fifo_name) {
-            let topo_widths = collect_fifo_width(program);
-            if let Some(&w) = topo_widths.get(fifo_name) {
-                widths.insert(fifo_name.clone(), w);
-            } else {
-                widths.insert(fifo_name.clone(), 32);
-            }
-        }
-    }
-    widths
 }
 
 /// Port width: either a simple scalar width or MMAP (write, read) pair.
@@ -505,20 +430,6 @@ fn find_preassignment_region(
     Ok(region)
 }
 
-/// Look up a FIFO data port's bit-width on a producer RTL module, trying
-/// both `_din` (producer write side) and `_dout` (consumer read side on
-/// pass-through wrappers). Delegates to `tapa_rtl::VerilogModule::get_port_of`,
-/// which implements `get_port_of` infix-lookup and singleton-array
-/// fallback semantics.
-fn find_fifo_port_width(module: &tapa_rtl::VerilogModule, port_name: &str) -> Option<u32> {
-    for suffix in ["_din", "_dout"] {
-        if let Some(port) = module.get_port_of(port_name, suffix) {
-            return port.bit_width();
-        }
-    }
-    None
-}
-
 /// Convert a region format string (e.g., `SLOT_X0Y0:SLOT_X0Y0`) to slot name format.
 fn convert_region_format(region: &str) -> String {
     if region.contains(':') {
@@ -734,17 +645,6 @@ mod tests {
         assert!(widths.contains_key("fifo_0"), "keys: {widths:?}");
         // Stream FIFO data carries payload plus the TAPA eot bit.
         assert_eq!(widths["fifo_0"], 33);
-    }
-
-    #[test]
-    fn fifo_rtl_width_handles_scalar_and_ascending_ranges() {
-        let module = tapa_rtl::VerilogModule::parse(
-            "module producer(output wire flag_din, output wire [0:7] data_din); endmodule",
-        )
-        .expect("parse producer RTL");
-
-        assert_eq!(find_fifo_port_width(&module, "flag"), Some(1));
-        assert_eq!(find_fifo_port_width(&module, "data"), Some(8));
     }
 
     #[test]
