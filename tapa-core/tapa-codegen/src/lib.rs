@@ -191,9 +191,9 @@ fn instrument_upper_task(state: &mut TopologyWithRtl, task_name: &str) -> Result
     let (is_done_signals, instance_infos) =
         children::generate_child_signals(state, task_name, &mmap_conns, &mmap_slave_map);
 
-    fifos::instantiate_fifos(state, task_name);
+    fifos::instantiate_fifos(state, task_name)?;
 
-    fifos::connect_fifos(state, task_name);
+    fifos::connect_fifos(state, task_name)?;
 
     // Add M-AXI ports and crossbars (reuse pre-computed mmap connections)
     m_axi::add_m_axi_and_crossbars(state, task_name, &mmap_conns)?;

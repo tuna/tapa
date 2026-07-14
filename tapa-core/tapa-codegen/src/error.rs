@@ -16,6 +16,12 @@ pub enum CodegenError {
     #[error("invalid mmap connection: {0}")]
     InvalidMmapConnection(String),
 
+    #[error(
+        "cannot resolve width of FIFO '{0}': no producer stream port found in \
+         the attached RTL or the topology"
+    )]
+    FifoWidthUnresolved(String),
+
     #[error("RTL parse error: {0}")]
     RtlParse(#[from] tapa_rtl::ParseError),
 
