@@ -60,14 +60,6 @@ impl RemoteToolRunner {
     }
 }
 
-#[allow(
-    dead_code,
-    reason = "keeps configured-root access separate from per-session paths"
-)]
-fn remote_work_dir(session: &SshSession) -> String {
-    session.config().work_dir.clone()
-}
-
 /// Rewrite every occurrence of a local absolute path in `text` to its
 /// session-scoped remote equivalent. Longest-match-first ensures a
 /// path that is a prefix of another (e.g. `/a/b` vs `/a/b/c`) is not

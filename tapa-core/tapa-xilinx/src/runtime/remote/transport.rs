@@ -19,14 +19,6 @@ pub fn shell_quote(s: &str) -> String {
         .into_owned()
 }
 
-#[allow(
-    dead_code,
-    reason = "deprecated shlex::quote wrapper kept for API compat"
-)]
-fn _deprecated_shlex_quote(s: &str) -> String {
-    shell_quote(s)
-}
-
 /// Map a local absolute path to the corresponding remote path under
 /// the session's `rootfs/` prefix, preserving its layout after the
 /// leading `/`.
