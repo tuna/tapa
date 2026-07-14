@@ -19,8 +19,6 @@ DEFINE_string(cosim_work_dir, "",
               "if not empty, keep cosim artifacts in the specified directory");
 DEFINE_bool(cosim_work_dir_parallel, false,
             "create a unique work directory per concurrent cosim instance");
-DEFINE_string(cosim_executable, "",
-              "deprecated: fast cosim is linked in-process via libfrt");
 DEFINE_string(xsim_part_num, "",
               "if not empty, override the FPGA part number for xsim");
 DEFINE_string(cosim_simulator, "",
@@ -115,13 +113,13 @@ void ForwardFlagsToEnv(const std::string& bitstream) {
 
 }  // namespace
 
-namespace fpga::internal {
+namespace internal {
 
 void ForwardFlagsToEnvForTest(const std::string& bitstream) {
   ForwardFlagsToEnv(bitstream);
 }
 
-}  // namespace fpga::internal
+}  // namespace internal
 
 struct Instance::Impl {
   void* handle = nullptr;

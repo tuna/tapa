@@ -210,7 +210,6 @@ At `TAPA_CONCURRENCY=1` the processes still exchange data correctly through shar
 | `-cosim_work_dir_parallel` | Create a unique subdirectory per instance. Required when multiple kernels share `-cosim_work_dir`. |
 | `-cosim_simulator <backend>` | `xsim` (default, Linux only) or `verilator` (cross-platform). Applied to all instances. |
 | `-xsim_save_waveform` | Save simulation waveforms. Pair with `-cosim_work_dir`. |
-| `-cosim_executable <path>` | Deprecated. Fast cosim now runs in-process via `libfrt`; this flag is ignored. |
 | `-xsim_part_num <part>` | Target FPGA part number (e.g., `xcu280-fsvh2892-2L-e`). |
 | `TAPA_CONCURRENCY` | Environment variable. Limits the number of cosim processes that run simultaneously. |
 
