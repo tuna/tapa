@@ -116,9 +116,20 @@ pub fn get_tapa_ldflags() -> Vec<String> {
     for lib in &libs {
         out.push(format!("-L{}", lib.display()));
     }
-    for name in [
-        "tapa", "frt_cpp", "context", "thread", "frt", "glog", "gflags", "stdc++fs",
-    ] {
+    // The `-lfrt_cpp` C++ shim is folded into libtapa; `-lfrt` now resolves to
+    // the static libfrt.a (no shared libfrt.so is shipped). A shared library
+    // used to carry FRT's native dependencies transitively — with static
+    // linking they must be listed explicitly, after `-lfrt` (see
+    // `rustc --print native-static-libs` for the `frt` crate).
+    let mut names = vec![
+        "tapa", "frt", "context", "thread", "glog", "gflags", "stdc++fs",
+    ];
+    if cfg!(target_os = "macos") {
+        names.extend(["lzma", "bz2", "iconv"]);
+    } else {
+        names.extend(["OpenCL", "lzma", "bz2"]);
+    }
+    for name in names {
         out.push(format!("-l{name}"));
     }
     out
@@ -305,14 +316,16 @@ mod tests {
     #[test]
     fn tapa_ldflags_do_not_reference_unbundled_runtime_deps() {
         let flags = get_tapa_ldflags();
+        // The frt_cpp C++ shim is folded into libtapa; the rest are bundled
+        // inside the static Rust FRT. Never referenced as separate libraries.
         for removed in [
             "-lasio",
             "-lfilesystem",
-            "-lOpenCL",
             "-lminizip_ng",
             "-ltinyxml2",
             "-lz",
             "-lyaml-cpp",
+            "-lfrt_cpp",
         ] {
             assert!(
                 !flags.contains(&removed.to_string()),
@@ -321,18 +334,31 @@ mod tests {
         }
         for kept in [
             "-ltapa",
-            "-lfrt_cpp",
+            // Static libfrt.a (no shared libfrt.so).
+            "-lfrt",
             "-lcontext",
             "-lthread",
-            "-lfrt",
             "-lglog",
             "-lgflags",
             "-lstdc++fs",
+            // Native dependencies of the statically-linked Rust FRT.
+            "-llzma",
+            "-lbz2",
         ] {
             assert!(
                 flags.contains(&kept.to_string()),
                 "missing linker flag {kept}"
             );
         }
+        // The remaining native FRT dep differs by host platform.
+        let platform_lib = if cfg!(target_os = "macos") {
+            "-liconv"
+        } else {
+            "-lOpenCL"
+        };
+        assert!(
+            flags.contains(&platform_lib.to_string()),
+            "missing platform linker flag {platform_lib}"
+        );
     }
 }

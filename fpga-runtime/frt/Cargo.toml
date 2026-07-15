@@ -6,8 +6,13 @@ edition = "2021"
 [lints]
 workspace = true
 
+# `staticlib` so libfrt.a can be linked privately into libtapa; `rlib` for the
+# crate's own unit tests. No `cdylib`: FRT has a single consumer (tapa-lib) and
+# no public interface, so it is statically embedded rather than shipped as a
+# separate shared object. The frt-dpi-* crates remain cdylibs (dlopened by the
+# simulators) and are unaffected.
 [lib]
-crate-type = ["cdylib", "rlib"]
+crate-type = ["staticlib", "rlib"]
 
 [dependencies]
 frt-cosim = { workspace = true }

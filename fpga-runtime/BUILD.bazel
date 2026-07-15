@@ -1,8 +1,8 @@
 """FPGA runtime Bazel targets backed by Rust Cargo crates."""
 
-load("@rules_cc//cc:defs.bzl", "cc_import")
+load("@rules_cc//cc:defs.bzl", "cc_import", "cc_library")
 load("@rules_pkg//pkg:mappings.bzl", "pkg_filegroup", "pkg_files", "strip_prefix")
-load("//bazel:cargo_rules.bzl", "cargo_platform_artifacts", "cargo_test")
+load("//bazel:cargo_rules.bzl", "cargo_artifacts", "cargo_platform_artifacts", "cargo_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -16,8 +16,6 @@ cargo_platform_artifacts(
         ],
     ),
     outs = [
-        "cargo/libfrt.dylib",
-        "cargo/libfrt.so",
         "cargo/libfrt_dpi_verilator.dylib",
         "cargo/libfrt_dpi_verilator.so",
         "cargo/libfrt_dpi_xsim.dylib",
@@ -25,21 +23,40 @@ cargo_platform_artifacts(
     ],
     build_args = [
         "-p",
-        "frt",
-        "-p",
         "frt-dpi-verilator",
         "-p",
         "frt-dpi-xsim",
     ],
     darwin_artifacts = [
-        "libfrt.dylib:cargo/libfrt.dylib",
         "libfrt_dpi_verilator.dylib:cargo/libfrt_dpi_verilator.dylib",
         "libfrt_dpi_xsim.dylib:cargo/libfrt_dpi_xsim.dylib",
     ],
     linux_artifacts = [
-        "libfrt.so:cargo/libfrt.so",
         "libfrt_dpi_verilator.so:cargo/libfrt_dpi_verilator.so",
         "libfrt_dpi_xsim.so:cargo/libfrt_dpi_xsim.so",
+    ],
+    local = True,
+    manifest = "Cargo.toml",
+    tags = ["local"],
+)
+
+# The `frt` crate builds as a staticlib (libfrt.a); its filename is identical on
+# both platforms, so it uses the non-platform artifact rule rather than the
+# dylib/so platform split above.
+cargo_artifacts(
+    name = "cargo_static_lib",
+    srcs = glob(
+        ["**/*"],
+        exclude = [
+            "BUILD.bazel",
+            "target/**",
+        ],
+    ),
+    outs = ["cargo/libfrt.a"],
+    artifacts = ["libfrt.a:cargo/libfrt.a"],
+    build_args = [
+        "-p",
+        "frt",
     ],
     local = True,
     manifest = "Cargo.toml",
@@ -82,18 +99,50 @@ cargo_test(
     ],
 )
 
+# The Rust FRT is embedded privately and statically into libtapa. alwayslink
+# pulls in every object so the full frt_instance_*/frt_shmq_* C ABI is available
+# to tapa-lib even though only a subset is referenced from any one translation
+# unit.
 cc_import(
-    name = "frt_rust_cdylib",
-    shared_library = select({
-        "//bazel:is_macos": "cargo/libfrt.dylib",
-        "//conditions:default": "cargo/libfrt.so",
-    }),
+    name = "frt_rust_staticlib",
+    static_library = "cargo/libfrt.a",
+    alwayslink = True,
 )
 
+# Wrapper carrying (a) the native system libraries the Rust staticlib depends on
+# (from `rustc --print native-static-libs`) and (b) the flag that keeps FRT's
+# symbols out of libtapa's dynamic export table. The exact Linux native-lib set
+# is confirmed by CI, which builds the linux-only `//tapa-lib:tapa`.
+cc_library(
+    name = "frt",
+    linkopts = select({
+        "//bazel:is_macos": [
+            "-llzma",
+            "-lbz2",
+            "-liconv",
+        ],
+        "//conditions:default": [
+            "-lOpenCL",
+            "-llzma",
+            "-lbz2",
+            "-lpthread",
+            "-ldl",
+            "-lrt",
+            "-lm",
+            # Keep FRT / OpenCL / Rust-std symbols internal to libtapa.
+            "-Wl,--exclude-libs,libfrt.a",
+        ],
+    }),
+    deps = [":frt_rust_staticlib"],
+)
+
+# FRT ships as a static archive (libfrt.a) that host links pull in privately;
+# no shared libfrt.so. The DPI plugins remain shared objects (dlopened by the
+# simulators at runtime).
 pkg_files(
     name = "pkg-lib",
     srcs = [
-        "cargo/libfrt.so",
+        "cargo/libfrt.a",
         "cargo/libfrt_dpi_verilator.so",
         "cargo/libfrt_dpi_xsim.so",
     ],

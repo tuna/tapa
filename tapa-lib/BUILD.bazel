@@ -80,7 +80,7 @@ cc_library(
     target_compatible_with = ["@platforms//os:linux"],
     visibility = ["//visibility:public"],
     deps = [
-        "//fpga-runtime:frt_rust_cdylib",
+        "//fpga-runtime:frt",
         "@boost//:coroutine2",
         "@boost//:thread",
         "@gflags",
@@ -114,7 +114,7 @@ cc_library(
     includes = ["."],
     visibility = ["//visibility:public"],
     deps = [
-        "//fpga-runtime:frt_rust_cdylib",
+        "//fpga-runtime:frt",
         "@gflags",
         "@glog",
     ],
