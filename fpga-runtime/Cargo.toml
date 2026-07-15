@@ -149,4 +149,8 @@ tempfile = "3"
 thiserror = "2"
 tracing = "0.1"
 which = "7"
-zip = "2"
+# Only deflate/stored are needed to read Vitis .xo packages; dropping the
+# default bzip2/lzma/zstd features avoids linking their system libraries
+# (liblzma/libbz2), which the hermetic Bazel C++ toolchain sysroot lacks when
+# libfrt.a is statically linked into host binaries.
+zip = { version = "2", default-features = false, features = ["deflate"] }

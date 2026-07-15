@@ -117,14 +117,10 @@ cc_library(
     name = "frt",
     linkopts = select({
         "//bazel:is_macos": [
-            "-llzma",
-            "-lbz2",
             "-liconv",
         ],
         "//conditions:default": [
             "-lOpenCL",
-            "-llzma",
-            "-lbz2",
             "-lpthread",
             "-ldl",
             "-lrt",

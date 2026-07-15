@@ -125,9 +125,9 @@ pub fn get_tapa_ldflags() -> Vec<String> {
         "tapa", "frt", "context", "thread", "glog", "gflags", "stdc++fs",
     ];
     if cfg!(target_os = "macos") {
-        names.extend(["lzma", "bz2", "iconv"]);
+        names.push("iconv");
     } else {
-        names.extend(["OpenCL", "lzma", "bz2"]);
+        names.extend(["OpenCL", "pthread", "dl", "rt", "m"]);
     }
     for name in names {
         out.push(format!("-l{name}"));
@@ -326,6 +326,9 @@ mod tests {
             "-lz",
             "-lyaml-cpp",
             "-lfrt_cpp",
+            // Dropped with the zip crate's default features; no longer linked.
+            "-llzma",
+            "-lbz2",
         ] {
             assert!(
                 !flags.contains(&removed.to_string()),
@@ -341,9 +344,6 @@ mod tests {
             "-lglog",
             "-lgflags",
             "-lstdc++fs",
-            // Native dependencies of the statically-linked Rust FRT.
-            "-llzma",
-            "-lbz2",
         ] {
             assert!(
                 flags.contains(&kept.to_string()),
