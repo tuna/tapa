@@ -19,7 +19,7 @@ fn to_json(design: &Design) -> String {
 fn parse_vadd_design() {
     let d = Design::from_json(&fixture("vadd_design.json")).expect("parse vadd");
     assert_eq!(d.top, "VecAdd", "top task");
-    assert_eq!(d.target, "xilinx-hls", "target");
+    assert_eq!(d.target.as_str(), "xilinx-hls", "target");
     assert_eq!(d.tasks.len(), 4, "task count");
 }
 
@@ -134,7 +134,7 @@ fn slots_round_trip() {
 #[test]
 fn unknown_top_level_field_rejected() {
     let json = r#"{
-        "top": "T", "target": "hls",
+        "top": "T", "target": "xilinx-hls",
         "tasks": {},
         "extra_top_field": "rejected"
     }"#;
@@ -167,7 +167,7 @@ fn annotation_round_trip() {
 
 #[test]
 fn missing_top_field() {
-    let json = r#"{"target": "hls", "tasks": {}}"#;
+    let json = r#"{"target": "xilinx-hls", "tasks": {}}"#;
     let err = Design::from_json(json).unwrap_err();
     let msg = err.to_string();
     assert!(
@@ -179,7 +179,7 @@ fn missing_top_field() {
 #[test]
 fn invalid_level() {
     let json = r#"{
-        "top": "T", "target": "hls",
+        "top": "T", "target": "xilinx-hls",
         "tasks": {"T": {"level": "invalid", "code": "", "target": "hls"}}
     }"#;
     let err = Design::from_json(json).unwrap_err();
@@ -199,7 +199,7 @@ fn empty_input() {
 #[test]
 fn invalid_port_category_rejected() {
     let json = r#"{
-        "top": "T", "target": "hls",
+        "top": "T", "target": "xilinx-hls",
         "tasks": {"T": {"level": "lower", "code": "", "target": "hls",
             "ports": [{"cat": "not_a_real_cat", "name": "x", "type": "int", "width": 32}]}}
     }"#;
@@ -214,7 +214,7 @@ fn invalid_port_category_rejected() {
 #[test]
 fn invalid_instance_arg_category_rejected() {
     let json = r#"{
-        "top": "T", "target": "hls",
+        "top": "T", "target": "xilinx-hls",
         "tasks": {"T": {"level": "upper", "code": "", "target": "hls",
             "tasks": {"C": [{"args": {"p": {"arg": "x", "cat": "bogus"}}, "step": 0}]},
             "fifos": {}}}
@@ -230,7 +230,7 @@ fn invalid_instance_arg_category_rejected() {
 #[test]
 fn hmap_port_category_round_trips_as_mmap() {
     let json = r#"{
-        "top": "T", "target": "hls",
+        "top": "T", "target": "xilinx-hls",
         "tasks": {"T": {"name": "T", "level": "lower", "code": "", "target": "hls",
             "is_slot": false, "clock_period": "0",
             "ports": [{"cat": "hmap", "name": "data", "type": "float*", "width": 32}]}}

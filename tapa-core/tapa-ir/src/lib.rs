@@ -7,6 +7,7 @@ pub mod graph;
 pub mod instance;
 pub mod interconnect;
 pub mod port;
+pub mod target;
 pub mod task;
 pub mod transforms;
 
@@ -18,5 +19,6 @@ pub use graph::Graph;
 pub use instance::{Arg, TaskInstance};
 pub use interconnect::{EndpointRef, InterconnectDefinition};
 pub use port::{ArgCategory, Port};
+pub use target::Target;
 pub use task::{TaskDefinition, TaskLevel};
 pub use transforms::{flatten, TransformError};

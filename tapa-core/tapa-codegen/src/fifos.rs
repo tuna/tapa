@@ -389,8 +389,8 @@ pub(crate) fn connect_fifos(
                 .find(|p| p.name == *fifo_name || p.name == logical_fifo_name)
                 .ok_or_else(|| CodegenError::FifoWidthUnresolved(fifo_name.clone()))?
                 .width;
-            let is_vitis_top_axis =
-                task_name == state.design.top && state.design.target == "xilinx-vitis";
+            let is_vitis_top_axis = task_name == state.design.top
+                && state.design.target == tapa_ir::Target::XilinxVitis;
             if let Some(mm) = state.module_map.get_mut(task_name) {
                 let suffixes: &[&str] = if *has_consumer {
                     ISTREAM_SUFFIXES

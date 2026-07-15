@@ -371,7 +371,7 @@ mod tests {
         );
         Design {
             top: "Add".to_string(),
-            target: "xilinx-hls".to_string(),
+            target: tapa_ir::Target::XilinxHls,
             tasks,
             slot_task_name_to_fp_region: None,
         }

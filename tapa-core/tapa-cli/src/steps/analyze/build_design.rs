@@ -8,7 +8,7 @@
 use std::collections::BTreeMap;
 
 use indexmap::IndexMap;
-use tapa_ir::{flatten, Design, Graph, Task, TaskLevel};
+use tapa_ir::{flatten, Design, Graph, Target, Task, TaskLevel};
 
 use crate::error::{CliError, Result};
 
@@ -34,7 +34,7 @@ pub(super) fn is_top_leaf(graph: &Graph, top: &str) -> bool {
 /// Project the tapacc graph into a typed [`Design`] suitable for
 /// `<work_dir>/design.json`, dropping `vendor` and other analyzer-only
 /// keys.
-pub(super) fn build_design(top: &str, target: &str, graph: &Graph) -> Design {
+pub(super) fn build_design(top: &str, target: Target, graph: &Graph) -> Design {
     let tasks: BTreeMap<String, Task> = graph
         .tasks
         .iter()
@@ -43,7 +43,7 @@ pub(super) fn build_design(top: &str, target: &str, graph: &Graph) -> Design {
 
     Design {
         top: top.to_string(),
-        target: target.to_string(),
+        target,
         tasks,
         slot_task_name_to_fp_region: None,
     }

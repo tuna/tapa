@@ -305,7 +305,7 @@ mod tests {
         );
         let design = Design {
             top: "Top".to_string(),
-            target: "xilinx-hls".to_string(),
+            target: tapa_ir::Target::XilinxHls,
             tasks,
             slot_task_name_to_fp_region: None,
         };
@@ -371,7 +371,7 @@ mod tests {
         );
         let design = Design {
             top: "VecAdd".to_string(),
-            target: "xilinx-vitis".to_string(),
+            target: tapa_ir::Target::XilinxVitis,
             tasks,
             slot_task_name_to_fp_region: None,
         };
@@ -399,7 +399,7 @@ mod tests {
         tasks.insert("T".to_string(), leaf("T", "3.33", serde_json::json!({})));
         let design = Design {
             top: "T".to_string(),
-            target: "xilinx-hls".to_string(),
+            target: tapa_ir::Target::XilinxHls,
             tasks,
             slot_task_name_to_fp_region: None,
         };

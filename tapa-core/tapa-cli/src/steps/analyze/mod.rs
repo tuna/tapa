@@ -47,6 +47,17 @@ impl AnalyzeTarget {
     }
 }
 
+/// Bridge the clap arg enum to the schema enum stored in `design.json`.
+/// Keeps `tapa-ir` free of a clap dependency.
+impl From<AnalyzeTarget> for tapa_ir::Target {
+    fn from(target: AnalyzeTarget) -> Self {
+        match target {
+            AnalyzeTarget::XilinxVitis => Self::XilinxVitis,
+            AnalyzeTarget::XilinxHls => Self::XilinxHls,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Parser)]
 #[command(
     name = "analyze",
@@ -195,7 +206,7 @@ fn run_native(args: &AnalyzeArgs, ctx: &CliContext) -> Result<()> {
     let mut settings = settings_io::Settings::new();
     settings.insert("target".to_string(), json!(target_str));
     settings_io::store_settings(work_dir, &settings)?;
-    let design = build_design(&args.top, target_str, &graph);
+    let design = build_design(&args.top, args.target.into(), &graph);
     design_io::store_design(work_dir, &design)?;
 
     // Cache state for downstream chained steps in this process.
@@ -382,7 +393,7 @@ mod tests {
         // design.json must round-trip with the projected topology.
         let design = design_io::load_design(&ctx.work_dir).expect("load design");
         assert_eq!(design.top, "VecAdd");
-        assert_eq!(design.target, "xilinx-hls");
+        assert_eq!(design.target.as_str(), "xilinx-hls");
         assert!(design.tasks.contains_key("VecAdd"));
         assert!(design.tasks.contains_key("Add"));
         assert_eq!(design.tasks["VecAdd"].level, tapa_ir::TaskLevel::Upper);

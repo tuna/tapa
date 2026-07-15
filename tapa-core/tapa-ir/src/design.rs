@@ -15,6 +15,7 @@ use crate::error::ParseError;
 use crate::instance::TaskInstance;
 use crate::interconnect::InterconnectDefinition;
 use crate::port::Port;
+use crate::target::Target;
 use crate::task::TaskLevel;
 
 /// Per-task design dict, as serialized in `design.json`.
@@ -60,8 +61,9 @@ pub struct Task {
 pub struct Design {
     /// Top-level task name.
     pub top: String,
-    /// Target flow string, e.g. `"xilinx-vitis"`.
-    pub target: String,
+    /// Target flow, e.g. [`Target::XilinxVitis`]. Serializes as the
+    /// wire string `"xilinx-vitis"` / `"xilinx-hls"`.
+    pub target: Target,
     /// Tasks keyed by name, alphabetically sorted. `tapa analyze` writes
     /// the map sorted (it projects from the sorted graph), so a
     /// Rust -> Rust round-trip preserves byte-equality.
@@ -236,6 +238,6 @@ mod tests {
         let json = sample_design_json();
         let design = Design::from_reader(json.as_bytes()).expect("from_reader");
         assert_eq!(design.top, "VecAdd");
-        assert_eq!(design.target, "xilinx-vitis");
+        assert_eq!(design.target.as_str(), "xilinx-vitis");
     }
 }

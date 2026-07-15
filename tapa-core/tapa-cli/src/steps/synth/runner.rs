@@ -7,9 +7,10 @@
 
 use camino::Utf8PathBuf;
 use std::path::Path;
+use std::str::FromStr;
 
 use serde_json::{json, Value};
-use tapa_ir::Task;
+use tapa_ir::{Target, Task};
 use tapa_xilinx::{CsynthReport, ToolRunner};
 
 use crate::context::CliContext;
@@ -36,16 +37,17 @@ use super::SynthArgs;
 pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -> Result<()> {
     let mut design = design_io::load_design(&ctx.work_dir)?;
     let mut settings = settings_io::load_settings(&ctx.work_dir)?;
-    let target = settings
-        .get("target")
-        .and_then(Value::as_str)
-        .unwrap_or(&design.target)
-        .to_string();
-    if !matches!(target.as_str(), "xilinx-vitis" | "xilinx-hls") {
-        return Err(CliError::InvalidArg(format!(
-            "synth only supports the `xilinx-vitis` and `xilinx-hls` targets; \
-             got `{target}` in settings.json"
-        )));
+    // Validate the flow target early. `settings.json` holds it as an
+    // untyped string that may drift from `design.target`; when present it
+    // must parse into a supported flow. When absent, `design.target` is
+    // already a typed `Target`, so no check is needed.
+    if let Some(s) = settings.get("target").and_then(Value::as_str) {
+        Target::from_str(s).map_err(|_| {
+            CliError::InvalidArg(format!(
+                "synth only supports the `xilinx-vitis` and `xilinx-hls` targets; \
+                 got `{s}` in settings.json"
+            ))
+        })?;
     }
 
     let device = resolve_device_info(args)?;
@@ -415,7 +417,7 @@ mod tests {
         );
         let design = Design {
             top: "VecAdd".to_string(),
-            target: "xilinx-hls".to_string(),
+            target: Target::XilinxHls,
             tasks,
             slot_task_name_to_fp_region: None,
         };
