@@ -116,7 +116,7 @@ The full set of available fields (including `grouping_constraints`, `slot_to_rty
 
 ## Further reading
 
-[Performance Tuning](../howto/performance-tuning.md) covers the `--gen-ab-graph` and `--gen-graphir` flags, which produce visual and structural representations of the task graph useful for diagnosing floorplan decisions.
+[Performance Tuning](../howto/performance-tuning.md) covers the `--gen-ab-graph` flag, which produces a structural representation of the task graph useful for diagnosing floorplan decisions.
 
 ---
 

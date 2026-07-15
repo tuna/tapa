@@ -84,7 +84,7 @@ tapa synth --nonpipeline-fifos fifos.json ...
 ["fifo_a", "fifo_b"]
 ```
 
-After synthesis, TAPA writes `grouping_constraints.json` to the work directory. Pass this file to RapidStream or other floorplanning tools.
+After synthesis, TAPA writes `grouping_constraints.json` to the work directory. Pass this file to an external floorplanning tool.
 
 ### AutoBridge graph generation
 
@@ -99,27 +99,6 @@ tapa synth \
 
 `--floorplan-config` is required when `--gen-ab-graph` is used. It specifies the target device floorplan regions.
 
-### GraphIR generation
-
-Produce a GraphIR representation for RapidStream:
-
-```bash
-tapa synth \
-  --gen-graphir \
-  --device-config device.json \
-  --floorplan-path floorplan.json \
-  ...
-```
-
-Both `--device-config` and `--floorplan-path` are required:
-
-| Flag | Description |
-|------|-------------|
-| `--device-config PATH` | JSON file describing the physical device (SLR layout, DSP column positions, etc.) |
-| `--floorplan-path PATH` | Floorplan assignment file applied to the program before GraphIR is emitted |
-
-The output is `work.out/graphir.json`, suitable for consumption by RapidStream.
-
 ## Advanced flags summary
 
 | Flag | Description |
@@ -129,9 +108,6 @@ The output is `work.out/graphir.json`, suitable for consumption by RapidStream.
 | `--nonpipeline-fifos <json>` | Suppress pipeline registers for listed FIFOs; write `grouping_constraints.json`. |
 | `--gen-ab-graph` | Generate `ab_graph.json` for AutoBridge/RapidStream floorplanning. Requires `--floorplan-config`. |
 | `--floorplan-config PATH` | Device floorplan region description. Required with `--gen-ab-graph`. |
-| `--gen-graphir` | Generate `graphir.json` for RapidStream. Requires `--device-config` and `--floorplan-path`. |
-| `--device-config PATH` | Physical device description for GraphIR conversion. Required with `--gen-graphir`. |
-| `--floorplan-path PATH` | Floorplan assignment applied before GraphIR emission. Required with `--gen-graphir`. |
 
 ## If something goes wrong
 

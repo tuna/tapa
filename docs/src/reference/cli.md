@@ -111,9 +111,7 @@ Run Vitis HLS on each task to produce per-task Verilog RTL. Reads the task graph
 | `--enable-synth-util` | Run post-HLS RTL synthesis to produce per-task resource utilization estimates. |
 | `--nonpipeline-fifos JSON` | JSON specification of FIFOs for which pipeline registers should be suppressed. |
 | `--gen-ab-graph` | Generate `ab_graph.json` for AutoBridge/RapidStream floorplanning. |
-| `--gen-graphir` | Generate `graphir.json` for RapidStream. |
-| `--floorplan-config PATH` | Path to the floorplan configuration file. Used with `--gen-ab-graph` or `--gen-graphir`. |
-| `--device-config PATH` | Path to the device configuration file. Used with `--gen-graphir`. |
+| `--floorplan-config PATH` | Path to the floorplan configuration file. Used with `--gen-ab-graph`. |
 | `--floorplan-path PATH` | Path to an existing floorplan file to apply during synthesis. Requires `--flatten-hierarchy`. |
 
 ### Example
@@ -189,7 +187,7 @@ It also accepts the `tapa synth` flags (`--part-num`, `--platform`, `--clock-per
 
 Run floorplan design-space exploration end to end: generate candidate floorplans, then compile each one. Stage 1 calls `generate-floorplan`; stage 2 compiles once per solution, overriding `--floorplan-path` for each.
 
-Required flags match `tapa generate-floorplan` (`-f`, `-t`, `--device-config`, `--floorplan-config`). It additionally takes the `pack` flags (`-o`, `--custom-rtl`, `--bitstream-script`, `--graphir-path`) and forwards them to each stage-2 compile.
+Required flags match `tapa generate-floorplan` (`-f`, `-t`, `--device-config`, `--floorplan-config`). It additionally takes the `pack` flags (`-o`, `--custom-rtl`, `--bitstream-script`) and forwards them to each stage-2 compile.
 
 ```admonish note
 Because the composite drives both stages, it overrides some flags you may pass it directly: `--gen-ab-graph` is forced on for stage 1 and off for stage 2, and `--floorplan-path` is replaced per solution.
