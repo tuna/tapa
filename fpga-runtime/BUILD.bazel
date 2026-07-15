@@ -1,21 +1,10 @@
 """FPGA runtime Bazel targets backed by Rust Cargo crates."""
 
-load("@rules_cc//cc:defs.bzl", "cc_import", "cc_library", "cc_test")
+load("@rules_cc//cc:defs.bzl", "cc_import")
 load("@rules_pkg//pkg:mappings.bzl", "pkg_filegroup", "pkg_files", "strip_prefix")
 load("//bazel:cargo_rules.bzl", "cargo_platform_artifacts", "cargo_test")
 
 package(default_visibility = ["//visibility:public"])
-
-_PUBLIC_HEADERS = [
-    "frt.h",
-    "frt/arg_info.h",
-    "frt/buffer.h",
-    "frt/buffer_arg.h",
-    "frt/stream.h",
-    "frt/stream_arg.h",
-    "frt/stringify.h",
-    "frt/tag.h",
-]
 
 cargo_platform_artifacts(
     name = "cargo_release_artifacts",
@@ -101,80 +90,16 @@ cc_import(
     }),
 )
 
-cc_library(
-    name = "frt",
-    srcs = [
-        "frt_compat.cpp",
-    ],
-    hdrs = _PUBLIC_HEADERS,
-    includes = ["."],
-    target_compatible_with = ["@platforms//os:linux"],
-    deps = [
-        ":frt_rust_cdylib",
-        "@glog",
-    ],
-)
-
-cc_library(
-    name = "frt_cpp",
-    srcs = ["frt_compat.cpp"],
-    hdrs = _PUBLIC_HEADERS,
-    includes = ["."],
-    target_compatible_with = ["@platforms//os:linux"],
-    deps = [
-        ":frt_rust_cdylib",
-        "@glog",
-    ],
-)
-
-cc_library(
-    name = "frt-sim",
-    srcs = ["frt_compat.cpp"],
-    hdrs = _PUBLIC_HEADERS,
-    includes = ["."],
-    deps = [
-        ":frt_rust_cdylib",
-        "@glog",
-    ],
-)
-
-cc_test(
-    name = "frt-compat-env-test",
-    size = "small",
-    srcs = ["frt_compat_env_test.cpp"],
-    target_compatible_with = ["@platforms//os:linux"],
-    deps = [
-        ":frt_cpp",
-        "//tapa-lib:scoped_set_env",
-        "@gflags",
-        "@googletest//:gtest",
-        "@googletest//:gtest_main",
-    ],
-)
-
-filegroup(
-    name = "include",
-    srcs = _PUBLIC_HEADERS,
-)
-
 pkg_files(
     name = "pkg-lib",
     srcs = [
         "cargo/libfrt.so",
         "cargo/libfrt_dpi_verilator.so",
         "cargo/libfrt_dpi_xsim.so",
-        ":frt_cpp",
     ],
     prefix = "usr/lib",
     strip_prefix = strip_prefix.files_only(),
     target_compatible_with = ["@platforms//os:linux"],
-)
-
-pkg_files(
-    name = "pkg-include",
-    srcs = [":include"],
-    prefix = "usr/include",
-    strip_prefix = strip_prefix.from_pkg(""),
 )
 
 pkg_files(
@@ -191,7 +116,6 @@ pkg_files(
 pkg_filegroup(
     name = "pkg",
     srcs = [
-        ":pkg-include",
         ":pkg-lib",
     ],
     target_compatible_with = ["@platforms//os:linux"],

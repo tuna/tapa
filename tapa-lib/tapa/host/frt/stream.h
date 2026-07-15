@@ -1,7 +1,7 @@
 // Copyright (c) 2024 RapidStream Design Automation, Inc. and contributors.
 
-#ifndef FPGA_RUNTIME_STREAM_H_
-#define FPGA_RUNTIME_STREAM_H_
+#ifndef TAPA_HOST_FRT_STREAM_H_
+#define TAPA_HOST_FRT_STREAM_H_
 
 #include <array>
 #include <cstddef>
@@ -10,23 +10,12 @@
 
 #include <glog/logging.h>
 
-#include "frt/stream_arg.h"
-#include "frt/stringify.h"
-#include "frt/tag.h"
+#include "tapa/host/frt/c_api.h"
+#include "tapa/host/frt/types.h"
 
-extern "C" {
-void* frt_shmq_create(uint32_t depth, uint32_t width, char* out_path,
-                      size_t out_path_len);
-void frt_shmq_destroy(void* handle);
-int frt_shmq_empty(const void* handle);
-int frt_shmq_full(const void* handle);
-int frt_shmq_push(void* handle, const uint8_t* data, size_t len);
-int frt_shmq_front(const void* handle, uint8_t* out, size_t len);
-int frt_shmq_pop(void* handle, uint8_t* out, size_t len);
-}
-
-namespace fpga {
+namespace tapa {
 namespace internal {
+namespace frt {
 
 struct StreamFfiContext {
   std::string path;
@@ -46,6 +35,11 @@ class StreamBase : public StreamArg {
 
   StreamBase(const StreamBase&) = delete;
   StreamBase& operator=(const StreamBase&) = delete;
+
+  // Shared-memory path used to hand this stream to the FRT C ABI.
+  std::string path() const {
+    return this->template get<StreamFfiContext>().path;
+  }
 
  protected:
   bool empty() const {
@@ -111,7 +105,7 @@ class StreamBase : public StreamArg {
   void* handle_ = nullptr;
 };
 
-template <typename T, Tag tag>
+template <typename T, Tag tag = Tag::kReadWrite>
 class Stream;
 
 template <typename T>
@@ -126,7 +120,8 @@ class Stream<T, Tag::kReadWrite> : public StreamBase<T> {
   T front() const { return FromBinaryString<T>(this->front_bytes()); }
 };
 
+}  // namespace frt
 }  // namespace internal
-}  // namespace fpga
+}  // namespace tapa
 
-#endif  // FPGA_RUNTIME_STREAM_H_
+#endif  // TAPA_HOST_FRT_STREAM_H_

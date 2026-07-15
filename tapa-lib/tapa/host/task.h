@@ -20,28 +20,30 @@
 #include <type_traits>
 #include <utility>
 
-#include <frt.h>
+#include "tapa/host/frt/instance.h"
 
 namespace tapa {
 
 namespace internal {
 
-extern fpga::Instance* frt_sync_kernel_instance;
+extern frt::Instance* frt_sync_kernel_instance;
 extern "C" void kill_frt_sync_kernel(int);
 
 template <typename Param, typename Arg>
 struct accessor {
   static Param access(Arg&& arg, bool) { return arg; }
-  static void access(fpga::Instance& instance, int& idx, Arg&& arg) {
-    instance.SetArg(idx++, static_cast<Param>(arg));
+  static void access(frt::Instance& instance, int& idx, Arg&& arg) {
+    Param val = static_cast<Param>(arg);
+    instance.SetScalarArg(idx++, &val, sizeof(val));
   }
 };
 
 template <typename T>
 struct accessor<T, seq> {
   static T access(seq&& arg, bool) { return arg.pos++; }
-  static void access(fpga::Instance& instance, int& idx, seq&& arg) {
-    instance.SetArg(idx++, static_cast<T>(arg.pos++));
+  static void access(frt::Instance& instance, int& idx, seq&& arg) {
+    T val = static_cast<T>(arg.pos++);
+    instance.SetScalarArg(idx++, &val, sizeof(val));
   }
 };
 
@@ -56,7 +58,7 @@ void schedule_frt_instance(InstancePtr instance) {
     instance->Exec();
     instance->ReadFromDevice();
     while (!instance->IsFinished()) {
-      yield("fpga::Instance() is not finished");
+      yield("frt::Instance() is not finished");
     }
     instance->Finish();
   });
@@ -132,7 +134,7 @@ struct invoker {
   }
 
   template <typename Func, size_t... Is, typename... CapturedArgs>
-  static void set_fpga_args(fpga::Instance& instance, Func&& func,
+  static void set_fpga_args(frt::Instance& instance, Func&& func,
                             std::index_sequence<Is...>,
                             CapturedArgs&&... args) {
     int idx = 0;
@@ -145,7 +147,7 @@ struct invoker {
   template <typename... Args>
   static int64_t invoke_frt(F&& f, const std::string& bitstream,
                             Args&&... args) {
-    auto instance = fpga::Instance(bitstream);
+    auto instance = frt::Instance(bitstream);
 
     // Register SIGINT handler to kill the kernel.
     CHECK(frt_sync_kernel_instance == nullptr)
@@ -243,7 +245,7 @@ struct task {
       return invoke(std::forward<Func>(func), std::forward<Args>(args)...);
     }
 
-    auto instance = std::make_shared<fpga::Instance>(exe.path_);
+    auto instance = std::make_shared<internal::frt::Instance>(exe.path_);
     internal::invoker<Func>::set_fpga_args(*instance, std::forward<Func>(func),
                                            std::index_sequence_for<Args...>{},
                                            std::forward<Args>(args)...);
@@ -272,7 +274,7 @@ struct task {
   std::optional<internal::InvokeMode> mode_override;
 
  private:
-  task& invoke_frt(std::shared_ptr<fpga::Instance> instance);
+  task& invoke_frt(std::shared_ptr<internal::frt::Instance> instance);
 };
 
 }  // namespace tapa

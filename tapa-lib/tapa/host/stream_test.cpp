@@ -126,12 +126,12 @@ TEST_F(StreamLogTest, LoggingToNonexistentDirFails) {
 
 TEST(StringifyTest, TapaInternalElemToBinaryString) {
   const internal::elem_t<float> val = {.val = 1.f, .eot = true};
-  EXPECT_EQ(fpga::internal::ToBinaryString(val), "\0\0\x80?\x1"sv);
+  EXPECT_EQ(internal::frt::ToBinaryString(val), "\0\0\x80?\x1"sv);
 }
 
 TEST(StringifyTest, TapaInternalElemFromBinaryString) {
   const internal::elem_t<float> val =
-      fpga::internal::FromBinaryString<internal::elem_t<float>>(
+      internal::frt::FromBinaryString<internal::elem_t<float>>(
           "\0\0\x80?\x1"sv);
   EXPECT_TRUE(val.eot);
   EXPECT_EQ(val.val, 1.f);

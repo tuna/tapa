@@ -29,7 +29,7 @@
 #include <sys/sysctl.h>
 #endif
 
-#include <frt.h>
+#include "tapa/host/frt/instance.h"
 
 namespace tapa {
 
@@ -71,7 +71,7 @@ namespace tapa {
 namespace internal {
 
 // Killed via SIGINT when tapa::invoke synchronous kernel is running.
-fpga::Instance* frt_sync_kernel_instance = nullptr;
+frt::Instance* frt_sync_kernel_instance = nullptr;
 extern "C" void kill_frt_sync_kernel(int) {
   if (frt_sync_kernel_instance) {
     frt_sync_kernel_instance->Kill();
@@ -245,7 +245,7 @@ void schedule(bool detach, const std::function<void()>& f) {
   }
 }
 
-fpga::Instance* frt_sync_kernel_instance = nullptr;
+frt::Instance* frt_sync_kernel_instance = nullptr;
 extern "C" void kill_frt_sync_kernel(int) {
   if (frt_sync_kernel_instance) {
     frt_sync_kernel_instance->Kill();
@@ -321,7 +321,7 @@ void deallocate(void* addr, size_t length) {
 
 }  // namespace internal
 
-task& task::invoke_frt(std::shared_ptr<fpga::Instance> instance) {
+task& task::invoke_frt(std::shared_ptr<internal::frt::Instance> instance) {
   internal::schedule_frt_instance(std::move(instance));
   return *this;
 }

@@ -29,6 +29,10 @@ _PUBLIC_HEADERS = [
     "tapa/base/util.h",
     "tapa/compat.h",
     "tapa/host/coroutine.h",
+    "tapa/host/frt/c_api.h",
+    "tapa/host/frt/instance.h",
+    "tapa/host/frt/stream.h",
+    "tapa/host/frt/types.h",
     "tapa/host/logging.h",
     "tapa/host/mmap.h",
     "tapa/host/stream.h",
@@ -55,6 +59,8 @@ _PUBLIC_HEADERS = [
 cc_library(
     name = "tapa",
     srcs = [
+        "tapa/host/frt/flags.cpp",
+        "tapa/host/frt/instance.cpp",
         "tapa/host/private_scheduler.h",
         "tapa/host/private_util.cpp",
         "tapa/host/private_util.h",
@@ -74,9 +80,10 @@ cc_library(
     target_compatible_with = ["@platforms//os:linux"],
     visibility = ["//visibility:public"],
     deps = [
-        "//fpga-runtime:frt",
+        "//fpga-runtime:frt_rust_cdylib",
         "@boost//:coroutine2",
         "@boost//:thread",
+        "@gflags",
         "@glog",
     ],
 )
@@ -93,6 +100,8 @@ alias(
 cc_library(
     name = "tapa-sim",
     srcs = [
+        "tapa/host/frt/flags.cpp",
+        "tapa/host/frt/instance.cpp",
         "tapa/host/private_util.cpp",
         "tapa/host/private_util.h",
         "tapa/host/stream.cpp",
@@ -105,7 +114,8 @@ cc_library(
     includes = ["."],
     visibility = ["//visibility:public"],
     deps = [
-        "//fpga-runtime:frt-sim",
+        "//fpga-runtime:frt_rust_cdylib",
+        "@gflags",
         "@glog",
     ],
 )
@@ -126,7 +136,6 @@ cc_library(
     name = "scoped_set_env",
     hdrs = ["tapa/scoped_set_env.h"],
     includes = ["."],
-    visibility = ["//fpga-runtime:__pkg__"],
     deps = [
         "@glog",
     ],
@@ -145,7 +154,12 @@ cc_library(
 cc_test(
     name = "tapa-lib-test",
     size = "small",
-    srcs = glob(["tapa/**/*_test.cpp"]),
+    # `flags_test.cpp` has its own focused target (`:frt-flags-test`) so it is
+    # not swept into this catch-all test.
+    srcs = glob(
+        ["tapa/**/*_test.cpp"],
+        exclude = ["tapa/host/frt/flags_test.cpp"],
+    ),
     linkopts = ["-lstdc++fs"],
     target_compatible_with = ["@platforms//os:linux"],
     visibility = ["//visibility:public"],
@@ -153,6 +167,21 @@ cc_test(
         ":scoped_log_sink_mock",
         ":scoped_set_env",
         ":tapa",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "frt-flags-test",
+    size = "small",
+    srcs = ["tapa/host/frt/flags_test.cpp"],
+    target_compatible_with = ["@platforms//os:linux"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":scoped_set_env",
+        ":tapa",
+        "@gflags",
         "@googletest//:gtest",
         "@googletest//:gtest_main",
     ],

@@ -22,13 +22,14 @@
 #include <variant>
 #include <vector>
 
-#include <frt.h>
 #include <glog/logging.h>
 
 #include <unistd.h>
 
 #include "tapa/base/stream.h"
 #include "tapa/host/coroutine.h"
+#include "tapa/host/frt/instance.h"
+#include "tapa/host/frt/stream.h"
 #include "tapa/host/util.h"
 
 namespace tapa {
@@ -95,7 +96,7 @@ class base_queue : public type_erased_queue {
   virtual T front() const = 0;
 
   // Returns a stream suitable for passing to FRT. Crashes if incompatible.
-  virtual fpga::Stream<T>& get_frt_stream() = 0;
+  virtual frt::Stream<T>& get_frt_stream() = 0;
 
  protected:
   using type_erased_queue::type_erased_queue;
@@ -142,14 +143,14 @@ class locked_queue : public base_queue<T> {
     this->buffer.push_back(val);
   }
 
-  fpga::Stream<T>& get_frt_stream() override {
+  frt::Stream<T>& get_frt_stream() override {
     LOG(FATAL) << "Cannot pass this stream to FRT: " << this->get_name();
   }
 
   ~locked_queue() { this->check_leftover(); }
 };
 
-// `base_queue` backed by `fpga::Stream`
+// `base_queue` backed by `frt::Stream`
 template <typename T>
 class frt_queue : public base_queue<T> {
  public:
@@ -183,13 +184,13 @@ class frt_queue : public base_queue<T> {
   T pop() override { return stream_.pop(); };
   T front() const override { return stream_.front(); }
 
-  fpga::Stream<T>& get_frt_stream() override {
+  frt::Stream<T>& get_frt_stream() override {
     is_frt_arg_.store(true, std::memory_order_relaxed);
     return stream_;
   }
 
  private:
-  fpga::Stream<T> stream_;
+  frt::Stream<T> stream_;
   std::atomic<bool> is_frt_arg_ = false;
 };
 
@@ -753,7 +754,7 @@ constexpr bool dependent_false() {
                     "accessing stream as value is disallowed. you must use "   \
                     "\"i/ostream &\" as the formal parameter in a TAPA task"); \
     }                                                                          \
-    static void access(fpga::Instance& instance, int& idx,                     \
+    static void access(frt::Instance& instance, int& idx,                      \
                        stream<U, N> arg_ref arg) {                             \
       static_assert(dependent_false<T>(),                                      \
                     "accessing stream as value is disallowed. you must use "   \
@@ -777,7 +778,7 @@ TAPA_DEFINE_DISALLOWED_ACCESSOR(o, &)
                     "accessing stream as value is disallowed. you must use "   \
                     "\"i/ostream &\" as the formal parameter in a TAPA task"); \
     }                                                                          \
-    static void access(fpga::Instance& instance, int& idx,                     \
+    static void access(frt::Instance& instance, int& idx,                      \
                        io##stream<T>& arg) {                                   \
       static_assert(dependent_false<T>(),                                      \
                     "accessing stream as value is disallowed. you must use "   \
@@ -796,9 +797,10 @@ TAPA_DEFINE_DISALLOWED_ACCESSOR(o)
     static io##stream<T> access(stream<U, N> arg_ref arg, bool sequential) { \
       return arg;                                                            \
     }                                                                        \
-    static void access(fpga::Instance& instance, int& idx,                   \
+    static void access(frt::Instance& instance, int& idx,                    \
                        stream<U, N> arg_ref arg) {                           \
-      return instance.SetArg(idx++, arg.get_queue().get_frt_stream());       \
+      return instance.SetStreamArg(idx++,                                    \
+                                   arg.get_queue().get_frt_stream().path()); \
     }                                                                        \
   };
 
@@ -816,16 +818,16 @@ TAPA_DEFINE_DEVICE_ACCESSOR(unbound_, &)
 template <typename T>
 struct accessor<istream<T>&, istream<T>&> {
   static istream<T> access(istream<T>& arg, bool sequential) { return arg; }
-  static void access(fpga::Instance& instance, int& idx, istream<T>& arg) {
-    instance.SetArg(idx++, arg.get_queue().get_frt_stream());
+  static void access(frt::Instance& instance, int& idx, istream<T>& arg) {
+    instance.SetStreamArg(idx++, arg.get_queue().get_frt_stream().path());
   }
 };
 
 template <typename T>
 struct accessor<ostream<T>&, ostream<T>&> {
   static ostream<T> access(ostream<T>& arg, bool sequential) { return arg; }
-  static void access(fpga::Instance& instance, int& idx, ostream<T>& arg) {
-    instance.SetArg(idx++, arg.get_queue().get_frt_stream());
+  static void access(frt::Instance& instance, int& idx, ostream<T>& arg) {
+    instance.SetStreamArg(idx++, arg.get_queue().get_frt_stream().path());
   }
 };
 
@@ -837,10 +839,11 @@ struct accessor<ostream<T>&, ostream<T>&> {
                                 bool sequential) {                             \
       return arg.access_as_##io##stream();                                     \
     }                                                                          \
-    static void access(fpga::Instance& instance, int& idx,                     \
+    static void access(frt::Instance& instance, int& idx,                      \
                        streams<T, length, depth>& arg) {                       \
-      return instance.SetArg(                                                  \
-          idx++, arg.access_as_##io##stream().get_queue().get_frt_stream());   \
+      return instance.SetStreamArg(                                            \
+          idx++,                                                               \
+          arg.access_as_##io##stream().get_queue().get_frt_stream().path());   \
     }                                                                          \
   };                                                                           \
                                                                                \
@@ -861,10 +864,11 @@ struct accessor<ostream<T>&, ostream<T>&> {
         streams<T, arg_length, depth>& arg, bool sequential) {                 \
       return arg.template access_as_##io##streams<param_length>();             \
     }                                                                          \
-    static void access(fpga::Instance& instance, int& idx,                     \
+    static void access(frt::Instance& instance, int& idx,                      \
                        streams<T, arg_length, depth>& arg) {                   \
       for (int i = 0; i < param_length; ++i) {                                 \
-        instance.SetArg(idx++, arg[i].get_queue().get_frt_stream());           \
+        instance.SetStreamArg(idx++,                                           \
+                              arg[i].get_queue().get_frt_stream().path());     \
       }                                                                        \
     }                                                                          \
   };                                                                           \
