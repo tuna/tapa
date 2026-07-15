@@ -2,7 +2,7 @@
 //!
 //! Uses `nom` parser combinators for signal declarations and procedural
 //! block skipping, and `tree-sitter-systemverilog` for module headers,
-//! ports, parameters, and instance extraction.
+//! ports, and parameters.
 
 use nom::branch::alt;
 use nom::bytes::complete::{tag, take_until, take_while1};
@@ -20,8 +20,6 @@ use crate::pragma::Pragma;
 use crate::signal::{Signal, SignalKind};
 
 mod tree_sitter;
-
-pub(crate) use tree_sitter::nonblocking_assignment_targets;
 
 // ── Utility parsers ─────────────────────────────────────────────────
 
@@ -486,16 +484,6 @@ fn skip_line(input: &str) -> &str {
     }
 }
 
-/// Extract `(module_name, instance_name)` pairs for every submodule
-/// instantiation in a Verilog source string.
-///
-/// Delegates to a tree-sitter query that finds exact `module_instantiation`
-/// nodes, eliminating the need for heuristic text scanning.
-#[must_use]
-pub fn extract_instance_names(source: &str) -> Vec<(String, String)> {
-    tree_sitter::extract_instance_names(source)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -691,37 +679,6 @@ endmodule
         let m = parse_module(src).unwrap();
         assert!(m.pragmas.iter().any(|p| p.key == "DONT_TOUCH"));
         assert!(m.pragmas.iter().any(|p| p.key == "KEEP"));
-    }
-
-    #[test]
-    fn extract_instances_skips_declarations() {
-        let src = "
-module top;
-  wire w;
-  // comment
-  /* block */
-  child child_inst (
-    .a(1'b1)
-  );
-  assign w = 1;
-endmodule
-";
-        let insts = extract_instance_names(src);
-        assert_eq!(insts.len(), 1);
-        assert_eq!(insts[0].0, "child");
-        assert_eq!(insts[0].1, "child_inst");
-    }
-
-    #[test]
-    fn extract_instances_ignores_strings_with_parens() {
-        let src = r#"
-module top;
-  child u1 (.msg(")"));
-endmodule
-"#;
-        let insts = extract_instance_names(src);
-        assert_eq!(insts.len(), 1);
-        assert_eq!(insts[0].1, "u1");
     }
 
     #[test]

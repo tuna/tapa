@@ -391,19 +391,6 @@ impl TopologyWithRtl {
         };
         Ok((module_id_width.max(nested_id_width), threads))
     }
-
-    /// Get the top task name.
-    pub fn top_task_name(&self) -> &str {
-        &self.design.top
-    }
-
-    /// Check if a task is upper-level.
-    pub fn is_upper_task(&self, task_name: &str) -> bool {
-        self.design
-            .tasks
-            .get(task_name)
-            .is_some_and(|t| t.level == TaskLevel::Upper)
-    }
 }
 
 /// Compute parent-facing AXI ID width: 1 + ceil(log2(n)), minimum 1.

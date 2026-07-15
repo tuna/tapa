@@ -13,7 +13,6 @@ use std::sync::LazyLock;
 
 use crate::builder::{AlwaysBlock, ContinuousAssign, ModuleInstance};
 use crate::error::BuilderError;
-use crate::parser::nonblocking_assignment_targets;
 use crate::port::{Direction, Port, Width};
 use crate::signal::{Signal, SignalKind};
 use crate::VerilogModule;
@@ -111,27 +110,6 @@ impl MutableModule {
         Ok(())
     }
 
-    /// Ports after removals and additions, in emitted order.
-    pub fn effective_ports(&self) -> Vec<Port> {
-        self.inner
-            .ports
-            .iter()
-            .filter(|p| !self.removed_ports.contains(&p.name))
-            .chain(self.added_ports.iter())
-            .cloned()
-            .collect()
-    }
-
-    /// Signal kind visible in the emitted module.
-    pub fn effective_signal_kind(&self, name: &str) -> Option<SignalKind> {
-        self.inner
-            .signals
-            .iter()
-            .chain(self.added_signals.iter())
-            .find(|s| s.name == name)
-            .map(|s| s.kind)
-    }
-
     /// Add a module instance to the body.
     pub fn add_instance(&mut self, instance: ModuleInstance) {
         self.added_instances.push(instance);
@@ -183,25 +161,6 @@ impl MutableModule {
             if names.contains(signal.name.as_str()) && signal.kind == SignalKind::Reg {
                 signal.kind = SignalKind::Wire;
             }
-        }
-    }
-
-    /// Promote output ports that receive a nonblocking assignment
-    /// (`name <= ...`) anywhere in `body` to `reg` declarations, so the
-    /// emitted module header stays legal Verilog for procedurally
-    /// driven outputs.
-    pub fn promote_procedural_output_ports(&mut self, body: &str) {
-        let assigned = nonblocking_assignment_targets(body);
-        let to_promote: Vec<String> = self
-            .effective_ports()
-            .into_iter()
-            .filter(|p| {
-                p.direction == crate::port::Direction::Output && assigned.contains(p.name.as_str())
-            })
-            .map(|p| p.name)
-            .collect();
-        for name in to_promote {
-            self.ensure_signal_kind(&name, SignalKind::Reg);
         }
     }
 
@@ -674,46 +633,6 @@ endmodule
     }
 
     #[test]
-    fn procedural_output_promotion_uses_assignment_syntax() {
-        let source = "
-module AssignmentKinds (
-    input wire ap_clk,
-    input wire index,
-    output wire [1:0] indexed,
-    output wire compared,
-    output wire commented
-);
-always @(posedge ap_clk) begin
-    if (compared <= index) begin
-        indexed[index] <= 1'b1;
-    end
-    // commented <= 1'b1;
-end
-endmodule
-";
-        let module = VerilogModule::parse(source).unwrap();
-        let mut module = MutableModule::from_parsed(module);
-
-        module.promote_procedural_output_ports(source);
-
-        assert_eq!(
-            module.effective_signal_kind("indexed"),
-            Some(SignalKind::Reg),
-            "indexed nonblocking-assignment targets must be procedural outputs"
-        );
-        assert_eq!(
-            module.effective_signal_kind("compared"),
-            None,
-            "comparison operands are not assignment targets"
-        );
-        assert_eq!(
-            module.effective_signal_kind("commented"),
-            None,
-            "comment text is not an assignment target"
-        );
-    }
-
-    #[test]
     fn body_extraction_skips_compact_reg_declarations() {
         let source = "
 module CompactHlsStyle (
@@ -806,23 +725,6 @@ endmodule
         assert!(emitted.contains("wire ap_done;"), "got:\n{emitted}");
         assert!(emitted.contains("wire ap_idle;"), "got:\n{emitted}");
         assert!(emitted.contains("reg keep_reg;"), "got:\n{emitted}");
-    }
-
-    #[test]
-    fn effective_ports_include_added_reg_outputs() {
-        let module =
-            VerilogModule::parse("module Generated(input wire ap_clk);\nendmodule").unwrap();
-        let mut mm = MutableModule::from_parsed(module);
-        mm.add_port(simple_port("child_ap_start", Direction::Output))
-            .unwrap();
-        mm.add_signal(reg("child_ap_start")).unwrap();
-
-        let ports = mm.effective_ports();
-        assert!(ports.iter().any(|p| p.name == "child_ap_start"));
-        assert_eq!(
-            mm.effective_signal_kind("child_ap_start"),
-            Some(SignalKind::Reg)
-        );
     }
 
     #[test]

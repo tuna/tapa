@@ -251,57 +251,9 @@ fn is_macos() -> bool {
     cfg!(target_os = "macos")
 }
 
-/// Full `tapacc` argv (without the binary path itself).
-pub fn run_tapacc_argv(
-    files: &[PathBuf],
-    top: &str,
-    cflags: &[String],
-    target: &str,
-) -> Vec<String> {
-    let mut argv = Vec::<String>::new();
-    for f in files {
-        argv.push(f.display().to_string());
-    }
-    argv.push("-top".to_string());
-    argv.push(top.to_string());
-    argv.push("--target".to_string());
-    argv.push(target.to_string());
-    argv.push("--".to_string());
-    argv.extend(cflags.iter().cloned());
-    argv.push("-DTAPA_TARGET_DEVICE_".to_string());
-    argv.push("-DTAPA_TARGET_STUB_".to_string());
-    argv
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn run_tapacc_argv_has_expected_shape() {
-        let argv = run_tapacc_argv(
-            &[PathBuf::from("a.cpp"), PathBuf::from("b.cpp")],
-            "Top",
-            &["-DFOO=1".to_string(), "-Iinc".to_string()],
-            "xilinx-hls",
-        );
-        assert_eq!(
-            argv,
-            vec![
-                "a.cpp",
-                "b.cpp",
-                "-top",
-                "Top",
-                "--target",
-                "xilinx-hls",
-                "--",
-                "-DFOO=1",
-                "-Iinc",
-                "-DTAPA_TARGET_DEVICE_",
-                "-DTAPA_TARGET_STUB_",
-            ],
-        );
-    }
 
     #[test]
     fn version_key_sorts_numerically() {

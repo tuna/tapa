@@ -69,13 +69,11 @@ redundant_type_annotations = "deny"
 unsafe_op_in_unsafe_fn = "deny"
 
 [workspace.dependencies]
-base64 = "0.22"
 backon = "1"
 camino = { version = "1", features = ["serde1"] }
 clap = { version = "4", features = ["derive", "env", "wrap_help"] }
 directories = "6"
 env_logger = "0.11"
-evalexpr = "12"
 fs2 = "0.4"
 flate2 = "1"
 fs-err = "3"
@@ -103,7 +101,6 @@ tar = "0.4"
 tempfile = "3"
 thiserror = "2"
 tree-sitter = "0.25"
-tree-sitter-cpp = "0.23"
 tree-sitter-systemverilog = "0.3"
 typed-builder = "0.21"
 walkdir = "2"

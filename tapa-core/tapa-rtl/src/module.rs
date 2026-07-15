@@ -88,24 +88,6 @@ impl VerilogModule {
         }
         None
     }
-
-    /// Extract submodule instantiations from the raw source.
-    ///
-    /// Returns a list of `(module_name, instance_name)` pairs for every
-    /// `module_name #(...) instance_name (...);` occurrence in the
-    /// module body. Used by grouped-Verilog tests to compare exports on
-    /// the shape of their instance lists without a full syntactic
-    /// roundtrip.
-    ///
-    /// A minimal token scan recognizes an instantiation as
-    /// `ident [#(parens)] ident (parens);`. Comments,
-    /// `module`/`endmodule`, parameter/port/signal declarations, and
-    /// procedural blocks are skipped — only full instantiation
-    /// statements at the module body level are returned.
-    #[must_use]
-    pub fn instance_names(&self) -> Vec<(String, String)> {
-        parser::extract_instance_names(&self.source)
-    }
 }
 
 /// Match `name[idx]` and return `(name, idx)`.
@@ -288,58 +270,5 @@ mod tests {
     fn get_port_of_no_match() {
         let m = module(vec![port("other", "input")]);
         assert_eq!(m.get_port_of("missing", "_dout"), None);
-    }
-
-    #[test]
-    fn instance_names_extracts_single_fifo() {
-        let src = "
-module top (input clk, input rst);
-wire [32:0] d;
-fifo #(.DATA_WIDTH(33), .DEPTH(2)) fifo_0 (
-  .clk(clk), .reset(rst), .if_din(d), .if_dout()
-);
-endmodule
-";
-        let m = VerilogModule::parse(src).unwrap();
-        let insts = m.instance_names();
-        assert_eq!(insts, vec![("fifo".to_owned(), "fifo_0".to_owned())]);
-    }
-
-    #[test]
-    fn instance_names_extracts_multiple() {
-        let src = "
-module top (input clk);
-wire a, b;
-fifo_a fifo_0 (.clk(clk), .din(a), .dout(b));
-fifo_b #(.X(1)) fifo_1 (
-  .clk(clk),
-  .din(b)
-);
-// comment: fake_module fake_inst();
-endmodule
-";
-        let m = VerilogModule::parse(src).unwrap();
-        let insts = m.instance_names();
-        assert_eq!(
-            insts,
-            vec![
-                ("fifo_a".to_owned(), "fifo_0".to_owned()),
-                ("fifo_b".to_owned(), "fifo_1".to_owned()),
-            ]
-        );
-    }
-
-    #[test]
-    fn instance_names_skips_declarations() {
-        let src = "
-module top (input clk);
-parameter P = 32;
-wire [P-1:0] data;
-assign data = 0;
-endmodule
-";
-        let m = VerilogModule::parse(src).unwrap();
-        let insts = m.instance_names();
-        assert!(insts.is_empty(), "no instantiations, got {insts:?}");
     }
 }

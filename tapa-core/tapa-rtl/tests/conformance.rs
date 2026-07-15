@@ -1,6 +1,5 @@
 //! Conformance tests for `tapa-rtl` against real HLS-generated Verilog.
 
-use tapa_rtl::classify::{classify_port, classify_ports, HandshakeRole, PortClass};
 use tapa_rtl::module::VerilogModule;
 use tapa_rtl::port::Direction;
 use tapa_rtl::signal::SignalKind;
@@ -77,106 +76,7 @@ fn upper_level_has_stream_ports() {
     assert_eq!(ostream.direction, Direction::Output);
 }
 
-// ── Port classification ─────────────────────────────────────────────
-
-#[test]
-fn classify_lower_level_ports() {
-    let m = VerilogModule::parse(&fixture("LowerLevelTask.v")).expect("parse");
-    let classified = classify_ports(&m.ports);
-
-    // Handshake ports
-    let clk = classified.iter().find(|(n, _)| n == "ap_clk").unwrap();
-    assert_eq!(
-        clk.1,
-        PortClass::Handshake {
-            role: HandshakeRole::Clock
-        }
-    );
-
-    // Input stream
-    let istream_dout = classified
-        .iter()
-        .find(|(n, _)| n == "istream_s_dout")
-        .unwrap();
-    match &istream_dout.1 {
-        PortClass::IStream { base, suffix } => {
-            assert_eq!(base, "istream_s");
-            assert_eq!(suffix, "_dout");
-        }
-        other @ (PortClass::Handshake { .. }
-        | PortClass::MAxi { .. }
-        | PortClass::OStream { .. }
-        | PortClass::Unclassified) => panic!("expected IStream, got {other:?}"),
-    }
-
-    // Output stream
-    let ostream_din = classified
-        .iter()
-        .find(|(n, _)| n == "ostreams_s_din")
-        .unwrap();
-    match &ostream_din.1 {
-        PortClass::OStream { base, suffix } => {
-            assert_eq!(base, "ostreams_s");
-            assert_eq!(suffix, "_din");
-        }
-        other @ (PortClass::Handshake { .. }
-        | PortClass::MAxi { .. }
-        | PortClass::IStream { .. }
-        | PortClass::Unclassified) => panic!("expected OStream, got {other:?}"),
-    }
-
-    // Scalar
-    let scalar = classified.iter().find(|(n, _)| n == "scalar").unwrap();
-    assert_eq!(scalar.1, PortClass::Unclassified);
-}
-
-#[test]
-fn classify_handshake_ports_complete() {
-    let m = VerilogModule::parse(&fixture("LowerLevelTask.v")).expect("parse");
-    let clk = classify_port(m.find_port("ap_clk").unwrap());
-    let rst = classify_port(m.find_port("ap_rst_n").unwrap());
-    let start = classify_port(m.find_port("ap_start").unwrap());
-    let done = classify_port(m.find_port("ap_done").unwrap());
-    let idle = classify_port(m.find_port("ap_idle").unwrap());
-    let ready = classify_port(m.find_port("ap_ready").unwrap());
-
-    assert_eq!(
-        clk,
-        PortClass::Handshake {
-            role: HandshakeRole::Clock
-        }
-    );
-    assert_eq!(
-        rst,
-        PortClass::Handshake {
-            role: HandshakeRole::ResetN
-        }
-    );
-    assert_eq!(
-        start,
-        PortClass::Handshake {
-            role: HandshakeRole::Start
-        }
-    );
-    assert_eq!(
-        done,
-        PortClass::Handshake {
-            role: HandshakeRole::Done
-        }
-    );
-    assert_eq!(
-        idle,
-        PortClass::Handshake {
-            role: HandshakeRole::Idle
-        }
-    );
-    assert_eq!(
-        ready,
-        PortClass::Handshake {
-            role: HandshakeRole::Ready
-        }
-    );
-}
+// ── Port lookup ─────────────────────────────────────────────────────
 
 #[test]
 fn find_port_by_affixes() {

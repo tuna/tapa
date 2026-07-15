@@ -34,9 +34,6 @@ pub struct TaskDefinition {
     pub level: TaskLevel,
     /// Synthesis target (e.g. `"hls"`, `"ignore"`).
     pub target: String,
-    /// Vendor string (e.g. `"xilinx"`).
-    #[serde(default)]
-    pub vendor: String,
     /// External ports / interface definitions.
     #[serde(default)]
     pub ports: Vec<Port>,

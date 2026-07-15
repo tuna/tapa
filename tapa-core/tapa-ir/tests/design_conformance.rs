@@ -94,14 +94,6 @@ fn slots_floorplan_region() {
     assert_eq!(regions["SlotTask"], "SLOT_X0Y0:SLOT_X0Y0");
 }
 
-#[test]
-fn floorplan_slots_derived() {
-    let d = Design::from_json(&fixture("slots_design.json")).expect("parse");
-    let slots = d.floorplan_slots();
-    assert_eq!(slots.len(), 1, "one slot");
-    assert!(slots.contains(&"SlotTask".to_owned()));
-}
-
 // ── Round-trip tests ────────────────────────────────────────────────
 
 #[test]

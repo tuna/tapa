@@ -18,18 +18,6 @@ pub const HANDSHAKE_DONE: &str = "ap_done";
 pub const HANDSHAKE_IDLE: &str = "ap_idle";
 pub const HANDSHAKE_READY: &str = "ap_ready";
 
-pub const HANDSHAKE_INPUT_PORTS: &[&str] = &[HANDSHAKE_CLK, HANDSHAKE_RST_N, HANDSHAKE_START];
-pub const HANDSHAKE_OUTPUT_PORTS: &[&str] = &[HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY];
-
-// ── Clock / reset / sensitivity ─────────────────────────────────────
-
-/// `"posedge ap_clk"` — used as a sensitivity list in always blocks.
-pub const CLK_SENS_LIST: &str = "posedge ap_clk";
-
-// ── RTL file extension ──────────────────────────────────────────────
-
-pub const RTL_SUFFIX: &str = ".v";
-
 // ── Stream port suffixes ────────────────────────────────────────────
 
 pub const ISTREAM_SUFFIXES: &[&str] = &["_dout", "_empty_n", "_read"];
@@ -136,7 +124,6 @@ pub const S_AXI_LITE_CHANNELS: &[AxiChannelInfo] = &[
     },
 ];
 pub const M_AXI_PREFIX: &str = "m_axi_";
-pub const M_AXI_PARAM_PREFIX: &str = "C_M_AXI_";
 
 // ── M-AXI port widths ───────────────────────────────────────────────
 
@@ -287,17 +274,6 @@ pub static M_AXI_SUFFIXES_BY_CHANNEL: phf::Map<&'static str, AxiChannelInfo> = p
         ready: "_WREADY",
     },
 };
-
-// ── M-AXI parameter suffixes ────────────────────────────────────────
-
-pub const M_AXI_PARAM_SUFFIXES: &[&str] = &[
-    "_ID_WIDTH",
-    "_ADDR_WIDTH",
-    "_DATA_WIDTH",
-    "_PROT_VALUE",
-    "_CACHE_VALUE",
-    "_WSTRB_WIDTH",
-];
 
 // ── Tests ───────────────────────────────────────────────────────────
 

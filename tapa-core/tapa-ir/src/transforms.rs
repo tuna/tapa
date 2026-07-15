@@ -8,8 +8,6 @@ mod tests;
 
 use std::collections::BTreeMap;
 
-use serde_json::Value;
-
 use crate::graph::Graph;
 use crate::instance::{Arg, TaskInstance};
 use crate::interconnect::{EndpointRef, InterconnectDefinition};
@@ -26,10 +24,6 @@ pub enum TransformError {
     /// The top task is `lower`; flatten/floorplan both require an upper top.
     #[error("top task `{0}` is a leaf; cannot transform")]
     TopIsLeaf(String),
-
-    /// JSON conversion failure (used by [`flatten_value`]).
-    #[error("transform JSON failure: {0}")]
-    Json(String),
 }
 
 /// Build a fresh [`Graph`] with all leaf-task instances re-parented under
@@ -271,15 +265,6 @@ fn offset_array_binding(bound: &str, offset: u32) -> String {
         return format!("{base}[{}]{suffix}", base_idx + offset);
     }
     format!("{bound}[{offset}]")
-}
-
-/// Convenience wrapper: round-trip a `serde_json::Value` graph through
-/// the typed [`Graph`] schema and apply [`flatten`].
-pub fn flatten_value(value: &Value) -> Result<Value, TransformError> {
-    let typed: Graph =
-        serde_json::from_value(value.clone()).map_err(|e| TransformError::Json(e.to_string()))?;
-    let flat = flatten(&typed)?;
-    serde_json::to_value(&flat).map_err(|e| TransformError::Json(e.to_string()))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

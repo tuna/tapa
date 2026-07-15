@@ -88,16 +88,6 @@ impl Design {
         reader.read_to_string(&mut buf)?;
         Self::from_json(&buf)
     }
-
-    /// The names of the tasks flagged as floorplan slots.
-    #[must_use]
-    pub fn floorplan_slots(&self) -> Vec<String> {
-        self.tasks
-            .iter()
-            .filter(|(_, t)| t.is_slot)
-            .map(|(name, _)| name.clone())
-            .collect()
-    }
 }
 
 impl From<io::Error> for ParseError {

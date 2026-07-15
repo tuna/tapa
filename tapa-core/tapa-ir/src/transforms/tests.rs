@@ -91,7 +91,11 @@ fn flatten_preserves_top_metadata() {
     );
     assert_eq!(top.level, TaskLevel::Upper);
     assert_eq!(top.target, "hls");
-    assert_eq!(top.vendor, "xilinx");
+    // `vendor` is not a typed field; it round-trips through `extra`.
+    assert_eq!(
+        top.extra.get("vendor").and_then(|v| v.as_str()),
+        Some("xilinx")
+    );
 }
 
 /// Even an empty nested upper task must flatten without an error.

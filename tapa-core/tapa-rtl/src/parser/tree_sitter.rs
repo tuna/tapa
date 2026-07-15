@@ -1,9 +1,8 @@
 //! Tree-sitter helpers for Verilog parsing.
 //!
 //! Provides CST-based extraction for module headers, port declarations,
-//! parameter declarations, and submodule instantiations.
+//! and parameter declarations.
 
-use std::collections::BTreeSet;
 use std::sync::LazyLock;
 
 use streaming_iterator::StreamingIterator;
@@ -37,18 +36,6 @@ static Q_PORTS: LazyLock<Query> = LazyLock::new(|| {
 
 static Q_PARAMS: LazyLock<Query> = LazyLock::new(|| {
     Query::new(&sv_language(), "(parameter_declaration) @param").expect("Q_PARAMS parses")
-});
-
-static Q_INSTANCES: LazyLock<Query> = LazyLock::new(|| {
-    Query::new(&sv_language(), "(module_instantiation) @inst").expect("Q_INSTANCES parses")
-});
-
-static Q_NONBLOCKING_ASSIGNMENTS: LazyLock<Query> = LazyLock::new(|| {
-    Query::new(
-        &sv_language(),
-        "(nonblocking_assignment (variable_lvalue) @lhs)",
-    )
-    .expect("Q_NONBLOCKING_ASSIGNMENTS parses")
 });
 
 // ── Text helpers ────────────────────────────────────────────────────
@@ -318,43 +305,6 @@ fn extract_parameters_from_node(node: Node, src: &[u8]) -> Vec<Parameter> {
     params
 }
 
-// ── Instance extraction ─────────────────────────────────────────────
-
-fn extract_instances_from_node(node: Node, src: &[u8]) -> Vec<(String, String)> {
-    let mut out = Vec::new();
-    let mut module_name = None;
-    for i in 0..node.child_count() {
-        let child = node.child(i).unwrap();
-        match child.kind() {
-            "simple_identifier" | "hierarchical_identifier" => {
-                if module_name.is_none() {
-                    module_name = Some(text_of(child, src).to_owned());
-                }
-            }
-            "hierarchical_instance" => {
-                for j in 0..child.child_count() {
-                    let c = child.child(j).unwrap();
-                    if c.kind() == "name_of_instance" {
-                        for k in 0..c.child_count() {
-                            let d = c.child(k).unwrap();
-                            if d.kind() == "simple_identifier"
-                                || d.kind() == "hierarchical_identifier"
-                            {
-                                let inst_name = text_of(d, src).to_owned();
-                                if let Some(ref mn) = module_name {
-                                    out.push((mn.clone(), inst_name));
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    out
-}
-
 // ── Attribute parsing ───────────────────────────────────────────────
 
 fn parse_attribute_text(text: &str) -> Option<Pragma> {
@@ -521,75 +471,4 @@ pub fn parse_module_info(source: &str) -> Option<ModuleInfo> {
         ports,
         port_names,
     })
-}
-
-/// Extract `(module_name, instance_name)` pairs using tree-sitter.
-pub fn extract_instance_names(source: &str) -> Vec<(String, String)> {
-    let mut parser = sv_parser();
-    let Some(tree) = parser.parse(source.as_bytes(), None) else {
-        return Vec::new();
-    };
-    let root = tree.root_node();
-    let src = source.as_bytes();
-
-    let mut out = Vec::new();
-    let mut cursor = QueryCursor::new();
-    let mut matches = cursor.matches(&Q_INSTANCES, root, src);
-    while let Some(m) = matches.next() {
-        let inst_node = m.captures.first().unwrap().node;
-        out.extend(extract_instances_from_node(inst_node, src));
-    }
-    out
-}
-
-/// Return the base identifiers assigned by procedural nonblocking assignments.
-///
-/// The CST distinguishes `<=` assignments from comparison expressions and
-/// comments. Walking the captured lvalue also handles indexed targets such as
-/// `result[index]` without mistaking `index` for an assigned signal.
-pub fn nonblocking_assignment_targets(source: &str) -> BTreeSet<String> {
-    fn first_identifier(node: Node, src: &[u8]) -> Option<String> {
-        if matches!(node.kind(), "simple_identifier" | "escaped_identifier") {
-            return Some(text_of(node, src).to_owned());
-        }
-        for child in node.named_children(&mut node.walk()) {
-            if let Some(identifier) = first_identifier(child, src) {
-                return Some(identifier);
-            }
-        }
-        None
-    }
-
-    fn collect_lvalue_targets(node: Node, src: &[u8], targets: &mut BTreeSet<String>) {
-        for child in node.named_children(&mut node.walk()) {
-            match child.kind() {
-                "hierarchical_identifier" => {
-                    if let Some(identifier) = first_identifier(child, src) {
-                        targets.insert(identifier);
-                    }
-                }
-                // Concatenated and assignment-pattern lvalues contain nested
-                // variable_lvalue nodes. A select contains index expressions,
-                // which are deliberately not assignment targets.
-                "variable_lvalue"
-                | "assignment_pattern_variable_lvalue"
-                | "streaming_concatenation" => collect_lvalue_targets(child, src, targets),
-                _ => {}
-            }
-        }
-    }
-
-    let mut parser = sv_parser();
-    let Some(tree) = parser.parse(source.as_bytes(), None) else {
-        return BTreeSet::new();
-    };
-    let root = tree.root_node();
-    let src = source.as_bytes();
-    let mut targets = BTreeSet::new();
-    let mut cursor = QueryCursor::new();
-    let mut matches = cursor.matches(&Q_NONBLOCKING_ASSIGNMENTS, root, src);
-    while let Some(m) = matches.next() {
-        collect_lvalue_targets(m.captures[0].node, src, &mut targets);
-    }
-    targets
 }
