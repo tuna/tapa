@@ -113,7 +113,6 @@ sh_binary(
     srcs = ["tapa_wrapper.sh"],
     data = [
         ":tapa-cli",
-        "//fpga-runtime:include",
         "//tapa-cpp:gen-tapa-cpp",
         "//tapa-lib:extra-runtime-include",
         "//tapa-lib:include",
