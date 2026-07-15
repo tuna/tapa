@@ -48,10 +48,20 @@ struct Instance {
   std::map<std::string, Arg> args;  // child-port name -> binding
 };
 
+// A producer/consumer reference: the child instance that drives or drains a
+// FIFO, identified by task name and its index within that task's instance list
+// (serialized as the `[task, index]` endpoint pair).
+struct Endpoint {
+  std::string task;
+  uint32_t index = 0;
+};
+
 // A FIFO declared inside an upper task (`tapa::stream`/`tapa::streams`).
 struct StreamDecl {
   uint64_t depth = 0;
   const clang::VarDecl* decl = nullptr;
+  std::optional<Endpoint> produced_by;
+  std::optional<Endpoint> consumed_by;
 };
 
 // The typed model of one TAPA task. Built by the frontend with no source

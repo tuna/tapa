@@ -79,13 +79,52 @@ cc_test(
 )
 
 cc_library(
+    name = "names",
+    srcs = ["names.cpp"],
+    hdrs = ["names.h"],
+    copts = ["-fno-rtti"],
+    deps = ["@tapa-llvm-project//clang:tooling"],
+)
+
+cc_library(
     name = "discover",
     srcs = ["discover.cpp"],
     hdrs = ["discover.h"],
     copts = ["-fno-rtti"],
     deps = [
         ":classify",
+        ":names",
         ":program",
+        "@tapa-llvm-project//clang:tooling",
+    ],
+)
+
+cc_library(
+    name = "invoke_parser",
+    srcs = ["invoke_parser.cpp"],
+    hdrs = ["invoke_parser.h"],
+    copts = ["-fno-rtti"],
+    deps = [
+        ":classify",
+        ":discover",
+        ":names",
+        ":program",
+        ":type_args",
+        "@tapa-llvm-project//clang:tooling",
+    ],
+)
+
+cc_test(
+    name = "invoke_parser_test",
+    srcs = ["invoke_parser_test.cpp"],
+    copts = ["-fno-rtti"],
+    deps = [
+        ":discover",
+        ":invoke_parser",
+        ":program",
+        ":tapa_stub_decls",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
         "@tapa-llvm-project//clang:tooling",
     ],
 )

@@ -1,0 +1,305 @@
+#include "invoke_parser.h"
+
+#include <map>
+#include <memory>
+#include <optional>
+#include <string>
+
+#include "clang/AST/Expr.h"
+#include "clang/AST/ExprCXX.h"
+#include "clang/AST/Mangle.h"
+
+#include "classify.h"
+#include "discover.h"
+#include "names.h"
+#include "type_args.h"
+
+namespace tapa::cc {
+
+namespace {
+
+std::string ArrayNameAt(const std::string& name, int64_t i) {
+  return name + "[" + std::to_string(i) + "]";
+}
+
+std::optional<int64_t> EvalInt(const clang::ASTContext& ctx,
+                               const clang::Expr* expr) {
+  clang::Expr::EvalResult result;
+  if (expr->EvaluateAsInt(result, ctx)) {
+    return result.Val.getInt().getExtValue();
+  }
+  return std::nullopt;
+}
+
+// clang's getCustomDiagID requires a string-literal format (templated length).
+template <unsigned N>
+void Report(clang::ASTContext& ctx, clang::DiagnosticsEngine::Level level,
+            clang::SourceLocation loc, const char (&fmt)[N],
+            llvm::StringRef arg) {
+  clang::DiagnosticsEngine& diags = ctx.getDiagnostics();
+  const unsigned id = diags.getCustomDiagID(level, fmt);
+  clang::DiagnosticBuilder builder = diags.Report(loc, id);
+  builder.AddString(arg);
+}
+
+// step (bulk-synchronous mode), vector length, and whether an explicit instance
+// name is present, from the invoke method's template specialization arguments.
+struct InvokeMode {
+  int64_t step = 0;
+  uint64_t vec_length = 1;
+  bool has_name = false;
+};
+
+InvokeMode GetInvokeMode(const clang::CXXMemberCallExpr* invoke) {
+  InvokeMode mode;
+  const auto* method =
+      llvm::dyn_cast_or_null<clang::CXXMethodDecl>(invoke->getCalleeDecl());
+  if (method == nullptr) return mode;
+  const auto* spec_args = method->getTemplateSpecializationArgs();
+  if (spec_args == nullptr) return mode;
+  const auto args = spec_args->asArray();
+  using TA = clang::TemplateArgument;
+  if (!args.empty() && args[0].getKind() == TA::Integral) {
+    mode.step = args[0].getAsIntegral().getSExtValue();
+  }
+  if (args.size() > 1 && args[1].getKind() == TA::Integral) {
+    mode.vec_length = args[1].getAsIntegral().getZExtValue();
+  }
+  if (!args.empty() && args.back().getKind() == TA::Integral) {
+    mode.has_name = true;
+  }
+  return mode;
+}
+
+}  // namespace
+
+void ParseUpperTask(clang::ASTContext& ctx, TaskModel& task) {
+  const clang::FunctionDecl* func = task.def;
+  if (func == nullptr || !func->hasBody()) return;
+  const clang::Expr* task_obj = GetTapaTaskObject(func->getBody());
+  if (task_obj == nullptr) return;  // leaf task
+
+  const std::unique_ptr<clang::MangleContext> mangler(
+      clang::ItaniumMangleContext::create(ctx, ctx.getDiagnostics()));
+
+  // --- 1. Stream (FIFO) declarations. ---
+  for (const clang::Stmt* child : func->getBody()->children()) {
+    const auto* decl_stmt = llvm::dyn_cast<clang::DeclStmt>(child);
+    if (decl_stmt == nullptr || !decl_stmt->isSingleDecl()) continue;
+    const auto* var =
+        llvm::dyn_cast<clang::VarDecl>(decl_stmt->getSingleDecl());
+    if (var == nullptr) continue;
+    const std::string name = var->getNameAsString();
+    switch (ClassifyTapaType(var->getType())) {
+      case TapaKind::kStream:
+        task.streams[name] =
+            StreamDecl{static_cast<uint64_t>(
+                           IntTemplateArg(var->getType(), 1).value_or(0)),
+                       var, std::nullopt, std::nullopt};
+        break;
+      case TapaKind::kStreams: {
+        const uint64_t depth = IntTemplateArg(var->getType(), 2).value_or(0);
+        const int64_t n = IntTemplateArg(var->getType(), 1).value_or(0);
+        for (int64_t i = 0; i < n; ++i) {
+          task.streams[ArrayNameAt(name, i)] =
+              StreamDecl{depth, var, std::nullopt, std::nullopt};
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  // --- 2. Invocations. ---
+  // Access positions distribute an array argument (streams/mmaps) across the
+  // scalar ports it feeds, in order of appearance.
+  std::map<std::string, int> istreams_pos;
+  std::map<std::string, int> ostreams_pos;
+  std::map<std::string, int> mmaps_pos;
+  std::map<const clang::Expr*, int> seq_pos;
+
+  for (const clang::CXXMemberCallExpr* invoke : GetInvokes(task_obj)) {
+    const InvokeMode mode = GetInvokeMode(invoke);
+    bool has_executable = false;
+    std::string task_name;
+    const clang::FunctionDecl* callee = nullptr;
+
+    // Map an array argument to its i-th element name (wrapping on the array
+    // length); a scalar argument is returned unchanged.
+    auto array_element = [&](const std::string& name, int pos,
+                             const clang::DeclRefExpr* ref) -> std::string {
+      if (ref == nullptr) return name;
+      const TapaKind rk = ClassifyTapaType(ref->getType());
+      if (rk == TapaKind::kMmaps || rk == TapaKind::kIStreams ||
+          rk == TapaKind::kOStreams || rk == TapaKind::kStreams) {
+        const int64_t len = IntTemplateArg(ref->getType(), 1).value_or(0);
+        if (len <= 0) return name;
+        return ArrayNameAt(name, pos % len);
+      }
+      return name;
+    };
+
+    for (uint64_t i_vec = 0; i_vec < mode.vec_length; ++i_vec) {
+      for (unsigned i = 0; i < invoke->getNumArgs(); ++i) {
+        const clang::Expr* arg = invoke->getArg(i);
+
+        if (ClassifyTapaType(arg->getType()) == TapaKind::kExecutable) {
+          has_executable = true;
+          continue;
+        }
+
+        const auto* decl_ref = llvm::dyn_cast<clang::DeclRefExpr>(arg);
+        const auto* mat = llvm::dyn_cast<clang::MaterializeTemporaryExpr>(arg);
+        const auto* op_call =
+            mat ? llvm::dyn_cast<clang::CXXOperatorCallExpr>(mat->getSubExpr())
+                : nullptr;
+        const bool is_seq = ClassifyTapaType(arg->getType()) == TapaKind::kSeq;
+        const std::optional<int64_t> as_int = EvalInt(ctx, arg);
+        const bool is_int_literal =
+            !decl_ref && !op_call && !is_seq && as_int.has_value();
+
+        std::string arg_name;
+        if (decl_ref != nullptr) {
+          arg_name = decl_ref->getNameInfo().getAsString();
+        } else if (op_call != nullptr) {
+          const auto* base = llvm::dyn_cast<clang::DeclRefExpr>(
+              op_call->getArg(0)->IgnoreImplicit());
+          const int64_t idx = EvalInt(ctx, op_call->getArg(1)).value_or(0);
+          if (base != nullptr) {
+            arg_name = ArrayNameAt(base->getNameInfo().getAsString(), idx);
+          }
+        } else if (is_int_literal) {
+          arg_name = "64'd" + std::to_string(static_cast<uint64_t>(*as_int));
+        }
+
+        if (decl_ref != nullptr || op_call != nullptr || is_int_literal ||
+            is_seq) {
+          if (i == 0) {
+            callee = decl_ref == nullptr
+                         ? nullptr
+                         : llvm::dyn_cast_or_null<clang::FunctionDecl>(
+                               decl_ref->getDecl()->getAsFunction());
+            if (callee == nullptr) break;  // not a task reference
+            task_name = TaskName(*mangler, callee);
+            task.instances[task_name].push_back(
+                Instance{callee, task_name, mode.step, std::nullopt, {}});
+            continue;
+          }
+          if (callee == nullptr) continue;
+
+          const int skip = (mode.has_name ? 1 : 0) + (has_executable ? 1 : 0);
+          const int param_idx = static_cast<int>(i) - 1 - skip;
+          if (param_idx < 0 ||
+              param_idx >= static_cast<int>(callee->getNumParams())) {
+            continue;
+          }
+          const clang::ParmVarDecl* param = callee->getParamDecl(param_idx);
+          const std::string port = param->getNameAsString();
+          const TapaKind pk = ClassifyTapaType(param);
+
+          std::vector<Instance>& insts = task.instances[task_name];
+          const uint32_t inst_index = static_cast<uint32_t>(insts.size() - 1);
+
+          auto set_arg = [&](const std::string& a, const std::string& p,
+                             TapaKind cat) {
+            insts.back().args[p] = Arg{a, cat};
+          };
+          auto mark_consumer = [&](const std::string& a) {
+            auto it = task.streams.find(a);
+            if (it == task.streams.end()) return;
+            if (it->second.consumed_by.has_value()) {
+              Report(ctx, clang::DiagnosticsEngine::Error, arg->getBeginLoc(),
+                     "tapa::stream '%0' consumed more than once", a);
+            }
+            it->second.consumed_by = Endpoint{task_name, inst_index};
+          };
+          auto mark_producer = [&](const std::string& a) {
+            auto it = task.streams.find(a);
+            if (it == task.streams.end()) return;
+            if (it->second.produced_by.has_value()) {
+              Report(ctx, clang::DiagnosticsEngine::Error, arg->getBeginLoc(),
+                     "tapa::stream '%0' produced more than once", a);
+            }
+            it->second.produced_by = Endpoint{task_name, inst_index};
+          };
+
+          if (pk == TapaKind::kMmap || pk == TapaKind::kImmap ||
+              pk == TapaKind::kOmmap || pk == TapaKind::kAsyncMmap) {
+            set_arg(array_element(arg_name, mmaps_pos[arg_name]++, decl_ref),
+                    port, pk);
+          } else if (pk == TapaKind::kIStream) {
+            const std::string a =
+                array_element(arg_name, istreams_pos[arg_name]++, decl_ref);
+            mark_consumer(a);
+            set_arg(a, port, TapaKind::kIStream);
+          } else if (pk == TapaKind::kOStream) {
+            const std::string a =
+                array_element(arg_name, ostreams_pos[arg_name]++, decl_ref);
+            mark_producer(a);
+            set_arg(a, port, TapaKind::kOStream);
+          } else if (pk == TapaKind::kIStreams) {
+            const int64_t n = IntTemplateArg(param->getType(), 1).value_or(0);
+            for (int64_t j = 0; j < n; ++j) {
+              const std::string a =
+                  array_element(arg_name, istreams_pos[arg_name]++, decl_ref);
+              mark_consumer(a);
+              set_arg(a, ArrayNameAt(port, j), TapaKind::kIStream);
+            }
+          } else if (pk == TapaKind::kOStreams) {
+            const int64_t n = IntTemplateArg(param->getType(), 1).value_or(0);
+            for (int64_t j = 0; j < n; ++j) {
+              const std::string a =
+                  array_element(arg_name, ostreams_pos[arg_name]++, decl_ref);
+              mark_producer(a);
+              set_arg(a, ArrayNameAt(port, j), TapaKind::kOStream);
+            }
+          } else if (is_seq) {
+            set_arg("64'd" + std::to_string(seq_pos[arg]++), port,
+                    TapaKind::kNotTapa);
+          } else {
+            set_arg(arg_name, port, TapaKind::kNotTapa);  // scalar
+          }
+          continue;
+        }
+
+        if (const auto* str = llvm::dyn_cast<clang::StringLiteral>(arg)) {
+          if (i == 1 && mode.has_name && !task_name.empty()) {
+            task.instances[task_name].back().name = str->getString().str();
+            continue;
+          }
+        }
+
+        Report(ctx, clang::DiagnosticsEngine::Error, arg->getBeginLoc(),
+               "unexpected argument: %0", arg->getStmtClassName());
+      }
+    }
+  }
+
+  // --- 3. Stream validation. ---
+  for (auto it = task.streams.begin(); it != task.streams.end();) {
+    const bool produced = it->second.produced_by.has_value();
+    const bool consumed = it->second.consumed_by.has_value();
+    const clang::SourceLocation loc = it->second.decl != nullptr
+                                          ? it->second.decl->getBeginLoc()
+                                          : clang::SourceLocation();
+    if (!produced && !consumed) {
+      Report(ctx, clang::DiagnosticsEngine::Warning, loc, "unused stream: %0",
+             it->first);
+      it = task.streams.erase(it);
+    } else {
+      if (produced != consumed) {
+        if (consumed) {
+          Report(ctx, clang::DiagnosticsEngine::Error, loc,
+                 "consumed but not produced stream: %0", it->first);
+        } else {
+          Report(ctx, clang::DiagnosticsEngine::Error, loc,
+                 "produced but not consumed stream: %0", it->first);
+        }
+      }
+      ++it;
+    }
+  }
+}
+
+}  // namespace tapa::cc

@@ -7,9 +7,9 @@
 
 #include "clang/AST/Attr.h"
 #include "clang/AST/Mangle.h"
-#include "llvm/Support/raw_ostream.h"
 
 #include "classify.h"
+#include "names.h"
 
 namespace tapa::cc {
 
@@ -45,27 +45,6 @@ const clang::FunctionDecl* InvokeCallee(
   const auto* ref = llvm::dyn_cast<clang::DeclRefExpr>(arg0);
   if (ref == nullptr) return nullptr;
   return llvm::dyn_cast<clang::FunctionDecl>(ref->getDecl());
-}
-
-std::string MangledTaskName(clang::MangleContext& mangler,
-                            const clang::FunctionDecl* func) {
-  // "tapa_mangled" prefix so the emitted name never starts with '_' (which
-  // Vitis rejects), matching the old rewriter.
-  std::string name;
-  llvm::raw_string_ostream os(name);
-  os << "tapa_mangled";
-  mangler.mangleName(func, os);
-  os.flush();
-  return name;
-}
-
-std::string ReadableTaskName(const clang::ASTContext& ctx,
-                             const clang::FunctionDecl* func) {
-  std::string name;
-  llvm::raw_string_ostream os(name);
-  func->getNameForDiagnostic(os, ctx.getPrintingPolicy(), /*Qualified=*/true);
-  os.flush();
-  return name;
 }
 
 // clang's getCustomDiagID takes the format as a string-literal (templated on
