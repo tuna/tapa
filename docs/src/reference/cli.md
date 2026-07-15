@@ -110,9 +110,6 @@ Run Vitis HLS on each task to produce per-task Verilog RTL. Reads the task graph
 | `-j N` | Number of parallel HLS and post-synthesis jobs (default: available logical CPU count). |
 | `--enable-synth-util` | Run post-HLS RTL synthesis to produce per-task resource utilization estimates. |
 | `--nonpipeline-fifos JSON` | JSON specification of FIFOs for which pipeline registers should be suppressed. |
-| `--gen-ab-graph` | Generate `ab_graph.json` for AutoBridge/RapidStream floorplanning. |
-| `--floorplan-config PATH` | Path to the floorplan configuration file. Used with `--gen-ab-graph`. |
-| `--floorplan-path PATH` | Path to an existing floorplan file to apply during synthesis. Requires `--flatten-hierarchy`. |
 
 ### Example
 
@@ -141,59 +138,6 @@ Package per-task RTL from the work directory into a single output artifact. For 
 ```bash
 tapa --work-dir work.out pack -o vadd.xo
 ```
-
-## tapa floorplan
-
-Apply an existing floorplan to the stored program description. Run it between `tapa analyze` and `tapa synth` when you already hold a `floorplan.json` — for example one written by hand, or one produced by `tapa generate-floorplan`.
-
-### Optional flags
-
-| Flag | Description |
-|------|-------------|
-| `--floorplan-path FILE` | Floorplan to apply to the program description. |
-
-### Example
-
-```bash
-tapa --work-dir work.out analyze -f vadd.cpp -t VecAdd \
-  floorplan --floorplan-path floorplan.json \
-  synth --part-num xcu250-figd2104-2L-e --clock-period 3.33
-```
-
----
-
-## tapa generate-floorplan
-
-Search for floorplan solutions with AutoBridge and write them out. Takes the same inputs as `tapa synth` (it runs HLS to obtain per-task areas), plus a device config and a floorplan config.
-
-```admonish note
-This step requires `rapidstream-tapaopt`, which is no longer publicly available. Without it, write a `floorplan.json` yourself and apply it with `tapa floorplan`. See [Lab 6: Floorplan & DSE](../tutorials/lab-06-floorplan.md).
-```
-
-### Required flags
-
-| Flag | Description |
-|------|-------------|
-| `-f, --input FILE` | TAPA C++ source file. |
-| `-t, --top TASK` | Name of the top-level task. |
-| `--device-config FILE` | Device description used by the floorplanner. |
-| `--floorplan-config FILE` | Floorplanner configuration. |
-
-It also accepts the `tapa synth` flags (`--part-num`, `--platform`, `--clock-period`, `-j`, `--gen-ab-graph`, and so on), since it drives HLS to derive task areas.
-
----
-
-## tapa compile-with-floorplan-dse
-
-Run floorplan design-space exploration end to end: generate candidate floorplans, then compile each one. Stage 1 calls `generate-floorplan`; stage 2 compiles once per solution, overriding `--floorplan-path` for each.
-
-Required flags match `tapa generate-floorplan` (`-f`, `-t`, `--device-config`, `--floorplan-config`). It additionally takes the `pack` flags (`-o`, `--custom-rtl`, `--bitstream-script`) and forwards them to each stage-2 compile.
-
-```admonish note
-Because the composite drives both stages, it overrides some flags you may pass it directly: `--gen-ab-graph` is forced on for stage 1 and off for stage 2, and `--floorplan-path` is replaced per solution.
-```
-
----
 
 ## tapa g++
 

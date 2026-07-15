@@ -86,19 +86,6 @@ tapa synth --nonpipeline-fifos fifos.json ...
 
 After synthesis, TAPA writes `grouping_constraints.json` to the work directory. Pass this file to an external floorplanning tool.
 
-### AutoBridge graph generation
-
-Generate an `ab_graph.json` for AutoBridge/RapidStream partition-based floorplanning:
-
-```bash
-tapa synth \
-  --gen-ab-graph \
-  --floorplan-config floorplan.json \
-  ...
-```
-
-`--floorplan-config` is required when `--gen-ab-graph` is used. It specifies the target device floorplan regions.
-
 ## Advanced flags summary
 
 | Flag | Description |
@@ -106,8 +93,6 @@ tapa synth \
 | `--enable-synth-util` | Run post-HLS RTL synthesis to collect per-task resource utilization. |
 | `--disable-synth-util` | Do not run post-HLS RTL synthesis (default). |
 | `--nonpipeline-fifos <json>` | Suppress pipeline registers for listed FIFOs; write `grouping_constraints.json`. |
-| `--gen-ab-graph` | Generate `ab_graph.json` for AutoBridge/RapidStream floorplanning. Requires `--floorplan-config`. |
-| `--floorplan-config PATH` | Device floorplan region description. Required with `--gen-ab-graph`. |
 
 ## If something goes wrong
 
