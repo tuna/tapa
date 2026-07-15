@@ -1,0 +1,36 @@
+"""Frontend of the rewritten tapacc: AST -> typed program model (no rewrites)."""
+
+load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
+
+package(default_visibility = ["//tapacc:__subpackages__"])
+
+cc_library(
+    name = "classify",
+    srcs = ["classify.cpp"],
+    hdrs = ["classify.h"],
+    copts = ["-fno-rtti"],
+    deps = ["@tapa-llvm-project//clang:tooling"],
+)
+
+cc_library(
+    name = "program",
+    srcs = ["program.cpp"],
+    hdrs = ["program.h"],
+    copts = ["-fno-rtti"],
+    deps = [
+        ":classify",
+        "@tapa-llvm-project//clang:tooling",
+    ],
+)
+
+cc_test(
+    name = "classify_test",
+    srcs = ["classify_test.cpp"],
+    copts = ["-fno-rtti"],
+    deps = [
+        ":classify",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+        "@tapa-llvm-project//clang:tooling",
+    ],
+)
