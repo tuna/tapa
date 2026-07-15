@@ -14,7 +14,7 @@ use clap::{Parser, Subcommand};
 
 use crate::context::CliContext;
 use crate::error::{CliError, Result};
-use crate::steps::{analyze, find_clang_binary, floorplan, gcc, meta, pack, synth, version};
+use crate::steps::{analyze, find_clang_binary, gcc, meta, pack, synth, version};
 
 /// One link in the chained-step list. Each variant carries its step's
 /// `Args` (flags) plus a `chain_tail` positional that captures any
@@ -42,33 +42,10 @@ pub enum Step {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true, hide = true)]
         chain_tail: Vec<String>,
     },
-    /// Floorplan TAPA program and store the program description.
-    Floorplan {
-        #[command(flatten)]
-        args: floorplan::FloorplanArgs,
-        #[arg(trailing_var_arg = true, allow_hyphen_values = true, hide = true)]
-        chain_tail: Vec<String>,
-    },
-    /// Generate floorplan solution(s) via `AutoBridge`.
-    #[command(name = "generate-floorplan")]
-    GenerateFloorplan {
-        #[command(flatten)]
-        args: meta::GenerateFloorplanArgs,
-        #[arg(trailing_var_arg = true, allow_hyphen_values = true, hide = true)]
-        chain_tail: Vec<String>,
-    },
     /// Compile a TAPA program (analyze + synth + pack) in one invocation.
     Compile {
         #[command(flatten)]
         args: meta::CompileArgs,
-        #[arg(trailing_var_arg = true, allow_hyphen_values = true, hide = true)]
-        chain_tail: Vec<String>,
-    },
-    /// Compile a TAPA program with floorplan design space exploration.
-    #[command(name = "compile-with-floorplan-dse")]
-    CompileWithFloorplanDse {
-        #[command(flatten)]
-        args: meta::CompileWithFloorplanDseArgs,
         #[arg(trailing_var_arg = true, allow_hyphen_values = true, hide = true)]
         chain_tail: Vec<String>,
     },
@@ -150,10 +127,7 @@ impl Step {
             Self::Analyze { chain_tail, .. }
             | Self::Synth { chain_tail, .. }
             | Self::Pack { chain_tail, .. }
-            | Self::Floorplan { chain_tail, .. }
-            | Self::GenerateFloorplan { chain_tail, .. }
             | Self::Compile { chain_tail, .. }
-            | Self::CompileWithFloorplanDse { chain_tail, .. }
             | Self::Version { chain_tail, .. }
             | Self::FindClangBinary { chain_tail, .. } => Some(chain_tail),
             Self::Gpp { .. } => None,
@@ -167,14 +141,7 @@ impl Step {
             Self::Analyze { args, .. } => analyze::run(&args, ctx),
             Self::Synth { args, .. } => synth::run(&args, ctx),
             Self::Pack { args, .. } => pack::run(&args, ctx),
-            Self::Floorplan { args, .. } => floorplan::run_floorplan(&args, ctx),
-            Self::GenerateFloorplan { args, .. } => {
-                meta::run_generate_floorplan_composite(&args, ctx)
-            }
             Self::Compile { args, .. } => meta::run_compile_composite(&args, ctx),
-            Self::CompileWithFloorplanDse { args, .. } => {
-                meta::run_compile_with_floorplan_dse_composite(&args, ctx)
-            }
             Self::Gpp { args } => gcc::run(&args, ctx),
             Self::Version { args, .. } => version::run(&args, ctx),
             Self::FindClangBinary { args, .. } => find_clang_binary::run(&args, ctx),
@@ -348,24 +315,5 @@ mod tests {
             }
             other => panic!("expected Compile, got {other:?}"),
         }
-    }
-
-    #[test]
-    fn generate_floorplan_exposes_unioned_flag_surface() {
-        let cli = parse(&[
-            "generate-floorplan",
-            "--input",
-            "a.cpp",
-            "--top",
-            "T",
-            "--platform",
-            "p",
-            "--device-config",
-            "dev.json",
-            "--floorplan-config",
-            "fp.json",
-        ])
-        .expect("generate-floorplan must accept analyze+synth+autobridge flags");
-        assert!(matches!(cli.step, Some(Step::GenerateFloorplan { .. })));
     }
 }

@@ -1,8 +1,7 @@
 //! Tree-sitter helpers for Verilog parsing.
 //!
 //! Provides CST-based extraction for module headers, port declarations,
-//! parameter declarations, and submodule instantiations.  Keeps the
-//! traversal style consistent with `tapa-slotting/src/cpp_surgery.rs`.
+//! parameter declarations, and submodule instantiations.
 
 use std::collections::BTreeSet;
 use std::sync::LazyLock;

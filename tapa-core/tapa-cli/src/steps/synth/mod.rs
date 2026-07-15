@@ -1,8 +1,8 @@
 //! `tapa synth` orchestration.
 //!
-//! For the vadd-style happy path (`--platform <p>`, no DSE /
-//! floorplan, leaf children + one upper top), this module drives the
-//! full Vitis HLS + RTL codegen pipeline natively:
+//! For the vadd-style happy path (`--platform <p>`, leaf children +
+//! one upper top), this module drives the full Vitis HLS + RTL codegen
+//! pipeline natively:
 //!
 //!   1. Resolve the device (part / clock / platform) via
 //!      `tapa_xilinx::parse_device_info` and persist into
@@ -29,7 +29,6 @@ use crate::error::Result;
 
 mod cpp_extract;
 mod device_resolve;
-mod gen_ab_graph;
 mod grouping_constraints;
 mod hls_run;
 mod metrics;
@@ -89,21 +88,6 @@ pub struct SynthArgs {
 
     #[arg(long = "nonpipeline-fifos", value_name = "FILE")]
     pub nonpipeline_fifos: Option<PathBuf>,
-
-    #[arg(long = "gen-ab-graph", default_value_t = false)]
-    pub gen_ab_graph: bool,
-
-    #[arg(long = "no-gen-ab-graph", conflicts_with = "gen_ab_graph")]
-    pub no_gen_ab_graph: bool,
-
-    #[arg(long = "floorplan-config", value_name = "FILE")]
-    pub floorplan_config: Option<PathBuf>,
-
-    #[arg(long = "device-config", value_name = "FILE")]
-    pub device_config: Option<PathBuf>,
-
-    #[arg(long = "floorplan-path", value_name = "FILE")]
-    pub floorplan_path: Option<PathBuf>,
 }
 
 fn opt_str(out: &mut Vec<String>, flag: &str, value: Option<&str>) {
@@ -165,21 +149,6 @@ pub fn to_cli_argv(args: &SynthArgs) -> Vec<String> {
         "--nonpipeline-fifos",
         args.nonpipeline_fifos.as_ref(),
     );
-    out.push(
-        if args.gen_ab_graph {
-            "--gen-ab-graph"
-        } else {
-            "--no-gen-ab-graph"
-        }
-        .to_string(),
-    );
-    opt_path(
-        &mut out,
-        "--floorplan-config",
-        args.floorplan_config.as_ref(),
-    );
-    opt_path(&mut out, "--device-config", args.device_config.as_ref());
-    opt_path(&mut out, "--floorplan-path", args.floorplan_path.as_ref());
     out
 }
 

@@ -93,10 +93,7 @@ Subcommands (chainable, processed left-to-right like CLI chained group):
   analyze                       Analyze a TAPA program; persist graph.json + design.json.
   synth                         Synthesize the analyzed program into RTL.
   pack                          Pack the generated RTL into a Xilinx `.xo`.
-  floorplan                     Apply a floorplan to the program.
-  generate-floorplan            Run AutoBridge to generate floorplan solutions.
   compile                       analyze + synth + pack in one invocation.
-  compile-with-floorplan-dse    Floorplan DSE driver chaining the above.
   g++                           Invoke g++ with TAPA include / link flags.
   version                       Print TAPA version.
 

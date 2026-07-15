@@ -20,7 +20,6 @@ use crate::tapacc::discover::find_resource;
 
 use super::cpp_extract::extract_hls_sources;
 use super::device_resolve::resolve_device_info;
-use super::gen_ab_graph::emit_ab_graph;
 use super::grouping_constraints::emit_grouping_constraints;
 use super::hls_run::{run_hls_for_leaves, HlsRunOptions};
 use super::post_synth_util::emit_post_synth_util;
@@ -35,8 +34,6 @@ use super::SynthArgs;
     reason = "orchestrator function; refactored extract would bounce values through another builder without adding clarity"
 )]
 pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -> Result<()> {
-    validate_optional_flag_combos(args)?;
-
     let mut design = design_io::load_design(&ctx.work_dir)?;
     let mut settings = settings_io::load_settings(&ctx.work_dir)?;
     let target = settings
@@ -107,21 +104,10 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
     // `.zip`) bundle the YAML at archive root.
     write_top_report(&ctx.work_dir, &design, &args.override_report_schema_version)?;
 
-    // Post-codegen side effects run in dependency order:
-    // nonpipeline-fifos → grouping_constraints.json, gen-ab-graph →
-    // ab_graph.json. Each branch is a no-op when its flag is not set.
+    // Post-codegen side effect: nonpipeline-fifos →
+    // grouping_constraints.json. A no-op when the flag is not set.
     if let Some(fifos_path) = args.nonpipeline_fifos.as_ref() {
         emit_grouping_constraints(&ctx.work_dir, &design, fifos_path)?;
-    }
-    if args.gen_ab_graph {
-        let Some(fp_cfg) = args.floorplan_config.as_ref() else {
-            return Err(CliError::InvalidArg(
-                "`--gen-ab-graph` requires `--floorplan-config <FILE>` \
-                 (the source of `cpp_arg_pre_assignments`)"
-                    .to_string(),
-            ));
-        };
-        emit_ab_graph(&ctx.work_dir, &design, fp_cfg)?;
     }
 
     write_templates_info(&ctx.work_dir, &design)?;
@@ -157,20 +143,6 @@ fn apply_hls_metrics(task: &mut TaskTopology, report: &CsynthReport) {
                 .insert(key.clone(), Value::String(value.clone()));
         }
     }
-}
-
-/// Validate flag combinations that depend on sibling flags. This runs
-/// up front so failures happen
-/// before the (expensive) HLS loop runs.
-fn validate_optional_flag_combos(args: &SynthArgs) -> Result<()> {
-    if args.gen_ab_graph && args.floorplan_config.is_none() {
-        return Err(CliError::InvalidArg(
-            "`--gen-ab-graph` requires `--floorplan-config <FILE>` \
-             (source of `cpp_arg_pre_assignments`)"
-                .to_string(),
-        ));
-    }
-    Ok(())
 }
 
 /// Build the HLS CFLAGS:
@@ -352,18 +324,6 @@ mod tests {
         }
     }
 
-    fn reject_case(extra: &[&str], needle: &str) {
-        let args = parse_synth(extra);
-        let dir = tempfile::tempdir().expect("tempdir");
-        let ctx = ctx_with_work_dir(dir.path());
-        let runner = StubHls::new(Vec::new());
-        let err = run_native(&args, &ctx, &runner).expect_err("must reject early");
-        assert!(
-            matches!(err, CliError::InvalidArg(ref m) if m.contains(needle)),
-            "error must contain `{needle}`; got: {err}",
-        );
-    }
-
     #[test]
     fn hls_metrics_use_estimated_clock_and_clear_stale_total() {
         let mut task = TaskTopology {
@@ -398,14 +358,6 @@ mod tests {
         assert!(
             task.total_area.is_empty(),
             "stale post-synthesis totals must not survive a new HLS run"
-        );
-    }
-
-    #[test]
-    fn gen_ab_graph_without_floorplan_config_rejected_early() {
-        reject_case(
-            &["--platform", "xilinx_u250", "--gen-ab-graph"],
-            "--floorplan-config",
         );
     }
 

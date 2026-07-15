@@ -7,7 +7,6 @@
 
 pub mod analyze;
 pub mod find_clang_binary;
-pub mod floorplan;
 pub mod gcc;
 pub mod meta;
 pub mod pack;

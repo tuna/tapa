@@ -5,9 +5,7 @@ members = [
   "tapa-task-graph",
   "tapa-rtl",
   "tapa-topology",
-  "tapa-slotting",
   "tapa-codegen",
-  "tapa-floorplan",
   "tapa-xilinx",
   "tapa-cli",
 ]
@@ -117,8 +115,6 @@ tapa-protocol = { path = "tapa-protocol" }
 tapa-task-graph = { path = "tapa-task-graph" }
 tapa-rtl = { path = "tapa-rtl" }
 tapa-topology = { path = "tapa-topology" }
-tapa-slotting = { path = "tapa-slotting" }
 tapa-codegen = { path = "tapa-codegen" }
-tapa-floorplan = { path = "tapa-floorplan" }
 tapa-xilinx = { path = "tapa-xilinx" }
 tapa-cli = { path = "tapa-cli" }

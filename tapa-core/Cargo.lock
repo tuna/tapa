@@ -1082,9 +1082,7 @@ dependencies = [
  "serde_yaml",
  "sha2",
  "tapa-codegen",
- "tapa-floorplan",
  "tapa-rtl",
- "tapa-slotting",
  "tapa-task-graph",
  "tapa-topology",
  "tapa-xilinx",
@@ -1102,20 +1100,6 @@ dependencies = [
  "serde_json",
  "tapa-protocol",
  "tapa-rtl",
- "tapa-task-graph",
- "tapa-topology",
- "thiserror",
-]
-
-[[package]]
-name = "tapa-floorplan"
-version = "0.1.0"
-dependencies = [
- "regex",
- "serde",
- "serde_json",
- "tapa-rtl",
- "tapa-slotting",
  "tapa-task-graph",
  "tapa-topology",
  "thiserror",
@@ -1140,20 +1124,6 @@ dependencies = [
  "thiserror",
  "tree-sitter",
  "tree-sitter-systemverilog",
-]
-
-[[package]]
-name = "tapa-slotting"
-version = "0.1.0"
-dependencies = [
- "minijinja",
- "regex",
- "serde_json",
- "streaming-iterator",
- "tapa-task-graph",
- "thiserror",
- "tree-sitter",
- "tree-sitter-cpp",
 ]
 
 [[package]]
@@ -1283,16 +1253,6 @@ dependencies = [
  "regex-syntax",
  "serde_json",
  "streaming-iterator",
- "tree-sitter-language",
-]
-
-[[package]]
-name = "tree-sitter-cpp"
-version = "0.23.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df2196ea9d47b4ab4a31b9297eaa5a5d19a0b121dceb9f118f6790ad0ab94743"
-dependencies = [
- "cc",
  "tree-sitter-language",
 ]
 
