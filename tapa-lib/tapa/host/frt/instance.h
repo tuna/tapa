@@ -59,7 +59,7 @@ class Instance {
   // Copies `size` bytes from `data` as a scalar argument at `index`.
   void SetScalarArg(int index, const void* data, size_t size);
   // Passes a buffer of `bytes` bytes at `ptr` with access category `tag`.
-  void SetBufferArg(int index, void* ptr, size_t bytes, Tag tag);
+  void SetBufferArg(int index, const void* ptr, size_t bytes, Tag tag);
   // Passes a shared-memory stream identified by `path`.
   void SetStreamArg(int index, const std::string& path);
 
