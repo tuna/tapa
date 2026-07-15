@@ -67,3 +67,47 @@ cc_test(
         "@tapa-llvm-project//clang:tooling",
     ],
 )
+
+cc_library(
+    name = "xilinx",
+    srcs = ["xilinx.cpp"],
+    hdrs = ["xilinx.h"],
+    copts = ["-fno-rtti"],
+    deps = [
+        ":backend",
+        ":conventions",
+        ":emit",
+        "//tapacc/frontend:classify",
+        "//tapacc/frontend:type_args",
+        "@tapa-llvm-project//clang:tooling",
+    ],
+)
+
+cc_library(
+    name = "rewrite",
+    srcs = ["rewrite.cpp"],
+    hdrs = ["rewrite.h"],
+    copts = ["-fno-rtti"],
+    deps = [
+        ":backend",
+        ":emit",
+        "//tapacc/frontend:program",
+        "@tapa-llvm-project//clang:tooling",
+    ],
+)
+
+cc_test(
+    name = "rewrite_test",
+    srcs = ["rewrite_test.cpp"],
+    copts = ["-fno-rtti"],
+    deps = [
+        ":rewrite",
+        ":xilinx",
+        "//tapacc/frontend:build_program",
+        "//tapacc/frontend:program",
+        "//tapacc/frontend:tapa_stub_decls",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+        "@tapa-llvm-project//clang:tooling",
+    ],
+)

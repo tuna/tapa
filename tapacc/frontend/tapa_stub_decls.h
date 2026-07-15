@@ -13,15 +13,22 @@ inline constexpr char kTapaStubDecls[] = R"cpp(
   template <typename T, int N, int Depth = 2>
   struct streams {};
   template <typename T>
-  struct istream {};
+  struct istream {
+    T read();
+    T peek(void*);
+  };
   template <typename T>
-  struct ostream {};
+  struct ostream {
+    void write(const T&);
+  };
   template <typename T, int N>
   struct istreams {};
   template <typename T, int N>
   struct ostreams {};
   template <typename T>
-  struct mmap {};
+  struct mmap {
+    T& operator[](unsigned long long);
+  };
   template <typename T, int N>
   struct mmaps {};
   template <typename T>

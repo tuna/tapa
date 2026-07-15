@@ -1,5 +1,6 @@
 #include "emit.h"
 
+#include <cctype>
 #include <string>
 
 #include "clang/AST/Stmt.h"
@@ -120,6 +121,45 @@ void AddPragmaAfterStmt(clang::Rewriter& rewriter, const clang::Stmt* stmt,
                         const std::string& pragma) {
   rewriter.InsertTextAfterToken(stmt->getEndLoc(),
                                 "\n#pragma " + pragma + "\n");
+}
+
+void RemoveLoweredAttr(clang::Rewriter& rewriter,
+                       clang::SourceRange attr_range) {
+  auto begin = attr_range.getBegin();
+  auto end = attr_range.getEnd();
+  auto at = [&](clang::SourceLocation a, clang::SourceLocation b) {
+    return rewriter.getRewrittenText(clang::SourceRange(a, b));
+  };
+  auto is_space = [&](const std::string& s) {
+    return s.empty() || std::isspace(static_cast<unsigned char>(s[0]));
+  };
+  auto is_alpha = [&](const std::string& s) {
+    return !s.empty() && std::isalpha(static_cast<unsigned char>(s[0]));
+  };
+
+  // Find the true end of the token.
+  for (; is_alpha(at(end.getLocWithOffset(1), end.getLocWithOffset(1)));
+       end = end.getLocWithOffset(1)) {
+  }
+  // Swallow surrounding whitespace.
+  for (; is_space(at(begin.getLocWithOffset(-1), begin.getLocWithOffset(-1)));
+       begin = begin.getLocWithOffset(-1)) {
+  }
+  for (; is_space(at(end.getLocWithOffset(1), end.getLocWithOffset(1)));
+       end = end.getLocWithOffset(1)) {
+  }
+  // Swallow a neighbouring comma, or an enclosing [[ ]].
+  if (at(begin.getLocWithOffset(-1), begin.getLocWithOffset(-1)) == ",") {
+    begin = begin.getLocWithOffset(-1);
+  } else if (at(end.getLocWithOffset(1), end.getLocWithOffset(1)) == ",") {
+    end = end.getLocWithOffset(1);
+  } else if (at(begin.getLocWithOffset(-2), begin.getLocWithOffset(-1)) ==
+                 "[[" &&
+             at(end.getLocWithOffset(1), end.getLocWithOffset(2)) == "]]") {
+    begin = begin.getLocWithOffset(-2);
+    end = end.getLocWithOffset(2);
+  }
+  rewriter.RemoveText(clang::SourceRange(begin, end));
 }
 
 }  // namespace tapa::cc

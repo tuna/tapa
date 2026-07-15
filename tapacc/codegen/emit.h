@@ -32,6 +32,12 @@ void AddPragmaToBody(clang::Rewriter& rewriter, const clang::Stmt* body,
 void AddPragmaAfterStmt(clang::Rewriter& rewriter, const clang::Stmt* stmt,
                         const std::string& pragma);
 
+// Remove a lowered `[[tapa::...]]` attribute's source text, swallowing the
+// surrounding whitespace, a trailing/leading comma, or an enclosing `[[ ]]` so
+// the result is clean. Takes the attribute's own source range.
+void RemoveLoweredAttr(clang::Rewriter& rewriter,
+                       clang::SourceRange attr_range);
+
 }  // namespace tapa::cc
 
 #endif  // TAPA_CODEGEN_EMIT_H_
