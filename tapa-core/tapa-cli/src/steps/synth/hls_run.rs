@@ -99,12 +99,13 @@ pub fn run_hls_for_leaves(
                 fs::create_dir_all(&layout.reports_dir)?;
                 // Reload existing csynth data so downstream report
                 // generation and design.json keep correct metrics.
-                let csynth = find_and_parse_csynth(&layout.reports_dir).unwrap_or_else(|e| {
-                    log::warn!(
-                        "could not reload cached csynth for `{task_name}`: {e}; using defaults"
-                    );
-                    tapa_xilinx::CsynthReport::default()
-                });
+                let csynth =
+                    find_and_parse_csynth(&layout.reports_dir, task_name).unwrap_or_else(|e| {
+                        log::warn!(
+                            "could not reload cached csynth for `{task_name}`: {e}; using defaults"
+                        );
+                        tapa_xilinx::CsynthReport::default()
+                    });
                 let report_paths = walkdir::WalkDir::new(&layout.reports_dir)
                     .into_iter()
                     .filter_map(std::result::Result::ok)
@@ -309,23 +310,35 @@ fn list_verilog_files(dir: &camino::Utf8Path) -> Result<Vec<Utf8PathBuf>> {
     Ok(out)
 }
 
-/// Find the first `*_csynth.xml` file under `reports_dir` and parse it.
-fn find_and_parse_csynth(reports_dir: &camino::Utf8Path) -> Result<tapa_xilinx::CsynthReport> {
-    for ent in fs::read_dir(reports_dir)? {
-        let ent = ent?;
-        let p = ent.path();
-        if p.file_name()
-            .and_then(|s| s.to_str())
-            .is_some_and(|n| n.ends_with("_csynth.xml"))
-        {
-            let bytes = fs::read(&p)?;
-            return tapa_xilinx::parse_csynth_xml(&bytes)
-                .map_err(|e| CliError::InvalidArg(format!("parse cached csynth: {e}")));
-        }
-    }
-    Err(CliError::InvalidArg(
-        "no cached _csynth.xml found in reports dir".into(),
-    ))
+/// Reload and parse the task's top-level csynth report on an mtime-skip
+/// cache hit.
+///
+/// Reads `<task>_csynth.xml` (falling back to `<task>.csynth.xml`), the
+/// exact file the live HLS harvest parses. A task's report dir also holds
+/// sub-module reports — e.g. `<task>_Pipeline_VITIS_LOOP_*_csynth.xml` —
+/// which likewise end in `_csynth.xml` but carry only the sub-loop's
+/// (smaller) area. Selecting the first `*_csynth.xml` in `read_dir` order
+/// could therefore reload a sub-module's area, making the skip path
+/// disagree with a full HLS run and breaking `.xo` reproducibility.
+fn find_and_parse_csynth(
+    reports_dir: &camino::Utf8Path,
+    task_name: &str,
+) -> Result<tapa_xilinx::CsynthReport> {
+    let primary = reports_dir.join(format!("{task_name}_csynth.xml"));
+    let fallback = reports_dir.join(format!("{task_name}.csynth.xml"));
+    let report_xml = if primary.is_file() { primary } else { fallback };
+    let bytes = fs::read(&report_xml).map_err(|e| {
+        CliError::InvalidArg(format!(
+            "missing cached csynth report `{}`: {e}",
+            report_xml.as_str(),
+        ))
+    })?;
+    tapa_xilinx::parse_csynth_xml(&bytes).map_err(|e| {
+        CliError::InvalidArg(format!(
+            "parse cached csynth `{}`: {e}",
+            report_xml.as_str()
+        ))
+    })
 }
 
 #[cfg(test)]
@@ -504,6 +517,56 @@ mod tests {
             runner.calls().is_empty(),
             "freshness must use the emitted file mtime, not its parent directory"
         );
+    }
+
+    /// A csynth.xml carrying a distinguishable `FF`/`BRAM_18K` so a test
+    /// can tell which report was reloaded.
+    fn csynth_xml(top: &str, ff: u32, bram: u32) -> String {
+        format!(
+            "<?xml version=\"1.0\"?>\n<profile>\n\
+             <UserAssignments><TopModelName>{top}</TopModelName>\
+             <Part>xcu250</Part><TargetClockPeriod>3.33</TargetClockPeriod></UserAssignments>\n\
+             <PerformanceEstimates><SummaryOfTimingAnalysis>\
+             <EstimatedClockPeriod>2.431</EstimatedClockPeriod>\
+             </SummaryOfTimingAnalysis></PerformanceEstimates>\n\
+             <AreaEstimates><Resources>\
+             <BRAM_18K>{bram}</BRAM_18K><FF>{ff}</FF><LUT>0</LUT>\
+             </Resources></AreaEstimates>\n</profile>\n"
+        )
+    }
+
+    /// The mtime-skip reload must read the task's own `<task>_csynth.xml`,
+    /// not a sibling `<task>_Pipeline_*_csynth.xml` sub-module report that
+    /// also ends in `_csynth.xml` but reports only the sub-loop's area.
+    /// Picking the wrong one made the skip path disagree with a full HLS
+    /// run and broke `.xo` reproducibility.
+    #[test]
+    fn reload_prefers_task_report_over_submodule_report() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let reports = Utf8PathBuf::from_path_buf(tmp.path().join("report"))
+            .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
+        fs::create_dir_all(&reports).unwrap();
+        // Sub-module report (smaller area) shares the `_csynth.xml` suffix.
+        fs::write(
+            reports.join("Mmap2Stream_Pipeline_VITIS_LOOP_27_1_csynth.xml"),
+            csynth_xml("Mmap2Stream_Pipeline_VITIS_LOOP_27_1", 102, 0),
+        )
+        .unwrap();
+        // Task top report — the one the live harvest parses.
+        fs::write(
+            reports.join("Mmap2Stream_csynth.xml"),
+            csynth_xml("Mmap2Stream", 843, 1),
+        )
+        .unwrap();
+
+        let report = find_and_parse_csynth(&reports, "Mmap2Stream").expect("reload task report");
+        assert_eq!(report.top, "Mmap2Stream", "must load the task top report");
+        assert_eq!(
+            report.area.get("FF").map(String::as_str),
+            Some("843"),
+            "must read the task's own area, not the sub-loop's",
+        );
+        assert_eq!(report.area.get("BRAM_18K").map(String::as_str), Some("1"));
     }
 
     #[test]
