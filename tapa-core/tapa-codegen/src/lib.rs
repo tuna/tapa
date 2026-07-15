@@ -16,9 +16,9 @@ mod s_axi;
 pub mod support_assets;
 mod template;
 
+use tapa_ir::task::TaskLevel;
 use tapa_rtl::builder::{ContinuousAssign, Expr};
 use tapa_rtl::mutation::wire;
-use tapa_task_graph::task::TaskLevel;
 
 use crate::error::CodegenError;
 use crate::rtl_state::TopologyWithRtl;
@@ -40,14 +40,14 @@ use tapa_protocol::{
 ///
 /// Returns the modified modules and any generated auxiliary files.
 pub fn generate_rtl(state: &mut TopologyWithRtl) -> Result<(), CodegenError> {
-    let task_names: Vec<String> = state.program.tasks.keys().cloned().collect();
+    let task_names: Vec<String> = state.design.tasks.keys().cloned().collect();
 
     // Ignored tasks have no HLS result to attach. Build their authoritative
     // port-only shell from topology so parents can resolve the module while
     // the user authors the replacement RTL.
     for task_name in &task_names {
-        let task = &state.program.tasks[task_name];
-        if task.target != "ignore" {
+        let task = &state.design.tasks[task_name];
+        if task.target.as_deref() != Some("ignore") {
             continue;
         }
         let source = template::render_task_template(task_name, task);
@@ -59,8 +59,8 @@ pub fn generate_rtl(state: &mut TopologyWithRtl) -> Result<(), CodegenError> {
     }
 
     for task_name in &task_names {
-        let task = &state.program.tasks[task_name];
-        if task.target == "ignore" {
+        let task = &state.design.tasks[task_name];
+        if task.target.as_deref() == Some("ignore") {
             let template = state.module_map[task_name].emit();
             state
                 .template_files
@@ -77,12 +77,9 @@ pub fn generate_rtl(state: &mut TopologyWithRtl) -> Result<(), CodegenError> {
     // their original Verilog sources by the CLI; re-emitting them from the
     // parsed model drops legal port-reg redeclarations used by HLS.
     for (name, mm) in &state.module_map {
-        if state
-            .program
-            .tasks
-            .get(name.as_str())
-            .is_some_and(|task| task.level == TaskLevel::Upper || task.target == "ignore")
-        {
+        if state.design.tasks.get(name.as_str()).is_some_and(|task| {
+            task.level == TaskLevel::Upper || task.target.as_deref() == Some("ignore")
+        }) {
             state.generated_files.insert(format!("{name}.v"), mm.emit());
         }
     }
@@ -98,8 +95,8 @@ pub fn generate_rtl(state: &mut TopologyWithRtl) -> Result<(), CodegenError> {
 /// Instrument a single upper-level task with codegen logic.
 #[allow(clippy::too_many_lines, reason = "sequential orchestration logic")]
 fn instrument_upper_task(state: &mut TopologyWithRtl, task_name: &str) -> Result<(), CodegenError> {
-    let is_top_task = task_name == state.program.top;
-    let task = &state.program.tasks[task_name];
+    let is_top_task = task_name == state.design.top;
+    let task = &state.design.tasks[task_name];
 
     // Reject malformed memory geometry before mutating any RTL state.
     let mmap_conns = state.aggregate_mmap_connections(task_name)?;
@@ -130,10 +127,10 @@ fn instrument_upper_task(state: &mut TopologyWithRtl, task_name: &str) -> Result
             let mut istream_prefixes: Vec<String> = Vec::new();
             for p in &task.ports {
                 match p.cat {
-                    tapa_task_graph::port::ArgCategory::Istream => {
+                    tapa_ir::port::ArgCategory::Istream => {
                         istream_prefixes.push(format!("{}_peek", p.name));
                     }
-                    tapa_task_graph::port::ArgCategory::Istreams => {
+                    tapa_ir::port::ArgCategory::Istreams => {
                         let chan_count = p.chan_count.unwrap_or(1);
                         for idx in 0..chan_count {
                             istream_prefixes.push(format!("{}_{idx}_peek", p.name));
@@ -141,13 +138,13 @@ fn instrument_upper_task(state: &mut TopologyWithRtl, task_name: &str) -> Result
                         // Also add the base name in case of single-channel
                         istream_prefixes.push(format!("{}_peek", p.name));
                     }
-                    tapa_task_graph::port::ArgCategory::Ostream
-                    | tapa_task_graph::port::ArgCategory::Ostreams
-                    | tapa_task_graph::port::ArgCategory::Scalar
-                    | tapa_task_graph::port::ArgCategory::Mmap
-                    | tapa_task_graph::port::ArgCategory::AsyncMmap
-                    | tapa_task_graph::port::ArgCategory::Immap
-                    | tapa_task_graph::port::ArgCategory::Ommap => {}
+                    tapa_ir::port::ArgCategory::Ostream
+                    | tapa_ir::port::ArgCategory::Ostreams
+                    | tapa_ir::port::ArgCategory::Scalar
+                    | tapa_ir::port::ArgCategory::Mmap
+                    | tapa_ir::port::ArgCategory::AsyncMmap
+                    | tapa_ir::port::ArgCategory::Immap
+                    | tapa_ir::port::ArgCategory::Ommap => {}
                 }
             }
 
@@ -199,11 +196,11 @@ fn instrument_upper_task(state: &mut TopologyWithRtl, task_name: &str) -> Result
     m_axi::add_m_axi_and_crossbars(state, task_name, &mmap_conns)?;
 
     // Add FSM pragmas
-    let scalar_ports: Vec<String> = state.program.tasks[task_name]
+    let scalar_ports: Vec<String> = state.design.tasks[task_name]
         .ports
         .iter()
         .flat_map(|p| {
-            use tapa_task_graph::port::ArgCategory;
+            use tapa_ir::port::ArgCategory;
             match p.cat {
                 ArgCategory::Scalar => vec![p.name.clone()],
                 ArgCategory::Mmap
@@ -237,6 +234,36 @@ fn instrument_upper_task(state: &mut TopologyWithRtl, task_name: &str) -> Result
     }
 
     Ok(())
+}
+
+/// Test-only: parse a [`tapa_ir::Design`] from fixture JSON, filling
+/// the per-task metadata fields (`name`, `is_slot`, `clock_period`)
+/// that the pre-`tapa-ir` untyped model tolerated omitting and RTL
+/// generation never reads. The filled values match what `tapa analyze`
+/// writes for every task.
+#[cfg(test)]
+pub(crate) fn design_from_fixture_json(mut value: serde_json::Value) -> tapa_ir::Design {
+    if let Some(tasks) = value
+        .get_mut("tasks")
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        let names: Vec<String> = tasks.keys().cloned().collect();
+        for name in names {
+            let Some(obj) = tasks
+                .get_mut(&name)
+                .and_then(serde_json::Value::as_object_mut)
+            else {
+                continue;
+            };
+            obj.entry("name")
+                .or_insert_with(|| serde_json::Value::String(name.clone()));
+            obj.entry("is_slot")
+                .or_insert(serde_json::Value::Bool(false));
+            obj.entry("clock_period")
+                .or_insert_with(|| serde_json::Value::String("0".to_string()));
+        }
+    }
+    serde_json::from_value(value).expect("valid design fixture JSON")
 }
 
 #[cfg(test)]

@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use indexmap::IndexMap;
 use serde_json::Value;
-use tapa_task_graph::Design;
+use tapa_ir::Design;
 use tapa_xilinx::RemoteConfig;
 
 use crate::globals::GlobalArgs;

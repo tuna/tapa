@@ -2,7 +2,7 @@
 
 use indexmap::IndexMap;
 use serde_json::Value;
-use tapa_task_graph::Design;
+use tapa_ir::{Design, TaskLevel};
 
 use crate::error::{CliError, Result};
 
@@ -23,9 +23,9 @@ pub(super) fn effective_total_area(
     }
 
     let mut total = task.self_area.clone();
-    if task.level == "upper" {
+    if task.level == TaskLevel::Upper {
         for (child_name, instances) in &task.tasks {
-            let count = instances.as_array().map_or(0, Vec::len);
+            let count = instances.len();
             if count == 0 || !design.tasks.contains_key(child_name) {
                 continue;
             }

@@ -25,7 +25,7 @@ pub enum CliError {
     Json(#[from] serde_json::Error),
 
     #[error(transparent)]
-    Schema(#[from] tapa_task_graph::ParseError),
+    Schema(#[from] tapa_ir::ParseError),
 
     #[error(transparent)]
     Xilinx(#[from] tapa_xilinx::XilinxError),

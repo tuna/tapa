@@ -40,10 +40,9 @@ pub fn write_json_atomic<T: serde::Serialize>(
 /// JSON formatter that uses `, ` between items, `: ` between key and value,
 /// no indentation, and no trailing newline.
 ///
-/// This is the canonical copy for CLI work-directory state files.
-/// `tapa-task-graph` still carries an identical formatter behind
-/// `Design::to_writer`; the two collapse into one when that schema crate is
-/// folded into `tapa-ir`.
+/// This is the canonical (and only) copy of the work-directory state
+/// formatter; `tapa-ir` types serialize through it via
+/// [`write_json_atomic`].
 #[derive(Debug, Default)]
 pub struct JsonFormatter;
 

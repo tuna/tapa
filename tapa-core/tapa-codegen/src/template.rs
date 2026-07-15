@@ -1,5 +1,7 @@
 //! Port-only RTL shells for tasks implemented through custom RTL.
 
+use tapa_ir::port::ArgCategory;
+use tapa_ir::Task;
 use tapa_protocol::{
     PortDir, HANDSHAKE_CLK, HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY, HANDSHAKE_RST_N,
     HANDSHAKE_START, M_AXI_PORTS, M_AXI_PORT_WIDTHS, M_AXI_PREFIX,
@@ -7,8 +9,6 @@ use tapa_protocol::{
 use tapa_rtl::module::sanitize_array_name;
 use tapa_rtl::mutation::{simple_port, wide_port};
 use tapa_rtl::port::{Direction, Port};
-use tapa_task_graph::port::ArgCategory;
-use tapa_topology::task::TaskDesign;
 
 const M_AXI_CHANNEL_ORDER: &[&str] = &["AR", "AW", "B", "R", "W"];
 
@@ -124,7 +124,7 @@ fn add_mmap_ports(ports: &mut Vec<Port>, name: &str, width: u32, chan_count: Opt
 /// Render the port-only Verilog module used as the starting point for a
 /// `target("ignore")` custom RTL implementation.
 #[must_use]
-pub fn render_task_template(name: &str, task: &TaskDesign) -> String {
+pub fn render_task_template(name: &str, task: &Task) -> String {
     let mut ports = vec![
         simple_port(HANDSHAKE_CLK, Direction::Input),
         simple_port(HANDSHAKE_RST_N, Direction::Input),
@@ -180,14 +180,17 @@ pub fn render_task_template(name: &str, task: &TaskDesign) -> String {
 mod tests {
     use super::*;
 
-    fn task(ports: &serde_json::Value) -> TaskDesign {
+    fn task(ports: &serde_json::Value) -> Task {
         serde_json::from_value(serde_json::json!({
+            "name": "Custom",
             "level": "lower",
             "code": "",
             "target": "ignore",
             "ports": ports,
             "tasks": {},
-            "fifos": {}
+            "fifos": {},
+            "is_slot": false,
+            "clock_period": "0"
         }))
         .unwrap()
     }

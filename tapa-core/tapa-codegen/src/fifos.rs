@@ -186,7 +186,7 @@ pub(crate) fn instantiate_fifos(
     state: &mut TopologyWithRtl,
     task_name: &str,
 ) -> Result<(), CodegenError> {
-    let task = &state.program.tasks[task_name];
+    let task = &state.design.tasks[task_name];
 
     // Collect FIFO info before mutating
     let fifo_entries: Vec<FifoEntry> = task
@@ -233,9 +233,9 @@ pub(crate) fn instantiate_fifos(
     reason = "keeping the Option in the signature lets both callers avoid inline duplication"
 )]
 fn fifo_producer_for(
-    task: &tapa_topology::task::TaskDesign,
+    task: &tapa_ir::Task,
     fifo_name: &str,
-    endpoint: Option<&tapa_task_graph::interconnect::EndpointRef>,
+    endpoint: Option<&tapa_ir::interconnect::EndpointRef>,
 ) -> Option<FifoProducer> {
     endpoint.map(|ep| {
         let port_name = task
@@ -290,7 +290,7 @@ fn resolve_fifo_width(
         }
     }
     // Fallback: check topology port definitions for the producer task
-    if let Some(task) = state.program.tasks.get(producer.task_name.as_str()) {
+    if let Some(task) = state.design.tasks.get(producer.task_name.as_str()) {
         if let Some(port_name) = producer.port_name.as_deref() {
             let logical_port_name =
                 tapa_rtl::module::match_array_name(port_name).map_or(port_name, |(base, _)| base);
@@ -298,8 +298,7 @@ fn resolve_fifo_width(
                 port.name == logical_port_name
                     && matches!(
                         port.cat,
-                        tapa_task_graph::port::ArgCategory::Ostream
-                            | tapa_task_graph::port::ArgCategory::Ostreams
+                        tapa_ir::port::ArgCategory::Ostream | tapa_ir::port::ArgCategory::Ostreams
                     )
             }) {
                 return Ok(port.width.saturating_add(1));
@@ -308,8 +307,7 @@ fn resolve_fifo_width(
         for port in &task.ports {
             if matches!(
                 port.cat,
-                tapa_task_graph::port::ArgCategory::Ostream
-                    | tapa_task_graph::port::ArgCategory::Ostreams
+                tapa_ir::port::ArgCategory::Ostream | tapa_ir::port::ArgCategory::Ostreams
             ) {
                 return Ok(port.width.saturating_add(1));
             }
@@ -335,7 +333,7 @@ pub(crate) fn connect_fifos(
 ) -> Result<(), CodegenError> {
     use tapa_rtl::signal::{Signal, SignalKind};
 
-    let task = &state.program.tasks[task_name];
+    let task = &state.design.tasks[task_name];
 
     // Collect FIFO connection info with producer endpoint for width resolution
     let fifo_entries: Vec<FifoConnEntry> = task
@@ -392,7 +390,7 @@ pub(crate) fn connect_fifos(
                 .ok_or_else(|| CodegenError::FifoWidthUnresolved(fifo_name.clone()))?
                 .width;
             let is_vitis_top_axis =
-                task_name == state.program.top && state.program.target == "xilinx-vitis";
+                task_name == state.design.top && state.design.target == "xilinx-vitis";
             if let Some(mm) = state.module_map.get_mut(task_name) {
                 let suffixes: &[&str] = if *has_consumer {
                     ISTREAM_SUFFIXES
@@ -552,7 +550,7 @@ mod tests {
 
     #[test]
     fn fifo_width_topology_fallback_uses_bound_wire_width() {
-        let program = serde_json::from_value(serde_json::json!({
+        let program = crate::design_from_fixture_json(serde_json::json!({
             "top": "top",
             "target": "xilinx-hls",
             "tasks": {
@@ -607,11 +605,10 @@ mod tests {
                     "fifos": {}
                 }
             }
-        }))
-        .unwrap();
+        }));
         let mut state = TopologyWithRtl::new(program);
 
-        let top = &state.program.tasks["top"];
+        let top = &state.design.tasks["top"];
         let narrow = fifo_producer_for(
             top,
             "narrow_fifo",
@@ -652,7 +649,7 @@ mod tests {
         // The producer task exposes no stream port and has no attached RTL, so
         // neither resolution path yields a width. This must fail rather than
         // silently default to 32.
-        let program = serde_json::from_value(serde_json::json!({
+        let program = crate::design_from_fixture_json(serde_json::json!({
             "top": "top",
             "target": "xilinx-hls",
             "tasks": {
@@ -676,8 +673,7 @@ mod tests {
                     "tasks": {}, "fifos": {}
                 }
             }
-        }))
-        .unwrap();
+        }));
         let state = TopologyWithRtl::new(program);
         let producer = FifoProducer {
             task_name: "producer".to_owned(),

@@ -4,7 +4,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use tapa_task_graph::Design;
+use tapa_ir::{Design, TaskLevel};
 
 use crate::error::{CliError, Result};
 
@@ -19,7 +19,7 @@ const DISABLED_MMAP_NAMES: &[&str] = &[
 
 fn check_reserved_port_names(design: &Design) -> Result<()> {
     for (task_name, task) in &design.tasks {
-        if task.level != "upper" {
+        if task.level != TaskLevel::Upper {
             continue;
         }
         for port in &task.ports {
@@ -61,25 +61,27 @@ pub fn extract_hls_sources(work_dir: &Path, design: &Design) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeMap;
+
     use indexmap::IndexMap;
-    use tapa_task_graph::{
+    use tapa_ir::{
         port::{ArgCategory, Port},
-        TaskTopology,
+        Task,
     };
 
     #[test]
     fn writes_cpp_per_task() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let mut tasks = IndexMap::new();
+        let mut tasks = BTreeMap::new();
         tasks.insert(
             "Add".to_string(),
-            TaskTopology {
+            Task {
                 name: "Add".to_string(),
-                level: "lower".to_string(),
+                level: TaskLevel::Lower,
                 code: "void Add() {}\n".to_string(),
                 ports: Vec::new(),
-                tasks: IndexMap::new(),
-                fifos: IndexMap::new(),
+                tasks: BTreeMap::new(),
+                fifos: BTreeMap::new(),
                 target: Some("hls".to_string()),
                 is_slot: false,
                 self_area: IndexMap::new(),
@@ -101,12 +103,12 @@ mod tests {
     #[test]
     fn rejects_reserved_upper_port_name() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let mut tasks = IndexMap::new();
+        let mut tasks = BTreeMap::new();
         tasks.insert(
             "Top".to_string(),
-            TaskTopology {
+            Task {
                 name: "Top".to_string(),
-                level: "upper".to_string(),
+                level: TaskLevel::Upper,
                 code: "void Top() {}\n".to_string(),
                 ports: vec![Port {
                     cat: ArgCategory::Mmap,
@@ -116,8 +118,8 @@ mod tests {
                     chan_count: None,
                     chan_size: None,
                 }],
-                tasks: IndexMap::new(),
-                fifos: IndexMap::new(),
+                tasks: BTreeMap::new(),
+                fifos: BTreeMap::new(),
                 target: Some("hls".to_string()),
                 is_slot: false,
                 self_area: IndexMap::new(),

@@ -5,8 +5,10 @@
 //! graph into a [`Design`], and provides [`flatten_graph_value`] for
 //! hierarchy flattening through the typed [`Graph`] schema.
 
+use std::collections::BTreeMap;
+
 use indexmap::IndexMap;
-use tapa_task_graph::{flatten, Design, Graph, TaskLevel, TaskTopology};
+use tapa_ir::{flatten, Design, Graph, Task, TaskLevel};
 
 use crate::error::{CliError, Result};
 
@@ -33,47 +35,32 @@ pub(super) fn is_top_leaf(graph: &Graph, top: &str) -> bool {
 /// `<work_dir>/design.json`, dropping `vendor` and other analyzer-only
 /// keys.
 pub(super) fn build_design(top: &str, target: &str, graph: &Graph) -> Design {
-    let mut topology: IndexMap<String, TaskTopology> = IndexMap::new();
-    for (name, task) in &graph.tasks {
-        topology.insert(name.clone(), task_to_topology(name, task));
-    }
+    let tasks: BTreeMap<String, Task> = graph
+        .tasks
+        .iter()
+        .map(|(name, task)| (name.clone(), task_to_design_task(name, task)))
+        .collect();
 
     Design {
         top: top.to_string(),
         target: target.to_string(),
-        tasks: topology,
+        tasks,
         slot_task_name_to_fp_region: None,
     }
 }
 
-fn task_to_topology(name: &str, task: &tapa_task_graph::TaskDefinition) -> TaskTopology {
-    let level = match task.level {
-        TaskLevel::Lower => "lower",
-        TaskLevel::Upper => "upper",
-    }
-    .to_string();
-    let code = task.code.clone();
-    let ports = task.ports.clone();
-    let tasks = serde_json::to_value(&task.tasks)
-        .ok()
-        .and_then(|v| v.as_object().cloned())
-        .map(|o| o.into_iter().collect())
-        .unwrap_or_default();
-    let fifos = serde_json::to_value(&task.fifos)
-        .ok()
-        .and_then(|v| v.as_object().cloned())
-        .map(|o| o.into_iter().collect())
-        .unwrap_or_default();
-    let target = Some(task.target.clone());
-
-    TaskTopology {
+/// Project one graph task into its `design.json` shape. The typed
+/// clone keeps `tasks`/`fifos` as-is and drops the tapacc-only fields
+/// (`vendor`, `extra`).
+fn task_to_design_task(name: &str, task: &tapa_ir::TaskDefinition) -> Task {
+    Task {
         name: name.to_string(),
-        level,
-        code,
-        ports,
-        tasks,
-        fifos,
-        target,
+        level: task.level,
+        code: task.code.clone(),
+        ports: task.ports.clone(),
+        tasks: task.tasks.clone(),
+        fifos: task.fifos.clone(),
+        target: Some(task.target.clone()),
         is_slot: false,
         self_area: IndexMap::new(),
         total_area: IndexMap::new(),
@@ -98,7 +85,7 @@ mod tests {
     }
 
     /// `analyze --flatten-hierarchy` exercises the
-    /// [`tapa_task_graph::flatten`] code path on a vadd-shaped graph.
+    /// [`tapa_ir::flatten`] code path on a vadd-shaped graph.
     /// We hit `flatten_graph_value` directly (the helper invoked from
     /// `run_native` when `flatten_hierarchy` is set) because the full
     /// `run_native` path depends on a process-wide `OnceLock` for the

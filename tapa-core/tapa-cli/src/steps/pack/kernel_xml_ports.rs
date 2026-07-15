@@ -5,11 +5,11 @@
 //! emits bus parameters for every `m_axi` port.
 
 use std::collections::BTreeSet;
+use tapa_ir::port::{ArgCategory, Port};
 use tapa_rtl::module::sanitize_array_name;
-use tapa_task_graph::port::{ArgCategory, Port};
 use tapa_xilinx::{KernelXmlPort, PortCategory};
 
-/// Project a `tapa_task_graph::Port` list into the `KernelXmlPort`
+/// Project a `tapa_ir::Port` list into the `KernelXmlPort`
 /// shape `tapa_xilinx::emit_kernel_xml` expects, including the
 /// channel fan-out unrolling for hmap ports.
 #[cfg(test)]

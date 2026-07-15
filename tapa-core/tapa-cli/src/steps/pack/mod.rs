@@ -275,11 +275,13 @@ mod tests {
 
     use std::path::Path;
 
+    use std::collections::BTreeMap;
+
     use indexmap::IndexMap;
     use serde_json::json;
-    use tapa_task_graph::{
+    use tapa_ir::{
         port::{ArgCategory, Port},
-        Design, TaskTopology,
+        Design, Task, TaskLevel,
     };
 
     use crate::globals::GlobalArgs;
@@ -302,12 +304,12 @@ mod tests {
 
     fn write_state(work_dir: &Path, target: &str) {
         fs_err::create_dir_all(work_dir).expect("mkdir work");
-        let mut tasks = IndexMap::new();
+        let mut tasks = BTreeMap::new();
         tasks.insert(
             "Top".to_string(),
-            TaskTopology {
+            Task {
                 name: "Top".to_string(),
-                level: "upper".to_string(),
+                level: TaskLevel::Upper,
                 code: "void Top() {}".to_string(),
                 ports: vec![Port {
                     cat: ArgCategory::Mmap,
@@ -317,8 +319,8 @@ mod tests {
                     chan_count: None,
                     chan_size: None,
                 }],
-                tasks: IndexMap::new(),
-                fifos: IndexMap::new(),
+                tasks: BTreeMap::new(),
+                fifos: BTreeMap::new(),
                 target: Some("hls".to_string()),
                 is_slot: false,
                 self_area: IndexMap::new(),

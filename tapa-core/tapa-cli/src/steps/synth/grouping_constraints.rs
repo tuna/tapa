@@ -8,11 +8,9 @@
 use std::fs;
 use std::path::Path;
 
-use tapa_task_graph::Design;
-use tapa_topology::program::Program;
+use tapa_ir::Design;
 
 use crate::error::{CliError, Result};
-use crate::steps::synth::rtl_codegen::topology_program_from_design;
 
 const OUTPUT_FILENAME: &str = "grouping_constraints.json";
 
@@ -36,8 +34,7 @@ pub fn emit_grouping_constraints(
         ))
     })?;
 
-    let program = topology_program_from_design(design)?;
-    let constraints = compute_grouping_constraints(&program, &entries)?;
+    let constraints = compute_grouping_constraints(design, &entries)?;
 
     let path = work_dir.join(OUTPUT_FILENAME);
     let bytes = serde_json::to_vec(&constraints)?;
@@ -45,10 +42,10 @@ pub fn emit_grouping_constraints(
     Ok(())
 }
 
-/// Pure helper: walk the program and produce the `[producer, fifo, consumer]`
+/// Pure helper: walk the design and produce the `[producer, fifo, consumer]`
 /// constraint triples for every `<task>.<fifo>` entry in `entries`.
 pub fn compute_grouping_constraints(
-    program: &Program,
+    design: &Design,
     entries: &[String],
 ) -> Result<Vec<Vec<String>>> {
     let mut out: Vec<Vec<String>> = Vec::new();
@@ -59,7 +56,7 @@ pub fn compute_grouping_constraints(
                  `<task>.<fifo>`"
             ))
         })?;
-        let task = program.tasks.get(task_name).ok_or_else(|| {
+        let task = design.tasks.get(task_name).ok_or_else(|| {
             CliError::InvalidArg(format!(
                 "`--nonpipeline-fifos` entry references unknown task `{task_name}`"
             ))
@@ -108,10 +105,10 @@ pub fn compute_grouping_constraints(
 
         let mut hierarchies: Vec<Vec<String>> = Vec::new();
         find_task_inst_hierarchy(
-            program,
+            design,
             task_name,
-            &program.top,
-            &program.top,
+            &design.top,
+            &design.top,
             &[],
             &mut hierarchies,
         );
@@ -131,7 +128,7 @@ pub fn compute_grouping_constraints(
 /// Find the `{child_task}_{idx}` instance within `parent` whose
 /// arguments contain a binding to `arg_name`.
 fn find_instance_for_arg(
-    parent: &tapa_topology::task::TaskDesign,
+    parent: &tapa_ir::Task,
     child_task: &str,
     arg_name: &str,
 ) -> Option<String> {
@@ -149,7 +146,7 @@ fn find_instance_for_arg(
 /// level above the target so callers can append the producer / consumer
 /// / fifo leaf).
 fn find_task_inst_hierarchy(
-    program: &Program,
+    design: &Design,
     target_task: &str,
     current_task: &str,
     current_inst: &str,
@@ -161,14 +158,14 @@ fn find_task_inst_hierarchy(
     if current_task == target_task {
         out.push(new_hierarchy.clone());
     }
-    let Some(task) = program.tasks.get(current_task) else {
+    let Some(task) = design.tasks.get(current_task) else {
         return;
     };
     for (child_task_name, instances) in &task.tasks {
         for (idx, _inst) in instances.iter().enumerate() {
             let inst_name = format!("{child_task_name}_{idx}");
             find_task_inst_hierarchy(
-                program,
+                design,
                 target_task,
                 child_task_name,
                 &inst_name,
@@ -183,16 +180,19 @@ fn find_task_inst_hierarchy(
 mod tests {
     use super::*;
 
-    fn two_level_program() -> Program {
-        serde_json::from_str(
+    fn two_level_program() -> Design {
+        Design::from_json(
             r#"{
                 "top": "Top",
                 "target": "xilinx-hls",
                 "tasks": {
                     "Top": {
+                        "name": "Top",
                         "level": "upper",
                         "code": "",
                         "target": "xilinx-hls",
+                        "is_slot": false,
+                        "clock_period": "0",
                         "ports": [],
                         "tasks": {
                             "Producer": [{"args": {"out": {"arg": "q", "cat": "ostream"}}, "step": 0}],
@@ -206,8 +206,8 @@ mod tests {
                             }
                         }
                     },
-                    "Producer": {"level": "lower", "code": "", "target": "xilinx-hls", "ports": [], "tasks": {}, "fifos": {}},
-                    "Consumer": {"level": "lower", "code": "", "target": "xilinx-hls", "ports": [], "tasks": {}, "fifos": {}}
+                    "Producer": {"name": "Producer", "level": "lower", "code": "", "target": "xilinx-hls", "is_slot": false, "clock_period": "0", "ports": [], "tasks": {}, "fifos": {}},
+                    "Consumer": {"name": "Consumer", "level": "lower", "code": "", "target": "xilinx-hls", "is_slot": false, "clock_period": "0", "ports": [], "tasks": {}, "fifos": {}}
                 }
             }"#,
         )

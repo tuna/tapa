@@ -10,7 +10,7 @@ use tapa_rtl::mutation::{wide_wire, wire};
 use crate::rtl_state::TopologyWithRtl;
 
 pub fn instantiate_top_control_s_axi(state: &mut TopologyWithRtl, task_name: &str) {
-    let Some(task) = state.program.tasks.get(task_name) else {
+    let Some(task) = state.design.tasks.get(task_name) else {
         return;
     };
     let Some(mm) = state.module_map.get_mut(task_name) else {
@@ -47,7 +47,7 @@ pub fn instantiate_top_control_s_axi(state: &mut TopologyWithRtl, task_name: &st
     }
 
     for port in &task.ports {
-        use tapa_task_graph::port::ArgCategory;
+        use tapa_ir::port::ArgCategory;
         let sanitized = tapa_rtl::module::sanitize_array_name(&port.name);
         let ctrl_port_names = match port.cat {
             ArgCategory::Scalar => {

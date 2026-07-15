@@ -1,6 +1,6 @@
-//! TAPA task graph schema — serde structs for `graph.json` (tapacc output)
-//! and `design.json` (the topology bridge written by current
-//! the implementation).
+//! TAPA intermediate representation — serde structs for `graph.json`
+//! (tapacc output) and `design.json` (the design model consumed by
+//! synth, codegen, and pack).
 
 pub mod design;
 pub mod graph;
@@ -12,7 +12,7 @@ pub mod transforms;
 
 mod error;
 
-pub use design::{Design, TaskTopology};
+pub use design::{Design, Task};
 pub use error::ParseError;
 pub use graph::Graph;
 pub use instance::{Arg, TaskInstance};

@@ -6,7 +6,7 @@ use rayon::prelude::*;
 use std::fs;
 use std::path::Path;
 
-use tapa_task_graph::Design;
+use tapa_ir::Design;
 use tapa_xilinx::{run_hls_with_retry, run_hls_with_retry_in_stage, HlsJob, HlsOutput, ToolRunner};
 
 use crate::error::{CliError, Result};
@@ -345,21 +345,23 @@ fn find_and_parse_csynth(
 mod tests {
     use super::*;
 
+    use std::collections::BTreeMap;
+
     use indexmap::IndexMap;
-    use tapa_task_graph::{Design, TaskTopology};
+    use tapa_ir::{Design, Task, TaskLevel};
     use tapa_xilinx::{MockToolRunner, ToolInvocation, ToolOutput};
 
     fn leaf_design() -> Design {
-        let mut tasks = IndexMap::new();
+        let mut tasks = BTreeMap::new();
         tasks.insert(
             "Add".to_string(),
-            TaskTopology {
+            Task {
                 name: "Add".to_string(),
-                level: "lower".to_string(),
+                level: TaskLevel::Lower,
                 code: String::new(),
                 ports: Vec::new(),
-                tasks: IndexMap::new(),
-                fifos: IndexMap::new(),
+                tasks: BTreeMap::new(),
+                fifos: BTreeMap::new(),
                 target: Some("hls".to_string()),
                 is_slot: false,
                 self_area: IndexMap::new(),

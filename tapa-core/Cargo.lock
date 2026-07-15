@@ -1082,9 +1082,8 @@ dependencies = [
  "serde_yaml",
  "sha2",
  "tapa-codegen",
+ "tapa-ir",
  "tapa-rtl",
- "tapa-task-graph",
- "tapa-topology",
  "tapa-xilinx",
  "tempfile",
  "thiserror",
@@ -1098,10 +1097,21 @@ version = "0.1.0"
 dependencies = [
  "minijinja",
  "serde_json",
+ "tapa-ir",
  "tapa-protocol",
  "tapa-rtl",
- "tapa-task-graph",
- "tapa-topology",
+ "thiserror",
+]
+
+[[package]]
+name = "tapa-ir"
+version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "serde",
+ "serde_json",
+ "serde_path_to_error",
+ "strum",
  "thiserror",
 ]
 
@@ -1124,29 +1134,6 @@ dependencies = [
  "thiserror",
  "tree-sitter",
  "tree-sitter-systemverilog",
-]
-
-[[package]]
-name = "tapa-task-graph"
-version = "0.1.0"
-dependencies = [
- "indexmap",
- "serde",
- "serde_json",
- "serde_path_to_error",
- "strum",
- "thiserror",
-]
-
-[[package]]
-name = "tapa-topology"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "serde_path_to_error",
- "tapa-task-graph",
- "thiserror",
 ]
 
 [[package]]

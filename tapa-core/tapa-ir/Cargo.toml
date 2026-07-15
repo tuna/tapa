@@ -1,5 +1,5 @@
 [package]
-name = "tapa-task-graph"
+name = "tapa-ir"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,7 +7,8 @@ edition = "2021"
 indexmap = { workspace = true }
 serde = { workspace = true }
 # `preserve_order` keeps `serde_json::Value` map keys in insertion order so
-# `Design::to_writer` preserves insertion order in the emitted JSON.
+# Value-typed payloads (area dicts, `transforms::flatten_value`) round-trip
+# in their original key order.
 serde_json = { workspace = true, features = ["preserve_order"] }
 serde_path_to_error = { workspace = true }
 strum = { workspace = true }

@@ -26,7 +26,7 @@ use std::path::Path;
 use indexmap::IndexMap;
 use serde::Serialize;
 use serde_json::Value;
-use tapa_task_graph::Design;
+use tapa_ir::{Design, TaskLevel};
 
 use crate::error::{CliError, Result};
 use crate::steps::version::VERSION as TAPA_VERSION;
@@ -96,7 +96,7 @@ pub fn write_top_report(work_dir: &Path, design: &Design, override_schema: &str)
 
 /// Recursively build a task report.
 ///
-/// `TaskTopology::clock_period` and `total_area` contain the task-local HLS
+/// `Task::clock_period` and `total_area` contain the task-local HLS
 /// estimate and an optional post-synthesis override, respectively. The
 /// effective values are derived here: an upper task's clock is the maximum
 /// of its own estimate and all descendants, while an empty `total_area` is
@@ -110,9 +110,9 @@ fn build_task_report(design: &Design, task_name: &str, schema: &str) -> Result<R
     let area_source = if has_explicit_total { "synth" } else { "hls" };
 
     let mut child_reports = Vec::new();
-    if task.level == "upper" {
+    if task.level == TaskLevel::Upper {
         for (child_name, instances) in &task.tasks {
-            let count = instances.as_array().map_or(0, Vec::len);
+            let count = instances.len();
             if count == 0 || !design.tasks.contains_key(child_name) {
                 continue;
             }
@@ -138,7 +138,7 @@ fn build_task_report(design: &Design, task_name: &str, schema: &str) -> Result<R
 
     let total_area = effective_total_area(design, task_name)?;
 
-    let (performance, area_breakdown) = if task.level == "upper" {
+    let (performance, area_breakdown) = if task.level == TaskLevel::Upper {
         let mut critical_path = IndexMap::new();
         let mut breakdown = IndexMap::new();
         for child in child_reports {
@@ -201,17 +201,33 @@ fn parse_clock_period(task_name: &str, period: &str) -> Result<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use indexmap::IndexMap;
-    use tapa_task_graph::TaskTopology;
+    use std::collections::BTreeMap;
 
-    fn leaf(name: &str, clock: &str, area: Value) -> TaskTopology {
-        TaskTopology {
+    use indexmap::IndexMap;
+    use tapa_ir::{Task, TaskInstance, TaskLevel};
+
+    /// `count` child instances with empty args and step 0, mirroring
+    /// the `[{"args": {}, "step": 0}, ...]` JSON the untyped fixtures
+    /// used.
+    fn instances(count: usize) -> Vec<TaskInstance> {
+        vec![
+            TaskInstance {
+                name: None,
+                args: BTreeMap::new(),
+                step: 0,
+            };
+            count
+        ]
+    }
+
+    fn leaf(name: &str, clock: &str, area: Value) -> Task {
+        Task {
             name: name.to_string(),
-            level: "lower".to_string(),
+            level: TaskLevel::Lower,
             code: format!("void {name}() {{}}\n"),
             ports: Vec::new(),
-            tasks: IndexMap::new(),
-            fifos: IndexMap::new(),
+            tasks: BTreeMap::new(),
+            fifos: BTreeMap::new(),
             target: Some("hls".to_string()),
             is_slot: false,
             self_area: IndexMap::new(),
@@ -235,15 +251,19 @@ mod tests {
         name: &str,
         clock: &str,
         self_area: Value,
-        tasks: IndexMap<String, Value>,
-    ) -> TaskTopology {
-        TaskTopology {
+        tasks: BTreeMap<String, Vec<TaskInstance>>,
+    ) -> Task {
+        Task {
             name: name.to_string(),
-            level: if tasks.is_empty() { "lower" } else { "upper" }.to_string(),
+            level: if tasks.is_empty() {
+                TaskLevel::Lower
+            } else {
+                TaskLevel::Upper
+            },
             code: format!("void {name}() {{}}\n"),
             ports: Vec::new(),
             tasks,
-            fifos: IndexMap::new(),
+            fifos: BTreeMap::new(),
             target: Some("hls".to_string()),
             is_slot: false,
             self_area: area_to_map(self_area),
@@ -255,14 +275,14 @@ mod tests {
     #[test]
     fn derives_recursive_metrics_when_total_area_is_empty() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let mut tasks = IndexMap::new();
+        let mut tasks = BTreeMap::new();
         tasks.insert(
             "Leaf".to_string(),
             derived_task(
                 "Leaf",
                 "4.0",
                 serde_json::json!({"LUT": 11, "FF": 1}),
-                IndexMap::new(),
+                BTreeMap::new(),
             ),
         );
         tasks.insert(
@@ -271,14 +291,7 @@ mod tests {
                 "Middle",
                 "2.5",
                 serde_json::json!({"LUT": 7, "FF": 2}),
-                IndexMap::from([(
-                    "Leaf".to_string(),
-                    serde_json::json!([
-                        {"args": {}, "step": 0},
-                        {"args": {}, "step": 0},
-                        {"args": {}, "step": 0}
-                    ]),
-                )]),
+                BTreeMap::from([("Leaf".to_string(), instances(3))]),
             ),
         );
         tasks.insert(
@@ -287,13 +300,7 @@ mod tests {
                 "Top",
                 "2.0",
                 serde_json::json!({"LUT": 5, "FF": 3}),
-                IndexMap::from([(
-                    "Middle".to_string(),
-                    serde_json::json!([
-                        {"args": {}, "step": 0},
-                        {"args": {}, "step": 0}
-                    ]),
-                )]),
+                BTreeMap::from([("Middle".to_string(), instances(2))]),
             ),
         );
         let design = Design {
@@ -341,23 +348,16 @@ mod tests {
     #[test]
     fn writes_report_for_upper_top_with_breakdown() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let mut tasks = IndexMap::new();
+        let mut tasks = BTreeMap::new();
         tasks.insert(
             "VecAdd".to_string(),
-            TaskTopology {
+            Task {
                 name: "VecAdd".to_string(),
-                level: "upper".to_string(),
+                level: TaskLevel::Upper,
                 code: "void VecAdd() {}\n".to_string(),
                 ports: Vec::new(),
-                tasks: {
-                    let mut m = IndexMap::new();
-                    m.insert(
-                        "Add".to_string(),
-                        serde_json::json!([{"args": {}, "step": 0}, {"args": {}, "step": 0}]),
-                    );
-                    m
-                },
-                fifos: IndexMap::new(),
+                tasks: BTreeMap::from([("Add".to_string(), instances(2))]),
+                fifos: BTreeMap::new(),
                 target: Some("hls".to_string()),
                 is_slot: false,
                 self_area: IndexMap::new(),
@@ -395,7 +395,7 @@ mod tests {
     #[test]
     fn override_schema_wins() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let mut tasks = IndexMap::new();
+        let mut tasks = BTreeMap::new();
         tasks.insert("T".to_string(), leaf("T", "3.33", serde_json::json!({})));
         let design = Design {
             top: "T".to_string(),

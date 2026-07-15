@@ -2,12 +2,12 @@
 
 use super::*;
 use crate::rtl_state::TopologyWithRtl;
+use tapa_ir::Design;
 use tapa_rtl::VerilogModule;
-use tapa_topology::program::Program;
 
-/// Helper: build a minimal topology Program from a JSON value.
-fn program_from_json(json: serde_json::Value) -> Program {
-    serde_json::from_value(json).expect("valid program JSON")
+/// Helper: build a minimal `Design` from a JSON value.
+fn program_from_json(json: serde_json::Value) -> Design {
+    design_from_fixture_json(json)
 }
 
 /// Helper: parse a minimal Verilog module source.

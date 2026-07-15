@@ -9,7 +9,7 @@ use camino::Utf8PathBuf;
 use std::path::Path;
 
 use serde_json::{json, Value};
-use tapa_task_graph::TaskTopology;
+use tapa_ir::Task;
 use tapa_xilinx::{CsynthReport, ToolRunner};
 
 use crate::context::CliContext;
@@ -130,7 +130,7 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
 /// `total_area` is cleared because it is either re-populated by optional
 /// out-of-context synthesis or derived recursively from `self_area` by report
 /// and topology consumers.
-fn apply_hls_metrics(task: &mut TaskTopology, report: &CsynthReport) {
+fn apply_hls_metrics(task: &mut Task, report: &CsynthReport) {
     task.clock_period
         .clone_from(&report.estimated_clock_period_ns);
     task.self_area.clear();
@@ -224,8 +224,10 @@ mod tests {
     use std::sync::Mutex;
 
     use clap::Parser;
+    use std::collections::BTreeMap;
+
     use indexmap::IndexMap;
-    use tapa_task_graph::{Design, TaskTopology};
+    use tapa_ir::{Design, Task, TaskLevel};
     use tapa_xilinx::{ToolInvocation, ToolOutput};
 
     use crate::globals::GlobalArgs;
@@ -326,13 +328,13 @@ mod tests {
 
     #[test]
     fn hls_metrics_use_estimated_clock_and_clear_stale_total() {
-        let mut task = TaskTopology {
+        let mut task = Task {
             name: "Add".to_string(),
-            level: "lower".to_string(),
+            level: TaskLevel::Lower,
             code: "void Add() {}\n".to_string(),
             ports: Vec::new(),
-            tasks: IndexMap::new(),
-            fifos: IndexMap::new(),
+            tasks: BTreeMap::new(),
+            fifos: BTreeMap::new(),
             target: Some("hls".to_string()),
             is_slot: false,
             self_area: IndexMap::from([("LUT".to_string(), json!(999))]),
@@ -369,16 +371,16 @@ mod tests {
     fn synth_writes_full_pipeline_artifacts() {
         let dir = tempfile::tempdir().expect("tempdir");
         let work = dir.path();
-        let mut tasks = IndexMap::new();
+        let mut tasks = BTreeMap::new();
         tasks.insert(
             "Add".to_string(),
-            TaskTopology {
+            Task {
                 name: "Add".to_string(),
-                level: "lower".to_string(),
+                level: TaskLevel::Lower,
                 code: "void Add() {}\n".to_string(),
                 ports: Vec::new(),
-                tasks: IndexMap::new(),
-                fifos: IndexMap::new(),
+                tasks: BTreeMap::new(),
+                fifos: BTreeMap::new(),
                 target: Some("hls".to_string()),
                 is_slot: false,
                 self_area: IndexMap::new(),
@@ -386,20 +388,24 @@ mod tests {
                 clock_period: "0".to_string(),
             },
         );
-        let mut child_tasks = IndexMap::new();
+        let mut child_tasks = BTreeMap::new();
         child_tasks.insert(
             "Add".to_string(),
-            serde_json::json!([{"args": {}, "step": 0}]),
+            vec![tapa_ir::TaskInstance {
+                name: None,
+                args: BTreeMap::new(),
+                step: 0,
+            }],
         );
         tasks.insert(
             "VecAdd".to_string(),
-            TaskTopology {
+            Task {
                 name: "VecAdd".to_string(),
-                level: "upper".to_string(),
+                level: TaskLevel::Upper,
                 code: "void VecAdd() {}\n".to_string(),
                 ports: Vec::new(),
                 tasks: child_tasks,
-                fifos: IndexMap::new(),
+                fifos: BTreeMap::new(),
                 target: Some("hls".to_string()),
                 is_slot: false,
                 self_area: IndexMap::new(),
@@ -419,8 +425,8 @@ mod tests {
         settings_io::store_settings(work, &settings).expect("store settings");
 
         // Two HLS invocations: the leaf `Add` and the upper-task shell
-        // `VecAdd`. Iteration order matches `IndexMap` insertion order,
-        // which mirrors `Task` topological sort.
+        // `VecAdd`. Iteration order is `BTreeMap` alphabetical order,
+        // which matches the sorted order `tapa analyze` writes.
         let stub_module = |name: &str| -> String {
             format!(
                 "module {name}(\n  input wire ap_clk,\n  input wire ap_rst_n,\n  \

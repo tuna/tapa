@@ -7,10 +7,9 @@ edition = "2021"
 serde_json.workspace = true
 thiserror.workspace = true
 minijinja = { workspace = true }
+tapa-ir.workspace = true
 tapa-protocol.workspace = true
 tapa-rtl.workspace = true
-tapa-task-graph.workspace = true
-tapa-topology.workspace = true
 
 [lints]
 workspace = true

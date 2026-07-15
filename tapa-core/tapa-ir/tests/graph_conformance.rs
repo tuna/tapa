@@ -1,8 +1,8 @@
-//! Conformance and round-trip tests for `tapa-task-graph`.
+//! Conformance and round-trip tests for the `tapa-ir` graph model.
 
-use tapa_task_graph::graph::Graph;
-use tapa_task_graph::port::ArgCategory;
-use tapa_task_graph::task::TaskLevel;
+use tapa_ir::graph::Graph;
+use tapa_ir::port::ArgCategory;
+use tapa_ir::task::TaskLevel;
 
 fn fixture(name: &str) -> String {
     let path = format!(

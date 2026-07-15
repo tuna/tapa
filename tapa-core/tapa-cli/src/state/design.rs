@@ -1,9 +1,9 @@
-//! `design.json` read / write — wraps `tapa_task_graph::Design` with
+//! `design.json` read / write — wraps `tapa_ir::Design` with
 //! work-directory path conventions.
 
 use std::path::Path;
 
-use tapa_task_graph::Design;
+use tapa_ir::Design;
 
 use crate::error::{CliError, Result};
 use crate::state::json::write_json_atomic;
@@ -29,11 +29,7 @@ pub fn load_design(work_dir: &Path) -> Result<Design> {
 }
 
 /// Persist `design` to `<work_dir>/design.json` using the shared compact JSON
-/// formatter.
-///
-/// The shared [`write_json_atomic`] serializes `Design` through the same
-/// `, `/`: ` compact formatter as [`Design::to_writer`], so the on-disk bytes
-/// are identical.
+/// formatter ([`write_json_atomic`]).
 pub fn store_design(work_dir: &Path, design: &Design) -> Result<()> {
     write_json_atomic(work_dir, FILE_NAME, design)
 }
@@ -41,20 +37,22 @@ pub fn store_design(work_dir: &Path, design: &Design) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeMap;
+
     use indexmap::IndexMap;
-    use tapa_task_graph::TaskTopology;
+    use tapa_ir::{Task, TaskLevel};
 
     fn sample_design() -> Design {
-        let mut tasks = IndexMap::new();
+        let mut tasks = BTreeMap::new();
         tasks.insert(
             "Top".to_string(),
-            TaskTopology {
+            Task {
                 name: "Top".to_string(),
-                level: "lower".to_string(),
+                level: TaskLevel::Lower,
                 code: "void Top() {}".to_string(),
                 ports: Vec::new(),
-                tasks: IndexMap::new(),
-                fifos: IndexMap::new(),
+                tasks: BTreeMap::new(),
+                fifos: BTreeMap::new(),
                 target: Some("hls".to_string()),
                 is_slot: false,
                 self_area: IndexMap::new(),

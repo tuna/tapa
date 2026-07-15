@@ -1,12 +1,16 @@
-//! Conformance and round-trip tests for `tapa-topology`.
+//! Conformance and round-trip tests for the `tapa-ir` design model.
 
-use tapa_task_graph::port::ArgCategory;
-use tapa_task_graph::task::TaskLevel;
-use tapa_topology::design::Design;
+use tapa_ir::design::Design;
+use tapa_ir::port::ArgCategory;
+use tapa_ir::task::TaskLevel;
 
 fn fixture(name: &str) -> String {
     let path = format!("{}/../testdata/topology/{name}", env!("CARGO_MANIFEST_DIR"));
     std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path}: {e}"))
+}
+
+fn to_json(design: &Design) -> String {
+    serde_json::to_string_pretty(design).expect("serialize design")
 }
 
 // ── Positive parse tests ────────────────────────────────────────────
@@ -14,15 +18,15 @@ fn fixture(name: &str) -> String {
 #[test]
 fn parse_vadd_design() {
     let d = Design::from_json(&fixture("vadd_design.json")).expect("parse vadd");
-    assert_eq!(d.program.top, "VecAdd", "top task");
-    assert_eq!(d.program.target, "xilinx-hls", "target");
-    assert_eq!(d.program.tasks.len(), 4, "task count");
+    assert_eq!(d.top, "VecAdd", "top task");
+    assert_eq!(d.target, "xilinx-hls", "target");
+    assert_eq!(d.tasks.len(), 4, "task count");
 }
 
 #[test]
 fn vadd_upper_task_structure() {
     let d = Design::from_json(&fixture("vadd_design.json")).expect("parse");
-    let top = &d.program.tasks["VecAdd"];
+    let top = &d.tasks["VecAdd"];
     assert_eq!(top.level, TaskLevel::Upper, "VecAdd is upper");
     assert_eq!(top.ports.len(), 4, "VecAdd port count");
     assert_eq!(top.tasks.len(), 3, "VecAdd child task types");
@@ -32,7 +36,7 @@ fn vadd_upper_task_structure() {
 #[test]
 fn vadd_leaf_task() {
     let d = Design::from_json(&fixture("vadd_design.json")).expect("parse");
-    let add = &d.program.tasks["Add"];
+    let add = &d.tasks["Add"];
     assert_eq!(add.level, TaskLevel::Lower, "Add is lower");
     assert!(add.tasks.is_empty(), "leaf has no children");
     assert!(add.fifos.is_empty(), "leaf has no FIFOs");
@@ -42,24 +46,16 @@ fn vadd_leaf_task() {
 #[test]
 fn vadd_rtl_annotations_preserved() {
     let d = Design::from_json(&fixture("vadd_design.json")).expect("parse");
-    let m2s = &d.program.tasks["Mmap2Stream"];
-    // self_area and total_area should be in annotations
-    let self_area = m2s.annotations.get("self_area").expect("has self_area");
-    assert!(self_area.is_object(), "self_area is object");
-    let lut = self_area.get("LUT").expect("has LUT");
+    let m2s = &d.tasks["Mmap2Stream"];
+    let lut = m2s.self_area.get("LUT").expect("has LUT");
     assert_eq!(lut, 414, "LUT value");
-
-    let clock = m2s
-        .annotations
-        .get("clock_period")
-        .expect("has clock_period");
-    assert_eq!(clock.as_str().unwrap(), "2.342", "clock_period");
+    assert_eq!(m2s.clock_period, "2.342", "clock_period");
 }
 
 #[test]
 fn vadd_fifo_endpoints() {
     let d = Design::from_json(&fixture("vadd_design.json")).expect("parse");
-    let top = &d.program.tasks["VecAdd"];
+    let top = &d.tasks["VecAdd"];
     let a_q = &top.fifos["a_q"];
     assert_eq!(a_q.depth, Some(2), "a_q depth");
     let consumer = a_q.consumed_by.as_ref().expect("has consumer");
@@ -70,7 +66,7 @@ fn vadd_fifo_endpoints() {
 #[test]
 fn vadd_instance_args() {
     let d = Design::from_json(&fixture("vadd_design.json")).expect("parse");
-    let top = &d.program.tasks["VecAdd"];
+    let top = &d.tasks["VecAdd"];
     let add_instances = &top.tasks["Add"];
     assert_eq!(add_instances.len(), 1, "one Add instance");
     let instance = &add_instances[0];
@@ -85,20 +81,16 @@ fn vadd_instance_args() {
 #[test]
 fn slots_design_is_slot_flag() {
     let d = Design::from_json(&fixture("slots_design.json")).expect("parse slots");
-    let top = &d.program.tasks["TopTask"];
+    let top = &d.tasks["TopTask"];
     assert!(!top.is_slot, "TopTask is not a slot");
-    let slot = &d.program.tasks["SlotTask"];
+    let slot = &d.tasks["SlotTask"];
     assert!(slot.is_slot, "SlotTask is a slot");
 }
 
 #[test]
 fn slots_floorplan_region() {
     let d = Design::from_json(&fixture("slots_design.json")).expect("parse");
-    let regions = d
-        .program
-        .slot_task_name_to_fp_region
-        .as_ref()
-        .expect("has regions");
+    let regions = d.slot_task_name_to_fp_region.as_ref().expect("has regions");
     assert_eq!(regions["SlotTask"], "SLOT_X0Y0:SLOT_X0Y0");
 }
 
@@ -116,54 +108,41 @@ fn floorplan_slots_derived() {
 fn vadd_round_trip() {
     let json = fixture("vadd_design.json");
     let d1 = Design::from_json(&json).expect("parse 1");
-    let serialized = d1.to_json().expect("serialize");
+    let serialized = to_json(&d1);
     let d2 = Design::from_json(&serialized).expect("parse 2");
-    assert_eq!(d1.program.top, d2.program.top, "top round-trips");
-    assert_eq!(d1.program.target, d2.program.target, "target round-trips");
-    assert_eq!(
-        d1.program.tasks.len(),
-        d2.program.tasks.len(),
-        "task count round-trips"
-    );
+    assert_eq!(d1.top, d2.top, "top round-trips");
+    assert_eq!(d1.target, d2.target, "target round-trips");
+    assert_eq!(d1.tasks.len(), d2.tasks.len(), "task count round-trips");
 }
 
 #[test]
 fn slots_round_trip() {
     let json = fixture("slots_design.json");
     let d1 = Design::from_json(&json).expect("parse 1");
-    let serialized = d1.to_json().expect("serialize");
+    let serialized = to_json(&d1);
     let d2 = Design::from_json(&serialized).expect("parse 2");
+    assert_eq!(d1.tasks["SlotTask"].is_slot, d2.tasks["SlotTask"].is_slot);
     assert_eq!(
-        d1.program.tasks["SlotTask"].is_slot,
-        d2.program.tasks["SlotTask"].is_slot
-    );
-    assert_eq!(
-        d1.program.slot_task_name_to_fp_region,
-        d2.program.slot_task_name_to_fp_region
+        d1.slot_task_name_to_fp_region,
+        d2.slot_task_name_to_fp_region
     );
 }
 
+/// Replaces the pre-`tapa-ir` `unknown_fields_preserved` test: the
+/// design model is now fully typed with `deny_unknown_fields`, so
+/// unknown fields are rejected instead of round-tripped.
 #[test]
-fn unknown_fields_preserved() {
+fn unknown_top_level_field_rejected() {
     let json = r#"{
         "top": "T", "target": "hls",
-        "tasks": {
-            "T": {
-                "level": "lower", "code": "", "target": "hls",
-                "custom_field": 42
-            }
-        },
-        "extra_top_field": "preserved"
+        "tasks": {},
+        "extra_top_field": "rejected"
     }"#;
-    let d = Design::from_json(json).expect("parse with extras");
-    let serialized = d.to_json().expect("serialize");
+    let err = Design::from_json(json).unwrap_err();
+    let msg = err.to_string();
     assert!(
-        serialized.contains("extra_top_field"),
-        "top-level extra preserved"
-    );
-    assert!(
-        serialized.contains("custom_field"),
-        "task-level extra preserved"
+        msg.contains("extra_top_field") || msg.contains("unknown"),
+        "error about unknown top-level field: {msg}"
     );
 }
 
@@ -171,14 +150,16 @@ fn unknown_fields_preserved() {
 fn annotation_round_trip() {
     let json = fixture("vadd_design.json");
     let d1 = Design::from_json(&json).expect("parse");
-    let serialized = d1.to_json().expect("serialize");
+    let serialized = to_json(&d1);
     let d2 = Design::from_json(&serialized).expect("parse 2");
 
-    let m2s_1 = &d1.program.tasks["Mmap2Stream"];
-    let m2s_2 = &d2.program.tasks["Mmap2Stream"];
+    let m2s_1 = &d1.tasks["Mmap2Stream"];
+    let m2s_2 = &d2.tasks["Mmap2Stream"];
+    assert_eq!(m2s_1.self_area, m2s_2.self_area, "self_area round-trips");
+    assert_eq!(m2s_1.total_area, m2s_2.total_area, "total_area round-trips");
     assert_eq!(
-        m2s_1.annotations, m2s_2.annotations,
-        "annotations round-trip"
+        m2s_1.clock_period, m2s_2.clock_period,
+        "clock_period round-trips"
     );
 }
 
@@ -250,16 +231,13 @@ fn invalid_instance_arg_category_rejected() {
 fn hmap_port_category_round_trips_as_mmap() {
     let json = r#"{
         "top": "T", "target": "hls",
-        "tasks": {"T": {"level": "lower", "code": "", "target": "hls",
+        "tasks": {"T": {"name": "T", "level": "lower", "code": "", "target": "hls",
+            "is_slot": false, "clock_period": "0",
             "ports": [{"cat": "hmap", "name": "data", "type": "float*", "width": 32}]}}
     }"#;
     let d = Design::from_json(json).expect("parse hmap port");
-    assert_eq!(
-        d.program.tasks["T"].ports[0].cat,
-        ArgCategory::Mmap,
-        "hmap -> Mmap"
-    );
-    let serialized = d.to_json().expect("serialize");
+    assert_eq!(d.tasks["T"].ports[0].cat, ArgCategory::Mmap, "hmap -> Mmap");
+    let serialized = to_json(&d);
     assert!(serialized.contains(r#""mmap""#), "round-trips as mmap");
     assert!(!serialized.contains(r#""hmap""#), "no hmap in output");
 }

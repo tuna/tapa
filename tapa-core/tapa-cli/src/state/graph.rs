@@ -1,6 +1,6 @@
 //! `graph.json` read / write helpers.
 //!
-//! Uses `serde_json::Value` instead of the strict `tapa_task_graph::Graph`
+//! Uses `serde_json::Value` instead of the strict `tapa_ir::Graph`
 //! type because downstream steps accept a richer schema than the
 //! tapacc-output flavor.
 

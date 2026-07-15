@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 use clap::{Parser, ValueEnum};
 use serde_json::{json, Value};
-use tapa_task_graph::Graph;
+use tapa_ir::Graph;
 
 use crate::context::CliContext;
 use crate::error::{CliError, Result};
@@ -385,8 +385,8 @@ mod tests {
         assert_eq!(design.target, "xilinx-hls");
         assert!(design.tasks.contains_key("VecAdd"));
         assert!(design.tasks.contains_key("Add"));
-        assert_eq!(design.tasks["VecAdd"].level, "upper");
-        assert_eq!(design.tasks["Add"].level, "lower");
+        assert_eq!(design.tasks["VecAdd"].level, tapa_ir::TaskLevel::Upper);
+        assert_eq!(design.tasks["Add"].level, tapa_ir::TaskLevel::Lower);
         assert!(design.slot_task_name_to_fp_region.is_none());
 
         // FlowState must cache all three artifacts.

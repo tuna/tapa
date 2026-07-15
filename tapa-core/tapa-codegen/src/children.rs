@@ -4,6 +4,8 @@
 
 use std::collections::BTreeMap;
 
+use tapa_ir::port::ArgCategory;
+use tapa_ir::Arg;
 use tapa_protocol::{
     HANDSHAKE_CLK, HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY, HANDSHAKE_RST, HANDSHAKE_RST_N,
     HANDSHAKE_START, ISTREAM_SUFFIXES, OSTREAM_SUFFIXES,
@@ -13,8 +15,6 @@ use tapa_rtl::builder::{
 };
 use tapa_rtl::module::sanitize_array_name;
 use tapa_rtl::VerilogModule;
-use tapa_task_graph::port::ArgCategory;
-use tapa_topology::instance::ArgDesign;
 
 use crate::instance_signals::InstanceSignals;
 use crate::rtl_state::TopologyWithRtl;
@@ -176,7 +176,7 @@ pub fn build_child_instance(
     child_task_name: &str,
     instance_name: &str,
     sig: &InstanceSignals,
-    args: &BTreeMap<String, ArgDesign>,
+    args: &BTreeMap<String, Arg>,
     mmap_bindings: &ChildMmapBindings,
     child_rtl: Option<&VerilogModule>,
 ) -> ModuleInstance {
@@ -424,9 +424,9 @@ pub(crate) fn generate_child_signals(
     mmap_conns: &std::collections::BTreeMap<String, crate::rtl_state::MMapConnection>,
     mmap_slave_map: &std::collections::BTreeMap<(String, String, usize), usize>,
 ) -> (Vec<String>, Vec<(String, bool)>) {
-    type ChildEntry = (usize, Option<String>, bool, BTreeMap<String, ArgDesign>);
+    type ChildEntry = (usize, Option<String>, bool, BTreeMap<String, Arg>);
 
-    let task = &state.program.tasks[task_name];
+    let task = &state.design.tasks[task_name];
     let mut is_done_signals = Vec::new();
     let mut instance_infos = Vec::new();
     let mut fsm_portargs = Vec::new(); // portargs for FSM module instantiation
@@ -531,7 +531,7 @@ pub(crate) fn generate_child_signals(
             // Add pipeline portargs to FSM instantiation
             for (port_name, arg) in &args {
                 match arg.cat {
-                    tapa_task_graph::port::ArgCategory::Scalar => {
+                    tapa_ir::port::ArgCategory::Scalar => {
                         let pipeline_out = format!("{inst_name}__{port_name}");
                         let fsm_in_port = format!("{inst_name}__{port_name}_in");
                         fsm_portargs.push(tapa_rtl::builder::PortArg::new(
@@ -543,8 +543,7 @@ pub(crate) fn generate_child_signals(
                             Expr::ident(&pipeline_out),
                         ));
                     }
-                    tapa_task_graph::port::ArgCategory::Mmap
-                    | tapa_task_graph::port::ArgCategory::AsyncMmap => {
+                    tapa_ir::port::ArgCategory::Mmap | tapa_ir::port::ArgCategory::AsyncMmap => {
                         let pipeline_out = format!("{inst_name}__{port_name}_offset");
                         let fsm_in_port = format!("{inst_name}__{port_name}_offset_in");
                         let arg_name = tapa_rtl::module::sanitize_array_name(&arg.arg);
@@ -565,12 +564,12 @@ pub(crate) fn generate_child_signals(
                             Expr::ident(&pipeline_out),
                         ));
                     }
-                    tapa_task_graph::port::ArgCategory::Istream
-                    | tapa_task_graph::port::ArgCategory::Ostream
-                    | tapa_task_graph::port::ArgCategory::Istreams
-                    | tapa_task_graph::port::ArgCategory::Ostreams
-                    | tapa_task_graph::port::ArgCategory::Immap
-                    | tapa_task_graph::port::ArgCategory::Ommap => {}
+                    tapa_ir::port::ArgCategory::Istream
+                    | tapa_ir::port::ArgCategory::Ostream
+                    | tapa_ir::port::ArgCategory::Istreams
+                    | tapa_ir::port::ArgCategory::Ostreams
+                    | tapa_ir::port::ArgCategory::Immap
+                    | tapa_ir::port::ArgCategory::Ommap => {}
                 }
             }
 
@@ -579,8 +578,7 @@ pub(crate) fn generate_child_signals(
             for arg in args.values() {
                 if matches!(
                     arg.cat,
-                    tapa_task_graph::port::ArgCategory::Mmap
-                        | tapa_task_graph::port::ArgCategory::AsyncMmap
+                    tapa_ir::port::ArgCategory::Mmap | tapa_ir::port::ArgCategory::AsyncMmap
                 ) {
                     if let Some(&slave_idx) =
                         mmap_slave_map.get(&(arg.arg.clone(), child_name.clone(), idx))
@@ -605,7 +603,7 @@ pub(crate) fn generate_child_signals(
             // Build and add the actual child module instance to parent
             if let Some(child_rtl) = child_rtl.as_ref() {
                 for (child_port, arg) in &args {
-                    if !matches!(arg.cat, tapa_task_graph::port::ArgCategory::AsyncMmap) {
+                    if !matches!(arg.cat, tapa_ir::port::ArgCategory::AsyncMmap) {
                         continue;
                     }
                     let active_tags = async_mmap::active_tags(child_rtl, child_port);
@@ -689,27 +687,26 @@ fn declare_instance_pipeline_signals(
     task_name: &str,
     child_name: &str,
     inst_name: &str,
-    args: &std::collections::BTreeMap<String, tapa_topology::instance::ArgDesign>,
+    args: &std::collections::BTreeMap<String, tapa_ir::Arg>,
 ) {
     for (port_name, arg) in args {
         let (pipeline_out, fsm_in, width) = match arg.cat {
-            tapa_task_graph::port::ArgCategory::Scalar => (
+            tapa_ir::port::ArgCategory::Scalar => (
                 format!("{inst_name}__{port_name}"),
                 format!("{inst_name}__{port_name}_in"),
                 resolve_child_scalar_width(state, child_name, port_name),
             ),
-            tapa_task_graph::port::ArgCategory::Mmap
-            | tapa_task_graph::port::ArgCategory::AsyncMmap => (
+            tapa_ir::port::ArgCategory::Mmap | tapa_ir::port::ArgCategory::AsyncMmap => (
                 format!("{inst_name}__{port_name}_offset"),
                 format!("{inst_name}__{port_name}_offset_in"),
                 Some(("63".to_string(), "0".to_string())), // 64-bit
             ),
-            tapa_task_graph::port::ArgCategory::Istream
-            | tapa_task_graph::port::ArgCategory::Ostream
-            | tapa_task_graph::port::ArgCategory::Istreams
-            | tapa_task_graph::port::ArgCategory::Ostreams
-            | tapa_task_graph::port::ArgCategory::Immap
-            | tapa_task_graph::port::ArgCategory::Ommap => continue,
+            tapa_ir::port::ArgCategory::Istream
+            | tapa_ir::port::ArgCategory::Ostream
+            | tapa_ir::port::ArgCategory::Istreams
+            | tapa_ir::port::ArgCategory::Ostreams
+            | tapa_ir::port::ArgCategory::Immap
+            | tapa_ir::port::ArgCategory::Ommap => continue,
         };
         add_pipeline_stage(state, task_name, &pipeline_out, &fsm_in, width.as_ref());
     }
@@ -791,13 +788,13 @@ fn resolve_child_scalar_width(
     }
 
     state
-        .program
+        .design
         .tasks
         .get(child_name)?
         .ports
         .iter()
         .find(|port| {
-            port.name == port_name && matches!(port.cat, tapa_task_graph::port::ArgCategory::Scalar)
+            port.name == port_name && matches!(port.cat, tapa_ir::port::ArgCategory::Scalar)
         })
         .and_then(|port| {
             if port.width > 1 {
@@ -870,18 +867,16 @@ mod tests {
         let mut args = BTreeMap::new();
         args.insert(
             "data_in".to_owned(),
-            ArgDesign {
+            Arg {
                 arg: "fifo_0".to_owned(),
                 cat: ArgCategory::Istream,
-                extra: BTreeMap::new(),
             },
         );
         args.insert(
             "size".to_owned(),
-            ArgDesign {
+            Arg {
                 arg: "n".to_owned(),
                 cat: ArgCategory::Scalar,
-                extra: BTreeMap::new(),
             },
         );
         let inst = build_child_instance(
@@ -914,18 +909,16 @@ mod tests {
         let mut args = BTreeMap::new();
         args.insert(
             "data_in".to_owned(),
-            ArgDesign {
+            Arg {
                 arg: "fifo_0".to_owned(),
                 cat: ArgCategory::Istream,
-                extra: BTreeMap::new(),
             },
         );
         args.insert(
             "data_out".to_owned(),
-            ArgDesign {
+            Arg {
                 arg: "fifo_1".to_owned(),
                 cat: ArgCategory::Ostream,
-                extra: BTreeMap::new(),
             },
         );
         let inst = build_child_instance(
@@ -955,10 +948,9 @@ mod tests {
         let mut args = BTreeMap::new();
         args.insert(
             "qs[24]_Network".to_owned(),
-            ArgDesign {
+            Arg {
                 arg: "qs[24]_Network".to_owned(),
                 cat: ArgCategory::Istream,
-                extra: BTreeMap::new(),
             },
         );
         let inst = build_child_instance(
@@ -998,10 +990,9 @@ mod tests {
         let mut args = BTreeMap::new();
         args.insert(
             "pkt_in_q0".to_owned(),
-            ArgDesign {
+            Arg {
                 arg: "fifo_0".to_owned(),
                 cat: ArgCategory::Istream,
-                extra: BTreeMap::new(),
             },
         );
         let inst = build_child_instance(
@@ -1041,10 +1032,9 @@ mod tests {
         let mut args = BTreeMap::new();
         args.insert(
             "in_q[0]".to_owned(),
-            ArgDesign {
+            Arg {
                 arg: "fifo[0]".to_owned(),
                 cat: ArgCategory::Istream,
-                extra: BTreeMap::new(),
             },
         );
         let inst = build_child_instance(
@@ -1073,10 +1063,9 @@ mod tests {
         let mut args = BTreeMap::new();
         args.insert(
             "mem".to_owned(),
-            ArgDesign {
+            Arg {
                 arg: "chan[0]".to_owned(),
                 cat: ArgCategory::Mmap,
-                extra: BTreeMap::new(),
             },
         );
         let inst = build_child_instance(
@@ -1124,10 +1113,9 @@ mod tests {
         let mut args = BTreeMap::new();
         args.insert(
             "mem".to_owned(),
-            ArgDesign {
+            Arg {
                 arg: "chan[0]".to_owned(),
                 cat: ArgCategory::AsyncMmap,
-                extra: BTreeMap::new(),
             },
         );
         let inst = build_child_instance(
@@ -1183,10 +1171,9 @@ mod tests {
         let mut args = BTreeMap::new();
         args.insert(
             "mem_Copy_0".to_owned(),
-            ArgDesign {
+            Arg {
                 arg: "chan[0]".to_owned(),
                 cat: ArgCategory::AsyncMmap,
-                extra: BTreeMap::new(),
             },
         );
         let inst = build_child_instance(

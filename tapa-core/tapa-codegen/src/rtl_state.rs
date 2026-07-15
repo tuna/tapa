@@ -1,16 +1,16 @@
 //! Enriched topology + RTL state for code generation.
 //!
-//! `TopologyWithRtl` wraps a `Program` with attached Verilog modules
+//! `TopologyWithRtl` wraps a `Design` with attached Verilog modules
 //! parsed from HLS output, plus FSM modules created during codegen.
 
 use std::collections::BTreeMap;
 
+use tapa_ir::port::ArgCategory;
+use tapa_ir::task::TaskLevel;
+use tapa_ir::Design;
 use tapa_rtl::module::sanitize_array_name;
 use tapa_rtl::mutation::MutableModule;
 use tapa_rtl::VerilogModule;
-use tapa_task_graph::port::ArgCategory;
-use tapa_task_graph::task::TaskLevel;
-use tapa_topology::program::Program;
 
 use crate::error::CodegenError;
 
@@ -27,10 +27,10 @@ fn render_fsm_module(fsm_name: &str) -> String {
 fn validate_mmap_channel_geometry(
     parent_task_name: &str,
     parent_port_name: &str,
-    parent: &tapa_topology::task::PortDesign,
+    parent: &tapa_ir::Port,
     child_task_name: &str,
     child_port_name: &str,
-    child: &tapa_topology::task::PortDesign,
+    child: &tapa_ir::Port,
 ) -> Result<(), CodegenError> {
     match (parent.chan_count, child.chan_count) {
         (Some(parent_count), Some(child_count)) if parent_count != child_count => {
@@ -56,10 +56,10 @@ fn validate_mmap_channel_geometry(
 fn merge_mmap_port_metadata(
     parent_task_name: &str,
     parent_port_name: &str,
-    parent: Option<&tapa_topology::task::PortDesign>,
+    parent: Option<&tapa_ir::Port>,
     child_task_name: &str,
     child_port_name: &str,
-    child: Option<&tapa_topology::task::PortDesign>,
+    child: Option<&tapa_ir::Port>,
 ) -> Result<(u32, Option<u32>, Option<u32>), CodegenError> {
     if let (Some(parent), Some(child)) = (parent, child) {
         if parent.width != child.width {
@@ -162,8 +162,8 @@ impl MMapConnection {
 
 /// Enriched state combining topology with RTL modules.
 pub struct TopologyWithRtl {
-    /// The topology model.
-    pub program: Program,
+    /// The design model.
+    pub design: Design,
     /// Parsed HLS Verilog modules, keyed by task name.
     pub module_map: BTreeMap<String, MutableModule>,
     /// FSM modules for upper-level tasks, keyed by task name.
@@ -175,10 +175,10 @@ pub struct TopologyWithRtl {
 }
 
 impl TopologyWithRtl {
-    /// Create a new `TopologyWithRtl` from a topology `Program`.
-    pub fn new(program: Program) -> Self {
+    /// Create a new `TopologyWithRtl` from a `Design`.
+    pub fn new(design: Design) -> Self {
         Self {
-            program,
+            design,
             module_map: BTreeMap::new(),
             fsm_modules: BTreeMap::new(),
             generated_files: BTreeMap::new(),
@@ -194,7 +194,7 @@ impl TopologyWithRtl {
         task_name: &str,
         module: VerilogModule,
     ) -> Result<(), CodegenError> {
-        if !self.program.tasks.contains_key(task_name) {
+        if !self.design.tasks.contains_key(task_name) {
             return Err(CodegenError::TaskNotFound(task_name.to_owned()));
         }
         if self.module_map.contains_key(task_name) {
@@ -210,7 +210,7 @@ impl TopologyWithRtl {
     /// Rejects lower-level tasks.
     pub fn create_fsm_module(&mut self, task_name: &str) -> Result<(), CodegenError> {
         let task = self
-            .program
+            .design
             .tasks
             .get(task_name)
             .ok_or_else(|| CodegenError::TaskNotFound(task_name.to_owned()))?;
@@ -251,7 +251,7 @@ impl TopologyWithRtl {
         cache: &mut BTreeMap<String, BTreeMap<String, MMapConnection>>,
     ) -> Result<BTreeMap<String, MMapConnection>, CodegenError> {
         let task = self
-            .program
+            .design
             .tasks
             .get(task_name)
             .ok_or_else(|| CodegenError::TaskNotFound(task_name.to_owned()))?;
@@ -267,7 +267,7 @@ impl TopologyWithRtl {
                     }
 
                     // Look up child port metadata using the child's port name
-                    let child_task = self.program.tasks.get(child_task_name.as_str());
+                    let child_task = self.design.tasks.get(child_task_name.as_str());
                     let port = child_task
                         .and_then(|t| t.ports.iter().find(|p| p.name == *child_port_name));
                     let (child_id_width, child_threads) =
@@ -374,7 +374,7 @@ impl TopologyWithRtl {
             .unwrap_or(1);
 
         let is_upper = self
-            .program
+            .design
             .tasks
             .get(child_task_name)
             .is_some_and(|task| task.level == TaskLevel::Upper);
@@ -394,12 +394,12 @@ impl TopologyWithRtl {
 
     /// Get the top task name.
     pub fn top_task_name(&self) -> &str {
-        &self.program.top
+        &self.design.top
     }
 
     /// Check if a task is upper-level.
     pub fn is_upper_task(&self, task_name: &str) -> bool {
-        self.program
+        self.design
             .tasks
             .get(task_name)
             .is_some_and(|t| t.level == TaskLevel::Upper)
@@ -427,7 +427,7 @@ pub fn routing_id_bits(n: u32) -> u32 {
 mod tests {
     use super::*;
 
-    fn sample_program() -> Program {
+    fn sample_program() -> Design {
         let json = r#"{
             "top": "top_task",
             "target": "xilinx-hls",
@@ -452,7 +452,7 @@ mod tests {
                 }
             }
         }"#;
-        serde_json::from_str(json).unwrap()
+        crate::design_from_fixture_json(serde_json::from_str(json).unwrap())
     }
 
     fn mmap_geometry_program(
@@ -460,8 +460,8 @@ mod tests {
         parent_chan_size: Option<u32>,
         child_chan_count: Option<u32>,
         child_chan_size: Option<u32>,
-    ) -> Program {
-        serde_json::from_value(serde_json::json!({
+    ) -> Design {
+        crate::design_from_fixture_json(serde_json::json!({
             "top": "top",
             "target": "xilinx-hls",
             "tasks": {
@@ -501,7 +501,6 @@ mod tests {
                 }
             }
         }))
-        .unwrap()
     }
 
     #[test]
@@ -558,7 +557,7 @@ mod tests {
 
     #[test]
     fn aggregate_mmap_connections_preserves_child_axi_id_width() {
-        let program = serde_json::from_value(serde_json::json!({
+        let program = crate::design_from_fixture_json(serde_json::json!({
             "top": "top",
             "target": "xilinx-hls",
             "tasks": {
@@ -585,8 +584,7 @@ mod tests {
                     "fifos": {}
                 }
             }
-        }))
-        .unwrap();
+        }));
         let mut state = TopologyWithRtl::new(program);
         state
             .attach_module(
@@ -617,7 +615,7 @@ mod tests {
         // (`mid`) that internally shares its `data` port between two
         // leaves. The parent-facing connection must report the
         // aggregated per-slave thread counts, not a flat 1.
-        let program = serde_json::from_value(serde_json::json!({
+        let program = crate::design_from_fixture_json(serde_json::json!({
             "top": "top",
             "target": "xilinx-hls",
             "tasks": {
@@ -660,8 +658,7 @@ mod tests {
                     "fifos": {}
                 }
             }
-        }))
-        .unwrap();
+        }));
         let state = TopologyWithRtl::new(program);
 
         let mid_conns = state.aggregate_mmap_connections("mid").unwrap();
@@ -681,7 +678,7 @@ mod tests {
     fn aggregate_rejects_hmap_with_internally_shared_child() {
         // A single hmap child port whose task internally shares the
         // mmap: unsupported, rejected at aggregation time.
-        let program = serde_json::from_value(serde_json::json!({
+        let program = crate::design_from_fixture_json(serde_json::json!({
             "top": "top",
             "target": "xilinx-hls",
             "tasks": {
@@ -724,8 +721,7 @@ mod tests {
                     "fifos": {}
                 }
             }
-        }))
-        .unwrap();
+        }));
         let state = TopologyWithRtl::new(program);
         let result = state.aggregate_mmap_connections("top");
         assert!(
@@ -736,7 +732,7 @@ mod tests {
 
     #[test]
     fn aggregate_rejects_conflicting_channel_shapes() {
-        let program = serde_json::from_value(serde_json::json!({
+        let program = crate::design_from_fixture_json(serde_json::json!({
             "top": "top",
             "target": "xilinx-hls",
             "tasks": {
@@ -773,8 +769,7 @@ mod tests {
                     "fifos": {}
                 }
             }
-        }))
-        .unwrap();
+        }));
         let state = TopologyWithRtl::new(program);
         let result = state.aggregate_mmap_connections("top");
         assert!(
@@ -785,7 +780,7 @@ mod tests {
 
     #[test]
     fn aggregate_rejects_parent_child_data_width_mismatch() {
-        let program = serde_json::from_value(serde_json::json!({
+        let program = crate::design_from_fixture_json(serde_json::json!({
             "top": "top",
             "target": "xilinx-hls",
             "tasks": {
@@ -812,8 +807,7 @@ mod tests {
                     "fifos": {}
                 }
             }
-        }))
-        .unwrap();
+        }));
         let state = TopologyWithRtl::new(program);
 
         let err = state
@@ -859,7 +853,7 @@ mod tests {
 
     #[test]
     fn aggregate_mmap_connections_preserves_nested_child_crossbar_id_width() {
-        let program = serde_json::from_value(serde_json::json!({
+        let program = crate::design_from_fixture_json(serde_json::json!({
             "top": "top",
             "target": "xilinx-hls",
             "tasks": {
@@ -901,8 +895,7 @@ mod tests {
                     "fifos": {}
                 }
             }
-        }))
-        .unwrap();
+        }));
         let state = TopologyWithRtl::new(program);
 
         let conns = state.aggregate_mmap_connections("top").unwrap();
@@ -915,7 +908,7 @@ mod tests {
 
     #[test]
     fn aggregate_mmap_connections_expands_wide_child_id_for_parent_crossbar() {
-        let program = serde_json::from_value(serde_json::json!({
+        let program = crate::design_from_fixture_json(serde_json::json!({
             "top": "top",
             "target": "xilinx-hls",
             "tasks": {
@@ -958,8 +951,7 @@ mod tests {
                     "fifos": {}
                 }
             }
-        }))
-        .unwrap();
+        }));
         let state = TopologyWithRtl::new(program);
 
         let conns = state.aggregate_mmap_connections("top").unwrap();

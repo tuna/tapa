@@ -523,15 +523,14 @@ fn concat_ports(prefix: &str, count: u32, suffix: &str) -> String {
 pub(crate) fn add_crossbar_slave_id_padding(
     state: &mut TopologyWithRtl,
     task_name: &str,
-    args: &std::collections::BTreeMap<String, tapa_topology::instance::ArgDesign>,
+    args: &std::collections::BTreeMap<String, tapa_ir::Arg>,
     mmap_bindings: &children::ChildMmapBindings,
 ) {
     let mut assigns = Vec::new();
     for arg in args.values() {
         if !matches!(
             arg.cat,
-            tapa_task_graph::port::ArgCategory::Mmap
-                | tapa_task_graph::port::ArgCategory::AsyncMmap
+            tapa_ir::port::ArgCategory::Mmap | tapa_ir::port::ArgCategory::AsyncMmap
         ) {
             continue;
         }

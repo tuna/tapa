@@ -28,7 +28,7 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use serde_json::Value;
-use tapa_task_graph::Design;
+use tapa_ir::Design;
 use tapa_xilinx::{parse_utilization_rpt, run_vivado, ToolRunner, UtilizationReport, VivadoJob};
 
 use crate::error::{CliError, Result};
@@ -130,7 +130,7 @@ fn run_and_parse_one(
 /// Child-task names of the top task — the unique set of
 /// instantiated task names directly under `design.top`.
 ///
-/// Uses `IndexMap` insertion order so iteration is deterministic.
+/// Uses `BTreeMap` (alphabetical) order so iteration is deterministic.
 fn top_task_child_names(design: &Design) -> Vec<String> {
     design
         .tasks
@@ -276,10 +276,20 @@ mod tests {
     use std::sync::{Condvar, Mutex};
     use std::time::Duration;
 
+    use std::collections::BTreeMap;
+
     use indexmap::IndexMap;
     use serde_json::json;
-    use tapa_task_graph::TaskTopology;
+    use tapa_ir::{Task, TaskInstance, TaskLevel};
     use tapa_xilinx::{MockToolRunner, ToolInvocation, ToolOutput, XilinxError};
+
+    fn single_instance() -> Vec<TaskInstance> {
+        vec![TaskInstance {
+            name: None,
+            args: BTreeMap::new(),
+            step: 0,
+        }]
+    }
 
     fn sample_rpt(instance: &str) -> String {
         format!(
@@ -294,16 +304,16 @@ mod tests {
     }
 
     fn vadd_design() -> Design {
-        let mut tasks = IndexMap::new();
+        let mut tasks = BTreeMap::new();
         tasks.insert(
             "Add".to_string(),
-            TaskTopology {
+            Task {
                 name: "Add".to_string(),
-                level: "lower".to_string(),
+                level: TaskLevel::Lower,
                 code: "void Add() {}\n".to_string(),
                 ports: Vec::new(),
-                tasks: IndexMap::new(),
-                fifos: IndexMap::new(),
+                tasks: BTreeMap::new(),
+                fifos: BTreeMap::new(),
                 target: Some("hls".to_string()),
                 is_slot: false,
                 self_area: IndexMap::new(),
@@ -311,17 +321,17 @@ mod tests {
                 clock_period: "0".to_string(),
             },
         );
-        let mut child_tasks = IndexMap::new();
-        child_tasks.insert("Add".to_string(), json!([{"args": {}, "step": 0}]));
+        let mut child_tasks = BTreeMap::new();
+        child_tasks.insert("Add".to_string(), single_instance());
         tasks.insert(
             "VecAdd".to_string(),
-            TaskTopology {
+            Task {
                 name: "VecAdd".to_string(),
-                level: "upper".to_string(),
+                level: TaskLevel::Upper,
                 code: "void VecAdd() {}\n".to_string(),
                 ports: Vec::new(),
                 tasks: child_tasks,
-                fifos: IndexMap::new(),
+                fifos: BTreeMap::new(),
                 target: Some("hls".to_string()),
                 is_slot: false,
                 self_area: IndexMap::new(),
@@ -343,9 +353,12 @@ mod tests {
         mul.name = "Mul".to_string();
         mul.code = "void Mul() {}\n".to_string();
         design.tasks.insert("Mul".to_string(), mul);
-        design.tasks["VecAdd"]
+        design
             .tasks
-            .insert("Mul".to_string(), json!([{"args": {}, "step": 0}]));
+            .get_mut("VecAdd")
+            .expect("VecAdd present")
+            .tasks
+            .insert("Mul".to_string(), single_instance());
         design
     }
 
