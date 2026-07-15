@@ -1,0 +1,40 @@
+"""Codegen of the rewritten tapacc: typed Program (+ AST) -> vendor C++."""
+
+load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
+
+package(default_visibility = ["//tapacc:__subpackages__"])
+
+cc_library(
+    name = "conventions",
+    hdrs = ["conventions.h"],
+)
+
+cc_library(
+    name = "code_sink",
+    hdrs = ["code_sink.h"],
+    deps = ["@tapa-llvm-project//llvm:Support"],
+)
+
+cc_library(
+    name = "backend",
+    srcs = ["backend.cpp"],
+    hdrs = ["backend.h"],
+    copts = ["-fno-rtti"],
+    deps = [
+        ":code_sink",
+        "//tapacc/frontend:classify",
+        "//tapacc/frontend:program",
+        "@tapa-llvm-project//clang:tooling",
+    ],
+)
+
+cc_test(
+    name = "conventions_test",
+    srcs = ["conventions_test.cpp"],
+    deps = [
+        ":code_sink",
+        ":conventions",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+    ],
+)
