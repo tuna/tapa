@@ -47,19 +47,25 @@ class Backend {
     }
   }
 
-  // Whole-task operations.
-  //  - RewriteSignature: rewrite the parameter list (e.g. mmap -> uint64
-  //    offset, Vitis stream -> qdma_axis).
-  //  - RewriteTaskFunc: rewrite the body/shell for the current task (top-level
-  //    extern-C shell, middle-level shell, lower-level preamble insertion).
+  // Whole-function operations. Signature rewriting depends on the function's
+  // own level (a task's TaskModel.level + whether it is the top), so it is
+  // applied to every task in a file, not just the current one.
+  //  - RewriteSignature: rewrite the parameter list (mmap -> uint64 offset,
+  //    Vitis stream -> qdma_axis). Applied to every task func in the file.
+  //  - RewriteTaskFunc: rewrite the body/shell of the *current* task (top-level
+  //    extern-C shell, middle-level connection shell, lower-level preamble).
   //  - StripOtherTask: reduce a non-current task in this file to a signature.
+  //  - RewriteHelperFunc: rewrite a non-task helper function (same in every
+  //    file).
   //  - LowerPipeline/LowerUnroll: lower a loop attribute to backend pragmas.
-  virtual void RewriteSignature(const TaskModel& task,
+  virtual void RewriteSignature(const TaskModel& task, bool is_top,
                                 clang::Rewriter& rewriter) const = 0;
-  virtual void RewriteTaskFunc(const TaskModel& task,
+  virtual void RewriteTaskFunc(const TaskModel& task, bool is_top,
                                clang::Rewriter& rewriter) const = 0;
   virtual void StripOtherTask(const clang::FunctionDecl* func,
                               clang::Rewriter& rewriter) const = 0;
+  virtual void RewriteHelperFunc(const clang::FunctionDecl* func,
+                                 clang::Rewriter& rewriter) const = 0;
   virtual void LowerPipeline(int ii, const clang::Stmt* body,
                              clang::Rewriter& rewriter) const = 0;
   virtual void LowerUnroll(int factor, const clang::Stmt* body,

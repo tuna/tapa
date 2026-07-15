@@ -38,3 +38,32 @@ cc_test(
         "@googletest//:gtest_main",
     ],
 )
+
+cc_library(
+    name = "emit",
+    srcs = ["emit.cpp"],
+    hdrs = ["emit.h"],
+    copts = ["-fno-rtti"],
+    deps = [
+        ":code_sink",
+        ":conventions",
+        "//tapacc/frontend:classify",
+        "//tapacc/frontend:type_args",
+        "@tapa-llvm-project//clang:tooling",
+    ],
+)
+
+cc_test(
+    name = "emit_test",
+    srcs = ["emit_test.cpp"],
+    copts = ["-fno-rtti"],
+    deps = [
+        ":code_sink",
+        ":emit",
+        "//tapacc/frontend:classify",
+        "//tapacc/frontend:tapa_stub_decls",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+        "@tapa-llvm-project//clang:tooling",
+    ],
+)
