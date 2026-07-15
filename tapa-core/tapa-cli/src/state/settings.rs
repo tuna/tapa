@@ -2,13 +2,14 @@
 //! so the Rust shape is `IndexMap` of
 //! `serde_json::Value`.
 
-use std::io::{self, BufReader, BufWriter};
+use std::io::BufReader;
 use std::path::Path;
 
 use indexmap::IndexMap;
 use serde_json::Value;
 
 use crate::error::{CliError, Result};
+use crate::state::json::write_json_atomic;
 
 pub type Settings = IndexMap<String, Value>;
 
@@ -31,59 +32,8 @@ pub fn load_settings(work_dir: &Path) -> Result<Settings> {
     Ok(settings)
 }
 
-#[allow(
-    clippy::semicolon_outside_block,
-    reason = "scoping block for BufWriter drop"
-)]
 pub fn store_settings(work_dir: &Path, settings: &Settings) -> Result<()> {
-    fs_err::create_dir_all(work_dir)?;
-    let path = path_in(work_dir);
-    let mut temp = tempfile::NamedTempFile::new_in(work_dir)?;
-    {
-        let mut writer = BufWriter::new(&mut temp);
-        let mut ser = serde_json::Serializer::with_formatter(&mut writer, JsonFormatter);
-        serde::Serialize::serialize(settings, &mut ser)?;
-    }
-    fs_err::rename(temp.path(), &path)?;
-    Ok(())
-}
-
-/// JSON formatter that uses `, ` between items, `: ` between key and value,
-/// no indentation, and no trailing newline.
-///
-/// Re-defined here (and not imported from `tapa_task_graph::design`) because
-/// `serde_json::ser::Formatter` is not `pub` in that crate's API surface.
-#[derive(Debug, Default)]
-pub(crate) struct JsonFormatter;
-
-impl serde_json::ser::Formatter for JsonFormatter {
-    fn begin_array_value<W: io::Write + ?Sized>(
-        &mut self,
-        writer: &mut W,
-        first: bool,
-    ) -> io::Result<()> {
-        if first {
-            Ok(())
-        } else {
-            writer.write_all(b", ")
-        }
-    }
-
-    fn begin_object_key<W: io::Write + ?Sized>(
-        &mut self,
-        writer: &mut W,
-        first: bool,
-    ) -> io::Result<()> {
-        if first {
-            Ok(())
-        } else {
-            writer.write_all(b", ")
-        }
-    }
-
-    fn begin_object_value<W: io::Write + ?Sized>(&mut self, writer: &mut W) -> io::Result<()> {
-        writer.write_all(b": ")
-    }
+    write_json_atomic(work_dir, FILE_NAME, settings)
 }
 
 #[cfg(test)]

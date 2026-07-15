@@ -4,12 +4,13 @@
 //! type because downstream steps accept a richer schema than the
 //! tapacc-output flavor.
 
-use std::io::{BufReader, BufWriter, Write};
+use std::io::BufReader;
 use std::path::Path;
 
 use serde_json::Value;
 
 use crate::error::{CliError, Result};
+use crate::state::json::write_json_atomic;
 
 const FILE_NAME: &str = "graph.json";
 
@@ -30,30 +31,9 @@ pub fn load_graph(work_dir: &Path) -> Result<Value> {
     Ok(value)
 }
 
-/// Persist the graph using the same spaced compact formatter as settings.
-#[allow(
-    clippy::semicolon_outside_block,
-    reason = "scoping block for BufWriter drop"
-)]
+/// Persist the graph using the shared spaced compact formatter.
 pub fn store_graph(work_dir: &Path, graph: &Value) -> Result<()> {
-    fs_err::create_dir_all(work_dir)?;
-    let path = path_in(work_dir);
-    let mut temp = tempfile::NamedTempFile::new_in(work_dir)?;
-    {
-        let mut writer = BufWriter::new(&mut temp);
-        write_json_value(&mut writer, graph)?;
-    }
-    fs_err::rename(temp.path(), &path)?;
-    Ok(())
-}
-
-/// Serialize `value` with `, ` and `: ` separators.
-pub(crate) fn write_json_value<W: Write>(writer: &mut W, value: &Value) -> Result<()> {
-    use serde::Serialize;
-    let formatter = crate::state::settings::JsonFormatter;
-    let mut ser = serde_json::Serializer::with_formatter(writer, formatter);
-    value.serialize(&mut ser)?;
-    Ok(())
+    write_json_atomic(work_dir, FILE_NAME, graph)
 }
 
 #[cfg(test)]

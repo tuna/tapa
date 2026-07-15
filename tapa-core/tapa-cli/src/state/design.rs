@@ -1,12 +1,12 @@
 //! `design.json` read / write — wraps `tapa_task_graph::Design` with
 //! work-directory path conventions.
 
-use std::io::BufWriter;
 use std::path::Path;
 
 use tapa_task_graph::Design;
 
 use crate::error::{CliError, Result};
+use crate::state::json::write_json_atomic;
 
 const FILE_NAME: &str = "design.json";
 
@@ -28,22 +28,14 @@ pub fn load_design(work_dir: &Path) -> Result<Design> {
     Ok(Design::from_reader(file)?)
 }
 
-/// Persist `design` to `<work_dir>/design.json` using the
-/// compatible JSON formatter.
-#[allow(
-    clippy::semicolon_outside_block,
-    reason = "scoping block for BufWriter drop"
-)]
+/// Persist `design` to `<work_dir>/design.json` using the shared compact JSON
+/// formatter.
+///
+/// The shared [`write_json_atomic`] serializes `Design` through the same
+/// `, `/`: ` compact formatter as [`Design::to_writer`], so the on-disk bytes
+/// are identical.
 pub fn store_design(work_dir: &Path, design: &Design) -> Result<()> {
-    fs_err::create_dir_all(work_dir)?;
-    let path = path_in(work_dir);
-    let mut temp = tempfile::NamedTempFile::new_in(work_dir)?;
-    {
-        let mut writer = BufWriter::new(&mut temp);
-        design.to_writer(&mut writer)?;
-    }
-    fs_err::rename(temp.path(), &path)?;
-    Ok(())
+    write_json_atomic(work_dir, FILE_NAME, design)
 }
 
 #[cfg(test)]
