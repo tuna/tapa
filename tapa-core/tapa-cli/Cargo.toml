@@ -24,9 +24,6 @@ serde_yaml = { workspace = true }
 walkdir = { workspace = true }
 tapa-codegen = { workspace = true }
 tapa-floorplan = { workspace = true }
-tapa-graphir = { workspace = true }
-tapa-graphir-export = { workspace = true }
-tapa-lowering = { workspace = true }
 tapa-rtl = { workspace = true }
 tapa-slotting = { workspace = true }
 tapa-task-graph = { workspace = true }

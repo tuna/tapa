@@ -8,9 +8,6 @@
 //! * `--custom-rtl <PATH>` (may repeat) — validate user-supplied
 //!   Verilog files against `<work_dir>/templates_info.json` and copy
 //!   them into `<work_dir>/rtl` before Vivado runs.
-//! * `--graphir-path <FILE>` — parse the `GraphIR` JSON, export it via
-//!   `tapa-graphir-export`, and splice the generated Verilog into
-//!   `<work_dir>/rtl` alongside the TAPA-generated modules.
 //! * `--bitstream-script <FILE>` — after `.xo` emission, render the
 //!   `get_vitis_script` helper and drop it at the requested
 //!   path (executable on Unix).
@@ -31,7 +28,6 @@ use crate::state::{design as design_io, graph as graph_io, settings as settings_
 
 mod bitstream_script;
 mod custom_rtl;
-mod graphir_embed;
 mod kernel_xml_ports;
 mod vitis_packaging;
 
@@ -55,10 +51,6 @@ pub struct PackArgs {
     /// Custom RTL files / folders (may repeat).
     #[arg(long = "custom-rtl", value_name = "PATH")]
     pub custom_rtl: Vec<PathBuf>,
-
-    /// `GraphIR` file to embed in the `.xo`.
-    #[arg(long = "graphir-path", value_name = "FILE")]
-    pub graphir_path: Option<PathBuf>,
 }
 
 pub fn to_cli_argv(args: &PackArgs) -> Vec<String> {
@@ -74,10 +66,6 @@ pub fn to_cli_argv(args: &PackArgs) -> Vec<String> {
     for c in &args.custom_rtl {
         out.push("--custom-rtl".to_string());
         out.push(c.display().to_string());
-    }
-    if let Some(p) = &args.graphir_path {
-        out.push("--graphir-path".to_string());
-        out.push(p.display().to_string());
     }
     out
 }

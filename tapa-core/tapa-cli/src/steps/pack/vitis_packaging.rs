@@ -5,14 +5,10 @@
 //! against `<work_dir>/rtl` to produce the `.xo`. The runner picks
 //! between local and remote dispatch based on `ctx.remote_config`.
 //!
-//! Also threads the three CLI-surface overlays:
+//! Also threads the two CLI-surface overlays:
 //!
 //! * `--custom-rtl` overlays via [`super::custom_rtl::apply_custom_rtl`]
 //!   *before* Vivado scans `rtl_dir`.
-//! * `--graphir-path` embedding via
-//!   [`super::graphir_embed::embed_graphir`] *before* Vivado scans
-//!   `rtl_dir` (so graphir-derived modules ship alongside the
-//!   TAPA-generated ones).
 //! * `--bitstream-script` emission via
 //!   [`super::bitstream_script::write_vitis_script`] *after* the
 //!   `.xo` is on disk, so the script points at a real artifact.
@@ -35,7 +31,6 @@ use crate::state::settings as settings_io;
 
 use super::bitstream_script::write_vitis_script;
 use super::custom_rtl::{apply_custom_rtl, load_templates_info};
-use super::graphir_embed::embed_graphir;
 use super::kernel_xml_ports::{build_kernel_xml_ports_for_rtl, m_axi_param_block_for_rtl};
 use super::{enforce_xo_suffix, PackArgs};
 
@@ -130,10 +125,6 @@ fn apply_pack_overlays(args: &PackArgs, ctx: &CliContext, hdl_dir: &Path) -> Res
     if !args.custom_rtl.is_empty() {
         let templates = load_templates_info(&ctx.work_dir)?;
         apply_custom_rtl(hdl_dir, &args.custom_rtl, &templates)?;
-    }
-    // --graphir-path: splice graphir-derived modules into `rtl_dir`.
-    if let Some(graphir) = args.graphir_path.as_deref() {
-        embed_graphir(&ctx.work_dir, hdl_dir, graphir)?;
     }
     Ok(())
 }

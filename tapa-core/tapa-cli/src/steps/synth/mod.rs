@@ -1,6 +1,6 @@
 //! `tapa synth` orchestration.
 //!
-//! For the vadd-style happy path (`--platform <p>`, no DSE / graphir /
+//! For the vadd-style happy path (`--platform <p>`, no DSE /
 //! floorplan, leaf children + one upper top), this module drives the
 //! full Vitis HLS + RTL codegen pipeline natively:
 //!
@@ -30,7 +30,6 @@ use crate::error::Result;
 mod cpp_extract;
 mod device_resolve;
 mod gen_ab_graph;
-mod gen_graphir;
 mod grouping_constraints;
 mod hls_run;
 mod metrics;
@@ -96,9 +95,6 @@ pub struct SynthArgs {
 
     #[arg(long = "no-gen-ab-graph", conflicts_with = "gen_ab_graph")]
     pub no_gen_ab_graph: bool,
-
-    #[arg(long = "gen-graphir", default_value_t = false)]
-    pub gen_graphir: bool,
 
     #[arg(long = "floorplan-config", value_name = "FILE")]
     pub floorplan_config: Option<PathBuf>,
@@ -177,9 +173,6 @@ pub fn to_cli_argv(args: &SynthArgs) -> Vec<String> {
         }
         .to_string(),
     );
-    if args.gen_graphir {
-        out.push("--gen-graphir".to_string());
-    }
     opt_path(
         &mut out,
         "--floorplan-config",

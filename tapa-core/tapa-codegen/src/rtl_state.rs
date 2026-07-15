@@ -220,9 +220,9 @@ impl TopologyWithRtl {
         }
 
         // Create an empty FSM module with the standard TAPA handshake ports.
-        // The downstream lowering pass builds FSM interfaces (ApCtrl) that
-        // reference ap_start / ap_done / ap_ready / ap_idle, so they must
-        // be present on the FSM module definition.
+        // The generated top-level RTL wires ap_start / ap_done / ap_ready /
+        // ap_idle to this FSM, so they must be present on the FSM module
+        // definition.
         let fsm_name = format!("{task_name}_fsm");
         let fsm_source = render_fsm_module(&fsm_name);
         let parsed = VerilogModule::parse(&fsm_source)?;

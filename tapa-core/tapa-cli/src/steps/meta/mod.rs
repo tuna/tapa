@@ -109,8 +109,6 @@ pub struct GenerateFloorplanArgs {
     pub gen_ab_graph: bool,
     #[arg(long = "no-gen-ab-graph", conflicts_with = "gen_ab_graph")]
     pub no_gen_ab_graph: bool,
-    #[arg(long = "gen-graphir", default_value_t = false)]
-    pub gen_graphir: bool,
     #[arg(long = "floorplan-path", value_name = "FILE")]
     pub floorplan_path: Option<PathBuf>,
     // ---- shared between synth + run_autobridge ----
@@ -151,7 +149,6 @@ impl GenerateFloorplanArgs {
             nonpipeline_fifos: self.nonpipeline_fifos.clone(),
             gen_ab_graph: true,
             no_gen_ab_graph: false,
-            gen_graphir: self.gen_graphir,
             floorplan_config: Some(self.floorplan_config.clone()),
             device_config: Some(self.device_config.clone()),
             floorplan_path: self.floorplan_path.clone(),

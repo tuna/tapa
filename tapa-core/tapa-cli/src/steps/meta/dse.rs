@@ -79,9 +79,6 @@ pub struct CompileWithFloorplanDseArgs {
     pub gen_ab_graph: bool,
     #[arg(long = "no-gen-ab-graph", conflicts_with = "gen_ab_graph")]
     pub no_gen_ab_graph: bool,
-    /// `--gen-graphir` — composite sets `gen_graphir=true` for stage 2.
-    #[arg(long = "gen-graphir", default_value_t = false)]
-    pub gen_graphir: bool,
     /// `--floorplan-path` — composite passes one solution's floorplan
     /// per stage-2 iteration. Setting this on the composite itself is
     /// allowed for compatibility but will be overridden per-solution.
@@ -99,10 +96,6 @@ pub struct CompileWithFloorplanDseArgs {
     pub bitstream_script: Option<PathBuf>,
     #[arg(long = "custom-rtl", value_name = "PATH")]
     pub custom_rtl: Vec<PathBuf>,
-    /// `--graphir-path` from `pack`; composite forwards through
-    /// stage-2's pack invocation.
-    #[arg(long = "graphir-path", value_name = "FILE")]
-    pub graphir_path: Option<PathBuf>,
 }
 
 pub fn run_compile_with_floorplan_dse_composite(
@@ -205,7 +198,6 @@ fn build_generate_floorplan_stage1(args: &CompileWithFloorplanDseArgs) -> Genera
         nonpipeline_fifos: args.nonpipeline_fifos.clone(),
         gen_ab_graph: true,
         no_gen_ab_graph: false,
-        gen_graphir: false,
         floorplan_path: None,
         device_config: args.device_config.clone(),
         floorplan_config: args.floorplan_config.clone(),
@@ -217,8 +209,8 @@ fn build_compile_stage2(
     floorplan_path: &Path,
     output: &Path,
 ) -> CompileArgs {
-    // Stage 2 enables GraphIR, disables utilization and AB-graph
-    // generation, and applies the selected floorplan and output.
+    // Stage 2 disables utilization and AB-graph generation, and
+    // applies the selected floorplan and output.
     let analyze_args = analyze::AnalyzeArgs {
         input_files: args.input_files.clone(),
         top: args.top.clone(),
@@ -245,7 +237,6 @@ fn build_compile_stage2(
         nonpipeline_fifos: args.nonpipeline_fifos.clone(),
         gen_ab_graph: false,
         no_gen_ab_graph: true,
-        gen_graphir: true,
         floorplan_config: Some(args.floorplan_config.clone()),
         device_config: Some(args.device_config.clone()),
         floorplan_path: Some(floorplan_path.to_path_buf()),
@@ -254,9 +245,6 @@ fn build_compile_stage2(
         output: Some(output.to_path_buf()),
         bitstream_script: args.bitstream_script.clone(),
         custom_rtl: args.custom_rtl.clone(),
-        // Forward the caller's GraphIR path to each solution's pack
-        // step.
-        graphir_path: args.graphir_path.clone(),
     };
     CompileArgs {
         analyze: analyze_args,
@@ -271,36 +259,7 @@ mod tests {
     use crate::globals::GlobalArgs;
 
     #[test]
-    fn forwards_graphir_path_to_stage2_pack() {
-        // `--graphir-path` is forwarded to every solution's pack step.
-        let args = CompileWithFloorplanDseArgs::try_parse_from([
-            "compile-with-floorplan-dse",
-            "--input",
-            "a.cpp",
-            "--top",
-            "T",
-            "--device-config",
-            "dev.json",
-            "--floorplan-config",
-            "fp.json",
-            "--graphir-path",
-            "graphir.json",
-        ])
-        .expect("parse");
-        let compile = build_compile_stage2(
-            &args,
-            std::path::Path::new("fp.json"),
-            std::path::Path::new("out.xo"),
-        );
-        assert_eq!(
-            compile.pack.graphir_path.as_deref(),
-            Some(std::path::Path::new("graphir.json")),
-            "DSE must forward `--graphir-path` to stage-2 pack",
-        );
-    }
-
-    #[test]
-    fn forwards_all_three_pack_overlays_to_stage2() {
+    fn forwards_pack_overlays_to_stage2() {
         // Every pack overlay is forwarded unchanged to stage 2.
         let args = CompileWithFloorplanDseArgs::try_parse_from([
             "compile-with-floorplan-dse",
@@ -312,8 +271,6 @@ mod tests {
             "dev.json",
             "--floorplan-config",
             "fp.json",
-            "--graphir-path",
-            "graphir.json",
             "--custom-rtl",
             "extra.v",
             "--bitstream-script",
@@ -324,10 +281,6 @@ mod tests {
             &args,
             std::path::Path::new("fp.json"),
             std::path::Path::new("out.xo"),
-        );
-        assert_eq!(
-            compile.pack.graphir_path.as_deref(),
-            Some(std::path::Path::new("graphir.json")),
         );
         assert_eq!(
             compile.pack.bitstream_script.as_deref(),

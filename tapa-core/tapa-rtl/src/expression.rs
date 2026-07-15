@@ -1,4 +1,4 @@
-//! Token-level expression types compatible with `GraphIR`.
+//! Token-level expression types for Verilog parameter/range expressions.
 
 use serde::{Deserialize, Serialize};
 

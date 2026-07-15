@@ -3,14 +3,11 @@ resolver = "2"
 members = [
   "tapa-protocol",
   "tapa-task-graph",
-  "tapa-graphir",
   "tapa-rtl",
   "tapa-topology",
   "tapa-slotting",
   "tapa-codegen",
   "tapa-floorplan",
-  "tapa-lowering",
-  "tapa-graphir-export",
   "tapa-xilinx",
   "tapa-cli",
 ]
@@ -118,13 +115,10 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 # Internal crates
 tapa-protocol = { path = "tapa-protocol" }
 tapa-task-graph = { path = "tapa-task-graph" }
-tapa-graphir = { path = "tapa-graphir" }
 tapa-rtl = { path = "tapa-rtl" }
 tapa-topology = { path = "tapa-topology" }
 tapa-slotting = { path = "tapa-slotting" }
 tapa-codegen = { path = "tapa-codegen" }
 tapa-floorplan = { path = "tapa-floorplan" }
-tapa-lowering = { path = "tapa-lowering" }
-tapa-graphir-export = { path = "tapa-graphir-export" }
 tapa-xilinx = { path = "tapa-xilinx" }
 tapa-cli = { path = "tapa-cli" }
