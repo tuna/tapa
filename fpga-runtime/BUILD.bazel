@@ -109,10 +109,10 @@ cc_import(
     alwayslink = True,
 )
 
-# Wrapper carrying (a) the native system libraries the Rust staticlib depends on
-# (from `rustc --print native-static-libs`) and (b) the flag that keeps FRT's
-# symbols out of libtapa's dynamic export table. The exact Linux native-lib set
-# is confirmed by CI, which builds the linux-only `//tapa-lib:tapa`.
+# Wrapper carrying the native system libraries the Rust staticlib depends on
+# (from `rustc --print native-static-libs`). FRT's symbols are not hidden: the
+# shipped artifact is the static libtapa.a (no export table to filter), and
+# --exclude-libs breaks resolution across Bazel's internal libtapa.so DSO.
 cc_library(
     name = "frt",
     linkopts = select({
@@ -125,8 +125,6 @@ cc_library(
             "-ldl",
             "-lrt",
             "-lm",
-            # Keep FRT / OpenCL / Rust-std symbols internal to libtapa.
-            "-Wl,--exclude-libs,libfrt.a",
         ],
     }),
     deps = [":frt_rust_staticlib"],
