@@ -18,6 +18,23 @@ cc_binary(
     ],
 )
 
+# The rewritten tapacc (in progress). Dev entry point that emits per-task
+# generated code as JSON for old-vs-new diffing; graph serialization is held
+# until the tapa-ir schema lands.
+cc_binary(
+    name = "tapacc_ng",
+    srcs = ["tapacc_ng.cpp"],
+    copts = ["-fno-rtti"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tapacc/codegen:rewrite",
+        "//tapacc/codegen:xilinx",
+        "//tapacc/frontend:build_program",
+        "@nlohmann_json//:json",
+        "@tapa-llvm-project//clang:tooling",
+    ],
+)
+
 pkg_files(
     name = "pkg",
     srcs = [":tapacc"],

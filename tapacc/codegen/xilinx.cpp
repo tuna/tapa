@@ -248,22 +248,26 @@ void XilinxBackend::RewriteSignature(const TaskModel& task, bool is_top,
   const Lvl lvl = LvlOf(task.level, is_top, is_vitis_);
   if (lvl == Lvl::kLower) return;  // lower-level signatures are unchanged
 
-  // Middle/top: replace mmap parameters with 64-bit base addresses.
-  for (const clang::ParmVarDecl* param : task.def->parameters()) {
-    const std::string name = param->getNameAsString();
-    const TapaKind kind = ClassifyTapaType(param);
-    if (kind == TapaKind::kMmap || kind == TapaKind::kAsyncMmap) {
-      rewriter.ReplaceText(
-          param->getTypeSourceInfo()->getTypeLoc().getSourceRange(),
-          "uint64_t");
-      rewriter.ReplaceText(param->getLocation(), OffsetName(name));
-    } else if (IsMmapArray(kind)) {
-      std::string text;
-      for (int64_t i = 0; i < ArraySize(param); ++i) {
-        if (!text.empty()) text += ", ";
-        text += "uint64_t " + ArrayElemOffset(name, static_cast<int>(i));
+  // Middle/top: replace mmap parameters with 64-bit base addresses, on every
+  // declaration of the function (the forward declaration and the definition),
+  // so the emitted signatures agree.
+  for (const clang::FunctionDecl* decl : task.def->redecls()) {
+    for (const clang::ParmVarDecl* param : decl->parameters()) {
+      const std::string name = param->getNameAsString();
+      const TapaKind kind = ClassifyTapaType(param);
+      if (kind == TapaKind::kMmap || kind == TapaKind::kAsyncMmap) {
+        rewriter.ReplaceText(
+            param->getTypeSourceInfo()->getTypeLoc().getSourceRange(),
+            "uint64_t");
+        rewriter.ReplaceText(param->getLocation(), OffsetName(name));
+      } else if (IsMmapArray(kind)) {
+        std::string text;
+        for (int64_t i = 0; i < ArraySize(param); ++i) {
+          if (!text.empty()) text += ", ";
+          text += "uint64_t " + ArrayElemOffset(name, static_cast<int>(i));
+        }
+        rewriter.ReplaceText(param->getSourceRange(), text);
       }
-      rewriter.ReplaceText(param->getSourceRange(), text);
     }
   }
 }
@@ -276,7 +280,8 @@ void XilinxBackend::RewriteTaskFunc(const TaskModel& task, bool is_top,
   const std::string lines = GeneratePreamble(*this, task, is_top);
 
   if (lvl == Lvl::kLower) {
-    rewriter.InsertTextAfterToken(func->getBody()->getBeginLoc(), lines);
+    // Leading newline so the first pragma starts its own line after the brace.
+    rewriter.InsertTextAfterToken(func->getBody()->getBeginLoc(), "\n" + lines);
     RewriteStreamDefinitions(func, rewriter);
     RemoveInline(func, rewriter);
     return;
