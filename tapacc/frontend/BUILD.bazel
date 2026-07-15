@@ -78,6 +78,32 @@ cc_test(
     ],
 )
 
+cc_library(
+    name = "discover",
+    srcs = ["discover.cpp"],
+    hdrs = ["discover.h"],
+    copts = ["-fno-rtti"],
+    deps = [
+        ":classify",
+        ":program",
+        "@tapa-llvm-project//clang:tooling",
+    ],
+)
+
+cc_test(
+    name = "discover_test",
+    srcs = ["discover_test.cpp"],
+    copts = ["-fno-rtti"],
+    deps = [
+        ":discover",
+        ":program",
+        ":tapa_stub_decls",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+        "@tapa-llvm-project//clang:tooling",
+    ],
+)
+
 cc_test(
     name = "classify_test",
     srcs = ["classify_test.cpp"],

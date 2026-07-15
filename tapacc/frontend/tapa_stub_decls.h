@@ -32,7 +32,12 @@ inline constexpr char kTapaStubDecls[] = R"cpp(
   struct ommap {};
   template <typename T, int N, int S>
   struct hmap {};
-  struct task {};
+  struct task {
+    template <typename Func, typename... Args>
+    task& invoke(Func&& func, Args&&... args) {
+      return *this;
+    }
+  };
   struct seq {};
   struct executable {};
   }  // namespace tapa
