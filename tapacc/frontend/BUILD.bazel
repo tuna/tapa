@@ -129,6 +129,35 @@ cc_test(
     ],
 )
 
+cc_library(
+    name = "build_program",
+    srcs = ["build_program.cpp"],
+    hdrs = ["build_program.h"],
+    copts = ["-fno-rtti"],
+    deps = [
+        ":discover",
+        ":invoke_parser",
+        ":ports",
+        ":program",
+        "@tapa-llvm-project//clang:tooling",
+    ],
+)
+
+cc_test(
+    name = "build_program_test",
+    srcs = ["build_program_test.cpp"],
+    copts = ["-fno-rtti"],
+    deps = [
+        ":build_program",
+        ":classify",
+        ":program",
+        ":tapa_stub_decls",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+        "@tapa-llvm-project//clang:tooling",
+    ],
+)
+
 cc_test(
     name = "discover_test",
     srcs = ["discover_test.cpp"],
