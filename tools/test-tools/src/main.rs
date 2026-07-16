@@ -1,7 +1,5 @@
-mod abgraph;
 mod analyze;
 mod common;
-mod floorplan;
 mod package_layout;
 mod reports;
 mod shared_mmap;
@@ -11,7 +9,7 @@ use std::env;
 use std::ffi::OsString;
 use std::process;
 
-use common::{arg_path, arg_str, Result};
+use common::{arg_str, Result};
 
 fn main() {
     if let Err(error) = run(&env::args_os().skip(1).collect::<Vec<_>>()) {
@@ -26,18 +24,6 @@ fn run(args: &[OsString]) -> Result<()> {
     };
     match command {
         "analyze-smoke" => analyze::analyze_smoke(),
-        "compare-abgraph" => {
-            let name = arg_str(args, 1, "compare-abgraph <name>")?;
-            abgraph::compare_abgraph(name)
-        }
-        "gen-floorplan" => {
-            let index = arg_str(args, 1, "gen-floorplan <index> <app> <output>")?
-                .parse::<u64>()
-                .map_err(|error| format!("invalid floorplan index: {error}"))?;
-            let app = arg_str(args, 2, "gen-floorplan <index> <app> <output>")?;
-            let output = arg_path(args, 3, "gen-floorplan <index> <app> <output>")?;
-            floorplan::gen_floorplan(index, app, &output)
-        }
         "check-xo-reports" => {
             let path = arg_str(args, 1, "check-xo-reports <workspace-path>")?;
             reports::check_xo_reports(&common::workspace_path(path))
@@ -63,6 +49,6 @@ fn run(args: &[OsString]) -> Result<()> {
 }
 
 fn usage() -> String {
-    "usage: tapa-test-tools <analyze-smoke|compare-abgraph|gen-floorplan|check-xo-reports|zip-diff|check-shared-mmap-pragmas|check-package-layout> ..."
+    "usage: tapa-test-tools <analyze-smoke|check-xo-reports|zip-diff|check-shared-mmap-pragmas|check-package-layout> ..."
         .to_string()
 }

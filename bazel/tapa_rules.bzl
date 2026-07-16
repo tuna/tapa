@@ -87,21 +87,7 @@ def _tapa_xo_impl(ctx):
     if ctx.attr.flatten_hierarchy:
         tapa_cmd.extend(["--flatten-hierarchy"])
 
-    tapa_cmd.extend(["floorplan"])
-
-    if ctx.file.floorplan_path:
-        tapa_cmd.extend(["--floorplan-path", ctx.file.floorplan_path.path])
-
     tapa_cmd.extend(["synth"])
-
-    if ctx.file.floorplan_path:
-        tapa_cmd.extend(["--floorplan-path", ctx.file.floorplan_path.path])
-
-    if ctx.file.floorplan_config:
-        tapa_cmd.extend(["--floorplan-config", ctx.file.floorplan_config.path])
-
-    if ctx.file.device_config:
-        tapa_cmd.extend(["--device-config", ctx.file.device_config.path])
 
     tapa_cmd.extend(["--override-report-schema-version", "redacted"])
 
@@ -120,19 +106,10 @@ def _tapa_xo_impl(ctx):
 
     if ctx.attr.enable_synth_util:
         tapa_cmd.extend(["--enable-synth-util"])
-    ab_graph_file = None
-    if ctx.attr.gen_ab_graph:
-        tapa_cmd.extend(["--gen-ab-graph"])
-        ab_graph_file = ctx.actions.declare_file(ctx.attr.name + ".json")
-
-    if ctx.attr.use_graphir:
-        tapa_cmd.extend(["--gen-graphir"])
 
     if output_file != None:
         tapa_cmd.extend(["pack", "--output", output_file.path])
         outputs = [output_file] + outputs
-    if ctx.attr.use_graphir:
-        tapa_cmd.extend(["--graphir-path", work_dir.path + "/graphir.json"])
 
     for rtl_file in ctx.files.custom_rtl_files:
         tapa_cmd.extend(["--custom-rtl", rtl_file.path])
@@ -140,12 +117,6 @@ def _tapa_xo_impl(ctx):
     inputs = [src] + ctx.files.hdrs + ctx.files.custom_rtl_files
     if ctx.file.ssh_key:
         inputs.append(ctx.file.ssh_key)
-    if ctx.file.floorplan_path:
-        inputs.append(ctx.file.floorplan_path)
-    if ctx.file.floorplan_config:
-        inputs.append(ctx.file.floorplan_config)
-    if ctx.file.device_config:
-        inputs.append(ctx.file.device_config)
     ctx.actions.run(
         outputs = outputs,
         inputs = inputs,
@@ -155,18 +126,7 @@ def _tapa_xo_impl(ctx):
         execution_requirements = {"requires-network": "1"} if remote_host else {},
     )
 
-    ab_graph_return = []
-    if ab_graph_file:
-        ctx.actions.run_shell(
-            inputs = [work_dir],
-            outputs = [ab_graph_file],
-            command = """
-            cp {}/ab_graph.json {}
-            """.format(work_dir.path, ab_graph_file.path),
-        )
-        ab_graph_return = [ab_graph_file]
-
-    return [DefaultInfo(files = depset([output_file or work_dir] + ab_graph_return))]
+    return [DefaultInfo(files = depset([output_file or work_dir]))]
 
 def _tapa_reuse_work_dir_xo_impl(ctx):
     tapa_cli = ctx.executable.tapa_cli
@@ -279,11 +239,7 @@ tapa_xo = rule(
         "clock_period": attr.string(),
         "part_num": attr.string(),
         "enable_synth_util": attr.bool(),
-        "gen_ab_graph": attr.bool(),
         "flatten_hierarchy": attr.bool(),
-        "floorplan_path": attr.label(allow_single_file = True),
-        "floorplan_config": attr.label(allow_single_file = True),
-        "device_config": attr.label(allow_single_file = True),
         "ssh_key": attr.label(
             allow_single_file = True,
             default = Label("@ssh_key//:key") if REMOTE_KEY_FILE else None,
@@ -293,6 +249,5 @@ tapa_xo = rule(
             default = Label("//bazel:vitis_hls_env"),
             executable = True,
         ),
-        "use_graphir": attr.bool(),
     },
 )

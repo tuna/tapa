@@ -13,12 +13,6 @@ pub fn arg_str<'a>(args: &'a [OsString], index: usize, usage: &str) -> Result<&'
         .ok_or_else(|| format!("usage: tapa-test-tools {usage}"))
 }
 
-pub fn arg_path(args: &[OsString], index: usize, usage: &str) -> Result<PathBuf> {
-    args.get(index)
-        .map(PathBuf::from)
-        .ok_or_else(|| format!("usage: tapa-test-tools {usage}"))
-}
-
 pub fn workspace_path(rel: &str) -> PathBuf {
     let rel = rel.trim_start_matches("_main/");
     let path = Path::new(rel);

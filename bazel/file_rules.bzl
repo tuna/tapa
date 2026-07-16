@@ -29,36 +29,6 @@ renamed_executable = rule(
     },
 )
 
-def _random_floorplan_impl(ctx):
-    output = ctx.actions.declare_file(ctx.attr.out)
-    ctx.actions.run(
-        outputs = [output],
-        tools = [ctx.executable.test_tools],
-        executable = ctx.executable.test_tools,
-        arguments = [
-            "gen-floorplan",
-            str(ctx.attr.seed),
-            ctx.attr.app,
-            output.path,
-        ],
-        mnemonic = "GenRandomFloorplan",
-    )
-    return [DefaultInfo(files = depset([output]))]
-
-random_floorplan = rule(
-    implementation = _random_floorplan_impl,
-    attrs = {
-        "app": attr.string(mandatory = True),
-        "out": attr.string(mandatory = True),
-        "seed": attr.int(mandatory = True),
-        "test_tools": attr.label(
-            cfg = "exec",
-            default = Label("//tools:test_tools"),
-            executable = True,
-        ),
-    },
-)
-
 def _facebook_txt_impl(ctx):
     output = ctx.actions.declare_file(ctx.attr.out)
     args = ctx.actions.args()
