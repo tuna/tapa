@@ -45,26 +45,25 @@ static AP_HANDSHAKE_ASSIGN_PATTERN: LazyLock<Regex> =
 
 /// A mutable view of a `VerilogModule` that tracks additions and
 /// body text modifications.
+///
+/// Ports and signals are mutated in place on `inner` (mirroring how
+/// `cleanup_hls_artifacts`/`demote_*` already operate). Only append-only
+/// fragments with no parsed original — instances, assigns, always blocks,
+/// and header pragmas — are tracked separately.
 pub struct MutableModule {
-    /// The original parsed module (interface only).
+    /// The parsed module; its `ports`/`signals`/`parameters` are mutated
+    /// in place as the upper-task instrumentation adds/removes them.
     pub inner: VerilogModule,
     /// Raw body text between port declarations and `endmodule`.
-    /// This is everything after the port/signal declarations.
     pub body_text: String,
-    /// New ports to add (not yet in inner.ports).
-    added_ports: Vec<Port>,
-    /// New signals to add (not yet in inner.signals).
-    added_signals: Vec<Signal>,
-    /// New instances to append to body.
+    /// New module instances to append to the body.
     added_instances: Vec<ModuleInstance>,
     /// New continuous assigns to append.
     added_assigns: Vec<ContinuousAssign>,
     /// New always blocks to append.
     added_always: Vec<AlwaysBlock>,
-    /// New comment pragmas to prepend to module.
+    /// New comment pragmas to prepend to the module header.
     added_comments: Vec<String>,
-    /// Ports removed by name.
-    removed_ports: BTreeSet<String>,
 }
 
 impl MutableModule {
@@ -77,13 +76,10 @@ impl MutableModule {
         Self {
             inner: module,
             body_text,
-            added_ports: Vec::new(),
-            added_signals: Vec::new(),
             added_instances: Vec::new(),
             added_assigns: Vec::new(),
             added_always: Vec::new(),
             added_comments: Vec::new(),
-            removed_ports: BTreeSet::new(),
         }
     }
 
@@ -95,7 +91,7 @@ impl MutableModule {
         if self.has_port(&port.name) {
             return Err(BuilderError::DuplicatePort(port.name));
         }
-        self.added_ports.push(port);
+        self.inner.ports.push(port);
         Ok(())
     }
 
@@ -107,7 +103,7 @@ impl MutableModule {
         if self.has_signal(&signal.name) {
             return Err(BuilderError::DuplicateSignal(signal.name));
         }
-        self.added_signals.push(signal);
+        self.inner.signals.push(signal);
         Ok(())
     }
 
@@ -133,7 +129,7 @@ impl MutableModule {
 
     /// Mark a port for removal by name.
     pub fn remove_port(&mut self, name: &str) {
-        self.removed_ports.insert(name.to_owned());
+        self.inner.ports.retain(|p| p.name != name);
     }
 
     /// Drop stale port-named reg declarations for output ports.
@@ -171,11 +167,7 @@ impl MutableModule {
             signal.kind = kind;
             return;
         }
-        if let Some(signal) = self.added_signals.iter_mut().find(|s| s.name == name) {
-            signal.kind = kind;
-            return;
-        }
-        self.added_signals.push(Signal {
+        self.inner.signals.push(Signal {
             name: name.to_owned(),
             kind,
             width: None,
@@ -224,16 +216,14 @@ impl MutableModule {
             .retain(|p| !p.name.starts_with("ap_ST_fsm"));
     }
 
-    /// Check if a port name exists (original or added).
+    /// Check if a port name exists.
     fn has_port(&self, name: &str) -> bool {
         self.inner.ports.iter().any(|p| p.name == name)
-            || self.added_ports.iter().any(|p| p.name == name)
     }
 
-    /// Check if a signal name exists (original or added).
+    /// Check if a signal name exists.
     fn has_signal(&self, name: &str) -> bool {
         self.inner.signals.iter().any(|s| s.name == name)
-            || self.added_signals.iter().any(|s| s.name == name)
     }
 
     /// Emit the complete module as Verilog text.
@@ -276,22 +266,13 @@ impl MutableModule {
             let _ = writeln!(out, ") (");
         }
 
-        // Collect all ports (original minus removed, plus added)
-        let mut all_ports: Vec<&Port> = self
-            .inner
-            .ports
-            .iter()
-            .filter(|p| !self.removed_ports.contains(&p.name))
-            .collect();
-        for p in &self.added_ports {
-            all_ports.push(p);
-        }
+        // Collect all ports (parsed + added are already unified on inner).
+        let all_ports: Vec<&Port> = self.inner.ports.iter().collect();
 
         let signal_kinds: BTreeMap<_, _> = self
             .inner
             .signals
             .iter()
-            .chain(self.added_signals.iter())
             .map(|s| (s.name.as_str(), s.kind))
             .collect();
         let port_names: BTreeSet<_> = all_ports.iter().map(|p| p.name.as_str()).collect();
@@ -313,13 +294,8 @@ impl MutableModule {
         let _ = writeln!(out, ");");
         let _ = writeln!(out);
 
-        // Signals (original minus ports, plus added)
+        // Signals (skipping any that shadow a port name).
         for sig in &self.inner.signals {
-            if !port_names.contains(sig.name.as_str()) {
-                let _ = writeln!(out, "{sig}");
-            }
-        }
-        for sig in &self.added_signals {
             if !port_names.contains(sig.name.as_str()) {
                 let _ = writeln!(out, "{sig}");
             }
