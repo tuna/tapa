@@ -1,7 +1,6 @@
 //! Top-level `VerilogModule` type aggregating parsed interface elements.
 
 use serde::{Deserialize, Serialize};
-use std::sync::LazyLock;
 
 use crate::error::ParseError;
 use crate::param::Parameter;
@@ -35,8 +34,10 @@ pub struct VerilogModule {
 /// logical argument name.
 pub const FIFO_INFIXES: &[&str] = &["_V", "_r", "_s", ""];
 
-static ARRAY_NAME_WITH_SUFFIX_RE: LazyLock<regex::Regex> =
-    LazyLock::new(|| regex::Regex::new(r"^([a-zA-Z_]\w*)\[(\d+)\]([a-zA-Z_]\w*)?$").unwrap());
+/// The port-name convention belongs to the schema, so that `tapa-codegen`,
+/// `tapa pack` and `frt-cosim` cannot drift apart on it. Re-exported here
+/// because RTL identifiers are where it gets applied.
+pub use tapa_ir::port::sanitize_array_name;
 
 impl VerilogModule {
     /// Parse a Verilog module header from source text.
@@ -110,22 +111,6 @@ pub fn match_array_name(name: &str) -> Option<(&str, u32)> {
     Some((base, idx))
 }
 
-/// Collapse `name[idx]` into `name_{idx}`.
-#[must_use]
-pub fn sanitize_array_name(name: &str) -> String {
-    ARRAY_NAME_WITH_SUFFIX_RE.captures(name).map_or_else(
-        || name.to_owned(),
-        |caps| {
-            format!(
-                "{}_{}{}",
-                &caps[1],
-                &caps[2],
-                caps.get(3).map_or("", |m| m.as_str())
-            )
-        },
-    )
-}
-
 /// Convert frontend names into plain Verilog identifiers.
 ///
 /// Keeps compatible array-name handling (`foo[3]` -> `foo_3`) before
@@ -182,10 +167,10 @@ mod tests {
     }
 
     #[test]
-    fn sanitize_array_name_collapses_brackets() {
+    fn sanitize_array_name_is_reexported_from_the_schema() {
+        // Behavior is pinned in `tapa_ir::port`; this only guards the
+        // re-export that keeps this crate's callers working.
         assert_eq!(sanitize_array_name("foo[3]"), "foo_3");
-        assert_eq!(sanitize_array_name("foo[3]_bar"), "foo_3_bar");
-        assert_eq!(sanitize_array_name("foo"), "foo");
     }
 
     #[test]

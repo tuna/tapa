@@ -242,6 +242,42 @@ fn zero_channel_hmap_is_rejected() {
     );
 }
 
+/// A top-level `mmaps<T, N>` is expanded by the frontend into N ports named
+/// `chan[0]`, `chan[1]`, ... -- but the generated RTL, the `kernel.xml` args
+/// and the `_offset` registers all spell them `chan_0`. These names are what
+/// the testbench binds by (`lookup_register_offset`, `detect_axi_id_width`,
+/// the shm buffer), so a bracketed name matches nothing. Exercised by
+/// `tests/apps/bandwidth`.
+#[test]
+fn expanded_mmaps_channels_use_rtl_names() {
+    let graph = task_graph(vec![
+        port("chan[0]", ArgCategory::Mmap, 512, None),
+        port("chan[1]", ArgCategory::Mmap, 512, None),
+        port("n", ArgCategory::Scalar, 64, None),
+    ]);
+    let spec = metadata::zip_pkg::spec_from_task_graph(&graph).expect("project");
+    let names: Vec<&str> = spec.args.iter().map(|a| a.name.as_str()).collect();
+    assert_eq!(
+        names,
+        vec!["chan_0", "chan_1", "n"],
+        "mmaps channels bind by their RTL names, not the schema's brackets",
+    );
+}
+
+/// The bracket collapsing applies to every category that can carry an
+/// expanded name, not just mmaps -- a stream array's channel suffix is
+/// appended to the *sanitized* base.
+#[test]
+fn expanded_stream_channels_use_rtl_names() {
+    let graph = task_graph(vec![
+        port("s[0]", ArgCategory::Istream, 32, None),
+        port("q[1]", ArgCategory::Ostreams, 32, Some(2)),
+    ]);
+    let spec = metadata::zip_pkg::spec_from_task_graph(&graph).expect("project");
+    let names: Vec<&str> = spec.args.iter().map(|a| a.name.as_str()).collect();
+    assert_eq!(names, vec!["s_0_s", "q_1_0", "q_1_1"]);
+}
+
 #[test]
 fn missing_top_task_is_rejected() {
     let mut graph = task_graph(vec![]);

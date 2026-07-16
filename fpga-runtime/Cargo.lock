@@ -657,6 +657,7 @@ name = "tapa-ir"
 version = "0.1.0"
 dependencies = [
  "indexmap",
+ "regex-lite",
  "serde",
  "serde_json",
  "serde_path_to_error",

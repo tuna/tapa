@@ -1,8 +1,36 @@
 //! Port and category types.
 
+use regex_lite::Regex;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
+use std::sync::LazyLock;
 use strum::{EnumString, IntoStaticStr};
+
+static ARRAY_NAME_WITH_SUFFIX_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^([a-zA-Z_]\w*)\[(\d+)\]([a-zA-Z_]\w*)?$").unwrap());
+
+/// Collapse `name[idx]` into `name_{idx}`.
+///
+/// The frontend spells the channels of an array interface (`mmaps`,
+/// `streams`) `name[i]`, and the brackets are load-bearing in the graph --
+/// they let consumers recover which logical argument a channel belongs to.
+/// Every projection to an RTL identifier collapses them, so this lives here,
+/// on the schema, rather than in any one consumer: `tapa-codegen`,
+/// `tapa pack` and `frt-cosim` must all agree on the name a port binds to.
+#[must_use]
+pub fn sanitize_array_name(name: &str) -> String {
+    ARRAY_NAME_WITH_SUFFIX_RE.captures(name).map_or_else(
+        || name.to_owned(),
+        |caps| {
+            format!(
+                "{}_{}{}",
+                &caps[1],
+                &caps[2],
+                caps.get(3).map_or("", |m| m.as_str())
+            )
+        },
+    )
+}
 
 /// Argument / port category.
 ///
@@ -200,5 +228,25 @@ mod tests {
     fn invalid_category_rejected() {
         let result = serde_json::from_str::<ArgCategory>(r#""nonexistent""#);
         assert!(result.is_err(), "unknown category must be rejected");
+    }
+
+    #[test]
+    fn sanitize_array_name_collapses_brackets() {
+        assert_eq!(sanitize_array_name("foo[3]"), "foo_3");
+        assert_eq!(sanitize_array_name("foo[3]_bar"), "foo_3_bar");
+        assert_eq!(sanitize_array_name("foo"), "foo");
+    }
+
+    /// Only a well-formed `name[idx]` collapses; anything else is passed
+    /// through untouched rather than mangled.
+    #[test]
+    fn sanitize_array_name_passes_through_non_arrays() {
+        for name in ["foo[bar]", "foo[]", "[0]", "foo[0", "foo[0][1]"] {
+            assert_eq!(
+                sanitize_array_name(name),
+                name,
+                "{name} is not a well-formed array name",
+            );
+        }
     }
 }

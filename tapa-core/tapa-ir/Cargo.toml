@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 indexmap = { workspace = true }
+regex-lite = { workspace = true }
 serde = { workspace = true }
 # `preserve_order` keeps `serde_json::Value` map keys in insertion order so
 # Value-typed payloads (area dicts, `transforms::flatten_value`) round-trip

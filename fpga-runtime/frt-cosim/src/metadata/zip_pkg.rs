@@ -1,7 +1,7 @@
 use super::{ArgKind, ArgSpec, KernelSpec, Mode, StreamDir, StreamProtocol};
 use crate::error::{CosimError, Result};
 use std::collections::HashMap;
-use tapa_ir::port::{ArgCategory, Port};
+use tapa_ir::port::{sanitize_array_name, ArgCategory, Port};
 use tapa_ir::TaskGraph;
 
 /// FIFO depth assumed for every stream argument the archive declares.
@@ -30,7 +30,12 @@ pub fn spec_from_task_graph(graph: &TaskGraph) -> Result<KernelSpec> {
     let mut args = Vec::new();
     let mut next_id = 0u32;
     for port in &top_task.ports {
-        let name = port.name.as_str();
+        // The frontend spells an array interface's channels `name[i]`, but
+        // every RTL identifier collapses that to `name_i` -- and these names
+        // are what the testbench binds ports, buffers and offset registers
+        // by, so they have to be the RTL spelling, not the schema spelling.
+        let name = sanitize_array_name(&port.name);
+        let name = name.as_str();
         let width = port.width;
         let chan_count = port.chan_count.unwrap_or(1);
 
