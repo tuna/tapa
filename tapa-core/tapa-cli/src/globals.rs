@@ -5,8 +5,12 @@ use std::path::PathBuf;
 use clap::Parser;
 
 use crate::chain::Step;
-use crate::options::DEFAULT_CLANG_FORMAT_QUOTA;
 use crate::steps::version::VERSION;
+
+/// Default `--clang-format-quota-in-bytes`. Only the first megabyte of
+/// generated code is clang-formatted to bound formatting time on large
+/// designs.
+const DEFAULT_CLANG_FORMAT_QUOTA: u64 = 1_000_000;
 
 /// Top-level CLI: globals + an optional first chained step.
 #[derive(Debug, Parser)]

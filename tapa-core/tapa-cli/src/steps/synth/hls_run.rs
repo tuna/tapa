@@ -213,7 +213,7 @@ fn default_hls_workers() -> usize {
 
 fn dispatch_plan(
     runner: &dyn ToolRunner,
-    plan: &[(String, TaskHlsLayout, impl PlanEntry)],
+    plan: &[(String, TaskHlsLayout, Work)],
     worker_count: usize,
 ) -> Vec<Result<Option<HlsOutput>>> {
     let pool = rayon::ThreadPoolBuilder::new()
@@ -227,11 +227,7 @@ fn dispatch_plan(
     })
 }
 
-trait PlanEntry: Sync {
-    fn execute(&self, runner: &dyn ToolRunner) -> Result<Option<HlsOutput>>;
-}
-
-impl PlanEntry for Work {
+impl Work {
     fn execute(&self, runner: &dyn ToolRunner) -> Result<Option<HlsOutput>> {
         match self {
             Self::Skip(_) => Ok(None),
@@ -250,8 +246,7 @@ impl PlanEntry for Work {
     }
 }
 
-/// Internal work state for the plan pass. Kept module-private —
-/// `PlanEntry` is the caller-visible marker.
+/// Internal work state for the plan pass. Kept module-private.
 #[allow(
     clippy::large_enum_variant,
     reason = "Work is held briefly; \

@@ -165,8 +165,6 @@ double Instance::ComputeTimeSeconds() const {
 double Instance::StoreTimeSeconds() const {
   return StoreTimeNanoSeconds() * 1e-9;
 }
-double Instance::LoadThroughputGbps() const { return 0.0; }
-double Instance::StoreThroughputGbps() const { return 0.0; }
 
 }  // namespace frt
 }  // namespace internal

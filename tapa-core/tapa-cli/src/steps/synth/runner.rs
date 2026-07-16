@@ -105,11 +105,6 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
     state.flow.synthed = true;
     work_io::store(&ctx.work_dir, &state)?;
 
-    let mut flow = ctx.flow.borrow_mut();
-    flow.state = Some(state);
-    flow.pipelined.insert("synth".to_string(), true);
-    drop(flow);
-
     Ok(())
 }
 
@@ -466,9 +461,5 @@ mod tests {
         )
         .expect("parse report");
         assert_eq!(report["performance"]["clock_period"], "1.0");
-
-        let flow = ctx.flow.borrow();
-        assert!(flow.state.is_some());
-        assert_eq!(flow.pipelined.get("synth"), Some(&true));
     }
 }

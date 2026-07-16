@@ -114,40 +114,10 @@ pub struct AnalyzeArgs {
     pub tapa_cpp: Option<PathBuf>,
 }
 
-/// Re-render `args` as normalized CLI flags.
-pub fn to_cli_argv(args: &AnalyzeArgs) -> Vec<String> {
-    let mut out = Vec::<String>::new();
-    for f in &args.input_files {
-        out.push("--input".to_string());
-        out.push(f.display().to_string());
-    }
-    out.push("--top".to_string());
-    out.push(args.top.clone());
-    for c in &args.cflags {
-        out.push("--cflags".to_string());
-        out.push(c.clone());
-    }
-    if args.flatten_hierarchy {
-        out.push("--flatten-hierarchy".to_string());
-    } else {
-        // Emit the default explicitly so composite argv builders preserve the
-        // same boolean shape regardless of user spelling.
-        out.push("--keep-hierarchy".to_string());
-    }
-    out.push("--target".to_string());
-    out.push(args.target.as_str().to_string());
-    out
-}
-
-/// Top-level dispatcher for `tapa analyze`.
-pub fn run(args: &AnalyzeArgs, ctx: &mut CliContext) -> Result<()> {
-    run_native(args, ctx)
-}
-
 /// Run tapacc on each input, merge the task graphs, and write
 /// `<work_dir>/tapa.json` (plus the flattened sources when
 /// `--flatten-hierarchy` is set).
-fn run_native(args: &AnalyzeArgs, ctx: &CliContext) -> Result<()> {
+pub fn run(args: &AnalyzeArgs, ctx: &CliContext) -> Result<()> {
     // `--tapacc`/`--tapa-cpp` override the walk-up `find_resource`
     // search. Used by the Bazel driver to inject the exact sandbox
     // paths; direct `tapa analyze` runs on a developer machine still
@@ -178,7 +148,7 @@ fn run_native(args: &AnalyzeArgs, ctx: &CliContext) -> Result<()> {
         &args.input_files,
         &all_cflags,
         work_dir,
-        ctx.options.clang_format_quota_in_bytes,
+        ctx.clang_format_quota_in_bytes,
     )?;
     let target_str = args.target.as_str();
     let stdout = run_tapacc(&tapacc, &flatten_files, &args.top, &all_cflags, target_str)?;
@@ -225,88 +195,17 @@ fn run_native(args: &AnalyzeArgs, ctx: &CliContext) -> Result<()> {
     let state = WorkState::new(graph);
     work_io::store(work_dir, &state)?;
 
-    // Cache state for downstream chained steps in this process.
-    let mut flow = ctx.flow.borrow_mut();
-    flow.state = Some(state);
-    flow.pipelined.insert("analyze".to_string(), true);
-    drop(flow);
-
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    #![allow(
-        clippy::similar_names,
-        reason = "the `args`/`argv` pair appears throughout the dispatcher; \
-                  matching the production names keeps tests legible"
-    )]
-
     use super::*;
 
     use std::fs;
 
     use crate::context::CliContext;
     use crate::globals::GlobalArgs;
-
-    #[test]
-    fn argv_round_trips_cli_shape() {
-        let args = AnalyzeArgs::try_parse_from([
-            "analyze",
-            "--input",
-            "vadd.cpp",
-            "--top",
-            "VecAdd",
-            "--target",
-            "xilinx-hls",
-        ])
-        .unwrap();
-        let argv = to_cli_argv(&args);
-        assert!(argv.contains(&"--input".to_string()));
-        assert!(argv.contains(&"vadd.cpp".to_string()));
-        assert!(argv.contains(&"--top".to_string()));
-        assert!(argv.contains(&"VecAdd".to_string()));
-        assert!(argv.contains(&"--target".to_string()));
-        assert!(argv.contains(&"xilinx-hls".to_string()));
-    }
-
-    #[test]
-    fn to_cli_argv_includes_keep_hierarchy_when_default() {
-        let args =
-            AnalyzeArgs::try_parse_from(["analyze", "--input", "vadd.cpp", "--top", "VecAdd"])
-                .unwrap();
-        let argv = to_cli_argv(&args);
-        assert!(
-            argv.contains(&"--keep-hierarchy".to_string()),
-            "default analyze must include `--keep-hierarchy`",
-        );
-        assert!(
-            !argv.contains(&"--flatten-hierarchy".to_string()),
-            "default analyze must not propagate `--flatten-hierarchy`",
-        );
-    }
-
-    #[test]
-    fn to_cli_argv_includes_flatten_hierarchy_when_set() {
-        let args = AnalyzeArgs::try_parse_from([
-            "analyze",
-            "--input",
-            "vadd.cpp",
-            "--top",
-            "VecAdd",
-            "--flatten-hierarchy",
-        ])
-        .unwrap();
-        let argv = to_cli_argv(&args);
-        assert!(
-            argv.contains(&"--flatten-hierarchy".to_string()),
-            "`--flatten-hierarchy` must be forwarded to the bridge",
-        );
-        assert!(
-            !argv.contains(&"--keep-hierarchy".to_string()),
-            "the two boolean siblings must not both appear",
-        );
-    }
 
     #[cfg(unix)]
     #[test]
@@ -389,7 +288,7 @@ mod tests {
         ])
         .expect("parse analyze args");
 
-        run_native(&args, &ctx).expect("native analyze should succeed");
+        run(&args, &ctx).expect("native analyze should succeed");
 
         // The single state file must round-trip with the projected topology.
         let state = work_io::load(&ctx.work_dir).expect("load state");
@@ -425,10 +324,5 @@ mod tests {
             fixed_graph,
             "tapacc.json must hold tapacc's stdout verbatim",
         );
-
-        // FlowState must cache the state for chained steps.
-        let flow = ctx.flow.borrow();
-        assert!(flow.state.is_some(), "state cached for chained steps");
-        assert_eq!(flow.pipelined.get("analyze"), Some(&true));
     }
 }

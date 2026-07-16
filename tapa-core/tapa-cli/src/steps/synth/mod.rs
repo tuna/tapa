@@ -90,75 +90,13 @@ pub struct SynthArgs {
     pub nonpipeline_fifos: Option<PathBuf>,
 }
 
-fn opt_str(out: &mut Vec<String>, flag: &str, value: Option<&str>) {
-    if let Some(v) = value {
-        out.push(flag.to_string());
-        out.push(v.to_string());
-    }
-}
-
-fn opt_path(out: &mut Vec<String>, flag: &str, value: Option<&PathBuf>) {
-    if let Some(v) = value {
-        out.push(flag.to_string());
-        out.push(v.display().to_string());
-    }
-}
-
-pub fn to_cli_argv(args: &SynthArgs) -> Vec<String> {
-    let mut out = Vec::<String>::new();
-    opt_str(&mut out, "--part-num", args.part_num.as_deref());
-    opt_str(&mut out, "--platform", args.platform.as_deref());
-    if let Some(c) = args.clock_period {
-        out.push("--clock-period".to_string());
-        out.push(c.to_string());
-    }
-    if let Some(j) = args.jobs {
-        out.push("--jobs".to_string());
-        out.push(j.to_string());
-    }
-    out.push(
-        if args.keep_hls_work_dir {
-            "--keep-hls-work-dir"
-        } else {
-            "--remove-hls-work-dir"
-        }
-        .to_string(),
-    );
-    out.push(
-        if args.skip_hls_based_on_mtime {
-            "--skip-hls-based-on-mtime"
-        } else {
-            "--no-skip-hls-based-on-mtime"
-        }
-        .to_string(),
-    );
-    out.push("--other-hls-configs".to_string());
-    out.push(args.other_hls_configs.clone());
-    out.push(
-        if args.enable_synth_util {
-            "--enable-synth-util"
-        } else {
-            "--disable-synth-util"
-        }
-        .to_string(),
-    );
-    out.push("--override-report-schema-version".to_string());
-    out.push(args.override_report_schema_version.clone());
-    opt_path(
-        &mut out,
-        "--nonpipeline-fifos",
-        args.nonpipeline_fifos.as_ref(),
-    );
-    out
-}
-
 /// Top-level dispatcher.
 ///
 /// The HLS + codegen pipeline is the only path. When
 /// `ctx.remote_config` is populated (via `~/.taparc` or
 /// `--remote-host`), HLS dispatches through `RemoteToolRunner`;
 /// otherwise `LocalToolRunner`.
-pub fn run(args: &SynthArgs, ctx: &mut CliContext) -> Result<()> {
+pub fn run(args: &SynthArgs, ctx: &CliContext) -> Result<()> {
     if let Some(cfg) = ctx.remote_config.as_ref() {
         let session = std::sync::Arc::new(SshSession::new(cfg.clone(), SshMuxOptions::default()));
         let runner = RemoteToolRunner::new(session);
@@ -166,31 +104,5 @@ pub fn run(args: &SynthArgs, ctx: &mut CliContext) -> Result<()> {
     } else {
         let runner = LocalToolRunner::new();
         run_native(args, ctx, &runner)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    #![allow(
-        clippy::similar_names,
-        reason = "the `args`/`argv` pair appears throughout the dispatcher; \
-                  matching the production names keeps tests legible"
-    )]
-
-    use super::*;
-
-    fn parse_synth(extra: &[&str]) -> SynthArgs {
-        let mut argv = vec!["synth"];
-        argv.extend_from_slice(extra);
-        SynthArgs::try_parse_from(argv).expect("parse synth args")
-    }
-
-    #[test]
-    fn argv_round_trips_current_shape() {
-        let args = parse_synth(&["--platform", "xilinx_u250", "--clock-period", "3.33"]);
-        let argv = to_cli_argv(&args);
-        assert!(argv.contains(&"--platform".to_string()));
-        assert!(argv.contains(&"xilinx_u250".to_string()));
-        assert!(argv.contains(&"--clock-period".to_string()));
     }
 }

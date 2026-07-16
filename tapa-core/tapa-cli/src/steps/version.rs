@@ -42,7 +42,7 @@ const fn trim_ascii_end(input: &str) -> &str {
     }
 }
 
-pub fn run(_args: &VersionArgs, _ctx: &mut CliContext) -> Result<()> {
+pub fn run(_args: &VersionArgs, _ctx: &CliContext) -> Result<()> {
     let mut stdout = std::io::stdout().lock();
     stdout.write_all(VERSION.as_bytes())?;
     Ok(())

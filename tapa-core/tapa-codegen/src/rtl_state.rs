@@ -394,11 +394,6 @@ impl TopologyWithRtl {
 }
 
 /// Compute parent-facing AXI ID width: 1 + ceil(log2(n)), minimum 1.
-#[cfg(test)]
-fn id_width_for_threads(n: u32) -> u32 {
-    id_width_for_child_threads(1, n)
-}
-
 fn id_width_for_child_threads(child_id_width: u32, n: u32) -> u32 {
     child_id_width.max(1) + routing_id_bits(n)
 }
@@ -537,13 +532,13 @@ mod tests {
 
     #[test]
     fn id_width_calculation() {
-        assert_eq!(id_width_for_threads(0), 1);
-        assert_eq!(id_width_for_threads(1), 1);
-        assert_eq!(id_width_for_threads(2), 2);
-        assert_eq!(id_width_for_threads(3), 3);
-        assert_eq!(id_width_for_threads(4), 3);
-        assert_eq!(id_width_for_threads(7), 4);
-        assert_eq!(id_width_for_threads(8), 4);
+        assert_eq!(id_width_for_child_threads(1, 0), 1);
+        assert_eq!(id_width_for_child_threads(1, 1), 1);
+        assert_eq!(id_width_for_child_threads(1, 2), 2);
+        assert_eq!(id_width_for_child_threads(1, 3), 3);
+        assert_eq!(id_width_for_child_threads(1, 4), 3);
+        assert_eq!(id_width_for_child_threads(1, 7), 4);
+        assert_eq!(id_width_for_child_threads(1, 8), 4);
     }
 
     #[test]

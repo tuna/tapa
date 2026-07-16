@@ -53,29 +53,8 @@ pub struct PackArgs {
     pub custom_rtl: Vec<PathBuf>,
 }
 
-pub fn to_cli_argv(args: &PackArgs) -> Vec<String> {
-    let mut out = Vec::<String>::new();
-    if let Some(p) = &args.output {
-        out.push("--output".to_string());
-        out.push(p.display().to_string());
-    }
-    if let Some(p) = &args.bitstream_script {
-        out.push("--bitstream-script".to_string());
-        out.push(p.display().to_string());
-    }
-    for c in &args.custom_rtl {
-        out.push("--custom-rtl".to_string());
-        out.push(c.display().to_string());
-    }
-    out
-}
-
 /// Dispatch packaging according to the target stored by `analyze`.
-pub fn run(args: &PackArgs, ctx: &mut CliContext) -> Result<()> {
-    run_native(args, ctx)
-}
-
-fn run_native(args: &PackArgs, ctx: &CliContext) -> Result<()> {
+pub fn run(args: &PackArgs, ctx: &CliContext) -> Result<()> {
     let state = work_io::load(&ctx.work_dir)?;
     // The graph's `target` is the single home of the flow; this exhaustive
     // match is the dispatch site a new `Target` variant would break.
@@ -324,14 +303,6 @@ mod tests {
     }
 
     #[test]
-    fn argv_round_trips_current_shape() {
-        let args = parse_pack(&["--output", "vadd.xo"]);
-        let argv = to_cli_argv(&args);
-        assert!(argv.contains(&"--output".to_string()));
-        assert!(argv.contains(&"vadd.xo".to_string()));
-    }
-
-    #[test]
     fn enforce_xo_suffix_appends_when_missing() {
         assert_eq!(enforce_xo_suffix(None), PathBuf::from("work.xo"));
         assert_eq!(
@@ -356,7 +327,7 @@ mod tests {
         fs_err::write(&path, text.replace("xilinx-hls", "cpu-sim")).expect("write state");
 
         let ctx = ctx_with_work_dir(dir.path());
-        let err = run_native(&parse_pack(&[]), &ctx).expect_err("unknown target must reject");
+        let err = run(&parse_pack(&[]), &ctx).expect_err("unknown target must reject");
         let text = err.to_string();
         assert!(
             text.contains("cpu-sim") && text.contains("xilinx-vitis"),
@@ -394,8 +365,7 @@ mod tests {
         let output_path = dir.path().join("work.zip");
         let output_str = output_path.to_str().expect("utf-8 output");
         let ctx = ctx_with_work_dir(dir.path());
-        run_native(&parse_pack(&["--output", output_str]), &ctx)
-            .expect("xilinx-hls pack must succeed");
+        run(&parse_pack(&["--output", output_str]), &ctx).expect("xilinx-hls pack must succeed");
         assert!(output_path.exists(), "expected {output_str} to be written");
 
         // Inspect the archive: the state snapshot is present and the
@@ -494,7 +464,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         write_state(dir.path(), Target::XilinxVitis);
         let ctx = ctx_with_work_dir(dir.path());
-        let err = run_native(&parse_pack(&[]), &ctx).expect_err("missing rtl dir must fail");
+        let err = run(&parse_pack(&[]), &ctx).expect_err("missing rtl dir must fail");
         assert!(matches!(err, CliError::InvalidArg(ref m) if m.contains("rtl")));
     }
 }

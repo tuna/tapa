@@ -52,15 +52,6 @@ pub enum CliError {
 
     #[error("clap parse error in `{step}`: {message}")]
     ClapParse { step: String, message: String },
-
-    #[error("unrecognized subcommand token `{token}` at chain position {pos}")]
-    UnknownSubcommand { token: String, pos: usize },
-
-    #[error(
-        "flag `{flag}` appears before its subcommand at chain position {pos}; \
-         per-step flags must follow the subcommand name"
-    )]
-    OrphanFlag { flag: String, pos: usize },
 }
 
 impl CliError {
@@ -74,8 +65,6 @@ impl CliError {
                 normalize_child_exit_code(*code)
             }
             Self::ClapParse { .. }
-            | Self::UnknownSubcommand { .. }
-            | Self::OrphanFlag { .. }
             | Self::WorkDir(..)
             | Self::MissingState { .. }
             | Self::StaleWorkState { .. }
@@ -103,14 +92,6 @@ mod tests {
 
     #[test]
     fn usage_errors_exit_two() {
-        assert_eq!(
-            CliError::UnknownSubcommand {
-                token: "bogus".to_owned(),
-                pos: 1,
-            }
-            .exit_code(),
-            2
-        );
         assert_eq!(CliError::InvalidArg("bad value".to_owned()).exit_code(), 2);
     }
 

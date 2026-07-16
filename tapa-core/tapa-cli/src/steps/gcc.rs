@@ -24,7 +24,7 @@ pub struct GccArgs {
     pub argv: Vec<String>,
 }
 
-pub fn run(args: &GccArgs, _ctx: &mut CliContext) -> Result<()> {
+pub fn run(args: &GccArgs, _ctx: &CliContext) -> Result<()> {
     let mut cmd = Command::new(&args.executable);
     cmd.arg("-std=c++17");
     cmd.arg("-DHLS_NO_XIL_FPO_LIB");

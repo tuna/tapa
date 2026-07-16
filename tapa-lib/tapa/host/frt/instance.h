@@ -80,8 +80,6 @@ class Instance {
   double LoadTimeSeconds() const;
   double ComputeTimeSeconds() const;
   double StoreTimeSeconds() const;
-  double LoadThroughputGbps() const;
-  double StoreThroughputGbps() const;
 
  private:
   struct Impl;

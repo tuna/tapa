@@ -1,70 +1,31 @@
 //! Per-invocation execution context shared by the chained step pipeline.
 
-use std::cell::RefCell;
 use std::path::PathBuf;
 
-use indexmap::IndexMap;
 use tapa_xilinx::RemoteConfig;
 
 use crate::globals::GlobalArgs;
-use crate::options::Options;
-use crate::state::work::WorkState;
-
-/// In-memory state shared by chained steps.
-#[derive(Debug, Default)]
-pub struct FlowState {
-    /// The work dir's `tapa.json` as last written by a step in this
-    /// process; `None` until a step produces or loads it.
-    pub state: Option<WorkState>,
-    /// Per-step completion markers for the active pipeline.
-    pub pipelined: IndexMap<String, bool>,
-}
 
 #[derive(Debug)]
 pub struct CliContext {
     pub work_dir: PathBuf,
     pub temp_dir: Option<PathBuf>,
-    pub options: Options,
-    pub remote: RemoteConfigArgs,
+    pub clang_format_quota_in_bytes: u64,
     /// Resolved remote config (`~/.taparc` + CLI overrides). `None`
     /// means the run is purely local.
     pub remote_config: Option<RemoteConfig>,
-    pub flow: RefCell<FlowState>,
     /// Verbosity counts for downstream command invocations.
     pub verbose: u8,
     pub quiet: u8,
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct RemoteConfigArgs {
-    pub host: Option<String>,
-    pub key_file: Option<String>,
-    pub xilinx_settings: Option<String>,
-    pub ssh_control_dir: Option<String>,
-    pub ssh_control_persist: Option<String>,
-    pub disable_ssh_mux: bool,
-}
-
 impl CliContext {
     pub fn from_globals(globals: &GlobalArgs) -> Self {
-        let options = Options {
-            clang_format_quota_in_bytes: globals.clang_format_quota_in_bytes,
-        };
-        let remote = RemoteConfigArgs {
-            host: globals.remote_host.clone(),
-            key_file: globals.remote_key_file.clone(),
-            xilinx_settings: globals.remote_xilinx_settings.clone(),
-            ssh_control_dir: globals.remote_ssh_control_dir.clone(),
-            ssh_control_persist: globals.remote_ssh_control_persist.clone(),
-            disable_ssh_mux: globals.remote_disable_ssh_mux,
-        };
         Self {
             work_dir: absolutize_for_storage(&globals.work_dir),
             temp_dir: globals.temp_dir.clone(),
-            options,
-            remote,
+            clang_format_quota_in_bytes: globals.clang_format_quota_in_bytes,
             remote_config: None,
-            flow: RefCell::new(FlowState::default()),
             verbose: globals.verbose,
             quiet: globals.quiet,
         }

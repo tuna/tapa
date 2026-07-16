@@ -88,10 +88,6 @@ pub(super) fn pack_vitis(
         emit_bitstream_script(flow, script_dest, &design.top, &output_path)?;
     }
 
-    let mut flow = ctx.flow.borrow_mut();
-    flow.pipelined.insert("pack".to_string(), true);
-    drop(flow);
-
     Ok(())
 }
 
