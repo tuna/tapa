@@ -6,6 +6,7 @@ use crate::builder::{
     AlwaysBlock, CommentPragma, ContinuousAssign, Expr, ModuleInstance, ParamArg, PortArg,
     Sensitivity, Statement,
 };
+use crate::expression::expression_source;
 use crate::port::{Direction, Port, Width};
 use crate::signal::{Signal, SignalKind};
 
@@ -120,18 +121,8 @@ impl fmt::Display for Expr {
 
 impl fmt::Display for Width {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let msb: String = self
-            .msb
-            .iter()
-            .map(|t| t.repr.as_str())
-            .collect::<Vec<_>>()
-            .join("");
-        let lsb: String = self
-            .lsb
-            .iter()
-            .map(|t| t.repr.as_str())
-            .collect::<Vec<_>>()
-            .join("");
+        let msb = expression_source(&self.msb);
+        let lsb = expression_source(&self.lsb);
         write!(f, "[{msb}:{lsb}]")
     }
 }

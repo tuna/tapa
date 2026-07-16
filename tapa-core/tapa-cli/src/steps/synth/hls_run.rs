@@ -12,6 +12,8 @@ use tapa_xilinx::{run_hls_with_retry, run_hls_with_retry_in_stage, HlsJob, HlsOu
 use crate::error::{CliError, Result};
 use crate::steps::synth::cpp_extract::cpp_path_for;
 
+use super::resolve_worker_count;
+
 /// Up to 3 attempts total. Vitis HLS occasionally fails with a
 /// transient `Pre-synthesis failed.` diagnostic that re-runs clean,
 /// so the retry wrapper keys off that substring.
@@ -75,8 +77,7 @@ pub fn run_hls_for_leaves(
         let layout = TaskHlsLayout::new(work_dir, task_name);
 
         let cpp_source = cpp_path_for(work_dir, task_name);
-        let cpp_source = Utf8PathBuf::from_path_buf(cpp_source)
-            .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
+        let cpp_source = crate::util::utf8(cpp_source);
         if !cpp_source.is_file() {
             return Err(CliError::InvalidArg(format!(
                 "missing extracted C++ source `{}` for task `{task_name}`",
@@ -174,7 +175,7 @@ pub fn run_hls_for_leaves(
         plan.push((task_name.clone(), layout, work));
     }
 
-    let worker_count = resolve_worker_count(options.jobs, &plan);
+    let worker_count = resolve_worker_count(options.jobs, plan.len());
     let results: Vec<Result<Option<HlsOutput>>> = dispatch_plan(runner, &plan, worker_count);
 
     // No explicit cleanup: `RunFresh` lets `run_hls_with_retry` own
@@ -192,23 +193,6 @@ pub fn run_hls_for_leaves(
         out.push((task_name, layout, hls_out));
     }
     Ok(out)
-}
-
-fn resolve_worker_count(jobs: Option<u32>, plan: &[(String, TaskHlsLayout, impl Sized)]) -> usize {
-    // A positive `--jobs N` wins; zero retains the historical "use the
-    // default" behavior. Cap by live work so we never spawn more workers
-    // than jobs to dispatch.
-    let desired = match jobs {
-        None | Some(0) => default_hls_workers(),
-        Some(jobs) => jobs as usize,
-    };
-    desired.min(plan.len().max(1))
-}
-
-/// Use the host's available logical parallelism as the default worker
-/// count.
-fn default_hls_workers() -> usize {
-    std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get)
 }
 
 fn dispatch_plan(
@@ -295,10 +279,7 @@ fn list_verilog_files(dir: &camino::Utf8Path) -> Result<Vec<Utf8PathBuf>> {
         if ent.file_type().is_file() && ent.path().extension().and_then(|s| s.to_str()) == Some("v")
         {
             let p = ent.path().to_path_buf();
-            out.push(
-                Utf8PathBuf::from_path_buf(p)
-                    .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
-            );
+            out.push(crate::util::utf8(p));
         }
     }
     out.sort();
@@ -383,11 +364,11 @@ mod tests {
             })
             .collect::<Vec<_>>();
         assert_eq!(
-            resolve_worker_count(Some(0), &plan),
-            resolve_worker_count(None, &plan)
+            resolve_worker_count(Some(0), plan.len()),
+            resolve_worker_count(None, plan.len())
         );
-        assert_eq!(resolve_worker_count(Some(1), &plan), 1);
-        assert_eq!(resolve_worker_count(Some(8), &plan), 3);
+        assert_eq!(resolve_worker_count(Some(1), plan.len()), 1);
+        assert_eq!(resolve_worker_count(Some(8), plan.len()), 3);
     }
 
     /// A cache hit requires an existing HDL directory containing at
@@ -583,11 +564,7 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(10));
         fs::write(hdl.join("Add.v"), b"module Add(); wire fresh; endmodule\n").unwrap();
 
-        let files = list_verilog_files(
-            &Utf8PathBuf::from_path_buf(hdl)
-                .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
-        )
-        .unwrap();
+        let files = list_verilog_files(&crate::util::utf8(hdl)).unwrap();
         let cpp = Utf8PathBuf::from_path_buf(work.join("cpp").join("Add.cpp"))
             .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
         assert!(

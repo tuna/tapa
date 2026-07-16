@@ -13,6 +13,7 @@ use std::sync::LazyLock;
 
 use crate::builder::{AlwaysBlock, ContinuousAssign, ModuleInstance};
 use crate::error::BuilderError;
+use crate::expression::expression_source;
 use crate::port::{Direction, Port, Width};
 use crate::signal::{Signal, SignalKind};
 use crate::VerilogModule;
@@ -262,12 +263,7 @@ impl MutableModule {
                 }
                 let _ = write!(out, "{}", param.name);
                 if !param.default.is_empty() {
-                    let default_str: String = param
-                        .default
-                        .iter()
-                        .map(|t| t.repr.as_str())
-                        .collect::<Vec<_>>()
-                        .join("");
+                    let default_str = expression_source(&param.default);
                     let _ = write!(out, " = {default_str}");
                 }
                 let comma = if i + 1 < self.inner.parameters.len() {

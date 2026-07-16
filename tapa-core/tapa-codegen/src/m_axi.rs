@@ -1,8 +1,8 @@
 //! M-AXI port generation and parameterized AXI crossbar emission.
 
 use tapa_protocol::{
-    PortDir, HANDSHAKE_CLK, HANDSHAKE_RST, M_AXI_PORTS, M_AXI_PORT_WIDTHS, M_AXI_PREFIX,
-    M_AXI_SUFFIXES_COMPACT,
+    axi_subport_width, PortDir, HANDSHAKE_CLK, HANDSHAKE_RST, M_AXI_CHANNEL_ORDER, M_AXI_PORTS,
+    M_AXI_PREFIX, M_AXI_SUFFIXES_COMPACT,
 };
 use tapa_rtl::builder::{ContinuousAssign, Expr, ModuleInstance, ParamArg, PortArg};
 use tapa_rtl::module::sanitize_array_name;
@@ -13,8 +13,6 @@ use crate::children;
 use crate::error::CodegenError;
 use crate::rtl_state::TopologyWithRtl;
 use crate::rtl_state::{routing_id_bits, MMapConnection};
-
-const M_AXI_CHANNEL_ORDER: &[&str] = &["AR", "AW", "B", "R", "W"];
 
 /// Add M-AXI ports for a single memory-mapped argument to a module.
 ///
@@ -45,15 +43,7 @@ pub fn add_m_axi_ports_with_id_width(
                 PortDir::Input => Direction::Input,
             };
 
-            let default_width = M_AXI_PORT_WIDTHS.get(subport).copied().unwrap_or(1);
-            let width = match subport {
-                "ADDR" => addr_width,
-                "DATA" => data_width,
-                "ID" => id_width,
-                "STRB" => data_width / 8,
-                _ if default_width == 0 => 1,
-                _ => default_width,
-            };
+            let width = axi_subport_width(subport, data_width, addr_width, id_width);
 
             let port = if width > 1 {
                 wide_port(&port_name, direction, &(width - 1).to_string(), "0")
@@ -235,7 +225,7 @@ pub fn try_get_addr_width(chan_size: Option<u32>, data_width: u32) -> Result<u32
 /// Resolve the width of an M-AXI suffix from protocol metadata.
 ///
 /// Extracts the sub-port name from a suffix like `_ARADDR` → `ADDR`,
-/// then looks up the default width from `M_AXI_PORT_WIDTHS`.
+/// then looks up the default width via [`tapa_protocol::axi_subport_width`].
 pub fn resolve_suffix_width(suffix: &str, data_width: u32) -> u32 {
     let suffix = suffix.trim_start_matches('_');
     let subport = suffix
@@ -246,15 +236,7 @@ pub fn resolve_suffix_width(suffix: &str, data_width: u32) -> u32 {
         .or_else(|| suffix.strip_prefix('B'))
         .unwrap_or(suffix);
 
-    let default_width = M_AXI_PORT_WIDTHS.get(subport).copied().unwrap_or(1);
-
-    match subport {
-        "ADDR" => 64,
-        "DATA" => data_width,
-        "STRB" => data_width / 8,
-        _ if default_width == 0 => 1,
-        _ => default_width,
-    }
+    axi_subport_width(subport, data_width, 64, 1)
 }
 
 /// Validate an mmap connection before crossbar generation.

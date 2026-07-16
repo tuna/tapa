@@ -1166,6 +1166,7 @@ dependencies = [
  "sha2",
  "shellexpand",
  "shlex",
+ "tapa-protocol",
  "tar",
  "tempfile",
  "thiserror",

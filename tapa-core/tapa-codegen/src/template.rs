@@ -3,14 +3,12 @@
 use tapa_ir::port::ArgCategory;
 use tapa_ir::Task;
 use tapa_protocol::{
-    PortDir, HANDSHAKE_CLK, HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY, HANDSHAKE_RST_N,
-    HANDSHAKE_START, M_AXI_PORTS, M_AXI_PORT_WIDTHS, M_AXI_PREFIX,
+    axi_subport_width, PortDir, HANDSHAKE_CLK, HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY,
+    HANDSHAKE_RST_N, HANDSHAKE_START, M_AXI_CHANNEL_ORDER, M_AXI_PORTS, M_AXI_PREFIX,
 };
 use tapa_rtl::module::sanitize_array_name;
 use tapa_rtl::mutation::{simple_port, wide_port};
 use tapa_rtl::port::{Direction, Port};
-
-const M_AXI_CHANNEL_ORDER: &[&str] = &["AR", "AW", "B", "R", "W"];
 
 fn port_with_width(name: impl Into<String>, direction: Direction, width: u32) -> Port {
     if width > 1 {
@@ -31,15 +29,7 @@ fn add_m_axi_ports(ports: &mut Vec<Port>, name: &str, data_width: u32) {
                 PortDir::Input => Direction::Input,
                 PortDir::Output => Direction::Output,
             };
-            let default_width = M_AXI_PORT_WIDTHS.get(subport).copied().unwrap_or(1);
-            let width = match subport {
-                "ADDR" => 64,
-                "DATA" => data_width,
-                "ID" => 1,
-                "STRB" => data_width.div_ceil(8),
-                _ if default_width == 0 => 1,
-                _ => default_width,
-            };
+            let width = axi_subport_width(subport, data_width, 64, 1);
             ports.push(port_with_width(
                 format!("{prefix}_{channel}{subport}"),
                 direction,

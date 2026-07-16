@@ -17,9 +17,7 @@ use crate::platform::device::DeviceInfo;
 use crate::platform::kernel_xml::{emit_kernel_xml, KernelXmlArgs, KernelXmlPort, PortCategory};
 use crate::runtime::process::ToolRunner;
 use crate::tools::vivado::{run_vivado, VivadoJob};
-
-const S_AXI_NAME: &str = "s_axi_control";
-const M_AXI_PREFIX: &str = "m_axi_";
+use tapa_protocol::{M_AXI_PREFIX, S_AXI_NAME};
 
 /// `{top_name}`, `{bus_ifaces}`, `{cpp_kernels}`, `{part_num}` placeholders
 /// are substituted by `format_package_xo_tcl`. All other braces are escaped

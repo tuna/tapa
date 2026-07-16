@@ -255,11 +255,7 @@ fn collect_hls_report_paths(work_dir: &Path) -> Result<Vec<(Utf8PathBuf, String)
     for file in ["report.json", "report.yaml"] {
         let path = work_dir.join(file);
         if path.is_file() {
-            reports.push((
-                Utf8PathBuf::from_path_buf(path)
-                    .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
-                file.to_owned(),
-            ));
+            reports.push((crate::util::utf8(path), file.to_owned()));
         }
     }
     if !hls_root.is_dir() {
@@ -302,11 +298,7 @@ fn collect_hls_report_paths(work_dir: &Path) -> Result<Vec<(Utf8PathBuf, String)
             let text = fs_err::read_to_string(&path)?;
             fs_err::write(&staged_path, sanitize_hls_report_text(&text, work_dir))?;
             let arcname = format!("report/{task_name}/{file}");
-            reports.push((
-                Utf8PathBuf::from_path_buf(staged_path)
-                    .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
-                arcname,
-            ));
+            reports.push((crate::util::utf8(staged_path), arcname));
         }
     }
     reports.sort();

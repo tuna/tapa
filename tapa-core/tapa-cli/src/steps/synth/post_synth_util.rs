@@ -21,7 +21,6 @@
 //! Independent Vivado runs honor the requested `jobs` limit; parsed
 //! results are folded into the design in task order.
 
-use camino::Utf8PathBuf;
 use rayon::prelude::*;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -32,6 +31,8 @@ use tapa_ir::Design;
 use tapa_xilinx::{parse_utilization_rpt, run_vivado, ToolRunner, UtilizationReport, VivadoJob};
 
 use crate::error::{CliError, Result};
+
+use super::resolve_worker_count;
 
 use super::cpp_extract::cpp_path_for;
 
@@ -89,15 +90,6 @@ pub(super) fn emit_post_synth_util(
         apply_total_area(design, &result?);
     }
     Ok(())
-}
-
-fn resolve_worker_count(jobs: Option<u32>, task_count: usize) -> usize {
-    let default = || std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get);
-    let desired = match jobs {
-        None | Some(0) => default(),
-        Some(count) => count as usize,
-    };
-    desired.min(task_count.max(1))
 }
 
 fn run_and_parse_one(
@@ -188,19 +180,14 @@ fn run_one(
     if let Some(parent) = rpt_path.parent() {
         fs::create_dir_all(parent)?;
     }
-    let abs_hdl = Utf8PathBuf::from_path_buf(
-        fs::canonicalize(rtl_dir).unwrap_or_else(|_| rtl_dir.to_path_buf()),
-    )
-    .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
+    let abs_hdl =
+        crate::util::utf8(fs::canonicalize(rtl_dir).unwrap_or_else(|_| rtl_dir.to_path_buf()));
     let abs_rpt = if rpt_path.is_absolute() {
-        Utf8PathBuf::from_path_buf(rpt_path.to_path_buf())
-            .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()))
+        crate::util::utf8(rpt_path.to_path_buf())
     } else {
         match std::env::current_dir() {
-            Ok(cwd) => Utf8PathBuf::from_path_buf(cwd.join(rpt_path))
-                .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
-            Err(_) => Utf8PathBuf::from_path_buf(rpt_path.to_path_buf())
-                .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
+            Ok(cwd) => crate::util::utf8(cwd.join(rpt_path)),
+            Err(_) => crate::util::utf8(rpt_path.to_path_buf()),
         }
     };
 
@@ -440,8 +427,7 @@ mod tests {
         runner.push_ok("vivado", ToolOutput::default());
         let rpt_path = work.join("report").join("Add.hier.util.rpt");
         runner.attach_download(
-            camino::Utf8PathBuf::from_path_buf(rpt_path.clone())
-                .unwrap_or_else(|p| camino::Utf8PathBuf::from(p.to_string_lossy().into_owned())),
+            crate::util::utf8(rpt_path.clone()),
             sample_rpt("Add").into_bytes(),
         );
 

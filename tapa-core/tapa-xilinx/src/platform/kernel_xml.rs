@@ -5,11 +5,9 @@
 //! template byte-for-byte (modulo XML-escaping invariants).
 
 use serde::{Deserialize, Serialize};
+use tapa_protocol::{M_AXI_PREFIX, S_AXI_NAME};
 
 use crate::error::{Result, XilinxError};
-
-const S_AXI_NAME: &str = "s_axi_control";
-const M_AXI_PREFIX: &str = "m_axi_";
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum PortCategory {

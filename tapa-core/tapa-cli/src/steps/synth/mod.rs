@@ -39,6 +39,21 @@ mod runner;
 
 pub(crate) use runner::run_native;
 
+/// Resolve the parallel worker count for a synth sub-pass.
+///
+/// A positive `--jobs N` wins; zero/absent falls back to the host's
+/// available parallelism. The result is capped by `work_count` so we
+/// never spawn more workers than there are units of work.
+fn resolve_worker_count(jobs: Option<u32>, work_count: usize) -> usize {
+    let desired = match jobs {
+        None | Some(0) => {
+            std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get)
+        }
+        Some(jobs) => jobs as usize,
+    };
+    desired.min(work_count.max(1))
+}
+
 #[allow(
     clippy::struct_excessive_bools,
     reason = "every bool is a distinct user-facing flag, so collapsing into an enum would \

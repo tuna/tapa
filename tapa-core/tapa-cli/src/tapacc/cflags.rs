@@ -167,17 +167,9 @@ fn find_external_lib_in_runfiles() -> Vec<PathBuf> {
 
 fn vendor_include_paths(include_gcc: bool) -> Vec<PathBuf> {
     let mut paths = Vec::new();
-    let mut hls_root: Option<PathBuf> = None;
-    for env_name in ["XILINX_HLS", "XILINX_VITIS"] {
-        if let Some(path) = std::env::var_os(env_name) {
-            let root = PathBuf::from(path);
-            let include = root.join("include");
-            if include.exists() {
-                paths.push(include);
-                hls_root = Some(root);
-                break;
-            }
-        }
+    let hls_root = crate::util::vendor_hls_root();
+    if let Some(root) = &hls_root {
+        paths.push(root.join("include"));
     }
 
     if include_gcc {

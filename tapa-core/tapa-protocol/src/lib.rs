@@ -125,6 +125,9 @@ pub const S_AXI_LITE_CHANNELS: &[AxiChannelInfo] = &[
 ];
 pub const M_AXI_PREFIX: &str = "m_axi_";
 
+/// Canonical M-AXI channel emission order.
+pub const M_AXI_CHANNEL_ORDER: &[&str] = &["AR", "AW", "B", "R", "W"];
+
 // ── M-AXI port widths ───────────────────────────────────────────────
 
 /// Default bit width for each M-AXI sub-port.  `0` means the width is
@@ -146,6 +149,24 @@ pub static M_AXI_PORT_WIDTHS: phf::Map<&'static str, u32> = phf::phf_map! {
     "STRB" => 0,
     "VALID" => 1,
 };
+
+/// Resolve the bit width of an M-AXI sub-port.
+///
+/// `data_width`, `addr_width`, `id_width` supply the parameterised
+/// widths (DATA/ADDR/ID). STRB is derived as `ceil(data_width / 8)`.
+/// All other sub-ports use their fixed default from [`M_AXI_PORT_WIDTHS`].
+#[must_use]
+pub fn axi_subport_width(subport: &str, data_width: u32, addr_width: u32, id_width: u32) -> u32 {
+    let default = M_AXI_PORT_WIDTHS.get(subport).copied().unwrap_or(1);
+    match subport {
+        "ADDR" => addr_width,
+        "DATA" => data_width,
+        "ID" => id_width,
+        "STRB" => data_width.div_ceil(8),
+        _ if default == 0 => 1,
+        _ => default,
+    }
+}
 
 /// Direction: `"output"` means the master drives the signal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

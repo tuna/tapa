@@ -10,5 +10,6 @@ pub mod remote;
 pub mod state;
 pub mod steps;
 pub mod tapacc;
+mod util;
 
 pub use error::{CliError, Result};
