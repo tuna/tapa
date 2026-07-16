@@ -16,12 +16,10 @@
 //! reproducible `.zip` archive.
 
 use std::path::PathBuf;
-use std::str::FromStr;
 
 use clap::Parser;
 use fs_err;
 use path_slash::PathExt;
-use serde_json::Value;
 use tapa_ir::Target;
 
 use crate::context::CliContext;
@@ -80,21 +78,7 @@ pub fn run(args: &PackArgs, ctx: &mut CliContext) -> Result<()> {
 fn run_native(args: &PackArgs, ctx: &CliContext) -> Result<()> {
     let design = design_io::load_design(&ctx.work_dir)?;
     let settings = settings_io::load_settings(&ctx.work_dir)?;
-    // `settings.json` holds `target` as an untyped string that may drift
-    // from `design.target`; when present it wins, so parse it into the
-    // typed enum (unknown value surfaces as `InvalidArg`). When absent,
-    // fall back to the already-typed `design.target`.
-    let target = match settings.get("target").and_then(Value::as_str) {
-        Some(s) => Target::from_str(s).map_err(|_| {
-            CliError::InvalidArg(format!(
-                "pack only supports `xilinx-vitis` and `xilinx-hls`; \
-                 got `{s}` in settings.json"
-            ))
-        })?,
-        None => design.target,
-    };
-
-    match target {
+    match crate::steps::backend::effective_target(&settings, &design)? {
         Target::XilinxVitis => pack_vitis(args, ctx, &design, &settings),
         Target::XilinxHls => pack_hls_zip(args, ctx, &settings),
     }
@@ -280,6 +264,7 @@ mod tests {
     use super::*;
 
     use std::path::Path;
+    use std::str::FromStr;
 
     use std::collections::BTreeMap;
 

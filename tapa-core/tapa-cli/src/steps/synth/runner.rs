@@ -7,14 +7,13 @@
 
 use camino::Utf8PathBuf;
 use std::path::Path;
-use std::str::FromStr;
 
 use serde_json::{json, Value};
-use tapa_ir::{Target, Task};
+use tapa_ir::Task;
 use tapa_xilinx::{CsynthReport, ToolRunner};
 
 use crate::context::CliContext;
-use crate::error::{CliError, Result};
+use crate::error::Result;
 use crate::state::{design as design_io, graph as graph_io, settings as settings_io};
 use crate::tapacc::cflags::{get_remote_hls_cflags, get_tapacc_cflags};
 use crate::tapacc::discover::find_resource;
@@ -37,18 +36,9 @@ use super::SynthArgs;
 pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -> Result<()> {
     let mut design = design_io::load_design(&ctx.work_dir)?;
     let mut settings = settings_io::load_settings(&ctx.work_dir)?;
-    // Validate the flow target early. `settings.json` holds it as an
-    // untyped string that may drift from `design.target`; when present it
-    // must parse into a supported flow. When absent, `design.target` is
-    // already a typed `Target`, so no check is needed.
-    if let Some(s) = settings.get("target").and_then(Value::as_str) {
-        Target::from_str(s).map_err(|_| {
-            CliError::InvalidArg(format!(
-                "synth only supports the `xilinx-vitis` and `xilinx-hls` targets; \
-                 got `{s}` in settings.json"
-            ))
-        })?;
-    }
+    // Validate the flow target early (the value itself is not needed here --
+    // synthesis is Xilinx HLS for every supported flow).
+    crate::steps::backend::effective_target(&settings, &design)?;
 
     let device = resolve_device_info(args)?;
     settings.insert("part_num".to_string(), json!(&device.part_num));
@@ -229,7 +219,7 @@ mod tests {
     use std::collections::BTreeMap;
 
     use indexmap::IndexMap;
-    use tapa_ir::{Design, SynthTarget, Task, TaskLevel};
+    use tapa_ir::{Design, SynthTarget, Target, Task, TaskLevel};
     use tapa_xilinx::{ToolInvocation, ToolOutput};
 
     use crate::globals::GlobalArgs;

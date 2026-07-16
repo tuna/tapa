@@ -6,6 +6,7 @@
 //! each module up through clap's `Subcommand` derive.
 
 pub mod analyze;
+pub(crate) mod backend;
 pub mod find_clang_binary;
 pub mod gcc;
 pub mod meta;
