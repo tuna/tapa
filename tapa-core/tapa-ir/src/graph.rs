@@ -72,4 +72,16 @@ mod tests {
         )
         .expect("graph parses");
     }
+
+    #[test]
+    fn parses_flow_derived_task_target() {
+        // `tapacc` emits a flow-derived per-task target (e.g. the top task's
+        // `xilinx_vitis`) that is neither `hls` nor `ignore`; the typed schema
+        // must accept and preserve it rather than reject it.
+        let graph = Graph::from_json(
+            r#"{"cflags":[],"top":"T","tasks":{"T":{"code":"","level":"upper","target":"xilinx_vitis","ports":[],"tasks":{},"fifos":{}}}}"#,
+        )
+        .expect("graph with flow-derived task target parses");
+        assert_eq!(graph.tasks["T"].target.as_str(), "xilinx_vitis");
+    }
 }
