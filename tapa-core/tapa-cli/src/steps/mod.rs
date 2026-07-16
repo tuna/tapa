@@ -16,6 +16,10 @@
 //!   state file parses. `pack` dispatches on it with an exhaustive `match`,
 //!   so adding a `Target` variant makes the compiler flag every dispatch
 //!   site.
+//! - **RTL codegen** — `tapa_codegen::top_stream_needs_axis_adapter` is the
+//!   single function in codegen that branches on `Target` (exhaustive
+//!   `match`); a new variant is a compile error there. When a second vendor
+//!   needs more than this one decision, promote it to a `Backend` trait.
 //! - **Synthesis** lives in `synth/{device_resolve,hls_run}` (Vitis HLS
 //!   today); a second vendor would add a parallel synth path.
 //! - **Packaging** lives in `pack/{vitis_packaging,kernel_xml_ports}`.
