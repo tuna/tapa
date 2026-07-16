@@ -21,7 +21,7 @@ enum class TaskLevel { kUpper, kLower };
 // xilinx-hls and xilinx-vitis are distinct values handled by one backend.
 enum class SynthTarget { kXilinxHls, kXilinxVitis, kIgnore };
 
-// One external port of a task (an entry in graph.json "ports").
+// One external port of a task (an entry in the emitted task graph's "ports").
 struct Port {
   std::string name;
   TapaKind kind;      // serialized "cat" via TapaKindCat(kind)

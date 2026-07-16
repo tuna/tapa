@@ -12,6 +12,10 @@
 set -uo pipefail
 
 NAME="$1"; CPP="$2"; TOP="$3"; TGT="${4:-xilinx-hls}"
+# `bazel run` executes in the runfiles tree, where a caller-relative source path
+# would not resolve -- and the miss surfaces as a misleading "OLD ANALYZE
+# FAILED". Pin the source to an absolute path before any of that.
+CPP="$(cd "$(dirname "$CPP")" && pwd)/$(basename "$CPP")"
 XINC="${XINC:-}"
 ROOT="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 WORK="$(mktemp -d)/${NAME}"; mkdir -p "$WORK"
@@ -23,10 +27,10 @@ RES="$(cd "$ROOT"/bazel-bin/tapacc/tapacc.runfiles/+http_archive+tapa-llvm-proje
 XC=(); [ -n "$XINC" ] && XC=(-c "-isystem$XINC")
 XI=(); [ -n "$XINC" ] && XI=(-isystem "$XINC")
 
-# OLD: real tapa analyze -> graph.json (old per-task code) + flattened source.
+# OLD: real tapa analyze -> tapa.json (old per-task code) + flattened source.
 bazel run -- //tapa-core:tapa --work-dir "$WORK" analyze -f "$CPP" -t "$TOP" --target "$TGT" \
   -c "-isystem$ROOT/tapa-lib" -c "-isystem$ROOT/fpga-runtime" ${XC[@]+"${XC[@]}"} >"$WORK/analyze.log" 2>&1
-[ -f "$WORK/graph.json" ] || { echo "$NAME: OLD ANALYZE FAILED"; grep -iE 'error:|fatal' "$WORK/analyze.log" | head -2; exit 1; }
+[ -f "$WORK/tapa.json" ] || { echo "$NAME: OLD ANALYZE FAILED"; grep -iE 'error:|fatal' "$WORK/analyze.log" | head -2; exit 1; }
 FLAT="$(ls "$WORK"/flatten/flatten-*.cpp 2>/dev/null | head -1)"
 
 # NEW: tapacc on the same flattened source -> per-task code JSON.
@@ -37,9 +41,11 @@ bazel run -- //tapacc:tapacc "$FLAT" -top "$TOP" --target "$TGT" -- \
 python3 -c "import json;json.load(open('$WORK/new.json'))" 2>/dev/null || { echo "$NAME: NEW tapacc FAILED"; tail -2 "$WORK/new.err"; exit 2; }
 
 # Compare per-task code, whitespace-normalized (the tools differ only in layout).
-python3 - "$NAME" "$WORK/graph.json" "$WORK/new.json" <<'PY'
+# The two sides root differently: tapa.json wraps the task graph under "graph"
+# (alongside "version"/"flow"), while tapacc's stdout *is* the bare graph.
+python3 - "$NAME" "$WORK/tapa.json" "$WORK/new.json" <<'PY'
 import json, sys, re, difflib
-name, old = sys.argv[1], json.load(open(sys.argv[2]))['tasks']
+name, old = sys.argv[1], json.load(open(sys.argv[2]))['graph']['tasks']
 new = json.load(open(sys.argv[3]))['tasks']
 def norm(c): return [l for l in (re.sub(r'[ \t]+',' ',x).rstrip() for x in c.splitlines()) if l.strip()]
 ident = diff = 0; details = []

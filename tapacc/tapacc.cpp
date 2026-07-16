@@ -1,8 +1,9 @@
 // tapacc: the TAPA C-to-HLS rewriter. Parses a (flattened) TAPA C++ translation
 // unit into a typed program model (frontend/), generates per-task vendor HLS
-// via a backend (codegen/), and emits the graph.json the tapa-ir crate
-// consumes: {top, target, tasks:{name:{code, level, synth, readable_name,
-// ports, tasks, fifos}}}.
+// via a backend (codegen/), and emits on stdout the task graph the tapa-ir
+// crate consumes: {top, target, tasks:{name:{code, level, synth,
+// readable_name, ports, tasks, fifos}}}. `tapa analyze` nests that payload
+// under the "graph" key of the work dir's tapa.json.
 //
 // Two distinct notions of "target" live in that schema, and the tapa-ir crate
 // parses both as closed enums with deny_unknown_fields:
