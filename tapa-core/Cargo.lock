@@ -1101,7 +1101,6 @@ dependencies = [
 name = "tapa-codegen"
 version = "0.1.0"
 dependencies = [
- "minijinja",
  "serde_json",
  "tapa-ir",
  "tapa-protocol",

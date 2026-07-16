@@ -411,21 +411,36 @@ pub fn generate_crossbar_rtl(conn: &MMapConnection) -> String {
     axi_ports.push(format!(".m_axi_buser({channels}'b0)"));
     axi_ports.push(format!(".m_axi_ruser({channels}'b0)"));
 
-    let mut env = minijinja::Environment::new();
-    env.add_template("crossbar_rtl", include_str!("templates/crossbar_rtl.v.j2"))
-        .expect("template parses");
-    env.get_template("crossbar_rtl")
-        .expect("template exists")
-        .render(minijinja::context! {
-            module_name,
-            slaves,
-            channels,
-            params,
-            ports,
-            axi_params,
-            axi_ports,
-        })
-        .expect("render succeeds")
+    format!(
+        "\
+// Auto-generated AXI crossbar: {slaves} slaves x {channels} channels
+module {module_name} #(
+{params}
+) (
+{ports}
+);
+
+axi_crossbar #(
+{axi_params}
+) xbar (
+{axi_ports}
+);
+
+endmodule //{module_name}",
+        params = join_indented(&params),
+        ports = join_indented(&ports),
+        axi_params = join_indented(&axi_params),
+        axi_ports = join_indented(&axi_ports),
+    )
+}
+
+/// Join pre-rendered declaration strings with two-space indent and commas.
+fn join_indented(items: &[String]) -> String {
+    items
+        .iter()
+        .map(|p| format!("  {p}"))
+        .collect::<Vec<_>>()
+        .join(",\n")
 }
 
 fn is_master_output_suffix(suffix: &str) -> bool {

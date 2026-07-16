@@ -15,13 +15,18 @@ use tapa_rtl::VerilogModule;
 use crate::error::CodegenError;
 
 fn render_fsm_module(fsm_name: &str) -> String {
-    let mut env = minijinja::Environment::new();
-    env.add_template("fsm_module", include_str!("templates/fsm_module.v.j2"))
-        .expect("template parses");
-    env.get_template("fsm_module")
-        .expect("template exists")
-        .render(minijinja::context! { fsm_name })
-        .expect("render succeeds")
+    format!(
+        "\
+module {fsm_name} (
+  input wire ap_clk,
+  input wire ap_rst_n,
+  input wire ap_start,
+  output wire ap_done,
+  output wire ap_ready,
+  output wire ap_idle
+);
+endmodule //{fsm_name}"
+    )
 }
 
 fn validate_mmap_channel_geometry(

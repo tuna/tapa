@@ -1,7 +1,7 @@
-//! Top-level program RTL assembly and global FSM.
+//! Top-level global FSM for the design root.
 //!
-//! Implements: global FSM generation,
-//! upper-task orchestration, template task output.
+//! Generates the 3-state IDLE -> RUNNING -> DONE controller that drives
+//! the ap-ctrl handshake and gates on all child `is_done` signals.
 
 use tapa_protocol::{
     HANDSHAKE_CLK, HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY, HANDSHAKE_RST, HANDSHAKE_RST_N,

@@ -154,16 +154,12 @@ pub fn render_task_template(name: &str, task: &Task) -> String {
     }
 
     let ports: Vec<String> = ports.iter().map(ToString::to_string).collect();
-    let mut env = minijinja::Environment::new();
-    env.add_template(
-        "template_module",
-        include_str!("templates/template_module.v.j2"),
-    )
-    .expect("template parses");
-    env.get_template("template_module")
-        .expect("template exists")
-        .render(minijinja::context! { name, ports })
-        .expect("render succeeds")
+    let body = ports
+        .iter()
+        .map(|p| format!("  {p}"))
+        .collect::<Vec<_>>()
+        .join(",\n");
+    format!("module {name} (\n{body}\n);\nendmodule")
 }
 
 #[cfg(test)]

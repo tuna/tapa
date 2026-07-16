@@ -6,7 +6,6 @@ edition = "2021"
 [dependencies]
 serde_json.workspace = true
 thiserror.workspace = true
-minijinja = { workspace = true }
 tapa-ir.workspace = true
 tapa-protocol.workspace = true
 tapa-rtl.workspace = true
