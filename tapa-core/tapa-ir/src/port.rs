@@ -47,6 +47,39 @@ impl ArgCategory {
             s
         }
     }
+
+    /// Whether this is an input (consumer) stream port.
+    #[must_use]
+    pub const fn is_input_stream(self) -> bool {
+        matches!(self, Self::Istream | Self::Istreams)
+    }
+
+    /// Whether this is an output (producer) stream port.
+    #[must_use]
+    pub const fn is_output_stream(self) -> bool {
+        matches!(self, Self::Ostream | Self::Ostreams)
+    }
+
+    /// Whether this is any stream port (input or output).
+    #[must_use]
+    pub const fn is_stream(self) -> bool {
+        self.is_input_stream() || self.is_output_stream()
+    }
+
+    /// Whether this is a scalar port.
+    #[must_use]
+    pub const fn is_scalar(self) -> bool {
+        matches!(self, Self::Scalar)
+    }
+
+    /// Whether this is any memory-mapped port.
+    #[must_use]
+    pub const fn is_mmap_like(self) -> bool {
+        matches!(
+            self,
+            Self::Mmap | Self::Immap | Self::Ommap | Self::AsyncMmap
+        )
+    }
 }
 
 /// An external port of a task.
@@ -115,6 +148,52 @@ mod tests {
                 serde_json::from_str(&json).unwrap_or_else(|e| panic!("failed to parse {s}: {e}"));
             assert_eq!(cat, expected, "category {s}");
         }
+    }
+
+    #[test]
+    fn is_input_stream_predicate() {
+        assert!(ArgCategory::Istream.is_input_stream());
+        assert!(ArgCategory::Istreams.is_input_stream());
+        assert!(!ArgCategory::Ostream.is_input_stream());
+        assert!(!ArgCategory::Scalar.is_input_stream());
+        assert!(!ArgCategory::Mmap.is_input_stream());
+    }
+
+    #[test]
+    fn is_output_stream_predicate() {
+        assert!(ArgCategory::Ostream.is_output_stream());
+        assert!(ArgCategory::Ostreams.is_output_stream());
+        assert!(!ArgCategory::Istream.is_output_stream());
+        assert!(!ArgCategory::Scalar.is_output_stream());
+    }
+
+    #[test]
+    fn is_stream_predicate() {
+        assert!(ArgCategory::Istream.is_stream());
+        assert!(ArgCategory::Istreams.is_stream());
+        assert!(ArgCategory::Ostream.is_stream());
+        assert!(ArgCategory::Ostreams.is_stream());
+        assert!(!ArgCategory::Scalar.is_stream());
+        assert!(!ArgCategory::Mmap.is_stream());
+        assert!(!ArgCategory::AsyncMmap.is_stream());
+    }
+
+    #[test]
+    fn is_scalar_predicate() {
+        assert!(ArgCategory::Scalar.is_scalar());
+        assert!(!ArgCategory::Istream.is_scalar());
+        assert!(!ArgCategory::Mmap.is_scalar());
+    }
+
+    #[test]
+    fn is_mmap_like_predicate() {
+        assert!(ArgCategory::Mmap.is_mmap_like());
+        assert!(ArgCategory::Immap.is_mmap_like());
+        assert!(ArgCategory::Ommap.is_mmap_like());
+        assert!(ArgCategory::AsyncMmap.is_mmap_like());
+        assert!(!ArgCategory::Scalar.is_mmap_like());
+        assert!(!ArgCategory::Istream.is_mmap_like());
+        assert!(!ArgCategory::Ostreams.is_mmap_like());
     }
 
     #[test]

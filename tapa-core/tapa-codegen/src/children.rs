@@ -793,9 +793,7 @@ fn resolve_child_scalar_width(
         .get(child_name)?
         .ports
         .iter()
-        .find(|port| {
-            port.name == port_name && matches!(port.cat, tapa_ir::port::ArgCategory::Scalar)
-        })
+        .find(|port| port.name == port_name && port.cat.is_scalar())
         .and_then(|port| {
             if port.width > 1 {
                 Some(((port.width - 1).to_string(), "0".to_string()))

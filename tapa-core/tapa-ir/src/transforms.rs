@@ -277,9 +277,9 @@ impl EndpointRole {
     fn matches(self, cat: ArgCategory) -> bool {
         match self {
             // current: `arg["cat"].startswith("is")` → istream/istreams.
-            Self::Consumer => matches!(cat, ArgCategory::Istream | ArgCategory::Istreams),
+            Self::Consumer => cat.is_input_stream(),
             // current: `arg["cat"].startswith("os")` → ostream/ostreams.
-            Self::Producer => matches!(cat, ArgCategory::Ostream | ArgCategory::Ostreams),
+            Self::Producer => cat.is_output_stream(),
         }
     }
 }

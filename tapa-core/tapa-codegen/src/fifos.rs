@@ -294,21 +294,16 @@ fn resolve_fifo_width(
         if let Some(port_name) = producer.port_name.as_deref() {
             let logical_port_name =
                 tapa_rtl::module::match_array_name(port_name).map_or(port_name, |(base, _)| base);
-            if let Some(port) = task.ports.iter().find(|port| {
-                port.name == logical_port_name
-                    && matches!(
-                        port.cat,
-                        tapa_ir::port::ArgCategory::Ostream | tapa_ir::port::ArgCategory::Ostreams
-                    )
-            }) {
+            if let Some(port) = task
+                .ports
+                .iter()
+                .find(|port| port.name == logical_port_name && port.cat.is_output_stream())
+            {
                 return Ok(port.width.saturating_add(1));
             }
         }
         for port in &task.ports {
-            if matches!(
-                port.cat,
-                tapa_ir::port::ArgCategory::Ostream | tapa_ir::port::ArgCategory::Ostreams
-            ) {
+            if port.cat.is_output_stream() {
                 return Ok(port.width.saturating_add(1));
             }
         }

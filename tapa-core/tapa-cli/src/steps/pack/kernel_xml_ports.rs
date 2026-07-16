@@ -77,11 +77,7 @@ fn m_axi_param_block_impl(
         ("SUPPORTS_NARROW_BURST".to_string(), "0".to_string()),
     ];
     for port in ports {
-        let is_mmap = matches!(
-            port.cat,
-            ArgCategory::Mmap | ArgCategory::Immap | ArgCategory::Ommap | ArgCategory::AsyncMmap
-        );
-        if !is_mmap {
+        if !port.cat.is_mmap_like() {
             continue;
         }
         for name in projected_port_names(port, m_axi_bases) {
@@ -99,10 +95,7 @@ fn projected_port_names(port: &Port, m_axi_bases: Option<&BTreeSet<String>>) -> 
     } else {
         (0..chan_count).map(|i| format!("{base}_{i}")).collect()
     };
-    if !matches!(
-        port.cat,
-        ArgCategory::Mmap | ArgCategory::Immap | ArgCategory::Ommap | ArgCategory::AsyncMmap
-    ) {
+    if !port.cat.is_mmap_like() {
         return default_names;
     }
     let Some(m_axi_bases) = m_axi_bases else {

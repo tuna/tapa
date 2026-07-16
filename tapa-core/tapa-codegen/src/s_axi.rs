@@ -47,40 +47,32 @@ pub fn instantiate_top_control_s_axi(state: &mut TopologyWithRtl, task_name: &st
     }
 
     for port in &task.ports {
-        use tapa_ir::port::ArgCategory;
         let sanitized = tapa_rtl::module::sanitize_array_name(&port.name);
-        let ctrl_port_names = match port.cat {
-            ArgCategory::Scalar => {
-                let width = port.width.max(1);
-                if width == 1 {
-                    let _ = mm.add_signal(wire(&sanitized));
-                } else {
-                    let _ = mm.add_signal(wide_wire(&sanitized, &(width - 1).to_string(), "0"));
-                }
-                vec![sanitized]
+        let ctrl_port_names = if port.cat.is_scalar() {
+            let width = port.width.max(1);
+            if width == 1 {
+                let _ = mm.add_signal(wire(&sanitized));
+            } else {
+                let _ = mm.add_signal(wide_wire(&sanitized, &(width - 1).to_string(), "0"));
             }
-            ArgCategory::Mmap
-            | ArgCategory::AsyncMmap
-            | ArgCategory::Immap
-            | ArgCategory::Ommap => {
-                if let Some(chan_count) = port.chan_count {
-                    (0..chan_count)
-                        .map(|idx| {
-                            let name = format!("{sanitized}_{idx}_offset");
-                            let _ = mm.add_signal(wide_wire(&name, "63", "0"));
-                            name
-                        })
-                        .collect()
-                } else {
-                    let name = format!("{sanitized}_offset");
-                    let _ = mm.add_signal(wide_wire(&name, "63", "0"));
-                    vec![name]
-                }
+            vec![sanitized]
+        } else if port.cat.is_mmap_like() {
+            if let Some(chan_count) = port.chan_count {
+                (0..chan_count)
+                    .map(|idx| {
+                        let name = format!("{sanitized}_{idx}_offset");
+                        let _ = mm.add_signal(wide_wire(&name, "63", "0"));
+                        name
+                    })
+                    .collect()
+            } else {
+                let name = format!("{sanitized}_offset");
+                let _ = mm.add_signal(wide_wire(&name, "63", "0"));
+                vec![name]
             }
-            ArgCategory::Istream
-            | ArgCategory::Ostream
-            | ArgCategory::Istreams
-            | ArgCategory::Ostreams => Vec::new(),
+        } else {
+            // Streams contribute no s_axilite control ports.
+            Vec::new()
         };
         for ctrl_port_name in ctrl_port_names {
             ports.push(PortArg::new(

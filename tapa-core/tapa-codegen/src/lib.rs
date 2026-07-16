@@ -201,26 +201,20 @@ fn instrument_upper_task(state: &mut TopologyWithRtl, task_name: &str) -> Result
         .ports
         .iter()
         .flat_map(|p| {
-            use tapa_ir::port::ArgCategory;
-            match p.cat {
-                ArgCategory::Scalar => vec![p.name.clone()],
-                ArgCategory::Mmap
-                | ArgCategory::AsyncMmap
-                | ArgCategory::Immap
-                | ArgCategory::Ommap => {
-                    let sanitized = tapa_rtl::module::sanitize_array_name(&p.name);
-                    if let Some(chan_count) = p.chan_count {
-                        (0..chan_count)
-                            .map(|idx| format!("{sanitized}_{idx}_offset"))
-                            .collect()
-                    } else {
-                        vec![format!("{sanitized}_offset")]
-                    }
+            if p.cat.is_scalar() {
+                vec![p.name.clone()]
+            } else if p.cat.is_mmap_like() {
+                let sanitized = tapa_rtl::module::sanitize_array_name(&p.name);
+                if let Some(chan_count) = p.chan_count {
+                    (0..chan_count)
+                        .map(|idx| format!("{sanitized}_{idx}_offset"))
+                        .collect()
+                } else {
+                    vec![format!("{sanitized}_offset")]
                 }
-                ArgCategory::Istream
-                | ArgCategory::Ostream
-                | ArgCategory::Istreams
-                | ArgCategory::Ostreams => Vec::new(),
+            } else {
+                // Streams contribute no scalar/offset ports.
+                Vec::new()
             }
         })
         .collect();
