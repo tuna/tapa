@@ -91,8 +91,7 @@ void EmitDummyStreamRW(const clang::ParmVarDecl* param, TapaKind kind,
 void EmitDummyMmapOrScalarRW(const clang::ParmVarDecl* param, TapaKind kind,
                              CodeSink& out) {
   const std::string name = param->getNameAsString();
-  if (kind == TapaKind::kMmaps || kind == TapaKind::kAsyncMmaps ||
-      kind == TapaKind::kHmap) {
+  if (kind == TapaKind::kMmaps || kind == TapaKind::kHmap) {
     for (int64_t i = 0; i < ArraySize(param); ++i) {
       out.Line("{ auto val = reinterpret_cast<volatile uint8_t&>(" +
                ArrayElemOffset(name, static_cast<int>(i)) + "); }");

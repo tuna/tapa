@@ -22,7 +22,6 @@ TapaKind ClassifyByQualifiedName(std::string_view name) {
       {"tapa::mmap", TapaKind::kMmap},
       {"tapa::mmaps", TapaKind::kMmaps},
       {"tapa::async_mmap", TapaKind::kAsyncMmap},
-      {"tapa::async_mmaps", TapaKind::kAsyncMmaps},
       {"tapa::immap", TapaKind::kImmap},
       {"tapa::ommap", TapaKind::kOmmap},
       {"tapa::hmap", TapaKind::kHmap},
@@ -80,7 +79,6 @@ const char* TapaKindCat(TapaKind k) {
     case TapaKind::kMmaps:
       return "mmap";
     case TapaKind::kAsyncMmap:
-    case TapaKind::kAsyncMmaps:
       return "async_mmap";
     case TapaKind::kImmap:
       return "immap";

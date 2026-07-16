@@ -28,7 +28,6 @@ enum class TapaKind {
   kMmap,
   kMmaps,
   kAsyncMmap,
-  kAsyncMmaps,
   kImmap,
   kOmmap,
   kHmap,
@@ -72,20 +71,16 @@ constexpr bool IsOutputStream(TapaKind k) {
 constexpr bool IsStreamInstance(TapaKind k) {
   return k == TapaKind::kStream || k == TapaKind::kStreams;
 }
-// mmap / mmaps / async_mmap / async_mmaps / immap / ommap / hmap.
+// mmap / mmaps / async_mmap / immap / ommap / hmap.
 constexpr bool IsMmapInterface(TapaKind k) {
   return k == TapaKind::kMmap || k == TapaKind::kMmaps ||
-         k == TapaKind::kAsyncMmap || k == TapaKind::kAsyncMmaps ||
-         k == TapaKind::kImmap || k == TapaKind::kOmmap || k == TapaKind::kHmap;
+         k == TapaKind::kAsyncMmap || k == TapaKind::kImmap ||
+         k == TapaKind::kOmmap || k == TapaKind::kHmap;
 }
-constexpr bool IsAsyncMmap(TapaKind k) {
-  return k == TapaKind::kAsyncMmap || k == TapaKind::kAsyncMmaps;
-}
-// An array-shaped interface (expands to N wires): *streams, mmaps, async_mmaps,
-// hmap.
+constexpr bool IsAsyncMmap(TapaKind k) { return k == TapaKind::kAsyncMmap; }
+// An array-shaped interface (expands to N wires): *streams, mmaps, hmap.
 constexpr bool IsArrayInterface(TapaKind k) {
-  return IsStreamArray(k) || k == TapaKind::kMmaps ||
-         k == TapaKind::kAsyncMmaps || k == TapaKind::kHmap;
+  return IsStreamArray(k) || k == TapaKind::kMmaps || k == TapaKind::kHmap;
 }
 
 // The canonical serialized category ("cat") for a port/arg, e.g. "istream",

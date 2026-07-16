@@ -30,8 +30,7 @@ Lvl LvlOf(TaskLevel level, bool is_top, bool is_vitis) {
 }
 
 bool IsMmapArray(TapaKind k) {
-  return k == TapaKind::kMmaps || k == TapaKind::kAsyncMmaps ||
-         k == TapaKind::kHmap;
+  return k == TapaKind::kMmaps || k == TapaKind::kHmap;
 }
 
 int64_t ArraySize(const clang::ParmVarDecl* param) {
@@ -73,12 +72,7 @@ void EmitLowerStream(const clang::ParmVarDecl* param, TapaKind kind,
 }
 
 // AddCodeForLowerLevelAsyncMmap: the five FIFOs of an async_mmap.
-void EmitLowerAsyncMmap(const clang::ParmVarDecl* param, TapaKind kind,
-                        CodeSink& out) {
-  if (kind == TapaKind::kAsyncMmaps) {
-    out.Line("#error async_mmaps not supported for lower level tasks");
-    return;
-  }
+void EmitLowerAsyncMmap(const clang::ParmVarDecl* param, CodeSink& out) {
   const std::string name = param->getNameAsString();
   out.Pragma({"HLS disaggregate variable =", name});
   for (const char* tag : {".read_addr", ".read_data", ".write_addr",
@@ -212,7 +206,7 @@ void XilinxBackend::EmitAsyncMmapPort(const PortContext& p,
                                       CodeSink& out) const {
   const Lvl lvl = LvlOf(p.level, p.is_top, is_vitis_);
   if (lvl == Lvl::kLower) {
-    EmitLowerAsyncMmap(p.param, p.kind, out);
+    EmitLowerAsyncMmap(p.param, out);
   } else {
     // Middle/top async_mmap is handled like a scalar offset register (old
     // AddCodeForMiddleLevelAsyncMmap -> scalar; top -> mmap).
