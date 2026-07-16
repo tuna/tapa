@@ -204,7 +204,7 @@ mod tests {
     use std::collections::BTreeMap;
 
     use indexmap::IndexMap;
-    use tapa_ir::{Task, TaskInstance, TaskLevel};
+    use tapa_ir::{SynthTarget, Task, TaskInstance, TaskLevel};
 
     /// `count` child instances with empty args and step 0, mirroring
     /// the `[{"args": {}, "step": 0}, ...]` JSON the untyped fixtures
@@ -228,7 +228,7 @@ mod tests {
             ports: Vec::new(),
             tasks: BTreeMap::new(),
             fifos: BTreeMap::new(),
-            target: Some("hls".to_string()),
+            target: Some(SynthTarget::Hls),
             is_slot: false,
             self_area: IndexMap::new(),
             total_area: area_to_map(area),
@@ -264,7 +264,7 @@ mod tests {
             ports: Vec::new(),
             tasks,
             fifos: BTreeMap::new(),
-            target: Some("hls".to_string()),
+            target: Some(SynthTarget::Hls),
             is_slot: false,
             self_area: area_to_map(self_area),
             total_area: IndexMap::new(),
@@ -358,7 +358,7 @@ mod tests {
                 ports: Vec::new(),
                 tasks: BTreeMap::from([("Add".to_string(), instances(2))]),
                 fifos: BTreeMap::new(),
-                target: Some("hls".to_string()),
+                target: Some(SynthTarget::Hls),
                 is_slot: false,
                 self_area: IndexMap::new(),
                 total_area: area_to_map(serde_json::json!({"LUT": 100})),

@@ -287,7 +287,7 @@ mod tests {
     use serde_json::json;
     use tapa_ir::{
         port::{ArgCategory, Port},
-        Design, Task, TaskLevel,
+        Design, SynthTarget, Task, TaskLevel,
     };
 
     use crate::globals::GlobalArgs;
@@ -327,7 +327,7 @@ mod tests {
                 }],
                 tasks: BTreeMap::new(),
                 fifos: BTreeMap::new(),
-                target: Some("hls".to_string()),
+                target: Some(SynthTarget::Hls),
                 is_slot: false,
                 self_area: IndexMap::new(),
                 total_area: IndexMap::new(),

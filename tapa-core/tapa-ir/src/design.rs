@@ -15,6 +15,7 @@ use crate::error::ParseError;
 use crate::instance::TaskInstance;
 use crate::interconnect::InterconnectDefinition;
 use crate::port::Port;
+use crate::synth_target::SynthTarget;
 use crate::target::Target;
 use crate::task::TaskLevel;
 
@@ -39,7 +40,8 @@ pub struct Task {
     #[serde(default)]
     pub fifos: BTreeMap<String, InterconnectDefinition>,
     /// `target_type` from the `Task` constructor; may be absent.
-    pub target: Option<String>,
+    /// Serializes as the wire string `"hls"` / `"ignore"`, or `null`.
+    pub target: Option<SynthTarget>,
     pub is_slot: bool,
     /// Per-task self area dict (resource → number).
     #[serde(default)]

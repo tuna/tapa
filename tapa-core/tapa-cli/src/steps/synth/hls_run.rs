@@ -6,7 +6,7 @@ use rayon::prelude::*;
 use std::fs;
 use std::path::Path;
 
-use tapa_ir::Design;
+use tapa_ir::{Design, SynthTarget};
 use tapa_xilinx::{run_hls_with_retry, run_hls_with_retry_in_stage, HlsJob, HlsOutput, ToolRunner};
 
 use crate::error::{CliError, Result};
@@ -69,7 +69,7 @@ pub fn run_hls_for_leaves(
     // order even when jobs run out-of-order.
     let mut plan: Vec<(String, TaskHlsLayout, Work)> = Vec::new();
     for (task_name, task) in &design.tasks {
-        if task.target.as_deref() == Some("ignore") {
+        if task.target == Some(SynthTarget::Ignore) {
             continue;
         }
         let layout = TaskHlsLayout::new(work_dir, task_name);
@@ -348,7 +348,7 @@ mod tests {
     use std::collections::BTreeMap;
 
     use indexmap::IndexMap;
-    use tapa_ir::{Design, Task, TaskLevel};
+    use tapa_ir::{Design, SynthTarget, Task, TaskLevel};
     use tapa_xilinx::{MockToolRunner, ToolInvocation, ToolOutput};
 
     fn leaf_design() -> Design {
@@ -362,7 +362,7 @@ mod tests {
                 ports: Vec::new(),
                 tasks: BTreeMap::new(),
                 fifos: BTreeMap::new(),
-                target: Some("hls".to_string()),
+                target: Some(SynthTarget::Hls),
                 is_slot: false,
                 self_area: IndexMap::new(),
                 total_area: IndexMap::new(),

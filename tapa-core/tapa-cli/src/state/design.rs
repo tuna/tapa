@@ -40,7 +40,7 @@ mod tests {
     use std::collections::BTreeMap;
 
     use indexmap::IndexMap;
-    use tapa_ir::{Task, TaskLevel};
+    use tapa_ir::{SynthTarget, Task, TaskLevel};
 
     fn sample_design() -> Design {
         let mut tasks = BTreeMap::new();
@@ -53,7 +53,7 @@ mod tests {
                 ports: Vec::new(),
                 tasks: BTreeMap::new(),
                 fifos: BTreeMap::new(),
-                target: Some("hls".to_string()),
+                target: Some(SynthTarget::Hls),
                 is_slot: false,
                 self_area: IndexMap::new(),
                 total_area: IndexMap::new(),

@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::instance::TaskInstance;
 use crate::interconnect::InterconnectDefinition;
 use crate::port::Port;
+use crate::synth_target::SynthTarget;
 
 /// Level of a task in the hierarchy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -32,8 +33,8 @@ pub struct TaskDefinition {
     pub code: String,
     /// Task level: `"lower"` (leaf) or `"upper"` (composite).
     pub level: TaskLevel,
-    /// Synthesis target (e.g. `"hls"`, `"ignore"`).
-    pub target: String,
+    /// Synthesis target (`"hls"` / `"ignore"`).
+    pub target: SynthTarget,
     /// External ports / interface definitions.
     #[serde(default)]
     pub ports: Vec<Port>,

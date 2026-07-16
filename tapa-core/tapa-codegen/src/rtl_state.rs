@@ -422,7 +422,7 @@ mod tests {
                 "top_task": {
                     "level": "upper",
                     "code": "",
-                    "target": "xilinx-hls",
+                    "target": "hls",
                     "ports": [],
                     "tasks": {
                         "child_a": [{"args": {"data": {"arg": "data", "cat": "istream"}}}]
@@ -432,7 +432,7 @@ mod tests {
                 "child_a": {
                     "level": "lower",
                     "code": "",
-                    "target": "xilinx-hls",
+                    "target": "hls",
                     "ports": [{"cat": "istream", "name": "data", "type": "float", "width": 32}],
                     "tasks": {},
                     "fifos": {}
@@ -455,7 +455,7 @@ mod tests {
                 "top": {
                     "level": "upper",
                     "code": "",
-                    "target": "xilinx-hls",
+                    "target": "hls",
                     "ports": [{
                         "cat": "mmap",
                         "name": "elems",
@@ -474,7 +474,7 @@ mod tests {
                 "leaf": {
                     "level": "lower",
                     "code": "",
-                    "target": "xilinx-hls",
+                    "target": "hls",
                     "ports": [{
                         "cat": "mmap",
                         "name": "data",
@@ -551,7 +551,7 @@ mod tests {
                 "top": {
                     "level": "upper",
                     "code": "",
-                    "target": "xilinx-hls",
+                    "target": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "elems", "type": "float*", "width": 32}
                     ],
@@ -563,7 +563,7 @@ mod tests {
                 "mid": {
                     "level": "upper",
                     "code": "",
-                    "target": "xilinx-hls",
+                    "target": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "data", "type": "float*", "width": 32}
                     ],
@@ -609,7 +609,7 @@ mod tests {
                 "top": {
                     "level": "upper",
                     "code": "",
-                    "target": "xilinx-hls",
+                    "target": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "elems", "type": "float*", "width": 32}
                     ],
@@ -622,7 +622,7 @@ mod tests {
                 "mid": {
                     "level": "upper",
                     "code": "",
-                    "target": "xilinx-hls",
+                    "target": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "data", "type": "float*", "width": 32}
                     ],
@@ -637,7 +637,7 @@ mod tests {
                 "leaf": {
                     "level": "lower",
                     "code": "",
-                    "target": "xilinx-hls",
+                    "target": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "d", "type": "float*", "width": 32}
                     ],
@@ -672,7 +672,7 @@ mod tests {
                 "top": {
                     "level": "upper",
                     "code": "",
-                    "target": "xilinx-hls",
+                    "target": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "elems", "type": "float*", "width": 32,
                          "chan_count": 2, "chan_size": 1024}
@@ -685,7 +685,7 @@ mod tests {
                 "mid": {
                     "level": "upper",
                     "code": "",
-                    "target": "xilinx-hls",
+                    "target": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "data", "type": "float*", "width": 32}
                     ],
@@ -700,7 +700,7 @@ mod tests {
                 "leaf": {
                     "level": "lower",
                     "code": "",
-                    "target": "xilinx-hls",
+                    "target": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "d", "type": "float*", "width": 32}
                     ],
@@ -726,7 +726,7 @@ mod tests {
                 "top": {
                     "level": "upper",
                     "code": "",
-                    "target": "xilinx-hls",
+                    "target": "hls",
                     "ports": [],
                     "tasks": {
                         "chan_leaf": [{"args": {"d": {"arg": "elems", "cat": "mmap"}}}],
@@ -737,7 +737,7 @@ mod tests {
                 "chan_leaf": {
                     "level": "lower",
                     "code": "",
-                    "target": "xilinx-hls",
+                    "target": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "d", "type": "float*", "width": 32,
                          "chan_count": 2, "chan_size": 1024}
@@ -748,7 +748,7 @@ mod tests {
                 "plain_leaf": {
                     "level": "lower",
                     "code": "",
-                    "target": "xilinx-hls",
+                    "target": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "d", "type": "float*", "width": 32}
                     ],
@@ -774,7 +774,7 @@ mod tests {
                 "top": {
                     "level": "upper",
                     "code": "",
-                    "target": "xilinx-hls",
+                    "target": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "elems", "type": "long*", "width": 64}
                     ],
@@ -786,7 +786,7 @@ mod tests {
                 "leaf": {
                     "level": "lower",
                     "code": "",
-                    "target": "xilinx-hls",
+                    "target": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "data", "type": "int*", "width": 32}
                     ],
@@ -847,7 +847,7 @@ mod tests {
                 "top": {
                     "level": "upper",
                     "code": "",
-                    "target": "xilinx-hls",
+                    "target": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "elems", "type": "float*", "width": 32}
                     ],
@@ -859,7 +859,7 @@ mod tests {
                 "mid": {
                     "level": "upper",
                     "code": "",
-                    "target": "xilinx-hls",
+                    "target": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "data", "type": "float*", "width": 32}
                     ],
@@ -874,7 +874,7 @@ mod tests {
                 "leaf": {
                     "level": "lower",
                     "code": "",
-                    "target": "xilinx-hls",
+                    "target": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "mmap", "type": "float*", "width": 32}
                     ],
@@ -902,7 +902,7 @@ mod tests {
                 "top": {
                     "level": "upper",
                     "code": "",
-                    "target": "xilinx-hls",
+                    "target": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "elems", "type": "float*", "width": 32}
                     ],
@@ -915,7 +915,7 @@ mod tests {
                 "mid": {
                     "level": "upper",
                     "code": "",
-                    "target": "xilinx-hls",
+                    "target": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "data", "type": "float*", "width": 32}
                     ],
@@ -930,7 +930,7 @@ mod tests {
                 "leaf": {
                     "level": "lower",
                     "code": "",
-                    "target": "xilinx-hls",
+                    "target": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "mmap", "type": "float*", "width": 32}
                     ],

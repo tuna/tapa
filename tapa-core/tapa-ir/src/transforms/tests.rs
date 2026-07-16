@@ -3,6 +3,7 @@
 use super::flatten;
 use crate::graph::Graph;
 use crate::interconnect::EndpointRef;
+use crate::synth_target::SynthTarget;
 use crate::task::TaskLevel;
 
 fn vadd_two_level_graph_json() -> &'static str {
@@ -90,7 +91,7 @@ fn flatten_preserves_top_metadata() {
         "top code should still mention VecAdd"
     );
     assert_eq!(top.level, TaskLevel::Upper);
-    assert_eq!(top.target, "hls");
+    assert_eq!(top.target, SynthTarget::Hls);
     // `vendor` is not a typed field; it round-trips through `extra`.
     assert_eq!(
         top.extra.get("vendor").and_then(|v| v.as_str()),

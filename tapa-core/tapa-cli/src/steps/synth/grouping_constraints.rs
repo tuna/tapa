@@ -189,7 +189,7 @@ mod tests {
                         "name": "Top",
                         "level": "upper",
                         "code": "",
-                        "target": "xilinx-hls",
+                        "target": "hls",
                         "is_slot": false,
                         "clock_period": "0",
                         "ports": [],
@@ -205,8 +205,8 @@ mod tests {
                             }
                         }
                     },
-                    "Producer": {"name": "Producer", "level": "lower", "code": "", "target": "xilinx-hls", "is_slot": false, "clock_period": "0", "ports": [], "tasks": {}, "fifos": {}},
-                    "Consumer": {"name": "Consumer", "level": "lower", "code": "", "target": "xilinx-hls", "is_slot": false, "clock_period": "0", "ports": [], "tasks": {}, "fifos": {}}
+                    "Producer": {"name": "Producer", "level": "lower", "code": "", "target": "hls", "is_slot": false, "clock_period": "0", "ports": [], "tasks": {}, "fifos": {}},
+                    "Consumer": {"name": "Consumer", "level": "lower", "code": "", "target": "hls", "is_slot": false, "clock_period": "0", "ports": [], "tasks": {}, "fifos": {}}
                 }
             }"#,
         )

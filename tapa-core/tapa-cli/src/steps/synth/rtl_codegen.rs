@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 use tapa_codegen::rtl_state::TopologyWithRtl;
 use tapa_codegen::{generate_rtl, support_assets::VERILOG_SUPPORT_ASSETS};
-use tapa_ir::Design;
+use tapa_ir::{Design, SynthTarget};
 use tapa_rtl::VerilogModule;
 
 use crate::error::{CliError, Result};
@@ -128,7 +128,7 @@ pub fn write_templates_info(work_dir: &Path, design: &Design) -> Result<()> {
     let templates: BTreeMap<String, Vec<String>> = design
         .tasks
         .iter()
-        .filter(|(_, t)| t.target.as_deref() == Some("ignore"))
+        .filter(|(_, t)| t.target == Some(SynthTarget::Ignore))
         .map(|(name, t)| {
             let port_strs: Vec<String> = t.ports.iter().map(schema_port_str).collect();
             (name.clone(), port_strs)
@@ -158,7 +158,7 @@ mod tests {
     use std::collections::BTreeMap;
 
     use indexmap::IndexMap;
-    use tapa_ir::{Task, TaskInstance, TaskLevel};
+    use tapa_ir::{SynthTarget, Task, TaskInstance, TaskLevel};
 
     fn vadd_design() -> Design {
         let mut tasks = BTreeMap::new();
@@ -171,7 +171,7 @@ mod tests {
                 ports: Vec::new(),
                 tasks: BTreeMap::new(),
                 fifos: BTreeMap::new(),
-                target: Some("hls".to_string()),
+                target: Some(SynthTarget::Hls),
                 is_slot: false,
                 self_area: IndexMap::new(),
                 total_area: IndexMap::new(),
@@ -196,7 +196,7 @@ mod tests {
                 ports: Vec::new(),
                 tasks: child_tasks,
                 fifos: BTreeMap::new(),
-                target: Some("hls".to_string()),
+                target: Some(SynthTarget::Hls),
                 is_slot: false,
                 self_area: IndexMap::new(),
                 total_area: IndexMap::new(),
@@ -256,7 +256,7 @@ mod tests {
                 }],
                 tasks: BTreeMap::new(),
                 fifos: BTreeMap::new(),
-                target: Some("ignore".to_string()),
+                target: Some(SynthTarget::Ignore),
                 is_slot: false,
                 self_area: IndexMap::new(),
                 total_area: IndexMap::new(),
@@ -371,7 +371,7 @@ mod tests {
                 }],
                 tasks: BTreeMap::new(),
                 fifos: BTreeMap::new(),
-                target: Some("ignore".to_string()),
+                target: Some(SynthTarget::Ignore),
                 is_slot: false,
                 self_area: IndexMap::new(),
                 total_area: IndexMap::new(),

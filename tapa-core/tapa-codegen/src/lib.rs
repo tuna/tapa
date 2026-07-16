@@ -17,6 +17,7 @@ pub mod support_assets;
 mod template;
 
 use tapa_ir::task::TaskLevel;
+use tapa_ir::SynthTarget;
 use tapa_rtl::builder::{ContinuousAssign, Expr};
 use tapa_rtl::mutation::wire;
 
@@ -47,7 +48,7 @@ pub fn generate_rtl(state: &mut TopologyWithRtl) -> Result<(), CodegenError> {
     // the user authors the replacement RTL.
     for task_name in &task_names {
         let task = &state.design.tasks[task_name];
-        if task.target.as_deref() != Some("ignore") {
+        if task.target != Some(SynthTarget::Ignore) {
             continue;
         }
         let source = template::render_task_template(task_name, task);
@@ -60,7 +61,7 @@ pub fn generate_rtl(state: &mut TopologyWithRtl) -> Result<(), CodegenError> {
 
     for task_name in &task_names {
         let task = &state.design.tasks[task_name];
-        if task.target.as_deref() == Some("ignore") {
+        if task.target == Some(SynthTarget::Ignore) {
             let template = state.module_map[task_name].emit();
             state
                 .template_files
@@ -78,7 +79,7 @@ pub fn generate_rtl(state: &mut TopologyWithRtl) -> Result<(), CodegenError> {
     // parsed model drops legal port-reg redeclarations used by HLS.
     for (name, mm) in &state.module_map {
         if state.design.tasks.get(name.as_str()).is_some_and(|task| {
-            task.level == TaskLevel::Upper || task.target.as_deref() == Some("ignore")
+            task.level == TaskLevel::Upper || task.target == Some(SynthTarget::Ignore)
         }) {
             state.generated_files.insert(format!("{name}.v"), mm.emit());
         }

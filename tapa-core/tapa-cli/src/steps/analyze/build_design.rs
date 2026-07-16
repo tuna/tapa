@@ -60,7 +60,7 @@ fn task_to_design_task(name: &str, task: &tapa_ir::TaskDefinition) -> Task {
         ports: task.ports.clone(),
         tasks: task.tasks.clone(),
         fifos: task.fifos.clone(),
-        target: Some(task.target.clone()),
+        target: Some(task.target),
         is_slot: false,
         self_area: IndexMap::new(),
         total_area: IndexMap::new(),

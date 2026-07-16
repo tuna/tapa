@@ -66,7 +66,7 @@ mod tests {
     use indexmap::IndexMap;
     use tapa_ir::{
         port::{ArgCategory, Port},
-        Task,
+        SynthTarget, Task,
     };
 
     #[test]
@@ -82,7 +82,7 @@ mod tests {
                 ports: Vec::new(),
                 tasks: BTreeMap::new(),
                 fifos: BTreeMap::new(),
-                target: Some("hls".to_string()),
+                target: Some(SynthTarget::Hls),
                 is_slot: false,
                 self_area: IndexMap::new(),
                 total_area: IndexMap::new(),
@@ -120,7 +120,7 @@ mod tests {
                 }],
                 tasks: BTreeMap::new(),
                 fifos: BTreeMap::new(),
-                target: Some("hls".to_string()),
+                target: Some(SynthTarget::Hls),
                 is_slot: false,
                 self_area: IndexMap::new(),
                 total_area: IndexMap::new(),

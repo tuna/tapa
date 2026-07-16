@@ -229,7 +229,7 @@ mod tests {
     use std::collections::BTreeMap;
 
     use indexmap::IndexMap;
-    use tapa_ir::{Design, Task, TaskLevel};
+    use tapa_ir::{Design, SynthTarget, Task, TaskLevel};
     use tapa_xilinx::{ToolInvocation, ToolOutput};
 
     use crate::globals::GlobalArgs;
@@ -337,7 +337,7 @@ mod tests {
             ports: Vec::new(),
             tasks: BTreeMap::new(),
             fifos: BTreeMap::new(),
-            target: Some("hls".to_string()),
+            target: Some(SynthTarget::Hls),
             is_slot: false,
             self_area: IndexMap::from([("LUT".to_string(), json!(999))]),
             total_area: IndexMap::from([("LUT".to_string(), json!(999))]),
@@ -383,7 +383,7 @@ mod tests {
                 ports: Vec::new(),
                 tasks: BTreeMap::new(),
                 fifos: BTreeMap::new(),
-                target: Some("hls".to_string()),
+                target: Some(SynthTarget::Hls),
                 is_slot: false,
                 self_area: IndexMap::new(),
                 total_area: IndexMap::new(),
@@ -408,7 +408,7 @@ mod tests {
                 ports: Vec::new(),
                 tasks: child_tasks,
                 fifos: BTreeMap::new(),
-                target: Some("hls".to_string()),
+                target: Some(SynthTarget::Hls),
                 is_slot: false,
                 self_area: IndexMap::new(),
                 total_area: IndexMap::new(),

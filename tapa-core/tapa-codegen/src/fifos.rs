@@ -557,7 +557,7 @@ mod tests {
                 "top": {
                     "level": "upper",
                     "code": "",
-                    "target": "xilinx-hls",
+                    "target": "hls",
                     "ports": [],
                     "tasks": {
                         "consumer": [{"args": {
@@ -585,7 +585,7 @@ mod tests {
                 "consumer": {
                     "level": "lower",
                     "code": "",
-                    "target": "xilinx-hls",
+                    "target": "hls",
                     "ports": [
                         {"cat": "istream", "name": "narrow_in", "type": "uint8_t", "width": 8},
                         {"cat": "istreams", "name": "wide_in", "type": "uint32_t", "width": 32}
@@ -596,7 +596,7 @@ mod tests {
                 "producer": {
                     "level": "lower",
                     "code": "",
-                    "target": "xilinx-hls",
+                    "target": "hls",
                     "ports": [
                         {"cat": "ostream", "name": "narrow", "type": "uint8_t", "width": 8},
                         {"cat": "ostreams", "name": "wide", "type": "uint32_t", "width": 32}
@@ -654,7 +654,7 @@ mod tests {
             "target": "xilinx-hls",
             "tasks": {
                 "top": {
-                    "level": "upper", "code": "", "target": "xilinx-hls",
+                    "level": "upper", "code": "", "target": "hls",
                     "ports": [],
                     "tasks": {
                         "producer": [{"args": {"mem": {"arg": "orphan_fifo", "cat": "mmap"}}}]
@@ -668,7 +668,7 @@ mod tests {
                     }
                 },
                 "producer": {
-                    "level": "lower", "code": "", "target": "xilinx-hls",
+                    "level": "lower", "code": "", "target": "hls",
                     "ports": [{"cat": "mmap", "name": "mem", "type": "float*", "width": 32}],
                     "tasks": {}, "fifos": {}
                 }
