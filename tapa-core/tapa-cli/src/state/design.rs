@@ -47,14 +47,13 @@ mod tests {
         tasks.insert(
             "Top".to_string(),
             Task {
-                name: "Top".to_string(),
                 level: TaskLevel::Lower,
                 code: "void Top() {}".to_string(),
                 ports: Vec::new(),
                 tasks: BTreeMap::new(),
                 fifos: BTreeMap::new(),
-                target: Some(SynthTarget::Hls),
-                is_slot: false,
+                readable_name: String::new(),
+                synth: SynthTarget::Hls,
                 self_area: IndexMap::new(),
                 total_area: IndexMap::new(),
                 clock_period: "0".to_string(),
@@ -64,7 +63,7 @@ mod tests {
             top: "Top".to_string(),
             target: tapa_ir::Target::XilinxHls,
             tasks,
-            slot_task_name_to_fp_region: None,
+            cflags: Vec::new(),
         }
     }
 

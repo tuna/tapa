@@ -308,14 +308,13 @@ mod tests {
         tasks.insert(
             "Add".to_string(),
             Task {
-                name: "Add".to_string(),
                 level: TaskLevel::Lower,
                 code: "void Add() {}\n".to_string(),
                 ports: Vec::new(),
                 tasks: BTreeMap::new(),
                 fifos: BTreeMap::new(),
-                target: Some(SynthTarget::Hls),
-                is_slot: false,
+                readable_name: String::new(),
+                synth: SynthTarget::Hls,
                 self_area: IndexMap::new(),
                 total_area: IndexMap::new(),
                 clock_period: "0".to_string(),
@@ -326,14 +325,13 @@ mod tests {
         tasks.insert(
             "VecAdd".to_string(),
             Task {
-                name: "VecAdd".to_string(),
                 level: TaskLevel::Upper,
                 code: "void VecAdd() {}\n".to_string(),
                 ports: Vec::new(),
                 tasks: child_tasks,
                 fifos: BTreeMap::new(),
-                target: Some(SynthTarget::Hls),
-                is_slot: false,
+                readable_name: String::new(),
+                synth: SynthTarget::Hls,
                 self_area: IndexMap::new(),
                 total_area: IndexMap::new(),
                 clock_period: "3.33".to_string(),
@@ -343,14 +341,13 @@ mod tests {
             top: "VecAdd".to_string(),
             target: tapa_ir::Target::XilinxHls,
             tasks,
-            slot_task_name_to_fp_region: None,
+            cflags: Vec::new(),
         }
     }
 
     fn two_child_design() -> Design {
         let mut design = vadd_design();
         let mut mul = design.tasks["Add"].clone();
-        mul.name = "Mul".to_string();
         mul.code = "void Mul() {}\n".to_string();
         design.tasks.insert("Mul".to_string(), mul);
         design

@@ -127,7 +127,15 @@ fn build_task_report(design: &Design, task_name: &str, schema: &str) -> Result<R
         }
     }
 
-    let mut clock_period = task.clock_period.clone();
+    // A task with no HLS estimate carries an empty `clock_period`: either
+    // `synth` has not run yet, or it is a `synth: ignore` task that HLS
+    // skips entirely. Such a task contributes zero to the critical path
+    // rather than failing the whole report.
+    let mut clock_period = if task.clock_period.is_empty() {
+        "0".to_string()
+    } else {
+        task.clock_period.clone()
+    };
     let mut clock = parse_clock_period(task_name, &clock_period)?;
     for child in &child_reports {
         if child.clock.total_cmp(&clock).is_gt() {
@@ -222,14 +230,13 @@ mod tests {
 
     fn leaf(name: &str, clock: &str, area: Value) -> Task {
         Task {
-            name: name.to_string(),
             level: TaskLevel::Lower,
             code: format!("void {name}() {{}}\n"),
             ports: Vec::new(),
             tasks: BTreeMap::new(),
             fifos: BTreeMap::new(),
-            target: Some(SynthTarget::Hls),
-            is_slot: false,
+            readable_name: String::new(),
+            synth: SynthTarget::Hls,
             self_area: IndexMap::new(),
             total_area: area_to_map(area),
             clock_period: clock.to_string(),
@@ -254,7 +261,6 @@ mod tests {
         tasks: BTreeMap<String, Vec<TaskInstance>>,
     ) -> Task {
         Task {
-            name: name.to_string(),
             level: if tasks.is_empty() {
                 TaskLevel::Lower
             } else {
@@ -264,12 +270,59 @@ mod tests {
             ports: Vec::new(),
             tasks,
             fifos: BTreeMap::new(),
-            target: Some(SynthTarget::Hls),
-            is_slot: false,
+            readable_name: String::new(),
+            synth: SynthTarget::Hls,
             self_area: area_to_map(self_area),
             total_area: IndexMap::new(),
             clock_period: clock.to_string(),
         }
+    }
+
+    /// `synth: ignore` tasks are skipped by HLS, so they reach the report
+    /// with an empty `clock_period` annotation. That must read as zero (the
+    /// value `analyze` used to seed) instead of failing the whole report.
+    #[test]
+    fn unsynthesized_task_clock_period_reads_as_zero() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut custom_rtl = leaf("Custom", "", serde_json::json!({"LUT": 7}));
+        custom_rtl.synth = SynthTarget::Ignore;
+        let tasks = BTreeMap::from([
+            ("Custom".to_string(), custom_rtl),
+            (
+                "Top".to_string(),
+                Task {
+                    level: TaskLevel::Upper,
+                    code: "void Top() {}\n".to_string(),
+                    ports: Vec::new(),
+                    tasks: BTreeMap::from([("Custom".to_string(), instances(1))]),
+                    fifos: BTreeMap::new(),
+                    readable_name: String::new(),
+                    synth: SynthTarget::Hls,
+                    self_area: IndexMap::new(),
+                    total_area: IndexMap::new(),
+                    clock_period: "2.5".to_string(),
+                },
+            ),
+        ]);
+        let design = Design {
+            top: "Top".to_string(),
+            target: tapa_ir::Target::XilinxHls,
+            tasks,
+            cflags: Vec::new(),
+        };
+
+        write_top_report(dir.path(), &design, "").expect("report must not fail on empty clock");
+        let parsed: Value = serde_json::from_str(
+            &fs::read_to_string(dir.path().join("report.json")).expect("read report"),
+        )
+        .expect("valid report json");
+
+        // The ignored child contributes 0, so the top's own 2.5 wins.
+        assert_eq!(parsed["performance"]["clock_period"], "2.5");
+        assert_eq!(
+            parsed["area"]["breakdown"]["Custom"]["area"]["total"]["LUT"], 7,
+            "an unsynthesized task still reports its area"
+        );
     }
 
     #[test]
@@ -307,7 +360,7 @@ mod tests {
             top: "Top".to_string(),
             target: tapa_ir::Target::XilinxHls,
             tasks,
-            slot_task_name_to_fp_region: None,
+            cflags: Vec::new(),
         };
 
         write_top_report(dir.path(), &design, "").expect("write report");
@@ -352,14 +405,13 @@ mod tests {
         tasks.insert(
             "VecAdd".to_string(),
             Task {
-                name: "VecAdd".to_string(),
                 level: TaskLevel::Upper,
                 code: "void VecAdd() {}\n".to_string(),
                 ports: Vec::new(),
                 tasks: BTreeMap::from([("Add".to_string(), instances(2))]),
                 fifos: BTreeMap::new(),
-                target: Some(SynthTarget::Hls),
-                is_slot: false,
+                readable_name: String::new(),
+                synth: SynthTarget::Hls,
                 self_area: IndexMap::new(),
                 total_area: area_to_map(serde_json::json!({"LUT": 100})),
                 clock_period: "3.33".to_string(),
@@ -373,7 +425,7 @@ mod tests {
             top: "VecAdd".to_string(),
             target: tapa_ir::Target::XilinxVitis,
             tasks,
-            slot_task_name_to_fp_region: None,
+            cflags: Vec::new(),
         };
         write_top_report(dir.path(), &design, "").expect("write report");
         let yaml = fs::read_to_string(dir.path().join("report.yaml")).expect("read yaml");
@@ -401,7 +453,7 @@ mod tests {
             top: "T".to_string(),
             target: tapa_ir::Target::XilinxHls,
             tasks,
-            slot_task_name_to_fp_region: None,
+            cflags: Vec::new(),
         };
         write_top_report(dir.path(), &design, "9.9.9-override").expect("write");
         let parsed: Value = serde_json::from_str(

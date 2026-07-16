@@ -1,22 +1,13 @@
-//! Graph-dict to typed [`Design`] projection plus the
-//! `--flatten-hierarchy` round-trip helper for `tapa analyze`.
-//!
-//! Drops `vendor` and other tapacc-only keys while projecting a task
-//! graph into a [`Design`], and provides [`flatten_graph_value`] for
-//! hierarchy flattening through the typed [`Graph`] schema.
+//! Graph helpers for `tapa analyze`: the top-leaf check and the
+//! `--flatten-hierarchy` round-trip through the typed [`TaskGraph`] schema.
 
-use std::collections::BTreeMap;
-
-use indexmap::IndexMap;
-use tapa_ir::{flatten, Design, Graph, Target, Task, TaskLevel};
+use tapa_ir::{flatten, Graph, TaskLevel};
 
 use crate::error::{CliError, Result};
 
-/// Round-trip a tapacc graph dict through the typed [`Graph`] schema and
-/// return the result of [`flatten`] re-serialized as `serde_json::Value`.
-///
-/// The transform is defined on the strict [`Graph`] type used by the
-/// CLI's graph reader and writer.
+/// Round-trip a task graph through [`flatten`], returning the flattened
+/// [`Graph`]. Defined on the strict typed schema used by the CLI's graph
+/// reader and writer.
 pub(super) fn flatten_graph_value(graph: &Graph) -> Result<Graph> {
     let flat =
         flatten(graph).map_err(|error| CliError::InvalidArg(format!("flatten failed: {error}")))?;
@@ -31,43 +22,6 @@ pub(super) fn is_top_leaf(graph: &Graph, top: &str) -> bool {
         .is_some_and(|task| task.level == TaskLevel::Lower)
 }
 
-/// Project the tapacc graph into a typed [`Design`] suitable for
-/// `<work_dir>/design.json`, dropping `vendor` and other analyzer-only
-/// keys.
-pub(super) fn build_design(top: &str, target: Target, graph: &Graph) -> Design {
-    let tasks: BTreeMap<String, Task> = graph
-        .tasks
-        .iter()
-        .map(|(name, task)| (name.clone(), task_to_design_task(name, task)))
-        .collect();
-
-    Design {
-        top: top.to_string(),
-        target,
-        tasks,
-        slot_task_name_to_fp_region: None,
-    }
-}
-
-/// Project one graph task into its `design.json` shape. The typed
-/// clone keeps `tasks`/`fifos` as-is and drops the tapacc-only fields
-/// (`vendor`, `extra`).
-fn task_to_design_task(name: &str, task: &tapa_ir::TaskDefinition) -> Task {
-    Task {
-        name: name.to_string(),
-        level: task.level,
-        code: task.code.clone(),
-        ports: task.ports.clone(),
-        tasks: task.tasks.clone(),
-        fifos: task.fifos.clone(),
-        target: Some(task.target.clone()),
-        is_slot: false,
-        self_area: IndexMap::new(),
-        total_area: IndexMap::new(),
-        clock_period: "0".to_string(),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -76,9 +30,9 @@ mod tests {
 
     #[test]
     fn is_top_leaf_detects_lower_level() {
-        let g: Graph = serde_json::from_value(json!({"tasks": {"T": {"level": "lower", "code": "", "target": "hls", "ports": [], "tasks": {}, "fifos": {}}}, "top": "T"})).unwrap();
+        let g: Graph = serde_json::from_value(json!({"target": "xilinx-hls", "tasks": {"T": {"level": "lower", "code": "", "synth": "hls", "readable_name": "T", "ports": [], "tasks": {}, "fifos": {}}}, "top": "T"})).unwrap();
         assert!(is_top_leaf(&g, "T"));
-        let g: Graph = serde_json::from_value(json!({"tasks": {"T": {"level": "upper", "code": "", "target": "hls", "ports": [], "tasks": {}, "fifos": {}}}, "top": "T"})).unwrap();
+        let g: Graph = serde_json::from_value(json!({"target": "xilinx-hls", "tasks": {"T": {"level": "upper", "code": "", "synth": "hls", "readable_name": "T", "ports": [], "tasks": {}, "fifos": {}}}, "top": "T"})).unwrap();
         assert!(!is_top_leaf(&g, "T"));
         // Missing top is treated as upper for safety.
         assert!(!is_top_leaf(&g, "DoesNotExist"));
@@ -97,12 +51,13 @@ mod tests {
         let raw: Graph = serde_json::from_value(json!({
             "cflags": [],
             "top": "VecAdd",
+            "target": "xilinx-hls",
             "tasks": {
                 "VecAdd": {
+                    "readable_name": "VecAdd",
                     "code": "void VecAdd() {}",
                     "level": "upper",
-                    "target": "hls",
-                    "vendor": "xilinx",
+                    "synth": "hls",
                     "ports": [
                         {"cat": "scalar", "name": "n",
                          "type": "uint64_t", "width": 64}
@@ -123,8 +78,9 @@ mod tests {
                     }
                 },
                 "A": {
+                    "readable_name": "A",
                     "code": "void A() {}", "level": "lower",
-                    "target": "hls", "vendor": "xilinx",
+                    "synth": "hls",
                     "ports": [
                         {"cat": "scalar", "name": "n",
                          "type": "uint64_t", "width": 64},
@@ -133,8 +89,9 @@ mod tests {
                     ]
                 },
                 "B": {
+                    "readable_name": "B",
                     "code": "void B() {}", "level": "lower",
-                    "target": "hls", "vendor": "xilinx",
+                    "synth": "hls",
                     "ports": [
                         {"cat": "scalar", "name": "n",
                          "type": "uint64_t", "width": 64},
@@ -165,16 +122,19 @@ mod tests {
         let raw: Graph = serde_json::from_value(json!({
             "cflags": [],
             "top": "Outer",
+            "target": "xilinx-hls",
             "tasks": {
                 "Outer": {
-                    "code": "", "level": "upper", "target": "hls",
-                    "vendor": "xilinx", "ports": [],
+                    "readable_name": "Outer",
+                    "code": "", "level": "upper", "synth": "hls",
+                    "ports": [],
                     "tasks": {"Inner": [{"args": {}, "step": 0}]},
                     "fifos": {}
                 },
                 "Inner": {
-                    "code": "", "level": "upper", "target": "hls",
-                    "vendor": "xilinx", "ports": [],
+                    "readable_name": "Inner",
+                    "code": "", "level": "upper", "synth": "hls",
+                    "ports": [],
                     "tasks": {}, "fifos": {}
                 }
             }
@@ -183,8 +143,8 @@ mod tests {
         let out = flatten_graph_value(&raw).expect("recursive flatten ok");
         let top = out.tasks.get("Outer").expect("top survives");
         assert!(
-            !top.tasks.is_empty() || top.tasks.is_empty(),
-            "top task must keep a `tasks` map after flatten: {top:?}",
+            top.tasks.is_empty(),
+            "Inner has no leaves, so the flattened top has an empty `tasks` map: {top:?}",
         );
     }
 }

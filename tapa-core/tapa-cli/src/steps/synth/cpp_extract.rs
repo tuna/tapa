@@ -76,14 +76,13 @@ mod tests {
         tasks.insert(
             "Add".to_string(),
             Task {
-                name: "Add".to_string(),
                 level: TaskLevel::Lower,
                 code: "void Add() {}\n".to_string(),
                 ports: Vec::new(),
                 tasks: BTreeMap::new(),
                 fifos: BTreeMap::new(),
-                target: Some(SynthTarget::Hls),
-                is_slot: false,
+                readable_name: String::new(),
+                synth: SynthTarget::Hls,
                 self_area: IndexMap::new(),
                 total_area: IndexMap::new(),
                 clock_period: "0".to_string(),
@@ -93,7 +92,7 @@ mod tests {
             top: "Add".to_string(),
             target: tapa_ir::Target::XilinxHls,
             tasks,
-            slot_task_name_to_fp_region: None,
+            cflags: Vec::new(),
         };
         extract_hls_sources(dir.path(), &design).expect("extract");
         let cpp = fs::read_to_string(cpp_path_for(dir.path(), "Add")).expect("read");
@@ -107,7 +106,6 @@ mod tests {
         tasks.insert(
             "Top".to_string(),
             Task {
-                name: "Top".to_string(),
                 level: TaskLevel::Upper,
                 code: "void Top() {}\n".to_string(),
                 ports: vec![Port {
@@ -120,8 +118,8 @@ mod tests {
                 }],
                 tasks: BTreeMap::new(),
                 fifos: BTreeMap::new(),
-                target: Some(SynthTarget::Hls),
-                is_slot: false,
+                readable_name: String::new(),
+                synth: SynthTarget::Hls,
                 self_area: IndexMap::new(),
                 total_area: IndexMap::new(),
                 clock_period: "0".to_string(),
@@ -131,7 +129,7 @@ mod tests {
             top: "Top".to_string(),
             target: tapa_ir::Target::XilinxHls,
             tasks,
-            slot_task_name_to_fp_region: None,
+            cflags: Vec::new(),
         };
         let err = extract_hls_sources(dir.path(), &design).expect_err("must reject reserved name");
         assert!(

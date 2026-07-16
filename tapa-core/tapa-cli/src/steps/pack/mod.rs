@@ -299,7 +299,6 @@ mod tests {
         tasks.insert(
             "Top".to_string(),
             Task {
-                name: "Top".to_string(),
                 level: TaskLevel::Upper,
                 code: "void Top() {}".to_string(),
                 ports: vec![Port {
@@ -312,8 +311,8 @@ mod tests {
                 }],
                 tasks: BTreeMap::new(),
                 fifos: BTreeMap::new(),
-                target: Some(SynthTarget::Hls),
-                is_slot: false,
+                readable_name: String::new(),
+                synth: SynthTarget::Hls,
                 self_area: IndexMap::new(),
                 total_area: IndexMap::new(),
                 clock_period: "3.33".to_string(),
@@ -326,7 +325,7 @@ mod tests {
             // exercise the settings parse, so a valid enum here is fine.
             target: Target::from_str(target).unwrap_or(Target::XilinxHls),
             tasks,
-            slot_task_name_to_fp_region: None,
+            cflags: Vec::new(),
         };
         design_io::store_design(work_dir, &design).expect("store design");
         let mut settings = settings_io::Settings::new();

@@ -1,5 +1,6 @@
 {
     "cflags": [],
+    "target": "xilinx-hls",
     "tasks": {
         "Top": {
             "code": "",
@@ -44,8 +45,8 @@
                     "width": 32
                 }
             ],
-            "target": "hls",
-            "vendor": "xilinx"
+            "readable_name": "Top",
+            "synth": "hls"
         }
     },
     "top": "Top"

@@ -321,14 +321,13 @@ mod tests {
     #[test]
     fn hls_metrics_use_estimated_clock_and_clear_stale_total() {
         let mut task = Task {
-            name: "Add".to_string(),
             level: TaskLevel::Lower,
             code: "void Add() {}\n".to_string(),
             ports: Vec::new(),
             tasks: BTreeMap::new(),
             fifos: BTreeMap::new(),
-            target: Some(SynthTarget::Hls),
-            is_slot: false,
+            readable_name: String::new(),
+            synth: SynthTarget::Hls,
             self_area: IndexMap::from([("LUT".to_string(), json!(999))]),
             total_area: IndexMap::from([("LUT".to_string(), json!(999))]),
             clock_period: "9.99".to_string(),
@@ -367,14 +366,13 @@ mod tests {
         tasks.insert(
             "Add".to_string(),
             Task {
-                name: "Add".to_string(),
                 level: TaskLevel::Lower,
                 code: "void Add() {}\n".to_string(),
                 ports: Vec::new(),
                 tasks: BTreeMap::new(),
                 fifos: BTreeMap::new(),
-                target: Some(SynthTarget::Hls),
-                is_slot: false,
+                readable_name: String::new(),
+                synth: SynthTarget::Hls,
                 self_area: IndexMap::new(),
                 total_area: IndexMap::new(),
                 clock_period: "0".to_string(),
@@ -392,14 +390,13 @@ mod tests {
         tasks.insert(
             "VecAdd".to_string(),
             Task {
-                name: "VecAdd".to_string(),
                 level: TaskLevel::Upper,
                 code: "void VecAdd() {}\n".to_string(),
                 ports: Vec::new(),
                 tasks: child_tasks,
                 fifos: BTreeMap::new(),
-                target: Some(SynthTarget::Hls),
-                is_slot: false,
+                readable_name: String::new(),
+                synth: SynthTarget::Hls,
                 self_area: IndexMap::new(),
                 total_area: IndexMap::new(),
                 clock_period: "3.33".to_string(),
@@ -409,7 +406,7 @@ mod tests {
             top: "VecAdd".to_string(),
             target: Target::XilinxHls,
             tasks,
-            slot_task_name_to_fp_region: None,
+            cflags: Vec::new(),
         };
         design_io::store_design(work, &design).expect("store design");
         let mut settings = settings_io::Settings::new();

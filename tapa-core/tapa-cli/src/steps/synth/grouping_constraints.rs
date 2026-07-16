@@ -186,12 +186,10 @@ mod tests {
                 "target": "xilinx-hls",
                 "tasks": {
                     "Top": {
-                        "name": "Top",
+                        "readable_name": "Top",
                         "level": "upper",
                         "code": "",
-                        "target": "hls",
-                        "is_slot": false,
-                        "clock_period": "0",
+                        "synth": "hls",
                         "ports": [],
                         "tasks": {
                             "Producer": [{"args": {"out": {"arg": "q", "cat": "ostream"}}, "step": 0}],
@@ -205,8 +203,8 @@ mod tests {
                             }
                         }
                     },
-                    "Producer": {"name": "Producer", "level": "lower", "code": "", "target": "hls", "is_slot": false, "clock_period": "0", "ports": [], "tasks": {}, "fifos": {}},
-                    "Consumer": {"name": "Consumer", "level": "lower", "code": "", "target": "hls", "is_slot": false, "clock_period": "0", "ports": [], "tasks": {}, "fifos": {}}
+                    "Producer": {"level": "lower", "code": "", "synth": "hls", "readable_name": "Producer", "ports": [], "tasks": {}, "fifos": {}},
+                    "Consumer": {"level": "lower", "code": "", "synth": "hls", "readable_name": "Consumer", "ports": [], "tasks": {}, "fifos": {}}
                 }
             }"#,
         )

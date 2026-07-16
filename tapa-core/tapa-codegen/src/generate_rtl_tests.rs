@@ -26,9 +26,10 @@ fn test_generate_rtl_simple_design() {
         "target": "xilinx-hls",
         "tasks": {
             "top": {
+                "readable_name": "top",
                 "level": "upper",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [],
                 "tasks": {
                     "child": [{"args": {}}]
@@ -36,9 +37,10 @@ fn test_generate_rtl_simple_design() {
                 "fifos": {}
             },
             "child": {
+                "readable_name": "child",
                 "level": "lower",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [],
                 "tasks": {},
                 "fifos": {}
@@ -108,9 +110,10 @@ fn test_generate_rtl_autorun_fsm_start_is_reg_output() {
         "target": "xilinx-hls",
         "tasks": {
             "top": {
+                "readable_name": "top",
                 "level": "upper",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [],
                 "tasks": {
                     "child": [{"step": -1, "args": {}}]
@@ -118,9 +121,10 @@ fn test_generate_rtl_autorun_fsm_start_is_reg_output() {
                 "fifos": {}
             },
             "child": {
+                "readable_name": "child",
                 "level": "lower",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [],
                 "tasks": {},
                 "fifos": {}
@@ -173,9 +177,10 @@ fn test_generate_rtl_fsm_uses_explicit_instance_names() {
         "target": "xilinx-hls",
         "tasks": {
             "top": {
+                "readable_name": "top",
                 "level": "upper",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [],
                 "tasks": {
                     "child": [{"name": "child_7", "step": -1, "args": {}}]
@@ -183,9 +188,10 @@ fn test_generate_rtl_fsm_uses_explicit_instance_names() {
                 "fifos": {}
             },
             "child": {
+                "readable_name": "child",
                 "level": "lower",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [],
                 "tasks": {},
                 "fifos": {}
@@ -234,9 +240,10 @@ fn test_generate_rtl_sanitizes_explicit_instance_names() {
         "target": "xilinx-hls",
         "tasks": {
             "top": {
+                "readable_name": "top",
                 "level": "upper",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [],
                 "tasks": {
                     "child": [{"name": "Module1Func#1", "args": {}}]
@@ -244,9 +251,10 @@ fn test_generate_rtl_sanitizes_explicit_instance_names() {
                 "fifos": {}
             },
             "child": {
+                "readable_name": "child",
                 "level": "lower",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [],
                 "tasks": {},
                 "fifos": {}
@@ -295,9 +303,10 @@ fn test_generate_rtl_child_scalar_pipeline_preserves_width() {
         "target": "xilinx-hls",
         "tasks": {
             "top": {
+                "readable_name": "top",
                 "level": "upper",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [],
                 "tasks": {
                     "child": [{"args": {"pe_id": {"arg": "1", "cat": "scalar"}}}]
@@ -305,9 +314,10 @@ fn test_generate_rtl_child_scalar_pipeline_preserves_width() {
                 "fifos": {}
             },
             "child": {
+                "readable_name": "child",
                 "level": "lower",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [
                     {"cat": "scalar", "name": "pe_id", "type": "uint32_t", "width": 32}
                 ],
@@ -366,9 +376,10 @@ fn test_generate_rtl_upper_output_regs_become_nets() {
         "target": "xilinx-hls",
         "tasks": {
             "top": {
+                "readable_name": "top",
                 "level": "upper",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [
                     {"cat": "ostream", "name": "out_q", "type": "int", "width": 32}
                 ],
@@ -378,9 +389,10 @@ fn test_generate_rtl_upper_output_regs_become_nets() {
                 "fifos": {}
             },
             "child": {
+                "readable_name": "child",
                 "level": "lower",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [
                     {"cat": "ostream", "name": "out_q", "type": "int", "width": 32}
                 ],
@@ -444,9 +456,10 @@ fn test_generate_rtl_template_task() {
         "target": "xilinx-hls",
         "tasks": {
             "shell": {
+                "readable_name": "shell",
                 "level": "lower",
                 "code": "",
-                "target": "ignore",
+                "synth": "ignore",
                 "ports": [
                     {"cat": "scalar", "name": "n", "type": "int", "width": 32}
                 ],
@@ -454,9 +467,10 @@ fn test_generate_rtl_template_task() {
                 "fifos": {}
             },
             "top": {
+                "readable_name": "top",
                 "level": "upper",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [],
                 "tasks": {
                     "shell": [{"args": {"n": {"arg": "1", "cat": "scalar"}}}]
@@ -525,9 +539,10 @@ fn test_generate_rtl_top_task_removes_peek_ports() {
         "target": "xilinx-hls",
         "tasks": {
             "top": {
+                "readable_name": "top",
                 "level": "upper",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [
                     {"cat": "istream", "name": "data_in", "type": "float", "width": 32}
                 ],
@@ -537,9 +552,10 @@ fn test_generate_rtl_top_task_removes_peek_ports() {
                 "fifos": {}
             },
             "reader": {
+                "readable_name": "reader",
                 "level": "lower",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [
                     {"cat": "istream", "name": "input", "type": "float", "width": 32}
                 ],
@@ -611,9 +627,10 @@ fn test_generate_rtl_external_istream_aliases_hls_s_ports() {
         "target": "xilinx-hls",
         "tasks": {
             "top": {
+                "readable_name": "top",
                 "level": "upper",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [
                     {"cat": "istream", "name": "data_stream", "type": "uint64_t", "width": 64}
                 ],
@@ -625,9 +642,10 @@ fn test_generate_rtl_external_istream_aliases_hls_s_ports() {
                 }
             },
             "consumer": {
+                "readable_name": "consumer",
                 "level": "lower",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [
                     {"cat": "istream", "name": "data_stream", "type": "uint64_t", "width": 64}
                 ],
@@ -699,9 +717,10 @@ fn test_generate_rtl_vitis_top_streams_use_axis_adapters() {
         "target": "xilinx-vitis",
         "tasks": {
             "top": {
+                "readable_name": "top",
                 "level": "upper",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [
                     {"cat": "istream", "name": "a", "type": "uint48_t", "width": 48},
                     {"cat": "ostream", "name": "c", "type": "uint64_t", "width": 64}
@@ -718,9 +737,10 @@ fn test_generate_rtl_vitis_top_streams_use_axis_adapters() {
                 }
             },
             "worker": {
+                "readable_name": "worker",
                 "level": "lower",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [
                     {"cat": "istream", "name": "a", "type": "uint48_t", "width": 48},
                     {"cat": "ostream", "name": "c", "type": "uint64_t", "width": 64}
@@ -818,9 +838,10 @@ fn test_generate_rtl_with_fifo() {
         "target": "xilinx-hls",
         "tasks": {
             "top": {
+                "readable_name": "top",
                 "level": "upper",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [],
                 "tasks": {
                     "producer": [{"args": {"out_data": {"arg": "fifo_0", "cat": "ostream"}}}],
@@ -835,9 +856,10 @@ fn test_generate_rtl_with_fifo() {
                 }
             },
             "producer": {
+                "readable_name": "producer",
                 "level": "lower",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [
                     {"cat": "ostream", "name": "out_data", "type": "float", "width": 32}
                 ],
@@ -845,9 +867,10 @@ fn test_generate_rtl_with_fifo() {
                 "fifos": {}
             },
             "consumer": {
+                "readable_name": "consumer",
                 "level": "lower",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [
                     {"cat": "istream", "name": "in_data", "type": "float", "width": 32}
                 ],
@@ -918,9 +941,10 @@ fn test_generate_rtl_does_not_reemit_lower_modules() {
         "target": "xilinx-hls",
         "tasks": {
             "top": {
+                "readable_name": "top",
                 "level": "upper",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [],
                 "tasks": {
                     "child": [{"args": {}}]
@@ -928,9 +952,10 @@ fn test_generate_rtl_does_not_reemit_lower_modules() {
                 "fifos": {}
             },
             "child": {
+                "readable_name": "child",
                 "level": "lower",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [],
                 "tasks": {},
                 "fifos": {}
@@ -977,9 +1002,10 @@ fn test_generate_rtl_fifo_width_uses_bound_producer_port() {
         "target": "xilinx-hls",
         "tasks": {
             "top": {
+                "readable_name": "top",
                 "level": "upper",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [],
                 "tasks": {
                     "producer": [{
@@ -1009,9 +1035,10 @@ fn test_generate_rtl_fifo_width_uses_bound_producer_port() {
                 }
             },
             "producer": {
+                "readable_name": "producer",
                 "level": "lower",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [
                     {"cat": "ostream", "name": "small", "type": "uint8_t", "width": 8},
                     {"cat": "ostream", "name": "wide", "type": "uint32_t", "width": 32}
@@ -1020,9 +1047,10 @@ fn test_generate_rtl_fifo_width_uses_bound_producer_port() {
                 "fifos": {}
             },
             "consumer": {
+                "readable_name": "consumer",
                 "level": "lower",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [
                     {"cat": "istream", "name": "small_in", "type": "uint8_t", "width": 8},
                     {"cat": "istream", "name": "wide_in", "type": "uint32_t", "width": 32}
@@ -1105,9 +1133,10 @@ fn test_generate_rtl_multithread_mmap() {
         "target": "xilinx-hls",
         "tasks": {
             "top": {
+                "readable_name": "top",
                 "level": "upper",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [
                     {"cat": "mmap", "name": "mem", "type": "float*", "width": 32}
                 ],
@@ -1120,9 +1149,10 @@ fn test_generate_rtl_multithread_mmap() {
                 "fifos": {}
             },
             "worker": {
+                "readable_name": "worker",
                 "level": "lower",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [
                     {"cat": "mmap", "name": "data", "type": "float*", "width": 32}
                 ],
@@ -1190,9 +1220,10 @@ fn test_generate_rtl_nested_shared_mmap_threads() {
         "target": "xilinx-hls",
         "tasks": {
             "top": {
+                "readable_name": "top",
                 "level": "upper",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [
                     {"cat": "mmap", "name": "mem", "type": "float*", "width": 32}
                 ],
@@ -1203,9 +1234,10 @@ fn test_generate_rtl_nested_shared_mmap_threads() {
                 "fifos": {}
             },
             "mid": {
+                "readable_name": "mid",
                 "level": "upper",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [
                     {"cat": "mmap", "name": "data", "type": "float*", "width": 32}
                 ],
@@ -1218,9 +1250,10 @@ fn test_generate_rtl_nested_shared_mmap_threads() {
                 "fifos": {}
             },
             "leaf": {
+                "readable_name": "leaf",
                 "level": "lower",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [
                     {"cat": "mmap", "name": "d", "type": "float*", "width": 32}
                 ],
@@ -1277,9 +1310,10 @@ fn test_generate_rtl_single_child_mmap_preserves_child_id_width() {
         "target": "xilinx-hls",
         "tasks": {
             "mid": {
+                "readable_name": "mid",
                 "level": "upper",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [
                     {"cat": "mmap", "name": "data", "type": "float*", "width": 32}
                 ],
@@ -1287,9 +1321,10 @@ fn test_generate_rtl_single_child_mmap_preserves_child_id_width() {
                 "fifos": {}
             },
             "top": {
+                "readable_name": "top",
                 "level": "upper",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [
                     {"cat": "mmap", "name": "elems", "type": "float*", "width": 32}
                 ],
@@ -1344,9 +1379,9 @@ fn test_generate_rtl_parent_crossbar_zero_extends_narrow_child_ids() {
         "target": "xilinx-hls",
         "tasks": {
             "leaf": {
-                "level": "lower",
+                "readable_name": "leaf", "level": "lower",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [
                     {"cat": "mmap", "name": "mmap", "type": "float*", "width": 32}
                 ],
@@ -1354,9 +1389,9 @@ fn test_generate_rtl_parent_crossbar_zero_extends_narrow_child_ids() {
                 "fifos": {}
             },
             "mid": {
-                "level": "upper",
+                "readable_name": "mid", "level": "upper",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [
                     {"cat": "mmap", "name": "data", "type": "float*", "width": 32}
                 ],
@@ -1364,9 +1399,9 @@ fn test_generate_rtl_parent_crossbar_zero_extends_narrow_child_ids() {
                 "fifos": {}
             },
             "top": {
-                "level": "upper",
+                "readable_name": "top", "level": "upper",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [
                     {"cat": "mmap", "name": "elems", "type": "float*", "width": 32}
                 ],
@@ -1453,9 +1488,10 @@ fn test_generate_rtl_parent_crossbar_slices_generated_narrow_upper_child_ids() {
         "target": "xilinx-hls",
         "tasks": {
             "Awide": {
+                "readable_name": "Awide",
                 "level": "lower",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [
                     {"cat": "mmap", "name": "data", "type": "float*", "width": 32}
                 ],
@@ -1463,9 +1499,10 @@ fn test_generate_rtl_parent_crossbar_slices_generated_narrow_upper_child_ids() {
                 "fifos": {}
             },
             "Leaf": {
+                "readable_name": "Leaf",
                 "level": "lower",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [
                     {"cat": "mmap", "name": "mmap", "type": "float*", "width": 32}
                 ],
@@ -1473,9 +1510,10 @@ fn test_generate_rtl_parent_crossbar_slices_generated_narrow_upper_child_ids() {
                 "fifos": {}
             },
             "Store": {
+                "readable_name": "Store",
                 "level": "upper",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [
                     {"cat": "mmap", "name": "mmap", "type": "float*", "width": 32}
                 ],
@@ -1485,9 +1523,10 @@ fn test_generate_rtl_parent_crossbar_slices_generated_narrow_upper_child_ids() {
                 "fifos": {}
             },
             "VecTop": {
+                "readable_name": "VecTop",
                 "level": "upper",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [
                     {"cat": "mmap", "name": "elems", "type": "float*", "width": 32}
                 ],
@@ -1580,9 +1619,10 @@ fn test_generate_rtl_hmap_uses_parent_channels() {
         "target": "xilinx-hls",
         "tasks": {
             "top": {
+                "readable_name": "top",
                 "level": "upper",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [
                     {
                         "cat": "mmap",
@@ -1602,9 +1642,10 @@ fn test_generate_rtl_hmap_uses_parent_channels() {
                 "fifos": {}
             },
             "worker": {
+                "readable_name": "worker",
                 "level": "lower",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [
                     {"cat": "mmap", "name": "data", "type": "float*", "width": 32}
                 ],
@@ -1666,9 +1707,10 @@ fn test_generate_rtl_single_channel_hmap_keeps_indexed_channel() {
         "target": "xilinx-hls",
         "tasks": {
             "top": {
+                "readable_name": "top",
                 "level": "upper",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [
                     {
                         "cat": "mmap",
@@ -1687,9 +1729,10 @@ fn test_generate_rtl_single_channel_hmap_keeps_indexed_channel() {
                 "fifos": {}
             },
             "worker": {
+                "readable_name": "worker",
                 "level": "lower",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [
                     {"cat": "mmap", "name": "data", "type": "float*", "width": 32}
                 ],
@@ -1738,9 +1781,10 @@ fn test_generate_rtl_sanitizes_indexed_mmap_names() {
         "target": "xilinx-hls",
         "tasks": {
             "top": {
+                "readable_name": "top",
                 "level": "upper",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [
                     {"cat": "mmap", "name": "chan[0]", "type": "float*", "width": 32}
                 ],
@@ -1752,9 +1796,10 @@ fn test_generate_rtl_sanitizes_indexed_mmap_names() {
                 "fifos": {}
             },
             "worker": {
+                "readable_name": "worker",
                 "level": "lower",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [
                     {"cat": "mmap", "name": "mem", "type": "float*", "width": 32}
                 ],
@@ -1796,9 +1841,10 @@ fn test_generate_rtl_instantiates_async_mmap_bridge() {
         "target": "xilinx-hls",
         "tasks": {
             "top": {
+                "readable_name": "top",
                 "level": "upper",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [
                     {"cat": "mmap", "name": "chan[0]", "type": "Elem*", "width": 512}
                 ],
@@ -1810,9 +1856,10 @@ fn test_generate_rtl_instantiates_async_mmap_bridge() {
                 "fifos": {}
             },
             "copy": {
+                "readable_name": "copy",
                 "level": "lower",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [
                     {"cat": "async_mmap", "name": "mem", "type": "Elem*", "width": 512}
                 ],
@@ -1892,9 +1939,10 @@ fn test_generate_rtl_top_instantiates_control_s_axi() {
         "target": "xilinx-hls",
         "tasks": {
             "top": {
+                "readable_name": "top",
                 "level": "upper",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [
                     {"cat": "mmap", "name": "mem", "type": "float*", "width": 32},
                     {"cat": "scalar", "name": "n", "type": "uint64_t", "width": 64}
@@ -1907,9 +1955,10 @@ fn test_generate_rtl_top_instantiates_control_s_axi() {
                 "fifos": {}
             },
             "worker": {
+                "readable_name": "worker",
                 "level": "lower",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [
                     {"cat": "mmap", "name": "data", "type": "float*", "width": 32},
                     {"cat": "scalar", "name": "n", "type": "uint64_t", "width": 64}
@@ -2016,9 +2065,10 @@ fn test_generate_rtl_top_control_unrolls_hmap_offsets() {
         "target": "xilinx-hls",
         "tasks": {
             "top": {
+                "readable_name": "top",
                 "level": "upper",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [
                     {
                         "cat": "mmap",
@@ -2037,9 +2087,10 @@ fn test_generate_rtl_top_control_unrolls_hmap_offsets() {
                 "fifos": {}
             },
             "worker": {
+                "readable_name": "worker",
                 "level": "lower",
                 "code": "",
-                "target": "hls",
+                "synth": "hls",
                 "ports": [
                     {"cat": "mmap", "name": "data", "type": "float*", "width": 32}
                 ],

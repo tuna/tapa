@@ -8,7 +8,7 @@ mod tests;
 
 use std::collections::BTreeMap;
 
-use crate::graph::Graph;
+use crate::graph::TaskGraph;
 use crate::instance::{Arg, TaskInstance};
 use crate::interconnect::{EndpointRef, InterconnectDefinition};
 use crate::port::ArgCategory;
@@ -26,12 +26,12 @@ pub enum TransformError {
     TopIsLeaf(String),
 }
 
-/// Build a fresh [`Graph`] with all leaf-task instances re-parented under
-/// the top task.
+/// Build a fresh [`TaskGraph`] with all leaf-task instances re-parented
+/// under the top task.
 ///
 /// Upper-level descendants are traversed recursively; their leaf tasks and
 /// FIFO connections are rewritten into the top task's scope.
-pub fn flatten(graph: &Graph) -> Result<Graph, TransformError> {
+pub fn flatten(graph: &TaskGraph) -> Result<TaskGraph, TransformError> {
     let top_name = &graph.top;
     let top_def = graph
         .tasks
@@ -95,10 +95,11 @@ pub fn flatten(graph: &Graph) -> Result<Graph, TransformError> {
     new_top_def.fifos = fifos;
     new_tasks.insert(top_name.clone(), new_top_def);
 
-    Ok(Graph {
+    Ok(TaskGraph {
+        top: top_name.clone(),
+        target: graph.target,
         cflags: graph.cflags.clone(),
         tasks: new_tasks,
-        top: top_name.clone(),
     })
 }
 
@@ -118,7 +119,7 @@ pub fn flatten(graph: &Graph) -> Result<Graph, TransformError> {
 /// instances deep in the tree pick up their ancestor's FIFO /
 /// external-port bindings.
 fn collect_leaves_recursive(
-    graph: &Graph,
+    graph: &TaskGraph,
     task_name: &str,
     scope_path: &str,
     arg_bindings: &BTreeMap<String, String>,

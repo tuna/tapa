@@ -1,7 +1,7 @@
 //! Unit tests for `super::flatten`.
 
 use super::flatten;
-use crate::graph::Graph;
+use crate::graph::TaskGraph;
 use crate::interconnect::EndpointRef;
 use crate::synth_target::SynthTarget;
 use crate::task::TaskLevel;
@@ -10,12 +10,13 @@ fn vadd_two_level_graph_json() -> &'static str {
     r#"{
         "cflags": ["-std=c++14"],
         "top": "VecAdd",
+        "target": "xilinx-hls",
         "tasks": {
             "VecAdd": {
+                "readable_name": "VecAdd",
                 "code": "extern \"C\" {\nvoid VecAdd(uint64_t n);\n}  // extern \"C\"\n\nextern \"C\" {\nvoid VecAdd(uint64_t n) { /* top body */ }\n}  // extern \"C\"\n",
                 "level": "upper",
-                "target": "hls",
-                "vendor": "xilinx",
+                "synth": "hls",
                 "ports": [
                     {"cat": "scalar", "name": "n", "type": "uint64_t", "width": 64}
                 ],
@@ -38,20 +39,20 @@ fn vadd_two_level_graph_json() -> &'static str {
                 }
             },
             "A": {
+                "readable_name": "A",
                 "code": "void A() {}",
                 "level": "lower",
-                "target": "hls",
-                "vendor": "xilinx",
+                "synth": "hls",
                 "ports": [
                     {"cat": "scalar", "name": "n", "type": "uint64_t", "width": 64},
                     {"cat": "ostream", "name": "out", "type": "float", "width": 32}
                 ]
             },
             "B": {
+                "readable_name": "B",
                 "code": "void B() {}",
                 "level": "lower",
-                "target": "hls",
-                "vendor": "xilinx",
+                "synth": "hls",
                 "ports": [
                     {"cat": "scalar", "name": "n", "type": "uint64_t", "width": 64},
                     {"cat": "istream", "name": "in", "type": "float", "width": 32}
@@ -63,7 +64,7 @@ fn vadd_two_level_graph_json() -> &'static str {
 
 #[test]
 fn flatten_collapses_two_level_hierarchy() {
-    let g = Graph::from_json(vadd_two_level_graph_json()).expect("parse");
+    let g = TaskGraph::from_json(vadd_two_level_graph_json()).expect("parse");
     let out = flatten(&g).expect("flatten ok");
     assert_eq!(out.top, "VecAdd");
     let new_top = out.tasks.get("VecAdd").expect("top survives");
@@ -80,7 +81,7 @@ fn flatten_collapses_two_level_hierarchy() {
 
 #[test]
 fn flatten_preserves_top_metadata() {
-    let g = Graph::from_json(vadd_two_level_graph_json()).expect("parse");
+    let g = TaskGraph::from_json(vadd_two_level_graph_json()).expect("parse");
     let out = flatten(&g).expect("flatten ok");
     let top = out.tasks.get("VecAdd").expect("top survives");
     assert_eq!(top.ports.len(), 1);
@@ -91,12 +92,7 @@ fn flatten_preserves_top_metadata() {
         "top code should still mention VecAdd"
     );
     assert_eq!(top.level, TaskLevel::Upper);
-    assert_eq!(top.target, SynthTarget::Hls);
-    // `vendor` is not a typed field; it round-trips through `extra`.
-    assert_eq!(
-        top.extra.get("vendor").and_then(|v| v.as_str()),
-        Some("xilinx")
-    );
+    assert_eq!(top.synth, SynthTarget::Hls);
 }
 
 /// Even an empty nested upper task must flatten without an error.
@@ -105,21 +101,24 @@ fn flatten_accepts_nested_upper_without_error() {
     let json = r#"{
         "cflags": [],
         "top": "Outer",
+        "target": "xilinx-hls",
         "tasks": {
             "Outer": {
-                "code": "", "level": "upper", "target": "hls", "vendor": "xilinx",
+                "readable_name": "Outer",
+                "code": "", "level": "upper", "synth": "hls",
                 "ports": [],
                 "tasks": {"Inner": [{"args": {}, "step": 0}]},
                 "fifos": {}
             },
             "Inner": {
-                "code": "", "level": "upper", "target": "hls", "vendor": "xilinx",
+                "readable_name": "Inner",
+                "code": "", "level": "upper", "synth": "hls",
                 "ports": [],
                 "tasks": {}, "fifos": {}
             }
         }
     }"#;
-    let g = Graph::from_json(json).expect("parse");
+    let g = TaskGraph::from_json(json).expect("parse");
     let out = flatten(&g).expect("recursive flatten ok");
     assert_eq!(out.top, "Outer");
     // Inner has no tasks → no leaves, top's `tasks` map is empty.
@@ -135,9 +134,11 @@ fn flatten_hoists_leaf_under_nested_upper() {
     let json = r#"{
         "cflags": [],
         "top": "Outer",
+        "target": "xilinx-hls",
         "tasks": {
             "Outer": {
-                "code": "", "level": "upper", "target": "hls", "vendor": "xilinx",
+                "readable_name": "Outer",
+                "code": "", "level": "upper", "synth": "hls",
                 "ports": [
                     {"cat": "scalar", "name": "n", "type": "uint64_t", "width": 64}
                 ],
@@ -147,7 +148,8 @@ fn flatten_hoists_leaf_under_nested_upper() {
                 "fifos": {}
             },
             "Inner": {
-                "code": "", "level": "upper", "target": "hls", "vendor": "xilinx",
+                "readable_name": "Inner",
+                "code": "", "level": "upper", "synth": "hls",
                 "ports": [
                     {"cat": "scalar", "name": "p", "type": "uint64_t", "width": 64}
                 ],
@@ -157,15 +159,15 @@ fn flatten_hoists_leaf_under_nested_upper() {
                 "fifos": {}
             },
             "Leaf": {
-                "code": "void Leaf() {}", "level": "lower", "target": "hls",
-                "vendor": "xilinx",
+                "readable_name": "Leaf",
+                "code": "void Leaf() {}", "level": "lower", "synth": "hls",
                 "ports": [
                     {"cat": "scalar", "name": "q", "type": "uint64_t", "width": 64}
                 ]
             }
         }
     }"#;
-    let g = Graph::from_json(json).expect("parse");
+    let g = TaskGraph::from_json(json).expect("parse");
     let out = flatten(&g).expect("recursive flatten");
     let top = out.tasks.get("Outer").expect("top");
     let leaf_insts = top.tasks.get("Leaf").expect("leaf hoisted under top");
@@ -184,9 +186,11 @@ fn flatten_uses_explicit_upper_instance_names_in_nested_fifo_paths() {
     let json = r#"{
         "cflags": [],
         "top": "Outer",
+        "target": "xilinx-hls",
         "tasks": {
             "Outer": {
-                "code": "", "level": "upper", "target": "hls", "vendor": "xilinx",
+                "readable_name": "Outer",
+                "code": "", "level": "upper", "synth": "hls",
                 "ports": [],
                 "tasks": {"Cluster": [
                     {"name": "west_cluster", "step": 0, "args": {}},
@@ -195,7 +199,8 @@ fn flatten_uses_explicit_upper_instance_names_in_nested_fifo_paths() {
                 "fifos": {}
             },
             "Cluster": {
-                "code": "", "level": "upper", "target": "hls", "vendor": "xilinx",
+                "readable_name": "Cluster",
+                "code": "", "level": "upper", "synth": "hls",
                 "ports": [],
                 "tasks": {"Stage": [{
                     "name": "compute_stage", "step": 0, "args": {}
@@ -203,7 +208,8 @@ fn flatten_uses_explicit_upper_instance_names_in_nested_fifo_paths() {
                 "fifos": {}
             },
             "Stage": {
-                "code": "", "level": "upper", "target": "hls", "vendor": "xilinx",
+                "readable_name": "Stage",
+                "code": "", "level": "upper", "synth": "hls",
                 "ports": [],
                 "tasks": {
                     "Source": [{"step": 0, "args": {
@@ -220,16 +226,18 @@ fn flatten_uses_explicit_upper_instance_names_in_nested_fifo_paths() {
                 }}
             },
             "Source": {
-                "code": "", "level": "lower", "target": "hls", "vendor": "xilinx",
+                "readable_name": "Source",
+                "code": "", "level": "lower", "synth": "hls",
                 "ports": [{"cat": "ostream", "name": "out", "type": "int", "width": 32}]
             },
             "Sink": {
-                "code": "", "level": "lower", "target": "hls", "vendor": "xilinx",
+                "readable_name": "Sink",
+                "code": "", "level": "lower", "synth": "hls",
                 "ports": [{"cat": "istream", "name": "in", "type": "int", "width": 32}]
             }
         }
     }"#;
-    let graph = Graph::from_json(json).expect("parse");
+    let graph = TaskGraph::from_json(json).expect("parse");
     let flattened = flatten(&graph).expect("flatten");
     let top = &flattened.tasks["Outer"];
 
@@ -263,9 +271,11 @@ fn flatten_resolves_indexed_stream_bundle_args_through_parent_binding() {
     let json = r#"{
         "cflags": [],
         "top": "Outer",
+        "target": "xilinx-hls",
         "tasks": {
             "Outer": {
-                "code": "", "level": "upper", "target": "hls", "vendor": "xilinx",
+                "readable_name": "Outer",
+                "code": "", "level": "upper", "synth": "hls",
                 "ports": [],
                 "tasks": {"Stage": [{"step": 0, "args": {
                     "in_q[0]": {"arg": "qs[4]", "cat": "istream"},
@@ -281,7 +291,8 @@ fn flatten_resolves_indexed_stream_bundle_args_through_parent_binding() {
                 }
             },
             "Stage": {
-                "code": "", "level": "upper", "target": "hls", "vendor": "xilinx",
+                "readable_name": "Stage",
+                "code": "", "level": "upper", "synth": "hls",
                 "ports": [
                     {"cat": "istreams", "name": "in_q", "type": "uint64_t", "width": 64}
                 ],
@@ -296,14 +307,15 @@ fn flatten_resolves_indexed_stream_bundle_args_through_parent_binding() {
                 }
             },
             "Leaf": {
-                "code": "", "level": "lower", "target": "hls", "vendor": "xilinx",
+                "readable_name": "Leaf",
+                "code": "", "level": "lower", "synth": "hls",
                 "ports": [
                     {"cat": "istream", "name": "pkt_in", "type": "uint64_t", "width": 64}
                 ]
             }
         }
     }"#;
-    let g = Graph::from_json(json).expect("parse");
+    let g = TaskGraph::from_json(json).expect("parse");
     let out = flatten(&g).expect("flatten");
     let top = out.tasks.get("Outer").expect("top survives");
     let leaf = &top.tasks["Leaf"][0];

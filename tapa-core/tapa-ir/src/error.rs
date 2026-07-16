@@ -1,6 +1,6 @@
 //! Error types for task-graph parsing.
 
-/// Errors produced when parsing a `graph.json` payload.
+/// Errors produced when parsing a `graph.json` / `design.json` payload.
 #[derive(Debug, thiserror::Error)]
 pub enum ParseError {
     #[error("JSON parse error at {path}: {message}")]
@@ -8,4 +8,13 @@ pub enum ParseError {
 
     #[error("JSON syntax error: {0}")]
     Json(#[from] serde_json::Error),
+}
+
+impl From<std::io::Error> for ParseError {
+    fn from(e: std::io::Error) -> Self {
+        Self::Schema {
+            path: "<io>".to_string(),
+            message: e.to_string(),
+        }
+    }
 }

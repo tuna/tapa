@@ -72,11 +72,11 @@ For tasks annotated with `[[tapa::target("ignore")]]`, `template/` contains gene
 
 **`graph.json`**
 
-JSON file recording all contents and metadata of the input design, including the task graph structure.
+JSON file recording all contents and metadata of the input design, including the task graph structure. Written by `tapa analyze` from the `tapacc` output, with the flow `target` and the kernel `cflags` added.
 
 **`design.json`**
 
-Typed topology and synthesis annotations consumed by later native pipeline steps. It includes per-task timing and area data after synthesis.
+The same task-graph schema as `graph.json`, consumed by later native pipeline steps. `tapa synth` annotates each task in place with its post-synthesis `clock_period`, `self_area`, and `total_area`; those fields are absent until synthesis populates them.
 
 **`settings.json`**
 

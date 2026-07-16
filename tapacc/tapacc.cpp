@@ -1,8 +1,16 @@
 // tapacc: the TAPA C-to-HLS rewriter. Parses a (flattened) TAPA C++ translation
 // unit into a typed program model (frontend/), generates per-task vendor HLS
 // via a backend (codegen/), and emits the graph.json the tapa-ir crate
-// consumes: {top, tasks:{name:{code, level, target, readable_name, ports,
-// tasks, fifos}}}.
+// consumes: {top, target, tasks:{name:{code, level, synth, readable_name,
+// ports, tasks, fifos}}}.
+//
+// Two distinct notions of "target" live in that schema, and the tapa-ir crate
+// parses both as closed enums with deny_unknown_fields:
+//   - root "target": the vendor FLOW, kebab-case "xilinx-vitis"/"xilinx-hls".
+//   - per-task "synth": the synthesis POLICY, "hls"/"ignore" only -- it answers
+//     just "synthesize or skip". The internal three-valued SynthTarget still
+//     carries the flow per task so the right backend gets picked, but that
+//     distinction collapses on the wire.
 
 #include <iostream>
 #include <memory>
@@ -40,15 +48,27 @@ const char* LevelStr(TaskLevel level) {
   return level == TaskLevel::kUpper ? "upper" : "lower";
 }
 
-const char* TargetStr(SynthTarget target) {
+// Maps the per-task synthesis policy to its wire string. tapa-ir's SynthTarget
+// is closed over {"hls", "ignore"}, so both HLS and Vitis tasks collapse to
+// "hls": the per-task field only says whether to synthesize. The flow itself is
+// emitted once at the graph root (see FlowStr).
+const char* SynthStr(SynthTarget target) {
   switch (target) {
-    case SynthTarget::kXilinxVitis:
-      return "xilinx_vitis";
     case SynthTarget::kIgnore:
       return "ignore";
-    default:
-      return "xilinx_hls";
+    case SynthTarget::kXilinxHls:
+    case SynthTarget::kXilinxVitis:
+      return "hls";
   }
+  // Unreachable for a valid enumerator; keeps -Wswitch (not -Wswitch-default)
+  // free to flag a future enumerator that needs a policy decision here.
+  return "hls";
+}
+
+// Wire string for the root-level vendor flow. Kebab-case, unlike the per-task
+// policy above.
+const char* FlowStr(bool is_vitis) {
+  return is_vitis ? "xilinx-vitis" : "xilinx-hls";
 }
 
 nlohmann::json PortJson(const Port& port) {
@@ -113,6 +133,7 @@ class NgConsumer : public clang::ASTConsumer {
 
     nlohmann::json out;
     out["top"] = program.top;
+    out["target"] = FlowStr(is_vitis);
     out["tasks"] = nlohmann::json::object();
     for (const auto& [name, task] : program.tasks) {
       const Backend* backend = &hls;
@@ -122,7 +143,7 @@ class NgConsumer : public clang::ASTConsumer {
       nlohmann::json& t = out["tasks"][name];
       t["code"] = EmitTaskCode(program, task, *backend, ctx);
       t["level"] = LevelStr(task.level);
-      t["target"] = TargetStr(task.target);
+      t["synth"] = SynthStr(task.target);
       t["readable_name"] = task.readable_name;
       t["ports"] = nlohmann::json::array();
       for (const Port& port : task.ports) t["ports"].push_back(PortJson(port));

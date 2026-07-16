@@ -550,9 +550,10 @@ mod tests {
             "target": "xilinx-hls",
             "tasks": {
                 "top": {
+                    "readable_name": "top",
                     "level": "upper",
                     "code": "",
-                    "target": "hls",
+                    "synth": "hls",
                     "ports": [],
                     "tasks": {
                         "consumer": [{"args": {
@@ -578,9 +579,10 @@ mod tests {
                     }
                 },
                 "consumer": {
+                    "readable_name": "consumer",
                     "level": "lower",
                     "code": "",
-                    "target": "hls",
+                    "synth": "hls",
                     "ports": [
                         {"cat": "istream", "name": "narrow_in", "type": "uint8_t", "width": 8},
                         {"cat": "istreams", "name": "wide_in", "type": "uint32_t", "width": 32}
@@ -589,9 +591,10 @@ mod tests {
                     "fifos": {}
                 },
                 "producer": {
+                    "readable_name": "producer",
                     "level": "lower",
                     "code": "",
-                    "target": "hls",
+                    "synth": "hls",
                     "ports": [
                         {"cat": "ostream", "name": "narrow", "type": "uint8_t", "width": 8},
                         {"cat": "ostreams", "name": "wide", "type": "uint32_t", "width": 32}
@@ -649,7 +652,8 @@ mod tests {
             "target": "xilinx-hls",
             "tasks": {
                 "top": {
-                    "level": "upper", "code": "", "target": "hls",
+                    "readable_name": "top",
+                    "level": "upper", "code": "", "synth": "hls",
                     "ports": [],
                     "tasks": {
                         "producer": [{"args": {"mem": {"arg": "orphan_fifo", "cat": "mmap"}}}]
@@ -663,7 +667,8 @@ mod tests {
                     }
                 },
                 "producer": {
-                    "level": "lower", "code": "", "target": "hls",
+                    "readable_name": "producer",
+                    "level": "lower", "code": "", "synth": "hls",
                     "ports": [{"cat": "mmap", "name": "mem", "type": "float*", "width": 32}],
                     "tasks": {}, "fifos": {}
                 }

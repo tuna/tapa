@@ -128,7 +128,7 @@ pub fn write_templates_info(work_dir: &Path, design: &Design) -> Result<()> {
     let templates: BTreeMap<String, Vec<String>> = design
         .tasks
         .iter()
-        .filter(|(_, t)| t.target == Some(SynthTarget::Ignore))
+        .filter(|(_, t)| t.synth == SynthTarget::Ignore)
         .map(|(name, t)| {
             let port_strs: Vec<String> = t.ports.iter().map(schema_port_str).collect();
             (name.clone(), port_strs)
@@ -165,14 +165,13 @@ mod tests {
         tasks.insert(
             "Add".to_string(),
             Task {
-                name: "Add".to_string(),
                 level: TaskLevel::Lower,
                 code: String::new(),
                 ports: Vec::new(),
                 tasks: BTreeMap::new(),
                 fifos: BTreeMap::new(),
-                target: Some(SynthTarget::Hls),
-                is_slot: false,
+                readable_name: String::new(),
+                synth: SynthTarget::Hls,
                 self_area: IndexMap::new(),
                 total_area: IndexMap::new(),
                 clock_period: "0".to_string(),
@@ -190,14 +189,13 @@ mod tests {
         tasks.insert(
             "VecAdd".to_string(),
             Task {
-                name: "VecAdd".to_string(),
                 level: TaskLevel::Upper,
                 code: String::new(),
                 ports: Vec::new(),
                 tasks: child_tasks,
                 fifos: BTreeMap::new(),
-                target: Some(SynthTarget::Hls),
-                is_slot: false,
+                readable_name: String::new(),
+                synth: SynthTarget::Hls,
                 self_area: IndexMap::new(),
                 total_area: IndexMap::new(),
                 clock_period: "3.33".to_string(),
@@ -207,7 +205,7 @@ mod tests {
             top: "VecAdd".to_string(),
             target: tapa_ir::Target::XilinxHls,
             tasks,
-            slot_task_name_to_fp_region: None,
+            cflags: Vec::new(),
         }
     }
 
@@ -243,7 +241,6 @@ mod tests {
         design.tasks.insert(
             "Add_Upper".to_string(),
             Task {
-                name: "Add_Upper".to_string(),
                 level: TaskLevel::Lower,
                 code: String::new(),
                 ports: vec![Port {
@@ -256,8 +253,8 @@ mod tests {
                 }],
                 tasks: BTreeMap::new(),
                 fifos: BTreeMap::new(),
-                target: Some(SynthTarget::Ignore),
-                is_slot: false,
+                readable_name: String::new(),
+                synth: SynthTarget::Ignore,
                 self_area: IndexMap::new(),
                 total_area: IndexMap::new(),
                 clock_period: "0".to_string(),
@@ -358,7 +355,6 @@ mod tests {
         design.tasks.insert(
             "Stub".to_string(),
             Task {
-                name: "Stub".to_string(),
                 level: TaskLevel::Lower,
                 code: String::new(),
                 ports: vec![Port {
@@ -371,8 +367,8 @@ mod tests {
                 }],
                 tasks: BTreeMap::new(),
                 fifos: BTreeMap::new(),
-                target: Some(SynthTarget::Ignore),
-                is_slot: false,
+                readable_name: String::new(),
+                synth: SynthTarget::Ignore,
                 self_area: IndexMap::new(),
                 total_area: IndexMap::new(),
                 clock_period: "0".to_string(),

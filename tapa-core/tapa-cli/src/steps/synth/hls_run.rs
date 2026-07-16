@@ -69,7 +69,7 @@ pub fn run_hls_for_leaves(
     // order even when jobs run out-of-order.
     let mut plan: Vec<(String, TaskHlsLayout, Work)> = Vec::new();
     for (task_name, task) in &design.tasks {
-        if task.target == Some(SynthTarget::Ignore) {
+        if task.synth == SynthTarget::Ignore {
             continue;
         }
         let layout = TaskHlsLayout::new(work_dir, task_name);
@@ -356,14 +356,13 @@ mod tests {
         tasks.insert(
             "Add".to_string(),
             Task {
-                name: "Add".to_string(),
                 level: TaskLevel::Lower,
                 code: String::new(),
                 ports: Vec::new(),
                 tasks: BTreeMap::new(),
                 fifos: BTreeMap::new(),
-                target: Some(SynthTarget::Hls),
-                is_slot: false,
+                readable_name: String::new(),
+                synth: SynthTarget::Hls,
                 self_area: IndexMap::new(),
                 total_area: IndexMap::new(),
                 clock_period: "0".to_string(),
@@ -373,7 +372,7 @@ mod tests {
             top: "Add".to_string(),
             target: tapa_ir::Target::XilinxHls,
             tasks,
-            slot_task_name_to_fp_region: None,
+            cflags: Vec::new(),
         }
     }
 

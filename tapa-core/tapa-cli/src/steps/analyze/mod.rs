@@ -21,7 +21,7 @@ mod build_design;
 mod run_flatten;
 mod run_tapacc;
 
-use build_design::{build_design, flatten_graph_value, is_top_leaf};
+use build_design::{flatten_graph_value, is_top_leaf};
 use run_flatten::run_flatten;
 use run_tapacc::run_tapacc;
 
@@ -175,11 +175,19 @@ fn run_native(args: &AnalyzeArgs, ctx: &CliContext) -> Result<()> {
     let target_str = args.target.as_str();
     let mut graph_dict = run_tapacc(&tapacc, &flatten_files, &args.top, &all_cflags, target_str)?;
 
-    // Persist the user tuple plus the required C++ standard flag.
+    // Analyze owns the two root facts `tapacc` does not emit: the user's
+    // cflags tuple (plus the required C++ standard flag) and the flow
+    // target. Both are injected before the strict parse below, so the
+    // graph conforms to the one schema `graph.json` and `design.json`
+    // share.
     if let Some(obj) = graph_dict.as_object_mut() {
         obj.insert(
             "cflags".to_string(),
             Value::Array(user_cflags.iter().cloned().map(Value::String).collect()),
+        );
+        obj.insert(
+            "target".to_string(),
+            json!(tapa_ir::Target::from(args.target).as_str()),
         );
     }
 
@@ -201,19 +209,20 @@ fn run_native(args: &AnalyzeArgs, ctx: &CliContext) -> Result<()> {
         ));
     }
 
-    // Persist all three on-disk artifacts.
+    // Persist all three on-disk artifacts. `design.json` holds the same
+    // unified task graph; `synth` annotates it in place with the
+    // post-synthesis results.
     graph_io::store_graph(work_dir, &graph_dict)?;
     let mut settings = settings_io::Settings::new();
     settings.insert("target".to_string(), json!(target_str));
     settings_io::store_settings(work_dir, &settings)?;
-    let design = build_design(&args.top, args.target.into(), &graph);
-    design_io::store_design(work_dir, &design)?;
+    design_io::store_design(work_dir, &graph)?;
 
     // Cache state for downstream chained steps in this process.
     let mut flow = ctx.flow.borrow_mut();
     flow.graph = Some(graph_dict);
     flow.settings = Some(settings);
-    flow.design = Some(design);
+    flow.design = Some(graph);
     flow.pipelined.insert("analyze".to_string(), true);
     drop(flow);
 
@@ -332,7 +341,9 @@ mod tests {
 
         // tapacc: `--version` is parseable; otherwise it emits a fixed
         // tapacc-shaped graph.json on stdout.
-        let fixed_graph = r#"{"cflags": [], "tasks": {"VecAdd": {"code": "void VecAdd() {}", "level": "upper", "target": "hls", "ports": [], "tasks": {"Add": [{"step": 0, "args": {}}]}, "fifos": {}}, "Add": {"code": "void Add() {}", "level": "lower", "target": "hls", "ports": []}}, "top": "VecAdd"}"#;
+        // Mirrors real `tapacc` output: `readable_name` is emitted for every
+        // task (equal to the task name for these non-template tasks).
+        let fixed_graph = r#"{"cflags": [], "tasks": {"VecAdd": {"code": "void VecAdd() {}", "level": "upper", "synth": "hls", "readable_name": "VecAdd", "ports": [], "tasks": {"Add": [{"step": 0, "args": {}}]}, "fifos": {}}, "Add": {"code": "void Add() {}", "level": "lower", "synth": "hls", "readable_name": "Add", "ports": []}}, "top": "VecAdd"}"#;
         fs::write(
             &tapacc,
             format!(
@@ -385,6 +396,8 @@ mod tests {
         // Analyze stores the user cflags plus
         // `-std=c++14`. The user passed no `-c`, so we expect just that.
         assert_eq!(graph_v["cflags"], json!(["-std=c++14"]));
+        // Analyze injects the root flow target `tapacc` does not emit.
+        assert_eq!(graph_v["target"], json!("xilinx-hls"));
 
         // settings.json must record the target.
         let settings = settings_io::load_settings(&ctx.work_dir).expect("load settings");
@@ -398,7 +411,7 @@ mod tests {
         assert!(design.tasks.contains_key("Add"));
         assert_eq!(design.tasks["VecAdd"].level, tapa_ir::TaskLevel::Upper);
         assert_eq!(design.tasks["Add"].level, tapa_ir::TaskLevel::Lower);
-        assert!(design.slot_task_name_to_fp_region.is_none());
+        assert_eq!(design.tasks["Add"].synth, tapa_ir::SynthTarget::Hls);
 
         // FlowState must cache all three artifacts.
         let flow = ctx.flow.borrow();

@@ -180,17 +180,17 @@ pub fn render_task_template(name: &str, task: &Task) -> String {
 mod tests {
     use super::*;
 
+    /// A synthetic leaf task. The module name is passed separately to
+    /// `render_task_template`, so `readable_name` is inert here.
     fn task(ports: &serde_json::Value) -> Task {
         serde_json::from_value(serde_json::json!({
-            "name": "Custom",
             "level": "lower",
             "code": "",
-            "target": "ignore",
+            "synth": "ignore",
+            "readable_name": "Task",
             "ports": ports,
             "tasks": {},
-            "fifos": {},
-            "is_slot": false,
-            "clock_period": "0"
+            "fifos": {}
         }))
         .unwrap()
     }

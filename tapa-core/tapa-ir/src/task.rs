@@ -2,7 +2,9 @@
 
 use std::collections::BTreeMap;
 
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::instance::TaskInstance;
 use crate::interconnect::InterconnectDefinition;
@@ -17,24 +19,30 @@ pub enum TaskLevel {
     Upper,
 }
 
-/// A single task definition from `graph.json["tasks"]`.
+/// A single task in the unified task graph (`graph.json` / `design.json`).
 ///
-/// We intentionally do **not** `deny_unknown_fields` here because
-/// `tapacc` emits additional metadata (e.g. `readable_name` from the
-/// C++ visitor) that the native synth pipeline does not consume. The
-/// graph round-trips through the typed schema (analyze → graph.json →
-/// transforms), so silently keeping unknown fields would erase them;
-/// instead, any field added by `tapacc` is parked here explicitly as
-/// `extra` so the typed path can re-emit it byte-identical. Every
-/// other field keeps the strict check at a higher level.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct TaskDefinition {
-    /// C++ source code for this task.
-    pub code: String,
+/// `graph.json` (tapacc output) and `design.json` (post-synthesis) share
+/// this one type: analyze emits the structural fields, synth populates the
+/// post-synthesis annotation block (`clock_period`, `self_area`,
+/// `total_area`), and report reads them back. The annotations are absent in
+/// tapacc output and omitted from the wire form until populated.
+#[allow(
+    clippy::derive_partial_eq_without_eq,
+    reason = "area dicts hold serde_json::Value, which is not Eq (Number may be f64)"
+)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct Task {
     /// Task level: `"lower"` (leaf) or `"upper"` (composite).
     pub level: TaskLevel,
-    /// Synthesis target (`"hls"` / `"ignore"`).
-    pub target: SynthTarget,
+    /// C++ source code for this task.
+    pub code: String,
+    /// Human-readable task name emitted by `tapacc` (e.g. the demangled
+    /// template specialization). Required: `tapacc` emits it unconditionally
+    /// for every task, equal to the task name for non-template tasks.
+    pub readable_name: String,
+    /// Per-task synthesis policy (`"hls"` / `"ignore"`).
+    pub synth: SynthTarget,
     /// External ports / interface definitions.
     #[serde(default)]
     pub ports: Vec<Port>,
@@ -45,8 +53,14 @@ pub struct TaskDefinition {
     /// FIFO / interconnect definitions (upper tasks only).
     #[serde(default)]
     pub fifos: BTreeMap<String, InterconnectDefinition>,
-    /// Any extra fields `tapacc` attached (e.g. `readable_name`). Kept
-    /// so round-trips through the typed schema preserve them.
-    #[serde(flatten)]
-    pub extra: BTreeMap<String, serde_json::Value>,
+    /// Post-synthesis achieved clock-period estimate (seconds, stringified).
+    /// Seeded empty by analyze, written by synth, read by report.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub clock_period: String,
+    /// Per-task self area dict (resource → number). Post-synthesis.
+    #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
+    pub self_area: IndexMap<String, Value>,
+    /// Per-task total area dict (self + descendants). Post-synthesis.
+    #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
+    pub total_area: IndexMap<String, Value>,
 }

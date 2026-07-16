@@ -1,8 +1,8 @@
 //! Conformance and round-trip tests for the `tapa-ir` graph model.
 
-use tapa_ir::graph::Graph;
 use tapa_ir::port::ArgCategory;
 use tapa_ir::task::TaskLevel;
+use tapa_ir::Graph;
 
 fn fixture(name: &str) -> String {
     let path = format!(
@@ -85,19 +85,69 @@ fn all_category_variants_in_fixture() {
 #[test]
 fn negative_step_accepted() {
     let json = r#"{
-        "cflags": [], "top": "T",
-        "tasks": {"T": {"code": "", "level": "upper", "target": "hls", "vendor": "",
+        "cflags": [], "top": "T", "target": "xilinx-hls",
+        "tasks": {"T": {"code": "", "level": "upper", "synth": "hls",
+            "readable_name": "T",
             "tasks": {"C": [{"args": {}, "step": -1}]}, "fifos": {}, "ports": []}}
     }"#;
     let g = Graph::from_json(json).expect("parse negative step");
     assert_eq!(g.tasks["T"].tasks["C"][0].step, -1, "negative step");
 }
 
+/// `readable_name` is the one `tapacc`-emitted field that used to ride in
+/// the untyped `extra` bag. It is a typed field now: it must parse and
+/// survive a round-trip. `tapacc` emits the demangled template
+/// specialization for template tasks and the plain task name otherwise.
+#[test]
+fn readable_name_is_typed_and_round_trips() {
+    let json = r#"{
+        "cflags": [], "top": "T", "target": "xilinx-hls",
+        "tasks": {
+            "T": {"code": "", "level": "upper", "synth": "hls",
+                  "readable_name": "Compute<float, 4>",
+                  "tasks": {}, "fifos": {}, "ports": []},
+            "U": {"code": "", "level": "lower", "synth": "hls",
+                  "readable_name": "U", "ports": []}
+        }
+    }"#;
+    let g = Graph::from_json(json).expect("parse readable_name");
+    assert_eq!(g.tasks["T"].readable_name, "Compute<float, 4>");
+    assert_eq!(g.tasks["U"].readable_name, "U", "non-template name");
+
+    let g2 = Graph::from_json(&g.to_json().expect("serialize")).expect("reparse");
+    assert_eq!(g, g2, "readable_name round-trips");
+}
+
+/// `tapacc` emits `readable_name` unconditionally for every task, so the
+/// field is required rather than defaulted: a payload that omits it does
+/// not describe real `tapacc` output and must be rejected outright. A
+/// `#[serde(default)]` here would silently paper over a malformed graph.
+#[test]
+fn readable_name_is_required() {
+    let json = r#"{
+        "cflags": [], "top": "T", "target": "xilinx-hls",
+        "tasks": {
+            "T": {"code": "", "level": "lower", "synth": "hls", "ports": []}
+        }
+    }"#;
+    let err = Graph::from_json(json).expect_err("omitted readable_name must fail");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("readable_name"),
+        "error must name the missing field; got {msg}",
+    );
+    assert!(
+        msg.contains("tasks.T"),
+        "error must carry a path pointer; got {msg}",
+    );
+}
+
 #[test]
 fn consumer_only_fifo() {
     let json = r#"{
-        "cflags": [], "top": "T",
-        "tasks": {"T": {"code": "", "level": "upper", "target": "hls", "vendor": "",
+        "cflags": [], "top": "T", "target": "xilinx-hls",
+        "tasks": {"T": {"code": "", "level": "upper", "synth": "hls",
+            "readable_name": "T",
             "tasks": {}, "fifos": {"ext": {"consumed_by": ["X", 0]}}, "ports": []}}
     }"#;
     let g = Graph::from_json(json).expect("parse consumer-only FIFO");
@@ -135,7 +185,7 @@ fn hmap_round_trip_canonical() {
 
 #[test]
 fn unknown_top_level_field_rejected() {
-    let json = r#"{"cflags": [], "top": "T", "tasks": {}, "bogus": true}"#;
+    let json = r#"{"cflags": [], "top": "T", "target": "xilinx-hls", "tasks": {}, "bogus": true}"#;
     let err = Graph::from_json(json).unwrap_err();
     let msg = err.to_string();
     assert!(
@@ -147,8 +197,8 @@ fn unknown_top_level_field_rejected() {
 #[test]
 fn invalid_level_rejected() {
     let json = r#"{
-        "cflags": [], "top": "T",
-        "tasks": {"T": {"code": "", "level": "invalid", "target": "hls", "vendor": ""}}
+        "cflags": [], "top": "T", "target": "xilinx-hls",
+        "tasks": {"T": {"code": "", "level": "invalid", "synth": "hls"}}
     }"#;
     let err = Graph::from_json(json).unwrap_err();
     let msg = err.to_string();
@@ -161,8 +211,8 @@ fn invalid_level_rejected() {
 #[test]
 fn invalid_category_rejected_with_path() {
     let json = r#"{
-        "cflags": [], "top": "T",
-        "tasks": {"T": {"code": "", "level": "lower", "target": "hls", "vendor": "",
+        "cflags": [], "top": "T", "target": "xilinx-hls",
+        "tasks": {"T": {"code": "", "level": "lower", "synth": "hls",
             "ports": [{"cat": "nonexistent", "name": "x", "type": "int", "width": 32}]}}
     }"#;
     let err = Graph::from_json(json).unwrap_err();

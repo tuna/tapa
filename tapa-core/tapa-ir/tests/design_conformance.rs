@@ -1,8 +1,11 @@
 //! Conformance and round-trip tests for the `tapa-ir` design model.
 
-use tapa_ir::design::Design;
+use std::io;
+
+use serde::Serialize;
 use tapa_ir::port::ArgCategory;
 use tapa_ir::task::TaskLevel;
+use tapa_ir::Design;
 
 fn fixture(name: &str) -> String {
     let path = format!("{}/../testdata/topology/{name}", env!("CARGO_MANIFEST_DIR"));
@@ -11,6 +14,76 @@ fn fixture(name: &str) -> String {
 
 fn to_json(design: &Design) -> String {
     serde_json::to_string_pretty(design).expect("serialize design")
+}
+
+/// Serialize with the same `, ` / `: ` compact formatter the CLI's
+/// `state::json::write_json_atomic` uses for `design.json` / `graph.json`,
+/// so the byte-equality test below asserts the real on-disk shape rather
+/// than a pretty-printed approximation of it.
+fn to_state_json(design: &Design) -> String {
+    struct SpacedFormatter;
+    impl serde_json::ser::Formatter for SpacedFormatter {
+        fn begin_array_value<W: io::Write + ?Sized>(
+            &mut self,
+            writer: &mut W,
+            first: bool,
+        ) -> io::Result<()> {
+            if first {
+                Ok(())
+            } else {
+                writer.write_all(b", ")
+            }
+        }
+
+        fn begin_object_key<W: io::Write + ?Sized>(
+            &mut self,
+            writer: &mut W,
+            first: bool,
+        ) -> io::Result<()> {
+            if first {
+                Ok(())
+            } else {
+                writer.write_all(b", ")
+            }
+        }
+
+        fn begin_object_value<W: io::Write + ?Sized>(&mut self, writer: &mut W) -> io::Result<()> {
+            writer.write_all(b": ")
+        }
+    }
+
+    let mut buf = Vec::new();
+    let mut serializer = serde_json::Serializer::with_formatter(&mut buf, SpacedFormatter);
+    design
+        .serialize(&mut serializer)
+        .expect("serialize design with the state formatter");
+    String::from_utf8(buf).expect("utf-8 JSON")
+}
+
+/// A canonical `design.json`, written in **field declaration order** and
+/// in the exact on-disk formatting [`to_state_json`] emits.
+///
+/// This is the literal that pins the wire shape documented on
+/// `tapa_ir::graph`: struct field order is stable, `tasks` / `fifos` are
+/// `BTreeMap`s so keys emit alphabetically, and the post-synthesis
+/// annotations (`clock_period`, `self_area`, `total_area`) are omitted
+/// until populated. It deliberately exercises both a lower task (with
+/// annotations present) and an upper task (with them absent), ports,
+/// child instances with args, and FIFO endpoints — so reordering,
+/// renaming, or dropping any field breaks the byte comparison.
+fn canonical_design_json() -> &'static str {
+    concat!(
+        r#"{"top": "VecAdd", "target": "xilinx-vitis", "cflags": ["-std=c++17"], "tasks": "#,
+        r#"{"Add": {"level": "lower", "code": "void Add() {}", "readable_name": "Add", "#,
+        r#""synth": "hls", "ports": [{"cat": "istream", "name": "a", "type": "float", "#,
+        r#""width": 32}], "tasks": {}, "fifos": {}, "clock_period": "2.342", "#,
+        r#""self_area": {"LUT": 414}, "total_area": {"LUT": 414}}, "#,
+        r#""VecAdd": {"level": "upper", "code": "void VecAdd() {}", "#,
+        r#""readable_name": "VecAdd", "synth": "hls", "ports": [], "#,
+        r#""tasks": {"Add": [{"args": {"a": {"arg": "a_q", "cat": "istream"}}, "step": 0}]}, "#,
+        r#""fifos": {"a_q": {"depth": 2, "consumed_by": ["Add", 0], "#,
+        r#""produced_by": ["Mmap2Stream", 0]}}}}}"#,
+    )
 }
 
 // ── Positive parse tests ────────────────────────────────────────────
@@ -76,24 +149,6 @@ fn vadd_instance_args() {
     assert_eq!(a_arg.cat, ArgCategory::Istream, "a is istream");
 }
 
-// ── Slot tests ──────────────────────────────────────────────────────
-
-#[test]
-fn slots_design_is_slot_flag() {
-    let d = Design::from_json(&fixture("slots_design.json")).expect("parse slots");
-    let top = &d.tasks["TopTask"];
-    assert!(!top.is_slot, "TopTask is not a slot");
-    let slot = &d.tasks["SlotTask"];
-    assert!(slot.is_slot, "SlotTask is a slot");
-}
-
-#[test]
-fn slots_floorplan_region() {
-    let d = Design::from_json(&fixture("slots_design.json")).expect("parse");
-    let regions = d.slot_task_name_to_fp_region.as_ref().expect("has regions");
-    assert_eq!(regions["SlotTask"], "SLOT_X0Y0:SLOT_X0Y0");
-}
-
 // ── Round-trip tests ────────────────────────────────────────────────
 
 #[test]
@@ -107,22 +162,89 @@ fn vadd_round_trip() {
     assert_eq!(d1.tasks.len(), d2.tasks.len(), "task count round-trips");
 }
 
+/// Byte-exact re-emission: parsing the canonical payload and serializing
+/// it back must reproduce the input byte-for-byte.
+///
+/// This pins the wire-shape invariant documented on `tapa_ir::graph`.
+/// A field reordered, renamed, or dropped on `TaskGraph` / `Task` /
+/// `Port` / `TaskInstance` / `InterconnectDefinition` — or a
+/// `skip_serializing_if` gained or lost — changes the emitted bytes and
+/// fails here, which a field-count or top-level-only assertion cannot
+/// catch.
 #[test]
-fn slots_round_trip() {
-    let json = fixture("slots_design.json");
-    let d1 = Design::from_json(&json).expect("parse 1");
-    let serialized = to_json(&d1);
-    let d2 = Design::from_json(&serialized).expect("parse 2");
-    assert_eq!(d1.tasks["SlotTask"].is_slot, d2.tasks["SlotTask"].is_slot);
+fn round_trip_byte_equal() {
+    let json = canonical_design_json();
+    let design = Design::from_json(json).expect("parse canonical design.json");
     assert_eq!(
-        d1.slot_task_name_to_fp_region,
-        d2.slot_task_name_to_fp_region
+        to_state_json(&design),
+        json,
+        "round-trip must preserve the byte sequence",
     );
 }
 
-/// Replaces the pre-`tapa-ir` `unknown_fields_preserved` test: the
-/// design model is now fully typed with `deny_unknown_fields`, so
-/// unknown fields are rejected instead of round-tripped.
+/// `tasks` is a `BTreeMap`, so keys come out alphabetically — the sorted
+/// order `tapa analyze` writes — regardless of the order they arrived in.
+/// The payload here lists `VecAdd` before `Add` on purpose: an insertion-
+/// ordered map (`IndexMap`) would echo the input order and fail.
+#[test]
+fn task_order_preserved() {
+    let json = concat!(
+        r#"{"top": "VecAdd", "target": "xilinx-hls", "cflags": [], "tasks": {"#,
+        r#""VecAdd": {"level": "upper", "code": "", "readable_name": "VecAdd", "#,
+        r#""synth": "hls", "ports": [], "tasks": {}, "fifos": {}}, "#,
+        r#""Add": {"level": "lower", "code": "", "readable_name": "Add", "#,
+        r#""synth": "hls", "ports": [], "tasks": {}, "fifos": {}}}}"#,
+    );
+    let design = Design::from_json(json).expect("parse");
+    let names: Vec<&str> = design.tasks.keys().map(String::as_str).collect();
+    assert_eq!(
+        names,
+        vec!["Add", "VecAdd"],
+        "task keys must sort alphabetically, not follow input order",
+    );
+
+    // The emitted form is sorted too, not just the in-memory map.
+    let reparsed = Design::from_json(&to_state_json(&design)).expect("reparse");
+    let emitted: Vec<&str> = reparsed.tasks.keys().map(String::as_str).collect();
+    assert_eq!(emitted, vec!["Add", "VecAdd"], "sorted order survives emit");
+}
+
+/// `from_reader` is the live parse entry point (`tapa-cli` reads
+/// `design.json` through it), so it gets direct coverage.
+#[test]
+fn from_reader_works() {
+    let json = canonical_design_json();
+    let design = Design::from_reader(json.as_bytes()).expect("from_reader");
+    assert_eq!(design.top, "VecAdd", "top");
+    assert_eq!(design.target.as_str(), "xilinx-vitis", "target");
+    assert_eq!(design.tasks.len(), 2, "task count");
+}
+
+/// `Task` carries `deny_unknown_fields`: an unknown *per-task* field is a
+/// malformed graph, not something to round-trip through an `extra` bag.
+/// The error must also carry the `tasks.<name>` path pointer that makes a
+/// deep schema error actionable.
+#[test]
+fn unknown_task_field_rejected() {
+    let json = concat!(
+        r#"{"top": "T", "target": "xilinx-hls", "cflags": [], "tasks": {"#,
+        r#""T": {"level": "lower", "code": "", "readable_name": "T", "synth": "hls", "#,
+        r#""ports": [], "tasks": {}, "fifos": {}, "bogus_field": 1}}}"#,
+    );
+    let err = Design::from_json(json).expect_err("unknown task field must fail");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("bogus_field") || msg.contains("unknown field"),
+        "error must mention the offending field; got {msg}",
+    );
+    assert!(
+        msg.contains("tasks.T"),
+        "error must include a path pointer; got {msg}",
+    );
+}
+
+/// The design model is fully typed with `deny_unknown_fields`, so unknown
+/// fields are rejected instead of round-tripped.
 #[test]
 fn unknown_top_level_field_rejected() {
     let json = r#"{
@@ -169,10 +291,21 @@ fn missing_top_field() {
 }
 
 #[test]
+fn missing_root_target_field() {
+    let json = r#"{"top": "T", "tasks": {}}"#;
+    let err = Design::from_json(json).unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("target") || msg.contains("missing"),
+        "error about target: {msg}"
+    );
+}
+
+#[test]
 fn invalid_level() {
     let json = r#"{
         "top": "T", "target": "xilinx-hls",
-        "tasks": {"T": {"level": "invalid", "code": "", "target": "hls"}}
+        "tasks": {"T": {"level": "invalid", "code": "", "synth": "hls"}}
     }"#;
     let err = Design::from_json(json).unwrap_err();
     let msg = err.to_string();
@@ -192,7 +325,7 @@ fn empty_input() {
 fn invalid_port_category_rejected() {
     let json = r#"{
         "top": "T", "target": "xilinx-hls",
-        "tasks": {"T": {"level": "lower", "code": "", "target": "hls",
+        "tasks": {"T": {"level": "lower", "code": "", "synth": "hls",
             "ports": [{"cat": "not_a_real_cat", "name": "x", "type": "int", "width": 32}]}}
     }"#;
     let err = Design::from_json(json).unwrap_err();
@@ -207,7 +340,7 @@ fn invalid_port_category_rejected() {
 fn invalid_instance_arg_category_rejected() {
     let json = r#"{
         "top": "T", "target": "xilinx-hls",
-        "tasks": {"T": {"level": "upper", "code": "", "target": "hls",
+        "tasks": {"T": {"level": "upper", "code": "", "synth": "hls",
             "tasks": {"C": [{"args": {"p": {"arg": "x", "cat": "bogus"}}, "step": 0}]},
             "fifos": {}}}
     }"#;
@@ -220,11 +353,28 @@ fn invalid_instance_arg_category_rejected() {
 }
 
 #[test]
+fn unknown_task_synth_policy_rejected() {
+    // The closed `SynthTarget` enum rejects the old flow-derived task
+    // targets: only `"hls"` / `"ignore"` are valid per-task values now.
+    let json = r#"{
+        "top": "T", "target": "xilinx-hls",
+        "tasks": {"T": {"level": "lower", "code": "", "synth": "xilinx_vitis"}}
+    }"#;
+    let err = Design::from_json(json).unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("xilinx_vitis") || msg.contains("synth") || msg.contains("unknown"),
+        "error about invalid synth policy: {msg}"
+    );
+}
+
+#[test]
 fn hmap_port_category_round_trips_as_mmap() {
     let json = r#"{
         "top": "T", "target": "xilinx-hls",
-        "tasks": {"T": {"name": "T", "level": "lower", "code": "", "target": "hls",
-            "is_slot": false, "clock_period": "0",
+        "tasks": {"T": {"level": "lower", "code": "", "synth": "hls",
+            "readable_name": "T",
+            "clock_period": "0",
             "ports": [{"cat": "hmap", "name": "data", "type": "float*", "width": 32}]}}
     }"#;
     let d = Design::from_json(json).expect("parse hmap port");

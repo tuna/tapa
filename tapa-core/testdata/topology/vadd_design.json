@@ -1,14 +1,11 @@
 {
-    "slot_task_name_to_fp_region": null,
     "target": "xilinx-hls",
     "tasks": {
         "Add": {
             "clock_period": "3.125",
             "code": "void Add() {}",
             "fifos": {},
-            "is_slot": false,
             "level": "lower",
-            "name": "Add",
             "ports": [
                 {
                     "cat": "istream",
@@ -35,12 +32,13 @@
                     "width": 64
                 }
             ],
+            "readable_name": "Add",
             "self_area": {
                 "DSP": 2,
                 "FF": 100,
                 "LUT": 200
             },
-            "target": "hls",
+            "synth": "hls",
             "tasks": {},
             "total_area": {
                 "DSP": 2,
@@ -52,9 +50,7 @@
             "clock_period": "2.342",
             "code": "void Mmap2Stream() {}",
             "fifos": {},
-            "is_slot": false,
             "level": "lower",
-            "name": "Mmap2Stream",
             "ports": [
                 {
                     "cat": "mmap",
@@ -69,11 +65,12 @@
                     "width": 32
                 }
             ],
+            "readable_name": "Mmap2Stream",
             "self_area": {
                 "FF": 502,
                 "LUT": 414
             },
-            "target": "hls",
+            "synth": "hls",
             "tasks": {},
             "total_area": {
                 "FF": 502,
@@ -84,9 +81,7 @@
             "clock_period": "0",
             "code": "void Stream2Mmap() {}",
             "fifos": {},
-            "is_slot": false,
             "level": "lower",
-            "name": "Stream2Mmap",
             "ports": [
                 {
                     "cat": "istream",
@@ -101,8 +96,9 @@
                     "width": 32
                 }
             ],
+            "readable_name": "Stream2Mmap",
             "self_area": {},
-            "target": "hls",
+            "synth": "hls",
             "tasks": {},
             "total_area": {}
         },
@@ -144,9 +140,7 @@
                     ]
                 }
             },
-            "is_slot": false,
             "level": "upper",
-            "name": "VecAdd",
             "ports": [
                 {
                     "cat": "mmap",
@@ -173,8 +167,9 @@
                     "width": 64
                 }
             ],
+            "readable_name": "VecAdd",
             "self_area": {},
-            "target": "hls",
+            "synth": "hls",
             "tasks": {
                 "Add": [
                     {

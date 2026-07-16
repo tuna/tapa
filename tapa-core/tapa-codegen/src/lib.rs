@@ -48,7 +48,7 @@ pub fn generate_rtl(state: &mut TopologyWithRtl) -> Result<(), CodegenError> {
     // the user authors the replacement RTL.
     for task_name in &task_names {
         let task = &state.design.tasks[task_name];
-        if task.target != Some(SynthTarget::Ignore) {
+        if task.synth != SynthTarget::Ignore {
             continue;
         }
         let source = template::render_task_template(task_name, task);
@@ -61,7 +61,7 @@ pub fn generate_rtl(state: &mut TopologyWithRtl) -> Result<(), CodegenError> {
 
     for task_name in &task_names {
         let task = &state.design.tasks[task_name];
-        if task.target == Some(SynthTarget::Ignore) {
+        if task.synth == SynthTarget::Ignore {
             let template = state.module_map[task_name].emit();
             state
                 .template_files
@@ -78,9 +78,12 @@ pub fn generate_rtl(state: &mut TopologyWithRtl) -> Result<(), CodegenError> {
     // their original Verilog sources by the CLI; re-emitting them from the
     // parsed model drops legal port-reg redeclarations used by HLS.
     for (name, mm) in &state.module_map {
-        if state.design.tasks.get(name.as_str()).is_some_and(|task| {
-            task.level == TaskLevel::Upper || task.target == Some(SynthTarget::Ignore)
-        }) {
+        if state
+            .design
+            .tasks
+            .get(name.as_str())
+            .is_some_and(|task| task.level == TaskLevel::Upper || task.synth == SynthTarget::Ignore)
+        {
             state.generated_files.insert(format!("{name}.v"), mm.emit());
         }
     }
@@ -231,33 +234,9 @@ fn instrument_upper_task(state: &mut TopologyWithRtl, task_name: &str) -> Result
     Ok(())
 }
 
-/// Test-only: parse a [`tapa_ir::Design`] from fixture JSON, filling
-/// the per-task metadata fields (`name`, `is_slot`, `clock_period`)
-/// that the pre-`tapa-ir` untyped model tolerated omitting and RTL
-/// generation never reads. The filled values match what `tapa analyze`
-/// writes for every task.
+/// Test-only: parse a [`tapa_ir::Design`] from fixture JSON.
 #[cfg(test)]
-pub(crate) fn design_from_fixture_json(mut value: serde_json::Value) -> tapa_ir::Design {
-    if let Some(tasks) = value
-        .get_mut("tasks")
-        .and_then(serde_json::Value::as_object_mut)
-    {
-        let names: Vec<String> = tasks.keys().cloned().collect();
-        for name in names {
-            let Some(obj) = tasks
-                .get_mut(&name)
-                .and_then(serde_json::Value::as_object_mut)
-            else {
-                continue;
-            };
-            obj.entry("name")
-                .or_insert_with(|| serde_json::Value::String(name.clone()));
-            obj.entry("is_slot")
-                .or_insert(serde_json::Value::Bool(false));
-            obj.entry("clock_period")
-                .or_insert_with(|| serde_json::Value::String("0".to_string()));
-        }
-    }
+pub(crate) fn design_from_fixture_json(value: serde_json::Value) -> tapa_ir::Design {
     serde_json::from_value(value).expect("valid design fixture JSON")
 }
 

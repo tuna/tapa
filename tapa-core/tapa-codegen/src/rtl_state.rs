@@ -420,9 +420,10 @@ mod tests {
             "target": "xilinx-hls",
             "tasks": {
                 "top_task": {
+                    "readable_name": "top_task",
                     "level": "upper",
                     "code": "",
-                    "target": "hls",
+                    "synth": "hls",
                     "ports": [],
                     "tasks": {
                         "child_a": [{"args": {"data": {"arg": "data", "cat": "istream"}}}]
@@ -430,9 +431,10 @@ mod tests {
                     "fifos": {}
                 },
                 "child_a": {
+                    "readable_name": "child_a",
                     "level": "lower",
                     "code": "",
-                    "target": "hls",
+                    "synth": "hls",
                     "ports": [{"cat": "istream", "name": "data", "type": "float", "width": 32}],
                     "tasks": {},
                     "fifos": {}
@@ -453,9 +455,10 @@ mod tests {
             "target": "xilinx-hls",
             "tasks": {
                 "top": {
+                    "readable_name": "top",
                     "level": "upper",
                     "code": "",
-                    "target": "hls",
+                    "synth": "hls",
                     "ports": [{
                         "cat": "mmap",
                         "name": "elems",
@@ -472,9 +475,10 @@ mod tests {
                     "fifos": {}
                 },
                 "leaf": {
+                    "readable_name": "leaf",
                     "level": "lower",
                     "code": "",
-                    "target": "hls",
+                    "synth": "hls",
                     "ports": [{
                         "cat": "mmap",
                         "name": "data",
@@ -549,9 +553,10 @@ mod tests {
             "target": "xilinx-hls",
             "tasks": {
                 "top": {
+                    "readable_name": "top",
                     "level": "upper",
                     "code": "",
-                    "target": "hls",
+                    "synth": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "elems", "type": "float*", "width": 32}
                     ],
@@ -561,9 +566,10 @@ mod tests {
                     "fifos": {}
                 },
                 "mid": {
+                    "readable_name": "mid",
                     "level": "upper",
                     "code": "",
-                    "target": "hls",
+                    "synth": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "data", "type": "float*", "width": 32}
                     ],
@@ -607,9 +613,10 @@ mod tests {
             "target": "xilinx-hls",
             "tasks": {
                 "top": {
+                    "readable_name": "top",
                     "level": "upper",
                     "code": "",
-                    "target": "hls",
+                    "synth": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "elems", "type": "float*", "width": 32}
                     ],
@@ -620,9 +627,10 @@ mod tests {
                     "fifos": {}
                 },
                 "mid": {
+                    "readable_name": "mid",
                     "level": "upper",
                     "code": "",
-                    "target": "hls",
+                    "synth": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "data", "type": "float*", "width": 32}
                     ],
@@ -635,9 +643,10 @@ mod tests {
                     "fifos": {}
                 },
                 "leaf": {
+                    "readable_name": "leaf",
                     "level": "lower",
                     "code": "",
-                    "target": "hls",
+                    "synth": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "d", "type": "float*", "width": 32}
                     ],
@@ -670,9 +679,10 @@ mod tests {
             "target": "xilinx-hls",
             "tasks": {
                 "top": {
+                    "readable_name": "top",
                     "level": "upper",
                     "code": "",
-                    "target": "hls",
+                    "synth": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "elems", "type": "float*", "width": 32,
                          "chan_count": 2, "chan_size": 1024}
@@ -683,9 +693,10 @@ mod tests {
                     "fifos": {}
                 },
                 "mid": {
+                    "readable_name": "mid",
                     "level": "upper",
                     "code": "",
-                    "target": "hls",
+                    "synth": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "data", "type": "float*", "width": 32}
                     ],
@@ -698,9 +709,10 @@ mod tests {
                     "fifos": {}
                 },
                 "leaf": {
+                    "readable_name": "leaf",
                     "level": "lower",
                     "code": "",
-                    "target": "hls",
+                    "synth": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "d", "type": "float*", "width": 32}
                     ],
@@ -724,9 +736,10 @@ mod tests {
             "target": "xilinx-hls",
             "tasks": {
                 "top": {
+                    "readable_name": "top",
                     "level": "upper",
                     "code": "",
-                    "target": "hls",
+                    "synth": "hls",
                     "ports": [],
                     "tasks": {
                         "chan_leaf": [{"args": {"d": {"arg": "elems", "cat": "mmap"}}}],
@@ -735,9 +748,10 @@ mod tests {
                     "fifos": {}
                 },
                 "chan_leaf": {
+                    "readable_name": "chan_leaf",
                     "level": "lower",
                     "code": "",
-                    "target": "hls",
+                    "synth": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "d", "type": "float*", "width": 32,
                          "chan_count": 2, "chan_size": 1024}
@@ -746,9 +760,10 @@ mod tests {
                     "fifos": {}
                 },
                 "plain_leaf": {
+                    "readable_name": "plain_leaf",
                     "level": "lower",
                     "code": "",
-                    "target": "hls",
+                    "synth": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "d", "type": "float*", "width": 32}
                     ],
@@ -772,9 +787,10 @@ mod tests {
             "target": "xilinx-hls",
             "tasks": {
                 "top": {
+                    "readable_name": "top",
                     "level": "upper",
                     "code": "",
-                    "target": "hls",
+                    "synth": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "elems", "type": "long*", "width": 64}
                     ],
@@ -784,9 +800,10 @@ mod tests {
                     "fifos": {}
                 },
                 "leaf": {
+                    "readable_name": "leaf",
                     "level": "lower",
                     "code": "",
-                    "target": "hls",
+                    "synth": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "data", "type": "int*", "width": 32}
                     ],
@@ -845,9 +862,10 @@ mod tests {
             "target": "xilinx-hls",
             "tasks": {
                 "top": {
+                    "readable_name": "top",
                     "level": "upper",
                     "code": "",
-                    "target": "hls",
+                    "synth": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "elems", "type": "float*", "width": 32}
                     ],
@@ -857,9 +875,10 @@ mod tests {
                     "fifos": {}
                 },
                 "mid": {
+                    "readable_name": "mid",
                     "level": "upper",
                     "code": "",
-                    "target": "hls",
+                    "synth": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "data", "type": "float*", "width": 32}
                     ],
@@ -872,9 +891,10 @@ mod tests {
                     "fifos": {}
                 },
                 "leaf": {
+                    "readable_name": "leaf",
                     "level": "lower",
                     "code": "",
-                    "target": "hls",
+                    "synth": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "mmap", "type": "float*", "width": 32}
                     ],
@@ -900,9 +920,10 @@ mod tests {
             "target": "xilinx-hls",
             "tasks": {
                 "top": {
+                    "readable_name": "top",
                     "level": "upper",
                     "code": "",
-                    "target": "hls",
+                    "synth": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "elems", "type": "float*", "width": 32}
                     ],
@@ -913,9 +934,10 @@ mod tests {
                     "fifos": {}
                 },
                 "mid": {
+                    "readable_name": "mid",
                     "level": "upper",
                     "code": "",
-                    "target": "hls",
+                    "synth": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "data", "type": "float*", "width": 32}
                     ],
@@ -928,9 +950,10 @@ mod tests {
                     "fifos": {}
                 },
                 "leaf": {
+                    "readable_name": "leaf",
                     "level": "lower",
                     "code": "",
-                    "target": "hls",
+                    "synth": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "mmap", "type": "float*", "width": 32}
                     ],
