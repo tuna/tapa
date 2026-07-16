@@ -10,6 +10,11 @@ cc_library(
 )
 
 cc_library(
+    name = "schema_fields",
+    hdrs = ["schema_fields.h"],
+)
+
+cc_library(
     name = "code_sink",
     hdrs = ["code_sink.h"],
     deps = ["@tapa-llvm-project//llvm:Support"],

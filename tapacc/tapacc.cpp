@@ -36,6 +36,7 @@
 
 #include "codegen/ignore.h"
 #include "codegen/rewrite.h"
+#include "codegen/schema_fields.h"
 #include "codegen/xilinx.h"
 #include "frontend/build_program.h"
 #include "frontend/classify.h"
@@ -43,14 +44,7 @@
 
 namespace {
 
-using tapa::cc::Arg;
-using tapa::cc::Instance;
-using tapa::cc::Port;
-using tapa::cc::StreamDecl;
-using tapa::cc::SynthTarget;
-using tapa::cc::TapaKindCat;
-using tapa::cc::TaskLevel;
-using tapa::cc::TaskModel;
+using namespace tapa::cc;
 
 const char* LevelStr(TaskLevel level) {
   return level == TaskLevel::kUpper ? "upper" : "lower";
@@ -80,34 +74,35 @@ const char* FlowStr(bool is_vitis) {
 }
 
 nlohmann::json PortJson(const Port& port) {
-  nlohmann::json j{{"cat", TapaKindCat(port.kind)},
-                   {"name", port.name},
-                   {"type", port.ctype},
-                   {"width", port.width}};
-  if (port.chan_count) j["chan_count"] = *port.chan_count;
-  if (port.chan_size) j["chan_size"] = *port.chan_size;
+  nlohmann::json j{{kFieldCat, TapaKindCat(port.kind)},
+                   {kFieldName, port.name},
+                   {kFieldType, port.ctype},
+                   {kFieldWidth, port.width}};
+  if (port.chan_count) j[kFieldChanCount] = *port.chan_count;
+  if (port.chan_size) j[kFieldChanSize] = *port.chan_size;
   return j;
 }
 
 nlohmann::json InstanceJson(const Instance& inst) {
   nlohmann::json j;
-  j["step"] = inst.step;
-  if (inst.name) j["name"] = *inst.name;
-  j["args"] = nlohmann::json::object();
+  j[kFieldStep] = inst.step;
+  if (inst.name) j[kFieldName] = *inst.name;
+  j[kFieldArgs] = nlohmann::json::object();
   for (const auto& [port, arg] : inst.args) {
-    j["args"][port] = {{"arg", arg.arg}, {"cat", TapaKindCat(arg.cat)}};
+    j[kFieldArgs][port] = {{kFieldArg, arg.arg},
+                           {kFieldCat, TapaKindCat(arg.cat)}};
   }
   return j;
 }
 
 nlohmann::json StreamJson(const StreamDecl& stream) {
   nlohmann::json j;
-  j["depth"] = stream.depth;
+  j[kFieldDepth] = stream.depth;
   if (stream.produced_by) {
-    j["produced_by"] = {stream.produced_by->task, stream.produced_by->index};
+    j[kFieldProducedBy] = {stream.produced_by->task, stream.produced_by->index};
   }
   if (stream.consumed_by) {
-    j["consumed_by"] = {stream.consumed_by->task, stream.consumed_by->index};
+    j[kFieldConsumedBy] = {stream.consumed_by->task, stream.consumed_by->index};
   }
   return j;
 }
@@ -140,31 +135,32 @@ class NgConsumer : public clang::ASTConsumer {
     const IgnoreBackend ignore;
 
     nlohmann::json out;
-    out["top"] = program.top;
-    out["target"] = FlowStr(is_vitis);
-    out["tasks"] = nlohmann::json::object();
+    out[kFieldTop] = program.top;
+    out[kFieldTarget] = FlowStr(is_vitis);
+    out[kFieldTasks] = nlohmann::json::object();
     for (const auto& [name, task] : program.tasks) {
       const Backend* backend = &hls;
       if (task.target == SynthTarget::kXilinxVitis) backend = &vitis;
       if (task.target == SynthTarget::kIgnore) backend = &ignore;
 
-      nlohmann::json& t = out["tasks"][name];
-      t["code"] = EmitTaskCode(program, task, *backend, ctx);
-      t["level"] = LevelStr(task.level);
-      t["synth"] = SynthStr(task.target);
-      t["readable_name"] = task.readable_name;
-      t["ports"] = nlohmann::json::array();
-      for (const Port& port : task.ports) t["ports"].push_back(PortJson(port));
+      nlohmann::json& t = out[kFieldTasks][name];
+      t[kFieldCode] = EmitTaskCode(program, task, *backend, ctx);
+      t[kFieldLevel] = LevelStr(task.level);
+      t[kFieldSynth] = SynthStr(task.target);
+      t[kFieldReadableName] = task.readable_name;
+      t[kFieldPorts] = nlohmann::json::array();
+      for (const Port& port : task.ports)
+        t[kFieldPorts].push_back(PortJson(port));
       if (task.level == TaskLevel::kUpper) {
-        t["tasks"] = nlohmann::json::object();
+        t[kFieldTasks] = nlohmann::json::object();
         for (const auto& [child, insts] : task.instances) {
           nlohmann::json arr = nlohmann::json::array();
           for (const Instance& inst : insts) arr.push_back(InstanceJson(inst));
-          t["tasks"][child] = std::move(arr);
+          t[kFieldTasks][child] = std::move(arr);
         }
-        t["fifos"] = nlohmann::json::object();
+        t[kFieldFifos] = nlohmann::json::object();
         for (const auto& [fifo, stream] : task.streams) {
-          t["fifos"][fifo] = StreamJson(stream);
+          t[kFieldFifos][fifo] = StreamJson(stream);
         }
       }
     }

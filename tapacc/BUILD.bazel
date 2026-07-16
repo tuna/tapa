@@ -15,6 +15,7 @@ cc_binary(
     deps = [
         "//tapacc/codegen:ignore",
         "//tapacc/codegen:rewrite",
+        "//tapacc/codegen:schema_fields",
         "//tapacc/codegen:xilinx",
         "//tapacc/frontend:build_program",
         "//tapacc/frontend:classify",
