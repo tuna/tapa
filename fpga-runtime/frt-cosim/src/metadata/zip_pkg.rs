@@ -46,15 +46,41 @@ pub fn spec_from_task_graph(graph: &TaskGraph) -> Result<KernelSpec> {
             // `is_mmap_like` deliberately not used: it also covers `immap` /
             // `ommap`, which this reader has never accepted (see below).
             ArgCategory::Mmap | ArgCategory::AsyncMmap => {
-                args.push(ArgSpec {
-                    name: name.to_owned(),
-                    id: next_id,
-                    kind: ArgKind::Mmap {
-                        data_width: width,
-                        addr_width: MMAP_ADDR_WIDTH,
-                    },
-                });
-                next_id += 1;
+                let kind = ArgKind::Mmap {
+                    data_width: width,
+                    addr_width: MMAP_ADDR_WIDTH,
+                };
+                // `chan_count` is what makes an mmap port an `hmap`: the
+                // frontend fills it in for `hmap` and nothing else, so a plain
+                // mmap always leaves it unset (a `Some(1)` hmap is still an
+                // hmap). An `hmap<T, N, S>` is one host buffer that the host
+                // splits into N kernel m_axi arguments named `{name}_{i}` --
+                // the same fan-out `tapa pack` projects into `kernel.xml` and
+                // `tapa-codegen` wires to the AXI crossbar. Binding one
+                // argument here would bind the wrong ports *and* shift every
+                // later argument's id.
+                if let Some(hmap_chans) = port.chan_count {
+                    if hmap_chans == 0 {
+                        return Err(CosimError::Metadata(format!(
+                            "hmap channel count is 0 for argument '{name}'"
+                        )));
+                    }
+                    for i in 0..hmap_chans {
+                        args.push(ArgSpec {
+                            name: format!("{name}_{i}"),
+                            id: next_id,
+                            kind: kind.clone(),
+                        });
+                        next_id += 1;
+                    }
+                } else {
+                    args.push(ArgSpec {
+                        name: name.to_owned(),
+                        id: next_id,
+                        kind,
+                    });
+                    next_id += 1;
+                }
             }
             ArgCategory::Istream | ArgCategory::Ostream => {
                 args.push(ArgSpec {
