@@ -5,14 +5,69 @@ use crate::rtl_state::TopologyWithRtl;
 use tapa_ir::Design;
 use tapa_rtl::VerilogModule;
 
-/// Helper: build a minimal `Design` from a JSON value.
-fn program_from_json(json: serde_json::Value) -> Design {
-    design_from_fixture_json(json)
-}
-
 /// Helper: parse a minimal Verilog module source.
 fn parse_module(src: &str) -> VerilogModule {
     VerilogModule::parse(src).expect("valid Verilog")
+}
+
+// ── Design-fixture builder ──────────────────────────────────────────
+//
+// Every test needs a `Design` built from the tapa-ir wire schema. The
+// raw `json!` literals repeat the same defaults (`readable_name`, `level`,
+// `code: ""`, `synth: "hls"`, `ports: []`, `tasks: {}`, `fifos: {}`) for
+// every task. These helpers fill the defaults so tests only state what
+// varies. `design` assembles the root envelope; `plain`/`task` build one
+// task; `attach_basic_modules` attaches the standard ap_clk/ap_rst_n
+// module to a set of tasks.
+
+/// Build a `Design` from `(name, task_json)` pairs, wrapped in the
+/// standard `{"top", "target", "tasks"}` envelope.
+fn design(top: &str, target: &str, tasks: &[(&str, serde_json::Value)]) -> Design {
+    let tasks: serde_json::Value = tasks
+        .iter()
+        .map(|(name, t)| (name.to_string(), t.clone()))
+        .collect::<serde_json::Map<String, serde_json::Value>>()
+        .into();
+    design_from_fixture_json(serde_json::json!({
+        "top": top,
+        "target": target,
+        "tasks": tasks,
+    }))
+}
+
+/// A task with all defaults (no ports, children, or fifos).
+fn plain(name: &str, level: &str) -> serde_json::Value {
+    task(name, level, |_| {})
+}
+
+/// A task with defaults, plus overrides applied by `f` to the JSON object.
+/// `f` receives the task JSON and may set `ports` / `tasks` / `fifos`.
+fn task(name: &str, level: &str, f: impl FnOnce(&mut serde_json::Value)) -> serde_json::Value {
+    let mut t = serde_json::json!({
+        "readable_name": name,
+        "level": level,
+        "code": "",
+        "synth": "hls",
+        "ports": [],
+        "tasks": {},
+        "fifos": {},
+    });
+    f(&mut t);
+    t
+}
+
+/// The standard minimal module source (`ap_clk` + `ap_rst_n` only).
+fn basic_module_src(name: &str) -> String {
+    format!("module {name}(\n  input wire ap_clk,\n  input wire ap_rst_n\n);\nendmodule")
+}
+
+/// Attach `basic_module_src` to each task in `names`.
+fn attach_basic_modules(state: &mut TopologyWithRtl, names: &[&str]) {
+    for name in names {
+        state
+            .attach_module(name, parse_module(&basic_module_src(name)))
+            .unwrap();
+    }
 }
 
 // ------------------------------------------------------------------
@@ -21,50 +76,17 @@ fn parse_module(src: &str) -> VerilogModule {
 
 #[test]
 fn test_generate_rtl_simple_design() {
-    let prog = program_from_json(serde_json::json!({
-        "top": "top",
-        "target": "xilinx-hls",
-        "tasks": {
-            "top": {
-                "readable_name": "top",
-                "level": "upper",
-                "code": "",
-                "synth": "hls",
-                "ports": [],
-                "tasks": {
-                    "child": [{"args": {}}]
-                },
-                "fifos": {}
-            },
-            "child": {
-                "readable_name": "child",
-                "level": "lower",
-                "code": "",
-                "synth": "hls",
-                "ports": [],
-                "tasks": {},
-                "fifos": {}
-            }
-        }
-    }));
+    let top = task("top", "upper", |t| {
+        t["tasks"] = serde_json::json!({"child": [{"args": {}}]});
+    });
+    let prog = design(
+        "top",
+        "xilinx-hls",
+        &[("top", top), ("child", plain("child", "lower"))],
+    );
 
     let mut state = TopologyWithRtl::new(prog);
-
-    // Attach Verilog modules for both tasks
-    state
-        .attach_module(
-            "top",
-            parse_module("module top(\n  input wire ap_clk,\n  input wire ap_rst_n\n);\nendmodule"),
-        )
-        .unwrap();
-    state
-        .attach_module(
-            "child",
-            parse_module(
-                "module child(\n  input wire ap_clk,\n  input wire ap_rst_n\n);\nendmodule",
-            ),
-        )
-        .unwrap();
+    attach_basic_modules(&mut state, &["top", "child"]);
 
     generate_rtl(&mut state).unwrap();
 
@@ -105,48 +127,17 @@ fn test_generate_rtl_simple_design() {
 
 #[test]
 fn test_generate_rtl_autorun_fsm_start_is_reg_output() {
-    let prog = program_from_json(serde_json::json!({
-        "top": "top",
-        "target": "xilinx-hls",
-        "tasks": {
-            "top": {
-                "readable_name": "top",
-                "level": "upper",
-                "code": "",
-                "synth": "hls",
-                "ports": [],
-                "tasks": {
-                    "child": [{"step": -1, "args": {}}]
-                },
-                "fifos": {}
-            },
-            "child": {
-                "readable_name": "child",
-                "level": "lower",
-                "code": "",
-                "synth": "hls",
-                "ports": [],
-                "tasks": {},
-                "fifos": {}
-            }
-        }
-    }));
+    let top = task("top", "upper", |t| {
+        t["tasks"] = serde_json::json!({"child": [{"step": -1, "args": {}}]});
+    });
+    let prog = design(
+        "top",
+        "xilinx-hls",
+        &[("top", top), ("child", plain("child", "lower"))],
+    );
 
     let mut state = TopologyWithRtl::new(prog);
-    state
-        .attach_module(
-            "top",
-            parse_module("module top(\n  input wire ap_clk,\n  input wire ap_rst_n\n);\nendmodule"),
-        )
-        .unwrap();
-    state
-        .attach_module(
-            "child",
-            parse_module(
-                "module child(\n  input wire ap_clk,\n  input wire ap_rst_n\n);\nendmodule",
-            ),
-        )
-        .unwrap();
+    attach_basic_modules(&mut state, &["top", "child"]);
 
     generate_rtl(&mut state).unwrap();
 
@@ -172,48 +163,17 @@ fn test_generate_rtl_autorun_fsm_start_is_reg_output() {
 
 #[test]
 fn test_generate_rtl_fsm_uses_explicit_instance_names() {
-    let prog = program_from_json(serde_json::json!({
-        "top": "top",
-        "target": "xilinx-hls",
-        "tasks": {
-            "top": {
-                "readable_name": "top",
-                "level": "upper",
-                "code": "",
-                "synth": "hls",
-                "ports": [],
-                "tasks": {
-                    "child": [{"name": "child_7", "step": -1, "args": {}}]
-                },
-                "fifos": {}
-            },
-            "child": {
-                "readable_name": "child",
-                "level": "lower",
-                "code": "",
-                "synth": "hls",
-                "ports": [],
-                "tasks": {},
-                "fifos": {}
-            }
-        }
-    }));
+    let top = task("top", "upper", |t| {
+        t["tasks"] = serde_json::json!({"child": [{"name": "child_7", "step": -1, "args": {}}]});
+    });
+    let prog = design(
+        "top",
+        "xilinx-hls",
+        &[("top", top), ("child", plain("child", "lower"))],
+    );
 
     let mut state = TopologyWithRtl::new(prog);
-    state
-        .attach_module(
-            "top",
-            parse_module("module top(\n  input wire ap_clk,\n  input wire ap_rst_n\n);\nendmodule"),
-        )
-        .unwrap();
-    state
-        .attach_module(
-            "child",
-            parse_module(
-                "module child(\n  input wire ap_clk,\n  input wire ap_rst_n\n);\nendmodule",
-            ),
-        )
-        .unwrap();
+    attach_basic_modules(&mut state, &["top", "child"]);
 
     generate_rtl(&mut state).unwrap();
 
@@ -235,40 +195,17 @@ fn test_generate_rtl_fsm_uses_explicit_instance_names() {
 
 #[test]
 fn test_generate_rtl_sanitizes_explicit_instance_names() {
-    let prog = program_from_json(serde_json::json!({
-        "top": "top",
-        "target": "xilinx-hls",
-        "tasks": {
-            "top": {
-                "readable_name": "top",
-                "level": "upper",
-                "code": "",
-                "synth": "hls",
-                "ports": [],
-                "tasks": {
-                    "child": [{"name": "Module1Func#1", "args": {}}]
-                },
-                "fifos": {}
-            },
-            "child": {
-                "readable_name": "child",
-                "level": "lower",
-                "code": "",
-                "synth": "hls",
-                "ports": [],
-                "tasks": {},
-                "fifos": {}
-            }
-        }
-    }));
+    let top = task("top", "upper", |t| {
+        t["tasks"] = serde_json::json!({"child": [{"name": "Module1Func#1", "args": {}}]});
+    });
+    let prog = design(
+        "top",
+        "xilinx-hls",
+        &[("top", top), ("child", plain("child", "lower"))],
+    );
 
     let mut state = TopologyWithRtl::new(prog);
-    state
-        .attach_module(
-            "top",
-            parse_module("module top(\n  input wire ap_clk,\n  input wire ap_rst_n\n);\nendmodule"),
-        )
-        .unwrap();
+    attach_basic_modules(&mut state, &["top"]);
     state
         .attach_module(
             "child",
@@ -298,42 +235,19 @@ fn test_generate_rtl_sanitizes_explicit_instance_names() {
 
 #[test]
 fn test_generate_rtl_child_scalar_pipeline_preserves_width() {
-    let prog = program_from_json(serde_json::json!({
-        "top": "top",
-        "target": "xilinx-hls",
-        "tasks": {
-            "top": {
-                "readable_name": "top",
-                "level": "upper",
-                "code": "",
-                "synth": "hls",
-                "ports": [],
-                "tasks": {
-                    "child": [{"args": {"pe_id": {"arg": "1", "cat": "scalar"}}}]
-                },
-                "fifos": {}
-            },
-            "child": {
-                "readable_name": "child",
-                "level": "lower",
-                "code": "",
-                "synth": "hls",
-                "ports": [
-                    {"cat": "scalar", "name": "pe_id", "type": "uint32_t", "width": 32}
-                ],
-                "tasks": {},
-                "fifos": {}
-            }
-        }
-    }));
+    let top = task("top", "upper", |t| {
+        t["tasks"] =
+            serde_json::json!({"child": [{"args": {"pe_id": {"arg": "1", "cat": "scalar"}}}]});
+    });
+    let child = task("child", "lower", |t| {
+        t["ports"] = serde_json::json!([
+            {"cat": "scalar", "name": "pe_id", "type": "uint32_t", "width": 32}
+        ]);
+    });
+    let prog = design("top", "xilinx-hls", &[("top", top), ("child", child)]);
 
     let mut state = TopologyWithRtl::new(prog);
-    state
-        .attach_module(
-            "top",
-            parse_module("module top(\n  input wire ap_clk,\n  input wire ap_rst_n\n);\nendmodule"),
-        )
-        .unwrap();
+    attach_basic_modules(&mut state, &["top"]);
     state
         .attach_module(
             "child",
@@ -371,36 +285,17 @@ fn test_generate_rtl_child_scalar_pipeline_preserves_width() {
 
 #[test]
 fn test_generate_rtl_upper_output_regs_become_nets() {
-    let prog = program_from_json(serde_json::json!({
-        "top": "top",
-        "target": "xilinx-hls",
-        "tasks": {
-            "top": {
-                "readable_name": "top",
-                "level": "upper",
-                "code": "",
-                "synth": "hls",
-                "ports": [
-                    {"cat": "ostream", "name": "out_q", "type": "int", "width": 32}
-                ],
-                "tasks": {
-                    "child": [{"args": {"out_q": {"arg": "out_q", "cat": "ostream"}}}]
-                },
-                "fifos": {}
-            },
-            "child": {
-                "readable_name": "child",
-                "level": "lower",
-                "code": "",
-                "synth": "hls",
-                "ports": [
-                    {"cat": "ostream", "name": "out_q", "type": "int", "width": 32}
-                ],
-                "tasks": {},
-                "fifos": {}
-            }
-        }
-    }));
+    let top = task("top", "upper", |t| {
+        t["ports"] =
+            serde_json::json!([{"cat": "ostream", "name": "out_q", "type": "int", "width": 32}]);
+        t["tasks"] =
+            serde_json::json!({"child": [{"args": {"out_q": {"arg": "out_q", "cat": "ostream"}}}]});
+    });
+    let child = task("child", "lower", |t| {
+        t["ports"] =
+            serde_json::json!([{"cat": "ostream", "name": "out_q", "type": "int", "width": 32}]);
+    });
+    let prog = design("top", "xilinx-hls", &[("top", top), ("child", child)]);
 
     let mut state = TopologyWithRtl::new(prog);
     state
@@ -451,34 +346,15 @@ fn test_generate_rtl_upper_output_regs_become_nets() {
 
 #[test]
 fn test_generate_rtl_template_task() {
-    let prog = program_from_json(serde_json::json!({
-        "top": "top",
-        "target": "xilinx-hls",
-        "tasks": {
-            "shell": {
-                "readable_name": "shell",
-                "level": "lower",
-                "code": "",
-                "synth": "ignore",
-                "ports": [
-                    {"cat": "scalar", "name": "n", "type": "int", "width": 32}
-                ],
-                "tasks": {},
-                "fifos": {}
-            },
-            "top": {
-                "readable_name": "top",
-                "level": "upper",
-                "code": "",
-                "synth": "hls",
-                "ports": [],
-                "tasks": {
-                    "shell": [{"args": {"n": {"arg": "1", "cat": "scalar"}}}]
-                },
-                "fifos": {}
-            }
-        }
-    }));
+    let shell = task("shell", "lower", |t| {
+        t["synth"] = serde_json::json!("ignore");
+        t["ports"] =
+            serde_json::json!([{"cat": "scalar", "name": "n", "type": "int", "width": 32}]);
+    });
+    let top = task("top", "upper", |t| {
+        t["tasks"] = serde_json::json!({"shell": [{"args": {"n": {"arg": "1", "cat": "scalar"}}}]});
+    });
+    let prog = design("top", "xilinx-hls", &[("shell", shell), ("top", top)]);
 
     let mut state = TopologyWithRtl::new(prog);
     state
@@ -534,36 +410,15 @@ fn test_generate_rtl_template_task() {
 
 #[test]
 fn test_generate_rtl_top_task_removes_peek_ports() {
-    let prog = program_from_json(serde_json::json!({
-        "top": "top",
-        "target": "xilinx-hls",
-        "tasks": {
-            "top": {
-                "readable_name": "top",
-                "level": "upper",
-                "code": "",
-                "synth": "hls",
-                "ports": [
-                    {"cat": "istream", "name": "data_in", "type": "float", "width": 32}
-                ],
-                "tasks": {
-                    "reader": [{"args": {"input": {"arg": "data_in", "cat": "istream"}}}]
-                },
-                "fifos": {}
-            },
-            "reader": {
-                "readable_name": "reader",
-                "level": "lower",
-                "code": "",
-                "synth": "hls",
-                "ports": [
-                    {"cat": "istream", "name": "input", "type": "float", "width": 32}
-                ],
-                "tasks": {},
-                "fifos": {}
-            }
-        }
-    }));
+    let top = task("top", "upper", |t| {
+        t["ports"] = serde_json::json!([{"cat": "istream", "name": "data_in", "type": "float", "width": 32}]);
+        t["tasks"] = serde_json::json!({"reader": [{"args": {"input": {"arg": "data_in", "cat": "istream"}}}]});
+    });
+    let reader = task("reader", "lower", |t| {
+        t["ports"] =
+            serde_json::json!([{"cat": "istream", "name": "input", "type": "float", "width": 32}]);
+    });
+    let prog = design("top", "xilinx-hls", &[("top", top), ("reader", reader)]);
 
     let mut state = TopologyWithRtl::new(prog);
 
@@ -622,38 +477,21 @@ fn test_generate_rtl_top_task_removes_peek_ports() {
 
 #[test]
 fn test_generate_rtl_external_istream_aliases_hls_s_ports() {
-    let prog = program_from_json(serde_json::json!({
-        "top": "top",
-        "target": "xilinx-hls",
-        "tasks": {
-            "top": {
-                "readable_name": "top",
-                "level": "upper",
-                "code": "",
-                "synth": "hls",
-                "ports": [
-                    {"cat": "istream", "name": "data_stream", "type": "uint64_t", "width": 64}
-                ],
-                "tasks": {
-                    "consumer": [{"args": {"data_stream": {"arg": "data_stream", "cat": "istream"}}}]
-                },
-                "fifos": {
-                    "data_stream": {"consumed_by": ["consumer", 0]}
-                }
-            },
-            "consumer": {
-                "readable_name": "consumer",
-                "level": "lower",
-                "code": "",
-                "synth": "hls",
-                "ports": [
-                    {"cat": "istream", "name": "data_stream", "type": "uint64_t", "width": 64}
-                ],
-                "tasks": {},
-                "fifos": {}
-            }
-        }
-    }));
+    let top = task("top", "upper", |t| {
+        t["ports"] = serde_json::json!([
+            {"cat": "istream", "name": "data_stream", "type": "uint64_t", "width": 64}
+        ]);
+        t["tasks"] = serde_json::json!({"consumer": [{"args": {"data_stream": {"arg": "data_stream", "cat": "istream"}}}]});
+        t["fifos"] = serde_json::json!({
+            "data_stream": {"consumed_by": ["consumer", 0]}
+        });
+    });
+    let consumer = task("consumer", "lower", |t| {
+        t["ports"] = serde_json::json!([
+            {"cat": "istream", "name": "data_stream", "type": "uint64_t", "width": 64}
+        ]);
+    });
+    let prog = design("top", "xilinx-hls", &[("top", top), ("consumer", consumer)]);
 
     let mut state = TopologyWithRtl::new(prog);
     state
@@ -712,44 +550,29 @@ fn test_generate_rtl_external_istream_aliases_hls_s_ports() {
     reason = "integration test with many assertions"
 )]
 fn test_generate_rtl_vitis_top_streams_use_axis_adapters() {
-    let prog = program_from_json(serde_json::json!({
-        "top": "top",
-        "target": "xilinx-vitis",
-        "tasks": {
-            "top": {
-                "readable_name": "top",
-                "level": "upper",
-                "code": "",
-                "synth": "hls",
-                "ports": [
-                    {"cat": "istream", "name": "a", "type": "uint48_t", "width": 48},
-                    {"cat": "ostream", "name": "c", "type": "uint64_t", "width": 64}
-                ],
-                "tasks": {
-                    "worker": [{"args": {
-                        "a": {"arg": "a", "cat": "istream"},
-                        "c": {"arg": "c", "cat": "ostream"}
-                    }}]
-                },
-                "fifos": {
-                    "a": {"consumed_by": ["worker", 0]},
-                    "c": {"produced_by": ["worker", 0]}
-                }
-            },
-            "worker": {
-                "readable_name": "worker",
-                "level": "lower",
-                "code": "",
-                "synth": "hls",
-                "ports": [
-                    {"cat": "istream", "name": "a", "type": "uint48_t", "width": 48},
-                    {"cat": "ostream", "name": "c", "type": "uint64_t", "width": 64}
-                ],
-                "tasks": {},
-                "fifos": {}
-            }
-        }
-    }));
+    let top = task("top", "upper", |t| {
+        t["ports"] = serde_json::json!([
+            {"cat": "istream", "name": "a", "type": "uint48_t", "width": 48},
+            {"cat": "ostream", "name": "c", "type": "uint64_t", "width": 64}
+        ]);
+        t["tasks"] = serde_json::json!({
+            "worker": [{"args": {
+                "a": {"arg": "a", "cat": "istream"},
+                "c": {"arg": "c", "cat": "ostream"}
+            }}]
+        });
+        t["fifos"] = serde_json::json!({
+            "a": {"consumed_by": ["worker", 0]},
+            "c": {"produced_by": ["worker", 0]}
+        });
+    });
+    let worker = task("worker", "lower", |t| {
+        t["ports"] = serde_json::json!([
+            {"cat": "istream", "name": "a", "type": "uint48_t", "width": 48},
+            {"cat": "ostream", "name": "c", "type": "uint64_t", "width": 64}
+        ]);
+    });
+    let prog = design("top", "xilinx-vitis", &[("top", top), ("worker", worker)]);
 
     let mut state = TopologyWithRtl::new(prog);
     state
@@ -833,60 +656,37 @@ fn test_generate_rtl_vitis_top_streams_use_axis_adapters() {
 
 #[test]
 fn test_generate_rtl_with_fifo() {
-    let prog = program_from_json(serde_json::json!({
-        "top": "top",
-        "target": "xilinx-hls",
-        "tasks": {
-            "top": {
-                "readable_name": "top",
-                "level": "upper",
-                "code": "",
-                "synth": "hls",
-                "ports": [],
-                "tasks": {
-                    "producer": [{"args": {"out_data": {"arg": "fifo_0", "cat": "ostream"}}}],
-                    "consumer": [{"args": {"in_data": {"arg": "fifo_0", "cat": "istream"}}}]
-                },
-                "fifos": {
-                    "fifo_0": {
-                        "depth": 16,
-                        "produced_by": ["producer", 0],
-                        "consumed_by": ["consumer", 0]
-                    }
-                }
-            },
-            "producer": {
-                "readable_name": "producer",
-                "level": "lower",
-                "code": "",
-                "synth": "hls",
-                "ports": [
-                    {"cat": "ostream", "name": "out_data", "type": "float", "width": 32}
-                ],
-                "tasks": {},
-                "fifos": {}
-            },
-            "consumer": {
-                "readable_name": "consumer",
-                "level": "lower",
-                "code": "",
-                "synth": "hls",
-                "ports": [
-                    {"cat": "istream", "name": "in_data", "type": "float", "width": 32}
-                ],
-                "tasks": {},
-                "fifos": {}
+    let top = task("top", "upper", |t| {
+        t["tasks"] = serde_json::json!({
+            "producer": [{"args": {"out_data": {"arg": "fifo_0", "cat": "ostream"}}}],
+            "consumer": [{"args": {"in_data": {"arg": "fifo_0", "cat": "istream"}}}]
+        });
+        t["fifos"] = serde_json::json!({
+            "fifo_0": {
+                "depth": 16,
+                "produced_by": ["producer", 0],
+                "consumed_by": ["consumer", 0]
             }
-        }
-    }));
+        });
+    });
+    let producer = task("producer", "lower", |t| {
+        t["ports"] = serde_json::json!([
+            {"cat": "ostream", "name": "out_data", "type": "float", "width": 32}
+        ]);
+    });
+    let consumer = task("consumer", "lower", |t| {
+        t["ports"] = serde_json::json!([
+            {"cat": "istream", "name": "in_data", "type": "float", "width": 32}
+        ]);
+    });
+    let prog = design(
+        "top",
+        "xilinx-hls",
+        &[("top", top), ("producer", producer), ("consumer", consumer)],
+    );
 
     let mut state = TopologyWithRtl::new(prog);
-    state
-        .attach_module(
-            "top",
-            parse_module("module top(\n  input wire ap_clk,\n  input wire ap_rst_n\n);\nendmodule"),
-        )
-        .unwrap();
+    attach_basic_modules(&mut state, &["top"]);
     // Producer with a _din port so width resolution finds 32 bits
     state
         .attach_module(
@@ -936,40 +736,17 @@ fn test_generate_rtl_with_fifo() {
 
 #[test]
 fn test_generate_rtl_does_not_reemit_lower_modules() {
-    let prog = program_from_json(serde_json::json!({
-        "top": "top",
-        "target": "xilinx-hls",
-        "tasks": {
-            "top": {
-                "readable_name": "top",
-                "level": "upper",
-                "code": "",
-                "synth": "hls",
-                "ports": [],
-                "tasks": {
-                    "child": [{"args": {}}]
-                },
-                "fifos": {}
-            },
-            "child": {
-                "readable_name": "child",
-                "level": "lower",
-                "code": "",
-                "synth": "hls",
-                "ports": [],
-                "tasks": {},
-                "fifos": {}
-            }
-        }
-    }));
+    let top = task("top", "upper", |t| {
+        t["tasks"] = serde_json::json!({"child": [{"args": {}}]});
+    });
+    let prog = design(
+        "top",
+        "xilinx-hls",
+        &[("top", top), ("child", plain("child", "lower"))],
+    );
 
     let mut state = TopologyWithRtl::new(prog);
-    state
-        .attach_module(
-            "top",
-            parse_module("module top(\n  input wire ap_clk,\n  input wire ap_rst_n\n);\nendmodule"),
-        )
-        .unwrap();
+    attach_basic_modules(&mut state, &["top"]);
     state
         .attach_module(
             "child",
@@ -997,77 +774,54 @@ fn test_generate_rtl_does_not_reemit_lower_modules() {
     reason = "integration test with many assertions"
 )]
 fn test_generate_rtl_fifo_width_uses_bound_producer_port() {
-    let prog = program_from_json(serde_json::json!({
-        "top": "top",
-        "target": "xilinx-hls",
-        "tasks": {
-            "top": {
-                "readable_name": "top",
-                "level": "upper",
-                "code": "",
-                "synth": "hls",
-                "ports": [],
-                "tasks": {
-                    "producer": [{
-                        "args": {
-                            "small": {"arg": "small_fifo", "cat": "ostream"},
-                            "wide": {"arg": "wide_fifo", "cat": "ostream"}
-                        }
-                    }],
-                    "consumer": [{
-                        "args": {
-                            "small_in": {"arg": "small_fifo", "cat": "istream"},
-                            "wide_in": {"arg": "wide_fifo", "cat": "istream"}
-                        }
-                    }]
-                },
-                "fifos": {
-                    "small_fifo": {
-                        "depth": 2,
-                        "produced_by": ["producer", 0],
-                        "consumed_by": ["consumer", 0]
-                    },
-                    "wide_fifo": {
-                        "depth": 2,
-                        "produced_by": ["producer", 0],
-                        "consumed_by": ["consumer", 0]
-                    }
+    let top = task("top", "upper", |t| {
+        t["tasks"] = serde_json::json!({
+            "producer": [{
+                "args": {
+                    "small": {"arg": "small_fifo", "cat": "ostream"},
+                    "wide": {"arg": "wide_fifo", "cat": "ostream"}
                 }
+            }],
+            "consumer": [{
+                "args": {
+                    "small_in": {"arg": "small_fifo", "cat": "istream"},
+                    "wide_in": {"arg": "wide_fifo", "cat": "istream"}
+                }
+            }]
+        });
+        t["fifos"] = serde_json::json!({
+            "small_fifo": {
+                "depth": 2,
+                "produced_by": ["producer", 0],
+                "consumed_by": ["consumer", 0]
             },
-            "producer": {
-                "readable_name": "producer",
-                "level": "lower",
-                "code": "",
-                "synth": "hls",
-                "ports": [
-                    {"cat": "ostream", "name": "small", "type": "uint8_t", "width": 8},
-                    {"cat": "ostream", "name": "wide", "type": "uint32_t", "width": 32}
-                ],
-                "tasks": {},
-                "fifos": {}
-            },
-            "consumer": {
-                "readable_name": "consumer",
-                "level": "lower",
-                "code": "",
-                "synth": "hls",
-                "ports": [
-                    {"cat": "istream", "name": "small_in", "type": "uint8_t", "width": 8},
-                    {"cat": "istream", "name": "wide_in", "type": "uint32_t", "width": 32}
-                ],
-                "tasks": {},
-                "fifos": {}
+            "wide_fifo": {
+                "depth": 2,
+                "produced_by": ["producer", 0],
+                "consumed_by": ["consumer", 0]
             }
-        }
-    }));
+        });
+    });
+    let producer = task("producer", "lower", |t| {
+        t["ports"] = serde_json::json!([
+            {"cat": "ostream", "name": "small", "type": "uint8_t", "width": 8},
+            {"cat": "ostream", "name": "wide", "type": "uint32_t", "width": 32}
+        ]);
+    });
+    let consumer = task("consumer", "lower", |t| {
+        t["ports"] = serde_json::json!([
+            {"cat": "istream", "name": "small_in", "type": "uint8_t", "width": 8},
+            {"cat": "istream", "name": "wide_in", "type": "uint32_t", "width": 32}
+        ]);
+    });
+    let prog = design(
+        "top",
+        "xilinx-hls",
+        &[("top", top), ("producer", producer), ("consumer", consumer)],
+    );
 
     let mut state = TopologyWithRtl::new(prog);
-    state
-        .attach_module(
-            "top",
-            parse_module("module top(\n  input wire ap_clk,\n  input wire ap_rst_n\n);\nendmodule"),
-        )
-        .unwrap();
+    attach_basic_modules(&mut state, &["top"]);
     state
         .attach_module(
             "producer",
@@ -1128,55 +882,24 @@ fn test_generate_rtl_fifo_width_uses_bound_producer_port() {
 
 #[test]
 fn test_generate_rtl_multithread_mmap() {
-    let prog = program_from_json(serde_json::json!({
-        "top": "top",
-        "target": "xilinx-hls",
-        "tasks": {
-            "top": {
-                "readable_name": "top",
-                "level": "upper",
-                "code": "",
-                "synth": "hls",
-                "ports": [
-                    {"cat": "mmap", "name": "mem", "type": "float*", "width": 32}
-                ],
-                "tasks": {
-                    "worker": [
-                        {"args": {"data": {"arg": "mem", "cat": "mmap"}}},
-                        {"args": {"data": {"arg": "mem", "cat": "mmap"}}}
-                    ]
-                },
-                "fifos": {}
-            },
-            "worker": {
-                "readable_name": "worker",
-                "level": "lower",
-                "code": "",
-                "synth": "hls",
-                "ports": [
-                    {"cat": "mmap", "name": "data", "type": "float*", "width": 32}
-                ],
-                "tasks": {},
-                "fifos": {}
-            }
-        }
-    }));
+    let top = task("top", "upper", |t| {
+        t["ports"] =
+            serde_json::json!([{"cat": "mmap", "name": "mem", "type": "float*", "width": 32}]);
+        t["tasks"] = serde_json::json!({
+            "worker": [
+                {"args": {"data": {"arg": "mem", "cat": "mmap"}}},
+                {"args": {"data": {"arg": "mem", "cat": "mmap"}}}
+            ]
+        });
+    });
+    let worker = task("worker", "lower", |t| {
+        t["ports"] =
+            serde_json::json!([{"cat": "mmap", "name": "data", "type": "float*", "width": 32}]);
+    });
+    let prog = design("top", "xilinx-hls", &[("top", top), ("worker", worker)]);
 
     let mut state = TopologyWithRtl::new(prog);
-    state
-        .attach_module(
-            "top",
-            parse_module("module top(\n  input wire ap_clk,\n  input wire ap_rst_n\n);\nendmodule"),
-        )
-        .unwrap();
-    state
-        .attach_module(
-            "worker",
-            parse_module(
-                "module worker(\n  input wire ap_clk,\n  input wire ap_rst_n\n);\nendmodule",
-            ),
-        )
-        .unwrap();
+    attach_basic_modules(&mut state, &["top", "worker"]);
 
     generate_rtl(&mut state).unwrap();
 
@@ -1215,71 +938,36 @@ fn test_generate_rtl_nested_shared_mmap_threads() {
     // shares `mem` between `mid` and a plain leaf. The top-level
     // crossbar must provision the aggregated per-slave thread
     // counts (leaf: 1, mid: 2), not a flat 1.
-    let prog = program_from_json(serde_json::json!({
-        "top": "top",
-        "target": "xilinx-hls",
-        "tasks": {
-            "top": {
-                "readable_name": "top",
-                "level": "upper",
-                "code": "",
-                "synth": "hls",
-                "ports": [
-                    {"cat": "mmap", "name": "mem", "type": "float*", "width": 32}
-                ],
-                "tasks": {
-                    "leaf": [{"args": {"d": {"arg": "mem", "cat": "mmap"}}}],
-                    "mid": [{"args": {"data": {"arg": "mem", "cat": "mmap"}}}]
-                },
-                "fifos": {}
-            },
-            "mid": {
-                "readable_name": "mid",
-                "level": "upper",
-                "code": "",
-                "synth": "hls",
-                "ports": [
-                    {"cat": "mmap", "name": "data", "type": "float*", "width": 32}
-                ],
-                "tasks": {
-                    "leaf": [
-                        {"args": {"d": {"arg": "data", "cat": "mmap"}}},
-                        {"args": {"d": {"arg": "data", "cat": "mmap"}}}
-                    ]
-                },
-                "fifos": {}
-            },
-            "leaf": {
-                "readable_name": "leaf",
-                "level": "lower",
-                "code": "",
-                "synth": "hls",
-                "ports": [
-                    {"cat": "mmap", "name": "d", "type": "float*", "width": 32}
-                ],
-                "tasks": {},
-                "fifos": {}
-            }
-        }
-    }));
+    let top = task("top", "upper", |t| {
+        t["ports"] =
+            serde_json::json!([{"cat": "mmap", "name": "mem", "type": "float*", "width": 32}]);
+        t["tasks"] = serde_json::json!({
+            "leaf": [{"args": {"d": {"arg": "mem", "cat": "mmap"}}}],
+            "mid": [{"args": {"data": {"arg": "mem", "cat": "mmap"}}}]
+        });
+    });
+    let mid = task("mid", "upper", |t| {
+        t["ports"] =
+            serde_json::json!([{"cat": "mmap", "name": "data", "type": "float*", "width": 32}]);
+        t["tasks"] = serde_json::json!({
+            "leaf": [
+                {"args": {"d": {"arg": "data", "cat": "mmap"}}},
+                {"args": {"d": {"arg": "data", "cat": "mmap"}}}
+            ]
+        });
+    });
+    let leaf = task("leaf", "lower", |t| {
+        t["ports"] =
+            serde_json::json!([{"cat": "mmap", "name": "d", "type": "float*", "width": 32}]);
+    });
+    let prog = design(
+        "top",
+        "xilinx-hls",
+        &[("top", top), ("mid", mid), ("leaf", leaf)],
+    );
 
     let mut state = TopologyWithRtl::new(prog);
-    for (name, module) in [
-        (
-            "top",
-            "module top(\n  input wire ap_clk,\n  input wire ap_rst_n\n);\nendmodule",
-        ),
-        (
-            "mid",
-            "module mid(\n  input wire ap_clk,\n  input wire ap_rst_n\n);\nendmodule",
-        ),
-        (
-            "leaf",
-            "module leaf(\n  input wire ap_clk,\n  input wire ap_rst_n\n);\nendmodule",
-        ),
-    ] {
-        state.attach_module(name, parse_module(module)).unwrap();
-    }
+    attach_basic_modules(&mut state, &["top", "mid", "leaf"]);
 
     generate_rtl(&mut state).unwrap();
 
@@ -1305,36 +993,17 @@ fn test_generate_rtl_nested_shared_mmap_threads() {
 
 #[test]
 fn test_generate_rtl_single_child_mmap_preserves_child_id_width() {
-    let prog = program_from_json(serde_json::json!({
-        "top": "top",
-        "target": "xilinx-hls",
-        "tasks": {
-            "mid": {
-                "readable_name": "mid",
-                "level": "upper",
-                "code": "",
-                "synth": "hls",
-                "ports": [
-                    {"cat": "mmap", "name": "data", "type": "float*", "width": 32}
-                ],
-                "tasks": {},
-                "fifos": {}
-            },
-            "top": {
-                "readable_name": "top",
-                "level": "upper",
-                "code": "",
-                "synth": "hls",
-                "ports": [
-                    {"cat": "mmap", "name": "elems", "type": "float*", "width": 32}
-                ],
-                "tasks": {
-                    "mid": [{"args": {"data": {"arg": "elems", "cat": "mmap"}}}]
-                },
-                "fifos": {}
-            }
-        }
-    }));
+    let mid = task("mid", "upper", |t| {
+        t["ports"] =
+            serde_json::json!([{"cat": "mmap", "name": "data", "type": "float*", "width": 32}]);
+    });
+    let top = task("top", "upper", |t| {
+        t["ports"] =
+            serde_json::json!([{"cat": "mmap", "name": "elems", "type": "float*", "width": 32}]);
+        t["tasks"] =
+            serde_json::json!({"mid": [{"args": {"data": {"arg": "elems", "cat": "mmap"}}}]});
+    });
+    let prog = design("top", "xilinx-hls", &[("mid", mid), ("top", top)]);
 
     let mut state = TopologyWithRtl::new(prog);
     state
@@ -1374,45 +1043,27 @@ fn test_generate_rtl_single_child_mmap_preserves_child_id_width() {
 
 #[test]
 fn test_generate_rtl_parent_crossbar_zero_extends_narrow_child_ids() {
-    let prog = program_from_json(serde_json::json!({
-        "top": "top",
-        "target": "xilinx-hls",
-        "tasks": {
-            "leaf": {
-                "readable_name": "leaf", "level": "lower",
-                "code": "",
-                "synth": "hls",
-                "ports": [
-                    {"cat": "mmap", "name": "mmap", "type": "float*", "width": 32}
-                ],
-                "tasks": {},
-                "fifos": {}
-            },
-            "mid": {
-                "readable_name": "mid", "level": "upper",
-                "code": "",
-                "synth": "hls",
-                "ports": [
-                    {"cat": "mmap", "name": "data", "type": "float*", "width": 32}
-                ],
-                "tasks": {},
-                "fifos": {}
-            },
-            "top": {
-                "readable_name": "top", "level": "upper",
-                "code": "",
-                "synth": "hls",
-                "ports": [
-                    {"cat": "mmap", "name": "elems", "type": "float*", "width": 32}
-                ],
-                "tasks": {
-                    "leaf": [{"args": {"mmap": {"arg": "elems", "cat": "mmap"}}}],
-                    "mid": [{"args": {"data": {"arg": "elems", "cat": "mmap"}}}]
-                },
-                "fifos": {}
-            }
-        }
-    }));
+    let leaf = task("leaf", "lower", |t| {
+        t["ports"] =
+            serde_json::json!([{"cat": "mmap", "name": "mmap", "type": "float*", "width": 32}]);
+    });
+    let mid = task("mid", "upper", |t| {
+        t["ports"] =
+            serde_json::json!([{"cat": "mmap", "name": "data", "type": "float*", "width": 32}]);
+    });
+    let top = task("top", "upper", |t| {
+        t["ports"] =
+            serde_json::json!([{"cat": "mmap", "name": "elems", "type": "float*", "width": 32}]);
+        t["tasks"] = serde_json::json!({
+            "leaf": [{"args": {"mmap": {"arg": "elems", "cat": "mmap"}}}],
+            "mid": [{"args": {"data": {"arg": "elems", "cat": "mmap"}}}]
+        });
+    });
+    let prog = design(
+        "top",
+        "xilinx-hls",
+        &[("leaf", leaf), ("mid", mid), ("top", top)],
+    );
 
     let mut state = TopologyWithRtl::new(prog);
     state
@@ -1483,61 +1134,38 @@ fn test_generate_rtl_parent_crossbar_zero_extends_narrow_child_ids() {
     reason = "integration test with many assertions"
 )]
 fn test_generate_rtl_parent_crossbar_slices_generated_narrow_upper_child_ids() {
-    let prog = program_from_json(serde_json::json!({
-        "top": "VecTop",
-        "target": "xilinx-hls",
-        "tasks": {
-            "Awide": {
-                "readable_name": "Awide",
-                "level": "lower",
-                "code": "",
-                "synth": "hls",
-                "ports": [
-                    {"cat": "mmap", "name": "data", "type": "float*", "width": 32}
-                ],
-                "tasks": {},
-                "fifos": {}
-            },
-            "Leaf": {
-                "readable_name": "Leaf",
-                "level": "lower",
-                "code": "",
-                "synth": "hls",
-                "ports": [
-                    {"cat": "mmap", "name": "mmap", "type": "float*", "width": 32}
-                ],
-                "tasks": {},
-                "fifos": {}
-            },
-            "Store": {
-                "readable_name": "Store",
-                "level": "upper",
-                "code": "",
-                "synth": "hls",
-                "ports": [
-                    {"cat": "mmap", "name": "mmap", "type": "float*", "width": 32}
-                ],
-                "tasks": {
-                    "Leaf": [{"args": {"mmap": {"arg": "mmap", "cat": "mmap"}}}]
-                },
-                "fifos": {}
-            },
-            "VecTop": {
-                "readable_name": "VecTop",
-                "level": "upper",
-                "code": "",
-                "synth": "hls",
-                "ports": [
-                    {"cat": "mmap", "name": "elems", "type": "float*", "width": 32}
-                ],
-                "tasks": {
-                    "Awide": [{"args": {"data": {"arg": "elems", "cat": "mmap"}}}],
-                    "Store": [{"args": {"mmap": {"arg": "elems", "cat": "mmap"}}}]
-                },
-                "fifos": {}
-            }
-        }
-    }));
+    let awide = task("Awide", "lower", |t| {
+        t["ports"] =
+            serde_json::json!([{"cat": "mmap", "name": "data", "type": "float*", "width": 32}]);
+    });
+    let leaf = task("Leaf", "lower", |t| {
+        t["ports"] =
+            serde_json::json!([{"cat": "mmap", "name": "mmap", "type": "float*", "width": 32}]);
+    });
+    let store = task("Store", "upper", |t| {
+        t["ports"] =
+            serde_json::json!([{"cat": "mmap", "name": "mmap", "type": "float*", "width": 32}]);
+        t["tasks"] =
+            serde_json::json!({"Leaf": [{"args": {"mmap": {"arg": "mmap", "cat": "mmap"}}}]});
+    });
+    let vec_top = task("VecTop", "upper", |t| {
+        t["ports"] =
+            serde_json::json!([{"cat": "mmap", "name": "elems", "type": "float*", "width": 32}]);
+        t["tasks"] = serde_json::json!({
+            "Awide": [{"args": {"data": {"arg": "elems", "cat": "mmap"}}}],
+            "Store": [{"args": {"mmap": {"arg": "elems", "cat": "mmap"}}}]
+        });
+    });
+    let prog = design(
+        "VecTop",
+        "xilinx-hls",
+        &[
+            ("Awide", awide),
+            ("Leaf", leaf),
+            ("Store", store),
+            ("VecTop", vec_top),
+        ],
+    );
 
     let mut state = TopologyWithRtl::new(prog);
     state
@@ -1614,46 +1242,29 @@ fn test_generate_rtl_parent_crossbar_slices_generated_narrow_upper_child_ids() {
 
 #[test]
 fn test_generate_rtl_hmap_uses_parent_channels() {
-    let prog = program_from_json(serde_json::json!({
-        "top": "top",
-        "target": "xilinx-hls",
-        "tasks": {
-            "top": {
-                "readable_name": "top",
-                "level": "upper",
-                "code": "",
-                "synth": "hls",
-                "ports": [
-                    {
-                        "cat": "mmap",
-                        "name": "mem",
-                        "type": "float*",
-                        "width": 32,
-                        "chan_count": 2,
-                        "chan_size": 1024
-                    }
-                ],
-                "tasks": {
-                    "worker": [
-                        {"args": {"data": {"arg": "mem", "cat": "mmap"}}},
-                        {"args": {"data": {"arg": "mem", "cat": "mmap"}}}
-                    ]
-                },
-                "fifos": {}
-            },
-            "worker": {
-                "readable_name": "worker",
-                "level": "lower",
-                "code": "",
-                "synth": "hls",
-                "ports": [
-                    {"cat": "mmap", "name": "data", "type": "float*", "width": 32}
-                ],
-                "tasks": {},
-                "fifos": {}
+    let top = task("top", "upper", |t| {
+        t["ports"] = serde_json::json!([
+            {
+                "cat": "mmap",
+                "name": "mem",
+                "type": "float*",
+                "width": 32,
+                "chan_count": 2,
+                "chan_size": 1024
             }
-        }
-    }));
+        ]);
+        t["tasks"] = serde_json::json!({
+            "worker": [
+                {"args": {"data": {"arg": "mem", "cat": "mmap"}}},
+                {"args": {"data": {"arg": "mem", "cat": "mmap"}}}
+            ]
+        });
+    });
+    let worker = task("worker", "lower", |t| {
+        t["ports"] =
+            serde_json::json!([{"cat": "mmap", "name": "data", "type": "float*", "width": 32}]);
+    });
+    let prog = design("top", "xilinx-hls", &[("top", top), ("worker", worker)]);
 
     let mut state = TopologyWithRtl::new(prog);
     state
@@ -1702,45 +1313,25 @@ fn test_generate_rtl_hmap_uses_parent_channels() {
 
 #[test]
 fn test_generate_rtl_single_channel_hmap_keeps_indexed_channel() {
-    let prog = program_from_json(serde_json::json!({
-        "top": "top",
-        "target": "xilinx-hls",
-        "tasks": {
-            "top": {
-                "readable_name": "top",
-                "level": "upper",
-                "code": "",
-                "synth": "hls",
-                "ports": [
-                    {
-                        "cat": "mmap",
-                        "name": "mem",
-                        "type": "float*",
-                        "width": 32,
-                        "chan_count": 1,
-                        "chan_size": 1024
-                    }
-                ],
-                "tasks": {
-                    "worker": [
-                        {"args": {"data": {"arg": "mem", "cat": "mmap"}}}
-                    ]
-                },
-                "fifos": {}
-            },
-            "worker": {
-                "readable_name": "worker",
-                "level": "lower",
-                "code": "",
-                "synth": "hls",
-                "ports": [
-                    {"cat": "mmap", "name": "data", "type": "float*", "width": 32}
-                ],
-                "tasks": {},
-                "fifos": {}
+    let top = task("top", "upper", |t| {
+        t["ports"] = serde_json::json!([
+            {
+                "cat": "mmap",
+                "name": "mem",
+                "type": "float*",
+                "width": 32,
+                "chan_count": 1,
+                "chan_size": 1024
             }
-        }
-    }));
+        ]);
+        t["tasks"] =
+            serde_json::json!({"worker": [{"args": {"data": {"arg": "mem", "cat": "mmap"}}}]});
+    });
+    let worker = task("worker", "lower", |t| {
+        t["ports"] =
+            serde_json::json!([{"cat": "mmap", "name": "data", "type": "float*", "width": 32}]);
+    });
+    let prog = design("top", "xilinx-hls", &[("top", top), ("worker", worker)]);
 
     let mut state = TopologyWithRtl::new(prog);
     state
@@ -1776,38 +1367,17 @@ fn test_generate_rtl_single_channel_hmap_keeps_indexed_channel() {
 
 #[test]
 fn test_generate_rtl_sanitizes_indexed_mmap_names() {
-    let prog = program_from_json(serde_json::json!({
-        "top": "top",
-        "target": "xilinx-hls",
-        "tasks": {
-            "top": {
-                "readable_name": "top",
-                "level": "upper",
-                "code": "",
-                "synth": "hls",
-                "ports": [
-                    {"cat": "mmap", "name": "chan[0]", "type": "float*", "width": 32}
-                ],
-                "tasks": {
-                    "worker": [
-                        {"args": {"mem": {"arg": "chan[0]", "cat": "mmap"}}}
-                    ]
-                },
-                "fifos": {}
-            },
-            "worker": {
-                "readable_name": "worker",
-                "level": "lower",
-                "code": "",
-                "synth": "hls",
-                "ports": [
-                    {"cat": "mmap", "name": "mem", "type": "float*", "width": 32}
-                ],
-                "tasks": {},
-                "fifos": {}
-            }
-        }
-    }));
+    let top = task("top", "upper", |t| {
+        t["ports"] =
+            serde_json::json!([{"cat": "mmap", "name": "chan[0]", "type": "float*", "width": 32}]);
+        t["tasks"] =
+            serde_json::json!({"worker": [{"args": {"mem": {"arg": "chan[0]", "cat": "mmap"}}}]});
+    });
+    let worker = task("worker", "lower", |t| {
+        t["ports"] =
+            serde_json::json!([{"cat": "mmap", "name": "mem", "type": "float*", "width": 32}]);
+    });
+    let prog = design("top", "xilinx-hls", &[("top", top), ("worker", worker)]);
 
     let mut state = TopologyWithRtl::new(prog);
     state
@@ -1836,38 +1406,17 @@ fn test_generate_rtl_sanitizes_indexed_mmap_names() {
 
 #[test]
 fn test_generate_rtl_instantiates_async_mmap_bridge() {
-    let prog = program_from_json(serde_json::json!({
-        "top": "top",
-        "target": "xilinx-hls",
-        "tasks": {
-            "top": {
-                "readable_name": "top",
-                "level": "upper",
-                "code": "",
-                "synth": "hls",
-                "ports": [
-                    {"cat": "mmap", "name": "chan[0]", "type": "Elem*", "width": 512}
-                ],
-                "tasks": {
-                    "copy": [
-                        {"args": {"mem": {"arg": "chan[0]", "cat": "async_mmap"}}}
-                    ]
-                },
-                "fifos": {}
-            },
-            "copy": {
-                "readable_name": "copy",
-                "level": "lower",
-                "code": "",
-                "synth": "hls",
-                "ports": [
-                    {"cat": "async_mmap", "name": "mem", "type": "Elem*", "width": 512}
-                ],
-                "tasks": {},
-                "fifos": {}
-            }
-        }
-    }));
+    let top = task("top", "upper", |t| {
+        t["ports"] =
+            serde_json::json!([{"cat": "mmap", "name": "chan[0]", "type": "Elem*", "width": 512}]);
+        t["tasks"] = serde_json::json!({"copy": [{"args": {"mem": {"arg": "chan[0]", "cat": "async_mmap"}}}]});
+    });
+    let copy = task("copy", "lower", |t| {
+        t["ports"] = serde_json::json!([
+            {"cat": "async_mmap", "name": "mem", "type": "Elem*", "width": 512}
+        ]);
+    });
+    let prog = design("top", "xilinx-hls", &[("top", top), ("copy", copy)]);
 
     let mut state = TopologyWithRtl::new(prog);
     state
@@ -1934,40 +1483,24 @@ fn test_generate_rtl_instantiates_async_mmap_bridge() {
     reason = "integration test with many assertions"
 )]
 fn test_generate_rtl_top_instantiates_control_s_axi() {
-    let prog = program_from_json(serde_json::json!({
-        "top": "top",
-        "target": "xilinx-hls",
-        "tasks": {
-            "top": {
-                "readable_name": "top",
-                "level": "upper",
-                "code": "",
-                "synth": "hls",
-                "ports": [
-                    {"cat": "mmap", "name": "mem", "type": "float*", "width": 32},
-                    {"cat": "scalar", "name": "n", "type": "uint64_t", "width": 64}
-                ],
-                "tasks": {
-                    "worker": [
-                        {"args": {"data": {"arg": "mem", "cat": "mmap"}, "n": {"arg": "n", "cat": "scalar"}}}
-                    ]
-                },
-                "fifos": {}
-            },
-            "worker": {
-                "readable_name": "worker",
-                "level": "lower",
-                "code": "",
-                "synth": "hls",
-                "ports": [
-                    {"cat": "mmap", "name": "data", "type": "float*", "width": 32},
-                    {"cat": "scalar", "name": "n", "type": "uint64_t", "width": 64}
-                ],
-                "tasks": {},
-                "fifos": {}
-            }
-        }
-    }));
+    let top = task("top", "upper", |t| {
+        t["ports"] = serde_json::json!([
+            {"cat": "mmap", "name": "mem", "type": "float*", "width": 32},
+            {"cat": "scalar", "name": "n", "type": "uint64_t", "width": 64}
+        ]);
+        t["tasks"] = serde_json::json!({
+            "worker": [{
+                "args": {"data": {"arg": "mem", "cat": "mmap"}, "n": {"arg": "n", "cat": "scalar"}}
+            }]
+        });
+    });
+    let worker = task("worker", "lower", |t| {
+        t["ports"] = serde_json::json!([
+            {"cat": "mmap", "name": "data", "type": "float*", "width": 32},
+            {"cat": "scalar", "name": "n", "type": "uint64_t", "width": 64}
+        ]);
+    });
+    let prog = design("top", "xilinx-hls", &[("top", top), ("worker", worker)]);
 
     let mut state = TopologyWithRtl::new(prog);
     state
@@ -2060,45 +1593,25 @@ fn test_generate_rtl_top_instantiates_control_s_axi() {
 
 #[test]
 fn test_generate_rtl_top_control_unrolls_hmap_offsets() {
-    let prog = program_from_json(serde_json::json!({
-        "top": "top",
-        "target": "xilinx-hls",
-        "tasks": {
-            "top": {
-                "readable_name": "top",
-                "level": "upper",
-                "code": "",
-                "synth": "hls",
-                "ports": [
-                    {
-                        "cat": "mmap",
-                        "name": "mem",
-                        "type": "float*",
-                        "width": 32,
-                        "chan_count": 2,
-                        "chan_size": 1024
-                    }
-                ],
-                "tasks": {
-                    "worker": [
-                        {"args": {"data": {"arg": "mem", "cat": "mmap"}}}
-                    ]
-                },
-                "fifos": {}
-            },
-            "worker": {
-                "readable_name": "worker",
-                "level": "lower",
-                "code": "",
-                "synth": "hls",
-                "ports": [
-                    {"cat": "mmap", "name": "data", "type": "float*", "width": 32}
-                ],
-                "tasks": {},
-                "fifos": {}
+    let top = task("top", "upper", |t| {
+        t["ports"] = serde_json::json!([
+            {
+                "cat": "mmap",
+                "name": "mem",
+                "type": "float*",
+                "width": 32,
+                "chan_count": 2,
+                "chan_size": 1024
             }
-        }
-    }));
+        ]);
+        t["tasks"] =
+            serde_json::json!({"worker": [{"args": {"data": {"arg": "mem", "cat": "mmap"}}}]});
+    });
+    let worker = task("worker", "lower", |t| {
+        t["ports"] =
+            serde_json::json!([{"cat": "mmap", "name": "data", "type": "float*", "width": 32}]);
+    });
+    let prog = design("top", "xilinx-hls", &[("top", top), ("worker", worker)]);
 
     let mut state = TopologyWithRtl::new(prog);
     state
