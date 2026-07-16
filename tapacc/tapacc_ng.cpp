@@ -55,7 +55,6 @@ class NgConsumer : public clang::ASTConsumer {
     out["top"] = program.top;
     out["tasks"] = nlohmann::json::object();
     for (const auto& [name, task] : program.tasks) {
-      if (task.is_template_spec) continue;  // wrapper emission: TODO
       const Backend* backend = &hls;
       if (task.target == SynthTarget::kXilinxVitis) backend = &vitis;
       if (task.target == SynthTarget::kIgnore) backend = &ignore;

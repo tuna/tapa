@@ -98,6 +98,20 @@ cc_library(
 )
 
 cc_library(
+    name = "wrapper",
+    srcs = ["wrapper.cpp"],
+    hdrs = ["wrapper.h"],
+    copts = ["-fno-rtti"],
+    deps = [
+        ":backend",
+        ":code_sink",
+        "//tapacc/frontend:classify",
+        "//tapacc/frontend:program",
+        "@tapa-llvm-project//clang:tooling",
+    ],
+)
+
+cc_library(
     name = "rewrite",
     srcs = ["rewrite.cpp"],
     hdrs = ["rewrite.h"],
@@ -105,6 +119,7 @@ cc_library(
     deps = [
         ":backend",
         ":emit",
+        ":wrapper",
         "//tapacc/frontend:program",
         "@tapa-llvm-project//clang:tooling",
     ],

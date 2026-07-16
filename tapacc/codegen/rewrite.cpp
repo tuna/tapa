@@ -1,12 +1,17 @@
 #include "rewrite.h"
 
+#include <set>
+#include <string>
+
 #include "clang/AST/Attr.h"
+#include "clang/AST/Decl.h"
 #include "clang/AST/Stmt.h"
 #include "clang/AST/StmtCXX.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Rewrite/Core/Rewriter.h"
 
 #include "emit.h"
+#include "wrapper.h"
 
 namespace tapa::cc {
 
@@ -51,14 +56,35 @@ void LowerLoopAttrs(const clang::Stmt* stmt, const Backend& backend,
 
 }  // namespace
 
+// The primary-template pattern of a template-specialization task's definition
+// (the decl that actually appears in the source), or nullptr.
+const clang::FunctionDecl* SpecPrimary(const TaskModel& model) {
+  if (!model.is_template_spec || model.def == nullptr) return nullptr;
+  const clang::FunctionDecl* pattern =
+      model.def->getTemplateInstantiationPattern();
+  return pattern != nullptr ? pattern->getCanonicalDecl() : nullptr;
+}
+
 std::string EmitTaskCode(const Program& program, const TaskModel& task,
                          const Backend& backend, clang::ASTContext& ctx) {
   clang::Rewriter rewriter(ctx.getSourceManager(), ctx.getLangOpts());
 
-  // Task functions: every one gets its signature rewritten (per its own level);
-  // the current task keeps a rewritten body, the rest become signatures.
+  // The source decls that are template patterns for some task specialization,
+  // and the pattern for the current task (if it is a specialization). These
+  // primaries appear as functions in the file but are keyed in program.tasks by
+  // mangled name, so they are handled here rather than as helpers.
+  std::set<const clang::FunctionDecl*> spec_primaries;
   for (const auto& [name, model] : program.tasks) {
-    if (model.is_template_spec) continue;  // handled via a wrapper (TODO)
+    if (const clang::FunctionDecl* primary = SpecPrimary(model)) {
+      spec_primaries.insert(primary);
+    }
+  }
+  const clang::FunctionDecl* current_primary = SpecPrimary(task);
+
+  // Non-template task functions: signature rewritten per level; current task
+  // keeps a rewritten body, the rest become signatures.
+  for (const auto& [name, model] : program.tasks) {
+    if (model.is_template_spec) continue;  // reached via its primary below
     const bool is_top = name == program.top;
     backend.RewriteSignature(model, is_top, rewriter);
     if (name == task.name) {
@@ -69,12 +95,36 @@ std::string EmitTaskCode(const Program& program, const TaskModel& task,
     }
   }
 
-  // Non-task helper functions: same rewrite in every file.
+  // Remaining source functions: template-task primaries and plain helpers.
   for (const clang::FunctionDecl* func : program.file_funcs) {
-    if (program.tasks.count(func->getNameAsString()) == 0) {
+    if (program.tasks.count(func->getNameAsString()) != 0 &&
+        !program.tasks.at(func->getNameAsString()).is_template_spec) {
+      continue;  // a non-template task, already handled above
+    }
+    const clang::FunctionDecl* canonical = func->getCanonicalDecl();
+    if (spec_primaries.count(canonical) != 0) {
+      // A template primary whose specialization(s) are tasks.
+      if (current_primary != nullptr && canonical == current_primary) {
+        // Rewrite the primary template using its OWN parameters: a bare
+        // template-parameter type (e.g. `tapa_mmap_type mmap`) is classified as
+        // a scalar here (no interface pragma) -- only the concrete wrapper
+        // does.
+        TaskModel primary = task;
+        primary.def = func;
+        backend.RewriteTaskFunc(primary, /*is_top=*/false, rewriter);
+        LowerLoopAttrs(func->getBody(), backend, rewriter);
+      } else {
+        backend.StripOtherTask(func, rewriter);
+      }
+    } else {
       backend.RewriteHelperFunc(func, rewriter);
       LowerLoopAttrs(func->getBody(), backend, rewriter);
     }
+  }
+
+  // Emit the mangled wrapper for the current specialization after its invoker.
+  if (task.is_template_spec) {
+    InsertWrapper(task, backend, ctx, rewriter);
   }
 
   const clang::SourceManager& sm = ctx.getSourceManager();

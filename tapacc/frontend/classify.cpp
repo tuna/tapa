@@ -3,6 +3,8 @@
 #include <string_view>
 #include <unordered_map>
 
+#include "clang/AST/DeclTemplate.h"
+
 namespace tapa::cc {
 
 namespace {
@@ -49,9 +51,19 @@ TapaKind ClassifyTapaType(clang::QualType type) {
     }
     break;
   }
-  const clang::RecordDecl* record = type->getAsRecordDecl();
-  if (record == nullptr) return TapaKind::kNotTapa;
-  return ClassifyByQualifiedName(record->getQualifiedNameAsString());
+  if (const clang::RecordDecl* record = type->getAsRecordDecl()) {
+    return ClassifyByQualifiedName(record->getQualifiedNameAsString());
+  }
+  // A dependent specialization (e.g. `tapa::mmap<mmap_type>` inside a template)
+  // has no record decl; classify by the template name instead. A bare template
+  // parameter type (e.g. `tapa_mmap_type`) has neither and stays kNotTapa.
+  if (const auto* spec = type->getAs<clang::TemplateSpecializationType>()) {
+    if (const clang::TemplateDecl* decl =
+            spec->getTemplateName().getAsTemplateDecl()) {
+      return ClassifyByQualifiedName(decl->getQualifiedNameAsString());
+    }
+  }
+  return TapaKind::kNotTapa;
 }
 
 const char* TapaKindCat(TapaKind k) {
