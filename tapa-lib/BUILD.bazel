@@ -56,17 +56,19 @@ _PUBLIC_HEADERS = [
     "tapa/xilinx/hls/vec.h",
 ]
 
+# Shared sources between :tapa (full sim) and :tapa-sim (lean sim).
+_SHARED_SRCS = [
+    "tapa/host/frt/flags.cpp",
+    "tapa/host/frt/instance.cpp",
+    "tapa/host/private_util.cpp",
+    "tapa/host/private_util.h",
+    "tapa/host/stream.cpp",
+    "tapa/host/task.cpp",
+]
+
 cc_library(
     name = "tapa",
-    srcs = [
-        "tapa/host/frt/flags.cpp",
-        "tapa/host/frt/instance.cpp",
-        "tapa/host/private_scheduler.h",
-        "tapa/host/private_util.cpp",
-        "tapa/host/private_util.h",
-        "tapa/host/stream.cpp",
-        "tapa/host/task.cpp",
-    ],
+    srcs = _SHARED_SRCS + ["tapa/host/private_scheduler.h"],
     hdrs = _PUBLIC_HEADERS,
     copts = [
         # Suppress warnings from Boost headers redefining their own macros
@@ -99,14 +101,7 @@ alias(
 
 cc_library(
     name = "tapa-sim",
-    srcs = [
-        "tapa/host/frt/flags.cpp",
-        "tapa/host/frt/instance.cpp",
-        "tapa/host/private_util.cpp",
-        "tapa/host/private_util.h",
-        "tapa/host/stream.cpp",
-        "tapa/host/task.cpp",
-    ],
+    srcs = _SHARED_SRCS,
     hdrs = _PUBLIC_HEADERS,
     copts = [
         "-Wno-macro-redefined",
