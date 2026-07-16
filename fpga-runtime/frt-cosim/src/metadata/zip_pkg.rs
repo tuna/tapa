@@ -1,54 +1,41 @@
 use super::{ArgKind, ArgSpec, KernelSpec, Mode, StreamDir, StreamProtocol};
 use crate::error::{CosimError, Result};
 use std::collections::HashMap;
-use std::path::Path;
+use tapa_ir::port::{ArgCategory, Port};
+use tapa_ir::TaskGraph;
 
-fn default_width() -> u32 {
-    32
-}
-
-fn default_depth() -> u32 {
-    16
-}
-
-fn default_addr_width() -> u32 {
-    64
-}
-
-/// Parse the `graph.yaml` that `tapa pack` writes into the archive.
+/// FIFO depth assumed for every stream argument the archive declares.
 ///
-/// This is the serialized TAPA task graph: a `tasks` mapping whose top task
-/// carries a `ports` array of `cat`-tagged entries. Each port expands into one
-/// or more flat kernel arguments, numbered in declaration order.
-pub fn parse_graph_yaml(yaml: &str, _verilog_dir: &Path) -> Result<KernelSpec> {
-    let root: serde_yaml::Value =
-        serde_yaml::from_str(yaml).map_err(|e| CosimError::Metadata(e.to_string()))?;
+/// The archive carries no per-port depth: [`tapa_ir::Port`] has no such
+/// field, and the archive is written straight from that type. The previous
+/// untyped reader looked for a `depth` key and, for exactly that reason,
+/// always fell back to this value — so hardcoding it here preserves the
+/// argument shape bit for bit.
+const STREAM_DEPTH: u32 = 16;
 
-    let top = required_str(&root, "top")?.to_owned();
-    let tasks = root
-        .get("tasks")
-        .and_then(|x| x.as_mapping())
-        .ok_or_else(|| CosimError::Metadata("graph.yaml missing tasks mapping".into()))?;
-    let top_task = tasks
-        .get(serde_yaml::Value::String(top.clone()))
-        .ok_or_else(|| CosimError::Metadata(format!("top task '{top}' missing from tasks")))?;
-    let ports = top_task
-        .get("ports")
-        .and_then(|x| x.as_sequence())
-        .ok_or_else(|| CosimError::Metadata("top task missing ports array".into()))?;
+/// Address width assumed for every mmap argument the archive declares.
+/// Same story as [`STREAM_DEPTH`]: not in the schema, always defaulted.
+const MMAP_ADDR_WIDTH: u32 = 64;
+
+/// Project the packed task graph into the flat kernel argument list.
+///
+/// The top task's `ports` expand into one or more kernel arguments each,
+/// numbered in declaration order — that numbering is the kernel ABI the
+/// simulator binds against, so the order here is load-bearing.
+pub fn spec_from_task_graph(graph: &TaskGraph) -> Result<KernelSpec> {
+    let top_task = graph.tasks.get(&graph.top).ok_or_else(|| {
+        CosimError::Metadata(format!("top task '{}' missing from tasks", graph.top))
+    })?;
 
     let mut args = Vec::new();
     let mut next_id = 0u32;
-    for p in ports {
-        let name = required_str(p, "name")?;
-        let cat = required_str(p, "cat")?;
-        let width = optional_u32(p, "width").unwrap_or_else(default_width);
-        let depth = optional_u32(p, "depth").unwrap_or_else(default_depth);
-        let addr_width = optional_u32(p, "addr_width").unwrap_or_else(default_addr_width);
-        let chan_count = optional_u32(p, "chan_count").unwrap_or(1);
+    for port in &top_task.ports {
+        let name = port.name.as_str();
+        let width = port.width;
+        let chan_count = port.chan_count.unwrap_or(1);
 
-        match cat {
-            "scalar" => {
+        match port.cat {
+            ArgCategory::Scalar => {
                 args.push(ArgSpec {
                     name: name.to_owned(),
                     id: next_id,
@@ -56,84 +43,66 @@ pub fn parse_graph_yaml(yaml: &str, _verilog_dir: &Path) -> Result<KernelSpec> {
                 });
                 next_id += 1;
             }
-            "mmap" | "async_mmap" => {
+            // `is_mmap_like` deliberately not used: it also covers `immap` /
+            // `ommap`, which this reader has never accepted (see below).
+            ArgCategory::Mmap | ArgCategory::AsyncMmap => {
                 args.push(ArgSpec {
                     name: name.to_owned(),
                     id: next_id,
                     kind: ArgKind::Mmap {
                         data_width: width,
-                        addr_width,
+                        addr_width: MMAP_ADDR_WIDTH,
                     },
                 });
                 next_id += 1;
             }
-            "mmaps" | "hmap" => {
-                for i in 0..chan_count {
-                    args.push(ArgSpec {
-                        name: format!("{name}_{i}"),
-                        id: next_id,
-                        kind: ArgKind::Mmap {
-                            data_width: width,
-                            addr_width,
-                        },
-                    });
-                    next_id += 1;
-                }
-            }
-            "istream" | "ostream" => {
-                let dir = if cat == "ostream" {
-                    StreamDir::Out
-                } else {
-                    StreamDir::In
-                };
+            ArgCategory::Istream | ArgCategory::Ostream => {
                 args.push(ArgSpec {
                     name: format!("{name}_s"),
                     id: next_id,
                     kind: ArgKind::Stream {
                         width,
-                        depth,
-                        dir,
+                        depth: STREAM_DEPTH,
+                        dir: stream_dir(port),
                         protocol: StreamProtocol::ApFifo,
                     },
                 });
                 next_id += 1;
             }
-            "istreams" | "ostreams" => {
-                let dir = if cat == "ostreams" {
-                    StreamDir::Out
-                } else {
-                    StreamDir::In
-                };
+            ArgCategory::Istreams | ArgCategory::Ostreams => {
                 for i in 0..chan_count {
                     args.push(ArgSpec {
                         name: format!("{name}_{i}"),
                         id: next_id,
                         kind: ArgKind::Stream {
                             width,
-                            depth,
-                            dir: dir.clone(),
+                            depth: STREAM_DEPTH,
+                            dir: stream_dir(port),
                             protocol: StreamProtocol::ApFifo,
                         },
                     });
                     next_id += 1;
                 }
             }
-            other => {
+            // Read-only / write-only mmaps have never been wired up here.
+            // Rejecting them keeps that an explicit, loud limitation rather
+            // than silently binding them as plain mmaps.
+            ArgCategory::Immap | ArgCategory::Ommap => {
                 return Err(CosimError::Metadata(format!(
-                    "unsupported port category '{other}'"
+                    "unsupported port category '{}'",
+                    port.cat.as_str()
                 )));
             }
         }
     }
 
     Ok(KernelSpec {
-        top_name: top,
+        top_name: graph.top.clone(),
         mode: Mode::Hls,
         args,
-        part_num: root
-            .get("part")
-            .and_then(|x| x.as_str())
-            .map(ToOwned::to_owned),
+        // Recovered by the caller from the state file's flow settings, the
+        // one place the resolved part number is written.
+        part_num: None,
         verilog_files: vec![],
         tcl_files: vec![],
         xci_files: vec![],
@@ -141,14 +110,11 @@ pub fn parse_graph_yaml(yaml: &str, _verilog_dir: &Path) -> Result<KernelSpec> {
     })
 }
 
-fn required_str<'a>(v: &'a serde_yaml::Value, key: &str) -> Result<&'a str> {
-    v.get(key)
-        .and_then(|x| x.as_str())
-        .ok_or_else(|| CosimError::Metadata(format!("required string field '{key}' missing")))
-}
-
-fn optional_u32(v: &serde_yaml::Value, key: &str) -> Option<u32> {
-    v.get(key)
-        .and_then(serde_yaml::Value::as_u64)
-        .map(|x| x as u32)
+/// Direction of a stream port, from its category.
+fn stream_dir(port: &Port) -> StreamDir {
+    if port.cat.is_output_stream() {
+        StreamDir::Out
+    } else {
+        StreamDir::In
+    }
 }

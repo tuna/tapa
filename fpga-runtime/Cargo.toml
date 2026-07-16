@@ -137,6 +137,9 @@ askama = { version = "0.12", features = ["serde_json"] }
 frt-cosim = { path = "frt-cosim" }
 frt-dpi = { path = "frt-dpi" }
 frt-shm = { path = "frt-shm" }
+# Test-only: `tapa_ir::Task`'s area dicts are `IndexMap`s, so building a task
+# graph literal in a test needs the same map type the schema uses.
+indexmap = { version = "2", features = ["serde"] }
 libc = "0.2"
 memmap2 = "0.9"
 opencl3 = "0.10"
@@ -144,7 +147,12 @@ quick-xml = { version = "0.37", features = ["serialize"] }
 regex-lite = "0.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-serde_yaml = "0.9"
+# The TAPA schema crate, from the `tapa-core` Cargo workspace next door.
+# `frt-cosim` reads the `tapa.json` entry out of a packed `.zip` archive; that
+# file is written by `tapa pack` from these very types, so depending on the
+# schema crate — rather than re-deriving its shape from an untyped parse — is
+# what keeps the producer and the consumer from drifting apart.
+tapa-ir = { path = "../tapa-core/tapa-ir" }
 tempfile = "3"
 thiserror = "2"
 tracing = "0.1"

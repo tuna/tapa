@@ -1,0 +1,35 @@
+{
+    "flow": {
+        "synthed": true
+    },
+    "graph": {
+        "cflags": [],
+        "target": "xilinx-hls",
+        "tasks": {
+            "manual_hls_top": {
+                "code": "void manual_hls_top(tapa::mmap<uint32_t> a, tapa::istream<uint32_t>& s) {}",
+                "fifos": {},
+                "level": "lower",
+                "ports": [
+                    {
+                        "cat": "mmap",
+                        "name": "a",
+                        "type": "uint32_t*",
+                        "width": 32
+                    },
+                    {
+                        "cat": "istream",
+                        "name": "s",
+                        "type": "uint32_t",
+                        "width": 32
+                    }
+                ],
+                "readable_name": "manual_hls_top",
+                "synth": "hls",
+                "tasks": {}
+            }
+        },
+        "top": "manual_hls_top"
+    },
+    "version": 1
+}

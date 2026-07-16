@@ -36,6 +36,36 @@ _ALL_SRCS = glob(
     "//:VERSION",
 ]
 
+# -- Schema sources for the neighboring `fpga-runtime` Cargo workspace --
+# `frt-cosim` reads the `tapa.json` entry out of a packed archive using the
+# very `tapa-ir` types `tapa pack` wrote it from. The dependency is declared
+# once in `fpga-runtime/Cargo.toml` as `tapa-ir = { path = "../tapa-core/tapa-ir" }`
+# (crates take it as `{ workspace = true }`), so it is anchored at
+# `fpga-runtime/` -- one `..`. `//fpga-runtime`'s cargo targets glob only their
+# own package, so without this those files are absent from the sandbox and
+# Cargo cannot load the dependency's manifest. Bazel stages inputs at their
+# repo-relative paths in the execroot, which is exactly where that relative
+# path resolves from `fpga-runtime/`.
+#
+# `Cargo.toml` (this workspace's root) must come along: `tapa-ir/Cargo.toml`
+# inherits its dependencies and lint table from it, and Cargo refuses to load
+# the manifest without a workspace root to inherit from. Verified that the
+# root manifest is *all* it needs — Cargo does not load this workspace's other
+# members to satisfy a foreign path dependency.
+#
+# Every `//fpga-runtime` cargo target needs this, not just the ones that
+# compile `frt-cosim`: Cargo loads *all* workspace members' manifests up front,
+# so even `-p frt-dpi-verilator` (which has no dependency on `frt-cosim`) fails
+# without it.
+filegroup(
+    name = "tapa-ir-srcs",
+    srcs = ["Cargo.toml"] + glob(
+        ["tapa-ir/**"],
+        exclude = ["tapa-ir/target/**"],
+    ),
+    visibility = ["//fpga-runtime:__pkg__"],
+)
+
 _REMOTE_XILINX_SETTINGS = REMOTE_XILINX_SETTINGS or (
     REMOTE_XILINX_TOOL_PATH +
     ("/Vitis/" if XILINX_TOOL_VERSION >= "2024.2" else "/Vitis_HLS/") +

@@ -89,8 +89,8 @@ fn run_native(args: &PackArgs, ctx: &CliContext) -> Result<()> {
 /// under `rtl/`, every HLS
 /// `_csynth.rpt` under `report/` (with timestamp redaction so the
 /// archive is reproducible), the TAPA report yaml at the archive root
-/// when the synth step emitted one, plus `graph.yaml` and
-/// `settings.yaml` snapshots of the persistent compile context. Output
+/// when the synth step emitted one, plus a verbatim copy of the
+/// `tapa.json` state file carrying the compile context. Output
 /// defaults to `work.zip` in the caller's CWD and is always normalized
 /// to a `.zip` suffix.
 fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, state: &WorkState) -> Result<()> {
@@ -146,26 +146,13 @@ fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, state: &WorkState) -> Result<
         z.write_all(&fs_err::read(&report_yaml)?)?;
     }
 
-    // Serialize the persisted graph and flow settings as YAML so downstream
-    // consumers can recover compile metadata from the archive.
-    //
-    // These two entries stay split, and stay at these names, because they are
-    // a cross-workspace contract: `frt-cosim`'s zip reader
-    // (`fpga-runtime/frt-cosim/src/metadata`) requires a `graph.yaml` whose
-    // root carries `top`/`tasks`, and recovers `part_num` from the root of
-    // `settings.yaml`. Merging them into one `tapa.json`-shaped entry would
-    // nest the graph a level down and break cosim. The work dir collapsed to
-    // one state file; the archive layout is a published surface and did not.
-    let graph_yaml = serde_yaml::to_string(&state.graph)
-        .map_err(|e| CliError::InvalidArg(format!("graph yaml: {e}")))?;
-    z.start_file("graph.yaml", opts)
+    // The state file itself, byte-for-byte: one schema, one format, one
+    // definition. `frt-cosim` parses this entry back with the very
+    // `tapa_ir::WorkState` types written here, so the archive's compile
+    // metadata cannot drift from the work dir's.
+    z.start_file(work_io::FILE_NAME, opts)
         .map_err(|e| CliError::InvalidArg(format!("zip entry: {e}")))?;
-    z.write_all(graph_yaml.as_bytes())?;
-    let settings_yaml = serde_yaml::to_string(&state.flow)
-        .map_err(|e| CliError::InvalidArg(format!("settings yaml: {e}")))?;
-    z.start_file("settings.yaml", opts)
-        .map_err(|e| CliError::InvalidArg(format!("zip entry: {e}")))?;
-    z.write_all(settings_yaml.as_bytes())?;
+    z.write_all(&work_io::to_bytes(state)?)?;
 
     // Store the curated per-task HLS `_csynth.rpt` files under
     // `report/<task>/<file>` and replace the per-run `Date:` line with the fixed
@@ -419,45 +406,43 @@ mod tests {
             .map(|i| zr.by_index(i).unwrap().name().to_string())
             .collect();
         assert!(
-            names.iter().any(|n| n == "graph.yaml"),
-            "graph.yaml missing: {names:?}"
+            names.iter().any(|n| n == "tapa.json"),
+            "tapa.json missing: {names:?}"
         );
         assert!(
-            names.iter().any(|n| n == "settings.yaml"),
-            "settings.yaml missing: {names:?}"
+            !names
+                .iter()
+                .any(|n| n == "graph.yaml" || n == "settings.yaml"),
+            "the split YAML snapshots must be gone, not shipped alongside \
+             tapa.json: {names:?}",
         );
 
-        // These two entries are `frt-cosim`'s contract, so pin the *shape* it
-        // reads, not just the names: `graph.yaml` must carry `top`/`tasks` at
-        // the root (`frt-cosim::metadata::zip_pkg::parse_graph_yaml`) and
-        // `settings.yaml` must carry `part_num` at the root
-        // (`parse_part_from_settings_yaml`). Nesting either under a `graph:` /
-        // `flow:` key would break cosim at runtime, not at compile time.
-        let read_entry = |zr: &mut zip::ZipArchive<std::io::Cursor<Vec<u8>>>, name: &str| {
-            let mut s = String::new();
-            std::io::Read::read_to_string(&mut zr.by_name(name).unwrap(), &mut s)
-                .unwrap_or_else(|e| panic!("read {name}: {e}"));
-            serde_yaml::from_str::<serde_yaml::Value>(&s)
-                .unwrap_or_else(|e| panic!("parse {name}: {e}"))
-        };
-        let graph_v = read_entry(&mut zr, "graph.yaml");
+        // The `tapa.json` entry is `frt-cosim`'s contract. Pin that it is the
+        // work-dir state file verbatim — same bytes, same schema — because
+        // cosim parses it with `tapa_ir::WorkState` and would fail at
+        // runtime, not compile time, on a reshaped archive.
+        let mut packed = Vec::new();
+        std::io::Read::read_to_end(&mut zr.by_name("tapa.json").unwrap(), &mut packed)
+            .expect("read tapa.json");
+        let on_disk = fs_err::read(crate::state::work::path_in(dir.path())).expect("read state");
         assert_eq!(
-            graph_v.get("top").and_then(|v| v.as_str()),
-            Some("Top"),
-            "graph.yaml must keep `top` at the root for frt-cosim",
+            packed, on_disk,
+            "the archive's tapa.json must be the work dir's, byte for byte",
         );
+        let state =
+            tapa_ir::WorkState::from_json(std::str::from_utf8(&packed).expect("utf-8 tapa.json"))
+                .expect(
+                    "packed tapa.json must strict-parse as WorkState (frt-cosim does exactly this)",
+                );
+        assert_eq!(state.graph.top, "Top", "cosim recovers the top task name");
         assert!(
-            graph_v
-                .get("tasks")
-                .and_then(|v| v.as_mapping())
-                .is_some_and(|m| m.contains_key(serde_yaml::Value::String("Top".to_string()))),
-            "graph.yaml must keep the `tasks` mapping at the root for frt-cosim",
+            state.graph.tasks.contains_key("Top"),
+            "cosim recovers the top task's ports from the tasks map",
         );
-        let settings_v = read_entry(&mut zr, "settings.yaml");
         assert_eq!(
-            settings_v.get("part_num").and_then(|v| v.as_str()),
+            state.flow.part_num.as_deref(),
             Some("xcu250-figd2104-2L-e"),
-            "settings.yaml must keep `part_num` at the root for frt-cosim",
+            "cosim recovers the part number from the flow block",
         );
         assert!(names.iter().any(|n| n == "rtl/Top.v"));
         assert!(names.iter().any(|n| n == "report/Top/Top_csynth.rpt"));

@@ -12,6 +12,18 @@ Produces an `.xo` object file. This is passed to the Vitis `v++` compiler for bi
 
 Produces a `.zip` RTL archive instead of an `.xo` file. The archive contains the same RTL files and metadata but without the Vitis shell wrapper. Use this when the RTL is consumed directly by a downstream EDA tool.
 
+The archive layout is:
+
+```text
+work.zip
+├── rtl/                    # the generated RTL tree
+├── report/TASK/            # per-task HLS `_csynth.rpt` files
+├── report.yaml             # when `tapa synth` emitted one
+└── tapa.json               # compile metadata (see below)
+```
+
+`tapa.json` is a verbatim copy of the work directory's [`tapa.json`](#file-and-directory-descriptions) — same schema, same bytes. It is what lets a consumer recover the kernel's interface from the archive alone: TAPA's own co-simulation runtime reads the top task's ports out of `graph` to bind kernel arguments, and takes the part number from `flow`.
+
 ## Reproducibility
 
 TAPA strips timestamps, absolute paths, and random IDs from both `.xo` and `.zip` artifacts before writing them to disk. Given the same source code and tool versions, repeated invocations produce byte-identical output. This makes the artifacts suitable for CI and release attestation workflows.

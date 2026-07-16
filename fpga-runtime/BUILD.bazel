@@ -6,15 +6,23 @@ load("//bazel:cargo_rules.bzl", "cargo_artifacts", "cargo_platform_artifacts", "
 
 package(default_visibility = ["//visibility:public"])
 
+# `frt-cosim` depends on `//tapa-core:tapa-ir` by relative path, to parse a
+# packed archive's `tapa.json` with the same types that wrote it. The glob
+# below only covers this package, so the dependency's sources are staged
+# explicitly. Cargo loads every workspace member's manifest up front, so this
+# is required by *all* the cargo targets here — including the DPI-only ones
+# that never compile `frt-cosim`.
+_ALL_SRCS = glob(
+    ["**/*"],
+    exclude = [
+        "BUILD.bazel",
+        "target/**",
+    ],
+) + ["//tapa-core:tapa-ir-srcs"]
+
 cargo_platform_artifacts(
     name = "cargo_release_artifacts",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "BUILD.bazel",
-            "target/**",
-        ],
-    ),
+    srcs = _ALL_SRCS,
     outs = [
         "cargo/libfrt_dpi_verilator.dylib",
         "cargo/libfrt_dpi_verilator.so",
@@ -45,13 +53,7 @@ cargo_platform_artifacts(
 # dylib/so platform split above.
 cargo_artifacts(
     name = "cargo_static_lib",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "BUILD.bazel",
-            "target/**",
-        ],
-    ),
+    srcs = _ALL_SRCS,
     outs = ["cargo/libfrt.a"],
     artifacts = ["libfrt.a:cargo/libfrt.a"],
     build_args = [
@@ -68,13 +70,7 @@ cargo_artifacts(
 cargo_test(
     name = "cargo_test",
     size = "enormous",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "BUILD.bazel",
-            "target/**",
-        ],
-    ),
+    srcs = _ALL_SRCS,
     cargo_args = [
         "-p",
         "frt-shm",

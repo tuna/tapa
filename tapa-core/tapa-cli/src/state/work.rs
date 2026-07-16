@@ -1,10 +1,16 @@
-//! The single work-directory state file, `<work_dir>/tapa.json`.
+//! File I/O for the single work-directory state file, `<work_dir>/tapa.json`.
 //!
-//! `analyze` writes it, `synth` annotates it in place, `pack` consumes it.
-//! It is the **only** file the pipeline reads back: the unified
-//! [`TaskGraph`] plus the small typed [`FlowSettings`] block, behind a
-//! [`VERSION`] stamp so a work dir written by a different tapa fails with a
+//! `analyze` writes it, `synth` annotates it in place, `pack` consumes it —
+//! and copies it verbatim into the `.zip` archive, where `frt-cosim` reads it
+//! back. It is the **only** file the pipeline reads back: the unified
+//! [`tapa_ir::TaskGraph`] plus the small typed [`FlowSettings`] block, behind
+//! a [`VERSION`] stamp so a work dir written by a different tapa fails with a
 //! clear message instead of a field-level serde diagnostic.
+//!
+//! The types are [`tapa_ir::work_state`]'s — they are schema, shared with
+//! `frt-cosim` across the workspace boundary. This module owns only the
+//! work-directory side: where the file lives, how it is written, and how a
+//! foreign version is reported.
 //!
 //! `analyze` also drops the verbatim `tapacc` stdout at
 //! `<work_dir>/tapacc.json` for provenance, but nothing reads it back — it
@@ -13,82 +19,11 @@
 
 use std::path::{Path, PathBuf};
 
-use serde::{Deserialize, Serialize};
-use tapa_ir::{ParseError, TaskGraph};
+use serde::Deserialize;
+pub use tapa_ir::work_state::{FlowSettings, WorkState, FILE_NAME, VERSION};
 
 use crate::error::{CliError, Result};
 use crate::state::json::write_bytes_atomic;
-
-/// Name of the single work-directory state file.
-pub const FILE_NAME: &str = "tapa.json";
-
-/// Schema version stamped into every [`WorkState`] this tapa writes.
-///
-/// Bump on any backward-incompatible change to the state shape — including
-/// the nested [`TaskGraph`] wire form. Work dirs outlive tool versions, so a
-/// mismatch must surface as [`CliError::StaleWorkState`], not as a confusing
-/// parse failure.
-pub const VERSION: u32 = 1;
-
-/// Everything the pipeline persists between steps.
-#[allow(
-    clippy::derive_partial_eq_without_eq,
-    reason = "transitively holds serde_json::Value through TaskGraph"
-)]
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(deny_unknown_fields)]
-pub struct WorkState {
-    /// Schema version; always [`VERSION`] for state this tapa writes.
-    pub version: u32,
-    /// The unified task graph: the structure `analyze` derives from
-    /// `tapacc`, plus the post-synthesis annotations `synth` writes in
-    /// place.
-    pub graph: TaskGraph,
-    /// Flow-level settings resolved by the pipeline steps.
-    pub flow: FlowSettings,
-}
-
-impl WorkState {
-    /// Wrap `graph` with the current [`VERSION`] and pre-synth (default)
-    /// flow settings.
-    pub fn new(graph: TaskGraph) -> Self {
-        Self {
-            version: VERSION,
-            graph,
-            flow: FlowSettings::default(),
-        }
-    }
-}
-
-/// Flow-level settings shared across pipeline steps.
-///
-/// The compilation flow target is deliberately **absent**: [`TaskGraph::target`]
-/// is its single home, so there is nothing to reconcile between two copies.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct FlowSettings {
-    /// Target part number resolved by `synth` from `--part-num` or
-    /// `--platform`. `pack` reads it back to build the `.xo`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub part_num: Option<String>,
-    /// Vitis platform `synth --platform` ran against, when given. Read by
-    /// `pack --bitstream-script` to render the `v++` invocation.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub platform: Option<String>,
-    /// The **requested** target clock period.
-    ///
-    /// Distinct from [`tapa_ir::Task::clock_period`], which is the per-task
-    /// *achieved* estimate HLS reports back: one is an input to synthesis,
-    /// the other a result of it. Both are kept.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub clock_period: Option<String>,
-    /// `v++` connectivity config forwarded to `pack --bitstream-script`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub connectivity: Option<PathBuf>,
-    /// Set once `synth` has completed for this work dir.
-    #[serde(default)]
-    pub synthed: bool,
-}
 
 /// Path of the state file inside `work_dir`.
 pub fn path_in(work_dir: &Path) -> PathBuf {
@@ -110,13 +45,18 @@ pub fn load(work_dir: &Path) -> Result<WorkState> {
     }
     let text = fs_err::read_to_string(&path)?;
     check_version(&text, &path)?;
-    let de = &mut serde_json::Deserializer::from_str(&text);
-    serde_path_to_error::deserialize(de).map_err(|e| {
-        CliError::Schema(ParseError::Schema {
-            path: e.path().to_string(),
-            message: e.inner().to_string(),
-        })
-    })
+    Ok(WorkState::from_json(&text)?)
+}
+
+/// Serialize `state` to the exact bytes [`store`] writes.
+///
+/// `pack` copies these same bytes into the archive, so the archive's
+/// `tapa.json` entry and `<work_dir>/tapa.json` are byte-identical and there
+/// is only one serialization to keep in step with the schema.
+pub fn to_bytes(state: &WorkState) -> Result<Vec<u8>> {
+    let mut bytes = serde_json::to_vec_pretty(state)?;
+    bytes.push(b'\n');
+    Ok(bytes)
 }
 
 /// Persist `state` to `<work_dir>/tapa.json`.
@@ -124,9 +64,7 @@ pub fn load(work_dir: &Path) -> Result<WorkState> {
 /// Pretty-printed (work dirs are meant to be read and diffed by humans) and
 /// swapped in atomically, so a reader never observes a half-written file.
 pub fn store(work_dir: &Path, state: &WorkState) -> Result<()> {
-    let mut bytes = serde_json::to_vec_pretty(state)?;
-    bytes.push(b'\n');
-    write_bytes_atomic(work_dir, FILE_NAME, &bytes)
+    write_bytes_atomic(work_dir, FILE_NAME, &to_bytes(state)?)
 }
 
 /// The `version` stamp alone, read without committing to the rest of the
@@ -161,7 +99,7 @@ mod tests {
     use super::*;
     use std::collections::BTreeMap;
 
-    use tapa_ir::{SynthTarget, Target, Task, TaskLevel};
+    use tapa_ir::{SynthTarget, Target, Task, TaskGraph, TaskLevel};
 
     fn sample_state() -> WorkState {
         let mut tasks = BTreeMap::new();
@@ -220,6 +158,22 @@ mod tests {
             "state file must be pretty-printed for human diffing; got {raw}",
         );
         assert!(raw.ends_with("}\n"), "state file must end with a newline");
+    }
+
+    #[test]
+    fn stored_bytes_are_the_packed_bytes() {
+        // `pack` puts `to_bytes` into the archive; if it ever diverged from
+        // what `store` writes, the archive and the work dir would carry two
+        // different serializations of one schema.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let state = sample_state();
+        store(dir.path(), &state).expect("store");
+        let on_disk = fs_err::read(path_in(dir.path())).expect("read");
+        assert_eq!(
+            on_disk,
+            to_bytes(&state).expect("to_bytes"),
+            "the archive entry and the work-dir file must be the same bytes",
+        );
     }
 
     #[test]

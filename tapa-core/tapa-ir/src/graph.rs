@@ -2,7 +2,8 @@
 //!
 //! `TaskGraph` is the single root type for both the `tapacc` output and the
 //! post-synthesis design model; it is persisted inside the work dir's
-//! `tapa.json` and snapshotted into `graph.yaml` by `tapa pack`.
+//! `tapa.json`, which `tapa pack` copies verbatim into the `.zip` archive for
+//! `frt-cosim` to read back.
 //! Field declaration order is stable so serializing re-emits keys
 //! deterministically; `tasks` uses [`BTreeMap`] so keys come out
 //! alphabetically, matching the sorted order `tapa analyze` writes.

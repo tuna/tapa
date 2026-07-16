@@ -115,12 +115,16 @@ fn load_xo_spec<R: Read + std::io::Seek>(
     Ok((spec, extract_dir))
 }
 
+/// Load a `tapa pack` HLS archive.
+///
+/// The archive carries exactly one metadata entry — `tapa.json`, the
+/// verbatim copy of the work-directory state file — which strict-parses back
+/// into [`tapa_ir::WorkState`]: the same types `tapa pack` wrote it from.
 fn load_zip_spec<R: Read + std::io::Seek>(
     zip: &mut zip::ZipArchive<R>,
     src: &Path,
 ) -> Result<(KernelSpec, tempfile::TempDir)> {
-    let mut graph_yaml = None;
-    let mut settings_yaml = None;
+    let mut state_json = None;
     let extract_dir = make_extract_dir("zip")?;
     let mut files = ExtractedFiles::default();
 
@@ -133,25 +137,24 @@ fn load_zip_spec<R: Read + std::io::Seek>(
             continue;
         }
         let path = extract_file(&mut file, &name, extract_dir.path())?;
-        if name.ends_with("graph.yaml") {
-            graph_yaml = Some(std::fs::read_to_string(&path)?);
-            continue;
-        }
-        if name.ends_with("settings.yaml") {
-            settings_yaml = Some(std::fs::read_to_string(&path)?);
+        if name.ends_with(tapa_ir::work_state::FILE_NAME) {
+            state_json = Some(std::fs::read_to_string(&path)?);
             continue;
         }
         files.classify(&name, path);
     }
 
-    let yaml = graph_yaml
-        .ok_or_else(|| CosimError::Metadata(format!("no graph.yaml in {}", src.display())))?;
-    let mut spec = zip_pkg::parse_graph_yaml(&yaml, extract_dir.path())?;
-    if spec.part_num.is_none() {
-        spec.part_num = settings_yaml
-            .as_deref()
-            .and_then(parse_part_from_settings_yaml);
-    }
+    let json = state_json.ok_or_else(|| {
+        CosimError::Metadata(format!(
+            "no {} in {}",
+            tapa_ir::work_state::FILE_NAME,
+            src.display(),
+        ))
+    })?;
+    let state =
+        tapa_ir::WorkState::from_json(&json).map_err(|e| CosimError::Metadata(e.to_string()))?;
+    let mut spec = zip_pkg::spec_from_task_graph(&state.graph)?;
+    spec.part_num = state.flow.part_num;
     spec.verilog_files = files.verilog;
     spec.tcl_files = files.tcl;
     spec.xci_files = files.xci;
@@ -162,18 +165,6 @@ fn make_extract_dir(tag: &str) -> Result<tempfile::TempDir> {
     Ok(tempfile::Builder::new()
         .prefix(&format!("frt-cosim-{tag}-"))
         .tempdir()?)
-}
-
-fn parse_part_from_settings_yaml(settings_yaml: &str) -> Option<String> {
-    let v: serde_yaml::Value = serde_yaml::from_str(settings_yaml).ok()?;
-    v.get("part_num")
-        .and_then(|x| x.as_str())
-        .map(ToOwned::to_owned)
-        .or_else(|| {
-            v.get("part")
-                .and_then(|x| x.as_str())
-                .map(ToOwned::to_owned)
-        })
 }
 
 /// Returns true if the zip entry path has more than 2 directory components.

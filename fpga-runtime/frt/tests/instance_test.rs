@@ -71,9 +71,9 @@ fn make_manual_zip() -> PathBuf {
     let mut zip = zip::ZipWriter::new(file);
     let opts: FileOptions<'_, ()> = FileOptions::default();
 
-    zip.start_file("graph.yaml", opts).expect("add graph");
-    zip.write_all(include_bytes!("fixtures/manual_zip/graph.yaml"))
-        .expect("write graph");
+    zip.start_file("tapa.json", opts).expect("add state");
+    zip.write_all(include_bytes!("fixtures/manual_zip/tapa.json"))
+        .expect("write state");
 
     zip.start_file("rtl/manual_hls_top.v", opts)
         .expect("add rtl");
