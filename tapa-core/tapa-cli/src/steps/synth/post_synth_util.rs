@@ -106,7 +106,7 @@ fn run_and_parse_one(
     if should_run_vivado(&cpp_path, prev_mtime) {
         run_one(runner, rtl_dir, &rpt_path, module_name, part_num)?;
         if !report_is_fresh(&rpt_path, prev_mtime) {
-            return Err(CliError::InvalidArg(format!(
+            return Err(CliError::Codegen(format!(
                 "post-synth util: Vivado returned success but the \
                  utilization report for `{module_name}` was not \
                  (re)written at {}",

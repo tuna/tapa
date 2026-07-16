@@ -16,7 +16,7 @@ pub(super) fn effective_total_area(
     task_name: &str,
 ) -> Result<IndexMap<String, Value>> {
     let task = design.tasks.get(task_name).ok_or_else(|| {
-        CliError::InvalidArg(format!("metrics: task `{task_name}` not found in design"))
+        CliError::Report(format!("metrics: task `{task_name}` not found in design"))
     })?;
     if !task.total_area.is_empty() {
         return Ok(task.total_area.clone());
@@ -43,14 +43,14 @@ fn add_scaled_area(
     task_name: &str,
 ) -> Result<()> {
     let count = i64::try_from(count).map_err(|error| {
-        CliError::InvalidArg(format!(
+        CliError::Report(format!(
             "metrics: task `{task_name}` has too many child instances: {error}"
         ))
     })?;
     for (resource, child_value) in child {
         let child_value = area_value(child_value, task_name, resource)?;
         let increment = child_value.checked_mul(count).ok_or_else(|| {
-            CliError::InvalidArg(format!(
+            CliError::Report(format!(
                 "metrics: `{resource}` area overflows while aggregating task `{task_name}`"
             ))
         })?;
@@ -58,7 +58,7 @@ fn add_scaled_area(
             .get(resource)
             .map_or(Ok(0), |value| area_value(value, task_name, resource))?;
         let value = current.checked_add(increment).ok_or_else(|| {
-            CliError::InvalidArg(format!(
+            CliError::Report(format!(
                 "metrics: `{resource}` area overflows while aggregating task `{task_name}`"
             ))
         })?;
@@ -69,7 +69,7 @@ fn add_scaled_area(
 
 fn area_value(value: &Value, task_name: &str, resource: &str) -> Result<i64> {
     value.as_i64().ok_or_else(|| {
-        CliError::InvalidArg(format!(
+        CliError::Report(format!(
             "metrics: task `{task_name}` has non-integer `{resource}` area `{value}`"
         ))
     })

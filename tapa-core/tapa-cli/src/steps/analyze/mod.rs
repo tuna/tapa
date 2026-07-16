@@ -175,7 +175,7 @@ pub fn run(args: &AnalyzeArgs, ctx: &CliContext) -> Result<()> {
     }
 
     let mut graph: Graph = serde_json::from_value(graph_dict)
-        .map_err(|e| CliError::InvalidArg(format!("graph schema error: {e}")))?;
+        .map_err(|e| CliError::Codegen(format!("graph schema error: {e}")))?;
 
     if args.flatten_hierarchy {
         graph = flatten_graph_value(&graph)?;

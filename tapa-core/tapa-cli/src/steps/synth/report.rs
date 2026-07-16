@@ -84,12 +84,12 @@ pub fn write_top_report(work_dir: &Path, design: &Design, override_schema: &str)
 
     let json_path = work_dir.join("report.json");
     let json_str = serde_json::to_string_pretty(&report)
-        .map_err(|e| CliError::InvalidArg(format!("report.json serialize: {e}")))?;
+        .map_err(|e| CliError::Report(format!("report.json serialize: {e}")))?;
     fs::write(&json_path, json_str)?;
 
     let yaml_path = work_dir.join("report.yaml");
     let yaml_str = serde_yaml::to_string(&report)
-        .map_err(|e| CliError::InvalidArg(format!("report.yaml serialize: {e}")))?;
+        .map_err(|e| CliError::Report(format!("report.yaml serialize: {e}")))?;
     fs::write(&yaml_path, yaml_str)?;
     Ok(())
 }
@@ -103,7 +103,7 @@ pub fn write_top_report(work_dir: &Path, design: &Design, override_schema: &str)
 /// computed as `self_area` plus every child instance's effective total.
 fn build_task_report(design: &Design, task_name: &str, schema: &str) -> Result<Report> {
     let task = design.tasks.get(task_name).ok_or_else(|| {
-        CliError::InvalidArg(format!("report: task `{task_name}` not found in design"))
+        CliError::Report(format!("report: task `{task_name}` not found in design"))
     })?;
 
     let has_explicit_total = !task.total_area.is_empty();
@@ -194,12 +194,12 @@ fn build_task_report(design: &Design, task_name: &str, schema: &str) -> Result<R
 
 fn parse_clock_period(task_name: &str, period: &str) -> Result<f64> {
     let parsed = period.parse::<f64>().map_err(|error| {
-        CliError::InvalidArg(format!(
+        CliError::Report(format!(
             "report: task `{task_name}` has invalid clock period `{period}`: {error}"
         ))
     })?;
     if !parsed.is_finite() {
-        return Err(CliError::InvalidArg(format!(
+        return Err(CliError::Report(format!(
             "report: task `{task_name}` has non-finite clock period `{period}`"
         )));
     }

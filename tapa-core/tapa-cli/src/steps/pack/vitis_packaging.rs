@@ -41,7 +41,7 @@ pub(super) fn pack_vitis(
 ) -> Result<()> {
     let (part_num, clock_period) = resolve_device_settings(flow)?;
     let top_task = design.tasks.get(&design.top).ok_or_else(|| {
-        CliError::InvalidArg(format!(
+        CliError::Codegen(format!(
             "tapa.json does not contain the top task `{}`",
             design.top
         ))
@@ -168,13 +168,13 @@ fn top_rtl_m_axi_bases(
 ) -> Result<std::collections::BTreeSet<String>> {
     let rtl_path = hdl_dir.join(format!("{top_name}.v"));
     let source = std::fs::read_to_string(&rtl_path).map_err(|e| {
-        CliError::InvalidArg(format!(
+        CliError::Codegen(format!(
             "failed to read top RTL `{}` for kernel.xml port projection: {e}",
             rtl_path.display(),
         ))
     })?;
     let module = tapa_rtl::VerilogModule::parse(&source).map_err(|e| {
-        CliError::InvalidArg(format!(
+        CliError::Codegen(format!(
             "failed to parse top RTL `{}` for kernel.xml port projection: {e}",
             rtl_path.display(),
         ))

@@ -108,10 +108,10 @@ fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, state: &WorkState) -> Result<
     for rtl_file in &rtl_files {
         let rel = rtl_file
             .strip_prefix(&rtl_dir)
-            .map_err(|e| CliError::InvalidArg(format!("rtl strip_prefix: {e}")))?;
+            .map_err(|e| CliError::Archive(format!("rtl strip_prefix: {e}")))?;
         let name = format!("rtl/{}", rel.to_slash_lossy());
         z.start_file(name, opts)
-            .map_err(|e| CliError::InvalidArg(format!("zip entry: {e}")))?;
+            .map_err(|e| CliError::Archive(format!("zip entry: {e}")))?;
         z.write_all(&fs_err::read(rtl_file)?)?;
     }
 
@@ -121,7 +121,7 @@ fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, state: &WorkState) -> Result<
     let report_yaml = work_dir.join("report.yaml");
     if report_yaml.is_file() {
         z.start_file("report.yaml", opts)
-            .map_err(|e| CliError::InvalidArg(format!("zip entry: {e}")))?;
+            .map_err(|e| CliError::Archive(format!("zip entry: {e}")))?;
         z.write_all(&fs_err::read(&report_yaml)?)?;
     }
 
@@ -130,7 +130,7 @@ fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, state: &WorkState) -> Result<
     // `tapa_ir::WorkState` types written here, so the archive's compile
     // metadata cannot drift from the work dir's.
     z.start_file(work_io::FILE_NAME, opts)
-        .map_err(|e| CliError::InvalidArg(format!("zip entry: {e}")))?;
+        .map_err(|e| CliError::Archive(format!("zip entry: {e}")))?;
     z.write_all(&work_io::to_bytes(state)?)?;
 
     // Store the curated per-task HLS `_csynth.rpt` files under
@@ -165,7 +165,7 @@ fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, state: &WorkState) -> Result<
                 }
                 let rel = path
                     .strip_prefix(&report_root)
-                    .map_err(|e| CliError::InvalidArg(format!("rpt strip_prefix: {e}")))?;
+                    .map_err(|e| CliError::Archive(format!("rpt strip_prefix: {e}")))?;
                 let name = format!("report/{task_name}/{}", rel.to_slash_lossy());
                 rpt_files.push((path.to_path_buf(), name));
             }
@@ -173,13 +173,13 @@ fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, state: &WorkState) -> Result<
         rpt_files.sort();
         for (rpt, name) in &rpt_files {
             z.start_file(name, opts)
-                .map_err(|e| CliError::InvalidArg(format!("zip entry: {e}")))?;
+                .map_err(|e| CliError::Archive(format!("zip entry: {e}")))?;
             z.write_all(&redact_rpt(&fs_err::read(rpt)?))?;
         }
     }
 
     z.finish()
-        .map_err(|e| CliError::InvalidArg(format!("zip finish: {e}")))?;
+        .map_err(|e| CliError::Archive(format!("zip finish: {e}")))?;
     Ok(())
 }
 

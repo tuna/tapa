@@ -26,6 +26,15 @@ pub enum CliError {
     #[error("invalid CLI argument: {0}")]
     InvalidArg(String),
 
+    #[error("archive error: {0}")]
+    Archive(String),
+
+    #[error("codegen error: {0}")]
+    Codegen(String),
+
+    #[error("report error: {0}")]
+    Report(String),
+
     #[error("invalid remote config in `{path}`: {message}")]
     RemoteConfigParse { path: PathBuf, message: String },
 
@@ -72,7 +81,13 @@ impl CliError {
             | Self::RemoteConfigParse { .. }
             | Self::TapaccNotFound { .. }
             | Self::TapaccNotExecutable { .. } => 2,
-            Self::Io(..) | Self::Json(..) | Self::Schema(..) | Self::Xilinx(..) => 1,
+            Self::Io(..)
+            | Self::Json(..)
+            | Self::Schema(..)
+            | Self::Xilinx(..)
+            | Self::Archive(..)
+            | Self::Codegen(..)
+            | Self::Report(..) => 1,
         }
     }
 }
@@ -93,6 +108,13 @@ mod tests {
     #[test]
     fn usage_errors_exit_two() {
         assert_eq!(CliError::InvalidArg("bad value".to_owned()).exit_code(), 2);
+    }
+
+    #[test]
+    fn operational_errors_exit_one() {
+        assert_eq!(CliError::Archive("zip failed".to_owned()).exit_code(), 1);
+        assert_eq!(CliError::Codegen("rtl parse".to_owned()).exit_code(), 1);
+        assert_eq!(CliError::Report("serialize".to_owned()).exit_code(), 1);
     }
 
     #[test]

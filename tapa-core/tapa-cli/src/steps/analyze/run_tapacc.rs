@@ -40,5 +40,5 @@ pub(super) fn run_tapacc(
         });
     }
     String::from_utf8(output.stdout)
-        .map_err(|e| CliError::InvalidArg(format!("`tapacc` emitted non-UTF-8 output: {e}")))
+        .map_err(|e| CliError::Codegen(format!("`tapacc` emitted non-UTF-8 output: {e}")))
 }

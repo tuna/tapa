@@ -79,7 +79,7 @@ pub fn run_hls_for_leaves(
         let cpp_source = cpp_path_for(work_dir, task_name);
         let cpp_source = crate::util::utf8(cpp_source);
         if !cpp_source.is_file() {
-            return Err(CliError::InvalidArg(format!(
+            return Err(CliError::Codegen(format!(
                 "missing extracted C++ source `{}` for task `{task_name}`",
                 cpp_source.as_str(),
             )));
@@ -271,7 +271,7 @@ fn list_verilog_files(dir: &camino::Utf8Path) -> Result<Vec<Utf8PathBuf>> {
     }
     for ent in walkdir::WalkDir::new(dir) {
         let ent = ent.map_err(|e| {
-            CliError::InvalidArg(format!(
+            CliError::Codegen(format!(
                 "failed to inspect cached HDL directory `{}`: {e}",
                 dir.as_str()
             ))
@@ -304,13 +304,13 @@ fn find_and_parse_csynth(
     let fallback = reports_dir.join(format!("{task_name}.csynth.xml"));
     let report_xml = if primary.is_file() { primary } else { fallback };
     let bytes = fs::read(&report_xml).map_err(|e| {
-        CliError::InvalidArg(format!(
+        CliError::Codegen(format!(
             "missing cached csynth report `{}`: {e}",
             report_xml.as_str(),
         ))
     })?;
     tapa_xilinx::parse_csynth_xml(&bytes).map_err(|e| {
-        CliError::InvalidArg(format!(
+        CliError::Codegen(format!(
             "parse cached csynth `{}`: {e}",
             report_xml.as_str()
         ))

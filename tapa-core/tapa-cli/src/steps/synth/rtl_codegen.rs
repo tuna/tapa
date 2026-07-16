@@ -34,7 +34,7 @@ pub fn generate_rtl_tree(
         };
         let source = fs::read_to_string(&module_path)?;
         let parsed = VerilogModule::parse(&source).map_err(|e| {
-            CliError::InvalidArg(format!(
+            CliError::Codegen(format!(
                 "failed to parse HLS Verilog `{}` for task `{task_name}`: {e}",
                 module_path.as_str(),
             ))
@@ -147,7 +147,7 @@ fn pick_top_verilog(files: &[Utf8PathBuf], task_name: &str) -> Option<Utf8PathBu
 }
 
 fn codegen_to_cli_error(op: &str, task: &str, err: &dyn std::fmt::Display) -> CliError {
-    CliError::InvalidArg(format!(
+    CliError::Codegen(format!(
         "tapa-codegen `{op}` failed for task `{task}`: {err}",
     ))
 }

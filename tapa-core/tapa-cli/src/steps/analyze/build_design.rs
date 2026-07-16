@@ -10,7 +10,7 @@ use crate::error::{CliError, Result};
 /// reader and writer.
 pub(super) fn flatten_graph_value(graph: &Graph) -> Result<Graph> {
     let flat =
-        flatten(graph).map_err(|error| CliError::InvalidArg(format!("flatten failed: {error}")))?;
+        flatten(graph).map_err(|error| CliError::Codegen(format!("flatten failed: {error}")))?;
     Ok(flat)
 }
 
