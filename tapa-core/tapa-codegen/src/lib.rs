@@ -150,25 +150,16 @@ fn instrument_upper_task(state: &mut TopologyWithRtl, task_name: &str) -> Result
             // For istreams: peek prefixes are "{name}_{idx}_peek" for each channel
             let mut istream_prefixes: Vec<String> = Vec::new();
             for p in &task.ports {
-                match p.cat {
-                    tapa_ir::port::ArgCategory::Istream => {
-                        istream_prefixes.push(format!("{}_peek", p.name));
-                    }
-                    tapa_ir::port::ArgCategory::Istreams => {
+                if p.cat.is_input_stream() {
+                    // Istreams (plural) gets per-channel peek prefixes;
+                    // Istream gets just the base.
+                    if p.cat == tapa_ir::port::ArgCategory::Istreams {
                         let chan_count = p.chan_count.unwrap_or(1);
                         for idx in 0..chan_count {
                             istream_prefixes.push(format!("{}_{idx}_peek", p.name));
                         }
-                        // Also add the base name in case of single-channel
-                        istream_prefixes.push(format!("{}_peek", p.name));
                     }
-                    tapa_ir::port::ArgCategory::Ostream
-                    | tapa_ir::port::ArgCategory::Ostreams
-                    | tapa_ir::port::ArgCategory::Scalar
-                    | tapa_ir::port::ArgCategory::Mmap
-                    | tapa_ir::port::ArgCategory::AsyncMmap
-                    | tapa_ir::port::ArgCategory::Immap
-                    | tapa_ir::port::ArgCategory::Ommap => {}
+                    istream_prefixes.push(format!("{}_peek", p.name));
                 }
             }
 

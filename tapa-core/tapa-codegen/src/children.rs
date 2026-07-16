@@ -530,47 +530,41 @@ pub(crate) fn generate_child_signals(
 
             // Add pipeline portargs to FSM instantiation
             for (port_name, arg) in &args {
-                match arg.cat {
-                    tapa_ir::port::ArgCategory::Scalar => {
-                        let pipeline_out = format!("{inst_name}__{port_name}");
-                        let fsm_in_port = format!("{inst_name}__{port_name}_in");
-                        fsm_portargs.push(tapa_rtl::builder::PortArg::new(
-                            &fsm_in_port,
-                            Expr::ident(tapa_rtl::module::sanitize_array_name(&arg.arg)),
-                        ));
-                        fsm_portargs.push(tapa_rtl::builder::PortArg::new(
-                            &pipeline_out,
-                            Expr::ident(&pipeline_out),
-                        ));
-                    }
-                    tapa_ir::port::ArgCategory::Mmap | tapa_ir::port::ArgCategory::AsyncMmap => {
-                        let pipeline_out = format!("{inst_name}__{port_name}_offset");
-                        let fsm_in_port = format!("{inst_name}__{port_name}_offset_in");
-                        let arg_name = tapa_rtl::module::sanitize_array_name(&arg.arg);
-                        let offset_source = mmap_conns.get(&arg.arg).map_or_else(
-                            || Expr::ident(format!("{arg_name}_offset")),
-                            |conn| {
-                                if conn.chan_count.is_some() {
-                                    Expr::lit("64'd0")
-                                } else {
-                                    Expr::ident(format!("{arg_name}_offset"))
-                                }
-                            },
-                        );
-                        fsm_portargs
-                            .push(tapa_rtl::builder::PortArg::new(&fsm_in_port, offset_source));
-                        fsm_portargs.push(tapa_rtl::builder::PortArg::new(
-                            &pipeline_out,
-                            Expr::ident(&pipeline_out),
-                        ));
-                    }
-                    tapa_ir::port::ArgCategory::Istream
-                    | tapa_ir::port::ArgCategory::Ostream
-                    | tapa_ir::port::ArgCategory::Istreams
-                    | tapa_ir::port::ArgCategory::Ostreams
-                    | tapa_ir::port::ArgCategory::Immap
-                    | tapa_ir::port::ArgCategory::Ommap => {}
+                if arg.cat.is_scalar() {
+                    let pipeline_out = format!("{inst_name}__{port_name}");
+                    let fsm_in_port = format!("{inst_name}__{port_name}_in");
+                    fsm_portargs.push(tapa_rtl::builder::PortArg::new(
+                        &fsm_in_port,
+                        Expr::ident(tapa_rtl::module::sanitize_array_name(&arg.arg)),
+                    ));
+                    fsm_portargs.push(tapa_rtl::builder::PortArg::new(
+                        &pipeline_out,
+                        Expr::ident(&pipeline_out),
+                    ));
+                } else if matches!(
+                    arg.cat,
+                    tapa_ir::port::ArgCategory::Mmap | tapa_ir::port::ArgCategory::AsyncMmap
+                ) {
+                    let pipeline_out = format!("{inst_name}__{port_name}_offset");
+                    let fsm_in_port = format!("{inst_name}__{port_name}_offset_in");
+                    let arg_name = tapa_rtl::module::sanitize_array_name(&arg.arg);
+                    let offset_source = mmap_conns.get(&arg.arg).map_or_else(
+                        || Expr::ident(format!("{arg_name}_offset")),
+                        |conn| {
+                            if conn.chan_count.is_some() {
+                                Expr::lit("64'd0")
+                            } else {
+                                Expr::ident(format!("{arg_name}_offset"))
+                            }
+                        },
+                    );
+                    fsm_portargs.push(tapa_rtl::builder::PortArg::new(&fsm_in_port, offset_source));
+                    fsm_portargs.push(tapa_rtl::builder::PortArg::new(
+                        &pipeline_out,
+                        Expr::ident(&pipeline_out),
+                    ));
                 }
+                // Streams and Immap/Ommap contribute no FSM portargs.
             }
 
             // Build per-instance mmap slave index map for crossbar routing
@@ -690,23 +684,23 @@ fn declare_instance_pipeline_signals(
     args: &std::collections::BTreeMap<String, tapa_ir::Arg>,
 ) {
     for (port_name, arg) in args {
-        let (pipeline_out, fsm_in, width) = match arg.cat {
-            tapa_ir::port::ArgCategory::Scalar => (
+        let (pipeline_out, fsm_in, width) = if arg.cat.is_scalar() {
+            (
                 format!("{inst_name}__{port_name}"),
                 format!("{inst_name}__{port_name}_in"),
                 resolve_child_scalar_width(state, child_name, port_name),
-            ),
-            tapa_ir::port::ArgCategory::Mmap | tapa_ir::port::ArgCategory::AsyncMmap => (
+            )
+        } else if matches!(
+            arg.cat,
+            tapa_ir::port::ArgCategory::Mmap | tapa_ir::port::ArgCategory::AsyncMmap
+        ) {
+            (
                 format!("{inst_name}__{port_name}_offset"),
                 format!("{inst_name}__{port_name}_offset_in"),
                 Some(("63".to_string(), "0".to_string())), // 64-bit
-            ),
-            tapa_ir::port::ArgCategory::Istream
-            | tapa_ir::port::ArgCategory::Ostream
-            | tapa_ir::port::ArgCategory::Istreams
-            | tapa_ir::port::ArgCategory::Ostreams
-            | tapa_ir::port::ArgCategory::Immap
-            | tapa_ir::port::ArgCategory::Ommap => continue,
+            )
+        } else {
+            continue;
         };
         add_pipeline_stage(state, task_name, &pipeline_out, &fsm_in, width.as_ref());
     }
