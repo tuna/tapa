@@ -1,14 +1,14 @@
 #!/bin/bash
 # Diff the per-task generated code of the OLD tapacc (via `tapa analyze`) against
-# the rewritten tool (`//tapacc:tapacc_ng`) on the SAME flattened source, for one
+# the rewritten tool (`//tapacc:tapacc`) on the SAME flattened source, for one
 # kernel. This is the code-emission half of the equivalence gate for the tapacc
 # rewrite; the graph-metadata half waits on the tapa-ir schema.
 #
 #   usage: diff_codegen.sh <name> <src.cpp> <top> [target]
 #   env:   XINC=<dir>   extra -isystem dir (e.g. Vivado HLS headers for ap_int.h)
 #
-# Requires: a built //tapacc:tapacc_ng (bazel builds it on demand), macOS `xcrun`
-# for the sysroot, and clang builtin headers resolved via tapacc_ng's runfiles.
+# Requires: a built //tapacc:tapacc (bazel builds it on demand), macOS `xcrun`
+# for the sysroot, and clang builtin headers resolved via tapacc's runfiles.
 set -uo pipefail
 
 NAME="$1"; CPP="$2"; TOP="$3"; TGT="${4:-xilinx-hls}"
@@ -18,8 +18,8 @@ WORK="$(mktemp -d)/${NAME}"; mkdir -p "$WORK"
 SDK="$(xcrun --show-sdk-path 2>/dev/null || echo /)"
 cd "$ROOT" || exit 9
 
-bazel build //tapacc:tapacc_ng >/dev/null 2>&1 || { echo "$NAME: BUILD FAILED"; exit 3; }
-RES="$(cd "$ROOT"/bazel-bin/tapacc/tapacc_ng.runfiles/+http_archive+tapa-llvm-project/clang/staging && pwd)"
+bazel build //tapacc:tapacc >/dev/null 2>&1 || { echo "$NAME: BUILD FAILED"; exit 3; }
+RES="$(cd "$ROOT"/bazel-bin/tapacc/tapacc.runfiles/+http_archive+tapa-llvm-project/clang/staging && pwd)"
 XC=(); [ -n "$XINC" ] && XC=(-c "-isystem$XINC")
 XI=(); [ -n "$XINC" ] && XI=(-isystem "$XINC")
 
@@ -29,12 +29,12 @@ bazel run -- //tapa-core:tapa --work-dir "$WORK" analyze -f "$CPP" -t "$TOP" --t
 [ -f "$WORK/graph.json" ] || { echo "$NAME: OLD ANALYZE FAILED"; grep -iE 'error:|fatal' "$WORK/analyze.log" | head -2; exit 1; }
 FLAT="$(ls "$WORK"/flatten/flatten-*.cpp 2>/dev/null | head -1)"
 
-# NEW: tapacc_ng on the same flattened source -> per-task code JSON.
-bazel run -- //tapacc:tapacc_ng "$FLAT" -top "$TOP" --target "$TGT" -- \
+# NEW: tapacc on the same flattened source -> per-task code JSON.
+bazel run -- //tapacc:tapacc "$FLAT" -top "$TOP" --target "$TGT" -- \
   -resource-dir "$RES" -std=c++14 -isystem "$ROOT/tapa-lib" -isystem "$ROOT/fpga-runtime" ${XI[@]+"${XI[@]}"} \
   -isysroot "$SDK" -Wno-attributes -Wno-unknown-pragmas -Wno-unused-label \
   -DTAPA_TARGET_DEVICE_ -DTAPA_TARGET_STUB_ >"$WORK/new.json" 2>"$WORK/new.err"
-python3 -c "import json;json.load(open('$WORK/new.json'))" 2>/dev/null || { echo "$NAME: NEW tapacc_ng FAILED"; tail -2 "$WORK/new.err"; exit 2; }
+python3 -c "import json;json.load(open('$WORK/new.json'))" 2>/dev/null || { echo "$NAME: NEW tapacc FAILED"; tail -2 "$WORK/new.err"; exit 2; }
 
 # Compare per-task code, whitespace-normalized (the tools differ only in layout).
 python3 - "$NAME" "$WORK/graph.json" "$WORK/new.json" <<'PY'
