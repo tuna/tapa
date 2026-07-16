@@ -55,28 +55,6 @@ jobs:
           UBUNTU_PRO_TOKEN: ${{ secrets.UBUNTU_PRO_TOKEN }}
           MAC_ADDRESS: ${{ secrets.MAC_ADDRESS }}
 
-  lint-js:
-    name: Lint JS
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout myself
-        uses: actions/checkout@v4
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          # Read the pinned pnpm version from the project's `packageManager`
-          # field (pnpm 10) rather than hardcoding it here — a separate `9`
-          # pin drifted out of sync and could not parse the pnpm-10
-          # `pnpm-workspace.yaml`.
-          package_json_file: tapa-visualizer/package.json
-
-      - name: Run JS lint
-        run: |
-          pnpm --dir tapa-visualizer install --frozen-lockfile
-          pnpm --dir tapa-visualizer lint
-
   docs:
     name: Build Documentation
     runs-on: ubuntu-latest
@@ -96,7 +74,6 @@ jobs:
     needs:
       - pre-commit
       - test
-      - lint-js
       - docs
 
     steps:

@@ -66,4 +66,4 @@ jobs:
           prerelease: false
           allowUpdates: true
           generateReleaseNotes: true
-          artifacts: tapa.tar.gz,tapa-visualizer.tar.gz
+          artifacts: tapa.tar.gz

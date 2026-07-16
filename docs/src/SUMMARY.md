@@ -25,7 +25,6 @@
 - [Vitis Cosimulation](howto/vitis-cosim.md)
 - [Build & Run on Board](howto/build-and-run.md)
 - [Remote Execution](howto/remote-execution.md)
-- [Using the Visualizer](howto/visualizer.md)
 - [Performance Tuning](howto/performance-tuning.md)
 
 # Tutorials

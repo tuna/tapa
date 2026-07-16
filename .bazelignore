@@ -3,6 +3,5 @@
 # RapidStream Contributor License Agreement.
 
 node_modules
-tapa-visualizer/node_modules
 tools/test-tools/target
 .claude

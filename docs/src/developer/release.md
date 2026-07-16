@@ -23,7 +23,7 @@ The workflow will:
 
 - Build the release tarball on a self-hosted runner
 - Create the git tag `v<version>` on `main`
-- Publish `tapa.tar.gz` and `tapa-visualizer.tar.gz` to GitHub Releases
+- Publish `tapa.tar.gz` to GitHub Releases
 
 ## Staging Builds
 

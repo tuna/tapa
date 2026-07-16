@@ -131,7 +131,3 @@ TAPA prints transfer progress and the remote Vitis HLS log to standard output du
 
 **Port conflicts with `~/.taparc`**: If you omit the port in `--remote-host`, TAPA defaults to port 22 — it does **not** fall back to the `port` field from `~/.taparc`. Always include the port explicitly (e.g., `user@host:2222`) when the remote host listens on a non-standard port.
 ```
-
----
-
-**Next step:** [Using the Visualizer](visualizer.md)

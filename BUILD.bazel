@@ -32,8 +32,3 @@ test_tool_test(
     data_args = [":tapa-pkg-tar"],
     target_compatible_with = ["@platforms//os:linux"],
 )
-
-pkg_tar(
-    name = "tapa-visualizer-tar",
-    srcs = ["//tapa-visualizer"],
-)
