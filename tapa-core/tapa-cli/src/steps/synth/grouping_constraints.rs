@@ -36,9 +36,8 @@ pub fn emit_grouping_constraints(
 
     let constraints = compute_grouping_constraints(design, &entries)?;
 
-    let path = work_dir.join(OUTPUT_FILENAME);
     let bytes = serde_json::to_vec(&constraints)?;
-    fs::write(&path, bytes)?;
+    crate::state::json::write_bytes_atomic(work_dir, OUTPUT_FILENAME, &bytes)?;
     Ok(())
 }
 

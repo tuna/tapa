@@ -3,7 +3,7 @@
 
 pub mod design;
 pub mod graph;
-mod json;
+pub(crate) mod json;
 pub mod settings;
 
 pub use design::{load_design, store_design};

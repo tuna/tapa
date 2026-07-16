@@ -134,9 +134,8 @@ pub fn write_templates_info(work_dir: &Path, design: &Design) -> Result<()> {
             (name.clone(), port_strs)
         })
         .collect();
-    let path = work_dir.join("templates_info.json");
     let bytes = serde_json::to_vec(&templates)?;
-    fs::write(&path, bytes)?;
+    crate::state::json::write_bytes_atomic(work_dir, "templates_info.json", &bytes)?;
     Ok(())
 }
 
