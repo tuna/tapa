@@ -4,7 +4,7 @@
 
 **analyze**
 
-The `tapa analyze` step. Parses the C++ source with `tapacc` (a Clang-based tool) and extracts the task graph and inter-task channels to `graph.json` in the work directory. This step does not invoke any vendor tools and runs on any host.
+The `tapa analyze` step. Parses the C++ source with `tapacc` (a Clang-based tool) and extracts the task graph and inter-task channels to `tapa.json` in the work directory. This step does not invoke any vendor tools and runs on any host.
 
 ---
 

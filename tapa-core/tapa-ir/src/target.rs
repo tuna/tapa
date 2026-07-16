@@ -7,8 +7,9 @@ use strum::EnumString;
 
 /// Compilation flow target — the two flows the pipeline can drive.
 ///
-/// Serializes to the exact wire strings `"xilinx-vitis"` / `"xilinx-hls"`
-/// used in `design.json`'s `target` field and echoed into `settings.json`.
+/// Serializes to the exact wire strings `"xilinx-vitis"` / `"xilinx-hls"`.
+/// [`crate::TaskGraph::target`] is its single home — it is deliberately not
+/// duplicated into the flow settings block alongside it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumString)]
 #[strum(serialize_all = "kebab-case")]
 pub enum Target {
@@ -36,7 +37,15 @@ impl Serialize for Target {
 impl<'de> Deserialize<'de> for Target {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let s = String::deserialize(deserializer)?;
-        Self::from_str(&s).map_err(|_| serde::de::Error::custom(format!("unknown target: {s}")))
+        Self::from_str(&s).map_err(|_| {
+            // The flow target has exactly one home (`TaskGraph::target`), so
+            // this parse is the only place an unsupported flow can be caught
+            // — it owes the user the list of flows that do work.
+            serde::de::Error::custom(format!(
+                "unsupported target `{s}`; \
+                 supported flows are `xilinx-vitis` and `xilinx-hls`"
+            ))
+        })
     }
 }
 

@@ -1,6 +1,6 @@
 //! Error types for task-graph parsing.
 
-/// Errors produced when parsing a `graph.json` / `design.json` payload.
+/// Errors produced when parsing a task-graph payload.
 #[derive(Debug, thiserror::Error)]
 pub enum ParseError {
     #[error("JSON parse error at {path}: {message}")]

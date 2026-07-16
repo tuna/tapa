@@ -1,6 +1,6 @@
 //! TAPA intermediate representation — serde structs for the unified task
-//! graph serialized as both `graph.json` (tapacc output) and `design.json`
-//! (the design model consumed by synth, codegen, and pack).
+//! graph: the model `tapacc` emits, that `tapa analyze` persists into the
+//! work dir's `tapa.json`, and that synth, codegen, and pack consume.
 
 pub mod graph;
 pub mod instance;
@@ -23,8 +23,8 @@ pub use target::Target;
 pub use task::{Task, TaskLevel};
 pub use transforms::{flatten, TransformError};
 
-// `graph.json` and `design.json` are the same unified `TaskGraph` now.
-// These aliases keep the producer/consumer call sites reading in terms of
-// the artifact they handle without a second type.
+// The tapacc-output graph and the post-synthesis design are the same
+// unified `TaskGraph` now. These aliases keep the producer/consumer call
+// sites reading in terms of the role they handle without a second type.
 pub use graph::TaskGraph as Design;
 pub use graph::TaskGraph as Graph;

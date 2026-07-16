@@ -1,20 +1,19 @@
 //! `run_native` orchestrator for `tapa synth`.
 //!
-//! Threads device resolution → settings persistence → cpp-extract →
-//! HLS runs → RTL codegen → final settings/design persistence. Also
+//! Threads device resolution → state persistence → cpp-extract →
+//! HLS runs → RTL codegen → final state persistence. Also
 //! owns the unsupported-flag gating, the HLS cflag construction, and
 //! the recursive Verilog-file walker that feeds the codegen step.
 
 use camino::Utf8PathBuf;
-use std::path::Path;
 
-use serde_json::{json, Value};
+use serde_json::Value;
 use tapa_ir::Task;
 use tapa_xilinx::{CsynthReport, ToolRunner};
 
 use crate::context::CliContext;
 use crate::error::Result;
-use crate::state::{design as design_io, graph as graph_io, settings as settings_io};
+use crate::state::work as work_io;
 use crate::tapacc::cflags::{get_remote_hls_cflags, get_tapacc_cflags};
 use crate::tapacc::discover::find_resource;
 
@@ -34,35 +33,31 @@ use super::SynthArgs;
     reason = "orchestrator function; refactored extract would bounce values through another builder without adding clarity"
 )]
 pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -> Result<()> {
-    let mut design = design_io::load_design(&ctx.work_dir)?;
-    let mut settings = settings_io::load_settings(&ctx.work_dir)?;
-    // Validate the flow target early (the value itself is not needed here --
-    // synthesis is Xilinx HLS for every supported flow).
-    crate::steps::backend::effective_target(&settings, &design)?;
+    // The flow target is typed and validated by the state parse itself, so
+    // there is nothing left for this step to re-check: synthesis is Xilinx
+    // HLS for every supported flow.
+    let mut state = work_io::load(&ctx.work_dir)?;
 
     let device = resolve_device_info(args)?;
-    settings.insert("part_num".to_string(), json!(&device.part_num));
-    settings.insert(
-        "platform".to_string(),
-        args.platform
-            .as_ref()
-            .map_or(Value::Null, |p| Value::String(p.clone())),
-    );
-    settings.insert("clock_period".to_string(), json!(&device.clock_period));
-    settings_io::store_settings(&ctx.work_dir, &settings)?;
+    state.flow.part_num = Some(device.part_num.clone());
+    state.flow.platform.clone_from(&args.platform);
+    state.flow.clock_period = Some(device.clock_period.clone());
+    // Persist the resolved device before the long HLS runs, so an
+    // interrupted synth still leaves the settings it resolved on disk.
+    work_io::store(&ctx.work_dir, &state)?;
 
-    extract_hls_sources(&ctx.work_dir, &design)?;
+    extract_hls_sources(&ctx.work_dir, &state.graph)?;
 
     let opts = HlsRunOptions {
         part_num: device.part_num.clone(),
         clock_period: device.clock_period.clone(),
         other_configs: args.other_hls_configs.clone(),
-        cflags: build_hls_cflags(&ctx.work_dir, ctx.remote_config.is_some()),
+        cflags: build_hls_cflags(&state.graph.cflags, ctx.remote_config.is_some()),
         skip_based_on_mtime: args.skip_hls_based_on_mtime,
         jobs: args.jobs,
         keep_work_dir: args.keep_hls_work_dir,
     };
-    let hls_results = run_hls_for_leaves(runner, &ctx.work_dir, &design, &opts)?;
+    let hls_results = run_hls_for_leaves(runner, &ctx.work_dir, &state.graph, &opts)?;
 
     let mut hdl_inputs: TaskHdlInputs = TaskHdlInputs::new();
     for (task_name, layout, out) in &hls_results {
@@ -72,11 +67,11 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
         files.dedup();
         hdl_inputs.insert(task_name.clone(), files);
 
-        if let Some(task) = design.tasks.get_mut(task_name) {
+        if let Some(task) = state.graph.tasks.get_mut(task_name) {
             apply_hls_metrics(task, &out.csynth);
         }
     }
-    generate_rtl_tree(&ctx.work_dir, &design, &hdl_inputs)?;
+    generate_rtl_tree(&ctx.work_dir, &state.graph, &hdl_inputs)?;
 
     // Per-task OOC Vivado synth → hierarchical utilization → `total_area`.
     // When disabled (the default), reports and topology consumers derive
@@ -84,7 +79,7 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
     if args.enable_synth_util {
         emit_post_synth_util(
             &ctx.work_dir,
-            &mut design,
+            &mut state.graph,
             &device.part_num,
             args.jobs,
             runner,
@@ -94,22 +89,24 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
     // Emit `report.{json,yaml}` at the work-dir root once area data is
     // final. Both pack paths (`xilinx-vitis` `.xo` and `xilinx-hls`
     // `.zip`) bundle the YAML at archive root.
-    write_top_report(&ctx.work_dir, &design, &args.override_report_schema_version)?;
+    write_top_report(
+        &ctx.work_dir,
+        &state.graph,
+        &args.override_report_schema_version,
+    )?;
 
     // Post-codegen side effect: nonpipeline-fifos →
     // grouping_constraints.json. A no-op when the flag is not set.
     if let Some(fifos_path) = args.nonpipeline_fifos.as_ref() {
-        emit_grouping_constraints(&ctx.work_dir, &design, fifos_path)?;
+        emit_grouping_constraints(&ctx.work_dir, &state.graph, fifos_path)?;
     }
 
-    write_templates_info(&ctx.work_dir, &design)?;
-    settings.insert("synthed".to_string(), Value::Bool(true));
-    settings_io::store_settings(&ctx.work_dir, &settings)?;
-    design_io::store_design(&ctx.work_dir, &design)?;
+    write_templates_info(&ctx.work_dir, &state.graph)?;
+    state.flow.synthed = true;
+    work_io::store(&ctx.work_dir, &state)?;
 
     let mut flow = ctx.flow.borrow_mut();
-    flow.settings = Some(settings);
-    flow.design = Some(design);
+    flow.state = Some(state);
     flow.pipelined.insert("synth".to_string(), true);
     drop(flow);
 
@@ -137,30 +134,16 @@ fn apply_hls_metrics(task: &mut Task, report: &CsynthReport) {
     }
 }
 
-/// Build the HLS CFLAGS:
-/// loads the analyzer-stored cflags tuple from
-/// `<work_dir>/graph.json::cflags` (so `-isystem <tapa-lib>` etc. are
-/// forwarded into HLS), then appends the `-DTAPA_TARGET_*` defines and
-/// a `-I <tapa-extra-runtime-include>` entry when the resource can be
-/// resolved ("WORKAROUND: Vitis HLS requires -I or gflags
-/// cannot be found..." branch).
-fn build_hls_cflags(work_dir: &Path, remote: bool) -> Vec<String> {
-    let mut flags: Vec<String> = Vec::new();
+/// Build the HLS CFLAGS: the analyzer-stored `graph_cflags` (so
+/// `-isystem <tapa-lib>` etc. are forwarded into HLS) followed by the
+/// `-DTAPA_TARGET_*` defines and a `-I <tapa-extra-runtime-include>` entry
+/// when the resource can be resolved ("WORKAROUND: Vitis HLS requires -I or
+/// gflags cannot be found..." branch).
+fn build_hls_cflags(graph_cflags: &[String], remote: bool) -> Vec<String> {
     // HLS cflags = the analyzer-stored graph cflags followed by
     // `get_tapacc_cflags()`, so HLS sees the user's own `-I` / `-D`
     // entries plus the tapa-lib / vendor-include resolution.
-    //
-    // Missing `graph.json` is tolerated so unit tests that seed only
-    // `design.json` + `settings.json` still drive the runner.
-    if let Ok(graph) = graph_io::load_graph(work_dir) {
-        if let Some(arr) = graph.get("cflags").and_then(Value::as_array) {
-            for item in arr {
-                if let Some(s) = item.as_str() {
-                    flags.push(s.to_string());
-                }
-            }
-        }
-    }
+    let mut flags: Vec<String> = graph_cflags.to_vec();
     // Remote HLS substitutes `get_tapacc_cflags()` (local
     // vendor/stdlib paths) with `get_remote_hls_cflags()` when
     // `~/.taparc` is active — the
@@ -213,16 +196,19 @@ mod tests {
 
     use super::*;
 
+    use std::path::Path;
     use std::sync::Mutex;
 
     use clap::Parser;
+    use serde_json::json;
     use std::collections::BTreeMap;
 
     use indexmap::IndexMap;
-    use tapa_ir::{Design, SynthTarget, Target, Task, TaskLevel};
+    use tapa_ir::{SynthTarget, Target, TaskGraph, TaskLevel};
     use tapa_xilinx::{ToolInvocation, ToolOutput};
 
     use crate::globals::GlobalArgs;
+    use crate::state::work::WorkState;
 
     fn parse_synth(extra: &[&str]) -> SynthArgs {
         let mut argv = vec!["synth"];
@@ -402,16 +388,13 @@ mod tests {
                 clock_period: "3.33".to_string(),
             },
         );
-        let design = Design {
+        let state = WorkState::new(TaskGraph {
             top: "VecAdd".to_string(),
             target: Target::XilinxHls,
             tasks,
             cflags: Vec::new(),
-        };
-        design_io::store_design(work, &design).expect("store design");
-        let mut settings = settings_io::Settings::new();
-        settings.insert("target".to_string(), json!("xilinx-hls"));
-        settings_io::store_settings(work, &settings).expect("store settings");
+        });
+        work_io::store(work, &state).expect("store state");
 
         // Two HLS invocations: the leaf `Add` and the upper-task shell
         // `VecAdd`. Iteration order is `BTreeMap` alphabetical order,
@@ -436,14 +419,7 @@ mod tests {
         ]);
         run_native(&args, &ctx, &runner).expect("native synth must succeed end-to-end");
 
-        assert!(
-            work.join("design.json").is_file(),
-            "design.json must persist"
-        );
-        assert!(
-            work.join("settings.json").is_file(),
-            "settings.json must persist"
-        );
+        assert!(work.join("tapa.json").is_file(), "tapa.json must persist");
         assert!(
             work.join("templates_info.json").is_file(),
             "templates_info.json must persist"
@@ -462,21 +438,29 @@ mod tests {
             "rtl/VecAdd_fsm.v must be emitted (upper task FSM)",
         );
 
-        let settings = settings_io::load_settings(work).expect("load");
-        assert_eq!(settings.get("synthed"), Some(&Value::Bool(true)));
-        assert_eq!(
-            settings.get("part_num"),
-            Some(&json!("xcvu37p-fsvh2892-2L-e")),
-        );
-        assert_eq!(settings.get("clock_period"), Some(&json!("3.33")));
-        assert_eq!(settings.get("platform"), Some(&Value::Null));
-
         let templates = std::fs::read_to_string(work.join("templates_info.json")).expect("read");
         assert_eq!(templates, "{}");
 
-        let persisted_design = design_io::load_design(work).expect("load persisted design");
-        assert_eq!(persisted_design.tasks["Add"].clock_period, "1.0");
-        assert_eq!(persisted_design.tasks["VecAdd"].clock_period, "1.0");
+        // The one state file carries both the resolved flow settings and the
+        // graph that synth annotated in place.
+        let persisted = work_io::load(work).expect("load persisted state");
+        assert!(persisted.flow.synthed, "synthed flag must persist");
+        assert_eq!(
+            persisted.flow.part_num.as_deref(),
+            Some("xcvu37p-fsvh2892-2L-e"),
+        );
+        assert_eq!(persisted.flow.clock_period.as_deref(), Some("3.33"));
+        assert_eq!(
+            persisted.flow.platform, None,
+            "no --platform was passed, so none must be recorded",
+        );
+        assert_eq!(
+            persisted.graph.target,
+            Target::XilinxHls,
+            "the flow target must survive synth's rewrite",
+        );
+        assert_eq!(persisted.graph.tasks["Add"].clock_period, "1.0");
+        assert_eq!(persisted.graph.tasks["VecAdd"].clock_period, "1.0");
         let report: Value = serde_json::from_str(
             &std::fs::read_to_string(work.join("report.json")).expect("read report"),
         )
@@ -484,8 +468,7 @@ mod tests {
         assert_eq!(report["performance"]["clock_period"], "1.0");
 
         let flow = ctx.flow.borrow();
-        assert!(flow.design.is_some());
-        assert!(flow.settings.is_some());
+        assert!(flow.state.is_some());
         assert_eq!(flow.pipelined.get("synth"), Some(&true));
     }
 }

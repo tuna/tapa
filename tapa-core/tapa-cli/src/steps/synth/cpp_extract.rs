@@ -1,4 +1,4 @@
-//! Extract per-task HLS C++ source files from `design.json` into
+//! Extract per-task HLS C++ source files from the task graph into
 //! `<work_dir>/cpp/<task>.cpp`.
 
 use std::fs;

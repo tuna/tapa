@@ -1,5 +1,5 @@
-//! Device / platform resolution + `<work_dir>/settings.json` persistence
-//! helpers for `tapa synth`.
+//! Device / platform resolution helpers for `tapa synth`. The resolved
+//! values are persisted by the caller into `<work_dir>/tapa.json`.
 //!
 //! Splits the platform-directory lookup and the
 //! `--platform` / `--part-num` / `--clock-period` precedence rules out

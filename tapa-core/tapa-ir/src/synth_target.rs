@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Per-task synthesis policy from `graph.json` / `design.json`.
+/// Per-task synthesis policy.
 ///
 /// The pipeline only distinguishes `Ignore` (skip synthesis) from `Hls`
 /// (synthesize with Vitis HLS). Serializes as the wire strings `"hls"` /

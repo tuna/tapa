@@ -4,19 +4,18 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 
 use indexmap::IndexMap;
-use serde_json::Value;
-use tapa_ir::Design;
 use tapa_xilinx::RemoteConfig;
 
 use crate::globals::GlobalArgs;
 use crate::options::Options;
+use crate::state::work::WorkState;
 
 /// In-memory state shared by chained steps.
 #[derive(Debug, Default)]
 pub struct FlowState {
-    pub design: Option<Design>,
-    pub graph: Option<Value>,
-    pub settings: Option<IndexMap<String, Value>>,
+    /// The work dir's `tapa.json` as last written by a step in this
+    /// process; `None` until a step produces or loads it.
+    pub state: Option<WorkState>,
     /// Per-step completion markers for the active pipeline.
     pub pipelined: IndexMap<String, bool>,
 }

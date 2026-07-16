@@ -18,7 +18,6 @@ use std::path::Path;
 use std::sync::LazyLock;
 
 use regex::Regex;
-use serde_json::Value;
 use tapa_ir::Design;
 use tapa_xilinx::{
     pack_xo as xilinx_pack_xo, DeviceInfo, KernelXmlArgs, LocalToolRunner, PackageXoInputs,
@@ -27,7 +26,7 @@ use tapa_xilinx::{
 
 use crate::context::CliContext;
 use crate::error::{CliError, Result};
-use crate::state::settings as settings_io;
+use crate::state::work::FlowSettings;
 
 use super::bitstream_script::write_vitis_script;
 use super::custom_rtl::{apply_custom_rtl, load_templates_info};
@@ -38,12 +37,12 @@ pub(super) fn pack_vitis(
     args: &PackArgs,
     ctx: &CliContext,
     design: &Design,
-    settings: &settings_io::Settings,
+    flow: &FlowSettings,
 ) -> Result<()> {
-    let (part_num, clock_period) = resolve_device_settings(settings)?;
+    let (part_num, clock_period) = resolve_device_settings(flow)?;
     let top_task = design.tasks.get(&design.top).ok_or_else(|| {
         CliError::InvalidArg(format!(
-            "design.json does not contain the top task `{}`",
+            "tapa.json does not contain the top task `{}`",
             design.top
         ))
     })?;
@@ -71,7 +70,7 @@ pub(super) fn pack_vitis(
     let output_path = enforce_xo_suffix(args.output.as_ref());
     let inputs = build_package_xo_inputs(
         design,
-        settings,
+        flow,
         &hdl_dir,
         &output_path,
         part_num,
@@ -86,7 +85,7 @@ pub(super) fn pack_vitis(
     // Emit the bitstream helper after packaging so it points at the
     // completed `.xo`.
     if let Some(script_dest) = args.bitstream_script.as_deref() {
-        emit_bitstream_script(settings, script_dest, &design.top, &output_path)?;
+        emit_bitstream_script(flow, script_dest, &design.top, &output_path)?;
     }
 
     let mut flow = ctx.flow.borrow_mut();
@@ -96,27 +95,17 @@ pub(super) fn pack_vitis(
     Ok(())
 }
 
-fn resolve_device_settings(settings: &settings_io::Settings) -> Result<(String, String)> {
-    let part_num = settings
-        .get("part_num")
-        .and_then(Value::as_str)
-        .ok_or_else(|| {
-            CliError::InvalidArg(
-                "settings.json is missing `part_num`; run `synth` first to populate it."
-                    .to_string(),
-            )
-        })?
-        .to_string();
-    let clock_period = settings
-        .get("clock_period")
-        .and_then(Value::as_str)
-        .ok_or_else(|| {
-            CliError::InvalidArg(
-                "settings.json is missing `clock_period`; run `synth` first to populate it."
-                    .to_string(),
-            )
-        })?
-        .to_string();
+fn resolve_device_settings(flow: &FlowSettings) -> Result<(String, String)> {
+    let part_num = flow.part_num.clone().ok_or_else(|| {
+        CliError::InvalidArg(
+            "tapa.json is missing `part_num`; run `synth` first to populate it.".to_string(),
+        )
+    })?;
+    let clock_period = flow.clock_period.clone().ok_or_else(|| {
+        CliError::InvalidArg(
+            "tapa.json is missing `clock_period`; run `synth` first to populate it.".to_string(),
+        )
+    })?;
     Ok((part_num, clock_period))
 }
 
@@ -216,7 +205,7 @@ fn top_rtl_m_axi_bases(
 )]
 fn build_package_xo_inputs(
     design: &Design,
-    settings: &settings_io::Settings,
+    flow: &FlowSettings,
     hdl_dir: &Path,
     output_path: &Path,
     part_num: String,
@@ -238,11 +227,10 @@ fn build_package_xo_inputs(
         .clock_period(clock_period)
         .kernel_xml(KernelXmlArgs {
             top_name: design.top.clone(),
-            clock_period: settings
-                .get("clock_period")
-                .and_then(Value::as_str)
-                .unwrap_or("3.33")
-                .to_string(),
+            clock_period: flow
+                .clock_period
+                .clone()
+                .unwrap_or_else(|| "3.33".to_string()),
             ports: kernel_ports,
         })
         .kernel_out_path(
@@ -417,18 +405,19 @@ fn run_pack_xo(ctx: &CliContext, inputs: &PackageXoInputs) -> Result<Utf8PathBuf
 }
 
 fn emit_bitstream_script(
-    settings: &settings_io::Settings,
+    flow: &FlowSettings,
     script_dest: &Path,
     top: &str,
     output_path: &Path,
 ) -> Result<()> {
-    let platform = settings.get("platform").and_then(Value::as_str);
-    let clock = settings.get("clock_period").and_then(Value::as_str);
-    let connectivity = settings
-        .get("connectivity")
-        .and_then(Value::as_str)
-        .map(Path::new);
-    write_vitis_script(script_dest, top, output_path, platform, clock, connectivity)?;
+    write_vitis_script(
+        script_dest,
+        top,
+        output_path,
+        flow.platform.as_deref(),
+        flow.clock_period.as_deref(),
+        flow.connectivity.as_deref(),
+    )?;
     log::info!("generate the v++ script at {}", script_dest.display());
     Ok(())
 }

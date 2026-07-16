@@ -1,24 +1,23 @@
 //! `tapacc` semantic-analyzer invocation for `tapa analyze`.
 //!
-//! Drives the `tapacc` binary against the flattened sources and parses
-//! its JSON stdout into a `serde_json::Value` (the on-disk graph
-//! schema).
+//! Drives the `tapacc` binary against the flattened sources and hands back
+//! its raw JSON stdout. Parsing is the caller's job: `analyze` persists these
+//! bytes verbatim as a debug artifact *before* interpreting them, so a
+//! `tapacc` output that fails to parse is still on disk to look at.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use serde_json::Value;
-
 use crate::error::{CliError, Result};
 
-/// Run `tapacc` and parse its JSON stdout.
+/// Run `tapacc` and return its JSON stdout verbatim.
 pub(super) fn run_tapacc(
     tapacc: &Path,
     files: &[PathBuf],
     top: &str,
     cflags: &[String],
     target: &str,
-) -> Result<Value> {
+) -> Result<String> {
     let mut cmd = Command::new(tapacc);
     for f in files {
         cmd.arg(f);
@@ -40,6 +39,6 @@ pub(super) fn run_tapacc(
             stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
         });
     }
-    let value: Value = serde_json::from_slice(&output.stdout)?;
-    Ok(value)
+    String::from_utf8(output.stdout)
+        .map_err(|e| CliError::InvalidArg(format!("`tapacc` emitted non-UTF-8 output: {e}")))
 }

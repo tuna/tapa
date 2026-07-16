@@ -12,6 +12,17 @@ pub enum CliError {
     #[error("missing required state `{name}` in `{path}`")]
     MissingState { name: String, path: PathBuf },
 
+    #[error(
+        "`{path}` was written by a different tapa version \
+         (state schema {found}, this tapa expects v{expected}); \
+         re-run `tapa analyze` to regenerate the work directory"
+    )]
+    StaleWorkState {
+        path: PathBuf,
+        found: String,
+        expected: u32,
+    },
+
     #[error("invalid CLI argument: {0}")]
     InvalidArg(String),
 
@@ -67,6 +78,7 @@ impl CliError {
             | Self::OrphanFlag { .. }
             | Self::WorkDir(..)
             | Self::MissingState { .. }
+            | Self::StaleWorkState { .. }
             | Self::InvalidArg(..)
             | Self::RemoteConfigParse { .. }
             | Self::TapaccNotFound { .. }

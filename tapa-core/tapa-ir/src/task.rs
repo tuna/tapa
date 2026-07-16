@@ -19,13 +19,13 @@ pub enum TaskLevel {
     Upper,
 }
 
-/// A single task in the unified task graph (`graph.json` / `design.json`).
+/// A single task in the unified task graph.
 ///
-/// `graph.json` (tapacc output) and `design.json` (post-synthesis) share
-/// this one type: analyze emits the structural fields, synth populates the
-/// post-synthesis annotation block (`clock_period`, `self_area`,
-/// `total_area`), and report reads them back. The annotations are absent in
-/// tapacc output and omitted from the wire form until populated.
+/// The tapacc output and the post-synthesis design share this one type:
+/// analyze emits the structural fields, synth populates the post-synthesis
+/// annotation block (`clock_period`, `self_area`, `total_area`) in place,
+/// and report reads them back. The annotations are absent in tapacc output
+/// and omitted from the wire form until populated.
 #[allow(
     clippy::derive_partial_eq_without_eq,
     reason = "area dicts hold serde_json::Value, which is not Eq (Number may be f64)"

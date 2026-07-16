@@ -119,20 +119,25 @@ fn run_analyze_app(app: &AnalyzeApp, tapa: &Path, tapa_lib: &Path) -> Result<()>
         ));
     }
 
-    let graph_path = work_dir.path().join("graph.json");
-    require_file(&graph_path)?;
-    require_file(&work_dir.path().join("settings.json"))?;
+    // `tapa analyze` persists exactly one state file plus the verbatim
+    // `tapacc` output kept as a debug artifact.
+    let state_path = work_dir.path().join("tapa.json");
+    require_file(&state_path)?;
+    require_file(&work_dir.path().join("tapacc.json"))?;
     require_dir(&work_dir.path().join("flatten"))?;
 
-    let graph = read_json(&graph_path)?;
-    validate_graph(&graph, app)
+    let state = read_json(&state_path)?;
+    let graph = state
+        .get("graph")
+        .ok_or_else(|| format!("{}: tapa.json missing 'graph'", app.name))?;
+    validate_graph(graph, app)
 }
 
 fn validate_graph(graph: &JsonValue, app: &AnalyzeApp) -> Result<()> {
     let tasks = graph
         .get("tasks")
         .and_then(JsonValue::as_object)
-        .ok_or_else(|| format!("{}: graph.json missing object 'tasks'", app.name))?;
+        .ok_or_else(|| format!("{}: tapa.json graph missing object 'tasks'", app.name))?;
     if tasks.is_empty() {
         return Err(format!("{}: graph contains no tasks", app.name));
     }
@@ -170,7 +175,9 @@ fn validate_task(task: &JsonValue, task_name: &str, app_name: &str) -> Result<()
     if !VALID_LEVELS.contains(&level) {
         return Err(format!("{ctx}: invalid level '{level}'"));
     }
-    require_key(task, "target", &ctx)?;
+    // Per-task synthesis policy. Named `synth` since the flow target moved
+    // to the graph root: one fact, one field.
+    require_key(task, "synth", &ctx)?;
     let code = task
         .get("code")
         .and_then(JsonValue::as_str)

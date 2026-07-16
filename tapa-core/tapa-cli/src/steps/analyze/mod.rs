@@ -1,8 +1,9 @@
 //! `tapa analyze` orchestration.
 //!
 //! Composes `tapa-cpp` (preprocessor) and `tapacc` (semantic analyzer)
-//! invocations, then writes `graph.json`, `design.json`, and
-//! `settings.json` directly under `work_dir`.
+//! invocations, then writes the work dir's one state file,
+//! `<work_dir>/tapa.json`, plus the verbatim `tapacc` output as a debug
+//! artifact.
 
 use std::fs;
 use std::path::PathBuf;
@@ -13,9 +14,17 @@ use tapa_ir::Graph;
 
 use crate::context::CliContext;
 use crate::error::{CliError, Result};
-use crate::state::{design as design_io, graph as graph_io, settings as settings_io};
+use crate::state::json::write_bytes_atomic;
+use crate::state::work::{self as work_io, WorkState};
 use crate::tapacc::cflags::{get_system_cflags, get_tapacc_cflags};
 use crate::tapacc::discover::find_clang_binary;
+
+/// Verbatim `tapacc` stdout, kept under the work dir for provenance and
+/// debugging. **Nothing reads this back** — `analyze` parses `tapacc`'s
+/// output in-process into the typed model that `tapa.json` carries. Keeping
+/// it write-only is what stops the work dir growing a second schema-bearing
+/// file that can drift from the first.
+const TAPACC_ARTIFACT: &str = "tapacc.json";
 
 mod build_design;
 mod run_flatten;
@@ -26,7 +35,7 @@ use run_flatten::run_flatten;
 use run_tapacc::run_tapacc;
 
 /// Target flows accepted by `tapa analyze`. Kebab-case spellings match
-/// the strings persisted into `settings.json` and read by `synth` /
+/// the wire strings persisted into `tapa.json` and read by `synth` /
 /// `pack` (`xilinx-vitis`, `xilinx-hls`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum AnalyzeTarget {
@@ -37,8 +46,7 @@ pub enum AnalyzeTarget {
 }
 
 impl AnalyzeTarget {
-    /// Canonical string form persisted into `settings.json` /
-    /// `design.json`.
+    /// Canonical wire string persisted into `tapa.json`.
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::XilinxVitis => "xilinx-vitis",
@@ -47,7 +55,7 @@ impl AnalyzeTarget {
     }
 }
 
-/// Bridge the clap arg enum to the schema enum stored in `design.json`.
+/// Bridge the clap arg enum to the schema enum stored in `tapa.json`.
 /// Keeps `tapa-ir` free of a clap dependency.
 impl From<AnalyzeTarget> for tapa_ir::Target {
     fn from(target: AnalyzeTarget) -> Self {
@@ -86,8 +94,8 @@ pub struct AnalyzeArgs {
 
     /// Target flow. Restricted to targets the pipeline can drive
     /// end-to-end so typos and unsupported targets fail
-    /// at parse time instead of producing unusable `settings.json` /
-    /// `design.json` that only blow up later in `synth` or `pack`.
+    /// at parse time instead of producing an unusable `tapa.json` that
+    /// only blows up later in `synth` or `pack`.
     #[arg(long = "target", value_enum, default_value_t = AnalyzeTarget::XilinxVitis)]
     pub target: AnalyzeTarget,
 
@@ -137,7 +145,7 @@ pub fn run(args: &AnalyzeArgs, ctx: &mut CliContext) -> Result<()> {
 }
 
 /// Run tapacc on each input, merge the task graphs, and write
-/// `<work_dir>/graph.json` (plus the flattened sources when
+/// `<work_dir>/tapa.json` (plus the flattened sources when
 /// `--flatten-hierarchy` is set).
 fn run_native(args: &AnalyzeArgs, ctx: &CliContext) -> Result<()> {
     // `--tapacc`/`--tapa-cpp` override the walk-up `find_resource`
@@ -173,13 +181,18 @@ fn run_native(args: &AnalyzeArgs, ctx: &CliContext) -> Result<()> {
         ctx.options.clang_format_quota_in_bytes,
     )?;
     let target_str = args.target.as_str();
-    let mut graph_dict = run_tapacc(&tapacc, &flatten_files, &args.top, &all_cflags, target_str)?;
+    let stdout = run_tapacc(&tapacc, &flatten_files, &args.top, &all_cflags, target_str)?;
+
+    // Persist the raw bytes first, so a `tapacc` output that fails the parse
+    // below is still on disk for inspection.
+    write_bytes_atomic(work_dir, TAPACC_ARTIFACT, stdout.as_bytes())?;
+
+    let mut graph_dict: Value = serde_json::from_str(&stdout)?;
 
     // Analyze owns the two root facts `tapacc` does not emit: the user's
     // cflags tuple (plus the required C++ standard flag) and the flow
-    // target. Both are injected before the strict parse below, so the
-    // graph conforms to the one schema `graph.json` and `design.json`
-    // share.
+    // target. Both are injected before the strict parse below, so the graph
+    // conforms to the schema `tapa.json` carries.
     if let Some(obj) = graph_dict.as_object_mut() {
         obj.insert(
             "cflags".to_string(),
@@ -191,13 +204,11 @@ fn run_native(args: &AnalyzeArgs, ctx: &CliContext) -> Result<()> {
         );
     }
 
-    let mut graph: Graph = serde_json::from_value(graph_dict.clone())
+    let mut graph: Graph = serde_json::from_value(graph_dict)
         .map_err(|e| CliError::InvalidArg(format!("graph schema error: {e}")))?;
 
     if args.flatten_hierarchy {
         graph = flatten_graph_value(&graph)?;
-        graph_dict = serde_json::to_value(&graph)
-            .map_err(|e| CliError::InvalidArg(format!("graph re-serialize: {e}")))?;
     }
 
     if is_top_leaf(&graph, &args.top) && args.target == AnalyzeTarget::XilinxVitis {
@@ -209,20 +220,14 @@ fn run_native(args: &AnalyzeArgs, ctx: &CliContext) -> Result<()> {
         ));
     }
 
-    // Persist all three on-disk artifacts. `design.json` holds the same
-    // unified task graph; `synth` annotates it in place with the
-    // post-synthesis results.
-    graph_io::store_graph(work_dir, &graph_dict)?;
-    let mut settings = settings_io::Settings::new();
-    settings.insert("target".to_string(), json!(target_str));
-    settings_io::store_settings(work_dir, &settings)?;
-    design_io::store_design(work_dir, &graph)?;
+    // Seed the work dir's one state file. `synth` annotates the graph in
+    // place with post-synthesis results and fills in `flow`.
+    let state = WorkState::new(graph);
+    work_io::store(work_dir, &state)?;
 
     // Cache state for downstream chained steps in this process.
     let mut flow = ctx.flow.borrow_mut();
-    flow.graph = Some(graph_dict);
-    flow.settings = Some(settings);
-    flow.design = Some(graph);
+    flow.state = Some(state);
     flow.pipelined.insert("analyze".to_string(), true);
     drop(flow);
 
@@ -305,7 +310,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn analyze_writes_graph_design_settings() {
+    fn analyze_writes_state_and_tapacc_artifact() {
         use std::os::unix::fs::PermissionsExt;
 
         // Build an isolated tempdir that doubles as both:
@@ -340,7 +345,7 @@ mod tests {
         fs::set_permissions(&tapa_cpp, fs::Permissions::from_mode(0o755)).expect("chmod tapa-cpp");
 
         // tapacc: `--version` is parseable; otherwise it emits a fixed
-        // tapacc-shaped graph.json on stdout.
+        // tapacc-shaped task graph on stdout.
         // Mirrors real `tapacc` output: `readable_name` is emitted for every
         // task (equal to the task name for these non-template tasks).
         let fixed_graph = r#"{"cflags": [], "tasks": {"VecAdd": {"code": "void VecAdd() {}", "level": "upper", "synth": "hls", "readable_name": "VecAdd", "ports": [], "tasks": {"Add": [{"step": 0, "args": {}}]}, "fifos": {}}, "Add": {"code": "void Add() {}", "level": "lower", "synth": "hls", "readable_name": "Add", "ports": []}}, "top": "VecAdd"}"#;
@@ -386,38 +391,44 @@ mod tests {
 
         run_native(&args, &ctx).expect("native analyze should succeed");
 
-        // graph.json must contain the patched cflags and the tapacc tasks.
-        let graph_path = ctx.work_dir.join("graph.json");
-        assert!(graph_path.exists(), "graph.json must be written");
-        let graph_v: Value =
-            serde_json::from_str(&fs::read_to_string(&graph_path).expect("read graph"))
-                .expect("parse graph.json");
-        assert_eq!(graph_v["top"], json!("VecAdd"));
-        // Analyze stores the user cflags plus
-        // `-std=c++14`. The user passed no `-c`, so we expect just that.
-        assert_eq!(graph_v["cflags"], json!(["-std=c++14"]));
+        // The single state file must round-trip with the projected topology.
+        let state = work_io::load(&ctx.work_dir).expect("load state");
+        assert_eq!(state.version, work_io::VERSION, "state is version-stamped");
+        assert_eq!(state.graph.top, "VecAdd");
         // Analyze injects the root flow target `tapacc` does not emit.
-        assert_eq!(graph_v["target"], json!("xilinx-hls"));
+        assert_eq!(state.graph.target.as_str(), "xilinx-hls");
+        // Analyze stores the user cflags plus `-std=c++14`. The user passed
+        // no `-c`, so we expect just that.
+        assert_eq!(state.graph.cflags, vec!["-std=c++14".to_string()]);
+        assert!(state.graph.tasks.contains_key("VecAdd"));
+        assert!(state.graph.tasks.contains_key("Add"));
+        assert_eq!(state.graph.tasks["VecAdd"].level, tapa_ir::TaskLevel::Upper);
+        assert_eq!(state.graph.tasks["Add"].level, tapa_ir::TaskLevel::Lower);
+        assert_eq!(state.graph.tasks["Add"].synth, tapa_ir::SynthTarget::Hls);
+        // Nothing has synthesized yet, so the flow block is still pristine.
+        assert_eq!(state.flow, crate::state::work::FlowSettings::default());
 
-        // settings.json must record the target.
-        let settings = settings_io::load_settings(&ctx.work_dir).expect("load settings");
-        assert_eq!(settings.get("target"), Some(&json!("xilinx-hls")));
+        // The superseded state files must not reappear: one schema-bearing
+        // file in the work dir is the whole point.
+        for stale in ["graph.json", "design.json", "settings.json"] {
+            assert!(
+                !ctx.work_dir.join(stale).exists(),
+                "`{stale}` must no longer be written",
+            );
+        }
 
-        // design.json must round-trip with the projected topology.
-        let design = design_io::load_design(&ctx.work_dir).expect("load design");
-        assert_eq!(design.top, "VecAdd");
-        assert_eq!(design.target.as_str(), "xilinx-hls");
-        assert!(design.tasks.contains_key("VecAdd"));
-        assert!(design.tasks.contains_key("Add"));
-        assert_eq!(design.tasks["VecAdd"].level, tapa_ir::TaskLevel::Upper);
-        assert_eq!(design.tasks["Add"].level, tapa_ir::TaskLevel::Lower);
-        assert_eq!(design.tasks["Add"].synth, tapa_ir::SynthTarget::Hls);
+        // The verbatim tapacc output is kept for debugging, byte-for-byte,
+        // *without* analyze's injected cflags/target.
+        let raw = fs::read_to_string(ctx.work_dir.join("tapacc.json")).expect("read tapacc.json");
+        assert_eq!(
+            raw.trim_end(),
+            fixed_graph,
+            "tapacc.json must hold tapacc's stdout verbatim",
+        );
 
-        // FlowState must cache all three artifacts.
+        // FlowState must cache the state for chained steps.
         let flow = ctx.flow.borrow();
-        assert!(flow.design.is_some(), "design cached for chained steps");
-        assert!(flow.graph.is_some(), "graph cached for chained steps");
-        assert!(flow.settings.is_some(), "settings cached for chained steps");
+        assert!(flow.state.is_some(), "state cached for chained steps");
         assert_eq!(flow.pipelined.get("analyze"), Some(&true));
     }
 }

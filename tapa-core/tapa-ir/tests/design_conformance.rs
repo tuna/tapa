@@ -16,11 +16,14 @@ fn to_json(design: &Design) -> String {
     serde_json::to_string_pretty(design).expect("serialize design")
 }
 
-/// Serialize with the same `, ` / `: ` compact formatter the CLI's
-/// `state::json::write_json_atomic` uses for `design.json` / `graph.json`,
-/// so the byte-equality test below asserts the real on-disk shape rather
-/// than a pretty-printed approximation of it.
-fn to_state_json(design: &Design) -> String {
+/// Serialize compactly with `, ` / `: ` separators.
+///
+/// This is a *test device*, not the on-disk format: the CLI pretty-prints
+/// the state file it writes. Rendering the model on a single line is simply
+/// what lets [`canonical_design_json`] pin field order and
+/// `skip_serializing_if` behaviour as one readable literal, which is the
+/// invariant these tests exist to catch drift in.
+fn to_compact_json(design: &Design) -> String {
     struct SpacedFormatter;
     impl serde_json::ser::Formatter for SpacedFormatter {
         fn begin_array_value<W: io::Write + ?Sized>(
@@ -60,8 +63,8 @@ fn to_state_json(design: &Design) -> String {
     String::from_utf8(buf).expect("utf-8 JSON")
 }
 
-/// A canonical `design.json`, written in **field declaration order** and
-/// in the exact on-disk formatting [`to_state_json`] emits.
+/// A canonical task-graph payload, written in **field declaration order**
+/// and in the compact rendering [`to_compact_json`] emits.
 ///
 /// This is the literal that pins the wire shape documented on
 /// `tapa_ir::graph`: struct field order is stable, `tasks` / `fifos` are
@@ -174,9 +177,9 @@ fn vadd_round_trip() {
 #[test]
 fn round_trip_byte_equal() {
     let json = canonical_design_json();
-    let design = Design::from_json(json).expect("parse canonical design.json");
+    let design = Design::from_json(json).expect("parse canonical task graph");
     assert_eq!(
-        to_state_json(&design),
+        to_compact_json(&design),
         json,
         "round-trip must preserve the byte sequence",
     );
@@ -204,13 +207,12 @@ fn task_order_preserved() {
     );
 
     // The emitted form is sorted too, not just the in-memory map.
-    let reparsed = Design::from_json(&to_state_json(&design)).expect("reparse");
+    let reparsed = Design::from_json(&to_compact_json(&design)).expect("reparse");
     let emitted: Vec<&str> = reparsed.tasks.keys().map(String::as_str).collect();
     assert_eq!(emitted, vec!["Add", "VecAdd"], "sorted order survives emit");
 }
 
-/// `from_reader` is the live parse entry point (`tapa-cli` reads
-/// `design.json` through it), so it gets direct coverage.
+/// `from_reader` is a public parse entry point, so it gets direct coverage.
 #[test]
 fn from_reader_works() {
     let json = canonical_design_json();

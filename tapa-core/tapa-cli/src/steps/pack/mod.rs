@@ -1,6 +1,6 @@
 //! `tapa pack` orchestration.
 //!
-//! Reloads `<work_dir>/{graph,design,settings}.json`, projects the top
+//! Reloads `<work_dir>/tapa.json`, projects the top
 //! task's external ports into a [`PackageXoInputs`] block, and drives
 //! `tapa_xilinx::pack_xo` against `<work_dir>/rtl` to produce the
 //! `.xo`. Three optional overlays are applied around the core pack:
@@ -24,7 +24,7 @@ use tapa_ir::Target;
 
 use crate::context::CliContext;
 use crate::error::{CliError, Result};
-use crate::state::{design as design_io, graph as graph_io, settings as settings_io};
+use crate::state::work::{self as work_io, WorkState};
 
 mod bitstream_script;
 mod custom_rtl;
@@ -76,11 +76,12 @@ pub fn run(args: &PackArgs, ctx: &mut CliContext) -> Result<()> {
 }
 
 fn run_native(args: &PackArgs, ctx: &CliContext) -> Result<()> {
-    let design = design_io::load_design(&ctx.work_dir)?;
-    let settings = settings_io::load_settings(&ctx.work_dir)?;
-    match crate::steps::backend::effective_target(&settings, &design)? {
-        Target::XilinxVitis => pack_vitis(args, ctx, &design, &settings),
-        Target::XilinxHls => pack_hls_zip(args, ctx, &settings),
+    let state = work_io::load(&ctx.work_dir)?;
+    // The graph's `target` is the single home of the flow; this exhaustive
+    // match is the dispatch site a new `Target` variant would break.
+    match state.graph.target {
+        Target::XilinxVitis => pack_vitis(args, ctx, &state.graph, &state.flow),
+        Target::XilinxHls => pack_hls_zip(args, ctx, &state),
     }
 }
 
@@ -92,7 +93,7 @@ fn run_native(args: &PackArgs, ctx: &CliContext) -> Result<()> {
 /// `settings.yaml` snapshots of the persistent compile context. Output
 /// defaults to `work.zip` in the caller's CWD and is always normalized
 /// to a `.zip` suffix.
-fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, settings: &settings_io::Settings) -> Result<()> {
+fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, state: &WorkState) -> Result<()> {
     use std::io::Write as _;
     let work_dir = ctx.work_dir.as_path();
     let rtl_dir = work_dir.join("rtl");
@@ -145,15 +146,22 @@ fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, settings: &settings_io::Setti
         z.write_all(&fs_err::read(&report_yaml)?)?;
     }
 
-    // Serialize the persisted graph and settings as YAML so downstream
+    // Serialize the persisted graph and flow settings as YAML so downstream
     // consumers can recover compile metadata from the archive.
-    let graph = graph_io::load_graph(work_dir)?;
-    let graph_yaml = serde_yaml::to_string(&graph)
+    //
+    // These two entries stay split, and stay at these names, because they are
+    // a cross-workspace contract: `frt-cosim`'s zip reader
+    // (`fpga-runtime/frt-cosim/src/metadata`) requires a `graph.yaml` whose
+    // root carries `top`/`tasks`, and recovers `part_num` from the root of
+    // `settings.yaml`. Merging them into one `tapa.json`-shaped entry would
+    // nest the graph a level down and break cosim. The work dir collapsed to
+    // one state file; the archive layout is a published surface and did not.
+    let graph_yaml = serde_yaml::to_string(&state.graph)
         .map_err(|e| CliError::InvalidArg(format!("graph yaml: {e}")))?;
     z.start_file("graph.yaml", opts)
         .map_err(|e| CliError::InvalidArg(format!("zip entry: {e}")))?;
     z.write_all(graph_yaml.as_bytes())?;
-    let settings_yaml = serde_yaml::to_string(settings)
+    let settings_yaml = serde_yaml::to_string(&state.flow)
         .map_err(|e| CliError::InvalidArg(format!("settings yaml: {e}")))?;
     z.start_file("settings.yaml", opts)
         .map_err(|e| CliError::InvalidArg(format!("zip entry: {e}")))?;
@@ -264,15 +272,13 @@ mod tests {
     use super::*;
 
     use std::path::Path;
-    use std::str::FromStr;
 
     use std::collections::BTreeMap;
 
     use indexmap::IndexMap;
-    use serde_json::json;
     use tapa_ir::{
         port::{ArgCategory, Port},
-        Design, SynthTarget, Task, TaskLevel,
+        SynthTarget, Task, TaskGraph, TaskLevel,
     };
 
     use crate::globals::GlobalArgs;
@@ -293,7 +299,7 @@ mod tests {
         CliContext::from_globals(&globals)
     }
 
-    fn write_state(work_dir: &Path, target: &str) {
+    fn write_state(work_dir: &Path, target: Target) {
         fs_err::create_dir_all(work_dir).expect("mkdir work");
         let mut tasks = BTreeMap::new();
         tasks.insert(
@@ -311,31 +317,23 @@ mod tests {
                 }],
                 tasks: BTreeMap::new(),
                 fifos: BTreeMap::new(),
-                readable_name: String::new(),
+                readable_name: "Top".to_string(),
                 synth: SynthTarget::Hls,
                 self_area: IndexMap::new(),
                 total_area: IndexMap::new(),
                 clock_period: "3.33".to_string(),
             },
         );
-        let design = Design {
+        let mut state = WorkState::new(TaskGraph {
             top: "Top".to_string(),
-            // The dispatcher prefers the settings string over
-            // `design.target`; unknown-target cases (e.g. `"cpu-sim"`)
-            // exercise the settings parse, so a valid enum here is fine.
-            target: Target::from_str(target).unwrap_or(Target::XilinxHls),
+            target,
             tasks,
             cflags: Vec::new(),
-        };
-        design_io::store_design(work_dir, &design).expect("store design");
-        let mut settings = settings_io::Settings::new();
-        settings.insert("target".to_string(), json!(target));
-        settings.insert("part_num".to_string(), json!("xcu250-figd2104-2L-e"));
-        settings.insert("clock_period".to_string(), json!("3.33"));
-        settings_io::store_settings(work_dir, &settings).expect("store settings");
-        // `pack_hls_zip` requires `graph.json` so it can emit
-        // `graph.yaml`.
-        graph_io::store_graph(work_dir, &json!({"top": "Top", "tasks": {}})).expect("store graph");
+        });
+        state.flow.part_num = Some("xcu250-figd2104-2L-e".to_string());
+        state.flow.clock_period = Some("3.33".to_string());
+        state.flow.synthed = true;
+        work_io::store(work_dir, &state).expect("store state");
     }
 
     #[test]
@@ -360,18 +358,29 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_target_surfaces_invalid_arg() {
+    fn unsupported_target_is_rejected_with_the_supported_flows() {
+        // The flow target now has exactly one home, so an unsupported value
+        // is caught when the state parses rather than by a settings-vs-design
+        // reconciliation. The user must still be told which flows do work.
         let dir = tempfile::tempdir().expect("tempdir");
-        write_state(dir.path(), "cpu-sim");
+        write_state(dir.path(), Target::XilinxHls);
+        let path = crate::state::work::path_in(dir.path());
+        let text = fs_err::read_to_string(&path).expect("read state");
+        fs_err::write(&path, text.replace("xilinx-hls", "cpu-sim")).expect("write state");
+
         let ctx = ctx_with_work_dir(dir.path());
         let err = run_native(&parse_pack(&[]), &ctx).expect_err("unknown target must reject");
-        assert!(matches!(err, CliError::InvalidArg(ref m) if m.contains("xilinx-vitis")));
+        let text = err.to_string();
+        assert!(
+            text.contains("cpu-sim") && text.contains("xilinx-vitis"),
+            "error must name the bad target and the supported flows; got {text}",
+        );
     }
 
     #[test]
     fn xilinx_hls_target_produces_zip() {
         let dir = tempfile::tempdir().expect("tempdir");
-        write_state(dir.path(), "xilinx-hls");
+        write_state(dir.path(), Target::XilinxHls);
 
         // Minimal synthesis artifacts: one RTL file + a csynth report
         // whose `Date:` line should be normalized by the redactor.
@@ -402,8 +411,8 @@ mod tests {
             .expect("xilinx-hls pack must succeed");
         assert!(output_path.exists(), "expected {output_str} to be written");
 
-        // Inspect the archive: graph/settings yaml metadata are present
-        // and the csynth report has the redacted reproducible Date.
+        // Inspect the archive: the state snapshot is present and the
+        // csynth report has the redacted reproducible Date.
         let zip_bytes = fs_err::read(&output_path).expect("read zip");
         let mut zr = zip::ZipArchive::new(std::io::Cursor::new(zip_bytes)).expect("open zip");
         let names: Vec<String> = (0..zr.len())
@@ -416,6 +425,39 @@ mod tests {
         assert!(
             names.iter().any(|n| n == "settings.yaml"),
             "settings.yaml missing: {names:?}"
+        );
+
+        // These two entries are `frt-cosim`'s contract, so pin the *shape* it
+        // reads, not just the names: `graph.yaml` must carry `top`/`tasks` at
+        // the root (`frt-cosim::metadata::zip_pkg::parse_graph_yaml`) and
+        // `settings.yaml` must carry `part_num` at the root
+        // (`parse_part_from_settings_yaml`). Nesting either under a `graph:` /
+        // `flow:` key would break cosim at runtime, not at compile time.
+        let read_entry = |zr: &mut zip::ZipArchive<std::io::Cursor<Vec<u8>>>, name: &str| {
+            let mut s = String::new();
+            std::io::Read::read_to_string(&mut zr.by_name(name).unwrap(), &mut s)
+                .unwrap_or_else(|e| panic!("read {name}: {e}"));
+            serde_yaml::from_str::<serde_yaml::Value>(&s)
+                .unwrap_or_else(|e| panic!("parse {name}: {e}"))
+        };
+        let graph_v = read_entry(&mut zr, "graph.yaml");
+        assert_eq!(
+            graph_v.get("top").and_then(|v| v.as_str()),
+            Some("Top"),
+            "graph.yaml must keep `top` at the root for frt-cosim",
+        );
+        assert!(
+            graph_v
+                .get("tasks")
+                .and_then(|v| v.as_mapping())
+                .is_some_and(|m| m.contains_key(serde_yaml::Value::String("Top".to_string()))),
+            "graph.yaml must keep the `tasks` mapping at the root for frt-cosim",
+        );
+        let settings_v = read_entry(&mut zr, "settings.yaml");
+        assert_eq!(
+            settings_v.get("part_num").and_then(|v| v.as_str()),
+            Some("xcu250-figd2104-2L-e"),
+            "settings.yaml must keep `part_num` at the root for frt-cosim",
         );
         assert!(names.iter().any(|n| n == "rtl/Top.v"));
         assert!(names.iter().any(|n| n == "report/Top/Top_csynth.rpt"));
@@ -465,7 +507,7 @@ mod tests {
     #[test]
     fn missing_rtl_dir_surfaces_invalid_arg() {
         let dir = tempfile::tempdir().expect("tempdir");
-        write_state(dir.path(), "xilinx-vitis");
+        write_state(dir.path(), Target::XilinxVitis);
         let ctx = ctx_with_work_dir(dir.path());
         let err = run_native(&parse_pack(&[]), &ctx).expect_err("missing rtl dir must fail");
         assert!(matches!(err, CliError::InvalidArg(ref m) if m.contains("rtl")));

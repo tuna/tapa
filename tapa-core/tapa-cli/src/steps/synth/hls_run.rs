@@ -98,7 +98,7 @@ pub fn run_hls_for_leaves(
                 // readers; the skip path does not touch `hdl_dir`.
                 fs::create_dir_all(&layout.reports_dir)?;
                 // Reload existing csynth data so downstream report
-                // generation and design.json keep correct metrics.
+                // generation and the persisted graph keep correct metrics.
                 let csynth =
                     find_and_parse_csynth(&layout.reports_dir, task_name).unwrap_or_else(|e| {
                         log::warn!(

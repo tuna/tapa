@@ -36,9 +36,8 @@ work.out/
 ├── rtl/
 ├── report/                    # with --enable-synth-util
 ├── template/                  # when a task targets "ignore"
-├── graph.json
-├── design.json
-├── settings.json
+├── tapa.json
+├── tapacc.json
 ├── templates_info.json        # when a task targets "ignore"
 ├── report.json
 └── report.yaml
@@ -70,17 +69,21 @@ Created by `--enable-synth-util`. Contains per-task `<task>.hier.util.rpt` files
 
 For tasks annotated with `[[tapa::target("ignore")]]`, `template/` contains generated Verilog module shells for implementing replacement RTL. `templates_info.json` records the expected port metadata used when checking `--custom-rtl` overlays.
 
-**`graph.json`**
+**`tapa.json`**
 
-JSON file recording all contents and metadata of the input design, including the task graph structure. Written by `tapa analyze` from the `tapacc` output, with the flow `target` and the kernel `cflags` added.
+The single state file: everything the pipeline persists between steps, and the only file `tapa` reads back. It is pretty-printed so work directories stay readable and diffable. It has three top-level keys:
 
-**`design.json`**
+- **`version`** — schema version of this file. `tapa` refuses a work directory stamped with a version it does not recognise, telling you to re-run `tapa analyze` rather than failing with an obscure parse error.
+- **`graph`** — all contents and metadata of the input design, including the task graph structure. Written by `tapa analyze` from the `tapacc` output, with the flow `target` and the kernel `cflags` added. `tapa synth` then annotates each task in place with its post-synthesis `clock_period`, `self_area`, and `total_area`; those fields are absent until synthesis populates them.
+- **`flow`** — compilation settings shared across pipeline steps (part number, clock period, platform, and whether synthesis has run), resolved by `tapa synth` and read back by `tapa pack` so options need not be repeated on the command line. The flow `target` is deliberately not duplicated here: it lives in `graph.target` alone.
 
-The same task-graph schema as `graph.json`, consumed by later native pipeline steps. `tapa synth` annotates each task in place with its post-synthesis `clock_period`, `self_area`, and `total_area`; those fields are absent until synthesis populates them.
+```admonish note
+`clock_period` appears in both blocks and means different things: `flow.clock_period` is the clock period you *requested*, while a task's `graph.tasks.<TASK>.clock_period` is the period HLS *estimated* for it.
+```
 
-**`settings.json`**
+**`tapacc.json`**
 
-Records compilation settings shared across pipeline steps (target, part number, clock period, platform). Downstream `tapa` sub-commands read this file to avoid repeating options on the command line.
+The raw, unmodified output of `tapacc`, saved verbatim by `tapa analyze` for provenance and debugging — including when it fails to parse. Nothing in the pipeline reads it back; `tapa.json` is the only state. Edits to this file have no effect.
 
 **`report.json` / `report.yaml`**
 

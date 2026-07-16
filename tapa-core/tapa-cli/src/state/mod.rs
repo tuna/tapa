@@ -1,11 +1,9 @@
-//! Work-directory state bridge — `design.json`, `graph.json`,
-//! `settings.json` read / write helpers.
+//! Work-directory state bridge.
+//!
+//! One versioned state file — `<work_dir>/tapa.json` — carries everything the
+//! pipeline persists between steps; see [`work`]. Steps that emit their own
+//! side artifacts (`templates_info.json`, `grouping_constraints.json`) share
+//! the atomic-write plumbing in [`json`].
 
-pub mod design;
-pub mod graph;
 pub(crate) mod json;
-pub mod settings;
-
-pub use design::{load_design, store_design};
-pub use graph::{load_graph, store_graph};
-pub use settings::{load_settings, store_settings, Settings};
+pub mod work;

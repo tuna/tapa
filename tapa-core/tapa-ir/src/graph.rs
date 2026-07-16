@@ -1,7 +1,8 @@
 //! Root task-graph container.
 //!
-//! `TaskGraph` is the single root type serialized as both `graph.json`
-//! (tapacc output) and `design.json` (the post-synthesis design model).
+//! `TaskGraph` is the single root type for both the `tapacc` output and the
+//! post-synthesis design model; it is persisted inside the work dir's
+//! `tapa.json` and snapshotted into `graph.yaml` by `tapa pack`.
 //! Field declaration order is stable so serializing re-emits keys
 //! deterministically; `tasks` uses [`BTreeMap`] so keys come out
 //! alphabetically, matching the sorted order `tapa analyze` writes.
@@ -15,7 +16,7 @@ use crate::error::ParseError;
 use crate::target::Target;
 use crate::task::Task;
 
-/// Root of the unified task graph (`graph.json` and `design.json`).
+/// Root of the unified task graph.
 #[allow(
     clippy::derive_partial_eq_without_eq,
     reason = "transitively holds serde_json::Value through Task"
@@ -36,8 +37,7 @@ pub struct TaskGraph {
 }
 
 impl TaskGraph {
-    /// Parse a `graph.json` / `design.json` payload with field-path error
-    /// diagnostics.
+    /// Parse a task-graph payload with field-path error diagnostics.
     pub fn from_json(json: &str) -> Result<Self, ParseError> {
         let de = &mut serde_json::Deserializer::from_str(json);
         serde_path_to_error::deserialize(de).map_err(|e| ParseError::Schema {
@@ -46,7 +46,7 @@ impl TaskGraph {
         })
     }
 
-    /// Parse from any reader (a `graph.json` / `design.json` file handle).
+    /// Parse from any reader.
     pub fn from_reader<R: Read>(mut reader: R) -> Result<Self, ParseError> {
         let mut buf = String::new();
         reader.read_to_string(&mut buf)?;
