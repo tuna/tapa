@@ -445,13 +445,23 @@ fn collect_files(dir: &camino::Utf8Path) -> Result<Vec<Utf8PathBuf>> {
     Ok(out)
 }
 
+/// How the per-attempt staging directory is sourced.
+#[derive(Debug, Clone, Copy)]
+enum StageDir<'a> {
+    /// Fresh tempdir created (and cleaned up) per retry attempt.
+    Ephemeral,
+    /// Caller-owned directory reused across retries; the caller owns cleanup.
+    Borrowed(&'a camino::Utf8Path),
+}
+
 /// Bounded retry wrapper keyed on the transient-failure predicate. The
 /// default budget is 3 attempts; callers can override per job via
 /// `transient_patterns`.
-pub fn run_hls_with_retry(
+fn run_hls_with_retry_impl(
     runner: &dyn ToolRunner,
     job: &HlsJob,
     max_attempts: u32,
+    stage: StageDir<'_>,
 ) -> Result<HlsOutput> {
     let max_attempts = max_attempts.max(1);
     let backoff = ExponentialBuilder::default()
@@ -462,9 +472,20 @@ pub fn run_hls_with_retry(
     let delay_fn = job.delay_fn.clone();
 
     let result = (|| -> std::result::Result<HlsOutput, RetryError> {
-        let stage = tempfile::tempdir().map_err(|e| RetryError::Fatal(XilinxError::Io(e)))?;
-        let stage_path = Utf8PathBuf::from_path_buf(stage.path().to_path_buf())
-            .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
+        // Resolve the stage path for this attempt. For `Ephemeral`, the
+        // tempdir guard is kept alive in `_guard` for the whole closure
+        // body so the directory exists during run + harvest.
+        let (stage_path, _guard): (camino::Utf8PathBuf, Option<tempfile::TempDir>) = match &stage {
+            StageDir::Ephemeral => {
+                let dir = tempfile::tempdir().map_err(|e| RetryError::Fatal(XilinxError::Io(e)))?;
+                let path = camino::Utf8PathBuf::from_path_buf(dir.path().to_path_buf())
+                    .unwrap_or_else(|p| {
+                        camino::Utf8PathBuf::from(p.to_string_lossy().into_owned())
+                    });
+                (path, Some(dir))
+            }
+            StageDir::Borrowed(p) => (p.to_path_buf(), None),
+        };
         let out = run_hls_attempt(runner, job, &stage_path).map_err(RetryError::Fatal)?;
         if out.exit_code == 0 {
             return harvest_and_stage(runner, job, &stage_path, out).map_err(RetryError::Fatal);
@@ -504,6 +525,15 @@ pub fn run_hls_with_retry(
     }
 }
 
+/// Run Vitis HLS with bounded retry; each attempt gets a fresh tempdir.
+pub fn run_hls_with_retry(
+    runner: &dyn ToolRunner,
+    job: &HlsJob,
+    max_attempts: u32,
+) -> Result<HlsOutput> {
+    run_hls_with_retry_impl(runner, job, max_attempts, StageDir::Ephemeral)
+}
+
 /// Same as [`run_hls_with_retry`] but uses a caller-owned stage
 /// directory instead of a per-attempt tempdir. Callers that honor
 /// `--keep-hls-work-dir` pass a persistent path here so the Vitis
@@ -517,52 +547,7 @@ pub fn run_hls_with_retry_in_stage(
     max_attempts: u32,
     stage_dir: &camino::Utf8Path,
 ) -> Result<HlsOutput> {
-    let max_attempts = max_attempts.max(1);
-    let backoff = ExponentialBuilder::default()
-        .with_min_delay(Duration::from_millis(500))
-        .with_max_delay(Duration::from_secs(30))
-        .with_max_times(max_attempts.saturating_sub(1) as usize);
-
-    let delay_fn = job.delay_fn.clone();
-
-    let result = (|| -> std::result::Result<HlsOutput, RetryError> {
-        let out = run_hls_attempt(runner, job, stage_dir).map_err(RetryError::Fatal)?;
-        if out.exit_code == 0 {
-            return harvest_and_stage(runner, job, stage_dir, out).map_err(RetryError::Fatal);
-        }
-        let transient = is_transient(job, &out.stdout, &out.stderr);
-        if !transient {
-            let stderr = if out.stderr.is_empty() {
-                out.stdout
-            } else {
-                out.stderr
-            };
-            return Err(RetryError::Fatal(XilinxError::ToolFailure {
-                program: "vitis_hls".into(),
-                code: out.exit_code,
-                stderr,
-            }));
-        }
-        Err(RetryError::Transient)
-    })
-    .retry(backoff)
-    .when(|err| matches!(err, RetryError::Transient))
-    .sleep(move |dur| {
-        if let Some(f) = &delay_fn {
-            f(dur);
-        } else {
-            std::thread::sleep(dur);
-        }
-    })
-    .call();
-
-    match result {
-        Ok(output) => Ok(output),
-        Err(RetryError::Fatal(e)) => Err(e),
-        Err(RetryError::Transient) => Err(XilinxError::HlsRetryExhausted {
-            attempts: max_attempts,
-        }),
-    }
+    run_hls_with_retry_impl(runner, job, max_attempts, StageDir::Borrowed(stage_dir))
 }
 
 #[cfg(test)]
