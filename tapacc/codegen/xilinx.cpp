@@ -296,12 +296,27 @@ void XilinxBackend::RewriteTaskFunc(const TaskModel& task, bool is_top,
     return;
   }
 
-  // Top level in Vitis mode: shell + extern "C" wrapper + no inline.
-  rewriter.ReplaceText(func->getBody()->getSourceRange(),
-                       "{\n" + lines + "}\n");
-  rewriter.InsertText(func->getBeginLoc(), "extern \"C\" {\n\n");
-  rewriter.InsertTextAfterToken(func->getEndLoc(), "\n\n}  // extern \"C\"\n");
-  RemoveInline(func, rewriter);
+  // Top level in Vitis mode: the shell carries an s_axilite return-control
+  // pragma, and every declaration (forward decl + definition) is wrapped in
+  // extern "C" (Vitis only links extern-C kernels).
+  const std::string shell =
+      "{\n" + lines +
+      "#pragma HLS interface s_axilite port = return bundle = control\n}\n";
+  for (const clang::FunctionDecl* decl : func->redecls()) {
+    clang::SourceLocation end = decl->getEndLoc();
+    if (decl->isThisDeclarationADefinition()) {
+      rewriter.ReplaceText(decl->getBody()->getSourceRange(), shell);
+    } else {
+      // Insert after the declaration's trailing semicolon.
+      const clang::SourceLocation after = clang::Lexer::findLocationAfterToken(
+          end, clang::tok::semi, rewriter.getSourceMgr(),
+          rewriter.getLangOpts(), /*SkipTrailingWhitespaceAndNewLine=*/true);
+      if (after.isValid()) end = after;
+    }
+    rewriter.InsertText(decl->getBeginLoc(), "extern \"C\" {\n\n");
+    rewriter.InsertTextAfterToken(end, "\n\n}  // extern \"C\"\n");
+    RemoveInline(decl, rewriter);
+  }
 }
 
 void XilinxBackend::StripOtherTask(const clang::FunctionDecl* func,
