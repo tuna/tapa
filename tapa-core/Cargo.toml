@@ -9,10 +9,24 @@ members = [
   "tapa-cli",
 ]
 
-# Baseline clippy policy for TAPA Rust code. `tools/test-tools` mirrors
-# this table (kept in sync manually); `fpga-runtime` extends it with
-# FFI-specific allows and a broader restriction-lint set — divergence
-# from this baseline is intentional there, see fpga-runtime/Cargo.toml.
+# Baseline clippy policy for TAPA Rust code. `tools/test-tools` mirrors this
+# table (kept in sync manually); `fpga-runtime` extends it with FFI-specific
+# allows and a broader restriction-lint set — divergence from this baseline is
+# intentional there, see fpga-runtime/Cargo.toml.
+#
+# Folding those two into this workspace to get one table looks obvious and was
+# tried; both walls are load-bearing, so don't re-litigate without new facts:
+#   - fpga-runtime: Cargo has no "inherit the workspace lints and add a few".
+#     A package sets `lints.workspace = true` OR defines its own table, never
+#     both — `cannot override 'workspace.lints' in 'lints'`. Merging would mean
+#     either loosening this baseline for everyone (its FFI allows include
+#     cast_possible_truncation) or copying its table into each of its crates.
+#   - tools/test-tools: joining as an out-of-tree member works in Cargo (via
+#     `package.workspace`), but //tools:test_tools builds through
+#     `cargo_artifacts`, whose sandbox stages only that crate's own manifest +
+#     sources. A member cannot resolve its workspace root from there, so the
+#     merge trades a duplicated lint table for a broken or heavily coupled
+#     Bazel build.
 [workspace.lints.clippy]
 # Enable lint groups
 all = { level = "deny", priority = -1 }
