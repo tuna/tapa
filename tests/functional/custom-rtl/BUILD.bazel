@@ -22,6 +22,9 @@ sh_test(
         ":custom-rtl-target-host",
         ":custom-rtl-target-xo",
         ":custom-rtl-target-xo-template",
+        # Custom-RTL `.xo` runs under XSIM cosim, which loads the FRT DPI
+        # library; stage it so the runtime can find it next to the binary.
+        "//fpga-runtime:cargo_release_artifacts",
     ],
     tags = [
         "cpu:2",

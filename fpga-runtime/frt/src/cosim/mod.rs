@@ -381,7 +381,12 @@ fn dpi_lib_path_from_exe(exe: &Path, variant: &str) -> Result<PathBuf> {
         for base in &search_dirs {
             let p = base.join(&candidate);
             if p.exists() {
-                return Ok(p);
+                // Downstream cosim tools run from deep temp/obj subdirectories:
+                // Verilator's `c++` link from `obj_dir` and XSIM's `-sv_root`
+                // (derived from this path's parent) both resolve relative to
+                // their own CWD, not ours. A path resolved relative to the test
+                // CWD is unusable there, so return an absolute path.
+                return Ok(std::fs::canonicalize(&p).unwrap_or(p));
             }
         }
     }
@@ -864,7 +869,16 @@ mod tests {
         std::fs::write(&library, []).expect("write DPI library");
 
         let found = dpi_lib_path_from_exe(&fake_exe, "verilator").expect("find dpi lib");
-        assert_eq!(found, library);
+        // The resolved path must be absolute so it loads from the deep CWDs
+        // Verilator/XSIM run their link steps in (see `dpi_lib_path_from_exe`).
+        assert!(
+            found.is_absolute(),
+            "resolved DPI path must be absolute: {found:?}"
+        );
+        assert_eq!(
+            std::fs::canonicalize(&found).expect("canonicalize found"),
+            std::fs::canonicalize(&library).expect("canonicalize library"),
+        );
     }
 
     #[test]
