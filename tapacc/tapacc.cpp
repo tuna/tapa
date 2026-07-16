@@ -12,6 +12,13 @@
 //     just "synthesize or skip". The internal three-valued SynthTarget still
 //     carries the flow per task so the right backend gets picked, but that
 //     distinction collapses on the wire.
+//
+// Changing what this file emits changes a contract with Rust code that cannot
+// see it. `bazel test //tapa-core:tapacc_conformance_test` (Linux only) is the
+// guard: it runs this binary on tests/apps/vadd/vadd.cpp and strict-parses the
+// stdout below with tapa-ir's real types, so a field tapa-ir does not model --
+// or a required one that stops being emitted -- fails there rather than in
+// someone's build.
 
 #include <iostream>
 #include <memory>

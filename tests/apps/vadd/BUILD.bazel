@@ -18,6 +18,9 @@ exports_files(
         "vadd.h",
     ],
     visibility = [
+        # `//tapa-core:tapacc_conformance_test` analyzes this kernel with the
+        # real tapacc to check its output against the tapa-ir schema.
+        "//tapa-core:__pkg__",
         "//tests/apps:__pkg__",
         "//tests/functional:__subpackages__",
     ],

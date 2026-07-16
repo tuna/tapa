@@ -173,6 +173,55 @@ cargo_test(
     ],
 )
 
+# -- Test: tapacc ↔ tapa-ir schema conformance --
+# The guard that the C++ producer (`//tapacc`) still speaks the schema the
+# Rust consumer (`tapa-ir`) parses. Every other schema test reads a
+# hand-written fixture, so none of them can see the two sides drift apart;
+# this one runs the real `tapacc` (via the production `tapa analyze`
+# invocation, which stages Clang's resource dir and the TAPA include cascade)
+# and strict-parses its verbatim stdout. `//tapacc` is a Clang tool that only
+# builds on Linux, hence the platform gate.
+#
+# The test itself lives in `tapa-cli/tests/tapacc_conformance.rs` and skips
+# when these env vars are absent, so it is inert under plain `cargo test` and
+# under `:cargo_test` above. `TAPA_CONFORMANCE_REQUIRED` turns that skip into
+# a failure here, so a drifted `cargo_env` block cannot silently disable it.
+
+cargo_test(
+    name = "tapacc_conformance_test",
+    size = "large",
+    srcs = _ALL_SRCS,
+    cargo_args = [
+        "-p",
+        "tapa-cli",
+        "--test",
+        "tapacc_conformance",
+    ],
+    cargo_env = {
+        "TAPA_CONFORMANCE_REQUIRED": "1",
+        # Runfiles-relative paths; the test resolves them against
+        # `RUNFILES_DIR` / `TEST_SRCDIR`.
+        "TAPA_CONFORMANCE_TAPA": "tapa-core/tapa",
+        "TAPA_CONFORMANCE_TAPA_LIB": "tapa-lib",
+        "TAPA_CONFORMANCE_VADD": "tests/apps/vadd/vadd.cpp",
+    },
+    data = [
+        # Brings `//tapacc`, `//tapa-cpp`, and the system includes along as
+        # its own runfiles — the same tree a real `tapa analyze` walks.
+        ":tapa",
+        "//tapa-lib:include",
+        "//tests/apps/vadd:vadd.cpp",
+        # Included by vadd.cpp; must sit beside it in the runfiles tree.
+        "//tests/apps/vadd:vadd.h",
+    ],
+    manifest = "Cargo.toml",
+    tags = [
+        "cpu:4",
+        "requires-network",
+    ],
+    target_compatible_with = ["@platforms//os:linux"],
+)
+
 # -- Test: gated tapa-xilinx integration suite (manual) --
 # Imports configured REMOTE_* values and runs `cargo test -p tapa-xilinx -- --ignored`.
 # Tagged `manual` so default CI runs remain unblocked.

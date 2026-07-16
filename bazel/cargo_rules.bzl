@@ -164,18 +164,25 @@ exec "$CARGO" test --manifest-path "$MANIFEST" --locked {cargo_args} {test_args}
         test_args = " ".join([_sh_quote(arg) for arg in ctx.attr.test_args]),
     )
     ctx.actions.write(script, body, is_executable = True)
-    runfiles = ctx.runfiles(files = ctx.files.srcs + [
+    runfiles = ctx.runfiles(files = ctx.files.srcs + ctx.files.data + [
         ctx.file.manifest,
         ctx.file._cargo,
         ctx.file._rustc,
         ctx.file._rustdoc,
     ] + env_files).merge_all(env_file_runfiles)
+
+    # `data` entries are staged with their own runfiles, so a test can invoke
+    # a built tool (e.g. `//tapa-core:tapa`) and have that tool find its own
+    # siblings in the merged tree. Mirrors `//bazel:test_tool_rules.bzl`.
+    for target in ctx.attr.data:
+        runfiles = runfiles.merge(target[DefaultInfo].default_runfiles)
     return [DefaultInfo(executable = script, runfiles = runfiles)]
 
 cargo_test = rule(
     implementation = _cargo_test_impl,
     attrs = {
         "srcs": attr.label_list(allow_files = True),
+        "data": attr.label_list(allow_files = True),
         "manifest": attr.label(allow_single_file = True, mandatory = True),
         "cargo_args": attr.string_list(),
         "test_args": attr.string_list(),

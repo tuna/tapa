@@ -38,6 +38,19 @@ TAPA uses GitHub Actions for continuous integration. The CI pipeline:
   bazel test //...
   ```
 
+- If you change the task-graph schema, note that it has **two** implementations
+  that must agree: `tapacc/tapacc.cpp` emits the JSON, and the `tapa-ir` Rust
+  crate parses it with `deny_unknown_fields`. The fixtures under
+  `tapa-core/testdata/` are hand-written and cannot catch the two drifting
+  apart. `//tapa-core:tapacc_conformance_test` is what does: it runs the real
+  `tapacc` on `tests/apps/vadd/vadd.cpp` and strict-parses its verbatim
+  stdout. `tapacc` is a Clang tool that only builds on Linux, so the test is
+  gated on `@platforms//os:linux` and is skipped everywhere else:
+
+  ```bash
+  bazel test //tapa-core:tapacc_conformance_test  # Linux only
+  ```
+
 ## Reporting Issues
 
 - Use the GitHub issue tracker to report bugs or suggest new features.
