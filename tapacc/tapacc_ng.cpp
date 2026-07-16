@@ -17,6 +17,7 @@
 
 #include "nlohmann/json.hpp"
 
+#include "codegen/ignore.h"
 #include "codegen/rewrite.h"
 #include "codegen/xilinx.h"
 #include "frontend/build_program.h"
@@ -48,14 +49,16 @@ class NgConsumer : public clang::ASTConsumer {
     Program program = BuildProgram(ctx, g_top, default_target);
     const XilinxBackend hls(/*is_vitis=*/false);
     const XilinxBackend vitis(/*is_vitis=*/true);
+    const IgnoreBackend ignore;
 
     nlohmann::json out;
     out["top"] = program.top;
     out["tasks"] = nlohmann::json::object();
     for (const auto& [name, task] : program.tasks) {
       if (task.is_template_spec) continue;  // wrapper emission: TODO
-      const Backend* backend =
-          task.target == SynthTarget::kXilinxVitis ? &vitis : &hls;
+      const Backend* backend = &hls;
+      if (task.target == SynthTarget::kXilinxVitis) backend = &vitis;
+      if (task.target == SynthTarget::kIgnore) backend = &ignore;
       out["tasks"][name]["code"] = EmitTaskCode(program, task, *backend, ctx);
     }
     std::cout << out;

@@ -84,6 +84,20 @@ cc_library(
 )
 
 cc_library(
+    name = "ignore",
+    srcs = ["ignore.cpp"],
+    hdrs = ["ignore.h"],
+    copts = ["-fno-rtti"],
+    deps = [
+        ":backend",
+        ":code_sink",
+        ":emit",
+        "//tapacc/frontend:classify",
+        "@tapa-llvm-project//clang:tooling",
+    ],
+)
+
+cc_library(
     name = "rewrite",
     srcs = ["rewrite.cpp"],
     hdrs = ["rewrite.h"],

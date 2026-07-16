@@ -27,6 +27,7 @@ cc_binary(
     copts = ["-fno-rtti"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tapacc/codegen:ignore",
         "//tapacc/codegen:rewrite",
         "//tapacc/codegen:xilinx",
         "//tapacc/frontend:build_program",
