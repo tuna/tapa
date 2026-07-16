@@ -234,6 +234,9 @@ cargo_test(
         "TAPA_CONFORMANCE_TAPA": "tapa-core/tapa",
         "TAPA_CONFORMANCE_TAPA_LIB": "tapa-lib",
         "TAPA_CONFORMANCE_VADD": "tests/apps/vadd/vadd.cpp",
+        "TAPA_CONFORMANCE_ASYNC_MMAP": "tests/apps/async_mmap/async_mmap.cpp",
+        "TAPA_CONFORMANCE_TEMPLATED": "tests/apps/templated/templated.cpp",
+        "TAPA_CONFORMANCE_IGNORE": "tests/apps/ignore/ignore.cpp",
     },
     data = [
         # Brings `//tapacc`, `//tapa-cpp`, and the system includes along as
@@ -243,6 +246,10 @@ cargo_test(
         "//tests/apps/vadd:vadd.cpp",
         # Included by vadd.cpp; must sit beside it in the runfiles tree.
         "//tests/apps/vadd:vadd.h",
+        # Conformance corpus: async_mmap, template-specialization, ignore.
+        "//tests/apps/async_mmap:async_mmap.cpp",
+        "//tests/apps/templated:templated.cpp",
+        "//tests/apps/ignore:ignore.cpp",
     ],
     manifest = "Cargo.toml",
     tags = [

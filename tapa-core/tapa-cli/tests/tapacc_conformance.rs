@@ -42,29 +42,62 @@ use tapa_ir::{TaskGraph, TaskLevel};
 /// Runfiles-relative path of the `tapa` CLI wrapper (`//tapa-core:tapa`),
 /// whose runfiles stage the sibling `tapacc` / `tapa-cpp` / system headers.
 const ENV_TAPA: &str = "TAPA_CONFORMANCE_TAPA";
-/// Runfiles-relative path of the kernel to analyze.
-const ENV_VADD: &str = "TAPA_CONFORMANCE_VADD";
 /// Runfiles-relative path of the `tapa-lib` include directory.
 const ENV_TAPA_LIB: &str = "TAPA_CONFORMANCE_TAPA_LIB";
 /// Set by the Bazel target only. Turns "inputs missing" from a skip into a
 /// failure, so a broken `cargo_env` block cannot quietly disable the guard.
 const ENV_REQUIRED: &str = "TAPA_CONFORMANCE_REQUIRED";
 
-/// Top-level task of the subject kernel.
-const TOP: &str = "VecAdd";
+/// One kernel in the conformance corpus.
+struct Kernel {
+    /// Env var holding the runfiles-relative path to the `.cpp` file.
+    env: &'static str,
+    /// Top-level task name.
+    top: &'static str,
+    /// Tasks `tapacc` must report.
+    expected_tasks: &'static [&'static str],
+    /// Which flows to test (vadd tests both; the rest test hls only).
+    flows: &'static [&'static str],
+}
 
-/// Tasks `tapacc` must report for `tests/apps/vadd/vadd.cpp`.
-const EXPECTED_TASKS: &[&str] = &["Add", "Mmap2Stream", "Stream2Mmap", "VecAdd"];
-
-/// Both flows, so the root `target` round-trip is checked on each branch of
-/// tapacc's `FlowStr`.
-const FLOWS: &[&str] = &["xilinx-hls", "xilinx-vitis"];
+/// The full corpus. vadd is the original; the rest close coverage gaps:
+/// `async_mmap`, template-specialization (`readable_name != name`), and
+/// `synth: "ignore"` (custom-RTL policy).
+const KERNELS: &[Kernel] = &[
+    Kernel {
+        env: "TAPA_CONFORMANCE_VADD",
+        top: "VecAdd",
+        expected_tasks: &["Add", "Mmap2Stream", "Stream2Mmap", "VecAdd"],
+        flows: &["xilinx-hls", "xilinx-vitis"],
+    },
+    Kernel {
+        env: "TAPA_CONFORMANCE_ASYNC_MMAP",
+        top: "AsyncTop",
+        expected_tasks: &["AsyncReader", "AsyncTop"],
+        flows: &["xilinx-hls"],
+    },
+    Kernel {
+        env: "TAPA_CONFORMANCE_TEMPLATED",
+        top: "TemplatedTop",
+        expected_tasks: &["Mmap2Stream", "Stream2Mmap", "TemplatedTop"],
+        flows: &["xilinx-hls"],
+    },
+    Kernel {
+        env: "TAPA_CONFORMANCE_IGNORE",
+        top: "IgnoreTop",
+        // `Add` is NOT here: tapcc does not descend into `synth: "ignore"`
+        // tasks (their children are user-provided custom RTL).
+        expected_tasks: &["IgnoreUpper", "Mmap2Stream", "Stream2Mmap", "IgnoreTop"],
+        flows: &["xilinx-hls"],
+    },
+];
 
 /// Resolved test inputs.
 struct Fixtures {
     tapa: PathBuf,
-    vadd: PathBuf,
     tapa_lib: PathBuf,
+    /// Maps env-var name → resolved kernel `.cpp` path.
+    kernels: std::collections::BTreeMap<&'static str, PathBuf>,
 }
 
 /// Resolve a runfiles-relative path against the Bazel runfiles tree.
@@ -125,34 +158,40 @@ fn fixtures() -> Option<Fixtures> {
         .to_str()
         .unwrap_or_else(|| panic!("{ENV_TAPA} must be UTF-8"))
         .to_string();
+    let tapa_resolved = resolve_runfile(&tapa)
+        .unwrap_or_else(|| panic!("{ENV_TAPA}={tapa} does not resolve to an existing runfile"));
+    let tapa_lib = runfile_var(ENV_TAPA_LIB);
+    let mut kernels = std::collections::BTreeMap::new();
+    for k in KERNELS {
+        kernels.insert(k.env, runfile_var(k.env));
+    }
     Some(Fixtures {
-        tapa: resolve_runfile(&tapa)
-            .unwrap_or_else(|| panic!("{ENV_TAPA}={tapa} does not resolve to an existing runfile")),
-        vadd: runfile_var(ENV_VADD),
-        tapa_lib: runfile_var(ENV_TAPA_LIB),
+        tapa: tapa_resolved,
+        tapa_lib,
+        kernels,
     })
 }
 
 /// Run `tapa analyze` for `flow` and return `tapacc`'s verbatim stdout.
-fn tapacc_stdout(fx: &Fixtures, flow: &str) -> String {
+fn tapacc_stdout(fx: &Fixtures, kernel: &Path, top: &str, flow: &str) -> String {
     let work = tempfile::Builder::new()
         .prefix(&format!("tapacc-conformance-{flow}-"))
         .tempdir()
         .expect("create work dir");
-    let vadd_dir = fx.vadd.parent().expect("vadd.cpp has a parent directory");
+    let kernel_dir = kernel.parent().expect("kernel .cpp has a parent directory");
 
     let output = Command::new(&fx.tapa)
         .arg("--work-dir")
         .arg(work.path())
         .arg("analyze")
         .arg("--input")
-        .arg(&fx.vadd)
+        .arg(kernel)
         .arg("--top")
-        .arg(TOP)
+        .arg(top)
         .arg("--target")
         .arg(flow)
         .arg("--cflags")
-        .arg(format!("-I{}", vadd_dir.display()))
+        .arg(format!("-I{}", kernel_dir.display()))
         .arg("--cflags")
         .arg(format!("-I{}", fx.tapa_lib.display()))
         .output()
@@ -160,7 +199,8 @@ fn tapacc_stdout(fx: &Fixtures, flow: &str) -> String {
 
     assert!(
         output.status.success(),
-        "`tapa analyze --target {flow}` failed ({})\nstdout:\n{}\nstderr:\n{}",
+        "`tapa analyze --target {flow}` failed for {} ({})\nstdout:\n{}\nstderr:\n{}",
+        kernel.display(),
         output.status,
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr),
@@ -175,7 +215,7 @@ fn tapacc_stdout(fx: &Fixtures, flow: &str) -> String {
 
 /// Strict-parse `raw` with the consumer's real types and assert the
 /// load-bearing facts of the contract.
-fn check_conformance(raw: &str, flow: &str) {
+fn check_conformance(raw: &str, flow: &str, top: &str, expected_tasks: &[&str]) {
     // ── The guard ──────────────────────────────────────────────────────
     // `TaskGraph` and every type under it are `deny_unknown_fields`, so this
     // fails if tapacc grew a field tapa-ir does not model, and fails if it
@@ -197,7 +237,7 @@ fn check_conformance(raw: &str, flow: &str) {
         )
     });
 
-    assert_eq!(graph.top, TOP, "root `top` names the analyzed top task");
+    assert_eq!(graph.top, top, "root `top` names the analyzed top task");
     assert_eq!(
         graph.target.as_str(),
         flow,
@@ -205,16 +245,16 @@ fn check_conformance(raw: &str, flow: &str) {
     );
 
     let names: BTreeSet<&str> = graph.tasks.keys().map(String::as_str).collect();
-    for expected in EXPECTED_TASKS {
+    for expected in expected_tasks {
         assert!(
             names.contains(expected),
             "task `{expected}` missing from tapacc output (--target {flow}); got {names:?}",
         );
     }
     assert_eq!(
-        graph.tasks[TOP].level,
+        graph.tasks[top].level,
         TaskLevel::Upper,
-        "the top task of vadd is an upper task",
+        "the top task of {top} is an upper task",
     );
     for (name, task) in &graph.tasks {
         assert!(
@@ -267,7 +307,11 @@ fn tapacc_stdout_conforms_to_tapa_ir_schema() {
     let Some(fx) = fixtures() else {
         return;
     };
-    for flow in FLOWS {
-        check_conformance(&tapacc_stdout(&fx, flow), flow);
+    for kernel in KERNELS {
+        let cpp = &fx.kernels[kernel.env];
+        for flow in kernel.flows {
+            let raw = tapacc_stdout(&fx, cpp, kernel.top, flow);
+            check_conformance(&raw, flow, kernel.top, kernel.expected_tasks);
+        }
     }
 }
