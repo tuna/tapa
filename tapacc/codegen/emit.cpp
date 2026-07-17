@@ -20,6 +20,16 @@ std::string ElementType(const clang::ParmVarDecl* param) {
   return "";
 }
 
+// Element bit width, or 0.
+uint32_t ElementWidth(const clang::ParmVarDecl* param) {
+  if (const auto* arg = GetTemplateArg(param->getType(), 0)) {
+    if (arg->getKind() == clang::TemplateArgument::Type) {
+      return BitWidth(param->getASTContext(), arg->getAsType());
+    }
+  }
+  return 0;
+}
+
 // Channel count of an array interface, or 0.
 int64_t ArraySize(const clang::ParmVarDecl* param) {
   return IntTemplateArg(param->getType(), 1).value_or(0);
@@ -46,10 +56,12 @@ void EmitDummyStreamRW(const clang::ParmVarDecl* param, TapaKind kind,
       dummy_read(name);
       break;
     case TapaKind::kOStream: {
-      // The new tool keeps the port as `tapa::ostream<T>` (it does not rewrite
-      // it to `hls::stream<qdma_axis<...>>` like the legacy rewriter did), so
-      // the dummy value must be the stream's own element type -- not qdma_axis.
-      dummy_write(name, ElementType(param));
+      std::string type = ElementType(param);
+      if (qdma) {
+        type =
+            "qdma_axis<" + std::to_string(ElementWidth(param)) + ", 0, 0, 0>";
+      }
+      dummy_write(name, type);
       break;
     }
     case TapaKind::kIStreams:

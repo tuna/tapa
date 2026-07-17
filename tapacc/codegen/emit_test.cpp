@@ -64,15 +64,12 @@ TEST(Emit, OStreamWrite) {
   EXPECT_EQ(out.Lines()[0], "out.write(float());");
 }
 
-TEST(Emit, OStreamQdmaWriteUsesElementType) {
-  // qdma/axis top-level ports keep their `tapa::ostream<T>` spelling (the port
-  // is not rewritten to `hls::stream<qdma_axis<...>>`), so the anti-DCE dummy
-  // write must use the stream's element type, not qdma_axis.
+TEST(Emit, OStreamQdmaWrite) {
   auto b = BuildParam("void probe(tapa::ostream<float>& out);");
   CodeSink out;
   EmitDummyStreamRW(b.param, TapaKind::kOStream, out, /*qdma=*/true);
   ASSERT_EQ(out.Lines().size(), 1u);
-  EXPECT_EQ(out.Lines()[0], "out.write(float());");
+  EXPECT_EQ(out.Lines()[0], "out.write(qdma_axis<32, 0, 0, 0>());");
 }
 
 TEST(Emit, MmapOffset) {

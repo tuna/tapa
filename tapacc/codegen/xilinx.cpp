@@ -245,6 +245,7 @@ void XilinxBackend::RewriteSignature(const TaskModel& task, bool is_top,
   // Middle/top: replace mmap parameters with 64-bit base addresses, on every
   // declaration of the function (the forward declaration and the definition),
   // so the emitted signatures agree.
+  bool rewrote_axis_stream = false;
   for (const clang::FunctionDecl* decl : task.def->redecls()) {
     for (const clang::ParmVarDecl* param : decl->parameters()) {
       const std::string name = param->getNameAsString();
@@ -261,8 +262,36 @@ void XilinxBackend::RewriteSignature(const TaskModel& task, bool is_top,
           text += "uint64_t " + ArrayElemOffset(name, static_cast<int>(i));
         }
         rewriter.ReplaceText(param->getSourceRange(), text);
+      } else if (lvl == Lvl::kTop &&
+                 (kind == TapaKind::kIStream || kind == TapaKind::kOStream)) {
+        // Vitis top-level streams become axis interfaces. Rewrite the type to
+        // hls::stream<qdma_axis<W>> so Vitis HLS emits `{name}_TDATA/_TVALID/
+        // _TREADY/_TLAST` (what the cosim testbench binds to), instead of the
+        // `tapa::istream` disaggregated `_s_*` member ports. Mirrors the legacy
+        // rewriter's RewriteTopLevelFuncArguments.
+        if (const auto* arg = GetTemplateArg(param->getType(), 0)) {
+          if (arg->getKind() == clang::TemplateArgument::Type) {
+            const uint32_t w =
+                param->getASTContext().getTypeInfo(arg->getAsType()).Width;
+            rewriter.ReplaceText(
+                param->getTypeSourceInfo()->getTypeLoc().getSourceRange(),
+                "hls::stream<qdma_axis<" + std::to_string(w) + ", 0, 0, 0> >&");
+            rewrote_axis_stream = true;
+          }
+        }
       }
     }
+  }
+
+  // The rewritten signature (and the dummy writes in the top task's body) spell
+  // qdma_axis<...>, whose definition lives in ap_axi_sdata.h. This runs once
+  // per emitted cpp (RewriteSignature is called for the top task in every
+  // file), so every file that carries the rewritten decl gets the header.
+  if (rewrote_axis_stream) {
+    rewriter.InsertText(task.def->getBeginLoc(),
+                        "#include \"ap_axi_sdata.h\"\n"
+                        "#include \"hls_stream.h\"\n\n",
+                        /*InsertAfter=*/true);
   }
 }
 
@@ -296,24 +325,6 @@ void XilinxBackend::RewriteTaskFunc(const TaskModel& task, bool is_top,
   const std::string shell =
       "{\n" + lines +
       "#pragma HLS interface s_axilite port = return bundle = control\n}\n";
-  // ostream anti-DCE dummy writes spell `qdma_axis<...>`, whose definition
-  // lives in ap_axi_sdata.h. Pull it (and hls_stream.h) in once before the
-  // task -- matches the pre-rewrite tool, which inserted the same pair when
-  // it rewrote a Vitis stream kernel's arguments.
-  bool has_axis_stream = false;
-  for (const clang::ParmVarDecl* param : func->parameters()) {
-    const TapaKind kind = ClassifyTapaType(param);
-    if (kind == TapaKind::kIStream || kind == TapaKind::kOStream) {
-      has_axis_stream = true;
-      break;
-    }
-  }
-  if (has_axis_stream) {
-    rewriter.InsertText(func->getBeginLoc(),
-                        "#include \"ap_axi_sdata.h\"\n"
-                        "#include \"hls_stream.h\"\n\n",
-                        /*InsertAfter=*/true);
-  }
   for (const clang::FunctionDecl* decl : func->redecls()) {
     clang::SourceLocation end = decl->getEndLoc();
     if (decl->isThisDeclarationADefinition()) {
