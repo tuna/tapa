@@ -296,6 +296,24 @@ void XilinxBackend::RewriteTaskFunc(const TaskModel& task, bool is_top,
   const std::string shell =
       "{\n" + lines +
       "#pragma HLS interface s_axilite port = return bundle = control\n}\n";
+  // ostream anti-DCE dummy writes spell `qdma_axis<...>`, whose definition
+  // lives in ap_axi_sdata.h. Pull it (and hls_stream.h) in once before the
+  // task -- matches the pre-rewrite tool, which inserted the same pair when
+  // it rewrote a Vitis stream kernel's arguments.
+  bool has_axis_stream = false;
+  for (const clang::ParmVarDecl* param : func->parameters()) {
+    const TapaKind kind = ClassifyTapaType(param);
+    if (kind == TapaKind::kIStream || kind == TapaKind::kOStream) {
+      has_axis_stream = true;
+      break;
+    }
+  }
+  if (has_axis_stream) {
+    rewriter.InsertText(func->getBeginLoc(),
+                        "#include \"ap_axi_sdata.h\"\n"
+                        "#include \"hls_stream.h\"\n\n",
+                        /*InsertAfter=*/true);
+  }
   for (const clang::FunctionDecl* decl : func->redecls()) {
     clang::SourceLocation end = decl->getEndLoc();
     if (decl->isThisDeclarationADefinition()) {
