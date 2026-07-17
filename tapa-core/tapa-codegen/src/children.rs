@@ -2,7 +2,7 @@
 //! generation, argument pipelines, handshake wiring, and portarg
 //! assembly.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use tapa_ir::port::ArgCategory;
 use tapa_ir::Arg;
@@ -178,6 +178,7 @@ pub fn build_child_instance(
     sig: &InstanceSignals,
     args: &BTreeMap<String, Arg>,
     mmap_bindings: &ChildMmapBindings,
+    parent_fifos: &BTreeSet<String>,
     child_rtl: Option<&VerilogModule>,
 ) -> ModuleInstance {
     let mut port_args = Vec::new();
@@ -208,8 +209,27 @@ pub fn build_child_instance(
             .get_port_of(name, &peek_suffix)
             .map(|p| p.name.clone())
     };
-    let stream_signal =
-        |name: &str, suffix: &str| format!("{}{}", sanitize_array_name(name), suffix);
+    // A stream argument binds to either a FIFO declared in the parent task
+    // (signal wires are named `{fifo}{suffix}`, e.g. `a_q_dout`) or, for a
+    // passthrough, the parent's own stream port (`{port}_s{suffix}` /
+    // `{port}_peek{suffix}`, matching what Vitis HLS emits). The leaf module
+    // port itself is resolved separately by `resolve_child_stream_port`.
+    let stream_signal = |name: &str, suffix: &str| {
+        let base = sanitize_array_name(name);
+        if parent_fifos.contains(name) {
+            format!("{base}{suffix}")
+        } else {
+            format!("{base}_s{suffix}")
+        }
+    };
+    let peek_signal = |name: &str, suffix: &str| {
+        let base = sanitize_array_name(name);
+        if parent_fifos.contains(name) {
+            format!("{base}{suffix}")
+        } else {
+            format!("{base}_peek{suffix}")
+        }
+    };
 
     // Argument port bindings
     for (child_port, arg) in args {
@@ -233,7 +253,10 @@ pub fn build_child_instance(
                     if matches!(*suffix, "_dout" | "_empty_n") {
                         if let Some(peek_port) = resolve_child_stream_peek_port(child_port, suffix)
                         {
-                            port_args.push(PortArg::new(peek_port, signal));
+                            port_args.push(PortArg::new(
+                                peek_port,
+                                Expr::ident(peek_signal(&arg.arg, suffix)),
+                            ));
                         }
                     }
                 }
@@ -427,6 +450,7 @@ pub(crate) fn generate_child_signals(
     type ChildEntry = (usize, Option<String>, bool, BTreeMap<String, Arg>);
 
     let task = &state.design.tasks[task_name];
+    let parent_fifos: BTreeSet<String> = task.fifos.keys().cloned().collect();
     let mut is_done_signals = Vec::new();
     let mut instance_infos = Vec::new();
     let mut fsm_portargs = Vec::new(); // portargs for FSM module instantiation
@@ -629,6 +653,7 @@ pub(crate) fn generate_child_signals(
                 &sig,
                 &args,
                 &mmap_bindings,
+                &parent_fifos,
                 child_rtl.as_ref(),
             );
             if let Some(mm) = state.module_map.get_mut(task_name) {
@@ -801,6 +826,41 @@ fn resolve_child_scalar_width(
 mod tests {
     use super::*;
 
+    // These fixtures model every stream argument as a parent FIFO (the
+    // `{fifo}{suffix}` wire convention), so derive `parent_fifos` from the
+    // stream args and delegate to the real constructor.
+    fn build_child_instance_test(
+        child_task_name: &str,
+        instance_name: &str,
+        sig: &InstanceSignals,
+        args: &BTreeMap<String, Arg>,
+        mmap_bindings: &ChildMmapBindings,
+        child_rtl: Option<&VerilogModule>,
+    ) -> ModuleInstance {
+        let parent_fifos: BTreeSet<String> = args
+            .values()
+            .filter(|a| {
+                matches!(
+                    a.cat,
+                    ArgCategory::Istream
+                        | ArgCategory::Istreams
+                        | ArgCategory::Ostream
+                        | ArgCategory::Ostreams
+                )
+            })
+            .map(|a| a.arg.clone())
+            .collect();
+        build_child_instance(
+            child_task_name,
+            instance_name,
+            sig,
+            args,
+            mmap_bindings,
+            &parent_fifos,
+            child_rtl,
+        )
+    }
+
     #[test]
     fn child_fsm_has_four_states_with_done_hold() {
         let sig = InstanceSignals::new("child_0", false);
@@ -871,7 +931,7 @@ mod tests {
                 cat: ArgCategory::Scalar,
             },
         );
-        let inst = build_child_instance(
+        let inst = build_child_instance_test(
             "worker",
             "worker_0",
             &sig,
@@ -913,7 +973,7 @@ mod tests {
                 cat: ArgCategory::Ostream,
             },
         );
-        let inst = build_child_instance(
+        let inst = build_child_instance_test(
             "worker",
             "worker_0",
             &sig,
@@ -945,7 +1005,7 @@ mod tests {
                 cat: ArgCategory::Istream,
             },
         );
-        let inst = build_child_instance(
+        let inst = build_child_instance_test(
             "worker",
             "worker_0",
             &sig,
@@ -987,7 +1047,7 @@ mod tests {
                 cat: ArgCategory::Istream,
             },
         );
-        let inst = build_child_instance(
+        let inst = build_child_instance_test(
             "switch",
             "switch_0",
             &sig,
@@ -1029,7 +1089,7 @@ mod tests {
                 cat: ArgCategory::Istream,
             },
         );
-        let inst = build_child_instance(
+        let inst = build_child_instance_test(
             "stage",
             "stage_0",
             &sig,
@@ -1049,6 +1109,77 @@ mod tests {
     }
 
     #[test]
+    fn build_child_instance_passes_stream_ports_through_with_s_infix() {
+        // A middle/upper task that passes its own stream PORT straight through
+        // to a child (no intervening FIFO) must connect the child's `_s`/`_peek`
+        // ports to the parent's identically-named ports. The signal must NOT use
+        // the bare `{name}{suffix}` FIFO-wire spelling (which would be an
+        // undeclared 1-bit implicit net and silently drop the stream data).
+        use std::collections::{BTreeMap, BTreeSet};
+        let child_rtl = VerilogModule::parse(
+            "module Add(\n\
+             input wire ap_clk,\n\
+             input wire [32:0] a_int_s_dout,\n\
+             input wire a_int_s_empty_n,\n\
+             output wire a_int_s_read,\n\
+             input wire [32:0] a_int_peek_dout,\n\
+             input wire a_int_peek_empty_n,\n\
+             output wire a_int_peek_read,\n\
+             output wire [32:0] c_int_s_din,\n\
+             input wire c_int_s_full_n,\n\
+             output wire c_int_s_write\n\
+             ); endmodule",
+        )
+        .unwrap();
+        let sig = InstanceSignals::new("Add_0", false);
+        let mut args = BTreeMap::new();
+        args.insert(
+            "a_int".to_owned(),
+            Arg {
+                arg: "a_ext".to_owned(),
+                cat: ArgCategory::Istream,
+            },
+        );
+        args.insert(
+            "c_int".to_owned(),
+            Arg {
+                arg: "c_ext".to_owned(),
+                cat: ArgCategory::Ostream,
+            },
+        );
+        let parent_fifos: BTreeSet<String> = BTreeSet::new();
+        let inst = build_child_instance(
+            "Add",
+            "Add_0",
+            &sig,
+            &args,
+            &ChildMmapBindings::default(),
+            &parent_fifos,
+            Some(&child_rtl),
+        );
+        let text = inst.to_string();
+        // istream passthrough -> parent port `a_ext_s_dout` (with `_s`).
+        assert!(
+            text.contains(".a_int_s_dout(a_ext_s_dout)"),
+            "istream passthrough must bind to the `_s` port, got:\n{text}"
+        );
+        assert!(
+            !text.contains("a_ext_dout"),
+            "bare `a_ext_dout` is an undeclared FIFO-style wire, got:\n{text}"
+        );
+        // istream peek passthrough -> parent port `a_ext_peek_dout`.
+        assert!(
+            text.contains(".a_int_peek_dout(a_ext_peek_dout)"),
+            "peek passthrough must bind to the `_peek` port, got:\n{text}"
+        );
+        // ostream passthrough -> parent port `c_ext_s_din`.
+        assert!(
+            text.contains(".c_int_s_din(c_ext_s_din)"),
+            "ostream passthrough must bind to the `_s` port, got:\n{text}"
+        );
+    }
+
+    #[test]
     fn build_child_instance_sanitizes_indexed_mmap_signals() {
         use std::collections::BTreeMap;
         let sig = InstanceSignals::new("worker_0", false);
@@ -1060,7 +1191,7 @@ mod tests {
                 cat: ArgCategory::Mmap,
             },
         );
-        let inst = build_child_instance(
+        let inst = build_child_instance_test(
             "worker",
             "worker_0",
             &sig,
@@ -1110,7 +1241,7 @@ mod tests {
                 cat: ArgCategory::AsyncMmap,
             },
         );
-        let inst = build_child_instance(
+        let inst = build_child_instance_test(
             "copy",
             "copy_0",
             &sig,
@@ -1168,7 +1299,7 @@ mod tests {
                 cat: ArgCategory::AsyncMmap,
             },
         );
-        let inst = build_child_instance(
+        let inst = build_child_instance_test(
             "SLOT_X0Y2_SLOT_X0Y2",
             "SLOT_X0Y2_SLOT_X0Y2_0",
             &sig,
