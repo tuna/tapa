@@ -13,6 +13,8 @@
 #include "emit.h"
 #include "wrapper.h"
 
+#include "../frontend/discover.h"
+
 namespace tapa::cc {
 
 namespace {
@@ -116,6 +118,16 @@ std::string EmitTaskCode(const Program& program, const TaskModel& task,
       } else {
         backend.StripOtherTask(func, rewriter);
       }
+    } else if (GetTapaTaskObject(func->getBody()) != nullptr) {
+      // Unreachable upper-level task: discovery is reachability-based, so it
+      // is not in program.tasks, but its body still invokes sub-tasks and
+      // would no longer type-check against their rewritten signatures. Strip
+      // it like any non-current task.
+      TaskModel model;
+      model.def = func;
+      model.level = TaskLevel::kUpper;
+      backend.RewriteSignature(model, /*is_top=*/false, rewriter);
+      backend.StripOtherTask(func, rewriter);
     } else {
       backend.RewriteHelperFunc(func, rewriter);
       LowerLoopAttrs(func->getBody(), backend, rewriter);

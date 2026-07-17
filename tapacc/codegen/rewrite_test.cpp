@@ -42,6 +42,17 @@ constexpr char kVadd[] = R"cpp(
         .invoke(Add, a_q, b_q, c_q, n)
         .invoke(Stream2Mmap, c_q, c, n);
   }
+  void UnusedTask(tapa::mmap<const float> a, tapa::mmap<const float> b,
+                  tapa::mmap<float> c, unsigned long long n) {
+    tapa::stream<float, 8> a_q;
+    tapa::stream<float, 8> b_q;
+    tapa::stream<float, 8> c_q;
+    tapa::task()
+        .invoke(Mmap2Stream, a, n, a_q)
+        .invoke(Mmap2Stream, b, n, b_q)
+        .invoke(Add, a_q, b_q, c_q, n)
+        .invoke(Stream2Mmap, c_q, c, n);
+  }
 )cpp";
 
 struct Emitted {
@@ -104,6 +115,19 @@ TEST(Rewrite, UpperTaskBecomesShellWithOffsets) {
   // Middle-level scalar/offset ports get ap_none register pragmas.
   EXPECT_TRUE(Contains(code, "#pragma HLS interface ap_none port = a_offset"));
   EXPECT_TRUE(Contains(code, "#pragma HLS interface ap_none port = n"));
+}
+
+TEST(Rewrite, UnreachableTaskIsStrippedLikeOtherTasks) {
+  auto e = Build();
+  const XilinxBackend backend(/*is_vitis=*/false);
+  const std::string code = EmitTaskCode(e.program, e.program.tasks.at("Add"),
+                                        backend, e.ast->getASTContext());
+
+  // UnusedTask is unreachable from the top, but its body still invokes
+  // sub-tasks with mmap args; it must be stripped like any non-current task
+  // or the uint64_t sub-task signatures no longer type-check.
+  EXPECT_TRUE(Contains(code, "UnusedTask(uint64_t a_offset"));
+  EXPECT_FALSE(Contains(code, ".invoke("));
 }
 
 }  // namespace

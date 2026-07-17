@@ -125,6 +125,7 @@ cc_library(
         ":backend",
         ":emit",
         ":wrapper",
+        "//tapacc/frontend:discover",
         "//tapacc/frontend:program",
         "@tapa-llvm-project//clang:tooling",
     ],
