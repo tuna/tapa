@@ -71,9 +71,44 @@ InvokeMode GetInvokeMode(const clang::CXXMemberCallExpr* invoke) {
   return mode;
 }
 
+// True when `arg` (possibly an array element like `q[0]`) names one of the
+// task's own stream ports — an external FIFO at the kernel boundary.
+bool IsStreamPortArg(const TaskModel& task, const std::string& arg) {
+  const std::string base = arg.substr(0, arg.find('['));
+  for (const Port& port : task.ports) {
+    if (port.name != base) continue;
+    switch (port.kind) {
+      case TapaKind::kIStream:
+      case TapaKind::kOStream:
+      case TapaKind::kIStreams:
+      case TapaKind::kOStreams:
+        return true;
+      default:
+        return false;
+    }
+  }
+  return false;
+}
+
+// Look up a stream argument in `task.streams`; for the top task, a stream
+// argument that names one of the task's own ports (rather than a locally
+// declared FIFO) yields a fresh depth-less entry — an external FIFO whose
+// other endpoint is the kernel boundary.
+std::map<std::string, StreamDecl>::iterator FindOrExternalStream(
+    TaskModel& task, const std::string& arg, bool is_top) {
+  auto it = task.streams.find(arg);
+  if (it == task.streams.end() && is_top && IsStreamPortArg(task, arg)) {
+    it = task.streams
+             .emplace(arg, StreamDecl{std::nullopt, nullptr, std::nullopt,
+                                      std::nullopt})
+             .first;
+  }
+  return it;
+}
+
 }  // namespace
 
-void ParseUpperTask(clang::ASTContext& ctx, TaskModel& task) {
+void ParseUpperTask(clang::ASTContext& ctx, TaskModel& task, bool is_top) {
   const clang::FunctionDecl* func = task.def;
   if (func == nullptr || !func->hasBody()) return;
   const clang::Expr* task_obj = GetTapaTaskObject(func->getBody());
@@ -206,7 +241,7 @@ void ParseUpperTask(clang::ASTContext& ctx, TaskModel& task) {
             insts.back().args[p] = Arg{a, cat};
           };
           auto mark_consumer = [&](const std::string& a) {
-            auto it = task.streams.find(a);
+            auto it = FindOrExternalStream(task, a, is_top);
             if (it == task.streams.end()) return;
             if (it->second.consumed_by.has_value()) {
               Report(ctx, clang::DiagnosticsEngine::Error, arg->getBeginLoc(),
@@ -215,7 +250,7 @@ void ParseUpperTask(clang::ASTContext& ctx, TaskModel& task) {
             it->second.consumed_by = Endpoint{task_name, inst_index};
           };
           auto mark_producer = [&](const std::string& a) {
-            auto it = task.streams.find(a);
+            auto it = FindOrExternalStream(task, a, is_top);
             if (it == task.streams.end()) return;
             if (it->second.produced_by.has_value()) {
               Report(ctx, clang::DiagnosticsEngine::Error, arg->getBeginLoc(),
@@ -278,6 +313,12 @@ void ParseUpperTask(clang::ASTContext& ctx, TaskModel& task) {
 
   // --- 3. Stream validation. ---
   for (auto it = task.streams.begin(); it != task.streams.end();) {
+    if (it->second.decl == nullptr) {
+      // External top-level stream port: exactly one endpoint by construction
+      // (the other side is the kernel boundary), so nothing to validate.
+      ++it;
+      continue;
+    }
     const bool produced = it->second.produced_by.has_value();
     const bool consumed = it->second.consumed_by.has_value();
     const clang::SourceLocation loc = it->second.decl != nullptr

@@ -97,7 +97,9 @@ nlohmann::json InstanceJson(const Instance& inst) {
 
 nlohmann::json StreamJson(const StreamDecl& stream) {
   nlohmann::json j;
-  j[kFieldDepth] = stream.depth;
+  // External top-level stream ports have no depth; the key is omitted so
+  // tapa-ir parses the entry as an external (kernel-boundary) FIFO.
+  if (stream.depth) j[kFieldDepth] = *stream.depth;
   if (stream.produced_by) {
     j[kFieldProducedBy] = {stream.produced_by->task, stream.produced_by->index};
   }

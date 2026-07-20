@@ -49,7 +49,7 @@ Program BuildProgram(clang::ASTContext& ctx, llvm::StringRef top,
   for (auto& [name, task] : program.tasks) {
     task.ports = BuildPorts(ctx, task.def);
     if (task.level == TaskLevel::kUpper) {
-      ParseUpperTask(ctx, task);
+      ParseUpperTask(ctx, task, /*is_top=*/name == program.top);
     }
   }
   return program;

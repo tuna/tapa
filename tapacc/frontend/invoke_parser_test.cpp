@@ -14,6 +14,7 @@
 #include "clang/Tooling/Tooling.h"
 
 #include "discover.h"
+#include "ports.h"
 #include "program.h"
 #include "tapa_stub_decls.h"
 
@@ -59,22 +60,25 @@ struct Parsed {
   std::map<std::string, TaskModel> tasks;
 };
 
-Parsed ParseTop() {
-  const std::string code = std::string(kTapaStubDecls) + "\n" + kProgram;
+Parsed ParseCode(llvm::StringRef code, llvm::StringRef top, bool is_top) {
+  const std::string full = std::string(kTapaStubDecls) + "\n" + code.str();
   auto ast = clang::tooling::buildASTFromCodeWithArgs(
-      code, std::vector<std::string>{"-std=c++17"});
+      full, std::vector<std::string>{"-std=c++17"});
   EXPECT_NE(ast, nullptr);
   FuncCollector collector(ast->getASTContext());
   collector.TraverseDecl(ast->getASTContext().getTranslationUnitDecl());
-  auto tasks = DiscoverTasks(ast->getASTContext(), "Top",
-                             SynthTarget::kXilinxHls, collector.funcs);
+  auto tasks = DiscoverTasks(ast->getASTContext(), top, SynthTarget::kXilinxHls,
+                             collector.funcs);
   for (auto& [name, model] : tasks) {
     if (model.level == TaskLevel::kUpper) {
-      ParseUpperTask(ast->getASTContext(), model);
+      model.ports = BuildPorts(ast->getASTContext(), model.def);
+      ParseUpperTask(ast->getASTContext(), model, is_top && name == top);
     }
   }
   return Parsed{std::move(ast), std::move(tasks)};
 }
+
+Parsed ParseTop() { return ParseCode(kProgram, "Top", /*is_top=*/false); }
 
 TEST(InvokeParser, StreamsWithDepth) {
   auto p = ParseTop();
@@ -83,6 +87,47 @@ TEST(InvokeParser, StreamsWithDepth) {
   EXPECT_EQ(top.streams.at("q1").depth, 8u);
   EXPECT_EQ(top.streams.at("q2").depth, 8u);
   EXPECT_EQ(top.streams.at("qc").depth, 16u);
+}
+
+constexpr char kTopStreamProgram[] = R"cpp(
+  void Adder(tapa::istream<float>& a, tapa::istream<float>& b,
+             tapa::ostream<float>& c) {}
+  void Top(tapa::istream<float>& a, tapa::istream<float>& b,
+           tapa::ostream<float>& c) {
+    tapa::task().invoke(Adder, a, b, c);
+  }
+)cpp";
+
+TEST(InvokeParser, TopLevelStreamPortsBecomeExternalFifos) {
+  auto p = ParseCode(kTopStreamProgram, "Top", /*is_top=*/true);
+  const TaskModel& top = p.tasks.at("Top");
+  ASSERT_EQ(top.streams.size(), 3u);
+
+  const StreamDecl& a = top.streams.at("a");
+  EXPECT_FALSE(a.depth.has_value());  // external FIFO: no depth
+  EXPECT_FALSE(a.produced_by.has_value());
+  ASSERT_TRUE(a.consumed_by.has_value());
+  EXPECT_EQ(a.consumed_by->task, "Adder");
+  EXPECT_EQ(a.consumed_by->index, 0u);
+
+  const StreamDecl& b = top.streams.at("b");
+  ASSERT_TRUE(b.consumed_by.has_value());
+  EXPECT_EQ(b.consumed_by->task, "Adder");
+
+  const StreamDecl& c = top.streams.at("c");
+  EXPECT_FALSE(c.depth.has_value());
+  EXPECT_FALSE(c.consumed_by.has_value());
+  ASSERT_TRUE(c.produced_by.has_value());
+  EXPECT_EQ(c.produced_by->task, "Adder");
+  EXPECT_EQ(c.produced_by->index, 0u);
+}
+
+TEST(InvokeParser, NonTopStreamPortsDoNotBecomeFifos) {
+  // The same program parsed without the top flag: passthrough stream ports
+  // stay out of `streams` (middle tasks bind them by port name instead).
+  auto p = ParseCode(kTopStreamProgram, "Top", /*is_top=*/false);
+  const TaskModel& top = p.tasks.at("Top");
+  EXPECT_TRUE(top.streams.empty());
 }
 
 TEST(InvokeParser, ProducerConsumerEndpoints) {

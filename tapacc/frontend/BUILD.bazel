@@ -121,6 +121,7 @@ cc_test(
     deps = [
         ":discover",
         ":invoke_parser",
+        ":ports",
         ":program",
         ":tapa_stub_decls",
         "@googletest//:gtest",

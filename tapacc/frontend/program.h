@@ -56,9 +56,12 @@ struct Endpoint {
   uint32_t index = 0;
 };
 
-// A FIFO declared inside an upper task (`tapa::stream`/`tapa::streams`).
+// A FIFO inside an upper task: either a declared `tapa::stream`/`tapa::streams`
+// (depth set, `decl` points at the VarDecl) or, at the top level only, a stream
+// port of the top task bound to a child (no depth, null `decl`) — an "external"
+// FIFO whose other endpoint is the kernel boundary.
 struct StreamDecl {
-  uint64_t depth = 0;
+  std::optional<uint64_t> depth;
   const clang::VarDecl* decl = nullptr;
   std::optional<Endpoint> produced_by;
   std::optional<Endpoint> consumed_by;
