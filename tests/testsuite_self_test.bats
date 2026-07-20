@@ -25,10 +25,10 @@
   [ -f "${TAPA_HOME}/usr/lib/libfrt_dpi_xsim.so" ]
 }
 
-@test "testsuite: FRT C++ host shim is installed for tapa g++" {
-  find "${TAPA_HOME}/usr/lib" -maxdepth 1 \
-    \( -name "libfrt_cpp.a" -o -name "libfrt_cpp.pic.a" \) \
-    | grep -q .
+@test "testsuite: FRT host libraries are installed for tapa g++" {
+  # The frt_cpp C++ shim is folded into libtapa; libfrt.a is the Rust FRT.
+  [ -f "${TAPA_HOME}/usr/lib/libtapa.a" ]
+  [ -f "${TAPA_HOME}/usr/lib/libfrt.a" ]
 }
 
 @test "testsuite: tapa is runnable" {
