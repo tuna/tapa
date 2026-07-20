@@ -322,7 +322,9 @@ fn make_tb_dir(work_dir: Option<&Path>, parallel: bool) -> Result<TbDir> {
 fn dpi_lib_path(variant: &str) -> Result<PathBuf> {
     // Prefer searching relative to libfrt.so itself (covers staging tests
     // where the host binary is compiled into /tmp but libfrt.so lives in
-    // the install prefix).
+    // the install prefix). With FRT linked statically, dladdr resolves to
+    // the host executable instead, so the install prefix is located via
+    // TAPA_HOME (see `dpi_lib_path_from_exe`).
     let self_path = self_lib_path().unwrap_or_else(|| std::env::current_exe().unwrap_or_default());
     dpi_lib_path_from_exe(&self_path, variant)
 }
@@ -368,6 +370,14 @@ fn dpi_lib_path_from_exe(exe: &Path, variant: &str) -> Result<PathBuf> {
             search_dirs.push(ancestor.join("cargo"));
         }
     }
+    // Installed layout with statically linked FRT: the libraries live under
+    // the TAPA package root advertised via TAPA_HOME (this is the layout the
+    // staging tests exercise after `install.sh`).
+    if let Ok(home) = std::env::var("TAPA_HOME") {
+        let home = PathBuf::from(home);
+        search_dirs.push(home.join("usr/lib"));
+        search_dirs.push(home.join("lib"));
+    }
     // Also search LD_LIBRARY_PATH (covers staging tests that copy binaries)
     if let Ok(ldpath) = std::env::var("LD_LIBRARY_PATH") {
         for dir in ldpath.split(':') {
@@ -391,7 +401,8 @@ fn dpi_lib_path_from_exe(exe: &Path, variant: &str) -> Result<PathBuf> {
         }
     }
     Err(FrtError::MetadataParse(format!(
-        "libfrt_dpi_{variant} shared library not found next to executable"
+        "libfrt_dpi_{variant} shared library not found next to executable, \
+         under TAPA_HOME, or on LD_LIBRARY_PATH"
     )))
 }
 
@@ -647,6 +658,9 @@ mod tests {
     use std::process::{Child, Command};
     use std::time::Duration;
 
+    /// Serializes tests that mutate process environment variables.
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     struct SleepRunner {
         sleep_seconds: f32,
     }
@@ -875,6 +889,36 @@ mod tests {
             found.is_absolute(),
             "resolved DPI path must be absolute: {found:?}"
         );
+        assert_eq!(
+            std::fs::canonicalize(&found).expect("canonicalize found"),
+            std::fs::canonicalize(&library).expect("canonicalize library"),
+        );
+    }
+
+    #[test]
+    fn dpi_lib_path_finds_installed_layout_via_tapa_home() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        // Installed layout: the DPI library lives at $TAPA_HOME/usr/lib while
+        // the statically linked host binary can sit anywhere.
+        let home = tmp.path().join("tapa-home");
+        let lib_dir = home.join("usr/lib");
+        std::fs::create_dir_all(&lib_dir).expect("create usr/lib");
+        let library = lib_dir.join(&dpi_library_candidates("xsim")[0]);
+        std::fs::write(&library, []).expect("write DPI library");
+        let fake_exe = tmp.path().join("somewhere/else/vadd-host");
+
+        let _guard = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let prev = std::env::var_os("TAPA_HOME");
+        std::env::set_var("TAPA_HOME", &home);
+        let found = dpi_lib_path_from_exe(&fake_exe, "xsim");
+        match prev {
+            Some(v) => std::env::set_var("TAPA_HOME", v),
+            None => std::env::remove_var("TAPA_HOME"),
+        }
+
+        let found = found.expect("find dpi lib via TAPA_HOME");
         assert_eq!(
             std::fs::canonicalize(&found).expect("canonicalize found"),
             std::fs::canonicalize(&library).expect("canonicalize library"),
