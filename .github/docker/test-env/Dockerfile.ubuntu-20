@@ -33,6 +33,7 @@ RUN apt-get update && \
         ca-certificates \
         g++ \
         gcc-multilib \
+        ocl-icd-opencl-dev \
         git \
         libtinfo5 \
         libx11-6 \

@@ -28,6 +28,7 @@ RUN yum update -y && \
         bzip2 \
         flex \
         gcc-c++ \
+        ocl-icd-devel \
         git \
         glibc-langpack-en \
         gperf \

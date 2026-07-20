@@ -29,6 +29,7 @@ RUN apt-get update && \
         bats \
         g++ \
         gcc-multilib \
+        ocl-icd-opencl-dev \
         libtinfo6 \
         libx11-6 \
         locales \
