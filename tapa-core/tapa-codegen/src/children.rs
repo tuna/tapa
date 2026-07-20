@@ -168,6 +168,11 @@ impl ChildMmapBindings {
 }
 
 #[allow(
+    clippy::too_many_arguments,
+    reason = "child instance assembly needs the parent and child module \
+              headers alongside the signal/binding contexts"
+)]
+#[allow(
     clippy::too_many_lines,
     reason = "child instance assembly is inherently sequential; \
               splitting would fragment the port-arg wiring logic"
@@ -179,6 +184,7 @@ pub fn build_child_instance(
     args: &BTreeMap<String, Arg>,
     mmap_bindings: &ChildMmapBindings,
     parent_fifos: &BTreeSet<String>,
+    parent_rtl: Option<&VerilogModule>,
     child_rtl: Option<&VerilogModule>,
 ) -> ModuleInstance {
     let mut port_args = Vec::new();
@@ -198,37 +204,35 @@ pub fn build_child_instance(
                 |p| p.name.clone(),
             )
     };
-    let resolve_child_stream_peek_port = |name: &str, suffix: &str| {
-        let module = child_rtl?;
-        let peek_suffix = format!("_peek{suffix}");
-        if let Some((base, idx, tail)) = array_name_parts(name) {
-            let candidate = format!("{base}_peek_{idx}{tail}{suffix}");
-            return module.find_port(&candidate).map(|p| p.name.clone());
-        }
-        module
-            .get_port_of(name, &peek_suffix)
-            .map(|p| p.name.clone())
-    };
+    let resolve_child_stream_peek_port =
+        |name: &str, suffix: &str| resolve_peek_port_name(child_rtl?, name, suffix);
     // A stream argument binds to either a FIFO declared in the parent task
     // (signal wires are named `{fifo}{suffix}`, e.g. `a_q_dout`) or, for a
-    // passthrough, the parent's own stream port (`{port}_s{suffix}` /
-    // `{port}_peek{suffix}`, matching what Vitis HLS emits). The leaf module
-    // port itself is resolved separately by `resolve_child_stream_port`.
+    // passthrough, the parent's own stream port. The parent port name is
+    // resolved against the parent's RTL module: Vitis HLS spells it
+    // `{port}_s{suffix}` for scalar streams but `{port}{suffix}` for array
+    // elements (and `{base}_peek_{idx}{suffix}` for array peeks), so a fixed
+    // `_s`/`_peek` infix does not fit all cases. The `{port}_s{suffix}` /
+    // `{port}_peek{suffix}` fallbacks only apply when the parent module is
+    // unavailable. The leaf module port itself is resolved separately by
+    // `resolve_child_stream_port`.
     let stream_signal = |name: &str, suffix: &str| {
         let base = sanitize_array_name(name);
         if parent_fifos.contains(name) {
-            format!("{base}{suffix}")
-        } else {
-            format!("{base}_s{suffix}")
+            return format!("{base}{suffix}");
         }
+        parent_rtl
+            .and_then(|module| module.get_port_of(name, suffix))
+            .map_or_else(|| format!("{base}_s{suffix}"), |p| p.name.clone())
     };
     let peek_signal = |name: &str, suffix: &str| {
         let base = sanitize_array_name(name);
         if parent_fifos.contains(name) {
-            format!("{base}{suffix}")
-        } else {
-            format!("{base}_peek{suffix}")
+            return format!("{base}{suffix}");
         }
+        parent_rtl
+            .and_then(|module| resolve_peek_port_name(module, name, suffix))
+            .unwrap_or_else(|| format!("{base}_peek{suffix}"))
     };
 
     // Argument port bindings
@@ -434,6 +438,19 @@ fn array_name_parts(name: &str) -> Option<(&str, &str, &str)> {
     let left = name.find('[')?;
     let right = name[left + 1..].find(']')? + left + 1;
     Some((&name[..left], &name[left + 1..right], &name[right + 1..]))
+}
+
+/// Resolve the peek port belonging to stream `name` on `module`. Array
+/// elements (`in_q[0]`) map to `{base}_peek_{idx}{tail}{suffix}`; scalar
+/// streams go through the usual `{name}{infix}_peek{suffix}` infix search.
+fn resolve_peek_port_name(module: &VerilogModule, name: &str, suffix: &str) -> Option<String> {
+    if let Some((base, idx, tail)) = array_name_parts(name) {
+        let candidate = format!("{base}_peek_{idx}{tail}{suffix}");
+        return module.find_port(&candidate).map(|p| p.name.clone());
+    }
+    module
+        .get_port_of(name, &format!("_peek{suffix}"))
+        .map(|p| p.name.clone())
 }
 
 /// Generate child instance signals, FSM/autorun logic, and actual child module instances.
@@ -654,6 +671,7 @@ pub(crate) fn generate_child_signals(
                 &args,
                 &mmap_bindings,
                 &parent_fifos,
+                state.module_map.get(task_name).map(|mm| &mm.inner),
                 child_rtl.as_ref(),
             );
             if let Some(mm) = state.module_map.get_mut(task_name) {
@@ -857,6 +875,7 @@ mod tests {
             args,
             mmap_bindings,
             &parent_fifos,
+            None,
             child_rtl,
         )
     }
@@ -1147,6 +1166,19 @@ mod tests {
                 cat: ArgCategory::Ostream,
             },
         );
+        let parent_rtl = VerilogModule::parse(
+            "module Mid(\n\
+             input wire [32:0] a_ext_s_dout,\n\
+             input wire a_ext_s_empty_n,\n\
+             output wire a_ext_s_read,\n\
+             input wire [32:0] a_ext_peek_dout,\n\
+             input wire a_ext_peek_empty_n,\n\
+             output wire [32:0] c_ext_s_din,\n\
+             input wire c_ext_s_full_n,\n\
+             output wire c_ext_s_write\n\
+             ); endmodule",
+        )
+        .unwrap();
         let parent_fifos: BTreeSet<String> = BTreeSet::new();
         let inst = build_child_instance(
             "Add",
@@ -1155,6 +1187,7 @@ mod tests {
             &args,
             &ChildMmapBindings::default(),
             &parent_fifos,
+            Some(&parent_rtl),
             Some(&child_rtl),
         );
         let text = inst.to_string();
@@ -1176,6 +1209,88 @@ mod tests {
         assert!(
             text.contains(".c_int_s_din(c_ext_s_din)"),
             "ostream passthrough must bind to the `_s` port, got:\n{text}"
+        );
+    }
+
+    #[test]
+    fn build_child_instance_passes_array_stream_ports_through_without_infix() {
+        // Array stream elements spell the parent's Vitis HLS ports WITHOUT an
+        // infix (`in_q_0_dout`, `in_q_peek_0_dout`), unlike the scalar `_s` /
+        // `_peek` convention. A passthrough must resolve to those exact
+        // parent port names; the hardcoded `_s`/`_peek` spelling would be an
+        // undeclared implicit net and deadlock the simulation.
+        use std::collections::{BTreeMap, BTreeSet};
+        let child_rtl = VerilogModule::parse(
+            "module Inner(\n\
+             input wire ap_clk,\n\
+             input wire [64:0] in_q0_0_dout,\n\
+             input wire in_q0_0_empty_n,\n\
+             output wire in_q0_0_read,\n\
+             input wire [64:0] in_q0_peek_0_dout,\n\
+             input wire in_q0_peek_0_empty_n,\n\
+             output wire [64:0] out_q_0_din,\n\
+             input wire out_q_0_full_n,\n\
+             output wire out_q_0_write\n\
+             ); endmodule",
+        )
+        .unwrap();
+        let parent_rtl = VerilogModule::parse(
+            "module Stage(\n\
+             input wire ap_clk,\n\
+             input wire [64:0] in_q_0_dout,\n\
+             input wire in_q_0_empty_n,\n\
+             output wire in_q_0_read,\n\
+             input wire [64:0] in_q_peek_0_dout,\n\
+             input wire in_q_peek_0_empty_n,\n\
+             output wire [64:0] out_q_0_din,\n\
+             input wire out_q_0_full_n,\n\
+             output wire out_q_0_write\n\
+             ); endmodule",
+        )
+        .unwrap();
+        let sig = InstanceSignals::new("Inner_0", false);
+        let mut args = BTreeMap::new();
+        args.insert(
+            "in_q0[0]".to_owned(),
+            Arg {
+                arg: "in_q[0]".to_owned(),
+                cat: ArgCategory::Istream,
+            },
+        );
+        args.insert(
+            "out_q[0]".to_owned(),
+            Arg {
+                arg: "out_q[0]".to_owned(),
+                cat: ArgCategory::Ostream,
+            },
+        );
+        let parent_fifos: BTreeSet<String> = BTreeSet::new();
+        let inst = build_child_instance(
+            "Inner",
+            "Inner_0",
+            &sig,
+            &args,
+            &ChildMmapBindings::default(),
+            &parent_fifos,
+            Some(&parent_rtl),
+            Some(&child_rtl),
+        );
+        let text = inst.to_string();
+        assert!(
+            text.contains(".in_q0_0_dout(in_q_0_dout)"),
+            "array istream passthrough must bind to `in_q_0_dout`, got:\n{text}"
+        );
+        assert!(
+            text.contains(".in_q0_peek_0_dout(in_q_peek_0_dout)"),
+            "array istream peek passthrough must bind to `in_q_peek_0_dout`, got:\n{text}"
+        );
+        assert!(
+            text.contains(".out_q_0_din(out_q_0_din)"),
+            "array ostream passthrough must bind to `out_q_0_din`, got:\n{text}"
+        );
+        assert!(
+            !text.contains("in_q_0_s_dout") && !text.contains("in_q_0_peek_dout"),
+            "hardcoded `_s`/`_peek` spellings are undeclared implicit nets, got:\n{text}"
         );
     }
 
