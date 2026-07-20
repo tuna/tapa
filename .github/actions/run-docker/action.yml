@@ -89,12 +89,31 @@ runs:
           docker_args+=(${{ inputs.dockerOptions }})
         fi
 
-        docker run \
-          "${docker_args[@]}" \
-          --entrypoint=/bin/bash \
-          ${{ inputs.image }} \
-          -c " \
-            set -xe
-            ${{ inputs.run }}
-          "
+        # Retry when the docker CLI is killed by the host OOM killer (exit 137),
+        # which happens transiently on the shared self-hosted runner. Bazel's
+        # persistent cache makes retries resume where they left off.
+        attempt=1
+        max_attempts=3
+        while true; do
+          rc=0
+          docker run \
+            "${docker_args[@]}" \
+            --entrypoint=/bin/bash \
+            ${{ inputs.image }} \
+            -c " \
+              set -xe
+              ${{ inputs.run }}
+            " || rc=$?
+          if [[ $rc -ne 137 || $attempt -ge $max_attempts ]]; then
+            exit $rc
+          fi
+          echo "::warning::docker run exited 137 (likely host OOM kill); retrying in 60s (attempt $attempt/$max_attempts)"
+          # Stop the orphaned job container, if the killed CLI left one behind.
+          containers=($(docker ps --filter=label="${label}" --format={{.ID}}))
+          if (( ${#containers[@]} )); then
+            docker stop "${containers[@]}" || true
+          fi
+          sleep 60
+          attempt=$((attempt+1))
+        done
       shell: bash
