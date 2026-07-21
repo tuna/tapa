@@ -18,6 +18,9 @@
             "pblock_ranges": [
                 "CLOCKREGION_X0Y0:CLOCKREGION_X3Y3"
             ],
+            "tags": [
+                "HBM"
+            ],
             "wire_cap": {
                 "east": 40320,
                 "north": 11520
@@ -78,6 +81,9 @@
             "centroid_y": 0,
             "pblock_ranges": [
                 "CLOCKREGION_X4Y0:CLOCKREGION_X7Y3"
+            ],
+            "tags": [
+                "HBM"
             ],
             "wire_cap": {
                 "north": 11520,

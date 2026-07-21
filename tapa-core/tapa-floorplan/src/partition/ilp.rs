@@ -99,6 +99,7 @@ impl FloorplanModel {
         let x = add_assignment_vars(&mut lp, graph, slots);
         let y = add_routing_vars(&mut lp, graph.edges().len(), slots.len());
         add_coupling(&mut lp, graph, &x, &y, slots.len());
+        add_pinning(&mut lp, graph, device, &x);
         add_capacity(&mut lp, graph, device, slots, usage_limit, &x);
         add_cuts(&mut lp, graph, slots, cuts, &y);
         add_objective(&mut lp, graph, device, slots, &y);
@@ -151,6 +152,40 @@ fn add_assignment_vars(lp: &mut LpModel, graph: &FloorGraph, slots: &[Coor]) -> 
         );
     }
     x
+}
+
+/// Pin every M-AXI-bearing vertex to a memory-bearing slot.
+///
+/// On u280 the HBM controllers sit in SLR0, so an mmap reader placed elsewhere
+/// pays a wide, unregistered die crossing on its M-AXI bundle — exactly what
+/// caps Fmax on HBM designs. We forbid such a vertex from landing on any slot
+/// the device table does not tag `HBM` by fixing its assignment binaries there
+/// to zero. Devices with no `HBM`-tagged slot (or graphs with no mmap vertex)
+/// leave the model untouched.
+fn add_pinning(lp: &mut LpModel, graph: &FloorGraph, device: &Device, x: &[Vec<LpVar>]) {
+    let is_hbm_slot: Vec<bool> = device
+        .slots
+        .iter()
+        .map(|slot| slot.tags.iter().any(|tag| tag == "HBM"))
+        .collect();
+    if !is_hbm_slot.iter().any(|&hbm| hbm) {
+        return; // device exposes no HBM row — nothing to pin against
+    }
+    for (vi, vertex) in graph.vertices().iter().enumerate() {
+        if !vertex.needs_hbm {
+            continue;
+        }
+        for (si, &hbm) in is_hbm_slot.iter().enumerate() {
+            if !hbm {
+                lp.add_constraint(
+                    format!("pin_{vi}_{si}"),
+                    LinExpr::sum([(1.0, x[vi][si])]),
+                    Comparison::Eq,
+                    0.0,
+                );
+            }
+        }
+    }
 }
 
 /// `y[e][a][b]` directed routing binaries and the "each edge one route"
@@ -401,6 +436,79 @@ mod tests {
             Err(IlpError::Infeasible(_)) => {}
             Err(IlpError::Solver(SolverError::Spawn { .. })) => eprintln!("skipping: no cbc"),
             Err(other) => panic!("unexpected: {other}"),
+        }
+    }
+
+    #[test]
+    fn mmap_readers_are_pinned_to_hbm_slots() {
+        let device = select_device("u280").expect("u280");
+        let hbm_regions: std::collections::BTreeSet<String> = device
+            .slots
+            .iter()
+            .filter(|slot| slot.tags.iter().any(|tag| tag == "HBM"))
+            .map(|slot| slot.coor().region_name())
+            .collect();
+        assert!(!hbm_regions.is_empty(), "u280 tags its SLR0 slots HBM");
+
+        // Two async_mmap readers each stream to a large compute task placed far
+        // from SLR0 by crossing minimization; pinning must still hold the
+        // readers in an HBM slot. `R*` bind a top-level M-AXI; `C*` do not.
+        let json = r#"{
+            "cflags": [], "top": "Top", "target": "xilinx-hls",
+            "tasks": {
+                "Top": {
+                    "readable_name": "Top", "code": "void Top() {}", "level": "upper", "synth": "hls",
+                    "ports": [],
+                    "tasks": {
+                        "R": [
+                            {"args": {"m": {"arg": "mem0", "cat": "async_mmap"}, "o": {"arg": "f0", "cat": "ostream"}}, "step": 0},
+                            {"args": {"m": {"arg": "mem1", "cat": "async_mmap"}, "o": {"arg": "f1", "cat": "ostream"}}, "step": 0}
+                        ],
+                        "C": [
+                            {"args": {"i": {"arg": "f0", "cat": "istream"}}, "step": 0},
+                            {"args": {"i": {"arg": "f1", "cat": "istream"}}, "step": 0}
+                        ]
+                    },
+                    "fifos": {
+                        "f0": {"depth": 2, "consumed_by": ["C", 0], "produced_by": ["R", 0]},
+                        "f1": {"depth": 2, "consumed_by": ["C", 1], "produced_by": ["R", 1]}
+                    }
+                },
+                "R": {"readable_name": "R", "code": "void R() {}", "level": "lower", "synth": "hls",
+                    "ports": [
+                        {"cat": "async_mmap", "name": "m", "type": "ap_uint<512>*", "width": 512},
+                        {"cat": "ostream", "name": "o", "type": "ap_uint<512>", "width": 512}
+                    ],
+                    "self_area": {"LUT": 400}},
+                "C": {"readable_name": "C", "code": "void C() {}", "level": "lower", "synth": "hls",
+                    "ports": [{"cat": "istream", "name": "i", "type": "ap_uint<512>", "width": 512}],
+                    "self_area": {"LUT": 120000}}
+            }
+        }"#;
+        let graph = tapa_ir::TaskGraph::from_json(json).expect("parse");
+        let flat = tapa_ir::flatten(&graph).expect("flatten");
+        let fg = FloorGraph::build(&flat).expect("floor graph");
+
+        // The floor graph must flag both readers and neither consumer.
+        for vertex in fg.vertices() {
+            let expect_hbm = vertex.name.starts_with('R');
+            assert_eq!(
+                vertex.needs_hbm, expect_hbm,
+                "{} needs_hbm should be {expect_hbm}",
+                vertex.name
+            );
+        }
+
+        let Some(assignment) = plan(&fg, &device) else {
+            return;
+        };
+        for (name, region) in &assignment.regions {
+            if name.starts_with('R') {
+                assert!(
+                    hbm_regions.contains(region),
+                    "mmap reader {name} must be pinned to an HBM slot, landed in {region}",
+                );
+            }
         }
     }
 }

@@ -30,6 +30,10 @@ pub struct Vertex {
     pub kind: VertexKind,
     /// Resource footprint.
     pub area: Area,
+    /// This instance binds a top-level M-AXI (`mmap`/`async_mmap`) port, so it
+    /// drives external memory and must be pinned to a memory-bearing slot (on
+    /// u280, HBM lives in SLR0). The partition ILP restricts it accordingly.
+    pub needs_hbm: bool,
 }
 
 /// A directed, width-weighted connection between two vertices.
@@ -117,10 +121,12 @@ impl FloorGraph {
                 index.insert(name.clone(), vertex_index);
                 let inst_idx = u32::try_from(idx).expect("instance count fits u32");
                 endpoints.insert((def_name.clone(), inst_idx), vertex_index);
+                let needs_hbm = inst.args.values().any(|arg| arg.cat.is_direct_mmap());
                 vertices.push(Vertex {
                     name,
                     kind: VertexKind::Task,
                     area,
+                    needs_hbm,
                 });
             }
         }
@@ -140,6 +146,7 @@ impl FloorGraph {
                 name: fifo_name.clone(),
                 kind: VertexKind::Fifo,
                 area: fifo_area(width, depth),
+                needs_hbm: false,
             });
 
             if let Some(producer) = &fifo.produced_by {
