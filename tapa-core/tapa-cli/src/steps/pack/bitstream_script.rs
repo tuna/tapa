@@ -12,14 +12,23 @@ use std::os::unix::fs::PermissionsExt;
 use crate::error::Result;
 
 /// Render the `#!/bin/bash` v++ script with an absolute `.xo` path.
+///
+/// When `floorplan_xdc` is set, the pblock constraints are sourced as an
+/// `OPT_DESIGN.TCL.PRE` hook so v++ applies the floorplan during
+/// implementation; `connectivity_ini` adds a `--config` for memory
+/// connectivity.
 #[must_use]
 pub(super) fn render_vitis_script(
     top: &str,
     output_file: &Path,
     platform: Option<&str>,
     clock_period: Option<&str>,
+    floorplan_xdc: Option<&Path>,
+    connectivity_ini: Option<&Path>,
 ) -> String {
     let xo = absolutize_lexical(output_file).display().to_string();
+    let floorplan_xdc = floorplan_xdc.map(|p| absolutize_lexical(p).display().to_string());
+    let connectivity_ini = connectivity_ini.map(|p| absolutize_lexical(p).display().to_string());
     let target_frequency = clock_period.and_then(|clock| {
         clock.parse::<f64>().ok().map(|period| {
             #[allow(
@@ -43,6 +52,8 @@ pub(super) fn render_vitis_script(
                 xo,
                 target_frequency,
                 platform,
+                floorplan_xdc,
+                connectivity_ini,
             },
         )
     )
@@ -56,13 +67,22 @@ pub(super) fn write_vitis_script(
     output_file: &Path,
     platform: Option<&str>,
     clock_period: Option<&str>,
+    floorplan_xdc: Option<&Path>,
+    connectivity_ini: Option<&Path>,
 ) -> Result<()> {
     if let Some(parent) = dest.parent() {
         if !parent.as_os_str().is_empty() {
             fs::create_dir_all(parent)?;
         }
     }
-    let body = render_vitis_script(top, output_file, platform, clock_period);
+    let body = render_vitis_script(
+        top,
+        output_file,
+        platform,
+        clock_period,
+        floorplan_xdc,
+        connectivity_ini,
+    );
     fs::write(dest, body)?;
     set_executable(dest)?;
     Ok(())
@@ -98,7 +118,8 @@ mod tests {
 
     #[test]
     fn renders_minimum_script_skeleton() {
-        let script = render_vitis_script("VecAdd", Path::new("/tmp/out.xo"), None, None);
+        let script =
+            render_vitis_script("VecAdd", Path::new("/tmp/out.xo"), None, None, None, None);
         assert!(script.starts_with("#!/bin/bash"));
         assert!(script.contains("TOP=VecAdd"));
         assert!(script.contains("XO='/tmp/out.xo'"));
@@ -112,13 +133,22 @@ mod tests {
             Path::new("/tmp/a.xo"),
             Some("xilinx_u250_gen3x16_xdma_4_1_202210_1"),
             None,
+            None,
+            None,
         );
         assert!(script.contains("PLATFORM=xilinx_u250_gen3x16_xdma_4_1_202210_1"));
     }
 
     #[test]
     fn emits_target_frequency_from_clock_period() {
-        let script = render_vitis_script("Top", Path::new("/tmp/a.xo"), None, Some("3.33"));
+        let script = render_vitis_script(
+            "Top",
+            Path::new("/tmp/a.xo"),
+            None,
+            Some("3.33"),
+            None,
+            None,
+        );
         assert!(
             script.contains("TARGET_FREQUENCY=300"),
             "expected round(1000/3.33)=300, got: {script}",
@@ -136,6 +166,8 @@ mod tests {
             Path::new("/tmp/a.xo"),
             Some("plat"),
             Some("3.33"),
+            None,
+            None,
         )
         .expect("write script");
 
@@ -157,14 +189,21 @@ mod tests {
 
     #[test]
     fn default_platform_warning_emitted() {
-        let script = render_vitis_script("Top", Path::new("/tmp/a.xo"), None, None);
+        let script = render_vitis_script("Top", Path::new("/tmp/a.xo"), None, None, None, None);
         assert!(script.contains("PLATFORM=\"\""));
         assert!(script.contains("Please edit this file and set a valid PLATFORM"));
     }
 
     #[test]
     fn invalid_clock_period_is_ignored() {
-        let script = render_vitis_script("Top", Path::new("/tmp/a.xo"), None, Some("fast"));
+        let script = render_vitis_script(
+            "Top",
+            Path::new("/tmp/a.xo"),
+            None,
+            Some("fast"),
+            None,
+            None,
+        );
         assert!(!script.contains("TARGET_FREQUENCY"));
         assert!(!script.contains("--kernel_frequency"));
     }
@@ -173,5 +212,38 @@ mod tests {
     fn absolutize_lexical_keeps_absolute_paths() {
         let abs = Path::new("/tmp/out.xo");
         assert_eq!(absolutize_lexical(abs), abs.to_path_buf());
+    }
+
+    #[test]
+    fn floorplan_xdc_is_sourced_as_opt_design_hook() {
+        let script = render_vitis_script(
+            "Top",
+            Path::new("/tmp/a.xo"),
+            Some("plat"),
+            Some("3.33"),
+            Some(Path::new("/work/floorplan.xdc")),
+            None,
+        );
+        assert!(
+            script
+                .contains("--vivado.prop=run.impl_1.STEPS.OPT_DESIGN.TCL.PRE=/work/floorplan.xdc"),
+            "floorplanned script must source the pblock XDC, got:\n{script}"
+        );
+    }
+
+    #[test]
+    fn no_floorplan_hook_without_xdc() {
+        let script = render_vitis_script(
+            "Top",
+            Path::new("/tmp/a.xo"),
+            Some("plat"),
+            None,
+            None,
+            None,
+        );
+        assert!(
+            !script.contains("OPT_DESIGN.TCL.PRE"),
+            "unfloorplanned script must not reference a pblock XDC",
+        );
     }
 }

@@ -38,6 +38,8 @@ v++ ${DEBUG} \
   --vivado.prop=run.impl_1.STEPS.PLACE_DESIGN.ARGS.DIRECTIVE=$PLACEMENT_STRATEGY \
   --vivado.prop=run.impl_1.STEPS.PHYS_OPT_DESIGN.ARGS.DIRECTIVE=$STRATEGY \
   --vivado.prop=run.impl_1.STEPS.ROUTE_DESIGN.ARGS.DIRECTIVE=$STRATEGY \
-
+{% if floorplan_xdc %}  --vivado.prop=run.impl_1.STEPS.OPT_DESIGN.TCL.PRE={{ floorplan_xdc }} \
+{% endif %}{% if connectivity_ini %}  --config {{ connectivity_ini }} \
+{% endif %}
 {% if target_frequency %}  --kernel_frequency ${TARGET_FREQUENCY} \
 {% endif %}

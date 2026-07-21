@@ -82,7 +82,7 @@ pub(super) fn pack_vitis(
     // Emit the bitstream helper after packaging so it points at the
     // completed `.xo`.
     if let Some(script_dest) = args.bitstream_script.as_deref() {
-        emit_bitstream_script(flow, script_dest, &design.top, &output_path)?;
+        emit_bitstream_script(&ctx.work_dir, flow, script_dest, &design.top, &output_path)?;
     }
 
     Ok(())
@@ -356,17 +356,25 @@ fn run_pack_xo(ctx: &CliContext, inputs: &PackageXoInputs) -> Result<Utf8PathBuf
 }
 
 fn emit_bitstream_script(
+    work_dir: &Path,
     flow: &FlowSettings,
     script_dest: &Path,
     top: &str,
     output_path: &Path,
 ) -> Result<()> {
+    // A16: a floorplanned work dir carries `floorplan.xdc`; when present, the
+    // v++ script sources it so implementation applies the pblocks.
+    let xdc_path = work_dir.join(crate::steps::floorplan::FLOORPLAN_XDC);
+    let floorplan_xdc = xdc_path.exists().then_some(xdc_path.as_path());
+
     write_vitis_script(
         script_dest,
         top,
         output_path,
         flow.platform.as_deref(),
         flow.clock_period.as_deref(),
+        floorplan_xdc,
+        None,
     )?;
     log::info!("generate the v++ script at {}", script_dest.display());
     Ok(())
