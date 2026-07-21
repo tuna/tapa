@@ -43,6 +43,15 @@ pub enum XilinxError {
     #[error("HLS synthesis failed after {attempts} attempts")]
     HlsRetryExhausted { attempts: u32 },
 
+    #[error("invalid implementation frequency: {0}")]
+    InvalidFrequency(String),
+
+    #[error("Vitis link error: {0}")]
+    VitisLink(String),
+
+    #[error("timing summary parse error: {0}")]
+    TimingSummaryParse(String),
+
     #[error("kernel.xml generation failed: {0}")]
     KernelXml(String),
 
@@ -80,6 +89,9 @@ pub(crate) fn variant_tag(e: &XilinxError) -> &'static str {
         XilinxError::PlatformNotFound(_) => "PlatformNotFound",
         XilinxError::HlsReportParse(_) => "HlsReportParse",
         XilinxError::HlsRetryExhausted { .. } => "HlsRetryExhausted",
+        XilinxError::InvalidFrequency(_) => "InvalidFrequency",
+        XilinxError::VitisLink(_) => "VitisLink",
+        XilinxError::TimingSummaryParse(_) => "TimingSummaryParse",
         XilinxError::KernelXml(_) => "KernelXml",
         XilinxError::XoRedaction(_) => "XoRedaction",
         XilinxError::Io(_) => "Io",
@@ -128,6 +140,9 @@ mod tests {
             XilinxError::PlatformNotFound(Utf8PathBuf::from("p")),
             XilinxError::HlsReportParse("e".into()),
             XilinxError::HlsRetryExhausted { attempts: 1 },
+            XilinxError::InvalidFrequency("e".into()),
+            XilinxError::VitisLink("e".into()),
+            XilinxError::TimingSummaryParse("e".into()),
             XilinxError::KernelXml("e".into()),
             XilinxError::XoRedaction("e".into()),
             XilinxError::Io(std::io::Error::new(std::io::ErrorKind::NotFound, "e")),
