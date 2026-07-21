@@ -8,7 +8,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use tapa_ir::port::sanitize_array_name;
-use tapa_ir::{CrossingKind, FloorplanResult};
+use tapa_ir::{FloorplanResult, RoutedChannel};
 
 use crate::device::model::{Coor, Device};
 
@@ -18,17 +18,19 @@ pub fn emit_xdc(result: &FloorplanResult, device: &Device) -> String {
     // A crossing FIFO is split into independently constrained Head/Body/Tail
     // hierarchy below. Constraining its monolithic parent as well would force
     // every stage back into the FIFO vertex's old placement pblock.
-    let crossing_streams: BTreeSet<&str> = result
-        .crossings
+    let routed_streams: BTreeSet<&str> = result
+        .routes
         .iter()
-        .filter(|crossing| crossing.kind == CrossingKind::Stream)
-        .map(|crossing| crossing.link.as_str())
+        .filter_map(|route| match &route.channel {
+            RoutedChannel::Stream { fifo } => Some(fifo.as_str()),
+            RoutedChannel::Axi { .. } | RoutedChannel::Control { .. } => None,
+        })
         .collect();
 
     // Group cell matches by physical region so each pblock is created once.
     let mut by_region: BTreeMap<String, Vec<CellMatch>> = BTreeMap::new();
     for (instance, region) in &result.regions {
-        if crossing_streams.contains(instance.as_str()) {
+        if routed_streams.contains(instance.as_str()) {
             continue;
         }
         by_region
@@ -40,12 +42,11 @@ pub fn emit_xdc(result: &FloorplanResult, device: &Device) -> String {
             });
     }
 
-    for crossing in &result.crossings {
-        if crossing.kind != CrossingKind::Stream {
+    for route in &result.routes {
+        let RoutedChannel::Stream { fifo } = &route.channel else {
             continue;
-        }
-        let (Some(head_region), Some(tail_region)) =
-            (crossing.route.first(), crossing.route.last())
+        };
+        let (Some(head_region), Some(tail_region)) = (route.route.first(), route.route.last())
         else {
             continue;
         };
@@ -54,24 +55,24 @@ pub fn emit_xdc(result: &FloorplanResult, device: &Device) -> String {
             .entry(canonical_pblock_name(head_region))
             .or_default()
             .push(CellMatch {
-                pattern: pipeline_head_regex(&crossing.link),
-                description: format!("{} Head", crossing.link),
+                pattern: pipeline_head_regex(fifo),
+                description: format!("{fifo} Head"),
             });
-        for (index, region) in crossing.reg_regions.iter().enumerate() {
+        for (index, region) in route.reg_regions.iter().enumerate() {
             by_region
                 .entry(canonical_pblock_name(region))
                 .or_default()
                 .push(CellMatch {
-                    pattern: pipeline_body_regex(&crossing.link, index),
-                    description: format!("{} Body {index}", crossing.link),
+                    pattern: pipeline_body_regex(fifo, index),
+                    description: format!("{fifo} Body {index}"),
                 });
         }
         by_region
             .entry(canonical_pblock_name(tail_region))
             .or_default()
             .push(CellMatch {
-                pattern: pipeline_tail_regex(&crossing.link),
-                description: format!("{} Tail", crossing.link),
+                pattern: pipeline_tail_regex(fifo),
+                description: format!("{fifo} Tail"),
             });
     }
 
@@ -206,7 +207,7 @@ mod tests {
     use super::*;
     use crate::device::select::select_device;
     use std::collections::BTreeMap as Map;
-    use tapa_ir::{Area, Crossing, PipelineScheme};
+    use tapa_ir::{Area, PipelineRoute, PipelineScheme};
 
     #[test]
     #[allow(
@@ -225,7 +226,7 @@ mod tests {
                     "SLOT_X0Y0_TO_SLOT_X0Y0".to_string(),
                 ),
             ]),
-            crossings: Vec::new(),
+            routes: Vec::new(),
             slot_usage: Map::from([(
                 "SLOT_X0Y0_TO_SLOT_X0Y0".to_string(),
                 Area {
@@ -310,7 +311,7 @@ if {[llength $cells]} { add_cells_to_pblock SLOT_X0Y0_TO_SLOT_X0Y0 $cells } else
             device: "u280".to_string(),
             grid: (2, 3),
             regions: Map::from([("T".to_string(), "SLOT_X0Y0_TO_SLOT_X0Y1".to_string())]),
-            crossings: Vec::new(),
+            routes: Vec::new(),
             slot_usage: Map::new(),
         };
         let device = select_device("u280").expect("u280");
@@ -342,15 +343,15 @@ if {[llength $cells]} { add_cells_to_pblock SLOT_X0Y0_TO_SLOT_X0Y0 $cells } else
                 // This old alias must not pin the whole split pipeline.
                 ("fifo_0".to_string(), "SLOT_X1Y1_TO_SLOT_X1Y1".to_string()),
             ]),
-            crossings: vec![Crossing {
-                kind: CrossingKind::Stream,
-                link: "fifo_0".to_string(),
+            routes: vec![PipelineRoute {
+                channel: RoutedChannel::Stream {
+                    fifo: "fifo_0".to_string(),
+                },
                 route: vec![
                     "SLOT_X0Y0".to_string(),
                     "SLOT_X1Y0".to_string(),
                     "SLOT_X1Y1".to_string(),
                 ],
-                level: 2,
                 scheme: PipelineScheme::Double,
                 reg_regions: vec!["SLOT_X0Y0".to_string(), "SLOT_X1Y0".to_string()],
             }],
@@ -393,11 +394,11 @@ if {[llength $cells]} { add_cells_to_pblock SLOT_X0Y0_TO_SLOT_X0Y0 $cells } else
                 "fifo_adjacent".to_string(),
                 "SLOT_X0Y1_TO_SLOT_X0Y1".to_string(),
             )]),
-            crossings: vec![Crossing {
-                kind: CrossingKind::Stream,
-                link: "fifo_adjacent".to_string(),
+            routes: vec![PipelineRoute {
+                channel: RoutedChannel::Stream {
+                    fifo: "fifo_adjacent".to_string(),
+                },
                 route: vec!["SLOT_X0Y0".to_string(), "SLOT_X0Y1".to_string()],
-                level: 0,
                 scheme: PipelineScheme::Single,
                 reg_regions: Vec::new(),
             }],

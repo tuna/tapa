@@ -35,7 +35,7 @@ use crate::graph::{FloorGraph, GraphError};
 use crate::partition::ilp::{
     floorplan, floorplan_flat, floorplan_multilevel, IlpError, DEFAULT_USAGE_LIMIT,
 };
-use crate::pipeline::plan::{plan_crossings, realize_slot_usage, PipelineError};
+use crate::pipeline::plan::{plan_routes, realize_slot_usage, PipelineError};
 use crate::solver::{CbcSolver, SolveOpts};
 
 pub use crate::partition::PartitionStrategy;
@@ -152,7 +152,7 @@ pub fn plan(state: &WorkState, options: &PlanOptions) -> Result<FloorplanResult,
         }
     };
     graph.materialize_co_locations(&mut assignment.regions)?;
-    let crossings = plan_crossings(
+    let routes = plan_routes(
         &graph,
         &assignment.regions,
         &device,
@@ -164,7 +164,7 @@ pub fn plan(state: &WorkState, options: &PlanOptions) -> Result<FloorplanResult,
         &graph,
         &assignment.regions,
         &assignment.slot_usage,
-        &crossings,
+        &routes,
         &device,
         options.usage_limit.max(partition::ilp::MAX_USAGE_LIMIT),
     )?;
@@ -173,7 +173,7 @@ pub fn plan(state: &WorkState, options: &PlanOptions) -> Result<FloorplanResult,
         device: device.key.clone(),
         grid: (device.cols, device.rows),
         regions: assignment.regions,
-        crossings,
+        routes,
         slot_usage,
     })
 }
@@ -219,7 +219,7 @@ mod tests {
             Ok(result) => {
                 assert_eq!(result.device, "u280");
                 assert_eq!(result.grid, (2, 3));
-                assert!(result.crossings.is_empty(), "the tiny design co-locates");
+                assert!(result.routes.is_empty(), "the tiny design co-locates");
                 assert_eq!(result.regions.len(), 3, "A_0, B_0, and the FIFO");
                 assert_eq!(
                     result.regions["fifo_VecAdd"], result.regions["B_0"],
@@ -238,7 +238,7 @@ mod tests {
 
     #[test]
     fn plan_pipelines_a_forced_crossing() {
-        use tapa_ir::CrossingKind;
+        use tapa_ir::RoutedChannel;
         // Two tasks whose LUTs together exceed one u280 slot's derated
         // capacity (2 * 120000 > 220800 * 0.7) must split into adjacent slots,
         // so their connecting stream crosses one boundary.
@@ -277,10 +277,14 @@ mod tests {
                         >= 2,
                     "the two large tasks cannot share a slot",
                 );
-                assert_eq!(result.crossings.len(), 1, "the one stream crosses");
-                let crossing = &result.crossings[0];
-                assert_eq!(crossing.kind, CrossingKind::Stream);
-                assert_eq!(crossing.link, "fifo_VecAdd");
+                assert_eq!(result.routes.len(), 1, "the one stream crosses");
+                let route = &result.routes[0];
+                assert_eq!(
+                    route.channel,
+                    RoutedChannel::Stream {
+                        fifo: "fifo_VecAdd".to_string()
+                    }
+                );
                 assert_eq!(
                     result.regions["fifo_VecAdd"], result.regions["B_0"],
                     "the routed stream must end at the FIFO's physical region"
@@ -289,8 +293,12 @@ mod tests {
                     result.regions["fifo_VecAdd"], result.regions["A_0"],
                     "the forced split keeps the destination-side FIFO off the producer"
                 );
-                assert_eq!(crossing.route.len(), 2, "adjacent slots, one hop");
-                assert_eq!(crossing.level, 2, "double scheme, one hop -> 2 stages");
+                assert_eq!(route.route.len(), 2, "adjacent slots, one hop");
+                assert_eq!(
+                    route.reg_regions.len(),
+                    2,
+                    "double scheme, one hop -> 2 stages"
+                );
             }
             Err(PlanError::Ilp(IlpError::Solver(SolverError::Spawn { .. }))) => {
                 eprintln!("skipping plan_pipelines_a_forced_crossing: `cbc` not found");

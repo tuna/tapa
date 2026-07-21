@@ -2,7 +2,7 @@
 
 use crate::error::CodegenError;
 use crate::rtl_state::TopologyWithRtl;
-use tapa_ir::{CrossingKind, FloorplanResult};
+use tapa_ir::{FloorplanResult, RoutedChannel};
 use tapa_protocol::{
     FIFO_READ_PORTS, FIFO_WRITE_PORTS, HANDSHAKE_CLK, HANDSHAKE_RST, ISTREAM_SUFFIXES,
     OSTREAM_SUFFIXES, STREAM_DATA_SUFFIXES, STREAM_PORT_DIRECTION,
@@ -54,18 +54,23 @@ pub fn build_fifo_instance(name: &str, rst: Expr, width: Expr, depth: u32) -> Mo
         .with_ports(fifo_port_args(&name, rst))
 }
 
-/// The Body-cell count if `fifo_name` is a floorplanned cross-slot stream.
+/// The Body-cell count if `fifo_name` has a floorplanned cross-slot route.
 ///
 /// `reg_regions` is the authoritative per-cell handoff to XDC emission. Using
 /// its length here guarantees the generated Body hierarchy and its placement
-/// constraints cannot silently disagree if an older hand-written JSON file
-/// carries a stale redundant `level` field.
+/// constraints cannot silently disagree.
 fn stream_crossing_body_level(floorplan: Option<&FloorplanResult>, fifo_name: &str) -> Option<u32> {
     floorplan?
-        .crossings
+        .routes
         .iter()
-        .find(|c| c.kind == CrossingKind::Stream && c.link == fifo_name)
-        .map(|c| u32::try_from(c.reg_regions.len()).unwrap_or(u32::MAX))
+        .find_map(|route| match &route.channel {
+            RoutedChannel::Stream { fifo } if fifo == fifo_name => {
+                Some(u32::try_from(route.reg_regions.len()).unwrap_or(u32::MAX))
+            }
+            RoutedChannel::Stream { .. }
+            | RoutedChannel::Axi { .. }
+            | RoutedChannel::Control { .. } => None,
+        })
 }
 
 /// Build Head/Body/Tail storage for a cross-slot stream.
@@ -574,18 +579,17 @@ mod tests {
     #[test]
     fn crossing_body_count_comes_from_xdc_region_list() {
         use std::collections::BTreeMap;
-        use tapa_ir::{Crossing, PipelineScheme};
+        use tapa_ir::{PipelineRoute, PipelineScheme};
 
         let floorplan = FloorplanResult {
             device: "u280".to_string(),
             grid: (2, 3),
             regions: BTreeMap::new(),
-            crossings: vec![Crossing {
-                kind: CrossingKind::Stream,
-                link: "data_q".to_string(),
+            routes: vec![PipelineRoute {
+                channel: RoutedChannel::Stream {
+                    fifo: "data_q".to_string(),
+                },
                 route: vec!["SLOT_X0Y0".to_string(), "SLOT_X0Y1".to_string()],
-                // Deliberately stale: reg_regions is the physical contract.
-                level: 99,
                 scheme: PipelineScheme::Double,
                 reg_regions: vec!["SLOT_X0Y0".to_string(), "SLOT_X0Y1".to_string()],
             }],

@@ -7,6 +7,7 @@
 //! the `.zip` archive, where `frt-cosim` — in a different Cargo workspace —
 //! parses it back with these same types.
 
+pub mod connectivity;
 pub mod floorplan;
 pub mod graph;
 pub mod instance;
@@ -20,8 +21,15 @@ pub mod work_state;
 
 mod error;
 
+pub use connectivity::{
+    parse_vitis_config, ConnectivityParseError, MemoryBank, MemoryBinding, MemoryBindings,
+    MemoryEndpoint, MemoryKind,
+};
 pub use error::ParseError;
-pub use floorplan::{Area, Crossing, CrossingKind, FloorplanResult, PipelineScheme};
+pub use floorplan::{
+    Area, AxiChannel, AxiEndpoint, ControlChannel, FloorplanResult, PipelineRoute, PipelineScheme,
+    RoutedChannel,
+};
 pub use graph::TaskGraph;
 pub use instance::{Arg, TaskInstance};
 pub use interconnect::{EndpointRef, InterconnectDefinition};

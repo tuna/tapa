@@ -1,8 +1,8 @@
 //! The pipeline plan.
 //!
 //! From a placement, find the stream channels that cross slot boundaries,
-//! route them, and turn each route into a [`Crossing`] (register `level`,
-//! distribution `scheme`, and per-register slot regions).
+//! route them, and turn each path into a typed [`PipelineRoute`] with a
+//! distribution scheme and exact per-register slot regions.
 //!
 //! `Single` places one body register per intermediate slot, `Double` two per
 //! hop, and `SingleHDoubleV` one per horizontal hop and two per vertical (SLR)
@@ -10,7 +10,7 @@
 
 use std::collections::BTreeMap;
 
-use tapa_ir::{Area, Crossing, CrossingKind, PipelineScheme};
+use tapa_ir::{Area, PipelineRoute, PipelineScheme, RoutedChannel};
 
 use crate::device::model::{Coor, Device, Resource};
 use crate::graph::{fifo_area, FloorGraph};
@@ -152,15 +152,15 @@ fn cross_slot_streams(
     Ok(nets)
 }
 
-/// Plan every cross-slot stream crossing for a placed design.
-pub fn plan_crossings(
+/// Plan every cross-slot stream route for a placed design.
+pub fn plan_routes(
     graph: &FloorGraph,
     regions: &BTreeMap<String, String>,
     device: &Device,
     scheme: PipelineScheme,
     solver: &dyn Solver,
     opts: &SolveOpts,
-) -> Result<Vec<Crossing>, PipelineError> {
+) -> Result<Vec<PipelineRoute>, PipelineError> {
     let streams = cross_slot_streams(graph, regions)?;
     if streams.is_empty() {
         return Ok(Vec::new());
@@ -176,23 +176,22 @@ pub fn plan_crossings(
         .collect();
     let routes = route_nets(&route_nets_input, device, solver, opts)?;
 
-    let crossings = streams
+    let pipeline_routes = streams
         .iter()
         .zip(routes)
         .map(|(net, route)| {
             let reg_regions = pipeline_reg_regions(&route, scheme);
-            let level = u32::try_from(reg_regions.len()).unwrap_or(u32::MAX);
-            Crossing {
-                kind: CrossingKind::Stream,
-                link: net.link.clone(),
+            PipelineRoute {
+                channel: RoutedChannel::Stream {
+                    fifo: net.link.clone(),
+                },
                 route: route.iter().map(|&cell| slot_tag(cell)).collect(),
-                level,
                 scheme,
                 reg_regions,
             }
         })
         .collect();
-    Ok(crossings)
+    Ok(pipeline_routes)
 }
 
 /// Replace pre-routing FIFO estimates with the resources of the generated
@@ -201,7 +200,7 @@ pub(crate) fn realize_slot_usage(
     graph: &FloorGraph,
     regions: &BTreeMap<String, String>,
     baseline: &BTreeMap<String, Area>,
-    crossings: &[Crossing],
+    routes: &[PipelineRoute],
     device: &Device,
     capacity_limit: f64,
 ) -> Result<BTreeMap<String, Area>, PipelineError> {
@@ -212,18 +211,17 @@ pub(crate) fn realize_slot_usage(
         .collect();
     let mut usage = baseline.clone();
 
-    for crossing in crossings {
-        if crossing.kind != CrossingKind::Stream {
+    for route in routes {
+        let RoutedChannel::Stream { fifo } = &route.channel else {
             continue;
-        }
-        let stream =
-            streams
-                .get(crossing.link.as_str())
-                .ok_or_else(|| PipelineError::Accounting {
-                    link: crossing.link.clone(),
-                    detail: "no matching stream metadata".to_string(),
-                })?;
-        account_stream_pipeline(&mut usage, graph, regions, crossing, stream)?;
+        };
+        let stream = streams
+            .get(fifo.as_str())
+            .ok_or_else(|| PipelineError::Accounting {
+                link: fifo.clone(),
+                detail: "no matching stream metadata".to_string(),
+            })?;
+        account_stream_pipeline(&mut usage, graph, regions, route, stream, fifo)?;
     }
 
     validate_realized_usage(&usage, device, capacity_limit)?;
@@ -234,54 +232,41 @@ fn account_stream_pipeline(
     usage: &mut BTreeMap<String, Area>,
     graph: &FloorGraph,
     regions: &BTreeMap<String, String>,
-    crossing: &Crossing,
+    route: &PipelineRoute,
     stream: &crate::graph::Stream,
+    fifo: &str,
 ) -> Result<(), PipelineError> {
-    let head_region = crossing
+    let head_region = route
         .route
         .first()
-        .ok_or_else(|| accounting_error(&crossing.link, "route has no Head region"))?;
-    let tail_region = crossing
+        .ok_or_else(|| accounting_error(fifo, "route has no Head region"))?;
+    let tail_region = route
         .route
         .last()
-        .ok_or_else(|| accounting_error(&crossing.link, "route has no Tail region"))?;
+        .ok_or_else(|| accounting_error(fifo, "route has no Tail region"))?;
     let head_region = canonical_slot_region(head_region)?;
     let tail_region = canonical_slot_region(tail_region)?;
-    verify_route_endpoint(
-        graph,
-        regions,
-        stream.src,
-        &head_region,
-        &crossing.link,
-        "Head",
-    )?;
-    verify_route_endpoint(
-        graph,
-        regions,
-        stream.dst,
-        &tail_region,
-        &crossing.link,
-        "Tail",
-    )?;
+    verify_route_endpoint(graph, regions, stream.src, &head_region, fifo, "Head")?;
+    verify_route_endpoint(graph, regions, stream.dst, &tail_region, fifo, "Tail")?;
 
     let original_fifo = fifo_area(stream.data_width, stream.depth);
-    subtract_usage(usage, &tail_region, original_fifo, &crossing.link)?;
+    subtract_usage(usage, &tail_region, original_fifo, fifo)?;
 
-    let body_level = u32::try_from(crossing.reg_regions.len())
-        .map_err(|_| accounting_error(&crossing.link, "Body level exceeds u32"))?;
+    let body_level = u32::try_from(route.reg_regions.len())
+        .map_err(|_| accounting_error(fifo, "Body level exceeds u32"))?;
     let extra_depth = body_level
         .checked_mul(2)
         .and_then(|level| level.checked_add(6))
-        .ok_or_else(|| accounting_error(&crossing.link, "Tail depth overflows u32"))?;
+        .ok_or_else(|| accounting_error(fifo, "Tail depth overflows u32"))?;
     let real_depth = stream
         .depth
         .checked_add(extra_depth)
-        .ok_or_else(|| accounting_error(&crossing.link, "Tail depth overflows u32"))?;
+        .ok_or_else(|| accounting_error(fifo, "Tail depth overflows u32"))?;
     add_usage(
         usage,
         &tail_region,
         fifo_area(stream.data_width, real_depth),
-        &crossing.link,
+        fifo,
     )?;
 
     // Head and each Body explicitly register ready, valid, and DATA_WIDTH
@@ -291,7 +276,7 @@ fn account_stream_pipeline(
         .data_width
         .checked_add(2)
         .filter(|width| *width == stream.width)
-        .ok_or_else(|| accounting_error(&crossing.link, "inconsistent stream width metadata"))?;
+        .ok_or_else(|| accounting_error(fifo, "inconsistent stream width metadata"))?;
     let register_area = Area {
         ff: u64::from(register_width),
         ..Area::default()
@@ -303,15 +288,10 @@ fn account_stream_pipeline(
             lut: 1,
             ..register_area
         },
-        &crossing.link,
+        fifo,
     )?;
-    for region in &crossing.reg_regions {
-        add_usage(
-            usage,
-            &canonical_slot_region(region)?,
-            register_area,
-            &crossing.link,
-        )?;
+    for region in &route.reg_regions {
+        add_usage(usage, &canonical_slot_region(region)?, register_area, fifo)?;
     }
     Ok(())
 }
@@ -524,12 +504,12 @@ mod tests {
         usage
     }
 
-    fn stream_crossing(route: &[&str], reg_regions: &[&str]) -> Crossing {
-        Crossing {
-            kind: CrossingKind::Stream,
-            link: "q_Top".to_string(),
+    fn stream_route(route: &[&str], reg_regions: &[&str]) -> PipelineRoute {
+        PipelineRoute {
+            channel: RoutedChannel::Stream {
+                fifo: "q_Top".to_string(),
+            },
             route: route.iter().map(ToString::to_string).collect(),
-            level: u32::try_from(reg_regions.len()).expect("level"),
             scheme: PipelineScheme::Single,
             reg_regions: reg_regions.iter().map(ToString::to_string).collect(),
         }
@@ -586,13 +566,13 @@ mod tests {
             ("Consumer_0".to_string(), destination.clone()),
         ]);
         let baseline = baseline_usage(&graph, &regions);
-        let crossing = stream_crossing(&["SLOT_X0Y0", "SLOT_X0Y1", "SLOT_X0Y2"], &["SLOT_X0Y1"]);
+        let route = stream_route(&["SLOT_X0Y0", "SLOT_X0Y1", "SLOT_X0Y2"], &["SLOT_X0Y1"]);
 
         let realized = realize_slot_usage(
             &graph,
             &regions,
             &baseline,
-            &[crossing],
+            &[route],
             &select_device("u280").expect("u280"),
             MAX_USAGE_LIMIT,
         )
@@ -652,13 +632,13 @@ mod tests {
         )
         .ff;
         baseline.entry(source.clone()).or_default().ff = ff_limit - 34;
-        let crossing = stream_crossing(&["SLOT_X0Y0", "SLOT_X1Y0"], &[]);
+        let route = stream_route(&["SLOT_X0Y0", "SLOT_X1Y0"], &[]);
 
         let error = realize_slot_usage(
             &graph,
             &regions,
             &baseline,
-            &[crossing],
+            &[route],
             &device,
             MAX_USAGE_LIMIT,
         )

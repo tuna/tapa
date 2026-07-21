@@ -30,8 +30,9 @@ pub const FILE_NAME: &str = "tapa.json";
 /// mismatch must surface as a clear "re-run analyze" error, not as a
 /// confusing field-level parse failure.
 ///
-/// v2 added the optional [`WorkState::floorplan`] contract.
-pub const VERSION: u32 = 2;
+/// v2 added the optional [`WorkState::floorplan`] contract; v3 made routed
+/// channel identities variant-specific.
+pub const VERSION: u32 = 3;
 
 /// Everything the pipeline persists between steps.
 #[allow(
@@ -188,7 +189,7 @@ mod tests {
             device: "u280".to_string(),
             grid: (2, 3),
             regions: BTreeMap::from([("Top".to_string(), "SLOT_X0Y0_TO_SLOT_X0Y0".to_string())]),
-            crossings: Vec::new(),
+            routes: Vec::new(),
             slot_usage: BTreeMap::from([(
                 "SLOT_X0Y0_TO_SLOT_X0Y0".to_string(),
                 Area {
@@ -209,8 +210,8 @@ mod tests {
     }
 
     #[test]
-    fn version_is_v2_for_the_floorplan_contract() {
-        assert_eq!(VERSION, 2, "the floorplan contract lifted the state to v2");
+    fn version_is_v3_for_typed_pipeline_routes() {
+        assert_eq!(VERSION, 3, "typed pipeline routes require state v3");
     }
 
     #[test]

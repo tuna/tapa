@@ -14,6 +14,8 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::connectivity::MemoryBank;
+
 /// Resource counts for the five classes TAPA floorplans on.
 ///
 /// Fields are stored in struct order `lut, ff, bram_18k, dsp, uram`; the
@@ -52,41 +54,73 @@ impl Area {
     }
 }
 
-/// One pipelined channel that crosses a slot boundary.
-///
-/// Stream crossings are rendered as named Head/Body/Tail handshake pipelines.
-/// The contract also reserves an M-AXI (`mmap`) kind for future codegen
-/// support. The planner records the slot [`route`](Crossing::route) and exact
-/// Body-cell regions; codegen and XDC emission replay supported records.
+/// Child-side identity of an M-AXI interface routed to external memory.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Crossing {
-    /// Whether this crossing is a stream or an M-AXI link.
-    pub kind: CrossingKind,
-    /// The channel key. For [`CrossingKind::Stream`] it is the
-    /// [`Task::fifos`](crate::Task::fifos) map key (the interconnect name);
-    /// for [`CrossingKind::Axi`] it is the mmap argument name.
-    pub link: String,
+pub struct AxiEndpoint {
+    /// Canonical flattened child instance name.
+    pub instance: String,
+    /// M-AXI port name on the child instance.
+    pub port: String,
+    /// Corresponding top-level kernel port.
+    pub top_port: String,
+}
+
+/// One independently pipelined AXI protocol channel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AxiChannel {
+    ReadAddress,
+    ReadData,
+    WriteAddress,
+    WriteData,
+    WriteResponse,
+}
+
+/// A distributed-control bundle with uniform routing semantics.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ControlChannel {
+    /// Start/release, scalar arguments, and mmap offsets sent to a child.
+    Launch,
+    /// Reset distribution, which requires reset-specific pipeline semantics.
+    Reset,
+    /// Completion returned from a child to the global controller.
+    Completion,
+}
+
+/// Identity of one channel carried by a [`PipelineRoute`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum RoutedChannel {
+    /// One internal `tapa::stream`, identified by its flattened FIFO name.
+    Stream { fifo: String },
+    /// One AXI protocol channel between a child endpoint and a memory bank.
+    Axi {
+        endpoint: AxiEndpoint,
+        bank: MemoryBank,
+        channel: AxiChannel,
+    },
+    /// One control bundle associated with a flattened child instance.
+    Control {
+        instance: String,
+        channel: ControlChannel,
+    },
+}
+
+/// Physical route and register placement for one typed channel.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PipelineRoute {
+    /// Channel-specific identity; unrelated identities cannot be combined.
+    pub channel: RoutedChannel,
     /// The slot path the channel takes, head to tail, e.g.
     /// `["SLOT_X0Y0", "SLOT_X0Y1"]`.
     pub route: Vec<String>,
-    /// Number of Body pipeline cells inserted along the route. Head and Tail
-    /// are endpoint cells and are not included (`BODY_LEVEL` convention).
-    pub level: u32,
     /// How registers are distributed across the route's hops.
     pub scheme: PipelineScheme,
     /// Ordered per-Body-cell slot assignment (one entry per Body cell).
     pub reg_regions: Vec<String>,
-}
-
-/// What kind of net a [`Crossing`] pipelines.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum CrossingKind {
-    /// A `tapa::stream` channel — pipelined with Head/Body/Tail handshake cells.
-    Stream,
-    /// A reserved M-AXI (`mmap`) link kind; codegen support is not implemented.
-    Axi,
 }
 
 /// How pipeline registers are distributed across a route's hops.
@@ -117,7 +151,7 @@ pub struct FloorplanResult {
     /// `"SLOT_X0Y0_TO_SLOT_X1Y0"`.
     pub regions: BTreeMap<String, String>,
     /// One entry per pipelined channel.
-    pub crossings: Vec<Crossing>,
+    pub routes: Vec<PipelineRoute>,
     /// Achieved per-slot resource usage, including generated stream pipeline
     /// storage and registers; keyed by region tag for reporting and DRCs.
     pub slot_usage: BTreeMap<String, Area>,
@@ -127,6 +161,7 @@ pub struct FloorplanResult {
 mod tests {
     use super::*;
 
+    use crate::connectivity::MemoryKind;
     use serde_json::json;
 
     #[test]
@@ -171,22 +206,40 @@ mod tests {
                 ("Top/a".to_string(), "SLOT_X0Y0_TO_SLOT_X0Y0".to_string()),
                 ("Top/b".to_string(), "SLOT_X1Y2_TO_SLOT_X1Y2".to_string()),
             ]),
-            crossings: vec![
-                Crossing {
-                    kind: CrossingKind::Stream,
-                    link: "fifo_a_b".to_string(),
+            routes: vec![
+                PipelineRoute {
+                    channel: RoutedChannel::Stream {
+                        fifo: "fifo_a_b".to_string(),
+                    },
                     route: vec!["SLOT_X0Y0".to_string(), "SLOT_X1Y2".to_string()],
-                    level: 4,
                     scheme: PipelineScheme::Double,
                     reg_regions: vec!["SLOT_X0Y1".to_string(), "SLOT_X1Y1".to_string()],
                 },
-                Crossing {
-                    kind: CrossingKind::Axi,
-                    link: "arg_mem".to_string(),
+                PipelineRoute {
+                    channel: RoutedChannel::Axi {
+                        endpoint: AxiEndpoint {
+                            instance: "reader_0".to_string(),
+                            port: "mem".to_string(),
+                            top_port: "arg_mem".to_string(),
+                        },
+                        bank: MemoryBank {
+                            kind: MemoryKind::Hbm,
+                            index: 0,
+                        },
+                        channel: AxiChannel::ReadData,
+                    },
                     route: vec!["SLOT_X1Y2".to_string(), "SLOT_X1Y0".to_string()],
-                    level: 3,
                     scheme: PipelineScheme::SingleHDoubleV,
                     reg_regions: vec!["SLOT_X1Y1".to_string()],
+                },
+                PipelineRoute {
+                    channel: RoutedChannel::Control {
+                        instance: "reader_0".to_string(),
+                        channel: ControlChannel::Launch,
+                    },
+                    route: vec!["SLOT_X0Y0".to_string(), "SLOT_X1Y2".to_string()],
+                    scheme: PipelineScheme::Double,
+                    reg_regions: vec!["SLOT_X0Y1".to_string()],
                 },
             ],
             slot_usage: BTreeMap::from([(
@@ -214,13 +267,28 @@ mod tests {
     fn enum_tags_are_snake_case() {
         // The JSON tags are the CLI's `--pp-scheme` spellings; pin them.
         assert_eq!(
-            serde_json::to_string(&CrossingKind::Axi).unwrap(),
-            r#""axi""#
+            serde_json::to_string(&AxiChannel::WriteAddress).unwrap(),
+            r#""write_address""#
+        );
+        assert_eq!(
+            serde_json::to_string(&ControlChannel::Completion).unwrap(),
+            r#""completion""#
         );
         assert_eq!(
             serde_json::to_string(&PipelineScheme::SingleHDoubleV).unwrap(),
             r#""single_h_double_v""#,
         );
+    }
+
+    #[test]
+    fn routed_channel_rejects_fields_from_another_variant() {
+        let invalid = json!({
+            "kind": "stream",
+            "fifo": "q",
+            "bank": {"kind": "hbm", "index": 0}
+        });
+        serde_json::from_value::<RoutedChannel>(invalid)
+            .expect_err("a stream cannot carry AXI identity");
     }
 
     #[test]

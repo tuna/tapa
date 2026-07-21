@@ -777,7 +777,7 @@ fn generate_floorplanned_stream_pipeline(
     reg_regions: Vec<&str>,
 ) -> String {
     use std::collections::BTreeMap;
-    use tapa_ir::{Crossing, CrossingKind, FloorplanResult};
+    use tapa_ir::{FloorplanResult, PipelineRoute, RoutedChannel};
 
     let top = task("top", "upper", |t| {
         t["tasks"] = serde_json::json!({
@@ -801,16 +801,15 @@ fn generate_floorplanned_stream_pipeline(
     );
 
     let mut state = TopologyWithRtl::new(prog);
-    let level = u32::try_from(reg_regions.len()).expect("test Body count fits u32");
     state.floorplan = Some(FloorplanResult {
         device: "u280".to_string(),
         grid: (2, 3),
         regions: BTreeMap::new(),
-        crossings: vec![Crossing {
-            kind: CrossingKind::Stream,
-            link: "fifo_0".to_string(),
+        routes: vec![PipelineRoute {
+            channel: RoutedChannel::Stream {
+                fifo: "fifo_0".to_string(),
+            },
             route: vec!["SLOT_X0Y0".to_string(), "SLOT_X0Y1".to_string()],
-            level,
             scheme,
             reg_regions: reg_regions.into_iter().map(str::to_string).collect(),
         }],

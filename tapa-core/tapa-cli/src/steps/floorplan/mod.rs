@@ -164,7 +164,7 @@ pub fn run(args: &FloorplanArgs, ctx: &CliContext) -> Result<()> {
     publish_xdc_after_update(&ctx.work_dir, &xdc, || {
         // Regenerate the top RTL with floorplanned handshake pipelines. `plan`
         // planned on the flattened graph, so codegen must too — flattening the
-        // original graph again yields the global FIFO names crossings carry.
+        // original graph again yields the global FIFO names routes carry.
         let flat = tapa_ir::flatten(&state.graph)
             .map_err(|e| CliError::Floorplan(format!("flatten failed: {e}")))?;
         let hdl_inputs = collect_hdl_inputs(&ctx.work_dir, &flat)?;
