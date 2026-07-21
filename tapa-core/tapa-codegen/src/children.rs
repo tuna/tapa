@@ -8,7 +8,7 @@ use tapa_ir::port::ArgCategory;
 use tapa_ir::Arg;
 use tapa_protocol::{
     HANDSHAKE_CLK, HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY, HANDSHAKE_RST, HANDSHAKE_RST_N,
-    HANDSHAKE_START, ISTREAM_SUFFIXES, OSTREAM_SUFFIXES,
+    HANDSHAKE_START, ISTREAM_SUFFIXES, M_AXI_PREFIX, OSTREAM_SUFFIXES,
 };
 use tapa_rtl::builder::{
     AlwaysBlock, CaseItem, ContinuousAssign, Expr, ModuleInstance, PortArg, Sensitivity, Statement,
@@ -348,7 +348,7 @@ fn child_has_direct_mmap_ports(child_rtl: Option<&VerilogModule>, child_port: &s
     child_has_direct_mmap_offset(child_rtl, child_port)
         || tapa_protocol::M_AXI_SUFFIXES_COMPACT.iter().any(|suffix| {
             module
-                .find_port(&format!("m_axi_{child_port}{suffix}"))
+                .find_port(&format!("{M_AXI_PREFIX}{child_port}{suffix}"))
                 .is_some()
         })
 }
@@ -430,7 +430,7 @@ pub fn mmap_wire_prefix(
     if let Some(slave_idx) = mmap_slave_indices.get(arg_name) {
         crate::m_axi::crossbar_slave_prefix(&sanitized_arg, *slave_idx)
     } else {
-        format!("m_axi_{sanitized_arg}")
+        format!("{M_AXI_PREFIX}{sanitized_arg}")
     }
 }
 
@@ -581,10 +581,7 @@ pub(crate) fn generate_child_signals(
                         &pipeline_out,
                         Expr::ident(&pipeline_out),
                     ));
-                } else if matches!(
-                    arg.cat,
-                    tapa_ir::port::ArgCategory::Mmap | tapa_ir::port::ArgCategory::AsyncMmap
-                ) {
+                } else if arg.cat.is_direct_mmap() {
                     let pipeline_out = format!("{inst_name}__{port_name}_offset");
                     let fsm_in_port = format!("{inst_name}__{port_name}_offset_in");
                     let arg_name = tapa_rtl::module::sanitize_array_name(&arg.arg);
@@ -610,10 +607,7 @@ pub(crate) fn generate_child_signals(
             // Build per-instance mmap slave index map for crossbar routing
             let mut mmap_bindings = ChildMmapBindings::default();
             for arg in args.values() {
-                if matches!(
-                    arg.cat,
-                    tapa_ir::port::ArgCategory::Mmap | tapa_ir::port::ArgCategory::AsyncMmap
-                ) {
+                if arg.cat.is_direct_mmap() {
                     if let Some(&slave_idx) =
                         mmap_slave_map.get(&(arg.arg.clone(), child_name.clone(), idx))
                     {
@@ -730,10 +724,7 @@ fn declare_instance_pipeline_signals(
                 format!("{inst_name}__{port_name}_in"),
                 resolve_child_scalar_width(state, child_name, port_name),
             )
-        } else if matches!(
-            arg.cat,
-            tapa_ir::port::ArgCategory::Mmap | tapa_ir::port::ArgCategory::AsyncMmap
-        ) {
+        } else if arg.cat.is_direct_mmap() {
             (
                 format!("{inst_name}__{port_name}_offset"),
                 format!("{inst_name}__{port_name}_offset_in"),

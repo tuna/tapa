@@ -158,6 +158,21 @@ pub fn axi_subport_width(subport: &str, data_width: u32, addr_width: u32, id_wid
     }
 }
 
+/// Extract the sub-port name from an M-AXI signal suffix:
+/// `_ARADDR` → `ADDR`, `_RDATA` → `DATA`, `_BRESP` → `RESP`.
+/// Unknown suffixes are returned with channel prefixes and leading
+/// underscores stripped.
+#[must_use]
+pub fn axi_subport_from_suffix(suffix: &str) -> &str {
+    let s = suffix.trim_start_matches('_');
+    s.strip_prefix("AR")
+        .or_else(|| s.strip_prefix("AW"))
+        .or_else(|| s.strip_prefix('R'))
+        .or_else(|| s.strip_prefix('W'))
+        .or_else(|| s.strip_prefix('B'))
+        .unwrap_or(s)
+}
+
 /// Direction: `"output"` means the master drives the signal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PortDir {

@@ -1,8 +1,8 @@
 //! M-AXI port generation and parameterized AXI crossbar emission.
 
 use tapa_protocol::{
-    axi_subport_width, PortDir, HANDSHAKE_CLK, HANDSHAKE_RST, M_AXI_CHANNEL_ORDER, M_AXI_PORTS,
-    M_AXI_PREFIX, M_AXI_SUFFIXES_COMPACT,
+    axi_subport_from_suffix, axi_subport_width, PortDir, HANDSHAKE_CLK, HANDSHAKE_RST,
+    M_AXI_CHANNEL_ORDER, M_AXI_PORTS, M_AXI_PREFIX, M_AXI_SUFFIXES_COMPACT,
 };
 use tapa_rtl::builder::{ContinuousAssign, Expr, ModuleInstance, ParamArg, PortArg};
 use tapa_rtl::module::sanitize_array_name;
@@ -227,16 +227,7 @@ pub fn try_get_addr_width(chan_size: Option<u32>, data_width: u32) -> Result<u32
 /// Extracts the sub-port name from a suffix like `_ARADDR` → `ADDR`,
 /// then looks up the default width via [`tapa_protocol::axi_subport_width`].
 pub fn resolve_suffix_width(suffix: &str, data_width: u32) -> u32 {
-    let suffix = suffix.trim_start_matches('_');
-    let subport = suffix
-        .strip_prefix("AR")
-        .or_else(|| suffix.strip_prefix("AW"))
-        .or_else(|| suffix.strip_prefix('R'))
-        .or_else(|| suffix.strip_prefix('W'))
-        .or_else(|| suffix.strip_prefix('B'))
-        .unwrap_or(suffix);
-
-    axi_subport_width(subport, data_width, 64, 1)
+    axi_subport_width(axi_subport_from_suffix(suffix), data_width, 64, 1)
 }
 
 /// Validate an mmap connection before crossbar generation.
@@ -456,14 +447,7 @@ fn is_master_output_suffix(suffix: &str) -> bool {
 }
 
 fn crossbar_port_width(suffix: &str, master_side: bool) -> String {
-    let subport = suffix
-        .trim_start_matches('_')
-        .strip_prefix("AR")
-        .or_else(|| suffix.trim_start_matches('_').strip_prefix("AW"))
-        .or_else(|| suffix.trim_start_matches('_').strip_prefix('R'))
-        .or_else(|| suffix.trim_start_matches('_').strip_prefix('W'))
-        .or_else(|| suffix.trim_start_matches('_').strip_prefix('B'))
-        .unwrap_or_else(|| suffix.trim_start_matches('_'));
+    let subport = axi_subport_from_suffix(suffix);
 
     if subport == "ID" {
         if master_side {
@@ -514,10 +498,7 @@ pub(crate) fn add_crossbar_slave_id_padding(
 ) {
     let mut assigns = Vec::new();
     for arg in args.values() {
-        if !matches!(
-            arg.cat,
-            tapa_ir::port::ArgCategory::Mmap | tapa_ir::port::ArgCategory::AsyncMmap
-        ) {
+        if !arg.cat.is_direct_mmap() {
             continue;
         }
         let Some(&slave_idx) = mmap_bindings.slave_indices.get(&arg.arg) else {

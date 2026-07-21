@@ -5,7 +5,6 @@
 
 use std::collections::BTreeMap;
 
-use tapa_ir::port::ArgCategory;
 use tapa_ir::task::TaskLevel;
 use tapa_ir::Design;
 use tapa_rtl::module::sanitize_array_name;
@@ -266,7 +265,7 @@ impl TopologyWithRtl {
         for (child_task_name, instances) in &task.tasks {
             for (inst_idx, instance) in instances.iter().enumerate() {
                 for (child_port_name, arg) in &instance.args {
-                    let is_mmap = matches!(arg.cat, ArgCategory::Mmap | ArgCategory::AsyncMmap);
+                    let is_mmap = arg.cat.is_direct_mmap();
                     if !is_mmap {
                         continue;
                     }

@@ -7,7 +7,7 @@
 use std::collections::BTreeSet;
 
 use tapa_protocol::{
-    HANDSHAKE_CLK, HANDSHAKE_RST, ISTREAM_SUFFIXES, M_AXI_PORTS, OSTREAM_SUFFIXES,
+    HANDSHAKE_CLK, HANDSHAKE_RST, ISTREAM_SUFFIXES, M_AXI_PORTS, M_AXI_PREFIX, OSTREAM_SUFFIXES,
 };
 use tapa_rtl::builder::{Expr, ModuleInstance, ParamArg, PortArg};
 use tapa_rtl::module::sanitize_array_name;
@@ -47,7 +47,10 @@ pub fn signal_name(base: &str, tag: &str, suffix: &str) -> String {
 }
 
 pub fn bridge_base_from_m_axi_prefix(prefix: &str) -> String {
-    prefix.strip_prefix("m_axi_").unwrap_or(prefix).to_owned()
+    prefix
+        .strip_prefix(M_AXI_PREFIX)
+        .unwrap_or(prefix)
+        .to_owned()
 }
 
 pub fn active_tags(child_rtl: &VerilogModule, child_port: &str) -> BTreeSet<&'static str> {

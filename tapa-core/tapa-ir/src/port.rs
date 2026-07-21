@@ -99,6 +99,14 @@ impl ArgCategory {
         matches!(self, Self::Scalar)
     }
 
+    /// Whether this is a memory-mapped port that binds directly to a
+    /// top-level M-AXI interface (`mmap`/`async_mmap`), as opposed to
+    /// `immap`/`ommap`, which connect two tasks inside the design.
+    #[must_use]
+    pub const fn is_direct_mmap(self) -> bool {
+        matches!(self, Self::Mmap | Self::AsyncMmap)
+    }
+
     /// Whether this is any memory-mapped port.
     #[must_use]
     pub const fn is_mmap_like(self) -> bool {
