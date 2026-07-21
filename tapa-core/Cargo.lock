@@ -1270,6 +1270,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "tapa-floorplan"
+version = "0.1.0"
+dependencies = [
+ "rust-embed",
+ "serde",
+ "serde_json",
+ "tapa-ir",
+ "tempfile",
+ "thiserror",
+]
+
+[[package]]
 name = "tapa-ir"
 version = "0.1.0"
 dependencies = [

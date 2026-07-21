@@ -6,6 +6,7 @@ members = [
   "tapa-rtl",
   "tapa-codegen",
   "tapa-xilinx",
+  "tapa-floorplan",
   "tapa-cli",
 ]
 
@@ -135,4 +136,5 @@ tapa-ir = { path = "tapa-ir" }
 tapa-rtl = { path = "tapa-rtl" }
 tapa-codegen = { path = "tapa-codegen" }
 tapa-xilinx = { path = "tapa-xilinx" }
+tapa-floorplan = { path = "tapa-floorplan" }
 tapa-cli = { path = "tapa-cli" }

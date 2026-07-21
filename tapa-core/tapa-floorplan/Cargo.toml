@@ -1,0 +1,23 @@
+[package]
+name = "tapa-floorplan"
+version = "0.1.0"
+edition = "2021"
+
+# Coarse-grained floorplanner + latency-insensitive pipeline planner. Writes a
+# `tapa_ir::FloorplanResult` that codegen reads back; per decision A1 it depends
+# on `tapa-ir` ONLY (never on tapa-codegen), so the planner and codegen meet
+# solely through the contract type. The CBC solver runs as a local external
+# binary via std::process; anything needing Vivado (OOC area, run_impl) is
+# driven by the CLI floorplan step, which owns the tapa-xilinx runner.
+[dependencies]
+rust-embed = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tapa-ir = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

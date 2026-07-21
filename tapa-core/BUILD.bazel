@@ -186,6 +186,8 @@ CARGO_TEST_PACKAGES = [
     "-p",
     "tapa-xilinx",
     "-p",
+    "tapa-floorplan",
+    "-p",
     "tapa-cli",
 ]
 
