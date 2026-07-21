@@ -34,7 +34,7 @@ use tapa_ir::{FloorplanResult, MemoryBank, PipelineScheme, WorkState};
 use crate::device::select::{select_device, SelectError};
 use crate::graph::{FloorGraph, GraphError};
 use crate::partition::ilp::{
-    floorplan, floorplan_flat, floorplan_multilevel, IlpError, DEFAULT_USAGE_LIMIT,
+    floorplan_with_strategy, IlpError, DEFAULT_USAGE_LIMIT, MAX_USAGE_LIMIT,
 };
 use crate::pipeline::plan::{plan_routes, realize_slot_usage, PipelineError};
 use crate::solver::{CbcSolver, SolveOpts};
@@ -160,6 +160,32 @@ pub fn plan_with_inputs(
     options: &PlanOptions,
     inputs: &PlanInputs,
 ) -> Result<FloorplanResult, PlanError> {
+    plan_with_retry_ceiling(
+        state,
+        options,
+        inputs,
+        options.usage_limit.max(MAX_USAGE_LIMIT),
+    )
+}
+
+/// Plan without relaxing the requested utilization limit on infeasibility.
+///
+/// This is intended for design-space exploration, where every candidate must
+/// represent a distinct, exact resource cap.
+pub fn plan_with_inputs_at_usage_limit(
+    state: &WorkState,
+    options: &PlanOptions,
+    inputs: &PlanInputs,
+) -> Result<FloorplanResult, PlanError> {
+    plan_with_retry_ceiling(state, options, inputs, options.usage_limit)
+}
+
+fn plan_with_retry_ceiling(
+    state: &WorkState,
+    options: &PlanOptions,
+    inputs: &PlanInputs,
+    retry_ceiling: f64,
+) -> Result<FloorplanResult, PlanError> {
     options.validate()?;
     let part_num = state.flow.part_num.as_deref().ok_or(PlanError::NoPartNum)?;
     let device = select_device(part_num)?;
@@ -184,15 +210,15 @@ pub fn plan_with_inputs(
         mip_gap: None,
         mip_gap_abs: None,
     };
-    let mut assignment = match options.partition_strategy {
-        PartitionStrategy::Auto => floorplan(&graph, &device, options.usage_limit, &solver, &opts)?,
-        PartitionStrategy::Flat => {
-            floorplan_flat(&graph, &device, options.usage_limit, &solver, &opts)?
-        }
-        PartitionStrategy::MultiLevel => {
-            floorplan_multilevel(&graph, &device, options.usage_limit, &solver, &opts)?
-        }
-    };
+    let mut assignment = floorplan_with_strategy(
+        &graph,
+        &device,
+        options.usage_limit,
+        retry_ceiling,
+        options.partition_strategy,
+        &solver,
+        &opts,
+    )?;
     let routes = plan_routes(
         &graph,
         &assignment.regions,
@@ -207,7 +233,7 @@ pub fn plan_with_inputs(
         &assignment.slot_usage,
         &routes,
         &device,
-        options.usage_limit.max(partition::ilp::MAX_USAGE_LIMIT),
+        retry_ceiling,
     )?;
     graph.materialize_co_locations(&mut assignment.regions)?;
     graph.remove_transient_regions(&mut assignment.regions);

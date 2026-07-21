@@ -63,6 +63,7 @@ struct PlacementConstraints {
 #[derive(Debug, Clone)]
 struct PlacementConfig {
     usage_limit: f64,
+    retry_ceiling: f64,
     strategy: PartitionStrategy,
     constraints: PlacementConstraints,
 }
@@ -71,6 +72,7 @@ impl Default for PlacementConfig {
     fn default() -> Self {
         Self {
             usage_limit: DEFAULT_USAGE_LIMIT,
+            retry_ceiling: MAX_USAGE_LIMIT,
             strategy: PartitionStrategy::Auto,
             constraints: PlacementConstraints::default(),
         }
@@ -132,13 +134,12 @@ pub fn floorplan(
     solver: &dyn Solver,
     opts: &SolveOpts,
 ) -> Result<Assignment, IlpError> {
-    floorplan_with_config(
+    floorplan_with_strategy(
         graph,
         device,
-        &PlacementConfig {
-            usage_limit: base_usage_limit,
-            ..PlacementConfig::default()
-        },
+        base_usage_limit,
+        base_usage_limit.max(MAX_USAGE_LIMIT),
+        PartitionStrategy::Auto,
         solver,
         opts,
     )
@@ -152,14 +153,12 @@ pub fn floorplan_flat(
     solver: &dyn Solver,
     opts: &SolveOpts,
 ) -> Result<Assignment, IlpError> {
-    floorplan_with_config(
+    floorplan_with_strategy(
         graph,
         device,
-        &PlacementConfig {
-            usage_limit: base_usage_limit,
-            strategy: PartitionStrategy::Flat,
-            constraints: PlacementConstraints::default(),
-        },
+        base_usage_limit,
+        base_usage_limit.max(MAX_USAGE_LIMIT),
+        PartitionStrategy::Flat,
         solver,
         opts,
     )
@@ -173,12 +172,34 @@ pub fn floorplan_multilevel(
     solver: &dyn Solver,
     opts: &SolveOpts,
 ) -> Result<Assignment, IlpError> {
+    floorplan_with_strategy(
+        graph,
+        device,
+        base_usage_limit,
+        base_usage_limit.max(MAX_USAGE_LIMIT),
+        PartitionStrategy::MultiLevel,
+        solver,
+        opts,
+    )
+}
+
+/// Plan with an explicit schedule and utilization retry ceiling.
+pub(crate) fn floorplan_with_strategy(
+    graph: &FloorGraph,
+    device: &Device,
+    base_usage_limit: f64,
+    retry_ceiling: f64,
+    strategy: PartitionStrategy,
+    solver: &dyn Solver,
+    opts: &SolveOpts,
+) -> Result<Assignment, IlpError> {
     floorplan_with_config(
         graph,
         device,
         &PlacementConfig {
             usage_limit: base_usage_limit,
-            strategy: PartitionStrategy::MultiLevel,
+            retry_ceiling,
+            strategy,
             constraints: PlacementConstraints::default(),
         },
         solver,
@@ -252,6 +273,15 @@ pub fn select_strategy(device: &Device, edge_count: usize) -> PartitionStrategy 
 
 fn validate_config(config: &PlacementConfig) -> Result<(), IlpError> {
     validate_limit("base", "all regions", config.usage_limit, false)?;
+    validate_limit("retry ceiling", "all regions", config.retry_ceiling, false)?;
+    if config.retry_ceiling < config.usage_limit {
+        return Err(IlpError::InvalidLimit {
+            kind: "retry ceiling",
+            region: "all regions".to_string(),
+            value: config.retry_ceiling,
+            range: "base limit <= ceiling <= 1",
+        });
+    }
     for (kind, limits) in [
         ("minimum", &config.constraints.min_resource_limits),
         ("maximum", &config.constraints.max_resource_limits),
@@ -321,7 +351,7 @@ fn solve_iteration(
     solver: &dyn Solver,
     opts: &SolveOpts,
 ) -> Result<BTreeMap<String, Coor>, IlpError> {
-    let retry_ceiling = config.usage_limit.max(MAX_USAGE_LIMIT);
+    let retry_ceiling = config.retry_ceiling;
     let mut usage_limit = config.usage_limit;
 
     loop {
@@ -1715,6 +1745,47 @@ mod tests {
                 Some(&Coor::slot(0, 0).region_name())
             );
         }
+    }
+
+    #[test]
+    fn exact_usage_limit_disables_infeasibility_retries() {
+        let graph = vadd_floor_graph();
+        let device = select_device("u280").expect("u280");
+
+        let ordinary_solver = StatusSolver::new(LpStatus::Infeasible);
+        assert!(matches!(
+            floorplan_flat(
+                &graph,
+                &device,
+                DEFAULT_USAGE_LIMIT,
+                &ordinary_solver,
+                &SolveOpts::default(),
+            ),
+            Err(IlpError::Infeasible(limit)) if limit == MAX_USAGE_LIMIT
+        ));
+        assert!(
+            ordinary_solver.calls.load(Ordering::Relaxed) > 1,
+            "ordinary floorplanning must retain utilization retries",
+        );
+
+        let exact_solver = StatusSolver::new(LpStatus::Infeasible);
+        assert!(matches!(
+            floorplan_with_strategy(
+                &graph,
+                &device,
+                DEFAULT_USAGE_LIMIT,
+                DEFAULT_USAGE_LIMIT,
+                PartitionStrategy::Flat,
+                &exact_solver,
+                &SolveOpts::default(),
+            ),
+            Err(IlpError::Infeasible(limit)) if limit == DEFAULT_USAGE_LIMIT
+        ));
+        assert_eq!(
+            exact_solver.calls.load(Ordering::Relaxed),
+            1,
+            "an exact DSE candidate must perform only its requested solve",
+        );
     }
 
     #[test]
