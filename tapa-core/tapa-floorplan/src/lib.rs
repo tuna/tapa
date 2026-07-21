@@ -19,6 +19,7 @@
 //! - `xdc` — pblock/anchor XDC emission from a `FloorplanResult`.
 
 pub mod device;
+pub mod dse;
 pub mod graph;
 pub mod partition;
 pub mod pipeline;
