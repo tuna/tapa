@@ -462,16 +462,6 @@ TAPA_DEFINE_MMAPS(read_write);
 namespace internal {
 
 template <typename T>
-struct accessor<async_mmap<T>, mmap<T>&> {
-  [[deprecated("please use async_mmap<T>& in formal parameters")]]  //
-  static async_mmap<T>
-  access(mmap<T>& arg, bool) {
-    LOG_FIRST_N(ERROR, 1) << "please use async_mmap<T>& in formal parameters";
-    return async_mmap<T>::schedule(arg);
-  }
-};
-
-template <typename T>
 struct accessor<async_mmap<T>&, mmap<T>&> {
   static async_mmap<T> access(mmap<T>& arg, bool) {
     return async_mmap<T>::schedule(arg);
@@ -481,16 +471,6 @@ struct accessor<async_mmap<T>&, mmap<T>&> {
 template <typename T, uint64_t S>
 struct accessor<mmap<T>, mmaps<T, S>&> {
   static mmap<T> access(mmaps<T, S>& arg, bool) { return arg.access(); }
-};
-
-template <typename T, uint64_t S>
-struct accessor<async_mmap<T>, mmaps<T, S>&> {
-  [[deprecated("please use async_mmap<T>& in formal parameters")]]  //
-  static async_mmap<T>
-  access(mmaps<T, S>& arg, bool) {
-    LOG_FIRST_N(ERROR, 1) << "please use async_mmap<T>& in formal parameters";
-    return async_mmap<T>::schedule(arg.access());
-  }
 };
 
 template <typename T, uint64_t S>

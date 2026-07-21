@@ -49,11 +49,6 @@ void reschedule_this_thread() {
 #include <boost/coroutine2/segmented_stack.hpp>
 #include <boost/thread/condition_variable.hpp>
 
-#if TAPA_ENABLE_STACKTRACE
-#include <boost/algorithm/string/predicate.hpp>
-#include <boost/stacktrace.hpp>
-#endif  // TAPA_ENABLE_STACKTRACE
-
 using std::function;
 using std::string;
 using std::unordered_map;
@@ -84,7 +79,7 @@ namespace {
 
 thread_local pull_type* current_handle = nullptr;
 thread_local bool debug = false;
-mutex debug_mtx;  // Print stacktrace one-by-one.
+mutex debug_mtx;  // Serialize debug logging across threads.
 
 }  // namespace
 
@@ -92,27 +87,6 @@ void yield(const string& msg) {
   if (debug) {
     unique_lock l(debug_mtx);
     LOG(INFO) << msg;
-#if TAPA_ENABLE_STACKTRACE
-    using boost::algorithm::ends_with;
-    using boost::algorithm::starts_with;
-    for (auto& frame : boost::stacktrace::stacktrace()) {
-      const auto line = frame.source_line();
-      const auto file = frame.source_file();
-      auto name = frame.name();
-      if (line == 0 || file == __FILE__ ||
-          // Ignore STL functions.
-          starts_with(name, "void std::") || starts_with(name, "std::") ||
-          // Ignore TAPA channel functions.
-          ends_with(file, "/tapa/mmap.h") ||
-          ends_with(file, "/tapa/stream.h")) {
-        continue;
-      }
-      name = name.substr(0, name.find('('));
-      const auto space_pos = name.find(' ');
-      if (space_pos != string::npos) name = name.substr(space_pos + 1);
-      LOG(INFO) << "  in " << name << "(...) from " << file << ":" << line;
-    }
-#endif  // TAPA_ENABLE_STACKTRACE
   }
   if (current_handle == nullptr) {
     reschedule_this_thread();

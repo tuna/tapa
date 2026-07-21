@@ -152,7 +152,3 @@ A successful run prints the application's correctness result (e.g., `PASS!`) aft
 ## Further reading
 
 [Parallel RTL Emulation](../howto/parallel-rtl-emulation.md) in the How-To Guides covers the full API reference, runtime flags, and additional invocation patterns.
-
----
-
-**Next step:** [Lab 6: Floorplan & DSE](lab-06-floorplan.md)

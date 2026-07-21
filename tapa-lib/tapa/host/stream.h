@@ -738,8 +738,10 @@ class streams : public internal::unbound_streams<T, S> {
 
 namespace internal {
 
-// TODO: Remove when all staging builds pass. This is not needed with CWG2518,
-// but older compilers do not implement it.
+// Makes the static_asserts below dependent on the template parameter so
+// they only fire on instantiation. CWG2518 would allow plain
+// `static_assert(false)`, but the staging matrix includes compilers too
+// old to implement it.
 template <typename T>
 constexpr bool dependent_false() {
   return false;

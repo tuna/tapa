@@ -35,7 +35,6 @@
 - [Lab 3: Migrating from Vitis HLS](tutorials/lab-03-vitis-hls.md)
 - [Lab 4: Custom RTL Modules](tutorials/lab-04-custom-rtl.md)
 - [Lab 5: Parallel RTL Emulation](tutorials/lab-05-parallel-cosim.md)
-- [Lab 6: Floorplan & DSE](tutorials/lab-06-floorplan.md)
 - [Examples Catalog](tutorials/examples-catalog.md)
 
 # Troubleshooting
