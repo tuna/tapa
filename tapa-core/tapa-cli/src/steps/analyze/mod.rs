@@ -151,7 +151,14 @@ pub fn run(args: &AnalyzeArgs, ctx: &CliContext) -> Result<()> {
         ctx.clang_format_quota_in_bytes,
     )?;
     let target_str = args.target.as_str();
-    let stdout = run_tapacc(&tapacc, &flatten_files, &args.top, &all_cflags, target_str)?;
+    let stdout = run_tapacc(
+        &tapacc,
+        &flatten_files,
+        &args.top,
+        &all_cflags,
+        target_str,
+        work_dir,
+    )?;
 
     // Persist the raw bytes first, so a `tapacc` output that fails the parse
     // below is still on disk for inspection.
