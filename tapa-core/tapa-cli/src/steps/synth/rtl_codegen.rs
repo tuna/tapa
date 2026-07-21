@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 use tapa_codegen::rtl_state::TopologyWithRtl;
 use tapa_codegen::{generate_rtl, support_assets::VerilogAssets};
-use tapa_ir::{Design, SynthTarget};
+use tapa_ir::{Design, FloorplanResult, SynthTarget};
 use tapa_rtl::VerilogModule;
 
 use crate::error::{CliError, Result};
@@ -21,12 +21,14 @@ pub fn generate_rtl_tree(
     work_dir: &Path,
     design: &Design,
     hdl_inputs: &TaskHdlInputs,
+    floorplan: Option<&FloorplanResult>,
 ) -> Result<Vec<PathBuf>> {
     let rtl_dir = work_dir.join("rtl");
     fs::create_dir_all(&rtl_dir)?;
     let mut written = write_verilog_support_assets(&rtl_dir)?;
 
     let mut state = TopologyWithRtl::new(design.clone());
+    state.floorplan = floorplan.cloned();
 
     for (task_name, files) in hdl_inputs {
         let Some(module_path) = pick_top_verilog(files, task_name) else {
@@ -181,8 +183,8 @@ mod tests {
     #[test]
     fn generate_rtl_tree_copies_verilog_support_assets() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let written =
-            generate_rtl_tree(dir.path(), &vadd_design(), &TaskHdlInputs::new()).expect("generate");
+        let written = generate_rtl_tree(dir.path(), &vadd_design(), &TaskHdlInputs::new(), None)
+            .expect("generate");
 
         let rtl_dir = dir.path().join("rtl");
         let fifo = fs::read_to_string(rtl_dir.join("fifo.v")).expect("fifo.v");
@@ -250,7 +252,7 @@ mod tests {
         let top_rtl = Utf8PathBuf::from_path_buf(top_rtl).expect("UTF-8 path");
         let hdl_inputs = TaskHdlInputs::from_iter([("VecAdd".to_string(), vec![top_rtl])]);
 
-        let written = generate_rtl_tree(dir.path(), &design, &hdl_inputs).expect("generate");
+        let written = generate_rtl_tree(dir.path(), &design, &hdl_inputs, None).expect("generate");
         let template_path = dir.path().join("template/Add_Upper.v");
         let placeholder_path = dir.path().join("rtl/Add_Upper.v");
         let template = fs::read_to_string(&template_path).expect("author template");

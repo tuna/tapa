@@ -2,6 +2,7 @@
 
 use crate::error::CodegenError;
 use crate::rtl_state::TopologyWithRtl;
+use tapa_ir::{CrossingKind, FloorplanResult};
 use tapa_protocol::{
     FIFO_READ_PORTS, FIFO_WRITE_PORTS, HANDSHAKE_CLK, HANDSHAKE_RST, ISTREAM_SUFFIXES,
     OSTREAM_SUFFIXES, STREAM_DATA_SUFFIXES, STREAM_PORT_DIRECTION,
@@ -9,51 +10,83 @@ use tapa_protocol::{
 use tapa_rtl::builder::{ContinuousAssign, Expr, ModuleInstance, ParamArg, PortArg};
 use tapa_rtl::module::sanitize_array_name;
 
-/// Build a FIFO module instance with WIDTH and DEPTH parameters.
-///
-/// The FIFO module has internal port names like `if_dout`, `if_read`, etc.
-/// The connection side uses stream suffix naming: `{name}_dout`, `{name}_read`.
-/// This matches how children and `connect_fifos` declare wires.
-pub fn build_fifo_instance(name: &str, rst: Expr, width: Expr, depth: u32) -> ModuleInstance {
-    let name = sanitize_array_name(name);
-    let addr_width = if depth <= 1 {
+/// The `ADDR_WIDTH` a FIFO of `depth` entries needs: `ceil(log2(depth))`, min 1.
+fn fifo_addr_width(depth: u32) -> u64 {
+    if depth <= 1 {
         1
     } else {
-        u64::from(depth - 1).ilog2() + 1
-    };
+        u64::from((depth - 1).ilog2() + 1)
+    }
+}
+
+/// The 10 `clk`/`reset`/`if_*` port connections a `fifo` (and, identically, a
+/// `relay_station`) instance takes. The connection side uses stream-suffix
+/// naming — `{name}_dout`, `{name}_read`, … — matching how children and
+/// `connect_fifos` declare wires.
+fn fifo_port_args(name: &str, rst: Expr) -> Vec<PortArg> {
+    let mut ports = vec![
+        PortArg::new("clk", Expr::ident(HANDSHAKE_CLK)),
+        PortArg::new("reset", rst),
+    ];
+    // `if_*` module ports strip the `if` prefix to name the wire; the `_ce`
+    // enables are tied high.
+    for port_name in FIFO_READ_PORTS.iter().chain(FIFO_WRITE_PORTS) {
+        let wire_suffix = port_name.strip_prefix("if").unwrap_or(port_name);
+        let expr = if *port_name == "if_read_ce" || *port_name == "if_write_ce" {
+            Expr::lit("1'b1")
+        } else {
+            Expr::ident(format!("{name}{wire_suffix}"))
+        };
+        ports.push(PortArg::new(*port_name, expr));
+    }
+    ports
+}
+
+/// Build a FIFO module instance with WIDTH and DEPTH parameters.
+pub fn build_fifo_instance(name: &str, rst: Expr, width: Expr, depth: u32) -> ModuleInstance {
+    let name = sanitize_array_name(name);
     ModuleInstance::new("fifo", format!("{name}_fifo"))
         .with_params(vec![
             ParamArg::new("DATA_WIDTH", width),
-            ParamArg::new("ADDR_WIDTH", Expr::int(u64::from(addr_width))),
+            ParamArg::new("ADDR_WIDTH", Expr::int(fifo_addr_width(depth))),
             ParamArg::new("DEPTH", Expr::int(u64::from(depth))),
         ])
-        .with_ports({
-            let mut ports = vec![
-                PortArg::new("clk", Expr::ident(HANDSHAKE_CLK)),
-                PortArg::new("reset", rst),
-            ];
-            // FIFO_READ_PORTS are if_* names; strip "if" prefix for wire names
-            // if_dout -> {name}_dout, if_empty_n -> {name}_empty_n, etc.
-            for port_name in FIFO_READ_PORTS {
-                let wire_suffix = port_name.strip_prefix("if").unwrap_or(port_name);
-                let expr = if *port_name == "if_read_ce" {
-                    Expr::lit("1'b1")
-                } else {
-                    Expr::ident(format!("{name}{wire_suffix}"))
-                };
-                ports.push(PortArg::new(*port_name, expr));
-            }
-            for port_name in FIFO_WRITE_PORTS {
-                let wire_suffix = port_name.strip_prefix("if").unwrap_or(port_name);
-                let expr = if *port_name == "if_write_ce" {
-                    Expr::lit("1'b1")
-                } else {
-                    Expr::ident(format!("{name}{wire_suffix}"))
-                };
-                ports.push(PortArg::new(*port_name, expr));
-            }
-            ports
-        })
+        .with_ports(fifo_port_args(&name, rst))
+}
+
+/// Build a `relay_station` in place of a plain `fifo` for a cross-slot stream.
+///
+/// Ports are identical to a `fifo`; `LEVEL` sets the number of pipeline stages.
+/// The module grows its own buffer internally
+/// (`REAL_DEPTH = LEVEL*2 + DEPTH + 4`), so `DEPTH` stays the *original* value
+/// (pre-growing would double-grow) and `ADDR_WIDTH` is inert (the module
+/// recomputes `REAL_ADDR_WIDTH`).
+pub fn build_relay_station_instance(
+    name: &str,
+    rst: Expr,
+    width: Expr,
+    depth: u32,
+    level: u32,
+) -> ModuleInstance {
+    let name = sanitize_array_name(name);
+    ModuleInstance::new("relay_station", format!("{name}_fifo"))
+        .with_params(vec![
+            ParamArg::new("DATA_WIDTH", width),
+            ParamArg::new("ADDR_WIDTH", Expr::int(fifo_addr_width(depth))),
+            ParamArg::new("DEPTH", Expr::int(u64::from(depth))),
+            ParamArg::new("LEVEL", Expr::int(u64::from(level))),
+            ParamArg::new("CONNECT", Expr::int(1)),
+        ])
+        .with_ports(fifo_port_args(&name, rst))
+}
+
+/// The pipeline `level` if `fifo_name` is a floorplanned cross-slot stream.
+fn stream_crossing_level(floorplan: Option<&FloorplanResult>, fifo_name: &str) -> Option<u32> {
+    floorplan?
+        .crossings
+        .iter()
+        .find(|c| c.kind == CrossingKind::Stream && c.link == fifo_name)
+        .map(|c| c.level)
 }
 
 /// Generate wire assignments for an external FIFO passthrough.
@@ -206,14 +239,25 @@ pub(crate) fn instantiate_fifos(
                 .as_ref()
                 .ok_or_else(|| CodegenError::FifoWidthUnresolved(fifo_name.clone()))?;
             let width = resolve_fifo_width(state, producer, &fifo_name)?;
-            let fifo_inst = build_fifo_instance(
-                &fifo_name,
-                Expr::ident(HANDSHAKE_RST),
-                Expr::int(u64::from(width)),
-                depth,
-            );
+            // A floorplanned cross-slot stream becomes a pipelined relay
+            // station; everything else stays a plain FIFO.
+            let inst = match stream_crossing_level(state.floorplan.as_ref(), &fifo_name) {
+                Some(level) => build_relay_station_instance(
+                    &fifo_name,
+                    Expr::ident(HANDSHAKE_RST),
+                    Expr::int(u64::from(width)),
+                    depth,
+                    level,
+                ),
+                None => build_fifo_instance(
+                    &fifo_name,
+                    Expr::ident(HANDSHAKE_RST),
+                    Expr::int(u64::from(width)),
+                    depth,
+                ),
+            };
             if let Some(mm) = state.module_map.get_mut(task_name) {
-                mm.add_instance(fifo_inst);
+                mm.add_instance(inst);
             }
         } else {
             // External FIFO: wire assigns if internal/external names differ

@@ -6,7 +6,7 @@
 use std::collections::BTreeMap;
 
 use tapa_ir::task::TaskLevel;
-use tapa_ir::Design;
+use tapa_ir::{Design, FloorplanResult};
 use tapa_rtl::module::sanitize_array_name;
 use tapa_rtl::mutation::MutableModule;
 use tapa_rtl::VerilogModule;
@@ -168,6 +168,10 @@ impl MMapConnection {
 pub struct TopologyWithRtl {
     /// The design model.
     pub design: Design,
+    /// The floorplan, when the design has been floorplanned. Its presence
+    /// switches codegen onto the pipelined path (relay stations on cross-slot
+    /// streams, distributed FSM, region pragmas).
+    pub floorplan: Option<FloorplanResult>,
     /// Parsed HLS Verilog modules, keyed by task name.
     pub module_map: BTreeMap<String, MutableModule>,
     /// FSM modules for upper-level tasks, keyed by task name.
@@ -183,6 +187,7 @@ impl TopologyWithRtl {
     pub fn new(design: Design) -> Self {
         Self {
             design,
+            floorplan: None,
             module_map: BTreeMap::new(),
             fsm_modules: BTreeMap::new(),
             generated_files: BTreeMap::new(),

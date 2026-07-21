@@ -68,7 +68,12 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
             apply_hls_metrics(task, &out.csynth);
         }
     }
-    generate_rtl_tree(&ctx.work_dir, &state.graph, &hdl_inputs)?;
+    generate_rtl_tree(
+        &ctx.work_dir,
+        &state.graph,
+        &hdl_inputs,
+        state.floorplan.as_ref(),
+    )?;
 
     // Per-task OOC Vivado synth → hierarchical utilization → `total_area`.
     // When disabled (the default), reports and topology consumers derive

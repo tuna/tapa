@@ -735,6 +735,97 @@ fn test_generate_rtl_with_fifo() {
 }
 
 #[test]
+fn test_generate_rtl_floorplan_crossing_becomes_relay_station() {
+    use std::collections::BTreeMap;
+    use tapa_ir::{Crossing, CrossingKind, FloorplanResult, PipelineScheme};
+
+    let top = task("top", "upper", |t| {
+        t["tasks"] = serde_json::json!({
+            "producer": [{"args": {"out_data": {"arg": "fifo_0", "cat": "ostream"}}}],
+            "consumer": [{"args": {"in_data": {"arg": "fifo_0", "cat": "istream"}}}]
+        });
+        t["fifos"] = serde_json::json!({
+            "fifo_0": {"depth": 16, "produced_by": ["producer", 0], "consumed_by": ["consumer", 0]}
+        });
+    });
+    let producer = task("producer", "lower", |t| {
+        t["ports"] = serde_json::json!([{"cat": "ostream", "name": "out_data", "type": "float", "width": 32}]);
+    });
+    let consumer = task("consumer", "lower", |t| {
+        t["ports"] = serde_json::json!([{"cat": "istream", "name": "in_data", "type": "float", "width": 32}]);
+    });
+    let prog = design(
+        "top",
+        "xilinx-hls",
+        &[("top", top), ("producer", producer), ("consumer", consumer)],
+    );
+
+    let mut state = TopologyWithRtl::new(prog);
+    // Mark fifo_0 as a cross-slot stream crossing with two pipeline stages.
+    state.floorplan = Some(FloorplanResult {
+        device: "u280".to_string(),
+        grid: (2, 3),
+        regions: BTreeMap::new(),
+        crossings: vec![Crossing {
+            kind: CrossingKind::Stream,
+            link: "fifo_0".to_string(),
+            route: vec!["SLOT_X0Y0".to_string(), "SLOT_X0Y1".to_string()],
+            level: 2,
+            scheme: PipelineScheme::Double,
+            reg_regions: vec!["SLOT_X0Y1".to_string()],
+        }],
+        slot_usage: BTreeMap::new(),
+    });
+    attach_basic_modules(&mut state, &["top"]);
+    state
+        .attach_module(
+            "producer",
+            parse_module(
+                "module producer(\n\
+                 input wire ap_clk,\n\
+                 input wire ap_rst_n,\n\
+                 output wire [31:0] out_data_din,\n\
+                 output wire out_data_write,\n\
+                 input wire out_data_full_n\n\
+                 );\nendmodule",
+            ),
+        )
+        .unwrap();
+    state
+        .attach_module(
+            "consumer",
+            parse_module(
+                "module consumer(\n\
+                 input wire ap_clk,\n\
+                 input wire ap_rst_n,\n\
+                 input wire [31:0] in_data_dout,\n\
+                 input wire in_data_empty_n,\n\
+                 output wire in_data_read\n\
+                 );\nendmodule",
+            ),
+        )
+        .unwrap();
+
+    generate_rtl(&mut state).unwrap();
+
+    let top_v = &state.generated_files["top.v"];
+    assert!(
+        top_v.contains("relay_station"),
+        "a cross-slot stream must become a relay_station, got:\n{top_v}"
+    );
+    assert!(
+        top_v.contains("fifo_0_fifo"),
+        "the relay keeps the FIFO instance name so wiring stays valid, got:\n{top_v}"
+    );
+    assert!(
+        top_v.contains("LEVEL"),
+        "the relay must carry a LEVEL parameter, got:\n{top_v}"
+    );
+    // The original DEPTH (16) is passed, not pre-grown.
+    assert!(top_v.contains("DEPTH"), "DEPTH parameter present");
+}
+
+#[test]
 fn test_generate_rtl_does_not_reemit_lower_modules() {
     let top = task("top", "upper", |t| {
         t["tasks"] = serde_json::json!({"child": [{"args": {}}]});
