@@ -1,0 +1,13 @@
+# Proper nouns and domain acronyms that `clippy::doc_markdown` mistakes for
+# unback-ticked code identifiers. They are product/tool names and hardware
+# terms, not symbols, so back-ticking them would read wrong. `..` keeps
+# clippy's built-in allowlist (OpenGL, TypeScript, …).
+doc-valid-idents = [
+    "AutoBridge",
+    "NoC",
+    "CPLEX",
+    "PuLP",
+    "Vitis",
+    "Verilator",
+    "..",
+]

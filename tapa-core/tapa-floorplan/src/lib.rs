@@ -16,3 +16,5 @@
 //! - `graph`/`partition` — the `FloorGraph` and the floorplan ILP.
 //! - `route`/`pipeline` — inter-slot routing and the pipeline plan.
 //! - `xdc` — pblock/anchor XDC emission from a `FloorplanResult`.
+
+pub mod device;
