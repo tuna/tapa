@@ -118,8 +118,8 @@ pub struct FloorplanResult {
     pub regions: BTreeMap<String, String>,
     /// One entry per pipelined channel.
     pub crossings: Vec<Crossing>,
-    /// Achieved per-slot resource usage, keyed by region tag; for reporting
-    /// and the empty-pblock / over-capacity DRCs.
+    /// Achieved per-slot resource usage, including generated stream pipeline
+    /// storage and registers; keyed by region tag for reporting and DRCs.
     pub slot_usage: BTreeMap<String, Area>,
 }
 

@@ -49,6 +49,10 @@ pub struct Stream {
     pub dst: usize,
     /// Physical stream width: payload + eot + forward and reverse handshake.
     pub width: u32,
+    /// FIFO storage width: payload + eot.
+    pub(crate) data_width: u32,
+    /// Requested FIFO depth before pipeline in-flight capacity is added.
+    pub(crate) depth: u32,
 }
 
 /// A real RTL instance whose area and placement belong to a host vertex.
@@ -232,6 +236,8 @@ impl FloorGraph {
                         src,
                         dst,
                         width: physical_width,
+                        data_width,
+                        depth,
                     });
                     let endpoints = (src.min(dst), src.max(dst));
                     let width = placement_widths.entry(endpoints).or_default();

@@ -35,7 +35,7 @@ use crate::graph::{FloorGraph, GraphError};
 use crate::partition::ilp::{
     floorplan, floorplan_flat, floorplan_multilevel, IlpError, DEFAULT_USAGE_LIMIT,
 };
-use crate::pipeline::plan::{plan_crossings, PipelineError};
+use crate::pipeline::plan::{plan_crossings, realize_slot_usage, PipelineError};
 use crate::solver::{CbcSolver, SolveOpts};
 
 pub use crate::partition::PartitionStrategy;
@@ -160,13 +160,21 @@ pub fn plan(state: &WorkState, options: &PlanOptions) -> Result<FloorplanResult,
         &solver,
         &opts,
     )?;
+    let slot_usage = realize_slot_usage(
+        &graph,
+        &assignment.regions,
+        &assignment.slot_usage,
+        &crossings,
+        &device,
+        options.usage_limit.max(partition::ilp::MAX_USAGE_LIMIT),
+    )?;
 
     Ok(FloorplanResult {
         device: device.key.clone(),
         grid: (device.cols, device.rows),
         regions: assignment.regions,
         crossings,
-        slot_usage: assignment.slot_usage,
+        slot_usage,
     })
 }
 

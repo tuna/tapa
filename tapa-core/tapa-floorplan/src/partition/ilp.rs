@@ -27,7 +27,7 @@ use crate::solver::{
 /// The default utilization and retry envelope for partitioning.
 pub const DEFAULT_USAGE_LIMIT: f64 = 0.7;
 const USAGE_LIMIT_STEP: f64 = 0.02;
-const MAX_USAGE_LIMIT: f64 = 0.95;
+pub(crate) const MAX_USAGE_LIMIT: f64 = 0.95;
 const INTEGRAL_TOLERANCE: f64 = 1e-5;
 
 /// How the device is subdivided into placement iterations.
@@ -465,7 +465,7 @@ fn region_has_hbm(device: &Device, region: &Coor) -> bool {
     })
 }
 
-fn scaled_area(area: Area, limit: f64) -> Area {
+pub(crate) fn scaled_area(area: Area, limit: f64) -> Area {
     Area {
         lut: scaled_amount(area.lut, limit),
         ff: scaled_amount(area.ff, limit),
