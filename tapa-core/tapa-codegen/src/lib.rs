@@ -4,6 +4,7 @@
 //! hybrid mutation API to modify existing HLS modules.
 
 pub mod async_mmap;
+mod axi_pipeline;
 pub mod children;
 pub mod error;
 pub mod fifos;
@@ -125,6 +126,20 @@ fn instrument_upper_task(state: &mut TopologyWithRtl, task_name: &str) -> Result
     for conn in mmap_conns.values() {
         m_axi::validate_mmap_connection(conn)?;
     }
+    let axi_pipeline_plan = if is_top_task {
+        state
+            .floorplan
+            .as_ref()
+            .map(|floorplan| {
+                axi_pipeline::DirectAxiPipelinePlan::from_floorplan(
+                    state.direct_mmap_interfaces(task_name)?,
+                    floorplan,
+                )
+            })
+            .transpose()?
+    } else {
+        None
+    };
 
     if let Some(mm) = state.module_map.get_mut(task_name) {
         mm.cleanup_hls_artifacts();
@@ -193,8 +208,13 @@ fn instrument_upper_task(state: &mut TopologyWithRtl, task_name: &str) -> Result
         }
     }
 
-    let is_done_signals =
-        children::generate_child_signals(state, task_name, &mmap_conns, &mmap_slave_map);
+    let is_done_signals = children::generate_child_signals(
+        state,
+        task_name,
+        &mmap_conns,
+        &mmap_slave_map,
+        axi_pipeline_plan.as_ref(),
+    );
 
     fifos::instantiate_fifos(state, task_name)?;
 
@@ -202,6 +222,9 @@ fn instrument_upper_task(state: &mut TopologyWithRtl, task_name: &str) -> Result
 
     // Add M-AXI ports and crossbars (reuse pre-computed mmap connections)
     m_axi::add_m_axi_and_crossbars(state, task_name, &mmap_conns)?;
+    if let Some(plan) = &axi_pipeline_plan {
+        plan.instantiate(state, task_name)?;
+    }
 
     if let Some(fsm_mm) = state.fsm_modules.get_mut(task_name) {
         program::apply_global_fsm(fsm_mm, &is_done_signals);

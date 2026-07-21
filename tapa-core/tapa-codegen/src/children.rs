@@ -151,11 +151,15 @@ pub struct ChildMmapBindings {
     pub slave_indices: BTreeMap<String, usize>,
     pub wire_id_widths: BTreeMap<String, u32>,
     pub child_id_widths: BTreeMap<String, u32>,
+    pub direct_wire_prefixes: BTreeMap<String, String>,
 }
 
 impl ChildMmapBindings {
     pub fn wire_prefix(&self, arg_name: &str) -> String {
-        mmap_wire_prefix(arg_name, &self.slave_indices)
+        self.direct_wire_prefixes
+            .get(arg_name)
+            .cloned()
+            .unwrap_or_else(|| mmap_wire_prefix(arg_name, &self.slave_indices))
     }
 
     pub fn wire_id_width(&self, arg_name: &str) -> Option<u32> {
@@ -463,6 +467,7 @@ pub(crate) fn generate_child_signals(
     task_name: &str,
     mmap_conns: &std::collections::BTreeMap<String, crate::rtl_state::MMapConnection>,
     mmap_slave_map: &std::collections::BTreeMap<(String, String, usize), usize>,
+    axi_pipeline_plan: Option<&crate::axi_pipeline::DirectAxiPipelinePlan>,
 ) -> Vec<String> {
     type ChildEntry = (usize, Option<String>, bool, BTreeMap<String, Arg>);
 
@@ -492,10 +497,8 @@ pub(crate) fn generate_child_signals(
             .get(&child_name)
             .map(|module| module.inner.clone());
         for (idx, explicit_name, is_autorun, args) in entries {
-            let inst_name = explicit_name.map_or_else(
-                || format!("{child_name}_{idx}"),
-                |name| tapa_rtl::module::sanitize_identifier_name(&name),
-            );
+            let logical_inst_name = explicit_name.unwrap_or_else(|| format!("{child_name}_{idx}"));
+            let inst_name = tapa_rtl::module::sanitize_identifier_name(&logical_inst_name);
             let sig = instance_signals::InstanceSignals::new(&inst_name, is_autorun);
 
             // Parent task module: only declare handshake WIRES (not state regs)
@@ -606,8 +609,19 @@ pub(crate) fn generate_child_signals(
 
             // Build per-instance mmap slave index map for crossbar routing
             let mut mmap_bindings = ChildMmapBindings::default();
-            for arg in args.values() {
+            for (child_port, arg) in &args {
                 if arg.cat.is_direct_mmap() {
+                    if let Some(prefix) = axi_pipeline_plan.and_then(|plan| {
+                        plan.child_wire_prefix(&tapa_ir::AxiEndpoint {
+                            instance: logical_inst_name.clone(),
+                            port: child_port.clone(),
+                            top_port: arg.arg.clone(),
+                        })
+                    }) {
+                        mmap_bindings
+                            .direct_wire_prefixes
+                            .insert(arg.arg.clone(), prefix);
+                    }
                     if let Some(&slave_idx) =
                         mmap_slave_map.get(&(arg.arg.clone(), child_name.clone(), idx))
                     {

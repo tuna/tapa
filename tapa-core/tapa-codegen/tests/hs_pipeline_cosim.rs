@@ -10,6 +10,7 @@ use std::process::Command;
 const TESTBENCH: &str = r#"
 #include <verilated.h>
 #include "Vtapa_hs_pipeline.h"
+#include <cstdint>
 #include <vector>
 #include <cstdio>
 
@@ -18,6 +19,15 @@ static Vtapa_hs_pipeline* dut;
 static void posedge() {
     dut->clk = 1; dut->eval();
     dut->clk = 0; dut->eval();
+}
+
+static uint32_t next_random(uint32_t* state) {
+    uint32_t value = *state;
+    value ^= value << 13;
+    value ^= value >> 17;
+    value ^= value << 5;
+    *state = value;
+    return value;
 }
 
 int main(int argc, char** argv) {
@@ -33,7 +43,7 @@ int main(int argc, char** argv) {
     dut->reset = 1;
     for (int i = 0; i < 16; i++) posedge();
     dut->reset = 0;
-    for (int i = 0; i < 8; i++) posedge();
+    for (int i = 0; i < 128 && !dut->if_full_n; i++) posedge();
     dut->eval();
 
     // A one-cycle pulse must spend an edge in Head before it can reach Tail.
@@ -61,21 +71,71 @@ int main(int argc, char** argv) {
         return 5;
     }
 
-    // Clear the directed probe before the sustained backpressure test.
+    // Reset must win over active traffic as well as the item already queued in
+    // Tail.  Leaving write/read asserted on the reset edge catches stale Head
+    // valid/data state after reset is released.
+    const unsigned RESET_POISON = 0xdeadbeefu;
     dut->reset = 1;
-    for (int i = 0; i < 16; i++) posedge();
+    dut->if_write = 1;
+    dut->if_din = RESET_POISON;
+    dut->if_read = 1;
+    posedge();
     dut->reset = 0;
-    for (int i = 0; i < 8; i++) posedge();
+    dut->if_write = 0;
+    dut->if_din = 0;
+    dut->if_read = 0;
     dut->eval();
+    for (int i = 0; i < 128; i++) {
+        if (dut->if_empty_n) {
+            printf("FAIL: Head retained traffic across reset\n");
+            return 6;
+        }
+        posedge();
+    }
+    if (!dut->if_full_n) {
+        printf("FAIL: pipeline did not become ready after traffic reset\n");
+        return 7;
+    }
+
+    // Put an item beyond Head before asserting reset with idle inputs.  For
+    // nonzero BODY_LEVEL this verifies that every Body valid/data register is
+    // flushed rather than shifting a pre-reset item into Tail afterwards.
+    const unsigned BODY_POISON = 0xc001d00du;
+    dut->if_write = 1;
+    dut->if_din = BODY_POISON;
+    dut->eval();
+    posedge();
+    dut->if_write = 0;
+    dut->if_din = 0;
+    dut->eval();
+    posedge();
+    dut->reset = 1;
+    posedge();
+    dut->reset = 0;
+    dut->eval();
+    for (int i = 0; i < 128; i++) {
+        if (dut->if_empty_n) {
+            printf("FAIL: Body retained traffic across reset\n");
+            return 8;
+        }
+        posedge();
+    }
+    if (!dut->if_full_n) {
+        printf("FAIL: pipeline did not become ready after in-flight reset\n");
+        return 9;
+    }
 
     const int N = 500;
     std::vector<unsigned> got;
     int next_write = 0;
-    int read_phase = 0;
+    uint32_t random_state = 0x31415926u;
 
     for (long cyc = 0; cyc < 200000 && (int)got.size() < N; cyc++) {
-        int do_write = (next_write < N) && dut->if_full_n;
-        int do_read  = dut->if_empty_n && (read_phase == 0);
+        uint32_t random_value = next_random(&random_state);
+        int do_write = (next_write < N) && dut->if_full_n &&
+                       ((random_value & 3u) != 0u);
+        int do_read  = dut->if_empty_n &&
+                       (((random_value >> 8) & 3u) == 0u);
 
         dut->if_write = do_write;
         dut->if_din = do_write ? (unsigned)next_write : 0u;
@@ -84,7 +144,6 @@ int main(int argc, char** argv) {
 
         if (do_read) got.push_back((unsigned)dut->if_dout);
         if (do_write) next_write++;
-        read_phase = (read_phase + 1) % 3;
         posedge();
     }
 
@@ -98,7 +157,7 @@ int main(int argc, char** argv) {
             return 2;
         }
     }
-    printf("PASS: %d items relayed in order under backpressure\n", N);
+    printf("PASS: reset flushed traffic and %d randomized items relayed in order\n", N);
     return 0;
 }
 "#;

@@ -849,6 +849,254 @@ fn generate_floorplanned_stream_pipeline(
     state.generated_files["top.v"].clone()
 }
 
+fn direct_axi_endpoint() -> tapa_ir::AxiEndpoint {
+    tapa_ir::AxiEndpoint {
+        instance: "reader#0".to_string(),
+        port: "data".to_string(),
+        top_port: "mem".to_string(),
+    }
+}
+
+fn direct_axi_routes() -> Vec<tapa_ir::PipelineRoute> {
+    use tapa_ir::{
+        AxiChannel, MemoryBank, MemoryKind, PipelineRoute, PipelineScheme, RoutedChannel,
+    };
+
+    let endpoint = direct_axi_endpoint();
+    let bank = MemoryBank {
+        kind: MemoryKind::Hbm,
+        index: 0,
+    };
+    [
+        AxiChannel::ReadAddress,
+        AxiChannel::ReadData,
+        AxiChannel::WriteAddress,
+        AxiChannel::WriteData,
+        AxiChannel::WriteResponse,
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(index, channel)| {
+        let outgoing = matches!(
+            channel,
+            AxiChannel::ReadAddress | AxiChannel::WriteAddress | AxiChannel::WriteData
+        );
+        PipelineRoute {
+            channel: RoutedChannel::Axi {
+                endpoint: endpoint.clone(),
+                bank,
+                channel,
+            },
+            route: if outgoing {
+                vec!["SLOT_X0Y0".to_string(), "SLOT_X1Y0".to_string()]
+            } else {
+                vec!["SLOT_X1Y0".to_string(), "SLOT_X0Y0".to_string()]
+            },
+            scheme: PipelineScheme::Double,
+            reg_regions: (0..index).map(|_| "SLOT_X0Y0".to_string()).collect(),
+        }
+    })
+    .collect()
+}
+
+fn compact_m_axi_child_module_src() -> String {
+    use tapa_protocol::{axi_subport_from_suffix, axi_subport_width, M_AXI_SUFFIXES_COMPACT};
+
+    let mut ports = vec![
+        "input wire ap_clk".to_string(),
+        "input wire ap_rst_n".to_string(),
+        "input wire ap_start".to_string(),
+        "output wire ap_done".to_string(),
+        "output wire ap_idle".to_string(),
+        "output wire ap_ready".to_string(),
+        "input wire [63:0] data_offset".to_string(),
+    ];
+    for suffix in M_AXI_SUFFIXES_COMPACT {
+        let channel_port = suffix.trim_start_matches('_');
+        let output = if channel_port.starts_with("AR")
+            || channel_port.starts_with("AW")
+            || channel_port.starts_with('W')
+        {
+            !channel_port.ends_with("READY")
+        } else {
+            channel_port.ends_with("READY")
+        };
+        let direction = if output { "output" } else { "input" };
+        let width = axi_subport_width(axi_subport_from_suffix(suffix), 32, 64, 3);
+        let width = if width == 1 {
+            String::new()
+        } else {
+            format!(" [{}:0]", width - 1)
+        };
+        ports.push(format!("{direction} wire{width} m_axi_data{suffix}"));
+    }
+    format!("module reader(\n  {}\n);\nendmodule", ports.join(",\n  "))
+}
+
+fn direct_axi_state(routes: Option<Vec<tapa_ir::PipelineRoute>>) -> TopologyWithRtl {
+    use std::collections::BTreeMap;
+    use tapa_ir::FloorplanResult;
+
+    let top = task("top", "upper", |t| {
+        t["ports"] =
+            serde_json::json!([{"cat": "mmap", "name": "mem", "type": "int*", "width": 32}]);
+        t["tasks"] = serde_json::json!({
+            "reader": [{
+                "name": "reader#0",
+                "args": {"data": {"arg": "mem", "cat": "mmap"}}
+            }]
+        });
+    });
+    let reader = task("reader", "lower", |t| {
+        t["ports"] =
+            serde_json::json!([{"cat": "mmap", "name": "data", "type": "int*", "width": 32}]);
+    });
+    let mut state = TopologyWithRtl::new(design(
+        "top",
+        "xilinx-hls",
+        &[("top", top), ("reader", reader)],
+    ));
+    state
+        .attach_module(
+            "top",
+            parse_module(
+                "module top(\n\
+                 input wire ap_clk,\n\
+                 input wire ap_rst_n,\n\
+                 input wire ap_start,\n\
+                 output wire ap_done,\n\
+                 output wire ap_idle,\n\
+                 output wire ap_ready,\n\
+                 input wire [63:0] mem_offset\n\
+                 );\nendmodule",
+            ),
+        )
+        .unwrap();
+    state
+        .attach_module("reader", parse_module(&compact_m_axi_child_module_src()))
+        .unwrap();
+    state.floorplan = routes.map(|routes| FloorplanResult {
+        device: "u280".to_string(),
+        grid: (2, 1),
+        regions: BTreeMap::from([(
+            direct_axi_endpoint().instance,
+            "SLOT_X0Y0_TO_SLOT_X0Y0".to_string(),
+        )]),
+        routes,
+        slot_usage: BTreeMap::new(),
+    });
+    state
+}
+
+#[test]
+fn test_generate_rtl_floorplanned_direct_axi_pipelines_all_five_channels() {
+    let mut state = direct_axi_state(Some(direct_axi_routes()));
+    generate_rtl(&mut state).unwrap();
+    let top_v = &state.generated_files["top.v"];
+
+    assert_eq!(top_v.matches("tapa_hs_pipeline #(").count(), 5, "{top_v}");
+    for name in [
+        "__tapa_axi_mem_ar",
+        "__tapa_axi_mem_r",
+        "__tapa_axi_mem_aw",
+        "__tapa_axi_mem_w",
+        "__tapa_axi_mem_b",
+    ] {
+        assert!(top_v.contains(name), "missing {name}:\n{top_v}");
+    }
+    for body_level in 0..5 {
+        assert!(
+            top_v.contains(&format!(".BODY_LEVEL({body_level})")),
+            "{top_v}"
+        );
+    }
+    assert_eq!(top_v.matches(".DEPTH(2)").count(), 5, "{top_v}");
+    assert!(
+        top_v.contains(".m_axi_data_ARADDR(__tapa_axi_mem_child_ARADDR)"),
+        "child must connect to the pipeline-side wires:\n{top_v}"
+    );
+    assert!(
+        top_v.contains(".if_full_n(__tapa_axi_mem_child_ARREADY)")
+            && top_v.contains(".if_write(__tapa_axi_mem_child_ARVALID)")
+            && top_v.contains(".if_empty_n(m_axi_mem_ARVALID)")
+            && top_v.contains(".if_read(m_axi_mem_ARREADY)"),
+        "AR must flow child to top:\n{top_v}"
+    );
+    assert!(
+        top_v.contains(".if_full_n(m_axi_mem_RREADY)")
+            && top_v.contains(".if_write(m_axi_mem_RVALID)")
+            && top_v.contains(".if_empty_n(__tapa_axi_mem_child_RVALID)")
+            && top_v.contains(".if_read(__tapa_axi_mem_child_RREADY)"),
+        "R must flow top to child:\n{top_v}"
+    );
+    assert!(
+        top_v.contains(
+            ".if_din({__tapa_axi_mem_child_ARADDR, __tapa_axi_mem_child_ARBURST, __tapa_axi_mem_child_ARID, __tapa_axi_mem_child_ARLEN, __tapa_axi_mem_child_ARSIZE})"
+        ),
+        "AR payload order must be stable and exclude VALID/READY:\n{top_v}"
+    );
+    assert!(
+        top_v.contains("output wire [2:0] m_axi_mem_ARID"),
+        "{top_v}"
+    );
+    for expected in [
+        "assign m_axi_mem_AWLOCK = 1'b0",
+        "assign m_axi_mem_AWCACHE = 4'b0011",
+        "assign m_axi_mem_AWPROT = 3'b000",
+        "assign m_axi_mem_AWQOS = 4'b0000",
+        "assign m_axi_mem_ARLOCK = 1'b0",
+        "assign m_axi_mem_ARCACHE = 4'b0011",
+        "assign m_axi_mem_ARPROT = 3'b000",
+        "assign m_axi_mem_ARQOS = 4'b0000",
+    ] {
+        assert!(top_v.contains(expected), "missing '{expected}':\n{top_v}");
+    }
+}
+
+#[test]
+fn test_generate_rtl_co_located_direct_axi_preserves_original_wiring() {
+    let mut without_floorplan = direct_axi_state(None);
+    generate_rtl(&mut without_floorplan).unwrap();
+    let mut co_located = direct_axi_state(Some(Vec::new()));
+    generate_rtl(&mut co_located).unwrap();
+
+    assert_eq!(
+        without_floorplan.generated_files["top.v"], co_located.generated_files["top.v"],
+        "a co-located endpoint must preserve the direct RTL byte-for-byte"
+    );
+}
+
+#[test]
+fn test_generate_rtl_rejects_incomplete_or_inconsistent_direct_axi_routes() {
+    let mut cases = Vec::new();
+
+    let mut partial = direct_axi_routes();
+    partial.pop();
+    cases.push((partial, "partial AXI route set"));
+
+    let mut duplicate = direct_axi_routes();
+    duplicate.push(duplicate[0].clone());
+    cases.push((duplicate, "more than one ReadAddress route"));
+
+    let mut unknown = direct_axi_routes();
+    if let tapa_ir::RoutedChannel::Axi { endpoint, .. } = &mut unknown[0].channel {
+        endpoint.top_port = "other".to_string();
+    }
+    cases.push((unknown, "unknown direct M-AXI endpoint"));
+
+    let mut reversed = direct_axi_routes();
+    reversed[0].route.reverse();
+    cases.push((reversed, "route must start at child slot"));
+
+    for (routes, expected) in cases {
+        let error = generate_rtl(&mut direct_axi_state(Some(routes))).unwrap_err();
+        assert!(
+            error.to_string().contains(expected),
+            "expected '{expected}', got {error}"
+        );
+    }
+}
+
 #[test]
 fn test_generate_rtl_does_not_reemit_lower_modules() {
     let top = task("top", "upper", |t| {

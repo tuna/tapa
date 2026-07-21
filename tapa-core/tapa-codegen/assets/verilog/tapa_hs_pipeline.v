@@ -61,6 +61,7 @@ module tapa_hs_pipeline #(
     .DATA_WIDTH(DATA_WIDTH)
   ) TAPA_HS_HEAD (
     .clk(clk),
+    .reset(reset),
     .if_full_n(head_gate_ready),
     .if_write(head_gate_valid),
     .if_din(head_gate_data),
@@ -77,6 +78,7 @@ module tapa_hs_pipeline #(
         .DATA_WIDTH(DATA_WIDTH)
       ) TAPA_HS_BODY_REG (
         .clk(clk),
+        .reset(reset),
         .if_full_n(body_ready[i]),
         .if_write(body_valid[i]),
         .if_din(body_data[i]),
@@ -130,6 +132,7 @@ module tapa_hs_pipeline_head #(
   parameter DATA_WIDTH = 32
 ) (
   input wire clk,
+  input wire reset,
   output wire                  if_full_n,
   input  wire                  if_write,
   input  wire [DATA_WIDTH-1:0] if_din,
@@ -142,9 +145,15 @@ module tapa_hs_pipeline_head #(
   (* keep = "true" *) reg [DATA_WIDTH-1:0] if_din_reg;
 
   always @(posedge clk) begin
-    if_read_reg <= if_read;
-    if_write_reg <= if_write;
-    if_din_reg <= if_din;
+    if (reset) begin
+      if_read_reg <= 1'b0;
+      if_write_reg <= 1'b0;
+      if_din_reg <= {DATA_WIDTH{1'b0}};
+    end else begin
+      if_read_reg <= if_read;
+      if_write_reg <= if_write;
+      if_din_reg <= if_din;
+    end
   end
 
   assign if_full_n = if_read_reg;
@@ -156,6 +165,7 @@ module tapa_hs_pipeline_body #(
   parameter DATA_WIDTH = 32
 ) (
   input wire clk,
+  input wire reset,
   output wire                  if_full_n,
   input  wire                  if_write,
   input  wire [DATA_WIDTH-1:0] if_din,
@@ -168,9 +178,15 @@ module tapa_hs_pipeline_body #(
   (* keep = "true" *) reg [DATA_WIDTH-1:0] if_dout_reg;
 
   always @(posedge clk) begin
-    if_full_n_reg <= if_read;
-    if_empty_n_reg <= if_write;
-    if_dout_reg <= if_din;
+    if (reset) begin
+      if_full_n_reg <= 1'b0;
+      if_empty_n_reg <= 1'b0;
+      if_dout_reg <= {DATA_WIDTH{1'b0}};
+    end else begin
+      if_full_n_reg <= if_read;
+      if_empty_n_reg <= if_write;
+      if_dout_reg <= if_din;
+    end
   end
 
   assign if_full_n = if_full_n_reg;
