@@ -33,19 +33,13 @@ pub(super) fn render_vitis_script(
             let period = crate::util::parse_clock_period_ns(clock).map_err(|message| {
                 CliError::InvalidArg(format!("cannot emit bitstream script: invalid {message}"))
             })?;
-            let frequency = (1000.0_f64 / period).round();
-            if !frequency.is_finite() || !(1.0..=f64::from(u32::MAX)).contains(&frequency) {
-                return Err(CliError::InvalidArg(format!(
-                    "cannot emit bitstream script: clock period `{clock}` ns rounds to an \
-                     unsupported target frequency `{frequency}` MHz"
-                )));
-            }
-            #[allow(
-                clippy::cast_possible_truncation,
-                clippy::cast_sign_loss,
-                reason = "the finite positive value was range-checked against u32 above"
-            )]
-            Ok((frequency as u32).to_string())
+            tapa_xilinx::target_frequency_mhz(period)
+                .map(|frequency| frequency.to_string())
+                .map_err(|error| {
+                    CliError::InvalidArg(format!(
+                        "cannot emit bitstream script for clock period `{clock}` ns: {error}"
+                    ))
+                })
         })
         .transpose()?;
 
@@ -176,9 +170,24 @@ mod tests {
         );
         assert!(
             script.contains("TARGET_FREQUENCY=300"),
-            "expected round(1000/3.33)=300, got: {script}",
+            "expected floor(1000/3.33)=300, got: {script}",
         );
         assert!(script.contains("--kernel_frequency"));
+    }
+
+    #[test]
+    fn target_frequency_never_rounds_above_the_requested_period() {
+        let clock = (1000.0_f64 / 300.75).to_string();
+        let script = render(
+            "Top",
+            Path::new("/tmp/a.xo"),
+            None,
+            Some(&clock),
+            None,
+            None,
+        );
+        assert!(script.contains("TARGET_FREQUENCY=300"), "got: {script}");
+        assert!(!script.contains("TARGET_FREQUENCY=301"), "got: {script}");
     }
 
     #[test]
