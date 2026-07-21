@@ -8,6 +8,9 @@ name = "tapa"
 path = "src/main.rs"
 
 [dependencies]
+const-str = { workspace = true }
+hex = { workspace = true }
+which = { workspace = true }
 camino = { workspace = true }
 clap = { workspace = true }
 env_logger = { workspace = true }

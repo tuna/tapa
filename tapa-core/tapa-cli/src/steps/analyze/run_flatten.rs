@@ -4,7 +4,6 @@
 //! preprocessed result to `<work_dir>/flatten/flatten-<digest>-<basename>`
 //! and returning the list of generated paths.
 
-use std::fmt::Write as _;
 use std::fs;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
@@ -102,24 +101,13 @@ fn find_clang_format() -> Option<PathBuf> {
     CACHED
         .get_or_init(|| {
             for v in (5u32..=20).rev() {
-                if let Some(p) = which_in_path(&format!("clang-format-{v}")) {
+                if let Ok(p) = which::which_global(format!("clang-format-{v}")) {
                     return Some(p);
                 }
             }
-            which_in_path("clang-format")
+            which::which_global("clang-format").ok()
         })
         .clone()
-}
-
-fn which_in_path(name: &str) -> Option<PathBuf> {
-    let path = std::env::var_os("PATH")?;
-    for dir in std::env::split_paths(&path) {
-        let candidate = dir.join(name);
-        if candidate.is_file() {
-            return Some(candidate);
-        }
-    }
-    None
 }
 
 /// Pipe `code` through `clang-format`, returning the formatted bytes.
@@ -150,12 +138,7 @@ fn run_clang_format(clang_format: &Path, code: &[u8]) -> Result<Vec<u8>> {
 pub(super) fn sha256_truncated_hex(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
-    let digest = hasher.finalize();
-    let mut s = String::with_capacity(8);
-    for byte in digest.iter().take(4) {
-        let _ = write!(s, "{byte:02x}");
-    }
-    s
+    hex::encode(&hasher.finalize()[..4])
 }
 
 #[cfg(test)]

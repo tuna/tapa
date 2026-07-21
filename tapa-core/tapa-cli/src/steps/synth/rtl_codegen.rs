@@ -7,7 +7,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use tapa_codegen::rtl_state::TopologyWithRtl;
-use tapa_codegen::{generate_rtl, support_assets::VERILOG_SUPPORT_ASSETS};
+use tapa_codegen::{generate_rtl, support_assets::VerilogAssets};
 use tapa_ir::{Design, SynthTarget};
 use tapa_rtl::VerilogModule;
 
@@ -75,9 +75,10 @@ pub fn generate_rtl_tree(
 
 fn write_verilog_support_assets(rtl_dir: &Path) -> Result<Vec<PathBuf>> {
     let mut written = Vec::new();
-    for (name, content) in VERILOG_SUPPORT_ASSETS {
-        let path = rtl_dir.join(name);
-        fs::write(&path, content)?;
+    for name in VerilogAssets::iter() {
+        let content = VerilogAssets::get(&name).expect("iterated asset exists");
+        let path = rtl_dir.join(name.as_ref());
+        fs::write(&path, &content.data)?;
         written.push(path);
     }
     Ok(written)

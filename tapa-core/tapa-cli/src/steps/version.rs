@@ -12,35 +12,19 @@ use crate::error::Result;
 #[command(name = "version", about = "Print TAPA version to standard output.")]
 pub struct VersionArgs {}
 
-/// Raw `VERSION` file content baked at compile time. Includes any trailing
-/// newline; use [`VERSION`] for the trimmed string.
-const VERSION_RAW: &str = include_str!("../../../../VERSION");
-
-/// Compile-time, ASCII-trimmed view of `VERSION_RAW`. Required because
-/// clap's `version = ...` attribute needs a `&'static str` at parse time
-/// and `str::trim_end` is not yet `const fn` on stable Rust.
-pub const VERSION: &str = trim_ascii_end(VERSION_RAW);
-
-const fn trim_ascii_end(input: &str) -> &str {
-    let bytes = input.as_bytes();
-    let mut end = bytes.len();
-    while end > 0 {
-        let b = bytes[end - 1];
-        if b != b'\n' && b != b'\r' && b != b' ' && b != b'\t' {
-            break;
-        }
-        end -= 1;
+/// `VERSION` file content baked at compile time with the trailing
+/// newline stripped (clap's `version = ...` attribute needs a
+/// `&'static str` at parse time).
+pub const VERSION: &str = {
+    const RAW: &str = include_str!("../../../../VERSION");
+    match const_str::strip_suffix!(RAW, "\n") {
+        Some(s) => match const_str::strip_suffix!(s, "\r") {
+            Some(s2) => s2,
+            None => s,
+        },
+        None => RAW,
     }
-    // SAFETY: the slice ends on a UTF-8 char boundary because we only
-    // peel off ASCII whitespace bytes (each one byte wide in UTF-8).
-    let trimmed = unsafe { std::slice::from_raw_parts(bytes.as_ptr(), end) };
-    match std::str::from_utf8(trimmed) {
-        Ok(s) => s,
-        // SAFETY: input was already valid UTF-8; trimming ASCII bytes
-        // cannot break that invariant.
-        Err(_) => unsafe { std::hint::unreachable_unchecked() },
-    }
-}
+};
 
 pub fn run(_args: &VersionArgs, _ctx: &CliContext) -> Result<()> {
     let mut stdout = std::io::stdout().lock();

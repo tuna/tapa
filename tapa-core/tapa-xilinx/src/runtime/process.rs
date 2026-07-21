@@ -148,16 +148,8 @@ fn wait_with_deadline(
     child: &mut std::process::Child,
     deadline: std::time::Instant,
 ) -> std::io::Result<Option<std::process::ExitStatus>> {
-    let poll = Duration::from_millis(20);
-    loop {
-        if let Some(status) = child.try_wait()? {
-            return Ok(Some(status));
-        }
-        if std::time::Instant::now() >= deadline {
-            return Ok(None);
-        }
-        std::thread::sleep(poll);
-    }
+    use wait_timeout::ChildExt as _;
+    child.wait_timeout(deadline.saturating_duration_since(std::time::Instant::now()))
 }
 
 impl ToolRunner for LocalToolRunner {

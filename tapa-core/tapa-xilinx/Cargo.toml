@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+hex = { workspace = true }
+wait-timeout = { workspace = true }
 backon = { workspace = true }
 camino = { workspace = true }
 directories = { workspace = true }

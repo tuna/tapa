@@ -77,12 +77,9 @@ pub(crate) fn vendor_cache_dir(host: &str, port: u16, xilinx_settings: &str) -> 
         .unwrap_or_else(|| crate::util::utf8(std::env::temp_dir()).join("tapa-cache"));
     let raw = format!("{host}:{port}:{xilinx_settings}");
     let hash = Sha256::digest(raw.as_bytes());
-    let mut key = String::with_capacity(16);
-    for b in &hash[..8] {
-        use std::fmt::Write as _;
-        let _ = write!(key, "{b:02x}");
-    }
-    base.join("tapa").join("vendor-headers").join(key)
+    base.join("tapa")
+        .join("vendor-headers")
+        .join(hex::encode(&hash[..8]))
 }
 
 /// Apply the macOS libc++ compatibility patch to
