@@ -1,6 +1,6 @@
 #[cfg(target_os = "linux")]
 mod imp {
-    use frt_dpi::{axi, get_or_init, stream};
+    use frt_dpi::get_or_init;
     use std::sync::OnceLock;
 
     // svOpenArrayHandle is an opaque pointer type from svdpi.h.
@@ -35,9 +35,9 @@ mod imp {
         unsafe { (get_sv_get_array_ptr())(h).cast::<u8>() }
     }
 
+    // xsim marshalling: svOpenArrayHandle arrays, `u8` flags/returns.
     macro_rules! dpi_fn {
-        // AXI: array handle is converted to raw pointer
-        (fn $name:ident($($arg:ident : $ty:ty),*; mut $arr:ident) => $impl_fn:expr) => {
+        (fn $name:ident($($arg:ident : $ty:ty),* ; mut $arr:ident) => $impl_fn:expr) => {
             #[no_mangle]
             pub unsafe extern "C" fn $name(
                 port: *const libc::c_char, $($arg: $ty,)* $arr: SvOpenArrayHandle,
@@ -51,7 +51,7 @@ mod imp {
                 }
             }
         };
-        (fn $name:ident($($arg:ident : $ty:ty),*; const $arr:ident) => $impl_fn:expr) => {
+        (fn $name:ident($($arg:ident : $ty:ty),* ; const $arr:ident) => $impl_fn:expr) => {
             #[no_mangle]
             pub unsafe extern "C" fn $name(
                 port: *const libc::c_char, $($arg: $ty,)* $arr: SvOpenArrayHandle,
@@ -65,8 +65,7 @@ mod imp {
                 }
             }
         };
-        // Stream: array handle converted, u8 args converted from bools, return u8
-        (fn $name:ident(mut $arr:ident) -> u8 => $impl_fn:expr) => {
+        (fn $name:ident(mut $arr:ident) -> ret => $impl_fn:expr) => {
             #[no_mangle]
             pub unsafe extern "C" fn $name(
                 port: *const libc::c_char, $arr: SvOpenArrayHandle,
@@ -80,7 +79,7 @@ mod imp {
                 }
             }
         };
-        (fn $name:ident(const $arr:ident) -> u8 => $impl_fn:expr) => {
+        (fn $name:ident(const $arr:ident) -> ret => $impl_fn:expr) => {
             #[no_mangle]
             pub unsafe extern "C" fn $name(
                 port: *const libc::c_char, $arr: SvOpenArrayHandle,
@@ -94,36 +93,7 @@ mod imp {
                 }
             }
         };
-        (fn $name:ident($flag:ident : u8, mut $arr:ident) -> u8 => $impl_fn:expr) => {
-            #[no_mangle]
-            pub unsafe extern "C" fn $name(
-                port: *const libc::c_char, $flag: u8, $arr: SvOpenArrayHandle,
-            ) -> u8 {
-                // SAFETY: `port` is a DPI-provided C string valid for this call;
-                // `$arr` is an xsim-provided svOpenArrayHandle.
-                unsafe {
-                    let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
-                    let ptr = sv_array_ptr($arr);
-                    $impl_fn(get_or_init(), port, $flag != 0, ptr) as u8
-                }
-            }
-        };
-        (fn $name:ident($flag:ident : u8, const $arr:ident) -> u8 => $impl_fn:expr) => {
-            #[no_mangle]
-            pub unsafe extern "C" fn $name(
-                port: *const libc::c_char, $flag: u8, $arr: SvOpenArrayHandle,
-            ) -> u8 {
-                // SAFETY: `port` is a DPI-provided C string valid for this call;
-                // `$arr` is an xsim-provided svOpenArrayHandle.
-                unsafe {
-                    let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
-                    let ptr: *const u8 = sv_array_ptr($arr).cast_const();
-                    $impl_fn(get_or_init(), port, $flag != 0, ptr) as u8
-                }
-            }
-        };
-        // No-array variant (e.g. can_write)
-        (fn $name:ident() -> u8 => $impl_fn:expr) => {
+        (fn $name:ident() -> ret => $impl_fn:expr) => {
             #[no_mangle]
             pub unsafe extern "C" fn $name(port: *const libc::c_char) -> u8 {
                 // SAFETY: `port` is a DPI-provided C string valid for this call.
@@ -133,14 +103,35 @@ mod imp {
                 }
             }
         };
+        (fn $name:ident($flag:ident : flag, mut $arr:ident) -> ret => $impl_fn:expr) => {
+            #[no_mangle]
+            pub unsafe extern "C" fn $name(
+                port: *const libc::c_char, $flag: u8, $arr: SvOpenArrayHandle,
+            ) -> u8 {
+                // SAFETY: `port` is a DPI-provided C string valid for this call;
+                // `$arr` is an xsim-provided svOpenArrayHandle.
+                unsafe {
+                    let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
+                    let ptr = sv_array_ptr($arr);
+                    $impl_fn(get_or_init(), port, $flag != 0, ptr) as u8
+                }
+            }
+        };
+        (fn $name:ident($flag:ident : flag, const $arr:ident) -> ret => $impl_fn:expr) => {
+            #[no_mangle]
+            pub unsafe extern "C" fn $name(
+                port: *const libc::c_char, $flag: u8, $arr: SvOpenArrayHandle,
+            ) -> u8 {
+                // SAFETY: `port` is a DPI-provided C string valid for this call;
+                // `$arr` is an xsim-provided svOpenArrayHandle.
+                unsafe {
+                    let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
+                    let ptr: *const u8 = sv_array_ptr($arr).cast_const();
+                    $impl_fn(get_or_init(), port, $flag != 0, ptr) as u8
+                }
+            }
+        };
     }
 
-    dpi_fn!(fn tapa_axi_read(addr: u64, width: u32; mut out) => axi::axi_read_impl);
-    dpi_fn!(fn tapa_axi_write(addr: u64, width: u32; const data) => axi::axi_write_impl);
-    dpi_fn!(fn tapa_stream_try_read(mut out) -> u8 => stream::stream_try_read_impl);
-    dpi_fn!(fn tapa_stream_try_write(const data) -> u8 => stream::stream_try_write_impl);
-    dpi_fn!(fn tapa_stream_can_write() -> u8 => stream::stream_can_write_impl);
-    dpi_fn!(fn tapa_stream_istream_step(consume: u8, mut out) -> u8 => stream::stream_istream_step_impl);
-    dpi_fn!(fn tapa_stream_ostream_step(write: u8, const data) -> u8 => stream::stream_ostream_step_impl);
-    dpi_fn!(fn tapa_hls_stream_ostream_step(write: u8, const data) -> u8 => stream::stream_hls_ostream_step_impl);
+    frt_dpi::dpi_inventory!(dpi_fn);
 }
