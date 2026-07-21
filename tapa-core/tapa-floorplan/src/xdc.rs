@@ -99,18 +99,18 @@ pub fn emit_xdc(result: &FloorplanResult, device: &Device) -> String {
             ranges.join(" ")
         ));
         for cell_match in matches {
-            // `get_cells` errors on an empty result, so guard each assignment:
-            // a stray unmatched instance (e.g. one synthesis optimized away)
-            // logs a warning instead of aborting the whole implementation.
+            // `-quiet` suppresses Vivado's version-specific empty-query
+            // diagnostic; the explicit check below is the stable DRC.
             lines.push(format!(
-                "set cells [get_cells -hierarchical -regexp -filter {{NAME =~ \"{}\"}}]",
+                "set cells [get_cells -quiet -hierarchical -regexp -filter {{NAME =~ \"{}\"}}]",
                 cell_match.pattern
             ));
             lines.push(format!(
-                "if {{[llength $cells]}} {{ add_cells_to_pblock {region} $cells }} \
-                 else {{ puts \"TAPA floorplan WARNING: no cells matched {}\" }}",
-                cell_match.description
+                "if {{![llength $cells]}} {{ error \"TAPA floorplan ERROR: expected cell `{}` was \
+                 not found\" }}",
+                tcl_double_quote_escape(&cell_match.description),
             ));
+            lines.push(format!("add_cells_to_pblock {region} $cells"));
         }
     }
 
@@ -122,6 +122,29 @@ pub fn emit_xdc(result: &FloorplanResult, device: &Device) -> String {
 struct CellMatch {
     pattern: String,
     description: String,
+}
+
+/// Escape text embedded in a Tcl double-quoted diagnostic without changing
+/// what Vivado displays. Brackets matter for flattened array names: leaving
+/// them bare would invoke Tcl command substitution while reporting the error.
+fn tcl_double_quote_escape(text: &str) -> String {
+    let mut escaped = String::with_capacity(text.len());
+    for character in text.chars() {
+        match character {
+            '\\' | '"' | '$' | '[' => escaped.push('\\'),
+            '\n' => {
+                escaped.push_str("\\n");
+                continue;
+            }
+            '\r' => {
+                escaped.push_str("\\r");
+                continue;
+            }
+            _ => {}
+        }
+        escaped.push(character);
+    }
+    escaped
 }
 
 /// A Vivado `-regexp` `NAME` pattern matching `instance`'s RTL cell as a
@@ -258,12 +281,15 @@ mod tests {
         let expected = "\
 create_pblock SLOT_X0Y0_TO_SLOT_X0Y0
 resize_pblock SLOT_X0Y0_TO_SLOT_X0Y0 -add {CLOCKREGION_X0Y0:CLOCKREGION_X3Y3}
-set cells [get_cells -hierarchical -regexp -filter {NAME =~ \"^(.*/)?A_0(_fifo)?(/.*)?$\"}]
-if {[llength $cells]} { add_cells_to_pblock SLOT_X0Y0_TO_SLOT_X0Y0 $cells } else { puts \"TAPA floorplan WARNING: no cells matched A_0\" }
-set cells [get_cells -hierarchical -regexp -filter {NAME =~ \"^(.*/)?B_0(_fifo)?(/.*)?$\"}]
-if {[llength $cells]} { add_cells_to_pblock SLOT_X0Y0_TO_SLOT_X0Y0 $cells } else { puts \"TAPA floorplan WARNING: no cells matched B_0\" }
-set cells [get_cells -hierarchical -regexp -filter {NAME =~ \"^(.*/)?fifo_VecAdd(_fifo)?(/.*)?$\"}]
-if {[llength $cells]} { add_cells_to_pblock SLOT_X0Y0_TO_SLOT_X0Y0 $cells } else { puts \"TAPA floorplan WARNING: no cells matched fifo_VecAdd\" }
+set cells [get_cells -quiet -hierarchical -regexp -filter {NAME =~ \"^(.*/)?A_0(_fifo)?(/.*)?$\"}]
+if {![llength $cells]} { error \"TAPA floorplan ERROR: expected cell `A_0` was not found\" }
+add_cells_to_pblock SLOT_X0Y0_TO_SLOT_X0Y0 $cells
+set cells [get_cells -quiet -hierarchical -regexp -filter {NAME =~ \"^(.*/)?B_0(_fifo)?(/.*)?$\"}]
+if {![llength $cells]} { error \"TAPA floorplan ERROR: expected cell `B_0` was not found\" }
+add_cells_to_pblock SLOT_X0Y0_TO_SLOT_X0Y0 $cells
+set cells [get_cells -quiet -hierarchical -regexp -filter {NAME =~ \"^(.*/)?fifo_VecAdd(_fifo)?(/.*)?$\"}]
+if {![llength $cells]} { error \"TAPA floorplan ERROR: expected cell `fifo_VecAdd` was not found\" }
+add_cells_to_pblock SLOT_X0Y0_TO_SLOT_X0Y0 $cells
 ";
         assert_eq!(emit_xdc(&result, &device), expected);
     }
@@ -405,6 +431,14 @@ if {[llength $cells]} { add_cells_to_pblock SLOT_X0Y0_TO_SLOT_X0Y0 $cells } else
             !xdc.contains(&cell_name_regex("fifo_0")),
             "the crossing's monolithic parent must not receive a placement constraint:\n{xdc}"
         );
+        for description in [
+            "fifo_0 Head",
+            "fifo_0 Body 0",
+            "fifo_0 Body 1",
+            "fifo_0 Tail",
+        ] {
+            assert_missing_cell_is_fatal(&xdc, description);
+        }
     }
 
     #[test]
@@ -447,6 +481,12 @@ if {[llength $cells]} { add_cells_to_pblock SLOT_X0Y0_TO_SLOT_X0Y0 $cells } else
             top_port: "data".to_string(),
         };
         let pipeline = axi_pipeline_instance_name(&endpoint, AxiChannel::ReadData);
+        let description = format!(
+            "{}.{} {}",
+            endpoint.instance,
+            endpoint.port,
+            AxiChannel::ReadData.rtl_name(),
+        );
         let result = FloorplanResult {
             device: "u280".to_string(),
             grid: (2, 3),
@@ -481,6 +521,47 @@ if {[llength $cells]} { add_cells_to_pblock SLOT_X0Y0_TO_SLOT_X0Y0 $cells } else
             "{child}"
         );
         assert!(child.contains(&pipeline_tail_regex(&pipeline)), "{child}");
+
+        for stage in ["Head", "Body 0", "Body 1", "Tail"] {
+            assert_missing_cell_is_fatal(&xdc, &format!("{description} {stage}"));
+        }
+    }
+
+    #[test]
+    fn missing_cell_diagnostic_escapes_tcl_substitutions() {
+        let result = FloorplanResult {
+            device: "u280".to_string(),
+            grid: (2, 3),
+            regions: Map::from([(
+                "fifo[0]$quoted\"".to_string(),
+                "SLOT_X0Y0_TO_SLOT_X0Y0".to_string(),
+            )]),
+            routes: Vec::new(),
+            slot_usage: Map::new(),
+        };
+        let xdc = emit_xdc(&result, &select_device("u280").expect("u280"));
+
+        assert_missing_cell_is_fatal(&xdc, "fifo[0]$quoted\"");
+        assert!(
+            xdc.contains("expected cell `fifo\\[0]\\$quoted\\\"`"),
+            "{xdc}"
+        );
+    }
+
+    fn assert_missing_cell_is_fatal(xdc: &str, description: &str) {
+        let diagnostic = format!(
+            "if {{![llength $cells]}} {{ error \"TAPA floorplan ERROR: expected cell `{}` was not found\" }}",
+            tcl_double_quote_escape(description),
+        );
+        assert!(
+            xdc.contains(&diagnostic),
+            "missing `{diagnostic}` in:\n{xdc}"
+        );
+        assert!(
+            xdc.contains("get_cells -quiet -hierarchical -regexp"),
+            "{xdc}"
+        );
+        assert!(!xdc.contains("TAPA floorplan WARNING"), "{xdc}");
     }
 
     fn pblock_section<'a>(xdc: &'a str, pblock: &str) -> &'a str {
