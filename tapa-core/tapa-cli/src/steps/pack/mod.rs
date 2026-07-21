@@ -30,7 +30,7 @@ use crate::state::work::{self as work_io, WorkState};
 mod bitstream_script;
 mod custom_rtl;
 mod kernel_xml_ports;
-mod vitis_packaging;
+pub(crate) mod vitis_packaging;
 
 use custom_rtl::{apply_custom_rtl, load_templates_info};
 use vitis_packaging::pack_vitis;
