@@ -2,12 +2,6 @@ use camino::Utf8PathBuf;
 
 #[derive(Debug, thiserror::Error)]
 pub enum XilinxError {
-    #[error("Xilinx tool not found: {0}")]
-    ToolNotFound(String),
-
-    #[error("XILINX_HLS not set and no fallback detected")]
-    MissingXilinxHls,
-
     #[error("malformed .taparc config at {path}: {source}")]
     Config {
         path: Utf8PathBuf,
@@ -75,8 +69,6 @@ pub(crate) fn variant_tag(e: &XilinxError) -> &'static str {
     // Exhaustive match — adding a new variant without extending this
     // arm fails the compile under the workspace's deny(wildcard) lint.
     match e {
-        XilinxError::ToolNotFound(_) => "ToolNotFound",
-        XilinxError::MissingXilinxHls => "MissingXilinxHls",
         XilinxError::Config { .. } => "Config",
         XilinxError::ToolFailure { .. } => "ToolFailure",
         XilinxError::ToolTimeout { .. } => "ToolTimeout",
@@ -111,7 +103,6 @@ mod tests {
     use crate::platform::device::parse_xpfm;
     use crate::platform::kernel_xml::{emit_kernel_xml, KernelXmlArgs};
     use crate::runtime::config::RemoteConfig;
-    use crate::runtime::paths::get_xilinx_hls;
     use crate::runtime::process::{MockToolRunner, ToolInvocation, ToolRunner};
     use crate::runtime::ssh::map_ssh_stderr_to_error;
     use crate::tools::hls::report::{parse_csynth_xml, parse_utilization_rpt};
@@ -119,8 +110,6 @@ mod tests {
     use crate::tools::package_xo::redact_xo;
 
     const ALL_TAGS: &[&str] = &[
-        "ToolNotFound",
-        "MissingXilinxHls",
         "Config",
         "ToolFailure",
         "ToolTimeout",
@@ -163,24 +152,6 @@ mod tests {
             }
         }
         out
-    }
-
-    fn produce_tool_not_found() -> XilinxError {
-        let td = tempfile::tempdir().unwrap();
-        let missing = td.path().join("definitely/missing/hls");
-        with_envs(
-            &[("XILINX_HLS", Some(missing.to_str().unwrap()))],
-            get_xilinx_hls,
-        )
-        .expect_err("nonexistent XILINX_HLS must error")
-    }
-
-    fn produce_missing_xilinx_hls() -> XilinxError {
-        with_envs(
-            &[("XILINX_HLS", None), ("XILINX_VITIS", None)],
-            get_xilinx_hls,
-        )
-        .expect_err("unset XILINX_HLS must error")
     }
 
     fn produce_config() -> XilinxError {
@@ -399,8 +370,6 @@ mod tests {
     type Producer = fn() -> XilinxError;
     fn producers() -> Vec<(&'static str, Producer)> {
         vec![
-            ("ToolNotFound", produce_tool_not_found),
-            ("MissingXilinxHls", produce_missing_xilinx_hls),
             ("Config", produce_config),
             ("ToolFailure", produce_tool_failure),
             ("ToolTimeout", produce_tool_timeout),

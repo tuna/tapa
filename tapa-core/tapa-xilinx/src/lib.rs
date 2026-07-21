@@ -56,10 +56,6 @@ pub use error::{Result, XilinxError};
 pub use platform::device::{parse_device_info, parse_hpfm_xml, parse_xpfm, DeviceInfo};
 pub use platform::kernel_xml::{emit_kernel_xml, KernelXmlArgs, KernelXmlPort, PortCategory};
 pub use runtime::config::RemoteConfig;
-pub use runtime::paths::{
-    get_remote_hls_cflags, get_tapa_cflags, get_tapacc_cflags, get_vendor_include_paths,
-    get_xilinx_hls, get_xilinx_vitis, XilinxToolPath,
-};
 pub use runtime::process::{
     LocalToolRunner, MockToolRunner, ToolInvocation, ToolOutput, ToolRunner,
 };

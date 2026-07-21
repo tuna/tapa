@@ -1082,6 +1082,7 @@ dependencies = [
  "path-slash",
  "rayon",
  "regex",
+ "semver",
  "serde",
  "serde_json",
  "serde_path_to_error",

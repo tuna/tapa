@@ -182,7 +182,7 @@ fn vendor_include_paths(include_gcc: bool) -> Vec<PathBuf> {
 
 fn vendor_gcc_paths(hls_root: &Path) -> Vec<PathBuf> {
     let tps = hls_root.join("tps").join("lnx64");
-    let mut versions: Vec<(String, PathBuf)> = Vec::new();
+    let mut versions: Vec<(semver::Version, PathBuf)> = Vec::new();
     let Ok(entries) = std::fs::read_dir(&tps) else {
         return Vec::new();
     };
@@ -190,15 +190,17 @@ fn vendor_gcc_paths(hls_root: &Path) -> Vec<PathBuf> {
         let name = entry.file_name();
         let s = name.to_string_lossy();
         if let Some(rest) = s.strip_prefix("gcc-") {
-            versions.push((rest.to_string(), entry.path()));
+            if let Ok(ver) = semver::Version::parse(rest) {
+                versions.push((ver, entry.path()));
+            }
         }
     }
-    versions.sort_by_key(|v| version_key(&v.0));
-    let Some((latest, dir)) = versions.last() else {
+    versions.sort_by(|a, b| a.0.cmp(&b.0));
+    let Some((latest, dir)) = versions.pop() else {
         return Vec::new();
     };
 
-    let cpp_include = dir.join("include").join("c++").join(latest);
+    let cpp_include = dir.join("include").join("c++").join(latest.to_string());
     if !cpp_include.exists() {
         return Vec::new();
     }
@@ -211,10 +213,6 @@ fn vendor_gcc_paths(hls_root: &Path) -> Vec<PathBuf> {
         }
     }
     out
-}
-
-fn version_key(s: &str) -> Vec<u32> {
-    s.split('.').filter_map(|x| x.parse().ok()).collect()
 }
 
 fn macos_sysroot_flags() -> Vec<String> {
@@ -246,16 +244,6 @@ fn is_macos() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn version_key_sorts_numerically() {
-        let mut versions = vec!["10.2.0", "9.5.0", "11.0.1"]
-            .into_iter()
-            .map(String::from)
-            .collect::<Vec<_>>();
-        versions.sort_by_key(|v| version_key(v));
-        assert_eq!(versions, vec!["9.5.0", "10.2.0", "11.0.1"]);
-    }
 
     #[test]
     fn tapa_ldflags_do_not_reference_unbundled_runtime_deps() {
