@@ -301,10 +301,25 @@ fn rejection_kind(error: &PlanError) -> Option<RejectionKind> {
     }
 }
 
-fn maximum_realized_utilization(
+/// Return the largest realized resource fraction over every slot and resource.
+///
+/// `device` must be the model named by `floorplan.device`.
+///
+/// # Errors
+///
+/// Returns [`DseError::InvalidFloorplan`] when a usage entry is not an atomic
+/// slot, lies outside the device, consumes an unavailable resource, or exceeds
+/// device capacity.
+pub fn maximum_realized_utilization(
     floorplan: &FloorplanResult,
     device: &Device,
 ) -> Result<f64, DseError> {
+    if floorplan.device != device.key {
+        return Err(DseError::InvalidFloorplan(format!(
+            "floorplan device `{}` does not match utilization device `{}`",
+            floorplan.device, device.key
+        )));
+    }
     let mut maximum = 0.0_f64;
     for (region, usage) in &floorplan.slot_usage {
         let coor = Coor::from_region_name(region)
@@ -562,5 +577,9 @@ mod tests {
 
         let utilization = maximum_realized_utilization(&floorplan, &device).expect("valid usage");
         assert!((utilization - 0.5).abs() < f64::EPSILON);
+
+        let wrong_device = select_device("u250").expect("u250");
+        maximum_realized_utilization(&floorplan, &wrong_device)
+            .expect_err("mismatched device must fail");
     }
 }

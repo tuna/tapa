@@ -11,16 +11,19 @@ use std::path::{Path, PathBuf};
 use clap::{Parser, ValueEnum};
 use tapa_codegen::rtl_state::DirectMmapInterface;
 use tapa_floorplan::{
+    dse::{explore, DseCandidate, DseOptions},
     plan_with_inputs, render_xdc, MemoryInterface, PartitionStrategy, PlanInputs, PlanOptions,
 };
-use tapa_ir::{MemoryBindings, PipelineScheme};
+use tapa_ir::{Design, MemoryBindings, PipelineScheme, WorkState};
 
 use crate::context::CliContext;
 use crate::error::{CliError, Result};
 use crate::state::{json, work as work_io};
 use crate::steps::synth::rtl_codegen::{
-    collect_hdl_inputs, emit_prepared_rtl_tree, prepare_rtl_state,
+    collect_hdl_inputs, emit_prepared_rtl_tree, prepare_rtl_state, TaskHdlInputs,
 };
+
+mod implementation;
 
 /// Name of the emitted pblock constraints file in the work directory.
 pub const FLOORPLAN_XDC: &str = "floorplan.xdc";
@@ -137,7 +140,13 @@ fn publish_floorplan_after_update(
     connectivity: Option<&[u8]>,
     update: impl FnOnce() -> Result<()>,
 ) -> Result<()> {
-    for file_name in [FLOORPLAN_XDC, FLOORPLAN_CONNECTIVITY] {
+    for file_name in [
+        FLOORPLAN_XDC,
+        FLOORPLAN_CONNECTIVITY,
+        implementation::IMPLEMENTATION_XCLBIN,
+        implementation::IMPLEMENTATION_TIMING_REPORT,
+        implementation::IMPLEMENTATION_METRICS,
+    ] {
         match fs_err::remove_file(work_dir.join(file_name)) {
             Ok(()) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
@@ -202,11 +211,12 @@ impl From<PartitionMode> for PartitionStrategy {
     about = "Coarse-grained floorplan the synthesized design."
 )]
 pub struct FloorplanArgs {
-    /// Per-slot resource utilization target; raised on infeasibility.
+    /// Per-slot resource utilization target for a non-DSE plan; raised on infeasibility.
     #[arg(
         long = "usage-limit",
         default_value_t = 0.7,
-        value_parser = parse_usage_limit
+        value_parser = parse_usage_limit,
+        conflicts_with = "dse"
     )]
     pub usage_limit: f64,
 
@@ -233,6 +243,50 @@ pub struct FloorplanArgs {
     /// Vitis link configuration containing memory `sp=` assignments.
     #[arg(long = "connectivity", value_name = "FILE")]
     pub connectivity: Option<PathBuf>,
+
+    /// Run hardware implementation and report the achieved kernel frequency.
+    #[arg(long = "run-impl")]
+    pub run_impl: bool,
+
+    /// Explore exact utilization caps and keep the highest-frequency implementation.
+    #[arg(long = "dse")]
+    pub dse: bool,
+
+    /// Lowest exact utilization cap explored by `--dse`.
+    #[arg(
+        long = "dse-min",
+        default_value_t = 0.55,
+        value_parser = parse_usage_limit,
+        requires = "dse"
+    )]
+    pub dse_min: f64,
+
+    /// Highest and first exact utilization cap explored by `--dse`.
+    #[arg(
+        long = "dse-max",
+        default_value_t = 0.90,
+        value_parser = parse_usage_limit,
+        requires = "dse"
+    )]
+    pub dse_max: f64,
+
+    /// Nominal utilization-cap decrease between DSE attempts.
+    #[arg(
+        long = "dse-step",
+        default_value_t = 0.03,
+        value_parser = parse_usage_limit,
+        requires = "dse"
+    )]
+    pub dse_step: f64,
+
+    /// Maximum number of candidate package/link jobs run concurrently.
+    #[arg(
+        long = "dse-jobs",
+        default_value_t = 1,
+        value_parser = parse_positive_usize,
+        requires = "dse"
+    )]
+    pub dse_jobs: usize,
 }
 
 fn parse_usage_limit(value: &str) -> std::result::Result<f64, String> {
@@ -259,6 +313,100 @@ fn parse_positive_u64(value: &str) -> std::result::Result<u64, String> {
     }
 }
 
+fn parse_positive_usize(value: &str) -> std::result::Result<usize, String> {
+    let parsed = value
+        .parse::<usize>()
+        .map_err(|_| format!("`{value}` is not a non-negative integer"))?;
+    if parsed == 0 {
+        Err("DSE jobs must be greater than zero".to_string())
+    } else {
+        Ok(parsed)
+    }
+}
+
+fn plan_implementation_candidates(
+    args: &FloorplanArgs,
+    state: &WorkState,
+    options: &PlanOptions,
+    inputs: &PlanInputs,
+    dse_options: &DseOptions,
+) -> Result<(
+    Vec<implementation::PlannedCandidate>,
+    Vec<implementation::InfeasibleCandidate>,
+)> {
+    if !args.dse {
+        let floorplan = plan_with_inputs(state, options, inputs)
+            .map_err(|error| CliError::Floorplan(error.to_string()))?;
+        let realized_max_utilization = implementation::realized_max_utilization(&floorplan)?;
+        return Ok((
+            vec![implementation::PlannedCandidate {
+                index: 0,
+                requested_utilization_cap: args.usage_limit,
+                utilization_cap_policy: implementation::UtilizationCapPolicy::Relaxing,
+                realized_max_utilization,
+                floorplan,
+            }],
+            Vec::new(),
+        ));
+    }
+
+    let explored = explore(state, options, inputs, dse_options)
+        .map_err(|error| CliError::Floorplan(error.to_string()))?;
+    let mut candidates = Vec::new();
+    let mut infeasible = Vec::new();
+    for (index, candidate) in explored.into_iter().enumerate() {
+        match candidate {
+            DseCandidate::Feasible {
+                usage_limit,
+                max_utilization,
+                floorplan,
+            } => candidates.push(implementation::PlannedCandidate {
+                index,
+                requested_utilization_cap: usage_limit,
+                utilization_cap_policy: implementation::UtilizationCapPolicy::Exact,
+                realized_max_utilization: max_utilization,
+                floorplan,
+            }),
+            DseCandidate::Infeasible { usage_limit } => {
+                infeasible.push(implementation::InfeasibleCandidate {
+                    index,
+                    requested_utilization_cap: usage_limit,
+                });
+            }
+        }
+    }
+    Ok((candidates, infeasible))
+}
+
+fn publish_implementation_winner(
+    work_dir: &Path,
+    state: &mut WorkState,
+    flat: &Design,
+    hdl_inputs: &TaskHdlInputs,
+    connectivity: Option<&ConnectivityInput>,
+    target_mhz: u32,
+    winner: &implementation::ImplementationWinner,
+) -> Result<()> {
+    let result = winner.floorplan().clone();
+    let xdc = render_xdc(&result).map_err(|error| CliError::Floorplan(error.to_string()))?;
+    publish_floorplan_after_update(
+        work_dir,
+        &xdc,
+        connectivity.map(|input| input.bytes.as_slice()),
+        || {
+            let mut canonical_rtl = prepare_rtl_state(flat, hdl_inputs)?;
+            canonical_rtl.floorplan = Some(result.clone());
+            emit_prepared_rtl_tree(work_dir, &mut canonical_rtl, hdl_inputs)?;
+
+            state.floorplan = Some(result);
+            work_io::store(work_dir, state)?;
+            winner.publish_artifacts(work_dir, target_mhz)
+        },
+    )?;
+    winner.log_selection(work_dir);
+    Ok(())
+}
+
 pub fn run(args: &FloorplanArgs, ctx: &CliContext) -> Result<()> {
     let options = PlanOptions {
         usage_limit: args.usage_limit,
@@ -270,6 +418,16 @@ pub fn run(args: &FloorplanArgs, ctx: &CliContext) -> Result<()> {
     options
         .validate()
         .map_err(|error| CliError::InvalidArg(error.to_string()))?;
+    let dse_options = DseOptions {
+        min: args.dse_min,
+        max: args.dse_max,
+        step: args.dse_step,
+    };
+    if args.dse {
+        dse_options
+            .validate()
+            .map_err(|error| CliError::InvalidArg(error.to_string()))?;
+    }
 
     let mut state = work_io::load(&ctx.work_dir)?;
     if !state.flow.synthed {
@@ -277,6 +435,9 @@ pub fn run(args: &FloorplanArgs, ctx: &CliContext) -> Result<()> {
             "run `synth` before `floorplan`: the placement needs per-task areas".to_string(),
         ));
     }
+    let implementation_target = (args.run_impl || args.dse)
+        .then(|| implementation::validate_target(&state))
+        .transpose()?;
     let connectivity = read_connectivity(args.connectivity.as_deref())?;
     if let Some(input) = &connectivity {
         log::debug!(
@@ -297,6 +458,39 @@ pub fn run(args: &FloorplanArgs, ctx: &CliContext) -> Result<()> {
         .direct_mmap_interfaces(&flat.top)
         .map_err(|error| CliError::Floorplan(error.to_string()))?;
     let inputs = memory_plan_inputs(&flat.top, &interfaces, connectivity.as_ref())?;
+
+    if let Some(target) = implementation_target.as_ref() {
+        let (candidates, infeasible) =
+            plan_implementation_candidates(args, &state, &options, &inputs, &dse_options)?;
+        let jobs = if args.dse { args.dse_jobs } else { 1 };
+        let implementation_state = state.clone();
+        return ctx.with_tool_runner(|runner| {
+            implementation::implement_and_publish(
+                runner,
+                &ctx.work_dir,
+                &implementation_state,
+                &flat,
+                &hdl_inputs,
+                connectivity.as_ref().map(|input| input.bytes.as_slice()),
+                target,
+                candidates,
+                &infeasible,
+                jobs,
+                |winner| {
+                    publish_implementation_winner(
+                        &ctx.work_dir,
+                        &mut state,
+                        &flat,
+                        &hdl_inputs,
+                        connectivity.as_ref(),
+                        target.target_mhz(),
+                        winner,
+                    )
+                },
+            )
+        });
+    }
+
     let result = plan_with_inputs(&state, &options, &inputs)
         .map_err(|e| CliError::Floorplan(e.to_string()))?;
     let xdc = render_xdc(&result).map_err(|e| CliError::Floorplan(e.to_string()))?;
@@ -520,6 +714,39 @@ mod tests {
     }
 
     #[test]
+    fn floorplan_args_validate_minimal_dse_surface() {
+        let args =
+            FloorplanArgs::try_parse_from(["floorplan", "--dse"]).expect("DSE defaults must parse");
+        assert!(args.dse);
+        assert!((args.dse_min - 0.55).abs() < f64::EPSILON);
+        assert!((args.dse_max - 0.90).abs() < f64::EPSILON);
+        assert!((args.dse_step - 0.03).abs() < f64::EPSILON);
+        assert_eq!(args.dse_jobs, 1);
+
+        for argv in [
+            vec!["floorplan", "--dse", "--dse-jobs", "0"],
+            vec!["floorplan", "--dse-min", "0.5"],
+            vec!["floorplan", "--dse", "--usage-limit", "0.7"],
+        ] {
+            FloorplanArgs::try_parse_from(argv).expect_err("invalid DSE arguments");
+        }
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let invalid_range = FloorplanArgs::try_parse_from([
+            "floorplan",
+            "--dse",
+            "--dse-min",
+            "0.9",
+            "--dse-max",
+            "0.5",
+        ])
+        .expect("individual limits parse");
+        let error = run(&invalid_range, &ctx_at(dir.path()))
+            .expect_err("DSE range must be validated before work-dir I/O");
+        assert!(matches!(error, CliError::InvalidArg(_)));
+    }
+
+    #[test]
     fn direct_floorplan_run_validates_options_before_io() {
         let dir = tempfile::tempdir().expect("tempdir");
         let err = run(
@@ -529,6 +756,12 @@ mod tests {
                 pp_scheme: PpScheme::Double,
                 max_seconds: 60,
                 connectivity: None,
+                run_impl: false,
+                dse: false,
+                dse_min: 0.55,
+                dse_max: 0.90,
+                dse_step: 0.03,
+                dse_jobs: 1,
             },
             &ctx_at(dir.path()),
         )
@@ -633,6 +866,12 @@ mod tests {
                     pp_scheme: PpScheme::Double,
                     max_seconds: 60,
                     connectivity: connectivity_path,
+                    run_impl: false,
+                    dse: false,
+                    dse_min: 0.55,
+                    dse_max: 0.90,
+                    dse_step: 0.03,
+                    dse_jobs: 1,
                 },
                 &ctx_at(dir.path()),
             )
@@ -669,6 +908,12 @@ mod tests {
             pp_scheme: PpScheme::Double,
             max_seconds: 60,
             connectivity: None,
+            run_impl: false,
+            dse: false,
+            dse_min: 0.55,
+            dse_max: 0.90,
+            dse_step: 0.03,
+            dse_jobs: 1,
         };
 
         match run(&args, &ctx) {
@@ -760,6 +1005,12 @@ mod tests {
             pp_scheme: PpScheme::Double,
             max_seconds: 60,
             connectivity: None,
+            run_impl: false,
+            dse: false,
+            dse_min: 0.55,
+            dse_max: 0.90,
+            dse_step: 0.03,
+            dse_jobs: 1,
         };
         match run(&args, &ctx_at(dir.path())) {
             Ok(()) => {
@@ -805,6 +1056,12 @@ mod tests {
                 pp_scheme: PpScheme::Double,
                 max_seconds: 60,
                 connectivity: None,
+                run_impl: false,
+                dse: false,
+                dse_min: 0.55,
+                dse_max: 0.90,
+                dse_step: 0.03,
+                dse_jobs: 1,
             },
             &ctx_at(dir.path()),
         )
