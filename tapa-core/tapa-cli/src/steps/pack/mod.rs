@@ -48,6 +48,12 @@ pub struct PackArgs {
     #[arg(short = 's', long = "bitstream-script", value_name = "FILE")]
     pub bitstream_script: Option<PathBuf>,
 
+    /// Memory connectivity `.ini` (v++ `sp=` bank assignments). When set, the
+    /// emitted bitstream script adds it as a `--config`, so `v++ --link` binds
+    /// each M-AXI to its bank — required for HBM/DDR designs.
+    #[arg(long = "connectivity", value_name = "FILE")]
+    pub connectivity: Option<PathBuf>,
+
     /// Custom RTL files / folders (may repeat).
     #[arg(long = "custom-rtl", value_name = "PATH")]
     pub custom_rtl: Vec<PathBuf>,

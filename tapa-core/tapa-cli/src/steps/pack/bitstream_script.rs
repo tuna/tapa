@@ -232,6 +232,38 @@ mod tests {
     }
 
     #[test]
+    fn connectivity_ini_is_added_as_config() {
+        let script = render_vitis_script(
+            "Top",
+            Path::new("/tmp/a.xo"),
+            Some("plat"),
+            Some("3.33"),
+            None,
+            Some(Path::new("/work/link_config.ini")),
+        );
+        assert!(
+            script.contains("--config /work/link_config.ini"),
+            "connectivity ini must be sourced as a v++ --config, got:\n{script}"
+        );
+    }
+
+    #[test]
+    fn no_config_without_connectivity() {
+        let script = render_vitis_script(
+            "Top",
+            Path::new("/tmp/a.xo"),
+            Some("plat"),
+            None,
+            None,
+            None,
+        );
+        assert!(
+            !script.contains("--config "),
+            "a script with no connectivity must not emit a bare --config",
+        );
+    }
+
+    #[test]
     fn no_floorplan_hook_without_xdc() {
         let script = render_vitis_script(
             "Top",

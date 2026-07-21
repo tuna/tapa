@@ -19,6 +19,12 @@ use crate::steps::{analyze, find_clang_binary, floorplan, gcc, meta, pack, synth
 /// One link in the chained-step list. Each variant carries its step's
 /// `Args` (flags) plus a `chain_tail` positional that captures any
 /// remaining argv for re-parsing as the next step.
+#[allow(
+    clippy::large_enum_variant,
+    reason = "a clap dispatch enum: each variant must `#[command(flatten)]` its \
+              step's Args struct inline, so the differently-sized Args (Compile \
+              bundles the whole flow) cannot be boxed without breaking the derive"
+)]
 #[derive(Debug, Subcommand)]
 pub enum Step {
     /// Analyze TAPA program and store the program description.
