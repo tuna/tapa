@@ -19,4 +19,5 @@
 
 pub mod device;
 pub mod graph;
+pub mod partition;
 pub mod solver;
