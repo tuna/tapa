@@ -286,17 +286,6 @@ impl ToolRunner for RemoteToolRunner {
             },
         )
     }
-
-    fn harvest(
-        &self,
-        _relative_from_cwd: &std::path::Path,
-        _local_root: &std::path::Path,
-    ) -> Result<()> {
-        // `run_once` already pulls every caller-requested absolute-
-        // local download back into place, so this is a no-op on the
-        // remote runner. Kept for interface symmetry.
-        Ok(())
-    }
 }
 
 fn is_recoverable_mux_error(err: &XilinxError) -> bool {

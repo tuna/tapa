@@ -16,26 +16,11 @@ use crate::tools::hls::report::{parse_csynth_xml, CsynthReport};
 
 pub mod report;
 
-/// Substrings the default transient predicate keys off.
-///
-/// Kept for fixture-driven tests and custom predicates. The real
-/// production predicate (`is_transient_hls_output`) treats a run as
-/// transient when stdout contains `Pre-synthesis failed.` without a
-/// subsequent `\nERROR:` line.
-pub const DEFAULT_TRANSIENT_HLS_PATTERNS: &[&str] = &[
-    "Pre-synthesis failed.",
-    "TCP connection closed",
-    "License checkout failed",
-    "Connection reset by peer",
-    "No license available",
-    "FLEXnet Licensing error",
-];
-
 /// A Vitis HLS invocation is considered transient iff its stdout
 /// contains `Pre-synthesis
 /// failed.` and does **not** contain `\nERROR:`.
 #[must_use]
-pub fn is_transient_hls_output(stdout: &str, _stderr: &str) -> bool {
+pub(crate) fn is_transient_hls_output(stdout: &str, _stderr: &str) -> bool {
     stdout.contains("Pre-synthesis failed.") && !stdout.contains("\nERROR:")
 }
 
@@ -247,9 +232,8 @@ enum RetryError {
 /// executes with cwd set to `stage_dir`; after the tool exits, the
 /// `project/<solution>/syn/` subtree lives at
 /// `stage_dir/project/<solution>/syn` on local runners or inside
-/// the runner's remote work dir on remote runners. The caller is
-/// responsible for invoking `runner.harvest` before touching the
-/// artifacts on disk.
+/// the runner's remote work dir on remote runners (pulled back in
+/// place via the invocation's `downloads`).
 fn run_hls_attempt(
     runner: &dyn ToolRunner,
     job: &HlsJob,
@@ -337,7 +321,6 @@ fn copy_tree(src: &camino::Utf8Path, dest: &camino::Utf8Path) -> std::io::Result
 }
 
 fn harvest_and_stage(
-    _runner: &dyn ToolRunner,
     job: &HlsJob,
     stage_dir: &camino::Utf8Path,
     out: ToolOutput,
@@ -402,31 +385,6 @@ fn harvest_and_stage(
     })
 }
 
-/// One Vitis HLS invocation. Returns the parsed report + HDL output
-/// on success and a typed `XilinxError::ToolFailure` on non-zero
-/// exit. The HLS project tree lives under a dedicated stage dir that
-/// is cleaned up on return; only the requested reports/HDL paths
-/// survive.
-pub fn run_hls(runner: &dyn ToolRunner, job: &HlsJob) -> Result<HlsOutput> {
-    let stage = tempfile::tempdir()?;
-    let stage_path = Utf8PathBuf::from_path_buf(stage.path().to_path_buf())
-        .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
-    let out = run_hls_attempt(runner, job, &stage_path)?;
-    if out.exit_code != 0 {
-        let stderr = if out.stderr.is_empty() {
-            out.stdout
-        } else {
-            out.stderr
-        };
-        return Err(XilinxError::ToolFailure {
-            program: "vitis_hls".into(),
-            code: out.exit_code,
-            stderr,
-        });
-    }
-    harvest_and_stage(runner, job, &stage_path, out)
-}
-
 fn collect_files(dir: &camino::Utf8Path) -> Result<Vec<Utf8PathBuf>> {
     if !dir.exists() {
         return Ok(Vec::new());
@@ -488,7 +446,7 @@ fn run_hls_with_retry_impl(
         };
         let out = run_hls_attempt(runner, job, &stage_path).map_err(RetryError::Fatal)?;
         if out.exit_code == 0 {
-            return harvest_and_stage(runner, job, &stage_path, out).map_err(RetryError::Fatal);
+            return harvest_and_stage(job, &stage_path, out).map_err(RetryError::Fatal);
         }
         let transient = is_transient(job, &out.stdout, &out.stderr);
         if !transient {

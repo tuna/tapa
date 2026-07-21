@@ -226,6 +226,7 @@ fn bundle_report_paths_into_xo(
 /// without running the reproducibility redaction pass. Primarily
 /// useful for tests that need a pre-redaction artifact to exercise
 /// [`redact::redact_xo`] directly.
+#[doc(hidden)] // public only for integration tests
 pub fn pack_xo_without_redaction(
     runner: &dyn ToolRunner,
     inputs: &PackageXoInputs,

@@ -1,2 +1,0 @@
-ERROR: License checkout failed: try again
-FLEXnet Licensing error: -96,491. Cannot connect to license server.

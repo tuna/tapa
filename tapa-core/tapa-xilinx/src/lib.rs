@@ -53,8 +53,6 @@ pub mod runtime;
 pub mod tools;
 
 pub use error::{Result, XilinxError};
-#[doc(hidden)]
-pub use platform::device::parse_hpfm_xml as parse_hpfm_xml_via_device;
 pub use platform::device::{parse_device_info, parse_hpfm_xml, parse_xpfm, DeviceInfo};
 pub use platform::kernel_xml::{emit_kernel_xml, KernelXmlArgs, KernelXmlPort, PortCategory};
 pub use runtime::config::RemoteConfig;
@@ -66,14 +64,13 @@ pub use runtime::process::{
     LocalToolRunner, MockToolRunner, ToolInvocation, ToolOutput, ToolRunner,
 };
 pub use runtime::remote::RemoteToolRunner;
-pub use runtime::ssh::{classify_ssh_error, SshErrorKind, SshMuxOptions, SshSession};
+pub use runtime::ssh::{SshMuxOptions, SshSession};
 pub use runtime::vendor::sync_remote_vendor_includes;
 pub use tools::hls::report::{
     parse_csynth_xml, parse_utilization_rpt, CsynthReport, UtilizationReport,
 };
 pub use tools::hls::{
-    build_hls_tcl, run_hls, run_hls_with_retry, run_hls_with_retry_in_stage, HlsJob, HlsOutput,
-    DEFAULT_TRANSIENT_HLS_PATTERNS,
+    build_hls_tcl, run_hls_with_retry, run_hls_with_retry_in_stage, HlsJob, HlsOutput,
 };
 pub use tools::package_xo::{pack_xo, pack_xo_without_redaction, redact_xo, PackageXoInputs};
 pub use tools::vivado::{run_vivado, VivadoJob, VivadoOutput};

@@ -163,7 +163,7 @@ fn missing_mapping_error() -> serde_yaml::Error {
 /// as `VARS.local.bzl`'s `REMOTE_XILINX_TOOL_PATH` commonly does —
 /// would otherwise silently fail at bash-time.
 #[must_use]
-pub fn resolve_xilinx_settings(
+pub(crate) fn resolve_xilinx_settings(
     explicit_settings: Option<&str>,
     tool_root: Option<&str>,
 ) -> Option<String> {

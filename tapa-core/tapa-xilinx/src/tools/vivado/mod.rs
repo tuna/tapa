@@ -36,7 +36,7 @@ pub struct VivadoOutput {
     pub produced: Vec<Utf8PathBuf>,
 }
 
-pub fn build_invocation(job: &VivadoJob, tcl_path: &camino::Utf8Path) -> ToolInvocation {
+pub(crate) fn build_invocation(job: &VivadoJob, tcl_path: &camino::Utf8Path) -> ToolInvocation {
     let mut inv = ToolInvocation::new("vivado")
         .arg("-mode")
         .arg("batch")

@@ -20,7 +20,7 @@ fn push_ssh_opt(args: &mut Vec<String>, key: &str, val: impl std::fmt::Display) 
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SshErrorKind {
+pub(crate) enum SshErrorKind {
     /// Transient mux failure — socket dead, broken pipe, etc. Safe to
     /// retry after tearing down and re-establishing the control master.
     TransientMux,
@@ -91,7 +91,7 @@ pub(crate) fn map_ssh_stderr_to_error(host: &str, stderr: &str) -> XilinxError {
 /// `TransientMux` and retried. Only after both permanent buckets
 /// miss do we consider the transient patterns.
 #[must_use]
-pub fn classify_ssh_error(stderr: &str) -> SshErrorKind {
+pub(crate) fn classify_ssh_error(stderr: &str) -> SshErrorKind {
     let lower = stderr.to_lowercase();
     if AUTH_PATTERNS.iter().any(|p| lower.contains(p)) {
         SshErrorKind::Auth

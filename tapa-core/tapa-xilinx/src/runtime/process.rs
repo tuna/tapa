@@ -61,25 +61,6 @@ pub struct ToolOutput {
 
 pub trait ToolRunner: Send + Sync {
     fn run(&self, inv: &ToolInvocation) -> Result<ToolOutput>;
-
-    /// Stage a sub-tree from the runner's execution scope back onto
-    /// the local filesystem. Callers pass a `relative_from_cwd`
-    /// path (e.g. `project/<solution>/syn`) and a `local_root`;
-    /// after a successful return the tree lives at
-    /// `local_root.join(relative_from_cwd)` with files in place.
-    ///
-    /// Default: no-op. `LocalToolRunner` already wrote directly
-    /// under `ToolInvocation::cwd`; `MockToolRunner` leaves the
-    /// simulated stage untouched. `RemoteToolRunner` overrides to
-    /// tar-pipe the remote work directory's subtree into
-    /// `local_root`.
-    fn harvest(
-        &self,
-        _relative_from_cwd: &std::path::Path,
-        _local_root: &std::path::Path,
-    ) -> Result<()> {
-        Ok(())
-    }
 }
 
 /// Local subprocess runner: inherits the parent process's environment.

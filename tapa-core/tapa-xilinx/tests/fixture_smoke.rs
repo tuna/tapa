@@ -5,8 +5,8 @@
 use std::path::PathBuf;
 
 use tapa_xilinx::{
-    emit_kernel_xml, parse_csynth_xml, parse_hpfm_xml_via_device, parse_utilization_rpt,
-    KernelXmlArgs, KernelXmlPort, PortCategory,
+    emit_kernel_xml, parse_csynth_xml, parse_hpfm_xml, parse_utilization_rpt, KernelXmlArgs,
+    KernelXmlPort, PortCategory,
 };
 
 fn testdata(name: &str) -> PathBuf {
@@ -19,7 +19,7 @@ fn testdata(name: &str) -> PathBuf {
 #[test]
 fn fixture_hpfm_parses() {
     let xml = std::fs::read(testdata("sample.hpfm")).unwrap();
-    let info = parse_hpfm_xml_via_device(&xml).unwrap();
+    let info = parse_hpfm_xml(&xml).unwrap();
     assert_eq!(info.part_num, "xcu250-figd2104-2L-e");
     assert_eq!(info.clock_period, "3.333");
 }
@@ -38,18 +38,6 @@ fn fixture_utilization_parses() {
     let r = parse_utilization_rpt(&text).unwrap();
     assert_eq!(r.device, "xcu250");
     assert_eq!(r.instance, "top");
-}
-
-#[test]
-fn fixture_transient_stderr_matches_default_predicate() {
-    let text = std::fs::read_to_string(testdata("hls_transient_stderr.txt")).unwrap();
-    let matched = tapa_xilinx::DEFAULT_TRANSIENT_HLS_PATTERNS
-        .iter()
-        .any(|p| text.contains(p));
-    assert!(
-        matched,
-        "captured stderr fixture should match a transient pattern"
-    );
 }
 
 #[test]
