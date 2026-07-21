@@ -25,11 +25,6 @@ struct vec_t : protected std::array<T, N> {
  private:
   using base_type = std::array<T, N>;
 
-  static_assert(
-      internal::ap_data_bits(T()) % 32 == 0,
-      "width of ap_int or ap_uint in a vec_t must be a multiple of 32 for "
-      "matched host and hardware alignment");
-
  public:
   static constexpr int length = N;
   static constexpr int width = widthof<T>() * N;
