@@ -18,3 +18,4 @@
 //! - `xdc` — pblock/anchor XDC emission from a `FloorplanResult`.
 
 pub mod device;
+pub mod solver;
