@@ -24,20 +24,19 @@
 set -ue
 
 # Default values for the installation options.
-# Support both new and legacy environment variable names.
-TAPA_LOCAL_PACKAGE="${TAPA_LOCAL_PACKAGE:-${RAPIDSTREAM_LOCAL_PACKAGE:-}}"
+TAPA_LOCAL_PACKAGE="${TAPA_LOCAL_PACKAGE:-}"
 TAPA_VERSION="${TAPA_VERSION:-0.1.20260319}"
 TAPA_DOWNLOAD_TMPFILE=""
 
 if [ "$(id -u)" -eq 0 ]; then
   # Default to /opt/tapa if the user has the root privilege.
-  TAPA_INSTALL_DIR="${TAPA_INSTALL_DIR:-${RAPIDSTREAM_INSTALL_DIR:-/opt/tapa}}"
+  TAPA_INSTALL_DIR="${TAPA_INSTALL_DIR:-/opt/tapa}"
   CREATE_SYMLINKS="yes"
   MODIFY_PROFILE_PATH="no"
 
 elif [ "$(id -u)" -ne 0 ]; then
   # Default to the user's home directory if the user does not have the root privilege.
-  TAPA_INSTALL_DIR="${TAPA_INSTALL_DIR:-${RAPIDSTREAM_INSTALL_DIR:-$HOME/.tapa}}"
+  TAPA_INSTALL_DIR="${TAPA_INSTALL_DIR:-$HOME/.tapa}"
   CREATE_SYMLINKS="no"
   MODIFY_PROFILE_PATH="yes"
 

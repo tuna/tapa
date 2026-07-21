@@ -147,21 +147,7 @@ const TAPA_EXTRA_RUNTIME_INCLUDE_SUBPATHS: &[&str] = &[
 
 fn search_roots() -> Vec<Utf8PathBuf> {
     let mut roots: Vec<Utf8PathBuf> = Vec::new();
-    // Walk parents of the native runtime location when known. The
-    // launcher exports `TAPA_XILINX_BINDINGS_DIR` pointing near the
-    // installed runtime, so packages can resolve their sibling
-    // `tapa-lib/` include dir.
-    if let Ok(dir) = std::env::var("TAPA_XILINX_BINDINGS_DIR") {
-        let mut p = Utf8PathBuf::from(dir);
-        loop {
-            roots.push(p.clone());
-            match p.parent() {
-                Some(next) => p = next.to_path_buf(),
-                None => break,
-            }
-        }
-    }
-    // Walk parents of the running executable as a fallback.
+    // Walk parents of the running executable.
     if let Ok(exe) = std::env::current_exe() {
         let mut p = exe.as_path();
         while let Some(parent) = p.parent() {

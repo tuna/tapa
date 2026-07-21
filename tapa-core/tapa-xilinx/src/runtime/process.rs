@@ -111,7 +111,7 @@ fn xilinx_settings_envs(program: &str) -> &'static [&'static str] {
     match tool {
         "vitis_hls" => &["XILINX_HLS", "XILINX_VITIS"],
         "vivado" => &["XILINX_VIVADO", "XILINX_VITIS"],
-        "v++" | "xocc" => &["XILINX_VITIS"],
+        "v++" => &["XILINX_VITIS"],
         _ => &[],
     }
 }
