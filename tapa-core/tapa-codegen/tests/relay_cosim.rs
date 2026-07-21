@@ -40,6 +40,66 @@ int main(int argc, char** argv) {
     dut->reset = 0;
     dut->eval();
 
+    // Fill without reads until registered backpressure reaches the producer,
+    // hold that full state, then drain. This directly exercises the Tail's
+    // retimed SRL address across both pointer directions.
+    const int FILL_LIMIT = 512;
+    int filled = 0;
+    while (filled < FILL_LIMIT && dut->if_full_n) {
+        dut->if_write = 1;
+        dut->if_din = (unsigned)filled;
+        dut->if_read = 0;
+        dut->eval();
+        posedge();
+        filled++;
+    }
+    dut->if_write = 0;
+    dut->eval();
+    if (filled == 0 || filled == FILL_LIMIT || dut->if_full_n) {
+        printf("FAIL: backpressure did not stop the deterministic fill (%d)\n", filled);
+        return 10;
+    }
+    if (!dut->if_empty_n) {
+        printf("FAIL: filled relay reported empty\n");
+        return 11;
+    }
+    const unsigned held_dout = (unsigned)dut->if_dout;
+    for (int i = 0; i < 32; i++) {
+        if (dut->if_full_n || !dut->if_empty_n ||
+            (unsigned)dut->if_dout != held_dout) {
+            printf("FAIL: full relay was not stable under prolonged backpressure\n");
+            return 12;
+        }
+        posedge();
+    }
+
+    std::vector<unsigned> fill_got;
+    for (long cyc = 0; cyc < 20000 && (int)fill_got.size() < filled; cyc++) {
+        int do_read = dut->if_empty_n;
+        dut->if_read = do_read;
+        dut->eval();
+        if (do_read) fill_got.push_back((unsigned)dut->if_dout);
+        posedge();
+    }
+    if ((int)fill_got.size() != filled) {
+        printf("FAIL: drained %d of %d deterministically filled items\n",
+               (int)fill_got.size(), filled);
+        return 13;
+    }
+    for (int i = 0; i < filled; i++) {
+        if (fill_got[i] != (unsigned)i) {
+            printf("FAIL: fill_got[%d]=%u expected %d\n", i, fill_got[i], i);
+            return 14;
+        }
+    }
+
+    // Start the long mixed-traffic phase from an independently empty state.
+    dut->if_read = 0;
+    dut->reset = 1;
+    for (int i = 0; i < 16; i++) posedge();
+    dut->reset = 0;
+    dut->eval();
+
     const int N = 500;
     std::vector<unsigned> got;
     int next_write = 0;
@@ -88,6 +148,15 @@ fn relay_station_source() -> Vec<u8> {
     let asset = tapa_codegen::support_assets::VerilogAssets::get("relay_station.v")
         .expect("relay_station.v is an embedded asset");
     asset.data.into_owned()
+}
+
+#[test]
+fn srl_tail_address_is_retimed_and_fanout_limited() {
+    let source = String::from_utf8(relay_station_source()).expect("relay RTL is UTF-8");
+    assert!(source.contains("(* max_fanout = 128 *) reg [REAL_ADDR_WIDTH - 1:0] shiftReg_addr;"));
+    assert!(source.contains("shiftReg_addr <= mOutPtrMinusOne[REAL_ADDR_WIDTH]"));
+    assert!(source.contains("shiftReg_addr <= mOutPtrPlusOne[REAL_ADDR_WIDTH]"));
+    assert!(!source.contains("assign shiftReg_addr = mOutPtr[REAL_ADDR_WIDTH]"));
 }
 
 #[test]

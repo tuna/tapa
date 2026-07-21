@@ -273,10 +273,12 @@ module fifo_srl_almost_full #(
 parameter REAL_DEPTH = DEPTH < 4 ? 4 : DEPTH;
 parameter REAL_ADDR_WIDTH = $clog2(REAL_DEPTH)+1;
 
-wire[REAL_ADDR_WIDTH - 1:0] shiftReg_addr ;
+(* max_fanout = 128 *) reg [REAL_ADDR_WIDTH - 1:0] shiftReg_addr;
 wire[DATA_WIDTH - 1:0] shiftReg_data, shiftReg_q;
 wire                     shiftReg_ce;
 reg[REAL_ADDR_WIDTH:0] mOutPtr = ~{(REAL_ADDR_WIDTH+1){1'b0}};
+wire [REAL_ADDR_WIDTH:0] mOutPtrMinusOne = mOutPtr - 1;
+wire [REAL_ADDR_WIDTH:0] mOutPtrPlusOne = mOutPtr + 1;
 reg internal_empty_n = 0, internal_full_n = 1;
 
 assign if_empty_n = internal_empty_n;
@@ -296,6 +298,7 @@ always @ (posedge clk) begin
     if (reset == 1'b1)
     begin
         mOutPtr <= ~{REAL_ADDR_WIDTH+1{1'b0}};
+        shiftReg_addr <= {REAL_ADDR_WIDTH{1'b0}};
         internal_empty_n <= 1'b0;
         internal_full_n <= 1'b1;
     end
@@ -303,7 +306,8 @@ always @ (posedge clk) begin
         if (((if_read & if_read_ce) == 1 & internal_empty_n == 1) &&
             ((if_write & if_write_ce) == 0 | internal_full_n == 0))
         begin
-            mOutPtr <= mOutPtr - 5'd1;
+            mOutPtr <= mOutPtrMinusOne;
+            shiftReg_addr <= mOutPtrMinusOne[REAL_ADDR_WIDTH] == 1'b0 ? mOutPtrMinusOne[REAL_ADDR_WIDTH-1:0]:{REAL_ADDR_WIDTH{1'b0}};
             if (mOutPtr == 0)
                 internal_empty_n <= 1'b0;
             internal_full_n <= 1'b1;
@@ -311,7 +315,8 @@ always @ (posedge clk) begin
         else if (((if_read & if_read_ce) == 0 | internal_empty_n == 0) &&
             ((if_write & if_write_ce) == 1 & internal_full_n == 1))
         begin
-            mOutPtr <= mOutPtr + 5'd1;
+            mOutPtr <= mOutPtrPlusOne;
+            shiftReg_addr <= mOutPtrPlusOne[REAL_ADDR_WIDTH] == 1'b0 ? mOutPtrPlusOne[REAL_ADDR_WIDTH-1:0]:{REAL_ADDR_WIDTH{1'b0}};
             internal_empty_n <= 1'b1;
             if (mOutPtr == REAL_DEPTH - 5'd2)
                 internal_full_n <= 1'b0;
@@ -319,7 +324,6 @@ always @ (posedge clk) begin
     end
 end
 
-assign shiftReg_addr = mOutPtr[REAL_ADDR_WIDTH] == 1'b0 ? mOutPtr[REAL_ADDR_WIDTH-1:0]:{REAL_ADDR_WIDTH{1'b0}};
 assign shiftReg_ce = (if_write & if_write_ce) & internal_full_n;
 
 fifo_srl_almost_full_internal
