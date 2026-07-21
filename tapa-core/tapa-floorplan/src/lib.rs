@@ -20,6 +20,7 @@
 pub mod device;
 pub mod graph;
 pub mod partition;
+pub mod route;
 pub mod solver;
 pub mod xdc;
 
