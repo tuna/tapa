@@ -14,7 +14,7 @@ use clap::{Parser, Subcommand};
 
 use crate::context::CliContext;
 use crate::error::{CliError, Result};
-use crate::steps::{analyze, find_clang_binary, gcc, meta, pack, synth, version};
+use crate::steps::{analyze, find_clang_binary, floorplan, gcc, meta, pack, synth, version};
 
 /// One link in the chained-step list. Each variant carries its step's
 /// `Args` (flags) plus a `chain_tail` positional that captures any
@@ -32,6 +32,13 @@ pub enum Step {
     Synth {
         #[command(flatten)]
         args: synth::SynthArgs,
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, hide = true)]
+        chain_tail: Vec<String>,
+    },
+    /// Coarse-grained floorplan the synthesized design.
+    Floorplan {
+        #[command(flatten)]
+        args: floorplan::FloorplanArgs,
         #[arg(trailing_var_arg = true, allow_hyphen_values = true, hide = true)]
         chain_tail: Vec<String>,
     },
@@ -126,6 +133,7 @@ impl Step {
         match self {
             Self::Analyze { chain_tail, .. }
             | Self::Synth { chain_tail, .. }
+            | Self::Floorplan { chain_tail, .. }
             | Self::Pack { chain_tail, .. }
             | Self::Compile { chain_tail, .. }
             | Self::Version { chain_tail, .. }
@@ -140,6 +148,7 @@ impl Step {
         match self {
             Self::Analyze { args, .. } => analyze::run(&args, ctx),
             Self::Synth { args, .. } => synth::run(&args, ctx),
+            Self::Floorplan { args, .. } => floorplan::run(&args, ctx),
             Self::Pack { args, .. } => pack::run(&args, ctx),
             Self::Compile { args, .. } => meta::run_compile_composite(&args, ctx),
             Self::Gpp { args } => gcc::run(&args, ctx),

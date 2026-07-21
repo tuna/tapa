@@ -1247,6 +1247,7 @@ dependencies = [
  "sha2 0.10.9",
  "shellexpand",
  "tapa-codegen",
+ "tapa-floorplan",
  "tapa-ir",
  "tapa-rtl",
  "tapa-xilinx",

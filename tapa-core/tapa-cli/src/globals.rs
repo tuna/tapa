@@ -96,6 +96,7 @@ Subcommands (chainable, processed left-to-right):
 
   analyze                       Analyze a TAPA program; persist tapa.json.
   synth                         Synthesize the analyzed program into RTL.
+  floorplan                     Coarse-grained floorplan the synthesized design.
   pack                          Pack the generated RTL into a Xilinx `.xo`.
   compile                       analyze + synth + pack in one invocation.
   g++                           Invoke g++ with TAPA include / link flags.

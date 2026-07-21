@@ -28,6 +28,7 @@ serde_path_to_error = { workspace = true }
 serde_yaml = { workspace = true }
 walkdir = { workspace = true }
 tapa-codegen = { workspace = true }
+tapa-floorplan = { workspace = true }
 tapa-ir = { workspace = true }
 tapa-rtl = { workspace = true }
 tapa-xilinx = { workspace = true }

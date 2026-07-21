@@ -32,6 +32,9 @@ pub enum CliError {
     #[error("codegen error: {0}")]
     Codegen(String),
 
+    #[error("floorplan error: {0}")]
+    Floorplan(String),
+
     #[error("report error: {0}")]
     Report(String),
 
@@ -87,6 +90,7 @@ impl CliError {
             | Self::Xilinx(..)
             | Self::Archive(..)
             | Self::Codegen(..)
+            | Self::Floorplan(..)
             | Self::Report(..) => 1,
         }
     }
