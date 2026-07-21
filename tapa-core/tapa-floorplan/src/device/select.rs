@@ -149,6 +149,32 @@ mod tests {
     }
 
     #[test]
+    fn u280_external_interfaces_have_exact_unique_slots() {
+        let device = select_device("u280").expect("u280 resolves");
+        assert_eq!(
+            device.platform_name.as_deref(),
+            Some("xilinx_u280_gen3x16_xdma_1_202211_1")
+        );
+        for index in 0..32 {
+            let tag = format!("HBM[{index}]");
+            let slots = device.slots_with_tag(&tag).collect::<Vec<_>>();
+            assert_eq!(slots.len(), 1, "{tag} must identify exactly one slot");
+            assert_eq!(slots[0].y, 0, "{tag} belongs in the memory-facing row");
+            assert_eq!(slots[0].x, u32::from(index >= 16));
+        }
+        for (tag, expected) in [
+            ("DDR[0]", (1, 0)),
+            ("DDR[1]", (1, 1)),
+            ("CLK_RST", (1, 0)),
+            ("S_AXI_CONTROL", (1, 1)),
+        ] {
+            let slots = device.slots_with_tag(tag).collect::<Vec<_>>();
+            assert_eq!(slots.len(), 1, "{tag} must identify exactly one slot");
+            assert_eq!((slots[0].x, slots[0].y), expected);
+        }
+    }
+
+    #[test]
     fn selection_accepts_key_full_part_and_family() {
         for query in [
             "u280",

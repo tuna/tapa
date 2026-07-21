@@ -337,6 +337,14 @@ impl Device {
         self.slots.iter().find(|s| s.x == x && s.y == y)
     }
 
+    /// All slots carrying an exact device tag such as `HBM[7]` or
+    /// `S_AXI_CONTROL`.
+    pub fn slots_with_tag<'a>(&'a self, tag: &'a str) -> impl Iterator<Item = &'a Slot> + 'a {
+        self.slots
+            .iter()
+            .filter(move |slot| slot.tags.iter().any(|candidate| candidate == tag))
+    }
+
     /// The centroid of a region: the midpoint of its down-left and up-right
     /// slot centroids. `None` if either corner slot is missing.
     #[must_use]
