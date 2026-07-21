@@ -11,5 +11,8 @@ tapa-ir.workspace = true
 tapa-protocol.workspace = true
 tapa-rtl.workspace = true
 
+[dev-dependencies]
+tempfile = { workspace = true }
+
 [lints]
 workspace = true

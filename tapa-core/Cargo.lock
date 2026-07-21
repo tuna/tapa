@@ -1267,6 +1267,7 @@ dependencies = [
  "tapa-ir",
  "tapa-protocol",
  "tapa-rtl",
+ "tempfile",
  "thiserror",
 ]
 
