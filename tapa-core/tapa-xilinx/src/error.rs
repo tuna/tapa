@@ -129,31 +129,6 @@ mod tests {
         "Json",
     ];
 
-    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
-        static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-        LOCK.lock().unwrap_or_else(|p| p.into_inner())
-    }
-
-    fn with_envs<T>(updates: &[(&str, Option<&str>)], body: impl FnOnce() -> T) -> T {
-        let _g = env_lock();
-        let mut prev: Vec<(String, Option<std::ffi::OsString>)> = Vec::new();
-        for (k, v) in updates {
-            prev.push(((*k).to_string(), std::env::var_os(k)));
-            match v {
-                Some(val) => std::env::set_var(k, val),
-                None => std::env::remove_var(k),
-            }
-        }
-        let out = body();
-        for (k, p) in prev {
-            match p {
-                Some(v) => std::env::set_var(k, v),
-                None => std::env::remove_var(k),
-            }
-        }
-        out
-    }
-
     fn produce_config() -> XilinxError {
         // Real config loader on a malformed YAML body.
         RemoteConfig::from_yaml_str("port: \"not-a-number\"\nhost: 1", "/tmp/.taparc")
