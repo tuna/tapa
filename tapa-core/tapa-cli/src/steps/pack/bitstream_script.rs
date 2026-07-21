@@ -232,6 +232,38 @@ mod tests {
     }
 
     #[test]
+    fn all_optional_args_stay_on_one_vpp_command() {
+        // Regression: a blank line between `--config` and `--kernel_frequency`
+        // once broke the `\` continuation, orphaning `--kernel_frequency` as
+        // its own (failing) command. Every arg must continue the v++ command.
+        let script = render_vitis_script(
+            "Top",
+            Path::new("/tmp/a.xo"),
+            Some("plat"),
+            Some("3.33"),
+            Some(Path::new("/work/floorplan.xdc")),
+            Some(Path::new("/work/link_config.ini")),
+        );
+        let lines: Vec<&str> = script.lines().collect();
+        let kf = lines
+            .iter()
+            .position(|l| l.contains("--kernel_frequency"))
+            .expect("script sets --kernel_frequency");
+        assert!(
+            kf > 0 && lines[kf - 1].trim_end().ends_with('\\'),
+            "the line before --kernel_frequency must end with `\\` (continuation), \
+             got:\n{:?}\n{:?}",
+            lines[kf - 1],
+            lines[kf],
+        );
+        // And there is no stray blank line amid the continued args.
+        assert!(
+            !script.contains("\\\n\n  --"),
+            "a continued arg line is followed by a blank line, breaking v++:\n{script}"
+        );
+    }
+
+    #[test]
     fn connectivity_ini_is_added_as_config() {
         let script = render_vitis_script(
             "Top",
