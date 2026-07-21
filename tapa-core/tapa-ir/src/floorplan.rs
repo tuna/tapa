@@ -55,7 +55,7 @@ impl Area {
 }
 
 /// Child-side identity of an M-AXI interface routed to external memory.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AxiEndpoint {
     /// Canonical flattened child instance name.
@@ -67,7 +67,7 @@ pub struct AxiEndpoint {
 }
 
 /// One independently pipelined AXI protocol channel.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AxiChannel {
     ReadAddress,
@@ -75,6 +75,69 @@ pub enum AxiChannel {
     WriteAddress,
     WriteData,
     WriteResponse,
+}
+
+impl AxiChannel {
+    /// Stable short name used in generated AXI pipeline hierarchy.
+    #[must_use]
+    pub const fn rtl_name(self) -> &'static str {
+        match self {
+            Self::ReadAddress => "ar",
+            Self::ReadData => "r",
+            Self::WriteAddress => "aw",
+            Self::WriteData => "w",
+            Self::WriteResponse => "b",
+        }
+    }
+}
+
+/// Deterministic generated instance name for one direct AXI channel pipeline.
+#[must_use]
+pub fn axi_pipeline_instance_name(endpoint: &AxiEndpoint, channel: AxiChannel) -> String {
+    format!(
+        "__tapa_axi_{}_{}",
+        crate::port::sanitize_identifier_name(&endpoint.top_port),
+        channel.rtl_name(),
+    )
+}
+
+/// Physical bit widths of the five independent AXI ready/valid channels.
+///
+/// Each value includes the channel payload plus its `VALID` and `READY` bits.
+/// The fixed shape prevents a planner input from silently omitting a channel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AxiChannelWidths {
+    pub read_address: u32,
+    pub read_data: u32,
+    pub write_address: u32,
+    pub write_data: u32,
+    pub write_response: u32,
+}
+
+impl AxiChannelWidths {
+    /// Return the physical width of `channel`, including handshake bits.
+    #[must_use]
+    pub const fn physical_width(self, channel: AxiChannel) -> u32 {
+        match channel {
+            AxiChannel::ReadAddress => self.read_address,
+            AxiChannel::ReadData => self.read_data,
+            AxiChannel::WriteAddress => self.write_address,
+            AxiChannel::WriteData => self.write_data,
+            AxiChannel::WriteResponse => self.write_response,
+        }
+    }
+
+    /// Iterate in stable protocol order.
+    #[must_use]
+    pub const fn channels(self) -> [(AxiChannel, u32); 5] {
+        [
+            (AxiChannel::ReadAddress, self.read_address),
+            (AxiChannel::ReadData, self.read_data),
+            (AxiChannel::WriteAddress, self.write_address),
+            (AxiChannel::WriteData, self.write_data),
+            (AxiChannel::WriteResponse, self.write_response),
+        ]
+    }
 }
 
 /// A distributed-control bundle with uniform routing semantics.
@@ -277,6 +340,20 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&PipelineScheme::SingleHDoubleV).unwrap(),
             r#""single_h_double_v""#,
+        );
+    }
+
+    #[test]
+    fn axi_pipeline_name_uses_the_unique_emitted_top_port() {
+        let endpoint = AxiEndpoint {
+            instance: "Module1Func#1".to_string(),
+            port: "a_b".to_string(),
+            top_port: "mem[3]".to_string(),
+        };
+
+        assert_eq!(
+            axi_pipeline_instance_name(&endpoint, AxiChannel::ReadData),
+            "__tapa_axi_mem_3_r",
         );
     }
 

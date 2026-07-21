@@ -27,8 +27,8 @@ pub use connectivity::{
 };
 pub use error::ParseError;
 pub use floorplan::{
-    Area, AxiChannel, AxiEndpoint, ControlChannel, FloorplanResult, PipelineRoute, PipelineScheme,
-    RoutedChannel,
+    axi_pipeline_instance_name, Area, AxiChannel, AxiChannelWidths, AxiEndpoint, ControlChannel,
+    FloorplanResult, PipelineRoute, PipelineScheme, RoutedChannel,
 };
 pub use graph::TaskGraph;
 pub use instance::{Arg, TaskInstance};

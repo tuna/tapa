@@ -32,6 +32,24 @@ pub fn sanitize_array_name(name: &str) -> String {
     )
 }
 
+/// Convert a frontend name into a plain Verilog identifier.
+///
+/// Array channels keep their established `foo[3]` to `foo_3` spelling;
+/// remaining characters that Verilog identifiers cannot contain become `_`.
+#[must_use]
+pub fn sanitize_identifier_name(name: &str) -> String {
+    let name = sanitize_array_name(name);
+    let mut out = String::with_capacity(name.len());
+    for (index, character) in name.chars().enumerate() {
+        let valid = character.is_ascii_alphanumeric() || matches!(character, '_' | '$');
+        if index == 0 && character.is_ascii_digit() {
+            out.push('_');
+        }
+        out.push(if valid { character } else { '_' });
+    }
+    out
+}
+
 /// Argument / port category.
 ///
 /// `"hmap"` is an alias that deserializes to `Mmap`.
@@ -255,5 +273,12 @@ mod tests {
                 "{name} is not a well-formed array name",
             );
         }
+    }
+
+    #[test]
+    fn sanitize_identifier_name_replaces_invalid_characters() {
+        assert_eq!(sanitize_identifier_name("Module1Func#1"), "Module1Func_1");
+        assert_eq!(sanitize_identifier_name("foo[3]"), "foo_3");
+        assert_eq!(sanitize_identifier_name("1foo"), "_1foo");
     }
 }

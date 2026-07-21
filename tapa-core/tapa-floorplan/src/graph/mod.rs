@@ -2,4 +2,6 @@
 
 pub mod floor_graph;
 
-pub use floor_graph::{fifo_area, FloorGraph, GraphError, PlacementEdge, Stream, Vertex};
+pub use floor_graph::{
+    fifo_area, AxiNet, FloorGraph, GraphError, MemoryInterface, PlacementEdge, Stream, Vertex,
+};

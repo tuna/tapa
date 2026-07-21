@@ -7,8 +7,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use tapa_ir::port::sanitize_array_name;
-use tapa_ir::{FloorplanResult, RoutedChannel};
+use tapa_ir::port::{sanitize_array_name, sanitize_identifier_name};
+use tapa_ir::{axi_pipeline_instance_name, FloorplanResult, RoutedChannel};
 
 use crate::device::model::{Coor, Device};
 
@@ -43,8 +43,22 @@ pub fn emit_xdc(result: &FloorplanResult, device: &Device) -> String {
     }
 
     for route in &result.routes {
-        let RoutedChannel::Stream { fifo } = &route.channel else {
-            continue;
+        let (pipeline_instance, description) = match &route.channel {
+            RoutedChannel::Stream { fifo } => {
+                (format!("{}_fifo", sanitize_array_name(fifo)), fifo.clone())
+            }
+            RoutedChannel::Axi {
+                endpoint, channel, ..
+            } => (
+                axi_pipeline_instance_name(endpoint, *channel),
+                format!(
+                    "{}.{} {}",
+                    endpoint.instance,
+                    endpoint.port,
+                    channel.rtl_name()
+                ),
+            ),
+            RoutedChannel::Control { .. } => continue,
         };
         let (Some(head_region), Some(tail_region)) = (route.route.first(), route.route.last())
         else {
@@ -55,24 +69,24 @@ pub fn emit_xdc(result: &FloorplanResult, device: &Device) -> String {
             .entry(canonical_pblock_name(head_region))
             .or_default()
             .push(CellMatch {
-                pattern: pipeline_head_regex(fifo),
-                description: format!("{fifo} Head"),
+                pattern: pipeline_head_regex(&pipeline_instance),
+                description: format!("{description} Head"),
             });
         for (index, region) in route.reg_regions.iter().enumerate() {
             by_region
                 .entry(canonical_pblock_name(region))
                 .or_default()
                 .push(CellMatch {
-                    pattern: pipeline_body_regex(fifo, index),
-                    description: format!("{fifo} Body {index}"),
+                    pattern: pipeline_body_regex(&pipeline_instance, index),
+                    description: format!("{description} Body {index}"),
                 });
         }
         by_region
             .entry(canonical_pblock_name(tail_region))
             .or_default()
             .push(CellMatch {
-                pattern: pipeline_tail_regex(fifo),
-                description: format!("{fifo} Tail"),
+                pattern: pipeline_tail_regex(&pipeline_instance),
+                description: format!("{description} Tail"),
             });
     }
 
@@ -115,8 +129,7 @@ struct CellMatch {
 /// and followed by the end of the name or a `/` (its descendant cells).
 ///
 /// Two transforms bridge the graph name to the netlist name codegen emits:
-///   * `sanitize_array_name` collapses a bracketed index (`PE_inst[0]_Serpens`)
-///     to the underscore form the Verilog instance uses (`PE_inst_0_Serpens`);
+///   * `sanitize_identifier_name` applies codegen's Verilog identifier rules;
 ///   * an optional `_fifo` suffix matches FIFO and handshake-pipeline instances,
 ///     which codegen names `{sanitized}_fifo`, while leaf tasks carry no suffix.
 ///
@@ -124,7 +137,7 @@ struct CellMatch {
 fn cell_name_regex(instance: &str) -> String {
     format!(
         "^(.*/)?{}(_fifo)?(/.*)?$",
-        regex_escape(&sanitize_array_name(instance))
+        regex_escape(&sanitize_identifier_name(instance))
     )
 }
 
@@ -132,9 +145,11 @@ fn cell_name_regex(instance: &str) -> String {
 /// The gate is combinational, while `TAPA_HS_HEAD` owns the actual ready,
 /// valid, and data registers. Keeping both in one match also survives Vivado
 /// retaining the gate as a separate hierarchy cell.
-fn pipeline_head_regex(link: &str) -> String {
-    let fifo = format!("{}_fifo", sanitize_array_name(link));
-    format!("^(.*/)?{}/TAPA_HS_HEAD(_GATE)?(/.*)?$", regex_escape(&fifo))
+fn pipeline_head_regex(instance: &str) -> String {
+    format!(
+        "^(.*/)?{}/TAPA_HS_HEAD(_GATE)?(/.*)?$",
+        regex_escape(instance)
+    )
 }
 
 /// Match one generated Body register and all of its descendants.
@@ -142,18 +157,16 @@ fn pipeline_head_regex(link: &str) -> String {
 /// Vivado may render a named generate scope separator as either `/` or `.`, so
 /// the middle `.*` deliberately accepts both while the escaped index and
 /// complete child name keep the match exact.
-fn pipeline_body_regex(link: &str, index: usize) -> String {
-    let fifo = format!("{}_fifo", sanitize_array_name(link));
+fn pipeline_body_regex(instance: &str, index: usize) -> String {
     format!(
         "^(.*/)?{}/TAPA_HS_BODY\\[{index}\\].*TAPA_HS_BODY_REG(/.*)?$",
-        regex_escape(&fifo)
+        regex_escape(instance)
     )
 }
 
 /// Match the destination-slot Tail FIFO and every cell below it.
-fn pipeline_tail_regex(link: &str) -> String {
-    let fifo = format!("{}_fifo", sanitize_array_name(link));
-    format!("^(.*/)?{}/TAPA_HS_TAIL(/.*)?$", regex_escape(&fifo))
+fn pipeline_tail_regex(instance: &str) -> String {
+    format!("^(.*/)?{}/TAPA_HS_TAIL(/.*)?$", regex_escape(instance))
 }
 
 /// Backslash-escape every regex metacharacter so an instance name is matched
@@ -207,7 +220,9 @@ mod tests {
     use super::*;
     use crate::device::select::select_device;
     use std::collections::BTreeMap as Map;
-    use tapa_ir::{Area, PipelineRoute, PipelineScheme};
+    use tapa_ir::{
+        Area, AxiChannel, AxiEndpoint, MemoryBank, MemoryKind, PipelineRoute, PipelineScheme,
+    };
 
     #[test]
     #[allow(
@@ -287,6 +302,10 @@ if {[llength $cells]} { add_cells_to_pblock SLOT_X0Y0_TO_SLOT_X0Y0 $cells } else
             &cell_name_regex("Arbiter_Y_3"),
             "level0_i/ulp/Serpens/inst/Arbiter_Y_3/fsm"
         ));
+        assert_eq!(
+            cell_name_regex("Module1Func#1"),
+            "^(.*/)?Module1Func_1(_fifo)?(/.*)?$",
+        );
     }
 
     /// Mirror what our `^(.*/)?LITERAL(_fifo)?(/.*)?$` patterns mean: `LITERAL`,
@@ -361,21 +380,24 @@ if {[llength $cells]} { add_cells_to_pblock SLOT_X0Y0_TO_SLOT_X0Y0 $cells } else
         let xdc = emit_xdc(&result, &device);
 
         let source = pblock_section(&xdc, "SLOT_X0Y0_TO_SLOT_X0Y0");
-        assert!(source.contains(&pipeline_head_regex("fifo_0")), "{source}");
         assert!(
-            source.contains(&pipeline_body_regex("fifo_0", 0)),
+            source.contains(&pipeline_head_regex("fifo_0_fifo")),
+            "{source}"
+        );
+        assert!(
+            source.contains(&pipeline_body_regex("fifo_0_fifo", 0)),
             "{source}"
         );
 
         let middle = pblock_section(&xdc, "SLOT_X1Y0_TO_SLOT_X1Y0");
         assert!(
-            middle.contains(&pipeline_body_regex("fifo_0", 1)),
+            middle.contains(&pipeline_body_regex("fifo_0_fifo", 1)),
             "{middle}"
         );
 
         let destination = pblock_section(&xdc, "SLOT_X1Y1_TO_SLOT_X1Y1");
         assert!(
-            destination.contains(&pipeline_tail_regex("fifo_0")),
+            destination.contains(&pipeline_tail_regex("fifo_0_fifo")),
             "{destination}"
         );
         assert!(destination.contains(&cell_name_regex("consumer_0")));
@@ -406,9 +428,59 @@ if {[llength $cells]} { add_cells_to_pblock SLOT_X0Y0_TO_SLOT_X0Y0 $cells } else
         };
         let xdc = emit_xdc(&result, &select_device("u280").expect("u280"));
 
-        assert!(xdc.contains(&pipeline_head_regex("fifo_adjacent")), "{xdc}");
-        assert!(xdc.contains(&pipeline_tail_regex("fifo_adjacent")), "{xdc}");
+        assert!(
+            xdc.contains(&pipeline_head_regex("fifo_adjacent_fifo")),
+            "{xdc}"
+        );
+        assert!(
+            xdc.contains(&pipeline_tail_regex("fifo_adjacent_fifo")),
+            "{xdc}"
+        );
         assert!(!xdc.contains("TAPA_HS_BODY\\["), "{xdc}");
+    }
+
+    #[test]
+    fn axi_channel_pipeline_uses_its_typed_hierarchy_and_route_direction() {
+        let endpoint = AxiEndpoint {
+            instance: "Reader_0".to_string(),
+            port: "mem".to_string(),
+            top_port: "data".to_string(),
+        };
+        let pipeline = axi_pipeline_instance_name(&endpoint, AxiChannel::ReadData);
+        let result = FloorplanResult {
+            device: "u280".to_string(),
+            grid: (2, 3),
+            regions: Map::from([(
+                endpoint.instance.clone(),
+                "SLOT_X1Y0_TO_SLOT_X1Y0".to_string(),
+            )]),
+            routes: vec![PipelineRoute {
+                channel: RoutedChannel::Axi {
+                    endpoint,
+                    bank: MemoryBank {
+                        kind: MemoryKind::Hbm,
+                        index: 0,
+                    },
+                    channel: AxiChannel::ReadData,
+                },
+                // Read data runs from the bank to the child.
+                route: vec!["SLOT_X0Y0".to_string(), "SLOT_X1Y0".to_string()],
+                scheme: PipelineScheme::Double,
+                reg_regions: vec!["SLOT_X0Y0".to_string(), "SLOT_X1Y0".to_string()],
+            }],
+            slot_usage: Map::new(),
+        };
+        let xdc = emit_xdc(&result, &select_device("u280").expect("u280"));
+
+        let bank = pblock_section(&xdc, "SLOT_X0Y0_TO_SLOT_X0Y0");
+        assert!(bank.contains(&pipeline_head_regex(&pipeline)), "{bank}");
+        assert!(bank.contains(&pipeline_body_regex(&pipeline, 0)), "{bank}");
+        let child = pblock_section(&xdc, "SLOT_X1Y0_TO_SLOT_X1Y0");
+        assert!(
+            child.contains(&pipeline_body_regex(&pipeline, 1)),
+            "{child}"
+        );
+        assert!(child.contains(&pipeline_tail_regex(&pipeline)), "{child}");
     }
 
     fn pblock_section<'a>(xdc: &'a str, pblock: &str) -> &'a str {

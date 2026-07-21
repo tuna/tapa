@@ -116,21 +116,21 @@ fn canonical_slot_region(region: &str) -> Result<String, PipelineError> {
     Ok(Coor::slot(x, y).region_name())
 }
 
-/// A cross-slot stream awaiting routing: its FIFO name, endpoints, and width.
-struct StreamNet {
-    link: String,
+/// A cross-slot typed channel awaiting the shared routing solve.
+struct PendingNet {
+    channel: RoutedChannel,
     src: Cell,
     dst: Cell,
     width: u32,
 }
 
-/// Find every logical stream edge whose endpoints landed in different
-/// regions. The placement graph has already clustered the stream's physical
-/// FIFO into its consumer, so this is also the topology codegen implements.
-fn cross_slot_streams(
+/// Find every stream and AXI channel whose endpoints landed in different
+/// slots. All channel classes enter one routing MILP so they compete for the
+/// same physical boundary capacities.
+fn cross_slot_nets(
     graph: &FloorGraph,
     regions: &BTreeMap<String, String>,
-) -> Result<Vec<StreamNet>, PipelineError> {
+) -> Result<Vec<PendingNet>, PipelineError> {
     let mut nets = Vec::new();
     for edge in graph.streams() {
         let src_region = regions
@@ -142,8 +142,31 @@ fn cross_slot_streams(
         if src_region == dst_region {
             continue; // co-located: no crossing
         }
-        nets.push(StreamNet {
-            link: edge.link.clone(),
+        nets.push(PendingNet {
+            channel: RoutedChannel::Stream {
+                fifo: edge.link.clone(),
+            },
+            src: region_cell(src_region)?,
+            dst: region_cell(dst_region)?,
+            width: edge.width,
+        });
+    }
+    for edge in graph.axi_nets() {
+        let src_region = regions
+            .get(&graph.vertex(edge.src).name)
+            .ok_or_else(|| PipelineError::BadRegion(graph.vertex(edge.src).name.clone()))?;
+        let dst_region = regions
+            .get(&graph.vertex(edge.dst).name)
+            .ok_or_else(|| PipelineError::BadRegion(graph.vertex(edge.dst).name.clone()))?;
+        if src_region == dst_region {
+            continue;
+        }
+        nets.push(PendingNet {
+            channel: RoutedChannel::Axi {
+                endpoint: edge.endpoint.clone(),
+                bank: edge.bank,
+                channel: edge.channel,
+            },
             src: region_cell(src_region)?,
             dst: region_cell(dst_region)?,
             width: edge.width,
@@ -152,7 +175,7 @@ fn cross_slot_streams(
     Ok(nets)
 }
 
-/// Plan every cross-slot stream route for a placed design.
+/// Plan every cross-slot stream and AXI route for a placed design.
 pub fn plan_routes(
     graph: &FloorGraph,
     regions: &BTreeMap<String, String>,
@@ -161,12 +184,12 @@ pub fn plan_routes(
     solver: &dyn Solver,
     opts: &SolveOpts,
 ) -> Result<Vec<PipelineRoute>, PipelineError> {
-    let streams = cross_slot_streams(graph, regions)?;
-    if streams.is_empty() {
+    let nets = cross_slot_nets(graph, regions)?;
+    if nets.is_empty() {
         return Ok(Vec::new());
     }
 
-    let route_nets_input: Vec<RouteNet> = streams
+    let route_nets_input: Vec<RouteNet> = nets
         .iter()
         .map(|net| RouteNet {
             src: net.src,
@@ -176,15 +199,13 @@ pub fn plan_routes(
         .collect();
     let routes = route_nets(&route_nets_input, device, solver, opts)?;
 
-    let pipeline_routes = streams
+    let pipeline_routes = nets
         .iter()
         .zip(routes)
         .map(|(net, route)| {
             let reg_regions = pipeline_reg_regions(&route, scheme);
             PipelineRoute {
-                channel: RoutedChannel::Stream {
-                    fifo: net.link.clone(),
-                },
+                channel: net.channel.clone(),
                 route: route.iter().map(|&cell| slot_tag(cell)).collect(),
                 scheme,
                 reg_regions,
@@ -212,20 +233,91 @@ pub(crate) fn realize_slot_usage(
     let mut usage = baseline.clone();
 
     for route in routes {
-        let RoutedChannel::Stream { fifo } = &route.channel else {
-            continue;
-        };
-        let stream = streams
-            .get(fifo.as_str())
-            .ok_or_else(|| PipelineError::Accounting {
-                link: fifo.clone(),
-                detail: "no matching stream metadata".to_string(),
-            })?;
-        account_stream_pipeline(&mut usage, graph, regions, route, stream, fifo)?;
+        match &route.channel {
+            RoutedChannel::Stream { fifo } => {
+                let stream =
+                    streams
+                        .get(fifo.as_str())
+                        .ok_or_else(|| PipelineError::Accounting {
+                            link: fifo.clone(),
+                            detail: "no matching stream metadata".to_string(),
+                        })?;
+                account_stream_pipeline(&mut usage, graph, regions, route, stream, fifo)?;
+            }
+            RoutedChannel::Axi {
+                endpoint,
+                bank,
+                channel,
+            } => {
+                let link = format!("{}.{} {channel:?}", endpoint.instance, endpoint.port);
+                let net = graph
+                    .axi_nets()
+                    .iter()
+                    .find(|net| {
+                        net.endpoint == *endpoint && net.bank == *bank && net.channel == *channel
+                    })
+                    .ok_or_else(|| accounting_error(&link, "no matching AXI channel metadata"))?;
+                account_axi_pipeline(&mut usage, graph, regions, route, net, &link)?;
+            }
+            RoutedChannel::Control { .. } => {}
+        }
     }
 
     validate_realized_usage(&usage, device, capacity_limit)?;
     Ok(usage)
+}
+
+fn account_axi_pipeline(
+    usage: &mut BTreeMap<String, Area>,
+    graph: &FloorGraph,
+    regions: &BTreeMap<String, String>,
+    route: &PipelineRoute,
+    net: &crate::graph::AxiNet,
+    link: &str,
+) -> Result<(), PipelineError> {
+    let head_region = route
+        .route
+        .first()
+        .ok_or_else(|| accounting_error(link, "route has no Head region"))?;
+    let tail_region = route
+        .route
+        .last()
+        .ok_or_else(|| accounting_error(link, "route has no Tail region"))?;
+    let head_region = canonical_slot_region(head_region)?;
+    let tail_region = canonical_slot_region(tail_region)?;
+    verify_route_endpoint(graph, regions, net.src, &head_region, link, "Head")?;
+    verify_route_endpoint(graph, regions, net.dst, &tail_region, link, "Tail")?;
+
+    let body_level = u32::try_from(route.reg_regions.len())
+        .map_err(|_| accounting_error(link, "Body level exceeds u32"))?;
+    let real_depth = body_level
+        .checked_mul(2)
+        .and_then(|level| level.checked_add(8))
+        .ok_or_else(|| accounting_error(link, "Tail depth overflows u32"))?;
+    add_usage(
+        usage,
+        &tail_region,
+        fifo_area(net.payload_width, real_depth),
+        link,
+    )?;
+
+    let register_area = Area {
+        ff: u64::from(net.width),
+        ..Area::default()
+    };
+    add_usage(
+        usage,
+        &head_region,
+        Area {
+            lut: 1,
+            ..register_area
+        },
+        link,
+    )?;
+    for region in &route.reg_regions {
+        add_usage(usage, &canonical_slot_region(region)?, register_area, link)?;
+    }
+    Ok(())
 }
 
 fn account_stream_pipeline(
@@ -491,6 +583,47 @@ mod tests {
         FloorGraph::build(&flat).expect("floor graph")
     }
 
+    fn one_mmap_graph() -> FloorGraph {
+        let design = tapa_ir::TaskGraph::from_json(
+            r#"{
+                "cflags": [], "top": "Top", "target": "xilinx-hls",
+                "tasks": {
+                    "Top": {"readable_name":"Top","code":"","level":"upper","synth":"hls",
+                        "ports":[{"cat":"mmap","name":"mem","type":"int*","width":32}],
+                        "tasks":{"Reader":[{"args":{"data":{"arg":"mem","cat":"mmap"}},"step":0}]},
+                        "fifos":{}},
+                    "Reader": {"readable_name":"Reader","code":"","level":"lower","synth":"hls",
+                        "ports":[{"cat":"mmap","name":"data","type":"int*","width":32}],
+                        "self_area":{"LUT":10,"FF":20}}
+                }
+            }"#,
+        )
+        .expect("parse mmap graph");
+        let flat = tapa_ir::flatten(&design).expect("flatten mmap graph");
+        FloorGraph::build_with_memory(
+            &flat,
+            &[crate::graph::MemoryInterface {
+                endpoint: tapa_ir::AxiEndpoint {
+                    instance: "Reader_0".to_string(),
+                    port: "data".to_string(),
+                    top_port: "mem".to_string(),
+                },
+                bank: tapa_ir::MemoryBank {
+                    kind: tapa_ir::MemoryKind::Hbm,
+                    index: 0,
+                },
+                channel_widths: tapa_ir::AxiChannelWidths {
+                    read_address: 80,
+                    read_data: 38,
+                    write_address: 80,
+                    write_data: 39,
+                    write_response: 5,
+                },
+            }],
+        )
+        .expect("floor graph")
+    }
+
     fn baseline_usage(
         graph: &FloorGraph,
         regions: &BTreeMap<String, String>,
@@ -530,17 +663,108 @@ mod tests {
         assert_eq!(regions["q64_Top"], regions["Consumer_0"]);
         assert_eq!(graph.placement_edges().len(), 1);
         assert_eq!(graph.placement_edges()[0].width, 35 + 67);
-        let streams = cross_slot_streams(&graph, &regions).expect("cross-slot streams");
+        let streams = cross_slot_nets(&graph, &regions).expect("cross-slot streams");
         assert_eq!(streams.len(), 2);
         assert!(streams
             .iter()
             .all(|stream| (stream.src, stream.dst) == ((0, 0), (1, 0))));
-        assert!(streams
+        assert!(streams.iter().any(|stream| {
+            stream.channel
+                == (RoutedChannel::Stream {
+                    fifo: "q32_Top".to_string(),
+                })
+                && stream.width == 35
+        }));
+        assert!(streams.iter().any(|stream| {
+            stream.channel
+                == (RoutedChannel::Stream {
+                    fifo: "q64_Top".to_string(),
+                })
+                && stream.width == 67
+        }));
+    }
+
+    #[test]
+    fn axi_channels_share_the_router_with_protocol_correct_directions() {
+        let graph = one_mmap_graph();
+        let regions = BTreeMap::from([
+            ("Reader_0".to_string(), Coor::slot(1, 0).region_name()),
+            (
+                "__tapa_bank_hbm_0".to_string(),
+                Coor::slot(0, 0).region_name(),
+            ),
+        ]);
+        let nets = cross_slot_nets(&graph, &regions).expect("cross-slot AXI nets");
+        assert_eq!(nets.len(), 5);
+        for net in &nets {
+            let RoutedChannel::Axi { channel, .. } = net.channel else {
+                panic!("expected AXI net")
+            };
+            match channel {
+                tapa_ir::AxiChannel::ReadAddress
+                | tapa_ir::AxiChannel::WriteAddress
+                | tapa_ir::AxiChannel::WriteData => {
+                    assert_eq!((net.src, net.dst), ((1, 0), (0, 0)));
+                }
+                tapa_ir::AxiChannel::ReadData | tapa_ir::AxiChannel::WriteResponse => {
+                    assert_eq!((net.src, net.dst), ((0, 0), (1, 0)));
+                }
+            }
+        }
+
+        let read_data = graph
+            .axi_nets()
             .iter()
-            .any(|stream| stream.link == "q32_Top" && stream.width == 35));
-        assert!(streams
-            .iter()
-            .any(|stream| stream.link == "q64_Top" && stream.width == 67));
+            .find(|net| net.channel == tapa_ir::AxiChannel::ReadData)
+            .expect("read data");
+        let route = PipelineRoute {
+            channel: RoutedChannel::Axi {
+                endpoint: read_data.endpoint.clone(),
+                bank: read_data.bank,
+                channel: read_data.channel,
+            },
+            route: vec!["SLOT_X0Y0".to_string(), "SLOT_X1Y0".to_string()],
+            scheme: PipelineScheme::Single,
+            reg_regions: Vec::new(),
+        };
+        let realized = realize_slot_usage(
+            &graph,
+            &regions,
+            &BTreeMap::from([(
+                Coor::slot(1, 0).region_name(),
+                Area {
+                    lut: 10,
+                    ff: 20,
+                    ..Area::default()
+                },
+            )]),
+            &[route],
+            &select_device("u280").expect("u280"),
+            MAX_USAGE_LIMIT,
+        )
+        .expect("account AXI pipeline");
+        assert_eq!(
+            realized[&Coor::slot(0, 0).region_name()],
+            Area {
+                lut: 1,
+                ff: 38,
+                ..Area::default()
+            },
+            "the bank-side read-data Head is charged at the route source"
+        );
+        assert_eq!(
+            realized[&Coor::slot(1, 0).region_name()],
+            checked_add_area(
+                Area {
+                    lut: 10,
+                    ff: 20,
+                    ..Area::default()
+                },
+                fifo_area(36, 8),
+            )
+            .expect("area fits"),
+            "the child-side read-data Tail carries the two-entry AXI buffer plus grace"
+        );
     }
 
     #[test]

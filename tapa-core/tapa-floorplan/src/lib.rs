@@ -26,9 +26,10 @@ pub mod route;
 pub mod solver;
 pub mod xdc;
 
+use std::path::Path;
 use std::time::Duration;
 
-use tapa_ir::{FloorplanResult, PipelineScheme, WorkState};
+use tapa_ir::{FloorplanResult, MemoryBank, PipelineScheme, WorkState};
 
 use crate::device::select::{select_device, SelectError};
 use crate::graph::{FloorGraph, GraphError};
@@ -38,7 +39,17 @@ use crate::partition::ilp::{
 use crate::pipeline::plan::{plan_routes, realize_slot_usage, PipelineError};
 use crate::solver::{CbcSolver, SolveOpts};
 
+pub use crate::graph::MemoryInterface;
 pub use crate::partition::PartitionStrategy;
+
+/// Transient inputs derived from generated RTL and link configuration.
+///
+/// They affect the ordinary placement/routing graph for this solve but are not
+/// persisted as another design graph.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PlanInputs {
+    pub memory: Vec<MemoryInterface>,
+}
 
 /// Options controlling a [`plan`] run. Defaults match the CLI's defaults.
 #[derive(Debug, Clone, Copy)]
@@ -121,6 +132,17 @@ pub enum PlanError {
     /// The pipeline plan (routing) failed.
     #[error(transparent)]
     Pipeline(#[from] PipelineError),
+    /// An external bank tag is absent or ambiguous in the selected device.
+    #[error("memory bank `{bank}` maps to {matches} device slots; expected exactly one")]
+    BankTag { bank: MemoryBank, matches: usize },
+    /// Exact shell-interface locations require the platform used to build the
+    /// device table.
+    #[error("external-memory floorplanning requires platform `{expected}`; rerun synthesis with `--platform`")]
+    PlatformRequired { expected: String },
+    /// A recorded platform does not match the shell represented by the device
+    /// table.
+    #[error("platform `{platform}` does not match floorplan device platform `{expected}`")]
+    PlatformMismatch { platform: String, expected: String },
 }
 
 /// Plan a floorplan for a synthesized design.
@@ -129,11 +151,31 @@ pub enum PlanError {
 /// places every instance with the floorplan ILP, routes and pipelines every
 /// cross-slot channel, and returns the complete [`FloorplanResult`] contract.
 pub fn plan(state: &WorkState, options: &PlanOptions) -> Result<FloorplanResult, PlanError> {
+    plan_with_inputs(state, options, &PlanInputs::default())
+}
+
+/// Plan with transient RTL/connectivity-derived external-interface inputs.
+pub fn plan_with_inputs(
+    state: &WorkState,
+    options: &PlanOptions,
+    inputs: &PlanInputs,
+) -> Result<FloorplanResult, PlanError> {
     options.validate()?;
     let part_num = state.flow.part_num.as_deref().ok_or(PlanError::NoPartNum)?;
     let device = select_device(part_num)?;
+    validate_memory_platform(state, &device, !inputs.memory.is_empty())?;
+    let mut validated_banks = std::collections::BTreeSet::new();
+    for bank in inputs.memory.iter().map(|interface| interface.bank) {
+        if !validated_banks.insert(bank) {
+            continue;
+        }
+        let matches = device.slots_with_tag(&bank.to_string()).count();
+        if matches != 1 {
+            return Err(PlanError::BankTag { bank, matches });
+        }
+    }
     let flat = tapa_ir::flatten(&state.graph)?;
-    let graph = FloorGraph::build(&flat)?;
+    let graph = FloorGraph::build_with_memory(&flat, &inputs.memory)?;
 
     let solver = CbcSolver::new();
     let opts = SolveOpts {
@@ -151,7 +193,6 @@ pub fn plan(state: &WorkState, options: &PlanOptions) -> Result<FloorplanResult,
             floorplan_multilevel(&graph, &device, options.usage_limit, &solver, &opts)?
         }
     };
-    graph.materialize_co_locations(&mut assignment.regions)?;
     let routes = plan_routes(
         &graph,
         &assignment.regions,
@@ -168,6 +209,8 @@ pub fn plan(state: &WorkState, options: &PlanOptions) -> Result<FloorplanResult,
         &device,
         options.usage_limit.max(partition::ilp::MAX_USAGE_LIMIT),
     )?;
+    graph.materialize_co_locations(&mut assignment.regions)?;
+    graph.remove_transient_regions(&mut assignment.regions);
 
     Ok(FloorplanResult {
         device: device.key.clone(),
@@ -176,6 +219,34 @@ pub fn plan(state: &WorkState, options: &PlanOptions) -> Result<FloorplanResult,
         routes,
         slot_usage,
     })
+}
+
+fn validate_memory_platform(
+    state: &WorkState,
+    device: &crate::device::model::Device,
+    has_memory: bool,
+) -> Result<(), PlanError> {
+    let Some(expected) = device.platform_name.as_deref().filter(|_| has_memory) else {
+        return Ok(());
+    };
+    let platform = state
+        .flow
+        .platform
+        .as_deref()
+        .ok_or_else(|| PlanError::PlatformRequired {
+            expected: expected.to_string(),
+        })?;
+    let basename = Path::new(platform)
+        .file_name()
+        .map_or(platform, |name| name.to_str().unwrap_or(platform));
+    let normalized = basename.replace([':', '.'], "_");
+    if normalized != expected {
+        return Err(PlanError::PlatformMismatch {
+            platform: platform.to_string(),
+            expected: expected.to_string(),
+        });
+    }
+    Ok(())
 }
 
 /// Render a floorplan's pblock XDC, re-selecting the device from the result.
@@ -320,6 +391,78 @@ mod tests {
             plan(&state, &PlanOptions::default()),
             Err(PlanError::NoPartNum)
         ));
+    }
+
+    #[test]
+    fn exact_memory_map_requires_its_recorded_platform() {
+        let graph = tapa_ir::TaskGraph::from_json(
+            r#"{"cflags": [], "top": "T", "target": "xilinx-vitis",
+                "tasks": {"T": {"readable_name": "T", "code": "void T(){}", "level": "upper",
+                    "synth": "hls", "ports": [], "tasks": {}, "fifos": {}}}}"#,
+        )
+        .expect("parse");
+        let mut state = WorkState::new(graph);
+        let device = select_device("u280").expect("u280");
+
+        assert!(matches!(
+            validate_memory_platform(&state, &device, true),
+            Err(PlanError::PlatformRequired { .. })
+        ));
+
+        state.flow.platform = Some("/opt/xilinx/platforms/wrong_shell".to_string());
+        assert!(matches!(
+            validate_memory_platform(&state, &device, true),
+            Err(PlanError::PlatformMismatch { .. })
+        ));
+
+        state.flow.platform = device
+            .platform_name
+            .as_ref()
+            .map(|name| format!("/opt/xilinx/platforms/{name}"));
+        validate_memory_platform(&state, &device, true).expect("matching platform");
+        validate_memory_platform(&state, &device, false).expect("memory-free plans are part-only");
+    }
+
+    #[test]
+    fn devices_without_exact_bank_tags_reject_memory_inputs_before_solving() {
+        let graph = tapa_ir::TaskGraph::from_json(
+            r#"{"cflags": [], "top": "T", "target": "xilinx-vitis",
+                "tasks": {"T": {"readable_name": "T", "code": "void T(){}", "level": "upper",
+                    "synth": "hls", "ports": [], "tasks": {}, "fifos": {}}}}"#,
+        )
+        .expect("parse");
+        let interface = MemoryInterface {
+            endpoint: tapa_ir::AxiEndpoint {
+                instance: "Reader_0".to_string(),
+                port: "mem".to_string(),
+                top_port: "mem".to_string(),
+            },
+            bank: MemoryBank {
+                kind: tapa_ir::MemoryKind::Ddr,
+                index: 0,
+            },
+            channel_widths: tapa_ir::AxiChannelWidths {
+                read_address: 80,
+                read_data: 38,
+                write_address: 80,
+                write_data: 39,
+                write_response: 5,
+            },
+        };
+
+        for part in ["xcu250-figd2104-2L-e", "xcvc1902-vsva2197-2MP-e-S"] {
+            let mut state = WorkState::new(graph.clone());
+            state.flow.part_num = Some(part.to_string());
+            let error = plan_with_inputs(
+                &state,
+                &PlanOptions::default(),
+                &PlanInputs {
+                    memory: vec![interface.clone()],
+                },
+            )
+            .expect_err("an unmodeled bank must fail before CBC");
+            assert!(matches!(error, PlanError::BankTag { matches: 0, .. }));
+        }
     }
 
     #[test]

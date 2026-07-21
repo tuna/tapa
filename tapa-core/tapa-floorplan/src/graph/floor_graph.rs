@@ -10,7 +10,18 @@
 
 use std::collections::{BTreeMap, HashMap};
 
-use tapa_ir::{Area, TaskGraph};
+use tapa_ir::{Area, AxiChannel, AxiChannelWidths, AxiEndpoint, MemoryBank, TaskGraph};
+
+/// One supported direct M-AXI endpoint and its exact external bank.
+///
+/// This is transient planner input derived from parsed RTL plus the link
+/// configuration. It is never stored in the work-state graph.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MemoryInterface {
+    pub endpoint: AxiEndpoint,
+    pub bank: MemoryBank,
+    pub channel_widths: AxiChannelWidths,
+}
 
 /// One placeable instance.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -21,10 +32,12 @@ pub struct Vertex {
     /// Resource footprint, including any destination-side FIFO storage
     /// clustered into this task.
     pub area: Area,
-    /// This instance binds a top-level M-AXI (`mmap`/`async_mmap`) port, so it
-    /// drives external memory and must be pinned to a memory-bearing slot (on
-    /// u280, HBM lives in SLR0). The partition ILP restricts it accordingly.
-    pub needs_hbm: bool,
+    /// Exact device tag required by a fixed external terminal. Ordinary RTL
+    /// instances have no tag restriction.
+    pub required_tag: Option<String>,
+    /// Whether this vertex names real generated RTL and belongs in the public
+    /// placement result. External terminals are transient solver vertices.
+    pub materialize: bool,
 }
 
 /// One undirected connection used by the placement ILP.
@@ -55,6 +68,20 @@ pub struct Stream {
     pub(crate) depth: u32,
 }
 
+/// One directed AXI channel retained for routing and code generation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AxiNet {
+    pub endpoint: AxiEndpoint,
+    pub bank: MemoryBank,
+    pub channel: AxiChannel,
+    pub src: usize,
+    pub dst: usize,
+    /// Payload plus `VALID` and `READY`.
+    pub width: u32,
+    /// Concatenated payload width passed to the handshake pipeline.
+    pub payload_width: u32,
+}
+
 /// A real RTL instance whose area and placement belong to a host vertex.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct CoLocatedInstance {
@@ -68,6 +95,7 @@ pub struct FloorGraph {
     vertices: Vec<Vertex>,
     placement_edges: Vec<PlacementEdge>,
     streams: Vec<Stream>,
+    axi_nets: Vec<AxiNet>,
     index: HashMap<String, usize>,
     co_located: Vec<CoLocatedInstance>,
 }
@@ -96,6 +124,41 @@ pub enum GraphError {
     /// A solver result omitted the host of a co-located RTL instance.
     #[error("floorplan result is missing host vertex `{host}` for `{instance}`")]
     MissingHostRegion { instance: String, host: String },
+    /// A direct mmap endpoint has no exact RTL/connectivity planner input.
+    #[error(
+        "direct M-AXI endpoint `{instance}.{port}` (top port `{top_port}`) has no memory binding"
+    )]
+    MissingMemoryInterface {
+        instance: String,
+        port: String,
+        top_port: String,
+    },
+    /// Planner input names an endpoint not present in the flattened design.
+    #[error(
+        "memory binding names unknown direct M-AXI endpoint `{instance}.{port}` (top port `{top_port}`)"
+    )]
+    UnknownMemoryInterface {
+        instance: String,
+        port: String,
+        top_port: String,
+    },
+    /// The same endpoint appeared more than once in planner input.
+    #[error("direct M-AXI endpoint `{instance}.{port}` is bound more than once")]
+    DuplicateMemoryInterface { instance: String, port: String },
+    /// Shared/hierarchical/async memory infrastructure is not yet modeled.
+    #[error("unsupported external memory connection `{port}`: {detail}")]
+    UnsupportedMemoryInterface { port: String, detail: String },
+    /// A routed channel must contain payload plus valid/ready.
+    #[error("invalid {channel:?} width {width} for `{instance}.{port}`; expected at least 3 bits")]
+    InvalidAxiWidth {
+        instance: String,
+        port: String,
+        channel: AxiChannel,
+        width: u32,
+    },
+    /// A generated transient name collided with real RTL.
+    #[error("duplicate placement vertex name `{0}`")]
+    DuplicateVertex(String),
 }
 
 impl FloorGraph {
@@ -115,6 +178,12 @@ impl FloorGraph {
     #[must_use]
     pub fn streams(&self) -> &[Stream] {
         &self.streams
+    }
+
+    /// Directed external-memory channels used by routing and code generation.
+    #[must_use]
+    pub fn axi_nets(&self) -> &[AxiNet] {
+        &self.axi_nets
     }
 
     /// The vertex at `index`.
@@ -157,9 +226,26 @@ impl FloorGraph {
         Ok(())
     }
 
+    /// Remove transient external terminals before publishing placement data.
+    pub(crate) fn remove_transient_regions(&self, regions: &mut BTreeMap<String, String>) {
+        regions.retain(|name, _| {
+            self.index
+                .get(name)
+                .is_none_or(|&vertex| self.vertices[vertex].materialize)
+        });
+    }
+
     /// Build the placement graph from an already-*flattened* graph (every leaf
     /// instance directly under the top task).
     pub fn build(flat: &TaskGraph) -> Result<Self, GraphError> {
+        Self::build_with_memory(flat, &[])
+    }
+
+    /// Build the placement graph with exact direct-M_AXI bank endpoints.
+    pub fn build_with_memory(
+        flat: &TaskGraph,
+        memory: &[MemoryInterface],
+    ) -> Result<Self, GraphError> {
         let top = flat
             .tasks
             .get(&flat.top)
@@ -184,11 +270,11 @@ impl FloorGraph {
                 index.insert(name.clone(), vertex_index);
                 let inst_idx = u32::try_from(idx).expect("instance count fits u32");
                 endpoints.insert((def_name.clone(), inst_idx), vertex_index);
-                let needs_hbm = inst.args.values().any(|arg| arg.cat.is_direct_mmap());
                 vertices.push(Vertex {
                     name,
                     area,
-                    needs_hbm,
+                    required_tag: None,
+                    materialize: true,
                 });
             }
         }
@@ -248,6 +334,16 @@ impl FloorGraph {
             }
         }
 
+        let axi_nets = add_memory_interfaces(
+            flat,
+            top,
+            memory,
+            &mut vertices,
+            &mut index,
+            &endpoints,
+            &mut placement_widths,
+        )?;
+
         let placement_edges = placement_widths
             .into_iter()
             .map(|((src, dst), width)| PlacementEdge { src, dst, width })
@@ -257,9 +353,222 @@ impl FloorGraph {
             vertices,
             placement_edges,
             streams,
+            axi_nets,
             index,
             co_located,
         })
+    }
+}
+
+fn add_memory_interfaces(
+    flat: &TaskGraph,
+    top: &tapa_ir::Task,
+    memory: &[MemoryInterface],
+    vertices: &mut Vec<Vertex>,
+    index: &mut HashMap<String, usize>,
+    task_endpoints: &HashMap<(String, u32), usize>,
+    placement_widths: &mut BTreeMap<(usize, usize), u32>,
+) -> Result<Vec<AxiNet>, GraphError> {
+    let expected = expected_memory_interfaces(flat, top, task_endpoints)?;
+    let mut provided = BTreeMap::<AxiEndpoint, &MemoryInterface>::new();
+    for interface in memory {
+        if provided
+            .insert(interface.endpoint.clone(), interface)
+            .is_some()
+        {
+            return Err(GraphError::DuplicateMemoryInterface {
+                instance: interface.endpoint.instance.clone(),
+                port: interface.endpoint.port.clone(),
+            });
+        }
+    }
+
+    for endpoint in expected.keys() {
+        if !provided.contains_key(endpoint) {
+            return Err(GraphError::MissingMemoryInterface {
+                instance: endpoint.instance.clone(),
+                port: endpoint.port.clone(),
+                top_port: endpoint.top_port.clone(),
+            });
+        }
+    }
+    for endpoint in provided.keys() {
+        if !expected.contains_key(endpoint) {
+            return Err(GraphError::UnknownMemoryInterface {
+                instance: endpoint.instance.clone(),
+                port: endpoint.port.clone(),
+                top_port: endpoint.top_port.clone(),
+            });
+        }
+    }
+
+    let mut terminals = BTreeMap::<MemoryBank, usize>::new();
+    let mut nets = Vec::with_capacity(memory.len().saturating_mul(5));
+    for (endpoint, &task_vertex) in &expected {
+        let interface = provided[endpoint];
+        let terminal = if let Some(&terminal) = terminals.get(&interface.bank) {
+            terminal
+        } else {
+            let name = bank_terminal_name(interface.bank);
+            if index.contains_key(&name) {
+                return Err(GraphError::DuplicateVertex(name));
+            }
+            let terminal = vertices.len();
+            vertices.push(Vertex {
+                name: name.clone(),
+                area: Area::default(),
+                required_tag: Some(interface.bank.to_string()),
+                materialize: false,
+            });
+            index.insert(name, terminal);
+            terminals.insert(interface.bank, terminal);
+            terminal
+        };
+
+        for (channel, width) in interface.channel_widths.channels() {
+            let Some(payload_width) = width.checked_sub(2).filter(|width| *width > 0) else {
+                return Err(GraphError::InvalidAxiWidth {
+                    instance: endpoint.instance.clone(),
+                    port: endpoint.port.clone(),
+                    channel,
+                    width,
+                });
+            };
+            let (src, dst) = match channel {
+                AxiChannel::ReadAddress | AxiChannel::WriteAddress | AxiChannel::WriteData => {
+                    (task_vertex, terminal)
+                }
+                AxiChannel::ReadData | AxiChannel::WriteResponse => (terminal, task_vertex),
+            };
+            let pair = (src.min(dst), src.max(dst));
+            let placement_width = placement_widths.entry(pair).or_default();
+            *placement_width = placement_width.checked_add(width).ok_or_else(|| {
+                GraphError::PlacementWidthOverflow(format!(
+                    "{}.{} {channel:?}",
+                    endpoint.instance, endpoint.port
+                ))
+            })?;
+            nets.push(AxiNet {
+                endpoint: endpoint.clone(),
+                bank: interface.bank,
+                channel,
+                src,
+                dst,
+                width,
+                payload_width,
+            });
+        }
+    }
+    Ok(nets)
+}
+
+fn expected_memory_interfaces(
+    flat: &TaskGraph,
+    top: &tapa_ir::Task,
+    task_endpoints: &HashMap<(String, u32), usize>,
+) -> Result<BTreeMap<AxiEndpoint, usize>, GraphError> {
+    let mut expected = BTreeMap::new();
+    let mut top_port_users = BTreeMap::<String, Vec<String>>::new();
+
+    for (definition, instances) in &top.tasks {
+        let task = flat
+            .tasks
+            .get(definition)
+            .ok_or_else(|| GraphError::MissingTaskDef(definition.clone()))?;
+        for (instance_index, instance) in instances.iter().enumerate() {
+            let instance_name = instance
+                .canonical_name(definition, instance_index)
+                .into_owned();
+            let endpoint_index = u32::try_from(instance_index).expect("instance count fits u32");
+            let task_vertex = task_endpoints[&(definition.clone(), endpoint_index)];
+            for (child_port, argument) in &instance.args {
+                if argument.cat == tapa_ir::ArgCategory::AsyncMmap {
+                    return Err(GraphError::UnsupportedMemoryInterface {
+                        port: argument.arg.clone(),
+                        detail: format!(
+                            "async mmap endpoint `{instance_name}.{child_port}` is not modeled"
+                        ),
+                    });
+                }
+                if argument.cat != tapa_ir::ArgCategory::Mmap {
+                    continue;
+                }
+
+                let child = task
+                    .ports
+                    .iter()
+                    .find(|port| port.name == *child_port)
+                    .ok_or_else(|| GraphError::UnsupportedMemoryInterface {
+                        port: argument.arg.clone(),
+                        detail: format!(
+                            "child endpoint `{instance_name}.{child_port}` has no port metadata"
+                        ),
+                    })?;
+                let parent = top
+                    .ports
+                    .iter()
+                    .find(|port| port.name == argument.arg)
+                    .ok_or_else(|| GraphError::UnsupportedMemoryInterface {
+                        port: argument.arg.clone(),
+                        detail: "top-level mmap port metadata is missing".to_string(),
+                    })?;
+                if child.cat != tapa_ir::ArgCategory::Mmap
+                    || parent.cat != tapa_ir::ArgCategory::Mmap
+                {
+                    return Err(GraphError::UnsupportedMemoryInterface {
+                        port: argument.arg.clone(),
+                        detail: "only direct plain mmap endpoints are modeled".to_string(),
+                    });
+                }
+                if child.chan_count.is_some()
+                    || child.chan_size.is_some()
+                    || parent.chan_count.is_some()
+                    || parent.chan_size.is_some()
+                {
+                    return Err(GraphError::UnsupportedMemoryInterface {
+                        port: argument.arg.clone(),
+                        detail: "hierarchical mmap channels are not modeled".to_string(),
+                    });
+                }
+
+                let endpoint = AxiEndpoint {
+                    instance: instance_name.clone(),
+                    port: child_port.clone(),
+                    top_port: argument.arg.clone(),
+                };
+                top_port_users
+                    .entry(argument.arg.clone())
+                    .or_default()
+                    .push(format!("{instance_name}.{child_port}"));
+                expected.insert(endpoint, task_vertex);
+            }
+        }
+    }
+
+    if let Some((top_port, users)) = top_port_users
+        .into_iter()
+        .find(|(_, users)| users.len() > 1)
+    {
+        return Err(GraphError::UnsupportedMemoryInterface {
+            port: top_port,
+            detail: format!("shared by {} child endpoints", users.join(", ")),
+        });
+    }
+    Ok(expected)
+}
+
+fn bank_terminal_name(bank: MemoryBank) -> String {
+    format!(
+        "__tapa_bank_{}_{index}",
+        bank_kind_name(bank),
+        index = bank.index
+    )
+}
+
+fn bank_kind_name(bank: MemoryBank) -> &'static str {
+    match bank.kind {
+        tapa_ir::MemoryKind::Hbm => "hbm",
+        tapa_ir::MemoryKind::Ddr => "ddr",
     }
 }
 
@@ -373,6 +682,49 @@ mod tests {
             }
         }"#;
         tapa_ir::TaskGraph::from_json(json).expect("parse vadd graph")
+    }
+
+    fn mmap_graph() -> TaskGraph {
+        TaskGraph::from_json(
+            r#"{
+                "cflags": [], "top": "Top", "target": "xilinx-hls",
+                "tasks": {
+                    "Top": {
+                        "readable_name": "Top", "code": "", "level": "upper", "synth": "hls",
+                        "ports": [{"cat":"mmap","name":"mem","type":"int*","width":32}],
+                        "tasks": {"Reader": [{"args":{"data":{"arg":"mem","cat":"mmap"}},"step":0}]},
+                        "fifos": {}
+                    },
+                    "Reader": {
+                        "readable_name": "Reader", "code": "", "level": "lower", "synth": "hls",
+                        "ports": [{"cat":"mmap","name":"data","type":"int*","width":32}],
+                        "self_area": {"LUT":10,"FF":20}
+                    }
+                }
+            }"#,
+        )
+        .expect("parse mmap graph")
+    }
+
+    fn mmap_interface() -> MemoryInterface {
+        MemoryInterface {
+            endpoint: AxiEndpoint {
+                instance: "Reader_0".to_string(),
+                port: "data".to_string(),
+                top_port: "mem".to_string(),
+            },
+            bank: MemoryBank {
+                kind: tapa_ir::MemoryKind::Hbm,
+                index: 0,
+            },
+            channel_widths: AxiChannelWidths {
+                read_address: 80,
+                read_data: 38,
+                write_address: 80,
+                write_data: 39,
+                write_response: 5,
+            },
+        }
     }
 
     #[test]
@@ -502,6 +854,60 @@ mod tests {
                 width: 35 + 67 + 11,
             }]
         );
+    }
+
+    #[test]
+    fn exact_memory_terminal_adds_five_directed_channels_but_is_not_published() {
+        let flat = tapa_ir::flatten(&mmap_graph()).expect("flatten mmap graph");
+        let graph = FloorGraph::build_with_memory(&flat, &[mmap_interface()]).expect("build");
+        let task = graph.index_of("Reader_0").expect("reader");
+        let bank = graph.index_of("__tapa_bank_hbm_0").expect("bank");
+
+        assert_eq!(graph.vertices().len(), 2, "one task plus one terminal");
+        assert_eq!(graph.axi_nets().len(), 5);
+        for net in graph.axi_nets() {
+            match net.channel {
+                AxiChannel::ReadAddress | AxiChannel::WriteAddress | AxiChannel::WriteData => {
+                    assert_eq!((net.src, net.dst), (task, bank));
+                }
+                AxiChannel::ReadData | AxiChannel::WriteResponse => {
+                    assert_eq!((net.src, net.dst), (bank, task));
+                }
+            }
+            assert_eq!(net.payload_width + 2, net.width);
+        }
+        assert_eq!(
+            graph.placement_edges(),
+            [PlacementEdge {
+                src: task.min(bank),
+                dst: task.max(bank),
+                width: 80 + 38 + 80 + 39 + 5,
+            }]
+        );
+
+        let mut regions = BTreeMap::from([
+            ("Reader_0".to_string(), "SLOT_X1Y1".to_string()),
+            ("__tapa_bank_hbm_0".to_string(), "SLOT_X0Y0".to_string()),
+        ]);
+        graph.remove_transient_regions(&mut regions);
+        assert_eq!(
+            regions,
+            BTreeMap::from([("Reader_0".to_string(), "SLOT_X1Y1".to_string())])
+        );
+    }
+
+    #[test]
+    fn direct_mmap_without_exact_interface_fails_closed() {
+        let flat = tapa_ir::flatten(&mmap_graph()).expect("flatten mmap graph");
+        let error = FloorGraph::build(&flat).expect_err("binding is required");
+        assert!(matches!(
+            error,
+            GraphError::MissingMemoryInterface {
+                ref instance,
+                ref port,
+                ref top_port,
+            } if instance == "Reader_0" && port == "data" && top_port == "mem"
+        ));
     }
 
     #[test]

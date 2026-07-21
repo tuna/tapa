@@ -50,7 +50,7 @@ type RegionResourceLimits = BTreeMap<String, BTreeMap<Resource, f64>>;
 ///
 /// `vertex_regions` uses overlap semantics: a region is a candidate during an
 /// iteration when it overlaps the target. Parent
-/// containment and connectivity-derived memory placement are added by the
+/// containment and exact external-terminal placement are added by the
 /// schedule itself, so none of these restrictions require extra ILP rows.
 #[derive(Debug, Clone, Default)]
 struct PlacementConstraints {
@@ -404,10 +404,6 @@ fn candidate_domains(
     parents: Option<&BTreeMap<String, Coor>>,
     constraints: &PlacementConstraints,
 ) -> Result<Vec<Vec<Coor>>, IlpError> {
-    let device_has_hbm = device
-        .slots
-        .iter()
-        .any(|slot| slot.tags.iter().any(|tag| is_hbm_tag(tag)));
     let mut domains = Vec::with_capacity(graph.vertices().len());
 
     for vertex in graph.vertices() {
@@ -426,8 +422,10 @@ fn candidate_domains(
                     continue;
                 }
             }
-            if device_has_hbm && vertex.needs_hbm && !region_has_hbm(device, &region) {
-                continue;
+            if let Some(tag) = vertex.required_tag.as_deref() {
+                if !region_has_tag(device, &region, tag) {
+                    continue;
+                }
             }
 
             let total = device
@@ -453,15 +451,11 @@ fn candidate_domains(
     Ok(domains)
 }
 
-fn is_hbm_tag(tag: &str) -> bool {
-    tag == "HBM" || tag.starts_with("HBM[")
-}
-
-fn region_has_hbm(device: &Device, region: &Coor) -> bool {
+fn region_has_tag(device: &Device, region: &Coor, required: &str) -> bool {
     region.all_slot_coors().into_iter().any(|(x, y)| {
         device
             .slot(x, y)
-            .is_some_and(|slot| slot.tags.iter().any(|tag| is_hbm_tag(tag)))
+            .is_some_and(|slot| slot.tags.iter().any(|tag| tag == required))
     })
 }
 
@@ -524,8 +518,10 @@ fn complete_assignment(
                 vertex.name
             )));
         }
-        let entry = slot_usage.entry(region).or_default();
-        *entry = add_area(*entry, vertex.area);
+        if vertex.materialize {
+            let entry = slot_usage.entry(region).or_default();
+            *entry = add_area(*entry, vertex.area);
+        }
     }
     Ok(Assignment {
         regions,
@@ -1208,11 +1204,11 @@ mod tests {
             "cflags": [], "top": "Top", "target": "xilinx-hls",
             "tasks": {
                 "Top": {"readable_name": "Top", "code": "void Top() {}", "level": "upper", "synth": "hls",
-                    "ports": [], "tasks": {
-                        "R": [{"args": {"m": {"arg": "mem", "cat": "async_mmap"}}, "step": 0}],
+                    "ports": [{"cat": "mmap", "name": "mem", "type": "ap_uint<512>*", "width": 512}], "tasks": {
+                        "R": [{"args": {"m": {"arg": "mem", "cat": "mmap"}}, "step": 0}],
                         "C": [{"args": {}, "step": 0}]}, "fifos": {}},
                 "R": {"readable_name": "R", "code": "void R() {}", "level": "lower", "synth": "hls",
-                    "ports": [{"cat": "async_mmap", "name": "m", "type": "ap_uint<512>*", "width": 512}],
+                    "ports": [{"cat": "mmap", "name": "m", "type": "ap_uint<512>*", "width": 512}],
                     "self_area": {"LUT": 400}},
                 "C": {"readable_name": "C", "code": "void C() {}", "level": "lower", "synth": "hls",
                     "ports": [], "self_area": {"LUT": 400}}
@@ -1220,7 +1216,28 @@ mod tests {
         }"#;
         let graph = tapa_ir::TaskGraph::from_json(json).expect("parse");
         let flat = tapa_ir::flatten(&graph).expect("flatten");
-        FloorGraph::build(&flat).expect("floor graph")
+        FloorGraph::build_with_memory(
+            &flat,
+            &[crate::graph::MemoryInterface {
+                endpoint: tapa_ir::AxiEndpoint {
+                    instance: "R_0".to_string(),
+                    port: "m".to_string(),
+                    top_port: "mem".to_string(),
+                },
+                bank: tapa_ir::MemoryBank {
+                    kind: tapa_ir::MemoryKind::Hbm,
+                    index: 7,
+                },
+                channel_widths: tapa_ir::AxiChannelWidths {
+                    read_address: 80,
+                    read_data: 518,
+                    write_address: 80,
+                    write_data: 579,
+                    write_response: 5,
+                },
+            }],
+        )
+        .expect("floor graph")
     }
 
     #[test]
@@ -1368,7 +1385,7 @@ mod tests {
     }
 
     #[test]
-    fn sparse_domains_encode_connectivity_and_user_pins() {
+    fn sparse_domains_encode_exact_terminals_and_user_pins() {
         let graph = mmap_floor_graph();
         let device = select_device("u280").expect("u280");
         let regions = atomic_regions(&device);
@@ -1388,9 +1405,14 @@ mod tests {
 
         let reader = graph.index_of("R_0").expect("reader");
         assert_eq!(
-            domains[reader],
-            [Coor::slot(0, 0), Coor::slot(1, 0)],
-            "M-AXI connectivity is represented by an HBM candidate domain"
+            domains[reader], regions,
+            "the compute task remains movable; its bank is an ordinary weighted endpoint"
+        );
+        let terminal = graph.index_of("__tapa_bank_hbm_7").expect("bank terminal");
+        assert_eq!(
+            domains[terminal],
+            [Coor::slot(0, 0)],
+            "the exact HBM bank terminal is fixed by its device tag"
         );
         let compute = graph.index_of("C_0").expect("compute");
         assert_eq!(domains[compute], [Coor::slot(1, 2)]);
@@ -1410,7 +1432,10 @@ mod tests {
             .iter()
             .filter(|var| var.label.starts_with("x_"))
             .count();
-        assert_eq!(x_count, 3, "two reader candidates plus one compute pin");
+        assert_eq!(
+            x_count, 8,
+            "six reader candidates, one compute pin, and one exact bank terminal"
+        );
 
         let stream_graph = vadd_floor_graph();
         let a = stream_graph.index_of("A_0").expect("A");

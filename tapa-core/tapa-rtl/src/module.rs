@@ -37,7 +37,7 @@ pub const FIFO_INFIXES: &[&str] = &["_V", "_r", "_s", ""];
 /// The port-name convention belongs to the schema, so that `tapa-codegen`,
 /// `tapa pack` and `frt-cosim` cannot drift apart on it. Re-exported here
 /// because RTL identifiers are where it gets applied.
-pub use tapa_ir::port::sanitize_array_name;
+pub use tapa_ir::port::{sanitize_array_name, sanitize_identifier_name};
 
 impl VerilogModule {
     /// Parse a Verilog module header from source text.
@@ -109,24 +109,6 @@ pub fn match_array_name(name: &str) -> Option<(&str, u32)> {
     }
     let idx: u32 = idx_str.parse().ok()?;
     Some((base, idx))
-}
-
-/// Convert frontend names into plain Verilog identifiers.
-///
-/// Keeps compatible array-name handling (`foo[3]` -> `foo_3`) before
-/// replacing characters that cannot appear in unescaped Verilog identifiers.
-#[must_use]
-pub fn sanitize_identifier_name(name: &str) -> String {
-    let name = sanitize_array_name(name);
-    let mut out = String::with_capacity(name.len());
-    for (idx, ch) in name.chars().enumerate() {
-        let valid = ch.is_ascii_alphanumeric() || ch == '_' || ch == '$';
-        if idx == 0 && ch.is_ascii_digit() {
-            out.push('_');
-        }
-        out.push(if valid { ch } else { '_' });
-    }
-    out
 }
 
 #[cfg(test)]
