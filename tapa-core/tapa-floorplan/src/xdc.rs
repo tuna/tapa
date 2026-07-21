@@ -8,7 +8,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use tapa_ir::port::{sanitize_array_name, sanitize_identifier_name};
-use tapa_ir::{axi_pipeline_instance_name, FloorplanResult, RoutedChannel};
+use tapa_ir::{
+    axi_pipeline_instance_name, control_pipeline_instance_name, FloorplanResult, RoutedChannel,
+};
 
 use crate::device::model::{Coor, Device};
 
@@ -58,7 +60,10 @@ pub fn emit_xdc(result: &FloorplanResult, device: &Device) -> String {
                     channel.rtl_name()
                 ),
             ),
-            RoutedChannel::Control { .. } => continue,
+            RoutedChannel::Control { instance, channel } => (
+                control_pipeline_instance_name(instance, *channel),
+                format!("{instance} {}", channel.rtl_name()),
+            ),
         };
         let (Some(head_region), Some(tail_region)) = (route.route.first(), route.route.last())
         else {
@@ -244,7 +249,9 @@ mod tests {
     use crate::device::select::select_device;
     use std::collections::BTreeMap as Map;
     use tapa_ir::{
-        Area, AxiChannel, AxiEndpoint, MemoryBank, MemoryKind, PipelineRoute, PipelineScheme,
+        control_pipeline_instance_name, global_controller_instance_name,
+        local_controller_instance_name, Area, AxiChannel, AxiEndpoint, ControlChannel, MemoryBank,
+        MemoryKind, PipelineRoute, PipelineScheme,
     };
 
     #[test]
@@ -524,6 +531,72 @@ add_cells_to_pblock SLOT_X0Y0_TO_SLOT_X0Y0 $cells
 
         for stage in ["Head", "Body 0", "Body 1", "Tail"] {
             assert_missing_cell_is_fatal(&xdc, &format!("{description} {stage}"));
+        }
+    }
+
+    #[test]
+    fn distributed_controllers_and_control_stages_are_constrained() {
+        let instance = "worker#0";
+        let global = global_controller_instance_name().to_string();
+        let local = local_controller_instance_name(instance);
+        let pipeline = control_pipeline_instance_name(instance, ControlChannel::Launch);
+        let result = FloorplanResult {
+            device: "u280".to_string(),
+            grid: (2, 3),
+            regions: Map::from([
+                (global.clone(), "SLOT_X0Y0_TO_SLOT_X0Y0".to_string()),
+                (
+                    "control_s_axi_U".to_string(),
+                    "SLOT_X0Y0_TO_SLOT_X0Y0".to_string(),
+                ),
+                (instance.to_string(), "SLOT_X0Y2_TO_SLOT_X0Y2".to_string()),
+                (local.clone(), "SLOT_X0Y2_TO_SLOT_X0Y2".to_string()),
+            ]),
+            routes: vec![PipelineRoute {
+                channel: RoutedChannel::Control {
+                    instance: instance.to_string(),
+                    channel: ControlChannel::Launch,
+                },
+                route: vec![
+                    "SLOT_X0Y0".to_string(),
+                    "SLOT_X0Y1".to_string(),
+                    "SLOT_X0Y2".to_string(),
+                ],
+                scheme: PipelineScheme::Single,
+                reg_regions: vec!["SLOT_X0Y1".to_string()],
+            }],
+            slot_usage: Map::new(),
+        };
+        let xdc = emit_xdc(&result, &select_device("u280").expect("u280"));
+
+        let source = pblock_section(&xdc, "SLOT_X0Y0_TO_SLOT_X0Y0");
+        assert!(source.contains(&cell_name_regex(&global)), "{source}");
+        assert!(
+            source.contains(&cell_name_regex("control_s_axi_U")),
+            "{source}"
+        );
+        assert!(source.contains(&pipeline_head_regex(&pipeline)), "{source}");
+        let body = pblock_section(&xdc, "SLOT_X0Y1_TO_SLOT_X0Y1");
+        assert!(body.contains(&pipeline_body_regex(&pipeline, 0)), "{body}");
+        let destination = pblock_section(&xdc, "SLOT_X0Y2_TO_SLOT_X0Y2");
+        assert!(
+            destination.contains(&cell_name_regex(&local)),
+            "{destination}"
+        );
+        assert!(
+            destination.contains(&pipeline_tail_regex(&pipeline)),
+            "{destination}"
+        );
+
+        for expected in [
+            global.as_str(),
+            "control_s_axi_U",
+            local.as_str(),
+            "worker#0 launch Head",
+            "worker#0 launch Body 0",
+            "worker#0 launch Tail",
+        ] {
+            assert_missing_cell_is_fatal(&xdc, expected);
         }
     }
 

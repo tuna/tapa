@@ -122,7 +122,10 @@ fn memory_plan_inputs(
         })
         .collect::<Result<Vec<_>>>()?;
 
-    Ok(PlanInputs { memory })
+    Ok(PlanInputs {
+        memory,
+        ..PlanInputs::default()
+    })
 }
 
 /// Replace the active floorplan marker only after all dependent outputs are

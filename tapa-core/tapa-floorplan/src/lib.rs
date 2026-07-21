@@ -40,7 +40,7 @@ use crate::partition::ilp::{
 use crate::pipeline::plan::{plan_routes, realize_slot_usage, PipelineError};
 use crate::solver::{CbcSolver, SolveOpts};
 
-pub use crate::graph::MemoryInterface;
+pub use crate::graph::{ControlInterface, MemoryInterface};
 pub use crate::partition::PartitionStrategy;
 
 /// Transient inputs derived from generated RTL and link configuration.
@@ -50,6 +50,8 @@ pub use crate::partition::PartitionStrategy;
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PlanInputs {
     pub memory: Vec<MemoryInterface>,
+    /// Enable the transient distributed-control topology for this solve.
+    pub control: Option<ControlInterface>,
 }
 
 /// Options controlling a [`plan`] run. Defaults match the CLI's defaults.
@@ -144,6 +146,9 @@ pub enum PlanError {
     /// table.
     #[error("platform `{platform}` does not match floorplan device platform `{expected}`")]
     PlatformMismatch { platform: String, expected: String },
+    /// A shell-control anchor tag appears in more than one device slot.
+    #[error("control anchor tag `{tag}` maps to {matches} device slots; expected at most one")]
+    ControlTag { tag: &'static str, matches: usize },
 }
 
 /// Plan a floorplan for a synthesized design.
@@ -202,7 +207,17 @@ fn plan_with_retry_ceiling(
         }
     }
     let flat = tapa_ir::flatten(&state.graph)?;
-    let graph = FloorGraph::build_with_memory(&flat, &inputs.memory)?;
+    let active_control = inputs.control.filter(|_| {
+        flat.tasks
+            .get(&flat.top)
+            .is_some_and(|top| !top.tasks.is_empty())
+    });
+    let control_anchor = active_control
+        .map(|control| select_control_anchor(&device, control))
+        .transpose()?
+        .flatten();
+    let graph =
+        FloorGraph::build_with_interfaces(&flat, &inputs.memory, active_control, control_anchor)?;
 
     let solver = CbcSolver::new();
     let opts = SolveOpts {
@@ -246,6 +261,23 @@ fn plan_with_retry_ceiling(
         routes,
         slot_usage,
     })
+}
+
+fn select_control_anchor(
+    device: &crate::device::model::Device,
+    control: ControlInterface,
+) -> Result<Option<&'static str>, PlanError> {
+    let tag = if control.has_s_axi_control {
+        "S_AXI_CONTROL"
+    } else {
+        "CLK_RST"
+    };
+    let matches = device.slots_with_tag(tag).count();
+    match matches {
+        0 => Ok(None),
+        1 => Ok(Some(tag)),
+        _ => Err(PlanError::ControlTag { tag, matches }),
+    }
 }
 
 fn validate_memory_platform(
@@ -406,6 +438,168 @@ mod tests {
     }
 
     #[test]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "the end-to-end assertion covers controller placement and all route inventories"
+    )]
+    fn distributed_control_plan_materializes_and_routes_exact_inventory() {
+        let json = r#"{
+            "cflags": [], "top": "Top", "target": "xilinx-vitis",
+            "tasks": {
+                "Top": {
+                    "readable_name":"Top","code":"","level":"upper","synth":"hls",
+                    "ports":[],"tasks":{
+                        "Normal":[{"name":"normal#0","args":{},"step":0}],
+                        "Ticker":[{"name":"ticker[1]","args":{},"step":-1}]
+                    },"fifos":{}
+                },
+                "Normal": {"readable_name":"Normal","code":"","level":"lower","synth":"hls",
+                    "ports":[],"self_area":{"LUT":120000}},
+                "Ticker": {"readable_name":"Ticker","code":"","level":"lower","synth":"hls",
+                    "ports":[],"self_area":{"LUT":120000}}
+            }
+        }"#;
+        let graph = tapa_ir::TaskGraph::from_json(json).expect("parse");
+        let mut state = WorkState::new(graph);
+        state.flow.part_num = Some("xcu280-fsvh2892-2L-e".to_string());
+
+        let result = match plan_with_inputs(
+            &state,
+            &PlanOptions::default(),
+            &PlanInputs {
+                control: Some(ControlInterface {
+                    has_s_axi_control: true,
+                }),
+                ..PlanInputs::default()
+            },
+        ) {
+            Ok(result) => result,
+            Err(
+                PlanError::Ilp(IlpError::Solver(SolverError::Spawn { .. }))
+                | PlanError::Pipeline(PipelineError::Route(crate::route::ilp::RouteError::Solver(
+                    SolverError::Spawn { .. },
+                ))),
+            ) => {
+                eprintln!("skipping distributed_control_plan_materializes_and_routes_exact_inventory: `cbc` not found");
+                return;
+            }
+            Err(error) => panic!("control plan failed: {error}"),
+        };
+        let global = tapa_ir::global_controller_instance_name();
+        assert_eq!(
+            result.regions[global],
+            crate::device::model::Coor::slot(1, 1).region_name(),
+            "the exact S-AXI controller tag anchors the global controller"
+        );
+        assert_eq!(result.regions["control_s_axi_U"], result.regions[global]);
+        for instance in ["normal#0", "ticker[1]"] {
+            assert_eq!(
+                result.regions[&tapa_ir::local_controller_instance_name(instance)],
+                result.regions[instance]
+            );
+            let crossing = result.regions[instance] != result.regions[global];
+            let routes = result
+                .routes
+                .iter()
+                .filter(|route| {
+                    matches!(
+                        &route.channel,
+                        tapa_ir::RoutedChannel::Control {
+                            instance: routed_instance,
+                            ..
+                        } if routed_instance == instance
+                    )
+                })
+                .collect::<Vec<_>>();
+            let expected = if !crossing {
+                0
+            } else if instance == "ticker[1]" {
+                2
+            } else {
+                3
+            };
+            assert_eq!(routes.len(), expected, "route inventory for {instance}");
+            if crossing {
+                let launch = routes
+                    .iter()
+                    .find(|route| {
+                        matches!(
+                            route.channel,
+                            tapa_ir::RoutedChannel::Control {
+                                channel: tapa_ir::ControlChannel::Launch,
+                                ..
+                            }
+                        )
+                    })
+                    .expect("launch route");
+                let reset = routes
+                    .iter()
+                    .find(|route| {
+                        matches!(
+                            route.channel,
+                            tapa_ir::RoutedChannel::Control {
+                                channel: tapa_ir::ControlChannel::Reset,
+                                ..
+                            }
+                        )
+                    })
+                    .expect("reset route");
+                assert_eq!(launch.route, reset.route);
+                assert_eq!(launch.reg_regions, reset.reg_regions);
+            }
+        }
+        let xdc = render_xdc(&result).expect("render control XDC");
+        assert!(xdc.contains(global));
+        assert!(xdc.contains(&tapa_ir::local_controller_instance_name("normal#0")));
+        assert!(xdc.contains(&tapa_ir::local_controller_instance_name("ticker[1]")));
+    }
+
+    #[test]
+    fn control_anchor_prefers_exact_shell_location_and_rejects_ambiguity() {
+        let device = select_device("u280").expect("u280");
+        assert_eq!(
+            select_control_anchor(
+                &device,
+                ControlInterface {
+                    has_s_axi_control: true,
+                }
+            )
+            .expect("S-AXI anchor"),
+            Some("S_AXI_CONTROL")
+        );
+        assert_eq!(
+            select_control_anchor(&device, ControlInterface::default()).expect("clock anchor"),
+            Some("CLK_RST")
+        );
+
+        let mut absent = device.clone();
+        for slot in &mut absent.slots {
+            slot.tags.retain(|tag| tag != "CLK_RST");
+        }
+        assert_eq!(
+            select_control_anchor(&absent, ControlInterface::default()).expect("optional anchor"),
+            None
+        );
+
+        let mut ambiguous = device;
+        ambiguous.slots[0].tags.push("S_AXI_CONTROL".to_string());
+        let error = select_control_anchor(
+            &ambiguous,
+            ControlInterface {
+                has_s_axi_control: true,
+            },
+        )
+        .expect_err("ambiguous anchor must fail");
+        assert!(matches!(
+            error,
+            PlanError::ControlTag {
+                tag: "S_AXI_CONTROL",
+                matches: 2
+            }
+        ));
+    }
+
+    #[test]
     fn plan_without_part_number_errors() {
         let graph = tapa_ir::TaskGraph::from_json(
             r#"{"cflags": [], "top": "T", "target": "xilinx-hls",
@@ -485,6 +679,7 @@ mod tests {
                 &PlanOptions::default(),
                 &PlanInputs {
                     memory: vec![interface.clone()],
+                    control: None,
                 },
             )
             .expect_err("an unmodeled bank must fail before CBC");

@@ -296,7 +296,8 @@ fn rejection_kind(error: &PlanError) -> Option<RejectionKind> {
         | PlanError::Pipeline(_)
         | PlanError::BankTag { .. }
         | PlanError::PlatformRequired { .. }
-        | PlanError::PlatformMismatch { .. } => None,
+        | PlanError::PlatformMismatch { .. }
+        | PlanError::ControlTag { .. } => None,
     }
 }
 

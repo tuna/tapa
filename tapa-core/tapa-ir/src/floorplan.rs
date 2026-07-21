@@ -101,6 +101,22 @@ pub fn axi_pipeline_instance_name(endpoint: &AxiEndpoint, channel: AxiChannel) -
     )
 }
 
+/// Deterministic generated instance name for the global task controller.
+#[must_use]
+pub const fn global_controller_instance_name() -> &'static str {
+    "__tapa_global_controller"
+}
+
+/// Deterministic generated instance name for a flattened task's local
+/// controller.
+#[must_use]
+pub fn local_controller_instance_name(instance: &str) -> String {
+    format!(
+        "__tapa_local_controller_{}",
+        crate::port::sanitize_identifier_name(instance),
+    )
+}
+
 /// Physical bit widths of the five independent AXI ready/valid channels.
 ///
 /// Each value includes the channel payload plus its `VALID` and `READY` bits.
@@ -141,7 +157,7 @@ impl AxiChannelWidths {
 }
 
 /// A distributed-control bundle with uniform routing semantics.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ControlChannel {
     /// Start/release, scalar arguments, and mmap offsets sent to a child.
@@ -150,6 +166,29 @@ pub enum ControlChannel {
     Reset,
     /// Completion returned from a child to the global controller.
     Completion,
+}
+
+impl ControlChannel {
+    /// Stable short name used in generated control-pipeline hierarchy.
+    #[must_use]
+    pub const fn rtl_name(self) -> &'static str {
+        match self {
+            Self::Launch => "launch",
+            Self::Reset => "reset",
+            Self::Completion => "completion",
+        }
+    }
+}
+
+/// Deterministic generated instance name for one flattened task's control
+/// pipeline.
+#[must_use]
+pub fn control_pipeline_instance_name(instance: &str, channel: ControlChannel) -> String {
+    format!(
+        "__tapa_control_{}_{}",
+        crate::port::sanitize_identifier_name(instance),
+        channel.rtl_name(),
+    )
 }
 
 /// Identity of one channel carried by a [`PipelineRoute`].
@@ -355,6 +394,24 @@ mod tests {
             axi_pipeline_instance_name(&endpoint, AxiChannel::ReadData),
             "__tapa_axi_mem_3_r",
         );
+    }
+
+    #[test]
+    fn distributed_control_names_share_identifier_sanitization() {
+        assert_eq!(
+            global_controller_instance_name(),
+            "__tapa_global_controller"
+        );
+        assert_eq!(
+            local_controller_instance_name("Module1Func#1"),
+            "__tapa_local_controller_Module1Func_1",
+        );
+        assert_eq!(
+            control_pipeline_instance_name("worker[3]", ControlChannel::Completion),
+            "__tapa_control_worker_3_completion",
+        );
+        assert_eq!(ControlChannel::Launch.rtl_name(), "launch");
+        assert_eq!(ControlChannel::Reset.rtl_name(), "reset");
     }
 
     #[test]

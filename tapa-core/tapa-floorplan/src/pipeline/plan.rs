@@ -119,6 +119,9 @@ fn canonical_slot_region(region: &str) -> Result<String, PipelineError> {
 /// A cross-slot typed channel awaiting the shared routing solve.
 struct PendingNet {
     channel: RoutedChannel,
+    /// Additional typed channels intentionally carried over this exact solved
+    /// path. Launch and reset share one forward routing degree of freedom.
+    shared_channels: Vec<RoutedChannel>,
     src: Cell,
     dst: Cell,
     width: u32,
@@ -146,6 +149,7 @@ fn cross_slot_nets(
             channel: RoutedChannel::Stream {
                 fifo: edge.link.clone(),
             },
+            shared_channels: Vec::new(),
             src: region_cell(src_region)?,
             dst: region_cell(dst_region)?,
             width: edge.width,
@@ -167,9 +171,63 @@ fn cross_slot_nets(
                 bank: edge.bank,
                 channel: edge.channel,
             },
+            shared_channels: Vec::new(),
             src: region_cell(src_region)?,
             dst: region_cell(dst_region)?,
             width: edge.width,
+        });
+    }
+    for edge in graph.control_nets() {
+        if edge.channel == tapa_ir::ControlChannel::Reset {
+            continue; // emitted with the matching Launch route below
+        }
+        let src_region = regions
+            .get(&graph.vertex(edge.src).name)
+            .ok_or_else(|| PipelineError::BadRegion(graph.vertex(edge.src).name.clone()))?;
+        let dst_region = regions
+            .get(&graph.vertex(edge.dst).name)
+            .ok_or_else(|| PipelineError::BadRegion(graph.vertex(edge.dst).name.clone()))?;
+        if src_region == dst_region {
+            continue;
+        }
+
+        let mut shared_channels = Vec::new();
+        let width = if edge.channel == tapa_ir::ControlChannel::Launch {
+            let reset = graph
+                .control_nets()
+                .iter()
+                .find(|candidate| {
+                    candidate.instance == edge.instance
+                        && candidate.channel == tapa_ir::ControlChannel::Reset
+                        && candidate.src == edge.src
+                        && candidate.dst == edge.dst
+                })
+                .ok_or_else(|| PipelineError::Accounting {
+                    link: edge.instance.clone(),
+                    detail: "Launch control has no matching Reset channel".to_string(),
+                })?;
+            shared_channels.push(RoutedChannel::Control {
+                instance: reset.instance.clone(),
+                channel: reset.channel,
+            });
+            edge.width
+                .checked_add(reset.width)
+                .ok_or_else(|| PipelineError::Accounting {
+                    link: edge.instance.clone(),
+                    detail: "combined Launch/Reset routing width overflows u32".to_string(),
+                })?
+        } else {
+            edge.width
+        };
+        nets.push(PendingNet {
+            channel: RoutedChannel::Control {
+                instance: edge.instance.clone(),
+                channel: edge.channel,
+            },
+            shared_channels,
+            src: region_cell(src_region)?,
+            dst: region_cell(dst_region)?,
+            width,
         });
     }
     Ok(nets)
@@ -199,19 +257,19 @@ pub fn plan_routes(
         .collect();
     let routes = route_nets(&route_nets_input, device, solver, opts)?;
 
-    let pipeline_routes = nets
-        .iter()
-        .zip(routes)
-        .map(|(net, route)| {
-            let reg_regions = pipeline_reg_regions(&route, scheme);
-            PipelineRoute {
-                channel: net.channel.clone(),
-                route: route.iter().map(|&cell| slot_tag(cell)).collect(),
+    let mut pipeline_routes = Vec::new();
+    for (net, route) in nets.iter().zip(routes) {
+        let reg_regions = pipeline_reg_regions(&route, scheme);
+        let route: Vec<String> = route.iter().map(|&cell| slot_tag(cell)).collect();
+        for channel in std::iter::once(&net.channel).chain(&net.shared_channels) {
+            pipeline_routes.push(PipelineRoute {
+                channel: channel.clone(),
+                route: route.clone(),
                 scheme,
-                reg_regions,
-            }
-        })
-        .collect();
+                reg_regions: reg_regions.clone(),
+            });
+        }
+    }
     Ok(pipeline_routes)
 }
 
@@ -259,12 +317,53 @@ pub(crate) fn realize_slot_usage(
                     .ok_or_else(|| accounting_error(&link, "no matching AXI channel metadata"))?;
                 account_axi_pipeline(&mut usage, graph, regions, route, net, &link)?;
             }
-            RoutedChannel::Control { .. } => {}
+            RoutedChannel::Control { instance, channel } => {
+                let link = format!("{instance} {}", channel.rtl_name());
+                let net = graph
+                    .control_nets()
+                    .iter()
+                    .find(|net| net.instance == *instance && net.channel == *channel)
+                    .ok_or_else(|| accounting_error(&link, "no matching control metadata"))?;
+                account_control_pipeline(&mut usage, graph, regions, route, net, &link)?;
+            }
         }
     }
 
     validate_realized_usage(&usage, device, capacity_limit)?;
     Ok(usage)
+}
+
+fn account_control_pipeline(
+    usage: &mut BTreeMap<String, Area>,
+    graph: &FloorGraph,
+    regions: &BTreeMap<String, String>,
+    route: &PipelineRoute,
+    net: &crate::graph::ControlNet,
+    link: &str,
+) -> Result<(), PipelineError> {
+    let head_region = route
+        .route
+        .first()
+        .ok_or_else(|| accounting_error(link, "route has no Head region"))?;
+    let tail_region = route
+        .route
+        .last()
+        .ok_or_else(|| accounting_error(link, "route has no Tail region"))?;
+    let head_region = canonical_slot_region(head_region)?;
+    let tail_region = canonical_slot_region(tail_region)?;
+    verify_route_endpoint(graph, regions, net.src, &head_region, link, "Head")?;
+    verify_route_endpoint(graph, regions, net.dst, &tail_region, link, "Tail")?;
+
+    let register_area = Area {
+        ff: u64::from(net.width),
+        ..Area::default()
+    };
+    add_usage(usage, &head_region, register_area, link)?;
+    for region in &route.reg_regions {
+        add_usage(usage, &canonical_slot_region(region)?, register_area, link)?;
+    }
+    add_usage(usage, &tail_region, register_area, link)?;
+    Ok(())
 }
 
 fn account_axi_pipeline(
@@ -501,6 +600,7 @@ fn validate_realized_usage(
 mod tests {
     use super::*;
     use crate::device::select::select_device;
+    use tapa_ir::global_controller_instance_name;
 
     fn two_task_stream_graph() -> FloorGraph {
         let design = tapa_ir::TaskGraph::from_json(
@@ -620,6 +720,32 @@ mod tests {
                     write_response: 5,
                 },
             }],
+        )
+        .expect("floor graph")
+    }
+
+    fn one_controlled_task_graph() -> FloorGraph {
+        let design = tapa_ir::TaskGraph::from_json(
+            r#"{
+                "cflags": [], "top": "Top", "target": "xilinx-hls",
+                "tasks": {
+                    "Top": {"readable_name":"Top","code":"","level":"upper","synth":"hls",
+                        "ports":[{"cat":"scalar","name":"n","type":"unsigned","width":32}],
+                        "tasks":{"Worker":[{"name":"worker#0","args":{
+                            "count":{"arg":"n","cat":"scalar"}
+                        },"step":0}]},"fifos":{}},
+                    "Worker": {"readable_name":"Worker","code":"","level":"lower","synth":"hls",
+                        "ports":[{"cat":"scalar","name":"count","type":"unsigned","width":32}]}
+                }
+            }"#,
+        )
+        .expect("parse control graph");
+        let flat = tapa_ir::flatten(&design).expect("flatten control graph");
+        FloorGraph::build_with_interfaces(
+            &flat,
+            &[],
+            Some(crate::graph::ControlInterface::default()),
+            None,
         )
         .expect("floor graph")
     }
@@ -765,6 +891,189 @@ mod tests {
             .expect("area fits"),
             "the child-side read-data Tail carries the two-entry AXI buffer plus grace"
         );
+    }
+
+    #[test]
+    fn control_launch_and_reset_share_one_forward_router_net() {
+        let graph = one_controlled_task_graph();
+        let regions = BTreeMap::from([
+            (
+                global_controller_instance_name().to_string(),
+                Coor::slot(0, 0).region_name(),
+            ),
+            ("worker#0".to_string(), Coor::slot(0, 2).region_name()),
+        ]);
+        let nets = cross_slot_nets(&graph, &regions).expect("control nets");
+        assert_eq!(nets.len(), 2, "one forward bundle and one completion");
+        assert_eq!(nets[0].width, 35, "34-bit launch plus one reset bit");
+        assert_eq!(
+            nets[0].channel,
+            RoutedChannel::Control {
+                instance: "worker#0".to_string(),
+                channel: tapa_ir::ControlChannel::Launch,
+            }
+        );
+        assert_eq!(
+            nets[0].shared_channels,
+            [RoutedChannel::Control {
+                instance: "worker#0".to_string(),
+                channel: tapa_ir::ControlChannel::Reset,
+            }]
+        );
+        assert_eq!((nets[0].src, nets[0].dst), ((0, 0), (0, 2)));
+        assert_eq!((nets[1].src, nets[1].dst), ((0, 2), (0, 0)));
+
+        let colocated = BTreeMap::from([
+            (
+                global_controller_instance_name().to_string(),
+                Coor::slot(1, 1).region_name(),
+            ),
+            ("worker#0".to_string(), Coor::slot(1, 1).region_name()),
+        ]);
+        assert!(
+            cross_slot_nets(&graph, &colocated)
+                .expect("co-located controls")
+                .is_empty(),
+            "co-located control remains a direct wire"
+        );
+    }
+
+    #[test]
+    fn published_launch_and_reset_routes_are_identical() {
+        use crate::solver::{CbcSolver, SolverError};
+
+        let graph = one_controlled_task_graph();
+        let regions = BTreeMap::from([
+            (
+                global_controller_instance_name().to_string(),
+                Coor::slot(0, 0).region_name(),
+            ),
+            ("worker#0".to_string(), Coor::slot(0, 2).region_name()),
+        ]);
+        let routes = match plan_routes(
+            &graph,
+            &regions,
+            &select_device("u280").expect("u280"),
+            PipelineScheme::Single,
+            &CbcSolver::new(),
+            &SolveOpts {
+                threads: Some(1),
+                ..SolveOpts::default()
+            },
+        ) {
+            Ok(routes) => routes,
+            Err(PipelineError::Route(RouteError::Solver(SolverError::Spawn { .. }))) => {
+                eprintln!(
+                    "skipping published_launch_and_reset_routes_are_identical: `cbc` not found"
+                );
+                return;
+            }
+            Err(error) => panic!("routing failed: {error}"),
+        };
+        assert_eq!(routes.len(), 3);
+        let launch = routes
+            .iter()
+            .find(|route| {
+                matches!(
+                    route.channel,
+                    RoutedChannel::Control {
+                        channel: tapa_ir::ControlChannel::Launch,
+                        ..
+                    }
+                )
+            })
+            .expect("launch route");
+        let reset = routes
+            .iter()
+            .find(|route| {
+                matches!(
+                    route.channel,
+                    RoutedChannel::Control {
+                        channel: tapa_ir::ControlChannel::Reset,
+                        ..
+                    }
+                )
+            })
+            .expect("reset route");
+        assert_eq!(launch.route, reset.route);
+        assert_eq!(launch.reg_regions, reset.reg_regions);
+        assert_eq!(launch.scheme, reset.scheme);
+    }
+
+    #[test]
+    fn control_pipeline_accounts_head_body_and_tail_flip_flops() {
+        let graph = one_controlled_task_graph();
+        let source = Coor::slot(0, 0).region_name();
+        let body = Coor::slot(0, 1).region_name();
+        let destination = Coor::slot(0, 2).region_name();
+        let regions = BTreeMap::from([
+            (
+                global_controller_instance_name().to_string(),
+                source.clone(),
+            ),
+            ("worker#0".to_string(), destination.clone()),
+        ]);
+        let control_route = |channel, reverse: bool| PipelineRoute {
+            channel: RoutedChannel::Control {
+                instance: "worker#0".to_string(),
+                channel,
+            },
+            route: if reverse {
+                vec![
+                    "SLOT_X0Y2".to_string(),
+                    "SLOT_X0Y1".to_string(),
+                    "SLOT_X0Y0".to_string(),
+                ]
+            } else {
+                vec![
+                    "SLOT_X0Y0".to_string(),
+                    "SLOT_X0Y1".to_string(),
+                    "SLOT_X0Y2".to_string(),
+                ]
+            },
+            scheme: PipelineScheme::Single,
+            reg_regions: vec!["SLOT_X0Y1".to_string()],
+        };
+        let routes = [
+            control_route(tapa_ir::ControlChannel::Launch, false),
+            control_route(tapa_ir::ControlChannel::Reset, false),
+            control_route(tapa_ir::ControlChannel::Completion, true),
+        ];
+        let realized = realize_slot_usage(
+            &graph,
+            &regions,
+            &BTreeMap::from([
+                (source.clone(), Area::default()),
+                (destination.clone(), Area::default()),
+            ]),
+            &routes,
+            &select_device("u280").expect("u280"),
+            MAX_USAGE_LIMIT,
+        )
+        .expect("account control pipelines");
+        for region in [&source, &body, &destination] {
+            assert_eq!(
+                realized[region],
+                Area {
+                    ff: 36,
+                    ..Area::default()
+                },
+                "34 launch + reset + completion registers in {region}"
+            );
+        }
+
+        let mut invalid = routes[0].clone();
+        invalid.route.reverse();
+        let error = realize_slot_usage(
+            &graph,
+            &regions,
+            &BTreeMap::new(),
+            &[invalid],
+            &select_device("u280").expect("u280"),
+            MAX_USAGE_LIMIT,
+        )
+        .expect_err("reversed control endpoints must fail");
+        assert!(error.to_string().contains("Head route region"), "{error}");
     }
 
     #[test]

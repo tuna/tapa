@@ -10,7 +10,14 @@
 
 use std::collections::{BTreeMap, HashMap};
 
-use tapa_ir::{Area, AxiChannel, AxiChannelWidths, AxiEndpoint, MemoryBank, TaskGraph};
+use tapa_ir::port::{sanitize_array_name, sanitize_identifier_name};
+use tapa_ir::{
+    axi_pipeline_instance_name, control_pipeline_instance_name, global_controller_instance_name,
+    local_controller_instance_name, Area, AxiChannel, AxiChannelWidths, AxiEndpoint,
+    ControlChannel, MemoryBank, TaskGraph,
+};
+
+const CONTROL_S_AXI_INSTANCE: &str = "control_s_axi_U";
 
 /// One supported direct M-AXI endpoint and its exact external bank.
 ///
@@ -21,6 +28,13 @@ pub struct MemoryInterface {
     pub endpoint: AxiEndpoint,
     pub bank: MemoryBank,
     pub channel_widths: AxiChannelWidths,
+}
+
+/// Opt-in metadata for the transient distributed-control planning graph.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ControlInterface {
+    /// The generated kernel contains the exact top-level S-AXI control block.
+    pub has_s_axi_control: bool,
 }
 
 /// One placeable instance.
@@ -82,6 +96,17 @@ pub struct AxiNet {
     pub payload_width: u32,
 }
 
+/// One directed control channel retained for routing and code generation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ControlNet {
+    /// Canonical flattened child instance name.
+    pub instance: String,
+    pub channel: ControlChannel,
+    pub src: usize,
+    pub dst: usize,
+    pub width: u32,
+}
+
 /// A real RTL instance whose area and placement belong to a host vertex.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct CoLocatedInstance {
@@ -96,6 +121,7 @@ pub struct FloorGraph {
     placement_edges: Vec<PlacementEdge>,
     streams: Vec<Stream>,
     axi_nets: Vec<AxiNet>,
+    control_nets: Vec<ControlNet>,
     index: HashMap<String, usize>,
     co_located: Vec<CoLocatedInstance>,
 }
@@ -159,6 +185,34 @@ pub enum GraphError {
     /// A generated transient name collided with real RTL.
     #[error("duplicate placement vertex name `{0}`")]
     DuplicateVertex(String),
+    /// Two child instances resolve to the same canonical logical name.
+    #[error("duplicate flattened instance canonical name `{0}`")]
+    DuplicateCanonicalName(String),
+    /// Distinct logical instance names collapse to the same RTL identifier.
+    #[error(
+        "flattened instances `{first}` and `{second}` both sanitize to RTL name `{sanitized}`"
+    )]
+    SanitizedNameCollision {
+        first: String,
+        second: String,
+        sanitized: String,
+    },
+    /// A generated controller/pipeline name aliases existing or generated RTL.
+    #[error("generated control name `{generated}` collides with {existing}")]
+    GeneratedNameCollision { generated: String, existing: String },
+    /// A child scalar argument does not agree with its task-port metadata.
+    #[error("invalid scalar metadata for `{instance}.{port}`: {detail}")]
+    ScalarMetadata {
+        instance: String,
+        port: String,
+        detail: String,
+    },
+    /// A generated control bundle exceeds the supported physical width.
+    #[error("physical width overflow while building {channel:?} control for `{instance}`")]
+    ControlWidthOverflow {
+        instance: String,
+        channel: ControlChannel,
+    },
 }
 
 impl FloorGraph {
@@ -184,6 +238,12 @@ impl FloorGraph {
     #[must_use]
     pub fn axi_nets(&self) -> &[AxiNet] {
         &self.axi_nets
+    }
+
+    /// Directed distributed-control channels used by routing and codegen.
+    #[must_use]
+    pub fn control_nets(&self) -> &[ControlNet] {
+        &self.control_nets
     }
 
     /// The vertex at `index`.
@@ -246,6 +306,20 @@ impl FloorGraph {
         flat: &TaskGraph,
         memory: &[MemoryInterface],
     ) -> Result<Self, GraphError> {
+        Self::build_with_interfaces(flat, memory, None, None)
+    }
+
+    /// Build the placement graph with optional distributed-control metadata.
+    #[allow(
+        clippy::too_many_lines,
+        reason = "one pass builds the task, stream, memory, and optional control graph in order"
+    )]
+    pub(crate) fn build_with_interfaces(
+        flat: &TaskGraph,
+        memory: &[MemoryInterface],
+        control: Option<ControlInterface>,
+        global_anchor: Option<&str>,
+    ) -> Result<Self, GraphError> {
         let top = flat
             .tasks
             .get(&flat.top)
@@ -267,6 +341,9 @@ impl FloorGraph {
             for (idx, inst) in instances.iter().enumerate() {
                 let name = inst.canonical_name(def_name, idx).into_owned();
                 let vertex_index = vertices.len();
+                if control.is_some() && index.contains_key(&name) {
+                    return Err(GraphError::DuplicateCanonicalName(name));
+                }
                 index.insert(name.clone(), vertex_index);
                 let inst_idx = u32::try_from(idx).expect("instance count fits u32");
                 endpoints.insert((def_name.clone(), inst_idx), vertex_index);
@@ -344,6 +421,23 @@ impl FloorGraph {
             &mut placement_widths,
         )?;
 
+        let control_nets = if let Some(control) = control.filter(|_| !top.tasks.is_empty()) {
+            add_control_interface(
+                flat,
+                top,
+                memory,
+                control,
+                global_anchor,
+                &mut vertices,
+                &mut index,
+                &endpoints,
+                &mut placement_widths,
+                &mut co_located,
+            )?
+        } else {
+            Vec::new()
+        };
+
         let placement_edges = placement_widths
             .into_iter()
             .map(|((src, dst), width)| PlacementEdge { src, dst, width })
@@ -354,10 +448,302 @@ impl FloorGraph {
             placement_edges,
             streams,
             axi_nets,
+            control_nets,
             index,
             co_located,
         })
     }
+}
+
+#[allow(
+    clippy::too_many_arguments,
+    reason = "control graph construction updates the same transient graph collections as memory"
+)]
+fn add_control_interface(
+    flat: &TaskGraph,
+    top: &tapa_ir::Task,
+    memory: &[MemoryInterface],
+    control: ControlInterface,
+    global_anchor: Option<&str>,
+    vertices: &mut Vec<Vertex>,
+    index: &mut HashMap<String, usize>,
+    task_endpoints: &HashMap<(String, u32), usize>,
+    placement_widths: &mut BTreeMap<(usize, usize), u32>,
+    co_located: &mut Vec<CoLocatedInstance>,
+) -> Result<Vec<ControlNet>, GraphError> {
+    validate_control_names(flat, top, memory, control, vertices)?;
+
+    let global_name = global_controller_instance_name().to_string();
+    if index.contains_key(&global_name) {
+        return Err(GraphError::GeneratedNameCollision {
+            generated: global_name,
+            existing: "placement vertex".to_string(),
+        });
+    }
+    let global = vertices.len();
+    vertices.push(Vertex {
+        name: global_name.clone(),
+        area: Area::default(),
+        required_tag: global_anchor.map(ToString::to_string),
+        materialize: true,
+    });
+    index.insert(global_name, global);
+    if control.has_s_axi_control {
+        co_located.push(CoLocatedInstance {
+            name: CONTROL_S_AXI_INSTANCE.to_string(),
+            host: global,
+        });
+    }
+
+    let mut nets = Vec::new();
+    for (definition, instances) in &top.tasks {
+        let task = flat
+            .tasks
+            .get(definition)
+            .ok_or_else(|| GraphError::MissingTaskDef(definition.clone()))?;
+        for (instance_index, instance) in instances.iter().enumerate() {
+            let canonical = instance
+                .canonical_name(definition, instance_index)
+                .into_owned();
+            let endpoint_index = u32::try_from(instance_index).expect("instance count fits u32");
+            let child = task_endpoints[&(definition.clone(), endpoint_index)];
+            co_located.push(CoLocatedInstance {
+                name: local_controller_instance_name(&canonical),
+                host: child,
+            });
+
+            let launch_width = control_launch_width(task, instance, &canonical)?;
+            add_control_net(
+                &mut nets,
+                placement_widths,
+                &canonical,
+                ControlChannel::Launch,
+                global,
+                child,
+                launch_width,
+            )?;
+            add_control_net(
+                &mut nets,
+                placement_widths,
+                &canonical,
+                ControlChannel::Reset,
+                global,
+                child,
+                1,
+            )?;
+            if instance.step >= 0 {
+                add_control_net(
+                    &mut nets,
+                    placement_widths,
+                    &canonical,
+                    ControlChannel::Completion,
+                    child,
+                    global,
+                    1,
+                )?;
+            }
+        }
+    }
+    Ok(nets)
+}
+
+fn add_control_net(
+    nets: &mut Vec<ControlNet>,
+    placement_widths: &mut BTreeMap<(usize, usize), u32>,
+    instance: &str,
+    channel: ControlChannel,
+    src: usize,
+    dst: usize,
+    width: u32,
+) -> Result<(), GraphError> {
+    let pair = (src.min(dst), src.max(dst));
+    let placement_width = placement_widths.entry(pair).or_default();
+    *placement_width =
+        placement_width
+            .checked_add(width)
+            .ok_or_else(|| GraphError::ControlWidthOverflow {
+                instance: instance.to_string(),
+                channel,
+            })?;
+    nets.push(ControlNet {
+        instance: instance.to_string(),
+        channel,
+        src,
+        dst,
+        width,
+    });
+    Ok(())
+}
+
+fn control_launch_width(
+    task: &tapa_ir::Task,
+    instance: &tapa_ir::TaskInstance,
+    instance_name: &str,
+) -> Result<u32, GraphError> {
+    let mut width = if instance.step < 0 { 1_u32 } else { 2_u32 };
+
+    for port in task.ports.iter().filter(|port| port.cat.is_scalar()) {
+        let argument = instance
+            .args
+            .get(&port.name)
+            .ok_or_else(|| GraphError::ScalarMetadata {
+                instance: instance_name.to_string(),
+                port: port.name.clone(),
+                detail: "child scalar port has no instance argument".to_string(),
+            })?;
+        if !argument.cat.is_scalar() {
+            return Err(GraphError::ScalarMetadata {
+                instance: instance_name.to_string(),
+                port: port.name.clone(),
+                detail: format!(
+                    "child port is scalar but its instance argument is {}",
+                    argument.cat.as_str()
+                ),
+            });
+        }
+        if port.width == 0 {
+            return Err(GraphError::ScalarMetadata {
+                instance: instance_name.to_string(),
+                port: port.name.clone(),
+                detail: "scalar width must be greater than zero".to_string(),
+            });
+        }
+        width = width
+            .checked_add(port.width)
+            .ok_or_else(|| GraphError::ControlWidthOverflow {
+                instance: instance_name.to_string(),
+                channel: ControlChannel::Launch,
+            })?;
+    }
+
+    for (port_name, argument) in &instance.args {
+        if argument.cat.is_scalar()
+            && task
+                .ports
+                .iter()
+                .find(|port| port.name == *port_name)
+                .is_none_or(|port| !port.cat.is_scalar())
+        {
+            return Err(GraphError::ScalarMetadata {
+                instance: instance_name.to_string(),
+                port: port_name.clone(),
+                detail: "instance argument is scalar but child scalar port metadata is missing"
+                    .to_string(),
+            });
+        }
+        if argument.cat.is_direct_mmap() {
+            width = width
+                .checked_add(64)
+                .ok_or_else(|| GraphError::ControlWidthOverflow {
+                    instance: instance_name.to_string(),
+                    channel: ControlChannel::Launch,
+                })?;
+        }
+    }
+    Ok(width)
+}
+
+fn validate_control_names(
+    flat: &TaskGraph,
+    top: &tapa_ir::Task,
+    memory: &[MemoryInterface],
+    control: ControlInterface,
+    vertices: &[Vertex],
+) -> Result<(), GraphError> {
+    let mut sanitized_instances = BTreeMap::<String, String>::new();
+    let mut occupied = BTreeMap::<String, String>::new();
+    let mut canonical_instances = Vec::new();
+    for (definition, instances) in &top.tasks {
+        if !flat.tasks.contains_key(definition) {
+            return Err(GraphError::MissingTaskDef(definition.clone()));
+        }
+        for (instance_index, instance) in instances.iter().enumerate() {
+            let canonical = instance
+                .canonical_name(definition, instance_index)
+                .into_owned();
+            let sanitized = sanitize_identifier_name(&canonical);
+            if let Some(first) = sanitized_instances.insert(sanitized.clone(), canonical.clone()) {
+                if first != canonical {
+                    return Err(GraphError::SanitizedNameCollision {
+                        first,
+                        second: canonical,
+                        sanitized,
+                    });
+                }
+            }
+            occupied.insert(canonical.clone(), format!("instance `{canonical}`"));
+            occupied.insert(sanitized, format!("instance `{canonical}`"));
+            canonical_instances.push((canonical, instance.step < 0));
+        }
+    }
+    for vertex in vertices {
+        occupied
+            .entry(vertex.name.clone())
+            .or_insert_with(|| format!("placement vertex `{}`", vertex.name));
+        occupied
+            .entry(sanitize_identifier_name(&vertex.name))
+            .or_insert_with(|| format!("placement vertex `{}`", vertex.name));
+    }
+    for fifo in top.fifos.keys() {
+        occupied.insert(fifo.clone(), format!("stream `{fifo}`"));
+        let rtl_name = format!("{}_fifo", sanitize_array_name(fifo));
+        occupied.insert(rtl_name, format!("stream `{fifo}`"));
+    }
+    for interface in memory {
+        for (channel, _) in interface.channel_widths.channels() {
+            let name = axi_pipeline_instance_name(&interface.endpoint, channel);
+            occupied.insert(
+                name,
+                format!("AXI pipeline for `{}`", interface.endpoint.top_port),
+            );
+        }
+    }
+
+    reserve_generated_name(
+        &mut occupied,
+        global_controller_instance_name().to_string(),
+        "global controller",
+    )?;
+    if control.has_s_axi_control {
+        reserve_generated_name(
+            &mut occupied,
+            CONTROL_S_AXI_INSTANCE.to_string(),
+            "S-AXI control block",
+        )?;
+    }
+    for (canonical, autorun) in canonical_instances {
+        reserve_generated_name(
+            &mut occupied,
+            local_controller_instance_name(&canonical),
+            &format!("local controller for `{canonical}`"),
+        )?;
+        let channels = [ControlChannel::Launch, ControlChannel::Reset]
+            .into_iter()
+            .chain((!autorun).then_some(ControlChannel::Completion));
+        for channel in channels {
+            reserve_generated_name(
+                &mut occupied,
+                control_pipeline_instance_name(&canonical, channel),
+                &format!("{channel:?} pipeline for `{canonical}`"),
+            )?;
+        }
+    }
+    Ok(())
+}
+
+fn reserve_generated_name(
+    occupied: &mut BTreeMap<String, String>,
+    generated: String,
+    owner: &str,
+) -> Result<(), GraphError> {
+    if let Some(existing) = occupied.get(&generated) {
+        return Err(GraphError::GeneratedNameCollision {
+            generated,
+            existing: existing.clone(),
+        });
+    }
+    occupied.insert(generated, owner.to_string());
+    Ok(())
 }
 
 fn add_memory_interfaces(
@@ -725,6 +1111,240 @@ mod tests {
                 write_response: 5,
             },
         }
+    }
+
+    fn distributed_control_graph() -> TaskGraph {
+        TaskGraph::from_json(
+            r#"{
+                "cflags": [], "top": "Top", "target": "xilinx-vitis",
+                "tasks": {
+                    "Top": {
+                        "readable_name": "Top", "code": "", "level": "upper", "synth": "hls",
+                        "ports": [
+                            {"cat":"scalar","name":"n","type":"unsigned","width":32},
+                            {"cat":"scalar","name":"mode","type":"char","width":8},
+                            {"cat":"mmap","name":"mem","type":"int*","width":32}
+                        ],
+                        "tasks": {
+                            "Worker": [{"name":"worker#0","args":{
+                                "count":{"arg":"n","cat":"scalar"},
+                                "data":{"arg":"mem","cat":"mmap"}
+                            },"step":0}],
+                            "Ticker": [{"name":"ticker[1]","args":{
+                                "mode":{"arg":"mode","cat":"scalar"}
+                            },"step":-1}]
+                        },
+                        "fifos": {}
+                    },
+                    "Worker": {
+                        "readable_name":"Worker","code":"","level":"lower","synth":"hls",
+                        "ports":[
+                            {"cat":"scalar","name":"count","type":"unsigned","width":32},
+                            {"cat":"mmap","name":"data","type":"int*","width":32}
+                        ]
+                    },
+                    "Ticker": {
+                        "readable_name":"Ticker","code":"","level":"lower","synth":"hls",
+                        "ports":[{"cat":"scalar","name":"mode","type":"char","width":8}]
+                    }
+                }
+            }"#,
+        )
+        .expect("parse control graph")
+    }
+
+    fn control_memory_interface() -> MemoryInterface {
+        MemoryInterface {
+            endpoint: AxiEndpoint {
+                instance: "worker#0".to_string(),
+                port: "data".to_string(),
+                top_port: "mem".to_string(),
+            },
+            bank: MemoryBank {
+                kind: tapa_ir::MemoryKind::Hbm,
+                index: 0,
+            },
+            channel_widths: AxiChannelWidths {
+                read_address: 80,
+                read_data: 38,
+                write_address: 80,
+                write_data: 39,
+                write_response: 5,
+            },
+        }
+    }
+
+    #[test]
+    fn distributed_control_tracks_exact_widths_and_autorun_inventory() {
+        let flat = tapa_ir::flatten(&distributed_control_graph()).expect("flatten");
+        let graph = FloorGraph::build_with_interfaces(
+            &flat,
+            &[control_memory_interface()],
+            Some(ControlInterface {
+                has_s_axi_control: true,
+            }),
+            Some("S_AXI_CONTROL"),
+        )
+        .expect("build control graph");
+
+        let global = graph
+            .index_of(global_controller_instance_name())
+            .expect("global controller");
+        assert_eq!(graph.vertex(global).area, Area::default());
+        assert_eq!(
+            graph.vertex(global).required_tag.as_deref(),
+            Some("S_AXI_CONTROL")
+        );
+        let worker = graph.index_of("worker#0").expect("worker");
+        let ticker = graph.index_of("ticker[1]").expect("ticker");
+        let channels = graph
+            .control_nets()
+            .iter()
+            .map(|net| {
+                (
+                    net.instance.as_str(),
+                    net.channel,
+                    net.src,
+                    net.dst,
+                    net.width,
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            channels,
+            [
+                ("ticker[1]", ControlChannel::Launch, global, ticker, 9),
+                ("ticker[1]", ControlChannel::Reset, global, ticker, 1),
+                ("worker#0", ControlChannel::Launch, global, worker, 98),
+                ("worker#0", ControlChannel::Reset, global, worker, 1),
+                ("worker#0", ControlChannel::Completion, worker, global, 1),
+            ]
+        );
+
+        let mut regions = BTreeMap::from([
+            (graph.vertex(global).name.clone(), "SLOT_X1Y1".to_string()),
+            (graph.vertex(worker).name.clone(), "SLOT_X0Y0".to_string()),
+            (graph.vertex(ticker).name.clone(), "SLOT_X0Y1".to_string()),
+        ]);
+        graph
+            .materialize_co_locations(&mut regions)
+            .expect("materialize controllers");
+        assert_eq!(
+            regions[CONTROL_S_AXI_INSTANCE],
+            regions[&graph.vertex(global).name]
+        );
+        assert_eq!(
+            regions[&local_controller_instance_name("worker#0")],
+            regions["worker#0"]
+        );
+        assert_eq!(
+            regions[&local_controller_instance_name("ticker[1]")],
+            regions["ticker[1]"]
+        );
+
+        let worker_edge = graph
+            .placement_edges()
+            .iter()
+            .find(|edge| (edge.src, edge.dst) == (global.min(worker), global.max(worker)))
+            .expect("worker control edge");
+        assert_eq!(worker_edge.width, 100, "98 launch + reset + completion");
+        let ticker_edge = graph
+            .placement_edges()
+            .iter()
+            .find(|edge| (edge.src, edge.dst) == (global.min(ticker), global.max(ticker)))
+            .expect("ticker control edge");
+        assert_eq!(ticker_edge.width, 10, "9 launch + reset, no completion");
+    }
+
+    #[test]
+    fn disabled_control_keeps_the_baseline_graph_unchanged() {
+        let flat = tapa_ir::flatten(&vadd_graph()).expect("flatten");
+        let baseline = FloorGraph::build(&flat).expect("baseline");
+        let explicit = FloorGraph::build_with_interfaces(&flat, &[], None, None)
+            .expect("explicit disabled graph");
+        assert_eq!(baseline.vertices, explicit.vertices);
+        assert_eq!(baseline.placement_edges, explicit.placement_edges);
+        assert_eq!(baseline.streams, explicit.streams);
+        assert_eq!(baseline.axi_nets, explicit.axi_nets);
+        assert!(baseline.control_nets().is_empty());
+        assert!(explicit.control_nets().is_empty());
+    }
+
+    #[test]
+    fn distributed_control_rejects_ambiguous_or_missing_names_and_scalars() {
+        let cases = [
+            (
+                serde_json::json!({
+                    "A": [{"name":"same","args":{}}, {"name":"same","args":{}}]
+                }),
+                "duplicate flattened instance canonical name",
+            ),
+            (
+                serde_json::json!({
+                    "A": [{"name":"same#name","args":{}}, {"name":"same?name","args":{}}]
+                }),
+                "both sanitize to RTL name",
+            ),
+            (
+                serde_json::json!({
+                    "A": [{"name":"__tapa_global_controller","args":{}}]
+                }),
+                "generated control name",
+            ),
+        ];
+        for (tasks, expected) in cases {
+            let mut value = serde_json::to_value(vadd_graph()).expect("serialize graph");
+            value["tasks"]["VecAdd"]["tasks"] = tasks;
+            value["tasks"]["VecAdd"]["fifos"] = serde_json::json!({});
+            let design = TaskGraph::from_json(&value.to_string()).expect("parse case");
+            let error = FloorGraph::build_with_interfaces(
+                &design,
+                &[],
+                Some(ControlInterface::default()),
+                None,
+            )
+            .expect_err("invalid control graph");
+            assert!(error.to_string().contains(expected), "{error}");
+        }
+
+        let mut value = serde_json::to_value(distributed_control_graph()).expect("serialize graph");
+        value["tasks"]["Top"]["tasks"]["Ticker"][0]["args"] = serde_json::json!({});
+        let design = TaskGraph::from_json(&value.to_string()).expect("parse missing scalar");
+        let flat = tapa_ir::flatten(&design).expect("flatten missing scalar");
+        let error = FloorGraph::build_with_interfaces(
+            &flat,
+            &[control_memory_interface()],
+            Some(ControlInterface::default()),
+            None,
+        )
+        .expect_err("missing scalar must fail");
+        assert!(matches!(error, GraphError::ScalarMetadata { .. }));
+    }
+
+    #[test]
+    fn enabled_control_is_a_noop_without_child_instances() {
+        let design = TaskGraph::from_json(
+            r#"{
+                "cflags": [], "top": "Leaf", "target": "xilinx-hls",
+                "tasks": {"Leaf": {
+                    "readable_name":"Leaf","code":"","level":"lower","synth":"hls",
+                    "ports":[],"tasks":{},"fifos":{}
+                }}
+            }"#,
+        )
+        .expect("parse leaf top");
+        let graph = FloorGraph::build_with_interfaces(
+            &design,
+            &[],
+            Some(ControlInterface {
+                has_s_axi_control: true,
+            }),
+            Some("S_AXI_CONTROL"),
+        )
+        .expect("empty control topology");
+        assert!(graph.vertices().is_empty());
+        assert!(graph.control_nets().is_empty());
+        assert!(graph.index_of(global_controller_instance_name()).is_none());
     }
 
     #[test]

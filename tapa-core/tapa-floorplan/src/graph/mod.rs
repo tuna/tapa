@@ -3,5 +3,6 @@
 pub mod floor_graph;
 
 pub use floor_graph::{
-    fifo_area, AxiNet, FloorGraph, GraphError, MemoryInterface, PlacementEdge, Stream, Vertex,
+    fifo_area, AxiNet, ControlInterface, ControlNet, FloorGraph, GraphError, MemoryInterface,
+    PlacementEdge, Stream, Vertex,
 };
