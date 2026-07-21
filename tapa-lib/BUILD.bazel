@@ -57,6 +57,17 @@ _PUBLIC_HEADERS = [
 ]
 
 # Shared sources between :tapa (full sim) and :tapa-sim (lean sim).
+_TAPA_COPTS = [
+    # Suppress warnings from Boost headers redefining their own macros
+    "-Wno-macro-redefined",
+]
+
+_TAPA_DEPS = [
+    "//fpga-runtime:frt",
+    "@gflags",
+    "@glog",
+]
+
 _SHARED_SRCS = [
     "tapa/host/frt/flags.cpp",
     "tapa/host/frt/instance.cpp",
@@ -76,10 +87,7 @@ cc_library(
     name = "tapa",
     srcs = _SHARED_SRCS + ["tapa/host/private_scheduler.h"],
     hdrs = _PUBLIC_HEADERS,
-    copts = [
-        # Suppress warnings from Boost headers redefining their own macros
-        "-Wno-macro-redefined",
-    ],
+    copts = _TAPA_COPTS,
     includes = ["."],
     local_defines = select({
         ":coroutine_enabled": ["TAPA_ENABLE_COROUTINE"],
@@ -87,12 +95,9 @@ cc_library(
     }),
     target_compatible_with = ["@platforms//os:linux"],
     visibility = ["//visibility:public"],
-    deps = [
-        "//fpga-runtime:frt",
+    deps = _TAPA_DEPS + [
         "@boost//:coroutine2",
         "@boost//:thread",
-        "@gflags",
-        "@glog",
     ],
 )
 
@@ -109,16 +114,10 @@ cc_library(
     name = "tapa-sim",
     srcs = _SHARED_SRCS,
     hdrs = _PUBLIC_HEADERS,
-    copts = [
-        "-Wno-macro-redefined",
-    ],
+    copts = _TAPA_COPTS,
     includes = ["."],
     visibility = ["//visibility:public"],
-    deps = [
-        "//fpga-runtime:frt",
-        "@gflags",
-        "@glog",
-    ],
+    deps = _TAPA_DEPS,
 )
 
 cc_test(
@@ -230,7 +229,7 @@ pkg_files(
     srcs = [
         "@boost//:context",  # for boost.coroutine2
         "@boost//:thread",
-        "@glog",
+        # gflags/glog ship via //fpga-runtime:pkg-extra-runtime-deps.
     ],
     prefix = "usr/lib",
     strip_prefix = strip_prefix.files_only(),

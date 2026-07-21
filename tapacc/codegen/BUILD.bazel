@@ -1,6 +1,7 @@
 """Codegen of the rewritten tapacc: typed Program (+ AST) -> vendor C++."""
 
 load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
+load("//tapacc:defs.bzl", "CLANG_TOOLING", "TAPACC_COPTS")
 
 package(default_visibility = ["//tapacc:__subpackages__"])
 
@@ -23,12 +24,12 @@ cc_library(
 cc_library(
     name = "backend",
     hdrs = ["backend.h"],
-    copts = ["-fno-rtti"],
+    copts = TAPACC_COPTS,
     deps = [
         ":code_sink",
         "//tapacc/frontend:classify",
         "//tapacc/frontend:program",
-        "@tapa-llvm-project//clang:tooling",
+        CLANG_TOOLING,
     ],
 )
 
@@ -47,20 +48,20 @@ cc_library(
     name = "emit",
     srcs = ["emit.cpp"],
     hdrs = ["emit.h"],
-    copts = ["-fno-rtti"],
+    copts = TAPACC_COPTS,
     deps = [
         ":code_sink",
         ":conventions",
         "//tapacc/frontend:classify",
         "//tapacc/frontend:type_args",
-        "@tapa-llvm-project//clang:tooling",
+        CLANG_TOOLING,
     ],
 )
 
 cc_test(
     name = "emit_test",
     srcs = ["emit_test.cpp"],
-    copts = ["-fno-rtti"],
+    copts = TAPACC_COPTS,
     deps = [
         ":code_sink",
         ":emit",
@@ -68,7 +69,7 @@ cc_test(
         "//tapacc/frontend:tapa_stub_decls",
         "@googletest//:gtest",
         "@googletest//:gtest_main",
-        "@tapa-llvm-project//clang:tooling",
+        CLANG_TOOLING,
     ],
 )
 
@@ -76,14 +77,14 @@ cc_library(
     name = "xilinx",
     srcs = ["xilinx.cpp"],
     hdrs = ["xilinx.h"],
-    copts = ["-fno-rtti"],
+    copts = TAPACC_COPTS,
     deps = [
         ":backend",
         ":conventions",
         ":emit",
         "//tapacc/frontend:classify",
         "//tapacc/frontend:type_args",
-        "@tapa-llvm-project//clang:tooling",
+        CLANG_TOOLING,
     ],
 )
 
@@ -91,13 +92,13 @@ cc_library(
     name = "ignore",
     srcs = ["ignore.cpp"],
     hdrs = ["ignore.h"],
-    copts = ["-fno-rtti"],
+    copts = TAPACC_COPTS,
     deps = [
         ":backend",
         ":code_sink",
         ":emit",
         "//tapacc/frontend:classify",
-        "@tapa-llvm-project//clang:tooling",
+        CLANG_TOOLING,
     ],
 )
 
@@ -105,13 +106,13 @@ cc_library(
     name = "wrapper",
     srcs = ["wrapper.cpp"],
     hdrs = ["wrapper.h"],
-    copts = ["-fno-rtti"],
+    copts = TAPACC_COPTS,
     deps = [
         ":backend",
         ":code_sink",
         "//tapacc/frontend:classify",
         "//tapacc/frontend:program",
-        "@tapa-llvm-project//clang:tooling",
+        CLANG_TOOLING,
     ],
 )
 
@@ -119,21 +120,21 @@ cc_library(
     name = "rewrite",
     srcs = ["rewrite.cpp"],
     hdrs = ["rewrite.h"],
-    copts = ["-fno-rtti"],
+    copts = TAPACC_COPTS,
     deps = [
         ":backend",
         ":emit",
         ":wrapper",
         "//tapacc/frontend:discover",
         "//tapacc/frontend:program",
-        "@tapa-llvm-project//clang:tooling",
+        CLANG_TOOLING,
     ],
 )
 
 cc_test(
     name = "rewrite_test",
     srcs = ["rewrite_test.cpp"],
-    copts = ["-fno-rtti"],
+    copts = TAPACC_COPTS,
     deps = [
         ":rewrite",
         ":xilinx",
@@ -142,6 +143,6 @@ cc_test(
         "//tapacc/frontend:tapa_stub_decls",
         "@googletest//:gtest",
         "@googletest//:gtest_main",
-        "@tapa-llvm-project//clang:tooling",
+        CLANG_TOOLING,
     ],
 )

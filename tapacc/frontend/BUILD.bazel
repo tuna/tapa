@@ -1,6 +1,7 @@
 """Frontend of the rewritten tapacc: AST -> typed program model (no rewrites)."""
 
 load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
+load("//tapacc:defs.bzl", "CLANG_TOOLING", "TAPACC_COPTS")
 
 package(default_visibility = ["//tapacc:__subpackages__"])
 
@@ -8,18 +9,18 @@ cc_library(
     name = "classify",
     srcs = ["classify.cpp"],
     hdrs = ["classify.h"],
-    copts = ["-fno-rtti"],
-    deps = ["@tapa-llvm-project//clang:tooling"],
+    copts = TAPACC_COPTS,
+    deps = [CLANG_TOOLING],
 )
 
 cc_library(
     name = "program",
     srcs = ["program.cpp"],
     hdrs = ["program.h"],
-    copts = ["-fno-rtti"],
+    copts = TAPACC_COPTS,
     deps = [
         ":classify",
-        "@tapa-llvm-project//clang:tooling",
+        CLANG_TOOLING,
     ],
 )
 
@@ -27,20 +28,20 @@ cc_library(
     name = "type_args",
     srcs = ["type_args.cpp"],
     hdrs = ["type_args.h"],
-    copts = ["-fno-rtti"],
-    deps = ["@tapa-llvm-project//clang:tooling"],
+    copts = TAPACC_COPTS,
+    deps = [CLANG_TOOLING],
 )
 
 cc_library(
     name = "ports",
     srcs = ["ports.cpp"],
     hdrs = ["ports.h"],
-    copts = ["-fno-rtti"],
+    copts = TAPACC_COPTS,
     deps = [
         ":classify",
         ":program",
         ":type_args",
-        "@tapa-llvm-project//clang:tooling",
+        CLANG_TOOLING,
     ],
 )
 
@@ -54,27 +55,27 @@ cc_library(
 cc_test(
     name = "type_args_test",
     srcs = ["type_args_test.cpp"],
-    copts = ["-fno-rtti"],
+    copts = TAPACC_COPTS,
     deps = [
         ":tapa_stub_decls",
         ":type_args",
         "@googletest//:gtest",
         "@googletest//:gtest_main",
-        "@tapa-llvm-project//clang:tooling",
+        CLANG_TOOLING,
     ],
 )
 
 cc_test(
     name = "ports_test",
     srcs = ["ports_test.cpp"],
-    copts = ["-fno-rtti"],
+    copts = TAPACC_COPTS,
     deps = [
         ":classify",
         ":ports",
         ":tapa_stub_decls",
         "@googletest//:gtest",
         "@googletest//:gtest_main",
-        "@tapa-llvm-project//clang:tooling",
+        CLANG_TOOLING,
     ],
 )
 
@@ -82,20 +83,20 @@ cc_library(
     name = "names",
     srcs = ["names.cpp"],
     hdrs = ["names.h"],
-    copts = ["-fno-rtti"],
-    deps = ["@tapa-llvm-project//clang:tooling"],
+    copts = TAPACC_COPTS,
+    deps = [CLANG_TOOLING],
 )
 
 cc_library(
     name = "discover",
     srcs = ["discover.cpp"],
     hdrs = ["discover.h"],
-    copts = ["-fno-rtti"],
+    copts = TAPACC_COPTS,
     deps = [
         ":classify",
         ":names",
         ":program",
-        "@tapa-llvm-project//clang:tooling",
+        CLANG_TOOLING,
     ],
 )
 
@@ -103,21 +104,21 @@ cc_library(
     name = "invoke_parser",
     srcs = ["invoke_parser.cpp"],
     hdrs = ["invoke_parser.h"],
-    copts = ["-fno-rtti"],
+    copts = TAPACC_COPTS,
     deps = [
         ":classify",
         ":discover",
         ":names",
         ":program",
         ":type_args",
-        "@tapa-llvm-project//clang:tooling",
+        CLANG_TOOLING,
     ],
 )
 
 cc_test(
     name = "invoke_parser_test",
     srcs = ["invoke_parser_test.cpp"],
-    copts = ["-fno-rtti"],
+    copts = TAPACC_COPTS,
     deps = [
         ":discover",
         ":invoke_parser",
@@ -126,7 +127,7 @@ cc_test(
         ":tapa_stub_decls",
         "@googletest//:gtest",
         "@googletest//:gtest_main",
-        "@tapa-llvm-project//clang:tooling",
+        CLANG_TOOLING,
     ],
 )
 
@@ -134,20 +135,20 @@ cc_library(
     name = "build_program",
     srcs = ["build_program.cpp"],
     hdrs = ["build_program.h"],
-    copts = ["-fno-rtti"],
+    copts = TAPACC_COPTS,
     deps = [
         ":discover",
         ":invoke_parser",
         ":ports",
         ":program",
-        "@tapa-llvm-project//clang:tooling",
+        CLANG_TOOLING,
     ],
 )
 
 cc_test(
     name = "build_program_test",
     srcs = ["build_program_test.cpp"],
-    copts = ["-fno-rtti"],
+    copts = TAPACC_COPTS,
     deps = [
         ":build_program",
         ":classify",
@@ -155,32 +156,32 @@ cc_test(
         ":tapa_stub_decls",
         "@googletest//:gtest",
         "@googletest//:gtest_main",
-        "@tapa-llvm-project//clang:tooling",
+        CLANG_TOOLING,
     ],
 )
 
 cc_test(
     name = "discover_test",
     srcs = ["discover_test.cpp"],
-    copts = ["-fno-rtti"],
+    copts = TAPACC_COPTS,
     deps = [
         ":discover",
         ":program",
         ":tapa_stub_decls",
         "@googletest//:gtest",
         "@googletest//:gtest_main",
-        "@tapa-llvm-project//clang:tooling",
+        CLANG_TOOLING,
     ],
 )
 
 cc_test(
     name = "classify_test",
     srcs = ["classify_test.cpp"],
-    copts = ["-fno-rtti"],
+    copts = TAPACC_COPTS,
     deps = [
         ":classify",
         "@googletest//:gtest",
         "@googletest//:gtest_main",
-        "@tapa-llvm-project//clang:tooling",
+        CLANG_TOOLING,
     ],
 )
