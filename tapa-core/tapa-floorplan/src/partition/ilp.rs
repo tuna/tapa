@@ -18,9 +18,9 @@ use crate::graph::FloorGraph;
 use crate::partition::cut::{find_cuts, Cut};
 use crate::solver::{Comparison, LinExpr, LpModel, LpVar, Sense, SolveOpts, Solver, SolverError};
 
-/// The base per-slot utilization target and the retry envelope, matching
+/// The default base utilization target and the retry envelope, matching
 /// RapidStream (`schedule.py:15`, `tree.py:119-120`).
-const BASE_USAGE_LIMIT: f64 = 0.7;
+pub const DEFAULT_USAGE_LIMIT: f64 = 0.7;
 const USAGE_LIMIT_STEP: f64 = 0.02;
 const MAX_USAGE_LIMIT: f64 = 0.95;
 
@@ -55,17 +55,18 @@ fn to_f64(value: u64) -> f64 {
 }
 
 /// Plan a floorplan over the whole device in one flat ILP, raising the usage
-/// limit by 0.02 (up to 0.95) whenever the current limit is infeasible.
+/// limit by 0.02 (up to 0.95) whenever `base_usage_limit` is infeasible.
 pub fn floorplan_flat(
     graph: &FloorGraph,
     device: &Device,
+    base_usage_limit: f64,
     solver: &dyn Solver,
     opts: &SolveOpts,
 ) -> Result<Assignment, IlpError> {
     let slots: Vec<Coor> = device.slots.iter().map(|s| Coor::slot(s.x, s.y)).collect();
     let cuts = find_cuts(device);
 
-    let mut usage_limit = BASE_USAGE_LIMIT;
+    let mut usage_limit = base_usage_limit;
     loop {
         let model = FloorplanModel::build(graph, device, &slots, &cuts, usage_limit);
         let solution = solver.solve(&model.lp, opts)?;
@@ -320,7 +321,7 @@ mod tests {
             threads: Some(1),
             ..SolveOpts::default()
         };
-        match floorplan_flat(graph, device, &CbcSolver::new(), &opts) {
+        match floorplan_flat(graph, device, DEFAULT_USAGE_LIMIT, &CbcSolver::new(), &opts) {
             Ok(assignment) => Some(assignment),
             Err(IlpError::Solver(SolverError::Spawn { .. })) => {
                 eprintln!("skipping: cbc not found");
@@ -395,7 +396,7 @@ mod tests {
             threads: Some(1),
             ..SolveOpts::default()
         };
-        match floorplan_flat(&fg, &device, &CbcSolver::new(), &opts) {
+        match floorplan_flat(&fg, &device, DEFAULT_USAGE_LIMIT, &CbcSolver::new(), &opts) {
             Ok(_) => panic!("an oversized task must not place"),
             Err(IlpError::Infeasible(_)) => {}
             Err(IlpError::Solver(SolverError::Spawn { .. })) => eprintln!("skipping: no cbc"),

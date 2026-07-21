@@ -160,6 +160,23 @@ impl Coor {
             self.dl_x, self.dl_y, self.ur_x, self.ur_y
         )
     }
+
+    /// Parse a region tag produced by [`region_name`](Coor::region_name) back
+    /// into a [`Coor`].
+    #[must_use]
+    pub fn from_region_name(name: &str) -> Option<Self> {
+        let (lhs, rhs) = name.split_once("_TO_")?;
+        let (dl_x, dl_y) = parse_slot_tag(lhs)?;
+        let (ur_x, ur_y) = parse_slot_tag(rhs)?;
+        Some(Self::span(dl_x, dl_y, ur_x, ur_y))
+    }
+}
+
+/// Parse a single-slot tag `SLOT_X{x}Y{y}` into its grid coordinates.
+fn parse_slot_tag(tag: &str) -> Option<(u32, u32)> {
+    let rest = tag.strip_prefix("SLOT_X")?;
+    let (x, y) = rest.split_once('Y')?;
+    Some((x.parse().ok()?, y.parse().ok()?))
 }
 
 /// The five FPGA resource classes, in RapidStream's `RESOURCES` iteration
