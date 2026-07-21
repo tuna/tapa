@@ -96,7 +96,7 @@ pub fn run_vivado(runner: &dyn ToolRunner, job: &VivadoJob) -> Result<VivadoOutp
         return Err(crate::error::XilinxError::ToolFailure {
             program: "vivado".into(),
             code: out.exit_code,
-            stderr: out.stderr,
+            stderr: super::merged_failure_output(out.stdout, out.stderr),
         });
     }
     Ok(VivadoOutput {
@@ -131,14 +131,21 @@ mod tests {
             "vivado",
             ToolOutput {
                 exit_code: 1,
-                stdout: String::new(),
+                stdout: "TCL command context".into(),
                 stderr: "bad TCL".into(),
             },
         );
         let err = run_vivado(&runner, &VivadoJob::new("exit 1")).unwrap_err();
-        assert!(matches!(
-            err,
-            crate::error::XilinxError::ToolFailure { code: 1, .. }
-        ));
+        let crate::error::XilinxError::ToolFailure {
+            code,
+            stderr: output,
+            ..
+        } = err
+        else {
+            panic!("expected tool failure");
+        };
+        assert_eq!(code, 1);
+        assert!(output.contains("stdout:\nTCL command context"));
+        assert!(output.contains("stderr:\nbad TCL"));
     }
 }

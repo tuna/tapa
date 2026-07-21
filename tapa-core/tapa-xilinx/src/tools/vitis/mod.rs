@@ -310,7 +310,7 @@ pub fn run_vitis_link(runner: &dyn ToolRunner, job: &VitisLinkJob) -> Result<Vit
         return Err(XilinxError::ToolFailure {
             program: "v++".into(),
             code: tool_output.exit_code,
-            stderr: tool_output.stderr,
+            stderr: super::merged_failure_output(tool_output.stdout, tool_output.stderr),
         });
     }
     if !resolved.output_xclbin.is_file() {
@@ -603,12 +603,22 @@ ap_clk             -0.100       -1.000
             "v++",
             ToolOutput {
                 exit_code: 7,
-                stdout: String::new(),
+                stdout: "link phase context".into(),
                 stderr: "implementation failed".into(),
             },
         );
         let error = run_vitis_link(&runner, &fixture.job).expect_err("nonzero exit must fail");
-        assert!(matches!(error, XilinxError::ToolFailure { code: 7, .. }));
+        let XilinxError::ToolFailure {
+            code,
+            stderr: output,
+            ..
+        } = error
+        else {
+            panic!("expected tool failure");
+        };
+        assert_eq!(code, 7);
+        assert!(output.contains("stdout:\nlink phase context"));
+        assert!(output.contains("stderr:\nimplementation failed"));
 
         let fixture = Fixture::new();
         let runner = MockToolRunner::new();
