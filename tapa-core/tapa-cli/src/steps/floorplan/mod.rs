@@ -6,8 +6,9 @@
 //! Its presence in the state switches codegen and `pack` onto the floorplanned
 //! path.
 
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use tapa_floorplan::{plan, render_xdc, PlanOptions};
+use tapa_ir::PipelineScheme;
 
 use crate::context::CliContext;
 use crate::error::{CliError, Result};
@@ -15,6 +16,26 @@ use crate::state::{json, work as work_io};
 
 /// Name of the emitted pblock constraints file in the work directory.
 pub const FLOORPLAN_XDC: &str = "floorplan.xdc";
+
+/// CLI spelling of [`PipelineScheme`], with `snake_case` values matching the
+/// contract's serde tags.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+#[value(rename_all = "snake_case")]
+pub enum PpScheme {
+    Single,
+    Double,
+    SingleHDoubleV,
+}
+
+impl From<PpScheme> for PipelineScheme {
+    fn from(scheme: PpScheme) -> Self {
+        match scheme {
+            PpScheme::Single => Self::Single,
+            PpScheme::Double => Self::Double,
+            PpScheme::SingleHDoubleV => Self::SingleHDoubleV,
+        }
+    }
+}
 
 #[derive(Debug, Parser)]
 #[command(
@@ -25,6 +46,10 @@ pub struct FloorplanArgs {
     /// Per-slot resource utilization target; raised on infeasibility.
     #[arg(long = "usage-limit", default_value_t = 0.7)]
     pub usage_limit: f64,
+
+    /// How pipeline registers are distributed across a crossing's route.
+    #[arg(long = "pp-scheme", value_enum, default_value_t = PpScheme::Double)]
+    pub pp_scheme: PpScheme,
 
     /// ILP time limit, in seconds.
     #[arg(long = "max-seconds", default_value_t = 600)]
@@ -43,6 +68,7 @@ pub fn run(args: &FloorplanArgs, ctx: &CliContext) -> Result<()> {
         usage_limit: args.usage_limit,
         max_seconds: args.max_seconds,
         threads: 1,
+        scheme: args.pp_scheme.into(),
     };
     let result = plan(&state, &options).map_err(|e| CliError::Floorplan(e.to_string()))?;
     let xdc = render_xdc(&result).map_err(|e| CliError::Floorplan(e.to_string()))?;
@@ -105,6 +131,7 @@ mod tests {
         let ctx = ctx_at(dir.path());
         let args = FloorplanArgs {
             usage_limit: 0.7,
+            pp_scheme: PpScheme::Double,
             max_seconds: 60,
         };
 
@@ -133,6 +160,7 @@ mod tests {
         let err = run(
             &FloorplanArgs {
                 usage_limit: 0.7,
+                pp_scheme: PpScheme::Double,
                 max_seconds: 60,
             },
             &ctx_at(dir.path()),
