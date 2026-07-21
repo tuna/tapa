@@ -18,7 +18,7 @@ use std::path::Path;
 use std::sync::LazyLock;
 
 use regex::Regex;
-use tapa_ir::Design;
+use tapa_ir::{Design, WorkState};
 use tapa_xilinx::{pack_xo as xilinx_pack_xo, DeviceInfo, KernelXmlArgs, PackageXoInputs};
 
 use crate::context::CliContext;
@@ -30,19 +30,17 @@ use super::custom_rtl::{apply_custom_rtl, load_templates_info};
 use super::kernel_xml_ports::{build_kernel_xml_ports_for_rtl, m_axi_param_block_for_rtl};
 use super::{enforce_xo_suffix, PackArgs};
 
-pub(super) fn pack_vitis(
-    args: &PackArgs,
-    ctx: &CliContext,
-    design: &Design,
-    flow: &FlowSettings,
-) -> Result<()> {
-    let (part_num, clock_period) = resolve_device_settings(&ctx.work_dir, flow)?;
+pub(super) fn pack_vitis(args: &PackArgs, ctx: &CliContext, state: &WorkState) -> Result<()> {
+    let design = &state.graph;
+    let flow = &state.flow;
     let top_task = design.tasks.get(&design.top).ok_or_else(|| {
         CliError::Codegen(format!(
             "tapa.json does not contain the top task `{}`",
             design.top
         ))
     })?;
+    let link_inputs = resolve_link_inputs(&ctx.work_dir, state, args.connectivity.as_deref())?;
+    let (part_num, clock_period) = resolve_device_settings(&ctx.work_dir, flow)?;
 
     let hdl_dir = ctx.work_dir.join("rtl");
     if !hdl_dir.is_dir() {
@@ -82,14 +80,7 @@ pub(super) fn pack_vitis(
     // Emit the bitstream helper after packaging so it points at the
     // completed `.xo`.
     if let Some(script_dest) = args.bitstream_script.as_deref() {
-        emit_bitstream_script(
-            &ctx.work_dir,
-            flow,
-            script_dest,
-            &design.top,
-            &output_path,
-            args.connectivity.as_deref(),
-        )?;
+        emit_bitstream_script(flow, script_dest, &design.top, &output_path, &link_inputs)?;
     }
 
     Ok(())
@@ -106,6 +97,11 @@ fn resolve_device_settings(work_dir: &Path, flow: &FlowSettings) -> Result<(Stri
         .clock_period
         .clone()
         .ok_or_else(|| missing("clock_period"))?;
+    crate::util::parse_clock_period_ns(&clock_period).map_err(|message| {
+        CliError::InvalidArg(format!(
+            "invalid synthesized target {message}; rerun `tapa synth`"
+        ))
+    })?;
     Ok((part_num, clock_period))
 }
 
@@ -362,29 +358,94 @@ fn run_pack_xo(ctx: &CliContext, inputs: &PackageXoInputs) -> Result<Utf8PathBuf
     Ok(ctx.with_tool_runner(|runner| xilinx_pack_xo(runner, inputs))?)
 }
 
-fn emit_bitstream_script(
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LinkInputs {
+    floorplan_xdc: Option<std::path::PathBuf>,
+    connectivity: Option<std::path::PathBuf>,
+}
+
+/// Resolve the implementation inputs represented by the current work state.
+///
+/// A fixed staged connectivity file is part of a published floorplan. Once a
+/// floorplan exists, `pack --connectivity` is only a consistency check: it may
+/// repeat the same bytes, but it cannot silently change the memory topology
+/// after placement and routing.
+fn resolve_link_inputs(
     work_dir: &Path,
+    state: &WorkState,
+    connectivity_override: Option<&Path>,
+) -> Result<LinkInputs> {
+    let Some(floorplan_xdc) = super::published_floorplan_xdc(work_dir, state)? else {
+        return Ok(LinkInputs {
+            floorplan_xdc: None,
+            connectivity: connectivity_override.map(Path::to_path_buf),
+        });
+    };
+
+    let staged_connectivity = work_dir.join(crate::steps::floorplan::FLOORPLAN_CONNECTIVITY);
+    let staged_connectivity = staged_connectivity.is_file().then_some(staged_connectivity);
+    let has_direct_m_axi = state
+        .graph
+        .tasks
+        .get(&state.graph.top)
+        .is_some_and(|top| top.ports.iter().any(|port| port.cat.is_direct_mmap()));
+
+    if has_direct_m_axi && staged_connectivity.is_none() {
+        return Err(CliError::MissingState {
+            name: "staged floorplan connectivity for direct top-level M-AXI ports (rerun `tapa \
+                   floorplan --connectivity FILE`)"
+                .to_string(),
+            path: work_dir.join(crate::steps::floorplan::FLOORPLAN_CONNECTIVITY),
+        });
+    }
+
+    if let Some(override_path) = connectivity_override {
+        let Some(staged_path) = staged_connectivity.as_ref() else {
+            return Err(CliError::InvalidArg(format!(
+                "this floorplan was created without connectivity, so `{}` cannot be applied at \
+                 pack time; rerun `tapa floorplan --connectivity {}`",
+                override_path.display(),
+                override_path.display(),
+            )));
+        };
+        let staged_bytes = fs_err::read(staged_path)?;
+        let override_bytes = fs_err::read(override_path).map_err(|error| {
+            CliError::InvalidArg(format!(
+                "cannot read connectivity override `{}`: {error}",
+                override_path.display(),
+            ))
+        })?;
+        if override_bytes != staged_bytes {
+            return Err(CliError::InvalidArg(format!(
+                "connectivity override `{}` differs from the configuration used by the active \
+                 floorplan; omit the override or rerun `tapa floorplan --connectivity {}`",
+                override_path.display(),
+                override_path.display(),
+            )));
+        }
+    }
+
+    Ok(LinkInputs {
+        floorplan_xdc: Some(floorplan_xdc),
+        connectivity: staged_connectivity,
+    })
+}
+
+fn emit_bitstream_script(
     flow: &FlowSettings,
     script_dest: &Path,
     top: &str,
     output_path: &Path,
-    connectivity: Option<&Path>,
+    link_inputs: &LinkInputs,
 ) -> Result<()> {
-    // A16: a floorplanned work dir carries `floorplan.xdc`; when present, the
-    // v++ script sources it so implementation applies the pblocks. The
-    // connectivity `.ini` (M-AXI bank assignments) is a pack input, threaded
-    // straight through to the script's `--config`.
-    let xdc_path = work_dir.join(crate::steps::floorplan::FLOORPLAN_XDC);
-    let floorplan_xdc = xdc_path.exists().then_some(xdc_path.as_path());
-
     write_vitis_script(
         script_dest,
         top,
         output_path,
         flow.platform.as_deref(),
         flow.clock_period.as_deref(),
-        floorplan_xdc,
-        connectivity,
+        link_inputs.floorplan_xdc.as_deref(),
+        link_inputs.connectivity.as_deref(),
     )?;
     log::info!("generate the v++ script at {}", script_dest.display());
     Ok(())
@@ -393,6 +454,187 @@ fn emit_bitstream_script(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeMap;
+    use tapa_ir::{FloorplanResult, TaskGraph};
+
+    fn link_state(floorplanned: bool, has_direct_m_axi: bool) -> WorkState {
+        let ports = if has_direct_m_axi {
+            r#"[{"cat":"mmap","name":"mem","type":"int*","width":32}]"#
+        } else {
+            "[]"
+        };
+        let graph = TaskGraph::from_json(&format!(
+            r#"{{
+                "cflags": [], "top": "Top", "target": "xilinx-vitis",
+                "tasks": {{"Top": {{"readable_name": "Top", "code": "", "level": "upper",
+                    "synth": "hls", "ports": {ports}, "tasks": {{}}, "fifos": {{}}}}}}
+            }}"#,
+        ))
+        .expect("parse graph");
+        let mut state = WorkState::new(graph);
+        state.flow.synthed = true;
+        if floorplanned {
+            state.floorplan = Some(FloorplanResult {
+                device: "u280".to_string(),
+                grid: (2, 3),
+                regions: BTreeMap::new(),
+                routes: Vec::new(),
+                slot_usage: BTreeMap::new(),
+            });
+        }
+        state
+    }
+
+    fn write_published_floorplan(work_dir: &Path, connectivity: Option<&[u8]>) {
+        fs_err::write(
+            work_dir.join(crate::steps::floorplan::FLOORPLAN_XDC),
+            "constraints",
+        )
+        .expect("write xdc");
+        if let Some(bytes) = connectivity {
+            fs_err::write(
+                work_dir.join(crate::steps::floorplan::FLOORPLAN_CONNECTIVITY),
+                bytes,
+            )
+            .expect("write connectivity");
+        }
+    }
+
+    #[test]
+    fn active_floorplan_reuses_staged_connectivity() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write_published_floorplan(dir.path(), Some(b"[connectivity]\n"));
+
+        let inputs =
+            resolve_link_inputs(dir.path(), &link_state(true, false), None).expect("resolve");
+        assert_eq!(
+            inputs.floorplan_xdc,
+            Some(dir.path().join(crate::steps::floorplan::FLOORPLAN_XDC)),
+        );
+        assert_eq!(
+            inputs.connectivity,
+            Some(
+                dir.path()
+                    .join(crate::steps::floorplan::FLOORPLAN_CONNECTIVITY)
+            ),
+        );
+    }
+
+    #[test]
+    fn floorplanned_connectivity_override_must_be_byte_identical() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let bytes = b"[connectivity]\nsp=Top.mem:HBM[0]\n";
+        write_published_floorplan(dir.path(), Some(bytes));
+        let same = dir.path().join("same.ini");
+        let different = dir.path().join("different.ini");
+        fs_err::write(&same, bytes).expect("write same");
+        fs_err::write(&different, b"[connectivity]\nsp=Top.mem:HBM[1]\n").expect("write different");
+
+        let inputs = resolve_link_inputs(dir.path(), &link_state(true, false), Some(&same))
+            .expect("identical override");
+        assert_eq!(
+            inputs.connectivity,
+            Some(
+                dir.path()
+                    .join(crate::steps::floorplan::FLOORPLAN_CONNECTIVITY)
+            ),
+            "the stable staged path is used even when an override is repeated",
+        );
+
+        let error = resolve_link_inputs(dir.path(), &link_state(true, false), Some(&different))
+            .expect_err("different bytes must fail");
+        assert!(matches!(error, CliError::InvalidArg(_)));
+    }
+
+    #[test]
+    fn work_state_controls_floorplan_artifact_activation() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write_published_floorplan(dir.path(), Some(b"stale"));
+
+        let inactive =
+            resolve_link_inputs(dir.path(), &link_state(false, false), None).expect("resolve");
+        assert_eq!(
+            inactive,
+            LinkInputs {
+                floorplan_xdc: None,
+                connectivity: None,
+            },
+            "stale files cannot activate a floorplan absent from WorkState",
+        );
+
+        fs_err::remove_file(dir.path().join(crate::steps::floorplan::FLOORPLAN_XDC))
+            .expect("remove xdc");
+        let error = resolve_link_inputs(dir.path(), &link_state(true, false), None)
+            .expect_err("an active state requires its publication marker");
+        assert!(matches!(error, CliError::MissingState { .. }));
+    }
+
+    #[test]
+    fn floorplan_without_staged_connectivity_rejects_pack_override() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write_published_floorplan(dir.path(), None);
+        let inputs = resolve_link_inputs(dir.path(), &link_state(true, false), None)
+            .expect("a floorplan without memory interfaces needs no connectivity");
+        assert!(inputs.connectivity.is_none());
+
+        let override_path = dir.path().join("late.ini");
+        fs_err::write(&override_path, "[connectivity]\n").expect("write override");
+
+        let error = resolve_link_inputs(dir.path(), &link_state(true, false), Some(&override_path))
+            .expect_err("pack cannot add connectivity after floorplanning");
+        assert!(matches!(error, CliError::InvalidArg(_)));
+    }
+
+    #[test]
+    fn floorplan_with_direct_m_axi_requires_staged_connectivity() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write_published_floorplan(dir.path(), None);
+
+        let error = resolve_link_inputs(dir.path(), &link_state(true, true), None)
+            .expect_err("a direct M-AXI floorplan must publish its connectivity");
+        assert!(
+            matches!(error, CliError::MissingState { ref name, ref path }
+                if name.contains("M-AXI")
+                    && path.ends_with(crate::steps::floorplan::FLOORPLAN_CONNECTIVITY)),
+            "got {error}",
+        );
+    }
+
+    #[test]
+    fn direct_m_axi_override_cannot_replace_missing_staged_connectivity() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write_published_floorplan(dir.path(), None);
+        let override_path = dir.path().join("late.ini");
+        fs_err::write(&override_path, "[connectivity]\nsp=Top.mem:HBM[0]\n")
+            .expect("write override");
+
+        let error = resolve_link_inputs(dir.path(), &link_state(true, true), Some(&override_path))
+            .expect_err("a late override cannot replace the staged floorplan input");
+
+        assert!(
+            matches!(error, CliError::MissingState { .. }),
+            "got {error}"
+        );
+    }
+
+    #[test]
+    fn packaging_rejects_invalid_persisted_clock_period() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        for clock_period in ["0", "-1", "NaN", "inf", "fast"] {
+            let flow = FlowSettings {
+                part_num: Some("xcvu37p-fsvh2892-2L-e".to_string()),
+                clock_period: Some(clock_period.to_string()),
+                ..FlowSettings::default()
+            };
+            let error = resolve_device_settings(dir.path(), &flow)
+                .expect_err("invalid persisted period must fail");
+            assert!(
+                matches!(error, CliError::InvalidArg(ref message)
+                    if message.contains("clock period") && message.contains("tapa synth")),
+                "got {error}",
+            );
+        }
+    }
 
     #[test]
     fn sanitize_hls_report_text_removes_work_dir_paths() {

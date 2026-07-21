@@ -17,23 +17,29 @@ use camino::Utf8PathBuf;
 
 pub type TaskHdlInputs = BTreeMap<String, Vec<Utf8PathBuf>>;
 
-pub fn generate_rtl_tree(
-    work_dir: &Path,
-    design: &Design,
-    hdl_inputs: &TaskHdlInputs,
-    floorplan: Option<&FloorplanResult>,
-) -> Result<Vec<PathBuf>> {
-    let rtl_dir = work_dir.join("rtl");
-    fs::create_dir_all(&rtl_dir)?;
-    let mut written = write_verilog_support_assets(&rtl_dir)?;
-
+/// Parse and attach every HLS task's exact top module without writing outputs.
+///
+/// Floorplanning needs the RTL interface shapes before it solves placement,
+/// while code generation needs the same parsed modules afterwards. Keeping
+/// preparation separate lets both phases share one authoritative parse.
+pub fn prepare_rtl_state(design: &Design, hdl_inputs: &TaskHdlInputs) -> Result<TopologyWithRtl> {
     let mut state = TopologyWithRtl::new(design.clone());
-    state.floorplan = floorplan.cloned();
 
-    for (task_name, files) in hdl_inputs {
-        let Some(module_path) = pick_top_verilog(files, task_name) else {
+    for (task_name, task) in &design.tasks {
+        if task.synth != SynthTarget::Hls {
             continue;
-        };
+        }
+        let files = hdl_inputs.get(task_name).ok_or_else(|| {
+            CliError::Codegen(format!(
+                "missing HLS Verilog inputs for task `{task_name}`; run `synth` first",
+            ))
+        })?;
+        let module_path = pick_top_verilog(files, task_name).ok_or_else(|| {
+            CliError::Codegen(format!(
+                "HLS Verilog inputs for task `{task_name}` do not contain the expected \
+                 top module file `{task_name}.v`; run `synth` again",
+            ))
+        })?;
         let source = fs::read_to_string(&module_path)?;
         let parsed = VerilogModule::parse(&source).map_err(|e| {
             CliError::Codegen(format!(
@@ -41,9 +47,32 @@ pub fn generate_rtl_tree(
                 module_path.as_str(),
             ))
         })?;
+        if parsed.name != *task_name {
+            return Err(CliError::Codegen(format!(
+                "HLS top file `{}` declares module `{}` instead of the expected `{task_name}`",
+                module_path, parsed.name,
+            )));
+        }
         state
             .attach_module(task_name, parsed)
             .map_err(|e| codegen_to_cli_error("attach", task_name, &e))?;
+    }
+
+    Ok(state)
+}
+
+/// Generate and persist RTL from an already-prepared topology.
+pub fn emit_prepared_rtl_tree(
+    work_dir: &Path,
+    state: &mut TopologyWithRtl,
+    hdl_inputs: &TaskHdlInputs,
+) -> Result<Vec<PathBuf>> {
+    let top = state.design.top.clone();
+    let rtl_dir = work_dir.join("rtl");
+    fs::create_dir_all(&rtl_dir)?;
+    let mut written = write_verilog_support_assets(&rtl_dir)?;
+
+    for files in hdl_inputs.values() {
         for src in files {
             let Some(name) = src.file_name() else {
                 continue;
@@ -56,7 +85,7 @@ pub fn generate_rtl_tree(
         }
     }
 
-    generate_rtl(&mut state).map_err(|e| codegen_to_cli_error("generate", &design.top, &e))?;
+    generate_rtl(state).map_err(|e| codegen_to_cli_error("generate", &top, &e))?;
 
     for (name, content) in &state.generated_files {
         let path = rtl_dir.join(name);
@@ -75,6 +104,17 @@ pub fn generate_rtl_tree(
     Ok(written)
 }
 
+pub fn generate_rtl_tree(
+    work_dir: &Path,
+    design: &Design,
+    hdl_inputs: &TaskHdlInputs,
+    floorplan: Option<&FloorplanResult>,
+) -> Result<Vec<PathBuf>> {
+    let mut state = prepare_rtl_state(design, hdl_inputs)?;
+    state.floorplan = floorplan.cloned();
+    emit_prepared_rtl_tree(work_dir, &mut state, hdl_inputs)
+}
+
 /// Reconstruct [`TaskHdlInputs`] from the on-disk HLS output, for a re-run of
 /// codegen (e.g. the floorplan step) that no longer has the live HLS results.
 ///
@@ -88,9 +128,16 @@ pub fn collect_hdl_inputs(work_dir: &Path, design: &Design) -> Result<TaskHdlInp
         }
         let layout = super::hls_run::TaskHlsLayout::new(work_dir, task_name);
         let files = super::hls_run::list_verilog_files(&layout.hdl_dir)?;
-        if !files.is_empty() {
-            inputs.insert(task_name.clone(), files);
+        if pick_top_verilog(&files, task_name).is_none() {
+            return Err(CliError::MissingState {
+                name: format!("HLS top module `{task_name}.v` (run `synth` again)"),
+                path: layout
+                    .hdl_dir
+                    .join(format!("{task_name}.v"))
+                    .into_std_path_buf(),
+            });
         }
+        inputs.insert(task_name.clone(), files);
     }
     Ok(inputs)
 }
@@ -123,9 +170,10 @@ pub fn write_templates_info(work_dir: &Path, design: &Design) -> Result<()> {
 }
 
 fn pick_top_verilog(files: &[Utf8PathBuf], task_name: &str) -> Option<Utf8PathBuf> {
+    let expected = format!("{task_name}.v");
     files
         .iter()
-        .find(|p| p.file_stem() == Some(task_name))
+        .find(|path| path.file_name() == Some(expected.as_str()))
         .cloned()
 }
 
@@ -142,6 +190,32 @@ mod tests {
 
     use indexmap::IndexMap;
     use tapa_ir::{SynthTarget, Task, TaskInstance, TaskLevel};
+
+    fn write_stub_module(dir: &Path, task_name: &str) -> Utf8PathBuf {
+        let path = dir.join(format!("{task_name}.v"));
+        fs::write(
+            &path,
+            format!(
+                "module {task_name}(\n  input wire ap_clk,\n  input wire ap_rst_n,\n  \
+                 input wire ap_start,\n  output wire ap_done,\n  output wire ap_idle,\n  \
+                 output wire ap_ready\n);\nendmodule\n"
+            ),
+        )
+        .expect("write HLS module");
+        Utf8PathBuf::from_path_buf(path).expect("UTF-8 path")
+    }
+
+    fn write_stub_inputs(dir: &Path, task_names: &[&str]) -> TaskHdlInputs {
+        task_names
+            .iter()
+            .map(|task_name| {
+                (
+                    (*task_name).to_string(),
+                    vec![write_stub_module(dir, task_name)],
+                )
+            })
+            .collect()
+    }
 
     fn vadd_design() -> Design {
         let mut tasks = BTreeMap::new();
@@ -203,8 +277,9 @@ mod tests {
     #[test]
     fn generate_rtl_tree_copies_verilog_support_assets() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let written = generate_rtl_tree(dir.path(), &vadd_design(), &TaskHdlInputs::new(), None)
-            .expect("generate");
+        let hdl_inputs = write_stub_inputs(dir.path(), &["Add", "VecAdd"]);
+        let written =
+            generate_rtl_tree(dir.path(), &vadd_design(), &hdl_inputs, None).expect("generate");
 
         let rtl_dir = dir.path().join("rtl");
         let fifo = fs::read_to_string(rtl_dir.join("fifo.v")).expect("fifo.v");
@@ -276,7 +351,13 @@ mod tests {
         )
         .expect("write top RTL");
         let top_rtl = Utf8PathBuf::from_path_buf(top_rtl).expect("UTF-8 path");
-        let hdl_inputs = TaskHdlInputs::from_iter([("VecAdd".to_string(), vec![top_rtl])]);
+        let hdl_inputs = TaskHdlInputs::from_iter([
+            (
+                "Add".to_string(),
+                vec![write_stub_module(dir.path(), "Add")],
+            ),
+            ("VecAdd".to_string(), vec![top_rtl]),
+        ]);
 
         let written = generate_rtl_tree(dir.path(), &design, &hdl_inputs, None).expect("generate");
         let template_path = dir.path().join("template/Add_Upper.v");
@@ -300,6 +381,69 @@ mod tests {
             !dir.path().join("rtl/Add_Upper_template.v").exists(),
             "the authoring copy belongs under work/template, not rtl/",
         );
+    }
+
+    #[test]
+    fn prepare_requires_each_hls_tasks_exact_top_module() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let auxiliary = dir.path().join("Add.sv");
+        fs::write(&auxiliary, "module Add; endmodule\n").expect("write wrong extension");
+        let inputs = TaskHdlInputs::from_iter([
+            (
+                "Add".to_string(),
+                vec![Utf8PathBuf::from_path_buf(auxiliary).expect("UTF-8 path")],
+            ),
+            (
+                "VecAdd".to_string(),
+                vec![write_stub_module(dir.path(), "VecAdd")],
+            ),
+        ]);
+
+        let Err(error) = prepare_rtl_state(&vadd_design(), &inputs) else {
+            panic!("a different extension cannot stand in for the exact task top file");
+        };
+        assert!(
+            error.to_string().contains("Add.v"),
+            "the diagnostic must name the expected top module: {error}",
+        );
+    }
+
+    #[test]
+    fn prepare_rejects_wrong_module_name_in_exact_top_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let add_path = dir.path().join("Add.v");
+        fs::write(&add_path, "module Add_helper; endmodule\n").expect("write wrong module");
+        let inputs = TaskHdlInputs::from_iter([
+            (
+                "Add".to_string(),
+                vec![Utf8PathBuf::from_path_buf(add_path).expect("UTF-8 path")],
+            ),
+            (
+                "VecAdd".to_string(),
+                vec![write_stub_module(dir.path(), "VecAdd")],
+            ),
+        ]);
+
+        let Err(error) = prepare_rtl_state(&vadd_design(), &inputs) else {
+            panic!("the top file must declare the task's exact module name");
+        };
+        assert!(
+            error.to_string().contains("Add_helper")
+                && error.to_string().contains("expected `Add`"),
+            "the diagnostic must identify both module names: {error}",
+        );
+    }
+
+    #[test]
+    fn prepared_state_is_reused_for_emission() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let inputs = write_stub_inputs(dir.path(), &["Add", "VecAdd"]);
+        let mut state = prepare_rtl_state(&vadd_design(), &inputs).expect("prepare");
+        assert_eq!(state.module_map.len(), 2, "both HLS modules are attached");
+
+        emit_prepared_rtl_tree(dir.path(), &mut state, &inputs).expect("emit");
+        assert!(dir.path().join("rtl/VecAdd.v").is_file());
+        assert!(dir.path().join("rtl/VecAdd_fsm.v").is_file());
     }
 
     #[test]

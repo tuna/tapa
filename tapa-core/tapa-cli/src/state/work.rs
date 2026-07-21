@@ -2,10 +2,11 @@
 //!
 //! `analyze` writes it, `synth` annotates it in place, `pack` consumes it —
 //! and copies it verbatim into the `.zip` archive, where `frt-cosim` reads it
-//! back. It is the **only** file the pipeline reads back: the unified
-//! [`tapa_ir::TaskGraph`] plus the small typed [`FlowSettings`] block, behind
-//! a [`VERSION`] stamp so a work dir written by a different tapa fails with a
-//! clear message instead of a field-level serde diagnostic.
+//! back. It is the **only schema-bearing state file**: the unified
+//! [`tapa_ir::TaskGraph`] plus the small typed [`FlowSettings`] block, behind a
+//! [`VERSION`] stamp so a work dir written by a different tapa fails with a
+//! clear message instead of a field-level serde diagnostic. Pipeline steps may
+//! also consume fixed-name generated artifacts such as floorplan constraints.
 //!
 //! The types are [`tapa_ir::work_state`]'s — they are schema, shared with
 //! `frt-cosim` across the workspace boundary. This module owns only the

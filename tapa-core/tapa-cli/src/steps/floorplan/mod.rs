@@ -6,36 +6,148 @@
 //! Its presence in the state switches codegen and `pack` onto the floorplanned
 //! path.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use clap::{Parser, ValueEnum};
-use tapa_floorplan::{plan, render_xdc, PartitionStrategy, PlanOptions};
-use tapa_ir::PipelineScheme;
+use tapa_codegen::rtl_state::DirectMmapInterface;
+use tapa_floorplan::{
+    plan_with_inputs, render_xdc, MemoryInterface, PartitionStrategy, PlanInputs, PlanOptions,
+};
+use tapa_ir::{MemoryBindings, PipelineScheme};
 
 use crate::context::CliContext;
 use crate::error::{CliError, Result};
 use crate::state::{json, work as work_io};
-use crate::steps::synth::rtl_codegen::{collect_hdl_inputs, generate_rtl_tree};
+use crate::steps::synth::rtl_codegen::{
+    collect_hdl_inputs, emit_prepared_rtl_tree, prepare_rtl_state,
+};
 
 /// Name of the emitted pblock constraints file in the work directory.
 pub const FLOORPLAN_XDC: &str = "floorplan.xdc";
+/// Name of the exact Vitis connectivity input staged with a floorplan.
+pub const FLOORPLAN_CONNECTIVITY: &str = "floorplan-connectivity.ini";
+
+/// A connectivity input read once, syntax-checked, and retained verbatim for
+/// both planning and the later link step.
+#[derive(Debug)]
+pub(crate) struct ConnectivityInput {
+    pub bytes: Vec<u8>,
+    pub bindings: MemoryBindings,
+}
+
+pub(crate) fn read_connectivity(path: Option<&Path>) -> Result<Option<ConnectivityInput>> {
+    let Some(path) = path else {
+        return Ok(None);
+    };
+    let bytes = fs_err::read(path).map_err(|error| {
+        CliError::InvalidArg(format!(
+            "cannot read connectivity file `{}`: {error}",
+            path.display(),
+        ))
+    })?;
+    let text = std::str::from_utf8(&bytes).map_err(|error| {
+        CliError::InvalidArg(format!(
+            "connectivity file `{}` is not UTF-8: {error}",
+            path.display(),
+        ))
+    })?;
+    let bindings = MemoryBindings::parse_vitis_config(text).map_err(|error| {
+        CliError::InvalidArg(format!(
+            "invalid connectivity file `{}`: {error}",
+            path.display(),
+        ))
+    })?;
+    Ok(Some(ConnectivityInput { bytes, bindings }))
+}
+
+fn memory_plan_inputs(
+    top: &str,
+    interfaces: &[DirectMmapInterface],
+    connectivity: Option<&ConnectivityInput>,
+) -> Result<PlanInputs> {
+    let bindings = connectivity.map(|input| &input.bindings);
+
+    if interfaces.is_empty() {
+        if let Some(binding) = bindings.and_then(|bindings| bindings.iter().next()) {
+            return Err(CliError::InvalidArg(format!(
+                "connectivity binding `{}` does not name a direct M-AXI port of kernel `{top}`",
+                binding.endpoint,
+            )));
+        }
+        return Ok(PlanInputs::default());
+    }
+
+    let bindings = bindings.ok_or_else(|| {
+        let entries = interfaces
+            .iter()
+            .map(|interface| format!("sp={top}.{}:<bank>", interface.endpoint.top_port))
+            .collect::<Vec<_>>()
+            .join(", ");
+        CliError::InvalidArg(format!(
+            "floorplanning direct M-AXI ports requires `--connectivity` with {entries}",
+        ))
+    })?;
+
+    for binding in bindings.iter() {
+        let known = binding.endpoint.kernel == top
+            && interfaces
+                .iter()
+                .any(|interface| interface.endpoint.top_port == binding.endpoint.port);
+        if !known {
+            return Err(CliError::InvalidArg(format!(
+                "connectivity binding `{}` does not name a direct M-AXI port of kernel `{top}`",
+                binding.endpoint,
+            )));
+        }
+    }
+
+    let memory = interfaces
+        .iter()
+        .map(|interface| {
+            let bank = bindings
+                .get(top, &interface.endpoint.top_port)
+                .ok_or_else(|| {
+                    CliError::InvalidArg(format!(
+                        "connectivity is missing `sp={top}.{}:<bank>` for direct M-AXI endpoint `{}.{}`",
+                        interface.endpoint.top_port,
+                        interface.endpoint.instance,
+                        interface.endpoint.port,
+                    ))
+                })?;
+            Ok(MemoryInterface {
+                endpoint: interface.endpoint.clone(),
+                bank,
+                channel_widths: interface.channel_widths,
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    Ok(PlanInputs { memory })
+}
 
 /// Replace the active floorplan marker only after all dependent outputs are
 /// ready. Removing an earlier marker first prevents `pack` from consuming RTL
 /// or state left partially updated by a failed regeneration.
-fn publish_xdc_after_update(
+fn publish_floorplan_after_update(
     work_dir: &Path,
     xdc: &str,
+    connectivity: Option<&[u8]>,
     update: impl FnOnce() -> Result<()>,
 ) -> Result<()> {
-    let active_path = work_dir.join(FLOORPLAN_XDC);
-    match fs_err::remove_file(&active_path) {
-        Ok(()) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => return Err(error.into()),
+    for file_name in [FLOORPLAN_XDC, FLOORPLAN_CONNECTIVITY] {
+        match fs_err::remove_file(work_dir.join(file_name)) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
     }
 
     update()?;
+    if let Some(bytes) = connectivity {
+        json::write_bytes_atomic(work_dir, FLOORPLAN_CONNECTIVITY, bytes)?;
+    }
+    // This is deliberately last: its presence is the publication marker that
+    // all dependent RTL, state, and optional connectivity are ready.
     json::write_bytes_atomic(work_dir, FLOORPLAN_XDC, xdc.as_bytes())
 }
 
@@ -114,6 +226,10 @@ pub struct FloorplanArgs {
         value_parser = parse_positive_u64
     )]
     pub max_seconds: u64,
+
+    /// Vitis link configuration containing memory `sp=` assignments.
+    #[arg(long = "connectivity", value_name = "FILE")]
+    pub connectivity: Option<PathBuf>,
 }
 
 fn parse_usage_limit(value: &str) -> std::result::Result<f64, String> {
@@ -158,27 +274,48 @@ pub fn run(args: &FloorplanArgs, ctx: &CliContext) -> Result<()> {
             "run `synth` before `floorplan`: the placement needs per-task areas".to_string(),
         ));
     }
-    let result = plan(&state, &options).map_err(|e| CliError::Floorplan(e.to_string()))?;
+    let connectivity = read_connectivity(args.connectivity.as_deref())?;
+    if let Some(input) = &connectivity {
+        log::debug!(
+            "parsed {} memory-bank binding(s) from connectivity input",
+            input.bindings.len(),
+        );
+    }
+
+    // Prepare the exact flattened RTL once. The parsed state is available to
+    // derive interface-aware planner inputs before solving and is then reused
+    // directly for code generation below.
+    let flat = tapa_ir::flatten(&state.graph)
+        .map_err(|e| CliError::Floorplan(format!("flatten failed: {e}")))?;
+    let hdl_inputs = collect_hdl_inputs(&ctx.work_dir, &flat)?;
+    let mut rtl_state = prepare_rtl_state(&flat, &hdl_inputs)?;
+
+    let interfaces = rtl_state
+        .direct_mmap_interfaces(&flat.top)
+        .map_err(|error| CliError::Floorplan(error.to_string()))?;
+    let inputs = memory_plan_inputs(&flat.top, &interfaces, connectivity.as_ref())?;
+    let result = plan_with_inputs(&state, &options, &inputs)
+        .map_err(|e| CliError::Floorplan(e.to_string()))?;
     let xdc = render_xdc(&result).map_err(|e| CliError::Floorplan(e.to_string()))?;
 
-    publish_xdc_after_update(&ctx.work_dir, &xdc, || {
-        // Regenerate the top RTL with floorplanned handshake pipelines. `plan`
-        // planned on the flattened graph, so codegen must too — flattening the
-        // original graph again yields the global FIFO names routes carry.
-        let flat = tapa_ir::flatten(&state.graph)
-            .map_err(|e| CliError::Floorplan(format!("flatten failed: {e}")))?;
-        let hdl_inputs = collect_hdl_inputs(&ctx.work_dir, &flat)?;
-        generate_rtl_tree(&ctx.work_dir, &flat, &hdl_inputs, Some(&result))?;
+    publish_floorplan_after_update(
+        &ctx.work_dir,
+        &xdc,
+        connectivity.as_ref().map(|input| input.bytes.as_slice()),
+        || {
+            rtl_state.floorplan = Some(result.clone());
+            emit_prepared_rtl_tree(&ctx.work_dir, &mut rtl_state, &hdl_inputs)?;
 
-        state.floorplan = Some(result);
-        work_io::store(&ctx.work_dir, &state)
-    })
+            state.floorplan = Some(result);
+            work_io::store(&ctx.work_dir, &state)
+        },
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tapa_ir::{TaskGraph, WorkState};
+    use tapa_ir::{AxiChannelWidths, AxiEndpoint, MemoryBank, MemoryKind, TaskGraph, WorkState};
 
     fn ctx_at(work_dir: &std::path::Path) -> CliContext {
         CliContext {
@@ -220,6 +357,134 @@ mod tests {
         state
     }
 
+    fn synthed_direct_mmap_state() -> WorkState {
+        let graph = TaskGraph::from_json(
+            r#"{
+                "cflags": [], "top": "Top", "target": "xilinx-vitis",
+                "tasks": {
+                    "Top": {
+                        "readable_name": "Top", "code": "", "level": "upper", "synth": "hls",
+                        "ports": [{"cat":"mmap","name":"mem","type":"int*","width":32}],
+                        "tasks": {"Reader": [{"args":{"data":{"arg":"mem","cat":"mmap"}}}]},
+                        "fifos": {}
+                    },
+                    "Reader": {
+                        "readable_name": "Reader", "code": "", "level": "lower", "synth": "hls",
+                        "ports": [{"cat":"mmap","name":"data","type":"int*","width":32}],
+                        "self_area": {"LUT":10,"FF":20}
+                    }
+                }
+            }"#,
+        )
+        .expect("parse mmap graph");
+        let mut state = WorkState::new(graph);
+        state.flow.part_num = Some("xcu280-fsvh2892-2L-e".to_string());
+        state.flow.platform = Some("xilinx_u280_gen3x16_xdma_1_202211_1".to_string());
+        state.flow.synthed = true;
+        state
+    }
+
+    fn direct_mmap_interface(
+        instance: &str,
+        child_port: &str,
+        top_port: &str,
+    ) -> DirectMmapInterface {
+        DirectMmapInterface {
+            endpoint: AxiEndpoint {
+                instance: instance.to_string(),
+                port: child_port.to_string(),
+                top_port: top_port.to_string(),
+            },
+            data_width: 32,
+            addr_width: 64,
+            id_width: 1,
+            channel_widths: AxiChannelWidths {
+                read_address: 80,
+                read_data: 38,
+                write_address: 80,
+                write_data: 39,
+                write_response: 5,
+            },
+        }
+    }
+
+    fn connectivity_input(text: &str) -> ConnectivityInput {
+        ConnectivityInput {
+            bytes: text.as_bytes().to_vec(),
+            bindings: MemoryBindings::parse_vitis_config(text).expect("parse connectivity"),
+        }
+    }
+
+    #[test]
+    fn exact_connectivity_becomes_transient_memory_input() {
+        let interfaces = [direct_mmap_interface("Reader_0", "data", "input")];
+        let connectivity = connectivity_input("[connectivity]\nsp=Top.input:HBM[7]\n");
+
+        let inputs = memory_plan_inputs("Top", &interfaces, Some(&connectivity)).expect("inputs");
+
+        assert_eq!(
+            inputs.memory,
+            vec![MemoryInterface {
+                endpoint: interfaces[0].endpoint.clone(),
+                bank: MemoryBank {
+                    kind: MemoryKind::Hbm,
+                    index: 7,
+                },
+                channel_widths: interfaces[0].channel_widths,
+            }]
+        );
+    }
+
+    #[test]
+    fn direct_mmap_requires_connectivity() {
+        let interfaces = [direct_mmap_interface("Reader_0", "data", "input")];
+
+        let error = memory_plan_inputs("Top", &interfaces, None).expect_err("missing input");
+
+        assert!(matches!(error, CliError::InvalidArg(ref message)
+            if message.contains("--connectivity") && message.contains("sp=Top.input:<bank>")));
+    }
+
+    #[test]
+    fn connectivity_must_cover_every_direct_mmap() {
+        let interfaces = [
+            direct_mmap_interface("Reader_0", "data", "input"),
+            direct_mmap_interface("Writer_0", "data", "output"),
+        ];
+        let connectivity = connectivity_input("[connectivity]\nsp=Top.input:HBM[0]\n");
+
+        let error = memory_plan_inputs("Top", &interfaces, Some(&connectivity))
+            .expect_err("missing output binding");
+
+        assert!(matches!(error, CliError::InvalidArg(ref message)
+            if message.contains("sp=Top.output:<bank>") && message.contains("Writer_0.data")));
+    }
+
+    #[test]
+    fn connectivity_rejects_unknown_kernel_or_port() {
+        let interfaces = [direct_mmap_interface("Reader_0", "data", "input")];
+        for endpoint in ["Other.input", "Top.unknown"] {
+            let connectivity =
+                connectivity_input(&format!("[connectivity]\nsp={endpoint}:HBM[0]\n"));
+
+            let error = memory_plan_inputs("Top", &interfaces, Some(&connectivity))
+                .expect_err("unknown binding");
+
+            assert!(matches!(error, CliError::InvalidArg(ref message)
+                if message.contains(endpoint) && message.contains("kernel `Top`")));
+        }
+    }
+
+    #[test]
+    fn no_memory_design_rejects_stray_sp_binding() {
+        let connectivity = connectivity_input("[connectivity]\nsp=Top.input:HBM[0]\n");
+
+        let error = memory_plan_inputs("Top", &[], Some(&connectivity)).expect_err("stray binding");
+
+        assert!(matches!(error, CliError::InvalidArg(ref message)
+            if message.contains("Top.input") && message.contains("direct M-AXI")));
+    }
+
     #[test]
     fn floorplan_args_reject_unsafe_solver_limits() {
         for value in ["0", "-0.1", "1.01", "NaN", "inf"] {
@@ -244,6 +509,14 @@ mod tests {
     }
 
     #[test]
+    fn floorplan_args_accept_connectivity_file() {
+        let args =
+            FloorplanArgs::try_parse_from(["floorplan", "--connectivity", "configs/link.ini"])
+                .expect("connectivity argument");
+        assert_eq!(args.connectivity, Some(PathBuf::from("configs/link.ini")));
+    }
+
+    #[test]
     fn direct_floorplan_run_validates_options_before_io() {
         let dir = tempfile::tempdir().expect("tempdir");
         let err = run(
@@ -252,6 +525,7 @@ mod tests {
                 partition_strategy: PartitionMode::Auto,
                 pp_scheme: PpScheme::Double,
                 max_seconds: 60,
+                connectivity: None,
             },
             &ctx_at(dir.path()),
         )
@@ -260,16 +534,23 @@ mod tests {
     }
 
     #[test]
-    fn failed_floorplan_update_leaves_xdc_inactive() {
+    fn failed_floorplan_update_leaves_outputs_inactive() {
         let dir = tempfile::tempdir().expect("tempdir");
         let active_path = dir.path().join(FLOORPLAN_XDC);
+        let connectivity_path = dir.path().join(FLOORPLAN_CONNECTIVITY);
         fs_err::write(&active_path, "old constraints").expect("old xdc");
+        fs_err::write(&connectivity_path, "old connectivity").expect("old connectivity");
 
-        let err = publish_xdc_after_update(dir.path(), "new constraints", || {
-            Err(CliError::Codegen(
-                "injected regeneration failure".to_string(),
-            ))
-        })
+        let err = publish_floorplan_after_update(
+            dir.path(),
+            "new constraints",
+            Some(b"new connectivity"),
+            || {
+                Err(CliError::Codegen(
+                    "injected regeneration failure".to_string(),
+                ))
+            },
+        )
         .expect_err("update must fail");
 
         assert!(
@@ -280,18 +561,111 @@ mod tests {
             !active_path.exists(),
             "a failed update must not leave an XDC marker for pack",
         );
+        assert!(
+            !connectivity_path.exists(),
+            "a failed update must not leave staged connectivity active",
+        );
+    }
+
+    #[test]
+    fn connectivity_is_syntax_checked_and_kept_byte_for_byte() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let source_path = dir.path().join("input.ini");
+        let bytes = b"[connectivity]\r\n# keep this spelling\r\nsp=Top.mem:HBM[3]\r\n";
+        fs_err::write(&source_path, bytes).expect("write connectivity");
+
+        let input = read_connectivity(Some(&source_path))
+            .expect("read connectivity")
+            .expect("present");
+        assert_eq!(input.bindings.len(), 1);
+        publish_floorplan_after_update(dir.path(), "constraints", Some(&input.bytes), || Ok(()))
+            .expect("publish");
+
+        assert_eq!(
+            fs_err::read(dir.path().join(FLOORPLAN_CONNECTIVITY)).expect("read staged"),
+            bytes,
+            "the link step must receive the exact configuration that was parsed",
+        );
+        assert!(dir.path().join(FLOORPLAN_XDC).is_file());
+    }
+
+    #[test]
+    fn malformed_connectivity_is_rejected_before_publication() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let source_path = dir.path().join("bad.ini");
+        fs_err::write(&source_path, "[connectivity]\nsp=Top.mem:HBM[x]\n")
+            .expect("write connectivity");
+
+        let error = read_connectivity(Some(&source_path)).expect_err("syntax must fail");
+        assert!(matches!(error, CliError::InvalidArg(_)));
+        assert!(!dir.path().join(FLOORPLAN_CONNECTIVITY).exists());
+        assert!(!dir.path().join(FLOORPLAN_XDC).exists());
+    }
+
+    #[test]
+    fn direct_m_axi_errors_are_reported_before_solver_launch() {
+        for (connectivity, expected) in [
+            (None, "--connectivity"),
+            (Some("sp=Other.mem:HBM[0]"), "Other.mem"),
+            (Some("sp=Top.mem:HBM[32]"), "maps to 0 device slots"),
+        ] {
+            let dir = tempfile::tempdir().expect("tempdir");
+            work_io::store(dir.path(), &synthed_direct_mmap_state()).expect("store");
+            write_hls_module(
+                dir.path(),
+                "Top",
+                "module Top(input wire ap_clk, input wire ap_rst_n); endmodule",
+            );
+            write_direct_mmap_hls_module(dir.path());
+            let connectivity_path = connectivity.map(|binding| {
+                let path = dir.path().join("connectivity.ini");
+                fs_err::write(&path, format!("[connectivity]\n{binding}\n"))
+                    .expect("write connectivity");
+                path
+            });
+            let error = run(
+                &FloorplanArgs {
+                    usage_limit: 0.7,
+                    partition_strategy: PartitionMode::Auto,
+                    pp_scheme: PpScheme::Double,
+                    max_seconds: 60,
+                    connectivity: connectivity_path,
+                },
+                &ctx_at(dir.path()),
+            )
+            .expect_err("invalid memory input must fail before CBC");
+
+            assert!(error.to_string().contains(expected), "got {error}");
+            assert!(!dir.path().join(FLOORPLAN_XDC).exists());
+        }
     }
 
     #[test]
     fn floorplan_step_writes_xdc_and_result() {
         let dir = tempfile::tempdir().expect("tempdir");
         work_io::store(dir.path(), &synthed_vadd_state()).expect("store state");
+        write_hls_module(
+            dir.path(),
+            "VecAdd",
+            "module VecAdd(input wire ap_clk, input wire ap_rst_n); endmodule",
+        );
+        write_hls_module(
+            dir.path(),
+            "A",
+            "module A(input wire ap_clk, input wire ap_rst_n, output wire [31:0] out_din, output wire out_write, input wire out_full_n); endmodule",
+        );
+        write_hls_module(
+            dir.path(),
+            "B",
+            "module B(input wire ap_clk, input wire ap_rst_n, input wire [31:0] in_dout, input wire in_empty_n, output wire in_read); endmodule",
+        );
         let ctx = ctx_at(dir.path());
         let args = FloorplanArgs {
             usage_limit: 0.7,
             partition_strategy: PartitionMode::Auto,
             pp_scheme: PpScheme::Double,
             max_seconds: 60,
+            connectivity: None,
         };
 
         match run(&args, &ctx) {
@@ -315,6 +689,16 @@ mod tests {
         let dir = work_dir.join("hls").join(task).join("verilog");
         fs_err::create_dir_all(&dir).expect("hls dir");
         fs_err::write(dir.join(format!("{task}.v")), src).expect("hls verilog");
+    }
+
+    fn write_direct_mmap_hls_module(work_dir: &std::path::Path) {
+        let parsed = tapa_rtl::VerilogModule::parse(
+            "module Reader(input wire ap_clk, input wire ap_rst_n); endmodule",
+        )
+        .expect("parse Reader");
+        let mut module = tapa_rtl::mutation::MutableModule::from_parsed(parsed);
+        tapa_codegen::m_axi::add_m_axi_ports_with_id_width(&mut module, "data", 32, 64, 1);
+        write_hls_module(work_dir, "Reader", &module.emit());
     }
 
     #[test]
@@ -372,6 +756,7 @@ mod tests {
             partition_strategy: PartitionMode::Auto,
             pp_scheme: PpScheme::Double,
             max_seconds: 60,
+            connectivity: None,
         };
         match run(&args, &ctx_at(dir.path())) {
             Ok(()) => {
@@ -416,6 +801,7 @@ mod tests {
                 partition_strategy: PartitionMode::Auto,
                 pp_scheme: PpScheme::Double,
                 max_seconds: 60,
+                connectivity: None,
             },
             &ctx_at(dir.path()),
         )

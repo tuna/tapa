@@ -39,8 +39,12 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
     state.flow.part_num = Some(device.part_num.clone());
     state.flow.platform.clone_from(&args.platform);
     state.flow.clock_period = Some(device.clock_period.clone());
-    // Persist the resolved device before the long HLS runs, so an
-    // interrupted synth still leaves the settings it resolved on disk.
+    // A synthesis rerun may change RTL, area, device, or timing inputs. Make
+    // every result derived from the previous RTL inactive before the long HLS
+    // runs, so an interrupted rerun cannot be packed or floorplanned as if it
+    // had completed successfully.
+    state.flow.synthed = false;
+    state.floorplan = None;
     work_io::store(&ctx.work_dir, &state)?;
 
     extract_hls_sources(&ctx.work_dir, &state.graph)?;
@@ -68,12 +72,7 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
             apply_hls_metrics(task, &out.csynth);
         }
     }
-    generate_rtl_tree(
-        &ctx.work_dir,
-        &state.graph,
-        &hdl_inputs,
-        state.floorplan.as_ref(),
-    )?;
+    generate_rtl_tree(&ctx.work_dir, &state.graph, &hdl_inputs, None)?;
 
     // Per-task OOC Vivado synth → hierarchical utilization → `total_area`.
     // When disabled (the default), reports and topology consumers derive
@@ -174,7 +173,7 @@ mod tests {
     use std::collections::BTreeMap;
 
     use indexmap::IndexMap;
-    use tapa_ir::{SynthTarget, Target, TaskGraph, TaskLevel};
+    use tapa_ir::{Area, FloorplanResult, SynthTarget, Target, TaskGraph, TaskLevel};
     use tapa_xilinx::{ToolInvocation, ToolOutput};
 
     use crate::globals::GlobalArgs;
@@ -358,11 +357,19 @@ mod tests {
                 clock_period: "3.33".to_string(),
             },
         );
-        let state = WorkState::new(TaskGraph {
+        let mut state = WorkState::new(TaskGraph {
             top: "VecAdd".to_string(),
             target: Target::XilinxHls,
             tasks,
             cflags: Vec::new(),
+        });
+        state.flow.synthed = true;
+        state.floorplan = Some(FloorplanResult {
+            device: "u280".to_string(),
+            grid: (2, 3),
+            regions: BTreeMap::from([("Add_0".to_string(), "SLOT_X0Y0_TO_SLOT_X0Y0".to_string())]),
+            routes: Vec::new(),
+            slot_usage: BTreeMap::from([("SLOT_X0Y0_TO_SLOT_X0Y0".to_string(), Area::default())]),
         });
         work_io::store(work, &state).expect("store state");
 
@@ -415,6 +422,10 @@ mod tests {
         // graph that synth annotated in place.
         let persisted = work_io::load(work).expect("load persisted state");
         assert!(persisted.flow.synthed, "synthed flag must persist");
+        assert!(
+            persisted.floorplan.is_none(),
+            "synth must invalidate a floorplan derived from the previous RTL",
+        );
         assert_eq!(
             persisted.flow.part_num.as_deref(),
             Some("xcvu37p-fsvh2892-2L-e"),

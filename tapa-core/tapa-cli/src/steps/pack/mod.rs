@@ -7,7 +7,8 @@
 //!
 //! * `--custom-rtl <PATH>` (may repeat) — validate user-supplied
 //!   Verilog files against `<work_dir>/templates_info.json` and copy
-//!   them into `<work_dir>/rtl` before Vivado runs.
+//!   them into `<work_dir>/rtl` before Vivado runs. An active floorplan
+//!   rejects this late RTL mutation.
 //! * `--bitstream-script <FILE>` — after `.xo` emission, render the
 //!   `get_vitis_script` helper and drop it at the requested
 //!   path (executable on Unix).
@@ -54,18 +55,48 @@ pub struct PackArgs {
     #[arg(long = "connectivity", value_name = "FILE")]
     pub connectivity: Option<PathBuf>,
 
-    /// Custom RTL files / folders (may repeat).
+    /// Custom RTL files / folders (may repeat; unavailable after floorplan).
     #[arg(long = "custom-rtl", value_name = "PATH")]
     pub custom_rtl: Vec<PathBuf>,
+}
+
+pub(super) fn published_floorplan_xdc(
+    work_dir: &Path,
+    state: &WorkState,
+) -> Result<Option<PathBuf>> {
+    if state.floorplan.is_none() {
+        return Ok(None);
+    }
+    let path = work_dir.join(crate::steps::floorplan::FLOORPLAN_XDC);
+    if !path.is_file() {
+        return Err(CliError::MissingState {
+            name: "published floorplan constraints (rerun `tapa floorplan`)".to_string(),
+            path,
+        });
+    }
+    Ok(Some(path))
 }
 
 /// Dispatch packaging according to the target stored by `analyze`.
 pub fn run(args: &PackArgs, ctx: &CliContext) -> Result<()> {
     let state = work_io::load(&ctx.work_dir)?;
+    if !state.flow.synthed {
+        return Err(CliError::MissingState {
+            name: "completed synthesis (run `tapa synth` first)".to_string(),
+            path: work_io::path_in(&ctx.work_dir),
+        });
+    }
+    published_floorplan_xdc(&ctx.work_dir, &state)?;
+    if state.floorplan.is_some() && !args.custom_rtl.is_empty() {
+        return Err(CliError::InvalidArg(
+            "`--custom-rtl` cannot modify RTL after floorplanning; omit it or rerun synthesis and packaging without the active floorplan"
+                .to_string(),
+        ));
+    }
     // The graph's `target` is the single home of the flow; this exhaustive
     // match is the dispatch site a new `Target` variant would break.
     match state.graph.target {
-        Target::XilinxVitis => pack_vitis(args, ctx, &state.graph, &state.flow),
+        Target::XilinxVitis => pack_vitis(args, ctx, &state),
         Target::XilinxHls => pack_hls_zip(args, ctx, &state),
     }
 }
@@ -266,7 +297,7 @@ mod tests {
     use indexmap::IndexMap;
     use tapa_ir::{
         port::{ArgCategory, Port},
-        SynthTarget, Task, TaskGraph, TaskLevel,
+        Area, FloorplanResult, SynthTarget, Task, TaskGraph, TaskLevel,
     };
 
     use crate::globals::GlobalArgs;
@@ -322,6 +353,18 @@ mod tests {
         state.flow.clock_period = Some("3.33".to_string());
         state.flow.synthed = true;
         work_io::store(work_dir, &state).expect("store state");
+    }
+
+    fn activate_floorplan(work_dir: &Path) {
+        let mut state = work_io::load(work_dir).expect("load state");
+        state.floorplan = Some(FloorplanResult {
+            device: "u280".to_string(),
+            grid: (2, 3),
+            regions: BTreeMap::new(),
+            routes: Vec::new(),
+            slot_usage: BTreeMap::<String, Area>::new(),
+        });
+        work_io::store(work_dir, &state).expect("store floorplan");
     }
 
     #[test]
@@ -488,5 +531,62 @@ mod tests {
         let ctx = ctx_with_work_dir(dir.path());
         let err = run(&parse_pack(&[]), &ctx).expect_err("missing rtl dir must fail");
         assert!(matches!(err, CliError::MissingState { ref name, .. } if name.contains("RTL")));
+    }
+
+    #[test]
+    fn incomplete_synthesis_is_rejected_before_packaging() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write_state(dir.path(), Target::XilinxVitis);
+        let mut state = work_io::load(dir.path()).expect("load");
+        state.flow.synthed = false;
+        work_io::store(dir.path(), &state).expect("store");
+
+        let error = run(&parse_pack(&[]), &ctx_with_work_dir(dir.path()))
+            .expect_err("pack must not consume partial synthesis outputs");
+        assert!(
+            matches!(error, CliError::MissingState { ref name, .. } if name.contains("synthesis")),
+            "got {error}",
+        );
+    }
+
+    #[test]
+    fn every_target_requires_the_active_floorplan_publication_marker() {
+        for target in [Target::XilinxVitis, Target::XilinxHls] {
+            let dir = tempfile::tempdir().expect("tempdir");
+            write_state(dir.path(), target);
+            activate_floorplan(dir.path());
+
+            let error = run(&parse_pack(&[]), &ctx_with_work_dir(dir.path()))
+                .expect_err("unpublished floorplan must not be packaged");
+
+            assert!(
+                matches!(error, CliError::MissingState { ref name, .. }
+                    if name.contains("floorplan constraints")),
+                "got {error}",
+            );
+        }
+    }
+
+    #[test]
+    fn every_target_rejects_custom_rtl_after_floorplanning() {
+        for target in [Target::XilinxVitis, Target::XilinxHls] {
+            let dir = tempfile::tempdir().expect("tempdir");
+            write_state(dir.path(), target);
+            activate_floorplan(dir.path());
+            fs_err::write(
+                dir.path().join(crate::steps::floorplan::FLOORPLAN_XDC),
+                "constraints",
+            )
+            .expect("write marker");
+
+            let error = run(
+                &parse_pack(&["--custom-rtl", "replacement.v"]),
+                &ctx_with_work_dir(dir.path()),
+            )
+            .expect_err("post-floorplan RTL mutation must be rejected");
+
+            assert!(matches!(error, CliError::InvalidArg(ref message)
+                if message.contains("--custom-rtl") && message.contains("after floorplanning")));
+        }
     }
 }
