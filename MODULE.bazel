@@ -7,6 +7,11 @@ bazel_dep(name = "platforms", version = "1.0.0", dev_dependency = True)
 bazel_dep(name = "rules_cc", version = "0.2.18", dev_dependency = True)
 bazel_dep(name = "rules_rust", version = "0.69.0", dev_dependency = True)
 bazel_dep(name = "rules_pkg", version = "1.2.0", dev_dependency = True)
+
+# 2.0.0-rc3 generated launchers require sys._base_executable, which is absent
+# from the Python used by the Ubuntu 18.04 CI image. Load-bearing: the
+# tapa-llvm-project repo references @rules_python//python:defs.bzl.
+bazel_dep(name = "rules_python", version = "1.9.0", dev_dependency = True)
 bazel_dep(name = "rules_shell", version = "0.8.0", dev_dependency = True)
 bazel_dep(name = "rules_verilator", version = "0.3.2", dev_dependency = True)
 bazel_dep(name = "rules_verilog", version = "1.1.1", dev_dependency = True)
