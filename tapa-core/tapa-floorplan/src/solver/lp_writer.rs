@@ -34,6 +34,16 @@ pub fn write_cplex_lp(model: &LpModel) -> String {
     for constraint in &model.constraints {
         // Move the expression's constant to the right-hand side.
         let rhs = constraint.rhs - constraint.expr.constant;
+        // A constraint with no variable terms is constant-only. CBC aborts on
+        // such a line, and in this planner they are always vacuously true
+        // (e.g. a cut with no crossing edges: `0 <= capacity`), so drop them.
+        if constraint.expr.terms.iter().all(|(coef, _)| is_zero(*coef)) {
+            debug_assert!(
+                empty_constraint_is_vacuous(constraint.op, rhs),
+                "an unsatisfiable constant-only constraint would be silently dropped",
+            );
+            continue;
+        }
         lines.push(format!(
             " {}: {} {} {}",
             sanitize_name(&constraint.name),
@@ -79,24 +89,50 @@ fn write_objective(objective: &LinExpr) -> String {
 }
 
 /// Render a linear combination `Σ coef·x{i}` with explicit `+`/`-` joining.
+/// Zero-coefficient terms are dropped; an all-zero list renders as `0`.
 fn write_terms(terms: &[(f64, crate::solver::model::LpVar)]) -> String {
-    if terms.is_empty() {
-        return "0".to_string();
-    }
     let mut out = String::new();
-    for (position, (coef, var)) in terms.iter().enumerate() {
+    let mut first = true;
+    for (coef, var) in terms {
+        if is_zero(*coef) {
+            continue;
+        }
         let negative = *coef < 0.0;
         let magnitude = if negative { -coef } else { *coef };
-        if position == 0 {
+        if first {
             if negative {
                 out.push_str("- ");
             }
+            first = false;
         } else {
             out.push_str(if negative { " - " } else { " + " });
         }
         write!(out, "{} x{}", format_num(magnitude), var.0).expect("String write is infallible");
     }
-    out
+    if out.is_empty() {
+        "0".to_string()
+    } else {
+        out
+    }
+}
+
+/// An exactly-zero coefficient (terms are built from exact integer values).
+#[allow(
+    clippy::float_cmp,
+    reason = "coefficients are exact; zero terms are dropped"
+)]
+fn is_zero(coef: f64) -> bool {
+    coef == 0.0
+}
+
+/// Whether a constant-only constraint `0 op rhs` holds — used to assert that
+/// dropping such a constraint is safe.
+fn empty_constraint_is_vacuous(op: Comparison, rhs: f64) -> bool {
+    match op {
+        Comparison::Le => rhs >= 0.0,
+        Comparison::Ge => rhs <= 0.0,
+        Comparison::Eq => rhs.abs() < f64::EPSILON,
+    }
 }
 
 /// The bounds lines for variables whose domain is not the LP default

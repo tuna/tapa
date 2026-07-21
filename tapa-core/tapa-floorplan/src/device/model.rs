@@ -150,6 +150,56 @@ impl Coor {
         }
         cells
     }
+
+    /// The region tag `SLOT_X{dl}Y{dl}_TO_SLOT_X{ur}Y{ur}` this region carries
+    /// as a [`FloorplanResult`](tapa_ir::FloorplanResult) key and pblock name.
+    #[must_use]
+    pub fn region_name(&self) -> String {
+        format!(
+            "SLOT_X{}Y{}_TO_SLOT_X{}Y{}",
+            self.dl_x, self.dl_y, self.ur_x, self.ur_y
+        )
+    }
+}
+
+/// The five FPGA resource classes, in RapidStream's `RESOURCES` iteration
+/// order (`FF, LUT, BRAM_18K, DSP, URAM`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Resource {
+    Ff,
+    Lut,
+    Bram18k,
+    Dsp,
+    Uram,
+}
+
+impl Resource {
+    /// All five classes, for iterating capacity constraints.
+    pub const ALL: [Self; 5] = [Self::Ff, Self::Lut, Self::Bram18k, Self::Dsp, Self::Uram];
+
+    /// This class's amount within an [`Area`].
+    #[must_use]
+    pub fn amount(self, area: &Area) -> u64 {
+        match self {
+            Self::Ff => area.ff,
+            Self::Lut => area.lut,
+            Self::Bram18k => area.bram_18k,
+            Self::Dsp => area.dsp,
+            Self::Uram => area.uram,
+        }
+    }
+
+    /// The uppercase annotation-key name of this class.
+    #[must_use]
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Ff => "FF",
+            Self::Lut => "LUT",
+            Self::Bram18k => "BRAM_18K",
+            Self::Dsp => "DSP",
+            Self::Uram => "URAM",
+        }
+    }
 }
 
 /// Per-direction wire crossing capacities of a slot boundary.
