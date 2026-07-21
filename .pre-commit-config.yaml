@@ -61,6 +61,9 @@ repos:
     hooks:
       - id: clang-format
         files: \.(c|cc|cpp|h|hpp)$
+        # c_api.h is cbindgen-generated; formatting it breaks the
+        # freshness check against the generator's output.
+        exclude: ^tapa-lib/tapa/host/frt/c_api\.h$
 
   - repo: https://github.com/keith/pre-commit-buildifier
     rev: 8.2.0
