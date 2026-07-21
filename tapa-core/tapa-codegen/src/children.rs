@@ -463,13 +463,12 @@ pub(crate) fn generate_child_signals(
     task_name: &str,
     mmap_conns: &std::collections::BTreeMap<String, crate::rtl_state::MMapConnection>,
     mmap_slave_map: &std::collections::BTreeMap<(String, String, usize), usize>,
-) -> (Vec<String>, Vec<(String, bool)>) {
+) -> Vec<String> {
     type ChildEntry = (usize, Option<String>, bool, BTreeMap<String, Arg>);
 
     let task = &state.design.tasks[task_name];
     let parent_fifos: BTreeSet<String> = task.fifos.keys().cloned().collect();
     let mut is_done_signals = Vec::new();
-    let mut instance_infos = Vec::new();
     let mut fsm_portargs = Vec::new(); // portargs for FSM module instantiation
 
     let child_entries: Vec<(String, Vec<ChildEntry>)> = task
@@ -685,8 +684,6 @@ pub(crate) fn generate_child_signals(
                     &mmap_bindings,
                 );
             }
-
-            instance_infos.push((inst_name, is_autorun));
         }
     }
 
@@ -709,7 +706,7 @@ pub(crate) fn generate_child_signals(
         mm.add_instance(fsm_inst);
     }
 
-    (is_done_signals, instance_infos)
+    is_done_signals
 }
 
 /// Declare per-instance pipeline signals for scalar and mmap arguments.

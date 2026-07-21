@@ -48,8 +48,8 @@ static AP_HANDSHAKE_ASSIGN_PATTERN: LazyLock<Regex> =
 ///
 /// Ports and signals are mutated in place on `inner` (mirroring how
 /// `cleanup_hls_artifacts`/`demote_*` already operate). Only append-only
-/// fragments with no parsed original — instances, assigns, always blocks,
-/// and header pragmas — are tracked separately.
+/// fragments with no parsed original — instances, assigns, and always
+/// blocks — are tracked separately.
 pub struct MutableModule {
     /// The parsed module; its `ports`/`signals`/`parameters` are mutated
     /// in place as the upper-task instrumentation adds/removes them.
@@ -62,8 +62,6 @@ pub struct MutableModule {
     added_assigns: Vec<ContinuousAssign>,
     /// New always blocks to append.
     added_always: Vec<AlwaysBlock>,
-    /// New comment pragmas to prepend to the module header.
-    added_comments: Vec<String>,
 }
 
 impl MutableModule {
@@ -79,7 +77,6 @@ impl MutableModule {
             added_instances: Vec::new(),
             added_assigns: Vec::new(),
             added_always: Vec::new(),
-            added_comments: Vec::new(),
         }
     }
 
@@ -120,11 +117,6 @@ impl MutableModule {
     /// Add an always block to the body.
     pub fn add_always(&mut self, always: AlwaysBlock) {
         self.added_always.push(always);
-    }
-
-    /// Add a comment pragma line at the module header.
-    pub fn add_comment(&mut self, text: impl Into<String>) {
-        self.added_comments.push(text.into());
     }
 
     /// Mark a port for removal by name.
@@ -229,13 +221,6 @@ impl MutableModule {
     /// Emit the complete module as Verilog text.
     pub fn emit(&self) -> String {
         let mut out = String::new();
-
-        // Vivado accepts RapidStream pragmas as line comments. The attribute
-        // form `(* RS ... *)` is invalid because `RS <tag>` is not an
-        // attribute name.
-        for comment in &self.added_comments {
-            let _ = writeln!(out, "// pragma RS {comment}");
-        }
 
         // Module declaration — emit parameters in the `#(parameter ...)`
         // header block BEFORE the port list so port widths that reference

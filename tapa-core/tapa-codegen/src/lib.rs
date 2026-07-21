@@ -7,7 +7,6 @@ pub mod async_mmap;
 pub mod children;
 pub mod error;
 pub mod fifos;
-pub mod fsm;
 pub mod instance_signals;
 pub mod m_axi;
 pub mod program;
@@ -56,8 +55,7 @@ pub fn top_stream_needs_axis_adapter(target: Target) -> bool {
 /// 4. Instantiate FIFOs
 /// 5. Instantiate child tasks with FSM/port wiring
 /// 6. Add M-AXI ports
-/// 7. Generate FSM pragmas
-/// 8. Generate global FSM
+/// 7. Generate global FSM
 ///
 /// Returns the modified modules and any generated auxiliary files.
 pub fn generate_rtl(state: &mut TopologyWithRtl) -> Result<(), CodegenError> {
@@ -140,11 +138,6 @@ fn instrument_upper_task(state: &mut TopologyWithRtl, task_name: &str) -> Result
         ));
 
         if is_top_task {
-            // `add_comment` prepends `// pragma RS ` at emit time, so
-            // callers pass raw pragma content without the `RS ` prefix.
-            mm.add_comment("clk port=ap_clk".to_owned());
-            mm.add_comment("rst port=ap_rst_n active=low".to_owned());
-
             // Collect istream/istreams port name prefixes from topology
             // For istream: peek prefix is "{name}_peek"
             // For istreams: peek prefixes are "{name}_{idx}_peek" for each channel
@@ -200,7 +193,7 @@ fn instrument_upper_task(state: &mut TopologyWithRtl, task_name: &str) -> Result
         }
     }
 
-    let (is_done_signals, instance_infos) =
+    let is_done_signals =
         children::generate_child_signals(state, task_name, &mmap_conns, &mmap_slave_map);
 
     fifos::instantiate_fifos(state, task_name)?;
@@ -210,31 +203,7 @@ fn instrument_upper_task(state: &mut TopologyWithRtl, task_name: &str) -> Result
     // Add M-AXI ports and crossbars (reuse pre-computed mmap connections)
     m_axi::add_m_axi_and_crossbars(state, task_name, &mmap_conns)?;
 
-    // Add FSM pragmas
-    let scalar_ports: Vec<String> = state.design.tasks[task_name]
-        .ports
-        .iter()
-        .flat_map(|p| {
-            if p.cat.is_scalar() {
-                vec![p.name.clone()]
-            } else if p.cat.is_mmap_like() {
-                let sanitized = tapa_rtl::module::sanitize_array_name(&p.name);
-                if let Some(chan_count) = p.chan_count {
-                    (0..chan_count)
-                        .map(|idx| format!("{sanitized}_{idx}_offset"))
-                        .collect()
-                } else {
-                    vec![format!("{sanitized}_offset")]
-                }
-            } else {
-                // Streams contribute no scalar/offset ports.
-                Vec::new()
-            }
-        })
-        .collect();
-
     if let Some(fsm_mm) = state.fsm_modules.get_mut(task_name) {
-        fsm::add_rs_pragmas_to_fsm(fsm_mm, &scalar_ports, &instance_infos);
         program::apply_global_fsm(fsm_mm, &is_done_signals);
     }
 
