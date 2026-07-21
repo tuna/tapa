@@ -5,7 +5,8 @@
 //! depend on each other; they meet only here, through these serde types. The
 //! planner assigns every flattened instance to a physical grid *region* and
 //! records how each cross-region channel is pipelined; codegen turns those
-//! records into relay stations, AXI register slices, and pblock pragmas.
+//! stream records into Head/Body/Tail handshake pipelines and pblock
+//! constraints.
 
 use std::collections::BTreeMap;
 
@@ -53,10 +54,10 @@ impl Area {
 
 /// One pipelined channel that crosses a slot boundary.
 ///
-/// A crossing is either a `tapa::stream` (rendered as a `relay_station`) or an
-/// M-AXI (mmap) link (rendered as per-channel AXI register slices). The planner
-/// records the slot [`route`](Crossing::route) the channel takes and how many
-/// register stages that route implies; codegen replays those numbers.
+/// Stream crossings are rendered as named Head/Body/Tail handshake pipelines.
+/// The contract also reserves an M-AXI (`mmap`) kind for future codegen
+/// support. The planner records the slot [`route`](Crossing::route) and exact
+/// Body-cell regions; codegen and XDC emission replay supported records.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Crossing {
@@ -69,11 +70,12 @@ pub struct Crossing {
     /// The slot path the channel takes, head to tail, e.g.
     /// `["SLOT_X0Y0", "SLOT_X0Y1"]`.
     pub route: Vec<String>,
-    /// Number of pipeline register stages inserted along the route.
+    /// Number of Body pipeline cells inserted along the route. Head and Tail
+    /// are endpoint cells and are not included (`BODY_LEVEL` convention).
     pub level: u32,
     /// How registers are distributed across the route's hops.
     pub scheme: PipelineScheme,
-    /// Per-body-register slot assignment (one entry per body register).
+    /// Ordered per-Body-cell slot assignment (one entry per Body cell).
     pub reg_regions: Vec<String>,
 }
 
@@ -81,9 +83,9 @@ pub struct Crossing {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CrossingKind {
-    /// A `tapa::stream` channel — pipelined with a `relay_station`.
+    /// A `tapa::stream` channel — pipelined with Head/Body/Tail handshake cells.
     Stream,
-    /// An M-AXI (mmap) link — pipelined with per-channel AXI register slices.
+    /// A reserved M-AXI (`mmap`) link kind; codegen support is not implemented.
     Axi,
 }
 

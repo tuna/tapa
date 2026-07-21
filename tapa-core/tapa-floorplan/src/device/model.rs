@@ -2,14 +2,14 @@
 //! shell-subtracted AMD FPGA, plus the integer-rectangle [`Coor`] algebra the
 //! floorplan and routing ILPs run on.
 //!
-//! Reimplements RapidStream's `VirtualDevice`/`VirtualSlot`/`Coor` (principles
-//! only). Two facts guided the port:
+//! The model intentionally keeps only the coordinates and capacities needed by
+//! the placement and routing formulations:
 //!
 //! * We model **grid** coordinates only — a slot lives at `(x, y)` with
 //!   `x ∈ [0, cols)`, `y ∈ [0, rows)`, and a region is an inclusive rectangle
-//!   of them. RapidStream's separate *physical tile* coordinates (which carry
-//!   `-1` "unset" sentinels) are not needed for the ILP, so [`Coor`] is `u32`
-//!   and every conversion into the `i64` centroid space is a lossless `From`.
+//!   of them. Separate *physical tile* coordinates (including "unset"
+//!   sentinels) are not needed for the ILP, so [`Coor`] is `u32` and every
+//!   conversion into the `i64` centroid space is a lossless `From`.
 //! * Per-slot `area` is the resources **available** after the platform shell
 //!   is subtracted; the usage limit derates it further at ILP time.
 
@@ -35,7 +35,7 @@ pub const WIRE_CAPACITY_INF: u64 = 100_000_000;
 
 /// An inclusive integer rectangle of grid slots: the region spanning
 /// `[dl_x, ur_x] × [dl_y, ur_y]`. A single slot is `dl == ur`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Coor {
     pub dl_x: u32,
     pub dl_y: u32,
@@ -179,9 +179,9 @@ fn parse_slot_tag(tag: &str) -> Option<(u32, u32)> {
     Some((x.parse().ok()?, y.parse().ok()?))
 }
 
-/// The five FPGA resource classes, in RapidStream's `RESOURCES` iteration
-/// order (`FF, LUT, BRAM_18K, DSP, URAM`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// The five FPGA resource classes, in solver iteration order
+/// (`FF, LUT, BRAM_18K, DSP, URAM`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Resource {
     Ff,
     Lut,

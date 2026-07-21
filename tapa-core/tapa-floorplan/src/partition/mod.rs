@@ -4,5 +4,8 @@
 pub mod cut;
 pub mod ilp;
 
-pub use cut::{find_cuts, Cut};
-pub use ilp::{floorplan_flat, Assignment, IlpError};
+pub use cut::{find_cuts, find_cuts_for_regions, Cut};
+pub use ilp::{
+    floorplan, floorplan_flat, floorplan_multilevel, select_strategy, Assignment, IlpError,
+    PartitionStrategy,
+};

@@ -1,61 +1,150 @@
-//! The floorplan ILP: assign every [`FloorGraph`] vertex to a device slot so
-//! that weighted wire crossings are minimized under per-slot resource and
-//! per-cut wire-capacity limits.
+//! Edge-based placement ILP and partition schedule.
 //!
-//! Ported from RapidStream's `autobridge/partition/floorplan.py`. The
-//! edge-based formulation uses vertex-assignment binaries `x[v][s]` and
-//! directed edge-routing binaries `y[e][a][b]`, coupled so a routed edge's
-//! endpoints match their vertices' placement.
+//! Each partition iteration uses the same formulation:
+//!
+//! * sparse `x[v][s]` binaries for a vertex's legal candidate regions;
+//! * sparse `y[e][a][b]` binaries for the Cartesian product of the source and
+//!   destination candidate regions;
+//! * endpoint-coupling, resource, and guillotine-cut constraints; and
+//! * width-weighted, vertically penalized centroid distance as the sole
+//!   variable objective cost.
+//!
+//! Multilevel placement merely changes the candidate regions: the first pass
+//! assigns vertices to full-width rows, and the second jointly refines every
+//! row into atomic column slots while retaining parent containment.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use tapa_ir::Area;
 
-use crate::device::model::{
-    add_area, penalized_distance, Coor, Device, Resource, VERTICAL_DIST_PENALTY,
-};
+use crate::device::model::{add_area, Coor, Device, Resource, VERTICAL_DIST_PENALTY};
 use crate::graph::FloorGraph;
-use crate::partition::cut::{find_cuts, Cut};
-use crate::solver::{Comparison, LinExpr, LpModel, LpVar, Sense, SolveOpts, Solver, SolverError};
+use crate::partition::cut::{find_cuts_for_regions, Cut};
+use crate::solver::{
+    Comparison, LinExpr, LpModel, LpStatus, LpVar, Sense, SolveOpts, Solver, SolverError,
+};
 
-/// The default base utilization target and the retry envelope, matching
-/// RapidStream (`schedule.py:15`, `tree.py:119-120`).
+/// The default utilization and retry envelope for partitioning.
 pub const DEFAULT_USAGE_LIMIT: f64 = 0.7;
 const USAGE_LIMIT_STEP: f64 = 0.02;
 const MAX_USAGE_LIMIT: f64 = 0.95;
+const INTEGRAL_TOLERANCE: f64 = 1e-5;
 
-/// A completed placement: where each vertex landed, and the resource usage of
-/// each occupied region.
+/// How the device is subdivided into placement iterations.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum PartitionStrategy {
+    /// Apply the built-in edge-count/device-size selection heuristic.
+    #[default]
+    Auto,
+    /// Assign directly to all atomic slots in one ILP.
+    Flat,
+    /// First assign to full-width rows, then refine all rows jointly by column.
+    MultiLevel,
+}
+
+/// Per-region, per-resource fractional limits.  Region names use
+/// `SLOT_X..._TO_SLOT_X...`; the legacy `lhs:rhs` spelling is accepted as well.
+type RegionResourceLimits = BTreeMap<String, BTreeMap<Resource, f64>>;
+
+/// Constraints that narrow candidate domains or override resource limits.
+///
+/// `vertex_regions` uses overlap semantics: a region is a candidate during an
+/// iteration when it overlaps the target. Parent
+/// containment and connectivity-derived memory placement are added by the
+/// schedule itself, so none of these restrictions require extra ILP rows.
+#[derive(Debug, Clone, Default)]
+struct PlacementConstraints {
+    vertex_regions: BTreeMap<String, Coor>,
+    min_resource_limits: RegionResourceLimits,
+    max_resource_limits: RegionResourceLimits,
+}
+
+/// Configuration for [`floorplan_with_config`].
+#[derive(Debug, Clone)]
+struct PlacementConfig {
+    usage_limit: f64,
+    strategy: PartitionStrategy,
+    constraints: PlacementConstraints,
+}
+
+impl Default for PlacementConfig {
+    fn default() -> Self {
+        Self {
+            usage_limit: DEFAULT_USAGE_LIMIT,
+            strategy: PartitionStrategy::Auto,
+            constraints: PlacementConstraints::default(),
+        }
+    }
+}
+
+/// A completed atomic placement and the resources used in occupied slots.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Assignment {
-    /// Vertex name → region tag.
+    /// Vertex name → atomic region tag.
     pub regions: BTreeMap<String, String>,
-    /// Region tag → summed resource usage.
+    /// Atomic region tag → summed resource use.
     pub slot_usage: BTreeMap<String, Area>,
 }
 
 /// Why the floorplan ILP produced no placement.
 #[derive(Debug, thiserror::Error)]
 pub enum IlpError {
-    /// The solver failed to run or parse.
+    /// The solver failed to run, parse, or validate its output.
     #[error(transparent)]
     Solver(#[from] SolverError),
-    /// No feasible placement even at the maximum usage limit.
+    /// No feasible placement was found within the utilization retry envelope.
     #[error("floorplan is infeasible up to usage limit {0}")]
     Infeasible(f64),
+    /// The solver neither proved infeasibility nor returned a usable
+    /// incumbent. Increasing utilization would hide this failure.
+    #[error("floorplan solver returned no usable incumbent ({0:?})")]
+    NoIncumbent(LpStatus),
+    /// A utilization fraction was not finite or outside `(0, 1]`.
+    #[error("invalid {kind} utilization limit {value} for {region}: expected {range}")]
+    InvalidLimit {
+        kind: &'static str,
+        region: String,
+        value: f64,
+        range: &'static str,
+    },
+    /// Candidate filtering left a vertex with nowhere legal to go.
+    #[error("vertex `{vertex}` has no feasible candidate region")]
+    NoCandidates { vertex: String },
+    /// A partition region refers to cells absent from the device model.
+    #[error("partition region `{0}` is outside the device model")]
+    InvalidRegion(String),
+    /// A positive minimum cannot be met by any candidate vertex.
+    #[error("minimum {resource} utilization for `{region}` cannot be satisfied")]
+    ImpossibleMinimum {
+        region: String,
+        resource: &'static str,
+    },
+    /// Solver values did not encode exactly one integral assignment.
+    #[error("invalid floorplan solver assignment: {0}")]
+    InvalidSolution(String),
 }
 
-/// Coefficients are small non-negative integers well inside f64's exact range.
-#[allow(
-    clippy::cast_precision_loss,
-    reason = "areas, widths, distances, and capacities are < 2^32"
-)]
-fn to_f64(value: u64) -> f64 {
-    value as f64
+/// Plan with automatic flat/multilevel schedule selection.
+pub fn floorplan(
+    graph: &FloorGraph,
+    device: &Device,
+    base_usage_limit: f64,
+    solver: &dyn Solver,
+    opts: &SolveOpts,
+) -> Result<Assignment, IlpError> {
+    floorplan_with_config(
+        graph,
+        device,
+        &PlacementConfig {
+            usage_limit: base_usage_limit,
+            ..PlacementConfig::default()
+        },
+        solver,
+        opts,
+    )
 }
 
-/// Plan a floorplan over the whole device in one flat ILP, raising the usage
-/// limit by 0.02 (up to 0.95) whenever `base_usage_limit` is infeasible.
+/// Compatibility entry point that always uses one flat ILP.
 pub fn floorplan_flat(
     graph: &FloorGraph,
     device: &Device,
@@ -63,27 +152,391 @@ pub fn floorplan_flat(
     solver: &dyn Solver,
     opts: &SolveOpts,
 ) -> Result<Assignment, IlpError> {
-    let slots: Vec<Coor> = device.slots.iter().map(|s| Coor::slot(s.x, s.y)).collect();
-    let cuts = find_cuts(device);
+    floorplan_with_config(
+        graph,
+        device,
+        &PlacementConfig {
+            usage_limit: base_usage_limit,
+            strategy: PartitionStrategy::Flat,
+            constraints: PlacementConstraints::default(),
+        },
+        solver,
+        opts,
+    )
+}
 
-    let mut usage_limit = base_usage_limit;
-    loop {
-        let model = FloorplanModel::build(graph, device, &slots, &cuts, usage_limit);
-        let solution = solver.solve(&model.lp, opts)?;
-        if solution.is_found() {
-            return Ok(model.read_back(graph, &slots, &solution));
+/// Compatibility entry point that always runs row-then-column placement.
+pub fn floorplan_multilevel(
+    graph: &FloorGraph,
+    device: &Device,
+    base_usage_limit: f64,
+    solver: &dyn Solver,
+    opts: &SolveOpts,
+) -> Result<Assignment, IlpError> {
+    floorplan_with_config(
+        graph,
+        device,
+        &PlacementConfig {
+            usage_limit: base_usage_limit,
+            strategy: PartitionStrategy::MultiLevel,
+            constraints: PlacementConstraints::default(),
+        },
+        solver,
+        opts,
+    )
+}
+
+/// Plan using an explicit schedule and optional pin/resource constraints.
+fn floorplan_with_config(
+    graph: &FloorGraph,
+    device: &Device,
+    config: &PlacementConfig,
+    solver: &dyn Solver,
+    opts: &SolveOpts,
+) -> Result<Assignment, IlpError> {
+    validate_config(config)?;
+    let strategy = resolve_strategy(graph, device, config.strategy);
+
+    let final_regions = match strategy {
+        PartitionStrategy::Auto => unreachable!("auto strategy was resolved"),
+        PartitionStrategy::Flat => {
+            let slots = atomic_regions(device);
+            solve_iteration(graph, device, &slots, None, config, solver, opts)?
         }
-        usage_limit += USAGE_LIMIT_STEP;
-        if usage_limit > MAX_USAGE_LIMIT {
-            return Err(IlpError::Infeasible(MAX_USAGE_LIMIT));
+        PartitionStrategy::MultiLevel => {
+            let rows = row_regions(device);
+            let row_assignment = solve_iteration(graph, device, &rows, None, config, solver, opts)?;
+            let slots = atomic_regions(device);
+            solve_iteration(
+                graph,
+                device,
+                &slots,
+                Some(&row_assignment),
+                config,
+                solver,
+                opts,
+            )?
         }
+    };
+
+    complete_assignment(graph, &final_regions)
+}
+
+fn resolve_strategy(
+    graph: &FloorGraph,
+    device: &Device,
+    requested: PartitionStrategy,
+) -> PartitionStrategy {
+    match requested {
+        PartitionStrategy::Auto => select_strategy(device, graph.placement_edges().len()),
+        explicit @ (PartitionStrategy::Flat | PartitionStrategy::MultiLevel) => explicit,
     }
 }
 
-/// The built LP plus the `x[v][s]` handles needed to read the placement back.
+/// Automatic schedule heuristic, including its row-count test for medium-sized
+/// designs.
+#[must_use]
+pub fn select_strategy(device: &Device, edge_count: usize) -> PartitionStrategy {
+    if device.cols == 1 || edge_count < 300 {
+        return PartitionStrategy::Flat;
+    }
+    if edge_count > 800 {
+        return PartitionStrategy::MultiLevel;
+    }
+    if u64::from(device.rows) * u64::from(device.rows) >= 8 {
+        PartitionStrategy::MultiLevel
+    } else {
+        PartitionStrategy::Flat
+    }
+}
+
+fn validate_config(config: &PlacementConfig) -> Result<(), IlpError> {
+    validate_limit("base", "all regions", config.usage_limit, false)?;
+    for (kind, limits) in [
+        ("minimum", &config.constraints.min_resource_limits),
+        ("maximum", &config.constraints.max_resource_limits),
+    ] {
+        for (region, by_resource) in limits {
+            for &value in by_resource.values() {
+                validate_limit(kind, region, value, true)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_limit(
+    kind: &'static str,
+    region: &str,
+    value: f64,
+    allow_zero: bool,
+) -> Result<(), IlpError> {
+    let lower_bound_ok = value > 0.0 || (allow_zero && value >= 0.0);
+    if value.is_finite() && lower_bound_ok && value <= 1.0 {
+        Ok(())
+    } else {
+        Err(IlpError::InvalidLimit {
+            kind,
+            region: region.to_string(),
+            value,
+            range: if allow_zero {
+                "0 <= limit <= 1"
+            } else {
+                "0 < limit <= 1"
+            },
+        })
+    }
+}
+
+fn atomic_regions(device: &Device) -> Vec<Coor> {
+    let mut regions = Vec::with_capacity((device.rows * device.cols) as usize);
+    // Candidate ordering is x-major, then y-minor.
+    for x in 0..device.cols {
+        for y in 0..device.rows {
+            if device.slot(x, y).is_some() {
+                regions.push(Coor::slot(x, y));
+            }
+        }
+    }
+    regions
+}
+
+fn row_regions(device: &Device) -> Vec<Coor> {
+    if device.cols == 0 {
+        return Vec::new();
+    }
+    (0..device.rows)
+        .map(|y| Coor::span(0, y, device.cols - 1, y))
+        .collect()
+}
+
+/// Run one partition iteration, retrying only this iteration at successively
+/// higher global usage limits.
+fn solve_iteration(
+    graph: &FloorGraph,
+    device: &Device,
+    regions: &[Coor],
+    parents: Option<&BTreeMap<String, Coor>>,
+    config: &PlacementConfig,
+    solver: &dyn Solver,
+    opts: &SolveOpts,
+) -> Result<BTreeMap<String, Coor>, IlpError> {
+    let retry_ceiling = config.usage_limit.max(MAX_USAGE_LIMIT);
+    let mut usage_limit = config.usage_limit;
+
+    loop {
+        let domains = match candidate_domains(
+            graph,
+            device,
+            regions,
+            usage_limit,
+            parents,
+            &config.constraints,
+        ) {
+            Ok(domains) => domains,
+            Err(error @ IlpError::NoCandidates { .. }) => {
+                // A domain can be empty merely because the current global
+                // utilization derating is too strict. Probe the retry ceiling
+                // once to distinguish that case from a permanent pin, parent,
+                // or memory-domain conflict before deciding whether to retry.
+                match candidate_domains(
+                    graph,
+                    device,
+                    regions,
+                    retry_ceiling,
+                    parents,
+                    &config.constraints,
+                ) {
+                    Ok(_) => {
+                        let Some(next) = next_usage_limit(usage_limit, retry_ceiling) else {
+                            return Err(error);
+                        };
+                        usage_limit = next;
+                    }
+                    Err(permanent) => return Err(permanent),
+                }
+                continue;
+            }
+            Err(error) => return Err(error),
+        };
+        let cuts = find_cuts_for_regions(device, regions);
+        let model = FloorplanModel::build(
+            graph,
+            device,
+            &domains,
+            &cuts,
+            usage_limit,
+            &config.constraints,
+        )?;
+        let solution = solver.solve(&model.lp, opts)?;
+        if solution.is_found() {
+            return model.read_back(graph, &domains, &solution);
+        }
+
+        match solution.status {
+            LpStatus::Infeasible => {}
+            LpStatus::NotSolved | LpStatus::Unbounded => {
+                return Err(IlpError::NoIncumbent(solution.status));
+            }
+            LpStatus::Optimal | LpStatus::Feasible => {
+                unreachable!("found incumbents returned during readback")
+            }
+        }
+
+        let Some(next) = next_usage_limit(usage_limit, retry_ceiling) else {
+            return Err(IlpError::Infeasible(retry_ceiling));
+        };
+        usage_limit = next;
+    }
+}
+
+fn next_usage_limit(current: f64, ceiling: f64) -> Option<f64> {
+    (current < ceiling).then(|| (current + USAGE_LIMIT_STEP).min(ceiling))
+}
+
+/// Legal region lists for every vertex.  All placement restrictions are
+/// represented here, before variables are allocated.
+fn candidate_domains(
+    graph: &FloorGraph,
+    device: &Device,
+    regions: &[Coor],
+    usage_limit: f64,
+    parents: Option<&BTreeMap<String, Coor>>,
+    constraints: &PlacementConstraints,
+) -> Result<Vec<Vec<Coor>>, IlpError> {
+    let device_has_hbm = device
+        .slots
+        .iter()
+        .any(|slot| slot.tags.iter().any(|tag| is_hbm_tag(tag)));
+    let mut domains = Vec::with_capacity(graph.vertices().len());
+
+    for vertex in graph.vertices() {
+        let parent = parents.and_then(|assignments| assignments.get(&vertex.name));
+        let target = constraints.vertex_regions.get(&vertex.name);
+        let mut candidates = Vec::new();
+
+        for &region in regions {
+            if let Some(parent) = parent {
+                if !region.is_inside(parent) {
+                    continue;
+                }
+            }
+            if let Some(target) = target {
+                if !region.has_overlap(target) {
+                    continue;
+                }
+            }
+            if device_has_hbm && vertex.needs_hbm && !region_has_hbm(device, &region) {
+                continue;
+            }
+
+            let total = device
+                .island_area(&region)
+                .ok_or_else(|| IlpError::InvalidRegion(region.region_name()))?;
+            let available = scaled_area(total, usage_limit);
+            if area_is_empty(&available) || !area_fits(vertex.area, available) {
+                continue;
+            }
+            candidates.push(region);
+        }
+
+        candidates.sort_unstable();
+        candidates.dedup();
+        if candidates.is_empty() {
+            return Err(IlpError::NoCandidates {
+                vertex: vertex.name.clone(),
+            });
+        }
+        domains.push(candidates);
+    }
+
+    Ok(domains)
+}
+
+fn is_hbm_tag(tag: &str) -> bool {
+    tag == "HBM" || tag.starts_with("HBM[")
+}
+
+fn region_has_hbm(device: &Device, region: &Coor) -> bool {
+    region.all_slot_coors().into_iter().any(|(x, y)| {
+        device
+            .slot(x, y)
+            .is_some_and(|slot| slot.tags.iter().any(|tag| is_hbm_tag(tag)))
+    })
+}
+
+fn scaled_area(area: Area, limit: f64) -> Area {
+    Area {
+        lut: scaled_amount(area.lut, limit),
+        ff: scaled_amount(area.ff, limit),
+        bram_18k: scaled_amount(area.bram_18k, limit),
+        dsp: scaled_amount(area.dsp, limit),
+        uram: scaled_amount(area.uram, limit),
+    }
+}
+
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_precision_loss,
+    reason = "the formulation converts the positive scaled resource amount with int(), i.e. floor"
+)]
+fn scaled_amount(amount: u64, limit: f64) -> u64 {
+    (amount as f64 * limit) as u64
+}
+
+fn area_is_empty(area: &Area) -> bool {
+    Resource::ALL
+        .into_iter()
+        .all(|resource| resource.amount(area) == 0)
+}
+
+fn area_fits(required: Area, available: Area) -> bool {
+    Resource::ALL
+        .into_iter()
+        .all(|resource| resource.amount(&required) <= resource.amount(&available))
+}
+
+fn complete_assignment(
+    graph: &FloorGraph,
+    placements: &BTreeMap<String, Coor>,
+) -> Result<Assignment, IlpError> {
+    let mut regions = BTreeMap::new();
+    let mut slot_usage: BTreeMap<String, Area> = BTreeMap::new();
+    for vertex in graph.vertices() {
+        let slot = placements.get(&vertex.name).ok_or_else(|| {
+            IlpError::InvalidSolution(format!("vertex `{}` is missing", vertex.name))
+        })?;
+        if slot.width() != 1 || slot.height() != 1 {
+            return Err(IlpError::InvalidSolution(format!(
+                "vertex `{}` remained in non-atomic region `{}`",
+                vertex.name,
+                slot.region_name()
+            )));
+        }
+        let region = slot.region_name();
+        if regions
+            .insert(vertex.name.clone(), region.clone())
+            .is_some()
+        {
+            return Err(IlpError::InvalidSolution(format!(
+                "duplicate vertex name `{}`",
+                vertex.name
+            )));
+        }
+        let entry = slot_usage.entry(region).or_default();
+        *entry = add_area(*entry, vertex.area);
+    }
+    Ok(Assignment {
+        regions,
+        slot_usage,
+    })
+}
+
+/// A built iteration's LP plus sparse assignment-variable handles.
 struct FloorplanModel {
     lp: LpModel,
-    /// `x[vertex][slot]` assignment binaries.
+    /// `x[vertex][candidate_index]`.
     x: Vec<Vec<LpVar>>,
 }
 
@@ -91,282 +544,471 @@ impl FloorplanModel {
     fn build(
         graph: &FloorGraph,
         device: &Device,
-        slots: &[Coor],
+        domains: &[Vec<Coor>],
         cuts: &[Cut],
         usage_limit: f64,
-    ) -> Self {
+        constraints: &PlacementConstraints,
+    ) -> Result<Self, IlpError> {
+        debug_assert_eq!(
+            graph.vertices().len(),
+            domains.len(),
+            "every graph vertex needs one sparse candidate row"
+        );
         let mut lp = LpModel::new(Sense::Minimize);
-        let x = add_assignment_vars(&mut lp, graph, slots);
-        let y = add_routing_vars(&mut lp, graph.edges().len(), slots.len());
-        add_coupling(&mut lp, graph, &x, &y, slots.len());
-        add_pinning(&mut lp, graph, device, &x);
-        add_capacity(&mut lp, graph, device, slots, usage_limit, &x);
-        add_cuts(&mut lp, graph, slots, cuts, &y);
-        add_objective(&mut lp, graph, device, slots, &y);
-        Self { lp, x }
+        let x = add_assignment_vars(&mut lp, graph, domains);
+        let y = add_edge_vars(&mut lp, graph, domains);
+        add_coupling(&mut lp, graph, domains, &x, &y);
+        add_resource_constraints(
+            &mut lp,
+            graph,
+            device,
+            domains,
+            usage_limit,
+            constraints,
+            &x,
+        )?;
+        add_cut_constraints(&mut lp, graph, domains, cuts, &y);
+        add_objective(&mut lp, graph, device, domains, &y)?;
+        Ok(Self { lp, x })
     }
 
-    /// Read the placement out of a solved model.
     fn read_back(
         &self,
         graph: &FloorGraph,
-        slots: &[Coor],
+        domains: &[Vec<Coor>],
         solution: &crate::solver::LpSolution,
-    ) -> Assignment {
-        let mut regions = BTreeMap::new();
-        let mut slot_usage: BTreeMap<String, Area> = BTreeMap::new();
+    ) -> Result<BTreeMap<String, Coor>, IlpError> {
+        let mut assignments = BTreeMap::new();
 
         for (vi, vertex) in graph.vertices().iter().enumerate() {
-            let slot_index = (0..slots.len())
-                .find(|&si| solution.is_set(self.x[vi][si]))
-                .unwrap_or(0);
-            let region = slots[slot_index].region_name();
-            regions.insert(vertex.name.clone(), region.clone());
-            let entry = slot_usage.entry(region).or_default();
-            *entry = add_area(*entry, vertex.area);
+            let mut selected = Vec::new();
+            let mut values = Vec::with_capacity(self.x[vi].len());
+            for (ci, &var) in self.x[vi].iter().enumerate() {
+                let value = solution.values.get(&var).copied().ok_or_else(|| {
+                    IlpError::InvalidSolution(format!(
+                        "solver result omitted assignment variable x{} for vertex `{}`",
+                        var.0, vertex.name
+                    ))
+                })?;
+                values.push(value);
+                if !value.is_finite()
+                    || (value - value.round()).abs() > INTEGRAL_TOLERANCE
+                    || !(-INTEGRAL_TOLERANCE..=1.0 + INTEGRAL_TOLERANCE).contains(&value)
+                {
+                    return Err(IlpError::InvalidSolution(format!(
+                        "vertex `{}` has non-binary values {values:?}",
+                        vertex.name
+                    )));
+                }
+                if (value - 1.0).abs() <= INTEGRAL_TOLERANCE {
+                    selected.push(ci);
+                }
+            }
+            if selected.len() != 1 {
+                return Err(IlpError::InvalidSolution(format!(
+                    "vertex `{}` must select exactly one candidate, got {values:?}",
+                    vertex.name
+                )));
+            }
+            if assignments
+                .insert(vertex.name.clone(), domains[vi][selected[0]])
+                .is_some()
+            {
+                return Err(IlpError::InvalidSolution(format!(
+                    "duplicate vertex name `{}`",
+                    vertex.name
+                )));
+            }
         }
 
-        Assignment {
-            regions,
-            slot_usage,
-        }
+        Ok(assignments)
     }
 }
 
-/// `x[v][s]` binaries and the "each vertex in exactly one slot" constraints.
-fn add_assignment_vars(lp: &mut LpModel, graph: &FloorGraph, slots: &[Coor]) -> Vec<Vec<LpVar>> {
-    let mut x: Vec<Vec<LpVar>> = Vec::with_capacity(graph.vertices().len());
-    for vertex in graph.vertices() {
-        let row: Vec<LpVar> = slots
-            .iter()
-            .map(|slot| lp.add_binary(format!("x_{}_{}", vertex.name, slot.region_name())))
-            .collect();
-        x.push(row);
-    }
-    for (vi, row) in x.iter().enumerate() {
-        lp.add_constraint(
-            format!("assign_{vi}"),
-            LinExpr::sum(row.iter().map(|&var| (1.0, var))),
-            Comparison::Eq,
-            1.0,
-        );
-    }
-    x
-}
-
-/// Pin every M-AXI-bearing vertex to a memory-bearing slot.
-///
-/// On u280 the HBM controllers sit in SLR0, so an mmap reader placed elsewhere
-/// pays a wide, unregistered die crossing on its M-AXI bundle — exactly what
-/// caps Fmax on HBM designs. We forbid such a vertex from landing on any slot
-/// the device table does not tag `HBM` by fixing its assignment binaries there
-/// to zero. Devices with no `HBM`-tagged slot (or graphs with no mmap vertex)
-/// leave the model untouched.
-fn add_pinning(lp: &mut LpModel, graph: &FloorGraph, device: &Device, x: &[Vec<LpVar>]) {
-    let is_hbm_slot: Vec<bool> = device
-        .slots
+/// Sparse `x[v][s]` binaries and redundant one-hot rows.
+fn add_assignment_vars(
+    lp: &mut LpModel,
+    graph: &FloorGraph,
+    domains: &[Vec<Coor>],
+) -> Vec<Vec<LpVar>> {
+    graph
+        .vertices()
         .iter()
-        .map(|slot| slot.tags.iter().any(|tag| tag == "HBM"))
-        .collect();
-    if !is_hbm_slot.iter().any(|&hbm| hbm) {
-        return; // device exposes no HBM row — nothing to pin against
-    }
-    for (vi, vertex) in graph.vertices().iter().enumerate() {
-        if !vertex.needs_hbm {
-            continue;
+        .enumerate()
+        .map(|(vi, vertex)| {
+            let row: Vec<LpVar> = domains[vi]
+                .iter()
+                .map(|region| lp.add_binary(format!("x_{}_{}", vertex.name, region.region_name())))
+                .collect();
+            lp.add_constraint(
+                format!("vertex_{}", vertex.name),
+                LinExpr::sum(row.iter().map(|&var| (1.0, var))),
+                Comparison::Eq,
+                1.0,
+            );
+            row
+        })
+        .collect()
+}
+
+/// Sparse `y[e][src_candidate][dst_candidate]` binaries.
+fn add_edge_vars(
+    lp: &mut LpModel,
+    graph: &FloorGraph,
+    domains: &[Vec<Coor>],
+) -> Vec<Vec<Vec<LpVar>>> {
+    graph
+        .placement_edges()
+        .iter()
+        .enumerate()
+        .map(|(ei, edge)| {
+            let plane: Vec<Vec<LpVar>> = domains[edge.src]
+                .iter()
+                .enumerate()
+                .map(|(src_ci, _)| {
+                    domains[edge.dst]
+                        .iter()
+                        .enumerate()
+                        .map(|(dst_ci, _)| lp.add_binary(format!("y_{ei}_{src_ci}_{dst_ci}")))
+                        .collect()
+                })
+                .collect();
+            lp.add_constraint(
+                format!("route_{ei}"),
+                LinExpr::sum(plane.iter().flatten().map(|&var| (1.0, var))),
+                Comparison::Eq,
+                1.0,
+            );
+            plane
+        })
+        .collect()
+}
+
+/// Couple every edge route to the sparse source and destination one-hot rows.
+fn add_coupling(
+    lp: &mut LpModel,
+    graph: &FloorGraph,
+    domains: &[Vec<Coor>],
+    x: &[Vec<LpVar>],
+    y: &[Vec<Vec<LpVar>>],
+) {
+    for (ei, edge) in graph.placement_edges().iter().enumerate() {
+        for src_ci in 0..domains[edge.src].len() {
+            let mut terms: Vec<(f64, LpVar)> =
+                y[ei][src_ci].iter().map(|&var| (1.0, var)).collect();
+            terms.push((-1.0, x[edge.src][src_ci]));
+            lp.add_constraint(
+                format!("edge_{ei}_src_{src_ci}"),
+                LinExpr::sum(terms),
+                Comparison::Eq,
+                0.0,
+            );
         }
-        for (si, &hbm) in is_hbm_slot.iter().enumerate() {
-            if !hbm {
+
+        for dst_ci in 0..domains[edge.dst].len() {
+            let mut terms: Vec<(f64, LpVar)> = y[ei].iter().map(|row| (1.0, row[dst_ci])).collect();
+            terms.push((-1.0, x[edge.dst][dst_ci]));
+            lp.add_constraint(
+                format!("edge_{ei}_dst_{dst_ci}"),
+                LinExpr::sum(terms),
+                Comparison::Eq,
+                0.0,
+            );
+        }
+    }
+}
+
+fn add_resource_constraints(
+    lp: &mut LpModel,
+    graph: &FloorGraph,
+    device: &Device,
+    domains: &[Vec<Coor>],
+    usage_limit: f64,
+    constraints: &PlacementConstraints,
+    x: &[Vec<LpVar>],
+) -> Result<(), IlpError> {
+    let active_regions: BTreeSet<Coor> = domains.iter().flatten().copied().collect();
+    for region in active_regions {
+        let total = device
+            .island_area(&region)
+            .ok_or_else(|| IlpError::InvalidRegion(region.region_name()))?;
+        for resource in Resource::ALL {
+            let terms: Vec<(f64, LpVar)> = graph
+                .vertices()
+                .iter()
+                .enumerate()
+                .filter_map(|(vi, vertex)| {
+                    let ci = domains[vi]
+                        .iter()
+                        .position(|candidate| *candidate == region)?;
+                    Some((u64_as_f64(resource.amount(&vertex.area)), x[vi][ci]))
+                })
+                .collect();
+
+            let max_rhs = lookup_limit(&constraints.max_resource_limits, &region, resource)
+                .map_or_else(
+                    || u64_as_f64(scaled_amount(resource.amount(&total), usage_limit)),
+                    |limit| u64_as_f64(resource.amount(&total)) * limit,
+                );
+            lp.add_constraint(
+                format!("node_{}_{}_usage", region.region_name(), resource.name()),
+                LinExpr::sum(terms.iter().copied()),
+                Comparison::Le,
+                max_rhs,
+            );
+
+            if let Some(limit) = lookup_limit(&constraints.min_resource_limits, &region, resource) {
+                let min_rhs = u64_as_f64(resource.amount(&total)) * limit;
+                if min_rhs > 0.0 && terms.iter().all(|(coef, _)| *coef == 0.0) {
+                    return Err(IlpError::ImpossibleMinimum {
+                        region: region.region_name(),
+                        resource: resource.name(),
+                    });
+                }
                 lp.add_constraint(
-                    format!("pin_{vi}_{si}"),
-                    LinExpr::sum([(1.0, x[vi][si])]),
-                    Comparison::Eq,
-                    0.0,
+                    format!("node_{}_{}_usage_ge", region.region_name(), resource.name()),
+                    LinExpr::sum(terms),
+                    Comparison::Ge,
+                    min_rhs,
                 );
             }
         }
     }
+    Ok(())
 }
 
-/// `y[e][a][b]` directed routing binaries and the "each edge one route"
-/// constraints.
-fn add_routing_vars(lp: &mut LpModel, edge_count: usize, s_count: usize) -> Vec<Vec<Vec<LpVar>>> {
-    let mut y: Vec<Vec<Vec<LpVar>>> = Vec::with_capacity(edge_count);
-    for ei in 0..edge_count {
-        let plane: Vec<Vec<LpVar>> = (0..s_count)
-            .map(|a| {
-                (0..s_count)
-                    .map(|b| lp.add_binary(format!("y_{ei}_{a}_{b}")))
-                    .collect()
+fn lookup_limit(limits: &RegionResourceLimits, region: &Coor, resource: Resource) -> Option<f64> {
+    let canonical = region.region_name();
+    limits
+        .get(&canonical)
+        .and_then(|by_resource| by_resource.get(&resource))
+        .copied()
+        .or_else(|| {
+            limits.iter().find_map(|(name, by_resource)| {
+                (name.replace(':', "_TO_") == canonical)
+                    .then(|| by_resource.get(&resource).copied())
+                    .flatten()
             })
-            .collect();
-        y.push(plane);
-    }
-    for (ei, plane) in y.iter().enumerate() {
-        lp.add_constraint(
-            format!("route_{ei}"),
-            LinExpr::sum(plane.iter().flatten().map(|&var| (1.0, var))),
-            Comparison::Eq,
-            1.0,
-        );
-    }
-    y
+        })
 }
 
-/// Couple each edge's route to its endpoints' placement: the route leaves
-/// src(e)'s slot and arrives at dst(e)'s slot.
-fn add_coupling(
+/// Per-cut wire constraint over only the sparse route variables that exist.
+fn add_cut_constraints(
     lp: &mut LpModel,
     graph: &FloorGraph,
-    x: &[Vec<LpVar>],
-    y: &[Vec<Vec<LpVar>>],
-    s_count: usize,
-) {
-    for (ei, edge) in graph.edges().iter().enumerate() {
-        for s in 0..s_count {
-            let mut src_terms: Vec<(f64, LpVar)> =
-                (0..s_count).map(|b| (1.0, y[ei][s][b])).collect();
-            src_terms.push((-1.0, x[edge.src][s]));
-            lp.add_constraint(
-                format!("csrc_{ei}_{s}"),
-                LinExpr::sum(src_terms),
-                Comparison::Eq,
-                0.0,
-            );
-
-            let mut dst_terms: Vec<(f64, LpVar)> =
-                (0..s_count).map(|a| (1.0, y[ei][a][s])).collect();
-            dst_terms.push((-1.0, x[edge.dst][s]));
-            lp.add_constraint(
-                format!("cdst_{ei}_{s}"),
-                LinExpr::sum(dst_terms),
-                Comparison::Eq,
-                0.0,
-            );
-        }
-    }
-}
-
-/// Per-slot, per-resource capacity: `Σ_v area(v)·x[v][s] ≤ cap·usage_limit`.
-fn add_capacity(
-    lp: &mut LpModel,
-    graph: &FloorGraph,
-    device: &Device,
-    slots: &[Coor],
-    usage_limit: f64,
-    x: &[Vec<LpVar>],
-) {
-    for (si, slot_coor) in slots.iter().enumerate() {
-        let slot = device
-            .slot(slot_coor.dl_x, slot_coor.dl_y)
-            .expect("candidate slot exists");
-        for resource in Resource::ALL {
-            let capacity = to_f64(resource.amount(&slot.area)) * usage_limit;
-            let terms = graph
-                .vertices()
-                .iter()
-                .enumerate()
-                .map(|(vi, vertex)| (to_f64(resource.amount(&vertex.area)), x[vi][si]));
-            lp.add_constraint(
-                format!("cap_{}_{}", slot_coor.region_name(), resource.name()),
-                LinExpr::sum(terms),
-                Comparison::Le,
-                capacity.floor(),
-            );
-        }
-    }
-}
-
-/// Per-cut wire crossing: `Σ_e width(e)·(crossings either direction) ≤ cap`.
-fn add_cuts(
-    lp: &mut LpModel,
-    graph: &FloorGraph,
-    slots: &[Coor],
+    domains: &[Vec<Coor>],
     cuts: &[Cut],
     y: &[Vec<Vec<LpVar>>],
 ) {
-    let index_of = |coor: &Coor| slots.iter().position(|s| s == coor);
     for cut in cuts {
-        let lhs: Vec<usize> = cut.lhs.iter().filter_map(index_of).collect();
-        let rhs: Vec<usize> = cut.rhs.iter().filter_map(index_of).collect();
-        let mut terms: Vec<(f64, LpVar)> = Vec::new();
-        for (ei, edge) in graph.edges().iter().enumerate() {
-            let width = f64::from(edge.width);
-            for &a in &lhs {
-                for &b in &rhs {
-                    terms.push((width, y[ei][a][b]));
-                    terms.push((width, y[ei][b][a]));
+        let lhs: BTreeSet<Coor> = cut.lhs.iter().copied().collect();
+        let rhs: BTreeSet<Coor> = cut.rhs.iter().copied().collect();
+        let mut terms = Vec::new();
+        for (ei, edge) in graph.placement_edges().iter().enumerate() {
+            for (src_ci, src_region) in domains[edge.src].iter().enumerate() {
+                for (dst_ci, dst_region) in domains[edge.dst].iter().enumerate() {
+                    let crosses = (lhs.contains(src_region) && rhs.contains(dst_region))
+                        || (rhs.contains(src_region) && lhs.contains(dst_region));
+                    if crosses {
+                        terms.push((f64::from(edge.width), y[ei][src_ci][dst_ci]));
+                    }
                 }
             }
         }
         lp.add_constraint(
-            format!("cut_{}", cut.name),
+            format!("cut_{}_capacity", cut.name),
             LinExpr::sum(terms),
             Comparison::Le,
-            to_f64(cut.capacity),
+            u64_as_f64(cut.capacity),
         );
     }
 }
 
-/// Objective: `min Σ_e Σ_{a,b} width(e)·distance(a,b)·y[e][a][b] + 1`.
+/// Width-weighted adjusted centroid distance plus the formulation's constant
+/// one.
 fn add_objective(
     lp: &mut LpModel,
     graph: &FloorGraph,
     device: &Device,
-    slots: &[Coor],
+    domains: &[Vec<Coor>],
     y: &[Vec<Vec<LpVar>>],
-) {
-    let centroids: Vec<(i64, i64)> = slots.iter().map(|s| centroid(device, s)).collect();
-    let mut objective: Vec<(f64, LpVar)> = Vec::new();
-    for (ei, edge) in graph.edges().iter().enumerate() {
-        let width = f64::from(edge.width);
-        for (a, &centroid_a) in centroids.iter().enumerate() {
-            for (b, &centroid_b) in centroids.iter().enumerate() {
-                let dist = penalized_distance(centroid_a, centroid_b, VERTICAL_DIST_PENALTY);
-                if dist != 0 {
-                    objective.push((width * to_f64(dist_abs(dist)), y[ei][a][b]));
+) -> Result<(), IlpError> {
+    let mut objective = Vec::new();
+    for (ei, edge) in graph.placement_edges().iter().enumerate() {
+        for (src_ci, src) in domains[edge.src].iter().enumerate() {
+            let src_centroid = centroid_twice(device, src)?;
+            for (dst_ci, dst) in domains[edge.dst].iter().enumerate() {
+                let dst_centroid = centroid_twice(device, dst)?;
+                let distance_twice = (src_centroid.0 - dst_centroid.0).abs()
+                    + VERTICAL_DIST_PENALTY * (src_centroid.1 - dst_centroid.1).abs();
+                if distance_twice != 0 {
+                    let coefficient = f64::from(edge.width) * i64_as_f64(distance_twice) / 2.0;
+                    objective.push((coefficient, y[ei][src_ci][dst_ci]));
                 }
             }
         }
     }
     lp.set_objective(LinExpr::sum(objective).plus_constant(1.0));
+    Ok(())
 }
 
-/// A slot's centroid, from the device table.
-fn centroid(device: &Device, slot: &Coor) -> (i64, i64) {
-    let s = device.slot(slot.dl_x, slot.dl_y).expect("slot exists");
-    (s.centroid_x, s.centroid_y)
+/// Twice the exact midpoint, so half-integer rectangular centroids remain
+/// exact until the final LP coefficient conversion.
+fn centroid_twice(device: &Device, region: &Coor) -> Result<(i64, i64), IlpError> {
+    let dl = device
+        .slot(region.dl_x, region.dl_y)
+        .ok_or_else(|| IlpError::InvalidRegion(region.region_name()))?;
+    let ur = device
+        .slot(region.ur_x, region.ur_y)
+        .ok_or_else(|| IlpError::InvalidRegion(region.region_name()))?;
+    Ok((dl.centroid_x + ur.centroid_x, dl.centroid_y + ur.centroid_y))
 }
 
-/// `penalized_distance` is non-negative (both terms are `abs`), so this is a
-/// total function into `u64` for the objective coefficient.
-fn dist_abs(distance: i64) -> u64 {
-    u64::try_from(distance).unwrap_or(0)
+#[allow(
+    clippy::cast_precision_loss,
+    reason = "FPGA resource and cut coefficients are small exact integers"
+)]
+fn u64_as_f64(value: u64) -> f64 {
+    value as f64
+}
+
+#[allow(
+    clippy::cast_precision_loss,
+    reason = "device-grid centroid distances are small exact integers"
+)]
+fn i64_as_f64(value: i64) -> f64 {
+    value as f64
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::device::select::select_device;
-    use crate::solver::CbcSolver;
+    use std::collections::HashMap;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Mutex;
 
-    /// Build a flat placement, skipping the test when `cbc` is unavailable.
-    fn plan(graph: &FloorGraph, device: &Device) -> Option<Assignment> {
-        let opts = SolveOpts {
-            threads: Some(1),
-            ..SolveOpts::default()
-        };
-        match floorplan_flat(graph, device, DEFAULT_USAGE_LIMIT, &CbcSolver::new(), &opts) {
-            Ok(assignment) => Some(assignment),
-            Err(IlpError::Solver(SolverError::Spawn { .. })) => {
-                eprintln!("skipping: cbc not found");
-                None
+    use super::*;
+    use crate::device::model::{DirCaps, DirRegions, Slot};
+    use crate::device::select::select_device;
+    use crate::solver::{LpSolution, VarKind};
+
+    fn named_terms(model: &LpModel, expr: &LinExpr) -> BTreeMap<String, f64> {
+        let mut terms = BTreeMap::new();
+        for &(coefficient, var) in &expr.terms {
+            let index = usize::try_from(var.0).expect("variable index fits usize");
+            let label = model.vars[index].label.clone();
+            *terms.entry(label).or_insert(0.0) += coefficient;
+        }
+        terms
+    }
+
+    fn assert_row<'a>(
+        model: &LpModel,
+        name: &str,
+        op: Comparison,
+        rhs: f64,
+        expected_terms: impl IntoIterator<Item = (f64, &'a str)>,
+    ) {
+        let row = model
+            .constraints
+            .iter()
+            .find(|row| row.name == name)
+            .unwrap_or_else(|| panic!("missing model row `{name}`"));
+        assert_eq!(row.op, op, "comparison drifted for `{name}`");
+        assert_eq!(
+            row.rhs.to_bits(),
+            rhs.to_bits(),
+            "right-hand side drifted for `{name}`"
+        );
+        assert_eq!(
+            named_terms(model, &row.expr),
+            expected_terms
+                .into_iter()
+                .map(|(coefficient, label)| (label.to_string(), coefficient))
+                .collect(),
+            "coefficients drifted for `{name}`"
+        );
+    }
+
+    /// A deterministic test solver that selects a requested region suffix for
+    /// each x row (or the first candidate) and sets all remaining variables to
+    /// zero.  Placement readback deliberately does not rely on y values.
+    struct ChooseSolver {
+        preferred: Mutex<Vec<String>>,
+    }
+
+    impl ChooseSolver {
+        fn first() -> Self {
+            Self {
+                preferred: Mutex::new(Vec::new()),
             }
-            Err(other) => panic!("floorplan failed: {other}"),
+        }
+
+        fn with_preferences(preferred: Vec<String>) -> Self {
+            Self {
+                preferred: Mutex::new(preferred),
+            }
         }
     }
 
-    /// A two-task design connected by one FIFO.
+    impl Solver for ChooseSolver {
+        fn solve(&self, model: &LpModel, _opts: &SolveOpts) -> Result<LpSolution, SolverError> {
+            let preferred = self.preferred.lock().expect("lock");
+            let mut first_by_vertex: BTreeMap<String, LpVar> = BTreeMap::new();
+            let mut chosen_by_vertex: BTreeMap<String, LpVar> = BTreeMap::new();
+            for (index, var) in model.vars.iter().enumerate() {
+                let Some(rest) = var.label.strip_prefix("x_") else {
+                    continue;
+                };
+                let Some(marker) = rest.find("_SLOT_X") else {
+                    continue;
+                };
+                let vertex = rest[..marker].to_string();
+                let handle = LpVar(u32::try_from(index).expect("index"));
+                first_by_vertex.entry(vertex.clone()).or_insert(handle);
+                if preferred.iter().any(|suffix| var.label.ends_with(suffix)) {
+                    chosen_by_vertex.insert(vertex, handle);
+                }
+            }
+            let mut values: HashMap<LpVar, f64> = (0..model.num_vars())
+                .map(|index| (LpVar(u32::try_from(index).expect("index")), 0.0))
+                .collect();
+            for (vertex, fallback) in first_by_vertex {
+                let selected = chosen_by_vertex.get(&vertex).copied().unwrap_or(fallback);
+                values.insert(selected, 1.0);
+            }
+            Ok(LpSolution {
+                status: LpStatus::Optimal,
+                objective: 0.0,
+                values,
+            })
+        }
+    }
+
+    struct StatusSolver {
+        status: LpStatus,
+        calls: AtomicUsize,
+    }
+
+    impl StatusSolver {
+        fn new(status: LpStatus) -> Self {
+            Self {
+                status,
+                calls: AtomicUsize::new(0),
+            }
+        }
+    }
+
+    impl Solver for StatusSolver {
+        fn solve(&self, _model: &LpModel, _opts: &SolveOpts) -> Result<LpSolution, SolverError> {
+            self.calls.fetch_add(1, Ordering::Relaxed);
+            Ok(LpSolution {
+                status: self.status,
+                objective: 0.0,
+                values: HashMap::new(),
+            })
+        }
+    }
+
     fn vadd_floor_graph() -> FloorGraph {
         let json = r#"{
             "cflags": [], "top": "VecAdd", "target": "xilinx-hls",
@@ -393,122 +1035,707 @@ mod tests {
         FloorGraph::build(&flat).expect("floor graph")
     }
 
-    #[test]
-    fn vadd_places_every_instance_in_one_region() {
-        let device = select_device("u280").expect("u280");
-        let graph = vadd_floor_graph();
-        let Some(assignment) = plan(&graph, &device) else {
-            return;
-        };
-
-        for vertex in graph.vertices() {
-            let region = assignment.regions.get(&vertex.name).expect("region");
-            assert!(region.starts_with("SLOT_X"), "{region} is a slot tag");
+    fn parallel_floor_graph(stream_count: usize) -> FloorGraph {
+        let mut producer_args = serde_json::Map::new();
+        let mut consumer_args = serde_json::Map::new();
+        let mut producer_ports = Vec::new();
+        let mut consumer_ports = Vec::new();
+        let mut fifos = serde_json::Map::new();
+        for index in 0..stream_count {
+            let port = format!("p{index}");
+            let fifo = format!("q{index}");
+            producer_args.insert(
+                port.clone(),
+                serde_json::json!({"arg": fifo.clone(), "cat": "ostream"}),
+            );
+            consumer_args.insert(
+                port.clone(),
+                serde_json::json!({"arg": fifo.clone(), "cat": "istream"}),
+            );
+            producer_ports.push(
+                serde_json::json!({"cat": "ostream", "name": port, "type": "int", "width": 32}),
+            );
+            consumer_ports.push(
+                serde_json::json!({"cat": "istream", "name": port, "type": "int", "width": 32}),
+            );
+            fifos.insert(
+                fifo,
+                serde_json::json!({
+                    "depth": 2,
+                    "produced_by": ["Producer", 0],
+                    "consumed_by": ["Consumer", 0]
+                }),
+            );
         }
-        // Minimizing wire crossing co-locates the whole tiny design.
-        let regions: std::collections::BTreeSet<_> = assignment.regions.values().collect();
-        assert_eq!(regions.len(), 1, "the whole design fits and co-locates");
-    }
-
-    #[test]
-    fn oversized_design_is_infeasible() {
-        // A task larger than any single slot's derated LUT capacity cannot be
-        // placed at any usage limit.
-        let json = r#"{
-            "cflags": [], "top": "Big", "target": "xilinx-hls",
+        let design = serde_json::json!({
+            "cflags": [],
+            "top": "Top",
+            "target": "xilinx-hls",
             "tasks": {
-                "Big": {"readable_name": "Big", "code": "void Big() {}", "level": "upper", "synth": "hls",
-                    "ports": [], "tasks": {"H": [{"args": {}, "step": 0}]}, "fifos": {}},
-                "H": {"readable_name": "H", "code": "void H() {}", "level": "lower", "synth": "hls",
-                    "ports": [], "self_area": {"LUT": 999999999}}
+                "Top": {
+                    "readable_name": "Top", "code": "void Top() {}",
+                    "level": "upper", "synth": "hls", "ports": [],
+                    "tasks": {
+                        "Producer": [{"args": producer_args, "step": 0}],
+                        "Consumer": [{"args": consumer_args, "step": 0}]
+                    },
+                    "fifos": fifos
+                },
+                "Producer": {
+                    "readable_name": "Producer", "code": "void Producer() {}",
+                    "level": "lower", "synth": "hls", "ports": producer_ports
+                },
+                "Consumer": {
+                    "readable_name": "Consumer", "code": "void Consumer() {}",
+                    "level": "lower", "synth": "hls", "ports": consumer_ports
+                }
             }
-        }"#;
-        let graph = tapa_ir::TaskGraph::from_json(json).expect("parse");
+        });
+        let graph = tapa_ir::TaskGraph::from_json(&design.to_string()).expect("parse");
         let flat = tapa_ir::flatten(&graph).expect("flatten");
-        let fg = FloorGraph::build(&flat).expect("floor graph");
-        let device = select_device("u280").expect("u280");
-        let opts = SolveOpts {
-            threads: Some(1),
-            ..SolveOpts::default()
-        };
-        match floorplan_flat(&fg, &device, DEFAULT_USAGE_LIMIT, &CbcSolver::new(), &opts) {
-            Ok(_) => panic!("an oversized task must not place"),
-            Err(IlpError::Infeasible(_)) => {}
-            Err(IlpError::Solver(SolverError::Spawn { .. })) => eprintln!("skipping: no cbc"),
-            Err(other) => panic!("unexpected: {other}"),
+        FloorGraph::build(&flat).expect("floor graph")
+    }
+
+    fn single_task_floor_graph(lut: u64) -> FloorGraph {
+        let json = serde_json::json!({
+            "cflags": [],
+            "top": "Top",
+            "target": "xilinx-hls",
+            "tasks": {
+                "Top": {
+                    "readable_name": "Top",
+                    "code": "void Top() {}",
+                    "level": "upper",
+                    "synth": "hls",
+                    "ports": [],
+                    "tasks": {"A": [{"args": {}, "step": 0}]},
+                    "fifos": {}
+                },
+                "A": {
+                    "readable_name": "A",
+                    "code": "void A() {}",
+                    "level": "lower",
+                    "synth": "hls",
+                    "ports": [],
+                    "self_area": {"LUT": lut}
+                }
+            }
+        });
+        let graph = tapa_ir::TaskGraph::from_json(&json.to_string()).expect("parse");
+        let flat = tapa_ir::flatten(&graph).expect("flatten");
+        FloorGraph::build(&flat).expect("floor graph")
+    }
+
+    fn one_slot_device(lut: u64) -> Device {
+        Device {
+            key: "one-slot".to_string(),
+            part_num: "xcone".to_string(),
+            platform_name: None,
+            rows: 1,
+            cols: 1,
+            pp_dist: 1,
+            is_versal: false,
+            user_pblock_name: None,
+            slots: vec![Slot {
+                x: 0,
+                y: 0,
+                area: Area {
+                    lut,
+                    ..Area::default()
+                },
+                centroid_x: 0,
+                centroid_y: 0,
+                pblock_ranges: Vec::new(),
+                wire_cap: DirCaps::default(),
+                anchor: DirRegions::default(),
+                tags: Vec::new(),
+            }],
         }
     }
 
-    #[test]
-    fn mmap_readers_are_pinned_to_hbm_slots() {
-        let device = select_device("u280").expect("u280");
-        let hbm_regions: std::collections::BTreeSet<String> = device
-            .slots
-            .iter()
-            .filter(|slot| slot.tags.iter().any(|tag| tag == "HBM"))
-            .map(|slot| slot.coor().region_name())
-            .collect();
-        assert!(!hbm_regions.is_empty(), "u280 tags its SLR0 slots HBM");
+    fn two_slot_golden_device() -> Device {
+        let slot = |y, centroid_y| Slot {
+            x: 0,
+            y,
+            area: Area {
+                lut: 1_000,
+                ff: 1_000,
+                bram_18k: 100,
+                dsp: 100,
+                uram: 100,
+            },
+            centroid_x: 0,
+            centroid_y,
+            pblock_ranges: Vec::new(),
+            wire_cap: DirCaps::default(),
+            anchor: DirRegions::default(),
+            tags: Vec::new(),
+        };
+        Device {
+            key: "two-slot-golden".to_string(),
+            part_num: "xctoy".to_string(),
+            platform_name: None,
+            rows: 2,
+            cols: 1,
+            pp_dist: 1,
+            is_versal: false,
+            user_pblock_name: None,
+            slots: vec![slot(0, 0), slot(1, 150)],
+        }
+    }
 
-        // Two async_mmap readers each stream to a large compute task placed far
-        // from SLR0 by crossing minimization; pinning must still hold the
-        // readers in an HBM slot. `R*` bind a top-level M-AXI; `C*` do not.
+    fn two_slot_golden_model(graph: &FloorGraph) -> FloorplanModel {
+        let bottom = Coor::slot(0, 0);
+        let top = Coor::slot(0, 1);
+        FloorplanModel::build(
+            graph,
+            &two_slot_golden_device(),
+            &vec![vec![bottom, top]; graph.vertices().len()],
+            &[Cut {
+                name: "y=0".to_string(),
+                lhs: vec![bottom],
+                rhs: vec![top],
+                capacity: 34,
+            }],
+            DEFAULT_USAGE_LIMIT,
+            &PlacementConstraints::default(),
+        )
+        .expect("golden model")
+    }
+
+    fn mmap_floor_graph() -> FloorGraph {
         let json = r#"{
             "cflags": [], "top": "Top", "target": "xilinx-hls",
             "tasks": {
-                "Top": {
-                    "readable_name": "Top", "code": "void Top() {}", "level": "upper", "synth": "hls",
-                    "ports": [],
-                    "tasks": {
-                        "R": [
-                            {"args": {"m": {"arg": "mem0", "cat": "async_mmap"}, "o": {"arg": "f0", "cat": "ostream"}}, "step": 0},
-                            {"args": {"m": {"arg": "mem1", "cat": "async_mmap"}, "o": {"arg": "f1", "cat": "ostream"}}, "step": 0}
-                        ],
-                        "C": [
-                            {"args": {"i": {"arg": "f0", "cat": "istream"}}, "step": 0},
-                            {"args": {"i": {"arg": "f1", "cat": "istream"}}, "step": 0}
-                        ]
-                    },
-                    "fifos": {
-                        "f0": {"depth": 2, "consumed_by": ["C", 0], "produced_by": ["R", 0]},
-                        "f1": {"depth": 2, "consumed_by": ["C", 1], "produced_by": ["R", 1]}
-                    }
-                },
+                "Top": {"readable_name": "Top", "code": "void Top() {}", "level": "upper", "synth": "hls",
+                    "ports": [], "tasks": {
+                        "R": [{"args": {"m": {"arg": "mem", "cat": "async_mmap"}}, "step": 0}],
+                        "C": [{"args": {}, "step": 0}]}, "fifos": {}},
                 "R": {"readable_name": "R", "code": "void R() {}", "level": "lower", "synth": "hls",
-                    "ports": [
-                        {"cat": "async_mmap", "name": "m", "type": "ap_uint<512>*", "width": 512},
-                        {"cat": "ostream", "name": "o", "type": "ap_uint<512>", "width": 512}
-                    ],
+                    "ports": [{"cat": "async_mmap", "name": "m", "type": "ap_uint<512>*", "width": 512}],
                     "self_area": {"LUT": 400}},
                 "C": {"readable_name": "C", "code": "void C() {}", "level": "lower", "synth": "hls",
-                    "ports": [{"cat": "istream", "name": "i", "type": "ap_uint<512>", "width": 512}],
-                    "self_area": {"LUT": 120000}}
+                    "ports": [], "self_area": {"LUT": 400}}
             }
         }"#;
         let graph = tapa_ir::TaskGraph::from_json(json).expect("parse");
         let flat = tapa_ir::flatten(&graph).expect("flatten");
-        let fg = FloorGraph::build(&flat).expect("floor graph");
+        FloorGraph::build(&flat).expect("floor graph")
+    }
 
-        // The floor graph must flag both readers and neither consumer.
-        for vertex in fg.vertices() {
-            let expect_hbm = vertex.name.starts_with('R');
-            assert_eq!(
-                vertex.needs_hbm, expect_hbm,
-                "{} needs_hbm should be {expect_hbm}",
-                vertex.name
+    #[test]
+    fn canonical_placement_model_matches_expected_formulation() {
+        let graph = vadd_floor_graph();
+        let bottom = Coor::slot(0, 0);
+        let top = Coor::slot(0, 1);
+        let model = two_slot_golden_model(&graph);
+        let lp = &model.lp;
+
+        let bottom_name = bottom.region_name();
+        let top_name = top.region_name();
+        let producer_x = [format!("x_A_0_{bottom_name}"), format!("x_A_0_{top_name}")];
+        let consumer_x = [format!("x_B_0_{bottom_name}"), format!("x_B_0_{top_name}")];
+        let route_y = ["y_0_0_0", "y_0_0_1", "y_0_1_0", "y_0_1_1"];
+
+        assert_eq!(lp.sense, Sense::Minimize);
+        assert_eq!(lp.num_vars(), 8, "four sparse x plus four sparse y");
+        assert!(lp.vars.iter().all(|var| var.kind == VarKind::Binary
+            && var.lower.to_bits() == 0.0_f64.to_bits()
+            && var.upper.to_bits() == 1.0_f64.to_bits()));
+        assert_eq!(
+            lp.vars
+                .iter()
+                .map(|var| var.label.as_str())
+                .collect::<BTreeSet<_>>(),
+            producer_x
+                .iter()
+                .chain(&consumer_x)
+                .map(String::as_str)
+                .chain(route_y.iter().copied())
+                .collect()
+        );
+
+        assert_eq!(lp.num_constraints(), 18);
+        for (name, vars) in [("vertex_A_0", &producer_x), ("vertex_B_0", &consumer_x)] {
+            assert_row(
+                lp,
+                name,
+                Comparison::Eq,
+                1.0,
+                vars.iter().map(|label| (1.0, label.as_str())),
             );
         }
-
-        let Some(assignment) = plan(&fg, &device) else {
-            return;
-        };
-        for (name, region) in &assignment.regions {
-            if name.starts_with('R') {
-                assert!(
-                    hbm_regions.contains(region),
-                    "mmap reader {name} must be pinned to an HBM slot, landed in {region}",
-                );
-            }
+        assert_row(
+            lp,
+            "route_0",
+            Comparison::Eq,
+            1.0,
+            route_y.iter().map(|label| (1.0, *label)),
+        );
+        for (name, terms) in [
+            (
+                "edge_0_src_0",
+                [(1.0, route_y[0]), (1.0, route_y[1]), (-1.0, &producer_x[0])],
+            ),
+            (
+                "edge_0_src_1",
+                [(1.0, route_y[2]), (1.0, route_y[3]), (-1.0, &producer_x[1])],
+            ),
+            (
+                "edge_0_dst_0",
+                [(1.0, route_y[0]), (1.0, route_y[2]), (-1.0, &consumer_x[0])],
+            ),
+            (
+                "edge_0_dst_1",
+                [(1.0, route_y[1]), (1.0, route_y[3]), (-1.0, &consumer_x[1])],
+            ),
+        ] {
+            assert_row(lp, name, Comparison::Eq, 0.0, terms);
         }
+
+        assert_eq!(
+            lp.constraints
+                .iter()
+                .filter(|row| row.name.starts_with("node_"))
+                .count(),
+            10,
+            "five resource rows per active slot"
+        );
+        for (region, producer, consumer) in [
+            (&bottom_name, &producer_x[0], &consumer_x[0]),
+            (&top_name, &producer_x[1], &consumer_x[1]),
+        ] {
+            assert_row(
+                lp,
+                &format!("node_{region}_LUT_usage"),
+                Comparison::Le,
+                700.0,
+                [(100.0, producer.as_str()), (103.0, consumer.as_str())],
+            );
+        }
+        assert_row(
+            lp,
+            "cut_y=0_capacity",
+            Comparison::Le,
+            34.0,
+            [(35.0, route_y[1]), (35.0, route_y[2])],
+        );
+
+        assert_eq!(lp.objective.constant.to_bits(), 1.0_f64.to_bits());
+        assert_eq!(
+            named_terms(lp, &lp.objective),
+            BTreeMap::from([
+                (route_y[1].to_string(), 10_500.0),
+                (route_y[2].to_string(), 10_500.0),
+            ]),
+            "35-bit width times the vertically penalized 150-unit distance"
+        );
+    }
+
+    #[test]
+    fn parallel_streams_share_one_placement_edge_plane() {
+        let graph = parallel_floor_graph(2);
+        let model = two_slot_golden_model(&graph);
+        let route_y = ["y_0_0_0", "y_0_0_1", "y_0_1_0", "y_0_1_1"];
+
+        assert_eq!(graph.streams().len(), 2);
+        assert_eq!(graph.placement_edges().len(), 1);
+        assert_eq!(graph.placement_edges()[0].width, 70);
+        assert_eq!(
+            model
+                .lp
+                .vars
+                .iter()
+                .filter(|var| var.label.starts_with("y_"))
+                .count(),
+            4,
+            "one endpoint pair allocates one sparse y plane"
+        );
+        assert_row(
+            &model.lp,
+            "cut_y=0_capacity",
+            Comparison::Le,
+            34.0,
+            [(70.0, route_y[1]), (70.0, route_y[2])],
+        );
+        assert_eq!(
+            named_terms(&model.lp, &model.lp.objective),
+            BTreeMap::from([
+                (route_y[1].to_string(), 21_000.0),
+                (route_y[2].to_string(), 21_000.0),
+            ])
+        );
+    }
+
+    #[test]
+    fn sparse_domains_encode_connectivity_and_user_pins() {
+        let graph = mmap_floor_graph();
+        let device = select_device("u280").expect("u280");
+        let regions = atomic_regions(&device);
+        let mut constraints = PlacementConstraints::default();
+        constraints
+            .vertex_regions
+            .insert("C_0".to_string(), Coor::slot(1, 2));
+        let domains = candidate_domains(
+            &graph,
+            &device,
+            &regions,
+            DEFAULT_USAGE_LIMIT,
+            None,
+            &constraints,
+        )
+        .expect("domains");
+
+        let reader = graph.index_of("R_0").expect("reader");
+        assert_eq!(
+            domains[reader],
+            [Coor::slot(0, 0), Coor::slot(1, 0)],
+            "M-AXI connectivity is represented by an HBM candidate domain"
+        );
+        let compute = graph.index_of("C_0").expect("compute");
+        assert_eq!(domains[compute], [Coor::slot(1, 2)]);
+
+        let model = FloorplanModel::build(
+            &graph,
+            &device,
+            &domains,
+            &find_cuts_for_regions(&device, &regions),
+            DEFAULT_USAGE_LIMIT,
+            &constraints,
+        )
+        .expect("model");
+        let x_count = model
+            .lp
+            .vars
+            .iter()
+            .filter(|var| var.label.starts_with("x_"))
+            .count();
+        assert_eq!(x_count, 3, "two reader candidates plus one compute pin");
+
+        let stream_graph = vadd_floor_graph();
+        let a = stream_graph.index_of("A_0").expect("A");
+        let b = stream_graph.index_of("B_0").expect("B");
+        let mut sparse_domains = vec![Vec::new(); stream_graph.vertices().len()];
+        sparse_domains[a] = vec![Coor::slot(0, 0), Coor::slot(1, 0)];
+        sparse_domains[b] = vec![Coor::slot(0, 0), Coor::slot(1, 0)];
+        let sparse_model = FloorplanModel::build(
+            &stream_graph,
+            &device,
+            &sparse_domains,
+            &[],
+            DEFAULT_USAGE_LIMIT,
+            &PlacementConstraints::default(),
+        )
+        .expect("sparse model");
+        let y_count = sparse_model
+            .lp
+            .vars
+            .iter()
+            .filter(|var| var.label.starts_with("y_"))
+            .count();
+        assert_eq!(
+            y_count, 4,
+            "each edge allocates only src-domain × dst-domain route variables"
+        );
+    }
+
+    #[test]
+    fn multilevel_refinement_preserves_the_selected_parent_row() {
+        let graph = vadd_floor_graph();
+        let device = select_device("u280").expect("u280");
+        let solver = ChooseSolver::with_preferences(vec![
+            Coor::span(0, 2, 1, 2).region_name(),
+            Coor::slot(1, 2).region_name(),
+        ]);
+        let result = floorplan_multilevel(
+            &graph,
+            &device,
+            DEFAULT_USAGE_LIMIT,
+            &solver,
+            &SolveOpts::default(),
+        )
+        .expect("multilevel floorplan");
+        assert!(
+            result
+                .regions
+                .values()
+                .all(|region| region == &Coor::slot(1, 2).region_name()),
+            "second-pass candidates must remain within the first-pass row"
+        );
+    }
+
+    #[test]
+    fn readback_rejects_missing_and_fractional_assignments() {
+        let graph = vadd_floor_graph();
+        let device = select_device("u280").expect("u280");
+        let regions = [Coor::slot(0, 0), Coor::slot(1, 0)];
+        let domains = vec![regions.to_vec(); graph.vertices().len()];
+        let model = FloorplanModel::build(
+            &graph,
+            &device,
+            &domains,
+            &[],
+            DEFAULT_USAGE_LIMIT,
+            &PlacementConstraints::default(),
+        )
+        .expect("model");
+
+        let missing = LpSolution {
+            status: LpStatus::Optimal,
+            objective: 0.0,
+            values: HashMap::new(),
+        };
+        assert!(matches!(
+            model.read_back(&graph, &domains, &missing),
+            Err(IlpError::InvalidSolution(_))
+        ));
+
+        let mut values = HashMap::new();
+        for row in &model.x {
+            values.insert(row[0], 0.5);
+            values.insert(row[1], 0.5);
+        }
+        let fractional = LpSolution {
+            status: LpStatus::Optimal,
+            objective: 0.0,
+            values,
+        };
+        assert!(matches!(
+            model.read_back(&graph, &domains, &fractional),
+            Err(IlpError::InvalidSolution(_))
+        ));
+    }
+
+    #[test]
+    fn resource_overrides_use_total_region_capacity() {
+        let graph = vadd_floor_graph();
+        let device = select_device("u280").expect("u280");
+        let region = Coor::slot(0, 0);
+        let domains = vec![vec![region]; graph.vertices().len()];
+        let mut constraints = PlacementConstraints::default();
+        constraints
+            .max_resource_limits
+            .insert(region.region_name(), BTreeMap::from([(Resource::Lut, 0.5)]));
+        constraints
+            .min_resource_limits
+            .insert(region.region_name(), BTreeMap::from([(Resource::Lut, 0.1)]));
+        let model = FloorplanModel::build(
+            &graph,
+            &device,
+            &domains,
+            &[],
+            DEFAULT_USAGE_LIMIT,
+            &constraints,
+        )
+        .expect("model");
+        let total_lut = u64_as_f64(device.island_area(&region).expect("area").lut);
+        let max = model
+            .lp
+            .constraints
+            .iter()
+            .find(|constraint| {
+                constraint.name == format!("node_{}_LUT_usage", region.region_name())
+            })
+            .expect("max");
+        let min = model
+            .lp
+            .constraints
+            .iter()
+            .find(|constraint| constraint.name.ends_with("_LUT_usage_ge"))
+            .expect("min");
+        assert!(
+            (max.rhs - total_lut * 0.5).abs() < f64::EPSILON,
+            "slot-specific maximum is based on total, not globally derated, capacity"
+        );
+        assert!(
+            (min.rhs - total_lut * 0.1).abs() < f64::EPSILON,
+            "slot-specific minimum is based on total capacity"
+        );
+    }
+
+    #[test]
+    fn rectangular_centroid_coefficients_preserve_half_units() {
+        let mk_slot = |x, centroid_x| Slot {
+            x,
+            y: 0,
+            area: Area {
+                lut: 1000,
+                ..Area::default()
+            },
+            centroid_x,
+            centroid_y: 0,
+            pblock_ranges: Vec::new(),
+            wire_cap: DirCaps::default(),
+            anchor: DirRegions::default(),
+            tags: Vec::new(),
+        };
+        let device = Device {
+            key: "odd".to_string(),
+            part_num: "odd".to_string(),
+            platform_name: None,
+            rows: 1,
+            cols: 3,
+            pp_dist: 1,
+            is_versal: false,
+            user_pblock_name: None,
+            slots: vec![mk_slot(0, 0), mk_slot(1, 1), mk_slot(2, 4)],
+        };
+        let graph = vadd_floor_graph();
+        let domains = vec![vec![Coor::span(0, 0, 1, 0)], vec![Coor::slot(2, 0)]];
+        let model = FloorplanModel::build(
+            &graph,
+            &device,
+            &domains,
+            &[],
+            DEFAULT_USAGE_LIMIT,
+            &PlacementConstraints::default(),
+        )
+        .expect("model");
+        assert!(
+            model
+                .lp
+                .objective
+                .terms
+                .iter()
+                .any(|(coefficient, _)| (*coefficient - 122.5).abs() < 1e-9),
+            "35-bit physical stream times the exact 3.5-unit centroid distance"
+        );
+    }
+
+    #[test]
+    fn strategy_matches_expected_thresholds() {
+        let u280 = select_device("u280").expect("u280");
+        assert_eq!(select_strategy(&u280, 299), PartitionStrategy::Flat);
+        assert_eq!(select_strategy(&u280, 300), PartitionStrategy::MultiLevel);
+        assert_eq!(select_strategy(&u280, 801), PartitionStrategy::MultiLevel);
+
+        let vck = select_device("vck190").expect("vck190");
+        assert_eq!(select_strategy(&vck, 300), PartitionStrategy::Flat);
+    }
+
+    #[test]
+    fn auto_strategy_counts_unique_endpoint_pairs() {
+        let graph = parallel_floor_graph(300);
+        let device = select_device("u280").expect("u280");
+
+        assert_eq!(graph.streams().len(), 300);
+        assert_eq!(graph.placement_edges().len(), 1);
+        assert_eq!(
+            resolve_strategy(&graph, &device, PartitionStrategy::Auto),
+            PartitionStrategy::Flat,
+            "parallel FIFOs form one placement edge for schedule selection"
+        );
+    }
+
+    #[test]
+    fn flat_floorplan_assigns_every_vertex_without_cbc() {
+        let graph = vadd_floor_graph();
+        let device = select_device("u280").expect("u280");
+        let result = floorplan_flat(
+            &graph,
+            &device,
+            DEFAULT_USAGE_LIMIT,
+            &ChooseSolver::first(),
+            &SolveOpts::default(),
+        )
+        .expect("placement");
+        assert_eq!(result.regions.len(), graph.vertices().len());
+    }
+
+    #[test]
+    fn invalid_usage_limit_is_rejected_before_model_building() {
+        let graph = vadd_floor_graph();
+        let device = select_device("u280").expect("u280");
+        assert!(matches!(
+            floorplan_flat(
+                &graph,
+                &device,
+                0.0,
+                &ChooseSolver::first(),
+                &SolveOpts::default()
+            ),
+            Err(IlpError::InvalidLimit { .. })
+        ));
+
+        let zero_override = PlacementConfig {
+            constraints: PlacementConstraints {
+                max_resource_limits: BTreeMap::from([(
+                    Coor::slot(0, 0).region_name(),
+                    BTreeMap::from([(Resource::Lut, 0.0)]),
+                )]),
+                ..PlacementConstraints::default()
+            },
+            ..PlacementConfig::default()
+        };
+        validate_config(&zero_override).expect("a zero override can intentionally empty a slot");
+    }
+
+    #[test]
+    fn area_limited_empty_domain_retries_through_the_usage_ceiling() {
+        // The first case becomes legal on the regular 0.72 step. The second
+        // remains illegal at 0.94 and verifies that the exact 0.95 ceiling is
+        // attempted instead of being skipped by a 0.02 increment.
+        for lut in [719, 949] {
+            let graph = single_task_floor_graph(lut);
+            let result = floorplan_flat(
+                &graph,
+                &one_slot_device(1000),
+                DEFAULT_USAGE_LIMIT,
+                &ChooseSolver::first(),
+                &SolveOpts::default(),
+            )
+            .expect("area-only domain failure should retry");
+            assert_eq!(
+                result.regions.get("A_0"),
+                Some(&Coor::slot(0, 0).region_name())
+            );
+        }
+    }
+
+    #[test]
+    fn permanent_pin_conflict_does_not_retry_or_solve() {
+        let graph = single_task_floor_graph(1);
+        let device = one_slot_device(1000);
+        let solver = StatusSolver::new(LpStatus::Infeasible);
+        let config = PlacementConfig {
+            strategy: PartitionStrategy::Flat,
+            constraints: PlacementConstraints {
+                vertex_regions: BTreeMap::from([("A_0".to_string(), Coor::slot(1, 0))]),
+                ..PlacementConstraints::default()
+            },
+            ..PlacementConfig::default()
+        };
+
+        assert!(matches!(
+            floorplan_with_config(&graph, &device, &config, &solver, &SolveOpts::default()),
+            Err(IlpError::NoCandidates { vertex }) if vertex == "A_0"
+        ));
+        assert_eq!(
+            solver.calls.load(Ordering::Relaxed),
+            0,
+            "a utilization increase cannot repair a permanent pin conflict"
+        );
+    }
+
+    #[test]
+    fn unsolved_status_is_not_disguised_as_a_utilization_retry() {
+        let graph = vadd_floor_graph();
+        let device = select_device("u280").expect("u280");
+        let solver = StatusSolver::new(LpStatus::NotSolved);
+        assert!(matches!(
+            floorplan_flat(
+                &graph,
+                &device,
+                DEFAULT_USAGE_LIMIT,
+                &solver,
+                &SolveOpts::default()
+            ),
+            Err(IlpError::NoIncumbent(LpStatus::NotSolved))
+        ));
+        assert_eq!(
+            solver.calls.load(Ordering::Relaxed),
+            1,
+            "only proven infeasibility may trigger a higher-utilization solve"
+        );
     }
 }

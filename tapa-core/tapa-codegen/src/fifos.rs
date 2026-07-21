@@ -19,10 +19,10 @@ fn fifo_addr_width(depth: u32) -> u64 {
     }
 }
 
-/// The 10 `clk`/`reset`/`if_*` port connections a `fifo` (and, identically, a
-/// `relay_station`) instance takes. The connection side uses stream-suffix
-/// naming — `{name}_dout`, `{name}_read`, … — matching how children and
-/// `connect_fifos` declare wires.
+/// The 10 `clk`/`reset`/`if_*` port connections a FIFO-compatible storage
+/// instance takes. The connection side uses stream-suffix naming —
+/// `{name}_dout`, `{name}_read`, … — matching how children and `connect_fifos`
+/// declare wires.
 fn fifo_port_args(name: &str, rst: Expr) -> Vec<PortArg> {
     let mut ports = vec![
         PortArg::new("clk", Expr::ident(HANDSHAKE_CLK)),
@@ -54,39 +54,54 @@ pub fn build_fifo_instance(name: &str, rst: Expr, width: Expr, depth: u32) -> Mo
         .with_ports(fifo_port_args(&name, rst))
 }
 
-/// Build a `relay_station` in place of a plain `fifo` for a cross-slot stream.
+/// The Body-cell count if `fifo_name` is a floorplanned cross-slot stream.
 ///
-/// Ports are identical to a `fifo`; `LEVEL` sets the number of pipeline stages.
-/// The module grows its own buffer internally
-/// (`REAL_DEPTH = LEVEL*2 + DEPTH + 4`), so `DEPTH` stays the *original* value
-/// (pre-growing would double-grow) and `ADDR_WIDTH` is inert (the module
-/// recomputes `REAL_ADDR_WIDTH`).
-pub fn build_relay_station_instance(
-    name: &str,
-    rst: Expr,
-    width: Expr,
-    depth: u32,
-    level: u32,
-) -> ModuleInstance {
-    let name = sanitize_array_name(name);
-    ModuleInstance::new("relay_station", format!("{name}_fifo"))
-        .with_params(vec![
-            ParamArg::new("DATA_WIDTH", width),
-            ParamArg::new("ADDR_WIDTH", Expr::int(fifo_addr_width(depth))),
-            ParamArg::new("DEPTH", Expr::int(u64::from(depth))),
-            ParamArg::new("LEVEL", Expr::int(u64::from(level))),
-            ParamArg::new("CONNECT", Expr::int(1)),
-        ])
-        .with_ports(fifo_port_args(&name, rst))
-}
-
-/// The pipeline `level` if `fifo_name` is a floorplanned cross-slot stream.
-fn stream_crossing_level(floorplan: Option<&FloorplanResult>, fifo_name: &str) -> Option<u32> {
+/// `reg_regions` is the authoritative per-cell handoff to XDC emission. Using
+/// its length here guarantees the generated Body hierarchy and its placement
+/// constraints cannot silently disagree if an older hand-written JSON file
+/// carries a stale redundant `level` field.
+fn stream_crossing_body_level(floorplan: Option<&FloorplanResult>, fifo_name: &str) -> Option<u32> {
     floorplan?
         .crossings
         .iter()
         .find(|c| c.kind == CrossingKind::Stream && c.link == fifo_name)
-        .map(|c| c.level)
+        .map(|c| u32::try_from(c.reg_regions.len()).unwrap_or(u32::MAX))
+}
+
+/// Build Head/Body/Tail storage for a cross-slot stream.
+///
+/// Unlike the legacy `relay_station`, `BODY_LEVEL=0` retains a registered Head
+/// ready path and the Tail FIFO. This is what makes adjacent Single and
+/// Single-H/Double-V crossings both timing-safe and lossless.
+pub fn build_hs_pipeline_instance(
+    name: &str,
+    rst: Expr,
+    width: Expr,
+    depth: u32,
+    body_level: u32,
+) -> ModuleInstance {
+    let name = sanitize_array_name(name);
+    ModuleInstance::new("tapa_hs_pipeline", format!("{name}_fifo"))
+        .with_params(vec![
+            ParamArg::new("DATA_WIDTH", width),
+            ParamArg::new("DEPTH", Expr::int(u64::from(depth))),
+            ParamArg::new("BODY_LEVEL", Expr::int(u64::from(body_level))),
+        ])
+        .with_ports(fifo_port_args(&name, rst))
+}
+
+/// Build the storage for one internal stream.
+fn build_internal_fifo_instance(
+    name: &str,
+    rst: Expr,
+    width: Expr,
+    depth: u32,
+    crossing_level: Option<u32>,
+) -> ModuleInstance {
+    match crossing_level {
+        Some(level) => build_hs_pipeline_instance(name, rst, width, depth, level),
+        None => build_fifo_instance(name, rst, width, depth),
+    }
 }
 
 /// Generate wire assignments for an external FIFO passthrough.
@@ -239,23 +254,15 @@ pub(crate) fn instantiate_fifos(
                 .as_ref()
                 .ok_or_else(|| CodegenError::FifoWidthUnresolved(fifo_name.clone()))?;
             let width = resolve_fifo_width(state, producer, &fifo_name)?;
-            // A floorplanned cross-slot stream becomes a pipelined relay
-            // station; everything else stays a plain FIFO.
-            let inst = match stream_crossing_level(state.floorplan.as_ref(), &fifo_name) {
-                Some(level) => build_relay_station_instance(
-                    &fifo_name,
-                    Expr::ident(HANDSHAKE_RST),
-                    Expr::int(u64::from(width)),
-                    depth,
-                    level,
-                ),
-                None => build_fifo_instance(
-                    &fifo_name,
-                    Expr::ident(HANDSHAKE_RST),
-                    Expr::int(u64::from(width)),
-                    depth,
-                ),
-            };
+            // A floorplanned cross-slot stream becomes a named Head/Body/Tail
+            // pipeline; everything else stays a plain FIFO.
+            let inst = build_internal_fifo_instance(
+                &fifo_name,
+                Expr::ident(HANDSHAKE_RST),
+                Expr::int(u64::from(width)),
+                depth,
+                stream_crossing_body_level(state.floorplan.as_ref(), &fifo_name),
+            );
             if let Some(mm) = state.module_map.get_mut(task_name) {
                 mm.add_instance(inst);
             }
@@ -528,6 +535,66 @@ mod tests {
         let text = inst.to_string();
         assert!(text.contains(".ADDR_WIDTH(12)"), "got:\n{text}");
         assert!(text.contains(".DEPTH(4096)"), "got:\n{text}");
+    }
+
+    #[test]
+    fn zero_body_crossing_uses_head_and_tail_pipeline() {
+        let inst = build_internal_fifo_instance(
+            "data_q",
+            Expr::ident("ap_rst"),
+            Expr::int(32),
+            16,
+            Some(0),
+        );
+        assert_eq!(inst.module_name, "tapa_hs_pipeline");
+        assert!(
+            inst.params
+                .iter()
+                .any(|param| param.param_name == "BODY_LEVEL" && param.value == Expr::int(0)),
+            "BODY_LEVEL=0 must still instantiate the explicit Head/Tail module"
+        );
+    }
+
+    #[test]
+    fn positive_body_crossing_uses_head_body_tail_pipeline() {
+        let inst = build_internal_fifo_instance(
+            "data_q",
+            Expr::ident("ap_rst"),
+            Expr::int(32),
+            16,
+            Some(2),
+        );
+        assert_eq!(inst.module_name, "tapa_hs_pipeline");
+        assert!(inst
+            .params
+            .iter()
+            .any(|param| param.param_name == "BODY_LEVEL" && param.value == Expr::int(2)));
+    }
+
+    #[test]
+    fn crossing_body_count_comes_from_xdc_region_list() {
+        use std::collections::BTreeMap;
+        use tapa_ir::{Crossing, PipelineScheme};
+
+        let floorplan = FloorplanResult {
+            device: "u280".to_string(),
+            grid: (2, 3),
+            regions: BTreeMap::new(),
+            crossings: vec![Crossing {
+                kind: CrossingKind::Stream,
+                link: "data_q".to_string(),
+                route: vec!["SLOT_X0Y0".to_string(), "SLOT_X0Y1".to_string()],
+                // Deliberately stale: reg_regions is the physical contract.
+                level: 99,
+                scheme: PipelineScheme::Double,
+                reg_regions: vec!["SLOT_X0Y0".to_string(), "SLOT_X0Y1".to_string()],
+            }],
+            slot_usage: BTreeMap::new(),
+        };
+        assert_eq!(
+            stream_crossing_body_level(Some(&floorplan), "data_q"),
+            Some(2)
+        );
     }
 
     #[test]

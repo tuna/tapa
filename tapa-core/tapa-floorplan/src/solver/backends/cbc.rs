@@ -14,7 +14,7 @@ use crate::solver::lp_writer::write_cplex_lp;
 use crate::solver::model::{LpModel, LpVar};
 use crate::solver::solve::{LpSolution, LpStatus, SolveOpts, Solver, SolverError};
 
-/// The tuned CBC options ported from RapidStream (`floorplan.py:199-205`).
+/// Tuned CBC options for deterministic floorplanning solves.
 const TUNED_OPTIONS: &[&str] = &[
     "-cuts",
     "ifmove",
@@ -59,6 +59,7 @@ impl Default for CbcSolver {
 
 impl Solver for CbcSolver {
     fn solve(&self, model: &LpModel, opts: &SolveOpts) -> Result<LpSolution, SolverError> {
+        opts.validate()?;
         let dir = tempfile::tempdir().map_err(|source| self.spawn_err(source))?;
         let lp_path = dir.path().join("model.lp");
         let sol_path = dir.path().join("model.sol");
@@ -83,9 +84,14 @@ impl Solver for CbcSolver {
             });
         }
 
-        let sol_text =
-            std::fs::read_to_string(&sol_path).map_err(|source| self.spawn_err(source))?;
-        parse_sol(&sol_text)
+        let sol_text = std::fs::read_to_string(&sol_path).map_err(|source| {
+            SolverError::BadOutput(format!(
+                "CBC did not produce a readable solution file: {source}"
+            ))
+        })?;
+        let solution = parse_sol(&sol_text)?;
+        solution.validate_for(model)?;
+        Ok(solution)
     }
 }
 
@@ -105,54 +111,92 @@ impl CbcSolver {
             cmd.arg("-threads").arg(threads.to_string());
         }
         if let Some(limit) = opts.time_limit {
-            cmd.arg("-sec").arg(limit.as_secs().to_string());
+            cmd.arg("-sec").arg(limit.as_secs_f64().to_string());
         }
         if let Some(gap) = opts.mip_gap {
             cmd.arg("-ratioGap").arg(gap.to_string());
         }
+        if let Some(gap) = opts.mip_gap_abs {
+            cmd.arg("-allowableGap").arg(gap.to_string());
+        }
         cmd.args(TUNED_OPTIONS);
+        // PuLP requests `all`: unlike CBC's sparse `normal` format, this emits
+        // every column (including zero-valued binaries), allowing completeness
+        // checks to distinguish an omitted value from zero.
+        cmd.arg("-printingOptions").arg("all");
         cmd.arg("-solve").arg("-solution").arg(sol_path);
         cmd
     }
 }
 
-/// Parse a CBC `.sol` file: a status/objective header line followed by one
-/// `<index> <name> <value> <dual>` line per nonzero variable.
+/// Parse a CBC `.sol` file: a status/objective header followed by row-activity
+/// and model-variable `<index> <name> <value> <dual>` lines.
 fn parse_sol(text: &str) -> Result<LpSolution, SolverError> {
     let mut lines = text.lines();
     let header = lines
         .next()
         .ok_or_else(|| SolverError::BadOutput("empty solution file".to_string()))?;
 
+    if header.trim().is_empty() {
+        return Err(SolverError::BadOutput(
+            "empty solution-file header".to_string(),
+        ));
+    }
+
     let lower = header.to_ascii_lowercase();
-    let status = if lower.contains("infeasible") {
-        LpStatus::Infeasible
-    } else if lower.contains("unbounded") {
-        LpStatus::Unbounded
-    } else if lower.contains("optimal") || lower.contains("stopped") {
-        // "Stopped on time" with an incumbent is a usable solution (PuLP
-        // treats a time-limited feasible result as Optimal).
+    let status = if lower.starts_with("optimal") {
         LpStatus::Optimal
+    } else if lower.starts_with("infeasible") || lower.starts_with("integer infeasible") {
+        LpStatus::Infeasible
+    } else if lower.starts_with("unbounded") {
+        LpStatus::Unbounded
+    } else if lower.starts_with("stopped") {
+        if lower.contains("no integer solution") || !lower.contains("objective value") {
+            LpStatus::NotSolved
+        } else {
+            LpStatus::Feasible
+        }
     } else {
-        LpStatus::NotSolved
+        return Err(SolverError::BadOutput(format!(
+            "unrecognized CBC status header `{header}`",
+        )));
     };
 
-    let objective = parse_objective(header);
+    let objective = if matches!(status, LpStatus::Optimal | LpStatus::Feasible) {
+        parse_objective(header).ok_or_else(|| {
+            SolverError::BadOutput(format!(
+                "CBC reported an incumbent without an objective: `{header}`",
+            ))
+        })?
+    } else {
+        parse_objective(header).unwrap_or(0.0)
+    };
+    if !objective.is_finite() {
+        return Err(SolverError::BadOutput(
+            "CBC reported a non-finite objective".to_string(),
+        ));
+    }
 
     let mut values = HashMap::new();
-    for line in lines {
-        let mut tokens = line.split_whitespace();
-        let _index = tokens.next();
-        let (Some(name), Some(value)) = (tokens.next(), tokens.next()) else {
+    for (line_index, line) in lines.enumerate() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let (var, value) = parse_value_line(line).map_err(|message| {
+            SolverError::BadOutput(format!(
+                "invalid CBC value on line {}: {message}",
+                line_index + 2,
+            ))
+        })?;
+        let Some(var) = var else {
             continue;
         };
-        let Some(var) = name.strip_prefix('x').and_then(|n| n.parse::<u32>().ok()) else {
-            continue;
-        };
-        let Ok(value) = value.parse::<f64>() else {
-            continue;
-        };
-        values.insert(LpVar(var), value);
+        if values.insert(var, value).is_some() {
+            return Err(SolverError::BadOutput(format!(
+                "CBC listed variable x{} more than once",
+                var.0,
+            )));
+        }
     }
 
     Ok(LpSolution {
@@ -162,14 +206,52 @@ fn parse_sol(text: &str) -> Result<LpSolution, SolverError> {
     })
 }
 
+fn parse_value_line(line: &str) -> Result<(Option<LpVar>, f64), String> {
+    let mut tokens = line.split_whitespace();
+    let first = tokens.next().ok_or_else(|| "empty line".to_string())?;
+    let index = if first == "**" {
+        tokens
+            .next()
+            .ok_or_else(|| "missing column index".to_string())?
+    } else {
+        first
+    };
+    index
+        .parse::<u32>()
+        .map_err(|_| format!("invalid column index `{index}`"))?;
+
+    let name = tokens
+        .next()
+        .ok_or_else(|| "missing variable name".to_string())?;
+    let value = tokens
+        .next()
+        .ok_or_else(|| "missing variable value".to_string())?;
+    // `printingOptions all` also emits row activities. Only xN column names
+    // belong to the variable assignment; all rows are validated independently
+    // against the parsed column values below.
+    let var = name
+        .strip_prefix('x')
+        .and_then(|suffix| suffix.parse::<u32>().ok())
+        .map(LpVar);
+    let value = value
+        .parse::<f64>()
+        .map_err(|_| format!("invalid value `{value}` for `{name}`"))?;
+    if !value.is_finite() {
+        return Err(format!("non-finite value `{value}` for `{name}`"));
+    }
+    Ok((var, value))
+}
+
 /// Pull the objective off a header like `Optimal - objective value 12.0`.
-fn parse_objective(header: &str) -> f64 {
+fn parse_objective(header: &str) -> Option<f64> {
+    let lower = header.to_ascii_lowercase();
+    let offset = lower.find("objective value")? + "objective value".len();
     header
-        .split("objective value")
-        .nth(1)
-        .and_then(|rest| rest.split_whitespace().next())
-        .and_then(|token| token.parse::<f64>().ok())
-        .unwrap_or(0.0)
+        .get(offset..)?
+        .split_whitespace()
+        .next()?
+        .parse::<f64>()
+        .ok()
 }
 
 #[cfg(test)]
@@ -200,6 +282,109 @@ Optimal - objective value 12.00000000
         let sol = parse_sol("Infeasible - objective value 2.0\n").expect("parse");
         assert_eq!(sol.status, LpStatus::Infeasible);
         assert!(!sol.is_found());
+    }
+
+    #[test]
+    fn parse_sol_distinguishes_verified_incumbent_status() {
+        let incumbent = parse_sol(
+            "Stopped on time - objective value 1.0\n\
+                   0 x0 1 0\n",
+        )
+        .expect("parse incumbent");
+        assert_eq!(incumbent.status, LpStatus::Feasible);
+        assert!(incumbent.is_found());
+
+        let relaxation = parse_sol(
+            "Stopped on time (no integer solution - continuous used) - objective value 0.5\n\
+                   0 x0 0.5 0\n",
+        )
+        .expect("parse relaxation status");
+        assert_eq!(relaxation.status, LpStatus::NotSolved);
+        assert!(!relaxation.is_found());
+    }
+
+    #[test]
+    fn parse_sol_rejects_malformed_or_ambiguous_output() {
+        parse_sol("surprisingly good - objective value 1\n").expect_err("unknown status");
+        parse_sol("Optimal - objective value nope\n").expect_err("invalid objective");
+        parse_sol("Optimal - objective value 1\n0 x0 nope 0\n").expect_err("invalid value");
+        parse_sol("Optimal - objective value 1\n0 x0 1 0\n1 x0 1 0\n")
+            .expect_err("duplicate variable");
+    }
+
+    #[test]
+    fn command_emits_independent_absolute_and_relative_gaps() {
+        let opts = SolveOpts {
+            mip_gap: Some(0.02),
+            mip_gap_abs: Some(0.001),
+            ..SolveOpts::default()
+        };
+        let command = CbcSolver::with_program("cbc").command(
+            &PathBuf::from("model.lp"),
+            &PathBuf::from("model.sol"),
+            &opts,
+        );
+        let args = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        assert!(args.windows(2).any(|pair| pair == ["-ratioGap", "0.02"]));
+        assert!(args
+            .windows(2)
+            .any(|pair| pair == ["-allowableGap", "0.001"]));
+        assert!(args
+            .windows(2)
+            .any(|pair| pair == ["-printingOptions", "all"]));
+    }
+
+    #[test]
+    fn invalid_options_are_rejected_before_solver_launch() {
+        let model = LpModel::new(Sense::Minimize);
+        let opts = SolveOpts {
+            time_limit: Some(std::time::Duration::ZERO),
+            ..SolveOpts::default()
+        };
+        let error = CbcSolver::with_program("this-program-must-not-run")
+            .solve(&model, &opts)
+            .expect_err("zero time limit");
+        assert!(matches!(error, SolverError::InvalidOptions(_)));
+    }
+
+    #[test]
+    fn all_column_output_ignores_rows_but_requires_every_variable() {
+        let mut model = LpModel::new(Sense::Minimize);
+        let selected = model.add_binary("selected");
+        let zero = model.add_binary("zero");
+        model.set_objective(LinExpr::sum([(1.0, selected)]));
+        model.add_constraint(
+            "selected",
+            LinExpr::sum([(1.0, selected)]),
+            Comparison::Eq,
+            1.0,
+        );
+
+        let complete = parse_sol(
+            "Optimal - objective value 1\n\
+             0 selected 1 0\n\
+             0 x0 1 1\n\
+             1 x1 0 0\n",
+        )
+        .expect("all-column output");
+        complete
+            .validate_for(&model)
+            .expect("valid complete result");
+        assert!(approx(complete.value(zero), 0.0));
+
+        let incomplete = parse_sol(
+            "Optimal - objective value 1\n\
+             0 selected 1 0\n\
+             0 x0 1 1\n",
+        )
+        .expect("syntactically valid but incomplete output");
+        assert!(matches!(
+            incomplete.validate_for(&model),
+            Err(SolverError::InvalidSolution(_))
+        ));
     }
 
     #[test]

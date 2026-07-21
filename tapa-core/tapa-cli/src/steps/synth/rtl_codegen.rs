@@ -213,7 +213,13 @@ mod tests {
         assert!(rtl_dir.join("fifo_bram.v").is_file());
         assert!(rtl_dir.join("fifo_fwd.v").is_file());
         assert!(rtl_dir.join("axis_adapter.v").is_file());
+        let hs_pipeline =
+            fs::read_to_string(rtl_dir.join("tapa_hs_pipeline.v")).expect("pipeline asset");
+        assert!(hs_pipeline.contains("module tapa_hs_pipeline"));
         assert!(written.iter().any(|p| p.ends_with("fifo.v")));
+        assert!(written
+            .iter()
+            .any(|path| path.ends_with("tapa_hs_pipeline.v")));
     }
 
     #[test]

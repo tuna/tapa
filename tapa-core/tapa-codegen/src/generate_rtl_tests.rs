@@ -735,9 +735,49 @@ fn test_generate_rtl_with_fifo() {
 }
 
 #[test]
-fn test_generate_rtl_floorplan_crossing_becomes_relay_station() {
+fn test_generate_rtl_floorplan_crossing_becomes_head_body_tail_pipeline() {
+    let top_v = generate_floorplanned_stream_pipeline(
+        tapa_ir::PipelineScheme::Double,
+        vec!["SLOT_X0Y0", "SLOT_X0Y1"],
+    );
+
+    assert!(
+        top_v.contains("tapa_hs_pipeline"),
+        "a cross-slot stream must become a Head/Body/Tail pipeline, got:\n{top_v}"
+    );
+    assert!(
+        top_v.contains("fifo_0_fifo"),
+        "the pipeline keeps the FIFO instance name so wiring stays valid, got:\n{top_v}"
+    );
+    assert!(
+        top_v.contains(".BODY_LEVEL(2)"),
+        "the generated Body count must match the two XDC regions, got:\n{top_v}"
+    );
+    // The original DEPTH (16) is passed; the primitive grows Tail storage.
+    assert!(top_v.contains(".DEPTH(16)"), "got:\n{top_v}");
+}
+
+#[test]
+fn test_generate_rtl_adjacent_single_crossing_keeps_head_and_tail() {
+    let top_v = generate_floorplanned_stream_pipeline(tapa_ir::PipelineScheme::Single, Vec::new());
+
+    assert!(top_v.contains("tapa_hs_pipeline"), "got:\n{top_v}");
+    assert!(
+        top_v.contains(".BODY_LEVEL(0)"),
+        "an adjacent Single crossing has no Body but still uses the Head/Tail module:\n{top_v}"
+    );
+    assert!(
+        !top_v.contains("relay_station"),
+        "LEVEL=0 relay_station is a storage-erasing combinational passthrough:\n{top_v}"
+    );
+}
+
+fn generate_floorplanned_stream_pipeline(
+    scheme: tapa_ir::PipelineScheme,
+    reg_regions: Vec<&str>,
+) -> String {
     use std::collections::BTreeMap;
-    use tapa_ir::{Crossing, CrossingKind, FloorplanResult, PipelineScheme};
+    use tapa_ir::{Crossing, CrossingKind, FloorplanResult};
 
     let top = task("top", "upper", |t| {
         t["tasks"] = serde_json::json!({
@@ -761,7 +801,7 @@ fn test_generate_rtl_floorplan_crossing_becomes_relay_station() {
     );
 
     let mut state = TopologyWithRtl::new(prog);
-    // Mark fifo_0 as a cross-slot stream crossing with two pipeline stages.
+    let level = u32::try_from(reg_regions.len()).expect("test Body count fits u32");
     state.floorplan = Some(FloorplanResult {
         device: "u280".to_string(),
         grid: (2, 3),
@@ -770,9 +810,9 @@ fn test_generate_rtl_floorplan_crossing_becomes_relay_station() {
             kind: CrossingKind::Stream,
             link: "fifo_0".to_string(),
             route: vec!["SLOT_X0Y0".to_string(), "SLOT_X0Y1".to_string()],
-            level: 2,
-            scheme: PipelineScheme::Double,
-            reg_regions: vec!["SLOT_X0Y1".to_string()],
+            level,
+            scheme,
+            reg_regions: reg_regions.into_iter().map(str::to_string).collect(),
         }],
         slot_usage: BTreeMap::new(),
     });
@@ -807,22 +847,7 @@ fn test_generate_rtl_floorplan_crossing_becomes_relay_station() {
         .unwrap();
 
     generate_rtl(&mut state).unwrap();
-
-    let top_v = &state.generated_files["top.v"];
-    assert!(
-        top_v.contains("relay_station"),
-        "a cross-slot stream must become a relay_station, got:\n{top_v}"
-    );
-    assert!(
-        top_v.contains("fifo_0_fifo"),
-        "the relay keeps the FIFO instance name so wiring stays valid, got:\n{top_v}"
-    );
-    assert!(
-        top_v.contains("LEVEL"),
-        "the relay must carry a LEVEL parameter, got:\n{top_v}"
-    );
-    // The original DEPTH (16) is passed, not pre-grown.
-    assert!(top_v.contains("DEPTH"), "DEPTH parameter present");
+    state.generated_files["top.v"].clone()
 }
 
 #[test]

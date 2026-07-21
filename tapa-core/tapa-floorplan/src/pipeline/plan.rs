@@ -4,16 +4,16 @@
 //! route them, and turn each route into a [`Crossing`] (register `level`,
 //! distribution `scheme`, and per-register slot regions).
 //!
-//! Level formulas are ported from RapidStream's `gen_pp_template.py`: `Single`
-//! places one body register per intermediate slot, `Double` two per hop, and
-//! `SingleHDoubleV` one per horizontal hop and two per vertical (SLR) hop.
+//! `Single` places one body register per intermediate slot, `Double` two per
+//! hop, and `SingleHDoubleV` one per horizontal hop and two per vertical (SLR)
+//! hop.
 
 use std::collections::BTreeMap;
 
 use tapa_ir::{Crossing, CrossingKind, PipelineScheme};
 
 use crate::device::model::{Coor, Device};
-use crate::graph::{FloorGraph, VertexKind};
+use crate::graph::FloorGraph;
 use crate::route::ilp::{route_nets, slot_tag, RouteError, RouteNet};
 use crate::route::paths::Cell;
 use crate::solver::{SolveOpts, Solver};
@@ -29,35 +29,53 @@ pub enum PipelineError {
     BadRegion(String),
 }
 
-/// The number of pipeline register stages a route implies under `scheme`.
+/// The number of Body pipeline cells a route implies under `scheme`.
+///
+/// Head and Tail are not included. In particular, an adjacent Single or
+/// Single-H/Double-V horizontal crossing has zero Body cells while retaining
+/// its separately generated Head and Tail.
 #[must_use]
 pub fn pipeline_level(route: &[Cell], scheme: PipelineScheme) -> u32 {
-    let slots = route.len();
-    match scheme {
-        PipelineScheme::Single => u32::try_from(slots.saturating_sub(2)).unwrap_or(0),
-        PipelineScheme::Double => u32::try_from(slots.saturating_sub(1) * 2).unwrap_or(0),
-        PipelineScheme::SingleHDoubleV => route
-            .windows(2)
-            .map(|hop| if hop[0].1 == hop[1].1 { 1 } else { 2 })
-            .sum(),
-    }
+    u32::try_from(pipeline_reg_regions(route, scheme).len()).unwrap_or(u32::MAX)
 }
 
-/// Assign each of `level` body registers a slot along `route`, spread from the
-/// first intermediate slot toward the destination.
+/// Return the exact ordered Body-cell regions for `route` and `scheme`.
+///
+/// - Single uses only the intermediate route slots.
+/// - Double places one cell on each side of every boundary.
+/// - Single-H/Double-V duplicates every route slot incident to a vertical
+///   boundary, then removes the first Head and last Tail entries.
 #[must_use]
-pub fn reg_regions(route: &[Cell], level: u32) -> Vec<String> {
-    if level == 0 || route.is_empty() {
+pub fn pipeline_reg_regions(route: &[Cell], scheme: PipelineScheme) -> Vec<String> {
+    if route.len() < 2 {
         return Vec::new();
     }
-    let n = route.len();
-    let level = level as usize;
-    (0..level)
-        .map(|j| {
-            let idx = (1 + j * n / level).min(n - 1);
-            slot_tag(route[idx])
-        })
-        .collect()
+
+    match scheme {
+        PipelineScheme::Single => route[1..route.len() - 1]
+            .iter()
+            .map(|&cell| slot_tag(cell))
+            .collect(),
+        PipelineScheme::Double => route
+            .windows(2)
+            .flat_map(|hop| [slot_tag(hop[0]), slot_tag(hop[1])])
+            .collect(),
+        PipelineScheme::SingleHDoubleV => {
+            let mut multiplicity = vec![1usize; route.len()];
+            for (index, hop) in route.windows(2).enumerate() {
+                if hop[0].1 != hop[1].1 {
+                    multiplicity[index] = 2;
+                    multiplicity[index + 1] = 2;
+                }
+            }
+            let expanded: Vec<String> = route
+                .iter()
+                .zip(multiplicity)
+                .flat_map(|(&cell, count)| std::iter::repeat_n(slot_tag(cell), count))
+                .collect();
+            expanded[1..expanded.len() - 1].to_vec()
+        }
+    }
 }
 
 /// Parse a single-slot region tag into its grid cell.
@@ -75,37 +93,29 @@ struct StreamNet {
     width: u32,
 }
 
-/// Find every internal FIFO whose producer and consumer landed in different
-/// regions — those are the stream channels that must be pipelined.
+/// Find every logical stream edge whose endpoints landed in different
+/// regions. The placement graph has already clustered the stream's physical
+/// FIFO into its consumer, so this is also the topology codegen implements.
 fn cross_slot_streams(
     graph: &FloorGraph,
     regions: &BTreeMap<String, String>,
 ) -> Result<Vec<StreamNet>, PipelineError> {
     let mut nets = Vec::new();
-    for (fi, fifo) in graph.vertices().iter().enumerate() {
-        if fifo.kind != VertexKind::Fifo {
-            continue;
-        }
-        // producer -> fifo -> consumer, from the FloorGraph edges.
-        let producer = graph.edges().iter().find(|e| e.dst == fi);
-        let consumer = graph.edges().iter().find(|e| e.src == fi);
-        let (Some(producer), Some(consumer)) = (producer, consumer) else {
-            continue; // one endpoint is a top-level port, not a placed instance
-        };
+    for edge in graph.streams() {
         let src_region = regions
-            .get(&graph.vertex(producer.src).name)
-            .ok_or_else(|| PipelineError::BadRegion(graph.vertex(producer.src).name.clone()))?;
+            .get(&graph.vertex(edge.src).name)
+            .ok_or_else(|| PipelineError::BadRegion(graph.vertex(edge.src).name.clone()))?;
         let dst_region = regions
-            .get(&graph.vertex(consumer.dst).name)
-            .ok_or_else(|| PipelineError::BadRegion(graph.vertex(consumer.dst).name.clone()))?;
+            .get(&graph.vertex(edge.dst).name)
+            .ok_or_else(|| PipelineError::BadRegion(graph.vertex(edge.dst).name.clone()))?;
         if src_region == dst_region {
             continue; // co-located: no crossing
         }
         nets.push(StreamNet {
-            link: fifo.name.clone(),
+            link: edge.link.clone(),
             src: region_cell(src_region)?,
             dst: region_cell(dst_region)?,
-            width: producer.width,
+            width: edge.width,
         });
     }
     Ok(nets)
@@ -139,14 +149,15 @@ pub fn plan_crossings(
         .iter()
         .zip(routes)
         .map(|(net, route)| {
-            let level = pipeline_level(&route, scheme);
+            let reg_regions = pipeline_reg_regions(&route, scheme);
+            let level = u32::try_from(reg_regions.len()).unwrap_or(u32::MAX);
             Crossing {
                 kind: CrossingKind::Stream,
                 link: net.link.clone(),
                 route: route.iter().map(|&cell| slot_tag(cell)).collect(),
                 level,
                 scheme,
-                reg_regions: reg_regions(&route, level),
+                reg_regions,
             }
         })
         .collect();
@@ -156,6 +167,81 @@ pub fn plan_crossings(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn two_task_stream_graph() -> FloorGraph {
+        let design = tapa_ir::TaskGraph::from_json(
+            r#"{
+                "cflags": [], "top": "Top", "target": "xilinx-hls",
+                "tasks": {
+                    "Top": {
+                        "readable_name": "Top", "code": "void Top() {}",
+                        "level": "upper", "synth": "hls", "ports": [],
+                        "tasks": {
+                            "Producer": [{"args": {
+                                "out32": {"arg": "q32", "cat": "ostream"},
+                                "out64": {"arg": "q64", "cat": "ostream"}
+                            }, "step": 0}],
+                            "Consumer": [{"args": {
+                                "in32": {"arg": "q32", "cat": "istream"},
+                                "in64": {"arg": "q64", "cat": "istream"}
+                            }, "step": 0}]
+                        },
+                        "fifos": {
+                            "q32": {"depth": 2, "produced_by": ["Producer", 0], "consumed_by": ["Consumer", 0]},
+                            "q64": {"depth": 2, "produced_by": ["Producer", 0], "consumed_by": ["Consumer", 0]}
+                        }
+                    },
+                    "Producer": {
+                        "readable_name": "Producer", "code": "void Producer() {}",
+                        "level": "lower", "synth": "hls",
+                        "ports": [
+                            {"cat": "ostream", "name": "out32", "type": "int", "width": 32},
+                            {"cat": "ostream", "name": "out64", "type": "long", "width": 64}
+                        ]
+                    },
+                    "Consumer": {
+                        "readable_name": "Consumer", "code": "void Consumer() {}",
+                        "level": "lower", "synth": "hls",
+                        "ports": [
+                            {"cat": "istream", "name": "in32", "type": "int", "width": 32},
+                            {"cat": "istream", "name": "in64", "type": "long", "width": 64}
+                        ]
+                    }
+                }
+            }"#,
+        )
+        .expect("parse graph");
+        let flat = tapa_ir::flatten(&design).expect("flatten graph");
+        FloorGraph::build(&flat).expect("floor graph")
+    }
+
+    #[test]
+    fn routing_retains_parallel_streams_aggregated_by_placement() {
+        let graph = two_task_stream_graph();
+        let mut regions = BTreeMap::from([
+            ("Producer_0".to_string(), Coor::slot(0, 0).region_name()),
+            ("Consumer_0".to_string(), Coor::slot(1, 0).region_name()),
+        ]);
+        graph
+            .materialize_co_locations(&mut regions)
+            .expect("FIFO aliases destination");
+
+        assert_eq!(regions["q32_Top"], regions["Consumer_0"]);
+        assert_eq!(regions["q64_Top"], regions["Consumer_0"]);
+        assert_eq!(graph.placement_edges().len(), 1);
+        assert_eq!(graph.placement_edges()[0].width, 35 + 67);
+        let streams = cross_slot_streams(&graph, &regions).expect("cross-slot streams");
+        assert_eq!(streams.len(), 2);
+        assert!(streams
+            .iter()
+            .all(|stream| (stream.src, stream.dst) == ((0, 0), (1, 0))));
+        assert!(streams
+            .iter()
+            .any(|stream| stream.link == "q32_Top" && stream.width == 35));
+        assert!(streams
+            .iter()
+            .any(|stream| stream.link == "q64_Top" && stream.width == 67));
+    }
 
     #[test]
     fn single_scheme_levels_by_intermediate_slots() {
@@ -189,17 +275,34 @@ mod tests {
     }
 
     #[test]
-    fn reg_regions_spread_along_the_route() {
+    fn double_regions_put_one_body_cell_on_each_side_of_every_boundary() {
         let route = vec![(0, 0), (0, 1), (0, 2)];
-        let regions = reg_regions(&route, 2);
-        assert_eq!(regions.len(), 2, "one region per body register");
-        for region in &regions {
-            assert!(region.starts_with("SLOT_X0Y"), "on the route: {region}");
-        }
+        assert_eq!(
+            pipeline_reg_regions(&route, PipelineScheme::Double),
+            ["SLOT_X0Y0", "SLOT_X0Y1", "SLOT_X0Y1", "SLOT_X0Y2"]
+        );
     }
 
     #[test]
-    fn zero_level_has_no_registers() {
-        assert!(reg_regions(&[(0, 0), (0, 1)], 0).is_empty());
+    fn adjacent_single_crossing_has_head_and_tail_but_no_body() {
+        let route = [(0, 0), (1, 0)];
+        assert_eq!(pipeline_level(&route, PipelineScheme::Single), 0);
+        assert!(pipeline_reg_regions(&route, PipelineScheme::Single).is_empty());
+    }
+
+    #[test]
+    fn hybrid_horizontal_crossing_has_no_body() {
+        let route = [(0, 0), (1, 0)];
+        assert_eq!(pipeline_level(&route, PipelineScheme::SingleHDoubleV), 0);
+        assert!(pipeline_reg_regions(&route, PipelineScheme::SingleHDoubleV).is_empty());
+    }
+
+    #[test]
+    fn hybrid_duplicates_slots_incident_to_vertical_hops() {
+        let route = [(0, 0), (1, 0), (1, 1), (0, 1)];
+        assert_eq!(
+            pipeline_reg_regions(&route, PipelineScheme::SingleHDoubleV),
+            ["SLOT_X1Y0", "SLOT_X1Y0", "SLOT_X1Y1", "SLOT_X1Y1"]
+        );
     }
 }

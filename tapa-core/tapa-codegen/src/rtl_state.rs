@@ -169,8 +169,8 @@ pub struct TopologyWithRtl {
     /// The design model.
     pub design: Design,
     /// The floorplan, when the design has been floorplanned. Its presence
-    /// switches codegen onto the pipelined path (relay stations on cross-slot
-    /// streams, distributed FSM, region pragmas).
+    /// switches codegen onto the pipelined path (Head/Body/Tail cells on
+    /// cross-slot streams and matching region constraints).
     pub floorplan: Option<FloorplanResult>,
     /// Parsed HLS Verilog modules, keyed by task name.
     pub module_map: BTreeMap<String, MutableModule>,
