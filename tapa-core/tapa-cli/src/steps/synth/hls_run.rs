@@ -29,10 +29,8 @@ impl TaskHlsLayout {
     pub fn new(work_dir: &Path, task_name: &str) -> Self {
         let base = work_dir.join("hls").join(task_name);
         Self {
-            reports_dir: Utf8PathBuf::from_path_buf(base.join("report"))
-                .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
-            hdl_dir: Utf8PathBuf::from_path_buf(base.join("verilog"))
-                .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
+            reports_dir: crate::util::utf8(base.join("report")),
+            hdl_dir: crate::util::utf8(base.join("verilog")),
         }
     }
 }
@@ -111,10 +109,7 @@ pub fn run_hls_for_leaves(
                     .into_iter()
                     .filter_map(std::result::Result::ok)
                     .filter(|e| e.file_type().is_file())
-                    .map(|e| {
-                        Utf8PathBuf::from_path_buf(e.path().to_path_buf())
-                            .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()))
-                    })
+                    .map(|e| crate::util::utf8(e.path()))
                     .collect();
                 plan.push((
                     task_name.clone(),
@@ -159,8 +154,7 @@ pub fn run_hls_for_leaves(
         // from a clean project tree.
         let work = if options.keep_work_dir {
             let persistent =
-                Utf8PathBuf::from_path_buf(work_dir.join("hls").join(task_name).join("project"))
-                    .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
+                crate::util::utf8(work_dir.join("hls").join(task_name).join("project"));
             // Clear any leftover from a previous run so the first
             // attempt doesn't trip Vitis's project-already-open logic.
             if persistent.exists() {
@@ -264,7 +258,7 @@ fn hdl_files_are_newer_than(verilog_files: &[Utf8PathBuf], cpp_source: &camino::
     })
 }
 
-fn list_verilog_files(dir: &camino::Utf8Path) -> Result<Vec<Utf8PathBuf>> {
+pub fn list_verilog_files(dir: &camino::Utf8Path) -> Result<Vec<Utf8PathBuf>> {
     let mut out = Vec::new();
     if !dir.is_dir() {
         return Ok(out);
@@ -272,7 +266,7 @@ fn list_verilog_files(dir: &camino::Utf8Path) -> Result<Vec<Utf8PathBuf>> {
     for ent in walkdir::WalkDir::new(dir) {
         let ent = ent.map_err(|e| {
             CliError::Codegen(format!(
-                "failed to inspect cached HDL directory `{}`: {e}",
+                "failed to inspect HDL directory `{}`: {e}",
                 dir.as_str()
             ))
         })?;
@@ -520,8 +514,7 @@ mod tests {
     #[test]
     fn reload_prefers_task_report_over_submodule_report() {
         let tmp = tempfile::tempdir().expect("tempdir");
-        let reports = Utf8PathBuf::from_path_buf(tmp.path().join("report"))
-            .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
+        let reports = crate::util::utf8(tmp.path().join("report"));
         fs::create_dir_all(&reports).unwrap();
         // Sub-module report (smaller area) shares the `_csynth.xml` suffix.
         fs::write(
@@ -565,8 +558,7 @@ mod tests {
         fs::write(hdl.join("Add.v"), b"module Add(); wire fresh; endmodule\n").unwrap();
 
         let files = list_verilog_files(&crate::util::utf8(hdl)).unwrap();
-        let cpp = Utf8PathBuf::from_path_buf(work.join("cpp").join("Add.cpp"))
-            .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
+        let cpp = crate::util::utf8(work.join("cpp").join("Add.cpp"));
         assert!(
             !hdl_files_are_newer_than(&files, &cpp),
             "one stale emitted file must invalidate the HLS cache"

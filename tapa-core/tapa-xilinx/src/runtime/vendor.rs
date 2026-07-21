@@ -9,7 +9,6 @@
 //! `sha256(host:port:xilinx_settings)[:16]`.
 
 use std::path::Path;
-use std::process::Stdio;
 
 use camino::Utf8PathBuf;
 
@@ -47,51 +46,7 @@ impl VendorRemoteFs for SshVendorFs<'_> {
     }
 
     fn download_dir(&self, remote_path: &str, local_dest: &Path) -> Result<()> {
-        std::fs::create_dir_all(local_dest).map_err(|e| {
-            XilinxError::RemoteTransfer(format!("mkdir {}: {e}", local_dest.display()))
-        })?;
-        let remote_cmd = format!("tar -czf - -C {} .", shell_quote(remote_path));
-        let mut ssh = self
-            .session
-            .exec_cmd(&remote_cmd)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| XilinxError::RemoteTransfer(format!("spawn ssh download: {e}")))?;
-        let ssh_stdout = ssh
-            .stdout
-            .take()
-            .ok_or_else(|| XilinxError::RemoteTransfer("ssh stdout lost".into()))?;
-        let mut ssh_stderr = ssh
-            .stderr
-            .take()
-            .ok_or_else(|| XilinxError::RemoteTransfer("ssh stderr lost".into()))?;
-
-        let stderr_handle = std::thread::spawn(move || {
-            let mut buf = Vec::new();
-            let _ = std::io::Read::read_to_end(&mut ssh_stderr, &mut buf);
-            buf
-        });
-
-        let unpack_result = {
-            let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(ssh_stdout));
-            archive.unpack(local_dest)
-        };
-        let ssh_status = ssh
-            .wait()
-            .map_err(|e| XilinxError::RemoteTransfer(format!("wait ssh download: {e}")))?;
-        let stderr_bytes = stderr_handle.join().unwrap_or_default();
-        let stderr = String::from_utf8_lossy(&stderr_bytes).into_owned();
-        if !ssh_status.success() {
-            return Err(XilinxError::RemoteTransfer(format!(
-                "remote tar -cz failed (exit {}): {}",
-                ssh_status.code().unwrap_or(-1),
-                stderr.trim()
-            )));
-        }
-        unpack_result
-            .map_err(|e| XilinxError::RemoteTransfer(format!("unpack tar download: {e}")))?;
-        Ok(())
+        crate::runtime::remote::download_tree(self.session, remote_path, local_dest)
     }
 }
 
@@ -116,19 +71,10 @@ pub(crate) fn parse_remote_xilinx_paths(stdout: &str) -> std::collections::HashM
 pub(crate) fn vendor_cache_dir(host: &str, port: u16, xilinx_settings: &str) -> Utf8PathBuf {
     use sha2::{Digest, Sha256};
     let base = directories::BaseDirs::new()
-        .map(|d| Utf8PathBuf::from(d.cache_dir().to_string_lossy().into_owned()))
-        .or_else(|| {
-            std::env::var_os("XDG_CACHE_HOME")
-                .map(|h| Utf8PathBuf::from(h.to_string_lossy().into_owned()))
-        })
-        .or_else(|| {
-            std::env::var_os("HOME")
-                .map(|h| Utf8PathBuf::from(h.to_string_lossy().into_owned()).join(".cache"))
-        })
-        .unwrap_or_else(|| {
-            Utf8PathBuf::from(std::env::temp_dir().to_string_lossy().into_owned())
-                .join("tapa-cache")
-        });
+        .map(|d| crate::util::utf8(d.cache_dir()))
+        .or_else(|| std::env::var_os("XDG_CACHE_HOME").map(crate::util::utf8))
+        .or_else(|| std::env::var_os("HOME").map(|h| crate::util::utf8(h).join(".cache")))
+        .unwrap_or_else(|| crate::util::utf8(std::env::temp_dir()).join("tapa-cache"));
     let raw = format!("{host}:{port}:{xilinx_settings}");
     let hash = Sha256::digest(raw.as_bytes());
     let mut key = String::with_capacity(16);

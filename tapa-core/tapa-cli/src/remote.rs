@@ -143,32 +143,16 @@ fn apply_remote_host_to_yaml(
     map
 }
 
-/// Expand `~` and `~/…` against `$HOME` for override paths.
-fn expand_home(input: &str) -> Utf8PathBuf {
-    if let Some(rest) = input.strip_prefix("~/") {
-        if let Some(home) = std::env::var_os("HOME") {
-            return Utf8PathBuf::from_path_buf(PathBuf::from(home).join(rest))
-                .unwrap_or_else(|p: PathBuf| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
-        }
-    } else if input == "~" {
-        if let Some(home) = std::env::var_os("HOME") {
-            return Utf8PathBuf::from_path_buf(PathBuf::from(home))
-                .unwrap_or_else(|p: PathBuf| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
-        }
-    }
-    Utf8PathBuf::from(input)
-}
-
 /// Apply non-host CLI overrides to the resolved remote configuration.
 fn apply_cli_overrides(cfg: &mut RemoteConfig, globals: &GlobalArgs) {
     if let Some(p) = globals.remote_key_file.as_deref() {
-        cfg.key_file = Some(expand_home(p));
+        cfg.key_file = Some(crate::util::utf8(shellexpand::tilde(p).into_owned()));
     }
     if let Some(s) = globals.remote_xilinx_settings.as_deref() {
         cfg.xilinx_settings = Some(s.to_string());
     }
     if let Some(d) = globals.remote_ssh_control_dir.as_deref() {
-        cfg.ssh_control_dir = Some(expand_home(d));
+        cfg.ssh_control_dir = Some(crate::util::utf8(shellexpand::tilde(d).into_owned()));
     }
     if let Some(p) = globals.remote_ssh_control_persist.as_deref() {
         cfg.ssh_control_persist = p.to_string();

@@ -20,10 +20,8 @@ use std::sync::Arc;
 
 use camino::Utf8PathBuf;
 
-pub(crate) use self::transport::shell_quote;
-use self::transport::{
-    cleanup_session, download_tree, local_to_remote_path, unique_session_id, upload_batch,
-};
+use self::transport::{cleanup_session, local_to_remote_path, unique_session_id, upload_batch};
+pub(crate) use self::transport::{download_tree, shell_quote};
 use crate::error::{Result, XilinxError};
 use crate::runtime::process::{ToolInvocation, ToolOutput, ToolRunner};
 use crate::runtime::ssh::{classify_ssh_error, SshErrorKind, SshSession};
@@ -124,25 +122,8 @@ impl RemoteToolRunner {
         // caller's cwd. Without this, the default `tapa synth` / `pack`
         // invocation drops the work tree + RTL + C++ sources from the
         // upload batch, leaving the remote Vitis HLS with nothing to
-        // compile. `canonicalize()` is the preferred form so symlinks
-        // resolve, but a non-existent path still gets a plain join.
-        let absolutize = |p: &Utf8PathBuf| -> Utf8PathBuf {
-            if p.is_absolute() {
-                p.clone()
-            } else {
-                let joined = std::env::current_dir().map_or_else(
-                    |_| Utf8PathBuf::from(".").join(p),
-                    |cwd| {
-                        Utf8PathBuf::from_path_buf(cwd)
-                            .unwrap_or_else(|_| Utf8PathBuf::from("."))
-                            .join(p)
-                    },
-                );
-                std::fs::canonicalize(&joined)
-                    .map(|p| Utf8PathBuf::from_path_buf(p).unwrap_or_else(|_| joined.clone()))
-                    .unwrap_or(joined)
-            }
-        };
+        // compile.
+        let absolutize = |p: &Utf8PathBuf| crate::util::absolutize(p);
         let cwd_abs: Option<Utf8PathBuf> = inv.cwd.as_ref().map(absolutize);
         let uploads_abs: Vec<Utf8PathBuf> = inv.uploads.iter().map(absolutize).collect();
         let downloads_abs: Vec<Utf8PathBuf> = inv.downloads.iter().map(absolutize).collect();

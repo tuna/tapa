@@ -123,7 +123,6 @@ fn build_rtl_config(reset_low: bool, auto_prefix: bool) -> String {
 /// Handles both fused (`-I/dir`) and split (`-I`, `/dir`) forms.
 fn kernel_include_dirs(cflags: &[String]) -> Vec<Utf8PathBuf> {
     let mut out: Vec<Utf8PathBuf> = Vec::new();
-    let cwd = std::env::current_dir().ok();
     let mut i = 0;
     while i < cflags.len() {
         let trimmed = cflags[i].trim();
@@ -146,14 +145,7 @@ fn kernel_include_dirs(cflags: &[String]) -> Vec<Utf8PathBuf> {
             continue;
         };
         if !dir_str.is_empty() {
-            let p = Utf8PathBuf::from(dir_str);
-            let p = if p.is_absolute() {
-                p
-            } else if let Some(ref cwd) = cwd {
-                Utf8PathBuf::from_path_buf(cwd.join(p.as_std_path())).unwrap_or(p)
-            } else {
-                p
-            };
+            let p = crate::util::absolutize(&Utf8PathBuf::from(dir_str));
             if p.is_dir() {
                 out.push(p);
             }
@@ -309,8 +301,7 @@ fn copy_tree(src: &camino::Utf8Path, dest: &camino::Utf8Path) -> std::io::Result
         }
         let src_path = entry.path();
         let rel = src_path.strip_prefix(src).expect("prefix must match");
-        let rel = Utf8PathBuf::from_path_buf(rel.to_path_buf())
-            .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
+        let rel = crate::util::utf8(rel);
         let dest_path = dest.join(&rel);
         if let Some(parent) = dest_path.parent() {
             fs_err::create_dir_all(parent)?;
@@ -393,10 +384,7 @@ fn collect_files(dir: &camino::Utf8Path) -> Result<Vec<Utf8PathBuf>> {
     for ent in fs_err::read_dir(dir)? {
         let ent = ent?;
         if ent.file_type()?.is_file() {
-            out.push(
-                Utf8PathBuf::from_path_buf(ent.path())
-                    .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
-            );
+            out.push(crate::util::utf8(ent.path()));
         }
     }
     out.sort();
@@ -436,10 +424,7 @@ fn run_hls_with_retry_impl(
         let (stage_path, _guard): (camino::Utf8PathBuf, Option<tempfile::TempDir>) = match &stage {
             StageDir::Ephemeral => {
                 let dir = tempfile::tempdir().map_err(|e| RetryError::Fatal(XilinxError::Io(e)))?;
-                let path = camino::Utf8PathBuf::from_path_buf(dir.path().to_path_buf())
-                    .unwrap_or_else(|p| {
-                        camino::Utf8PathBuf::from(p.to_string_lossy().into_owned())
-                    });
+                let path = crate::util::utf8(dir.path());
                 (path, Some(dir))
             }
             StageDir::Borrowed(p) => (p.to_path_buf(), None),

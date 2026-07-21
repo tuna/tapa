@@ -162,9 +162,7 @@ impl SshSession {
             return dir.clone();
         }
         if let Some(xdg) = std::env::var_os("XDG_RUNTIME_DIR") {
-            return Utf8PathBuf::from(xdg.to_string_lossy().into_owned())
-                .join("tapa")
-                .join("ssh");
+            return crate::util::utf8(xdg).join("tapa").join("ssh");
         }
         Utf8PathBuf::from("/tmp/tapa-ssh-mux")
     }

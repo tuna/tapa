@@ -40,17 +40,15 @@ use super::cpp_extract::cpp_path_for;
 /// `{part_num}`, `{synth_args}`, and `{report_util_args}` before
 /// invocation; literal TCL braces are escaped in the template source.
 fn render_report_util_tcl(part_num: &str, synth_args: &str, report_util_args: &str) -> String {
-    let mut env = minijinja::Environment::new();
-    env.add_template("report_util", include_str!("templates/report_util.tcl.j2"))
-        .expect("template parses");
-    env.get_template("report_util")
-        .expect("template exists")
-        .render(minijinja::context! {
+    crate::util::render_template(
+        "report_util",
+        include_str!("templates/report_util.tcl.j2"),
+        minijinja::context! {
             part_num,
             synth_args,
             report_util_args,
-        })
-        .expect("render succeeds")
+        },
+    )
 }
 
 /// Drive per-task out-of-context Vivado synthesis against
@@ -183,11 +181,11 @@ fn run_one(
     let abs_hdl =
         crate::util::utf8(fs::canonicalize(rtl_dir).unwrap_or_else(|_| rtl_dir.to_path_buf()));
     let abs_rpt = if rpt_path.is_absolute() {
-        crate::util::utf8(rpt_path.to_path_buf())
+        crate::util::utf8(rpt_path)
     } else {
         match std::env::current_dir() {
             Ok(cwd) => crate::util::utf8(cwd.join(rpt_path)),
-            Err(_) => crate::util::utf8(rpt_path.to_path_buf()),
+            Err(_) => crate::util::utf8(rpt_path),
         }
     };
 

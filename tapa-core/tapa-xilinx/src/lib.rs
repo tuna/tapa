@@ -51,6 +51,7 @@ pub mod error;
 pub mod platform;
 pub mod runtime;
 pub mod tools;
+mod util;
 
 pub use error::{Result, XilinxError};
 pub use platform::device::{parse_device_info, parse_hpfm_xml, parse_xpfm, DeviceInfo};

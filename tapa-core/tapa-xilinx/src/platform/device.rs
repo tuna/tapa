@@ -156,10 +156,7 @@ pub fn parse_device_info(
     let entries = std::fs::read_dir(&hw).map_err(|_| XilinxError::PlatformNotFound(hw.clone()))?;
     let archive_path = entries
         .filter_map(|e| e.ok())
-        .map(|e| {
-            Utf8PathBuf::from_path_buf(e.path())
-                .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()))
-        })
+        .map(|e| crate::util::utf8(e.path()))
         .find(|p| p.extension().is_some_and(|x| x == "xsa" || x == "dsa"))
         .ok_or_else(|| XilinxError::PlatformNotFound(hw.clone()))?;
 

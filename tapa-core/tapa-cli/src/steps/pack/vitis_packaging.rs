@@ -19,10 +19,7 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 use tapa_ir::Design;
-use tapa_xilinx::{
-    pack_xo as xilinx_pack_xo, DeviceInfo, KernelXmlArgs, LocalToolRunner, PackageXoInputs,
-    RemoteToolRunner, SshMuxOptions, SshSession,
-};
+use tapa_xilinx::{pack_xo as xilinx_pack_xo, DeviceInfo, KernelXmlArgs, PackageXoInputs};
 
 use crate::context::CliContext;
 use crate::error::{CliError, Result};
@@ -39,7 +36,7 @@ pub(super) fn pack_vitis(
     design: &Design,
     flow: &FlowSettings,
 ) -> Result<()> {
-    let (part_num, clock_period) = resolve_device_settings(flow)?;
+    let (part_num, clock_period) = resolve_device_settings(&ctx.work_dir, flow)?;
     let top_task = design.tasks.get(&design.top).ok_or_else(|| {
         CliError::Codegen(format!(
             "tapa.json does not contain the top task `{}`",
@@ -49,12 +46,12 @@ pub(super) fn pack_vitis(
 
     let hdl_dir = ctx.work_dir.join("rtl");
     if !hdl_dir.is_dir() {
-        return Err(CliError::InvalidArg(format!(
-            "RTL directory `{}` does not exist; run `tapa synth` first \
-             (or chain `tapa analyze synth pack` in one invocation) to \
-             populate the RTL tree before pack runs.",
-            hdl_dir.display(),
-        )));
+        return Err(CliError::MissingState {
+            name: "RTL directory (run `tapa synth` first, or chain \
+                 `tapa analyze synth pack` in one invocation)"
+                .to_string(),
+            path: hdl_dir,
+        });
     }
 
     apply_pack_overlays(args, ctx, &hdl_dir)?;
@@ -91,17 +88,17 @@ pub(super) fn pack_vitis(
     Ok(())
 }
 
-fn resolve_device_settings(flow: &FlowSettings) -> Result<(String, String)> {
-    let part_num = flow.part_num.clone().ok_or_else(|| {
-        CliError::InvalidArg(
-            "tapa.json is missing `part_num`; run `synth` first to populate it.".to_string(),
-        )
-    })?;
-    let clock_period = flow.clock_period.clone().ok_or_else(|| {
-        CliError::InvalidArg(
-            "tapa.json is missing `clock_period`; run `synth` first to populate it.".to_string(),
-        )
-    })?;
+fn resolve_device_settings(work_dir: &Path, flow: &FlowSettings) -> Result<(String, String)> {
+    let state_path = work_dir.join("tapa.json");
+    let missing = |field: &str| CliError::MissingState {
+        name: format!("`{field}` (run `synth` first to populate it)"),
+        path: state_path.clone(),
+    };
+    let part_num = flow.part_num.clone().ok_or_else(|| missing("part_num"))?;
+    let clock_period = flow
+        .clock_period
+        .clone()
+        .ok_or_else(|| missing("clock_period"))?;
     Ok((part_num, clock_period))
 }
 
@@ -212,10 +209,7 @@ fn build_package_xo_inputs(
 ) -> PackageXoInputs {
     PackageXoInputs::builder()
         .top_name(design.top.clone())
-        .hdl_dir(
-            Utf8PathBuf::from_path_buf(hdl_dir.to_path_buf())
-                .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
-        )
+        .hdl_dir(crate::util::utf8(hdl_dir))
         .device_info(DeviceInfo {
             part_num,
             clock_period: clock_period.clone(),
@@ -229,10 +223,7 @@ fn build_package_xo_inputs(
                 .unwrap_or_else(|| "3.33".to_string()),
             ports: kernel_ports,
         })
-        .kernel_out_path(
-            Utf8PathBuf::from_path_buf(output_path.to_path_buf())
-                .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
-        )
+        .kernel_out_path(crate::util::utf8(output_path))
         .m_axi_params(m_axi_params)
         .report_paths(report_paths)
         .build()
@@ -246,7 +237,6 @@ fn build_package_xo_inputs(
 /// `csynth.rpt` / `csynth.xml` files would collapse into a single
 /// archive entry and overwrite each other.
 fn collect_hls_report_paths(work_dir: &Path) -> Result<Vec<(Utf8PathBuf, String)>> {
-    let hls_root = work_dir.join("hls");
     let staged_root = work_dir.join("pack_reports");
     if staged_root.exists() {
         fs_err::remove_dir_all(&staged_root)?;
@@ -258,25 +248,7 @@ fn collect_hls_report_paths(work_dir: &Path) -> Result<Vec<(Utf8PathBuf, String)
             reports.push((crate::util::utf8(path), file.to_owned()));
         }
     }
-    if !hls_root.is_dir() {
-        return Ok(reports);
-    }
-    let Ok(task_dirs) = fs_err::read_dir(&hls_root) else {
-        return Ok(reports);
-    };
-    for task_entry in task_dirs.flatten() {
-        let task_dir = task_entry.path();
-        let report_dir = task_dir.join("report");
-        if !report_dir.is_dir() {
-            continue;
-        }
-        let Some(task_name) = task_dir
-            .file_name()
-            .and_then(|s| s.to_str())
-            .map(str::to_owned)
-        else {
-            continue;
-        };
+    for (task_name, report_dir) in super::hls_task_report_dirs(work_dir)? {
         let Ok(entries) = fs_err::read_dir(&report_dir) else {
             continue;
         };
@@ -380,16 +352,7 @@ fn is_report_table_rule(line: &str) -> bool {
 }
 
 fn run_pack_xo(ctx: &CliContext, inputs: &PackageXoInputs) -> Result<Utf8PathBuf> {
-    // Use the remote runner when remote configuration is active;
-    // otherwise package locally.
-    if let Some(cfg) = ctx.remote_config.as_ref() {
-        let session = std::sync::Arc::new(SshSession::new(cfg.clone(), SshMuxOptions::default()));
-        let runner = RemoteToolRunner::new(session);
-        Ok(xilinx_pack_xo(&runner, inputs)?)
-    } else {
-        let runner = LocalToolRunner::new();
-        Ok(xilinx_pack_xo(&runner, inputs)?)
-    }
+    Ok(ctx.with_tool_runner(|runner| xilinx_pack_xo(runner, inputs))?)
 }
 
 fn emit_bitstream_script(

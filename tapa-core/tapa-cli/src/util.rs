@@ -4,13 +4,23 @@ use std::path::PathBuf;
 
 use camino::Utf8PathBuf;
 
-/// Convert a [`PathBuf`] to a [`Utf8PathBuf`], falling back to a lossy
-/// conversion when the path is not valid UTF-8. The synth/pack paths all
-/// originate from TAPA-controlled directories, so the lossy branch is a
-/// last resort rather than a real data path.
-pub fn utf8(p: PathBuf) -> Utf8PathBuf {
-    Utf8PathBuf::from_path_buf(p)
-        .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()))
+/// Convert a path to a [`Utf8PathBuf`] via a lossy conversion. The
+/// synth/pack paths all originate from TAPA-controlled directories, so
+/// the lossy branch is a last resort rather than a real data path.
+pub fn utf8(p: impl AsRef<std::path::Path>) -> Utf8PathBuf {
+    Utf8PathBuf::from(p.as_ref().to_string_lossy().into_owned())
+}
+
+/// Render a compile-time-known minijinja template. Template parse
+/// and render failures are programming errors (the templates are
+/// `include_str!` constants), so they panic rather than propagate.
+pub fn render_template(name: &str, src: &str, ctx: minijinja::Value) -> String {
+    let mut env = minijinja::Environment::new();
+    env.add_template(name, src).expect("template parses");
+    env.get_template(name)
+        .expect("template exists")
+        .render(ctx)
+        .expect("render succeeds")
 }
 
 /// Resolve the first Xilinx HLS/Vitis installation root (preferring

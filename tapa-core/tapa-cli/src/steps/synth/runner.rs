@@ -5,8 +5,6 @@
 //! owns the unsupported-flag gating, the HLS cflag construction, and
 //! the recursive Verilog-file walker that feeds the codegen step.
 
-use camino::Utf8PathBuf;
-
 use serde_json::Value;
 use tapa_ir::Task;
 use tapa_xilinx::{CsynthReport, ToolRunner};
@@ -61,7 +59,7 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
     let mut hdl_inputs: TaskHdlInputs = TaskHdlInputs::new();
     for (task_name, layout, out) in &hls_results {
         let mut files = out.verilog_files.clone();
-        files.extend(walk_verilog_files(&layout.hdl_dir));
+        files.extend(super::hls_run::list_verilog_files(&layout.hdl_dir)?);
         files.sort();
         files.dedup();
         hdl_inputs.insert(task_name.clone(), files);
@@ -151,27 +149,6 @@ fn build_hls_cflags(graph_cflags: &[String], remote: bool) -> Vec<String> {
         flags.push(format!("-I{}", p.display()));
     }
     flags
-}
-
-fn walk_verilog_files(dir: &camino::Utf8Path) -> Vec<Utf8PathBuf> {
-    let mut out = Vec::new();
-    if !dir.is_dir() {
-        return out;
-    }
-    for entry in walkdir::WalkDir::new(dir)
-        .into_iter()
-        .filter_map(std::result::Result::ok)
-        .filter(|e| e.file_type().is_file())
-    {
-        let path = entry.path();
-        if path.extension().and_then(|s| s.to_str()) == Some("v") {
-            out.push(
-                Utf8PathBuf::from_path_buf(path.to_path_buf())
-                    .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
-            );
-        }
-    }
-    out
 }
 
 #[cfg(test)]

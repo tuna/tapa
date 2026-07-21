@@ -256,21 +256,12 @@ mod tests {
         std::fs::write(&cpp, b"void foo() {}").unwrap();
         let job = HlsJob::builder()
             .task_name("foo".into())
-            .cpp_source(
-                Utf8PathBuf::from_path_buf(cpp)
-                    .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
-            )
+            .cpp_source(crate::util::utf8(cpp))
             .target_part("part".into())
             .top_name("foo".into())
             .clock_period("3.33".into())
-            .reports_out_dir(
-                Utf8PathBuf::from_path_buf(td.path().join("reports"))
-                    .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
-            )
-            .hdl_out_dir(
-                Utf8PathBuf::from_path_buf(td.path().join("hdl"))
-                    .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
-            )
+            .reports_out_dir(crate::util::utf8(td.path().join("reports")))
+            .hdl_out_dir(crate::util::utf8(td.path().join("hdl")))
             .transient_patterns(Some(Arc::new(vec!["unexpected error".into()])))
             .delay_fn(Some(Arc::new(|_| {})))
             .build();
@@ -291,11 +282,7 @@ mod tests {
         let td = tempfile::tempdir().unwrap();
         let p = td.path().join("bad.xo");
         std::fs::write(&p, b"not a zip").unwrap();
-        redact_xo(
-            &Utf8PathBuf::from_path_buf(p)
-                .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
-        )
-        .expect_err("corrupt zip must error")
+        redact_xo(&crate::util::utf8(p)).expect_err("corrupt zip must error")
     }
 
     fn produce_io() -> XilinxError {

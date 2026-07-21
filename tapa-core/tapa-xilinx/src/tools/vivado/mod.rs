@@ -73,8 +73,7 @@ pub(crate) fn build_invocation(job: &VivadoJob, tcl_path: &camino::Utf8Path) -> 
 pub fn run_vivado(runner: &dyn ToolRunner, job: &VivadoJob) -> Result<VivadoOutput> {
     let tmp = tempfile::NamedTempFile::new()?;
     std::fs::write(tmp.path(), job.tcl.as_bytes())?;
-    let tmp_path = Utf8PathBuf::from_path_buf(tmp.path().to_path_buf())
-        .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
+    let tmp_path = crate::util::utf8(tmp.path());
     let scratch = if job.work_dir.is_none() {
         Some(tempfile::tempdir()?)
     } else {
@@ -85,8 +84,7 @@ pub fn run_vivado(runner: &dyn ToolRunner, job: &VivadoJob) -> Result<VivadoOutp
     let home_dir = match (&job.work_dir, &scratch) {
         (Some(p), _) => p.clone(),
         (None, Some(t)) => {
-            let p = Utf8PathBuf::from_path_buf(t.path().to_path_buf())
-                .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
+            let p = crate::util::utf8(t.path());
             inv.cwd = Some(p.clone());
             p
         }

@@ -20,7 +20,6 @@
 //! `post_synth_util::emit_post_synth_util`.
 
 use clap::Parser;
-use tapa_xilinx::{LocalToolRunner, RemoteToolRunner, SshMuxOptions, SshSession};
 
 use crate::context::CliContext;
 use crate::error::Result;
@@ -106,12 +105,5 @@ pub struct SynthArgs {
 /// `--remote-host`), HLS dispatches through `RemoteToolRunner`;
 /// otherwise `LocalToolRunner`.
 pub fn run(args: &SynthArgs, ctx: &CliContext) -> Result<()> {
-    if let Some(cfg) = ctx.remote_config.as_ref() {
-        let session = std::sync::Arc::new(SshSession::new(cfg.clone(), SshMuxOptions::default()));
-        let runner = RemoteToolRunner::new(session);
-        run_native(args, ctx, &runner)
-    } else {
-        let runner = LocalToolRunner::new();
-        run_native(args, ctx, &runner)
-    }
+    ctx.with_tool_runner(|runner| run_native(args, ctx, runner))
 }

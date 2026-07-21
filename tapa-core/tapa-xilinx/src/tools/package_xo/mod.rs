@@ -243,15 +243,9 @@ pub fn pack_xo_without_redaction(
     // check would miss it or pick up a stale file from the caller's
     // cwd). Absolutize before wiring the TCL args and the download
     // list so remote + local paths agree on one absolute target.
-    let kernel_out_path = if inputs.kernel_out_path.is_absolute() {
-        inputs.kernel_out_path.clone()
-    } else {
-        Utf8PathBuf::from_path_buf(std::env::current_dir()?.join(&inputs.kernel_out_path))
-            .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()))
-    };
+    let kernel_out_path = crate::util::absolutize(&inputs.kernel_out_path);
     let tmp = tempfile::tempdir()?;
-    let kernel_xml_path = Utf8PathBuf::from_path_buf(tmp.path().join("kernel.xml"))
-        .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
+    let kernel_xml_path = crate::util::utf8(tmp.path().join("kernel.xml"));
     let xml = emit_kernel_xml(&inputs.kernel_xml)?;
     std::fs::write(&kernel_xml_path, xml.as_bytes())?;
 
@@ -273,8 +267,7 @@ pub fn pack_xo_without_redaction(
     if let Some(parent) = kernel_out_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let tmp_path = Utf8PathBuf::from_path_buf(tmp.path().to_path_buf())
-        .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
+    let tmp_path = crate::util::utf8(tmp.path());
     let tclargs = [
         tmp_path.as_str().to_string(),
         inputs.hdl_dir.as_str().to_string(),

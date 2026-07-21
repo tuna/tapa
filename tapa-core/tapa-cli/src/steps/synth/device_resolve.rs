@@ -66,8 +66,7 @@ fn resolve_platform_dir(platform: &str) -> Option<Utf8PathBuf> {
     let direct = if parent.as_os_str().is_empty() {
         Utf8PathBuf::from(&normalized)
     } else {
-        Utf8PathBuf::from_path_buf(parent.join(&normalized))
-            .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()))
+        crate::util::utf8(parent.join(&normalized))
     };
     if direct.is_dir() {
         return Some(direct);

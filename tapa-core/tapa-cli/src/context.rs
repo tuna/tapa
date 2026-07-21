@@ -31,6 +31,23 @@ impl CliContext {
         }
     }
 
+    /// Dispatch `f` with the remote tool runner when a remote config
+    /// is active (`~/.taparc` / `--remote-host`), otherwise the local
+    /// runner.
+    pub fn with_tool_runner<R>(&self, f: impl FnOnce(&dyn tapa_xilinx::ToolRunner) -> R) -> R {
+        if let Some(cfg) = self.remote_config.as_ref() {
+            let session = std::sync::Arc::new(tapa_xilinx::SshSession::new(
+                cfg.clone(),
+                tapa_xilinx::SshMuxOptions::default(),
+            ));
+            let runner = tapa_xilinx::RemoteToolRunner::new(session);
+            f(&runner)
+        } else {
+            let runner = tapa_xilinx::LocalToolRunner::new();
+            f(&runner)
+        }
+    }
+
     pub fn switch_work_dir(&mut self, path: PathBuf) -> std::io::Result<()> {
         std::fs::create_dir_all(&path)?;
         let abs = absolutize_for_storage(&path);

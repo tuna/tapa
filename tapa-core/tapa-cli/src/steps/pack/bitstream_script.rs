@@ -19,11 +19,7 @@ pub(super) fn render_vitis_script(
     platform: Option<&str>,
     clock_period: Option<&str>,
 ) -> String {
-    let mut env = minijinja::Environment::new();
-    env.add_template("vitis_script", include_str!("templates/vitis_script.sh.j2"))
-        .expect("template parses");
-
-    let xo = absolutize(output_file).display().to_string();
+    let xo = absolutize_lexical(output_file).display().to_string();
     let target_frequency = clock_period.and_then(|clock| {
         clock.parse::<f64>().ok().map(|period| {
             #[allow(
@@ -37,18 +33,18 @@ pub(super) fn render_vitis_script(
         })
     });
 
-    let ctx = minijinja::context! {
-        top,
-        xo,
-        target_frequency,
-        platform,
-    };
     format!(
         "#!/bin/bash\n{}",
-        env.get_template("vitis_script")
-            .expect("template exists")
-            .render(ctx)
-            .expect("render succeeds")
+        crate::util::render_template(
+            "vitis_script",
+            include_str!("templates/vitis_script.sh.j2"),
+            minijinja::context! {
+                top,
+                xo,
+                target_frequency,
+                platform,
+            },
+        )
     )
 }
 
@@ -89,7 +85,7 @@ fn set_executable(_dest: &Path) -> Result<()> {
 /// `std::env::current_dir()` with no symlink resolution. We
 /// intentionally do not use `std::fs::canonicalize` because the
 /// target `.xo` may not yet exist when the script is emitted.
-fn absolutize(p: &Path) -> PathBuf {
+fn absolutize_lexical(p: &Path) -> PathBuf {
     if p.is_absolute() {
         return p.to_path_buf();
     }
@@ -174,8 +170,8 @@ mod tests {
     }
 
     #[test]
-    fn absolutize_keeps_absolute_paths() {
+    fn absolutize_lexical_keeps_absolute_paths() {
         let abs = Path::new("/tmp/out.xo");
-        assert_eq!(absolutize(abs), abs.to_path_buf());
+        assert_eq!(absolutize_lexical(abs), abs.to_path_buf());
     }
 }

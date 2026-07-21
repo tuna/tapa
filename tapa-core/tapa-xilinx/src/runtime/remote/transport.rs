@@ -83,31 +83,8 @@ pub(super) fn upload_batch(
         let rel = rel.trim_start_matches('/');
         if p.is_dir() {
             builder
-                .append_dir(rel, p.as_std_path())
+                .append_dir_all(rel, p.as_std_path())
                 .map_err(|e| XilinxError::RemoteTransfer(format!("tar append dir {rel}: {e}")))?;
-            for ent in std::fs::read_dir(p)
-                .map_err(|e| XilinxError::RemoteTransfer(format!("read_dir {p}: {e}")))?
-            {
-                let ent =
-                    ent.map_err(|e| XilinxError::RemoteTransfer(format!("read_dir entry: {e}")))?;
-                let arc = format!("{rel}/{}", ent.file_name().to_string_lossy());
-                let ent_path = ent.path();
-                let metadata = std::fs::metadata(&ent_path).map_err(|e| {
-                    XilinxError::RemoteTransfer(format!("metadata {}: {e}", ent_path.display()))
-                })?;
-                if metadata.is_dir() {
-                    builder.append_dir_all(&arc, &ent_path).map_err(|e| {
-                        XilinxError::RemoteTransfer(format!("tar append dir {arc}: {e}"))
-                    })?;
-                } else if metadata.is_file() {
-                    let mut f = std::fs::File::open(&ent_path).map_err(|e| {
-                        XilinxError::RemoteTransfer(format!("open {}: {e}", ent_path.display()))
-                    })?;
-                    builder.append_file(&arc, &mut f).map_err(|e| {
-                        XilinxError::RemoteTransfer(format!("tar append file {arc}: {e}"))
-                    })?;
-                }
-            }
         } else if p.is_file() {
             let mut f = std::fs::File::open(p.as_std_path())
                 .map_err(|e| XilinxError::RemoteTransfer(format!("open {p}: {e}")))?;
@@ -143,7 +120,7 @@ pub(super) fn upload_batch(
 /// `flate2`/`tar`. SSH stderr is captured so transient mux failures
 /// surface in the returned error and the outer retry path can classify
 /// them.
-pub(super) fn download_tree(session: &SshSession, remote_dir: &str, dest: &Path) -> Result<()> {
+pub fn download_tree(session: &SshSession, remote_dir: &str, dest: &Path) -> Result<()> {
     std::fs::create_dir_all(dest)
         .map_err(|e| XilinxError::RemoteTransfer(format!("mkdir {}: {e}", dest.display())))?;
     let remote_cmd = format!("tar -czf - -C {} .", shell_quote(remote_dir));

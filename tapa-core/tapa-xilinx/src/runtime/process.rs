@@ -83,18 +83,24 @@ impl LocalToolRunner {
     }
 }
 
+/// Tool name → env vars that may hold its installation root, in
+/// precedence order. Adding a Xilinx tool is a one-line table edit.
+const XILINX_TOOL_ENVS: &[(&str, &[&str])] = &[
+    ("vitis_hls", &["XILINX_HLS", "XILINX_VITIS"]),
+    ("vivado", &["XILINX_VIVADO", "XILINX_VITIS"]),
+    ("v++", &["XILINX_VITIS"]),
+];
+
 fn xilinx_settings_envs(program: &str) -> &'static [&'static str] {
     let tool = Path::new(program)
         .file_name()
         .and_then(|name| name.to_str())
         .unwrap_or(program)
         .trim_end_matches(".exe");
-    match tool {
-        "vitis_hls" => &["XILINX_HLS", "XILINX_VITIS"],
-        "vivado" => &["XILINX_VIVADO", "XILINX_VITIS"],
-        "v++" => &["XILINX_VITIS"],
-        _ => &[],
-    }
+    XILINX_TOOL_ENVS
+        .iter()
+        .find_map(|(name, envs)| (*name == tool).then_some(*envs))
+        .unwrap_or(&[])
 }
 
 fn invocation_env_path(inv: &ToolInvocation, name: &str) -> Option<PathBuf> {
@@ -442,8 +448,7 @@ mod tests {
     #[test]
     fn mock_writes_attached_downloads() {
         let tmp = tempfile::tempdir().unwrap();
-        let dl = Utf8PathBuf::from_path_buf(tmp.path().join("nested").join("out.txt"))
-            .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
+        let dl = crate::util::utf8(tmp.path().join("nested").join("out.txt"));
         let runner = MockToolRunner::new();
         runner.push_ok("vitis_hls", ToolOutput::default());
         runner.attach_download(&dl, b"hello".to_vec());

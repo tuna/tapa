@@ -15,7 +15,7 @@
 //! The Vitis target emits an `.xo`; the HLS target emits a
 //! reproducible `.zip` archive.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::Parser;
 use fs_err;
@@ -72,15 +72,40 @@ pub fn run(args: &PackArgs, ctx: &CliContext) -> Result<()> {
 /// `tapa.json` state file carrying the compile context. Output
 /// defaults to `work.zip` in the caller's CWD and is always normalized
 /// to a `.zip` suffix.
+/// Yield `(task_name, report_dir)` for every
+/// `<work_dir>/hls/<task>/report/` directory. The zip and xo paths
+/// both walk this layout; file selection, staging, and redaction stay
+/// per-path.
+pub(super) fn hls_task_report_dirs(work_dir: &Path) -> Result<Vec<(String, PathBuf)>> {
+    let hls_root = work_dir.join("hls");
+    let mut out = Vec::new();
+    if !hls_root.is_dir() {
+        return Ok(out);
+    }
+    for task_entry in fs_err::read_dir(&hls_root)? {
+        let task_entry = task_entry?;
+        if !task_entry.file_type()?.is_dir() {
+            continue;
+        }
+        let report_dir = task_entry.path().join("report");
+        if !report_dir.is_dir() {
+            continue;
+        }
+        let task_name = task_entry.file_name().to_string_lossy().into_owned();
+        out.push((task_name, report_dir));
+    }
+    Ok(out)
+}
+
 fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, state: &WorkState) -> Result<()> {
     use std::io::Write as _;
     let work_dir = ctx.work_dir.as_path();
     let rtl_dir = work_dir.join("rtl");
     if !rtl_dir.is_dir() {
-        return Err(CliError::InvalidArg(format!(
-            "RTL directory `{}` does not exist; run `tapa synth` first.",
-            rtl_dir.display(),
-        )));
+        return Err(CliError::MissingState {
+            name: "RTL directory (run `tapa synth` first)".to_string(),
+            path: rtl_dir,
+        });
     }
     if !args.custom_rtl.is_empty() {
         let templates = load_templates_info(&ctx.work_dir)?;
@@ -137,20 +162,11 @@ fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, state: &WorkState) -> Result<
     // `report/<task>/<file>` and replace the per-run `Date:` line with the fixed
     // 1980-01-01 stamp so re-running HLS produces a byte-identical
     // archive (the same redaction `program.pack_xo` applies to xo).
-    let hls_root = work_dir.join("hls");
-    if hls_root.is_dir() {
+    let task_report_dirs = hls_task_report_dirs(work_dir)?;
+    if !task_report_dirs.is_empty() {
         let mut rpt_files: Vec<(std::path::PathBuf, String)> = Vec::new();
-        for task_entry in fs_err::read_dir(&hls_root)? {
-            let task_entry = task_entry?;
-            if !task_entry.file_type()?.is_dir() {
-                continue;
-            }
-            let task_name = task_entry.file_name().to_string_lossy().into_owned();
-            let report_root = task_entry.path().join("report");
-            if !report_root.is_dir() {
-                continue;
-            }
-            for entry in walkdir::WalkDir::new(&report_root) {
+        for (task_name, report_root) in &task_report_dirs {
+            for entry in walkdir::WalkDir::new(report_root) {
                 let entry = entry.map_err(std::io::Error::other)?;
                 if !entry.file_type().is_file() {
                     continue;
@@ -164,7 +180,7 @@ fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, state: &WorkState) -> Result<
                     continue;
                 }
                 let rel = path
-                    .strip_prefix(&report_root)
+                    .strip_prefix(report_root)
                     .map_err(|e| CliError::Archive(format!("rpt strip_prefix: {e}")))?;
                 let name = format!("report/{task_name}/{}", rel.to_slash_lossy());
                 rpt_files.push((path.to_path_buf(), name));
@@ -460,11 +476,11 @@ mod tests {
     }
 
     #[test]
-    fn missing_rtl_dir_surfaces_invalid_arg() {
+    fn missing_rtl_dir_surfaces_missing_state() {
         let dir = tempfile::tempdir().expect("tempdir");
         write_state(dir.path(), Target::XilinxVitis);
         let ctx = ctx_with_work_dir(dir.path());
         let err = run(&parse_pack(&[]), &ctx).expect_err("missing rtl dir must fail");
-        assert!(matches!(err, CliError::InvalidArg(ref m) if m.contains("rtl")));
+        assert!(matches!(err, CliError::MissingState { ref name, .. } if name.contains("RTL")));
     }
 }
