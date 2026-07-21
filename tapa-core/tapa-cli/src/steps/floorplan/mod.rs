@@ -13,6 +13,7 @@ use tapa_ir::PipelineScheme;
 use crate::context::CliContext;
 use crate::error::{CliError, Result};
 use crate::state::{json, work as work_io};
+use crate::steps::synth::rtl_codegen::{collect_hdl_inputs, generate_rtl_tree};
 
 /// Name of the emitted pblock constraints file in the work directory.
 pub const FLOORPLAN_XDC: &str = "floorplan.xdc";
@@ -72,8 +73,16 @@ pub fn run(args: &FloorplanArgs, ctx: &CliContext) -> Result<()> {
     };
     let result = plan(&state, &options).map_err(|e| CliError::Floorplan(e.to_string()))?;
     let xdc = render_xdc(&result).map_err(|e| CliError::Floorplan(e.to_string()))?;
-
     json::write_bytes_atomic(&ctx.work_dir, FLOORPLAN_XDC, xdc.as_bytes())?;
+
+    // Regenerate the top RTL with relay stations. `plan` planned on the
+    // flattened graph, so codegen must too — flattening the *original* graph
+    // again yields the same global FIFO names the crossing links carry.
+    let flat = tapa_ir::flatten(&state.graph)
+        .map_err(|e| CliError::Floorplan(format!("flatten failed: {e}")))?;
+    let hdl_inputs = collect_hdl_inputs(&ctx.work_dir, &flat)?;
+    generate_rtl_tree(&ctx.work_dir, &flat, &hdl_inputs, Some(&result))?;
+
     state.floorplan = Some(result);
     work_io::store(&ctx.work_dir, &state)?;
     Ok(())
@@ -146,6 +155,86 @@ mod tests {
             }
             Err(CliError::Floorplan(msg)) if msg.contains("cbc") || msg.contains("solver") => {
                 eprintln!("skipping floorplan_step: cbc not available ({msg})");
+            }
+            Err(other) => panic!("floorplan step failed: {other}"),
+        }
+    }
+
+    /// Write a fake HLS Verilog module under `hls/<task>/verilog/<task>.v`.
+    fn write_hls_module(work_dir: &std::path::Path, task: &str, src: &str) {
+        let dir = work_dir.join("hls").join(task).join("verilog");
+        fs_err::create_dir_all(&dir).expect("hls dir");
+        fs_err::write(dir.join(format!("{task}.v")), src).expect("hls verilog");
+    }
+
+    #[test]
+    fn floorplan_step_regenerates_relay_rtl() {
+        // A and B are too large to share a u280 slot, so the stream between
+        // them crosses a boundary and must be pipelined with a relay station
+        // in the regenerated top RTL.
+        let json = r#"{
+            "cflags": [], "top": "VecAdd", "target": "xilinx-vitis",
+            "tasks": {
+                "VecAdd": {
+                    "readable_name": "VecAdd", "code": "void VecAdd() {}", "level": "upper", "synth": "hls",
+                    "ports": [],
+                    "tasks": {
+                        "A": [{"args": {"out": {"arg": "fifo", "cat": "ostream"}}, "step": 0}],
+                        "B": [{"args": {"in": {"arg": "fifo", "cat": "istream"}}, "step": 0}]
+                    },
+                    "fifos": {"fifo": {"depth": 2, "consumed_by": ["B", 0], "produced_by": ["A", 0]}}
+                },
+                "A": {"readable_name": "A", "code": "void A() {}", "level": "lower", "synth": "hls",
+                    "ports": [{"cat": "ostream", "name": "out", "type": "float", "width": 32}],
+                    "self_area": {"LUT": 120000}},
+                "B": {"readable_name": "B", "code": "void B() {}", "level": "lower", "synth": "hls",
+                    "ports": [{"cat": "istream", "name": "in", "type": "float", "width": 32}],
+                    "self_area": {"LUT": 120000}}
+            }
+        }"#;
+        let graph = TaskGraph::from_json(json).expect("parse");
+        let mut state = WorkState::new(graph);
+        state.flow.part_num = Some("xcu280-fsvh2892-2L-e".to_string());
+        state.flow.synthed = true;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        work_io::store(dir.path(), &state).expect("store");
+        write_hls_module(
+            dir.path(),
+            "VecAdd",
+            "module VecAdd(\n input wire ap_clk,\n input wire ap_rst_n\n);\nendmodule",
+        );
+        write_hls_module(
+            dir.path(),
+            "A",
+            "module A(\n input wire ap_clk,\n input wire ap_rst_n,\n \
+             output wire [31:0] out_din,\n output wire out_write,\n input wire out_full_n\n);\nendmodule",
+        );
+        write_hls_module(
+            dir.path(),
+            "B",
+            "module B(\n input wire ap_clk,\n input wire ap_rst_n,\n \
+             input wire [31:0] in_dout,\n input wire in_empty_n,\n output wire in_read\n);\nendmodule",
+        );
+
+        let args = FloorplanArgs {
+            usage_limit: 0.7,
+            pp_scheme: PpScheme::Double,
+            max_seconds: 60,
+        };
+        match run(&args, &ctx_at(dir.path())) {
+            Ok(()) => {
+                let top_v = fs_err::read_to_string(dir.path().join("rtl").join("VecAdd.v"))
+                    .expect("top rtl");
+                assert!(
+                    top_v.contains("relay_station"),
+                    "the cross-slot stream must be regenerated as a relay station, got:\n{top_v}"
+                );
+            }
+            Err(CliError::Floorplan(msg)) if msg.contains("cbc") || msg.contains("solver") => {
+                eprintln!(
+                    "skipping floorplan_step_regenerates_relay_rtl: cbc not available ({msg})"
+                );
             }
             Err(other) => panic!("floorplan step failed: {other}"),
         }

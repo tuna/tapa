@@ -30,7 +30,7 @@ mod hls_run;
 mod metrics;
 mod post_synth_util;
 mod report;
-mod rtl_codegen;
+pub(crate) mod rtl_codegen;
 mod runner;
 
 pub(crate) use runner::run_native;

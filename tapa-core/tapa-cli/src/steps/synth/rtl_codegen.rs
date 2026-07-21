@@ -75,6 +75,26 @@ pub fn generate_rtl_tree(
     Ok(written)
 }
 
+/// Reconstruct [`TaskHdlInputs`] from the on-disk HLS output, for a re-run of
+/// codegen (e.g. the floorplan step) that no longer has the live HLS results.
+///
+/// Every HLS task — the top and every leaf, since synth runs HLS for all
+/// non-`Ignore` tasks — has its Verilog under `<work_dir>/hls/<task>/verilog`.
+pub fn collect_hdl_inputs(work_dir: &Path, design: &Design) -> Result<TaskHdlInputs> {
+    let mut inputs = TaskHdlInputs::new();
+    for (task_name, task) in &design.tasks {
+        if task.synth != SynthTarget::Hls {
+            continue;
+        }
+        let layout = super::hls_run::TaskHlsLayout::new(work_dir, task_name);
+        let files = super::hls_run::list_verilog_files(&layout.hdl_dir)?;
+        if !files.is_empty() {
+            inputs.insert(task_name.clone(), files);
+        }
+    }
+    Ok(inputs)
+}
+
 fn write_verilog_support_assets(rtl_dir: &Path) -> Result<Vec<PathBuf>> {
     let mut written = Vec::new();
     for name in VerilogAssets::iter() {
