@@ -1,0 +1,131 @@
+{
+    "cols": 2,
+    "key": "u280",
+    "part_num": "xcu280-fsvh2892-2L-e",
+    "pp_dist": 100,
+    "rows": 3,
+    "slots": [
+        {
+            "area": {
+                "bram_18k": 768,
+                "dsp": 1440,
+                "ff": 441600,
+                "lut": 220800,
+                "uram": 128
+            },
+            "centroid_x": 0,
+            "centroid_y": 0,
+            "pblock_ranges": [
+                "CLOCKREGION_X0Y0:CLOCKREGION_X3Y3"
+            ],
+            "wire_cap": {
+                "east": 40320,
+                "north": 11520
+            },
+            "x": 0,
+            "y": 0
+        },
+        {
+            "area": {
+                "bram_18k": 768,
+                "dsp": 1536,
+                "ff": 441600,
+                "lut": 220800,
+                "uram": 128
+            },
+            "centroid_x": 0,
+            "centroid_y": 150,
+            "pblock_ranges": [
+                "CLOCKREGION_X0Y4:CLOCKREGION_X3Y7"
+            ],
+            "wire_cap": {
+                "east": 40320,
+                "north": 11520,
+                "south": 11520
+            },
+            "x": 0,
+            "y": 1
+        },
+        {
+            "area": {
+                "bram_18k": 768,
+                "dsp": 1536,
+                "ff": 441600,
+                "lut": 220800,
+                "uram": 128
+            },
+            "centroid_x": 0,
+            "centroid_y": 300,
+            "pblock_ranges": [
+                "CLOCKREGION_X0Y8:CLOCKREGION_X3Y11"
+            ],
+            "wire_cap": {
+                "east": 40320,
+                "south": 11520
+            },
+            "x": 0,
+            "y": 2
+        },
+        {
+            "area": {
+                "bram_18k": 576,
+                "dsp": 1440,
+                "ff": 437760,
+                "lut": 218880,
+                "uram": 192
+            },
+            "centroid_x": 100,
+            "centroid_y": 0,
+            "pblock_ranges": [
+                "CLOCKREGION_X4Y0:CLOCKREGION_X7Y3"
+            ],
+            "wire_cap": {
+                "north": 11520,
+                "west": 40320
+            },
+            "x": 1,
+            "y": 0
+        },
+        {
+            "area": {
+                "bram_18k": 576,
+                "dsp": 1536,
+                "ff": 437760,
+                "lut": 218880,
+                "uram": 192
+            },
+            "centroid_x": 100,
+            "centroid_y": 150,
+            "pblock_ranges": [
+                "CLOCKREGION_X4Y4:CLOCKREGION_X7Y7"
+            ],
+            "wire_cap": {
+                "north": 11520,
+                "south": 11520,
+                "west": 40320
+            },
+            "x": 1,
+            "y": 1
+        },
+        {
+            "area": {
+                "bram_18k": 576,
+                "dsp": 1536,
+                "ff": 437760,
+                "lut": 218880,
+                "uram": 192
+            },
+            "centroid_x": 100,
+            "centroid_y": 300,
+            "pblock_ranges": [
+                "CLOCKREGION_X4Y8:CLOCKREGION_X7Y11"
+            ],
+            "wire_cap": {
+                "south": 11520,
+                "west": 40320
+            },
+            "x": 1,
+            "y": 2
+        }
+    ]
+}

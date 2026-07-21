@@ -1,0 +1,165 @@
+{
+    "cols": 2,
+    "key": "u250",
+    "part_num": "xcu250-figd2104-2L-e",
+    "pp_dist": 100,
+    "rows": 4,
+    "slots": [
+        {
+            "area": {
+                "bram_18k": 768,
+                "dsp": 1536,
+                "ff": 433920,
+                "lut": 216960,
+                "uram": 128
+            },
+            "centroid_x": 0,
+            "centroid_y": 0,
+            "pblock_ranges": [
+                "CLOCKREGION_X0Y0:CLOCKREGION_X3Y3"
+            ],
+            "wire_cap": {
+                "north": 11520
+            },
+            "x": 0,
+            "y": 0
+        },
+        {
+            "area": {
+                "bram_18k": 768,
+                "dsp": 1536,
+                "ff": 433920,
+                "lut": 216960,
+                "uram": 128
+            },
+            "centroid_x": 0,
+            "centroid_y": 150,
+            "pblock_ranges": [
+                "CLOCKREGION_X0Y4:CLOCKREGION_X3Y7"
+            ],
+            "wire_cap": {
+                "north": 11520,
+                "south": 11520
+            },
+            "x": 0,
+            "y": 1
+        },
+        {
+            "area": {
+                "bram_18k": 768,
+                "dsp": 1536,
+                "ff": 433920,
+                "lut": 216960,
+                "uram": 128
+            },
+            "centroid_x": 0,
+            "centroid_y": 300,
+            "pblock_ranges": [
+                "CLOCKREGION_X0Y8:CLOCKREGION_X3Y11"
+            ],
+            "wire_cap": {
+                "north": 11520,
+                "south": 11520
+            },
+            "x": 0,
+            "y": 2
+        },
+        {
+            "area": {
+                "bram_18k": 768,
+                "dsp": 1536,
+                "ff": 433920,
+                "lut": 216960,
+                "uram": 128
+            },
+            "centroid_x": 0,
+            "centroid_y": 450,
+            "pblock_ranges": [
+                "CLOCKREGION_X0Y12:CLOCKREGION_X3Y15"
+            ],
+            "wire_cap": {
+                "south": 11520
+            },
+            "x": 0,
+            "y": 3
+        },
+        {
+            "area": {
+                "bram_18k": 576,
+                "dsp": 1536,
+                "ff": 430080,
+                "lut": 215040,
+                "uram": 192
+            },
+            "centroid_x": 100,
+            "centroid_y": 0,
+            "pblock_ranges": [
+                "CLOCKREGION_X4Y0:CLOCKREGION_X7Y3"
+            ],
+            "wire_cap": {
+                "north": 11520
+            },
+            "x": 1,
+            "y": 0
+        },
+        {
+            "area": {
+                "bram_18k": 576,
+                "dsp": 1536,
+                "ff": 430080,
+                "lut": 215040,
+                "uram": 192
+            },
+            "centroid_x": 100,
+            "centroid_y": 150,
+            "pblock_ranges": [
+                "CLOCKREGION_X4Y4:CLOCKREGION_X7Y7"
+            ],
+            "wire_cap": {
+                "north": 11520,
+                "south": 11520
+            },
+            "x": 1,
+            "y": 1
+        },
+        {
+            "area": {
+                "bram_18k": 576,
+                "dsp": 1536,
+                "ff": 430080,
+                "lut": 215040,
+                "uram": 192
+            },
+            "centroid_x": 100,
+            "centroid_y": 300,
+            "pblock_ranges": [
+                "CLOCKREGION_X4Y8:CLOCKREGION_X7Y11"
+            ],
+            "wire_cap": {
+                "north": 11520,
+                "south": 11520
+            },
+            "x": 1,
+            "y": 2
+        },
+        {
+            "area": {
+                "bram_18k": 576,
+                "dsp": 1536,
+                "ff": 430080,
+                "lut": 215040,
+                "uram": 192
+            },
+            "centroid_x": 100,
+            "centroid_y": 450,
+            "pblock_ranges": [
+                "CLOCKREGION_X4Y12:CLOCKREGION_X7Y15"
+            ],
+            "wire_cap": {
+                "south": 11520
+            },
+            "x": 1,
+            "y": 3
+        }
+    ]
+}

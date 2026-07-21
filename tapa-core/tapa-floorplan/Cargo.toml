@@ -9,8 +9,10 @@ edition = "2021"
 # solely through the contract type. The CBC solver runs as a local external
 # binary via std::process; anything needing Vivado (OOC area, run_impl) is
 # driven by the CLI floorplan step, which owns the tapa-xilinx runner.
+#
+# Device tables are embedded with `include_str!` (a fixed, curated set), not
+# rust-embed, so selection never reads the source tree at runtime.
 [dependencies]
-rust-embed = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tapa-ir = { workspace = true }

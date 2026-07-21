@@ -1,0 +1,74 @@
+{
+    "cols": 2,
+    "is_versal": true,
+    "key": "vck190",
+    "part_num": "xcvc1902-vsva2197-2MP-e-S",
+    "pp_dist": 100,
+    "rows": 2,
+    "slots": [
+        {
+            "area": {
+                "bram_18k": 504,
+                "dsp": 564,
+                "ff": 475904,
+                "lut": 237952,
+                "uram": 108
+            },
+            "centroid_x": 0,
+            "centroid_y": 0,
+            "pblock_ranges": [
+                "CLOCKREGION_X0Y1:CLOCKREGION_X4Y2"
+            ],
+            "x": 0,
+            "y": 0
+        },
+        {
+            "area": {
+                "bram_18k": 426,
+                "dsp": 420,
+                "ff": 421120,
+                "lut": 210560,
+                "uram": 106
+            },
+            "centroid_x": 0,
+            "centroid_y": 150,
+            "pblock_ranges": [
+                "CLOCKREGION_X0Y3:CLOCKREGION_X4Y4"
+            ],
+            "x": 0,
+            "y": 1
+        },
+        {
+            "area": {
+                "bram_18k": 576,
+                "dsp": 564,
+                "ff": 517376,
+                "lut": 258688,
+                "uram": 144
+            },
+            "centroid_x": 100,
+            "centroid_y": 0,
+            "pblock_ranges": [
+                "CLOCKREGION_X5Y1:CLOCKREGION_X9Y2"
+            ],
+            "x": 1,
+            "y": 0
+        },
+        {
+            "area": {
+                "bram_18k": 428,
+                "dsp": 420,
+                "ff": 385280,
+                "lut": 192640,
+                "uram": 105
+            },
+            "centroid_x": 100,
+            "centroid_y": 150,
+            "pblock_ranges": [
+                "CLOCKREGION_X5Y3:CLOCKREGION_X9Y4"
+            ],
+            "x": 1,
+            "y": 1
+        }
+    ]
+}

@@ -9,7 +9,7 @@
 //! codegen consumes.
 //!
 //! Module map (built out across phases):
-//! - `device` — device model (`Area`/`Coor`/`Slot`/`Device`), embedded
+//! - [`device`] — device model (`Area`/`Coor`/`Slot`/`Device`), embedded
 //!   per-part JSON tables, and `part_num → Device` selection.
 //! - `solver` — an `LpModel` + CPLEX-LP writer + `Solver` trait, with a first
 //!   backend that spawns the external `cbc` binary.
