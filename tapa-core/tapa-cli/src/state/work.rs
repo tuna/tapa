@@ -154,7 +154,7 @@ mod tests {
         store(dir.path(), &sample_state()).expect("store");
         let raw = fs_err::read_to_string(path_in(dir.path())).expect("read");
         assert!(
-            raw.starts_with("{\n  \"version\": 1,\n"),
+            raw.starts_with("{\n  \"version\": 2,\n"),
             "state file must be pretty-printed for human diffing; got {raw}",
         );
         assert!(raw.ends_with("}\n"), "state file must end with a newline");
@@ -185,9 +185,9 @@ mod tests {
         // long before it noticed the version.
         fs_err::write(
             path_in(dir.path()),
-            br#"{"version": 2, "graph": {"whatever": true}}"#,
+            br#"{"version": 3, "graph": {"whatever": true}}"#,
         )
-        .expect("write v2 state");
+        .expect("write v3 state");
         let err = load(dir.path()).expect_err("foreign version must fail");
         let CliError::StaleWorkState {
             found, expected, ..
@@ -195,7 +195,7 @@ mod tests {
         else {
             panic!("expected StaleWorkState, got {err}");
         };
-        assert_eq!(found, "v2", "reported version");
+        assert_eq!(found, "v3", "reported version");
         assert_eq!(*expected, VERSION, "expected version");
         assert!(
             err.to_string().contains("tapa analyze"),
@@ -234,7 +234,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         store(dir.path(), &sample_state()).expect("store");
         let text = fs_err::read_to_string(path_in(dir.path())).expect("read");
-        let patched = text.replace("\"version\": 1,", "\"version\": 1,\n  \"bogus\": 1,");
+        let patched = text.replace("\"version\": 2,", "\"version\": 2,\n  \"bogus\": 1,");
         fs_err::write(path_in(dir.path()), patched).expect("write");
         let err = load(dir.path()).expect_err("unknown field must fail");
         assert!(

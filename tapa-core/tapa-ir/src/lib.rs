@@ -7,6 +7,7 @@
 //! the `.zip` archive, where `frt-cosim` — in a different Cargo workspace —
 //! parses it back with these same types.
 
+pub mod floorplan;
 pub mod graph;
 pub mod instance;
 pub mod interconnect;
@@ -20,6 +21,7 @@ pub mod work_state;
 mod error;
 
 pub use error::ParseError;
+pub use floorplan::{Area, Crossing, CrossingKind, FloorplanResult, PipelineScheme};
 pub use graph::TaskGraph;
 pub use instance::{Arg, TaskInstance};
 pub use interconnect::{EndpointRef, InterconnectDefinition};

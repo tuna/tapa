@@ -16,6 +16,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::error::ParseError;
+use crate::floorplan::FloorplanResult;
 use crate::graph::TaskGraph;
 
 /// Name of the single state file: `<work_dir>/tapa.json`, copied under the
@@ -28,7 +29,9 @@ pub const FILE_NAME: &str = "tapa.json";
 /// the nested [`TaskGraph`] wire form. Work dirs outlive tool versions, so a
 /// mismatch must surface as a clear "re-run analyze" error, not as a
 /// confusing field-level parse failure.
-pub const VERSION: u32 = 1;
+///
+/// v2 added the optional [`WorkState::floorplan`] contract.
+pub const VERSION: u32 = 2;
 
 /// Everything the pipeline persists between steps.
 #[allow(
@@ -46,6 +49,11 @@ pub struct WorkState {
     pub graph: TaskGraph,
     /// Flow-level settings resolved by the pipeline steps.
     pub flow: FlowSettings,
+    /// The floorplan the `floorplan` step computed, when it has run. Its
+    /// presence switches codegen and pack into the floorplanned path; absent,
+    /// the flow is byte-for-byte as before.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub floorplan: Option<FloorplanResult>,
 }
 
 impl WorkState {
@@ -57,6 +65,7 @@ impl WorkState {
             version: VERSION,
             graph,
             flow: FlowSettings::default(),
+            floorplan: None,
         }
     }
 
@@ -154,6 +163,54 @@ mod tests {
         let json = serde_json::to_string(&state).expect("serialize");
         let back = WorkState::from_json(&json).expect("parse");
         assert_eq!(back, state, "state must survive a JSON round trip");
+    }
+
+    #[test]
+    fn floorplan_is_absent_by_default_and_omitted_from_json() {
+        let state = sample_state();
+        assert!(
+            state.floorplan.is_none(),
+            "a fresh state is not floorplanned"
+        );
+        let json = serde_json::to_string(&state).expect("serialize");
+        assert!(
+            !json.contains("floorplan"),
+            "an absent floorplan must not materialize a key; got {json}",
+        );
+    }
+
+    #[test]
+    fn floorplan_round_trips_when_present() {
+        use crate::floorplan::{Area, FloorplanResult};
+
+        let mut state = sample_state();
+        state.floorplan = Some(FloorplanResult {
+            device: "u280".to_string(),
+            grid: (2, 3),
+            regions: BTreeMap::from([("Top".to_string(), "SLOT_X0Y0_TO_SLOT_X0Y0".to_string())]),
+            crossings: Vec::new(),
+            slot_usage: BTreeMap::from([(
+                "SLOT_X0Y0_TO_SLOT_X0Y0".to_string(),
+                Area {
+                    lut: 1,
+                    ff: 2,
+                    bram_18k: 0,
+                    dsp: 0,
+                    uram: 0,
+                },
+            )]),
+        });
+        let json = serde_json::to_string(&state).expect("serialize");
+        let back = WorkState::from_json(&json).expect("parse");
+        assert_eq!(
+            back, state,
+            "a floorplanned state must survive a round trip"
+        );
+    }
+
+    #[test]
+    fn version_is_v2_for_the_floorplan_contract() {
+        assert_eq!(VERSION, 2, "the floorplan contract lifted the state to v2");
     }
 
     #[test]
