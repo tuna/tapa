@@ -10,7 +10,6 @@ namespace tapa::cc {
 // The "ignore" backend: a task marked [[tapa::target("ignore")]] is a black box
 // the user supplies RTL for, so tapacc emits only a shell whose ports survive
 // dead-code elimination (dummy reads/writes) and whose body is otherwise empty.
-// Ports from the old IgnoreTarget.
 class IgnoreBackend final : public Backend {
  public:
   std::string_view Name() const override { return "ignore"; }

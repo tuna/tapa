@@ -25,10 +25,8 @@ fn main() -> ExitCode {
 fn run() -> Result<(), CliError> {
     let cli = Cli::parse();
 
-    // CLI group default: a bare `tapa` invocation with no
-    // subcommand prints `--help` and exits non-zero (`no_args_is_help`).
-    // Without this branch the Rust CLI silently exited 0, hiding
-    // genuine "user forgot to type a subcommand" mistakes.
+    // A bare `tapa` invocation with no subcommand prints `--help`
+    // and exits non-zero.
     if cli.step.is_none() {
         use clap::CommandFactory;
         let _ = Cli::command().print_help();

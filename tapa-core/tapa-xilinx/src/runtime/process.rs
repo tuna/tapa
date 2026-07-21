@@ -499,10 +499,9 @@ mod tests {
         }
     }
 
-    /// Bare program names must resolve via the caller's `PATH`
-    /// (compatibility with `subprocess.Popen`). Without this, bare
-    /// `vitis_hls` / `vivado` spawn calls fail on a configured local
-    /// host because the child has no `PATH` to search.
+    /// Bare program names must resolve via the caller's `PATH`.
+    /// Without this, bare `vitis_hls` / `vivado` spawn calls fail on a
+    /// configured local host because the child has no `PATH` to search.
     #[test]
     fn local_runner_inherits_parent_path_for_bare_programs() {
         let runner = LocalToolRunner::new();

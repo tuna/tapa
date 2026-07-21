@@ -8,11 +8,9 @@ use tapa_ir::{Design, TaskLevel};
 
 use crate::error::{CliError, Result};
 
-/// Argument names that Vitis HLS treats as reserved keywords. Same set
-/// as `tapa.safety_check::DISABLED_MMAP_NAME_LIST`. Using one
+/// Argument names that Vitis HLS treats as reserved keywords. Using one
 /// of these as a port name produces inconsistent AXI/interface naming
-/// downstream, so reject up front (ran the same check before
-/// extracting C++).
+/// downstream, so reject up front.
 const DISABLED_MMAP_NAMES: &[&str] = &[
     "begin", "end", "in", "input", "out", "output", "reg", "wire",
 ];

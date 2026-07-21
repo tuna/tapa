@@ -82,11 +82,7 @@ fn load_taparc_remote_section(path: &Path) -> Option<serde_yaml::Value> {
         Ok(t) => t,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
         Err(e) => {
-            log::warn!(
-                "ignoring `{}`: {} (matching warn-and-skip)",
-                path.display(),
-                e,
-            );
+            log::warn!("ignoring `{}`: {}", path.display(), e);
             return None;
         }
     };

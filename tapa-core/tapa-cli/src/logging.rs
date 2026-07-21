@@ -1,5 +1,4 @@
-//! Verbosity → log-level mapping: `(quiet - verbose) * 10 + INFO`,
-//! clamped to `[DEBUG, CRITICAL]`.
+//! Verbosity → log-level mapping.
 
 use log::LevelFilter;
 

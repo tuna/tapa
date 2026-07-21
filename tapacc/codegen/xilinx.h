@@ -8,7 +8,7 @@
 namespace tapa::cc {
 
 // The Xilinx backend, covering both Vitis HLS (`is_vitis = false`) and Vitis
-// (`is_vitis = true`) via one grouped class. Ports the old XilinxHLSTarget.
+// (`is_vitis = true`) via one grouped class.
 class XilinxBackend final : public Backend {
  public:
   explicit XilinxBackend(bool is_vitis) : is_vitis_(is_vitis) {}

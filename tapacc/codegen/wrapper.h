@@ -12,7 +12,7 @@ namespace tapa::cc {
 // Generate the mangled wrapper for a template-specialization task: a concrete
 // function `void <mangled>(<concrete params>) { <lower-level port preamble>
 // <ReadableName>(<args>); }` that HLS can synthesize (a template can't be a
-// top-level module). Ported from the old GenerateWrapperCode.
+// top-level module).
 std::string GenerateWrapper(const TaskModel& task, const Backend& backend,
                             clang::ASTContext& ctx);
 

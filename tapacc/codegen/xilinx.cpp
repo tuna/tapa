@@ -20,7 +20,7 @@ namespace {
 
 // The effective code-generation level of a function. The top-level distinction
 // only exists in Vitis mode; in plain Vitis HLS the top task is generated as a
-// middle-level upper task (old RewriteTopLevelFunc -> RewriteMiddleLevelFunc).
+// middle-level upper task.
 enum class Lvl { kTop, kMiddle, kLower };
 
 Lvl LvlOf(TaskLevel level, bool is_top, bool is_vitis) {
@@ -208,8 +208,7 @@ void XilinxBackend::EmitAsyncMmapPort(const PortContext& p,
   if (lvl == Lvl::kLower) {
     EmitLowerAsyncMmap(p.param, out);
   } else {
-    // Middle/top async_mmap is handled like a scalar offset register (old
-    // AddCodeForMiddleLevelAsyncMmap -> scalar; top -> mmap).
+    // Middle/top async_mmap is handled like a scalar offset register.
     EmitScalarPort(p, out);
   }
 }

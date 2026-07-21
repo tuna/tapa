@@ -34,8 +34,7 @@ pub fn sanitize_array_name(name: &str) -> String {
 
 /// Argument / port category.
 ///
-/// Covers all 10 wire strings from `Instance.Arg._CAT_LOOKUP`.
-/// `"hmap"` is an alias that deserializes to `Mmap` (matching behavior).
+/// `"hmap"` is an alias that deserializes to `Mmap`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, IntoStaticStr, EnumString)]
 #[strum(serialize_all = "snake_case")]
 pub enum ArgCategory {

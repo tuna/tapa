@@ -89,11 +89,10 @@ fn set_executable(_dest: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Match `os.path.abspath`: absolute paths stay, relative
-/// paths are resolved against `std::env::current_dir()` with no
-/// symlink resolution. We intentionally do not use
-/// `std::fs::canonicalize` because the target `.xo` may not yet
-/// exist when the script is emitted.
+/// Absolute paths stay; relative paths are resolved against
+/// `std::env::current_dir()` with no symlink resolution. We
+/// intentionally do not use `std::fs::canonicalize` because the
+/// target `.xo` may not yet exist when the script is emitted.
 fn absolutize(p: &Path) -> PathBuf {
     if p.is_absolute() {
         return p.to_path_buf();

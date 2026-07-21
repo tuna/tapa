@@ -21,7 +21,7 @@ pub enum TransformError {
     #[error("graph is missing the top task `{0}`")]
     MissingTop(String),
 
-    /// The top task is `lower`; flatten/floorplan both require an upper top.
+    /// The top task is `lower`; flattening requires an upper top.
     #[error("top task `{0}` is a leaf; cannot transform")]
     TopIsLeaf(String),
 }

@@ -146,8 +146,7 @@ fn run_clang_format(clang_format: &Path, code: &[u8]) -> Result<Vec<u8>> {
     Ok(out.stdout)
 }
 
-/// Truncate a SHA-256 digest to the first 8 hex characters, matching
-/// `hashlib.sha256(...).hexdigest()[:8]`.
+/// Truncate a SHA-256 digest to the first 8 hex characters.
 pub(super) fn sha256_truncated_hex(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);

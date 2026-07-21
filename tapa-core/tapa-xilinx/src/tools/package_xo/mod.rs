@@ -19,9 +19,7 @@ use tapa_protocol::{M_AXI_PREFIX, S_AXI_NAME};
 mod redact;
 pub use redact::redact_xo;
 
-/// `{top_name}`, `{bus_ifaces}`, `{cpp_kernels}`, `{part_num}` placeholders
-/// are substituted by `format_package_xo_tcl`. All other braces are escaped
-/// (`{{`/`}}`) so the `.format` semantics carry over cleanly.
+/// Inputs to `.xo` packaging; the TCL template is rendered from these.
 #[derive(Debug, Clone, TypedBuilder)]
 pub struct PackageXoInputs {
     pub top_name: String,
@@ -127,8 +125,9 @@ fn format_package_xo_tcl(
 /// Build the `.xo` for the given inputs using the provided runner.
 ///
 /// 1. Allocate a staging tempdir and emit `kernel.xml` into it.
-/// 2. Format `PACKAGE_XO_TCL` with the kernel's `bus_ifaces`, `cpp_kernels`,
-///    and `-part` argument, and invoke Vivado via [`run_vivado`].
+/// 2. Render the packaging TCL with the kernel's `bus_ifaces`,
+///    `cpp_kernels`, and `-part` argument, and invoke Vivado via
+///    [`run_vivado`].
 /// 3. Require that Vivado has produced the `.xo` at `kernel_out_path`.
 /// 4. Run [`redact::redact_xo`] on the output so two invocations on the same
 ///    inputs are byte-equal.

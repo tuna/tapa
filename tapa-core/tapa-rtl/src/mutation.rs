@@ -353,8 +353,8 @@ fn extract_body_text(source: &str) -> String {
             || starts_with_decl_keyword(trimmed, "parameter")
             || starts_with_decl_keyword(trimmed, "localparam")
             || trimmed.starts_with("(* ")
-            // Line comments (incl. RapidStream `// pragma ...`) belong
-            // to the header, not the body.
+            // Line comments between declarations belong to the
+            // header, not the body.
             || trimmed.starts_with("//");
         if is_declaration_line {
             body_start = line_end.min(endmodule_pos);

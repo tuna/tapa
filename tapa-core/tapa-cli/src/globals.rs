@@ -92,7 +92,7 @@ pub struct GlobalArgs {
 }
 
 const SUBCOMMAND_HELP: &str = "\
-Subcommands (chainable, processed left-to-right like CLI chained group):
+Subcommands (chainable, processed left-to-right):
 
   analyze                       Analyze a TAPA program; persist tapa.json.
   synth                         Synthesize the analyzed program into RTL.
