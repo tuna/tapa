@@ -142,7 +142,7 @@ std::vector<ArgInfo> Instance::GetArgsInfo() const {
     CheckFfi(frt_instance_get_arg(impl_->handle, i, &idx, &cat, &name, &type),
              "get_arg");
     args.push_back({static_cast<int>(idx), name ? name : "", type ? type : "",
-                    static_cast<ArgInfo::Cat>(cat)});
+                    static_cast<RuntimeArgCategory>(cat)});
   }
   return args;
 }

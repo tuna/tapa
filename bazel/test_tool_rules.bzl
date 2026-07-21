@@ -18,7 +18,7 @@ set -euo pipefail
 {resolver}
 exec "$(resolve_runfile {test_tool})" {argv}
 """.format(
-        resolver = runfiles_resolver(format_escaped = True),
+        resolver = runfiles_resolver(),
         test_tool = _sh_quote(ctx.executable.test_tool.short_path),
         argv = " ".join([_sh_quote(arg) for arg in argv]),
     )

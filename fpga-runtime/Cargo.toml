@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+  "frt-cbindgen",
   "frt-shm",
   "frt-dpi",
   "frt-dpi-verilator",

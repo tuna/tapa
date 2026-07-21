@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 
+#include "tapa/host/frt/c_api.h"
 #include "tapa/host/frt/types.h"
 
 namespace tapa {
@@ -15,27 +16,22 @@ namespace internal {
 namespace frt {
 
 struct ArgInfo {
-  enum Cat {
-    kScalar = 0,
-    kMmap = 1,
-    kStream = 2,
-    kStreams = 3,
-  };
   int index = 0;
   std::string name;
   std::string type;
-  Cat cat = kScalar;
+  RuntimeArgCategory cat = RuntimeArgCategory::Scalar;
 };
 
-inline std::ostream& operator<<(std::ostream& os, const ArgInfo::Cat& cat) {
+inline std::ostream& operator<<(std::ostream& os,
+                                const RuntimeArgCategory& cat) {
   switch (cat) {
-    case ArgInfo::kScalar:
+    case RuntimeArgCategory::Scalar:
       return os << "scalar";
-    case ArgInfo::kMmap:
+    case RuntimeArgCategory::Mmap:
       return os << "mmap";
-    case ArgInfo::kStream:
+    case RuntimeArgCategory::Stream:
       return os << "stream";
-    case ArgInfo::kStreams:
+    case RuntimeArgCategory::Streams:
       return os << "streams";
   }
   return os << "unknown";

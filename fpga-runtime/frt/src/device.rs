@@ -18,12 +18,16 @@ impl BufferAccess {
     }
 }
 
+/// Kernel-argument category as it crosses the C ABI. The discriminants
+/// are the wire values; cbindgen exports this enum into `c_api.h`, making
+/// this type the single source of the integer contract.
+#[repr(i32)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RuntimeArgCategory {
-    Scalar,
-    Mmap,
-    Stream,
-    Streams,
+    Scalar = 0,
+    Mmap = 1,
+    Stream = 2,
+    Streams = 3,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

@@ -18,7 +18,10 @@ _ALL_SRCS = glob(
         "BUILD.bazel",
         "target/**",
     ],
-) + ["//tapa-core:tapa-ir-srcs"]
+) + [
+    "//tapa-core:tapa-ir-srcs",
+    "//tapa-lib:frt-c-api-header",
+]
 
 cargo_platform_artifacts(
     name = "cargo_release_artifacts",
@@ -72,6 +75,8 @@ cargo_test(
     size = "enormous",
     srcs = _ALL_SRCS,
     cargo_args = [
+        "-p",
+        "frt-cbindgen",
         "-p",
         "frt-shm",
         "-p",

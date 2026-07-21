@@ -94,12 +94,7 @@ fn parse_buffer_access(tag: c_int) -> BufferAccess {
 }
 
 fn cat_to_c_int(cat: RuntimeArgCategory) -> c_int {
-    match cat {
-        RuntimeArgCategory::Scalar => 0,
-        RuntimeArgCategory::Mmap => 1,
-        RuntimeArgCategory::Stream => 2,
-        RuntimeArgCategory::Streams => 3,
-    }
+    cat as c_int
 }
 
 fn open_instance(path: &str, sim: Option<&str>) -> Result<Instance, String> {

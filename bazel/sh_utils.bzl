@@ -8,11 +8,12 @@ def sh_quote(value):
     """Quote a string for POSIX shell single-quoted contexts."""
     return "'" + value.replace("'", "'\"'\"'") + "'"
 
-# A bash `resolve_runfile` function that finds a runfile across the
-# RUNFILES_DIR / $0.runfiles / RUNFILES_MANIFEST_FILE layouts. The
-# caller decides how it is embedded: `_runfiles_resolver()` for raw
-# inclusion, or `.format()`-escaped via `runfiles_resolver(escaped=True)`.
-_RESOLVER = """resolve_runfile() {
+# The resolve_runfile bash function.
+#
+# Finds a runfile across the RUNFILES_DIR / $0.runfiles /
+# RUNFILES_MANIFEST_FILE layouts. Embed as a `.format()` value (the
+# substituted value is inserted verbatim, so no brace escaping).
+RESOLVER = """resolve_runfile() {
   local path="$1"
   local workspace="${TEST_WORKSPACE:-_main}"
   local candidate
@@ -43,8 +44,6 @@ _RESOLVER = """resolve_runfile() {
 }
 """
 
-def runfiles_resolver(format_escaped = False):
-    """The resolve_runfile bash function; escaped for .format() when asked."""
-    if format_escaped:
-        return _RESOLVER.replace("{", "{{").replace("}", "}}")
-    return _RESOLVER
+def runfiles_resolver():
+    """The resolve_runfile bash function body."""
+    return RESOLVER

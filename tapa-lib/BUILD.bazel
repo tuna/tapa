@@ -66,6 +66,12 @@ _SHARED_SRCS = [
     "tapa/host/task.cpp",
 ]
 
+filegroup(
+    name = "frt-c-api-header",
+    srcs = ["tapa/host/frt/c_api.h"],
+    visibility = ["//fpga-runtime:__pkg__"],
+)
+
 cc_library(
     name = "tapa",
     srcs = _SHARED_SRCS + ["tapa/host/private_scheduler.h"],
