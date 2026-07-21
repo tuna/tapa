@@ -4,6 +4,20 @@ use std::path::PathBuf;
 
 use camino::Utf8PathBuf;
 
+/// Parse a clock period in nanoseconds as a finite, positive value.
+pub fn parse_clock_period_ns(value: &str) -> Result<f64, String> {
+    let period = value
+        .parse::<f64>()
+        .map_err(|_| format!("clock period `{value}` is not a number"))?;
+    if period.is_finite() && period > 0.0 {
+        Ok(period)
+    } else {
+        Err(format!(
+            "clock period must be finite and greater than zero, got `{value}`"
+        ))
+    }
+}
+
 /// Convert a path to a [`Utf8PathBuf`] via a lossy conversion. The
 /// synth/pack paths all originate from TAPA-controlled directories, so
 /// the lossy branch is a last resort rather than a real data path.
@@ -37,4 +51,21 @@ pub fn vendor_hls_root() -> Option<PathBuf> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clock_period_must_be_finite_and_positive() {
+        let parsed = parse_clock_period_ns("3.33").expect("valid period");
+        assert!((parsed - 3.33).abs() < f64::EPSILON);
+        for invalid in ["fast", "0", "-1", "NaN", "inf", "-inf"] {
+            assert!(
+                parse_clock_period_ns(invalid).is_err(),
+                "accepted {invalid}"
+            );
+        }
+    }
 }

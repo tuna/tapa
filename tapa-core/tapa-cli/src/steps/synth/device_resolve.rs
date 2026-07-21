@@ -26,11 +26,13 @@ pub(super) fn resolve_device_info(args: &SynthArgs) -> Result<DeviceInfo> {
                  been installed, e.g., in `/opt/xilinx/platforms`?",
             ))
         })?;
-        return Ok(xilinx_parse_device_info(
-            &resolved,
-            part_override,
-            clock_override,
-        )?);
+        let info = xilinx_parse_device_info(&resolved, part_override, clock_override)?;
+        crate::util::parse_clock_period_ns(&info.clock_period).map_err(|message| {
+            CliError::InvalidArg(format!(
+                "platform `{platform}` provides an invalid target {message}"
+            ))
+        })?;
+        return Ok(info);
     }
 
     let Some(part_num) = part_override else {
@@ -121,6 +123,21 @@ mod tests {
         let info = resolve_device_info(&args).expect("must resolve");
         assert_eq!(info.part_num, "xcvu37p-fsvh2892-2L-e");
         assert_eq!(info.clock_period, "3.33");
+    }
+
+    #[test]
+    fn invalid_clock_period_is_rejected_by_clap() {
+        for value in ["0", "-1", "NaN", "inf"] {
+            let clock_arg = format!("--clock-period={value}");
+            let error = SynthArgs::try_parse_from([
+                "synth",
+                "--part-num",
+                "xcvu37p-fsvh2892-2L-e",
+                &clock_arg,
+            ])
+            .expect_err("invalid clock period");
+            assert!(error.to_string().contains("clock period"), "{error}");
+        }
     }
 
     #[test]

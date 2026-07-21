@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
-use crate::error::Result;
+use crate::error::{CliError, Result};
 
 /// Render the `#!/bin/bash` v++ script with an absolute `.xo` path.
 ///
@@ -17,7 +17,6 @@ use crate::error::Result;
 /// `OPT_DESIGN.TCL.PRE` hook so v++ applies the floorplan during
 /// implementation; `connectivity_ini` adds a `--config` for memory
 /// connectivity.
-#[must_use]
 pub(super) fn render_vitis_script(
     top: &str,
     output_file: &Path,
@@ -25,24 +24,32 @@ pub(super) fn render_vitis_script(
     clock_period: Option<&str>,
     floorplan_xdc: Option<&Path>,
     connectivity_ini: Option<&Path>,
-) -> String {
+) -> Result<String> {
     let xo = absolutize_lexical(output_file).display().to_string();
     let floorplan_xdc = floorplan_xdc.map(|p| absolutize_lexical(p).display().to_string());
     let connectivity_ini = connectivity_ini.map(|p| absolutize_lexical(p).display().to_string());
-    let target_frequency = clock_period.and_then(|clock| {
-        clock.parse::<f64>().ok().map(|period| {
+    let target_frequency = clock_period
+        .map(|clock| {
+            let period = crate::util::parse_clock_period_ns(clock).map_err(|message| {
+                CliError::InvalidArg(format!("cannot emit bitstream script: invalid {message}"))
+            })?;
+            let frequency = (1000.0_f64 / period).round();
+            if !frequency.is_finite() || !(1.0..=f64::from(u32::MAX)).contains(&frequency) {
+                return Err(CliError::InvalidArg(format!(
+                    "cannot emit bitstream script: clock period `{clock}` ns rounds to an \
+                     unsupported target frequency `{frequency}` MHz"
+                )));
+            }
             #[allow(
                 clippy::cast_possible_truncation,
                 clippy::cast_sign_loss,
-                reason = "uses `round(1000 / float(clock_period))` → int; \
-                          the i64 roundtrip mirrors that truncation"
+                reason = "the finite positive value was range-checked against u32 above"
             )]
-            let target = (1000.0_f64 / period).round() as i64;
-            target.to_string()
+            Ok((frequency as u32).to_string())
         })
-    });
+        .transpose()?;
 
-    format!(
+    Ok(format!(
         "#!/bin/bash\n{}",
         crate::util::render_template(
             "vitis_script",
@@ -56,7 +63,7 @@ pub(super) fn render_vitis_script(
                 connectivity_ini,
             },
         )
-    )
+    ))
 }
 
 /// Write the script to `dest`, making it executable on Unix
@@ -82,7 +89,7 @@ pub(super) fn write_vitis_script(
         clock_period,
         floorplan_xdc,
         connectivity_ini,
-    );
+    )?;
     fs::write(dest, body)?;
     set_executable(dest)?;
     Ok(())
@@ -116,10 +123,28 @@ fn absolutize_lexical(p: &Path) -> PathBuf {
 mod tests {
     use super::*;
 
+    fn render(
+        top: &str,
+        output_file: &Path,
+        platform: Option<&str>,
+        clock_period: Option<&str>,
+        floorplan_xdc: Option<&Path>,
+        connectivity_ini: Option<&Path>,
+    ) -> String {
+        render_vitis_script(
+            top,
+            output_file,
+            platform,
+            clock_period,
+            floorplan_xdc,
+            connectivity_ini,
+        )
+        .expect("valid script inputs")
+    }
+
     #[test]
     fn renders_minimum_script_skeleton() {
-        let script =
-            render_vitis_script("VecAdd", Path::new("/tmp/out.xo"), None, None, None, None);
+        let script = render("VecAdd", Path::new("/tmp/out.xo"), None, None, None, None);
         assert!(script.starts_with("#!/bin/bash"));
         assert!(script.contains("TOP=VecAdd"));
         assert!(script.contains("XO='/tmp/out.xo'"));
@@ -128,7 +153,7 @@ mod tests {
 
     #[test]
     fn includes_platform_when_provided() {
-        let script = render_vitis_script(
+        let script = render(
             "Top",
             Path::new("/tmp/a.xo"),
             Some("xilinx_u250_gen3x16_xdma_4_1_202210_1"),
@@ -141,7 +166,7 @@ mod tests {
 
     #[test]
     fn emits_target_frequency_from_clock_period() {
-        let script = render_vitis_script(
+        let script = render(
             "Top",
             Path::new("/tmp/a.xo"),
             None,
@@ -189,23 +214,19 @@ mod tests {
 
     #[test]
     fn default_platform_warning_emitted() {
-        let script = render_vitis_script("Top", Path::new("/tmp/a.xo"), None, None, None, None);
+        let script = render("Top", Path::new("/tmp/a.xo"), None, None, None, None);
         assert!(script.contains("PLATFORM=\"\""));
         assert!(script.contains("Please edit this file and set a valid PLATFORM"));
     }
 
     #[test]
-    fn invalid_clock_period_is_ignored() {
-        let script = render_vitis_script(
-            "Top",
-            Path::new("/tmp/a.xo"),
-            None,
-            Some("fast"),
-            None,
-            None,
-        );
-        assert!(!script.contains("TARGET_FREQUENCY"));
-        assert!(!script.contains("--kernel_frequency"));
+    fn invalid_clock_period_is_rejected() {
+        for clock in ["fast", "0", "-1", "NaN", "inf", "1e-300", "1e300"] {
+            let error =
+                render_vitis_script("Top", Path::new("/tmp/a.xo"), None, Some(clock), None, None)
+                    .expect_err("invalid clock period");
+            assert!(error.to_string().contains("bitstream script"), "{error}");
+        }
     }
 
     #[test]
@@ -216,7 +237,7 @@ mod tests {
 
     #[test]
     fn floorplan_xdc_is_sourced_as_opt_design_hook() {
-        let script = render_vitis_script(
+        let script = render(
             "Top",
             Path::new("/tmp/a.xo"),
             Some("plat"),
@@ -236,7 +257,7 @@ mod tests {
         // Regression: a blank line between `--config` and `--kernel_frequency`
         // once broke the `\` continuation, orphaning `--kernel_frequency` as
         // its own (failing) command. Every arg must continue the v++ command.
-        let script = render_vitis_script(
+        let script = render(
             "Top",
             Path::new("/tmp/a.xo"),
             Some("plat"),
@@ -265,7 +286,7 @@ mod tests {
 
     #[test]
     fn connectivity_ini_is_added_as_config() {
-        let script = render_vitis_script(
+        let script = render(
             "Top",
             Path::new("/tmp/a.xo"),
             Some("plat"),
@@ -281,7 +302,7 @@ mod tests {
 
     #[test]
     fn no_config_without_connectivity() {
-        let script = render_vitis_script(
+        let script = render(
             "Top",
             Path::new("/tmp/a.xo"),
             Some("plat"),
@@ -297,7 +318,7 @@ mod tests {
 
     #[test]
     fn no_floorplan_hook_without_xdc() {
-        let script = render_vitis_script(
+        let script = render(
             "Top",
             Path::new("/tmp/a.xo"),
             Some("plat"),
