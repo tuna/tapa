@@ -41,6 +41,20 @@ void reschedule_this_thread() {
 
 }  // namespace
 
+namespace internal {
+
+// Killed via SIGINT when tapa::invoke synchronous kernel is running.
+frt::Instance* frt_sync_kernel_instance = nullptr;
+extern "C" void kill_frt_sync_kernel(int) {
+  if (frt_sync_kernel_instance) {
+    frt_sync_kernel_instance->Kill();
+    frt_sync_kernel_instance = nullptr;
+  }
+  exit(EXIT_FAILURE);
+}
+
+}  // namespace internal
+
 }  // namespace tapa
 
 #if TAPA_ENABLE_COROUTINE
@@ -64,16 +78,6 @@ using unique_lock = boost::unique_lock<mutex>;
 namespace tapa {
 
 namespace internal {
-
-// Killed via SIGINT when tapa::invoke synchronous kernel is running.
-frt::Instance* frt_sync_kernel_instance = nullptr;
-extern "C" void kill_frt_sync_kernel(int) {
-  if (frt_sync_kernel_instance) {
-    frt_sync_kernel_instance->Kill();
-    frt_sync_kernel_instance = nullptr;
-  }
-  exit(EXIT_FAILURE);
-}
 
 namespace {
 
@@ -217,15 +221,6 @@ void schedule(bool detach, const std::function<void()>& f) {
     std::unique_lock<std::mutex> lock(internal::mtx);
     threads->emplace_back(f);
   }
-}
-
-frt::Instance* frt_sync_kernel_instance = nullptr;
-extern "C" void kill_frt_sync_kernel(int) {
-  if (frt_sync_kernel_instance) {
-    frt_sync_kernel_instance->Kill();
-    frt_sync_kernel_instance = nullptr;
-  }
-  exit(EXIT_FAILURE);
 }
 
 namespace {

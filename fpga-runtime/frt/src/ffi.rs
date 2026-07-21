@@ -284,16 +284,6 @@ pub extern "C" fn frt_instance_set_scalar_bytes(
 }
 
 #[no_mangle]
-pub extern "C" fn frt_instance_set_buffer_arg(
-    handle: *mut std::ffi::c_void,
-    index: u32,
-    ptr: *mut u8,
-    bytes: usize,
-) -> c_int {
-    frt_instance_set_buffer_arg_typed(handle, index, ptr, bytes, 3)
-}
-
-#[no_mangle]
 pub extern "C" fn frt_instance_set_buffer_arg_typed(
     handle: *mut std::ffi::c_void,
     index: u32,
