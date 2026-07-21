@@ -34,16 +34,6 @@ pub static STREAM_PORT_DIRECTION: phf::Map<&'static str, &'static str> = phf::ph
     "_write" => "output",
 };
 
-/// Each stream suffix mapped to its opposite-side counterpart.
-pub static STREAM_PORT_OPPOSITE: phf::Map<&'static str, &'static str> = phf::phf_map! {
-    "_dout" => "_din",
-    "_din" => "_dout",
-    "_empty_n" => "_write",
-    "_write" => "_empty_n",
-    "_read" => "_full_n",
-    "_full_n" => "_read",
-};
-
 /// Bit width for each stream suffix.  `0` means width is determined by
 /// the data type (variable).
 pub static STREAM_PORT_WIDTH: phf::Map<&'static str, u32> = phf::phf_map! {
@@ -230,22 +220,6 @@ pub const M_AXI_SUFFIXES_COMPACT: &[&str] = &[
     "_WREADY", "_WSTRB", "_WVALID",
 ];
 
-/// Read-channel (AR + R) suffixes — notably does NOT include
-/// `_ARREGION`, which Vitis top RTL declares but TAPA lowering never
-/// emits.
-pub const M_AXI_READ_SUFFIXES: &[&str] = &[
-    "_ARVALID", "_ARREADY", "_ARADDR", "_ARID", "_ARLEN", "_ARSIZE", "_ARBURST", "_ARLOCK",
-    "_ARCACHE", "_ARPROT", "_ARQOS", "_RVALID", "_RREADY", "_RDATA", "_RLAST", "_RID", "_RRESP",
-];
-
-/// Write-channel (AW + W + B) suffixes — notably does NOT include
-/// `_AWREGION`.
-pub const M_AXI_WRITE_SUFFIXES: &[&str] = &[
-    "_AWVALID", "_AWREADY", "_AWADDR", "_AWID", "_AWLEN", "_AWSIZE", "_AWBURST", "_AWLOCK",
-    "_AWCACHE", "_AWPROT", "_AWQOS", "_WVALID", "_WREADY", "_WDATA", "_WSTRB", "_WLAST", "_BVALID",
-    "_BREADY", "_BID", "_BRESP",
-];
-
 /// Full suffix set (37 entries) — compact + 8 optional address-channel attributes.
 pub const M_AXI_SUFFIXES: &[&str] = &[
     "_ARADDR", "_ARBURST", "_ARID", "_ARLEN", "_ARREADY", "_ARSIZE", "_ARVALID", "_AWADDR",
@@ -313,35 +287,13 @@ mod tests {
             .collect();
         let with_direction: BTreeSet<&str> = STREAM_PORT_DIRECTION.keys().copied().collect();
         let with_width: BTreeSet<&str> = STREAM_PORT_WIDTH.keys().copied().collect();
-        let with_opposite: BTreeSet<&str> = STREAM_PORT_OPPOSITE.keys().copied().collect();
 
         assert_eq!(declared, with_direction, "direction table");
         assert_eq!(declared, with_width, "width table");
-        assert_eq!(declared, with_opposite, "opposite table");
         assert!(
             STREAM_DATA_SUFFIXES.iter().all(|s| declared.contains(s)),
             "data suffixes must be declared stream suffixes"
         );
-    }
-
-    /// Opposite pairs are symmetric and sit on opposite sides of the wire.
-    #[test]
-    fn stream_port_opposites_are_involutive_and_flip_direction() {
-        for (suffix, opposite) in &STREAM_PORT_OPPOSITE {
-            assert_eq!(
-                STREAM_PORT_OPPOSITE.get(opposite),
-                Some(suffix),
-                "{suffix} -> {opposite} is not symmetric"
-            );
-            assert_ne!(
-                STREAM_PORT_DIRECTION[suffix], STREAM_PORT_DIRECTION[opposite],
-                "{suffix} and {opposite} must face opposite directions"
-            );
-            assert_eq!(
-                STREAM_PORT_WIDTH[suffix], STREAM_PORT_WIDTH[opposite],
-                "{suffix} and {opposite} must be the same width"
-            );
-        }
     }
 
     /// `S_AXI_LITE_PORT_DIRS` documents itself as "same order as
@@ -393,18 +345,6 @@ mod tests {
                 || s.ends_with("CACHE")),
             "only LOCK/PROT/QOS/CACHE are optional, got {optional:?}"
         );
-    }
-
-    /// Read and write suffixes are disjoint and together make up the full set.
-    #[test]
-    fn m_axi_read_and_write_suffixes_partition_the_full_set() {
-        let read: BTreeSet<&str> = M_AXI_READ_SUFFIXES.iter().copied().collect();
-        let write: BTreeSet<&str> = M_AXI_WRITE_SUFFIXES.iter().copied().collect();
-        assert!(read.is_disjoint(&write), "a suffix is both read and write");
-
-        let union: BTreeSet<&str> = read.union(&write).copied().collect();
-        let full: BTreeSet<&str> = M_AXI_SUFFIXES.iter().copied().collect();
-        assert_eq!(union, full, "read + write must cover the full suffix set");
     }
 
     /// The by-channel grouping covers the full suffix set, and each channel's

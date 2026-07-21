@@ -83,56 +83,16 @@ fn write_verilog_support_assets(rtl_dir: &Path) -> Result<Vec<PathBuf>> {
     Ok(written)
 }
 
-/// Category name as serialized in `templates_info.json`: the schema
-/// depends on exactly the `"Cat.XYZ"` string shape. Keep in sync with
-/// `tapa-ir::port::ArgCategory`.
-fn cat_schema_name(cat: tapa_ir::ArgCategory) -> &'static str {
-    match cat {
-        tapa_ir::ArgCategory::Istream => "Cat.ISTREAM",
-        tapa_ir::ArgCategory::Ostream => "Cat.OSTREAM",
-        tapa_ir::ArgCategory::Istreams => "Cat.ISTREAMS",
-        tapa_ir::ArgCategory::Ostreams => "Cat.OSTREAMS",
-        tapa_ir::ArgCategory::Scalar => "Cat.SCALAR",
-        tapa_ir::ArgCategory::Mmap => "Cat.MMAP",
-        tapa_ir::ArgCategory::Immap => "Cat.IMMAP",
-        tapa_ir::ArgCategory::Ommap => "Cat.OMMAP",
-        tapa_ir::ArgCategory::AsyncMmap => "Cat.ASYNC_MMAP",
-    }
-}
-
-/// Port string as serialized in `templates_info.json`. Emits, in
-/// order: `cat`, `name`, `ctype`, `width`, `chan_count`, `chan_size`,
-/// with `None` for unset optional fields.
-fn schema_port_str(p: &tapa_ir::Port) -> String {
-    let chan_count = p
-        .chan_count
-        .map_or_else(|| "None".to_string(), |v| v.to_string());
-    let chan_size = p
-        .chan_size
-        .map_or_else(|| "None".to_string(), |v| v.to_string());
-    format!(
-        "cat: {}, name: {}, ctype: {}, width: {}, chan_count: {}, chan_size: {}",
-        cat_schema_name(p.cat),
-        p.name,
-        p.ctype,
-        p.width,
-        chan_count,
-        chan_size,
-    )
-}
-
-/// Write port signatures for tasks whose target is `ignore`. The
-/// resulting schema is consumed by `--custom-rtl` at pack time to
-/// validate port-signature drift.
+/// Write the typed port list of each `synth == ignore` task to
+/// `<work_dir>/templates_info.json`. `--custom-rtl` at pack time keys
+/// off the task names; the values are the same `tapa_ir::Port` schema
+/// the rest of the pipeline speaks.
 pub fn write_templates_info(work_dir: &Path, design: &Design) -> Result<()> {
-    let templates: BTreeMap<String, Vec<String>> = design
+    let templates: BTreeMap<&String, &Vec<tapa_ir::Port>> = design
         .tasks
         .iter()
         .filter(|(_, t)| t.synth == SynthTarget::Ignore)
-        .map(|(name, t)| {
-            let port_strs: Vec<String> = t.ports.iter().map(schema_port_str).collect();
-            (name.clone(), port_strs)
-        })
+        .map(|(name, t)| (name, &t.ports))
         .collect();
     let bytes = serde_json::to_vec(&templates)?;
     crate::state::json::write_bytes_atomic(work_dir, "templates_info.json", &bytes)?;
@@ -313,41 +273,8 @@ mod tests {
         );
     }
 
-    /// The `templates_info.json` port strings emit every field in
-    /// insertion order, with `None` for unset chan_* fields. The
-    /// schema depends on the exact string shape; `--custom-rtl`
-    /// downstream diffs against it.
     #[test]
-    fn schema_port_str_matches_expected_schema() {
-        use tapa_ir::{ArgCategory, Port};
-        let p = Port {
-            cat: ArgCategory::Mmap,
-            name: "a".to_string(),
-            ctype: "float".to_string(),
-            width: 32,
-            chan_count: None,
-            chan_size: None,
-        };
-        assert_eq!(
-            schema_port_str(&p),
-            "cat: Cat.MMAP, name: a, ctype: float, width: 32, chan_count: None, chan_size: None",
-        );
-        let stream = Port {
-            cat: ArgCategory::Istream,
-            name: "in".to_string(),
-            ctype: "uint64_t".to_string(),
-            width: 64,
-            chan_count: Some(4),
-            chan_size: Some(8),
-        };
-        assert_eq!(
-            schema_port_str(&stream),
-            "cat: Cat.ISTREAM, name: in, ctype: uint64_t, width: 64, chan_count: 4, chan_size: 8",
-        );
-    }
-
-    #[test]
-    fn templates_info_emits_schema_port_str_for_ignore_tasks() {
+    fn templates_info_emits_typed_ports_for_ignore_tasks() {
         use tapa_ir::{ArgCategory, Port};
         let mut design = vadd_design();
         // Drop a `target(\"ignore\")` task that carries a port so the
@@ -377,10 +304,10 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         write_templates_info(dir.path(), &design).expect("write");
         let raw = fs::read_to_string(dir.path().join("templates_info.json")).expect("read");
-        assert_eq!(
-            raw,
-            "{\"Stub\":[\"cat: Cat.SCALAR, name: n, ctype: uint64_t, width: 64, \
-             chan_count: None, chan_size: None\"]}",
-        );
+        let parsed: serde_json::Value = serde_json::from_str(&raw).expect("parse");
+        assert_eq!(parsed["Stub"][0]["cat"], "scalar");
+        assert_eq!(parsed["Stub"][0]["name"], "n");
+        assert_eq!(parsed["Stub"][0]["type"], "uint64_t");
+        assert_eq!(parsed["Stub"][0]["width"], 64);
     }
 }

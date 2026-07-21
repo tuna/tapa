@@ -13,8 +13,6 @@
 //! Both parse *these* types, so a field rename is a compile error on both
 //! sides of the workspace boundary rather than a runtime surprise in cosim.
 
-use std::path::PathBuf;
-
 use serde::{Deserialize, Serialize};
 
 use crate::error::ParseError;
@@ -99,9 +97,6 @@ pub struct FlowSettings {
     /// the other a result of it. Both are kept.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub clock_period: Option<String>,
-    /// `v++` connectivity config forwarded to `pack --bitstream-script`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub connectivity: Option<PathBuf>,
     /// Set once `synth` has completed for this work dir.
     #[serde(default)]
     pub synthed: bool,
@@ -155,7 +150,6 @@ mod tests {
         state.flow.part_num = Some("xcvu37p".to_string());
         state.flow.platform = Some("xilinx_u250_gen3x16_xdma_4_1_202210_1".to_string());
         state.flow.clock_period = Some("3.33".to_string());
-        state.flow.connectivity = Some(PathBuf::from("link.cfg"));
         state.flow.synthed = true;
         let json = serde_json::to_string(&state).expect("serialize");
         let back = WorkState::from_json(&json).expect("parse");

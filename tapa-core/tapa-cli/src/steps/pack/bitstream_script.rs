@@ -18,14 +18,12 @@ pub(super) fn render_vitis_script(
     output_file: &Path,
     platform: Option<&str>,
     clock_period: Option<&str>,
-    connectivity: Option<&Path>,
 ) -> String {
     let mut env = minijinja::Environment::new();
     env.add_template("vitis_script", include_str!("templates/vitis_script.sh.j2"))
         .expect("template parses");
 
     let xo = absolutize(output_file).display().to_string();
-    let config_file = connectivity.map(|conn| absolutize(conn).display().to_string());
     let target_frequency = clock_period.and_then(|clock| {
         clock.parse::<f64>().ok().map(|period| {
             #[allow(
@@ -42,7 +40,6 @@ pub(super) fn render_vitis_script(
     let ctx = minijinja::context! {
         top,
         xo,
-        config_file,
         target_frequency,
         platform,
     };
@@ -63,14 +60,13 @@ pub(super) fn write_vitis_script(
     output_file: &Path,
     platform: Option<&str>,
     clock_period: Option<&str>,
-    connectivity: Option<&Path>,
 ) -> Result<()> {
     if let Some(parent) = dest.parent() {
         if !parent.as_os_str().is_empty() {
             fs::create_dir_all(parent)?;
         }
     }
-    let body = render_vitis_script(top, output_file, platform, clock_period, connectivity);
+    let body = render_vitis_script(top, output_file, platform, clock_period);
     fs::write(dest, body)?;
     set_executable(dest)?;
     Ok(())
@@ -106,7 +102,7 @@ mod tests {
 
     #[test]
     fn renders_minimum_script_skeleton() {
-        let script = render_vitis_script("VecAdd", Path::new("/tmp/out.xo"), None, None, None);
+        let script = render_vitis_script("VecAdd", Path::new("/tmp/out.xo"), None, None);
         assert!(script.starts_with("#!/bin/bash"));
         assert!(script.contains("TOP=VecAdd"));
         assert!(script.contains("XO='/tmp/out.xo'"));
@@ -120,14 +116,13 @@ mod tests {
             Path::new("/tmp/a.xo"),
             Some("xilinx_u250_gen3x16_xdma_4_1_202210_1"),
             None,
-            None,
         );
         assert!(script.contains("PLATFORM=xilinx_u250_gen3x16_xdma_4_1_202210_1"));
     }
 
     #[test]
     fn emits_target_frequency_from_clock_period() {
-        let script = render_vitis_script("Top", Path::new("/tmp/a.xo"), None, Some("3.33"), None);
+        let script = render_vitis_script("Top", Path::new("/tmp/a.xo"), None, Some("3.33"));
         assert!(
             script.contains("TARGET_FREQUENCY=300"),
             "expected round(1000/3.33)=300, got: {script}",
@@ -145,7 +140,6 @@ mod tests {
             Path::new("/tmp/a.xo"),
             Some("plat"),
             Some("3.33"),
-            None,
         )
         .expect("write script");
 
@@ -166,28 +160,15 @@ mod tests {
     }
 
     #[test]
-    fn includes_connectivity_config_option() {
-        let script = render_vitis_script(
-            "Top",
-            Path::new("/tmp/a.xo"),
-            None,
-            None,
-            Some(Path::new("/tmp/conn.ini")),
-        );
-        assert!(script.contains("CONFIG_FILE='/tmp/conn.ini'"));
-        assert!(script.contains("--config \"${CONFIG_FILE}\""));
-    }
-
-    #[test]
     fn default_platform_warning_emitted() {
-        let script = render_vitis_script("Top", Path::new("/tmp/a.xo"), None, None, None);
+        let script = render_vitis_script("Top", Path::new("/tmp/a.xo"), None, None);
         assert!(script.contains("PLATFORM=\"\""));
         assert!(script.contains("Please edit this file and set a valid PLATFORM"));
     }
 
     #[test]
     fn invalid_clock_period_is_ignored() {
-        let script = render_vitis_script("Top", Path::new("/tmp/a.xo"), None, Some("fast"), None);
+        let script = render_vitis_script("Top", Path::new("/tmp/a.xo"), None, Some("fast"));
         assert!(!script.contains("TARGET_FREQUENCY"));
         assert!(!script.contains("--kernel_frequency"));
     }

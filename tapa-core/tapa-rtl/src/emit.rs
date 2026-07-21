@@ -3,8 +3,7 @@
 use std::fmt;
 
 use crate::builder::{
-    AlwaysBlock, CommentPragma, ContinuousAssign, Expr, ModuleInstance, ParamArg, PortArg,
-    Sensitivity, Statement,
+    AlwaysBlock, ContinuousAssign, Expr, ModuleInstance, ParamArg, PortArg, Sensitivity, Statement,
 };
 use crate::expression::expression_source;
 use crate::port::{Direction, Port, Width};
@@ -231,14 +230,6 @@ impl fmt::Display for AlwaysBlock {
     }
 }
 
-// ── CommentPragma Display ────────────────────────────────────────────
-
-impl fmt::Display for CommentPragma {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "(* {} *)", self.text)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -427,12 +418,6 @@ mod tests {
         assert!(text.contains("2'd0: begin"), "got: {text}");
         assert!(text.contains("default: begin"), "got: {text}");
         assert!(text.contains("endcase"), "got: {text}");
-    }
-
-    #[test]
-    fn comment_pragma() {
-        let p = CommentPragma::new("clk port=ap_clk");
-        assert_eq!(p.to_string(), "(* clk port=ap_clk *)");
     }
 
     // ── Validation tests (negative paths) ────────────────────────────

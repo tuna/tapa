@@ -1,7 +1,5 @@
 //! Static Verilog support assets emitted alongside generated RTL.
 
-pub const FIFO_TEMPLATE: &str = include_str!("../assets/verilog/fifo.v");
-
 pub const VERILOG_SUPPORT_ASSETS: &[(&str, &str)] = &[
     ("arbiter.v", include_str!("../assets/verilog/arbiter.v")),
     (
@@ -44,7 +42,7 @@ pub const VERILOG_SUPPORT_ASSETS: &[(&str, &str)] = &[
         "detect_burst.v",
         include_str!("../assets/verilog/detect_burst.v"),
     ),
-    ("fifo.v", FIFO_TEMPLATE),
+    ("fifo.v", include_str!("../assets/verilog/fifo.v")),
     ("fifo_bram.v", include_str!("../assets/verilog/fifo_bram.v")),
     ("fifo_fwd.v", include_str!("../assets/verilog/fifo_fwd.v")),
     ("fifo_srl.v", include_str!("../assets/verilog/fifo_srl.v")),

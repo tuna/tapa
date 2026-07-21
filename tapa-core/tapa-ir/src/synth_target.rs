@@ -18,17 +18,6 @@ pub enum SynthTarget {
     Ignore,
 }
 
-impl SynthTarget {
-    /// Canonical wire string.
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Hls => "hls",
-            Self::Ignore => "ignore",
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -47,12 +36,6 @@ mod tests {
         assert_eq!(json, r#""ignore""#);
         let back: SynthTarget = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(back, SynthTarget::Ignore);
-    }
-
-    #[test]
-    fn as_str_matches_wire_form() {
-        assert_eq!(SynthTarget::Hls.as_str(), "hls");
-        assert_eq!(SynthTarget::Ignore.as_str(), "ignore");
     }
 
     #[test]

@@ -15,7 +15,7 @@ use crate::error::{CliError, Result};
 
 /// Resource-name → candidate relative paths, in priority order: the
 /// first existing match wins.
-pub static POTENTIAL_PATHS: &[(&str, &[&str])] = &[
+static POTENTIAL_PATHS: &[(&str, &[&str])] = &[
     ("fpga-runtime-include", &["fpga-runtime", "usr/include"]),
     (
         "fpga-runtime-lib",

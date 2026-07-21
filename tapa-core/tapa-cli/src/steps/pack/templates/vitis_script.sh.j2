@@ -4,8 +4,7 @@ TARGET=hw
 
 TOP={{ top }}
 XO='{{ xo }}'
-{% if config_file %}CONFIG_FILE='{{ config_file }}'
-{% endif %}
+
 {% if target_frequency %}TARGET_FREQUENCY={{ target_frequency }}
 {% else %}
 >&2 echo "Using the default clock target of the platform."
@@ -39,7 +38,6 @@ v++ ${DEBUG} \
   --vivado.prop=run.impl_1.STEPS.PLACE_DESIGN.ARGS.DIRECTIVE=$PLACEMENT_STRATEGY \
   --vivado.prop=run.impl_1.STEPS.PHYS_OPT_DESIGN.ARGS.DIRECTIVE=$STRATEGY \
   --vivado.prop=run.impl_1.STEPS.ROUTE_DESIGN.ARGS.DIRECTIVE=$STRATEGY \
-{% if config_file %}  --config "${CONFIG_FILE}" \
-{% endif %}
+
 {% if target_frequency %}  --kernel_frequency ${TARGET_FREQUENCY} \
 {% endif %}

@@ -334,17 +334,3 @@ impl AlwaysBlock {
         Self::new(Sensitivity::Star, body)
     }
 }
-
-// ── Comment pragma ───────────────────────────────────────────────────
-
-/// A comment line to insert: `(* text *)`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CommentPragma {
-    pub text: String,
-}
-
-impl CommentPragma {
-    pub fn new(text: impl Into<String>) -> Self {
-        Self { text: text.into() }
-    }
-}

@@ -22,9 +22,10 @@ use tapa_rtl::VerilogModule;
 use crate::error::{CliError, Result};
 
 /// Deserialised shape of `<work_dir>/templates_info.json` — a mapping
-/// from task (module) name to the list of port signatures synth emitted
-/// for that template.
-pub(super) type TemplatesInfo = BTreeMap<String, Vec<String>>;
+/// from task (module) name to its typed port list (only the keys are
+/// consulted: the port-shape check runs against the generated
+/// placeholder Verilog).
+pub(super) type TemplatesInfo = BTreeMap<String, Vec<tapa_ir::Port>>;
 
 /// Load `<work_dir>/templates_info.json` if it exists; otherwise
 /// return an empty map. Synth may not emit any template entries when no
@@ -289,10 +290,7 @@ mod tests {
         );
 
         let mut templates = TemplatesInfo::new();
-        templates.insert(
-            "Foo".to_string(),
-            vec!["clk: input".to_string(), "rst: input".to_string()],
-        );
+        templates.insert("Foo".to_string(), Vec::new());
 
         apply_custom_rtl(&rtl_dir, std::slice::from_ref(&src), &templates).expect("apply");
 
@@ -334,7 +332,7 @@ mod tests {
         write(&src, "module Helper(); endmodule\n");
 
         let mut templates = TemplatesInfo::new();
-        templates.insert("Foo".to_string(), vec!["clk: input".to_string()]);
+        templates.insert("Foo".to_string(), Vec::new());
 
         apply_custom_rtl(&rtl_dir, &[src], &templates)
             .expect("unknown helper module must be copied through, not rejected");

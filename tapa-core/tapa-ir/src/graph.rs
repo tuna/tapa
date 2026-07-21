@@ -53,11 +53,6 @@ impl TaskGraph {
         reader.read_to_string(&mut buf)?;
         Self::from_json(&buf)
     }
-
-    /// Serialize to a pretty-printed JSON string.
-    pub fn to_json(&self) -> Result<String, serde_json::Error> {
-        serde_json::to_string_pretty(self)
-    }
 }
 
 #[cfg(test)]

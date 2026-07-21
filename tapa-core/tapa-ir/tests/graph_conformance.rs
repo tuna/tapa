@@ -114,7 +114,8 @@ fn readable_name_is_typed_and_round_trips() {
     assert_eq!(g.tasks["T"].readable_name, "Compute<float, 4>");
     assert_eq!(g.tasks["U"].readable_name, "U", "non-template name");
 
-    let g2 = Graph::from_json(&g.to_json().expect("serialize")).expect("reparse");
+    let g2 =
+        Graph::from_json(&serde_json::to_string_pretty(&g).expect("serialize")).expect("reparse");
     assert_eq!(g, g2, "readable_name round-trips");
 }
 
@@ -163,7 +164,7 @@ fn consumer_only_fifo() {
 fn vadd_round_trip() {
     let json = fixture("vadd.json");
     let g1 = Graph::from_json(&json).expect("parse 1");
-    let serialized = g1.to_json().expect("serialize");
+    let serialized = serde_json::to_string_pretty(&g1).expect("serialize");
     let g2 = Graph::from_json(&serialized).expect("parse 2");
     assert_eq!(g1, g2, "round-trip equality");
 }
@@ -172,7 +173,7 @@ fn vadd_round_trip() {
 fn hmap_round_trip_canonical() {
     let json = fixture("hmap_ports.json");
     let g = Graph::from_json(&json).expect("parse");
-    let serialized = g.to_json().expect("serialize");
+    let serialized = serde_json::to_string_pretty(&g).expect("serialize");
     // After round-trip, "hmap" should appear as "mmap"
     assert!(
         !serialized.contains(r#""hmap""#),

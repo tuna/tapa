@@ -404,7 +404,6 @@ fn emit_bitstream_script(
         output_path,
         flow.platform.as_deref(),
         flow.clock_period.as_deref(),
-        flow.connectivity.as_deref(),
     )?;
     log::info!("generate the v++ script at {}", script_dest.display());
     Ok(())
