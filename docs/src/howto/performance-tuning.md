@@ -68,31 +68,12 @@ ls work.out/report.json work.out/report.yaml
 
 If these files are missing, synthesis either did not run or exited before the reporting step. Check the HLS log in `work.out/` for errors.
 
-## Advanced synthesis flags
-
-### Controlling FIFO pipelining for floorplanning
-
-By default, TAPA inserts pipeline registers into stream FIFOs to improve timing. When grouping FIFOs with their adjacent logic inside a single floorplan region, suppress pipelining for specific FIFOs:
-
-```bash
-tapa synth --nonpipeline-fifos fifos.json ...
-```
-
-`fifos.json` lists the FIFO names to suppress:
-
-```json
-["fifo_a", "fifo_b"]
-```
-
-After synthesis, TAPA writes `grouping_constraints.json` to the work directory. Pass this file to an external floorplanning tool.
-
 ## Advanced flags summary
 
 | Flag | Description |
 |------|-------------|
 | `--enable-synth-util` | Run post-HLS RTL synthesis to collect per-task resource utilization. |
 | `--disable-synth-util` | Do not run post-HLS RTL synthesis (default). |
-| `--nonpipeline-fifos <json>` | Suppress pipeline registers for listed FIFOs; write `grouping_constraints.json`. |
 
 ## If something goes wrong
 

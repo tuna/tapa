@@ -19,7 +19,6 @@ use crate::tapacc::discover::find_resource;
 
 use super::cpp_extract::extract_hls_sources;
 use super::device_resolve::resolve_device_info;
-use super::grouping_constraints::emit_grouping_constraints;
 use super::hls_run::{run_hls_for_leaves, HlsRunOptions};
 use super::post_synth_util::emit_post_synth_util;
 use super::report::write_top_report;
@@ -94,12 +93,6 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
         &state.graph,
         &args.override_report_schema_version,
     )?;
-
-    // Post-codegen side effect: nonpipeline-fifos →
-    // grouping_constraints.json. A no-op when the flag is not set.
-    if let Some(fifos_path) = args.nonpipeline_fifos.as_ref() {
-        emit_grouping_constraints(&ctx.work_dir, &state.graph, fifos_path)?;
-    }
 
     write_templates_info(&ctx.work_dir, &state.graph)?;
     state.flow.synthed = true;

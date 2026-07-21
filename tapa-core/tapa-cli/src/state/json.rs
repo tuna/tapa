@@ -1,9 +1,8 @@
 //! Shared atomic write plumbing for work-directory files.
 //!
 //! Used by the state file ([`super::work`]) and by the steps that emit their
-//! own JSON side artifacts (`templates_info.json`,
-//! `grouping_constraints.json`). Each caller owns its exact bytes and borrows
-//! only the tempfile -> rename dance from here.
+//! own JSON side artifacts (`templates_info.json`). Each caller owns its
+//! exact bytes and borrows only the tempfile -> rename dance from here.
 
 use std::io::Write;
 use std::path::Path;

@@ -8,8 +8,8 @@
 //!      `tapa_xilinx::parse_device_info` and persist into
 //!      `<work_dir>/tapa.json`.
 //!   2. Extract per-task C++ from the task graph to `<work_dir>/cpp/`.
-//!   3. Run Vitis HLS for each leaf task via `tapa_xilinx::run_hls`,
-//!      harvesting Verilog into `<work_dir>/hls/<task>/verilog/`.
+//!   3. Run Vitis HLS for each leaf task, harvesting Verilog into
+//!      `<work_dir>/hls/<task>/verilog/`.
 //!   4. Drive `tapa_codegen::generate_rtl` to instrument upper tasks
 //!      and emit `<work_dir>/rtl/{<task>.v, <task>_fsm.v, ...}`.
 //!   5. Persist `<work_dir>/templates_info.json` and re-store the
@@ -19,8 +19,6 @@
 //! out-of-context synthesis pass through
 //! `post_synth_util::emit_post_synth_util`.
 
-use std::path::PathBuf;
-
 use clap::Parser;
 use tapa_xilinx::{LocalToolRunner, RemoteToolRunner, SshMuxOptions, SshSession};
 
@@ -29,7 +27,6 @@ use crate::error::Result;
 
 mod cpp_extract;
 mod device_resolve;
-mod grouping_constraints;
 mod hls_run;
 mod metrics;
 mod post_synth_util;
@@ -100,9 +97,6 @@ pub struct SynthArgs {
 
     #[arg(long = "override-report-schema-version", default_value = "")]
     pub override_report_schema_version: String,
-
-    #[arg(long = "nonpipeline-fifos", value_name = "FILE")]
-    pub nonpipeline_fifos: Option<PathBuf>,
 }
 
 /// Top-level dispatcher.

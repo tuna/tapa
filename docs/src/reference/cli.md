@@ -109,7 +109,6 @@ Run Vitis HLS on each task to produce per-task Verilog RTL. Reads the task graph
 | `--clock-period NS` | Target clock period in nanoseconds. Can be derived from `--platform` if not set explicitly. |
 | `-j N` | Number of parallel HLS and post-synthesis jobs (default: available logical CPU count). |
 | `--enable-synth-util` | Run post-HLS RTL synthesis to produce per-task resource utilization estimates. |
-| `--nonpipeline-fifos JSON` | JSON specification of FIFOs for which pipeline registers should be suppressed. |
 
 ### Example
 
