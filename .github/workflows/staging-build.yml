@@ -122,7 +122,6 @@ jobs:
             export PATH=~/.tapa/usr/bin:$PATH
             export TAPA_CONCURRENCY=1
             source /opt/tools/xilinx/Vitis/${{ matrix.xilinx_version }}/settings64.sh
-            bats -j $(nproc) tests/testsuite_self_test.bats
             find tests -name '*.bats' -print0 | xargs -0 bats -j $(nproc)
           imageTag: tapa/testenv:${{ matrix.os }}
           dockerfile: ./.github/docker/test-env/Dockerfile.${{ matrix.os }}

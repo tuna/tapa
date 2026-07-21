@@ -18,6 +18,7 @@ load(
     "XILINX_TOOL_PATH",
     "XILINX_TOOL_VERSION",
 )
+load("//bazel:sh_utils.bzl", "sh_quote")
 
 def _symlink_dir(rctx, path):
     """Symlink each entry from a directory into the repository."""
@@ -47,7 +48,7 @@ _optional_local_repository = repository_rule(
 
 def _sh_quote(value):
     """Quote a string for POSIX shell single-quoted contexts."""
-    return "'" + value.replace("'", "'\"'\"'") + "'"
+    return sh_quote(value)
 
 def _remote_ssh_control_dir(rctx):
     """Return SSH control socket directory for repository fetch."""

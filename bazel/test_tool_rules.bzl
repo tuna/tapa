@@ -4,8 +4,10 @@
 # All rights reserved. The contributor(s) of this file has/have agreed to the
 # RapidStream Contributor License Agreement.
 
+load("//bazel:sh_utils.bzl", "runfiles_resolver", "sh_quote")
+
 def _sh_quote(value):
-    return "'" + value.replace("'", "'\"'\"'") + "'"
+    return sh_quote(value)
 
 def _test_tool_test_impl(ctx):
     script = ctx.actions.declare_file(ctx.label.name + ".sh")
@@ -13,38 +15,10 @@ def _test_tool_test_impl(ctx):
     body = """#!/usr/bin/env bash
 set -euo pipefail
 
-resolve_runfile() {{
-  local path="$1"
-  local workspace="${{TEST_WORKSPACE:-_main}}"
-  local candidate
-  for candidate in \\
-    "${{RUNFILES_DIR:-}}/${{workspace}}/${{path}}" \\
-    "${{RUNFILES_DIR:-}}/_main/${{path}}" \\
-    "${{RUNFILES_DIR:-}}/${{path}}" \\
-    "$0.runfiles/${{workspace}}/${{path}}" \\
-    "$0.runfiles/_main/${{path}}" \\
-    "$0.runfiles/${{path}}"; do
-    if [[ -f "$candidate" ]]; then
-      printf '%s\\n' "$candidate"
-      return 0
-    fi
-  done
-  if [[ -n "${{RUNFILES_MANIFEST_FILE:-}}" ]]; then
-    for candidate in "${{workspace}}/${{path}}" "_main/${{path}}" "${{path}}"; do
-      local resolved
-      resolved="$(grep -m1 "^${{candidate}} " "${{RUNFILES_MANIFEST_FILE}}" | cut -d' ' -f2- || true)"
-      if [[ -n "$resolved" && -f "$resolved" ]]; then
-        printf '%s\\n' "$resolved"
-        return 0
-      fi
-    done
-  fi
-  echo "missing runfile: $path" >&2
-  return 1
-}}
-
+{resolver}
 exec "$(resolve_runfile {test_tool})" {argv}
 """.format(
+        resolver = runfiles_resolver(format_escaped = True),
         test_tool = _sh_quote(ctx.executable.test_tool.short_path),
         argv = " ".join([_sh_quote(arg) for arg in argv]),
     )

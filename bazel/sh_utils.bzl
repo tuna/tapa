@@ -1,0 +1,50 @@
+"""Shared shell helpers for the repo's custom rules."""
+
+# Copyright (c) 2026 RapidStream Design Automation, Inc. and contributors.
+# All rights reserved. The contributor(s) of this file has/have agreed to the
+# RapidStream Contributor License Agreement.
+
+def sh_quote(value):
+    """Quote a string for POSIX shell single-quoted contexts."""
+    return "'" + value.replace("'", "'\"'\"'") + "'"
+
+# A bash `resolve_runfile` function that finds a runfile across the
+# RUNFILES_DIR / $0.runfiles / RUNFILES_MANIFEST_FILE layouts. The
+# caller decides how it is embedded: `_runfiles_resolver()` for raw
+# inclusion, or `.format()`-escaped via `runfiles_resolver(escaped=True)`.
+_RESOLVER = """resolve_runfile() {
+  local path="$1"
+  local workspace="${TEST_WORKSPACE:-_main}"
+  local candidate
+  for candidate in \\
+    "${RUNFILES_DIR:-}/${workspace}/${path}" \\
+    "${RUNFILES_DIR:-}/_main/${path}" \\
+    "${RUNFILES_DIR:-}/${path}" \\
+    "$0.runfiles/${workspace}/${path}" \\
+    "$0.runfiles/_main/${path}" \\
+    "$0.runfiles/${path}"; do
+    if [[ -f "$candidate" ]]; then
+      printf '%s\\n' "$candidate"
+      return 0
+    fi
+  done
+  if [[ -n "${RUNFILES_MANIFEST_FILE:-}" ]]; then
+    for candidate in "${workspace}/${path}" "_main/${path}" "${path}"; do
+      local resolved
+      resolved="$(grep -m1 "^${candidate} " "${RUNFILES_MANIFEST_FILE}" | cut -d' ' -f2- || true)"
+      if [[ -n "$resolved" && -f "$resolved" ]]; then
+        printf '%s\\n' "$resolved"
+        return 0
+      fi
+    done
+  fi
+  echo "missing runfile: $path" >&2
+  return 1
+}
+"""
+
+def runfiles_resolver(format_escaped = False):
+    """The resolve_runfile bash function; escaped for .format() when asked."""
+    if format_escaped:
+        return _RESOLVER.replace("{", "{{").replace("}", "}}")
+    return _RESOLVER

@@ -6,12 +6,7 @@ bazel_dep(name = "bazel_skylib", version = "1.9.0", dev_dependency = True)
 bazel_dep(name = "platforms", version = "1.0.0", dev_dependency = True)
 bazel_dep(name = "rules_cc", version = "0.2.18", dev_dependency = True)
 bazel_dep(name = "rules_rust", version = "0.69.0", dev_dependency = True)
-bazel_dep(name = "rules_nodejs", version = "6.7.4", dev_dependency = True)
 bazel_dep(name = "rules_pkg", version = "1.2.0", dev_dependency = True)
-
-# 2.0.0-rc3 generated launchers require sys._base_executable, which is absent
-# from the Python used by the Ubuntu 18.04 CI image.
-bazel_dep(name = "rules_python", version = "1.9.0", dev_dependency = True)
 bazel_dep(name = "rules_shell", version = "0.8.0", dev_dependency = True)
 bazel_dep(name = "rules_verilator", version = "0.3.2", dev_dependency = True)
 bazel_dep(name = "rules_verilog", version = "1.1.1", dev_dependency = True)
@@ -123,9 +118,6 @@ register_toolchains(
     "@rules_verilator//verilator:verilator_toolchain",
     dev_dependency = True,
 )
-
-node = use_extension("@rules_nodejs//nodejs:extensions.bzl", "node", dev_dependency = True)
-node.toolchain(node_version = "17.9.1")  # Latest version supporting Ubuntu 18.04
 
 bazel_dep(name = "nlohmann_json", version = "3.12.0.bcr.1")  # Required by tapacc
 bazel_dep(name = "rules_boost", repo_name = "com_github_nelhage_rules_boost")
