@@ -249,11 +249,11 @@ pub struct FloorplanArgs {
     #[arg(long = "run-impl")]
     pub run_impl: bool,
 
-    /// Explore exact utilization caps and keep the highest-frequency implementation.
+    /// Explore exact logic-utilization caps and keep the highest-frequency implementation.
     #[arg(long = "dse")]
     pub dse: bool,
 
-    /// Lowest exact utilization cap explored by `--dse`.
+    /// Lowest exact logic-utilization cap explored by `--dse`.
     #[arg(
         long = "dse-min",
         default_value_t = 0.55,
@@ -262,7 +262,7 @@ pub struct FloorplanArgs {
     )]
     pub dse_min: f64,
 
-    /// Highest and first exact utilization cap explored by `--dse`.
+    /// Highest and first exact logic-utilization cap explored by `--dse`.
     #[arg(
         long = "dse-max",
         default_value_t = 0.90,
@@ -343,6 +343,8 @@ fn plan_implementation_candidates(
             vec![implementation::PlannedCandidate {
                 index: 0,
                 requested_utilization_cap: args.usage_limit,
+                effective_block_utilization_cap: None,
+                multilevel_block_margin_applied: false,
                 utilization_cap_policy: implementation::UtilizationCapPolicy::Relaxing,
                 realized_max_utilization,
                 floorplan,
@@ -358,20 +360,30 @@ fn plan_implementation_candidates(
     for (index, candidate) in explored.into_iter().enumerate() {
         match candidate {
             DseCandidate::Feasible {
-                usage_limit,
+                logic_utilization_cap,
+                effective_block_utilization_cap,
+                multilevel_block_margin_applied,
                 max_utilization,
                 floorplan,
             } => candidates.push(implementation::PlannedCandidate {
                 index,
-                requested_utilization_cap: usage_limit,
+                requested_utilization_cap: logic_utilization_cap,
+                effective_block_utilization_cap: Some(effective_block_utilization_cap),
+                multilevel_block_margin_applied,
                 utilization_cap_policy: implementation::UtilizationCapPolicy::Exact,
                 realized_max_utilization: max_utilization,
                 floorplan,
             }),
-            DseCandidate::Infeasible { usage_limit } => {
+            DseCandidate::Infeasible {
+                logic_utilization_cap,
+                effective_block_utilization_cap,
+                multilevel_block_margin_applied,
+            } => {
                 infeasible.push(implementation::InfeasibleCandidate {
                     index,
-                    requested_utilization_cap: usage_limit,
+                    requested_utilization_cap: logic_utilization_cap,
+                    effective_block_utilization_cap,
+                    multilevel_block_margin_applied,
                 });
             }
         }

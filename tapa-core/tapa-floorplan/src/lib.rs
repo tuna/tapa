@@ -35,13 +35,50 @@ use tapa_ir::{FloorplanResult, MemoryBank, PipelineScheme, WorkState};
 use crate::device::select::{select_device, SelectError};
 use crate::graph::{FloorGraph, GraphError};
 use crate::partition::ilp::{
-    floorplan_with_strategy, IlpError, DEFAULT_USAGE_LIMIT, MAX_USAGE_LIMIT,
+    floorplan_with_exact_resource_caps, floorplan_with_strategy, resolve_strategy, IlpError,
+    DEFAULT_USAGE_LIMIT, MAX_USAGE_LIMIT,
 };
-use crate::pipeline::plan::{plan_routes, realize_slot_usage, PipelineError};
+use crate::pipeline::plan::{
+    plan_routes, realize_slot_usage, realize_slot_usage_with_resource_caps, PipelineError,
+};
 use crate::solver::{CbcSolver, SolveOpts};
 
 pub use crate::graph::{ControlInterface, MemoryInterface};
 pub use crate::partition::PartitionStrategy;
+
+const MULTILEVEL_BLOCK_RESOURCE_MARGIN: f64 = 0.1;
+pub(crate) const EXACT_DSE_CAP_SCALE: u32 = 1_000_000_000;
+
+/// Effective resource limits for one exact DSE candidate.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct ExactDseResourceCaps {
+    pub logic_utilization_cap: f64,
+    pub effective_block_utilization_cap: f64,
+    pub multilevel_block_margin_applied: bool,
+}
+
+pub(crate) struct ExactDsePlanAttempt {
+    pub caps: ExactDseResourceCaps,
+    pub result: Result<FloorplanResult, PlanError>,
+}
+
+impl ExactDseResourceCaps {
+    fn for_strategy(logic_utilization_cap: f64, strategy: PartitionStrategy) -> Self {
+        let multilevel_block_margin_applied = strategy == PartitionStrategy::MultiLevel;
+        let effective_block_utilization_cap = if multilevel_block_margin_applied {
+            let scale = f64::from(EXACT_DSE_CAP_SCALE);
+            ((logic_utilization_cap + MULTILEVEL_BLOCK_RESOURCE_MARGIN).min(1.0) * scale).round()
+                / scale
+        } else {
+            logic_utilization_cap
+        };
+        Self {
+            logic_utilization_cap,
+            effective_block_utilization_cap,
+            multilevel_block_margin_applied,
+        }
+    }
+}
 
 /// Transient inputs derived from generated RTL and link configuration.
 ///
@@ -176,14 +213,15 @@ pub fn plan_with_inputs(
 
 /// Plan without relaxing the requested utilization limit on infeasibility.
 ///
-/// This is intended for design-space exploration, where every candidate must
-/// represent a distinct, exact resource cap.
+/// Multilevel candidates use the requested limit for LUT/FF and a 0.10-higher,
+/// at-most-one limit for block resources. Flat candidates use one limit for
+/// every resource.
 pub fn plan_with_inputs_at_usage_limit(
     state: &WorkState,
     options: &PlanOptions,
     inputs: &PlanInputs,
 ) -> Result<FloorplanResult, PlanError> {
-    plan_with_retry_ceiling(state, options, inputs, options.usage_limit)
+    plan_with_inputs_at_usage_limit_and_caps(state, options, inputs)?.result
 }
 
 fn plan_with_retry_ceiling(
@@ -193,6 +231,129 @@ fn plan_with_retry_ceiling(
     retry_ceiling: f64,
 ) -> Result<FloorplanResult, PlanError> {
     options.validate()?;
+    let (device, graph) = prepare_plan(state, inputs)?;
+    let solver = CbcSolver::new();
+    let opts = solve_options(options);
+    let assignment = floorplan_with_strategy(
+        &graph,
+        &device,
+        options.usage_limit,
+        retry_ceiling,
+        options.partition_strategy,
+        &solver,
+        &opts,
+    )?;
+    finish_plan(
+        &graph,
+        &device,
+        options,
+        &solver,
+        &opts,
+        assignment,
+        ExactDseResourceCaps {
+            logic_utilization_cap: retry_ceiling,
+            effective_block_utilization_cap: retry_ceiling,
+            multilevel_block_margin_applied: false,
+        },
+    )
+}
+
+pub(crate) fn plan_with_inputs_at_usage_limit_and_caps(
+    state: &WorkState,
+    options: &PlanOptions,
+    inputs: &PlanInputs,
+) -> Result<ExactDsePlanAttempt, PlanError> {
+    options.validate()?;
+    let (device, graph) = prepare_plan(state, inputs)?;
+    let strategy = resolve_strategy(&graph, &device, options.partition_strategy);
+    let caps = ExactDseResourceCaps::for_strategy(options.usage_limit, strategy);
+    let solver = CbcSolver::new();
+    let opts = solve_options(options);
+    let result = (|| {
+        let (assignment, solved_strategy) = floorplan_with_exact_resource_caps(
+            &graph,
+            &device,
+            caps.logic_utilization_cap,
+            caps.effective_block_utilization_cap,
+            strategy,
+            &solver,
+            &opts,
+        )?;
+        debug_assert_eq!(
+            solved_strategy, strategy,
+            "an explicitly resolved strategy must remain stable during placement",
+        );
+        finish_plan(&graph, &device, options, &solver, &opts, assignment, caps)
+    })();
+    Ok(ExactDsePlanAttempt { caps, result })
+}
+
+fn solve_options(options: &PlanOptions) -> SolveOpts {
+    SolveOpts {
+        time_limit: Some(Duration::from_secs(options.max_seconds)),
+        threads: Some(options.threads),
+        mip_gap: None,
+        mip_gap_abs: None,
+    }
+}
+
+#[allow(
+    clippy::too_many_arguments,
+    reason = "the completed plan keeps its graph, device, solver, and exact resource limits explicit"
+)]
+fn finish_plan(
+    graph: &FloorGraph,
+    device: &crate::device::model::Device,
+    options: &PlanOptions,
+    solver: &dyn crate::solver::Solver,
+    opts: &SolveOpts,
+    mut assignment: crate::partition::Assignment,
+    realized_caps: ExactDseResourceCaps,
+) -> Result<FloorplanResult, PlanError> {
+    let routes = plan_routes(
+        graph,
+        &assignment.regions,
+        device,
+        options.scheme,
+        solver,
+        opts,
+    )?;
+    let slot_usage = if realized_caps.multilevel_block_margin_applied {
+        realize_slot_usage_with_resource_caps(
+            graph,
+            &assignment.regions,
+            &assignment.slot_usage,
+            &routes,
+            device,
+            realized_caps.logic_utilization_cap,
+            realized_caps.effective_block_utilization_cap,
+        )?
+    } else {
+        realize_slot_usage(
+            graph,
+            &assignment.regions,
+            &assignment.slot_usage,
+            &routes,
+            device,
+            realized_caps.logic_utilization_cap,
+        )?
+    };
+    graph.materialize_co_locations(&mut assignment.regions)?;
+    graph.remove_transient_regions(&mut assignment.regions);
+
+    Ok(FloorplanResult {
+        device: device.key.clone(),
+        grid: (device.cols, device.rows),
+        regions: assignment.regions,
+        routes,
+        slot_usage,
+    })
+}
+
+fn prepare_plan(
+    state: &WorkState,
+    inputs: &PlanInputs,
+) -> Result<(crate::device::model::Device, FloorGraph), PlanError> {
     let part_num = state.flow.part_num.as_deref().ok_or(PlanError::NoPartNum)?;
     let device = select_device(part_num)?;
     validate_memory_platform(state, &device, !inputs.memory.is_empty())?;
@@ -218,49 +379,7 @@ fn plan_with_retry_ceiling(
         .flatten();
     let graph =
         FloorGraph::build_with_interfaces(&flat, &inputs.memory, active_control, control_anchor)?;
-
-    let solver = CbcSolver::new();
-    let opts = SolveOpts {
-        time_limit: Some(Duration::from_secs(options.max_seconds)),
-        threads: Some(options.threads),
-        mip_gap: None,
-        mip_gap_abs: None,
-    };
-    let mut assignment = floorplan_with_strategy(
-        &graph,
-        &device,
-        options.usage_limit,
-        retry_ceiling,
-        options.partition_strategy,
-        &solver,
-        &opts,
-    )?;
-    let routes = plan_routes(
-        &graph,
-        &assignment.regions,
-        &device,
-        options.scheme,
-        &solver,
-        &opts,
-    )?;
-    let slot_usage = realize_slot_usage(
-        &graph,
-        &assignment.regions,
-        &assignment.slot_usage,
-        &routes,
-        &device,
-        retry_ceiling,
-    )?;
-    graph.materialize_co_locations(&mut assignment.regions)?;
-    graph.remove_transient_regions(&mut assignment.regions);
-
-    Ok(FloorplanResult {
-        device: device.key.clone(),
-        grid: (device.cols, device.rows),
-        regions: assignment.regions,
-        routes,
-        slot_usage,
-    })
+    Ok((device, graph))
 }
 
 fn select_control_anchor(

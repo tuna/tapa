@@ -9,10 +9,12 @@ use crate::device::select::select_device;
 use crate::partition::ilp::IlpError;
 use crate::pipeline::plan::PipelineError;
 use crate::route::ilp::RouteError;
-use crate::{plan_with_inputs_at_usage_limit, PlanError, PlanInputs, PlanOptions};
+use crate::{
+    plan_with_inputs_at_usage_limit_and_caps, ExactDseResourceCaps, PlanError, PlanInputs,
+    PlanOptions, EXACT_DSE_CAP_SCALE,
+};
 
-const CAP_SCALE: u32 = 1_000_000_000;
-const ADAPTIVE_MARGIN: u32 = CAP_SCALE / 100;
+const ADAPTIVE_MARGIN: u32 = EXACT_DSE_CAP_SCALE / 100;
 
 /// Bounds and spacing for a utilization-cap sweep.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -47,8 +49,12 @@ impl DseOptions {
 pub enum DseCandidate {
     /// A unique placement was found at this exact cap.
     Feasible {
-        /// Exact cap passed to the planner.
-        usage_limit: f64,
+        /// Swept exact limit used for LUT and FF resources.
+        logic_utilization_cap: f64,
+        /// Effective exact limit used for BRAM18K, DSP, and URAM resources.
+        effective_block_utilization_cap: f64,
+        /// Whether the multilevel block-resource margin policy was selected.
+        multilevel_block_margin_applied: bool,
         /// Largest realized resource fraction over every slot and resource.
         max_utilization: f64,
         /// Complete placement, routing, and pipeline plan.
@@ -56,8 +62,12 @@ pub enum DseCandidate {
     },
     /// The exact-cap problem was proven infeasible or exceeded its resource cap.
     Infeasible {
-        /// Exact cap passed to the planner.
-        usage_limit: f64,
+        /// Swept exact limit used for LUT and FF resources.
+        logic_utilization_cap: f64,
+        /// Effective exact limit used for BRAM18K, DSP, and URAM resources.
+        effective_block_utilization_cap: f64,
+        /// Whether the multilevel block-resource margin policy was selected.
+        multilevel_block_margin_applied: bool,
     },
 }
 
@@ -68,10 +78,12 @@ pub enum DseError {
     #[error("invalid DSE options: {0}")]
     InvalidOptions(String),
     /// An exact-cap planning attempt failed without rejecting the candidate.
-    #[error("planning DSE candidate at usage limit {usage_limit} failed: {source}")]
+    #[error(
+        "planning DSE candidate at logic utilization cap {logic_utilization_cap} failed: {source}"
+    )]
     Plan {
-        /// Exact cap passed to the failed planner invocation.
-        usage_limit: f64,
+        /// Swept exact logic cap passed to the failed planner invocation.
+        logic_utilization_cap: f64,
         /// Underlying planning failure.
         #[source]
         source: PlanError,
@@ -96,15 +108,20 @@ pub fn explore(
     options: &DseOptions,
 ) -> Result<Vec<DseCandidate>, DseError> {
     let options = ValidatedOptions::try_from(*options)?;
-    let attempts = sweep_with(options, |usage_limit| {
+    let attempts = sweep_with(options, |logic_utilization_cap| {
         let exact_options = PlanOptions {
-            usage_limit,
+            usage_limit: logic_utilization_cap,
             ..*plan_options
         };
-        match plan_with_inputs_at_usage_limit(state, &exact_options, inputs) {
+        let planned = plan_with_inputs_at_usage_limit_and_caps(state, &exact_options, inputs)
+            .map_err(|source| DseError::Plan {
+                logic_utilization_cap,
+                source,
+            })?;
+        match planned.result {
             Ok(floorplan) => {
                 let device = select_device(&floorplan.device).map_err(|source| DseError::Plan {
-                    usage_limit,
+                    logic_utilization_cap,
                     source: PlanError::from(source),
                 })?;
                 let max_utilization = maximum_realized_utilization(&floorplan, &device)?;
@@ -112,31 +129,53 @@ pub fn explore(
                     regions: floorplan.regions.clone(),
                     max_utilization,
                     value: floorplan,
+                    metadata: planned.caps,
                 })
             }
             Err(error) => match rejection_kind(&error) {
-                Some(kind) => Ok(Attempt::Infeasible { kind }),
+                Some(kind) => Ok(Attempt::Infeasible {
+                    kind,
+                    metadata: planned.caps,
+                }),
                 None => Err(DseError::Plan {
-                    usage_limit,
+                    logic_utilization_cap,
                     source: error,
                 }),
             },
         }
     })?;
 
-    Ok(attempts
+    Ok(candidates_from_sweep(attempts))
+}
+
+fn candidates_from_sweep(
+    attempts: Vec<Swept<FloorplanResult, ExactDseResourceCaps>>,
+) -> Vec<DseCandidate> {
+    attempts
         .into_iter()
-        .map(|attempt| match attempt.value {
-            Some((floorplan, max_utilization)) => DseCandidate::Feasible {
-                usage_limit: cap_value(attempt.cap),
-                max_utilization,
-                floorplan,
-            },
-            None => DseCandidate::Infeasible {
-                usage_limit: cap_value(attempt.cap),
-            },
+        .map(|attempt| {
+            let caps = attempt.metadata;
+            debug_assert_eq!(
+                caps.logic_utilization_cap.to_bits(),
+                cap_value(attempt.cap).to_bits(),
+                "candidate metadata must describe the swept logic cap",
+            );
+            match attempt.value {
+                Some((floorplan, max_utilization)) => DseCandidate::Feasible {
+                    logic_utilization_cap: caps.logic_utilization_cap,
+                    effective_block_utilization_cap: caps.effective_block_utilization_cap,
+                    multilevel_block_margin_applied: caps.multilevel_block_margin_applied,
+                    max_utilization,
+                    floorplan,
+                },
+                None => DseCandidate::Infeasible {
+                    logic_utilization_cap: caps.logic_utilization_cap,
+                    effective_block_utilization_cap: caps.effective_block_utilization_cap,
+                    multilevel_block_margin_applied: caps.multilevel_block_margin_applied,
+                },
+            }
         })
-        .collect())
+        .collect()
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -183,28 +222,30 @@ fn validate_fraction(name: &str, value: f64) -> Result<(), DseError> {
     reason = "validated fractions are rounded onto the bounded fixed-point cap grid"
 )]
 fn cap_units(name: &str, value: f64) -> Result<u32, DseError> {
-    let units = (value * f64::from(CAP_SCALE)).round() as u32;
+    let units = (value * f64::from(EXACT_DSE_CAP_SCALE)).round() as u32;
     if units == 0 {
         return Err(DseError::InvalidOptions(format!(
             "{name} is below the supported utilization resolution of {}",
-            1.0 / f64::from(CAP_SCALE)
+            1.0 / f64::from(EXACT_DSE_CAP_SCALE)
         )));
     }
     Ok(units)
 }
 
 fn cap_value(units: u32) -> f64 {
-    f64::from(units) / f64::from(CAP_SCALE)
+    f64::from(units) / f64::from(EXACT_DSE_CAP_SCALE)
 }
 
-enum Attempt<T> {
+enum Attempt<T, M> {
     Feasible {
         value: T,
         regions: BTreeMap<String, String>,
         max_utilization: f64,
+        metadata: M,
     },
     Infeasible {
         kind: RejectionKind,
+        metadata: M,
     },
 }
 
@@ -217,15 +258,16 @@ enum RejectionKind {
 }
 
 #[derive(Debug)]
-struct Swept<T> {
+struct Swept<T, M> {
     cap: u32,
     value: Option<(T, f64)>,
+    metadata: M,
 }
 
-fn sweep_with<T, E>(
+fn sweep_with<T, M, E>(
     options: ValidatedOptions,
-    mut attempt: impl FnMut(f64) -> Result<Attempt<T>, E>,
-) -> Result<Vec<Swept<T>>, E> {
+    mut attempt: impl FnMut(f64) -> Result<Attempt<T, M>, E>,
+) -> Result<Vec<Swept<T, M>>, E> {
     let mut cap = options.max;
     let mut visited = BTreeSet::new();
     let mut candidates = Vec::new();
@@ -236,6 +278,7 @@ fn sweep_with<T, E>(
                 value,
                 regions,
                 max_utilization,
+                metadata,
             } => {
                 if !visited.insert(regions) {
                     break;
@@ -243,13 +286,18 @@ fn sweep_with<T, E>(
                 candidates.push(Swept {
                     cap,
                     value: Some((value, max_utilization)),
+                    metadata,
                 });
                 let nominal = cap.saturating_sub(options.step);
                 let adaptive = utilization_units(max_utilization).saturating_sub(ADAPTIVE_MARGIN);
                 nominal.min(adaptive)
             }
-            Attempt::Infeasible { kind } => {
-                candidates.push(Swept { cap, value: None });
+            Attempt::Infeasible { kind, metadata } => {
+                candidates.push(Swept {
+                    cap,
+                    value: None,
+                    metadata,
+                });
                 if kind == RejectionKind::Terminal {
                     break;
                 }
@@ -275,7 +323,7 @@ fn utilization_units(utilization: f64) -> u32 {
         utilization.is_finite() && (0.0..=1.0).contains(&utilization),
         "realized utilization must be a finite fraction"
     );
-    (utilization.clamp(0.0, 1.0) * f64::from(CAP_SCALE)).floor() as u32
+    (utilization.clamp(0.0, 1.0) * f64::from(EXACT_DSE_CAP_SCALE)).floor() as u32
 }
 
 fn rejection_kind(error: &PlanError) -> Option<RejectionKind> {
@@ -406,12 +454,77 @@ mod tests {
     }
 
     #[test]
+    fn candidate_metadata_distinguishes_logic_and_block_caps() {
+        let logic_cap = 0.9;
+        let multilevel_caps =
+            ExactDseResourceCaps::for_strategy(logic_cap, crate::PartitionStrategy::MultiLevel);
+        let floorplan = FloorplanResult {
+            device: "u280".to_string(),
+            grid: (2, 3),
+            regions: BTreeMap::new(),
+            routes: Vec::new(),
+            slot_usage: BTreeMap::new(),
+        };
+        let candidates = candidates_from_sweep(vec![
+            Swept {
+                cap: cap_units("candidate", logic_cap).expect("cap"),
+                value: Some((floorplan, 0.75)),
+                metadata: multilevel_caps,
+            },
+            Swept {
+                cap: cap_units("candidate", 0.85).expect("cap"),
+                value: None,
+                metadata: ExactDseResourceCaps::for_strategy(
+                    0.85,
+                    crate::PartitionStrategy::MultiLevel,
+                ),
+            },
+        ]);
+
+        assert!(matches!(
+            candidates[0],
+            DseCandidate::Feasible {
+                logic_utilization_cap: 0.9,
+                effective_block_utilization_cap: 1.0,
+                multilevel_block_margin_applied: true,
+                max_utilization: 0.75,
+                ..
+            }
+        ));
+        assert!(matches!(
+            candidates[1],
+            DseCandidate::Infeasible {
+                logic_utilization_cap: 0.85,
+                effective_block_utilization_cap: 0.95,
+                multilevel_block_margin_applied: true,
+            }
+        ));
+
+        let flat_caps = ExactDseResourceCaps::for_strategy(0.9, crate::PartitionStrategy::Flat);
+        assert_eq!(
+            flat_caps.effective_block_utilization_cap.to_bits(),
+            0.9_f64.to_bits(),
+            "flat candidates must use one cap for every resource",
+        );
+        assert!(!flat_caps.multilevel_block_margin_applied);
+
+        let quantized_caps =
+            ExactDseResourceCaps::for_strategy(0.57, crate::PartitionStrategy::MultiLevel);
+        assert_eq!(
+            quantized_caps.effective_block_utilization_cap.to_bits(),
+            0.67_f64.to_bits(),
+            "the block margin must remain on the fixed-point DSE cap grid",
+        );
+    }
+
+    #[test]
     fn sweep_is_descending_without_accumulated_float_drift() {
         let mut called = Vec::new();
         let candidates = sweep_with(options(0.6, 0.9, 0.1), |cap| {
             called.push(cap);
-            Ok::<_, ()>(Attempt::<()>::Infeasible {
+            Ok::<_, ()>(Attempt::<(), ()>::Infeasible {
                 kind: RejectionKind::Retryable,
+                metadata: (),
             })
         })
         .expect("sweep");
@@ -436,6 +549,7 @@ mod tests {
                 value: (),
                 regions: BTreeMap::from([("task".to_string(), "slot-a".to_string())]),
                 max_utilization: 0.72,
+                metadata: (),
             })
         })
         .expect("sweep");
@@ -450,6 +564,7 @@ mod tests {
                 value: (),
                 regions: BTreeMap::from([("task".to_string(), format!("slot-{cap}"))]),
                 max_utilization: 0.89,
+                metadata: (),
             })
         })
         .expect("sweep");
@@ -466,6 +581,7 @@ mod tests {
                 value: call,
                 regions: BTreeMap::from([("task".to_string(), slot.to_string())]),
                 max_utilization: 0.8,
+                metadata: (),
             })
         })
         .expect("sweep");
@@ -484,8 +600,9 @@ mod tests {
             if call == 3 {
                 return Err("timeout");
             }
-            Ok(Attempt::<()>::Infeasible {
+            Ok(Attempt::<(), ()>::Infeasible {
                 kind: RejectionKind::Retryable,
+                metadata: (),
             })
         });
         assert_eq!(result.expect_err("third attempt must abort"), "timeout");
@@ -497,8 +614,9 @@ mod tests {
         let mut call = 0;
         let candidates = sweep_with(options(0.5, 0.8, 0.1), |_| {
             call += 1;
-            Ok::<_, ()>(Attempt::<()>::Infeasible {
+            Ok::<_, ()>(Attempt::<(), ()>::Infeasible {
                 kind: RejectionKind::Terminal,
+                metadata: (),
             })
         })
         .expect("sweep");

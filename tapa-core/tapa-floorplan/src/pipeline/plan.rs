@@ -285,6 +285,27 @@ pub(crate) fn realize_slot_usage(
     device: &Device,
     capacity_limit: f64,
 ) -> Result<BTreeMap<String, Area>, PipelineError> {
+    realize_slot_usage_with_resource_caps(
+        graph,
+        regions,
+        baseline,
+        routes,
+        device,
+        capacity_limit,
+        capacity_limit,
+    )
+}
+
+/// Realize generated resources with independent logic and block-resource caps.
+pub(crate) fn realize_slot_usage_with_resource_caps(
+    graph: &FloorGraph,
+    regions: &BTreeMap<String, String>,
+    baseline: &BTreeMap<String, Area>,
+    routes: &[PipelineRoute],
+    device: &Device,
+    logic_capacity_limit: f64,
+    block_capacity_limit: f64,
+) -> Result<BTreeMap<String, Area>, PipelineError> {
     let streams: BTreeMap<&str, _> = graph
         .streams()
         .iter()
@@ -331,7 +352,7 @@ pub(crate) fn realize_slot_usage(
         }
     }
 
-    validate_realized_usage(&usage, device, capacity_limit)?;
+    validate_realized_usage(&usage, device, logic_capacity_limit, block_capacity_limit)?;
     Ok(usage)
 }
 
@@ -575,7 +596,8 @@ fn checked_sub_area(lhs: Area, rhs: Area) -> Option<Area> {
 fn validate_realized_usage(
     usage: &BTreeMap<String, Area>,
     device: &Device,
-    capacity_limit: f64,
+    logic_capacity_limit: f64,
+    block_capacity_limit: f64,
 ) -> Result<(), PipelineError> {
     for (region, used_area) in usage {
         let coor = parse_region_or_slot(region)
@@ -584,10 +606,14 @@ fn validate_realized_usage(
         let capacity = device
             .island_area(&coor)
             .ok_or_else(|| PipelineError::BadRegion(region.clone()))?;
-        let limit = scaled_area(capacity, capacity_limit);
+        let logic_limit = scaled_area(capacity, logic_capacity_limit);
+        let block_limit = scaled_area(capacity, block_capacity_limit);
         for resource in Resource::ALL {
             let used = resource.amount(used_area);
-            let allowed = resource.amount(&limit);
+            let allowed = match resource {
+                Resource::Ff | Resource::Lut => resource.amount(&logic_limit),
+                Resource::Bram18k | Resource::Dsp | Resource::Uram => resource.amount(&block_limit),
+            };
             if used > allowed {
                 return Err(PipelineError::RealizedCapacity {
                     region: region.clone(),
@@ -1191,6 +1217,71 @@ mod tests {
             } if region == &source && used == ff_limit + 1 && limit == ff_limit
         ));
         assert!(error.to_string().contains("--usage-limit"));
+    }
+
+    #[test]
+    fn realized_usage_honors_distinct_logic_and_block_caps() {
+        let graph = one_stream_graph(2, Area::default(), Area::default());
+        let device = select_device("u280").expect("u280");
+        let region = Coor::slot(0, 0).region_name();
+        let capacity = device.slot(0, 0).expect("slot").area;
+        let logic_limit = 0.5;
+        let block_limit = 0.6;
+        let logic_capacity = scaled_area(capacity, logic_limit);
+        let block_heavy = Area {
+            bram_18k: logic_capacity.bram_18k + 1,
+            dsp: logic_capacity.dsp + 1,
+            uram: logic_capacity.uram + 1,
+            ..Area::default()
+        };
+
+        let realized = realize_slot_usage_with_resource_caps(
+            &graph,
+            &BTreeMap::new(),
+            &BTreeMap::from([(region.clone(), block_heavy)]),
+            &[],
+            &device,
+            logic_limit,
+            block_limit,
+        )
+        .expect("block resources between the logic and block caps are legal");
+        assert_eq!(realized[&region], block_heavy);
+
+        for (resource, over_limit) in [
+            (
+                Resource::Lut,
+                Area {
+                    lut: logic_capacity.lut + 1,
+                    ..block_heavy
+                },
+            ),
+            (
+                Resource::Ff,
+                Area {
+                    ff: logic_capacity.ff + 1,
+                    ..block_heavy
+                },
+            ),
+        ] {
+            let error = realize_slot_usage_with_resource_caps(
+                &graph,
+                &BTreeMap::new(),
+                &BTreeMap::from([(region.clone(), over_limit)]),
+                &[],
+                &device,
+                logic_limit,
+                block_limit,
+            )
+            .expect_err("logic resources must remain bounded by the logic cap");
+            assert!(matches!(
+                error,
+                PipelineError::RealizedCapacity {
+                    region: ref failed_region,
+                    resource: failed_resource,
+                    ..
+                } if failed_region == &region && failed_resource == resource.name()
+            ));
+        }
     }
 
     #[test]

@@ -31,9 +31,23 @@ const CANDIDATE_DIAGNOSTIC: &str = "candidate.json";
 pub(super) struct PlannedCandidate {
     pub index: usize,
     pub requested_utilization_cap: f64,
+    pub effective_block_utilization_cap: Option<f64>,
+    pub multilevel_block_margin_applied: bool,
     pub utilization_cap_policy: UtilizationCapPolicy,
     pub realized_max_utilization: f64,
     pub floorplan: FloorplanResult,
+}
+
+impl PlannedCandidate {
+    fn cap_summary(&self, precision: usize) -> String {
+        cap_summary(
+            self.utilization_cap_policy,
+            self.requested_utilization_cap,
+            self.effective_block_utilization_cap,
+            self.multilevel_block_margin_applied,
+            precision,
+        )
+    }
 }
 
 /// Whether the planner may raise a requested cap when it is infeasible.
@@ -58,6 +72,41 @@ impl UtilizationCapPolicy {
 pub(super) struct InfeasibleCandidate {
     pub index: usize,
     pub requested_utilization_cap: f64,
+    pub effective_block_utilization_cap: f64,
+    pub multilevel_block_margin_applied: bool,
+}
+
+impl InfeasibleCandidate {
+    fn cap_summary(&self, precision: usize) -> String {
+        cap_summary(
+            UtilizationCapPolicy::Exact,
+            self.requested_utilization_cap,
+            Some(self.effective_block_utilization_cap),
+            self.multilevel_block_margin_applied,
+            precision,
+        )
+    }
+}
+
+fn cap_summary(
+    policy: UtilizationCapPolicy,
+    logic_cap: f64,
+    block_cap: Option<f64>,
+    multilevel_block_margin_applied: bool,
+    precision: usize,
+) -> String {
+    let Some(block_cap) = block_cap else {
+        return format!("{} logic cap {logic_cap:.precision$}", policy.label());
+    };
+    let margin = if multilevel_block_margin_applied {
+        ", multilevel block margin applied"
+    } else {
+        ""
+    };
+    format!(
+        "{} logic cap {logic_cap:.precision$}, effective block cap {block_cap:.precision$}{margin}",
+        policy.label(),
+    )
 }
 
 /// Inputs validated once before any solver or implementation process starts.
@@ -294,10 +343,9 @@ fn try_implement_one(
     paths.recreate()?;
 
     log::info!(
-        "floorplan candidate_{:03} [1/3]: preparing RTL ({} cap {:.3}, realized max utilization {:.3})",
+        "floorplan candidate_{:03} [1/3]: preparing RTL ({}, realized max utilization {:.3})",
         candidate.index,
-        candidate.utilization_cap_policy.label(),
-        candidate.requested_utilization_cap,
+        candidate.cap_summary(3),
         candidate.realized_max_utilization,
     );
     let mut rtl_state = prepare_rtl_state(flat, hdl_inputs)?;
@@ -375,6 +423,8 @@ impl ImplementationWinner {
         let metrics = WinnerMetrics {
             candidate_index: self.candidate.index,
             requested_utilization_cap: self.candidate.requested_utilization_cap,
+            effective_block_utilization_cap: self.candidate.effective_block_utilization_cap,
+            multilevel_block_margin_applied: self.candidate.multilevel_block_margin_applied,
             utilization_cap_policy: self.candidate.utilization_cap_policy,
             realized_max_utilization: self.candidate.realized_max_utilization,
             target_mhz,
@@ -393,10 +443,9 @@ impl ImplementationWinner {
 
     pub(super) fn log_selection(&self, work_dir: &Path) {
         log::info!(
-            "selected floorplan candidate_{:03}: {} cap {:.3}, realized max utilization {:.3}, achieved Fmax {:.3} MHz; metrics at {}",
+            "selected floorplan candidate_{:03}: {}, realized max utilization {:.3}, achieved Fmax {:.3} MHz; metrics at {}",
             self.candidate.index,
-            self.candidate.utilization_cap_policy.label(),
-            self.candidate.requested_utilization_cap,
+            self.candidate.cap_summary(3),
             self.candidate.realized_max_utilization,
             self.output.timing.fmax_mhz,
             work_dir.join(IMPLEMENTATION_METRICS).display(),
@@ -445,10 +494,9 @@ fn all_failed_error(outcomes: &[CandidateOutcome], infeasible: &[InfeasibleCandi
             CandidateOutcome::Failure { candidate, error } => Some((
                 candidate.index,
                 format!(
-                    "candidate_{:03} ({} utilization cap {:.9}): {error}",
+                    "candidate_{:03} ({}): {error}",
                     candidate.index,
-                    candidate.utilization_cap_policy.label(),
-                    candidate.requested_utilization_cap,
+                    candidate.cap_summary(9),
                 ),
             )),
         })
@@ -456,8 +504,9 @@ fn all_failed_error(outcomes: &[CandidateOutcome], infeasible: &[InfeasibleCandi
             (
                 candidate.index,
                 format!(
-                    "candidate_{:03} (exact utilization cap {:.9}): exact planning infeasible",
-                    candidate.index, candidate.requested_utilization_cap,
+                    "candidate_{:03} ({}): exact planning infeasible",
+                    candidate.index,
+                    candidate.cap_summary(9),
                 ),
             )
         }))
@@ -542,6 +591,8 @@ enum CandidateStatus {
 struct CandidateDiagnostic {
     index: usize,
     requested_utilization_cap: f64,
+    effective_block_utilization_cap: Option<f64>,
+    multilevel_block_margin_applied: bool,
     utilization_cap_policy: UtilizationCapPolicy,
     realized_max_utilization: Option<f64>,
     status: CandidateStatus,
@@ -556,6 +607,8 @@ impl CandidateDiagnostic {
             CandidateOutcome::Success(success) => Self {
                 index: success.candidate.index,
                 requested_utilization_cap: success.candidate.requested_utilization_cap,
+                effective_block_utilization_cap: success.candidate.effective_block_utilization_cap,
+                multilevel_block_margin_applied: success.candidate.multilevel_block_margin_applied,
                 utilization_cap_policy: success.candidate.utilization_cap_policy,
                 realized_max_utilization: Some(success.candidate.realized_max_utilization),
                 status: CandidateStatus::Succeeded,
@@ -566,6 +619,8 @@ impl CandidateDiagnostic {
             CandidateOutcome::Failure { candidate, error } => Self {
                 index: candidate.index,
                 requested_utilization_cap: candidate.requested_utilization_cap,
+                effective_block_utilization_cap: candidate.effective_block_utilization_cap,
+                multilevel_block_margin_applied: candidate.multilevel_block_margin_applied,
                 utilization_cap_policy: candidate.utilization_cap_policy,
                 realized_max_utilization: Some(candidate.realized_max_utilization),
                 status: CandidateStatus::Failed,
@@ -580,6 +635,8 @@ impl CandidateDiagnostic {
         Self {
             index: candidate.index,
             requested_utilization_cap: candidate.requested_utilization_cap,
+            effective_block_utilization_cap: Some(candidate.effective_block_utilization_cap),
+            multilevel_block_margin_applied: candidate.multilevel_block_margin_applied,
             utilization_cap_policy: UtilizationCapPolicy::Exact,
             realized_max_utilization: None,
             status: CandidateStatus::Infeasible,
@@ -594,6 +651,8 @@ impl CandidateDiagnostic {
 struct WinnerMetrics<'a> {
     candidate_index: usize,
     requested_utilization_cap: f64,
+    effective_block_utilization_cap: Option<f64>,
+    multilevel_block_margin_applied: bool,
     utilization_cap_policy: UtilizationCapPolicy,
     realized_max_utilization: f64,
     target_mhz: u32,
@@ -717,6 +776,8 @@ mod tests {
             candidate: PlannedCandidate {
                 index,
                 requested_utilization_cap: 0.9,
+                effective_block_utilization_cap: Some(1.0),
+                multilevel_block_margin_applied: true,
                 utilization_cap_policy: UtilizationCapPolicy::Exact,
                 realized_max_utilization: 0.8,
                 floorplan: floorplan(),
@@ -757,6 +818,8 @@ mod tests {
         let candidate = PlannedCandidate {
             index: 0,
             requested_utilization_cap: 0.9,
+            effective_block_utilization_cap: Some(1.0),
+            multilevel_block_margin_applied: true,
             utilization_cap_policy: UtilizationCapPolicy::Exact,
             realized_max_utilization: 0.8,
             floorplan: floorplan(),
@@ -778,6 +841,10 @@ mod tests {
 
         assert!(!published.get());
         assert!(error.to_string().contains("candidate_000"));
+        assert!(error.to_string().contains("exact logic cap 0.900000000"));
+        assert!(error
+            .to_string()
+            .contains("effective block cap 1.000000000"));
         assert_eq!(
             fs_err::read_to_string(active).expect("read active marker"),
             "previous floorplan"
@@ -834,6 +901,28 @@ mod tests {
     }
 
     #[test]
+    fn exact_candidate_diagnostics_record_effective_block_cap() {
+        let outcome = success(0, 350.0);
+        let feasible = serde_json::to_value(CandidateDiagnostic::from_outcome(&outcome))
+            .expect("serialize feasible diagnostic");
+        assert_eq!(feasible["requested_utilization_cap"], 0.9);
+        assert_eq!(feasible["effective_block_utilization_cap"], 1.0);
+        assert_eq!(feasible["multilevel_block_margin_applied"], true);
+
+        let infeasible = InfeasibleCandidate {
+            index: 1,
+            requested_utilization_cap: 0.8,
+            effective_block_utilization_cap: 0.9,
+            multilevel_block_margin_applied: true,
+        };
+        let infeasible = serde_json::to_value(CandidateDiagnostic::from_infeasible(&infeasible))
+            .expect("serialize infeasible diagnostic");
+        assert_eq!(infeasible["requested_utilization_cap"], 0.8);
+        assert_eq!(infeasible["effective_block_utilization_cap"], 0.9);
+        assert_eq!(infeasible["multilevel_block_margin_applied"], true);
+    }
+
+    #[test]
     fn relaxing_candidate_metrics_name_requested_and_realized_utilization() {
         let dir = tempfile::tempdir().expect("tempdir");
         let source_xclbin = dir.path().join("candidate.xclbin");
@@ -844,6 +933,8 @@ mod tests {
             unreachable!("success helper returns a winner")
         };
         winner.candidate.requested_utilization_cap = 0.7;
+        winner.candidate.effective_block_utilization_cap = None;
+        winner.candidate.multilevel_block_margin_applied = false;
         winner.candidate.utilization_cap_policy = UtilizationCapPolicy::Relaxing;
         winner.candidate.realized_max_utilization = 0.82;
         winner.output.xclbin = crate::util::utf8(source_xclbin);
@@ -858,6 +949,8 @@ mod tests {
         .expect("parse metrics");
 
         assert_eq!(metrics["requested_utilization_cap"], 0.7);
+        assert!(metrics["effective_block_utilization_cap"].is_null());
+        assert_eq!(metrics["multilevel_block_margin_applied"], false);
         assert_eq!(metrics["utilization_cap_policy"], "relaxing");
         assert_eq!(metrics["realized_max_utilization"], 0.82);
         assert!(metrics.get("usage_limit").is_none());

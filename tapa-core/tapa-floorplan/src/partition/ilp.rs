@@ -207,6 +207,59 @@ pub(crate) fn floorplan_with_strategy(
     )
 }
 
+/// Plan one exact-cap candidate, applying separate logic and block-resource
+/// limits only when the requested schedule resolves to multilevel placement.
+///
+/// The resource overrides change only the right-hand sides of the existing
+/// per-region resource rows, and candidate filtering honors those same limits.
+/// Flat placement retains the ordinary single-cap formulation.
+pub(crate) fn floorplan_with_exact_resource_caps(
+    graph: &FloorGraph,
+    device: &Device,
+    logic_limit: f64,
+    block_limit: f64,
+    strategy: PartitionStrategy,
+    solver: &dyn Solver,
+    opts: &SolveOpts,
+) -> Result<(Assignment, PartitionStrategy), IlpError> {
+    let strategy = resolve_strategy(graph, device, strategy);
+    let constraints = if strategy == PartitionStrategy::MultiLevel {
+        exact_resource_cap_constraints(device, block_limit)
+    } else {
+        PlacementConstraints::default()
+    };
+    let assignment = floorplan_with_config(
+        graph,
+        device,
+        &PlacementConfig {
+            usage_limit: logic_limit,
+            retry_ceiling: logic_limit,
+            strategy,
+            constraints,
+        },
+        solver,
+        opts,
+    )?;
+    Ok((assignment, strategy))
+}
+
+fn exact_resource_cap_constraints(device: &Device, block_limit: f64) -> PlacementConstraints {
+    let by_resource = BTreeMap::from([
+        (Resource::Bram18k, block_limit),
+        (Resource::Dsp, block_limit),
+        (Resource::Uram, block_limit),
+    ]);
+    let max_resource_limits = row_regions(device)
+        .into_iter()
+        .chain(atomic_regions(device))
+        .map(|region| (region.region_name(), by_resource.clone()))
+        .collect();
+    PlacementConstraints {
+        max_resource_limits,
+        ..PlacementConstraints::default()
+    }
+}
+
 /// Plan using an explicit schedule and optional pin/resource constraints.
 fn floorplan_with_config(
     graph: &FloorGraph,
@@ -243,7 +296,7 @@ fn floorplan_with_config(
     complete_assignment(graph, &final_regions)
 }
 
-fn resolve_strategy(
+pub(crate) fn resolve_strategy(
     graph: &FloorGraph,
     device: &Device,
     requested: PartitionStrategy,
@@ -461,7 +514,12 @@ fn candidate_domains(
             let total = device
                 .island_area(&region)
                 .ok_or_else(|| IlpError::InvalidRegion(region.region_name()))?;
-            let available = scaled_area(total, usage_limit);
+            let available = scaled_area_with_overrides(
+                total,
+                usage_limit,
+                &constraints.max_resource_limits,
+                &region,
+            );
             if area_is_empty(&available) || !area_fits(vertex.area, available) {
                 continue;
             }
@@ -496,6 +554,27 @@ pub(crate) fn scaled_area(area: Area, limit: f64) -> Area {
         bram_18k: scaled_amount(area.bram_18k, limit),
         dsp: scaled_amount(area.dsp, limit),
         uram: scaled_amount(area.uram, limit),
+    }
+}
+
+fn scaled_area_with_overrides(
+    area: Area,
+    default_limit: f64,
+    limits: &RegionResourceLimits,
+    region: &Coor,
+) -> Area {
+    let amount = |resource: Resource| {
+        scaled_amount(
+            resource.amount(&area),
+            lookup_limit(limits, region, resource).unwrap_or(default_limit),
+        )
+    };
+    Area {
+        lut: amount(Resource::Lut),
+        ff: amount(Resource::Ff),
+        bram_18k: amount(Resource::Bram18k),
+        dsp: amount(Resource::Dsp),
+        uram: amount(Resource::Uram),
     }
 }
 
@@ -1010,6 +1089,27 @@ mod tests {
         }
     }
 
+    struct RecordingSolver {
+        inner: ChooseSolver,
+        models: Mutex<Vec<LpModel>>,
+    }
+
+    impl RecordingSolver {
+        fn first() -> Self {
+            Self {
+                inner: ChooseSolver::first(),
+                models: Mutex::new(Vec::new()),
+            }
+        }
+    }
+
+    impl Solver for RecordingSolver {
+        fn solve(&self, model: &LpModel, opts: &SolveOpts) -> Result<LpSolution, SolverError> {
+            self.models.lock().expect("lock").push(model.clone());
+            self.inner.solve(model, opts)
+        }
+    }
+
     struct StatusSolver {
         status: LpStatus,
         calls: AtomicUsize,
@@ -1123,6 +1223,13 @@ mod tests {
     }
 
     fn single_task_floor_graph(lut: u64) -> FloorGraph {
+        single_task_floor_graph_with_area(Area {
+            lut,
+            ..Area::default()
+        })
+    }
+
+    fn single_task_floor_graph_with_area(area: Area) -> FloorGraph {
         let json = serde_json::json!({
             "cflags": [],
             "top": "Top",
@@ -1143,7 +1250,13 @@ mod tests {
                     "level": "lower",
                     "synth": "hls",
                     "ports": [],
-                    "self_area": {"LUT": lut}
+                    "self_area": {
+                        "LUT": area.lut,
+                        "FF": area.ff,
+                        "BRAM_18K": area.bram_18k,
+                        "DSP": area.dsp,
+                        "URAM": area.uram
+                    }
                 }
             }
         });
@@ -1606,6 +1719,177 @@ mod tests {
             (min.rhs - total_lut * 0.1).abs() < f64::EPSILON,
             "slot-specific minimum is based on total capacity"
         );
+    }
+
+    #[test]
+    fn exact_multilevel_caps_apply_to_row_and_atomic_resource_rows() {
+        let graph = vadd_floor_graph();
+        let device = select_device("u280").expect("u280");
+        let solver = RecordingSolver::first();
+        let logic_limit = 0.7;
+        let block_limit = 0.8;
+
+        let (_, strategy) = floorplan_with_exact_resource_caps(
+            &graph,
+            &device,
+            logic_limit,
+            block_limit,
+            PartitionStrategy::MultiLevel,
+            &solver,
+            &SolveOpts::default(),
+        )
+        .expect("exact multilevel floorplan");
+        assert_eq!(strategy, PartitionStrategy::MultiLevel);
+
+        let baseline_solver = RecordingSolver::first();
+        floorplan_with_strategy(
+            &graph,
+            &device,
+            logic_limit,
+            logic_limit,
+            PartitionStrategy::MultiLevel,
+            &baseline_solver,
+            &SolveOpts::default(),
+        )
+        .expect("single-cap multilevel floorplan");
+
+        let models = solver.models.lock().expect("lock");
+        let baseline_models = baseline_solver.models.lock().expect("lock");
+        assert_eq!(models.len(), 2, "one row solve and one atomic solve");
+        assert_eq!(baseline_models.len(), models.len());
+        for ((model, baseline), region) in models
+            .iter()
+            .zip(baseline_models.iter())
+            .zip([Coor::span(0, 0, device.cols - 1, 0), Coor::slot(0, 0)])
+        {
+            assert_eq!(model.num_vars(), baseline.num_vars());
+            assert_eq!(model.num_constraints(), baseline.num_constraints());
+            assert_eq!(
+                model
+                    .vars
+                    .iter()
+                    .map(|variable| variable.label.as_str())
+                    .collect::<Vec<_>>(),
+                baseline
+                    .vars
+                    .iter()
+                    .map(|variable| variable.label.as_str())
+                    .collect::<Vec<_>>(),
+                "the cap policy must not add or remove variables",
+            );
+            assert_eq!(model.objective, baseline.objective);
+            for row in &model.constraints {
+                let baseline_row = baseline
+                    .constraints
+                    .iter()
+                    .find(|candidate| candidate.name == row.name)
+                    .expect("baseline row");
+                assert_eq!(row.op, baseline_row.op);
+                assert_eq!(row.expr, baseline_row.expr);
+            }
+
+            let area = device.island_area(&region).expect("region area");
+            for resource in Resource::ALL {
+                let row = model
+                    .constraints
+                    .iter()
+                    .find(|row| {
+                        row.name
+                            == format!("node_{}_{}_usage", region.region_name(), resource.name())
+                    })
+                    .expect("resource row");
+                let expected = match resource {
+                    Resource::Ff | Resource::Lut => {
+                        u64_as_f64(scaled_amount(resource.amount(&area), logic_limit))
+                    }
+                    Resource::Bram18k | Resource::Dsp | Resource::Uram => {
+                        u64_as_f64(resource.amount(&area)) * block_limit
+                    }
+                };
+                assert_eq!(
+                    row.rhs.to_bits(),
+                    expected.to_bits(),
+                    "{} cap drifted for {}",
+                    resource.name(),
+                    region.region_name(),
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn exact_flat_candidates_keep_one_resource_cap() {
+        let graph = vadd_floor_graph();
+        let device = select_device("u280").expect("u280");
+        let solver = RecordingSolver::first();
+        let logic_limit = 0.7;
+
+        let (_, strategy) = floorplan_with_exact_resource_caps(
+            &graph,
+            &device,
+            logic_limit,
+            0.8,
+            PartitionStrategy::Flat,
+            &solver,
+            &SolveOpts::default(),
+        )
+        .expect("exact flat floorplan");
+        assert_eq!(strategy, PartitionStrategy::Flat);
+
+        let models = solver.models.lock().expect("lock");
+        assert_eq!(models.len(), 1);
+        let region = Coor::slot(0, 0);
+        let area = device.island_area(&region).expect("slot area");
+        for resource in Resource::ALL {
+            let row = models[0]
+                .constraints
+                .iter()
+                .find(|row| {
+                    row.name == format!("node_{}_{}_usage", region.region_name(), resource.name())
+                })
+                .expect("resource row");
+            let expected = u64_as_f64(scaled_amount(resource.amount(&area), logic_limit));
+            assert_eq!(
+                row.rhs.to_bits(),
+                expected.to_bits(),
+                "flat {} unexpectedly received a block margin",
+                resource.name(),
+            );
+        }
+    }
+
+    #[test]
+    fn exact_multilevel_candidate_filter_honors_block_overrides() {
+        let graph = single_task_floor_graph_with_area(Area {
+            bram_18k: 75,
+            ..Area::default()
+        });
+        let mut device = one_slot_device(1_000);
+        device.slots[0].area.bram_18k = 100;
+
+        floorplan_with_exact_resource_caps(
+            &graph,
+            &device,
+            0.7,
+            0.8,
+            PartitionStrategy::MultiLevel,
+            &ChooseSolver::first(),
+            &SolveOpts::default(),
+        )
+        .expect("the block margin must keep the task in the candidate domain");
+
+        assert!(matches!(
+            floorplan_with_exact_resource_caps(
+                &graph,
+                &device,
+                0.7,
+                0.8,
+                PartitionStrategy::Flat,
+                &ChooseSolver::first(),
+                &SolveOpts::default(),
+            ),
+            Err(IlpError::NoCandidates { .. })
+        ));
     }
 
     #[test]
