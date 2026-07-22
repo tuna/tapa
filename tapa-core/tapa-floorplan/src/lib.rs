@@ -788,6 +788,7 @@ mod tests {
                 write_data: 39,
                 write_response: 5,
             },
+            bridge_instance: None,
         };
 
         for part in ["xcu250-figd2104-2L-e", "xcvc1902-vsva2197-2MP-e-S"] {

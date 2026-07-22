@@ -339,9 +339,9 @@ mod tests {
     use crate::device::select::select_device;
     use std::collections::BTreeMap as Map;
     use tapa_ir::{
-        control_pipeline_instance_name, global_controller_instance_name,
-        local_controller_instance_name, Area, AxiChannel, AxiEndpoint, ControlChannel, MemoryBank,
-        MemoryKind, PipelineRoute, PipelineScheme,
+        async_mmap_bridge_instance_name, control_pipeline_instance_name,
+        global_controller_instance_name, local_controller_instance_name, Area, AxiChannel,
+        AxiEndpoint, ControlChannel, MemoryBank, MemoryKind, PipelineRoute, PipelineScheme,
     };
 
     #[test]
@@ -693,6 +693,7 @@ delete_pblock -quiet TAPA_PARENT_CLIP_SLOT_X1Y1_TO_SLOT_X1Y1
             top_port: "data".to_string(),
         };
         let pipeline = axi_pipeline_instance_name(&endpoint, AxiChannel::ReadData);
+        let bridge = async_mmap_bridge_instance_name(&endpoint.top_port);
         let description = format!(
             "{}.{} {}",
             endpoint.instance,
@@ -702,10 +703,13 @@ delete_pblock -quiet TAPA_PARENT_CLIP_SLOT_X1Y1_TO_SLOT_X1Y1
         let result = FloorplanResult {
             device: "u280".to_string(),
             grid: (2, 3),
-            regions: Map::from([(
-                endpoint.instance.clone(),
-                "SLOT_X1Y0_TO_SLOT_X1Y0".to_string(),
-            )]),
+            regions: Map::from([
+                (
+                    endpoint.instance.clone(),
+                    "SLOT_X1Y0_TO_SLOT_X1Y0".to_string(),
+                ),
+                (bridge.clone(), "SLOT_X1Y0_TO_SLOT_X1Y0".to_string()),
+            ]),
             routes: vec![PipelineRoute {
                 channel: RoutedChannel::Axi {
                     endpoint,
@@ -733,6 +737,8 @@ delete_pblock -quiet TAPA_PARENT_CLIP_SLOT_X1Y1_TO_SLOT_X1Y1
             "{child}"
         );
         assert!(child.contains(&pipeline_tail_regex(&pipeline)), "{child}");
+        assert!(child.contains(&cell_name_regex(&bridge)), "{child}");
+        assert_missing_cell_is_fatal(&xdc, &bridge);
 
         for stage in ["Head", "Body 0", "Body 1", "Tail"] {
             assert_missing_cell_is_fatal(&xdc, &format!("{description} {stage}"));

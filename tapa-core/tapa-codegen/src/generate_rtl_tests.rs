@@ -2136,8 +2136,13 @@ fn test_generate_rtl_sanitizes_indexed_mmap_names() {
     assert!(!top_v.contains("chan[0]"), "got:\n{top_v}");
 }
 
-#[test]
-fn test_generate_rtl_instantiates_async_mmap_bridge() {
+fn async_mmap_state(floorplanned: bool) -> TopologyWithRtl {
+    use std::collections::BTreeMap;
+    use tapa_ir::{
+        async_mmap_bridge_instance_name, AxiChannel, AxiEndpoint, FloorplanResult, MemoryBank,
+        MemoryKind, PipelineRoute, PipelineScheme, RoutedChannel,
+    };
+
     let top = task("top", "upper", |t| {
         t["ports"] =
             serde_json::json!([{"cat": "mmap", "name": "chan[0]", "type": "Elem*", "width": 512}]);
@@ -2170,11 +2175,69 @@ fn test_generate_rtl_instantiates_async_mmap_bridge() {
                  input wire [63:0] mem_read_addr_offset,\n\
                  input wire [512:0] mem_read_data_s_dout,\n\
                  input wire mem_read_data_s_empty_n,\n\
-                 output wire mem_read_data_s_read\n\
-                 ); endmodule",
+                 output wire mem_read_data_s_read,\n\
+                 output wire mem_write_addr_s_write,\n\
+                 output wire mem_write_data_s_write,\n\
+                 output wire mem_write_resp_s_read\n\
+                 );\n\
+                 assign mem_write_addr_s_write = 1'b0;\n\
+                 assign mem_write_data_s_write = 1'b0;\n\
+                 assign mem_write_resp_s_read = 1'b0;\n\
+                 endmodule",
             ),
         )
         .unwrap();
+
+    if floorplanned {
+        let endpoint = AxiEndpoint {
+            instance: "copy_0".to_string(),
+            port: "mem".to_string(),
+            top_port: "chan[0]".to_string(),
+        };
+        let bank = MemoryBank {
+            kind: MemoryKind::Hbm,
+            index: 0,
+        };
+        let routes = [AxiChannel::ReadAddress, AxiChannel::ReadData]
+            .into_iter()
+            .map(|channel| {
+                let outgoing = channel == AxiChannel::ReadAddress;
+                PipelineRoute {
+                    channel: RoutedChannel::Axi {
+                        endpoint: endpoint.clone(),
+                        bank,
+                        channel,
+                    },
+                    route: if outgoing {
+                        vec!["SLOT_X0Y0".to_string(), "SLOT_X1Y0".to_string()]
+                    } else {
+                        vec!["SLOT_X1Y0".to_string(), "SLOT_X0Y0".to_string()]
+                    },
+                    scheme: PipelineScheme::Single,
+                    reg_regions: Vec::new(),
+                }
+            })
+            .collect();
+        state.floorplan = Some(FloorplanResult {
+            device: "u280".to_string(),
+            grid: (2, 1),
+            regions: BTreeMap::from([
+                (endpoint.instance, "SLOT_X0Y0".to_string()),
+                (
+                    async_mmap_bridge_instance_name("chan[0]"),
+                    "SLOT_X0Y0".to_string(),
+                ),
+            ]),
+            routes,
+            slot_usage: BTreeMap::new(),
+        });
+    }
+    state
+}
+
+#[test]
+fn test_generate_rtl_instantiates_async_mmap_bridge() {
+    let mut state = async_mmap_state(false);
 
     generate_rtl(&mut state).unwrap();
 
@@ -2183,6 +2246,7 @@ fn test_generate_rtl_instantiates_async_mmap_bridge() {
         top_v.contains("async_mmap #(") && top_v.contains("chan_0__m_axi"),
         "top should instantiate an async_mmap bridge:\n{top_v}"
     );
+    assert!(top_v.contains(".EnableWriteChannel(0)"), "{top_v}");
     assert!(
         top_v.contains("wire [63:0] chan_0_read_addr__din;"),
         "bridge stream wires should be declared:\n{top_v}"
@@ -2206,6 +2270,63 @@ fn test_generate_rtl_instantiates_async_mmap_bridge() {
     assert!(
         !top_v.contains(".m_axi_mem_ARADDR"),
         "async mmap child should not receive direct AXI ports:\n{top_v}"
+    );
+}
+
+#[test]
+fn test_generate_rtl_pipelines_only_enabled_async_mmap_channels() {
+    let mut state = async_mmap_state(true);
+
+    generate_rtl(&mut state).unwrap();
+
+    let top_v = &state.generated_files["top.v"];
+    assert_eq!(top_v.matches("tapa_hs_pipeline #(").count(), 2, "{top_v}");
+    for name in ["__tapa_axi_chan_0_ar", "__tapa_axi_chan_0_r"] {
+        assert!(top_v.contains(name), "missing {name}:\n{top_v}");
+    }
+    for name in [
+        "__tapa_axi_chan_0_aw",
+        "__tapa_axi_chan_0_w",
+        "__tapa_axi_chan_0_b",
+    ] {
+        assert!(!top_v.contains(name), "disabled pipeline {name}:\n{top_v}");
+    }
+    assert!(
+        top_v.contains("async_mmap #(") && top_v.contains("chan_0__m_axi"),
+        "bridge hierarchy must remain stable:\n{top_v}"
+    );
+    assert!(
+        !top_v.contains("__tapa_axi_chan_0_child__m_axi"),
+        "wire prefix must not leak into bridge hierarchy:\n{top_v}"
+    );
+    assert!(
+        top_v.contains(".m_axi_ARADDR(__tapa_axi_chan_0_child_ARADDR)"),
+        "enabled read half must use pipeline wires:\n{top_v}"
+    );
+    assert!(
+        top_v.contains(".m_axi_AWADDR(m_axi_chan_0_AWADDR)"),
+        "disabled write half must remain directly driven:\n{top_v}"
+    );
+    assert!(
+        top_v.contains(".m_axi_ARLOCK()") && top_v.contains(".m_axi_AWLOCK(m_axi_chan_0_AWLOCK)"),
+        "active optional outputs are plan-driven while inactive outputs remain bridged:\n{top_v}"
+    );
+    assert!(
+        !top_v.contains("__tapa_axi_chan_0_child_ARLOCK")
+            && !top_v.contains("__tapa_axi_chan_0_child_AWLOCK"),
+        "routed bridge must not reference undeclared optional child wires:\n{top_v}"
+    );
+    for expected in [
+        "assign m_axi_chan_0_ARLOCK = 1'b0",
+        "assign m_axi_chan_0_ARCACHE = 4'b0011",
+        "assign m_axi_chan_0_ARPROT = 3'b000",
+        "assign m_axi_chan_0_ARQOS = 4'b0000",
+    ] {
+        assert!(top_v.contains(expected), "missing '{expected}':\n{top_v}");
+    }
+    assert!(
+        !top_v.contains("assign m_axi_chan_0_AWLOCK"),
+        "inactive bridge half owns its optional outputs:\n{top_v}"
     );
 }
 

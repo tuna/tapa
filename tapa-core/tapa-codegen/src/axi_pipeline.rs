@@ -16,14 +16,6 @@ use tapa_rtl::mutation::{wide_wire, wire};
 use crate::error::CodegenError;
 use crate::rtl_state::{DirectMmapInterface, TopologyWithRtl};
 
-const AXI_CHANNELS: [AxiChannel; 5] = [
-    AxiChannel::ReadAddress,
-    AxiChannel::ReadData,
-    AxiChannel::WriteAddress,
-    AxiChannel::WriteData,
-    AxiChannel::WriteResponse,
-];
-
 const OPTIONAL_ADDRESS_OUTPUTS: [(&str, &str); 8] = [
     ("_AWLOCK", "1'b0"),
     ("_AWCACHE", "4'b0011"),
@@ -51,8 +43,8 @@ struct RoutedEndpoint {
 /// Validated direct M-AXI routes for one generated top module.
 ///
 /// An endpoint is absent when it is co-located with its external memory bank.
-/// A present endpoint always contains exactly one route for every typed AXI
-/// channel.
+/// A present endpoint contains exactly one route for every enabled typed AXI
+/// channel; read-only and write-only async bridges prune the other group.
 #[derive(Debug, Default)]
 pub struct DirectAxiPipelinePlan {
     routed: BTreeMap<AxiEndpoint, RoutedEndpoint>,
@@ -88,9 +80,15 @@ impl DirectAxiPipelinePlan {
             else {
                 continue;
             };
-            if !expected.contains_key(endpoint) {
+            let Some(interface) = expected.get(endpoint) else {
                 return Err(invalid_floorplan(format!(
                     "AXI route names unknown direct M-AXI endpoint {}",
+                    display_endpoint(endpoint),
+                )));
+            };
+            if interface.channel_widths.physical_width(*channel) == 0 {
+                return Err(invalid_floorplan(format!(
+                    "direct M-AXI endpoint {} has a route for disabled {channel:?} channel",
                     display_endpoint(endpoint),
                 )));
             }
@@ -129,8 +127,13 @@ impl DirectAxiPipelinePlan {
             let Some(channel_routes) = planned.remove(&endpoint) else {
                 continue;
             };
-            if channel_routes.len() != AXI_CHANNELS.len() {
-                let missing = AXI_CHANNELS
+            let enabled_channels = interface
+                .channel_widths
+                .enabled_channels()
+                .map(|(channel, _)| channel)
+                .collect::<Vec<_>>();
+            if channel_routes.len() != enabled_channels.len() {
+                let missing = enabled_channels
                     .iter()
                     .filter(|channel| !channel_routes.contains_key(channel))
                     .map(|channel| format!("{channel:?}"))
@@ -145,7 +148,7 @@ impl DirectAxiPipelinePlan {
             let mut common_bank = None;
             let mut common_bank_slot = None;
             let mut body_levels = BTreeMap::new();
-            for channel in AXI_CHANNELS {
+            for channel in enabled_channels {
                 let route = &channel_routes[&channel];
                 validate_channel_route(
                     &endpoint,
@@ -214,23 +217,30 @@ impl DirectAxiPipelinePlan {
                 sanitize_array_name(&interface.endpoint.top_port),
             );
 
-            for suffix in M_AXI_SUFFIXES_COMPACT {
-                let width = axi_subport_width(
-                    axi_subport_from_suffix(suffix),
-                    interface.data_width,
-                    interface.addr_width,
-                    interface.id_width,
-                );
-                let name = format!("{child_prefix}{suffix}");
-                let signal = if width > 1 {
-                    wide_wire(name, &(width - 1).to_string(), "0")
-                } else {
-                    wire(name)
-                };
-                module.add_signal(signal)?;
+            for (channel, _) in interface.channel_widths.enabled_channels() {
+                let channel_name = channel_rtl_name(channel);
+                for suffix in M_AXI_SUFFIXES_BY_CHANNEL[channel_name]
+                    .ports
+                    .iter()
+                    .filter(|suffix| M_AXI_SUFFIXES_COMPACT.contains(suffix))
+                {
+                    let width = axi_subport_width(
+                        axi_subport_from_suffix(suffix),
+                        interface.data_width,
+                        interface.addr_width,
+                        interface.id_width,
+                    );
+                    let name = format!("{child_prefix}{suffix}");
+                    let signal = if width > 1 {
+                        wide_wire(name, &(width - 1).to_string(), "0")
+                    } else {
+                        wire(name)
+                    };
+                    module.add_signal(signal)?;
+                }
             }
 
-            for channel in AXI_CHANNELS {
+            for (channel, _) in interface.channel_widths.enabled_channels() {
                 let body_level = routed.body_levels[&channel];
                 module.add_instance(build_channel_instance(
                     interface,
@@ -241,7 +251,10 @@ impl DirectAxiPipelinePlan {
                 )?);
             }
 
-            for (suffix, value) in OPTIONAL_ADDRESS_OUTPUTS {
+            for (suffix, value) in OPTIONAL_ADDRESS_OUTPUTS.into_iter().filter(|(suffix, _)| {
+                (suffix.starts_with("_AR") && interface.channel_widths.read_address != 0)
+                    || (suffix.starts_with("_AW") && interface.channel_widths.write_address != 0)
+            }) {
                 module.add_assign(ContinuousAssign::new(
                     Expr::ident(format!("{top_prefix}{suffix}")),
                     Expr::lit(value),

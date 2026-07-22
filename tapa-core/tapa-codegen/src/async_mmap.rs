@@ -7,7 +7,8 @@
 use std::collections::BTreeSet;
 
 use tapa_protocol::{
-    HANDSHAKE_CLK, HANDSHAKE_RST, ISTREAM_SUFFIXES, M_AXI_PORTS, M_AXI_PREFIX, OSTREAM_SUFFIXES,
+    HANDSHAKE_CLK, HANDSHAKE_RST, ISTREAM_SUFFIXES, M_AXI_PORTS, M_AXI_PREFIX,
+    M_AXI_SUFFIXES_COMPACT, OSTREAM_SUFFIXES,
 };
 use tapa_rtl::builder::{Expr, ModuleInstance, ParamArg, PortArg};
 use tapa_rtl::module::sanitize_array_name;
@@ -19,8 +20,17 @@ pub const READ_DATA: &str = "read_data";
 pub const WRITE_ADDR: &str = "write_addr";
 pub const WRITE_DATA: &str = "write_data";
 pub const WRITE_RESP: &str = "write_resp";
+pub const AXI_ADDR_WIDTH: u32 = 64;
+pub const AXI_ID_WIDTH: u32 = 1;
 
 const TAGS: &[&str] = &[READ_ADDR, READ_DATA, WRITE_ADDR, WRITE_DATA, WRITE_RESP];
+
+/// AXI directions that survive synthesis in one FIFO-style async mmap leaf.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EnabledAxiDirections {
+    pub read: bool,
+    pub write: bool,
+}
 
 fn tag_suffixes(tag: &str) -> &'static [&'static str] {
     match tag {
@@ -66,6 +76,136 @@ pub fn active_tags(child_rtl: &VerilogModule, child_port: &str) -> BTreeSet<&'st
             }) || child_rtl.find_port_by_affixes(&prefix, "_offset").is_some()
         })
         .collect()
+}
+
+/// Conservatively determine which AXI halves a FIFO-style async mmap uses.
+///
+/// Vitis HLS can retain every async FIFO port even when one direction is
+/// unused. A direction is disabled only when every present activity output in
+/// that group is an unconditional continuous assignment to zero. Missing or
+/// otherwise ambiguous activity outputs keep a present group enabled.
+pub fn enabled_axi_directions(
+    child_rtl: &VerilogModule,
+    child_port: &str,
+    tags: &BTreeSet<&'static str>,
+) -> EnabledAxiDirections {
+    let source = strip_verilog_comments(&child_rtl.source);
+    let group_enabled = |group: &[(&str, &str)]| {
+        for &(tag, activity_suffix) in group {
+            if !tags.contains(tag) {
+                continue;
+            }
+            let prefix = format!("{child_port}_{tag}");
+            let Some(port) = child_rtl.find_port_by_affixes(&prefix, activity_suffix) else {
+                return true;
+            };
+            if !has_unconditional_zero_assign(&source, &port.name) {
+                return true;
+            }
+        }
+        false
+    };
+
+    EnabledAxiDirections {
+        read: group_enabled(&[(READ_ADDR, "_write"), (READ_DATA, "_read")]),
+        write: group_enabled(&[
+            (WRITE_ADDR, "_write"),
+            (WRITE_DATA, "_write"),
+            (WRITE_RESP, "_read"),
+        ]),
+    }
+}
+
+/// Whether codegen will bind this async mmap as a direct compact M-AXI child
+/// instead of inserting the FIFO-to-AXI bridge.
+pub fn has_direct_m_axi_ports(child_rtl: &VerilogModule, child_port: &str) -> bool {
+    child_rtl
+        .find_port(&format!("{child_port}_offset"))
+        .is_some()
+        || M_AXI_SUFFIXES_COMPACT.iter().any(|suffix| {
+            child_rtl
+                .find_port(&format!("{M_AXI_PREFIX}{child_port}{suffix}"))
+                .is_some()
+        })
+}
+
+fn strip_verilog_comments(source: &str) -> String {
+    let mut result = String::with_capacity(source.len());
+    let mut chars = source.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch != '/' {
+            result.push(ch);
+            continue;
+        }
+        match chars.peek().copied() {
+            Some('/') => {
+                let _ = chars.next();
+                for comment in chars.by_ref() {
+                    if comment == '\n' {
+                        result.push('\n');
+                        break;
+                    }
+                }
+            }
+            Some('*') => {
+                let _ = chars.next();
+                let mut previous = '\0';
+                for comment in chars.by_ref() {
+                    if previous == '*' && comment == '/' {
+                        break;
+                    }
+                    previous = comment;
+                }
+                result.push(' ');
+            }
+            _ => result.push(ch),
+        }
+    }
+    result
+}
+
+fn has_unconditional_zero_assign(source: &str, port: &str) -> bool {
+    source.split(';').any(|statement| {
+        let statement = statement.trim();
+        let Some(assign) = statement.strip_prefix("assign") else {
+            return false;
+        };
+        let Some((lhs, rhs)) = assign.split_once('=') else {
+            return false;
+        };
+        lhs.trim() == port && is_zero_literal(rhs.trim())
+    })
+}
+
+fn is_zero_literal(literal: &str) -> bool {
+    let mut literal = literal.trim();
+    while let Some(inner) = literal
+        .strip_prefix('(')
+        .and_then(|value| value.strip_suffix(')'))
+    {
+        literal = inner.trim();
+    }
+    let compact = literal.replace('_', "");
+    if compact == "0" || compact == "'0" {
+        return true;
+    }
+    let Some((width, value)) = compact.split_once('\'') else {
+        return false;
+    };
+    if width.is_empty() || !width.chars().all(|ch| ch.is_ascii_digit()) {
+        return false;
+    }
+    let value = value
+        .strip_prefix('s')
+        .or_else(|| value.strip_prefix('S'))
+        .unwrap_or(value);
+    let Some(digits) = value
+        .get(1..)
+        .filter(|_| value.starts_with(['b', 'B', 'o', 'O', 'd', 'D', 'h', 'H']))
+    else {
+        return false;
+    };
+    !digits.is_empty() && digits.chars().all(|ch| ch == '0')
 }
 
 pub fn child_connection_expr(base: &str, tag: &str, suffix: &str) -> Expr {
@@ -134,10 +274,17 @@ pub fn add_bridge_signals(
     }
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "bridge wiring keeps the active and inactive AXI paths explicit"
+)]
 pub fn build_bridge_instance(
     bridge_base: &str,
-    m_axi_prefix: &str,
+    instance_name: &str,
+    active_m_axi_prefix: &str,
+    inactive_m_axi_prefix: &str,
     active_tags: &BTreeSet<&'static str>,
+    enabled: EnabledAxiDirections,
     data_width: u32,
     connect_optional_axi_ports: bool,
 ) -> ModuleInstance {
@@ -151,26 +298,21 @@ pub fn build_bridge_instance(
         .checked_div(data_width)
         .unwrap_or(0)
         .saturating_sub(1);
-    let enable_read = active_tags.contains(READ_ADDR) || active_tags.contains(READ_DATA);
-    let enable_write = active_tags.contains(WRITE_ADDR)
-        || active_tags.contains(WRITE_DATA)
-        || active_tags.contains(WRITE_RESP);
-
     let mut params = vec![
         ParamArg::new("DataWidth", Expr::int(u64::from(data_width))),
         ParamArg::new("DataWidthBytesLog", Expr::int(u64::from(bytes_log))),
-        ParamArg::new("AddrWidth", Expr::int(64)),
+        ParamArg::new("AddrWidth", Expr::int(u64::from(AXI_ADDR_WIDTH))),
         ParamArg::new("WaitTimeWidth", Expr::int(2)),
         ParamArg::new("MaxWaitTime", Expr::int(3)),
         ParamArg::new("BurstLenWidth", Expr::int(9)),
         ParamArg::new("MaxBurstLen", Expr::int(u64::from(max_burst_len))),
         ParamArg::new(
             "EnableReadChannel",
-            Expr::int(u64::from(u8::from(enable_read))),
+            Expr::int(u64::from(u8::from(enabled.read))),
         ),
         ParamArg::new(
             "EnableWriteChannel",
-            Expr::int(u64::from(u8::from(enable_write))),
+            Expr::int(u64::from(u8::from(enabled.write))),
         ),
     ];
 
@@ -180,14 +322,24 @@ pub fn build_bridge_instance(
     ];
 
     for channel in ["AW", "W", "B", "AR", "R"] {
+        let channel_enabled = match channel {
+            "AR" | "R" => enabled.read,
+            "AW" | "W" | "B" => enabled.write,
+            _ => unreachable!("known AXI channel"),
+        };
+        let channel_prefix = if channel_enabled {
+            active_m_axi_prefix
+        } else {
+            inactive_m_axi_prefix
+        };
         if let Some(subports) = M_AXI_PORTS.get(channel) {
             for &(subport, _) in *subports {
                 let suffix = format!("_{channel}{subport}");
-                let is_compact = tapa_protocol::M_AXI_SUFFIXES_COMPACT
-                    .iter()
-                    .any(|compact| *compact == suffix);
-                let connection = if is_compact || connect_optional_axi_ports {
-                    Expr::ident(format!("{m_axi_prefix}{suffix}"))
+                let is_compact = M_AXI_SUFFIXES_COMPACT.contains(&suffix.as_str());
+                let connect_optional = connect_optional_axi_ports
+                    && (!channel_enabled || active_m_axi_prefix == inactive_m_axi_prefix);
+                let connection = if is_compact || connect_optional {
+                    Expr::ident(format!("{channel_prefix}{suffix}"))
                 } else {
                     Expr::lit("")
                 };
@@ -214,7 +366,7 @@ pub fn build_bridge_instance(
         }
     }
 
-    ModuleInstance::new("async_mmap", format!("{bridge_base}__m_axi"))
+    ModuleInstance::new("async_mmap", instance_name)
         .with_params(std::mem::take(&mut params))
         .with_ports(ports)
 }
@@ -251,6 +403,55 @@ mod tests {
         let module = VerilogModule::parse("module child(input wire ap_clk); endmodule").unwrap();
         let tags = active_tags(&module, "mem");
         assert!(tags.is_empty());
+    }
+
+    #[test]
+    fn enabled_directions_only_prunes_proven_zero_activity() {
+        let module = VerilogModule::parse(
+            "module child(\n\
+             output wire mem_read_addr_s_write,\n\
+             output wire mem_read_data_s_read,\n\
+             output wire mem_write_addr_s_write,\n\
+             output wire mem_write_data_s_write,\n\
+             output wire mem_write_resp_s_read\n\
+             );\n\
+             assign mem_read_addr_s_write = live_read;\n\
+             assign mem_read_data_s_read = live_read;\n\
+             assign mem_write_addr_s_write = 1'b0;\n\
+             assign mem_write_data_s_write = 1'h0;\n\
+             assign mem_write_resp_s_read = 1'd0;\n\
+             endmodule",
+        )
+        .unwrap();
+        let tags = active_tags(&module, "mem");
+
+        assert_eq!(
+            enabled_axi_directions(&module, "mem", &tags),
+            EnabledAxiDirections {
+                read: true,
+                write: false,
+            }
+        );
+    }
+
+    #[test]
+    fn commented_or_indirect_zero_assign_is_not_proof() {
+        let module = VerilogModule::parse(
+            "module child(\n\
+             output wire mem_read_addr_s_write,\n\
+             output wire mem_read_data_s_read\n\
+             );\n\
+             // assign mem_read_addr_s_write = 1'b0;\n\
+             assign mem_read_addr_s_write = disabled;\n\
+             assign disabled = 1'b0;\n\
+             /* assign mem_read_data_s_read = 1'b0; */\n\
+             assign mem_read_data_s_read = disabled;\n\
+             endmodule",
+        )
+        .unwrap();
+        let tags = active_tags(&module, "mem");
+
+        assert!(enabled_axi_directions(&module, "mem", &tags).read);
     }
 
     #[test]
@@ -305,12 +506,38 @@ mod tests {
         let mut tags = BTreeSet::new();
         tags.insert(READ_ADDR);
         tags.insert(READ_DATA);
-        let inst = build_bridge_instance("chan", "m_axi_chan", &tags, 512, false);
+        let inst = build_bridge_instance(
+            "chan",
+            "chan__m_axi",
+            "__tapa_axi_chan_child",
+            "m_axi_chan",
+            &tags,
+            EnabledAxiDirections {
+                read: true,
+                write: false,
+            },
+            512,
+            true,
+        );
         let text = inst.to_string();
         assert!(text.contains("async_mmap"), "got:\n{text}");
         assert!(text.contains("DataWidth(512)"), "got:\n{text}");
         assert!(text.contains("EnableReadChannel(1)"), "got:\n{text}");
         assert!(text.contains("EnableWriteChannel(0)"), "got:\n{text}");
+        assert!(text.contains("chan__m_axi"), "got:\n{text}");
+        assert!(
+            text.contains(".m_axi_ARADDR(__tapa_axi_chan_child_ARADDR)"),
+            "got:\n{text}"
+        );
+        assert!(
+            text.contains(".m_axi_AWADDR(m_axi_chan_AWADDR)"),
+            "got:\n{text}"
+        );
+        assert!(text.contains(".m_axi_ARLOCK()"), "got:\n{text}");
+        assert!(
+            !text.contains("__tapa_axi_chan_child_ARLOCK"),
+            "routed optional outputs must not create implicit wires:\n{text}"
+        );
     }
 
     #[test]

@@ -155,11 +155,15 @@ pub struct ChildMmapBindings {
 }
 
 impl ChildMmapBindings {
+    pub fn upstream_wire_prefix(&self, arg_name: &str) -> String {
+        mmap_wire_prefix(arg_name, &self.slave_indices)
+    }
+
     pub fn wire_prefix(&self, arg_name: &str) -> String {
         self.direct_wire_prefixes
             .get(arg_name)
             .cloned()
-            .unwrap_or_else(|| mmap_wire_prefix(arg_name, &self.slave_indices))
+            .unwrap_or_else(|| self.upstream_wire_prefix(arg_name))
     }
 
     pub fn wire_id_width(&self, arg_name: &str) -> Option<u32> {
@@ -378,15 +382,7 @@ fn child_has_direct_mmap_offset(child_rtl: Option<&VerilogModule>, child_port: &
 }
 
 fn child_has_direct_mmap_ports(child_rtl: Option<&VerilogModule>, child_port: &str) -> bool {
-    let Some(module) = child_rtl else {
-        return false;
-    };
-    child_has_direct_mmap_offset(child_rtl, child_port)
-        || tapa_protocol::M_AXI_SUFFIXES_COMPACT.iter().any(|suffix| {
-            module
-                .find_port(&format!("{M_AXI_PREFIX}{child_port}{suffix}"))
-                .is_some()
-        })
+    child_rtl.is_some_and(|module| async_mmap::has_direct_m_axi_ports(module, child_port))
 }
 
 #[allow(
@@ -709,7 +705,10 @@ pub(crate) fn generate_child_signals(
                     if active_tags.is_empty() {
                         continue;
                     }
+                    let enabled =
+                        async_mmap::enabled_axi_directions(child_rtl, child_port, &active_tags);
                     let m_axi_wire_prefix = mmap_bindings.wire_prefix(&arg.arg);
+                    let upstream_m_axi_prefix = mmap_bindings.upstream_wire_prefix(&arg.arg);
                     let bridge_base = async_mmap::bridge_base_from_m_axi_prefix(&m_axi_wire_prefix);
                     // Aggregation already derived the width with the same
                     // parent-then-child port precedence.
@@ -720,8 +719,11 @@ pub(crate) fn generate_child_signals(
                         async_mmap::add_bridge_signals(mm, &bridge_base, &active_tags, data_width);
                         mm.add_instance(async_mmap::build_bridge_instance(
                             &bridge_base,
+                            &tapa_ir::async_mmap_bridge_instance_name(&arg.arg),
                             &m_axi_wire_prefix,
+                            &upstream_m_axi_prefix,
                             &active_tags,
+                            enabled,
                             data_width,
                             connect_optional_axi_ports,
                         ));

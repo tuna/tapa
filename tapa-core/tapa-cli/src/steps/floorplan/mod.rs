@@ -122,6 +122,7 @@ fn memory_plan_inputs(
                 endpoint: interface.endpoint.clone(),
                 bank,
                 channel_widths: interface.channel_widths,
+                bridge_instance: interface.bridge_instance.clone(),
             })
         })
         .collect::<Result<Vec<_>>>()?;
@@ -620,6 +621,7 @@ mod tests {
                 write_data: 39,
                 write_response: 5,
             },
+            bridge_instance: None,
         }
     }
 
@@ -646,6 +648,7 @@ mod tests {
                     index: 7,
                 },
                 channel_widths: interfaces[0].channel_widths,
+                bridge_instance: None,
             }]
         );
     }

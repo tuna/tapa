@@ -116,6 +116,15 @@ pub fn axi_pipeline_instance_name(endpoint: &AxiEndpoint, channel: AxiChannel) -
     )
 }
 
+/// Deterministic generated instance name for an async-mmap-to-AXI bridge.
+///
+/// The name is derived from the external top port rather than an internal
+/// signal prefix, so inserting an AXI pipeline does not change RTL hierarchy.
+#[must_use]
+pub fn async_mmap_bridge_instance_name(top_port: &str) -> String {
+    format!("{}__m_axi", crate::port::sanitize_identifier_name(top_port))
+}
+
 /// Deterministic generated instance name for the global task controller.
 #[must_use]
 pub const fn global_controller_instance_name() -> &'static str {
@@ -134,8 +143,10 @@ pub fn local_controller_instance_name(instance: &str) -> String {
 
 /// Physical bit widths of the five independent AXI ready/valid channels.
 ///
-/// Each value includes the channel payload plus its `VALID` and `READY` bits.
-/// The fixed shape prevents a planner input from silently omitting a channel.
+/// Each enabled value includes the channel payload plus its `VALID` and
+/// `READY` bits. A zero value disables that channel; this represents the
+/// read-only or write-only half pruned by an async mmap bridge. Plain mmap
+/// interfaces enable all five channels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AxiChannelWidths {
     pub read_address: u32,
@@ -168,6 +179,11 @@ impl AxiChannelWidths {
             (AxiChannel::WriteData, self.write_data),
             (AxiChannel::WriteResponse, self.write_response),
         ]
+    }
+
+    /// Iterate over channels that exist in generated RTL.
+    pub fn enabled_channels(self) -> impl Iterator<Item = (AxiChannel, u32)> {
+        self.channels().into_iter().filter(|(_, width)| *width != 0)
     }
 }
 
@@ -299,6 +315,15 @@ mod tests {
                 dsp: 4,
                 uram: 5
             },
+        );
+    }
+
+    #[test]
+    fn async_mmap_bridge_name_is_stable_and_sanitized() {
+        assert_eq!(async_mmap_bridge_instance_name("mem[2]"), "mem_2__m_axi");
+        assert_eq!(
+            async_mmap_bridge_instance_name("mem-data"),
+            "mem_data__m_axi"
         );
     }
 

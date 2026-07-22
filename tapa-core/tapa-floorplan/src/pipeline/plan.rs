@@ -750,6 +750,7 @@ mod tests {
                     write_data: 39,
                     write_response: 5,
                 },
+                bridge_instance: None,
             }],
         )
         .expect("floor graph")

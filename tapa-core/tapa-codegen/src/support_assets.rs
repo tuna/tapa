@@ -39,4 +39,24 @@ mod tests {
         assert!(!head.contains("if (reset)"));
         assert!(!body.contains("if (reset)"));
     }
+
+    #[test]
+    fn async_mmap_catalog_constants_match_embedded_bridge() {
+        let asset = VerilogAssets::get("async_mmap.v").expect("async mmap bridge asset");
+        let source = std::str::from_utf8(&asset.data).expect("Verilog is UTF-8");
+
+        assert!(source.contains(&format!(
+            "parameter AxiSideAddrWidth  = {},",
+            crate::async_mmap::AXI_ADDR_WIDTH
+        )));
+        let id_range = format!("[{}:0]", crate::async_mmap::AXI_ID_WIDTH - 1);
+        for port in ["m_axi_AWID", "m_axi_BID", "m_axi_ARID", "m_axi_RID"] {
+            assert!(
+                source
+                    .lines()
+                    .any(|line| line.contains(&id_range) && line.contains(port)),
+                "{port} must match the cataloged bridge ID width"
+            );
+        }
+    }
 }

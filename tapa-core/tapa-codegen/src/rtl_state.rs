@@ -170,7 +170,7 @@ impl MMapConnection {
     }
 }
 
-/// One directly connected, plain child M-AXI interface.
+/// One child M-AXI interface connected directly to a top-level mmap port.
 ///
 /// This is a read-only projection of the topology and attached child RTL. It
 /// deliberately contains no mutable RTL or physical-device state, so the
@@ -185,8 +185,12 @@ pub struct DirectMmapInterface {
     pub addr_width: u32,
     /// AXI ID width in bits, resolved from all four child RTL ID ports.
     pub id_width: u32,
-    /// Physical widths of the five independently routed channels.
+    /// Physical widths of the independently routed channels. Zero-valued
+    /// channels are pruned by a read-only or write-only async mmap bridge.
     pub channel_widths: AxiChannelWidths,
+    /// Generated FIFO-to-AXI bridge hierarchy, or `None` when the child
+    /// exposes a complete compact M-AXI interface itself.
+    pub bridge_instance: Option<String>,
 }
 
 const DIRECT_M_AXI_ADDR_WIDTH: u32 = 64;
@@ -299,14 +303,13 @@ impl TopologyWithRtl {
         Ok(())
     }
 
-    /// Catalog the plain child M-AXI interfaces connected directly to ports of
+    /// Catalog child M-AXI interfaces connected directly to ports of
     /// `task_name`.
     ///
     /// The first floorplanned implementation intentionally accepts only the
-    /// topology that has no generated memory infrastructure: one plain mmap
-    /// child port connected to one plain parent mmap port. Shared mmap, hmap,
-    /// and async mmap interfaces are rejected instead of being represented
-    /// with incomplete area or routing information.
+    /// Shared mmap and hmap interfaces are rejected. A FIFO-style async mmap
+    /// is represented by its generated bridge and only the AXI directions
+    /// that survive conservative RTL tie-off analysis.
     pub fn direct_mmap_interfaces(
         &self,
         task_name: &str,
@@ -333,7 +336,8 @@ impl TopologyWithRtl {
         validate_plain_parent_mmap(task, connection, &qualified_port)?;
         let (slave, instance_index, instance) =
             direct_mmap_child_instance(task, connection, &qualified_port)?;
-        validate_plain_child_mmap(&self.design, instance, slave, &qualified_port)?;
+        let child_category =
+            validate_direct_child_mmap(&self.design, instance, slave, &qualified_port)?;
         if connection.data_width == 0 || !connection.data_width.is_multiple_of(8) {
             return Err(invalid_direct_mmap(
                 &qualified_port,
@@ -350,12 +354,13 @@ impl TopologyWithRtl {
                 &format!("has no RTL module attached for child task '{}'", slave.task),
             )
         })?;
-        let rtl_prefix = format!("{M_AXI_PREFIX}{}", sanitize_array_name(&slave.port));
-        let id_width = validate_compact_m_axi_ports(
+        let (id_width, channel_widths, bridge_instance) = catalog_direct_mmap_rtl(
             &module.inner,
+            child_category,
+            slave,
             &qualified_port,
-            &rtl_prefix,
             connection.data_width,
+            &connection.arg_name,
         )?;
 
         Ok(DirectMmapInterface {
@@ -369,7 +374,8 @@ impl TopologyWithRtl {
             data_width: connection.data_width,
             addr_width: DIRECT_M_AXI_ADDR_WIDTH,
             id_width,
-            channel_widths: direct_m_axi_channel_widths(connection.data_width, id_width),
+            channel_widths,
+            bridge_instance,
         })
     }
 
@@ -535,6 +541,60 @@ impl TopologyWithRtl {
     }
 }
 
+fn catalog_direct_mmap_rtl(
+    module: &VerilogModule,
+    child_category: ArgCategory,
+    slave: &MMapSlave,
+    interface: &str,
+    data_width: u32,
+    top_port: &str,
+) -> Result<(u32, AxiChannelWidths, Option<String>), CodegenError> {
+    if child_category == ArgCategory::Mmap
+        || crate::async_mmap::has_direct_m_axi_ports(module, &slave.port)
+    {
+        let rtl_prefix = format!("{M_AXI_PREFIX}{}", sanitize_array_name(&slave.port));
+        let id_width = validate_compact_m_axi_ports(module, interface, &rtl_prefix, data_width)?;
+        return Ok((
+            id_width,
+            direct_m_axi_channel_widths(data_width, id_width),
+            None,
+        ));
+    }
+    debug_assert_eq!(
+        child_category,
+        ArgCategory::AsyncMmap,
+        "direct child validator only permits mmap categories"
+    );
+
+    let tags = crate::async_mmap::active_tags(module, &slave.port);
+    if tags.is_empty() {
+        return Err(invalid_direct_mmap(
+            interface,
+            &format!(
+                "has async mmap child '{}.{}' with neither FIFO-style async ports nor a compact M-AXI interface",
+                slave.task, slave.port
+            ),
+        ));
+    }
+    let enabled = crate::async_mmap::enabled_axi_directions(module, &slave.port, &tags);
+    let id_width = crate::async_mmap::AXI_ID_WIDTH;
+    let mut widths = direct_m_axi_channel_widths(data_width, id_width);
+    if !enabled.read {
+        widths.read_address = 0;
+        widths.read_data = 0;
+    }
+    if !enabled.write {
+        widths.write_address = 0;
+        widths.write_data = 0;
+        widths.write_response = 0;
+    }
+    Ok((
+        id_width,
+        widths,
+        Some(tapa_ir::async_mmap_bridge_instance_name(top_port)),
+    ))
+}
+
 fn validate_plain_parent_mmap(
     task: &tapa_ir::Task,
     connection: &MMapConnection,
@@ -592,12 +652,12 @@ fn direct_mmap_child_instance<'task, 'connection>(
     Ok((slave, instance_index, instance))
 }
 
-fn validate_plain_child_mmap(
+fn validate_direct_child_mmap(
     design: &Design,
     instance: &tapa_ir::TaskInstance,
     slave: &MMapSlave,
     interface: &str,
-) -> Result<(), CodegenError> {
+) -> Result<ArgCategory, CodegenError> {
     let binding = instance.args.get(&slave.port).ok_or_else(|| {
         invalid_direct_mmap(
             interface,
@@ -608,7 +668,15 @@ fn validate_plain_child_mmap(
         )
     })?;
     let child_location = format!("child port '{}.{}'", slave.task, slave.port);
-    validate_plain_mmap_category(binding.cat, interface, &child_location)?;
+    if !binding.cat.is_direct_mmap() {
+        return Err(invalid_direct_mmap(
+            interface,
+            &format!(
+                "has category '{}' at binding {child_location}, expected mmap or async_mmap",
+                binding.cat.as_str()
+            ),
+        ));
+    }
 
     let child_task = design.tasks.get(&slave.task).ok_or_else(|| {
         invalid_direct_mmap(
@@ -638,7 +706,17 @@ fn validate_plain_child_mmap(
                 ),
             )
         })?;
-    validate_plain_mmap_category(child_port.cat, interface, &child_location)
+    if child_port.cat != binding.cat {
+        return Err(invalid_direct_mmap(
+            interface,
+            &format!(
+                "has category '{}' at binding {child_location} but '{}' in child port metadata",
+                binding.cat.as_str(),
+                child_port.cat.as_str()
+            ),
+        ));
+    }
+    Ok(child_port.cat)
 }
 
 fn validate_plain_mmap_category(
@@ -1440,7 +1518,7 @@ mod tests {
             "width": 32
         });
         let mut child_port = serde_json::json!({
-            "cat": "mmap",
+            "cat": binding_category,
             "name": "data",
             "type": "int*",
             "width": 32
@@ -1560,6 +1638,7 @@ mod tests {
                     write_data: 39,
                     write_response: 7,
                 },
+                bridge_instance: None,
             }
         );
     }
@@ -1574,17 +1653,13 @@ mod tests {
     }
 
     #[test]
-    fn direct_mmap_catalog_rejects_shared_hmap_and_async_interfaces() {
+    fn direct_mmap_catalog_rejects_shared_and_hmap_interfaces() {
         let cases = [
             (
                 direct_mmap_program(None, 2, "mmap", false),
                 "shared by 2 child ports",
             ),
             (direct_mmap_program(None, 1, "mmap", true), "is an hmap"),
-            (
-                direct_mmap_program(None, 1, "async_mmap", false),
-                "async mmap child port",
-            ),
         ];
 
         for (design, expected) in cases {
@@ -1597,6 +1672,106 @@ mod tests {
                 "expected '{expected}', got: {error}"
             );
         }
+    }
+
+    fn fifo_style_async_module(write_tied_off: bool) -> VerilogModule {
+        let write_activity = if write_tied_off { "1'b0" } else { "live" };
+        VerilogModule::parse(&format!(
+            "module leaf(\n\
+             output wire data_read_addr_s_write,\n\
+             output wire data_read_data_s_read,\n\
+             output wire data_write_addr_s_write,\n\
+             output wire data_write_data_s_write,\n\
+             output wire data_write_resp_s_read\n\
+             );\n\
+             assign data_read_addr_s_write = live;\n\
+             assign data_read_data_s_read = live;\n\
+             assign data_write_addr_s_write = {write_activity};\n\
+             assign data_write_data_s_write = {write_activity};\n\
+             assign data_write_resp_s_read = {write_activity};\n\
+             endmodule"
+        ))
+        .expect("valid FIFO-style async mmap fixture")
+    }
+
+    #[test]
+    fn direct_mmap_catalog_models_read_only_async_bridge() {
+        let mut state =
+            TopologyWithRtl::new(direct_mmap_program(Some("reader"), 1, "async_mmap", false));
+        state
+            .attach_module("leaf", fifo_style_async_module(true))
+            .unwrap();
+
+        let interfaces = state.direct_mmap_interfaces("top").unwrap();
+
+        assert_eq!(interfaces.len(), 1);
+        assert_eq!(interfaces[0].id_width, crate::async_mmap::AXI_ID_WIDTH);
+        assert_eq!(interfaces[0].addr_width, crate::async_mmap::AXI_ADDR_WIDTH);
+        assert_eq!(
+            interfaces[0].channel_widths,
+            AxiChannelWidths {
+                read_address: 80,
+                read_data: 38,
+                write_address: 0,
+                write_data: 0,
+                write_response: 0,
+            }
+        );
+        assert_eq!(
+            interfaces[0].bridge_instance.as_deref(),
+            Some("elems__m_axi")
+        );
+    }
+
+    #[test]
+    fn direct_mmap_catalog_preserves_complete_direct_axi_async_child() {
+        let mut state = TopologyWithRtl::new(direct_mmap_program(None, 1, "async_mmap", false));
+        state
+            .attach_module("leaf", compact_m_axi_module(32, 3))
+            .unwrap();
+
+        let interface = state.direct_mmap_interfaces("top").unwrap().remove(0);
+
+        assert_eq!(interface.id_width, 3);
+        assert!(interface
+            .channel_widths
+            .channels()
+            .into_iter()
+            .all(|(_, width)| width != 0));
+        assert_eq!(interface.bridge_instance, None);
+    }
+
+    #[test]
+    fn direct_mmap_catalog_rejects_partial_direct_axi_async_child() {
+        let mut state = TopologyWithRtl::new(direct_mmap_program(None, 1, "async_mmap", false));
+        state
+            .attach_module(
+                "leaf",
+                VerilogModule::parse(
+                    "module leaf(input wire [63:0] data_offset, output wire [63:0] m_axi_data_ARADDR); endmodule",
+                )
+                .unwrap(),
+            )
+            .unwrap();
+
+        let error = state.direct_mmap_interfaces("top").unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("missing required child RTL port"));
+    }
+
+    #[test]
+    fn direct_mmap_catalog_rejects_async_without_fifo_or_axi_shape() {
+        let mut state = TopologyWithRtl::new(direct_mmap_program(None, 1, "async_mmap", false));
+        state
+            .attach_module(
+                "leaf",
+                VerilogModule::parse("module leaf(input wire ap_clk); endmodule").unwrap(),
+            )
+            .unwrap();
+
+        let error = state.direct_mmap_interfaces("top").unwrap_err();
+        assert!(error.to_string().contains("neither FIFO-style async ports"));
     }
 
     #[test]

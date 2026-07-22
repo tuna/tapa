@@ -12,9 +12,10 @@ use std::collections::{BTreeMap, HashMap};
 
 use tapa_ir::port::{sanitize_array_name, sanitize_identifier_name};
 use tapa_ir::{
-    axi_pipeline_instance_name, control_pipeline_instance_name, floorplanned_fifo_storage_depth,
-    global_controller_instance_name, local_controller_instance_name, Area, AxiChannel,
-    AxiChannelWidths, AxiEndpoint, ControlChannel, MemoryBank, TaskGraph,
+    async_mmap_bridge_instance_name, axi_pipeline_instance_name, control_pipeline_instance_name,
+    floorplanned_fifo_storage_depth, global_controller_instance_name,
+    local_controller_instance_name, Area, AxiChannel, AxiChannelWidths, AxiEndpoint,
+    ControlChannel, MemoryBank, TaskGraph,
 };
 
 const CONTROL_S_AXI_INSTANCE: &str = "control_s_axi_U";
@@ -28,6 +29,15 @@ pub struct MemoryInterface {
     pub endpoint: AxiEndpoint,
     pub bank: MemoryBank,
     pub channel_widths: AxiChannelWidths,
+    /// Stable generated bridge hierarchy for FIFO-style async mmap. Direct
+    /// compact M-AXI children have no bridge.
+    pub bridge_instance: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ExpectedMemoryEndpoint {
+    task_vertex: usize,
+    child_category: tapa_ir::ArgCategory,
 }
 
 /// Opt-in metadata for the transient distributed-control planning graph.
@@ -107,7 +117,8 @@ pub struct ControlNet {
     pub width: u32,
 }
 
-/// A real RTL instance whose area and placement belong to a host vertex.
+/// A real RTL instance whose placement aliases a host vertex. Any resource
+/// cost represented by the planner has already been charged to that host.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct CoLocatedInstance {
     name: String,
@@ -171,7 +182,7 @@ pub enum GraphError {
     /// The same endpoint appeared more than once in planner input.
     #[error("direct M-AXI endpoint `{instance}.{port}` is bound more than once")]
     DuplicateMemoryInterface { instance: String, port: String },
-    /// Shared/hierarchical/async memory infrastructure is not yet modeled.
+    /// Shared or hierarchical memory infrastructure is not modeled.
     #[error("unsupported external memory connection `{port}`: {detail}")]
     UnsupportedMemoryInterface { port: String, detail: String },
     /// A routed channel must contain payload plus valid/ready.
@@ -197,8 +208,8 @@ pub enum GraphError {
         second: String,
         sanitized: String,
     },
-    /// A generated controller/pipeline name aliases existing or generated RTL.
-    #[error("generated control name `{generated}` collides with {existing}")]
+    /// A generated bridge/controller/pipeline name aliases existing RTL.
+    #[error("generated RTL name `{generated}` collides with {existing}")]
     GeneratedNameCollision { generated: String, existing: String },
     /// A child scalar argument does not agree with its task-port metadata.
     #[error("invalid scalar metadata for `{instance}.{port}`: {detail}")]
@@ -421,6 +432,7 @@ impl FloorGraph {
             &mut index,
             &endpoints,
             &mut placement_widths,
+            &mut co_located,
         )?;
 
         let control_nets = if let Some(control) = control.filter(|_| !top.tasks.is_empty()) {
@@ -473,7 +485,7 @@ fn add_control_interface(
     placement_widths: &mut BTreeMap<(usize, usize), u32>,
     co_located: &mut Vec<CoLocatedInstance>,
 ) -> Result<Vec<ControlNet>, GraphError> {
-    validate_control_names(flat, top, memory, control, vertices)?;
+    validate_control_names(flat, top, memory, control, vertices, co_located)?;
 
     let global_name = global_controller_instance_name().to_string();
     if index.contains_key(&global_name) {
@@ -651,6 +663,7 @@ fn validate_control_names(
     memory: &[MemoryInterface],
     control: ControlInterface,
     vertices: &[Vertex],
+    co_located: &[CoLocatedInstance],
 ) -> Result<(), GraphError> {
     let mut sanitized_instances = BTreeMap::<String, String>::new();
     let mut occupied = BTreeMap::<String, String>::new();
@@ -691,8 +704,18 @@ fn validate_control_names(
         let rtl_name = format!("{}_fifo", sanitize_array_name(fifo));
         occupied.insert(rtl_name, format!("stream `{fifo}`"));
     }
+    for alias in co_located {
+        occupied.insert(
+            alias.name.clone(),
+            format!("co-located RTL instance `{}`", alias.name),
+        );
+        occupied.insert(
+            sanitize_identifier_name(&alias.name),
+            format!("co-located RTL instance `{}`", alias.name),
+        );
+    }
     for interface in memory {
-        for (channel, _) in interface.channel_widths.channels() {
+        for (channel, _) in interface.channel_widths.enabled_channels() {
             let name = axi_pipeline_instance_name(&interface.endpoint, channel);
             occupied.insert(
                 name,
@@ -748,6 +771,11 @@ fn reserve_generated_name(
     Ok(())
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    clippy::too_many_lines,
+    reason = "memory graph construction validates and updates the shared transient graph state"
+)]
 fn add_memory_interfaces(
     flat: &TaskGraph,
     top: &tapa_ir::Task,
@@ -756,6 +784,7 @@ fn add_memory_interfaces(
     index: &mut HashMap<String, usize>,
     task_endpoints: &HashMap<(String, u32), usize>,
     placement_widths: &mut BTreeMap<(usize, usize), u32>,
+    co_located: &mut Vec<CoLocatedInstance>,
 ) -> Result<Vec<AxiNet>, GraphError> {
     let expected = expected_memory_interfaces(flat, top, task_endpoints)?;
     let mut provided = BTreeMap::<AxiEndpoint, &MemoryInterface>::new();
@@ -790,10 +819,47 @@ fn add_memory_interfaces(
         }
     }
 
+    let mut occupied = occupied_rtl_names(top, vertices, co_located);
+    for (endpoint, expected_endpoint) in &expected {
+        let interface = provided[endpoint];
+        validate_memory_interface_shape(interface, *expected_endpoint)?;
+        for (channel, _) in interface.channel_widths.enabled_channels() {
+            reserve_generated_name(
+                &mut occupied,
+                axi_pipeline_instance_name(endpoint, channel),
+                &format!("{channel:?} AXI pipeline for `{}`", endpoint.top_port),
+            )?;
+        }
+        if let Some(bridge) = &interface.bridge_instance {
+            reserve_generated_name(
+                &mut occupied,
+                bridge.clone(),
+                &format!("async mmap bridge for `{}`", endpoint.top_port),
+            )?;
+            // The bridge is generated above the HLS leaf, and current task
+            // metadata has no standalone post-synthesis bridge area to charge
+            // without inventing an estimate. Co-location still makes the
+            // leaf-to-bridge FIFO wires local and constrains the true AXI
+            // route source.
+            co_located.push(CoLocatedInstance {
+                name: bridge.clone(),
+                host: expected_endpoint.task_vertex,
+            });
+        }
+    }
+
     let mut terminals = BTreeMap::<MemoryBank, usize>::new();
     let mut nets = Vec::with_capacity(memory.len().saturating_mul(5));
-    for (endpoint, &task_vertex) in &expected {
+    for (endpoint, expected_endpoint) in &expected {
         let interface = provided[endpoint];
+        let task_vertex = expected_endpoint.task_vertex;
+        let enabled_channels = interface
+            .channel_widths
+            .enabled_channels()
+            .collect::<Vec<_>>();
+        if enabled_channels.is_empty() {
+            continue;
+        }
         let terminal = if let Some(&terminal) = terminals.get(&interface.bank) {
             terminal
         } else {
@@ -813,7 +879,7 @@ fn add_memory_interfaces(
             terminal
         };
 
-        for (channel, width) in interface.channel_widths.channels() {
+        for (channel, width) in enabled_channels {
             let Some(payload_width) = width.checked_sub(2).filter(|width| *width > 0) else {
                 return Err(GraphError::InvalidAxiWidth {
                     instance: endpoint.instance.clone(),
@@ -850,11 +916,95 @@ fn add_memory_interfaces(
     Ok(nets)
 }
 
+fn occupied_rtl_names(
+    top: &tapa_ir::Task,
+    vertices: &[Vertex],
+    co_located: &[CoLocatedInstance],
+) -> BTreeMap<String, String> {
+    let mut occupied = BTreeMap::new();
+    for vertex in vertices {
+        for name in [vertex.name.clone(), sanitize_identifier_name(&vertex.name)] {
+            occupied
+                .entry(name)
+                .or_insert_with(|| format!("placement vertex `{}`", vertex.name));
+        }
+    }
+    for fifo in top.fifos.keys() {
+        occupied.insert(fifo.clone(), format!("stream `{fifo}`"));
+        occupied.insert(
+            format!("{}_fifo", sanitize_array_name(fifo)),
+            format!("stream `{fifo}`"),
+        );
+    }
+    for alias in co_located {
+        for name in [alias.name.clone(), sanitize_identifier_name(&alias.name)] {
+            occupied.insert(name, format!("co-located RTL instance `{}`", alias.name));
+        }
+    }
+    occupied
+}
+
+fn validate_memory_interface_shape(
+    interface: &MemoryInterface,
+    expected: ExpectedMemoryEndpoint,
+) -> Result<(), GraphError> {
+    let endpoint = &interface.endpoint;
+    let unsupported = |detail: String| GraphError::UnsupportedMemoryInterface {
+        port: endpoint.top_port.clone(),
+        detail,
+    };
+    match (expected.child_category, &interface.bridge_instance) {
+        (tapa_ir::ArgCategory::Mmap, Some(_)) => {
+            return Err(unsupported(format!(
+                "plain mmap endpoint `{}.{}` cannot own an async bridge",
+                endpoint.instance, endpoint.port
+            )));
+        }
+        (tapa_ir::ArgCategory::AsyncMmap, Some(actual)) => {
+            let stable = async_mmap_bridge_instance_name(&endpoint.top_port);
+            if *actual != stable {
+                return Err(unsupported(format!(
+                    "async bridge name `{actual}` does not match stable hierarchy `{stable}`"
+                )));
+            }
+        }
+        (tapa_ir::ArgCategory::Mmap | tapa_ir::ArgCategory::AsyncMmap, None) => {}
+        _ => unreachable!("expected memory endpoint has a direct mmap category"),
+    }
+
+    let widths = interface.channel_widths;
+    let read_enabled = (widths.read_address != 0, widths.read_data != 0);
+    if read_enabled.0 != read_enabled.1 {
+        return Err(unsupported(format!(
+            "endpoint `{}.{}` has a partial read channel group",
+            endpoint.instance, endpoint.port
+        )));
+    }
+    let write_enabled = (
+        widths.write_address != 0,
+        widths.write_data != 0,
+        widths.write_response != 0,
+    );
+    if write_enabled.0 != write_enabled.1 || write_enabled.0 != write_enabled.2 {
+        return Err(unsupported(format!(
+            "endpoint `{}.{}` has a partial write channel group",
+            endpoint.instance, endpoint.port
+        )));
+    }
+    if interface.bridge_instance.is_none() && (!read_enabled.0 || !write_enabled.0) {
+        return Err(unsupported(format!(
+            "direct compact M-AXI endpoint `{}.{}` must expose all five channels",
+            endpoint.instance, endpoint.port
+        )));
+    }
+    Ok(())
+}
+
 fn expected_memory_interfaces(
     flat: &TaskGraph,
     top: &tapa_ir::Task,
     task_endpoints: &HashMap<(String, u32), usize>,
-) -> Result<BTreeMap<AxiEndpoint, usize>, GraphError> {
+) -> Result<BTreeMap<AxiEndpoint, ExpectedMemoryEndpoint>, GraphError> {
     let mut expected = BTreeMap::new();
     let mut top_port_users = BTreeMap::<String, Vec<String>>::new();
 
@@ -870,15 +1020,7 @@ fn expected_memory_interfaces(
             let endpoint_index = u32::try_from(instance_index).expect("instance count fits u32");
             let task_vertex = task_endpoints[&(definition.clone(), endpoint_index)];
             for (child_port, argument) in &instance.args {
-                if argument.cat == tapa_ir::ArgCategory::AsyncMmap {
-                    return Err(GraphError::UnsupportedMemoryInterface {
-                        port: argument.arg.clone(),
-                        detail: format!(
-                            "async mmap endpoint `{instance_name}.{child_port}` is not modeled"
-                        ),
-                    });
-                }
-                if argument.cat != tapa_ir::ArgCategory::Mmap {
+                if !argument.cat.is_direct_mmap() {
                     continue;
                 }
 
@@ -900,12 +1042,14 @@ fn expected_memory_interfaces(
                         port: argument.arg.clone(),
                         detail: "top-level mmap port metadata is missing".to_string(),
                     })?;
-                if child.cat != tapa_ir::ArgCategory::Mmap
-                    || parent.cat != tapa_ir::ArgCategory::Mmap
-                {
+                if child.cat != argument.cat || parent.cat != tapa_ir::ArgCategory::Mmap {
                     return Err(GraphError::UnsupportedMemoryInterface {
                         port: argument.arg.clone(),
-                        detail: "only direct plain mmap endpoints are modeled".to_string(),
+                        detail: format!(
+                            "child binding category '{}' must match child metadata '{}' and connect to a plain top mmap",
+                            argument.cat.as_str(),
+                            child.cat.as_str(),
+                        ),
                     });
                 }
                 if child.chan_count.is_some()
@@ -928,7 +1072,13 @@ fn expected_memory_interfaces(
                     .entry(argument.arg.clone())
                     .or_default()
                     .push(format!("{instance_name}.{child_port}"));
-                expected.insert(endpoint, task_vertex);
+                expected.insert(
+                    endpoint,
+                    ExpectedMemoryEndpoint {
+                        task_vertex,
+                        child_category: child.cat,
+                    },
+                );
             }
         }
     }
@@ -1112,6 +1262,38 @@ mod tests {
                 write_data: 39,
                 write_response: 5,
             },
+            bridge_instance: None,
+        }
+    }
+
+    fn async_mmap_graph(instance_name: &str) -> TaskGraph {
+        let mut value = serde_json::to_value(mmap_graph()).expect("serialize mmap graph");
+        value["tasks"]["Top"]["tasks"]["Reader"][0]["name"] = serde_json::json!(instance_name);
+        value["tasks"]["Top"]["tasks"]["Reader"][0]["args"]["data"]["cat"] =
+            serde_json::json!("async_mmap");
+        value["tasks"]["Reader"]["ports"][0]["cat"] = serde_json::json!("async_mmap");
+        TaskGraph::from_json(&value.to_string()).expect("parse async mmap graph")
+    }
+
+    fn async_mmap_interface(instance_name: &str, read: bool, write: bool) -> MemoryInterface {
+        MemoryInterface {
+            endpoint: AxiEndpoint {
+                instance: instance_name.to_string(),
+                port: "data".to_string(),
+                top_port: "mem".to_string(),
+            },
+            bank: MemoryBank {
+                kind: tapa_ir::MemoryKind::Hbm,
+                index: 0,
+            },
+            channel_widths: AxiChannelWidths {
+                read_address: if read { 80 } else { 0 },
+                read_data: if read { 38 } else { 0 },
+                write_address: if write { 80 } else { 0 },
+                write_data: if write { 39 } else { 0 },
+                write_response: if write { 5 } else { 0 },
+            },
+            bridge_instance: Some(async_mmap_bridge_instance_name("mem")),
         }
     }
 
@@ -1173,6 +1355,7 @@ mod tests {
                 write_data: 39,
                 write_response: 5,
             },
+            bridge_instance: None,
         }
     }
 
@@ -1291,7 +1474,7 @@ mod tests {
                 serde_json::json!({
                     "A": [{"name":"__tapa_global_controller","args":{}}]
                 }),
-                "generated control name",
+                "generated RTL name",
             ),
         ];
         for (tasks, expected) in cases {
@@ -1516,6 +1699,77 @@ mod tests {
             regions,
             BTreeMap::from([("Reader_0".to_string(), "SLOT_X1Y1".to_string())])
         );
+    }
+
+    #[test]
+    fn async_mmap_routes_only_enabled_group_and_co_locates_bridge() {
+        for (read, write, expected_channels, expected_width) in
+            [(true, false, 2, 80 + 38), (false, true, 3, 80 + 39 + 5)]
+        {
+            let flat = tapa_ir::flatten(&async_mmap_graph("Reader_0")).expect("flatten");
+            let graph = FloorGraph::build_with_memory(
+                &flat,
+                &[async_mmap_interface("Reader_0", read, write)],
+            )
+            .expect("build async mmap graph");
+            let task = graph.index_of("Reader_0").expect("reader");
+            let bank = graph.index_of("__tapa_bank_hbm_0").expect("bank");
+
+            assert_eq!(graph.axi_nets().len(), expected_channels);
+            assert_eq!(graph.placement_edges()[0].width, expected_width);
+            assert!(graph.axi_nets().iter().all(|net| match net.channel {
+                AxiChannel::ReadAddress | AxiChannel::ReadData => read,
+                AxiChannel::WriteAddress | AxiChannel::WriteData | AxiChannel::WriteResponse =>
+                    write,
+            }));
+
+            let mut regions = BTreeMap::from([
+                ("Reader_0".to_string(), "SLOT_X1Y1".to_string()),
+                ("__tapa_bank_hbm_0".to_string(), "SLOT_X0Y0".to_string()),
+            ]);
+            graph
+                .materialize_co_locations(&mut regions)
+                .expect("materialize bridge placement");
+            assert_eq!(regions["mem__m_axi"], regions["Reader_0"]);
+            graph.remove_transient_regions(&mut regions);
+            assert!(!regions.contains_key("__tapa_bank_hbm_0"));
+            assert_eq!(regions.len(), 2, "task and bridge remain public");
+            assert_eq!((task, bank), (0, 1));
+        }
+    }
+
+    #[test]
+    fn unused_async_mmap_has_bridge_but_no_terminal_or_nets() {
+        let flat = tapa_ir::flatten(&async_mmap_graph("Reader_0")).expect("flatten");
+        let graph =
+            FloorGraph::build_with_memory(&flat, &[async_mmap_interface("Reader_0", false, false)])
+                .expect("unused async mmap remains legal");
+
+        assert_eq!(graph.vertices().len(), 1);
+        assert!(graph.index_of("__tapa_bank_hbm_0").is_none());
+        assert!(graph.axi_nets().is_empty());
+        assert!(graph.placement_edges().is_empty());
+        let mut regions = BTreeMap::from([("Reader_0".to_string(), "SLOT_X1Y1".to_string())]);
+        graph
+            .materialize_co_locations(&mut regions)
+            .expect("materialize unused bridge");
+        assert_eq!(regions["mem__m_axi"], "SLOT_X1Y1");
+    }
+
+    #[test]
+    fn async_bridge_name_collision_fails_closed() {
+        let flat = tapa_ir::flatten(&async_mmap_graph("mem__m_axi")).expect("flatten");
+        let error = FloorGraph::build_with_memory(
+            &flat,
+            &[async_mmap_interface("mem__m_axi", true, false)],
+        )
+        .expect_err("generated bridge must not alias its task");
+
+        assert!(matches!(
+            error,
+            GraphError::GeneratedNameCollision { ref generated, .. }
+                if generated == "mem__m_axi"
+        ));
     }
 
     #[test]
