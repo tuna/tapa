@@ -24,6 +24,9 @@ source "${RUNFILES_DIR:-/dev/null}/$f" 2>/dev/null || \
 set -e
 # --- end runfiles.bash initialization v3 ---
 
+# Prefer the logical runfiles tree when both it and a manifest are present.
+runfiles_export_envvars
+
 tapa_bin="$(rlocation _main/tapa-core/cargo/bin/tapa)"
 if [[ -z "${tapa_bin}" || ! -x "${tapa_bin}" ]]; then
   # Repo-name variant used when the main repo is not `_main`.

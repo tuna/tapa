@@ -2,6 +2,7 @@
 
 load("@rules_pkg//pkg:mappings.bzl", "pkg_attributes", "pkg_filegroup", "pkg_files")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load(
     "@vars//:vars.bzl",
     "REMOTE_HOST",
@@ -154,6 +155,13 @@ sh_binary(
         "//conditions:default": [],
     }),
     visibility = ["//visibility:public"],
+    deps = ["@bazel_tools//tools/bash/runfiles"],
+)
+
+sh_test(
+    name = "tapa_wrapper_test",
+    srcs = ["tapa_wrapper_test.sh"],
+    data = ["tapa_wrapper.sh"],
     deps = ["@bazel_tools//tools/bash/runfiles"],
 )
 
