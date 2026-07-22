@@ -16,6 +16,21 @@ use serde_json::Value;
 
 use crate::connectivity::MemoryBank;
 
+/// Physical storage depth used for a shallow FIFO while floorplanning.
+///
+/// A shallow co-located FIFO uses an almost-full Tail with one cycle of
+/// registered ready feedback.  One grace entry plus four safety entries keep
+/// its logical capacity unchanged.  Deeper FIFOs retain their original
+/// implementation and depth.
+#[must_use]
+pub const fn floorplanned_fifo_storage_depth(logical_depth: u32) -> u32 {
+    if logical_depth <= 64 {
+        logical_depth + 5
+    } else {
+        logical_depth
+    }
+}
+
 /// Resource counts for the five classes TAPA floorplans on.
 ///
 /// Fields are stored in struct order `lut, ff, bram_18k, dsp, uram`; the

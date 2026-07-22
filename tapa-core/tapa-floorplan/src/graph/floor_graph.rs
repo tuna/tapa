@@ -12,9 +12,9 @@ use std::collections::{BTreeMap, HashMap};
 
 use tapa_ir::port::{sanitize_array_name, sanitize_identifier_name};
 use tapa_ir::{
-    axi_pipeline_instance_name, control_pipeline_instance_name, global_controller_instance_name,
-    local_controller_instance_name, Area, AxiChannel, AxiChannelWidths, AxiEndpoint,
-    ControlChannel, MemoryBank, TaskGraph,
+    axi_pipeline_instance_name, control_pipeline_instance_name, floorplanned_fifo_storage_depth,
+    global_controller_instance_name, local_controller_instance_name, Area, AxiChannel,
+    AxiChannelWidths, AxiEndpoint, ControlChannel, MemoryBank, TaskGraph,
 };
 
 const CONTROL_S_AXI_INSTANCE: &str = "control_s_axi_U";
@@ -384,9 +384,11 @@ impl FloorGraph {
                 .or(src)
                 .ok_or_else(|| GraphError::UnanchoredFifo(fifo_name.clone()))?;
 
-            vertices[host].area =
-                checked_add_area(vertices[host].area, fifo_area(data_width, depth))
-                    .ok_or_else(|| GraphError::ResourceOverflow(fifo_name.clone()))?;
+            vertices[host].area = checked_add_area(
+                vertices[host].area,
+                fifo_area(data_width, floorplanned_fifo_storage_depth(depth)),
+            )
+            .ok_or_else(|| GraphError::ResourceOverflow(fifo_name.clone()))?;
             co_located.push(CoLocatedInstance {
                 name: fifo_name.clone(),
                 host,
@@ -1370,9 +1372,9 @@ mod tests {
         assert_eq!(
             graph.vertex(b).area,
             Area {
-                // 50/60 task area + 53/10 for a 33-bit, depth-2 FIFO.
-                lut: 103,
-                ff: 70,
+                // 50/60 task area + 66/13 for registered-ready storage.
+                lut: 116,
+                ff: 73,
                 ..Area::default()
             }
         );
@@ -1544,6 +1546,19 @@ mod tests {
                 dsp: 0,
                 uram: 0
             }
+        );
+    }
+
+    #[test]
+    fn floorplanned_shallow_fifo_area_includes_ready_feedback_capacity() {
+        assert_eq!(
+            fifo_area(33, floorplanned_fifo_storage_depth(64)),
+            fifo_area(33, 69),
+        );
+        assert_eq!(
+            fifo_area(33, floorplanned_fifo_storage_depth(65)),
+            fifo_area(33, 65),
+            "deep co-located FIFOs retain their existing implementation",
         );
     }
 

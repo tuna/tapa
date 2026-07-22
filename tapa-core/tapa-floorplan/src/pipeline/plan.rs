@@ -10,7 +10,9 @@
 
 use std::collections::BTreeMap;
 
-use tapa_ir::{Area, PipelineRoute, PipelineScheme, RoutedChannel};
+use tapa_ir::{
+    floorplanned_fifo_storage_depth, Area, PipelineRoute, PipelineScheme, RoutedChannel,
+};
 
 use crate::device::model::{Coor, Device, Resource};
 use crate::graph::{fifo_area, FloorGraph};
@@ -440,7 +442,10 @@ fn account_stream_pipeline(
     verify_route_endpoint(graph, regions, stream.src, &head_region, fifo, "Head")?;
     verify_route_endpoint(graph, regions, stream.dst, &tail_region, fifo, "Tail")?;
 
-    let original_fifo = fifo_area(stream.data_width, stream.depth);
+    let original_fifo = fifo_area(
+        stream.data_width,
+        floorplanned_fifo_storage_depth(stream.depth),
+    );
     subtract_usage(usage, &tail_region, original_fifo, fifo)?;
 
     let body_level = u32::try_from(route.reg_regions.len())
@@ -1189,14 +1194,18 @@ mod tests {
     }
 
     #[test]
-    fn non_crossing_fifo_usage_is_unchanged() {
-        let graph = one_stream_graph(120, Area::default(), Area::default());
+    fn non_crossing_shallow_fifo_keeps_registered_ready_baseline() {
+        let graph = one_stream_graph(16, Area::default(), Area::default());
         let region = Coor::slot(0, 0).region_name();
         let regions = BTreeMap::from([
             ("Producer_0".to_string(), region.clone()),
-            ("Consumer_0".to_string(), region),
+            ("Consumer_0".to_string(), region.clone()),
         ]);
         let baseline = baseline_usage(&graph, &regions);
+        assert_eq!(
+            baseline[&region],
+            fifo_area(33, floorplanned_fifo_storage_depth(16)),
+        );
 
         let realized = realize_slot_usage(
             &graph,
@@ -1208,6 +1217,45 @@ mod tests {
         )
         .expect("non-crossing usage");
         assert_eq!(realized, baseline);
+    }
+
+    #[test]
+    fn crossing_shallow_fifo_replaces_registered_ready_baseline() {
+        let graph = one_stream_graph(16, Area::default(), Area::default());
+        let source = Coor::slot(0, 0).region_name();
+        let destination = Coor::slot(1, 0).region_name();
+        let regions = BTreeMap::from([
+            ("Producer_0".to_string(), source.clone()),
+            ("Consumer_0".to_string(), destination.clone()),
+        ]);
+        let baseline = baseline_usage(&graph, &regions);
+        assert_eq!(
+            baseline[&destination],
+            fifo_area(33, floorplanned_fifo_storage_depth(16)),
+        );
+
+        let realized = realize_slot_usage(
+            &graph,
+            &regions,
+            &baseline,
+            &[stream_route(&["SLOT_X0Y0", "SLOT_X1Y0"], &[])],
+            &select_device("u280").expect("u280"),
+            MAX_USAGE_LIMIT,
+        )
+        .expect("crossing usage");
+        assert_eq!(
+            realized[&source],
+            Area {
+                lut: 1,
+                ff: 35,
+                ..Area::default()
+            },
+        );
+        assert_eq!(
+            realized[&destination],
+            fifo_area(33, 22),
+            "the crossing Tail uses logical depth plus six safety entries",
+        );
     }
 
     #[test]

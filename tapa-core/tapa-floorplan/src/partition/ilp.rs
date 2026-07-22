@@ -1357,7 +1357,7 @@ mod tests {
                 &format!("node_{region}_LUT_usage"),
                 Comparison::Le,
                 700.0,
-                [(100.0, producer.as_str()), (103.0, consumer.as_str())],
+                [(100.0, producer.as_str()), (116.0, consumer.as_str())],
             );
         }
         assert_row(
