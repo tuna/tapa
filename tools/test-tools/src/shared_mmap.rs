@@ -5,7 +5,7 @@ use zip::ZipArchive;
 use crate::common::{archive_text, Result};
 
 const SRC_DIR: &str = "ip_repo/tapa_xrtl_VecAddShared_1_0/src";
-const EXPECTED_PRAGMAS: &[(&str, &str)] = &[
+const UNSUPPORTED_PRAGMAS: &[(&str, &str)] = &[
     ("Load_fsm.v", "RS clk port=ap_clk"),
     ("Load_fsm.v", "RS rst port=ap_rst_n active=low"),
     (
@@ -24,11 +24,11 @@ pub fn check_shared_mmap_pragmas(path: &Path) -> Result<()> {
     let mut archive = ZipArchive::new(file)
         .map_err(|error| format!("failed to read {} as zip: {error}", path.display()))?;
 
-    for (file_name, pragma) in EXPECTED_PRAGMAS {
+    for (file_name, pragma) in UNSUPPORTED_PRAGMAS {
         let path = format!("{SRC_DIR}/{file_name}");
         let source = archive_text(&mut archive, &path)?;
-        if !has_pragma(&source, pragma) {
-            return Err(format!("{path} missing pragma: {pragma}"));
+        if has_pragma(&source, pragma) {
+            return Err(format!("{path} contains unsupported pragma: {pragma}"));
         }
     }
     Ok(())
