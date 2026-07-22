@@ -121,7 +121,7 @@ impl LpSolution {
 
         for constraint in &model.constraints {
             let lhs = evaluate(&constraint.expr, &self.values)?;
-            let tolerance = scaled_tolerance([lhs, constraint.rhs]);
+            let tolerance = constraint_tolerance(&constraint.expr, &self.values, constraint.rhs)?;
             let satisfied = match constraint.op {
                 Comparison::Le => lhs <= constraint.rhs + tolerance,
                 Comparison::Eq => (lhs - constraint.rhs).abs() <= tolerance,
@@ -171,6 +171,33 @@ fn scaled_tolerance(values: impl IntoIterator<Item = f64>) -> f64 {
         .filter(|value| value.is_finite())
         .fold(1.0_f64, |scale, value| scale.max(value.abs()));
     SOLUTION_TOLERANCE * scale
+}
+
+fn constraint_tolerance(
+    expression: &crate::solver::model::LinExpr,
+    values: &HashMap<LpVar, f64>,
+    rhs: f64,
+) -> Result<f64, SolverError> {
+    // A small row residual can be the cancellation of much larger terms, so
+    // scale it by absolute row activity rather than by the residual itself.
+    let absolute_activity = expression.terms.iter().try_fold(
+        expression.constant.abs(),
+        |activity, (coefficient, var)| {
+            let value = values.get(var).copied().ok_or_else(|| {
+                SolverError::InvalidSolution(format!("the incumbent omitted variable x{}", var.0))
+            })?;
+            let activity = activity + (coefficient * value).abs();
+            if activity.is_finite() {
+                Ok(activity)
+            } else {
+                Err(SolverError::InvalidSolution(
+                    "evaluating the incumbent constraint scale produced a non-finite value"
+                        .to_string(),
+                ))
+            }
+        },
+    )?;
+    Ok(scaled_tolerance([absolute_activity, rhs]))
 }
 
 /// Tunable limits handed to a [`Solver`].
@@ -268,6 +295,27 @@ mod tests {
         (model, x)
     }
 
+    fn bound_model_with_reported_max(reported_max: f64) -> (LpModel, LpSolution) {
+        let mut model = LpModel::new(Sense::Minimize);
+        let max_crossings = model.add_continuous("max_crossings", 0.0, f64::INFINITY);
+        let path = model.add_binary("path");
+        let demand = 1_498.0;
+        let capacity = 5_277.0;
+        model.set_objective(LinExpr::sum([(1.0, max_crossings)]));
+        model.add_constraint(
+            "bound",
+            LinExpr::sum([(demand, path), (-capacity, max_crossings)]),
+            Comparison::Le,
+            0.0,
+        );
+        let incumbent = LpSolution {
+            status: LpStatus::Optimal,
+            objective: reported_max,
+            values: HashMap::from([(max_crossings, reported_max), (path, 1.0)]),
+        };
+        (model, incumbent)
+    }
+
     #[test]
     fn solve_options_reject_zero_limits_and_invalid_gaps() {
         let zero_time = SolveOpts {
@@ -346,5 +394,27 @@ mod tests {
         };
         incumbent.validate_for(&model).expect("valid incumbent");
         assert!(incumbent.is_found());
+    }
+
+    #[test]
+    fn incumbent_validation_accepts_scaled_constraint_rounding_residual() {
+        let (model, incumbent) = bound_model_with_reported_max(0.283_873_41);
+        let evaluated_residual =
+            evaluate(&model.constraints[0].expr, &incumbent.values).expect("finite residual");
+        assert!((evaluated_residual - 0.000_015_430_000_075_866_7).abs() < 1e-15);
+        assert!(evaluated_residual > SOLUTION_TOLERANCE);
+        incumbent
+            .validate_for(&model)
+            .expect("scaled decimal-output residual is feasible");
+    }
+
+    #[test]
+    fn incumbent_validation_rejects_material_scaled_constraint_violation() {
+        let reported_max = (1_498.0 - 0.01) / 5_277.0;
+        let (model, incumbent) = bound_model_with_reported_max(reported_max);
+        assert!(matches!(
+            incumbent.validate_for(&model),
+            Err(SolverError::InvalidSolution(_))
+        ));
     }
 }
