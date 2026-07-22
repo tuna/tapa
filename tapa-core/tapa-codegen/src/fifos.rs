@@ -2,7 +2,7 @@
 
 use crate::error::CodegenError;
 use crate::rtl_state::TopologyWithRtl;
-use tapa_ir::{FloorplanResult, RoutedChannel};
+use tapa_ir::{floorplanned_fifo_storage_depth, FloorplanResult, RoutedChannel};
 use tapa_protocol::{
     FIFO_READ_PORTS, FIFO_WRITE_PORTS, HANDSHAKE_CLK, HANDSHAKE_RST, ISTREAM_SUFFIXES,
     OSTREAM_SUFFIXES, STREAM_DATA_SUFFIXES, STREAM_PORT_DIRECTION,
@@ -54,6 +54,28 @@ pub fn build_fifo_instance(name: &str, rst: Expr, width: Expr, depth: u32) -> Mo
         .with_ports(fifo_port_args(&name, rst))
 }
 
+/// Build a shallow FIFO whose producer-facing ready path is registered.
+///
+/// The enlarged almost-full storage absorbs the one cycle of ready feedback
+/// without reducing the FIFO's requested logical capacity.
+fn build_registered_ready_fifo_instance(
+    name: &str,
+    rst: Expr,
+    width: Expr,
+    logical_depth: u32,
+) -> ModuleInstance {
+    let name = sanitize_array_name(name);
+    let storage_depth = floorplanned_fifo_storage_depth(logical_depth);
+    ModuleInstance::new("fifo_almost_full", format!("{name}_fifo"))
+        .with_params(vec![
+            ParamArg::new("DATA_WIDTH", width),
+            ParamArg::new("ADDR_WIDTH", Expr::int(fifo_addr_width(storage_depth))),
+            ParamArg::new("DEPTH", Expr::int(u64::from(storage_depth))),
+            ParamArg::new("GRACE_PERIOD", Expr::int(1)),
+        ])
+        .with_ports(fifo_port_args(&name, rst))
+}
+
 /// The Body-cell count if `fifo_name` has a floorplanned cross-slot route.
 ///
 /// `reg_regions` is the authoritative per-cell handoff to XDC emission. Using
@@ -101,10 +123,14 @@ fn build_internal_fifo_instance(
     rst: Expr,
     width: Expr,
     depth: u32,
+    floorplanned: bool,
     crossing_level: Option<u32>,
 ) -> ModuleInstance {
     match crossing_level {
         Some(level) => build_hs_pipeline_instance(name, rst, width, depth, level),
+        None if floorplanned && floorplanned_fifo_storage_depth(depth) != depth => {
+            build_registered_ready_fifo_instance(name, rst, width, depth)
+        }
         None => build_fifo_instance(name, rst, width, depth),
     }
 }
@@ -261,12 +287,14 @@ pub(crate) fn instantiate_fifos(
             let width = resolve_fifo_width(state, producer, &fifo_name)?;
             // A floorplanned cross-slot stream becomes a named Head/Body/Tail
             // pipeline; everything else stays a plain FIFO.
+            let crossing_level = stream_crossing_body_level(state.floorplan.as_ref(), &fifo_name);
             let inst = build_internal_fifo_instance(
                 &fifo_name,
                 Expr::ident(HANDSHAKE_RST),
                 Expr::int(u64::from(width)),
                 depth,
-                stream_crossing_body_level(state.floorplan.as_ref(), &fifo_name),
+                state.floorplan.is_some(),
+                crossing_level,
             );
             if let Some(mm) = state.module_map.get_mut(task_name) {
                 mm.add_instance(inst);
@@ -549,6 +577,7 @@ mod tests {
             Expr::ident("ap_rst"),
             Expr::int(32),
             16,
+            true,
             Some(0),
         );
         assert_eq!(inst.module_name, "tapa_hs_pipeline");
@@ -567,6 +596,7 @@ mod tests {
             Expr::ident("ap_rst"),
             Expr::int(32),
             16,
+            true,
             Some(2),
         );
         assert_eq!(inst.module_name, "tapa_hs_pipeline");
@@ -574,6 +604,43 @@ mod tests {
             .params
             .iter()
             .any(|param| param.param_name == "BODY_LEVEL" && param.value == Expr::int(2)));
+    }
+
+    #[test]
+    fn floorplanned_shallow_colocated_fifo_registers_ready_without_data_pipeline() {
+        let inst = build_internal_fifo_instance(
+            "data_q",
+            Expr::ident("ap_rst"),
+            Expr::int(33),
+            16,
+            true,
+            None,
+        );
+        let text = inst.to_string();
+        assert_eq!(inst.module_name, "fifo_almost_full");
+        assert!(text.contains(".ADDR_WIDTH(5)"), "got:\n{text}");
+        assert!(text.contains(".DEPTH(21)"), "got:\n{text}");
+        assert!(text.contains(".GRACE_PERIOD(1)"), "got:\n{text}");
+        assert!(!text.contains("BODY_LEVEL"), "got:\n{text}");
+    }
+
+    #[test]
+    fn registered_ready_fifo_is_limited_to_floorplanned_shallow_colocated_streams() {
+        let build = |depth, floorplanned, crossing_level| {
+            build_internal_fifo_instance(
+                "data_q",
+                Expr::ident("ap_rst"),
+                Expr::int(33),
+                depth,
+                floorplanned,
+                crossing_level,
+            )
+        };
+
+        assert_eq!(build(64, true, None).module_name, "fifo_almost_full");
+        assert_eq!(build(65, true, None).module_name, "fifo");
+        assert_eq!(build(16, false, None).module_name, "fifo");
+        assert_eq!(build(16, true, Some(0)).module_name, "tapa_hs_pipeline");
     }
 
     #[test]
