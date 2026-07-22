@@ -11,7 +11,9 @@
 //!
 //! Multilevel placement merely changes the candidate regions: the first pass
 //! assigns vertices to full-width rows, and the second jointly refines every
-//! row into atomic column slots while retaining parent containment.
+//! row into atomic column slots while retaining parent containment. If that
+//! aggregate row assignment cannot be decomposed, the atomic iteration is
+//! retried without the provisional parent restriction.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -281,7 +283,7 @@ fn floorplan_with_config(
             let rows = row_regions(device);
             let row_assignment = solve_iteration(graph, device, &rows, None, config, solver, opts)?;
             let slots = atomic_regions(device);
-            solve_iteration(
+            match solve_iteration(
                 graph,
                 device,
                 &slots,
@@ -289,7 +291,13 @@ fn floorplan_with_config(
                 config,
                 solver,
                 opts,
-            )?
+            ) {
+                Ok(assignment) => assignment,
+                Err(IlpError::Infeasible(_) | IlpError::NoCandidates { .. }) => {
+                    solve_iteration(graph, device, &slots, None, config, solver, opts)?
+                }
+                Err(error) => return Err(error),
+            }
         }
     };
 
@@ -1103,6 +1111,37 @@ mod tests {
         }
     }
 
+    struct RejectFirstRefinementSolver {
+        calls: AtomicUsize,
+        inner: ChooseSolver,
+        models: Mutex<Vec<LpModel>>,
+    }
+
+    impl RejectFirstRefinementSolver {
+        fn new() -> Self {
+            Self {
+                calls: AtomicUsize::new(0),
+                inner: ChooseSolver::first(),
+                models: Mutex::new(Vec::new()),
+            }
+        }
+    }
+
+    impl Solver for RejectFirstRefinementSolver {
+        fn solve(&self, model: &LpModel, opts: &SolveOpts) -> Result<LpSolution, SolverError> {
+            let call = self.calls.fetch_add(1, Ordering::Relaxed);
+            self.models.lock().expect("lock").push(model.clone());
+            if call == 1 {
+                return Ok(LpSolution {
+                    status: LpStatus::Infeasible,
+                    objective: 0.0,
+                    values: HashMap::new(),
+                });
+            }
+            self.inner.solve(model, opts)
+        }
+    }
+
     impl Solver for RecordingSolver {
         fn solve(&self, model: &LpModel, opts: &SolveOpts) -> Result<LpSolution, SolverError> {
             self.models.lock().expect("lock").push(model.clone());
@@ -1630,6 +1669,99 @@ mod tests {
                 .values()
                 .all(|region| region == &Coor::slot(1, 2).region_name()),
             "second-pass candidates must remain within the first-pass row"
+        );
+    }
+
+    #[test]
+    fn multilevel_recovers_when_an_aggregate_parent_has_no_feasible_child() {
+        let graph = single_task_floor_graph_with_area(Area {
+            bram_18k: 75,
+            ..Area::default()
+        });
+        let slot = |x, y, bram_18k| Slot {
+            x,
+            y,
+            area: Area {
+                bram_18k,
+                ..Area::default()
+            },
+            centroid_x: i64::from(x) * 100,
+            centroid_y: i64::from(y) * 100,
+            pblock_ranges: Vec::new(),
+            wire_cap: DirCaps::default(),
+            anchor: DirRegions::default(),
+            tags: Vec::new(),
+        };
+        let device = Device {
+            key: "non-decomposable-row".to_string(),
+            part_num: "xctoy".to_string(),
+            platform_name: None,
+            rows: 2,
+            cols: 2,
+            pp_dist: 1,
+            is_versal: false,
+            user_pblock_name: None,
+            slots: vec![
+                slot(0, 0, 50),
+                slot(1, 0, 50),
+                slot(0, 1, 100),
+                slot(1, 1, 0),
+            ],
+        };
+        let solver = RecordingSolver::first();
+
+        let result = floorplan_multilevel(&graph, &device, 1.0, &solver, &SolveOpts::default())
+            .expect("the globally feasible atomic placement must survive a bad provisional row");
+
+        assert_eq!(
+            result.regions.get("A_0"),
+            Some(&Coor::slot(0, 1).region_name())
+        );
+        assert_eq!(
+            solver.models.lock().expect("lock").len(),
+            2,
+            "the parent-filtered refinement has no domain, then one atomic fallback is solved"
+        );
+    }
+
+    #[test]
+    fn multilevel_infeasible_refinement_reuses_the_flat_atomic_formulation() {
+        let graph = vadd_floor_graph();
+        let device = select_device("u280").expect("u280");
+        let logic_limit = 0.7;
+        let block_limit = 0.8;
+        let solver = RejectFirstRefinementSolver::new();
+
+        floorplan_with_exact_resource_caps(
+            &graph,
+            &device,
+            logic_limit,
+            block_limit,
+            PartitionStrategy::MultiLevel,
+            &solver,
+            &SolveOpts::default(),
+        )
+        .expect("a proven parent-refinement failure must retry atomic placement globally");
+
+        let models = solver.models.lock().expect("lock");
+        assert_eq!(models.len(), 3, "row, parent refinement, atomic fallback");
+        let constraints = exact_resource_cap_constraints(&device, block_limit);
+        let regions = atomic_regions(&device);
+        let domains = candidate_domains(&graph, &device, &regions, logic_limit, None, &constraints)
+            .expect("flat domains");
+        let expected = FloorplanModel::build(
+            &graph,
+            &device,
+            &domains,
+            &find_cuts_for_regions(&device, &regions),
+            logic_limit,
+            &constraints,
+        )
+        .expect("flat model");
+        assert_eq!(
+            crate::solver::write_cplex_lp(&models[2]),
+            crate::solver::write_cplex_lp(&expected.lp),
+            "fallback must use the existing atomic variables, rows, and objective unchanged"
         );
     }
 
