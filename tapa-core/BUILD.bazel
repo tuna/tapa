@@ -242,7 +242,6 @@ cargo_test(
         # Runfiles-relative paths; the test resolves them against
         # `RUNFILES_DIR` / `TEST_SRCDIR`.
         "TAPA_CONFORMANCE_TAPA": "tapa-core/tapa",
-        "TAPA_CONFORMANCE_TAPA_LIB": "tapa-lib",
         "TAPA_CONFORMANCE_VADD": "tests/apps/vadd/vadd.cpp",
         "TAPA_CONFORMANCE_ASYNC_MMAP": "tests/apps/async_mmap/async_mmap.cpp",
         "TAPA_CONFORMANCE_TEMPLATED": "tests/apps/templated/templated.cpp",
@@ -252,7 +251,6 @@ cargo_test(
         # Brings `//tapacc`, `//tapa-cpp`, and the system includes along as
         # its own runfiles — the same tree a real `tapa analyze` walks.
         ":tapa",
-        "//tapa-lib:include",
         "//tests/apps/vadd:vadd.cpp",
         # Included by vadd.cpp; must sit beside it in the runfiles tree.
         "//tests/apps/vadd:vadd.h",

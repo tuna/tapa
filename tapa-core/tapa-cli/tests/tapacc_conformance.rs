@@ -42,8 +42,6 @@ use tapa_ir::{TaskGraph, TaskLevel};
 /// Runfiles-relative path of the `tapa` CLI wrapper (`//tapa-core:tapa`),
 /// whose runfiles stage the sibling `tapacc` / `tapa-cpp` / system headers.
 const ENV_TAPA: &str = "TAPA_CONFORMANCE_TAPA";
-/// Runfiles-relative path of the `tapa-lib` include directory.
-const ENV_TAPA_LIB: &str = "TAPA_CONFORMANCE_TAPA_LIB";
 /// Set by the Bazel target only. Turns "inputs missing" from a skip into a
 /// failure, so a broken `cargo_env` block cannot quietly disable the guard.
 const ENV_REQUIRED: &str = "TAPA_CONFORMANCE_REQUIRED";
@@ -95,7 +93,6 @@ const KERNELS: &[Kernel] = &[
 /// Resolved test inputs.
 struct Fixtures {
     tapa: PathBuf,
-    tapa_lib: PathBuf,
     /// Maps env-var name → resolved kernel `.cpp` path.
     kernels: std::collections::BTreeMap<&'static str, PathBuf>,
 }
@@ -160,14 +157,12 @@ fn fixtures() -> Option<Fixtures> {
         .to_string();
     let tapa_resolved = resolve_runfile(&tapa)
         .unwrap_or_else(|| panic!("{ENV_TAPA}={tapa} does not resolve to an existing runfile"));
-    let tapa_lib = runfile_var(ENV_TAPA_LIB);
     let mut kernels = std::collections::BTreeMap::new();
     for k in KERNELS {
         kernels.insert(k.env, runfile_var(k.env));
     }
     Some(Fixtures {
         tapa: tapa_resolved,
-        tapa_lib,
         kernels,
     })
 }
@@ -192,8 +187,6 @@ fn tapacc_stdout(fx: &Fixtures, kernel: &Path, top: &str, flow: &str) -> String 
         .arg(flow)
         .arg("--cflags")
         .arg(format!("-I{}", kernel_dir.display()))
-        .arg("--cflags")
-        .arg(format!("-I{}", fx.tapa_lib.display()))
         .output()
         .unwrap_or_else(|e| panic!("failed to run {}: {e}", fx.tapa.display()));
 
@@ -260,6 +253,18 @@ fn check_conformance(raw: &str, flow: &str, top: &str, expected_tasks: &[&str]) 
         assert!(
             !task.code.is_empty(),
             "task `{name}`: tapacc emitted empty `code` (--target {flow})",
+        );
+        assert!(
+            task.code.contains("#include <tapa.h>"),
+            "task `{name}`: generated code lost `#include <tapa.h>` \
+             (--target {flow}); the production TAPA include must be discovered \
+             as a system include so flattening preserves it",
+        );
+        assert!(
+            !task.code.contains("class istream {"),
+            "task `{name}`: generated code embeds the stub `istream` \
+             declaration (--target {flow}); synthesis must consume the target \
+             implementation selected by `#include <tapa.h>`",
         );
     }
 
