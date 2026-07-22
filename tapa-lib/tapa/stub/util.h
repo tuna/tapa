@@ -7,11 +7,13 @@
 #include "tapa/base/util.h"
 
 #ifndef ap_wait
-void ap_wait(void);
+// Keep these declarations valid if flattened source is later compiled after
+// function-like macros with the same names have been defined.
+void(ap_wait)(void);
 #endif
 
 #ifndef ap_wait_n
-void ap_wait_n(int);
+void(ap_wait_n)(int);
 #endif
 
 namespace tapa {
