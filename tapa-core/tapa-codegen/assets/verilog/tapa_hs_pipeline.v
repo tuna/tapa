@@ -145,15 +145,9 @@ module tapa_hs_pipeline_head #(
   (* keep = "true" *) reg [DATA_WIDTH-1:0] if_din_reg;
 
   always @(posedge clk) begin
-    if (reset) begin
-      if_read_reg <= 1'b0;
-      if_write_reg <= 1'b0;
-      if_din_reg <= {DATA_WIDTH{1'b0}};
-    end else begin
-      if_read_reg <= if_read;
-      if_write_reg <= if_write;
-      if_din_reg <= if_din;
-    end
+    if_read_reg <= if_read;
+    if_write_reg <= if_write;
+    if_din_reg <= if_din;
   end
 
   assign if_full_n = if_read_reg;
@@ -178,15 +172,9 @@ module tapa_hs_pipeline_body #(
   (* keep = "true" *) reg [DATA_WIDTH-1:0] if_dout_reg;
 
   always @(posedge clk) begin
-    if (reset) begin
-      if_full_n_reg <= 1'b0;
-      if_empty_n_reg <= 1'b0;
-      if_dout_reg <= {DATA_WIDTH{1'b0}};
-    end else begin
-      if_full_n_reg <= if_read;
-      if_empty_n_reg <= if_write;
-      if_dout_reg <= if_din;
-    end
+    if_full_n_reg <= if_read;
+    if_empty_n_reg <= if_write;
+    if_dout_reg <= if_din;
   end
 
   assign if_full_n = if_full_n_reg;

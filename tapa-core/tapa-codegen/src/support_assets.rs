@@ -22,5 +22,21 @@ mod tests {
         assert!(source.contains("if_write_reg <= if_write;"));
         assert!(source.contains("if_din_reg <= if_din;"));
         assert!(source.contains("GRACE_PERIOD = BODY_LEVEL * 2 + 2"));
+
+        // Resetting every wide Head/Body register creates a long, high-fanout
+        // control net. The resettable Tail drains these fixed-latency stages
+        // while reset remains asserted.
+        let head = source
+            .split("module tapa_hs_pipeline_head #(")
+            .nth(1)
+            .and_then(|text| text.split("endmodule").next())
+            .expect("Head module");
+        let body = source
+            .split("module tapa_hs_pipeline_body #(")
+            .nth(1)
+            .and_then(|text| text.split("endmodule").next())
+            .expect("Body module");
+        assert!(!head.contains("if (reset)"));
+        assert!(!body.contains("if (reset)"));
     }
 }

@@ -71,19 +71,21 @@ int main(int argc, char** argv) {
         return 5;
     }
 
-    // Reset must win over active traffic as well as the item already queued in
-    // Tail.  Leaving write/read asserted on the reset edge catches stale Head
-    // valid/data state after reset is released.
+    // Head and Body deliberately omit reset to avoid a high-fanout reset net.
+    // The reset source holds the resettable Tail long enough for all fixed-
+    // latency in-flight state to drain into it. Exercise that contract with
+    // traffic active on the assertion edge.
     const unsigned RESET_POISON = 0xdeadbeefu;
     dut->reset = 1;
     dut->if_write = 1;
     dut->if_din = RESET_POISON;
     dut->if_read = 1;
     posedge();
-    dut->reset = 0;
     dut->if_write = 0;
     dut->if_din = 0;
     dut->if_read = 0;
+    for (int i = 0; i < 16; i++) posedge();
+    dut->reset = 0;
     dut->eval();
     for (int i = 0; i < 128; i++) {
         if (dut->if_empty_n) {
@@ -97,9 +99,9 @@ int main(int argc, char** argv) {
         return 7;
     }
 
-    // Put an item beyond Head before asserting reset with idle inputs.  For
-    // nonzero BODY_LEVEL this verifies that every Body valid/data register is
-    // flushed rather than shifting a pre-reset item into Tail afterwards.
+    // Put an item beyond Head before asserting reset with idle inputs. For
+    // nonzero BODY_LEVEL this verifies that the held Tail reset drains every
+    // resetless Body valid/data register before the next invocation.
     const unsigned BODY_POISON = 0xc001d00du;
     dut->if_write = 1;
     dut->if_din = BODY_POISON;
@@ -110,7 +112,7 @@ int main(int argc, char** argv) {
     dut->eval();
     posedge();
     dut->reset = 1;
-    posedge();
+    for (int i = 0; i < 16; i++) posedge();
     dut->reset = 0;
     dut->eval();
     for (int i = 0; i < 128; i++) {
