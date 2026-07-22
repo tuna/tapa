@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::rtl_state::TopologyWithRtl;
+use std::process::Command;
 use tapa_ir::Design;
 use tapa_rtl::VerilogModule;
 
@@ -847,6 +848,370 @@ fn generate_floorplanned_stream_pipeline(
 
     generate_rtl(&mut state).unwrap();
     state.generated_files["top.v"].clone()
+}
+
+#[allow(
+    clippy::too_many_lines,
+    reason = "fixture includes the complete placement and typed route contract"
+)]
+fn distributed_control_state() -> TopologyWithRtl {
+    use std::collections::BTreeMap;
+    use tapa_ir::{
+        global_controller_instance_name, local_controller_instance_name, ControlChannel,
+        FloorplanResult, PipelineRoute, PipelineScheme, RoutedChannel,
+    };
+
+    let top = task("top", "upper", |task| {
+        task["ports"] = serde_json::json!([
+            {"cat": "scalar", "name": "n", "type": "uint32_t", "width": 17}
+        ]);
+        task["tasks"] = serde_json::json!({
+            "worker": [{
+                "name": "worker#0",
+                "args": {"count": {"arg": "n", "cat": "scalar"}}
+            }],
+            "daemon": [{"name": "daemon#0", "step": -1, "args": {}}]
+        });
+    });
+    let worker = task("worker", "lower", |task| {
+        task["ports"] = serde_json::json!([
+            {"cat": "scalar", "name": "count", "type": "uint32_t", "width": 17}
+        ]);
+    });
+    let mut state = TopologyWithRtl::new(design(
+        "top",
+        "xilinx-hls",
+        &[
+            ("top", top),
+            ("worker", worker),
+            ("daemon", plain("daemon", "lower")),
+        ],
+    ));
+    state
+        .attach_module(
+            "top",
+            parse_module(
+                "module top(\n\
+                 input wire ap_clk,\n\
+                 input wire ap_rst_n,\n\
+                 input wire ap_start,\n\
+                 output wire ap_done,\n\
+                 output wire ap_idle,\n\
+                 output wire ap_ready,\n\
+                 input wire [16:0] n\n\
+                 );\nendmodule",
+            ),
+        )
+        .unwrap();
+    state
+        .attach_module(
+            "worker",
+            parse_module(
+                "module worker(\n\
+                 input wire ap_clk, input wire ap_rst_n, input wire ap_start,\n\
+                 output wire ap_done, output wire ap_idle, output wire ap_ready,\n\
+                 input wire [16:0] count\n\
+                 );\nendmodule",
+            ),
+        )
+        .unwrap();
+    state
+        .attach_module(
+            "daemon",
+            parse_module(
+                "module daemon(input wire ap_clk, input wire ap_rst_n, input wire ap_start);\nendmodule",
+            ),
+        )
+        .unwrap();
+
+    let worker = "worker#0";
+    let daemon = "daemon#0";
+    let forward = vec!["SLOT_X0Y0".to_string(), "SLOT_X1Y0".to_string()];
+    let reverse = vec!["SLOT_X1Y0".to_string(), "SLOT_X0Y0".to_string()];
+    state.floorplan = Some(FloorplanResult {
+        device: "u280".to_string(),
+        grid: (2, 1),
+        regions: BTreeMap::from([
+            (
+                global_controller_instance_name().to_string(),
+                "SLOT_X0Y0".to_string(),
+            ),
+            (worker.to_string(), "SLOT_X1Y0".to_string()),
+            (
+                local_controller_instance_name(worker),
+                "SLOT_X1Y0".to_string(),
+            ),
+            (daemon.to_string(), "SLOT_X0Y0".to_string()),
+            (
+                local_controller_instance_name(daemon),
+                "SLOT_X0Y0".to_string(),
+            ),
+        ]),
+        routes: vec![
+            PipelineRoute {
+                channel: RoutedChannel::Control {
+                    instance: worker.to_string(),
+                    channel: ControlChannel::Launch,
+                },
+                route: forward.clone(),
+                scheme: PipelineScheme::Double,
+                reg_regions: vec!["SLOT_X0Y0".to_string()],
+            },
+            PipelineRoute {
+                channel: RoutedChannel::Control {
+                    instance: worker.to_string(),
+                    channel: ControlChannel::Reset,
+                },
+                route: forward,
+                scheme: PipelineScheme::Double,
+                reg_regions: vec!["SLOT_X0Y0".to_string()],
+            },
+            PipelineRoute {
+                channel: RoutedChannel::Control {
+                    instance: worker.to_string(),
+                    channel: ControlChannel::Completion,
+                },
+                route: reverse,
+                scheme: PipelineScheme::Double,
+                reg_regions: vec!["SLOT_X1Y0".to_string(), "SLOT_X0Y0".to_string()],
+            },
+        ],
+        slot_usage: BTreeMap::new(),
+    });
+    state
+}
+
+fn lint_distributed_top(state: &TopologyWithRtl) {
+    if !Command::new("verilator")
+        .arg("--version")
+        .output()
+        .is_ok_and(|output| output.status.success())
+    {
+        eprintln!("skipping generated distributed-top lint: `verilator` not found on PATH");
+        return;
+    }
+
+    let dir = tempfile::tempdir().expect("tempdir");
+    let root = dir.path();
+    let asset =
+        crate::support_assets::VerilogAssets::get("tapa_control.v").expect("embedded control RTL");
+    std::fs::write(root.join("tapa_control.v"), &asset.data).expect("write control RTL");
+    std::fs::write(root.join("top.v"), &state.generated_files["top.v"])
+        .expect("write generated top");
+    for child in ["worker", "daemon"] {
+        std::fs::write(
+            root.join(format!("{child}.v")),
+            state.module_map[child].emit(),
+        )
+        .expect("write child RTL");
+    }
+
+    let lint = Command::new("verilator")
+        .current_dir(root)
+        .args([
+            "--lint-only",
+            "--top-module",
+            "top",
+            "-Wno-UNUSEDSIGNAL",
+            "-Wno-fatal",
+            "tapa_control.v",
+            "worker.v",
+            "daemon.v",
+            "top.v",
+        ])
+        .output()
+        .expect("spawn verilator");
+    assert!(
+        lint.status.success(),
+        "generated distributed top failed Verilator lint:\n{}\n{}",
+        String::from_utf8_lossy(&lint.stdout),
+        String::from_utf8_lossy(&lint.stderr),
+    );
+}
+
+#[test]
+fn test_generate_rtl_distributes_floorplanned_control() {
+    let mut state = distributed_control_state();
+    generate_rtl(&mut state).unwrap();
+    let top = &state.generated_files["top.v"];
+
+    assert!(
+        !state.generated_files.contains_key("top_fsm.v"),
+        "distributed control must replace the monolithic FSM module"
+    );
+    for hierarchy in [
+        "__tapa_global_controller",
+        "__tapa_local_controller_worker_0",
+        "__tapa_local_controller_daemon_0",
+        "__tapa_control_worker_0_launch",
+        "__tapa_control_worker_0_reset",
+        "__tapa_control_worker_0_completion",
+    ] {
+        assert!(top.contains(hierarchy), "missing {hierarchy}:\n{top}");
+    }
+    assert_eq!(top.matches("tapa_control_pipeline #(").count(), 3, "{top}");
+    assert!(
+        top.contains(".WIDTH(19)"),
+        "scalar width must be packed: {top}"
+    );
+    assert!(
+        top.contains("assign __tapa_control_worker_0__launch_input = {n, __tapa_control_release, __tapa_control_start}"),
+        "Launch fields must have deterministic order:\n{top}"
+    );
+    assert!(
+        top.contains("assign worker_0__count = __tapa_control_worker_0__launch_output[18:2]"),
+        "scalar must be unpacked at the local endpoint:\n{top}"
+    );
+    assert!(top.contains(".FLUSH_CYCLES(7)"), "got:\n{top}");
+    assert!(
+        top.contains("assign ap_rst = !__tapa_control_fabric_reset_n")
+            && top.contains(".fabric_reset_n(__tapa_control_fabric_reset_n)"),
+        "the parent data fabric must remain reset until routed child state is clear:\n{top}"
+    );
+    assert!(
+        top.contains(".ap_rst_n(__tapa_control_worker_0__reset_n)"),
+        "cross-slot child must use its routed local reset:\n{top}"
+    );
+    assert!(
+        top.contains("assign __tapa_control_daemon_0__reset_n = ap_rst_n")
+            && top.contains(".AUTORUN(1)")
+            && top.contains(".launch_start(__tapa_control_daemon_0__launch_output)",),
+        "co-located autorun control must remain direct and local:\n{top}"
+    );
+    assert!(
+        !top.contains("__tapa_control_daemon_0_completion"),
+        "autorun completion must not participate in global completion:\n{top}"
+    );
+    lint_distributed_top(&state);
+}
+
+#[test]
+fn test_generate_rtl_rejects_malformed_control_without_mutation() {
+    let mut cases = Vec::new();
+
+    let mut missing = distributed_control_state();
+    missing.floorplan.as_mut().unwrap().routes.remove(1);
+    cases.push((missing, "missing its Reset route"));
+
+    let mut duplicate = distributed_control_state();
+    let route = duplicate.floorplan.as_ref().unwrap().routes[0].clone();
+    duplicate.floorplan.as_mut().unwrap().routes.push(route);
+    cases.push((duplicate, "more than one Launch route"));
+
+    let mut reversed = distributed_control_state();
+    reversed.floorplan.as_mut().unwrap().routes[0]
+        .route
+        .reverse();
+    cases.push((reversed, "inconsistent direction"));
+
+    let mut unexpected_s_axi = distributed_control_state();
+    unexpected_s_axi
+        .floorplan
+        .as_mut()
+        .unwrap()
+        .regions
+        .insert("control_s_axi_U".to_string(), "SLOT_X0Y0".to_string());
+    cases.push((unexpected_s_axi, "unexpected control_s_axi_U placement"));
+
+    let mut missing_s_axi = distributed_control_state();
+    missing_s_axi.module_map.insert(
+        "top".to_string(),
+        tapa_rtl::mutation::MutableModule::from_parsed(parse_module(
+            "module top(\n\
+             input wire ap_clk, input wire ap_rst_n, input wire ap_start,\n\
+             output wire ap_done, output wire ap_idle, output wire ap_ready,\n\
+             input wire s_axi_control_AWVALID, input wire [16:0] n\n\
+             );\nendmodule",
+        )),
+    );
+    cases.push((missing_s_axi, "missing placement 'control_s_axi_U'"));
+
+    for (mut state, expected) in cases {
+        let before = state.module_map["top"].emit();
+        let error = generate_rtl(&mut state).unwrap_err();
+        assert!(
+            error.to_string().contains(expected),
+            "expected '{expected}', got {error}"
+        );
+        assert_eq!(state.module_map["top"].emit(), before);
+        assert!(state.fsm_modules.is_empty());
+        assert!(state.generated_files.is_empty());
+    }
+}
+
+#[test]
+fn test_generate_rtl_rejects_control_scalar_width_mismatch_without_mutation() {
+    let mut state = distributed_control_state();
+    state.module_map.insert(
+        "worker".to_string(),
+        tapa_rtl::mutation::MutableModule::from_parsed(parse_module(
+            "module worker(\n\
+             input wire ap_clk, input wire ap_rst_n, input wire ap_start,\n\
+             output wire ap_done, output wire ap_idle, output wire ap_ready,\n\
+             input wire [15:0] count\n\
+             );\nendmodule",
+        )),
+    );
+    let before = state.module_map["top"].emit();
+    let error = generate_rtl(&mut state).unwrap_err();
+    assert!(
+        error.to_string().contains(
+            "scalar width mismatch for 'worker.count': topology is 17 bits but RTL is 16 bits"
+        ),
+        "got {error}"
+    );
+    assert_eq!(state.module_map["top"].emit(), before);
+    assert!(state.generated_files.is_empty());
+}
+
+#[test]
+fn test_generate_rtl_control_launch_packs_direct_mmap_offset() {
+    use tapa_ir::{
+        global_controller_instance_name, local_controller_instance_name, ControlChannel,
+        PipelineRoute, PipelineScheme, RoutedChannel,
+    };
+
+    let mut state = direct_axi_state(Some(Vec::new()));
+    let floorplan = state.floorplan.as_mut().unwrap();
+    floorplan.regions.extend([
+        (
+            global_controller_instance_name().to_string(),
+            "SLOT_X1Y0".to_string(),
+        ),
+        (
+            local_controller_instance_name("reader#0"),
+            "SLOT_X0Y0_TO_SLOT_X0Y0".to_string(),
+        ),
+    ]);
+    for channel in [ControlChannel::Launch, ControlChannel::Reset] {
+        floorplan.routes.push(PipelineRoute {
+            channel: RoutedChannel::Control {
+                instance: "reader#0".to_string(),
+                channel,
+            },
+            route: vec!["SLOT_X1Y0".to_string(), "SLOT_X0Y0".to_string()],
+            scheme: PipelineScheme::Single,
+            reg_regions: Vec::new(),
+        });
+    }
+    floorplan.routes.push(PipelineRoute {
+        channel: RoutedChannel::Control {
+            instance: "reader#0".to_string(),
+            channel: ControlChannel::Completion,
+        },
+        route: vec!["SLOT_X0Y0".to_string(), "SLOT_X1Y0".to_string()],
+        scheme: PipelineScheme::Single,
+        reg_regions: Vec::new(),
+    });
+
+    generate_rtl(&mut state).unwrap();
+    let top = &state.generated_files["top.v"];
+    assert!(top.contains(".WIDTH(66)"), "got:\n{top}");
+    assert!(
+        top.contains("assign __tapa_control_reader_0__launch_input = {mem_offset, __tapa_control_release, __tapa_control_start}")
+            && top.contains("assign reader_0__data_offset = __tapa_control_reader_0__launch_output[65:2]"),
+        "direct mmap offset must remain 64-bit and travel in Launch:\n{top}"
+    );
 }
 
 fn direct_axi_endpoint() -> tapa_ir::AxiEndpoint {

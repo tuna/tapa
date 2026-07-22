@@ -222,6 +222,38 @@ impl TopologyWithRtl {
         }
     }
 
+    /// Whether codegen can emit the distributed controller for the top task.
+    ///
+    /// This deliberately checks the same upper-task boundary used by
+    /// [`crate::generate_rtl`]. Callers preparing a floorplan can use it to
+    /// avoid requesting controller hierarchy that codegen would not create.
+    #[must_use]
+    pub fn supports_distributed_control(&self) -> bool {
+        self.design.tasks.get(&self.design.top).is_some_and(|task| {
+            task.level == TaskLevel::Upper
+                && task.synth != tapa_ir::SynthTarget::Ignore
+                && !task.tasks.is_empty()
+        }) && self.module_map.contains_key(&self.design.top)
+    }
+
+    /// Whether the generated top will instantiate the AXI-Lite control block.
+    ///
+    /// This is the single read-only predicate shared with the floorplanner;
+    /// [`crate::s_axi`] uses it immediately before creating
+    /// `control_s_axi_U`.
+    #[must_use]
+    pub fn top_instantiates_control_s_axi(&self) -> bool {
+        self.design.tasks.get(&self.design.top).is_some_and(|task| {
+            task.level == TaskLevel::Upper && task.synth != tapa_ir::SynthTarget::Ignore
+        }) && self.module_map.get(&self.design.top).is_some_and(|module| {
+            module
+                .inner
+                .ports
+                .iter()
+                .any(|port| port.name == "s_axi_control_AWVALID")
+        })
+    }
+
     /// Attach a parsed HLS Verilog module to a task.
     ///
     /// Rejects nonexistent task names and duplicate attachments.

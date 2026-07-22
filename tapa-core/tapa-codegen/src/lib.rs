@@ -6,6 +6,7 @@
 pub mod async_mmap;
 mod axi_pipeline;
 pub mod children;
+mod distributed_control;
 pub mod error;
 pub mod fifos;
 pub mod instance_signals;
@@ -140,6 +141,11 @@ fn instrument_upper_task(state: &mut TopologyWithRtl, task_name: &str) -> Result
     } else {
         None
     };
+    let control_plan = if is_top_task {
+        distributed_control::DistributedControlPlan::from_floorplan(state, task_name, &mmap_conns)?
+    } else {
+        None
+    };
 
     if let Some(mm) = state.module_map.get_mut(task_name) {
         mm.cleanup_hls_artifacts();
@@ -147,9 +153,12 @@ fn instrument_upper_task(state: &mut TopologyWithRtl, task_name: &str) -> Result
         mm.demote_output_port_regs_to_wires();
         mm.demote_signal_regs_to_wires(&[HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY]);
         let _ = mm.add_signal(wire(HANDSHAKE_RST));
+        let reset_n = control_plan
+            .as_ref()
+            .map_or(HANDSHAKE_RST_N, |_| distributed_control::FABRIC_RESET_N);
         mm.add_assign(ContinuousAssign::new(
             Expr::ident(HANDSHAKE_RST),
-            Expr::logical_not(Expr::ident(HANDSHAKE_RST_N)),
+            Expr::logical_not(Expr::ident(reset_n)),
         ));
 
         if is_top_task {
@@ -189,7 +198,9 @@ fn instrument_upper_task(state: &mut TopologyWithRtl, task_name: &str) -> Result
         }
     }
 
-    state.create_fsm_module(task_name)?;
+    if control_plan.is_none() {
+        state.create_fsm_module(task_name)?;
+    }
 
     // Pre-compute M-AXI slave indices for crossbar-connected mmaps
     // This maps (parent_arg, child_task, inst_idx) -> slave_idx
@@ -214,7 +225,8 @@ fn instrument_upper_task(state: &mut TopologyWithRtl, task_name: &str) -> Result
         &mmap_conns,
         &mmap_slave_map,
         axi_pipeline_plan.as_ref(),
-    );
+        control_plan.as_ref(),
+    )?;
 
     fifos::instantiate_fifos(state, task_name)?;
 
@@ -226,7 +238,9 @@ fn instrument_upper_task(state: &mut TopologyWithRtl, task_name: &str) -> Result
         plan.instantiate(state, task_name)?;
     }
 
-    if let Some(fsm_mm) = state.fsm_modules.get_mut(task_name) {
+    if let Some(plan) = &control_plan {
+        plan.instantiate_global(state, task_name, &is_done_signals)?;
+    } else if let Some(fsm_mm) = state.fsm_modules.get_mut(task_name) {
         program::apply_global_fsm(fsm_mm, &is_done_signals);
     }
 

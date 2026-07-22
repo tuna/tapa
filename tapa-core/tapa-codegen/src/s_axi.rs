@@ -10,20 +10,15 @@ use tapa_rtl::mutation::{wide_wire, wire};
 use crate::rtl_state::TopologyWithRtl;
 
 pub fn instantiate_top_control_s_axi(state: &mut TopologyWithRtl, task_name: &str) {
+    if task_name != state.design.top || !state.top_instantiates_control_s_axi() {
+        return;
+    }
     let Some(task) = state.design.tasks.get(task_name) else {
         return;
     };
     let Some(mm) = state.module_map.get_mut(task_name) else {
         return;
     };
-    if !mm
-        .inner
-        .ports
-        .iter()
-        .any(|p| p.name == format!("{S_AXI_NAME}_AWVALID"))
-    {
-        return;
-    }
 
     let mut ports = vec![
         PortArg::new("ACLK", Expr::ident(HANDSHAKE_CLK)),

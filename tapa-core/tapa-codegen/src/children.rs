@@ -18,7 +18,7 @@ use tapa_rtl::VerilogModule;
 
 use crate::instance_signals::InstanceSignals;
 use crate::rtl_state::TopologyWithRtl;
-use crate::{async_mmap, instance_signals, m_axi, program};
+use crate::{async_mmap, distributed_control, instance_signals, m_axi, program};
 
 /// FSM state constants for non-autorun child instances (2-bit encoding).
 pub const STATE_IDLE: &str = "2'b00";
@@ -191,11 +191,43 @@ pub fn build_child_instance(
     parent_rtl: Option<&VerilogModule>,
     child_rtl: Option<&VerilogModule>,
 ) -> ModuleInstance {
+    build_child_instance_with_reset(
+        child_task_name,
+        instance_name,
+        sig,
+        args,
+        mmap_bindings,
+        parent_fifos,
+        parent_rtl,
+        child_rtl,
+        Expr::ident(HANDSHAKE_RST_N),
+    )
+}
+
+#[allow(
+    clippy::too_many_arguments,
+    reason = "child instance assembly needs an explicit local reset on the distributed path"
+)]
+#[allow(
+    clippy::too_many_lines,
+    reason = "this is the same sequential port wiring as the public constructor"
+)]
+fn build_child_instance_with_reset(
+    child_task_name: &str,
+    instance_name: &str,
+    sig: &InstanceSignals,
+    args: &BTreeMap<String, Arg>,
+    mmap_bindings: &ChildMmapBindings,
+    parent_fifos: &BTreeSet<String>,
+    parent_rtl: Option<&VerilogModule>,
+    child_rtl: Option<&VerilogModule>,
+    reset_n: Expr,
+) -> ModuleInstance {
     let mut port_args = Vec::new();
 
     // Clock and reset
     port_args.push(PortArg::new(HANDSHAKE_CLK, Expr::ident(HANDSHAKE_CLK)));
-    port_args.push(PortArg::new(HANDSHAKE_RST_N, Expr::ident(HANDSHAKE_RST_N)));
+    port_args.push(PortArg::new(HANDSHAKE_RST_N, reset_n));
 
     // Handshake signals from InstanceSignals
     port_args.extend(sig.instance_portargs());
@@ -468,7 +500,8 @@ pub(crate) fn generate_child_signals(
     mmap_conns: &std::collections::BTreeMap<String, crate::rtl_state::MMapConnection>,
     mmap_slave_map: &std::collections::BTreeMap<(String, String, usize), usize>,
     axi_pipeline_plan: Option<&crate::axi_pipeline::DirectAxiPipelinePlan>,
-) -> Vec<String> {
+    control_plan: Option<&distributed_control::DistributedControlPlan>,
+) -> Result<Vec<String>, crate::error::CodegenError> {
     type ChildEntry = (usize, Option<String>, bool, BTreeMap<String, Arg>);
 
     let task = &state.design.tasks[task_name];
@@ -504,7 +537,15 @@ pub(crate) fn generate_child_signals(
             // Parent task module: only declare handshake WIRES (not state regs)
             // The parent sees start/done/idle/ready/is_done as wires connected to FSM ports
             if let Some(mm) = state.module_map.get_mut(task_name) {
-                if is_autorun {
+                if control_plan.is_some() {
+                    let _ = mm.add_signal(tapa_rtl::mutation::wire(sig.start_name()));
+                    if !is_autorun {
+                        let _ = mm.add_signal(tapa_rtl::mutation::wire(sig.done_name()));
+                        let _ = mm.add_signal(tapa_rtl::mutation::wire(sig.idle_name()));
+                        let _ = mm.add_signal(tapa_rtl::mutation::wire(sig.ready_name()));
+                        let _ = mm.add_signal(tapa_rtl::mutation::wire(sig.is_done_name()));
+                    }
+                } else if is_autorun {
                     let _ = mm.add_signal(tapa_rtl::mutation::wire(sig.start_name()));
                 } else {
                     for signal in sig.all_signals() {
@@ -514,97 +555,113 @@ pub(crate) fn generate_child_signals(
             }
 
             // FSM module interface: add handshake ports
-            if let Some(fsm_mm) = state.fsm_modules.get_mut(task_name) {
-                for port in sig.fsm_ports() {
-                    let _ = fsm_mm.add_port(port);
+            if control_plan.is_none() {
+                if let Some(fsm_mm) = state.fsm_modules.get_mut(task_name) {
+                    for port in sig.fsm_ports() {
+                        let _ = fsm_mm.add_port(port);
+                    }
                 }
-            }
 
-            // Build FSM module instantiation portargs using child-specific port names
-            // FSM module ports are child-specific (e.g., child_0__ap_start),
-            // parent wires have the same names — so both sides match
-            for port in sig.fsm_ports() {
-                fsm_portargs.push(tapa_rtl::builder::PortArg::new(
-                    &port.name,
-                    Expr::ident(&port.name),
-                ));
+                // Build FSM module instantiation portargs using child-specific port names
+                // FSM module ports are child-specific (e.g., child_0__ap_start),
+                // parent wires have the same names — so both sides match
+                for port in sig.fsm_ports() {
+                    fsm_portargs.push(tapa_rtl::builder::PortArg::new(
+                        &port.name,
+                        Expr::ident(&port.name),
+                    ));
+                }
             }
 
             if !is_autorun {
                 is_done_signals.push(sig.is_done_name());
 
                 // Add is_done port to FSM module interface
-                if let Some(fsm_mm) = state.fsm_modules.get_mut(task_name) {
-                    let _ = fsm_mm.add_port(tapa_rtl::mutation::simple_port(
+                if control_plan.is_none() {
+                    if let Some(fsm_mm) = state.fsm_modules.get_mut(task_name) {
+                        let _ = fsm_mm.add_port(tapa_rtl::mutation::simple_port(
+                            sig.is_done_name(),
+                            tapa_rtl::port::Direction::Output,
+                        ));
+                    }
+                    // Add is_done portarg for FSM instantiation
+                    fsm_portargs.push(tapa_rtl::builder::PortArg::new(
                         sig.is_done_name(),
-                        tapa_rtl::port::Direction::Output,
+                        Expr::ident(sig.is_done_name()),
                     ));
                 }
-                // Add is_done portarg for FSM instantiation
-                fsm_portargs.push(tapa_rtl::builder::PortArg::new(
-                    sig.is_done_name(),
-                    Expr::ident(sig.is_done_name()),
-                ));
             }
 
             // FSM/autorun logic goes into the FSM MODULE
-            if let Some(fsm_mm) = state.fsm_modules.get_mut(task_name) {
-                for signal in sig.all_signals() {
-                    let _ = fsm_mm.add_signal(signal);
-                }
-                if is_autorun {
-                    fsm_mm.ensure_signal_kind(&sig.start_name(), tapa_rtl::signal::SignalKind::Reg);
-                    fsm_mm.add_always(generate_autorun_start(&sig));
-                } else {
-                    // State register and FSM logic owned by FSM module
-                    // Use pipelined start_q/done_q from global FSM
-                    let start_input = Expr::ident(program::START_Q);
-                    let done_release = Expr::ident(program::DONE_Q);
-                    fsm_mm.add_always(generate_child_fsm(&sig, start_input, done_release));
-                    // ap_start output: combinationally driven from state
-                    fsm_mm.add_assign(generate_start_assign(&sig));
-                    // is_done: driven from state inside FSM module
-                    fsm_mm.add_assign(generate_is_done_assign(&sig));
+            if control_plan.is_none() {
+                if let Some(fsm_mm) = state.fsm_modules.get_mut(task_name) {
+                    for signal in sig.all_signals() {
+                        let _ = fsm_mm.add_signal(signal);
+                    }
+                    if is_autorun {
+                        fsm_mm.ensure_signal_kind(
+                            &sig.start_name(),
+                            tapa_rtl::signal::SignalKind::Reg,
+                        );
+                        fsm_mm.add_always(generate_autorun_start(&sig));
+                    } else {
+                        // State register and FSM logic owned by FSM module
+                        // Use pipelined start_q/done_q from global FSM
+                        let start_input = Expr::ident(program::START_Q);
+                        let done_release = Expr::ident(program::DONE_Q);
+                        fsm_mm.add_always(generate_child_fsm(&sig, start_input, done_release));
+                        // ap_start output: combinationally driven from state
+                        fsm_mm.add_assign(generate_start_assign(&sig));
+                        // is_done: driven from state inside FSM module
+                        fsm_mm.add_assign(generate_is_done_assign(&sig));
+                    }
                 }
             }
 
-            // Declare per-instance pipeline signals for scalar/mmap args
-            declare_instance_pipeline_signals(state, task_name, &child_name, &inst_name, &args);
+            if let Some(plan) = control_plan {
+                plan.instantiate_child(state, task_name, &logical_inst_name, &sig)?;
+            } else {
+                // Declare per-instance pipeline signals for scalar/mmap args
+                declare_instance_pipeline_signals(state, task_name, &child_name, &inst_name, &args);
+            }
 
-            // Add pipeline portargs to FSM instantiation
-            for (port_name, arg) in &args {
-                if arg.cat.is_scalar() {
-                    let pipeline_out = format!("{inst_name}__{port_name}");
-                    let fsm_in_port = format!("{inst_name}__{port_name}_in");
-                    fsm_portargs.push(tapa_rtl::builder::PortArg::new(
-                        &fsm_in_port,
-                        Expr::ident(tapa_rtl::module::sanitize_array_name(&arg.arg)),
-                    ));
-                    fsm_portargs.push(tapa_rtl::builder::PortArg::new(
-                        &pipeline_out,
-                        Expr::ident(&pipeline_out),
-                    ));
-                } else if arg.cat.is_direct_mmap() {
-                    let pipeline_out = format!("{inst_name}__{port_name}_offset");
-                    let fsm_in_port = format!("{inst_name}__{port_name}_offset_in");
-                    let arg_name = tapa_rtl::module::sanitize_array_name(&arg.arg);
-                    let offset_source = mmap_conns.get(&arg.arg).map_or_else(
-                        || Expr::ident(format!("{arg_name}_offset")),
-                        |conn| {
-                            if conn.chan_count.is_some() {
-                                Expr::lit("64'd0")
-                            } else {
-                                Expr::ident(format!("{arg_name}_offset"))
-                            }
-                        },
-                    );
-                    fsm_portargs.push(tapa_rtl::builder::PortArg::new(&fsm_in_port, offset_source));
-                    fsm_portargs.push(tapa_rtl::builder::PortArg::new(
-                        &pipeline_out,
-                        Expr::ident(&pipeline_out),
-                    ));
+            if control_plan.is_none() {
+                // Add pipeline portargs to FSM instantiation
+                for (port_name, arg) in &args {
+                    if arg.cat.is_scalar() {
+                        let pipeline_out = format!("{inst_name}__{port_name}");
+                        let fsm_in_port = format!("{inst_name}__{port_name}_in");
+                        fsm_portargs.push(tapa_rtl::builder::PortArg::new(
+                            &fsm_in_port,
+                            Expr::ident(tapa_rtl::module::sanitize_array_name(&arg.arg)),
+                        ));
+                        fsm_portargs.push(tapa_rtl::builder::PortArg::new(
+                            &pipeline_out,
+                            Expr::ident(&pipeline_out),
+                        ));
+                    } else if arg.cat.is_direct_mmap() {
+                        let pipeline_out = format!("{inst_name}__{port_name}_offset");
+                        let fsm_in_port = format!("{inst_name}__{port_name}_offset_in");
+                        let arg_name = tapa_rtl::module::sanitize_array_name(&arg.arg);
+                        let offset_source = mmap_conns.get(&arg.arg).map_or_else(
+                            || Expr::ident(format!("{arg_name}_offset")),
+                            |conn| {
+                                if conn.chan_count.is_some() {
+                                    Expr::lit("64'd0")
+                                } else {
+                                    Expr::ident(format!("{arg_name}_offset"))
+                                }
+                            },
+                        );
+                        fsm_portargs
+                            .push(tapa_rtl::builder::PortArg::new(&fsm_in_port, offset_source));
+                        fsm_portargs.push(tapa_rtl::builder::PortArg::new(
+                            &pipeline_out,
+                            Expr::ident(&pipeline_out),
+                        ));
+                    }
+                    // Streams and Immap/Ommap contribute no FSM portargs.
                 }
-                // Streams and Immap/Ommap contribute no FSM portargs.
             }
 
             // Build per-instance mmap slave index map for crossbar routing
@@ -671,7 +728,17 @@ pub(crate) fn generate_child_signals(
                     }
                 }
             }
-            let child_inst = build_child_instance(
+            let reset_n = control_plan.map_or_else(
+                || Expr::ident(HANDSHAKE_RST_N),
+                |_| {
+                    Expr::ident(
+                        distributed_control::DistributedControlPlan::child_reset_name(
+                            &logical_inst_name,
+                        ),
+                    )
+                },
+            );
+            let child_inst = build_child_instance_with_reset(
                 &child_name,
                 &inst_name,
                 &sig,
@@ -680,6 +747,7 @@ pub(crate) fn generate_child_signals(
                 &parent_fifos,
                 state.module_map.get(task_name).map(|mm| &mm.inner),
                 child_rtl.as_ref(),
+                reset_n,
             );
             if let Some(mm) = state.module_map.get_mut(task_name) {
                 mm.add_instance(child_inst);
@@ -695,26 +763,28 @@ pub(crate) fn generate_child_signals(
         }
     }
 
-    // Instantiate FSM module into parent task module
-    let fsm_module_name = format!("{task_name}_fsm");
-    let mut fsm_inst_ports = vec![
-        tapa_rtl::builder::PortArg::new(HANDSHAKE_CLK, Expr::ident(HANDSHAKE_CLK)),
-        tapa_rtl::builder::PortArg::new(HANDSHAKE_RST_N, Expr::ident(HANDSHAKE_RST_N)),
-        // Top-level handshake ports
-        tapa_rtl::builder::PortArg::new(HANDSHAKE_START, Expr::ident(HANDSHAKE_START)),
-        tapa_rtl::builder::PortArg::new(HANDSHAKE_DONE, Expr::ident(HANDSHAKE_DONE)),
-        tapa_rtl::builder::PortArg::new(HANDSHAKE_IDLE, Expr::ident(HANDSHAKE_IDLE)),
-        tapa_rtl::builder::PortArg::new(HANDSHAKE_READY, Expr::ident(HANDSHAKE_READY)),
-    ];
-    // Add child-specific handshake portargs (child_0__ap_start, etc.)
-    fsm_inst_ports.extend(fsm_portargs);
-    let fsm_inst = tapa_rtl::builder::ModuleInstance::new(&fsm_module_name, "__tapa_fsm_unit")
-        .with_ports(fsm_inst_ports);
-    if let Some(mm) = state.module_map.get_mut(task_name) {
-        mm.add_instance(fsm_inst);
+    if control_plan.is_none() {
+        // Instantiate FSM module into parent task module
+        let fsm_module_name = format!("{task_name}_fsm");
+        let mut fsm_inst_ports = vec![
+            tapa_rtl::builder::PortArg::new(HANDSHAKE_CLK, Expr::ident(HANDSHAKE_CLK)),
+            tapa_rtl::builder::PortArg::new(HANDSHAKE_RST_N, Expr::ident(HANDSHAKE_RST_N)),
+            // Top-level handshake ports
+            tapa_rtl::builder::PortArg::new(HANDSHAKE_START, Expr::ident(HANDSHAKE_START)),
+            tapa_rtl::builder::PortArg::new(HANDSHAKE_DONE, Expr::ident(HANDSHAKE_DONE)),
+            tapa_rtl::builder::PortArg::new(HANDSHAKE_IDLE, Expr::ident(HANDSHAKE_IDLE)),
+            tapa_rtl::builder::PortArg::new(HANDSHAKE_READY, Expr::ident(HANDSHAKE_READY)),
+        ];
+        // Add child-specific handshake portargs (child_0__ap_start, etc.)
+        fsm_inst_ports.extend(fsm_portargs);
+        let fsm_inst = tapa_rtl::builder::ModuleInstance::new(&fsm_module_name, "__tapa_fsm_unit")
+            .with_ports(fsm_inst_ports);
+        if let Some(mm) = state.module_map.get_mut(task_name) {
+            mm.add_instance(fsm_inst);
+        }
     }
 
-    is_done_signals
+    Ok(is_done_signals)
 }
 
 /// Declare per-instance pipeline signals for scalar and mmap arguments.
