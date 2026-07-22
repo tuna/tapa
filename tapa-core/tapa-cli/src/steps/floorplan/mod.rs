@@ -12,7 +12,8 @@ use clap::{Parser, ValueEnum};
 use tapa_codegen::rtl_state::DirectMmapInterface;
 use tapa_floorplan::{
     dse::{explore, DseCandidate, DseOptions},
-    plan_with_inputs, render_xdc, MemoryInterface, PartitionStrategy, PlanInputs, PlanOptions,
+    plan_with_inputs, render_xdc, ControlInterface, MemoryInterface, PartitionStrategy, PlanInputs,
+    PlanOptions,
 };
 use tapa_ir::{Design, MemoryBindings, PipelineScheme, WorkState};
 
@@ -457,7 +458,12 @@ pub fn run(args: &FloorplanArgs, ctx: &CliContext) -> Result<()> {
     let interfaces = rtl_state
         .direct_mmap_interfaces(&flat.top)
         .map_err(|error| CliError::Floorplan(error.to_string()))?;
-    let inputs = memory_plan_inputs(&flat.top, &interfaces, connectivity.as_ref())?;
+    let mut inputs = memory_plan_inputs(&flat.top, &interfaces, connectivity.as_ref())?;
+    inputs.control = rtl_state
+        .supports_distributed_control()
+        .then(|| ControlInterface {
+            has_s_axi_control: rtl_state.top_instantiates_control_s_axi(),
+        });
 
     if let Some(target) = implementation_target.as_ref() {
         let (candidates, infeasible) =
@@ -923,7 +929,21 @@ mod tests {
                 let reloaded = work_io::load(dir.path()).expect("reload");
                 let floorplan = reloaded.floorplan.expect("floorplan stored");
                 assert_eq!(floorplan.device, "u280");
-                assert_eq!(floorplan.regions.len(), 3, "A_0, B_0, and the FIFO");
+                for controller in [
+                    tapa_ir::global_controller_instance_name().to_string(),
+                    tapa_ir::local_controller_instance_name("A_0"),
+                    tapa_ir::local_controller_instance_name("B_0"),
+                ] {
+                    assert!(
+                        floorplan.regions.contains_key(&controller),
+                        "missing planned controller {controller}",
+                    );
+                }
+                assert_eq!(
+                    floorplan.regions.len(),
+                    6,
+                    "A_0, B_0, the FIFO, and three controller instances",
+                );
             }
             Err(CliError::Floorplan(msg)) if msg.contains("cbc") || msg.contains("solver") => {
                 eprintln!("skipping floorplan_step: cbc not available ({msg})");
@@ -947,6 +967,50 @@ mod tests {
         let mut module = tapa_rtl::mutation::MutableModule::from_parsed(parsed);
         tapa_codegen::m_axi::add_m_axi_ports_with_id_width(&mut module, "data", 32, 64, 1);
         write_hls_module(work_dir, "Reader", &module.emit());
+    }
+
+    fn assert_pipelined_floorplan_outputs(work_dir: &std::path::Path) {
+        let top_v = fs_err::read_to_string(work_dir.join("rtl").join("VecAdd.v")).expect("top rtl");
+        assert!(top_v.contains("tapa_hs_pipeline"), "got:\n{top_v}");
+        assert!(
+            top_v.contains("__tapa_global_controller")
+                && top_v.contains("__tapa_local_controller_A_0")
+                && top_v.contains("__tapa_local_controller_B_0"),
+            "distributed controller hierarchy missing:\n{top_v}",
+        );
+        assert!(
+            top_v.contains("__tapa_control_A_0_launch")
+                || top_v.contains("__tapa_control_B_0_launch"),
+            "cross-slot Launch pipeline missing:\n{top_v}",
+        );
+        assert!(work_dir.join("rtl").join("tapa_control.v").is_file());
+
+        let xdc = fs_err::read_to_string(work_dir.join(FLOORPLAN_XDC)).expect("xdc");
+        for hierarchy in [
+            "TAPA_HS_HEAD",
+            "TAPA_HS_BODY",
+            "TAPA_HS_TAIL",
+            "__tapa_global_controller",
+            "__tapa_local_controller_A_0",
+            "__tapa_local_controller_B_0",
+        ] {
+            assert!(xdc.contains(hierarchy), "missing {hierarchy}:\n{xdc}");
+        }
+
+        let floorplan = work_io::load(work_dir)
+            .expect("reload floorplan")
+            .floorplan
+            .expect("stored floorplan");
+        assert!(floorplan
+            .regions
+            .contains_key(tapa_ir::global_controller_instance_name()));
+        assert!(
+            floorplan
+                .routes
+                .iter()
+                .any(|route| matches!(route.channel, tapa_ir::RoutedChannel::Control { .. })),
+            "the forced crossing must publish typed control routes",
+        );
     }
 
     #[test]
@@ -1013,27 +1077,7 @@ mod tests {
             dse_jobs: 1,
         };
         match run(&args, &ctx_at(dir.path())) {
-            Ok(()) => {
-                let top_v = fs_err::read_to_string(dir.path().join("rtl").join("VecAdd.v"))
-                    .expect("top rtl");
-                assert!(
-                    top_v.contains("tapa_hs_pipeline"),
-                    "the cross-slot stream must be regenerated as a Head/Body/Tail pipeline, got:\n{top_v}"
-                );
-                let xdc = fs_err::read_to_string(dir.path().join(FLOORPLAN_XDC)).expect("xdc");
-                assert!(
-                    xdc.contains("TAPA_HS_HEAD"),
-                    "Head constraint missing:\n{xdc}"
-                );
-                assert!(
-                    xdc.contains("TAPA_HS_BODY"),
-                    "Body constraint missing:\n{xdc}"
-                );
-                assert!(
-                    xdc.contains("TAPA_HS_TAIL"),
-                    "Tail constraint missing:\n{xdc}"
-                );
-            }
+            Ok(()) => assert_pipelined_floorplan_outputs(dir.path()),
             Err(CliError::Floorplan(msg)) if msg.contains("cbc") || msg.contains("solver") => {
                 eprintln!(
                     "skipping floorplan_step_regenerates_head_body_tail_rtl: cbc not available ({msg})"
