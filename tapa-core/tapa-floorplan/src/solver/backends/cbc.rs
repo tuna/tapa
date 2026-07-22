@@ -12,7 +12,7 @@ use std::process::Command;
 
 use crate::solver::lp_writer::write_cplex_lp;
 use crate::solver::model::{LpModel, LpVar};
-use crate::solver::solve::{LpSolution, LpStatus, SolveOpts, Solver, SolverError};
+use crate::solver::solve::{evaluate, LpSolution, LpStatus, SolveOpts, Solver, SolverError};
 
 /// Tuned CBC options for deterministic floorplanning solves.
 const TUNED_OPTIONS: &[&str] = &[
@@ -135,17 +135,27 @@ impl CbcSolver {
 /// strict incumbent validation, so malformed output still fails closed.
 fn validate_solution(mut solution: LpSolution, model: &LpModel) -> Result<LpSolution, SolverError> {
     let Err(reported_error) = solution.validate_for(model) else {
-        return Ok(solution);
+        return canonicalize_objective(solution, model);
     };
 
     if solution.is_found() {
         solution.objective += model.objective.constant;
         if solution.validate_for(model).is_ok() {
-            return Ok(solution);
+            return canonicalize_objective(solution, model);
         }
     }
 
     Err(reported_error)
+}
+
+fn canonicalize_objective(
+    mut solution: LpSolution,
+    model: &LpModel,
+) -> Result<LpSolution, SolverError> {
+    if solution.is_found() {
+        solution.objective = evaluate(&model.objective, &solution.values)?;
+    }
+    Ok(solution)
 }
 
 /// Parse a CBC `.sol` file: a status/objective header followed by row-activity
@@ -431,6 +441,17 @@ Optimal - objective value 12.00000000
             validate_solution(solution, &model),
             Err(SolverError::InvalidSolution(_))
         ));
+    }
+
+    #[test]
+    fn objective_is_canonicalized_when_constant_is_within_tolerance() {
+        let mut model = LpModel::new(Sense::Minimize);
+        let x = model.add_binary("x");
+        model.set_objective(LinExpr::sum([(2_000_000.0, x)]).plus_constant(1.0));
+        let solution = parse_sol("Optimal - objective value 2000000\n0 x0 1 0\n").expect("parse");
+
+        let solution = validate_solution(solution, &model).expect("valid incumbent");
+        assert!(approx(solution.objective, 2_000_001.0));
     }
 
     #[test]

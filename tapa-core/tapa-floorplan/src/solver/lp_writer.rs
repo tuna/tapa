@@ -77,7 +77,7 @@ pub fn write_cplex_lp(model: &LpModel) -> String {
     text
 }
 
-/// The objective's terms plus its constant offset (CBC honors the constant).
+/// The objective's terms plus its constant offset.
 fn write_objective(objective: &LinExpr) -> String {
     let mut out = write_terms(&objective.terms);
     if objective.constant > 0.0 {

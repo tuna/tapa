@@ -146,7 +146,7 @@ impl LpSolution {
     }
 }
 
-fn evaluate(
+pub(super) fn evaluate(
     expression: &crate::solver::model::LinExpr,
     values: &HashMap<LpVar, f64>,
 ) -> Result<f64, SolverError> {
