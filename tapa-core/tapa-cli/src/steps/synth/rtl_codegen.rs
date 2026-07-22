@@ -119,7 +119,8 @@ pub fn generate_rtl_tree(
 /// codegen (e.g. the floorplan step) that no longer has the live HLS results.
 ///
 /// Every HLS task — the top and every leaf, since synth runs HLS for all
-/// non-`Ignore` tasks — has its Verilog under `<work_dir>/hls/<task>/verilog`.
+/// non-`Ignore` tasks — has its Verilog and generator sidecars under
+/// `<work_dir>/hls/<task>/verilog`.
 pub fn collect_hdl_inputs(work_dir: &Path, design: &Design) -> Result<TaskHdlInputs> {
     let mut inputs = TaskHdlInputs::new();
     for (task_name, task) in &design.tasks {
@@ -127,7 +128,7 @@ pub fn collect_hdl_inputs(work_dir: &Path, design: &Design) -> Result<TaskHdlInp
             continue;
         }
         let layout = super::hls_run::TaskHlsLayout::new(work_dir, task_name);
-        let files = super::hls_run::list_verilog_files(&layout.hdl_dir)?;
+        let files = super::hls_run::list_hdl_files(&layout.hdl_dir)?;
         if pick_top_verilog(&files, task_name).is_none() {
             return Err(CliError::MissingState {
                 name: format!("HLS top module `{task_name}.v` (run `synth` again)"),
@@ -295,6 +296,35 @@ mod tests {
         assert!(written
             .iter()
             .any(|path| path.ends_with("tapa_hs_pipeline.v")));
+    }
+
+    #[test]
+    fn reconstructed_hdl_inputs_copy_generator_sidecars() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let work_dir = dir.path().join("work");
+        for task_name in ["Add", "VecAdd"] {
+            let hdl_dir = work_dir.join("hls").join(task_name).join("verilog");
+            fs::create_dir_all(&hdl_dir).expect("create HLS output directory");
+            write_stub_module(&hdl_dir, task_name);
+        }
+        let generator = work_dir.join("hls/Add/verilog/Add_sort_ip.tcl");
+        fs::write(&generator, "create_ip -module_name Add_sort_ip\n")
+            .expect("write generator sidecar");
+
+        let inputs = collect_hdl_inputs(&work_dir, &vadd_design()).expect("collect HLS outputs");
+        assert!(
+            inputs["Add"].iter().any(|path| path == &generator),
+            "reconstructed inputs must retain non-Verilog generator assets"
+        );
+
+        let candidate_dir = dir.path().join("candidate");
+        generate_rtl_tree(&candidate_dir, &vadd_design(), &inputs, None)
+            .expect("emit candidate RTL");
+        assert_eq!(
+            fs::read_to_string(candidate_dir.join("rtl/Add_sort_ip.tcl"))
+                .expect("read copied generator sidecar"),
+            "create_ip -module_name Add_sort_ip\n"
+        );
     }
 
     #[test]

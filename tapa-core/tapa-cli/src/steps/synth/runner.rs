@@ -63,7 +63,7 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
     let mut hdl_inputs: TaskHdlInputs = TaskHdlInputs::new();
     for (task_name, layout, out) in &hls_results {
         let mut files = out.verilog_files.clone();
-        files.extend(super::hls_run::list_verilog_files(&layout.hdl_dir)?);
+        files.extend(super::hls_run::list_hdl_files(&layout.hdl_dir)?);
         files.sort();
         files.dedup();
         hdl_inputs.insert(task_name.clone(), files);

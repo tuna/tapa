@@ -84,11 +84,13 @@ pub fn run_hls_for_leaves(
         }
 
         // Check freshness before creating `layout.hdl_dir`, and require
-        // at least one `.v` file so an empty directory is not a cache
-        // hit.
+        // at least one `.v` file so a directory containing only generator
+        // sidecars is not a cache hit.
         if options.skip_based_on_mtime && layout.hdl_dir.is_dir() {
-            let verilog_files = list_verilog_files(&layout.hdl_dir)?;
-            if hdl_files_are_newer_than(&verilog_files, &cpp_source) {
+            let hdl_files = list_hdl_files(&layout.hdl_dir)?;
+            if hdl_files.iter().any(|path| is_verilog(path))
+                && hdl_files_are_newer_than(&hdl_files, &cpp_source)
+            {
                 log::info!(
                     "skipping HLS for `{task_name}` (mtime cache hit at {})",
                     layout.hdl_dir.as_str(),
@@ -116,7 +118,7 @@ pub fn run_hls_for_leaves(
                     layout,
                     Work::Skip(HlsOutput {
                         csynth,
-                        verilog_files,
+                        verilog_files: hdl_files,
                         report_paths,
                         stdout: String::new(),
                         stderr: String::new(),
@@ -241,8 +243,8 @@ enum Work {
     RunFresh(HlsJob),
 }
 
-fn hdl_files_are_newer_than(verilog_files: &[Utf8PathBuf], cpp_source: &camino::Utf8Path) -> bool {
-    if verilog_files.is_empty() {
+fn hdl_files_are_newer_than(hdl_files: &[Utf8PathBuf], cpp_source: &camino::Utf8Path) -> bool {
+    if hdl_files.is_empty() {
         return false;
     }
     let Ok(cpp_meta) = fs::metadata(cpp_source) else {
@@ -251,14 +253,14 @@ fn hdl_files_are_newer_than(verilog_files: &[Utf8PathBuf], cpp_source: &camino::
     let Ok(cpp_t) = cpp_meta.modified() else {
         return false;
     };
-    verilog_files.iter().all(|hdl| {
+    hdl_files.iter().all(|hdl| {
         fs::metadata(hdl)
             .and_then(|metadata| metadata.modified())
             .is_ok_and(|hdl_t| hdl_t > cpp_t)
     })
 }
 
-pub fn list_verilog_files(dir: &camino::Utf8Path) -> Result<Vec<Utf8PathBuf>> {
+pub fn list_hdl_files(dir: &camino::Utf8Path) -> Result<Vec<Utf8PathBuf>> {
     let mut out = Vec::new();
     if !dir.is_dir() {
         return Ok(out);
@@ -270,14 +272,17 @@ pub fn list_verilog_files(dir: &camino::Utf8Path) -> Result<Vec<Utf8PathBuf>> {
                 dir.as_str()
             ))
         })?;
-        if ent.file_type().is_file() && ent.path().extension().and_then(|s| s.to_str()) == Some("v")
-        {
+        if ent.file_type().is_file() {
             let p = ent.path().to_path_buf();
             out.push(crate::util::utf8(p));
         }
     }
     out.sort();
     Ok(out)
+}
+
+fn is_verilog(path: &camino::Utf8Path) -> bool {
+    path.extension() == Some("v")
 }
 
 /// Reload and parse the task's top-level csynth report on an mtime-skip
@@ -557,7 +562,7 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(10));
         fs::write(hdl.join("Add.v"), b"module Add(); wire fresh; endmodule\n").unwrap();
 
-        let files = list_verilog_files(&crate::util::utf8(hdl)).unwrap();
+        let files = list_hdl_files(&crate::util::utf8(hdl)).unwrap();
         let cpp = crate::util::utf8(work.join("cpp").join("Add.cpp"));
         assert!(
             !hdl_files_are_newer_than(&files, &cpp),
