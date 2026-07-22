@@ -89,9 +89,7 @@ impl Solver for CbcSolver {
                 "CBC did not produce a readable solution file: {source}"
             ))
         })?;
-        let solution = parse_sol(&sol_text)?;
-        solution.validate_for(model)?;
-        Ok(solution)
+        validate_solution(parse_sol(&sol_text)?, model)
     }
 }
 
@@ -127,6 +125,27 @@ impl CbcSolver {
         cmd.arg("-solve").arg("-solution").arg(sol_path);
         cmd
     }
+}
+
+/// Validate CBC's incumbent and normalize its objective to the model value.
+///
+/// CBC releases disagree on whether the affine constant in an LP objective is
+/// included in the solution-file header.  Validate the reported value first,
+/// then try the convention that omits the constant.  Both paths use the same
+/// strict incumbent validation, so malformed output still fails closed.
+fn validate_solution(mut solution: LpSolution, model: &LpModel) -> Result<LpSolution, SolverError> {
+    let Err(reported_error) = solution.validate_for(model) else {
+        return Ok(solution);
+    };
+
+    if solution.is_found() {
+        solution.objective += model.objective.constant;
+        if solution.validate_for(model).is_ok() {
+            return Ok(solution);
+        }
+    }
+
+    Err(reported_error)
 }
 
 /// Parse a CBC `.sol` file: a status/objective header followed by row-activity
@@ -388,6 +407,33 @@ Optimal - objective value 12.00000000
     }
 
     #[test]
+    fn objective_header_accepts_affine_constant_conventions() {
+        let mut model = LpModel::new(Sense::Minimize);
+        let x = model.add_binary("x");
+        model.set_objective(LinExpr::sum([(2.0, x)]).plus_constant(1.0));
+
+        for reported in [2.0, 3.0] {
+            let solution = parse_sol(&format!("Optimal - objective value {reported}\n0 x0 1 0\n"))
+                .expect("parse");
+            let solution = validate_solution(solution, &model).expect("valid objective convention");
+            assert!(approx(solution.objective, 3.0));
+        }
+    }
+
+    #[test]
+    fn objective_header_rejects_an_unrelated_value() {
+        let mut model = LpModel::new(Sense::Minimize);
+        let x = model.add_binary("x");
+        model.set_objective(LinExpr::sum([(2.0, x)]).plus_constant(1.0));
+        let solution = parse_sol("Optimal - objective value 4\n0 x0 1 0\n").expect("parse");
+
+        assert!(matches!(
+            validate_solution(solution, &model),
+            Err(SolverError::InvalidSolution(_))
+        ));
+    }
+
+    #[test]
     fn cbc_solves_a_known_milp() {
         // maximize 3 x0 + 2 x1  s.t.  x0 + x1 <= 4,  x0 + 3 x1 <= 6
         // optimum: x0 = 4, x1 = 0, objective 12.
@@ -425,6 +471,27 @@ Optimal - objective value 12.00000000
             }
             Err(SolverError::Spawn { .. }) => {
                 eprintln!("skipping cbc_solves_a_known_milp: `cbc` not found on PATH");
+            }
+            Err(other) => panic!("cbc failed unexpectedly: {other}"),
+        }
+    }
+
+    #[test]
+    fn cbc_returns_the_full_affine_objective() {
+        let mut model = LpModel::new(Sense::Minimize);
+        let x = model.add_binary("x");
+        model.set_objective(LinExpr::sum([(2.0, x)]).plus_constant(1.0));
+        model.add_constraint("pick", LinExpr::sum([(1.0, x)]), Comparison::Eq, 1.0);
+
+        match CbcSolver::new().solve(&model, &SolveOpts::default()) {
+            Ok(solution) => {
+                assert_eq!(solution.status, LpStatus::Optimal);
+                assert!(approx(solution.objective, 3.0));
+            }
+            Err(SolverError::Spawn { .. }) => {
+                eprintln!(
+                    "skipping cbc_returns_the_full_affine_objective: `cbc` not found on PATH"
+                );
             }
             Err(other) => panic!("cbc failed unexpectedly: {other}"),
         }
