@@ -12,7 +12,12 @@ module control_harness (
   input  wire       child_done,
   input  wire       child_ready,
   input  wire [7:0] probe_in,
+  input  wire       poison_write,
+  input  wire [7:0] poison_data,
   output wire [7:0] probe_out,
+  output wire       poison_ready,
+  output wire       poison_valid,
+  output wire [7:0] poison_out,
   output wire       ap_done,
   output wire       ap_ready,
   output wire       ap_idle,
@@ -28,7 +33,6 @@ module control_harness (
   wire [1:0] launch_input;
   wire [1:0] launch_output;
   wire autorun_completion;
-
   assign launch_input = {global_release, global_start};
 
   tapa_global_controller #(
@@ -110,6 +114,23 @@ module control_harness (
     .in_data(probe_in),
     .out_data(probe_out)
   );
+
+  tapa_hs_pipeline #(
+    .DATA_WIDTH(8),
+    .DEPTH(2),
+    .BODY_LEVEL(1)
+  ) poison_pipeline (
+    .clk(ap_clk),
+    .reset(~fabric_reset_n),
+    .if_full_n(poison_ready),
+    .if_write_ce(1'b1),
+    .if_write(poison_write),
+    .if_din(poison_data),
+    .if_empty_n(poison_valid),
+    .if_read_ce(1'b1),
+    .if_read(1'b0),
+    .if_dout(poison_out)
+  );
 endmodule
 `default_nettype wire
 ";
@@ -147,6 +168,8 @@ int main(int argc, char** argv) {
     dut->child_done = 0;
     dut->child_ready = 0;
     dut->probe_in = 0;
+    dut->poison_write = 0;
+    dut->poison_data = 0xde;
     dut->eval();
 
     if (dut->probe_out != 0 || dut->local_reset_n != 0 ||
@@ -195,6 +218,14 @@ int main(int argc, char** argv) {
     dut->child_done = 0;
     if (wait_for("stale completion", &dut->global_completion, 32) < 0) return 7;
 
+    // The child keeps writing until its routed reset arrives. The parent-side
+    // fabric reset must remain asserted long enough to drain that traffic from
+    // the resetless Head and Body into the resettable Tail.
+    if (!dut->poison_ready || dut->poison_valid) {
+        std::printf("FAIL: poison data path was not empty and writable before reset\n");
+        return 29;
+    }
+    dut->poison_write = 1;
     dut->ap_rst_n = 0;
     posedge();
     dut->ap_rst_n = 1;
@@ -204,6 +235,17 @@ int main(int argc, char** argv) {
         std::printf("FAIL: parent fabric left reset before the flush guard\n");
         return 8;
     }
+
+    int local_reset_cycles = 0;
+    while (dut->local_reset_n && local_reset_cycles < 16) {
+        ++local_reset_cycles;
+        posedge();
+    }
+    if (dut->local_reset_n) {
+        std::printf("FAIL: routed reset did not reach the writing child\n");
+        return 30;
+    }
+    dut->poison_write = 0;
 
     int autorun_clear_cycles = 0;
     while (dut->autorun_start && autorun_clear_cycles < 16) {
@@ -232,6 +274,14 @@ int main(int argc, char** argv) {
     if (!dut->fabric_reset_n || !dut->autorun_start) {
         std::printf("FAIL: autorun did not relatch after routed reset\n");
         return 12;
+    }
+    for (int i = 0; i < 8; ++i) {
+        if (dut->poison_valid) {
+            std::printf("FAIL: reset guard released with poison 0x%02x in the data path\n",
+                        (unsigned)dut->poison_out);
+            return 31;
+        }
+        posedge();
     }
 
     // Ready may precede done. The local controller must enter WAITING, drop
@@ -370,9 +420,11 @@ fn distributed_control_survives_reset_and_consecutive_launches() {
 
     let dir = tempfile::tempdir().expect("tempdir");
     let root = dir.path();
-    let asset = tapa_codegen::support_assets::VerilogAssets::get("tapa_control.v")
-        .expect("embedded control RTL");
-    std::fs::write(root.join("tapa_control.v"), &asset.data).expect("write control RTL");
+    for name in ["relay_station.v", "tapa_hs_pipeline.v", "tapa_control.v"] {
+        let asset = tapa_codegen::support_assets::VerilogAssets::get(name)
+            .unwrap_or_else(|| panic!("{name} is embedded RTL"));
+        std::fs::write(root.join(name), &asset.data).expect("write embedded RTL");
+    }
     std::fs::write(root.join("harness.v"), HARNESS).expect("write harness");
     std::fs::write(root.join("tb.cpp"), TESTBENCH).expect("write testbench");
 
@@ -386,11 +438,15 @@ fn distributed_control_survives_reset_and_consecutive_launches() {
             "control_harness",
             "-Wno-WIDTH",
             "-Wno-UNUSEDSIGNAL",
+            "-Wno-UNOPTFLAT",
+            "-Wno-CASEINCOMPLETE",
             "-Wno-fatal",
             "--Mdir",
             "obj_dir",
             "-o",
             "sim",
+            "relay_station.v",
+            "tapa_hs_pipeline.v",
             "tapa_control.v",
             "harness.v",
             "tb.cpp",

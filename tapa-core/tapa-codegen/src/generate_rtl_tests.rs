@@ -1171,7 +1171,7 @@ fn test_generate_rtl_control_launch_packs_direct_mmap_offset() {
         PipelineRoute, PipelineScheme, RoutedChannel,
     };
 
-    let mut state = direct_axi_state(Some(Vec::new()));
+    let mut state = direct_axi_state(Some(direct_axi_routes()));
     let floorplan = state.floorplan.as_mut().unwrap();
     floorplan.regions.extend([
         (
@@ -1211,6 +1211,10 @@ fn test_generate_rtl_control_launch_packs_direct_mmap_offset() {
         top.contains("assign __tapa_control_reader_0__launch_input = {mem_offset, __tapa_control_release, __tapa_control_start}")
             && top.contains("assign reader_0__data_offset = __tapa_control_reader_0__launch_output[65:2]"),
         "direct mmap offset must remain 64-bit and travel in Launch:\n{top}"
+    );
+    assert!(
+        top.contains(".FLUSH_CYCLES(8)"),
+        "the control guard must cover the longest routed data pipeline:\n{top}"
     );
 }
 
