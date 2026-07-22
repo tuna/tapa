@@ -202,9 +202,12 @@ mod tests {
         assert_eq!(names, ["y=0", "y=1", "x=0"], "u280 grid is 2x3");
 
         let row = cuts.iter().find(|c| c.name == "y=0").unwrap();
-        assert_eq!(row.capacity, 16128);
+        assert_eq!(row.capacity, 11758);
         assert_eq!(row.lhs.len(), 2, "row 0");
         assert_eq!(row.rhs.len(), 4, "rows 1 and 2");
+
+        let row = cuts.iter().find(|c| c.name == "y=1").unwrap();
+        assert_eq!(row.capacity, 13141);
 
         let col = cuts.iter().find(|c| c.name == "x=0").unwrap();
         assert_eq!(col.capacity, 84672);
@@ -225,7 +228,8 @@ mod tests {
             cuts.iter().map(|cut| cut.name.as_str()).collect::<Vec<_>>(),
             ["y=0", "y=1"]
         );
-        assert_eq!(cuts[0].capacity, 16128);
+        assert_eq!(cuts[0].capacity, 11758);
+        assert_eq!(cuts[1].capacity, 13141);
     }
 
     #[test]

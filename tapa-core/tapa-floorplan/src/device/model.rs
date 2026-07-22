@@ -280,8 +280,9 @@ pub struct Slot {
     pub centroid_x: i64,
     /// Centroid ordinate.
     pub centroid_y: i64,
-    /// Vivado pblock ranges (bare, e.g. `CLOCKREGION_X0Y0:CLOCKREGION_X3Y3`);
-    /// XDC emission wraps them into `resize_pblock -add {…}`.
+    /// Vivado pblock range operations. A bare range is an implicit `-add` for
+    /// compatibility with simple device tables; shell-shaped slots may use
+    /// explicit `-add` and `-remove` clauses.
     #[serde(default)]
     pub pblock_ranges: Vec<String>,
     /// Wire-crossing budget on each boundary.
@@ -330,7 +331,58 @@ pub struct Device {
     pub slots: Vec<Slot>,
 }
 
+/// A semantic error in a parsed device table.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum DeviceValidationError {
+    /// An implementation pblock needs at least one physical range.
+    #[error("slot ({x},{y}) has no pblock ranges")]
+    MissingPblockRanges { x: u32, y: u32 },
+    /// A range operation cannot be passed safely and unambiguously to Vivado.
+    #[error("slot ({x},{y}) has invalid pblock range `{range}`")]
+    InvalidPblockRange { x: u32, y: u32, range: String },
+    /// The platform parent name is interpolated into generated Tcl.
+    #[error("invalid user pblock name `{0}`")]
+    InvalidUserPblockName(String),
+}
+
 impl Device {
+    /// Validate the table values interpolated into implementation Tcl.
+    pub fn validate(&self) -> Result<(), DeviceValidationError> {
+        for slot in &self.slots {
+            if slot.pblock_ranges.is_empty() {
+                return Err(DeviceValidationError::MissingPblockRanges {
+                    x: slot.x,
+                    y: slot.y,
+                });
+            }
+            for range in &slot.pblock_ranges {
+                if !valid_pblock_range(range) {
+                    return Err(DeviceValidationError::InvalidPblockRange {
+                        x: slot.x,
+                        y: slot.y,
+                        range: range.clone(),
+                    });
+                }
+            }
+        }
+
+        if let Some(name) = &self.user_pblock_name {
+            let mut characters = name.chars();
+            let valid_first = characters
+                .next()
+                .is_some_and(|character| character.is_ascii_alphabetic() || character == '_');
+            if !valid_first
+                || name.starts_with("__")
+                || !characters
+                    .all(|character| character.is_ascii_alphanumeric() || character == '_')
+            {
+                return Err(DeviceValidationError::InvalidUserPblockName(name.clone()));
+            }
+        }
+
+        Ok(())
+    }
+
     /// The slot at grid `(x, y)`, if it exists.
     #[must_use]
     pub fn slot(&self, x: u32, y: u32) -> Option<&Slot> {
@@ -368,6 +420,49 @@ impl Device {
         }
         Some(total)
     }
+}
+
+fn valid_pblock_range(range: &str) -> bool {
+    if range.trim() != range
+        || range.is_empty()
+        || range
+            .chars()
+            .any(|character| character.is_control() || matches!(character, ';' | '$' | '[' | ']'))
+    {
+        return false;
+    }
+
+    let payload = if let Some(payload) = range.strip_prefix("-add ") {
+        payload
+    } else if let Some(payload) = range.strip_prefix("-remove ") {
+        payload
+    } else if range.starts_with('-') {
+        return false;
+    } else {
+        range
+    };
+    if payload.is_empty() {
+        return false;
+    }
+
+    let payload = if let Some(payload) = payload.strip_prefix('{') {
+        let Some(payload) = payload.strip_suffix('}') else {
+            return false;
+        };
+        payload
+    } else if payload.ends_with('}') {
+        return false;
+    } else {
+        payload
+    };
+    !payload.is_empty()
+        && payload.split_ascii_whitespace().all(|item| {
+            item.contains("_X")
+                && item.contains('Y')
+                && item.chars().all(|character| {
+                    character.is_ascii_alphanumeric() || matches!(character, '_' | ':')
+                })
+        })
 }
 
 /// Component-wise sum of two [`Area`]s. A free function because `Area` is
@@ -409,7 +504,7 @@ mod tests {
             },
             centroid_x: UNIT_DIST_X * i64::from(x),
             centroid_y: UNIT_DIST_Y * i64::from(y),
-            pblock_ranges: Vec::new(),
+            pblock_ranges: vec!["CLOCKREGION_X0Y0:CLOCKREGION_X0Y0".to_string()],
             wire_cap: DirCaps::default(),
             anchor: DirRegions::default(),
             tags: Vec::new(),
@@ -518,6 +613,37 @@ mod tests {
         assert_eq!(
             partial.south, WIRE_CAPACITY_INF,
             "omitted caps are infinite"
+        );
+    }
+
+    #[test]
+    fn device_validation_accepts_explicit_range_operations() {
+        let mut device = grid_2x2();
+        device.user_pblock_name = Some("pblock_dynamic_region".to_string());
+        device.slots[0].pblock_ranges = vec![
+            "-add {CLOCKREGION_X0Y0:CLOCKREGION_X3Y3}".to_string(),
+            "-remove CLOCKREGION_X2Y0:CLOCKREGION_X3Y3".to_string(),
+        ];
+        device.validate().expect("valid device table");
+    }
+
+    #[test]
+    fn device_validation_rejects_unsafe_range_and_parent_tokens() {
+        let mut device = grid_2x2();
+        device.slots[0].pblock_ranges =
+            vec!["-add CLOCKREGION_X0Y0:CLOCKREGION_X3Y3; puts bad".to_string()];
+        assert!(matches!(
+            device.validate(),
+            Err(DeviceValidationError::InvalidPblockRange { x: 0, y: 0, .. })
+        ));
+
+        let mut device = grid_2x2();
+        device.user_pblock_name = Some("bad parent".to_string());
+        assert_eq!(
+            device.validate(),
+            Err(DeviceValidationError::InvalidUserPblockName(
+                "bad parent".to_string()
+            ))
         );
     }
 }

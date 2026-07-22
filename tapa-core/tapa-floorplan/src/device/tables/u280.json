@@ -17,7 +17,14 @@
             "centroid_x": 0,
             "centroid_y": 0,
             "pblock_ranges": [
-                "CLOCKREGION_X0Y0:CLOCKREGION_X3Y3"
+                "-add {SLICE_X206Y0:SLICE_X232Y59 SLICE_X176Y60:SLICE_X196Y239 SLICE_X117Y180:SLICE_X145Y239}",
+                "-add {DSP48E2_X25Y18:DSP48E2_X28Y89 DSP48E2_X16Y66:DSP48E2_X19Y89 DSP48E2_X30Y0:DSP48E2_X31Y17}",
+                "-add {LAGUNA_X24Y0:LAGUNA_X27Y119 LAGUNA_X16Y0:LAGUNA_X19Y119}",
+                "-add {RAMB18_X11Y24:RAMB18_X11Y95 RAMB18_X8Y72:RAMB18_X9Y95 RAMB18_X12Y0:RAMB18_X13Y23}",
+                "-add {RAMB36_X11Y12:RAMB36_X11Y47 RAMB36_X8Y36:RAMB36_X9Y47 RAMB36_X12Y0:RAMB36_X13Y11}",
+                "-add {URAM288_X4Y16:URAM288_X4Y63 URAM288_X2Y48:URAM288_X2Y63}",
+                "-add {CLOCKREGION_X5Y3:CLOCKREGION_X5Y3 CLOCKREGION_X0Y3:CLOCKREGION_X3Y3 CLOCKREGION_X0Y1:CLOCKREGION_X5Y2 CLOCKREGION_X0Y0:CLOCKREGION_X6Y0}",
+                "-remove CLOCKREGION_X4Y0:CLOCKREGION_X7Y3"
             ],
             "tags": [
                 "HBM",
@@ -56,7 +63,14 @@
             "centroid_x": 0,
             "centroid_y": 150,
             "pblock_ranges": [
-                "CLOCKREGION_X0Y4:CLOCKREGION_X3Y7"
+                "-add {SLICE_X176Y240:SLICE_X196Y479}",
+                "-add {DSP48E2_X25Y90:DSP48E2_X28Y185}",
+                "-add {LAGUNA_X24Y120:LAGUNA_X27Y359}",
+                "-add {RAMB18_X11Y96:RAMB18_X11Y191}",
+                "-add {RAMB36_X11Y48:RAMB36_X11Y95}",
+                "-add {URAM288_X4Y64:URAM288_X4Y127}",
+                "-add {CLOCKREGION_X0Y4:CLOCKREGION_X5Y7}",
+                "-remove CLOCKREGION_X4Y4:CLOCKREGION_X7Y7"
             ],
             "wire_cap": {
                 "east": 40320,
@@ -77,7 +91,15 @@
             "centroid_x": 0,
             "centroid_y": 300,
             "pblock_ranges": [
-                "CLOCKREGION_X0Y8:CLOCKREGION_X3Y11"
+                "-add {SLICE_X117Y660:SLICE_X145Y719 SLICE_X176Y480:SLICE_X196Y659 SLICE_X220Y540:SLICE_X221Y599}",
+                "-add {DSP48E2_X16Y258:DSP48E2_X19Y281 DSP48E2_X25Y186:DSP48E2_X28Y257}",
+                "-add {LAGUNA_X16Y480:LAGUNA_X19Y599 LAGUNA_X24Y360:LAGUNA_X27Y479}",
+                "-add {RAMB18_X8Y264:RAMB18_X9Y287 RAMB18_X11Y192:RAMB18_X11Y263}",
+                "-add {RAMB36_X8Y132:RAMB36_X9Y143 RAMB36_X11Y96:RAMB36_X11Y131}",
+                "-add {URAM288_X2Y176:URAM288_X2Y191 URAM288_X4Y128:URAM288_X4Y175}",
+                "-add {CLOCKREGION_X5Y11:CLOCKREGION_X7Y11 CLOCKREGION_X0Y11:CLOCKREGION_X3Y11 CLOCKREGION_X0Y8:CLOCKREGION_X5Y10}",
+                "-add {CONFIG_SITE_X0Y2:CONFIG_SITE_X0Y2}",
+                "-remove CLOCKREGION_X4Y8:CLOCKREGION_X7Y11"
             ],
             "wire_cap": {
                 "east": 40320,
@@ -88,16 +110,23 @@
         },
         {
             "area": {
-                "bram_18k": 576,
-                "dsp": 1440,
-                "ff": 437760,
-                "lut": 218880,
+                "bram_18k": 432,
+                "dsp": 1224,
+                "ff": 328320,
+                "lut": 164160,
                 "uram": 192
             },
             "centroid_x": 100,
             "centroid_y": 0,
             "pblock_ranges": [
-                "CLOCKREGION_X4Y0:CLOCKREGION_X7Y3"
+                "-add {SLICE_X206Y0:SLICE_X232Y59 SLICE_X176Y60:SLICE_X196Y239 SLICE_X117Y180:SLICE_X145Y239}",
+                "-add {DSP48E2_X25Y18:DSP48E2_X28Y89 DSP48E2_X16Y66:DSP48E2_X19Y89 DSP48E2_X30Y0:DSP48E2_X31Y17}",
+                "-add {LAGUNA_X24Y0:LAGUNA_X27Y119 LAGUNA_X16Y0:LAGUNA_X19Y119}",
+                "-add {RAMB18_X11Y24:RAMB18_X11Y95 RAMB18_X8Y72:RAMB18_X9Y95 RAMB18_X12Y0:RAMB18_X13Y23}",
+                "-add {RAMB36_X11Y12:RAMB36_X11Y47 RAMB36_X8Y36:RAMB36_X9Y47 RAMB36_X12Y0:RAMB36_X13Y11}",
+                "-add {URAM288_X4Y16:URAM288_X4Y63 URAM288_X2Y48:URAM288_X2Y63}",
+                "-add {CLOCKREGION_X5Y3:CLOCKREGION_X5Y3 CLOCKREGION_X0Y3:CLOCKREGION_X3Y3 CLOCKREGION_X0Y1:CLOCKREGION_X5Y2 CLOCKREGION_X0Y0:CLOCKREGION_X6Y0}",
+                "-remove CLOCKREGION_X0Y0:CLOCKREGION_X3Y3"
             ],
             "tags": [
                 "HBM",
@@ -121,7 +150,7 @@
                 "DDR[0]"
             ],
             "wire_cap": {
-                "north": 11520,
+                "north": 5277,
                 "west": 40320
             },
             "x": 1,
@@ -129,24 +158,31 @@
         },
         {
             "area": {
-                "bram_18k": 576,
-                "dsp": 1536,
-                "ff": 437760,
-                "lut": 218880,
+                "bram_18k": 384,
+                "dsp": 1248,
+                "ff": 284160,
+                "lut": 142080,
                 "uram": 192
             },
             "centroid_x": 100,
             "centroid_y": 150,
             "pblock_ranges": [
-                "CLOCKREGION_X4Y4:CLOCKREGION_X7Y7"
+                "-add {SLICE_X176Y240:SLICE_X196Y479}",
+                "-add {DSP48E2_X25Y90:DSP48E2_X28Y185}",
+                "-add {LAGUNA_X24Y120:LAGUNA_X27Y359}",
+                "-add {RAMB18_X11Y96:RAMB18_X11Y191}",
+                "-add {RAMB36_X11Y48:RAMB36_X11Y95}",
+                "-add {URAM288_X4Y64:URAM288_X4Y127}",
+                "-add {CLOCKREGION_X0Y4:CLOCKREGION_X5Y7}",
+                "-remove CLOCKREGION_X0Y4:CLOCKREGION_X3Y7"
             ],
             "tags": [
                 "S_AXI_CONTROL",
                 "DDR[1]"
             ],
             "wire_cap": {
-                "north": 11520,
-                "south": 11520,
+                "north": 7253,
+                "south": 5277,
                 "west": 40320
             },
             "x": 1,
@@ -154,23 +190,32 @@
         },
         {
             "area": {
-                "bram_18k": 576,
-                "dsp": 1536,
-                "ff": 437760,
-                "lut": 218880,
+                "bram_18k": 432,
+                "dsp": 1320,
+                "ff": 323520,
+                "lut": 161760,
                 "uram": 192
             },
             "centroid_x": 100,
             "centroid_y": 300,
             "pblock_ranges": [
-                "CLOCKREGION_X4Y8:CLOCKREGION_X7Y11"
+                "-add {SLICE_X117Y660:SLICE_X145Y719 SLICE_X176Y480:SLICE_X196Y659 SLICE_X220Y540:SLICE_X221Y599}",
+                "-add {DSP48E2_X16Y258:DSP48E2_X19Y281 DSP48E2_X25Y186:DSP48E2_X28Y257}",
+                "-add {LAGUNA_X16Y480:LAGUNA_X19Y599 LAGUNA_X24Y360:LAGUNA_X27Y479}",
+                "-add {RAMB18_X8Y264:RAMB18_X9Y287 RAMB18_X11Y192:RAMB18_X11Y263}",
+                "-add {RAMB36_X8Y132:RAMB36_X9Y143 RAMB36_X11Y96:RAMB36_X11Y131}",
+                "-add {URAM288_X2Y176:URAM288_X2Y191 URAM288_X4Y128:URAM288_X4Y175}",
+                "-add {CLOCKREGION_X5Y11:CLOCKREGION_X7Y11 CLOCKREGION_X0Y11:CLOCKREGION_X3Y11 CLOCKREGION_X0Y8:CLOCKREGION_X5Y10}",
+                "-add {CONFIG_SITE_X0Y2:CONFIG_SITE_X0Y2}",
+                "-remove CLOCKREGION_X0Y8:CLOCKREGION_X3Y11"
             ],
             "wire_cap": {
-                "south": 11520,
+                "south": 7253,
                 "west": 40320
             },
             "x": 1,
             "y": 2
         }
-    ]
+    ],
+    "user_pblock_name": "pblock_dynamic_region"
 }

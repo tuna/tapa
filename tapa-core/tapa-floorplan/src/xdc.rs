@@ -97,26 +97,7 @@ pub fn emit_xdc(result: &FloorplanResult, device: &Device) -> String {
 
     let mut lines: Vec<String> = Vec::new();
     for (region, matches) in &by_region {
-        let ranges = region_pblock_ranges(device, region);
-        lines.push(format!("create_pblock {region}"));
-        lines.push(format!(
-            "resize_pblock {region} -add {{{}}}",
-            ranges.join(" ")
-        ));
-        for cell_match in matches {
-            // `-quiet` suppresses Vivado's version-specific empty-query
-            // diagnostic; the explicit check below is the stable DRC.
-            lines.push(format!(
-                "set cells [get_cells -quiet -hierarchical -regexp -filter {{NAME =~ \"{}\"}}]",
-                cell_match.pattern
-            ));
-            lines.push(format!(
-                "if {{![llength $cells]}} {{ error \"TAPA floorplan ERROR: expected cell `{}` was \
-                 not found\" }}",
-                tcl_double_quote_escape(&cell_match.description),
-            ));
-            lines.push(format!("add_cells_to_pblock {region} $cells"));
-        }
+        add_region_pblock(&mut lines, region, matches, device);
     }
 
     let mut text = lines.join("\n");
@@ -127,6 +108,45 @@ pub fn emit_xdc(result: &FloorplanResult, device: &Device) -> String {
 struct CellMatch {
     pattern: String,
     description: String,
+}
+
+fn add_region_pblock(
+    lines: &mut Vec<String>,
+    region: &str,
+    matches: &[CellMatch],
+    device: &Device,
+) {
+    let slot_ranges = region_slot_pblock_ranges(device, region);
+    lines.push(format!("create_pblock {region}"));
+    lines.extend([
+        format!("set_property EXCLUDE_PLACEMENT 0 [get_pblocks {region}]"),
+        format!("set_property CONTAIN_ROUTING 0 [get_pblocks {region}]"),
+        // IS_SOFT must follow EXCLUDE_PLACEMENT, which can reset it.
+        format!("set_property IS_SOFT 1 [get_pblocks {region}]"),
+    ]);
+    if let Some(parent) = &device.user_pblock_name {
+        lines.push(format!(
+            "set_property PARENT {parent} [get_pblocks {region}]"
+        ));
+    }
+    add_slot_ranges(lines, region, &slot_ranges);
+    for cell_match in matches {
+        // `-quiet` suppresses Vivado's version-specific empty-query
+        // diagnostic; the explicit check below is the stable DRC.
+        lines.push(format!(
+            "set cells [get_cells -quiet -hierarchical -regexp -filter {{NAME =~ \"{}\"}}]",
+            cell_match.pattern
+        ));
+        lines.push(format!(
+            "if {{![llength $cells]}} {{ error \"TAPA floorplan ERROR: expected cell `{}` was not \
+             found\" }}",
+            tcl_double_quote_escape(&cell_match.description),
+        ));
+        lines.push(format!("add_cells_to_pblock {region} $cells"));
+    }
+    if let Some(parent) = &device.user_pblock_name {
+        add_parent_clip(lines, region, parent);
+    }
 }
 
 /// Escape text embedded in a Tcl double-quoted diagnostic without changing
@@ -213,18 +233,88 @@ fn regex_escape(s: &str) -> String {
     out
 }
 
-/// The union of pblock ranges of every atomic slot a region covers.
-fn region_pblock_ranges(device: &Device, region: &str) -> Vec<String> {
+/// The pblock operations for every atomic slot a region covers.
+fn region_slot_pblock_ranges<'a>(device: &'a Device, region: &str) -> Vec<&'a [String]> {
     let Some(coor) = parse_region_or_slot(region) else {
         return Vec::new();
     };
     let mut ranges = Vec::new();
     for (x, y) in coor.all_slot_coors() {
         if let Some(slot) = device.slot(x, y) {
-            ranges.extend(slot.pblock_ranges.iter().cloned());
+            ranges.push(slot.pblock_ranges.as_slice());
         }
     }
     ranges
+}
+
+fn add_slot_ranges(lines: &mut Vec<String>, region: &str, slots: &[&[String]]) {
+    if let [ranges] = slots {
+        add_resize_operations(lines, region, ranges);
+        return;
+    }
+    if slots
+        .iter()
+        .all(|ranges| ranges.iter().all(|range| !range.starts_with("-remove ")))
+    {
+        for ranges in slots {
+            add_resize_operations(lines, region, ranges);
+        }
+        return;
+    }
+
+    // Build each atomic slot independently before unioning its derived ranges.
+    // This keeps a slot's `-remove` clauses from subtracting a neighboring slot.
+    for (index, ranges) in slots.iter().enumerate() {
+        let temporary = format!("TAPA_SLOT_UNION_{region}_{index}");
+        lines.push(format!("create_pblock {temporary}"));
+        add_resize_operations(lines, &temporary, ranges);
+        lines.push(format!(
+            "set slot_ranges [get_property DERIVED_RANGES [get_pblocks {temporary}]]"
+        ));
+        lines.push("if {$slot_ranges ne \"\"} {".to_string());
+        lines.push(format!("  resize_pblock {region} -add $slot_ranges"));
+        lines.push('}'.to_string());
+        lines.push(format!("delete_pblock -quiet {temporary}"));
+    }
+}
+
+fn add_resize_operations(lines: &mut Vec<String>, pblock: &str, ranges: &[String]) {
+    for range in ranges {
+        if range.starts_with("-add ") || range.starts_with("-remove ") {
+            lines.push(format!("resize_pblock {pblock} {range}"));
+        } else if range.starts_with('{') {
+            lines.push(format!("resize_pblock {pblock} -add {range}"));
+        } else {
+            lines.push(format!("resize_pblock {pblock} -add {{{range}}}"));
+        }
+    }
+}
+
+/// Remove every derived range of `region` that falls outside `parent`.
+fn add_parent_clip(lines: &mut Vec<String>, region: &str, parent: &str) {
+    let temporary = format!("TAPA_PARENT_CLIP_{region}");
+    lines.push(format!("create_pblock {temporary}"));
+    lines.push(format!(
+        "set derived_ranges [get_property DERIVED_RANGES [get_pblocks {region}]]"
+    ));
+    lines.push("if {$derived_ranges ne \"\"} {".to_string());
+    lines.push(format!("  resize_pblock {temporary} -add $derived_ranges"));
+    lines.push('}'.to_string());
+    lines.push(format!(
+        "set derived_ranges [get_property DERIVED_RANGES [get_pblocks {parent}]]"
+    ));
+    lines.push("if {$derived_ranges ne \"\"} {".to_string());
+    lines.push(format!(
+        "  resize_pblock {temporary} -remove $derived_ranges"
+    ));
+    lines.push('}'.to_string());
+    lines.push(format!(
+        "set derived_ranges [get_property DERIVED_RANGES [get_pblocks {temporary}]]"
+    ));
+    lines.push("if {$derived_ranges ne \"\"} {".to_string());
+    lines.push(format!("  resize_pblock {region} -remove $derived_ranges"));
+    lines.push('}'.to_string());
+    lines.push(format!("delete_pblock -quiet {temporary}"));
 }
 
 /// Pipeline routes use compact `SLOT_XxYy` tags while placement uses rectangle
@@ -261,8 +351,8 @@ mod tests {
     )]
     fn golden_xdc_for_a_colocated_design() {
         let result = FloorplanResult {
-            device: "u280".to_string(),
-            grid: (2, 3),
+            device: "u250".to_string(),
+            grid: (2, 4),
             regions: Map::from([
                 ("A_0".to_string(), "SLOT_X0Y0_TO_SLOT_X0Y0".to_string()),
                 ("B_0".to_string(), "SLOT_X0Y0_TO_SLOT_X0Y0".to_string()),
@@ -283,10 +373,13 @@ mod tests {
                 },
             )]),
         };
-        let device = select_device("u280").expect("u280");
+        let device = select_device("u250").expect("u250");
 
         let expected = "\
 create_pblock SLOT_X0Y0_TO_SLOT_X0Y0
+set_property EXCLUDE_PLACEMENT 0 [get_pblocks SLOT_X0Y0_TO_SLOT_X0Y0]
+set_property CONTAIN_ROUTING 0 [get_pblocks SLOT_X0Y0_TO_SLOT_X0Y0]
+set_property IS_SOFT 1 [get_pblocks SLOT_X0Y0_TO_SLOT_X0Y0]
 resize_pblock SLOT_X0Y0_TO_SLOT_X0Y0 -add {CLOCKREGION_X0Y0:CLOCKREGION_X3Y3}
 set cells [get_cells -quiet -hierarchical -regexp -filter {NAME =~ \"^(.*/)?A_0(_fifo)?(/.*)?$\"}]
 if {![llength $cells]} { error \"TAPA floorplan ERROR: expected cell `A_0` was not found\" }
@@ -299,6 +392,102 @@ if {![llength $cells]} { error \"TAPA floorplan ERROR: expected cell `fifo_VecAd
 add_cells_to_pblock SLOT_X0Y0_TO_SLOT_X0Y0 $cells
 ";
         assert_eq!(emit_xdc(&result, &device), expected);
+    }
+
+    #[test]
+    #[allow(
+        clippy::literal_string_with_formatting_args,
+        reason = "the golden XDC contains literal Tcl braces, not format args"
+    )]
+    fn golden_xdc_for_a_platform_child_pblock() {
+        let result = FloorplanResult {
+            device: "u280".to_string(),
+            grid: (2, 3),
+            regions: Map::from([("Worker_0".to_string(), "SLOT_X1Y1_TO_SLOT_X1Y1".to_string())]),
+            routes: Vec::new(),
+            slot_usage: Map::new(),
+        };
+
+        let expected = "\
+create_pblock SLOT_X1Y1_TO_SLOT_X1Y1
+set_property EXCLUDE_PLACEMENT 0 [get_pblocks SLOT_X1Y1_TO_SLOT_X1Y1]
+set_property CONTAIN_ROUTING 0 [get_pblocks SLOT_X1Y1_TO_SLOT_X1Y1]
+set_property IS_SOFT 1 [get_pblocks SLOT_X1Y1_TO_SLOT_X1Y1]
+set_property PARENT pblock_dynamic_region [get_pblocks SLOT_X1Y1_TO_SLOT_X1Y1]
+resize_pblock SLOT_X1Y1_TO_SLOT_X1Y1 -add {SLICE_X176Y240:SLICE_X196Y479}
+resize_pblock SLOT_X1Y1_TO_SLOT_X1Y1 -add {DSP48E2_X25Y90:DSP48E2_X28Y185}
+resize_pblock SLOT_X1Y1_TO_SLOT_X1Y1 -add {LAGUNA_X24Y120:LAGUNA_X27Y359}
+resize_pblock SLOT_X1Y1_TO_SLOT_X1Y1 -add {RAMB18_X11Y96:RAMB18_X11Y191}
+resize_pblock SLOT_X1Y1_TO_SLOT_X1Y1 -add {RAMB36_X11Y48:RAMB36_X11Y95}
+resize_pblock SLOT_X1Y1_TO_SLOT_X1Y1 -add {URAM288_X4Y64:URAM288_X4Y127}
+resize_pblock SLOT_X1Y1_TO_SLOT_X1Y1 -add {CLOCKREGION_X0Y4:CLOCKREGION_X5Y7}
+resize_pblock SLOT_X1Y1_TO_SLOT_X1Y1 -remove CLOCKREGION_X0Y4:CLOCKREGION_X3Y7
+set cells [get_cells -quiet -hierarchical -regexp -filter {NAME =~ \"^(.*/)?Worker_0(_fifo)?(/.*)?$\"}]
+if {![llength $cells]} { error \"TAPA floorplan ERROR: expected cell `Worker_0` was not found\" }
+add_cells_to_pblock SLOT_X1Y1_TO_SLOT_X1Y1 $cells
+create_pblock TAPA_PARENT_CLIP_SLOT_X1Y1_TO_SLOT_X1Y1
+set derived_ranges [get_property DERIVED_RANGES [get_pblocks SLOT_X1Y1_TO_SLOT_X1Y1]]
+if {$derived_ranges ne \"\"} {
+  resize_pblock TAPA_PARENT_CLIP_SLOT_X1Y1_TO_SLOT_X1Y1 -add $derived_ranges
+}
+set derived_ranges [get_property DERIVED_RANGES [get_pblocks pblock_dynamic_region]]
+if {$derived_ranges ne \"\"} {
+  resize_pblock TAPA_PARENT_CLIP_SLOT_X1Y1_TO_SLOT_X1Y1 -remove $derived_ranges
+}
+set derived_ranges [get_property DERIVED_RANGES [get_pblocks TAPA_PARENT_CLIP_SLOT_X1Y1_TO_SLOT_X1Y1]]
+if {$derived_ranges ne \"\"} {
+  resize_pblock SLOT_X1Y1_TO_SLOT_X1Y1 -remove $derived_ranges
+}
+delete_pblock -quiet TAPA_PARENT_CLIP_SLOT_X1Y1_TO_SLOT_X1Y1
+";
+        let device = select_device("u280").expect("u280");
+        assert_eq!(emit_xdc(&result, &device), expected);
+    }
+
+    #[test]
+    fn every_final_pblock_is_soft_with_ordered_properties() {
+        let result = FloorplanResult {
+            device: "u280".to_string(),
+            grid: (2, 3),
+            regions: Map::from([
+                ("A_0".to_string(), "SLOT_X0Y0_TO_SLOT_X0Y0".to_string()),
+                ("B_0".to_string(), "SLOT_X1Y1_TO_SLOT_X1Y1".to_string()),
+            ]),
+            routes: Vec::new(),
+            slot_usage: Map::new(),
+        };
+        let device = select_device("u280").expect("u280");
+        let xdc = emit_xdc(&result, &device);
+
+        let pblock_count = xdc.matches("create_pblock SLOT_").count();
+        assert_eq!(pblock_count, 2);
+        assert_eq!(
+            xdc.matches("set_property EXCLUDE_PLACEMENT 0 ").count(),
+            pblock_count
+        );
+        assert_eq!(
+            xdc.matches("set_property CONTAIN_ROUTING 0 ").count(),
+            pblock_count
+        );
+        assert_eq!(xdc.matches("set_property IS_SOFT 1 ").count(), pblock_count);
+
+        for pblock in ["SLOT_X0Y0_TO_SLOT_X0Y0", "SLOT_X1Y1_TO_SLOT_X1Y1"] {
+            let section = pblock_section(&xdc, pblock);
+            let exclude = section
+                .find("set_property EXCLUDE_PLACEMENT 0 ")
+                .expect("EXCLUDE_PLACEMENT property");
+            let contain = section
+                .find("set_property CONTAIN_ROUTING 0 ")
+                .expect("CONTAIN_ROUTING property");
+            let soft = section
+                .find("set_property IS_SOFT 1 ")
+                .expect("IS_SOFT property");
+            let resize = section.find("resize_pblock ").expect("pblock resize");
+            assert!(
+                exclude < contain && contain < soft && soft < resize,
+                "{section}"
+            );
+        }
     }
 
     #[test]
@@ -358,23 +547,39 @@ add_cells_to_pblock SLOT_X0Y0_TO_SLOT_X0Y0 $cells
 
     #[test]
     fn multi_slot_region_unions_ranges() {
-        // A region spanning column 0's bottom two rows unions both pblocks.
         let result = FloorplanResult {
             device: "u280".to_string(),
             grid: (2, 3),
-            regions: Map::from([("T".to_string(), "SLOT_X0Y0_TO_SLOT_X0Y1".to_string())]),
+            regions: Map::from([("T".to_string(), "SLOT_X0Y1_TO_SLOT_X1Y1".to_string())]),
             routes: Vec::new(),
             slot_usage: Map::new(),
         };
         let device = select_device("u280").expect("u280");
         let xdc = emit_xdc(&result, &device);
         assert!(
-            xdc.contains("CLOCKREGION_X0Y0:CLOCKREGION_X3Y3"),
-            "row 0 range"
+            xdc.contains(
+                "resize_pblock TAPA_SLOT_UNION_SLOT_X0Y1_TO_SLOT_X1Y1_0 -remove \
+                 CLOCKREGION_X4Y4:CLOCKREGION_X7Y7"
+            ),
+            "left slot must subtract only the right half:\n{xdc}"
         );
         assert!(
-            xdc.contains("CLOCKREGION_X0Y4:CLOCKREGION_X3Y7"),
-            "row 1 range"
+            xdc.contains(
+                "resize_pblock TAPA_SLOT_UNION_SLOT_X0Y1_TO_SLOT_X1Y1_1 -remove \
+                 CLOCKREGION_X0Y4:CLOCKREGION_X3Y7"
+            ),
+            "right slot must subtract only the left half:\n{xdc}"
+        );
+        assert_eq!(
+            xdc.matches("set slot_ranges [get_property DERIVED_RANGES")
+                .count(),
+            2,
+            "each atomic slot must be derived independently before union"
+        );
+        assert_eq!(
+            xdc.matches("resize_pblock SLOT_X0Y1_TO_SLOT_X1Y1 -add $slot_ranges")
+                .count(),
+            2,
         );
     }
 
