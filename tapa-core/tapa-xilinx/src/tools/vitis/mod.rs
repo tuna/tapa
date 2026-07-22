@@ -240,8 +240,6 @@ fn build_invocation(resolved: &ResolvedJob<'_>) -> ToolInvocation {
         .arg(job.target_mhz.to_string())
         .arg("--connectivity.nk")
         .arg(format!("{}:1:{}", job.kernel_name, job.kernel_name))
-        .arg("--vivado.synth.jobs")
-        .arg("1")
         .arg("--vivado.prop=run.impl_1.STEPS.PHYS_OPT_DESIGN.IS_ENABLED=1")
         .arg("--vivado.prop=run.impl_1.STEPS.POST_ROUTE_PHYS_OPT_DESIGN.IS_ENABLED=1")
         .arg(format!(
@@ -487,8 +485,6 @@ ap_clk             -0.100       -1.000
                 "300",
                 "--connectivity.nk",
                 "Top:1:Top",
-                "--vivado.synth.jobs",
-                "1",
                 "--vivado.prop=run.impl_1.STEPS.PHYS_OPT_DESIGN.IS_ENABLED=1",
                 "--vivado.prop=run.impl_1.STEPS.POST_ROUTE_PHYS_OPT_DESIGN.IS_ENABLED=1",
                 "--vivado.prop=run.impl_1.STEPS.OPT_DESIGN.ARGS.DIRECTIVE=Explore",
