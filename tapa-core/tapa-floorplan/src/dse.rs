@@ -11,7 +11,7 @@ use crate::pipeline::plan::PipelineError;
 use crate::route::ilp::RouteError;
 use crate::{
     plan_with_inputs_at_usage_limit_and_caps, ExactDseResourceCaps, PlanError, PlanInputs,
-    PlanOptions, EXACT_DSE_CAP_SCALE,
+    PlanOptions, EXACT_DSE_CAP_SCALE, MULTILEVEL_BLOCK_RESOURCE_MARGIN_UNITS,
 };
 
 const ADAPTIVE_MARGIN: u32 = EXACT_DSE_CAP_SCALE / 100;
@@ -99,8 +99,9 @@ pub enum DseError {
 /// infeasibility terminates the descending sweep, while post-placement routing
 /// and pipeline-capacity rejections continue because a tighter cap may change
 /// the placement. Solver timeouts, missing incumbents, malformed results, and
-/// other planning errors abort the sweep. A repeated region assignment
-/// terminates exploration before the redundant candidate is returned.
+/// other planning errors abort the sweep. Repeated region assignments are
+/// omitted while exploration continues toward a cap that may force a new
+/// placement.
 pub fn explore(
     state: &WorkState,
     plan_options: &PlanOptions,
@@ -124,10 +125,11 @@ pub fn explore(
                     logic_utilization_cap,
                     source: PlanError::from(source),
                 })?;
-                let max_utilization = maximum_realized_utilization(&floorplan, &device)?;
+                let realized = realized_utilization(&floorplan, &device)?;
                 Ok(Attempt::Feasible {
                     regions: floorplan.regions.clone(),
-                    max_utilization,
+                    max_utilization: realized.maximum(),
+                    binding_logic_cap: realized.binding_logic_cap_units(planned.caps),
                     value: floorplan,
                     metadata: planned.caps,
                 })
@@ -241,6 +243,7 @@ enum Attempt<T, M> {
         value: T,
         regions: BTreeMap<String, String>,
         max_utilization: f64,
+        binding_logic_cap: u32,
         metadata: M,
     },
     Infeasible {
@@ -278,18 +281,18 @@ fn sweep_with<T, M, E>(
                 value,
                 regions,
                 max_utilization,
+                binding_logic_cap,
                 metadata,
             } => {
-                if !visited.insert(regions) {
-                    break;
+                if visited.insert(regions) {
+                    candidates.push(Swept {
+                        cap,
+                        value: Some((value, max_utilization)),
+                        metadata,
+                    });
                 }
-                candidates.push(Swept {
-                    cap,
-                    value: Some((value, max_utilization)),
-                    metadata,
-                });
                 let nominal = cap.saturating_sub(options.step);
-                let adaptive = utilization_units(max_utilization).saturating_sub(ADAPTIVE_MARGIN);
+                let adaptive = binding_logic_cap.saturating_sub(ADAPTIVE_MARGIN);
                 nominal.min(adaptive)
             }
             Attempt::Infeasible { kind, metadata } => {
@@ -362,13 +365,42 @@ pub fn maximum_realized_utilization(
     floorplan: &FloorplanResult,
     device: &Device,
 ) -> Result<f64, DseError> {
+    realized_utilization(floorplan, device).map(RealizedUtilization::maximum)
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+struct RealizedUtilization {
+    logic: f64,
+    block: f64,
+}
+
+impl RealizedUtilization {
+    fn maximum(self) -> f64 {
+        self.logic.max(self.block)
+    }
+
+    fn binding_logic_cap_units(self, caps: ExactDseResourceCaps) -> u32 {
+        let block_margin = if caps.multilevel_block_margin_applied {
+            MULTILEVEL_BLOCK_RESOURCE_MARGIN_UNITS
+        } else {
+            0
+        };
+        utilization_units(self.logic)
+            .max(utilization_units(self.block).saturating_sub(block_margin))
+    }
+}
+
+fn realized_utilization(
+    floorplan: &FloorplanResult,
+    device: &Device,
+) -> Result<RealizedUtilization, DseError> {
     if floorplan.device != device.key {
         return Err(DseError::InvalidFloorplan(format!(
             "floorplan device `{}` does not match utilization device `{}`",
             floorplan.device, device.key
         )));
     }
-    let mut maximum = 0.0_f64;
+    let mut utilization = RealizedUtilization::default();
     for (region, usage) in &floorplan.slot_usage {
         let coor = Coor::from_region_name(region)
             .filter(|coor| coor.width() == 1 && coor.height() == 1)
@@ -393,15 +425,24 @@ pub fn maximum_realized_utilization(
                 }
                 continue;
             }
-            maximum = maximum.max(resource_ratio(used, available));
+            let ratio = resource_ratio(used, available);
+            match resource {
+                Resource::Ff | Resource::Lut => {
+                    utilization.logic = utilization.logic.max(ratio);
+                }
+                Resource::Bram18k | Resource::Dsp | Resource::Uram => {
+                    utilization.block = utilization.block.max(ratio);
+                }
+            }
         }
     }
-    if maximum > 1.0 {
+    if utilization.maximum() > 1.0 {
         return Err(DseError::InvalidFloorplan(format!(
-            "maximum realized utilization {maximum} exceeds device capacity"
+            "maximum realized utilization {} exceeds device capacity",
+            utilization.maximum()
         )));
     }
-    Ok(maximum)
+    Ok(utilization)
 }
 
 #[allow(
@@ -543,12 +584,13 @@ mod tests {
     #[test]
     fn realized_utilization_skips_loose_caps_only_when_useful() {
         let mut called = Vec::new();
-        let candidates = sweep_with(options(0.5, 0.9, 0.05), |cap| {
+        let candidates = sweep_with(options(0.71, 0.9, 0.05), |cap| {
             called.push(cap);
             Ok::<_, ()>(Attempt::Feasible {
                 value: (),
                 regions: BTreeMap::from([("task".to_string(), "slot-a".to_string())]),
                 max_utilization: 0.72,
+                binding_logic_cap: utilization_units(0.72),
                 metadata: (),
             })
         })
@@ -564,6 +606,7 @@ mod tests {
                 value: (),
                 regions: BTreeMap::from([("task".to_string(), format!("slot-{cap}"))]),
                 max_utilization: 0.89,
+                binding_logic_cap: utilization_units(0.89),
                 metadata: (),
             })
         })
@@ -572,24 +615,80 @@ mod tests {
     }
 
     #[test]
-    fn duplicate_placement_stops_before_redundant_candidate() {
+    fn duplicate_placement_is_omitted_without_ending_the_sweep() {
         let mut call = 0;
-        let candidates = sweep_with(options(0.5, 0.8, 0.1), |_| {
+        let mut called = Vec::new();
+        let candidates = sweep_with(options(0.75, 0.9, 0.05), |cap| {
             call += 1;
-            let slot = if call == 2 { "slot-b" } else { "slot-a" };
+            called.push(cap);
+            // Exercise the defensive path where the same published placement
+            // has a different routed resource realization at the tighter cap.
+            let slot = if call < 3 { "slot-a" } else { "slot-b" };
+            let binding_logic_cap = match call {
+                1 => 0.86,
+                2 => 0.81,
+                _ => 0.75,
+            };
             Ok::<_, ()>(Attempt::Feasible {
                 value: call,
                 regions: BTreeMap::from([("task".to_string(), slot.to_string())]),
-                max_utilization: 0.8,
+                max_utilization: binding_logic_cap,
+                binding_logic_cap: utilization_units(binding_logic_cap),
                 metadata: (),
             })
         })
         .expect("sweep");
 
-        assert_eq!(call, 3);
+        assert_eq!(called, vec![0.9, 0.85, 0.8]);
         assert_eq!(candidates.len(), 2);
-        assert_eq!(candidates[0].value, Some((1, 0.8)));
-        assert_eq!(candidates[1].value, Some((2, 0.8)));
+        assert_eq!(candidates[0].value, Some((1, 0.86)));
+        assert_eq!(candidates[1].value, Some((3, 0.75)));
+    }
+
+    #[test]
+    fn multilevel_block_usage_adapts_in_the_logic_cap_domain() {
+        let caps = ExactDseResourceCaps::for_strategy(0.9, crate::PartitionStrategy::MultiLevel);
+        let block_bound = RealizedUtilization {
+            logic: 0.4,
+            block: 0.89,
+        };
+        assert_eq!(
+            block_bound.binding_logic_cap_units(caps),
+            utilization_units(0.79),
+        );
+
+        let flat_caps = ExactDseResourceCaps::for_strategy(0.9, crate::PartitionStrategy::Flat);
+        assert_eq!(
+            block_bound.binding_logic_cap_units(flat_caps),
+            utilization_units(0.89),
+        );
+
+        let mut called = Vec::new();
+        let candidates = sweep_with(options(0.55, 0.9, 0.05), |cap| {
+            called.push(cap);
+            let (slot, utilization) = if called.len() == 1 {
+                ("slot-a", block_bound)
+            } else {
+                (
+                    "slot-b",
+                    RealizedUtilization {
+                        logic: 0.55,
+                        block: 0.0,
+                    },
+                )
+            };
+            Ok::<_, ()>(Attempt::Feasible {
+                value: (),
+                regions: BTreeMap::from([("task".to_string(), slot.to_string())]),
+                max_utilization: utilization.maximum(),
+                binding_logic_cap: utilization.binding_logic_cap_units(caps),
+                metadata: (),
+            })
+        })
+        .expect("sweep");
+
+        assert_eq!(called, vec![0.9, 0.78]);
+        assert_eq!(candidates.len(), 2);
     }
 
     #[test]
@@ -687,14 +786,24 @@ mod tests {
                     lut: slot.area.lut / 2,
                     ff: slot.area.ff / 4,
                     bram_18k: 0,
-                    dsp: 0,
+                    dsp: slot.area.dsp * 89 / 100,
                     uram: 0,
                 },
             )]),
         };
 
-        let utilization = maximum_realized_utilization(&floorplan, &device).expect("valid usage");
-        assert!((utilization - 0.5).abs() < f64::EPSILON);
+        let utilization = realized_utilization(&floorplan, &device).expect("valid usage");
+        assert!((utilization.logic - 0.5).abs() < f64::EPSILON);
+        assert_eq!(
+            utilization.block.to_bits(),
+            resource_ratio(slot.area.dsp * 89 / 100, slot.area.dsp).to_bits(),
+        );
+        assert_eq!(
+            maximum_realized_utilization(&floorplan, &device)
+                .expect("valid usage")
+                .to_bits(),
+            utilization.maximum().to_bits(),
+        );
 
         let wrong_device = select_device("u250").expect("u250");
         maximum_realized_utilization(&floorplan, &wrong_device)

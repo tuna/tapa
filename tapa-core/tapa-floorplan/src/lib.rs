@@ -46,8 +46,8 @@ use crate::solver::{CbcSolver, SolveOpts};
 pub use crate::graph::{ControlInterface, MemoryInterface};
 pub use crate::partition::PartitionStrategy;
 
-const MULTILEVEL_BLOCK_RESOURCE_MARGIN: f64 = 0.1;
 pub(crate) const EXACT_DSE_CAP_SCALE: u32 = 1_000_000_000;
+pub(crate) const MULTILEVEL_BLOCK_RESOURCE_MARGIN_UNITS: u32 = EXACT_DSE_CAP_SCALE / 10;
 
 /// Effective resource limits for one exact DSE candidate.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -67,8 +67,8 @@ impl ExactDseResourceCaps {
         let multilevel_block_margin_applied = strategy == PartitionStrategy::MultiLevel;
         let effective_block_utilization_cap = if multilevel_block_margin_applied {
             let scale = f64::from(EXACT_DSE_CAP_SCALE);
-            ((logic_utilization_cap + MULTILEVEL_BLOCK_RESOURCE_MARGIN).min(1.0) * scale).round()
-                / scale
+            let margin = f64::from(MULTILEVEL_BLOCK_RESOURCE_MARGIN_UNITS) / scale;
+            ((logic_utilization_cap + margin).min(1.0) * scale).round() / scale
         } else {
             logic_utilization_cap
         };
