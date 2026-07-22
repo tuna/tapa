@@ -52,7 +52,7 @@ pub struct VitisLinkJob {
     /// Per-job directory used as the tool working directory.
     pub work_dir: Utf8PathBuf,
     /// Compact directory downloaded by a remote runner. It contains the
-    /// xclbin, timing hook/report, Vitis reports, and Vitis logs.
+    /// timing hook/report, Vitis reports, and Vitis logs.
     pub artifacts_dir: Utf8PathBuf,
     pub output_xclbin: Utf8PathBuf,
     pub report_dir: Utf8PathBuf,
@@ -68,7 +68,6 @@ pub struct VitisLinkJob {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct VitisLinkOutput {
-    pub xclbin: Utf8PathBuf,
     pub timing_report: Utf8PathBuf,
     pub timing: KernelTiming,
     pub stdout: String,
@@ -222,6 +221,9 @@ fn build_invocation(resolved: &ResolvedJob<'_>) -> ToolInvocation {
         .arg("--link")
         .arg("--target")
         .arg("hw")
+        .arg("--save-temps")
+        .arg("--to_step")
+        .arg("vpl.impl.post_route_phys_opt_design")
         .arg("--platform")
         .arg(job.platform.clone())
         .arg("--output")
@@ -241,6 +243,7 @@ fn build_invocation(resolved: &ResolvedJob<'_>) -> ToolInvocation {
         .arg("--vivado.synth.jobs")
         .arg("1")
         .arg("--vivado.prop=run.impl_1.STEPS.PHYS_OPT_DESIGN.IS_ENABLED=1")
+        .arg("--vivado.prop=run.impl_1.STEPS.POST_ROUTE_PHYS_OPT_DESIGN.IS_ENABLED=1")
         .arg(format!(
             "--vivado.prop=run.impl_1.STEPS.OPT_DESIGN.ARGS.DIRECTIVE={IMPLEMENTATION_STRATEGY}"
         ))
@@ -263,7 +266,7 @@ fn build_invocation(resolved: &ResolvedJob<'_>) -> ToolInvocation {
     }
     inv = inv
         .arg(format!(
-            "--vivado.prop=run.impl_1.STEPS.WRITE_BITSTREAM.TCL.PRE={}",
+            "--vivado.prop=run.impl_1.STEPS.POST_ROUTE_PHYS_OPT_DESIGN.TCL.POST={}",
             resolved.timing_hook
         ))
         .arg(resolved.xo.as_str());
@@ -315,12 +318,6 @@ pub fn run_vitis_link(runner: &dyn ToolRunner, job: &VitisLinkJob) -> Result<Vit
             stderr: super::merged_failure_output(tool_output.stdout, tool_output.stderr),
         });
     }
-    if !resolved.output_xclbin.is_file() {
-        return link_error(format!(
-            "v++ exited successfully but did not produce xclbin `{}`",
-            resolved.output_xclbin
-        ));
-    }
     if !resolved.timing_report.is_file() {
         return link_error(format!(
             "v++ exited successfully but did not produce timing report `{}`",
@@ -331,7 +328,6 @@ pub fn run_vitis_link(runner: &dyn ToolRunner, job: &VitisLinkJob) -> Result<Vit
     let timing = parse_kernel_timing_summary(&timing_text)?;
 
     Ok(VitisLinkOutput {
-        xclbin: resolved.output_xclbin,
         timing_report: resolved.timing_report,
         timing,
         stdout: tool_output.stdout,
@@ -403,10 +399,12 @@ mod tests {
                     stderr: "warning".into(),
                 },
             );
-            runner.attach_download(&self.job.output_xclbin, b"xclbin".to_vec());
-            runner.attach_download(
-                self.timing_report(),
-                b"
+            runner.attach_download(self.timing_report(), timing_report());
+        }
+    }
+
+    fn timing_report() -> Vec<u8> {
+        b"
 | Clock Summary
 | -------------
 
@@ -422,9 +420,7 @@ Clock             WNS(ns)      TNS(ns)
 ap_clk             -0.100       -1.000
 
 "
-                .to_vec(),
-            );
-        }
+        .to_vec()
     }
 
     #[test]
@@ -453,8 +449,8 @@ ap_clk             -0.100       -1.000
         let output = run_vitis_link(&runner, &fixture.job).expect("link succeeds");
         assert_eq!(output.stdout, "linked");
         assert_eq!(output.stderr, "warning");
-        assert_eq!(output.xclbin, fixture.job.output_xclbin);
         assert_eq!(output.timing_report, fixture.timing_report());
+        assert!(!fixture.job.output_xclbin.exists());
 
         let calls = runner.calls();
         assert_eq!(calls.len(), 1);
@@ -472,6 +468,9 @@ ap_clk             -0.100       -1.000
                 "--link",
                 "--target",
                 "hw",
+                "--save-temps",
+                "--to_step",
+                "vpl.impl.post_route_phys_opt_design",
                 "--platform",
                 "xilinx_test_platform",
                 "--output",
@@ -491,6 +490,7 @@ ap_clk             -0.100       -1.000
                 "--vivado.synth.jobs",
                 "1",
                 "--vivado.prop=run.impl_1.STEPS.PHYS_OPT_DESIGN.IS_ENABLED=1",
+                "--vivado.prop=run.impl_1.STEPS.POST_ROUTE_PHYS_OPT_DESIGN.IS_ENABLED=1",
                 "--vivado.prop=run.impl_1.STEPS.OPT_DESIGN.ARGS.DIRECTIVE=Explore",
                 "--vivado.prop=run.impl_1.STEPS.PLACE_DESIGN.ARGS.DIRECTIVE=EarlyBlockPlacement",
                 "--vivado.prop=run.impl_1.STEPS.PHYS_OPT_DESIGN.ARGS.DIRECTIVE=Explore",
@@ -501,10 +501,13 @@ ap_clk             -0.100       -1.000
                     "--vivado.prop=run.impl_1.STEPS.OPT_DESIGN.TCL.PRE={}",
                     fixture.job.floorplan_xdc.as_ref().unwrap()
                 ),
-                &format!("--vivado.prop=run.impl_1.STEPS.WRITE_BITSTREAM.TCL.PRE={hook}"),
+                &format!(
+                    "--vivado.prop=run.impl_1.STEPS.POST_ROUTE_PHYS_OPT_DESIGN.TCL.POST={hook}"
+                ),
                 fixture.job.xo.as_str(),
             ]
         );
+        assert!(!call.args.iter().any(|arg| arg.contains("WRITE_BITSTREAM")));
         assert_eq!(call.cwd.as_ref(), Some(&fixture.job.work_dir));
         assert_eq!(
             call.env.get("HOME"),
@@ -585,7 +588,7 @@ ap_clk             -0.100       -1.000
     }
 
     #[test]
-    fn stale_success_artifacts_are_removed_before_invocation() {
+    fn stale_timing_report_is_removed_before_invocation() {
         let fixture = Fixture::new();
         fs_err::create_dir_all(&fixture.job.artifacts_dir).expect("create artifacts");
         fs_err::write(&fixture.job.output_xclbin, b"old xclbin").expect("seed xclbin");
@@ -594,13 +597,13 @@ ap_clk             -0.100       -1.000
         runner.push_ok("v++", ToolOutput::default());
 
         let error = run_vitis_link(&runner, &fixture.job).expect_err("stale output must not pass");
-        assert!(error.to_string().contains("did not produce xclbin"));
+        assert!(error.to_string().contains("did not produce timing report"));
         assert!(!fixture.job.output_xclbin.exists());
         assert!(!fixture.timing_report().exists());
     }
 
     #[test]
-    fn surfaces_nonzero_exit_and_requires_both_artifacts() {
+    fn nonzero_exit_fails_even_with_a_parseable_timing_report() {
         let fixture = Fixture::new();
         let runner = MockToolRunner::new();
         runner.push_ok(
@@ -611,6 +614,7 @@ ap_clk             -0.100       -1.000
                 stderr: "implementation failed".into(),
             },
         );
+        runner.attach_download(fixture.timing_report(), timing_report());
         let error = run_vitis_link(&runner, &fixture.job).expect_err("nonzero exit must fail");
         let XilinxError::ToolFailure {
             code,
@@ -623,20 +627,21 @@ ap_clk             -0.100       -1.000
         assert_eq!(code, 7);
         assert!(output.contains("stdout:\nlink phase context"));
         assert!(output.contains("stderr:\nimplementation failed"));
+    }
 
+    #[test]
+    fn zero_exit_requires_a_fresh_parseable_timing_report() {
         let fixture = Fixture::new();
         let runner = MockToolRunner::new();
         runner.push_ok("v++", ToolOutput::default());
-        runner.attach_download(fixture.timing_report(), b"report".to_vec());
-        let error = run_vitis_link(&runner, &fixture.job).expect_err("missing xclbin must fail");
-        assert!(error.to_string().contains("did not produce xclbin"));
-
-        let fixture = Fixture::new();
-        let runner = MockToolRunner::new();
-        runner.push_ok("v++", ToolOutput::default());
-        runner.attach_download(&fixture.job.output_xclbin, b"xclbin".to_vec());
         let error = run_vitis_link(&runner, &fixture.job).expect_err("missing report must fail");
         assert!(error.to_string().contains("did not produce timing report"));
+
+        let fixture = Fixture::new();
+        let runner = MockToolRunner::new();
+        runner.push_ok("v++", ToolOutput::default());
+        runner.attach_download(fixture.timing_report(), b"not a timing report".to_vec());
+        run_vitis_link(&runner, &fixture.job).expect_err("unparseable report must fail");
     }
 
     #[test]

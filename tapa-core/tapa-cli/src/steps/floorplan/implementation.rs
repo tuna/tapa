@@ -18,7 +18,7 @@ use crate::steps::synth::rtl_codegen::{emit_prepared_rtl_tree, prepare_rtl_state
 
 use super::{FLOORPLAN_CONNECTIVITY, FLOORPLAN_XDC};
 
-pub(super) const IMPLEMENTATION_XCLBIN: &str = "floorplan.xclbin";
+pub(super) const LEGACY_IMPLEMENTATION_XCLBIN: &str = "floorplan.xclbin";
 pub(super) const IMPLEMENTATION_TIMING_REPORT: &str = "floorplan-timing.rpt";
 pub(super) const IMPLEMENTATION_METRICS: &str = "floorplan-metrics.json";
 
@@ -415,7 +415,6 @@ impl ImplementationWinner {
     }
 
     pub(super) fn publish_artifacts(&self, work_dir: &Path, target_mhz: u32) -> Result<()> {
-        atomic_copy(&self.output.xclbin, &work_dir.join(IMPLEMENTATION_XCLBIN))?;
         atomic_copy(
             &self.output.timing_report,
             &work_dir.join(IMPLEMENTATION_TIMING_REPORT),
@@ -433,7 +432,6 @@ impl ImplementationWinner {
             wns_ns: self.output.timing.wns_ns,
             achieved_period_ns: self.output.timing.achieved_period_ns,
             fmax_mhz: self.output.timing.fmax_mhz,
-            xclbin: IMPLEMENTATION_XCLBIN,
             timing_report: IMPLEMENTATION_TIMING_REPORT,
         };
         let mut bytes = serde_json::to_vec_pretty(&metrics)?;
@@ -661,7 +659,6 @@ struct WinnerMetrics<'a> {
     wns_ns: f64,
     achieved_period_ns: f64,
     fmax_mhz: f64,
-    xclbin: &'a str,
     timing_report: &'a str,
 }
 
@@ -783,7 +780,6 @@ mod tests {
                 floorplan: floorplan(),
             },
             output: VitisLinkOutput {
-                xclbin: format!("candidate_{index:03}.xclbin").into(),
                 timing_report: format!("candidate_{index:03}.rpt").into(),
                 timing: tapa_xilinx::KernelTiming {
                     reported_target_period_ns: 3.0,
@@ -908,6 +904,7 @@ mod tests {
         assert_eq!(feasible["requested_utilization_cap"], 0.9);
         assert_eq!(feasible["effective_block_utilization_cap"], 1.0);
         assert_eq!(feasible["multilevel_block_margin_applied"], true);
+        assert!(feasible.get("xclbin").is_none());
 
         let infeasible = InfeasibleCandidate {
             index: 1,
@@ -920,14 +917,13 @@ mod tests {
         assert_eq!(infeasible["requested_utilization_cap"], 0.8);
         assert_eq!(infeasible["effective_block_utilization_cap"], 0.9);
         assert_eq!(infeasible["multilevel_block_margin_applied"], true);
+        assert!(infeasible.get("xclbin").is_none());
     }
 
     #[test]
     fn relaxing_candidate_metrics_name_requested_and_realized_utilization() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let source_xclbin = dir.path().join("candidate.xclbin");
         let source_timing = dir.path().join("candidate.rpt");
-        fs_err::write(&source_xclbin, "xclbin").expect("write xclbin");
         fs_err::write(&source_timing, "timing").expect("write timing");
         let CandidateOutcome::Success(mut winner) = success(0, 350.0) else {
             unreachable!("success helper returns a winner")
@@ -937,7 +933,6 @@ mod tests {
         winner.candidate.multilevel_block_margin_applied = false;
         winner.candidate.utilization_cap_policy = UtilizationCapPolicy::Relaxing;
         winner.candidate.realized_max_utilization = 0.82;
-        winner.output.xclbin = crate::util::utf8(source_xclbin);
         winner.output.timing_report = crate::util::utf8(source_timing);
 
         winner
@@ -955,6 +950,9 @@ mod tests {
         assert_eq!(metrics["realized_max_utilization"], 0.82);
         assert!(metrics.get("usage_limit").is_none());
         assert!(metrics.get("max_utilization").is_none());
+        assert!(metrics.get("xclbin").is_none());
+        assert_eq!(metrics["timing_report"], IMPLEMENTATION_TIMING_REPORT);
+        assert!(!dir.path().join(LEGACY_IMPLEMENTATION_XCLBIN).exists());
     }
 
     #[test]
