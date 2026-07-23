@@ -9,7 +9,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use tapa_ir::port::{sanitize_array_name, sanitize_identifier_name};
 use tapa_ir::{
-    axi_pipeline_instance_name, control_pipeline_instance_name, FloorplanResult, RoutedChannel,
+    axi_pipeline_instance_name, control_pipeline_instance_name, FloorplanResult, PipelineRoute,
+    PipelineScheme, RoutedChannel,
 };
 
 use crate::device::model::{Coor, Device};
@@ -41,10 +42,12 @@ pub fn emit_xdc(result: &FloorplanResult, device: &Device) -> String {
             .push(CellMatch {
                 pattern: cell_name_regex(instance),
                 description: instance.clone(),
+                user_sll_reg: false,
             });
     }
 
     for route in &result.routes {
+        let user_sll_body_indices = user_sll_body_indices(route);
         let (pipeline_instance, description) = match &route.channel {
             RoutedChannel::Stream { fifo } => {
                 (format!("{}_fifo", sanitize_array_name(fifo)), fifo.clone())
@@ -76,6 +79,7 @@ pub fn emit_xdc(result: &FloorplanResult, device: &Device) -> String {
             .push(CellMatch {
                 pattern: pipeline_head_regex(&pipeline_instance),
                 description: format!("{description} Head"),
+                user_sll_reg: false,
             });
         for (index, region) in route.reg_regions.iter().enumerate() {
             by_region
@@ -84,6 +88,7 @@ pub fn emit_xdc(result: &FloorplanResult, device: &Device) -> String {
                 .push(CellMatch {
                     pattern: pipeline_body_regex(&pipeline_instance, index),
                     description: format!("{description} Body {index}"),
+                    user_sll_reg: user_sll_body_indices.contains(&index),
                 });
         }
         by_region
@@ -92,6 +97,7 @@ pub fn emit_xdc(result: &FloorplanResult, device: &Device) -> String {
             .push(CellMatch {
                 pattern: pipeline_tail_regex(&pipeline_instance),
                 description: format!("{description} Tail"),
+                user_sll_reg: false,
             });
     }
 
@@ -108,6 +114,7 @@ pub fn emit_xdc(result: &FloorplanResult, device: &Device) -> String {
 struct CellMatch {
     pattern: String,
     description: String,
+    user_sll_reg: bool,
 }
 
 fn add_region_pblock(
@@ -142,11 +149,44 @@ fn add_region_pblock(
              found\" }}",
             tcl_double_quote_escape(&cell_match.description),
         ));
+        if cell_match.user_sll_reg {
+            lines.push("set sll_regs [filter $cells {IS_SEQUENTIAL == 1}]".to_string());
+            lines.push(format!(
+                "if {{![llength $sll_regs]}} {{ error \"TAPA floorplan ERROR: expected sequential \
+                 cells in `{}` were not found\" }}",
+                tcl_double_quote_escape(&cell_match.description),
+            ));
+            lines.push("set_property USER_SLL_REG TRUE $sll_regs".to_string());
+        }
         lines.push(format!("add_cells_to_pblock {region} $cells"));
     }
     if let Some(parent) = &device.user_pblock_name {
         add_parent_clip(lines, region, parent);
     }
+}
+
+/// Body stages immediately before and after each vertical (SLR) transition.
+///
+/// Double and Single-H/Double-V routes emit one Body group on each side of a
+/// vertical boundary. Guiding both groups lets Vivado choose the eligible
+/// forward and backward crossing registers without changing their pblocks.
+/// Single routes intentionally retain their existing unconstrained behavior.
+fn user_sll_body_indices(route: &PipelineRoute) -> BTreeSet<usize> {
+    if route.scheme == PipelineScheme::Single {
+        return BTreeSet::new();
+    }
+
+    route
+        .reg_regions
+        .windows(2)
+        .enumerate()
+        .filter_map(|(index, regions)| {
+            let source = parse_region_or_slot(&regions[0])?;
+            let destination = parse_region_or_slot(&regions[1])?;
+            (source.dl_y != destination.dl_y).then_some([index, index + 1])
+        })
+        .flatten()
+        .collect()
 }
 
 /// Escape text embedded in a Tcl double-quoted diagnostic without changing
@@ -686,6 +726,83 @@ delete_pblock -quiet TAPA_PARENT_CLIP_SLOT_X1Y1_TO_SLOT_X1Y1
     }
 
     #[test]
+    fn sll_guidance_marks_both_vertical_body_groups_only() {
+        let result = FloorplanResult {
+            device: "u280".to_string(),
+            grid: (2, 3),
+            regions: Map::new(),
+            routes: vec![
+                PipelineRoute {
+                    channel: RoutedChannel::Stream {
+                        fifo: "double_vertical".to_string(),
+                    },
+                    route: vec!["SLOT_X0Y0".to_string(), "SLOT_X0Y1".to_string()],
+                    scheme: PipelineScheme::Double,
+                    reg_regions: vec!["SLOT_X0Y0".to_string(), "SLOT_X0Y1".to_string()],
+                },
+                PipelineRoute {
+                    channel: RoutedChannel::Stream {
+                        fifo: "mixed".to_string(),
+                    },
+                    route: vec![
+                        "SLOT_X0Y0".to_string(),
+                        "SLOT_X1Y0".to_string(),
+                        "SLOT_X1Y1".to_string(),
+                    ],
+                    scheme: PipelineScheme::SingleHDoubleV,
+                    reg_regions: vec![
+                        "SLOT_X1Y0".to_string(),
+                        "SLOT_X1Y0".to_string(),
+                        "SLOT_X1Y1".to_string(),
+                    ],
+                },
+                PipelineRoute {
+                    channel: RoutedChannel::Stream {
+                        fifo: "single_vertical".to_string(),
+                    },
+                    route: vec![
+                        "SLOT_X0Y0".to_string(),
+                        "SLOT_X0Y1".to_string(),
+                        "SLOT_X0Y2".to_string(),
+                    ],
+                    scheme: PipelineScheme::Single,
+                    reg_regions: vec!["SLOT_X0Y1".to_string()],
+                },
+            ],
+            slot_usage: Map::new(),
+        };
+        let xdc = emit_xdc(&result, &select_device("u280").expect("u280"));
+
+        for (pipeline, body, guided) in [
+            ("double_vertical_fifo", 0, true),
+            ("double_vertical_fifo", 1, true),
+            ("mixed_fifo", 0, false),
+            ("mixed_fifo", 1, true),
+            ("mixed_fifo", 2, true),
+            ("single_vertical_fifo", 0, false),
+        ] {
+            let pattern = pipeline_body_regex(pipeline, body);
+            let section = cell_constraint_section(&xdc, &pattern);
+            assert_eq!(
+                section.contains("set sll_regs [filter $cells {IS_SEQUENTIAL == 1}]"),
+                guided,
+                "{section}"
+            );
+            assert_eq!(
+                section.contains("set_property USER_SLL_REG TRUE $sll_regs"),
+                guided,
+                "{section}"
+            );
+        }
+        assert_eq!(
+            xdc.matches("set_property USER_SLL_REG TRUE $sll_regs")
+                .count(),
+            4,
+            "{xdc}"
+        );
+    }
+
+    #[test]
     fn axi_channel_pipeline_uses_its_typed_hierarchy_and_route_direction() {
         let endpoint = AxiEndpoint {
             instance: "Reader_0".to_string(),
@@ -853,6 +970,15 @@ delete_pblock -quiet TAPA_PARENT_CLIP_SLOT_X1Y1_TO_SLOT_X1Y1
         let start = xdc.find(&marker).expect("pblock exists");
         let rest = &xdc[start + marker.len()..];
         let end = rest.find("\ncreate_pblock ").unwrap_or(rest.len());
+        &rest[..end]
+    }
+
+    fn cell_constraint_section<'a>(xdc: &'a str, pattern: &str) -> &'a str {
+        let start = xdc.find(pattern).expect("cell match exists");
+        let rest = &xdc[start..];
+        let end = rest
+            .find("\nadd_cells_to_pblock ")
+            .expect("cell match is assigned to its pblock");
         &rest[..end]
     }
 }
