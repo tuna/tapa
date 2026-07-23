@@ -7,8 +7,8 @@
 use std::collections::BTreeSet;
 
 use tapa_protocol::{
-    HANDSHAKE_CLK, HANDSHAKE_RST, ISTREAM_SUFFIXES, M_AXI_PORTS, M_AXI_PREFIX,
-    M_AXI_SUFFIXES_COMPACT, OSTREAM_SUFFIXES,
+    HANDSHAKE_CLK, ISTREAM_SUFFIXES, M_AXI_PORTS, M_AXI_PREFIX, M_AXI_SUFFIXES_COMPACT,
+    OSTREAM_SUFFIXES,
 };
 use tapa_rtl::builder::{Expr, ModuleInstance, ParamArg, PortArg};
 use tapa_rtl::module::sanitize_array_name;
@@ -287,6 +287,7 @@ pub fn build_bridge_instance(
     enabled: EnabledAxiDirections,
     data_width: u32,
     connect_optional_axi_ports: bool,
+    reset: Expr,
 ) -> ModuleInstance {
     let bytes = data_width / 8;
     let bytes_log = if bytes <= 1 {
@@ -318,7 +319,7 @@ pub fn build_bridge_instance(
 
     let mut ports = vec![
         PortArg::new("clk", Expr::ident(HANDSHAKE_CLK)),
-        PortArg::new("rst", Expr::ident(HANDSHAKE_RST)),
+        PortArg::new("rst", reset),
     ];
 
     for channel in ["AW", "W", "B", "AR", "R"] {
@@ -518,6 +519,7 @@ mod tests {
             },
             512,
             true,
+            Expr::ident("bridge_reset"),
         );
         let text = inst.to_string();
         assert!(text.contains("async_mmap"), "got:\n{text}");
@@ -525,6 +527,7 @@ mod tests {
         assert!(text.contains("EnableReadChannel(1)"), "got:\n{text}");
         assert!(text.contains("EnableWriteChannel(0)"), "got:\n{text}");
         assert!(text.contains("chan__m_axi"), "got:\n{text}");
+        assert!(text.contains(".rst(bridge_reset)"), "got:\n{text}");
         assert!(
             text.contains(".m_axi_ARADDR(__tapa_axi_chan_child_ARADDR)"),
             "got:\n{text}"

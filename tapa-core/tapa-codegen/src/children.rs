@@ -695,6 +695,25 @@ pub(crate) fn generate_child_signals(
                 }
             }
 
+            let reset_n = control_plan.map_or_else(
+                || Expr::ident(HANDSHAKE_RST_N),
+                |_| {
+                    Expr::ident(
+                        distributed_control::DistributedControlPlan::child_reset_name(
+                            &logical_inst_name,
+                        ),
+                    )
+                },
+            );
+            // A floorplanned async bridge is co-located with its child, so the
+            // routed child reset is also its physically local reset. Keep the
+            // legacy parent reset when distributed control is absent.
+            let bridge_reset = if control_plan.is_some() {
+                Expr::logical_not(reset_n.clone())
+            } else {
+                Expr::ident(HANDSHAKE_RST)
+            };
+
             // Build and add the actual child module instance to parent
             if let Some(child_rtl) = child_rtl.as_ref() {
                 for (child_port, arg) in &args {
@@ -726,20 +745,11 @@ pub(crate) fn generate_child_signals(
                             enabled,
                             data_width,
                             connect_optional_axi_ports,
+                            bridge_reset.clone(),
                         ));
                     }
                 }
             }
-            let reset_n = control_plan.map_or_else(
-                || Expr::ident(HANDSHAKE_RST_N),
-                |_| {
-                    Expr::ident(
-                        distributed_control::DistributedControlPlan::child_reset_name(
-                            &logical_inst_name,
-                        ),
-                    )
-                },
-            );
             let child_inst = build_child_instance_with_reset(
                 &child_name,
                 &inst_name,

@@ -2136,11 +2136,16 @@ fn test_generate_rtl_sanitizes_indexed_mmap_names() {
     assert!(!top_v.contains("chan[0]"), "got:\n{top_v}");
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "fixture covers bridge wiring plus the complete typed floorplan contract"
+)]
 fn async_mmap_state(floorplanned: bool) -> TopologyWithRtl {
     use std::collections::BTreeMap;
     use tapa_ir::{
-        async_mmap_bridge_instance_name, AxiChannel, AxiEndpoint, FloorplanResult, MemoryBank,
-        MemoryKind, PipelineRoute, PipelineScheme, RoutedChannel,
+        async_mmap_bridge_instance_name, global_controller_instance_name,
+        local_controller_instance_name, AxiChannel, AxiEndpoint, ControlChannel, FloorplanResult,
+        MemoryBank, MemoryKind, PipelineRoute, PipelineScheme, RoutedChannel,
     };
 
     let top = task("top", "upper", |t| {
@@ -2159,7 +2164,16 @@ fn async_mmap_state(floorplanned: bool) -> TopologyWithRtl {
     state
         .attach_module(
             "top",
-            parse_module("module top(input wire ap_clk, input wire ap_rst_n); endmodule"),
+            parse_module(
+                "module top(\n\
+                 input wire ap_clk,\n\
+                 input wire ap_rst_n,\n\
+                 input wire ap_start,\n\
+                 output wire ap_done,\n\
+                 output wire ap_idle,\n\
+                 output wire ap_ready\n\
+                 ); endmodule",
+            ),
         )
         .unwrap();
     state
@@ -2169,6 +2183,10 @@ fn async_mmap_state(floorplanned: bool) -> TopologyWithRtl {
                 "module copy(\n\
                  input wire ap_clk,\n\
                  input wire ap_rst_n,\n\
+                 input wire ap_start,\n\
+                 output wire ap_done,\n\
+                 output wire ap_idle,\n\
+                 output wire ap_ready,\n\
                  output wire [63:0] mem_read_addr_s_din,\n\
                  input wire mem_read_addr_s_full_n,\n\
                  output wire mem_read_addr_s_write,\n\
@@ -2198,7 +2216,7 @@ fn async_mmap_state(floorplanned: bool) -> TopologyWithRtl {
             kind: MemoryKind::Hbm,
             index: 0,
         };
-        let routes = [AxiChannel::ReadAddress, AxiChannel::ReadData]
+        let mut routes = [AxiChannel::ReadAddress, AxiChannel::ReadData]
             .into_iter()
             .map(|channel| {
                 let outgoing = channel == AxiChannel::ReadAddress;
@@ -2217,14 +2235,42 @@ fn async_mmap_state(floorplanned: bool) -> TopologyWithRtl {
                     reg_regions: Vec::new(),
                 }
             })
-            .collect();
+            .collect::<Vec<_>>();
+        for channel in [ControlChannel::Launch, ControlChannel::Reset] {
+            routes.push(PipelineRoute {
+                channel: RoutedChannel::Control {
+                    instance: endpoint.instance.clone(),
+                    channel,
+                },
+                route: vec!["SLOT_X1Y0".to_string(), "SLOT_X0Y0".to_string()],
+                scheme: PipelineScheme::Single,
+                reg_regions: Vec::new(),
+            });
+        }
+        routes.push(PipelineRoute {
+            channel: RoutedChannel::Control {
+                instance: endpoint.instance.clone(),
+                channel: ControlChannel::Completion,
+            },
+            route: vec!["SLOT_X0Y0".to_string(), "SLOT_X1Y0".to_string()],
+            scheme: PipelineScheme::Single,
+            reg_regions: Vec::new(),
+        });
         state.floorplan = Some(FloorplanResult {
             device: "u280".to_string(),
             grid: (2, 1),
             regions: BTreeMap::from([
-                (endpoint.instance, "SLOT_X0Y0".to_string()),
+                (endpoint.instance.clone(), "SLOT_X0Y0".to_string()),
                 (
                     async_mmap_bridge_instance_name("chan[0]"),
+                    "SLOT_X0Y0".to_string(),
+                ),
+                (
+                    global_controller_instance_name().to_string(),
+                    "SLOT_X1Y0".to_string(),
+                ),
+                (
+                    local_controller_instance_name(&endpoint.instance),
                     "SLOT_X0Y0".to_string(),
                 ),
             ]),
@@ -2245,6 +2291,10 @@ fn test_generate_rtl_instantiates_async_mmap_bridge() {
     assert!(
         top_v.contains("async_mmap #(") && top_v.contains("chan_0__m_axi"),
         "top should instantiate an async_mmap bridge:\n{top_v}"
+    );
+    assert!(
+        top_v.contains(".rst(ap_rst)"),
+        "legacy bridge must retain the parent reset:\n{top_v}"
     );
     assert!(top_v.contains(".EnableWriteChannel(0)"), "{top_v}");
     assert!(
@@ -2294,6 +2344,12 @@ fn test_generate_rtl_pipelines_only_enabled_async_mmap_channels() {
     assert!(
         top_v.contains("async_mmap #(") && top_v.contains("chan_0__m_axi"),
         "bridge hierarchy must remain stable:\n{top_v}"
+    );
+    assert!(
+        top_v.contains(".rst(!__tapa_control_copy_0__reset_n)")
+            && top_v.contains(".ap_rst_n(__tapa_control_copy_0__reset_n)")
+            && !top_v.contains(".rst(ap_rst)"),
+        "floorplanned bridge and child must share the routed local reset:\n{top_v}"
     );
     assert!(
         !top_v.contains("__tapa_axi_chan_0_child__m_axi"),
