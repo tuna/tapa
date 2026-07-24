@@ -177,6 +177,7 @@ fn signal_declarations(input: &str) -> IResult<&str, Vec<Signal>> {
             name: name.to_owned(),
             kind,
             width: w.clone(),
+            attribute: None,
         });
         let (rest, _) = space0(rest)?;
         if let Some(after_comma) = rest.strip_prefix(',') {

@@ -163,6 +163,9 @@ impl fmt::Display for SignalKind {
 
 impl fmt::Display for Signal {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(attribute) = &self.attribute {
+            write!(f, "(* {attribute} *) ")?;
+        }
         write!(f, "{}", self.kind)?;
         if let Some(w) = &self.width {
             write!(f, " {w}")?;
@@ -316,8 +319,20 @@ mod tests {
             name: "count".to_owned(),
             kind: SignalKind::Reg,
             width: None,
+            attribute: None,
         };
         assert_eq!(s.to_string(), "reg count;");
+    }
+
+    #[test]
+    fn signal_display_with_attribute() {
+        let s = Signal {
+            name: "ap_rst".to_owned(),
+            kind: SignalKind::Wire,
+            width: None,
+            attribute: Some("max_fanout = 256".to_owned()),
+        };
+        assert_eq!(s.to_string(), "(* max_fanout = 256 *) wire ap_rst;");
     }
 
     #[test]

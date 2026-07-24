@@ -24,6 +24,29 @@ const CHILDREN_DONE: &str = "__tapa_control_children_done";
 const CHILDREN_CLEAR: &str = "__tapa_control_children_clear";
 pub const FABRIC_RESET_N: &str = "__tapa_control_fabric_reset_n";
 
+/// `max_fanout` applied to the active-high reset net (`ap_rst`) in
+/// floorplanned builds so Vivado replicates the driver and keeps reset
+/// distribution local to each SLR. The fabric reset otherwise fans out to
+/// every FIFO/AXI endpoint across all SLRs.
+pub const FABRIC_RESET_MAX_FANOUT: u32 = 256;
+
+/// The active-high reset signal declaration, with a `max_fanout` attribute
+/// when distributed control is active (the floorplanned fabric reset) and a
+/// plain wire otherwise, preserving legacy RTL byte-for-byte.
+#[must_use]
+pub fn fabric_reset_signal(distributed_control: bool) -> tapa_rtl::signal::Signal {
+    use tapa_protocol::HANDSHAKE_RST;
+    use tapa_rtl::mutation::{wire, wire_with_attribute};
+    if distributed_control {
+        wire_with_attribute(
+            HANDSHAKE_RST,
+            format!("max_fanout = {FABRIC_RESET_MAX_FANOUT}"),
+        )
+    } else {
+        wire(HANDSHAKE_RST)
+    }
+}
+
 struct ChildEntry {
     instance: String,
     definition: String,

@@ -163,6 +163,7 @@ impl MutableModule {
             name: name.to_owned(),
             kind,
             width: None,
+            attribute: None,
         });
     }
 
@@ -410,6 +411,21 @@ pub fn wire(name: impl Into<String>) -> Signal {
         name: name.into(),
         kind: SignalKind::Wire,
         width: None,
+        attribute: None,
+    }
+}
+
+/// Helper to create a simple 1-bit wire carrying a synthesis attribute.
+///
+/// `attribute` is rendered as `(* {attribute} *)` before the declaration,
+/// e.g. `wire_with_attribute("ap_rst", "max_fanout = 256")` emits
+/// `(* max_fanout = 256 *) wire ap_rst;`.
+pub fn wire_with_attribute(name: impl Into<String>, attribute: impl Into<String>) -> Signal {
+    Signal {
+        name: name.into(),
+        kind: SignalKind::Wire,
+        width: None,
+        attribute: Some(attribute.into()),
     }
 }
 
@@ -419,6 +435,7 @@ pub fn reg(name: impl Into<String>) -> Signal {
         name: name.into(),
         kind: SignalKind::Reg,
         width: None,
+        attribute: None,
     }
 }
 
@@ -432,6 +449,7 @@ pub fn wide_wire(name: impl Into<String>, msb: &str, lsb: &str) -> Signal {
             msb: tokenize_expression(msb),
             lsb: tokenize_expression(lsb),
         }),
+        attribute: None,
     }
 }
 
@@ -445,6 +463,7 @@ pub fn wide_reg(name: impl Into<String>, msb: &str, lsb: &str) -> Signal {
             msb: tokenize_expression(msb),
             lsb: tokenize_expression(lsb),
         }),
+        attribute: None,
     }
 }
 

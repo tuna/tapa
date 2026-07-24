@@ -20,7 +20,6 @@ mod template;
 use tapa_ir::task::TaskLevel;
 use tapa_ir::{SynthTarget, Target};
 use tapa_rtl::builder::{ContinuousAssign, Expr};
-use tapa_rtl::mutation::wire;
 
 use crate::error::CodegenError;
 use crate::rtl_state::TopologyWithRtl;
@@ -152,7 +151,9 @@ fn instrument_upper_task(state: &mut TopologyWithRtl, task_name: &str) -> Result
         mm.body_text.clear();
         mm.demote_output_port_regs_to_wires();
         mm.demote_signal_regs_to_wires(&[HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY]);
-        let _ = mm.add_signal(wire(HANDSHAKE_RST));
+        let _ = mm.add_signal(distributed_control::fabric_reset_signal(
+            control_plan.is_some(),
+        ));
         let reset_n = control_plan
             .as_ref()
             .map_or(HANDSHAKE_RST_N, |_| distributed_control::FABRIC_RESET_N);

@@ -454,6 +454,13 @@ fn test_generate_rtl_top_task_removes_peek_ports() {
 
     let top_v = &state.generated_files["top.v"];
 
+    // Legacy (non-floorplanned) builds must emit the reset as a plain wire
+    // with no synthesis attribute — the max_fanout cap is floorplan-only.
+    assert!(
+        top_v.contains("wire ap_rst;") && !top_v.contains("max_fanout"),
+        "non-floorplanned reset must stay a plain wire:\n{top_v}"
+    );
+
     // Peek ports should be removed from the emitted module declaration
     let decl_section = top_v.split(");").next().unwrap_or("");
     assert!(
@@ -1067,6 +1074,10 @@ fn test_generate_rtl_distributes_floorplanned_control() {
         top.contains("assign ap_rst = !__tapa_control_fabric_reset_n")
             && top.contains(".fabric_reset_n(__tapa_control_fabric_reset_n)"),
         "the parent data fabric must remain reset until routed child state is clear:\n{top}"
+    );
+    assert!(
+        top.contains("(* max_fanout = 256 *) wire ap_rst;"),
+        "distributed control must cap the fabric reset fanout so Vivado replicates it per SLR:\n{top}"
     );
     assert!(
         top.contains(".ap_rst_n(__tapa_control_worker_0__reset_n)"),

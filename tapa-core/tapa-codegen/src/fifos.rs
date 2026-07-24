@@ -493,6 +493,7 @@ pub(crate) fn connect_fifos(
                         name: canonical.clone(),
                         kind: SignalKind::Wire,
                         width: signal_width,
+                        attribute: None,
                     });
                     let Some(parent_port) = mm.inner.get_port_of(fifo_name, suffix).cloned() else {
                         continue;
