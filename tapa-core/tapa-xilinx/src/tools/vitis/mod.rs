@@ -332,7 +332,7 @@ pub fn run_vitis_link(runner: &dyn ToolRunner, job: &VitisLinkJob) -> Result<Vit
         ));
     }
     let timing_text = fs_err::read_to_string(&resolved.timing_report)?;
-    let timing = parse_kernel_timing_summary(&timing_text)?;
+    let timing = parse_kernel_timing_summary(&timing_text, Some(job.target_mhz))?;
 
     Ok(VitisLinkOutput {
         timing_report: resolved.timing_report,
