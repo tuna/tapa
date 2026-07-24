@@ -114,6 +114,7 @@ fn cap_summary(
 pub(super) struct ImplementationTarget {
     platform: String,
     target_mhz: u32,
+    vivado_threads: u32,
 }
 
 impl ImplementationTarget {
@@ -123,7 +124,10 @@ impl ImplementationTarget {
 }
 
 /// Validate the implementation-only parts of the persisted synthesis target.
-pub(super) fn validate_target(state: &WorkState) -> Result<ImplementationTarget> {
+pub(super) fn validate_target(
+    state: &WorkState,
+    vivado_threads: u32,
+) -> Result<ImplementationTarget> {
     if state.graph.target != Target::XilinxVitis {
         return Err(CliError::InvalidArg(
             "`--run-impl` and `--dse` require the `xilinx-vitis` target".to_string(),
@@ -169,6 +173,7 @@ pub(super) fn validate_target(state: &WorkState) -> Result<ImplementationTarget>
     Ok(ImplementationTarget {
         platform: platform.to_string(),
         target_mhz,
+        vivado_threads,
     })
 }
 
@@ -377,6 +382,7 @@ fn try_implement_one(
         .xo(xo)
         .platform(target.platform.clone())
         .target_mhz(target.target_mhz)
+        .vivado_threads(target.vivado_threads)
         .work_dir(crate::util::utf8(&paths.link))
         .artifacts_dir(crate::util::utf8(&paths.artifacts))
         .output_xclbin(crate::util::utf8(&paths.xclbin))
@@ -988,20 +994,20 @@ mod tests {
         state.flow.part_num = Some("xcu280-fsvh2892-2L-e".to_string());
         state.flow.platform = Some("xilinx_u280_test".to_string());
         state.flow.clock_period = Some("3.33".to_string());
-        let target = validate_target(&state).expect("valid target");
+        let target = validate_target(&state, 2).expect("valid target");
         assert_eq!(target.platform, "xilinx_u280_test");
         assert_eq!(target.target_mhz, 300);
 
         for platform in ["", "/opt/xilinx/platform", "platform.xpfm"] {
             state.flow.platform = Some(platform.to_string());
-            validate_target(&state).expect_err("platform path must fail");
+            validate_target(&state, 2).expect_err("platform path must fail");
         }
 
         state.flow.platform = Some("xilinx_u280_test".to_string());
         state.flow.clock_period = Some("NaN".to_string());
-        validate_target(&state).expect_err("invalid clock must fail");
+        validate_target(&state, 2).expect_err("invalid clock must fail");
         state.flow.clock_period = Some("3.33".to_string());
         state.flow.part_num = Some("xcvc1902-vsva2197-2MP-e-S".to_string());
-        validate_target(&state).expect_err("Versal must fail early");
+        validate_target(&state, 2).expect_err("Versal must fail early");
     }
 }

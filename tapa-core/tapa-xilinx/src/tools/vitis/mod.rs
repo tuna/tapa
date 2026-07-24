@@ -64,6 +64,10 @@ pub struct VitisLinkJob {
     pub floorplan_xdc: Option<Utf8PathBuf>,
     #[builder(default)]
     pub connectivity_config: Option<Utf8PathBuf>,
+    /// Parallel Vivado synthesis job count for this link, forwarded to
+    /// `--vivado.synth.jobs`. Acts as the per-link thread budget.
+    #[builder(default = 2)]
+    pub vivado_threads: u32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -108,6 +112,9 @@ impl<'a> ResolvedJob<'a> {
             return Err(XilinxError::InvalidFrequency(
                 "target frequency must be positive, got `0` MHz".into(),
             ));
+        }
+        if job.vivado_threads == 0 {
+            return link_error("Vivado thread count must be greater than zero, got `0`");
         }
 
         let xo = crate::util::absolutize(&job.xo);
@@ -240,6 +247,8 @@ fn build_invocation(resolved: &ResolvedJob<'_>) -> ToolInvocation {
         .arg(job.target_mhz.to_string())
         .arg("--connectivity.nk")
         .arg(format!("{}:1:{}", job.kernel_name, job.kernel_name))
+        .arg("--vivado.synth.jobs")
+        .arg(job.vivado_threads.to_string())
         .arg("--vivado.prop=run.impl_1.STEPS.PHYS_OPT_DESIGN.IS_ENABLED=1")
         .arg("--vivado.prop=run.impl_1.STEPS.POST_ROUTE_PHYS_OPT_DESIGN.IS_ENABLED=1")
         .arg(format!(
@@ -485,6 +494,8 @@ ap_clk             -0.100       -1.000
                 "300",
                 "--connectivity.nk",
                 "Top:1:Top",
+                "--vivado.synth.jobs",
+                "2",
                 "--vivado.prop=run.impl_1.STEPS.PHYS_OPT_DESIGN.IS_ENABLED=1",
                 "--vivado.prop=run.impl_1.STEPS.POST_ROUTE_PHYS_OPT_DESIGN.IS_ENABLED=1",
                 "--vivado.prop=run.impl_1.STEPS.OPT_DESIGN.ARGS.DIRECTIVE=Explore",
@@ -542,6 +553,43 @@ ap_clk             -0.100       -1.000
             .iter()
             .any(|arg| arg.contains("OPT_DESIGN.TCL.PRE")));
         assert_eq!(call.uploads.len(), 2);
+    }
+
+    #[test]
+    fn vivado_threads_defaults_to_two_and_is_forwarded_to_synth_jobs() {
+        let fixture = Fixture::new();
+        let runner = MockToolRunner::new();
+        fixture.attach_success(&runner);
+        run_vitis_link(&runner, &fixture.job).expect("link succeeds");
+        let args = &runner.calls()[0].args;
+        let pos = args
+            .iter()
+            .position(|arg| *arg == "--vivado.synth.jobs")
+            .expect("--vivado.synth.jobs is emitted");
+        assert_eq!(args[pos + 1], "2");
+
+        // A caller-provided value is forwarded verbatim.
+        let mut fixture = Fixture::new();
+        fixture.job.vivado_threads = 4;
+        let runner = MockToolRunner::new();
+        fixture.attach_success(&runner);
+        run_vitis_link(&runner, &fixture.job).expect("link succeeds");
+        let args = &runner.calls()[0].args;
+        let pos = args
+            .iter()
+            .position(|arg| *arg == "--vivado.synth.jobs")
+            .expect("--vivado.synth.jobs is emitted");
+        assert_eq!(args[pos + 1], "4");
+    }
+
+    #[test]
+    fn rejects_zero_vivado_threads_before_invocation() {
+        let mut fixture = Fixture::new();
+        fixture.job.vivado_threads = 0;
+        let runner = MockToolRunner::new();
+        let error = run_vitis_link(&runner, &fixture.job).expect_err("zero threads must fail");
+        assert!(error.to_string().contains("greater than zero"));
+        assert!(runner.calls().is_empty());
     }
 
     #[test]

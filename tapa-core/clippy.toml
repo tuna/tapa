@@ -8,6 +8,7 @@ doc-valid-idents = [
     "CPLEX",
     "PuLP",
     "Vitis",
+    "Vivado",
     "Verilator",
     "..",
 ]

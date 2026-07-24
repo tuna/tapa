@@ -289,6 +289,12 @@ pub struct FloorplanArgs {
         requires = "dse"
     )]
     pub dse_jobs: usize,
+
+    /// Parallel Vivado synthesis jobs (`--vivado.synth.jobs`) for each
+    /// implementation link. The default of 2 trades host memory for faster
+    /// multi-kernel synthesis; lower it on memory-constrained hosts.
+    #[arg(long = "vivado-threads", default_value_t = 2, value_parser = parse_positive_u32)]
+    pub vivado_threads: u32,
 }
 
 fn parse_usage_limit(value: &str) -> std::result::Result<f64, String> {
@@ -321,6 +327,17 @@ fn parse_positive_usize(value: &str) -> std::result::Result<usize, String> {
         .map_err(|_| format!("`{value}` is not a non-negative integer"))?;
     if parsed == 0 {
         Err("DSE jobs must be greater than zero".to_string())
+    } else {
+        Ok(parsed)
+    }
+}
+
+fn parse_positive_u32(value: &str) -> std::result::Result<u32, String> {
+    let parsed = value
+        .parse::<u32>()
+        .map_err(|_| format!("`{value}` is not a non-negative integer"))?;
+    if parsed == 0 {
+        Err("Vivado thread count must be greater than zero".to_string())
     } else {
         Ok(parsed)
     }
@@ -450,7 +467,7 @@ pub fn run(args: &FloorplanArgs, ctx: &CliContext) -> Result<()> {
         ));
     }
     let implementation_target = (args.run_impl || args.dse)
-        .then(|| implementation::validate_target(&state))
+        .then(|| implementation::validate_target(&state, args.vivado_threads))
         .transpose()?;
     let connectivity = read_connectivity(args.connectivity.as_deref())?;
     if let Some(input) = &connectivity {
@@ -783,6 +800,7 @@ mod tests {
                 dse_max: 0.90,
                 dse_step: 0.03,
                 dse_jobs: 1,
+                vivado_threads: 2,
             },
             &ctx_at(dir.path()),
         )
@@ -901,6 +919,7 @@ mod tests {
                     dse_max: 0.90,
                     dse_step: 0.03,
                     dse_jobs: 1,
+                    vivado_threads: 2,
                 },
                 &ctx_at(dir.path()),
             )
@@ -943,6 +962,7 @@ mod tests {
             dse_max: 0.90,
             dse_step: 0.03,
             dse_jobs: 1,
+            vivado_threads: 2,
         };
 
         match run(&args, &ctx) {
@@ -1098,6 +1118,7 @@ mod tests {
             dse_max: 0.90,
             dse_step: 0.03,
             dse_jobs: 1,
+            vivado_threads: 2,
         };
         match run(&args, &ctx_at(dir.path())) {
             Ok(()) => assert_pipelined_floorplan_outputs(dir.path()),
@@ -1129,6 +1150,7 @@ mod tests {
                 dse_max: 0.90,
                 dse_step: 0.03,
                 dse_jobs: 1,
+                vivado_threads: 2,
             },
             &ctx_at(dir.path()),
         )
