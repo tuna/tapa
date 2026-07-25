@@ -68,6 +68,16 @@ ls work.out/report.json work.out/report.yaml
 
 If these files are missing, synthesis either did not run or exited before the reporting step. Check the HLS log in `work.out/` for errors.
 
+### Where per-task resource estimates come from
+
+`tapa synth` attaches a resource estimate to every task (`self_area`), which downstream steps — `report.json`/`report.yaml`, and crucially `tapa floorplan` — consume. There are two sources, and they populate different fields:
+
+- **`self_area` (always populated) — from HLS high-level synthesis estimates.** After Vitis HLS runs each task, TAPA parses the task's `csynth.xml` (the HLS synthesis report) for its `Area` estimates (LUT, FF, BRAM, DSP, URAM) and the estimated clock period, and writes them onto the task definition. These are the HLS tool's own pre-route estimates, available from every `tapa synth` run with no extra flags.
+
+- **`total_area` (populated only with `--enable-synth-util`) — from out-of-context RTL synthesis.** With `--enable-synth-util`, TAPA runs an additional Vivado out-of-context (`-mode out_of_context`) synthesis pass per task on the generated RTL, parses that utilization report, and writes the more accurate post-RTL-synthesis totals. The report's `area.source` reads `synth` when these are present, `hls` otherwise.
+
+The floorplan planner places tasks using `self_area` (`Area::from_annotations`) as the per-task cost in its partition ILP — so the quality of the floorplan's SLR balance depends on these estimates. The HLS `self_area` is usually sufficient for placement; `--enable-synth-util` gives more accurate totals for the utilization report but is not required for floorplanning.
+
 ## Improving Fmax with `tapa floorplan`
 
 The checks above address *throughput* (II, memory, FIFO depth). To improve *clock frequency* (Fmax) on a multi-die (multi-SLR) device, run `tapa floorplan` between `synth` and `pack`. It partitions the design across SLRs via a wire-crossing-minimizing ILP, inserts relay pipeline registers on cross-slot channels, and writes pblock + timing constraints.
