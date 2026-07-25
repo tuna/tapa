@@ -70,23 +70,25 @@ If these files are missing, synthesis either did not run or exited before the re
 
 ### Where per-task resource estimates come from
 
-`tapa synth` attaches a resource estimate to every task (`self_area`), which downstream steps — `report.json`/`report.yaml`, and crucially `tapa floorplan` — consume. There are two sources, and they populate different fields:
+TAPA needs a resource estimate for each task to balance the design across SLRs during floorplanning and to report utilization. There are two sources, in order of increasing accuracy:
 
-- **`self_area` (always populated) — from HLS high-level synthesis estimates.** After Vitis HLS runs each task, TAPA parses the task's `csynth.xml` (the HLS synthesis report) for its `Area` estimates (LUT, FF, BRAM, DSP, URAM) and the estimated clock period, and writes them onto the task definition. These are the HLS tool's own pre-route estimates, available from every `tapa synth` run with no extra flags.
+- **HLS estimates (always available).** After Vitis HLS synthesizes a task, TAPA reads its synthesis report for LUT, FF, BRAM, DSP, and URAM counts. These come "for free" with every `tapa synth` run, but **HLS estimates are coarse and frequently inaccurate** — they tend to undercount control and interconnect logic. Treat them as a rough guide, not a placement-quality number.
 
-- **`total_area` (populated only with `--enable-synth-util`) — from out-of-context RTL synthesis.** With `--enable-synth-util`, TAPA runs an additional Vivado out-of-context (`-mode out_of_context`) synthesis pass per task on the generated RTL, parses that utilization report, and writes the more accurate post-RTL-synthesis totals. The report's `area.source` reads `synth` when these are present, `hls` otherwise.
+- **Post-RTL-synthesis estimates (with `--enable-synth-util`).** This runs an additional out-of-context Vivado synthesis pass per task on the generated RTL, producing materially more accurate resource counts. **Prefer this whenever the estimates matter** — i.e. before floorplanning a tight design or when interpreting the utilization report. It costs one extra Vivado synth per task.
 
-The floorplan planner places tasks using `self_area` (`Area::from_annotations`) as the per-task cost in its partition ILP — so the quality of the floorplan's SLR balance depends on these estimates. The HLS `self_area` is usually sufficient for placement; `--enable-synth-util` gives more accurate totals for the utilization report but is not required for floorplanning.
+When `--enable-synth-util` has run, `report.json`/`report.yaml` mark `area.source: "synth"`; otherwise `area.source: "hls"`.
 
 ## Improving Fmax with `tapa floorplan`
 
-The checks above address *throughput* (II, memory, FIFO depth). To improve *clock frequency* (Fmax) on a multi-die (multi-SLR) device, run `tapa floorplan` between `synth` and `pack`. It partitions the design across SLRs via a wire-crossing-minimizing ILP, inserts relay pipeline registers on cross-slot channels, and writes pblock + timing constraints.
+The checks above improve *throughput* (II, memory, FIFO depth). To improve *clock frequency* (Fmax) on a multi-SLR device, run `tapa floorplan` between `synth` and `pack`. It assigns tasks to SLRs, balances resource usage across them, adds pipeline registers on the channels that cross SLR boundaries, and generates the placement and timing constraints for `pack`.
 
 ### When it helps
 
-A design is **SLR-crossing-bound** when, without a floorplan, Vivado cannot route it at the target clock (global congestion level 7 = unroutable) or leaves long cross-die paths. On such designs the floorplan is load-bearing: it can turn an unroutable 3 ns design into a routable ~300 MHz one. On designs that already meet timing, a floorplan is unnecessary.
+Floorplanning helps when your design is **SLR-crossing-bound**: without it, Vivado either fails to route at your target clock or leaves long, slow paths across dies. Typical signs are routing congestion or worst paths that hop between SLRs. If your design already meets timing, you don't need it.
 
-### How to measure (implementation / DSE)
+### Running it with implementation feedback
+
+`tapa floorplan` can plan alone (fast — just writes constraints), or run the plan through `v++ --link` to measure the resulting Fmax:
 
 ```bash
 tapa --work-dir work.out floorplan \
@@ -96,11 +98,16 @@ tapa --work-dir work.out floorplan \
   --vivado-threads 2
 ```
 
-`--dse` sweeps exact logic-utilization caps and runs each through `v++ --link`, reporting the achieved Fmax per candidate. `--run-impl` runs a single candidate at `--usage-limit` instead. The winning candidate's metrics land in `work.out/floorplan-metrics.json`; per-candidate diagnostics in `work.out/dse/candidates.json`.
+- `--run-impl` plans once and measures that single plan.
+- `--dse` sweeps a range of per-SLR utilization caps, measures each, and reports the best Fmax. Results land in `floorplan-metrics.json` (winner) and `dse/candidates.json` (all candidates).
 
-### What still bounds Fmax after floorplanning
+See the [`tapa floorplan` CLI reference](../reference/cli.md) for the full flag set.
 
-Floorplanning relieves **placement/routing** pressure (SLR crossing, congestion) and **reset-distribution** (the emitted XDC cuts the cross-SLR reset net out of setup timing). It does **not** change intra-task logic depth. If the worst failing paths are inside a single task — e.g. a 9-level float-compare → RAM-read datapath scheduled by HLS in one cycle — no floorplan change will close timing; that requires an HLS pipelining directive (`#pragma HLS pipeline` / loop restructuring) on the offending task. Use the routed timing report's *Intra Clock Table* (the kernel-clock WNS row) and the `report_timing` worst paths to tell the two apart: cross-SLR or reset-source paths are floorplan-addressable; intra-task paths are HLS-addressable.
+### What floorplanning can and cannot fix
+
+Floorplanning fixes problems caused by **placement and routing** — SLR crossings, congestion, and reset-distribution delay. It does **not** change the logic inside a task. If your worst failing paths live entirely within one task (a long combinational chain the HLS scheduler placed in a single cycle), no floorplan will close timing; you need to restructure that task in HLS (e.g. add a `#pragma HLS pipeline`, split the operation across cycles).
+
+To tell the two apart, read the post-implementation timing report: worst paths whose *source and destination sit in different SLRs*, or whose source is a reset/clock tree, are placement problems the floorplan can address; worst paths contained inside a single task instance are logic-depth problems that require HLS changes.
 
 ## Advanced flags summary
 

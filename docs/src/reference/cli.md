@@ -123,7 +123,9 @@ tapa --work-dir work.out synth \
 
 ## tapa floorplan
 
-Coarse-grained floorplanning for multi-die (multi-SLR) FPGAs, slotting between `synth` and `pack`. It partitions the flattened task graph into physical SLR slots via a wire-crossing-minimizing ILP (solved with the local `cbc` binary), inserts latency-insensitive relay/handshake pipeline registers on every cross-slot channel, and writes pblock constraints (`floorplan.xdc`) plus a `FloorplanResult` into the work state. The presence of the floorplan marker switches later `pack` and codegen onto the floorplanned path.
+Floorplan a design for a multi-die (multi-SLR) FPGA. Run it between `synth` and `pack` to assign tasks to SLRs, balance resource usage across them, and add pipeline registers on channels that cross SLR boundaries. It writes placement and timing constraints (`floorplan.xdc`) that `pack` picks up automatically.
+
+Run it **after** `tapa synth` (it needs each task's resource estimate) and **before** `tapa pack`. The partitioner solves a wire-crossing-minimizing ILP with the local `cbc` solver.
 
 Run it **after** `tapa synth` (it needs the per-task areas) and **before** `tapa pack`.
 
