@@ -68,6 +68,30 @@ ls work.out/report.json work.out/report.yaml
 
 If these files are missing, synthesis either did not run or exited before the reporting step. Check the HLS log in `work.out/` for errors.
 
+## Improving Fmax with `tapa floorplan`
+
+The checks above address *throughput* (II, memory, FIFO depth). To improve *clock frequency* (Fmax) on a multi-die (multi-SLR) device, run `tapa floorplan` between `synth` and `pack`. It partitions the design across SLRs via a wire-crossing-minimizing ILP, inserts relay pipeline registers on cross-slot channels, and writes pblock + timing constraints.
+
+### When it helps
+
+A design is **SLR-crossing-bound** when, without a floorplan, Vivado cannot route it at the target clock (global congestion level 7 = unroutable) or leaves long cross-die paths. On such designs the floorplan is load-bearing: it can turn an unroutable 3 ns design into a routable ~300 MHz one. On designs that already meet timing, a floorplan is unnecessary.
+
+### How to measure (implementation / DSE)
+
+```bash
+tapa --work-dir work.out floorplan \
+  --partition-strategy multi-level --pp-scheme double \
+  --connectivity connectivity.ini \
+  --dse --dse-min 0.55 --dse-max 0.90 --dse-step 0.05 \
+  --vivado-threads 2
+```
+
+`--dse` sweeps exact logic-utilization caps and runs each through `v++ --link`, reporting the achieved Fmax per candidate. `--run-impl` runs a single candidate at `--usage-limit` instead. The winning candidate's metrics land in `work.out/floorplan-metrics.json`; per-candidate diagnostics in `work.out/dse/candidates.json`.
+
+### What still bounds Fmax after floorplanning
+
+Floorplanning relieves **placement/routing** pressure (SLR crossing, congestion) and **reset-distribution** (the emitted XDC cuts the cross-SLR reset net out of setup timing). It does **not** change intra-task logic depth. If the worst failing paths are inside a single task — e.g. a 9-level float-compare → RAM-read datapath scheduled by HLS in one cycle — no floorplan change will close timing; that requires an HLS pipelining directive (`#pragma HLS pipeline` / loop restructuring) on the offending task. Use the routed timing report's *Intra Clock Table* (the kernel-clock WNS row) and the `report_timing` worst paths to tell the two apart: cross-SLR or reset-source paths are floorplan-addressable; intra-task paths are HLS-addressable.
+
 ## Advanced flags summary
 
 | Flag | Description |

@@ -121,6 +121,64 @@ tapa --work-dir work.out synth \
 
 ---
 
+## tapa floorplan
+
+Coarse-grained floorplanning for multi-die (multi-SLR) FPGAs, slotting between `synth` and `pack`. It partitions the flattened task graph into physical SLR slots via a wire-crossing-minimizing ILP (solved with the local `cbc` binary), inserts latency-insensitive relay/handshake pipeline registers on every cross-slot channel, and writes pblock constraints (`floorplan.xdc`) plus a `FloorplanResult` into the work state. The presence of the floorplan marker switches later `pack` and codegen onto the floorplanned path.
+
+Run it **after** `tapa synth` (it needs the per-task areas) and **before** `tapa pack`.
+
+### Required flags
+
+| Flag | Description |
+|------|-------------|
+| `--connectivity FILE` | Vitis link `sp=` config mapping each direct M-AXI port to a memory bank. Required when the kernel has direct M-AXI ports (HBM/DDR pinning). |
+
+### Optional flags (planning)
+
+| Flag | Description |
+|------|-------------|
+| `--usage-limit FRAC` | Per-slot resource utilization target for a non-DSE plan; raised on infeasibility (default `0.7`). |
+| `--partition-strategy {auto,flat,multi-level}` | Placement schedule. `multi-level` places into rows (SLRs) then refines into atomic slots. |
+| `--pp-scheme {single,double,single_h_double_v}` | How pipeline registers distribute across a crossing's route (default `double`). |
+| `--max-seconds N` | ILP wall-clock limit in seconds (default `600`). |
+
+### Optional flags (implementation / DSE)
+
+These run the floorplanned design through `v++ --link` to measure Fmax. They require synthesis with `--platform <installed-platform-name>` and a `xilinx-vitis` target, and they run Vivado/Vitis on the tool host.
+
+| Flag | Description |
+|------|-------------|
+| `--run-impl` | Plan one candidate at `--usage-limit`, package the XO, and run one `v++ --link` to measure its Fmax. |
+| `--dse` | Design-space exploration: sweep exact logic-utilization caps across `--dse-min`…`--dse-max`. |
+| `--dse-min FRAC` / `--dse-max FRAC` / `--dse-step FRAC` | DSE cap range and step (require `--dse`). |
+| `--dse-jobs N` | Max candidate package/link jobs to run concurrently (default `1`; requires `--dse`). |
+| `--vivado-threads N` | Per-link Vivado synthesis jobs (`--vivado.synth.jobs`, default `2`). Lower it on memory-constrained hosts. |
+
+### What the floorplan XDC emits
+
+`tapa floorplan` writes `floorplan.xdc`, sourced by `pack`/`v++` as `OPT_DESIGN.TCL.PRE`. It contains:
+
+- **Pblocks** for every slot and pipeline stage (`IS_SOFT 1`, `CONTAIN_ROUTING 0`). On DFX/shell platforms Vivado may force `IS_SOFT=0` for hierarchical-flow children — this is expected and is what drops routing congestion.
+- **Pipeline-stage cell matches** (`TAPA_HS_HEAD/BODY/TAIL`) constrained to their route cells, with `USER_SLL_REG` on vertical-boundary bodies.
+- **Reset-distribution timing cuts**: `set_false_path` on the reset net (TAPA's `__tapa_control_fabric_reset_n` and the platform `peripheral_aresetn`), both `-quiet`. Reset deassertion is not a per-cycle setup concern; cutting it removes the dominant cross-SLR reset wall.
+
+### Example
+
+```bash
+tapa --work-dir work.out synth --platform xilinx_u280_gen3x16_xdma_1_202211_1 --clock-period 3
+tapa --work-dir work.out floorplan \
+  --partition-strategy multi-level \
+  --pp-scheme double \
+  --connectivity connectivity.ini \
+  --dse --dse-min 0.55 --dse-max 0.90 --dse-step 0.05 \
+  --vivado-threads 2
+tapa --work-dir work.out pack -o kernel.xo
+```
+
+The floorplanned `pack` consumes `floorplan.xdc` and the connectivity config automatically once the floorplan marker is present.
+
+---
+
 ## tapa pack
 
 Package per-task RTL from the work directory into a single output artifact. For the default `xilinx-vitis` target this produces an XO file; for other targets a ZIP file is produced. Reads RTL produced by `tapa synth`.
