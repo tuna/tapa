@@ -98,6 +98,8 @@ impl<'de> serde::Deserialize<'de> for MemoryBindings {
 
 impl MemoryBindings {
     /// Parse `sp=kernel.port:HBM[n]` and `sp=kernel.port:DDR[n]` entries from
+    /// a Vitis link config. `port` may carry one or more `[N]` array-index
+    /// suffixes for `tapa::mmaps<T, N>` arguments, e.g. `kernel.fifo[3]:HBM[4]`.
     /// `[connectivity]` sections in a Vitis configuration.
     pub fn parse_vitis_config(input: &str) -> Result<Self, ConnectivityParseError> {
         parse_vitis_config(input)
@@ -272,7 +274,7 @@ fn parse_endpoint(value: &str, line: usize) -> Result<MemoryEndpoint, Connectivi
     let mut parts = value.split('.');
     let kernel = parts.next().unwrap_or_default().trim();
     let port = parts.next().unwrap_or_default().trim();
-    if parts.next().is_some() || !is_identifier(kernel) || !is_identifier(port) {
+    if parts.next().is_some() || !is_identifier(kernel) || !is_port_name(port) {
         return Err(ConnectivityParseError::MalformedEndpoint {
             line,
             endpoint: value.to_string(),
@@ -290,6 +292,34 @@ fn is_identifier(value: &str) -> bool {
         .next()
         .is_some_and(|character| character == '_' || character.is_ascii_alphabetic())
         && characters.all(|character| character == '_' || character.is_ascii_alphanumeric())
+}
+
+/// Like [`is_identifier`] but also allows one or more `[N]` array-index
+/// suffixes, e.g. `edge_list_ch[0]`. The expanded ports of a `tapa::mmaps<T, N>`
+/// argument are named with brackets, and the connectivity file must reference
+/// them by that exact name (just as the memory bank uses `HBM[0]`).
+fn is_port_name(value: &str) -> bool {
+    let Some(base_end) = value.find('[') else {
+        return is_identifier(value);
+    };
+    let base = &value[..base_end];
+    if base.is_empty() || !is_identifier(base) {
+        return false;
+    }
+    let mut rest = &value[base_end..];
+    let mut saw_index = false;
+    while let Some(inner) = rest.strip_prefix('[') {
+        match inner.split_once(']') {
+            Some((digits, after))
+                if !digits.is_empty() && digits.bytes().all(|byte| byte.is_ascii_digit()) =>
+            {
+                rest = after;
+                saw_index = true;
+            }
+            _ => return false,
+        }
+    }
+    saw_index && rest.is_empty()
 }
 
 fn parse_bank(value: &str, line: usize) -> Result<MemoryBank, ConnectivityParseError> {
@@ -396,6 +426,44 @@ mod tests {
             1,
             "identical duplicates must be deduplicated"
         );
+    }
+
+    #[test]
+    fn parses_array_index_endpoints_for_mmaps_args() {
+        // A `tapa::mmaps<T, N>` argument expands to per-channel ports named
+        // with `[N]` indices; the connectivity must reference them by that
+        // exact bracketed name, matching the memory bank's own bracket form.
+        let config =
+            "[connectivity]\nsp=Sextans.edge_list_ch[0]:HBM[1]\nsp=Sextans.edge_list_ch[7]:HBM[8]\n";
+        let bindings = parse_vitis_config(config).expect("array endpoints parse");
+        assert_eq!(bindings.len(), 2);
+        assert_eq!(
+            bindings.get("Sextans", "edge_list_ch[0]"),
+            Some(MemoryBank {
+                kind: MemoryKind::Hbm,
+                index: 1,
+            }),
+            "bracketed port name must be retained verbatim",
+        );
+        assert_eq!(
+            bindings.get("Sextans", "edge_list_ch[7]"),
+            Some(MemoryBank {
+                kind: MemoryKind::Hbm,
+                index: 8,
+            }),
+        );
+    }
+
+    #[test]
+    fn rejects_malformed_array_index_endpoints() {
+        for config in [
+            "[connectivity]\nsp=kernel.port[]:HBM[0]",
+            "[connectivity]\nsp=kernel.port[x]:HBM[0]",
+            "[connectivity]\nsp=kernel.[0]:HBM[0]",
+            "[connectivity]\nsp=kernel.port[0]extra:HBM[0]",
+        ] {
+            parse_vitis_config(config).expect_err("malformed array endpoint must fail");
+        }
     }
 
     #[test]
