@@ -106,9 +106,37 @@ pub fn emit_xdc(result: &FloorplanResult, device: &Device) -> String {
         add_region_pblock(&mut lines, region, matches, device);
     }
 
+    // Reset-distribution timing cuts. The active-high reset net fans out from
+    // the platform's `proc_sys_reset` synchronizer (upstream of TAPA's
+    // `ap_rst`) across every SLR, and its deassertion-recovery time is not a
+    // per-cycle setup concern. Cut it out of setup timing so Vivado does not
+    // burn routing effort chasing a structural false wall. Both constraints are
+    // guarded so they are no-ops when the named net/pins are absent (e.g. a
+    // platform that does not expose `peripheral_aresetn`).
+    lines.extend(reset_timing_constraints());
+
     let mut text = lines.join("\n");
     text.push('\n');
     text
+}
+
+/// XDC lines that relax reset-distribution out of setup timing.
+///
+/// These are emitted verbatim after the pblock constraints. They are plain Tcl
+/// (no design-specific interpolation) so they are easy to audit and disable.
+fn reset_timing_constraints() -> [String; 2] {
+    [
+        // TAPA's own reset driver net, platform-agnostic.
+        "set_false_path -quiet -through [get_nets -quiet -hier \
+         -filter {NAME =~ \"*__tapa_control_fabric_reset_n*\"}]"
+            .to_string(),
+        // The platform reset synchronizer output that feeds it. The net name is
+        // Vitis-shell-specific, so `-quiet` makes this a harmless no-op on shells
+        // that do not expose it.
+        "set_false_path -quiet -through [get_nets -quiet -hier \
+         -filter {NAME =~ \"*peripheral_aresetn*\"}]"
+            .to_string(),
+    ]
 }
 
 struct CellMatch {
@@ -430,6 +458,8 @@ add_cells_to_pblock SLOT_X0Y0_TO_SLOT_X0Y0 $cells
 set cells [get_cells -quiet -hierarchical -regexp -filter {NAME =~ \"^(.*/)?fifo_VecAdd(_fifo)?(/.*)?$\"}]
 if {![llength $cells]} { error \"TAPA floorplan ERROR: expected cell `fifo_VecAdd` was not found\" }
 add_cells_to_pblock SLOT_X0Y0_TO_SLOT_X0Y0 $cells
+set_false_path -quiet -through [get_nets -quiet -hier -filter {NAME =~ \"*__tapa_control_fabric_reset_n*\"}]
+set_false_path -quiet -through [get_nets -quiet -hier -filter {NAME =~ \"*peripheral_aresetn*\"}]
 ";
         assert_eq!(emit_xdc(&result, &device), expected);
     }
@@ -479,6 +509,8 @@ if {$derived_ranges ne \"\"} {
   resize_pblock SLOT_X1Y1_TO_SLOT_X1Y1 -remove $derived_ranges
 }
 delete_pblock -quiet TAPA_PARENT_CLIP_SLOT_X1Y1_TO_SLOT_X1Y1
+set_false_path -quiet -through [get_nets -quiet -hier -filter {NAME =~ \"*__tapa_control_fabric_reset_n*\"}]
+set_false_path -quiet -through [get_nets -quiet -hier -filter {NAME =~ \"*peripheral_aresetn*\"}]
 ";
         let device = select_device("u280").expect("u280");
         assert_eq!(emit_xdc(&result, &device), expected);
