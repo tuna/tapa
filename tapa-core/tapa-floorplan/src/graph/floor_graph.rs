@@ -1024,24 +1024,20 @@ fn expected_memory_interfaces(
                     continue;
                 }
 
-                let child = task
-                    .ports
-                    .iter()
-                    .find(|port| port.name == *child_port)
-                    .ok_or_else(|| GraphError::UnsupportedMemoryInterface {
+                let child = find_port(&task.ports, child_port).ok_or_else(|| {
+                    GraphError::UnsupportedMemoryInterface {
                         port: argument.arg.clone(),
                         detail: format!(
                             "child endpoint `{instance_name}.{child_port}` has no port metadata"
                         ),
-                    })?;
-                let parent = top
-                    .ports
-                    .iter()
-                    .find(|port| port.name == argument.arg)
-                    .ok_or_else(|| GraphError::UnsupportedMemoryInterface {
+                    }
+                })?;
+                let parent = find_port(&top.ports, &argument.arg).ok_or_else(|| {
+                    GraphError::UnsupportedMemoryInterface {
                         port: argument.arg.clone(),
                         detail: "top-level mmap port metadata is missing".to_string(),
-                    })?;
+                    }
+                })?;
                 if child.cat != argument.cat || parent.cat != tapa_ir::ArgCategory::Mmap {
                     return Err(GraphError::UnsupportedMemoryInterface {
                         port: argument.arg.clone(),
@@ -1137,13 +1133,27 @@ fn checked_add_area(lhs: Area, rhs: Area) -> Option<Area> {
 }
 
 /// The bit width of `port_name` on task `def_name`.
+///
+/// For a `tapa::istreams`/`ostreams`/`mmaps` argument the instance names one
+/// channel (e.g. `fifo_B_in[2]`) but the task definition declares a single
+/// base port (`fifo_B_in`, `cat = istreams`). Fall back to the base name by
+/// stripping any trailing `[N]` index when the exact channel name is absent.
 fn port_width(flat: &TaskGraph, def_name: &str, port_name: &str) -> Option<u32> {
-    flat.tasks
-        .get(def_name)?
-        .ports
-        .iter()
-        .find(|p| p.name == port_name)
-        .map(|p| p.width)
+    let ports = &flat.tasks.get(def_name)?.ports;
+    find_port(ports, port_name).map(|p| p.width)
+}
+
+/// Find a port by name, trying the exact channel name first then the base
+/// (index-stripped) name for array-channel ports.
+fn find_port<'a>(ports: &'a [tapa_ir::Port], name: &str) -> Option<&'a tapa_ir::Port> {
+    ports.iter().find(|p| p.name == name).or_else(|| {
+        let base = name.split('[').next().unwrap_or(name);
+        if base.is_empty() || base == name {
+            None
+        } else {
+            ports.iter().find(|p| p.name == base)
+        }
+    })
 }
 
 /// Analytic FIFO area used by the placement resource model.
