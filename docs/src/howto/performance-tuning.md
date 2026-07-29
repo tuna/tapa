@@ -114,7 +114,6 @@ To tell the two apart, read the post-implementation timing report: worst paths w
 | Flag | Description |
 |------|-------------|
 | `--enable-synth-util` | Run post-HLS RTL synthesis to collect per-task resource utilization. |
-| `--disable-synth-util` | Do not run post-HLS RTL synthesis (default). |
 
 ## If something goes wrong
 

@@ -50,11 +50,6 @@ fn resolve_worker_count(jobs: Option<u32>, work_count: usize) -> usize {
     desired.min(work_count.max(1))
 }
 
-#[allow(
-    clippy::struct_excessive_bools,
-    reason = "every bool is a distinct user-facing flag, so collapsing into an enum would \
-              break compatibility"
-)]
 #[derive(Debug, Clone, Parser)]
 #[command(name = "synth", about = "Synthesize the TAPA program into RTL code.")]
 pub struct SynthArgs {
@@ -77,26 +72,14 @@ pub struct SynthArgs {
     #[arg(long = "keep-hls-work-dir", default_value_t = false)]
     pub keep_hls_work_dir: bool,
 
-    #[arg(long = "remove-hls-work-dir", conflicts_with = "keep_hls_work_dir")]
-    pub remove_hls_work_dir: bool,
-
     #[arg(long = "skip-hls-based-on-mtime", default_value_t = false)]
     pub skip_hls_based_on_mtime: bool,
-
-    #[arg(
-        long = "no-skip-hls-based-on-mtime",
-        conflicts_with = "skip_hls_based_on_mtime"
-    )]
-    pub no_skip_hls_based_on_mtime: bool,
 
     #[arg(long = "other-hls-configs", default_value = "")]
     pub other_hls_configs: String,
 
     #[arg(long = "enable-synth-util", default_value_t = false)]
     pub enable_synth_util: bool,
-
-    #[arg(long = "disable-synth-util", conflicts_with = "enable_synth_util")]
-    pub disable_synth_util: bool,
 
     #[arg(long = "override-report-schema-version", default_value = "")]
     pub override_report_schema_version: String,
