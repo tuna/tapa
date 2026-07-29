@@ -39,20 +39,6 @@ fn apply_ratio(raw: u64) -> u64 {
     (raw as f64 * USABLE_WIRE_RATIO).round_ties_even() as u64
 }
 
-/// Enumerate the binding cuts for all atomic slots of `device`.
-///
-/// This compatibility entry point is used by callers that request flat
-/// placement.  Multilevel placement calls [`find_cuts_for_regions`] directly.
-#[must_use]
-pub fn find_cuts(device: &Device) -> Vec<Cut> {
-    let regions: Vec<Coor> = device
-        .slots
-        .iter()
-        .map(crate::device::model::Slot::coor)
-        .collect();
-    find_cuts_for_regions(device, &regions)
-}
-
 /// Enumerate every straight guillotine cut that does not split any region.
 ///
 /// The capacity is the sum of the complete facing-border capacities between
@@ -194,10 +180,19 @@ mod tests {
         );
     }
 
+    fn find_all_slot_cuts(device: &Device) -> Vec<Cut> {
+        let regions: Vec<Coor> = device
+            .slots
+            .iter()
+            .map(crate::device::model::Slot::coor)
+            .collect();
+        find_cuts_for_regions(device, &regions)
+    }
+
     #[test]
     fn u280_has_two_row_cuts_and_one_column_cut() {
         let device = select_device("u280").expect("u280");
-        let cuts = find_cuts(&device);
+        let cuts = find_all_slot_cuts(&device);
         let names: Vec<&str> = cuts.iter().map(|c| c.name.as_str()).collect();
         assert_eq!(names, ["y=0", "y=1", "x=0"], "u280 grid is 2x3");
 
@@ -276,13 +271,16 @@ mod tests {
     #[test]
     fn u250_drops_the_uncapped_column_cut() {
         let device = select_device("u250").expect("u250");
-        let names: Vec<String> = find_cuts(&device).into_iter().map(|c| c.name).collect();
+        let names: Vec<String> = find_all_slot_cuts(&device)
+            .into_iter()
+            .map(|c| c.name)
+            .collect();
         assert_eq!(names, ["y=0", "y=1", "y=2"]);
     }
 
     #[test]
     fn vck190_has_no_binding_cuts() {
         let device = select_device("vck190").expect("vck190");
-        assert!(find_cuts(&device).is_empty());
+        assert!(find_all_slot_cuts(&device).is_empty());
     }
 }

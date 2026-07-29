@@ -128,63 +128,6 @@ pub enum IlpError {
     InvalidSolution(String),
 }
 
-/// Plan with automatic flat/multilevel schedule selection.
-pub fn floorplan(
-    graph: &FloorGraph,
-    device: &Device,
-    base_usage_limit: f64,
-    solver: &dyn Solver,
-    opts: &SolveOpts,
-) -> Result<Assignment, IlpError> {
-    floorplan_with_strategy(
-        graph,
-        device,
-        base_usage_limit,
-        base_usage_limit.max(MAX_USAGE_LIMIT),
-        PartitionStrategy::Auto,
-        solver,
-        opts,
-    )
-}
-
-/// Compatibility entry point that always uses one flat ILP.
-pub fn floorplan_flat(
-    graph: &FloorGraph,
-    device: &Device,
-    base_usage_limit: f64,
-    solver: &dyn Solver,
-    opts: &SolveOpts,
-) -> Result<Assignment, IlpError> {
-    floorplan_with_strategy(
-        graph,
-        device,
-        base_usage_limit,
-        base_usage_limit.max(MAX_USAGE_LIMIT),
-        PartitionStrategy::Flat,
-        solver,
-        opts,
-    )
-}
-
-/// Compatibility entry point that always runs row-then-column placement.
-pub fn floorplan_multilevel(
-    graph: &FloorGraph,
-    device: &Device,
-    base_usage_limit: f64,
-    solver: &dyn Solver,
-    opts: &SolveOpts,
-) -> Result<Assignment, IlpError> {
-    floorplan_with_strategy(
-        graph,
-        device,
-        base_usage_limit,
-        base_usage_limit.max(MAX_USAGE_LIMIT),
-        PartitionStrategy::MultiLevel,
-        solver,
-        opts,
-    )
-}
-
 /// Plan with an explicit schedule and utilization retry ceiling.
 pub(crate) fn floorplan_with_strategy(
     graph: &FloorGraph,
@@ -1647,10 +1590,12 @@ mod tests {
             Coor::span(0, 2, 1, 2).region_name(),
             Coor::slot(1, 2).region_name(),
         ]);
-        let result = floorplan_multilevel(
+        let result = floorplan_with_strategy(
             &graph,
             &device,
             DEFAULT_USAGE_LIMIT,
+            (DEFAULT_USAGE_LIMIT).max(MAX_USAGE_LIMIT),
+            PartitionStrategy::MultiLevel,
             &solver,
             &SolveOpts::default(),
         )
@@ -1702,8 +1647,16 @@ mod tests {
         };
         let solver = RecordingSolver::first();
 
-        let result = floorplan_multilevel(&graph, &device, 1.0, &solver, &SolveOpts::default())
-            .expect("the globally feasible atomic placement must survive a bad provisional row");
+        let result = floorplan_with_strategy(
+            &graph,
+            &device,
+            1.0,
+            1.0_f64.max(MAX_USAGE_LIMIT),
+            PartitionStrategy::MultiLevel,
+            &solver,
+            &SolveOpts::default(),
+        )
+        .expect("the globally feasible atomic placement must survive a bad provisional row");
 
         assert_eq!(
             result.regions.get("A_0"),
@@ -2095,10 +2048,12 @@ mod tests {
     fn flat_floorplan_assigns_every_vertex_without_cbc() {
         let graph = vadd_floor_graph();
         let device = select_device("u280").expect("u280");
-        let result = floorplan_flat(
+        let result = floorplan_with_strategy(
             &graph,
             &device,
             DEFAULT_USAGE_LIMIT,
+            (DEFAULT_USAGE_LIMIT).max(MAX_USAGE_LIMIT),
+            PartitionStrategy::Flat,
             &ChooseSolver::first(),
             &SolveOpts::default(),
         )
@@ -2111,10 +2066,12 @@ mod tests {
         let graph = vadd_floor_graph();
         let device = select_device("u280").expect("u280");
         assert!(matches!(
-            floorplan_flat(
+            floorplan_with_strategy(
                 &graph,
                 &device,
                 0.0,
+                0.0_f64.max(MAX_USAGE_LIMIT),
+                PartitionStrategy::Flat,
                 &ChooseSolver::first(),
                 &SolveOpts::default()
             ),
@@ -2141,10 +2098,12 @@ mod tests {
         // attempted instead of being skipped by a 0.02 increment.
         for lut in [719, 949] {
             let graph = single_task_floor_graph(lut);
-            let result = floorplan_flat(
+            let result = floorplan_with_strategy(
                 &graph,
                 &one_slot_device(1000),
                 DEFAULT_USAGE_LIMIT,
+                (DEFAULT_USAGE_LIMIT).max(MAX_USAGE_LIMIT),
+                PartitionStrategy::Flat,
                 &ChooseSolver::first(),
                 &SolveOpts::default(),
             )
@@ -2163,13 +2122,7 @@ mod tests {
 
         let ordinary_solver = StatusSolver::new(LpStatus::Infeasible);
         assert!(matches!(
-            floorplan_flat(
-                &graph,
-                &device,
-                DEFAULT_USAGE_LIMIT,
-                &ordinary_solver,
-                &SolveOpts::default(),
-            ),
+            floorplan_with_strategy(&graph, &device, DEFAULT_USAGE_LIMIT, (DEFAULT_USAGE_LIMIT).max(MAX_USAGE_LIMIT), PartitionStrategy::Flat, &ordinary_solver, &SolveOpts::default()),
             Err(IlpError::Infeasible(limit)) if limit == MAX_USAGE_LIMIT
         ));
         assert!(
@@ -2228,10 +2181,12 @@ mod tests {
         let device = select_device("u280").expect("u280");
         let solver = StatusSolver::new(LpStatus::NotSolved);
         assert!(matches!(
-            floorplan_flat(
+            floorplan_with_strategy(
                 &graph,
                 &device,
                 DEFAULT_USAGE_LIMIT,
+                (DEFAULT_USAGE_LIMIT).max(MAX_USAGE_LIMIT),
+                PartitionStrategy::Flat,
                 &solver,
                 &SolveOpts::default()
             ),
