@@ -45,7 +45,7 @@ pub enum PartitionStrategy {
 }
 
 /// Per-region, per-resource fractional limits.  Region names use
-/// `SLOT_X..._TO_SLOT_X...`; the legacy `lhs:rhs` spelling is accepted as well.
+/// `SLOT_X..._TO_SLOT_X...`.
 type RegionResourceLimits = BTreeMap<String, BTreeMap<Resource, f64>>;
 
 /// Constraints that narrow candidate domains or override resource limits.
@@ -891,18 +891,10 @@ fn add_resource_constraints(
 }
 
 fn lookup_limit(limits: &RegionResourceLimits, region: &Coor, resource: Resource) -> Option<f64> {
-    let canonical = region.region_name();
     limits
-        .get(&canonical)
+        .get(&region.region_name())
         .and_then(|by_resource| by_resource.get(&resource))
         .copied()
-        .or_else(|| {
-            limits.iter().find_map(|(name, by_resource)| {
-                (name.replace(':', "_TO_") == canonical)
-                    .then(|| by_resource.get(&resource).copied())
-                    .flatten()
-            })
-        })
 }
 
 /// Per-cut wire constraint over only the sparse route variables that exist.
