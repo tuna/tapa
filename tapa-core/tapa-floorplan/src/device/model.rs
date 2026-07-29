@@ -189,11 +189,12 @@ impl Coor {
     }
 
     /// Parse a region or slot tag that denotes exactly one slot into that
-    /// slot.
+    /// slot. A region tag is atomic only when its endpoints are identical;
+    /// reversed ranges are rejected.
     #[must_use]
     pub fn from_atomic_region_name(name: &str) -> Option<Self> {
         let coor = Self::from_region_or_slot_name(name)?;
-        (coor.width() == 1 && coor.height() == 1).then_some(coor)
+        (coor.dl_x == coor.ur_x && coor.dl_y == coor.ur_y).then_some(coor)
     }
 }
 

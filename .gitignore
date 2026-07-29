@@ -9,6 +9,7 @@
 .humanize
 .humanize/
 /.cache/
+/.pi-subagents/
 /.cmake-format
 /.vscode
 /VARS.local.bzl
