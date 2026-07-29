@@ -108,9 +108,8 @@ pub struct AnalyzeArgs {
     pub tapacc: Option<PathBuf>,
 
     /// Explicit path to the `tapa-cpp` (clang) binary. Same rationale
-    /// as `--tapacc`. Accepts the `--tapa-clang` alias used by older
-    /// Bazel driver rules.
-    #[arg(long = "tapa-cpp", visible_alias = "tapa-clang", value_name = "FILE")]
+    /// as `--tapacc`.
+    #[arg(long = "tapa-cpp", value_name = "FILE")]
     pub tapa_cpp: Option<PathBuf>,
 }
 

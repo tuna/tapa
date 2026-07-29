@@ -73,7 +73,7 @@ def _tapa_xo_impl(ctx):
     if ctx.file.tapacc:
         tapa_cmd.extend(["--tapacc", ctx.file.tapacc])
     if ctx.file.tapa_clang:
-        tapa_cmd.extend(["--tapa-clang", ctx.file.tapa_clang])
+        tapa_cmd.extend(["--tapa-cpp", ctx.file.tapa_clang])
 
     if ctx.attr.cflags:
         tapa_cmd.extend(["--cflags", ctx.attr.cflags])
