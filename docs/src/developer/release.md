@@ -13,7 +13,7 @@ workflow builds and publishes a release to GitHub Releases.
 To create a release:
 
 1. Update the `VERSION` file on `main` with the desired version string
-   (e.g. `0.1.20260319`).
+   (e.g. `0.1.20260721`).
 
 2. Trigger the `Publish Release` workflow via `workflow_dispatch` from
    the GitHub Actions UI. Optionally override the version in the input field;

@@ -27,7 +27,7 @@ TAPA has been tested on the following operating systems:
 curl -fsSL https://raw.githubusercontent.com/tuna/tapa/main/install.sh | sh -s -- -q
 ```
 
-This installs the current **stable** release (0.1.20260319). With root
+This installs the current **stable** release (0.1.20260721). With root
 privileges, TAPA installs to `/opt/tapa` with symlinks in `/usr/local/bin`.
 Otherwise it installs to `~/.tapa` and adds itself to your `PATH` via your
 shell profile.
@@ -35,7 +35,7 @@ shell profile.
 ```admonish info title="Rust migration in progress"
 TAPA's internal toolchain is being incrementally refactored to Rust for improved
 performance and reliability. During this transition, we recommend staying on the
-stable release (`0.1.20260319`) for production workloads. To try the latest
+stable release (`0.1.20260721`) for production workloads. To try the latest
 (potentially unstable) release instead, pass `--beta`:
 
     curl -fsSL https://raw.githubusercontent.com/tuna/tapa/main/install.sh | sh -s -- -q --beta
@@ -45,7 +45,7 @@ To install a specific version:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/tuna/tapa/main/install.sh \
-  | TAPA_VERSION=0.1.20260319 sh -s -- -q
+  | TAPA_VERSION=0.1.20260721 sh -s -- -q
 ```
 
 Releases are available at [github.com/tuna/tapa/releases](https://github.com/tuna/tapa/releases).

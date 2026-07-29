@@ -325,7 +325,7 @@ pub enum ParseIssue {
 }
 
 /// Scan the tree-sitter CST for `ERROR` nodes that correspond to
-/// declarations the old nom parser would have validated.
+/// malformed port/parameter declarations.
 ///
 /// Ignores ERROR nodes inside procedural blocks, assignments, and
 /// instantiations — those are skipped by the body loop anyway.
@@ -344,7 +344,7 @@ pub fn first_parse_error(source: &str) -> Option<ParseIssue> {
                 return Some(ParseIssue::MalformedPort);
             }
             // Other ERROR nodes (inside procedural blocks, etc.) are
-            // ignored because the old parser skipped those constructs.
+            // ignored: only the module interface is validated here.
             return None;
         }
         for i in 0..node.child_count() {
