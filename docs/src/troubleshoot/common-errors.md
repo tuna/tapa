@@ -44,7 +44,7 @@ void Task(tapa::mmap<int> mem) { ... }
 
 ## `async_mmap` passed by value
 
-**Symptom:** Passing `async_mmap` by value is deprecated and may produce a warning or error depending on the TAPA version.
+**Symptom:** The build fails with "`async_mmap` parameter must be passed by reference".
 
 **Cause:** `tapa::async_mmap<T>` is a set of streams that controls memory access. Like regular streams, it must be passed by reference.
 

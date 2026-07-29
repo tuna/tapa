@@ -156,7 +156,7 @@ void VecAdd(tapa::mmaps<float, M> a, tapa::mmaps<float, M> b,
 
 ## Rules
 
-- Kernel task signatures: `mmap<T>` must be passed **by value** (no `&`). This
+- Kernel task signatures: `mmap<T>` must be passed **by value** (no `&`); passing by reference is a compile error. This
   is the opposite of streams.
 - `mmap` can only be used as a function parameter, not as a local variable.
 - `read_only_mmap` / `write_only_mmap` describe host-to-kernel transfer

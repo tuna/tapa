@@ -109,7 +109,7 @@ slightly more LUTs for the burst-detection logic.
 ## Rules
 
 - `async_mmap<T>` must be passed **by reference** (`async_mmap<T>&`). Passing
-  by value is deprecated.
+  by value is a compile error.
 - Channel operations (`try_read`/`try_write` on the five streams) are
   **leaf-task only**. An upper-level task may accept and forward an
   `async_mmap<T>&` parameter to a child leaf task without operating on it.
@@ -128,7 +128,7 @@ Always use `try_read` and `try_write`.
 
 ## Common mistakes
 
-**Wrong** — `async_mmap` passed by value (deprecated):
+**Wrong** — `async_mmap` passed by value (compile error):
 
 ```cpp
 void Kernel(tapa::async_mmap<float> mem) { /* ... */ }  // missing &
