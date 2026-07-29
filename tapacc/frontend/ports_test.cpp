@@ -12,6 +12,8 @@
 #include "clang/Frontend/ASTUnit.h"
 #include "clang/Tooling/Tooling.h"
 
+#include "clang/Basic/DiagnosticIDs.h"
+
 #include "classify.h"
 #include "tapa_stub_decls.h"
 
@@ -32,6 +34,24 @@ struct Built {
   std::unique_ptr<clang::ASTUnit> ast;
   const clang::FunctionDecl* fn = nullptr;
 };
+
+// Diagnostics sink for error-path tests: the default TextDiagnosticPrinter
+// asserts on diagnostics emitted after source-file processing, which is
+// exactly when BuildPorts runs against a finished test AST.
+class CountingDiags : public clang::DiagnosticConsumer {
+ public:
+  void HandleDiagnostic(clang::DiagnosticsEngine::Level level,
+                        const clang::Diagnostic&) override {
+    if (level >= clang::DiagnosticsEngine::Error) ++errors;
+  }
+  unsigned errors = 0;
+};
+
+// Replace the AST's diagnostic client with the counting sink and build ports.
+std::vector<Port> BuildPortsExpectingError(Built& b, CountingDiags& diags) {
+  b.ast->getDiagnostics().setClient(&diags, /*ShouldOwn=*/false);
+  return BuildPorts(b.ast->getASTContext(), b.fn);
+}
 
 Built BuildProbe(const std::string& signature) {
   const std::string code =
@@ -97,13 +117,45 @@ TEST(Ports, StreamsCarryChanCountNotExpanded) {
 
 TEST(Ports, AsyncMmapAndOmmap) {
   auto b =
-      BuildProbe("void probe(tapa::async_mmap<int> a, tapa::ommap<float> o);");
+      BuildProbe("void probe(tapa::async_mmap<int>& a, tapa::ommap<float> o);");
   const std::vector<Port> ports = BuildPorts(b.ast->getASTContext(), b.fn);
   ASSERT_EQ(ports.size(), 2u);
   EXPECT_STREQ(TapaKindCat(ports[0].kind), "async_mmap");
   EXPECT_EQ(ports[0].ctype, "int*");
   EXPECT_STREQ(TapaKindCat(ports[1].kind), "ommap");
   EXPECT_EQ(ports[1].ctype, "float*");
+}
+
+TEST(Ports, StreamsAndAsyncMmapRequireReference) {
+  const char* bad[] = {
+      "void probe(tapa::istream<int> s);",
+      "void probe(tapa::ostream<int> s);",
+      "void probe(tapa::istreams<int, 2> s);",
+      "void probe(tapa::ostreams<int, 2> s);",
+      "void probe(tapa::async_mmap<int> m);",
+  };
+  for (const char* signature : bad) {
+    auto b = BuildProbe(signature);
+    CountingDiags diags;
+    BuildPortsExpectingError(b, diags);
+    EXPECT_GT(diags.errors, 0u) << signature;
+  }
+}
+
+TEST(Ports, MmapFamilyRequiresValue) {
+  const char* bad[] = {
+      "void probe(tapa::mmap<int>& m);",
+      "void probe(tapa::mmaps<int, 2>& m);",
+      "void probe(tapa::immap<int>& m);",
+      "void probe(tapa::ommap<int>& m);",
+      "void probe(tapa::hmap<int, 4, 8>& m);",
+  };
+  for (const char* signature : bad) {
+    auto b = BuildProbe(signature);
+    CountingDiags diags;
+    BuildPortsExpectingError(b, diags);
+    EXPECT_GT(diags.errors, 0u) << signature;
+  }
 }
 
 }  // namespace

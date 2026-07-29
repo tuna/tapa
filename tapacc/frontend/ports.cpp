@@ -4,6 +4,8 @@
 #include <string>
 #include <utility>
 
+#include "clang/Basic/Diagnostic.h"
+
 #include "classify.h"
 #include "type_args.h"
 
@@ -44,6 +46,78 @@ std::optional<uint32_t> IntArg(const clang::ParmVarDecl* param, unsigned idx) {
   return std::nullopt;
 }
 
+// Exact `tapa::` spelling of a port kind, for diagnostics.
+const char* KindSpelling(TapaKind k) {
+  switch (k) {
+    case TapaKind::kIStream:
+      return "tapa::istream";
+    case TapaKind::kOStream:
+      return "tapa::ostream";
+    case TapaKind::kIStreams:
+      return "tapa::istreams";
+    case TapaKind::kOStreams:
+      return "tapa::ostreams";
+    case TapaKind::kAsyncMmap:
+      return "tapa::async_mmap";
+    case TapaKind::kMmap:
+      return "tapa::mmap";
+    case TapaKind::kMmaps:
+      return "tapa::mmaps";
+    case TapaKind::kImmap:
+      return "tapa::immap";
+    case TapaKind::kOmmap:
+      return "tapa::ommap";
+    case TapaKind::kHmap:
+      return "tapa::hmap";
+    default:
+      return "tapa::?";
+  }
+}
+
+// clang's getCustomDiagID requires a string-literal format (templated length).
+template <unsigned N>
+void ReportShapeError(const clang::ASTContext& ctx,
+                      const clang::ParmVarDecl* param, const char (&fmt)[N]) {
+  clang::DiagnosticsEngine& diags = ctx.getDiagnostics();
+  const unsigned id =
+      diags.getCustomDiagID(clang::DiagnosticsEngine::Error, fmt);
+  clang::DiagnosticBuilder builder = diags.Report(param->getLocation(), id);
+  builder.AddString(KindSpelling(ClassifyTapaType(param)));
+  builder.AddString(param->getNameAsString());
+}
+
+// Parameter-shape contract: stream channels and `async_mmap` have connection
+// identity and must be passed by reference; mmap-family types are
+// pointer-like handles and must be passed by value.
+void CheckParamShape(const clang::ASTContext& ctx,
+                     const clang::ParmVarDecl* param, TapaKind kind) {
+  switch (kind) {
+    case TapaKind::kIStream:
+    case TapaKind::kOStream:
+    case TapaKind::kIStreams:
+    case TapaKind::kOStreams:
+    case TapaKind::kAsyncMmap:
+      if (!param->getType()->isLValueReferenceType()) {
+        ReportShapeError(ctx, param,
+                         "%0 parameter '%1' must be passed by reference");
+      }
+      break;
+    case TapaKind::kMmap:
+    case TapaKind::kMmaps:
+    case TapaKind::kImmap:
+    case TapaKind::kOmmap:
+    case TapaKind::kHmap:
+      if (param->getType()->isReferenceType()) {
+        ReportShapeError(ctx, param,
+                         "%0 parameter '%1' must be passed by value "
+                         "(not by reference)");
+      }
+      break;
+    default:
+      break;
+  }
+}
+
 }  // namespace
 
 std::vector<Port> BuildPorts(const clang::ASTContext& ctx,
@@ -51,6 +125,7 @@ std::vector<Port> BuildPorts(const clang::ASTContext& ctx,
   std::vector<Port> ports;
   for (const clang::ParmVarDecl* param : task->parameters()) {
     const TapaKind kind = ClassifyTapaType(param);
+    CheckParamShape(ctx, param, kind);
     const std::string name = param->getNameAsString();
     const std::string elem = ElementTypeName(param);
     const uint32_t elem_width = ElementWidth(ctx, param);
