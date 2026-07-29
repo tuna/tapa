@@ -21,27 +21,51 @@ use crate::VerilogModule;
 /// Regex patterns for cleanup: HLS-generated artifacts to remove.
 static REGSLICE_PATTERN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?m)^.*_regslice_both\b.*$\n?").unwrap());
-static AP_BLOCK_PATTERN: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?m)^.*ap_ST_fsm_state\d+_blk\b.*$\n?").unwrap());
+static AP_BLOCK_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(&format!(
+        r"(?m)^.*{}\d+_blk\b.*$\n?",
+        tapa_protocol::HLS_FSM_STATE_PREFIX
+    ))
+    .unwrap()
+});
 /// Remove HLS FSM parameter declarations.
-static FSM_PARAM_PATTERN: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?m)^.*ap_ST_fsm_state\d+\b.*$\n?").unwrap());
-/// Remove `ap_CS_fsm` and `ap_NS_fsm` declarations and assignments.
-static CS_NS_FSM_PATTERN: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?m)^.*\bap_[CN]S_fsm\b.*$\n?").unwrap());
+static FSM_PARAM_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(&format!(
+        r"(?m)^.*{}\d+\b.*$\n?",
+        tapa_protocol::HLS_FSM_STATE_PREFIX
+    ))
+    .unwrap()
+});
+/// Remove FSM current/next-state declarations and assignments.
+static CS_NS_FSM_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(&format!(
+        r"(?m)^.*\b(?:{}|{})\b.*$\n?",
+        tapa_protocol::HLS_FSM_CS,
+        tapa_protocol::HLS_FSM_NS
+    ))
+    .unwrap()
+});
 /// Remove initial blocks (power-on initialization).
 static INITIAL_BLOCK_PATTERN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?ms)^initial begin\n.*?end\n?").unwrap());
-/// Remove `ap_ce_reg` declarations.
-static AP_CE_PATTERN: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?m)^.*\bap_ce_reg\b.*$\n?").unwrap());
+/// Remove clock-enable register declarations.
+static AP_CE_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(&format!(r"(?m)^.*\b{}\b.*$\n?", tapa_protocol::HLS_CE_REG)).unwrap()
+});
 /// Remove HLS-internal inverted-reset declarations and assignments.
 static RST_INV_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(&format!(r"(?m)^.*\b{}\b.*$\n?", tapa_protocol::HLS_RST_INV)).unwrap()
 });
 /// Remove placeholder top-level handshake assigns from the HLS wrapper.
-static AP_HANDSHAKE_ASSIGN_PATTERN: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?m)^\s*assign\s+ap_(?:done|ready|idle)\s*=.*;\s*\n?").unwrap());
+static AP_HANDSHAKE_ASSIGN_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(&format!(
+        r"(?m)^\s*assign\s+(?:{}|{}|{})\s*=.*;\s*\n?",
+        tapa_protocol::HANDSHAKE_DONE,
+        tapa_protocol::HANDSHAKE_READY,
+        tapa_protocol::HANDSHAKE_IDLE,
+    ))
+    .unwrap()
+});
 
 /// A mutable view of a `VerilogModule` that tracks additions and
 /// body text modifications.

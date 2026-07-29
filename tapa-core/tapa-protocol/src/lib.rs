@@ -18,6 +18,17 @@ pub const HANDSHAKE_DONE: &str = "ap_done";
 pub const HANDSHAKE_IDLE: &str = "ap_idle";
 pub const HANDSHAKE_READY: &str = "ap_ready";
 
+// ── HLS-internal artifacts stripped by RTL cleanup ──────────────────
+
+/// Clock-enable register emitted by Vitis HLS for multi-cycle blocks.
+pub const HLS_CE_REG: &str = "ap_ce_reg";
+/// FSM current-state register.
+pub const HLS_FSM_CS: &str = "ap_CS_fsm";
+/// FSM next-state register.
+pub const HLS_FSM_NS: &str = "ap_NS_fsm";
+/// FSM per-state parameter/signal name prefix (`ap_ST_fsm_state<N>`).
+pub const HLS_FSM_STATE_PREFIX: &str = "ap_ST_fsm_state";
+
 // ── Stream port suffixes ────────────────────────────────────────────
 
 pub const ISTREAM_SUFFIXES: &[&str] = &["_dout", "_empty_n", "_read"];
