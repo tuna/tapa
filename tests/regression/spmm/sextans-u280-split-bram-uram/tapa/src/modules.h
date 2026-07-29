@@ -58,7 +58,7 @@ void Relay_float16(tapa::istream<float_v16>& fifo_in,
 void read_edge_list_ptr(
     const int num_ite, const int M,
     const int P_N,  // bit 31 - 16: repeat time, bit 15 - 0: N
-    const int K, tapa::async_mmap<int> edge_list_ptr,
+    const int K, tapa::async_mmap<int>& edge_list_ptr,
     tapa::ostream<int>& fifo_edge_list_ptr, tapa::ostream<int>& PE_inst) {
   PE_inst.write(num_ite);
   PE_inst.write(M);
@@ -86,7 +86,7 @@ l_rp:
   }
 }
 
-void read_A(tapa::async_mmap<ap_uint<512>> A,
+void read_A(tapa::async_mmap<ap_uint<512>>& A,
             tapa::ostream<ap_uint<512>>& fifo_A, const int A_len,
             const int P_N) {
   const int N16 = P_N >> 16;
@@ -108,7 +108,7 @@ l_rp:
   }
 }
 
-void read_B(tapa::async_mmap<float_v16> B, tapa::ostream<float_v16>& fifo_B,
+void read_B(tapa::async_mmap<float_v16>& B, tapa::ostream<float_v16>& fifo_B,
             const int K, const int P_N) {
   const int N16 = P_N >> 16;
   const int rp_time = (N16 == 0) ? 1 : N16;
@@ -128,7 +128,7 @@ l_rp:
   }
 }
 
-void read_C(tapa::async_mmap<float_v16> C, tapa::ostream<float_v16>& fifo_C,
+void read_C(tapa::async_mmap<float_v16>& C, tapa::ostream<float_v16>& fifo_C,
             const int M, const int P_N, tapa::ostream<int>& wrC_inst) {
   wrC_inst.write(M);
   wrC_inst.write(P_N);
@@ -152,7 +152,7 @@ l_rp:
 }
 
 void write_C(tapa::istream<int>& wrC_inst, tapa::istream<float_v16>& fifo_C,
-             tapa::async_mmap<float_v16> C_out) {
+             tapa::async_mmap<float_v16>& C_out) {
   int M = wrC_inst.read();
   int P_N = wrC_inst.read();
 
