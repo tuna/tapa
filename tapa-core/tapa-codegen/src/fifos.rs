@@ -373,7 +373,7 @@ fn resolve_fifo_width(
             }
         }
     }
-    // Fallback: check topology port definitions for the producer task
+    // Otherwise use the topology port definitions for the producer task.
     if let Some(task) = state.design.tasks.get(producer.task_name.as_str()) {
         if let Some(port_name) = producer.port_name.as_deref() {
             let logical_port_name =
@@ -383,12 +383,12 @@ fn resolve_fifo_width(
                 .iter()
                 .find(|port| port.name == logical_port_name && port.cat.is_output_stream())
             {
-                return Ok(port.width.saturating_add(1));
+                return Ok(tapa_protocol::stream_data_wire_width(port.width));
             }
         }
         for port in &task.ports {
             if port.cat.is_output_stream() {
-                return Ok(port.width.saturating_add(1));
+                return Ok(tapa_protocol::stream_data_wire_width(port.width));
             }
         }
     }

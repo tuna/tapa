@@ -3,8 +3,9 @@
 use tapa_ir::port::ArgCategory;
 use tapa_ir::Task;
 use tapa_protocol::{
-    axi_subport_width, PortDir, HANDSHAKE_CLK, HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY,
-    HANDSHAKE_RST_N, HANDSHAKE_START, M_AXI_CHANNEL_ORDER, M_AXI_PORTS, M_AXI_PREFIX,
+    axi_subport_width, stream_data_wire_width, stream_peek_port_name, stream_port_name, PortDir,
+    HANDSHAKE_CLK, HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY, HANDSHAKE_RST_N,
+    HANDSHAKE_START, M_AXI_CHANNEL_ORDER, M_AXI_PORTS, M_AXI_PREFIX,
 };
 use tapa_rtl::module::sanitize_array_name;
 use tapa_rtl::mutation::{simple_port, wide_port};
@@ -50,32 +51,48 @@ fn stream_names(name: &str, cat: ArgCategory, chan_count: Option<u32>) -> Vec<St
 }
 
 fn add_istream_ports(ports: &mut Vec<Port>, name: &str, width: u32) {
-    let stream_width = width.saturating_add(1);
+    let stream_width = stream_data_wire_width(width);
     ports.extend([
-        port_with_width(format!("{name}_s_dout"), Direction::Input, stream_width),
-        simple_port(format!("{name}_s_empty_n"), Direction::Input),
-        simple_port(format!("{name}_s_read"), Direction::Output),
-        port_with_width(format!("{name}_peek_dout"), Direction::Input, stream_width),
-        simple_port(format!("{name}_peek_empty_n"), Direction::Input),
-        simple_port(format!("{name}_peek_read"), Direction::Output),
+        port_with_width(
+            stream_port_name(name, "_dout"),
+            Direction::Input,
+            stream_width,
+        ),
+        simple_port(stream_port_name(name, "_empty_n"), Direction::Input),
+        simple_port(stream_port_name(name, "_read"), Direction::Output),
+        port_with_width(
+            stream_peek_port_name(name, "_dout"),
+            Direction::Input,
+            stream_width,
+        ),
+        simple_port(stream_peek_port_name(name, "_empty_n"), Direction::Input),
+        simple_port(stream_peek_port_name(name, "_read"), Direction::Output),
     ]);
 }
 
 fn add_ostream_ports(ports: &mut Vec<Port>, name: &str, width: u32) {
-    let stream_width = width.saturating_add(1);
+    let stream_width = stream_data_wire_width(width);
     ports.extend([
-        port_with_width(format!("{name}_s_din"), Direction::Output, stream_width),
-        simple_port(format!("{name}_s_full_n"), Direction::Input),
-        simple_port(format!("{name}_s_write"), Direction::Output),
-        port_with_width(format!("{name}_peek"), Direction::Input, stream_width),
+        port_with_width(
+            stream_port_name(name, "_din"),
+            Direction::Output,
+            stream_width,
+        ),
+        simple_port(stream_port_name(name, "_full_n"), Direction::Input),
+        simple_port(stream_port_name(name, "_write"), Direction::Output),
+        port_with_width(
+            stream_peek_port_name(name, ""),
+            Direction::Input,
+            stream_width,
+        ),
     ]);
 }
 
 fn add_addr_ostream_ports(ports: &mut Vec<Port>, name: &str) {
     ports.extend([
-        port_with_width(format!("{name}_s_din"), Direction::Output, 64),
-        simple_port(format!("{name}_s_full_n"), Direction::Input),
-        simple_port(format!("{name}_s_write"), Direction::Output),
+        port_with_width(stream_port_name(name, "_din"), Direction::Output, 64),
+        simple_port(stream_port_name(name, "_full_n"), Direction::Input),
+        simple_port(stream_port_name(name, "_write"), Direction::Output),
         port_with_width(format!("{name}_offset"), Direction::Input, 64),
     ]);
 }

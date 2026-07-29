@@ -35,6 +35,25 @@ pub const ISTREAM_SUFFIXES: &[&str] = &["_dout", "_empty_n", "_read"];
 pub const OSTREAM_SUFFIXES: &[&str] = &["_din", "_full_n", "_write"];
 pub const STREAM_DATA_SUFFIXES: &[&str] = &["_dout", "_din"];
 
+/// Width of a stream's data wire for a given element width; the stream
+/// payload is widened by one bit.
+pub const fn stream_data_wire_width(elem_width: u32) -> u32 {
+    elem_width.saturating_add(1)
+}
+
+/// Scalar-stream data/flow port name: `{base}_s{suffix}`.
+#[must_use]
+pub fn stream_port_name(base: &str, suffix: &str) -> String {
+    format!("{base}_s{suffix}")
+}
+
+/// Scalar-stream peek port name: `{base}_peek{suffix}`; an empty `suffix`
+/// names the ostream peek port.
+#[must_use]
+pub fn stream_peek_port_name(base: &str, suffix: &str) -> String {
+    format!("{base}_peek{suffix}")
+}
+
 /// Port-name suffix → wire direction (`"input"` or `"output"`).
 pub static STREAM_PORT_DIRECTION: phf::Map<&'static str, &'static str> = phf::phf_map! {
     "_dout" => "input",

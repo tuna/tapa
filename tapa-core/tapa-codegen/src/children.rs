@@ -7,8 +7,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use tapa_ir::port::ArgCategory;
 use tapa_ir::Arg;
 use tapa_protocol::{
-    HANDSHAKE_CLK, HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY, HANDSHAKE_RST, HANDSHAKE_RST_N,
-    HANDSHAKE_START, ISTREAM_SUFFIXES, M_AXI_PREFIX, OSTREAM_SUFFIXES,
+    stream_peek_port_name, stream_port_name, HANDSHAKE_CLK, HANDSHAKE_DONE, HANDSHAKE_IDLE,
+    HANDSHAKE_READY, HANDSHAKE_RST, HANDSHAKE_RST_N, HANDSHAKE_START, ISTREAM_SUFFIXES,
+    M_AXI_PREFIX, OSTREAM_SUFFIXES,
 };
 use tapa_rtl::builder::{
     AlwaysBlock, CaseItem, ContinuousAssign, Expr, ModuleInstance, PortArg, Sensitivity, Statement,
@@ -240,7 +241,7 @@ fn build_child_instance_with_reset(
         child_rtl
             .and_then(|module| module.get_port_of(name, suffix))
             .map_or_else(
-                || format!("{}_s{}", sanitize_array_name(name), suffix),
+                || stream_port_name(&sanitize_array_name(name), suffix),
                 |p| p.name.clone(),
             )
     };
@@ -253,7 +254,7 @@ fn build_child_instance_with_reset(
     // `{port}_s{suffix}` for scalar streams but `{port}{suffix}` for array
     // elements (and `{base}_peek_{idx}{suffix}` for array peeks), so a fixed
     // `_s`/`_peek` infix does not fit all cases. The `{port}_s{suffix}` /
-    // `{port}_peek{suffix}` fallbacks only apply when the parent module is
+    // `{port}_peek{suffix}` spellings apply when the parent module is
     // unavailable. The leaf module port itself is resolved separately by
     // `resolve_child_stream_port`.
     let stream_signal = |name: &str, suffix: &str| {
@@ -263,7 +264,7 @@ fn build_child_instance_with_reset(
         }
         parent_rtl
             .and_then(|module| module.get_port_of(name, suffix))
-            .map_or_else(|| format!("{base}_s{suffix}"), |p| p.name.clone())
+            .map_or_else(|| stream_port_name(&base, suffix), |p| p.name.clone())
     };
     let peek_signal = |name: &str, suffix: &str| {
         let base = sanitize_array_name(name);
@@ -272,7 +273,7 @@ fn build_child_instance_with_reset(
         }
         parent_rtl
             .and_then(|module| resolve_peek_port_name(module, name, suffix))
-            .unwrap_or_else(|| format!("{base}_peek{suffix}"))
+            .unwrap_or_else(|| stream_peek_port_name(&base, suffix))
     };
 
     // Argument port bindings
