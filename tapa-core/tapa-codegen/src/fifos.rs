@@ -97,9 +97,9 @@ fn stream_crossing_body_level(floorplan: Option<&FloorplanResult>, fifo_name: &s
 
 /// Build Head/Body/Tail storage for a cross-slot stream.
 ///
-/// Unlike the legacy `relay_station`, `BODY_LEVEL=0` retains a registered Head
-/// ready path and the Tail FIFO. This is what makes adjacent Single and
-/// Single-H/Double-V crossings both timing-safe and lossless.
+/// `BODY_LEVEL=0` retains a registered Head ready path
+/// and the Tail FIFO, which makes adjacent Single and Single-H/Double-V
+/// crossings both timing-safe and lossless.
 pub fn build_hs_pipeline_instance(
     name: &str,
     rst: Expr,

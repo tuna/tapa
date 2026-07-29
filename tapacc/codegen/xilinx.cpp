@@ -266,8 +266,7 @@ void XilinxBackend::RewriteSignature(const TaskModel& task, bool is_top,
         // Vitis top-level streams become axis interfaces. Rewrite the type to
         // hls::stream<qdma_axis<W>> so Vitis HLS emits `{name}_TDATA/_TVALID/
         // _TREADY/_TLAST` (what the cosim testbench binds to), instead of the
-        // `tapa::istream` disaggregated `_s_*` member ports. Mirrors the legacy
-        // rewriter's RewriteTopLevelFuncArguments.
+        // `tapa::istream` disaggregated `_s_*` member ports.
         if (const auto* arg = GetTemplateArg(param->getType(), 0)) {
           if (arg->getKind() == clang::TemplateArgument::Type) {
             const uint32_t w =

@@ -33,7 +33,7 @@ pub const FABRIC_RESET_MAX_FANOUT: u32 = 256;
 
 /// The active-high reset signal declaration, with a `max_fanout` attribute
 /// when distributed control is active (the floorplanned fabric reset) and a
-/// plain wire otherwise, preserving legacy RTL byte-for-byte.
+/// plain wire for non-floorplanned builds.
 #[must_use]
 pub fn fabric_reset_signal(distributed_control: bool) -> tapa_rtl::signal::Signal {
     use tapa_protocol::HANDSHAKE_RST;

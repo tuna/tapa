@@ -454,8 +454,8 @@ fn test_generate_rtl_top_task_removes_peek_ports() {
 
     let top_v = &state.generated_files["top.v"];
 
-    // Legacy (non-floorplanned) builds must emit the reset as a plain wire
-    // with no synthesis attribute — the max_fanout cap is floorplan-only.
+    // Non-floorplanned builds emit the reset as a plain wire with no
+    // synthesis attribute — the max_fanout cap is floorplan-only.
     assert!(
         top_v.contains("wire ap_rst;") && !top_v.contains("max_fanout"),
         "non-floorplanned reset must stay a plain wire:\n{top_v}"
@@ -2305,7 +2305,7 @@ fn test_generate_rtl_instantiates_async_mmap_bridge() {
     );
     assert!(
         top_v.contains(".rst(ap_rst)"),
-        "legacy bridge must retain the parent reset:\n{top_v}"
+        "non-floorplanned bridge must retain the parent reset:\n{top_v}"
     );
     assert!(top_v.contains(".EnableWriteChannel(0)"), "{top_v}");
     assert!(

@@ -145,7 +145,6 @@ fn publish_floorplan_after_update(
     for file_name in [
         FLOORPLAN_XDC,
         FLOORPLAN_CONNECTIVITY,
-        implementation::LEGACY_IMPLEMENTATION_XCLBIN,
         implementation::IMPLEMENTATION_TIMING_REPORT,
         implementation::IMPLEMENTATION_METRICS,
     ] {
@@ -813,12 +812,8 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let active_path = dir.path().join(FLOORPLAN_XDC);
         let connectivity_path = dir.path().join(FLOORPLAN_CONNECTIVITY);
-        let legacy_xclbin_path = dir
-            .path()
-            .join(implementation::LEGACY_IMPLEMENTATION_XCLBIN);
         fs_err::write(&active_path, "old constraints").expect("old xdc");
         fs_err::write(&connectivity_path, "old connectivity").expect("old connectivity");
-        fs_err::write(&legacy_xclbin_path, "old xclbin").expect("old xclbin");
 
         let err = publish_floorplan_after_update(
             dir.path(),
@@ -843,10 +838,6 @@ mod tests {
         assert!(
             !connectivity_path.exists(),
             "a failed update must not leave staged connectivity active",
-        );
-        assert!(
-            !legacy_xclbin_path.exists(),
-            "a new floorplan must remove obsolete implementation artifacts",
         );
     }
 

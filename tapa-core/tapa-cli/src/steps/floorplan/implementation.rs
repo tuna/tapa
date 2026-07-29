@@ -18,7 +18,6 @@ use crate::steps::synth::rtl_codegen::{emit_prepared_rtl_tree, prepare_rtl_state
 
 use super::{FLOORPLAN_CONNECTIVITY, FLOORPLAN_XDC};
 
-pub(super) const LEGACY_IMPLEMENTATION_XCLBIN: &str = "floorplan.xclbin";
 pub(super) const IMPLEMENTATION_TIMING_REPORT: &str = "floorplan-timing.rpt";
 pub(super) const IMPLEMENTATION_METRICS: &str = "floorplan-metrics.json";
 
@@ -958,7 +957,6 @@ mod tests {
         assert!(metrics.get("max_utilization").is_none());
         assert!(metrics.get("xclbin").is_none());
         assert_eq!(metrics["timing_report"], IMPLEMENTATION_TIMING_REPORT);
-        assert!(!dir.path().join(LEGACY_IMPLEMENTATION_XCLBIN).exists());
     }
 
     #[test]

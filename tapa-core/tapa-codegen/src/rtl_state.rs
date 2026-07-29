@@ -1644,7 +1644,7 @@ mod tests {
     }
 
     #[test]
-    fn direct_mmap_catalog_uses_legacy_canonical_instance_name() {
+    fn direct_mmap_catalog_uses_canonical_instance_name() {
         let state = plain_direct_mmap_state(None);
 
         let interfaces = state.direct_mmap_interfaces("top").unwrap();

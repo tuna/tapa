@@ -32,8 +32,8 @@ pub struct TaskInstance {
 }
 
 impl TaskInstance {
-    /// Return the explicit instance name, or the legacy
-    /// `{definition_name}_{index}` name when no name was emitted.
+    /// Return the explicit instance name, or `{definition_name}_{index}`
+    /// when the invoke was written without a name.
     #[must_use]
     pub fn canonical_name(&self, definition_name: &str, index: usize) -> Cow<'_, str> {
         self.name.as_deref().map_or_else(

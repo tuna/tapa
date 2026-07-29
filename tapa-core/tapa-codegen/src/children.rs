@@ -706,8 +706,8 @@ pub(crate) fn generate_child_signals(
                 },
             );
             // A floorplanned async bridge is co-located with its child, so the
-            // routed child reset is also its physically local reset. Keep the
-            // legacy parent reset when distributed control is absent.
+            // routed child reset is also its physically local reset;
+            // non-floorplanned builds use the parent reset.
             let bridge_reset = if control_plan.is_some() {
                 Expr::logical_not(reset_n.clone())
             } else {
