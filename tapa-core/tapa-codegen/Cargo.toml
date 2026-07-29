@@ -9,6 +9,7 @@ serde_json.workspace = true
 thiserror.workspace = true
 tapa-ir.workspace = true
 tapa-protocol.workspace = true
+tapa-floorplan.workspace = true
 tapa-rtl.workspace = true
 
 [dev-dependencies]

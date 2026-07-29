@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 
+use tapa_floorplan::device::Coor;
 use tapa_ir::{
     axi_pipeline_instance_name, AxiChannel, AxiEndpoint, FloorplanResult, MemoryBank, RoutedChannel,
 };
@@ -166,7 +167,7 @@ impl DirectAxiPipelinePlan {
                     ))
                 })?;
                 for region in &route.reg_regions {
-                    if parse_slot(region).is_none() {
+                    if Coor::from_slot_name(region).is_none() {
                         return Err(invalid_floorplan(format!(
                             "direct M-AXI endpoint {} {:?} has invalid Body region '{region}'",
                             display_endpoint(&endpoint),
@@ -284,13 +285,15 @@ fn validate_channel_route(
         .route
         .iter()
         .map(|region| {
-            parse_slot(region).ok_or_else(|| {
-                invalid_floorplan(format!(
-                    "direct M-AXI endpoint {} {:?} route has invalid slot '{region}'",
-                    display_endpoint(endpoint),
-                    channel,
-                ))
-            })
+            Coor::from_slot_name(region)
+                .map(|coor| (coor.dl_x, coor.dl_y))
+                .ok_or_else(|| {
+                    invalid_floorplan(format!(
+                        "direct M-AXI endpoint {} {:?} route has invalid slot '{region}'",
+                        display_endpoint(endpoint),
+                        channel,
+                    ))
+                })
         })
         .collect::<Result<Vec<_>, _>>()?;
     let source = slots[0];
@@ -462,17 +465,7 @@ const fn channel_rtl_name(channel: AxiChannel) -> &'static str {
 }
 
 fn parse_atomic_region(region: &str) -> Option<(u32, u32)> {
-    let Some((start, end)) = region.split_once("_TO_") else {
-        return parse_slot(region);
-    };
-    let start = parse_slot(start)?;
-    (parse_slot(end)? == start).then_some(start)
-}
-
-fn parse_slot(slot: &str) -> Option<(u32, u32)> {
-    let coordinates = slot.strip_prefix("SLOT_X")?;
-    let (x, y) = coordinates.split_once('Y')?;
-    Some((x.parse().ok()?, y.parse().ok()?))
+    Coor::from_atomic_region_name(region).map(|coor| (coor.dl_x, coor.dl_y))
 }
 
 fn display_endpoint(endpoint: &AxiEndpoint) -> String {

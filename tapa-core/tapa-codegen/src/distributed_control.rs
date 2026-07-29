@@ -2,6 +2,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use tapa_floorplan::device::Coor;
 use tapa_ir::{
     control_pipeline_instance_name, global_controller_instance_name,
     local_controller_instance_name, ControlChannel, PipelineScheme, RoutedChannel,
@@ -568,11 +569,13 @@ fn validate_route(
         .path
         .iter()
         .map(|region| {
-            parse_slot(region).ok_or_else(|| {
-                invalid_floorplan(format!(
-                    "child '{instance}' {channel:?} route has invalid slot '{region}'",
-                ))
-            })
+            Coor::from_slot_name(region)
+                .map(|coor| (coor.dl_x, coor.dl_y))
+                .ok_or_else(|| {
+                    invalid_floorplan(format!(
+                        "child '{instance}' {channel:?} route has invalid slot '{region}'",
+                    ))
+                })
         })
         .collect::<Result<Vec<_>, _>>()?;
     if slots.first() != Some(&source) || slots.last() != Some(&destination) {
@@ -581,7 +584,7 @@ fn validate_route(
         )));
     }
     for region in &route.reg_regions {
-        if parse_slot(region).is_none() {
+        if Coor::from_slot_name(region).is_none() {
             return Err(invalid_floorplan(format!(
                 "child '{instance}' {channel:?} has invalid Body region '{region}'",
             )));
@@ -753,17 +756,7 @@ fn control_wire_prefix(instance: &str) -> String {
 }
 
 fn parse_atomic_region(region: &str) -> Option<(u32, u32)> {
-    let Some((start, end)) = region.split_once("_TO_") else {
-        return parse_slot(region);
-    };
-    let start = parse_slot(start)?;
-    (parse_slot(end)? == start).then_some(start)
-}
-
-fn parse_slot(slot: &str) -> Option<(u32, u32)> {
-    let coordinates = slot.strip_prefix("SLOT_X")?;
-    let (x, y) = coordinates.split_once('Y')?;
-    Some((x.parse().ok()?, y.parse().ok()?))
+    Coor::from_atomic_region_name(region).map(|coor| (coor.dl_x, coor.dl_y))
 }
 
 fn invalid_floorplan(detail: impl Into<String>) -> CodegenError {
@@ -782,12 +775,5 @@ mod tests {
     #[test]
     fn multi_bit_selection_uses_the_exact_range() {
         assert_eq!(select_bits("bundle", 2, 64).to_string(), "bundle[65:2]");
-    }
-
-    #[test]
-    fn atomic_region_rejects_a_range() {
-        assert_eq!(parse_atomic_region("SLOT_X1Y2"), Some((1, 2)));
-        assert_eq!(parse_atomic_region("SLOT_X1Y2_TO_SLOT_X1Y2"), Some((1, 2)));
-        assert_eq!(parse_atomic_region("SLOT_X1Y2_TO_SLOT_X2Y2"), None);
     }
 }

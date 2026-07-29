@@ -209,8 +209,8 @@ fn user_sll_body_indices(route: &PipelineRoute) -> BTreeSet<usize> {
         .windows(2)
         .enumerate()
         .filter_map(|(index, regions)| {
-            let source = parse_region_or_slot(&regions[0])?;
-            let destination = parse_region_or_slot(&regions[1])?;
+            let source = Coor::from_region_or_slot_name(&regions[0])?;
+            let destination = Coor::from_region_or_slot_name(&regions[1])?;
             (source.dl_y != destination.dl_y).then_some([index, index + 1])
         })
         .flatten()
@@ -303,7 +303,7 @@ fn regex_escape(s: &str) -> String {
 
 /// The pblock operations for every atomic slot a region covers.
 fn region_slot_pblock_ranges<'a>(device: &'a Device, region: &str) -> Vec<&'a [String]> {
-    let Some(coor) = parse_region_or_slot(region) else {
+    let Some(coor) = Coor::from_region_or_slot_name(region) else {
         return Vec::new();
     };
     let mut ranges = Vec::new();
@@ -389,16 +389,8 @@ fn add_parent_clip(lines: &mut Vec<String>, region: &str, parent: &str) {
 /// tags. Canonicalizing both to the rectangle spelling prevents duplicate,
 /// overlapping pblocks for the same atomic slot.
 fn canonical_pblock_name(region: &str) -> String {
-    parse_region_or_slot(region).map_or_else(|| region.to_string(), |coor| coor.region_name())
-}
-
-fn parse_region_or_slot(region: &str) -> Option<Coor> {
-    if let Some(coor) = Coor::from_region_name(region) {
-        return Some(coor);
-    }
-    let rest = region.strip_prefix("SLOT_X")?;
-    let (x, y) = rest.split_once('Y')?;
-    Some(Coor::slot(x.parse().ok()?, y.parse().ok()?))
+    Coor::from_region_or_slot_name(region)
+        .map_or_else(|| region.to_string(), |coor| coor.region_name())
 }
 
 #[cfg(test)]

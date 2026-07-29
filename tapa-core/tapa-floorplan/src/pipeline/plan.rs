@@ -98,19 +98,9 @@ pub fn pipeline_reg_regions(route: &[Cell], scheme: PipelineScheme) -> Vec<Strin
 
 /// Parse a single-slot region tag into its grid cell.
 fn region_cell(region: &str) -> Result<Cell, PipelineError> {
-    parse_region_or_slot(region)
-        .filter(|coor| coor.width() == 1 && coor.height() == 1)
+    Coor::from_atomic_region_name(region)
         .map(|coor| (coor.dl_x, coor.dl_y))
         .ok_or_else(|| PipelineError::BadRegion(region.to_string()))
-}
-
-fn parse_region_or_slot(region: &str) -> Option<Coor> {
-    if let Some(coor) = Coor::from_region_name(region) {
-        return Some(coor);
-    }
-    let rest = region.strip_prefix("SLOT_X")?;
-    let (x, y) = rest.split_once('Y')?;
-    Some(Coor::slot(x.parse().ok()?, y.parse().ok()?))
 }
 
 fn canonical_slot_region(region: &str) -> Result<String, PipelineError> {
@@ -600,7 +590,7 @@ fn validate_realized_usage(
     block_capacity_limit: f64,
 ) -> Result<(), PipelineError> {
     for (region, used_area) in usage {
-        let coor = parse_region_or_slot(region)
+        let coor = Coor::from_region_or_slot_name(region)
             .filter(|coor| coor.width() == 1 && coor.height() == 1)
             .ok_or_else(|| PipelineError::BadRegion(region.clone()))?;
         let capacity = device

@@ -170,6 +170,31 @@ impl Coor {
         let (ur_x, ur_y) = parse_slot_tag(rhs)?;
         Some(Self::span(dl_x, dl_y, ur_x, ur_y))
     }
+
+    /// Parse a bare single-slot tag `SLOT_X{x}Y{y}` into a [`Coor`].
+    #[must_use]
+    pub fn from_slot_name(name: &str) -> Option<Self> {
+        let (x, y) = parse_slot_tag(name)?;
+        Some(Self::slot(x, y))
+    }
+
+    /// Parse either a region tag ([`from_region_name`](Coor::from_region_name))
+    /// or a bare single-slot tag `SLOT_X{x}Y{y}` into a [`Coor`].
+    #[must_use]
+    pub fn from_region_or_slot_name(name: &str) -> Option<Self> {
+        if let Some(coor) = Self::from_region_name(name) {
+            return Some(coor);
+        }
+        Self::from_slot_name(name)
+    }
+
+    /// Parse a region or slot tag that denotes exactly one slot into that
+    /// slot.
+    #[must_use]
+    pub fn from_atomic_region_name(name: &str) -> Option<Self> {
+        let coor = Self::from_region_or_slot_name(name)?;
+        (coor.width() == 1 && coor.height() == 1).then_some(coor)
+    }
 }
 
 /// Parse a single-slot tag `SLOT_X{x}Y{y}` into its grid coordinates.
@@ -487,6 +512,30 @@ pub fn penalized_distance(a: (i64, i64), b: (i64, i64), vertical_penalty: i64) -
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn parses_region_slot_and_atomic_names() {
+        assert_eq!(
+            Coor::from_region_or_slot_name("SLOT_X1Y2"),
+            Some(Coor::span(1, 2, 1, 2))
+        );
+        assert_eq!(
+            Coor::from_region_or_slot_name("SLOT_X1Y2_TO_SLOT_X2Y3"),
+            Some(Coor::span(1, 2, 2, 3))
+        );
+        assert_eq!(
+            Coor::from_atomic_region_name("SLOT_X1Y2"),
+            Some(Coor::span(1, 2, 1, 2))
+        );
+        assert_eq!(
+            Coor::from_atomic_region_name("SLOT_X1Y2_TO_SLOT_X1Y2"),
+            Some(Coor::span(1, 2, 1, 2))
+        );
+        assert_eq!(
+            Coor::from_atomic_region_name("SLOT_X1Y2_TO_SLOT_X2Y2"),
+            None
+        );
+    }
     use super::*;
 
     /// A 2×2 device with centroids on the `(100, 150)` grid, used for the
