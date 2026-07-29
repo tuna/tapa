@@ -19,15 +19,16 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use tapa_ir::Area;
 
-use crate::device::model::{add_area, Coor, Device, Resource, VERTICAL_DIST_PENALTY};
+use crate::device::model::{
+    add_area, Coor, Device, Resource, DEFAULT_USAGE_LIMIT, VERTICAL_DIST_PENALTY,
+};
 use crate::graph::FloorGraph;
 use crate::partition::cut::{find_cuts_for_regions, Cut};
 use crate::solver::{
     Comparison, LinExpr, LpModel, LpStatus, LpVar, Sense, SolveOpts, Solver, SolverError,
 };
 
-/// The default utilization and retry envelope for partitioning.
-pub const DEFAULT_USAGE_LIMIT: f64 = 0.7;
+/// The retry envelope for partitioning.
 const USAGE_LIMIT_STEP: f64 = 0.02;
 pub(crate) const MAX_USAGE_LIMIT: f64 = 0.95;
 const INTEGRAL_TOLERANCE: f64 = 1e-5;

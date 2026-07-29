@@ -32,11 +32,12 @@ use std::time::Duration;
 
 use tapa_ir::{FloorplanResult, MemoryBank, PipelineScheme, WorkState};
 
+use crate::device::model::DEFAULT_USAGE_LIMIT;
 use crate::device::select::{select_device, SelectError};
 use crate::graph::{FloorGraph, GraphError};
 use crate::partition::ilp::{
     floorplan_with_exact_resource_caps, floorplan_with_strategy, resolve_strategy, IlpError,
-    DEFAULT_USAGE_LIMIT, MAX_USAGE_LIMIT,
+    MAX_USAGE_LIMIT,
 };
 use crate::pipeline::plan::{
     plan_routes, realize_slot_usage, realize_slot_usage_with_resource_caps, PipelineError,
