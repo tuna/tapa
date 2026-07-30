@@ -8,7 +8,9 @@
 //! route. The objective minimizes the worst normalized utilization over the
 //! positive-capacity boundaries; on a device with no bounded boundary at all
 //! it minimizes total hop count instead. There is deliberately no bend-count
-//! objective.
+//! objective. A lexicographic second solve then pins the achieved objective
+//! and minimizes the stable candidate-path index, so equal-quality routes
+//! resolve deterministically across solver versions.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -313,6 +315,59 @@ fn validate_within_capacity(
     Ok(())
 }
 
+/// The total-hop objective over the path variables, used on devices with no
+/// bounded boundary and to pin an unconstrained primary solve.
+fn hop_objective(candidates: &[Vec<Vec<Cell>>], path_vars: &[Vec<LpVar>]) -> LinExpr {
+    let mut terms = Vec::new();
+    for (paths, vars) in candidates.iter().zip(path_vars) {
+        for (path, &var) in paths.iter().zip(vars) {
+            let hops = u32::try_from(path.len().saturating_sub(1)).expect("hop count fits u32");
+            if hops > 0 {
+                terms.push((f64::from(hops), var));
+            }
+        }
+    }
+    LinExpr::sum(terms)
+}
+
+/// Pin the achieved primary objective and re-solve minimizing the stable
+/// candidate-path index, whose optimum is unique per net (candidates are
+/// enumerated shortest/simplest first). Equal-quality routes therefore
+/// resolve deterministically across solver versions. Falls back to the
+/// primary incumbent when the refinement yields none.
+fn refine_lexicographic(
+    lp: &mut LpModel,
+    solver: &dyn Solver,
+    opts: &SolveOpts,
+    primary: &crate::solver::LpSolution,
+    max_crossings: Option<LpVar>,
+    candidates: &[Vec<Vec<Cell>>],
+    path_vars: &[Vec<LpVar>],
+) -> Result<Option<crate::solver::LpSolution>, RouteError> {
+    let pin = max_crossings.map_or_else(
+        || hop_objective(candidates, path_vars),
+        |max_crossings| LinExpr::sum([(1.0, max_crossings)]),
+    );
+    lp.add_constraint(
+        "lexicographic_pin".to_string(),
+        pin,
+        Comparison::Le,
+        primary.objective,
+    );
+    let mut terms = Vec::new();
+    for vars in path_vars {
+        for (index, &var) in vars.iter().enumerate() {
+            let rank = u32::try_from(index).expect("path count fits u32");
+            if rank > 0 {
+                terms.push((f64::from(rank), var));
+            }
+        }
+    }
+    lp.set_objective(LinExpr::sum(terms));
+    let refined = solver.solve(lp, opts)?;
+    Ok(refined.is_found().then_some(refined))
+}
+
 /// Route every net, returning a chosen slot path (`src` first, `dst` last) per
 /// net in input order.
 pub fn route_nets(
@@ -404,19 +459,7 @@ fn route_nets_with_preassignments(
     // Balance bounded-boundary utilization when one exists; otherwise prefer
     // short routes so unconstrained devices still get deterministic answers.
     let objective = max_crossings.map_or_else(
-        || {
-            let mut terms = Vec::new();
-            for (paths, vars) in candidates.iter().zip(&path_vars) {
-                for (path, &var) in paths.iter().zip(vars) {
-                    let hops =
-                        u32::try_from(path.len().saturating_sub(1)).expect("hop count fits u32");
-                    if hops > 0 {
-                        terms.push((f64::from(hops), var));
-                    }
-                }
-            }
-            LinExpr::sum(terms)
-        },
+        || hop_objective(&candidates, &path_vars),
         |max_crossings| LinExpr::sum([(1.0, max_crossings)]),
     );
     lp.set_objective(objective);
@@ -434,7 +477,20 @@ fn route_nets_with_preassignments(
         });
     }
 
-    let routes = selected_routes(&candidates, &path_vars, &solution)?;
+    // Lexicographic tie-break: pin the achieved objective, then minimize the
+    // stable candidate-path index so equal-quality routes resolve
+    // identically across solver versions.
+    let refined = refine_lexicographic(
+        &mut lp,
+        solver,
+        &route_opts,
+        &solution,
+        max_crossings,
+        &candidates,
+        &path_vars,
+    )?;
+    let solution = refined.as_ref().unwrap_or(&solution);
+    let routes = selected_routes(&candidates, &path_vars, solution)?;
     validate_within_capacity(nets, &routes, &limits)?;
     Ok(routes)
 }
@@ -596,6 +652,25 @@ mod tests {
             routes[0].len(),
             3,
             "diagonal nets take a two-hop path when utilization does not bind",
+        );
+    }
+
+    #[test]
+    fn equal_utilization_routes_pick_the_first_candidate() {
+        // Direct and detour crossings both top out at 10/70 utilization, so
+        // the primary objective ties; the refinement must pick the first
+        // (direct) candidate deterministically.
+        let device = toy_device(100);
+        let nets = [RouteNet {
+            src: (0, 0),
+            dst: (1, 0),
+            width: 10,
+        }];
+        let routes = route_with_cbc(&nets, &device);
+        assert_eq!(
+            routes[0],
+            vec![(0, 0), (1, 0)],
+            "the lexicographic refinement breaks utilization ties",
         );
     }
 
