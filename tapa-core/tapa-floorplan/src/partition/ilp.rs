@@ -62,7 +62,6 @@ type RegionResourceLimits = BTreeMap<String, BTreeMap<Resource, f64>>;
 #[derive(Debug, Clone, Default)]
 struct PlacementConstraints {
     vertex_regions: BTreeMap<String, Coor>,
-    min_resource_limits: RegionResourceLimits,
     max_resource_limits: RegionResourceLimits,
 }
 
@@ -122,12 +121,6 @@ pub enum IlpError {
     /// A partition region refers to cells absent from the device model.
     #[error("partition region `{0}` is outside the device model")]
     InvalidRegion(String),
-    /// A positive minimum cannot be met by any candidate vertex.
-    #[error("minimum {resource} utilization for `{region}` cannot be satisfied")]
-    ImpossibleMinimum {
-        region: String,
-        resource: &'static str,
-    },
     /// Solver values did not encode exactly one integral assignment.
     #[error("invalid floorplan solver assignment: {0}")]
     InvalidSolution(String),
@@ -291,14 +284,9 @@ fn validate_config(config: &PlacementConfig) -> Result<(), IlpError> {
             range: "base limit <= ceiling <= 1",
         });
     }
-    for (kind, limits) in [
-        ("minimum", &config.constraints.min_resource_limits),
-        ("maximum", &config.constraints.max_resource_limits),
-    ] {
-        for (region, by_resource) in limits {
-            for &value in by_resource.values() {
-                validate_limit(kind, region, value, true)?;
-            }
+    for (region, by_resource) in &config.constraints.max_resource_limits {
+        for &value in by_resource.values() {
+            validate_limit("maximum", region, value, true)?;
         }
     }
     Ok(())
@@ -857,22 +845,6 @@ fn add_resource_constraints(
                 Comparison::Le,
                 max_rhs,
             );
-
-            if let Some(limit) = lookup_limit(&constraints.min_resource_limits, &region, resource) {
-                let min_rhs = u64_as_f64(resource.amount(&total)) * limit;
-                if min_rhs > 0.0 && terms.iter().all(|(coef, _)| *coef == 0.0) {
-                    return Err(IlpError::ImpossibleMinimum {
-                        region: region.region_name(),
-                        resource: resource.name(),
-                    });
-                }
-                lp.add_constraint(
-                    format!("node_{}_{}_usage_ge", region.region_name(), resource.name()),
-                    LinExpr::sum(terms),
-                    Comparison::Ge,
-                    min_rhs,
-                );
-            }
         }
     }
     Ok(())
@@ -1903,9 +1875,6 @@ mod tests {
         constraints
             .max_resource_limits
             .insert(region.region_name(), BTreeMap::from([(Resource::Lut, 0.5)]));
-        constraints
-            .min_resource_limits
-            .insert(region.region_name(), BTreeMap::from([(Resource::Lut, 0.1)]));
         let model = FloorplanModel::build(
             &graph,
             &device,
@@ -1924,19 +1893,9 @@ mod tests {
                 constraint.name == format!("node_{}_LUT_usage", region.region_name())
             })
             .expect("max");
-        let min = model
-            .lp
-            .constraints
-            .iter()
-            .find(|constraint| constraint.name.ends_with("_LUT_usage_ge"))
-            .expect("min");
         assert!(
             (max.rhs - total_lut * 0.5).abs() < f64::EPSILON,
             "slot-specific maximum is based on total, not globally derated, capacity"
-        );
-        assert!(
-            (min.rhs - total_lut * 0.1).abs() < f64::EPSILON,
-            "slot-specific minimum is based on total capacity"
         );
     }
 
