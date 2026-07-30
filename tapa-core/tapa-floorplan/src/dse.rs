@@ -336,8 +336,7 @@ fn rejection_kind(error: &PlanError) -> Option<RejectionKind> {
             Some(RejectionKind::Terminal)
         }
         PlanError::Pipeline(
-            PipelineError::Route(RouteError::Infeasible | RouteError::CapacityExceeded { .. })
-            | PipelineError::RealizedCapacity { .. },
+            PipelineError::Route(RouteError::Infeasible) | PipelineError::RealizedCapacity { .. },
         ) => Some(RejectionKind::Retryable),
         PlanError::Options(_)
         | PlanError::NoPartNum
@@ -741,12 +740,6 @@ mod tests {
         assert_eq!(
             rejection_kind(&PlanError::Pipeline(PipelineError::Route(
                 RouteError::Infeasible
-            ))),
-            Some(RejectionKind::Retryable)
-        );
-        assert_eq!(
-            rejection_kind(&PlanError::Pipeline(PipelineError::Route(
-                RouteError::CapacityExceeded { utilization: 1.1 }
             ))),
             Some(RejectionKind::Retryable)
         );

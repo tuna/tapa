@@ -1,14 +1,18 @@
-//! The post-placement routing MILP: choose one path per cross-slot net so the
-//! worst normalized boundary utilization is minimized.
+//! The post-placement routing MILP: choose one path per cross-slot net without
+//! exceeding any boundary's usable wire capacity.
 //!
-//! Each net selects exactly one candidate path, and a continuous
-//! `max_crossings` variable bounds
-//! `sum(width * selected_path) / max(boundary_capacity, 1)` for every bounded
-//! boundary. There is deliberately no route-length or bend-count objective.
+//! Each net selects exactly one candidate path. Every bounded boundary
+//! contributes a *hard* `sum(width * selected_path) <= capacity` row, using
+//! the same per-boundary [`effective_border_capacity`] budget the placement
+//! cuts model, so a time-limited incumbent is always a physically legal
+//! route. The objective minimizes the worst normalized utilization over the
+//! positive-capacity boundaries; on a device with no bounded boundary at all
+//! it minimizes total hop count instead. There is deliberately no bend-count
+//! objective.
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::device::model::{Device, WIRE_CAPACITY_INF};
+use crate::device::model::{effective_border_capacity, Device, WIRE_CAPACITY_INF};
 use crate::route::paths::{enumerate_paths, Cell};
 use crate::solver::{
     Comparison, LinExpr, LpModel, LpStatus, LpVar, Sense, SolveOpts, Solver, SolverError,
@@ -16,12 +20,8 @@ use crate::solver::{
 
 /// Maximum extra slot visits in a generated candidate path.
 const MAX_DETOUR: usize = 2;
-/// Fallback capacity when a device specifies no finite boundary.
-const FALLBACK_WIRE_CAPACITY: u64 = 100_000;
 /// Tolerance used only to validate a solver's binary readback.
 const BINARY_TOLERANCE: f64 = 1e-6;
-/// Tolerance used to compare recomputed and solver-reported utilization.
-const UTILIZATION_TOLERANCE: f64 = 1e-7;
 
 /// A net to route: a width-weighted connection between two slots.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -81,29 +81,26 @@ pub enum RouteError {
         /// Failed invariant.
         reason: String,
     },
-    /// The solver claimed success but did not return an integral, complete
-    /// selected-path assignment.
+    /// The solver claimed success but did not return an integral, complete,
+    /// capacity-respecting selected-path assignment.
     #[error("invalid routing solution: {0}")]
     InvalidSolution(String),
-    /// The selected routes exceed at least one modeled boundary capacity.
-    #[error("routing exceeds boundary capacity (maximum utilization {utilization:.6})")]
-    CapacityExceeded {
-        /// Maximum normalized utilization of the selected routes.
-        utilization: f64,
-    },
 }
 
-/// One inter-slot boundary and its finite crossing capacity.
+/// One inter-slot boundary and its usable crossing capacity, if bounded.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Boundary {
     a: Cell,
     b: Cell,
-    capacity: u64,
+    /// Usable wire budget across this boundary; `None` when both facing
+    /// declarations are unconstrained.
+    capacity: Option<u64>,
 }
 
-/// Treat the infinite sentinel as an unspecified, unconstrained boundary.
-fn finite_capacity(capacity: u64) -> Option<u64> {
-    (capacity < WIRE_CAPACITY_INF).then_some(capacity)
+/// The usable budget of one boundary: the smaller facing declaration,
+/// derated; `None` when the boundary is unconstrained on both sides.
+fn boundary_capacity(lhs: u64, rhs: u64) -> Option<u64> {
+    (lhs.min(rhs) < WIRE_CAPACITY_INF).then(|| effective_border_capacity(lhs, rhs))
 }
 
 /// Physical capacities are small integer counts and exactly representable in
@@ -116,9 +113,8 @@ fn capacity_as_f64(capacity: u64) -> f64 {
     capacity as f64
 }
 
-/// Collect finite boundary limits in deterministic row-major order. If both
-/// sides specify a limit, the north/east slot's south/west value wins.
-fn finite_boundaries(device: &Device) -> Vec<Boundary> {
+/// Collect every adjacent-grid boundary in deterministic row-major order.
+fn boundaries(device: &Device) -> Vec<Boundary> {
     let mut out = Vec::new();
     for y in 0..device.rows {
         for x in 0..device.cols {
@@ -126,72 +122,26 @@ fn finite_boundaries(device: &Device) -> Vec<Boundary> {
                 continue;
             };
             if x + 1 < device.cols {
-                let Some(right) = device.slot(x + 1, y) else {
-                    continue;
-                };
-                let capacity = finite_capacity(right.wire_cap.west)
-                    .or_else(|| finite_capacity(slot.wire_cap.east));
-                if let Some(capacity) = capacity {
+                if let Some(right) = device.slot(x + 1, y) {
                     out.push(Boundary {
                         a: (x, y),
                         b: (x + 1, y),
-                        capacity,
+                        capacity: boundary_capacity(slot.wire_cap.east, right.wire_cap.west),
                     });
                 }
             }
             if y + 1 < device.rows {
-                let Some(up) = device.slot(x, y + 1) else {
-                    continue;
-                };
-                let capacity = finite_capacity(up.wire_cap.south)
-                    .or_else(|| finite_capacity(slot.wire_cap.north));
-                if let Some(capacity) = capacity {
+                if let Some(up) = device.slot(x, y + 1) {
                     out.push(Boundary {
                         a: (x, y),
                         b: (x, y + 1),
-                        capacity,
+                        capacity: boundary_capacity(slot.wire_cap.north, up.wire_cap.south),
                     });
                 }
             }
         }
     }
     out
-}
-
-/// Every adjacent grid boundary with the fallback capacity.
-fn fallback_boundaries(device: &Device) -> Vec<Boundary> {
-    let mut out = Vec::new();
-    for y in 0..device.rows {
-        for x in 0..device.cols {
-            if x + 1 < device.cols && device.slot(x, y).is_some() && device.slot(x + 1, y).is_some()
-            {
-                out.push(Boundary {
-                    a: (x, y),
-                    b: (x + 1, y),
-                    capacity: FALLBACK_WIRE_CAPACITY,
-                });
-            }
-            if y + 1 < device.rows && device.slot(x, y).is_some() && device.slot(x, y + 1).is_some()
-            {
-                out.push(Boundary {
-                    a: (x, y),
-                    b: (x, y + 1),
-                    capacity: FALLBACK_WIRE_CAPACITY,
-                });
-            }
-        }
-    }
-    out
-}
-
-/// The boundary limits used by both the MILP and post-solve validation.
-fn boundaries(device: &Device) -> Vec<Boundary> {
-    let finite = finite_boundaries(device);
-    if finite.is_empty() {
-        fallback_boundaries(device)
-    } else {
-        finite
-    }
 }
 
 /// Whether `path` uses the hop across `boundary` (in either direction).
@@ -333,21 +283,34 @@ fn selected_routes(
     Ok(routes)
 }
 
-/// Recompute the maximum normalized boundary utilization from selected paths.
-#[allow(
-    clippy::cast_precision_loss,
-    reason = "routing widths and device capacities are small physical counts"
-)]
-fn maximum_utilization(nets: &[RouteNet], routes: &[Vec<Cell>], limits: &[Boundary]) -> f64 {
-    limits.iter().fold(0.0_f64, |maximum, boundary| {
+/// Defensive recount: selected paths must respect every bounded capacity.
+///
+/// Solution validation in the solver backend already checks each hard
+/// capacity row; this integer recount keeps the guarantee independent of
+/// solver floating-point tolerances (and of test doubles).
+fn validate_within_capacity(
+    nets: &[RouteNet],
+    routes: &[Vec<Cell>],
+    limits: &[Boundary],
+) -> Result<(), RouteError> {
+    for boundary in limits {
+        let Some(capacity) = boundary.capacity else {
+            continue;
+        };
         let crossing: u64 = nets
             .iter()
             .zip(routes)
             .filter(|(_, path)| path_crosses(path, boundary))
             .map(|(net, _)| u64::from(net.width))
             .sum();
-        maximum.max(crossing as f64 / boundary.capacity.max(1) as f64)
-    })
+        if crossing > capacity {
+            return Err(RouteError::InvalidSolution(format!(
+                "boundary {:?}->{:?} carries {crossing} wires, exceeding its capacity {capacity}",
+                boundary.a, boundary.b,
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// Route every net, returning a chosen slot path (`src` first, `dst` last) per
@@ -381,7 +344,11 @@ fn route_nets_with_preassignments(
     let limits = boundaries(device);
 
     let mut lp = LpModel::new(Sense::Minimize);
-    let max_crossings = lp.add_continuous("max_crossings", 0.0, f64::INFINITY);
+    // Created first so it stays `x0` whenever the balancing objective applies.
+    let max_crossings = limits
+        .iter()
+        .any(|boundary| boundary.capacity.is_some_and(|capacity| capacity > 0))
+        .then(|| lp.add_continuous("max_crossings", 0.0, f64::INFINITY));
 
     // One binary per candidate path; exactly one per net.
     let mut path_vars: Vec<Vec<LpVar>> = Vec::with_capacity(nets.len());
@@ -398,29 +365,61 @@ fn route_nets_with_preassignments(
         path_vars.push(vars);
     }
 
-    // Per boundary: max_crossings >= crossings / max(capacity, 1).
+    // Per bounded boundary: a hard capacity row, so every incumbent — even a
+    // time-limited one — is a physically legal route; plus, when balancing,
+    // the normalization row bounding `max_crossings`.
     for (boundary_index, boundary) in limits.iter().enumerate() {
-        let mut terms: Vec<(f64, LpVar)> = Vec::new();
+        let Some(capacity) = boundary.capacity else {
+            continue;
+        };
+        let mut crossings: Vec<(f64, LpVar)> = Vec::new();
         for (net_index, paths) in candidates.iter().enumerate() {
             for (path_index, path) in paths.iter().enumerate() {
                 if path_crosses(path, boundary) {
-                    terms.push((
+                    crossings.push((
                         f64::from(nets[net_index].width),
                         path_vars[net_index][path_index],
                     ));
                 }
             }
         }
-        terms.push((-capacity_as_f64(boundary.capacity.max(1)), max_crossings));
         lp.add_constraint(
-            format!("bound_{boundary_index}"),
-            LinExpr::sum(terms),
+            format!("bound_{boundary_index}_capacity"),
+            LinExpr::sum(crossings.iter().copied()),
             Comparison::Le,
-            0.0,
+            capacity_as_f64(capacity),
         );
+        if let (Some(max_crossings), true) = (max_crossings, capacity > 0) {
+            let mut terms = crossings;
+            terms.push((-capacity_as_f64(capacity), max_crossings));
+            lp.add_constraint(
+                format!("bound_{boundary_index}"),
+                LinExpr::sum(terms),
+                Comparison::Le,
+                0.0,
+            );
+        }
     }
 
-    lp.set_objective(LinExpr::sum([(1.0, max_crossings)]));
+    // Balance bounded-boundary utilization when one exists; otherwise prefer
+    // short routes so unconstrained devices still get deterministic answers.
+    let objective = max_crossings.map_or_else(
+        || {
+            let mut terms = Vec::new();
+            for (paths, vars) in candidates.iter().zip(&path_vars) {
+                for (path, &var) in paths.iter().zip(vars) {
+                    let hops =
+                        u32::try_from(path.len().saturating_sub(1)).expect("hop count fits u32");
+                    if hops > 0 {
+                        terms.push((f64::from(hops), var));
+                    }
+                }
+            }
+            LinExpr::sum(terms)
+        },
+        |max_crossings| LinExpr::sum([(1.0, max_crossings)]),
+    );
+    lp.set_objective(objective);
 
     let mut route_opts = opts.clone();
     route_opts.mip_gap_abs = Some(0.001);
@@ -436,27 +435,7 @@ fn route_nets_with_preassignments(
     }
 
     let routes = selected_routes(&candidates, &path_vars, &solution)?;
-    let utilization = maximum_utilization(nets, &routes, &limits);
-    let reported = solution
-        .values
-        .get(&max_crossings)
-        .copied()
-        .ok_or_else(|| RouteError::InvalidSolution("solver omitted max_crossings".to_string()))?;
-    if !reported.is_finite() || reported < 0.0 {
-        return Err(RouteError::InvalidSolution(format!(
-            "max_crossings is invalid: {reported}"
-        )));
-    }
-    if utilization > reported + UTILIZATION_TOLERANCE {
-        return Err(RouteError::InvalidSolution(format!(
-            "max_crossings {reported} does not bound recomputed utilization {utilization}"
-        )));
-    }
-    if reported > 1.0 || utilization > 1.0 {
-        return Err(RouteError::CapacityExceeded {
-            utilization: reported.max(utilization),
-        });
-    }
+    validate_within_capacity(nets, &routes, &limits)?;
     Ok(routes)
 }
 
@@ -544,6 +523,22 @@ mod tests {
         }
     }
 
+    /// A 2x2 device whose boundaries are all unconstrained.
+    fn toy_unbounded_device() -> Device {
+        let device = toy_device(100);
+        Device {
+            slots: device
+                .slots
+                .into_iter()
+                .map(|slot| Slot {
+                    wire_cap: DirCaps::default(),
+                    ..slot
+                })
+                .collect(),
+            ..device
+        }
+    }
+
     fn route_with_cbc(nets: &[RouteNet], device: &Device) -> Option<Vec<Vec<Cell>>> {
         let opts = SolveOpts {
             threads: Some(1),
@@ -592,6 +587,44 @@ mod tests {
             routes[0],
             vec![(0, 0), (0, 1), (1, 1), (1, 0)],
             "the direct edge is 200% utilized while the detour is 10%",
+        );
+    }
+
+    #[test]
+    fn unconstrained_routing_prefers_the_shortest_path() {
+        let device = toy_unbounded_device();
+        let nets = [RouteNet {
+            src: (0, 0),
+            dst: (1, 1),
+            width: 1,
+        }];
+        let Some(routes) = route_with_cbc(&nets, &device) else {
+            return;
+        };
+        assert_eq!(
+            routes[0].len(),
+            3,
+            "diagonal nets take a two-hop path when utilization does not bind",
+        );
+    }
+
+    #[test]
+    fn bounded_capacity_is_a_hard_constraint_for_cbc() {
+        // Width 10 against a derated capacity of 7 on the only direct hop;
+        // the two-hop detour crosses capacity-70 boundaries instead.
+        let device = toy_device(10);
+        let nets = [RouteNet {
+            src: (0, 0),
+            dst: (1, 0),
+            width: 10,
+        }];
+        let Some(routes) = route_with_cbc(&nets, &device) else {
+            return;
+        };
+        assert_eq!(
+            routes[0],
+            vec![(0, 0), (0, 1), (1, 1), (1, 0)],
+            "the direct hop is forbidden by its hard capacity row",
         );
     }
 
@@ -724,6 +757,7 @@ mod tests {
 
     #[test]
     fn over_capacity_solution_is_rejected() {
+        // The derated capacity of the preassigned hop is round(10 * 0.7) = 7.
         let device = toy_device(10);
         let nets = [RouteNet {
             src: (0, 0),
@@ -743,26 +777,75 @@ mod tests {
             &SolveOpts::default(),
             &preassigned,
         )
-        .expect_err("110% utilization is illegal");
+        .expect_err("11 wires over a capacity-7 boundary is illegal");
+        assert!(matches!(err, RouteError::InvalidSolution(_)), "got {err}");
         assert!(
-            matches!(err, RouteError::CapacityExceeded { .. }),
+            err.to_string().contains("exceeding its capacity 7"),
             "got {err}"
         );
     }
 
     #[test]
-    fn zero_capacity_uses_denominator_floor() {
+    fn zero_capacity_forbids_any_crossing() {
         let device = toy_device(0);
+        let preassigned = PreassignedRoutes::from([(0, vec![(0, 0), (1, 0)])]);
+        let solver = || FixedSolver {
+            status: LpStatus::Optimal,
+            objective: 0.0,
+            values: vec![(LpVar(0), 0.0), (LpVar(1), 1.0)],
+        };
+
+        // A positive-width net may not cross: a zero-capacity boundary carries
+        // no wires, derated or not.
         let nets = [RouteNet {
             src: (0, 0),
             dst: (1, 0),
             width: 1,
         }];
+        let err = route_nets_with_preassignments(
+            &nets,
+            &device,
+            &solver(),
+            &SolveOpts::default(),
+            &preassigned,
+        )
+        .expect_err("wire over a zero-capacity boundary");
+        assert!(matches!(err, RouteError::InvalidSolution(_)), "got {err}");
+
+        // A zero-width net crosses nothing and is legal.
+        let nets = [RouteNet {
+            src: (0, 0),
+            dst: (1, 0),
+            width: 0,
+        }];
+        assert_eq!(
+            route_nets_with_preassignments(
+                &nets,
+                &device,
+                &solver(),
+                &SolveOpts::default(),
+                &preassigned,
+            )
+            .expect("zero-width net crosses nothing"),
+            vec![vec![(0, 0), (1, 0)]],
+        );
+    }
+
+    #[test]
+    fn unconstrained_device_has_no_capacity_limit() {
+        // Every boundary defaults to the unconstrained sentinel, so no
+        // max_crossings variable exists: the first path variable is x0.
+        let device = toy_unbounded_device();
+        let nets = [RouteNet {
+            src: (0, 0),
+            dst: (1, 0),
+            width: 1_000_000,
+        }];
         let preassigned = PreassignedRoutes::from([(0, vec![(0, 0), (1, 0)])]);
         let solver = FixedSolver {
             status: LpStatus::Optimal,
             objective: 1.0,
-            values: vec![(LpVar(0), 1.0), (LpVar(1), 1.0)],
+            values: vec![(LpVar(0), 1.0)],
         };
         assert_eq!(
             route_nets_with_preassignments(
@@ -772,9 +855,31 @@ mod tests {
                 &SolveOpts::default(),
                 &preassigned,
             )
-            .expect("zero capacity is normalized by max(capacity, 1)"),
+            .expect("an unconstrained device imposes no wire budget"),
             vec![vec![(0, 0), (1, 0)]],
         );
+    }
+
+    #[test]
+    fn infeasible_routing_status_is_propagated() {
+        let device = toy_device(100);
+        let nets = [RouteNet {
+            src: (0, 0),
+            dst: (1, 0),
+            width: 1,
+        }];
+        let err = route_nets(
+            &nets,
+            &device,
+            &FixedSolver {
+                status: LpStatus::Infeasible,
+                objective: 0.0,
+                values: Vec::new(),
+            },
+            &SolveOpts::default(),
+        )
+        .expect_err("an over-congested design proves infeasible");
+        assert!(matches!(err, RouteError::Infeasible), "got {err}");
     }
 
     #[test]
