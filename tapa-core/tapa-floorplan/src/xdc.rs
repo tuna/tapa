@@ -15,9 +15,62 @@ use tapa_ir::{
 
 use crate::device::model::{Coor, Device};
 
+/// Why a [`FloorplanResult`] could not be rendered as XDC constraints.
+#[derive(Debug, thiserror::Error)]
+pub enum XdcError {
+    /// The result was produced for a different device than the one selected
+    /// for rendering.
+    #[error("floorplan device `{result}` does not match render device `{device}`")]
+    DeviceMismatch {
+        /// `FloorplanResult::device`.
+        result: String,
+        /// The device table's key.
+        device: String,
+    },
+    /// The result's grid does not match the selected device.
+    #[error("floorplan grid {result:?} does not match device grid {device:?}")]
+    GridMismatch {
+        /// `FloorplanResult::grid` as `(cols, rows)`.
+        result: (u32, u32),
+        /// The device table's `(cols, rows)`.
+        device: (u32, u32),
+    },
+    /// A region or route stage is not a valid in-device slot rectangle.
+    #[error("invalid region `{region}`: {detail}")]
+    InvalidRegion {
+        /// The offending tag.
+        region: String,
+        /// Why it is invalid.
+        detail: String,
+    },
+    /// A pipeline route with no route slots cannot be constrained; skipping
+    /// it would leave its (already excluded) FIFO entirely unconstrained.
+    #[error("pipeline route for {channel} has no route slots")]
+    EmptyRoute {
+        /// The routed channel, for diagnostics.
+        channel: String,
+    },
+    /// One region key is another key plus the `_fifo` suffix, so the first
+    /// key's cell pattern would also claim the second key's hierarchy.
+    #[error("region keys `{first}` and `{second}` collide under the optional `_fifo` cell-pattern suffix")]
+    AmbiguousFifoSuffix {
+        /// The base key.
+        first: String,
+        /// The key equal to `{first}_fifo` after sanitization.
+        second: String,
+    },
+}
+
 /// Render the floorplan as XDC pblock constraints, terminated by a newline.
-#[must_use]
-pub fn emit_xdc(result: &FloorplanResult, device: &Device) -> String {
+///
+/// The result is validated first: it must belong to `device`, every region
+/// and route stage must be a valid in-device rectangle, every route must have
+/// slots, and no two region keys may collide under the optional `_fifo`
+/// cell-pattern suffix. Malformed persisted results are a hard error rather
+/// than silently wrong or injectable Tcl.
+pub fn emit_xdc(result: &FloorplanResult, device: &Device) -> Result<String, XdcError> {
+    validate_result(result, device)?;
+
     // A crossing FIFO is split into independently constrained Head/Body/Tail
     // hierarchy below. Constraining its monolithic parent as well would force
     // every stage back into the FIFO vertex's old placement pblock.
@@ -117,7 +170,80 @@ pub fn emit_xdc(result: &FloorplanResult, device: &Device) -> String {
 
     let mut text = lines.join("\n");
     text.push('\n');
-    text
+    Ok(text)
+}
+
+/// Validate the persisted contract before emitting any Tcl.
+fn validate_result(result: &FloorplanResult, device: &Device) -> Result<(), XdcError> {
+    if result.device != device.key {
+        return Err(XdcError::DeviceMismatch {
+            result: result.device.clone(),
+            device: device.key.clone(),
+        });
+    }
+    if result.grid != (device.cols, device.rows) {
+        return Err(XdcError::GridMismatch {
+            result: result.grid,
+            device: (device.cols, device.rows),
+        });
+    }
+    for region in result.regions.values() {
+        validate_region_rectangle(device, region)?;
+    }
+    for route in &result.routes {
+        if route.route.is_empty() {
+            return Err(XdcError::EmptyRoute {
+                channel: format!("{:?}", route.channel),
+            });
+        }
+        for stage in route.route.iter().chain(&route.reg_regions) {
+            let coor = Coor::from_region_or_slot_name(stage)
+                .filter(|coor| coor.width() == 1 && coor.height() == 1)
+                .ok_or_else(|| XdcError::InvalidRegion {
+                    region: stage.clone(),
+                    detail: "route stages must be atomic slots".to_string(),
+                })?;
+            if device.slot(coor.dl_x, coor.dl_y).is_none() {
+                return Err(XdcError::InvalidRegion {
+                    region: stage.clone(),
+                    detail: format!("slot is outside device `{}`", device.key),
+                });
+            }
+        }
+    }
+    // `cell_name_regex` matches `{name}` and `{name}_fifo`; two keys related
+    // by that suffix would both claim the second key's RTL hierarchy.
+    let sanitized: BTreeMap<String, &String> = result
+        .regions
+        .keys()
+        .map(|key| (sanitize_identifier_name(key), key))
+        .collect();
+    for (name, first) in &sanitized {
+        if let Some(second) = sanitized.get(&format!("{name}_fifo")) {
+            return Err(XdcError::AmbiguousFifoSuffix {
+                first: (*first).clone(),
+                second: (*second).clone(),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// A placement region must parse and cover only slots that exist.
+fn validate_region_rectangle(device: &Device, region: &str) -> Result<(), XdcError> {
+    let coor = Coor::from_region_or_slot_name(region).ok_or_else(|| XdcError::InvalidRegion {
+        region: region.to_string(),
+        detail: "not a region or slot tag".to_string(),
+    })?;
+    for (x, y) in coor.all_slot_coors() {
+        if device.slot(x, y).is_none() {
+            return Err(XdcError::InvalidRegion {
+                region: region.to_string(),
+                detail: format!("slot ({x}, {y}) is outside device `{}`", device.key),
+            });
+        }
+    }
+    Ok(())
 }
 
 /// XDC lines that relax reset-distribution out of setup timing.
@@ -453,7 +579,7 @@ add_cells_to_pblock SLOT_X0Y0_TO_SLOT_X0Y0 $cells
 set_false_path -quiet -through [get_nets -quiet -hier -filter {NAME =~ \"*__tapa_control_fabric_reset_n*\"}]
 set_false_path -quiet -through [get_nets -quiet -hier -filter {NAME =~ \"*peripheral_aresetn*\"}]
 ";
-        assert_eq!(emit_xdc(&result, &device), expected);
+        assert_eq!(emit_xdc(&result, &device).expect("render"), expected);
     }
 
     #[test]
@@ -505,7 +631,7 @@ set_false_path -quiet -through [get_nets -quiet -hier -filter {NAME =~ \"*__tapa
 set_false_path -quiet -through [get_nets -quiet -hier -filter {NAME =~ \"*peripheral_aresetn*\"}]
 ";
         let device = select_device("u280").expect("u280");
-        assert_eq!(emit_xdc(&result, &device), expected);
+        assert_eq!(emit_xdc(&result, &device).expect("render"), expected);
     }
 
     #[test]
@@ -521,7 +647,7 @@ set_false_path -quiet -through [get_nets -quiet -hier -filter {NAME =~ \"*periph
             slot_usage: Map::new(),
         };
         let device = select_device("u280").expect("u280");
-        let xdc = emit_xdc(&result, &device);
+        let xdc = emit_xdc(&result, &device).expect("render");
 
         let pblock_count = xdc.matches("create_pblock SLOT_").count();
         assert_eq!(pblock_count, 2);
@@ -619,7 +745,7 @@ set_false_path -quiet -through [get_nets -quiet -hier -filter {NAME =~ \"*periph
             slot_usage: Map::new(),
         };
         let device = select_device("u280").expect("u280");
-        let xdc = emit_xdc(&result, &device);
+        let xdc = emit_xdc(&result, &device).expect("render");
         assert!(
             xdc.contains(
                 "resize_pblock TAPA_SLOT_UNION_SLOT_X0Y1_TO_SLOT_X1Y1_0 -remove \
@@ -679,7 +805,7 @@ set_false_path -quiet -through [get_nets -quiet -hier -filter {NAME =~ \"*periph
             slot_usage: Map::new(),
         };
         let device = select_device("u280").expect("u280");
-        let xdc = emit_xdc(&result, &device);
+        let xdc = emit_xdc(&result, &device).expect("render");
 
         let source = pblock_section(&xdc, "SLOT_X0Y0_TO_SLOT_X0Y0");
         assert!(
@@ -736,7 +862,7 @@ set_false_path -quiet -through [get_nets -quiet -hier -filter {NAME =~ \"*periph
             }],
             slot_usage: Map::new(),
         };
-        let xdc = emit_xdc(&result, &select_device("u280").expect("u280"));
+        let xdc = emit_xdc(&result, &select_device("u280").expect("u280")).expect("render");
 
         assert!(
             xdc.contains(&pipeline_head_regex("fifo_adjacent_fifo")),
@@ -795,7 +921,7 @@ set_false_path -quiet -through [get_nets -quiet -hier -filter {NAME =~ \"*periph
             ],
             slot_usage: Map::new(),
         };
-        let xdc = emit_xdc(&result, &select_device("u280").expect("u280"));
+        let xdc = emit_xdc(&result, &select_device("u280").expect("u280")).expect("render");
 
         for (pipeline, body, guided) in [
             ("double_vertical_fifo", 0, true),
@@ -867,7 +993,7 @@ set_false_path -quiet -through [get_nets -quiet -hier -filter {NAME =~ \"*periph
             }],
             slot_usage: Map::new(),
         };
-        let xdc = emit_xdc(&result, &select_device("u280").expect("u280"));
+        let xdc = emit_xdc(&result, &select_device("u280").expect("u280")).expect("render");
 
         let bank = pblock_section(&xdc, "SLOT_X0Y0_TO_SLOT_X0Y0");
         assert!(bank.contains(&pipeline_head_regex(&pipeline)), "{bank}");
@@ -919,7 +1045,7 @@ set_false_path -quiet -through [get_nets -quiet -hier -filter {NAME =~ \"*periph
             }],
             slot_usage: Map::new(),
         };
-        let xdc = emit_xdc(&result, &select_device("u280").expect("u280"));
+        let xdc = emit_xdc(&result, &select_device("u280").expect("u280")).expect("render");
 
         let source = pblock_section(&xdc, "SLOT_X0Y0_TO_SLOT_X0Y0");
         assert!(source.contains(&cell_name_regex(&global)), "{source}");
@@ -952,6 +1078,105 @@ set_false_path -quiet -through [get_nets -quiet -hier -filter {NAME =~ \"*periph
         }
     }
 
+    fn minimal_result(regions: &[(&str, &str)], routes: Vec<PipelineRoute>) -> FloorplanResult {
+        FloorplanResult {
+            device: "u280".to_string(),
+            grid: (2, 3),
+            regions: regions
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+            routes,
+            slot_usage: Map::new(),
+        }
+    }
+
+    #[test]
+    fn malformed_results_are_rejected_instead_of_emitted() {
+        let device = select_device("u280").expect("u280");
+        let slot = "SLOT_X0Y0_TO_SLOT_X0Y0";
+
+        let wrong_device = FloorplanResult {
+            device: "u250".to_string(),
+            grid: (2, 4),
+            regions: Map::new(),
+            routes: Vec::new(),
+            slot_usage: Map::new(),
+        };
+        assert!(matches!(
+            emit_xdc(&wrong_device, &device),
+            Err(XdcError::DeviceMismatch { .. })
+        ));
+
+        let wrong_grid = FloorplanResult {
+            grid: (1, 3),
+            ..minimal_result(&[], Vec::new())
+        };
+        assert!(matches!(
+            emit_xdc(&wrong_grid, &device),
+            Err(XdcError::GridMismatch { .. })
+        ));
+
+        for bad in [
+            "NOT_A_REGION",
+            "SLOT_X9Y9_TO_SLOT_X9Y9", // outside the 2x3 grid
+            "SLOT_X1Y1_TO_SLOT_X0Y1", // reversed rectangle
+        ] {
+            let result = minimal_result(&[("T", bad)], Vec::new());
+            assert!(
+                matches!(
+                    emit_xdc(&result, &device),
+                    Err(XdcError::InvalidRegion { .. })
+                ),
+                "{bad} must fail"
+            );
+        }
+
+        let empty_route = minimal_result(
+            &[("fifo_0", slot)],
+            vec![PipelineRoute {
+                channel: RoutedChannel::Stream {
+                    fifo: "fifo_0".to_string(),
+                },
+                route: Vec::new(),
+                scheme: PipelineScheme::Double,
+                reg_regions: Vec::new(),
+            }],
+        );
+        assert!(matches!(
+            emit_xdc(&empty_route, &device),
+            Err(XdcError::EmptyRoute { .. })
+        ));
+
+        let bad_stage = minimal_result(
+            &[("fifo_0", slot)],
+            vec![PipelineRoute {
+                channel: RoutedChannel::Stream {
+                    fifo: "fifo_0".to_string(),
+                },
+                route: vec![
+                    "SLOT_X0Y0".to_string(),
+                    "SLOT_X1Y0_TO_SLOT_X1Y1".to_string(),
+                ],
+                scheme: PipelineScheme::Double,
+                reg_regions: Vec::new(),
+            }],
+        );
+        assert!(
+            matches!(
+                emit_xdc(&bad_stage, &device),
+                Err(XdcError::InvalidRegion { .. })
+            ),
+            "a multi-slot route stage must fail",
+        );
+
+        let ambiguous = minimal_result(&[("foo", slot), ("foo_fifo", slot)], Vec::new());
+        assert!(matches!(
+            emit_xdc(&ambiguous, &device),
+            Err(XdcError::AmbiguousFifoSuffix { .. })
+        ));
+    }
+
     #[test]
     fn missing_cell_diagnostic_escapes_tcl_substitutions() {
         let result = FloorplanResult {
@@ -964,7 +1189,7 @@ set_false_path -quiet -through [get_nets -quiet -hier -filter {NAME =~ \"*periph
             routes: Vec::new(),
             slot_usage: Map::new(),
         };
-        let xdc = emit_xdc(&result, &select_device("u280").expect("u280"));
+        let xdc = emit_xdc(&result, &select_device("u280").expect("u280")).expect("render");
 
         assert_missing_cell_is_fatal(&xdc, "fifo[0]$quoted\"");
         assert!(

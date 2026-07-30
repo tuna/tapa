@@ -449,10 +449,21 @@ fn validate_memory_platform(
     Ok(())
 }
 
+/// Why a floorplan's pblock XDC could not be rendered.
+#[derive(Debug, thiserror::Error)]
+pub enum RenderXdcError {
+    /// The result's device did not resolve to a device table.
+    #[error(transparent)]
+    Device(#[from] SelectError),
+    /// The persisted result is malformed; emitting Tcl would fail open.
+    #[error(transparent)]
+    Xdc(#[from] xdc::XdcError),
+}
+
 /// Render a floorplan's pblock XDC, re-selecting the device from the result.
-pub fn render_xdc(result: &FloorplanResult) -> Result<String, SelectError> {
+pub fn render_xdc(result: &FloorplanResult) -> Result<String, RenderXdcError> {
     let device = select_device(&result.device)?;
-    Ok(xdc::emit_xdc(result, &device))
+    Ok(xdc::emit_xdc(result, &device)?)
 }
 
 #[cfg(test)]
