@@ -747,51 +747,55 @@ constexpr bool dependent_false() {
   return false;
 }
 
-#define TAPA_DEFINE_DISALLOWED_ACCESSOR(io, arg_ref) /***********************/ \
-  /* param = i/ostream, arg = stream */                                        \
-  template <typename T, uint64_t N, typename U>                                \
-  struct accessor<io##stream<T>, stream<U, N> arg_ref> {                       \
-    static io##stream<T> access(stream<U, N> arg_ref arg, bool sequential) {   \
-      static_assert(dependent_false<T>(),                                      \
-                    "accessing stream as value is disallowed. you must use "   \
-                    "\"i/ostream &\" as the formal parameter in a TAPA task"); \
-    }                                                                          \
-    static void access(frt::Instance& instance, int& idx,                      \
-                       stream<U, N> arg_ref arg) {                             \
-      static_assert(dependent_false<T>(),                                      \
-                    "accessing stream as value is disallowed. you must use "   \
-                    "\"i/ostream &\" as the formal parameter in a TAPA task"); \
-    }                                                                          \
-  };
+// A stream parameter names a channel endpoint with identity, so only an
+// lvalue reference may be a formal stream parameter of a TAPA task. These
+// catch-all specializations subsume every (param, arg) combination whose
+// param is a by-value or rvalue-reference stream or stream array; any use
+// fires the static_assert at the offending `tapa::task().invoke(...)` site.
+// More special(z)ized allowed accessors (param = lvalue reference) win by
+// partial ordering.
+#define TAPA_DISALLOWED_REFERENCE_PARAM_BODY(name)                          \
+  static Self access(Arg&&, bool) {                                         \
+    static_assert(dependent_false<Arg>(),                                   \
+                  "tapa::" name                                             \
+                  " must be passed by reference as a TAPA task parameter"); \
+  }                                                                         \
+  static void access(frt::Instance&, int&, Arg&&) {                         \
+    static_assert(dependent_false<Arg>(),                                   \
+                  "tapa::" name                                             \
+                  " must be passed by reference as a TAPA task parameter"); \
+  }
 
-// Accessing stream as value (not reference) is forbidden.
-TAPA_DEFINE_DISALLOWED_ACCESSOR(i, )
-TAPA_DEFINE_DISALLOWED_ACCESSOR(i, &)
-TAPA_DEFINE_DISALLOWED_ACCESSOR(o, )
-TAPA_DEFINE_DISALLOWED_ACCESSOR(o, &)
-
-#undef TAPA_DEFINE_DISALLOWED_ACCESSOR
-
-#define TAPA_DEFINE_DISALLOWED_ACCESSOR(io)                                    \
-  template <typename T>                                                        \
-  struct accessor<io##stream<T>, io##stream<T>&> {                             \
-    static io##stream<T> access(io##stream<T>& arg, bool sequential) {         \
-      static_assert(dependent_false<T>(),                                      \
-                    "accessing stream as value is disallowed. you must use "   \
-                    "\"i/ostream &\" as the formal parameter in a TAPA task"); \
-    }                                                                          \
-    static void access(frt::Instance& instance, int& idx,                      \
-                       io##stream<T>& arg) {                                   \
-      static_assert(dependent_false<T>(),                                      \
-                    "accessing stream as value is disallowed. you must use "   \
-                    "\"i/ostream &\" as the formal parameter in a TAPA task"); \
-    }                                                                          \
-  };
-
-TAPA_DEFINE_DISALLOWED_ACCESSOR(i)
-TAPA_DEFINE_DISALLOWED_ACCESSOR(o)
-
-#undef TAPA_DEFINE_DISALLOWED_ACCESSOR
+template <typename T, typename Arg>
+struct accessor<istream<T>, Arg> {
+  using Self = istream<T>;
+  TAPA_DISALLOWED_REFERENCE_PARAM_BODY("istream<T>&")
+};
+template <typename T, typename Arg>
+struct accessor<istream<T>&&, Arg> {
+  using Self = istream<T>&&;
+  TAPA_DISALLOWED_REFERENCE_PARAM_BODY("istream<T>&")
+};
+template <typename T, typename Arg>
+struct accessor<ostream<T>, Arg> {
+  using Self = ostream<T>;
+  TAPA_DISALLOWED_REFERENCE_PARAM_BODY("ostream<T>&")
+};
+template <typename T, typename Arg>
+struct accessor<ostream<T>&&, Arg> {
+  using Self = ostream<T>&&;
+  TAPA_DISALLOWED_REFERENCE_PARAM_BODY("ostream<T>&")
+};
+template <typename T, uint64_t L, typename Arg>
+struct accessor<istreams<T, L>, Arg> {
+  using Self = istreams<T, L>;
+  TAPA_DISALLOWED_REFERENCE_PARAM_BODY("istreams<T, L>&")
+};
+template <typename T, uint64_t L, typename Arg>
+struct accessor<ostreams<T, L>, Arg> {
+  using Self = ostreams<T, L>;
+  TAPA_DISALLOWED_REFERENCE_PARAM_BODY("ostreams<T, L>&")
+};
 
 #define TAPA_DEFINE_DEVICE_ACCESSOR(io, arg_ref)                             \
   template <typename T, uint64_t N, typename U>                              \
@@ -885,17 +889,9 @@ struct accessor<ostream<T>&, ostream<T>&> {
     }                                                                          \
   };
 
-TAPA_DEFINE_ACCESSOR(i, )
-
 TAPA_DEFINE_ACCESSOR(i, &)
 
-TAPA_DEFINE_ACCESSOR(i, &&)
-
-TAPA_DEFINE_ACCESSOR(o, )
-
 TAPA_DEFINE_ACCESSOR(o, &)
-
-TAPA_DEFINE_ACCESSOR(o, &&)
 
 #undef TAPA_DEFINE_ACCESSOR
 

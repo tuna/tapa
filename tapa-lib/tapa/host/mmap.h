@@ -524,6 +524,107 @@ TAPA_DEFINE_ACCESSOR(, &, frt::Tag::kReadWrite);
 
 #undef TAPA_DEFINE_ACCESSOR
 
+// An async_mmap parameter names five channel endpoints with identity; a
+// formal task parameter must take it by lvalue reference. The same
+// catch-all trick as the stream accessors: any use fires the static_assert
+// at the offending `tapa::task().invoke(...)` site.
+template <typename T, typename Arg>
+struct accessor<async_mmap<T>, Arg> {
+  static async_mmap<T> access(Arg&&, bool) {
+    static_assert(dependent_false<Arg>(),
+                  "tapa::async_mmap<T>& must be passed by reference as a "
+                  "TAPA task parameter");
+  }
+  static void access(frt::Instance&, int&, Arg&&) {
+    static_assert(dependent_false<Arg>(),
+                  "tapa::async_mmap<T>& must be passed by reference as a "
+                  "TAPA task parameter");
+  }
+};
+template <typename T, typename Arg>
+struct accessor<async_mmap<T>&&, Arg> {
+  static async_mmap<T>&& access(Arg&&, bool) {
+    static_assert(dependent_false<Arg>(),
+                  "tapa::async_mmap<T>& must be passed by reference as a "
+                  "TAPA task parameter");
+  }
+  static void access(frt::Instance&, int&, Arg&&) {
+    static_assert(dependent_false<Arg>(),
+                  "tapa::async_mmap<T>& must be passed by reference as a "
+                  "TAPA task parameter");
+  }
+};
+
+// mmap-family parameters are pointer-like handles: the kernel receives the
+// base address by value. A formal task parameter by (rvalue or lvalue)
+// reference is rejected here for every arg kind.
+#define TAPA_DISALLOWED_VALUE_PARAM_BODY(name)                          \
+  static Self access(Arg&&, bool) {                                     \
+    static_assert(dependent_false<Arg>(),                               \
+                  "tapa::" name                                         \
+                  " must be passed by value as a TAPA task parameter"); \
+  }                                                                     \
+  static void access(frt::Instance&, int&, Arg&&) {                     \
+    static_assert(dependent_false<Arg>(),                               \
+                  "tapa::" name                                         \
+                  " must be passed by value as a TAPA task parameter"); \
+  }
+
+// `Self` carries the comma-bearing specialized param type outside macro
+// argument lists.
+template <typename T, typename Arg>
+struct accessor<mmap<T>&, Arg> {
+  using Self = mmap<T>&;
+  TAPA_DISALLOWED_VALUE_PARAM_BODY("mmap<T>")
+};
+template <typename T, typename Arg>
+struct accessor<mmap<T>&&, Arg> {
+  using Self = mmap<T>&&;
+  TAPA_DISALLOWED_VALUE_PARAM_BODY("mmap<T>")
+};
+template <typename T, typename Arg>
+struct accessor<immap<T>&, Arg> {
+  using Self = immap<T>&;
+  TAPA_DISALLOWED_VALUE_PARAM_BODY("immap<T>")
+};
+template <typename T, typename Arg>
+struct accessor<immap<T>&&, Arg> {
+  using Self = immap<T>&&;
+  TAPA_DISALLOWED_VALUE_PARAM_BODY("immap<T>")
+};
+template <typename T, typename Arg>
+struct accessor<ommap<T>&, Arg> {
+  using Self = ommap<T>&;
+  TAPA_DISALLOWED_VALUE_PARAM_BODY("ommap<T>")
+};
+template <typename T, typename Arg>
+struct accessor<ommap<T>&&, Arg> {
+  using Self = ommap<T>&&;
+  TAPA_DISALLOWED_VALUE_PARAM_BODY("ommap<T>")
+};
+template <typename T, uint64_t S, typename Arg>
+struct accessor<mmaps<T, S>&, Arg> {
+  using Self = mmaps<T, S>&;
+  TAPA_DISALLOWED_VALUE_PARAM_BODY("mmaps<T, S>")
+};
+template <typename T, uint64_t S, typename Arg>
+struct accessor<mmaps<T, S>&&, Arg> {
+  using Self = mmaps<T, S>&&;
+  TAPA_DISALLOWED_VALUE_PARAM_BODY("mmaps<T, S>")
+};
+template <typename T, int chan_count, int64_t chan_size, typename Arg>
+struct accessor<hmap<T, chan_count, chan_size>&, Arg> {
+  using Self = hmap<T, chan_count, chan_size>&;
+  TAPA_DISALLOWED_VALUE_PARAM_BODY("hmap<T, chan_count, chan_size>")
+};
+template <typename T, int chan_count, int64_t chan_size, typename Arg>
+struct accessor<hmap<T, chan_count, chan_size>&&, Arg> {
+  using Self = hmap<T, chan_count, chan_size>&&;
+  TAPA_DISALLOWED_VALUE_PARAM_BODY("hmap<T, chan_count, chan_size>")
+};
+
+#undef TAPA_DISALLOWED_VALUE_PARAM_BODY
+
 // Passing mmap/mmaps by value in tapa::invoke is an error; must use typed
 // variants.
 template <typename T>
