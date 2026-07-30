@@ -163,11 +163,17 @@ impl Coor {
 
     /// Parse a region tag produced by [`region_name`](Coor::region_name) back
     /// into a [`Coor`].
+    ///
+    /// Reversed ranges (`dl > ur` on either axis) are rejected rather than
+    /// silently reinterpreted as their down-left slot.
     #[must_use]
     pub fn from_region_name(name: &str) -> Option<Self> {
         let (lhs, rhs) = name.split_once("_TO_")?;
         let (dl_x, dl_y) = parse_slot_tag(lhs)?;
         let (ur_x, ur_y) = parse_slot_tag(rhs)?;
+        if dl_x > ur_x || dl_y > ur_y {
+            return None;
+        }
         Some(Self::span(dl_x, dl_y, ur_x, ur_y))
     }
 
@@ -494,6 +500,36 @@ fn valid_pblock_range(range: &str) -> bool {
 /// Component-wise sum of two [`Area`]s. A free function because `Area` is
 /// defined in `tapa-ir`, so the orphan rule forbids an `impl Add` here.
 #[must_use]
+/// Apply the default usable-wire ratio with Python-compatible ties-to-even
+/// rounding. The multiplication intentionally happens in binary64 first:
+/// Python evaluates `45 * 0.7` just below 31.5 and therefore rounds it to 31.
+/// A rational `7/10` implementation would not be equivalent.
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::cast_precision_loss,
+    reason = "the formulation computes round(integer_capacity * 0.7) in binary64"
+)]
+pub(crate) fn usable_wire_capacity(raw: u64) -> u64 {
+    debug_assert!(
+        (USABLE_WIRE_RATIO - 0.7).abs() < f64::EPSILON,
+        "ratio drifted"
+    );
+
+    (raw as f64 * USABLE_WIRE_RATIO).round_ties_even() as u64
+}
+
+/// The usable capacity of the shared border between two facing slot sides.
+///
+/// The *smaller* of the two facing declarations is taken first — either side
+/// of the physical boundary may be the binding one — and the result is
+/// derated by [`USABLE_WIRE_RATIO`]. Placement cuts and per-boundary routing
+/// constraints both use this helper so the two stages always model the same
+/// budget for a given boundary.
+pub(crate) fn effective_border_capacity(lhs: u64, rhs: u64) -> u64 {
+    usable_wire_capacity(lhs.min(rhs))
+}
+
 pub fn add_area(a: Area, b: Area) -> Area {
     Area {
         lut: a.lut + b.lut,
@@ -535,6 +571,50 @@ mod tests {
         assert_eq!(
             Coor::from_atomic_region_name("SLOT_X1Y2_TO_SLOT_X2Y2"),
             None
+        );
+    }
+
+    #[test]
+    fn reversed_region_tags_are_rejected() {
+        assert_eq!(
+            Coor::from_region_name("SLOT_X2Y0_TO_SLOT_X1Y0"),
+            None,
+            "dl_x > ur_x is malformed, not a one-slot region",
+        );
+        assert_eq!(
+            Coor::from_region_name("SLOT_X0Y2_TO_SLOT_X0Y1"),
+            None,
+            "dl_y > ur_y is malformed, not a one-slot region",
+        );
+        assert_eq!(
+            Coor::from_region_or_slot_name("SLOT_X2Y2_TO_SLOT_X1Y1"),
+            None
+        );
+        // Forward ranges with one reversed axis are rejected as a whole.
+        assert_eq!(Coor::from_region_name("SLOT_X0Y1_TO_SLOT_X1Y0"), None);
+    }
+
+    #[test]
+    fn usable_wire_capacity_uses_python_ties_to_even() {
+        assert_eq!(usable_wire_capacity(5), 4, "3.5 rounds to the even 4");
+        assert_eq!(usable_wire_capacity(15), 10, "10.5 rounds to the even 10");
+        assert_eq!(usable_wire_capacity(25), 18, "17.5 rounds to the even 18");
+        assert_eq!(
+            usable_wire_capacity(45),
+            31,
+            "binary64 45 * 0.7 is just below 31.5, exactly as in Python"
+        );
+    }
+
+    #[test]
+    fn effective_border_capacity_takes_the_minimum_then_derates() {
+        assert_eq!(effective_border_capacity(100, 1), 1, "min(100, 1) * 0.7");
+        assert_eq!(effective_border_capacity(1, 100), 1);
+        assert_eq!(effective_border_capacity(10, 10), 7);
+        assert_eq!(
+            effective_border_capacity(WIRE_CAPACITY_INF, 0),
+            0,
+            "one unconstrained side does not lift the other side's zero",
         );
     }
     use super::*;

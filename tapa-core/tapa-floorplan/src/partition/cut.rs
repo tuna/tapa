@@ -5,7 +5,7 @@
 //! placement ILP be reused for the row-level and column-level passes of
 //! multilevel placement.
 
-use crate::device::model::{Coor, Device, USABLE_WIRE_RATIO, WIRE_CAPACITY_INF};
+use crate::device::model::{effective_border_capacity, Coor, Device, WIRE_CAPACITY_INF};
 
 /// A clean bipartition of the current candidate regions.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -16,35 +16,19 @@ pub struct Cut {
     pub lhs: Vec<Coor>,
     /// Regions on the up/right side.
     pub rhs: Vec<Coor>,
-    /// Allowed crossing width: Python `round(0.7 * raw_capacity)`.
+    /// Allowed crossing width: the sum of the per-cell-pair
+    /// effective border capacities along the shared border.
     pub capacity: u64,
-}
-
-/// Apply the default usable-wire ratio with Python-compatible ties-to-even
-/// rounding. The multiplication intentionally happens in binary64 first:
-/// Python evaluates `45 * 0.7` just below 31.5 and therefore rounds it to 31.
-/// A rational `7/10` implementation would not be equivalent.
-#[allow(
-    clippy::cast_possible_truncation,
-    clippy::cast_sign_loss,
-    clippy::cast_precision_loss,
-    reason = "the formulation computes round(integer_capacity * 0.7) in binary64"
-)]
-fn apply_ratio(raw: u64) -> u64 {
-    debug_assert!(
-        (USABLE_WIRE_RATIO - 0.7).abs() < f64::EPSILON,
-        "ratio drifted"
-    );
-
-    (raw as f64 * USABLE_WIRE_RATIO).round_ties_even() as u64
 }
 
 /// Enumerate every straight guillotine cut that does not split any region.
 ///
-/// The capacity is the sum of the complete facing-border capacities between
-/// every neighboring region pair on opposing sides, derated by 0.7 and
-/// rounded to the nearest integer with ties to even. Placeholder/infinite cuts
-/// are omitted because the ILP would skip them.
+/// The capacity of each neighboring region pair is computed over only their
+/// *shared* border interval, with each cell pair contributing
+/// [`effective_border_capacity`] of its two facing declarations — the same
+/// per-boundary budget the routing MILP enforces. Cuts whose capacity is at
+/// the unconstrained sentinel scale are omitted because the ILP would skip
+/// them.
 #[must_use]
 pub fn find_cuts_for_regions(device: &Device, regions: &[Coor]) -> Vec<Cut> {
     if regions.is_empty() {
@@ -98,13 +82,12 @@ fn push_if_clean_and_binding(
         return;
     }
 
-    let raw = lhs
+    let capacity: u64 = lhs
         .iter()
         .flat_map(|left| rhs.iter().map(move |right| (left, right)))
         .filter(|(left, right)| left.is_neighbor(right))
         .map(|(left, right)| border_capacity(device, left, right))
         .sum();
-    let capacity = apply_ratio(raw);
     if capacity < WIRE_CAPACITY_INF / 2 {
         cuts.push(Cut {
             name,
@@ -115,50 +98,38 @@ fn push_if_clean_and_binding(
     }
 }
 
-/// Sum the complete facing border of each region, then take the smaller side's
-/// capacity.
+/// Sum the per-cell-pair effective capacities along the *shared* border
+/// interval of two neighboring regions. Cells without a facing partner
+/// (partially overlapping borders) contribute nothing to this pair's border,
+/// so the cut never credits capacity the crossing wires cannot physically use.
 fn border_capacity(device: &Device, lhs: &Coor, rhs: &Coor) -> u64 {
+    let shared_x = lhs.dl_x.max(rhs.dl_x)..=lhs.ur_x.min(rhs.ur_x);
+    let shared_y = lhs.dl_y.max(rhs.dl_y)..=lhs.ur_y.min(rhs.ur_y);
     if lhs.is_south_neighbor_of(rhs) {
-        return north_capacity(device, lhs).min(south_capacity(device, rhs));
+        return shared_x
+            .filter_map(|x| device.slot(x, lhs.ur_y).zip(device.slot(x, rhs.dl_y)))
+            .map(|(a, b)| effective_border_capacity(a.wire_cap.north, b.wire_cap.south))
+            .sum();
     }
     if lhs.is_north_neighbor_of(rhs) {
-        return south_capacity(device, lhs).min(north_capacity(device, rhs));
+        return shared_x
+            .filter_map(|x| device.slot(x, lhs.dl_y).zip(device.slot(x, rhs.ur_y)))
+            .map(|(a, b)| effective_border_capacity(a.wire_cap.south, b.wire_cap.north))
+            .sum();
     }
     if lhs.is_west_neighbor_of(rhs) {
-        return east_capacity(device, lhs).min(west_capacity(device, rhs));
+        return shared_y
+            .filter_map(|y| device.slot(lhs.ur_x, y).zip(device.slot(rhs.dl_x, y)))
+            .map(|(a, b)| effective_border_capacity(a.wire_cap.east, b.wire_cap.west))
+            .sum();
     }
     if lhs.is_east_neighbor_of(rhs) {
-        return west_capacity(device, lhs).min(east_capacity(device, rhs));
+        return shared_y
+            .filter_map(|y| device.slot(lhs.dl_x, y).zip(device.slot(rhs.ur_x, y)))
+            .map(|(a, b)| effective_border_capacity(a.wire_cap.west, b.wire_cap.east))
+            .sum();
     }
     0
-}
-
-fn north_capacity(device: &Device, region: &Coor) -> u64 {
-    (region.dl_x..=region.ur_x)
-        .filter_map(|x| device.slot(x, region.ur_y))
-        .map(|slot| slot.wire_cap.north)
-        .sum()
-}
-
-fn south_capacity(device: &Device, region: &Coor) -> u64 {
-    (region.dl_x..=region.ur_x)
-        .filter_map(|x| device.slot(x, region.dl_y))
-        .map(|slot| slot.wire_cap.south)
-        .sum()
-}
-
-fn east_capacity(device: &Device, region: &Coor) -> u64 {
-    (region.dl_y..=region.ur_y)
-        .filter_map(|y| device.slot(region.ur_x, y))
-        .map(|slot| slot.wire_cap.east)
-        .sum()
-}
-
-fn west_capacity(device: &Device, region: &Coor) -> u64 {
-    (region.dl_y..=region.ur_y)
-        .filter_map(|y| device.slot(region.dl_x, y))
-        .map(|slot| slot.wire_cap.west)
-        .sum()
 }
 
 #[cfg(test)]
@@ -167,18 +138,6 @@ mod tests {
     use crate::device::model::{DirCaps, DirRegions, Slot};
     use crate::device::select::select_device;
     use tapa_ir::Area;
-
-    #[test]
-    fn ratio_uses_python_ties_to_even() {
-        assert_eq!(apply_ratio(5), 4, "3.5 rounds to the even integer 4");
-        assert_eq!(apply_ratio(15), 10, "10.5 rounds to the even integer 10");
-        assert_eq!(apply_ratio(25), 18, "17.5 rounds to the even integer 18");
-        assert_eq!(
-            apply_ratio(45),
-            31,
-            "binary64 45 * 0.7 is just below 31.5, exactly as in Python"
-        );
-    }
 
     fn find_all_slot_cuts(device: &Device) -> Vec<Cut> {
         let regions: Vec<Coor> = device
@@ -228,7 +187,7 @@ mod tests {
     }
 
     #[test]
-    fn region_border_is_summed_before_taking_the_minimum() {
+    fn region_border_uses_the_per_cell_pair_minimum() {
         let mk_slot = |x, y, north, south| Slot {
             x,
             y,
@@ -254,8 +213,11 @@ mod tests {
             pp_dist: 1,
             is_versal: false,
             user_pblock_name: None,
-            // Pairwise min would be 1 + 1. Summing each complete border first
-            // instead yields min(101, 101) = 101.
+            // Each physical cell-pair boundary is governed by the *smaller* of
+            // its two facing declarations: min(100, 1) + min(1, 100), derated.
+            // Summing each region's full side first (min(101, 101) = 101)
+            // would credit capacity that neither boundary can support —
+            // routing models the same per-pair minimum.
             slots: vec![
                 mk_slot(0, 0, 100, 0),
                 mk_slot(1, 0, 1, 0),
@@ -265,7 +227,54 @@ mod tests {
         };
         let rows = [Coor::span(0, 0, 1, 0), Coor::span(0, 1, 1, 1)];
         let cuts = find_cuts_for_regions(&device, &rows);
-        assert_eq!(cuts[0].capacity, 71, "round(101 * 0.7)");
+        assert_eq!(cuts[0].capacity, 2, "round(1 * 0.7) + round(1 * 0.7)");
+    }
+
+    #[test]
+    fn partially_aligned_borders_count_only_the_shared_interval() {
+        let mk_slot = |x, y, north, south| Slot {
+            x,
+            y,
+            area: Area::default(),
+            centroid_x: i64::from(x),
+            centroid_y: i64::from(y),
+            pblock_ranges: Vec::new(),
+            wire_cap: DirCaps {
+                north,
+                south,
+                east: WIRE_CAPACITY_INF,
+                west: WIRE_CAPACITY_INF,
+            },
+            anchor: DirRegions::default(),
+            tags: Vec::new(),
+        };
+        let device = Device {
+            key: "toy".to_string(),
+            part_num: "toy".to_string(),
+            platform_name: None,
+            rows: 2,
+            cols: 3,
+            pp_dist: 1,
+            is_versal: false,
+            user_pblock_name: None,
+            slots: vec![
+                mk_slot(0, 0, 10, 0),
+                mk_slot(1, 0, 10, 0),
+                mk_slot(2, 0, 10, 0),
+                mk_slot(0, 1, 0, 10),
+                mk_slot(1, 1, 0, 10),
+                mk_slot(2, 1, 0, 10),
+            ],
+        };
+        // The narrow region below shares only x=1 with the wide region above;
+        // its other two slots border vertical cuts, not this pair.
+        let narrow = Coor::span(1, 0, 1, 0);
+        let wide = Coor::span(0, 1, 2, 1);
+        assert_eq!(
+            border_capacity(&device, &narrow, &wide),
+            7,
+            "only the aligned slot pair contributes: round(10 * 0.7)",
+        );
     }
 
     #[test]
