@@ -986,8 +986,9 @@ mod tests {
     }
 
     /// A deterministic test solver that selects a requested region suffix for
-    /// each x row (or the first candidate) and sets all remaining variables to
-    /// zero.  Placement readback deliberately does not rely on y values.
+    /// each x row (or the first candidate), then materializes the *consistent*
+    /// y assignment and true objective so its incumbent passes full model
+    /// validation — an inconsistent mock can no longer mask model bugs.
     struct ChooseSolver {
         preferred: Mutex<Vec<String>>,
     }
@@ -1004,14 +1005,12 @@ mod tests {
                 preferred: Mutex::new(preferred),
             }
         }
-    }
 
-    impl Solver for ChooseSolver {
-        fn solve(&self, model: &LpModel, _opts: &SolveOpts) -> Result<LpSolution, SolverError> {
-            let preferred = self.preferred.lock().expect("lock");
-            let mut first_by_vertex: BTreeMap<String, LpVar> = BTreeMap::new();
-            let mut chosen_by_vertex: BTreeMap<String, LpVar> = BTreeMap::new();
-            for (index, var) in model.vars.iter().enumerate() {
+        /// The chosen candidate per vertex: the first whose label ends with a
+        /// preferred suffix, else the first candidate.
+        fn selections(model: &LpModel, preferred: &[String]) -> HashMap<String, usize> {
+            let mut rows: BTreeMap<String, Vec<&str>> = BTreeMap::new();
+            for var in &model.vars {
                 let Some(rest) = var.label.strip_prefix("x_") else {
                     continue;
                 };
@@ -1019,24 +1018,109 @@ mod tests {
                     continue;
                 };
                 let vertex = rest[..marker].to_string();
-                let handle = LpVar(u32::try_from(index).expect("index"));
-                first_by_vertex.entry(vertex.clone()).or_insert(handle);
-                if preferred.iter().any(|suffix| var.label.ends_with(suffix)) {
-                    chosen_by_vertex.insert(vertex, handle);
-                }
+                rows.entry(vertex).or_default().push(var.label.as_str());
             }
+            rows.into_iter()
+                .map(|(vertex, row)| {
+                    let chosen = row
+                        .iter()
+                        .position(|label| preferred.iter().any(|suffix| label.ends_with(suffix)))
+                        .unwrap_or(0);
+                    (vertex, chosen)
+                })
+                .collect()
+        }
+    }
+
+    impl Solver for ChooseSolver {
+        fn solve(&self, model: &LpModel, _opts: &SolveOpts) -> Result<LpSolution, SolverError> {
+            let preferred = self.preferred.lock().expect("lock");
+            let chosen = Self::selections(model, &preferred);
+
+            // Chosen x handles and candidate indices per vertex.
             let mut values: HashMap<LpVar, f64> = (0..model.num_vars())
                 .map(|index| (LpVar(u32::try_from(index).expect("index")), 0.0))
                 .collect();
-            for (vertex, fallback) in first_by_vertex {
-                let selected = chosen_by_vertex.get(&vertex).copied().unwrap_or(fallback);
-                values.insert(selected, 1.0);
+            let mut vertex_of_x: HashMap<LpVar, String> = HashMap::new();
+            let mut x_rows: HashMap<String, Vec<LpVar>> = HashMap::new();
+            let mut y_vars: Vec<(usize, usize, usize, LpVar)> = Vec::new();
+            for (index, var) in model.vars.iter().enumerate() {
+                let handle = LpVar(u32::try_from(index).expect("index"));
+                if let Some(rest) = var.label.strip_prefix("x_") {
+                    if let Some(marker) = rest.find("_SLOT_X") {
+                        let vertex = rest[..marker].to_string();
+                        vertex_of_x.insert(handle, vertex.clone());
+                        x_rows.entry(vertex).or_default().push(handle);
+                    }
+                } else if let Some(rest) = var.label.strip_prefix("y_") {
+                    let mut indices = rest.split('_').map(str::parse::<usize>);
+                    let (Some(Ok(ei)), Some(Ok(src)), Some(Ok(dst))) =
+                        (indices.next(), indices.next(), indices.next())
+                    else {
+                        panic!("unexpected y label `{}`", var.label);
+                    };
+                    y_vars.push((ei, src, dst, handle));
+                }
             }
-            Ok(LpSolution {
+            for (vertex, row) in &x_rows {
+                values.insert(row[chosen[vertex]], 1.0);
+            }
+
+            // Edge endpoints come from the model's own coupling rows:
+            // `edge_{ei}_{side}_{ci}` ties the y plane to one x variable.
+            let mut endpoints: HashMap<usize, [Option<String>; 2]> = HashMap::new();
+            for constraint in &model.constraints {
+                let Some(rest) = constraint.name.strip_prefix("edge_") else {
+                    continue;
+                };
+                let mut parts = rest.split('_');
+                let ei: usize = parts.next().expect("edge index").parse().expect("index");
+                let side = parts.next().expect("src or dst");
+                let x_var = constraint
+                    .expr
+                    .terms
+                    .iter()
+                    .find(|(coefficient, _)| *coefficient < 0.0)
+                    .map(|(_, var)| *var)
+                    .expect("a coupling row must reference its x variable");
+                // One row per candidate, all naming the same endpoint vertex.
+                let slot =
+                    &mut endpoints.entry(ei).or_insert([None, None])[usize::from(side == "dst")];
+                let vertex = vertex_of_x[&x_var].clone();
+                if let Some(existing) = slot {
+                    debug_assert_eq!(existing, &vertex, "coupling rows name one endpoint");
+                } else {
+                    *slot = Some(vertex);
+                }
+            }
+
+            // Set the one y per edge consistent with the chosen x pair.
+            for (ei, src, dst, handle) in y_vars {
+                let [src_vertex, dst_vertex] =
+                    endpoints.get(&ei).expect("every y edge has coupling rows");
+                let consistent = src == chosen[src_vertex.as_ref().expect("src endpoint")]
+                    && dst == chosen[dst_vertex.as_ref().expect("dst endpoint")];
+                if consistent {
+                    values.insert(handle, 1.0);
+                }
+            }
+
+            // Report the true objective so the incumbent validates fully.
+            let mut objective = model.objective.constant;
+            for (coefficient, var) in &model.objective.terms {
+                objective += coefficient * values[var];
+            }
+            let solution = LpSolution {
                 status: LpStatus::Optimal,
-                objective: 0.0,
+                objective,
                 values,
-            })
+            };
+            if let Err(error) = solution.validate_for(model) {
+                panic!(
+                    "ChooseSolver produced an incumbent that violates its model: {error};                      give the test feasible preferences"
+                );
+            }
+            Ok(solution)
         }
     }
 
