@@ -13,6 +13,7 @@ edition = "2021"
 # Device tables are embedded with `include_str!` (a fixed, curated set), not
 # rust-embed, so selection never reads the source tree at runtime.
 [dependencies]
+log = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tapa-ir = { workspace = true }

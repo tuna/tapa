@@ -110,6 +110,7 @@ pub fn explore(
 ) -> Result<Vec<DseCandidate>, DseError> {
     let options = ValidatedOptions::try_from(*options)?;
     let attempts = sweep_with(options, |logic_utilization_cap| {
+        log::info!("trying DSE candidate at logic utilization cap {logic_utilization_cap:.3}");
         let exact_options = PlanOptions {
             usage_limit: logic_utilization_cap,
             ..*plan_options

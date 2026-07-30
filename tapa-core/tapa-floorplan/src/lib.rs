@@ -233,6 +233,14 @@ fn plan_with_retry_ceiling(
 ) -> Result<FloorplanResult, PlanError> {
     options.validate()?;
     let (device, graph) = prepare_plan(state, inputs)?;
+    log::info!(
+        "floorplanning {} vertices on {} with usage limit {:.2} (ceiling {:.2}), strategy {:?}",
+        graph.vertices().len(),
+        device.key,
+        options.usage_limit,
+        retry_ceiling,
+        options.partition_strategy,
+    );
     let solver = CbcSolver::new();
     let opts = solve_options(options);
     let assignment = floorplan_with_strategy(
@@ -268,6 +276,14 @@ pub(crate) fn plan_with_inputs_at_usage_limit_and_caps(
     let (device, graph) = prepare_plan(state, inputs)?;
     let strategy = resolve_strategy(&graph, &device, options.partition_strategy);
     let caps = ExactDseResourceCaps::for_strategy(options.usage_limit, strategy);
+    log::info!(
+        "floorplanning {} vertices on {} at exact usage limit {:.2} (block cap {:.2}), strategy {:?}",
+        graph.vertices().len(),
+        device.key,
+        caps.logic_utilization_cap,
+        caps.effective_block_utilization_cap,
+        strategy,
+    );
     let solver = CbcSolver::new();
     let opts = solve_options(options);
     let result = (|| {
@@ -319,6 +335,11 @@ fn finish_plan(
         solver,
         opts,
     )?;
+    // Deliberate headroom: the relaxed `plan` path validates the *realized*
+    // usage — placement plus pipeline registers — against the retry ceiling
+    // (0.95), not the cap the placement was found at, so a placement at 0.6
+    // may absorb registers up to the ceiling. The exact DSE path validates
+    // against its per-candidate logic/block caps instead.
     let slot_usage = if realized_caps.multilevel_block_margin_applied {
         realize_slot_usage_with_resource_caps(
             graph,

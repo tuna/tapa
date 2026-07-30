@@ -405,11 +405,14 @@ fn solve_iteration(
         )?;
         let solution = solver.solve(&model.lp, opts)?;
         if solution.is_found() {
+            log::info!("placement succeeded at usage limit {usage_limit:.2}");
             return model.read_back(graph, &domains, &solution);
         }
 
         match solution.status {
-            LpStatus::Infeasible => {}
+            LpStatus::Infeasible => {
+                log::info!("placement infeasible at usage limit {usage_limit:.2}; retrying higher");
+            }
             LpStatus::NotSolved | LpStatus::Unbounded => {
                 return Err(IlpError::NoIncumbent(solution.status));
             }
