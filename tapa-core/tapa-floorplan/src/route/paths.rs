@@ -1,60 +1,30 @@
 //! Candidate path enumeration for the post-placement routing MILP.
 //!
-//! Candidate generation enumerates the aligned direct path, the two one-bend
-//! paths, and every H-V-H / V-H-V path in the device grid. Stable
-//! deduplication happens before paths with more than `max_detour` extra slot
-//! visits or repeated slots are removed.
+//! Every *simple* path between the endpoints within `Manhattan + max_detour`
+//! hops is enumerated. Candidate grids are small (a few SLR rows by a few
+//! columns), so the four-shape restriction of earlier revisions only ever
+//! caused false infeasibility on congested mid-routes, at no meaningful
+//! solver saving. Paths are returned shortest-first with a lexicographic
+//! tie-break, which the routing refinement's stable rank objective relies on.
 
 use std::collections::BTreeSet;
 
 /// A grid coordinate `(x, y)`.
 pub type Cell = (u32, u32);
 
-/// Generate the x-first straight path from `start` to `end`.
-///
-/// All segments constructed by [`enumerate_paths`] are axis-aligned. Keeping
-/// the x-first behavior here makes the ordering deterministic if this helper's
-/// use changes later.
-fn straight_path(start: Cell, end: Cell) -> Vec<Cell> {
-    let mut path = vec![start];
-    while path.last().copied() != Some(end) {
-        let (x, y) = path.last().copied().expect("a path always has a head");
-        let next = if x == end.0 {
-            (x, if end.1 > y { y + 1 } else { y - 1 })
-        } else {
-            (if end.0 > x { x + 1 } else { x - 1 }, y)
-        };
-        path.push(next);
-    }
-    path
+/// Manhattan distance in hops between two cells.
+fn manhattan(a: Cell, b: Cell) -> usize {
+    usize::try_from(a.0.abs_diff(b.0) + a.1.abs_diff(b.1)).expect("distance fits usize")
 }
 
-/// Join axis-aligned path segments, retaining each shared endpoint once.
-fn join_segments(segments: impl IntoIterator<Item = Vec<Cell>>) -> Vec<Cell> {
-    let mut path = Vec::new();
-    for segment in segments {
-        if path.is_empty() {
-            path.extend(segment);
-        } else {
-            path.extend(segment.into_iter().skip(1));
-        }
-    }
-    path
-}
-
-/// Insert `path` once while preserving the generation order.
-fn push_unique(paths: &mut Vec<Vec<Cell>>, seen: &mut BTreeSet<Vec<Cell>>, path: Vec<Cell>) {
-    if seen.insert(path.clone()) {
-        paths.push(path);
-    }
-}
-
-/// Enumerate candidate paths from `src` to `dst`.
+/// Enumerate every simple grid path from `src` to `dst`.
 ///
 /// `grid_cols` and `grid_rows` are the grid dimensions, and `max_detour` is
-/// the maximum number of additional *slot visits* beyond a Manhattan path.
-/// Paths list every visited slot, including `src` and `dst`. Invalid endpoints
-/// yield no candidates; a same-slot request yields the singleton path.
+/// the maximum number of additional *hops* beyond a Manhattan path. Paths
+/// list every visited slot, including `src` and `dst`, are returned
+/// shortest-first with a lexicographic tie-break, and contain no repeated
+/// slots. Invalid endpoints yield no candidates; a same-slot request yields
+/// the singleton path.
 #[must_use]
 pub fn enumerate_paths(
     src: Cell,
@@ -63,65 +33,65 @@ pub fn enumerate_paths(
     grid_rows: u32,
     max_detour: usize,
 ) -> Vec<Vec<Cell>> {
-    if src.0 >= grid_cols || src.1 >= grid_rows || dst.0 >= grid_cols || dst.1 >= grid_rows {
+    let in_bounds = |&(x, y): &Cell| x < grid_cols && y < grid_rows;
+    if !in_bounds(&src) || !in_bounds(&dst) {
         return Vec::new();
     }
 
+    let hop_budget = manhattan(src, dst) + max_detour;
     let mut paths = Vec::new();
-    let mut seen = BTreeSet::new();
-
-    // Direct path.
-    if src.0 == dst.0 || src.1 == dst.1 {
-        push_unique(&mut paths, &mut seen, straight_path(src, dst));
-    }
-
-    // One-bend paths: vertical-horizontal, then horizontal-vertical.
-    for bend in [(src.0, dst.1), (dst.0, src.1)] {
-        push_unique(
-            &mut paths,
-            &mut seen,
-            join_segments([straight_path(src, bend), straight_path(bend, dst)]),
-        );
-    }
-
-    // H-V-H paths, one for every possible intermediate column.
-    for x in 0..grid_cols {
-        let first_bend = (x, src.1);
-        let second_bend = (x, dst.1);
-        push_unique(
-            &mut paths,
-            &mut seen,
-            join_segments([
-                straight_path(src, first_bend),
-                straight_path(first_bend, second_bend),
-                straight_path(second_bend, dst),
-            ]),
-        );
-    }
-
-    // V-H-V paths, one for every possible intermediate row.
-    for y in 0..grid_rows {
-        let first_bend = (src.0, y);
-        let second_bend = (dst.0, y);
-        push_unique(
-            &mut paths,
-            &mut seen,
-            join_segments([
-                straight_path(src, first_bend),
-                straight_path(first_bend, second_bend),
-                straight_path(second_bend, dst),
-            ]),
-        );
-    }
-
-    let optimal_slot_count = usize::try_from(src.0.abs_diff(dst.0) + src.1.abs_diff(dst.1))
-        .expect("grid dimensions fit usize")
-        + 1;
+    let mut visited = BTreeSet::from([src]);
+    let mut path = vec![src];
+    visit(
+        dst,
+        hop_budget,
+        &in_bounds,
+        &mut path,
+        &mut visited,
+        &mut paths,
+    );
+    // Shortest first; the lexicographic cell order breaks length ties, so the
+    // candidate index the routing refinement minimizes is fully stable.
+    paths.sort_by(|a, b| a.len().cmp(&b.len()).then_with(|| a.cmp(b)));
     paths
-        .into_iter()
-        .filter(|path| path.len() <= optimal_slot_count + max_detour)
-        .filter(|path| path.iter().copied().collect::<BTreeSet<_>>().len() == path.len())
-        .collect()
+}
+
+/// Depth-first enumeration of simple paths to `dst` within `hop_budget` hops.
+fn visit(
+    dst: Cell,
+    hop_budget: usize,
+    in_bounds: &impl Fn(&Cell) -> bool,
+    path: &mut Vec<Cell>,
+    visited: &mut BTreeSet<Cell>,
+    paths: &mut Vec<Vec<Cell>>,
+) {
+    let current = *path.last().expect("a path always has a head");
+    if current == dst {
+        paths.push(path.clone());
+        return;
+    }
+    // Prune: the remaining hops cannot reach the destination in budget even
+    // on a Manhattan-optimal continuation.
+    let hops_used = path.len() - 1;
+    if hops_used + manhattan(current, dst) > hop_budget {
+        return;
+    }
+    let (x, y) = current;
+    for next in [
+        (x + 1, y),
+        (x, y + 1),
+        (x.wrapping_sub(1), y),
+        (x, y.wrapping_sub(1)),
+    ] {
+        if !in_bounds(&next) || visited.contains(&next) {
+            continue;
+        }
+        path.push(next);
+        visited.insert(next);
+        visit(dst, hop_budget, in_bounds, path, visited, paths);
+        visited.remove(&next);
+        path.pop();
+    }
 }
 
 #[cfg(test)]
@@ -152,14 +122,15 @@ mod tests {
     }
 
     #[test]
-    fn one_by_two_has_expected_order() {
+    fn one_by_two_enumerates_every_manhattan_path_shortest_first() {
         assert_eq!(
             enumerate_paths((0, 0), (1, 2), 10, 10, 0),
             vec![
                 vec![(0, 0), (0, 1), (0, 2), (1, 2)],
-                vec![(0, 0), (1, 0), (1, 1), (1, 2)],
                 vec![(0, 0), (0, 1), (1, 1), (1, 2)],
+                vec![(0, 0), (1, 0), (1, 1), (1, 2)],
             ],
+            "all three Manhattan paths, length ties broken lexicographically",
         );
     }
 
@@ -181,18 +152,23 @@ mod tests {
 
     #[test]
     fn reference_candidate_counts_match() {
-        assert_eq!(enumerate_paths((1, 1), (3, 3), 10, 10, 0).len(), 4);
-        assert_eq!(enumerate_paths((3, 0), (0, 5), 10, 10, 0).len(), 8);
-        assert_eq!(enumerate_paths((1, 1), (3, 3), 4, 4, 2).len(), 6);
-        assert_eq!(enumerate_paths((1, 1), (3, 3), 4, 5, 2).len(), 7);
-        assert_eq!(enumerate_paths((1, 1), (3, 3), 5, 5, 2).len(), 8);
+        // Without detours: every Manhattan (monotone) path, C(dx+dy, dx).
+        assert_eq!(enumerate_paths((1, 1), (3, 3), 10, 10, 0).len(), 6);
+        assert_eq!(enumerate_paths((3, 0), (0, 5), 10, 10, 0).len(), 56);
+        // A two-hop budget adds every single out-and-back detour that keeps
+        // the path simple and in bounds.
+        assert_eq!(enumerate_paths((1, 1), (3, 3), 4, 4, 2).len(), 20);
+        assert_eq!(enumerate_paths((1, 1), (3, 3), 4, 5, 2).len(), 25);
+        assert_eq!(enumerate_paths((1, 1), (3, 3), 5, 5, 2).len(), 30);
     }
 
     #[test]
-    fn all_candidates_are_simple_adjacent_paths() {
+    fn all_candidates_are_simple_adjacent_paths_within_budget() {
+        let budget = manhattan((1, 3), (3, 0)) + 2 + 1; // hops + detour -> cells
         for path in enumerate_paths((1, 3), (3, 0), 5, 5, 2) {
             assert_eq!(path.first(), Some(&(1, 3)), "source is preserved");
             assert_eq!(path.last(), Some(&(3, 0)), "destination is preserved");
+            assert!(path.len() <= budget, "within the detour budget: {path:?}");
             assert_eq!(
                 path.iter().copied().collect::<BTreeSet<_>>().len(),
                 path.len(),
