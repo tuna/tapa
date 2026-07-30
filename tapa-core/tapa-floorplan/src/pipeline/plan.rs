@@ -4,9 +4,12 @@
 //! route them, and turn each path into a typed [`PipelineRoute`] with a
 //! distribution scheme and exact per-register slot regions.
 //!
-//! `Single` places one body register per intermediate slot, `Double` two per
-//! hop, and `SingleHDoubleV` one per horizontal hop and two per vertical (SLR)
-//! hop.
+//! `Single` places one Body register per intermediate slot, `Double` two per
+//! hop, and `SingleHDoubleV` one per intermediate slot horizontally — the
+//! separately generated Head and Tail cover the first and last hop — plus,
+//! for every vertical (SLR) hop, one extra Body register in each of the hop's
+//! two endpoint slots, i.e. two per vertical hop; a slot shared by two
+//! vertical hops hosts one register per hop.
 
 use std::collections::BTreeMap;
 

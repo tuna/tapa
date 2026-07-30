@@ -264,7 +264,9 @@ pub enum PipelineScheme {
     Single,
     /// Two registers per hop.
     Double,
-    /// One register per horizontal hop, two per vertical (SLR) hop.
+    /// Horizontal hops behave like `Single` (one register per intermediate
+    /// slot); each vertical (SLR) hop adds one register in each of its two
+    /// endpoint slots, i.e. two per vertical hop.
     SingleHDoubleV,
 }
 
