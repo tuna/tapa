@@ -49,6 +49,28 @@ impl fmt::Display for MemoryBank {
     }
 }
 
+/// A tag that is not a memory bank of the form `HBM[i]` or `DDR[i]`.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("`{0}` is not a memory bank tag of the form `HBM[i]` or `DDR[i]`")]
+pub struct MemoryBankParseError(pub String);
+
+impl std::str::FromStr for MemoryBank {
+    type Err = MemoryBankParseError;
+
+    fn from_str(tag: &str) -> Result<Self, Self::Err> {
+        let (kind, rest) = tag
+            .strip_prefix("HBM[")
+            .map(|rest| (MemoryKind::Hbm, rest))
+            .or_else(|| tag.strip_prefix("DDR[").map(|rest| (MemoryKind::Ddr, rest)))
+            .ok_or_else(|| MemoryBankParseError(tag.to_string()))?;
+        let index = rest
+            .strip_suffix(']')
+            .and_then(|digits| digits.parse::<u32>().ok())
+            .ok_or_else(|| MemoryBankParseError(tag.to_string()))?;
+        Ok(Self { kind, index })
+    }
+}
+
 /// One kernel-port-to-memory-bank assignment.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
@@ -621,6 +643,22 @@ mod tests {
                 error.to_string().contains("memory endpoint `k.p`"),
                 "unexpected error `{error}` for `{json}`",
             );
+        }
+    }
+
+    #[test]
+    fn memory_bank_display_round_trips_through_fromstr() {
+        for (tag, kind, index) in [
+            ("HBM[0]", MemoryKind::Hbm, 0),
+            ("HBM[31]", MemoryKind::Hbm, 31),
+            ("DDR[3]", MemoryKind::Ddr, 3),
+        ] {
+            let bank: MemoryBank = tag.parse().expect("parse");
+            assert_eq!((bank.kind, bank.index), (kind, index));
+            assert_eq!(bank.to_string(), tag);
+        }
+        for bad in ["HBM", "DDR", "HBM[]", "HBM[x]", "PLRAM[0]", "hbm[1]"] {
+            assert!(bad.parse::<MemoryBank>().is_err(), "{bad} must not parse");
         }
     }
 }
