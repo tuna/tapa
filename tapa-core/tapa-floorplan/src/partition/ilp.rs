@@ -475,7 +475,9 @@ fn candidate_domains(
                 &constraints.max_resource_limits,
                 &region,
             );
-            if area_is_empty(&available) || !area_fits(vertex.area, available) {
+            // A zero-area vertex fits even on a slot whose derated area
+            // scaled to zero (0 <= 0); only the fitting check decides.
+            if !area_fits(vertex.area, available) {
                 continue;
             }
             candidates.push(region);
@@ -541,12 +543,6 @@ fn scaled_area_with_overrides(
 )]
 fn scaled_amount(amount: u64, limit: f64) -> u64 {
     (amount as f64 * limit) as u64
-}
-
-fn area_is_empty(area: &Area) -> bool {
-    Resource::ALL
-        .into_iter()
-        .all(|resource| resource.amount(area) == 0)
 }
 
 fn area_fits(required: Area, available: Area) -> bool {
@@ -2152,6 +2148,26 @@ mod tests {
             1,
             "an exact DSE candidate must perform only its requested solve",
         );
+    }
+
+    #[test]
+    fn zero_area_vertex_fits_a_zero_derated_slot() {
+        // A radically small usage limit floors every scaled slot resource to
+        // zero; a resource-free vertex still fits (0 <= 0) and must not be
+        // rejected as candidate-less.
+        let graph = single_task_floor_graph(0);
+        let device = one_slot_device(1000);
+        let assignment = floorplan_with_strategy(
+            &graph,
+            &device,
+            1e-12,
+            1e-12,
+            PartitionStrategy::Flat,
+            &ChooseSolver::first(),
+            &SolveOpts::default(),
+        )
+        .expect("the fitting check alone decides a zero-area vertex");
+        assert_eq!(assignment.regions.len(), 1);
     }
 
     #[test]
