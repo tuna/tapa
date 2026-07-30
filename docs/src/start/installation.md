@@ -80,6 +80,24 @@ C library changes and Vitis HLS tool incompatibility.
 sudo yum install gcc-c++ libxcrypt-compat
 ```
 
+## Install CBC
+
+Floorplanning (`tapa floorplan` and synthesis flows that floorplan) solves its
+ILPs with the external [CBC](https://github.com/coin-or/Cbc) solver binary,
+which must be on `PATH`. Software simulation does not need it.
+
+### Ubuntu / Debian
+
+```bash
+sudo apt-get install coinor-cbc
+```
+
+### RHEL / Fedora
+
+```bash
+sudo yum install coin-or-Cbc
+```
+
 ## Verify installation
 
 ```bash

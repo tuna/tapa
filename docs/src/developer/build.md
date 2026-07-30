@@ -38,7 +38,7 @@ echo "deb [arch=amd64 signed-by=/usr/share/keyrings/bazel-archive-keyring.gpg] \
 sudo apt-get install bazel
 
 # Install other tools
-sudo apt-get install binutils git python3
+sudo apt-get install binutils git python3 coinor-cbc
 ```
 
 ```admonish tip

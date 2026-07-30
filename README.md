@@ -44,7 +44,9 @@ root, installs to `~/.tapa` and updates your shell `PATH`.
 > ```
 
 **Requirements:** Linux (Ubuntu 18.04+, Debian 10+, RHEL 9+, Fedora 34+, Amazon
-Linux 2023), `g++` 7.5.0+. Vitis HLS 2022.1+ is required for RTL synthesis and
+Linux 2023), `g++` 7.5.0+, and the [CBC](https://github.com/coin-or/Cbc) ILP
+solver (`coinor-cbc` on Ubuntu/Debian, `coin-or-Cbc` on Fedora/EPEL) for
+floorplanning. Vitis HLS 2022.1+ is required for RTL synthesis and
 on-board execution — **not** for software simulation.
 
 To install a specific version:
@@ -134,7 +136,7 @@ Full documentation: **[tapa.readthedocs.io](https://tapa.readthedocs.io/en/lates
 
 ```bash
 # Install dependencies (Ubuntu/Debian)
-sudo apt-get install g++ binutils git python3
+sudo apt-get install g++ binutils git python3 coinor-cbc
 
 # Install Bazel — see https://bazel.build/install
 
