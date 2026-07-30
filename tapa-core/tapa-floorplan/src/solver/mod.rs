@@ -6,6 +6,8 @@ pub mod lp_writer;
 pub mod model;
 pub mod solve;
 
+#[cfg(test)]
+pub(crate) use backends::missing_cbc;
 pub use backends::CbcSolver;
 pub use lp_writer::{write_cplex_lp, LpWriteError};
 pub use model::{Comparison, LinExpr, LpModel, LpVar, Sense, VarKind};

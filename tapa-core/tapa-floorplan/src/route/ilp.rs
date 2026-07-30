@@ -539,17 +539,14 @@ mod tests {
         }
     }
 
-    fn route_with_cbc(nets: &[RouteNet], device: &Device) -> Option<Vec<Vec<Cell>>> {
+    fn route_with_cbc(nets: &[RouteNet], device: &Device) -> Vec<Vec<Cell>> {
         let opts = SolveOpts {
             threads: Some(1),
             ..SolveOpts::default()
         };
         match route_nets(nets, device, &CbcSolver::new(), &opts) {
-            Ok(routes) => Some(routes),
-            Err(RouteError::Solver(SolverError::Spawn { .. })) => {
-                eprintln!("skipping: cbc not found");
-                None
-            }
+            Ok(routes) => routes,
+            Err(RouteError::Solver(SolverError::Spawn { .. })) => crate::solver::missing_cbc(),
             Err(other) => panic!("routing failed: {other}"),
         }
     }
@@ -562,9 +559,7 @@ mod tests {
             dst: (0, 2),
             width: 33,
         }];
-        let Some(routes) = route_with_cbc(&nets, &device) else {
-            return;
-        };
+        let routes = route_with_cbc(&nets, &device);
         assert_eq!(
             routes[0],
             vec![(0, 0), (0, 1), (0, 2)],
@@ -580,9 +575,7 @@ mod tests {
             dst: (1, 0),
             width: 10,
         }];
-        let Some(routes) = route_with_cbc(&nets, &device) else {
-            return;
-        };
+        let routes = route_with_cbc(&nets, &device);
         assert_eq!(
             routes[0],
             vec![(0, 0), (0, 1), (1, 1), (1, 0)],
@@ -598,9 +591,7 @@ mod tests {
             dst: (1, 1),
             width: 1,
         }];
-        let Some(routes) = route_with_cbc(&nets, &device) else {
-            return;
-        };
+        let routes = route_with_cbc(&nets, &device);
         assert_eq!(
             routes[0].len(),
             3,
@@ -618,9 +609,7 @@ mod tests {
             dst: (1, 0),
             width: 10,
         }];
-        let Some(routes) = route_with_cbc(&nets, &device) else {
-            return;
-        };
+        let routes = route_with_cbc(&nets, &device);
         assert_eq!(
             routes[0],
             vec![(0, 0), (0, 1), (1, 1), (1, 0)],

@@ -988,10 +988,7 @@ mod tests {
         ) {
             Ok(routes) => routes,
             Err(PipelineError::Route(RouteError::Solver(SolverError::Spawn { .. }))) => {
-                eprintln!(
-                    "skipping published_launch_and_reset_routes_are_identical: `cbc` not found"
-                );
-                return;
+                crate::solver::missing_cbc()
             }
             Err(error) => panic!("routing failed: {error}"),
         };

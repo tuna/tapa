@@ -285,6 +285,18 @@ fn parse_objective(header: &str) -> Option<f64> {
         .ok()
 }
 
+/// Fail a solver test when the CBC binary is not installed.
+///
+/// CBC is a hard build requirement for tapa-floorplan's test suite; these
+/// tests never silently skip.
+#[cfg(test)]
+pub(crate) fn missing_cbc() -> ! {
+    panic!(
+        "`cbc` was not found on PATH: the CBC solver is required to test \
+         tapa-floorplan (Debian/Ubuntu: `sudo apt install coinor-cbc`)"
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -492,9 +504,7 @@ Optimal - objective value 12.00000000
                 assert!(approx(sol.value(x1), 0.0), "x1 = {}", sol.value(x1));
                 assert!(approx(sol.objective, 12.0), "objective = {}", sol.objective);
             }
-            Err(SolverError::Spawn { .. }) => {
-                eprintln!("skipping cbc_solves_a_known_milp: `cbc` not found on PATH");
-            }
+            Err(SolverError::Spawn { .. }) => missing_cbc(),
             Err(other) => panic!("cbc failed unexpectedly: {other}"),
         }
     }
@@ -511,11 +521,7 @@ Optimal - objective value 12.00000000
                 assert_eq!(solution.status, LpStatus::Optimal);
                 assert!(approx(solution.objective, 3.0));
             }
-            Err(SolverError::Spawn { .. }) => {
-                eprintln!(
-                    "skipping cbc_returns_the_full_affine_objective: `cbc` not found on PATH"
-                );
-            }
+            Err(SolverError::Spawn { .. }) => missing_cbc(),
             Err(other) => panic!("cbc failed unexpectedly: {other}"),
         }
     }
@@ -530,9 +536,7 @@ Optimal - objective value 12.00000000
 
         match CbcSolver::new().solve(&model, &SolveOpts::default()) {
             Ok(sol) => assert_eq!(sol.status, LpStatus::Infeasible, "must be infeasible"),
-            Err(SolverError::Spawn { .. }) => {
-                eprintln!("skipping cbc_reports_infeasible_model: `cbc` not found on PATH");
-            }
+            Err(SolverError::Spawn { .. }) => missing_cbc(),
             Err(other) => panic!("cbc failed unexpectedly: {other}"),
         }
     }

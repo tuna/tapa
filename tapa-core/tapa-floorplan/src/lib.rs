@@ -512,7 +512,7 @@ mod tests {
                 assert!(xdc.contains("create_pblock SLOT_X"));
             }
             Err(PlanError::Ilp(IlpError::Solver(SolverError::Spawn { .. }))) => {
-                eprintln!("skipping plan_end_to_end_on_vadd: `cbc` not found");
+                crate::solver::missing_cbc()
             }
             Err(other) => panic!("plan failed: {other}"),
         }
@@ -583,7 +583,7 @@ mod tests {
                 );
             }
             Err(PlanError::Ilp(IlpError::Solver(SolverError::Spawn { .. }))) => {
-                eprintln!("skipping plan_pipelines_a_forced_crossing: `cbc` not found");
+                crate::solver::missing_cbc()
             }
             Err(other) => panic!("plan failed: {other}"),
         }
@@ -631,10 +631,7 @@ mod tests {
                 | PlanError::Pipeline(PipelineError::Route(crate::route::ilp::RouteError::Solver(
                     SolverError::Spawn { .. },
                 ))),
-            ) => {
-                eprintln!("skipping distributed_control_plan_materializes_and_routes_exact_inventory: `cbc` not found");
-                return;
-            }
+            ) => crate::solver::missing_cbc(),
             Err(error) => panic!("control plan failed: {error}"),
         };
         let global = tapa_ir::global_controller_instance_name();
