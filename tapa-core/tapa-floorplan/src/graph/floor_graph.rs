@@ -149,6 +149,16 @@ pub enum GraphError {
     /// A FIFO's wire width could not be resolved from either endpoint's port.
     #[error("could not resolve the wire width of stream `{0}`")]
     UnresolvedFifoWidth(String),
+    /// A FIFO's producer and consumer ports disagree on the payload width, so
+    /// the planner cannot model the same wires codegen will emit.
+    #[error(
+        "stream `{fifo}` has producer port width {producer} but consumer port width {consumer}"
+    )]
+    FifoWidthMismatch {
+        fifo: String,
+        producer: u32,
+        consumer: u32,
+    },
     /// Two logical objects (task instances, FIFOs, co-located aliases) claim
     /// the same placement/RTL name, which one `regions` key cannot represent.
     #[error("name `{name}` is claimed by both {first} and {second}")]
@@ -397,12 +407,12 @@ impl FloorGraph {
         let mut placement_widths = BTreeMap::<(usize, usize), u32>::new();
         let mut streams = Vec::new();
         let mut co_located = Vec::new();
+        let fifo_widths = index_fifo_arg_widths(flat, top);
         for (fifo_name, fifo) in &top.fifos {
             let Some(depth) = fifo.depth else {
                 continue; // external passthrough FIFO — not a placed instance
             };
-            let data_width = resolve_fifo_data_width(flat, top, fifo_name)
-                .ok_or_else(|| GraphError::UnresolvedFifoWidth(fifo_name.clone()))?;
+            let data_width = resolve_fifo_data_width(&fifo_widths, fifo_name)?;
             let physical_width = data_width
                 .checked_add(2) // valid/write and ready/full_n
                 .ok_or_else(|| GraphError::UnresolvedFifoWidth(fifo_name.clone()))?;
@@ -1187,19 +1197,70 @@ fn bank_kind_name(bank: MemoryBank) -> &'static str {
 }
 
 /// Resolve the FIFO storage width (payload + eot) from either endpoint.
-fn resolve_fifo_data_width(flat: &TaskGraph, top: &tapa_ir::Task, fifo_name: &str) -> Option<u32> {
+/// One FIFO's endpoint port widths gathered from the bound instance args.
+#[derive(Debug, Clone, Copy, Default)]
+struct FifoArgWidths {
+    producer: Option<u32>,
+    consumer: Option<u32>,
+}
+
+/// Gather every FIFO's producer/consumer port widths in one pass over the
+/// bound args. The producer is the authoritative side: codegen sizes the FIFO
+/// RTL from the producer's `_dout` port.
+fn index_fifo_arg_widths(flat: &TaskGraph, top: &tapa_ir::Task) -> BTreeMap<String, FifoArgWidths> {
+    let mut index = BTreeMap::<String, FifoArgWidths>::new();
     for (def_name, instances) in &top.tasks {
         for inst in instances {
             for (port_name, arg) in &inst.args {
-                if arg.arg == fifo_name && arg.cat.is_stream() {
-                    if let Some(width) = port_width(flat, def_name, port_name) {
-                        return width.checked_add(1);
-                    }
+                if !arg.cat.is_stream() {
+                    continue;
+                }
+                let Some(width) = port_width(flat, def_name, port_name) else {
+                    continue;
+                };
+                let entry = index.entry(arg.arg.clone()).or_default();
+                let side = if arg.cat.is_output_stream() {
+                    &mut entry.producer
+                } else {
+                    &mut entry.consumer
+                };
+                // A well-formed graph binds one instance per side; the first
+                // binding wins deterministically if malformed.
+                if side.is_none() {
+                    *side = Some(width);
                 }
             }
         }
     }
-    None
+    index
+}
+
+/// The FIFO storage width (payload + 1 eot bit, matching
+/// `tapa_protocol::stream_data_wire_width`), resolved from the producer's
+/// port and cross-checked against the consumer's when both are bound.
+fn resolve_fifo_data_width(
+    index: &BTreeMap<String, FifoArgWidths>,
+    fifo_name: &str,
+) -> Result<u32, GraphError> {
+    let widths = index.get(fifo_name).copied().unwrap_or_default();
+    let payload = match (widths.producer, widths.consumer) {
+        (Some(producer), Some(consumer)) => {
+            if producer != consumer {
+                return Err(GraphError::FifoWidthMismatch {
+                    fifo: fifo_name.to_string(),
+                    producer,
+                    consumer,
+                });
+            }
+            producer
+        }
+        (Some(producer), None) => producer,
+        (None, Some(consumer)) => consumer,
+        (None, None) => return Err(GraphError::UnresolvedFifoWidth(fifo_name.to_string())),
+    };
+    payload
+        .checked_add(1)
+        .ok_or_else(|| GraphError::UnresolvedFifoWidth(fifo_name.to_string()))
 }
 
 fn checked_add_area(lhs: Area, rhs: Area) -> Option<Area> {
@@ -1599,6 +1660,42 @@ mod tests {
         let error = FloorGraph::build(&flat).expect_err("task name fifo_VecAdd_fifo must fail");
         assert!(
             matches!(error, GraphError::NameConflict { .. }),
+            "got {error}"
+        );
+    }
+
+    #[test]
+    fn producer_consumer_width_mismatch_fails_closed() {
+        let json = r#"{
+            "cflags": [], "top": "Top", "target": "xilinx-hls",
+            "tasks": {
+                "Top": {
+                    "readable_name": "Top", "code": "void Top() {}", "level": "upper", "synth": "hls",
+                    "ports": [],
+                    "tasks": {
+                        "A": [{"args": {"out": {"arg": "q", "cat": "ostream"}}, "step": 0}],
+                        "B": [{"args": {"in": {"arg": "q", "cat": "istream"}}, "step": 0}]
+                    },
+                    "fifos": {"q": {"depth": 2, "consumed_by": ["B", 0], "produced_by": ["A", 0]}}
+                },
+                "A": {"readable_name": "A", "code": "void A() {}", "level": "lower", "synth": "hls",
+                    "ports": [{"cat": "ostream", "name": "out", "type": "uint32", "width": 32}]},
+                "B": {"readable_name": "B", "code": "void B() {}", "level": "lower", "synth": "hls",
+                    "ports": [{"cat": "istream", "name": "in", "type": "uint64", "width": 64}]}
+            }
+        }"#;
+        let design = TaskGraph::from_json(json).expect("parse");
+        let flat = tapa_ir::flatten(&design).expect("flatten");
+        let error = FloorGraph::build(&flat).expect_err("32 vs 64 must fail");
+        assert!(
+            matches!(
+                error,
+                GraphError::FifoWidthMismatch {
+                    producer: 32,
+                    consumer: 64,
+                    ..
+                }
+            ),
             "got {error}"
         );
     }
