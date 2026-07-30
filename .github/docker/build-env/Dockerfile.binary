@@ -33,6 +33,9 @@ RUN ln -fs /usr/share/zoneinfo/UTC /etc/localtime
 #   - binutils
 #   - python3
 
+# Required by tapa-floorplan's ILP solver (build and test):
+#   - coinor-cbc
+
 # Required by pre-commit:
 #   - git
 
@@ -51,6 +54,7 @@ RUN apt-get update && \
         apt-transport-https \
         binutils \
         ca-certificates \
+        coinor-cbc \
         curl \
         git \
         gnupg \
