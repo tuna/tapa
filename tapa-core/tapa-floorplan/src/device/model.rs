@@ -408,6 +408,30 @@ pub enum DeviceValidationError {
         /// Row of the missing cell.
         y: u32,
     },
+    /// A slot centroid is off the unit-distance grid the placement objective
+    /// assumes.
+    #[error("slot ({x},{y}) centroid ({centroid_x},{centroid_y}) is off the unit grid")]
+    CentroidOffGrid {
+        /// Slot column.
+        x: u32,
+        /// Slot row.
+        y: u32,
+        /// Declared centroid x.
+        centroid_x: i64,
+        /// Declared centroid y.
+        centroid_y: i64,
+    },
+    /// The table models exact external banks but records no platform, so the
+    /// planner's platform check would silently no-op.
+    #[error("slot ({x},{y}) carries bank tag `{tag}` but the table has no platform_name")]
+    BankTagWithoutPlatform {
+        /// Slot column.
+        x: u32,
+        /// Slot row.
+        y: u32,
+        /// The bank tag requiring a platform.
+        tag: String,
+    },
 }
 
 impl Device {
@@ -444,6 +468,39 @@ impl Device {
                 .find(|cell| !seen.contains(cell))
                 .expect("a shorter seen set implies a missing cell");
             return Err(DeviceValidationError::MissingSlot { x, y });
+        }
+
+        // Centroids must follow the unit grid the placement objective prices
+        // distances in.
+        for slot in &self.slots {
+            let expected = (
+                UNIT_DIST_X * i64::from(slot.x),
+                UNIT_DIST_Y * i64::from(slot.y),
+            );
+            if (slot.centroid_x, slot.centroid_y) != expected {
+                return Err(DeviceValidationError::CentroidOffGrid {
+                    x: slot.x,
+                    y: slot.y,
+                    centroid_x: slot.centroid_x,
+                    centroid_y: slot.centroid_y,
+                });
+            }
+        }
+
+        // Exact bank anchors are platform-specific: a table that models them
+        // must record its platform or the planner's platform check no-ops.
+        if self.platform_name.is_none() {
+            for slot in &self.slots {
+                for tag in &slot.tags {
+                    if tag.parse::<tapa_ir::MemoryBank>().is_ok() {
+                        return Err(DeviceValidationError::BankTagWithoutPlatform {
+                            x: slot.x,
+                            y: slot.y,
+                            tag: tag.clone(),
+                        });
+                    }
+                }
+            }
         }
 
         for slot in &self.slots {
@@ -861,6 +918,43 @@ mod tests {
         let mut empty = grid_2x2();
         empty.cols = 0;
         assert_eq!(empty.validate(), Err(DeviceValidationError::EmptyGrid));
+    }
+
+    #[test]
+    fn device_validation_requires_unit_grid_centroids() {
+        let mut device = grid_2x2();
+        device.slots[1].centroid_y = UNIT_DIST_Y;
+        assert!(matches!(
+            device.validate(),
+            Err(DeviceValidationError::CentroidOffGrid { x: 1, y: 0, .. })
+        ));
+    }
+
+    #[test]
+    fn device_validation_requires_a_platform_for_bank_tags() {
+        let mut device = grid_2x2();
+        device.slots[0].tags.push("DDR[0]".to_string());
+        assert_eq!(
+            device.validate(),
+            Err(DeviceValidationError::BankTagWithoutPlatform {
+                x: 0,
+                y: 0,
+                tag: "DDR[0]".to_string(),
+            })
+        );
+
+        device.platform_name = Some("shell".to_string());
+        device
+            .validate()
+            .expect("a recorded platform satisfies the rule");
+
+        // Non-bank tags never require a platform.
+        let mut device = grid_2x2();
+        device.slots[0].tags.push("CLK_RST".to_string());
+        device.slots[0].tags.push("HBM".to_string());
+        device
+            .validate()
+            .expect("SLR markers and control tags are not banks");
     }
 
     #[test]
