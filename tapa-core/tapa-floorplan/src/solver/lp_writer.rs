@@ -9,9 +9,29 @@ use std::fmt::Write as _;
 
 use crate::solver::model::{Comparison, LinExpr, LpModel, Sense, VarKind};
 
+/// Why a model could not be rendered as CPLEX-LP text.
+#[derive(Debug, thiserror::Error)]
+pub enum LpWriteError {
+    /// A constraint with no variable terms is unsatisfiable; rendering it
+    /// would change the model's semantics (CBC aborts on such lines, so the
+    /// only rewritable form is the dropped — wrong — model).
+    #[error("constraint `{name}` reduces to the unsatisfiable constant `0 {op:?} {rhs}`")]
+    UnsatisfiableConstant {
+        /// Constraint label from the model.
+        name: String,
+        /// Its comparison operator.
+        op: Comparison,
+        /// Right-hand side after folding the expression constant.
+        rhs: f64,
+    },
+}
+
 /// Render `model` as CPLEX-LP text, terminated by a trailing newline.
-#[must_use]
-pub fn write_cplex_lp(model: &LpModel) -> String {
+///
+/// Constant-only constraints that are vacuously true (e.g. a cut with no
+/// crossing edges: `0 <= capacity`) are dropped, since CBC aborts on them;
+/// unsatisfiable ones are a hard error rather than a silent model change.
+pub fn write_cplex_lp(model: &LpModel) -> Result<String, LpWriteError> {
     let mut lines: Vec<String> = Vec::new();
 
     // Variable labels as comments, for debuggable LP files.
@@ -38,10 +58,13 @@ pub fn write_cplex_lp(model: &LpModel) -> String {
         // such a line, and in this planner they are always vacuously true
         // (e.g. a cut with no crossing edges: `0 <= capacity`), so drop them.
         if constraint.expr.terms.iter().all(|(coef, _)| is_zero(*coef)) {
-            debug_assert!(
-                empty_constraint_is_vacuous(constraint.op, rhs),
-                "an unsatisfiable constant-only constraint would be silently dropped",
-            );
+            if !empty_constraint_is_vacuous(constraint.op, rhs) {
+                return Err(LpWriteError::UnsatisfiableConstant {
+                    name: constraint.name.clone(),
+                    op: constraint.op,
+                    rhs,
+                });
+            }
             continue;
         }
         lines.push(format!(
@@ -74,7 +97,7 @@ pub fn write_cplex_lp(model: &LpModel) -> String {
     lines.push("End".to_string());
     let mut text = lines.join("\n");
     text.push('\n');
-    text
+    Ok(text)
 }
 
 /// The objective's terms plus its constant offset.
@@ -256,7 +279,7 @@ General
  x1
 End
 ";
-        assert_eq!(write_cplex_lp(&model), expected);
+        assert_eq!(write_cplex_lp(&model).expect("render"), expected);
     }
 
     #[test]
@@ -270,8 +293,42 @@ End
             1.0,
         );
         assert!(
-            write_cplex_lp(&model).contains("cut_x_3_capacity:"),
+            write_cplex_lp(&model)
+                .expect("render")
+                .contains("cut_x_3_capacity:"),
             "the `=` must be sanitized to `_`",
+        );
+    }
+
+    #[test]
+    fn vacuous_constant_constraints_are_dropped() {
+        let mut model = LpModel::new(Sense::Minimize);
+        let v = model.add_binary("v");
+        model.set_objective(LinExpr::sum([(1.0, v)]));
+        // `0 <= 5` and `0 >= -1` hold regardless of any assignment.
+        model.add_constraint("vacuous_le", LinExpr::sum([(0.0, v)]), Comparison::Le, 5.0);
+        model.add_constraint("vacuous_ge", LinExpr::default(), Comparison::Ge, -1.0);
+        let text = write_cplex_lp(&model).expect("vacuous rows are dropped");
+        assert!(!text.contains("vacuous"), "got:\n{text}");
+    }
+
+    #[test]
+    fn unsatisfiable_constant_constraints_are_an_error() {
+        let mut model = LpModel::new(Sense::Minimize);
+        let v = model.add_binary("v");
+        model.set_objective(LinExpr::sum([(1.0, v)]));
+        model.add_constraint("impossible", LinExpr::sum([(0.0, v)]), Comparison::Ge, 1.0);
+        let err = write_cplex_lp(&model).expect_err("0 >= 1 cannot be rendered");
+        assert!(
+            matches!(err, LpWriteError::UnsatisfiableConstant { .. }),
+            "got {err}"
+        );
+
+        let mut model = LpModel::new(Sense::Minimize);
+        model.add_constraint("bad_eq", LinExpr::default(), Comparison::Eq, 0.5);
+        assert!(
+            write_cplex_lp(&model).is_err(),
+            "a nonzero constant equality is unsatisfiable"
         );
     }
 }

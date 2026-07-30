@@ -7,6 +7,6 @@ pub mod model;
 pub mod solve;
 
 pub use backends::CbcSolver;
-pub use lp_writer::write_cplex_lp;
+pub use lp_writer::{write_cplex_lp, LpWriteError};
 pub use model::{Comparison, LinExpr, LpModel, LpVar, Sense, VarKind};
 pub use solve::{LpSolution, LpStatus, SolveOpts, Solver, SolverError};

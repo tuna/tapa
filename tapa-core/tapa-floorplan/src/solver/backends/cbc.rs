@@ -63,7 +63,9 @@ impl Solver for CbcSolver {
         let dir = tempfile::tempdir().map_err(|source| self.spawn_err(source))?;
         let lp_path = dir.path().join("model.lp");
         let sol_path = dir.path().join("model.sol");
-        std::fs::write(&lp_path, write_cplex_lp(model)).map_err(|source| self.spawn_err(source))?;
+        let lp_text =
+            write_cplex_lp(model).map_err(|error| SolverError::InvalidModel(error.to_string()))?;
+        std::fs::write(&lp_path, lp_text).map_err(|source| self.spawn_err(source))?;
 
         let output = self
             .command(&lp_path, &sol_path, opts)

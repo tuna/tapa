@@ -1708,8 +1708,8 @@ mod tests {
         )
         .expect("flat model");
         assert_eq!(
-            crate::solver::write_cplex_lp(&models[2]),
-            crate::solver::write_cplex_lp(&expected.lp),
+            crate::solver::write_cplex_lp(&models[2]).expect("render fallback model"),
+            crate::solver::write_cplex_lp(&expected.lp).expect("render expected model"),
             "fallback must use the existing atomic variables, rows, and objective unchanged"
         );
     }

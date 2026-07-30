@@ -269,6 +269,9 @@ pub enum SolverError {
     /// The solver claimed an incumbent that does not satisfy the model.
     #[error("solver returned an invalid incumbent: {0}")]
     InvalidSolution(String),
+    /// The model itself could not be rendered for the solver.
+    #[error("invalid LP model: {0}")]
+    InvalidModel(String),
 }
 
 /// A backend that solves an [`LpModel`].
