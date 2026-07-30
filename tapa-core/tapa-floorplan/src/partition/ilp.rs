@@ -358,6 +358,9 @@ fn solve_iteration(
 ) -> Result<BTreeMap<String, Coor>, IlpError> {
     let retry_ceiling = config.retry_ceiling;
     let mut usage_limit = config.usage_limit;
+    // Cuts depend only on the iteration's regions, not on the derating being
+    // retried; compute them once.
+    let cuts = find_cuts_for_regions(device, regions);
 
     loop {
         let domains = match candidate_domains(
@@ -394,7 +397,6 @@ fn solve_iteration(
             }
             Err(error) => return Err(error),
         };
-        let cuts = find_cuts_for_regions(device, regions);
         let model = FloorplanModel::build(
             graph,
             device,
@@ -881,12 +883,18 @@ fn add_objective(
     domains: &[Vec<Coor>],
     y: &[Vec<Vec<LpVar>>],
 ) -> Result<(), IlpError> {
+    // Region centroids repeat across every incident edge; resolve once.
+    let centroids: std::collections::BTreeMap<Coor, (i64, i64)> = domains
+        .iter()
+        .flatten()
+        .map(|region| centroid_twice(device, region).map(|centroid| (*region, centroid)))
+        .collect::<Result<_, _>>()?;
     let mut objective = Vec::new();
     for (ei, edge) in graph.placement_edges().iter().enumerate() {
         for (src_ci, src) in domains[edge.src].iter().enumerate() {
-            let src_centroid = centroid_twice(device, src)?;
+            let src_centroid = centroids[src];
             for (dst_ci, dst) in domains[edge.dst].iter().enumerate() {
-                let dst_centroid = centroid_twice(device, dst)?;
+                let dst_centroid = centroids[dst];
                 let distance_twice = (src_centroid.0 - dst_centroid.0).abs()
                     + VERTICAL_DIST_PENALTY * (src_centroid.1 - dst_centroid.1).abs();
                 if distance_twice != 0 {
