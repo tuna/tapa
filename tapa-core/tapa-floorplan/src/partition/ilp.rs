@@ -9,6 +9,10 @@
 //! * width-weighted, vertically penalized centroid distance as the sole
 //!   variable objective cost.
 //!
+//! After a successful solve, the achieved objective is pinned and a unique
+//! stable candidate ranking is minimized, so equal-cost optima resolve
+//! deterministically across solver versions.
+//!
 //! Multilevel placement merely changes the candidate regions: the first pass
 //! assigns vertices to full-width rows, and the second jointly refines every
 //! row into atomic column slots while retaining parent containment. If that
@@ -397,7 +401,7 @@ fn solve_iteration(
             }
             Err(error) => return Err(error),
         };
-        let model = FloorplanModel::build(
+        let mut model = FloorplanModel::build(
             graph,
             device,
             &domains,
@@ -408,7 +412,11 @@ fn solve_iteration(
         let solution = solver.solve(&model.lp, opts)?;
         if solution.is_found() {
             log::info!("placement succeeded at usage limit {usage_limit:.2}");
-            return model.read_back(graph, &domains, &solution);
+            // Lexicographic tie-break: pin the achieved objective, then
+            // minimize a stable candidate ranking so translation-equivalent
+            // optima resolve identically across solver versions.
+            let refined = model.refine_lexicographic(solver, opts, &solution)?;
+            return model.read_back(graph, &domains, refined.as_ref().unwrap_or(&solution));
         }
 
         match solution.status {
@@ -680,6 +688,41 @@ impl FloorplanModel {
         }
 
         Ok(assignments)
+    }
+}
+
+impl FloorplanModel {
+    /// Pin the achieved primary objective and re-solve minimizing the stable
+    /// candidate ranking (`Σ candidate_index·x`), whose optimum is unique:
+    /// each vertex independently selects its lowest-ranked feasible
+    /// candidate, and y is then forced by the coupling rows. This makes
+    /// equal-cost placements deterministic across solver versions. Falls
+    /// back to the primary incumbent when the refinement yields none.
+    fn refine_lexicographic(
+        &mut self,
+        solver: &dyn Solver,
+        opts: &SolveOpts,
+        primary: &crate::solver::LpSolution,
+    ) -> Result<Option<crate::solver::LpSolution>, IlpError> {
+        let pin = self.lp.objective.clone();
+        self.lp.add_constraint(
+            "lexicographic_pin".to_string(),
+            pin,
+            Comparison::Le,
+            primary.objective,
+        );
+        let mut terms = Vec::new();
+        for row in &self.x {
+            for (candidate, &var) in row.iter().enumerate() {
+                let rank = u32::try_from(candidate).expect("candidate count fits u32");
+                if rank > 0 {
+                    terms.push((f64::from(rank), var));
+                }
+            }
+        }
+        self.lp.set_objective(LinExpr::sum(terms));
+        let refined = solver.solve(&self.lp, opts)?;
+        Ok(refined.is_found().then_some(refined))
     }
 }
 
@@ -1158,7 +1201,9 @@ mod tests {
         fn solve(&self, model: &LpModel, opts: &SolveOpts) -> Result<LpSolution, SolverError> {
             let call = self.calls.fetch_add(1, Ordering::Relaxed);
             self.models.lock().expect("lock").push(model.clone());
-            if call == 1 {
+            // Calls: row primary, row refinement, parent-atomic primary —
+            // reject only the last to force the global atomic retry.
+            if call == 2 {
                 return Ok(LpSolution {
                     status: LpStatus::Infeasible,
                     objective: 0.0,
@@ -1756,8 +1801,8 @@ mod tests {
         );
         assert_eq!(
             solver.models.lock().expect("lock").len(),
-            2,
-            "the parent-filtered refinement has no domain, then one atomic fallback is solved"
+            4,
+            "the parent-filtered refinement has no domain; the row pass and the              atomic fallback each take a primary solve and its refinement"
         );
     }
 
@@ -1781,7 +1826,11 @@ mod tests {
         .expect("a proven parent-refinement failure must retry atomic placement globally");
 
         let models = solver.models.lock().expect("lock");
-        assert_eq!(models.len(), 3, "row, parent refinement, atomic fallback");
+        assert_eq!(
+            models.len(),
+            5,
+            "row primary and refinement, rejected parent-atomic primary,              atomic-fallback primary and refinement"
+        );
         let constraints = exact_resource_cap_constraints(&device, block_limit);
         let regions = atomic_regions(&device);
         let domains = candidate_domains(&graph, &device, &regions, logic_limit, None, &constraints)
@@ -1796,7 +1845,7 @@ mod tests {
         )
         .expect("flat model");
         assert_eq!(
-            crate::solver::write_cplex_lp(&models[2]).expect("render fallback model"),
+            crate::solver::write_cplex_lp(&models[3]).expect("render fallback model"),
             crate::solver::write_cplex_lp(&expected.lp).expect("render expected model"),
             "fallback must use the existing atomic variables, rows, and objective unchanged"
         );
@@ -1925,11 +1974,16 @@ mod tests {
 
         let models = solver.models.lock().expect("lock");
         let baseline_models = baseline_solver.models.lock().expect("lock");
-        assert_eq!(models.len(), 2, "one row solve and one atomic solve");
+        assert_eq!(
+            models.len(),
+            4,
+            "row and atomic iterations, each a primary solve and its refinement"
+        );
         assert_eq!(baseline_models.len(), models.len());
         for ((model, baseline), region) in models
             .iter()
-            .zip(baseline_models.iter())
+            .step_by(2)
+            .zip(baseline_models.iter().step_by(2))
             .zip([Coor::span(0, 0, device.cols - 1, 0), Coor::slot(0, 0)])
         {
             assert_eq!(model.num_vars(), baseline.num_vars());
@@ -2007,7 +2061,11 @@ mod tests {
         assert_eq!(strategy, PartitionStrategy::Flat);
 
         let models = solver.models.lock().expect("lock");
-        assert_eq!(models.len(), 1);
+        assert_eq!(
+            models.len(),
+            2,
+            "primary solve plus lexicographic refinement"
+        );
         let region = Coor::slot(0, 0);
         let area = device.island_area(&region).expect("slot area");
         for resource in Resource::ALL {
@@ -2260,6 +2318,49 @@ mod tests {
         )
         .expect("the fitting check alone decides a zero-area vertex");
         assert_eq!(assignment.regions.len(), 1);
+    }
+
+    #[test]
+    fn refinement_solve_pins_the_primary_objective_and_ranks_candidates() {
+        let graph = single_task_floor_graph(1);
+        let device = one_slot_device(1000);
+        let solver = RecordingSolver::first();
+        floorplan_with_strategy(
+            &graph,
+            &device,
+            1.0,
+            1.0,
+            PartitionStrategy::Flat,
+            &solver,
+            &SolveOpts::default(),
+        )
+        .expect("floorplan");
+
+        let models = solver.models.lock().expect("lock");
+        assert_eq!(
+            models.len(),
+            2,
+            "primary solve plus lexicographic refinement"
+        );
+        let refined = &models[1];
+        let pin = refined
+            .constraints
+            .iter()
+            .find(|constraint| constraint.name == "lexicographic_pin")
+            .expect("the primary objective must be pinned");
+        assert_eq!(pin.op, Comparison::Le);
+        assert_eq!(
+            pin.rhs.to_bits(),
+            1.0_f64.to_bits(),
+            "the edge-less primary objective is its constant 1.0",
+        );
+        assert_eq!(
+            pin.expr.constant.to_bits(),
+            1.0_f64.to_bits(),
+            "the pin row carries the primary objective's constant",
+        );
+        // The single candidate has rank 0, so the secondary objective is empty.
+        assert!(refined.objective.terms.is_empty());
     }
 
     #[test]
