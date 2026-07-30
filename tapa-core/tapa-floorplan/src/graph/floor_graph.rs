@@ -558,6 +558,14 @@ fn add_control_interface(
     let global = vertices.len();
     vertices.push(Vertex {
         name: global_name.clone(),
+        // Generated control logic is charged zero area: these blocks are
+        // generated after leaf HLS synthesis, so no leaf's self_area covers
+        // them and there is no post-synthesis model to charge without
+        // inventing numbers. The gap is deliberate and small — a handshake
+        // FSM per controller against ~200k LUTs per slot — and bounded:
+        // the routed control-pipeline registers, the dominant added logic,
+        // ARE accounted in realize_slot_usage, and the usage-limit envelope
+        // absorbs the rest. Same trade-off as async-mmap bridges.
         area: Area::default(),
         required_tag: global_anchor.map(ToString::to_string),
         materialize: true,
