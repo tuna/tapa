@@ -170,6 +170,21 @@ pub enum GraphError {
     /// An internal FIFO has no placeable task endpoint to own its storage.
     #[error("internal stream `{0}` has no placeable endpoint")]
     UnanchoredFifo(String),
+    /// A FIFO names a producer/consumer endpoint that is not a flattened
+    /// task instance — malformed IR, not a deliberately one-sided stream.
+    #[error(
+        "stream `{fifo}` names {role} `{definition}[{index}]`, which is not a flattened task instance"
+    )]
+    DanglingFifoEndpoint {
+        /// The FIFO with the broken reference.
+        fifo: String,
+        /// `producer` or `consumer`.
+        role: &'static str,
+        /// Task definition the reference names.
+        definition: String,
+        /// Instance index within that definition.
+        index: u32,
+    },
     /// Clustering a FIFO made a resource counter overflow.
     #[error("resource accounting overflow while clustering stream `{0}`")]
     ResourceOverflow(String),
@@ -417,14 +432,20 @@ impl FloorGraph {
                 .checked_add(2) // valid/write and ready/full_n
                 .ok_or_else(|| GraphError::UnresolvedFifoWidth(fifo_name.clone()))?;
 
-            let src = fifo
-                .produced_by
-                .as_ref()
-                .and_then(|ep| endpoints.get(&(ep.0.clone(), ep.1)).copied());
-            let dst = fifo
-                .consumed_by
-                .as_ref()
-                .and_then(|ep| endpoints.get(&(ep.0.clone(), ep.1)).copied());
+            // A present endpoint reference must resolve; `None` alone marks
+            // a deliberately one-sided (e.g. external) stream.
+            let src = resolve_fifo_endpoint(
+                &endpoints,
+                fifo_name,
+                "producer",
+                fifo.produced_by.as_ref(),
+            )?;
+            let dst = resolve_fifo_endpoint(
+                &endpoints,
+                fifo_name,
+                "consumer",
+                fifo.consumed_by.as_ref(),
+            )?;
             let host = dst
                 .or(src)
                 .ok_or_else(|| GraphError::UnanchoredFifo(fifo_name.clone()))?;
@@ -1235,6 +1256,31 @@ fn index_fifo_arg_widths(flat: &TaskGraph, top: &tapa_ir::Task) -> BTreeMap<Stri
     index
 }
 
+/// Resolve one declared FIFO endpoint to its task vertex. `None` marks a
+/// deliberately one-sided stream; a present but unresolvable reference is
+/// malformed IR and fails rather than silently dropping the connection.
+fn resolve_fifo_endpoint(
+    endpoints: &HashMap<(String, u32), usize>,
+    fifo_name: &str,
+    role: &'static str,
+    endpoint: Option<&tapa_ir::EndpointRef>,
+) -> Result<Option<usize>, GraphError> {
+    endpoint
+        .map(|reference| {
+            let key = (reference.0.clone(), reference.1);
+            endpoints
+                .get(&key)
+                .copied()
+                .ok_or_else(|| GraphError::DanglingFifoEndpoint {
+                    fifo: fifo_name.to_string(),
+                    role,
+                    definition: reference.0.clone(),
+                    index: reference.1,
+                })
+        })
+        .transpose()
+}
+
 /// The FIFO storage width (payload + 1 eot bit, matching
 /// `tapa_protocol::stream_data_wire_width`), resolved from the producer's
 /// port and cross-checked against the consumer's when both are bound.
@@ -1695,6 +1741,58 @@ mod tests {
                     consumer: 64,
                     ..
                 }
+            ),
+            "got {error}"
+        );
+    }
+
+    #[test]
+    fn dangling_fifo_endpoints_fail_closed() {
+        let flat = tapa_ir::flatten(&vadd_graph()).expect("flatten");
+        let top = flat.top.clone();
+        let fifo_name = flat.tasks[&top].fifos.keys().next().expect("fifo").clone();
+
+        // A producer reference to an instance index that does not exist.
+        let mut broken = flat.clone();
+        broken
+            .tasks
+            .get_mut(&top)
+            .expect("top")
+            .fifos
+            .get_mut(&fifo_name)
+            .expect("fifo")
+            .produced_by = Some(tapa_ir::EndpointRef("A".to_string(), 7));
+        let error = FloorGraph::build(&broken).expect_err("unknown producer instance");
+        assert!(
+            matches!(
+                error,
+                GraphError::DanglingFifoEndpoint {
+                    role: "producer",
+                    index: 7,
+                    ..
+                }
+            ),
+            "got {error}"
+        );
+
+        // A consumer reference to a definition that does not exist.
+        let mut broken = flat;
+        broken
+            .tasks
+            .get_mut(&top)
+            .expect("top")
+            .fifos
+            .get_mut(&fifo_name)
+            .expect("fifo")
+            .consumed_by = Some(tapa_ir::EndpointRef("NotATask".to_string(), 0));
+        let error = FloorGraph::build(&broken).expect_err("unknown consumer definition");
+        assert!(
+            matches!(
+                error,
+                GraphError::DanglingFifoEndpoint {
+                    role: "consumer",
+                    ..
+                } if error.to_string().contains("NotATask")
             ),
             "got {error}"
         );
