@@ -375,11 +375,77 @@ pub enum DeviceValidationError {
     /// The platform parent name is interpolated into generated Tcl.
     #[error("invalid user pblock name `{0}`")]
     InvalidUserPblockName(String),
+    /// The grid must have at least one row and one column.
+    #[error("device grid must have at least one row and one column")]
+    EmptyGrid,
+    /// A slot's coordinates are outside the declared grid.
+    #[error("slot ({x},{y}) is outside the {cols}x{rows} grid")]
+    SlotOutOfBounds {
+        /// Out-of-bounds column.
+        x: u32,
+        /// Out-of-bounds row.
+        y: u32,
+        /// Declared grid columns.
+        cols: u32,
+        /// Declared grid rows.
+        rows: u32,
+    },
+    /// Two slots claim the same grid cell.
+    #[error("grid cell ({x},{y}) has more than one slot")]
+    DuplicateSlot {
+        /// Column of the duplicated cell.
+        x: u32,
+        /// Row of the duplicated cell.
+        y: u32,
+    },
+    /// A grid cell has no slot. Sparse grids are not supported: real SSI
+    /// devices are complete rectangles of full-width SLR dies, and the
+    /// multilevel row pass and route candidate generation assume coverage.
+    #[error("grid cell ({x},{y}) has no slot; device grids must be complete rectangles")]
+    MissingSlot {
+        /// Column of the missing cell.
+        x: u32,
+        /// Row of the missing cell.
+        y: u32,
+    },
 }
 
 impl Device {
-    /// Validate the table values interpolated into implementation Tcl.
+    /// Validate the table values interpolated into implementation Tcl and the
+    /// structural grid invariants the planner relies on.
     pub fn validate(&self) -> Result<(), DeviceValidationError> {
+        // The grid must be a complete rectangle: exactly one in-bounds slot
+        // per (x, y).
+        if self.rows == 0 || self.cols == 0 {
+            return Err(DeviceValidationError::EmptyGrid);
+        }
+        let mut seen = std::collections::BTreeSet::new();
+        for slot in &self.slots {
+            if slot.x >= self.cols || slot.y >= self.rows {
+                return Err(DeviceValidationError::SlotOutOfBounds {
+                    x: slot.x,
+                    y: slot.y,
+                    cols: self.cols,
+                    rows: self.rows,
+                });
+            }
+            if !seen.insert((slot.x, slot.y)) {
+                return Err(DeviceValidationError::DuplicateSlot {
+                    x: slot.x,
+                    y: slot.y,
+                });
+            }
+        }
+        let expected = usize::try_from(u64::from(self.rows) * u64::from(self.cols))
+            .expect("grid size fits usize");
+        if seen.len() != expected {
+            let (x, y) = (0..self.rows)
+                .flat_map(|y| (0..self.cols).map(move |x| (x, y)))
+                .find(|cell| !seen.contains(cell))
+                .expect("a shorter seen set implies a missing cell");
+            return Err(DeviceValidationError::MissingSlot { x, y });
+        }
+
         for slot in &self.slots {
             if slot.pblock_ranges.is_empty() {
                 return Err(DeviceValidationError::MissingPblockRanges {
@@ -755,6 +821,46 @@ mod tests {
             "-remove CLOCKREGION_X2Y0:CLOCKREGION_X3Y3".to_string(),
         ];
         device.validate().expect("valid device table");
+    }
+
+    #[test]
+    fn device_validation_requires_a_complete_rectangle_grid() {
+        grid_2x2().validate().expect("the 2x2 toy is complete");
+
+        // One cell missing: sparse grids are not supported.
+        let mut sparse = grid_2x2();
+        sparse.slots.retain(|slot| (slot.x, slot.y) != (1, 1));
+        assert_eq!(
+            sparse.validate(),
+            Err(DeviceValidationError::MissingSlot { x: 1, y: 1 })
+        );
+
+        // Two slots on one cell.
+        let mut duplicated = grid_2x2();
+        let extra = duplicated.slots[0].clone();
+        duplicated.slots.push(extra);
+        assert_eq!(
+            duplicated.validate(),
+            Err(DeviceValidationError::DuplicateSlot { x: 0, y: 0 })
+        );
+
+        // A slot outside the declared grid.
+        let mut out_of_bounds = grid_2x2();
+        out_of_bounds.slots[3].x = 2;
+        assert_eq!(
+            out_of_bounds.validate(),
+            Err(DeviceValidationError::SlotOutOfBounds {
+                x: 2,
+                y: 1,
+                cols: 2,
+                rows: 2,
+            })
+        );
+
+        // Degenerate dimensions.
+        let mut empty = grid_2x2();
+        empty.cols = 0;
+        assert_eq!(empty.validate(), Err(DeviceValidationError::EmptyGrid));
     }
 
     #[test]
