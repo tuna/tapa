@@ -208,7 +208,10 @@ fn format_num(value: f64) -> String {
     format!("{value}")
 }
 
-/// Make an identifier LP-safe: only `[A-Za-z0-9_]`, never leading with a digit.
+/// Make an identifier LP-safe: only `[A-Za-z0-9_]`, never leading with a
+/// digit, and never of the form `x[0-9]+` — that namespace belongs to the
+/// emitted variable names, and the solution parser would read such a row
+/// name back as a variable.
 fn sanitize_name(name: &str) -> String {
     let mut out: String = name
         .chars()
@@ -220,7 +223,9 @@ fn sanitize_name(name: &str) -> String {
             }
         })
         .collect();
-    if out.chars().next().is_none_or(|c| c.is_ascii_digit()) {
+    let is_variable_namespace =
+        out.len() > 1 && out.starts_with('x') && out[1..].chars().all(|c| c.is_ascii_digit());
+    if is_variable_namespace || out.chars().next().is_none_or(|c| c.is_ascii_digit()) {
         out.insert(0, 'c');
     }
     out
@@ -280,6 +285,23 @@ General
 End
 ";
         assert_eq!(write_cplex_lp(&model).expect("render"), expected);
+    }
+
+    #[test]
+    fn constraint_names_never_enter_the_variable_namespace() {
+        let mut model = LpModel::new(Sense::Minimize);
+        let v = model.add_binary("");
+        for name in ["x0", "x42", "x_0", "x"] {
+            model.add_constraint(name, LinExpr::sum([(1.0, v)]), Comparison::Le, 1.0);
+        }
+        let text = write_cplex_lp(&model).expect("render");
+        assert!(text.contains("cx0:"), "x0 must be prefixed, got:\n{text}");
+        assert!(text.contains("cx42:"), "x42 must be prefixed, got:\n{text}");
+        assert!(text.contains("x_0:"), "x_0 is safe as-is, got:\n{text}");
+        assert!(
+            text.contains(" x0"),
+            "the variable keeps its namespace, got:\n{text}"
+        );
     }
 
     #[test]
