@@ -97,7 +97,7 @@ RUN curl -sSL \
 RUN curl -sSL \
         https://github.com/astral-sh/python-build-standalone/releases/download/20250723/cpython-3.13.5+20250723-x86_64-unknown-linux-gnu-install_only.tar.gz \
         | tar -xz -C /opt && \
-    /opt/python/bin/python3 -m pip install pre-commit && \
+    /opt/python/bin/python3 -m pip install pre-commit==4.6.0 && \
     ln -s /opt/python/bin/pre-commit /usr/local/bin/pre-commit && \
     chmod -R go=u /opt/python
 
