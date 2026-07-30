@@ -283,21 +283,6 @@ impl Default for DirCaps {
     }
 }
 
-/// Per-direction anchor pblock ranges: where a boundary-crossing pipeline
-/// register may be physically placed on each side of the slot.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct DirRegions {
-    #[serde(default)]
-    pub north: Vec<String>,
-    #[serde(default)]
-    pub south: Vec<String>,
-    #[serde(default)]
-    pub east: Vec<String>,
-    #[serde(default)]
-    pub west: Vec<String>,
-}
-
 /// One physical slot on the device grid.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -320,9 +305,6 @@ pub struct Slot {
     /// Wire-crossing budget on each boundary.
     #[serde(default)]
     pub wire_cap: DirCaps,
-    /// Anchor pblock ranges for pipeline registers on each boundary.
-    #[serde(default)]
-    pub anchor: DirRegions,
     /// Slot tags such as `HBM[0]`, `DDR[0]`, `CLK_RST`.
     #[serde(default)]
     pub tags: Vec<String>,
@@ -759,7 +741,6 @@ mod tests {
             centroid_y: UNIT_DIST_Y * i64::from(y),
             pblock_ranges: vec!["CLOCKREGION_X0Y0:CLOCKREGION_X0Y0".to_string()],
             wire_cap: DirCaps::default(),
-            anchor: DirRegions::default(),
             tags: Vec::new(),
         };
         Device {

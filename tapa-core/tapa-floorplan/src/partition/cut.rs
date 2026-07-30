@@ -135,7 +135,7 @@ fn border_capacity(device: &Device, lhs: &Coor, rhs: &Coor) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::device::model::{DirCaps, DirRegions, Slot};
+    use crate::device::model::{DirCaps, Slot};
     use crate::device::select::select_device;
     use tapa_ir::Area;
 
@@ -201,7 +201,6 @@ mod tests {
                 east: WIRE_CAPACITY_INF,
                 west: WIRE_CAPACITY_INF,
             },
-            anchor: DirRegions::default(),
             tags: Vec::new(),
         };
         let device = Device {
@@ -245,7 +244,6 @@ mod tests {
                 east: WIRE_CAPACITY_INF,
                 west: WIRE_CAPACITY_INF,
             },
-            anchor: DirRegions::default(),
             tags: Vec::new(),
         };
         let device = Device {

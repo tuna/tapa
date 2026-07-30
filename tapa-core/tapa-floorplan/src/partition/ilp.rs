@@ -958,7 +958,7 @@ mod tests {
     use std::sync::Mutex;
 
     use super::*;
-    use crate::device::model::{DirCaps, DirRegions, Slot};
+    use crate::device::model::{DirCaps, Slot};
     use crate::device::select::select_device;
     use crate::solver::{LpSolution, VarKind};
 
@@ -1369,7 +1369,6 @@ mod tests {
                 centroid_y: 0,
                 pblock_ranges: Vec::new(),
                 wire_cap: DirCaps::default(),
-                anchor: DirRegions::default(),
                 tags: Vec::new(),
             }],
         }
@@ -1390,7 +1389,6 @@ mod tests {
             centroid_y,
             pblock_ranges: Vec::new(),
             wire_cap: DirCaps::default(),
-            anchor: DirRegions::default(),
             tags: Vec::new(),
         };
         Device {
@@ -1735,7 +1733,6 @@ mod tests {
             centroid_y: i64::from(y) * 100,
             pblock_ranges: Vec::new(),
             wire_cap: DirCaps::default(),
-            anchor: DirRegions::default(),
             tags: Vec::new(),
         };
         let device = Device {
@@ -2092,7 +2089,6 @@ mod tests {
             centroid_y: 0,
             pblock_ranges: Vec::new(),
             wire_cap: DirCaps::default(),
-            anchor: DirRegions::default(),
             tags: Vec::new(),
         };
         let device = Device {

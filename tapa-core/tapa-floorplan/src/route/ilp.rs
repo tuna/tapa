@@ -507,7 +507,7 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
-    use crate::device::model::{DirCaps, DirRegions, Slot, PP_DIST};
+    use crate::device::model::{DirCaps, Slot, PP_DIST};
     use crate::device::select::select_device;
     use crate::solver::{CbcSolver, LpSolution, LpStatus};
     use tapa_ir::Area;
@@ -561,7 +561,6 @@ mod tests {
                     centroid_y: i64::from(y) * 150,
                     pblock_ranges: Vec::new(),
                     wire_cap,
-                    anchor: DirRegions::default(),
                     tags: Vec::new(),
                 });
             }
@@ -695,7 +694,6 @@ mod tests {
                     centroid_y: i64::from(y) * 100,
                     pblock_ranges: Vec::new(),
                     wire_cap,
-                    anchor: DirRegions::default(),
                     tags: Vec::new(),
                 });
             }
