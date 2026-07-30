@@ -655,6 +655,80 @@ mod tests {
         );
     }
 
+    /// A 3x3 device where every direct, one-bend, H-V-H, and V-H-V path from
+    /// (0,0) to (2,2) crosses a zero-capacity boundary; only the staircase
+    /// R-U-R-U remains.
+    fn staircase_only_device() -> Device {
+        let mut slots = Vec::new();
+        for y in 0..3 {
+            for x in 0..3 {
+                let mut wire_cap = DirCaps {
+                    north: 100,
+                    south: 100,
+                    east: 100,
+                    west: 100,
+                };
+                // Block h(1,0)-(2,0), v(0,0)-(0,1), and v(1,1)-(1,2).
+                if (x, y) == (1, 0) {
+                    wire_cap.east = 0;
+                }
+                if (x, y) == (2, 0) {
+                    wire_cap.west = 0;
+                }
+                if (x, y) == (0, 0) {
+                    wire_cap.north = 0;
+                }
+                if (x, y) == (0, 1) {
+                    wire_cap.south = 0;
+                }
+                if (x, y) == (1, 1) {
+                    wire_cap.north = 0;
+                }
+                if (x, y) == (1, 2) {
+                    wire_cap.south = 0;
+                }
+                slots.push(Slot {
+                    x,
+                    y,
+                    area: Area::default(),
+                    centroid_x: i64::from(x) * 100,
+                    centroid_y: i64::from(y) * 100,
+                    pblock_ranges: Vec::new(),
+                    wire_cap,
+                    anchor: DirRegions::default(),
+                    tags: Vec::new(),
+                });
+            }
+        }
+        Device {
+            key: "staircase".to_string(),
+            part_num: "xctoy".to_string(),
+            platform_name: None,
+            rows: 3,
+            cols: 3,
+            pp_dist: PP_DIST,
+            is_versal: false,
+            user_pblock_name: None,
+            slots,
+        }
+    }
+
+    #[test]
+    fn staircase_route_is_found_when_shaped_paths_are_blocked() {
+        let device = staircase_only_device();
+        let nets = [RouteNet {
+            src: (0, 0),
+            dst: (2, 2),
+            width: 1,
+        }];
+        let routes = route_with_cbc(&nets, &device);
+        assert_eq!(
+            routes[0],
+            vec![(0, 0), (1, 0), (1, 1), (2, 1), (2, 2)],
+            "the only capacity-feasible path is the staircase",
+        );
+    }
+
     #[test]
     fn equal_utilization_routes_pick_the_first_candidate() {
         // Direct and detour crossings both top out at 10/70 utilization, so
