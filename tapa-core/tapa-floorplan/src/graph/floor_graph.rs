@@ -149,6 +149,14 @@ pub enum GraphError {
     /// A FIFO's wire width could not be resolved from either endpoint's port.
     #[error("could not resolve the wire width of stream `{0}`")]
     UnresolvedFifoWidth(String),
+    /// Two logical objects (task instances, FIFOs, co-located aliases) claim
+    /// the same placement/RTL name, which one `regions` key cannot represent.
+    #[error("name `{name}` is claimed by both {first} and {second}")]
+    NameConflict {
+        name: String,
+        first: String,
+        second: String,
+    },
     /// An internal FIFO has no placeable task endpoint to own its storage.
     #[error("internal stream `{0}` has no placeable endpoint")]
     UnanchoredFifo(String),
@@ -292,6 +300,15 @@ impl FloorGraph {
                         instance: instance.name.clone(),
                         host: host.clone(),
                     })?;
+            // Build-time name validation should make this unreachable, but
+            // never silently overwrite another object's placement.
+            if let Some(existing) = regions.get(&instance.name) {
+                return Err(GraphError::NameConflict {
+                    name: instance.name.clone(),
+                    first: format!("the instance already placed in `{existing}`"),
+                    second: format!("co-located alias of host `{host}`"),
+                });
+            }
             regions.insert(instance.name.clone(), region);
         }
         Ok(())
@@ -352,7 +369,10 @@ impl FloorGraph {
             for (idx, inst) in instances.iter().enumerate() {
                 let name = inst.canonical_name(def_name, idx).into_owned();
                 let vertex_index = vertices.len();
-                if control.is_some() && index.contains_key(&name) {
+                // Duplicate canonical names silently collapse onto one key in
+                // the published `regions` map; always reject them, with or
+                // without distributed control.
+                if index.contains_key(&name) {
                     return Err(GraphError::DuplicateCanonicalName(name));
                 }
                 index.insert(name.clone(), vertex_index);
@@ -366,6 +386,10 @@ impl FloorGraph {
                 });
             }
         }
+
+        // Distinct logical instances that collapse to one RTL identifier
+        // cannot both be constrained, with or without distributed control.
+        validate_sanitized_instance_names(top)?;
 
         // Cluster each internal FIFO into its consumer-side Tail (producer
         // fallback for a one-sided stream), and connect task endpoints
@@ -452,6 +476,12 @@ impl FloorGraph {
             Vec::new()
         };
 
+        // Every public result key — task canonical names, FIFO names and
+        // their `{name}_fifo` RTL instances, co-located aliases — must be
+        // unique both literally and after RTL sanitization, independently of
+        // optional memory/control interfaces.
+        occupied_rtl_names(top, &vertices, &co_located)?;
+
         let placement_edges = placement_widths
             .into_iter()
             .map(|((src, dst), width)| PlacementEdge { src, dst, width })
@@ -485,7 +515,7 @@ fn add_control_interface(
     placement_widths: &mut BTreeMap<(usize, usize), u32>,
     co_located: &mut Vec<CoLocatedInstance>,
 ) -> Result<Vec<ControlNet>, GraphError> {
-    validate_control_names(flat, top, memory, control, vertices, co_located)?;
+    validate_control_names(top, memory, control, vertices, co_located)?;
 
     let global_name = global_controller_instance_name().to_string();
     if index.contains_key(&global_name) {
@@ -657,21 +687,11 @@ fn control_launch_width(
     Ok(width)
 }
 
-fn validate_control_names(
-    flat: &TaskGraph,
-    top: &tapa_ir::Task,
-    memory: &[MemoryInterface],
-    control: ControlInterface,
-    vertices: &[Vertex],
-    co_located: &[CoLocatedInstance],
-) -> Result<(), GraphError> {
+/// Distinct logical instances that sanitize to one RTL identifier cannot be
+/// constrained independently. Runs for every build mode.
+fn validate_sanitized_instance_names(top: &tapa_ir::Task) -> Result<(), GraphError> {
     let mut sanitized_instances = BTreeMap::<String, String>::new();
-    let mut occupied = BTreeMap::<String, String>::new();
-    let mut canonical_instances = Vec::new();
     for (definition, instances) in &top.tasks {
-        if !flat.tasks.contains_key(definition) {
-            return Err(GraphError::MissingTaskDef(definition.clone()));
-        }
         for (instance_index, instance) in instances.iter().enumerate() {
             let canonical = instance
                 .canonical_name(definition, instance_index)
@@ -686,41 +706,29 @@ fn validate_control_names(
                     });
                 }
             }
-            occupied.insert(canonical.clone(), format!("instance `{canonical}`"));
-            occupied.insert(sanitized, format!("instance `{canonical}`"));
-            canonical_instances.push((canonical, instance.step < 0));
         }
     }
-    for vertex in vertices {
-        occupied
-            .entry(vertex.name.clone())
-            .or_insert_with(|| format!("placement vertex `{}`", vertex.name));
-        occupied
-            .entry(sanitize_identifier_name(&vertex.name))
-            .or_insert_with(|| format!("placement vertex `{}`", vertex.name));
-    }
-    for fifo in top.fifos.keys() {
-        occupied.insert(fifo.clone(), format!("stream `{fifo}`"));
-        let rtl_name = format!("{}_fifo", sanitize_array_name(fifo));
-        occupied.insert(rtl_name, format!("stream `{fifo}`"));
-    }
-    for alias in co_located {
-        occupied.insert(
-            alias.name.clone(),
-            format!("co-located RTL instance `{}`", alias.name),
-        );
-        occupied.insert(
-            sanitize_identifier_name(&alias.name),
-            format!("co-located RTL instance `{}`", alias.name),
-        );
-    }
+    Ok(())
+}
+
+/// Reserve the generated distributed-control names against real RTL names.
+fn validate_control_names(
+    top: &tapa_ir::Task,
+    memory: &[MemoryInterface],
+    control: ControlInterface,
+    vertices: &[Vertex],
+    co_located: &[CoLocatedInstance],
+) -> Result<(), GraphError> {
+    let mut occupied = occupied_rtl_names(top, vertices, co_located)?;
     for interface in memory {
         for (channel, _) in interface.channel_widths.enabled_channels() {
             let name = axi_pipeline_instance_name(&interface.endpoint, channel);
-            occupied.insert(
-                name,
-                format!("AXI pipeline for `{}`", interface.endpoint.top_port),
-            );
+            occupied
+                .entry(name.clone())
+                .or_insert_with(|| OccupiedName {
+                    owner: name.clone(),
+                    description: format!("AXI pipeline for `{}`", interface.endpoint.top_port),
+                });
         }
     }
 
@@ -736,38 +744,49 @@ fn validate_control_names(
             "S-AXI control block",
         )?;
     }
-    for (canonical, autorun) in canonical_instances {
-        reserve_generated_name(
-            &mut occupied,
-            local_controller_instance_name(&canonical),
-            &format!("local controller for `{canonical}`"),
-        )?;
-        let channels = [ControlChannel::Launch, ControlChannel::Reset]
-            .into_iter()
-            .chain((!autorun).then_some(ControlChannel::Completion));
-        for channel in channels {
+    for (definition, instances) in &top.tasks {
+        for (instance_index, instance) in instances.iter().enumerate() {
+            let canonical = instance
+                .canonical_name(definition, instance_index)
+                .into_owned();
             reserve_generated_name(
                 &mut occupied,
-                control_pipeline_instance_name(&canonical, channel),
-                &format!("{channel:?} pipeline for `{canonical}`"),
+                local_controller_instance_name(&canonical),
+                &format!("local controller for `{canonical}`"),
             )?;
+            let channels = [ControlChannel::Launch, ControlChannel::Reset]
+                .into_iter()
+                .chain((instance.step >= 0).then_some(ControlChannel::Completion));
+            for channel in channels {
+                reserve_generated_name(
+                    &mut occupied,
+                    control_pipeline_instance_name(&canonical, channel),
+                    &format!("{channel:?} pipeline for `{canonical}`"),
+                )?;
+            }
         }
     }
     Ok(())
 }
 
 fn reserve_generated_name(
-    occupied: &mut BTreeMap<String, String>,
+    occupied: &mut BTreeMap<String, OccupiedName>,
     generated: String,
     owner: &str,
 ) -> Result<(), GraphError> {
     if let Some(existing) = occupied.get(&generated) {
         return Err(GraphError::GeneratedNameCollision {
             generated,
-            existing: existing.clone(),
+            existing: existing.description.clone(),
         });
     }
-    occupied.insert(generated, owner.to_string());
+    occupied.insert(
+        generated.clone(),
+        OccupiedName {
+            owner: generated,
+            description: owner.to_string(),
+        },
+    );
     Ok(())
 }
 
@@ -819,7 +838,7 @@ fn add_memory_interfaces(
         }
     }
 
-    let mut occupied = occupied_rtl_names(top, vertices, co_located);
+    let mut occupied = occupied_rtl_names(top, vertices, co_located)?;
     for (endpoint, expected_endpoint) in &expected {
         let interface = provided[endpoint];
         validate_memory_interface_shape(interface, *expected_endpoint)?;
@@ -916,32 +935,93 @@ fn add_memory_interfaces(
     Ok(nets)
 }
 
+/// One claimed name: the logical object that owns it plus a user-facing
+/// description for collision diagnostics.
+#[derive(Debug, Clone)]
+struct OccupiedName {
+    owner: String,
+    description: String,
+}
+
+/// Claim `name` for `owner`; the same logical object may occupy several
+/// spellings (canonical, sanitized, emitted `{name}_fifo`), but two different
+/// owners may never share one name.
+fn occupy(
+    occupied: &mut BTreeMap<String, OccupiedName>,
+    name: String,
+    owner: &str,
+    description: String,
+) -> Result<(), GraphError> {
+    match occupied.get(&name) {
+        Some(existing) if existing.owner != owner => Err(GraphError::NameConflict {
+            name,
+            first: existing.description.clone(),
+            second: description,
+        }),
+        Some(_) => Ok(()),
+        None => {
+            occupied.insert(
+                name,
+                OccupiedName {
+                    owner: owner.to_string(),
+                    description,
+                },
+            );
+            Ok(())
+        }
+    }
+}
+
+/// Every name a build claims for placement and XDC matching, or the first
+/// collision between two different logical owners.
 fn occupied_rtl_names(
     top: &tapa_ir::Task,
     vertices: &[Vertex],
     co_located: &[CoLocatedInstance],
-) -> BTreeMap<String, String> {
+) -> Result<BTreeMap<String, OccupiedName>, GraphError> {
+    // Owners carry a kind prefix because task, stream, and alias names live
+    // in one published namespace: a stream named like a vertex is a conflict,
+    // not shared ownership.
     let mut occupied = BTreeMap::new();
     for vertex in vertices {
-        for name in [vertex.name.clone(), sanitize_identifier_name(&vertex.name)] {
-            occupied
-                .entry(name)
-                .or_insert_with(|| format!("placement vertex `{}`", vertex.name));
-        }
+        let description = || format!("placement vertex `{}`", vertex.name);
+        let owner = format!("vertex:{}", vertex.name);
+        occupy(&mut occupied, vertex.name.clone(), &owner, description())?;
+        occupy(
+            &mut occupied,
+            sanitize_identifier_name(&vertex.name),
+            &owner,
+            description(),
+        )?;
     }
     for fifo in top.fifos.keys() {
-        occupied.insert(fifo.clone(), format!("stream `{fifo}`"));
-        occupied.insert(
+        let description = || format!("stream `{fifo}`");
+        let owner = format!("stream:{fifo}");
+        occupy(&mut occupied, fifo.clone(), &owner, description())?;
+        occupy(
+            &mut occupied,
             format!("{}_fifo", sanitize_array_name(fifo)),
-            format!("stream `{fifo}`"),
-        );
+            &owner,
+            description(),
+        )?;
     }
     for alias in co_located {
-        for name in [alias.name.clone(), sanitize_identifier_name(&alias.name)] {
-            occupied.insert(name, format!("co-located RTL instance `{}`", alias.name));
+        // A FIFO's own co-location alias is the same logical object as the
+        // stream entry above, never an independent claimant.
+        if top.fifos.contains_key(&alias.name) {
+            continue;
         }
+        let description = || format!("co-located RTL instance `{}`", alias.name);
+        let owner = format!("alias:{}", alias.name);
+        occupy(&mut occupied, alias.name.clone(), &owner, description())?;
+        occupy(
+            &mut occupied,
+            sanitize_identifier_name(&alias.name),
+            &owner,
+            description(),
+        )?;
     }
-    occupied
+    Ok(occupied)
 }
 
 fn validate_memory_interface_shape(
@@ -1449,6 +1529,78 @@ mod tests {
             .find(|edge| (edge.src, edge.dst) == (global.min(ticker), global.max(ticker)))
             .expect("ticker control edge");
         assert_eq!(ticker_edge.width, 10, "9 launch + reset, no completion");
+    }
+
+    #[test]
+    fn ambiguous_names_are_rejected_without_control_too() {
+        let cases = [
+            (
+                serde_json::json!({
+                    "A": [{"name":"same","args":{}}, {"name":"same","args":{}}]
+                }),
+                "duplicate flattened instance canonical name",
+            ),
+            (
+                serde_json::json!({
+                    "A": [{"name":"same#name","args":{}}, {"name":"same?name","args":{}}]
+                }),
+                "both sanitize to RTL name",
+            ),
+        ];
+        for (tasks, expected) in cases {
+            let mut value = serde_json::to_value(vadd_graph()).expect("serialize graph");
+            value["tasks"]["VecAdd"]["tasks"] = tasks;
+            value["tasks"]["VecAdd"]["fifos"] = serde_json::json!({});
+            let design = TaskGraph::from_json(&value.to_string()).expect("parse case");
+            for control in [None, Some(ControlInterface::default())] {
+                let error = FloorGraph::build_with_interfaces(&design, &[], control, None)
+                    .expect_err("ambiguous names must fail in every build mode");
+                assert!(
+                    error.to_string().contains(expected),
+                    "control={control:?} expected `{expected}`, got: {error}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn fifo_and_task_public_key_collision_fails_closed() {
+        // Flattening globally names the stream `q` as `q_VecAdd`, which would
+        // share one `regions` key with a task explicitly named `q_VecAdd`:
+        // the co-location alias would silently overwrite that placement.
+        let mut value = serde_json::to_value(vadd_graph()).expect("serialize graph");
+        value["tasks"]["VecAdd"]["fifos"] = serde_json::json!({
+            "q": {"depth": 2, "consumed_by": ["B", 0], "produced_by": ["A", 0]}
+        });
+        value["tasks"]["VecAdd"]["tasks"]["A"][0]["args"] =
+            serde_json::json!({"out": {"arg": "q", "cat": "ostream"}});
+        value["tasks"]["VecAdd"]["tasks"]["B"][0]["name"] =
+            serde_json::Value::String("q_VecAdd".to_string());
+        value["tasks"]["VecAdd"]["tasks"]["B"][0]["args"] =
+            serde_json::json!({"in": {"arg": "q", "cat": "istream"}});
+        let design = TaskGraph::from_json(&value.to_string()).expect("parse");
+        let flat = tapa_ir::flatten(&design).expect("flatten");
+        let error = FloorGraph::build(&flat).expect_err("stream named q_VecAdd must fail");
+        assert!(
+            matches!(error, GraphError::NameConflict { .. }),
+            "got {error}"
+        );
+    }
+
+    #[test]
+    fn fifo_rtl_name_collision_with_task_name_fails_closed() {
+        // A task `fifo_VecAdd_fifo` would be claimed by stream `fifo_VecAdd`'s
+        // emitted `{sanitized}_fifo` hierarchy.
+        let mut value = serde_json::to_value(vadd_graph()).expect("serialize graph");
+        value["tasks"]["VecAdd"]["tasks"]["A"][0]["name"] =
+            serde_json::Value::String("fifo_VecAdd_fifo".to_string());
+        let design = TaskGraph::from_json(&value.to_string()).expect("parse");
+        let flat = tapa_ir::flatten(&design).expect("flatten");
+        let error = FloorGraph::build(&flat).expect_err("task name fifo_VecAdd_fifo must fail");
+        assert!(
+            matches!(error, GraphError::NameConflict { .. }),
+            "got {error}"
+        );
     }
 
     #[test]
