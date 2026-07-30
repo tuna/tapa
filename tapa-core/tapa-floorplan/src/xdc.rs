@@ -474,13 +474,29 @@ fn add_slot_ranges(lines: &mut Vec<String>, region: &str, slots: &[&[String]]) {
 
 fn add_resize_operations(lines: &mut Vec<String>, pblock: &str, ranges: &[String]) {
     for range in ranges {
-        if range.starts_with("-add ") || range.starts_with("-remove ") {
-            lines.push(format!("resize_pblock {pblock} {range}"));
+        // Brace every payload so a multi-range list stays one Tcl argument:
+        // `-add {R1 R2}`, never `-add R1 R2` (three argv words).
+        if let Some(payload) = range.strip_prefix("-add ") {
+            lines.push(format!("resize_pblock {pblock} -add {}", braced(payload)));
+        } else if let Some(payload) = range.strip_prefix("-remove ") {
+            lines.push(format!(
+                "resize_pblock {pblock} -remove {}",
+                braced(payload)
+            ));
         } else if range.starts_with('{') {
             lines.push(format!("resize_pblock {pblock} -add {range}"));
         } else {
             lines.push(format!("resize_pblock {pblock} -add {{{range}}}"));
         }
+    }
+}
+
+/// Wrap a range payload in Tcl list braces unless it already carries them.
+fn braced(payload: &str) -> String {
+    if payload.starts_with('{') {
+        payload.to_string()
+    } else {
+        format!("{{{payload}}}")
     }
 }
 
@@ -609,7 +625,7 @@ resize_pblock SLOT_X1Y1_TO_SLOT_X1Y1 -add {RAMB18_X11Y96:RAMB18_X11Y191}
 resize_pblock SLOT_X1Y1_TO_SLOT_X1Y1 -add {RAMB36_X11Y48:RAMB36_X11Y95}
 resize_pblock SLOT_X1Y1_TO_SLOT_X1Y1 -add {URAM288_X4Y64:URAM288_X4Y127}
 resize_pblock SLOT_X1Y1_TO_SLOT_X1Y1 -add {CLOCKREGION_X0Y4:CLOCKREGION_X5Y7}
-resize_pblock SLOT_X1Y1_TO_SLOT_X1Y1 -remove CLOCKREGION_X0Y4:CLOCKREGION_X3Y7
+resize_pblock SLOT_X1Y1_TO_SLOT_X1Y1 -remove {CLOCKREGION_X0Y4:CLOCKREGION_X3Y7}
 set cells [get_cells -quiet -hierarchical -regexp -filter {NAME =~ \"^(.*/)?Worker_0(_fifo)?(/.*)?$\"}]
 if {![llength $cells]} { error \"TAPA floorplan ERROR: expected cell `Worker_0` was not found\" }
 add_cells_to_pblock SLOT_X1Y1_TO_SLOT_X1Y1 $cells
@@ -736,6 +752,39 @@ set_false_path -quiet -through [get_nets -quiet -hier -filter {NAME =~ \"*periph
     }
 
     #[test]
+    #[allow(
+        clippy::literal_string_with_formatting_args,
+        reason = "the expected XDC contains literal Tcl braces, not format args"
+    )]
+    fn multi_range_operations_emit_one_braced_tcl_argument() {
+        let mut lines = Vec::new();
+        add_resize_operations(
+            &mut lines,
+            "PB",
+            &[
+                "-add CLOCKREGION_X0Y0:CLOCKREGION_X1Y1 CLOCKREGION_X2Y0:CLOCKREGION_X3Y3"
+                    .to_string(),
+                "-remove CLOCKREGION_X0Y0:CLOCKREGION_X0Y0".to_string(),
+                "-add {CLOCKREGION_X0Y0:CLOCKREGION_X1Y1 CLOCKREGION_X2Y0:CLOCKREGION_X3Y3}"
+                    .to_string(),
+            ],
+        );
+        assert_eq!(
+            lines,
+            [
+                "resize_pblock PB -add {CLOCKREGION_X0Y0:CLOCKREGION_X1Y1 CLOCKREGION_X2Y0:CLOCKREGION_X3Y3}",
+                "resize_pblock PB -remove {CLOCKREGION_X0Y0:CLOCKREGION_X0Y0}",
+                "resize_pblock PB -add {CLOCKREGION_X0Y0:CLOCKREGION_X1Y1 CLOCKREGION_X2Y0:CLOCKREGION_X3Y3}",
+            ],
+            "every payload is exactly one Tcl list argument",
+        );
+    }
+
+    #[test]
+    #[allow(
+        clippy::literal_string_with_formatting_args,
+        reason = "the expected XDC contains literal Tcl braces, not format args"
+    )]
     fn multi_slot_region_unions_ranges() {
         let result = FloorplanResult {
             device: "u280".to_string(),
@@ -749,14 +798,14 @@ set_false_path -quiet -through [get_nets -quiet -hier -filter {NAME =~ \"*periph
         assert!(
             xdc.contains(
                 "resize_pblock TAPA_SLOT_UNION_SLOT_X0Y1_TO_SLOT_X1Y1_0 -remove \
-                 CLOCKREGION_X4Y4:CLOCKREGION_X7Y7"
+                 {CLOCKREGION_X4Y4:CLOCKREGION_X7Y7}"
             ),
             "left slot must subtract only the right half:\n{xdc}"
         );
         assert!(
             xdc.contains(
                 "resize_pblock TAPA_SLOT_UNION_SLOT_X0Y1_TO_SLOT_X1Y1_1 -remove \
-                 CLOCKREGION_X0Y4:CLOCKREGION_X3Y7"
+                 {CLOCKREGION_X0Y4:CLOCKREGION_X3Y7}"
             ),
             "right slot must subtract only the left half:\n{xdc}"
         );
