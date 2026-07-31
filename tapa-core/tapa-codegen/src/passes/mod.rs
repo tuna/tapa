@@ -10,6 +10,7 @@ mod axi_pipeline;
 pub mod children;
 mod cleanup;
 mod distributed_control;
+mod floorplans;
 pub mod fifos;
 pub mod m_axi;
 mod s_axi;

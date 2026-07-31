@@ -2,7 +2,9 @@
 
 use crate::error::CodegenError;
 use crate::rtl_state::TopologyWithRtl;
-use tapa_ir::{floorplanned_fifo_storage_depth, FloorplanResult, RoutedChannel};
+use tapa_ir::floorplanned_fifo_storage_depth;
+
+use super::floorplans::stream_crossing_body_level;
 use tapa_protocol::{
     FIFO_READ_PORTS, FIFO_WRITE_PORTS, HANDSHAKE_CLK, HANDSHAKE_RST, ISTREAM_SUFFIXES,
     OSTREAM_SUFFIXES, STREAM_DATA_SUFFIXES, STREAM_PORT_DIRECTION,
@@ -74,25 +76,6 @@ fn build_registered_ready_fifo_instance(
             ParamArg::new("GRACE_PERIOD", Expr::int(1)),
         ])
         .with_ports(fifo_port_args(&name, rst))
-}
-
-/// The Body-cell count if `fifo_name` has a floorplanned cross-slot route.
-///
-/// `reg_regions` is the authoritative per-cell handoff to XDC emission. Using
-/// its length here guarantees the generated Body hierarchy and its placement
-/// constraints cannot silently disagree.
-fn stream_crossing_body_level(floorplan: Option<&FloorplanResult>, fifo_name: &str) -> Option<u32> {
-    floorplan?
-        .routes
-        .iter()
-        .find_map(|route| match &route.channel {
-            RoutedChannel::Stream { fifo } if fifo == fifo_name => {
-                Some(u32::try_from(route.reg_regions.len()).unwrap_or(u32::MAX))
-            }
-            RoutedChannel::Stream { .. }
-            | RoutedChannel::Axi { .. }
-            | RoutedChannel::Control { .. } => None,
-        })
 }
 
 /// Build Head/Body/Tail storage for a cross-slot stream.
@@ -642,31 +625,6 @@ mod tests {
         assert_eq!(build(65, true, None).module_name, "fifo");
         assert_eq!(build(16, false, None).module_name, "fifo");
         assert_eq!(build(16, true, Some(0)).module_name, "tapa_hs_pipeline");
-    }
-
-    #[test]
-    fn crossing_body_count_comes_from_xdc_region_list() {
-        use std::collections::BTreeMap;
-        use tapa_ir::{PipelineRoute, PipelineScheme};
-
-        let floorplan = FloorplanResult {
-            device: "u280".to_string(),
-            grid: (2, 3),
-            regions: BTreeMap::new(),
-            routes: vec![PipelineRoute {
-                channel: RoutedChannel::Stream {
-                    fifo: "data_q".to_string(),
-                },
-                route: vec!["SLOT_X0Y0".to_string(), "SLOT_X0Y1".to_string()],
-                scheme: PipelineScheme::Double,
-                reg_regions: vec!["SLOT_X0Y0".to_string(), "SLOT_X0Y1".to_string()],
-            }],
-            slot_usage: BTreeMap::new(),
-        };
-        assert_eq!(
-            stream_crossing_body_level(Some(&floorplan), "data_q"),
-            Some(2)
-        );
     }
 
     #[test]
