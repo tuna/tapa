@@ -1,0 +1,96 @@
+{
+    "target": "xilinx-hls",
+    "top": "AsyncTop",
+    "cflags": [],
+    "tasks": {
+        "AsyncReader": {
+            "clock_period": "3.125",
+            "code": "void AsyncReader() {}",
+            "fifos": {},
+            "level": "lower",
+            "readable_name": "AsyncReader",
+            "synth": "hls",
+            "self_area": {},
+            "total_area": {},
+            "tasks": {},
+            "ports": [
+                {
+                    "cat": "async_mmap",
+                    "name": "mem",
+                    "type": "float*",
+                    "width": 32
+                },
+                {
+                    "cat": "scalar",
+                    "name": "n",
+                    "type": "uint64_t",
+                    "width": 64
+                },
+                {
+                    "cat": "ostream",
+                    "name": "out",
+                    "type": "float",
+                    "width": 32
+                }
+            ]
+        },
+        "AsyncTop": {
+            "clock_period": "3.125",
+            "code": "void AsyncTop() {}",
+            "level": "upper",
+            "readable_name": "AsyncTop",
+            "synth": "hls",
+            "self_area": {},
+            "total_area": {},
+            "ports": [
+                {
+                    "cat": "mmap",
+                    "name": "mem",
+                    "type": "float*",
+                    "width": 32
+                },
+                {
+                    "cat": "scalar",
+                    "name": "n",
+                    "type": "uint64_t",
+                    "width": 64
+                },
+                {
+                    "cat": "ostream",
+                    "name": "out",
+                    "type": "float",
+                    "width": 32
+                }
+            ],
+            "tasks": {
+                "AsyncReader": [
+                    {
+                        "args": {
+                            "mem": {
+                                "arg": "mem",
+                                "cat": "async_mmap"
+                            },
+                            "n": {
+                                "arg": "n",
+                                "cat": "scalar"
+                            },
+                            "out": {
+                                "arg": "out",
+                                "cat": "ostream"
+                            }
+                        },
+                        "step": 0
+                    }
+                ]
+            },
+            "fifos": {
+                "out": {
+                    "produced_by": [
+                        "AsyncReader",
+                        0
+                    ]
+                }
+            }
+        }
+    }
+}
