@@ -600,12 +600,14 @@ fn valid_pblock_range(range: &str) -> bool {
         })
 }
 
-/// Component-wise sum of two [`Area`]s. A free function because `Area` is
-/// defined in `tapa-ir`, so the orphan rule forbids an `impl Add` here.
-#[must_use]
 /// Return 70% of the raw wire capacity, rounded to the nearest integer (ties up).
+///
+/// Division-first: `raw / 10 * 7 + ((raw % 10) * 7 + 5) / 10` is the exact
+/// round-half-up of `(raw * 7 + 5) / 10` (with `raw = 10q + r`, both forms
+/// equal `7q + (7r + 5) / 10`), but never overflows `u64` for huge inputs.
+#[must_use]
 pub(crate) fn usable_wire_capacity(raw: u64) -> u64 {
-    (raw * 7 + 5) / 10
+    raw / 10 * 7 + ((raw % 10) * 7 + 5) / 10
 }
 
 /// The usable capacity of the shared border between two facing slot sides.
@@ -619,6 +621,9 @@ pub(crate) fn effective_border_capacity(lhs: u64, rhs: u64) -> u64 {
     usable_wire_capacity(lhs.min(rhs))
 }
 
+/// Component-wise sum of two [`Area`]s. A free function because `Area` is
+/// defined in `tapa-ir`, so the orphan rule forbids an `impl Add` here.
+#[must_use]
 pub fn add_area(a: Area, b: Area) -> Area {
     Area {
         lut: a.lut + b.lut,
@@ -689,6 +694,20 @@ mod tests {
         assert_eq!(usable_wire_capacity(44), 31, "30.8 rounds to 31");
         assert_eq!(usable_wire_capacity(15), 11, "10.5 rounds up to 11");
         assert_eq!(usable_wire_capacity(0), 0, "0 stays 0");
+    }
+
+    /// The multiply-first form `(raw * 7 + 5) / 10` panics on overflow for
+    /// huge raw capacities in debug builds; the division-first form must not.
+    #[test]
+    fn usable_wire_capacity_does_not_overflow_near_u64_max() {
+        let raw = u64::MAX;
+        // raw = 10q + 5 with q = 1_844_674_407_370_955_161, so the exact
+        // round-half-up is 7q + (7*5 + 5)/10 = 7q + 4.
+        assert_eq!(usable_wire_capacity(raw), 7 * 1_844_674_407_370_955_161 + 4,);
+        assert_eq!(
+            usable_wire_capacity(u64::MAX - 1),
+            7 * 1_844_674_407_370_955_161 + 3
+        );
     }
 
     #[test]
