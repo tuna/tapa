@@ -268,6 +268,26 @@ mod tests {
         }
     }
 
+    /// Parallel HLS dispatch routes each invocation by the cpp basename in
+    /// `TAPA_KERNEL_PATH_0`; an inferred top with no queued response is a
+    /// stub-authoring bug and must panic loudly, naming both the inferred
+    /// top and the queued tops.
+    #[test]
+    #[should_panic(
+        expected = "StubHls: no response queued for inferred top `Mul`; queued tops: [\"Add\"]"
+    )]
+    fn stub_hls_panics_when_inferred_top_has_no_queued_response() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let runner = StubHls::new(vec![("Add".into(), "module Add(); endmodule\n".into())]);
+        let mut inv = ToolInvocation::new("vitis_hls");
+        inv.cwd = Some(
+            camino::Utf8PathBuf::from_path_buf(dir.path().to_path_buf()).expect("utf-8 work dir"),
+        );
+        inv.env
+            .insert("TAPA_KERNEL_PATH_0".into(), "/kernels/Mul.cpp".into());
+        drop(runner.run(&inv));
+    }
+
     #[test]
     fn hls_metrics_use_estimated_clock_and_clear_stale_total() {
         let mut task = Task {
