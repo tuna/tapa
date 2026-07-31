@@ -16,7 +16,7 @@ pub struct CollectOutputs;
 
 impl RtlPass for CollectOutputs {
     fn run(&self, ctx: &mut PassCtx<'_>) -> Result<(), CodegenError> {
-        let state = &mut *ctx.state;
+        let state = &mut *ctx.state; // reborrow: `state` is used mutably below
 
         // `Ignore` tasks: emit the authoritative template file from the
         // shell built by the `ignore-task-shells` pass.

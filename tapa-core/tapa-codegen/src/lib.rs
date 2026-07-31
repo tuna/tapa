@@ -22,8 +22,7 @@ use crate::error::CodegenError;
 use crate::passes::{PassCtx, TaskPassCtx, TaskStageInputs};
 use crate::rtl_state::TopologyWithRtl;
 
-/// A pipeline stage (REFACTOR-PLAN §4 Phase 1 item 1): in Phase 1a a thin
-/// delegate over the byte-identical pass bodies in [`passes`] / [`emit`].
+/// A pipeline stage. Thin delegate in Phase 1a; see [`passes`].
 pub(crate) trait RtlPass: Sync {
     /// Run the pass. Task-scoped passes see `ctx.task == Some(..)`.
     fn run(&self, ctx: &mut PassCtx<'_>) -> Result<(), CodegenError>;
@@ -35,16 +34,14 @@ pub(crate) enum PassScope {
     UpperTask,
 }
 
-/// One row of [`PIPELINE`]: stage name, scope, and the delegate.
+/// One row of [`PIPELINE`]: scope and the delegate.
 struct PipelineEntry {
-    #[cfg_attr(not(test), allow(dead_code, reason = "pinned by pipeline_tests"))]
-    name: &'static str,
     scope: PassScope,
     pass: &'static dyn RtlPass,
 }
 
-const fn entry(name: &'static str, scope: PassScope, pass: &'static dyn RtlPass) -> PipelineEntry {
-    PipelineEntry { name, scope, pass }
+const fn entry(scope: PassScope, pass: &'static dyn RtlPass) -> PipelineEntry {
+    PipelineEntry { scope, pass }
 }
 
 /// The pipeline as an ordered pass table. `Design` rows run once; each
@@ -52,44 +49,16 @@ const fn entry(name: &'static str, scope: PassScope, pass: &'static dyn RtlPass)
 /// non-`Ignore` task (in `BTreeMap` task order) — reproducing the
 /// pre-refactor hand-written call sequence exactly.
 static PIPELINE: &[PipelineEntry] = &[
-    entry(
-        "ignore-task-shells",
-        PassScope::Design,
-        &passes::IgnoreTaskShells,
-    ),
-    entry(
-        "cleanup-hls-artifacts",
-        PassScope::UpperTask,
-        &passes::CleanupHlsArtifacts,
-    ),
-    entry(
-        "create-fsm-module",
-        PassScope::UpperTask,
-        &passes::CreateFsmModule,
-    ),
-    entry(
-        "generate-child-signals",
-        PassScope::UpperTask,
-        &passes::GenerateChildSignals,
-    ),
-    entry(
-        "fifo-instantiate-connect",
-        PassScope::UpperTask,
-        &passes::FifoInstantiateConnect,
-    ),
-    entry(
-        "m-axi-crossbars",
-        PassScope::UpperTask,
-        &passes::MAxiCrossbars,
-    ),
-    entry(
-        "axi-pipeline-instantiate",
-        PassScope::UpperTask,
-        &passes::AxiPipelineInstantiate,
-    ),
-    entry("control-fsm", PassScope::UpperTask, &passes::ControlFsm),
-    entry("s-axi-control", PassScope::UpperTask, &passes::SAxiControl),
-    entry("collect-outputs", PassScope::Design, &emit::CollectOutputs),
+    entry(PassScope::Design, &passes::IgnoreTaskShells),
+    entry(PassScope::UpperTask, &passes::CleanupHlsArtifacts),
+    entry(PassScope::UpperTask, &passes::CreateFsmModule),
+    entry(PassScope::UpperTask, &passes::GenerateChildSignals),
+    entry(PassScope::UpperTask, &passes::FifoInstantiateConnect),
+    entry(PassScope::UpperTask, &passes::MAxiCrossbars),
+    entry(PassScope::UpperTask, &passes::AxiPipelineInstantiate),
+    entry(PassScope::UpperTask, &passes::ControlFsm),
+    entry(PassScope::UpperTask, &passes::SAxiControl),
+    entry(PassScope::Design, &emit::CollectOutputs),
 ];
 
 /// Run the full RTL codegen pipeline (the [`PIPELINE`] driver).
@@ -149,28 +118,17 @@ pub(crate) fn design_from_fixture_json(value: serde_json::Value) -> tapa_ir::Des
 mod pipeline_tests {
     use super::{PassScope, PIPELINE};
 
-    /// The declared table is the pipeline contract; pin stages and order.
+    /// The driver contract is the scope shape: one leading `Design` run,
+    /// one maximal `UpperTask` run per task, one trailing `Design` run.
+    /// Byte-level stage-order drift is the golden tests' job, not a second
+    /// copy of the table here.
     #[test]
-    fn pipeline_declares_the_documented_stage_order() {
+    fn pipeline_has_the_expected_scope_shape() {
         use PassScope::{Design, UpperTask as Task};
-        let stages: Vec<(&str, PassScope)> = PIPELINE
-            .iter()
-            .map(|entry| (entry.name, entry.scope))
-            .collect();
+        let scopes: Vec<PassScope> = PIPELINE.iter().map(|entry| entry.scope).collect();
         assert_eq!(
-            stages,
-            [
-                ("ignore-task-shells", Design),
-                ("cleanup-hls-artifacts", Task),
-                ("create-fsm-module", Task),
-                ("generate-child-signals", Task),
-                ("fifo-instantiate-connect", Task),
-                ("m-axi-crossbars", Task),
-                ("axi-pipeline-instantiate", Task),
-                ("control-fsm", Task),
-                ("s-axi-control", Task),
-                ("collect-outputs", Design),
-            ]
+            scopes,
+            [Design, Task, Task, Task, Task, Task, Task, Task, Task, Design]
         );
     }
 }
