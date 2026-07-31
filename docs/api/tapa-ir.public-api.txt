@@ -804,6 +804,80 @@ pub unsafe fn tapa_ir::floorplan::AxiEndpoint::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_ir::floorplan::AxiEndpoint
 pub fn tapa_ir::floorplan::AxiEndpoint::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::floorplan::AxiEndpoint where T: for<'de> serde_core::de::Deserialize<'de>
+pub struct tapa_ir::floorplan::Coor
+pub tapa_ir::floorplan::Coor::dl_x: u32
+pub tapa_ir::floorplan::Coor::dl_y: u32
+pub tapa_ir::floorplan::Coor::ur_x: u32
+pub tapa_ir::floorplan::Coor::ur_y: u32
+impl tapa_ir::floorplan::Coor
+pub fn tapa_ir::floorplan::Coor::all_slot_coors(&self) -> alloc::vec::Vec<(u32, u32)>
+pub fn tapa_ir::floorplan::Coor::covers(&self, &Self) -> bool
+pub fn tapa_ir::floorplan::Coor::from_atomic_region_name(&str) -> core::option::Option<Self>
+pub fn tapa_ir::floorplan::Coor::from_region_name(&str) -> core::option::Option<Self>
+pub fn tapa_ir::floorplan::Coor::from_region_or_slot_name(&str) -> core::option::Option<Self>
+pub fn tapa_ir::floorplan::Coor::from_slot_name(&str) -> core::option::Option<Self>
+pub fn tapa_ir::floorplan::Coor::has_overlap(&self, &Self) -> bool
+pub fn tapa_ir::floorplan::Coor::height(&self) -> u32
+pub fn tapa_ir::floorplan::Coor::is_east_neighbor_of(&self, &Self) -> bool
+pub fn tapa_ir::floorplan::Coor::is_inside(&self, &Self) -> bool
+pub fn tapa_ir::floorplan::Coor::is_neighbor(&self, &Self) -> bool
+pub fn tapa_ir::floorplan::Coor::is_north_neighbor_of(&self, &Self) -> bool
+pub fn tapa_ir::floorplan::Coor::is_south_neighbor_of(&self, &Self) -> bool
+pub fn tapa_ir::floorplan::Coor::is_west_neighbor_of(&self, &Self) -> bool
+pub fn tapa_ir::floorplan::Coor::region_name(&self) -> alloc::string::String
+pub fn tapa_ir::floorplan::Coor::slot(u32, u32) -> Self
+pub fn tapa_ir::floorplan::Coor::span(u32, u32, u32, u32) -> Self
+pub fn tapa_ir::floorplan::Coor::width(&self) -> u32
+impl core::clone::Clone for tapa_ir::floorplan::Coor
+pub fn tapa_ir::floorplan::Coor::clone(&self) -> tapa_ir::floorplan::Coor
+impl core::cmp::Eq for tapa_ir::floorplan::Coor
+impl core::cmp::Ord for tapa_ir::floorplan::Coor
+pub fn tapa_ir::floorplan::Coor::cmp(&self, &tapa_ir::floorplan::Coor) -> core::cmp::Ordering
+impl core::cmp::PartialEq for tapa_ir::floorplan::Coor
+pub fn tapa_ir::floorplan::Coor::eq(&self, &tapa_ir::floorplan::Coor) -> bool
+impl core::cmp::PartialOrd for tapa_ir::floorplan::Coor
+pub fn tapa_ir::floorplan::Coor::partial_cmp(&self, &tapa_ir::floorplan::Coor) -> core::option::Option<core::cmp::Ordering>
+impl core::fmt::Debug for tapa_ir::floorplan::Coor
+pub fn tapa_ir::floorplan::Coor::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tapa_ir::floorplan::Coor
+pub fn tapa_ir::floorplan::Coor::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tapa_ir::floorplan::Coor
+impl core::marker::StructuralPartialEq for tapa_ir::floorplan::Coor
+impl core::marker::Freeze for tapa_ir::floorplan::Coor
+impl core::marker::Send for tapa_ir::floorplan::Coor
+impl core::marker::Sync for tapa_ir::floorplan::Coor
+impl core::marker::Unpin for tapa_ir::floorplan::Coor
+impl core::marker::UnsafeUnpin for tapa_ir::floorplan::Coor
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::floorplan::Coor
+impl core::panic::unwind_safe::UnwindSafe for tapa_ir::floorplan::Coor
+impl<Q, K> equivalent::Comparable<K> for tapa_ir::floorplan::Coor where Q: core::cmp::Ord + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::floorplan::Coor::compare(&self, &K) -> core::cmp::Ordering
+impl<Q, K> equivalent::Equivalent<K> for tapa_ir::floorplan::Coor where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::floorplan::Coor::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::floorplan::Coor where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::floorplan::Coor::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_ir::floorplan::Coor where U: core::convert::From<T>
+pub fn tapa_ir::floorplan::Coor::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_ir::floorplan::Coor where U: core::convert::Into<T>
+pub type tapa_ir::floorplan::Coor::Error = core::convert::Infallible
+pub fn tapa_ir::floorplan::Coor::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_ir::floorplan::Coor where U: core::convert::TryFrom<T>
+pub type tapa_ir::floorplan::Coor::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_ir::floorplan::Coor::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_ir::floorplan::Coor where T: core::clone::Clone
+pub type tapa_ir::floorplan::Coor::Owned = T
+pub fn tapa_ir::floorplan::Coor::clone_into(&self, &mut T)
+pub fn tapa_ir::floorplan::Coor::to_owned(&self) -> T
+impl<T> core::any::Any for tapa_ir::floorplan::Coor where T: 'static + ?core::marker::Sized
+pub fn tapa_ir::floorplan::Coor::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_ir::floorplan::Coor where T: ?core::marker::Sized
+pub fn tapa_ir::floorplan::Coor::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_ir::floorplan::Coor where T: ?core::marker::Sized
+pub fn tapa_ir::floorplan::Coor::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_ir::floorplan::Coor where T: core::clone::Clone
+pub unsafe fn tapa_ir::floorplan::Coor::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_ir::floorplan::Coor
+pub fn tapa_ir::floorplan::Coor::from(T) -> T
 pub struct tapa_ir::floorplan::FloorplanResult
 pub tapa_ir::floorplan::FloorplanResult::device: alloc::string::String
 pub tapa_ir::floorplan::FloorplanResult::grid: (u32, u32)
@@ -2538,6 +2612,80 @@ pub unsafe fn tapa_ir::floorplan::AxiEndpoint::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_ir::floorplan::AxiEndpoint
 pub fn tapa_ir::floorplan::AxiEndpoint::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::floorplan::AxiEndpoint where T: for<'de> serde_core::de::Deserialize<'de>
+pub struct tapa_ir::Coor
+pub tapa_ir::Coor::dl_x: u32
+pub tapa_ir::Coor::dl_y: u32
+pub tapa_ir::Coor::ur_x: u32
+pub tapa_ir::Coor::ur_y: u32
+impl tapa_ir::floorplan::Coor
+pub fn tapa_ir::floorplan::Coor::all_slot_coors(&self) -> alloc::vec::Vec<(u32, u32)>
+pub fn tapa_ir::floorplan::Coor::covers(&self, &Self) -> bool
+pub fn tapa_ir::floorplan::Coor::from_atomic_region_name(&str) -> core::option::Option<Self>
+pub fn tapa_ir::floorplan::Coor::from_region_name(&str) -> core::option::Option<Self>
+pub fn tapa_ir::floorplan::Coor::from_region_or_slot_name(&str) -> core::option::Option<Self>
+pub fn tapa_ir::floorplan::Coor::from_slot_name(&str) -> core::option::Option<Self>
+pub fn tapa_ir::floorplan::Coor::has_overlap(&self, &Self) -> bool
+pub fn tapa_ir::floorplan::Coor::height(&self) -> u32
+pub fn tapa_ir::floorplan::Coor::is_east_neighbor_of(&self, &Self) -> bool
+pub fn tapa_ir::floorplan::Coor::is_inside(&self, &Self) -> bool
+pub fn tapa_ir::floorplan::Coor::is_neighbor(&self, &Self) -> bool
+pub fn tapa_ir::floorplan::Coor::is_north_neighbor_of(&self, &Self) -> bool
+pub fn tapa_ir::floorplan::Coor::is_south_neighbor_of(&self, &Self) -> bool
+pub fn tapa_ir::floorplan::Coor::is_west_neighbor_of(&self, &Self) -> bool
+pub fn tapa_ir::floorplan::Coor::region_name(&self) -> alloc::string::String
+pub fn tapa_ir::floorplan::Coor::slot(u32, u32) -> Self
+pub fn tapa_ir::floorplan::Coor::span(u32, u32, u32, u32) -> Self
+pub fn tapa_ir::floorplan::Coor::width(&self) -> u32
+impl core::clone::Clone for tapa_ir::floorplan::Coor
+pub fn tapa_ir::floorplan::Coor::clone(&self) -> tapa_ir::floorplan::Coor
+impl core::cmp::Eq for tapa_ir::floorplan::Coor
+impl core::cmp::Ord for tapa_ir::floorplan::Coor
+pub fn tapa_ir::floorplan::Coor::cmp(&self, &tapa_ir::floorplan::Coor) -> core::cmp::Ordering
+impl core::cmp::PartialEq for tapa_ir::floorplan::Coor
+pub fn tapa_ir::floorplan::Coor::eq(&self, &tapa_ir::floorplan::Coor) -> bool
+impl core::cmp::PartialOrd for tapa_ir::floorplan::Coor
+pub fn tapa_ir::floorplan::Coor::partial_cmp(&self, &tapa_ir::floorplan::Coor) -> core::option::Option<core::cmp::Ordering>
+impl core::fmt::Debug for tapa_ir::floorplan::Coor
+pub fn tapa_ir::floorplan::Coor::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tapa_ir::floorplan::Coor
+pub fn tapa_ir::floorplan::Coor::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tapa_ir::floorplan::Coor
+impl core::marker::StructuralPartialEq for tapa_ir::floorplan::Coor
+impl core::marker::Freeze for tapa_ir::floorplan::Coor
+impl core::marker::Send for tapa_ir::floorplan::Coor
+impl core::marker::Sync for tapa_ir::floorplan::Coor
+impl core::marker::Unpin for tapa_ir::floorplan::Coor
+impl core::marker::UnsafeUnpin for tapa_ir::floorplan::Coor
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::floorplan::Coor
+impl core::panic::unwind_safe::UnwindSafe for tapa_ir::floorplan::Coor
+impl<Q, K> equivalent::Comparable<K> for tapa_ir::floorplan::Coor where Q: core::cmp::Ord + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::floorplan::Coor::compare(&self, &K) -> core::cmp::Ordering
+impl<Q, K> equivalent::Equivalent<K> for tapa_ir::floorplan::Coor where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::floorplan::Coor::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::floorplan::Coor where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::floorplan::Coor::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_ir::floorplan::Coor where U: core::convert::From<T>
+pub fn tapa_ir::floorplan::Coor::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_ir::floorplan::Coor where U: core::convert::Into<T>
+pub type tapa_ir::floorplan::Coor::Error = core::convert::Infallible
+pub fn tapa_ir::floorplan::Coor::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_ir::floorplan::Coor where U: core::convert::TryFrom<T>
+pub type tapa_ir::floorplan::Coor::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_ir::floorplan::Coor::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_ir::floorplan::Coor where T: core::clone::Clone
+pub type tapa_ir::floorplan::Coor::Owned = T
+pub fn tapa_ir::floorplan::Coor::clone_into(&self, &mut T)
+pub fn tapa_ir::floorplan::Coor::to_owned(&self) -> T
+impl<T> core::any::Any for tapa_ir::floorplan::Coor where T: 'static + ?core::marker::Sized
+pub fn tapa_ir::floorplan::Coor::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_ir::floorplan::Coor where T: ?core::marker::Sized
+pub fn tapa_ir::floorplan::Coor::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_ir::floorplan::Coor where T: ?core::marker::Sized
+pub fn tapa_ir::floorplan::Coor::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_ir::floorplan::Coor where T: core::clone::Clone
+pub unsafe fn tapa_ir::floorplan::Coor::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_ir::floorplan::Coor
+pub fn tapa_ir::floorplan::Coor::from(T) -> T
 pub struct tapa_ir::Design
 pub tapa_ir::Design::cflags: alloc::vec::Vec<alloc::string::String>
 pub tapa_ir::Design::target: tapa_ir::target::Target
