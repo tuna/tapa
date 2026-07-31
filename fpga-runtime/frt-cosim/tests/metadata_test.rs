@@ -207,8 +207,9 @@ fn single_channel_hmap_still_binds_an_indexed_arg() {
     assert_eq!(spec.args[0].name, "mat_a_0");
 }
 
-/// The category is normalized to `"mmap"` when the archive is written, so the
-/// fan-out has to survive a real `"cat": "hmap"` round trip through the
+/// The category is normalized to `"mmap"` when the archive is written --
+/// hmap-ness travels via `chan_count`/`chan_size`, not the wire category --
+/// so the fan-out has to survive a real archive-JSON round trip through the
 /// schema, not just a hand-built `Port`.
 #[test]
 fn hmap_fans_out_when_read_from_archive_json() {
@@ -217,7 +218,7 @@ fn hmap_fans_out_when_read_from_archive_json() {
         "tasks": {"Gemv": {"level": "lower", "code": "", "synth": "hls",
             "readable_name": "Gemv", "clock_period": "0",
             "ports": [
-                {"cat": "hmap", "name": "mat_a", "type": "int*", "width": 512,
+                {"cat": "mmap", "name": "mat_a", "type": "int*", "width": 512,
                  "chan_count": 2, "chan_size": 131072},
                 {"cat": "mmap", "name": "vec_x", "type": "int*", "width": 512}
             ]}}
@@ -226,6 +227,28 @@ fn hmap_fans_out_when_read_from_archive_json() {
     let spec = metadata::zip_pkg::spec_from_task_graph(&graph).expect("project");
     let names: Vec<&str> = spec.args.iter().map(|a| a.name.as_str()).collect();
     assert_eq!(names, vec!["mat_a_0", "mat_a_1", "vec_x"]);
+}
+
+/// The literal `"hmap"` category is a frontend concept only: it never reaches
+/// the archive schema, and `tapa-ir` must keep rejecting it loudly rather
+/// than silently binding it as a plain mmap.
+#[test]
+fn hmap_category_is_rejected_by_the_schema() {
+    let json = r#"{
+        "top": "Gemv", "target": "xilinx-hls",
+        "tasks": {"Gemv": {"level": "lower", "code": "", "synth": "hls",
+            "readable_name": "Gemv", "clock_period": "0",
+            "ports": [
+                {"cat": "hmap", "name": "mat_a", "type": "int*", "width": 512,
+                 "chan_count": 2, "chan_size": 131072}
+            ]}}
+    }"#;
+    let err = serde_json::from_str::<TaskGraph>(json)
+        .expect_err("the hmap wire category must be rejected");
+    assert!(
+        err.to_string().contains("unknown category: hmap"),
+        "error must name the rejected category; got {err}",
+    );
 }
 
 /// `tapa-codegen` rejects a zero-channel hmap; fanning out to nothing here
