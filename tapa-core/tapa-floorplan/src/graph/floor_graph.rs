@@ -1,5 +1,5 @@
 //! The [`FloorGraph`]: the placement graph the floorplan ILP runs on, built
-//! from a *flattened* [`TaskGraph`].
+//! from a *flattened* [`TaskGraph`](tapa_ir::TaskGraph).
 //!
 //! Vertices are clusters rooted at flattened leaf-task instances.  Each
 //! internal FIFO is clustered into its consumer (producer fallback), because
@@ -8,12 +8,11 @@
 //! co-location alias for the final XDC. Placement aggregates stream widths by
 //! task pair, while routing retains each named stream independently.
 
-use tapa_ir::{
-    Area, AxiChannel, AxiChannelWidths, AxiEndpoint, ControlChannel, MemoryBank, TaskGraph,
-};
+use tapa_ir::{Area, AxiChannel, AxiChannelWidths, AxiEndpoint, ControlChannel, MemoryBank};
 
 pub(crate) const CONTROL_S_AXI_INSTANCE: &str = "control_s_axi_U";
 
+/// One supported direct M-AXI endpoint and its exact external bank.
 ///
 /// This is transient planner input derived from parsed RTL plus the link
 /// configuration. It is never stored in the work-state graph.

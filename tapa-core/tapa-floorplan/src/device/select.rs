@@ -90,12 +90,8 @@ impl DeviceRegistry {
             .collect()
     }
 
-    /// Resolve a part number (or a short alias like `u280` or `xcu280-…`) to
-    /// its device table.
-    ///
-    /// Matching is case-insensitive and accepts the table key (`u280`), the
-    /// full part number (`xcu280-fsvh2892-2L-e`), or any part string in the
-    /// same family (`xcu280-…`).
+    /// Resolve a part number to its device table; see [`select_device`]
+    /// for the matching rules.
     pub(crate) fn select(&self, part_num: &str) -> Result<Device, SelectError> {
         let query = part_num.trim().to_ascii_lowercase();
         let query_family = part_family(&query);
