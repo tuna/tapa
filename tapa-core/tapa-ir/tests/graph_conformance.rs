@@ -57,7 +57,7 @@ fn vadd_leaf_task() {
 
 #[test]
 fn channelized_mmap_port_deserializes() {
-    let g = Graph::from_json(&fixture("hmap_ports.json")).expect("parse");
+    let g = Graph::from_json(&fixture("mmap_ports.json")).expect("parse");
     let top = &g.tasks["Top"];
     let data_port = top
         .ports
@@ -71,7 +71,7 @@ fn channelized_mmap_port_deserializes() {
 
 #[test]
 fn all_category_variants_in_fixture() {
-    let g = Graph::from_json(&fixture("hmap_ports.json")).expect("parse");
+    let g = Graph::from_json(&fixture("mmap_ports.json")).expect("parse");
     let ports = &g.tasks["Top"].ports;
     let cats: Vec<_> = ports.iter().map(|p| p.cat).collect();
     assert!(cats.contains(&ArgCategory::Mmap), "has mmap");
@@ -170,8 +170,8 @@ fn vadd_round_trip() {
 }
 
 #[test]
-fn hmap_ports_round_trip() {
-    let json = fixture("hmap_ports.json");
+fn mmap_ports_round_trip() {
+    let json = fixture("mmap_ports.json");
     let g1 = Graph::from_json(&json).expect("parse 1");
     let serialized = serde_json::to_string_pretty(&g1).expect("serialize");
     let g2 = Graph::from_json(&serialized).expect("parse 2");
