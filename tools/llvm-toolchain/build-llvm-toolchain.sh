@@ -28,8 +28,8 @@ PREFIX="${WORKDIR}/install"
 
 # Pinned source archives. Add a row when bumping versions.
 declare -A SRC_SHA256=(
-  ["18.1.8"]="0b58557a6d32ceee97c8d6c242f5dc2f6e15e1d2d1a37b02a16a6a4dd6b2a15f"
-  ["14.0.0"]="87b1a068b370df5b79a892fdb2935922a8efb1fddec4cc506e30fe57b6a1d9c4"
+  ["18.1.8"]="0b58557a6d32ceee97c8d533a59b9212d87e0fc4d2833924eb6c611247db2f2a"
+  ["14.0.0"]="35ce9edbc8f774fe07c8f4acdf89ec8ac695c8016c165dd86b8d10e7cba07e23"
 )
 
 log() { echo "[llvm-build] $*"; }
