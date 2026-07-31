@@ -14,10 +14,12 @@ pub mod instance_signals;
 pub mod m_axi;
 mod passes;
 pub mod program;
-pub mod rtl_state;
 mod s_axi;
+mod state;
 pub mod support_assets;
 mod template;
+
+pub use state::rtl_state;
 
 use tapa_ir::task::TaskLevel;
 use tapa_ir::{SynthTarget, Target};
