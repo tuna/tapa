@@ -5,14 +5,21 @@
 //! ordered [`crate::PIPELINE`] table. Narrowing [`PassCtx`] into per-concern
 //! views is Phase 1b — do not do it in 1a.
 
+pub mod async_mmap;
+mod axi_pipeline;
+pub mod children;
 mod cleanup;
+mod distributed_control;
+pub mod fifos;
+pub mod m_axi;
+mod s_axi;
 
 use std::collections::BTreeMap;
 
 use tapa_ir::SynthTarget;
 
-use crate::axi_pipeline::DirectAxiPipelinePlan;
-use crate::distributed_control::DistributedControlPlan;
+use self::axi_pipeline::DirectAxiPipelinePlan;
+use self::distributed_control::DistributedControlPlan;
 use crate::error::CodegenError;
 use crate::rtl_state::{MMapConnection, TopologyWithRtl};
 use crate::RtlPass;
@@ -256,7 +263,7 @@ impl RtlPass for SAxiControl {
     fn run(&self, ctx: &mut PassCtx<'_>) -> Result<(), CodegenError> {
         let task = ctx.task.as_mut().expect("s-axi-control is task-scoped");
         if task.name == ctx.state.design.top {
-            crate::s_axi::instantiate_top_control_s_axi(ctx.state, task.name);
+            self::s_axi::instantiate_top_control_s_axi(ctx.state, task.name);
         }
         Ok(())
     }

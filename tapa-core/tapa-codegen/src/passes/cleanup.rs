@@ -5,7 +5,7 @@ use tapa_protocol::{
 };
 use tapa_rtl::builder::{ContinuousAssign, Expr};
 
-use crate::distributed_control::{self, DistributedControlPlan};
+use super::distributed_control::{self, DistributedControlPlan};
 use crate::rtl_state::TopologyWithRtl;
 
 /// Strip HLS artifacts from `task_name`'s module: clear the cached body text,

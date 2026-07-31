@@ -3,22 +3,16 @@
 //! It uses the `tapa-rtl` builder API to construct Verilog fragments and the
 //! hybrid mutation API to modify existing HLS modules.
 
-pub mod async_mmap;
-mod axi_pipeline;
-pub mod children;
-mod distributed_control;
 mod emit;
 pub mod error;
-pub mod fifos;
 pub mod instance_signals;
-pub mod m_axi;
 mod passes;
 pub mod program;
-mod s_axi;
 mod state;
 pub mod support_assets;
 mod template;
 
+pub use passes::{async_mmap, children, fifos, m_axi};
 pub use state::rtl_state;
 
 use tapa_ir::task::TaskLevel;

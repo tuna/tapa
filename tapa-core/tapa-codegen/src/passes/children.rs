@@ -19,7 +19,8 @@ use tapa_rtl::VerilogModule;
 
 use crate::instance_signals::InstanceSignals;
 use crate::rtl_state::TopologyWithRtl;
-use crate::{async_mmap, distributed_control, instance_signals, m_axi, program};
+use super::distributed_control;
+use crate::{async_mmap, instance_signals, m_axi, program};
 
 /// FSM state constants for non-autorun child instances (2-bit encoding).
 pub const STATE_IDLE: &str = "2'b00";
@@ -496,7 +497,7 @@ pub(crate) fn generate_child_signals(
     task_name: &str,
     mmap_conns: &std::collections::BTreeMap<String, crate::rtl_state::MMapConnection>,
     mmap_slave_map: &std::collections::BTreeMap<(String, String, usize), usize>,
-    axi_pipeline_plan: Option<&crate::axi_pipeline::DirectAxiPipelinePlan>,
+    axi_pipeline_plan: Option<&super::axi_pipeline::DirectAxiPipelinePlan>,
     control_plan: Option<&distributed_control::DistributedControlPlan>,
 ) -> Result<Vec<String>, crate::error::CodegenError> {
     type ChildEntry = (usize, Option<String>, bool, BTreeMap<String, Arg>);
