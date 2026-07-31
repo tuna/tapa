@@ -97,10 +97,12 @@ fn make_manual_xo() -> PathBuf {
     zip.write_all(include_bytes!("fixtures/manual_xo/kernel.xml"))
         .expect("write kernel xml");
 
-    zip.start_file("s_axi_control.v", opts)
-        .expect("add s_axi_control");
-    zip.write_all(include_bytes!("fixtures/manual_xo/s_axi_control.v"))
-        .expect("write s_axi_control");
+    zip.start_file("manual_vitis_top_control_s_axi.v", opts)
+        .expect("add control_s_axi");
+    zip.write_all(include_bytes!(
+        "fixtures/manual_xo/manual_vitis_top_control_s_axi.v"
+    ))
+    .expect("write control_s_axi");
 
     zip.start_file("rtl/manual_vitis_top.v", opts)
         .expect("add rtl");
