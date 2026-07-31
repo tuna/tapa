@@ -5,7 +5,8 @@ This page is the **architecture charter** for the TAPA compiler's Rust
 toolchain. It describes the component map, the layer rule, and the charter
 of each crate — it is a standing reference, not a changelog.
 The step-by-step program that brings the code in line with this charter
-lives in `REFACTOR-PLAN.md` at the root of the repository.
+lives in the working document `REFACTOR-PLAN.md` (repository
+root, not yet committed).
 ```
 
 ## Component Map
@@ -22,8 +23,6 @@ tapa-protocol   tapa-ir ──────────────── schema 
      │           │  └────────────── tapa-rtl (Verilog parse / mutate / emit; tree-sitter + nom)
      ▼           │
 tapa-floorplan (device/graph/partition/pipeline/route/solver/xdc + DSE)
-     ▲
-     │ (imports only `device::Coor`)
 tapa-codegen (RTL assembly of the top module; flat pass modules)
      ▲
 tapa-xilinx (HLS/Vitis/Vivado/XO-pack tools, local+remote runners)
@@ -133,8 +132,8 @@ against blessed baselines under `docs/api/`. The job is
 merges. To regenerate a baseline after an intentional API change:
 
 ```bash
-rustup toolchain install nightly --profile minimal --component rust-docs-json
-cargo +nightly install cargo-public-api --locked
+rustup toolchain install nightly-2026-07-30 --profile minimal --component rust-docs-json
+cargo +nightly-2026-07-30 install cargo-public-api --locked --version 0.52.0
 cd tapa-core
 cargo public-api --package tapa-ir > ../docs/api/tapa-ir.public-api.txt
 ```
@@ -148,4 +147,5 @@ incrementally by the phased refactor program (invariants and charters, then
 per-engine restructuring, then runtime hardening), where each phase
 preserves observable behavior and lands behind the conformance guards
 above. The program itself — findings, phase contents, exit criteria, and
-risks — lives in **`REFACTOR-PLAN.md` at the repository root**.
+risks — lives in the working document **`REFACTOR-PLAN.md`**
+(repository root, not yet committed).
