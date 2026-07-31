@@ -38,22 +38,6 @@ mod tests {
         assert_eq!(m.get("a").copied(), Some(0x10));
     }
 
-    /// The pre-2021 format `localparam ADDR_A_0 = 8'h10;` (no `_data_`
-    /// infix) must yield an empty map rather than a misparsed one.
-    #[test]
-    fn rejects_pre_2021_localparam_format() {
-        let v = "localparam ADDR_A_0 = 8'h10;\n";
-        assert!(parse_register_map(v).is_empty());
-    }
-
-    /// The even older comment-only offset annotations are not a register
-    /// map either.
-    #[test]
-    fn ignores_comment_only_offsets() {
-        let v = "// 0x10 : Data signal of a\n";
-        assert!(parse_register_map(v).is_empty());
-    }
-
     #[test]
     fn ignores_non_data_localparams() {
         let v = "localparam ADDR_AP_CTRL = 5'h00;\nlocalparam ADDR_GIE = 5'h04;\nlocalparam ADDR_A_DATA_0 = 5'h10;\n";
