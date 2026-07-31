@@ -2,7 +2,9 @@
 //! writes into [`WorkState`](crate::WorkState) and codegen reads back.
 //!
 //! `tapa-floorplan` (the planner) and `tapa-codegen` (the consumer) never
-//! depend on each other; they meet only here, through these serde types. The
+//! depend on each other; they meet only here, through these contract
+//! types — serde records plus the shared [`Coor`] region-tag geometry.
+//! The
 //! planner assigns every flattened instance to a physical grid *region* and
 //! records how each cross-region channel is pipelined; codegen turns those
 //! stream records into Head/Body/Tail handshake pipelines and pblock
@@ -67,6 +69,191 @@ impl Area {
             uram: get("URAM"),
         }
     }
+}
+
+/// An inclusive integer rectangle of grid slots: the region spanning
+/// `[dl_x, ur_x] × [dl_y, ur_y]`. A single slot is `dl == ur`.
+///
+/// The geometry behind the region tags that are the wire format of
+/// [`FloorplanResult::regions`] and the slot paths of [`PipelineRoute`]:
+/// the planner encodes a rectangle with [`region_name`](Coor::region_name)
+/// and codegen decodes it with the `from_*_name` parsers, so the two
+/// engines agree on the tags without depending on each other. `Coor`
+/// itself has no serde form — only its string tag crosses the wire.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Coor {
+    pub dl_x: u32,
+    pub dl_y: u32,
+    pub ur_x: u32,
+    pub ur_y: u32,
+}
+
+impl Coor {
+    /// The one-slot region at grid `(x, y)`.
+    #[must_use]
+    pub fn slot(x: u32, y: u32) -> Self {
+        Self {
+            dl_x: x,
+            dl_y: y,
+            ur_x: x,
+            ur_y: y,
+        }
+    }
+
+    /// The region spanning `(dl_x, dl_y)` to `(ur_x, ur_y)` inclusive.
+    #[must_use]
+    pub fn span(dl_x: u32, dl_y: u32, ur_x: u32, ur_y: u32) -> Self {
+        Self {
+            dl_x,
+            dl_y,
+            ur_x,
+            ur_y,
+        }
+    }
+
+    /// Slot count along x (inclusive).
+    #[must_use]
+    pub fn width(&self) -> u32 {
+        self.ur_x.saturating_sub(self.dl_x) + 1
+    }
+
+    /// Slot count along y (inclusive).
+    #[must_use]
+    pub fn height(&self) -> u32 {
+        self.ur_y.saturating_sub(self.dl_y) + 1
+    }
+
+    /// `self` sits directly *south* of `other` (shares `other`'s bottom edge)
+    /// with overlapping x-extent.
+    #[must_use]
+    pub fn is_south_neighbor_of(&self, other: &Self) -> bool {
+        self.ur_y + 1 == other.dl_y && self.dl_x.max(other.dl_x) <= self.ur_x.min(other.ur_x)
+    }
+
+    /// `self` sits directly *north* of `other`.
+    #[must_use]
+    pub fn is_north_neighbor_of(&self, other: &Self) -> bool {
+        self.dl_y == other.ur_y + 1 && self.dl_x.max(other.dl_x) <= self.ur_x.min(other.ur_x)
+    }
+
+    /// `self` sits directly *east* of `other`.
+    #[must_use]
+    pub fn is_east_neighbor_of(&self, other: &Self) -> bool {
+        self.dl_x == other.ur_x + 1 && self.dl_y.max(other.dl_y) <= self.ur_y.min(other.ur_y)
+    }
+
+    /// `self` sits directly *west* of `other`.
+    #[must_use]
+    pub fn is_west_neighbor_of(&self, other: &Self) -> bool {
+        self.ur_x + 1 == other.dl_x && self.dl_y.max(other.dl_y) <= self.ur_y.min(other.ur_y)
+    }
+
+    /// The two regions share an edge (in any of the four directions).
+    #[must_use]
+    pub fn is_neighbor(&self, other: &Self) -> bool {
+        self.is_north_neighbor_of(other)
+            || self.is_south_neighbor_of(other)
+            || self.is_east_neighbor_of(other)
+            || self.is_west_neighbor_of(other)
+    }
+
+    /// `self` is contained within `other` (inclusive).
+    #[must_use]
+    pub fn is_inside(&self, other: &Self) -> bool {
+        self.dl_x >= other.dl_x
+            && self.dl_y >= other.dl_y
+            && self.ur_x <= other.ur_x
+            && self.ur_y <= other.ur_y
+    }
+
+    /// The two regions overlap, counting a shared boundary as overlap.
+    #[must_use]
+    pub fn has_overlap(&self, other: &Self) -> bool {
+        !(other.dl_x > self.ur_x
+            || other.ur_x < self.dl_x
+            || other.dl_y > self.ur_y
+            || other.ur_y < self.dl_y)
+    }
+
+    /// `self` is a (non-strict) superset of `other`.
+    #[must_use]
+    pub fn covers(&self, other: &Self) -> bool {
+        self.dl_x <= other.dl_x
+            && self.dl_y <= other.dl_y
+            && self.ur_x >= other.ur_x
+            && self.ur_y >= other.ur_y
+    }
+
+    /// Every atomic grid cell `(x, y)` the region covers, row-major.
+    #[must_use]
+    pub fn all_slot_coors(&self) -> Vec<(u32, u32)> {
+        let mut cells = Vec::with_capacity((self.width() * self.height()) as usize);
+        for y in self.dl_y..=self.ur_y {
+            for x in self.dl_x..=self.ur_x {
+                cells.push((x, y));
+            }
+        }
+        cells
+    }
+
+    /// The region tag `SLOT_X{dl}Y{dl}_TO_SLOT_X{ur}Y{ur}` this region carries
+    /// as a [`FloorplanResult`] key and pblock name.
+    #[must_use]
+    pub fn region_name(&self) -> String {
+        format!(
+            "SLOT_X{}Y{}_TO_SLOT_X{}Y{}",
+            self.dl_x, self.dl_y, self.ur_x, self.ur_y
+        )
+    }
+
+    /// Parse a region tag produced by [`region_name`](Coor::region_name) back
+    /// into a [`Coor`].
+    ///
+    /// Reversed ranges (`dl > ur` on either axis) are rejected rather than
+    /// silently reinterpreted as their down-left slot.
+    #[must_use]
+    pub fn from_region_name(name: &str) -> Option<Self> {
+        let (lhs, rhs) = name.split_once("_TO_")?;
+        let (dl_x, dl_y) = parse_slot_tag(lhs)?;
+        let (ur_x, ur_y) = parse_slot_tag(rhs)?;
+        if dl_x > ur_x || dl_y > ur_y {
+            return None;
+        }
+        Some(Self::span(dl_x, dl_y, ur_x, ur_y))
+    }
+
+    /// Parse a bare single-slot tag `SLOT_X{x}Y{y}` into a [`Coor`].
+    #[must_use]
+    pub fn from_slot_name(name: &str) -> Option<Self> {
+        let (x, y) = parse_slot_tag(name)?;
+        Some(Self::slot(x, y))
+    }
+
+    /// Parse either a region tag ([`from_region_name`](Coor::from_region_name))
+    /// or a bare single-slot tag `SLOT_X{x}Y{y}` into a [`Coor`].
+    #[must_use]
+    pub fn from_region_or_slot_name(name: &str) -> Option<Self> {
+        if let Some(coor) = Self::from_region_name(name) {
+            return Some(coor);
+        }
+        Self::from_slot_name(name)
+    }
+
+    /// Parse a region or slot tag that denotes exactly one slot into that
+    /// slot. A region tag is atomic only when its endpoints are identical;
+    /// reversed ranges are rejected.
+    #[must_use]
+    pub fn from_atomic_region_name(name: &str) -> Option<Self> {
+        let coor = Self::from_region_or_slot_name(name)?;
+        (coor.dl_x == coor.ur_x && coor.dl_y == coor.ur_y).then_some(coor)
+    }
+}
+
+/// Parse a single-slot tag `SLOT_X{x}Y{y}` into its grid coordinates.
+fn parse_slot_tag(tag: &str) -> Option<(u32, u32)> {
+    let rest = tag.strip_prefix("SLOT_X")?;
+    let (x, y) = rest.split_once('Y')?;
+    Some((x.parse().ok()?, y.parse().ok()?))
 }
 
 /// Child-side identity of an M-AXI interface routed to external memory.
@@ -298,6 +485,88 @@ mod tests {
 
     use crate::connectivity::MemoryKind;
     use serde_json::json;
+
+    #[test]
+    fn parses_region_slot_and_atomic_names() {
+        assert_eq!(
+            Coor::from_region_or_slot_name("SLOT_X1Y2"),
+            Some(Coor::span(1, 2, 1, 2))
+        );
+        assert_eq!(
+            Coor::from_region_or_slot_name("SLOT_X1Y2_TO_SLOT_X2Y3"),
+            Some(Coor::span(1, 2, 2, 3))
+        );
+        assert_eq!(
+            Coor::from_atomic_region_name("SLOT_X1Y2"),
+            Some(Coor::span(1, 2, 1, 2))
+        );
+        assert_eq!(
+            Coor::from_atomic_region_name("SLOT_X1Y2_TO_SLOT_X1Y2"),
+            Some(Coor::span(1, 2, 1, 2))
+        );
+        assert_eq!(
+            Coor::from_atomic_region_name("SLOT_X1Y2_TO_SLOT_X2Y2"),
+            None
+        );
+    }
+
+    #[test]
+    fn reversed_region_tags_are_rejected() {
+        assert_eq!(
+            Coor::from_region_name("SLOT_X2Y0_TO_SLOT_X1Y0"),
+            None,
+            "dl_x > ur_x is malformed, not a one-slot region",
+        );
+        assert_eq!(
+            Coor::from_region_name("SLOT_X0Y2_TO_SLOT_X0Y1"),
+            None,
+            "dl_y > ur_y is malformed, not a one-slot region",
+        );
+        assert_eq!(
+            Coor::from_region_or_slot_name("SLOT_X2Y2_TO_SLOT_X1Y1"),
+            None
+        );
+        // Forward ranges with one reversed axis are rejected as a whole.
+        assert_eq!(Coor::from_region_name("SLOT_X0Y1_TO_SLOT_X1Y0"), None);
+    }
+
+    #[test]
+    fn neighbor_tests_are_directional_and_edge_sharing() {
+        let a = Coor::slot(0, 0);
+        let b = Coor::slot(0, 1); // directly north of a
+        let c = Coor::slot(1, 0); // directly east of a
+        assert!(b.is_north_neighbor_of(&a), "b is north of a");
+        assert!(a.is_south_neighbor_of(&b), "a is south of b");
+        assert!(c.is_east_neighbor_of(&a), "c is east of a");
+        assert!(a.is_west_neighbor_of(&c), "a is west of c");
+        assert!(a.is_neighbor(&b) && a.is_neighbor(&c));
+        // Diagonal slots share only a corner, so they are not neighbors.
+        assert!(!Coor::slot(0, 0).is_neighbor(&Coor::slot(1, 1)));
+    }
+
+    #[test]
+    fn overlap_covers_inside() {
+        let region = Coor::span(0, 0, 1, 1);
+        let cell = Coor::slot(1, 0);
+        assert!(cell.is_inside(&region), "cell inside the 2x2 region");
+        assert!(region.covers(&cell), "region covers the cell");
+        assert!(region.has_overlap(&cell), "they overlap");
+        // Adjacent-but-disjoint cells still count as overlapping on the shared
+        // edge, matching the upstream convention.
+        assert!(Coor::slot(0, 0).has_overlap(&Coor::slot(0, 0)));
+        assert!(!Coor::slot(0, 0).is_inside(&Coor::slot(1, 0)));
+    }
+
+    #[test]
+    fn width_height_and_cells() {
+        let region = Coor::span(0, 0, 1, 1);
+        assert_eq!((region.width(), region.height()), (2, 2));
+        assert_eq!(
+            region.all_slot_coors(),
+            vec![(0, 0), (1, 0), (0, 1), (1, 1)],
+            "cells are enumerated row-major",
+        );
+    }
 
     #[test]
     fn area_reads_the_uppercase_annotation_keys() {

@@ -30,7 +30,7 @@ pub use floorplan::{
     async_mmap_bridge_instance_name, axi_pipeline_instance_name, control_pipeline_instance_name,
     floorplanned_fifo_storage_depth, global_controller_instance_name,
     local_controller_instance_name, Area, AxiChannel, AxiChannelWidths, AxiEndpoint,
-    ControlChannel, FloorplanResult, PipelineRoute, PipelineScheme, RoutedChannel,
+    ControlChannel, Coor, FloorplanResult, PipelineRoute, PipelineScheme, RoutedChannel,
 };
 pub use graph::TaskGraph;
 pub use instance::{Arg, TaskInstance};
