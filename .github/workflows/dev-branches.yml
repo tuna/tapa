@@ -66,6 +66,56 @@ jobs:
       - name: Build docs
         run: bazel build //docs:build
 
+  public-api:
+    name: Public API Surface Audit (Advisory)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - name: Checkout myself
+        uses: actions/checkout@v4
+
+      - name: Install nightly toolchain
+        run: rustup toolchain install nightly --profile minimal --component rust-docs-json
+
+      - name: Install cargo-public-api
+        run: cargo +nightly install cargo-public-api --locked --version 0.52.0
+
+      - name: Generate public API listings
+        working-directory: tapa-core
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/public-api"
+          for crate in tapa-protocol tapa-ir tapa-rtl; do
+            cargo public-api --package "${crate}" \
+              > "${RUNNER_TEMP}/public-api/${crate}.public-api.txt"
+          done
+
+      - name: Upload generated listings
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-api-listings
+          path: ${{ runner.temp }}/public-api/
+          if-no-files-found: ignore
+
+      - name: Diff against blessed baselines
+        run: |
+          set -u
+          status=0
+          for crate in tapa-protocol tapa-ir tapa-rtl; do
+            blessed="docs/api/${crate}.public-api.txt"
+            generated="${RUNNER_TEMP}/public-api/${crate}.public-api.txt"
+            if [ -f "${blessed}" ]; then
+              echo "::group::diff ${crate}"
+              diff -u "${blessed}" "${generated}" || status=1
+              echo "::endgroup::"
+            else
+              echo "::notice::no blessed baseline at ${blessed}; skipping diff"
+            fi
+          done
+          exit "${status}"
+        shell: bash
+
   all-required-branch-checks:
     name: All Required Branch Checks
     runs-on: ubuntu-latest

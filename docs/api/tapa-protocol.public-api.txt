@@ -1,0 +1,106 @@
+pub mod tapa_protocol
+pub enum tapa_protocol::PortDir
+pub tapa_protocol::PortDir::Input
+pub tapa_protocol::PortDir::Output
+impl core::clone::Clone for tapa_protocol::PortDir
+pub fn tapa_protocol::PortDir::clone(&self) -> tapa_protocol::PortDir
+impl core::cmp::Eq for tapa_protocol::PortDir
+impl core::cmp::PartialEq for tapa_protocol::PortDir
+pub fn tapa_protocol::PortDir::eq(&self, &tapa_protocol::PortDir) -> bool
+impl core::fmt::Debug for tapa_protocol::PortDir
+pub fn tapa_protocol::PortDir::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tapa_protocol::PortDir
+impl core::marker::StructuralPartialEq for tapa_protocol::PortDir
+impl core::marker::Freeze for tapa_protocol::PortDir
+impl core::marker::Send for tapa_protocol::PortDir
+impl core::marker::Sync for tapa_protocol::PortDir
+impl core::marker::Unpin for tapa_protocol::PortDir
+impl core::marker::UnsafeUnpin for tapa_protocol::PortDir
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_protocol::PortDir
+impl core::panic::unwind_safe::UnwindSafe for tapa_protocol::PortDir
+impl<T, U> core::convert::Into<U> for tapa_protocol::PortDir where U: core::convert::From<T>
+pub fn tapa_protocol::PortDir::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_protocol::PortDir where U: core::convert::Into<T>
+pub type tapa_protocol::PortDir::Error = core::convert::Infallible
+pub fn tapa_protocol::PortDir::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_protocol::PortDir where U: core::convert::TryFrom<T>
+pub type tapa_protocol::PortDir::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_protocol::PortDir::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_protocol::PortDir where T: core::clone::Clone
+pub type tapa_protocol::PortDir::Owned = T
+pub fn tapa_protocol::PortDir::clone_into(&self, &mut T)
+pub fn tapa_protocol::PortDir::to_owned(&self) -> T
+impl<T> core::any::Any for tapa_protocol::PortDir where T: 'static + ?core::marker::Sized
+pub fn tapa_protocol::PortDir::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_protocol::PortDir where T: ?core::marker::Sized
+pub fn tapa_protocol::PortDir::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_protocol::PortDir where T: ?core::marker::Sized
+pub fn tapa_protocol::PortDir::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_protocol::PortDir where T: core::clone::Clone
+pub unsafe fn tapa_protocol::PortDir::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_protocol::PortDir
+pub fn tapa_protocol::PortDir::from(T) -> T
+pub struct tapa_protocol::AxiChannelInfo
+pub tapa_protocol::AxiChannelInfo::ports: &'static [&'static str]
+pub tapa_protocol::AxiChannelInfo::ready: &'static str
+pub tapa_protocol::AxiChannelInfo::valid: &'static str
+impl core::marker::Freeze for tapa_protocol::AxiChannelInfo
+impl core::marker::Send for tapa_protocol::AxiChannelInfo
+impl core::marker::Sync for tapa_protocol::AxiChannelInfo
+impl core::marker::Unpin for tapa_protocol::AxiChannelInfo
+impl core::marker::UnsafeUnpin for tapa_protocol::AxiChannelInfo
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_protocol::AxiChannelInfo
+impl core::panic::unwind_safe::UnwindSafe for tapa_protocol::AxiChannelInfo
+impl<T, U> core::convert::Into<U> for tapa_protocol::AxiChannelInfo where U: core::convert::From<T>
+pub fn tapa_protocol::AxiChannelInfo::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_protocol::AxiChannelInfo where U: core::convert::Into<T>
+pub type tapa_protocol::AxiChannelInfo::Error = core::convert::Infallible
+pub fn tapa_protocol::AxiChannelInfo::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_protocol::AxiChannelInfo where U: core::convert::TryFrom<T>
+pub type tapa_protocol::AxiChannelInfo::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_protocol::AxiChannelInfo::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> core::any::Any for tapa_protocol::AxiChannelInfo where T: 'static + ?core::marker::Sized
+pub fn tapa_protocol::AxiChannelInfo::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_protocol::AxiChannelInfo where T: ?core::marker::Sized
+pub fn tapa_protocol::AxiChannelInfo::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_protocol::AxiChannelInfo where T: ?core::marker::Sized
+pub fn tapa_protocol::AxiChannelInfo::borrow_mut(&mut self) -> &mut T
+impl<T> core::convert::From<T> for tapa_protocol::AxiChannelInfo
+pub fn tapa_protocol::AxiChannelInfo::from(T) -> T
+pub const tapa_protocol::FIFO_READ_PORTS: &[&str]
+pub const tapa_protocol::FIFO_WRITE_PORTS: &[&str]
+pub const tapa_protocol::HANDSHAKE_CLK: &str
+pub const tapa_protocol::HANDSHAKE_DONE: &str
+pub const tapa_protocol::HANDSHAKE_IDLE: &str
+pub const tapa_protocol::HANDSHAKE_READY: &str
+pub const tapa_protocol::HANDSHAKE_RST: &str
+pub const tapa_protocol::HANDSHAKE_RST_N: &str
+pub const tapa_protocol::HANDSHAKE_START: &str
+pub const tapa_protocol::HLS_CE_REG: &str
+pub const tapa_protocol::HLS_FSM_CS: &str
+pub const tapa_protocol::HLS_FSM_NS: &str
+pub const tapa_protocol::HLS_FSM_STATE_PREFIX: &str
+pub const tapa_protocol::HLS_RST_INV: &str
+pub const tapa_protocol::ISTREAM_SUFFIXES: &[&str]
+pub const tapa_protocol::M_AXI_ADDR_PORTS: &[tapa_protocol::AxiPortEntry]
+pub const tapa_protocol::M_AXI_CHANNEL_ORDER: &[&str]
+pub const tapa_protocol::M_AXI_PREFIX: &str
+pub const tapa_protocol::M_AXI_SUFFIXES: &[&str]
+pub const tapa_protocol::M_AXI_SUFFIXES_COMPACT: &[&str]
+pub const tapa_protocol::OSTREAM_SUFFIXES: &[&str]
+pub const tapa_protocol::STREAM_DATA_SUFFIXES: &[&str]
+pub const tapa_protocol::S_AXI_LITE_CHANNELS: &[tapa_protocol::AxiChannelInfo]
+pub const tapa_protocol::S_AXI_LITE_CTRL_PORTS: &[&str]
+pub const tapa_protocol::S_AXI_LITE_PORT_DIRS: &[tapa_protocol::AxiPortEntry]
+pub const tapa_protocol::S_AXI_NAME: &str
+pub static tapa_protocol::M_AXI_PORTS: phf::map::Map<&'static str, &'static [tapa_protocol::AxiPortEntry]>
+pub static tapa_protocol::M_AXI_PORT_WIDTHS: phf::map::Map<&'static str, u32>
+pub static tapa_protocol::M_AXI_SUFFIXES_BY_CHANNEL: phf::map::Map<&'static str, tapa_protocol::AxiChannelInfo>
+pub static tapa_protocol::STREAM_PORT_DIRECTION: phf::map::Map<&'static str, &'static str>
+pub static tapa_protocol::STREAM_PORT_WIDTH: phf::map::Map<&'static str, u32>
+pub fn tapa_protocol::axi_subport_from_suffix(&str) -> &str
+pub fn tapa_protocol::axi_subport_width(&str, u32, u32, u32) -> u32
+pub const fn tapa_protocol::stream_data_wire_width(u32) -> u32
+pub fn tapa_protocol::stream_peek_port_name(&str, &str) -> alloc::string::String
+pub fn tapa_protocol::stream_port_name(&str, &str) -> alloc::string::String
+pub type tapa_protocol::AxiPortEntry = (&'static str, tapa_protocol::PortDir)

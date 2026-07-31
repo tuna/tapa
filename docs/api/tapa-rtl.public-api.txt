@@ -1,0 +1,1323 @@
+pub mod tapa_rtl
+pub mod tapa_rtl::builder
+pub enum tapa_rtl::builder::BinOperator
+pub tapa_rtl::builder::BinOperator::And
+pub tapa_rtl::builder::BinOperator::BitAnd
+pub tapa_rtl::builder::BinOperator::BitOr
+pub tapa_rtl::builder::BinOperator::Eq
+pub tapa_rtl::builder::BinOperator::Minus
+pub tapa_rtl::builder::BinOperator::Ne
+pub tapa_rtl::builder::BinOperator::Or
+pub tapa_rtl::builder::BinOperator::Plus
+pub tapa_rtl::builder::BinOperator::Shl
+pub tapa_rtl::builder::BinOperator::Shr
+impl core::clone::Clone for tapa_rtl::builder::BinOperator
+pub fn tapa_rtl::builder::BinOperator::clone(&self) -> tapa_rtl::builder::BinOperator
+impl core::cmp::Eq for tapa_rtl::builder::BinOperator
+impl core::cmp::PartialEq for tapa_rtl::builder::BinOperator
+pub fn tapa_rtl::builder::BinOperator::eq(&self, &tapa_rtl::builder::BinOperator) -> bool
+impl core::fmt::Debug for tapa_rtl::builder::BinOperator
+pub fn tapa_rtl::builder::BinOperator::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tapa_rtl::builder::BinOperator
+pub fn tapa_rtl::builder::BinOperator::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tapa_rtl::builder::BinOperator
+impl core::marker::StructuralPartialEq for tapa_rtl::builder::BinOperator
+impl serde_core::ser::Serialize for tapa_rtl::builder::BinOperator
+pub fn tapa_rtl::builder::BinOperator::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tapa_rtl::builder::BinOperator
+pub fn tapa_rtl::builder::BinOperator::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tapa_rtl::builder::BinOperator
+impl core::marker::Send for tapa_rtl::builder::BinOperator
+impl core::marker::Sync for tapa_rtl::builder::BinOperator
+impl core::marker::Unpin for tapa_rtl::builder::BinOperator
+impl core::marker::UnsafeUnpin for tapa_rtl::builder::BinOperator
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_rtl::builder::BinOperator
+impl core::panic::unwind_safe::UnwindSafe for tapa_rtl::builder::BinOperator
+impl<Q, K> equivalent::Equivalent<K> for tapa_rtl::builder::BinOperator where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_rtl::builder::BinOperator::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_rtl::builder::BinOperator where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_rtl::builder::BinOperator::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_rtl::builder::BinOperator where U: core::convert::From<T>
+pub fn tapa_rtl::builder::BinOperator::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_rtl::builder::BinOperator where U: core::convert::Into<T>
+pub type tapa_rtl::builder::BinOperator::Error = core::convert::Infallible
+pub fn tapa_rtl::builder::BinOperator::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_rtl::builder::BinOperator where U: core::convert::TryFrom<T>
+pub type tapa_rtl::builder::BinOperator::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_rtl::builder::BinOperator::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_rtl::builder::BinOperator where T: core::clone::Clone
+pub type tapa_rtl::builder::BinOperator::Owned = T
+pub fn tapa_rtl::builder::BinOperator::clone_into(&self, &mut T)
+pub fn tapa_rtl::builder::BinOperator::to_owned(&self) -> T
+impl<T> alloc::string::ToString for tapa_rtl::builder::BinOperator where T: core::fmt::Display + ?core::marker::Sized
+pub fn tapa_rtl::builder::BinOperator::to_string(&self) -> alloc::string::String
+impl<T> core::any::Any for tapa_rtl::builder::BinOperator where T: 'static + ?core::marker::Sized
+pub fn tapa_rtl::builder::BinOperator::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_rtl::builder::BinOperator where T: ?core::marker::Sized
+pub fn tapa_rtl::builder::BinOperator::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_rtl::builder::BinOperator where T: ?core::marker::Sized
+pub fn tapa_rtl::builder::BinOperator::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_rtl::builder::BinOperator where T: core::clone::Clone
+pub unsafe fn tapa_rtl::builder::BinOperator::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_rtl::builder::BinOperator
+pub fn tapa_rtl::builder::BinOperator::from(T) -> T
+impl<T> serde_core::de::DeserializeOwned for tapa_rtl::builder::BinOperator where T: for<'de> serde_core::de::Deserialize<'de>
+pub enum tapa_rtl::builder::Expr
+pub tapa_rtl::builder::Expr::BinOp
+pub tapa_rtl::builder::Expr::BinOp::lhs: alloc::boxed::Box<Self>
+pub tapa_rtl::builder::Expr::BinOp::op: tapa_rtl::builder::BinOperator
+pub tapa_rtl::builder::Expr::BinOp::rhs: alloc::boxed::Box<Self>
+pub tapa_rtl::builder::Expr::Concat(alloc::vec::Vec<Self>)
+pub tapa_rtl::builder::Expr::Ident(alloc::string::String)
+pub tapa_rtl::builder::Expr::Index
+pub tapa_rtl::builder::Expr::Index::base: alloc::boxed::Box<Self>
+pub tapa_rtl::builder::Expr::Index::index: alloc::boxed::Box<Self>
+pub tapa_rtl::builder::Expr::Lit(alloc::string::String)
+pub tapa_rtl::builder::Expr::Not(alloc::boxed::Box<Self>)
+pub tapa_rtl::builder::Expr::Range
+pub tapa_rtl::builder::Expr::Range::base: alloc::boxed::Box<Self>
+pub tapa_rtl::builder::Expr::Range::lsb: alloc::boxed::Box<Self>
+pub tapa_rtl::builder::Expr::Range::msb: alloc::boxed::Box<Self>
+pub tapa_rtl::builder::Expr::Replicate
+pub tapa_rtl::builder::Expr::Replicate::count: alloc::boxed::Box<Self>
+pub tapa_rtl::builder::Expr::Replicate::expr: alloc::boxed::Box<Self>
+pub tapa_rtl::builder::Expr::Ternary
+pub tapa_rtl::builder::Expr::Ternary::cond: alloc::boxed::Box<Self>
+pub tapa_rtl::builder::Expr::Ternary::else_val: alloc::boxed::Box<Self>
+pub tapa_rtl::builder::Expr::Ternary::then_val: alloc::boxed::Box<Self>
+impl tapa_rtl::builder::Expr
+pub fn tapa_rtl::builder::Expr::bin_op(Self, tapa_rtl::builder::BinOperator, Self) -> Self
+pub fn tapa_rtl::builder::Expr::concat(alloc::vec::Vec<Self>) -> Self
+pub fn tapa_rtl::builder::Expr::eq(Self, Self) -> Self
+pub fn tapa_rtl::builder::Expr::ident(impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tapa_rtl::builder::Expr::index(Self, Self) -> Self
+pub fn tapa_rtl::builder::Expr::int(u64) -> Self
+pub fn tapa_rtl::builder::Expr::int_const(u32, u64) -> Self
+pub fn tapa_rtl::builder::Expr::lit(impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tapa_rtl::builder::Expr::logical_and(Self, Self) -> Self
+pub fn tapa_rtl::builder::Expr::logical_not(Self) -> Self
+pub fn tapa_rtl::builder::Expr::minus(Self, Self) -> Self
+pub fn tapa_rtl::builder::Expr::plus(Self, Self) -> Self
+pub fn tapa_rtl::builder::Expr::range(Self, Self, Self) -> Self
+pub fn tapa_rtl::builder::Expr::ternary(Self, Self, Self) -> Self
+impl core::clone::Clone for tapa_rtl::builder::Expr
+pub fn tapa_rtl::builder::Expr::clone(&self) -> tapa_rtl::builder::Expr
+impl core::cmp::Eq for tapa_rtl::builder::Expr
+impl core::cmp::PartialEq for tapa_rtl::builder::Expr
+pub fn tapa_rtl::builder::Expr::eq(&self, &tapa_rtl::builder::Expr) -> bool
+impl core::fmt::Debug for tapa_rtl::builder::Expr
+pub fn tapa_rtl::builder::Expr::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tapa_rtl::builder::Expr
+pub fn tapa_rtl::builder::Expr::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tapa_rtl::builder::Expr
+impl serde_core::ser::Serialize for tapa_rtl::builder::Expr
+pub fn tapa_rtl::builder::Expr::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tapa_rtl::builder::Expr
+pub fn tapa_rtl::builder::Expr::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tapa_rtl::builder::Expr
+impl core::marker::Send for tapa_rtl::builder::Expr
+impl core::marker::Sync for tapa_rtl::builder::Expr
+impl core::marker::Unpin for tapa_rtl::builder::Expr
+impl core::marker::UnsafeUnpin for tapa_rtl::builder::Expr
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_rtl::builder::Expr
+impl core::panic::unwind_safe::UnwindSafe for tapa_rtl::builder::Expr
+impl<Q, K> equivalent::Equivalent<K> for tapa_rtl::builder::Expr where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_rtl::builder::Expr::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_rtl::builder::Expr where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_rtl::builder::Expr::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_rtl::builder::Expr where U: core::convert::From<T>
+pub fn tapa_rtl::builder::Expr::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_rtl::builder::Expr where U: core::convert::Into<T>
+pub type tapa_rtl::builder::Expr::Error = core::convert::Infallible
+pub fn tapa_rtl::builder::Expr::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_rtl::builder::Expr where U: core::convert::TryFrom<T>
+pub type tapa_rtl::builder::Expr::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_rtl::builder::Expr::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_rtl::builder::Expr where T: core::clone::Clone
+pub type tapa_rtl::builder::Expr::Owned = T
+pub fn tapa_rtl::builder::Expr::clone_into(&self, &mut T)
+pub fn tapa_rtl::builder::Expr::to_owned(&self) -> T
+impl<T> alloc::string::ToString for tapa_rtl::builder::Expr where T: core::fmt::Display + ?core::marker::Sized
+pub fn tapa_rtl::builder::Expr::to_string(&self) -> alloc::string::String
+impl<T> core::any::Any for tapa_rtl::builder::Expr where T: 'static + ?core::marker::Sized
+pub fn tapa_rtl::builder::Expr::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_rtl::builder::Expr where T: ?core::marker::Sized
+pub fn tapa_rtl::builder::Expr::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_rtl::builder::Expr where T: ?core::marker::Sized
+pub fn tapa_rtl::builder::Expr::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_rtl::builder::Expr where T: core::clone::Clone
+pub unsafe fn tapa_rtl::builder::Expr::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_rtl::builder::Expr
+pub fn tapa_rtl::builder::Expr::from(T) -> T
+impl<T> serde_core::de::DeserializeOwned for tapa_rtl::builder::Expr where T: for<'de> serde_core::de::Deserialize<'de>
+pub enum tapa_rtl::builder::Sensitivity
+pub tapa_rtl::builder::Sensitivity::Posedge(alloc::string::String)
+pub tapa_rtl::builder::Sensitivity::Star
+impl core::clone::Clone for tapa_rtl::builder::Sensitivity
+pub fn tapa_rtl::builder::Sensitivity::clone(&self) -> tapa_rtl::builder::Sensitivity
+impl core::cmp::Eq for tapa_rtl::builder::Sensitivity
+impl core::cmp::PartialEq for tapa_rtl::builder::Sensitivity
+pub fn tapa_rtl::builder::Sensitivity::eq(&self, &tapa_rtl::builder::Sensitivity) -> bool
+impl core::fmt::Debug for tapa_rtl::builder::Sensitivity
+pub fn tapa_rtl::builder::Sensitivity::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tapa_rtl::builder::Sensitivity
+impl serde_core::ser::Serialize for tapa_rtl::builder::Sensitivity
+pub fn tapa_rtl::builder::Sensitivity::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tapa_rtl::builder::Sensitivity
+pub fn tapa_rtl::builder::Sensitivity::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tapa_rtl::builder::Sensitivity
+impl core::marker::Send for tapa_rtl::builder::Sensitivity
+impl core::marker::Sync for tapa_rtl::builder::Sensitivity
+impl core::marker::Unpin for tapa_rtl::builder::Sensitivity
+impl core::marker::UnsafeUnpin for tapa_rtl::builder::Sensitivity
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_rtl::builder::Sensitivity
+impl core::panic::unwind_safe::UnwindSafe for tapa_rtl::builder::Sensitivity
+impl<Q, K> equivalent::Equivalent<K> for tapa_rtl::builder::Sensitivity where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_rtl::builder::Sensitivity::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_rtl::builder::Sensitivity where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_rtl::builder::Sensitivity::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_rtl::builder::Sensitivity where U: core::convert::From<T>
+pub fn tapa_rtl::builder::Sensitivity::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_rtl::builder::Sensitivity where U: core::convert::Into<T>
+pub type tapa_rtl::builder::Sensitivity::Error = core::convert::Infallible
+pub fn tapa_rtl::builder::Sensitivity::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_rtl::builder::Sensitivity where U: core::convert::TryFrom<T>
+pub type tapa_rtl::builder::Sensitivity::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_rtl::builder::Sensitivity::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_rtl::builder::Sensitivity where T: core::clone::Clone
+pub type tapa_rtl::builder::Sensitivity::Owned = T
+pub fn tapa_rtl::builder::Sensitivity::clone_into(&self, &mut T)
+pub fn tapa_rtl::builder::Sensitivity::to_owned(&self) -> T
+impl<T> core::any::Any for tapa_rtl::builder::Sensitivity where T: 'static + ?core::marker::Sized
+pub fn tapa_rtl::builder::Sensitivity::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_rtl::builder::Sensitivity where T: ?core::marker::Sized
+pub fn tapa_rtl::builder::Sensitivity::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_rtl::builder::Sensitivity where T: ?core::marker::Sized
+pub fn tapa_rtl::builder::Sensitivity::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_rtl::builder::Sensitivity where T: core::clone::Clone
+pub unsafe fn tapa_rtl::builder::Sensitivity::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_rtl::builder::Sensitivity
+pub fn tapa_rtl::builder::Sensitivity::from(T) -> T
+impl<T> serde_core::de::DeserializeOwned for tapa_rtl::builder::Sensitivity where T: for<'de> serde_core::de::Deserialize<'de>
+pub enum tapa_rtl::builder::Statement
+pub tapa_rtl::builder::Statement::Block(alloc::vec::Vec<Self>)
+pub tapa_rtl::builder::Statement::BlockingAssign
+pub tapa_rtl::builder::Statement::BlockingAssign::lhs: tapa_rtl::builder::Expr
+pub tapa_rtl::builder::Statement::BlockingAssign::rhs: tapa_rtl::builder::Expr
+pub tapa_rtl::builder::Statement::Case
+pub tapa_rtl::builder::Statement::Case::default: alloc::vec::Vec<Self>
+pub tapa_rtl::builder::Statement::Case::expr: tapa_rtl::builder::Expr
+pub tapa_rtl::builder::Statement::Case::items: alloc::vec::Vec<tapa_rtl::builder::CaseItem>
+pub tapa_rtl::builder::Statement::If
+pub tapa_rtl::builder::Statement::If::cond: tapa_rtl::builder::Expr
+pub tapa_rtl::builder::Statement::If::else_body: alloc::vec::Vec<Self>
+pub tapa_rtl::builder::Statement::If::then_body: alloc::vec::Vec<Self>
+pub tapa_rtl::builder::Statement::NonblockingAssign
+pub tapa_rtl::builder::Statement::NonblockingAssign::lhs: tapa_rtl::builder::Expr
+pub tapa_rtl::builder::Statement::NonblockingAssign::rhs: tapa_rtl::builder::Expr
+impl core::clone::Clone for tapa_rtl::builder::Statement
+pub fn tapa_rtl::builder::Statement::clone(&self) -> tapa_rtl::builder::Statement
+impl core::cmp::Eq for tapa_rtl::builder::Statement
+impl core::cmp::PartialEq for tapa_rtl::builder::Statement
+pub fn tapa_rtl::builder::Statement::eq(&self, &tapa_rtl::builder::Statement) -> bool
+impl core::fmt::Debug for tapa_rtl::builder::Statement
+pub fn tapa_rtl::builder::Statement::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tapa_rtl::builder::Statement
+impl serde_core::ser::Serialize for tapa_rtl::builder::Statement
+pub fn tapa_rtl::builder::Statement::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tapa_rtl::builder::Statement
+pub fn tapa_rtl::builder::Statement::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tapa_rtl::builder::Statement
+impl core::marker::Send for tapa_rtl::builder::Statement
+impl core::marker::Sync for tapa_rtl::builder::Statement
+impl core::marker::Unpin for tapa_rtl::builder::Statement
+impl core::marker::UnsafeUnpin for tapa_rtl::builder::Statement
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_rtl::builder::Statement
+impl core::panic::unwind_safe::UnwindSafe for tapa_rtl::builder::Statement
+impl<Q, K> equivalent::Equivalent<K> for tapa_rtl::builder::Statement where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_rtl::builder::Statement::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_rtl::builder::Statement where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_rtl::builder::Statement::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_rtl::builder::Statement where U: core::convert::From<T>
+pub fn tapa_rtl::builder::Statement::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_rtl::builder::Statement where U: core::convert::Into<T>
+pub type tapa_rtl::builder::Statement::Error = core::convert::Infallible
+pub fn tapa_rtl::builder::Statement::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_rtl::builder::Statement where U: core::convert::TryFrom<T>
+pub type tapa_rtl::builder::Statement::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_rtl::builder::Statement::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_rtl::builder::Statement where T: core::clone::Clone
+pub type tapa_rtl::builder::Statement::Owned = T
+pub fn tapa_rtl::builder::Statement::clone_into(&self, &mut T)
+pub fn tapa_rtl::builder::Statement::to_owned(&self) -> T
+impl<T> core::any::Any for tapa_rtl::builder::Statement where T: 'static + ?core::marker::Sized
+pub fn tapa_rtl::builder::Statement::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_rtl::builder::Statement where T: ?core::marker::Sized
+pub fn tapa_rtl::builder::Statement::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_rtl::builder::Statement where T: ?core::marker::Sized
+pub fn tapa_rtl::builder::Statement::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_rtl::builder::Statement where T: core::clone::Clone
+pub unsafe fn tapa_rtl::builder::Statement::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_rtl::builder::Statement
+pub fn tapa_rtl::builder::Statement::from(T) -> T
+impl<T> serde_core::de::DeserializeOwned for tapa_rtl::builder::Statement where T: for<'de> serde_core::de::Deserialize<'de>
+pub struct tapa_rtl::builder::AlwaysBlock
+pub tapa_rtl::builder::AlwaysBlock::body: alloc::vec::Vec<tapa_rtl::builder::Statement>
+pub tapa_rtl::builder::AlwaysBlock::sensitivity: tapa_rtl::builder::Sensitivity
+impl tapa_rtl::builder::AlwaysBlock
+pub fn tapa_rtl::builder::AlwaysBlock::combinational(alloc::vec::Vec<tapa_rtl::builder::Statement>) -> Self
+pub fn tapa_rtl::builder::AlwaysBlock::new(tapa_rtl::builder::Sensitivity, alloc::vec::Vec<tapa_rtl::builder::Statement>) -> Self
+pub fn tapa_rtl::builder::AlwaysBlock::posedge(impl core::convert::Into<alloc::string::String>, alloc::vec::Vec<tapa_rtl::builder::Statement>) -> Self
+impl core::clone::Clone for tapa_rtl::builder::AlwaysBlock
+pub fn tapa_rtl::builder::AlwaysBlock::clone(&self) -> tapa_rtl::builder::AlwaysBlock
+impl core::cmp::Eq for tapa_rtl::builder::AlwaysBlock
+impl core::cmp::PartialEq for tapa_rtl::builder::AlwaysBlock
+pub fn tapa_rtl::builder::AlwaysBlock::eq(&self, &tapa_rtl::builder::AlwaysBlock) -> bool
+impl core::fmt::Debug for tapa_rtl::builder::AlwaysBlock
+pub fn tapa_rtl::builder::AlwaysBlock::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tapa_rtl::builder::AlwaysBlock
+pub fn tapa_rtl::builder::AlwaysBlock::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tapa_rtl::builder::AlwaysBlock
+impl serde_core::ser::Serialize for tapa_rtl::builder::AlwaysBlock
+pub fn tapa_rtl::builder::AlwaysBlock::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tapa_rtl::builder::AlwaysBlock
+pub fn tapa_rtl::builder::AlwaysBlock::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tapa_rtl::builder::AlwaysBlock
+impl core::marker::Send for tapa_rtl::builder::AlwaysBlock
+impl core::marker::Sync for tapa_rtl::builder::AlwaysBlock
+impl core::marker::Unpin for tapa_rtl::builder::AlwaysBlock
+impl core::marker::UnsafeUnpin for tapa_rtl::builder::AlwaysBlock
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_rtl::builder::AlwaysBlock
+impl core::panic::unwind_safe::UnwindSafe for tapa_rtl::builder::AlwaysBlock
+impl<Q, K> equivalent::Equivalent<K> for tapa_rtl::builder::AlwaysBlock where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_rtl::builder::AlwaysBlock::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_rtl::builder::AlwaysBlock where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_rtl::builder::AlwaysBlock::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_rtl::builder::AlwaysBlock where U: core::convert::From<T>
+pub fn tapa_rtl::builder::AlwaysBlock::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_rtl::builder::AlwaysBlock where U: core::convert::Into<T>
+pub type tapa_rtl::builder::AlwaysBlock::Error = core::convert::Infallible
+pub fn tapa_rtl::builder::AlwaysBlock::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_rtl::builder::AlwaysBlock where U: core::convert::TryFrom<T>
+pub type tapa_rtl::builder::AlwaysBlock::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_rtl::builder::AlwaysBlock::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_rtl::builder::AlwaysBlock where T: core::clone::Clone
+pub type tapa_rtl::builder::AlwaysBlock::Owned = T
+pub fn tapa_rtl::builder::AlwaysBlock::clone_into(&self, &mut T)
+pub fn tapa_rtl::builder::AlwaysBlock::to_owned(&self) -> T
+impl<T> alloc::string::ToString for tapa_rtl::builder::AlwaysBlock where T: core::fmt::Display + ?core::marker::Sized
+pub fn tapa_rtl::builder::AlwaysBlock::to_string(&self) -> alloc::string::String
+impl<T> core::any::Any for tapa_rtl::builder::AlwaysBlock where T: 'static + ?core::marker::Sized
+pub fn tapa_rtl::builder::AlwaysBlock::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_rtl::builder::AlwaysBlock where T: ?core::marker::Sized
+pub fn tapa_rtl::builder::AlwaysBlock::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_rtl::builder::AlwaysBlock where T: ?core::marker::Sized
+pub fn tapa_rtl::builder::AlwaysBlock::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_rtl::builder::AlwaysBlock where T: core::clone::Clone
+pub unsafe fn tapa_rtl::builder::AlwaysBlock::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_rtl::builder::AlwaysBlock
+pub fn tapa_rtl::builder::AlwaysBlock::from(T) -> T
+impl<T> serde_core::de::DeserializeOwned for tapa_rtl::builder::AlwaysBlock where T: for<'de> serde_core::de::Deserialize<'de>
+pub struct tapa_rtl::builder::CaseItem
+pub tapa_rtl::builder::CaseItem::body: alloc::vec::Vec<tapa_rtl::builder::Statement>
+pub tapa_rtl::builder::CaseItem::value: tapa_rtl::builder::Expr
+impl tapa_rtl::builder::CaseItem
+pub fn tapa_rtl::builder::CaseItem::new(tapa_rtl::builder::Expr, alloc::vec::Vec<tapa_rtl::builder::Statement>) -> Self
+impl core::clone::Clone for tapa_rtl::builder::CaseItem
+pub fn tapa_rtl::builder::CaseItem::clone(&self) -> tapa_rtl::builder::CaseItem
+impl core::cmp::Eq for tapa_rtl::builder::CaseItem
+impl core::cmp::PartialEq for tapa_rtl::builder::CaseItem
+pub fn tapa_rtl::builder::CaseItem::eq(&self, &tapa_rtl::builder::CaseItem) -> bool
+impl core::fmt::Debug for tapa_rtl::builder::CaseItem
+pub fn tapa_rtl::builder::CaseItem::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tapa_rtl::builder::CaseItem
+impl serde_core::ser::Serialize for tapa_rtl::builder::CaseItem
+pub fn tapa_rtl::builder::CaseItem::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tapa_rtl::builder::CaseItem
+pub fn tapa_rtl::builder::CaseItem::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tapa_rtl::builder::CaseItem
+impl core::marker::Send for tapa_rtl::builder::CaseItem
+impl core::marker::Sync for tapa_rtl::builder::CaseItem
+impl core::marker::Unpin for tapa_rtl::builder::CaseItem
+impl core::marker::UnsafeUnpin for tapa_rtl::builder::CaseItem
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_rtl::builder::CaseItem
+impl core::panic::unwind_safe::UnwindSafe for tapa_rtl::builder::CaseItem
+impl<Q, K> equivalent::Equivalent<K> for tapa_rtl::builder::CaseItem where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_rtl::builder::CaseItem::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_rtl::builder::CaseItem where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_rtl::builder::CaseItem::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_rtl::builder::CaseItem where U: core::convert::From<T>
+pub fn tapa_rtl::builder::CaseItem::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_rtl::builder::CaseItem where U: core::convert::Into<T>
+pub type tapa_rtl::builder::CaseItem::Error = core::convert::Infallible
+pub fn tapa_rtl::builder::CaseItem::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_rtl::builder::CaseItem where U: core::convert::TryFrom<T>
+pub type tapa_rtl::builder::CaseItem::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_rtl::builder::CaseItem::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_rtl::builder::CaseItem where T: core::clone::Clone
+pub type tapa_rtl::builder::CaseItem::Owned = T
+pub fn tapa_rtl::builder::CaseItem::clone_into(&self, &mut T)
+pub fn tapa_rtl::builder::CaseItem::to_owned(&self) -> T
+impl<T> core::any::Any for tapa_rtl::builder::CaseItem where T: 'static + ?core::marker::Sized
+pub fn tapa_rtl::builder::CaseItem::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_rtl::builder::CaseItem where T: ?core::marker::Sized
+pub fn tapa_rtl::builder::CaseItem::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_rtl::builder::CaseItem where T: ?core::marker::Sized
+pub fn tapa_rtl::builder::CaseItem::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_rtl::builder::CaseItem where T: core::clone::Clone
+pub unsafe fn tapa_rtl::builder::CaseItem::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_rtl::builder::CaseItem
+pub fn tapa_rtl::builder::CaseItem::from(T) -> T
+impl<T> serde_core::de::DeserializeOwned for tapa_rtl::builder::CaseItem where T: for<'de> serde_core::de::Deserialize<'de>
+pub struct tapa_rtl::builder::ContinuousAssign
+pub tapa_rtl::builder::ContinuousAssign::lhs: tapa_rtl::builder::Expr
+pub tapa_rtl::builder::ContinuousAssign::rhs: tapa_rtl::builder::Expr
+impl tapa_rtl::builder::ContinuousAssign
+pub fn tapa_rtl::builder::ContinuousAssign::new(tapa_rtl::builder::Expr, tapa_rtl::builder::Expr) -> Self
+impl core::clone::Clone for tapa_rtl::builder::ContinuousAssign
+pub fn tapa_rtl::builder::ContinuousAssign::clone(&self) -> tapa_rtl::builder::ContinuousAssign
+impl core::cmp::Eq for tapa_rtl::builder::ContinuousAssign
+impl core::cmp::PartialEq for tapa_rtl::builder::ContinuousAssign
+pub fn tapa_rtl::builder::ContinuousAssign::eq(&self, &tapa_rtl::builder::ContinuousAssign) -> bool
+impl core::fmt::Debug for tapa_rtl::builder::ContinuousAssign
+pub fn tapa_rtl::builder::ContinuousAssign::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tapa_rtl::builder::ContinuousAssign
+pub fn tapa_rtl::builder::ContinuousAssign::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tapa_rtl::builder::ContinuousAssign
+impl serde_core::ser::Serialize for tapa_rtl::builder::ContinuousAssign
+pub fn tapa_rtl::builder::ContinuousAssign::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tapa_rtl::builder::ContinuousAssign
+pub fn tapa_rtl::builder::ContinuousAssign::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tapa_rtl::builder::ContinuousAssign
+impl core::marker::Send for tapa_rtl::builder::ContinuousAssign
+impl core::marker::Sync for tapa_rtl::builder::ContinuousAssign
+impl core::marker::Unpin for tapa_rtl::builder::ContinuousAssign
+impl core::marker::UnsafeUnpin for tapa_rtl::builder::ContinuousAssign
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_rtl::builder::ContinuousAssign
+impl core::panic::unwind_safe::UnwindSafe for tapa_rtl::builder::ContinuousAssign
+impl<Q, K> equivalent::Equivalent<K> for tapa_rtl::builder::ContinuousAssign where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_rtl::builder::ContinuousAssign::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_rtl::builder::ContinuousAssign where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_rtl::builder::ContinuousAssign::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_rtl::builder::ContinuousAssign where U: core::convert::From<T>
+pub fn tapa_rtl::builder::ContinuousAssign::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_rtl::builder::ContinuousAssign where U: core::convert::Into<T>
+pub type tapa_rtl::builder::ContinuousAssign::Error = core::convert::Infallible
+pub fn tapa_rtl::builder::ContinuousAssign::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_rtl::builder::ContinuousAssign where U: core::convert::TryFrom<T>
+pub type tapa_rtl::builder::ContinuousAssign::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_rtl::builder::ContinuousAssign::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_rtl::builder::ContinuousAssign where T: core::clone::Clone
+pub type tapa_rtl::builder::ContinuousAssign::Owned = T
+pub fn tapa_rtl::builder::ContinuousAssign::clone_into(&self, &mut T)
+pub fn tapa_rtl::builder::ContinuousAssign::to_owned(&self) -> T
+impl<T> alloc::string::ToString for tapa_rtl::builder::ContinuousAssign where T: core::fmt::Display + ?core::marker::Sized
+pub fn tapa_rtl::builder::ContinuousAssign::to_string(&self) -> alloc::string::String
+impl<T> core::any::Any for tapa_rtl::builder::ContinuousAssign where T: 'static + ?core::marker::Sized
+pub fn tapa_rtl::builder::ContinuousAssign::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_rtl::builder::ContinuousAssign where T: ?core::marker::Sized
+pub fn tapa_rtl::builder::ContinuousAssign::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_rtl::builder::ContinuousAssign where T: ?core::marker::Sized
+pub fn tapa_rtl::builder::ContinuousAssign::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_rtl::builder::ContinuousAssign where T: core::clone::Clone
+pub unsafe fn tapa_rtl::builder::ContinuousAssign::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_rtl::builder::ContinuousAssign
+pub fn tapa_rtl::builder::ContinuousAssign::from(T) -> T
+impl<T> serde_core::de::DeserializeOwned for tapa_rtl::builder::ContinuousAssign where T: for<'de> serde_core::de::Deserialize<'de>
+pub struct tapa_rtl::builder::ModuleInstance
+pub tapa_rtl::builder::ModuleInstance::instance_name: alloc::string::String
+pub tapa_rtl::builder::ModuleInstance::module_name: alloc::string::String
+pub tapa_rtl::builder::ModuleInstance::params: alloc::vec::Vec<tapa_rtl::builder::ParamArg>
+pub tapa_rtl::builder::ModuleInstance::ports: alloc::vec::Vec<tapa_rtl::builder::PortArg>
+impl tapa_rtl::builder::ModuleInstance
+pub fn tapa_rtl::builder::ModuleInstance::new(impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>) -> Self
+pub fn tapa_rtl::builder::ModuleInstance::try_new(impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, tapa_rtl::BuilderError>
+pub fn tapa_rtl::builder::ModuleInstance::validate(&self) -> core::result::Result<(), tapa_rtl::BuilderError>
+pub fn tapa_rtl::builder::ModuleInstance::with_params(self, alloc::vec::Vec<tapa_rtl::builder::ParamArg>) -> Self
+pub fn tapa_rtl::builder::ModuleInstance::with_ports(self, alloc::vec::Vec<tapa_rtl::builder::PortArg>) -> Self
+impl core::clone::Clone for tapa_rtl::builder::ModuleInstance
+pub fn tapa_rtl::builder::ModuleInstance::clone(&self) -> tapa_rtl::builder::ModuleInstance
+impl core::cmp::Eq for tapa_rtl::builder::ModuleInstance
+impl core::cmp::PartialEq for tapa_rtl::builder::ModuleInstance
+pub fn tapa_rtl::builder::ModuleInstance::eq(&self, &tapa_rtl::builder::ModuleInstance) -> bool
+impl core::fmt::Debug for tapa_rtl::builder::ModuleInstance
+pub fn tapa_rtl::builder::ModuleInstance::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tapa_rtl::builder::ModuleInstance
+pub fn tapa_rtl::builder::ModuleInstance::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tapa_rtl::builder::ModuleInstance
+impl serde_core::ser::Serialize for tapa_rtl::builder::ModuleInstance
+pub fn tapa_rtl::builder::ModuleInstance::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tapa_rtl::builder::ModuleInstance
+pub fn tapa_rtl::builder::ModuleInstance::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tapa_rtl::builder::ModuleInstance
+impl core::marker::Send for tapa_rtl::builder::ModuleInstance
+impl core::marker::Sync for tapa_rtl::builder::ModuleInstance
+impl core::marker::Unpin for tapa_rtl::builder::ModuleInstance
+impl core::marker::UnsafeUnpin for tapa_rtl::builder::ModuleInstance
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_rtl::builder::ModuleInstance
+impl core::panic::unwind_safe::UnwindSafe for tapa_rtl::builder::ModuleInstance
+impl<Q, K> equivalent::Equivalent<K> for tapa_rtl::builder::ModuleInstance where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_rtl::builder::ModuleInstance::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_rtl::builder::ModuleInstance where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_rtl::builder::ModuleInstance::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_rtl::builder::ModuleInstance where U: core::convert::From<T>
+pub fn tapa_rtl::builder::ModuleInstance::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_rtl::builder::ModuleInstance where U: core::convert::Into<T>
+pub type tapa_rtl::builder::ModuleInstance::Error = core::convert::Infallible
+pub fn tapa_rtl::builder::ModuleInstance::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_rtl::builder::ModuleInstance where U: core::convert::TryFrom<T>
+pub type tapa_rtl::builder::ModuleInstance::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_rtl::builder::ModuleInstance::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_rtl::builder::ModuleInstance where T: core::clone::Clone
+pub type tapa_rtl::builder::ModuleInstance::Owned = T
+pub fn tapa_rtl::builder::ModuleInstance::clone_into(&self, &mut T)
+pub fn tapa_rtl::builder::ModuleInstance::to_owned(&self) -> T
+impl<T> alloc::string::ToString for tapa_rtl::builder::ModuleInstance where T: core::fmt::Display + ?core::marker::Sized
+pub fn tapa_rtl::builder::ModuleInstance::to_string(&self) -> alloc::string::String
+impl<T> core::any::Any for tapa_rtl::builder::ModuleInstance where T: 'static + ?core::marker::Sized
+pub fn tapa_rtl::builder::ModuleInstance::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_rtl::builder::ModuleInstance where T: ?core::marker::Sized
+pub fn tapa_rtl::builder::ModuleInstance::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_rtl::builder::ModuleInstance where T: ?core::marker::Sized
+pub fn tapa_rtl::builder::ModuleInstance::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_rtl::builder::ModuleInstance where T: core::clone::Clone
+pub unsafe fn tapa_rtl::builder::ModuleInstance::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_rtl::builder::ModuleInstance
+pub fn tapa_rtl::builder::ModuleInstance::from(T) -> T
+impl<T> serde_core::de::DeserializeOwned for tapa_rtl::builder::ModuleInstance where T: for<'de> serde_core::de::Deserialize<'de>
+pub struct tapa_rtl::builder::ParamArg
+pub tapa_rtl::builder::ParamArg::param_name: alloc::string::String
+pub tapa_rtl::builder::ParamArg::value: tapa_rtl::builder::Expr
+impl tapa_rtl::builder::ParamArg
+pub fn tapa_rtl::builder::ParamArg::new(impl core::convert::Into<alloc::string::String>, tapa_rtl::builder::Expr) -> Self
+impl core::clone::Clone for tapa_rtl::builder::ParamArg
+pub fn tapa_rtl::builder::ParamArg::clone(&self) -> tapa_rtl::builder::ParamArg
+impl core::cmp::Eq for tapa_rtl::builder::ParamArg
+impl core::cmp::PartialEq for tapa_rtl::builder::ParamArg
+pub fn tapa_rtl::builder::ParamArg::eq(&self, &tapa_rtl::builder::ParamArg) -> bool
+impl core::fmt::Debug for tapa_rtl::builder::ParamArg
+pub fn tapa_rtl::builder::ParamArg::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tapa_rtl::builder::ParamArg
+pub fn tapa_rtl::builder::ParamArg::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tapa_rtl::builder::ParamArg
+impl serde_core::ser::Serialize for tapa_rtl::builder::ParamArg
+pub fn tapa_rtl::builder::ParamArg::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tapa_rtl::builder::ParamArg
+pub fn tapa_rtl::builder::ParamArg::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tapa_rtl::builder::ParamArg
+impl core::marker::Send for tapa_rtl::builder::ParamArg
+impl core::marker::Sync for tapa_rtl::builder::ParamArg
+impl core::marker::Unpin for tapa_rtl::builder::ParamArg
+impl core::marker::UnsafeUnpin for tapa_rtl::builder::ParamArg
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_rtl::builder::ParamArg
+impl core::panic::unwind_safe::UnwindSafe for tapa_rtl::builder::ParamArg
+impl<Q, K> equivalent::Equivalent<K> for tapa_rtl::builder::ParamArg where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_rtl::builder::ParamArg::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_rtl::builder::ParamArg where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_rtl::builder::ParamArg::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_rtl::builder::ParamArg where U: core::convert::From<T>
+pub fn tapa_rtl::builder::ParamArg::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_rtl::builder::ParamArg where U: core::convert::Into<T>
+pub type tapa_rtl::builder::ParamArg::Error = core::convert::Infallible
+pub fn tapa_rtl::builder::ParamArg::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_rtl::builder::ParamArg where U: core::convert::TryFrom<T>
+pub type tapa_rtl::builder::ParamArg::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_rtl::builder::ParamArg::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_rtl::builder::ParamArg where T: core::clone::Clone
+pub type tapa_rtl::builder::ParamArg::Owned = T
+pub fn tapa_rtl::builder::ParamArg::clone_into(&self, &mut T)
+pub fn tapa_rtl::builder::ParamArg::to_owned(&self) -> T
+impl<T> alloc::string::ToString for tapa_rtl::builder::ParamArg where T: core::fmt::Display + ?core::marker::Sized
+pub fn tapa_rtl::builder::ParamArg::to_string(&self) -> alloc::string::String
+impl<T> core::any::Any for tapa_rtl::builder::ParamArg where T: 'static + ?core::marker::Sized
+pub fn tapa_rtl::builder::ParamArg::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_rtl::builder::ParamArg where T: ?core::marker::Sized
+pub fn tapa_rtl::builder::ParamArg::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_rtl::builder::ParamArg where T: ?core::marker::Sized
+pub fn tapa_rtl::builder::ParamArg::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_rtl::builder::ParamArg where T: core::clone::Clone
+pub unsafe fn tapa_rtl::builder::ParamArg::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_rtl::builder::ParamArg
+pub fn tapa_rtl::builder::ParamArg::from(T) -> T
+impl<T> serde_core::de::DeserializeOwned for tapa_rtl::builder::ParamArg where T: for<'de> serde_core::de::Deserialize<'de>
+pub struct tapa_rtl::builder::PortArg
+pub tapa_rtl::builder::PortArg::connection: tapa_rtl::builder::Expr
+pub tapa_rtl::builder::PortArg::port_name: alloc::string::String
+impl tapa_rtl::builder::PortArg
+pub fn tapa_rtl::builder::PortArg::new(impl core::convert::Into<alloc::string::String>, tapa_rtl::builder::Expr) -> Self
+impl core::clone::Clone for tapa_rtl::builder::PortArg
+pub fn tapa_rtl::builder::PortArg::clone(&self) -> tapa_rtl::builder::PortArg
+impl core::cmp::Eq for tapa_rtl::builder::PortArg
+impl core::cmp::PartialEq for tapa_rtl::builder::PortArg
+pub fn tapa_rtl::builder::PortArg::eq(&self, &tapa_rtl::builder::PortArg) -> bool
+impl core::fmt::Debug for tapa_rtl::builder::PortArg
+pub fn tapa_rtl::builder::PortArg::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tapa_rtl::builder::PortArg
+pub fn tapa_rtl::builder::PortArg::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tapa_rtl::builder::PortArg
+impl serde_core::ser::Serialize for tapa_rtl::builder::PortArg
+pub fn tapa_rtl::builder::PortArg::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tapa_rtl::builder::PortArg
+pub fn tapa_rtl::builder::PortArg::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tapa_rtl::builder::PortArg
+impl core::marker::Send for tapa_rtl::builder::PortArg
+impl core::marker::Sync for tapa_rtl::builder::PortArg
+impl core::marker::Unpin for tapa_rtl::builder::PortArg
+impl core::marker::UnsafeUnpin for tapa_rtl::builder::PortArg
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_rtl::builder::PortArg
+impl core::panic::unwind_safe::UnwindSafe for tapa_rtl::builder::PortArg
+impl<Q, K> equivalent::Equivalent<K> for tapa_rtl::builder::PortArg where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_rtl::builder::PortArg::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_rtl::builder::PortArg where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_rtl::builder::PortArg::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_rtl::builder::PortArg where U: core::convert::From<T>
+pub fn tapa_rtl::builder::PortArg::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_rtl::builder::PortArg where U: core::convert::Into<T>
+pub type tapa_rtl::builder::PortArg::Error = core::convert::Infallible
+pub fn tapa_rtl::builder::PortArg::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_rtl::builder::PortArg where U: core::convert::TryFrom<T>
+pub type tapa_rtl::builder::PortArg::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_rtl::builder::PortArg::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_rtl::builder::PortArg where T: core::clone::Clone
+pub type tapa_rtl::builder::PortArg::Owned = T
+pub fn tapa_rtl::builder::PortArg::clone_into(&self, &mut T)
+pub fn tapa_rtl::builder::PortArg::to_owned(&self) -> T
+impl<T> alloc::string::ToString for tapa_rtl::builder::PortArg where T: core::fmt::Display + ?core::marker::Sized
+pub fn tapa_rtl::builder::PortArg::to_string(&self) -> alloc::string::String
+impl<T> core::any::Any for tapa_rtl::builder::PortArg where T: 'static + ?core::marker::Sized
+pub fn tapa_rtl::builder::PortArg::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_rtl::builder::PortArg where T: ?core::marker::Sized
+pub fn tapa_rtl::builder::PortArg::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_rtl::builder::PortArg where T: ?core::marker::Sized
+pub fn tapa_rtl::builder::PortArg::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_rtl::builder::PortArg where T: core::clone::Clone
+pub unsafe fn tapa_rtl::builder::PortArg::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_rtl::builder::PortArg
+pub fn tapa_rtl::builder::PortArg::from(T) -> T
+impl<T> serde_core::de::DeserializeOwned for tapa_rtl::builder::PortArg where T: for<'de> serde_core::de::Deserialize<'de>
+pub mod tapa_rtl::emit
+pub mod tapa_rtl::expression
+pub enum tapa_rtl::expression::TokenKind
+pub tapa_rtl::expression::TokenKind::Identifier
+pub tapa_rtl::expression::TokenKind::Literal
+impl core::clone::Clone for tapa_rtl::expression::TokenKind
+pub fn tapa_rtl::expression::TokenKind::clone(&self) -> tapa_rtl::expression::TokenKind
+impl core::cmp::Eq for tapa_rtl::expression::TokenKind
+impl core::cmp::PartialEq for tapa_rtl::expression::TokenKind
+pub fn tapa_rtl::expression::TokenKind::eq(&self, &tapa_rtl::expression::TokenKind) -> bool
+impl core::fmt::Debug for tapa_rtl::expression::TokenKind
+pub fn tapa_rtl::expression::TokenKind::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tapa_rtl::expression::TokenKind
+impl core::marker::StructuralPartialEq for tapa_rtl::expression::TokenKind
+impl serde_core::ser::Serialize for tapa_rtl::expression::TokenKind
+pub fn tapa_rtl::expression::TokenKind::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tapa_rtl::expression::TokenKind
+pub fn tapa_rtl::expression::TokenKind::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tapa_rtl::expression::TokenKind
+impl core::marker::Send for tapa_rtl::expression::TokenKind
+impl core::marker::Sync for tapa_rtl::expression::TokenKind
+impl core::marker::Unpin for tapa_rtl::expression::TokenKind
+impl core::marker::UnsafeUnpin for tapa_rtl::expression::TokenKind
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_rtl::expression::TokenKind
+impl core::panic::unwind_safe::UnwindSafe for tapa_rtl::expression::TokenKind
+impl<Q, K> equivalent::Equivalent<K> for tapa_rtl::expression::TokenKind where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_rtl::expression::TokenKind::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_rtl::expression::TokenKind where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_rtl::expression::TokenKind::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_rtl::expression::TokenKind where U: core::convert::From<T>
+pub fn tapa_rtl::expression::TokenKind::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_rtl::expression::TokenKind where U: core::convert::Into<T>
+pub type tapa_rtl::expression::TokenKind::Error = core::convert::Infallible
+pub fn tapa_rtl::expression::TokenKind::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_rtl::expression::TokenKind where U: core::convert::TryFrom<T>
+pub type tapa_rtl::expression::TokenKind::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_rtl::expression::TokenKind::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_rtl::expression::TokenKind where T: core::clone::Clone
+pub type tapa_rtl::expression::TokenKind::Owned = T
+pub fn tapa_rtl::expression::TokenKind::clone_into(&self, &mut T)
+pub fn tapa_rtl::expression::TokenKind::to_owned(&self) -> T
+impl<T> core::any::Any for tapa_rtl::expression::TokenKind where T: 'static + ?core::marker::Sized
+pub fn tapa_rtl::expression::TokenKind::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_rtl::expression::TokenKind where T: ?core::marker::Sized
+pub fn tapa_rtl::expression::TokenKind::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_rtl::expression::TokenKind where T: ?core::marker::Sized
+pub fn tapa_rtl::expression::TokenKind::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_rtl::expression::TokenKind where T: core::clone::Clone
+pub unsafe fn tapa_rtl::expression::TokenKind::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_rtl::expression::TokenKind
+pub fn tapa_rtl::expression::TokenKind::from(T) -> T
+impl<T> serde_core::de::DeserializeOwned for tapa_rtl::expression::TokenKind where T: for<'de> serde_core::de::Deserialize<'de>
+pub struct tapa_rtl::expression::Token
+pub tapa_rtl::expression::Token::kind: tapa_rtl::expression::TokenKind
+pub tapa_rtl::expression::Token::repr: alloc::string::String
+impl core::clone::Clone for tapa_rtl::expression::Token
+pub fn tapa_rtl::expression::Token::clone(&self) -> tapa_rtl::expression::Token
+impl core::cmp::Eq for tapa_rtl::expression::Token
+impl core::cmp::PartialEq for tapa_rtl::expression::Token
+pub fn tapa_rtl::expression::Token::eq(&self, &tapa_rtl::expression::Token) -> bool
+impl core::fmt::Debug for tapa_rtl::expression::Token
+pub fn tapa_rtl::expression::Token::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tapa_rtl::expression::Token
+impl serde_core::ser::Serialize for tapa_rtl::expression::Token
+pub fn tapa_rtl::expression::Token::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tapa_rtl::expression::Token
+pub fn tapa_rtl::expression::Token::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tapa_rtl::expression::Token
+impl core::marker::Send for tapa_rtl::expression::Token
+impl core::marker::Sync for tapa_rtl::expression::Token
+impl core::marker::Unpin for tapa_rtl::expression::Token
+impl core::marker::UnsafeUnpin for tapa_rtl::expression::Token
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_rtl::expression::Token
+impl core::panic::unwind_safe::UnwindSafe for tapa_rtl::expression::Token
+impl<Q, K> equivalent::Equivalent<K> for tapa_rtl::expression::Token where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_rtl::expression::Token::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_rtl::expression::Token where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_rtl::expression::Token::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_rtl::expression::Token where U: core::convert::From<T>
+pub fn tapa_rtl::expression::Token::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_rtl::expression::Token where U: core::convert::Into<T>
+pub type tapa_rtl::expression::Token::Error = core::convert::Infallible
+pub fn tapa_rtl::expression::Token::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_rtl::expression::Token where U: core::convert::TryFrom<T>
+pub type tapa_rtl::expression::Token::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_rtl::expression::Token::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_rtl::expression::Token where T: core::clone::Clone
+pub type tapa_rtl::expression::Token::Owned = T
+pub fn tapa_rtl::expression::Token::clone_into(&self, &mut T)
+pub fn tapa_rtl::expression::Token::to_owned(&self) -> T
+impl<T> core::any::Any for tapa_rtl::expression::Token where T: 'static + ?core::marker::Sized
+pub fn tapa_rtl::expression::Token::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_rtl::expression::Token where T: ?core::marker::Sized
+pub fn tapa_rtl::expression::Token::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_rtl::expression::Token where T: ?core::marker::Sized
+pub fn tapa_rtl::expression::Token::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_rtl::expression::Token where T: core::clone::Clone
+pub unsafe fn tapa_rtl::expression::Token::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_rtl::expression::Token
+pub fn tapa_rtl::expression::Token::from(T) -> T
+impl<T> serde_core::de::DeserializeOwned for tapa_rtl::expression::Token where T: for<'de> serde_core::de::Deserialize<'de>
+pub fn tapa_rtl::expression::expression_as_u32(&tapa_rtl::expression::Expression) -> core::option::Option<u32>
+pub fn tapa_rtl::expression::expression_source(&tapa_rtl::expression::Expression) -> alloc::string::String
+pub fn tapa_rtl::expression::tokenize_expression(&str) -> tapa_rtl::expression::Expression
+pub type tapa_rtl::expression::Expression = alloc::vec::Vec<tapa_rtl::expression::Token>
+pub mod tapa_rtl::module
+pub use tapa_rtl::module::sanitize_array_name
+pub use tapa_rtl::module::sanitize_identifier_name
+pub struct tapa_rtl::module::VerilogModule
+pub tapa_rtl::module::VerilogModule::name: alloc::string::String
+pub tapa_rtl::module::VerilogModule::parameters: alloc::vec::Vec<tapa_rtl::param::Parameter>
+pub tapa_rtl::module::VerilogModule::ports: alloc::vec::Vec<tapa_rtl::port::Port>
+pub tapa_rtl::module::VerilogModule::pragmas: alloc::vec::Vec<tapa_rtl::pragma::Pragma>
+pub tapa_rtl::module::VerilogModule::signals: alloc::vec::Vec<tapa_rtl::signal::Signal>
+pub tapa_rtl::module::VerilogModule::source: alloc::string::String
+impl tapa_rtl::module::VerilogModule
+pub fn tapa_rtl::module::VerilogModule::find_port(&self, &str) -> core::option::Option<&tapa_rtl::port::Port>
+pub fn tapa_rtl::module::VerilogModule::find_port_by_affixes(&self, &str, &str) -> core::option::Option<&tapa_rtl::port::Port>
+pub fn tapa_rtl::module::VerilogModule::get_port_of(&self, &str, &str) -> core::option::Option<&tapa_rtl::port::Port>
+pub fn tapa_rtl::module::VerilogModule::parse(&str) -> core::result::Result<Self, tapa_rtl::ParseError>
+impl core::clone::Clone for tapa_rtl::module::VerilogModule
+pub fn tapa_rtl::module::VerilogModule::clone(&self) -> tapa_rtl::module::VerilogModule
+impl core::cmp::Eq for tapa_rtl::module::VerilogModule
+impl core::cmp::PartialEq for tapa_rtl::module::VerilogModule
+pub fn tapa_rtl::module::VerilogModule::eq(&self, &tapa_rtl::module::VerilogModule) -> bool
+impl core::fmt::Debug for tapa_rtl::module::VerilogModule
+pub fn tapa_rtl::module::VerilogModule::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tapa_rtl::module::VerilogModule
+impl serde_core::ser::Serialize for tapa_rtl::module::VerilogModule
+pub fn tapa_rtl::module::VerilogModule::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tapa_rtl::module::VerilogModule
+pub fn tapa_rtl::module::VerilogModule::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tapa_rtl::module::VerilogModule
+impl core::marker::Send for tapa_rtl::module::VerilogModule
+impl core::marker::Sync for tapa_rtl::module::VerilogModule
+impl core::marker::Unpin for tapa_rtl::module::VerilogModule
+impl core::marker::UnsafeUnpin for tapa_rtl::module::VerilogModule
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_rtl::module::VerilogModule
+impl core::panic::unwind_safe::UnwindSafe for tapa_rtl::module::VerilogModule
+impl<Q, K> equivalent::Equivalent<K> for tapa_rtl::module::VerilogModule where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_rtl::module::VerilogModule::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_rtl::module::VerilogModule where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_rtl::module::VerilogModule::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_rtl::module::VerilogModule where U: core::convert::From<T>
+pub fn tapa_rtl::module::VerilogModule::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_rtl::module::VerilogModule where U: core::convert::Into<T>
+pub type tapa_rtl::module::VerilogModule::Error = core::convert::Infallible
+pub fn tapa_rtl::module::VerilogModule::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_rtl::module::VerilogModule where U: core::convert::TryFrom<T>
+pub type tapa_rtl::module::VerilogModule::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_rtl::module::VerilogModule::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_rtl::module::VerilogModule where T: core::clone::Clone
+pub type tapa_rtl::module::VerilogModule::Owned = T
+pub fn tapa_rtl::module::VerilogModule::clone_into(&self, &mut T)
+pub fn tapa_rtl::module::VerilogModule::to_owned(&self) -> T
+impl<T> core::any::Any for tapa_rtl::module::VerilogModule where T: 'static + ?core::marker::Sized
+pub fn tapa_rtl::module::VerilogModule::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_rtl::module::VerilogModule where T: ?core::marker::Sized
+pub fn tapa_rtl::module::VerilogModule::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_rtl::module::VerilogModule where T: ?core::marker::Sized
+pub fn tapa_rtl::module::VerilogModule::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_rtl::module::VerilogModule where T: core::clone::Clone
+pub unsafe fn tapa_rtl::module::VerilogModule::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_rtl::module::VerilogModule
+pub fn tapa_rtl::module::VerilogModule::from(T) -> T
+impl<T> serde_core::de::DeserializeOwned for tapa_rtl::module::VerilogModule where T: for<'de> serde_core::de::Deserialize<'de>
+pub const tapa_rtl::module::FIFO_INFIXES: &[&str]
+pub fn tapa_rtl::module::match_array_name(&str) -> core::option::Option<(&str, u32)>
+pub mod tapa_rtl::mutation
+pub struct tapa_rtl::mutation::MutableModule
+pub tapa_rtl::mutation::MutableModule::body_text: alloc::string::String
+pub tapa_rtl::mutation::MutableModule::inner: tapa_rtl::module::VerilogModule
+impl tapa_rtl::mutation::MutableModule
+pub fn tapa_rtl::mutation::MutableModule::add_always(&mut self, tapa_rtl::builder::AlwaysBlock)
+pub fn tapa_rtl::mutation::MutableModule::add_assign(&mut self, tapa_rtl::builder::ContinuousAssign)
+pub fn tapa_rtl::mutation::MutableModule::add_instance(&mut self, tapa_rtl::builder::ModuleInstance)
+pub fn tapa_rtl::mutation::MutableModule::add_port(&mut self, tapa_rtl::port::Port) -> core::result::Result<(), tapa_rtl::BuilderError>
+pub fn tapa_rtl::mutation::MutableModule::add_signal(&mut self, tapa_rtl::signal::Signal) -> core::result::Result<(), tapa_rtl::BuilderError>
+pub fn tapa_rtl::mutation::MutableModule::cleanup_hls_artifacts(&mut self)
+pub fn tapa_rtl::mutation::MutableModule::demote_output_port_regs_to_wires(&mut self)
+pub fn tapa_rtl::mutation::MutableModule::demote_signal_regs_to_wires(&mut self, &[&str])
+pub fn tapa_rtl::mutation::MutableModule::emit(&self) -> alloc::string::String
+pub fn tapa_rtl::mutation::MutableModule::ensure_signal_kind(&mut self, &str, tapa_rtl::signal::SignalKind)
+pub fn tapa_rtl::mutation::MutableModule::from_parsed(tapa_rtl::module::VerilogModule) -> Self
+pub fn tapa_rtl::mutation::MutableModule::remove_port(&mut self, &str)
+impl core::marker::Freeze for tapa_rtl::mutation::MutableModule
+impl core::marker::Send for tapa_rtl::mutation::MutableModule
+impl core::marker::Sync for tapa_rtl::mutation::MutableModule
+impl core::marker::Unpin for tapa_rtl::mutation::MutableModule
+impl core::marker::UnsafeUnpin for tapa_rtl::mutation::MutableModule
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_rtl::mutation::MutableModule
+impl core::panic::unwind_safe::UnwindSafe for tapa_rtl::mutation::MutableModule
+impl<T, U> core::convert::Into<U> for tapa_rtl::mutation::MutableModule where U: core::convert::From<T>
+pub fn tapa_rtl::mutation::MutableModule::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_rtl::mutation::MutableModule where U: core::convert::Into<T>
+pub type tapa_rtl::mutation::MutableModule::Error = core::convert::Infallible
+pub fn tapa_rtl::mutation::MutableModule::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_rtl::mutation::MutableModule where U: core::convert::TryFrom<T>
+pub type tapa_rtl::mutation::MutableModule::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_rtl::mutation::MutableModule::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> core::any::Any for tapa_rtl::mutation::MutableModule where T: 'static + ?core::marker::Sized
+pub fn tapa_rtl::mutation::MutableModule::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_rtl::mutation::MutableModule where T: ?core::marker::Sized
+pub fn tapa_rtl::mutation::MutableModule::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_rtl::mutation::MutableModule where T: ?core::marker::Sized
+pub fn tapa_rtl::mutation::MutableModule::borrow_mut(&mut self) -> &mut T
+impl<T> core::convert::From<T> for tapa_rtl::mutation::MutableModule
+pub fn tapa_rtl::mutation::MutableModule::from(T) -> T
+pub fn tapa_rtl::mutation::reg(impl core::convert::Into<alloc::string::String>) -> tapa_rtl::signal::Signal
+pub fn tapa_rtl::mutation::simple_port(impl core::convert::Into<alloc::string::String>, tapa_rtl::port::Direction) -> tapa_rtl::port::Port
+pub fn tapa_rtl::mutation::wide_port(impl core::convert::Into<alloc::string::String>, tapa_rtl::port::Direction, &str, &str) -> tapa_rtl::port::Port
+pub fn tapa_rtl::mutation::wide_reg(impl core::convert::Into<alloc::string::String>, &str, &str) -> tapa_rtl::signal::Signal
+pub fn tapa_rtl::mutation::wide_wire(impl core::convert::Into<alloc::string::String>, &str, &str) -> tapa_rtl::signal::Signal
+pub fn tapa_rtl::mutation::wire(impl core::convert::Into<alloc::string::String>) -> tapa_rtl::signal::Signal
+pub fn tapa_rtl::mutation::wire_with_attribute(impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>) -> tapa_rtl::signal::Signal
+pub mod tapa_rtl::param
+pub struct tapa_rtl::param::Parameter
+pub tapa_rtl::param::Parameter::default: tapa_rtl::expression::Expression
+pub tapa_rtl::param::Parameter::name: alloc::string::String
+pub tapa_rtl::param::Parameter::width: core::option::Option<tapa_rtl::port::Width>
+impl core::clone::Clone for tapa_rtl::param::Parameter
+pub fn tapa_rtl::param::Parameter::clone(&self) -> tapa_rtl::param::Parameter
+impl core::cmp::Eq for tapa_rtl::param::Parameter
+impl core::cmp::PartialEq for tapa_rtl::param::Parameter
+pub fn tapa_rtl::param::Parameter::eq(&self, &tapa_rtl::param::Parameter) -> bool
+impl core::fmt::Debug for tapa_rtl::param::Parameter
+pub fn tapa_rtl::param::Parameter::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tapa_rtl::param::Parameter
+impl serde_core::ser::Serialize for tapa_rtl::param::Parameter
+pub fn tapa_rtl::param::Parameter::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tapa_rtl::param::Parameter
+pub fn tapa_rtl::param::Parameter::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tapa_rtl::param::Parameter
+impl core::marker::Send for tapa_rtl::param::Parameter
+impl core::marker::Sync for tapa_rtl::param::Parameter
+impl core::marker::Unpin for tapa_rtl::param::Parameter
+impl core::marker::UnsafeUnpin for tapa_rtl::param::Parameter
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_rtl::param::Parameter
+impl core::panic::unwind_safe::UnwindSafe for tapa_rtl::param::Parameter
+impl<Q, K> equivalent::Equivalent<K> for tapa_rtl::param::Parameter where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_rtl::param::Parameter::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_rtl::param::Parameter where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_rtl::param::Parameter::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_rtl::param::Parameter where U: core::convert::From<T>
+pub fn tapa_rtl::param::Parameter::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_rtl::param::Parameter where U: core::convert::Into<T>
+pub type tapa_rtl::param::Parameter::Error = core::convert::Infallible
+pub fn tapa_rtl::param::Parameter::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_rtl::param::Parameter where U: core::convert::TryFrom<T>
+pub type tapa_rtl::param::Parameter::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_rtl::param::Parameter::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_rtl::param::Parameter where T: core::clone::Clone
+pub type tapa_rtl::param::Parameter::Owned = T
+pub fn tapa_rtl::param::Parameter::clone_into(&self, &mut T)
+pub fn tapa_rtl::param::Parameter::to_owned(&self) -> T
+impl<T> core::any::Any for tapa_rtl::param::Parameter where T: 'static + ?core::marker::Sized
+pub fn tapa_rtl::param::Parameter::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_rtl::param::Parameter where T: ?core::marker::Sized
+pub fn tapa_rtl::param::Parameter::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_rtl::param::Parameter where T: ?core::marker::Sized
+pub fn tapa_rtl::param::Parameter::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_rtl::param::Parameter where T: core::clone::Clone
+pub unsafe fn tapa_rtl::param::Parameter::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_rtl::param::Parameter
+pub fn tapa_rtl::param::Parameter::from(T) -> T
+impl<T> serde_core::de::DeserializeOwned for tapa_rtl::param::Parameter where T: for<'de> serde_core::de::Deserialize<'de>
+pub mod tapa_rtl::parser
+pub fn tapa_rtl::parser::parse_module(&str) -> core::result::Result<tapa_rtl::module::VerilogModule, tapa_rtl::ParseError>
+pub mod tapa_rtl::port
+pub enum tapa_rtl::port::Direction
+pub tapa_rtl::port::Direction::Inout
+pub tapa_rtl::port::Direction::Input
+pub tapa_rtl::port::Direction::Output
+impl core::clone::Clone for tapa_rtl::port::Direction
+pub fn tapa_rtl::port::Direction::clone(&self) -> tapa_rtl::port::Direction
+impl core::cmp::Eq for tapa_rtl::port::Direction
+impl core::cmp::PartialEq for tapa_rtl::port::Direction
+pub fn tapa_rtl::port::Direction::eq(&self, &tapa_rtl::port::Direction) -> bool
+impl core::fmt::Debug for tapa_rtl::port::Direction
+pub fn tapa_rtl::port::Direction::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tapa_rtl::port::Direction
+pub fn tapa_rtl::port::Direction::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tapa_rtl::port::Direction
+impl core::marker::StructuralPartialEq for tapa_rtl::port::Direction
+impl serde_core::ser::Serialize for tapa_rtl::port::Direction
+pub fn tapa_rtl::port::Direction::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tapa_rtl::port::Direction
+pub fn tapa_rtl::port::Direction::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tapa_rtl::port::Direction
+impl core::marker::Send for tapa_rtl::port::Direction
+impl core::marker::Sync for tapa_rtl::port::Direction
+impl core::marker::Unpin for tapa_rtl::port::Direction
+impl core::marker::UnsafeUnpin for tapa_rtl::port::Direction
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_rtl::port::Direction
+impl core::panic::unwind_safe::UnwindSafe for tapa_rtl::port::Direction
+impl<Q, K> equivalent::Equivalent<K> for tapa_rtl::port::Direction where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_rtl::port::Direction::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_rtl::port::Direction where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_rtl::port::Direction::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_rtl::port::Direction where U: core::convert::From<T>
+pub fn tapa_rtl::port::Direction::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_rtl::port::Direction where U: core::convert::Into<T>
+pub type tapa_rtl::port::Direction::Error = core::convert::Infallible
+pub fn tapa_rtl::port::Direction::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_rtl::port::Direction where U: core::convert::TryFrom<T>
+pub type tapa_rtl::port::Direction::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_rtl::port::Direction::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_rtl::port::Direction where T: core::clone::Clone
+pub type tapa_rtl::port::Direction::Owned = T
+pub fn tapa_rtl::port::Direction::clone_into(&self, &mut T)
+pub fn tapa_rtl::port::Direction::to_owned(&self) -> T
+impl<T> alloc::string::ToString for tapa_rtl::port::Direction where T: core::fmt::Display + ?core::marker::Sized
+pub fn tapa_rtl::port::Direction::to_string(&self) -> alloc::string::String
+impl<T> core::any::Any for tapa_rtl::port::Direction where T: 'static + ?core::marker::Sized
+pub fn tapa_rtl::port::Direction::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_rtl::port::Direction where T: ?core::marker::Sized
+pub fn tapa_rtl::port::Direction::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_rtl::port::Direction where T: ?core::marker::Sized
+pub fn tapa_rtl::port::Direction::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_rtl::port::Direction where T: core::clone::Clone
+pub unsafe fn tapa_rtl::port::Direction::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_rtl::port::Direction
+pub fn tapa_rtl::port::Direction::from(T) -> T
+impl<T> serde_core::de::DeserializeOwned for tapa_rtl::port::Direction where T: for<'de> serde_core::de::Deserialize<'de>
+pub struct tapa_rtl::port::Port
+pub tapa_rtl::port::Port::direction: tapa_rtl::port::Direction
+pub tapa_rtl::port::Port::name: alloc::string::String
+pub tapa_rtl::port::Port::pragma: core::option::Option<tapa_rtl::pragma::Pragma>
+pub tapa_rtl::port::Port::width: core::option::Option<tapa_rtl::port::Width>
+impl tapa_rtl::port::Port
+pub fn tapa_rtl::port::Port::bit_width(&self) -> core::option::Option<u32>
+impl core::clone::Clone for tapa_rtl::port::Port
+pub fn tapa_rtl::port::Port::clone(&self) -> tapa_rtl::port::Port
+impl core::cmp::Eq for tapa_rtl::port::Port
+impl core::cmp::PartialEq for tapa_rtl::port::Port
+pub fn tapa_rtl::port::Port::eq(&self, &tapa_rtl::port::Port) -> bool
+impl core::fmt::Debug for tapa_rtl::port::Port
+pub fn tapa_rtl::port::Port::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tapa_rtl::port::Port
+pub fn tapa_rtl::port::Port::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tapa_rtl::port::Port
+impl serde_core::ser::Serialize for tapa_rtl::port::Port
+pub fn tapa_rtl::port::Port::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tapa_rtl::port::Port
+pub fn tapa_rtl::port::Port::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tapa_rtl::port::Port
+impl core::marker::Send for tapa_rtl::port::Port
+impl core::marker::Sync for tapa_rtl::port::Port
+impl core::marker::Unpin for tapa_rtl::port::Port
+impl core::marker::UnsafeUnpin for tapa_rtl::port::Port
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_rtl::port::Port
+impl core::panic::unwind_safe::UnwindSafe for tapa_rtl::port::Port
+impl<Q, K> equivalent::Equivalent<K> for tapa_rtl::port::Port where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_rtl::port::Port::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_rtl::port::Port where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_rtl::port::Port::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_rtl::port::Port where U: core::convert::From<T>
+pub fn tapa_rtl::port::Port::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_rtl::port::Port where U: core::convert::Into<T>
+pub type tapa_rtl::port::Port::Error = core::convert::Infallible
+pub fn tapa_rtl::port::Port::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_rtl::port::Port where U: core::convert::TryFrom<T>
+pub type tapa_rtl::port::Port::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_rtl::port::Port::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_rtl::port::Port where T: core::clone::Clone
+pub type tapa_rtl::port::Port::Owned = T
+pub fn tapa_rtl::port::Port::clone_into(&self, &mut T)
+pub fn tapa_rtl::port::Port::to_owned(&self) -> T
+impl<T> alloc::string::ToString for tapa_rtl::port::Port where T: core::fmt::Display + ?core::marker::Sized
+pub fn tapa_rtl::port::Port::to_string(&self) -> alloc::string::String
+impl<T> core::any::Any for tapa_rtl::port::Port where T: 'static + ?core::marker::Sized
+pub fn tapa_rtl::port::Port::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_rtl::port::Port where T: ?core::marker::Sized
+pub fn tapa_rtl::port::Port::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_rtl::port::Port where T: ?core::marker::Sized
+pub fn tapa_rtl::port::Port::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_rtl::port::Port where T: core::clone::Clone
+pub unsafe fn tapa_rtl::port::Port::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_rtl::port::Port
+pub fn tapa_rtl::port::Port::from(T) -> T
+impl<T> serde_core::de::DeserializeOwned for tapa_rtl::port::Port where T: for<'de> serde_core::de::Deserialize<'de>
+pub struct tapa_rtl::port::Width
+pub tapa_rtl::port::Width::lsb: tapa_rtl::expression::Expression
+pub tapa_rtl::port::Width::msb: tapa_rtl::expression::Expression
+impl tapa_rtl::port::Width
+pub fn tapa_rtl::port::Width::bit_count(&self) -> core::option::Option<u32>
+impl core::clone::Clone for tapa_rtl::port::Width
+pub fn tapa_rtl::port::Width::clone(&self) -> tapa_rtl::port::Width
+impl core::cmp::Eq for tapa_rtl::port::Width
+impl core::cmp::PartialEq for tapa_rtl::port::Width
+pub fn tapa_rtl::port::Width::eq(&self, &tapa_rtl::port::Width) -> bool
+impl core::fmt::Debug for tapa_rtl::port::Width
+pub fn tapa_rtl::port::Width::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tapa_rtl::port::Width
+pub fn tapa_rtl::port::Width::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tapa_rtl::port::Width
+impl serde_core::ser::Serialize for tapa_rtl::port::Width
+pub fn tapa_rtl::port::Width::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tapa_rtl::port::Width
+pub fn tapa_rtl::port::Width::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tapa_rtl::port::Width
+impl core::marker::Send for tapa_rtl::port::Width
+impl core::marker::Sync for tapa_rtl::port::Width
+impl core::marker::Unpin for tapa_rtl::port::Width
+impl core::marker::UnsafeUnpin for tapa_rtl::port::Width
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_rtl::port::Width
+impl core::panic::unwind_safe::UnwindSafe for tapa_rtl::port::Width
+impl<Q, K> equivalent::Equivalent<K> for tapa_rtl::port::Width where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_rtl::port::Width::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_rtl::port::Width where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_rtl::port::Width::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_rtl::port::Width where U: core::convert::From<T>
+pub fn tapa_rtl::port::Width::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_rtl::port::Width where U: core::convert::Into<T>
+pub type tapa_rtl::port::Width::Error = core::convert::Infallible
+pub fn tapa_rtl::port::Width::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_rtl::port::Width where U: core::convert::TryFrom<T>
+pub type tapa_rtl::port::Width::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_rtl::port::Width::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_rtl::port::Width where T: core::clone::Clone
+pub type tapa_rtl::port::Width::Owned = T
+pub fn tapa_rtl::port::Width::clone_into(&self, &mut T)
+pub fn tapa_rtl::port::Width::to_owned(&self) -> T
+impl<T> alloc::string::ToString for tapa_rtl::port::Width where T: core::fmt::Display + ?core::marker::Sized
+pub fn tapa_rtl::port::Width::to_string(&self) -> alloc::string::String
+impl<T> core::any::Any for tapa_rtl::port::Width where T: 'static + ?core::marker::Sized
+pub fn tapa_rtl::port::Width::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_rtl::port::Width where T: ?core::marker::Sized
+pub fn tapa_rtl::port::Width::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_rtl::port::Width where T: ?core::marker::Sized
+pub fn tapa_rtl::port::Width::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_rtl::port::Width where T: core::clone::Clone
+pub unsafe fn tapa_rtl::port::Width::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_rtl::port::Width
+pub fn tapa_rtl::port::Width::from(T) -> T
+impl<T> serde_core::de::DeserializeOwned for tapa_rtl::port::Width where T: for<'de> serde_core::de::Deserialize<'de>
+pub mod tapa_rtl::pragma
+pub struct tapa_rtl::pragma::Pragma
+pub tapa_rtl::pragma::Pragma::key: alloc::string::String
+pub tapa_rtl::pragma::Pragma::raw_line: alloc::string::String
+pub tapa_rtl::pragma::Pragma::value: core::option::Option<alloc::string::String>
+impl core::clone::Clone for tapa_rtl::pragma::Pragma
+pub fn tapa_rtl::pragma::Pragma::clone(&self) -> tapa_rtl::pragma::Pragma
+impl core::cmp::Eq for tapa_rtl::pragma::Pragma
+impl core::cmp::PartialEq for tapa_rtl::pragma::Pragma
+pub fn tapa_rtl::pragma::Pragma::eq(&self, &tapa_rtl::pragma::Pragma) -> bool
+impl core::fmt::Debug for tapa_rtl::pragma::Pragma
+pub fn tapa_rtl::pragma::Pragma::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tapa_rtl::pragma::Pragma
+impl serde_core::ser::Serialize for tapa_rtl::pragma::Pragma
+pub fn tapa_rtl::pragma::Pragma::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tapa_rtl::pragma::Pragma
+pub fn tapa_rtl::pragma::Pragma::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tapa_rtl::pragma::Pragma
+impl core::marker::Send for tapa_rtl::pragma::Pragma
+impl core::marker::Sync for tapa_rtl::pragma::Pragma
+impl core::marker::Unpin for tapa_rtl::pragma::Pragma
+impl core::marker::UnsafeUnpin for tapa_rtl::pragma::Pragma
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_rtl::pragma::Pragma
+impl core::panic::unwind_safe::UnwindSafe for tapa_rtl::pragma::Pragma
+impl<Q, K> equivalent::Equivalent<K> for tapa_rtl::pragma::Pragma where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_rtl::pragma::Pragma::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_rtl::pragma::Pragma where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_rtl::pragma::Pragma::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_rtl::pragma::Pragma where U: core::convert::From<T>
+pub fn tapa_rtl::pragma::Pragma::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_rtl::pragma::Pragma where U: core::convert::Into<T>
+pub type tapa_rtl::pragma::Pragma::Error = core::convert::Infallible
+pub fn tapa_rtl::pragma::Pragma::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_rtl::pragma::Pragma where U: core::convert::TryFrom<T>
+pub type tapa_rtl::pragma::Pragma::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_rtl::pragma::Pragma::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_rtl::pragma::Pragma where T: core::clone::Clone
+pub type tapa_rtl::pragma::Pragma::Owned = T
+pub fn tapa_rtl::pragma::Pragma::clone_into(&self, &mut T)
+pub fn tapa_rtl::pragma::Pragma::to_owned(&self) -> T
+impl<T> core::any::Any for tapa_rtl::pragma::Pragma where T: 'static + ?core::marker::Sized
+pub fn tapa_rtl::pragma::Pragma::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_rtl::pragma::Pragma where T: ?core::marker::Sized
+pub fn tapa_rtl::pragma::Pragma::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_rtl::pragma::Pragma where T: ?core::marker::Sized
+pub fn tapa_rtl::pragma::Pragma::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_rtl::pragma::Pragma where T: core::clone::Clone
+pub unsafe fn tapa_rtl::pragma::Pragma::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_rtl::pragma::Pragma
+pub fn tapa_rtl::pragma::Pragma::from(T) -> T
+impl<T> serde_core::de::DeserializeOwned for tapa_rtl::pragma::Pragma where T: for<'de> serde_core::de::Deserialize<'de>
+pub mod tapa_rtl::signal
+pub enum tapa_rtl::signal::SignalKind
+pub tapa_rtl::signal::SignalKind::Reg
+pub tapa_rtl::signal::SignalKind::Wire
+impl core::clone::Clone for tapa_rtl::signal::SignalKind
+pub fn tapa_rtl::signal::SignalKind::clone(&self) -> tapa_rtl::signal::SignalKind
+impl core::cmp::Eq for tapa_rtl::signal::SignalKind
+impl core::cmp::PartialEq for tapa_rtl::signal::SignalKind
+pub fn tapa_rtl::signal::SignalKind::eq(&self, &tapa_rtl::signal::SignalKind) -> bool
+impl core::fmt::Debug for tapa_rtl::signal::SignalKind
+pub fn tapa_rtl::signal::SignalKind::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tapa_rtl::signal::SignalKind
+pub fn tapa_rtl::signal::SignalKind::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tapa_rtl::signal::SignalKind
+impl core::marker::StructuralPartialEq for tapa_rtl::signal::SignalKind
+impl serde_core::ser::Serialize for tapa_rtl::signal::SignalKind
+pub fn tapa_rtl::signal::SignalKind::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tapa_rtl::signal::SignalKind
+pub fn tapa_rtl::signal::SignalKind::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tapa_rtl::signal::SignalKind
+impl core::marker::Send for tapa_rtl::signal::SignalKind
+impl core::marker::Sync for tapa_rtl::signal::SignalKind
+impl core::marker::Unpin for tapa_rtl::signal::SignalKind
+impl core::marker::UnsafeUnpin for tapa_rtl::signal::SignalKind
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_rtl::signal::SignalKind
+impl core::panic::unwind_safe::UnwindSafe for tapa_rtl::signal::SignalKind
+impl<Q, K> equivalent::Equivalent<K> for tapa_rtl::signal::SignalKind where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_rtl::signal::SignalKind::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_rtl::signal::SignalKind where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_rtl::signal::SignalKind::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_rtl::signal::SignalKind where U: core::convert::From<T>
+pub fn tapa_rtl::signal::SignalKind::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_rtl::signal::SignalKind where U: core::convert::Into<T>
+pub type tapa_rtl::signal::SignalKind::Error = core::convert::Infallible
+pub fn tapa_rtl::signal::SignalKind::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_rtl::signal::SignalKind where U: core::convert::TryFrom<T>
+pub type tapa_rtl::signal::SignalKind::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_rtl::signal::SignalKind::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_rtl::signal::SignalKind where T: core::clone::Clone
+pub type tapa_rtl::signal::SignalKind::Owned = T
+pub fn tapa_rtl::signal::SignalKind::clone_into(&self, &mut T)
+pub fn tapa_rtl::signal::SignalKind::to_owned(&self) -> T
+impl<T> alloc::string::ToString for tapa_rtl::signal::SignalKind where T: core::fmt::Display + ?core::marker::Sized
+pub fn tapa_rtl::signal::SignalKind::to_string(&self) -> alloc::string::String
+impl<T> core::any::Any for tapa_rtl::signal::SignalKind where T: 'static + ?core::marker::Sized
+pub fn tapa_rtl::signal::SignalKind::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_rtl::signal::SignalKind where T: ?core::marker::Sized
+pub fn tapa_rtl::signal::SignalKind::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_rtl::signal::SignalKind where T: ?core::marker::Sized
+pub fn tapa_rtl::signal::SignalKind::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_rtl::signal::SignalKind where T: core::clone::Clone
+pub unsafe fn tapa_rtl::signal::SignalKind::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_rtl::signal::SignalKind
+pub fn tapa_rtl::signal::SignalKind::from(T) -> T
+impl<T> serde_core::de::DeserializeOwned for tapa_rtl::signal::SignalKind where T: for<'de> serde_core::de::Deserialize<'de>
+pub struct tapa_rtl::signal::Signal
+pub tapa_rtl::signal::Signal::attribute: core::option::Option<alloc::string::String>
+pub tapa_rtl::signal::Signal::kind: tapa_rtl::signal::SignalKind
+pub tapa_rtl::signal::Signal::name: alloc::string::String
+pub tapa_rtl::signal::Signal::width: core::option::Option<tapa_rtl::port::Width>
+impl core::clone::Clone for tapa_rtl::signal::Signal
+pub fn tapa_rtl::signal::Signal::clone(&self) -> tapa_rtl::signal::Signal
+impl core::cmp::Eq for tapa_rtl::signal::Signal
+impl core::cmp::PartialEq for tapa_rtl::signal::Signal
+pub fn tapa_rtl::signal::Signal::eq(&self, &tapa_rtl::signal::Signal) -> bool
+impl core::fmt::Debug for tapa_rtl::signal::Signal
+pub fn tapa_rtl::signal::Signal::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tapa_rtl::signal::Signal
+pub fn tapa_rtl::signal::Signal::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tapa_rtl::signal::Signal
+impl serde_core::ser::Serialize for tapa_rtl::signal::Signal
+pub fn tapa_rtl::signal::Signal::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tapa_rtl::signal::Signal
+pub fn tapa_rtl::signal::Signal::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tapa_rtl::signal::Signal
+impl core::marker::Send for tapa_rtl::signal::Signal
+impl core::marker::Sync for tapa_rtl::signal::Signal
+impl core::marker::Unpin for tapa_rtl::signal::Signal
+impl core::marker::UnsafeUnpin for tapa_rtl::signal::Signal
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_rtl::signal::Signal
+impl core::panic::unwind_safe::UnwindSafe for tapa_rtl::signal::Signal
+impl<Q, K> equivalent::Equivalent<K> for tapa_rtl::signal::Signal where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_rtl::signal::Signal::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_rtl::signal::Signal where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_rtl::signal::Signal::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_rtl::signal::Signal where U: core::convert::From<T>
+pub fn tapa_rtl::signal::Signal::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_rtl::signal::Signal where U: core::convert::Into<T>
+pub type tapa_rtl::signal::Signal::Error = core::convert::Infallible
+pub fn tapa_rtl::signal::Signal::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_rtl::signal::Signal where U: core::convert::TryFrom<T>
+pub type tapa_rtl::signal::Signal::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_rtl::signal::Signal::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_rtl::signal::Signal where T: core::clone::Clone
+pub type tapa_rtl::signal::Signal::Owned = T
+pub fn tapa_rtl::signal::Signal::clone_into(&self, &mut T)
+pub fn tapa_rtl::signal::Signal::to_owned(&self) -> T
+impl<T> alloc::string::ToString for tapa_rtl::signal::Signal where T: core::fmt::Display + ?core::marker::Sized
+pub fn tapa_rtl::signal::Signal::to_string(&self) -> alloc::string::String
+impl<T> core::any::Any for tapa_rtl::signal::Signal where T: 'static + ?core::marker::Sized
+pub fn tapa_rtl::signal::Signal::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_rtl::signal::Signal where T: ?core::marker::Sized
+pub fn tapa_rtl::signal::Signal::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_rtl::signal::Signal where T: ?core::marker::Sized
+pub fn tapa_rtl::signal::Signal::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_rtl::signal::Signal where T: core::clone::Clone
+pub unsafe fn tapa_rtl::signal::Signal::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_rtl::signal::Signal
+pub fn tapa_rtl::signal::Signal::from(T) -> T
+impl<T> serde_core::de::DeserializeOwned for tapa_rtl::signal::Signal where T: for<'de> serde_core::de::Deserialize<'de>
+pub enum tapa_rtl::BuilderError
+pub tapa_rtl::BuilderError::DuplicatePort(alloc::string::String)
+pub tapa_rtl::BuilderError::DuplicateSignal(alloc::string::String)
+pub tapa_rtl::BuilderError::EmptyName
+pub tapa_rtl::BuilderError::NoPortConnections
+impl core::error::Error for tapa_rtl::BuilderError
+impl core::fmt::Debug for tapa_rtl::BuilderError
+pub fn tapa_rtl::BuilderError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tapa_rtl::BuilderError
+pub fn tapa_rtl::BuilderError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tapa_rtl::BuilderError
+impl core::marker::Send for tapa_rtl::BuilderError
+impl core::marker::Sync for tapa_rtl::BuilderError
+impl core::marker::Unpin for tapa_rtl::BuilderError
+impl core::marker::UnsafeUnpin for tapa_rtl::BuilderError
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_rtl::BuilderError
+impl core::panic::unwind_safe::UnwindSafe for tapa_rtl::BuilderError
+impl<T, U> core::convert::Into<U> for tapa_rtl::BuilderError where U: core::convert::From<T>
+pub fn tapa_rtl::BuilderError::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_rtl::BuilderError where U: core::convert::Into<T>
+pub type tapa_rtl::BuilderError::Error = core::convert::Infallible
+pub fn tapa_rtl::BuilderError::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_rtl::BuilderError where U: core::convert::TryFrom<T>
+pub type tapa_rtl::BuilderError::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_rtl::BuilderError::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::string::ToString for tapa_rtl::BuilderError where T: core::fmt::Display + ?core::marker::Sized
+pub fn tapa_rtl::BuilderError::to_string(&self) -> alloc::string::String
+impl<T> core::any::Any for tapa_rtl::BuilderError where T: 'static + ?core::marker::Sized
+pub fn tapa_rtl::BuilderError::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_rtl::BuilderError where T: ?core::marker::Sized
+pub fn tapa_rtl::BuilderError::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_rtl::BuilderError where T: ?core::marker::Sized
+pub fn tapa_rtl::BuilderError::borrow_mut(&mut self) -> &mut T
+impl<T> core::convert::From<T> for tapa_rtl::BuilderError
+pub fn tapa_rtl::BuilderError::from(T) -> T
+pub enum tapa_rtl::ParseError
+pub tapa_rtl::ParseError::EmptyInput
+pub tapa_rtl::ParseError::NoModuleFound
+pub tapa_rtl::ParseError::ParseFailed
+pub tapa_rtl::ParseError::ParseFailed::message: alloc::string::String
+pub tapa_rtl::ParseError::ParseFailed::module: alloc::string::String
+impl core::error::Error for tapa_rtl::ParseError
+impl core::fmt::Debug for tapa_rtl::ParseError
+pub fn tapa_rtl::ParseError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tapa_rtl::ParseError
+pub fn tapa_rtl::ParseError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tapa_rtl::ParseError
+impl core::marker::Send for tapa_rtl::ParseError
+impl core::marker::Sync for tapa_rtl::ParseError
+impl core::marker::Unpin for tapa_rtl::ParseError
+impl core::marker::UnsafeUnpin for tapa_rtl::ParseError
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_rtl::ParseError
+impl core::panic::unwind_safe::UnwindSafe for tapa_rtl::ParseError
+impl<T, U> core::convert::Into<U> for tapa_rtl::ParseError where U: core::convert::From<T>
+pub fn tapa_rtl::ParseError::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_rtl::ParseError where U: core::convert::Into<T>
+pub type tapa_rtl::ParseError::Error = core::convert::Infallible
+pub fn tapa_rtl::ParseError::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_rtl::ParseError where U: core::convert::TryFrom<T>
+pub type tapa_rtl::ParseError::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_rtl::ParseError::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::string::ToString for tapa_rtl::ParseError where T: core::fmt::Display + ?core::marker::Sized
+pub fn tapa_rtl::ParseError::to_string(&self) -> alloc::string::String
+impl<T> core::any::Any for tapa_rtl::ParseError where T: 'static + ?core::marker::Sized
+pub fn tapa_rtl::ParseError::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_rtl::ParseError where T: ?core::marker::Sized
+pub fn tapa_rtl::ParseError::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_rtl::ParseError where T: ?core::marker::Sized
+pub fn tapa_rtl::ParseError::borrow_mut(&mut self) -> &mut T
+impl<T> core::convert::From<T> for tapa_rtl::ParseError
+pub fn tapa_rtl::ParseError::from(T) -> T
+pub struct tapa_rtl::VerilogModule
+pub tapa_rtl::VerilogModule::name: alloc::string::String
+pub tapa_rtl::VerilogModule::parameters: alloc::vec::Vec<tapa_rtl::param::Parameter>
+pub tapa_rtl::VerilogModule::ports: alloc::vec::Vec<tapa_rtl::port::Port>
+pub tapa_rtl::VerilogModule::pragmas: alloc::vec::Vec<tapa_rtl::pragma::Pragma>
+pub tapa_rtl::VerilogModule::signals: alloc::vec::Vec<tapa_rtl::signal::Signal>
+pub tapa_rtl::VerilogModule::source: alloc::string::String
+impl tapa_rtl::module::VerilogModule
+pub fn tapa_rtl::module::VerilogModule::find_port(&self, &str) -> core::option::Option<&tapa_rtl::port::Port>
+pub fn tapa_rtl::module::VerilogModule::find_port_by_affixes(&self, &str, &str) -> core::option::Option<&tapa_rtl::port::Port>
+pub fn tapa_rtl::module::VerilogModule::get_port_of(&self, &str, &str) -> core::option::Option<&tapa_rtl::port::Port>
+pub fn tapa_rtl::module::VerilogModule::parse(&str) -> core::result::Result<Self, tapa_rtl::ParseError>
+impl core::clone::Clone for tapa_rtl::module::VerilogModule
+pub fn tapa_rtl::module::VerilogModule::clone(&self) -> tapa_rtl::module::VerilogModule
+impl core::cmp::Eq for tapa_rtl::module::VerilogModule
+impl core::cmp::PartialEq for tapa_rtl::module::VerilogModule
+pub fn tapa_rtl::module::VerilogModule::eq(&self, &tapa_rtl::module::VerilogModule) -> bool
+impl core::fmt::Debug for tapa_rtl::module::VerilogModule
+pub fn tapa_rtl::module::VerilogModule::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tapa_rtl::module::VerilogModule
+impl serde_core::ser::Serialize for tapa_rtl::module::VerilogModule
+pub fn tapa_rtl::module::VerilogModule::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tapa_rtl::module::VerilogModule
+pub fn tapa_rtl::module::VerilogModule::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tapa_rtl::module::VerilogModule
+impl core::marker::Send for tapa_rtl::module::VerilogModule
+impl core::marker::Sync for tapa_rtl::module::VerilogModule
+impl core::marker::Unpin for tapa_rtl::module::VerilogModule
+impl core::marker::UnsafeUnpin for tapa_rtl::module::VerilogModule
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_rtl::module::VerilogModule
+impl core::panic::unwind_safe::UnwindSafe for tapa_rtl::module::VerilogModule
+impl<Q, K> equivalent::Equivalent<K> for tapa_rtl::module::VerilogModule where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_rtl::module::VerilogModule::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_rtl::module::VerilogModule where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_rtl::module::VerilogModule::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_rtl::module::VerilogModule where U: core::convert::From<T>
+pub fn tapa_rtl::module::VerilogModule::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_rtl::module::VerilogModule where U: core::convert::Into<T>
+pub type tapa_rtl::module::VerilogModule::Error = core::convert::Infallible
+pub fn tapa_rtl::module::VerilogModule::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_rtl::module::VerilogModule where U: core::convert::TryFrom<T>
+pub type tapa_rtl::module::VerilogModule::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_rtl::module::VerilogModule::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_rtl::module::VerilogModule where T: core::clone::Clone
+pub type tapa_rtl::module::VerilogModule::Owned = T
+pub fn tapa_rtl::module::VerilogModule::clone_into(&self, &mut T)
+pub fn tapa_rtl::module::VerilogModule::to_owned(&self) -> T
+impl<T> core::any::Any for tapa_rtl::module::VerilogModule where T: 'static + ?core::marker::Sized
+pub fn tapa_rtl::module::VerilogModule::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_rtl::module::VerilogModule where T: ?core::marker::Sized
+pub fn tapa_rtl::module::VerilogModule::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_rtl::module::VerilogModule where T: ?core::marker::Sized
+pub fn tapa_rtl::module::VerilogModule::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_rtl::module::VerilogModule where T: core::clone::Clone
+pub unsafe fn tapa_rtl::module::VerilogModule::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_rtl::module::VerilogModule
+pub fn tapa_rtl::module::VerilogModule::from(T) -> T
+impl<T> serde_core::de::DeserializeOwned for tapa_rtl::module::VerilogModule where T: for<'de> serde_core::de::Deserialize<'de>
