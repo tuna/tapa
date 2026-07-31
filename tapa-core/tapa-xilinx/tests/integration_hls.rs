@@ -84,8 +84,10 @@ fn run_vadd_hls<R: ToolRunner>(runner: &R) {
         reports.as_str()
     );
     assert!(hdl.is_dir(), "hdl_out_dir missing: {}", hdl.as_str());
+    let csynth_xml_canonical = reports.join("vadd_csynth.xml");
+    let csynth_xml_current = reports.join("vadd.csynth.xml");
     assert!(
-        reports.join("vadd_csynth.xml").is_file(),
+        csynth_xml_canonical.is_file() || csynth_xml_current.is_file(),
         "csynth.xml not staged under {}",
         reports.as_str()
     );

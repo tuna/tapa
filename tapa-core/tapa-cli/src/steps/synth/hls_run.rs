@@ -288,8 +288,8 @@ fn is_verilog(path: &camino::Utf8Path) -> bool {
 /// Reload and parse the task's top-level csynth report on an mtime-skip
 /// cache hit.
 ///
-/// Reads `<task>_csynth.xml`, the exact file the live HLS harvest parses.
-/// A task's report dir also holds
+/// Reads `<task>_csynth.xml` (falling back to `<task>.csynth.xml`), the
+/// exact file the live HLS harvest parses. A task's report dir also holds
 /// sub-module reports — e.g. `<task>_Pipeline_VITIS_LOOP_*_csynth.xml` —
 /// which likewise end in `_csynth.xml` but carry only the sub-loop's
 /// (smaller) area. Selecting the first `*_csynth.xml` in `read_dir` order
@@ -299,7 +299,9 @@ fn find_and_parse_csynth(
     reports_dir: &camino::Utf8Path,
     task_name: &str,
 ) -> Result<tapa_xilinx::CsynthReport> {
-    let report_xml = reports_dir.join(format!("{task_name}_csynth.xml"));
+    let primary = reports_dir.join(format!("{task_name}_csynth.xml"));
+    let fallback = reports_dir.join(format!("{task_name}.csynth.xml"));
+    let report_xml = if primary.is_file() { primary } else { fallback };
     let bytes = fs::read(&report_xml).map_err(|e| {
         CliError::Codegen(format!(
             "missing cached csynth report `{}`: {e}",
