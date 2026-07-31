@@ -116,10 +116,11 @@ impl CosimDevice {
                 let dpi = dpi_lib_path("verilator")?;
                 Box::new(VerilatorRunner::find(dpi)?)
             }
-            Simulator::Xsim => {
+            Simulator::Xsim { legacy } => {
                 let dpi = dpi_lib_path("xsim")?;
                 Box::new(XsimRunner::find(
                     dpi,
+                    *legacy || env_bool(frt_shm::env::FRT_XSIM_LEGACY),
                     opts.save_waveform,
                     opts.start_gui,
                     opts.part_num_override.clone(),

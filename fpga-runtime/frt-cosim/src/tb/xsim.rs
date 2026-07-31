@@ -116,6 +116,7 @@ struct TclTemplate {
     dpi_sv_root: String,
     dpi_sv_lib: String,
     save_waveform: bool,
+    legacy: bool,
 }
 
 pub struct XsimTbGenerator<'a> {
@@ -125,6 +126,7 @@ pub struct XsimTbGenerator<'a> {
     scalar_values: &'a HashMap<u32, Vec<u8>>,
     part_num: &'a str,
     save_waveform: bool,
+    legacy: bool,
 }
 
 impl<'a> XsimTbGenerator<'a> {
@@ -135,6 +137,7 @@ impl<'a> XsimTbGenerator<'a> {
         scalar_values: &'a HashMap<u32, Vec<u8>>,
         part_num: &'a str,
         save_waveform: bool,
+        legacy: bool,
     ) -> Self {
         Self {
             spec,
@@ -143,6 +146,7 @@ impl<'a> XsimTbGenerator<'a> {
             scalar_values,
             part_num,
             save_waveform,
+            legacy,
         }
     }
 
@@ -232,6 +236,7 @@ impl<'a> XsimTbGenerator<'a> {
                 .to_string_lossy()
                 .to_string(),
             save_waveform: self.save_waveform,
+            legacy: self.legacy,
         };
         template
             .render()

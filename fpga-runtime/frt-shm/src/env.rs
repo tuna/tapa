@@ -11,6 +11,7 @@ pub const FRT_COSIM_WORK_DIR_PARALLEL: &str = "FRT_COSIM_WORK_DIR_PARALLEL";
 pub const FRT_COSIM_YIELD: &str = "FRT_COSIM_YIELD";
 
 // ── XSim-specific options ───────────────────────────────────────────────
+pub const FRT_XSIM_LEGACY: &str = "FRT_XSIM_LEGACY";
 pub const FRT_XSIM_START_GUI: &str = "FRT_XSIM_START_GUI";
 pub const FRT_XSIM_SAVE_WAVEFORM: &str = "FRT_XSIM_SAVE_WAVEFORM";
 pub const FRT_XSIM_PART_NUM: &str = "FRT_XSIM_PART_NUM";

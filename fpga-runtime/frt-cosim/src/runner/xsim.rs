@@ -11,6 +11,7 @@ use which::which;
 
 pub struct XsimRunner {
     pub dpi_lib: PathBuf,
+    pub legacy: bool,
     pub save_waveform: bool,
     pub start_gui: bool,
     pub part_num_override: Option<String>,
@@ -19,12 +20,14 @@ pub struct XsimRunner {
 impl XsimRunner {
     pub fn find(
         dpi_lib: PathBuf,
+        legacy: bool,
         save_waveform: bool,
         start_gui: bool,
         part_num_override: Option<String>,
     ) -> Result<Self> {
         Ok(Self {
             dpi_lib,
+            legacy,
             save_waveform,
             start_gui,
             part_num_override,
@@ -53,6 +56,7 @@ impl SimRunner for XsimRunner {
             scalar_values,
             part,
             self.save_waveform,
+            self.legacy,
         );
         let tb_file = format!("tb_{}.sv", spec.top_name);
 
