@@ -1,0 +1,216 @@
+{
+  "device": "u280",
+  "grid": [
+    2,
+    3
+  ],
+  "regions": {
+    "Add_0": "SLOT_X1Y1_TO_SLOT_X1Y1",
+    "Mmap2Stream_0": "SLOT_X0Y0_TO_SLOT_X0Y0",
+    "Mmap2Stream_1": "SLOT_X1Y0_TO_SLOT_X1Y0",
+    "Stream2Mmap_0": "SLOT_X1Y1_TO_SLOT_X1Y1",
+    "__tapa_global_controller": "SLOT_X1Y1_TO_SLOT_X1Y1",
+    "__tapa_local_controller_Add_0": "SLOT_X1Y1_TO_SLOT_X1Y1",
+    "__tapa_local_controller_Mmap2Stream_0": "SLOT_X0Y0_TO_SLOT_X0Y0",
+    "__tapa_local_controller_Mmap2Stream_1": "SLOT_X1Y0_TO_SLOT_X1Y0",
+    "__tapa_local_controller_Stream2Mmap_0": "SLOT_X1Y1_TO_SLOT_X1Y1",
+    "a_q_VecAdd": "SLOT_X1Y1_TO_SLOT_X1Y1",
+    "b_q_VecAdd": "SLOT_X1Y1_TO_SLOT_X1Y1",
+    "c_q_VecAdd": "SLOT_X1Y1_TO_SLOT_X1Y1",
+    "control_s_axi_U": "SLOT_X1Y1_TO_SLOT_X1Y1"
+  },
+  "routes": [
+    {
+      "channel": {
+        "kind": "stream",
+        "fifo": "a_q_VecAdd"
+      },
+      "route": [
+        "SLOT_X0Y0",
+        "SLOT_X0Y1",
+        "SLOT_X1Y1"
+      ],
+      "scheme": "double",
+      "reg_regions": [
+        "SLOT_X0Y0",
+        "SLOT_X0Y1",
+        "SLOT_X0Y1",
+        "SLOT_X1Y1"
+      ]
+    },
+    {
+      "channel": {
+        "kind": "stream",
+        "fifo": "b_q_VecAdd"
+      },
+      "route": [
+        "SLOT_X1Y0",
+        "SLOT_X0Y0",
+        "SLOT_X0Y1",
+        "SLOT_X1Y1"
+      ],
+      "scheme": "double",
+      "reg_regions": [
+        "SLOT_X1Y0",
+        "SLOT_X0Y0",
+        "SLOT_X0Y0",
+        "SLOT_X0Y1",
+        "SLOT_X0Y1",
+        "SLOT_X1Y1"
+      ]
+    },
+    {
+      "channel": {
+        "kind": "control",
+        "instance": "Mmap2Stream_0",
+        "channel": "launch"
+      },
+      "route": [
+        "SLOT_X1Y1",
+        "SLOT_X1Y0",
+        "SLOT_X0Y0"
+      ],
+      "scheme": "double",
+      "reg_regions": [
+        "SLOT_X1Y1",
+        "SLOT_X1Y0",
+        "SLOT_X1Y0",
+        "SLOT_X0Y0"
+      ]
+    },
+    {
+      "channel": {
+        "kind": "control",
+        "instance": "Mmap2Stream_0",
+        "channel": "reset"
+      },
+      "route": [
+        "SLOT_X1Y1",
+        "SLOT_X1Y0",
+        "SLOT_X0Y0"
+      ],
+      "scheme": "double",
+      "reg_regions": [
+        "SLOT_X1Y1",
+        "SLOT_X1Y0",
+        "SLOT_X1Y0",
+        "SLOT_X0Y0"
+      ]
+    },
+    {
+      "channel": {
+        "kind": "control",
+        "instance": "Mmap2Stream_0",
+        "channel": "completion"
+      },
+      "route": [
+        "SLOT_X0Y0",
+        "SLOT_X0Y1",
+        "SLOT_X1Y1"
+      ],
+      "scheme": "double",
+      "reg_regions": [
+        "SLOT_X0Y0",
+        "SLOT_X0Y1",
+        "SLOT_X0Y1",
+        "SLOT_X1Y1"
+      ]
+    },
+    {
+      "channel": {
+        "kind": "control",
+        "instance": "Mmap2Stream_1",
+        "channel": "launch"
+      },
+      "route": [
+        "SLOT_X1Y1",
+        "SLOT_X0Y1",
+        "SLOT_X0Y0",
+        "SLOT_X1Y0"
+      ],
+      "scheme": "double",
+      "reg_regions": [
+        "SLOT_X1Y1",
+        "SLOT_X0Y1",
+        "SLOT_X0Y1",
+        "SLOT_X0Y0",
+        "SLOT_X0Y0",
+        "SLOT_X1Y0"
+      ]
+    },
+    {
+      "channel": {
+        "kind": "control",
+        "instance": "Mmap2Stream_1",
+        "channel": "reset"
+      },
+      "route": [
+        "SLOT_X1Y1",
+        "SLOT_X0Y1",
+        "SLOT_X0Y0",
+        "SLOT_X1Y0"
+      ],
+      "scheme": "double",
+      "reg_regions": [
+        "SLOT_X1Y1",
+        "SLOT_X0Y1",
+        "SLOT_X0Y1",
+        "SLOT_X0Y0",
+        "SLOT_X0Y0",
+        "SLOT_X1Y0"
+      ]
+    },
+    {
+      "channel": {
+        "kind": "control",
+        "instance": "Mmap2Stream_1",
+        "channel": "completion"
+      },
+      "route": [
+        "SLOT_X1Y0",
+        "SLOT_X0Y0",
+        "SLOT_X0Y1",
+        "SLOT_X1Y1"
+      ],
+      "scheme": "double",
+      "reg_regions": [
+        "SLOT_X1Y0",
+        "SLOT_X0Y0",
+        "SLOT_X0Y0",
+        "SLOT_X0Y1",
+        "SLOT_X0Y1",
+        "SLOT_X1Y1"
+      ]
+    }
+  ],
+  "slot_usage": {
+    "SLOT_X0Y0_TO_SLOT_X0Y0": {
+      "lut": 415,
+      "ff": 914,
+      "bram_18k": 0,
+      "dsp": 0,
+      "uram": 0
+    },
+    "SLOT_X0Y1_TO_SLOT_X0Y1": {
+      "lut": 0,
+      "ff": 278,
+      "bram_18k": 0,
+      "dsp": 0,
+      "uram": 0
+    },
+    "SLOT_X1Y0_TO_SLOT_X1Y0": {
+      "lut": 415,
+      "ff": 842,
+      "bram_18k": 0,
+      "dsp": 0,
+      "uram": 0
+    },
+    "SLOT_X1Y1_TO_SLOT_X1Y1": {
+      "lut": 455,
+      "ff": 493,
+      "bram_18k": 0,
+      "dsp": 2,
+      "uram": 0
+    }
+  }
+}

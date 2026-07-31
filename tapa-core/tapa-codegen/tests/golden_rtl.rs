@@ -113,18 +113,32 @@ fn run_case(case: &GoldenCase) -> EmittedSet {
     let design: tapa_ir::Design = serde_json::from_str(&design_json)
         .unwrap_or_else(|e| panic!("[{}] design.json does not parse: {e}", case.name));
 
-    let mut state = TopologyWithRtl::new(design);
+    let state = prepare_state(case, design);
+    run_rtl_generation(case, state)
+}
 
+/// Build the `TopologyWithRtl` for one case, mirroring the CLI: the synth
+/// flow feeds `generate_rtl` the work-state graph as-is, while the
+/// floorplan flow flattens the graph first (the planner's `FloorplanResult`
+/// names flattened FIFOs/instances) and attaches the resulting plan.
+fn prepare_state(case: &GoldenCase, design: tapa_ir::Design) -> TopologyWithRtl {
     let floorplan_path = case.dir.join("floorplan.json");
-    if floorplan_path.is_file() {
-        let floorplan_json = fs::read_to_string(&floorplan_path)
-            .unwrap_or_else(|e| panic!("[{}] cannot read floorplan.json: {e}", case.name));
-        state.floorplan = Some(
-            serde_json::from_str::<tapa_ir::FloorplanResult>(&floorplan_json)
-                .unwrap_or_else(|e| panic!("[{}] floorplan.json does not parse: {e}", case.name)),
-        );
+    if !floorplan_path.is_file() {
+        return TopologyWithRtl::new(design);
     }
+    let flat =
+        tapa_ir::flatten(&design).unwrap_or_else(|e| panic!("[{}] flatten failed: {e}", case.name));
+    let floorplan_json = fs::read_to_string(&floorplan_path)
+        .unwrap_or_else(|e| panic!("[{}] cannot read floorplan.json: {e}", case.name));
+    let floorplan = serde_json::from_str::<tapa_ir::FloorplanResult>(&floorplan_json)
+        .unwrap_or_else(|e| panic!("[{}] floorplan.json does not parse: {e}", case.name));
+    let mut state = TopologyWithRtl::new(flat);
+    state.floorplan = Some(floorplan);
+    state
+}
 
+/// Attach fixtures and run `generate_rtl`, then collect the emitted set.
+fn run_rtl_generation(case: &GoldenCase, mut state: TopologyWithRtl) -> EmittedSet {
     // Attach the HLS input fixtures the way the CLI attaches HLS outputs.
     let inputs_dir = case.dir.join("inputs");
     let task_names: Vec<String> = state.design.tasks.keys().cloned().collect();

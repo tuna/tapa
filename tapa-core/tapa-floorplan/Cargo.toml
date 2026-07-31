@@ -20,5 +20,10 @@ tapa-ir = { workspace = true }
 tempfile = { workspace = true }
 thiserror = { workspace = true }
 
+# Test-only: the golden floorplan probe recomputes AXI channel widths from
+# the shared protocol tables instead of depending on tapa-codegen.
+[dev-dependencies]
+tapa-protocol = { workspace = true }
+
 [lints]
 workspace = true
