@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use crate::solver::lp_writer::write_cplex_lp;
-use crate::solver::model::{LpModel, LpVar};
+use crate::solver::model::{LpModel, LpVar, Sense};
 use crate::solver::solve::{evaluate, LpSolution, LpStatus, SolveOpts, Solver, SolverError};
 
 /// Tuned CBC options for deterministic floorplanning solves.
@@ -147,6 +147,19 @@ fn validate_solution(mut solution: LpSolution, model: &LpModel) -> Result<LpSolu
         solution.objective = reported + model.objective.constant;
         if solution.validate_for(model).is_ok() {
             return canonicalize_objective(solution, model);
+        }
+        // Older CBC (e.g. 2.9.9 in the CI image) additionally *negates* the
+        // objective of a maximization model in its solution header, so
+        // `Optimal - objective value -12` means a maximum of 12. Try the
+        // sign-flipped conventions too; every candidate still has to satisfy
+        // full incumbent validation.
+        if model.sense == Sense::Maximize {
+            for candidate in [-reported, -reported + model.objective.constant] {
+                solution.objective = candidate;
+                if solution.validate_for(model).is_ok() {
+                    return canonicalize_objective(solution, model);
+                }
+            }
         }
         solution.objective = reported;
     }
@@ -473,9 +486,8 @@ Optimal - objective value 12.00000000
     }
 
     #[test]
-    fn negated_objective_headers_are_rejected() {
-        // A maximize model whose optimum 12 is reported as -12 mismatches the
-        // incumbent and must be rejected like any unrelated objective value.
+    fn negated_maximize_objective_is_accepted_and_canonicalized() {
+        // CBC 2.9.9-style header: the maximize optimum 12 reported as -12.
         let mut model = LpModel::new(Sense::Maximize);
         let x = model.add_integer("x0", 0.0, 10.0);
         model.set_objective(LinExpr::sum([(3.0, x)]));
@@ -483,22 +495,22 @@ Optimal - objective value 12.00000000
         let solution =
             parse_sol("Optimal - objective value -12\n      0 x0                     4   0\n")
                 .expect("parse");
-        assert!(matches!(
-            validate_solution(solution, &model),
-            Err(SolverError::InvalidSolution(_))
-        ));
+        let solution = validate_solution(solution, &model).expect("old-CBC maximize convention");
+        assert!(
+            approx(solution.objective, 12.0),
+            "objective canonicalized to the model sense: {}",
+            solution.objective,
+        );
 
-        // A negated minimize report is likewise rejected: a flipped sign must
-        // never let a buggy solver mask a mismatched objective.
+        // A negated *minimize* report is still rejected: no sign-flip
+        // convention applies, so a buggy solver cannot mask.
         let mut model = LpModel::new(Sense::Minimize);
         let x = model.add_binary("x");
         model.set_objective(LinExpr::sum([(2.0, x)]));
         model.add_constraint("pick", LinExpr::sum([(1.0, x)]), Comparison::Eq, 1.0);
         let solution = parse_sol("Optimal - objective value -2\n      0 x0 1 0\n").expect("parse");
-        assert!(matches!(
-            validate_solution(solution, &model),
-            Err(SolverError::InvalidSolution(_))
-        ));
+        validate_solution(solution, &model)
+            .expect_err("a negated minimize report must stay rejected");
     }
 
     #[test]
