@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use tapa_floorplan::device::Coor;
+use tapa_ir::floorplan::Coor;
 use tapa_ir::{
     control_pipeline_instance_name, global_controller_instance_name,
     local_controller_instance_name, ControlChannel, PipelineScheme, RoutedChannel,

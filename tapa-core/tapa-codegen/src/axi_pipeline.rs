@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use tapa_floorplan::device::Coor;
+use tapa_ir::floorplan::Coor;
 use tapa_ir::{
     axi_pipeline_instance_name, AxiChannel, AxiEndpoint, FloorplanResult, MemoryBank, RoutedChannel,
 };

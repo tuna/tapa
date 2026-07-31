@@ -1264,7 +1264,6 @@ version = "0.1.0"
 dependencies = [
  "rust-embed",
  "serde_json",
- "tapa-floorplan",
  "tapa-ir",
  "tapa-protocol",
  "tapa-rtl",
