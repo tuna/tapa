@@ -228,23 +228,22 @@ fn parse_remote_host_spec_variants() {
 }
 
 #[test]
-fn malformed_yaml_warns_and_returns_none() {
-    // Malformed `.taparc` files warn and disable remote execution so
-    // unrelated commands such as `tapa version` still run.
-    let lock = ENV_LOCK.lock();
-    let _lock = match lock {
-        Ok(g) => g,
-        Err(poisoned) => poisoned.into_inner(),
-    };
+fn malformed_taparc_errors_with_path() {
+    let _lock = ENV_LOCK.lock().unwrap();
     let mut g = EnvGuard::new();
     let td = tempfile::tempdir().unwrap();
     let p = write_taparc(&td, "remote: : :\nkey: [unterminated\n");
     g.set(TAPARC_PATH_ENV, p.to_str().unwrap());
-    let cfg = build_remote_config(&make_globals())
-        .expect("malformed taparc must warn-and-skip, never error");
+    let err = build_remote_config(&make_globals())
+        .expect_err("malformed taparc must error, never be silently dropped");
     assert!(
-        cfg.is_none(),
-        "malformed taparc must yield None (compatibility)",
+        matches!(err, CliError::RemoteConfigParse { .. }),
+        "malformed taparc must surface as RemoteConfigParse: {err:?}",
+    );
+    let msg = err.to_string();
+    assert!(
+        msg.contains(&p.display().to_string()),
+        "error must name the file: {msg}",
     );
 }
 
