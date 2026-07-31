@@ -52,13 +52,41 @@ const fn entry(name: &'static str, scope: PassScope, pass: &'static dyn RtlPass)
 /// non-`Ignore` task (in `BTreeMap` task order) — reproducing the
 /// pre-refactor hand-written call sequence exactly.
 static PIPELINE: &[PipelineEntry] = &[
-    entry("ignore-task-shells", PassScope::Design, &passes::IgnoreTaskShells),
-    entry("cleanup-hls-artifacts", PassScope::UpperTask, &passes::CleanupHlsArtifacts),
-    entry("create-fsm-module", PassScope::UpperTask, &passes::CreateFsmModule),
-    entry("generate-child-signals", PassScope::UpperTask, &passes::GenerateChildSignals),
-    entry("fifo-instantiate-connect", PassScope::UpperTask, &passes::FifoInstantiateConnect),
-    entry("m-axi-crossbars", PassScope::UpperTask, &passes::MAxiCrossbars),
-    entry("axi-pipeline-instantiate", PassScope::UpperTask, &passes::AxiPipelineInstantiate),
+    entry(
+        "ignore-task-shells",
+        PassScope::Design,
+        &passes::IgnoreTaskShells,
+    ),
+    entry(
+        "cleanup-hls-artifacts",
+        PassScope::UpperTask,
+        &passes::CleanupHlsArtifacts,
+    ),
+    entry(
+        "create-fsm-module",
+        PassScope::UpperTask,
+        &passes::CreateFsmModule,
+    ),
+    entry(
+        "generate-child-signals",
+        PassScope::UpperTask,
+        &passes::GenerateChildSignals,
+    ),
+    entry(
+        "fifo-instantiate-connect",
+        PassScope::UpperTask,
+        &passes::FifoInstantiateConnect,
+    ),
+    entry(
+        "m-axi-crossbars",
+        PassScope::UpperTask,
+        &passes::MAxiCrossbars,
+    ),
+    entry(
+        "axi-pipeline-instantiate",
+        PassScope::UpperTask,
+        &passes::AxiPipelineInstantiate,
+    ),
     entry("control-fsm", PassScope::UpperTask, &passes::ControlFsm),
     entry("s-axi-control", PassScope::UpperTask, &passes::SAxiControl),
     entry("collect-outputs", PassScope::Design, &emit::CollectOutputs),
@@ -125,8 +153,10 @@ mod pipeline_tests {
     #[test]
     fn pipeline_declares_the_documented_stage_order() {
         use PassScope::{Design, UpperTask as Task};
-        let stages: Vec<(&str, PassScope)> =
-            PIPELINE.iter().map(|entry| (entry.name, entry.scope)).collect();
+        let stages: Vec<(&str, PassScope)> = PIPELINE
+            .iter()
+            .map(|entry| (entry.name, entry.scope))
+            .collect();
         assert_eq!(
             stages,
             [

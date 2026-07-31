@@ -9,7 +9,10 @@ use tapa_ir::{FloorplanResult, RoutedChannel};
 /// `reg_regions` is the authoritative per-cell handoff to XDC emission. Using
 /// its length here guarantees the generated Body hierarchy and its placement
 /// constraints cannot silently disagree.
-pub(super) fn stream_crossing_body_level(floorplan: Option<&FloorplanResult>, fifo_name: &str) -> Option<u32> {
+pub(super) fn stream_crossing_body_level(
+    floorplan: Option<&FloorplanResult>,
+    fifo_name: &str,
+) -> Option<u32> {
     floorplan?
         .routes
         .iter()

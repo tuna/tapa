@@ -2,9 +2,7 @@
 
 use crate::instance_signals::InstanceSignals;
 use tapa_protocol::{HANDSHAKE_CLK, HANDSHAKE_RST, HANDSHAKE_START};
-use tapa_rtl::builder::{
-    AlwaysBlock, CaseItem, ContinuousAssign, Expr, Sensitivity, Statement,
-};
+use tapa_rtl::builder::{AlwaysBlock, CaseItem, ContinuousAssign, Expr, Sensitivity, Statement};
 
 /// FSM state constants for non-autorun child instances (2-bit encoding).
 pub const STATE_IDLE: &str = "2'b00";
@@ -180,5 +178,4 @@ mod tests {
             "got: {text}"
         );
     }
-
 }

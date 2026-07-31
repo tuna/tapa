@@ -2,7 +2,6 @@
 //! generation, argument pipelines, handshake wiring, and portarg
 //! assembly.
 
-
 mod fsm;
 mod instance;
 mod signals;

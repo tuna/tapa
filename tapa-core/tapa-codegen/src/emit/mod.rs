@@ -35,14 +35,9 @@ impl RtlPass for CollectOutputs {
         // their original Verilog sources by the CLI; re-emitting them from the
         // parsed model drops legal port-reg redeclarations used by HLS.
         for (name, mm) in &state.module_map {
-            if state
-                .design
-                .tasks
-                .get(name.as_str())
-                .is_some_and(|task| {
-                    task.level == TaskLevel::Upper || task.synth == SynthTarget::Ignore
-                })
-            {
+            if state.design.tasks.get(name.as_str()).is_some_and(|task| {
+                task.level == TaskLevel::Upper || task.synth == SynthTarget::Ignore
+            }) {
                 state.generated_files.insert(format!("{name}.v"), mm.emit());
             }
         }

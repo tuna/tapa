@@ -5,16 +5,16 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use tapa_ir::Arg;
 use tapa_protocol::{
-    HANDSHAKE_CLK, HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY, HANDSHAKE_RST,
-    HANDSHAKE_RST_N, HANDSHAKE_START,
+    HANDSHAKE_CLK, HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY, HANDSHAKE_RST, HANDSHAKE_RST_N,
+    HANDSHAKE_START,
 };
 use tapa_rtl::builder::{ContinuousAssign, Expr};
 
-use crate::passes::distributed_control;
 use super::fsm::{
     generate_autorun_start, generate_child_fsm, generate_is_done_assign, generate_start_assign,
 };
 use super::instance::{build_child_instance_with_reset, ChildMmapBindings};
+use crate::passes::distributed_control;
 use crate::rtl_state::TopologyWithRtl;
 use crate::{async_mmap, instance_signals, m_axi, program};
 

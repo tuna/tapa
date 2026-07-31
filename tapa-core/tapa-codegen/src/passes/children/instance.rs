@@ -13,8 +13,8 @@ use tapa_rtl::builder::{Expr, ModuleInstance, PortArg};
 use tapa_rtl::module::sanitize_array_name;
 use tapa_rtl::VerilogModule;
 
-use crate::instance_signals::InstanceSignals;
 use crate::async_mmap;
+use crate::instance_signals::InstanceSignals;
 
 /// Build a child task `ModuleInstance` with all port argument bindings.
 ///

@@ -10,8 +10,8 @@ mod axi_pipeline;
 pub mod children;
 mod cleanup;
 mod distributed_control;
-mod floorplans;
 pub mod fifos;
+mod floorplans;
 pub mod m_axi;
 mod s_axi;
 
@@ -155,7 +155,10 @@ pub struct CleanupHlsArtifacts;
 
 impl RtlPass for CleanupHlsArtifacts {
     fn run(&self, ctx: &mut PassCtx<'_>) -> Result<(), CodegenError> {
-        let task = ctx.task.as_mut().expect("cleanup-hls-artifacts is task-scoped");
+        let task = ctx
+            .task
+            .as_mut()
+            .expect("cleanup-hls-artifacts is task-scoped");
         let is_top_task = task.name == ctx.state.design.top;
         let control_plan = task.inputs.control_plan.as_ref();
         cleanup::cleanup_hls_artifacts(ctx.state, task.name, is_top_task, control_plan);
@@ -183,7 +186,10 @@ pub struct GenerateChildSignals;
 
 impl RtlPass for GenerateChildSignals {
     fn run(&self, ctx: &mut PassCtx<'_>) -> Result<(), CodegenError> {
-        let task = ctx.task.as_mut().expect("generate-child-signals is task-scoped");
+        let task = ctx
+            .task
+            .as_mut()
+            .expect("generate-child-signals is task-scoped");
         task.inputs.is_done_signals = crate::children::generate_child_signals(
             ctx.state,
             task.name,
