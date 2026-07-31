@@ -1,5 +1,4 @@
 use crate::device::{BufferAccess, RuntimeArgCategory, RuntimeArgInfo};
-use crate::env_bool;
 use crate::instance::{Instance, Simulator};
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int};
@@ -70,13 +69,11 @@ fn to_str<'a>(ptr: *const c_char, field: &str) -> Result<Option<&'a str>, String
         .map_err(|e| format!("invalid utf-8 in {field}: {e}"))
 }
 
-fn parse_simulator(sim: Option<&str>) -> Simulator {
+fn parse_simulator(sim: Option<&str>) -> Result<Simulator, String> {
     match sim.unwrap_or("xsim") {
-        "verilator" => Simulator::Verilator,
-        "xsim-legacy" | "xsim_legacy" | "legacy-xsim" => Simulator::Xsim { legacy: true },
-        _ => Simulator::Xsim {
-            legacy: env_bool(frt_shm::env::FRT_XSIM_LEGACY),
-        },
+        "verilator" => Ok(Simulator::Verilator),
+        "xsim" => Ok(Simulator::Xsim),
+        other => Err(format!("unknown simulator '{other}'")),
     }
 }
 
@@ -101,7 +98,7 @@ fn open_instance(path: &str, sim: Option<&str>) -> Result<Instance, String> {
     let p = Path::new(path);
     match p.extension().and_then(|e| e.to_str()) {
         Some("xo" | "zip") => {
-            Instance::open_cosim(p, &parse_simulator(sim)).map_err(|e| e.to_string())
+            Instance::open_cosim(p, &parse_simulator(sim)?).map_err(|e| e.to_string())
         }
         _ => Instance::open(p).map_err(|e| e.to_string()),
     }

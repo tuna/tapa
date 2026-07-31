@@ -7,7 +7,7 @@ use std::path::Path;
 #[derive(Clone)]
 pub enum Simulator {
     Verilator,
-    Xsim { legacy: bool },
+    Xsim,
 }
 
 pub struct Instance {

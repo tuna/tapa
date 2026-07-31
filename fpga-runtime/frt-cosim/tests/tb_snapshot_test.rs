@@ -204,7 +204,6 @@ fn xsim_hls_tb_snapshot() {
         &scalar_vals,
         "xc7a100tcsg324-1",
         false,
-        false,
     );
     let tb = generator.render_tb().expect("render tb");
     assert!(tb.contains("module tb_vadd"));
@@ -247,7 +246,6 @@ fn xsim_hls_stream_output_is_serviced_on_posedge() {
         &scalar_vals,
         "xc7a100tcsg324-1",
         false,
-        false,
     );
     let tb = generator.render_tb().expect("render tb");
     assert!(tb.contains("always @(posedge ap_clk) begin"));
@@ -268,7 +266,6 @@ fn xsim_hls_stream_input_refills_without_bubble() {
         &base_addrs,
         &scalar_vals,
         "xc7a100tcsg324-1",
-        false,
         false,
     );
     let tb = generator.render_tb().expect("render tb");
@@ -319,7 +316,6 @@ fn xsim_hls_escapes_banked_mmap_names() {
         &scalar_vals,
         "xc7a100tcsg324-1",
         false,
-        false,
     );
     let tb = generator.render_tb().expect("render tb");
     assert!(tb.contains("m_axi_chan__05b0__05d_ARADDR"));
@@ -339,7 +335,6 @@ fn xsim_vitis_tb_contains_control_sequence() {
         &base_addrs,
         &scalar_vals,
         "xc7a100tcsg324-1",
-        false,
         false,
     );
     let tb = generator.render_tb().expect("render tb");
@@ -362,7 +357,6 @@ fn xsim_vitis_stream_input_uses_direct_try_read_on_posedge() {
         &base_addrs,
         &scalar_vals,
         "xc7a100tcsg324-1",
-        false,
         false,
     );
     let tb = generator.render_tb().expect("render tb");
@@ -394,7 +388,6 @@ fn xsim_vitis_axis_output_uses_direct_write_handshake() {
         &base_addrs,
         &scalar_vals,
         "xc7a100tcsg324-1",
-        false,
         false,
     );
     let tb = generator.render_tb().expect("render tb");
@@ -477,7 +470,7 @@ fn verilator_vitis_tb_uses_direct_axis_write_handshake() {
 }
 
 #[test]
-fn xsim_tcl_includes_xci_tcl_and_legacy_elab_property() {
+fn xsim_tcl_includes_xci_tcl_and_elab_property() {
     use frt_cosim::tb::xsim::XsimTbGenerator;
     let mut spec = vitis_spec();
     spec.verilog_files = vec![std::path::PathBuf::from("/tmp/rtl/top.v")];
@@ -493,7 +486,6 @@ fn xsim_tcl_includes_xci_tcl_and_legacy_elab_property() {
         &scalar_vals,
         "xc7a100tcsg324-1",
         true,
-        true,
     );
     let tcl = generator
         .render_tcl(std::path::Path::new("/tmp/tb"))
@@ -501,6 +493,6 @@ fn xsim_tcl_includes_xci_tcl_and_legacy_elab_property() {
     assert!(tcl.contains("add_files -norecurse -scan_for_includes /tmp/ip/example.xci"));
     assert!(tcl.contains("source /tmp/ip/setup_ip.tcl"));
     assert!(tcl.contains("upgrade_ip -quiet [get_ips *]"));
-    assert!(tcl.contains("set_property -name {xelab.more_options}"));
+    assert!(tcl.contains("set_property -name {xsim.elaborate.xelab.more_options}"));
     assert!(tcl.contains("set_property -name {xsim.simulate.wdb}"));
 }
