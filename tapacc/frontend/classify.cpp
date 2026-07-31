@@ -77,6 +77,7 @@ const char* TapaKindCat(TapaKind k) {
       return "ostreams";
     case TapaKind::kMmap:
     case TapaKind::kMmaps:
+    case TapaKind::kHmap:
       return "mmap";
     case TapaKind::kAsyncMmap:
       return "async_mmap";
@@ -84,8 +85,6 @@ const char* TapaKindCat(TapaKind k) {
       return "immap";
     case TapaKind::kOmmap:
       return "ommap";
-    case TapaKind::kHmap:
-      return "hmap";
     default:
       return "scalar";
   }

@@ -96,7 +96,7 @@ TEST(Ports, MixedSignature) {
   EXPECT_STREQ(TapaKindCat(ports[4].kind), "mmap");
 
   EXPECT_EQ(ports[5].name, "h");
-  EXPECT_STREQ(TapaKindCat(ports[5].kind), "hmap");
+  EXPECT_STREQ(TapaKindCat(ports[5].kind), "mmap");
   EXPECT_EQ(ports[5].ctype, "int*");
   ASSERT_TRUE(ports[5].chan_count.has_value());
   EXPECT_EQ(*ports[5].chan_count, 4u);

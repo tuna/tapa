@@ -128,7 +128,7 @@ TEST(Classify, Cat) {
   EXPECT_STREQ(TapaKindCat(TapaKind::kIStream), "istream");
   EXPECT_STREQ(TapaKindCat(TapaKind::kMmaps), "mmap");
   EXPECT_STREQ(TapaKindCat(TapaKind::kAsyncMmap), "async_mmap");
-  EXPECT_STREQ(TapaKindCat(TapaKind::kHmap), "hmap");
+  EXPECT_STREQ(TapaKindCat(TapaKind::kHmap), "mmap");
   EXPECT_STREQ(TapaKindCat(TapaKind::kNotTapa), "scalar");
 }
 
