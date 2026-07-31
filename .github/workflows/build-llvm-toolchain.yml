@@ -1,0 +1,71 @@
+name: Build LLVM toolchain (hermetic)
+
+# Builds TAPA's hermetic clang+llvm toolchain archives from source and
+# publishes them as release assets. Manual: building LLVM takes hours.
+# After a run, copy the printed sha256 values into the llvm.toolchain
+# urls/sha256 overrides in MODULE.bazel (see tools/llvm-toolchain/README.md).
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag to upload assets to (created if missing)
+        required: true
+        default: llvm-toolchain
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Ubuntu matrix: LLVM 18.1.8 (matches llvm_versions in MODULE.bazel).
+          - { label: ubuntu-18.04, image: ubuntu:18.04, llvm: "18.1.8" }
+          - { label: ubuntu-20.04, image: ubuntu:20.04, llvm: "18.1.8" }
+          - { label: ubuntu-22.04, image: ubuntu:22.04, llvm: "18.1.8" }
+          - { label: ubuntu-24.04, image: ubuntu:24.04, llvm: "18.1.8" }
+          # 25.04 reuses the 24.04 build (same glibc floor as its key).
+          - { label: ubuntu-25.04, image: ubuntu:24.04, llvm: "18.1.8" }
+          # RHEL keys build on AlmaLinux (ABI-equivalent, no subscription).
+          - { label: rhel-8, image: almalinux:8, llvm: "14.0.0" }
+          - { label: rhel-9, image: almalinux:9, llvm: "14.0.0" }
+    steps:
+      - uses: actions/checkout@v4
+
+      # LLVM build trees peak at ~40 GB; reclaim preinstalled image junk.
+      - uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          tool-cache: true
+          large-packages: true
+          docker-images: false
+
+      - name: Build and package in a clean distro container
+        run: |
+          mkdir -p "$RUNNER_TEMP/out"
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE":/src:ro \
+            -v "$RUNNER_TEMP/out":/out \
+            -e JOBS="$(nproc)" -e LINK_JOBS=2 \
+            "${{ matrix.image }}" \
+            bash /src/tools/llvm-toolchain/build-llvm-toolchain.sh \
+              "${{ matrix.llvm }}" "${{ matrix.label }}" /tmp/llvm-build
+
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd "$RUNNER_TEMP/out"
+          gh release view "${{ inputs.release_tag }}" > /dev/null 2>&1 || \
+            gh release create "${{ inputs.release_tag }}" \
+              --title "Hermetic LLVM toolchains" \
+              --notes "Built from source with all optional host-library deps disabled; see tools/llvm-toolchain/."
+          for f in *.tar.xz; do
+            gh release upload "${{ inputs.release_tag }}" "$f" "${f}.sha256" --clobber
+          done
+
+      - name: Print wiring table
+        run: cat "$RUNNER_TEMP/out"/*.sha256
