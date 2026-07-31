@@ -212,3 +212,66 @@ fn extract_file(file: &mut zip::read::ZipFile<'_>, name: &str, out_dir: &Path) -
     std::io::copy(file, &mut fp)?;
     Ok(out)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Cursor, Write};
+
+    const KERNEL_XML: &str = r#"<?xml version="1.0"?>
+<root>
+  <kernel name="vadd">
+    <args>
+      <arg name="a" addressQualifier="1" id="0" port="m_axi_a" dataWidth="512" addrWidth="64"/>
+    </args>
+  </kernel>
+</root>"#;
+
+    const CONTROL_S_AXI: &str = "localparam ADDR_A_DATA_0 = 6'h10;\n";
+
+    fn xo_archive(entries: &[(&str, &str)]) -> zip::ZipArchive<Cursor<Vec<u8>>> {
+        let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        let options = zip::write::SimpleFileOptions::default();
+        for (name, contents) in entries {
+            writer.start_file(*name, options).expect("start file");
+            writer.write_all(contents.as_bytes()).expect("write file");
+        }
+        let cursor = writer.finish().expect("finish zip");
+        zip::ZipArchive::new(cursor).expect("open zip")
+    }
+
+    /// The XO scan keys the scalar register map on the TAPA/Vitis
+    /// `<TopName>_control_s_axi.v` name. A file named `s_axi_control.v`
+    /// (the pre-2021 spelling) must not be picked up as the register-map
+    /// source, even when its contents match the new localparam format.
+    #[test]
+    fn s_axi_control_v_is_not_the_scalar_register_map_source() {
+        let mut archive = xo_archive(&[
+            ("kernel.xml", KERNEL_XML),
+            ("s_axi_control.v", CONTROL_S_AXI),
+        ]);
+        let (spec, _dir) = load_xo_spec(&mut archive, Path::new("test.xo")).expect("load xo spec");
+        assert!(
+            spec.scalar_register_map.is_empty(),
+            "s_axi_control.v must not be parsed as the scalar register map",
+        );
+        assert!(
+            spec.verilog_files
+                .iter()
+                .any(|p| p.ends_with("s_axi_control.v")),
+            "the file is still classified as RTL",
+        );
+    }
+
+    /// Positive control for the scan: the `<TopName>_control_s_axi.v` name
+    /// is what actually feeds the scalar register map.
+    #[test]
+    fn control_s_axi_v_feeds_the_scalar_register_map() {
+        let mut archive = xo_archive(&[
+            ("kernel.xml", KERNEL_XML),
+            ("vadd_control_s_axi.v", CONTROL_S_AXI),
+        ]);
+        let (spec, _dir) = load_xo_spec(&mut archive, Path::new("test.xo")).expect("load xo spec");
+        assert_eq!(spec.scalar_register_map.get("a").copied(), Some(0x10));
+    }
+}
