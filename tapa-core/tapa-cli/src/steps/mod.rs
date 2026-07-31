@@ -26,7 +26,6 @@
 //! - The vendor toolchain itself is the `tapa-xilinx` crate.
 
 pub mod analyze;
-pub mod find_clang_binary;
 pub mod floorplan;
 pub mod gcc;
 pub mod meta;

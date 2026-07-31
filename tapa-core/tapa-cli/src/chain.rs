@@ -14,7 +14,8 @@ use clap::{Parser, Subcommand};
 
 use crate::context::CliContext;
 use crate::error::{CliError, Result};
-use crate::steps::{analyze, find_clang_binary, floorplan, gcc, meta, pack, synth, version};
+use crate::steps::{analyze, floorplan, gcc, meta, pack, synth, version};
+use crate::tapacc::find_clang_binary;
 
 /// One link in the chained-step list. Each variant carries its step's
 /// `Args` (flags) plus a `chain_tail` positional that captures any

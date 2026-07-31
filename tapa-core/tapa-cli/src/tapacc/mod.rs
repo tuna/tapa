@@ -2,6 +2,7 @@
 
 pub mod cflags;
 pub mod discover;
+pub mod find_clang_binary;
 pub mod shim;
 
 pub use cflags::{get_remote_hls_cflags, get_system_cflags, get_tapa_cflags, get_tapacc_cflags};
