@@ -51,8 +51,6 @@ pub fn sanitize_identifier_name(name: &str) -> String {
 }
 
 /// Argument / port category.
-///
-/// `"hmap"` is an alias that deserializes to `Mmap`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, IntoStaticStr, EnumString)]
 #[strum(serialize_all = "snake_case")]
 pub enum ArgCategory {
@@ -61,7 +59,7 @@ pub enum ArgCategory {
     Istreams,
     Ostreams,
     Scalar,
-    #[strum(serialize = "mmap", serialize = "hmap")]
+    #[strum(serialize = "mmap")]
     Mmap,
     Immap,
     Ommap,
@@ -161,24 +159,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn hmap_deserializes_to_mmap() {
-        let json = r#""hmap""#;
-        let cat: ArgCategory = serde_json::from_str(json).expect("parse hmap");
-        assert_eq!(cat, ArgCategory::Mmap, "hmap must map to Mmap");
-    }
-
-    #[test]
     fn mmap_round_trips_as_mmap() {
         let cat = ArgCategory::Mmap;
         let json = serde_json::to_string(&cat).expect("serialize");
         assert_eq!(json, r#""mmap""#, "Mmap serializes as mmap");
-    }
-
-    #[test]
-    fn hmap_round_trips_as_mmap() {
-        let cat: ArgCategory = serde_json::from_str(r#""hmap""#).expect("parse");
-        let json = serde_json::to_string(&cat).expect("serialize");
-        assert_eq!(json, r#""mmap""#, "hmap round-trips as mmap");
     }
 
     #[test]
@@ -193,7 +177,6 @@ mod tests {
             ("immap", ArgCategory::Immap),
             ("ommap", ArgCategory::Ommap),
             ("async_mmap", ArgCategory::AsyncMmap),
-            ("hmap", ArgCategory::Mmap),
         ];
         for (s, expected) in cases {
             let json = format!(r#""{s}""#);

@@ -371,17 +371,16 @@ fn unknown_task_synth_policy_rejected() {
 }
 
 #[test]
-fn hmap_port_category_round_trips_as_mmap() {
+fn mmap_port_category_round_trips() {
     let json = r#"{
         "top": "T", "target": "xilinx-hls",
         "tasks": {"T": {"level": "lower", "code": "", "synth": "hls",
             "readable_name": "T",
             "clock_period": "0",
-            "ports": [{"cat": "hmap", "name": "data", "type": "float*", "width": 32}]}}
+            "ports": [{"cat": "mmap", "name": "data", "type": "float*", "width": 32}]}}
     }"#;
-    let d = Design::from_json(json).expect("parse hmap port");
-    assert_eq!(d.tasks["T"].ports[0].cat, ArgCategory::Mmap, "hmap -> Mmap");
+    let d = Design::from_json(json).expect("parse mmap port");
+    assert_eq!(d.tasks["T"].ports[0].cat, ArgCategory::Mmap);
     let serialized = to_json(&d);
     assert!(serialized.contains(r#""mmap""#), "round-trips as mmap");
-    assert!(!serialized.contains(r#""hmap""#), "no hmap in output");
 }

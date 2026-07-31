@@ -7,7 +7,7 @@
             "level": "lower",
             "ports": [
                 {
-                    "cat": "hmap",
+                    "cat": "mmap",
                     "chan_count": 4,
                     "chan_size": 1024,
                     "name": "data",

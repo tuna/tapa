@@ -56,15 +56,15 @@ fn vadd_leaf_task() {
 }
 
 #[test]
-fn hmap_port_deserializes_to_mmap() {
-    let g = Graph::from_json(&fixture("hmap_ports.json")).expect("parse hmap");
+fn channelized_mmap_port_deserializes() {
+    let g = Graph::from_json(&fixture("hmap_ports.json")).expect("parse");
     let top = &g.tasks["Top"];
     let data_port = top
         .ports
         .iter()
         .find(|p| p.name == "data")
         .expect("data port");
-    assert_eq!(data_port.cat, ArgCategory::Mmap, "hmap -> Mmap");
+    assert_eq!(data_port.cat, ArgCategory::Mmap, "data is an mmap port");
     assert_eq!(data_port.chan_count, Some(4), "chan_count preserved");
     assert_eq!(data_port.chan_size, Some(1024), "chan_size preserved");
 }
@@ -74,7 +74,7 @@ fn all_category_variants_in_fixture() {
     let g = Graph::from_json(&fixture("hmap_ports.json")).expect("parse");
     let ports = &g.tasks["Top"].ports;
     let cats: Vec<_> = ports.iter().map(|p| p.cat).collect();
-    assert!(cats.contains(&ArgCategory::Mmap), "has mmap (from hmap)");
+    assert!(cats.contains(&ArgCategory::Mmap), "has mmap");
     assert!(cats.contains(&ArgCategory::AsyncMmap), "has async_mmap");
     assert!(cats.contains(&ArgCategory::Istreams), "has istreams");
     assert!(cats.contains(&ArgCategory::Ostreams), "has ostreams");
@@ -170,16 +170,12 @@ fn vadd_round_trip() {
 }
 
 #[test]
-fn hmap_round_trip_canonical() {
+fn hmap_ports_round_trip() {
     let json = fixture("hmap_ports.json");
-    let g = Graph::from_json(&json).expect("parse");
-    let serialized = serde_json::to_string_pretty(&g).expect("serialize");
-    // After round-trip, "hmap" should appear as "mmap"
-    assert!(
-        !serialized.contains(r#""hmap""#),
-        "hmap should not appear in output"
-    );
-    assert!(serialized.contains(r#""mmap""#), "mmap should appear");
+    let g1 = Graph::from_json(&json).expect("parse 1");
+    let serialized = serde_json::to_string_pretty(&g1).expect("serialize");
+    let g2 = Graph::from_json(&serialized).expect("parse 2");
+    assert_eq!(g1, g2, "round-trip equality");
 }
 
 // ── Negative tests ──────────────────────────────────────────────────
