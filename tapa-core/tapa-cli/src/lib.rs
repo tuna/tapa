@@ -6,7 +6,7 @@ pub mod context;
 pub mod error;
 pub mod globals;
 pub mod logging;
-pub mod remote;
+pub mod remote_config;
 pub mod state;
 pub mod steps;
 pub mod tapacc;

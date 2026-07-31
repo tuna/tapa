@@ -10,7 +10,7 @@ use tapa_cli::context::CliContext;
 use tapa_cli::error::CliError;
 use tapa_cli::globals::Cli;
 use tapa_cli::logging;
-use tapa_cli::remote::bootstrap_remote;
+use tapa_cli::remote_config::bootstrap_remote;
 
 fn main() -> ExitCode {
     match run() {

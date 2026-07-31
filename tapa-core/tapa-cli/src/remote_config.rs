@@ -1,5 +1,8 @@
 //! Remote-config bootstrap for the `tapa` CLI entry.
 //!
+//! Named `remote_config` (not `remote`) to disambiguate from
+//! `tapa_xilinx::runtime::remote`.
+//!
 //! Resolution happens in three stages:
 //!
 //! 1. `load_remote_config(remote_host)` — read `~/.taparc` (YAML),
@@ -262,5 +265,5 @@ pub fn bootstrap_remote(globals: &GlobalArgs) -> Result<Option<RemoteConfig>> {
     Ok(cfg)
 }
 #[cfg(test)]
-#[path = "remote/tests.rs"]
+#[path = "remote_config/tests.rs"]
 mod tests;

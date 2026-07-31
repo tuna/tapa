@@ -1,7 +1,7 @@
 //! Tests for the remote-config bootstrap.
 //!
-//! Loaded from `remote.rs` via `#[path = "remote/tests.rs"] mod tests`
-//! so the per-file LOC budget on `remote.rs` stays under 450.
+//! Loaded from `remote_config.rs` via `#[path = "remote_config/tests.rs"] mod tests`
+//! so the per-file LOC budget on `remote_config.rs` stays under 450.
 
 use super::*;
 use std::sync::Mutex;
