@@ -659,7 +659,7 @@ fn scalar_type_name(width_bits: u32) -> String {
 }
 
 fn device_bdf(id: cl_device_id) -> Option<String> {
-    // Xilinx extension used by legacy C++ runtime (`CL_DEVICE_PCIE_BDF`).
+    // Xilinx OpenCL extension (`CL_DEVICE_PCIE_BDF`) returning the device PCIe BDF.
     const CL_DEVICE_PCIE_BDF: u32 = 0x4038;
     let bytes = OclDevice::new(id).get_data(CL_DEVICE_PCIE_BDF).ok()?;
     let end = bytes.iter().position(|b| *b == 0).unwrap_or(bytes.len());
