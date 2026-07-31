@@ -26,8 +26,6 @@ pub const PP_DIST: i64 = 100;
 /// Multiplier applied to vertical (SLR-crossing) distance in the floorplan
 /// objective, so the ILP prefers to keep channels within a die.
 pub const VERTICAL_DIST_PENALTY: i64 = 2;
-/// Fraction of a boundary's raw wire capacity the router is allowed to use.
-pub const USABLE_WIRE_RATIO: f64 = 0.7;
 /// Default per-slot resource utilization target.
 pub const DEFAULT_USAGE_LIMIT: f64 = 0.7;
 /// Sentinel "no limit" wire capacity: a boundary with this cap never binds.
@@ -605,30 +603,16 @@ fn valid_pblock_range(range: &str) -> bool {
 /// Component-wise sum of two [`Area`]s. A free function because `Area` is
 /// defined in `tapa-ir`, so the orphan rule forbids an `impl Add` here.
 #[must_use]
-/// Apply the default usable-wire ratio with Python-compatible ties-to-even
-/// rounding. The multiplication intentionally happens in binary64 first:
-/// Python evaluates `45 * 0.7` just below 31.5 and therefore rounds it to 31.
-/// A rational `7/10` implementation would not be equivalent.
-#[allow(
-    clippy::cast_possible_truncation,
-    clippy::cast_sign_loss,
-    clippy::cast_precision_loss,
-    reason = "the formulation computes round(integer_capacity * 0.7) in binary64"
-)]
+/// Return 70% of the raw wire capacity, rounded to the nearest integer (ties up).
 pub(crate) fn usable_wire_capacity(raw: u64) -> u64 {
-    debug_assert!(
-        (USABLE_WIRE_RATIO - 0.7).abs() < f64::EPSILON,
-        "ratio drifted"
-    );
-
-    (raw as f64 * USABLE_WIRE_RATIO).round_ties_even() as u64
+    (raw * 7 + 5) / 10
 }
 
 /// The usable capacity of the shared border between two facing slot sides.
 ///
 /// The *smaller* of the two facing declarations is taken first — either side
 /// of the physical boundary may be the binding one — and the result is
-/// derated by [`USABLE_WIRE_RATIO`]. Placement cuts and per-boundary routing
+/// derated to its usable share. Placement cuts and per-boundary routing
 /// constraints both use this helper so the two stages always model the same
 /// budget for a given boundary.
 pub(crate) fn effective_border_capacity(lhs: u64, rhs: u64) -> u64 {
@@ -700,15 +684,11 @@ mod tests {
     }
 
     #[test]
-    fn usable_wire_capacity_uses_python_ties_to_even() {
-        assert_eq!(usable_wire_capacity(5), 4, "3.5 rounds to the even 4");
-        assert_eq!(usable_wire_capacity(15), 10, "10.5 rounds to the even 10");
-        assert_eq!(usable_wire_capacity(25), 18, "17.5 rounds to the even 18");
-        assert_eq!(
-            usable_wire_capacity(45),
-            31,
-            "binary64 45 * 0.7 is just below 31.5, exactly as in Python"
-        );
+    fn usable_wire_capacity_rounds_half_up() {
+        assert_eq!(usable_wire_capacity(45), 32, "31.5 rounds up to 32");
+        assert_eq!(usable_wire_capacity(44), 31, "30.8 rounds to 31");
+        assert_eq!(usable_wire_capacity(15), 11, "10.5 rounds up to 11");
+        assert_eq!(usable_wire_capacity(0), 0, "0 stays 0");
     }
 
     #[test]
