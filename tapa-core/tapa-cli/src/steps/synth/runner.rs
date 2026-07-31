@@ -225,19 +225,14 @@ mod tests {
             });
             let mut q = self.responses.lock().expect("poisoned");
             let (top, body) = if let Some(name) = inferred_top {
-                let body = q
-                    .iter()
-                    .find(|(t, _)| t == &name)
-                    .map(|(_, b)| b.clone())
-                    .or_else(|| q.first().map(|(_, b)| b.clone()))
-                    .unwrap_or_default();
-                // Consume the matching queue entry (or front) for
-                // compatibility accounting.
-                if let Some(idx) = q.iter().position(|(t, _)| t == &name) {
-                    q.remove(idx);
-                } else if !q.is_empty() {
-                    q.remove(0);
-                }
+                let idx = q.iter().position(|(t, _)| t == &name).unwrap_or_else(|| {
+                    let queued_tops = q.iter().map(|(top, _)| top.as_str()).collect::<Vec<_>>();
+                    panic!(
+                        "StubHls: no response queued for inferred top `{name}`; queued \
+                         tops: {queued_tops:?}"
+                    );
+                });
+                let (_, body) = q.remove(idx);
                 (name, body)
             } else {
                 let (top, body) = q.first().cloned().expect("StubHls: no response queued");
