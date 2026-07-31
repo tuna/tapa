@@ -70,13 +70,14 @@ fn to_str<'a>(ptr: *const c_char, field: &str) -> Result<Option<&'a str>, String
         .map_err(|e| format!("invalid utf-8 in {field}: {e}"))
 }
 
-fn parse_simulator(sim: Option<&str>) -> Simulator {
+fn parse_simulator(sim: Option<&str>) -> Result<Simulator, String> {
     match sim.unwrap_or("xsim") {
-        "verilator" => Simulator::Verilator,
-        "xsim-legacy" | "xsim_legacy" | "legacy-xsim" => Simulator::Xsim { legacy: true },
-        _ => Simulator::Xsim {
+        "verilator" => Ok(Simulator::Verilator),
+        "xsim-legacy" | "xsim_legacy" | "legacy-xsim" => Ok(Simulator::Xsim { legacy: true }),
+        "xsim" => Ok(Simulator::Xsim {
             legacy: env_bool(frt_shm::env::FRT_XSIM_LEGACY),
-        },
+        }),
+        other => Err(format!("unknown simulator '{other}'")),
     }
 }
 
@@ -101,7 +102,7 @@ fn open_instance(path: &str, sim: Option<&str>) -> Result<Instance, String> {
     let p = Path::new(path);
     match p.extension().and_then(|e| e.to_str()) {
         Some("xo" | "zip") => {
-            Instance::open_cosim(p, &parse_simulator(sim)).map_err(|e| e.to_string())
+            Instance::open_cosim(p, &parse_simulator(sim)?).map_err(|e| e.to_string())
         }
         _ => Instance::open(p).map_err(|e| e.to_string()),
     }
@@ -475,24 +476,32 @@ mod tests {
 
     #[test]
     fn simulator_names_parse() {
-        assert!(
-            matches!(parse_simulator(None), Ok(Simulator::Xsim)),
-            "no name defaults to xsim",
-        );
-        assert!(matches!(parse_simulator(Some("xsim")), Ok(Simulator::Xsim)));
         assert!(matches!(
             parse_simulator(Some("verilator")),
             Ok(Simulator::Verilator)
         ));
+        assert!(matches!(
+            parse_simulator(Some("xsim")),
+            Ok(Simulator::Xsim { .. })
+        ));
+        assert!(
+            matches!(parse_simulator(None), Ok(Simulator::Xsim { .. })),
+            "no name defaults to xsim",
+        );
     }
 
-    /// The legacy xsim spellings died with the legacy runtime; they must be
-    /// rejected exactly like any other unknown string.
+    /// The legacy xsim spellings select the legacy mode directly; support
+    /// for older Vivado versions is kept deliberately.
     #[test]
-    fn legacy_simulator_spellings_are_rejected() {
+    fn legacy_simulator_spellings_parse_to_legacy_xsim() {
         for legacy in ["xsim-legacy", "xsim_legacy", "legacy-xsim"] {
-            let err = parse_simulator(Some(legacy)).expect_err("legacy spelling must error");
-            assert_eq!(err, format!("unknown simulator '{legacy}'"));
+            assert!(
+                matches!(
+                    parse_simulator(Some(legacy)),
+                    Ok(Simulator::Xsim { legacy: true })
+                ),
+                "{legacy} must select the legacy xsim mode",
+            );
         }
     }
 
