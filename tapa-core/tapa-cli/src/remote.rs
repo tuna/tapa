@@ -107,7 +107,14 @@ fn load_taparc_remote_section(path: &Path) -> Result<Option<serde_yaml::Value>> 
             });
         }
     };
-    Ok(map.get("remote").cloned())
+    match map.get("remote").cloned() {
+        None | Some(serde_yaml::Value::Null) => Ok(None),
+        Some(section @ serde_yaml::Value::Mapping(_)) => Ok(Some(section)),
+        Some(other) => Err(CliError::RemoteConfigParse {
+            path: path.to_path_buf(),
+            message: format!("expected `remote` to be a YAML mapping, got {other:?}"),
+        }),
+    }
 }
 
 /// Splice the CLI `--remote-host=user@host[:port]` triple into a YAML
@@ -166,8 +173,9 @@ pub fn build_remote_config(globals: &GlobalArgs) -> Result<Option<RemoteConfig>>
         None => None,
     };
 
-    let file_remote = match taparc_path() {
-        Some(p) => load_taparc_remote_section(&p)?,
+    let taparc = taparc_path();
+    let file_remote = match taparc.as_deref() {
+        Some(p) => load_taparc_remote_section(p)?,
         None => None,
     };
 
@@ -195,16 +203,17 @@ pub fn build_remote_config(globals: &GlobalArgs) -> Result<Option<RemoteConfig>>
         serde_yaml::Value::String("remote".into()),
         serde_yaml::Value::Mapping(map),
     );
+    let source_path = taparc.unwrap_or_else(|| PathBuf::from("<merged>"));
     let yaml_text = serde_yaml::to_string(&serde_yaml::Value::Mapping(top)).map_err(|e| {
         CliError::RemoteConfigParse {
-            path: PathBuf::from("<merged>"),
+            path: source_path.clone(),
             message: e.to_string(),
         }
     })?;
     let mut cfg =
         RemoteConfig::from_yaml_str(&yaml_text, Utf8PathBuf::from("<merged>")).map_err(|e| {
             CliError::RemoteConfigParse {
-                path: PathBuf::from("<merged>"),
+                path: source_path,
                 message: e.to_string(),
             }
         })?;

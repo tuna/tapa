@@ -320,3 +320,42 @@ fn precedence_taparc_then_cli_overrides() {
     assert_eq!(cfg.ssh_control_persist, "5m");
     assert!(!cfg.ssh_multiplex);
 }
+
+#[test]
+fn unreadable_taparc_errors_with_path() {
+    let td = tempfile::tempdir().unwrap();
+    let err = load_taparc_remote_section(td.path())
+        .expect_err("a directory cannot be read as a taparc file");
+    let msg = err.to_string();
+    assert!(
+        msg.contains(&td.path().display().to_string()),
+        "error must name the unreadable path: {msg}",
+    );
+}
+
+#[test]
+fn malformed_remote_section_errors_with_path() {
+    let td = tempfile::tempdir().unwrap();
+    let p = write_taparc(&td, "remote: not-a-mapping\n");
+    let err = load_taparc_remote_section(&p).expect_err("remote must be a mapping");
+    let msg = err.to_string();
+    assert!(
+        msg.contains(&p.display().to_string()),
+        "error must name the file: {msg}",
+    );
+}
+
+#[test]
+fn invalid_remote_fields_error_with_taparc_path() {
+    let _lock = ENV_LOCK.lock().unwrap();
+    let mut g = EnvGuard::new();
+    let td = tempfile::tempdir().unwrap();
+    let p = write_taparc(&td, "remote:\n  host: example.com\n  port: invalid\n");
+    g.set(TAPARC_PATH_ENV, p.to_str().unwrap());
+    let err = build_remote_config(&make_globals()).expect_err("invalid port type must error");
+    let msg = err.to_string();
+    assert!(
+        msg.contains(&p.display().to_string()),
+        "error must name the source file, not `<merged>`: {msg}",
+    );
+}
