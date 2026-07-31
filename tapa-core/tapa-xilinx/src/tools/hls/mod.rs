@@ -345,14 +345,6 @@ fn harvest_and_stage(
     let report_xml = job
         .reports_out_dir
         .join(format!("{}_csynth.xml", job.top_name));
-    let fallback = job
-        .reports_out_dir
-        .join(format!("{}.csynth.xml", job.top_name));
-    let report_xml = if report_xml.is_file() {
-        report_xml
-    } else {
-        fallback
-    };
     let bytes = fs_err::read(&report_xml).map_err(|_| {
         XilinxError::HlsReportParse(format!("missing csynth.xml at {}", report_xml.as_str()))
     })?;
