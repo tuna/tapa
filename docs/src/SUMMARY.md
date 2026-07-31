@@ -55,6 +55,7 @@
 
 # Developer Guide
 
+- [Architecture](developer/architecture.md)
 - [Building from Source](developer/build.md)
 - [Development Workflow](developer/development.md)
 - [Contributing](developer/contributing.md)
