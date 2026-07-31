@@ -465,3 +465,37 @@ pub extern "C" fn frt_instance_store_ns(handle: *mut std::ffi::c_void) -> u64 {
     };
     h.instance.store_ns()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn simulator_names_parse() {
+        assert!(
+            matches!(parse_simulator(None), Ok(Simulator::Xsim)),
+            "no name defaults to xsim",
+        );
+        assert!(matches!(parse_simulator(Some("xsim")), Ok(Simulator::Xsim)));
+        assert!(matches!(
+            parse_simulator(Some("verilator")),
+            Ok(Simulator::Verilator)
+        ));
+    }
+
+    /// The legacy xsim spellings died with the legacy runtime; they must be
+    /// rejected exactly like any other unknown string.
+    #[test]
+    fn legacy_simulator_spellings_are_rejected() {
+        for legacy in ["xsim-legacy", "xsim_legacy", "legacy-xsim"] {
+            let err = parse_simulator(Some(legacy)).expect_err("legacy spelling must error");
+            assert_eq!(err, format!("unknown simulator '{legacy}'"));
+        }
+    }
+
+    #[test]
+    fn garbage_simulator_name_errors() {
+        let err = parse_simulator(Some("not-a-simulator")).expect_err("garbage must error");
+        assert_eq!(err, "unknown simulator 'not-a-simulator'");
+    }
+}

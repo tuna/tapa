@@ -4,7 +4,7 @@ use crate::error::{FrtError, Result};
 use crate::xrt::device::XrtDevice;
 use std::path::Path;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Simulator {
     Verilator,
     Xsim,
