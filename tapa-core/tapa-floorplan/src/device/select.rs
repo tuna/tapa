@@ -46,38 +46,85 @@ pub enum SelectError {
     },
 }
 
-/// The keys of every embedded device table.
-#[must_use]
-pub fn device_keys() -> Vec<&'static str> {
-    TABLES.iter().map(|(key, _)| *key).collect()
+/// A device source: resolves part numbers against a set of device tables.
+///
+/// The registry is the single seam between device *selection* and device
+/// *storage*: today [`DeviceRegistry::embedded`] wraps the compiled-in
+/// [`TABLES`], and future external device files extend the set of tables a
+/// registry value carries rather than patching the selection path.
+pub(crate) struct DeviceRegistry {
+    tables: &'static [(&'static str, &'static str)],
 }
 
-/// Parse every embedded table, surfacing a malformed one as an error.
-fn all_devices() -> Result<Vec<Device>, SelectError> {
-    TABLES
-        .iter()
-        .map(|(key, json)| {
-            let device = serde_json::from_str::<Device>(json).map_err(|source| {
-                SelectError::MalformedTable {
-                    key: (*key).to_string(),
-                    source,
-                }
-            })?;
-            device
-                .validate()
-                .map_err(|source| SelectError::InvalidTable {
-                    key: (*key).to_string(),
-                    source,
+impl DeviceRegistry {
+    /// The registry over the compiled-in per-part tables.
+    pub(crate) const fn embedded() -> Self {
+        Self { tables: TABLES }
+    }
+
+    /// The keys of every table in this registry.
+    fn keys(&self) -> Vec<&'static str> {
+        self.tables.iter().map(|(key, _)| *key).collect()
+    }
+
+    /// Parse every table in this registry, surfacing a malformed one as an
+    /// error.
+    fn all_devices(&self) -> Result<Vec<Device>, SelectError> {
+        self.tables
+            .iter()
+            .map(|(key, json)| {
+                let device = serde_json::from_str::<Device>(json).map_err(|source| {
+                    SelectError::MalformedTable {
+                        key: (*key).to_string(),
+                        source,
+                    }
                 })?;
-            Ok(device)
+                device
+                    .validate()
+                    .map_err(|source| SelectError::InvalidTable {
+                        key: (*key).to_string(),
+                        source,
+                    })?;
+                Ok(device)
+            })
+            .collect()
+    }
+
+    /// Resolve a part number (or a short alias like `u280` or `xcu280-…`) to
+    /// its device table.
+    ///
+    /// Matching is case-insensitive and accepts the table key (`u280`), the
+    /// full part number (`xcu280-fsvh2892-2L-e`), or any part string in the
+    /// same family (`xcu280-…`).
+    pub(crate) fn select(&self, part_num: &str) -> Result<Device, SelectError> {
+        let query = part_num.trim().to_ascii_lowercase();
+        let query_family = part_family(&query);
+
+        for device in self.all_devices()? {
+            let key = device.key.to_ascii_lowercase();
+            let part = device.part_num.to_ascii_lowercase();
+            if query == key || query == part || query_family == part_family(&part) {
+                return Ok(device);
+            }
+        }
+
+        Err(SelectError::UnknownPart {
+            query: part_num.to_string(),
+            known: self.keys().join(", "),
         })
-        .collect()
+    }
 }
 
 /// The leading token of a part string, e.g. `xcu280` from
 /// `xcu280-fsvh2892-2L-e`. This is the "part family" aliases match on.
 fn part_family(part: &str) -> &str {
     part.split('-').next().unwrap_or(part)
+}
+
+/// The keys of every embedded device table.
+#[must_use]
+pub fn device_keys() -> Vec<&'static str> {
+    DeviceRegistry::embedded().keys()
 }
 
 /// Resolve a part number (or a short alias like `u280` or `xcu280-…`) to its
@@ -87,21 +134,7 @@ fn part_family(part: &str) -> &str {
 /// part number (`xcu280-fsvh2892-2L-e`), or any part string in the same family
 /// (`xcu280-…`).
 pub fn select_device(part_num: &str) -> Result<Device, SelectError> {
-    let query = part_num.trim().to_ascii_lowercase();
-    let query_family = part_family(&query);
-
-    for device in all_devices()? {
-        let key = device.key.to_ascii_lowercase();
-        let part = device.part_num.to_ascii_lowercase();
-        if query == key || query == part || query_family == part_family(&part) {
-            return Ok(device);
-        }
-    }
-
-    Err(SelectError::UnknownPart {
-        query: part_num.to_string(),
-        known: device_keys().join(", "),
-    })
+    DeviceRegistry::embedded().select(part_num)
 }
 
 #[cfg(test)]
@@ -110,7 +143,10 @@ mod tests {
 
     #[test]
     fn every_table_parses_and_covers_its_grid() {
-        for device in all_devices().expect("all tables must parse") {
+        for device in DeviceRegistry::embedded()
+            .all_devices()
+            .expect("all tables must parse")
+        {
             assert_eq!(
                 u32::try_from(device.slots.len()).expect("slot count fits u32"),
                 device.rows * device.cols,
@@ -133,7 +169,7 @@ mod tests {
     #[test]
     fn centroids_follow_the_unit_grid() {
         use crate::device::model::{UNIT_DIST_X, UNIT_DIST_Y};
-        for device in all_devices().expect("parse") {
+        for device in DeviceRegistry::embedded().all_devices().expect("parse") {
             for slot in &device.slots {
                 assert_eq!(
                     (slot.centroid_x, slot.centroid_y),
