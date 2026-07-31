@@ -7,10 +7,12 @@ pub mod async_mmap;
 mod axi_pipeline;
 pub mod children;
 mod distributed_control;
+mod emit;
 pub mod error;
 pub mod fifos;
 pub mod instance_signals;
 pub mod m_axi;
+mod passes;
 pub mod program;
 pub mod rtl_state;
 mod s_axi;
@@ -19,13 +21,10 @@ mod template;
 
 use tapa_ir::task::TaskLevel;
 use tapa_ir::{SynthTarget, Target};
-use tapa_rtl::builder::{ContinuousAssign, Expr};
 
 use crate::error::CodegenError;
+use crate::passes::{PassCtx, TaskPassCtx, TaskStageInputs};
 use crate::rtl_state::TopologyWithRtl;
-use tapa_protocol::{
-    HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY, HANDSHAKE_RST, HANDSHAKE_RST_N,
-};
 
 /// Vendor-flow codegen policy.
 ///
@@ -47,6 +46,61 @@ pub fn top_stream_needs_axis_adapter(target: Target) -> bool {
     }
 }
 
+/// A stage of the RTL codegen pipeline (REFACTOR-PLAN §4 Phase 1 item 1).
+///
+/// In Phase 1a the pass bodies stay in their home modules, byte-identical;
+/// implementations are thin delegates. `Sync` so the [`PIPELINE`] table can
+/// hold them in a `static`.
+pub(crate) trait RtlPass: Sync {
+    /// Run the pass over `ctx`. Task-scoped passes may rely on
+    /// `ctx.task` being `Some`; design-scoped passes always see `None`.
+    fn run(&self, ctx: &mut PassCtx<'_>) -> Result<(), CodegenError>;
+}
+
+/// Which driver loop runs a pipeline entry.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PassScope {
+    /// Runs once for the whole design (shell prep, output collection).
+    Design,
+    /// Runs once per upper-level, non-`Ignore` task.
+    UpperTask,
+}
+
+/// One row of [`PIPELINE`]: stage name, scope, and the delegate.
+struct PipelineEntry {
+    /// Asserted in the `pipeline_tests` module; documentation as data in
+    /// non-test builds.
+    #[cfg_attr(not(test), allow(dead_code, reason = "pinned by pipeline_tests"))]
+    name: &'static str,
+    scope: PassScope,
+    pass: &'static dyn RtlPass,
+}
+
+/// Build one [`PIPELINE`] row.
+const fn entry(name: &'static str, scope: PassScope, pass: &'static dyn RtlPass) -> PipelineEntry {
+    PipelineEntry { name, scope, pass }
+}
+
+/// The pipeline as an ordered pass table (REFACTOR-PLAN §4 Phase 1 item 1).
+///
+/// `Design` rows run once; each maximal run of `UpperTask` rows runs in
+/// order for each upper-level, non-`Ignore` task (in `BTreeMap` task order).
+/// Together the rows reproduce the pre-refactor hand-written call sequence
+/// exactly: ignore-task template shells first, the per-task instrumentation
+/// stages second, and output collection last.
+static PIPELINE: &[PipelineEntry] = &[
+    entry("ignore-task-shells", PassScope::Design, &passes::IgnoreTaskShells),
+    entry("cleanup-hls-artifacts", PassScope::UpperTask, &passes::CleanupHlsArtifacts),
+    entry("create-fsm-module", PassScope::UpperTask, &passes::CreateFsmModule),
+    entry("generate-child-signals", PassScope::UpperTask, &passes::GenerateChildSignals),
+    entry("fifo-instantiate-connect", PassScope::UpperTask, &passes::FifoInstantiateConnect),
+    entry("m-axi-crossbars", PassScope::UpperTask, &passes::MAxiCrossbars),
+    entry("axi-pipeline-instantiate", PassScope::UpperTask, &passes::AxiPipelineInstantiate),
+    entry("control-fsm", PassScope::UpperTask, &passes::ControlFsm),
+    entry("s-axi-control", PassScope::UpperTask, &passes::SAxiControl),
+    entry("collect-outputs", PassScope::Design, &emit::CollectOutputs),
+];
+
 /// Run the full RTL codegen orchestration pipeline.
 ///
 /// For each upper-level task:
@@ -62,191 +116,43 @@ pub fn top_stream_needs_axis_adapter(target: Target) -> bool {
 pub fn generate_rtl(state: &mut TopologyWithRtl) -> Result<(), CodegenError> {
     let task_names: Vec<String> = state.design.tasks.keys().cloned().collect();
 
-    // Ignored tasks have no HLS result to attach. Build their authoritative
-    // port-only shell from topology so parents can resolve the module while
-    // the user authors the replacement RTL.
-    for task_name in &task_names {
-        let task = &state.design.tasks[task_name];
-        if task.synth != SynthTarget::Ignore {
-            continue;
-        }
-        let source = template::render_task_template(task_name, task);
-        let module = tapa_rtl::VerilogModule::parse(&source)?;
-        state.module_map.insert(
-            task_name.clone(),
-            tapa_rtl::mutation::MutableModule::from_parsed(module),
-        );
-    }
-
-    for task_name in &task_names {
-        let task = &state.design.tasks[task_name];
-        if task.synth == SynthTarget::Ignore {
-            let template = state.module_map[task_name].emit();
-            state
-                .template_files
-                .insert(format!("{task_name}.v"), template);
-            continue;
-        }
-        if task.level != TaskLevel::Upper {
-            continue;
-        }
-        instrument_upper_task(state, task_name)?;
-    }
-
-    // Collect emitted files. Lower HLS modules were already copied from
-    // their original Verilog sources by the CLI; re-emitting them from the
-    // parsed model drops legal port-reg redeclarations used by HLS.
-    for (name, mm) in &state.module_map {
-        if state
-            .design
-            .tasks
-            .get(name.as_str())
-            .is_some_and(|task| task.level == TaskLevel::Upper || task.synth == SynthTarget::Ignore)
-        {
-            state.generated_files.insert(format!("{name}.v"), mm.emit());
-        }
-    }
-    for (name, mm) in &state.fsm_modules {
-        state
-            .generated_files
-            .insert(format!("{name}_fsm.v"), mm.emit());
-    }
-
-    Ok(())
-}
-
-/// Instrument a single upper-level task with codegen logic.
-#[allow(clippy::too_many_lines, reason = "sequential orchestration logic")]
-fn instrument_upper_task(state: &mut TopologyWithRtl, task_name: &str) -> Result<(), CodegenError> {
-    let is_top_task = task_name == state.design.top;
-    let task = &state.design.tasks[task_name];
-
-    // Reject malformed memory geometry before mutating any RTL state.
-    let mmap_conns = state.aggregate_mmap_connections(task_name)?;
-    for conn in mmap_conns.values() {
-        m_axi::validate_mmap_connection(conn)?;
-    }
-    let axi_pipeline_plan = if is_top_task {
-        state
-            .floorplan
-            .as_ref()
-            .map(|floorplan| {
-                axi_pipeline::DirectAxiPipelinePlan::from_floorplan(
-                    state.direct_mmap_interfaces(task_name)?,
-                    floorplan,
-                )
-            })
-            .transpose()?
-    } else {
-        None
-    };
-    let control_plan = if is_top_task {
-        distributed_control::DistributedControlPlan::from_floorplan(state, task_name, &mmap_conns)?
-    } else {
-        None
-    };
-
-    if let Some(mm) = state.module_map.get_mut(task_name) {
-        mm.cleanup_hls_artifacts();
-        mm.body_text.clear();
-        mm.demote_output_port_regs_to_wires();
-        mm.demote_signal_regs_to_wires(&[HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY]);
-        let _ = mm.add_signal(distributed_control::fabric_reset_signal(
-            control_plan.is_some(),
-        ));
-        let reset_n = control_plan
-            .as_ref()
-            .map_or(HANDSHAKE_RST_N, |_| distributed_control::FABRIC_RESET_N);
-        mm.add_assign(ContinuousAssign::new(
-            Expr::ident(HANDSHAKE_RST),
-            Expr::logical_not(Expr::ident(reset_n)),
-        ));
-
-        if is_top_task {
-            // Collect istream/istreams port name prefixes from topology
-            // For istream: peek prefix is "{name}_peek"
-            // For istreams: peek prefixes are "{name}_{idx}_peek" for each channel
-            let mut istream_prefixes: Vec<String> = Vec::new();
-            for p in &task.ports {
-                if p.cat.is_input_stream() {
-                    // Istreams (plural) gets per-channel peek prefixes;
-                    // Istream gets just the base.
-                    if p.cat == tapa_ir::port::ArgCategory::Istreams {
-                        let chan_count = p.chan_count.unwrap_or(1);
-                        for idx in 0..chan_count {
-                            istream_prefixes.push(format!("{}_{idx}_peek", p.name));
-                        }
+    let mut index = 0;
+    while index < PIPELINE.len() {
+        match PIPELINE[index].scope {
+            PassScope::Design => {
+                PIPELINE[index].pass.run(&mut PassCtx {
+                    state: &mut *state,
+                    task: None,
+                })?;
+                index += 1;
+            }
+            PassScope::UpperTask => {
+                // Run this whole maximal task-scoped run once per upper task,
+                // in task order, staging (and validating) the per-task inputs
+                // before any mutation pass runs.
+                let group_end = PIPELINE[index..]
+                    .iter()
+                    .position(|entry| matches!(entry.scope, PassScope::Design))
+                    .map_or(PIPELINE.len(), |offset| index + offset);
+                for task_name in &task_names {
+                    let task = &state.design.tasks[task_name];
+                    if task.synth == SynthTarget::Ignore || task.level != TaskLevel::Upper {
+                        continue;
                     }
-                    istream_prefixes.push(format!("{}_peek", p.name));
+                    let mut inputs = TaskStageInputs::prepare(state, task_name)?;
+                    for pipeline_entry in &PIPELINE[index..group_end] {
+                        pipeline_entry.pass.run(&mut PassCtx {
+                            state: &mut *state,
+                            task: Some(TaskPassCtx {
+                                name: task_name,
+                                inputs: &mut inputs,
+                            }),
+                        })?;
+                    }
                 }
-            }
-
-            // Remove only peek ports derived from istream definitions
-            let peek_ports: Vec<String> = mm
-                .inner
-                .ports
-                .iter()
-                .filter(|p| {
-                    istream_prefixes
-                        .iter()
-                        .any(|prefix| p.name.starts_with(prefix.as_str()))
-                })
-                .map(|p| p.name.clone())
-                .collect();
-            for port_name in peek_ports {
-                mm.remove_port(&port_name);
+                index = group_end;
             }
         }
-    }
-
-    if control_plan.is_none() {
-        state.create_fsm_module(task_name)?;
-    }
-
-    // Pre-compute M-AXI slave indices for crossbar-connected mmaps
-    // This maps (parent_arg, child_task, inst_idx) -> slave_idx
-    let mut mmap_slave_map: std::collections::BTreeMap<(String, String, usize), usize> =
-        std::collections::BTreeMap::new();
-    for conn in mmap_conns.values() {
-        if m_axi::needs_crossbar(conn) {
-            for (slave_idx, slave) in conn.slaves.iter().enumerate() {
-                #[allow(clippy::cast_possible_truncation, reason = "index fits")]
-                let idx_usize = slave.inst_idx as usize;
-                mmap_slave_map.insert(
-                    (conn.arg_name.clone(), slave.task.clone(), idx_usize),
-                    slave_idx,
-                );
-            }
-        }
-    }
-
-    let is_done_signals = children::generate_child_signals(
-        state,
-        task_name,
-        &mmap_conns,
-        &mmap_slave_map,
-        axi_pipeline_plan.as_ref(),
-        control_plan.as_ref(),
-    )?;
-
-    fifos::instantiate_fifos(state, task_name)?;
-
-    fifos::connect_fifos(state, task_name)?;
-
-    // Add M-AXI ports and crossbars (reuse pre-computed mmap connections)
-    m_axi::add_m_axi_and_crossbars(state, task_name, &mmap_conns)?;
-    if let Some(plan) = &axi_pipeline_plan {
-        plan.instantiate(state, task_name)?;
-    }
-
-    if let Some(plan) = &control_plan {
-        plan.instantiate_global(state, task_name, &is_done_signals)?;
-    } else if let Some(fsm_mm) = state.fsm_modules.get_mut(task_name) {
-        program::apply_global_fsm(fsm_mm, &is_done_signals);
-    }
-
-    if is_top_task {
-        s_axi::instantiate_top_control_s_axi(state, task_name);
     }
 
     Ok(())
@@ -256,6 +162,36 @@ fn instrument_upper_task(state: &mut TopologyWithRtl, task_name: &str) -> Result
 #[cfg(test)]
 pub(crate) fn design_from_fixture_json(value: serde_json::Value) -> tapa_ir::Design {
     serde_json::from_value(value).expect("valid design fixture JSON")
+}
+
+#[cfg(test)]
+mod pipeline_tests {
+    use super::{PassScope, PIPELINE};
+
+    /// The declared table is the pipeline contract; pin stage names, scopes,
+    /// and order so re-sequencing is a deliberate, reviewed change.
+    #[test]
+    fn pipeline_declares_the_documented_stage_order() {
+        let stages: Vec<(&str, PassScope)> = PIPELINE
+            .iter()
+            .map(|entry| (entry.name, entry.scope))
+            .collect();
+        assert_eq!(
+            stages,
+            &[
+                ("ignore-task-shells", PassScope::Design),
+                ("cleanup-hls-artifacts", PassScope::UpperTask),
+                ("create-fsm-module", PassScope::UpperTask),
+                ("generate-child-signals", PassScope::UpperTask),
+                ("fifo-instantiate-connect", PassScope::UpperTask),
+                ("m-axi-crossbars", PassScope::UpperTask),
+                ("axi-pipeline-instantiate", PassScope::UpperTask),
+                ("control-fsm", PassScope::UpperTask),
+                ("s-axi-control", PassScope::UpperTask),
+                ("collect-outputs", PassScope::Design),
+            ]
+        );
+    }
 }
 
 #[cfg(test)]
