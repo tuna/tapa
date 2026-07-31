@@ -10,20 +10,28 @@
 //!                             attached exactly like the CLI floorplan flow
 //! <case>/inputs/<Task>.v      one HLS Verilog fixture per HLS task, attached
 //!                             to the topology like `synth`'s HLS outputs
-//! <case>/expected/rtl/*.v     blessed: generated RTL + support assets
+//! <case>/expected/rtl/*.v     blessed: generated RTL only
 //! <case>/expected/template/   blessed: custom-RTL templates (only when the
 //! (*.v)                       case emits any)
 //! <case>/PROVENANCE.md        how the inputs were produced
+//! _assets/expected/rtl/*.v    blessed ONCE: the embedded support assets
+//!                             (case-invariant; shared by every case)
 //! ```
 //!
 //! The harness drives the same public generation path the CLI pack step
 //! effectively uses (`tapa_cli::steps::synth::rtl_codegen`): attach every
 //! HLS task's parsed module to a `TopologyWithRtl`, set the floorplan, run
-//! `generate_rtl`, then collect the COMPLETE emitted file set — generated
-//! RTL + template files + the embedded support assets the pack step ships
-//! alongside (`generate_rtl` deliberately does not return the assets; the
-//! CLI writes them separately, so the harness replays that here to pin the
-//! whole shipped tree, including the known drift seam).
+//! `generate_rtl`, then collect the case's emitted file set of generated
+//! RTL and template files. The embedded support assets the pack step ships
+//! alongside are pinned separately under `_assets/` (`generate_rtl`
+//! deliberately does not return the assets; the CLI writes them separately
+//! — the known F1 drift seam — so the harness replays that write exactly
+//! once instead of blessing an identical copy per case). Asset and
+//! generated names are disjoint by construction (generated files are
+//! `<UpperTask>.v` / `<name>_fsm.v`), so a name collision cannot mask
+//! either pin. The CLI also copies the HLS input Verilog verbatim into the
+//! output tree; those byte copies are not re-pinned here (the inputs
+//! themselves are the pinned fixtures under `<case>/inputs/`).
 //!
 //! Comparison is normalized per the refactor plan's cross-cutting standard
 //! (sorted relative paths, trailing whitespace trimmed per line, single
@@ -64,9 +72,9 @@ struct GoldenCase {
     dir: PathBuf,
 }
 
-/// The complete emitted file set for one case, in pack-step layout:
-/// generated RTL and support assets under `rtl/`, templates under
-/// `template/` (exactly where the CLI writes them).
+/// The emitted file set for one case (or the `_assets` pin), in pack-step
+/// layout: generated RTL (and shared support assets) under `rtl/`,
+/// templates under `template/` (exactly where the CLI writes them).
 type EmittedSet = BTreeMap<String, String>;
 
 /// Enumerate the case directories under `testdata/golden/`, sorted by name.
@@ -178,8 +186,8 @@ fn run_rtl_generation(case: &GoldenCase, mut state: TopologyWithRtl) -> EmittedS
 
     generate_rtl(&mut state).unwrap_or_else(|e| panic!("[{}] generate_rtl failed: {e}", case.name));
 
-    // Collect the complete file set the pack step ships: generated RTL +
-    // templates + the embedded support assets.
+    // Collect the case's emitted set: generated RTL + templates. The
+    // embedded support assets are pinned once via `_assets` (below).
     let mut emitted = EmittedSet::new();
     for (name, content) in &state.generated_files {
         emitted.insert(format!("rtl/{name}"), content.clone());
@@ -187,14 +195,30 @@ fn run_rtl_generation(case: &GoldenCase, mut state: TopologyWithRtl) -> EmittedS
     for (name, content) in &state.template_files {
         emitted.insert(format!("template/{name}"), content.clone());
     }
-    for name in VerilogAssets::iter() {
-        let content = VerilogAssets::get(&name).expect("iterated asset exists");
-        emitted.insert(
-            format!("rtl/{name}"),
-            String::from_utf8_lossy(&content.data).into_owned(),
-        );
-    }
     emitted
+}
+
+/// The case-invariant emitted set of the embedded support assets, in the
+/// same `rtl/` layout the pack step ships.
+fn support_asset_set() -> EmittedSet {
+    VerilogAssets::iter()
+        .map(|name| {
+            let content = VerilogAssets::get(&name).expect("iterated asset exists");
+            (
+                format!("rtl/{name}"),
+                String::from_utf8_lossy(&content.data).into_owned(),
+            )
+        })
+        .collect()
+}
+
+/// The shared `_assets` pseudo-case pinning the support assets once.
+fn shared_assets_case(root: &Path) -> Option<GoldenCase> {
+    let dir = root.join("_assets");
+    dir.is_dir().then(|| GoldenCase {
+        name: "_assets".to_string(),
+        dir,
+    })
 }
 
 /// Read the blessed tree of one case into a path-indexed map.
@@ -242,7 +266,6 @@ fn bless(case: &GoldenCase, emitted: &EmittedSet) {
             .unwrap_or_else(|e| panic!("[{}] cannot create {}: {e}", case.name, path.display()));
         fs::write(&path, normalize(content))
             .unwrap_or_else(|e| panic!("[{}] cannot bless {}: {e}", case.name, path.display()));
-        println!("blessed [{}]: {}", case.name, path.display());
     }
 }
 
@@ -298,7 +321,9 @@ fn compare(case: &GoldenCase, emitted: &EmittedSet) -> Option<String> {
 
 #[test]
 fn golden_rtl_matches_blessed() {
-    let cases = discover_cases(&golden_root());
+    let root = golden_root();
+    let cases = discover_cases(&root);
+    let assets_case = shared_assets_case(&root);
     let bless_mode = env::var("TAPA_BLESS_GOLDEN").is_ok_and(|value| value == "1");
 
     if bless_mode {
@@ -311,6 +336,11 @@ fn golden_rtl_matches_blessed() {
                 emitted.len(),
                 emitted.values().map(|c| normalize(c).len()).sum::<usize>()
             );
+        }
+        if let Some(assets) = &assets_case {
+            let emitted = support_asset_set();
+            bless(assets, &emitted);
+            println!("blessed [_assets]: {} files", emitted.len());
         }
         println!(
             "TAPA_BLESS_GOLDEN=1: rewrote the blessed trees of {} case(s); \
@@ -325,6 +355,11 @@ fn golden_rtl_matches_blessed() {
         let emitted = run_case(case);
         if let Some(report) = compare(case, &emitted) {
             write!(failures, "case `{}`:\n{report}", case.name).expect("write to String");
+        }
+    }
+    if let Some(assets) = &assets_case {
+        if let Some(report) = compare(assets, &support_asset_set()) {
+            write!(failures, "case `_assets`:\n{report}").expect("write to String");
         }
     }
     assert!(

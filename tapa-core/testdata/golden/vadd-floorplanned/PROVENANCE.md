@@ -50,7 +50,7 @@ manufacture an AXI crossing was rejected as fake provenance.
 
 ## Blessed output
 
-Same rules as the `vadd` case: `expected/rtl/` = generated RTL + embedded
-support assets, normalized. The floorplanned path replaces the monolithic
+Same rules as the `vadd` case: `expected/rtl/` = generated RTL
+(support assets live under `_assets/`), normalized. The floorplanned path replaces the monolithic
 FSM with distributed control (`tapa_control.v` hierarchy), so this case
 does not emit `VecAdd_fsm.v`.

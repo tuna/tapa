@@ -33,7 +33,8 @@ pinned by `tapa-protocol` and observed in real HLS output
 Bodies are empty (`endmodule`), matching how codegen consumes the fixtures:
 upper-task bodies are discarded (`body_text.clear()`), and lower tasks are
 never re-emitted (the CLI ships their original files verbatim — only the
-generated RTL, templates, and embedded support assets are blessed here).
+generated RTL and templates are blessed here; the embedded support
+assets are blessed once, repo-wide, under `_assets/`).
 
 ## Blessed output
 

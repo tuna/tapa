@@ -34,8 +34,8 @@ bridge direction, so the blessed bridge carries
 
 ## Blessed output
 
-Same rules as the other cases (`rtl/` = generated RTL + support assets,
-normalized). This case exercises: the FIFO-style async-mmap bridge
+Same rules as the other cases (`rtl/` = generated RTL, support assets
+under `_assets/`, normalized). This case exercises: the FIFO-style async-mmap bridge
 insertion (`mem__m_axi`), read-only bridge parameter pruning, the
 per-instance `*_offset` pipeline, external-stream passthrough, and the
 monolithic-FSM control path.
