@@ -1,0 +1,80 @@
+{
+    "target": "xilinx-hls",
+    "top": "ShellTop",
+    "cflags": [],
+    "tasks": {
+        "CustomShell": {
+            "clock_period": "3.125",
+            "code": "void CustomShell() {}",
+            "fifos": {},
+            "level": "lower",
+            "readable_name": "CustomShell",
+            "synth": "ignore",
+            "self_area": {},
+            "total_area": {},
+            "tasks": {},
+            "ports": [
+                {
+                    "cat": "scalar",
+                    "name": "n",
+                    "type": "uint64_t",
+                    "width": 64
+                },
+                {
+                    "cat": "ostream",
+                    "name": "out",
+                    "type": "float",
+                    "width": 32
+                }
+            ]
+        },
+        "ShellTop": {
+            "clock_period": "3.125",
+            "code": "void ShellTop() {}",
+            "level": "upper",
+            "readable_name": "ShellTop",
+            "synth": "hls",
+            "self_area": {},
+            "total_area": {},
+            "ports": [
+                {
+                    "cat": "scalar",
+                    "name": "n",
+                    "type": "uint64_t",
+                    "width": 64
+                },
+                {
+                    "cat": "ostream",
+                    "name": "out",
+                    "type": "float",
+                    "width": 32
+                }
+            ],
+            "tasks": {
+                "CustomShell": [
+                    {
+                        "args": {
+                            "n": {
+                                "arg": "n",
+                                "cat": "scalar"
+                            },
+                            "out": {
+                                "arg": "out",
+                                "cat": "ostream"
+                            }
+                        },
+                        "step": 0
+                    }
+                ]
+            },
+            "fifos": {
+                "out": {
+                    "produced_by": [
+                        "CustomShell",
+                        0
+                    ]
+                }
+            }
+        }
+    }
+}
