@@ -86,7 +86,7 @@ jobs:
           set -euo pipefail
           mkdir -p "${RUNNER_TEMP}/public-api"
           for crate in tapa-protocol tapa-ir tapa-rtl; do
-            cargo public-api --package "${crate}" \
+            cargo +nightly-2026-07-30 public-api --package "${crate}" \
               > "${RUNNER_TEMP}/public-api/${crate}.public-api.txt"
           done
 
@@ -113,9 +113,7 @@ jobs:
             fi
           done
           if [ "${status}" -ne 0 ]; then
-            echo "::error::public API drift detected. If intentional, regenerate the"
-            echo "::error::blessed baselines per docs/src/developer/architecture.md:"
-            echo "::error::  (cd tapa-core && cargo public-api --package <crate> > ../docs/api/<crate>.public-api.txt)"
+            echo "::error::public API drift detected. If intentional, re-bless the baselines per docs/src/developer/architecture.md (pinned toolchain)."
           fi
           exit "${status}"
         shell: bash

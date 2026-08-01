@@ -128,8 +128,7 @@ in `tapa-ir` and `tapa-protocol`, never by sharing implementation.
 
 CI gates on `cargo public-api` over the L0/L1 crates (`tapa-protocol`,
 `tapa-ir`, `tapa-rtl`), diffing the generated listing against blessed
-baselines under `docs/api/` (promoted from advisory to required in
-Phase 5). Drift blocks the branch: either revert the accidental change
+baselines under `docs/api/`. Drift blocks the branch: either revert the accidental change
 or, for an intentional API change, re-bless the baseline in the same
 PR. To regenerate a baseline:
 
@@ -137,7 +136,7 @@ PR. To regenerate a baseline:
 rustup toolchain install nightly-2026-07-30 --profile minimal --component rust-docs-json
 cargo +nightly-2026-07-30 install cargo-public-api --locked --version 0.52.0
 cd tapa-core
-cargo public-api --package tapa-ir > ../docs/api/tapa-ir.public-api.txt
+cargo +nightly-2026-07-30 public-api --package tapa-ir > ../docs/api/tapa-ir.public-api.txt
 ```
 
 (repeat for `tapa-protocol` and `tapa-rtl`).
