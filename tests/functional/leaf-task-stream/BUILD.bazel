@@ -10,7 +10,7 @@ tapa_functional_test(
     name = "leaf-task-stream",
     host_srcs = glob([
         "*.cpp",
-    ]),
+    ]) + ["//tests/functional/eot:vadd-host.cpp"],
     macos_sim_args = [],
     sim_args = ["1000"],
 )

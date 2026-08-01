@@ -11,6 +11,6 @@ tapa_functional_test(
     host_srcs = glob([
         "*.cpp",
         "*.h",
-    ]),
+    ]) + ["//tests/functional/invoke-streams:vadd-host.cpp"],
     kernel_hdrs = glob(["*.h"]),
 )

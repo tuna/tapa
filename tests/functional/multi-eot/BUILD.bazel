@@ -10,5 +10,5 @@ tapa_functional_test(
     name = "multi-eot",
     host_srcs = glob([
         "*.cpp",
-    ]),
+    ]) + ["//tests/functional/eot:vadd-host.cpp"],
 )

@@ -10,5 +10,5 @@ tapa_functional_test(
     name = "peek",
     host_srcs = glob([
         "*.cpp",
-    ]),
+    ]) + ["//tests/functional/eot:vadd-host.cpp"],
 )

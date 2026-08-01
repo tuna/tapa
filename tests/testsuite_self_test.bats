@@ -35,6 +35,21 @@
   tapa --help
 }
 
+@test "testsuite: tapa version contains the repo VERSION string" {
+  run tapa version
+  [ "${status}" -eq 0 ]
+  [[ "${output}" == *"$(cat "${BATS_TEST_DIRNAME}/../VERSION")"* ]]
+}
+
+@test "testsuite: tapa floorplan without required args fails with usage or error text" {
+  # Smoke-level wiring check only: no synthesized state exists here, so a
+  # real floorplan run is impossible (and there is no Vitis in this env).
+  cd "${BATS_TMPDIR}"
+  run tapa floorplan
+  [ "${status}" -ne 0 ]
+  [[ "${output}" == *"Usage"* || "${output}" == *"error"* || "${output}" == *"missing"* ]]
+}
+
 @test "testsuite: XILINX_HLS is set" {
   [ -d "${XILINX_HLS}" ]
 }

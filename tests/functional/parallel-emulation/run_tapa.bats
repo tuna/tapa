@@ -28,12 +28,12 @@ compile_zip() {
   [ -f "${BATS_TMPDIR}/parallel-emulation.zip" ]
 }
 
-@test "apps/parallel-emulation: tapa c simulation passes" {
+@test "functional/parallel-emulation: tapa c simulation passes" {
   compile_host
   ${BATS_TMPDIR}/parallel-emulation-host
 }
 
-@test "apps/parallel-emulation: tapa generates a zip file and its simulation passes" {
+@test "functional/parallel-emulation: tapa generates a zip file and its simulation passes" {
   compile_zip
   ${BATS_TMPDIR}/parallel-emulation-host \
     --proc_elem_bitstream ${BATS_TMPDIR}/parallel-emulation.zip

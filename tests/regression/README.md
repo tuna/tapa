@@ -6,7 +6,7 @@ RapidStream Contributor License Agreement.
 
 This directory includes a set of real-world TAPA designs. We are keep adding more to this directory.
 
-- `cnn` and `lu_decomposition` are both systolic arrays (of different shape) originally published in [FPGA'21](https://dl.acm.org/doi/pdf/10.1145/3431920.3439292).
+- `cnn` and `lu_decompose` are both systolic arrays (of different shape) originally published in [FPGA'21](https://dl.acm.org/doi/pdf/10.1145/3431920.3439292).
 
 - `hbm-bandwidth` can be used to profile the HBM bandwidth. It reads from and write back to all 32 channels of HBM. It is a good demonstration of the expressiveness and the optimized area of `async_mmap`.
 
