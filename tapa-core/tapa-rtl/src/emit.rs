@@ -93,11 +93,6 @@ impl fmt::Display for Expr {
             Self::Ident(name) => f.write_str(name),
             Self::Lit(val) => f.write_str(val),
             Self::BinOp { lhs, op, rhs } => write!(f, "({lhs} {op} {rhs})"),
-            Self::Ternary {
-                cond,
-                then_val,
-                else_val,
-            } => write!(f, "({cond} ? {then_val} : {else_val})"),
             Self::Index { base, index } => write!(f, "{base}[{index}]"),
             Self::Range { base, msb, lsb } => write!(f, "{base}[{msb}:{lsb}]"),
             Self::Concat(exprs) => {
@@ -111,7 +106,6 @@ impl fmt::Display for Expr {
                 f.write_str("}")
             }
             Self::Not(inner) => write!(f, "!{inner}"),
-            Self::Replicate { count, expr } => write!(f, "{{{count}{{{expr}}}}}"),
         }
     }
 }
@@ -253,12 +247,6 @@ mod tests {
     fn expr_binop() {
         let e = Expr::eq(Expr::ident("state"), Expr::int_const(2, 0));
         assert_eq!(e.to_string(), "(state == 2'd0)");
-    }
-
-    #[test]
-    fn expr_ternary() {
-        let e = Expr::ternary(Expr::ident("sel"), Expr::ident("a"), Expr::ident("b"));
-        assert_eq!(e.to_string(), "(sel ? a : b)");
     }
 
     #[test]

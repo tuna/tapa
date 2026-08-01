@@ -8,7 +8,7 @@ indexmap = { workspace = true }
 regex-lite = { workspace = true }
 serde = { workspace = true }
 # `preserve_order` keeps `serde_json::Value` map keys in insertion order so
-# Value-typed payloads (area dicts, `transforms::flatten_value`) round-trip
+# Value-typed payloads (area dicts, `transforms::flatten`) round-trip
 # in their original key order.
 serde_json = { workspace = true, features = ["preserve_order"] }
 serde_path_to_error = { workspace = true }

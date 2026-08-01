@@ -5,7 +5,7 @@
 //! emits bus parameters for every `m_axi` port.
 
 use std::collections::BTreeSet;
-use tapa_ir::port::{ArgCategory, Port};
+use tapa_ir::{ArgCategory, Port};
 use tapa_rtl::module::sanitize_array_name;
 use tapa_xilinx::{KernelXmlPort, PortCategory};
 

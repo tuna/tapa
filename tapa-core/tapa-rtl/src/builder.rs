@@ -25,12 +25,6 @@ pub enum Expr {
         op: BinOperator,
         rhs: Box<Self>,
     },
-    /// Ternary: `cond ? then_val : else_val`.
-    Ternary {
-        cond: Box<Self>,
-        then_val: Box<Self>,
-        else_val: Box<Self>,
-    },
     /// Bit index: `base[index]`.
     Index { base: Box<Self>, index: Box<Self> },
     /// Bit range: `base[msb:lsb]`.
@@ -43,8 +37,6 @@ pub enum Expr {
     Concat(Vec<Self>),
     /// Unary not: `!expr` or `~expr`.
     Not(Box<Self>),
-    /// Replication: `{count{expr}}`.
-    Replicate { count: Box<Self>, expr: Box<Self> },
 }
 
 /// Binary operators.
@@ -58,8 +50,6 @@ pub enum BinOperator {
     Or,
     BitAnd,
     BitOr,
-    Shl,
-    Shr,
 }
 
 impl fmt::Display for BinOperator {
@@ -73,8 +63,6 @@ impl fmt::Display for BinOperator {
             Self::Or => "||",
             Self::BitAnd => "&",
             Self::BitOr => "|",
-            Self::Shl => "<<",
-            Self::Shr => ">>",
         };
         f.write_str(s)
     }
@@ -115,24 +103,12 @@ impl Expr {
         Self::bin_op(lhs, BinOperator::Plus, rhs)
     }
 
-    pub fn minus(lhs: Self, rhs: Self) -> Self {
-        Self::bin_op(lhs, BinOperator::Minus, rhs)
-    }
-
     pub fn logical_and(lhs: Self, rhs: Self) -> Self {
         Self::bin_op(lhs, BinOperator::And, rhs)
     }
 
     pub fn logical_not(inner: Self) -> Self {
         Self::Not(Box::new(inner))
-    }
-
-    pub fn ternary(cond: Self, then_val: Self, else_val: Self) -> Self {
-        Self::Ternary {
-            cond: Box::new(cond),
-            then_val: Box::new(then_val),
-            else_val: Box::new(else_val),
-        }
     }
 
     pub fn index(base: Self, idx: Self) -> Self {

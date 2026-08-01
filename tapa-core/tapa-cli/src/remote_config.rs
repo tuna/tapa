@@ -8,7 +8,7 @@
 //! 1. `load_remote_config(remote_host)` — read `~/.taparc` (YAML),
 //!    optionally splice in `--remote-host=user@host[:port]`. Returns
 //!    `None` when neither source provides a `host`.
-//! 2. `_apply_remote_overrides(...)` — overlay the remaining
+//! 2. `apply_cli_overrides(...)` — overlay the remaining
 //!    `--remote-*` CLI flags onto the loaded config. CLI wins.
 //! 3. `sync_remote_vendor_includes(config)` — when a config is
 //!    active, mirror `$XILINX_HLS/include` (and `gcc-*/include`)

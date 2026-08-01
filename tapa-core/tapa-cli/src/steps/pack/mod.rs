@@ -93,15 +93,6 @@ pub fn run(args: &PackArgs, ctx: &CliContext) -> Result<()> {
     }
 }
 
-/// Package the `xilinx-hls` target. Bundles the synthesized RTL tree
-/// under `rtl/`, every HLS
-/// `_csynth.rpt` under `report/` (with timestamp redaction so the
-/// archive is reproducible), the TAPA report yaml at the archive root
-/// when the synth step emitted one, plus a copy of the `tapa.json` state
-/// file carrying the compile context, stamped with the cosim port
-/// metadata `frt-cosim` reads (the work-dir file itself stays verbatim;
-/// see [`cosim_compat`]). Output defaults to `work.zip` in the caller's
-/// CWD and is always normalized to a `.zip` suffix.
 /// Yield `(task_name, report_dir)` for every
 /// `<work_dir>/hls/<task>/report/` directory. The zip and xo paths
 /// both walk this layout; file selection, staging, and redaction stay
@@ -127,6 +118,15 @@ pub(super) fn hls_task_report_dirs(work_dir: &Path) -> Result<Vec<(String, PathB
     Ok(out)
 }
 
+/// Package the `xilinx-hls` target. Bundles the synthesized RTL tree
+/// under `rtl/`, every HLS
+/// `_csynth.rpt` under `report/` (with timestamp redaction so the
+/// archive is reproducible), the TAPA report yaml at the archive root
+/// when the synth step emitted one, plus a copy of the `tapa.json` state
+/// file carrying the compile context, stamped with the cosim port
+/// metadata `frt-cosim` reads (the work-dir file itself stays verbatim;
+/// see [`cosim_compat`]). Output defaults to `work.zip` in the caller's
+/// CWD and is always normalized to a `.zip` suffix.
 fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, state: &WorkState) -> Result<()> {
     use std::io::Write as _;
     // Frontier first: the zip is the cosim package, so anything the cosim

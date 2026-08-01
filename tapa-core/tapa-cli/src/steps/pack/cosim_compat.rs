@@ -22,7 +22,7 @@
 //! sync when the supported set changes; the `frt-cbindgen` drift guard
 //! covers generated headers, not this seam.
 
-use tapa_ir::port::ArgCategory;
+use tapa_ir::ArgCategory;
 use tapa_ir::WorkState;
 
 use crate::error::{CliError, Result};
