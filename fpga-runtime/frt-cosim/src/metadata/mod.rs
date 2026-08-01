@@ -118,8 +118,9 @@ fn load_xo_spec<R: Read + std::io::Seek>(
 /// Load a `tapa pack` HLS archive.
 ///
 /// The archive carries exactly one metadata entry — `tapa.json`, the
-/// verbatim copy of the work-directory state file — which strict-parses back
-/// into [`tapa_ir::WorkState`]: the same types `tapa pack` wrote it from.
+/// work-directory state file plus the cosim port metadata `tapa pack`
+/// stamps for the archive reader — which strict-parses back into
+/// [`tapa_ir::WorkState`]: the same types `tapa pack` wrote it from.
 fn load_zip_spec<R: Read + std::io::Seek>(
     zip: &mut zip::ZipArchive<R>,
     src: &Path,

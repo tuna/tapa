@@ -4,19 +4,6 @@ use std::collections::HashMap;
 use tapa_ir::port::{sanitize_array_name, ArgCategory, Port};
 use tapa_ir::TaskGraph;
 
-/// FIFO depth assumed for every stream argument the archive declares.
-///
-/// The archive carries no per-port depth: [`tapa_ir::Port`] has no such
-/// field, and the archive is written straight from that type. The previous
-/// untyped reader looked for a `depth` key and, for exactly that reason,
-/// always fell back to this value — so hardcoding it here preserves the
-/// argument shape bit for bit.
-const STREAM_DEPTH: u32 = 16;
-
-/// Address width assumed for every mmap argument the archive declares.
-/// Same story as [`STREAM_DEPTH`]: not in the schema, always defaulted.
-const MMAP_ADDR_WIDTH: u32 = 64;
-
 /// Project the packed task graph into the flat kernel argument list.
 ///
 /// The top task's `ports` expand into one or more kernel arguments each,
@@ -51,9 +38,15 @@ pub fn spec_from_task_graph(graph: &TaskGraph) -> Result<KernelSpec> {
             // `is_mmap_like` deliberately not used: it also covers `immap` /
             // `ommap`, which this reader has never accepted (see below).
             ArgCategory::Mmap | ArgCategory::AsyncMmap => {
+                // Legacy-archive compatibility: `tapa pack` stamps
+                // `mmap_addr_width` today, so `None` means an archive
+                // written before the field existed. Those were always
+                // simulated with a 64-bit address (the removed
+                // `MMAP_ADDR_WIDTH` fallback), and unwrapping to it keeps
+                // their argument shape bit for bit.
                 let kind = ArgKind::Mmap {
                     data_width: width,
-                    addr_width: MMAP_ADDR_WIDTH,
+                    addr_width: port.mmap_addr_width.unwrap_or(64),
                 };
                 // `chan_count` is what makes an mmap port an `hmap`: the
                 // frontend fills it in for `hmap` and nothing else, so a plain
@@ -88,12 +81,15 @@ pub fn spec_from_task_graph(graph: &TaskGraph) -> Result<KernelSpec> {
                 }
             }
             ArgCategory::Istream | ArgCategory::Ostream => {
+                // Same legacy-archive story as the mmap address width
+                // above: `None` marks a pre-field archive, and 16 is the
+                // depth those have always been simulated with.
                 args.push(ArgSpec {
                     name: format!("{name}_s"),
                     id: next_id,
                     kind: ArgKind::Stream {
                         width,
-                        depth: STREAM_DEPTH,
+                        depth: port.stream_depth.unwrap_or(16),
                         dir: stream_dir(port),
                         protocol: StreamProtocol::ApFifo,
                     },
@@ -107,7 +103,7 @@ pub fn spec_from_task_graph(graph: &TaskGraph) -> Result<KernelSpec> {
                         id: next_id,
                         kind: ArgKind::Stream {
                             width,
-                            depth: STREAM_DEPTH,
+                            depth: port.stream_depth.unwrap_or(16),
                             dir: stream_dir(port),
                             protocol: StreamProtocol::ApFifo,
                         },
@@ -116,8 +112,15 @@ pub fn spec_from_task_graph(graph: &TaskGraph) -> Result<KernelSpec> {
                 }
             }
             // Read-only / write-only mmaps have never been wired up here.
-            // Rejecting them keeps that an explicit, loud limitation rather
-            // than silently binding them as plain mmaps.
+            // This arm is the backstop of the pack-time frontier in
+            // `tapa-core/tapa-cli/src/steps/pack/cosim_compat.rs`: fresh
+            // archives are rejected there, before they ship, so the error
+            // below fires only for pre-frontier or hand-built archives.
+            // Keep the cosim-consumable category set in sync with that
+            // file — a two-workspace seam the `frt-cbindgen` drift guard
+            // does not cover (it guards generated headers). Rejecting
+            // keeps that an explicit, loud limitation rather than silently
+            // binding them as plain mmaps.
             ArgCategory::Immap | ArgCategory::Ommap => {
                 return Err(CosimError::Metadata(format!(
                     "unsupported port category '{}'",

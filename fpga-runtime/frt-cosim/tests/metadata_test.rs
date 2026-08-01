@@ -70,6 +70,8 @@ fn port(name: &str, cat: ArgCategory, width: u32, chan_count: Option<u32>) -> Po
         width,
         chan_count,
         chan_size: None,
+        stream_depth: None,
+        mmap_addr_width: None,
     }
 }
 
@@ -114,15 +116,137 @@ fn arg_ids_are_dense_and_in_declaration_order() {
     assert_eq!(spec.args[4].name, "n", "the scalar keeps its own name");
 }
 
-/// The schema carries no per-port `depth` / `addr_width`, so every stream and
-/// mmap gets the fixed value the cosim harness assumes. Pinned because these
-/// are hardcoded on this side of the boundary now.
+/// Archives written before the schema grew per-port cosim metadata carry no
+/// `depth` / `addr_width`; projection must keep giving their streams and
+/// mmaps the values those archives have always been simulated with, so the
+/// argument shape is bit-for-bit stable for old artifacts.
 #[test]
-fn stream_depth_and_mmap_addr_width_are_the_fixed_defaults() {
+fn legacy_archive_ports_fall_back_to_the_historical_16_and_64() {
     let graph = task_graph(vec![
         port("a", ArgCategory::Mmap, 512, None),
         port("s", ArgCategory::Istream, 32, None),
     ]);
+    let spec = metadata::zip_pkg::spec_from_task_graph(&graph).expect("project");
+    assert_eq!(
+        spec.args[0].kind,
+        ArgKind::Mmap {
+            data_width: 512,
+            addr_width: 64,
+        },
+    );
+    assert_eq!(
+        spec.args[1].kind,
+        ArgKind::Stream {
+            width: 32,
+            depth: 16,
+            dir: StreamDir::In,
+            protocol: StreamProtocol::ApFifo,
+        },
+    );
+}
+
+/// Ports the pack stamped with cosim metadata drive the projection: the
+/// runtime reads the archive instead of assuming.
+#[test]
+fn stamped_port_metadata_drives_the_projection() {
+    let mut mmap = port("a", ArgCategory::Mmap, 512, None);
+    mmap.mmap_addr_width = Some(40);
+    let mut stream = port("s", ArgCategory::Istream, 32, None);
+    stream.stream_depth = Some(8);
+    let spec =
+        metadata::zip_pkg::spec_from_task_graph(&task_graph(vec![mmap, stream])).expect("project");
+    assert_eq!(
+        spec.args[0].kind,
+        ArgKind::Mmap {
+            data_width: 512,
+            addr_width: 40,
+        },
+        "the schema's addr width wins over the legacy fallback",
+    );
+    assert_eq!(
+        spec.args[1].kind,
+        ArgKind::Stream {
+            width: 32,
+            depth: 8,
+            dir: StreamDir::In,
+            protocol: StreamProtocol::ApFifo,
+        },
+        "the schema's depth wins over the legacy fallback",
+    );
+}
+
+/// Mixed archives keep the two paths side by side: a stamped port projects
+/// its schema value while an unstamped one keeps the legacy fallback, and a
+/// fan-out (`hmap` / plural streams) carries the port's value to every
+/// channel it spawns.
+#[test]
+fn stamped_and_unstamped_ports_mix_across_fanout() {
+    let mut hmap = port("mat_a", ArgCategory::Mmap, 512, Some(2));
+    hmap.mmap_addr_width = Some(48);
+    let mut streams = port("q", ArgCategory::Ostreams, 32, Some(2));
+    streams.stream_depth = Some(4);
+    let graph = task_graph(vec![
+        hmap,
+        port("vec_x", ArgCategory::Mmap, 512, None),
+        streams,
+        port("plain", ArgCategory::Istream, 32, None),
+    ]);
+    let spec = metadata::zip_pkg::spec_from_task_graph(&graph).expect("project");
+    let kinds: Vec<&ArgKind> = spec.args.iter().map(|a| &a.kind).collect();
+    assert_eq!(
+        kinds,
+        vec![
+            &ArgKind::Mmap {
+                data_width: 512,
+                addr_width: 48,
+            },
+            &ArgKind::Mmap {
+                data_width: 512,
+                addr_width: 48,
+            },
+            &ArgKind::Mmap {
+                data_width: 512,
+                addr_width: 64,
+            },
+            &ArgKind::Stream {
+                width: 32,
+                depth: 4,
+                dir: StreamDir::Out,
+                protocol: StreamProtocol::ApFifo,
+            },
+            &ArgKind::Stream {
+                width: 32,
+                depth: 4,
+                dir: StreamDir::Out,
+                protocol: StreamProtocol::ApFifo,
+            },
+            &ArgKind::Stream {
+                width: 32,
+                depth: 16,
+                dir: StreamDir::In,
+                protocol: StreamProtocol::ApFifo,
+            },
+        ],
+        "every fan-out channel inherits its port's stamped value; unstamped ports keep the fallback",
+    );
+}
+
+/// The stamped values travel through the archive schema, not just hand-built
+/// `Port`s: a `tapa.json` fragment carrying the fields projects them.
+#[test]
+fn stamped_metadata_survives_the_archive_json_round_trip() {
+    let json = r#"{
+        "top": "K", "target": "xilinx-hls",
+        "tasks": {"K": {"level": "lower", "code": "", "synth": "hls",
+            "readable_name": "K", "clock_period": "0",
+            "ports": [
+                {"cat": "mmap", "name": "a", "type": "int*", "width": 512,
+                 "mmap_addr_width": 64},
+                {"cat": "istream", "name": "s", "type": "int", "width": 32,
+                 "stream_depth": 16}
+            ]}}
+    }"#;
+    let graph: TaskGraph = serde_json::from_str(json).expect("parse task graph");
     let spec = metadata::zip_pkg::spec_from_task_graph(&graph).expect("project");
     assert_eq!(
         spec.args[0].kind,
