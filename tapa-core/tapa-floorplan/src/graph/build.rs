@@ -49,11 +49,6 @@ pub(super) struct BuiltGraph {
 }
 
 impl FloorGraphBuilder {
-    /// Fresh, empty transient graph state.
-    pub(super) fn new() -> Self {
-        Self::default()
-    }
-
     /// Insert one placement vertex per task instance.
     ///
     /// Duplicate canonical names are rejected: they would silently collapse
@@ -369,18 +364,16 @@ impl FloorGraphBuilder {
                 });
 
                 let launch_width = control_launch_width(task, instance, &canonical)?;
-                add_control_net(
+                self.add_control_net(
                     &mut nets,
-                    &mut self.placement_widths,
                     &canonical,
                     ControlChannel::Launch,
                     global,
                     child,
                     launch_width,
                 )?;
-                add_control_net(
+                self.add_control_net(
                     &mut nets,
-                    &mut self.placement_widths,
                     &canonical,
                     ControlChannel::Reset,
                     global,
@@ -388,9 +381,8 @@ impl FloorGraphBuilder {
                     1,
                 )?;
                 if instance.step >= 0 {
-                    add_control_net(
+                    self.add_control_net(
                         &mut nets,
-                        &mut self.placement_widths,
                         &canonical,
                         ControlChannel::Completion,
                         child,
@@ -417,34 +409,35 @@ impl FloorGraphBuilder {
             co_located: self.co_located,
         }
     }
-}
 
-fn add_control_net(
-    nets: &mut Vec<ControlNet>,
-    placement_widths: &mut BTreeMap<(usize, usize), u32>,
-    instance: &str,
-    channel: ControlChannel,
-    src: usize,
-    dst: usize,
-    width: u32,
-) -> Result<(), GraphError> {
-    let pair = (src.min(dst), src.max(dst));
-    let placement_width = placement_widths.entry(pair).or_default();
-    *placement_width =
-        placement_width
-            .checked_add(width)
-            .ok_or_else(|| GraphError::ControlWidthOverflow {
-                instance: instance.to_string(),
-                channel,
-            })?;
-    nets.push(ControlNet {
-        instance: instance.to_string(),
-        channel,
-        src,
-        dst,
-        width,
-    });
-    Ok(())
+    /// Append one control net, accumulating its placement-crossing width.
+    fn add_control_net(
+        &mut self,
+        nets: &mut Vec<ControlNet>,
+        instance: &str,
+        channel: ControlChannel,
+        src: usize,
+        dst: usize,
+        width: u32,
+    ) -> Result<(), GraphError> {
+        let pair = (src.min(dst), src.max(dst));
+        let placement_width = self.placement_widths.entry(pair).or_default();
+        *placement_width =
+            placement_width
+                .checked_add(width)
+                .ok_or_else(|| GraphError::ControlWidthOverflow {
+                    instance: instance.to_string(),
+                    channel,
+                })?;
+        nets.push(ControlNet {
+            instance: instance.to_string(),
+            channel,
+            src,
+            dst,
+            width,
+        });
+        Ok(())
+    }
 }
 
 fn control_launch_width(

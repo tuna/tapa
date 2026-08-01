@@ -43,17 +43,31 @@ pub struct DesignPassCtx<'a> {
     pub outputs: OutputSet<'a>,
 }
 
+/// Split `state` into the disjoint per-concern views.
+///
+/// Along with the lib.rs driver and [`TaskStageInputs::prepare`]
+/// (read-only staging), this is the only code outside `state/` allowed
+/// to name the whole state object.
+pub fn split_views(
+    state: &mut TopologyWithRtl,
+) -> (DesignView<'_>, ModuleTable<'_>, FsmTable<'_>, OutputSet<'_>) {
+    (
+        DesignView::new(&state.design, state.floorplan.as_ref()),
+        ModuleTable::new(&mut state.module_map),
+        FsmTable::new(&mut state.fsm_modules),
+        OutputSet::new(&mut state.generated_files, &mut state.template_files),
+    )
+}
+
 impl<'a> DesignPassCtx<'a> {
-    /// Split `state` into the disjoint per-concern views. Along with the
-    /// lib.rs driver and [`TaskStageInputs::prepare`] (read-only staging),
-    /// this is the only code outside `state/` allowed to name the whole
-    /// state object.
+    /// Build the design-scope context from the shared view split.
     pub(crate) fn new(state: &'a mut TopologyWithRtl) -> Self {
+        let (design, modules, fsms, outputs) = split_views(state);
         Self {
-            design: DesignView::new(&state.design, state.floorplan.as_ref()),
-            modules: ModuleTable::new(&mut state.module_map),
-            fsms: FsmTable::new(&mut state.fsm_modules),
-            outputs: OutputSet::new(&mut state.generated_files, &mut state.template_files),
+            design,
+            modules,
+            fsms,
+            outputs,
         }
     }
 }
@@ -77,22 +91,21 @@ pub struct TaskPassCtx<'a> {
 }
 
 impl<'a> TaskPassCtx<'a> {
-    /// Split `state` into the disjoint per-concern views and attach `name`'s
-    /// staged inputs. Along with [`DesignPassCtx::new`], the lib.rs driver,
-    /// and [`TaskStageInputs::prepare`], this is the only code outside
-    /// `state/` allowed to name the whole state object.
+    /// Build the task-scope context: the shared view split plus the task
+    /// identity and its staged inputs.
     pub(crate) fn new(
         state: &'a mut TopologyWithRtl,
         name: &'a str,
         inputs: &'a mut TaskStageInputs,
     ) -> Self {
+        let (design, modules, fsms, outputs) = split_views(state);
         Self {
             name,
             inputs,
-            design: DesignView::new(&state.design, state.floorplan.as_ref()),
-            modules: ModuleTable::new(&mut state.module_map),
-            fsms: FsmTable::new(&mut state.fsm_modules),
-            outputs: OutputSet::new(&mut state.generated_files, &mut state.template_files),
+            design,
+            modules,
+            fsms,
+            outputs,
         }
     }
 }
@@ -189,7 +202,7 @@ impl TaskStageInputs {
 pub struct IgnoreTaskShells;
 
 impl DesignPass for IgnoreTaskShells {
-    fn run(&mut self, ctx: &mut DesignPassCtx<'_>) -> Result<(), CodegenError> {
+    fn run(&self, ctx: &mut DesignPassCtx<'_>) -> Result<(), CodegenError> {
         // Ignored tasks have no HLS result to attach. Build their
         // authoritative port-only shell from topology so parents can resolve
         // the module while the user authors the replacement RTL.
@@ -216,7 +229,7 @@ impl DesignPass for IgnoreTaskShells {
 pub struct CleanupHlsArtifacts;
 
 impl TaskPass for CleanupHlsArtifacts {
-    fn run(&mut self, ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenError> {
+    fn run(&self, ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenError> {
         let is_top_task = ctx.inputs.is_top_task;
         let control_plan = ctx.inputs.control_plan.as_ref();
         cleanup::cleanup_hls_artifacts(
@@ -235,7 +248,7 @@ impl TaskPass for CleanupHlsArtifacts {
 pub struct CreateFsmModule;
 
 impl TaskPass for CreateFsmModule {
-    fn run(&mut self, ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenError> {
+    fn run(&self, ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenError> {
         if ctx.inputs.control_plan.is_none() {
             let task_level = ctx
                 .design
@@ -255,7 +268,7 @@ impl TaskPass for CreateFsmModule {
 pub struct GenerateChildSignals;
 
 impl TaskPass for GenerateChildSignals {
-    fn run(&mut self, ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenError> {
+    fn run(&self, ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenError> {
         let is_done_signals = crate::children::generate_child_signals(ctx)?;
         ctx.inputs.is_done_signals = is_done_signals;
         Ok(())
@@ -266,7 +279,7 @@ impl TaskPass for GenerateChildSignals {
 pub struct FifoInstantiateConnect;
 
 impl TaskPass for FifoInstantiateConnect {
-    fn run(&mut self, ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenError> {
+    fn run(&self, ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenError> {
         crate::fifos::instantiate_fifos(ctx.design, &mut ctx.modules, ctx.name)?;
         crate::fifos::connect_fifos(ctx.design, &mut ctx.modules, ctx.name)?;
         Ok(())
@@ -278,7 +291,7 @@ impl TaskPass for FifoInstantiateConnect {
 pub struct MAxiCrossbars;
 
 impl TaskPass for MAxiCrossbars {
-    fn run(&mut self, ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenError> {
+    fn run(&self, ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenError> {
         crate::m_axi::add_m_axi_and_crossbars(
             &mut ctx.modules,
             &mut ctx.outputs,
@@ -294,7 +307,7 @@ impl TaskPass for MAxiCrossbars {
 pub struct AxiPipelineInstantiate;
 
 impl TaskPass for AxiPipelineInstantiate {
-    fn run(&mut self, ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenError> {
+    fn run(&self, ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenError> {
         if let Some(plan) = &ctx.inputs.axi_pipeline_plan {
             plan.instantiate(&mut ctx.modules, ctx.name)?;
         }
@@ -307,7 +320,7 @@ impl TaskPass for AxiPipelineInstantiate {
 pub struct ControlFsm;
 
 impl TaskPass for ControlFsm {
-    fn run(&mut self, ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenError> {
+    fn run(&self, ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenError> {
         if let Some(plan) = &ctx.inputs.control_plan {
             plan.instantiate_global(&mut ctx.modules, ctx.name, &ctx.inputs.is_done_signals)?;
         } else if let Some(fsm_mm) = ctx.fsms.get_mut(ctx.name) {
@@ -322,7 +335,7 @@ impl TaskPass for ControlFsm {
 pub struct SAxiControl;
 
 impl TaskPass for SAxiControl {
-    fn run(&mut self, ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenError> {
+    fn run(&self, ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenError> {
         if ctx.inputs.is_top_task {
             self::s_axi::instantiate_top_control_s_axi(
                 ctx.design,

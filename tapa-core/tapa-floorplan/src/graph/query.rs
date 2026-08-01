@@ -134,7 +134,7 @@ impl FloorGraph {
             .get(&flat.top)
             .ok_or_else(|| GraphError::MissingTop(flat.top.clone()))?;
 
-        let mut builder = FloorGraphBuilder::new();
+        let mut builder = FloorGraphBuilder::default();
         builder.add_task_vertices(flat, top)?;
 
         // Distinct logical instances that collapse to one RTL identifier

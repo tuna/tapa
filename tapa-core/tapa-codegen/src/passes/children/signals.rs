@@ -42,8 +42,6 @@ struct ChildStageCtx<'ctx, 'a> {
     axi_pipeline_plan: Option<&'a crate::passes::axi_pipeline::DirectAxiPipelinePlan>,
     /// Distributed control plan (top task only).
     control_plan: Option<&'a distributed_control::DistributedControlPlan>,
-    /// FIFO names declared by the parent task (stream connection lookup).
-    parent_fifos: BTreeSet<String>,
     /// `is_done` nets accumulated per non-autorun instance, in instance order.
     is_done_signals: Vec<String>,
     /// FSM module instantiation portargs, in per-instance emission order.
@@ -54,7 +52,6 @@ impl<'ctx, 'a> ChildStageCtx<'ctx, 'a> {
     /// Bundle the task pass context with the derived per-task staging state.
     fn new(ctx: &'a mut TaskPassCtx<'ctx>) -> Self {
         let design = ctx.design;
-        let task = &design.design().tasks[ctx.name];
         Self {
             design,
             modules: &mut ctx.modules,
@@ -64,7 +61,6 @@ impl<'ctx, 'a> ChildStageCtx<'ctx, 'a> {
             mmap_slave_map: &ctx.inputs.mmap_slave_map,
             axi_pipeline_plan: ctx.inputs.axi_pipeline_plan.as_ref(),
             control_plan: ctx.inputs.control_plan.as_ref(),
-            parent_fifos: task.fifos.keys().cloned().collect(),
             is_done_signals: Vec::new(),
             fsm_portargs: Vec::new(),
         }
@@ -310,6 +306,21 @@ fn apply_control_plan_or_pipelines(
     Ok(())
 }
 
+/// Return the pipeline and FSM-input wire names for a pipelined argument.
+fn pipeline_wire_names(inst_name: &str, port_name: &str, is_mmap: bool) -> (String, String) {
+    if is_mmap {
+        (
+            format!("{inst_name}__{port_name}_offset"),
+            format!("{inst_name}__{port_name}_offset_in"),
+        )
+    } else {
+        (
+            format!("{inst_name}__{port_name}"),
+            format!("{inst_name}__{port_name}_in"),
+        )
+    }
+}
+
 /// Declare per-instance pipeline signals for scalar and mmap arguments.
 ///
 /// Creates FSM-owned pipeline ports and parent-side wires:
@@ -324,21 +335,15 @@ fn declare_instance_pipeline_signals(
     args: &BTreeMap<String, Arg>,
 ) {
     for (port_name, arg) in args {
-        let (pipeline_out, fsm_in, width) = if arg.cat.is_scalar() {
-            (
-                format!("{inst_name}__{port_name}"),
-                format!("{inst_name}__{port_name}_in"),
-                resolve_child_scalar_width(stage, child_name, port_name),
-            )
+        let width = if arg.cat.is_scalar() {
+            resolve_child_scalar_width(stage, child_name, port_name)
         } else if arg.cat.is_direct_mmap() {
-            (
-                format!("{inst_name}__{port_name}_offset"),
-                format!("{inst_name}__{port_name}_offset_in"),
-                Some(("63".to_string(), "0".to_string())), // 64-bit
-            )
+            Some(("63".to_string(), "0".to_string())) // 64-bit
         } else {
             continue;
         };
+        let (pipeline_out, fsm_in) =
+            pipeline_wire_names(inst_name, port_name, arg.cat.is_direct_mmap());
         add_pipeline_stage(stage, &pipeline_out, &fsm_in, width.as_ref());
     }
 }
@@ -413,8 +418,7 @@ fn push_pipeline_portargs(
     // Add pipeline portargs to FSM instantiation
     for (port_name, arg) in args {
         if arg.cat.is_scalar() {
-            let pipeline_out = format!("{inst_name}__{port_name}");
-            let fsm_in_port = format!("{inst_name}__{port_name}_in");
+            let (pipeline_out, fsm_in_port) = pipeline_wire_names(inst_name, port_name, false);
             stage.fsm_portargs.push(tapa_rtl::builder::PortArg::new(
                 &fsm_in_port,
                 Expr::ident(tapa_rtl::module::sanitize_array_name(&arg.arg)),
@@ -424,8 +428,7 @@ fn push_pipeline_portargs(
                 Expr::ident(&pipeline_out),
             ));
         } else if arg.cat.is_direct_mmap() {
-            let pipeline_out = format!("{inst_name}__{port_name}_offset");
-            let fsm_in_port = format!("{inst_name}__{port_name}_offset_in");
+            let (pipeline_out, fsm_in_port) = pipeline_wire_names(inst_name, port_name, true);
             let arg_name = tapa_rtl::module::sanitize_array_name(&arg.arg);
             let offset_source = stage.mmap_conns.get(&arg.arg).map_or_else(
                 || Expr::ident(format!("{arg_name}_offset")),
@@ -565,6 +568,12 @@ fn add_child_instance(
     mmap_bindings: &ChildMmapBindings,
     reset_n: Expr,
 ) {
+    let parent_fifos: BTreeSet<String> = stage.design.design().tasks[stage.task_name]
+        .fifos
+        .keys()
+        .cloned()
+        .collect();
+
     // Build and add the actual child module instance to parent
     let child_inst = build_child_instance_with_reset(
         inst.child_name,
@@ -572,7 +581,7 @@ fn add_child_instance(
         &inst.sig,
         inst.args,
         mmap_bindings,
-        &stage.parent_fifos,
+        &parent_fifos,
         stage.modules.get(stage.task_name).map(|mm| &mm.inner),
         inst.child_rtl,
         reset_n,

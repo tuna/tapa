@@ -15,7 +15,7 @@ use crate::DesignPass;
 pub struct CollectOutputs;
 
 impl DesignPass for CollectOutputs {
-    fn run(&mut self, ctx: &mut DesignPassCtx<'_>) -> Result<(), CodegenError> {
+    fn run(&self, ctx: &mut DesignPassCtx<'_>) -> Result<(), CodegenError> {
         let design = ctx.design.design();
 
         // `Ignore` tasks: emit the authoritative template file from the

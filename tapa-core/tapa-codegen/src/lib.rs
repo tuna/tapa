@@ -27,48 +27,33 @@ use crate::rtl_state::TopologyWithRtl;
 /// A pipeline stage that runs once over the whole design.
 pub(crate) trait DesignPass {
     /// Run the pass.
-    fn run(&mut self, ctx: &mut DesignPassCtx<'_>) -> Result<(), CodegenError>;
+    fn run(&self, ctx: &mut DesignPassCtx<'_>) -> Result<(), CodegenError>;
 }
 
 /// A pipeline stage that runs in order for each upper-level, non-`Ignore`
 /// task (in `BTreeMap` task order).
 pub(crate) trait TaskPass {
     /// Run the pass for a single task.
-    fn run(&mut self, ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenError>;
+    fn run(&self, ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenError>;
 }
 
-/// One entry in the [`pipeline`] table.
-enum PipelineEntry {
-    /// A design pass that runs once over the whole design.
-    Design(Box<dyn DesignPass>),
-    /// An ordered group of task passes, run per eligible task.
-    TaskGroup(Vec<Box<dyn TaskPass>>),
-}
-
-/// The pipeline as an ordered pass table.
+/// The task-scoped passes, in stage order.
 ///
-/// `Design` entries run once; the task group runs in order for each
-/// upper-level, non-`Ignore` task (in `BTreeMap` task order) — reproducing
-/// the pre-refactor hand-written call sequence exactly.
-fn pipeline() -> Vec<PipelineEntry> {
-    use PipelineEntry::{Design, TaskGroup};
-    vec![
-        Design(Box::new(passes::IgnoreTaskShells)),
-        TaskGroup(vec![
-            Box::new(passes::CleanupHlsArtifacts),
-            Box::new(passes::CreateFsmModule),
-            Box::new(passes::GenerateChildSignals),
-            Box::new(passes::FifoInstantiateConnect),
-            Box::new(passes::MAxiCrossbars),
-            Box::new(passes::AxiPipelineInstantiate),
-            Box::new(passes::ControlFsm),
-            Box::new(passes::SAxiControl),
-        ]),
-        Design(Box::new(emit::CollectOutputs)),
-    ]
-}
+/// They run for each upper-level, non-`Ignore` task (in `BTreeMap` task
+/// order), between the [`passes::IgnoreTaskShells`] and
+/// [`emit::CollectOutputs`] design passes.
+const TASK_PASSES: &[&dyn TaskPass] = &[
+    &passes::CleanupHlsArtifacts,
+    &passes::CreateFsmModule,
+    &passes::GenerateChildSignals,
+    &passes::FifoInstantiateConnect,
+    &passes::MAxiCrossbars,
+    &passes::AxiPipelineInstantiate,
+    &passes::ControlFsm,
+    &passes::SAxiControl,
+];
 
-/// Run the full RTL codegen pipeline (the [`pipeline`] driver) and return
+/// Run the full RTL codegen pipeline and return
 /// the complete [`ArtifactManifest`].
 ///
 /// Per-task inputs are staged (and validated) before any mutation pass
@@ -81,25 +66,20 @@ fn pipeline() -> Vec<PipelineEntry> {
 pub fn generate_rtl(state: &mut TopologyWithRtl) -> Result<ArtifactManifest, CodegenError> {
     let task_names: Vec<String> = state.design.tasks.keys().cloned().collect();
 
-    for entry in pipeline() {
-        match entry {
-            PipelineEntry::Design(mut pass) => {
-                pass.run(&mut DesignPassCtx::new(&mut *state))?;
-            }
-            PipelineEntry::TaskGroup(mut group) => {
-                for task_name in &task_names {
-                    let task = &state.design.tasks[task_name];
-                    if task.synth == SynthTarget::Ignore || task.level != TaskLevel::Upper {
-                        continue;
-                    }
-                    let mut inputs = TaskStageInputs::prepare(state, task_name)?;
-                    for pass in &mut group {
-                        pass.run(&mut TaskPassCtx::new(&mut *state, task_name, &mut inputs))?;
-                    }
-                }
-            }
+    passes::IgnoreTaskShells.run(&mut DesignPassCtx::new(&mut *state))?;
+
+    for task_name in &task_names {
+        let task = &state.design.tasks[task_name];
+        if task.synth == SynthTarget::Ignore || task.level != TaskLevel::Upper {
+            continue;
+        }
+        let mut inputs = TaskStageInputs::prepare(state, task_name)?;
+        for pass in TASK_PASSES {
+            pass.run(&mut TaskPassCtx::new(&mut *state, task_name, &mut inputs))?;
         }
     }
+
+    emit::CollectOutputs.run(&mut DesignPassCtx::new(&mut *state))?;
 
     Ok(ArtifactManifest::collect(state))
 }
@@ -108,25 +88,4 @@ pub fn generate_rtl(state: &mut TopologyWithRtl) -> Result<ArtifactManifest, Cod
 #[cfg(test)]
 pub(crate) fn design_from_fixture_json(value: serde_json::Value) -> tapa_ir::Design {
     serde_json::from_value(value).expect("valid design fixture JSON")
-}
-
-#[cfg(test)]
-mod pipeline_tests {
-    use super::{pipeline, PipelineEntry};
-
-    /// The driver contract is the pipeline shape: one leading design pass,
-    /// one task group of eight passes per eligible task, one trailing
-    /// design pass. Byte-level stage-order drift is the golden tests' job,
-    /// not a second copy of the table here.
-    #[test]
-    fn pipeline_has_the_expected_shape() {
-        let shape: Vec<_> = pipeline()
-            .iter()
-            .map(|entry| match entry {
-                PipelineEntry::Design(_) => ("design", 0),
-                PipelineEntry::TaskGroup(group) => ("task-group", group.len()),
-            })
-            .collect();
-        assert_eq!(shape, [("design", 0), ("task-group", 8), ("design", 0)]);
-    }
 }
