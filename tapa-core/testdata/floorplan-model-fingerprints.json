@@ -1,0 +1,75 @@
+{
+  "fixture": "tapa-floorplan model fingerprints for the golden vadd-floorplanned design",
+  "regen": "TAPA_BLESS_MODELS=1 cargo test -p tapa-floorplan --test golden_model_fingerprints",
+  "scope": "every LpModel the two formulations hand to the solver, in solve order, recorded through RecordingSolver over the real CBC backend",
+  "fields": {
+    "index": "0-based solve sequence within its phase",
+    "phase": "partition = placement ILP; routing = finish-plan routing ILP(s)",
+    "sense": "objective sense",
+    "vars / constraints": "variable and constraint counts as built",
+    "nonzeros": "nonzero canonical coefficients, objective plus rows",
+    "var_domains": "fnv1a-64 of every variable's (kind, lower, upper), in model order",
+    "objective": "fnv1a-64 of the canonical objective: coefficients summed per variable, exact zeros dropped, terms sorted by variable index, constant last (reordering-equivalent models hash equal)",
+    "rows": "fnv1a-64 of canonical rows (operator, constant-folded rhs, canonical terms) sorted as whole strings (reordering-equivalent models hash equal)",
+    "exact_lp_text": "fnv1a-64 of the exact CPLEX-LP text CBC parses (order-sensitive; the strongest gate)",
+    "solve_status / solve_objective": "the outcome CBC returned for this model"
+  },
+  "models": [
+    {
+      "index": 0,
+      "phase": "partition",
+      "sense": "minimize",
+      "vars": 178,
+      "constraints": 136,
+      "nonzeros": 945,
+      "var_domains": "0x639f0741237fccc5",
+      "objective": "0x80403d6e3ad49648",
+      "rows": "0x03020577b35d4684",
+      "exact_lp_text": "0xb1e302297aca8b6e",
+      "solve_status": "optimal",
+      "solve_objective": 72101.0
+    },
+    {
+      "index": 1,
+      "phase": "partition",
+      "sense": "minimize",
+      "vars": 178,
+      "constraints": 137,
+      "nonzeros": 965,
+      "var_domains": "0x639f0741237fccc5",
+      "objective": "0xd845df212bc0f904",
+      "rows": "0x83ecbe291d0ab1cd",
+      "exact_lp_text": "0x60b0719e167d8468",
+      "solve_status": "optimal",
+      "solve_objective": 11.0
+    },
+    {
+      "index": 0,
+      "phase": "routing",
+      "sense": "minimize",
+      "vars": 16,
+      "constraints": 20,
+      "nonzeros": 95,
+      "var_domains": "0xbdd0bd0f48cf273e",
+      "objective": "0x91acbc4a29a7730c",
+      "rows": "0xc0e5deb701961103",
+      "exact_lp_text": "0x0abe9edaee5f41d4",
+      "solve_status": "optimal",
+      "solve_objective": 0.01813752
+    },
+    {
+      "index": 1,
+      "phase": "routing",
+      "sense": "minimize",
+      "vars": 16,
+      "constraints": 21,
+      "nonzeros": 104,
+      "var_domains": "0xbdd0bd0f48cf273e",
+      "objective": "0x45e1cfa5bff751ed",
+      "rows": "0xb2b6aa1c622de132",
+      "exact_lp_text": "0x2eeda3fed602c114",
+      "solve_status": "infeasible",
+      "solve_objective": 0.53731345
+    }
+  ]
+}

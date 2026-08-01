@@ -41,6 +41,11 @@ pub use crate::plan::{
     PlanOptionsError,
 };
 
+/// Model-fingerprint instrumentation consumed by
+/// `tests/golden_model_fingerprints.rs`; not a public contract.
+#[doc(hidden)]
+pub use crate::plan::fingerprint::fingerprint_plan_models_json;
+
 pub(crate) use crate::plan::{
     plan_with_inputs_at_usage_limit_and_caps, ExactDseResourceCaps, EXACT_DSE_CAP_SCALE,
     MULTILEVEL_BLOCK_RESOURCE_MARGIN_UNITS,

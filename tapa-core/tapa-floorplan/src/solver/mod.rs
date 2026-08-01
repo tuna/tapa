@@ -2,6 +2,7 @@
 //! CPLEX-LP text by [`write_cplex_lp`], and handed to a [`Solver`] backend.
 
 pub mod backends;
+pub(crate) mod fingerprint;
 pub mod lp_writer;
 pub mod model;
 pub mod solve;

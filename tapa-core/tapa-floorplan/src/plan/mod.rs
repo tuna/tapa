@@ -4,6 +4,8 @@
 
 pub mod options;
 
+pub mod fingerprint;
+
 pub use options::{PlanOptions, PlanOptionsError};
 
 use std::path::Path;
@@ -111,6 +113,26 @@ fn plan_with_retry_ceiling(
     inputs: &PlanInputs,
     retry_ceiling: f64,
 ) -> Result<FloorplanResult, PlanError> {
+    let solver = CbcSolver::new();
+    plan_with_retry_ceiling_and_solvers(state, options, inputs, retry_ceiling, &solver, &solver)
+}
+
+/// [`plan_with_retry_ceiling`] with explicit solvers for the two solve
+/// phases, so fingerprint instrumentation can record the placement-phase
+/// and finish-phase models separately. Production callers pass one CBC
+/// instance twice — identical to the previous single-solver flow.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "mirrors plan_with_retry_ceiling plus the two phase solvers"
+)]
+pub fn plan_with_retry_ceiling_and_solvers(
+    state: &WorkState,
+    options: &PlanOptions,
+    inputs: &PlanInputs,
+    retry_ceiling: f64,
+    placement_solver: &dyn crate::solver::Solver,
+    finish_solver: &dyn crate::solver::Solver,
+) -> Result<FloorplanResult, PlanError> {
     options.validate()?;
     let (device, graph) = prepare_plan(state, inputs)?;
     log::info!(
@@ -121,7 +143,6 @@ fn plan_with_retry_ceiling(
         retry_ceiling,
         options.partition_strategy,
     );
-    let solver = CbcSolver::new();
     let opts = solve_options(options);
     let assignment = floorplan_with_strategy(
         &graph,
@@ -129,14 +150,14 @@ fn plan_with_retry_ceiling(
         options.usage_limit,
         retry_ceiling,
         options.partition_strategy,
-        &solver,
+        placement_solver,
         &opts,
     )?;
     finish_plan(
         &graph,
         &device,
         options,
-        &solver,
+        finish_solver,
         &opts,
         assignment,
         ExactDseResourceCaps {
