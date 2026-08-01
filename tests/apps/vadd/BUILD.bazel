@@ -4,11 +4,8 @@
 # All rights reserved. The contributor(s) of this file has/have agreed to the
 # RapidStream Contributor License Agreement.
 
-load("@rules_cc//cc:defs.bzl", "cc_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
-load("@vars//:vars.bzl", "HAS_XRT")
-load("//bazel:tapa_rules.bzl", "tapa_xo")
-load("//bazel:v++_rules.bzl", "vpp_xclbin")
+load("//bazel:test_rules.bzl", "tapa_app_test")
 
 exports_files(
     [
@@ -26,60 +23,16 @@ exports_files(
     ],
 )
 
-sh_test(
+tapa_app_test(
     name = "vadd",
-    size = "medium",
-    srcs = select({
-        "//bazel:is_macos": ["//bazel:sim_env.sh"],
-        "//conditions:default": ["//bazel:v++_env.sh"],
-    }),
-    args = ["$(location vadd-host)"] + select({
-        "//bazel:is_macos": ["1000"],
-        "//conditions:default": [],
-    }),
-    data = [":vadd-host"],
-    env = {"TAPA_CONCURRENCY": "2"},
-    tags = ["cpu:2"],
-)
-
-sh_test(
-    name = "vadd-hw-emu",
-    size = "enormous",
-    timeout = "moderate",
-    srcs = ["//bazel:v++_env.sh"],
-    args = [
-        "$(location vadd-host)",
-        "--bitstream=$(location vadd-xo)",
-        "1000",
-    ],
-    data = [
-        ":vadd-host",
-        ":vadd-xo",
-        "//fpga-runtime:cargo_release_artifacts",
-    ],
-    tags = [
-        "cpu:2",
-    ],
-)
-
-sh_test(
-    name = "vadd-xosim",
-    size = "enormous",
-    timeout = "moderate",
-    srcs = ["//bazel:xrt_env.sh"],
-    args = [
-        "$(location vadd-host)",
-        "--bitstream=$(location vadd-hw-emu-xclbin)",
-        "1000",
-    ],
-    data = [
-        ":vadd-host",
-        ":vadd-hw-emu-xclbin",
-    ],
-    tags = [
-        "cpu:2",
-    ],
-    target_compatible_with = [] if HAS_XRT else ["@platforms//:incompatible"],
+    host_srcs = glob([
+        "*.cpp",
+        "*.h",
+    ]),
+    hw_test_args = ["1000"],
+    macos_sim_args = ["1000"],
+    top_name = "VecAdd",
+    xo_visibility = ["//tests/functional:__subpackages__"],
 )
 
 sh_test(
@@ -98,67 +51,4 @@ sh_test(
         "//fpga-runtime:cargo_release_artifacts",
     ],
     tags = ["cpu:2"],
-)
-
-sh_test(
-    name = "vadd-verilator-zipsim",
-    size = "enormous",
-    timeout = "moderate",
-    srcs = ["//bazel:sim_env.sh"],
-    args = [
-        "$(location vadd-host)",
-        "--bitstream=$(location vadd-zip)",
-        "--cosim_simulator=verilator",
-        "1000",
-    ],
-    data = [
-        ":vadd-host",
-        ":vadd-zip",
-        "//fpga-runtime:cargo_release_artifacts",
-        "@verilator//:verilator_executable",
-    ],
-    env = {"VERILATOR_BIN": "$(rootpath @verilator//:verilator_executable)"},
-    tags = ["cpu:2"],
-)
-
-cc_binary(
-    name = "vadd-host",
-    srcs = glob([
-        "*.cpp",
-        "*.h",
-    ]),
-    visibility = ["//tests/functional:__subpackages__"],
-    deps = [
-        "//tapa-lib:tapa-host",
-        "@gflags",
-        "@vitis_hls//:include",
-    ],
-)
-
-tapa_xo(
-    name = "vadd-xo",
-    src = "vadd.cpp",
-    hdrs = ["vadd.h"],
-    include = ["."],
-    top_name = "VecAdd",
-    visibility = ["//tests/functional:__subpackages__"],
-)
-
-tapa_xo(
-    name = "vadd-zip",
-    src = "vadd.cpp",
-    hdrs = ["vadd.h"],
-    include = ["."],
-    target = "xilinx-hls",
-    top_name = "VecAdd",
-    visibility = ["//tests/functional:__subpackages__"],
-)
-
-vpp_xclbin(
-    name = "vadd-hw-emu-xclbin",
-    platform_name = "xilinx_u250_gen3x16_xdma_4_1_202210_1",
-    target = "hw_emu",
-    target_compatible_with = [] if HAS_XRT else ["@platforms//:incompatible"],
-    top_name = "VecAdd",
-    xo = ":vadd-xo",
 )

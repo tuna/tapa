@@ -4,60 +4,12 @@
 # All rights reserved. The contributor(s) of this file has/have agreed to the
 # RapidStream Contributor License Agreement.
 
-load("@rules_cc//cc:defs.bzl", "cc_binary")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
-load("//bazel:tapa_rules.bzl", "tapa_xo")
+load("//bazel:test_rules.bzl", "tapa_functional_test")
 
-sh_test(
+tapa_functional_test(
     name = "mixed-task-func",
-    size = "medium",
-    srcs = select({
-        "//bazel:is_macos": ["//bazel:sim_env.sh"],
-        "//conditions:default": ["//bazel:v++_env.sh"],
-    }),
-    args = ["$(location mixed-task-func-host)"] + select({
-        "//bazel:is_macos": ["1000"],
-        "//conditions:default": [],
-    }),
-    data = [":mixed-task-func-host"],
-    env = {"TAPA_CONCURRENCY": "2"},
-    tags = ["cpu:2"],
-)
-
-sh_test(
-    name = "mixed-task-func-xosim",
-    size = "enormous",
-    timeout = "moderate",
-    srcs = ["//bazel:v++_env.sh"],
-    args = [
-        "$(location mixed-task-func-host)",
-        "--bitstream=$(location mixed-task-func-xo)",
-        "1000",
-    ],
-    data = [
-        ":mixed-task-func-host",
-        ":mixed-task-func-xo",
-        "//fpga-runtime:cargo_release_artifacts",
-    ],
-    tags = [
-        "cpu:2",
-    ],
-)
-
-cc_binary(
-    name = "mixed-task-func-host",
-    srcs = glob([
+    host_srcs = glob([
         "*.cpp",
     ]),
-    deps = [
-        "//tapa-lib:tapa-host",
-        "@gflags",
-        "@vitis_hls//:include",
-    ],
-)
-
-tapa_xo(
-    name = "mixed-task-func-xo",
-    src = "vadd.cpp",
     top_name = "VecAddMixed",
 )

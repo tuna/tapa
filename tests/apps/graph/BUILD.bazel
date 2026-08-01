@@ -4,12 +4,9 @@
 # All rights reserved. The contributor(s) of this file has/have agreed to the
 # RapidStream Contributor License Agreement.
 
-load("@rules_cc//cc:defs.bzl", "cc_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
-load("@vars//:vars.bzl", "HAS_XRT")
 load("//bazel:file_rules.bzl", "facebook_txt")
-load("//bazel:tapa_rules.bzl", "tapa_xo")
-load("//bazel:v++_rules.bzl", "vpp_xclbin")
+load("//bazel:test_rules.bzl", "tapa_app_test")
 
 exports_files(
     [
@@ -25,23 +22,21 @@ exports_files(
     ],
 )
 
-sh_test(
+tapa_app_test(
     name = "graph",
-    size = "medium",
-    srcs = select({
-        "//bazel:is_macos": ["//bazel:sim_env.sh"],
-        "//conditions:default": ["//bazel:v++_env.sh"],
-    }),
-    args = [
-        "$(location graph-host)",
-        "$(location graph.txt)",
-    ],
-    data = [
-        "graph.txt",
-        ":graph-host",
-    ],
-    env = {"TAPA_CONCURRENCY": "2"},
-    tags = ["cpu:2"],
+    extra_test_data = ["graph.txt"],
+    host_srcs = glob([
+        "*.cpp",
+        "*.h",
+        "*.hpp",
+    ]),
+    hw_test_args = ["$(location graph.txt)"],
+    kernel_hdrs = glob([
+        "*.hpp",
+        "*.h",
+    ]),
+    sim_args = ["$(location graph.txt)"],
+    top_name = "Graph",
 )
 
 sh_test(
@@ -61,117 +56,6 @@ sh_test(
         ":process_facebook_txt",
     ],
     env = {"TAPA_CONCURRENCY": "1"},
-)
-
-sh_test(
-    name = "graph-hw-emu",
-    size = "enormous",
-    timeout = "moderate",
-    srcs = ["//bazel:v++_env.sh"],
-    args = [
-        "$(location graph-host)",
-        "--bitstream=$(location graph-xo)",
-        "$(location graph.txt)",
-    ],
-    data = [
-        "graph.txt",
-        ":graph-host",
-        ":graph-xo",
-        "//fpga-runtime:cargo_release_artifacts",
-    ],
-    tags = [
-        "cpu:2",
-    ],
-)
-
-sh_test(
-    name = "graph-xosim",
-    size = "enormous",
-    timeout = "moderate",
-    srcs = ["//bazel:xrt_env.sh"],
-    args = [
-        "$(location graph-host)",
-        "--bitstream=$(location graph-hw-emu-xclbin)",
-        "$(location graph.txt)",
-    ],
-    data = [
-        "graph.txt",
-        ":graph-host",
-        ":graph-hw-emu-xclbin",
-    ],
-    tags = [
-        "cpu:2",
-    ],
-    target_compatible_with = [] if HAS_XRT else ["@platforms//:incompatible"],
-)
-
-cc_binary(
-    name = "graph-host",
-    srcs = glob([
-        "*.cpp",
-        "*.h",
-        "*.hpp",
-    ]),
-    visibility = ["//tests/functional:__subpackages__"],
-    deps = [
-        "//tapa-lib:tapa-host",
-        "@gflags",
-        "@vitis_hls//:include",
-    ],
-)
-
-tapa_xo(
-    name = "graph-xo",
-    src = "graph.cpp",
-    hdrs = glob([
-        "*.hpp",
-        "*.h",
-    ]),
-    include = ["."],
-    top_name = "Graph",
-)
-
-sh_test(
-    name = "graph-verilator-zipsim",
-    size = "enormous",
-    timeout = "moderate",
-    srcs = ["//bazel:sim_env.sh"],
-    args = [
-        "$(location graph-host)",
-        "--bitstream=$(location graph-zip)",
-        "--cosim_simulator=verilator",
-        "$(location graph.txt)",
-    ],
-    data = [
-        "graph.txt",
-        ":graph-host",
-        ":graph-zip",
-        "//fpga-runtime:cargo_release_artifacts",
-        "@verilator//:verilator_executable",
-    ],
-    env = {"VERILATOR_BIN": "$(rootpath @verilator//:verilator_executable)"},
-    tags = ["cpu:2"],
-)
-
-tapa_xo(
-    name = "graph-zip",
-    src = "graph.cpp",
-    hdrs = glob([
-        "*.hpp",
-        "*.h",
-    ]),
-    include = ["."],
-    target = "xilinx-hls",
-    top_name = "Graph",
-)
-
-vpp_xclbin(
-    name = "graph-hw-emu-xclbin",
-    platform_name = "xilinx_u250_gen3x16_xdma_4_1_202210_1",
-    target = "hw_emu",
-    target_compatible_with = [] if HAS_XRT else ["@platforms//:incompatible"],
-    top_name = "Graph",
-    xo = ":graph-xo",
 )
 
 facebook_txt(

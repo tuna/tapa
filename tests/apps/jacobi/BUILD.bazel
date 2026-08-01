@@ -4,11 +4,7 @@
 # All rights reserved. The contributor(s) of this file has/have agreed to the
 # RapidStream Contributor License Agreement.
 
-load("@rules_cc//cc:defs.bzl", "cc_binary")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
-load("@vars//:vars.bzl", "HAS_XRT")
-load("//bazel:tapa_rules.bzl", "tapa_xo")
-load("//bazel:v++_rules.bzl", "vpp_xclbin")
+load("//bazel:test_rules.bzl", "tapa_app_test")
 
 exports_files(
     [
@@ -23,113 +19,11 @@ exports_files(
     ],
 )
 
-sh_test(
+tapa_app_test(
     name = "jacobi",
-    size = "medium",
-    srcs = select({
-        "//bazel:is_macos": ["//bazel:sim_env.sh"],
-        "//conditions:default": ["//bazel:v++_env.sh"],
-    }),
-    args = ["$(location jacobi-host)"],
-    data = [":jacobi-host"],
-    env = {"TAPA_CONCURRENCY": "2"},
-    tags = ["cpu:2"],
-)
-
-sh_test(
-    name = "jacobi-hw-emu",
-    size = "enormous",
-    timeout = "moderate",
-    srcs = ["//bazel:v++_env.sh"],
-    args = [
-        "$(location jacobi-host)",
-        "--bitstream=$(location jacobi-xo)",
-    ],
-    data = [
-        ":jacobi-host",
-        ":jacobi-xo",
-        "//fpga-runtime:cargo_release_artifacts",
-    ],
-    tags = [
-        "cpu:2",
-    ],
-)
-
-sh_test(
-    name = "jacobi-xosim",
-    size = "enormous",
-    timeout = "moderate",
-    srcs = ["//bazel:xrt_env.sh"],
-    args = [
-        "$(location jacobi-host)",
-        "--bitstream=$(location jacobi-hw-emu-xclbin)",
-    ],
-    data = [
-        ":jacobi-host",
-        ":jacobi-hw-emu-xclbin",
-    ],
-    tags = [
-        "cpu:2",
-    ],
-    target_compatible_with = [] if HAS_XRT else ["@platforms//:incompatible"],
-)
-
-cc_binary(
-    name = "jacobi-host",
-    srcs = glob([
+    host_srcs = glob([
         "*.cpp",
         "*.h",
     ]),
-    visibility = ["//tests/functional:__subpackages__"],
-    deps = [
-        "//tapa-lib:tapa-host",
-        "@gflags",
-        "@vitis_hls//:include",
-    ],
-)
-
-tapa_xo(
-    name = "jacobi-xo",
-    src = "jacobi.cpp",
-    hdrs = ["jacobi.h"],
-    include = ["."],
     top_name = "Jacobi",
-)
-
-sh_test(
-    name = "jacobi-verilator-zipsim",
-    size = "enormous",
-    timeout = "moderate",
-    srcs = ["//bazel:sim_env.sh"],
-    args = [
-        "$(location jacobi-host)",
-        "--bitstream=$(location jacobi-zip)",
-        "--cosim_simulator=verilator",
-    ],
-    data = [
-        ":jacobi-host",
-        ":jacobi-zip",
-        "//fpga-runtime:cargo_release_artifacts",
-        "@verilator//:verilator_executable",
-    ],
-    env = {"VERILATOR_BIN": "$(rootpath @verilator//:verilator_executable)"},
-    tags = ["cpu:2"],
-)
-
-tapa_xo(
-    name = "jacobi-zip",
-    src = "jacobi.cpp",
-    hdrs = ["jacobi.h"],
-    include = ["."],
-    target = "xilinx-hls",
-    top_name = "Jacobi",
-)
-
-vpp_xclbin(
-    name = "jacobi-hw-emu-xclbin",
-    platform_name = "xilinx_u250_gen3x16_xdma_4_1_202210_1",
-    target = "hw_emu",
-    target_compatible_with = [] if HAS_XRT else ["@platforms//:incompatible"],
-    top_name = "Jacobi",
-    xo = ":jacobi-xo",
 )

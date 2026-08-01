@@ -4,11 +4,7 @@
 # All rights reserved. The contributor(s) of this file has/have agreed to the
 # RapidStream Contributor License Agreement.
 
-load("@rules_cc//cc:defs.bzl", "cc_binary")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
-load("@vars//:vars.bzl", "HAS_XRT")
-load("//bazel:tapa_rules.bzl", "tapa_xo")
-load("//bazel:v++_rules.bzl", "vpp_xclbin")
+load("//bazel:test_rules.bzl", "tapa_app_test")
 
 exports_files(
     [
@@ -23,119 +19,14 @@ exports_files(
     ],
 )
 
-sh_test(
+tapa_app_test(
     name = "bandwidth",
-    size = "medium",
-    srcs = select({
-        "//bazel:is_macos": ["//bazel:sim_env.sh"],
-        "//conditions:default": ["//bazel:v++_env.sh"],
-    }),
-    args = ["$(location bandwidth-host)"] + select({
-        "//bazel:is_macos": ["1000"],
-        "//conditions:default": [],
-    }),
-    data = [":bandwidth-host"],
-    env = {"TAPA_CONCURRENCY": "2"},
-    tags = ["cpu:2"],
-)
-
-sh_test(
-    name = "bandwidth-hw-emu",
-    size = "enormous",
-    timeout = "moderate",
-    srcs = ["//bazel:v++_env.sh"],
-    args = [
-        "$(location bandwidth-host)",
-        "--bitstream=$(location bandwidth-xo)",
-        "1000",
-    ],
-    data = [
-        ":bandwidth-host",
-        ":bandwidth-xo",
-        "//fpga-runtime:cargo_release_artifacts",
-    ],
-    tags = [
-        "cpu:2",
-    ],
-)
-
-sh_test(
-    name = "bandwidth-xosim",
-    size = "enormous",
-    timeout = "moderate",
-    srcs = ["//bazel:xrt_env.sh"],
-    args = [
-        "$(location bandwidth-host)",
-        "--bitstream=$(location bandwidth-hw-emu-xclbin)",
-        "1000",
-    ],
-    data = [
-        ":bandwidth-host",
-        ":bandwidth-hw-emu-xclbin",
-    ],
-    tags = [
-        "cpu:2",
-    ],
-    target_compatible_with = [] if HAS_XRT else ["@platforms//:incompatible"],
-)
-
-cc_binary(
-    name = "bandwidth-host",
-    srcs = glob([
+    host_srcs = glob([
         "*.cpp",
         "*.h",
     ]),
-    visibility = ["//tests/functional:__subpackages__"],
-    deps = [
-        "//tapa-lib:tapa-host",
-        "@gflags",
-        "@vitis_hls//:include",
-    ],
-)
-
-tapa_xo(
-    name = "bandwidth-xo",
-    src = "bandwidth.cpp",
-    hdrs = glob(["*.h"]),
-    include = ["."],
+    hw_test_args = ["1000"],
+    kernel_hdrs = glob(["*.h"]),
+    macos_sim_args = ["1000"],
     top_name = "Bandwidth",
-)
-
-sh_test(
-    name = "bandwidth-verilator-zipsim",
-    size = "enormous",
-    timeout = "moderate",
-    srcs = ["//bazel:sim_env.sh"],
-    args = [
-        "$(location bandwidth-host)",
-        "--bitstream=$(location bandwidth-zip)",
-        "--cosim_simulator=verilator",
-        "1000",
-    ],
-    data = [
-        ":bandwidth-host",
-        ":bandwidth-zip",
-        "//fpga-runtime:cargo_release_artifacts",
-        "@verilator//:verilator_executable",
-    ],
-    env = {"VERILATOR_BIN": "$(rootpath @verilator//:verilator_executable)"},
-    tags = ["cpu:2"],
-)
-
-tapa_xo(
-    name = "bandwidth-zip",
-    src = "bandwidth.cpp",
-    hdrs = glob(["*.h"]),
-    include = ["."],
-    target = "xilinx-hls",
-    top_name = "Bandwidth",
-)
-
-vpp_xclbin(
-    name = "bandwidth-hw-emu-xclbin",
-    platform_name = "xilinx_u250_gen3x16_xdma_4_1_202210_1",
-    target = "hw_emu",
-    target_compatible_with = [] if HAS_XRT else ["@platforms//:incompatible"],
-    top_name = "Bandwidth",
-    xo = ":bandwidth-xo",
 )
