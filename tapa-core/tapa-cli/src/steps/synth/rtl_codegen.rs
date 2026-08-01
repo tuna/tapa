@@ -6,8 +6,8 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use tapa_codegen::generate_rtl;
 use tapa_codegen::rtl_state::TopologyWithRtl;
-use tapa_codegen::{generate_rtl, support_assets::VerilogAssets};
 use tapa_ir::{Design, FloorplanResult, SynthTarget};
 use tapa_rtl::VerilogModule;
 
@@ -62,6 +62,11 @@ pub fn prepare_rtl_state(design: &Design, hdl_inputs: &TaskHdlInputs) -> Result<
 }
 
 /// Generate and persist RTL from an already-prepared topology.
+///
+/// Packaging is a copy operation: `generate_rtl` returns the complete
+/// [`tapa_codegen::ArtifactManifest`] (generated RTL, FSM files,
+/// `Ignore`-task template shells, and the embedded support assets), and
+/// this function writes every manifest entry to its relative path.
 pub fn emit_prepared_rtl_tree(
     work_dir: &Path,
     state: &mut TopologyWithRtl,
@@ -70,8 +75,9 @@ pub fn emit_prepared_rtl_tree(
     let top = state.design.top.clone();
     let rtl_dir = work_dir.join("rtl");
     fs::create_dir_all(&rtl_dir)?;
-    let mut written = write_verilog_support_assets(&rtl_dir)?;
 
+    // The HLS outputs are user inputs to codegen, not artifacts it
+    // returns; the pack tree still ships them, so copy them in verbatim.
     for files in hdl_inputs.values() {
         for src in files {
             let Some(name) = src.file_name() else {
@@ -85,21 +91,16 @@ pub fn emit_prepared_rtl_tree(
         }
     }
 
-    generate_rtl(state).map_err(|e| codegen_to_cli_error("generate", &top, &e))?;
+    let manifest = generate_rtl(state).map_err(|e| codegen_to_cli_error("generate", &top, &e))?;
 
-    for (name, content) in &state.generated_files {
-        let path = rtl_dir.join(name);
+    let mut written = Vec::new();
+    for (relative, content) in manifest.files() {
+        let path = work_dir.join(relative);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
         fs::write(&path, content)?;
         written.push(path);
-    }
-    if !state.template_files.is_empty() {
-        let template_dir = work_dir.join("template");
-        fs::create_dir_all(&template_dir)?;
-        for (name, content) in &state.template_files {
-            let path = template_dir.join(name);
-            fs::write(&path, content)?;
-            written.push(path);
-        }
     }
     Ok(written)
 }
@@ -141,17 +142,6 @@ pub fn collect_hdl_inputs(work_dir: &Path, design: &Design) -> Result<TaskHdlInp
         inputs.insert(task_name.clone(), files);
     }
     Ok(inputs)
-}
-
-fn write_verilog_support_assets(rtl_dir: &Path) -> Result<Vec<PathBuf>> {
-    let mut written = Vec::new();
-    for name in VerilogAssets::iter() {
-        let content = VerilogAssets::get(&name).expect("iterated asset exists");
-        let path = rtl_dir.join(name.as_ref());
-        fs::write(&path, &content.data)?;
-        written.push(path);
-    }
-    Ok(written)
 }
 
 /// Write the typed port list of each `synth == ignore` task to

@@ -2,6 +2,7 @@
 //! built with the `tapa-rtl` builder API and existing HLS modules are
 //! modified through the hybrid mutation API.
 
+mod artifact;
 mod emit;
 pub mod error;
 pub mod instance_signals;
@@ -12,6 +13,7 @@ pub mod support_assets;
 mod target;
 mod template;
 
+pub use artifact::ArtifactManifest;
 pub use passes::{async_mmap, children, fifos, m_axi};
 pub use state::rtl_state;
 pub use target::top_stream_needs_axis_adapter;
@@ -61,12 +63,17 @@ static PIPELINE: &[PipelineEntry] = &[
     entry(PassScope::Design, &emit::CollectOutputs),
 ];
 
-/// Run the full RTL codegen pipeline (the [`PIPELINE`] driver).
+/// Run the full RTL codegen pipeline (the [`PIPELINE`] driver) and return
+/// the complete [`ArtifactManifest`].
 ///
 /// Per-task inputs are staged (and validated) before any mutation pass
 /// runs; the file maps on `state` then hold the modified modules and
-/// auxiliary files.
-pub fn generate_rtl(state: &mut TopologyWithRtl) -> Result<(), CodegenError> {
+/// auxiliary files. The manifest is assembled from those maps plus the
+/// embedded support assets — the codegen charter's output type, whose
+/// packaging (CLI, golden harness) is a copy operation. The `state` file
+/// maps remain public for now; consumers must not re-derive the shipped
+/// set from them.
+pub fn generate_rtl(state: &mut TopologyWithRtl) -> Result<ArtifactManifest, CodegenError> {
     let task_names: Vec<String> = state.design.tasks.keys().cloned().collect();
 
     let mut index = 0;
@@ -105,7 +112,7 @@ pub fn generate_rtl(state: &mut TopologyWithRtl) -> Result<(), CodegenError> {
         }
     }
 
-    Ok(())
+    Ok(ArtifactManifest::collect(state))
 }
 
 /// Test-only: parse a [`tapa_ir::Design`] from fixture JSON.

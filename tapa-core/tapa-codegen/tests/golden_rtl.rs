@@ -21,17 +21,17 @@
 //! The harness drives the same public generation path the CLI pack step
 //! effectively uses (`tapa_cli::steps::synth::rtl_codegen`): attach every
 //! HLS task's parsed module to a `TopologyWithRtl`, set the floorplan, run
-//! `generate_rtl`, then collect the case's emitted file set of generated
-//! RTL and template files. The embedded support assets the pack step ships
-//! alongside are pinned separately under `_assets/` (`generate_rtl`
-//! deliberately does not return the assets; the CLI writes them separately
-//! — the known F1 drift seam — so the harness replays that write exactly
-//! once instead of blessing an identical copy per case). Asset and
-//! generated names are disjoint by construction (generated files are
-//! `<UpperTask>.v` / `<name>_fsm.v`), so a name collision cannot mask
-//! either pin. The CLI also copies the HLS input Verilog verbatim into the
-//! output tree; those byte copies are not re-pinned here (the inputs
-//! themselves are the pinned fixtures under `<case>/inputs/`).
+//! `generate_rtl`. The returned `ArtifactManifest` is the complete shipped
+//! file set (generated RTL, template files, and the embedded support
+//! assets) keyed by relative path exactly where the CLI writes it. The
+//! manifest's case-invariant support-asset slice is pinned once under
+//! `_assets/` rather than identically per case; each case pins its
+//! design-specific slice. Asset and generated names are disjoint by
+//! construction (generated files are `<UpperTask>.v` / `<name>_fsm.v`), so
+//! a name collision cannot mask either pin. The CLI also copies the HLS
+//! input Verilog verbatim into the output tree; those byte copies are not
+//! re-pinned here (the inputs themselves are the pinned fixtures under
+//! `<case>/inputs/`).
 //!
 //! Comparison is normalized per the refactor plan's cross-cutting standard
 //! (sorted relative paths, trailing whitespace trimmed per line, single
@@ -56,7 +56,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use tapa_codegen::rtl_state::TopologyWithRtl;
-use tapa_codegen::{generate_rtl, support_assets::VerilogAssets};
+use tapa_codegen::{generate_rtl, ArtifactManifest};
 
 /// Root of all golden cases, relative to the `tapa-codegen` package.
 fn golden_root() -> PathBuf {
@@ -72,9 +72,10 @@ struct GoldenCase {
     dir: PathBuf,
 }
 
-/// The emitted file set for one case (or the `_assets` pin), in pack-step
-/// layout: generated RTL (and shared support assets) under `rtl/`,
-/// templates under `template/` (exactly where the CLI writes them).
+/// The emitted file set for one case (or the `_assets` pin): a slice of
+/// the returned [`ArtifactManifest`] in pack-step layout — generated RTL
+/// (and shared support assets) under `rtl/`, templates under `template/`
+/// (exactly where the CLI writes them).
 type EmittedSet = BTreeMap<String, String>;
 
 /// Enumerate the case directories under `testdata/golden/`, sorted by name.
@@ -113,9 +114,9 @@ fn normalize(content: &str) -> String {
     out
 }
 
-/// Run the pack-step generation path for one case and return the complete
-/// emitted file set keyed by relative path.
-fn run_case(case: &GoldenCase) -> EmittedSet {
+/// Run the pack-step generation path for one case and return its complete
+/// [`ArtifactManifest`].
+fn run_case(case: &GoldenCase) -> ArtifactManifest {
     let design_json = fs::read_to_string(case.dir.join("design.json"))
         .unwrap_or_else(|e| panic!("[{}] cannot read design.json: {e}", case.name));
     let design: tapa_ir::Design = serde_json::from_str(&design_json)
@@ -145,8 +146,9 @@ fn prepare_state(case: &GoldenCase, design: tapa_ir::Design) -> TopologyWithRtl 
     state
 }
 
-/// Attach fixtures and run `generate_rtl`, then collect the emitted set.
-fn run_rtl_generation(case: &GoldenCase, mut state: TopologyWithRtl) -> EmittedSet {
+/// Attach fixtures and run `generate_rtl` — the returned manifest is the
+/// complete emitted set.
+fn run_rtl_generation(case: &GoldenCase, mut state: TopologyWithRtl) -> ArtifactManifest {
     // Attach the HLS input fixtures the way the CLI attaches HLS outputs.
     let inputs_dir = case.dir.join("inputs");
     let task_names: Vec<String> = state.design.tasks.keys().cloned().collect();
@@ -184,31 +186,23 @@ fn run_rtl_generation(case: &GoldenCase, mut state: TopologyWithRtl) -> EmittedS
             .unwrap_or_else(|e| panic!("[{}] cannot attach {task_name}: {e}", case.name));
     }
 
-    generate_rtl(&mut state).unwrap_or_else(|e| panic!("[{}] generate_rtl failed: {e}", case.name));
-
-    // Collect the case's emitted set: generated RTL + templates. The
-    // embedded support assets are pinned once via `_assets` (below).
-    let mut emitted = EmittedSet::new();
-    for (name, content) in &state.generated_files {
-        emitted.insert(format!("rtl/{name}"), content.clone());
-    }
-    for (name, content) in &state.template_files {
-        emitted.insert(format!("template/{name}"), content.clone());
-    }
-    emitted
+    generate_rtl(&mut state).unwrap_or_else(|e| panic!("[{}] generate_rtl failed: {e}", case.name))
 }
 
-/// The case-invariant emitted set of the embedded support assets, in the
-/// same `rtl/` layout the pack step ships.
-fn support_asset_set() -> EmittedSet {
-    VerilogAssets::iter()
-        .map(|name| {
-            let content = VerilogAssets::get(&name).expect("iterated asset exists");
-            (
-                format!("rtl/{name}"),
-                String::from_utf8_lossy(&content.data).into_owned(),
-            )
-        })
+/// The design-specific slice of a case's manifest — the per-case pin.
+fn design_set(manifest: &ArtifactManifest) -> EmittedSet {
+    manifest
+        .design_files()
+        .map(|(path, content)| (path.clone(), content.clone()))
+        .collect()
+}
+
+/// The manifest's support-asset slice — the shared `_assets` pin.
+/// Case-invariant, so any case's manifest provides it.
+fn support_asset_slice(manifest: &ArtifactManifest) -> EmittedSet {
+    manifest
+        .support_asset_files()
+        .map(|(path, content)| (path.clone(), content.clone()))
         .collect()
 }
 
@@ -326,9 +320,14 @@ fn golden_rtl_matches_blessed() {
     let assets_case = shared_assets_case(&root);
     let bless_mode = env::var("TAPA_BLESS_GOLDEN").is_ok_and(|value| value == "1");
 
+    // The manifest is the complete emitted set (F1 seam closed); its
+    // support-asset slice is case-invariant, so any case's manifest
+    // provides the shared `_assets` pin.
+    let manifests: Vec<ArtifactManifest> = cases.iter().map(run_case).collect();
+
     if bless_mode {
-        for case in &cases {
-            let emitted = run_case(case);
+        for (case, manifest) in cases.iter().zip(&manifests) {
+            let emitted = design_set(manifest);
             bless(case, &emitted);
             println!(
                 "blessed [{}]: {} files ({} bytes normalized)",
@@ -338,7 +337,7 @@ fn golden_rtl_matches_blessed() {
             );
         }
         if let Some(assets) = &assets_case {
-            let emitted = support_asset_set();
+            let emitted = support_asset_slice(&manifests[0]);
             bless(assets, &emitted);
             println!("blessed [_assets]: {} files", emitted.len());
         }
@@ -351,14 +350,13 @@ fn golden_rtl_matches_blessed() {
     }
 
     let mut failures = String::new();
-    for case in &cases {
-        let emitted = run_case(case);
-        if let Some(report) = compare(case, &emitted) {
+    for (case, manifest) in cases.iter().zip(&manifests) {
+        if let Some(report) = compare(case, &design_set(manifest)) {
             write!(failures, "case `{}`:\n{report}", case.name).expect("write to String");
         }
     }
     if let Some(assets) = &assets_case {
-        if let Some(report) = compare(assets, &support_asset_set()) {
+        if let Some(report) = compare(assets, &support_asset_slice(&manifests[0])) {
             write!(failures, "case `_assets`:\n{report}").expect("write to String");
         }
     }
