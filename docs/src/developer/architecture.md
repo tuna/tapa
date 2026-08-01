@@ -126,11 +126,12 @@ in `tapa-ir` and `tapa-protocol`, never by sharing implementation.
 
 ## Public API Surface Audit
 
-CI runs an advisory `cargo public-api` audit over the L0/L1 crates
-(`tapa-protocol`, `tapa-ir`, `tapa-rtl`), diffing the generated listing
-against blessed baselines under `docs/api/`. The job is
-`continue-on-error`, so drift is surfaced for review without blocking
-merges. To regenerate a baseline after an intentional API change:
+CI gates on `cargo public-api` over the L0/L1 crates (`tapa-protocol`,
+`tapa-ir`, `tapa-rtl`), diffing the generated listing against blessed
+baselines under `docs/api/` (promoted from advisory to required in
+Phase 5). Drift blocks the branch: either revert the accidental change
+or, for an intentional API change, re-bless the baseline in the same
+PR. To regenerate a baseline:
 
 ```bash
 rustup toolchain install nightly-2026-07-30 --profile minimal --component rust-docs-json

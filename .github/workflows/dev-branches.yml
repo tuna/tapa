@@ -67,9 +67,8 @@ jobs:
         run: bazel build //docs:build
 
   public-api:
-    name: Public API Surface Audit (Advisory)
+    name: Public API Surface Audit
     runs-on: ubuntu-latest
-    continue-on-error: true
 
     steps:
       - name: Checkout myself
@@ -113,6 +112,11 @@ jobs:
               echo "::notice::no blessed baseline at ${blessed}; skipping diff"
             fi
           done
+          if [ "${status}" -ne 0 ]; then
+            echo "::error::public API drift detected. If intentional, regenerate the"
+            echo "::error::blessed baselines per docs/src/developer/architecture.md:"
+            echo "::error::  (cd tapa-core && cargo public-api --package <crate> > ../docs/api/<crate>.public-api.txt)"
+          fi
           exit "${status}"
         shell: bash
 
@@ -125,6 +129,7 @@ jobs:
       - pre-commit
       - test
       - docs
+      - public-api
 
     steps:
       - name: Checkout myself
