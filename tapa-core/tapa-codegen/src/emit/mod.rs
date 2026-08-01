@@ -5,7 +5,7 @@ use tapa_ir::task::TaskLevel;
 use tapa_ir::SynthTarget;
 
 use crate::error::CodegenError;
-use crate::passes::PassCtx;
+use crate::passes::{PassCtx, PassViews};
 use crate::RtlPass;
 
 /// Design pass: collect the emitted files.
@@ -16,35 +16,38 @@ pub struct CollectOutputs;
 
 impl RtlPass for CollectOutputs {
     fn run(&self, ctx: &mut PassCtx<'_>) -> Result<(), CodegenError> {
-        let state = &mut *ctx.state; // reborrow: `state` is used mutably below
+        let mut views = PassViews::new(&mut *ctx.state);
+        let design = views.design.design();
 
         // `Ignore` tasks: emit the authoritative template file from the
         // shell built by the `ignore-task-shells` pass.
-        let task_names: Vec<String> = state.design.tasks.keys().cloned().collect();
+        let task_names: Vec<String> = design.tasks.keys().cloned().collect();
         for task_name in &task_names {
-            let task = &state.design.tasks[task_name];
+            let task = &design.tasks[task_name];
             if task.synth == SynthTarget::Ignore {
-                let template = state.module_map[task_name].emit();
-                state
-                    .template_files
-                    .insert(format!("{task_name}.v"), template);
+                let template = views.modules[task_name].emit();
+                views
+                    .outputs
+                    .insert_template(format!("{task_name}.v"), template);
             }
         }
 
         // Collect emitted files. Lower HLS modules were already copied from
         // their original Verilog sources by the CLI; re-emitting them from the
         // parsed model drops legal port-reg redeclarations used by HLS.
-        for (name, mm) in &state.module_map {
-            if state.design.tasks.get(name.as_str()).is_some_and(|task| {
+        for (name, mm) in views.modules.iter() {
+            if design.tasks.get(name.as_str()).is_some_and(|task| {
                 task.level == TaskLevel::Upper || task.synth == SynthTarget::Ignore
             }) {
-                state.generated_files.insert(format!("{name}.v"), mm.emit());
+                views
+                    .outputs
+                    .insert_generated(format!("{name}.v"), mm.emit());
             }
         }
-        for (name, mm) in &state.fsm_modules {
-            state
-                .generated_files
-                .insert(format!("{name}_fsm.v"), mm.emit());
+        for (name, mm) in views.fsms.iter() {
+            views
+                .outputs
+                .insert_generated(format!("{name}_fsm.v"), mm.emit());
         }
 
         Ok(())

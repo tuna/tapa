@@ -1,6 +1,8 @@
 //! Enriched topology + RTL state for code generation.
 //!
-//! Kept as one module in Phase 1a; the Phase 1b view-splitting note lives
-//! with the pipeline in [`crate::passes`].
+//! `rtl_state` holds `TopologyWithRtl`; `views` hosts the narrowed
+//! per-concern borrow views the pass pipeline consumes (Phase 1b, see
+//! [`crate::passes`]).
 
 pub mod rtl_state;
+pub mod views;

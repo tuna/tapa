@@ -19,21 +19,6 @@ use tapa_rtl::VerilogModule;
 
 use crate::error::CodegenError;
 
-fn render_fsm_module(fsm_name: &str) -> String {
-    format!(
-        "\
-module {fsm_name} (
-  input wire ap_clk,
-  input wire ap_rst_n,
-  input wire ap_start,
-  output wire ap_done,
-  output wire ap_ready,
-  output wire ap_idle
-);
-endmodule //{fsm_name}"
-    )
-}
-
 fn validate_mmap_channel_geometry(
     parent_task_name: &str,
     parent_port_name: &str,
@@ -279,28 +264,17 @@ impl TopologyWithRtl {
 
     /// Create an FSM module for an upper-level task.
     ///
-    /// Rejects lower-level tasks.
+    /// Rejects lower-level tasks. The design-side task lookup happens here;
+    /// the FSM table mutation is delegated to
+    /// [`crate::state::views::FsmTable::create_fsm_module`].
     pub fn create_fsm_module(&mut self, task_name: &str) -> Result<(), CodegenError> {
         let task = self
             .design
             .tasks
             .get(task_name)
             .ok_or_else(|| CodegenError::TaskNotFound(task_name.to_owned()))?;
-
-        if task.level == TaskLevel::Lower {
-            return Err(CodegenError::FsmForLowerTask(task_name.to_owned()));
-        }
-
-        // Create an empty FSM module with the standard TAPA handshake ports.
-        // The generated top-level RTL wires ap_start / ap_done / ap_ready /
-        // ap_idle to this FSM, so they must be present on the FSM module
-        // definition.
-        let fsm_name = format!("{task_name}_fsm");
-        let fsm_source = render_fsm_module(&fsm_name);
-        let parsed = VerilogModule::parse(&fsm_source)?;
-        self.fsm_modules
-            .insert(task_name.to_owned(), MutableModule::from_parsed(parsed));
-        Ok(())
+        crate::state::views::FsmTable::new(&mut self.fsm_modules)
+            .create_fsm_module(task_name, task.level)
     }
 
     /// Catalog child M-AXI interfaces connected directly to ports of

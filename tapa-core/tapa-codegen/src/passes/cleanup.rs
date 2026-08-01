@@ -6,20 +6,21 @@ use tapa_protocol::{
 use tapa_rtl::builder::{ContinuousAssign, Expr};
 
 use super::distributed_control::{self, DistributedControlPlan};
-use crate::rtl_state::TopologyWithRtl;
+use crate::state::views::{DesignView, ModuleTable};
 
 /// Strip HLS artifacts from `task_name`'s module: clear the cached body text,
 /// demote HLS `reg`s back to wires, normalize the fabric reset, and (top task
 /// only) drop the istream peek ports the HLS module declares.
 pub(super) fn cleanup_hls_artifacts(
-    state: &mut TopologyWithRtl,
+    design: DesignView<'_>,
+    modules: &mut ModuleTable<'_>,
     task_name: &str,
     is_top_task: bool,
     control_plan: Option<&DistributedControlPlan>,
 ) {
-    let task = &state.design.tasks[task_name];
+    let task = &design.design().tasks[task_name];
 
-    if let Some(mm) = state.module_map.get_mut(task_name) {
+    if let Some(mm) = modules.get_mut(task_name) {
         mm.cleanup_hls_artifacts();
         mm.body_text.clear();
         mm.demote_output_port_regs_to_wires();
