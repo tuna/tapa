@@ -1,7 +1,14 @@
-//! Top-level global FSM for the design root.
+//! FSM state encodings and the top-level global FSM for the design root.
 //!
-//! Generates the 3-state IDLE -> RUNNING -> DONE controller that drives
-//! the ap-ctrl handshake and gates on all child `is_done` signals.
+//! This module is the single authority for the state encodings of BOTH
+//! FSM families in the generated RTL:
+//!
+//! - `GLOBAL_STATE_*`: the 3-state global program FSM, generated here as
+//!   the IDLE -> RUNNING -> DONE controller that drives the ap-ctrl
+//!   handshake and gates on all child `is_done` signals.
+//! - `CHILD_STATE_*`: the 4-state per-instance child FSM, consumed by
+//!   `crate::passes::children::fsm`, which re-exports them under the
+//!   historical `STATE_*` names.
 
 use tapa_protocol::{
     HANDSHAKE_CLK, HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY, HANDSHAKE_RST, HANDSHAKE_RST_N,
@@ -14,6 +21,22 @@ use tapa_rtl::mutation::{wide_reg, wire, MutableModule};
 pub const GLOBAL_STATE_IDLE: &str = "2'b00";
 pub const GLOBAL_STATE_RUNNING: &str = "2'b01";
 pub const GLOBAL_STATE_DONE: &str = "2'b10";
+
+/// FSM state constants for the per-instance child (non-autorun) FSM
+/// (2-bit encoding).
+///
+/// IDLE (`2'b00`), RUNNING (`2'b01`), and DONE (`2'b10`) are deliberately
+/// identical to [`GLOBAL_STATE_IDLE`], [`GLOBAL_STATE_RUNNING`], and
+/// [`GLOBAL_STATE_DONE`]: the per-instance `is_done` nets feed the global
+/// FSM's RUNNING -> DONE gate and the global start/done handshake releases
+/// the child's DONE state, and both compositions rely on the shared
+/// encodings. WAITING (`2'b11`) exists only in the child FSM — a
+/// non-autorun child parks there when `ready` arrives before `done`; the
+/// global FSM has no fourth state.
+pub const CHILD_STATE_IDLE: &str = "2'b00";
+pub const CHILD_STATE_RUNNING: &str = "2'b01";
+pub const CHILD_STATE_WAITING: &str = "2'b11";
+pub const CHILD_STATE_DONE: &str = "2'b10";
 
 /// Generate the global 3-state FSM for a top-level program.
 ///

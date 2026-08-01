@@ -4,11 +4,13 @@ use crate::instance_signals::InstanceSignals;
 use tapa_protocol::{HANDSHAKE_CLK, HANDSHAKE_RST, HANDSHAKE_START};
 use tapa_rtl::builder::{AlwaysBlock, CaseItem, ContinuousAssign, Expr, Sensitivity, Statement};
 
-/// FSM state constants for non-autorun child instances (2-bit encoding).
-pub const STATE_IDLE: &str = "2'b00";
-pub const STATE_RUNNING: &str = "2'b01";
-pub const STATE_WAITING: &str = "2'b11";
-pub const STATE_DONE: &str = "2'b10";
+// The FSM state encodings live in `crate::program` (the single
+// FSM-encoding authority for both the global and child FSMs); re-exported
+// here under the historical `STATE_*` names.
+pub use crate::program::{
+    CHILD_STATE_DONE as STATE_DONE, CHILD_STATE_IDLE as STATE_IDLE,
+    CHILD_STATE_RUNNING as STATE_RUNNING, CHILD_STATE_WAITING as STATE_WAITING,
+};
 
 /// Generate the 4-state FSM always block for a non-autorun child instance.
 ///
