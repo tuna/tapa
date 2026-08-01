@@ -6,6 +6,7 @@
 use std::collections::BTreeMap;
 
 use tapa_ir::task::TaskLevel;
+use tapa_ir::Port as IrPort;
 use tapa_ir::{ArgCategory, AxiChannelWidths, AxiEndpoint, Design, FloorplanResult};
 use tapa_protocol::{
     axi_subport_from_suffix, axi_subport_width, PortDir, M_AXI_CHANNEL_ORDER, M_AXI_PORTS,
@@ -22,10 +23,10 @@ use crate::error::CodegenError;
 fn validate_mmap_channel_geometry(
     parent_task_name: &str,
     parent_port_name: &str,
-    parent: &tapa_ir::Port,
+    parent: &IrPort,
     child_task_name: &str,
     child_port_name: &str,
-    child: &tapa_ir::Port,
+    child: &IrPort,
 ) -> Result<(), CodegenError> {
     match (parent.chan_count, child.chan_count) {
         (Some(parent_count), Some(child_count)) if parent_count != child_count => {
@@ -51,10 +52,10 @@ fn validate_mmap_channel_geometry(
 fn merge_mmap_port_metadata(
     parent_task_name: &str,
     parent_port_name: &str,
-    parent: Option<&tapa_ir::Port>,
+    parent: Option<&IrPort>,
     child_task_name: &str,
     child_port_name: &str,
-    child: Option<&tapa_ir::Port>,
+    child: Option<&IrPort>,
 ) -> Result<(u32, Option<u32>, Option<u32>), CodegenError> {
     if let (Some(parent), Some(child)) = (parent, child) {
         if parent.width != child.width {

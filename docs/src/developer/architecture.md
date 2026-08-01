@@ -106,8 +106,9 @@ in `tapa-ir` and `tapa-protocol`, never by sharing implementation.
 ## Conventions
 
 - **Naming disambiguation.** Where crate types collide, alias once at the
-  consuming crate root instead of importing ambiguous names at each use
-  site: `tapa_ir::Port` (task port) versus `tapa_rtl::Port` (Verilog port);
+  consuming module instead of importing ambiguous names at each use
+  site: `tapa_ir::Port as IrPort` versus `tapa_rtl::Port as RtlPort`
+  (the one live collision today, in `tapa-codegen`'s RTL state);
   `tapa_cli::remote_config` (config/flag overlay) versus
   `tapa_xilinx::runtime::remote` (transport).
 - **Error taxonomy.** Each crate defines its domain errors with
