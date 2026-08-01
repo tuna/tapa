@@ -10,11 +10,6 @@ use tapa_codegen::rtl_state::TopologyWithRtl;
 use tapa_ir::Design;
 use tapa_rtl::VerilogModule;
 
-/// Parse a [`tapa_ir::Design`] from fixture JSON.
-pub fn design_from_fixture_json(value: serde_json::Value) -> Design {
-    serde_json::from_value(value).expect("valid design fixture JSON")
-}
-
 /// Helper: parse a minimal Verilog module source.
 pub fn parse_module(src: &str) -> VerilogModule {
     VerilogModule::parse(src).expect("valid Verilog")
@@ -38,11 +33,12 @@ pub fn design(top: &str, target: &str, tasks: &[(&str, serde_json::Value)]) -> D
         .map(|(name, t)| (name.to_string(), t.clone()))
         .collect::<serde_json::Map<String, serde_json::Value>>()
         .into();
-    design_from_fixture_json(serde_json::json!({
+    serde_json::from_value(serde_json::json!({
         "top": top,
         "target": target,
         "tasks": tasks,
     }))
+    .expect("valid design fixture JSON")
 }
 
 /// A task with all defaults (no ports, children, or fifos).
