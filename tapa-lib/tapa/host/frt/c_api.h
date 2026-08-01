@@ -25,6 +25,12 @@ enum class RuntimeArgCategory : int32_t {
 
 extern "C" {
 
+/// Return the error message recorded by the most recent failed `frt_*`
+/// call on this thread, or null if the last call succeeded (or none ran).
+///
+/// The returned pointer borrows from a per-thread slot; it is valid until
+/// the next `frt_*` call on this thread. Each thread has an independent
+/// error slot. Copy the string if it must outlive that point.
 const char *frt_last_error_message();
 
 void *frt_instance_open(const char *path, const char *simulator);
@@ -33,6 +39,14 @@ void frt_instance_close(void *handle);
 
 int frt_instance_get_arg_count(void *handle, uint32_t *out_count);
 
+/// Read the metadata of the kernel argument at `ordinal`.
+///
+/// `out_name` and `out_type` receive pointers to NUL-terminated strings
+/// owned by the instance handle. Each pointer is valid until the next
+/// `frt_instance_get_arg` call on the same instance handle, or until the
+/// instance is closed with `frt_instance_close`; callers must copy the
+/// strings (and only access the handle from one thread at a time) to use
+/// them beyond that point.
 int frt_instance_get_arg(void *handle,
                          uint32_t ordinal,
                          uint32_t *out_index,

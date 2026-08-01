@@ -1,10 +1,10 @@
 use crate::device::{BufferAccess, RuntimeArgCategory, RuntimeArgInfo};
 use crate::env_bool;
 use crate::instance::{Instance, Simulator};
+use std::cell::RefCell;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int};
 use std::path::Path;
-use std::sync::Mutex;
 
 struct FrtInstanceHandle {
     instance: Instance,
@@ -40,22 +40,32 @@ fn with_handle_mut(handle: *mut std::ffi::c_void) -> Option<&'static mut FrtInst
     Some(unsafe { &mut *handle.cast::<FrtInstanceHandle>() })
 }
 
-static LAST_ERROR: Mutex<Option<CString>> = Mutex::new(None);
+thread_local! {
+    /// Per-thread slot for the most recent FFI error message.
+    ///
+    /// A thread-local slot (rather than a global mutex) lets concurrent
+    /// instances on different threads record errors without racing, and it
+    /// keeps the `CString` alive in the slot so `frt_last_error_message`
+    /// can hand out a pointer that stays valid until the slot is
+    /// overwritten on the same thread.
+    static LAST_ERROR: RefCell<Option<CString>> = const { RefCell::new(None) };
+}
 
-fn set_last_error(msg: impl Into<String>) {
+/// Record an error message on this thread's slot, replacing any previous
+/// one. Embedded NUL bytes are blanked so the message survives `CString`.
+pub(crate) fn set_last_error(msg: impl Into<String>) {
     let mut text = msg.into();
     if text.contains('\0') {
         text = text.replace('\0', " ");
     }
-    if let Ok(mut guard) = LAST_ERROR.lock() {
-        *guard = CString::new(text).ok();
-    }
+    LAST_ERROR.with(|cell| *cell.borrow_mut() = CString::new(text).ok());
 }
 
-fn clear_last_error() {
-    if let Ok(mut guard) = LAST_ERROR.lock() {
-        *guard = None;
-    }
+/// Drop any previously recorded error on this thread's slot. Exported
+/// functions call this on entry so a stale message from an earlier call is
+/// not misattributed to a later, successful one.
+pub(crate) fn clear_last_error() {
+    LAST_ERROR.with(|cell| *cell.borrow_mut() = None);
 }
 
 fn to_str<'a>(ptr: *const c_char, field: &str) -> Result<Option<&'a str>, String> {
@@ -108,14 +118,19 @@ fn open_instance(path: &str, sim: Option<&str>) -> Result<Instance, String> {
     }
 }
 
+/// Return the error message recorded by the most recent failed `frt_*`
+/// call on this thread, or null if the last call succeeded (or none ran).
+///
+/// The returned pointer borrows from a per-thread slot; it is valid until
+/// the next `frt_*` call on this thread. Each thread has an independent
+/// error slot. Copy the string if it must outlive that point.
 #[no_mangle]
 pub extern "C" fn frt_last_error_message() -> *const c_char {
-    if let Ok(guard) = LAST_ERROR.lock() {
-        if let Some(s) = guard.as_ref() {
-            return s.as_ptr();
-        }
-    }
-    std::ptr::null()
+    LAST_ERROR.with(|cell| {
+        cell.borrow()
+            .as_ref()
+            .map_or(std::ptr::null(), |s: &CString| s.as_ptr())
+    })
 }
 
 #[no_mangle]
@@ -193,6 +208,14 @@ pub extern "C" fn frt_instance_get_arg_count(
     0
 }
 
+/// Read the metadata of the kernel argument at `ordinal`.
+///
+/// `out_name` and `out_type` receive pointers to NUL-terminated strings
+/// owned by the instance handle. Each pointer is valid until the next
+/// `frt_instance_get_arg` call on the same instance handle, or until the
+/// instance is closed with `frt_instance_close`; callers must copy the
+/// strings (and only access the handle from one thread at a time) to use
+/// them beyond that point.
 #[no_mangle]
 pub extern "C" fn frt_instance_get_arg(
     handle: *mut std::ffi::c_void,

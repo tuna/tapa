@@ -3,6 +3,7 @@ use super::metadata::{
 };
 use crate::device::{BufferAccess, Device, RuntimeArgCategory, RuntimeArgInfo};
 use crate::error::{FrtError, Result};
+use frt_cosim::metadata::normalized_scalar_bytes;
 use frt_cosim::runner::environ::xilinx_environ;
 use opencl3::command_queue::{
     CommandQueue, CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE, CL_QUEUE_PROFILING_ENABLE,
@@ -643,13 +644,6 @@ fn current_username() -> Option<String> {
     None
 }
 
-fn normalized_scalar_bytes(width_bits: u32, raw: Option<&[u8]>) -> Vec<u8> {
-    if let Some(raw) = raw.filter(|raw| !raw.is_empty()) {
-        return raw.to_vec();
-    }
-    vec![0; (width_bits as usize).div_ceil(8).max(1)]
-}
-
 fn scalar_type_name(width_bits: u32) -> String {
     match width_bits {
         0..=32 => "uint32_t".to_owned(),
@@ -700,24 +694,41 @@ fn elapsed_ns(events: &[Event]) -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{normalized_scalar_bytes, scalar_type_name};
+    use super::scalar_type_name;
+    use frt_cosim::metadata::normalized_scalar_bytes;
 
+    /// Scalar bytes bind at exactly the metadata-declared width (the same
+    /// rule the cosim testbenches use), so a short caller buffer is
+    /// zero-extended rather than passed through verbatim.
     #[test]
-    fn scalar_bytes_preserve_explicit_caller_size() {
-        assert_eq!(normalized_scalar_bytes(16, Some(&[0x12])), vec![0x12]);
-        assert_eq!(
-            normalized_scalar_bytes(16, Some(&[0x12, 0x34, 0x56])),
-            vec![0x12, 0x34, 0x56]
-        );
+    fn scalar_bytes_zero_pad_short_buffers_to_metadata_width() {
+        assert_eq!(normalized_scalar_bytes(16, Some(&[0x12])), vec![0x12, 0x00]);
         assert_eq!(
             normalized_scalar_bytes(128, Some(&[1, 2, 3, 4])),
-            vec![1, 2, 3, 4]
+            vec![1, 2, 3, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         );
     }
 
     #[test]
-    fn scalar_bytes_default_to_metadata_width_when_unset() {
+    fn scalar_bytes_truncate_oversized_buffers_to_metadata_width() {
+        assert_eq!(
+            normalized_scalar_bytes(16, Some(&[0x12, 0x34, 0x56])),
+            vec![0x12, 0x34]
+        );
+    }
+
+    #[test]
+    fn scalar_bytes_keep_exactly_sized_buffers() {
+        assert_eq!(
+            normalized_scalar_bytes(16, Some(&[0x12, 0x34])),
+            vec![0x12, 0x34]
+        );
+    }
+
+    #[test]
+    fn scalar_bytes_default_to_metadata_width_when_unset_or_empty() {
         assert_eq!(normalized_scalar_bytes(16, None), vec![0x00, 0x00]);
+        assert_eq!(normalized_scalar_bytes(16, Some(&[])), vec![0x00, 0x00]);
         assert_eq!(
             normalized_scalar_bytes(128, None),
             vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]

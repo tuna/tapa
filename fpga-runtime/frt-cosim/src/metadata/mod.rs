@@ -61,6 +61,27 @@ pub struct KernelSpec {
     pub scalar_register_map: HashMap<String, u32>,
 }
 
+/// Normalize a scalar argument's raw bytes to exactly the width declared
+/// in the kernel metadata.
+///
+/// This is the single scalar-binding rule shared by the XRT device and the
+/// cosimulation testbenches, so the same scalar binds identically on
+/// hardware and in simulation: a buffer shorter than the declared width is
+/// zero-extended (little-endian high-order padding), a longer buffer is
+/// truncated, and a missing or empty value becomes an all-zero value of
+/// the declared width. The width is rounded up to whole bytes, with a
+/// one-byte minimum so a zero-width scalar still binds one byte.
+pub fn normalized_scalar_bytes(width_bits: u32, raw: Option<&[u8]>) -> Vec<u8> {
+    let expected = (width_bits as usize).div_ceil(8).max(1);
+    let mut out = raw.map(<[u8]>::to_vec).unwrap_or_default();
+    if out.len() < expected {
+        out.resize(expected, 0);
+    } else if out.len() > expected {
+        out.truncate(expected);
+    }
+    out
+}
+
 pub fn load_spec(path: &Path) -> Result<(KernelSpec, tempfile::TempDir)> {
     let file = std::fs::File::open(path)?;
     let reader = std::io::BufReader::new(file);
@@ -213,4 +234,50 @@ fn extract_file(file: &mut zip::read::ZipFile<'_>, name: &str, out_dir: &Path) -
     let mut fp = std::fs::File::create(&out)?;
     std::io::copy(file, &mut fp)?;
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalized_scalar_bytes;
+
+    #[test]
+    fn short_buffers_are_zero_padded_to_width() {
+        assert_eq!(normalized_scalar_bytes(16, Some(&[0x12])), vec![0x12, 0x00]);
+        assert_eq!(
+            normalized_scalar_bytes(128, Some(&[1, 2, 3, 4])),
+            vec![1, 2, 3, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        );
+    }
+
+    #[test]
+    fn oversized_buffers_are_truncated_to_width() {
+        assert_eq!(
+            normalized_scalar_bytes(16, Some(&[0x12, 0x34, 0x56])),
+            vec![0x12, 0x34]
+        );
+    }
+
+    #[test]
+    fn exactly_sized_buffers_pass_through_unchanged() {
+        assert_eq!(
+            normalized_scalar_bytes(16, Some(&[0xab, 0xcd])),
+            vec![0xab, 0xcd]
+        );
+        let exact: Vec<u8> = (0u8..16).collect();
+        assert_eq!(normalized_scalar_bytes(128, Some(&exact)), exact);
+    }
+
+    #[test]
+    fn unset_or_empty_buffers_yield_an_all_zero_value_of_width() {
+        assert_eq!(normalized_scalar_bytes(16, None), vec![0x00, 0x00]);
+        assert_eq!(normalized_scalar_bytes(16, Some(&[])), vec![0x00, 0x00]);
+        assert_eq!(normalized_scalar_bytes(128, None), vec![0u8; 16]);
+    }
+
+    #[test]
+    fn widths_round_up_to_bytes_with_a_one_byte_minimum() {
+        assert_eq!(normalized_scalar_bytes(0, None), vec![0x00]);
+        assert_eq!(normalized_scalar_bytes(1, None), vec![0x00]);
+        assert_eq!(normalized_scalar_bytes(9, None), vec![0x00, 0x00]);
+    }
 }

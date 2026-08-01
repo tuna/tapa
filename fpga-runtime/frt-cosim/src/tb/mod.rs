@@ -4,7 +4,7 @@ pub mod xsim;
 
 use std::collections::HashMap;
 
-use crate::metadata::KernelSpec;
+use crate::metadata::{normalized_scalar_bytes, KernelSpec};
 
 #[derive(Clone)]
 pub struct ScalarWord {
@@ -90,17 +90,6 @@ pub fn classify_args<M, S, T>(
         }
     }
     (mmaps, scalars, streams_in, streams_out)
-}
-
-pub fn normalized_scalar_bytes(width_bits: u32, raw: Option<&[u8]>) -> Vec<u8> {
-    let expected = (width_bits as usize).div_ceil(8).max(1);
-    let mut out = raw.map(<[u8]>::to_vec).unwrap_or_default();
-    if out.len() < expected {
-        out.resize(expected, 0);
-    } else if out.len() > expected {
-        out.truncate(expected);
-    }
-    out
 }
 
 /// AXI4 signal names for a single mmap port.

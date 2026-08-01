@@ -1,3 +1,4 @@
+use crate::ffi::{clear_last_error, set_last_error};
 use frt_shm::SharedMemoryQueue;
 use std::ffi::{c_char, c_int, c_void};
 use std::sync::Mutex;
@@ -8,6 +9,7 @@ struct QueueHandle {
 
 fn with_handle<R>(handle: *const c_void, f: impl FnOnce(&QueueHandle) -> R) -> Option<R> {
     if handle.is_null() {
+        set_last_error("shm queue handle is null");
         return None;
     }
     // SAFETY: handle was created by frt_shmq_create via Box::into_raw,
@@ -42,6 +44,7 @@ pub extern "C" fn frt_shmq_create(
     out_path_len: usize,
 ) -> *mut c_void {
     static MIN_DEPTH: std::sync::OnceLock<u32> = std::sync::OnceLock::new();
+    clear_last_error();
     let min = *MIN_DEPTH.get_or_init(|| {
         std::env::var(frt_shm::env::FRT_SHM_MIN_DEPTH)
             .ok()
@@ -50,11 +53,20 @@ pub extern "C" fn frt_shmq_create(
     });
     let depth = depth.max(min);
     let width = width.max(1);
-    let Ok(queue) = SharedMemoryQueue::create("stream", depth, width) else {
-        return std::ptr::null_mut();
+    let queue = match SharedMemoryQueue::create("stream", depth, width) {
+        Ok(queue) => queue,
+        Err(e) => {
+            set_last_error(format!("failed to create shared-memory queue: {e}"));
+            return std::ptr::null_mut();
+        }
     };
     let path = queue.path().to_string_lossy().to_string();
     if !write_c_string(out_path, out_path_len, &path) {
+        set_last_error(format!(
+            "out_path buffer is null or too small: {} bytes required, \
+             {out_path_len} provided",
+            path.len() + 1
+        ));
         return std::ptr::null_mut();
     }
     let handle = Box::new(QueueHandle {
@@ -75,8 +87,10 @@ pub extern "C" fn frt_shmq_destroy(handle: *mut c_void) {
 
 #[no_mangle]
 pub extern "C" fn frt_shmq_empty(handle: *const c_void) -> c_int {
+    clear_last_error();
     with_handle(handle, |h| {
         let Ok(q) = h.queue.lock() else {
+            set_last_error("shm queue lock poisoned");
             return -1;
         };
         i32::from(q.is_empty())
@@ -86,8 +100,10 @@ pub extern "C" fn frt_shmq_empty(handle: *const c_void) -> c_int {
 
 #[no_mangle]
 pub extern "C" fn frt_shmq_full(handle: *const c_void) -> c_int {
+    clear_last_error();
     with_handle(handle, |h| {
         let Ok(q) = h.queue.lock() else {
+            set_last_error("shm queue lock poisoned");
             return -1;
         };
         i32::from(q.is_full())
@@ -97,23 +113,32 @@ pub extern "C" fn frt_shmq_full(handle: *const c_void) -> c_int {
 
 #[no_mangle]
 pub extern "C" fn frt_shmq_push(handle: *mut c_void, data: *const u8, len: usize) -> c_int {
+    clear_last_error();
     if data.is_null() {
+        set_last_error("data is null");
         return -1;
     }
     with_handle(handle.cast_const(), |h| {
         let Ok(mut q) = h.queue.lock() else {
+            set_last_error("shm queue lock poisoned");
             return -1;
         };
         if q.width() != len {
+            set_last_error(format!(
+                "input size mismatch: queue width is {} bytes, got {len}",
+                q.width()
+            ));
             return -1;
         }
         // SAFETY: data is non-null (checked above) and len == q.width(),
         // so the caller guarantees [data..data+len) is a valid readable region.
         let slice = unsafe { std::slice::from_raw_parts(data, len) };
-        if q.try_push(slice).is_ok() {
-            0
-        } else {
-            -1
+        match q.try_push(slice) {
+            Ok(()) => 0,
+            Err(e) => {
+                set_last_error(format!("push failed: {e}"));
+                -1
+            }
         }
     })
     .unwrap_or(-1)
@@ -121,14 +146,21 @@ pub extern "C" fn frt_shmq_push(handle: *mut c_void, data: *const u8, len: usize
 
 #[no_mangle]
 pub extern "C" fn frt_shmq_front(handle: *const c_void, out: *mut u8, len: usize) -> c_int {
+    clear_last_error();
     if out.is_null() {
+        set_last_error("out is null");
         return -1;
     }
     with_handle(handle, |h| {
         let Ok(q) = h.queue.lock() else {
+            set_last_error("shm queue lock poisoned");
             return -1;
         };
         if q.width() != len {
+            set_last_error(format!(
+                "output size mismatch: queue width is {} bytes, got {len}",
+                q.width()
+            ));
             return -1;
         }
         // SAFETY: out is non-null (checked above) and len == q.width(),
@@ -137,6 +169,7 @@ pub extern "C" fn frt_shmq_front(handle: *const c_void, out: *mut u8, len: usize
         if q.peek_into(buf) {
             0
         } else {
+            set_last_error("front failed: queue is empty");
             -1
         }
     })
@@ -145,14 +178,21 @@ pub extern "C" fn frt_shmq_front(handle: *const c_void, out: *mut u8, len: usize
 
 #[no_mangle]
 pub extern "C" fn frt_shmq_pop(handle: *mut c_void, out: *mut u8, len: usize) -> c_int {
+    clear_last_error();
     if out.is_null() {
+        set_last_error("out is null");
         return -1;
     }
     with_handle(handle.cast_const(), |h| {
         let Ok(mut q) = h.queue.lock() else {
+            set_last_error("shm queue lock poisoned");
             return -1;
         };
         if q.width() != len {
+            set_last_error(format!(
+                "output size mismatch: queue width is {} bytes, got {len}",
+                q.width()
+            ));
             return -1;
         }
         // SAFETY: out is non-null (checked above) and len == q.width(),
@@ -161,6 +201,7 @@ pub extern "C" fn frt_shmq_pop(handle: *mut c_void, out: *mut u8, len: usize) ->
         if q.pop_into(buf) {
             0
         } else {
+            set_last_error("pop failed: queue is empty");
             -1
         }
     })
