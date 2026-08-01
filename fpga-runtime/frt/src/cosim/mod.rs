@@ -66,13 +66,6 @@ pub struct CosimDevice {
     _extract_dir: tempfile::TempDir,
     setup_only: bool,
     resume_from_post_sim: bool,
-    /// Stream names recorded in the resumed `dpi_config.json`. Populated
-    /// only in resume-from-post-sim mode: the resumed context carries no
-    /// live streams (`CosimContext::open_from_config` leaves `streams`
-    /// empty because the previous run already produced/consumed them), so
-    /// the recorded names are the reference every stream arg binding is
-    /// validated against. Empty outside resume mode.
-    resume_stream_names: HashSet<String>,
     scalars: HashMap<u32, Vec<u8>>,
     pending_buffers: HashMap<u32, BufferBinding>,
     simulation_state: SimulationState,
@@ -108,7 +101,7 @@ impl CosimDevice {
             .collect();
         let opts = runtime_options();
         let tb_dir = make_tb_dir(opts.work_dir.as_deref(), opts.work_dir_parallel)?;
-        let (ctx, resume_stream_names) = if opts.resume_from_post_sim {
+        let ctx = if opts.resume_from_post_sim {
             let config_path = tb_dir.path().join("dpi_config.json");
             let json = std::fs::read_to_string(&config_path).map_err(|e| {
                 FrtError::MetadataParse(format!("failed to read {}: {e}", config_path.display()))
@@ -117,11 +110,13 @@ impl CosimDevice {
             let config: serde_json::Value = serde_json::from_str(&json).map_err(|e| {
                 FrtError::MetadataParse(format!("failed to parse {}: {e}", config_path.display()))
             })?;
-            let resume_stream_names = resumed_config_stream_names(&config);
-            validate_resume_stream_bindings(&stream_arg_names, &resume_stream_names)?;
-            (ctx, resume_stream_names)
+            // Strict frontier: every declared stream arg must be recorded
+            // in the resumed config (the only reference resume mode has).
+            let resumed_streams = resumed_config_stream_names(&config);
+            validate_resume_stream_bindings(&stream_arg_names, &resumed_streams)?;
+            ctx
         } else {
-            (CosimContext::new(&spec)?, HashSet::new())
+            CosimContext::new(&spec)?
         };
 
         let runner: Box<dyn SimRunner> = match sim {
@@ -151,7 +146,6 @@ impl CosimDevice {
             _extract_dir: extract_dir,
             setup_only: opts.setup_only,
             resume_from_post_sim: opts.resume_from_post_sim,
-            resume_stream_names,
             scalars: HashMap::new(),
             pending_buffers: HashMap::new(),
             simulation_state: SimulationState::Idle,
@@ -219,34 +213,12 @@ impl CosimDevice {
     /// Sorted `'name' (arg index N)` listing of the stream args the kernel
     /// spec declares, for strict resume-mode error messages.
     fn declared_stream_args_listing(&self) -> String {
-        let mut args: Vec<(u32, &str)> = self
-            .stream_arg_names
-            .iter()
-            .map(|(i, n)| (*i, n.as_str()))
-            .collect();
-        args.sort_unstable();
-        args.iter()
-            .map(|(i, n)| format!("'{n}' (arg index {i})"))
-            .collect::<Vec<_>>()
-            .join(", ")
-    }
-
-    /// Resume mode only: a declared stream arg that is missing from the
-    /// resumed `dpi_config.json` means the resumed work directory is stale
-    /// or was produced for a different kernel. Unreachable when the device
-    /// was built by [`CosimDevice::open`], which validates every declared
-    /// stream arg against the same reference up front; kept here so the
-    /// per-binding path is strict even for hand-built devices.
-    fn check_resume_stream_binding(&self, index: u32, name: &str) -> Result<()> {
-        if self.resume_stream_names.contains(name) {
-            return Ok(());
-        }
-        Err(FrtError::ResumeStreamBinding(format!(
-            "stream arg '{name}' (arg index {index}) has no 'streams.{name}' entry in the \
-             resumed dpi_config.json; the resumed work directory is stale or was built for \
-             a different kernel — regenerate it with --cosim_setup_only before using \
-             --cosim_resume_from_post_sim"
-        )))
+        sorted_stream_arg_listing(
+            self.stream_arg_names
+                .iter()
+                .map(|(i, n)| (*i, n.as_str()))
+                .collect(),
+        )
     }
 
     fn poll_simulation(&mut self) -> Result<bool> {
@@ -326,6 +298,16 @@ fn resumed_config_stream_names(config: &serde_json::Value) -> HashSet<String> {
 /// `"streams"` section of the work directory's `dpi_config.json` that the
 /// earlier setup-only run recorded. All unresolved args are collected into
 /// one named error rather than failing fast on the first.
+/// Sorted `'name' (arg index N)` rendering shared by the resume-mode
+/// strict-binding error messages.
+fn sorted_stream_arg_listing(mut args: Vec<(u32, &str)>) -> String {
+    args.sort_unstable();
+    args.iter()
+        .map(|(i, n)| format!("'{n}' (arg index {i})"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 fn validate_resume_stream_bindings(
     declared: &HashMap<u32, String>,
     resumed: &HashSet<String>,
@@ -338,12 +320,7 @@ fn validate_resume_stream_bindings(
     if unbound.is_empty() {
         return Ok(());
     }
-    unbound.sort_unstable();
-    let listed = unbound
-        .iter()
-        .map(|(index, name)| format!("'{name}' (arg index {index})"))
-        .collect::<Vec<_>>()
-        .join(", ");
+    let listed = sorted_stream_arg_listing(unbound);
     Err(FrtError::ResumeStreamBinding(format!(
         "kernel stream args with no entry in the resumed dpi_config.json: {listed}; the \
          resumed work directory is stale or was built for a different kernel — regenerate \
@@ -551,22 +528,18 @@ impl Device for CosimDevice {
             // `CosimContext::open_from_config`), so there is nothing left to
             // *bind* — skipping the binding itself is required, not a bug.
             // What must not be skipped is a host/archive mismatch: the
-            // bound index must be a declared stream arg, and that arg must
-            // be one `CosimDevice::open` validated against the resumed
-            // dpi_config.json.
-            let name = match self.stream_arg_name(index) {
-                Ok(name) => name.to_owned(),
-                Err(_) => {
-                    return Err(FrtError::ResumeStreamBinding(format!(
-                        "arg index {index} is not a stream arg declared by the kernel \
-                         spec (declared stream args: {}); the host binary and the kernel \
-                         archive disagree — check that the host was built against this \
-                         archive",
-                        self.declared_stream_args_listing()
-                    )));
-                }
-            };
-            self.check_resume_stream_binding(index, &name)?;
+            // bound index must be a declared stream arg. Alignment with the
+            // resumed dpi_config.json itself was validated wholesale by
+            // `CosimDevice::open`, the only production constructor.
+            if self.stream_arg_name(index).is_err() {
+                return Err(FrtError::ResumeStreamBinding(format!(
+                    "arg index {index} is not a stream arg declared by the kernel \
+                     spec (declared stream args: {}); the host binary and the kernel \
+                     archive disagree — check that the host was built against this \
+                     archive",
+                    self.declared_stream_args_listing()
+                )));
+            }
             return Ok(());
         }
         let name = self.stream_arg_name(index)?.to_owned();
@@ -821,7 +794,6 @@ mod tests {
             _extract_dir: tempfile::tempdir().expect("create extract dir"),
             setup_only: false,
             resume_from_post_sim: false,
-            resume_stream_names: HashSet::new(),
             scalars: HashMap::new(),
             pending_buffers: HashMap::new(),
             simulation_state: SimulationState::Idle,
@@ -1069,7 +1041,7 @@ mod tests {
         HashMap::from([(1u32, "s_in".to_owned()), (2u32, "s_out".to_owned())])
     }
 
-    fn make_resume_stream_test_device(resumed_streams: &[&str]) -> CosimDevice {
+    fn make_resume_stream_test_device() -> CosimDevice {
         let mut dev = make_test_device(0.01);
         dev.spec.args = vec![
             ArgSpec {
@@ -1104,7 +1076,6 @@ mod tests {
             base_addresses: HashMap::new(),
         };
         dev.resume_from_post_sim = true;
-        dev.resume_stream_names = resumed_streams.iter().map(ToString::to_string).collect();
         dev
     }
 
@@ -1145,35 +1116,28 @@ mod tests {
     }
 
     #[test]
-    fn resume_validation_names_the_one_unbound_stream() {
-        let declared = declared_stream_args_for_test();
+    fn resume_validation_lists_all_unbound_streams_in_one_error() {
+        let mut declared = declared_stream_args_for_test();
+        declared.insert(3, "s_extra".to_owned());
         let resumed = HashSet::from(["s_in".to_owned()]);
         let err = validate_resume_stream_bindings(&declared, &resumed)
-            .expect_err("s_out is not recorded in the resumed config");
+            .expect_err("s_out and s_extra are not recorded in the resumed config");
         let msg = err.to_string();
         assert!(
             msg.contains("resume-from-post-sim stream binding error"),
             "{msg}"
         );
+        // One collected error naming every unbound arg, not fail-fast...
         assert!(msg.contains("'s_out' (arg index 2)"), "{msg}");
+        assert!(msg.contains("'s_extra' (arg index 3)"), "{msg}");
+        // ...and never naming a bound arg, with the remediation attached.
         assert!(!msg.contains("'s_in'"), "{msg}");
         assert!(msg.contains("--cosim_setup_only"), "{msg}");
     }
 
     #[test]
-    fn resume_validation_lists_all_unbound_streams_in_one_error() {
-        let declared = declared_stream_args_for_test();
-        let err = validate_resume_stream_bindings(&declared, &HashSet::new())
-            .expect_err("no declared stream is recorded");
-        let msg = err.to_string();
-        // One collected error naming every unbound arg, not fail-fast.
-        assert!(msg.contains("'s_in' (arg index 1)"), "{msg}");
-        assert!(msg.contains("'s_out' (arg index 2)"), "{msg}");
-    }
-
-    #[test]
     fn resume_set_stream_arg_accepts_declared_and_recorded_streams() {
-        let mut dev = make_resume_stream_test_device(&["s_in", "s_out"]);
+        let mut dev = make_resume_stream_test_device();
         dev.set_stream_arg(1, "/dev/shm/host_s_in")
             .expect("declared and recorded stream binds as a resume no-op");
         dev.set_stream_arg(2, "/dev/shm/host_s_out")
@@ -1182,7 +1146,7 @@ mod tests {
 
     #[test]
     fn resume_set_stream_arg_rejects_undeclared_arg_index() {
-        let mut dev = make_resume_stream_test_device(&["s_in", "s_out"]);
+        let mut dev = make_resume_stream_test_device();
         let err = dev
             .set_stream_arg(0, "/dev/shm/nope")
             .expect_err("arg index 0 is not a declared stream arg");
@@ -1197,21 +1161,8 @@ mod tests {
     }
 
     #[test]
-    fn resume_set_stream_arg_rejects_stream_missing_from_resumed_config() {
-        // A device `CosimDevice::open` would never build (s_out is declared
-        // but not recorded upstream), exercising the per-binding defense.
-        let mut dev = make_resume_stream_test_device(&["s_in"]);
-        let err = dev
-            .set_stream_arg(2, "/dev/shm/host_s_out")
-            .expect_err("s_out is declared but not recorded in the resumed config");
-        let msg = err.to_string();
-        assert!(msg.contains("stream arg 's_out' (arg index 2)"), "{msg}");
-        assert!(msg.contains("--cosim_setup_only"), "{msg}");
-    }
-
-    #[test]
     fn resume_set_stream_arg_empty_path_is_a_no_op() {
-        let mut dev = make_resume_stream_test_device(&["s_in"]);
+        let mut dev = make_resume_stream_test_device();
         // Empty paths short-circuit before any stream validation, as before.
         dev.set_stream_arg(0, "")
             .expect("empty shm path is a no-op");
