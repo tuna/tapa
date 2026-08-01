@@ -80,10 +80,9 @@ pub fn generate_rtl(state: &mut TopologyWithRtl) -> Result<ArtifactManifest, Cod
     while index < PIPELINE.len() {
         match PIPELINE[index].scope {
             PassScope::Design => {
-                PIPELINE[index].pass.run(&mut PassCtx {
-                    state: &mut *state,
-                    task: None,
-                })?;
+                PIPELINE[index]
+                    .pass
+                    .run(&mut PassCtx::new(&mut *state, None))?;
                 index += 1;
             }
             PassScope::UpperTask => {
@@ -98,13 +97,13 @@ pub fn generate_rtl(state: &mut TopologyWithRtl) -> Result<ArtifactManifest, Cod
                     }
                     let mut inputs = TaskStageInputs::prepare(state, task_name)?;
                     for pipeline_entry in &PIPELINE[index..group_end] {
-                        pipeline_entry.pass.run(&mut PassCtx {
-                            state: &mut *state,
-                            task: Some(TaskPassCtx {
+                        pipeline_entry.pass.run(&mut PassCtx::new(
+                            &mut *state,
+                            Some(TaskPassCtx {
                                 name: task_name,
                                 inputs: &mut inputs,
                             }),
-                        })?;
+                        ))?;
                     }
                 }
                 index = group_end;

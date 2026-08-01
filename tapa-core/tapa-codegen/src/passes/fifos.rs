@@ -535,16 +535,21 @@ pub(crate) fn connect_fifos(
 mod tests {
     use super::*;
     use crate::rtl_state::TopologyWithRtl;
+    use std::collections::BTreeMap;
+    use tapa_ir::Design;
+    use tapa_rtl::mutation::MutableModule;
 
-    /// Build the width-resolution views over an owned state.
+    /// Resolve a FIFO width through the same views the pass receives.
+    /// Fixtures are never floorplanned, so the design view wraps `None`.
     fn fifo_width(
-        state: &mut TopologyWithRtl,
+        design: &Design,
+        module_map: &mut BTreeMap<String, MutableModule>,
         producer: &FifoProducer,
         fifo_name: &str,
     ) -> Result<u32, CodegenError> {
         resolve_fifo_width(
-            DesignView::new(&state.design, state.floorplan.as_ref()),
-            &ModuleTable::new(&mut state.module_map),
+            DesignView::new(design, None),
+            &ModuleTable::new(module_map),
             producer,
             fifo_name,
         )
@@ -778,8 +783,14 @@ mod tests {
             top.fifos["wide_fifo"].produced_by.as_ref(),
         )
         .unwrap();
-        assert_eq!(fifo_width(&mut state, &narrow, "narrow_fifo").unwrap(), 9);
-        assert_eq!(fifo_width(&mut state, &wide, "wide_fifo").unwrap(), 33);
+        assert_eq!(
+            fifo_width(&state.design, &mut state.module_map, &narrow, "narrow_fifo").unwrap(),
+            9
+        );
+        assert_eq!(
+            fifo_width(&state.design, &mut state.module_map, &wide, "wide_fifo").unwrap(),
+            33
+        );
 
         state
             .attach_module(
@@ -792,7 +803,7 @@ mod tests {
             )
             .unwrap();
         assert_eq!(
-            fifo_width(&mut state, &wide, "wide_fifo").unwrap(),
+            fifo_width(&state.design, &mut state.module_map, &wide, "wide_fifo").unwrap(),
             33,
             "symbolic RTL width must fall back to the bound topology port"
         );
@@ -835,8 +846,13 @@ mod tests {
             task_name: "producer".to_owned(),
             port_name: Some("mem".to_owned()),
         };
-        let err = fifo_width(&mut state, &producer, "orphan_fifo")
-            .expect_err("mmap-only producer has no stream width");
+        let err = fifo_width(
+            &state.design,
+            &mut state.module_map,
+            &producer,
+            "orphan_fifo",
+        )
+        .expect_err("mmap-only producer has no stream width");
         assert!(
             matches!(err, CodegenError::FifoWidthUnresolved(ref f) if f == "orphan_fifo"),
             "expected FifoWidthUnresolved(orphan_fifo), got {err:?}"

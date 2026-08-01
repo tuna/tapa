@@ -25,7 +25,7 @@ use crate::{async_mmap, instance_signals, m_axi, program};
 #[allow(clippy::too_many_lines, reason = "sequential child signal generation")]
 #[allow(
     clippy::too_many_arguments,
-    reason = "the three disjoint state views stay named per concern; the rest               are driver-staged inputs"
+    reason = "the three disjoint state views stay named per concern; the rest are driver-staged inputs"
 )]
 pub fn generate_child_signals(
     design: DesignView<'_>,

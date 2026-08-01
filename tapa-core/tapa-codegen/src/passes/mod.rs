@@ -1,13 +1,12 @@
 //! The typed pass pipeline (REFACTOR-PLAN §4 Phase 1 item 1).
 //!
-//! Phase 1a is move-only: every pass body stays byte-identical in its home
-//! module and the unit structs below are thin delegates registered in the
-//! ordered [`crate::PIPELINE`] table. Phase 1b narrows the pass context:
-//! pass bodies take per-concern [`crate::state::views`] borrow views instead
-//! of the whole [`TopologyWithRtl`]. The migration is staged — [`PassCtx`]
-//! still carries the whole-state compat handle while families convert; once
-//! every delegate consumes [`PassViews`], the handle is removed and
-//! [`PassCtx`] carries the views directly.
+//! Every pass body takes per-concern [`crate::state::views`] borrow views
+//! (Phase 1b) instead of the whole [`TopologyWithRtl`]; the unit structs
+//! below are thin delegates registered in the ordered [`crate::PIPELINE`]
+//! table and the driver-side [`PassCtx`] carries the views built from
+//! disjoint field borrows of the state. Only [`PassCtx::new`], the lib.rs
+//! driver, and [`TaskStageInputs::prepare`] (read-only staging) may name
+//! the whole state object.
 
 pub mod async_mmap;
 mod axi_pipeline;
@@ -30,26 +29,14 @@ use crate::rtl_state::{MMapConnection, TopologyWithRtl};
 use crate::state::views::{DesignView, FsmTable, ModuleTable, OutputSet};
 use crate::RtlPass;
 
-/// Context handed to each [`RtlPass`].
-///
-/// A thin bundle over the existing god-context (`TopologyWithRtl`) plus the
-/// per-task staging area the driver precomputes. The `state` handle is the
-/// transitional Phase 1b compat surface: delegates build their
-/// [`PassViews`] from it, and it is removed once every pass family has
-/// migrated.
+/// Context handed to each [`RtlPass`]: the narrowed per-concern views
+/// built from the state's disjoint fields (Phase 1b) plus the per-task
+/// staging area the driver precomputes. Pass bodies never see the whole
+/// `TopologyWithRtl`.
 pub struct PassCtx<'a> {
-    /// Compatibility whole-state handle — pass bodies never touch it
-    /// directly; only the [`PassViews`] construction in this module may.
-    pub state: &'a mut TopologyWithRtl,
     /// Task identity + staged inputs; `Some` only while the driver runs a
     /// task-scoped pass group.
     pub task: Option<TaskPassCtx<'a>>,
-}
-
-/// The narrowed per-concern borrow set built from the state's disjoint
-/// fields (Phase 1b). Pass bodies receive these views (or the subset they
-/// need) instead of the whole [`TopologyWithRtl`].
-pub struct PassViews<'a> {
     /// Read access to the design model.
     pub design: DesignView<'a>,
     /// Mutable access to the attached HLS module table.
@@ -60,12 +47,14 @@ pub struct PassViews<'a> {
     pub outputs: OutputSet<'a>,
 }
 
-impl<'a> PassViews<'a> {
-    /// Split `state` into the disjoint per-concern views. Along with the
-    /// lib.rs driver and [`TaskStageInputs::prepare`], this is the only code
-    /// outside `state/` allowed to name the whole state object.
-    pub(crate) fn new(state: &'a mut TopologyWithRtl) -> Self {
+impl<'a> PassCtx<'a> {
+    /// Split `state` into the disjoint per-concern views + task staging.
+    /// Along with the lib.rs driver and [`TaskStageInputs::prepare`], this
+    /// is the only code outside `state/` allowed to name the whole state
+    /// object.
+    pub(crate) fn new(state: &'a mut TopologyWithRtl, task: Option<TaskPassCtx<'a>>) -> Self {
         Self {
+            task,
             design: DesignView::new(&state.design, state.floorplan.as_ref()),
             modules: ModuleTable::new(&mut state.module_map),
             fsms: FsmTable::new(&mut state.fsm_modules),
@@ -174,8 +163,7 @@ impl RtlPass for IgnoreTaskShells {
         // Ignored tasks have no HLS result to attach. Build their
         // authoritative port-only shell from topology so parents can resolve
         // the module while the user authors the replacement RTL.
-        let mut views = PassViews::new(&mut *ctx.state);
-        let design = views.design.design();
+        let design = ctx.design.design();
         let task_names: Vec<String> = design.tasks.keys().cloned().collect();
         for task_name in &task_names {
             let task = &design.tasks[task_name];
@@ -184,7 +172,7 @@ impl RtlPass for IgnoreTaskShells {
             }
             let source = crate::template::render_task_template(task_name, task);
             let module = tapa_rtl::VerilogModule::parse(&source)?;
-            views.modules.insert(
+            ctx.modules.insert(
                 task_name.clone(),
                 tapa_rtl::mutation::MutableModule::from_parsed(module),
             );
@@ -199,16 +187,15 @@ pub struct CleanupHlsArtifacts;
 
 impl RtlPass for CleanupHlsArtifacts {
     fn run(&self, ctx: &mut PassCtx<'_>) -> Result<(), CodegenError> {
-        let mut views = PassViews::new(&mut *ctx.state);
         let task = ctx
             .task
             .as_mut()
             .expect("cleanup-hls-artifacts is task-scoped");
-        let is_top_task = task.name == views.design.design().top;
+        let is_top_task = task.name == ctx.design.design().top;
         let control_plan = task.inputs.control_plan.as_ref();
         cleanup::cleanup_hls_artifacts(
-            views.design,
-            &mut views.modules,
+            ctx.design,
+            &mut ctx.modules,
             task.name,
             is_top_task,
             control_plan,
@@ -223,17 +210,16 @@ pub struct CreateFsmModule;
 
 impl RtlPass for CreateFsmModule {
     fn run(&self, ctx: &mut PassCtx<'_>) -> Result<(), CodegenError> {
-        let mut views = PassViews::new(&mut *ctx.state);
         let task = ctx.task.as_mut().expect("create-fsm-module is task-scoped");
         if task.inputs.control_plan.is_none() {
-            let task_level = views
+            let task_level = ctx
                 .design
                 .design()
                 .tasks
                 .get(task.name)
                 .ok_or_else(|| CodegenError::TaskNotFound(task.name.to_owned()))?
                 .level;
-            views.fsms.create_fsm_module(task.name, task_level)?;
+            ctx.fsms.create_fsm_module(task.name, task_level)?;
         }
         Ok(())
     }
@@ -245,15 +231,14 @@ pub struct GenerateChildSignals;
 
 impl RtlPass for GenerateChildSignals {
     fn run(&self, ctx: &mut PassCtx<'_>) -> Result<(), CodegenError> {
-        let mut views = PassViews::new(&mut *ctx.state);
         let task = ctx
             .task
             .as_mut()
             .expect("generate-child-signals is task-scoped");
         task.inputs.is_done_signals = crate::children::generate_child_signals(
-            views.design,
-            &mut views.modules,
-            &mut views.fsms,
+            ctx.design,
+            &mut ctx.modules,
+            &mut ctx.fsms,
             task.name,
             &task.inputs.mmap_conns,
             &task.inputs.mmap_slave_map,
@@ -269,13 +254,12 @@ pub struct FifoInstantiateConnect;
 
 impl RtlPass for FifoInstantiateConnect {
     fn run(&self, ctx: &mut PassCtx<'_>) -> Result<(), CodegenError> {
-        let mut views = PassViews::new(&mut *ctx.state);
         let task = ctx
             .task
             .as_mut()
             .expect("fifo-instantiate-connect is task-scoped");
-        crate::fifos::instantiate_fifos(views.design, &mut views.modules, task.name)?;
-        crate::fifos::connect_fifos(views.design, &mut views.modules, task.name)?;
+        crate::fifos::instantiate_fifos(ctx.design, &mut ctx.modules, task.name)?;
+        crate::fifos::connect_fifos(ctx.design, &mut ctx.modules, task.name)?;
         Ok(())
     }
 }
@@ -286,11 +270,10 @@ pub struct MAxiCrossbars;
 
 impl RtlPass for MAxiCrossbars {
     fn run(&self, ctx: &mut PassCtx<'_>) -> Result<(), CodegenError> {
-        let mut views = PassViews::new(&mut *ctx.state);
         let task = ctx.task.as_mut().expect("m-axi-crossbars is task-scoped");
         crate::m_axi::add_m_axi_and_crossbars(
-            &mut views.modules,
-            &mut views.outputs,
+            &mut ctx.modules,
+            &mut ctx.outputs,
             task.name,
             &task.inputs.mmap_conns,
         )?;
@@ -304,13 +287,12 @@ pub struct AxiPipelineInstantiate;
 
 impl RtlPass for AxiPipelineInstantiate {
     fn run(&self, ctx: &mut PassCtx<'_>) -> Result<(), CodegenError> {
-        let mut views = PassViews::new(&mut *ctx.state);
         let task = ctx
             .task
             .as_mut()
             .expect("axi-pipeline-instantiate is task-scoped");
         if let Some(plan) = &task.inputs.axi_pipeline_plan {
-            plan.instantiate(&mut views.modules, task.name)?;
+            plan.instantiate(&mut ctx.modules, task.name)?;
         }
         Ok(())
     }
@@ -322,11 +304,10 @@ pub struct ControlFsm;
 
 impl RtlPass for ControlFsm {
     fn run(&self, ctx: &mut PassCtx<'_>) -> Result<(), CodegenError> {
-        let mut views = PassViews::new(&mut *ctx.state);
         let task = ctx.task.as_mut().expect("control-fsm is task-scoped");
         if let Some(plan) = &task.inputs.control_plan {
-            plan.instantiate_global(&mut views.modules, task.name, &task.inputs.is_done_signals)?;
-        } else if let Some(fsm_mm) = views.fsms.get_mut(task.name) {
+            plan.instantiate_global(&mut ctx.modules, task.name, &task.inputs.is_done_signals)?;
+        } else if let Some(fsm_mm) = ctx.fsms.get_mut(task.name) {
             crate::program::apply_global_fsm(fsm_mm, &task.inputs.is_done_signals);
         }
         Ok(())
@@ -339,12 +320,11 @@ pub struct SAxiControl;
 
 impl RtlPass for SAxiControl {
     fn run(&self, ctx: &mut PassCtx<'_>) -> Result<(), CodegenError> {
-        let mut views = PassViews::new(&mut *ctx.state);
         let task = ctx.task.as_mut().expect("s-axi-control is task-scoped");
-        if task.name == views.design.design().top {
+        if task.name == ctx.design.design().top {
             self::s_axi::instantiate_top_control_s_axi(
-                views.design,
-                &mut views.modules,
+                ctx.design,
+                &mut ctx.modules,
                 task.name,
                 task.inputs.top_instantiates_control_s_axi,
             );

@@ -5,7 +5,7 @@ use tapa_ir::task::TaskLevel;
 use tapa_ir::SynthTarget;
 
 use crate::error::CodegenError;
-use crate::passes::{PassCtx, PassViews};
+use crate::passes::PassCtx;
 use crate::RtlPass;
 
 /// Design pass: collect the emitted files.
@@ -16,8 +16,7 @@ pub struct CollectOutputs;
 
 impl RtlPass for CollectOutputs {
     fn run(&self, ctx: &mut PassCtx<'_>) -> Result<(), CodegenError> {
-        let mut views = PassViews::new(&mut *ctx.state);
-        let design = views.design.design();
+        let design = ctx.design.design();
 
         // `Ignore` tasks: emit the authoritative template file from the
         // shell built by the `ignore-task-shells` pass.
@@ -25,9 +24,8 @@ impl RtlPass for CollectOutputs {
         for task_name in &task_names {
             let task = &design.tasks[task_name];
             if task.synth == SynthTarget::Ignore {
-                let template = views.modules[task_name].emit();
-                views
-                    .outputs
+                let template = ctx.modules[task_name].emit();
+                ctx.outputs
                     .insert_template(format!("{task_name}.v"), template);
             }
         }
@@ -35,18 +33,15 @@ impl RtlPass for CollectOutputs {
         // Collect emitted files. Lower HLS modules were already copied from
         // their original Verilog sources by the CLI; re-emitting them from the
         // parsed model drops legal port-reg redeclarations used by HLS.
-        for (name, mm) in views.modules.iter() {
+        for (name, mm) in ctx.modules.iter() {
             if design.tasks.get(name.as_str()).is_some_and(|task| {
                 task.level == TaskLevel::Upper || task.synth == SynthTarget::Ignore
             }) {
-                views
-                    .outputs
-                    .insert_generated(format!("{name}.v"), mm.emit());
+                ctx.outputs.insert_generated(format!("{name}.v"), mm.emit());
             }
         }
-        for (name, mm) in views.fsms.iter() {
-            views
-                .outputs
+        for (name, mm) in ctx.fsms.iter() {
+            ctx.outputs
                 .insert_generated(format!("{name}_fsm.v"), mm.emit());
         }
 
