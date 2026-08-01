@@ -81,16 +81,17 @@ pub struct MemoryBinding {
 
 /// A repeated endpoint that would violate [`MemoryBindings`]' uniqueness invariant.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum DuplicateMemoryEndpoint {
-    #[error(
-        "memory endpoint `{endpoint}` {}",
-        duplicate_detail(*previous_bank, *new_bank)
-    )]
-    Duplicate {
-        endpoint: MemoryEndpoint,
-        previous_bank: MemoryBank,
-        new_bank: MemoryBank,
-    },
+#[error(
+    "memory endpoint `{endpoint}` {}",
+    duplicate_detail(*previous_bank, *new_bank)
+)]
+pub struct DuplicateMemoryEndpoint {
+    /// The endpoint bound more than once.
+    pub endpoint: MemoryEndpoint,
+    /// The bank the first binding assigned.
+    pub previous_bank: MemoryBank,
+    /// The bank the rejected binding tried to assign.
+    pub new_bank: MemoryBank,
 }
 
 fn duplicate_detail(previous_bank: MemoryBank, new_bank: MemoryBank) -> String {
@@ -132,7 +133,7 @@ impl MemoryBindings {
         let mut endpoints = BTreeMap::<&MemoryEndpoint, MemoryBank>::new();
         for binding in &bindings {
             if let Some(previous_bank) = endpoints.insert(&binding.endpoint, binding.bank) {
-                return Err(DuplicateMemoryEndpoint::Duplicate {
+                return Err(DuplicateMemoryEndpoint {
                     endpoint: binding.endpoint.clone(),
                     previous_bank,
                     new_bank: binding.bank,
