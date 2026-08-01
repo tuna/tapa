@@ -398,7 +398,8 @@ pub(crate) fn connect_fifos(
 ) -> Result<(), CodegenError> {
     use tapa_rtl::signal::{Signal, SignalKind};
 
-    let task = &design.design().tasks[task_name];
+    let design_data = design.design();
+    let task = &design_data.tasks[task_name];
 
     // Collect FIFO connection info with producer endpoint for width resolution
     let fifo_entries: Vec<FifoConnEntry> = task
@@ -454,8 +455,8 @@ pub(crate) fn connect_fifos(
                 .find(|p| p.name == *fifo_name || p.name == logical_fifo_name)
                 .ok_or_else(|| CodegenError::FifoWidthUnresolved(fifo_name.clone()))?
                 .width;
-            let is_vitis_top_axis = task_name == design.design().top
-                && crate::top_stream_needs_axis_adapter(design.design().target);
+            let is_vitis_top_axis = task_name == design_data.top
+                && crate::top_stream_needs_axis_adapter(design_data.target);
             if let Some(mm) = modules.get_mut(task_name) {
                 let suffixes: &[&str] = if *has_consumer {
                     ISTREAM_SUFFIXES

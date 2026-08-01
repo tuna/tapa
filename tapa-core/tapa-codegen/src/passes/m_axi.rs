@@ -628,7 +628,7 @@ pub(crate) fn add_m_axi_and_crossbars(
             }
             let crossbar_rtl = generate_crossbar_rtl(conn);
             let file_name = format!("{}.v", crossbar_module_name(conn));
-            let _ = outputs.insert_generated(file_name, crossbar_rtl);
+            outputs.insert_generated(file_name, crossbar_rtl);
         }
     }
     Ok(())

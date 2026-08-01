@@ -24,7 +24,7 @@ use crate::error::CodegenError;
 use crate::passes::{PassCtx, TaskPassCtx, TaskStageInputs};
 use crate::rtl_state::TopologyWithRtl;
 
-/// A pipeline stage. Thin delegate in Phase 1a; see [`passes`].
+/// A pipeline stage in the [`PIPELINE`] table.
 pub(crate) trait RtlPass: Sync {
     /// Run the pass. Task-scoped passes see `ctx.task == Some(..)`.
     fn run(&self, ctx: &mut PassCtx<'_>) -> Result<(), CodegenError>;

@@ -19,10 +19,11 @@ pub fn instantiate_top_control_s_axi(
     task_name: &str,
     top_instantiates_control_s_axi: bool,
 ) {
-    if task_name != design.design().top || !top_instantiates_control_s_axi {
+    let design = design.design();
+    if task_name != design.top || !top_instantiates_control_s_axi {
         return;
     }
-    let Some(task) = design.design().tasks.get(task_name) else {
+    let Some(task) = design.tasks.get(task_name) else {
         return;
     };
     let Some(mm) = modules.get_mut(task_name) else {
