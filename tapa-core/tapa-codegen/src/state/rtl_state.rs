@@ -227,9 +227,9 @@ impl TopologyWithRtl {
 
     /// Whether the generated top will instantiate the AXI-Lite control block.
     ///
-    /// This is the single read-only predicate shared with the floorplanner;
-    /// [`crate::s_axi`] uses it immediately before creating
-    /// `control_s_axi_U`.
+    /// This is the single read-only predicate shared with the floorplanner.
+    /// The pipeline stages it at prepare time for the `s_axi` pass; the
+    /// distributed-control plan builder and `tapa-cli` read it directly.
     #[must_use]
     pub fn top_instantiates_control_s_axi(&self) -> bool {
         self.design.tasks.get(&self.design.top).is_some_and(|task| {
@@ -260,21 +260,6 @@ impl TopologyWithRtl {
         self.module_map
             .insert(task_name.to_owned(), MutableModule::from_parsed(module));
         Ok(())
-    }
-
-    /// Create an FSM module for an upper-level task.
-    ///
-    /// Rejects lower-level tasks. The design-side task lookup happens here;
-    /// the FSM table mutation is delegated to
-    /// [`crate::state::views::FsmTable::create_fsm_module`].
-    pub fn create_fsm_module(&mut self, task_name: &str) -> Result<(), CodegenError> {
-        let task = self
-            .design
-            .tasks
-            .get(task_name)
-            .ok_or_else(|| CodegenError::TaskNotFound(task_name.to_owned()))?;
-        crate::state::views::FsmTable::new(&mut self.fsm_modules)
-            .create_fsm_module(task_name, task.level)
     }
 
     /// Catalog child M-AXI interfaces connected directly to ports of
@@ -1028,7 +1013,8 @@ mod tests {
     #[test]
     fn create_fsm_rejects_lower_task() {
         let mut state = TopologyWithRtl::new(sample_program());
-        let result = state.create_fsm_module("child_a");
+        let result = crate::state::views::FsmTable::new(&mut state.fsm_modules)
+            .create_fsm_module("child_a", TaskLevel::Lower);
         assert!(
             matches!(result, Err(CodegenError::FsmForLowerTask(_))),
             "got: {result:?}"
@@ -1038,7 +1024,9 @@ mod tests {
     #[test]
     fn create_fsm_for_upper_task() {
         let mut state = TopologyWithRtl::new(sample_program());
-        state.create_fsm_module("top_task").unwrap();
+        crate::state::views::FsmTable::new(&mut state.fsm_modules)
+            .create_fsm_module("top_task", TaskLevel::Upper)
+            .unwrap();
         assert!(state.fsm_modules.contains_key("top_task"));
     }
 
