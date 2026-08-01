@@ -695,24 +695,14 @@ impl FloorplanModel {
         primary: &crate::solver::LpSolution,
     ) -> Result<Option<crate::solver::LpSolution>, IlpError> {
         let pin = self.lp.objective.clone();
-        self.lp.add_constraint(
-            "lexicographic_pin".to_string(),
+        crate::solver::lexicographic::refine(
+            &mut self.lp,
+            solver,
+            opts,
             pin,
-            Comparison::Le,
             primary.objective,
-        );
-        let mut terms = Vec::new();
-        for row in &self.x {
-            for (candidate, &var) in row.iter().enumerate() {
-                let rank = u32::try_from(candidate).expect("candidate count fits u32");
-                if rank > 0 {
-                    terms.push((f64::from(rank), var));
-                }
-            }
-        }
-        self.lp.set_objective(LinExpr::sum(terms));
-        let refined = solver.solve(&self.lp, opts)?;
-        Ok(refined.is_found().then_some(refined))
+            &self.x,
+        )
     }
 }
 

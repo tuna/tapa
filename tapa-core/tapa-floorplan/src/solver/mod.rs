@@ -4,6 +4,7 @@
 pub(crate) mod assign;
 pub mod backends;
 pub(crate) mod fingerprint;
+pub(crate) mod lexicographic;
 pub mod lp_writer;
 pub mod model;
 pub mod solve;

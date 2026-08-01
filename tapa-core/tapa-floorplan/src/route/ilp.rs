@@ -350,24 +350,7 @@ fn refine_lexicographic(
         || hop_objective(candidates, path_vars),
         |max_crossings| LinExpr::sum([(1.0, max_crossings)]),
     );
-    lp.add_constraint(
-        "lexicographic_pin".to_string(),
-        pin,
-        Comparison::Le,
-        primary.objective,
-    );
-    let mut terms = Vec::new();
-    for vars in path_vars {
-        for (index, &var) in vars.iter().enumerate() {
-            let rank = u32::try_from(index).expect("path count fits u32");
-            if rank > 0 {
-                terms.push((f64::from(rank), var));
-            }
-        }
-    }
-    lp.set_objective(LinExpr::sum(terms));
-    let refined = solver.solve(lp, opts)?;
-    Ok(refined.is_found().then_some(refined))
+    crate::solver::lexicographic::refine(lp, solver, opts, pin, primary.objective, path_vars)
 }
 
 /// Route every net, returning a chosen slot path (`src` first, `dst` last) per
