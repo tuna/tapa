@@ -38,7 +38,7 @@ impl SharedMemoryQueue {
     }
 
     pub fn open(path: &str) -> std::io::Result<Self> {
-        let seg = MmapSegment::open(path, 0)?;
+        let seg = MmapSegment::open(path)?;
         validate_header(seg.as_slice())?;
         Ok(Self { seg })
     }

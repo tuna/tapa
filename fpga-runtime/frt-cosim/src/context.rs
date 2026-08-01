@@ -27,9 +27,8 @@ impl CosimContext {
                         format!("missing path for buffer '{}' in dpi_config.json", arg.name),
                     )
                 })?;
-                let size = entry["size_bytes"].as_u64().unwrap_or(0) as usize;
                 let base = entry["base_addr"].as_u64().unwrap_or(0);
-                let seg = MmapSegment::open(path, size)?;
+                let seg = MmapSegment::open(path)?;
                 buffers.insert(arg.name.clone(), seg);
                 base_addresses.insert(arg.name.clone(), base);
             }

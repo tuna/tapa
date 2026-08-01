@@ -128,7 +128,7 @@ impl CosimDevice {
                 let dpi = dpi_lib_path("xsim")?;
                 Box::new(XsimRunner::find(
                     dpi,
-                    *legacy || env_bool(frt_shm::env::FRT_XSIM_LEGACY),
+                    *legacy,
                     opts.save_waveform,
                     opts.start_gui,
                     opts.part_num_override.clone(),
@@ -312,7 +312,7 @@ fn validate_resume_stream_bindings(
     declared: &HashMap<u32, String>,
     resumed: &HashSet<String>,
 ) -> Result<()> {
-    let mut unbound: Vec<(u32, &str)> = declared
+    let unbound: Vec<(u32, &str)> = declared
         .iter()
         .filter(|(_, name)| !resumed.contains(name.as_str()))
         .map(|(index, name)| (*index, name.as_str()))

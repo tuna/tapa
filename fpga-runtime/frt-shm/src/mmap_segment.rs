@@ -27,7 +27,7 @@ impl MmapSegment {
         })
     }
 
-    pub fn open(path: &str, _size_bytes: usize) -> std::io::Result<Self> {
+    pub fn open(path: &str) -> std::io::Result<Self> {
         let path = PathBuf::from(path);
         let file = std::fs::OpenOptions::new()
             .read(true)
@@ -139,7 +139,7 @@ mod tests {
     fn test_open_existing() {
         let seg = MmapSegment::create("test_open", 32).expect("create");
         let path = seg.path().to_str().expect("utf8").to_owned();
-        let mapped = MmapSegment::open(&path, 32).expect("open");
+        let mapped = MmapSegment::open(&path).expect("open");
         assert_eq!(mapped.as_slice().len(), 32);
     }
 }

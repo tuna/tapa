@@ -58,7 +58,7 @@ impl DpiContext {
 
         let mut buffers = HashMap::new();
         for (name, entry) in cfg.buffers {
-            let seg = MmapSegment::open(&entry.path, entry.size_bytes)?;
+            let seg = MmapSegment::open(&entry.path)?;
             buffers.insert(name, (seg, entry.base_addr));
         }
 
