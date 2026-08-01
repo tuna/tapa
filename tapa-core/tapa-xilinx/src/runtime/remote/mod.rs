@@ -99,11 +99,70 @@ fn is_forwardable_env(key: &str) -> bool {
     REMOTE_ENV_ALLOWLIST.contains(&key) || key.starts_with("TAPA_")
 }
 
+/// Everything [`RemoteToolRunner::run_once`] stages before the
+/// transport is touched: the freshly minted session directory, the
+/// deduped set of local paths the invocation references (the input to
+/// path rewriting), the existing paths worth uploading, and the
+/// absolutized cwd/downloads that mirror `ToolInvocation` positionally
+/// so the collect stage can map them back to the caller-facing paths.
+struct UploadPlan {
+    session_dir: String,
+    referenced: Vec<Utf8PathBuf>,
+    to_upload: Vec<Utf8PathBuf>,
+    cwd_abs: Option<Utf8PathBuf>,
+    downloads_abs: Vec<Utf8PathBuf>,
+}
+
+/// Second stage of [`RemoteToolRunner::run_once`]: assemble the remote
+/// shell script for a planned invocation -- mkdir each download
+/// target, source the Xilinx settings script when configured, export
+/// the forwardable env entries with absolute local paths rewritten to
+/// their session-scoped counterparts, then `cd` into the remote cwd
+/// and `exec` the rewritten command line. Kept pure (no session /
+/// transport access) so unit tests can pin the generated text without
+/// ssh.
+fn build_remote_script(
+    plan: &UploadPlan,
+    inv: &ToolInvocation,
+    xilinx_settings: Option<&str>,
+) -> String {
+    let remote_cwd = match plan.cwd_abs.as_ref() {
+        Some(cwd) => local_to_remote_path(cwd, &plan.session_dir),
+        None => format!("{}/rootfs", plan.session_dir),
+    };
+
+    let mut parts: Vec<String> = Vec::new();
+    for dl in &plan.downloads_abs {
+        let remote_dl = local_to_remote_path(dl, &plan.session_dir);
+        parts.push(format!("mkdir -p {}", shell_quote(&remote_dl)));
+    }
+    if let Some(xs) = xilinx_settings {
+        if !xs.trim().is_empty() {
+            parts.push(format!("source {}", shell_quote(xs)));
+        }
+    }
+    for (k, v) in &inv.env {
+        if !is_forwardable_env(k) {
+            continue;
+        }
+        let rv = rewrite_abs_paths(v, &plan.referenced, &plan.session_dir);
+        parts.push(format!("export {}={}", k, shell_quote(&rv)));
+    }
+    let rewritten_args: Vec<String> = inv
+        .args
+        .iter()
+        .map(|a| rewrite_abs_paths(a, &plan.referenced, &plan.session_dir))
+        .collect();
+    let exec = std::iter::once(shell_quote(&inv.program))
+        .chain(rewritten_args.iter().map(|a| shell_quote(a)))
+        .collect::<Vec<_>>()
+        .join(" ");
+    parts.push(format!("cd {} && exec {}", shell_quote(&remote_cwd), exec));
+    let full_cmd = parts.join(" ; ");
+    format!("bash -c {}", shell_quote(&full_cmd))
+}
+
 impl RemoteToolRunner {
-    #[allow(
-        clippy::too_many_lines,
-        reason = "sequential session lifecycle: upload, rewrite, exec, download"
-    )]
     /// Opens a per-invocation session directory with a `rootfs/`
     /// subtree, mirrors the local `cwd` plus any extra uploads under
     /// that rootfs, rewrites absolute local paths in the command
@@ -114,8 +173,21 @@ impl RemoteToolRunner {
     /// counterpart.
     fn run_once(&self, inv: &ToolInvocation) -> Result<ToolOutput> {
         self.session.ensure_established()?;
-        let cfg = self.session.config();
-        let session_dir = format!("{}/{}", cfg.work_dir, unique_session_id());
+        let plan = self.prepare_upload(inv);
+        upload_batch(&self.session, &plan.session_dir, &plan.to_upload)?;
+        let wrapped =
+            build_remote_script(&plan, inv, self.session.config().xilinx_settings.as_deref());
+        self.exec_and_collect(inv, &plan, &wrapped)
+    }
+
+    /// First stage of [`run_once`](Self::run_once): mint the session
+    /// directory, then plan the upload -- absolutize the invocation's
+    /// cwd / upload / download paths against the caller's working
+    /// directory, dedup them into the referenced set used for path
+    /// rewriting, and pick the existing paths for the transport to
+    /// upload.
+    fn prepare_upload(&self, inv: &ToolInvocation) -> UploadPlan {
+        let session_dir = format!("{}/{}", self.session.config().work_dir, unique_session_id());
 
         // Accept relative `--work-dir ./work.out` and
         // relative upload/download paths by absolutizing against the
@@ -150,44 +222,30 @@ impl RemoteToolRunner {
         }
         let mut seen2: std::collections::HashSet<Utf8PathBuf> = std::collections::HashSet::new();
         to_upload.retain(|p| seen2.insert(p.clone()));
-        upload_batch(&self.session, &session_dir, &to_upload)?;
 
-        let remote_cwd = match cwd_abs.as_ref() {
-            Some(cwd) => local_to_remote_path(cwd, &session_dir),
-            None => format!("{session_dir}/rootfs"),
-        };
+        UploadPlan {
+            session_dir,
+            referenced,
+            to_upload,
+            cwd_abs,
+            downloads_abs,
+        }
+    }
 
-        let mut parts: Vec<String> = Vec::new();
-        for dl in &downloads_abs {
-            let remote_dl = local_to_remote_path(dl, &session_dir);
-            parts.push(format!("mkdir -p {}", shell_quote(&remote_dl)));
-        }
-        if let Some(xs) = cfg.xilinx_settings.as_ref() {
-            if !xs.trim().is_empty() {
-                parts.push(format!("source {}", shell_quote(xs)));
-            }
-        }
-        for (k, v) in &inv.env {
-            if !is_forwardable_env(k) {
-                continue;
-            }
-            let rv = rewrite_abs_paths(v, &referenced, &session_dir);
-            parts.push(format!("export {}={}", k, shell_quote(&rv)));
-        }
-        let rewritten_args: Vec<String> = inv
-            .args
-            .iter()
-            .map(|a| rewrite_abs_paths(a, &referenced, &session_dir))
-            .collect();
-        let exec = std::iter::once(shell_quote(&inv.program))
-            .chain(rewritten_args.iter().map(|a| shell_quote(a)))
-            .collect::<Vec<_>>()
-            .join(" ");
-        parts.push(format!("cd {} && exec {}", shell_quote(&remote_cwd), exec));
-        let full_cmd = parts.join(" ; ");
-        let wrapped = format!("bash -c {}", shell_quote(&full_cmd));
-
-        let mut ssh = self.ssh_cmd(&wrapped);
+    /// Final stage of [`run_once`](Self::run_once): execute the
+    /// wrapped remote script through the transport and collect the
+    /// results -- stream `inv.stdin` when present, tear the session
+    /// down before surfacing a transient mux failure as a classified
+    /// error, otherwise tar-pipe every requested download path back
+    /// (regardless of exit code, so failure logs survive) and remove
+    /// the session directory.
+    fn exec_and_collect(
+        &self,
+        inv: &ToolInvocation,
+        plan: &UploadPlan,
+        wrapped: &str,
+    ) -> Result<ToolOutput> {
+        let mut ssh = self.ssh_cmd(wrapped);
         ssh.stdout(Stdio::piped());
         ssh.stderr(Stdio::piped());
         if inv.stdin.is_some() {
@@ -212,20 +270,20 @@ impl RemoteToolRunner {
             && !stderr.is_empty()
             && classify_ssh_error(&stderr) == SshErrorKind::TransientMux
         {
-            cleanup_session(&self.session, &session_dir);
+            cleanup_session(&self.session, &plan.session_dir);
             return Err(self.classify_remote_failure(&stderr));
         }
 
         // Download artifacts regardless of exit code so that failure logs
         // and `--keep-hls-work-dir` project trees are preserved locally.
-        for (raw, abs) in inv.downloads.iter().zip(downloads_abs.iter()) {
-            let remote_src = local_to_remote_path(abs, &session_dir);
+        for (raw, abs) in inv.downloads.iter().zip(plan.downloads_abs.iter()) {
+            let remote_src = local_to_remote_path(abs, &plan.session_dir);
             // Download back to the caller's requested path (raw), which
             // may be relative — keeping the caller-facing contract.
             download_tree(&self.session, &remote_src, raw.as_std_path())?;
         }
 
-        cleanup_session(&self.session, &session_dir);
+        cleanup_session(&self.session, &plan.session_dir);
 
         Ok(ToolOutput {
             exit_code: code,
@@ -279,11 +337,11 @@ fn is_recoverable_mux_error(err: &XilinxError) -> bool {
 
 #[cfg(test)]
 mod tests {
-    //! Unit tests for the `run_with_mux_retry` helper. The retry
-    //! branch is pure (no SSH required), so this block proves the
-    //! contract independently of any live host. Integration tests
-    //! that drive a real `RemoteToolRunner` live under
-    //! `tests/integration_remote.rs`.
+    //! Unit tests for the `run_with_mux_retry` helper and the pure
+    //! `build_remote_script` stage. Neither needs a live SSH session,
+    //! so this block pins their contracts independently of any host.
+    //! Integration tests that drive a real `RemoteToolRunner` live
+    //! under `tests/integration_remote.rs`.
 
     use super::*;
     use crate::runtime::process::ToolOutput;
@@ -395,5 +453,110 @@ mod tests {
         .expect_err("second attempt err must propagate");
         assert!(matches!(err, XilinxError::ToolFailure { code: 2, .. }));
         assert_eq!(call_count.get(), 2);
+    }
+
+    #[test]
+    fn build_script_splices_downloads_settings_env_and_exec() {
+        // Representative full invocation: one download-target mkdir,
+        // the Xilinx settings source line, one allowlisted env entry
+        // whose value is rewritten (with a non-allowlisted entry
+        // dropped), and absolute paths rewritten in the args before
+        // the `cd && exec` line.
+        let plan = UploadPlan {
+            session_dir: "/tmp/tapa-remote/tapa-1-2-3".to_string(),
+            referenced: vec![
+                Utf8PathBuf::from("/work/top"),
+                Utf8PathBuf::from("/work/top/run.tcl"),
+                Utf8PathBuf::from("/work/top/work.out"),
+            ],
+            to_upload: vec![Utf8PathBuf::from("/work/top")],
+            cwd_abs: Some(Utf8PathBuf::from("/work/top")),
+            downloads_abs: vec![Utf8PathBuf::from("/work/top/work.out")],
+        };
+        let inv = ToolInvocation::new("vitis_hls")
+            .arg("-f")
+            .arg("/work/top/run.tcl")
+            .env("TAPA_TCL", "/work/top/run.tcl")
+            .env("AWS_SECRET_KEY", "s3cr3t");
+        let script =
+            build_remote_script(&plan, &inv, Some("/opt/Xilinx/Vitis/2023.2/settings64.sh"));
+        assert_eq!(
+            script,
+            "bash -c 'mkdir -p /tmp/tapa-remote/tapa-1-2-3/rootfs/work/top/work.out ; \
+                source /opt/Xilinx/Vitis/2023.2/settings64.sh ; \
+                export TAPA_TCL=/tmp/tapa-remote/tapa-1-2-3/rootfs/work/top/run.tcl ; \
+                cd /tmp/tapa-remote/tapa-1-2-3/rootfs/work/top && \
+                exec vitis_hls -f /tmp/tapa-remote/tapa-1-2-3/rootfs/work/top/run.tcl'"
+        );
+    }
+
+    #[test]
+    fn build_script_rewrites_paths_longest_match_first() {
+        // A referenced path that prefixes another (`/opt/a` vs
+        // `/opt/a/b`) must not double- or mis-rewrite the longer one.
+        let plan = UploadPlan {
+            session_dir: "/tmp/tapa-remote/tapa-9-9-9".to_string(),
+            referenced: vec![Utf8PathBuf::from("/opt/a"), Utf8PathBuf::from("/opt/a/b")],
+            to_upload: vec![Utf8PathBuf::from("/opt/a")],
+            cwd_abs: Some(Utf8PathBuf::from("/opt/a")),
+            downloads_abs: vec![],
+        };
+        let inv = ToolInvocation::new("vivado")
+            .arg("-source")
+            .arg("/opt/a/b/run.tcl")
+            .arg("-log")
+            .arg("/opt/a/vivado.log");
+        let script = build_remote_script(&plan, &inv, None);
+        assert_eq!(
+            script,
+            "bash -c 'cd /tmp/tapa-remote/tapa-9-9-9/rootfs/opt/a && \
+                exec vivado -source /tmp/tapa-remote/tapa-9-9-9/rootfs/opt/a/b/run.tcl \
+                -log /tmp/tapa-remote/tapa-9-9-9/rootfs/opt/a/vivado.log'"
+        );
+    }
+
+    #[test]
+    fn build_script_quotes_words_containing_spaces() {
+        // A cwd / rewritten arg with a space is single-quoted at its
+        // point of use. The outer `bash -c` wrap re-quotes the
+        // assembled script via `shell_quote` (pinned separately in
+        // `transport`), so this test pins the assembled script text.
+        let plan = UploadPlan {
+            session_dir: "/tmp/tapa-remote/tapa-7-7-7".to_string(),
+            referenced: vec![Utf8PathBuf::from("/proj/hello world")],
+            to_upload: vec![Utf8PathBuf::from("/proj/hello world")],
+            cwd_abs: Some(Utf8PathBuf::from("/proj/hello world")),
+            downloads_abs: vec![],
+        };
+        let inv = ToolInvocation::new("v++")
+            .arg("--kernel")
+            .arg("/proj/hello world/kernel.cpp")
+            .arg("--output")
+            .arg("my kernel.xo");
+        let script = build_remote_script(&plan, &inv, None);
+        let full_cmd = "cd '/tmp/tapa-remote/tapa-7-7-7/rootfs/proj/hello world' \
+            && exec v++ --kernel '/tmp/tapa-remote/tapa-7-7-7/rootfs/proj/hello world/kernel.cpp' \
+            --output 'my kernel.xo'";
+        assert_eq!(script, format!("bash -c {}", shell_quote(full_cmd)));
+    }
+
+    #[test]
+    fn build_script_without_cwd_uses_rootfs_and_skips_blank_settings() {
+        // No cwd -> the remote cwd falls back to the session's
+        // `rootfs/`; a whitespace-only `xilinx_settings` contributes
+        // no source line and empty download/env lists add no parts.
+        let plan = UploadPlan {
+            session_dir: "/tmp/tapa-remote/tapa-5-5-5".to_string(),
+            referenced: vec![],
+            to_upload: vec![],
+            cwd_abs: None,
+            downloads_abs: vec![],
+        };
+        let inv = ToolInvocation::new("echo").arg("hello");
+        let script = build_remote_script(&plan, &inv, Some("  "));
+        assert_eq!(
+            script,
+            "bash -c 'cd /tmp/tapa-remote/tapa-5-5-5/rootfs && exec echo hello'"
+        );
     }
 }
