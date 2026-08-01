@@ -119,7 +119,7 @@ RUN rm -rf /tmp/* /var/tmp/*
 ENV RUSTUP_HOME="/opt/rust/rustup"
 ENV CARGO_HOME="/opt/rust/cargo"
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-      | sh -s -- -y --default-toolchain stable --profile minimal && \
+      | sh -s -- -y --default-toolchain 1.88.0 --profile minimal && \
     /opt/rust/cargo/bin/rustup component add rustfmt clippy && \
     chmod -R go=u /opt/rust
 ENV PATH="/opt/rust/cargo/bin:${PATH}"
