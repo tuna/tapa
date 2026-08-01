@@ -77,10 +77,14 @@ _REMOTE_XILINX_SETTINGS = REMOTE_XILINX_SETTINGS or (
 # -- Build: library crates only (Cargo backed by the rules_rust toolchain) --
 # Builds the workspace's pure-Rust library crates.
 
+# One invocation compiles the shared dependency tree once for the three
+# library crates and the `tapa` binary (previously two actions each
+# recompiled the same ~200-crate tree from scratch).
 cargo_artifacts(
     name = "cargo_build",
     srcs = _ALL_SRCS,
     outs = [
+        "cargo/bin/tapa",
         "cargo/libtapa_ir.rlib",
         "cargo/libtapa_protocol.rlib",
         "cargo/libtapa_rtl.rlib",
@@ -89,6 +93,7 @@ cargo_artifacts(
         "libtapa_protocol.rlib:cargo/libtapa_protocol.rlib",
         "libtapa_ir.rlib:cargo/libtapa_ir.rlib",
         "libtapa_rtl.rlib:cargo/libtapa_rtl.rlib",
+        "tapa:cargo/bin/tapa",
     ],
     build_args = [
         "-p",
@@ -97,32 +102,20 @@ cargo_artifacts(
         "tapa-ir",
         "-p",
         "tapa-rtl",
+        "-p",
+        "tapa-cli",
     ],
+    executable_outputs = ["cargo/bin/tapa"],
     manifest = "Cargo.toml",
     tags = ["requires-network"],
     visibility = ["//visibility:public"],
 )
 
-# -- Build: native `tapa-cli` binary --
-# Same Cargo invocation pattern as `cargo_build`.
 # Downstream packagers consume this via `//tapa-core:tapa-cli` and install it
-# directly as `usr/bin/tapa`.
-
-cargo_artifacts(
+# directly as `usr/bin/tapa`; same outputs as the merged build action.
+alias(
     name = "tapa-cli",
-    srcs = _ALL_SRCS,
-    outs = ["cargo/bin/tapa"],
-    artifacts = ["tapa:cargo/bin/tapa"],
-    build_args = [
-        "-p",
-        "tapa-cli",
-        "--bin",
-        "tapa",
-    ],
-    executable = True,
-    executable_outputs = ["cargo/bin/tapa"],
-    manifest = "Cargo.toml",
-    tags = ["requires-network"],
+    actual = ":cargo_build",
     visibility = ["//visibility:public"],
 )
 
