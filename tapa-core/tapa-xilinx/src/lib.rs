@@ -47,6 +47,7 @@
 //! tool orchestrators (HLS, Vivado, `.xo` packaging). Dependency
 //! direction is strictly `runtime/` ← `platform/` ← `tools/`.
 
+pub mod connectivity;
 pub mod error;
 pub mod platform;
 pub mod runtime;

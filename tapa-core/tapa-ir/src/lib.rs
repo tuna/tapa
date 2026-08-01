@@ -22,8 +22,7 @@ pub mod work_state;
 mod error;
 
 pub use connectivity::{
-    parse_vitis_config, ConnectivityParseError, MemoryBank, MemoryBinding, MemoryBindings,
-    MemoryEndpoint, MemoryKind,
+    DuplicateMemoryEndpoint, MemoryBank, MemoryBinding, MemoryBindings, MemoryEndpoint, MemoryKind,
 };
 pub use error::ParseError;
 pub use floorplan::{

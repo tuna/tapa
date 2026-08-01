@@ -23,6 +23,7 @@ shlex = { workspace = true }
 serde_yaml = { workspace = true }
 sha2 = { workspace = true }
 shellexpand = { workspace = true }
+tapa-ir.workspace = true
 tapa-protocol = { workspace = true }
 tar = { workspace = true }
 tempfile = { workspace = true }

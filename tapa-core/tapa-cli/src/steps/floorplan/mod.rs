@@ -16,6 +16,7 @@ use tapa_floorplan::{
     PlanOptions,
 };
 use tapa_ir::{Design, MemoryBindings, PipelineScheme, WorkState};
+use tapa_xilinx::connectivity::parse_vitis_config;
 
 use crate::context::CliContext;
 use crate::error::{CliError, Result};
@@ -55,7 +56,7 @@ pub(crate) fn read_connectivity(path: Option<&Path>) -> Result<Option<Connectivi
             path.display(),
         ))
     })?;
-    let bindings = MemoryBindings::parse_vitis_config(text).map_err(|error| {
+    let bindings = parse_vitis_config(text).map_err(|error| {
         CliError::InvalidArg(format!(
             "invalid connectivity file `{}`: {error}",
             path.display(),
@@ -644,7 +645,7 @@ mod tests {
     fn connectivity_input(text: &str) -> ConnectivityInput {
         ConnectivityInput {
             bytes: text.as_bytes().to_vec(),
-            bindings: MemoryBindings::parse_vitis_config(text).expect("parse connectivity"),
+            bindings: parse_vitis_config(text).expect("parse connectivity"),
         }
     }
 

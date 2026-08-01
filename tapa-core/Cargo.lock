@@ -1342,6 +1342,7 @@ dependencies = [
  "sha2 0.10.9",
  "shellexpand",
  "shlex",
+ "tapa-ir",
  "tapa-protocol",
  "tar",
  "tempfile",
