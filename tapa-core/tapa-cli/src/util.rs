@@ -4,6 +4,8 @@ use std::path::PathBuf;
 
 use camino::Utf8PathBuf;
 
+use crate::error::CliError;
+
 /// Parse a clock period in nanoseconds as a finite, positive value.
 pub fn parse_clock_period_ns(value: &str) -> Result<f64, String> {
     let period = value
@@ -37,6 +39,31 @@ pub fn render_template(name: &str, src: &str, ctx: minijinja::Value) -> String {
         .expect("render succeeds")
 }
 
+/// Build a dedicated rayon pool of `workers` threads, run `f` inside
+/// it, and return the `Vec` `f` collects. Callers collect with
+/// indexed `par_iter().map().collect()`, so entry order is stable
+/// regardless of completion order. Pool-construction failure becomes
+/// a caller-shaped [`CliError`] (`label` names the workload in the
+/// message, `make_err` picks the step's error variant) instead of a
+/// panic — a failed pool is a user-visible resource problem, not a
+/// programming bug.
+pub fn run_in_pool<T, F>(
+    workers: usize,
+    label: &str,
+    make_err: impl FnOnce(String) -> CliError,
+    f: F,
+) -> crate::error::Result<Vec<T>>
+where
+    F: FnOnce() -> Vec<T> + Send,
+    T: Send,
+{
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(workers)
+        .build()
+        .map_err(|error| make_err(format!("cannot create {label} pool: {error}")))?;
+    Ok(pool.install(f))
+}
+
 /// Resolve the first Xilinx HLS/Vitis installation root (preferring
 /// `XILINX_HLS`) whose `include/` subdir exists. Used both to add
 /// `-isystem` flags (`tapa g++`) and to seed vendor include probing
@@ -56,6 +83,24 @@ pub fn vendor_hls_root() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn run_in_pool_collects_each_item_in_stable_order() {
+        use rayon::prelude::*;
+
+        let out = run_in_pool(4, "test workload", CliError::Codegen, || {
+            (0..64usize)
+                .into_par_iter()
+                .map(|i| i * 2)
+                .collect::<Vec<_>>()
+        })
+        .expect("pool must build and run");
+        assert_eq!(
+            out,
+            (0..64usize).map(|i| i * 2).collect::<Vec<_>>(),
+            "indexed collect must preserve submission order",
+        );
+    }
 
     #[test]
     fn clock_period_must_be_finite_and_positive() {

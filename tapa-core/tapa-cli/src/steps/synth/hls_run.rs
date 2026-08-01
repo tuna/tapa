@@ -172,7 +172,7 @@ pub fn run_hls_for_leaves(
     }
 
     let worker_count = resolve_worker_count(options.jobs, plan.len());
-    let results: Vec<Result<Option<HlsOutput>>> = dispatch_plan(runner, &plan, worker_count);
+    let results: Vec<Result<Option<HlsOutput>>> = dispatch_plan(runner, &plan, worker_count)?;
 
     // No explicit cleanup: `RunFresh` lets `run_hls_with_retry` own
     // its per-attempt tempdir and drop it. `RunInStage` is kept on
@@ -195,12 +195,8 @@ fn dispatch_plan(
     runner: &dyn ToolRunner,
     plan: &[(String, TaskHlsLayout, Work)],
     worker_count: usize,
-) -> Vec<Result<Option<HlsOutput>>> {
-    let pool = rayon::ThreadPoolBuilder::new()
-        .num_threads(worker_count.max(1))
-        .build()
-        .expect("rayon thread pool builds");
-    pool.install(|| {
+) -> Result<Vec<Result<Option<HlsOutput>>>> {
+    crate::util::run_in_pool(worker_count.max(1), "HLS worker", CliError::Codegen, || {
         plan.par_iter()
             .map(|(_, _, work)| work.execute(runner))
             .collect()

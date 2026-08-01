@@ -237,13 +237,11 @@ pub(super) fn implement_and_publish(
                 )
             })
             .collect(),
-        _ => rayon::ThreadPoolBuilder::new()
-            .num_threads(worker_count)
-            .build()
-            .map_err(|error| {
-                CliError::Floorplan(format!("cannot create DSE implementation pool: {error}"))
-            })?
-            .install(|| {
+        _ => crate::util::run_in_pool(
+            worker_count,
+            "DSE implementation",
+            CliError::Floorplan,
+            || {
                 candidates
                     .into_par_iter()
                     .map(|candidate| {
@@ -259,7 +257,8 @@ pub(super) fn implement_and_publish(
                         )
                     })
                     .collect::<Vec<_>>()
-            }),
+            },
+        )?,
     };
 
     persist_diagnostics(work_dir, &outcomes, infeasible)?;

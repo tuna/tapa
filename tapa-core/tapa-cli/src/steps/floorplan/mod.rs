@@ -238,7 +238,7 @@ pub struct FloorplanArgs {
     #[arg(
         long = "max-seconds",
         default_value_t = 600,
-        value_parser = parse_positive_u64
+        value_parser = |value: &str| parse_positive::<u64>(value, "max seconds")
     )]
     pub max_seconds: u64,
 
@@ -285,7 +285,7 @@ pub struct FloorplanArgs {
     #[arg(
         long = "dse-jobs",
         default_value_t = 1,
-        value_parser = parse_positive_usize,
+        value_parser = |value: &str| parse_positive::<usize>(value, "DSE jobs"),
         requires = "dse"
     )]
     pub dse_jobs: usize,
@@ -293,7 +293,7 @@ pub struct FloorplanArgs {
     /// Parallel Vivado synthesis jobs (`--vivado.synth.jobs`) for each
     /// implementation link. The default of 2 trades host memory for faster
     /// multi-kernel synthesis; lower it on memory-constrained hosts.
-    #[arg(long = "vivado-threads", default_value_t = 2, value_parser = parse_positive_u32)]
+    #[arg(long = "vivado-threads", default_value_t = 2, value_parser = |value: &str| parse_positive::<u32>(value, "Vivado thread count"))]
     pub vivado_threads: u32,
 }
 
@@ -310,34 +310,19 @@ fn parse_usage_limit(value: &str) -> std::result::Result<f64, String> {
     }
 }
 
-fn parse_positive_u64(value: &str) -> std::result::Result<u64, String> {
+/// Shared clap value parser behind the positive-integer arguments
+/// (`--max-seconds`, `--dse-jobs`, `--vivado-threads`): parse the
+/// integer and reject zero, naming the argument as `label` in the
+/// rejection message.
+fn parse_positive<T>(value: &str, label: &str) -> std::result::Result<T, String>
+where
+    T: std::str::FromStr + PartialEq + From<u8>,
+{
     let parsed = value
-        .parse::<u64>()
+        .parse::<T>()
         .map_err(|_| format!("`{value}` is not a non-negative integer"))?;
-    if parsed == 0 {
-        Err("max seconds must be greater than zero".to_string())
-    } else {
-        Ok(parsed)
-    }
-}
-
-fn parse_positive_usize(value: &str) -> std::result::Result<usize, String> {
-    let parsed = value
-        .parse::<usize>()
-        .map_err(|_| format!("`{value}` is not a non-negative integer"))?;
-    if parsed == 0 {
-        Err("DSE jobs must be greater than zero".to_string())
-    } else {
-        Ok(parsed)
-    }
-}
-
-fn parse_positive_u32(value: &str) -> std::result::Result<u32, String> {
-    let parsed = value
-        .parse::<u32>()
-        .map_err(|_| format!("`{value}` is not a non-negative integer"))?;
-    if parsed == 0 {
-        Err("Vivado thread count must be greater than zero".to_string())
+    if parsed == T::from(0u8) {
+        Err(format!("{label} must be greater than zero"))
     } else {
         Ok(parsed)
     }
@@ -714,6 +699,42 @@ mod tests {
 
         assert!(matches!(error, CliError::InvalidArg(ref message)
             if message.contains("Top.input") && message.contains("direct M-AXI")));
+    }
+
+    #[test]
+    fn parse_positive_accepts_values_and_rejects_zero_or_garbage() {
+        for label in ["max seconds", "DSE jobs", "Vivado thread count"] {
+            let error = parse_positive::<u64>("0", label).expect_err("zero must be rejected");
+            assert_eq!(
+                error,
+                format!("{label} must be greater than zero"),
+                "zero rejection must name the argument",
+            );
+            let error = parse_positive::<u64>("fast", label).expect_err("garbage must be rejected");
+            assert_eq!(
+                error, "`fast` is not a non-negative integer",
+                "garbage rejection must be label-independent",
+            );
+        }
+        assert_eq!(
+            parse_positive::<u64>("600", "max seconds").expect("valid seconds"),
+            600,
+            "u64 path parses",
+        );
+        assert_eq!(
+            parse_positive::<usize>("4", "DSE jobs").expect("valid job count"),
+            4,
+            "usize path parses",
+        );
+        assert_eq!(
+            parse_positive::<u32>("2", "Vivado thread count").expect("valid thread count"),
+            2,
+            "u32 path parses",
+        );
+        assert!(
+            parse_positive::<u32>("-1", "Vivado thread count").is_err(),
+            "negative values must be rejected",
+        );
     }
 
     #[test]

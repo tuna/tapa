@@ -70,16 +70,19 @@ pub(super) fn emit_post_synth_util(
         return Ok(());
     }
     let worker_count = resolve_worker_count(jobs, module_names.len());
-    let pool = rayon::ThreadPoolBuilder::new()
-        .num_threads(worker_count)
-        .build()
-        .expect("post-synth utilization thread pool builds");
-    let results: Vec<Result<UtilizationReport>> = pool.install(|| {
-        module_names
-            .par_iter()
-            .map(|module_name| run_and_parse_one(runner, work_dir, &rtl_dir, module_name, part_num))
-            .collect()
-    });
+    let results: Vec<Result<UtilizationReport>> = crate::util::run_in_pool(
+        worker_count,
+        "post-synth utilization",
+        CliError::Codegen,
+        || {
+            module_names
+                .par_iter()
+                .map(|module_name| {
+                    run_and_parse_one(runner, work_dir, &rtl_dir, module_name, part_num)
+                })
+                .collect()
+        },
+    )?;
 
     // Indexed parallel iteration preserves `module_names` order.
     // Fold only after all workers finish so design mutation and error

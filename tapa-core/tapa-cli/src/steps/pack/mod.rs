@@ -118,6 +118,25 @@ pub(super) fn hls_task_report_dirs(work_dir: &Path) -> Result<Vec<(String, PathB
     Ok(out)
 }
 
+/// Add one stored entry to the archive under `name`. Entry-start
+/// failures share the `zip entry:` prefix (so an archive-structure
+/// problem reads differently from a payload copy problem), while
+/// copying `bytes` in propagates through the crate's plain
+/// `io::Error` conversion.
+fn add_zip_entry<W: std::io::Write + std::io::Seek>(
+    z: &mut zip::ZipWriter<W>,
+    opts: zip::write::FileOptions<'_, ()>,
+    name: &str,
+    bytes: &[u8],
+) -> Result<()> {
+    use std::io::Write as _;
+
+    z.start_file(name, opts)
+        .map_err(|e| CliError::Archive(format!("zip entry: {e}")))?;
+    z.write_all(bytes)?;
+    Ok(())
+}
+
 /// Package the `xilinx-hls` target. Bundles the synthesized RTL tree
 /// under `rtl/`, every HLS
 /// `_csynth.rpt` under `report/` (with timestamp redaction so the
@@ -128,7 +147,6 @@ pub(super) fn hls_task_report_dirs(work_dir: &Path) -> Result<Vec<(String, PathB
 /// see [`cosim_compat`]). Output defaults to `work.zip` in the caller's
 /// CWD and is always normalized to a `.zip` suffix.
 fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, state: &WorkState) -> Result<()> {
-    use std::io::Write as _;
     // Frontier first: the zip is the cosim package, so anything the cosim
     // runtime cannot bind must be rejected before a single archive byte —
     // or any custom-RTL overlay touching the canonical RTL tree — is
@@ -170,9 +188,7 @@ fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, state: &WorkState) -> Result<
             .strip_prefix(&rtl_dir)
             .map_err(|e| CliError::Archive(format!("rtl strip_prefix: {e}")))?;
         let name = format!("rtl/{}", rel.to_slash_lossy());
-        z.start_file(name, opts)
-            .map_err(|e| CliError::Archive(format!("zip entry: {e}")))?;
-        z.write_all(&fs_err::read(rtl_file)?)?;
+        add_zip_entry(&mut z, opts, &name, &fs_err::read(rtl_file)?)?;
     }
 
     // Include the TAPA report at archive root when synth emitted it.
@@ -180,9 +196,7 @@ fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, state: &WorkState) -> Result<
     // invalid.
     let report_yaml = work_dir.join("report.yaml");
     if report_yaml.is_file() {
-        z.start_file("report.yaml", opts)
-            .map_err(|e| CliError::Archive(format!("zip entry: {e}")))?;
-        z.write_all(&fs_err::read(&report_yaml)?)?;
+        add_zip_entry(&mut z, opts, "report.yaml", &fs_err::read(&report_yaml)?)?;
     }
 
     // The state file, plus the cosim port metadata `frt-cosim` consumes:
@@ -191,9 +205,12 @@ fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, state: &WorkState) -> Result<
     // metadata cannot drift from the work dir's — the stamp is a pure
     // function of the persisted state, re-derived on every pack. The
     // work-dir `tapa.json` itself is left untouched.
-    z.start_file(work_io::FILE_NAME, opts)
-        .map_err(|e| CliError::Archive(format!("zip entry: {e}")))?;
-    z.write_all(&work_io::to_bytes(&stamp_cosim_port_metadata(state))?)?;
+    add_zip_entry(
+        &mut z,
+        opts,
+        work_io::FILE_NAME,
+        &work_io::to_bytes(&stamp_cosim_port_metadata(state))?,
+    )?;
 
     // Store the curated per-task HLS `_csynth.rpt` files under
     // `report/<task>/<file>` and replace the per-run `Date:` line with the fixed
@@ -225,9 +242,7 @@ fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, state: &WorkState) -> Result<
         }
         rpt_files.sort();
         for (rpt, name) in &rpt_files {
-            z.start_file(name, opts)
-                .map_err(|e| CliError::Archive(format!("zip entry: {e}")))?;
-            z.write_all(&redact_rpt(&fs_err::read(rpt)?))?;
+            add_zip_entry(&mut z, opts, name, &redact_rpt(&fs_err::read(rpt)?))?;
         }
     }
 
