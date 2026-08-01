@@ -1335,7 +1335,6 @@ dependencies = [
  "nix",
  "quick-xml",
  "regex",
- "semver",
  "serde",
  "serde_json",
  "serde_yaml",

@@ -16,7 +16,6 @@ minijinja = { workspace = true }
 nix = { workspace = true }
 quick-xml = { workspace = true }
 regex = { workspace = true }
-semver = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 shlex = { workspace = true }
@@ -32,9 +31,6 @@ typed-builder = { workspace = true }
 walkdir = { workspace = true }
 zip = { workspace = true }
 fs2 = { workspace = true }
-
-[dev-dependencies]
-tempfile = { workspace = true }
 
 [lints]
 workspace = true
