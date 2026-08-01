@@ -36,7 +36,7 @@ repos:
         # toolchain output; Vitis `.rpt` files do not terminate with
         # a newline, so auto-appending one would turn every CI run
         # into fake drift.
-        exclude: ^tapa-core/tests/golden/
+        exclude: ^tapa-core/testdata/golden/
       - id: file-contents-sorter
         files: ^\.gitignore$
       - id: fix-byte-order-marker
@@ -47,10 +47,12 @@ repos:
         args:
           - --autofix
           - --indent=4
-        exclude: ^tapa-core/tests/golden/
+        # Also the solver-model fingerprints: the gate byte-compares the
+        # generator's serialization, so reformatting is fake drift.
+        exclude: ^tapa-core/testdata/golden/|^tapa-core/testdata/floorplan-model-fingerprints\.json$
       - id: trailing-whitespace
         # Same rationale as end-of-file-fixer above.
-        exclude: ^tapa-core/tests/golden/
+        exclude: ^tapa-core/testdata/golden/
 
   #####################
   #  Auto Formatting  #
