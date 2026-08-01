@@ -2,12 +2,10 @@
 // All rights reserved. The contributor(s) of this file has/have agreed to the
 // RapidStream Contributor License Agreement.
 
-#ifndef TAPA_XILINX_HLS_MMAP_H_
-#define TAPA_XILINX_HLS_MMAP_H_
+#pragma once
 
 #include <cstddef>
 
-#include "tapa/base/mmap.h"
 #include "tapa/xilinx/hls/stream.h"
 
 namespace tapa {
@@ -69,5 +67,3 @@ template <typename T, int chan_count, int64_t chan_size>
 class hmap;
 
 }  // namespace tapa
-
-#endif  // TAPA_XILINX_HLS_MMAP_H_

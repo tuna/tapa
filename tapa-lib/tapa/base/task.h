@@ -2,8 +2,7 @@
 // All rights reserved. The contributor(s) of this file has/have agreed to the
 // RapidStream Contributor License Agreement.
 
-#ifndef TAPA_BASE_TASK_H_
-#define TAPA_BASE_TASK_H_
+#pragma once
 
 namespace tapa {
 
@@ -28,5 +27,3 @@ struct seq {
 };
 
 }  // namespace tapa
-
-#endif  // TAPA_BASE_TASK_H_

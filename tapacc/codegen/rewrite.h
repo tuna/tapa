@@ -5,7 +5,7 @@
 
 #include "clang/AST/ASTContext.h"
 
-#include "../frontend/program.h"
+#include "frontend/program.h"
 #include "backend.h"
 
 namespace tapa::cc {

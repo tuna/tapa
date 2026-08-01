@@ -2,8 +2,7 @@
 // All rights reserved. The contributor(s) of this file has/have agreed to the
 // RapidStream Contributor License Agreement.
 
-#ifndef TAPA_HOST_MMAP_H_
-#define TAPA_HOST_MMAP_H_
+#pragma once
 
 #include <cstddef>
 #include <cstdint>
@@ -645,5 +644,3 @@ struct accessor<mmaps<T, S>, mmaps<T, S>> {
 }  // namespace internal
 
 }  // namespace tapa
-
-#endif  // TAPA_HOST_MMAP_H_

@@ -12,8 +12,8 @@
 #include "clang/Frontend/ASTUnit.h"
 #include "clang/Tooling/Tooling.h"
 
-#include "../frontend/classify.h"
-#include "../frontend/tapa_stub_decls.h"
+#include "frontend/classify.h"
+#include "frontend/tapa_stub_decls.h"
 #include "code_sink.h"
 
 namespace tapa::cc {

@@ -2,8 +2,7 @@
 // All rights reserved. The contributor(s) of this file has/have agreed to the
 // RapidStream Contributor License Agreement.
 
-#ifndef TAPA_HOST_COROUTINE_H_
-#define TAPA_HOST_COROUTINE_H_
+#pragma once
 
 #include <functional>
 #include <string>
@@ -15,5 +14,3 @@ void schedule_cleanup(const std::function<void()>&);
 void yield(const std::string& msg);
 }  // namespace internal
 }  // namespace tapa
-
-#endif  // TAPA_HOST_COROUTINE_H_

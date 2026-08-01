@@ -1,7 +1,6 @@
 // Copyright (c) 2024 RapidStream Design Automation, Inc. and contributors.
 
-#ifndef TAPA_HOST_FRT_STREAM_H_
-#define TAPA_HOST_FRT_STREAM_H_
+#pragma once
 
 #include <array>
 #include <cstddef>
@@ -123,5 +122,3 @@ class Stream<T, Tag::kReadWrite> : public StreamBase<T> {
 }  // namespace frt
 }  // namespace internal
 }  // namespace tapa
-
-#endif  // TAPA_HOST_FRT_STREAM_H_

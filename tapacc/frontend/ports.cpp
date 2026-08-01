@@ -7,6 +7,7 @@
 #include "clang/Basic/Diagnostic.h"
 
 #include "classify.h"
+#include "diag.h"
 #include "type_args.h"
 
 namespace tapa::cc {
@@ -74,18 +75,6 @@ const char* KindSpelling(TapaKind k) {
   }
 }
 
-// clang's getCustomDiagID requires a string-literal format (templated length).
-template <unsigned N>
-void ReportShapeError(const clang::ASTContext& ctx,
-                      const clang::ParmVarDecl* param, const char (&fmt)[N]) {
-  clang::DiagnosticsEngine& diags = ctx.getDiagnostics();
-  const unsigned id =
-      diags.getCustomDiagID(clang::DiagnosticsEngine::Error, fmt);
-  clang::DiagnosticBuilder builder = diags.Report(param->getLocation(), id);
-  builder.AddString(KindSpelling(ClassifyTapaType(param)));
-  builder.AddString(param->getNameAsString());
-}
-
 // Parameter-shape contract: stream channels and `async_mmap` have connection
 // identity and must be passed by reference; mmap-family types are
 // pointer-like handles and must be passed by value.
@@ -98,8 +87,11 @@ void CheckParamShape(const clang::ASTContext& ctx,
     case TapaKind::kOStreams:
     case TapaKind::kAsyncMmap:
       if (!param->getType()->isLValueReferenceType()) {
-        ReportShapeError(ctx, param,
-                         "%0 parameter '%1' must be passed by reference");
+        auto builder = ReportCustomDiag(
+            ctx, clang::DiagnosticsEngine::Error, param->getLocation(),
+            "%0 parameter '%1' must be passed by reference");
+        builder.AddString(KindSpelling(ClassifyTapaType(param)));
+        builder.AddString(param->getNameAsString());
       }
       break;
     case TapaKind::kMmap:
@@ -108,9 +100,12 @@ void CheckParamShape(const clang::ASTContext& ctx,
     case TapaKind::kOmmap:
     case TapaKind::kHmap:
       if (param->getType()->isReferenceType()) {
-        ReportShapeError(ctx, param,
-                         "%0 parameter '%1' must be passed by value "
-                         "(not by reference)");
+        auto builder = ReportCustomDiag(
+            ctx, clang::DiagnosticsEngine::Error, param->getLocation(),
+            "%0 parameter '%1' must be passed by value "
+            "(not by reference)");
+        builder.AddString(KindSpelling(ClassifyTapaType(param)));
+        builder.AddString(param->getNameAsString());
       }
       break;
     default:

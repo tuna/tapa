@@ -6,7 +6,6 @@
 
 #include <cstddef>
 
-#include "tapa/base/mmap.h"
 #include "tapa/stub/stream.h"
 #include "tapa/stub/vec.h"
 

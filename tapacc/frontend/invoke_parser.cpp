@@ -10,6 +10,7 @@
 #include "clang/AST/Mangle.h"
 
 #include "classify.h"
+#include "diag.h"
 #include "discover.h"
 #include "names.h"
 #include "type_args.h"
@@ -29,17 +30,6 @@ std::optional<int64_t> EvalInt(const clang::ASTContext& ctx,
     return result.Val.getInt().getExtValue();
   }
   return std::nullopt;
-}
-
-// clang's getCustomDiagID requires a string-literal format (templated length).
-template <unsigned N>
-void Report(clang::ASTContext& ctx, clang::DiagnosticsEngine::Level level,
-            clang::SourceLocation loc, const char (&fmt)[N],
-            llvm::StringRef arg) {
-  clang::DiagnosticsEngine& diags = ctx.getDiagnostics();
-  const unsigned id = diags.getCustomDiagID(level, fmt);
-  clang::DiagnosticBuilder builder = diags.Report(loc, id);
-  builder.AddString(arg);
 }
 
 // step (bulk-synchronous mode), vector length, and whether an explicit instance
@@ -244,8 +234,10 @@ void ParseUpperTask(clang::ASTContext& ctx, TaskModel& task, bool is_top) {
             auto it = FindOrExternalStream(task, a, is_top);
             if (it == task.streams.end()) return;
             if (it->second.consumed_by.has_value()) {
-              Report(ctx, clang::DiagnosticsEngine::Error, arg->getBeginLoc(),
-                     "tapa::stream '%0' consumed more than once", a);
+              ReportCustomDiag(ctx, clang::DiagnosticsEngine::Error,
+                               arg->getBeginLoc(),
+                               "tapa::stream '%0' consumed more than once")
+                  .AddString(a);
             }
             it->second.consumed_by = Endpoint{task_name, inst_index};
           };
@@ -253,8 +245,10 @@ void ParseUpperTask(clang::ASTContext& ctx, TaskModel& task, bool is_top) {
             auto it = FindOrExternalStream(task, a, is_top);
             if (it == task.streams.end()) return;
             if (it->second.produced_by.has_value()) {
-              Report(ctx, clang::DiagnosticsEngine::Error, arg->getBeginLoc(),
-                     "tapa::stream '%0' produced more than once", a);
+              ReportCustomDiag(ctx, clang::DiagnosticsEngine::Error,
+                               arg->getBeginLoc(),
+                               "tapa::stream '%0' produced more than once")
+                  .AddString(a);
             }
             it->second.produced_by = Endpoint{task_name, inst_index};
           };
@@ -305,8 +299,9 @@ void ParseUpperTask(clang::ASTContext& ctx, TaskModel& task, bool is_top) {
           }
         }
 
-        Report(ctx, clang::DiagnosticsEngine::Error, arg->getBeginLoc(),
-               "unexpected argument: %0", arg->getStmtClassName());
+        ReportCustomDiag(ctx, clang::DiagnosticsEngine::Error,
+                         arg->getBeginLoc(), "unexpected argument: %0")
+            .AddString(arg->getStmtClassName());
       }
     }
   }
@@ -325,17 +320,20 @@ void ParseUpperTask(clang::ASTContext& ctx, TaskModel& task, bool is_top) {
                                           ? it->second.decl->getBeginLoc()
                                           : clang::SourceLocation();
     if (!produced && !consumed) {
-      Report(ctx, clang::DiagnosticsEngine::Warning, loc, "unused stream: %0",
-             it->first);
+      ReportCustomDiag(ctx, clang::DiagnosticsEngine::Warning, loc,
+                       "unused stream: %0")
+          .AddString(it->first);
       it = task.streams.erase(it);
     } else {
       if (produced != consumed) {
         if (consumed) {
-          Report(ctx, clang::DiagnosticsEngine::Error, loc,
-                 "consumed but not produced stream: %0", it->first);
+          ReportCustomDiag(ctx, clang::DiagnosticsEngine::Error, loc,
+                           "consumed but not produced stream: %0")
+              .AddString(it->first);
         } else {
-          Report(ctx, clang::DiagnosticsEngine::Error, loc,
-                 "produced but not consumed stream: %0", it->first);
+          ReportCustomDiag(ctx, clang::DiagnosticsEngine::Error, loc,
+                           "produced but not consumed stream: %0")
+              .AddString(it->first);
         }
       }
       ++it;

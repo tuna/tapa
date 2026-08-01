@@ -1,5 +1,4 @@
-#ifndef TAPA_HOST_FRT_INSTANCE_H_
-#define TAPA_HOST_FRT_INSTANCE_H_
+#pragma once
 
 #include <cstddef>
 #include <cstdint>
@@ -85,5 +84,3 @@ class Instance {
 }  // namespace frt
 }  // namespace internal
 }  // namespace tapa
-
-#endif  // TAPA_HOST_FRT_INSTANCE_H_

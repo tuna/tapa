@@ -2,8 +2,7 @@
 // All rights reserved. The contributor(s) of this file has/have agreed to the
 // RapidStream Contributor License Agreement.
 
-#ifndef TAPA_HOST_TAPA_H_
-#define TAPA_HOST_TAPA_H_
+#pragma once
 
 #include <chrono>
 #include <functional>
@@ -62,5 +61,3 @@ struct aligned_allocator {
 };
 
 }  // namespace tapa
-
-#endif  // TAPA_HOST_TAPA_H_

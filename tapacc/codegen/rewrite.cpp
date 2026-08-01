@@ -13,7 +13,7 @@
 #include "emit.h"
 #include "wrapper.h"
 
-#include "../frontend/discover.h"
+#include "frontend/discover.h"
 
 namespace tapa::cc {
 

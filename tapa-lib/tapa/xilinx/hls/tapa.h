@@ -2,8 +2,7 @@
 // All rights reserved. The contributor(s) of this file has/have agreed to the
 // RapidStream Contributor License Agreement.
 
-#ifndef TAPA_XILINX_HLS_TAPA_H_
-#define TAPA_XILINX_HLS_TAPA_H_
+#pragma once
 
 #include "tapa/base/tapa.h"
 
@@ -12,5 +11,3 @@
 #include "tapa/xilinx/hls/task.h"
 #include "tapa/xilinx/hls/util.h"
 #include "tapa/xilinx/hls/vec.h"
-
-#endif  // TAPA_XILINX_HLS_TAPA_H_

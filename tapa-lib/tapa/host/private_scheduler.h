@@ -2,8 +2,7 @@
 // Included only from task.cpp inside the #if TAPA_ENABLE_COROUTINE block.
 // Not part of the public API.
 
-#ifndef TAPA_HOST_PRIVATE_SCHEDULER_H_
-#define TAPA_HOST_PRIVATE_SCHEDULER_H_
+#pragma once
 
 // --- worker ----------------------------------------------------------------
 // A single OS thread that owns a set of coroutines and round-robins them.
@@ -195,5 +194,3 @@ class thread_pool {
     this->workers.clear();
   }
 };
-
-#endif  // TAPA_HOST_PRIVATE_SCHEDULER_H_

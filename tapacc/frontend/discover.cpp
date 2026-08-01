@@ -9,6 +9,7 @@
 #include "clang/AST/Mangle.h"
 
 #include "classify.h"
+#include "diag.h"
 #include "names.h"
 
 namespace tapa::cc {
@@ -45,18 +46,6 @@ const clang::FunctionDecl* InvokeCallee(
   const auto* ref = llvm::dyn_cast<clang::DeclRefExpr>(arg0);
   if (ref == nullptr) return nullptr;
   return llvm::dyn_cast<clang::FunctionDecl>(ref->getDecl());
-}
-
-// clang's getCustomDiagID takes the format as a string-literal (templated on
-// its length), so the format is a template parameter here, not a StringRef.
-template <unsigned N>
-void ReportError(clang::ASTContext& ctx, clang::SourceLocation loc,
-                 const char (&fmt)[N], llvm::StringRef arg = {}) {
-  clang::DiagnosticsEngine& diags = ctx.getDiagnostics();
-  const unsigned id =
-      diags.getCustomDiagID(clang::DiagnosticsEngine::Error, fmt);
-  clang::DiagnosticBuilder builder = diags.Report(loc, id);
-  if (!arg.empty()) builder.AddString(arg);
 }
 
 }  // namespace
@@ -126,13 +115,17 @@ std::map<std::string, TaskModel> DiscoverTasks(
 
   const auto top_it = defs.find(top_name.str());
   if (top_it == defs.end()) {
-    ReportError(ctx, {}, "top-level task '%0' not found", top_name);
+    auto builder =
+        ReportCustomDiag(ctx, clang::DiagnosticsEngine::Error, {},
+                         "top-level task '%0' not found");
+    if (!top_name.empty()) builder.AddString(top_name);
     return {};
   }
   const clang::FunctionDecl* top_func = top_it->second;
   if (IsIgnored(top_func)) {
-    ReportError(ctx, top_func->getLocation(),
-                "tapa top-level task function cannot be ignored");
+    ReportCustomDiag(ctx, clang::DiagnosticsEngine::Error,
+                     top_func->getLocation(),
+                     "tapa top-level task function cannot be ignored");
     return {};
   }
 
@@ -187,8 +180,11 @@ std::map<std::string, TaskModel> DiscoverTasks(
   // A task function must have exactly one definition.
   for (const auto& [name, model] : tasks) {
     if (defs.count(model.def->getNameAsString()) > 1) {
-      ReportError(ctx, model.def->getLocation(), "task '%0' re-defined",
-                  model.def->getNameAsString());
+      const std::string def_name = model.def->getNameAsString();
+      auto builder = ReportCustomDiag(ctx, clang::DiagnosticsEngine::Error,
+                                      model.def->getLocation(),
+                                      "task '%0' re-defined");
+      if (!def_name.empty()) builder.AddString(def_name);
     }
   }
 

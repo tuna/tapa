@@ -1,5 +1,4 @@
-#ifndef TAPA_HOST_FRT_TYPES_H_
-#define TAPA_HOST_FRT_TYPES_H_
+#pragma once
 
 #include <any>
 #include <cstring>
@@ -56,5 +55,3 @@ T FromBinaryString(std::string_view bytes) {
 }  // namespace frt
 }  // namespace internal
 }  // namespace tapa
-
-#endif  // TAPA_HOST_FRT_TYPES_H_

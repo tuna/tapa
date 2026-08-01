@@ -5,7 +5,7 @@
 
 #include "clang/AST/Stmt.h"
 
-#include "../frontend/type_args.h"
+#include "frontend/type_args.h"
 #include "conventions.h"
 
 namespace tapa::cc {

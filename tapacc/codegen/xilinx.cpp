@@ -9,8 +9,8 @@
 #include "clang/Lex/Lexer.h"
 #include "llvm/Support/raw_ostream.h"
 
-#include "../frontend/classify.h"
-#include "../frontend/type_args.h"
+#include "frontend/classify.h"
+#include "frontend/type_args.h"
 #include "conventions.h"
 #include "emit.h"
 

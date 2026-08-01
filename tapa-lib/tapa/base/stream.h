@@ -2,8 +2,7 @@
 // All rights reserved. The contributor(s) of this file has/have agreed to the
 // RapidStream Contributor License Agreement.
 
-#ifndef TAPA_BASE_STREAM_H_
-#define TAPA_BASE_STREAM_H_
+#pragma once
 
 #include <cstddef>
 #include <cstdint>
@@ -27,5 +26,3 @@ struct [[gnu::packed]] elem_t {
 }  // namespace internal
 
 }  // namespace tapa
-
-#endif  // TAPA_BASE_STREAM_H_

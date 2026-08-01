@@ -10,9 +10,9 @@
 #include "clang/Frontend/ASTUnit.h"
 #include "clang/Tooling/Tooling.h"
 
-#include "../frontend/build_program.h"
-#include "../frontend/program.h"
-#include "../frontend/tapa_stub_decls.h"
+#include "frontend/build_program.h"
+#include "frontend/program.h"
+#include "frontend/tapa_stub_decls.h"
 #include "xilinx.h"
 
 namespace tapa::cc {

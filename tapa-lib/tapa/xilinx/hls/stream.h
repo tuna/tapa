@@ -2,8 +2,7 @@
 // All rights reserved. The contributor(s) of this file has/have agreed to the
 // RapidStream Contributor License Agreement.
 
-#ifndef TAPA_XILINX_HLS_STREAM_H_
-#define TAPA_XILINX_HLS_STREAM_H_
+#pragma once
 
 #include "tapa/base/stream.h"
 
@@ -206,5 +205,3 @@ template <typename T, uint64_t S, uint64_t N = kStreamDefaultDepth,
 using streams = stream<T, N>[S];
 
 }  // namespace tapa
-
-#endif  // TAPA_XILINX_HLS_STREAM_H_

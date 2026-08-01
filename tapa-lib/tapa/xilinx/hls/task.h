@@ -2,8 +2,7 @@
 // All rights reserved. The contributor(s) of this file has/have agreed to the
 // RapidStream Contributor License Agreement.
 
-#ifndef TAPA_XILINX_HLS_TASK_H_
-#define TAPA_XILINX_HLS_TASK_H_
+#pragma once
 
 #include <string>
 #include <utility>
@@ -65,4 +64,3 @@ struct task {
 };
 
 }  // namespace tapa
-#endif  // TAPA_XILINX_HLS_TASK_H_

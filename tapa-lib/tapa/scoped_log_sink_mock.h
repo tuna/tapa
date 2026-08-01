@@ -2,8 +2,7 @@
 // All rights reserved. The contributor(s) of this file has/have agreed to the
 // RapidStream Contributor License Agreement.
 
-#ifndef TAPA_SCOPED_LOG_SINK_MOCK_H_
-#define TAPA_SCOPED_LOG_SINK_MOCK_H_
+#pragma once
 
 #include <cstddef>
 #include <ctime>
@@ -50,5 +49,3 @@ class ScopedLogSinkMock : public google::LogSink {
 };
 
 }  // namespace tapa_testing
-
-#endif  // TAPA_SCOPED_LOG_SINK_MOCK_H_

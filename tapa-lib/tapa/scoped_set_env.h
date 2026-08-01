@@ -2,8 +2,7 @@
 // All rights reserved. The contributor(s) of this file has/have agreed to the
 // RapidStream Contributor License Agreement.
 
-#ifndef TAPA_SCOPED_SET_ENV_H_
-#define TAPA_SCOPED_SET_ENV_H_
+#pragma once
 
 #include <cstdlib>
 
@@ -47,5 +46,3 @@ class ScopedSetEnv {
 };
 
 }  // namespace tapa_testing
-
-#endif  // TAPA_SCOPED_SET_ENV_H_

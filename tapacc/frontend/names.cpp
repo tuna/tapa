@@ -2,13 +2,15 @@
 
 #include "llvm/Support/raw_ostream.h"
 
+#include "codegen/conventions.h"
+
 namespace tapa::cc {
 
 std::string MangledTaskName(clang::MangleContext& mangler,
                             const clang::FunctionDecl* func) {
   std::string name;
   llvm::raw_string_ostream os(name);
-  os << "tapa_mangled";
+  os.write(kMangledPrefix.data(), kMangledPrefix.size());
   mangler.mangleName(func, os);
   os.flush();
   return name;

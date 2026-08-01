@@ -2,8 +2,7 @@
 // All rights reserved. The contributor(s) of this file has/have agreed to the
 // RapidStream Contributor License Agreement.
 
-#ifndef TAPA_XILINX_HLS_UTIL_H_
-#define TAPA_XILINX_HLS_UTIL_H_
+#pragma once
 
 #include "tapa/base/util.h"
 
@@ -72,5 +71,3 @@ inline T reg(T x) {
 }
 
 }  // namespace tapa
-
-#endif  // TAPA_XILINX_HLS_UTIL_H_

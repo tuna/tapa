@@ -25,6 +25,7 @@ cc_library(
     name = "backend",
     hdrs = ["backend.h"],
     copts = TAPACC_COPTS,
+    includes = [".."],
     deps = [
         ":code_sink",
         "//tapacc/frontend:classify",
@@ -49,6 +50,7 @@ cc_library(
     srcs = ["emit.cpp"],
     hdrs = ["emit.h"],
     copts = TAPACC_COPTS,
+    includes = [".."],
     deps = [
         ":code_sink",
         ":conventions",
@@ -62,6 +64,7 @@ cc_test(
     name = "emit_test",
     srcs = ["emit_test.cpp"],
     copts = TAPACC_COPTS,
+    includes = [".."],
     deps = [
         ":code_sink",
         ":emit",
@@ -78,6 +81,7 @@ cc_library(
     srcs = ["xilinx.cpp"],
     hdrs = ["xilinx.h"],
     copts = TAPACC_COPTS,
+    includes = [".."],
     deps = [
         ":backend",
         ":conventions",
@@ -93,6 +97,7 @@ cc_library(
     srcs = ["ignore.cpp"],
     hdrs = ["ignore.h"],
     copts = TAPACC_COPTS,
+    includes = [".."],
     deps = [
         ":backend",
         ":code_sink",
@@ -107,6 +112,7 @@ cc_library(
     srcs = ["wrapper.cpp"],
     hdrs = ["wrapper.h"],
     copts = TAPACC_COPTS,
+    includes = [".."],
     deps = [
         ":backend",
         ":code_sink",
@@ -121,6 +127,7 @@ cc_library(
     srcs = ["rewrite.cpp"],
     hdrs = ["rewrite.h"],
     copts = TAPACC_COPTS,
+    includes = [".."],
     deps = [
         ":backend",
         ":emit",
@@ -135,6 +142,7 @@ cc_test(
     name = "rewrite_test",
     srcs = ["rewrite_test.cpp"],
     copts = TAPACC_COPTS,
+    includes = [".."],
     deps = [
         ":rewrite",
         ":xilinx",

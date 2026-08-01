@@ -5,7 +5,7 @@
 #include "clang/AST/Decl.h"
 #include "clang/Basic/LangOptions.h"
 
-#include "../frontend/classify.h"
+#include "frontend/classify.h"
 #include "code_sink.h"
 
 namespace tapa::cc {

@@ -4,7 +4,7 @@
 
 #include "clang/AST/Decl.h"
 
-#include "../frontend/classify.h"
+#include "frontend/classify.h"
 #include "code_sink.h"
 #include "emit.h"
 

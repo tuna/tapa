@@ -2,8 +2,7 @@
 // All rights reserved. The contributor(s) of this file has/have agreed to the
 // RapidStream Contributor License Agreement.
 
-#ifndef TAPA_BASE_UTIL_H_
-#define TAPA_BASE_UTIL_H_
+#pragma once
 
 #include <climits>
 #include <cstdint>
@@ -81,5 +80,3 @@ inline std::ostream& operator<<(std::ostream& os,
        (!fifo2.eot(tapa_##fifo2##_valid) || !tapa_##fifo2##_valid) &&         \
        (!fifo3.eot(tapa_##fifo3##_valid) || !tapa_##fifo3##_valid);)          \
     if (tapa_##fifo1##_valid && tapa_##fifo2##_valid && tapa_##fifo3##_valid)
-
-#endif  // TAPA_BASE_UTIL_H_

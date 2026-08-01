@@ -4,7 +4,7 @@
 #include "clang/AST/ASTContext.h"
 #include "clang/Rewrite/Core/Rewriter.h"
 
-#include "../frontend/program.h"
+#include "frontend/program.h"
 #include "backend.h"
 
 namespace tapa::cc {

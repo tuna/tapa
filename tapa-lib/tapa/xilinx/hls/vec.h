@@ -2,8 +2,7 @@
 // All rights reserved. The contributor(s) of this file has/have agreed to the
 // RapidStream Contributor License Agreement.
 
-#ifndef TAPA_XILINX_VEC_H_
-#define TAPA_XILINX_VEC_H_
+#pragma once
 
 #include <climits>
 #include <cmath>
@@ -368,5 +367,3 @@ inline std::ostream& operator<<(std::ostream& os, const vec_t<T, N>& obj) {
 }
 
 }  // namespace tapa
-
-#endif  // TAPA_XILINX_VEC_H_

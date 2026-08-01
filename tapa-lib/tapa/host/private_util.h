@@ -2,6 +2,8 @@
 // All rights reserved. The contributor(s) of this file has/have agreed to the
 // RapidStream Contributor License Agreement.
 
+#pragma once
+
 // NOTE: This is a private header that is not exported for packaging.
 
 #include <string>

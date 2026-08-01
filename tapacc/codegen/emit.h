@@ -7,7 +7,7 @@
 #include "clang/AST/Stmt.h"
 #include "clang/Rewrite/Core/Rewriter.h"
 
-#include "../frontend/classify.h"
+#include "frontend/classify.h"
 #include "code_sink.h"
 
 namespace tapa::cc {

@@ -2,8 +2,7 @@
 // All rights reserved. The contributor(s) of this file has/have agreed to the
 // RapidStream Contributor License Agreement.
 
-#ifndef TAPA_HOST_TASK_H_
-#define TAPA_HOST_TASK_H_
+#pragma once
 
 #include "tapa/base/task.h"
 
@@ -278,5 +277,3 @@ struct task {
 };
 
 }  // namespace tapa
-
-#endif  // TAPA_HOST_TASK_H_

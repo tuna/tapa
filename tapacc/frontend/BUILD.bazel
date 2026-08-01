@@ -39,6 +39,7 @@ cc_library(
     copts = TAPACC_COPTS,
     deps = [
         ":classify",
+        ":diag",
         ":program",
         ":type_args",
         CLANG_TOOLING,
@@ -84,6 +85,16 @@ cc_library(
     srcs = ["names.cpp"],
     hdrs = ["names.h"],
     copts = TAPACC_COPTS,
+    includes = [".."],
+    deps = [
+        "//tapacc/codegen:conventions",
+        CLANG_TOOLING,
+    ],
+)
+
+cc_library(
+    name = "diag",
+    hdrs = ["diag.h"],
     deps = [CLANG_TOOLING],
 )
 
@@ -94,6 +105,7 @@ cc_library(
     copts = TAPACC_COPTS,
     deps = [
         ":classify",
+        ":diag",
         ":names",
         ":program",
         CLANG_TOOLING,
@@ -107,6 +119,7 @@ cc_library(
     copts = TAPACC_COPTS,
     deps = [
         ":classify",
+        ":diag",
         ":discover",
         ":names",
         ":program",

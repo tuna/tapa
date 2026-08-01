@@ -2,8 +2,7 @@
 // All rights reserved. The contributor(s) of this file has/have agreed to the
 // RapidStream Contributor License Agreement.
 
-#ifndef TAPA_HOST_STREAM_H_
-#define TAPA_HOST_STREAM_H_
+#pragma once
 
 #include <cstddef>
 #include <cstdint>
@@ -898,5 +897,3 @@ TAPA_DEFINE_ACCESSOR(o, &)
 }  // namespace internal
 
 }  // namespace tapa
-
-#endif  // TAPA_HOST_STREAM_H_

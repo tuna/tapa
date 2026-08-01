@@ -2,8 +2,7 @@
 // All rights reserved. The contributor(s) of this file has/have agreed to the
 // RapidStream Contributor License Agreement.
 
-#ifndef TAPA_XILINX_HLS_LOGGING_H_
-#define TAPA_XILINX_HLS_LOGGING_H_
+#pragma once
 
 #include "tapa/base/logging.h"
 
@@ -37,5 +36,3 @@
 #define VLOG_EVERY_N(level, n) ::tapa::internal::dummy()
 #define VLOG_IF_EVERY_N(level, cond, n) ::tapa::internal::dummy()
 #define VLOG_FIRST_N(level, n) ::tapa::internal::dummy()
-
-#endif  // TAPA_XILINX_HLS_LOGGING_H_
