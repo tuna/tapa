@@ -1301,7 +1301,9 @@ pub tapa_ir::port::Port::cat: tapa_ir::port::ArgCategory
 pub tapa_ir::port::Port::chan_count: core::option::Option<u32>
 pub tapa_ir::port::Port::chan_size: core::option::Option<u32>
 pub tapa_ir::port::Port::ctype: alloc::string::String
+pub tapa_ir::port::Port::mmap_addr_width: core::option::Option<u32>
 pub tapa_ir::port::Port::name: alloc::string::String
+pub tapa_ir::port::Port::stream_depth: core::option::Option<u32>
 pub tapa_ir::port::Port::width: u32
 impl core::clone::Clone for tapa_ir::port::Port
 pub fn tapa_ir::port::Port::clone(&self) -> tapa_ir::port::Port
@@ -3236,7 +3238,9 @@ pub tapa_ir::Port::cat: tapa_ir::port::ArgCategory
 pub tapa_ir::Port::chan_count: core::option::Option<u32>
 pub tapa_ir::Port::chan_size: core::option::Option<u32>
 pub tapa_ir::Port::ctype: alloc::string::String
+pub tapa_ir::Port::mmap_addr_width: core::option::Option<u32>
 pub tapa_ir::Port::name: alloc::string::String
+pub tapa_ir::Port::stream_depth: core::option::Option<u32>
 pub tapa_ir::Port::width: u32
 impl core::clone::Clone for tapa_ir::port::Port
 pub fn tapa_ir::port::Port::clone(&self) -> tapa_ir::port::Port
