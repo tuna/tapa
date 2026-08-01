@@ -4,9 +4,8 @@ use crate::instance_signals::InstanceSignals;
 use tapa_protocol::{HANDSHAKE_CLK, HANDSHAKE_RST, HANDSHAKE_START};
 use tapa_rtl::builder::{AlwaysBlock, CaseItem, ContinuousAssign, Expr, Sensitivity, Statement};
 
-// The FSM state encodings live in `crate::program` (the single
-// FSM-encoding authority for both the global and child FSMs); re-exported
-// here under the historical `STATE_*` names.
+// Re-exported from `crate::program` (see its module doc) under the
+// historical `STATE_*` names used below.
 pub use crate::program::{
     CHILD_STATE_DONE as STATE_DONE, CHILD_STATE_IDLE as STATE_IDLE,
     CHILD_STATE_RUNNING as STATE_RUNNING, CHILD_STATE_WAITING as STATE_WAITING,

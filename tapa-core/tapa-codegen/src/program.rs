@@ -25,14 +25,14 @@ pub const GLOBAL_STATE_DONE: &str = "2'b10";
 /// FSM state constants for the per-instance child (non-autorun) FSM
 /// (2-bit encoding).
 ///
-/// IDLE (`2'b00`), RUNNING (`2'b01`), and DONE (`2'b10`) are deliberately
-/// identical to [`GLOBAL_STATE_IDLE`], [`GLOBAL_STATE_RUNNING`], and
-/// [`GLOBAL_STATE_DONE`]: the per-instance `is_done` nets feed the global
-/// FSM's RUNNING -> DONE gate and the global start/done handshake releases
-/// the child's DONE state, and both compositions rely on the shared
-/// encodings. WAITING (`2'b11`) exists only in the child FSM — a
-/// non-autorun child parks there when `ready` arrives before `done`; the
-/// global FSM has no fourth state.
+/// IDLE (`2'b00`), RUNNING (`2'b01`), and DONE (`2'b10`) hold the same
+/// values as [`GLOBAL_STATE_IDLE`], [`GLOBAL_STATE_RUNNING`], and
+/// [`GLOBAL_STATE_DONE`] — a uniformity for waveform inspectability, not a
+/// correctness requirement: the two FSMs compose through the `is_done` /
+/// `start_q` / `done_q` nets, never through encoding equality. WAITING
+/// (`2'b11`) exists only in the child FSM — a non-autorun child parks
+/// there when `ready` arrives before `done`; the global FSM has no fourth
+/// state.
 pub const CHILD_STATE_IDLE: &str = "2'b00";
 pub const CHILD_STATE_RUNNING: &str = "2'b01";
 pub const CHILD_STATE_WAITING: &str = "2'b11";
