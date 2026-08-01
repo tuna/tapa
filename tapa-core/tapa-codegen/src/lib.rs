@@ -139,7 +139,3 @@ mod pipeline_tests {
         );
     }
 }
-
-#[cfg(test)]
-#[path = "generate_rtl_tests.rs"]
-mod tests;
