@@ -1,8 +1,19 @@
 use super::{ArgKind, ArgSpec, KernelSpec, Mode, StreamDir, StreamProtocol};
+
 use crate::error::{CosimError, Result};
 use std::collections::HashMap;
 use tapa_ir::port::{sanitize_array_name, ArgCategory, Port};
 use tapa_ir::TaskGraph;
+
+/// Legacy-archive fallback for [`tapa_ir::Port::stream_depth`]: archives
+/// written before the field existed carry no depth, and 16 is what those
+/// archives were always simulated with (the removed `STREAM_DEPTH`).
+const LEGACY_STREAM_DEPTH: u32 = 16;
+
+/// Legacy-archive fallback for [`tapa_ir::Port::mmap_addr_width`]: archives
+/// written before the field existed were always simulated with a 64-bit
+/// address (the removed `MMAP_ADDR_WIDTH`).
+const LEGACY_MMAP_ADDR_WIDTH: u32 = 64;
 
 /// Project the packed task graph into the flat kernel argument list.
 ///
@@ -38,15 +49,10 @@ pub fn spec_from_task_graph(graph: &TaskGraph) -> Result<KernelSpec> {
             // `is_mmap_like` deliberately not used: it also covers `immap` /
             // `ommap`, which this reader has never accepted (see below).
             ArgCategory::Mmap | ArgCategory::AsyncMmap => {
-                // Legacy-archive compatibility: `tapa pack` stamps
-                // `mmap_addr_width` today, so `None` means an archive
-                // written before the field existed. Those were always
-                // simulated with a 64-bit address (the removed
-                // `MMAP_ADDR_WIDTH` fallback), and unwrapping to it keeps
-                // their argument shape bit for bit.
+                // `None` = pre-field archive; see LEGACY_MMAP_ADDR_WIDTH.
                 let kind = ArgKind::Mmap {
                     data_width: width,
-                    addr_width: port.mmap_addr_width.unwrap_or(64),
+                    addr_width: port.mmap_addr_width.unwrap_or(LEGACY_MMAP_ADDR_WIDTH),
                 };
                 // `chan_count` is what makes an mmap port an `hmap`: the
                 // frontend fills it in for `hmap` and nothing else, so a plain
@@ -81,15 +87,13 @@ pub fn spec_from_task_graph(graph: &TaskGraph) -> Result<KernelSpec> {
                 }
             }
             ArgCategory::Istream | ArgCategory::Ostream => {
-                // Same legacy-archive story as the mmap address width
-                // above: `None` marks a pre-field archive, and 16 is the
-                // depth those have always been simulated with.
+                // `None` = pre-field archive; see LEGACY_STREAM_DEPTH.
                 args.push(ArgSpec {
                     name: format!("{name}_s"),
                     id: next_id,
                     kind: ArgKind::Stream {
                         width,
-                        depth: port.stream_depth.unwrap_or(16),
+                        depth: port.stream_depth.unwrap_or(LEGACY_STREAM_DEPTH),
                         dir: stream_dir(port),
                         protocol: StreamProtocol::ApFifo,
                     },
@@ -103,7 +107,7 @@ pub fn spec_from_task_graph(graph: &TaskGraph) -> Result<KernelSpec> {
                         id: next_id,
                         kind: ArgKind::Stream {
                             width,
-                            depth: port.stream_depth.unwrap_or(16),
+                            depth: port.stream_depth.unwrap_or(LEGACY_STREAM_DEPTH),
                             dir: stream_dir(port),
                             protocol: StreamProtocol::ApFifo,
                         },

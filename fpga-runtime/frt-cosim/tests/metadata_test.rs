@@ -145,36 +145,6 @@ fn legacy_archive_ports_fall_back_to_the_historical_16_and_64() {
     );
 }
 
-/// Ports the pack stamped with cosim metadata drive the projection: the
-/// runtime reads the archive instead of assuming.
-#[test]
-fn stamped_port_metadata_drives_the_projection() {
-    let mut mmap = port("a", ArgCategory::Mmap, 512, None);
-    mmap.mmap_addr_width = Some(40);
-    let mut stream = port("s", ArgCategory::Istream, 32, None);
-    stream.stream_depth = Some(8);
-    let spec =
-        metadata::zip_pkg::spec_from_task_graph(&task_graph(vec![mmap, stream])).expect("project");
-    assert_eq!(
-        spec.args[0].kind,
-        ArgKind::Mmap {
-            data_width: 512,
-            addr_width: 40,
-        },
-        "the schema's addr width wins over the legacy fallback",
-    );
-    assert_eq!(
-        spec.args[1].kind,
-        ArgKind::Stream {
-            width: 32,
-            depth: 8,
-            dir: StreamDir::In,
-            protocol: StreamProtocol::ApFifo,
-        },
-        "the schema's depth wins over the legacy fallback",
-    );
-}
-
 /// Mixed archives keep the two paths side by side: a stamped port projects
 /// its schema value while an unstamped one keeps the legacy fallback, and a
 /// fan-out (`hmap` / plural streams) carries the port's value to every
