@@ -130,6 +130,8 @@ mod tests {
                 width: 32,
                 chan_count: None,
                 chan_size: None,
+                stream_depth: None,
+                mmap_addr_width: None,
             },
             Port {
                 cat: ArgCategory::Mmap,
@@ -138,6 +140,8 @@ mod tests {
                 width: 512,
                 chan_count: None,
                 chan_size: None,
+                stream_depth: None,
+                mmap_addr_width: None,
             },
             Port {
                 cat: ArgCategory::Istream,
@@ -146,6 +150,8 @@ mod tests {
                 width: 32,
                 chan_count: None,
                 chan_size: None,
+                stream_depth: None,
+                mmap_addr_width: None,
             },
         ];
         let out = build_kernel_xml_ports(&ports);
@@ -164,6 +170,8 @@ mod tests {
             width: 64,
             chan_count: Some(3),
             chan_size: None,
+            stream_depth: None,
+            mmap_addr_width: None,
         }];
         let out = build_kernel_xml_ports(&ports);
         assert_eq!(out.len(), 3);
@@ -181,6 +189,8 @@ mod tests {
             width: 64,
             chan_count: None,
             chan_size: None,
+            stream_depth: None,
+            mmap_addr_width: None,
         }];
         let out = build_kernel_xml_ports(&ports);
         assert_eq!(out[0].name, "chan_0");
@@ -197,6 +207,8 @@ mod tests {
             width: 512,
             chan_count: Some(2),
             chan_size: None,
+            stream_depth: None,
+            mmap_addr_width: None,
         }];
         let m_axi_bases = BTreeSet::from(["mat_a".to_owned()]);
 
@@ -219,6 +231,8 @@ mod tests {
                 width: 32,
                 chan_count: None,
                 chan_size: None,
+                stream_depth: None,
+                mmap_addr_width: None,
             },
             Port {
                 cat: ArgCategory::Mmap,
@@ -227,6 +241,8 @@ mod tests {
                 width: 512,
                 chan_count: None,
                 chan_size: None,
+                stream_depth: None,
+                mmap_addr_width: None,
             },
         ];
         let block = m_axi_param_block(&ports);

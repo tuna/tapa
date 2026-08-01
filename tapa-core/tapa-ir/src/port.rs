@@ -152,6 +152,20 @@ pub struct Port {
     /// Channel size for hierarchical memory ports.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub chan_size: Option<u32>,
+    /// FIFO depth (elements) a cosimulation should model for this stream
+    /// port. Stamped by `tapa pack` onto stream-category ports of the top
+    /// task in the archive's embedded state copy; `None` everywhere else,
+    /// including archives written before this field existed, which readers
+    /// must treat as the historical default of 16.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stream_depth: Option<u32>,
+    /// AXI address width (bits) of this direct mmap (`mmap` / `async_mmap`)
+    /// port. Stamped by `tapa pack` onto direct-mmap ports of the top task
+    /// in the archive's embedded state copy; `None` everywhere else,
+    /// including archives written before this field existed, which readers
+    /// must treat as the historical default of 64.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mmap_addr_width: Option<u32>,
 }
 
 #[cfg(test)]
@@ -236,6 +250,62 @@ mod tests {
     fn invalid_category_rejected() {
         let result = serde_json::from_str::<ArgCategory>(r#""nonexistent""#);
         assert!(result.is_err(), "unknown category must be rejected");
+    }
+
+    /// Archives and work dirs written before the cosim port fields existed
+    /// carry none of them; the schema must parse those ports with the fields
+    /// defaulted to `None` (readers then apply their documented fallbacks).
+    #[test]
+    fn port_without_cosim_fields_deserializes_to_none() {
+        let json = r#"{"cat": "istream", "name": "qc", "type": "int", "width": 32}"#;
+        let port: Port = serde_json::from_str(json).expect("parse legacy port");
+        assert_eq!(port.stream_depth, None);
+        assert_eq!(port.mmap_addr_width, None);
+        assert_eq!(port.cat, ArgCategory::Istream);
+        assert_eq!(port.width, 32);
+    }
+
+    /// A port serialized with `None` cosim fields must not grow the keys on
+    /// the wire: flows that never stamp them (analyze, synth) keep writing
+    /// byte-identical state files.
+    #[test]
+    fn none_cosim_fields_stay_off_the_wire() {
+        let port: Port = serde_json::from_str(
+            r#"{"cat": "mmap", "name": "gmem", "type": "int*", "width": 512}"#,
+        )
+        .expect("parse legacy port");
+        let json = serde_json::to_string(&port).expect("serialize");
+        assert!(!json.contains("stream_depth"), "got {json}");
+        assert!(!json.contains("mmap_addr_width"), "got {json}");
+    }
+
+    /// Ports stamped with cosim metadata survive a full JSON round trip, in
+    /// field order, so the archive copy `tapa pack` writes re-reads exactly.
+    #[test]
+    fn cosim_fields_round_trip() {
+        let json = r#"{"cat": "mmap", "name": "gmem", "type": "int*", "width": 512, "mmap_addr_width": 64}"#;
+        let port: Port = serde_json::from_str(json).expect("parse stamped port");
+        assert_eq!(port.mmap_addr_width, Some(64));
+        assert_eq!(port.stream_depth, None);
+        let written = serde_json::to_string(&port).expect("serialize");
+        let compact: serde_json::Value = serde_json::from_str(json).expect("compact form");
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&written).expect("reparse written"),
+            compact,
+            "stamped port must round-trip verbatim",
+        );
+
+        let json =
+            r#"{"cat": "ostream", "name": "qc", "type": "int", "width": 32, "stream_depth": 16}"#;
+        let port: Port = serde_json::from_str(json).expect("parse stamped port");
+        assert_eq!(port.stream_depth, Some(16));
+        let written = serde_json::to_string(&port).expect("serialize");
+        let compact: serde_json::Value = serde_json::from_str(json).expect("compact form");
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&written).expect("reparse written"),
+            compact,
+            "stamped port must round-trip verbatim",
+        );
     }
 
     #[test]

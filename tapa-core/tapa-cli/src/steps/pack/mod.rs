@@ -323,6 +323,8 @@ mod tests {
                     width: 512,
                     chan_count: None,
                     chan_size: None,
+                    stream_depth: None,
+                    mmap_addr_width: None,
                 }],
                 tasks: BTreeMap::new(),
                 fifos: BTreeMap::new(),

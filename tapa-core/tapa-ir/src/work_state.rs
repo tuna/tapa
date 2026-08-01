@@ -28,7 +28,11 @@ pub const FILE_NAME: &str = "tapa.json";
 /// Bump on any backward-incompatible change to the state shape — including
 /// the nested [`TaskGraph`] wire form. Work dirs outlive tool versions, so a
 /// mismatch must surface as a clear "re-run analyze" error, not as a
-/// confusing field-level parse failure.
+/// confusing field-level parse failure. Purely *additive* fields carried with
+/// `#[serde(default, skip_serializing_if = "Option::is_none")]` are
+/// backward-compatible — old files parse unchanged and new files omit the
+/// field until it is populated — so they do not require a bump (the cosim
+/// port metadata on [`crate::port::Port`] landed that way).
 ///
 /// v2 added the optional [`WorkState::floorplan`] contract; v3 made routed
 /// channel identities variant-specific.
