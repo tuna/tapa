@@ -163,12 +163,6 @@ parse_args() {
       ;;
     esac
   done
-
-  # Verify the options.
-  if [ "$VERBOSE" = "yes" ] && [ "$QUIET" = "yes" ]; then
-    echo "Error: The options '-v' and '-q' cannot be used together."
-    exit 1
-  fi
 }
 
 # Check if the installation directory exists. If so, prompt the user to confirm.
