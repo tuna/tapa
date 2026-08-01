@@ -28,10 +28,12 @@ use crate::error::{CliError, Result};
 use crate::state::work::{self as work_io, WorkState};
 
 mod bitstream_script;
+mod cosim_compat;
 mod custom_rtl;
 mod kernel_xml_ports;
 pub(crate) mod vitis_packaging;
 
+use cosim_compat::{check_cosim_supported_categories, stamp_cosim_port_metadata};
 use custom_rtl::{apply_custom_rtl, load_templates_info};
 use vitis_packaging::pack_vitis;
 
@@ -95,10 +97,11 @@ pub fn run(args: &PackArgs, ctx: &CliContext) -> Result<()> {
 /// under `rtl/`, every HLS
 /// `_csynth.rpt` under `report/` (with timestamp redaction so the
 /// archive is reproducible), the TAPA report yaml at the archive root
-/// when the synth step emitted one, plus a verbatim copy of the
-/// `tapa.json` state file carrying the compile context. Output
-/// defaults to `work.zip` in the caller's CWD and is always normalized
-/// to a `.zip` suffix.
+/// when the synth step emitted one, plus a copy of the `tapa.json` state
+/// file carrying the compile context, stamped with the cosim port
+/// metadata `frt-cosim` reads (the work-dir file itself stays verbatim;
+/// see [`cosim_compat`]). Output defaults to `work.zip` in the caller's
+/// CWD and is always normalized to a `.zip` suffix.
 /// Yield `(task_name, report_dir)` for every
 /// `<work_dir>/hls/<task>/report/` directory. The zip and xo paths
 /// both walk this layout; file selection, staging, and redaction stay
@@ -126,6 +129,11 @@ pub(super) fn hls_task_report_dirs(work_dir: &Path) -> Result<Vec<(String, PathB
 
 fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, state: &WorkState) -> Result<()> {
     use std::io::Write as _;
+    // Frontier first: the zip is the cosim package, so anything the cosim
+    // runtime cannot bind must be rejected before a single archive byte —
+    // or any custom-RTL overlay touching the canonical RTL tree — is
+    // written.
+    check_cosim_supported_categories(state)?;
     let work_dir = ctx.work_dir.as_path();
     let rtl_dir = work_dir.join("rtl");
     if !rtl_dir.is_dir() {
@@ -177,13 +185,15 @@ fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, state: &WorkState) -> Result<
         z.write_all(&fs_err::read(&report_yaml)?)?;
     }
 
-    // The state file itself, byte-for-byte: one schema, one format, one
-    // definition. `frt-cosim` parses this entry back with the very
+    // The state file, plus the cosim port metadata `frt-cosim` consumes:
+    // `frt-cosim` parses this entry back with the very
     // `tapa_ir::WorkState` types written here, so the archive's compile
-    // metadata cannot drift from the work dir's.
+    // metadata cannot drift from the work dir's — the stamp is a pure
+    // function of the persisted state, re-derived on every pack. The
+    // work-dir `tapa.json` itself is left untouched.
     z.start_file(work_io::FILE_NAME, opts)
         .map_err(|e| CliError::Archive(format!("zip entry: {e}")))?;
-    z.write_all(&work_io::to_bytes(state)?)?;
+    z.write_all(&work_io::to_bytes(&stamp_cosim_port_metadata(state))?)?;
 
     // Store the curated per-task HLS `_csynth.rpt` files under
     // `report/<task>/<file>` and replace the per-run `Date:` line with the fixed
@@ -316,16 +326,28 @@ mod tests {
             Task {
                 level: TaskLevel::Upper,
                 code: "void Top() {}".to_string(),
-                ports: vec![Port {
-                    cat: ArgCategory::Mmap,
-                    name: "gmem0".to_string(),
-                    ctype: "int*".to_string(),
-                    width: 512,
-                    chan_count: None,
-                    chan_size: None,
-                    stream_depth: None,
-                    mmap_addr_width: None,
-                }],
+                ports: vec![
+                    Port {
+                        cat: ArgCategory::Mmap,
+                        name: "gmem0".to_string(),
+                        ctype: "int*".to_string(),
+                        width: 512,
+                        chan_count: None,
+                        chan_size: None,
+                        stream_depth: None,
+                        mmap_addr_width: None,
+                    },
+                    Port {
+                        cat: ArgCategory::Istream,
+                        name: "s_in".to_string(),
+                        ctype: "int".to_string(),
+                        width: 32,
+                        chan_count: None,
+                        chan_size: None,
+                        stream_depth: None,
+                        mmap_addr_width: None,
+                    },
+                ],
                 tasks: BTreeMap::new(),
                 fifos: BTreeMap::new(),
                 readable_name: "Top".to_string(),
@@ -392,6 +414,24 @@ mod tests {
         );
     }
 
+    /// Extract the archive's `tapa.json` entry and strict-parse it the way
+    /// `frt-cosim` does.
+    fn packed_state(zr: &mut zip::ZipArchive<std::io::Cursor<Vec<u8>>>) -> WorkState {
+        let mut packed = Vec::new();
+        std::io::Read::read_to_end(&mut zr.by_name("tapa.json").unwrap(), &mut packed)
+            .expect("read tapa.json");
+        tapa_ir::WorkState::from_json(std::str::from_utf8(&packed).expect("utf-8 tapa.json"))
+            .expect("packed tapa.json must strict-parse as WorkState (frt-cosim does exactly this)")
+    }
+
+    fn top_port<'a>(state: &'a WorkState, name: &str) -> &'a Port {
+        state.graph.tasks["Top"]
+            .ports
+            .iter()
+            .find(|p| p.name == name)
+            .unwrap_or_else(|| panic!("no port {name}"))
+    }
+
     #[test]
     fn xilinx_hls_target_produces_zip() {
         let dir = tempfile::tempdir().expect("tempdir");
@@ -444,27 +484,42 @@ mod tests {
              tapa.json: {names:?}",
         );
 
-        // The `tapa.json` entry is `frt-cosim`'s contract. Pin that it is the
-        // work-dir state file verbatim — same bytes, same schema — because
-        // cosim parses it with `tapa_ir::WorkState` and would fail at
-        // runtime, not compile time, on a reshaped archive.
-        let mut packed = Vec::new();
-        std::io::Read::read_to_end(&mut zr.by_name("tapa.json").unwrap(), &mut packed)
-            .expect("read tapa.json");
-        let on_disk = fs_err::read(crate::state::work::path_in(dir.path())).expect("read state");
-        assert_eq!(
-            packed, on_disk,
-            "the archive's tapa.json must be the work dir's, byte for byte",
-        );
-        let state =
-            tapa_ir::WorkState::from_json(std::str::from_utf8(&packed).expect("utf-8 tapa.json"))
-                .expect(
-                    "packed tapa.json must strict-parse as WorkState (frt-cosim does exactly this)",
-                );
+        // The `tapa.json` entry is `frt-cosim`'s contract: the work-dir
+        // state plus the cosim port metadata `pack` stamps — a pure
+        // function of the on-disk state, so the two cannot drift. Cosim
+        // parses the entry with `tapa_ir::WorkState`, so a reshaped
+        // archive fails at the strict parse here, not in the runtime.
+        let state = packed_state(&mut zr);
         assert_eq!(state.graph.top, "Top", "cosim recovers the top task name");
         assert!(
             state.graph.tasks.contains_key("Top"),
             "cosim recovers the top task's ports from the tasks map",
+        );
+        let gmem0 = top_port(&state, "gmem0");
+        let s_in = top_port(&state, "s_in");
+        assert_eq!(
+            gmem0.mmap_addr_width,
+            Some(64),
+            "the archive copy stamps the mmap address width frt-cosim reads",
+        );
+        assert_eq!(
+            s_in.stream_depth,
+            Some(16),
+            "the archive copy stamps the stream depth frt-cosim reads",
+        );
+        assert_eq!(gmem0.stream_depth, None, "a mmap grows no stream depth");
+        assert_eq!(
+            s_in.mmap_addr_width, None,
+            "a stream grows no address width"
+        );
+        // The work-dir state file itself stays untouched: it is the
+        // pipeline's interchange state, not a cosim artifact, so its ports
+        // keep carrying no cosim metadata.
+        let on_disk =
+            fs_err::read_to_string(crate::state::work::path_in(dir.path())).expect("read state");
+        assert!(
+            !on_disk.contains("mmap_addr_width") && !on_disk.contains("stream_depth"),
+            "pack must not mutate the work-dir state file: {on_disk}",
         );
         assert_eq!(
             state.flow.part_num.as_deref(),
@@ -498,6 +553,51 @@ mod tests {
         assert!(
             rpt.contains("Date:           Tue Jan 01 00:00:00 1980"),
             "csynth Date not redacted: {rpt}"
+        );
+    }
+
+    #[test]
+    fn immap_ommap_ports_are_rejected_before_the_archive_is_written() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write_state(dir.path(), Target::XilinxHls);
+        let mut state = work_io::load(dir.path()).expect("load");
+        let top = state.graph.tasks.get_mut("Top").expect("top task");
+        for (name, cat) in [
+            ("ro_bank", ArgCategory::Immap),
+            ("wo_bank", ArgCategory::Ommap),
+        ] {
+            top.ports.push(Port {
+                cat,
+                name: name.to_string(),
+                ctype: "int*".to_string(),
+                width: 512,
+                chan_count: None,
+                chan_size: None,
+                stream_depth: None,
+                mmap_addr_width: None,
+            });
+        }
+        work_io::store(dir.path(), &state).expect("store");
+
+        let output_path = dir.path().join("work.zip");
+        let output_str = output_path.to_str().expect("utf-8 output");
+        let ctx = ctx_with_work_dir(dir.path());
+        let err = run(&parse_pack(&["--output", output_str]), &ctx)
+            .expect_err("cosim-unbindable ports must not ship in the archive");
+        assert!(
+            matches!(err, CliError::InvalidArg(_)),
+            "the frontier is a usage-level rejection; got {err:?}",
+        );
+        let text = err.to_string();
+        for needle in ["ro_bank", "wo_bank", "immap", "ommap", "xilinx-vitis"] {
+            assert!(
+                text.contains(needle),
+                "error must name the port, its category, and the remediation; missing {needle} in {text}",
+            );
+        }
+        assert!(
+            !output_path.exists(),
+            "nothing may be written once the frontier rejects the pack",
         );
     }
 
