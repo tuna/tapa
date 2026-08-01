@@ -1,56 +1,5 @@
 pub mod tapa_ir
 pub mod tapa_ir::connectivity
-pub enum tapa_ir::connectivity::DuplicateMemoryEndpoint
-pub tapa_ir::connectivity::DuplicateMemoryEndpoint::Duplicate
-pub tapa_ir::connectivity::DuplicateMemoryEndpoint::Duplicate::endpoint: tapa_ir::connectivity::MemoryEndpoint
-pub tapa_ir::connectivity::DuplicateMemoryEndpoint::Duplicate::new_bank: tapa_ir::connectivity::MemoryBank
-pub tapa_ir::connectivity::DuplicateMemoryEndpoint::Duplicate::previous_bank: tapa_ir::connectivity::MemoryBank
-impl core::clone::Clone for tapa_ir::connectivity::DuplicateMemoryEndpoint
-pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::clone(&self) -> tapa_ir::connectivity::DuplicateMemoryEndpoint
-impl core::cmp::Eq for tapa_ir::connectivity::DuplicateMemoryEndpoint
-impl core::cmp::PartialEq for tapa_ir::connectivity::DuplicateMemoryEndpoint
-pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::eq(&self, &tapa_ir::connectivity::DuplicateMemoryEndpoint) -> bool
-impl core::error::Error for tapa_ir::connectivity::DuplicateMemoryEndpoint
-impl core::fmt::Debug for tapa_ir::connectivity::DuplicateMemoryEndpoint
-pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::fmt::Display for tapa_ir::connectivity::DuplicateMemoryEndpoint
-pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::StructuralPartialEq for tapa_ir::connectivity::DuplicateMemoryEndpoint
-impl core::marker::Freeze for tapa_ir::connectivity::DuplicateMemoryEndpoint
-impl core::marker::Send for tapa_ir::connectivity::DuplicateMemoryEndpoint
-impl core::marker::Sync for tapa_ir::connectivity::DuplicateMemoryEndpoint
-impl core::marker::Unpin for tapa_ir::connectivity::DuplicateMemoryEndpoint
-impl core::marker::UnsafeUnpin for tapa_ir::connectivity::DuplicateMemoryEndpoint
-impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::connectivity::DuplicateMemoryEndpoint
-impl core::panic::unwind_safe::UnwindSafe for tapa_ir::connectivity::DuplicateMemoryEndpoint
-impl<Q, K> equivalent::Equivalent<K> for tapa_ir::connectivity::DuplicateMemoryEndpoint where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
-pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::equivalent(&self, &K) -> bool
-impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::connectivity::DuplicateMemoryEndpoint where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
-pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::equivalent(&self, &K) -> bool
-impl<T, U> core::convert::Into<U> for tapa_ir::connectivity::DuplicateMemoryEndpoint where U: core::convert::From<T>
-pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for tapa_ir::connectivity::DuplicateMemoryEndpoint where U: core::convert::Into<T>
-pub type tapa_ir::connectivity::DuplicateMemoryEndpoint::Error = core::convert::Infallible
-pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for tapa_ir::connectivity::DuplicateMemoryEndpoint where U: core::convert::TryFrom<T>
-pub type tapa_ir::connectivity::DuplicateMemoryEndpoint::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::borrow::ToOwned for tapa_ir::connectivity::DuplicateMemoryEndpoint where T: core::clone::Clone
-pub type tapa_ir::connectivity::DuplicateMemoryEndpoint::Owned = T
-pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::clone_into(&self, &mut T)
-pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::to_owned(&self) -> T
-impl<T> alloc::string::ToString for tapa_ir::connectivity::DuplicateMemoryEndpoint where T: core::fmt::Display + ?core::marker::Sized
-pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::to_string(&self) -> alloc::string::String
-impl<T> core::any::Any for tapa_ir::connectivity::DuplicateMemoryEndpoint where T: 'static + ?core::marker::Sized
-pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for tapa_ir::connectivity::DuplicateMemoryEndpoint where T: ?core::marker::Sized
-pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for tapa_ir::connectivity::DuplicateMemoryEndpoint where T: ?core::marker::Sized
-pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::borrow_mut(&mut self) -> &mut T
-impl<T> core::clone::CloneToUninit for tapa_ir::connectivity::DuplicateMemoryEndpoint where T: core::clone::Clone
-pub unsafe fn tapa_ir::connectivity::DuplicateMemoryEndpoint::clone_to_uninit(&self, *mut u8)
-impl<T> core::convert::From<T> for tapa_ir::connectivity::DuplicateMemoryEndpoint
-pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::from(T) -> T
 pub enum tapa_ir::connectivity::MemoryKind
 pub tapa_ir::connectivity::MemoryKind::Ddr
 pub tapa_ir::connectivity::MemoryKind::Hbm
@@ -109,6 +58,56 @@ pub unsafe fn tapa_ir::connectivity::MemoryKind::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_ir::connectivity::MemoryKind
 pub fn tapa_ir::connectivity::MemoryKind::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::connectivity::MemoryKind where T: for<'de> serde_core::de::Deserialize<'de>
+pub struct tapa_ir::connectivity::DuplicateMemoryEndpoint
+pub tapa_ir::connectivity::DuplicateMemoryEndpoint::endpoint: tapa_ir::connectivity::MemoryEndpoint
+pub tapa_ir::connectivity::DuplicateMemoryEndpoint::new_bank: tapa_ir::connectivity::MemoryBank
+pub tapa_ir::connectivity::DuplicateMemoryEndpoint::previous_bank: tapa_ir::connectivity::MemoryBank
+impl core::clone::Clone for tapa_ir::connectivity::DuplicateMemoryEndpoint
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::clone(&self) -> tapa_ir::connectivity::DuplicateMemoryEndpoint
+impl core::cmp::Eq for tapa_ir::connectivity::DuplicateMemoryEndpoint
+impl core::cmp::PartialEq for tapa_ir::connectivity::DuplicateMemoryEndpoint
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::eq(&self, &tapa_ir::connectivity::DuplicateMemoryEndpoint) -> bool
+impl core::error::Error for tapa_ir::connectivity::DuplicateMemoryEndpoint
+impl core::fmt::Debug for tapa_ir::connectivity::DuplicateMemoryEndpoint
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tapa_ir::connectivity::DuplicateMemoryEndpoint
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tapa_ir::connectivity::DuplicateMemoryEndpoint
+impl core::marker::Freeze for tapa_ir::connectivity::DuplicateMemoryEndpoint
+impl core::marker::Send for tapa_ir::connectivity::DuplicateMemoryEndpoint
+impl core::marker::Sync for tapa_ir::connectivity::DuplicateMemoryEndpoint
+impl core::marker::Unpin for tapa_ir::connectivity::DuplicateMemoryEndpoint
+impl core::marker::UnsafeUnpin for tapa_ir::connectivity::DuplicateMemoryEndpoint
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::connectivity::DuplicateMemoryEndpoint
+impl core::panic::unwind_safe::UnwindSafe for tapa_ir::connectivity::DuplicateMemoryEndpoint
+impl<Q, K> equivalent::Equivalent<K> for tapa_ir::connectivity::DuplicateMemoryEndpoint where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::connectivity::DuplicateMemoryEndpoint where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_ir::connectivity::DuplicateMemoryEndpoint where U: core::convert::From<T>
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_ir::connectivity::DuplicateMemoryEndpoint where U: core::convert::Into<T>
+pub type tapa_ir::connectivity::DuplicateMemoryEndpoint::Error = core::convert::Infallible
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_ir::connectivity::DuplicateMemoryEndpoint where U: core::convert::TryFrom<T>
+pub type tapa_ir::connectivity::DuplicateMemoryEndpoint::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_ir::connectivity::DuplicateMemoryEndpoint where T: core::clone::Clone
+pub type tapa_ir::connectivity::DuplicateMemoryEndpoint::Owned = T
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::clone_into(&self, &mut T)
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::to_owned(&self) -> T
+impl<T> alloc::string::ToString for tapa_ir::connectivity::DuplicateMemoryEndpoint where T: core::fmt::Display + ?core::marker::Sized
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::to_string(&self) -> alloc::string::String
+impl<T> core::any::Any for tapa_ir::connectivity::DuplicateMemoryEndpoint where T: 'static + ?core::marker::Sized
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_ir::connectivity::DuplicateMemoryEndpoint where T: ?core::marker::Sized
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_ir::connectivity::DuplicateMemoryEndpoint where T: ?core::marker::Sized
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_ir::connectivity::DuplicateMemoryEndpoint where T: core::clone::Clone
+pub unsafe fn tapa_ir::connectivity::DuplicateMemoryEndpoint::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_ir::connectivity::DuplicateMemoryEndpoint
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::from(T) -> T
 pub struct tapa_ir::connectivity::MemoryBank
 pub tapa_ir::connectivity::MemoryBank::index: u32
 pub tapa_ir::connectivity::MemoryBank::kind: tapa_ir::connectivity::MemoryKind
@@ -1910,57 +1909,6 @@ pub unsafe fn tapa_ir::floorplan::ControlChannel::clone_to_uninit(&self, *mut u8
 impl<T> core::convert::From<T> for tapa_ir::floorplan::ControlChannel
 pub fn tapa_ir::floorplan::ControlChannel::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::floorplan::ControlChannel where T: for<'de> serde_core::de::Deserialize<'de>
-pub enum tapa_ir::DuplicateMemoryEndpoint
-pub tapa_ir::DuplicateMemoryEndpoint::Duplicate
-pub tapa_ir::DuplicateMemoryEndpoint::Duplicate::endpoint: tapa_ir::connectivity::MemoryEndpoint
-pub tapa_ir::DuplicateMemoryEndpoint::Duplicate::new_bank: tapa_ir::connectivity::MemoryBank
-pub tapa_ir::DuplicateMemoryEndpoint::Duplicate::previous_bank: tapa_ir::connectivity::MemoryBank
-impl core::clone::Clone for tapa_ir::connectivity::DuplicateMemoryEndpoint
-pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::clone(&self) -> tapa_ir::connectivity::DuplicateMemoryEndpoint
-impl core::cmp::Eq for tapa_ir::connectivity::DuplicateMemoryEndpoint
-impl core::cmp::PartialEq for tapa_ir::connectivity::DuplicateMemoryEndpoint
-pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::eq(&self, &tapa_ir::connectivity::DuplicateMemoryEndpoint) -> bool
-impl core::error::Error for tapa_ir::connectivity::DuplicateMemoryEndpoint
-impl core::fmt::Debug for tapa_ir::connectivity::DuplicateMemoryEndpoint
-pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::fmt::Display for tapa_ir::connectivity::DuplicateMemoryEndpoint
-pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::StructuralPartialEq for tapa_ir::connectivity::DuplicateMemoryEndpoint
-impl core::marker::Freeze for tapa_ir::connectivity::DuplicateMemoryEndpoint
-impl core::marker::Send for tapa_ir::connectivity::DuplicateMemoryEndpoint
-impl core::marker::Sync for tapa_ir::connectivity::DuplicateMemoryEndpoint
-impl core::marker::Unpin for tapa_ir::connectivity::DuplicateMemoryEndpoint
-impl core::marker::UnsafeUnpin for tapa_ir::connectivity::DuplicateMemoryEndpoint
-impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::connectivity::DuplicateMemoryEndpoint
-impl core::panic::unwind_safe::UnwindSafe for tapa_ir::connectivity::DuplicateMemoryEndpoint
-impl<Q, K> equivalent::Equivalent<K> for tapa_ir::connectivity::DuplicateMemoryEndpoint where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
-pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::equivalent(&self, &K) -> bool
-impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::connectivity::DuplicateMemoryEndpoint where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
-pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::equivalent(&self, &K) -> bool
-impl<T, U> core::convert::Into<U> for tapa_ir::connectivity::DuplicateMemoryEndpoint where U: core::convert::From<T>
-pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for tapa_ir::connectivity::DuplicateMemoryEndpoint where U: core::convert::Into<T>
-pub type tapa_ir::connectivity::DuplicateMemoryEndpoint::Error = core::convert::Infallible
-pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for tapa_ir::connectivity::DuplicateMemoryEndpoint where U: core::convert::TryFrom<T>
-pub type tapa_ir::connectivity::DuplicateMemoryEndpoint::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::borrow::ToOwned for tapa_ir::connectivity::DuplicateMemoryEndpoint where T: core::clone::Clone
-pub type tapa_ir::connectivity::DuplicateMemoryEndpoint::Owned = T
-pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::clone_into(&self, &mut T)
-pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::to_owned(&self) -> T
-impl<T> alloc::string::ToString for tapa_ir::connectivity::DuplicateMemoryEndpoint where T: core::fmt::Display + ?core::marker::Sized
-pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::to_string(&self) -> alloc::string::String
-impl<T> core::any::Any for tapa_ir::connectivity::DuplicateMemoryEndpoint where T: 'static + ?core::marker::Sized
-pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for tapa_ir::connectivity::DuplicateMemoryEndpoint where T: ?core::marker::Sized
-pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for tapa_ir::connectivity::DuplicateMemoryEndpoint where T: ?core::marker::Sized
-pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::borrow_mut(&mut self) -> &mut T
-impl<T> core::clone::CloneToUninit for tapa_ir::connectivity::DuplicateMemoryEndpoint where T: core::clone::Clone
-pub unsafe fn tapa_ir::connectivity::DuplicateMemoryEndpoint::clone_to_uninit(&self, *mut u8)
-impl<T> core::convert::From<T> for tapa_ir::connectivity::DuplicateMemoryEndpoint
-pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::from(T) -> T
 pub enum tapa_ir::MemoryKind
 pub tapa_ir::MemoryKind::Ddr
 pub tapa_ir::MemoryKind::Hbm
@@ -2700,6 +2648,56 @@ pub unsafe fn tapa_ir::graph::TaskGraph::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::graph::TaskGraph where T: for<'de> serde_core::de::Deserialize<'de>
+pub struct tapa_ir::DuplicateMemoryEndpoint
+pub tapa_ir::DuplicateMemoryEndpoint::endpoint: tapa_ir::connectivity::MemoryEndpoint
+pub tapa_ir::DuplicateMemoryEndpoint::new_bank: tapa_ir::connectivity::MemoryBank
+pub tapa_ir::DuplicateMemoryEndpoint::previous_bank: tapa_ir::connectivity::MemoryBank
+impl core::clone::Clone for tapa_ir::connectivity::DuplicateMemoryEndpoint
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::clone(&self) -> tapa_ir::connectivity::DuplicateMemoryEndpoint
+impl core::cmp::Eq for tapa_ir::connectivity::DuplicateMemoryEndpoint
+impl core::cmp::PartialEq for tapa_ir::connectivity::DuplicateMemoryEndpoint
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::eq(&self, &tapa_ir::connectivity::DuplicateMemoryEndpoint) -> bool
+impl core::error::Error for tapa_ir::connectivity::DuplicateMemoryEndpoint
+impl core::fmt::Debug for tapa_ir::connectivity::DuplicateMemoryEndpoint
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tapa_ir::connectivity::DuplicateMemoryEndpoint
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tapa_ir::connectivity::DuplicateMemoryEndpoint
+impl core::marker::Freeze for tapa_ir::connectivity::DuplicateMemoryEndpoint
+impl core::marker::Send for tapa_ir::connectivity::DuplicateMemoryEndpoint
+impl core::marker::Sync for tapa_ir::connectivity::DuplicateMemoryEndpoint
+impl core::marker::Unpin for tapa_ir::connectivity::DuplicateMemoryEndpoint
+impl core::marker::UnsafeUnpin for tapa_ir::connectivity::DuplicateMemoryEndpoint
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::connectivity::DuplicateMemoryEndpoint
+impl core::panic::unwind_safe::UnwindSafe for tapa_ir::connectivity::DuplicateMemoryEndpoint
+impl<Q, K> equivalent::Equivalent<K> for tapa_ir::connectivity::DuplicateMemoryEndpoint where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::connectivity::DuplicateMemoryEndpoint where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_ir::connectivity::DuplicateMemoryEndpoint where U: core::convert::From<T>
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_ir::connectivity::DuplicateMemoryEndpoint where U: core::convert::Into<T>
+pub type tapa_ir::connectivity::DuplicateMemoryEndpoint::Error = core::convert::Infallible
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_ir::connectivity::DuplicateMemoryEndpoint where U: core::convert::TryFrom<T>
+pub type tapa_ir::connectivity::DuplicateMemoryEndpoint::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_ir::connectivity::DuplicateMemoryEndpoint where T: core::clone::Clone
+pub type tapa_ir::connectivity::DuplicateMemoryEndpoint::Owned = T
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::clone_into(&self, &mut T)
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::to_owned(&self) -> T
+impl<T> alloc::string::ToString for tapa_ir::connectivity::DuplicateMemoryEndpoint where T: core::fmt::Display + ?core::marker::Sized
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::to_string(&self) -> alloc::string::String
+impl<T> core::any::Any for tapa_ir::connectivity::DuplicateMemoryEndpoint where T: 'static + ?core::marker::Sized
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_ir::connectivity::DuplicateMemoryEndpoint where T: ?core::marker::Sized
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_ir::connectivity::DuplicateMemoryEndpoint where T: ?core::marker::Sized
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_ir::connectivity::DuplicateMemoryEndpoint where T: core::clone::Clone
+pub unsafe fn tapa_ir::connectivity::DuplicateMemoryEndpoint::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_ir::connectivity::DuplicateMemoryEndpoint
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::from(T) -> T
 pub struct tapa_ir::EndpointRef(pub alloc::string::String, pub u32)
 impl core::clone::Clone for tapa_ir::interconnect::EndpointRef
 pub fn tapa_ir::interconnect::EndpointRef::clone(&self) -> tapa_ir::interconnect::EndpointRef
