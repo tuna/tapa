@@ -4,8 +4,7 @@
 //! the driver-side context construction splits it once into these disjoint
 //! borrow views, one per state concern:
 //!
-//! - [`DesignView`]: read-only access to the design model (and floorplan,
-//!   once pass families that consume it have migrated).
+//! - [`DesignView`]: read-only access to the design model and floorplan.
 //! - [`ModuleTable`]: mutable access to the attached HLS module table.
 //! - [`FsmTable`]: mutable access to the per-task FSM module table.
 //! - [`OutputSet`]: mutable access to the emitted-file output maps.
@@ -18,7 +17,7 @@ use std::borrow::Borrow;
 use std::collections::BTreeMap;
 
 use tapa_ir::task::TaskLevel;
-use tapa_ir::Design;
+use tapa_ir::{Design, FloorplanResult};
 use tapa_rtl::mutation::MutableModule;
 use tapa_rtl::VerilogModule;
 
@@ -39,22 +38,29 @@ endmodule //{fsm_name}"
     )
 }
 
-/// Read-only view of the design model.
+/// Read-only view of the design model and floorplan result.
 #[derive(Clone, Copy)]
 pub struct DesignView<'a> {
     design: &'a Design,
+    floorplan: Option<&'a FloorplanResult>,
 }
 
 impl<'a> DesignView<'a> {
-    /// Wrap a design reference.
-    pub fn new(design: &'a Design) -> Self {
-        Self { design }
+    /// Wrap a design reference and its floorplan result.
+    pub fn new(design: &'a Design, floorplan: Option<&'a FloorplanResult>) -> Self {
+        Self { design, floorplan }
     }
 
     /// The design model.
     #[must_use]
     pub fn design(self) -> &'a Design {
         self.design
+    }
+
+    /// The floorplan result, when the design has been floorplanned.
+    #[must_use]
+    pub fn floorplan(self) -> Option<&'a FloorplanResult> {
+        self.floorplan
     }
 }
 
@@ -67,6 +73,12 @@ impl<'a> ModuleTable<'a> {
     /// Wrap the module map.
     pub fn new(map: &'a mut BTreeMap<String, MutableModule>) -> Self {
         Self { map }
+    }
+
+    /// Shared lookup by task name.
+    #[must_use]
+    pub fn get(&self, task_name: &str) -> Option<&MutableModule> {
+        self.map.get(task_name)
     }
 
     /// Mutable lookup by task name.

@@ -66,7 +66,7 @@ impl<'a> PassViews<'a> {
     /// outside `state/` allowed to name the whole state object.
     pub(crate) fn new(state: &'a mut TopologyWithRtl) -> Self {
         Self {
-            design: DesignView::new(&state.design),
+            design: DesignView::new(&state.design, state.floorplan.as_ref()),
             modules: ModuleTable::new(&mut state.module_map),
             fsms: FsmTable::new(&mut state.fsm_modules),
             outputs: OutputSet::new(&mut state.generated_files, &mut state.template_files),
@@ -261,12 +261,13 @@ pub struct FifoInstantiateConnect;
 
 impl RtlPass for FifoInstantiateConnect {
     fn run(&self, ctx: &mut PassCtx<'_>) -> Result<(), CodegenError> {
+        let mut views = PassViews::new(&mut *ctx.state);
         let task = ctx
             .task
             .as_mut()
             .expect("fifo-instantiate-connect is task-scoped");
-        crate::fifos::instantiate_fifos(ctx.state, task.name)?;
-        crate::fifos::connect_fifos(ctx.state, task.name)?;
+        crate::fifos::instantiate_fifos(views.design, &mut views.modules, task.name)?;
+        crate::fifos::connect_fifos(views.design, &mut views.modules, task.name)?;
         Ok(())
     }
 }
