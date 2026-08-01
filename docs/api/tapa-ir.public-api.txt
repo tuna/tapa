@@ -1,73 +1,56 @@
 pub mod tapa_ir
 pub mod tapa_ir::connectivity
-pub enum tapa_ir::connectivity::ConnectivityParseError
-pub tapa_ir::connectivity::ConnectivityParseError::ConflictingBinding
-pub tapa_ir::connectivity::ConnectivityParseError::ConflictingBinding::endpoint: tapa_ir::connectivity::MemoryEndpoint
-pub tapa_ir::connectivity::ConnectivityParseError::ConflictingBinding::first_bank: tapa_ir::connectivity::MemoryBank
-pub tapa_ir::connectivity::ConnectivityParseError::ConflictingBinding::first_line: usize
-pub tapa_ir::connectivity::ConnectivityParseError::ConflictingBinding::line: usize
-pub tapa_ir::connectivity::ConnectivityParseError::ConflictingBinding::second_bank: tapa_ir::connectivity::MemoryBank
-pub tapa_ir::connectivity::ConnectivityParseError::MalformedBinding
-pub tapa_ir::connectivity::ConnectivityParseError::MalformedBinding::line: usize
-pub tapa_ir::connectivity::ConnectivityParseError::MalformedBinding::value: alloc::string::String
-pub tapa_ir::connectivity::ConnectivityParseError::MalformedEndpoint
-pub tapa_ir::connectivity::ConnectivityParseError::MalformedEndpoint::endpoint: alloc::string::String
-pub tapa_ir::connectivity::ConnectivityParseError::MalformedEndpoint::line: usize
-pub tapa_ir::connectivity::ConnectivityParseError::MalformedEntry
-pub tapa_ir::connectivity::ConnectivityParseError::MalformedEntry::line: usize
-pub tapa_ir::connectivity::ConnectivityParseError::MalformedEntry::text: alloc::string::String
-pub tapa_ir::connectivity::ConnectivityParseError::MalformedSection
-pub tapa_ir::connectivity::ConnectivityParseError::MalformedSection::line: usize
-pub tapa_ir::connectivity::ConnectivityParseError::MalformedSection::text: alloc::string::String
-pub tapa_ir::connectivity::ConnectivityParseError::UnknownTarget
-pub tapa_ir::connectivity::ConnectivityParseError::UnknownTarget::line: usize
-pub tapa_ir::connectivity::ConnectivityParseError::UnknownTarget::target: alloc::string::String
-impl core::clone::Clone for tapa_ir::connectivity::ConnectivityParseError
-pub fn tapa_ir::connectivity::ConnectivityParseError::clone(&self) -> tapa_ir::connectivity::ConnectivityParseError
-impl core::cmp::Eq for tapa_ir::connectivity::ConnectivityParseError
-impl core::cmp::PartialEq for tapa_ir::connectivity::ConnectivityParseError
-pub fn tapa_ir::connectivity::ConnectivityParseError::eq(&self, &tapa_ir::connectivity::ConnectivityParseError) -> bool
-impl core::error::Error for tapa_ir::connectivity::ConnectivityParseError
-impl core::fmt::Debug for tapa_ir::connectivity::ConnectivityParseError
-pub fn tapa_ir::connectivity::ConnectivityParseError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::fmt::Display for tapa_ir::connectivity::ConnectivityParseError
-pub fn tapa_ir::connectivity::ConnectivityParseError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::StructuralPartialEq for tapa_ir::connectivity::ConnectivityParseError
-impl core::marker::Freeze for tapa_ir::connectivity::ConnectivityParseError
-impl core::marker::Send for tapa_ir::connectivity::ConnectivityParseError
-impl core::marker::Sync for tapa_ir::connectivity::ConnectivityParseError
-impl core::marker::Unpin for tapa_ir::connectivity::ConnectivityParseError
-impl core::marker::UnsafeUnpin for tapa_ir::connectivity::ConnectivityParseError
-impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::connectivity::ConnectivityParseError
-impl core::panic::unwind_safe::UnwindSafe for tapa_ir::connectivity::ConnectivityParseError
-impl<Q, K> equivalent::Equivalent<K> for tapa_ir::connectivity::ConnectivityParseError where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
-pub fn tapa_ir::connectivity::ConnectivityParseError::equivalent(&self, &K) -> bool
-impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::connectivity::ConnectivityParseError where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
-pub fn tapa_ir::connectivity::ConnectivityParseError::equivalent(&self, &K) -> bool
-impl<T, U> core::convert::Into<U> for tapa_ir::connectivity::ConnectivityParseError where U: core::convert::From<T>
-pub fn tapa_ir::connectivity::ConnectivityParseError::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for tapa_ir::connectivity::ConnectivityParseError where U: core::convert::Into<T>
-pub type tapa_ir::connectivity::ConnectivityParseError::Error = core::convert::Infallible
-pub fn tapa_ir::connectivity::ConnectivityParseError::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for tapa_ir::connectivity::ConnectivityParseError where U: core::convert::TryFrom<T>
-pub type tapa_ir::connectivity::ConnectivityParseError::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn tapa_ir::connectivity::ConnectivityParseError::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::borrow::ToOwned for tapa_ir::connectivity::ConnectivityParseError where T: core::clone::Clone
-pub type tapa_ir::connectivity::ConnectivityParseError::Owned = T
-pub fn tapa_ir::connectivity::ConnectivityParseError::clone_into(&self, &mut T)
-pub fn tapa_ir::connectivity::ConnectivityParseError::to_owned(&self) -> T
-impl<T> alloc::string::ToString for tapa_ir::connectivity::ConnectivityParseError where T: core::fmt::Display + ?core::marker::Sized
-pub fn tapa_ir::connectivity::ConnectivityParseError::to_string(&self) -> alloc::string::String
-impl<T> core::any::Any for tapa_ir::connectivity::ConnectivityParseError where T: 'static + ?core::marker::Sized
-pub fn tapa_ir::connectivity::ConnectivityParseError::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for tapa_ir::connectivity::ConnectivityParseError where T: ?core::marker::Sized
-pub fn tapa_ir::connectivity::ConnectivityParseError::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for tapa_ir::connectivity::ConnectivityParseError where T: ?core::marker::Sized
-pub fn tapa_ir::connectivity::ConnectivityParseError::borrow_mut(&mut self) -> &mut T
-impl<T> core::clone::CloneToUninit for tapa_ir::connectivity::ConnectivityParseError where T: core::clone::Clone
-pub unsafe fn tapa_ir::connectivity::ConnectivityParseError::clone_to_uninit(&self, *mut u8)
-impl<T> core::convert::From<T> for tapa_ir::connectivity::ConnectivityParseError
-pub fn tapa_ir::connectivity::ConnectivityParseError::from(T) -> T
+pub enum tapa_ir::connectivity::DuplicateMemoryEndpoint
+pub tapa_ir::connectivity::DuplicateMemoryEndpoint::Duplicate
+pub tapa_ir::connectivity::DuplicateMemoryEndpoint::Duplicate::endpoint: tapa_ir::connectivity::MemoryEndpoint
+pub tapa_ir::connectivity::DuplicateMemoryEndpoint::Duplicate::new_bank: tapa_ir::connectivity::MemoryBank
+pub tapa_ir::connectivity::DuplicateMemoryEndpoint::Duplicate::previous_bank: tapa_ir::connectivity::MemoryBank
+impl core::clone::Clone for tapa_ir::connectivity::DuplicateMemoryEndpoint
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::clone(&self) -> tapa_ir::connectivity::DuplicateMemoryEndpoint
+impl core::cmp::Eq for tapa_ir::connectivity::DuplicateMemoryEndpoint
+impl core::cmp::PartialEq for tapa_ir::connectivity::DuplicateMemoryEndpoint
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::eq(&self, &tapa_ir::connectivity::DuplicateMemoryEndpoint) -> bool
+impl core::error::Error for tapa_ir::connectivity::DuplicateMemoryEndpoint
+impl core::fmt::Debug for tapa_ir::connectivity::DuplicateMemoryEndpoint
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tapa_ir::connectivity::DuplicateMemoryEndpoint
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tapa_ir::connectivity::DuplicateMemoryEndpoint
+impl core::marker::Freeze for tapa_ir::connectivity::DuplicateMemoryEndpoint
+impl core::marker::Send for tapa_ir::connectivity::DuplicateMemoryEndpoint
+impl core::marker::Sync for tapa_ir::connectivity::DuplicateMemoryEndpoint
+impl core::marker::Unpin for tapa_ir::connectivity::DuplicateMemoryEndpoint
+impl core::marker::UnsafeUnpin for tapa_ir::connectivity::DuplicateMemoryEndpoint
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::connectivity::DuplicateMemoryEndpoint
+impl core::panic::unwind_safe::UnwindSafe for tapa_ir::connectivity::DuplicateMemoryEndpoint
+impl<Q, K> equivalent::Equivalent<K> for tapa_ir::connectivity::DuplicateMemoryEndpoint where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::connectivity::DuplicateMemoryEndpoint where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_ir::connectivity::DuplicateMemoryEndpoint where U: core::convert::From<T>
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_ir::connectivity::DuplicateMemoryEndpoint where U: core::convert::Into<T>
+pub type tapa_ir::connectivity::DuplicateMemoryEndpoint::Error = core::convert::Infallible
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_ir::connectivity::DuplicateMemoryEndpoint where U: core::convert::TryFrom<T>
+pub type tapa_ir::connectivity::DuplicateMemoryEndpoint::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_ir::connectivity::DuplicateMemoryEndpoint where T: core::clone::Clone
+pub type tapa_ir::connectivity::DuplicateMemoryEndpoint::Owned = T
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::clone_into(&self, &mut T)
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::to_owned(&self) -> T
+impl<T> alloc::string::ToString for tapa_ir::connectivity::DuplicateMemoryEndpoint where T: core::fmt::Display + ?core::marker::Sized
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::to_string(&self) -> alloc::string::String
+impl<T> core::any::Any for tapa_ir::connectivity::DuplicateMemoryEndpoint where T: 'static + ?core::marker::Sized
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_ir::connectivity::DuplicateMemoryEndpoint where T: ?core::marker::Sized
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_ir::connectivity::DuplicateMemoryEndpoint where T: ?core::marker::Sized
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_ir::connectivity::DuplicateMemoryEndpoint where T: core::clone::Clone
+pub unsafe fn tapa_ir::connectivity::DuplicateMemoryEndpoint::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_ir::connectivity::DuplicateMemoryEndpoint
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::from(T) -> T
 pub enum tapa_ir::connectivity::MemoryKind
 pub tapa_ir::connectivity::MemoryKind::Ddr
 pub tapa_ir::connectivity::MemoryKind::Hbm
@@ -294,7 +277,7 @@ pub fn tapa_ir::connectivity::MemoryBindings::get(&self, &str, &str) -> core::op
 pub fn tapa_ir::connectivity::MemoryBindings::is_empty(&self) -> bool
 pub fn tapa_ir::connectivity::MemoryBindings::iter(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = &tapa_ir::connectivity::MemoryBinding>
 pub fn tapa_ir::connectivity::MemoryBindings::len(&self) -> usize
-pub fn tapa_ir::connectivity::MemoryBindings::parse_vitis_config(&str) -> core::result::Result<Self, tapa_ir::connectivity::ConnectivityParseError>
+pub fn tapa_ir::connectivity::MemoryBindings::try_from_bindings(alloc::vec::Vec<tapa_ir::connectivity::MemoryBinding>) -> core::result::Result<Self, tapa_ir::connectivity::DuplicateMemoryEndpoint>
 impl core::clone::Clone for tapa_ir::connectivity::MemoryBindings
 pub fn tapa_ir::connectivity::MemoryBindings::clone(&self) -> tapa_ir::connectivity::MemoryBindings
 impl core::cmp::Eq for tapa_ir::connectivity::MemoryBindings
@@ -404,7 +387,6 @@ pub unsafe fn tapa_ir::connectivity::MemoryEndpoint::clone_to_uninit(&self, *mut
 impl<T> core::convert::From<T> for tapa_ir::connectivity::MemoryEndpoint
 pub fn tapa_ir::connectivity::MemoryEndpoint::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::connectivity::MemoryEndpoint where T: for<'de> serde_core::de::Deserialize<'de>
-pub fn tapa_ir::connectivity::parse_vitis_config(&str) -> core::result::Result<tapa_ir::connectivity::MemoryBindings, tapa_ir::connectivity::ConnectivityParseError>
 pub mod tapa_ir::floorplan
 pub enum tapa_ir::floorplan::AxiChannel
 pub tapa_ir::floorplan::AxiChannel::ReadAddress
@@ -1867,74 +1849,6 @@ pub unsafe fn tapa_ir::floorplan::AxiChannel::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_ir::floorplan::AxiChannel
 pub fn tapa_ir::floorplan::AxiChannel::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::floorplan::AxiChannel where T: for<'de> serde_core::de::Deserialize<'de>
-pub enum tapa_ir::ConnectivityParseError
-pub tapa_ir::ConnectivityParseError::ConflictingBinding
-pub tapa_ir::ConnectivityParseError::ConflictingBinding::endpoint: tapa_ir::connectivity::MemoryEndpoint
-pub tapa_ir::ConnectivityParseError::ConflictingBinding::first_bank: tapa_ir::connectivity::MemoryBank
-pub tapa_ir::ConnectivityParseError::ConflictingBinding::first_line: usize
-pub tapa_ir::ConnectivityParseError::ConflictingBinding::line: usize
-pub tapa_ir::ConnectivityParseError::ConflictingBinding::second_bank: tapa_ir::connectivity::MemoryBank
-pub tapa_ir::ConnectivityParseError::MalformedBinding
-pub tapa_ir::ConnectivityParseError::MalformedBinding::line: usize
-pub tapa_ir::ConnectivityParseError::MalformedBinding::value: alloc::string::String
-pub tapa_ir::ConnectivityParseError::MalformedEndpoint
-pub tapa_ir::ConnectivityParseError::MalformedEndpoint::endpoint: alloc::string::String
-pub tapa_ir::ConnectivityParseError::MalformedEndpoint::line: usize
-pub tapa_ir::ConnectivityParseError::MalformedEntry
-pub tapa_ir::ConnectivityParseError::MalformedEntry::line: usize
-pub tapa_ir::ConnectivityParseError::MalformedEntry::text: alloc::string::String
-pub tapa_ir::ConnectivityParseError::MalformedSection
-pub tapa_ir::ConnectivityParseError::MalformedSection::line: usize
-pub tapa_ir::ConnectivityParseError::MalformedSection::text: alloc::string::String
-pub tapa_ir::ConnectivityParseError::UnknownTarget
-pub tapa_ir::ConnectivityParseError::UnknownTarget::line: usize
-pub tapa_ir::ConnectivityParseError::UnknownTarget::target: alloc::string::String
-impl core::clone::Clone for tapa_ir::connectivity::ConnectivityParseError
-pub fn tapa_ir::connectivity::ConnectivityParseError::clone(&self) -> tapa_ir::connectivity::ConnectivityParseError
-impl core::cmp::Eq for tapa_ir::connectivity::ConnectivityParseError
-impl core::cmp::PartialEq for tapa_ir::connectivity::ConnectivityParseError
-pub fn tapa_ir::connectivity::ConnectivityParseError::eq(&self, &tapa_ir::connectivity::ConnectivityParseError) -> bool
-impl core::error::Error for tapa_ir::connectivity::ConnectivityParseError
-impl core::fmt::Debug for tapa_ir::connectivity::ConnectivityParseError
-pub fn tapa_ir::connectivity::ConnectivityParseError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::fmt::Display for tapa_ir::connectivity::ConnectivityParseError
-pub fn tapa_ir::connectivity::ConnectivityParseError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::StructuralPartialEq for tapa_ir::connectivity::ConnectivityParseError
-impl core::marker::Freeze for tapa_ir::connectivity::ConnectivityParseError
-impl core::marker::Send for tapa_ir::connectivity::ConnectivityParseError
-impl core::marker::Sync for tapa_ir::connectivity::ConnectivityParseError
-impl core::marker::Unpin for tapa_ir::connectivity::ConnectivityParseError
-impl core::marker::UnsafeUnpin for tapa_ir::connectivity::ConnectivityParseError
-impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::connectivity::ConnectivityParseError
-impl core::panic::unwind_safe::UnwindSafe for tapa_ir::connectivity::ConnectivityParseError
-impl<Q, K> equivalent::Equivalent<K> for tapa_ir::connectivity::ConnectivityParseError where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
-pub fn tapa_ir::connectivity::ConnectivityParseError::equivalent(&self, &K) -> bool
-impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::connectivity::ConnectivityParseError where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
-pub fn tapa_ir::connectivity::ConnectivityParseError::equivalent(&self, &K) -> bool
-impl<T, U> core::convert::Into<U> for tapa_ir::connectivity::ConnectivityParseError where U: core::convert::From<T>
-pub fn tapa_ir::connectivity::ConnectivityParseError::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for tapa_ir::connectivity::ConnectivityParseError where U: core::convert::Into<T>
-pub type tapa_ir::connectivity::ConnectivityParseError::Error = core::convert::Infallible
-pub fn tapa_ir::connectivity::ConnectivityParseError::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for tapa_ir::connectivity::ConnectivityParseError where U: core::convert::TryFrom<T>
-pub type tapa_ir::connectivity::ConnectivityParseError::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn tapa_ir::connectivity::ConnectivityParseError::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::borrow::ToOwned for tapa_ir::connectivity::ConnectivityParseError where T: core::clone::Clone
-pub type tapa_ir::connectivity::ConnectivityParseError::Owned = T
-pub fn tapa_ir::connectivity::ConnectivityParseError::clone_into(&self, &mut T)
-pub fn tapa_ir::connectivity::ConnectivityParseError::to_owned(&self) -> T
-impl<T> alloc::string::ToString for tapa_ir::connectivity::ConnectivityParseError where T: core::fmt::Display + ?core::marker::Sized
-pub fn tapa_ir::connectivity::ConnectivityParseError::to_string(&self) -> alloc::string::String
-impl<T> core::any::Any for tapa_ir::connectivity::ConnectivityParseError where T: 'static + ?core::marker::Sized
-pub fn tapa_ir::connectivity::ConnectivityParseError::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for tapa_ir::connectivity::ConnectivityParseError where T: ?core::marker::Sized
-pub fn tapa_ir::connectivity::ConnectivityParseError::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for tapa_ir::connectivity::ConnectivityParseError where T: ?core::marker::Sized
-pub fn tapa_ir::connectivity::ConnectivityParseError::borrow_mut(&mut self) -> &mut T
-impl<T> core::clone::CloneToUninit for tapa_ir::connectivity::ConnectivityParseError where T: core::clone::Clone
-pub unsafe fn tapa_ir::connectivity::ConnectivityParseError::clone_to_uninit(&self, *mut u8)
-impl<T> core::convert::From<T> for tapa_ir::connectivity::ConnectivityParseError
-pub fn tapa_ir::connectivity::ConnectivityParseError::from(T) -> T
 pub enum tapa_ir::ControlChannel
 pub tapa_ir::ControlChannel::Completion
 pub tapa_ir::ControlChannel::Launch
@@ -1996,6 +1910,57 @@ pub unsafe fn tapa_ir::floorplan::ControlChannel::clone_to_uninit(&self, *mut u8
 impl<T> core::convert::From<T> for tapa_ir::floorplan::ControlChannel
 pub fn tapa_ir::floorplan::ControlChannel::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::floorplan::ControlChannel where T: for<'de> serde_core::de::Deserialize<'de>
+pub enum tapa_ir::DuplicateMemoryEndpoint
+pub tapa_ir::DuplicateMemoryEndpoint::Duplicate
+pub tapa_ir::DuplicateMemoryEndpoint::Duplicate::endpoint: tapa_ir::connectivity::MemoryEndpoint
+pub tapa_ir::DuplicateMemoryEndpoint::Duplicate::new_bank: tapa_ir::connectivity::MemoryBank
+pub tapa_ir::DuplicateMemoryEndpoint::Duplicate::previous_bank: tapa_ir::connectivity::MemoryBank
+impl core::clone::Clone for tapa_ir::connectivity::DuplicateMemoryEndpoint
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::clone(&self) -> tapa_ir::connectivity::DuplicateMemoryEndpoint
+impl core::cmp::Eq for tapa_ir::connectivity::DuplicateMemoryEndpoint
+impl core::cmp::PartialEq for tapa_ir::connectivity::DuplicateMemoryEndpoint
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::eq(&self, &tapa_ir::connectivity::DuplicateMemoryEndpoint) -> bool
+impl core::error::Error for tapa_ir::connectivity::DuplicateMemoryEndpoint
+impl core::fmt::Debug for tapa_ir::connectivity::DuplicateMemoryEndpoint
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tapa_ir::connectivity::DuplicateMemoryEndpoint
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tapa_ir::connectivity::DuplicateMemoryEndpoint
+impl core::marker::Freeze for tapa_ir::connectivity::DuplicateMemoryEndpoint
+impl core::marker::Send for tapa_ir::connectivity::DuplicateMemoryEndpoint
+impl core::marker::Sync for tapa_ir::connectivity::DuplicateMemoryEndpoint
+impl core::marker::Unpin for tapa_ir::connectivity::DuplicateMemoryEndpoint
+impl core::marker::UnsafeUnpin for tapa_ir::connectivity::DuplicateMemoryEndpoint
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::connectivity::DuplicateMemoryEndpoint
+impl core::panic::unwind_safe::UnwindSafe for tapa_ir::connectivity::DuplicateMemoryEndpoint
+impl<Q, K> equivalent::Equivalent<K> for tapa_ir::connectivity::DuplicateMemoryEndpoint where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::connectivity::DuplicateMemoryEndpoint where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_ir::connectivity::DuplicateMemoryEndpoint where U: core::convert::From<T>
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_ir::connectivity::DuplicateMemoryEndpoint where U: core::convert::Into<T>
+pub type tapa_ir::connectivity::DuplicateMemoryEndpoint::Error = core::convert::Infallible
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_ir::connectivity::DuplicateMemoryEndpoint where U: core::convert::TryFrom<T>
+pub type tapa_ir::connectivity::DuplicateMemoryEndpoint::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_ir::connectivity::DuplicateMemoryEndpoint where T: core::clone::Clone
+pub type tapa_ir::connectivity::DuplicateMemoryEndpoint::Owned = T
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::clone_into(&self, &mut T)
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::to_owned(&self) -> T
+impl<T> alloc::string::ToString for tapa_ir::connectivity::DuplicateMemoryEndpoint where T: core::fmt::Display + ?core::marker::Sized
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::to_string(&self) -> alloc::string::String
+impl<T> core::any::Any for tapa_ir::connectivity::DuplicateMemoryEndpoint where T: 'static + ?core::marker::Sized
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_ir::connectivity::DuplicateMemoryEndpoint where T: ?core::marker::Sized
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_ir::connectivity::DuplicateMemoryEndpoint where T: ?core::marker::Sized
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_ir::connectivity::DuplicateMemoryEndpoint where T: core::clone::Clone
+pub unsafe fn tapa_ir::connectivity::DuplicateMemoryEndpoint::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_ir::connectivity::DuplicateMemoryEndpoint
+pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::from(T) -> T
 pub enum tapa_ir::MemoryKind
 pub tapa_ir::MemoryKind::Ddr
 pub tapa_ir::MemoryKind::Hbm
@@ -3107,7 +3072,7 @@ pub fn tapa_ir::connectivity::MemoryBindings::get(&self, &str, &str) -> core::op
 pub fn tapa_ir::connectivity::MemoryBindings::is_empty(&self) -> bool
 pub fn tapa_ir::connectivity::MemoryBindings::iter(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = &tapa_ir::connectivity::MemoryBinding>
 pub fn tapa_ir::connectivity::MemoryBindings::len(&self) -> usize
-pub fn tapa_ir::connectivity::MemoryBindings::parse_vitis_config(&str) -> core::result::Result<Self, tapa_ir::connectivity::ConnectivityParseError>
+pub fn tapa_ir::connectivity::MemoryBindings::try_from_bindings(alloc::vec::Vec<tapa_ir::connectivity::MemoryBinding>) -> core::result::Result<Self, tapa_ir::connectivity::DuplicateMemoryEndpoint>
 impl core::clone::Clone for tapa_ir::connectivity::MemoryBindings
 pub fn tapa_ir::connectivity::MemoryBindings::clone(&self) -> tapa_ir::connectivity::MemoryBindings
 impl core::cmp::Eq for tapa_ir::connectivity::MemoryBindings
@@ -3530,4 +3495,3 @@ pub fn tapa_ir::flatten(&tapa_ir::graph::TaskGraph) -> core::result::Result<tapa
 pub const fn tapa_ir::floorplanned_fifo_storage_depth(u32) -> u32
 pub const fn tapa_ir::global_controller_instance_name() -> &'static str
 pub fn tapa_ir::local_controller_instance_name(&str) -> alloc::string::String
-pub fn tapa_ir::parse_vitis_config(&str) -> core::result::Result<tapa_ir::connectivity::MemoryBindings, tapa_ir::connectivity::ConnectivityParseError>
