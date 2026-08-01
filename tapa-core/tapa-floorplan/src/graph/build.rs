@@ -4,13 +4,14 @@
 use std::collections::{BTreeMap, HashMap};
 
 use tapa_ir::{
-    axi_pipeline_instance_name, global_controller_instance_name, local_controller_instance_name,
-    Area, AxiChannel, AxiEndpoint, ControlChannel, MemoryBank, TaskGraph,
+    axi_pipeline_instance_name, floorplanned_fifo_storage_depth, global_controller_instance_name,
+    local_controller_instance_name, Area, AxiChannel, AxiEndpoint, ControlChannel, MemoryBank,
+    TaskGraph,
 };
 
 use crate::graph::floor_graph::{
-    AxiNet, CoLocatedInstance, ControlInterface, ControlNet, GraphError, MemoryInterface, Vertex,
-    CONTROL_S_AXI_INSTANCE,
+    fifo_area, AxiNet, CoLocatedInstance, ControlInterface, ControlNet, GraphError,
+    MemoryInterface, PlacementEdge, Stream, Vertex, CONTROL_S_AXI_INSTANCE,
 };
 
 use super::validate::{
@@ -18,104 +19,404 @@ use super::validate::{
     validate_memory_interface_shape,
 };
 
-#[allow(
-    clippy::too_many_arguments,
-    reason = "control graph construction updates the same transient graph collections as memory"
-)]
-pub(super) fn add_control_interface(
-    flat: &TaskGraph,
-    top: &tapa_ir::Task,
-    memory: &[MemoryInterface],
-    control: ControlInterface,
-    global_anchor: Option<&str>,
-    vertices: &mut Vec<Vertex>,
-    index: &mut HashMap<String, usize>,
-    task_endpoints: &HashMap<(String, u32), usize>,
-    placement_widths: &mut BTreeMap<(usize, usize), u32>,
-    co_located: &mut Vec<CoLocatedInstance>,
-) -> Result<Vec<ControlNet>, GraphError> {
-    validate_control_names(top, memory, control, vertices, co_located)?;
+/// Transient accumulator for one `FloorGraph` construction pass.
+///
+/// Owns the collections the task-vertex, FIFO-clustering, and
+/// interface-expansion passes all append to, so each pass is a `&mut self`
+/// method rather than a many-argument free function threading the same
+/// accumulators. [`FloorGraphBuilder::finish`] yields the pieces `FloorGraph`
+/// assembles from.
+#[derive(Default)]
+pub(super) struct FloorGraphBuilder {
+    vertices: Vec<Vertex>,
+    index: HashMap<String, usize>,
+    /// (definition name, instance index) → vertex index, for endpoint resolution.
+    task_endpoints: HashMap<(String, u32), usize>,
+    placement_widths: BTreeMap<(usize, usize), u32>,
+    co_located: Vec<CoLocatedInstance>,
+}
 
-    let global_name = global_controller_instance_name().to_string();
-    if index.contains_key(&global_name) {
-        return Err(GraphError::GeneratedNameCollision {
-            generated: global_name,
-            existing: "placement vertex".to_string(),
-        });
-    }
-    let global = vertices.len();
-    vertices.push(Vertex {
-        name: global_name.clone(),
-        // Generated control logic is charged zero area: these blocks are
-        // generated after leaf HLS synthesis, so no leaf's self_area covers
-        // them and there is no post-synthesis model to charge without
-        // inventing numbers. The gap is deliberate and small — a handshake
-        // FSM per controller against ~200k LUTs per slot — and bounded:
-        // the routed control-pipeline registers, the dominant added logic,
-        // ARE accounted in realize_slot_usage, and the usage-limit envelope
-        // absorbs the rest. Same trade-off as async-mmap bridges.
-        area: Area::default(),
-        required_tag: global_anchor.map(ToString::to_string),
-        materialize: true,
-    });
-    index.insert(global_name, global);
-    if control.has_s_axi_control {
-        co_located.push(CoLocatedInstance {
-            name: CONTROL_S_AXI_INSTANCE.to_string(),
-            host: global,
-        });
+/// The accumulated graph pieces a finished [`FloorGraphBuilder`] yields.
+///
+/// Vertex/edge insertion order — which feeds the canonical placement-model
+/// fingerprint — is fixed by the time `finish` runs; `finish` itself only
+/// collapses the ordered `placement_widths` map into the placement edge list.
+pub(super) struct BuiltGraph {
+    pub(super) vertices: Vec<Vertex>,
+    pub(super) index: HashMap<String, usize>,
+    pub(super) placement_edges: Vec<PlacementEdge>,
+    pub(super) co_located: Vec<CoLocatedInstance>,
+}
+
+impl FloorGraphBuilder {
+    /// Fresh, empty transient graph state.
+    pub(super) fn new() -> Self {
+        Self::default()
     }
 
-    let mut nets = Vec::new();
-    for (definition, instances) in &top.tasks {
-        let task = flat
-            .tasks
-            .get(definition)
-            .ok_or_else(|| GraphError::MissingTaskDef(definition.clone()))?;
-        for (instance_index, instance) in instances.iter().enumerate() {
-            let canonical = instance
-                .canonical_name(definition, instance_index)
-                .into_owned();
-            let endpoint_index = u32::try_from(instance_index).expect("instance count fits u32");
-            let child = task_endpoints[&(definition.clone(), endpoint_index)];
-            co_located.push(CoLocatedInstance {
-                name: local_controller_instance_name(&canonical),
-                host: child,
-            });
-
-            let launch_width = control_launch_width(task, instance, &canonical)?;
-            add_control_net(
-                &mut nets,
-                placement_widths,
-                &canonical,
-                ControlChannel::Launch,
-                global,
-                child,
-                launch_width,
-            )?;
-            add_control_net(
-                &mut nets,
-                placement_widths,
-                &canonical,
-                ControlChannel::Reset,
-                global,
-                child,
-                1,
-            )?;
-            if instance.step >= 0 {
-                add_control_net(
-                    &mut nets,
-                    placement_widths,
-                    &canonical,
-                    ControlChannel::Completion,
-                    child,
-                    global,
-                    1,
-                )?;
+    /// Insert one placement vertex per task instance.
+    ///
+    /// Duplicate canonical names are rejected: they would silently collapse
+    /// onto one key in the published `regions` map. Also records the
+    /// `(definition, instance index)` → vertex endpoint map used by the FIFO
+    /// clustering and control passes.
+    pub(super) fn add_task_vertices(
+        &mut self,
+        flat: &TaskGraph,
+        top: &tapa_ir::Task,
+    ) -> Result<(), GraphError> {
+        for (def_name, instances) in &top.tasks {
+            let def = flat
+                .tasks
+                .get(def_name)
+                .ok_or_else(|| GraphError::MissingTaskDef(def_name.clone()))?;
+            let area = Area::from_annotations(&def.self_area);
+            for (idx, inst) in instances.iter().enumerate() {
+                let name = inst.canonical_name(def_name, idx).into_owned();
+                let vertex_index = self.vertices.len();
+                // Duplicate canonical names silently collapse onto one key in
+                // the published `regions` map; always reject them, with or
+                // without distributed control.
+                if self.index.contains_key(&name) {
+                    return Err(GraphError::DuplicateCanonicalName(name));
+                }
+                self.index.insert(name.clone(), vertex_index);
+                let inst_idx = u32::try_from(idx).expect("instance count fits u32");
+                self.task_endpoints
+                    .insert((def_name.clone(), inst_idx), vertex_index);
+                self.vertices.push(Vertex {
+                    name,
+                    area,
+                    required_tag: None,
+                    materialize: true,
+                });
             }
         }
+        Ok(())
     }
-    Ok(nets)
+
+    /// Cluster each internal FIFO into its consumer-side host.
+    ///
+    /// The consumer-side Tail hosts each FIFO (producer fallback for a
+    /// one-sided stream), and task endpoints connect directly. This keeps
+    /// placement and routing on one logical topology. External passthrough
+    /// FIFOs (no depth) are skipped, and every FIFO storage area is charged
+    /// to its host vertex. Returns the directed logical streams in
+    /// `top.fifos` order.
+    pub(super) fn cluster_internal_fifos(
+        &mut self,
+        flat: &TaskGraph,
+        top: &tapa_ir::Task,
+    ) -> Result<Vec<Stream>, GraphError> {
+        let mut streams = Vec::new();
+        let fifo_widths = index_fifo_arg_widths(flat, top);
+        for (fifo_name, fifo) in &top.fifos {
+            let Some(depth) = fifo.depth else {
+                continue; // external passthrough FIFO — not a placed instance
+            };
+            let data_width = resolve_fifo_data_width(&fifo_widths, fifo_name)?;
+            let physical_width = data_width
+                .checked_add(2) // valid/write and ready/full_n
+                .ok_or_else(|| GraphError::UnresolvedFifoWidth(fifo_name.clone()))?;
+
+            // A present endpoint reference must resolve; `None` alone marks
+            // a deliberately one-sided (e.g. external) stream.
+            let src = resolve_fifo_endpoint(
+                &self.task_endpoints,
+                fifo_name,
+                "producer",
+                fifo.produced_by.as_ref(),
+            )?;
+            let dst = resolve_fifo_endpoint(
+                &self.task_endpoints,
+                fifo_name,
+                "consumer",
+                fifo.consumed_by.as_ref(),
+            )?;
+            let host = dst
+                .or(src)
+                .ok_or_else(|| GraphError::UnanchoredFifo(fifo_name.clone()))?;
+
+            self.vertices[host].area = checked_add_area(
+                self.vertices[host].area,
+                fifo_area(data_width, floorplanned_fifo_storage_depth(depth)),
+            )
+            .ok_or_else(|| GraphError::ResourceOverflow(fifo_name.clone()))?;
+            self.co_located.push(CoLocatedInstance {
+                name: fifo_name.clone(),
+                host,
+            });
+
+            if let (Some(src), Some(dst)) = (src, dst) {
+                if src != dst {
+                    streams.push(Stream {
+                        link: fifo_name.clone(),
+                        src,
+                        dst,
+                        width: physical_width,
+                        data_width,
+                        depth,
+                    });
+                    let endpoints = (src.min(dst), src.max(dst));
+                    let width = self.placement_widths.entry(endpoints).or_default();
+                    *width = width
+                        .checked_add(physical_width)
+                        .ok_or_else(|| GraphError::PlacementWidthOverflow(fifo_name.clone()))?;
+                }
+            }
+        }
+        Ok(streams)
+    }
+
+    /// Expand exact memory interfaces into bank terminals and directed AXI nets.
+    #[allow(
+        clippy::too_many_lines,
+        reason = "memory graph construction validates and expands every interface in one pass"
+    )]
+    pub(super) fn add_memory_interfaces(
+        &mut self,
+        flat: &TaskGraph,
+        top: &tapa_ir::Task,
+        memory: &[MemoryInterface],
+    ) -> Result<Vec<AxiNet>, GraphError> {
+        let expected = expected_memory_interfaces(flat, top, &self.task_endpoints)?;
+        let mut provided = BTreeMap::<AxiEndpoint, &MemoryInterface>::new();
+        for interface in memory {
+            if provided
+                .insert(interface.endpoint.clone(), interface)
+                .is_some()
+            {
+                return Err(GraphError::DuplicateMemoryInterface {
+                    instance: interface.endpoint.instance.clone(),
+                    port: interface.endpoint.port.clone(),
+                });
+            }
+        }
+
+        for endpoint in expected.keys() {
+            if !provided.contains_key(endpoint) {
+                return Err(GraphError::MissingMemoryInterface {
+                    instance: endpoint.instance.clone(),
+                    port: endpoint.port.clone(),
+                    top_port: endpoint.top_port.clone(),
+                });
+            }
+        }
+        for endpoint in provided.keys() {
+            if !expected.contains_key(endpoint) {
+                return Err(GraphError::UnknownMemoryInterface {
+                    instance: endpoint.instance.clone(),
+                    port: endpoint.port.clone(),
+                    top_port: endpoint.top_port.clone(),
+                });
+            }
+        }
+
+        let mut occupied = occupied_rtl_names(top, &self.vertices, &self.co_located)?;
+        for (endpoint, expected_endpoint) in &expected {
+            let interface = provided[endpoint];
+            validate_memory_interface_shape(interface, *expected_endpoint)?;
+            for (channel, _) in interface.channel_widths.enabled_channels() {
+                reserve_generated_name(
+                    &mut occupied,
+                    axi_pipeline_instance_name(endpoint, channel),
+                    &format!("{channel:?} AXI pipeline for `{}`", endpoint.top_port),
+                )?;
+            }
+            if let Some(bridge) = &interface.bridge_instance {
+                reserve_generated_name(
+                    &mut occupied,
+                    bridge.clone(),
+                    &format!("async mmap bridge for `{}`", endpoint.top_port),
+                )?;
+                // The bridge is generated above the HLS leaf, and current task
+                // metadata has no standalone post-synthesis bridge area to charge
+                // without inventing an estimate. Co-location still makes the
+                // leaf-to-bridge FIFO wires local and constrains the true AXI
+                // route source.
+                self.co_located.push(CoLocatedInstance {
+                    name: bridge.clone(),
+                    host: expected_endpoint.task_vertex,
+                });
+            }
+        }
+
+        let mut terminals = BTreeMap::<MemoryBank, usize>::new();
+        let mut nets = Vec::with_capacity(memory.len().saturating_mul(5));
+        for (endpoint, expected_endpoint) in &expected {
+            let interface = provided[endpoint];
+            let task_vertex = expected_endpoint.task_vertex;
+            let enabled_channels = interface
+                .channel_widths
+                .enabled_channels()
+                .collect::<Vec<_>>();
+            if enabled_channels.is_empty() {
+                continue;
+            }
+            let terminal = if let Some(&terminal) = terminals.get(&interface.bank) {
+                terminal
+            } else {
+                let name = bank_terminal_name(interface.bank);
+                if self.index.contains_key(&name) {
+                    return Err(GraphError::DuplicateVertex(name));
+                }
+                let terminal = self.vertices.len();
+                self.vertices.push(Vertex {
+                    name: name.clone(),
+                    area: Area::default(),
+                    required_tag: Some(interface.bank.to_string()),
+                    materialize: false,
+                });
+                self.index.insert(name, terminal);
+                terminals.insert(interface.bank, terminal);
+                terminal
+            };
+
+            for (channel, width) in enabled_channels {
+                let Some(payload_width) = width.checked_sub(2).filter(|width| *width > 0) else {
+                    return Err(GraphError::InvalidAxiWidth {
+                        instance: endpoint.instance.clone(),
+                        port: endpoint.port.clone(),
+                        channel,
+                        width,
+                    });
+                };
+                let (src, dst) = match channel {
+                    AxiChannel::ReadAddress | AxiChannel::WriteAddress | AxiChannel::WriteData => {
+                        (task_vertex, terminal)
+                    }
+                    AxiChannel::ReadData | AxiChannel::WriteResponse => (terminal, task_vertex),
+                };
+                let pair = (src.min(dst), src.max(dst));
+                let placement_width = self.placement_widths.entry(pair).or_default();
+                *placement_width = placement_width.checked_add(width).ok_or_else(|| {
+                    GraphError::PlacementWidthOverflow(format!(
+                        "{}.{} {channel:?}",
+                        endpoint.instance, endpoint.port
+                    ))
+                })?;
+                nets.push(AxiNet {
+                    endpoint: endpoint.clone(),
+                    bank: interface.bank,
+                    channel,
+                    src,
+                    dst,
+                    width,
+                    payload_width,
+                });
+            }
+        }
+        Ok(nets)
+    }
+
+    /// Expand distributed control into the global controller vertex and control nets.
+    pub(super) fn add_control_interface(
+        &mut self,
+        flat: &TaskGraph,
+        top: &tapa_ir::Task,
+        memory: &[MemoryInterface],
+        control: ControlInterface,
+        global_anchor: Option<&str>,
+    ) -> Result<Vec<ControlNet>, GraphError> {
+        validate_control_names(top, memory, control, &self.vertices, &self.co_located)?;
+
+        let global_name = global_controller_instance_name().to_string();
+        if self.index.contains_key(&global_name) {
+            return Err(GraphError::GeneratedNameCollision {
+                generated: global_name,
+                existing: "placement vertex".to_string(),
+            });
+        }
+        let global = self.vertices.len();
+        self.vertices.push(Vertex {
+            name: global_name.clone(),
+            // Generated control logic is charged zero area: these blocks are
+            // generated after leaf HLS synthesis, so no leaf's self_area covers
+            // them and there is no post-synthesis model to charge without
+            // inventing numbers. The gap is deliberate and small — a handshake
+            // FSM per controller against ~200k LUTs per slot — and bounded:
+            // the routed control-pipeline registers, the dominant added logic,
+            // ARE accounted in realize_slot_usage, and the usage-limit envelope
+            // absorbs the rest. Same trade-off as async-mmap bridges.
+            area: Area::default(),
+            required_tag: global_anchor.map(ToString::to_string),
+            materialize: true,
+        });
+        self.index.insert(global_name, global);
+        if control.has_s_axi_control {
+            self.co_located.push(CoLocatedInstance {
+                name: CONTROL_S_AXI_INSTANCE.to_string(),
+                host: global,
+            });
+        }
+
+        let mut nets = Vec::new();
+        for (definition, instances) in &top.tasks {
+            let task = flat
+                .tasks
+                .get(definition)
+                .ok_or_else(|| GraphError::MissingTaskDef(definition.clone()))?;
+            for (instance_index, instance) in instances.iter().enumerate() {
+                let canonical = instance
+                    .canonical_name(definition, instance_index)
+                    .into_owned();
+                let endpoint_index =
+                    u32::try_from(instance_index).expect("instance count fits u32");
+                let child = self.task_endpoints[&(definition.clone(), endpoint_index)];
+                self.co_located.push(CoLocatedInstance {
+                    name: local_controller_instance_name(&canonical),
+                    host: child,
+                });
+
+                let launch_width = control_launch_width(task, instance, &canonical)?;
+                add_control_net(
+                    &mut nets,
+                    &mut self.placement_widths,
+                    &canonical,
+                    ControlChannel::Launch,
+                    global,
+                    child,
+                    launch_width,
+                )?;
+                add_control_net(
+                    &mut nets,
+                    &mut self.placement_widths,
+                    &canonical,
+                    ControlChannel::Reset,
+                    global,
+                    child,
+                    1,
+                )?;
+                if instance.step >= 0 {
+                    add_control_net(
+                        &mut nets,
+                        &mut self.placement_widths,
+                        &canonical,
+                        ControlChannel::Completion,
+                        child,
+                        global,
+                        1,
+                    )?;
+                }
+            }
+        }
+        Ok(nets)
+    }
+
+    /// Yield the accumulated graph pieces for `FloorGraph` assembly.
+    pub(super) fn finish(self) -> BuiltGraph {
+        let placement_edges = self
+            .placement_widths
+            .into_iter()
+            .map(|((src, dst), width)| PlacementEdge { src, dst, width })
+            .collect();
+        BuiltGraph {
+            vertices: self.vertices,
+            index: self.index,
+            placement_edges,
+            co_located: self.co_located,
+        }
+    }
 }
 
 fn add_control_net(
@@ -212,151 +513,6 @@ fn control_launch_width(
         }
     }
     Ok(width)
-}
-
-#[allow(
-    clippy::too_many_arguments,
-    clippy::too_many_lines,
-    reason = "memory graph construction validates and updates the shared transient graph state"
-)]
-pub(super) fn add_memory_interfaces(
-    flat: &TaskGraph,
-    top: &tapa_ir::Task,
-    memory: &[MemoryInterface],
-    vertices: &mut Vec<Vertex>,
-    index: &mut HashMap<String, usize>,
-    task_endpoints: &HashMap<(String, u32), usize>,
-    placement_widths: &mut BTreeMap<(usize, usize), u32>,
-    co_located: &mut Vec<CoLocatedInstance>,
-) -> Result<Vec<AxiNet>, GraphError> {
-    let expected = expected_memory_interfaces(flat, top, task_endpoints)?;
-    let mut provided = BTreeMap::<AxiEndpoint, &MemoryInterface>::new();
-    for interface in memory {
-        if provided
-            .insert(interface.endpoint.clone(), interface)
-            .is_some()
-        {
-            return Err(GraphError::DuplicateMemoryInterface {
-                instance: interface.endpoint.instance.clone(),
-                port: interface.endpoint.port.clone(),
-            });
-        }
-    }
-
-    for endpoint in expected.keys() {
-        if !provided.contains_key(endpoint) {
-            return Err(GraphError::MissingMemoryInterface {
-                instance: endpoint.instance.clone(),
-                port: endpoint.port.clone(),
-                top_port: endpoint.top_port.clone(),
-            });
-        }
-    }
-    for endpoint in provided.keys() {
-        if !expected.contains_key(endpoint) {
-            return Err(GraphError::UnknownMemoryInterface {
-                instance: endpoint.instance.clone(),
-                port: endpoint.port.clone(),
-                top_port: endpoint.top_port.clone(),
-            });
-        }
-    }
-
-    let mut occupied = occupied_rtl_names(top, vertices, co_located)?;
-    for (endpoint, expected_endpoint) in &expected {
-        let interface = provided[endpoint];
-        validate_memory_interface_shape(interface, *expected_endpoint)?;
-        for (channel, _) in interface.channel_widths.enabled_channels() {
-            reserve_generated_name(
-                &mut occupied,
-                axi_pipeline_instance_name(endpoint, channel),
-                &format!("{channel:?} AXI pipeline for `{}`", endpoint.top_port),
-            )?;
-        }
-        if let Some(bridge) = &interface.bridge_instance {
-            reserve_generated_name(
-                &mut occupied,
-                bridge.clone(),
-                &format!("async mmap bridge for `{}`", endpoint.top_port),
-            )?;
-            // The bridge is generated above the HLS leaf, and current task
-            // metadata has no standalone post-synthesis bridge area to charge
-            // without inventing an estimate. Co-location still makes the
-            // leaf-to-bridge FIFO wires local and constrains the true AXI
-            // route source.
-            co_located.push(CoLocatedInstance {
-                name: bridge.clone(),
-                host: expected_endpoint.task_vertex,
-            });
-        }
-    }
-
-    let mut terminals = BTreeMap::<MemoryBank, usize>::new();
-    let mut nets = Vec::with_capacity(memory.len().saturating_mul(5));
-    for (endpoint, expected_endpoint) in &expected {
-        let interface = provided[endpoint];
-        let task_vertex = expected_endpoint.task_vertex;
-        let enabled_channels = interface
-            .channel_widths
-            .enabled_channels()
-            .collect::<Vec<_>>();
-        if enabled_channels.is_empty() {
-            continue;
-        }
-        let terminal = if let Some(&terminal) = terminals.get(&interface.bank) {
-            terminal
-        } else {
-            let name = bank_terminal_name(interface.bank);
-            if index.contains_key(&name) {
-                return Err(GraphError::DuplicateVertex(name));
-            }
-            let terminal = vertices.len();
-            vertices.push(Vertex {
-                name: name.clone(),
-                area: Area::default(),
-                required_tag: Some(interface.bank.to_string()),
-                materialize: false,
-            });
-            index.insert(name, terminal);
-            terminals.insert(interface.bank, terminal);
-            terminal
-        };
-
-        for (channel, width) in enabled_channels {
-            let Some(payload_width) = width.checked_sub(2).filter(|width| *width > 0) else {
-                return Err(GraphError::InvalidAxiWidth {
-                    instance: endpoint.instance.clone(),
-                    port: endpoint.port.clone(),
-                    channel,
-                    width,
-                });
-            };
-            let (src, dst) = match channel {
-                AxiChannel::ReadAddress | AxiChannel::WriteAddress | AxiChannel::WriteData => {
-                    (task_vertex, terminal)
-                }
-                AxiChannel::ReadData | AxiChannel::WriteResponse => (terminal, task_vertex),
-            };
-            let pair = (src.min(dst), src.max(dst));
-            let placement_width = placement_widths.entry(pair).or_default();
-            *placement_width = placement_width.checked_add(width).ok_or_else(|| {
-                GraphError::PlacementWidthOverflow(format!(
-                    "{}.{} {channel:?}",
-                    endpoint.instance, endpoint.port
-                ))
-            })?;
-            nets.push(AxiNet {
-                endpoint: endpoint.clone(),
-                bank: interface.bank,
-                channel,
-                src,
-                dst,
-                width,
-                payload_width,
-            });
-        }
-    }
-    Ok(nets)
 }
 
 fn bank_terminal_name(bank: MemoryBank) -> String {

@@ -1,21 +1,19 @@
 //! `FloorGraph`'s inherent methods: the read-only accessors over a built
 //! graph, the placement-result materialization, and the constructors. The
-//! free-function construction machinery lives in the sibling `build` module
-//! and shared validation in `validate`; the methods stay in one impl block
-//! here so the rustdoc/public-api view of the type is unchanged by the split.
+//! `FloorGraphBuilder` construction machinery lives in the sibling `build`
+//! module and shared validation in `validate`; the methods stay in one impl
+//! block here so the rustdoc/public-api view of the type is unchanged by the
+//! split.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 
-use tapa_ir::{floorplanned_fifo_storage_depth, Area, TaskGraph};
+use tapa_ir::TaskGraph;
 
-use super::build::{
-    add_control_interface, add_memory_interfaces, checked_add_area, index_fifo_arg_widths,
-    resolve_fifo_data_width, resolve_fifo_endpoint,
-};
+use super::build::FloorGraphBuilder;
 use super::validate::{occupied_rtl_names, validate_sanitized_instance_names};
 use crate::graph::floor_graph::{
-    fifo_area, AxiNet, CoLocatedInstance, ControlInterface, ControlNet, FloorGraph, GraphError,
-    MemoryInterface, PlacementEdge, Stream, Vertex,
+    AxiNet, ControlInterface, ControlNet, FloorGraph, GraphError, MemoryInterface, PlacementEdge,
+    Stream, Vertex,
 };
 
 impl FloorGraph {
@@ -121,10 +119,10 @@ impl FloorGraph {
     }
 
     /// Build the placement graph with optional distributed-control metadata.
-    #[allow(
-        clippy::too_many_lines,
-        reason = "one pass builds the task, stream, memory, and optional control graph in order"
-    )]
+    ///
+    /// Orchestration only — build-graph → cluster → interfaces → finish. The
+    /// step order fixes vertex/edge insertion order, which feeds the
+    /// canonical placement-model fingerprint; do not re-order.
     pub(crate) fn build_with_interfaces(
         flat: &TaskGraph,
         memory: &[MemoryInterface],
@@ -136,154 +134,39 @@ impl FloorGraph {
             .get(&flat.top)
             .ok_or_else(|| GraphError::MissingTop(flat.top.clone()))?;
 
-        let mut vertices = Vec::new();
-        let mut index = HashMap::new();
-        // (definition name, instance index) → vertex index, to resolve
-        // FIFO endpoints to the vertices they connect.
-        let mut endpoints: HashMap<(String, u32), usize> = HashMap::new();
-
-        // Task-instance vertices.
-        for (def_name, instances) in &top.tasks {
-            let def = flat
-                .tasks
-                .get(def_name)
-                .ok_or_else(|| GraphError::MissingTaskDef(def_name.clone()))?;
-            let area = Area::from_annotations(&def.self_area);
-            for (idx, inst) in instances.iter().enumerate() {
-                let name = inst.canonical_name(def_name, idx).into_owned();
-                let vertex_index = vertices.len();
-                // Duplicate canonical names silently collapse onto one key in
-                // the published `regions` map; always reject them, with or
-                // without distributed control.
-                if index.contains_key(&name) {
-                    return Err(GraphError::DuplicateCanonicalName(name));
-                }
-                index.insert(name.clone(), vertex_index);
-                let inst_idx = u32::try_from(idx).expect("instance count fits u32");
-                endpoints.insert((def_name.clone(), inst_idx), vertex_index);
-                vertices.push(Vertex {
-                    name,
-                    area,
-                    required_tag: None,
-                    materialize: true,
-                });
-            }
-        }
+        let mut builder = FloorGraphBuilder::new();
+        builder.add_task_vertices(flat, top)?;
 
         // Distinct logical instances that collapse to one RTL identifier
         // cannot both be constrained, with or without distributed control.
         validate_sanitized_instance_names(top)?;
 
-        // Cluster each internal FIFO into its consumer-side Tail (producer
-        // fallback for a one-sided stream), and connect task endpoints
-        // directly. This keeps placement and routing on one logical topology.
-        let mut placement_widths = BTreeMap::<(usize, usize), u32>::new();
-        let mut streams = Vec::new();
-        let mut co_located = Vec::new();
-        let fifo_widths = index_fifo_arg_widths(flat, top);
-        for (fifo_name, fifo) in &top.fifos {
-            let Some(depth) = fifo.depth else {
-                continue; // external passthrough FIFO — not a placed instance
-            };
-            let data_width = resolve_fifo_data_width(&fifo_widths, fifo_name)?;
-            let physical_width = data_width
-                .checked_add(2) // valid/write and ready/full_n
-                .ok_or_else(|| GraphError::UnresolvedFifoWidth(fifo_name.clone()))?;
+        let streams = builder.cluster_internal_fifos(flat, top)?;
 
-            // A present endpoint reference must resolve; `None` alone marks
-            // a deliberately one-sided (e.g. external) stream.
-            let src = resolve_fifo_endpoint(
-                &endpoints,
-                fifo_name,
-                "producer",
-                fifo.produced_by.as_ref(),
-            )?;
-            let dst = resolve_fifo_endpoint(
-                &endpoints,
-                fifo_name,
-                "consumer",
-                fifo.consumed_by.as_ref(),
-            )?;
-            let host = dst
-                .or(src)
-                .ok_or_else(|| GraphError::UnanchoredFifo(fifo_name.clone()))?;
-
-            vertices[host].area = checked_add_area(
-                vertices[host].area,
-                fifo_area(data_width, floorplanned_fifo_storage_depth(depth)),
-            )
-            .ok_or_else(|| GraphError::ResourceOverflow(fifo_name.clone()))?;
-            co_located.push(CoLocatedInstance {
-                name: fifo_name.clone(),
-                host,
-            });
-
-            if let (Some(src), Some(dst)) = (src, dst) {
-                if src != dst {
-                    streams.push(Stream {
-                        link: fifo_name.clone(),
-                        src,
-                        dst,
-                        width: physical_width,
-                        data_width,
-                        depth,
-                    });
-                    let endpoints = (src.min(dst), src.max(dst));
-                    let width = placement_widths.entry(endpoints).or_default();
-                    *width = width
-                        .checked_add(physical_width)
-                        .ok_or_else(|| GraphError::PlacementWidthOverflow(fifo_name.clone()))?;
-                }
-            }
-        }
-
-        let axi_nets = add_memory_interfaces(
-            flat,
-            top,
-            memory,
-            &mut vertices,
-            &mut index,
-            &endpoints,
-            &mut placement_widths,
-            &mut co_located,
-        )?;
+        let axi_nets = builder.add_memory_interfaces(flat, top, memory)?;
 
         let control_nets = if let Some(control) = control.filter(|_| !top.tasks.is_empty()) {
-            add_control_interface(
-                flat,
-                top,
-                memory,
-                control,
-                global_anchor,
-                &mut vertices,
-                &mut index,
-                &endpoints,
-                &mut placement_widths,
-                &mut co_located,
-            )?
+            builder.add_control_interface(flat, top, memory, control, global_anchor)?
         } else {
             Vec::new()
         };
+
+        let built = builder.finish();
 
         // Every public result key — task canonical names, FIFO names and
         // their `{name}_fifo` RTL instances, co-located aliases — must be
         // unique both literally and after RTL sanitization, independently of
         // optional memory/control interfaces.
-        occupied_rtl_names(top, &vertices, &co_located)?;
-
-        let placement_edges = placement_widths
-            .into_iter()
-            .map(|((src, dst), width)| PlacementEdge { src, dst, width })
-            .collect();
+        occupied_rtl_names(top, &built.vertices, &built.co_located)?;
 
         Ok(Self {
-            vertices,
-            placement_edges,
+            vertices: built.vertices,
+            placement_edges: built.placement_edges,
             streams,
             axi_nets,
             control_nets,
-            index,
-            co_located,
+            index: built.index,
+            co_located: built.co_located,
         })
     }
 }
@@ -294,8 +177,8 @@ pub mod tests {
     use crate::graph::floor_graph::CONTROL_S_AXI_INSTANCE;
     use tapa_ir::{
         async_mmap_bridge_instance_name, global_controller_instance_name,
-        local_controller_instance_name, AxiChannel, AxiChannelWidths, AxiEndpoint, ControlChannel,
-        MemoryBank,
+        local_controller_instance_name, Area, AxiChannel, AxiChannelWidths, AxiEndpoint,
+        ControlChannel, MemoryBank,
     };
 
     /// A two-leaf `A -> fifo -> B` design, mirroring the flatten test graph.
