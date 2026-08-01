@@ -6,8 +6,10 @@ use std::time::Duration;
 
 use crate::solver::model::{Comparison, LpModel, LpVar, VarKind};
 
-/// Tolerance used when checking CBC's decimal solution-file output.
-const SOLUTION_TOLERANCE: f64 = 1e-6;
+/// Tolerance used when checking CBC's decimal solution-file output. The
+/// formulations' one-of-k readback shares it, so a value accepted by
+/// [`LpSolution::validate_for`] also reads back as a valid selection.
+pub(crate) const SOLUTION_TOLERANCE: f64 = 1e-6;
 
 /// The outcome status the solver reports.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

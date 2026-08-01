@@ -16,7 +16,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::device::model::{effective_border_capacity, Device, WIRE_CAPACITY_INF};
 use crate::route::paths::{enumerate_paths, Cell};
-use crate::solver::assign::add_one_of_k_row;
+use crate::solver::assign::{add_one_of_k_row, read_one_of_k, OneOfKError};
 use crate::solver::sparse::SparseRow;
 use crate::solver::{
     Comparison, LinExpr, LpModel, LpStatus, LpVar, Sense, SolveOpts, Solver, SolverError,
@@ -24,8 +24,10 @@ use crate::solver::{
 
 /// Maximum extra slot visits in a generated candidate path.
 const MAX_DETOUR: usize = 2;
-/// Tolerance used only to validate a solver's binary readback.
-const BINARY_TOLERANCE: f64 = 1e-6;
+/// Absolute MIP gap requested for the routing solve: an incumbent within
+/// this absolute margin of the bound is accepted, and the lexicographic
+/// refinement then resolves the selection deterministically.
+const MIP_GAP_ABS: f64 = 0.001;
 
 /// A net to route: a width-weighted connection between two slots.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -256,32 +258,22 @@ fn selected_routes(
 ) -> Result<Vec<Vec<Cell>>, RouteError> {
     let mut routes = Vec::with_capacity(candidates.len());
     for (net_index, (paths, vars)) in candidates.iter().zip(path_vars).enumerate() {
-        let mut chosen = None;
-        for (path_index, &var) in vars.iter().enumerate() {
-            let value = solution.values.get(&var).copied().ok_or_else(|| {
-                RouteError::InvalidSolution(format!(
-                    "solver omitted path variable for net {net_index}, candidate {path_index}"
-                ))
-            })?;
-            if !value.is_finite()
-                || ((value - 0.0).abs() > BINARY_TOLERANCE
-                    && (value - 1.0).abs() > BINARY_TOLERANCE)
-            {
-                return Err(RouteError::InvalidSolution(format!(
-                    "path variable for net {net_index}, candidate {path_index} is not binary: {value}"
-                )));
+        let path_index = read_one_of_k(solution, vars).map_err(|error| match error {
+            OneOfKError::MissingVariable { position } => RouteError::InvalidSolution(format!(
+                "solver omitted path variable for net {net_index}, candidate {position}"
+            )),
+            OneOfKError::NonBinary {
+                position, value, ..
+            } => RouteError::InvalidSolution(format!(
+                "path variable for net {net_index}, candidate {position} is not binary: {value}"
+            )),
+            OneOfKError::SelectionCount { selected: 0, .. } => {
+                RouteError::InvalidSolution(format!("no path selected for net {net_index}"))
             }
-            if (value - 1.0).abs() <= BINARY_TOLERANCE && chosen.replace(path_index).is_some() {
-                return Err(RouteError::InvalidSolution(format!(
-                    "more than one path selected for net {net_index}"
-                )));
-            }
-        }
-        let Some(path_index) = chosen else {
-            return Err(RouteError::InvalidSolution(format!(
-                "no path selected for net {net_index}"
-            )));
-        };
+            OneOfKError::SelectionCount { .. } => RouteError::InvalidSolution(format!(
+                "more than one path selected for net {net_index}"
+            )),
+        })?;
         routes.push(paths[path_index].clone());
     }
     Ok(routes)
@@ -453,7 +445,7 @@ fn route_nets_with_preassignments(
     lp.set_objective(objective);
 
     let mut route_opts = opts.clone();
-    route_opts.mip_gap_abs = Some(0.001);
+    route_opts.mip_gap_abs = Some(MIP_GAP_ABS);
     let solution = solver.solve(&lp, &route_opts)?;
     if !solution.is_found() {
         return Err(match solution.status {

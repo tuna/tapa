@@ -16,6 +16,13 @@ use crate::{
 
 const ADAPTIVE_MARGIN: u32 = EXACT_DSE_CAP_SCALE / 100;
 
+/// Default lowest utilization cap a sweep may attempt.
+const DEFAULT_SWEEP_MIN: f64 = 0.55;
+/// Default first and highest utilization cap attempted.
+const DEFAULT_SWEEP_MAX: f64 = 0.9;
+/// Default nominal decrease between sweep attempts.
+const DEFAULT_SWEEP_STEP: f64 = 0.03;
+
 /// Bounds and spacing for a utilization-cap sweep.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct DseOptions {
@@ -30,9 +37,9 @@ pub struct DseOptions {
 impl Default for DseOptions {
     fn default() -> Self {
         Self {
-            min: 0.55,
-            max: 0.9,
-            step: 0.03,
+            min: DEFAULT_SWEEP_MIN,
+            max: DEFAULT_SWEEP_MAX,
+            step: DEFAULT_SWEEP_STEP,
         }
     }
 }

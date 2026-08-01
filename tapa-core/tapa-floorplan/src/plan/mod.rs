@@ -238,9 +238,9 @@ fn finish_plan(
     )?;
     // Deliberate headroom: the relaxed `plan` path validates the *realized*
     // usage — placement plus pipeline registers — against the retry ceiling
-    // (0.95), not the cap the placement was found at, so a placement at 0.6
-    // may absorb registers up to the ceiling. The exact DSE path validates
-    // against its per-candidate logic/block caps instead.
+    // (`MAX_USAGE_LIMIT`), not the cap the placement was found at, so a
+    // placement at 0.6 may absorb registers up to the ceiling. The exact
+    // DSE path validates against its per-candidate logic/block caps instead.
     let slot_usage = if realized_caps.multilevel_block_margin_applied {
         realize_slot_usage_with_resource_caps(
             graph,
