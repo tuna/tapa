@@ -2,7 +2,11 @@
 
 mod common;
 
-use common::{attach_basic_modules, design, parse_module, plain, task};
+use common::run_manifest::{generate_manifest, rtl_file, run_manifest};
+use common::{
+    attach_basic_modules, design, handshake_module_src, narrow_axi_id_module_src, parse_module,
+    plain, stream_consumer_module_src, stream_producer_module_src, task, wide_axi_id_module_src,
+};
 use std::process::Command;
 use tapa_codegen::generate_rtl;
 use tapa_codegen::rtl_state::TopologyWithRtl;
@@ -22,32 +26,29 @@ fn test_generate_rtl_simple_design() {
         &[("top", top), ("child", plain("child", "lower"))],
     );
 
-    let mut state = TopologyWithRtl::new(prog);
-    attach_basic_modules(&mut state, &["top", "child"]);
+    let manifest = run_manifest(prog, &["top", "child"], &[]);
 
-    generate_rtl(&mut state).unwrap();
-
-    // generated_files should contain the parent .v and an FSM .v
+    // The manifest should contain the parent .v and an FSM .v
     assert!(
-        state.generated_files.contains_key("top.v"),
+        manifest.files().contains_key("rtl/top.v"),
         "should emit top.v, got keys: {:?}",
-        state.generated_files.keys().collect::<Vec<_>>()
+        manifest.files().keys().collect::<Vec<_>>()
     );
     assert!(
-        state.generated_files.contains_key("top_fsm.v"),
+        manifest.files().contains_key("rtl/top_fsm.v"),
         "should emit top_fsm.v, got keys: {:?}",
-        state.generated_files.keys().collect::<Vec<_>>()
+        manifest.files().keys().collect::<Vec<_>>()
     );
 
     // The emitted parent module should contain the child instance
-    let parent_v = &state.generated_files["top.v"];
+    let parent_v = rtl_file(&manifest, "top.v");
     assert!(
         parent_v.contains("child child_0"),
         "parent should instantiate child as child_0, got:\n{parent_v}"
     );
 
     // The FSM module should contain __tapa_state and pipeline signals
-    let fsm_v = &state.generated_files["top_fsm.v"];
+    let fsm_v = rtl_file(&manifest, "top_fsm.v");
     assert!(
         fsm_v.contains("__tapa_state"),
         "FSM should contain __tapa_state, got:\n{fsm_v}"
@@ -73,13 +74,10 @@ fn test_generate_rtl_autorun_fsm_start_is_reg_output() {
         &[("top", top), ("child", plain("child", "lower"))],
     );
 
-    let mut state = TopologyWithRtl::new(prog);
-    attach_basic_modules(&mut state, &["top", "child"]);
+    let manifest = run_manifest(prog, &["top", "child"], &[]);
 
-    generate_rtl(&mut state).unwrap();
-
-    let parent_v = &state.generated_files["top.v"];
-    let fsm_v = &state.generated_files["top_fsm.v"];
+    let parent_v = rtl_file(&manifest, "top.v");
+    let fsm_v = rtl_file(&manifest, "top_fsm.v");
     assert!(
         parent_v.contains("wire child_0__ap_start;"),
         "parent-side autorun start is driven by the FSM instance and must be a net:\n{parent_v}"
@@ -109,13 +107,10 @@ fn test_generate_rtl_fsm_uses_explicit_instance_names() {
         &[("top", top), ("child", plain("child", "lower"))],
     );
 
-    let mut state = TopologyWithRtl::new(prog);
-    attach_basic_modules(&mut state, &["top", "child"]);
+    let manifest = run_manifest(prog, &["top", "child"], &[]);
 
-    generate_rtl(&mut state).unwrap();
-
-    let parent_v = &state.generated_files["top.v"];
-    let fsm_v = &state.generated_files["top_fsm.v"];
+    let parent_v = rtl_file(&manifest, "top.v");
+    let fsm_v = rtl_file(&manifest, "top_fsm.v");
     assert!(
         parent_v.contains("child child_7"),
         "parent instance should preserve explicit instance name:\n{parent_v}"
@@ -141,21 +136,10 @@ fn test_generate_rtl_sanitizes_explicit_instance_names() {
         &[("top", top), ("child", plain("child", "lower"))],
     );
 
-    let mut state = TopologyWithRtl::new(prog);
-    attach_basic_modules(&mut state, &["top"]);
-    state
-        .attach_module(
-            "child",
-            parse_module(
-                "module child(\n  input wire ap_clk,\n  input wire ap_rst_n,\n  input wire ap_start,\n  output wire ap_done,\n  output wire ap_idle,\n  output wire ap_ready\n);\nendmodule",
-            ),
-        )
-        .unwrap();
+    let manifest = run_manifest(prog, &["top"], &[("child", &handshake_module_src("child"))]);
 
-    generate_rtl(&mut state).unwrap();
-
-    let parent_v = &state.generated_files["top.v"];
-    let fsm_v = &state.generated_files["top_fsm.v"];
+    let parent_v = rtl_file(&manifest, "top.v");
+    let fsm_v = rtl_file(&manifest, "top_fsm.v");
     assert!(
         parent_v.contains("child Module1Func_1"),
         "parent instance name must be a Verilog identifier:\n{parent_v}"
@@ -183,25 +167,21 @@ fn test_generate_rtl_child_scalar_pipeline_preserves_width() {
     });
     let prog = design("top", "xilinx-hls", &[("top", top), ("child", child)]);
 
-    let mut state = TopologyWithRtl::new(prog);
-    attach_basic_modules(&mut state, &["top"]);
-    state
-        .attach_module(
+    let manifest = run_manifest(
+        prog,
+        &["top"],
+        &[(
             "child",
-            parse_module(
-                "module child(\n\
+            "module child(\n\
                  input wire ap_clk,\n\
                  input wire ap_rst_n,\n\
                  input wire [31:0] pe_id\n\
                  );\nendmodule",
-            ),
-        )
-        .unwrap();
+        )],
+    );
 
-    generate_rtl(&mut state).unwrap();
-
-    let top_v = &state.generated_files["top.v"];
-    let fsm_v = &state.generated_files["top_fsm.v"];
+    let top_v = rtl_file(&manifest, "top.v");
+    let fsm_v = rtl_file(&manifest, "top_fsm.v");
     assert!(
         top_v.contains("wire [31:0] child_0__pe_id;"),
         "parent scalar pipeline wire should match child port width, got:\n{top_v}"
@@ -234,11 +214,12 @@ fn test_generate_rtl_upper_output_regs_become_nets() {
     });
     let prog = design("top", "xilinx-hls", &[("top", top), ("child", child)]);
 
-    let mut state = TopologyWithRtl::new(prog);
-    state
-        .attach_module(
-            "top",
-            parse_module(
+    let manifest = run_manifest(
+        prog,
+        &[],
+        &[
+            (
+                "top",
                 "module top(\n\
                  input wire ap_clk,\n\
                  input wire ap_rst_n,\n\
@@ -247,12 +228,8 @@ fn test_generate_rtl_upper_output_regs_become_nets() {
                  output reg out_q_write\n\
                  );\nendmodule",
             ),
-        )
-        .unwrap();
-    state
-        .attach_module(
-            "child",
-            parse_module(
+            (
+                "child",
                 "module child(\n\
                  input wire ap_clk,\n\
                  input wire ap_rst_n,\n\
@@ -261,12 +238,10 @@ fn test_generate_rtl_upper_output_regs_become_nets() {
                  output wire out_q_write\n\
                  );\nendmodule",
             ),
-        )
-        .unwrap();
+        ],
+    );
 
-    generate_rtl(&mut state).unwrap();
-
-    let top_v = &state.generated_files["top.v"];
+    let top_v = rtl_file(&manifest, "top.v");
     assert!(
         top_v.contains("output wire out_q_write"),
         "upper output driven by child instance should be a net, got:\n{top_v}"
@@ -293,33 +268,16 @@ fn test_generate_rtl_template_task() {
     });
     let prog = design("top", "xilinx-hls", &[("shell", shell), ("top", top)]);
 
-    let mut state = TopologyWithRtl::new(prog);
-    state
-        .attach_module(
-            "top",
-            parse_module(
-                "module top(\n\
-                 input wire ap_clk,\n\
-                 input wire ap_rst_n,\n\
-                 input wire ap_start,\n\
-                 output wire ap_done,\n\
-                 output wire ap_idle,\n\
-                 output wire ap_ready\n\
-                 );\nendmodule",
-            ),
-        )
-        .unwrap();
-
-    generate_rtl(&mut state).unwrap();
+    let manifest = run_manifest(prog, &[], &[("top", &handshake_module_src("top"))]);
 
     // The ignored task is emitted both as a package placeholder and as an
     // author-facing template. It must not create an FSM implementation.
     assert!(
-        state.generated_files.contains_key("shell.v"),
+        manifest.files().contains_key("rtl/shell.v"),
         "should emit a shell placeholder, got keys: {:?}",
-        state.generated_files.keys().collect::<Vec<_>>(),
+        manifest.files().keys().collect::<Vec<_>>(),
     );
-    let template_v = &state.template_files["shell.v"];
+    let template_v = &manifest.files()["template/shell.v"];
     assert!(
         template_v.contains("module shell"),
         "template should contain module declaration, got:\n{template_v}"
@@ -331,13 +289,9 @@ fn test_generate_rtl_template_task() {
 
     // NO FSM module should be generated for a template task
     assert!(
-        !state.generated_files.contains_key("shell_fsm.v"),
+        !manifest.files().contains_key("rtl/shell_fsm.v"),
         "template task should not have an FSM module, got keys: {:?}",
-        state.generated_files.keys().collect::<Vec<_>>()
-    );
-    assert!(
-        !state.fsm_modules.contains_key("shell"),
-        "template task should not have fsm_modules entry"
+        manifest.files().keys().collect::<Vec<_>>()
     );
 }
 
@@ -357,14 +311,13 @@ fn test_generate_rtl_top_task_removes_peek_ports() {
     });
     let prog = design("top", "xilinx-hls", &[("top", top), ("reader", reader)]);
 
-    let mut state = TopologyWithRtl::new(prog);
-
     // The top module has istream_peek_* ports that should be removed
-    state
-        .attach_module(
+    let manifest = run_manifest(
+        prog,
+        &["reader"],
+        &[(
             "top",
-            parse_module(
-                "module top(\n\
+            "module top(\n\
                  input wire ap_clk,\n\
                  input wire ap_rst_n,\n\
                  input wire [31:0] data_in_dout,\n\
@@ -374,21 +327,10 @@ fn test_generate_rtl_top_task_removes_peek_ports() {
                  input wire data_in_peek_empty_n,\n\
                  output wire data_in_peek_read\n\
                  );\nendmodule",
-            ),
-        )
-        .unwrap();
-    state
-        .attach_module(
-            "reader",
-            parse_module(
-                "module reader(\n  input wire ap_clk,\n  input wire ap_rst_n\n);\nendmodule",
-            ),
-        )
-        .unwrap();
+        )],
+    );
 
-    generate_rtl(&mut state).unwrap();
-
-    let top_v = &state.generated_files["top.v"];
+    let top_v = rtl_file(&manifest, "top.v");
 
     // Non-floorplanned builds emit the reset as a plain wire with no
     // synthesis attribute — the max_fanout cap is floorplan-only.
@@ -437,11 +379,12 @@ fn test_generate_rtl_external_istream_aliases_hls_s_ports() {
     });
     let prog = design("top", "xilinx-hls", &[("top", top), ("consumer", consumer)]);
 
-    let mut state = TopologyWithRtl::new(prog);
-    state
-        .attach_module(
-            "top",
-            parse_module(
+    let manifest = run_manifest(
+        prog,
+        &[],
+        &[
+            (
+                "top",
                 "module top(\n\
                  input wire ap_clk,\n\
                  input wire ap_rst_n,\n\
@@ -450,12 +393,8 @@ fn test_generate_rtl_external_istream_aliases_hls_s_ports() {
                  output wire data_stream_s_read\n\
                  );\nendmodule",
             ),
-        )
-        .unwrap();
-    state
-        .attach_module(
-            "consumer",
-            parse_module(
+            (
+                "consumer",
                 "module consumer(\n\
                  input wire ap_clk,\n\
                  input wire ap_rst_n,\n\
@@ -464,11 +403,9 @@ fn test_generate_rtl_external_istream_aliases_hls_s_ports() {
                  output wire data_stream_s_read\n\
                  );\nendmodule",
             ),
-        )
-        .unwrap();
-
-    generate_rtl(&mut state).unwrap();
-    let top_v = &state.generated_files["top.v"];
+        ],
+    );
+    let top_v = rtl_file(&manifest, "top.v");
 
     assert!(
         top_v.contains("wire [64:0] data_stream_dout;"),
@@ -518,11 +455,12 @@ fn test_generate_rtl_vitis_top_streams_use_axis_adapters() {
     });
     let prog = design("top", "xilinx-vitis", &[("top", top), ("worker", worker)]);
 
-    let mut state = TopologyWithRtl::new(prog);
-    state
-        .attach_module(
-            "top",
-            parse_module(
+    let manifest = run_manifest(
+        prog,
+        &[],
+        &[
+            (
+                "top",
                 "module top(\n\
                  input wire ap_clk,\n\
                  input wire ap_rst_n,\n\
@@ -541,12 +479,8 @@ fn test_generate_rtl_vitis_top_streams_use_axis_adapters() {
                  reg ap_ready;\n\
                  endmodule",
             ),
-        )
-        .unwrap();
-    state
-        .attach_module(
-            "worker",
-            parse_module(
+            (
+                "worker",
                 "module worker(\n\
                  input wire ap_clk,\n\
                  input wire ap_rst_n,\n\
@@ -558,11 +492,9 @@ fn test_generate_rtl_vitis_top_streams_use_axis_adapters() {
                  output wire c_s_write\n\
                  );\nendmodule",
             ),
-        )
-        .unwrap();
-
-    generate_rtl(&mut state).unwrap();
-    let top_v = &state.generated_files["top.v"];
+        ],
+    );
+    let top_v = rtl_file(&manifest, "top.v");
 
     assert!(
         top_v.contains("wire [48:0] a_dout;"),
@@ -629,41 +561,17 @@ fn test_generate_rtl_with_fifo() {
         &[("top", top), ("producer", producer), ("consumer", consumer)],
     );
 
-    let mut state = TopologyWithRtl::new(prog);
-    attach_basic_modules(&mut state, &["top"]);
     // Producer with a _din port so width resolution finds 32 bits
-    state
-        .attach_module(
-            "producer",
-            parse_module(
-                "module producer(\n\
-                 input wire ap_clk,\n\
-                 input wire ap_rst_n,\n\
-                 output wire [31:0] out_data_din,\n\
-                 output wire out_data_write,\n\
-                 input wire out_data_full_n\n\
-                 );\nendmodule",
-            ),
-        )
-        .unwrap();
-    state
-        .attach_module(
-            "consumer",
-            parse_module(
-                "module consumer(\n\
-                 input wire ap_clk,\n\
-                 input wire ap_rst_n,\n\
-                 input wire [31:0] in_data_dout,\n\
-                 input wire in_data_empty_n,\n\
-                 output wire in_data_read\n\
-                 );\nendmodule",
-            ),
-        )
-        .unwrap();
+    let manifest = run_manifest(
+        prog,
+        &["top"],
+        &[
+            ("producer", &stream_producer_module_src("producer")),
+            ("consumer", &stream_consumer_module_src("consumer")),
+        ],
+    );
 
-    generate_rtl(&mut state).unwrap();
-
-    let top_v = &state.generated_files["top.v"];
+    let top_v = rtl_file(&manifest, "top.v");
 
     // Should contain a FIFO instance (parameterized: "fifo #(...) fifo_0_fifo")
     assert!(
@@ -763,34 +671,17 @@ fn generate_floorplanned_stream_pipeline(
     state
         .attach_module(
             "producer",
-            parse_module(
-                "module producer(\n\
-                 input wire ap_clk,\n\
-                 input wire ap_rst_n,\n\
-                 output wire [31:0] out_data_din,\n\
-                 output wire out_data_write,\n\
-                 input wire out_data_full_n\n\
-                 );\nendmodule",
-            ),
+            parse_module(&stream_producer_module_src("producer")),
         )
         .unwrap();
     state
         .attach_module(
             "consumer",
-            parse_module(
-                "module consumer(\n\
-                 input wire ap_clk,\n\
-                 input wire ap_rst_n,\n\
-                 input wire [31:0] in_data_dout,\n\
-                 input wire in_data_empty_n,\n\
-                 output wire in_data_read\n\
-                 );\nendmodule",
-            ),
+            parse_module(&stream_consumer_module_src("consumer")),
         )
         .unwrap();
 
-    generate_rtl(&mut state).unwrap();
-    state.generated_files["top.v"].clone()
+    generate_manifest(&mut state).files()["rtl/top.v"].clone()
 }
 
 #[allow(
@@ -1151,8 +1042,8 @@ fn test_generate_rtl_control_launch_packs_direct_mmap_offset() {
         reg_regions: Vec::new(),
     });
 
-    generate_rtl(&mut state).unwrap();
-    let top = &state.generated_files["top.v"];
+    let manifest = generate_manifest(&mut state);
+    let top = rtl_file(&manifest, "top.v");
     assert!(top.contains(".WIDTH(66)"), "got:\n{top}");
     assert!(
         top.contains("assign __tapa_control_reader_0__launch_input = {mem_offset, __tapa_control_release, __tapa_control_start}")
@@ -1302,8 +1193,8 @@ fn direct_axi_state(routes: Option<Vec<tapa_ir::PipelineRoute>>) -> TopologyWith
 #[test]
 fn test_generate_rtl_floorplanned_direct_axi_pipelines_all_five_channels() {
     let mut state = direct_axi_state(Some(direct_axi_routes()));
-    generate_rtl(&mut state).unwrap();
-    let top_v = &state.generated_files["top.v"];
+    let manifest = generate_manifest(&mut state);
+    let top_v = rtl_file(&manifest, "top.v");
 
     assert_eq!(top_v.matches("tapa_hs_pipeline #(").count(), 5, "{top_v}");
     for name in [
@@ -1367,12 +1258,13 @@ fn test_generate_rtl_floorplanned_direct_axi_pipelines_all_five_channels() {
 #[test]
 fn test_generate_rtl_co_located_direct_axi_preserves_original_wiring() {
     let mut without_floorplan = direct_axi_state(None);
-    generate_rtl(&mut without_floorplan).unwrap();
+    let without_manifest = generate_manifest(&mut without_floorplan);
     let mut co_located = direct_axi_state(Some(Vec::new()));
-    generate_rtl(&mut co_located).unwrap();
+    let co_located_manifest = generate_manifest(&mut co_located);
 
     assert_eq!(
-        without_floorplan.generated_files["top.v"], co_located.generated_files["top.v"],
+        rtl_file(&without_manifest, "top.v"),
+        rtl_file(&co_located_manifest, "top.v"),
         "a co-located endpoint must preserve the direct RTL byte-for-byte"
     );
 }
@@ -1419,24 +1311,20 @@ fn test_generate_rtl_does_not_reemit_lower_modules() {
         &[("top", top), ("child", plain("child", "lower"))],
     );
 
-    let mut state = TopologyWithRtl::new(prog);
-    attach_basic_modules(&mut state, &["top"]);
-    state
-        .attach_module(
+    let manifest = run_manifest(
+        prog,
+        &["top"],
+        &[(
             "child",
-            parse_module(
-                "module child(\n  input wire ap_clk,\n  output wire ap_done\n);\n\
+            "module child(\n  input wire ap_clk,\n  output wire ap_done\n);\n\
                  reg ap_done;\n\
                  always @(*) begin ap_done = 1'b1; end\n\
                  endmodule",
-            ),
-        )
-        .unwrap();
-
-    generate_rtl(&mut state).unwrap();
+        )],
+    );
 
     assert!(
-        !state.generated_files.contains_key("child.v"),
+        !manifest.files().contains_key("rtl/child.v"),
         "lower HLS modules are copied from the original files; re-emitting \
          them drops legal port-reg redeclarations"
     );
@@ -1494,12 +1382,12 @@ fn test_generate_rtl_fifo_width_uses_bound_producer_port() {
         &[("top", top), ("producer", producer), ("consumer", consumer)],
     );
 
-    let mut state = TopologyWithRtl::new(prog);
-    attach_basic_modules(&mut state, &["top"]);
-    state
-        .attach_module(
-            "producer",
-            parse_module(
+    let manifest = run_manifest(
+        prog,
+        &["top"],
+        &[
+            (
+                "producer",
                 "module producer(\n\
                  input wire ap_clk,\n\
                  input wire ap_rst_n,\n\
@@ -1511,12 +1399,8 @@ fn test_generate_rtl_fifo_width_uses_bound_producer_port() {
                  input wire wide_s_full_n\n\
                  );\nendmodule",
             ),
-        )
-        .unwrap();
-    state
-        .attach_module(
-            "consumer",
-            parse_module(
+            (
+                "consumer",
                 "module consumer(\n\
                  input wire ap_clk,\n\
                  input wire ap_rst_n,\n\
@@ -1528,12 +1412,10 @@ fn test_generate_rtl_fifo_width_uses_bound_producer_port() {
                  output wire wide_in_s_read\n\
                  );\nendmodule",
             ),
-        )
-        .unwrap();
+        ],
+    );
 
-    generate_rtl(&mut state).unwrap();
-
-    let top_v = &state.generated_files["top.v"];
+    let top_v = rtl_file(&manifest, "top.v");
     assert!(
         top_v.contains("small_fifo_fifo")
             && top_v.contains(".DATA_WIDTH(9)")
@@ -1572,12 +1454,9 @@ fn test_generate_rtl_multithread_mmap() {
     });
     let prog = design("top", "xilinx-hls", &[("top", top), ("worker", worker)]);
 
-    let mut state = TopologyWithRtl::new(prog);
-    attach_basic_modules(&mut state, &["top", "worker"]);
+    let manifest = run_manifest(prog, &["top", "worker"], &[]);
 
-    generate_rtl(&mut state).unwrap();
-
-    let top_v = &state.generated_files["top.v"];
+    let top_v = rtl_file(&manifest, "top.v");
 
     // Crossbar instance should appear (2 threads sharing 'mem')
     assert!(
@@ -1597,12 +1476,14 @@ fn test_generate_rtl_multithread_mmap() {
 
     // Crossbar auxiliary RTL file should be generated
     assert!(
-        state
-            .generated_files
-            .keys()
-            .any(|k| k.contains("axi_crossbar")),
+        manifest
+            .design_files()
+            .any(|(path, _)| path.contains("axi_crossbar")),
         "should emit crossbar RTL file, got keys: {:?}",
-        state.generated_files.keys().collect::<Vec<_>>()
+        manifest
+            .design_files()
+            .map(|(path, _)| path)
+            .collect::<Vec<_>>()
     );
 }
 
@@ -1640,13 +1521,10 @@ fn test_generate_rtl_nested_shared_mmap_threads() {
         &[("top", top), ("mid", mid), ("leaf", leaf)],
     );
 
-    let mut state = TopologyWithRtl::new(prog);
-    attach_basic_modules(&mut state, &["top", "mid", "leaf"]);
-
-    generate_rtl(&mut state).unwrap();
+    let manifest = run_manifest(prog, &["top", "mid", "leaf"], &[]);
 
     // mid's own crossbar arbitrates two leaves, 1 thread each.
-    let mid_v = &state.generated_files["mid.v"];
+    let mid_v = rtl_file(&manifest, "mid.v");
     assert!(
         mid_v.contains("S00_THREADS(1)") && mid_v.contains("S01_THREADS(1)"),
         "mid crossbar should provision 1 thread per leaf slave, got:\n{mid_v}"
@@ -1654,7 +1532,7 @@ fn test_generate_rtl_nested_shared_mmap_threads() {
 
     // top's crossbar: slave 0 = leaf (1 thread), slave 1 = mid
     // (2 aggregated threads). Task iteration is alphabetical.
-    let top_v = &state.generated_files["top.v"];
+    let top_v = rtl_file(&manifest, "top.v");
     assert!(
         top_v.contains("S00_THREADS(1)"),
         "leaf slave should provision 1 thread, got:\n{top_v}"
@@ -1679,32 +1557,9 @@ fn test_generate_rtl_single_child_mmap_preserves_child_id_width() {
     });
     let prog = design("top", "xilinx-hls", &[("mid", mid), ("top", top)]);
 
-    let mut state = TopologyWithRtl::new(prog);
-    state
-        .attach_module(
-            "mid",
-            parse_module(
-                "module mid(\n\
-                 input wire ap_clk,\n\
-                 input wire ap_rst_n,\n\
-                 output wire [1:0] m_axi_data_ARID,\n\
-                 output wire [1:0] m_axi_data_AWID,\n\
-                 input wire [1:0] m_axi_data_BID,\n\
-                 input wire [1:0] m_axi_data_RID\n\
-                 ); endmodule",
-            ),
-        )
-        .unwrap();
-    state
-        .attach_module(
-            "top",
-            parse_module("module top(input wire ap_clk, input wire ap_rst_n); endmodule"),
-        )
-        .unwrap();
+    let manifest = run_manifest(prog, &["top"], &[("mid", &wide_axi_id_module_src("mid"))]);
 
-    generate_rtl(&mut state).unwrap();
-
-    let top_v = &state.generated_files["top.v"];
+    let top_v = rtl_file(&manifest, "top.v");
     assert!(
         top_v.contains("output wire [1:0] m_axi_elems_ARID"),
         "top mmap ID ports must preserve a wider child AXI ID even without a parent crossbar:\n{top_v}"
@@ -1739,47 +1594,16 @@ fn test_generate_rtl_parent_crossbar_zero_extends_narrow_child_ids() {
         &[("leaf", leaf), ("mid", mid), ("top", top)],
     );
 
-    let mut state = TopologyWithRtl::new(prog);
-    state
-        .attach_module(
-            "leaf",
-            parse_module(
-                "module leaf(\n\
-                 input wire ap_clk,\n\
-                 input wire ap_rst_n,\n\
-                 output wire m_axi_mmap_ARID,\n\
-                 output wire m_axi_mmap_AWID,\n\
-                 input wire m_axi_mmap_BID,\n\
-                 input wire m_axi_mmap_RID\n\
-                 ); endmodule",
-            ),
-        )
-        .unwrap();
-    state
-        .attach_module(
-            "mid",
-            parse_module(
-                "module mid(\n\
-                 input wire ap_clk,\n\
-                 input wire ap_rst_n,\n\
-                 output wire [1:0] m_axi_data_ARID,\n\
-                 output wire [1:0] m_axi_data_AWID,\n\
-                 input wire [1:0] m_axi_data_BID,\n\
-                 input wire [1:0] m_axi_data_RID\n\
-                 ); endmodule",
-            ),
-        )
-        .unwrap();
-    state
-        .attach_module(
-            "top",
-            parse_module("module top(input wire ap_clk, input wire ap_rst_n); endmodule"),
-        )
-        .unwrap();
+    let manifest = run_manifest(
+        prog,
+        &["top"],
+        &[
+            ("leaf", &narrow_axi_id_module_src("leaf")),
+            ("mid", &wide_axi_id_module_src("mid")),
+        ],
+    );
 
-    generate_rtl(&mut state).unwrap();
-
-    let top_v = &state.generated_files["top.v"];
+    let top_v = rtl_file(&manifest, "top.v");
     assert!(
         top_v.contains("wire [1:0] m_axi_elems_s0_ARID"),
         "parent crossbar slave wires should use the widest child ID:\n{top_v}"
@@ -1841,53 +1665,16 @@ fn test_generate_rtl_parent_crossbar_slices_generated_narrow_upper_child_ids() {
         ],
     );
 
-    let mut state = TopologyWithRtl::new(prog);
-    state
-        .attach_module(
-            "Awide",
-            parse_module(
-                "module Awide(\n\
-                 input wire ap_clk,\n\
-                 input wire ap_rst_n,\n\
-                 output wire [1:0] m_axi_data_ARID,\n\
-                 output wire [1:0] m_axi_data_AWID,\n\
-                 input wire [1:0] m_axi_data_BID,\n\
-                 input wire [1:0] m_axi_data_RID\n\
-                 ); endmodule",
-            ),
-        )
-        .unwrap();
-    state
-        .attach_module(
-            "Leaf",
-            parse_module(
-                "module Leaf(\n\
-                 input wire ap_clk,\n\
-                 input wire ap_rst_n,\n\
-                 output wire m_axi_mmap_ARID,\n\
-                 output wire m_axi_mmap_AWID,\n\
-                 input wire m_axi_mmap_BID,\n\
-                 input wire m_axi_mmap_RID\n\
-                 ); endmodule",
-            ),
-        )
-        .unwrap();
-    state
-        .attach_module(
-            "Store",
-            parse_module("module Store(input wire ap_clk, input wire ap_rst_n); endmodule"),
-        )
-        .unwrap();
-    state
-        .attach_module(
-            "VecTop",
-            parse_module("module VecTop(input wire ap_clk, input wire ap_rst_n); endmodule"),
-        )
-        .unwrap();
+    let manifest = run_manifest(
+        prog,
+        &["Store", "VecTop"],
+        &[
+            ("Awide", &wide_axi_id_module_src("Awide")),
+            ("Leaf", &narrow_axi_id_module_src("Leaf")),
+        ],
+    );
 
-    generate_rtl(&mut state).unwrap();
-
-    let top_v = &state.generated_files["VecTop.v"];
+    let top_v = rtl_file(&manifest, "VecTop.v");
     assert!(
         top_v.contains("wire [1:0] m_axi_elems_s1_ARID"),
         "second crossbar slave should inherit the widest child ID width:\n{top_v}"
@@ -1940,25 +1727,18 @@ fn test_generate_rtl_hmap_uses_parent_channels() {
     });
     let prog = design("top", "xilinx-hls", &[("top", top), ("worker", worker)]);
 
-    let mut state = TopologyWithRtl::new(prog);
-    state
-        .attach_module(
-            "top",
-            parse_module(
+    let manifest = run_manifest(
+        prog,
+        &["worker"],
+        &[
+            (
+                "top",
                 "module top(input wire ap_clk, input wire ap_rst_n, input wire [63:0] mem_0_offset, input wire [63:0] mem_1_offset); endmodule",
             ),
-        )
-        .unwrap();
-    state
-        .attach_module(
-            "worker",
-            parse_module("module worker(input wire ap_clk, input wire ap_rst_n); endmodule"),
-        )
-        .unwrap();
+        ],
+    );
 
-    generate_rtl(&mut state).unwrap();
-
-    let top_v = &state.generated_files["top.v"];
+    let top_v = rtl_file(&manifest, "top.v");
     assert!(top_v.contains("m_axi_mem_0_ARADDR"), "got:\n{top_v}");
     assert!(top_v.contains("m_axi_mem_1_ARADDR"), "got:\n{top_v}");
     assert!(
@@ -2007,25 +1787,18 @@ fn test_generate_rtl_single_channel_hmap_keeps_indexed_channel() {
     });
     let prog = design("top", "xilinx-hls", &[("top", top), ("worker", worker)]);
 
-    let mut state = TopologyWithRtl::new(prog);
-    state
-        .attach_module(
-            "top",
-            parse_module(
+    let manifest = run_manifest(
+        prog,
+        &["worker"],
+        &[
+            (
+                "top",
                 "module top(input wire ap_clk, input wire ap_rst_n, input wire [63:0] mem_0_offset); endmodule",
             ),
-        )
-        .unwrap();
-    state
-        .attach_module(
-            "worker",
-            parse_module("module worker(input wire ap_clk, input wire ap_rst_n); endmodule"),
-        )
-        .unwrap();
+        ],
+    );
 
-    generate_rtl(&mut state).unwrap();
-
-    let top_v = &state.generated_files["top.v"];
+    let top_v = rtl_file(&manifest, "top.v");
     assert!(top_v.contains("m_axi_mem_0_ARADDR"), "got:\n{top_v}");
     assert!(top_v.contains("m_axi_mem_0_ARADDR_raw"), "got:\n{top_v}");
     assert!(
@@ -2053,23 +1826,9 @@ fn test_generate_rtl_sanitizes_indexed_mmap_names() {
     });
     let prog = design("top", "xilinx-hls", &[("top", top), ("worker", worker)]);
 
-    let mut state = TopologyWithRtl::new(prog);
-    state
-        .attach_module(
-            "top",
-            parse_module("module top(input wire ap_clk, input wire ap_rst_n); endmodule"),
-        )
-        .unwrap();
-    state
-        .attach_module(
-            "worker",
-            parse_module("module worker(input wire ap_clk, input wire ap_rst_n); endmodule"),
-        )
-        .unwrap();
+    let manifest = run_manifest(prog, &["top", "worker"], &[]);
 
-    generate_rtl(&mut state).unwrap();
-
-    let top_v = &state.generated_files["top.v"];
+    let top_v = rtl_file(&manifest, "top.v");
     assert!(top_v.contains("m_axi_chan_0_ARADDR"), "got:\n{top_v}");
     assert!(
         top_v.contains(".worker_0__mem_offset_in(chan_0_offset)"),
@@ -2104,19 +1863,7 @@ fn async_mmap_state(floorplanned: bool) -> TopologyWithRtl {
 
     let mut state = TopologyWithRtl::new(prog);
     state
-        .attach_module(
-            "top",
-            parse_module(
-                "module top(\n\
-                 input wire ap_clk,\n\
-                 input wire ap_rst_n,\n\
-                 input wire ap_start,\n\
-                 output wire ap_done,\n\
-                 output wire ap_idle,\n\
-                 output wire ap_ready\n\
-                 ); endmodule",
-            ),
-        )
+        .attach_module("top", parse_module(&handshake_module_src("top")))
         .unwrap();
     state
         .attach_module(
@@ -2226,10 +1973,9 @@ fn async_mmap_state(floorplanned: bool) -> TopologyWithRtl {
 #[test]
 fn test_generate_rtl_instantiates_async_mmap_bridge() {
     let mut state = async_mmap_state(false);
+    let manifest = generate_manifest(&mut state);
 
-    generate_rtl(&mut state).unwrap();
-
-    let top_v = &state.generated_files["top.v"];
+    let top_v = rtl_file(&manifest, "top.v");
     assert!(
         top_v.contains("async_mmap #(") && top_v.contains("chan_0__m_axi"),
         "top should instantiate an async_mmap bridge:\n{top_v}"
@@ -2268,10 +2014,9 @@ fn test_generate_rtl_instantiates_async_mmap_bridge() {
 #[test]
 fn test_generate_rtl_pipelines_only_enabled_async_mmap_channels() {
     let mut state = async_mmap_state(true);
+    let manifest = generate_manifest(&mut state);
 
-    generate_rtl(&mut state).unwrap();
-
-    let top_v = &state.generated_files["top.v"];
+    let top_v = rtl_file(&manifest, "top.v");
     assert_eq!(top_v.matches("tapa_hs_pipeline #(").count(), 2, "{top_v}");
     for name in ["__tapa_axi_chan_0_ar", "__tapa_axi_chan_0_r"] {
         assert!(top_v.contains(name), "missing {name}:\n{top_v}");
@@ -2353,11 +2098,12 @@ fn test_generate_rtl_top_instantiates_control_s_axi() {
     });
     let prog = design("top", "xilinx-hls", &[("top", top), ("worker", worker)]);
 
-    let mut state = TopologyWithRtl::new(prog);
-    state
-        .attach_module(
-            "top",
-            parse_module(
+    let manifest = run_manifest(
+        prog,
+        &[],
+        &[
+            (
+                "top",
                 "module top #(\n\
                    parameter C_S_AXI_CONTROL_ADDR_WIDTH = 6,\n\
                    parameter C_S_AXI_CONTROL_DATA_WIDTH = 32\n\
@@ -2400,12 +2146,8 @@ fn test_generate_rtl_top_instantiates_control_s_axi() {
                  assign ap_idle = 1'b1;\n\
                  endmodule",
             ),
-        )
-        .unwrap();
-    state
-        .attach_module(
-            "worker",
-            parse_module(
+            (
+                "worker",
                 "module worker(\n\
                    input wire ap_clk,\n\
                    input wire ap_rst_n,\n\
@@ -2418,12 +2160,10 @@ fn test_generate_rtl_top_instantiates_control_s_axi() {
                  );\n\
                  endmodule",
             ),
-        )
-        .unwrap();
+        ],
+    );
 
-    generate_rtl(&mut state).unwrap();
-
-    let top_v = &state.generated_files["top.v"];
+    let top_v = rtl_file(&manifest, "top.v");
     assert!(top_v.contains("top_control_s_axi"), "got:\n{top_v}");
     assert!(top_v.contains("control_s_axi_U"), "got:\n{top_v}");
     assert!(top_v.contains(".mem_offset(mem_offset)"), "got:\n{top_v}");
@@ -2464,12 +2204,12 @@ fn test_generate_rtl_top_control_unrolls_hmap_offsets() {
     });
     let prog = design("top", "xilinx-hls", &[("top", top), ("worker", worker)]);
 
-    let mut state = TopologyWithRtl::new(prog);
-    state
-        .attach_module(
+    let manifest = run_manifest(
+        prog,
+        &["worker"],
+        &[(
             "top",
-            parse_module(
-                "module top #(\n\
+            "module top #(\n\
                    parameter C_S_AXI_CONTROL_ADDR_WIDTH = 6,\n\
                    parameter C_S_AXI_CONTROL_DATA_WIDTH = 32\n\
                  ) (\n\
@@ -2501,19 +2241,10 @@ fn test_generate_rtl_top_control_unrolls_hmap_offsets() {
                  wire [63:0] mem_0_offset;\n\
                  wire [63:0] mem_1_offset;\n\
                  endmodule",
-            ),
-        )
-        .unwrap();
-    state
-        .attach_module(
-            "worker",
-            parse_module("module worker(input wire ap_clk, input wire ap_rst_n); endmodule"),
-        )
-        .unwrap();
+        )],
+    );
 
-    generate_rtl(&mut state).unwrap();
-
-    let top_v = &state.generated_files["top.v"];
+    let top_v = rtl_file(&manifest, "top.v");
     assert!(
         top_v.contains(".mem_0_offset(mem_0_offset)"),
         "got:\n{top_v}"

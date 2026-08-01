@@ -5,8 +5,8 @@ use tapa_ir::task::TaskLevel;
 use tapa_ir::SynthTarget;
 
 use crate::error::CodegenError;
-use crate::passes::PassCtx;
-use crate::RtlPass;
+use crate::passes::DesignPassCtx;
+use crate::DesignPass;
 
 /// Design pass: collect the emitted files.
 ///
@@ -14,8 +14,8 @@ use crate::RtlPass;
 /// emitted into `generated_files` / `template_files`.
 pub struct CollectOutputs;
 
-impl RtlPass for CollectOutputs {
-    fn run(&self, ctx: &mut PassCtx<'_>) -> Result<(), CodegenError> {
+impl DesignPass for CollectOutputs {
+    fn run(&mut self, ctx: &mut DesignPassCtx<'_>) -> Result<(), CodegenError> {
         let design = ctx.design.design();
 
         // `Ignore` tasks: emit the authoritative template file from the
