@@ -158,7 +158,7 @@ load_dependencies = use_extension(
     "load_dependencies",
     dev_dependency = True,
 )
-use_repo(load_dependencies, "ssh_key", "vitis_hls", "xsim_legacy_rdi", "xsim_xv")
+use_repo(load_dependencies, "ssh_key", "vitis_hls", "xsim_xv")
 
 bazel_dep(name = "libuuid", version = "2.41.2")
 

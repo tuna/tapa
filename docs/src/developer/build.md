@@ -70,8 +70,7 @@ changes back to the main repository.
 You may need to modify the `VARS.bzl` file in the repository's root directory
 to specify the correct Vivado installation paths and versions. The build script
 currently assumes default installation paths at
-`/opt/tools/xilinx/Vivado/2024.2` and
-`/opt/tools/xilinx/Vivado/2022.2` for Vivado, and
+`/opt/tools/xilinx/Vivado/2024.2` for Vivado, and
 `/opt/tools/xilinx/Vitis/2024.2` for Vitis.
 
 If your Xilinx tools are installed in non-standard locations, please modify
@@ -81,11 +80,6 @@ directory for your Vivado and Vitis installations. You should also update
 you have installed. With these settings properly configured, the system
 will expect your Vivado installation to be located at
 `{XILINX_TOOL_PATH}/Vivado/{XILINX_TOOL_VERSION}`.
-
-Furthermore, you should configure `XILINX_TOOL_LEGACY_VERSION` to indicate
-the earliest version of Xilinx tools installed on your system, along with
-`XILINX_TOOL_LEGACY_PATH` to point to the corresponding installation
-directory.
 
 If your system does not have the Xilinx Runtime (XRT) installed, you can
 modify the `HAS_XRT` variable in the `VARS.bzl` file to `False`. This

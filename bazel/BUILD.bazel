@@ -4,7 +4,6 @@
 # All rights reserved. The contributor(s) of this file has/have agreed to the
 # RapidStream Contributor License Agreement.
 
-load("@vars//:vars.bzl", "XILINX_TOOL_LEGACY_PATH", "XILINX_TOOL_LEGACY_VERSION")
 load("//bazel:v++_rules.bzl", "xilinx_wrapper")
 
 package(default_visibility = ["//visibility:public"])
@@ -48,13 +47,4 @@ xilinx_wrapper(
     argv0 = "xsc",
     target_compatible_with = ["@platforms//os:linux"],
     tool = "Vivado",
-)
-
-xilinx_wrapper(
-    name = "xsc_legacy_rdi",
-    argv0 = "xsc",
-    target_compatible_with = ["@platforms//os:linux"],
-    tool = "Vivado",
-    tool_path = XILINX_TOOL_LEGACY_PATH,
-    tool_version = XILINX_TOOL_LEGACY_VERSION,
 )

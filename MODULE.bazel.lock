@@ -276,7 +276,7 @@
   "moduleExtensions": {
     "//bazel:dependencies.bzl%load_dependencies": {
       "general": {
-        "bzlTransitiveDigest": "FhLA64Gs04FZwUDd74fRKgTGKbDDvobUPsPrxVU+fvQ=",
+        "bzlTransitiveDigest": "PFA2eCbo65p6KzFCbx/YCSDWeLZw4YNjl0RG13wmDiE=",
         "usagesDigest": "R/mru0wX2nxaR5WLYDX44DFEAMeABaiVH5PaEGW3+bc=",
         "recordedInputs": [
           "REPO_MAPPING:,vars +resolve_vars+vars"
@@ -285,7 +285,7 @@
           "ssh_key": {
             "repoRuleId": "@@//bazel:dependencies.bzl%_ssh_key_repository",
             "attributes": {
-              "key_file": "~/.ssh/tuna_tapa"
+              "key_file": "/dev/null"
             }
           },
           "vitis_hls": {
@@ -293,13 +293,13 @@
             "attributes": {
               "build_file_content": "\nload(\"@rules_cc//cc:cc_library.bzl\", \"cc_library\")\n\ncc_library(\n    name = \"include\",\n    hdrs = glob([\"include/**/*.h\"], allow_empty = True),\n    defines = select({\n        \"@platforms//os:macos\": [\n            # Xilinx std::complex specializations conflict with libc++ inline\n            # namespaces (std::__1::complex vs std::complex). Skip them since\n            # TAPA programs do not use std::complex<ap_int/ap_fixed>.\n            \"AP_INT_SPECIAL_H\",\n            \"AP_FIXED_SPECIAL_H\",\n            # Disable Xilinx FPO library dependency.\n            \"HLS_NO_XIL_FPO_LIB\",\n        ],\n        \"//conditions:default\": [],\n    }),\n    includes = [\"include\"],\n    visibility = [\"//visibility:public\"],\n)\n        ",
               "path": "/opt/tools/xilinx/Vitis/2024.2",
-              "remote_path": "/opt/tapa/software/tools/xilinx/Vitis/2024.2",
-              "remote_host": "100.126.154.100",
-              "remote_user": "tapa",
+              "remote_path": "",
+              "remote_host": "",
+              "remote_user": "",
               "remote_port": "22",
-              "remote_key_file": "~/.ssh/tuna_tapa",
-              "remote_ssh_control_dir": "/tmp/tapa-ssh-mux",
-              "remote_ssh_control_persist": "1h"
+              "remote_key_file": "",
+              "remote_ssh_control_dir": "",
+              "remote_ssh_control_persist": "30m"
             }
           },
           "xsim_xv": {
@@ -307,13 +307,6 @@
             "attributes": {
               "build_file_content": "\nload(\"@rules_cc//cc:cc_library.bzl\", \"cc_library\")\n\ncc_library(\n    name = \"svdpi\",\n    hdrs = glob([\"include/svdpi.h\"], allow_empty = True),\n    includes = [\"include\"],\n    visibility = [\"//visibility:public\"],\n)\n        ",
               "path": "/opt/tools/xilinx/Vivado/2024.2/data/xsim"
-            }
-          },
-          "xsim_legacy_rdi": {
-            "repoRuleId": "@@//bazel:dependencies.bzl%_optional_local_repository",
-            "attributes": {
-              "build_file_content": "\nload(\"@rules_cc//cc:cc_library.bzl\", \"cc_library\")\n\ncc_library(\n    name = \"svdpi\",\n    hdrs = glob([\"include/svdpi.h\"], allow_empty = True),\n    includes = [\"include\"],\n    visibility = [\"//visibility:public\"],\n)\n    ",
-              "path": "/opt/tools/xilinx/Vivado/2022.2/data/xsim"
             }
           }
         },
@@ -603,7 +596,7 @@
     },
     "@@rules_rust+//crate_universe/private:internal_extensions.bzl%cu_nr": {
       "general": {
-        "bzlTransitiveDigest": "PgCP6AKF2QuaQJYcjZ9uj4HOZT97ujsaUnCSuWSgGRw=",
+        "bzlTransitiveDigest": "RMDs0C4bMQxFodPXySUZjdH3qJhNVonp45+VAF3lrT0=",
         "usagesDigest": "tG3p3Nb5XxC7vWY/bcKdb//g0HoAxpxxH3F5/jBVlk4=",
         "recordedInputs": [
           "REPO_MAPPING:bazel_features+,bazel_features_globals bazel_features++version_extension+bazel_features_globals",

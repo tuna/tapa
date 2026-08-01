@@ -1,8 +1,9 @@
 //! M-AXI port generation and parameterized AXI crossbar emission.
 
 use tapa_protocol::{
-    axi_subport_from_suffix, axi_subport_width, PortDir, HANDSHAKE_CLK, HANDSHAKE_RST,
-    M_AXI_CHANNEL_ORDER, M_AXI_PORTS, M_AXI_PREFIX, M_AXI_SUFFIXES_COMPACT,
+    axi_subport_from_suffix, axi_subport_width, m_axi_port_direction, m_axi_port_width, PortDir,
+    AXI_ADDR_WIDTH, AXI_ID_WIDTH, HANDSHAKE_CLK, HANDSHAKE_RST, M_AXI_CHANNEL_ORDER,
+    M_AXI_MAX_OUTSTANDING, M_AXI_PORTS, M_AXI_PREFIX, M_AXI_SUFFIXES_COMPACT,
 };
 use tapa_rtl::builder::{ContinuousAssign, Expr, ModuleInstance, ParamArg, PortArg};
 use tapa_rtl::module::sanitize_array_name;
@@ -19,7 +20,7 @@ use crate::state::views::{ModuleTable, OutputSet};
 /// Iterates all AXI channels (AR, AW, B, R, W) and their sub-ports,
 /// adding properly-typed ports to the module.
 pub fn add_m_axi_ports(module: &mut MutableModule, name: &str, data_width: u32, addr_width: u32) {
-    add_m_axi_ports_with_id_width(module, name, data_width, addr_width, 1);
+    add_m_axi_ports_with_id_width(module, name, data_width, addr_width, AXI_ID_WIDTH);
 }
 
 /// Add M-AXI ports with an explicit AXI ID width.
@@ -94,7 +95,7 @@ pub fn try_build_crossbar_params(conn: &MMapConnection) -> Result<Vec<ParamArg>,
     let addr_width = try_get_addr_width(conn.chan_size, conn.data_width)?;
     let mut params = vec![
         ParamArg::new("DATA_WIDTH", Expr::int(u64::from(conn.data_width))),
-        ParamArg::new("ADDR_WIDTH", Expr::int(64)),
+        ParamArg::new("ADDR_WIDTH", Expr::int(u64::from(AXI_ADDR_WIDTH))),
         ParamArg::new(
             "S_ID_WIDTH",
             Expr::int(u64::from(crossbar_slave_id_width(conn))),
@@ -117,7 +118,10 @@ pub fn try_build_crossbar_params(conn: &MMapConnection) -> Result<Vec<ParamArg>,
             format!("M{idx:02}_ADDR_WIDTH"),
             Expr::int(u64::from(addr_width)),
         ));
-        params.push(ParamArg::new(format!("M{idx:02}_ISSUE"), Expr::int(16)));
+        params.push(ParamArg::new(
+            format!("M{idx:02}_ISSUE"),
+            Expr::int(u64::from(M_AXI_MAX_OUTSTANDING)),
+        ));
     }
 
     // Per-slave thread parameters: a leaf slave tracks 1 in-flight
@@ -205,7 +209,7 @@ pub fn try_get_addr_width(chan_size: Option<u32>, data_width: u32) -> Result<u32
         )));
     }
     let Some(chan_size) = chan_size else {
-        return Ok(64);
+        return Ok(AXI_ADDR_WIDTH);
     };
     let bytes = u64::from(chan_size) * u64::from(data_width / 8);
     if bytes == 0 {
@@ -224,10 +228,12 @@ pub fn try_get_addr_width(chan_size: Option<u32>, data_width: u32) -> Result<u32
 
 /// Resolve the width of an M-AXI suffix from protocol metadata.
 ///
-/// Extracts the sub-port name from a suffix like `_ARADDR` → `ADDR`,
-/// then looks up the default width via [`tapa_protocol::axi_subport_width`].
+/// Delegates to [`tapa_protocol::m_axi_port_width`] under the default
+/// address/ID widths; unknown suffixes fall back to 1, preserving the
+/// historical behavior (all current callers pass known compact
+/// suffixes).
 pub fn resolve_suffix_width(suffix: &str, data_width: u32) -> u32 {
-    axi_subport_width(axi_subport_from_suffix(suffix), data_width, 64, 1)
+    m_axi_port_width(suffix, data_width).unwrap_or(1)
 }
 
 /// Validate an mmap connection before crossbar generation.
@@ -279,14 +285,16 @@ pub fn generate_crossbar_rtl(conn: &MMapConnection) -> String {
 
     let mut params: Vec<String> = vec![
         "parameter DATA_WIDTH = 32".to_string(),
-        "parameter ADDR_WIDTH = 64".to_string(),
-        "parameter S_ID_WIDTH = 1".to_string(),
+        format!("parameter ADDR_WIDTH = {AXI_ADDR_WIDTH}"),
+        format!("parameter S_ID_WIDTH = {AXI_ID_WIDTH}"),
         format!("parameter M_ID_WIDTH = S_ID_WIDTH+$clog2({slaves})"),
     ];
     for idx in 0..channels {
         params.push(format!("parameter M{idx:02}_BASE_ADDR = 0"));
         params.push(format!("parameter M{idx:02}_ADDR_WIDTH = ADDR_WIDTH"));
-        params.push(format!("parameter M{idx:02}_ISSUE = 16"));
+        params.push(format!(
+            "parameter M{idx:02}_ISSUE = {M_AXI_MAX_OUTSTANDING}"
+        ));
     }
     for idx in 0..slaves {
         params.push(format!("parameter S{idx:02}_THREADS = 1"));
@@ -295,7 +303,7 @@ pub fn generate_crossbar_rtl(conn: &MMapConnection) -> String {
     let mut ports: Vec<String> = vec!["input wire clk".to_string(), "input wire rst".to_string()];
     for ch_idx in 0..channels {
         for suffix in M_AXI_SUFFIXES_COMPACT {
-            let direction = if is_master_output_suffix(suffix) {
+            let direction = if matches!(m_axi_port_direction(suffix), Some(PortDir::Output)) {
                 "output"
             } else {
                 "input"
@@ -309,7 +317,7 @@ pub fn generate_crossbar_rtl(conn: &MMapConnection) -> String {
     }
     for s_idx in 0..slaves {
         for suffix in M_AXI_SUFFIXES_COMPACT {
-            let direction = if is_master_output_suffix(suffix) {
+            let direction = if matches!(m_axi_port_direction(suffix), Some(PortDir::Output)) {
                 "input"
             } else {
                 "output"
@@ -352,7 +360,7 @@ pub fn generate_crossbar_rtl(conn: &MMapConnection) -> String {
         ".S_ID_WIDTH(S_ID_WIDTH)".to_string(),
         ".M_ID_WIDTH(M_ID_WIDTH)".to_string(),
         format!(".S_THREADS({{{s_threads}}})"),
-        format!(".S_ACCEPT({{{slaves}{{32'd16}}}})"),
+        format!(".S_ACCEPT({{{slaves}{{32'd{M_AXI_MAX_OUTSTANDING}}}}})"),
         ".M_REGIONS(1)".to_string(),
         format!(".M_BASE_ADDR({{{m_base_addr}}})"),
         format!(".M_ADDR_WIDTH({{{m_addr_width}}})"),
@@ -432,18 +440,6 @@ fn join_indented(items: &[String]) -> String {
         .map(|p| format!("  {p}"))
         .collect::<Vec<_>>()
         .join(",\n")
-}
-
-fn is_master_output_suffix(suffix: &str) -> bool {
-    let channel_sub = suffix.trim_start_matches('_');
-    if channel_sub.starts_with("AW")
-        || channel_sub.starts_with("AR")
-        || channel_sub.starts_with('W')
-    {
-        !channel_sub.ends_with("READY")
-    } else {
-        channel_sub.ends_with("READY")
-    }
 }
 
 fn crossbar_port_width(suffix: &str, master_side: bool) -> String {
@@ -552,7 +548,7 @@ pub(crate) fn add_m_axi_and_crossbars(
                         mm,
                         &format!("{}_{}", conn.arg_name, channel_idx),
                         conn.data_width,
-                        64,
+                        AXI_ADDR_WIDTH,
                         conn.id_width(),
                     );
                 }
@@ -561,11 +557,11 @@ pub(crate) fn add_m_axi_and_crossbars(
                     mm,
                     &conn.arg_name,
                     conn.data_width,
-                    64,
+                    AXI_ADDR_WIDTH,
                     conn.id_width(),
                 );
             } else {
-                add_m_axi_ports(mm, &conn.arg_name, conn.data_width, 64);
+                add_m_axi_ports(mm, &conn.arg_name, conn.data_width, AXI_ADDR_WIDTH);
             }
         }
         if needs_crossbar(conn) {
@@ -587,7 +583,8 @@ pub(crate) fn add_m_axi_and_crossbars(
                         );
                         for suffix in ["_ARADDR", "_AWADDR"] {
                             let raw = crossbar_master_addr_raw(&conn.arg_name, channel_idx, suffix);
-                            let _ = mm.add_signal(tapa_rtl::mutation::wide_wire(&raw, "63", "0"));
+                            let msb = (AXI_ADDR_WIDTH - 1).to_string();
+                            let _ = mm.add_signal(tapa_rtl::mutation::wide_wire(&raw, &msb, "0"));
                             let local_addr = if addr_width >= 64 {
                                 Expr::ident(&raw)
                             } else {

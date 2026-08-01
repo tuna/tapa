@@ -350,7 +350,10 @@ fn resolve_fifo_width(
             // Incomplete external topology may not identify the logical port;
             // use the first matching stream signal as a best-effort width.
             for port in &mm.inner.ports {
-                if port.name.ends_with("_dout") || port.name.ends_with("_din") {
+                if STREAM_DATA_SUFFIXES
+                    .iter()
+                    .any(|suffix| port.name.ends_with(suffix))
+                {
                     if let Some(width) = port.bit_width() {
                         return Ok(width);
                     }
@@ -466,7 +469,7 @@ pub(crate) fn connect_fifos(
                 let canonical_base = tapa_rtl::module::sanitize_array_name(fifo_name);
                 for suffix in suffixes {
                     let canonical = format!("{canonical_base}{suffix}");
-                    let signal_width = if suffix.ends_with("dout") || suffix.ends_with("din") {
+                    let signal_width = if STREAM_DATA_SUFFIXES.contains(suffix) {
                         Some(tapa_rtl::port::Width {
                             msb: tapa_rtl::expression::tokenize_expression(
                                 &stream_width.to_string(),

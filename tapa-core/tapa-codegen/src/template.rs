@@ -4,8 +4,8 @@ use tapa_ir::port::ArgCategory;
 use tapa_ir::Task;
 use tapa_protocol::{
     axi_subport_width, stream_data_wire_width, stream_peek_port_name, stream_port_name, PortDir,
-    HANDSHAKE_CLK, HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY, HANDSHAKE_RST_N,
-    HANDSHAKE_START, M_AXI_CHANNEL_ORDER, M_AXI_PORTS, M_AXI_PREFIX,
+    AXI_ADDR_WIDTH, AXI_ID_WIDTH, HANDSHAKE_CLK, HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY,
+    HANDSHAKE_RST_N, HANDSHAKE_START, M_AXI_CHANNEL_ORDER, M_AXI_PORTS, M_AXI_PREFIX,
 };
 use tapa_rtl::module::sanitize_array_name;
 use tapa_rtl::mutation::{simple_port, wide_port};
@@ -30,7 +30,7 @@ fn add_m_axi_ports(ports: &mut Vec<Port>, name: &str, data_width: u32) {
                 PortDir::Input => Direction::Input,
                 PortDir::Output => Direction::Output,
             };
-            let width = axi_subport_width(subport, data_width, 64, 1);
+            let width = axi_subport_width(subport, data_width, AXI_ADDR_WIDTH, AXI_ID_WIDTH);
             ports.push(port_with_width(
                 format!("{prefix}_{channel}{subport}"),
                 direction,
@@ -90,10 +90,14 @@ fn add_ostream_ports(ports: &mut Vec<Port>, name: &str, width: u32) {
 
 fn add_addr_ostream_ports(ports: &mut Vec<Port>, name: &str) {
     ports.extend([
-        port_with_width(stream_port_name(name, "_din"), Direction::Output, 64),
+        port_with_width(
+            stream_port_name(name, "_din"),
+            Direction::Output,
+            AXI_ADDR_WIDTH,
+        ),
         simple_port(stream_port_name(name, "_full_n"), Direction::Input),
         simple_port(stream_port_name(name, "_write"), Direction::Output),
-        port_with_width(format!("{name}_offset"), Direction::Input, 64),
+        port_with_width(format!("{name}_offset"), Direction::Input, AXI_ADDR_WIDTH),
     ]);
 }
 
@@ -114,7 +118,7 @@ fn add_mmap_ports(ports: &mut Vec<Port>, name: &str, width: u32, chan_count: Opt
             ports.push(port_with_width(
                 format!("{indexed_name}_offset"),
                 Direction::Input,
-                64,
+                AXI_ADDR_WIDTH,
             ));
             add_m_axi_ports(ports, &indexed_name, width);
         }
@@ -122,7 +126,7 @@ fn add_mmap_ports(ports: &mut Vec<Port>, name: &str, width: u32, chan_count: Opt
         ports.push(port_with_width(
             format!("{name}_offset"),
             Direction::Input,
-            64,
+            AXI_ADDR_WIDTH,
         ));
         add_m_axi_ports(ports, &name, width);
     }

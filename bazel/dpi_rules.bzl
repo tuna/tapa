@@ -149,21 +149,6 @@ _dpi_library = rule(
     }),
 )
 
-_dpi_legacy_rdi_library = rule(
-    implementation = _dpi_library_impl,
-    attrs = dict(_DPI_ATTRS, **{
-        "_xsc": attr.label(
-            cfg = "exec",
-            default = Label("//bazel:xsc_legacy_rdi"),
-            executable = True,
-        ),
-    }),
-)
-
 def dpi_library(name, **kwargs):
     _dpi_library(name = name, **kwargs)
-    cc_library(name = name + "_cc", **kwargs)
-
-def dpi_legacy_rdi_library(name, **kwargs):
-    _dpi_legacy_rdi_library(name = name, **kwargs)
     cc_library(name = name + "_cc", **kwargs)

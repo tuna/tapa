@@ -67,6 +67,8 @@ impl<T> core::borrow::BorrowMut<T> for tapa_protocol::AxiChannelInfo where T: ?c
 pub fn tapa_protocol::AxiChannelInfo::borrow_mut(&mut self) -> &mut T
 impl<T> core::convert::From<T> for tapa_protocol::AxiChannelInfo
 pub fn tapa_protocol::AxiChannelInfo::from(T) -> T
+pub const tapa_protocol::AXI_ADDR_WIDTH: u32
+pub const tapa_protocol::AXI_ID_WIDTH: u32
 pub const tapa_protocol::FIFO_READ_PORTS: &[&str]
 pub const tapa_protocol::FIFO_WRITE_PORTS: &[&str]
 pub const tapa_protocol::HANDSHAKE_CLK: &str
@@ -84,6 +86,7 @@ pub const tapa_protocol::HLS_RST_INV: &str
 pub const tapa_protocol::ISTREAM_SUFFIXES: &[&str]
 pub const tapa_protocol::M_AXI_ADDR_PORTS: &[tapa_protocol::AxiPortEntry]
 pub const tapa_protocol::M_AXI_CHANNEL_ORDER: &[&str]
+pub const tapa_protocol::M_AXI_MAX_OUTSTANDING: u32
 pub const tapa_protocol::M_AXI_PREFIX: &str
 pub const tapa_protocol::M_AXI_SUFFIXES: &[&str]
 pub const tapa_protocol::M_AXI_SUFFIXES_COMPACT: &[&str]
@@ -100,6 +103,8 @@ pub static tapa_protocol::STREAM_PORT_DIRECTION: phf::map::Map<&'static str, &'s
 pub static tapa_protocol::STREAM_PORT_WIDTH: phf::map::Map<&'static str, u32>
 pub fn tapa_protocol::axi_subport_from_suffix(&str) -> &str
 pub fn tapa_protocol::axi_subport_width(&str, u32, u32, u32) -> u32
+pub fn tapa_protocol::m_axi_port_direction(&str) -> core::option::Option<tapa_protocol::PortDir>
+pub fn tapa_protocol::m_axi_port_width(&str, u32) -> core::option::Option<u32>
 pub const fn tapa_protocol::stream_data_wire_width(u32) -> u32
 pub fn tapa_protocol::stream_peek_port_name(&str, &str) -> alloc::string::String
 pub fn tapa_protocol::stream_port_name(&str, &str) -> alloc::string::String

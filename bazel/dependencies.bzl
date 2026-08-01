@@ -13,8 +13,6 @@ load(
     "REMOTE_SSH_CONTROL_PERSIST",
     "REMOTE_USER",
     "REMOTE_XILINX_TOOL_PATH",
-    "XILINX_TOOL_LEGACY_PATH",
-    "XILINX_TOOL_LEGACY_VERSION",
     "XILINX_TOOL_PATH",
     "XILINX_TOOL_VERSION",
 )
@@ -234,23 +232,6 @@ cc_library(
 )
         """,
         path = xsim_path,
-    )
-
-    vivado_legacy_path = XILINX_TOOL_LEGACY_PATH + "/Vivado/"
-    xsim_legacy_path = vivado_legacy_path + XILINX_TOOL_LEGACY_VERSION + "/data/xsim"
-    _optional_local_repository(
-        name = "xsim_legacy_rdi",
-        build_file_content = """
-load("@rules_cc//cc:cc_library.bzl", "cc_library")
-
-cc_library(
-    name = "svdpi",
-    hdrs = glob(["include/svdpi.h"], allow_empty = True),
-    includes = ["include"],
-    visibility = ["//visibility:public"],
-)
-    """,
-        path = xsim_legacy_path,
     )
 
     return module_ctx.extension_metadata(

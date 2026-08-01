@@ -7,8 +7,8 @@
 use std::collections::BTreeSet;
 
 use tapa_protocol::{
-    HANDSHAKE_CLK, ISTREAM_SUFFIXES, M_AXI_PORTS, M_AXI_PREFIX, M_AXI_SUFFIXES_COMPACT,
-    OSTREAM_SUFFIXES,
+    AXI_ADDR_WIDTH, HANDSHAKE_CLK, ISTREAM_SUFFIXES, M_AXI_PORTS, M_AXI_PREFIX,
+    M_AXI_SUFFIXES_COMPACT, OSTREAM_SUFFIXES,
 };
 use tapa_rtl::builder::{Expr, ModuleInstance, ParamArg, PortArg};
 use tapa_rtl::module::sanitize_array_name;
@@ -20,8 +20,6 @@ pub const READ_DATA: &str = "read_data";
 pub const WRITE_ADDR: &str = "write_addr";
 pub const WRITE_DATA: &str = "write_data";
 pub const WRITE_RESP: &str = "write_resp";
-pub const AXI_ADDR_WIDTH: u32 = 64;
-pub const AXI_ID_WIDTH: u32 = 1;
 
 const TAGS: &[&str] = &[READ_ADDR, READ_DATA, WRITE_ADDR, WRITE_DATA, WRITE_RESP];
 
@@ -45,7 +43,7 @@ fn tag_data_width(tag: &str, suffix: &str, data_width: u32) -> u32 {
         return 1;
     }
     match tag {
-        READ_ADDR | WRITE_ADDR => 64,
+        READ_ADDR | WRITE_ADDR => AXI_ADDR_WIDTH,
         WRITE_RESP => 8,
         _ => data_width,
     }

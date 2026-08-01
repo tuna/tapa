@@ -5,12 +5,9 @@ pub tapa_rtl::builder::BinOperator::And
 pub tapa_rtl::builder::BinOperator::BitAnd
 pub tapa_rtl::builder::BinOperator::BitOr
 pub tapa_rtl::builder::BinOperator::Eq
-pub tapa_rtl::builder::BinOperator::Minus
 pub tapa_rtl::builder::BinOperator::Ne
 pub tapa_rtl::builder::BinOperator::Or
 pub tapa_rtl::builder::BinOperator::Plus
-pub tapa_rtl::builder::BinOperator::Shl
-pub tapa_rtl::builder::BinOperator::Shr
 impl core::clone::Clone for tapa_rtl::builder::BinOperator
 pub fn tapa_rtl::builder::BinOperator::clone(&self) -> tapa_rtl::builder::BinOperator
 impl core::cmp::Eq for tapa_rtl::builder::BinOperator
@@ -78,13 +75,6 @@ pub tapa_rtl::builder::Expr::Range
 pub tapa_rtl::builder::Expr::Range::base: alloc::boxed::Box<Self>
 pub tapa_rtl::builder::Expr::Range::lsb: alloc::boxed::Box<Self>
 pub tapa_rtl::builder::Expr::Range::msb: alloc::boxed::Box<Self>
-pub tapa_rtl::builder::Expr::Replicate
-pub tapa_rtl::builder::Expr::Replicate::count: alloc::boxed::Box<Self>
-pub tapa_rtl::builder::Expr::Replicate::expr: alloc::boxed::Box<Self>
-pub tapa_rtl::builder::Expr::Ternary
-pub tapa_rtl::builder::Expr::Ternary::cond: alloc::boxed::Box<Self>
-pub tapa_rtl::builder::Expr::Ternary::else_val: alloc::boxed::Box<Self>
-pub tapa_rtl::builder::Expr::Ternary::then_val: alloc::boxed::Box<Self>
 impl tapa_rtl::builder::Expr
 pub fn tapa_rtl::builder::Expr::bin_op(Self, tapa_rtl::builder::BinOperator, Self) -> Self
 pub fn tapa_rtl::builder::Expr::concat(alloc::vec::Vec<Self>) -> Self
@@ -96,10 +86,8 @@ pub fn tapa_rtl::builder::Expr::int_const(u32, u64) -> Self
 pub fn tapa_rtl::builder::Expr::lit(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tapa_rtl::builder::Expr::logical_and(Self, Self) -> Self
 pub fn tapa_rtl::builder::Expr::logical_not(Self) -> Self
-pub fn tapa_rtl::builder::Expr::minus(Self, Self) -> Self
 pub fn tapa_rtl::builder::Expr::plus(Self, Self) -> Self
 pub fn tapa_rtl::builder::Expr::range(Self, Self, Self) -> Self
-pub fn tapa_rtl::builder::Expr::ternary(Self, Self, Self) -> Self
 impl core::clone::Clone for tapa_rtl::builder::Expr
 pub fn tapa_rtl::builder::Expr::clone(&self) -> tapa_rtl::builder::Expr
 impl core::cmp::Eq for tapa_rtl::builder::Expr

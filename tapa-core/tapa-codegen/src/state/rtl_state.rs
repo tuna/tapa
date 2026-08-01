@@ -9,7 +9,7 @@ use tapa_ir::task::TaskLevel;
 use tapa_ir::Port as IrPort;
 use tapa_ir::{ArgCategory, AxiChannelWidths, AxiEndpoint, Design, FloorplanResult};
 use tapa_protocol::{
-    axi_subport_from_suffix, axi_subport_width, PortDir, M_AXI_CHANNEL_ORDER, M_AXI_PORTS,
+    axi_subport_from_suffix, axi_subport_width, PortDir, AXI_ADDR_WIDTH, AXI_ID_WIDTH,
     M_AXI_PREFIX, M_AXI_SUFFIXES_BY_CHANNEL, M_AXI_SUFFIXES_COMPACT,
 };
 use tapa_rtl::expression::{expression_as_u32, expression_source, Expression};
@@ -179,8 +179,6 @@ pub struct DirectMmapInterface {
     pub bridge_instance: Option<String>,
 }
 
-const DIRECT_M_AXI_ADDR_WIDTH: u32 = 64;
-
 /// Enriched state combining topology with RTL modules.
 pub struct TopologyWithRtl {
     /// The design model.
@@ -332,7 +330,7 @@ impl TopologyWithRtl {
                 top_port: connection.arg_name.clone(),
             },
             data_width: connection.data_width,
-            addr_width: DIRECT_M_AXI_ADDR_WIDTH,
+            addr_width: AXI_ADDR_WIDTH,
             id_width,
             channel_widths,
             bridge_instance,
@@ -537,7 +535,7 @@ fn catalog_direct_mmap_rtl(
         ));
     }
     let enabled = crate::async_mmap::enabled_axi_directions(module, &slave.port, &tags);
-    let id_width = crate::async_mmap::AXI_ID_WIDTH;
+    let id_width = AXI_ID_WIDTH;
     let mut widths = direct_m_axi_channel_widths(data_width, id_width);
     if !enabled.read {
         widths.read_address = 0;
@@ -718,7 +716,7 @@ fn direct_m_axi_channel_widths(data_width: u32, id_width: u32) -> AxiChannelWidt
                 axi_subport_width(
                     axi_subport_from_suffix(suffix),
                     data_width,
-                    DIRECT_M_AXI_ADDR_WIDTH,
+                    AXI_ADDR_WIDTH,
                     id_width,
                 )
             })
@@ -820,7 +818,7 @@ fn validate_compact_m_axi_ports(
         let expected_width = axi_subport_width(
             axi_subport_from_suffix(suffix),
             data_width,
-            DIRECT_M_AXI_ADDR_WIDTH,
+            AXI_ADDR_WIDTH,
             id_width,
         );
         if actual_width != expected_width {
@@ -839,15 +837,7 @@ fn validate_compact_m_axi_ports(
 }
 
 fn m_axi_port_direction(suffix: &str) -> Option<Direction> {
-    let suffix_without_underscore = suffix.strip_prefix('_')?;
-    let channel = M_AXI_CHANNEL_ORDER
-        .iter()
-        .find(|channel| suffix_without_underscore.starts_with(**channel))?;
-    let subport = axi_subport_from_suffix(suffix);
-    let direction = M_AXI_PORTS[*channel]
-        .iter()
-        .find_map(|(name, direction)| (*name == subport).then_some(*direction))?;
-    Some(match direction {
+    tapa_protocol::m_axi_port_direction(suffix).map(|direction| match direction {
         PortDir::Input => Direction::Input,
         PortDir::Output => Direction::Output,
     })
@@ -1546,8 +1536,7 @@ mod tests {
                     Direction::Inout => unreachable!("M-AXI ports are never inout"),
                 };
                 let subport = axi_subport_from_suffix(suffix);
-                let width =
-                    axi_subport_width(subport, data_width, DIRECT_M_AXI_ADDR_WIDTH, id_width);
+                let width = axi_subport_width(subport, data_width, AXI_ADDR_WIDTH, id_width);
                 let width_decl = if subport == "ID" {
                     "[C_M_AXI_DATA_ID_WIDTH - 1:0] ".to_owned()
                 } else if width > 1 {
@@ -1668,8 +1657,8 @@ mod tests {
         let interfaces = state.direct_mmap_interfaces("top").unwrap();
 
         assert_eq!(interfaces.len(), 1);
-        assert_eq!(interfaces[0].id_width, crate::async_mmap::AXI_ID_WIDTH);
-        assert_eq!(interfaces[0].addr_width, crate::async_mmap::AXI_ADDR_WIDTH);
+        assert_eq!(interfaces[0].id_width, AXI_ID_WIDTH);
+        assert_eq!(interfaces[0].addr_width, AXI_ADDR_WIDTH);
         assert_eq!(
             interfaces[0].channel_widths,
             AxiChannelWidths {

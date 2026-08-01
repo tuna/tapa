@@ -47,9 +47,9 @@ mod tests {
 
         assert!(source.contains(&format!(
             "parameter AxiSideAddrWidth  = {},",
-            crate::async_mmap::AXI_ADDR_WIDTH
+            tapa_protocol::AXI_ADDR_WIDTH
         )));
-        let id_range = format!("[{}:0]", crate::async_mmap::AXI_ID_WIDTH - 1);
+        let id_range = format!("[{}:0]", tapa_protocol::AXI_ID_WIDTH - 1);
         for port in ["m_axi_AWID", "m_axi_BID", "m_axi_ARID", "m_axi_RID"] {
             assert!(
                 source
