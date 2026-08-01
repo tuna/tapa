@@ -438,6 +438,10 @@ fn publish_implementation_winner(
     Ok(())
 }
 
+pub(crate) fn spec() -> &'static crate::steps::registry::StepSpec {
+    crate::steps::registry::floorplan()
+}
+
 pub fn run(args: &FloorplanArgs, ctx: &CliContext) -> Result<()> {
     let options = PlanOptions {
         usage_limit: args.usage_limit,
@@ -461,11 +465,7 @@ pub fn run(args: &FloorplanArgs, ctx: &CliContext) -> Result<()> {
     }
 
     let mut state = work_io::load(&ctx.work_dir)?;
-    if !state.flow.synthed {
-        return Err(CliError::Floorplan(
-            "run `synth` before `floorplan`: the placement needs per-task areas".to_string(),
-        ));
-    }
+    // Completed-synthesis validation is centralized in `steps::registry`.
     let implementation_target = (args.run_impl || args.dse)
         .then(|| implementation::validate_target(&state, args.vivado_threads))
         .transpose()?;
@@ -1129,21 +1129,22 @@ mod tests {
         let mut state = synthed_vadd_state();
         state.flow.synthed = false;
         work_io::store(dir.path(), &state).expect("store");
-        let err = run(
-            &FloorplanArgs {
-                usage_limit: 0.7,
-                partition_strategy: PartitionMode::Auto,
-                pp_scheme: PpScheme::Double,
-                max_seconds: 60,
-                connectivity: None,
-                run_impl: false,
-                dse: false,
-                dse_min: 0.55,
-                dse_max: 0.90,
-                dse_step: 0.03,
-                dse_jobs: 1,
-                vivado_threads: 2,
-            },
+        let args = FloorplanArgs {
+            usage_limit: 0.7,
+            partition_strategy: PartitionMode::Auto,
+            pp_scheme: PpScheme::Double,
+            max_seconds: 60,
+            connectivity: None,
+            run_impl: false,
+            dse: false,
+            dse_min: 0.55,
+            dse_max: 0.90,
+            dse_step: 0.03,
+            dse_jobs: 1,
+            vivado_threads: 2,
+        };
+        let err = crate::chain::validate_pipeline_step(
+            crate::chain::PipelineStep::Floorplan(&args),
             &ctx_at(dir.path()),
         )
         .expect_err("must require synth");

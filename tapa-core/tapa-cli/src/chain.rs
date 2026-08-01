@@ -14,8 +14,68 @@ use clap::{Parser, Subcommand};
 
 use crate::context::CliContext;
 use crate::error::{CliError, Result};
+use crate::state::work as work_io;
+use crate::steps::registry::{self, PreconditionArgs, StepSpec};
 use crate::steps::{analyze, floorplan, gcc, meta, pack, synth, version};
 use crate::tapacc::find_clang_binary;
+
+/// A pipeline step paired with its concrete arguments.
+#[derive(Clone, Copy)]
+pub(crate) enum PipelineStep<'a> {
+    Analyze(&'a analyze::AnalyzeArgs),
+    Synth(&'a synth::SynthArgs),
+    Floorplan(&'a floorplan::FloorplanArgs),
+    Pack(&'a pack::PackArgs),
+}
+
+impl<'a> PipelineStep<'a> {
+    fn spec(self) -> &'static StepSpec {
+        match self {
+            Self::Analyze(_) => analyze::spec(),
+            Self::Synth(_) => synth::spec(),
+            Self::Floorplan(_) => floorplan::spec(),
+            Self::Pack(_) => pack::spec(),
+        }
+    }
+
+    fn precondition_args(self) -> PreconditionArgs<'a> {
+        match self {
+            Self::Pack(args) => PreconditionArgs::Pack(args),
+            Self::Analyze(_) | Self::Synth(_) | Self::Floorplan(_) => PreconditionArgs::None,
+        }
+    }
+}
+
+/// Resolve and validate a pipeline step's registry entry before dispatch.
+pub(crate) fn validate_pipeline_step(step: PipelineStep<'_>, ctx: &CliContext) -> Result<()> {
+    let spec = step.spec();
+    log::debug!(
+        "step artifact contract: reads {:?}, writes {:?}",
+        spec.reads,
+        spec.writes
+    );
+    if spec.preconditions.is_empty() {
+        return Ok(());
+    }
+    let state = work_io::load(&ctx.work_dir)?;
+    registry::validate(
+        spec,
+        &state,
+        &work_io::path_in(&ctx.work_dir),
+        step.precondition_args(),
+    )
+}
+
+/// Validate and dispatch one pipeline step through the shared machinery.
+pub(crate) fn run_pipeline_step(step: PipelineStep<'_>, ctx: &CliContext) -> Result<()> {
+    validate_pipeline_step(step, ctx)?;
+    match step {
+        PipelineStep::Analyze(args) => analyze::run(args, ctx),
+        PipelineStep::Synth(args) => synth::run(args, ctx),
+        PipelineStep::Floorplan(args) => floorplan::run(args, ctx),
+        PipelineStep::Pack(args) => pack::run(args, ctx),
+    }
+}
 
 /// One link in the chained-step list. Each variant carries its step's
 /// `Args` (flags) plus a `chain_tail` positional that captures any
@@ -153,10 +213,10 @@ impl Step {
     /// after the whole chain has been parsed and validated.
     fn run_one(self, ctx: &mut CliContext) -> Result<()> {
         match self {
-            Self::Analyze { args, .. } => analyze::run(&args, ctx),
-            Self::Synth { args, .. } => synth::run(&args, ctx),
-            Self::Floorplan { args, .. } => floorplan::run(&args, ctx),
-            Self::Pack { args, .. } => pack::run(&args, ctx),
+            Self::Analyze { args, .. } => run_pipeline_step(PipelineStep::Analyze(&args), ctx),
+            Self::Synth { args, .. } => run_pipeline_step(PipelineStep::Synth(&args), ctx),
+            Self::Floorplan { args, .. } => run_pipeline_step(PipelineStep::Floorplan(&args), ctx),
+            Self::Pack { args, .. } => run_pipeline_step(PipelineStep::Pack(&args), ctx),
             Self::Compile { args, .. } => meta::run_compile_composite(&args, ctx),
             Self::Gpp { args } => gcc::run(&args, ctx),
             Self::Version { args, .. } => version::run(&args, ctx),

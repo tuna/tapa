@@ -5,6 +5,7 @@
 
 use clap::Parser;
 
+use crate::chain::{validate_pipeline_step, PipelineStep};
 use crate::context::CliContext;
 use crate::error::Result;
 use crate::steps::{analyze, pack, synth};
@@ -30,8 +31,11 @@ pub struct CompileArgs {
 }
 
 pub fn run_compile_composite(args: &CompileArgs, ctx: &mut CliContext) -> Result<()> {
+    validate_pipeline_step(PipelineStep::Analyze(&args.analyze), ctx)?;
     analyze::run(&args.analyze, ctx)?;
+    validate_pipeline_step(PipelineStep::Synth(&args.synth), ctx)?;
     synth::run(&args.synth, ctx)?;
+    validate_pipeline_step(PipelineStep::Pack(&args.pack), ctx)?;
     pack::run(&args.pack, ctx)
 }
 

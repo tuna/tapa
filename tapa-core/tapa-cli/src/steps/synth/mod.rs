@@ -91,6 +91,10 @@ pub struct SynthArgs {
 /// `ctx.remote_config` is populated (via `~/.taparc` or
 /// `--remote-host`), HLS dispatches through `RemoteToolRunner`;
 /// otherwise `LocalToolRunner`.
+pub(crate) fn spec() -> &'static crate::steps::registry::StepSpec {
+    crate::steps::registry::synth()
+}
+
 pub fn run(args: &SynthArgs, ctx: &CliContext) -> Result<()> {
     ctx.with_tool_runner(|runner| run_native(args, ctx, runner))
 }

@@ -78,21 +78,15 @@ pub(super) fn published_floorplan_xdc(
 }
 
 /// Dispatch packaging according to the target stored by `analyze`.
+pub(crate) fn spec() -> &'static crate::steps::registry::StepSpec {
+    crate::steps::registry::pack()
+}
+
 pub fn run(args: &PackArgs, ctx: &CliContext) -> Result<()> {
     let state = work_io::load(&ctx.work_dir)?;
-    if !state.flow.synthed {
-        return Err(CliError::MissingState {
-            name: "completed synthesis (run `tapa synth` first)".to_string(),
-            path: work_io::path_in(&ctx.work_dir),
-        });
-    }
+    // Completed-synthesis and custom-RTL/floorplan validation is centralized
+    // in `steps::registry`.
     published_floorplan_xdc(&ctx.work_dir, &state)?;
-    if state.floorplan.is_some() && !args.custom_rtl.is_empty() {
-        return Err(CliError::InvalidArg(
-            "`--custom-rtl` cannot modify RTL after floorplanning; omit it or rerun synthesis and packaging without the active floorplan"
-                .to_string(),
-        ));
-    }
     // The graph's `target` is the single home of the flow; this exhaustive
     // match is the dispatch site a new `Target` variant would break.
     match state.graph.target {
@@ -541,8 +535,12 @@ mod tests {
         state.flow.synthed = false;
         work_io::store(dir.path(), &state).expect("store");
 
-        let error = run(&parse_pack(&[]), &ctx_with_work_dir(dir.path()))
-            .expect_err("pack must not consume partial synthesis outputs");
+        let args = parse_pack(&[]);
+        let error = crate::chain::validate_pipeline_step(
+            crate::chain::PipelineStep::Pack(&args),
+            &ctx_with_work_dir(dir.path()),
+        )
+        .expect_err("pack must not consume partial synthesis outputs");
         assert!(
             matches!(error, CliError::MissingState { ref name, .. } if name.contains("synthesis")),
             "got {error}",
@@ -579,8 +577,9 @@ mod tests {
             )
             .expect("write marker");
 
-            let error = run(
-                &parse_pack(&["--custom-rtl", "replacement.v"]),
+            let args = parse_pack(&["--custom-rtl", "replacement.v"]);
+            let error = crate::chain::validate_pipeline_step(
+                crate::chain::PipelineStep::Pack(&args),
                 &ctx_with_work_dir(dir.path()),
             )
             .expect_err("post-floorplan RTL mutation must be rejected");
