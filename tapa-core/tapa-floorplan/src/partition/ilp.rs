@@ -28,6 +28,7 @@ use crate::device::model::{
 };
 use crate::graph::FloorGraph;
 use crate::partition::cut::{find_cuts_for_regions, Cut};
+use crate::solver::assign::add_one_of_k_row;
 use crate::solver::{
     Comparison, LinExpr, LpModel, LpStatus, LpVar, Sense, SolveOpts, Solver, SolverError,
 };
@@ -725,17 +726,12 @@ fn add_assignment_vars(
         .iter()
         .enumerate()
         .map(|(vi, vertex)| {
-            let row: Vec<LpVar> = domains[vi]
-                .iter()
-                .map(|region| lp.add_binary(format!("x_{}_{}", vertex.name, region.region_name())))
-                .collect();
-            lp.add_constraint(
-                format!("vertex_{}", vertex.name),
-                LinExpr::sum(row.iter().map(|&var| (1.0, var))),
-                Comparison::Eq,
-                1.0,
-            );
-            row
+            add_one_of_k_row(
+                lp,
+                &format!("vertex_{}", vertex.name),
+                domains[vi].len(),
+                |candidate| format!("x_{}_{}", vertex.name, domains[vi][candidate].region_name()),
+            )
         })
         .collect()
 }

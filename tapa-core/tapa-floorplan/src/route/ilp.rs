@@ -16,6 +16,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::device::model::{effective_border_capacity, Device, WIRE_CAPACITY_INF};
 use crate::route::paths::{enumerate_paths, Cell};
+use crate::solver::assign::add_one_of_k_row;
 use crate::solver::{
     Comparison, LinExpr, LpModel, LpStatus, LpVar, Sense, SolveOpts, Solver, SolverError,
 };
@@ -408,16 +409,12 @@ fn route_nets_with_preassignments(
     // One binary per candidate path; exactly one per net.
     let mut path_vars: Vec<Vec<LpVar>> = Vec::with_capacity(nets.len());
     for (net_index, paths) in candidates.iter().enumerate() {
-        let vars: Vec<LpVar> = (0..paths.len())
-            .map(|path_index| lp.add_binary(format!("p_{net_index}_{path_index}")))
-            .collect();
-        lp.add_constraint(
-            format!("net_{net_index}"),
-            LinExpr::sum(vars.iter().map(|&var| (1.0, var))),
-            Comparison::Eq,
-            1.0,
-        );
-        path_vars.push(vars);
+        path_vars.push(add_one_of_k_row(
+            &mut lp,
+            &format!("net_{net_index}"),
+            paths.len(),
+            |path_index| format!("p_{net_index}_{path_index}"),
+        ));
     }
 
     // Per bounded boundary: a hard capacity row, so every incumbent — even a

@@ -1,6 +1,7 @@
 //! The ILP solver abstraction: an [`LpModel`] built in memory, rendered to
 //! CPLEX-LP text by [`write_cplex_lp`], and handed to a [`Solver`] backend.
 
+pub(crate) mod assign;
 pub mod backends;
 pub(crate) mod fingerprint;
 pub mod lp_writer;
