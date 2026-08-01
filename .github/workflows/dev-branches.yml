@@ -78,7 +78,9 @@ jobs:
         run: rustup toolchain install nightly-2026-07-30 --profile minimal --component rust-docs-json
 
       - name: Install cargo-public-api
-        run: cargo +nightly-2026-07-30 install cargo-public-api --locked --version 0.52.0
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-public-api@0.52.0
 
       - name: Generate public API listings
         working-directory: tapa-core

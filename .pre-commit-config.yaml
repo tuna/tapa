@@ -75,46 +75,18 @@ repos:
 
   - repo: local
     hooks:
-      - id: cargo-fmt
-        name: cargo fmt (fpga-runtime)
-        entry: cargo fmt --manifest-path fpga-runtime/Cargo.toml --all --
+      - id: cargo-fmt-all
+        name: cargo fmt (all manifests)
+        entry: sh -c 'set -e; for manifest in tapa-core/Cargo.toml fpga-runtime/Cargo.toml tools/test-tools/Cargo.toml; do cargo fmt --manifest-path "${manifest}" --all --; done'
         language: system
-        files: ^fpga-runtime/(?:.*\.rs|(?:.*/)?Cargo\.(?:toml|lock))$
+        files: ^(?:tapa-core|fpga-runtime|tools/test-tools)/(?:.*\.rs|(?:.*/)?Cargo\.(?:toml|lock))$
         pass_filenames: false
 
-      - id: cargo-clippy
-        name: cargo clippy (fpga-runtime)
-        entry: cargo clippy --manifest-path fpga-runtime/Cargo.toml --all-targets --locked
+      - id: cargo-clippy-all
+        name: cargo clippy (all manifests)
+        entry: sh -c 'set -e; for manifest in tapa-core/Cargo.toml fpga-runtime/Cargo.toml tools/test-tools/Cargo.toml; do cargo clippy --manifest-path "${manifest}" --all-targets --locked; done'
         language: system
-        files: ^fpga-runtime/(?:.*\.rs|(?:.*/)?Cargo\.(?:toml|lock))$
-        pass_filenames: false
-
-      - id: cargo-fmt-tapa-core
-        name: cargo fmt (tapa-core)
-        entry: cargo fmt --manifest-path tapa-core/Cargo.toml --all --
-        language: system
-        files: ^tapa-core/(?:.*\.rs|(?:.*/)?Cargo\.(?:toml|lock))$
-        pass_filenames: false
-
-      - id: cargo-clippy-tapa-core
-        name: cargo clippy (tapa-core)
-        entry: cargo clippy --manifest-path tapa-core/Cargo.toml --all-targets --locked
-        language: system
-        files: ^tapa-core/(?:.*\.rs|(?:.*/)?Cargo\.(?:toml|lock))$
-        pass_filenames: false
-
-      - id: cargo-fmt-test-tools
-        name: cargo fmt (test-tools)
-        entry: cargo fmt --manifest-path tools/test-tools/Cargo.toml --all --
-        language: system
-        files: ^tools/test-tools/(?:.*\.rs|(?:.*/)?Cargo\.(?:toml|lock))$
-        pass_filenames: false
-
-      - id: cargo-clippy-test-tools
-        name: cargo clippy (test-tools)
-        entry: cargo clippy --manifest-path tools/test-tools/Cargo.toml --all-targets --locked
-        language: system
-        files: ^tools/test-tools/(?:.*\.rs|(?:.*/)?Cargo\.(?:toml|lock))$
+        files: ^(?:tapa-core|fpga-runtime|tools/test-tools)/(?:.*\.rs|(?:.*/)?Cargo\.(?:toml|lock))$
         pass_filenames: false
 
   - repo: https://github.com/codespell-project/codespell

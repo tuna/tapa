@@ -14,24 +14,11 @@ permissions:
 jobs:
   build:
     name: Build Release
-    runs-on: self-hosted
-
-    steps:
-      - name: Checkout myself
-        uses: ./.github/actions/checkout-with-retry
-
-      - name: Run Bazel to build
-        uses: ./.github/actions/build-release
-        env:
-          UBUNTU_PRO_TOKEN: ${{ secrets.UBUNTU_PRO_TOKEN }}
-          MAC_ADDRESS: ${{ secrets.MAC_ADDRESS }}
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: tapa-release
-          path: ${{ github.workspace }}/artifacts.out/*.tar.gz
-          retention-days: 30
+    uses: ./.github/workflows/release-build.yml
+    secrets: inherit
+    with:
+      artifact_name: tapa-release
+      retention_days: 30
 
   publish:
     name: Publish Release

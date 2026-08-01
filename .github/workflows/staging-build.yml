@@ -21,26 +21,11 @@ permissions:
 jobs:
   build:
     name: Staging Build
-    runs-on: self-hosted
-
-    steps:
-      - name: Checkout myself
-        uses: ./.github/actions/checkout-with-retry
-
-      - name: Run Bazel to build
-        uses: ./.github/actions/build-release
-        env:
-          UBUNTU_PRO_TOKEN: ${{ secrets.UBUNTU_PRO_TOKEN }}
-          MAC_ADDRESS: ${{ secrets.MAC_ADDRESS }}
-
-      - name: Upload artifacts
-        # @v3 is kept for compatibility with the nektosact
-        # Should be upgraded to @v4 when the nektosact is updated
-        uses: actions/upload-artifact@v4
-        with:
-          name: tapa
-          path: ${{ github.workspace }}/artifacts.out/*.tar.gz
-          retention-days: 7
+    uses: ./.github/workflows/release-build.yml
+    secrets: inherit
+    with:
+      artifact_name: tapa
+      retention_days: 7
 
   test-staging:
     name: Test Staging Build
