@@ -100,6 +100,10 @@ pub struct TaskStageInputs {
     /// `is_done` nets produced by `generate-child-signals`, consumed by
     /// `control-fsm`.
     is_done_signals: Vec<String>,
+    /// Value of `TopologyWithRtl::top_instantiates_control_s_axi`, staged
+    /// here because the predicate reads across design + module table. The
+    /// value is stable: no pass adds or removes `s_axi_control_*` ports.
+    top_instantiates_control_s_axi: bool,
 }
 
 impl TaskStageInputs {
@@ -156,6 +160,7 @@ impl TaskStageInputs {
             axi_pipeline_plan,
             control_plan,
             is_done_signals: Vec::new(),
+            top_instantiates_control_s_axi: state.top_instantiates_control_s_axi(),
         })
     }
 }
@@ -278,8 +283,14 @@ pub struct MAxiCrossbars;
 
 impl RtlPass for MAxiCrossbars {
     fn run(&self, ctx: &mut PassCtx<'_>) -> Result<(), CodegenError> {
+        let mut views = PassViews::new(&mut *ctx.state);
         let task = ctx.task.as_mut().expect("m-axi-crossbars is task-scoped");
-        crate::m_axi::add_m_axi_and_crossbars(ctx.state, task.name, &task.inputs.mmap_conns)?;
+        crate::m_axi::add_m_axi_and_crossbars(
+            &mut views.modules,
+            &mut views.outputs,
+            task.name,
+            &task.inputs.mmap_conns,
+        )?;
         Ok(())
     }
 }
@@ -323,9 +334,15 @@ pub struct SAxiControl;
 
 impl RtlPass for SAxiControl {
     fn run(&self, ctx: &mut PassCtx<'_>) -> Result<(), CodegenError> {
+        let mut views = PassViews::new(&mut *ctx.state);
         let task = ctx.task.as_mut().expect("s-axi-control is task-scoped");
-        if task.name == ctx.state.design.top {
-            self::s_axi::instantiate_top_control_s_axi(ctx.state, task.name);
+        if task.name == views.design.design().top {
+            self::s_axi::instantiate_top_control_s_axi(
+                views.design,
+                &mut views.modules,
+                task.name,
+                task.inputs.top_instantiates_control_s_axi,
+            );
         }
         Ok(())
     }

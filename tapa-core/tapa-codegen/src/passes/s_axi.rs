@@ -7,16 +7,25 @@ use tapa_protocol::{
 use tapa_rtl::builder::{Expr, ParamArg, PortArg};
 use tapa_rtl::mutation::{wide_wire, wire};
 
-use crate::rtl_state::TopologyWithRtl;
+use crate::state::views::{DesignView, ModuleTable};
 
-pub fn instantiate_top_control_s_axi(state: &mut TopologyWithRtl, task_name: &str) {
-    if task_name != state.design.top || !state.top_instantiates_control_s_axi() {
+/// Instantiate the top-level `control_s_axi` slave. The
+/// `top_instantiates_control_s_axi` predicate is staged by the driver
+/// (its value cannot change between staging and this pass: no pass adds
+/// or removes `s_axi_control_*` ports on the top module).
+pub fn instantiate_top_control_s_axi(
+    design: DesignView<'_>,
+    modules: &mut ModuleTable<'_>,
+    task_name: &str,
+    top_instantiates_control_s_axi: bool,
+) {
+    if task_name != design.design().top || !top_instantiates_control_s_axi {
         return;
     }
-    let Some(task) = state.design.tasks.get(task_name) else {
+    let Some(task) = design.design().tasks.get(task_name) else {
         return;
     };
-    let Some(mm) = state.module_map.get_mut(task_name) else {
+    let Some(mm) = modules.get_mut(task_name) else {
         return;
     };
 

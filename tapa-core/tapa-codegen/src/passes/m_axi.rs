@@ -11,8 +11,8 @@ use tapa_rtl::port::Direction;
 
 use crate::children;
 use crate::error::CodegenError;
-use crate::rtl_state::TopologyWithRtl;
-use crate::rtl_state::{routing_id_bits, MMapConnection};
+use crate::rtl_state::{routing_id_bits, MMapConnection, TopologyWithRtl};
+use crate::state::views::{ModuleTable, OutputSet};
 
 /// Add M-AXI ports for a single memory-mapped argument to a module.
 ///
@@ -535,7 +535,8 @@ pub(crate) fn add_crossbar_slave_id_padding(
 
 /// Add M-AXI ports, crossbar instances, and emit crossbar aux files.
 pub(crate) fn add_m_axi_and_crossbars(
-    state: &mut TopologyWithRtl,
+    modules: &mut ModuleTable<'_>,
+    outputs: &mut OutputSet<'_>,
     task_name: &str,
     mmap_conns: &std::collections::BTreeMap<String, crate::rtl_state::MMapConnection>,
 ) -> Result<(), CodegenError> {
@@ -544,7 +545,7 @@ pub(crate) fn add_m_axi_and_crossbars(
     }
 
     for conn in mmap_conns.values() {
-        if let Some(mm) = state.module_map.get_mut(task_name) {
+        if let Some(mm) = modules.get_mut(task_name) {
             if conn.chan_count.is_some() {
                 for channel_idx in 0..conn.channel_count() {
                     add_m_axi_ports_with_id_width(
@@ -570,7 +571,7 @@ pub(crate) fn add_m_axi_and_crossbars(
         if needs_crossbar(conn) {
             // Declare downstream m_axi_{arg}_{idx}_* wires in parent
             // Size each wire using protocol metadata for correct widths
-            if let Some(mm) = state.module_map.get_mut(task_name) {
+            if let Some(mm) = modules.get_mut(task_name) {
                 if conn.chan_count.is_some() {
                     let addr_width = try_get_addr_width(conn.chan_size, conn.data_width)?;
                     for channel_idx in 0..conn.channel_count() {
@@ -622,12 +623,12 @@ pub(crate) fn add_m_axi_and_crossbars(
             }
 
             let crossbar_inst = try_build_crossbar_instance(conn)?;
-            if let Some(mm) = state.module_map.get_mut(task_name) {
+            if let Some(mm) = modules.get_mut(task_name) {
                 mm.add_instance(crossbar_inst);
             }
             let crossbar_rtl = generate_crossbar_rtl(conn);
             let file_name = format!("{}.v", crossbar_module_name(conn));
-            state.generated_files.insert(file_name, crossbar_rtl);
+            let _ = outputs.insert_generated(file_name, crossbar_rtl);
         }
     }
     Ok(())
