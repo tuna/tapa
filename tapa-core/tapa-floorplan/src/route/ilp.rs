@@ -350,7 +350,14 @@ fn refine_lexicographic(
         || hop_objective(candidates, path_vars),
         |max_crossings| LinExpr::sum([(1.0, max_crossings)]),
     );
-    crate::solver::lexicographic::refine(lp, solver, opts, pin, primary.objective, path_vars)
+    Ok(crate::solver::lexicographic::refine(
+        lp,
+        solver,
+        opts,
+        pin,
+        primary.objective,
+        path_vars,
+    )?)
 }
 
 /// Route every net, returning a chosen slot path (`src` first, `dst` last) per

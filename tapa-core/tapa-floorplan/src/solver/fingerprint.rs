@@ -110,7 +110,7 @@ fn op_str(op: Comparison) -> &'static str {
     }
 }
 
-pub fn status_str(status: LpStatus) -> &'static str {
+fn status_str(status: LpStatus) -> &'static str {
     match status {
         LpStatus::Optimal => "optimal",
         LpStatus::Feasible => "feasible",

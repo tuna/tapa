@@ -2,18 +2,6 @@
   "fixture": "tapa-floorplan model fingerprints for the golden vadd-floorplanned design",
   "regen": "TAPA_BLESS_MODELS=1 cargo test -p tapa-floorplan --test golden_model_fingerprints",
   "scope": "every LpModel the two formulations hand to the solver, in solve order, recorded through RecordingSolver over the real CBC backend",
-  "fields": {
-    "index": "0-based solve sequence within its phase",
-    "phase": "partition = placement ILP; routing = finish-plan routing ILP(s)",
-    "sense": "objective sense",
-    "vars / constraints": "variable and constraint counts as built",
-    "nonzeros": "nonzero canonical coefficients, objective plus rows",
-    "var_domains": "fnv1a-64 of every variable's (kind, lower, upper), in model order",
-    "objective": "fnv1a-64 of the canonical objective: coefficients summed per variable, exact zeros dropped, terms sorted by variable index, constant last (reordering-equivalent models hash equal)",
-    "rows": "fnv1a-64 of canonical rows (operator, constant-folded rhs, canonical terms) sorted as whole strings (reordering-equivalent models hash equal)",
-    "exact_lp_text": "fnv1a-64 of the exact CPLEX-LP text CBC parses (order-sensitive; the strongest gate)",
-    "solve_status / solve_objective": "the outcome CBC returned for this model"
-  },
   "models": [
     {
       "index": 0,

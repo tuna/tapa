@@ -28,20 +28,17 @@ const PIN_ROW: &str = "lexicographic_pin";
 ///
 /// Returns the refined incumbent when the refinement solve finds one;
 /// `None` means the caller falls back to the primary incumbent.
-pub fn refine<E>(
+pub fn refine(
     lp: &mut LpModel,
     solver: &dyn Solver,
     opts: &SolveOpts,
     pinned: LinExpr,
     achieved: f64,
     rank_rows: &[Vec<LpVar>],
-) -> Result<Option<LpSolution>, E>
-where
-    E: From<SolverError>,
-{
+) -> Result<Option<LpSolution>, SolverError> {
     lp.add_constraint(PIN_ROW.to_string(), pinned, Comparison::Le, achieved);
     lp.set_objective(rank_objective(rank_rows));
-    let refined = solver.solve(lp, opts).map_err(E::from)?;
+    let refined = solver.solve(lp, opts)?;
     Ok(refined.is_found().then_some(refined))
 }
 
@@ -88,15 +85,6 @@ mod tests {
         }
     }
 
-    #[derive(Debug)]
-    struct TestError;
-
-    impl From<SolverError> for TestError {
-        fn from(_: SolverError) -> Self {
-            Self
-        }
-    }
-
     fn tiny_model() -> (LpModel, Vec<Vec<LpVar>>) {
         let mut model = LpModel::new(Sense::Minimize);
         let first = add_one_of_k_row(&mut model, "first", 2, |i| format!("a_{i}"));
@@ -129,9 +117,8 @@ mod tests {
             },
         };
 
-        let refined =
-            refine::<TestError>(&mut model, &solver, &SolveOpts::default(), pin, 42.0, &rows)
-                .expect("scripted solve succeeds");
+        let refined = refine(&mut model, &solver, &SolveOpts::default(), pin, 42.0, &rows)
+            .expect("scripted solve succeeds");
         assert!(refined.is_some(), "a found incumbent is returned");
         assert_eq!(model.num_constraints(), rows_before + 1);
         let pin_row = &model.constraints[rows_before];
@@ -152,9 +139,8 @@ mod tests {
                 values: std::collections::HashMap::new(),
             },
         };
-        let refined =
-            refine::<TestError>(&mut model, &solver, &SolveOpts::default(), pin, 1.0, &rows)
-                .expect("scripted solve succeeds");
+        let refined = refine(&mut model, &solver, &SolveOpts::default(), pin, 1.0, &rows)
+            .expect("scripted solve succeeds");
         assert!(refined.is_none(), "no incumbent, caller falls back");
     }
 }

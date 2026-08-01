@@ -695,14 +695,14 @@ impl FloorplanModel {
         primary: &crate::solver::LpSolution,
     ) -> Result<Option<crate::solver::LpSolution>, IlpError> {
         let pin = self.lp.objective.clone();
-        crate::solver::lexicographic::refine(
+        Ok(crate::solver::lexicographic::refine(
             &mut self.lp,
             solver,
             opts,
             pin,
             primary.objective,
             &self.x,
-        )
+        )?)
     }
 }
 
