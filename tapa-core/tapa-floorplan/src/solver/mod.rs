@@ -7,6 +7,7 @@ pub(crate) mod fingerprint;
 pub mod lp_writer;
 pub mod model;
 pub mod solve;
+pub(crate) mod sparse;
 
 #[cfg(test)]
 pub(crate) use backends::missing_cbc;

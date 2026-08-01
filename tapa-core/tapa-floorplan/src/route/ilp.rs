@@ -17,6 +17,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::device::model::{effective_border_capacity, Device, WIRE_CAPACITY_INF};
 use crate::route::paths::{enumerate_paths, Cell};
 use crate::solver::assign::add_one_of_k_row;
+use crate::solver::sparse::SparseRow;
 use crate::solver::{
     Comparison, LinExpr, LpModel, LpStatus, LpVar, Sense, SolveOpts, Solver, SolverError,
 };
@@ -319,16 +320,16 @@ fn validate_within_capacity(
 /// The total-hop objective over the path variables, used on devices with no
 /// bounded boundary and to pin an unconstrained primary solve.
 fn hop_objective(candidates: &[Vec<Vec<Cell>>], path_vars: &[Vec<LpVar>]) -> LinExpr {
-    let mut terms = Vec::new();
+    let mut terms = SparseRow::new();
     for (paths, vars) in candidates.iter().zip(path_vars) {
         for (path, &var) in paths.iter().zip(vars) {
             let hops = u32::try_from(path.len().saturating_sub(1)).expect("hop count fits u32");
             if hops > 0 {
-                terms.push((f64::from(hops), var));
+                terms.push(f64::from(hops), var);
             }
         }
     }
-    LinExpr::sum(terms)
+    terms.into_expr()
 }
 
 /// Pin the achieved primary objective and re-solve minimizing the stable
@@ -424,29 +425,29 @@ fn route_nets_with_preassignments(
         let Some(capacity) = boundary.capacity else {
             continue;
         };
-        let mut crossings: Vec<(f64, LpVar)> = Vec::new();
+        let mut crossings = SparseRow::new();
         for (net_index, paths) in candidates.iter().enumerate() {
             for (path_index, path) in paths.iter().enumerate() {
                 if path_crosses(path, boundary) {
-                    crossings.push((
+                    crossings.push(
                         f64::from(nets[net_index].width),
                         path_vars[net_index][path_index],
-                    ));
+                    );
                 }
             }
         }
+        let mut normalization = crossings.clone();
         lp.add_constraint(
             format!("bound_{boundary_index}_capacity"),
-            LinExpr::sum(crossings.iter().copied()),
+            crossings.into_expr(),
             Comparison::Le,
             capacity_as_f64(capacity),
         );
         if let (Some(max_crossings), true) = (max_crossings, capacity > 0) {
-            let mut terms = crossings;
-            terms.push((-capacity_as_f64(capacity), max_crossings));
+            normalization.push(-capacity_as_f64(capacity), max_crossings);
             lp.add_constraint(
                 format!("bound_{boundary_index}"),
-                LinExpr::sum(terms),
+                normalization.into_expr(),
                 Comparison::Le,
                 0.0,
             );

@@ -29,6 +29,7 @@ use crate::device::model::{
 use crate::graph::FloorGraph;
 use crate::partition::cut::{find_cuts_for_regions, Cut};
 use crate::solver::assign::add_one_of_k_row;
+use crate::solver::sparse::SparseRow;
 use crate::solver::{
     Comparison, LinExpr, LpModel, LpStatus, LpVar, Sense, SolveOpts, Solver, SolverError,
 };
@@ -779,23 +780,28 @@ fn add_coupling(
 ) {
     for (ei, edge) in graph.placement_edges().iter().enumerate() {
         for src_ci in 0..domains[edge.src].len() {
-            let mut terms: Vec<(f64, LpVar)> =
-                y[ei][src_ci].iter().map(|&var| (1.0, var)).collect();
-            terms.push((-1.0, x[edge.src][src_ci]));
+            let mut terms = SparseRow::new();
+            for &var in &y[ei][src_ci] {
+                terms.push(1.0, var);
+            }
+            terms.push(-1.0, x[edge.src][src_ci]);
             lp.add_constraint(
                 format!("edge_{ei}_src_{src_ci}"),
-                LinExpr::sum(terms),
+                terms.into_expr(),
                 Comparison::Eq,
                 0.0,
             );
         }
 
         for dst_ci in 0..domains[edge.dst].len() {
-            let mut terms: Vec<(f64, LpVar)> = y[ei].iter().map(|row| (1.0, row[dst_ci])).collect();
-            terms.push((-1.0, x[edge.dst][dst_ci]));
+            let mut terms = SparseRow::new();
+            for row in &y[ei] {
+                terms.push(1.0, row[dst_ci]);
+            }
+            terms.push(-1.0, x[edge.dst][dst_ci]);
             lp.add_constraint(
                 format!("edge_{ei}_dst_{dst_ci}"),
-                LinExpr::sum(terms),
+                terms.into_expr(),
                 Comparison::Eq,
                 0.0,
             );
@@ -818,17 +824,15 @@ fn add_resource_constraints(
             .island_area(&region)
             .ok_or_else(|| IlpError::InvalidRegion(region.region_name()))?;
         for resource in Resource::ALL {
-            let terms: Vec<(f64, LpVar)> = graph
-                .vertices()
-                .iter()
-                .enumerate()
-                .filter_map(|(vi, vertex)| {
-                    let ci = domains[vi]
-                        .iter()
-                        .position(|candidate| *candidate == region)?;
-                    Some((u64_as_f64(resource.amount(&vertex.area)), x[vi][ci]))
-                })
-                .collect();
+            let mut terms = SparseRow::new();
+            for (vi, vertex) in graph.vertices().iter().enumerate() {
+                if let Some(ci) = domains[vi]
+                    .iter()
+                    .position(|candidate| *candidate == region)
+                {
+                    terms.push(u64_as_f64(resource.amount(&vertex.area)), x[vi][ci]);
+                }
+            }
 
             let max_rhs = lookup_limit(&constraints.max_resource_limits, &region, resource)
                 .map_or_else(
@@ -837,7 +841,7 @@ fn add_resource_constraints(
                 );
             lp.add_constraint(
                 format!("node_{}_{}_usage", region.region_name(), resource.name()),
-                LinExpr::sum(terms.iter().copied()),
+                terms.into_expr(),
                 Comparison::Le,
                 max_rhs,
             );
@@ -864,21 +868,21 @@ fn add_cut_constraints(
     for cut in cuts {
         let lhs: BTreeSet<Coor> = cut.lhs.iter().copied().collect();
         let rhs: BTreeSet<Coor> = cut.rhs.iter().copied().collect();
-        let mut terms = Vec::new();
+        let mut terms = SparseRow::new();
         for (ei, edge) in graph.placement_edges().iter().enumerate() {
             for (src_ci, src_region) in domains[edge.src].iter().enumerate() {
                 for (dst_ci, dst_region) in domains[edge.dst].iter().enumerate() {
                     let crosses = (lhs.contains(src_region) && rhs.contains(dst_region))
                         || (rhs.contains(src_region) && lhs.contains(dst_region));
                     if crosses {
-                        terms.push((f64::from(edge.width), y[ei][src_ci][dst_ci]));
+                        terms.push(f64::from(edge.width), y[ei][src_ci][dst_ci]);
                     }
                 }
             }
         }
         lp.add_constraint(
             format!("cut_{}_capacity", cut.name),
-            LinExpr::sum(terms),
+            terms.into_expr(),
             Comparison::Le,
             u64_as_f64(cut.capacity),
         );
@@ -900,7 +904,7 @@ fn add_objective(
         .flatten()
         .map(|region| centroid_twice(device, region).map(|centroid| (*region, centroid)))
         .collect::<Result<_, _>>()?;
-    let mut objective = Vec::new();
+    let mut objective = SparseRow::new();
     for (ei, edge) in graph.placement_edges().iter().enumerate() {
         for (src_ci, src) in domains[edge.src].iter().enumerate() {
             let src_centroid = centroids[src];
@@ -910,12 +914,12 @@ fn add_objective(
                     + VERTICAL_DIST_PENALTY * (src_centroid.1 - dst_centroid.1).abs();
                 if distance_twice != 0 {
                     let coefficient = f64::from(edge.width) * i64_as_f64(distance_twice) / 2.0;
-                    objective.push((coefficient, y[ei][src_ci][dst_ci]));
+                    objective.push(coefficient, y[ei][src_ci][dst_ci]);
                 }
             }
         }
     }
-    lp.set_objective(LinExpr::sum(objective).plus_constant(1.0));
+    lp.set_objective(objective.into_expr().plus_constant(1.0));
     Ok(())
 }
 
