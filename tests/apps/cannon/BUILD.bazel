@@ -25,6 +25,6 @@ tapa_app_test(
         "*.cpp",
         "*.h",
     ]),
-    hw_test_timeout = "long",
+    hw_test_timeout = "long",  # often >300s
     top_name = "Cannon",
 )

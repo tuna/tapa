@@ -25,6 +25,5 @@ tapa_app_test(
         "*.cpp",
         "*.h",
     ]),
-    kernel_hdrs = glob(["*.h"]),
     top_name = "Gemv",
 )

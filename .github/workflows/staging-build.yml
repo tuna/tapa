@@ -23,9 +23,6 @@ jobs:
     name: Staging Build
     uses: ./.github/workflows/release-build.yml
     secrets: inherit
-    with:
-      artifact_name: tapa
-      retention_days: 7
 
   test-staging:
     name: Test Staging Build

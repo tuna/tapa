@@ -66,9 +66,11 @@ function main() {
   update_version_references "${old_version}" "${new_version}" \
     install.sh \
     README.md \
-    docs/src/start/installation.md
+    docs/src/start/installation.md \
+    docs/src/developer/release.md
 
-  git add -- VERSION install.sh README.md docs/src/start/installation.md
+  git add -- VERSION install.sh README.md docs/src/start/installation.md \
+    docs/src/developer/release.md
   git commit --no-verify --message "build: bump version to ${new_version}"
 }
 

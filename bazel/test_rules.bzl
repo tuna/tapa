@@ -219,8 +219,7 @@ def tapa_functional_test(
         })
 
     xosim_kwargs = {}
-    if xosim_size != None:
-        xosim_kwargs["size"] = xosim_size
+    xosim_kwargs["size"] = xosim_size
     if xosim_timeout != None:
         xosim_kwargs["timeout"] = xosim_timeout
     if xosim_tags != None:
