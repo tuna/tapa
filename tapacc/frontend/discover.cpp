@@ -118,7 +118,7 @@ std::map<std::string, TaskModel> DiscoverTasks(
     auto builder =
         ReportCustomDiag(ctx, clang::DiagnosticsEngine::Error, {},
                          "top-level task '%0' not found");
-    if (!top_name.empty()) builder.AddString(top_name);
+    builder.AddString(top_name);
     return {};
   }
   const clang::FunctionDecl* top_func = top_it->second;
@@ -180,11 +180,9 @@ std::map<std::string, TaskModel> DiscoverTasks(
   // A task function must have exactly one definition.
   for (const auto& [name, model] : tasks) {
     if (defs.count(model.def->getNameAsString()) > 1) {
-      const std::string def_name = model.def->getNameAsString();
-      auto builder = ReportCustomDiag(ctx, clang::DiagnosticsEngine::Error,
-                                      model.def->getLocation(),
-                                      "task '%0' re-defined");
-      if (!def_name.empty()) builder.AddString(def_name);
+      ReportCustomDiag(ctx, clang::DiagnosticsEngine::Error,
+                       model.def->getLocation(), "task '%0' re-defined")
+          .AddString(model.def->getNameAsString());
     }
   }
 

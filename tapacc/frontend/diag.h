@@ -2,7 +2,8 @@
 // All rights reserved. The contributor(s) of this file has/have agreed to the
 // RapidStream Contributor License Agreement.
 
-#pragma once
+#ifndef TAPA_FRONTEND_DIAG_H_
+#define TAPA_FRONTEND_DIAG_H_
 
 #include "clang/AST/ASTContext.h"
 #include "clang/Basic/Diagnostic.h"
@@ -23,3 +24,5 @@ clang::DiagnosticBuilder ReportCustomDiag(
 }
 
 }  // namespace tapa::cc
+
+#endif  // TAPA_FRONTEND_DIAG_H_

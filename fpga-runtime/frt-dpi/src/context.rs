@@ -6,7 +6,6 @@ use std::sync::Mutex;
 #[derive(Debug, Deserialize)]
 pub struct BufferEntry {
     pub path: String,
-    pub size_bytes: usize,
     #[serde(default)]
     pub base_addr: u64,
 }
@@ -105,7 +104,6 @@ mod tests {
         }"#;
         let cfg: DpiConfig = serde_json::from_str(json).expect("json");
         assert_eq!(cfg.buffers["a"].path, "/tmp/buf_a");
-        assert_eq!(cfg.buffers["a"].size_bytes, 4096);
         assert_eq!(cfg.streams["s"].path, "/tmp/stream_s");
         assert_eq!(cfg.streams["s"].dpi_width_bytes, 5);
     }
