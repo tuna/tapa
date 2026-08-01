@@ -69,23 +69,21 @@ fn render_bus_ifaces(
     s_axi: &[String],
     m_axi: &[String],
     params: &[(String, Vec<(String, String)>)],
-) -> String {
+) -> Result<String> {
     let param_map: std::collections::HashMap<String, Vec<(String, String)>> = params
         .iter()
         .map(|(n, kv)| (n.clone(), kv.clone()))
         .collect();
-    let mut env = minijinja::Environment::new();
-    env.add_template("bus_ifaces", include_str!("templates/bus_ifaces.tcl.j2"))
-        .expect("template parses");
-    env.get_template("bus_ifaces")
-        .expect("template exists")
-        .render(minijinja::context! {
+    crate::util::render_template(
+        "bus_ifaces",
+        include_str!("templates/bus_ifaces.tcl.j2"),
+        minijinja::context! {
             s_axi,
             m_axi,
             m_axi_prefix => M_AXI_PREFIX,
             params => param_map,
-        })
-        .expect("render succeeds")
+        },
+    )
 }
 
 fn render_cpp_kernels(kernels: &[Utf8PathBuf]) -> String {
@@ -102,24 +100,22 @@ fn format_package_xo_tcl(
     bus_ifaces: &str,
     cpp_kernels: &str,
     part_num: &str,
-) -> String {
+) -> Result<String> {
     let part_arg = if part_num.is_empty() {
         String::new()
     } else {
         format!(" -part {part_num}")
     };
-    let mut env = minijinja::Environment::new();
-    env.add_template("package_xo", include_str!("templates/package_xo.tcl.j2"))
-        .expect("template parses");
-    env.get_template("package_xo")
-        .expect("template exists")
-        .render(minijinja::context! {
+    crate::util::render_template(
+        "package_xo",
+        include_str!("templates/package_xo.tcl.j2"),
+        minijinja::context! {
             top_name,
             bus_ifaces,
             cpp_kernels,
             part_arg,
-        })
-        .expect("render succeeds")
+        },
+    )
 }
 
 /// Build the `.xo` for the given inputs using the provided runner.
@@ -255,14 +251,14 @@ pub fn pack_xo_without_redaction(
         inputs.s_axi_ifaces.clone()
     };
     let m_axi = m_axi_port_names(&inputs.kernel_xml);
-    let bus_ifaces = render_bus_ifaces(&s_axi, &m_axi, &inputs.m_axi_params);
+    let bus_ifaces = render_bus_ifaces(&s_axi, &m_axi, &inputs.m_axi_params)?;
     let cpp_kernels = render_cpp_kernels(&inputs.cpp_kernels);
     let tcl = format_package_xo_tcl(
         &inputs.top_name,
         &bus_ifaces,
         &cpp_kernels,
         &inputs.device_info.part_num,
-    );
+    )?;
 
     if let Some(parent) = kernel_out_path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -432,7 +428,8 @@ mod tests {
             "\n# ifaces\n",
             " -kernel_files /tmp/x.cpp",
             "xcu250-figd2104-2L-e",
-        );
+        )
+        .unwrap();
         assert!(tcl.contains("set_property top my_kernel"));
         assert!(tcl.contains("-part xcu250-figd2104-2L-e"));
         assert!(tcl.contains("# ifaces"));
@@ -450,7 +447,8 @@ mod tests {
             &["s_axi_control".into()],
             &["gmem0".into()],
             &[("gmem0".into(), vec![("OFFSET".into(), "SLAVE".into())])],
-        );
+        )
+        .unwrap();
         assert!(s.contains("-busif s_axi_control"));
         assert!(s.contains("-busif m_axi_gmem0"));
         assert!(s.contains("m_axi_gmem0") && s.contains("OFFSET") && s.contains("SLAVE"));

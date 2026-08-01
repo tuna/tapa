@@ -15,6 +15,18 @@ const FINAL_TIMING_HOOK_NAME: &str = "final_timing.tcl";
 const IMPLEMENTATION_STRATEGY: &str = "Explore";
 const PLACEMENT_STRATEGY: &str = "EarlyBlockPlacement";
 
+/// Vivado `run.impl_1` step properties passed to `v++ --link` as
+/// `--vivado.prop=run.impl_1.STEPS.<key>=<value>` pairs, in argv order.
+/// Tuning the implementation flow is a one-line table edit.
+const VIVADO_IMPL_STEP_PROPS: &[(&str, &str)] = &[
+    ("PHYS_OPT_DESIGN.IS_ENABLED", "1"),
+    ("POST_ROUTE_PHYS_OPT_DESIGN.IS_ENABLED", "1"),
+    ("OPT_DESIGN.ARGS.DIRECTIVE", IMPLEMENTATION_STRATEGY),
+    ("PLACE_DESIGN.ARGS.DIRECTIVE", PLACEMENT_STRATEGY),
+    ("PHYS_OPT_DESIGN.ARGS.DIRECTIVE", IMPLEMENTATION_STRATEGY),
+    ("ROUTE_DESIGN.ARGS.DIRECTIVE", IMPLEMENTATION_STRATEGY),
+];
+
 /// Convert a requested clock period to the conservative whole-MHz value that
 /// `v++ --kernel_frequency` accepts.
 pub fn target_frequency_mhz(clock_period_ns: f64) -> Result<u32> {
@@ -248,21 +260,10 @@ fn build_invocation(resolved: &ResolvedJob<'_>) -> ToolInvocation {
         .arg("--connectivity.nk")
         .arg(format!("{}:1:{}", job.kernel_name, job.kernel_name))
         .arg("--vivado.synth.jobs")
-        .arg(job.vivado_threads.to_string())
-        .arg("--vivado.prop=run.impl_1.STEPS.PHYS_OPT_DESIGN.IS_ENABLED=1")
-        .arg("--vivado.prop=run.impl_1.STEPS.POST_ROUTE_PHYS_OPT_DESIGN.IS_ENABLED=1")
-        .arg(format!(
-            "--vivado.prop=run.impl_1.STEPS.OPT_DESIGN.ARGS.DIRECTIVE={IMPLEMENTATION_STRATEGY}"
-        ))
-        .arg(format!(
-            "--vivado.prop=run.impl_1.STEPS.PLACE_DESIGN.ARGS.DIRECTIVE={PLACEMENT_STRATEGY}"
-        ))
-        .arg(format!(
-            "--vivado.prop=run.impl_1.STEPS.PHYS_OPT_DESIGN.ARGS.DIRECTIVE={IMPLEMENTATION_STRATEGY}"
-        ))
-        .arg(format!(
-            "--vivado.prop=run.impl_1.STEPS.ROUTE_DESIGN.ARGS.DIRECTIVE={IMPLEMENTATION_STRATEGY}"
-        ));
+        .arg(job.vivado_threads.to_string());
+    for (key, value) in VIVADO_IMPL_STEP_PROPS {
+        inv = inv.arg(format!("--vivado.prop=run.impl_1.STEPS.{key}={value}"));
+    }
     if let Some(config) = &resolved.connectivity_config {
         inv = inv.arg("--config").arg(config.as_str());
     }

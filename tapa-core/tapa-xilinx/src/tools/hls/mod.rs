@@ -177,8 +177,7 @@ fn kernel_env_entries(job: &HlsJob) -> Vec<(String, String)> {
     env
 }
 
-#[must_use]
-pub fn build_hls_tcl(job: &HlsJob) -> String {
+pub fn build_hls_tcl(job: &HlsJob) -> Result<String> {
     let solution = if job.solution_name.is_empty() {
         job.top_name.as_str()
     } else {
@@ -190,20 +189,18 @@ pub fn build_hls_tcl(job: &HlsJob) -> String {
         format!("{}\n", job.other_configs)
     };
     let rtl = build_rtl_config(job.reset_low, job.auto_prefix);
-    let mut env = minijinja::Environment::new();
-    env.add_template("run_hls", include_str!("templates/run_hls.tcl.j2"))
-        .expect("template parses");
-    env.get_template("run_hls")
-        .expect("template exists")
-        .render(minijinja::context! {
+    crate::util::render_template(
+        "run_hls",
+        include_str!("templates/run_hls.tcl.j2"),
+        minijinja::context! {
             top => job.top_name,
             solution,
             part => job.target_part,
             clock => job.clock_period,
             other,
             rtl,
-        })
-        .expect("render succeeds")
+        },
+    )
 }
 
 fn is_transient(job: &HlsJob, stdout: &str, stderr: &str) -> bool {
@@ -231,7 +228,7 @@ fn run_hls_attempt(
     job: &HlsJob,
     stage_dir: &camino::Utf8Path,
 ) -> Result<ToolOutput> {
-    let tcl = build_hls_tcl(job);
+    let tcl = build_hls_tcl(job)?;
     let tcl_path = stage_dir.join("run_hls.tcl");
     fs_err::write(&tcl_path, tcl.as_bytes())?;
     let mut inv = ToolInvocation::new("vitis_hls")
@@ -516,7 +513,7 @@ mod tests {
     #[test]
     fn tcl_contains_required_steps() {
         let job = fixture_job(camino::Utf8Path::new("/tmp"));
-        let tcl = build_hls_tcl(&job);
+        let tcl = build_hls_tcl(&job).unwrap();
         for step in [
             "open_project \"project\"",
             "set_top k",
@@ -540,7 +537,7 @@ mod tests {
         let mut job = fixture_job(camino::Utf8Path::new("/tmp"));
         job.cpp_source = Utf8PathBuf::from("/abs/local/kernel/k.cpp");
         job.cflags = vec!["-I/abs/local/kernel/include".into(), "-DSOMETHING=1".into()];
-        let tcl = build_hls_tcl(&job);
+        let tcl = build_hls_tcl(&job).unwrap();
         assert!(
             !tcl.contains("/abs/local/kernel/k.cpp"),
             "TCL must not bake in the local kernel path: {tcl}"

@@ -174,18 +174,17 @@ pub fn emit_kernel_xml(args: &KernelXmlArgs) -> Result<String> {
         "ap_ctrl_none"
     };
 
-    let mut env = minijinja::Environment::new();
-    env.add_template("kernel_xml", include_str!("templates/kernel.xml.j2"))
-        .expect("template parses");
-    env.get_template("kernel_xml")
-        .expect("template exists")
-        .render(minijinja::context! {
+    crate::util::render_template(
+        "kernel_xml",
+        include_str!("templates/kernel.xml.j2"),
+        minijinja::context! {
             name => args.top_name,
             hw_ctrl_protocol,
             ports,
             args => xml_args,
-        })
-        .map_err(|e| XilinxError::KernelXml(e.to_string()))
+        },
+    )
+    .map_err(|e| XilinxError::KernelXml(e.to_string()))
 }
 
 #[cfg(test)]

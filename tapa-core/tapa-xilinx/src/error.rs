@@ -58,6 +58,9 @@ pub enum XilinxError {
     #[error(".xo redaction failed: {0}")]
     XoRedaction(String),
 
+    #[error("template render error: {0}")]
+    Template(String),
+
     #[error(transparent)]
     Io(#[from] std::io::Error),
 
@@ -94,6 +97,7 @@ pub(crate) fn variant_tag(e: &XilinxError) -> &'static str {
         XilinxError::TimingSummaryParse(_) => "TimingSummaryParse",
         XilinxError::KernelXml(_) => "KernelXml",
         XilinxError::XoRedaction(_) => "XoRedaction",
+        XilinxError::Template(_) => "Template",
         XilinxError::Io(_) => "Io",
         XilinxError::Zip(_) => "Zip",
         XilinxError::Xml(_) => "Xml",
@@ -145,6 +149,7 @@ mod tests {
             XilinxError::TimingSummaryParse("e".into()),
             XilinxError::KernelXml("e".into()),
             XilinxError::XoRedaction("e".into()),
+            XilinxError::Template("e".into()),
             XilinxError::Io(std::io::Error::new(std::io::ErrorKind::NotFound, "e")),
             XilinxError::Zip(zip::result::ZipError::InvalidArchive("e")),
             XilinxError::Xml(quick_xml::Reader::from_str("<a").read_event().unwrap_err()),
