@@ -18,14 +18,14 @@ workspace that ships the simulation and on-board runtime.
 ```text
 tapacc (C++/Clang) ──TaskGraph JSON──┐
                                      ▼
-tapa-protocol   tapa-ir ──────────────── schema + transforms + Vitis connectivity parser
+tapa-protocol   tapa-ir ──────────────── schema + transforms
      │           ▲  ▲
      │           │  └────────────── tapa-rtl (Verilog parse / mutate / emit; tree-sitter + nom)
      ▼           │
 tapa-floorplan (device/graph/partition/pipeline/route/solver/xdc + DSE)
 tapa-codegen (RTL assembly of the top module; flat pass modules)
      ▲
-tapa-xilinx (HLS/Vitis/Vivado/XO-pack tools, local+remote runners)
+tapa-xilinx (HLS/Vitis/Vivado/XO-pack tools, local+remote runners, Vitis connectivity parser adapter)
      ▲
 tapa-cli (steps: analyze → synth → floorplan → pack; chain, state via tapa.json, remote config)
 
