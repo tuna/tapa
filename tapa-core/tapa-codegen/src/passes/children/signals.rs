@@ -14,36 +14,122 @@ use super::fsm::{
     generate_autorun_start, generate_child_fsm, generate_is_done_assign, generate_start_assign,
 };
 use super::instance::{build_child_instance_with_reset, ChildMmapBindings};
-use crate::passes::distributed_control;
+use crate::instance_signals::InstanceSignals;
+use crate::passes::{distributed_control, TaskPassCtx};
 use crate::state::views::{DesignView, FsmTable, ModuleTable};
-use crate::{async_mmap, instance_signals, m_axi, program};
+use crate::{async_mmap, m_axi, program};
+
+/// Staging context for the per-task child-signal stage.
+///
+/// Bundles the three narrowed state views with the task identity, the
+/// driver-staged plans/bindings, and the accumulators (parent FIFO names,
+/// `is_done` nets, FSM instantiation portargs) that the split stage
+/// functions thread through.
+struct ChildStageCtx<'ctx, 'a> {
+    /// Read access to the design model.
+    design: DesignView<'ctx>,
+    /// Mutable access to the attached HLS module table.
+    modules: &'a mut ModuleTable<'ctx>,
+    /// Mutable access to the per-task FSM module table.
+    fsms: &'a mut FsmTable<'ctx>,
+    /// The upper-level task currently being instrumented.
+    task_name: &'ctx str,
+    /// Aggregated + validated mmap connections for the task.
+    mmap_conns: &'a BTreeMap<String, crate::rtl_state::MMapConnection>,
+    /// `(parent_arg, child_task, inst_idx) -> slave_idx` for crossbar mmaps.
+    mmap_slave_map: &'a BTreeMap<(String, String, usize), usize>,
+    /// Floorplan-routed direct M-AXI pipeline plan (top task only).
+    axi_pipeline_plan: Option<&'a crate::passes::axi_pipeline::DirectAxiPipelinePlan>,
+    /// Distributed control plan (top task only).
+    control_plan: Option<&'a distributed_control::DistributedControlPlan>,
+    /// FIFO names declared by the parent task (stream connection lookup).
+    parent_fifos: BTreeSet<String>,
+    /// `is_done` nets accumulated per non-autorun instance, in instance order.
+    is_done_signals: Vec<String>,
+    /// FSM module instantiation portargs, in per-instance emission order.
+    fsm_portargs: Vec<tapa_rtl::builder::PortArg>,
+}
+
+impl<'ctx, 'a> ChildStageCtx<'ctx, 'a> {
+    /// Bundle the task pass context with the derived per-task staging state.
+    fn new(ctx: &'a mut TaskPassCtx<'ctx>) -> Self {
+        let design = ctx.design;
+        let task = &design.design().tasks[ctx.name];
+        Self {
+            design,
+            modules: &mut ctx.modules,
+            fsms: &mut ctx.fsms,
+            task_name: ctx.name,
+            mmap_conns: &ctx.inputs.mmap_conns,
+            mmap_slave_map: &ctx.inputs.mmap_slave_map,
+            axi_pipeline_plan: ctx.inputs.axi_pipeline_plan.as_ref(),
+            control_plan: ctx.inputs.control_plan.as_ref(),
+            parent_fifos: task.fifos.keys().cloned().collect(),
+            is_done_signals: Vec::new(),
+            fsm_portargs: Vec::new(),
+        }
+    }
+}
+
+/// One child task instance staged for wiring.
+///
+/// Carries the instance identity (task name, logical/sanitized instance
+/// names), its handshake signal handles, its argument map, and the cloned
+/// child module header shared across sibling instances.
+struct ChildInstance<'a> {
+    /// The child task name this instance instantiates.
+    child_name: &'a str,
+    /// The explicit instance name, or the `{child}_{idx}` fallback.
+    logical_inst_name: String,
+    /// The sanitized instance name used in generated identifiers.
+    inst_name: String,
+    /// Whether the instance auto-starts (negative step).
+    is_autorun: bool,
+    /// Handshake signals for this instance.
+    sig: InstanceSignals,
+    /// The instance's argument bindings (child port -> parent arg).
+    args: &'a BTreeMap<String, Arg>,
+    /// The cloned child module header, when the child RTL is attached.
+    child_rtl: Option<&'a tapa_rtl::VerilogModule>,
+}
+
+impl<'a> ChildInstance<'a> {
+    /// Stage one child instance: resolve names and handshake signal handles.
+    fn new(
+        child_name: &'a str,
+        idx: usize,
+        explicit_name: Option<String>,
+        is_autorun: bool,
+        args: &'a BTreeMap<String, Arg>,
+        child_rtl: Option<&'a tapa_rtl::VerilogModule>,
+    ) -> Self {
+        let logical_inst_name = explicit_name.unwrap_or_else(|| format!("{child_name}_{idx}"));
+        let inst_name = tapa_rtl::module::sanitize_identifier_name(&logical_inst_name);
+        let sig = InstanceSignals::new(&inst_name, is_autorun);
+        Self {
+            child_name,
+            logical_inst_name,
+            inst_name,
+            is_autorun,
+            sig,
+            args,
+            child_rtl,
+        }
+    }
+}
 
 /// Generate child instance signals, FSM/autorun logic, and actual child module instances.
 ///
 /// FSM/start logic goes into the FSM module (not the parent task module).
 /// The FSM module is then instantiated into the parent task module.
-#[allow(clippy::too_many_lines, reason = "sequential child signal generation")]
-#[allow(
-    clippy::too_many_arguments,
-    reason = "the three disjoint state views stay named per concern; the rest are driver-staged inputs"
-)]
 pub fn generate_child_signals(
-    design: DesignView<'_>,
-    modules: &mut ModuleTable<'_>,
-    fsms: &mut FsmTable<'_>,
-    task_name: &str,
-    mmap_conns: &std::collections::BTreeMap<String, crate::rtl_state::MMapConnection>,
-    mmap_slave_map: &std::collections::BTreeMap<(String, String, usize), usize>,
-    axi_pipeline_plan: Option<&crate::passes::axi_pipeline::DirectAxiPipelinePlan>,
-    control_plan: Option<&distributed_control::DistributedControlPlan>,
+    ctx: &mut TaskPassCtx<'_>,
 ) -> Result<Vec<String>, crate::error::CodegenError> {
     type ChildEntry = (usize, Option<String>, bool, BTreeMap<String, Arg>);
 
-    let task = &design.design().tasks[task_name];
-    let parent_fifos: BTreeSet<String> = task.fifos.keys().cloned().collect();
-    let mut is_done_signals = Vec::new();
-    let mut fsm_portargs = Vec::new(); // portargs for FSM module instantiation
-
+    let mut stage = ChildStageCtx::new(ctx);
+    let design = stage.design.design();
+    let task = &design.tasks[stage.task_name];
     let child_entries: Vec<(String, Vec<ChildEntry>)> = task
         .tasks
         .iter()
@@ -60,287 +146,168 @@ pub fn generate_child_signals(
     for (child_name, entries) in child_entries {
         // One clone per distinct child task (shared across instances):
         // `VerilogModule` carries the full RTL source text.
-        let child_rtl = modules.get(&child_name).map(|module| module.inner.clone());
+        let child_rtl = stage
+            .modules
+            .get(&child_name)
+            .map(|module| module.inner.clone());
         for (idx, explicit_name, is_autorun, args) in entries {
-            let logical_inst_name = explicit_name.unwrap_or_else(|| format!("{child_name}_{idx}"));
-            let inst_name = tapa_rtl::module::sanitize_identifier_name(&logical_inst_name);
-            let sig = instance_signals::InstanceSignals::new(&inst_name, is_autorun);
-
-            // Parent task module: only declare handshake WIRES (not state regs)
-            // The parent sees start/done/idle/ready/is_done as wires connected to FSM ports
-            if let Some(mm) = modules.get_mut(task_name) {
-                if control_plan.is_some() {
-                    let _ = mm.add_signal(tapa_rtl::mutation::wire(sig.start_name()));
-                    if !is_autorun {
-                        let _ = mm.add_signal(tapa_rtl::mutation::wire(sig.done_name()));
-                        let _ = mm.add_signal(tapa_rtl::mutation::wire(sig.idle_name()));
-                        let _ = mm.add_signal(tapa_rtl::mutation::wire(sig.ready_name()));
-                        let _ = mm.add_signal(tapa_rtl::mutation::wire(sig.is_done_name()));
-                    }
-                } else if is_autorun {
-                    let _ = mm.add_signal(tapa_rtl::mutation::wire(sig.start_name()));
-                } else {
-                    for signal in sig.all_signals() {
-                        let _ = mm.add_signal(signal);
-                    }
-                }
-            }
-
-            // FSM module interface: add handshake ports
-            if control_plan.is_none() {
-                if let Some(fsm_mm) = fsms.get_mut(task_name) {
-                    for port in sig.fsm_ports() {
-                        let _ = fsm_mm.add_port(port);
-                    }
-                }
-
-                // Build FSM module instantiation portargs using child-specific port names
-                // FSM module ports are child-specific (e.g., child_0__ap_start),
-                // parent wires have the same names — so both sides match
-                for port in sig.fsm_ports() {
-                    fsm_portargs.push(tapa_rtl::builder::PortArg::new(
-                        &port.name,
-                        Expr::ident(&port.name),
-                    ));
-                }
-            }
-
-            if !is_autorun {
-                is_done_signals.push(sig.is_done_name());
-
-                // Add is_done port to FSM module interface
-                if control_plan.is_none() {
-                    if let Some(fsm_mm) = fsms.get_mut(task_name) {
-                        let _ = fsm_mm.add_port(tapa_rtl::mutation::simple_port(
-                            sig.is_done_name(),
-                            tapa_rtl::port::Direction::Output,
-                        ));
-                    }
-                    // Add is_done portarg for FSM instantiation
-                    fsm_portargs.push(tapa_rtl::builder::PortArg::new(
-                        sig.is_done_name(),
-                        Expr::ident(sig.is_done_name()),
-                    ));
-                }
-            }
-
-            // FSM/autorun logic goes into the FSM MODULE
-            if control_plan.is_none() {
-                if let Some(fsm_mm) = fsms.get_mut(task_name) {
-                    for signal in sig.all_signals() {
-                        let _ = fsm_mm.add_signal(signal);
-                    }
-                    if is_autorun {
-                        fsm_mm.ensure_signal_kind(
-                            &sig.start_name(),
-                            tapa_rtl::signal::SignalKind::Reg,
-                        );
-                        fsm_mm.add_always(generate_autorun_start(&sig));
-                    } else {
-                        // State register and FSM logic owned by FSM module
-                        // Use pipelined start_q/done_q from global FSM
-                        let start_input = Expr::ident(program::START_Q);
-                        let done_release = Expr::ident(program::DONE_Q);
-                        fsm_mm.add_always(generate_child_fsm(&sig, start_input, done_release));
-                        // ap_start output: combinationally driven from state
-                        fsm_mm.add_assign(generate_start_assign(&sig));
-                        // is_done: driven from state inside FSM module
-                        fsm_mm.add_assign(generate_is_done_assign(&sig));
-                    }
-                }
-            }
-
-            if let Some(plan) = control_plan {
-                plan.instantiate_child(modules, task_name, &logical_inst_name, &sig)?;
-            } else {
-                // Declare per-instance pipeline signals for scalar/mmap args
-                declare_instance_pipeline_signals(
-                    design,
-                    modules,
-                    fsms,
-                    task_name,
-                    &child_name,
-                    &inst_name,
-                    &args,
-                );
-            }
-
-            if control_plan.is_none() {
-                // Add pipeline portargs to FSM instantiation
-                for (port_name, arg) in &args {
-                    if arg.cat.is_scalar() {
-                        let pipeline_out = format!("{inst_name}__{port_name}");
-                        let fsm_in_port = format!("{inst_name}__{port_name}_in");
-                        fsm_portargs.push(tapa_rtl::builder::PortArg::new(
-                            &fsm_in_port,
-                            Expr::ident(tapa_rtl::module::sanitize_array_name(&arg.arg)),
-                        ));
-                        fsm_portargs.push(tapa_rtl::builder::PortArg::new(
-                            &pipeline_out,
-                            Expr::ident(&pipeline_out),
-                        ));
-                    } else if arg.cat.is_direct_mmap() {
-                        let pipeline_out = format!("{inst_name}__{port_name}_offset");
-                        let fsm_in_port = format!("{inst_name}__{port_name}_offset_in");
-                        let arg_name = tapa_rtl::module::sanitize_array_name(&arg.arg);
-                        let offset_source = mmap_conns.get(&arg.arg).map_or_else(
-                            || Expr::ident(format!("{arg_name}_offset")),
-                            |conn| {
-                                if conn.chan_count.is_some() {
-                                    Expr::lit("64'd0")
-                                } else {
-                                    Expr::ident(format!("{arg_name}_offset"))
-                                }
-                            },
-                        );
-                        fsm_portargs
-                            .push(tapa_rtl::builder::PortArg::new(&fsm_in_port, offset_source));
-                        fsm_portargs.push(tapa_rtl::builder::PortArg::new(
-                            &pipeline_out,
-                            Expr::ident(&pipeline_out),
-                        ));
-                    }
-                    // Streams and Immap/Ommap contribute no FSM portargs.
-                }
-            }
-
-            // Build per-instance mmap slave index map for crossbar routing
-            let mut mmap_bindings = ChildMmapBindings::default();
-            for (child_port, arg) in &args {
-                if arg.cat.is_direct_mmap() {
-                    if let Some(prefix) = axi_pipeline_plan.and_then(|plan| {
-                        plan.child_wire_prefix(&tapa_ir::AxiEndpoint {
-                            instance: logical_inst_name.clone(),
-                            port: child_port.clone(),
-                            top_port: arg.arg.clone(),
-                        })
-                    }) {
-                        mmap_bindings
-                            .direct_wire_prefixes
-                            .insert(arg.arg.clone(), prefix);
-                    }
-                    if let Some(&slave_idx) =
-                        mmap_slave_map.get(&(arg.arg.clone(), child_name.clone(), idx))
-                    {
-                        mmap_bindings
-                            .slave_indices
-                            .insert(arg.arg.clone(), slave_idx);
-                        if let Some(conn) = mmap_conns.get(&arg.arg) {
-                            mmap_bindings
-                                .wire_id_widths
-                                .insert(arg.arg.clone(), m_axi::crossbar_slave_id_width(conn));
-                            if let Some(slave) = conn.slaves.get(slave_idx) {
-                                mmap_bindings
-                                    .child_id_widths
-                                    .insert(arg.arg.clone(), slave.id_width);
-                            }
-                        }
-                    }
-                }
-            }
-
-            let reset_n = control_plan.map_or_else(
-                || Expr::ident(HANDSHAKE_RST_N),
-                |_| {
-                    Expr::ident(
-                        distributed_control::DistributedControlPlan::child_reset_name(
-                            &logical_inst_name,
-                        ),
-                    )
-                },
-            );
-            // A floorplanned async bridge is co-located with its child, so the
-            // routed child reset is also its physically local reset;
-            // non-floorplanned builds use the parent reset.
-            let bridge_reset = if control_plan.is_some() {
-                Expr::logical_not(reset_n.clone())
-            } else {
-                Expr::ident(HANDSHAKE_RST)
-            };
-
-            // Build and add the actual child module instance to parent
-            if let Some(child_rtl) = child_rtl.as_ref() {
-                for (child_port, arg) in &args {
-                    if !matches!(arg.cat, tapa_ir::port::ArgCategory::AsyncMmap) {
-                        continue;
-                    }
-                    let active_tags = async_mmap::active_tags(child_rtl, child_port);
-                    if active_tags.is_empty() {
-                        continue;
-                    }
-                    let enabled =
-                        async_mmap::enabled_axi_directions(child_rtl, child_port, &active_tags);
-                    let m_axi_wire_prefix = mmap_bindings.wire_prefix(&arg.arg);
-                    let upstream_m_axi_prefix = mmap_bindings.upstream_wire_prefix(&arg.arg);
-                    let bridge_base = async_mmap::bridge_base_from_m_axi_prefix(&m_axi_wire_prefix);
-                    // Aggregation already derived the width with the same
-                    // parent-then-child port precedence.
-                    let data_width = mmap_conns.get(&arg.arg).map_or(64, |c| c.data_width);
-                    let connect_optional_axi_ports =
-                        !mmap_bindings.slave_indices.contains_key(&arg.arg);
-                    if let Some(mm) = modules.get_mut(task_name) {
-                        async_mmap::add_bridge_signals(mm, &bridge_base, &active_tags, data_width);
-                        mm.add_instance(async_mmap::build_bridge_instance(
-                            &bridge_base,
-                            &tapa_ir::async_mmap_bridge_instance_name(&arg.arg),
-                            &m_axi_wire_prefix,
-                            &upstream_m_axi_prefix,
-                            &active_tags,
-                            enabled,
-                            data_width,
-                            connect_optional_axi_ports,
-                            bridge_reset.clone(),
-                        ));
-                    }
-                }
-            }
-            let child_inst = build_child_instance_with_reset(
+            let inst = ChildInstance::new(
                 &child_name,
-                &inst_name,
-                &sig,
+                idx,
+                explicit_name,
+                is_autorun,
                 &args,
-                &mmap_bindings,
-                &parent_fifos,
-                modules.get(task_name).map(|mm| &mm.inner),
                 child_rtl.as_ref(),
-                reset_n,
             );
-            if let Some(mm) = modules.get_mut(task_name) {
-                mm.add_instance(child_inst);
-            }
-            if child_rtl.is_some() {
-                crate::m_axi::add_crossbar_slave_id_padding(
-                    modules,
-                    task_name,
-                    &args,
-                    &mmap_bindings,
-                );
-            }
+            wire_child_instance(&mut stage, &inst, idx)?;
         }
     }
 
-    if control_plan.is_none() {
-        // Instantiate FSM module into parent task module
-        let fsm_module_name = format!("{task_name}_fsm");
-        let mut fsm_inst_ports = vec![
-            tapa_rtl::builder::PortArg::new(HANDSHAKE_CLK, Expr::ident(HANDSHAKE_CLK)),
-            tapa_rtl::builder::PortArg::new(HANDSHAKE_RST_N, Expr::ident(HANDSHAKE_RST_N)),
-            // Top-level handshake ports
-            tapa_rtl::builder::PortArg::new(HANDSHAKE_START, Expr::ident(HANDSHAKE_START)),
-            tapa_rtl::builder::PortArg::new(HANDSHAKE_DONE, Expr::ident(HANDSHAKE_DONE)),
-            tapa_rtl::builder::PortArg::new(HANDSHAKE_IDLE, Expr::ident(HANDSHAKE_IDLE)),
-            tapa_rtl::builder::PortArg::new(HANDSHAKE_READY, Expr::ident(HANDSHAKE_READY)),
-        ];
-        // Add child-specific handshake portargs (child_0__ap_start, etc.)
-        fsm_inst_ports.extend(fsm_portargs);
-        let fsm_inst = tapa_rtl::builder::ModuleInstance::new(&fsm_module_name, "__tapa_fsm_unit")
-            .with_ports(fsm_inst_ports);
-        if let Some(mm) = modules.get_mut(task_name) {
-            mm.add_instance(fsm_inst);
+    instantiate_fsm_module(&mut stage);
+    Ok(std::mem::take(&mut stage.is_done_signals))
+}
+
+/// Wire one child instance: handshake, FSM logic, pipelines, mmap, instance.
+fn wire_child_instance(
+    stage: &mut ChildStageCtx<'_, '_>,
+    inst: &ChildInstance<'_>,
+    idx: usize,
+) -> Result<(), crate::error::CodegenError> {
+    declare_parent_handshake_wires(stage, &inst.sig, inst.is_autorun);
+    register_fsm_handshake_ports(stage, &inst.sig, inst.is_autorun);
+    add_fsm_control_logic(stage, &inst.sig, inst.is_autorun);
+    apply_control_plan_or_pipelines(stage, inst)?;
+    push_pipeline_portargs(stage, &inst.inst_name, inst.args);
+    let mmap_bindings = build_mmap_bindings(stage, inst, idx);
+    let (reset_n, bridge_reset) = instance_reset_exprs(stage, &inst.logical_inst_name);
+    add_async_mmap_bridges(stage, inst, &mmap_bindings, &bridge_reset);
+    add_child_instance(stage, inst, &mmap_bindings, reset_n);
+    Ok(())
+}
+
+/// Declare the parent-side handshake wires for one child instance.
+fn declare_parent_handshake_wires(
+    stage: &mut ChildStageCtx<'_, '_>,
+    sig: &InstanceSignals,
+    is_autorun: bool,
+) {
+    // Parent task module: only declare handshake WIRES (not state regs)
+    // The parent sees start/done/idle/ready/is_done as wires connected to FSM ports
+    if let Some(mm) = stage.modules.get_mut(stage.task_name) {
+        if stage.control_plan.is_some() {
+            let _ = mm.add_signal(tapa_rtl::mutation::wire(sig.start_name()));
+            if !is_autorun {
+                let _ = mm.add_signal(tapa_rtl::mutation::wire(sig.done_name()));
+                let _ = mm.add_signal(tapa_rtl::mutation::wire(sig.idle_name()));
+                let _ = mm.add_signal(tapa_rtl::mutation::wire(sig.ready_name()));
+                let _ = mm.add_signal(tapa_rtl::mutation::wire(sig.is_done_name()));
+            }
+        } else if is_autorun {
+            let _ = mm.add_signal(tapa_rtl::mutation::wire(sig.start_name()));
+        } else {
+            for signal in sig.all_signals() {
+                let _ = mm.add_signal(signal);
+            }
+        }
+    }
+}
+
+/// Register FSM handshake ports and instantiation portargs for one child.
+///
+/// Also registers the `is_done` output port (and its portarg) for
+/// non-autorun instances. Called for every instance; the port/portarg
+/// mutations are skipped when a distributed control plan owns the wiring.
+fn register_fsm_handshake_ports(
+    stage: &mut ChildStageCtx<'_, '_>,
+    sig: &InstanceSignals,
+    is_autorun: bool,
+) {
+    if stage.control_plan.is_none() {
+        // FSM module interface: add handshake ports, and build the FSM module
+        // instantiation portargs using child-specific port names.
+        // FSM module ports are child-specific (e.g., child_0__ap_start),
+        // parent wires have the same names — so both sides match.
+        // `fsm_ports()` is pure over `sig`, so one merged pass emits the FSM
+        // module ports and the instantiation portargs in the same per-target
+        // order as two sequential loops; the portarg push stays outside the
+        // module lookup exactly as before.
+        for port in sig.fsm_ports() {
+            let portarg = tapa_rtl::builder::PortArg::new(&port.name, Expr::ident(&port.name));
+            if let Some(fsm_mm) = stage.fsms.get_mut(stage.task_name) {
+                let _ = fsm_mm.add_port(port);
+            }
+            stage.fsm_portargs.push(portarg);
         }
     }
 
-    Ok(is_done_signals)
+    if !is_autorun {
+        stage.is_done_signals.push(sig.is_done_name());
+
+        if stage.control_plan.is_none() {
+            // Add is_done port to FSM module interface
+            if let Some(fsm_mm) = stage.fsms.get_mut(stage.task_name) {
+                let _ = fsm_mm.add_port(tapa_rtl::mutation::simple_port(
+                    sig.is_done_name(),
+                    tapa_rtl::port::Direction::Output,
+                ));
+            }
+            // Add is_done portarg for FSM instantiation
+            stage.fsm_portargs.push(tapa_rtl::builder::PortArg::new(
+                sig.is_done_name(),
+                Expr::ident(sig.is_done_name()),
+            ));
+        }
+    }
+}
+
+/// Add the FSM/autorun start logic, owned by the per-task FSM module.
+fn add_fsm_control_logic(
+    stage: &mut ChildStageCtx<'_, '_>,
+    sig: &InstanceSignals,
+    is_autorun: bool,
+) {
+    // FSM/autorun logic goes into the FSM MODULE
+    if stage.control_plan.is_some() {
+        return;
+    }
+    if let Some(fsm_mm) = stage.fsms.get_mut(stage.task_name) {
+        for signal in sig.all_signals() {
+            let _ = fsm_mm.add_signal(signal);
+        }
+        if is_autorun {
+            fsm_mm.ensure_signal_kind(&sig.start_name(), tapa_rtl::signal::SignalKind::Reg);
+            fsm_mm.add_always(generate_autorun_start(sig));
+        } else {
+            // State register and FSM logic owned by FSM module
+            // Use pipelined start_q/done_q from global FSM
+            let start_input = Expr::ident(program::START_Q);
+            let done_release = Expr::ident(program::DONE_Q);
+            fsm_mm.add_always(generate_child_fsm(sig, start_input, done_release));
+            // ap_start output: combinationally driven from state
+            fsm_mm.add_assign(generate_start_assign(sig));
+            // is_done: driven from state inside FSM module
+            fsm_mm.add_assign(generate_is_done_assign(sig));
+        }
+    }
+}
+
+/// Route child control through the distributed plan or the FSM pipeline.
+fn apply_control_plan_or_pipelines(
+    stage: &mut ChildStageCtx<'_, '_>,
+    inst: &ChildInstance<'_>,
+) -> Result<(), crate::error::CodegenError> {
+    if let Some(plan) = stage.control_plan {
+        plan.instantiate_child(
+            stage.modules,
+            stage.task_name,
+            &inst.logical_inst_name,
+            &inst.sig,
+        )?;
+    } else {
+        // Declare per-instance pipeline signals for scalar/mmap args
+        declare_instance_pipeline_signals(stage, inst.child_name, &inst.inst_name, inst.args);
+    }
+    Ok(())
 }
 
 /// Declare per-instance pipeline signals for scalar and mmap arguments.
@@ -351,20 +318,17 @@ pub fn generate_child_signals(
 /// - The FSM module uses a registered pipeline (always @(posedge clk)) to
 ///   delay the signal by one cycle, matching `add_pipeline` behavior
 fn declare_instance_pipeline_signals(
-    design: DesignView<'_>,
-    modules: &mut ModuleTable<'_>,
-    fsms: &mut FsmTable<'_>,
-    task_name: &str,
+    stage: &mut ChildStageCtx<'_, '_>,
     child_name: &str,
     inst_name: &str,
-    args: &std::collections::BTreeMap<String, tapa_ir::Arg>,
+    args: &BTreeMap<String, Arg>,
 ) {
     for (port_name, arg) in args {
         let (pipeline_out, fsm_in, width) = if arg.cat.is_scalar() {
             (
                 format!("{inst_name}__{port_name}"),
                 format!("{inst_name}__{port_name}_in"),
-                resolve_child_scalar_width(design, modules, child_name, port_name),
+                resolve_child_scalar_width(stage, child_name, port_name),
             )
         } else if arg.cat.is_direct_mmap() {
             (
@@ -375,28 +339,19 @@ fn declare_instance_pipeline_signals(
         } else {
             continue;
         };
-        add_pipeline_stage(
-            modules,
-            fsms,
-            task_name,
-            &pipeline_out,
-            &fsm_in,
-            width.as_ref(),
-        );
+        add_pipeline_stage(stage, &pipeline_out, &fsm_in, width.as_ref());
     }
 }
 
 /// Add a registered pipeline stage: parent wire + FSM input/output ports + internal reg.
 fn add_pipeline_stage(
-    modules: &mut ModuleTable<'_>,
-    fsms: &mut FsmTable<'_>,
-    task_name: &str,
+    stage: &mut ChildStageCtx<'_, '_>,
     pipeline_out: &str,
     fsm_in_port: &str,
     width: Option<&(String, String)>, // None = 1-bit, Some((msb, lsb))
 ) {
     // Parent: wire for pipeline output
-    if let Some(mm) = modules.get_mut(task_name) {
+    if let Some(mm) = stage.modules.get_mut(stage.task_name) {
         let sig = match width {
             Some((msb, lsb)) => tapa_rtl::mutation::wide_wire(pipeline_out, msb, lsb),
             None => tapa_rtl::mutation::wire(pipeline_out),
@@ -405,7 +360,7 @@ fn add_pipeline_stage(
     }
 
     // FSM module: input port + output port + internal _reg + registered always block
-    if let Some(fsm_mm) = fsms.get_mut(task_name) {
+    if let Some(fsm_mm) = stage.fsms.get_mut(stage.task_name) {
         let reg_name = format!("{pipeline_out}_reg");
         let (in_port, out_port, reg_sig) = match width.as_ref() {
             Some((msb, lsb)) => (
@@ -446,13 +401,228 @@ fn add_pipeline_stage(
     }
 }
 
+/// Queue the scalar/mmap pipeline portargs for the FSM instantiation.
+fn push_pipeline_portargs(
+    stage: &mut ChildStageCtx<'_, '_>,
+    inst_name: &str,
+    args: &BTreeMap<String, Arg>,
+) {
+    if stage.control_plan.is_some() {
+        return;
+    }
+    // Add pipeline portargs to FSM instantiation
+    for (port_name, arg) in args {
+        if arg.cat.is_scalar() {
+            let pipeline_out = format!("{inst_name}__{port_name}");
+            let fsm_in_port = format!("{inst_name}__{port_name}_in");
+            stage.fsm_portargs.push(tapa_rtl::builder::PortArg::new(
+                &fsm_in_port,
+                Expr::ident(tapa_rtl::module::sanitize_array_name(&arg.arg)),
+            ));
+            stage.fsm_portargs.push(tapa_rtl::builder::PortArg::new(
+                &pipeline_out,
+                Expr::ident(&pipeline_out),
+            ));
+        } else if arg.cat.is_direct_mmap() {
+            let pipeline_out = format!("{inst_name}__{port_name}_offset");
+            let fsm_in_port = format!("{inst_name}__{port_name}_offset_in");
+            let arg_name = tapa_rtl::module::sanitize_array_name(&arg.arg);
+            let offset_source = stage.mmap_conns.get(&arg.arg).map_or_else(
+                || Expr::ident(format!("{arg_name}_offset")),
+                |conn| {
+                    if conn.chan_count.is_some() {
+                        Expr::lit("64'd0")
+                    } else {
+                        Expr::ident(format!("{arg_name}_offset"))
+                    }
+                },
+            );
+            stage
+                .fsm_portargs
+                .push(tapa_rtl::builder::PortArg::new(&fsm_in_port, offset_source));
+            stage.fsm_portargs.push(tapa_rtl::builder::PortArg::new(
+                &pipeline_out,
+                Expr::ident(&pipeline_out),
+            ));
+        }
+        // Streams and Immap/Ommap contribute no FSM portargs.
+    }
+}
+
+/// Build the per-instance mmap binding map used for crossbar routing.
+fn build_mmap_bindings(
+    stage: &ChildStageCtx<'_, '_>,
+    inst: &ChildInstance<'_>,
+    idx: usize,
+) -> ChildMmapBindings {
+    // Build per-instance mmap slave index map for crossbar routing
+    let mut mmap_bindings = ChildMmapBindings::default();
+    for (child_port, arg) in inst.args {
+        if arg.cat.is_direct_mmap() {
+            if let Some(prefix) = stage.axi_pipeline_plan.and_then(|plan| {
+                plan.child_wire_prefix(&tapa_ir::AxiEndpoint {
+                    instance: inst.logical_inst_name.clone(),
+                    port: child_port.clone(),
+                    top_port: arg.arg.clone(),
+                })
+            }) {
+                mmap_bindings
+                    .direct_wire_prefixes
+                    .insert(arg.arg.clone(), prefix);
+            }
+            if let Some(&slave_idx) =
+                stage
+                    .mmap_slave_map
+                    .get(&(arg.arg.clone(), inst.child_name.to_owned(), idx))
+            {
+                mmap_bindings
+                    .slave_indices
+                    .insert(arg.arg.clone(), slave_idx);
+                if let Some(conn) = stage.mmap_conns.get(&arg.arg) {
+                    mmap_bindings
+                        .wire_id_widths
+                        .insert(arg.arg.clone(), m_axi::crossbar_slave_id_width(conn));
+                    if let Some(slave) = conn.slaves.get(slave_idx) {
+                        mmap_bindings
+                            .child_id_widths
+                            .insert(arg.arg.clone(), slave.id_width);
+                    }
+                }
+            }
+        }
+    }
+    mmap_bindings
+}
+
+/// Compute the child-local reset and the async-bridge reset for one instance.
+fn instance_reset_exprs(stage: &ChildStageCtx<'_, '_>, logical_inst_name: &str) -> (Expr, Expr) {
+    let reset_n = stage.control_plan.map_or_else(
+        || Expr::ident(HANDSHAKE_RST_N),
+        |_| {
+            Expr::ident(
+                distributed_control::DistributedControlPlan::child_reset_name(logical_inst_name),
+            )
+        },
+    );
+    // A floorplanned async bridge is co-located with its child, so the
+    // routed child reset is also its physically local reset;
+    // non-floorplanned builds use the parent reset.
+    let bridge_reset = if stage.control_plan.is_some() {
+        Expr::logical_not(reset_n.clone())
+    } else {
+        Expr::ident(HANDSHAKE_RST)
+    };
+    (reset_n, bridge_reset)
+}
+
+/// Build and register the floorplanned async-mmap bridge instances.
+fn add_async_mmap_bridges(
+    stage: &mut ChildStageCtx<'_, '_>,
+    inst: &ChildInstance<'_>,
+    mmap_bindings: &ChildMmapBindings,
+    bridge_reset: &Expr,
+) {
+    let Some(child_rtl) = inst.child_rtl else {
+        return;
+    };
+    for (child_port, arg) in inst.args {
+        if !matches!(arg.cat, tapa_ir::port::ArgCategory::AsyncMmap) {
+            continue;
+        }
+        let active_tags = async_mmap::active_tags(child_rtl, child_port);
+        if active_tags.is_empty() {
+            continue;
+        }
+        let enabled = async_mmap::enabled_axi_directions(child_rtl, child_port, &active_tags);
+        let m_axi_wire_prefix = mmap_bindings.wire_prefix(&arg.arg);
+        let upstream_m_axi_prefix = mmap_bindings.upstream_wire_prefix(&arg.arg);
+        let bridge_base = async_mmap::bridge_base_from_m_axi_prefix(&m_axi_wire_prefix);
+        // Aggregation already derived the width with the same
+        // parent-then-child port precedence.
+        let data_width = stage.mmap_conns.get(&arg.arg).map_or(64, |c| c.data_width);
+        let connect_optional_axi_ports = !mmap_bindings.slave_indices.contains_key(&arg.arg);
+        if let Some(mm) = stage.modules.get_mut(stage.task_name) {
+            async_mmap::add_bridge_signals(mm, &bridge_base, &active_tags, data_width);
+            mm.add_instance(async_mmap::build_bridge_instance(
+                &bridge_base,
+                &tapa_ir::async_mmap_bridge_instance_name(&arg.arg),
+                &m_axi_wire_prefix,
+                &upstream_m_axi_prefix,
+                &active_tags,
+                enabled,
+                data_width,
+                connect_optional_axi_ports,
+                bridge_reset.clone(),
+            ));
+        }
+    }
+}
+
+/// Build the child module instance and add it to the parent task module.
+fn add_child_instance(
+    stage: &mut ChildStageCtx<'_, '_>,
+    inst: &ChildInstance<'_>,
+    mmap_bindings: &ChildMmapBindings,
+    reset_n: Expr,
+) {
+    // Build and add the actual child module instance to parent
+    let child_inst = build_child_instance_with_reset(
+        inst.child_name,
+        &inst.inst_name,
+        &inst.sig,
+        inst.args,
+        mmap_bindings,
+        &stage.parent_fifos,
+        stage.modules.get(stage.task_name).map(|mm| &mm.inner),
+        inst.child_rtl,
+        reset_n,
+    );
+    if let Some(mm) = stage.modules.get_mut(stage.task_name) {
+        mm.add_instance(child_inst);
+    }
+    if inst.child_rtl.is_some() {
+        crate::m_axi::add_crossbar_slave_id_padding(
+            stage.modules,
+            stage.task_name,
+            inst.args,
+            mmap_bindings,
+        );
+    }
+}
+
+/// Instantiate the per-task FSM module into the parent task module.
+fn instantiate_fsm_module(stage: &mut ChildStageCtx<'_, '_>) {
+    if stage.control_plan.is_some() {
+        return;
+    }
+    // Instantiate FSM module into parent task module
+    let task_name = stage.task_name;
+    let fsm_module_name = format!("{task_name}_fsm");
+    let mut fsm_inst_ports = vec![
+        tapa_rtl::builder::PortArg::new(HANDSHAKE_CLK, Expr::ident(HANDSHAKE_CLK)),
+        tapa_rtl::builder::PortArg::new(HANDSHAKE_RST_N, Expr::ident(HANDSHAKE_RST_N)),
+        // Top-level handshake ports
+        tapa_rtl::builder::PortArg::new(HANDSHAKE_START, Expr::ident(HANDSHAKE_START)),
+        tapa_rtl::builder::PortArg::new(HANDSHAKE_DONE, Expr::ident(HANDSHAKE_DONE)),
+        tapa_rtl::builder::PortArg::new(HANDSHAKE_IDLE, Expr::ident(HANDSHAKE_IDLE)),
+        tapa_rtl::builder::PortArg::new(HANDSHAKE_READY, Expr::ident(HANDSHAKE_READY)),
+    ];
+    // Add child-specific handshake portargs (child_0__ap_start, etc.)
+    fsm_inst_ports.append(&mut stage.fsm_portargs);
+    let fsm_inst = tapa_rtl::builder::ModuleInstance::new(&fsm_module_name, "__tapa_fsm_unit")
+        .with_ports(fsm_inst_ports);
+    if let Some(mm) = stage.modules.get_mut(task_name) {
+        mm.add_instance(fsm_inst);
+    }
+}
+
+/// Resolve the scalar port width from the child module header or the design.
 fn resolve_child_scalar_width(
-    design: DesignView<'_>,
-    modules: &ModuleTable<'_>,
+    stage: &ChildStageCtx<'_, '_>,
     child_name: &str,
     port_name: &str,
 ) -> Option<(String, String)> {
-    if let Some(module) = modules.get(child_name) {
+    if let Some(module) = stage.modules.get(child_name) {
         if let Some(port) = module.inner.find_port(port_name) {
             return port.width.as_ref().map(|width| {
                 (
@@ -463,7 +633,8 @@ fn resolve_child_scalar_width(
         }
     }
 
-    design
+    stage
+        .design
         .design()
         .tasks
         .get(child_name)?

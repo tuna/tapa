@@ -256,16 +256,8 @@ pub struct GenerateChildSignals;
 
 impl TaskPass for GenerateChildSignals {
     fn run(&mut self, ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenError> {
-        ctx.inputs.is_done_signals = crate::children::generate_child_signals(
-            ctx.design,
-            &mut ctx.modules,
-            &mut ctx.fsms,
-            ctx.name,
-            &ctx.inputs.mmap_conns,
-            &ctx.inputs.mmap_slave_map,
-            ctx.inputs.axi_pipeline_plan.as_ref(),
-            ctx.inputs.control_plan.as_ref(),
-        )?;
+        let is_done_signals = crate::children::generate_child_signals(ctx)?;
+        ctx.inputs.is_done_signals = is_done_signals;
         Ok(())
     }
 }
