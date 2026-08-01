@@ -77,6 +77,7 @@ pub extern "C" fn frt_shmq_create(
 
 #[no_mangle]
 pub extern "C" fn frt_shmq_destroy(handle: *mut c_void) {
+    clear_last_error();
     if handle.is_null() {
         return;
     }

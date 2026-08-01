@@ -1,9 +1,9 @@
 //! M-AXI port generation and parameterized AXI crossbar emission.
 
 use tapa_protocol::{
-    axi_subport_from_suffix, axi_subport_width, m_axi_port_direction, m_axi_port_width, PortDir,
-    AXI_ADDR_WIDTH, AXI_ID_WIDTH, HANDSHAKE_CLK, HANDSHAKE_RST, M_AXI_CHANNEL_ORDER,
-    M_AXI_MAX_OUTSTANDING, M_AXI_PORTS, M_AXI_PREFIX, M_AXI_SUFFIXES_COMPACT,
+    axi_subport_from_suffix, axi_subport_width, m_axi_port_direction, PortDir, AXI_ADDR_WIDTH,
+    AXI_ID_WIDTH, HANDSHAKE_CLK, HANDSHAKE_RST, M_AXI_CHANNEL_ORDER, M_AXI_MAX_OUTSTANDING,
+    M_AXI_PORTS, M_AXI_PREFIX, M_AXI_SUFFIXES_COMPACT,
 };
 use tapa_rtl::builder::{ContinuousAssign, Expr, ModuleInstance, ParamArg, PortArg};
 use tapa_rtl::module::sanitize_array_name;
@@ -104,11 +104,11 @@ pub fn try_build_crossbar_params(conn: &MMapConnection) -> Result<Vec<ParamArg>,
     ];
 
     for idx in 0..conn.channel_count() {
-        let base = if addr_width >= 64 {
-            "64'd0".to_owned()
+        let base = if u64::from(addr_width) >= u64::from(tapa_protocol::AXI_ADDR_WIDTH) {
+            format!("{}'d0", tapa_protocol::AXI_ADDR_WIDTH)
         } else {
             let base = u64::from(idx) << addr_width;
-            format!("64'd{base}")
+            format!("{}'d{base}", tapa_protocol::AXI_ADDR_WIDTH)
         };
         params.push(ParamArg::new(
             format!("M{idx:02}_BASE_ADDR"),
@@ -226,14 +226,19 @@ pub fn try_get_addr_width(chan_size: Option<u32>, data_width: u32) -> Result<u32
     Ok(bytes.ilog2())
 }
 
-/// Resolve the width of an M-AXI suffix from protocol metadata.
+/// Resolve the width of an M-AXI suffix from the protocol port-width
+/// table.
 ///
-/// Delegates to [`tapa_protocol::m_axi_port_width`] under the default
-/// address/ID widths; unknown suffixes fall back to 1, preserving the
-/// historical behavior (all current callers pass known compact
-/// suffixes).
+/// Uses the default address/ID widths ([`AXI_ADDR_WIDTH`],
+/// [`AXI_ID_WIDTH`]); unknown subports yield 1 via
+/// [`tapa_protocol::axi_subport_width`].
 pub fn resolve_suffix_width(suffix: &str, data_width: u32) -> u32 {
-    m_axi_port_width(suffix, data_width).unwrap_or(1)
+    tapa_protocol::axi_subport_width(
+        tapa_protocol::axi_subport_from_suffix(suffix),
+        data_width,
+        tapa_protocol::AXI_ADDR_WIDTH,
+        tapa_protocol::AXI_ID_WIDTH,
+    )
 }
 
 /// Validate an mmap connection before crossbar generation.
@@ -456,7 +461,7 @@ fn crossbar_port_width(suffix: &str, master_side: bool) -> String {
     } else {
         match resolve_suffix_width(suffix, 0) {
             0 => "DATA_WIDTH".to_owned(),
-            64 if suffix.ends_with("ADDR") => "ADDR_WIDTH".to_owned(),
+            tapa_protocol::AXI_ADDR_WIDTH if suffix.ends_with("ADDR") => "ADDR_WIDTH".to_owned(),
             n => n.to_string(),
         }
     }

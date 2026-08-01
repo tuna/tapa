@@ -159,10 +159,12 @@ pub const AXI_ADDR_WIDTH: u32 = 64;
 pub const AXI_ID_WIDTH: u32 = 1;
 
 /// Outstanding-transaction budget baked into the generated AXI
-/// crossbar wrapper: it parameterises both the per-channel
-/// `M<idx>_ISSUE` parameter and the per-slave `S_ACCEPT` acceptance
-/// count. 16 mirrors the `S_ACCEPT` default of the vendored
-/// `axi_crossbar.v`; TAPA applies the same budget to issue tracking.
+/// crossbar wrapper.
+///
+/// It parameterises both the per-channel `M<idx>_ISSUE` parameter and
+/// the per-slave `S_ACCEPT` acceptance count. 16 mirrors the
+/// `S_ACCEPT` default of the vendored `axi_crossbar.v`; TAPA applies
+/// the same budget to issue tracking.
 pub const M_AXI_MAX_OUTSTANDING: u32 = 16;
 
 // ── M-AXI port widths ───────────────────────────────────────────────
@@ -334,10 +336,11 @@ pub static M_AXI_SUFFIXES_BY_CHANNEL: phf::Map<&'static str, AxiChannelInfo> = p
 
 // ── M-AXI port lookups ─────────────────────────────────────────────
 
-/// Master-side direction of a full M-AXI port suffix (`_ARADDR`,
-/// `_RREADY`, ...). [`PortDir::Output`] means the M-AXI master drives
-/// the signal. Returns `None` when `suffix` does not name a port of
-/// any of the five M-AXI channels.
+/// Master-side direction of a full M-AXI port suffix.
+///
+/// Suffixes look like `_ARADDR` or `_RREADY`; [`PortDir::Output`]
+/// means the M-AXI master drives the signal. Returns `None` when
+/// `suffix` does not name a port of any of the five M-AXI channels.
 #[must_use]
 pub fn m_axi_port_direction(suffix: &str) -> Option<PortDir> {
     let suffix_without_underscore = suffix.strip_prefix('_')?;
@@ -348,21 +351,6 @@ pub fn m_axi_port_direction(suffix: &str) -> Option<PortDir> {
     M_AXI_PORTS[*channel]
         .iter()
         .find_map(|(name, direction)| (*name == subport).then_some(*direction))
-}
-
-/// Bit width of a full M-AXI port suffix under the default address and
-/// ID widths ([`AXI_ADDR_WIDTH`], [`AXI_ID_WIDTH`]); `data_width`
-/// parameterises DATA and derives STRB. Returns `None` for suffixes
-/// rejected by [`m_axi_port_direction`].
-#[must_use]
-pub fn m_axi_port_width(suffix: &str, data_width: u32) -> Option<u32> {
-    m_axi_port_direction(suffix)?;
-    Some(axi_subport_width(
-        axi_subport_from_suffix(suffix),
-        data_width,
-        AXI_ADDR_WIDTH,
-        AXI_ID_WIDTH,
-    ))
 }
 
 // ── Tests ───────────────────────────────────────────────────────────
@@ -484,13 +472,12 @@ mod tests {
         }
     }
 
-    /// The suffix lookups are table-driven and reject unknown shapes.
+    /// The suffix lookup is table-driven and rejects unknown shapes.
     #[test]
     fn m_axi_suffix_lookups_track_the_channel_tables() {
         // Every declared suffix resolves in both lookups.
         for &suffix in M_AXI_SUFFIXES {
             assert!(m_axi_port_direction(suffix).is_some(), "{suffix}");
-            assert!(m_axi_port_width(suffix, 512).is_some(), "{suffix}");
         }
 
         // Master-side directions straight from the channel tables.
@@ -506,14 +493,6 @@ mod tests {
         // Unknown shapes are rejected.
         assert_eq!(m_axi_port_direction("_FOO"), None);
         assert_eq!(m_axi_port_direction("ARADDR"), None);
-        assert_eq!(m_axi_port_width("_FOO", 512), None);
-
-        // Widths come from the port-width table under default addr/ID.
-        assert_eq!(m_axi_port_width("_ARADDR", 512), Some(AXI_ADDR_WIDTH));
-        assert_eq!(m_axi_port_width("_WDATA", 512), Some(512));
-        assert_eq!(m_axi_port_width("_WSTRB", 512), Some(64));
-        assert_eq!(m_axi_port_width("_ARLEN", 512), Some(8));
-        assert_eq!(m_axi_port_width("_RID", 512), Some(AXI_ID_WIDTH));
     }
 
     /// AR and AW are both address channels and must expose the same ports.

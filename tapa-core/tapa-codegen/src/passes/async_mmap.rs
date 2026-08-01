@@ -8,7 +8,7 @@ use std::collections::BTreeSet;
 
 use tapa_protocol::{
     AXI_ADDR_WIDTH, HANDSHAKE_CLK, ISTREAM_SUFFIXES, M_AXI_PORTS, M_AXI_PREFIX,
-    M_AXI_SUFFIXES_COMPACT, OSTREAM_SUFFIXES,
+    M_AXI_SUFFIXES_COMPACT, OSTREAM_SUFFIXES, STREAM_DATA_SUFFIXES,
 };
 use tapa_rtl::builder::{Expr, ModuleInstance, ParamArg, PortArg};
 use tapa_rtl::module::sanitize_array_name;
@@ -39,7 +39,7 @@ fn tag_suffixes(tag: &str) -> &'static [&'static str] {
 }
 
 fn tag_data_width(tag: &str, suffix: &str, data_width: u32) -> u32 {
-    if !matches!(suffix, "_din" | "_dout") {
+    if !STREAM_DATA_SUFFIXES.contains(&suffix) {
         return 1;
     }
     match tag {
@@ -356,7 +356,7 @@ pub fn build_bridge_instance(
                 Expr::ident(signal_name(bridge_base, tag, suffix))
             } else if suffix.ends_with("_read") || suffix.ends_with("_write") {
                 Expr::lit("1'b0")
-            } else if suffix.ends_with("_din") {
+            } else if suffix == "_din" {
                 Expr::lit("'d0")
             } else {
                 Expr::lit("")

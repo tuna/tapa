@@ -17,6 +17,7 @@ load(
     "XILINX_TOOL_VERSION",
 )
 load("//bazel:sh_utils.bzl", "sh_quote")
+load("//bazel:xilinx_versions.bzl", "vitis_layout_subdir")
 
 def _symlink_dir(rctx, path):
     """Symlink each entry from a directory into the repository."""
@@ -177,7 +178,7 @@ def _load_dependencies(module_ctx):
         key_file = REMOTE_KEY_FILE if REMOTE_KEY_FILE else "/dev/null",
     )
 
-    vitis_hls_subdir = "/Vitis/" if XILINX_TOOL_VERSION >= "2024.2" else "/Vitis_HLS/"
+    vitis_hls_subdir = vitis_layout_subdir(XILINX_TOOL_VERSION)
     vitis_hls_path = XILINX_TOOL_PATH + vitis_hls_subdir + XILINX_TOOL_VERSION
     remote_vitis_hls_path = ""
     if REMOTE_HOST and REMOTE_XILINX_TOOL_PATH:

@@ -3,6 +3,7 @@
 load("@rules_pkg//pkg:mappings.bzl", "pkg_attributes", "pkg_filegroup", "pkg_files")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
+load("//bazel:xilinx_versions.bzl", "vitis_layout_subdir")
 load(
     "@vars//:vars.bzl",
     "REMOTE_HOST",
@@ -67,28 +68,9 @@ filegroup(
     visibility = ["//fpga-runtime:__pkg__"],
 )
 
-# Tool-version compare must be numeric, not lexicographic: a string
-# compare orders "2024.10" before "2024.2". Split both sides into
-# integer tuples and compare element-wise (Starlark lists are not
-# orderable, hence tuple() around the parsed components).
-_VITIS_LAYOUT_VERSION_TUPLE = tuple([int(part) for part in "2024.2".split(".")])
-
-_XILINX_TOOL_VERSION_PARTS = XILINX_TOOL_VERSION.split(".")
-_XILINX_TOOL_VERSION_TUPLE = (
-    int(_XILINX_TOOL_VERSION_PARTS[0]),
-    int(_XILINX_TOOL_VERSION_PARTS[1]),
-) if (
-    len(_XILINX_TOOL_VERSION_PARTS) == 2 and
-    _XILINX_TOOL_VERSION_PARTS[0].isdigit() and
-    _XILINX_TOOL_VERSION_PARTS[1].isdigit()
-) else fail(
-    "XILINX_TOOL_VERSION must be a numeric MAJOR.MINOR version, got " +
-    repr(XILINX_TOOL_VERSION),
-)
-
 _REMOTE_XILINX_SETTINGS = REMOTE_XILINX_SETTINGS or (
     REMOTE_XILINX_TOOL_PATH +
-    ("/Vitis/" if _XILINX_TOOL_VERSION_TUPLE >= _VITIS_LAYOUT_VERSION_TUPLE else "/Vitis_HLS/") +
+    vitis_layout_subdir(XILINX_TOOL_VERSION) +
     XILINX_TOOL_VERSION +
     "/settings64.sh" if REMOTE_XILINX_TOOL_PATH else ""
 )

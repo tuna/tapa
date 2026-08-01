@@ -104,7 +104,6 @@ pub static tapa_protocol::STREAM_PORT_WIDTH: phf::map::Map<&'static str, u32>
 pub fn tapa_protocol::axi_subport_from_suffix(&str) -> &str
 pub fn tapa_protocol::axi_subport_width(&str, u32, u32, u32) -> u32
 pub fn tapa_protocol::m_axi_port_direction(&str) -> core::option::Option<tapa_protocol::PortDir>
-pub fn tapa_protocol::m_axi_port_width(&str, u32) -> core::option::Option<u32>
 pub const fn tapa_protocol::stream_data_wire_width(u32) -> u32
 pub fn tapa_protocol::stream_peek_port_name(&str, &str) -> alloc::string::String
 pub fn tapa_protocol::stream_port_name(&str, &str) -> alloc::string::String

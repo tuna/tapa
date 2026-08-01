@@ -16,6 +16,7 @@ load(
     "REMOTE_XILINX_TOOL_PATH",
     "XILINX_TOOL_VERSION",
 )
+load("//bazel:xilinx_versions.bzl", "vitis_layout_subdir")
 
 def _remote_host_flag():
     if not REMOTE_HOST:
@@ -32,7 +33,7 @@ def _remote_xilinx_settings():
     if REMOTE_XILINX_SETTINGS:
         return REMOTE_XILINX_SETTINGS
     if REMOTE_XILINX_TOOL_PATH:
-        subdir = "/Vitis/" if XILINX_TOOL_VERSION >= "2024.2" else "/Vitis_HLS/"
+        subdir = vitis_layout_subdir(XILINX_TOOL_VERSION)
         return REMOTE_XILINX_TOOL_PATH + subdir + XILINX_TOOL_VERSION + "/settings64.sh"
     return ""
 

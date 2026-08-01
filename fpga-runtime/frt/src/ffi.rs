@@ -122,8 +122,9 @@ fn open_instance(path: &str, sim: Option<&str>) -> Result<Instance, String> {
 /// call on this thread, or null if the last call succeeded (or none ran).
 ///
 /// The returned pointer borrows from a per-thread slot; it is valid until
-/// the next `frt_*` call on this thread. Each thread has an independent
-/// error slot. Copy the string if it must outlive that point.
+/// the next `frt_*` call on this thread (or thread exit, whichever
+/// comes first). Each thread has an independent error slot. Copy the
+/// string if it must outlive that point.
 #[no_mangle]
 pub extern "C" fn frt_last_error_message() -> *const c_char {
     LAST_ERROR.with(|cell| {

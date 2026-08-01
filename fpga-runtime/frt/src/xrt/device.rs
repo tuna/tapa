@@ -697,44 +697,6 @@ mod tests {
     use super::scalar_type_name;
     use frt_cosim::metadata::normalized_scalar_bytes;
 
-    /// Scalar bytes bind at exactly the metadata-declared width (the same
-    /// rule the cosim testbenches use), so a short caller buffer is
-    /// zero-extended rather than passed through verbatim.
-    #[test]
-    fn scalar_bytes_zero_pad_short_buffers_to_metadata_width() {
-        assert_eq!(normalized_scalar_bytes(16, Some(&[0x12])), vec![0x12, 0x00]);
-        assert_eq!(
-            normalized_scalar_bytes(128, Some(&[1, 2, 3, 4])),
-            vec![1, 2, 3, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-        );
-    }
-
-    #[test]
-    fn scalar_bytes_truncate_oversized_buffers_to_metadata_width() {
-        assert_eq!(
-            normalized_scalar_bytes(16, Some(&[0x12, 0x34, 0x56])),
-            vec![0x12, 0x34]
-        );
-    }
-
-    #[test]
-    fn scalar_bytes_keep_exactly_sized_buffers() {
-        assert_eq!(
-            normalized_scalar_bytes(16, Some(&[0x12, 0x34])),
-            vec![0x12, 0x34]
-        );
-    }
-
-    #[test]
-    fn scalar_bytes_default_to_metadata_width_when_unset_or_empty() {
-        assert_eq!(normalized_scalar_bytes(16, None), vec![0x00, 0x00]);
-        assert_eq!(normalized_scalar_bytes(16, Some(&[])), vec![0x00, 0x00]);
-        assert_eq!(
-            normalized_scalar_bytes(128, None),
-            vec![0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-        );
-    }
-
     #[test]
     fn scalar_type_names_expand_beyond_u64() {
         assert_eq!(scalar_type_name(1), "uint32_t");

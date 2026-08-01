@@ -1216,7 +1216,10 @@ fn direct_axi_routes() -> Vec<tapa_ir::PipelineRoute> {
 }
 
 fn compact_m_axi_child_module_src() -> String {
-    use tapa_protocol::{axi_subport_from_suffix, axi_subport_width, M_AXI_SUFFIXES_COMPACT};
+    use tapa_protocol::{
+        axi_subport_from_suffix, axi_subport_width, m_axi_port_direction, PortDir, AXI_ADDR_WIDTH,
+        M_AXI_SUFFIXES_COMPACT,
+    };
 
     let mut ports = vec![
         "input wire ap_clk".to_string(),
@@ -1228,17 +1231,9 @@ fn compact_m_axi_child_module_src() -> String {
         "input wire [63:0] data_offset".to_string(),
     ];
     for suffix in M_AXI_SUFFIXES_COMPACT {
-        let channel_port = suffix.trim_start_matches('_');
-        let output = if channel_port.starts_with("AR")
-            || channel_port.starts_with("AW")
-            || channel_port.starts_with('W')
-        {
-            !channel_port.ends_with("READY")
-        } else {
-            channel_port.ends_with("READY")
-        };
+        let output = matches!(m_axi_port_direction(suffix), Some(PortDir::Output));
         let direction = if output { "output" } else { "input" };
-        let width = axi_subport_width(axi_subport_from_suffix(suffix), 32, 64, 3);
+        let width = axi_subport_width(axi_subport_from_suffix(suffix), 32, AXI_ADDR_WIDTH, 3);
         let width = if width == 1 {
             String::new()
         } else {
