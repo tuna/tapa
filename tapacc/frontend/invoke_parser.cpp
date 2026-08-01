@@ -111,29 +111,18 @@ std::string ArrayElement(const std::string& name, int pos,
   return name;
 }
 
-// Shared state for one upper-task parse: the AST/diagnostic context, the task
-// model being filled, the child-name mangler, and the access positions, which
-// distribute an array argument (streams/mmaps) across the scalar ports it
-// feeds, in order of appearance. Endpoint marking lives here (hoisted out of
-// the per-argument loop) so the double-consume / double-produce checks sit
-// next to the stream map they mutate.
+// Shared state for one upper-task parse: the AST/diagnostic context and the
+// task model being filled. Endpoint marking lives here (hoisted out of the
+// per-argument loop) so the double-consume / double-produce checks sit next
+// to the stream map they mutate. Invocation-only state (the child-name
+// mangler and the access positions) stays local to `ParseInvocations`.
 struct UpperTaskContext {
   clang::ASTContext& ctx;
   TaskModel& task;
   const bool is_top;
-  std::unique_ptr<clang::MangleContext> mangler;
-
-  std::map<std::string, int> istreams_pos;
-  std::map<std::string, int> ostreams_pos;
-  std::map<std::string, int> mmaps_pos;
-  std::map<const clang::Expr*, int> seq_pos;
 
   UpperTaskContext(clang::ASTContext& ctx, TaskModel& task, bool is_top)
-      : ctx(ctx),
-        task(task),
-        is_top(is_top),
-        mangler(
-            clang::ItaniumMangleContext::create(ctx, ctx.getDiagnostics())) {}
+      : ctx(ctx), task(task), is_top(is_top) {}
 
   // Record FIFO `a` as consumed by instance `inst_index` of `task_name`,
   // reporting a double-consume at `loc`.
@@ -204,6 +193,16 @@ void CollectStreamDecls(UpperTaskContext& uc, const clang::FunctionDecl* func) {
 // port — distributing array arguments across scalar ports by access position
 // and marking each stream endpoint as it is bound.
 void ParseInvocations(UpperTaskContext& uc, const clang::Expr* task_obj) {
+  // The child-name mangler and the access positions, which distribute an
+  // array argument (streams/mmaps) across the scalar ports it feeds, in
+  // order of appearance.
+  std::unique_ptr<clang::MangleContext> mangler(
+      clang::ItaniumMangleContext::create(uc.ctx, uc.ctx.getDiagnostics()));
+  std::map<std::string, int> istreams_pos;
+  std::map<std::string, int> ostreams_pos;
+  std::map<std::string, int> mmaps_pos;
+  std::map<const clang::Expr*, int> seq_pos;
+
   for (const clang::CXXMemberCallExpr* invoke : GetInvokes(task_obj)) {
     const InvokeMode mode = GetInvokeMode(invoke);
     bool has_executable = false;
@@ -251,7 +250,7 @@ void ParseInvocations(UpperTaskContext& uc, const clang::Expr* task_obj) {
                          : llvm::dyn_cast_or_null<clang::FunctionDecl>(
                                decl_ref->getDecl()->getAsFunction());
             if (callee == nullptr) break;  // not a task reference
-            task_name = TaskName(*uc.mangler, callee);
+            task_name = TaskName(*mangler, callee);
             uc.task.instances[task_name].push_back(
                 Instance{callee, task_name, mode.step, std::nullopt, {}});
             continue;
@@ -278,23 +277,23 @@ void ParseInvocations(UpperTaskContext& uc, const clang::Expr* task_obj) {
 
           if (pk == TapaKind::kMmap || pk == TapaKind::kImmap ||
               pk == TapaKind::kOmmap || pk == TapaKind::kAsyncMmap) {
-            set_arg(ArrayElement(arg_name, uc.mmaps_pos[arg_name]++, decl_ref),
+            set_arg(ArrayElement(arg_name, mmaps_pos[arg_name]++, decl_ref),
                     port, pk);
           } else if (pk == TapaKind::kIStream) {
             const std::string a =
-                ArrayElement(arg_name, uc.istreams_pos[arg_name]++, decl_ref);
+                ArrayElement(arg_name, istreams_pos[arg_name]++, decl_ref);
             uc.MarkConsumer(a, task_name, inst_index, arg->getBeginLoc());
             set_arg(a, port, TapaKind::kIStream);
           } else if (pk == TapaKind::kOStream) {
             const std::string a =
-                ArrayElement(arg_name, uc.ostreams_pos[arg_name]++, decl_ref);
+                ArrayElement(arg_name, ostreams_pos[arg_name]++, decl_ref);
             uc.MarkProducer(a, task_name, inst_index, arg->getBeginLoc());
             set_arg(a, port, TapaKind::kOStream);
           } else if (pk == TapaKind::kIStreams) {
             const int64_t n = IntTemplateArg(param->getType(), 1).value_or(0);
             for (int64_t j = 0; j < n; ++j) {
               const std::string a = ArrayElement(
-                  arg_name, uc.istreams_pos[arg_name]++, decl_ref);
+                  arg_name, istreams_pos[arg_name]++, decl_ref);
               uc.MarkConsumer(a, task_name, inst_index, arg->getBeginLoc());
               set_arg(a, ArrayNameAt(port, j), TapaKind::kIStream);
             }
@@ -302,12 +301,12 @@ void ParseInvocations(UpperTaskContext& uc, const clang::Expr* task_obj) {
             const int64_t n = IntTemplateArg(param->getType(), 1).value_or(0);
             for (int64_t j = 0; j < n; ++j) {
               const std::string a = ArrayElement(
-                  arg_name, uc.ostreams_pos[arg_name]++, decl_ref);
+                  arg_name, ostreams_pos[arg_name]++, decl_ref);
               uc.MarkProducer(a, task_name, inst_index, arg->getBeginLoc());
               set_arg(a, ArrayNameAt(port, j), TapaKind::kOStream);
             }
           } else if (is_seq) {
-            set_arg("64'd" + std::to_string(uc.seq_pos[arg]++), port,
+            set_arg("64'd" + std::to_string(seq_pos[arg]++), port,
                     TapaKind::kNotTapa);
           } else {
             set_arg(arg_name, port, TapaKind::kNotTapa);  // scalar

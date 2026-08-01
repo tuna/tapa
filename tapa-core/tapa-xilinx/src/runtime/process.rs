@@ -498,6 +498,23 @@ mod tests {
     fn local_runner_activates_xilinx_settings_for_local_tools() {
         use std::os::unix::fs::PermissionsExt;
 
+        // Some CI hosts mount the default temp dir noexec; the fake tools
+        // below must be executable, so skip when the probe cannot run.
+        let probe = tempfile::tempdir().unwrap();
+        let probe_script = probe.path().join("probe.sh");
+        std::fs::write(&probe_script, "#!/bin/sh\nexit 0\n").unwrap();
+        let mut perms = std::fs::metadata(&probe_script).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&probe_script, perms).unwrap();
+        let can_exec = std::process::Command::new(&probe_script)
+            .status()
+            .is_ok_and(|status| status.success());
+        drop(probe);
+        if !can_exec {
+            eprintln!("skipping: temp dir does not allow executing scripts");
+            return;
+        }
+
         for (tool, root_env) in [
             ("vitis_hls", "XILINX_HLS"),
             ("vitis_hls", "XILINX_VITIS"),
