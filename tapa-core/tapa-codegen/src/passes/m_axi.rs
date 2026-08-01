@@ -11,7 +11,7 @@ use tapa_rtl::port::Direction;
 
 use crate::children;
 use crate::error::CodegenError;
-use crate::rtl_state::{routing_id_bits, MMapConnection, TopologyWithRtl};
+use crate::rtl_state::{routing_id_bits, MMapConnection};
 use crate::state::views::{ModuleTable, OutputSet};
 
 /// Add M-AXI ports for a single memory-mapped argument to a module.
@@ -491,7 +491,7 @@ fn concat_ports(prefix: &str, count: u32, suffix: &str) -> String {
 }
 
 pub(crate) fn add_crossbar_slave_id_padding(
-    state: &mut TopologyWithRtl,
+    modules: &mut ModuleTable<'_>,
     task_name: &str,
     args: &std::collections::BTreeMap<String, tapa_ir::Arg>,
     mmap_bindings: &children::ChildMmapBindings,
@@ -526,7 +526,7 @@ pub(crate) fn add_crossbar_slave_id_padding(
             ));
         }
     }
-    if let Some(mm) = state.module_map.get_mut(task_name) {
+    if let Some(mm) = modules.get_mut(task_name) {
         for assign in assigns {
             mm.add_assign(assign);
         }

@@ -245,12 +245,15 @@ pub struct GenerateChildSignals;
 
 impl RtlPass for GenerateChildSignals {
     fn run(&self, ctx: &mut PassCtx<'_>) -> Result<(), CodegenError> {
+        let mut views = PassViews::new(&mut *ctx.state);
         let task = ctx
             .task
             .as_mut()
             .expect("generate-child-signals is task-scoped");
         task.inputs.is_done_signals = crate::children::generate_child_signals(
-            ctx.state,
+            views.design,
+            &mut views.modules,
+            &mut views.fsms,
             task.name,
             &task.inputs.mmap_conns,
             &task.inputs.mmap_slave_map,
@@ -301,12 +304,13 @@ pub struct AxiPipelineInstantiate;
 
 impl RtlPass for AxiPipelineInstantiate {
     fn run(&self, ctx: &mut PassCtx<'_>) -> Result<(), CodegenError> {
+        let mut views = PassViews::new(&mut *ctx.state);
         let task = ctx
             .task
             .as_mut()
             .expect("axi-pipeline-instantiate is task-scoped");
         if let Some(plan) = &task.inputs.axi_pipeline_plan {
-            plan.instantiate(ctx.state, task.name)?;
+            plan.instantiate(&mut views.modules, task.name)?;
         }
         Ok(())
     }
@@ -318,10 +322,11 @@ pub struct ControlFsm;
 
 impl RtlPass for ControlFsm {
     fn run(&self, ctx: &mut PassCtx<'_>) -> Result<(), CodegenError> {
+        let mut views = PassViews::new(&mut *ctx.state);
         let task = ctx.task.as_mut().expect("control-fsm is task-scoped");
         if let Some(plan) = &task.inputs.control_plan {
-            plan.instantiate_global(ctx.state, task.name, &task.inputs.is_done_signals)?;
-        } else if let Some(fsm_mm) = ctx.state.fsm_modules.get_mut(task.name) {
+            plan.instantiate_global(&mut views.modules, task.name, &task.inputs.is_done_signals)?;
+        } else if let Some(fsm_mm) = views.fsms.get_mut(task.name) {
             crate::program::apply_global_fsm(fsm_mm, &task.inputs.is_done_signals);
         }
         Ok(())

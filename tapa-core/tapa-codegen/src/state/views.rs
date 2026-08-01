@@ -120,6 +120,11 @@ impl<'a> FsmTable<'a> {
         Self { map }
     }
 
+    /// Mutable lookup by task name.
+    pub fn get_mut(&mut self, task_name: &str) -> Option<&mut MutableModule> {
+        self.map.get_mut(task_name)
+    }
+
     /// Iterate all FSM modules in key order.
     pub fn iter(&self) -> impl Iterator<Item = (&String, &MutableModule)> {
         self.map.iter()

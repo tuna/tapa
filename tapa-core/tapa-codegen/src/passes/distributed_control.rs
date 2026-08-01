@@ -18,6 +18,7 @@ use tapa_rtl::mutation::{wide_wire, wire};
 use crate::error::CodegenError;
 use crate::instance_signals::InstanceSignals;
 use crate::rtl_state::{MMapConnection, TopologyWithRtl};
+use crate::state::views::ModuleTable;
 
 const GLOBAL_START: &str = "__tapa_control_start";
 const GLOBAL_RELEASE: &str = "__tapa_control_release";
@@ -348,7 +349,7 @@ impl DistributedControlPlan {
     )]
     pub(super) fn instantiate_child(
         &self,
-        state: &mut TopologyWithRtl,
+        modules: &mut ModuleTable<'_>,
         task_name: &str,
         logical_instance: &str,
         signals: &InstanceSignals,
@@ -358,7 +359,7 @@ impl DistributedControlPlan {
                 "generated child '{logical_instance}' has no control plan",
             ))
         })?;
-        let Some(module) = state.module_map.get_mut(task_name) else {
+        let Some(module) = modules.get_mut(task_name) else {
             return Ok(());
         };
         let prefix = control_wire_prefix(logical_instance);
@@ -477,11 +478,11 @@ impl DistributedControlPlan {
 
     pub(super) fn instantiate_global(
         &self,
-        state: &mut TopologyWithRtl,
+        modules: &mut ModuleTable<'_>,
         task_name: &str,
         completion_signals: &[String],
     ) -> Result<(), CodegenError> {
-        let Some(module) = state.module_map.get_mut(task_name) else {
+        let Some(module) = modules.get_mut(task_name) else {
             return Ok(());
         };
         module.add_signal(wire(GLOBAL_START))?;

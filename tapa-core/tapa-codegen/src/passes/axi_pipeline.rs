@@ -15,7 +15,8 @@ use tapa_rtl::module::{sanitize_array_name, sanitize_identifier_name};
 use tapa_rtl::mutation::{wide_wire, wire};
 
 use crate::error::CodegenError;
-use crate::rtl_state::{DirectMmapInterface, TopologyWithRtl};
+use crate::rtl_state::DirectMmapInterface;
+use crate::state::views::ModuleTable;
 
 const OPTIONAL_ADDRESS_OUTPUTS: [(&str, &str); 8] = [
     ("_AWLOCK", "1'b0"),
@@ -200,10 +201,10 @@ impl DirectAxiPipelinePlan {
 
     pub(super) fn instantiate(
         &self,
-        state: &mut TopologyWithRtl,
+        modules: &mut ModuleTable<'_>,
         task_name: &str,
     ) -> Result<(), CodegenError> {
-        let Some(module) = state.module_map.get_mut(task_name) else {
+        let Some(module) = modules.get_mut(task_name) else {
             return Ok(());
         };
 
