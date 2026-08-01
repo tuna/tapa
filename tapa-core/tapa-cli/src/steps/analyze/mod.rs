@@ -116,10 +116,6 @@ pub struct AnalyzeArgs {
 /// Run tapacc on each input, merge the task graphs, and write
 /// `<work_dir>/tapa.json` (plus the flattened sources when
 /// `--flatten-hierarchy` is set).
-pub(crate) fn spec() -> &'static crate::steps::registry::StepSpec {
-    crate::steps::registry::analyze()
-}
-
 pub fn run(args: &AnalyzeArgs, ctx: &CliContext) -> Result<()> {
     // `--tapacc`/`--tapa-cpp` override the walk-up `find_resource`
     // search. Used by the Bazel driver to inject the exact sandbox

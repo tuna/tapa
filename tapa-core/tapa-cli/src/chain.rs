@@ -15,7 +15,7 @@ use clap::{Parser, Subcommand};
 use crate::context::CliContext;
 use crate::error::{CliError, Result};
 use crate::state::work as work_io;
-use crate::steps::registry::{self, PreconditionArgs, StepSpec};
+use crate::steps::registry::{self, StepSpec};
 use crate::steps::{analyze, floorplan, gcc, meta, pack, synth, version};
 use crate::tapacc::find_clang_binary;
 
@@ -31,17 +31,17 @@ pub(crate) enum PipelineStep<'a> {
 impl<'a> PipelineStep<'a> {
     fn spec(self) -> &'static StepSpec {
         match self {
-            Self::Analyze(_) => analyze::spec(),
-            Self::Synth(_) => synth::spec(),
-            Self::Floorplan(_) => floorplan::spec(),
-            Self::Pack(_) => pack::spec(),
+            Self::Analyze(_) => registry::analyze(),
+            Self::Synth(_) => registry::synth(),
+            Self::Floorplan(_) => registry::floorplan(),
+            Self::Pack(_) => registry::pack(),
         }
     }
 
-    fn precondition_args(self) -> PreconditionArgs<'a> {
+    fn precondition_args(self) -> Option<&'a pack::PackArgs> {
         match self {
-            Self::Pack(args) => PreconditionArgs::Pack(args),
-            Self::Analyze(_) | Self::Synth(_) | Self::Floorplan(_) => PreconditionArgs::None,
+            Self::Pack(args) => Some(args),
+            Self::Analyze(_) | Self::Synth(_) | Self::Floorplan(_) => None,
         }
     }
 }
@@ -159,9 +159,10 @@ struct ChainParser {
 }
 
 impl Step {
-    /// Walk the chained-step linked list: parse and validate the
-    /// *entire* chain first, then execute
-    /// each step in order. A parse error or `--help` on a later token
+    /// Walk the chained-step linked list: parse the *entire* chain
+    /// first, then validate and execute each step in order (precondition
+    /// validation is deliberately per-step, immediately before each
+    /// dispatch). A parse error or `--help` on a later token
     /// (e.g. `tapa analyze … synth --help`) must surface before any
     /// step mutates `work_dir` or shells out to a missing tool.
     pub fn execute(self, ctx: &mut CliContext) -> Result<()> {

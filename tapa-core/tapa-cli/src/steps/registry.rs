@@ -21,6 +21,9 @@ pub enum ArtifactId {
     SynthRtlTree,
     FloorplanResult,
     FloorplanXdc,
+    /// `floorplan-connectivity.ini`, staged by `floorplan` and consumed by
+    /// `pack`'s Vitis packaging.
+    StagedConnectivity,
     Package,
 }
 
@@ -72,6 +75,7 @@ const FLOORPLAN_SPEC: StepSpec = StepSpec {
         ArtifactId::FloorplanResult,
         ArtifactId::SynthRtlTree,
         ArtifactId::FloorplanXdc,
+        ArtifactId::StagedConnectivity,
     ],
     preconditions: &[Precondition::RequiresSynthedFlow(
         SynthedFlowError::Floorplan,
@@ -85,6 +89,7 @@ const PACK_SPEC: StepSpec = StepSpec {
         ArtifactId::SynthRtlTree,
         ArtifactId::FloorplanResult,
         ArtifactId::FloorplanXdc,
+        ArtifactId::StagedConnectivity,
     ],
     writes: &[ArtifactId::Package],
     preconditions: &[
@@ -109,19 +114,12 @@ pub fn pack() -> &'static StepSpec {
     &PACK_SPEC
 }
 
-/// Arguments needed by the one argument-dependent precondition.
-#[derive(Clone, Copy)]
-pub enum PreconditionArgs<'a> {
-    None,
-    Pack(&'a PackArgs),
-}
-
 /// Validate a step's declared preconditions against an already-loaded state.
 pub fn validate(
     spec: &StepSpec,
     state: &WorkState,
     state_path: &Path,
-    args: PreconditionArgs<'_>,
+    args: Option<&PackArgs>,
 ) -> Result<()> {
     for precondition in spec.preconditions {
         match precondition {
@@ -149,8 +147,8 @@ fn missing_synthed_flow(error: SynthedFlowError, state_path: &Path) -> CliError 
     }
 }
 
-fn validate_pack_overlay(state: &WorkState, args: PreconditionArgs<'_>) -> Result<()> {
-    let PreconditionArgs::Pack(args) = args else {
+fn validate_pack_overlay(state: &WorkState, args: Option<&PackArgs>) -> Result<()> {
+    let Some(args) = args else {
         return Ok(());
     };
     if state.floorplan.is_some() && !args.custom_rtl.is_empty() {
@@ -206,6 +204,8 @@ mod tests {
         assert_eq!(synth().reads, &[ArtifactId::TaskGraph]);
         assert!(floorplan().writes.contains(&ArtifactId::FloorplanXdc));
         assert!(pack().reads.contains(&ArtifactId::FloorplanResult));
+        assert!(floorplan().writes.contains(&ArtifactId::StagedConnectivity));
+        assert!(pack().reads.contains(&ArtifactId::StagedConnectivity));
         assert_eq!(pack().writes, &[ArtifactId::Package]);
     }
 
@@ -215,7 +215,7 @@ mod tests {
             floorplan(),
             &state(true, false),
             Path::new("/work/tapa.json"),
-            PreconditionArgs::None,
+            None,
         )
         .expect("completed synthesis must satisfy floorplan");
     }
@@ -226,7 +226,7 @@ mod tests {
             floorplan(),
             &state(false, false),
             Path::new("/work/tapa.json"),
-            PreconditionArgs::None,
+            None,
         )
         .expect_err("floorplan must require synthesis");
         assert!(matches!(
@@ -243,7 +243,7 @@ mod tests {
             pack(),
             &state(true, false),
             Path::new("/work/tapa.json"),
-            PreconditionArgs::Pack(&args),
+            Some(&args),
         )
         .expect("completed synthesis must satisfy pack");
     }
@@ -255,7 +255,7 @@ mod tests {
             pack(),
             &state(false, false),
             Path::new("/work/tapa.json"),
-            PreconditionArgs::Pack(&args),
+            Some(&args),
         )
         .expect_err("pack must require synthesis");
         assert!(matches!(
@@ -273,7 +273,7 @@ mod tests {
             pack(),
             &state(true, true),
             Path::new("/work/tapa.json"),
-            PreconditionArgs::Pack(&no_overlay),
+            Some(&no_overlay),
         )
         .expect("floorplan without custom RTL must be accepted");
 
@@ -282,7 +282,7 @@ mod tests {
             pack(),
             &state(true, false),
             Path::new("/work/tapa.json"),
-            PreconditionArgs::Pack(&overlay),
+            Some(&overlay),
         )
         .expect("custom RTL without a floorplan must be accepted");
     }
@@ -294,7 +294,7 @@ mod tests {
             pack(),
             &state(true, true),
             Path::new("/work/tapa.json"),
-            PreconditionArgs::Pack(&args),
+            Some(&args),
         )
         .expect_err("custom RTL must not modify floorplanned RTL");
         assert!(matches!(

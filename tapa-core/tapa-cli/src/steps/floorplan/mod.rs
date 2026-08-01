@@ -438,10 +438,6 @@ fn publish_implementation_winner(
     Ok(())
 }
 
-pub(crate) fn spec() -> &'static crate::steps::registry::StepSpec {
-    crate::steps::registry::floorplan()
-}
-
 pub fn run(args: &FloorplanArgs, ctx: &CliContext) -> Result<()> {
     let options = PlanOptions {
         usage_limit: args.usage_limit,

@@ -78,10 +78,6 @@ pub(super) fn published_floorplan_xdc(
 }
 
 /// Dispatch packaging according to the target stored by `analyze`.
-pub(crate) fn spec() -> &'static crate::steps::registry::StepSpec {
-    crate::steps::registry::pack()
-}
-
 pub fn run(args: &PackArgs, ctx: &CliContext) -> Result<()> {
     let state = work_io::load(&ctx.work_dir)?;
     // Completed-synthesis and custom-RTL/floorplan validation is centralized
