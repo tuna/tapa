@@ -6,6 +6,8 @@ pub enum FrtError {
     NoDevice { path: PathBuf },
     #[error("xclbin/xo metadata parse error: {0}")]
     MetadataParse(String),
+    #[error("resume-from-post-sim stream binding error: {0}")]
+    ResumeStreamBinding(String),
     #[error("OpenCL error {code}: {msg}")]
     OpenCl { code: i32, msg: String },
     #[error("simulator exited with status {0}")]
