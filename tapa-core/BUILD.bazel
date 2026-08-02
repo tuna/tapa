@@ -3,7 +3,6 @@
 load("@rules_pkg//pkg:mappings.bzl", "pkg_attributes", "pkg_filegroup", "pkg_files")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
-load("//bazel:xilinx_versions.bzl", "vitis_layout_subdir")
 load(
     "@vars//:vars.bzl",
     "REMOTE_HOST",
@@ -17,6 +16,7 @@ load(
     "XILINX_TOOL_VERSION",
 )
 load("//bazel:cargo_rules.bzl", "cargo_artifacts", "cargo_test")
+load("//bazel:xilinx_versions.bzl", "vitis_layout_subdir")
 
 exports_files([
     "tapa-codegen/assets/verilog/axis_adapter.v",
@@ -161,12 +161,14 @@ sh_test(
 
 # Ship the native Rust `tapa` binary directly as `/usr/bin/tapa`.
 
+# References the single binary output of `:cargo_build` directly:
+# `rules_pkg` requires rename sources to expand to exactly one file.
 pkg_files(
     name = "pkg-bin",
-    srcs = [":tapa-cli"],
+    srcs = ["cargo/bin/tapa"],
     attributes = pkg_attributes(mode = "0755"),
     prefix = "usr/bin",
-    renames = {"//tapa-core:tapa-cli": "tapa"},
+    renames = {"//tapa-core:cargo/bin/tapa": "tapa"},
     visibility = ["//visibility:public"],
 )
 

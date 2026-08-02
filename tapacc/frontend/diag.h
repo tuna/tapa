@@ -16,9 +16,10 @@ namespace tapa::cc {
 // Returns the DiagnosticBuilder so callers can attach %0/%1 argument strings;
 // the diagnostic is emitted when the builder goes out of scope.
 template <unsigned N>
-clang::DiagnosticBuilder ReportCustomDiag(
-    const clang::ASTContext& ctx, clang::DiagnosticsEngine::Level level,
-    clang::SourceLocation loc, const char (&fmt)[N]) {
+clang::DiagnosticBuilder ReportCustomDiag(const clang::ASTContext& ctx,
+                                          clang::DiagnosticsEngine::Level level,
+                                          clang::SourceLocation loc,
+                                          const char (&fmt)[N]) {
   clang::DiagnosticsEngine& diags = ctx.getDiagnostics();
   return diags.Report(loc, diags.getCustomDiagID(level, fmt));
 }
