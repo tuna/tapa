@@ -13,8 +13,8 @@ use tapa_rtl::builder::{Expr, ModuleInstance, PortArg};
 use tapa_rtl::module::sanitize_array_name;
 use tapa_rtl::VerilogModule;
 
-use crate::async_mmap;
 use crate::instance_signals::InstanceSignals;
+use crate::passes::async_mmap;
 
 /// Build a child task `ModuleInstance` with all port argument bindings.
 ///
@@ -54,43 +54,8 @@ impl ChildMmapBindings {
 #[allow(
     clippy::too_many_arguments,
     reason = "child instance assembly needs the parent and child module \
-              headers alongside the signal/binding contexts"
-)]
-#[allow(
-    clippy::too_many_lines,
-    reason = "child instance assembly is inherently sequential; \
-              splitting would fragment the port-arg wiring logic"
-)]
-pub fn build_child_instance(
-    child_task_name: &str,
-    instance_name: &str,
-    sig: &InstanceSignals,
-    args: &BTreeMap<String, Arg>,
-    mmap_bindings: &ChildMmapBindings,
-    parent_fifos: &BTreeSet<String>,
-    parent_rtl: Option<&VerilogModule>,
-    child_rtl: Option<&VerilogModule>,
-) -> ModuleInstance {
-    build_child_instance_with_reset(
-        child_task_name,
-        instance_name,
-        sig,
-        args,
-        mmap_bindings,
-        parent_fifos,
-        parent_rtl,
-        child_rtl,
-        Expr::ident(HANDSHAKE_RST_N),
-    )
-}
-
-#[allow(
-    clippy::too_many_arguments,
-    reason = "child instance assembly needs an explicit local reset on the distributed path"
-)]
-#[allow(
-    clippy::too_many_lines,
-    reason = "this is the same sequential port wiring as the public constructor"
+              headers alongside the signal/binding contexts plus an \
+              explicit local reset on the distributed path"
 )]
 pub(super) fn build_child_instance_with_reset(
     child_task_name: &str,
@@ -219,8 +184,8 @@ pub(super) fn build_child_instance_with_reset(
                         );
                     } else if let Some(module) = child_rtl {
                         let bridge_base =
-                            crate::async_mmap::bridge_base_from_m_axi_prefix(&m_axi_wire_prefix);
-                        port_args.extend(crate::async_mmap::child_portargs(
+                            async_mmap::bridge_base_from_m_axi_prefix(&m_axi_wire_prefix);
+                        port_args.extend(async_mmap::child_portargs(
                             module,
                             child_port,
                             &bridge_base,

@@ -328,53 +328,57 @@ mod tests {
 
     use super::*;
 
-    fn mmap_geometry_program(
-        parent_chan_count: Option<u32>,
-        parent_chan_size: Option<u32>,
-        child_chan_count: Option<u32>,
-        child_chan_size: Option<u32>,
+    /// The shared mmap fixture port: `float*`/32-bit with no channel
+    /// geometry. Tests override the 1-2 fields that make a parent-child
+    /// connection invalid.
+    fn mmap_port(name: &str) -> serde_json::Value {
+        serde_json::json!({"cat": "mmap", "name": name, "type": "float*", "width": 32})
+    }
+
+    /// The shared reject-fixture design: `top` owns `parent_ports` and
+    /// forwards its `elems` mmap argument to one leaf child per
+    /// `(name, port)` entry, each bound under its own port name.
+    fn mmap_design(
+        parent_ports: &[serde_json::Value],
+        children: &[(&str, serde_json::Value)],
     ) -> Design {
+        let bindings: serde_json::Map<String, serde_json::Value> = children
+            .iter()
+            .map(|(name, port)| {
+                (
+                    (*name).to_string(),
+                    serde_json::json!([{
+                        "args": {port["name"].as_str().unwrap(): {"arg": "elems", "cat": "mmap"}}
+                    }]),
+                )
+            })
+            .collect();
+        let mut tasks = serde_json::json!({
+            "top": {
+                "readable_name": "top",
+                "level": "upper",
+                "code": "",
+                "synth": "hls",
+                "ports": parent_ports,
+                "tasks": bindings,
+                "fifos": {}
+            }
+        });
+        for (name, port) in children {
+            tasks[*name] = serde_json::json!({
+                "readable_name": name,
+                "level": "lower",
+                "code": "",
+                "synth": "hls",
+                "ports": [port],
+                "tasks": {},
+                "fifos": {}
+            });
+        }
         crate::design_from_fixture_json(serde_json::json!({
             "top": "top",
             "target": "xilinx-hls",
-            "tasks": {
-                "top": {
-                    "readable_name": "top",
-                    "level": "upper",
-                    "code": "",
-                    "synth": "hls",
-                    "ports": [{
-                        "cat": "mmap",
-                        "name": "elems",
-                        "type": "float*",
-                        "width": 32,
-                        "chan_count": parent_chan_count,
-                        "chan_size": parent_chan_size
-                    }],
-                    "tasks": {
-                        "leaf": [{"args": {
-                            "data": {"arg": "elems", "cat": "mmap"}
-                        }}]
-                    },
-                    "fifos": {}
-                },
-                "leaf": {
-                    "readable_name": "leaf",
-                    "level": "lower",
-                    "code": "",
-                    "synth": "hls",
-                    "ports": [{
-                        "cat": "mmap",
-                        "name": "data",
-                        "type": "float*",
-                        "width": 32,
-                        "chan_count": child_chan_count,
-                        "chan_size": child_chan_size
-                    }],
-                    "tasks": {},
-                    "fifos": {}
-                }
-            }
+            "tasks": tasks,
         }))
     }
 
@@ -574,48 +578,15 @@ mod tests {
 
     #[test]
     fn aggregate_rejects_conflicting_channel_shapes() {
-        let program = crate::design_from_fixture_json(serde_json::json!({
-            "top": "top",
-            "target": "xilinx-hls",
-            "tasks": {
-                "top": {
-                    "readable_name": "top",
-                    "level": "upper",
-                    "code": "",
-                    "synth": "hls",
-                    "ports": [],
-                    "tasks": {
-                        "chan_leaf": [{"args": {"d": {"arg": "elems", "cat": "mmap"}}}],
-                        "plain_leaf": [{"args": {"d": {"arg": "elems", "cat": "mmap"}}}]
-                    },
-                    "fifos": {}
-                },
-                "chan_leaf": {
-                    "readable_name": "chan_leaf",
-                    "level": "lower",
-                    "code": "",
-                    "synth": "hls",
-                    "ports": [
-                        {"cat": "mmap", "name": "d", "type": "float*", "width": 32,
-                         "chan_count": 2, "chan_size": 1024}
-                    ],
-                    "tasks": {},
-                    "fifos": {}
-                },
-                "plain_leaf": {
-                    "readable_name": "plain_leaf",
-                    "level": "lower",
-                    "code": "",
-                    "synth": "hls",
-                    "ports": [
-                        {"cat": "mmap", "name": "d", "type": "float*", "width": 32}
-                    ],
-                    "tasks": {},
-                    "fifos": {}
-                }
-            }
-        }));
-        let state = TopologyWithRtl::new(program);
+        // One consumer declares channel geometry on its `d` port while
+        // the other is plain: the shapes must agree across consumers.
+        let mut chan_port = mmap_port("d");
+        chan_port["chan_count"] = serde_json::json!(2);
+        chan_port["chan_size"] = serde_json::json!(1024);
+        let state = TopologyWithRtl::new(mmap_design(
+            &[],
+            &[("chan_leaf", chan_port), ("plain_leaf", mmap_port("d"))],
+        ));
         let result = state.aggregate_mmap_connections("top");
         assert!(
             matches!(result, Err(CodegenError::InvalidMmapConnection(_))),
@@ -625,37 +596,12 @@ mod tests {
 
     #[test]
     fn aggregate_rejects_parent_child_data_width_mismatch() {
-        let program = crate::design_from_fixture_json(serde_json::json!({
-            "top": "top",
-            "target": "xilinx-hls",
-            "tasks": {
-                "top": {
-                    "readable_name": "top",
-                    "level": "upper",
-                    "code": "",
-                    "synth": "hls",
-                    "ports": [
-                        {"cat": "mmap", "name": "elems", "type": "long*", "width": 64}
-                    ],
-                    "tasks": {
-                        "leaf": [{"args": {"data": {"arg": "elems", "cat": "mmap"}}}]
-                    },
-                    "fifos": {}
-                },
-                "leaf": {
-                    "readable_name": "leaf",
-                    "level": "lower",
-                    "code": "",
-                    "synth": "hls",
-                    "ports": [
-                        {"cat": "mmap", "name": "data", "type": "int*", "width": 32}
-                    ],
-                    "tasks": {},
-                    "fifos": {}
-                }
-            }
-        }));
-        let state = TopologyWithRtl::new(program);
+        let mut parent = mmap_port("elems");
+        parent["type"] = serde_json::json!("long*");
+        parent["width"] = serde_json::json!(64);
+        let mut child = mmap_port("data");
+        child["type"] = serde_json::json!("int*");
+        let state = TopologyWithRtl::new(mmap_design(&[parent], &[("leaf", child)]));
 
         let err = state
             .aggregate_mmap_connections("top")
@@ -666,12 +612,13 @@ mod tests {
 
     #[test]
     fn aggregate_rejects_parent_child_channel_count_mismatch() {
-        let state = TopologyWithRtl::new(mmap_geometry_program(
-            Some(2),
-            Some(1024),
-            Some(4),
-            Some(1024),
-        ));
+        let mut parent = mmap_port("elems");
+        parent["chan_count"] = serde_json::json!(2);
+        parent["chan_size"] = serde_json::json!(1024);
+        let mut child = mmap_port("data");
+        child["chan_count"] = serde_json::json!(4);
+        child["chan_size"] = serde_json::json!(1024);
+        let state = TopologyWithRtl::new(mmap_design(&[parent], &[("leaf", child)]));
 
         let err = state
             .aggregate_mmap_connections("top")
@@ -683,12 +630,13 @@ mod tests {
 
     #[test]
     fn aggregate_rejects_parent_child_channel_size_mismatch() {
-        let state = TopologyWithRtl::new(mmap_geometry_program(
-            Some(2),
-            Some(1024),
-            Some(2),
-            Some(2048),
-        ));
+        let mut parent = mmap_port("elems");
+        parent["chan_count"] = serde_json::json!(2);
+        parent["chan_size"] = serde_json::json!(1024);
+        let mut child = mmap_port("data");
+        child["chan_count"] = serde_json::json!(2);
+        child["chan_size"] = serde_json::json!(2048);
+        let state = TopologyWithRtl::new(mmap_design(&[parent], &[("leaf", child)]));
 
         let err = state
             .aggregate_mmap_connections("top")

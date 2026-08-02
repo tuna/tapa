@@ -10,8 +10,8 @@ use tapa_rtl::module::sanitize_array_name;
 use tapa_rtl::mutation::{simple_port, wide_port, MutableModule};
 use tapa_rtl::port::Direction;
 
-use crate::children;
 use crate::error::CodegenError;
+use crate::passes::children;
 use crate::rtl_state::{routing_id_bits, MMapConnection};
 use crate::state::views::{ModuleTable, OutputSet};
 
@@ -278,11 +278,6 @@ pub fn validate_mmap_connection(conn: &MMapConnection) -> Result<(), CodegenErro
 ///
 /// Produces a parameterized crossbar module with port declarations
 /// for all upstream master and downstream slave AXI channels.
-#[allow(
-    clippy::too_many_lines,
-    reason = "crossbar RTL emission is inherently sequential; \
-              splitting would fragment the AXI channel wiring"
-)]
 pub fn generate_crossbar_rtl(conn: &MMapConnection) -> String {
     let module_name = crossbar_module_name(conn);
     let slaves = conn.thread_count();

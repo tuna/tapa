@@ -5,16 +5,16 @@
 mod artifact;
 mod emit;
 pub mod error;
-pub mod instance_signals;
+mod instance_signals;
 mod passes;
-pub mod program;
+mod program;
 mod state;
 pub mod support_assets;
 mod target;
 mod template;
 
 pub use artifact::ArtifactManifest;
-pub use passes::{async_mmap, children, fifos, m_axi};
+pub use passes::m_axi;
 pub use state::rtl_state;
 pub use target::top_stream_needs_axis_adapter;
 

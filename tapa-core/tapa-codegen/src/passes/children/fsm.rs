@@ -6,7 +6,7 @@ use tapa_rtl::builder::{AlwaysBlock, CaseItem, ContinuousAssign, Expr, Sensitivi
 
 // Re-exported from `crate::program` (see its module doc) under the
 // historical `STATE_*` names used below.
-pub use crate::program::{
+use crate::program::{
     CHILD_STATE_DONE as STATE_DONE, CHILD_STATE_IDLE as STATE_IDLE,
     CHILD_STATE_RUNNING as STATE_RUNNING, CHILD_STATE_WAITING as STATE_WAITING,
 };

@@ -4,8 +4,9 @@
 //! Single-H/Double-V crossings must retain FIFO storage plus the Head and Tail
 //! timing cells, rather than becoming a combinational wire.
 
-use std::path::Path;
-use std::process::Command;
+mod common;
+
+use common::verilator::run_cosim;
 
 const TESTBENCH: &str = r#"
 #include <verilated.h>
@@ -164,88 +165,15 @@ int main(int argc, char** argv) {
 }
 "#;
 
-fn verilator_available() -> bool {
-    Command::new("verilator")
-        .arg("--version")
-        .output()
-        .is_ok_and(|output| output.status.success())
-}
-
-fn asset_source(name: &str) -> Vec<u8> {
-    tapa_codegen::support_assets::VerilogAssets::get(name)
-        .unwrap_or_else(|| panic!("{name} is an embedded asset"))
-        .data
-        .into_owned()
-}
-
 #[test]
 fn head_body_tail_pipeline_is_lossless_with_and_without_body_cells() {
-    if !verilator_available() {
-        eprintln!("skipping handshake-pipeline cosim: `verilator` not found on PATH");
-        return;
-    }
-
     for body_level in [0u32, 2u32, 8u32] {
-        run_cosim(body_level);
-    }
-}
-
-fn run_cosim(body_level: u32) {
-    let dir = tempfile::tempdir().expect("tempdir");
-    let root = dir.path();
-    std::fs::write(
-        root.join("relay_station.v"),
-        asset_source("relay_station.v"),
-    )
-    .expect("write Tail FIFO RTL");
-    std::fs::write(
-        root.join("tapa_hs_pipeline.v"),
-        asset_source("tapa_hs_pipeline.v"),
-    )
-    .expect("write pipeline RTL");
-    std::fs::write(root.join("tb.cpp"), TESTBENCH).expect("write testbench");
-
-    let build = Command::new("verilator")
-        .current_dir(root)
-        .args([
-            "--cc",
-            "--exe",
-            "--build",
-            "--top-module",
+        run_cosim(
             "tapa_hs_pipeline",
-            &format!("-GBODY_LEVEL={body_level}"),
-            "-Wno-WIDTH",
-            "-Wno-UNOPTFLAT",
-            "-Wno-CASEINCOMPLETE",
-            "-Wno-fatal",
-            "--Mdir",
-            "obj_dir",
-            "-o",
-            "sim",
-            "relay_station.v",
-            "tapa_hs_pipeline.v",
-            "tb.cpp",
-        ])
-        .output()
-        .expect("spawn verilator");
-    assert!(
-        build.status.success(),
-        "verilator build failed (BODY_LEVEL={body_level}):\n{}\n{}",
-        String::from_utf8_lossy(&build.stdout),
-        String::from_utf8_lossy(&build.stderr),
-    );
-
-    let run = Command::new(obj_dir_binary(root))
-        .output()
-        .expect("run simulator");
-    assert!(
-        run.status.success() && String::from_utf8_lossy(&run.stdout).contains("PASS"),
-        "handshake pipeline (BODY_LEVEL={body_level}) is not lossless:\n{}\n{}",
-        String::from_utf8_lossy(&run.stdout),
-        String::from_utf8_lossy(&run.stderr),
-    );
-}
-
-fn obj_dir_binary(root: &Path) -> std::path::PathBuf {
-    root.join("obj_dir").join("sim")
+            &[("BODY_LEVEL", body_level)],
+            &["relay_station.v", "tapa_hs_pipeline.v"],
+            &[],
+            TESTBENCH,
+        );
+    }
 }

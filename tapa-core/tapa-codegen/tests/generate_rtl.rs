@@ -11,6 +11,17 @@ use std::process::Command;
 use tapa_codegen::generate_rtl;
 use tapa_codegen::rtl_state::TopologyWithRtl;
 
+/// Assert that `rtl` contains every `contains` needle and none of the
+/// `rejects`, printing the RTL once on failure.
+fn check(rtl: &str, contains: &[&str], rejects: &[&str]) {
+    for needle in contains {
+        assert!(rtl.contains(needle), "missing '{needle}':\n{rtl}");
+    }
+    for needle in rejects {
+        assert!(!rtl.contains(needle), "unexpected '{needle}':\n{rtl}");
+    }
+}
+
 // ------------------------------------------------------------------
 // 1. Simple design: one upper task + one lower child
 // ------------------------------------------------------------------
@@ -42,24 +53,14 @@ fn test_generate_rtl_simple_design() {
 
     // The emitted parent module should contain the child instance
     let parent_v = rtl_file(&manifest, "top.v");
-    assert!(
-        parent_v.contains("child child_0"),
-        "parent should instantiate child as child_0, got:\n{parent_v}"
-    );
+    check(parent_v, &["child child_0"], &[]);
 
     // The FSM module should contain __tapa_state and pipeline signals
     let fsm_v = rtl_file(&manifest, "top_fsm.v");
-    assert!(
-        fsm_v.contains("__tapa_state"),
-        "FSM should contain __tapa_state, got:\n{fsm_v}"
-    );
-    assert!(
-        fsm_v.contains("__tapa_start_q"),
-        "FSM should contain __tapa_start_q pipeline signal, got:\n{fsm_v}"
-    );
-    assert!(
-        fsm_v.contains("__tapa_done_q"),
-        "FSM should contain __tapa_done_q pipeline signal, got:\n{fsm_v}"
+    check(
+        fsm_v,
+        &["__tapa_state", "__tapa_start_q", "__tapa_done_q"],
+        &[],
     );
 }
 
@@ -78,21 +79,15 @@ fn test_generate_rtl_autorun_fsm_start_is_reg_output() {
 
     let parent_v = rtl_file(&manifest, "top.v");
     let fsm_v = rtl_file(&manifest, "top_fsm.v");
-    assert!(
-        parent_v.contains("wire child_0__ap_start;"),
-        "parent-side autorun start is driven by the FSM instance and must be a net:\n{parent_v}"
+    check(
+        parent_v,
+        &["wire child_0__ap_start;"],
+        &["reg child_0__ap_start;"],
     );
-    assert!(
-        !parent_v.contains("reg child_0__ap_start;"),
-        "parent-side autorun start should not be a reg:\n{parent_v}"
-    );
-    assert!(
-        fsm_v.contains("output reg child_0__ap_start"),
-        "autorun start is assigned procedurally and must be an output reg:\n{fsm_v}"
-    );
-    assert!(
-        !fsm_v.contains("\nreg child_0__ap_start;"),
-        "reg port should not be redeclared:\n{fsm_v}"
+    check(
+        fsm_v,
+        &["output reg child_0__ap_start"],
+        &["\nreg child_0__ap_start;"],
     );
 }
 
@@ -111,17 +106,11 @@ fn test_generate_rtl_fsm_uses_explicit_instance_names() {
 
     let parent_v = rtl_file(&manifest, "top.v");
     let fsm_v = rtl_file(&manifest, "top_fsm.v");
-    assert!(
-        parent_v.contains("child child_7"),
-        "parent instance should preserve explicit instance name:\n{parent_v}"
-    );
-    assert!(
-        fsm_v.contains("output reg child_7__ap_start"),
-        "FSM ports must use the explicit child instance name:\n{fsm_v}"
-    );
-    assert!(
-        !fsm_v.contains("child_0__ap_start"),
-        "FSM must not use local index names when an explicit instance name exists:\n{fsm_v}"
+    check(parent_v, &["child child_7"], &[]);
+    check(
+        fsm_v,
+        &["output reg child_7__ap_start"],
+        &["child_0__ap_start"],
     );
 }
 
@@ -140,18 +129,10 @@ fn test_generate_rtl_sanitizes_explicit_instance_names() {
 
     let parent_v = rtl_file(&manifest, "top.v");
     let fsm_v = rtl_file(&manifest, "top_fsm.v");
-    assert!(
-        parent_v.contains("child Module1Func_1"),
-        "parent instance name must be a Verilog identifier:\n{parent_v}"
-    );
-    assert!(
-        fsm_v.contains("reg [1:0] Module1Func_1__state;"),
-        "FSM state signal must be a Verilog identifier:\n{fsm_v}"
-    );
-    assert!(
-        !parent_v.contains("Module1Func#1") && !fsm_v.contains("Module1Func#1"),
-        "generated RTL must not contain unsanitized frontend instance labels"
-    );
+    check(parent_v, &["child Module1Func_1"], &[]);
+    check(fsm_v, &["reg [1:0] Module1Func_1__state;"], &[]);
+    check(parent_v, &[], &["Module1Func#1"]);
+    check(fsm_v, &[], &["Module1Func#1"]);
 }
 
 #[test]
@@ -182,21 +163,15 @@ fn test_generate_rtl_child_scalar_pipeline_preserves_width() {
 
     let top_v = rtl_file(&manifest, "top.v");
     let fsm_v = rtl_file(&manifest, "top_fsm.v");
-    assert!(
-        top_v.contains("wire [31:0] child_0__pe_id;"),
-        "parent scalar pipeline wire should match child port width, got:\n{top_v}"
-    );
-    assert!(
-        fsm_v.contains("input wire [31:0] child_0__pe_id_in"),
-        "FSM scalar input should match child port width, got:\n{fsm_v}"
-    );
-    assert!(
-        fsm_v.contains("output wire [31:0] child_0__pe_id"),
-        "FSM scalar output should match child port width, got:\n{fsm_v}"
-    );
-    assert!(
-        fsm_v.contains("reg [31:0] child_0__pe_id_reg;"),
-        "FSM scalar pipeline register should match child port width, got:\n{fsm_v}"
+    check(top_v, &["wire [31:0] child_0__pe_id;"], &[]);
+    check(
+        fsm_v,
+        &[
+            "input wire [31:0] child_0__pe_id_in",
+            "output wire [31:0] child_0__pe_id",
+            "reg [31:0] child_0__pe_id_reg;",
+        ],
+        &[],
     );
 }
 
@@ -242,13 +217,10 @@ fn test_generate_rtl_upper_output_regs_become_nets() {
     );
 
     let top_v = rtl_file(&manifest, "top.v");
-    assert!(
-        top_v.contains("output wire out_q_write"),
-        "upper output driven by child instance should be a net, got:\n{top_v}"
-    );
-    assert!(
-        !top_v.contains("output reg out_q_write"),
-        "stale HLS output reg should not remain, got:\n{top_v}"
+    check(
+        top_v,
+        &["output wire out_q_write"],
+        &["output reg out_q_write"],
     );
 }
 
@@ -278,14 +250,7 @@ fn test_generate_rtl_template_task() {
         manifest.files().keys().collect::<Vec<_>>(),
     );
     let template_v = &manifest.files()["template/shell.v"];
-    assert!(
-        template_v.contains("module shell"),
-        "template should contain module declaration, got:\n{template_v}"
-    );
-    assert!(
-        template_v.contains("endmodule"),
-        "template should end with endmodule, got:\n{template_v}"
-    );
+    check(template_v, &["module shell", "endmodule"], &[]);
 
     // NO FSM module should be generated for a template task
     assert!(
@@ -334,31 +299,22 @@ fn test_generate_rtl_top_task_removes_peek_ports() {
 
     // Non-floorplanned builds emit the reset as a plain wire with no
     // synthesis attribute — the max_fanout cap is floorplan-only.
-    assert!(
-        top_v.contains("wire ap_rst;") && !top_v.contains("max_fanout"),
-        "non-floorplanned reset must stay a plain wire:\n{top_v}"
-    );
+    check(top_v, &["wire ap_rst;"], &["max_fanout"]);
 
     // Peek ports should be removed from the emitted module declaration
     let decl_section = top_v.split(");").next().unwrap_or("");
-    assert!(
-        !decl_section.contains("data_in_peek_dout"),
-        "peek dout port should be removed from declaration, got:\n{decl_section}"
-    );
-    assert!(
-        !decl_section.contains("data_in_peek_empty_n"),
-        "peek empty_n port should be removed from declaration, got:\n{decl_section}"
-    );
-    assert!(
-        !decl_section.contains("data_in_peek_read"),
-        "peek read port should be removed from declaration, got:\n{decl_section}"
+    check(
+        decl_section,
+        &[],
+        &[
+            "data_in_peek_dout",
+            "data_in_peek_empty_n",
+            "data_in_peek_read",
+        ],
     );
 
     // Regular istream ports should still be present
-    assert!(
-        decl_section.contains("data_in_dout"),
-        "regular data_in_dout should remain, got:\n{decl_section}"
-    );
+    check(decl_section, &["data_in_dout"], &[]);
 }
 
 #[test]
@@ -407,21 +363,15 @@ fn test_generate_rtl_external_istream_aliases_hls_s_ports() {
     );
     let top_v = rtl_file(&manifest, "top.v");
 
-    assert!(
-        top_v.contains("wire [64:0] data_stream_dout;"),
-        "canonical child-facing data wire should be declared:\n{top_v}"
-    );
-    assert!(
-        top_v.contains("assign data_stream_dout = data_stream_s_dout;"),
-        "external HLS input port should drive canonical child-facing wire:\n{top_v}"
-    );
-    assert!(
-        top_v.contains("assign data_stream_s_read = data_stream_read;"),
-        "canonical child read should drive external HLS read port:\n{top_v}"
-    );
-    assert!(
-        top_v.contains(".data_stream_s_dout(data_stream_dout)"),
-        "child HLS stream port should connect through the canonical alias:\n{top_v}"
+    check(
+        top_v,
+        &[
+            "wire [64:0] data_stream_dout;",
+            "assign data_stream_dout = data_stream_s_dout;",
+            "assign data_stream_s_read = data_stream_read;",
+            ".data_stream_s_dout(data_stream_dout)",
+        ],
+        &[],
     );
 }
 
@@ -496,33 +446,24 @@ fn test_generate_rtl_vitis_top_streams_use_axis_adapters() {
     );
     let top_v = rtl_file(&manifest, "top.v");
 
-    assert!(
-        top_v.contains("wire [48:0] a_dout;"),
-        "input AXIS adapter should drive canonical stream data:\n{top_v}"
-    );
-    assert!(
-        top_v.contains("axis_to_stream_adapter #(")
-            && top_v.contains(".DATA_WIDTH(48)")
-            && top_v.contains(".s_axis_tdata(a_TDATA)")
-            && top_v.contains(".m_stream_dout(a_dout)"),
-        "input AXIS adapter should be instantiated with compatible ports:\n{top_v}"
-    );
-    assert!(
-        top_v.contains("stream_to_axis_adapter #(")
-            && top_v.contains(".DATA_WIDTH(64)")
-            && top_v.contains(".s_stream_din(c_din)")
-            && top_v.contains(".m_axis_tlast(c_TLAST)"),
-        "output AXIS adapter should be instantiated with compatible ports:\n{top_v}"
-    );
-    assert!(
-        top_v.contains("assign c_TKEEP = 8'b11111111;"),
-        "output AXIS TKEEP should be tied high:\n{top_v}"
-    );
-    assert!(
-        top_v.contains("wire ap_done;")
-            && top_v.contains("wire ap_idle;")
-            && top_v.contains("wire ap_ready;"),
-        "generated submodule outputs should drive nets, not regs:\n{top_v}"
+    check(
+        top_v,
+        &[
+            "wire [48:0] a_dout;",
+            "axis_to_stream_adapter #(",
+            ".DATA_WIDTH(48)",
+            ".s_axis_tdata(a_TDATA)",
+            ".m_stream_dout(a_dout)",
+            "stream_to_axis_adapter #(",
+            ".DATA_WIDTH(64)",
+            ".s_stream_din(c_din)",
+            ".m_axis_tlast(c_TLAST)",
+            "assign c_TKEEP = 8'b11111111;",
+            "wire ap_done;",
+            "wire ap_idle;",
+            "wire ap_ready;",
+        ],
+        &[],
     );
 }
 
@@ -574,10 +515,7 @@ fn test_generate_rtl_with_fifo() {
     let top_v = rtl_file(&manifest, "top.v");
 
     // Should contain a FIFO instance (parameterized: "fifo #(...) fifo_0_fifo")
-    assert!(
-        top_v.contains("fifo_0_fifo"),
-        "parent should contain FIFO instance, got:\n{top_v}"
-    );
+    check(top_v, &["fifo_0_fifo"], &[]);
 
     // Should contain wire declarations for the FIFO
     assert!(
@@ -593,34 +531,23 @@ fn test_generate_rtl_floorplan_crossing_becomes_head_body_tail_pipeline() {
         vec!["SLOT_X0Y0", "SLOT_X0Y1"],
     );
 
-    assert!(
-        top_v.contains("tapa_hs_pipeline"),
-        "a cross-slot stream must become a Head/Body/Tail pipeline, got:\n{top_v}"
-    );
-    assert!(
-        top_v.contains("fifo_0_fifo"),
-        "the pipeline keeps the FIFO instance name so wiring stays valid, got:\n{top_v}"
-    );
-    assert!(
-        top_v.contains(".BODY_LEVEL(2)"),
-        "the generated Body count must match the two XDC regions, got:\n{top_v}"
+    check(
+        &top_v,
+        &["tapa_hs_pipeline", "fifo_0_fifo", ".BODY_LEVEL(2)"],
+        &[],
     );
     // The original DEPTH (16) is passed; the primitive grows Tail storage.
-    assert!(top_v.contains(".DEPTH(16)"), "got:\n{top_v}");
+    check(&top_v, &[".DEPTH(16)"], &[]);
 }
 
 #[test]
 fn test_generate_rtl_adjacent_single_crossing_keeps_head_and_tail() {
     let top_v = generate_floorplanned_stream_pipeline(tapa_ir::PipelineScheme::Single, Vec::new());
 
-    assert!(top_v.contains("tapa_hs_pipeline"), "got:\n{top_v}");
-    assert!(
-        top_v.contains(".BODY_LEVEL(0)"),
-        "an adjacent Single crossing has no Body but still uses the Head/Tail module:\n{top_v}"
-    );
-    assert!(
-        !top_v.contains("relay_station"),
-        "LEVEL=0 relay_station is a storage-erasing combinational passthrough:\n{top_v}"
+    check(
+        &top_v,
+        &["tapa_hs_pipeline", ".BODY_LEVEL(0)"],
+        &["relay_station"],
     );
 }
 
@@ -873,53 +800,20 @@ fn test_generate_rtl_distributes_floorplanned_control() {
         !state.generated_files.contains_key("top_fsm.v"),
         "distributed control must replace the monolithic FSM module"
     );
-    for hierarchy in [
-        "__tapa_global_controller",
-        "__tapa_local_controller_worker_0",
-        "__tapa_local_controller_daemon_0",
-        "__tapa_control_worker_0_launch",
-        "__tapa_control_worker_0_reset",
-        "__tapa_control_worker_0_completion",
-    ] {
-        assert!(top.contains(hierarchy), "missing {hierarchy}:\n{top}");
-    }
+    check(
+        top,
+        &[
+            "__tapa_global_controller",
+            "__tapa_local_controller_worker_0",
+            "__tapa_local_controller_daemon_0",
+            "__tapa_control_worker_0_launch",
+            "__tapa_control_worker_0_reset",
+            "__tapa_control_worker_0_completion",
+        ],
+        &[],
+    );
     assert_eq!(top.matches("tapa_control_pipeline #(").count(), 3, "{top}");
-    assert!(
-        top.contains(".WIDTH(19)"),
-        "scalar width must be packed: {top}"
-    );
-    assert!(
-        top.contains("assign __tapa_control_worker_0__launch_input = {n, __tapa_control_release, __tapa_control_start}"),
-        "Launch fields must have deterministic order:\n{top}"
-    );
-    assert!(
-        top.contains("assign worker_0__count = __tapa_control_worker_0__launch_output[18:2]"),
-        "scalar must be unpacked at the local endpoint:\n{top}"
-    );
-    assert!(top.contains(".FLUSH_CYCLES(7)"), "got:\n{top}");
-    assert!(
-        top.contains("assign ap_rst = !__tapa_control_fabric_reset_n")
-            && top.contains(".fabric_reset_n(__tapa_control_fabric_reset_n)"),
-        "the parent data fabric must remain reset until routed child state is clear:\n{top}"
-    );
-    assert!(
-        top.contains("(* max_fanout = 256 *) wire ap_rst;"),
-        "distributed control must cap the fabric reset fanout so Vivado replicates it per SLR:\n{top}"
-    );
-    assert!(
-        top.contains(".ap_rst_n(__tapa_control_worker_0__reset_n)"),
-        "cross-slot child must use its routed local reset:\n{top}"
-    );
-    assert!(
-        top.contains("assign __tapa_control_daemon_0__reset_n = ap_rst_n")
-            && top.contains(".AUTORUN(1)")
-            && top.contains(".launch_start(__tapa_control_daemon_0__launch_output)",),
-        "co-located autorun control must remain direct and local:\n{top}"
-    );
-    assert!(
-        !top.contains("__tapa_control_daemon_0_completion"),
-        "autorun completion must not participate in global completion:\n{top}"
-    );
+    check(top, &[".WIDTH(19)", "assign __tapa_control_worker_0__launch_input = {n, __tapa_control_release, __tapa_control_start}", "assign worker_0__count = __tapa_control_worker_0__launch_output[18:2]", ".FLUSH_CYCLES(7)", "assign ap_rst = !__tapa_control_fabric_reset_n", ".fabric_reset_n(__tapa_control_fabric_reset_n)", "(* max_fanout = 256 *) wire ap_rst;", ".ap_rst_n(__tapa_control_worker_0__reset_n)", "assign __tapa_control_daemon_0__reset_n = ap_rst_n", ".AUTORUN(1)", ".launch_start(__tapa_control_daemon_0__launch_output)",], &["__tapa_control_daemon_0_completion"]);
     lint_distributed_top(&state);
 }
 
@@ -1044,16 +938,7 @@ fn test_generate_rtl_control_launch_packs_direct_mmap_offset() {
 
     let manifest = generate_manifest(&mut state);
     let top = rtl_file(&manifest, "top.v");
-    assert!(top.contains(".WIDTH(66)"), "got:\n{top}");
-    assert!(
-        top.contains("assign __tapa_control_reader_0__launch_input = {mem_offset, __tapa_control_release, __tapa_control_start}")
-            && top.contains("assign reader_0__data_offset = __tapa_control_reader_0__launch_output[65:2]"),
-        "direct mmap offset must remain 64-bit and travel in Launch:\n{top}"
-    );
-    assert!(
-        top.contains(".FLUSH_CYCLES(8)"),
-        "the control guard must cover the longest routed data pipeline:\n{top}"
-    );
+    check(top, &[".WIDTH(66)", "assign __tapa_control_reader_0__launch_input = {mem_offset, __tapa_control_release, __tapa_control_start}", "assign reader_0__data_offset = __tapa_control_reader_0__launch_output[65:2]", ".FLUSH_CYCLES(8)"], &[]);
 }
 
 fn direct_axi_endpoint() -> tapa_ir::AxiEndpoint {
@@ -1197,62 +1082,36 @@ fn test_generate_rtl_floorplanned_direct_axi_pipelines_all_five_channels() {
     let top_v = rtl_file(&manifest, "top.v");
 
     assert_eq!(top_v.matches("tapa_hs_pipeline #(").count(), 5, "{top_v}");
-    for name in [
-        "__tapa_axi_mem_ar",
-        "__tapa_axi_mem_r",
-        "__tapa_axi_mem_aw",
-        "__tapa_axi_mem_w",
-        "__tapa_axi_mem_b",
-    ] {
-        assert!(top_v.contains(name), "missing {name}:\n{top_v}");
-    }
+    check(
+        top_v,
+        &[
+            "__tapa_axi_mem_ar",
+            "__tapa_axi_mem_r",
+            "__tapa_axi_mem_aw",
+            "__tapa_axi_mem_w",
+            "__tapa_axi_mem_b",
+        ],
+        &[],
+    );
     for body_level in 0..5 {
-        assert!(
-            top_v.contains(&format!(".BODY_LEVEL({body_level})")),
-            "{top_v}"
-        );
+        check(top_v, &[format!(".BODY_LEVEL({body_level})").as_str()], &[]);
     }
     assert_eq!(top_v.matches(".DEPTH(2)").count(), 5, "{top_v}");
-    assert!(
-        top_v.contains(".m_axi_data_ARADDR(__tapa_axi_mem_child_ARADDR)"),
-        "child must connect to the pipeline-side wires:\n{top_v}"
+    check(top_v, &[".m_axi_data_ARADDR(__tapa_axi_mem_child_ARADDR)", ".if_full_n(__tapa_axi_mem_child_ARREADY)", ".if_write(__tapa_axi_mem_child_ARVALID)", ".if_empty_n(m_axi_mem_ARVALID)", ".if_read(m_axi_mem_ARREADY)", ".if_full_n(m_axi_mem_RREADY)", ".if_write(m_axi_mem_RVALID)", ".if_empty_n(__tapa_axi_mem_child_RVALID)", ".if_read(__tapa_axi_mem_child_RREADY)", ".if_din({__tapa_axi_mem_child_ARADDR, __tapa_axi_mem_child_ARBURST, __tapa_axi_mem_child_ARID, __tapa_axi_mem_child_ARLEN, __tapa_axi_mem_child_ARSIZE})", "output wire [2:0] m_axi_mem_ARID"], &[]);
+    check(
+        top_v,
+        &[
+            "assign m_axi_mem_AWLOCK = 1'b0",
+            "assign m_axi_mem_AWCACHE = 4'b0011",
+            "assign m_axi_mem_AWPROT = 3'b000",
+            "assign m_axi_mem_AWQOS = 4'b0000",
+            "assign m_axi_mem_ARLOCK = 1'b0",
+            "assign m_axi_mem_ARCACHE = 4'b0011",
+            "assign m_axi_mem_ARPROT = 3'b000",
+            "assign m_axi_mem_ARQOS = 4'b0000",
+        ],
+        &[],
     );
-    assert!(
-        top_v.contains(".if_full_n(__tapa_axi_mem_child_ARREADY)")
-            && top_v.contains(".if_write(__tapa_axi_mem_child_ARVALID)")
-            && top_v.contains(".if_empty_n(m_axi_mem_ARVALID)")
-            && top_v.contains(".if_read(m_axi_mem_ARREADY)"),
-        "AR must flow child to top:\n{top_v}"
-    );
-    assert!(
-        top_v.contains(".if_full_n(m_axi_mem_RREADY)")
-            && top_v.contains(".if_write(m_axi_mem_RVALID)")
-            && top_v.contains(".if_empty_n(__tapa_axi_mem_child_RVALID)")
-            && top_v.contains(".if_read(__tapa_axi_mem_child_RREADY)"),
-        "R must flow top to child:\n{top_v}"
-    );
-    assert!(
-        top_v.contains(
-            ".if_din({__tapa_axi_mem_child_ARADDR, __tapa_axi_mem_child_ARBURST, __tapa_axi_mem_child_ARID, __tapa_axi_mem_child_ARLEN, __tapa_axi_mem_child_ARSIZE})"
-        ),
-        "AR payload order must be stable and exclude VALID/READY:\n{top_v}"
-    );
-    assert!(
-        top_v.contains("output wire [2:0] m_axi_mem_ARID"),
-        "{top_v}"
-    );
-    for expected in [
-        "assign m_axi_mem_AWLOCK = 1'b0",
-        "assign m_axi_mem_AWCACHE = 4'b0011",
-        "assign m_axi_mem_AWPROT = 3'b000",
-        "assign m_axi_mem_AWQOS = 4'b0000",
-        "assign m_axi_mem_ARLOCK = 1'b0",
-        "assign m_axi_mem_ARCACHE = 4'b0011",
-        "assign m_axi_mem_ARPROT = 3'b000",
-        "assign m_axi_mem_ARQOS = 4'b0000",
-    ] {
-        assert!(top_v.contains(expected), "missing '{expected}':\n{top_v}");
-    }
 }
 
 #[test]
@@ -1416,19 +1275,19 @@ fn test_generate_rtl_fifo_width_uses_bound_producer_port() {
     );
 
     let top_v = rtl_file(&manifest, "top.v");
-    assert!(
-        top_v.contains("small_fifo_fifo")
-            && top_v.contains(".DATA_WIDTH(9)")
-            && top_v.contains("wire [8:0] small_fifo_dout;")
-            && top_v.contains("wire [8:0] small_fifo_din;"),
-        "small_fifo should use the producer's small port width:\n{top_v}"
-    );
-    assert!(
-        top_v.contains("wide_fifo_fifo")
-            && top_v.contains(".DATA_WIDTH(33)")
-            && top_v.contains("wire [32:0] wide_fifo_dout;")
-            && top_v.contains("wire [32:0] wide_fifo_din;"),
-        "wide_fifo should use the producer's wide port width:\n{top_v}"
+    check(
+        top_v,
+        &[
+            "small_fifo_fifo",
+            ".DATA_WIDTH(9)",
+            "wire [8:0] small_fifo_dout;",
+            "wire [8:0] small_fifo_din;",
+            "wide_fifo_fifo",
+            ".DATA_WIDTH(33)",
+            "wire [32:0] wide_fifo_dout;",
+            "wire [32:0] wide_fifo_din;",
+        ],
+        &[],
     );
 }
 
@@ -1459,20 +1318,10 @@ fn test_generate_rtl_multithread_mmap() {
     let top_v = rtl_file(&manifest, "top.v");
 
     // Crossbar instance should appear (2 threads sharing 'mem')
-    assert!(
-        top_v.contains("axi_crossbar"),
-        "parent should contain crossbar instance, got:\n{top_v}"
-    );
+    check(top_v, &["axi_crossbar"], &[]);
 
     // Downstream wires m_axi_mem_s0_* and m_axi_mem_s1_* should be declared
-    assert!(
-        top_v.contains("m_axi_mem_s0_"),
-        "parent should have m_axi_mem_s0_* wires, got:\n{top_v}"
-    );
-    assert!(
-        top_v.contains("m_axi_mem_s1_"),
-        "parent should have m_axi_mem_s1_* wires, got:\n{top_v}"
-    );
+    check(top_v, &["m_axi_mem_s0_", "m_axi_mem_s1_"], &[]);
 
     // Crossbar auxiliary RTL file should be generated
     assert!(
@@ -1525,22 +1374,12 @@ fn test_generate_rtl_nested_shared_mmap_threads() {
 
     // mid's own crossbar arbitrates two leaves, 1 thread each.
     let mid_v = rtl_file(&manifest, "mid.v");
-    assert!(
-        mid_v.contains("S00_THREADS(1)") && mid_v.contains("S01_THREADS(1)"),
-        "mid crossbar should provision 1 thread per leaf slave, got:\n{mid_v}"
-    );
+    check(mid_v, &["S00_THREADS(1)", "S01_THREADS(1)"], &[]);
 
     // top's crossbar: slave 0 = leaf (1 thread), slave 1 = mid
     // (2 aggregated threads). Task iteration is alphabetical.
     let top_v = rtl_file(&manifest, "top.v");
-    assert!(
-        top_v.contains("S00_THREADS(1)"),
-        "leaf slave should provision 1 thread, got:\n{top_v}"
-    );
-    assert!(
-        top_v.contains("S01_THREADS(2)"),
-        "mid slave should provision its aggregated 2 threads, got:\n{top_v}"
-    );
+    check(top_v, &["S00_THREADS(1)", "S01_THREADS(2)"], &[]);
 }
 
 #[test]
@@ -1560,13 +1399,13 @@ fn test_generate_rtl_single_child_mmap_preserves_child_id_width() {
     let manifest = run_manifest(prog, &["top"], &[("mid", &wide_axi_id_module_src("mid"))]);
 
     let top_v = rtl_file(&manifest, "top.v");
-    assert!(
-        top_v.contains("output wire [1:0] m_axi_elems_ARID"),
-        "top mmap ID ports must preserve a wider child AXI ID even without a parent crossbar:\n{top_v}"
-    );
-    assert!(
-        top_v.contains(".m_axi_data_ARID(m_axi_elems_ARID)"),
-        "child should bind directly to the widened parent ID port:\n{top_v}"
+    check(
+        top_v,
+        &[
+            "output wire [1:0] m_axi_elems_ARID",
+            ".m_axi_data_ARID(m_axi_elems_ARID)",
+        ],
+        &[],
     );
 }
 
@@ -1604,25 +1443,16 @@ fn test_generate_rtl_parent_crossbar_zero_extends_narrow_child_ids() {
     );
 
     let top_v = rtl_file(&manifest, "top.v");
-    assert!(
-        top_v.contains("wire [1:0] m_axi_elems_s0_ARID"),
-        "parent crossbar slave wires should use the widest child ID:\n{top_v}"
-    );
-    assert!(
-        top_v.contains("assign m_axi_elems_s0_ARID[1:1] = 1'd0"),
-        "narrow child read IDs should be zero-extended into the parent crossbar:\n{top_v}"
-    );
-    assert!(
-        top_v.contains("assign m_axi_elems_s0_AWID[1:1] = 1'd0"),
-        "narrow child write IDs should be zero-extended into the parent crossbar:\n{top_v}"
-    );
-    assert!(
-        top_v.contains(".m_axi_mmap_ARID(m_axi_elems_s0_ARID[0:0])"),
-        "narrow child read ID ports should connect only to the low crossbar ID bit:\n{top_v}"
-    );
-    assert!(
-        top_v.contains(".m_axi_mmap_BID(m_axi_elems_s0_BID[0:0])"),
-        "narrow child response ID ports should consume only the low crossbar ID bit:\n{top_v}"
+    check(
+        top_v,
+        &[
+            "wire [1:0] m_axi_elems_s0_ARID",
+            "assign m_axi_elems_s0_ARID[1:1] = 1'd0",
+            "assign m_axi_elems_s0_AWID[1:1] = 1'd0",
+            ".m_axi_mmap_ARID(m_axi_elems_s0_ARID[0:0])",
+            ".m_axi_mmap_BID(m_axi_elems_s0_BID[0:0])",
+        ],
+        &[],
     );
 }
 
@@ -1675,29 +1505,16 @@ fn test_generate_rtl_parent_crossbar_slices_generated_narrow_upper_child_ids() {
     );
 
     let top_v = rtl_file(&manifest, "VecTop.v");
-    assert!(
-        top_v.contains("wire [1:0] m_axi_elems_s1_ARID"),
-        "second crossbar slave should inherit the widest child ID width:\n{top_v}"
-    );
-    assert!(
-        top_v.contains(".m_axi_data_ARID(m_axi_elems_s0_ARID)"),
-        "wide sibling child read ID port should keep the full crossbar slave ID:\n{top_v}"
-    );
-    assert!(
-        !top_v.contains("assign m_axi_elems_s0_ARID[1:1]"),
-        "wide sibling child IDs should not be zero-extended as if they were narrow:\n{top_v}"
-    );
-    assert!(
-        top_v.contains("assign m_axi_elems_s1_ARID[1:1] = 1'd0"),
-        "generated narrow upper child read IDs should be zero-extended:\n{top_v}"
-    );
-    assert!(
-        top_v.contains(".m_axi_mmap_ARID(m_axi_elems_s1_ARID[0:0])"),
-        "generated narrow upper child read ID port should connect only to the low bit:\n{top_v}"
-    );
-    assert!(
-        top_v.contains(".m_axi_mmap_BID(m_axi_elems_s1_BID[0:0])"),
-        "generated narrow upper child response ID port should consume only the low bit:\n{top_v}"
+    check(
+        top_v,
+        &[
+            "wire [1:0] m_axi_elems_s1_ARID",
+            ".m_axi_data_ARID(m_axi_elems_s0_ARID)",
+            "assign m_axi_elems_s1_ARID[1:1] = 1'd0",
+            ".m_axi_mmap_ARID(m_axi_elems_s1_ARID[0:0])",
+            ".m_axi_mmap_BID(m_axi_elems_s1_BID[0:0])",
+        ],
+        &["assign m_axi_elems_s0_ARID[1:1]"],
     );
 }
 
@@ -1739,29 +1556,20 @@ fn test_generate_rtl_hmap_uses_parent_channels() {
     );
 
     let top_v = rtl_file(&manifest, "top.v");
-    assert!(top_v.contains("m_axi_mem_0_ARADDR"), "got:\n{top_v}");
-    assert!(top_v.contains("m_axi_mem_1_ARADDR"), "got:\n{top_v}");
-    assert!(
-        top_v.contains(".m_axi_data_ARADDR(m_axi_mem_s0_ARADDR)"),
-        "got:\n{top_v}"
-    );
-    assert!(
-        top_v.contains(".m_axi_data_ARADDR(m_axi_mem_s1_ARADDR)"),
-        "got:\n{top_v}"
-    );
-    assert!(top_v.contains("axi_crossbar__mem"), "got:\n{top_v}");
-    assert!(top_v.contains("m_axi_mem_0_ARADDR_raw"), "got:\n{top_v}");
-    assert!(
-        top_v.contains("assign m_axi_mem_1_ARADDR = (mem_1_offset + m_axi_mem_1_ARADDR_raw[11:0])"),
-        "got:\n{top_v}"
-    );
-    assert!(
-        top_v.contains(".worker_0__data_offset_in(64'd0)"),
-        "got:\n{top_v}"
-    );
-    assert!(
-        top_v.contains(".worker_1__data_offset_in(64'd0)"),
-        "got:\n{top_v}"
+    check(
+        top_v,
+        &[
+            "m_axi_mem_0_ARADDR",
+            "m_axi_mem_1_ARADDR",
+            ".m_axi_data_ARADDR(m_axi_mem_s0_ARADDR)",
+            ".m_axi_data_ARADDR(m_axi_mem_s1_ARADDR)",
+            "axi_crossbar__mem",
+            "m_axi_mem_0_ARADDR_raw",
+            "assign m_axi_mem_1_ARADDR = (mem_1_offset + m_axi_mem_1_ARADDR_raw[11:0])",
+            ".worker_0__data_offset_in(64'd0)",
+            ".worker_1__data_offset_in(64'd0)",
+        ],
+        &[],
     );
 }
 
@@ -1799,17 +1607,16 @@ fn test_generate_rtl_single_channel_hmap_keeps_indexed_channel() {
     );
 
     let top_v = rtl_file(&manifest, "top.v");
-    assert!(top_v.contains("m_axi_mem_0_ARADDR"), "got:\n{top_v}");
-    assert!(top_v.contains("m_axi_mem_0_ARADDR_raw"), "got:\n{top_v}");
-    assert!(
-        top_v.contains("assign m_axi_mem_0_ARADDR = (mem_0_offset + m_axi_mem_0_ARADDR_raw[11:0])"),
-        "got:\n{top_v}"
+    check(
+        top_v,
+        &[
+            "m_axi_mem_0_ARADDR",
+            "m_axi_mem_0_ARADDR_raw",
+            "assign m_axi_mem_0_ARADDR = (mem_0_offset + m_axi_mem_0_ARADDR_raw[11:0])",
+            ".worker_0__data_offset_in(64'd0)",
+        ],
+        &["output wire [63:0] m_axi_mem_ARADDR"],
     );
-    assert!(
-        top_v.contains(".worker_0__data_offset_in(64'd0)"),
-        "got:\n{top_v}"
-    );
-    assert!(!top_v.contains("output wire [63:0] m_axi_mem_ARADDR"));
 }
 
 #[test]
@@ -1829,12 +1636,14 @@ fn test_generate_rtl_sanitizes_indexed_mmap_names() {
     let manifest = run_manifest(prog, &["top", "worker"], &[]);
 
     let top_v = rtl_file(&manifest, "top.v");
-    assert!(top_v.contains("m_axi_chan_0_ARADDR"), "got:\n{top_v}");
-    assert!(
-        top_v.contains(".worker_0__mem_offset_in(chan_0_offset)"),
-        "got:\n{top_v}"
+    check(
+        top_v,
+        &[
+            "m_axi_chan_0_ARADDR",
+            ".worker_0__mem_offset_in(chan_0_offset)",
+        ],
+        &["chan[0]"],
     );
-    assert!(!top_v.contains("chan[0]"), "got:\n{top_v}");
 }
 
 #[allow(
@@ -1976,38 +1785,20 @@ fn test_generate_rtl_instantiates_async_mmap_bridge() {
     let manifest = generate_manifest(&mut state);
 
     let top_v = rtl_file(&manifest, "top.v");
-    assert!(
-        top_v.contains("async_mmap #(") && top_v.contains("chan_0__m_axi"),
-        "top should instantiate an async_mmap bridge:\n{top_v}"
-    );
-    assert!(
-        top_v.contains(".rst(ap_rst)"),
-        "non-floorplanned bridge must retain the parent reset:\n{top_v}"
-    );
-    assert!(top_v.contains(".EnableWriteChannel(0)"), "{top_v}");
-    assert!(
-        top_v.contains("wire [63:0] chan_0_read_addr__din;"),
-        "bridge stream wires should be declared:\n{top_v}"
-    );
-    assert!(
-        top_v.contains(".m_axi_ARADDR(m_axi_chan_0_ARADDR)"),
-        "bridge should connect to the top-level AXI port:\n{top_v}"
-    );
-    assert!(
-        top_v.contains(".read_data_dout(chan_0_read_data__dout)"),
-        "bridge should drive read data stream wire:\n{top_v}"
-    );
-    assert!(
-        top_v.contains(".mem_read_addr_s_din(chan_0_read_addr__din)"),
-        "child should consume bridge stream wires:\n{top_v}"
-    );
-    assert!(
-        top_v.contains(".mem_read_data_s_dout({1'b0, chan_0_read_data__dout})"),
-        "child read data should get a false EOT bit:\n{top_v}"
-    );
-    assert!(
-        !top_v.contains(".m_axi_mem_ARADDR"),
-        "async mmap child should not receive direct AXI ports:\n{top_v}"
+    check(
+        top_v,
+        &[
+            "async_mmap #(",
+            "chan_0__m_axi",
+            ".rst(ap_rst)",
+            ".EnableWriteChannel(0)",
+            "wire [63:0] chan_0_read_addr__din;",
+            ".m_axi_ARADDR(m_axi_chan_0_ARADDR)",
+            ".read_data_dout(chan_0_read_data__dout)",
+            ".mem_read_addr_s_din(chan_0_read_addr__din)",
+            ".mem_read_data_s_dout({1'b0, chan_0_read_data__dout})",
+        ],
+        &[".m_axi_mem_ARADDR"],
     );
 }
 
@@ -2018,59 +1809,45 @@ fn test_generate_rtl_pipelines_only_enabled_async_mmap_channels() {
 
     let top_v = rtl_file(&manifest, "top.v");
     assert_eq!(top_v.matches("tapa_hs_pipeline #(").count(), 2, "{top_v}");
-    for name in ["__tapa_axi_chan_0_ar", "__tapa_axi_chan_0_r"] {
-        assert!(top_v.contains(name), "missing {name}:\n{top_v}");
-    }
-    for name in [
-        "__tapa_axi_chan_0_aw",
-        "__tapa_axi_chan_0_w",
-        "__tapa_axi_chan_0_b",
-    ] {
-        assert!(!top_v.contains(name), "disabled pipeline {name}:\n{top_v}");
-    }
-    assert!(
-        top_v.contains("async_mmap #(") && top_v.contains("chan_0__m_axi"),
-        "bridge hierarchy must remain stable:\n{top_v}"
+    check(
+        top_v,
+        &["__tapa_axi_chan_0_ar", "__tapa_axi_chan_0_r"],
+        &[
+            "__tapa_axi_chan_0_aw",
+            "__tapa_axi_chan_0_w",
+            "__tapa_axi_chan_0_b",
+        ],
     );
-    assert!(
-        top_v.contains(".rst(!__tapa_control_copy_0__reset_n)")
-            && top_v.contains(".ap_rst_n(__tapa_control_copy_0__reset_n)")
-            && !top_v.contains(".rst(ap_rst)"),
-        "floorplanned bridge and child must share the routed local reset:\n{top_v}"
+    check(
+        top_v,
+        &[
+            "async_mmap #(",
+            "chan_0__m_axi",
+            ".rst(!__tapa_control_copy_0__reset_n)",
+            ".ap_rst_n(__tapa_control_copy_0__reset_n)",
+            ".m_axi_ARADDR(__tapa_axi_chan_0_child_ARADDR)",
+            ".m_axi_AWADDR(m_axi_chan_0_AWADDR)",
+            ".m_axi_ARLOCK()",
+            ".m_axi_AWLOCK(m_axi_chan_0_AWLOCK)",
+        ],
+        &[
+            ".rst(ap_rst)",
+            "__tapa_axi_chan_0_child__m_axi",
+            "__tapa_axi_chan_0_child_ARLOCK",
+            "__tapa_axi_chan_0_child_AWLOCK",
+        ],
     );
-    assert!(
-        !top_v.contains("__tapa_axi_chan_0_child__m_axi"),
-        "wire prefix must not leak into bridge hierarchy:\n{top_v}"
+    check(
+        top_v,
+        &[
+            "assign m_axi_chan_0_ARLOCK = 1'b0",
+            "assign m_axi_chan_0_ARCACHE = 4'b0011",
+            "assign m_axi_chan_0_ARPROT = 3'b000",
+            "assign m_axi_chan_0_ARQOS = 4'b0000",
+        ],
+        &[],
     );
-    assert!(
-        top_v.contains(".m_axi_ARADDR(__tapa_axi_chan_0_child_ARADDR)"),
-        "enabled read half must use pipeline wires:\n{top_v}"
-    );
-    assert!(
-        top_v.contains(".m_axi_AWADDR(m_axi_chan_0_AWADDR)"),
-        "disabled write half must remain directly driven:\n{top_v}"
-    );
-    assert!(
-        top_v.contains(".m_axi_ARLOCK()") && top_v.contains(".m_axi_AWLOCK(m_axi_chan_0_AWLOCK)"),
-        "active optional outputs are plan-driven while inactive outputs remain bridged:\n{top_v}"
-    );
-    assert!(
-        !top_v.contains("__tapa_axi_chan_0_child_ARLOCK")
-            && !top_v.contains("__tapa_axi_chan_0_child_AWLOCK"),
-        "routed bridge must not reference undeclared optional child wires:\n{top_v}"
-    );
-    for expected in [
-        "assign m_axi_chan_0_ARLOCK = 1'b0",
-        "assign m_axi_chan_0_ARCACHE = 4'b0011",
-        "assign m_axi_chan_0_ARPROT = 3'b000",
-        "assign m_axi_chan_0_ARQOS = 4'b0000",
-    ] {
-        assert!(top_v.contains(expected), "missing '{expected}':\n{top_v}");
-    }
-    assert!(
-        !top_v.contains("assign m_axi_chan_0_AWLOCK"),
-        "inactive bridge half owns its optional outputs:\n{top_v}"
-    );
+    check(top_v, &[], &["assign m_axi_chan_0_AWLOCK"]);
 }
 
 #[test]
@@ -2164,21 +1941,19 @@ fn test_generate_rtl_top_instantiates_control_s_axi() {
     );
 
     let top_v = rtl_file(&manifest, "top.v");
-    assert!(top_v.contains("top_control_s_axi"), "got:\n{top_v}");
-    assert!(top_v.contains("control_s_axi_U"), "got:\n{top_v}");
-    assert!(top_v.contains(".mem_offset(mem_offset)"), "got:\n{top_v}");
-    assert!(top_v.contains(".n(n)"), "got:\n{top_v}");
-    assert!(
-        !top_v.contains("assign ap_done = ap_start"),
-        "placeholder ap_done assign should be removed, got:\n{top_v}"
-    );
-    assert!(
-        !top_v.contains("assign ap_ready = ap_start"),
-        "placeholder ap_ready assign should be removed, got:\n{top_v}"
-    );
-    assert!(
-        !top_v.contains("ap_CS_fsm"),
-        "upper task emission should drop the original HLS FSM body, got:\n{top_v}"
+    check(
+        top_v,
+        &[
+            "top_control_s_axi",
+            "control_s_axi_U",
+            ".mem_offset(mem_offset)",
+            ".n(n)",
+        ],
+        &[
+            "assign ap_done = ap_start",
+            "assign ap_ready = ap_start",
+            "ap_CS_fsm",
+        ],
     );
 }
 
@@ -2245,16 +2020,9 @@ fn test_generate_rtl_top_control_unrolls_hmap_offsets() {
     );
 
     let top_v = rtl_file(&manifest, "top.v");
-    assert!(
-        top_v.contains(".mem_0_offset(mem_0_offset)"),
-        "got:\n{top_v}"
-    );
-    assert!(
-        top_v.contains(".mem_1_offset(mem_1_offset)"),
-        "got:\n{top_v}"
-    );
-    assert!(
-        !top_v.contains(".mem_offset(mem_offset)"),
-        "hmap control offsets should remain unrolled, got:\n{top_v}"
+    check(
+        top_v,
+        &[".mem_0_offset(mem_0_offset)", ".mem_1_offset(mem_1_offset)"],
+        &[".mem_offset(mem_offset)"],
     );
 }

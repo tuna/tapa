@@ -30,7 +30,4 @@ pub enum CodegenError {
 
     #[error("RTL builder error: {0}")]
     RtlBuilder(#[from] tapa_rtl::BuilderError),
-
-    #[error("IO error: {0}")]
-    Io(#[from] std::io::Error),
 }

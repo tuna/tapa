@@ -12,3 +12,8 @@ doc-valid-idents = [
     "Verilator",
     "..",
 ]
+
+# RTL emission/validation pass bodies are inherently sequential; the
+# largest (distributed-control route validation, ~240 lines) stays one
+# auditable transaction instead of per-reason `too_many_lines` allows.
+too-many-lines-threshold = 260

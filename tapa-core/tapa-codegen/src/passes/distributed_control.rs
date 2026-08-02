@@ -95,10 +95,6 @@ pub struct DistributedControlPlan {
 }
 
 impl DistributedControlPlan {
-    #[allow(
-        clippy::too_many_lines,
-        reason = "the exact route-set validation is clearest as one transaction"
-    )]
     pub(super) fn from_floorplan(
         state: &TopologyWithRtl,
         task_name: &str,
@@ -343,10 +339,6 @@ impl DistributedControlPlan {
         format!("{}__reset_n", control_wire_prefix(instance))
     }
 
-    #[allow(
-        clippy::too_many_lines,
-        reason = "child control wiring is kept together so bundle slices remain auditable"
-    )]
     pub(super) fn instantiate_child(
         &self,
         modules: &mut ModuleTable<'_>,

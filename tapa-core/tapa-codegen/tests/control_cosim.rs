@@ -1,7 +1,8 @@
 //! Verilator protocol test for distributed control and feed-forward pipelines.
 
-use std::path::Path;
-use std::process::Command;
+mod common;
+
+use common::verilator::run_cosim;
 
 const HARNESS: &str = "
 `default_nettype none
@@ -404,73 +405,13 @@ int main(int argc, char** argv) {
 }
 "#;
 
-fn verilator_available() -> bool {
-    Command::new("verilator")
-        .arg("--version")
-        .output()
-        .is_ok_and(|output| output.status.success())
-}
-
 #[test]
 fn distributed_control_survives_reset_and_consecutive_launches() {
-    if !verilator_available() {
-        eprintln!("skipping distributed-control cosim: `verilator` not found on PATH");
-        return;
-    }
-
-    let dir = tempfile::tempdir().expect("tempdir");
-    let root = dir.path();
-    for name in ["relay_station.v", "tapa_hs_pipeline.v", "tapa_control.v"] {
-        let asset = tapa_codegen::support_assets::VerilogAssets::get(name)
-            .unwrap_or_else(|| panic!("{name} is embedded RTL"));
-        std::fs::write(root.join(name), &asset.data).expect("write embedded RTL");
-    }
-    std::fs::write(root.join("harness.v"), HARNESS).expect("write harness");
-    std::fs::write(root.join("tb.cpp"), TESTBENCH).expect("write testbench");
-
-    let build = Command::new("verilator")
-        .current_dir(root)
-        .args([
-            "--cc",
-            "--exe",
-            "--build",
-            "--top-module",
-            "control_harness",
-            "-Wno-WIDTH",
-            "-Wno-UNUSEDSIGNAL",
-            "-Wno-UNOPTFLAT",
-            "-Wno-CASEINCOMPLETE",
-            "-Wno-fatal",
-            "--Mdir",
-            "obj_dir",
-            "-o",
-            "sim",
-            "relay_station.v",
-            "tapa_hs_pipeline.v",
-            "tapa_control.v",
-            "harness.v",
-            "tb.cpp",
-        ])
-        .output()
-        .expect("spawn verilator");
-    assert!(
-        build.status.success(),
-        "verilator build failed:\n{}\n{}",
-        String::from_utf8_lossy(&build.stdout),
-        String::from_utf8_lossy(&build.stderr),
+    run_cosim(
+        "control_harness",
+        &[],
+        &["relay_station.v", "tapa_hs_pipeline.v", "tapa_control.v"],
+        &[("harness.v", HARNESS)],
+        TESTBENCH,
     );
-
-    let run = Command::new(obj_dir_binary(root))
-        .output()
-        .expect("run control simulator");
-    assert!(
-        run.status.success() && String::from_utf8_lossy(&run.stdout).contains("PASS"),
-        "distributed-control protocol failed:\n{}\n{}",
-        String::from_utf8_lossy(&run.stdout),
-        String::from_utf8_lossy(&run.stderr),
-    );
-}
-
-fn obj_dir_binary(root: &Path) -> std::path::PathBuf {
-    root.join("obj_dir").join("sim")
 }

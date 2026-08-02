@@ -130,7 +130,7 @@ fn catalog_direct_mmap_rtl(
     top_port: &str,
 ) -> Result<(u32, AxiChannelWidths, Option<String>), CodegenError> {
     if child_category == ArgCategory::Mmap
-        || crate::async_mmap::has_direct_m_axi_ports(module, &slave.port)
+        || crate::passes::async_mmap::has_direct_m_axi_ports(module, &slave.port)
     {
         let rtl_prefix = format!("{M_AXI_PREFIX}{}", sanitize_array_name(&slave.port));
         let id_width = validate_compact_m_axi_ports(module, interface, &rtl_prefix, data_width)?;
@@ -146,7 +146,7 @@ fn catalog_direct_mmap_rtl(
         "direct child validator only permits mmap categories"
     );
 
-    let tags = crate::async_mmap::active_tags(module, &slave.port);
+    let tags = crate::passes::async_mmap::active_tags(module, &slave.port);
     if tags.is_empty() {
         return Err(invalid_direct_mmap(
             interface,
@@ -156,7 +156,7 @@ fn catalog_direct_mmap_rtl(
             ),
         ));
     }
-    let enabled = crate::async_mmap::enabled_axi_directions(module, &slave.port, &tags);
+    let enabled = crate::passes::async_mmap::enabled_axi_directions(module, &slave.port, &tags);
     let id_width = AXI_ID_WIDTH;
     let mut widths = direct_m_axi_channel_widths(data_width, id_width);
     if !enabled.read {

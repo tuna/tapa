@@ -8,7 +8,15 @@
 //! Each consumer declares `mod common;` at its target root; files under
 //! `tests/common/` do not become integration targets of their own.
 
+#![allow(
+    dead_code,
+    reason = "every consumer compiles the whole shared vocabulary but \
+              asserts against only its own slice; the rest would read as \
+              dead code in that target"
+)]
+
 pub mod run_manifest;
+pub mod verilator;
 
 use tapa_codegen::rtl_state::TopologyWithRtl;
 use tapa_ir::Design;

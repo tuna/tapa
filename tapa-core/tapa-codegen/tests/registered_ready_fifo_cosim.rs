@@ -1,7 +1,8 @@
 //! Verilator cosim for the shallow floorplanned FIFO with registered ready.
 
-use std::path::Path;
-use std::process::Command;
+mod common;
+
+use common::verilator::run_cosim;
 
 const TESTBENCH: &str = r#"
 #include <verilated.h>
@@ -155,69 +156,18 @@ int main(int argc, char** argv) {
 }
 "#;
 
-fn verilator_available() -> bool {
-    Command::new("verilator")
-        .arg("--version")
-        .output()
-        .is_ok_and(|output| output.status.success())
-}
-
 #[test]
 fn registered_ready_fifo_is_lossless_under_backpressure() {
-    if !verilator_available() {
-        eprintln!("skipping registered-ready FIFO cosim: `verilator` not found on PATH");
-        return;
-    }
-
-    let dir = tempfile::tempdir().expect("tempdir");
-    let root = dir.path();
-    let asset =
-        tapa_codegen::support_assets::VerilogAssets::get("relay_station.v").expect("relay asset");
-    std::fs::write(root.join("relay_station.v"), asset.data.as_ref()).expect("write FIFO RTL");
-    std::fs::write(root.join("tb.cpp"), TESTBENCH).expect("write testbench");
-
-    let build = Command::new("verilator")
-        .current_dir(root)
-        .args([
-            "--cc",
-            "--exe",
-            "--build",
-            "--top-module",
-            "fifo_almost_full",
-            "-GDATA_WIDTH=32",
-            "-GADDR_WIDTH=4",
-            "-GDEPTH=13",
-            "-GGRACE_PERIOD=1",
-            "-Wno-WIDTH",
-            "-Wno-CASEINCOMPLETE",
-            "-Wno-fatal",
-            "--Mdir",
-            "obj_dir",
-            "-o",
-            "sim",
-            "relay_station.v",
-            "tb.cpp",
-        ])
-        .output()
-        .expect("spawn verilator");
-    assert!(
-        build.status.success(),
-        "verilator build failed:\n{}\n{}",
-        String::from_utf8_lossy(&build.stdout),
-        String::from_utf8_lossy(&build.stderr),
+    run_cosim(
+        "fifo_almost_full",
+        &[
+            ("DATA_WIDTH", 32),
+            ("ADDR_WIDTH", 4),
+            ("DEPTH", 13),
+            ("GRACE_PERIOD", 1),
+        ],
+        &["relay_station.v"],
+        &[],
+        TESTBENCH,
     );
-
-    let run = Command::new(obj_dir_binary(root))
-        .output()
-        .expect("run simulator");
-    assert!(
-        run.status.success() && String::from_utf8_lossy(&run.stdout).contains("PASS"),
-        "registered-ready FIFO is not lossless:\n{}\n{}",
-        String::from_utf8_lossy(&run.stdout),
-        String::from_utf8_lossy(&run.stderr),
-    );
-}
-
-fn obj_dir_binary(root: &Path) -> std::path::PathBuf {
-    root.join("obj_dir").join("sim")
 }

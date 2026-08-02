@@ -5,8 +5,9 @@
 //! This is the P3 correctness gate for relay insertion. The test skips cleanly
 //! when `verilator` is not on `PATH`.
 
-use std::path::Path;
-use std::process::Command;
+mod common;
+
+use common::verilator::{asset_source, run_cosim};
 
 /// C++ driver: write as fast as `full_n` allows, read one cycle in three (so
 /// the buffer fills and the grace period is exercised), and assert every
@@ -136,23 +137,9 @@ int main(int argc, char** argv) {
 }
 "#;
 
-fn verilator_available() -> bool {
-    Command::new("verilator")
-        .arg("--version")
-        .output()
-        .is_ok_and(|o| o.status.success())
-}
-
-/// Retrieve the embedded `relay_station.v` asset source.
-fn relay_station_source() -> Vec<u8> {
-    let asset = tapa_codegen::support_assets::VerilogAssets::get("relay_station.v")
-        .expect("relay_station.v is an embedded asset");
-    asset.data.into_owned()
-}
-
 #[test]
 fn srl_tail_address_is_retimed_and_fanout_limited() {
-    let source = String::from_utf8(relay_station_source()).expect("relay RTL is UTF-8");
+    let source = String::from_utf8(asset_source("relay_station.v")).expect("relay RTL is UTF-8");
     assert!(source.contains("(* max_fanout = 128 *) reg [REAL_ADDR_WIDTH - 1:0] shiftReg_addr;"));
     assert!(source.contains("shiftReg_addr <= mOutPtrMinusOne[REAL_ADDR_WIDTH]"));
     assert!(source.contains("shiftReg_addr <= mOutPtrPlusOne[REAL_ADDR_WIDTH]"));
@@ -161,66 +148,15 @@ fn srl_tail_address_is_retimed_and_fanout_limited() {
 
 #[test]
 fn relay_station_is_functionally_a_fifo() {
-    if !verilator_available() {
-        eprintln!("skipping relay_station cosim: `verilator` not found on PATH");
-        return;
-    }
-    // A shallow and a deep pipeline: the grace-depth math scales with LEVEL, so
-    // both must relay the stream losslessly under backpressure.
+    // A shallow and a deep pipeline: the grace-depth math scales with
+    // LEVEL, so both must relay the stream losslessly under backpressure.
     for level in [2u32, 8u32] {
-        run_cosim(level);
-    }
-}
-
-/// Build and run the `relay_station` testbench with `LEVEL` overridden,
-/// asserting the stream survives intact.
-fn run_cosim(level: u32) {
-    let dir = tempfile::tempdir().expect("tempdir");
-    let root = dir.path();
-    std::fs::write(root.join("relay_station.v"), relay_station_source()).expect("write rtl");
-    std::fs::write(root.join("tb.cpp"), TESTBENCH).expect("write tb");
-
-    // Build the simulator. Width mismatches in the vendored RTL are benign.
-    let build = Command::new("verilator")
-        .current_dir(root)
-        .args([
-            "--cc",
-            "--exe",
-            "--build",
-            "--top-module",
+        run_cosim(
             "relay_station",
-            &format!("-GLEVEL={level}"),
-            "-Wno-WIDTH",
-            "-Wno-UNOPTFLAT",
-            "-Wno-CASEINCOMPLETE",
-            "-Wno-fatal",
-            "--Mdir",
-            "obj_dir",
-            "-o",
-            "sim",
-            "relay_station.v",
-            "tb.cpp",
-        ])
-        .output()
-        .expect("spawn verilator");
-    assert!(
-        build.status.success(),
-        "verilator build failed (LEVEL={level}):\n{}\n{}",
-        String::from_utf8_lossy(&build.stdout),
-        String::from_utf8_lossy(&build.stderr),
-    );
-
-    let sim = obj_dir_binary(root);
-    let run = Command::new(&sim).output().expect("run simulator");
-    assert!(
-        run.status.success() && String::from_utf8_lossy(&run.stdout).contains("PASS"),
-        "relay_station (LEVEL={level}) is NOT equivalent to a fifo:\n{}\n{}",
-        String::from_utf8_lossy(&run.stdout),
-        String::from_utf8_lossy(&run.stderr),
-    );
-}
-
-/// Verilator writes the executable as `<root>/obj_dir/sim`.
-fn obj_dir_binary(root: &Path) -> std::path::PathBuf {
-    root.join("obj_dir").join("sim")
+            &[("LEVEL", level)],
+            &["relay_station.v"],
+            &[],
+            TESTBENCH,
+        );
+    }
 }

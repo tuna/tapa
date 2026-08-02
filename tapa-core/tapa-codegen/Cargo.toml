@@ -5,13 +5,13 @@ edition = "2021"
 
 [dependencies]
 rust-embed = { workspace = true }
-serde_json.workspace = true
 thiserror.workspace = true
 tapa-ir.workspace = true
 tapa-protocol.workspace = true
 tapa-rtl.workspace = true
 
 [dev-dependencies]
+serde_json.workspace = true
 tempfile = { workspace = true }
 
 [lints]

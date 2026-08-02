@@ -269,7 +269,7 @@ pub struct GenerateChildSignals;
 
 impl TaskPass for GenerateChildSignals {
     fn run(&self, ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenError> {
-        let is_done_signals = crate::children::generate_child_signals(ctx)?;
+        let is_done_signals = crate::passes::children::generate_child_signals(ctx)?;
         ctx.inputs.is_done_signals = is_done_signals;
         Ok(())
     }
@@ -280,8 +280,8 @@ pub struct FifoInstantiateConnect;
 
 impl TaskPass for FifoInstantiateConnect {
     fn run(&self, ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenError> {
-        crate::fifos::instantiate_fifos(ctx.design, &mut ctx.modules, ctx.name)?;
-        crate::fifos::connect_fifos(ctx.design, &mut ctx.modules, ctx.name)?;
+        crate::passes::fifos::instantiate_fifos(ctx.design, &mut ctx.modules, ctx.name)?;
+        crate::passes::fifos::connect_fifos(ctx.design, &mut ctx.modules, ctx.name)?;
         Ok(())
     }
 }

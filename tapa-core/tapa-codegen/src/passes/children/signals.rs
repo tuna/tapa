@@ -15,9 +15,10 @@ use super::fsm::{
 };
 use super::instance::{build_child_instance_with_reset, ChildMmapBindings};
 use crate::instance_signals::InstanceSignals;
+use crate::passes::async_mmap;
 use crate::passes::{distributed_control, TaskPassCtx};
 use crate::state::views::{DesignView, FsmTable, ModuleTable};
-use crate::{async_mmap, m_axi, program};
+use crate::{m_axi, program};
 
 /// Staging context for the per-task child-signal stage.
 ///

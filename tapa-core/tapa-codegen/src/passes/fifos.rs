@@ -244,7 +244,7 @@ type FifoConnEntry = (String, Option<u32>, bool, bool, Option<FifoProducer>);
 /// Internal FIFOs (with depth) get a `fifo` module instance.
 /// External FIFOs (no depth) get wire assignments connecting to external ports.
 /// FIFO width is resolved from the producer child's attached RTL module ports.
-pub(crate) fn instantiate_fifos(
+pub fn instantiate_fifos(
     design: DesignView<'_>,
     modules: &mut ModuleTable<'_>,
     task_name: &str,
@@ -389,12 +389,7 @@ fn resolve_fifo_width(
 /// proper width using stream suffixes so child instances can connect.
 /// For external FIFOs: connect to parent module ports, potentially
 /// through AXIS adapters.
-#[allow(
-    clippy::too_many_lines,
-    reason = "FIFO connection orchestration is inherently sequential; \
-              splitting would fragment the wiring logic"
-)]
-pub(crate) fn connect_fifos(
+pub fn connect_fifos(
     design: DesignView<'_>,
     modules: &mut ModuleTable<'_>,
     task_name: &str,

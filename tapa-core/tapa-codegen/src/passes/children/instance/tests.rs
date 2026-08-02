@@ -23,7 +23,7 @@ fn build_child_instance_test(
         })
         .map(|a| a.arg.clone())
         .collect();
-    build_child_instance(
+    build_child_instance_with_reset(
         child_task_name,
         instance_name,
         sig,
@@ -32,6 +32,7 @@ fn build_child_instance_test(
         &parent_fifos,
         None,
         child_rtl,
+        Expr::ident(HANDSHAKE_RST_N),
     )
 }
 
@@ -284,7 +285,7 @@ fn build_child_instance_passes_stream_ports_through_with_s_infix() {
     )
     .unwrap();
     let parent_fifos: BTreeSet<String> = BTreeSet::new();
-    let inst = build_child_instance(
+    let inst = build_child_instance_with_reset(
         "Add",
         "Add_0",
         &sig,
@@ -293,6 +294,7 @@ fn build_child_instance_passes_stream_ports_through_with_s_infix() {
         &parent_fifos,
         Some(&parent_rtl),
         Some(&child_rtl),
+        Expr::ident(HANDSHAKE_RST_N),
     );
     let text = inst.to_string();
     // istream passthrough -> parent port `a_ext_s_dout` (with `_s`).
@@ -369,7 +371,7 @@ fn build_child_instance_passes_array_stream_ports_through_without_infix() {
         },
     );
     let parent_fifos: BTreeSet<String> = BTreeSet::new();
-    let inst = build_child_instance(
+    let inst = build_child_instance_with_reset(
         "Inner",
         "Inner_0",
         &sig,
@@ -378,6 +380,7 @@ fn build_child_instance_passes_array_stream_ports_through_without_infix() {
         &parent_fifos,
         Some(&parent_rtl),
         Some(&child_rtl),
+        Expr::ident(HANDSHAKE_RST_N),
     );
     let text = inst.to_string();
     assert!(
