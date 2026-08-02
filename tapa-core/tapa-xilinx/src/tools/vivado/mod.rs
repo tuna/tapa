@@ -93,11 +93,7 @@ pub fn run_vivado(runner: &dyn ToolRunner, job: &VivadoJob) -> Result<VivadoOutp
     inv.env.insert("HOME".into(), home_dir.as_str().to_string());
     let out = runner.run(&inv)?;
     if out.exit_code != 0 {
-        return Err(crate::error::XilinxError::ToolFailure {
-            program: "vivado".into(),
-            code: out.exit_code,
-            stderr: super::merged_failure_output(out.stdout, out.stderr),
-        });
+        return Err(super::tool_failure("vivado", out));
     }
     Ok(VivadoOutput {
         stdout: out.stdout,

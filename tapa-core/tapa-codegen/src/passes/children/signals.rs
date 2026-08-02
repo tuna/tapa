@@ -13,7 +13,7 @@ use tapa_rtl::builder::{ContinuousAssign, Expr};
 use super::fsm::{
     generate_autorun_start, generate_child_fsm, generate_is_done_assign, generate_start_assign,
 };
-use super::instance::{build_child_instance_with_reset, ChildMmapBindings};
+use super::instance::{build_child_instance_with_reset, ChildMmapBinding, ChildMmapBindings};
 use crate::instance_signals::InstanceSignals;
 use crate::passes::async_mmap;
 use crate::passes::{distributed_control, TaskPassCtx};
@@ -459,10 +459,11 @@ fn build_mmap_bindings(
     inst: &ChildInstance<'_>,
     idx: usize,
 ) -> ChildMmapBindings {
-    // Build per-instance mmap slave index map for crossbar routing
+    // One per-instance binding per mmap argument for crossbar routing.
     let mut mmap_bindings = ChildMmapBindings::default();
     for (child_port, arg) in inst.args {
         if arg.cat.is_direct_mmap() {
+            let mut binding = ChildMmapBinding::default();
             if let Some(prefix) = stage.axi_pipeline_plan.and_then(|plan| {
                 plan.child_wire_prefix(&tapa_ir::AxiEndpoint {
                     instance: inst.logical_inst_name.clone(),
@@ -470,29 +471,22 @@ fn build_mmap_bindings(
                     top_port: arg.arg.clone(),
                 })
             }) {
-                mmap_bindings
-                    .direct_wire_prefixes
-                    .insert(arg.arg.clone(), prefix);
+                binding.direct_wire_prefix = Some(prefix);
             }
             if let Some(&slave_idx) =
                 stage
                     .mmap_slave_map
                     .get(&(arg.arg.clone(), inst.child_name.to_owned(), idx))
             {
-                mmap_bindings
-                    .slave_indices
-                    .insert(arg.arg.clone(), slave_idx);
+                binding.slave_index = Some(slave_idx);
                 if let Some(conn) = stage.mmap_conns.get(&arg.arg) {
-                    mmap_bindings
-                        .wire_id_widths
-                        .insert(arg.arg.clone(), m_axi::crossbar_slave_id_width(conn));
+                    binding.wire_id_width = Some(m_axi::crossbar_slave_id_width(conn));
                     if let Some(slave) = conn.slaves.get(slave_idx) {
-                        mmap_bindings
-                            .child_id_widths
-                            .insert(arg.arg.clone(), slave.id_width);
+                        binding.child_id_width = Some(slave.id_width);
                     }
                 }
             }
+            mmap_bindings.insert(arg.arg.clone(), binding);
         }
     }
     mmap_bindings
@@ -544,7 +538,7 @@ fn add_async_mmap_bridges(
         // Aggregation already derived the width with the same
         // parent-then-child port precedence.
         let data_width = stage.mmap_conns.get(&arg.arg).map_or(64, |c| c.data_width);
-        let connect_optional_axi_ports = !mmap_bindings.slave_indices.contains_key(&arg.arg);
+        let connect_optional_axi_ports = mmap_bindings.slave_index(&arg.arg).is_none();
         if let Some(mm) = stage.modules.get_mut(stage.task_name) {
             async_mmap::add_bridge_signals(mm, &bridge_base, &active_tags, data_width);
             mm.add_instance(async_mmap::build_bridge_instance(

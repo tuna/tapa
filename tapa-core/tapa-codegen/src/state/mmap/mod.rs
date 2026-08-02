@@ -12,7 +12,10 @@ use std::collections::BTreeMap;
 
 use tapa_ir::task::TaskLevel;
 use tapa_ir::Port as IrPort;
+use tapa_rtl::expression::{expression_as_u32, expression_source, Expression};
 use tapa_rtl::module::sanitize_array_name;
+use tapa_rtl::port::Port as RtlPort;
+use tapa_rtl::VerilogModule;
 
 use crate::error::CodegenError;
 use crate::state::rtl_state::{routing_id_bits, TopologyWithRtl};
@@ -280,18 +283,17 @@ impl TopologyWithRtl {
     ) -> Result<(u32, u32), CodegenError> {
         let child_port = sanitize_array_name(child_port_name);
         let prefix = format!("m_axi_{child_port}");
+        // Planning policy: fold the ID-port widths with `max` for a safe
+        // upper estimate (ID wires that are too narrow would corrupt
+        // routing; wider ones cost a few bits). Absent modules and symbolic
+        // widths fall back to the single-bit minimum.
         let module_id_width = self
             .module_map
             .get(child_task_name)
             .and_then(|module| {
-                ["_ARID", "_AWID", "_BID", "_RID"]
-                    .iter()
-                    .filter_map(|suffix| {
-                        module
-                            .inner
-                            .find_port(&format!("{prefix}{suffix}"))
-                            .and_then(tapa_rtl::port::Port::bit_width)
-                    })
+                rtl_m_axi_id_widths(&module.inner, &prefix)
+                    .into_iter()
+                    .filter_map(|(_, _, width)| width)
                     .max()
             })
             .unwrap_or(1);
@@ -319,6 +321,61 @@ impl TopologyWithRtl {
 /// Compute parent-facing AXI ID width: 1 + ceil(log2(n)), minimum 1.
 fn id_width_for_child_threads(child_id_width: u32, n: u32) -> u32 {
     child_id_width.max(1) + routing_id_bits(n)
+}
+
+/// `_ARID`/`_AWID`/`_BID`/`_RID` suffixes of a compact M-AXI interface, in
+/// protocol order.
+const M_AXI_ID_SUFFIXES: [&str; 4] = ["_ARID", "_AWID", "_BID", "_RID"];
+
+/// The ID ports declared on `module` under the compact M-AXI `prefix`, each
+/// paired with its resolved bit width (`None` when the width expression is
+/// symbolic beyond a parameter default).
+///
+/// The folding policy is deliberately left to the caller — connection
+/// *planning* (`child_mmap_summary`) takes the `max` for a safe upper
+/// estimate, while direct-interface *validation* (`direct` submodule)
+/// requires every listed width to resolve to one identical value. What must
+/// not diverge between callers is *which* ports count as ID ports and how
+/// widths are resolved, so both go through this helper.
+fn rtl_m_axi_id_widths<'m>(
+    module: &'m VerilogModule,
+    prefix: &str,
+) -> Vec<(&'static str, &'m RtlPort, Option<u32>)> {
+    M_AXI_ID_SUFFIXES
+        .iter()
+        .filter_map(|&suffix| {
+            let port = module.find_port(&format!("{prefix}{suffix}"))?;
+            Some((suffix, port, resolve_rtl_port_width(module, port)))
+        })
+        .collect()
+}
+
+fn resolve_rtl_port_width(module: &VerilogModule, port: &RtlPort) -> Option<u32> {
+    let Some(width) = &port.width else {
+        return Some(1);
+    };
+    let msb = resolve_width_endpoint(module, &width.msb)?;
+    let lsb = resolve_width_endpoint(module, &width.lsb)?;
+    msb.abs_diff(lsb).checked_add(1)
+}
+
+fn resolve_width_endpoint(module: &VerilogModule, expression: &Expression) -> Option<u32> {
+    if let Some(value) = expression_as_u32(expression) {
+        return Some(value);
+    }
+    let source = expression_source(expression).replace(' ', "");
+    source.strip_suffix("-1").map_or_else(
+        || resolve_parameter_default(module, &source),
+        |parameter| resolve_parameter_default(module, parameter)?.checked_sub(1),
+    )
+}
+
+fn resolve_parameter_default(module: &VerilogModule, name: &str) -> Option<u32> {
+    let parameter = module
+        .parameters
+        .iter()
+        .find(|parameter| parameter.name == name)?;
+    expression_as_u32(&parameter.default)
 }
 
 #[cfg(test)]

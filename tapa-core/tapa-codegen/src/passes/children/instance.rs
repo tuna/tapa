@@ -22,32 +22,61 @@ use crate::passes::async_mmap;
 /// stream arguments (istream/ostream suffixes), and mmap offset arguments.
 ///
 /// Mmap bindings describe how each child mmap argument reaches parent AXI wires.
+///
+/// One map keyed by argument name: the four pieces of a binding are always
+/// looked up together, so keeping them in one struct removes the drift risk
+/// of parallel maps. Every field is optional; a missing field and a missing
+/// entry mean the same thing to all accessors.
 #[derive(Debug, Default)]
 pub struct ChildMmapBindings {
-    pub slave_indices: BTreeMap<String, usize>,
-    pub wire_id_widths: BTreeMap<String, u32>,
-    pub child_id_widths: BTreeMap<String, u32>,
-    pub direct_wire_prefixes: BTreeMap<String, String>,
+    bindings: BTreeMap<String, ChildMmapBinding>,
+}
+
+/// How one child mmap argument reaches the parent AXI wires.
+#[derive(Debug, Default)]
+pub struct ChildMmapBinding {
+    /// Crossbar slave index when the argument routes through the crossbar.
+    pub slave_index: Option<usize>,
+    /// ID width of the parent-side (crossbar slave) AXI wires.
+    pub wire_id_width: Option<u32>,
+    /// ID width the child port presents.
+    pub child_id_width: Option<u32>,
+    /// Wire prefix when AXI pipelining bypasses the crossbar wires.
+    pub direct_wire_prefix: Option<String>,
 }
 
 impl ChildMmapBindings {
+    pub fn insert(&mut self, arg_name: String, binding: ChildMmapBinding) {
+        self.bindings.insert(arg_name, binding);
+    }
+
     pub fn upstream_wire_prefix(&self, arg_name: &str) -> String {
-        mmap_wire_prefix(arg_name, &self.slave_indices)
+        mmap_wire_prefix(arg_name, self.slave_index(arg_name))
     }
 
     pub fn wire_prefix(&self, arg_name: &str) -> String {
-        self.direct_wire_prefixes
+        self.bindings
             .get(arg_name)
-            .cloned()
+            .and_then(|binding| binding.direct_wire_prefix.clone())
             .unwrap_or_else(|| self.upstream_wire_prefix(arg_name))
     }
 
+    pub fn slave_index(&self, arg_name: &str) -> Option<usize> {
+        self.bindings
+            .get(arg_name)
+            .and_then(|binding| binding.slave_index)
+    }
+
     pub fn wire_id_width(&self, arg_name: &str) -> Option<u32> {
-        self.wire_id_widths.get(arg_name).copied()
+        self.bindings
+            .get(arg_name)
+            .and_then(|binding| binding.wire_id_width)
     }
 
     pub fn child_id_width(&self, arg_name: &str) -> Option<u32> {
-        self.child_id_widths.get(arg_name).copied()
+        self.bindings
+            .get(arg_name)
+            .and_then(|binding| binding.child_id_width)
     }
 }
 
@@ -300,15 +329,11 @@ fn direct_mmap_connection_expr(
     )
 }
 
-pub fn mmap_wire_prefix(
-    arg_name: &str,
-    mmap_slave_indices: &std::collections::BTreeMap<String, usize>,
-) -> String {
+pub fn mmap_wire_prefix(arg_name: &str, slave_index: Option<usize>) -> String {
     let sanitized_arg = sanitize_array_name(arg_name);
-    if let Some(slave_idx) = mmap_slave_indices.get(arg_name) {
-        crate::m_axi::crossbar_slave_prefix(&sanitized_arg, *slave_idx)
-    } else {
-        format!("{M_AXI_PREFIX}{sanitized_arg}")
+    match slave_index {
+        Some(slave_idx) => crate::m_axi::crossbar_slave_prefix(&sanitized_arg, slave_idx),
+        None => format!("{M_AXI_PREFIX}{sanitized_arg}"),
     }
 }
 

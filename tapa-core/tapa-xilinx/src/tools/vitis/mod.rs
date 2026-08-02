@@ -320,11 +320,7 @@ pub fn run_vitis_link(runner: &dyn ToolRunner, job: &VitisLinkJob) -> Result<Vit
     let invocation = build_invocation(&resolved);
     let tool_output = runner.run(&invocation)?;
     if tool_output.exit_code != 0 {
-        return Err(XilinxError::ToolFailure {
-            program: "v++".into(),
-            code: tool_output.exit_code,
-            stderr: super::merged_failure_output(tool_output.stdout, tool_output.stderr),
-        });
+        return Err(super::tool_failure("v++", tool_output));
     }
     if !resolved.timing_report.is_file() {
         return link_error(format!(

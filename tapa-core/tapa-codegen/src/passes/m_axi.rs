@@ -502,7 +502,7 @@ pub(crate) fn add_crossbar_slave_id_padding(
         if !arg.cat.is_direct_mmap() {
             continue;
         }
-        let Some(&slave_idx) = mmap_bindings.slave_indices.get(&arg.arg) else {
+        let Some(slave_idx) = mmap_bindings.slave_index(&arg.arg) else {
             continue;
         };
         let Some(target_width) = mmap_bindings.wire_id_width(&arg.arg) else {

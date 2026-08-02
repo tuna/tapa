@@ -3,7 +3,6 @@
 //! Implements TCL emission, invocation via a `ToolRunner`, report parsing,
 //! and a bounded retry wrapper keyed on transient-failure substrings.
 
-use std::sync::Arc;
 use std::time::Duration;
 
 use backon::{BlockingRetryable, ExponentialBuilder};
@@ -55,14 +54,6 @@ pub struct HlsJob {
     /// to `true`.
     #[builder(default = true)]
     pub auto_prefix: bool,
-    /// Optional override. When `None`, the production
-    /// `is_transient_hls_output` predicate is used.
-    #[builder(default)]
-    pub transient_patterns: Option<Arc<Vec<String>>>,
-    /// Injectable delay function for retry backoff. Defaults to
-    /// `std::thread::sleep` when `None`.
-    #[builder(default)]
-    pub delay_fn: Option<Arc<dyn Fn(Duration) + Send + Sync>>,
 }
 
 impl std::fmt::Debug for HlsJob {
@@ -82,8 +73,6 @@ impl std::fmt::Debug for HlsJob {
             .field("solution_name", &self.solution_name)
             .field("reset_low", &self.reset_low)
             .field("auto_prefix", &self.auto_prefix)
-            .field("transient_patterns", &self.transient_patterns)
-            .field("delay_fn", &self.delay_fn.is_some())
             .finish()
     }
 }
@@ -201,15 +190,6 @@ pub(crate) fn build_hls_tcl(job: &HlsJob) -> Result<String> {
             rtl,
         },
     )
-}
-
-fn is_transient(job: &HlsJob, stdout: &str, stderr: &str) -> bool {
-    match job.transient_patterns.as_deref() {
-        Some(v) => v
-            .iter()
-            .any(|p| stdout.contains(p.as_str()) || stderr.contains(p.as_str())),
-        None => is_transient_hls_output(stdout, stderr),
-    }
 }
 
 enum RetryError {
@@ -397,9 +377,9 @@ enum StageDir<'a> {
     Borrowed(&'a camino::Utf8Path),
 }
 
-/// Bounded retry wrapper keyed on the transient-failure predicate. The
-/// default budget is 3 attempts; callers can override per job via
-/// `transient_patterns`.
+/// Bounded retry wrapper keyed on the production transient-failure
+/// predicate. Retries back off exponentially; under `cfg(test)` the sleep
+/// is skipped so unit tests can drive the budget to exhaustion instantly.
 fn run_hls_with_retry_impl(
     runner: &dyn ToolRunner,
     job: &HlsJob,
@@ -411,8 +391,6 @@ fn run_hls_with_retry_impl(
         .with_min_delay(Duration::from_millis(500))
         .with_max_delay(Duration::from_secs(30))
         .with_max_times(max_attempts.saturating_sub(1) as usize);
-
-    let delay_fn = job.delay_fn.clone();
 
     let result = (|| -> std::result::Result<HlsOutput, RetryError> {
         // Resolve the stage path for this attempt. For `Ephemeral`, the
@@ -430,29 +408,21 @@ fn run_hls_with_retry_impl(
         if out.exit_code == 0 {
             return harvest_and_stage(job, &stage_path, out).map_err(RetryError::Fatal);
         }
-        let transient = is_transient(job, &out.stdout, &out.stderr);
-        if !transient {
-            let stderr = if out.stderr.is_empty() {
-                out.stdout
-            } else {
-                out.stderr
-            };
-            return Err(RetryError::Fatal(XilinxError::ToolFailure {
-                program: "vitis_hls".into(),
-                code: out.exit_code,
-                stderr,
-            }));
+        if !is_transient_hls_output(&out.stdout, &out.stderr) {
+            return Err(RetryError::Fatal(super::tool_failure("vitis_hls", out)));
         }
         Err(RetryError::Transient)
     })
     .retry(backoff)
     .when(|err| matches!(err, RetryError::Transient))
-    .sleep(move |dur| {
-        if let Some(f) = &delay_fn {
-            f(dur);
-        } else {
-            std::thread::sleep(dur);
-        }
+    .sleep(|dur| {
+        // Unit tests run the retry loop to exhaustion; skipping the real
+        // backoff sleep there keeps the suite instant. Production builds
+        // (and integration tests against the real tool) always sleep.
+        #[cfg(not(test))]
+        std::thread::sleep(dur);
+        #[cfg(test)]
+        let _ = dur;
     })
     .call();
 
@@ -506,7 +476,6 @@ mod tests {
             .clock_period("3.33".into())
             .reports_out_dir(tmp.join("report"))
             .hdl_out_dir(tmp.join("hdl"))
-            .delay_fn(Some(Arc::new(|_| {})))
             .build()
     }
 
@@ -772,6 +741,8 @@ mod tests {
         );
     }
 
+    /// `run_hls_with_retry` skips the real backoff sleep in unit-test
+    /// builds, so even five attempts complete instantly.
     #[test]
     fn retry_budget_exhausted_with_zero_delay() {
         let tmp = tempfile::tempdir().unwrap();
@@ -798,29 +769,6 @@ mod tests {
             elapsed < Duration::from_millis(100),
             "retry loop must not insert delays, took {elapsed:?}"
         );
-    }
-
-    #[test]
-    fn custom_transient_patterns_match_both_stdout_and_stderr() {
-        let tmp = tempfile::tempdir().unwrap();
-        let mut job = fixture_job(&Utf8PathBuf::from_path_buf(tmp.path().to_path_buf()).unwrap());
-        job.transient_patterns = Some(Arc::new(vec!["custom-pattern".into()]));
-        let runner = MockToolRunner::new();
-        for _ in 0..3 {
-            runner.push_ok(
-                "vitis_hls",
-                ToolOutput {
-                    exit_code: 1,
-                    stdout: String::new(),
-                    stderr: "custom-pattern".into(),
-                },
-            );
-        }
-        let err = run_hls_with_retry(&runner, &job, 3).unwrap_err();
-        assert!(matches!(
-            err,
-            XilinxError::HlsRetryExhausted { attempts: 3 }
-        ));
     }
 
     #[test]

@@ -11,13 +11,13 @@ use tapa_protocol::{
     axi_subport_from_suffix, axi_subport_width, PortDir, AXI_ADDR_WIDTH, AXI_ID_WIDTH,
     M_AXI_PREFIX, M_AXI_SUFFIXES_BY_CHANNEL, M_AXI_SUFFIXES_COMPACT,
 };
-use tapa_rtl::expression::{expression_as_u32, expression_source, Expression};
+use tapa_rtl::expression::expression_source;
 use tapa_rtl::module::sanitize_array_name;
 use tapa_rtl::port::{Direction, Port as RtlPort};
 use tapa_rtl::VerilogModule;
 
 use crate::error::CodegenError;
-use crate::state::mmap::{MMapConnection, MMapSlave};
+use crate::state::mmap::{resolve_rtl_port_width, rtl_m_axi_id_widths, MMapConnection, MMapSlave};
 use crate::state::rtl_state::TopologyWithRtl;
 
 /// One child M-AXI interface connected directly to a top-level mmap port.
@@ -360,8 +360,6 @@ fn validate_compact_m_axi_ports(
     rtl_prefix: &str,
     data_width: u32,
 ) -> Result<u32, CodegenError> {
-    let mut id_width = None;
-
     for suffix in M_AXI_SUFFIXES_COMPACT {
         let port_name = format!("{rtl_prefix}{suffix}");
         let port = module.find_port(&port_name).ok_or_else(|| {
@@ -388,34 +386,37 @@ fn validate_compact_m_axi_ports(
                 ),
             ));
         }
+    }
 
-        let subport = axi_subport_from_suffix(suffix);
-        let resolved_width = resolve_rtl_port_width(module, port);
-        if subport == "ID" {
-            let width = resolved_width.ok_or_else(|| {
-                invalid_direct_mmap(
+    // Validation policy (strict): unlike the `max` fold used for crossbar
+    // planning, a directly wired interface must agree with the
+    // topology-derived channel widths exactly, so every ID port must
+    // resolve to one identical width.
+    let mut id_width = None;
+    for (suffix, port, resolved_width) in rtl_m_axi_id_widths(module, rtl_prefix) {
+        let width = resolved_width.ok_or_else(|| {
+            invalid_direct_mmap(
+                interface,
+                &format!(
+                    "cannot resolve ID width of child RTL port '{}.{rtl_prefix}{suffix}'{}",
+                    module.name,
+                    render_port_width(port)
+                ),
+            )
+        })?;
+        if let Some(previous) = id_width {
+            if width != previous {
+                return Err(invalid_direct_mmap(
                     interface,
                     &format!(
-                        "cannot resolve ID width of child RTL port '{}.{port_name}'{}",
-                        module.name,
-                        render_port_width(port)
+                        "has inconsistent child RTL ID widths: '{}.{rtl_prefix}{suffix}' is \
+                         {width} bits, expected {previous} bits",
+                        module.name
                     ),
-                )
-            })?;
-            if let Some(previous) = id_width {
-                if width != previous {
-                    return Err(invalid_direct_mmap(
-                        interface,
-                        &format!(
-                            "has inconsistent child RTL ID widths: '{}.{port_name}' is {width} \
-                             bits, expected {previous} bits",
-                            module.name
-                        ),
-                    ));
-                }
-            } else {
-                id_width = Some(width);
+                ));
             }
+        } else {
+            id_width = Some(width);
         }
     }
 
@@ -473,34 +474,6 @@ fn render_port_width(port: &RtlPort) -> String {
             expression_source(&width.lsb)
         )
     })
-}
-
-fn resolve_rtl_port_width(module: &VerilogModule, port: &RtlPort) -> Option<u32> {
-    let Some(width) = &port.width else {
-        return Some(1);
-    };
-    let msb = resolve_width_endpoint(module, &width.msb)?;
-    let lsb = resolve_width_endpoint(module, &width.lsb)?;
-    msb.abs_diff(lsb).checked_add(1)
-}
-
-fn resolve_width_endpoint(module: &VerilogModule, expression: &Expression) -> Option<u32> {
-    if let Some(value) = expression_as_u32(expression) {
-        return Some(value);
-    }
-    let source = expression_source(expression).replace(' ', "");
-    source.strip_suffix("-1").map_or_else(
-        || resolve_parameter_default(module, &source),
-        |parameter| resolve_parameter_default(module, parameter)?.checked_sub(1),
-    )
-}
-
-fn resolve_parameter_default(module: &VerilogModule, name: &str) -> Option<u32> {
-    let parameter = module
-        .parameters
-        .iter()
-        .find(|parameter| parameter.name == name)?;
-    expression_as_u32(&parameter.default)
 }
 
 #[cfg(test)]
