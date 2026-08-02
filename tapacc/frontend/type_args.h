@@ -6,6 +6,7 @@
 #include <string>
 
 #include "clang/AST/ASTContext.h"
+#include "clang/AST/Decl.h"
 #include "clang/AST/TemplateBase.h"
 #include "clang/AST/Type.h"
 
@@ -32,6 +33,17 @@ std::optional<int64_t> IntTemplateArg(clang::QualType type, unsigned idx);
 
 // Bit width of a type per the ASTContext (e.g. 32 for float).
 uint32_t BitWidth(const clang::ASTContext& ctx, clang::QualType type);
+
+// The element (0th template arg) type of a stream/mmap port, printed as its
+// C++ spelling (e.g. "const float" for `tapa::mmap<const float>`). Empty if
+// absent. Shared by the frontend port model and the codegen backends.
+std::string ElementTypeName(const clang::ParmVarDecl* param);
+
+// Bit width of the element (0th template arg) type of a port, or 0 if absent.
+uint32_t ElementWidth(const clang::ParmVarDecl* param);
+
+// Channel count (template arg at index 1) of an array-interface port, or 0.
+int64_t ArraySize(const clang::ParmVarDecl* param);
 
 }  // namespace tapa::cc
 

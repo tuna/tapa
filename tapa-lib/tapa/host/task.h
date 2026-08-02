@@ -9,9 +9,8 @@
 #include "tapa/host/coroutine.h"
 #include "tapa/host/logging.h"
 
-#include <sys/wait.h>
-#include <unistd.h>
 #include <chrono>
+#include <csignal>
 #include <functional>
 #include <memory>
 #include <optional>

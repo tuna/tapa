@@ -1,5 +1,6 @@
 #include "type_args.h"
 
+#include "clang/AST/Decl.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/Basic/LangOptions.h"
 #include "llvm/Support/raw_ostream.h"
@@ -84,6 +85,26 @@ std::optional<int64_t> TemplateArgAsInt(const clang::TemplateArgument& arg) {
 
 uint32_t BitWidth(const clang::ASTContext& ctx, clang::QualType type) {
   return static_cast<uint32_t>(ctx.getTypeSize(type));
+}
+
+std::string ElementTypeName(const clang::ParmVarDecl* param) {
+  if (const auto* arg = GetTemplateArg(param->getType(), 0)) {
+    return TemplateArgName(*arg);
+  }
+  return "";
+}
+
+uint32_t ElementWidth(const clang::ParmVarDecl* param) {
+  if (const auto* arg = GetTemplateArg(param->getType(), 0)) {
+    if (arg->getKind() == clang::TemplateArgument::Type) {
+      return BitWidth(param->getASTContext(), arg->getAsType());
+    }
+  }
+  return 0;
+}
+
+int64_t ArraySize(const clang::ParmVarDecl* param) {
+  return IntTemplateArg(param->getType(), 1).value_or(0);
 }
 
 }  // namespace tapa::cc

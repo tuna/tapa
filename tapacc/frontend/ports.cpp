@@ -7,37 +7,13 @@
 #include "clang/Basic/Diagnostic.h"
 
 #include "classify.h"
+#include "codegen/conventions.h"
 #include "diag.h"
 #include "type_args.h"
 
 namespace tapa::cc {
 
 namespace {
-
-// name[i] — the per-channel spelling for an expanded array interface.
-std::string ArrayElemName(const std::string& name, uint32_t i) {
-  return name + "[" + std::to_string(i) + "]";
-}
-
-// The 0th template argument printed as a C++ type (element type), e.g.
-// "const float" for `tapa::mmap<const float>`. Empty if absent.
-std::string ElementTypeName(const clang::ParmVarDecl* param) {
-  if (const auto* arg = GetTemplateArg(param->getType(), 0)) {
-    return TemplateArgName(*arg);
-  }
-  return "";
-}
-
-// Bit width of the element (0th template arg) type, or 0 if absent.
-uint32_t ElementWidth(const clang::ASTContext& ctx,
-                      const clang::ParmVarDecl* param) {
-  if (const auto* arg = GetTemplateArg(param->getType(), 0)) {
-    if (arg->getKind() == clang::TemplateArgument::Type) {
-      return BitWidth(ctx, arg->getAsType());
-    }
-  }
-  return 0;
-}
 
 // An integral template argument at `idx` as a channel count, or nullopt.
 std::optional<uint32_t> IntArg(const clang::ParmVarDecl* param, unsigned idx) {
@@ -123,7 +99,7 @@ std::vector<Port> BuildPorts(const clang::ASTContext& ctx,
     CheckParamShape(ctx, param, kind);
     const std::string name = param->getNameAsString();
     const std::string elem = ElementTypeName(param);
-    const uint32_t elem_width = ElementWidth(ctx, param);
+    const uint32_t elem_width = ElementWidth(param);
 
     switch (kind) {
       case TapaKind::kMmap:
@@ -138,9 +114,9 @@ std::vector<Port> BuildPorts(const clang::ASTContext& ctx,
         // Expand to one `mmap` port per channel (name[i]).
         const uint32_t n = IntArg(param, 1).value_or(0);
         for (uint32_t i = 0; i < n; ++i) {
-          ports.push_back(Port{ArrayElemName(name, i), TapaKind::kMmap,
-                               elem + "*", elem_width, std::nullopt,
-                               std::nullopt});
+          ports.push_back(Port{ArrayNameAt(name, static_cast<int>(i)),
+                               TapaKind::kMmap, elem + "*", elem_width,
+                               std::nullopt, std::nullopt});
         }
         break;
       }

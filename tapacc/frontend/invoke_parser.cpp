@@ -10,6 +10,7 @@
 #include "clang/AST/Mangle.h"
 
 #include "classify.h"
+#include "codegen/conventions.h"
 #include "diag.h"
 #include "discover.h"
 #include "names.h"
@@ -18,10 +19,6 @@
 namespace tapa::cc {
 
 namespace {
-
-std::string ArrayNameAt(const std::string& name, int64_t i) {
-  return name + "[" + std::to_string(i) + "]";
-}
 
 std::optional<int64_t> EvalInt(const clang::ASTContext& ctx,
                                const clang::Expr* expr) {
@@ -196,8 +193,7 @@ void ParseInvocations(UpperTaskContext& uc, const clang::Expr* task_obj) {
   // The child-name mangler and the access positions, which distribute an
   // array argument (streams/mmaps) across the scalar ports it feeds, in
   // order of appearance.
-  std::unique_ptr<clang::MangleContext> mangler(
-      clang::ItaniumMangleContext::create(uc.ctx, uc.ctx.getDiagnostics()));
+  const auto mangler = CreateMangleContext(uc.ctx);
   std::map<std::string, int> istreams_pos;
   std::map<std::string, int> ostreams_pos;
   std::map<std::string, int> mmaps_pos;
@@ -292,16 +288,16 @@ void ParseInvocations(UpperTaskContext& uc, const clang::Expr* task_obj) {
           } else if (pk == TapaKind::kIStreams) {
             const int64_t n = IntTemplateArg(param->getType(), 1).value_or(0);
             for (int64_t j = 0; j < n; ++j) {
-              const std::string a = ArrayElement(
-                  arg_name, istreams_pos[arg_name]++, decl_ref);
+              const std::string a =
+                  ArrayElement(arg_name, istreams_pos[arg_name]++, decl_ref);
               uc.MarkConsumer(a, task_name, inst_index, arg->getBeginLoc());
               set_arg(a, ArrayNameAt(port, j), TapaKind::kIStream);
             }
           } else if (pk == TapaKind::kOStreams) {
             const int64_t n = IntTemplateArg(param->getType(), 1).value_or(0);
             for (int64_t j = 0; j < n; ++j) {
-              const std::string a = ArrayElement(
-                  arg_name, ostreams_pos[arg_name]++, decl_ref);
+              const std::string a =
+                  ArrayElement(arg_name, ostreams_pos[arg_name]++, decl_ref);
               uc.MarkProducer(a, task_name, inst_index, arg->getBeginLoc());
               set_arg(a, ArrayNameAt(port, j), TapaKind::kOStream);
             }

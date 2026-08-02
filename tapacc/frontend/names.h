@@ -1,6 +1,7 @@
 #ifndef TAPA_FRONTEND_NAMES_H_
 #define TAPA_FRONTEND_NAMES_H_
 
+#include <memory>
 #include <string>
 
 #include "clang/AST/ASTContext.h"
@@ -8,6 +9,10 @@
 #include "clang/AST/Mangle.h"
 
 namespace tapa::cc {
+
+// The shared Itanium mangler used to mangle task names; one per ASTContext.
+std::unique_ptr<clang::MangleContext> CreateMangleContext(
+    clang::ASTContext& ctx);
 
 // The mangled name for a task, prefixed "tapa_mangled" so the emitted symbol
 // never starts with '_' (which Vitis rejects). Used for template

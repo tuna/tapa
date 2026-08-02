@@ -115,9 +115,8 @@ std::map<std::string, TaskModel> DiscoverTasks(
 
   const auto top_it = defs.find(top_name.str());
   if (top_it == defs.end()) {
-    auto builder =
-        ReportCustomDiag(ctx, clang::DiagnosticsEngine::Error, {},
-                         "top-level task '%0' not found");
+    auto builder = ReportCustomDiag(ctx, clang::DiagnosticsEngine::Error, {},
+                                    "top-level task '%0' not found");
     builder.AddString(top_name);
     return {};
   }
@@ -129,8 +128,7 @@ std::map<std::string, TaskModel> DiscoverTasks(
     return {};
   }
 
-  const std::unique_ptr<clang::MangleContext> mangler(
-      clang::ItaniumMangleContext::create(ctx, ctx.getDiagnostics()));
+  const auto mangler = CreateMangleContext(ctx);
 
   auto make_model = [&](const clang::FunctionDecl* func,
                         const clang::FunctionDecl* invoker,

@@ -37,11 +37,13 @@ cc_library(
     srcs = ["ports.cpp"],
     hdrs = ["ports.h"],
     copts = TAPACC_COPTS,
+    includes = [".."],
     deps = [
         ":classify",
         ":diag",
         ":program",
         ":type_args",
+        "//tapacc/codegen:conventions",
         CLANG_TOOLING,
     ],
 )
@@ -118,6 +120,7 @@ cc_library(
     srcs = ["invoke_parser.cpp"],
     hdrs = ["invoke_parser.h"],
     copts = TAPACC_COPTS,
+    includes = [".."],
     deps = [
         ":classify",
         ":diag",
@@ -125,6 +128,7 @@ cc_library(
         ":names",
         ":program",
         ":type_args",
+        "//tapacc/codegen:conventions",
         CLANG_TOOLING,
     ],
 )

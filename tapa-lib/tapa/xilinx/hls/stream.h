@@ -44,12 +44,6 @@ class tapa_stream {
     return eot;
   }
 
-  bool eot(std::nullptr_t) const {
-#pragma HLS inline
-    bool is_success;
-    return eot(is_success) && is_success;
-  }
-
   bool try_peek(T& value) const {
 #pragma HLS inline
     if (!empty()) {

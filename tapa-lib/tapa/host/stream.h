@@ -4,12 +4,10 @@
 
 #pragma once
 
-#include <cstddef>
-#include <cstdint>
-#include <cstring>
-
 #include <array>
 #include <atomic>
+#include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <fstream>
 #include <iomanip>
@@ -18,12 +16,9 @@
 #include <string>
 #include <string_view>
 #include <thread>
-#include <variant>
 #include <vector>
 
 #include <glog/logging.h>
-
-#include <unistd.h>
 
 #include "tapa/base/stream.h"
 #include "tapa/host/coroutine.h"
@@ -334,13 +329,6 @@ class istream : virtual public internal::basic_stream<T> {
     return eot;
   }
 
-  /// Returns true if next token is available and is EoT.
-  bool eot(std::nullptr_t) {
-    bool eot = false;
-    try_eot(eot);
-    return eot;
-  }
-
   /// Sets @p value to the next non-EoT token and returns true if available
   /// (non-blocking).
   bool try_peek(T& value) {
@@ -422,17 +410,6 @@ class istream : virtual public internal::basic_stream<T> {
     T val;
     try_read(val);
     return val;
-  }
-
-  /// Non-blocking read; returns value or @p default_value; optionally sets @p
-  /// is_success.
-  T read(const T& default_value, bool* is_success = nullptr) {
-    T val;
-    bool succeeded = try_read(val);
-    if (is_success != nullptr) {
-      *is_success = succeeded;
-    }
-    return succeeded ? val : default_value;
   }
 
   /// Non-blocking consume of an EoT token; returns true if consumed.

@@ -6,6 +6,12 @@
 
 namespace tapa::cc {
 
+std::unique_ptr<clang::MangleContext> CreateMangleContext(
+    clang::ASTContext& ctx) {
+  return std::unique_ptr<clang::MangleContext>(
+      clang::ItaniumMangleContext::create(ctx, ctx.getDiagnostics()));
+}
+
 std::string MangledTaskName(clang::MangleContext& mangler,
                             const clang::FunctionDecl* func) {
   std::string name;

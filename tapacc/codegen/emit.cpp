@@ -5,37 +5,10 @@
 
 #include "clang/AST/Stmt.h"
 
-#include "frontend/type_args.h"
 #include "conventions.h"
+#include "frontend/type_args.h"
 
 namespace tapa::cc {
-
-namespace {
-
-// Element (0th template arg) type spelling of a stream/mmap, e.g. "float".
-std::string ElementType(const clang::ParmVarDecl* param) {
-  if (const auto* arg = GetTemplateArg(param->getType(), 0)) {
-    return TemplateArgName(*arg);
-  }
-  return "";
-}
-
-// Element bit width, or 0.
-uint32_t ElementWidth(const clang::ParmVarDecl* param) {
-  if (const auto* arg = GetTemplateArg(param->getType(), 0)) {
-    if (arg->getKind() == clang::TemplateArgument::Type) {
-      return BitWidth(param->getASTContext(), arg->getAsType());
-    }
-  }
-  return 0;
-}
-
-// Channel count of an array interface, or 0.
-int64_t ArraySize(const clang::ParmVarDecl* param) {
-  return IntTemplateArg(param->getType(), 1).value_or(0);
-}
-
-}  // namespace
 
 void EmitDummyStreamRW(const clang::ParmVarDecl* param, TapaKind kind,
                        CodeSink& out, bool qdma) {
@@ -56,7 +29,7 @@ void EmitDummyStreamRW(const clang::ParmVarDecl* param, TapaKind kind,
       dummy_read(name);
       break;
     case TapaKind::kOStream: {
-      std::string type = ElementType(param);
+      std::string type = ElementTypeName(param);
       if (qdma) {
         type =
             "qdma_axis<" + std::to_string(ElementWidth(param)) + ", 0, 0, 0>";
@@ -77,7 +50,7 @@ void EmitDummyStreamRW(const clang::ParmVarDecl* param, TapaKind kind,
       if (qdma) {
         out.Line("#error ostreams not supported for qdma-based tasks");
       } else {
-        const std::string type = ElementType(param);
+        const std::string type = ElementTypeName(param);
         for (int64_t i = 0; i < ArraySize(param); ++i) {
           dummy_write(ArrayNameAt(name, static_cast<int>(i)), type);
         }

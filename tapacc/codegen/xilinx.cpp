@@ -9,10 +9,10 @@
 #include "clang/Lex/Lexer.h"
 #include "llvm/Support/raw_ostream.h"
 
-#include "frontend/classify.h"
-#include "frontend/type_args.h"
 #include "conventions.h"
 #include "emit.h"
+#include "frontend/classify.h"
+#include "frontend/type_args.h"
 
 namespace tapa::cc {
 
@@ -31,10 +31,6 @@ Lvl LvlOf(TaskLevel level, bool is_top, bool is_vitis) {
 
 bool IsMmapArray(TapaKind k) {
   return k == TapaKind::kMmaps || k == TapaKind::kHmap;
-}
-
-int64_t ArraySize(const clang::ParmVarDecl* param) {
-  return IntTemplateArg(param->getType(), 1).value_or(0);
 }
 
 // AddCodeForLowerLevelStream: HLS interface pragmas for a stream port's
@@ -220,18 +216,14 @@ void XilinxBackend::EmitScalarPort(const PortContext& p, CodeSink& out) const {
     case Lvl::kLower:
       break;  // no interface pragma for lower-level scalars
     case Lvl::kMiddle:
-      out.Pragma({"HLS interface ap_none port =", name, "register"});
-      EmitDummyMmapOrScalarRW(p.param, p.kind, out);
-      break;
     case Lvl::kTop:
-      if (is_vitis_) {
+      if (lvl == Lvl::kTop && is_vitis_) {
         out.Pragma(
             {"HLS interface s_axilite port =", name, "bundle = control"});
-        EmitDummyMmapOrScalarRW(p.param, p.kind, out);
       } else {
         out.Pragma({"HLS interface ap_none port =", name, "register"});
-        EmitDummyMmapOrScalarRW(p.param, p.kind, out);
       }
+      EmitDummyMmapOrScalarRW(p.param, p.kind, out);
       break;
   }
 }
