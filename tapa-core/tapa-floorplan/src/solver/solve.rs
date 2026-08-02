@@ -209,8 +209,6 @@ pub struct SolveOpts {
     pub time_limit: Option<Duration>,
     /// Worker thread count. `Some(1)` for deterministic solves.
     pub threads: Option<u32>,
-    /// Relative MIP optimality gap to accept.
-    pub mip_gap: Option<f64>,
     /// Absolute MIP optimality gap to accept.
     pub mip_gap_abs: Option<f64>,
 }
@@ -228,7 +226,6 @@ impl SolveOpts {
                 "the solver thread count must be greater than zero".to_string(),
             ));
         }
-        validate_gap("relative MIP gap", self.mip_gap)?;
         validate_gap("absolute MIP gap", self.mip_gap_abs)?;
         Ok(())
     }
@@ -342,11 +339,6 @@ mod tests {
         ));
 
         for gap in [f64::NAN, f64::INFINITY, -0.1] {
-            let relative = SolveOpts {
-                mip_gap: Some(gap),
-                ..SolveOpts::default()
-            };
-            relative.validate().expect_err("invalid relative gap");
             let absolute = SolveOpts {
                 mip_gap_abs: Some(gap),
                 ..SolveOpts::default()

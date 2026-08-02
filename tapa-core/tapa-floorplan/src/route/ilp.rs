@@ -12,7 +12,7 @@
 //! and minimizes the stable candidate-path index, so equal-quality routes
 //! resolve deterministically across solver versions.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use crate::device::model::{effective_border_capacity, Device, WIRE_CAPACITY_INF};
 use crate::route::paths::{enumerate_paths, Cell};
@@ -21,6 +21,7 @@ use crate::solver::sparse::SparseRow;
 use crate::solver::{
     Comparison, LinExpr, LpModel, LpStatus, LpVar, Sense, SolveOpts, Solver, SolverError,
 };
+use crate::ExactInt;
 
 /// Maximum extra slot visits in a generated candidate path.
 const MAX_DETOUR: usize = 2;
@@ -39,12 +40,6 @@ pub struct RouteNet {
     /// Bundled wire width.
     pub width: u32,
 }
-
-/// Preassigned routes keyed by the net's stable input index.
-///
-/// A preassignment replaces that net's generated candidate set with exactly
-/// one route.
-type PreassignedRoutes = BTreeMap<usize, Vec<Cell>>;
 
 /// Why routing failed to produce paths.
 #[derive(Debug, thiserror::Error)]
@@ -71,15 +66,7 @@ pub enum RouteError {
         /// Invalid y coordinate.
         cell_y: u32,
     },
-    /// A preassignment names a net that does not exist.
-    #[error("preassigned route refers to net {net_index}, but only {net_count} nets exist")]
-    UnknownPreassignment {
-        /// Invalid net index.
-        net_index: usize,
-        /// Number of input nets.
-        net_count: usize,
-    },
-    /// A generated or preassigned route is structurally invalid.
+    /// A generated route is structurally invalid.
     #[error("invalid candidate path for net {net_index}: {reason}")]
     InvalidPath {
         /// Net position in the input slice.
@@ -107,16 +94,6 @@ struct Boundary {
 /// derated; `None` when the boundary is unconstrained on both sides.
 fn boundary_capacity(lhs: u64, rhs: u64) -> Option<u64> {
     (lhs.min(rhs) < WIRE_CAPACITY_INF).then(|| effective_border_capacity(lhs, rhs))
-}
-
-/// Physical capacities are small integer counts and exactly representable in
-/// the solver's numeric range.
-#[allow(
-    clippy::cast_precision_loss,
-    reason = "wire capacities are small physical counts"
-)]
-fn capacity_as_f64(capacity: u64) -> f64 {
-    capacity as f64
 }
 
 /// Collect every adjacent-grid boundary in deterministic row-major order.
@@ -218,26 +195,11 @@ fn validate_nets(nets: &[RouteNet], device: &Device) -> Result<(), RouteError> {
     Ok(())
 }
 
-/// Build generated or singleton-preassigned candidates in net input order.
-fn candidates_for(
-    nets: &[RouteNet],
-    device: &Device,
-    preassigned: &PreassignedRoutes,
-) -> Result<Vec<Vec<Vec<Cell>>>, RouteError> {
-    if let Some((&net_index, _)) = preassigned.iter().find(|(index, _)| **index >= nets.len()) {
-        return Err(RouteError::UnknownPreassignment {
-            net_index,
-            net_count: nets.len(),
-        });
-    }
-
+/// Build the generated candidates in net input order.
+fn candidates_for(nets: &[RouteNet], device: &Device) -> Result<Vec<Vec<Vec<Cell>>>, RouteError> {
     let mut candidates = Vec::with_capacity(nets.len());
     for (net_index, net) in nets.iter().enumerate() {
-        let paths = if let Some(path) = preassigned.get(&net_index) {
-            vec![path.clone()]
-        } else {
-            enumerate_paths(net.src, net.dst, device.cols, device.rows, MAX_DETOUR)
-        };
+        let paths = enumerate_paths(net.src, net.dst, device.cols, device.rows, MAX_DETOUR);
         if paths.is_empty() {
             return Err(RouteError::Infeasible);
         }
@@ -360,23 +322,8 @@ pub fn route_nets(
     solver: &dyn Solver,
     opts: &SolveOpts,
 ) -> Result<Vec<Vec<Cell>>, RouteError> {
-    route_nets_with_preassignments(nets, device, solver, opts, &PreassignedRoutes::new())
-}
-
-/// Route every net with optional singleton preassigned routes.
-///
-/// Entries in `preassigned` are keyed by the corresponding position in
-/// `nets`. A supplied path is validated and becomes that net's only MILP
-/// candidate; omitted nets use the standard candidate generator.
-fn route_nets_with_preassignments(
-    nets: &[RouteNet],
-    device: &Device,
-    solver: &dyn Solver,
-    opts: &SolveOpts,
-    preassigned: &PreassignedRoutes,
-) -> Result<Vec<Vec<Cell>>, RouteError> {
     validate_nets(nets, device)?;
-    let candidates = candidates_for(nets, device, preassigned)?;
+    let candidates = candidates_for(nets, device)?;
     if candidates.is_empty() {
         return Ok(Vec::new());
     }
@@ -423,10 +370,10 @@ fn route_nets_with_preassignments(
             format!("bound_{boundary_index}_capacity"),
             crossings.into_expr(),
             Comparison::Le,
-            capacity_as_f64(capacity),
+            capacity.as_f64(),
         );
         if let (Some(max_crossings), true) = (max_crossings, capacity > 0) {
-            normalization.push(-capacity_as_f64(capacity), max_crossings);
+            normalization.push(-capacity.as_f64(), max_crossings);
             lp.add_constraint(
                 format!("bound_{boundary_index}"),
                 normalization.into_expr(),
@@ -487,7 +434,7 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
-    use crate::device::model::{DirCaps, Slot, PP_DIST};
+    use crate::device::model::{DirCaps, Slot};
     use crate::device::select::select_device;
     use crate::solver::{CbcSolver, LpSolution, LpStatus};
     use tapa_ir::Area;
@@ -515,6 +462,39 @@ mod tests {
     impl Solver for PanicSolver {
         fn solve(&self, _model: &LpModel, _opts: &SolveOpts) -> Result<LpSolution, SolverError> {
             panic!("invalid routing input must be rejected before solving")
+        }
+    }
+
+    /// A solver answering `value` for every model variable, with `selected`
+    /// forced to 1: enough to steer selection readback deterministically.
+    #[derive(Debug)]
+    struct DictatedSolver {
+        objective: f64,
+        value: f64,
+        selected: Option<LpVar>,
+    }
+
+    impl Solver for DictatedSolver {
+        fn solve(&self, model: &LpModel, _opts: &SolveOpts) -> Result<LpSolution, SolverError> {
+            let mut values = model
+                .vars
+                .iter()
+                .enumerate()
+                .map(|(index, _)| {
+                    (
+                        LpVar(u32::try_from(index).expect("variable count fits u32")),
+                        self.value,
+                    )
+                })
+                .collect::<HashMap<_, _>>();
+            if let Some(selected) = self.selected {
+                values.insert(selected, 1.0);
+            }
+            Ok(LpSolution {
+                status: LpStatus::Optimal,
+                objective: self.objective,
+                values,
+            })
         }
     }
 
@@ -551,7 +531,6 @@ mod tests {
             platform_name: None,
             rows: 2,
             cols: 2,
-            pp_dist: PP_DIST,
             is_versal: false,
             user_pblock_name: None,
             slots,
@@ -684,7 +663,6 @@ mod tests {
             platform_name: None,
             rows: 3,
             cols: 3,
-            pp_dist: PP_DIST,
             is_versal: false,
             user_pblock_name: None,
             slots,
@@ -745,55 +723,6 @@ mod tests {
     }
 
     #[test]
-    fn preassigned_route_is_the_only_candidate() {
-        let device = toy_device(100);
-        let nets = [RouteNet {
-            src: (0, 0),
-            dst: (1, 0),
-            width: 10,
-        }];
-        let path = vec![(0, 0), (0, 1), (1, 1), (1, 0)];
-        let preassigned = PreassignedRoutes::from([(0, path.clone())]);
-        // x0 is max_crossings; x1 is the singleton path variable.
-        let solver = FixedSolver {
-            status: LpStatus::Optimal,
-            objective: 0.1,
-            values: vec![(LpVar(0), 0.1), (LpVar(1), 1.0)],
-        };
-        assert_eq!(
-            route_nets_with_preassignments(
-                &nets,
-                &device,
-                &solver,
-                &SolveOpts::default(),
-                &preassigned,
-            )
-            .expect("valid preassignment"),
-            vec![path],
-        );
-    }
-
-    #[test]
-    fn invalid_preassigned_path_is_rejected_before_solving() {
-        let device = toy_device(100);
-        let nets = [RouteNet {
-            src: (0, 0),
-            dst: (1, 1),
-            width: 1,
-        }];
-        let preassigned = PreassignedRoutes::from([(0, vec![(0, 0), (1, 1)])]);
-        let err = route_nets_with_preassignments(
-            &nets,
-            &device,
-            &PanicSolver,
-            &SolveOpts::default(),
-            &preassigned,
-        )
-        .expect_err("diagonal hop is invalid");
-        assert!(matches!(err, RouteError::InvalidPath { .. }), "got {err}");
-    }
-
-    #[test]
     fn missing_path_selection_is_not_defaulted_to_path_zero() {
         let device = toy_device(100);
         let nets = [RouteNet {
@@ -801,18 +730,15 @@ mod tests {
             dst: (1, 0),
             width: 1,
         }];
-        let preassigned = PreassignedRoutes::from([(0, vec![(0, 0), (1, 0)])]);
-        let solver = FixedSolver {
-            status: LpStatus::Optimal,
-            objective: 0.0,
-            values: vec![(LpVar(0), 0.0), (LpVar(1), 0.0)],
-        };
-        let err = route_nets_with_preassignments(
+        let err = route_nets(
             &nets,
             &device,
-            &solver,
+            &DictatedSolver {
+                objective: 0.0,
+                value: 0.0,
+                selected: None,
+            },
             &SolveOpts::default(),
-            &preassigned,
         )
         .expect_err("no path selected");
         assert!(matches!(err, RouteError::InvalidSolution(_)), "got {err}");
@@ -827,18 +753,15 @@ mod tests {
             dst: (1, 0),
             width: 1,
         }];
-        let preassigned = PreassignedRoutes::from([(0, vec![(0, 0), (1, 0)])]);
-        let solver = FixedSolver {
-            status: LpStatus::Optimal,
-            objective: 0.0,
-            values: vec![(LpVar(0), 0.0)],
-        };
-        let err = route_nets_with_preassignments(
+        let err = route_nets(
             &nets,
             &device,
-            &solver,
+            &FixedSolver {
+                status: LpStatus::Optimal,
+                objective: 0.0,
+                values: Vec::new(),
+            },
             &SolveOpts::default(),
-            &preassigned,
         )
         .expect_err("omitted path variable");
         assert!(matches!(err, RouteError::InvalidSolution(_)), "got {err}");
@@ -853,18 +776,15 @@ mod tests {
             dst: (1, 0),
             width: 1,
         }];
-        let preassigned = PreassignedRoutes::from([(0, vec![(0, 0), (1, 0)])]);
-        let solver = FixedSolver {
-            status: LpStatus::Optimal,
-            objective: 0.0,
-            values: vec![(LpVar(0), 0.0), (LpVar(1), 0.5)],
-        };
-        let err = route_nets_with_preassignments(
+        let err = route_nets(
             &nets,
             &device,
-            &solver,
+            &DictatedSolver {
+                objective: 0.0,
+                value: 0.5,
+                selected: None,
+            },
             &SolveOpts::default(),
-            &preassigned,
         )
         .expect_err("fractional path variable");
         assert!(matches!(err, RouteError::InvalidSolution(_)), "got {err}");
@@ -873,25 +793,24 @@ mod tests {
 
     #[test]
     fn over_capacity_solution_is_rejected() {
-        // The derated capacity of the preassigned hop is round(10 * 0.7) = 7.
+        // x0 is max_crossings; per-candidate path variables follow with the
+        // direct path first (shortest-first enumeration). Its derated
+        // capacity is round(10 * 0.7) = 7.
         let device = toy_device(10);
         let nets = [RouteNet {
             src: (0, 0),
             dst: (1, 0),
             width: 11,
         }];
-        let preassigned = PreassignedRoutes::from([(0, vec![(0, 0), (1, 0)])]);
-        let solver = FixedSolver {
-            status: LpStatus::Optimal,
-            objective: 1.1,
-            values: vec![(LpVar(0), 1.1), (LpVar(1), 1.0)],
-        };
-        let err = route_nets_with_preassignments(
+        let err = route_nets(
             &nets,
             &device,
-            &solver,
+            &DictatedSolver {
+                objective: 1.1,
+                value: 0.0,
+                selected: Some(LpVar(1)),
+            },
             &SolveOpts::default(),
-            &preassigned,
         )
         .expect_err("11 wires over a capacity-7 boundary is illegal");
         assert!(matches!(err, RouteError::InvalidSolution(_)), "got {err}");
@@ -904,11 +823,11 @@ mod tests {
     #[test]
     fn zero_capacity_forbids_any_crossing() {
         let device = toy_device(0);
-        let preassigned = PreassignedRoutes::from([(0, vec![(0, 0), (1, 0)])]);
-        let solver = || FixedSolver {
-            status: LpStatus::Optimal,
+        // x0 is max_crossings; x1 is the direct path's variable.
+        let solver = || DictatedSolver {
             objective: 0.0,
-            values: vec![(LpVar(0), 0.0), (LpVar(1), 1.0)],
+            value: 0.0,
+            selected: Some(LpVar(1)),
         };
 
         // A positive-width net may not cross: a zero-capacity boundary carries
@@ -918,14 +837,8 @@ mod tests {
             dst: (1, 0),
             width: 1,
         }];
-        let err = route_nets_with_preassignments(
-            &nets,
-            &device,
-            &solver(),
-            &SolveOpts::default(),
-            &preassigned,
-        )
-        .expect_err("wire over a zero-capacity boundary");
+        let err = route_nets(&nets, &device, &solver(), &SolveOpts::default())
+            .expect_err("wire over a zero-capacity boundary");
         assert!(matches!(err, RouteError::InvalidSolution(_)), "got {err}");
 
         // A zero-width net crosses nothing and is legal.
@@ -935,14 +848,8 @@ mod tests {
             width: 0,
         }];
         assert_eq!(
-            route_nets_with_preassignments(
-                &nets,
-                &device,
-                &solver(),
-                &SolveOpts::default(),
-                &preassigned,
-            )
-            .expect("zero-width net crosses nothing"),
+            route_nets(&nets, &device, &solver(), &SolveOpts::default())
+                .expect("zero-width net crosses nothing"),
             vec![vec![(0, 0), (1, 0)]],
         );
     }
@@ -950,28 +857,21 @@ mod tests {
     #[test]
     fn unconstrained_device_has_no_capacity_limit() {
         // Every boundary defaults to the unconstrained sentinel, so no
-        // max_crossings variable exists: the first path variable is x0.
+        // max_crossings variable exists: x0 is the direct path's variable.
         let device = toy_unbounded_device();
         let nets = [RouteNet {
             src: (0, 0),
             dst: (1, 0),
             width: 1_000_000,
         }];
-        let preassigned = PreassignedRoutes::from([(0, vec![(0, 0), (1, 0)])]);
-        let solver = FixedSolver {
-            status: LpStatus::Optimal,
+        let solver = DictatedSolver {
             objective: 1.0,
-            values: vec![(LpVar(0), 1.0)],
+            value: 0.0,
+            selected: Some(LpVar(0)),
         };
         assert_eq!(
-            route_nets_with_preassignments(
-                &nets,
-                &device,
-                &solver,
-                &SolveOpts::default(),
-                &preassigned,
-            )
-            .expect("an unconstrained device imposes no wire budget"),
+            route_nets(&nets, &device, &solver, &SolveOpts::default())
+                .expect("an unconstrained device imposes no wire budget"),
             vec![vec![(0, 0), (1, 0)]],
         );
     }

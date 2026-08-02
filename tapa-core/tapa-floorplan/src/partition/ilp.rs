@@ -33,6 +33,7 @@ use crate::solver::sparse::SparseRow;
 use crate::solver::{
     Comparison, LinExpr, LpModel, LpStatus, LpVar, Sense, SolveOpts, Solver, SolverError,
 };
+use crate::ExactInt;
 
 /// The retry envelope for partitioning.
 const USAGE_LIMIT_STEP: f64 = 0.02;
@@ -875,14 +876,14 @@ fn add_resource_constraints(
                     .iter()
                     .position(|candidate| *candidate == region)
                 {
-                    terms.push(u64_as_f64(resource.amount(&vertex.area)), x[vi][ci]);
+                    terms.push(resource.amount(&vertex.area).as_f64(), x[vi][ci]);
                 }
             }
 
             let max_rhs = lookup_limit(&constraints.max_resource_limits, &region, resource)
                 .map_or_else(
-                    || u64_as_f64(scaled_amount(resource.amount(&total), usage_limit)),
-                    |limit| u64_as_f64(resource.amount(&total)) * limit,
+                    || scaled_amount(resource.amount(&total), usage_limit).as_f64(),
+                    |limit| resource.amount(&total).as_f64() * limit,
                 );
             lp.add_constraint(
                 format!("node_{}_{}_usage", region.region_name(), resource.name()),
@@ -925,7 +926,7 @@ fn add_cut_constraints(
             format!("cut_{}_capacity", cut.name),
             terms.into_expr(),
             Comparison::Le,
-            u64_as_f64(cut.capacity),
+            cut.capacity.as_f64(),
         );
     }
 }
@@ -952,7 +953,7 @@ fn add_objective(
         let distance_twice = (src_centroid.0 - dst_centroid.0).abs()
             + VERTICAL_DIST_PENALTY * (src_centroid.1 - dst_centroid.1).abs();
         if distance_twice != 0 {
-            let coefficient = f64::from(term.edge.width) * i64_as_f64(distance_twice) / 2.0;
+            let coefficient = f64::from(term.edge.width) * distance_twice.as_f64() / 2.0;
             objective.push(coefficient, term.var(y));
         }
     }
@@ -970,22 +971,6 @@ fn centroid_twice(device: &Device, region: &Coor) -> Result<(i64, i64), IlpError
         .slot(region.ur_x, region.ur_y)
         .ok_or_else(|| IlpError::InvalidRegion(region.region_name()))?;
     Ok((dl.centroid_x + ur.centroid_x, dl.centroid_y + ur.centroid_y))
-}
-
-#[allow(
-    clippy::cast_precision_loss,
-    reason = "FPGA resource and cut coefficients are small exact integers"
-)]
-fn u64_as_f64(value: u64) -> f64 {
-    value as f64
-}
-
-#[allow(
-    clippy::cast_precision_loss,
-    reason = "device-grid centroid distances are small exact integers"
-)]
-fn i64_as_f64(value: i64) -> f64 {
-    value as f64
 }
 
 #[cfg(test)]

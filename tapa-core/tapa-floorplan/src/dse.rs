@@ -9,6 +9,7 @@ use crate::device::select::select_device;
 use crate::partition::ilp::IlpError;
 use crate::pipeline::plan::PipelineError;
 use crate::route::ilp::RouteError;
+use crate::ExactInt;
 use crate::{
     plan_with_inputs_at_usage_limit_and_caps, ExactDseResourceCaps, PlanError, PlanInputs,
     PlanOptions, EXACT_DSE_CAP_SCALE, MULTILEVEL_BLOCK_RESOURCE_MARGIN_UNITS,
@@ -452,12 +453,8 @@ fn realized_utilization(
     Ok(utilization)
 }
 
-#[allow(
-    clippy::cast_precision_loss,
-    reason = "device resource counts are far below the exact integer range of f64"
-)]
 fn resource_ratio(used: u64, available: u64) -> f64 {
-    used as f64 / available as f64
+    used.as_f64() / available.as_f64()
 }
 
 #[cfg(test)]

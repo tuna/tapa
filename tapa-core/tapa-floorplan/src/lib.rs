@@ -49,3 +49,33 @@ pub(crate) use crate::plan::{
     plan_with_inputs_at_usage_limit_and_caps, ExactDseResourceCaps, EXACT_DSE_CAP_SCALE,
     MULTILEVEL_BLOCK_RESOURCE_MARGIN_UNITS,
 };
+
+/// Widening conversion of the small exact integers the formulations scale
+/// into `f64` solver coefficients.
+///
+/// Every converted value is a physical count or grid coordinate far below
+/// 2^53, so the cast is exact.
+pub(crate) trait ExactInt: Copy {
+    /// The value widened to `f64`.
+    fn as_f64(self) -> f64;
+}
+
+#[allow(
+    clippy::cast_precision_loss,
+    reason = "converted values are physical counts and grid coordinates far below 2^53"
+)]
+impl ExactInt for u64 {
+    fn as_f64(self) -> f64 {
+        self as f64
+    }
+}
+
+#[allow(
+    clippy::cast_precision_loss,
+    reason = "converted values are physical counts and grid coordinates far below 2^53"
+)]
+impl ExactInt for i64 {
+    fn as_f64(self) -> f64 {
+        self as f64
+    }
+}

@@ -209,7 +209,6 @@ mod tests {
             platform_name: None,
             rows: 2,
             cols: 2,
-            pp_dist: 1,
             is_versal: false,
             user_pblock_name: None,
             // Each physical cell-pair boundary is governed by the *smaller* of
@@ -252,7 +251,6 @@ mod tests {
             platform_name: None,
             rows: 2,
             cols: 3,
-            pp_dist: 1,
             is_versal: false,
             user_pblock_name: None,
             slots: vec![

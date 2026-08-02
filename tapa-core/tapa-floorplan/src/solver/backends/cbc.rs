@@ -105,9 +105,6 @@ impl CbcSolver {
         if let Some(limit) = opts.time_limit {
             cmd.arg("-sec").arg(limit.as_secs_f64().to_string());
         }
-        if let Some(gap) = opts.mip_gap {
-            cmd.arg("-ratioGap").arg(gap.to_string());
-        }
         if let Some(gap) = opts.mip_gap_abs {
             cmd.arg("-allowableGap").arg(gap.to_string());
         }
@@ -365,9 +362,8 @@ Optimal - objective value 12.00000000
     }
 
     #[test]
-    fn command_emits_independent_absolute_and_relative_gaps() {
+    fn command_emits_the_absolute_gap() {
         let opts = SolveOpts {
-            mip_gap: Some(0.02),
             mip_gap_abs: Some(0.001),
             ..SolveOpts::default()
         };
@@ -380,7 +376,7 @@ Optimal - objective value 12.00000000
             .get_args()
             .map(|arg| arg.to_string_lossy().into_owned())
             .collect::<Vec<_>>();
-        assert!(args.windows(2).any(|pair| pair == ["-ratioGap", "0.02"]));
+        assert!(!args.iter().any(|arg| arg == "-ratioGap"));
         assert!(args
             .windows(2)
             .any(|pair| pair == ["-allowableGap", "0.001"]));

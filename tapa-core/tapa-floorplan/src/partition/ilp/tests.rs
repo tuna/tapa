@@ -6,6 +6,7 @@ use super::*;
 use crate::device::model::{DirCaps, Slot};
 use crate::device::select::select_device;
 use crate::solver::{LpSolution, VarKind};
+use crate::ExactInt;
 
 fn named_terms(model: &LpModel, expr: &LinExpr) -> BTreeMap<String, f64> {
     let mut terms = BTreeMap::new();
@@ -397,7 +398,6 @@ fn one_slot_device(lut: u64) -> Device {
         platform_name: None,
         rows: 1,
         cols: 1,
-        pp_dist: 1,
         is_versal: false,
         user_pblock_name: None,
         slots: vec![Slot {
@@ -439,7 +439,6 @@ fn two_slot_golden_device() -> Device {
         platform_name: None,
         rows: 2,
         cols: 1,
-        pp_dist: 1,
         is_versal: false,
         user_pblock_name: None,
         slots: vec![slot(0, 0), slot(1, 150)],
@@ -783,7 +782,6 @@ fn multilevel_recovers_when_an_aggregate_parent_has_no_feasible_child() {
         platform_name: None,
         rows: 2,
         cols: 2,
-        pp_dist: 1,
         is_versal: false,
         user_pblock_name: None,
         slots: vec![
@@ -923,7 +921,7 @@ fn resource_overrides_use_total_region_capacity() {
         &constraints,
     )
     .expect("model");
-    let total_lut = u64_as_f64(device.island_area(&region).expect("area").lut);
+    let total_lut = device.island_area(&region).expect("area").lut.as_f64();
     let max = model
         .lp
         .constraints
@@ -1019,10 +1017,10 @@ fn exact_multilevel_caps_apply_to_row_and_atomic_resource_rows() {
                 .expect("resource row");
             let expected = match resource {
                 Resource::Ff | Resource::Lut => {
-                    u64_as_f64(scaled_amount(resource.amount(&area), logic_limit))
+                    scaled_amount(resource.amount(&area), logic_limit).as_f64()
                 }
                 Resource::Bram18k | Resource::Dsp | Resource::Uram => {
-                    u64_as_f64(resource.amount(&area)) * block_limit
+                    resource.amount(&area).as_f64() * block_limit
                 }
             };
             assert_eq!(
@@ -1071,7 +1069,7 @@ fn exact_flat_candidates_keep_one_resource_cap() {
                 row.name == format!("node_{}_{}_usage", region.region_name(), resource.name())
             })
             .expect("resource row");
-        let expected = u64_as_f64(scaled_amount(resource.amount(&area), logic_limit));
+        let expected = scaled_amount(resource.amount(&area), logic_limit).as_f64();
         assert_eq!(
             row.rhs.to_bits(),
             expected.to_bits(),
@@ -1136,7 +1134,6 @@ fn rectangular_centroid_coefficients_preserve_half_units() {
         platform_name: None,
         rows: 1,
         cols: 3,
-        pp_dist: 1,
         is_versal: false,
         user_pblock_name: None,
         slots: vec![mk_slot(0, 0), mk_slot(1, 1), mk_slot(2, 4)],

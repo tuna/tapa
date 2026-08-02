@@ -23,8 +23,6 @@ pub const UNIT_DIST_X: i64 = 100;
 /// Vertical grid spacing — larger than [`UNIT_DIST_X`] to price in the cost of
 /// routing across an SLR (die) boundary.
 pub const UNIT_DIST_Y: i64 = 150;
-/// Physical distance one pipeline register hop spans.
-pub const PP_DIST: i64 = 100;
 /// Multiplier applied to vertical (SLR-crossing) distance in the floorplan
 /// objective, so the ILP prefers to keep channels within a die.
 pub const VERTICAL_DIST_PENALTY: i64 = 2;
@@ -155,8 +153,6 @@ pub struct Device {
     pub rows: u32,
     /// Number of grid columns.
     pub cols: u32,
-    /// Physical distance one pipeline register hop spans.
-    pub pp_dist: i64,
     /// Whether this is a Versal part (grid-only modeling, no NoC physics).
     #[serde(default)]
     pub is_versal: bool,
@@ -509,7 +505,6 @@ mod tests {
             platform_name: None,
             rows: 2,
             cols: 2,
-            pp_dist: PP_DIST,
             is_versal: false,
             user_pblock_name: None,
             slots: vec![
