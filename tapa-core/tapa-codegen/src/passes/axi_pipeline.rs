@@ -53,6 +53,10 @@ pub struct DirectAxiPipelinePlan {
 }
 
 impl DirectAxiPipelinePlan {
+    #[allow(
+        clippy::too_many_lines,
+        reason = "validation keeps the all-or-none five-channel contract in one pass"
+    )]
     pub(super) fn from_floorplan(
         interfaces: Vec<DirectMmapInterface>,
         floorplan: &FloorplanResult,

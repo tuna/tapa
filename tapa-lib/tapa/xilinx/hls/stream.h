@@ -114,16 +114,6 @@ class tapa_stream {
     return elem.val;
   }
 
-  T read(const T& default_value, bool* is_success = nullptr) {
-#pragma HLS inline
-    internal::elem_t<T> elem;
-    bool is_success_val = _.read_nb(elem);
-    if (is_success != nullptr) {
-      *is_success = is_success_val;
-    }
-    return is_success_val ? elem.val : default_value;
-  }
-
   bool try_open() {
 #pragma HLS inline
     internal::elem_t<T> elem;

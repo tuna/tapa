@@ -389,6 +389,11 @@ fn resolve_fifo_width(
 /// proper width using stream suffixes so child instances can connect.
 /// For external FIFOs: connect to parent module ports, potentially
 /// through AXIS adapters.
+#[allow(
+    clippy::too_many_lines,
+    reason = "FIFO connection orchestration is inherently sequential; \
+              splitting would fragment the wiring logic"
+)]
 pub fn connect_fifos(
     design: DesignView<'_>,
     modules: &mut ModuleTable<'_>,

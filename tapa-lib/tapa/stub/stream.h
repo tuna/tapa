@@ -17,7 +17,6 @@ class istream {
   bool empty() const;
   bool try_eot(bool& is_eot) const;
   bool eot(bool& is_success) const;
-  bool eot(std::nullptr_t) const;
   bool try_peek(T& value) const;
   T peek(bool& is_success) const;
   T peek(std::nullptr_t) const;
@@ -27,7 +26,6 @@ class istream {
   istream& operator>>(T& value);
   T read(bool& is_success);
   T read(std::nullptr_t);
-  T read(const T& default_value, bool* is_success = nullptr);
   bool try_open();
   void open();
 };

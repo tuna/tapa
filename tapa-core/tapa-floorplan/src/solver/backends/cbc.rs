@@ -396,9 +396,11 @@ Optimal - objective value 12.00000000
             time_limit: Some(std::time::Duration::ZERO),
             ..SolveOpts::default()
         };
-        let error = CbcSolver::new()
-            .solve(&model, &opts)
-            .expect_err("zero time limit");
+        let error = CbcSolver {
+            program: "this-program-must-not-run".into(),
+        }
+        .solve(&model, &opts)
+        .expect_err("zero time limit");
         assert!(matches!(error, SolverError::InvalidOptions(_)));
     }
 

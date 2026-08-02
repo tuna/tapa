@@ -52,6 +52,11 @@ impl ChildMmapBindings {
 }
 
 #[allow(
+    clippy::too_many_lines,
+    reason = "child instance assembly is inherently sequential; \
+              splitting would fragment the port-arg wiring logic"
+)]
+#[allow(
     clippy::too_many_arguments,
     reason = "child instance assembly needs the parent and child module \
               headers alongside the signal/binding contexts plus an \
