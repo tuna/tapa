@@ -30,7 +30,7 @@ tapa-xilinx (HLS/Vitis/Vivado/XO-pack tools, local+remote runners, Vitis connect
 tapa-cli (steps: analyze → synth → floorplan → pack; chain, state via tapa.json, remote config)
 
 fpga-runtime (separate workspace): frt (FFI staticlib) ← tapa-lib/tapa/host/frt (C++ RAII)
-             frt-shm, frt-dpi{,-verilator,-xsim}, frt-cosim, frt-cbindgen (ABI drift check)
+             frt-shm, frt-dpi{,-verilator,-xsim}, frt-cosim
 ```
 
 `tapacc` emits the task graph as JSON; `tapa-ir` is the schema both sides
@@ -58,8 +58,8 @@ must keep them green.
   on a reference design and strict-parses its verbatim stdout, catching any
   drift between the two sides.
 - **Generated-ABI drift check.** The C header for the `frt` runtime is
-  generated with cbindgen; `fpga-runtime/frt-cbindgen/src/main.rs` with
-  `--check` regenerates it and fails if the checked-in header differs.
+  generated with cbindgen (`cargo run -p frt --example gen_c_api -- --check`);
+  `frt/tests/c_api_header_test.rs` fails if the checked-in header differs.
 
 ## Layer Rule
 

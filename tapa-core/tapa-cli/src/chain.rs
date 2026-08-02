@@ -15,7 +15,7 @@ use clap::{Parser, Subcommand};
 use crate::context::CliContext;
 use crate::error::{CliError, Result};
 use crate::state::work as work_io;
-use crate::steps::registry::{self, StepSpec};
+use crate::steps::registry::{self, Precondition};
 use crate::steps::{analyze, floorplan, gcc, meta, pack, synth, version};
 use crate::tapacc::find_clang_binary;
 
@@ -29,7 +29,7 @@ pub(crate) enum PipelineStep<'a> {
 }
 
 impl<'a> PipelineStep<'a> {
-    fn spec(self) -> &'static StepSpec {
+    fn spec(self) -> &'static [Precondition] {
         match self {
             Self::Analyze(_) => registry::analyze(),
             Self::Synth(_) => registry::synth(),
@@ -49,7 +49,7 @@ impl<'a> PipelineStep<'a> {
 /// Resolve and validate a pipeline step's registry entry before dispatch.
 pub(crate) fn validate_pipeline_step(step: PipelineStep<'_>, ctx: &CliContext) -> Result<()> {
     let spec = step.spec();
-    if spec.preconditions.is_empty() {
+    if spec.is_empty() {
         return Ok(());
     }
     let state = work_io::load(&ctx.work_dir)?;

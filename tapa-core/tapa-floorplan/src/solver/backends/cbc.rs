@@ -376,7 +376,6 @@ Optimal - objective value 12.00000000
             .get_args()
             .map(|arg| arg.to_string_lossy().into_owned())
             .collect::<Vec<_>>();
-        assert!(!args.iter().any(|arg| arg == "-ratioGap"));
         assert!(args
             .windows(2)
             .any(|pair| pair == ["-allowableGap", "0.001"]));

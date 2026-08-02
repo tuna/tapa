@@ -120,17 +120,39 @@ pub fn plan_with_retry_ceiling_and_solvers(
     placement_solver: &dyn crate::solver::Solver,
     finish_solver: &dyn crate::solver::Solver,
 ) -> Result<FloorplanResult, PlanError> {
-    plan_with_mode(
-        state,
+    options.validate()?;
+    let (device, graph) = prepare_plan(state, inputs)?;
+    log::info!(
+        "floorplanning {} vertices on {} with usage limit {:.2} (ceiling {:.2}), strategy {:?}",
+        graph.vertices().len(),
+        device.key,
+        options.usage_limit,
+        retry_ceiling,
+        options.partition_strategy,
+    );
+    let opts = solve_options(options);
+    let assignment = floorplan_with_strategy(
+        &graph,
+        &device,
+        options.usage_limit,
+        retry_ceiling,
+        options.partition_strategy,
+        placement_solver,
+        &opts,
+    )?;
+    finish_plan(
+        &graph,
+        &device,
         options,
-        inputs,
-        &PlacementMode::Retry {
-            retry_ceiling,
-            placement_solver,
-            finish_solver,
+        finish_solver,
+        &opts,
+        assignment,
+        ExactDseResourceCaps {
+            logic_utilization_cap: retry_ceiling,
+            effective_block_utilization_cap: retry_ceiling,
+            multilevel_block_margin_applied: false,
         },
-    )?
-    .result
+    )
 }
 
 pub fn plan_with_inputs_at_usage_limit_and_caps(
@@ -138,123 +160,37 @@ pub fn plan_with_inputs_at_usage_limit_and_caps(
     options: &PlanOptions,
     inputs: &PlanInputs,
 ) -> Result<ExactDsePlanAttempt, PlanError> {
-    let run = plan_with_mode(state, options, inputs, &PlacementMode::ExactCaps)?;
-    Ok(ExactDsePlanAttempt {
-        caps: run.caps,
-        result: run.result,
-    })
-}
-
-/// The placement limit policy for one [`plan_with_mode`] run.
-enum PlacementMode<'a> {
-    /// Relaxed planning: the base usage limit, retried up to the ceiling,
-    /// with explicit per-phase solvers.
-    Retry {
-        retry_ceiling: f64,
-        placement_solver: &'a dyn crate::solver::Solver,
-        finish_solver: &'a dyn crate::solver::Solver,
-    },
-    /// One exact-cap DSE candidate on a fresh CBC solver.
-    ExactCaps,
-}
-
-/// One run's caps and outcome; option/input preparation failures abort
-/// before this exists, so the DSE attempt always ships its caps.
-struct PlannedRun {
-    caps: ExactDseResourceCaps,
-    result: Result<FloorplanResult, PlanError>,
-}
-
-/// The validate → prepare → place → finish skeleton behind
-/// [`plan_with_retry_ceiling_and_solvers`] and
-/// [`plan_with_inputs_at_usage_limit_and_caps`]; the mode selects the
-/// placement limits and the matching log line.
-fn plan_with_mode(
-    state: &WorkState,
-    options: &PlanOptions,
-    inputs: &PlanInputs,
-    mode: &PlacementMode<'_>,
-) -> Result<PlannedRun, PlanError> {
     options.validate()?;
     let (device, graph) = prepare_plan(state, inputs)?;
+    let strategy = resolve_strategy(&graph, &device, options.partition_strategy);
+    let caps = ExactDseResourceCaps::for_strategy(options.usage_limit, strategy);
+    log::info!(
+        "floorplanning {} vertices on {} at exact usage limit {:.2} (block cap {:.2}), strategy {:?}",
+        graph.vertices().len(),
+        device.key,
+        caps.logic_utilization_cap,
+        caps.effective_block_utilization_cap,
+        strategy,
+    );
+    let solver = CbcSolver::new();
     let opts = solve_options(options);
-    Ok(match mode {
-        PlacementMode::Retry {
-            retry_ceiling,
-            placement_solver,
-            finish_solver,
-        } => {
-            log::info!(
-                "floorplanning {} vertices on {} with usage limit {:.2} (ceiling {:.2}), strategy {:?}",
-                graph.vertices().len(),
-                device.key,
-                options.usage_limit,
-                retry_ceiling,
-                options.partition_strategy,
-            );
-            let caps = ExactDseResourceCaps {
-                logic_utilization_cap: *retry_ceiling,
-                effective_block_utilization_cap: *retry_ceiling,
-                multilevel_block_margin_applied: false,
-            };
-            let result = floorplan_with_strategy(
-                &graph,
-                &device,
-                options.usage_limit,
-                *retry_ceiling,
-                options.partition_strategy,
-                *placement_solver,
-                &opts,
-            )
-            .map_err(PlanError::from)
-            .and_then(|assignment| {
-                finish_plan(
-                    &graph,
-                    &device,
-                    options,
-                    *finish_solver,
-                    &opts,
-                    assignment,
-                    caps,
-                )
-            });
-            PlannedRun { caps, result }
-        }
-        PlacementMode::ExactCaps => {
-            let strategy = resolve_strategy(&graph, &device, options.partition_strategy);
-            let caps = ExactDseResourceCaps::for_strategy(options.usage_limit, strategy);
-            log::info!(
-                "floorplanning {} vertices on {} at exact usage limit {:.2} (block cap {:.2}), strategy {:?}",
-                graph.vertices().len(),
-                device.key,
-                caps.logic_utilization_cap,
-                caps.effective_block_utilization_cap,
-                strategy,
-            );
-            let solver = CbcSolver::new();
-            let result = floorplan_with_exact_resource_caps(
-                &graph,
-                &device,
-                caps.logic_utilization_cap,
-                caps.effective_block_utilization_cap,
-                strategy,
-                &solver,
-                &opts,
-            )
-            .map(|(assignment, solved_strategy)| {
-                debug_assert_eq!(
-                    solved_strategy, strategy,
-                    "an explicitly resolved strategy must remain stable during placement",
-                );
-                assignment
-            })
-            .map_err(PlanError::from)
-            .and_then(|assignment| {
-                finish_plan(&graph, &device, options, &solver, &opts, assignment, caps)
-            });
-            PlannedRun { caps, result }
-        }
-    })
+    let result = (|| {
+        let (assignment, solved_strategy) = floorplan_with_exact_resource_caps(
+            &graph,
+            &device,
+            caps.logic_utilization_cap,
+            caps.effective_block_utilization_cap,
+            strategy,
+            &solver,
+            &opts,
+        )?;
+        debug_assert_eq!(
+            solved_strategy, strategy,
+            "an explicitly resolved strategy must remain stable during placement",
+        );
+        finish_plan(&graph, &device, options, &solver, &opts, assignment, caps)
+    })();
+    Ok(ExactDsePlanAttempt { caps, result })
 }
 
 fn solve_options(options: &PlanOptions) -> SolveOpts {

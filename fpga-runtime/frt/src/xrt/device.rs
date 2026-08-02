@@ -1,9 +1,7 @@
 use super::metadata::{
     extract_embedded_xml, extract_platform_vbnv, parse_embedded_xml, XrtArgKind, XrtMetadata,
 };
-use crate::device::{
-    sorted_args_info, stage_scalar_arg, BufferAccess, Device, RuntimeArgCategory, RuntimeArgInfo,
-};
+use crate::device::{sorted_args_info, BufferAccess, Device, RuntimeArgCategory, RuntimeArgInfo};
 use crate::error::{FrtError, Result};
 use frt_cosim::metadata::normalized_scalar_bytes;
 use frt_cosim::runner::environ::xilinx_environ;
@@ -224,7 +222,7 @@ fn emconfig_ready(dir: &Path, platform: &str) -> bool {
 
 impl Device for XrtDevice {
     fn set_scalar_arg(&mut self, index: u32, value: &[u8]) -> Result<()> {
-        stage_scalar_arg(&mut self.scalars, index, value);
+        self.scalars.insert(index, value.to_vec());
         Ok(())
     }
 
@@ -496,7 +494,17 @@ impl Device for XrtDevice {
         }))
     }
 
-    crate::device::impl_ns_getters! {}
+    fn load_ns(&self) -> u64 {
+        self.load_ns
+    }
+
+    fn compute_ns(&self) -> u64 {
+        self.compute_ns
+    }
+
+    fn store_ns(&self) -> u64 {
+        self.store_ns
+    }
 }
 
 fn select_device(meta: &XrtMetadata) -> Result<cl_device_id> {

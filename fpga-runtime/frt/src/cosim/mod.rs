@@ -1,6 +1,4 @@
-use crate::device::{
-    sorted_args_info, stage_scalar_arg, BufferAccess, Device, RuntimeArgCategory, RuntimeArgInfo,
-};
+use crate::device::{sorted_args_info, BufferAccess, Device, RuntimeArgCategory, RuntimeArgInfo};
 use crate::error::{FrtError, Result};
 use crate::instance::Simulator;
 use frt_cosim::context::CosimContext;
@@ -489,7 +487,7 @@ fn dpi_library_candidates(variant: &str) -> [String; 2] {
 
 impl Device for CosimDevice {
     fn set_scalar_arg(&mut self, index: u32, value: &[u8]) -> Result<()> {
-        stage_scalar_arg(&mut self.scalars, index, value);
+        self.scalars.insert(index, value.to_vec());
         Ok(())
     }
 
@@ -716,7 +714,17 @@ impl Device for CosimDevice {
         }))
     }
 
-    crate::device::impl_ns_getters! {}
+    fn load_ns(&self) -> u64 {
+        self.load_ns
+    }
+
+    fn compute_ns(&self) -> u64 {
+        self.compute_ns
+    }
+
+    fn store_ns(&self) -> u64 {
+        self.store_ns
+    }
 }
 
 #[cfg(test)]

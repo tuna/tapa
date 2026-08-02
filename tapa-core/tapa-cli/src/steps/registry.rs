@@ -25,52 +25,36 @@ pub enum Precondition {
     RejectsCustomRtlAfterFloorplan,
 }
 
-/// Static prerequisite declaration for one pipeline step.
-pub struct StepSpec {
-    pub preconditions: &'static [Precondition],
+/// Each step's declared prerequisites, checked before dispatch.
+pub fn analyze() -> &'static [Precondition] {
+    &[]
 }
 
-const ANALYZE_SPEC: StepSpec = StepSpec { preconditions: &[] };
+pub fn synth() -> &'static [Precondition] {
+    &[]
+}
 
-const SYNTH_SPEC: StepSpec = StepSpec { preconditions: &[] };
-
-const FLOORPLAN_SPEC: StepSpec = StepSpec {
-    preconditions: &[Precondition::RequiresSynthedFlow(
+pub fn floorplan() -> &'static [Precondition] {
+    &[Precondition::RequiresSynthedFlow(
         SynthedFlowError::Floorplan,
-    )],
-};
+    )]
+}
 
-const PACK_SPEC: StepSpec = StepSpec {
-    preconditions: &[
+pub fn pack() -> &'static [Precondition] {
+    &[
         Precondition::RequiresSynthedFlow(SynthedFlowError::Pack),
         Precondition::RejectsCustomRtlAfterFloorplan,
-    ],
-};
-
-pub fn analyze() -> &'static StepSpec {
-    &ANALYZE_SPEC
-}
-
-pub fn synth() -> &'static StepSpec {
-    &SYNTH_SPEC
-}
-
-pub fn floorplan() -> &'static StepSpec {
-    &FLOORPLAN_SPEC
-}
-
-pub fn pack() -> &'static StepSpec {
-    &PACK_SPEC
+    ]
 }
 
 /// Validate a step's declared preconditions against an already-loaded state.
 pub fn validate(
-    spec: &StepSpec,
+    spec: &[Precondition],
     state: &WorkState,
     state_path: &Path,
     args: Option<&PackArgs>,
 ) -> Result<()> {
-    for precondition in spec.preconditions {
+    for precondition in spec {
         match precondition {
             Precondition::RequiresSynthedFlow(error) if !state.flow.synthed => {
                 return Err(missing_synthed_flow(*error, state_path));

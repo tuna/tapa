@@ -12,6 +12,7 @@ use std::collections::BTreeMap;
 
 use tapa_ir::task::TaskLevel;
 use tapa_ir::Port as IrPort;
+use tapa_protocol::{axi_subport_from_suffix, M_AXI_SUFFIXES_COMPACT};
 use tapa_rtl::expression::{expression_as_u32, expression_source, Expression};
 use tapa_rtl::module::sanitize_array_name;
 use tapa_rtl::port::Port as RtlPort;
@@ -323,10 +324,6 @@ fn id_width_for_child_threads(child_id_width: u32, n: u32) -> u32 {
     child_id_width.max(1) + routing_id_bits(n)
 }
 
-/// `_ARID`/`_AWID`/`_BID`/`_RID` suffixes of a compact M-AXI interface, in
-/// protocol order.
-const M_AXI_ID_SUFFIXES: [&str; 4] = ["_ARID", "_AWID", "_BID", "_RID"];
-
 /// The ID ports declared on `module` under the compact M-AXI `prefix`, each
 /// paired with its resolved bit width (`None` when the width expression is
 /// symbolic beyond a parameter default).
@@ -341,8 +338,9 @@ fn rtl_m_axi_id_widths<'m>(
     module: &'m VerilogModule,
     prefix: &str,
 ) -> Vec<(&'static str, &'m RtlPort, Option<u32>)> {
-    M_AXI_ID_SUFFIXES
+    M_AXI_SUFFIXES_COMPACT
         .iter()
+        .filter(|&&suffix| axi_subport_from_suffix(suffix) == "ID")
         .filter_map(|&suffix| {
             let port = module.find_port(&format!("{prefix}{suffix}"))?;
             Some((suffix, port, resolve_rtl_port_width(module, port)))
