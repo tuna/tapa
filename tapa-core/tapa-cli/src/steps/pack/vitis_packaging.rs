@@ -487,9 +487,7 @@ fn emit_bitstream_script(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::BTreeMap;
     use std::io::{Read as _, Write as _};
-    use tapa_ir::{FloorplanResult, TaskGraph};
     use tapa_xilinx::{MockToolRunner, ToolOutput};
 
     fn link_state(floorplanned: bool, has_direct_m_axi: bool) -> WorkState {
@@ -498,24 +496,16 @@ mod tests {
         } else {
             "[]"
         };
-        let graph = TaskGraph::from_json(&format!(
+        let mut state = crate::testutil::state_from_json(&format!(
             r#"{{
                 "cflags": [], "top": "Top", "target": "xilinx-vitis",
                 "tasks": {{"Top": {{"readable_name": "Top", "code": "", "level": "upper",
                     "synth": "hls", "ports": {ports}, "tasks": {{}}, "fifos": {{}}}}}}
             }}"#,
-        ))
-        .expect("parse graph");
-        let mut state = WorkState::new(graph);
+        ));
         state.flow.synthed = true;
         if floorplanned {
-            state.floorplan = Some(FloorplanResult {
-                device: "u280".to_string(),
-                grid: (2, 3),
-                regions: BTreeMap::new(),
-                routes: Vec::new(),
-                slot_usage: BTreeMap::new(),
-            });
+            state.floorplan = Some(crate::testutil::mock_floorplan_result("u280", (2, 3)));
         }
         state
     }
@@ -536,7 +526,7 @@ mod tests {
     }
 
     fn packaging_state() -> WorkState {
-        let graph = TaskGraph::from_json(
+        let mut state = crate::testutil::state_from_json(
             r#"{
                 "cflags": [], "top": "Top", "target": "xilinx-vitis",
                 "tasks": {"Top": {"readable_name": "Top", "code": "", "level": "lower",
@@ -544,9 +534,7 @@ mod tests {
                     "ports": [{"cat": "scalar", "name": "n", "type": "int", "width": 32}],
                     "tasks": {}, "fifos": {}}}
             }"#,
-        )
-        .expect("parse graph");
-        let mut state = WorkState::new(graph);
+        );
         state.flow.synthed = true;
         state.flow.part_num = Some("xcvu37p-fsvh2892-2L-e".to_string());
         state.flow.clock_period = Some("3.33".to_string());
@@ -659,14 +647,7 @@ mod tests {
             connectivity: None,
             custom_rtl: vec![replacement],
         };
-        let ctx = CliContext {
-            work_dir: dir.path().to_path_buf(),
-            temp_dir: None,
-            clang_format_quota_in_bytes: 0,
-            remote_config: None,
-            verbose: 0,
-            quiet: 0,
-        };
+        let ctx = crate::testutil::ctx_at(dir.path());
 
         let error = pack_vitis(&args, &ctx, &state)
             .expect_err("invalid state must fail before applying an RTL overlay");

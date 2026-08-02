@@ -12,4 +12,7 @@ pub mod steps;
 pub mod tapacc;
 mod util;
 
+#[cfg(test)]
+mod testutil;
+
 pub use error::{CliError, Result};

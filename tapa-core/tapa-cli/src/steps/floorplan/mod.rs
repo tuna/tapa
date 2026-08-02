@@ -238,7 +238,7 @@ pub struct FloorplanArgs {
     #[arg(
         long = "max-seconds",
         default_value_t = 600,
-        value_parser = |value: &str| parse_positive::<u64>(value, "max seconds")
+        value_parser = clap::value_parser!(u64).range(1..)
     )]
     pub max_seconds: u64,
 
@@ -285,7 +285,7 @@ pub struct FloorplanArgs {
     #[arg(
         long = "dse-jobs",
         default_value_t = 1,
-        value_parser = |value: &str| parse_positive::<usize>(value, "DSE jobs"),
+        value_parser = clap::builder::RangedU64ValueParser::<usize>::new().range(1..),
         requires = "dse"
     )]
     pub dse_jobs: usize,
@@ -293,7 +293,7 @@ pub struct FloorplanArgs {
     /// Parallel Vivado synthesis jobs (`--vivado.synth.jobs`) for each
     /// implementation link. The default of 2 trades host memory for faster
     /// multi-kernel synthesis; lower it on memory-constrained hosts.
-    #[arg(long = "vivado-threads", default_value_t = 2, value_parser = |value: &str| parse_positive::<u32>(value, "Vivado thread count"))]
+    #[arg(long = "vivado-threads", default_value_t = 2, value_parser = clap::value_parser!(u32).range(1..))]
     pub vivado_threads: u32,
 }
 
@@ -307,24 +307,6 @@ fn parse_usage_limit(value: &str) -> std::result::Result<f64, String> {
         Err(format!(
             "usage limit must be finite and in the range (0, 1], got {value}",
         ))
-    }
-}
-
-/// Shared clap value parser behind the positive-integer arguments
-/// (`--max-seconds`, `--dse-jobs`, `--vivado-threads`): parse the
-/// integer and reject zero, naming the argument as `label` in the
-/// rejection message.
-fn parse_positive<T>(value: &str, label: &str) -> std::result::Result<T, String>
-where
-    T: std::str::FromStr + PartialEq + From<u8>,
-{
-    let parsed = value
-        .parse::<T>()
-        .map_err(|_| format!("`{value}` is not a non-negative integer"))?;
-    if parsed == T::from(0u8) {
-        Err(format!("{label} must be greater than zero"))
-    } else {
-        Ok(parsed)
     }
 }
 
@@ -529,74 +511,11 @@ pub fn run(args: &FloorplanArgs, ctx: &CliContext) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tapa_ir::{AxiChannelWidths, AxiEndpoint, MemoryBank, MemoryKind, TaskGraph, WorkState};
+    use tapa_ir::{AxiChannelWidths, AxiEndpoint, MemoryBank, MemoryKind};
 
-    fn ctx_at(work_dir: &std::path::Path) -> CliContext {
-        CliContext {
-            work_dir: work_dir.to_path_buf(),
-            temp_dir: None,
-            clang_format_quota_in_bytes: 0,
-            remote_config: None,
-            verbose: 0,
-            quiet: 0,
-        }
-    }
-
-    /// A minimal synthesized vadd state: top `VecAdd` with A -> fifo -> B.
-    fn synthed_vadd_state() -> WorkState {
-        let json = r#"{
-            "cflags": [], "top": "VecAdd", "target": "xilinx-vitis",
-            "tasks": {
-                "VecAdd": {
-                    "readable_name": "VecAdd", "code": "void VecAdd() {}", "level": "upper", "synth": "hls",
-                    "ports": [],
-                    "tasks": {
-                        "A": [{"args": {"out": {"arg": "fifo", "cat": "ostream"}}, "step": 0}],
-                        "B": [{"args": {"in": {"arg": "fifo", "cat": "istream"}}, "step": 0}]
-                    },
-                    "fifos": {"fifo": {"depth": 2, "consumed_by": ["B", 0], "produced_by": ["A", 0]}}
-                },
-                "A": {"readable_name": "A", "code": "void A() {}", "level": "lower", "synth": "hls",
-                    "ports": [{"cat": "ostream", "name": "out", "type": "float", "width": 32}],
-                    "self_area": {"LUT": 100, "FF": 200}},
-                "B": {"readable_name": "B", "code": "void B() {}", "level": "lower", "synth": "hls",
-                    "ports": [{"cat": "istream", "name": "in", "type": "float", "width": 32}],
-                    "self_area": {"LUT": 50, "FF": 60}}
-            }
-        }"#;
-        let graph = TaskGraph::from_json(json).expect("parse vadd graph");
-        let mut state = WorkState::new(graph);
-        state.flow.part_num = Some("xcu280-fsvh2892-2L-e".to_string());
-        state.flow.synthed = true;
-        state
-    }
-
-    fn synthed_direct_mmap_state() -> WorkState {
-        let graph = TaskGraph::from_json(
-            r#"{
-                "cflags": [], "top": "Top", "target": "xilinx-vitis",
-                "tasks": {
-                    "Top": {
-                        "readable_name": "Top", "code": "", "level": "upper", "synth": "hls",
-                        "ports": [{"cat":"mmap","name":"mem","type":"int*","width":32}],
-                        "tasks": {"Reader": [{"args":{"data":{"arg":"mem","cat":"mmap"}}}]},
-                        "fifos": {}
-                    },
-                    "Reader": {
-                        "readable_name": "Reader", "code": "", "level": "lower", "synth": "hls",
-                        "ports": [{"cat":"mmap","name":"data","type":"int*","width":32}],
-                        "self_area": {"LUT":10,"FF":20}
-                    }
-                }
-            }"#,
-        )
-        .expect("parse mmap graph");
-        let mut state = WorkState::new(graph);
-        state.flow.part_num = Some("xcu280-fsvh2892-2L-e".to_string());
-        state.flow.platform = Some("xilinx_u280_gen3x16_xdma_1_202211_1".to_string());
-        state.flow.synthed = true;
-        state
-    }
+    use crate::testutil::{
+        ctx_at, state_from_json, synthed_direct_mmap_state, synthed_vadd_state, write_hls_module,
+    };
 
     fn direct_mmap_interface(
         instance: &str,
@@ -699,42 +618,6 @@ mod tests {
 
         assert!(matches!(error, CliError::InvalidArg(ref message)
             if message.contains("Top.input") && message.contains("direct M-AXI")));
-    }
-
-    #[test]
-    fn parse_positive_accepts_values_and_rejects_zero_or_garbage() {
-        for label in ["max seconds", "DSE jobs", "Vivado thread count"] {
-            let error = parse_positive::<u64>("0", label).expect_err("zero must be rejected");
-            assert_eq!(
-                error,
-                format!("{label} must be greater than zero"),
-                "zero rejection must name the argument",
-            );
-            let error = parse_positive::<u64>("fast", label).expect_err("garbage must be rejected");
-            assert_eq!(
-                error, "`fast` is not a non-negative integer",
-                "garbage rejection must be label-independent",
-            );
-        }
-        assert_eq!(
-            parse_positive::<u64>("600", "max seconds").expect("valid seconds"),
-            600,
-            "u64 path parses",
-        );
-        assert_eq!(
-            parse_positive::<usize>("4", "DSE jobs").expect("valid job count"),
-            4,
-            "usize path parses",
-        );
-        assert_eq!(
-            parse_positive::<u32>("2", "Vivado thread count").expect("valid thread count"),
-            2,
-            "u32 path parses",
-        );
-        assert!(
-            parse_positive::<u32>("-1", "Vivado thread count").is_err(),
-            "negative values must be rejected",
-        );
     }
 
     #[test]
@@ -1004,13 +887,6 @@ mod tests {
         }
     }
 
-    /// Write a fake HLS Verilog module under `hls/<task>/verilog/<task>.v`.
-    fn write_hls_module(work_dir: &std::path::Path, task: &str, src: &str) {
-        let dir = work_dir.join("hls").join(task).join("verilog");
-        fs_err::create_dir_all(&dir).expect("hls dir");
-        fs_err::write(dir.join(format!("{task}.v")), src).expect("hls verilog");
-    }
-
     fn write_direct_mmap_hls_module(work_dir: &std::path::Path) {
         let parsed = tapa_rtl::VerilogModule::parse(
             "module Reader(input wire ap_clk, input wire ap_rst_n); endmodule",
@@ -1090,8 +966,7 @@ mod tests {
                     "self_area": {"LUT": 120000}}
             }
         }"#;
-        let graph = TaskGraph::from_json(json).expect("parse");
-        let mut state = WorkState::new(graph);
+        let mut state = state_from_json(json);
         state.flow.part_num = Some("xcu280-fsvh2892-2L-e".to_string());
         state.flow.synthed = true;
 

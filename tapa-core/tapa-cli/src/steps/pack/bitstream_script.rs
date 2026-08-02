@@ -136,58 +136,119 @@ mod tests {
         .expect("valid script inputs")
     }
 
-    #[test]
-    fn renders_minimum_script_skeleton() {
-        let script = render("VecAdd", Path::new("/tmp/out.xo"), None, None, None, None);
-        assert!(script.starts_with("#!/bin/bash"));
-        assert!(script.contains("TOP=VecAdd"));
-        assert!(script.contains("XO='/tmp/out.xo'"));
-        assert!(script.contains("v++ ${DEBUG}"));
-    }
-
-    #[test]
-    fn includes_platform_when_provided() {
-        let script = render(
-            "Top",
-            Path::new("/tmp/a.xo"),
-            Some("xilinx_u250_gen3x16_xdma_4_1_202210_1"),
-            None,
-            None,
-            None,
-        );
-        assert!(script.contains("PLATFORM=xilinx_u250_gen3x16_xdma_4_1_202210_1"));
-    }
-
-    #[test]
-    fn emits_target_frequency_from_clock_period() {
-        let script = render(
-            "Top",
-            Path::new("/tmp/a.xo"),
-            None,
-            Some("3.33"),
-            None,
-            None,
-        );
+    /// A rendered script must keep its shebang and every expected needle,
+    /// and never emit a forbidden one; `name` keys failure messages.
+    fn assert_script(script: &str, contains: &[&str], not_contains: &[&str], name: &str) {
         assert!(
-            script.contains("TARGET_FREQUENCY=300"),
-            "expected floor(1000/3.33)=300, got: {script}",
+            script.starts_with("#!/bin/bash"),
+            "[{name}] missing shebang:\n{script}"
         );
-        assert!(script.contains("--kernel_frequency"));
+        for (expected, &needle) in contains
+            .iter()
+            .map(|n| (true, n))
+            .chain(not_contains.iter().map(|n| (false, n)))
+        {
+            assert_eq!(
+                script.contains(needle),
+                expected,
+                "[{name}] `{needle}`:\n{script}"
+            );
+        }
     }
 
     #[test]
-    fn target_frequency_never_rounds_above_the_requested_period() {
-        let clock = (1000.0_f64 / 300.75).to_string();
-        let script = render(
-            "Top",
-            Path::new("/tmp/a.xo"),
-            None,
-            Some(&clock),
-            None,
-            None,
+    fn rendered_scripts_match_expected_substrings() {
+        type Flags<'a> = (
+            Option<&'a str>,
+            Option<&'a str>,
+            Option<&'a str>,
+            Option<&'a str>,
         );
-        assert!(script.contains("TARGET_FREQUENCY=300"), "got: {script}");
-        assert!(!script.contains("TARGET_FREQUENCY=301"), "got: {script}");
+        type Row<'a> = (&'a str, Flags<'a>, &'a [&'a str], &'a [&'a str]);
+
+        let mhz_clock = (1000.0_f64 / 300.75).to_string();
+        let cases: &[Row] = &[
+            (
+                "platform",
+                (
+                    Some("xilinx_u250_gen3x16_xdma_4_1_202210_1"),
+                    None,
+                    None,
+                    None,
+                ),
+                &["PLATFORM=xilinx_u250_gen3x16_xdma_4_1_202210_1"],
+                &[],
+            ),
+            (
+                "frequency",
+                (None, Some("3.33"), None, None),
+                &["TARGET_FREQUENCY=300", "--kernel_frequency"],
+                &[],
+            ),
+            (
+                "frequency-never-rounds-up",
+                (None, Some(&mhz_clock), None, None),
+                &["TARGET_FREQUENCY=300"],
+                &["TARGET_FREQUENCY=301"],
+            ),
+            (
+                "xdc-hook",
+                (
+                    Some("plat"),
+                    Some("3.33"),
+                    Some("/work/floorplan.xdc"),
+                    None,
+                ),
+                &["--vivado.prop=run.impl_1.STEPS.OPT_DESIGN.TCL.PRE=/work/floorplan.xdc"],
+                &[],
+            ),
+            (
+                "ini-config",
+                (
+                    Some("plat"),
+                    Some("3.33"),
+                    None,
+                    Some("/work/link_config.ini"),
+                ),
+                &["--config /work/link_config.ini"],
+                &[],
+            ),
+            (
+                "absent-hooks",
+                (Some("plat"), None, None, None),
+                &[],
+                &["--config ", "OPT_DESIGN.TCL.PRE"],
+            ),
+        ];
+
+        for &(name, flags, contains, not_contains) in cases {
+            let (platform, clock, xdc, ini) = flags;
+            let script = render(
+                "Top",
+                Path::new("/tmp/a.xo"),
+                platform,
+                clock,
+                xdc.map(Path::new),
+                ini.map(Path::new),
+            );
+            assert_script(&script, contains, not_contains, name);
+        }
+
+        // The bare render with an explicit top/xo binding also warns to
+        // fill in the default platform.
+        let skeleton = render("VecAdd", Path::new("/tmp/out.xo"), None, None, None, None);
+        assert_script(
+            &skeleton,
+            &[
+                "TOP=VecAdd",
+                "XO='/tmp/out.xo'",
+                "v++ ${DEBUG}",
+                "PLATFORM=\"\"",
+                "Please edit this file and set a valid PLATFORM",
+            ],
+            &[],
+            "skeleton",
+        );
     }
 
     #[test]
@@ -222,13 +283,6 @@ mod tests {
     }
 
     #[test]
-    fn default_platform_warning_emitted() {
-        let script = render("Top", Path::new("/tmp/a.xo"), None, None, None, None);
-        assert!(script.contains("PLATFORM=\"\""));
-        assert!(script.contains("Please edit this file and set a valid PLATFORM"));
-    }
-
-    #[test]
     fn invalid_clock_period_is_rejected() {
         for clock in ["fast", "0", "-1", "NaN", "inf", "1e-300", "1e300"] {
             let error =
@@ -242,23 +296,6 @@ mod tests {
     fn absolutize_lexical_keeps_absolute_paths() {
         let abs = Path::new("/tmp/out.xo");
         assert_eq!(absolutize_lexical(abs), abs.to_path_buf());
-    }
-
-    #[test]
-    fn floorplan_xdc_is_sourced_as_opt_design_hook() {
-        let script = render(
-            "Top",
-            Path::new("/tmp/a.xo"),
-            Some("plat"),
-            Some("3.33"),
-            Some(Path::new("/work/floorplan.xdc")),
-            None,
-        );
-        assert!(
-            script
-                .contains("--vivado.prop=run.impl_1.STEPS.OPT_DESIGN.TCL.PRE=/work/floorplan.xdc"),
-            "floorplanned script must source the pblock XDC, got:\n{script}"
-        );
     }
 
     #[test]
@@ -290,54 +327,6 @@ mod tests {
         assert!(
             !script.contains("\\\n\n  --"),
             "a continued arg line is followed by a blank line, breaking v++:\n{script}"
-        );
-    }
-
-    #[test]
-    fn connectivity_ini_is_added_as_config() {
-        let script = render(
-            "Top",
-            Path::new("/tmp/a.xo"),
-            Some("plat"),
-            Some("3.33"),
-            None,
-            Some(Path::new("/work/link_config.ini")),
-        );
-        assert!(
-            script.contains("--config /work/link_config.ini"),
-            "connectivity ini must be sourced as a v++ --config, got:\n{script}"
-        );
-    }
-
-    #[test]
-    fn no_config_without_connectivity() {
-        let script = render(
-            "Top",
-            Path::new("/tmp/a.xo"),
-            Some("plat"),
-            None,
-            None,
-            None,
-        );
-        assert!(
-            !script.contains("--config "),
-            "a script with no connectivity must not emit a bare --config",
-        );
-    }
-
-    #[test]
-    fn no_floorplan_hook_without_xdc() {
-        let script = render(
-            "Top",
-            Path::new("/tmp/a.xo"),
-            Some("plat"),
-            None,
-            None,
-            None,
-        );
-        assert!(
-            !script.contains("OPT_DESIGN.TCL.PRE"),
-            "unfloorplanned script must not reference a pblock XDC",
         );
     }
 }

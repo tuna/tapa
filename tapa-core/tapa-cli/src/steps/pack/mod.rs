@@ -312,7 +312,7 @@ mod tests {
     use indexmap::IndexMap;
     use tapa_ir::{
         port::{ArgCategory, Port},
-        Area, FloorplanResult, SynthTarget, Task, TaskGraph, TaskLevel,
+        SynthTarget, Task, TaskGraph, TaskLevel,
     };
 
     use crate::globals::GlobalArgs;
@@ -386,13 +386,7 @@ mod tests {
 
     fn activate_floorplan(work_dir: &Path) {
         let mut state = work_io::load(work_dir).expect("load state");
-        state.floorplan = Some(FloorplanResult {
-            device: "u280".to_string(),
-            grid: (2, 3),
-            regions: BTreeMap::new(),
-            routes: Vec::new(),
-            slot_usage: BTreeMap::<String, Area>::new(),
-        });
+        state.floorplan = Some(crate::testutil::mock_floorplan_result("u280", (2, 3)));
         work_io::store(work_dir, &state).expect("store floorplan");
     }
 

@@ -165,7 +165,7 @@ mod tests {
     use std::collections::BTreeMap;
     use std::path::PathBuf;
 
-    use tapa_ir::{FloorplanResult, Target, TaskGraph};
+    use tapa_ir::{Target, TaskGraph};
 
     use super::*;
 
@@ -178,13 +178,10 @@ mod tests {
         });
         state.flow.synthed = synthed;
         if floorplanned {
-            state.floorplan = Some(FloorplanResult {
-                device: "test-device".to_string(),
-                grid: (1, 1),
-                regions: BTreeMap::new(),
-                routes: Vec::new(),
-                slot_usage: BTreeMap::new(),
-            });
+            state.floorplan = Some(crate::testutil::mock_floorplan_result(
+                "test-device",
+                (1, 1),
+            ));
         }
         state
     }

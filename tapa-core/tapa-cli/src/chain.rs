@@ -77,6 +77,13 @@ pub(crate) fn run_pipeline_step(step: PipelineStep<'_>, ctx: &CliContext) -> Res
     }
 }
 
+/// Tokens captured after a step's own flags, re-parsed as the next step.
+#[derive(Debug, clap::Args)]
+pub struct ChainTail {
+    #[arg(trailing_var_arg = true, allow_hyphen_values = true, hide = true)]
+    pub chain_tail: Vec<String>,
+}
+
 /// One link in the chained-step list. Each variant carries its step's
 /// `Args` (flags) plus a `chain_tail` positional that captures any
 /// remaining argv for re-parsing as the next step.
@@ -92,36 +99,36 @@ pub enum Step {
     Analyze {
         #[command(flatten)]
         args: analyze::AnalyzeArgs,
-        #[arg(trailing_var_arg = true, allow_hyphen_values = true, hide = true)]
-        chain_tail: Vec<String>,
+        #[command(flatten)]
+        chain_tail: ChainTail,
     },
     /// Synthesize the TAPA program into RTL.
     Synth {
         #[command(flatten)]
         args: synth::SynthArgs,
-        #[arg(trailing_var_arg = true, allow_hyphen_values = true, hide = true)]
-        chain_tail: Vec<String>,
+        #[command(flatten)]
+        chain_tail: ChainTail,
     },
     /// Coarse-grained floorplan the synthesized design.
     Floorplan {
         #[command(flatten)]
         args: floorplan::FloorplanArgs,
-        #[arg(trailing_var_arg = true, allow_hyphen_values = true, hide = true)]
-        chain_tail: Vec<String>,
+        #[command(flatten)]
+        chain_tail: ChainTail,
     },
     /// Pack the generated RTL into a Xilinx object file.
     Pack {
         #[command(flatten)]
         args: pack::PackArgs,
-        #[arg(trailing_var_arg = true, allow_hyphen_values = true, hide = true)]
-        chain_tail: Vec<String>,
+        #[command(flatten)]
+        chain_tail: ChainTail,
     },
     /// Compile a TAPA program (analyze + synth + pack) in one invocation.
     Compile {
         #[command(flatten)]
         args: meta::CompileArgs,
-        #[arg(trailing_var_arg = true, allow_hyphen_values = true, hide = true)]
-        chain_tail: Vec<String>,
+        #[command(flatten)]
+        chain_tail: ChainTail,
     },
     /// Invoke g++ with TAPA include and library paths.
     ///
@@ -137,16 +144,16 @@ pub enum Step {
     Version {
         #[command(flatten)]
         args: version::VersionArgs,
-        #[arg(trailing_var_arg = true, allow_hyphen_values = true, hide = true)]
-        chain_tail: Vec<String>,
+        #[command(flatten)]
+        chain_tail: ChainTail,
     },
     /// Resolve a clang-family helper and print its absolute path.
     #[command(name = "find-clang-binary", hide = true)]
     FindClangBinary {
         #[command(flatten)]
         args: find_clang_binary::FindClangBinaryArgs,
-        #[arg(trailing_var_arg = true, allow_hyphen_values = true, hide = true)]
-        chain_tail: Vec<String>,
+        #[command(flatten)]
+        chain_tail: ChainTail,
     },
 }
 
@@ -205,7 +212,7 @@ impl Step {
             | Self::Pack { chain_tail, .. }
             | Self::Compile { chain_tail, .. }
             | Self::Version { chain_tail, .. }
-            | Self::FindClangBinary { chain_tail, .. } => Some(chain_tail),
+            | Self::FindClangBinary { chain_tail, .. } => Some(&mut chain_tail.chain_tail),
             Self::Gpp { .. } => None,
         }
     }
@@ -275,9 +282,12 @@ mod tests {
         ])
         .expect("3-step chain must parse");
         match cli.step {
-            Some(Step::Analyze { args, chain_tail }) => {
+            Some(Step::Analyze {
+                args,
+                chain_tail: tail,
+            }) => {
                 assert_eq!(args.top, "VecAdd");
-                assert_eq!(chain_tail.first().map(String::as_str), Some("synth"));
+                assert_eq!(tail.chain_tail.first().map(String::as_str), Some("synth"));
             }
             other => panic!("expected Analyze, got {other:?}"),
         }
@@ -292,9 +302,12 @@ mod tests {
         ])
         .expect("flag value `synth` must not boundary the chunk");
         match cli.step {
-            Some(Step::Analyze { args, chain_tail }) => {
+            Some(Step::Analyze {
+                args,
+                chain_tail: tail,
+            }) => {
                 assert_eq!(args.top, "synth");
-                assert_eq!(chain_tail.first().map(String::as_str), Some("pack"));
+                assert_eq!(tail.chain_tail.first().map(String::as_str), Some("pack"));
             }
             other => panic!("expected Analyze, got {other:?}"),
         }
@@ -337,8 +350,10 @@ mod tests {
         ])
         .unwrap();
         match cli.step {
-            Some(Step::Analyze { chain_tail, .. }) => {
-                assert_eq!(chain_tail, vec!["synth", "--platform", "p"]);
+            Some(Step::Analyze {
+                chain_tail: tail, ..
+            }) => {
+                assert_eq!(tail.chain_tail, ["synth", "--platform", "p"]);
             }
             other => panic!("expected Analyze, got {other:?}"),
         }
