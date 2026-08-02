@@ -8,10 +8,12 @@ use std::sync::LazyLock;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Language, Node, Parser, Query, QueryCursor};
 
+use crate::error::ParseError;
 use crate::expression::tokenize_expression;
 use crate::param::Parameter;
 use crate::port::{Direction, Port, Width};
 use crate::pragma::Pragma;
+use crate::signal::{Signal, SignalKind};
 
 fn sv_language() -> Language {
     tree_sitter_systemverilog::LANGUAGE.into()
@@ -25,10 +27,6 @@ fn sv_parser() -> Parser {
 }
 
 // ── Queries ─────────────────────────────────────────────────────────
-
-static Q_MODULE: LazyLock<Query> = LazyLock::new(|| {
-    Query::new(&sv_language(), "(module_declaration) @mod").expect("Q_MODULE parses")
-});
 
 static Q_PORTS: LazyLock<Query> = LazyLock::new(|| {
     Query::new(&sv_language(), "(port_declaration) @port").expect("Q_PORTS parses")
@@ -328,86 +326,263 @@ pub enum ParseIssue {
 /// malformed port/parameter declarations.
 ///
 /// Ignores ERROR nodes inside procedural blocks, assignments, and
-/// instantiations — those are skipped by the body loop anyway.
-pub fn first_parse_error(source: &str) -> Option<ParseIssue> {
-    fn walk(node: Node, src: &[u8]) -> Option<ParseIssue> {
-        if node.kind() == "ERROR" || node.is_error() {
-            let text = text_of(node, src);
-            let trimmed = text.trim_start();
-            if trimmed.starts_with("parameter") {
-                return Some(ParseIssue::MalformedParameter);
-            }
-            if trimmed.starts_with("input")
-                || trimmed.starts_with("output")
-                || trimmed.starts_with("inout")
-            {
-                return Some(ParseIssue::MalformedPort);
-            }
-            // Other ERROR nodes (inside procedural blocks, etc.) are
-            // ignored: only the module interface is validated here.
-            return None;
+/// instantiations — those are skipped by the body walk anyway.
+fn first_issue(root: Node, src: &[u8]) -> Option<ParseIssue> {
+    if root.kind() == "ERROR" || root.is_error() {
+        let text = text_of(root, src);
+        let trimmed = text.trim_start();
+        if trimmed.starts_with("parameter") {
+            return Some(ParseIssue::MalformedParameter);
         }
-        for i in 0..node.child_count() {
-            if let Some(found) = walk(node.child(i).unwrap(), src) {
-                return Some(found);
-            }
+        if trimmed.starts_with("input")
+            || trimmed.starts_with("output")
+            || trimmed.starts_with("inout")
+        {
+            return Some(ParseIssue::MalformedPort);
         }
+        // Other ERROR nodes (inside procedural blocks, etc.) are
+        // ignored: only the module interface is validated here.
+        return None;
+    }
+    for i in 0..root.child_count() {
+        if let Some(found) = first_issue(root.child(i).unwrap(), src) {
+            return Some(found);
+        }
+    }
+    None
+}
+
+// ── Signal extraction ───────────────────────────────────────────────
+
+/// Whether a module-level declaration node is a wire/reg signal
+/// declaration. Mirrors the old text-level `starts_with` gate: only
+/// declarations whose text begins with `wire` or `reg` are signals;
+/// `logic`/`integer`/procedural-local declarations are not.
+fn signal_kind_of(node: Node, src: &[u8]) -> Option<SignalKind> {
+    if !matches!(node.kind(), "net_declaration" | "data_declaration") {
+        return None;
+    }
+    let text = text_of(node, src).trim_start();
+    if text.starts_with("wire") {
+        Some(SignalKind::Wire)
+    } else if text.starts_with("reg") {
+        Some(SignalKind::Reg)
+    } else {
         None
     }
-
-    let mut parser = sv_parser();
-    let tree = parser.parse(source.as_bytes(), None)?;
-    let root = tree.root_node();
-    let src = source.as_bytes();
-    walk(root, src)
 }
 
-// ── Public API ──────────────────────────────────────────────────────
-
-pub struct ModuleInfo {
-    pub name: String,
-    pub header_end: usize,
-    pub params: Vec<Parameter>,
-    pub ports: Vec<Port>,
-    pub port_names: Vec<String>,
+/// True when the node subtree contains an `ERROR` or `MISSING` node.
+fn has_error_node(node: Node) -> bool {
+    node.kind() == "ERROR"
+        || node.is_missing()
+        || (0..node.child_count()).any(|i| has_error_node(node.child(i).unwrap()))
 }
 
-/// Parse a Verilog module with tree-sitter and extract header info, ports,
-/// and parameters.  Returns `None` if no `module_declaration` is found.
-pub fn parse_module_info(source: &str) -> Option<ModuleInfo> {
-    let mut parser = sv_parser();
-    let tree = parser.parse(source.as_bytes(), None)?;
-    let root = tree.root_node();
-    let src = source.as_bytes();
+/// Declared identifier of each declarator in a wire/reg declaration,
+/// e.g. `[a, b, c]` for `wire [3:0] a, b = f(), c [0:1];`.
+fn declarator_names(node: Node, src: &[u8]) -> Vec<String> {
+    let list_kind = if node.kind() == "net_declaration" {
+        "list_of_net_decl_assignments"
+    } else {
+        "list_of_variable_decl_assignments"
+    };
+    let mut names = Vec::new();
+    for i in 0..node.child_count() {
+        let list = node.child(i).unwrap();
+        if list.kind() != list_kind {
+            continue;
+        }
+        for j in 0..list.child_count() {
+            let assignment = list.child(j).unwrap();
+            if !matches!(
+                assignment.kind(),
+                "net_decl_assignment" | "variable_decl_assignment"
+            ) {
+                continue;
+            }
+            // The declared name is the first identifier child; later
+            // identifiers belong to unpacked dimensions or initializers.
+            for k in 0..assignment.child_count() {
+                let child = assignment.child(k).unwrap();
+                if matches!(child.kind(), "simple_identifier" | "escaped_identifier") {
+                    names.push(text_of(child, src).to_owned());
+                    break;
+                }
+            }
+        }
+    }
+    names
+}
 
-    let mut cursor = QueryCursor::new();
-    let mut matches = cursor.matches(&Q_MODULE, root, src);
-    let m = matches.next()?;
-    let mod_node = m.captures.first()?.node;
+/// Extract signals from a wire/reg declaration, rejecting malformed
+/// declarations the same way the old nom parser did.
+fn extract_signals(node: Node, src: &[u8], module: &str) -> Result<Vec<Signal>, ParseError> {
+    let Some(kind) = signal_kind_of(node, src) else {
+        return Ok(Vec::new());
+    };
+    let malformed = || {
+        let line = text_of(node, src).lines().next().unwrap_or("");
+        ParseError::ParseFailed {
+            module: module.to_owned(),
+            message: format!("malformed signal declaration: {line}"),
+        }
+    };
+    if has_error_node(node) {
+        return Err(malformed());
+    }
+    let names = declarator_names(node, src);
+    if names.is_empty() {
+        return Err(malformed());
+    }
+    let width = extract_width(node, src);
+    Ok(names
+        .into_iter()
+        .map(|name| Signal {
+            name,
+            kind,
+            width: width.clone(),
+            attribute: None,
+        })
+        .collect())
+}
 
-    let header = mod_node.child_by_field_name("header").or_else(|| {
-        (0..mod_node.child_count())
-            .map(|i| mod_node.child(i).unwrap())
-            .find(|n| n.kind() == "module_nonansi_header" || n.kind() == "module_ansi_header")
-    })?;
+// ── Module body walk ────────────────────────────────────────────────
 
-    let name = (0..header.child_count())
-        .map(|i| header.child(i).unwrap())
-        .find(|n| n.kind() == "simple_identifier")
-        .map(|n| text_of(n, src).to_owned())?;
+/// Everything the body walk collects from one module, in source order.
+struct BodyExtraction {
+    signals: Vec<Signal>,
+    pragmas: Vec<Pragma>,
+}
 
-    let header_end = header.end_byte();
-
-    // Parameters (header + body)
-    let mut params = Vec::new();
-    let mut param_cursor = QueryCursor::new();
-    let mut param_matches = param_cursor.matches(&Q_PARAMS, mod_node, src);
-    while let Some(m) = param_matches.next() {
-        let param_node = m.captures.first().unwrap().node;
-        params.extend(extract_parameters_from_node(param_node, src));
+/// Walk the direct children of the target `module_declaration`,
+/// collecting body pragmas and top-level signal declarations.
+///
+/// Scope discipline: nested modules, generate regions, procedural
+/// blocks, functions, and tasks are never descended into, so their
+/// local declarations neither leak into `signals` nor into `pragmas`.
+fn walk_module_body(
+    mod_node: Node,
+    header_node: Node,
+    src: &[u8],
+    module: &str,
+) -> Result<BodyExtraction, ParseError> {
+    fn visit(
+        node: Node,
+        src: &[u8],
+        module: &str,
+        out: &mut BodyExtraction,
+    ) -> Result<(), ParseError> {
+        match node.kind() {
+            "attribute_instance" => {
+                if let Some(p) = parse_attribute_text(text_of(node, src)) {
+                    out.pragmas.push(p);
+                }
+            }
+            // Unwrap one grouping level; port declarations carry their
+            // leading attributes as direct children.
+            "module_item" | "port_declaration" => {
+                for i in 0..node.child_count() {
+                    visit(node.child(i).unwrap(), src, module, out)?;
+                }
+            }
+            "net_declaration" | "data_declaration" => {
+                out.signals.append(&mut extract_signals(node, src, module)?);
+            }
+            // Malformed signals that broke the decl node entirely.
+            "ERROR" => {
+                let trimmed = text_of(node, src).trim_start();
+                if trimmed.starts_with("wire") || trimmed.starts_with("reg") {
+                    let line = trimmed.lines().next().unwrap_or("");
+                    return Err(ParseError::ParseFailed {
+                        module: module.to_owned(),
+                        message: format!("malformed signal declaration: {line}"),
+                    });
+                }
+            }
+            _ => {}
+        }
+        Ok(())
     }
 
-    // Ports
+    let mut out = BodyExtraction {
+        signals: Vec::new(),
+        pragmas: Vec::new(),
+    };
+    for i in 0..mod_node.child_count() {
+        let child = mod_node.child(i).unwrap();
+        if child.id() == header_node.id() {
+            continue;
+        }
+        visit(child, src, module, &mut out)?;
+    }
+    Ok(out)
+}
+
+// ── Module location & pragma preamble ───────────────────────────────
+
+/// First `module_declaration` in document order, anywhere in the tree.
+fn find_first_module(root: Node) -> Option<Node> {
+    if root.kind() == "module_declaration" {
+        return Some(root);
+    }
+    for i in 0..root.child_count() {
+        if let Some(found) = find_first_module(root.child(i).unwrap()) {
+            return Some(found);
+        }
+    }
+    None
+}
+
+/// Whether a node sitting before the module is trivia the module scan
+/// may skip: comments, attributes, and compiler directives. Mirrors the
+/// old text scan, which refused the parse on any other leading token.
+fn is_preamble_trivia(node: Node, src: &[u8]) -> bool {
+    let text = text_of(node, src).trim_start();
+    matches!(
+        node.kind(),
+        "one_line_comment" | "block_comment" | "attribute_instance"
+    ) || text.starts_with('`')
+        || (node.kind() == "ERROR" && text.starts_with("(*"))
+}
+
+/// Pragmas attached to the module itself: attribute instances that
+/// precede the `module` keyword, whether they are attached at the top
+/// level or folded into the module header by the grammar.
+fn leading_pragmas(root: Node, mod_node: Node, header: Node, src: &[u8]) -> Vec<Pragma> {
+    let mut pragmas = Vec::new();
+    for i in 0..root.child_count() {
+        let child = root.child(i).unwrap();
+        if child.end_byte() > mod_node.start_byte() {
+            break;
+        }
+        if child.kind() == "attribute_instance" {
+            if let Some(p) = parse_attribute_text(text_of(child, src)) {
+                pragmas.push(p);
+            }
+        } else if child.kind() == "ERROR" {
+            // Raw `(* ... *)` the grammar could not structure at all.
+            if let Some(p) = parse_attribute_text(text_of(child, src).trim_start()) {
+                pragmas.push(p);
+            }
+        }
+    }
+    for i in 0..header.child_count() {
+        let child = header.child(i).unwrap();
+        if child.kind() == "module_keyword" {
+            break;
+        }
+        if child.kind() == "attribute_instance" {
+            if let Some(p) = parse_attribute_text(text_of(child, src)) {
+                pragmas.push(p);
+            }
+        }
+    }
+    pragmas
+}
+
+/// Extract ANSI header ports and non-ANSI body ports.
+fn extract_ports(header: Node, mod_node: Node, src: &[u8]) -> (Vec<Port>, Vec<String>) {
     let mut ports = Vec::new();
     let mut port_names = Vec::new();
 
@@ -463,12 +638,104 @@ pub fn parse_module_info(source: &str) -> Option<ModuleInfo> {
         let port_node = m.captures.first().unwrap().node;
         ports.extend(extract_ports_from_node(port_node, src));
     }
+    (ports, port_names)
+}
 
-    Some(ModuleInfo {
+// ── Public API ──────────────────────────────────────────────────────
+
+pub struct ModuleInfo {
+    pub name: String,
+    pub params: Vec<Parameter>,
+    pub ports: Vec<Port>,
+    pub port_names: Vec<String>,
+    pub signals: Vec<Signal>,
+    pub pragmas: Vec<Pragma>,
+}
+
+/// Outcome of extracting a module with tree-sitter; the caller maps the
+/// failure variants onto `ParseError` with text-level context.
+pub enum ModuleParse {
+    /// No `module_declaration` found anywhere in the tree.
+    NoModule,
+    /// Module found, but the header or module name was not extractable.
+    HeaderFailed,
+    /// An `ERROR` node matches a malformed port/parameter declaration.
+    Issue(ParseIssue),
+    /// Everything extracted.
+    Ok(Box<ModuleInfo>),
+}
+
+/// Parse a Verilog module with tree-sitter and extract the name, ports,
+/// parameters, signals, and pragmas.
+pub fn parse_module_info(source: &str) -> Result<ModuleParse, ParseError> {
+    let src = source.as_bytes();
+    let mut parser = sv_parser();
+    let Some(tree) = parser.parse(src, None) else {
+        return Ok(ModuleParse::NoModule);
+    };
+    let root = tree.root_node();
+
+    // Locate the target module, rejecting non-trivia content that the
+    // old text scan would have rejected with `NoModuleFound`.
+    let Some(mod_node) = find_first_module(root) else {
+        return Ok(ModuleParse::NoModule);
+    };
+    let mut cursor = root.walk();
+    for child in root.children(&mut cursor) {
+        if child.end_byte() <= mod_node.start_byte() {
+            if !is_preamble_trivia(child, src) {
+                return Ok(ModuleParse::NoModule);
+            }
+        } else {
+            break;
+        }
+    }
+
+    // Reject sources that contain tree-sitter ERROR nodes (malformed
+    // declarations that error-recovery would otherwise swallow).
+    if let Some(issue) = first_issue(root, src) {
+        return Ok(ModuleParse::Issue(issue));
+    }
+
+    let Some(header) = mod_node.child_by_field_name("header").or_else(|| {
+        (0..mod_node.child_count())
+            .map(|i| mod_node.child(i).unwrap())
+            .find(|n| n.kind() == "module_nonansi_header" || n.kind() == "module_ansi_header")
+    }) else {
+        return Ok(ModuleParse::HeaderFailed);
+    };
+
+    let Some(name) = (0..header.child_count())
+        .map(|i| header.child(i).unwrap())
+        .find(|n| n.kind() == "simple_identifier")
+        .map(|n| text_of(n, src).to_owned())
+    else {
+        return Ok(ModuleParse::HeaderFailed);
+    };
+
+    // Parameters (header + body)
+    let mut params = Vec::new();
+    let mut param_cursor = QueryCursor::new();
+    let mut param_matches = param_cursor.matches(&Q_PARAMS, mod_node, src);
+    while let Some(m) = param_matches.next() {
+        let param_node = m.captures.first().unwrap().node;
+        params.extend(extract_parameters_from_node(param_node, src));
+    }
+
+    let (ports, port_names) = extract_ports(header, mod_node, src);
+
+    // Body signals and pragmas (module scope only).
+    let body = walk_module_body(mod_node, header, src, &name)?;
+
+    let mut pragmas = leading_pragmas(root, mod_node, header, src);
+    pragmas.extend(body.pragmas);
+
+    Ok(ModuleParse::Ok(Box::new(ModuleInfo {
         name,
-        header_end,
         params,
         ports,
         port_names,
-    })
+        signals: body.signals,
+        pragmas,
+    })))
 }
