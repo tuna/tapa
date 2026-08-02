@@ -1,9 +1,7 @@
-//! Declarative artifact contracts and preconditions for pipeline steps.
+//! Declarative preconditions for pipeline steps.
 //!
-//! `reads` and `writes` inventory the persisted artifacts a step may consume
-//! or publish. Artifact presence is not implied by those lists: concrete
-//! prerequisites are represented explicitly in [`Precondition`] and are
-//! validated by the dispatcher before the step body runs.
+//! Concrete prerequisites are represented explicitly in [`Precondition`] and
+//! are validated by the dispatcher before the step body runs.
 
 use std::path::Path;
 
@@ -12,20 +10,6 @@ use tapa_ir::WorkState;
 use crate::error::{CliError, Result};
 
 use super::pack::PackArgs;
-
-/// Persisted artifacts exchanged by the pipeline steps.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ArtifactId {
-    TaskGraph,
-    SynthedFlow,
-    SynthRtlTree,
-    FloorplanResult,
-    FloorplanXdc,
-    /// `floorplan-connectivity.ini`, staged by `floorplan` and consumed by
-    /// `pack`'s Vitis packaging.
-    StagedConnectivity,
-    Package,
-}
 
 /// Error identity used when a step requires completed synthesis.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,57 +25,22 @@ pub enum Precondition {
     RejectsCustomRtlAfterFloorplan,
 }
 
-/// Static artifact and prerequisite declaration for one pipeline step.
-#[derive(Debug, PartialEq, Eq)]
+/// Static prerequisite declaration for one pipeline step.
 pub struct StepSpec {
-    pub reads: &'static [ArtifactId],
-    pub writes: &'static [ArtifactId],
     pub preconditions: &'static [Precondition],
 }
 
-const ANALYZE_SPEC: StepSpec = StepSpec {
-    reads: &[],
-    writes: &[ArtifactId::TaskGraph],
-    preconditions: &[],
-};
+const ANALYZE_SPEC: StepSpec = StepSpec { preconditions: &[] };
 
-const SYNTH_SPEC: StepSpec = StepSpec {
-    reads: &[ArtifactId::TaskGraph],
-    writes: &[
-        ArtifactId::TaskGraph,
-        ArtifactId::SynthedFlow,
-        ArtifactId::SynthRtlTree,
-    ],
-    preconditions: &[],
-};
+const SYNTH_SPEC: StepSpec = StepSpec { preconditions: &[] };
 
 const FLOORPLAN_SPEC: StepSpec = StepSpec {
-    reads: &[
-        ArtifactId::TaskGraph,
-        ArtifactId::SynthedFlow,
-        ArtifactId::SynthRtlTree,
-    ],
-    writes: &[
-        ArtifactId::FloorplanResult,
-        ArtifactId::SynthRtlTree,
-        ArtifactId::FloorplanXdc,
-        ArtifactId::StagedConnectivity,
-    ],
     preconditions: &[Precondition::RequiresSynthedFlow(
         SynthedFlowError::Floorplan,
     )],
 };
 
 const PACK_SPEC: StepSpec = StepSpec {
-    reads: &[
-        ArtifactId::TaskGraph,
-        ArtifactId::SynthedFlow,
-        ArtifactId::SynthRtlTree,
-        ArtifactId::FloorplanResult,
-        ArtifactId::FloorplanXdc,
-        ArtifactId::StagedConnectivity,
-    ],
-    writes: &[ArtifactId::Package],
     preconditions: &[
         Precondition::RequiresSynthedFlow(SynthedFlowError::Pack),
         Precondition::RejectsCustomRtlAfterFloorplan,
@@ -193,17 +142,6 @@ mod tests {
             connectivity: None,
             custom_rtl: custom_rtl.iter().map(PathBuf::from).collect(),
         }
-    }
-
-    #[test]
-    fn artifact_contracts_cover_pipeline_exchange() {
-        assert_eq!(analyze().writes, &[ArtifactId::TaskGraph]);
-        assert_eq!(synth().reads, &[ArtifactId::TaskGraph]);
-        assert!(floorplan().writes.contains(&ArtifactId::FloorplanXdc));
-        assert!(pack().reads.contains(&ArtifactId::FloorplanResult));
-        assert!(floorplan().writes.contains(&ArtifactId::StagedConnectivity));
-        assert!(pack().reads.contains(&ArtifactId::StagedConnectivity));
-        assert_eq!(pack().writes, &[ArtifactId::Package]);
     }
 
     #[test]

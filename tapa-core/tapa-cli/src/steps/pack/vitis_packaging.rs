@@ -269,13 +269,13 @@ fn build_package_xo_inputs(
         .build()
 }
 
-/// Collect HLS reports for the `.xo` under `report/`. Walks
-/// `<work_dir>/hls/<task>/report/` for `*_csynth.xml` (the primary
-/// schema downstream tooling reads) plus any `.rpt` sibling files.
-/// Returns `(source, archive_name)` pairs so the bundler can keep
-/// the per-task layout — without the task subdir, multiple tasks'
-/// `csynth.rpt` / `csynth.xml` files would collapse into a single
-/// archive entry and overwrite each other.
+/// Collect HLS reports for the `.xo` under `report/`: the work-dir-level
+/// `report.{json,yaml}` at the archive root, plus each task's `.xml` (the
+/// primary schema downstream tooling reads) and `.rpt` files. The `.xml` /
+/// `.rpt` sources are staged under `<work_dir>/pack_reports/` with work-dir
+/// paths scrubbed by [`sanitize_hls_report_text`] before they are bundled;
+/// [`super::collect_hls_reports`] owns the walk and the per-task
+/// `report/<task>/` archive layout.
 fn collect_hls_report_paths(work_dir: &Path) -> Result<Vec<(Utf8PathBuf, String)>> {
     let staged_root = work_dir.join("pack_reports");
     if staged_root.exists() {
@@ -288,30 +288,22 @@ fn collect_hls_report_paths(work_dir: &Path) -> Result<Vec<(Utf8PathBuf, String)
             reports.push((crate::util::utf8(path), file.to_owned()));
         }
     }
-    for (task_name, report_dir) in super::hls_task_report_dirs(work_dir)? {
-        let Ok(entries) = fs_err::read_dir(&report_dir) else {
-            continue;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            let Some(ext) = path.extension().and_then(|s| s.to_str()) else {
-                continue;
-            };
-            if !matches!(ext, "xml" | "rpt") {
-                continue;
-            }
-            let Some(file) = path.file_name().and_then(|s| s.to_str()) else {
-                continue;
-            };
-            let staged_path = staged_root.join(&task_name).join(file);
-            if let Some(parent) = staged_path.parent() {
-                fs_err::create_dir_all(parent)?;
-            }
-            let text = fs_err::read_to_string(&path)?;
-            fs_err::write(&staged_path, sanitize_hls_report_text(&text, work_dir))?;
-            let arcname = format!("report/{task_name}/{file}");
-            reports.push((crate::util::utf8(staged_path), arcname));
+    for (source, arcname) in super::collect_hls_reports(work_dir, |path| {
+        matches!(
+            path.extension().and_then(|s| s.to_str()),
+            Some("xml" | "rpt")
+        )
+    })? {
+        let task_rel = arcname
+            .strip_prefix("report/")
+            .expect("collect_hls_reports names are report/-prefixed");
+        let staged_path = staged_root.join(task_rel);
+        if let Some(parent) = staged_path.parent() {
+            fs_err::create_dir_all(parent)?;
         }
+        let text = fs_err::read_to_string(&source)?;
+        fs_err::write(&staged_path, sanitize_hls_report_text(&text, work_dir))?;
+        reports.push((crate::util::utf8(staged_path), arcname));
     }
     reports.sort();
     Ok(reports)

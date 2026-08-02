@@ -118,6 +118,41 @@ pub(super) fn hls_task_report_dirs(work_dir: &Path) -> Result<Vec<(String, PathB
     Ok(out)
 }
 
+/// Walk each task's HLS report dir (see [`hls_task_report_dirs`]) for the
+/// files `keep` accepts and return `(source, archive_name)` pairs sorted by
+/// archive name, so both pack flows emit a stable archive order. The
+/// `report/<task>/` layout in the archive name keeps same-named reports from
+/// different tasks from collapsing into a single entry. Filtering, and what
+/// happens to the source bytes (redact-and-zip for HLS, sanitize-and-stage
+/// for Vitis), stays with the callers.
+pub(super) fn collect_hls_reports(
+    work_dir: &Path,
+    keep: impl Fn(&Path) -> bool,
+) -> Result<Vec<(PathBuf, String)>> {
+    let mut files = Vec::new();
+    for (task_name, report_root) in &hls_task_report_dirs(work_dir)? {
+        for entry in walkdir::WalkDir::new(report_root) {
+            let entry = entry.map_err(std::io::Error::other)?;
+            if !entry.file_type().is_file() {
+                continue;
+            }
+            let path = entry.path();
+            if !keep(path) {
+                continue;
+            }
+            let rel = path
+                .strip_prefix(report_root)
+                .map_err(|e| CliError::Archive(format!("rpt strip_prefix: {e}")))?;
+            files.push((
+                path.to_path_buf(),
+                format!("report/{task_name}/{}", rel.to_slash_lossy()),
+            ));
+        }
+    }
+    files.sort();
+    Ok(files)
+}
+
 /// Add one stored entry to the archive under `name`. Entry-start
 /// failures share the `zip entry:` prefix (so an archive-structure
 /// problem reads differently from a payload copy problem), while
@@ -216,34 +251,13 @@ fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, state: &WorkState) -> Result<
     // `report/<task>/<file>` and replace the per-run `Date:` line with the fixed
     // 1980-01-01 stamp so re-running HLS produces a byte-identical
     // archive (the same redaction `program.pack_xo` applies to xo).
-    let task_report_dirs = hls_task_report_dirs(work_dir)?;
-    if !task_report_dirs.is_empty() {
-        let mut rpt_files: Vec<(std::path::PathBuf, String)> = Vec::new();
-        for (task_name, report_root) in &task_report_dirs {
-            for entry in walkdir::WalkDir::new(report_root) {
-                let entry = entry.map_err(std::io::Error::other)?;
-                if !entry.file_type().is_file() {
-                    continue;
-                }
-                let path = entry.path();
-                if !path
-                    .file_name()
-                    .and_then(|s| s.to_str())
-                    .is_some_and(|n| n.ends_with("_csynth.rpt"))
-                {
-                    continue;
-                }
-                let rel = path
-                    .strip_prefix(report_root)
-                    .map_err(|e| CliError::Archive(format!("rpt strip_prefix: {e}")))?;
-                let name = format!("report/{task_name}/{}", rel.to_slash_lossy());
-                rpt_files.push((path.to_path_buf(), name));
-            }
-        }
-        rpt_files.sort();
-        for (rpt, name) in &rpt_files {
-            add_zip_entry(&mut z, opts, name, &redact_rpt(&fs_err::read(rpt)?))?;
-        }
+    let rpt_files = collect_hls_reports(work_dir, |path| {
+        path.file_name()
+            .and_then(|s| s.to_str())
+            .is_some_and(|n| n.ends_with("_csynth.rpt"))
+    })?;
+    for (rpt, name) in &rpt_files {
+        add_zip_entry(&mut z, opts, name, &redact_rpt(&fs_err::read(rpt)?))?;
     }
 
     z.finish()
@@ -391,16 +405,30 @@ mod tests {
     }
 
     #[test]
-    fn enforce_xo_suffix_appends_when_missing() {
-        assert_eq!(enforce_xo_suffix(None), PathBuf::from("work.xo"));
-        assert_eq!(
-            enforce_xo_suffix(Some(&PathBuf::from("artifact"))),
-            PathBuf::from("artifact.xo"),
-        );
-        assert_eq!(
-            enforce_xo_suffix(Some(&PathBuf::from("ok.xo"))),
-            PathBuf::from("ok.xo"),
-        );
+    fn enforce_path_suffix_appends_only_when_missing() {
+        // A bare default (`work.zip` / `work.xo`) resolves against the
+        // caller's CWD, not <work_dir>. The two wrappers differ only in
+        // the extension and default they pass through.
+        let cases: [(Option<&str>, &str, &str, &str); 6] = [
+            (None, "xo", "work.xo", "work.xo"),
+            (Some("artifact"), "xo", "work.xo", "artifact.xo"),
+            (Some("ok.xo"), "xo", "work.xo", "ok.xo"),
+            (None, "zip", "work.zip", "work.zip"),
+            (Some("artifact"), "zip", "work.zip", "artifact.zip"),
+            (Some("ok.zip"), "zip", "work.zip", "ok.zip"),
+        ];
+        for (output, ext, default, expected) in cases {
+            assert_eq!(
+                enforce_path_suffix(output.map(PathBuf::from).as_ref(), ext, default),
+                PathBuf::from(expected),
+            );
+        }
+        for (wrapped, output) in [
+            (enforce_xo_suffix(None), PathBuf::from("work.xo")),
+            (enforce_zip_suffix(None), PathBuf::from("work.zip")),
+        ] {
+            assert_eq!(wrapped, output);
+        }
     }
 
     #[test]
@@ -607,21 +635,6 @@ mod tests {
         assert!(
             !output_path.exists(),
             "nothing may be written once the frontier rejects the pack",
-        );
-    }
-
-    #[test]
-    fn enforce_zip_suffix_defaults_to_cwd() {
-        // A bare `work.zip` resolves against the caller's CWD, not
-        // <work_dir>/work.zip.
-        assert_eq!(enforce_zip_suffix(None), PathBuf::from("work.zip"));
-        assert_eq!(
-            enforce_zip_suffix(Some(&PathBuf::from("artifact"))),
-            PathBuf::from("artifact.zip"),
-        );
-        assert_eq!(
-            enforce_zip_suffix(Some(&PathBuf::from("ok.zip"))),
-            PathBuf::from("ok.zip"),
         );
     }
 

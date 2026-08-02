@@ -49,11 +49,6 @@ impl<'a> PipelineStep<'a> {
 /// Resolve and validate a pipeline step's registry entry before dispatch.
 pub(crate) fn validate_pipeline_step(step: PipelineStep<'_>, ctx: &CliContext) -> Result<()> {
     let spec = step.spec();
-    log::debug!(
-        "step artifact contract: reads {:?}, writes {:?}",
-        spec.reads,
-        spec.writes
-    );
     if spec.preconditions.is_empty() {
         return Ok(());
     }
