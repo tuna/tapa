@@ -76,8 +76,6 @@ cargo_test(
     srcs = _ALL_SRCS,
     cargo_args = [
         "-p",
-        "frt-cbindgen",
-        "-p",
         "frt-shm",
         "-p",
         "frt-dpi",

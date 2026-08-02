@@ -1,7 +1,9 @@
 use super::metadata::{
     extract_embedded_xml, extract_platform_vbnv, parse_embedded_xml, XrtArgKind, XrtMetadata,
 };
-use crate::device::{BufferAccess, Device, RuntimeArgCategory, RuntimeArgInfo};
+use crate::device::{
+    sorted_args_info, stage_scalar_arg, BufferAccess, Device, RuntimeArgCategory, RuntimeArgInfo,
+};
 use crate::error::{FrtError, Result};
 use frt_cosim::metadata::normalized_scalar_bytes;
 use frt_cosim::runner::environ::xilinx_environ;
@@ -222,7 +224,7 @@ fn emconfig_ready(dir: &Path, platform: &str) -> bool {
 
 impl Device for XrtDevice {
     fn set_scalar_arg(&mut self, index: u32, value: &[u8]) -> Result<()> {
-        self.scalars.insert(index, value.to_vec());
+        stage_scalar_arg(&mut self.scalars, index, value);
         Ok(())
     }
 
@@ -477,8 +479,7 @@ impl Device for XrtDevice {
     }
 
     fn args_info(&self) -> Vec<RuntimeArgInfo> {
-        let mut args = Vec::with_capacity(self._meta.args.len());
-        for arg in &self._meta.args {
+        sorted_args_info(self._meta.args.iter().map(|arg| {
             let (type_name, category) = match arg.kind {
                 XrtArgKind::Scalar { width } => {
                     (scalar_type_name(width), RuntimeArgCategory::Scalar)
@@ -486,28 +487,16 @@ impl Device for XrtDevice {
                 XrtArgKind::Mmap { .. } => ("mmap".to_owned(), RuntimeArgCategory::Mmap),
                 XrtArgKind::Stream { .. } => ("stream".to_owned(), RuntimeArgCategory::Stream),
             };
-            args.push(RuntimeArgInfo {
+            RuntimeArgInfo {
                 index: arg.id,
                 name: arg.name.clone(),
                 type_name,
                 category,
-            });
-        }
-        args.sort_by_key(|a| a.index);
-        args
+            }
+        }))
     }
 
-    fn load_ns(&self) -> u64 {
-        self.load_ns
-    }
-
-    fn compute_ns(&self) -> u64 {
-        self.compute_ns
-    }
-
-    fn store_ns(&self) -> u64 {
-        self.store_ns
-    }
+    crate::device::impl_ns_getters! {}
 }
 
 fn select_device(meta: &XrtMetadata) -> Result<cl_device_id> {

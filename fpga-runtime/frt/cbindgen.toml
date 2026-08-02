@@ -1,5 +1,5 @@
 # cbindgen configuration for tapa-lib/tapa/host/frt/c_api.h.
-# Regenerate with: cargo run -p frt-cbindgen > ../../tapa-lib/tapa/host/frt/c_api.h
+# Regenerate with: cargo run -p frt --example gen_c_api > ../../tapa-lib/tapa/host/frt/c_api.h
 language = "Cxx"
 pragma_once = true
 header = """/* Single declaration point for the FRT C ABIs implemented in Rust.

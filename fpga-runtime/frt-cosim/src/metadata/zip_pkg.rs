@@ -121,7 +121,7 @@ pub fn spec_from_task_graph(graph: &TaskGraph) -> Result<KernelSpec> {
             // archives are rejected there, before they ship, so the error
             // below fires only for pre-frontier or hand-built archives.
             // Keep the cosim-consumable category set in sync with that
-            // file — a two-workspace seam the `frt-cbindgen` drift guard
+            // file — a two-workspace seam the `gen_c_api` drift guard
             // does not cover (it guards generated headers). Rejecting
             // keeps that an explicit, loud limitation rather than silently
             // binding them as plain mmaps.

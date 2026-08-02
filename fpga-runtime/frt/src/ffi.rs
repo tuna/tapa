@@ -40,6 +40,24 @@ fn with_handle_mut(handle: *mut std::ffi::c_void) -> Option<&'static mut FrtInst
     Some(unsafe { &mut *handle.cast::<FrtInstanceHandle>() })
 }
 
+/// Shared body for the `frt_instance_*` wrappers around fallible,
+/// argument-free `Instance` methods: a null handle or an error is recorded
+/// via `set_last_error` and mapped to `-1`, success to `0`.
+fn instance_method_call(
+    handle: *mut std::ffi::c_void,
+    method: impl FnOnce(&mut Instance) -> crate::error::Result<()>,
+) -> c_int {
+    clear_last_error();
+    let Some(h) = with_handle_mut(handle) else {
+        return -1;
+    };
+    if let Err(e) = method(&mut h.instance) {
+        set_last_error(e.to_string());
+        return -1;
+    }
+    0
+}
+
 thread_local! {
     /// Per-thread slot for the most recent FFI error message.
     ///
@@ -366,93 +384,37 @@ pub extern "C" fn frt_instance_suspend_buffer(handle: *mut std::ffi::c_void, ind
 
 #[no_mangle]
 pub extern "C" fn frt_instance_write_to_device(handle: *mut std::ffi::c_void) -> c_int {
-    clear_last_error();
-    let Some(h) = with_handle_mut(handle) else {
-        return -1;
-    };
-    if let Err(e) = h.instance.write_to_device() {
-        set_last_error(e.to_string());
-        return -1;
-    }
-    0
+    instance_method_call(handle, Instance::write_to_device)
 }
 
 #[no_mangle]
 pub extern "C" fn frt_instance_read_from_device(handle: *mut std::ffi::c_void) -> c_int {
-    clear_last_error();
-    let Some(h) = with_handle_mut(handle) else {
-        return -1;
-    };
-    if let Err(e) = h.instance.read_from_device() {
-        set_last_error(e.to_string());
-        return -1;
-    }
-    0
+    instance_method_call(handle, Instance::read_from_device)
 }
 
 #[no_mangle]
 pub extern "C" fn frt_instance_exec(handle: *mut std::ffi::c_void) -> c_int {
-    clear_last_error();
-    let Some(h) = with_handle_mut(handle) else {
-        return -1;
-    };
-    if let Err(e) = h.instance.exec() {
-        set_last_error(e.to_string());
-        return -1;
-    }
-    0
+    instance_method_call(handle, Instance::exec)
 }
 
 #[no_mangle]
 pub extern "C" fn frt_instance_pause(handle: *mut std::ffi::c_void) -> c_int {
-    clear_last_error();
-    let Some(h) = with_handle_mut(handle) else {
-        return -1;
-    };
-    if let Err(e) = h.instance.pause() {
-        set_last_error(e.to_string());
-        return -1;
-    }
-    0
+    instance_method_call(handle, Instance::pause)
 }
 
 #[no_mangle]
 pub extern "C" fn frt_instance_resume(handle: *mut std::ffi::c_void) -> c_int {
-    clear_last_error();
-    let Some(h) = with_handle_mut(handle) else {
-        return -1;
-    };
-    if let Err(e) = h.instance.resume() {
-        set_last_error(e.to_string());
-        return -1;
-    }
-    0
+    instance_method_call(handle, Instance::resume)
 }
 
 #[no_mangle]
 pub extern "C" fn frt_instance_finish(handle: *mut std::ffi::c_void) -> c_int {
-    clear_last_error();
-    let Some(h) = with_handle_mut(handle) else {
-        return -1;
-    };
-    if let Err(e) = h.instance.finish() {
-        set_last_error(e.to_string());
-        return -1;
-    }
-    0
+    instance_method_call(handle, Instance::finish)
 }
 
 #[no_mangle]
 pub extern "C" fn frt_instance_kill(handle: *mut std::ffi::c_void) -> c_int {
-    clear_last_error();
-    let Some(h) = with_handle_mut(handle) else {
-        return -1;
-    };
-    if let Err(e) = h.instance.kill() {
-        set_last_error(e.to_string());
-        return -1;
-    }
-    0
+    instance_method_call(handle, Instance::kill)
 }
 
 #[no_mangle]

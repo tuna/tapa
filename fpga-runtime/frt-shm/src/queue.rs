@@ -117,11 +117,6 @@ impl SharedMemoryQueue {
         Ok(new_tail - head >= depth)
     }
 
-    pub fn pop(&mut self) -> Option<Vec<u8>> {
-        let mut out = vec![0u8; self.width()];
-        self.pop_into(&mut out).then_some(out)
-    }
-
     /// Pop the front element directly into `buf`, returning `true` on success.
     /// `buf` must be at least `self.width()` bytes; only `width` bytes are written.
     pub fn pop_into(&mut self, buf: &mut [u8]) -> bool {
@@ -221,8 +216,9 @@ mod tests {
         assert!(q.is_empty());
         q.try_push(b"abcd").expect("push");
         assert!(!q.is_empty());
-        let got = q.pop().expect("pop");
-        assert_eq!(got, b"abcd");
+        let mut got = [0u8; 4];
+        assert!(q.pop_into(&mut got));
+        assert_eq!(&got, b"abcd");
         assert!(q.is_empty());
     }
 
@@ -242,10 +238,14 @@ mod tests {
             q.try_push(&[i, i]).expect("push");
         }
         for i in 0u8..4 {
-            assert_eq!(q.pop().expect("pop"), vec![i, i]);
+            let mut got = [0u8; 2];
+            assert!(q.pop_into(&mut got));
+            assert_eq!(got, [i, i]);
         }
         q.try_push(b"xy").expect("push");
-        assert_eq!(q.pop().expect("pop"), b"xy");
+        let mut got = [0u8; 2];
+        assert!(q.pop_into(&mut got));
+        assert_eq!(&got, b"xy");
     }
 
     #[test]
@@ -255,7 +255,8 @@ mod tests {
         let mut buf = [0u8; 2];
         assert!(q.peek_into(&mut buf));
         assert_eq!(&buf, b"ab");
-        assert_eq!(q.pop().expect("pop"), b"ab");
+        assert!(q.pop_into(&mut buf));
+        assert_eq!(&buf, b"ab");
     }
 
     #[test]

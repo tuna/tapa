@@ -1,6 +1,5 @@
 #[cfg(target_os = "linux")]
 mod imp {
-    use frt_dpi::get_or_init;
     use std::sync::OnceLock;
 
     // svOpenArrayHandle is an opaque pointer type from svdpi.h.
@@ -29,109 +28,39 @@ mod imp {
     }
 
     /// Extract the raw byte pointer from an svOpenArrayHandle.
+    ///
+    /// # Safety
+    /// `h` must be a valid svOpenArrayHandle provided by the xsim DPI caller.
     unsafe fn sv_array_ptr(h: SvOpenArrayHandle) -> *mut u8 {
         // SAFETY: `h` is a valid svOpenArrayHandle from the xsim DPI caller;
         // `svGetArrayPtr` returns the underlying data pointer.
         unsafe { (get_sv_get_array_ptr())(h).cast::<u8>() }
     }
 
-    // xsim marshalling: svOpenArrayHandle arrays, `u8` flags/returns.
-    macro_rules! dpi_fn {
-        (fn $name:ident($($arg:ident : $ty:ty),* ; mut $arr:ident) => $impl_fn:expr) => {
-            #[no_mangle]
-            pub unsafe extern "C" fn $name(
-                port: *const libc::c_char, $($arg: $ty,)* $arr: SvOpenArrayHandle,
-            ) {
-                // SAFETY: `port` is a DPI-provided C string valid for this call;
-                // `$arr` is an xsim-provided svOpenArrayHandle.
-                unsafe {
-                    let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
-                    let ptr = sv_array_ptr($arr);
-                    $impl_fn(get_or_init(), port, $($arg,)* ptr);
-                }
-            }
-        };
-        (fn $name:ident($($arg:ident : $ty:ty),* ; const $arr:ident) => $impl_fn:expr) => {
-            #[no_mangle]
-            pub unsafe extern "C" fn $name(
-                port: *const libc::c_char, $($arg: $ty,)* $arr: SvOpenArrayHandle,
-            ) {
-                // SAFETY: `port` is a DPI-provided C string valid for this call;
-                // `$arr` is an xsim-provided svOpenArrayHandle.
-                unsafe {
-                    let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
-                    let ptr: *const u8 = sv_array_ptr($arr).cast_const();
-                    $impl_fn(get_or_init(), port, $($arg,)* ptr);
-                }
-            }
-        };
-        (fn $name:ident(mut $arr:ident) -> ret => $impl_fn:expr) => {
-            #[no_mangle]
-            pub unsafe extern "C" fn $name(
-                port: *const libc::c_char, $arr: SvOpenArrayHandle,
-            ) -> u8 {
-                // SAFETY: `port` is a DPI-provided C string valid for this call;
-                // `$arr` is an xsim-provided svOpenArrayHandle.
-                unsafe {
-                    let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
-                    let ptr = sv_array_ptr($arr);
-                    $impl_fn(get_or_init(), port, ptr) as u8
-                }
-            }
-        };
-        (fn $name:ident(const $arr:ident) -> ret => $impl_fn:expr) => {
-            #[no_mangle]
-            pub unsafe extern "C" fn $name(
-                port: *const libc::c_char, $arr: SvOpenArrayHandle,
-            ) -> u8 {
-                // SAFETY: `port` is a DPI-provided C string valid for this call;
-                // `$arr` is an xsim-provided svOpenArrayHandle.
-                unsafe {
-                    let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
-                    let ptr: *const u8 = sv_array_ptr($arr).cast_const();
-                    $impl_fn(get_or_init(), port, ptr) as u8
-                }
-            }
-        };
-        (fn $name:ident() -> ret => $impl_fn:expr) => {
-            #[no_mangle]
-            pub unsafe extern "C" fn $name(port: *const libc::c_char) -> u8 {
-                // SAFETY: `port` is a DPI-provided C string valid for this call.
-                unsafe {
-                    let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
-                    $impl_fn(get_or_init(), port) as u8
-                }
-            }
-        };
-        (fn $name:ident($flag:ident : flag, mut $arr:ident) -> ret => $impl_fn:expr) => {
-            #[no_mangle]
-            pub unsafe extern "C" fn $name(
-                port: *const libc::c_char, $flag: u8, $arr: SvOpenArrayHandle,
-            ) -> u8 {
-                // SAFETY: `port` is a DPI-provided C string valid for this call;
-                // `$arr` is an xsim-provided svOpenArrayHandle.
-                unsafe {
-                    let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
-                    let ptr = sv_array_ptr($arr);
-                    $impl_fn(get_or_init(), port, $flag != 0, ptr) as u8
-                }
-            }
-        };
-        (fn $name:ident($flag:ident : flag, const $arr:ident) -> ret => $impl_fn:expr) => {
-            #[no_mangle]
-            pub unsafe extern "C" fn $name(
-                port: *const libc::c_char, $flag: u8, $arr: SvOpenArrayHandle,
-            ) -> u8 {
-                // SAFETY: `port` is a DPI-provided C string valid for this call;
-                // `$arr` is an xsim-provided svOpenArrayHandle.
-                unsafe {
-                    let port = std::ffi::CStr::from_ptr(port).to_str().unwrap_or("");
-                    let ptr: *const u8 = sv_array_ptr($arr).cast_const();
-                    $impl_fn(get_or_init(), port, $flag != 0, ptr) as u8
-                }
-            }
-        };
+    // Marshals an svOpenArrayHandle payload pointer for writes.
+    fn arr_mut_ptr(h: SvOpenArrayHandle) -> *mut u8 {
+        // SAFETY: the DPI caller hands us a handle that stays valid for the
+        // duration of the exported call.
+        unsafe { sv_array_ptr(h) }
     }
 
-    frt_dpi::dpi_inventory!(dpi_fn);
+    // Marshals an svOpenArrayHandle payload pointer for reads.
+    fn arr_const_ptr(h: SvOpenArrayHandle) -> *const u8 {
+        // SAFETY: the DPI caller hands us a handle that stays valid for the
+        // duration of the exported call.
+        unsafe { sv_array_ptr(h).cast_const() }
+    }
+
+    // Decodes an `svBit`-style flag: nonzero is set.
+    fn flag_is_set(f: u8) -> bool {
+        f != 0
+    }
+
+    // xsim marshalling: svOpenArrayHandle arrays, `u8` flags/returns.
+    frt_dpi::dpi_export! {
+        mut arr: SvOpenArrayHandle as arr_mut_ptr;
+        const arr: SvOpenArrayHandle as arr_const_ptr;
+        flag: u8 as flag_is_set;
+        ret: u8 as u8::from;
+    }
 }

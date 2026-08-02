@@ -1,4 +1,6 @@
-use crate::device::{BufferAccess, Device, RuntimeArgCategory, RuntimeArgInfo};
+use crate::device::{
+    sorted_args_info, stage_scalar_arg, BufferAccess, Device, RuntimeArgCategory, RuntimeArgInfo,
+};
 use crate::error::{FrtError, Result};
 use crate::instance::Simulator;
 use frt_cosim::context::CosimContext;
@@ -487,7 +489,7 @@ fn dpi_library_candidates(variant: &str) -> [String; 2] {
 
 impl Device for CosimDevice {
     fn set_scalar_arg(&mut self, index: u32, value: &[u8]) -> Result<()> {
-        self.scalars.insert(index, value.to_vec());
+        stage_scalar_arg(&mut self.scalars, index, value);
         Ok(())
     }
 
@@ -688,8 +690,7 @@ impl Device for CosimDevice {
     }
 
     fn args_info(&self) -> Vec<RuntimeArgInfo> {
-        let mut args = Vec::with_capacity(self.spec.args.len());
-        for arg in &self.spec.args {
+        sorted_args_info(self.spec.args.iter().map(|arg| {
             let (type_name, category) = match &arg.kind {
                 frt_cosim::metadata::ArgKind::Scalar { .. } => {
                     ("scalar".to_owned(), RuntimeArgCategory::Scalar)
@@ -706,28 +707,16 @@ impl Device for CosimDevice {
                     RuntimeArgCategory::Stream,
                 ),
             };
-            args.push(RuntimeArgInfo {
+            RuntimeArgInfo {
                 index: arg.id,
                 name: arg.name.clone(),
                 type_name,
                 category,
-            });
-        }
-        args.sort_by_key(|a| a.index);
-        args
+            }
+        }))
     }
 
-    fn load_ns(&self) -> u64 {
-        self.load_ns
-    }
-
-    fn compute_ns(&self) -> u64 {
-        self.compute_ns
-    }
-
-    fn store_ns(&self) -> u64 {
-        self.store_ns
-    }
+    crate::device::impl_ns_getters! {}
 }
 
 #[cfg(test)]

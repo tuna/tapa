@@ -100,14 +100,16 @@ pub fn stream_istream_step_impl(ctx: &DpiContext, port: &str, consume: bool, out
     };
 
     if s.last_istream_valid && consume {
-        // Consume the previously-peeked front element.
-        let mut discard = [0u8; 256];
+        // Consume the previously-peeked front element; the payload is discarded.
         let w = s.queue.width();
-        if w <= discard.len() {
-            if s.queue.pop_into(&mut discard[..w]) {
-                READ_OK.fetch_add(1, Ordering::Relaxed);
-            }
-        } else if s.queue.pop().is_some() {
+        let mut discard = [0u8; 256];
+        let popped = if w <= discard.len() {
+            s.queue.pop_into(&mut discard[..w])
+        } else {
+            // Rare oversize width: discard via a sized scratch buffer.
+            s.queue.pop_into(&mut vec![0u8; w])
+        };
+        if popped {
             READ_OK.fetch_add(1, Ordering::Relaxed);
         }
     }
