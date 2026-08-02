@@ -41,14 +41,6 @@ impl CbcSolver {
         let program = std::env::var("TAPA_CBC").unwrap_or_else(|_| "cbc".to_string());
         Self { program }
     }
-
-    /// A solver invoking a specific `cbc` binary.
-    #[must_use]
-    pub fn with_program(program: impl Into<String>) -> Self {
-        Self {
-            program: program.into(),
-        }
-    }
 }
 
 impl Default for CbcSolver {
@@ -379,7 +371,7 @@ Optimal - objective value 12.00000000
             mip_gap_abs: Some(0.001),
             ..SolveOpts::default()
         };
-        let command = CbcSolver::with_program("cbc").command(
+        let command = CbcSolver::new().command(
             &PathBuf::from("model.lp"),
             &PathBuf::from("model.sol"),
             &opts,
@@ -404,7 +396,7 @@ Optimal - objective value 12.00000000
             time_limit: Some(std::time::Duration::ZERO),
             ..SolveOpts::default()
         };
-        let error = CbcSolver::with_program("this-program-must-not-run")
+        let error = CbcSolver::new()
             .solve(&model, &opts)
             .expect_err("zero time limit");
         assert!(matches!(error, SolverError::InvalidOptions(_)));

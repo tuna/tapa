@@ -3,4 +3,4 @@
 
 pub mod plan;
 
-pub use plan::{pipeline_level, pipeline_reg_regions, plan_routes, PipelineError};
+pub use plan::{pipeline_reg_regions, plan_routes, PipelineError};

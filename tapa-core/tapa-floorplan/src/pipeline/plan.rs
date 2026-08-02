@@ -50,16 +50,6 @@ pub enum PipelineError {
     },
 }
 
-/// The number of Body pipeline cells a route implies under `scheme`.
-///
-/// Head and Tail are not included. In particular, an adjacent Single or
-/// Single-H/Double-V horizontal crossing has zero Body cells while retaining
-/// its separately generated Head and Tail.
-#[must_use]
-pub fn pipeline_level(route: &[Cell], scheme: PipelineScheme) -> u32 {
-    u32::try_from(pipeline_reg_regions(route, scheme).len()).unwrap_or(u32::MAX)
-}
-
 /// Return the exact ordered Body-cell regions for `route` and `scheme`.
 ///
 /// - Single uses only the intermediate route slots.
@@ -1344,7 +1334,7 @@ mod tests {
     fn single_scheme_levels_by_intermediate_slots() {
         let route = vec![(0, 0), (0, 1), (0, 2)];
         assert_eq!(
-            pipeline_level(&route, PipelineScheme::Single),
+            pipeline_reg_regions(&route, PipelineScheme::Single).len(),
             1,
             "one intermediate"
         );
@@ -1354,7 +1344,7 @@ mod tests {
     fn double_scheme_two_per_hop() {
         let route = vec![(0, 0), (0, 1), (0, 2)];
         assert_eq!(
-            pipeline_level(&route, PipelineScheme::Double),
+            pipeline_reg_regions(&route, PipelineScheme::Double).len(),
             4,
             "two hops * 2"
         );
@@ -1365,7 +1355,7 @@ mod tests {
         // One vertical hop (y changes) then one horizontal hop (x changes).
         let route = vec![(0, 0), (0, 1), (1, 1)];
         assert_eq!(
-            pipeline_level(&route, PipelineScheme::SingleHDoubleV),
+            pipeline_reg_regions(&route, PipelineScheme::SingleHDoubleV).len(),
             3,
             "2 + 1"
         );
@@ -1383,14 +1373,12 @@ mod tests {
     #[test]
     fn adjacent_single_crossing_has_head_and_tail_but_no_body() {
         let route = [(0, 0), (1, 0)];
-        assert_eq!(pipeline_level(&route, PipelineScheme::Single), 0);
         assert!(pipeline_reg_regions(&route, PipelineScheme::Single).is_empty());
     }
 
     #[test]
     fn hybrid_horizontal_crossing_has_no_body() {
         let route = [(0, 0), (1, 0)];
-        assert_eq!(pipeline_level(&route, PipelineScheme::SingleHDoubleV), 0);
         assert!(pipeline_reg_regions(&route, PipelineScheme::SingleHDoubleV).is_empty());
     }
 

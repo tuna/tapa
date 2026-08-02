@@ -149,10 +149,6 @@ impl SshSession {
         &self.cfg
     }
 
-    pub fn options(&self) -> &SshMuxOptions {
-        &self.options
-    }
-
     /// Directory holding control-master sockets: the user-supplied
     /// `ssh_control_dir` from `RemoteConfig` wins; otherwise
     /// `$XDG_RUNTIME_DIR/tapa/ssh` when set, else `/tmp/tapa-ssh-mux`.

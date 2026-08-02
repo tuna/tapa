@@ -177,7 +177,7 @@ fn kernel_env_entries(job: &HlsJob) -> Vec<(String, String)> {
     env
 }
 
-pub fn build_hls_tcl(job: &HlsJob) -> Result<String> {
+pub(crate) fn build_hls_tcl(job: &HlsJob) -> Result<String> {
     let solution = if job.solution_name.is_empty() {
         job.top_name.as_str()
     } else {

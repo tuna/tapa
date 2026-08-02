@@ -64,17 +64,6 @@ pub static STREAM_PORT_DIRECTION: phf::Map<&'static str, &'static str> = phf::ph
     "_write" => "output",
 };
 
-/// Bit width for each stream suffix.  `0` means width is determined by
-/// the data type (variable).
-pub static STREAM_PORT_WIDTH: phf::Map<&'static str, u32> = phf::phf_map! {
-    "_dout" => 0,
-    "_din" => 0,
-    "_empty_n" => 1,
-    "_full_n" => 1,
-    "_read" => 1,
-    "_write" => 1,
-};
-
 // ── FIFO interface ports ────────────────────────────────────────────
 
 pub const FIFO_READ_PORTS: &[&str] = &["if_dout", "if_empty_n", "if_read", "if_read_ce"];
@@ -91,58 +80,6 @@ pub const S_AXI_LITE_CTRL_PORTS: &[&str] = &[
     "ARADDR", "RVALID", "RREADY", "RDATA", "RRESP", "BVALID", "BREADY", "BRESP",
 ];
 
-/// AXI-Lite control ports with their slave-side direction (`Input` =
-/// driven by the host master into `ctrl_s_axi`). Same order as
-/// [`S_AXI_LITE_CTRL_PORTS`].
-pub const S_AXI_LITE_PORT_DIRS: &[AxiPortEntry] = &[
-    ("AWVALID", PortDir::Input),
-    ("AWREADY", PortDir::Output),
-    ("AWADDR", PortDir::Input),
-    ("WVALID", PortDir::Input),
-    ("WREADY", PortDir::Output),
-    ("WDATA", PortDir::Input),
-    ("WSTRB", PortDir::Input),
-    ("ARVALID", PortDir::Input),
-    ("ARREADY", PortDir::Output),
-    ("ARADDR", PortDir::Input),
-    ("RVALID", PortDir::Output),
-    ("RREADY", PortDir::Input),
-    ("RDATA", PortDir::Output),
-    ("RRESP", PortDir::Output),
-    ("BVALID", PortDir::Output),
-    ("BREADY", PortDir::Input),
-    ("BRESP", PortDir::Output),
-];
-
-/// Per-channel groupings of the AXI-Lite control ports with their
-/// valid/ready markers (ports listed alphabetically per channel).
-pub const S_AXI_LITE_CHANNELS: &[AxiChannelInfo] = &[
-    AxiChannelInfo {
-        ports: &["ARADDR", "ARREADY", "ARVALID"],
-        valid: "ARVALID",
-        ready: "ARREADY",
-    },
-    AxiChannelInfo {
-        ports: &["AWADDR", "AWREADY", "AWVALID"],
-        valid: "AWVALID",
-        ready: "AWREADY",
-    },
-    AxiChannelInfo {
-        ports: &["BREADY", "BRESP", "BVALID"],
-        valid: "BVALID",
-        ready: "BREADY",
-    },
-    AxiChannelInfo {
-        ports: &["RDATA", "RREADY", "RRESP", "RVALID"],
-        valid: "RVALID",
-        ready: "RREADY",
-    },
-    AxiChannelInfo {
-        ports: &["WDATA", "WREADY", "WSTRB", "WVALID"],
-        valid: "WVALID",
-        ready: "WREADY",
-    },
-];
 pub const M_AXI_PREFIX: &str = "m_axi_";
 
 /// Canonical M-AXI channel emission order.
@@ -369,44 +306,12 @@ mod tests {
             .copied()
             .collect();
         let with_direction: BTreeSet<&str> = STREAM_PORT_DIRECTION.keys().copied().collect();
-        let with_width: BTreeSet<&str> = STREAM_PORT_WIDTH.keys().copied().collect();
 
         assert_eq!(declared, with_direction, "direction table");
-        assert_eq!(declared, with_width, "width table");
         assert!(
             STREAM_DATA_SUFFIXES.iter().all(|s| declared.contains(s)),
             "data suffixes must be declared stream suffixes"
         );
-    }
-
-    /// `S_AXI_LITE_PORT_DIRS` documents itself as "same order as
-    /// `S_AXI_LITE_CTRL_PORTS`"; hold it to that.
-    #[test]
-    fn s_axi_lite_dirs_match_ctrl_port_order() {
-        let named: Vec<&str> = S_AXI_LITE_PORT_DIRS.iter().map(|(name, _)| *name).collect();
-        assert_eq!(named, S_AXI_LITE_CTRL_PORTS, "port order drifted");
-    }
-
-    /// The per-channel groups partition the flat control-port list.
-    #[test]
-    fn s_axi_lite_channels_partition_ctrl_ports() {
-        let mut grouped: Vec<&str> = S_AXI_LITE_CHANNELS
-            .iter()
-            .flat_map(|c| c.ports.iter().copied())
-            .collect();
-        let total = grouped.len();
-        grouped.sort_unstable();
-        grouped.dedup();
-        assert_eq!(total, grouped.len(), "a port appears in two channels");
-
-        let mut expected: Vec<&str> = S_AXI_LITE_CTRL_PORTS.to_vec();
-        expected.sort_unstable();
-        assert_eq!(grouped, expected, "channels do not cover the control ports");
-
-        for channel in S_AXI_LITE_CHANNELS {
-            assert!(channel.ports.contains(&channel.valid), "valid not in ports");
-            assert!(channel.ports.contains(&channel.ready), "ready not in ports");
-        }
     }
 
     /// The compact suffix set is the full set minus the optional

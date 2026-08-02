@@ -28,7 +28,10 @@ pub struct KernelTiming {
 /// it `ap_clk` on some platforms and `clk_kernel_00_unbuffered_net` (or
 /// similar) on Alveo shell platforms. When the target is unknown (`None`),
 /// the parser falls back to the historical `ap_clk` name.
-pub fn parse_kernel_timing_summary(report: &str, target_mhz: Option<u32>) -> Result<KernelTiming> {
+pub(crate) fn parse_kernel_timing_summary(
+    report: &str,
+    target_mhz: Option<u32>,
+) -> Result<KernelTiming> {
     let kernel_clock = identify_kernel_clock(report, target_mhz)?;
 
     let clock_row = unique_clock_row(report, "Clock Summary", &kernel_clock)?;

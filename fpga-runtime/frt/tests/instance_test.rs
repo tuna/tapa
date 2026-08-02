@@ -202,7 +202,9 @@ fn open_cosim_verilator_xo_mmap_axis_roundtrip() {
             std::mem::size_of_val(&mmap_word),
         )
         .expect("set mmap arg");
-    instance.set_scalar_arg(2, 2).expect("set scalar arg");
+    instance
+        .set_scalar_arg_bytes(2, &2u64.to_le_bytes())
+        .expect("set scalar arg");
 
     let stream_name = format!("manual_axis_{}_{}", std::process::id(), mmap_word[0]);
     let mut stream_q =

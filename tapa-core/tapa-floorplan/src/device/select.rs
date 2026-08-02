@@ -117,12 +117,6 @@ fn part_family(part: &str) -> &str {
     part.split('-').next().unwrap_or(part)
 }
 
-/// The keys of every embedded device table.
-#[must_use]
-pub fn device_keys() -> Vec<&'static str> {
-    DeviceRegistry::embedded().keys()
-}
-
 /// Resolve a part number (or a short alias like `u280` or `xcu280-…`) to its
 /// device table.
 ///

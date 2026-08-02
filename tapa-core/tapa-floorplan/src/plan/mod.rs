@@ -94,19 +94,6 @@ pub fn plan_with_inputs(
     )
 }
 
-/// Plan without relaxing the requested utilization limit on infeasibility.
-///
-/// Multilevel candidates use the requested limit for LUT/FF and a 0.10-higher,
-/// at-most-one limit for block resources. Flat candidates use one limit for
-/// every resource.
-pub fn plan_with_inputs_at_usage_limit(
-    state: &WorkState,
-    options: &PlanOptions,
-    inputs: &PlanInputs,
-) -> Result<FloorplanResult, PlanError> {
-    plan_with_inputs_at_usage_limit_and_caps(state, options, inputs)?.result
-}
-
 fn plan_with_retry_ceiling(
     state: &WorkState,
     options: &PlanOptions,

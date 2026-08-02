@@ -695,7 +695,6 @@ fn elapsed_ns(events: &[Event]) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::scalar_type_name;
-    use frt_cosim::metadata::normalized_scalar_bytes;
 
     #[test]
     fn scalar_type_names_expand_beyond_u64() {

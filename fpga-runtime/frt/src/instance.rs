@@ -33,10 +33,6 @@ impl Instance {
         })
     }
 
-    pub fn set_scalar_arg(&mut self, index: u32, value: u64) -> Result<()> {
-        self.device.set_scalar_arg(index, &value.to_le_bytes())
-    }
-
     pub fn set_scalar_arg_bytes(&mut self, index: u32, value: &[u8]) -> Result<()> {
         self.device.set_scalar_arg(index, value)
     }

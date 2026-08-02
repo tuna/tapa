@@ -3,7 +3,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 #[repr(C)]
-pub struct QueueHeader {
+pub(crate) struct QueueHeader {
     magic: [u8; 4],
     version: i32,
     depth: u32,
@@ -143,11 +143,6 @@ impl SharedMemoryQueue {
         true
     }
 
-    pub fn peek(&self) -> Option<Vec<u8>> {
-        let mut out = vec![0u8; self.width()];
-        self.peek_into(&mut out).then_some(out)
-    }
-
     /// Peek the front element directly into `buf`, returning `true` on success.
     /// `buf` must be at least `self.width()` bytes; only `width` bytes are written.
     pub fn peek_into(&self, buf: &mut [u8]) -> bool {
@@ -257,7 +252,9 @@ mod tests {
     fn peek_does_not_consume() {
         let mut q = SharedMemoryQueue::create("test_q_peek", 4, 2).expect("create");
         q.try_push(b"ab").expect("push");
-        assert_eq!(q.peek().expect("peek"), b"ab");
+        let mut buf = [0u8; 2];
+        assert!(q.peek_into(&mut buf));
+        assert_eq!(&buf, b"ab");
         assert_eq!(q.pop().expect("pop"), b"ab");
     }
 

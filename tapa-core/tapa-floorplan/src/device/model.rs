@@ -356,18 +356,6 @@ impl Device {
             .filter(move |slot| slot.tags.iter().any(|candidate| candidate == tag))
     }
 
-    /// The centroid of a region: the midpoint of its down-left and up-right
-    /// slot centroids. `None` if either corner slot is missing.
-    #[must_use]
-    pub fn island_centroid(&self, region: &Coor) -> Option<(i64, i64)> {
-        let dl = self.slot(region.dl_x, region.dl_y)?;
-        let ur = self.slot(region.ur_x, region.ur_y)?;
-        Some((
-            i64::midpoint(dl.centroid_x, ur.centroid_x),
-            i64::midpoint(dl.centroid_y, ur.centroid_y),
-        ))
-    }
-
     /// The summed resources of every slot in a region. `None` if any covered
     /// cell has no slot.
     #[must_use]
@@ -458,13 +446,6 @@ pub fn add_area(a: Area, b: Area) -> Area {
     }
 }
 
-/// The floorplan objective's distance between two centroids:
-/// `|Δx| + penalty·|Δy|`, penalizing SLR-crossing (vertical) distance.
-#[must_use]
-pub fn penalized_distance(a: (i64, i64), b: (i64, i64), vertical_penalty: i64) -> i64 {
-    (a.0 - b.0).abs() + vertical_penalty * (a.1 - b.1).abs()
-}
-
 #[cfg(test)]
 mod tests {
 
@@ -541,19 +522,6 @@ mod tests {
     }
 
     #[test]
-    fn island_centroid_is_the_corner_midpoint() {
-        let device = grid_2x2();
-        // Single slot: centroid is the slot's own.
-        assert_eq!(device.island_centroid(&Coor::slot(1, 1)), Some((100, 150)));
-        // Whole device: midpoint of (0,0)=(0,0) and (1,1)=(100,150).
-        assert_eq!(
-            device.island_centroid(&Coor::span(0, 0, 1, 1)),
-            Some((50, 75)),
-        );
-        assert_eq!(device.island_centroid(&Coor::slot(9, 9)), None);
-    }
-
-    #[test]
     fn island_area_sums_covered_slots() {
         let device = grid_2x2();
         // 10 + 20 + 30 + 40 across the whole grid.
@@ -564,19 +532,6 @@ mod tests {
         assert_eq!(
             device.island_area(&Coor::slot(0, 1)).map(|a| a.lut),
             Some(30),
-        );
-    }
-
-    #[test]
-    fn penalized_distance_weights_vertical() {
-        // Horizontal hop of 100 costs 100; vertical hop of 150 costs 300.
-        assert_eq!(
-            penalized_distance((0, 0), (100, 0), VERTICAL_DIST_PENALTY),
-            100
-        );
-        assert_eq!(
-            penalized_distance((0, 0), (0, 150), VERTICAL_DIST_PENALTY),
-            300
         );
     }
 

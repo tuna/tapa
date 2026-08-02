@@ -67,10 +67,8 @@ pub use runtime::vendor::sync_remote_vendor_includes;
 pub use tools::hls::report::{
     parse_csynth_xml, parse_utilization_rpt, CsynthReport, UtilizationReport,
 };
-pub use tools::hls::{
-    build_hls_tcl, run_hls_with_retry, run_hls_with_retry_in_stage, HlsJob, HlsOutput,
-};
+pub use tools::hls::{run_hls_with_retry, run_hls_with_retry_in_stage, HlsJob, HlsOutput};
 pub use tools::package_xo::{pack_xo, pack_xo_without_redaction, redact_xo, PackageXoInputs};
-pub use tools::vitis::timing::{parse_kernel_timing_summary, KernelTiming};
+pub use tools::vitis::timing::KernelTiming;
 pub use tools::vitis::{run_vitis_link, target_frequency_mhz, VitisLinkJob, VitisLinkOutput};
 pub use tools::vivado::{run_vivado, VivadoJob, VivadoOutput};

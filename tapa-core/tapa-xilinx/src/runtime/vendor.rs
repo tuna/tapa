@@ -174,7 +174,7 @@ pub fn sync_remote_vendor_includes(session: &SshSession) -> Result<Utf8PathBuf> 
 /// over a [`VendorRemoteFs`] and an explicit cache root so unit
 /// tests can exercise every branch without a live SSH session and
 /// without racing on the process-wide `XDG_CACHE_HOME` env var.
-pub fn sync_vendor_includes_impl<F: VendorRemoteFs>(
+pub(crate) fn sync_vendor_includes_impl<F: VendorRemoteFs>(
     fs: &F,
     xilinx_settings: &str,
     cache_dir: &Path,
