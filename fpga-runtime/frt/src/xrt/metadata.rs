@@ -83,21 +83,40 @@ pub fn parse_embedded_xml(xml: &str) -> Result<XrtMetadata> {
                     let mut name = String::new();
                     let mut id = 0u32;
                     let mut qualifier = 0u32;
-                    let mut data_width = 32u32;
+                    // `dataWidth`/`width` come from hand-written fixtures and
+                    // cosim-style XML; real Vitis xclbin XML instead carries
+                    // the C byte size of the argument (`size="0x8"` for a
+                    // `uint64_t` scalar, `size="0x2"` for `uint16_t`).
+                    let mut data_width = None;
+                    let mut size_bytes = None;
                     for a in e.attributes().flatten() {
                         let v = String::from_utf8_lossy(&a.value).into_owned();
                         match a.key.as_ref() {
                             b"name" => name = v,
                             b"id" => id = v.parse().unwrap_or(0),
                             b"addressQualifier" => qualifier = v.parse().unwrap_or(0),
-                            b"dataWidth" | b"width" => data_width = v.parse().unwrap_or(32),
+                            b"dataWidth" | b"width" => data_width = v.parse().ok(),
+                            b"size" => size_bytes = parse_size_bytes(&v),
                             _ => {}
                         }
                     }
                     let kind = match qualifier {
-                        0 => XrtArgKind::Scalar { width: data_width },
-                        1 => XrtArgKind::Mmap { data_width },
-                        4 => XrtArgKind::Stream { width: data_width },
+                        // Scalar register width must match the kernel's
+                        // declaration or the OpenCL driver rejects the arg;
+                        // fall back to the C size when no bit width is given.
+                        0 => XrtArgKind::Scalar {
+                            width: data_width
+                                .or_else(|| size_bytes.map(|b| b.saturating_mul(8)))
+                                .unwrap_or(32),
+                        },
+                        // For mmap args `size` is the 8-byte pointer size, not
+                        // the bus data width, so it is not a width fallback.
+                        1 => XrtArgKind::Mmap {
+                            data_width: data_width.unwrap_or(32),
+                        },
+                        4 => XrtArgKind::Stream {
+                            width: data_width.unwrap_or(32),
+                        },
                         q => return Err(FrtError::MetadataParse(format!("unknown qualifier {q}"))),
                     };
                     args.push(XrtArg { name, id, kind });
@@ -157,6 +176,15 @@ pub fn extract_platform_vbnv(xclbin: &[u8]) -> Option<String> {
         return None;
     }
     Some(s)
+}
+
+/// Parse a Vitis XML `size` attribute (hex `0x..` or decimal) into bytes.
+fn parse_size_bytes(value: &str) -> Option<u32> {
+    let s = value.trim();
+    match s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
+        Some(hex) => u32::from_str_radix(hex, 16).ok(),
+        None => s.parse().ok(),
+    }
 }
 
 pub fn extract_embedded_xml(xclbin: &[u8]) -> Result<String> {
@@ -224,6 +252,43 @@ mod tests {
         let meta = parse_embedded_xml(KERNEL_XML).expect("parse");
         assert_eq!(meta.top_name, "vadd");
         assert_eq!(meta.args.len(), 2);
+    }
+
+    #[test]
+    fn scalar_width_falls_back_to_vitis_size_bytes() {
+        // Real Vitis xclbin XML carries the C byte size, not a bit width.
+        const VITIS_XML: &str = r#"<?xml version="1.0"?>
+<root><kernel name="k"><args>
+  <arg name="wide" addressQualifier="0" id="0" size="0x8" type="uint64_t"/>
+  <arg name="narrow" addressQualifier="0" id="1" size="0x2" type="uint16_t"/>
+  <arg name="plain" addressQualifier="0" id="2" size="0x4" type="int"/>
+  <arg name="ptr" addressQualifier="1" id="3" size="0x8" type="int*"/>
+</args></kernel></root>"#;
+        let meta = parse_embedded_xml(VITIS_XML).expect("parse");
+        let width = |id| {
+            meta.args.iter().find(|a| a.id == id).map(|a| match a.kind {
+                XrtArgKind::Scalar { width } | XrtArgKind::Stream { width } => width,
+                XrtArgKind::Mmap { data_width } => data_width,
+            })
+        };
+        assert_eq!(width(0), Some(64));
+        assert_eq!(width(1), Some(16));
+        assert_eq!(width(2), Some(32));
+        // mmap `size` is the 8-byte pointer size, not the bus width.
+        assert_eq!(width(3), Some(32));
+    }
+
+    #[test]
+    fn explicit_bit_width_wins_over_size() {
+        const BOTH_XML: &str = r#"<?xml version="1.0"?>
+<root><kernel name="k"><args>
+  <arg name="s" addressQualifier="0" id="0" dataWidth="512" size="0x8"/>
+</args></kernel></root>"#;
+        let meta = parse_embedded_xml(BOTH_XML).expect("parse");
+        assert!(matches!(
+            meta.args[0].kind,
+            XrtArgKind::Scalar { width: 512 }
+        ));
     }
 
     #[test]

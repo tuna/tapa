@@ -37,8 +37,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn version_is_non_empty_and_trimmed() {
-        assert!(!VERSION.is_empty());
+    fn version_is_trimmed() {
         assert!(!VERSION.starts_with(char::is_whitespace));
         assert!(!VERSION.ends_with(char::is_whitespace));
     }

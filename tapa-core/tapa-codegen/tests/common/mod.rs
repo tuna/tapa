@@ -42,7 +42,7 @@ pub fn parse_module(src: &str) -> VerilogModule {
 pub fn design(top: &str, target: &str, tasks: &[(&str, serde_json::Value)]) -> Design {
     let tasks: serde_json::Value = tasks
         .iter()
-        .map(|(name, t)| (name.to_string(), t.clone()))
+        .map(|(name, t)| ((*name).to_string(), t.clone()))
         .collect::<serde_json::Map<String, serde_json::Value>>()
         .into();
     serde_json::from_value(serde_json::json!({
