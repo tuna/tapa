@@ -88,6 +88,7 @@ pub fn parse_embedded_xml(xml: &str) -> Result<XrtMetadata> {
                     // the C byte size of the argument (`size="0x8"` for a
                     // `uint64_t` scalar, `size="0x2"` for `uint16_t`).
                     let mut data_width = None;
+                    let mut host_size_bytes = None;
                     let mut size_bytes = None;
                     let mut c_type = String::new();
                     for a in e.attributes().flatten() {
@@ -97,6 +98,7 @@ pub fn parse_embedded_xml(xml: &str) -> Result<XrtMetadata> {
                             b"id" => id = v.parse().unwrap_or(0),
                             b"addressQualifier" => qualifier = v.parse().unwrap_or(0),
                             b"dataWidth" | b"width" => data_width = v.parse().ok(),
+                            b"hostSize" => host_size_bytes = parse_size_bytes(&v),
                             b"size" => size_bytes = parse_size_bytes(&v),
                             b"type" => c_type = v,
                             _ => {}
@@ -105,12 +107,16 @@ pub fn parse_embedded_xml(xml: &str) -> Result<XrtMetadata> {
                     let kind = match qualifier {
                         // Scalar register width must match the kernel's
                         // declaration or the OpenCL driver rejects the arg.
-                        // The C `type` carries the logical width; `size` can
-                        // instead hold the 4-byte-aligned s_axi register
-                        // footprint of a narrower scalar (e.g. `uint16_t`
-                        // with `size="0x4"`), so type wins over size.
+                        // `hostSize` is the generator's logical C width in
+                        // bytes; `size` is the s_axi register footprint,
+                        // 4-byte-padded for sub-32-bit scalars (a `Pid`/
+                        // `uint16_t` arg ships `hostSize="0x2"` with
+                        // `size="0x4"`), and `type` can be a bare typedef
+                        // name. So rank hostSize, then a recognizable C
+                        // type, then the register `size`.
                         0 => XrtArgKind::Scalar {
                             width: data_width
+                                .or_else(|| host_size_bytes.map(|b| b.saturating_mul(8)))
                                 .or_else(|| c_scalar_type_bits(&c_type))
                                 .or_else(|| size_bytes.map(|b| b.saturating_mul(8)))
                                 .unwrap_or(32),
@@ -285,7 +291,7 @@ mod tests {
   <arg name="narrow" addressQualifier="0" id="1" size="0x2" type="uint16_t"/>
   <arg name="plain" addressQualifier="0" id="2" size="0x4" type="int"/>
   <arg name="ptr" addressQualifier="1" id="3" size="0x8" type="int*"/>
-  <arg name="regpad" addressQualifier="0" id="4" size="0x4" type="uint16_t"/>
+  <arg name="regpad" addressQualifier="0" id="4" size="0x4" hostSize="0x2" type="Pid"/>
   <arg name="nosize" addressQualifier="0" id="5" type="uint64_t"/>
   <arg name="custom" addressQualifier="0" id="6" size="0x8" type="my_struct_t"/>
 </args></kernel></root>"#;
@@ -307,6 +313,21 @@ mod tests {
         assert_eq!(width(5), Some(64));
         // Non-primitive types fall back to `size`.
         assert_eq!(width(6), Some(64));
+    }
+
+    #[test]
+    fn typedef_id_width_comes_from_host_size() {
+        // The generated Graph kernel xml: `Pid` typedef name, register-
+        // padded `size`, logical `hostSize`.
+        const GRAPH_XML: &str = r#"<?xml version="1.0"?>
+<root><kernel name="Graph"><args>
+  <arg name="num_partitions" addressQualifier="0" id="0" size="0x4" hostSize="0x2" type="Pid"/>
+</args></kernel></root>"#;
+        let meta = parse_embedded_xml(GRAPH_XML).expect("parse");
+        assert!(matches!(
+            meta.args[0].kind,
+            XrtArgKind::Scalar { width: 16 }
+        ));
     }
 
     #[test]
