@@ -92,15 +92,12 @@ pub const tapa_protocol::M_AXI_SUFFIXES: &[&str]
 pub const tapa_protocol::M_AXI_SUFFIXES_COMPACT: &[&str]
 pub const tapa_protocol::OSTREAM_SUFFIXES: &[&str]
 pub const tapa_protocol::STREAM_DATA_SUFFIXES: &[&str]
-pub const tapa_protocol::S_AXI_LITE_CHANNELS: &[tapa_protocol::AxiChannelInfo]
 pub const tapa_protocol::S_AXI_LITE_CTRL_PORTS: &[&str]
-pub const tapa_protocol::S_AXI_LITE_PORT_DIRS: &[tapa_protocol::AxiPortEntry]
 pub const tapa_protocol::S_AXI_NAME: &str
 pub static tapa_protocol::M_AXI_PORTS: phf::map::Map<&'static str, &'static [tapa_protocol::AxiPortEntry]>
 pub static tapa_protocol::M_AXI_PORT_WIDTHS: phf::map::Map<&'static str, u32>
 pub static tapa_protocol::M_AXI_SUFFIXES_BY_CHANNEL: phf::map::Map<&'static str, tapa_protocol::AxiChannelInfo>
 pub static tapa_protocol::STREAM_PORT_DIRECTION: phf::map::Map<&'static str, &'static str>
-pub static tapa_protocol::STREAM_PORT_WIDTH: phf::map::Map<&'static str, u32>
 pub fn tapa_protocol::axi_subport_from_suffix(&str) -> &str
 pub fn tapa_protocol::axi_subport_width(&str, u32, u32, u32) -> u32
 pub fn tapa_protocol::m_axi_port_direction(&str) -> core::option::Option<tapa_protocol::PortDir>

@@ -929,7 +929,7 @@ fn resource_overrides_use_total_region_capacity() {
         .find(|constraint| constraint.name == format!("node_{}_LUT_usage", region.region_name()))
         .expect("max");
     assert!(
-        (max.rhs - total_lut * 0.5).abs() < f64::EPSILON,
+        total_lut.mul_add(-0.5, max.rhs).abs() < f64::EPSILON,
         "slot-specific maximum is based on total, not globally derated, capacity"
     );
 }

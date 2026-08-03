@@ -6,13 +6,6 @@
 
 load("//bazel:test_rules.bzl", "tapa_functional_test")
 
-exports_files(
-    [
-        "vadd-host.cpp",
-    ],
-    visibility = ["//tests/functional:__subpackages__"],
-)
-
 tapa_functional_test(
     name = "invoke-streams",
     host_srcs = glob([

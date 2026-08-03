@@ -8,9 +8,13 @@ load("//bazel:test_rules.bzl", "tapa_functional_test")
 
 tapa_functional_test(
     name = "singleton",
+    # NOTE: keep the local vadd-host.cpp copy. The file is byte-identical
+    # to invoke-streams', but `#include "vadd.h"` must resolve against the
+    # local header (M = 1, the singleton array under test) -- cross-package
+    # quote includes do not resolve in the sandbox.
     host_srcs = glob([
         "*.cpp",
         "*.h",
-    ]) + ["//tests/functional/invoke-streams:vadd-host.cpp"],
+    ]),
     kernel_hdrs = glob(["*.h"]),
 )

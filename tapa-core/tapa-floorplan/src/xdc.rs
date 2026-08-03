@@ -1133,7 +1133,7 @@ set_false_path -quiet -through [get_nets -quiet -hier -filter {NAME =~ \"*periph
             grid: (2, 3),
             regions: regions
                 .iter()
-                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
                 .collect(),
             routes,
             slot_usage: Map::new(),
