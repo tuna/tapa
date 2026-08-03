@@ -122,8 +122,7 @@ pub fn parse_xpfm(bytes: &[u8]) -> Result<DeviceInfo> {
     let hpfm_idx = (0..archive.len()).find(|&i| {
         archive
             .by_index(i)
-            .ok()
-            .is_some_and(|e| e.name().ends_with(".hpfm"))
+            .is_ok_and(|e| e.name().ends_with(".hpfm"))
     });
     let Some(idx) = hpfm_idx else {
         return Err(XilinxError::DeviceConfig {
