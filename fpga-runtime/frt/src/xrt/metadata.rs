@@ -89,6 +89,7 @@ pub fn parse_embedded_xml(xml: &str) -> Result<XrtMetadata> {
                     // `uint64_t` scalar, `size="0x2"` for `uint16_t`).
                     let mut data_width = None;
                     let mut size_bytes = None;
+                    let mut c_type = String::new();
                     for a in e.attributes().flatten() {
                         let v = String::from_utf8_lossy(&a.value).into_owned();
                         match a.key.as_ref() {
@@ -97,15 +98,20 @@ pub fn parse_embedded_xml(xml: &str) -> Result<XrtMetadata> {
                             b"addressQualifier" => qualifier = v.parse().unwrap_or(0),
                             b"dataWidth" | b"width" => data_width = v.parse().ok(),
                             b"size" => size_bytes = parse_size_bytes(&v),
+                            b"type" => c_type = v,
                             _ => {}
                         }
                     }
                     let kind = match qualifier {
                         // Scalar register width must match the kernel's
-                        // declaration or the OpenCL driver rejects the arg;
-                        // fall back to the C size when no bit width is given.
+                        // declaration or the OpenCL driver rejects the arg.
+                        // The C `type` carries the logical width; `size` can
+                        // instead hold the 4-byte-aligned s_axi register
+                        // footprint of a narrower scalar (e.g. `uint16_t`
+                        // with `size="0x4"`), so type wins over size.
                         0 => XrtArgKind::Scalar {
                             width: data_width
+                                .or_else(|| c_scalar_type_bits(&c_type))
                                 .or_else(|| size_bytes.map(|b| b.saturating_mul(8)))
                                 .unwrap_or(32),
                         },
@@ -176,6 +182,22 @@ pub fn extract_platform_vbnv(xclbin: &[u8]) -> Option<String> {
         return None;
     }
     Some(s)
+}
+
+/// Bit width of a primitive C scalar type name from Vitis arg metadata
+/// (`type="uint16_t"`); returns None for pointers, composites, and other
+/// non-primitive spellings so callers can fall back to `size`.
+fn c_scalar_type_bits(ty: &str) -> Option<u32> {
+    let t = ty.trim().trim_start_matches("const").trim();
+    match t {
+        "bool" | "char" | "signed char" | "unsigned char" | "int8_t" | "uint8_t" => Some(8),
+        "short" | "short int" | "unsigned short" | "unsigned short int" | "int16_t"
+        | "uint16_t" => Some(16),
+        "int" | "unsigned" | "unsigned int" | "int32_t" | "uint32_t" | "float" => Some(32),
+        "long" | "long int" | "unsigned long" | "unsigned long int" | "long long"
+        | "unsigned long long" | "int64_t" | "uint64_t" | "double" => Some(64),
+        _ => None,
+    }
 }
 
 /// Parse a Vitis XML `size` attribute (hex `0x..` or decimal) into bytes.
@@ -263,6 +285,9 @@ mod tests {
   <arg name="narrow" addressQualifier="0" id="1" size="0x2" type="uint16_t"/>
   <arg name="plain" addressQualifier="0" id="2" size="0x4" type="int"/>
   <arg name="ptr" addressQualifier="1" id="3" size="0x8" type="int*"/>
+  <arg name="regpad" addressQualifier="0" id="4" size="0x4" type="uint16_t"/>
+  <arg name="nosize" addressQualifier="0" id="5" type="uint64_t"/>
+  <arg name="custom" addressQualifier="0" id="6" size="0x8" type="my_struct_t"/>
 </args></kernel></root>"#;
         let meta = parse_embedded_xml(VITIS_XML).expect("parse");
         let width = |id| {
@@ -276,6 +301,12 @@ mod tests {
         assert_eq!(width(2), Some(32));
         // mmap `size` is the 8-byte pointer size, not the bus width.
         assert_eq!(width(3), Some(32));
+        // A register-padded scalar still binds its logical C width.
+        assert_eq!(width(4), Some(16));
+        // `type` alone (no `size`) is enough.
+        assert_eq!(width(5), Some(64));
+        // Non-primitive types fall back to `size`.
+        assert_eq!(width(6), Some(64));
     }
 
     #[test]
