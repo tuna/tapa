@@ -64,23 +64,20 @@ pub fn stream_peek_ports_exist(
     top_name: &str,
     peek_name: &str,
 ) -> bool {
-    let dout_port = format!("{peek_name}_dout");
-    let empty_n_port = format!("{peek_name}_empty_n");
     let module_decl = format!("module {top_name}");
-    verilog_contents.iter().any(|text| {
+    for text in verilog_contents {
+        // The peek ports must be declared on the DUT module itself: a
+        // child's peek ports, connected to the normal stream signals at the
+        // top, do not give the top a peek interface. HLS emits one module
+        // per file, so the top's file is where to look.
         if !text.contains(&module_decl) {
-            return false;
+            continue;
         }
-        let has_dout = text.lines().any(|line| {
-            let t = line.trim();
-            (t.starts_with("input") || t.starts_with("output")) && t.contains(&dout_port)
-        });
-        let has_empty_n = text.lines().any(|line| {
-            let t = line.trim();
-            (t.starts_with("input") || t.starts_with("output")) && t.contains(&empty_n_port)
-        });
-        has_dout && has_empty_n
-    })
+        let top_file = std::slice::from_ref(text);
+        return crate::tb::port_declaration(top_file, &format!("{peek_name}_dout")).is_some()
+            && crate::tb::port_declaration(top_file, &format!("{peek_name}_empty_n")).is_some();
+    }
+    false
 }
 
 fn is_bare_verilog_identifier(name: &str) -> bool {
