@@ -51,19 +51,32 @@ fn dpi_library_name() -> &'static str {
 fn ensure_dpi_lib_built() {
     static READY: std::sync::OnceLock<()> = std::sync::OnceLock::new();
     READY.get_or_init(|| {
-        let root = workspace_root();
-        let target_dir =
-            std::env::var_os("CARGO_TARGET_DIR").map_or_else(|| root.join("target"), PathBuf::from);
-        let target_lib = target_dir.join("debug").join(dpi_library_name());
+        // The runtime searches for the library starting from this test
+        // executable, so build into the target dir the executable actually
+        // runs from (`<target-root>/debug/deps/<test>`). Deriving it from
+        // the env or a default breaks under harnesses that relocate the
+        // target dir by flag, e.g. `cargo llvm-cov --target-dir`.
+        let exe = std::env::current_exe().expect("test executable path");
+        let target_root = exe
+            .ancestors()
+            .nth(3)
+            .expect("test executable under <target-root>/debug/deps");
+        let target_lib = target_root.join("debug").join(dpi_library_name());
         if target_lib.exists() {
             return;
         }
         let status = Command::new("cargo")
-            .args(["build", "-p", "frt-dpi-verilator"])
-            .current_dir(&root)
+            .args(["build", "-p", "frt-dpi-verilator", "--target-dir"])
+            .arg(target_root)
+            .current_dir(workspace_root())
             .status()
             .expect("spawn cargo build for frt-dpi-verilator");
         assert!(status.success(), "failed to build frt-dpi-verilator");
+        assert!(
+            target_lib.exists(),
+            "frt-dpi-verilator built but {} is missing",
+            target_lib.display()
+        );
     });
 }
 
