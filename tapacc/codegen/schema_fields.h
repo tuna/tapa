@@ -11,9 +11,16 @@
 namespace tapa::cc {
 
 // ── Root ────────────────────────────────────────────────────────────
+inline constexpr const char* kFieldSchemaVersion = "schema_version";
 inline constexpr const char* kFieldTop = "top";
 inline constexpr const char* kFieldTarget = "target";
 inline constexpr const char* kFieldTasks = "tasks";
+
+// The schema version stamped on emitted task graphs. Must match
+// `tapa_ir::SCHEMA_VERSION`; the conformance test locks the pair, and
+// tapa-ir rejects graphs newer than it understands with a regenerate
+// message instead of a field-level misparse.
+inline constexpr int kSchemaVersion = 1;
 
 // ── Task ────────────────────────────────────────────────────────────
 inline constexpr const char* kFieldCode = "code";

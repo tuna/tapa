@@ -326,6 +326,7 @@ mod tests {
             },
         );
         Design {
+            schema_version: tapa_ir::graph::SCHEMA_VERSION,
             top: "VecAdd".to_string(),
             target: tapa_ir::Target::XilinxHls,
             tasks,

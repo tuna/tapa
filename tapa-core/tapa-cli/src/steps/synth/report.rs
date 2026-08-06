@@ -305,6 +305,7 @@ mod tests {
             ),
         ]);
         let design = Design {
+            schema_version: tapa_ir::graph::SCHEMA_VERSION,
             top: "Top".to_string(),
             target: tapa_ir::Target::XilinxHls,
             tasks,
@@ -357,6 +358,7 @@ mod tests {
             ),
         );
         let design = Design {
+            schema_version: tapa_ir::graph::SCHEMA_VERSION,
             top: "Top".to_string(),
             target: tapa_ir::Target::XilinxHls,
             tasks,
@@ -422,6 +424,7 @@ mod tests {
             leaf("Add", "3.33", serde_json::json!({"LUT": 50})),
         );
         let design = Design {
+            schema_version: tapa_ir::graph::SCHEMA_VERSION,
             top: "VecAdd".to_string(),
             target: tapa_ir::Target::XilinxVitis,
             tasks,
@@ -450,6 +453,7 @@ mod tests {
         let mut tasks = BTreeMap::new();
         tasks.insert("T".to_string(), leaf("T", "3.33", serde_json::json!({})));
         let design = Design {
+            schema_version: tapa_ir::graph::SCHEMA_VERSION,
             top: "T".to_string(),
             target: tapa_ir::Target::XilinxHls,
             tasks,

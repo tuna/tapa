@@ -8,6 +8,13 @@ pub enum ParseError {
 
     #[error("JSON syntax error: {0}")]
     Json(#[from] serde_json::Error),
+
+    #[error(
+        "task graph schema version {found} is newer than the supported \
+         version {supported}; regenerate with a matching tapa, or upgrade \
+         this tapa installation"
+    )]
+    UnsupportedSchemaVersion { found: u32, supported: u32 },
 }
 
 impl From<std::io::Error> for ParseError {

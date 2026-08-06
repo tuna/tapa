@@ -87,6 +87,7 @@ mod tests {
             },
         );
         let design = Design {
+            schema_version: tapa_ir::graph::SCHEMA_VERSION,
             top: "Add".to_string(),
             target: tapa_ir::Target::XilinxHls,
             tasks,
@@ -126,6 +127,7 @@ mod tests {
             },
         );
         let design = Design {
+            schema_version: tapa_ir::graph::SCHEMA_VERSION,
             top: "Top".to_string(),
             target: tapa_ir::Target::XilinxHls,
             tasks,

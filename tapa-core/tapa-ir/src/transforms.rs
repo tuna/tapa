@@ -96,6 +96,7 @@ pub fn flatten(graph: &TaskGraph) -> Result<TaskGraph, TransformError> {
     new_tasks.insert(top_name.clone(), new_top_def);
 
     Ok(TaskGraph {
+        schema_version: graph.schema_version,
         top: top_name.clone(),
         target: graph.target,
         cflags: graph.cflags.clone(),

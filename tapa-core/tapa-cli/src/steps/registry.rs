@@ -104,6 +104,7 @@ mod tests {
 
     fn state(synthed: bool, floorplanned: bool) -> WorkState {
         let mut state = WorkState::new(TaskGraph {
+            schema_version: tapa_ir::graph::SCHEMA_VERSION,
             top: "Top".to_string(),
             target: Target::XilinxVitis,
             tasks: BTreeMap::new(),

@@ -971,6 +971,7 @@ pub fn tapa_ir::floorplan::local_controller_instance_name(&str) -> alloc::string
 pub mod tapa_ir::graph
 pub struct tapa_ir::graph::TaskGraph
 pub tapa_ir::graph::TaskGraph::cflags: alloc::vec::Vec<alloc::string::String>
+pub tapa_ir::graph::TaskGraph::schema_version: u32
 pub tapa_ir::graph::TaskGraph::target: tapa_ir::target::Target
 pub tapa_ir::graph::TaskGraph::tasks: alloc::collections::btree::map::BTreeMap<alloc::string::String, tapa_ir::task::Task>
 pub tapa_ir::graph::TaskGraph::top: alloc::string::String
@@ -1018,6 +1019,7 @@ pub unsafe fn tapa_ir::graph::TaskGraph::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::graph::TaskGraph where T: for<'de> serde_core::de::Deserialize<'de>
+pub const tapa_ir::graph::SCHEMA_VERSION: u32
 pub mod tapa_ir::instance
 pub struct tapa_ir::instance::Arg
 pub tapa_ir::instance::Arg::arg: alloc::string::String
@@ -1974,6 +1976,9 @@ pub tapa_ir::ParseError::Json(serde_json::error::Error)
 pub tapa_ir::ParseError::Schema
 pub tapa_ir::ParseError::Schema::message: alloc::string::String
 pub tapa_ir::ParseError::Schema::path: alloc::string::String
+pub tapa_ir::ParseError::UnsupportedSchemaVersion
+pub tapa_ir::ParseError::UnsupportedSchemaVersion::found: u32
+pub tapa_ir::ParseError::UnsupportedSchemaVersion::supported: u32
 impl core::convert::From<core::io::error::Error> for tapa_ir::ParseError
 pub fn tapa_ir::ParseError::from(core::io::error::Error) -> Self
 impl core::convert::From<serde_json::error::Error> for tapa_ir::ParseError
@@ -2603,6 +2608,7 @@ impl<T> core::convert::From<T> for tapa_ir::floorplan::Coor
 pub fn tapa_ir::floorplan::Coor::from(T) -> T
 pub struct tapa_ir::Design
 pub tapa_ir::Design::cflags: alloc::vec::Vec<alloc::string::String>
+pub tapa_ir::Design::schema_version: u32
 pub tapa_ir::Design::target: tapa_ir::target::Target
 pub tapa_ir::Design::tasks: alloc::collections::btree::map::BTreeMap<alloc::string::String, tapa_ir::task::Task>
 pub tapa_ir::Design::top: alloc::string::String
@@ -2854,6 +2860,7 @@ pub fn tapa_ir::work_state::FlowSettings::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::work_state::FlowSettings where T: for<'de> serde_core::de::Deserialize<'de>
 pub struct tapa_ir::Graph
 pub tapa_ir::Graph::cflags: alloc::vec::Vec<alloc::string::String>
+pub tapa_ir::Graph::schema_version: u32
 pub tapa_ir::Graph::target: tapa_ir::target::Target
 pub tapa_ir::Graph::tasks: alloc::collections::btree::map::BTreeMap<alloc::string::String, tapa_ir::task::Task>
 pub tapa_ir::Graph::top: alloc::string::String
@@ -3342,6 +3349,7 @@ pub fn tapa_ir::task::Task::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::task::Task where T: for<'de> serde_core::de::Deserialize<'de>
 pub struct tapa_ir::TaskGraph
 pub tapa_ir::TaskGraph::cflags: alloc::vec::Vec<alloc::string::String>
+pub tapa_ir::TaskGraph::schema_version: u32
 pub tapa_ir::TaskGraph::target: tapa_ir::target::Target
 pub tapa_ir::TaskGraph::tasks: alloc::collections::btree::map::BTreeMap<alloc::string::String, tapa_ir::task::Task>
 pub tapa_ir::TaskGraph::top: alloc::string::String

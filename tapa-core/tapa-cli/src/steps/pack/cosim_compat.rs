@@ -154,6 +154,7 @@ mod tests {
             },
         );
         WorkState::new(TaskGraph {
+            schema_version: tapa_ir::graph::SCHEMA_VERSION,
             top: "Top".to_owned(),
             target: Target::XilinxHls,
             tasks,

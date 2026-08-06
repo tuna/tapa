@@ -142,6 +142,7 @@ mod tests {
             },
         );
         WorkState::new(TaskGraph {
+            schema_version: crate::graph::SCHEMA_VERSION,
             top: "Top".to_string(),
             target: Target::XilinxHls,
             tasks,

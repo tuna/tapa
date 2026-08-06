@@ -373,6 +373,7 @@ mod tests {
             },
         );
         let mut state = WorkState::new(TaskGraph {
+            schema_version: tapa_ir::graph::SCHEMA_VERSION,
             top: "VecAdd".to_string(),
             target: Target::XilinxHls,
             tasks,

@@ -137,6 +137,7 @@ class NgConsumer : public clang::ASTConsumer {
     const IgnoreBackend ignore;
 
     nlohmann::json out;
+    out[kFieldSchemaVersion] = kSchemaVersion;
     out[kFieldTop] = program.top;
     out[kFieldTarget] = FlowStr(is_vitis);
     out[kFieldTasks] = nlohmann::json::object();

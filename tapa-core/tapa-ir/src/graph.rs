@@ -25,6 +25,12 @@ use crate::task::Task;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct TaskGraph {
+    /// Producer schema version, stamped by `tapacc`. Absent means a
+    /// pre-versioning producer, accepted as version 1. A value above
+    /// [`SCHEMA_VERSION`] is rejected with a clear regenerate message
+    /// instead of a field-level misparse.
+    #[serde(default = "default_schema_version")]
+    pub schema_version: u32,
     /// Name of the top-level task.
     pub top: String,
     /// Compilation flow target, e.g. [`Target::XilinxVitis`]. Serializes as
@@ -37,14 +43,28 @@ pub struct TaskGraph {
     pub tasks: BTreeMap<String, Task>,
 }
 
+/// The task-graph schema version this crate reads and writes.
+pub const SCHEMA_VERSION: u32 = 1;
+
+const fn default_schema_version() -> u32 {
+    SCHEMA_VERSION
+}
+
 impl TaskGraph {
     /// Parse a task-graph payload with field-path error diagnostics.
     pub fn from_json(json: &str) -> Result<Self, ParseError> {
         let de = &mut serde_json::Deserializer::from_str(json);
-        serde_path_to_error::deserialize(de).map_err(|e| ParseError::Schema {
+        let graph: Self = serde_path_to_error::deserialize(de).map_err(|e| ParseError::Schema {
             path: e.path().to_string(),
             message: e.inner().to_string(),
-        })
+        })?;
+        if graph.schema_version > SCHEMA_VERSION {
+            return Err(ParseError::UnsupportedSchemaVersion {
+                found: graph.schema_version,
+                supported: SCHEMA_VERSION,
+            });
+        }
+        Ok(graph)
     }
 
     /// Parse from any reader.
@@ -58,6 +78,23 @@ impl TaskGraph {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn missing_schema_version_defaults_to_current() {
+        let g =
+            TaskGraph::from_json(r#"{"top": "T", "target": "xilinx-hls", "tasks": {}}"#).unwrap();
+        assert_eq!(g.schema_version, SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn newer_schema_version_is_rejected_with_regenerate_message() {
+        let err = TaskGraph::from_json(
+            r#"{"schema_version": 999, "top": "T", "target": "xilinx-hls", "tasks": {}}"#,
+        )
+        .unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("999") && msg.contains("regenerate"), "{msg}");
+    }
 
     #[test]
     fn parses_named_child_instances() {

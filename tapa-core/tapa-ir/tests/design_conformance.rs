@@ -76,7 +76,7 @@ fn to_compact_json(design: &Design) -> String {
 /// renaming, or dropping any field breaks the byte comparison.
 fn canonical_design_json() -> &'static str {
     concat!(
-        r#"{"top": "VecAdd", "target": "xilinx-vitis", "cflags": ["-std=c++17"], "tasks": "#,
+        r#"{"schema_version": 1, "top": "VecAdd", "target": "xilinx-vitis", "cflags": ["-std=c++17"], "tasks": "#,
         r#"{"Add": {"level": "lower", "code": "void Add() {}", "readable_name": "Add", "#,
         r#""synth": "hls", "ports": [{"cat": "istream", "name": "a", "type": "float", "#,
         r#""width": 32}], "tasks": {}, "fifos": {}, "clock_period": "2.342", "#,
@@ -192,7 +192,7 @@ fn round_trip_byte_equal() {
 #[test]
 fn task_order_preserved() {
     let json = concat!(
-        r#"{"top": "VecAdd", "target": "xilinx-hls", "cflags": [], "tasks": {"#,
+        r#"{"schema_version": 1, "top": "VecAdd", "target": "xilinx-hls", "cflags": [], "tasks": {"#,
         r#""VecAdd": {"level": "upper", "code": "", "readable_name": "VecAdd", "#,
         r#""synth": "hls", "ports": [], "tasks": {}, "fifos": {}}, "#,
         r#""Add": {"level": "lower", "code": "", "readable_name": "Add", "#,
