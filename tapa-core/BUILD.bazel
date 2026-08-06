@@ -235,6 +235,9 @@ cargo_test(
 cargo_test(
     name = "tapacc_conformance_test",
     size = "large",
+    # `large` implies a 900s ceiling, which a cold Cargo build has
+    # blown on a contended CI runner; the suite itself is fast.
+    timeout = "eternal",
     srcs = _ALL_SRCS,
     cargo_args = [
         "-p",
