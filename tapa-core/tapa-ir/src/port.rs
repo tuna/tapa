@@ -334,4 +334,47 @@ mod tests {
         assert_eq!(sanitize_identifier_name("foo[3]"), "foo_3");
         assert_eq!(sanitize_identifier_name("1foo"), "_1foo");
     }
+
+    /// One half of the cross-language naming contract: tapacc spells the
+    /// C++ names (checked by `tapacc/codegen/conventions_test.cpp`
+    /// against this very fixture), and this crate owns their projection
+    /// to RTL identifiers. Neither spelling can drift without editing
+    /// the shared file, and a production either side does not recognize
+    /// fails that side's test.
+    #[test]
+    fn naming_fixture_projection_agrees() {
+        let fixture = include_str!("../testdata/naming_conventions.tsv");
+        let mut productions = 0;
+        for line in fixture.lines() {
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            let fields: Vec<&str> = line.split('\t').collect();
+            productions += 1;
+            match fields[0] {
+                "offset_name" => {
+                    let [_, base, expected] = fields[..] else {
+                        panic!("malformed offset_name line: {line}");
+                    };
+                    assert_eq!(format!("{base}_offset"), expected, "line: {line}");
+                }
+                "array_channel" => {
+                    let [_, base, index, cpp, rtl, elem_offset] = fields[..] else {
+                        panic!("malformed array_channel line: {line}");
+                    };
+                    assert_eq!(format!("{base}[{index}]"), cpp, "line: {line}");
+                    assert_eq!(sanitize_array_name(cpp), rtl, "line: {line}");
+                    assert_eq!(sanitize_identifier_name(cpp), rtl, "line: {line}");
+                    assert_eq!(format!("{rtl}_offset"), elem_offset, "line: {line}");
+                }
+                // C++-side spellings with no projection in this crate,
+                // and the RTL probe order, which `tapa-codegen`'s
+                // child-instance tests and `frt-cosim`'s testbench
+                // tests pin against this same fixture.
+                "fifo_var" | "peek_var" | "mangled_prefix" | "direct_offset_port" => {}
+                other => panic!("unknown production {other:?} in fixture: {line}"),
+            }
+        }
+        assert!(productions >= 8, "fixture lost productions: {productions}");
+    }
 }

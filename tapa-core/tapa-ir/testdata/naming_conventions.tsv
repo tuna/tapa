@@ -1,0 +1,37 @@
+# The cross-language port-naming contract, one production per line,
+# fields tab-separated. tapacc spells the C++ names, tapa-core projects
+# them to RTL identifiers, and Vitis HLS names the generated RTL ports
+# the runtime must bind to. Consumed by:
+#   tapacc/codegen/conventions_test.cpp             C++ spellings
+#   tapa-core/tapa-ir/src/port.rs                   RTL projection
+#   tapa-core/tapa-codegen/.../instance/tests.rs    direct-offset probe
+#   fpga-runtime/frt-cosim/src/tb/mod.rs            direct-offset probe
+# The two primary consumers (conventions_test.cpp, port.rs) fail on any
+# production they do not recognize, so this file can only change in
+# lockstep with both languages.
+#
+# offset_name <base> <name>: the scalar base-address parameter an
+# `mmap` argument lowers to.
+offset_name	a	a_offset
+offset_name	gmem	gmem_offset
+#
+# array_channel <base> <i> <cpp> <rtl> <offset>: the i-th channel of an
+# `mmaps`/`streams` interface — its C++ spelling, the RTL identifier
+# that spelling collapses to, and its flat offset parameter.
+array_channel	m	2	m[2]	m_2	m_2_offset
+array_channel	qs	24	qs[24]	qs_24	qs_24_offset
+#
+# fifo_var / peek_var <name> <member>: the internal FIFO members of a
+# stream in rewritten task code.
+fifo_var	s	s._
+peek_var	s	s._peek
+#
+# mangled_prefix <value>: prefix for mangled task symbols, so an
+# emitted name never starts with '_' (which Vitis rejects).
+mangled_prefix	tapa_mangled
+#
+# direct_offset_port <base> <candidates...>: the RTL scalar port of an
+# `offset=direct` `m_axi` argument, in probe order — Vitis HLS through
+# 2024.2 spells it `<base>_offset`; 2025.1+ renamed it `<base>_r`.
+# Consumers that find no candidate fall back to the first spelling.
+direct_offset_port	mmap	mmap_offset	mmap_r

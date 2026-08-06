@@ -37,6 +37,10 @@ cc_library(
 cc_test(
     name = "conventions_test",
     srcs = ["conventions_test.cpp"],
+    data = ["//tapa-core:tapa-ir/testdata/naming_conventions.tsv"],
+    env = {
+        "TAPA_NAMING_FIXTURE": "$(rlocationpath //tapa-core:tapa-ir/testdata/naming_conventions.tsv)",
+    },
     deps = [
         ":code_sink",
         ":conventions",

@@ -297,4 +297,57 @@ mod tests {
         ];
         assert_eq!(direct_offset_port_name(&rtl, "mmap"), "mmap_r");
     }
+
+    /// The probe order is shared with `tapa-codegen`'s child-instance
+    /// pinning through the cross-tool naming fixture; both tests read
+    /// the same file, so the two implementations cannot drift apart
+    /// (the 2025.2 `_offset` -> `_r` rename had to be fixed in both
+    /// independently).
+    #[test]
+    fn direct_offset_probe_order_follows_naming_fixture() {
+        let fixture = include_str!("../../../../tapa-core/tapa-ir/testdata/naming_conventions.tsv");
+        let mut checked = 0;
+        for line in fixture
+            .lines()
+            .filter(|line| line.starts_with("direct_offset_port\t"))
+        {
+            let fields: Vec<&str> = line.split('\t').collect();
+            let (base, candidates) = (fields[1], &fields[2..]);
+            assert!(candidates.len() >= 2, "probe list needs candidates: {line}");
+            // RTL declaring exactly one candidate binds that port.
+            for expected in candidates {
+                let rtl = vec![format!(
+                    "module m({expected});\ninput [63:0] {expected};\nendmodule"
+                )];
+                assert_eq!(
+                    direct_offset_port_name(&rtl, base),
+                    *expected,
+                    "line: {line}"
+                );
+            }
+            // All candidates declared resolves in fixture probe order;
+            // none declared falls back to the first spelling.
+            let declarations = candidates
+                .iter()
+                .map(|candidate| format!("input [63:0] {candidate};"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            let rtl = vec![format!("module m();\n{declarations}\nendmodule")];
+            assert_eq!(
+                direct_offset_port_name(&rtl, base),
+                candidates[0],
+                "line: {line}"
+            );
+            assert_eq!(
+                direct_offset_port_name(&[], base),
+                candidates[0],
+                "line: {line}"
+            );
+            checked += 1;
+        }
+        assert!(
+            checked >= 1,
+            "fixture lost its direct_offset_port production"
+        );
+    }
 }

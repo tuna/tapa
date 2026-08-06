@@ -584,6 +584,59 @@ fn build_child_instance_uses_vitis_2025_offset_spelling_when_present() {
     );
 }
 
+/// The direct-offset probe order is pinned by the shared naming fixture:
+/// `frt-cosim` testbenches probe the same candidate list, and both tests
+/// reading one file keeps the two implementations in lockstep (the 2025.2
+/// `_offset` -> `_r` rename had to be fixed in both independently).
+#[test]
+fn direct_mmap_offset_port_follows_naming_fixture() {
+    let fixture = include_str!("../../../../../tapa-ir/testdata/naming_conventions.tsv");
+    let mut checked = 0;
+    for line in fixture
+        .lines()
+        .filter(|line| line.starts_with("direct_offset_port\t"))
+    {
+        let fields: Vec<&str> = line.split('\t').collect();
+        let (base, candidates) = (fields[1], &fields[2..]);
+        assert!(candidates.len() >= 2, "probe list needs candidates: {line}");
+        // A child that declares exactly one candidate gets that pin.
+        for expected in candidates {
+            let rtl = VerilogModule::parse(&format!(
+                "module Child(input wire [63:0] {expected}); endmodule"
+            ))
+            .unwrap();
+            assert_eq!(
+                direct_mmap_offset_port(Some(&rtl), base),
+                *expected,
+                "line: {line}"
+            );
+        }
+        // Several candidates resolve in fixture probe order; a child
+        // without any keeps the first (conventional) spelling.
+        let all = candidates
+            .iter()
+            .map(|candidate| format!("input wire [63:0] {candidate}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let rtl = VerilogModule::parse(&format!("module Child({all}); endmodule")).unwrap();
+        assert_eq!(
+            direct_mmap_offset_port(Some(&rtl), base),
+            candidates[0],
+            "line: {line}"
+        );
+        assert_eq!(
+            direct_mmap_offset_port(None, base),
+            candidates[0],
+            "line: {line}"
+        );
+        checked += 1;
+    }
+    assert!(
+        checked >= 1,
+        "fixture lost its direct_offset_port production"
+    );
+}
+
 #[test]
 fn build_child_instance_keeps_conventional_offset_spelling() {
     use std::collections::BTreeMap;
