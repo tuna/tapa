@@ -436,13 +436,16 @@ impl Device for XrtDevice {
             )?
         };
         self.compute_events.push(evt);
-        self.compute_ns = elapsed_ns(&self.compute_events);
+        // compute_ns is read after completion (finish/is_finished): the
+        // profiling counters are not populated until the kernel has run,
+        // so computing it here would always yield 0.
         Ok(())
     }
 
     fn finish(&mut self) -> Result<()> {
         ocl_result(self.queue.finish(), "finish OpenCL queue")?;
         self.finished = true;
+        self.compute_ns = elapsed_ns(&self.compute_events);
         Ok(())
     }
 
@@ -472,6 +475,7 @@ impl Device for XrtDevice {
         }
         if all_done {
             self.finished = true;
+            self.compute_ns = elapsed_ns(&self.compute_events);
         }
         Ok(all_done)
     }
