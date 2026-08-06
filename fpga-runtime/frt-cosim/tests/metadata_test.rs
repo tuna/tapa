@@ -34,6 +34,27 @@ fn parse_vitis_kernel_xml() {
     ));
 }
 
+/// Stream queues modulo their indices by the depth, so a depth of zero
+/// (or one that silently fell back from garbage) is a guaranteed panic
+/// later; the parser must reject it up front.
+#[test]
+fn unusable_stream_depth_is_a_parse_error() {
+    for depth in ["0", "bogus"] {
+        let xml = format!(
+            r#"<?xml version="1.0"?>
+<root>
+  <kernel name="vadd">
+    <args>
+      <arg name="s" addressQualifier="4" id="0" port="s_axis_s" dataWidth="32" depth="{depth}"/>
+    </args>
+  </kernel>
+</root>"#
+        );
+        let result = metadata::xo::parse_kernel_xml(&xml, std::path::Path::new("/tmp"));
+        assert!(result.is_err(), "depth={depth:?} must be rejected");
+    }
+}
+
 /// A task graph shaped like the one `tapa pack` puts in the archive's
 /// `tapa.json`: `cat`-tagged ports on the top task, with plural categories
 /// fanning out per channel.

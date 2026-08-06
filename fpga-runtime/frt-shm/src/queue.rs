@@ -23,6 +23,15 @@ pub struct SharedMemoryQueue {
 
 impl SharedMemoryQueue {
     pub fn create(name: &str, depth: u32, width: u32) -> std::io::Result<Self> {
+        // The ring indices are `% depth`-reduced: a zero depth is a
+        // guaranteed panic on first use, and `open` already rejects such
+        // headers, so refuse to write one.
+        if depth == 0 || width == 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("queue {name:?} needs depth >= 1 and width >= 1, got depth={depth} width={width}"),
+            ));
+        }
         let size = 32 + (depth as usize) * (width as usize);
         let mut seg = MmapSegment::create(name, size)?;
         // SAFETY: The segment is at least 32 bytes (the header size) and
@@ -268,6 +277,18 @@ mod tests {
         match SharedMemoryQueue::open(&path_str) {
             Ok(_) => panic!("open should fail"),
             Err(err) => assert_eq!(err.kind(), std::io::ErrorKind::InvalidData),
+        }
+    }
+
+    /// Ring indices are `% depth`-reduced; a zero shape must be an
+    /// error at create time, not a panic at first push.
+    #[test]
+    fn create_rejects_zero_shapes() {
+        for (depth, width) in [(0, 4), (2, 0)] {
+            match SharedMemoryQueue::create("test_q_zero_shape", depth, width) {
+                Ok(_) => panic!("depth={depth} width={width} must be rejected"),
+                Err(err) => assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput),
+            }
         }
     }
 

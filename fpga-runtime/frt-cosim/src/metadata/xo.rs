@@ -61,7 +61,16 @@ pub fn parse_kernel_xml(xml: &str, _verilog_dir: &Path) -> Result<KernelSpec> {
                             b"addressQualifier" => qualifier = v.parse().unwrap_or(0),
                             b"dataWidth" => data_width = v.parse().unwrap_or(32),
                             b"addrWidth" => addr_width = v.parse().unwrap_or(64),
-                            b"depth" => depth = v.parse().unwrap_or(16),
+                            // A written-out depth must parse and be usable:
+                            // stream queues modulo by it, so a silent
+                            // fallback or a zero turns into a runtime panic.
+                            b"depth" => {
+                                depth = v.parse().ok().filter(|d| *d > 0).ok_or_else(|| {
+                                    CosimError::Metadata(format!(
+                                        "invalid stream depth {v:?} in kernel.xml (want an integer >= 1)"
+                                    ))
+                                })?;
+                            }
                             b"port" => port = v,
                             b"width" => scalar_width = Some(v.parse().unwrap_or(32)),
                             _ => {}
