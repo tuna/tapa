@@ -70,6 +70,13 @@ pub trait Device: Send {
     }
     fn finish(&mut self) -> Result<()>;
     fn kill(&mut self) -> Result<()>;
+    /// Whether the launched compute has completed.
+    ///
+    /// Contract shared by every backend: `false` until [`Self::exec`]
+    /// has launched something (a fresh instance is not "finished"),
+    /// `true` once the launched compute completed or the instance was
+    /// killed. `frt_instance_close` relies on this to decide between
+    /// a clean drop and a [`Self::kill`].
     fn is_finished(&mut self) -> Result<bool>;
     fn args_info(&self) -> Vec<RuntimeArgInfo>;
     fn load_ns(&self) -> u64;

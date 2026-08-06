@@ -42,6 +42,7 @@ pub struct XrtDevice {
     load_ns: u64,
     compute_ns: u64,
     store_ns: u64,
+    launched: bool,
     finished: bool,
 }
 
@@ -65,8 +66,7 @@ impl XrtDevice {
                 meta.platform = vbnv;
             }
         }
-        apply_emulation_mode_env(meta.mode);
-        ensure_xrt_emulation_bootstrap(&meta)?;
+        bootstrap_emulation_env_once(&meta)?;
 
         let device_id = select_device(&meta)?;
         let ocl_device = OclDevice::new(device_id);
@@ -112,9 +112,38 @@ impl XrtDevice {
             load_ns: 0,
             compute_ns: 0,
             store_ns: 0,
-            finished: true,
+            launched: false,
+            // A fresh instance is not finished: `is_finished` must answer
+            // false until `exec` launched something, matching the cosim
+            // backend (`close` decides between wait and kill on this).
+            finished: false,
         })
     }
+}
+
+/// One-shot process-env bootstrap for XRT emulation.
+///
+/// XRT configures itself from the process environment
+/// (`XCL_EMULATION_MODE`, `EMCONFIG_PATH`, …) — there is no API
+/// alternative, so the `setenv` calls themselves cannot go away. What
+/// can be bounded is *when* they happen: everything is written exactly
+/// once per process, before the first `OpenCL` context exists, and never
+/// again — so once XRT's own worker threads (or the caller's) are
+/// running, no thread mutates the environment under them. Concurrent
+/// first-time opens on several threads serialize on the `OnceLock`;
+/// later opens (whatever their xclbin's mode) reuse the first
+/// bootstrap's outcome, which the `XCL_EMULATION_MODE`-already-set
+/// early-out made true of the old per-open code path as well.
+fn bootstrap_emulation_env_once(meta: &XrtMetadata) -> Result<()> {
+    static BOOTSTRAP: std::sync::OnceLock<std::result::Result<(), String>> =
+        std::sync::OnceLock::new();
+    BOOTSTRAP
+        .get_or_init(|| {
+            apply_emulation_mode_env(meta.mode);
+            ensure_xrt_emulation_bootstrap(meta).map_err(|e| e.to_string())
+        })
+        .clone()
+        .map_err(FrtError::MetadataParse)
 }
 
 fn apply_emulation_mode_env(mode: super::metadata::XclbinMode) {
@@ -349,6 +378,7 @@ impl Device for XrtDevice {
     }
 
     fn exec(&mut self) -> Result<()> {
+        self.launched = true;
         self.finished = false;
         self.compute_events.clear();
 
@@ -458,6 +488,11 @@ impl Device for XrtDevice {
     fn is_finished(&mut self) -> Result<bool> {
         if self.finished {
             return Ok(true);
+        }
+        // Not launched yet: not finished — the cosim backend answers the
+        // same, so `close` treats both backends identically.
+        if !self.launched {
+            return Ok(false);
         }
         if self.compute_events.is_empty() {
             return Ok(true);
