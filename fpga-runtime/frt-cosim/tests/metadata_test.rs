@@ -55,6 +55,7 @@ fn task_graph(ports: Vec<Port>) -> TaskGraph {
         },
     );
     TaskGraph {
+        schema_version: tapa_ir::graph::SCHEMA_VERSION,
         top: "vadd".to_owned(),
         target: Target::XilinxHls,
         cflags: vec![],
