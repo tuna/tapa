@@ -123,11 +123,48 @@ fn local_xilinx_settings(inv: &ToolInvocation) -> Option<PathBuf> {
     })
 }
 
+/// Vitis 2025.1+ removed the classic `vitis_hls` executable; the unified
+/// `vitis-run` CLI evaluates the same classic HLS Tcl via
+/// `--mode hls --tcl <file>`. Only rewrite when the resolved tool root
+/// lacks `bin/vitis_hls` but ships `bin/vitis-run`, so every install
+/// through 2024.2 keeps its tested entry point.
+fn hls_needs_unified_rewrite(tool_root: &Path) -> bool {
+    !tool_root.join("bin").join("vitis_hls").exists()
+        && tool_root.join("bin").join("vitis-run").exists()
+}
+
+/// Translate classic `vitis_hls` argv to `vitis-run` argv: `-f <tcl>`
+/// becomes `--tcl <tcl>` (in `vitis-run`, `-f` means `--platform`), and
+/// `--mode hls` is always prepended. Other args pass through untouched.
+fn unified_hls_args(args: &[String]) -> Vec<String> {
+    let mut out = vec!["--mode".to_owned(), "hls".to_owned()];
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        if arg == "-f" {
+            if let Some(tcl) = iter.next() {
+                out.push("--tcl".to_owned());
+                out.push(tcl.clone());
+            }
+        } else {
+            out.push(arg.clone());
+        }
+    }
+    out
+}
+
 fn local_command(inv: &ToolInvocation) -> std::process::Command {
     let Some(settings) = local_xilinx_settings(inv) else {
         let mut cmd = std::process::Command::new(&inv.program);
         cmd.args(&inv.args);
         return cmd;
+    };
+
+    let unified =
+        inv.program == "vitis_hls" && settings.parent().is_some_and(hls_needs_unified_rewrite);
+    let (program, args) = if unified {
+        ("vitis-run".to_owned(), unified_hls_args(&inv.args))
+    } else {
+        (inv.program.clone(), inv.args.clone())
     };
 
     // Keep the settings path and tool argv out of the shell program
@@ -139,8 +176,8 @@ fn local_command(inv: &ToolInvocation) -> std::process::Command {
         .arg("source \"$1\" && shift && exec \"$@\"")
         .arg("tapa-xilinx-settings")
         .arg(settings)
-        .arg(&inv.program)
-        .args(&inv.args);
+        .arg(program)
+        .args(args);
     cmd
 }
 
@@ -475,6 +512,75 @@ mod tests {
             } => assert_eq!(program, "/bin/sh"),
             other => panic!("expected ToolTimeout, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn unified_hls_args_translates_dash_f_and_keeps_extras() {
+        assert_eq!(
+            unified_hls_args(&["-f".into(), "run_hls.tcl".into()]),
+            ["--mode", "hls", "--tcl", "run_hls.tcl"]
+        );
+        assert_eq!(
+            unified_hls_args(&["-l".into(), "log".into(), "-f".into(), "a.tcl".into()]),
+            ["--mode", "hls", "-l", "log", "--tcl", "a.tcl"]
+        );
+        assert_eq!(unified_hls_args(&[]), ["--mode", "hls"]);
+    }
+
+    #[test]
+    fn hls_unified_rewrite_requires_vitis_run_and_no_classic_binary() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let bin = root.join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        // Neither tool: no rewrite (spawn fails loudly on the classic name).
+        assert!(!hls_needs_unified_rewrite(root));
+        // Unified CLI only (Vitis 2025.1+): rewrite.
+        std::fs::write(bin.join("vitis-run"), "").unwrap();
+        assert!(hls_needs_unified_rewrite(root));
+        // Classic binary present (<= 2024.2): keep the tested entry point.
+        std::fs::write(bin.join("vitis_hls"), "").unwrap();
+        assert!(!hls_needs_unified_rewrite(root));
+    }
+
+    /// End-to-end: a tool root that only ships `vitis-run` (Vitis
+    /// 2025.1+) must receive `--mode hls --tcl <file>` even though the
+    /// invocation asks for classic `vitis_hls -f <file>`.
+    #[cfg(unix)]
+    #[test]
+    fn local_runner_rewrites_hls_to_vitis_run_when_classic_is_gone() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("Vitis");
+        let bin = root.join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::write(
+            root.join("settings64.sh"),
+            format!("export PATH='{}':\"$PATH\"\n", bin.display()),
+        )
+        .unwrap();
+        let vitis_run = bin.join("vitis-run");
+        std::fs::write(&vitis_run, "#!/bin/sh\nprintf '%s' \"$*\"\n").unwrap();
+        let mut perms = std::fs::metadata(&vitis_run).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&vitis_run, perms).unwrap();
+        if !std::process::Command::new(&vitis_run)
+            .status()
+            .is_ok_and(|status| status.success())
+        {
+            eprintln!("skipping: temp dir does not allow executing scripts");
+            return;
+        }
+
+        let inv = ToolInvocation::new("vitis_hls")
+            .arg("-f")
+            .arg("run_hls.tcl")
+            .env("XILINX_HLS", "")
+            .env("XILINX_VITIS", root.display().to_string());
+        let out = LocalToolRunner::new().run(&inv).unwrap();
+        assert_eq!(out.exit_code, 0);
+        assert_eq!(out.stdout, "--mode hls --tcl run_hls.tcl");
     }
 
     /// Bare program names must resolve via the caller's `PATH`.
