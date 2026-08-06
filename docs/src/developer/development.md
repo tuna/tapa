@@ -101,6 +101,27 @@ The TAPA codebase is organized into several key directories:
   under `apps/` for basic functionality testing, and `regression/` for
   performance evaluation of TAPA compiled designs.
 
+## Test Coverage
+
+Line coverage of the Rust workspaces is measured with
+[`cargo-llvm-cov`](https://github.com/taiki-e/cargo-llvm-cov):
+
+```bash
+cd tapa-core && cargo llvm-cov --locked --workspace
+cd fpga-runtime && cargo llvm-cov --locked --workspace -- --skip open_cosim_verilator
+```
+
+The `open_cosim_verilator` end-to-end tests are skipped because they need
+the `libfrt_dpi_verilator` shared library that only the Bazel runfiles
+tree stages; run them through `bazel test //fpga-runtime:cargo_test`.
+
+Baseline (2026-08-06, report-only — informational, not a CI gate):
+
+| Workspace      | Line coverage | Weakest crates                            |
+| -------------- | ------------- | ----------------------------------------- |
+| `tapa-core`    | 89.6%         | `tapa-cli` 83.1%, `tapa-xilinx` 85.0%     |
+| `fpga-runtime` | 57.6%         | `frt` 42.6% (XRT paths need hardware)     |
+
 ## Update Dependencies
 
 TAPA depends on several external libraries and tools. This section explains
