@@ -6,6 +6,26 @@ on:
   workflow_dispatch:
 
 jobs:
+  regression-xo:
+    name: Regression XO
+    runs-on: self-hosted
+
+    steps:
+      - name: Bootstrap checkout
+        uses: actions/checkout@v4
+
+      - name: Checkout myself
+        uses: ./.github/actions/checkout-with-retry
+
+      - name: Build regression designs
+        uses: ./.github/actions/run-command
+        with:
+          run: bazel build --keep_going //tests/regression:nightly
+          shmSize: 8g
+        env:
+          UBUNTU_PRO_TOKEN: ${{ secrets.UBUNTU_PRO_TOKEN }}
+          MAC_ADDRESS: ${{ secrets.MAC_ADDRESS }}
+
   bump-version:
     name: Bump Version
     runs-on: ubuntu-latest

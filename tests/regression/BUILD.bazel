@@ -1,0 +1,120 @@
+"""Nightly regression tier: real-world designs compiled to .xo.
+
+Each target mirrors the parameters of the design's checked-in
+`run_tapa.sh`. Everything here is `manual`: the builds need Vitis HLS
+and real wall time, so only the nightly workflow builds them, through
+the `:nightly` aggregation target. Designs without a `run_tapa.sh`
+(and thus without declared parameters) are not in the tier yet.
+"""
+
+load("//bazel:tapa_rules.bzl", "tapa_xo")
+
+tapa_xo(
+    name = "callipepla-xo",
+    src = "callipepla/tapa/src_noconst/callipepla.cpp",
+    hdrs = ["callipepla/tapa/src_noconst/callipepla.h"],
+    clock_period = "3.33",
+    jobs = 8,
+    part_num = "xcu55c-fsvh2892-2L-e",
+    tags = [
+        "cpu:8",
+        "manual",
+    ],
+    top_name = "Callipepla",
+)
+
+tapa_xo(
+    name = "serpens-24ch-xo",
+    src = "serpens-24ch/tapa/src/serpens-noconst.cpp",
+    hdrs = [
+        "serpens-24ch/tapa/src/mmio.h",
+        "serpens-24ch/tapa/src/serpens-noconst.h",
+        "serpens-24ch/tapa/src/sparse_helper.h",
+    ],
+    clock_period = "3.33",
+    connectivity = "serpens-24ch/tapa/src/link_config.ini",
+    jobs = 8,
+    part_num = "xcu55c-fsvh2892-2L-e",
+    tags = [
+        "cpu:8",
+        "manual",
+    ],
+    top_name = "Serpens",
+)
+
+tapa_xo(
+    name = "serpens-32ch-xo",
+    src = "serpens-32ch/tapa/src/serpens_tapa_256.cpp",
+    hdrs = ["serpens-32ch/tapa/src/mmio.h"],
+    clock_period = "3.33",
+    jobs = 8,
+    part_num = "xcu280-fsvh2892-2L-e",
+    tags = [
+        "cpu:8",
+        "manual",
+    ],
+    top_name = "serpens",
+)
+
+tapa_xo(
+    name = "sextans-xo",
+    src = "spmm/sextans-u55c-3x3floorplan/tapa/src/sextans-no-const-para.cpp",
+    hdrs = [
+        "spmm/sextans-u55c-3x3floorplan/tapa/src/mmio.h",
+        "spmm/sextans-u55c-3x3floorplan/tapa/src/sextans-no-const-para.h",
+        "spmm/sextans-u55c-3x3floorplan/tapa/src/sparse_helper.h",
+    ],
+    clock_period = "3.00",
+    jobs = 8,
+    part_num = "xcu55c-fsvh2892-2L-e",
+    tags = [
+        "cpu:8",
+        "manual",
+    ],
+    top_name = "Sextans",
+)
+
+tapa_xo(
+    name = "autosa-mm-u250-xo",
+    src = "autosa/mm/10x13/u250/tapa/src/kernel_kernel.cpp",
+    hdrs = [
+        "autosa/mm/10x13/u250/tapa/src/kernel_kernel.h",
+    ],
+    clock_period = "3.00",
+    jobs = 8,
+    part_num = "xcu250-figd2104-2L-e",
+    tags = [
+        "cpu:8",
+        "manual",
+    ],
+    top_name = "kernel0",
+)
+
+tapa_xo(
+    name = "autosa-mm-u55c-xo",
+    src = "autosa/mm/10x13/u55c/tapa/src/kernel_kernel.cpp",
+    hdrs = [
+        "autosa/mm/10x13/u55c/tapa/src/kernel_kernel.h",
+    ],
+    clock_period = "3.00",
+    jobs = 8,
+    part_num = "xcu55c-fsvh2892-2L-e",
+    tags = [
+        "cpu:8",
+        "manual",
+    ],
+    top_name = "kernel0",
+)
+
+filegroup(
+    name = "nightly",
+    srcs = [
+        ":autosa-mm-u250-xo",
+        ":autosa-mm-u55c-xo",
+        ":callipepla-xo",
+        ":serpens-24ch-xo",
+        ":serpens-32ch-xo",
+        ":sextans-xo",
+    ],
+    tags = ["manual"],
+)

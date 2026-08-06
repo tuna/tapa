@@ -92,7 +92,7 @@ def _tapa_xo_impl(ctx):
 
     tapa_cmd.extend(["--override-report-schema-version", "redacted"])
 
-    tapa_cmd.extend(["--jobs", "1"])
+    tapa_cmd.extend(["--jobs", str(ctx.attr.jobs)])
 
     if ctx.attr.platform_name:
         tapa_cmd.extend(["--platform", ctx.attr.platform_name])
@@ -110,12 +110,16 @@ def _tapa_xo_impl(ctx):
 
     if output_file != None:
         tapa_cmd.extend(["pack", "--output", output_file.path])
+        if ctx.file.connectivity:
+            tapa_cmd.extend(["--connectivity", ctx.file.connectivity.path])
         outputs = [output_file] + outputs
 
     for rtl_file in ctx.files.custom_rtl_files:
         tapa_cmd.extend(["--custom-rtl", rtl_file.path])
 
     inputs = [src] + ctx.files.hdrs + ctx.files.custom_rtl_files
+    if ctx.file.connectivity:
+        inputs.append(ctx.file.connectivity)
     if ctx.file.ssh_key:
         inputs.append(ctx.file.ssh_key)
     ctx.actions.run(
@@ -239,6 +243,16 @@ tapa_xo = rule(
         ),
         "clock_period": attr.string(),
         "part_num": attr.string(),
+        "connectivity": attr.label(
+            allow_single_file = True,
+            doc = "Optional memory-connectivity .ini forwarded to `pack " +
+                  "--connectivity`; consumed when pack emits a v++ link " +
+                  "script, accepted and idle for a bare .xo.",
+        ),
+        "jobs": attr.int(
+            default = 1,
+            doc = "Parallel HLS jobs; pair values > 1 with a cpu:N tag.",
+        ),
         "enable_synth_util": attr.bool(),
         "flatten_hierarchy": attr.bool(),
         "ssh_key": attr.label(
