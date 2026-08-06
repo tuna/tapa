@@ -27,18 +27,27 @@ fn verilator_root() -> Option<std::path::PathBuf> {
         .then(|| root.to_path_buf())
 }
 
-/// Is verilator runnable? Cosim tests skip cleanly without it.
+/// Is verilator runnable? Cosim tests skip cleanly without it — unless
+/// `VERILATOR_BIN` is explicitly configured, in which case a broken
+/// binary is a hard failure rather than a silent green skip (the
+/// fail-closed contract for Bazel runs, mirroring frt's probe).
 ///
 /// `VERILATOR_BIN` is removed from every spawned environment: Verilator's
 /// own Perl frontend consumes that variable to pick its backend binary,
 /// so leaving it pointed at a wrapper would make the wrapper re-exec
 /// itself forever.
 pub fn available() -> bool {
-    Command::new(verilator_bin())
+    let configured = std::env::var_os("VERILATOR_BIN").is_some();
+    let ok = Command::new(verilator_bin())
         .arg("--version")
         .env_remove("VERILATOR_BIN")
         .output()
-        .is_ok_and(|output| output.status.success())
+        .is_ok_and(|output| output.status.success());
+    if !ok && configured {
+        let bin = std::path::PathBuf::from(verilator_bin());
+        panic!("VERILATOR_BIN is set but not runnable: {}", bin.display());
+    }
+    ok
 }
 
 /// Embedded Verilog asset source by file name.
