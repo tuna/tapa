@@ -4,7 +4,9 @@
 # All rights reserved. The contributor(s) of this file has/have agreed to the
 # RapidStream Contributor License Agreement.
 
+load("@vars//:vars.bzl", "XILINX_TOOL_VERSION")
 load("//bazel:v++_rules.bzl", "xilinx_wrapper")
+load("//bazel:xilinx_versions.bzl", "vitis_layout_subdir")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -37,9 +39,14 @@ xilinx_wrapper(
     xrt = True,
 )
 
+# HLS moved from the standalone `Vitis_HLS/<ver>` install tree into
+# `Vitis/<ver>` at 2024.2; pick the layout the configured version ships.
+# With the literal legacy name, this wrapper silently `exec`s through on
+# newer installs (its tool dir never exists), leaving `vitis_hls`
+# unresolvable inside strict-action-env sandboxes.
 xilinx_wrapper(
     name = "vitis_hls_env",
-    tool = "Vitis_HLS",
+    tool = vitis_layout_subdir(XILINX_TOOL_VERSION).strip("/"),
 )
 
 xilinx_wrapper(
