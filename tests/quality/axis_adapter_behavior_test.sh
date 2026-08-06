@@ -46,6 +46,26 @@ resolve_runfile() {
   return 1
 }
 
+# Verilator's --timing output needs C++20 coroutines, but the generated
+# verilated.mk hard-codes `CXX = c++`, which may be too old (the CI image
+# is bionic with gcc-7; g++-11 is installed there for this). Probe for a
+# capable compiler and force it via MAKEFLAGS — make command-line
+# variables beat makefile assignments. The <coroutine> include matters:
+# gcc-10 accepts -std=gnu++20 but still gates coroutines behind a flag.
+CXX_FOR_VERILATOR=""
+for candidate in "${CXX:-}" c++ g++ g++-12 g++-11; do
+  [[ -n "${candidate}" ]] || continue
+  if printf '#include <coroutine>\nint main() {}\n' |
+    "${candidate}" -x c++ -std=gnu++20 - -o /dev/null 2>/dev/null; then
+    CXX_FOR_VERILATOR="${candidate}"
+    break
+  fi
+done
+if [[ -z "${CXX_FOR_VERILATOR}" ]]; then
+  echo "FAIL: no C++20-coroutine-capable compiler for verilator --timing" >&2
+  exit 1
+fi
+
 tmp="$(mktemp -d)"
 trap 'rm -rf "${tmp}"' EXIT
 
@@ -56,6 +76,7 @@ trap 'rm -rf "${tmp}"' EXIT
   --timing \
   -Wno-fatal \
   -CFLAGS -std=gnu++20 \
+  -MAKEFLAGS "CXX=${CXX_FOR_VERILATOR}" \
   "$(resolve_runfile tapa-core/tapa-codegen/assets/verilog/axis_adapter.v)" \
   "$(resolve_runfile tapa-core/tapa-codegen/assets/verilog/fifo.v)" \
   "$(resolve_runfile tapa-core/tapa-codegen/assets/verilog/fifo_fwd.v)" \

@@ -78,7 +78,10 @@ RUN apt-get update && \
       rm -f /tmp/xrt.deb && \
       apt-get update && \
       apt-get upgrade -y && \
-      apt-get install --no-install-recommends -y bazel && \
+      # g++-11 (from the toolchain PPA): bionic's gcc-7 cannot compile
+      # the C++20 coroutines in Verilator --timing models; the quality
+      # tests probe for it and force it through MAKEFLAGS.
+      apt-get install --no-install-recommends -y bazel g++-11 && \
       apt-get purge --auto-remove -y \
         gnupg \
         software-properties-common \
