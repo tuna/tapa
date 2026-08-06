@@ -340,42 +340,70 @@ fn rewrite_combinational_nba(content: &str) -> String {
     static BEGIN_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\bbegin\b").unwrap());
     static END_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\bend\b").unwrap());
 
+    // A combinational block is either a `begin`/`end` region (tracked by
+    // depth) or a single statement (rewrite ends with that statement).
+    enum Comb {
+        Outside,
+        Block(i32),
+        Statement,
+    }
+
     let mut result = String::with_capacity(content.len());
-    let mut in_comb_block = false;
-    let mut brace_depth: i32 = 0;
+    let mut state = Comb::Outside;
     for line in content.lines() {
         // Keywords in `// ...` comments must not count either.
         let code = line.split("//").next().unwrap_or(line);
         let trimmed = code.trim();
-        if trimmed.starts_with("always") && trimmed.contains("@(*)") {
-            in_comb_block = true;
-            brace_depth = 0;
-            // Check if the always block uses begin/end or is single-statement.
-            if BEGIN_RE.find_iter(code).count() == 0 {
-                // Single-statement: only rewrite this one line (or the next).
-                brace_depth = -1; // will exit after first non-always line
+        let mut rewrite = false;
+        match &mut state {
+            Comb::Block(depth) => {
+                rewrite = true;
+                *depth += BEGIN_RE.find_iter(code).count() as i32;
+                *depth -= END_RE.find_iter(code).count() as i32;
+                if *depth <= 0 {
+                    state = Comb::Outside;
+                }
             }
-        }
-        if in_comb_block {
-            if brace_depth >= 0 {
-                brace_depth += BEGIN_RE.find_iter(code).count() as i32;
-                let ends = END_RE.find_iter(code).count() as i32;
-                if ends > 0 {
-                    brace_depth -= ends;
-                    if brace_depth <= 0 {
-                        in_comb_block = false;
+            Comb::Statement => {
+                rewrite = true;
+                if code.contains(';') {
+                    state = Comb::Outside;
+                }
+            }
+            Comb::Outside => {
+                if trimmed.starts_with("always") && trimmed.contains("@(*)") {
+                    let depth = BEGIN_RE.find_iter(code).count() as i32
+                        - END_RE.find_iter(code).count() as i32;
+                    if depth > 0 {
+                        state = Comb::Block(depth);
+                    } else if code.contains(';') {
+                        // Single-line form (`always @(*) a <= b;`): rewrite
+                        // this line only and stay outside.
+                        rewrite = true;
+                    } else {
+                        // Statement on the following line(s).
+                        state = Comb::Statement;
                     }
                 }
-            } else if !trimmed.starts_with("always") {
-                // Single-statement block: exit after processing this line.
-                in_comb_block = false;
             }
-            // Replace NBA with blocking assignment inside combinational blocks
-            let fixed = NBA_RE.replace(line, "$1 = $2");
-            result.push_str(&fixed);
-        } else {
-            result.push_str(line);
         }
+        // Replace NBA with blocking assignment inside combinational blocks.
+        // A single-line `always @(*) a <= b;` needs the intra-line form too.
+        let fixed = if rewrite {
+            if NBA_RE.is_match(line) {
+                NBA_RE.replace(line, "$1 = $2").into_owned()
+            } else if trimmed.starts_with("always") {
+                // `always @(*) a <= b;` does not match the anchored NBA_RE.
+                static INLINE_NBA_RE: LazyLock<Regex> =
+                    LazyLock::new(|| Regex::new(r"@\(\*\)\s*(\w+)\s*<=").unwrap());
+                INLINE_NBA_RE.replace(line, "@(*) $1 =").into_owned()
+            } else {
+                line.to_owned()
+            }
+        } else {
+            line.to_owned()
+        };
+        result.push_str(&fixed);
         result.push('\n');
     }
     result
@@ -655,6 +683,40 @@ always @(*) begin
     // end of the hot path
     a <= b;
 end
+always @(posedge clk) begin
+    q <= d;
+end
+endmodule
+";
+        let out = rewrite_combinational_nba(src);
+        assert!(out.contains("    a = b;"), "comb NBA rewritten:\n{out}");
+        assert!(out.contains("    q <= d;"), "sequential NBA kept:\n{out}");
+    }
+
+    /// A single-line `always @(*) a <= b;` must be rewritten on that line,
+    /// and the rewrite must not leak one line past it into sequential logic.
+    #[test]
+    fn nba_rewrite_single_line_form_does_not_leak() {
+        let src = "\
+module m;
+always @(*) a <= b;
+always @(posedge clk) begin
+    q <= d;
+end
+endmodule
+";
+        let out = rewrite_combinational_nba(src);
+        assert!(out.contains("always @(*) a = b;"), "comb NBA rewritten:\n{out}");
+        assert!(out.contains("    q <= d;"), "sequential NBA kept:\n{out}");
+    }
+
+    /// The statement-on-next-line form rewrites exactly that statement.
+    #[test]
+    fn nba_rewrite_next_line_form_stops_after_the_statement() {
+        let src = "\
+module m;
+always @(*)
+    a <= b;
 always @(posedge clk) begin
     q <= d;
 end
