@@ -119,22 +119,34 @@ void RemoveInline(const clang::FunctionDecl* func, clang::Rewriter& rewriter) {
 }
 
 // Add `#pragma HLS stream` depth pragmas after each stream declaration.
+// Walks the whole body: multi-declarator statements contribute one pragma
+// per declarator, and streams declared in nested scopes get their depth
+// too (both previously skipped silently, leaving HLS's default depth).
+void RewriteStreamDefinitions(const clang::Stmt* stmt,
+                              clang::Rewriter& rewriter) {
+  if (stmt == nullptr) return;
+  if (const auto* decl_stmt = llvm::dyn_cast<clang::DeclStmt>(stmt)) {
+    for (const clang::Decl* d : decl_stmt->decls()) {
+      const auto* var = llvm::dyn_cast<clang::VarDecl>(d);
+      if (var == nullptr) continue;
+      if (ClassifyTapaType(var->getType()) == TapaKind::kStream) {
+        const int64_t depth = IntTemplateArg(var->getType(), 1).value_or(0);
+        AddPragmaAfterStmt(rewriter, decl_stmt,
+                           "HLS stream variable = " + var->getNameAsString() +
+                               "._ depth = " + std::to_string(depth));
+      }
+    }
+    return;
+  }
+  for (const clang::Stmt* child : stmt->children()) {
+    RewriteStreamDefinitions(child, rewriter);
+  }
+}
+
 void RewriteStreamDefinitions(const clang::FunctionDecl* func,
                               clang::Rewriter& rewriter) {
   if (!func->hasBody()) return;
-  for (const clang::Stmt* child : func->getBody()->children()) {
-    const auto* decl_stmt = llvm::dyn_cast<clang::DeclStmt>(child);
-    if (decl_stmt == nullptr || !decl_stmt->isSingleDecl()) continue;
-    const auto* var =
-        llvm::dyn_cast<clang::VarDecl>(decl_stmt->getSingleDecl());
-    if (var == nullptr) continue;
-    if (ClassifyTapaType(var->getType()) == TapaKind::kStream) {
-      const int64_t depth = IntTemplateArg(var->getType(), 1).value_or(0);
-      AddPragmaAfterStmt(rewriter, decl_stmt,
-                         "HLS stream variable = " + var->getNameAsString() +
-                             "._ depth = " + std::to_string(depth));
-    }
-  }
+  RewriteStreamDefinitions(func->getBody(), rewriter);
 }
 
 }  // namespace

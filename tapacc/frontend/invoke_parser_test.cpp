@@ -172,5 +172,78 @@ TEST(InvokeParser, InstancesAndArgs) {
   EXPECT_EQ(top.instances.at("Consumer")[0].args.at("in").arg, "qc");
 }
 
+// Diagnostics sink for error-path tests (mirrors ports_test.cpp): the
+// default printer asserts on diagnostics emitted after parsing, which is
+// exactly when ParseUpperTask runs against a finished test AST.
+class CountingDiags : public clang::DiagnosticConsumer {
+ public:
+  void HandleDiagnostic(clang::DiagnosticsEngine::Level level,
+                        const clang::Diagnostic&) override {
+    if (level >= clang::DiagnosticsEngine::Error) ++errors;
+  }
+  unsigned errors = 0;
+};
+
+// Parse `code` expecting upper-task diagnostics; returns the error count.
+unsigned CountUpperTaskErrors(llvm::StringRef code, llvm::StringRef top) {
+  const std::string full = std::string(kTapaStubDecls) + "\n" + code.str();
+  auto ast = clang::tooling::buildASTFromCodeWithArgs(
+      full, std::vector<std::string>{"-std=c++17"});
+  EXPECT_NE(ast, nullptr);
+  CountingDiags diags;
+  ast->getDiagnostics().setClient(&diags, /*ShouldOwn=*/false);
+  FuncCollector collector(ast->getASTContext());
+  collector.TraverseDecl(ast->getASTContext().getTranslationUnitDecl());
+  auto tasks = DiscoverTasks(ast->getASTContext(), top, SynthTarget::kXilinxHls,
+                             collector.funcs);
+  for (auto& [name, model] : tasks) {
+    if (model.level == TaskLevel::kUpper) {
+      model.ports = BuildPorts(ast->getASTContext(), model.def);
+      ParseUpperTask(ast->getASTContext(), model, /*is_top=*/false);
+    }
+  }
+  return diags.errors;
+}
+
+TEST(InvokeParser, NestedScopeStreamDeclIsAnErrorNotSilence) {
+  // A stream declared inside a scope block was previously invisible to
+  // CollectStreamDecls and silently dropped from the task graph.
+  constexpr char kCode[] = R"cpp(
+    void Producer(tapa::ostream<float>& out) {}
+    void Consumer(tapa::istream<float>& in) {}
+    void Top() {
+      tapa::stream<float, 8> ok;
+      if (true) {
+        tapa::stream<float, 8> hidden;
+      }
+      tapa::task().invoke(Producer, ok).invoke(Consumer, ok);
+    }
+  )cpp";
+  EXPECT_GE(CountUpperTaskErrors(kCode, "Top"), 1u);
+}
+
+TEST(InvokeParser, MultiDeclaratorStreamDeclCollectsEveryDeclarator) {
+  // `tapa::stream<float> a("a"), b("b");` is user-exercised (see
+  // tests/apps/templated); every declarator must be collected, where the
+  // old single-decl restriction silently dropped the whole statement.
+  constexpr char kCode[] = R"cpp(
+    void Producer(tapa::ostream<float>& out) {}
+    void Consumer(tapa::istream<float>& in) {}
+    void Top() {
+      tapa::stream<float, 8> q1, q2;
+      tapa::task()
+          .invoke(Producer, q1)
+          .invoke(Consumer, q1)
+          .invoke(Producer, q2)
+          .invoke(Consumer, q2);
+    }
+  )cpp";
+  auto p = ParseCode(kCode, "Top", /*is_top=*/false);
+  const TaskModel& top = p.tasks.at("Top");
+  ASSERT_EQ(top.streams.size(), 2u);
+  EXPECT_EQ(top.streams.at("q1").depth, 8u);
+  EXPECT_EQ(top.streams.at("q2").depth, 8u);
+}
+
 }  // namespace
 }  // namespace tapa::cc

@@ -150,36 +150,75 @@ struct UpperTaskContext {
   }
 };
 
+// Recursively reject stream declarations below the top level of the task
+// body. `CollectStreamDecls` only sees direct children, so a stream
+// declared inside an `if`/loop/lambda used to be silently invisible to
+// codegen — the connected invokes then failed in confusing downstream
+// ways or, worse, not at all.
+void DiagnoseNestedStreamDecls(UpperTaskContext& uc, const clang::Stmt* stmt) {
+  if (stmt == nullptr) return;
+  if (const auto* decl_stmt = llvm::dyn_cast<clang::DeclStmt>(stmt)) {
+    for (const clang::Decl* d : decl_stmt->decls()) {
+      const auto* var = llvm::dyn_cast<clang::VarDecl>(d);
+      if (var == nullptr) continue;
+      switch (ClassifyTapaType(var->getType())) {
+        case TapaKind::kStream:
+        case TapaKind::kStreams:
+          ReportCustomDiag(uc.ctx, clang::DiagnosticsEngine::Error,
+                           var->getLocation(),
+                           "tapa::stream '%0' must be declared at the top "
+                           "level of the task body")
+              .AddString(var->getNameAsString());
+          break;
+        default:
+          break;
+      }
+    }
+    return;
+  }
+  for (const clang::Stmt* child : stmt->children()) {
+    DiagnoseNestedStreamDecls(uc, child);
+  }
+}
+
 // --- 1. Stream (FIFO) declarations. ---
 // Scan the task body for `tapa::stream` / `tapa::streams` declarations and
 // record each (array elements expanded to `name[i]` entries) in
-// `task.streams` with its depth and VarDecl.
+// `task.streams` with its depth and VarDecl. Multi-declarator statements
+// (`tapa::stream<float> a("a"), b("b");`) contribute one entry per
+// declarator; the conformance corpus exercises that form.
 void CollectStreamDecls(UpperTaskContext& uc, const clang::FunctionDecl* func) {
   for (const clang::Stmt* child : func->getBody()->children()) {
     const auto* decl_stmt = llvm::dyn_cast<clang::DeclStmt>(child);
-    if (decl_stmt == nullptr || !decl_stmt->isSingleDecl()) continue;
-    const auto* var =
-        llvm::dyn_cast<clang::VarDecl>(decl_stmt->getSingleDecl());
-    if (var == nullptr) continue;
-    const std::string name = var->getNameAsString();
-    switch (ClassifyTapaType(var->getType())) {
-      case TapaKind::kStream:
-        uc.task.streams[name] =
-            StreamDecl{static_cast<uint64_t>(
-                           IntTemplateArg(var->getType(), 1).value_or(0)),
-                       var, std::nullopt, std::nullopt};
-        break;
-      case TapaKind::kStreams: {
-        const uint64_t depth = IntTemplateArg(var->getType(), 2).value_or(0);
-        const int64_t n = IntTemplateArg(var->getType(), 1).value_or(0);
-        for (int64_t i = 0; i < n; ++i) {
-          uc.task.streams[ArrayNameAt(name, i)] =
-              StreamDecl{depth, var, std::nullopt, std::nullopt};
+    if (decl_stmt == nullptr) {
+      // Any stream declared inside this non-declaration statement's
+      // subtree is invisible to the collector below; diagnose it.
+      DiagnoseNestedStreamDecls(uc, child);
+      continue;
+    }
+    for (const clang::Decl* d : decl_stmt->decls()) {
+      const auto* var = llvm::dyn_cast<clang::VarDecl>(d);
+      if (var == nullptr) continue;
+      const std::string name = var->getNameAsString();
+      switch (ClassifyTapaType(var->getType())) {
+        case TapaKind::kStream:
+          uc.task.streams[name] =
+              StreamDecl{static_cast<uint64_t>(
+                             IntTemplateArg(var->getType(), 1).value_or(0)),
+                         var, std::nullopt, std::nullopt};
+          break;
+        case TapaKind::kStreams: {
+          const uint64_t depth = IntTemplateArg(var->getType(), 2).value_or(0);
+          const int64_t n = IntTemplateArg(var->getType(), 1).value_or(0);
+          for (int64_t i = 0; i < n; ++i) {
+            uc.task.streams[ArrayNameAt(name, i)] =
+                StreamDecl{depth, var, std::nullopt, std::nullopt};
+          }
+          break;
         }
-        break;
+        default:
+          break;
       }
-      default:
-        break;
     }
   }
 }
