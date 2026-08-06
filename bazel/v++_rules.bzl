@@ -5,6 +5,8 @@
 # RapidStream Contributor License Agreement.
 
 load("@vars//:vars.bzl", "XILINX_PLATFORM_REPO_PATHS", "XILINX_TOOL_PATH", "XILINX_TOOL_VERSION", "XILINX_XRT_SETUP")
+load("//bazel:sh_utils.bzl", "sh_quote")
+load("//bazel:xilinx_versions.bzl", "xilinx_tool_dir_candidates")
 
 def _vpp_xclbin_impl(ctx):
     vpp = ctx.executable.vpp
@@ -98,7 +100,11 @@ vpp_xclbin = rule(
 
 def _xilinx_wrapper_impl(ctx):
     output = ctx.actions.declare_file(ctx.attr.name)
-    tool_path = "{}/{}/{}".format(
+
+    # The tool may live in the classic `<root>/<Tool>/<ver>` layout or the
+    # AMD unified-installer `<root>/<ver>/<Tool>` layout (2025.x); only the
+    # generated script can probe which one exists on the executing host.
+    candidates = xilinx_tool_dir_candidates(
         ctx.attr.tool_path,
         ctx.attr.tool,
         ctx.attr.tool_version,
@@ -106,8 +112,17 @@ def _xilinx_wrapper_impl(ctx):
     lines = [
         "#!/bin/bash",
         "set -e",
+        '_TAPA_TOOL_DIR=""',
+        "for _tapa_cand in {}; do".format(
+            " ".join([sh_quote(c) for c in candidates]),
+        ),
+        '  if [ -d "$_tapa_cand" ]; then',
+        '    _TAPA_TOOL_DIR="$_tapa_cand"',
+        "    break",
+        "  fi",
+        "done",
         # Pass through when local tools are not installed (e.g., macOS with remote execution).
-        'if [ ! -d "{}" ]; then'.format(tool_path),
+        'if [ -z "$_TAPA_TOOL_DIR" ]; then',
         '  exec "$@"',
         "fi",
         # Create a temp dir with sh -> bash: Xilinx tools use bash-specific syntax internally.
@@ -115,7 +130,7 @@ def _xilinx_wrapper_impl(ctx):
         'ln -sf "$(command -v bash)" "$_TAPA_SH_DIR/sh"',
         'export PATH="$_TAPA_SH_DIR:$PATH"',
         'trap \'rm -rf "$_TAPA_SH_DIR"\' EXIT',
-        "source {}/settings64.sh".format(tool_path),
+        'source "$_TAPA_TOOL_DIR/settings64.sh"',
     ]
     if ctx.attr.xrt:
         lines.append("source {}".format(ctx.attr.xrt_setup))
@@ -170,12 +185,24 @@ def _xilinx_wrapper_impl(ctx):
 
     # GCC specs file so bundled GCC always searches compat dir first.
     # Needed because xelab calls bundled GCC with -B and PATH is not preserved.
-    lines.append('    _gcc_specs="$({gcc_dir}/bin/gcc -print-search-dirs 2>/dev/null | sed -n "s/install: //p")/specs"'.format(
-        gcc_dir = "{}/Vivado/{}/tps/lnx64/gcc-9.3.0".format(
+    gcc_candidates = [
+        d + "/tps/lnx64/gcc-9.3.0"
+        for d in xilinx_tool_dir_candidates(
             ctx.attr.tool_path,
+            "Vivado",
             ctx.attr.tool_version,
-        ),
+        )
+    ]
+    lines.append('    _tapa_gcc_dir=""')
+    lines.append("    for _tapa_gcc_cand in {}; do".format(
+        " ".join([sh_quote(c) for c in gcc_candidates]),
     ))
+    lines.append('      if [ -d "$_tapa_gcc_cand" ]; then _tapa_gcc_dir="$_tapa_gcc_cand"; break; fi')
+    lines.append("    done")
+    lines.append('    _gcc_specs=""')
+    lines.append('    if [ -n "$_tapa_gcc_dir" ]; then')
+    lines.append('      _gcc_specs="$("$_tapa_gcc_dir/bin/gcc" -print-search-dirs 2>/dev/null | sed -n "s/install: //p")/specs"')
+    lines.append("    fi")
     lines.append('    if [ -n "$_gcc_specs" ] && [ ! -f "$_gcc_specs" ]; then')
     lines.append('      printf "*self_spec:\\n-B/tmp/tapa-compat-relr/\\n" > "$_gcc_specs" 2>/dev/null || true')
     lines.append("    fi")

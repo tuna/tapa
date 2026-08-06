@@ -17,7 +17,7 @@ load(
     "XILINX_TOOL_VERSION",
 )
 load("//bazel:sh_utils.bzl", "sh_quote")
-load("//bazel:xilinx_versions.bzl", "vitis_layout_subdir")
+load("//bazel:xilinx_versions.bzl", "vitis_layout_subdir", "xilinx_tool_dir_candidates")
 
 def _symlink_dir(rctx, path):
     """Symlink each entry from a directory into the repository."""
@@ -26,13 +26,19 @@ def _symlink_dir(rctx, path):
         if entry:
             rctx.symlink(path + "/" + entry, entry)
 
+def _first_existing_dir(rctx, paths):
+    """Return the first existing directory among `paths`, or ""."""
+    for path in paths:
+        if rctx.execute(["test", "-d", path]).return_code == 0:
+            return path
+    return ""
+
 def _optional_local_repository_impl(rctx):
-    """Repository rule that creates a stub when the local path doesn't exist."""
-    path = rctx.attr.path
+    """Repository rule that creates a stub when no candidate path exists."""
     build_file_content = rctx.attr.build_file_content
 
-    result = rctx.execute(["test", "-d", path])
-    if result.return_code == 0:
+    path = _first_existing_dir(rctx, rctx.attr.paths)
+    if path:
         _symlink_dir(rctx, path)
     rctx.file("BUILD.bazel", build_file_content)
 
@@ -40,7 +46,7 @@ _optional_local_repository = repository_rule(
     implementation = _optional_local_repository_impl,
     local = True,
     attrs = {
-        "path": attr.string(mandatory = True),
+        "paths": attr.string_list(mandatory = True),
         "build_file_content": attr.string(mandatory = True),
     },
 )
@@ -112,11 +118,10 @@ def _fetch_vendor_headers_via_ssh(rctx, remote_path):
 
 def _vitis_hls_repository_impl(rctx):
     """Repository rule for Vitis HLS that fetches headers via SSH if needed."""
-    path = rctx.attr.path
     build_file_content = rctx.attr.build_file_content
 
-    result = rctx.execute(["test", "-d", path])
-    if result.return_code == 0:
+    path = _first_existing_dir(rctx, rctx.attr.paths)
+    if path:
         _symlink_dir(rctx, path)
     else:
         fetched = False
@@ -133,7 +138,7 @@ _vitis_hls_repository = repository_rule(
     implementation = _vitis_hls_repository_impl,
     local = True,
     attrs = {
-        "path": attr.string(mandatory = True),
+        "paths": attr.string_list(mandatory = True),
         "build_file_content": attr.string(mandatory = True),
         "remote_path": attr.string(default = ""),
         "remote_host": attr.string(default = ""),
@@ -179,7 +184,17 @@ def _load_dependencies(module_ctx):
     )
 
     vitis_hls_subdir = vitis_layout_subdir(XILINX_TOOL_VERSION)
-    vitis_hls_path = XILINX_TOOL_PATH + vitis_hls_subdir + XILINX_TOOL_VERSION
+    vitis_hls_tool = vitis_hls_subdir.strip("/")
+
+    # Classic layout first, then the AMD unified-installer layout; the
+    # repository rule probes for whichever exists on this host. The
+    # remote path stays classic-composed: the remote filesystem cannot
+    # be probed at fetch time.
+    vitis_hls_paths = xilinx_tool_dir_candidates(
+        XILINX_TOOL_PATH,
+        vitis_hls_tool,
+        XILINX_TOOL_VERSION,
+    )
     remote_vitis_hls_path = ""
     if REMOTE_HOST and REMOTE_XILINX_TOOL_PATH:
         remote_vitis_hls_path = REMOTE_XILINX_TOOL_PATH + vitis_hls_subdir + XILINX_TOOL_VERSION
@@ -208,7 +223,7 @@ cc_library(
     visibility = ["//visibility:public"],
 )
         """,
-        path = vitis_hls_path,
+        paths = vitis_hls_paths,
         remote_path = remote_vitis_hls_path,
         remote_host = REMOTE_HOST,
         remote_user = REMOTE_USER,
@@ -218,8 +233,14 @@ cc_library(
         remote_ssh_control_persist = REMOTE_SSH_CONTROL_PERSIST,
     )
 
-    vivado_path = XILINX_TOOL_PATH + "/Vivado/"
-    xsim_path = vivado_path + XILINX_TOOL_VERSION + "/data/xsim"
+    xsim_paths = [
+        d + "/data/xsim"
+        for d in xilinx_tool_dir_candidates(
+            XILINX_TOOL_PATH,
+            "Vivado",
+            XILINX_TOOL_VERSION,
+        )
+    ]
     _optional_local_repository(
         name = "xsim_xv",
         build_file_content = """
@@ -232,7 +253,7 @@ cc_library(
     visibility = ["//visibility:public"],
 )
         """,
-        path = xsim_path,
+        paths = xsim_paths,
     )
 
     return module_ctx.extension_metadata(
