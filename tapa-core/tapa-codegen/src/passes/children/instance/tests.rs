@@ -543,3 +543,75 @@ fn build_child_instance_connects_async_mmap_slot_axi_ports() {
         "slot async mmap binding should emit the full direct AXI bundle:\n{text}"
     );
 }
+
+#[test]
+fn build_child_instance_uses_vitis_2025_offset_spelling_when_present() {
+    use std::collections::BTreeMap;
+    // Vitis HLS 2025.1+ names the `offset=direct` scalar `<port>_r`
+    // where every earlier version emitted `<port>_offset`. The pin name
+    // must follow the parsed child RTL, while the parent-side wire
+    // keeps the conventional `_offset` spelling.
+    let sig = InstanceSignals::new("Mmap2Stream_0", false);
+    let child_rtl = VerilogModule::parse(
+        "module Mmap2Stream(input wire ap_clk, input wire [63:0] mmap_r, \
+         output wire [63:0] m_axi_mmap_AWADDR); endmodule",
+    )
+    .unwrap();
+    let mut args = BTreeMap::new();
+    args.insert(
+        "mmap".to_owned(),
+        Arg {
+            arg: "a".to_owned(),
+            cat: ArgCategory::Mmap,
+        },
+    );
+    let inst = build_child_instance_test(
+        "Mmap2Stream",
+        "Mmap2Stream_0",
+        &sig,
+        &args,
+        &ChildMmapBindings::default(),
+        Some(&child_rtl),
+    );
+    let text = inst.to_string();
+    assert!(
+        text.contains(".mmap_r(Mmap2Stream_0__mmap_offset)"),
+        "2025-style child offset port must be pinned by its real name:\n{text}"
+    );
+    assert!(
+        !text.contains(".mmap_offset("),
+        "no phantom conventional pin when the child only has `_r`:\n{text}"
+    );
+}
+
+#[test]
+fn build_child_instance_keeps_conventional_offset_spelling() {
+    use std::collections::BTreeMap;
+    let sig = InstanceSignals::new("Mmap2Stream_0", false);
+    let child_rtl = VerilogModule::parse(
+        "module Mmap2Stream(input wire ap_clk, input wire [63:0] mmap_offset, \
+         output wire [63:0] m_axi_mmap_AWADDR); endmodule",
+    )
+    .unwrap();
+    let mut args = BTreeMap::new();
+    args.insert(
+        "mmap".to_owned(),
+        Arg {
+            arg: "a".to_owned(),
+            cat: ArgCategory::Mmap,
+        },
+    );
+    let inst = build_child_instance_test(
+        "Mmap2Stream",
+        "Mmap2Stream_0",
+        &sig,
+        &args,
+        &ChildMmapBindings::default(),
+        Some(&child_rtl),
+    );
+    let text = inst.to_string();
+    assert!(
+        text.contains(".mmap_offset(Mmap2Stream_0__mmap_offset)"),
+        "pre-2025 child offset port keeps the conventional pin:\n{text}"
+    );
+}

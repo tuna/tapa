@@ -253,7 +253,30 @@ pub(super) fn build_child_instance_with_reset(
 }
 
 fn child_has_direct_mmap_offset(child_rtl: Option<&VerilogModule>, child_port: &str) -> bool {
-    child_rtl.is_some_and(|module| module.find_port(&format!("{child_port}_offset")).is_some())
+    child_rtl.is_some_and(|module| {
+        module
+            .find_port(&direct_mmap_offset_port(child_rtl, child_port))
+            .is_some()
+    })
+}
+
+/// Direct-offset scalar port name on the child HLS module. Vitis HLS
+/// through 2024.2 emits `<port>_offset` for `offset=direct` `m_axi`
+/// interfaces; 2025.1+ renamed the generated scalar to `<port>_r`.
+/// Prefer the conventional spelling and fall back to the 2025 one only
+/// when the parsed child RTL ships it exclusively, so pin names always
+/// match the module actually packaged.
+fn direct_mmap_offset_port(child_rtl: Option<&VerilogModule>, child_port: &str) -> String {
+    let conventional = format!("{child_port}_offset");
+    if let Some(module) = child_rtl {
+        if module.find_port(&conventional).is_none() {
+            let vitis_2025 = format!("{child_port}_r");
+            if module.find_port(&vitis_2025).is_some() {
+                return vitis_2025;
+            }
+        }
+    }
+    conventional
 }
 
 fn child_has_direct_mmap_ports(child_rtl: Option<&VerilogModule>, child_port: &str) -> bool {
@@ -274,7 +297,7 @@ fn add_direct_mmap_portargs(
     child_rtl_filter: Option<&VerilogModule>,
     child_rtl_for_width: Option<&VerilogModule>,
 ) {
-    let offset_port = format!("{child_port}_offset");
+    let offset_port = direct_mmap_offset_port(child_rtl_for_width, child_port);
     if child_rtl_filter.is_none_or(|module| module.find_port(&offset_port).is_some()) {
         port_args.push(PortArg::new(offset_port, Expr::ident(offset_sig)));
     }
