@@ -9,10 +9,18 @@ if [[ -n "${VERILATOR_BIN:-}" && -z "${VERILATOR_ROOT:-}" ]]; then
     bazel_root="$(cd "$PWD/$bin_dir" && pwd)"
   fi
 
-  # Prefer the Bazel-managed verilator root if it is complete.
-  if [[ -f "$bazel_root/include/verilated.mk" && -f "$bazel_root/bin/verilator_includer" ]]; then
-    export VERILATOR_ROOT="$bazel_root"
-  else
+  # Prefer the Bazel-managed verilator root if it is complete. The
+  # @verilator module's executable lives at `<root>/bin/verilator`, so
+  # probe both the binary's directory and its parent -- probing only
+  # the former always failed, silently pairing the Bazel binary with a
+  # mismatched system VERILATOR_ROOT on hosts that have one.
+  for cand in "$bazel_root" "$(dirname "$bazel_root")"; do
+    if [[ -f "$cand/include/verilated.mk" && -f "$cand/bin/verilator_includer" ]]; then
+      export VERILATOR_ROOT="$cand"
+      break
+    fi
+  done
+  if [[ -z "${VERILATOR_ROOT:-}" ]]; then
     # Otherwise fall back to a system installation.
     for sys_root in /opt/homebrew/share/verilator /usr/local/share/verilator /usr/share/verilator; do
       if [[ -f "$sys_root/include/verilated.mk" && -f "$sys_root/bin/verilator_includer" ]]; then
