@@ -260,7 +260,7 @@ int main(int argc, char** argv) {
 
 {% if mode == "hls" %}
 {% for arg in mmap_args %}
-  dut->{{ arg.ident }}_offset = 0x{{ "{:016x}"|format(arg.base_addr) }}ULL;
+  dut->{{ arg.offset_ident }} = 0x{{ "{:016x}"|format(arg.base_addr) }}ULL;
 {% endfor %}
 {% for arg in scalar_args %}
   {

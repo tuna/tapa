@@ -33,6 +33,35 @@ pub fn read_verilog_contents(spec: &KernelSpec) -> Vec<String> {
         .collect()
 }
 
+/// Direct-offset scalar port on the DUT module.
+///
+/// Vitis HLS through 2024.2 emits `<name>_offset` for `offset=direct`
+/// `m_axi` arguments; 2025.1+ renamed the generated scalar to
+/// `<name>_r`. Prefer the conventional spelling and fall back to the
+/// 2025 one only when the RTL declares it exclusively, so the
+/// testbench pins whatever port the packaged module actually has.
+pub fn direct_offset_port_name(verilog_contents: &[String], name: &str) -> String {
+    let conventional = format!("{name}_offset");
+    if port_declared(verilog_contents, &conventional) {
+        return conventional;
+    }
+    let vitis_2025 = format!("{name}_r");
+    if port_declared(verilog_contents, &vitis_2025) {
+        return vitis_2025;
+    }
+    conventional
+}
+
+/// Whether any Verilog file declares a port with this exact name.
+fn port_declared(verilog_contents: &[String], port: &str) -> bool {
+    let pattern = format!(
+        r"(?m)\b(?:input|output|inout)\b[^;\n]*\b{}\b",
+        regex_lite::escape(port)
+    );
+    let re = regex_lite::Regex::new(&pattern).unwrap();
+    verilog_contents.iter().any(|text| re.is_match(text))
+}
+
 /// Classify spec args into four groups by applying backend-specific constructors.
 #[allow(
     clippy::implicit_hasher,
@@ -234,4 +263,38 @@ pub fn scalar_words(base_offset: u32, bytes: &[u8]) -> Vec<ScalarWord> {
         });
     }
     words
+}
+
+#[cfg(test)]
+mod tests {
+    use super::direct_offset_port_name;
+
+    #[test]
+    fn direct_offset_prefers_conventional_spelling() {
+        let rtl = vec!["module m(mmap_offset);\ninput [63:0] mmap_offset;\nendmodule".to_owned()];
+        assert_eq!(direct_offset_port_name(&rtl, "mmap"), "mmap_offset");
+    }
+
+    #[test]
+    fn direct_offset_falls_back_to_vitis_2025_spelling() {
+        let rtl = vec!["module m(mmap_r);\ninput [63:0] mmap_r;\nendmodule".to_owned()];
+        assert_eq!(direct_offset_port_name(&rtl, "mmap"), "mmap_r");
+    }
+
+    #[test]
+    fn direct_offset_defaults_to_conventional_when_neither_declared() {
+        let rtl = vec!["module m(ap_clk);\ninput ap_clk;\nendmodule".to_owned()];
+        assert_eq!(direct_offset_port_name(&rtl, "mmap"), "mmap_offset");
+    }
+
+    #[test]
+    fn direct_offset_ignores_non_declaration_mentions() {
+        // `mmap_offset` appearing only in a comment must not mask the
+        // actually-declared 2025-style port.
+        let rtl = vec![
+            "// carries mmap_offset semantics\nmodule m(mmap_r);\ninput [63:0] mmap_r;\nendmodule"
+                .to_owned(),
+        ];
+        assert_eq!(direct_offset_port_name(&rtl, "mmap"), "mmap_r");
+    }
 }

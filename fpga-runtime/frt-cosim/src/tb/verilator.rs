@@ -11,6 +11,9 @@ use crate::tb::{
 pub struct MmapArg {
     pub name: String,
     pub ident: String,
+    /// DUT member for the direct-offset scalar (`<name>_offset`, or
+    /// `<name>_r` on Vitis HLS 2025.1+ modules).
+    pub offset_ident: String,
     pub araddr: String,
     pub arburst: String,
     pub arcache: String,
@@ -136,8 +139,10 @@ impl<'a> VerilatorTbGenerator<'a> {
                     ArgKind::Mmap { data_width, .. } => *data_width,
                     ArgKind::Scalar { .. } | ArgKind::Stream { .. } => unreachable!(),
                 };
+                let offset_port = super::direct_offset_port_name(&verilog_contents, &arg.name);
                 MmapArg::new(
                     &arg.name,
+                    &offset_port,
                     (data_width as usize).div_ceil(8),
                     base_addresses.get(&arg.name).copied().unwrap_or(0),
                     buffer_sizes
@@ -175,6 +180,7 @@ fn bytes_to_cpp_initializer(bytes: &[u8]) -> String {
 impl MmapArg {
     fn new(
         name: &str,
+        offset_port: &str,
         data_width_bytes: usize,
         base_addr: u64,
         data_size: usize,
@@ -184,6 +190,7 @@ impl MmapArg {
         Self {
             name: name.to_owned(),
             ident: cpp_identifier(name),
+            offset_ident: cpp_identifier(offset_port),
             araddr: a.araddr,
             arburst: a.arburst,
             arcache: a.arcache,

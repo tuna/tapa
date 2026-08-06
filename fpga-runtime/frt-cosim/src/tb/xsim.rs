@@ -164,8 +164,10 @@ impl<'a> XsimTbGenerator<'a> {
                     ArgKind::Scalar { .. } | ArgKind::Stream { .. } => unreachable!(),
                 };
                 let id_width = detect_axi_id_width(&verilog_contents, &arg.name);
+                let offset_port = super::direct_offset_port_name(&verilog_contents, &arg.name);
                 MmapArg::new(
                     &arg.name,
+                    &offset_port,
                     (data_width as usize).div_ceil(8),
                     id_width,
                     base_addresses.get(&arg.name).copied().unwrap_or(0),
@@ -279,6 +281,7 @@ fn detect_axi_id_width(verilog_contents: &[String], mmap_name: &str) -> usize {
 impl MmapArg {
     fn new(
         name: &str,
+        offset_port: &str,
         data_width_bytes: usize,
         id_width: usize,
         base_addr: u64,
@@ -288,7 +291,7 @@ impl MmapArg {
         Self {
             name: name.to_owned(),
             ident: verilator_identifier(name),
-            offset_name: escape_verilog_identifier(&format!("{name}_offset")),
+            offset_name: escape_verilog_identifier(offset_port),
             araddr: a.araddr,
             arburst: a.arburst,
             arcache: a.arcache,
