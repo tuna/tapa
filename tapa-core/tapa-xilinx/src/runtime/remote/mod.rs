@@ -23,7 +23,9 @@ use camino::Utf8PathBuf;
 use self::transport::{cleanup_session, local_to_remote_path, unique_session_id, upload_batch};
 pub(crate) use self::transport::{download_tree, shell_quote};
 use crate::error::{Result, XilinxError};
-use crate::runtime::process::{unified_hls_args, ToolInvocation, ToolOutput, ToolRunner};
+use crate::runtime::process::{
+    unified_hls_args, xilinx_tool_name, ToolInvocation, ToolOutput, ToolRunner,
+};
 use crate::runtime::ssh::{classify_ssh_error, SshErrorKind, SshSession};
 
 pub struct RemoteToolRunner {
@@ -157,7 +159,7 @@ fn build_remote_script(
         .chain(rewritten_args.iter().map(|a| shell_quote(a)))
         .collect::<Vec<_>>()
         .join(" ");
-    if inv.program == "vitis_hls" {
+    if xilinx_tool_name(&inv.program) == "vitis_hls" {
         // Vitis 2025.1+ removed the classic `vitis_hls` executable in
         // favor of the unified `vitis-run` CLI. Which form applies is a
         // property of the remote installation, so decide in the remote

@@ -91,12 +91,19 @@ const XILINX_TOOL_ENVS: &[(&str, &[&str])] = &[
     ("v++", &["XILINX_VITIS"]),
 ];
 
-fn xilinx_settings_envs(program: &str) -> &'static [&'static str] {
-    let tool = Path::new(program)
+/// The tool a program string names, normalized: an invocation may spell it
+/// as a bare name, an absolute path, or with a `.exe` suffix, and every
+/// decision keyed on the tool must agree about which of those it is.
+pub(crate) fn xilinx_tool_name(program: &str) -> &str {
+    Path::new(program)
         .file_name()
         .and_then(|name| name.to_str())
         .unwrap_or(program)
-        .trim_end_matches(".exe");
+        .trim_end_matches(".exe")
+}
+
+fn xilinx_settings_envs(program: &str) -> &'static [&'static str] {
+    let tool = xilinx_tool_name(program);
     XILINX_TOOL_ENVS
         .iter()
         .find_map(|(name, envs)| (*name == tool).then_some(*envs))
@@ -144,6 +151,11 @@ pub(crate) fn unified_hls_args(args: &[String]) -> Vec<String> {
             if let Some(tcl) = iter.next() {
                 out.push("--tcl".to_owned());
                 out.push(tcl.clone());
+            } else {
+                // A dangling `-f` would vanish here and launch with no
+                // script at all; pass it through so the tool complains
+                // about the missing argument like classic vitis_hls does.
+                out.push(arg.clone());
             }
         } else {
             out.push(arg.clone());
@@ -159,8 +171,13 @@ fn local_command(inv: &ToolInvocation) -> std::process::Command {
         return cmd;
     };
 
-    let unified =
-        inv.program == "vitis_hls" && settings.parent().is_some_and(hls_needs_unified_rewrite);
+    // Normalized the same way settings resolution normalizes it: an
+    // absolute path or a `.exe` suffix still resolves settings64.sh and
+    // takes this branch, so an exact-string test would leave the classic
+    // `vitis_hls` name in place on a 2025.1+ install, where it does not
+    // exist, and the step would fail with "command not found".
+    let unified = xilinx_tool_name(&inv.program) == "vitis_hls"
+        && settings.parent().is_some_and(hls_needs_unified_rewrite);
     let (program, args) = if unified {
         ("vitis-run".to_owned(), unified_hls_args(&inv.args))
     } else {
