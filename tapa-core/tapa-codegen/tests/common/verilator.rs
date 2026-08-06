@@ -5,12 +5,38 @@
 //! union of the per-test lists (`-Wno-fatal` already keeps warnings
 //! non-fatal, so extra suppressions only silence stderr noise).
 
+use std::ffi::OsString;
 use std::process::Command;
 
-/// Is `verilator` runnable on `PATH`? Cosim tests skip cleanly without it.
+/// Verilator executable: `VERILATOR_BIN` when set (the Bazel-managed
+/// hermetic binary staged in runfiles), else `verilator` from `PATH`.
+fn verilator_bin() -> OsString {
+    std::env::var_os("VERILATOR_BIN").unwrap_or_else(|| "verilator".into())
+}
+
+/// `VERILATOR_ROOT` for the hermetic binary: the @verilator module's
+/// executable bakes in a placeholder root, so derive the real one from
+/// the binary's location (`<root>/bin/verilator`). `None` for system
+/// installs, which self-root.
+fn verilator_root() -> Option<std::path::PathBuf> {
+    let bin = std::path::PathBuf::from(verilator_bin());
+    let root = bin.parent()?.parent()?;
+    root.join("include")
+        .join("verilated.mk")
+        .exists()
+        .then(|| root.to_path_buf())
+}
+
+/// Is verilator runnable? Cosim tests skip cleanly without it.
+///
+/// `VERILATOR_BIN` is removed from every spawned environment: Verilator's
+/// own Perl frontend consumes that variable to pick its backend binary,
+/// so leaving it pointed at a wrapper would make the wrapper re-exec
+/// itself forever.
 pub fn available() -> bool {
-    Command::new("verilator")
+    Command::new(verilator_bin())
         .arg("--version")
+        .env_remove("VERILATOR_BIN")
         .output()
         .is_ok_and(|output| output.status.success())
 }
@@ -36,7 +62,7 @@ pub fn run_cosim(
     testbench: &str,
 ) {
     if !available() {
-        eprintln!("skipping {top} cosim: `verilator` not found on PATH");
+        eprintln!("skipping {top} cosim: verilator not found via VERILATOR_BIN or PATH");
         return;
     }
 
@@ -81,9 +107,11 @@ pub fn run_cosim(
     args.extend(sources);
     args.push("tb.cpp".to_string());
 
-    let build = Command::new("verilator")
+    let build = Command::new(verilator_bin())
         .current_dir(root)
         .args(&args)
+        .env_remove("VERILATOR_BIN")
+        .envs(verilator_root().map(|r| ("VERILATOR_ROOT", r)))
         .output()
         .expect("spawn verilator");
     assert!(

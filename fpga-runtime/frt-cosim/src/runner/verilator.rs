@@ -152,8 +152,14 @@ impl SimRunner for VerilatorRunner {
                 args.push(path.to_string_lossy().to_string());
             }
         }
+        // Strip VERILATOR_BIN from the children: Verilator's own Perl
+        // frontend consumes that variable to pick its backend binary, so
+        // leaving it pointed at a wrapper makes the wrapper re-exec
+        // itself forever (a fork bomb). Compiled binaries ignore it, and
+        // a wrapper self-selects its backend correctly without it.
         let status = Command::new(&verilator_bin)
             .args(&args)
+            .env_remove("VERILATOR_BIN")
             .envs(
                 verilator_root_env(&verilator_bin)
                     .into_iter()
@@ -174,6 +180,7 @@ impl SimRunner for VerilatorRunner {
                 &format!("V{top}.mk"),
                 &format!("V{top}"),
             ])
+            .env_remove("VERILATOR_BIN")
             .current_dir(tb_dir)
             .status()?;
         if !status.success() {

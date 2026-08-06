@@ -15,8 +15,11 @@ fn workspace_root() -> PathBuf {
 
 fn ensure_verilator() -> bool {
     if let Some(bin) = std::env::var_os("VERILATOR_BIN") {
+        // env_remove: Verilator's Perl frontend consumes VERILATOR_BIN to
+        // pick its backend; pointed at a wrapper it re-execs itself forever.
         let status = Command::new(&bin)
             .arg("--version")
+            .env_remove("VERILATOR_BIN")
             .status()
             .unwrap_or_else(|error| {
                 panic!("failed to run VERILATOR_BIN={}: {error}", bin.display())

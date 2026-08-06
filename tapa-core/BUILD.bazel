@@ -202,6 +202,11 @@ cargo_test(
     size = "enormous",
     srcs = _ALL_SRCS,
     cargo_args = CARGO_TEST_PACKAGES,
+    cargo_env_files = {
+        # Hermetic verilator for the tapa-codegen cosim tests; without
+        # it they probe `verilator` on PATH and skip when absent.
+        "@verilator//:verilator_executable": "VERILATOR_BIN",
+    },
     manifest = "Cargo.toml",
     tags = [
         "cpu:8",

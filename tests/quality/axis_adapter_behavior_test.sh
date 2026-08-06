@@ -1,9 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if ! command -v verilator >/dev/null 2>&1; then
-  echo "SKIP: verilator not available" >&2
-  exit 0
+# Under Bazel, VERILATOR_BIN points at the hermetic @verilator binary
+# (staged in runfiles); outside Bazel, fall back to PATH. Unset the
+# variable after capturing it: Verilator's own Perl frontend consumes
+# VERILATOR_BIN to pick its backend, so leaving it pointed at a wrapper
+# would make the wrapper re-exec itself forever.
+VERILATOR="${VERILATOR_BIN:-}"
+unset VERILATOR_BIN
+if [[ -z "${VERILATOR}" ]]; then
+  if ! command -v verilator >/dev/null 2>&1; then
+    echo "SKIP: verilator not available" >&2
+    exit 0
+  fi
+  VERILATOR=verilator
 fi
 
 resolve_runfile() {
@@ -39,12 +49,13 @@ resolve_runfile() {
 tmp="$(mktemp -d)"
 trap 'rm -rf "${tmp}"' EXIT
 
-verilator \
+"${VERILATOR}" \
   --binary \
   --assert \
   --sv \
   --timing \
   -Wno-fatal \
+  -CFLAGS -std=gnu++20 \
   "$(resolve_runfile tapa-core/tapa-codegen/assets/verilog/axis_adapter.v)" \
   "$(resolve_runfile tapa-core/tapa-codegen/assets/verilog/fifo.v)" \
   "$(resolve_runfile tapa-core/tapa-codegen/assets/verilog/fifo_fwd.v)" \

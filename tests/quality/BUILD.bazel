@@ -2,15 +2,21 @@
 
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
+# Launched through sim_env.sh so the hermetic @verilator binary gets a
+# matching VERILATOR_ROOT derived from its runfiles location.
 sh_test(
     name = "axis_adapter_behavior_test",
-    srcs = ["axis_adapter_behavior_test.sh"],
+    srcs = ["//bazel:sim_env.sh"],
+    args = ["$(location axis_adapter_behavior_test.sh)"],
     data = [
+        "axis_adapter_behavior_test.sh",
         "axis_adapter_smoke_tb.sv",
         "//tapa-core:tapa-codegen/assets/verilog/axis_adapter.v",
         "//tapa-core:tapa-codegen/assets/verilog/fifo.v",
         "//tapa-core:tapa-codegen/assets/verilog/fifo_bram.v",
         "//tapa-core:tapa-codegen/assets/verilog/fifo_fwd.v",
         "//tapa-core:tapa-codegen/assets/verilog/fifo_srl.v",
+        "@verilator//:verilator_executable",
     ],
+    env = {"VERILATOR_BIN": "$(rootpath @verilator//:verilator_executable)"},
 )
