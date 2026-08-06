@@ -119,7 +119,9 @@ fn normalize(content: &str) -> String {
 fn run_case(case: &GoldenCase) -> ArtifactManifest {
     let design_json = fs::read_to_string(case.dir.join("design.json"))
         .unwrap_or_else(|e| panic!("[{}] cannot read design.json: {e}", case.name));
-    let design: tapa_ir::Design = serde_json::from_str(&design_json)
+    // Parse through the checked production path, not a bare serde read:
+    // the schema-version gate is part of what this fixture pins.
+    let design = tapa_ir::Design::from_json(&design_json)
         .unwrap_or_else(|e| panic!("[{}] design.json does not parse: {e}", case.name));
 
     let state = prepare_state(case, design);

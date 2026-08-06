@@ -265,6 +265,7 @@ impl Solver for StatusSolver {
 
 fn vadd_floor_graph() -> FloorGraph {
     let json = r#"{
+        "schema_version": 2,
         "cflags": [], "top": "VecAdd", "target": "xilinx-hls",
         "tasks": {
             "VecAdd": {
@@ -320,6 +321,7 @@ fn parallel_floor_graph(stream_count: usize) -> FloorGraph {
         );
     }
     let design = serde_json::json!({
+        "schema_version": 2,
         "cflags": [],
         "top": "Top",
         "target": "xilinx-hls",
@@ -357,6 +359,7 @@ fn single_task_floor_graph(lut: u64) -> FloorGraph {
 
 fn single_task_floor_graph_with_area(area: Area) -> FloorGraph {
     let json = serde_json::json!({
+        "schema_version": 2,
         "cflags": [],
         "top": "Top",
         "target": "xilinx-hls",
@@ -485,6 +488,7 @@ fn two_slot_golden_model(graph: &FloorGraph) -> FloorplanModel {
 
 fn mmap_floor_graph() -> FloorGraph {
     let json = r#"{
+        "schema_version": 2,
         "cflags": [], "top": "Top", "target": "xilinx-hls",
         "tasks": {
             "Top": {"readable_name": "Top", "code": "void Top() {}", "level": "upper", "synth": "hls",

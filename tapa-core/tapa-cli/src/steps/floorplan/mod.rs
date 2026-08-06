@@ -417,7 +417,8 @@ pub fn run(args: &FloorplanArgs, ctx: &CliContext) -> Result<()> {
     }
 
     let mut state = work_io::load(&ctx.work_dir)?;
-    // Completed-synthesis validation is centralized in `steps::registry`.
+    // Completed-synthesis validation lives in `PipelineStep::check`
+    // (steps/chain.rs).
     let implementation_target = (args.run_impl || args.dse)
         .then(|| implementation::validate_target(&state, args.vivado_threads))
         .transpose()?;
@@ -508,6 +509,7 @@ mod tests {
     pub fn synthed_vadd_state() -> WorkState {
         let mut state = state_from_json(
             r#"{
+                "schema_version": 2,
                 "cflags": [], "top": "VecAdd", "target": "xilinx-vitis",
                 "tasks": {
                     "VecAdd": {
@@ -537,6 +539,7 @@ mod tests {
     pub fn synthed_direct_mmap_state() -> WorkState {
         let mut state = state_from_json(
             r#"{
+                "schema_version": 2,
                 "cflags": [], "top": "Top", "target": "xilinx-vitis",
                 "tasks": {
                     "Top": {
@@ -996,6 +999,7 @@ mod tests {
         // them crosses a boundary and must use the floorplanned handshake
         // pipeline in the regenerated top RTL.
         let json = r#"{
+            "schema_version": 2,
             "cflags": [], "top": "VecAdd", "target": "xilinx-vitis",
             "tasks": {
                 "VecAdd": {

@@ -253,7 +253,7 @@ mod tests {
         // tapacc-shaped task graph on stdout.
         // Mirrors real `tapacc` output: `readable_name` is emitted for every
         // task (equal to the task name for these non-template tasks).
-        let fixed_graph = r#"{"cflags": [], "tasks": {"VecAdd": {"code": "void VecAdd() {}", "level": "upper", "synth": "hls", "readable_name": "VecAdd", "ports": [], "tasks": {"Add": [{"step": 0, "args": {}}]}, "fifos": {}}, "Add": {"code": "void Add() {}", "level": "lower", "synth": "hls", "readable_name": "Add", "ports": []}}, "top": "VecAdd"}"#;
+        let fixed_graph = r#"{"schema_version": 2, "cflags": [], "tasks": {"VecAdd": {"code": "void VecAdd() {}", "level": "upper", "synth": "hls", "readable_name": "VecAdd", "ports": [], "tasks": {"Add": [{"step": 0, "args": {}}]}, "fifos": {}}, "Add": {"code": "void Add() {}", "level": "lower", "synth": "hls", "readable_name": "Add", "ports": []}}, "top": "VecAdd"}"#;
         fs::write(
             &tapacc,
             format!(

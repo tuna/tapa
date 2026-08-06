@@ -1,4 +1,5 @@
 {
+    "schema_version": 2,
     "target": "xilinx-hls",
     "tasks": {
         "Add": {

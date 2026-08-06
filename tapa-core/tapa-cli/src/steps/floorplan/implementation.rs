@@ -967,6 +967,7 @@ mod tests {
     fn implementation_target_requires_vitis_named_alveo_platform_and_clock() {
         let graph = tapa_ir::TaskGraph::from_json(
             r#"{
+                "schema_version": 2,
                 "cflags": [], "top": "Top", "target": "xilinx-vitis",
                 "tasks": {"Top": {"readable_name":"Top", "code":"", "level":"lower",
                     "synth":"hls", "ports":[], "self_area":{"lut":1}}}

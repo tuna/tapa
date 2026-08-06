@@ -463,6 +463,7 @@ mod tests {
         };
         let mut state = crate::testutil::state_from_json(&format!(
             r#"{{
+                "schema_version": 2,
                 "cflags": [], "top": "Top", "target": "xilinx-vitis",
                 "tasks": {{"Top": {{"readable_name": "Top", "code": "", "level": "upper",
                     "synth": "hls", "ports": {ports}, "tasks": {{}}, "fifos": {{}}}}}}
@@ -493,6 +494,7 @@ mod tests {
     fn packaging_state() -> WorkState {
         let mut state = crate::testutil::state_from_json(
             r#"{
+                "schema_version": 2,
                 "cflags": [], "top": "Top", "target": "xilinx-vitis",
                 "tasks": {"Top": {"readable_name": "Top", "code": "", "level": "lower",
                     "synth": "hls",

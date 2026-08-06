@@ -85,6 +85,7 @@ fn all_category_variants_in_fixture() {
 #[test]
 fn negative_step_accepted() {
     let json = r#"{
+        "schema_version": 2,
         "cflags": [], "top": "T", "target": "xilinx-hls",
         "tasks": {"T": {"code": "", "level": "upper", "synth": "hls",
             "readable_name": "T",
@@ -101,6 +102,7 @@ fn negative_step_accepted() {
 #[test]
 fn readable_name_is_typed_and_round_trips() {
     let json = r#"{
+        "schema_version": 2,
         "cflags": [], "top": "T", "target": "xilinx-hls",
         "tasks": {
             "T": {"code": "", "level": "upper", "synth": "hls",
@@ -126,6 +128,7 @@ fn readable_name_is_typed_and_round_trips() {
 #[test]
 fn readable_name_is_required() {
     let json = r#"{
+        "schema_version": 2,
         "cflags": [], "top": "T", "target": "xilinx-hls",
         "tasks": {
             "T": {"code": "", "level": "lower", "synth": "hls", "ports": []}
@@ -146,6 +149,7 @@ fn readable_name_is_required() {
 #[test]
 fn consumer_only_fifo() {
     let json = r#"{
+        "schema_version": 2,
         "cflags": [], "top": "T", "target": "xilinx-hls",
         "tasks": {"T": {"code": "", "level": "upper", "synth": "hls",
             "readable_name": "T",
@@ -182,7 +186,7 @@ fn mmap_ports_round_trip() {
 
 #[test]
 fn unknown_top_level_field_rejected() {
-    let json = r#"{"cflags": [], "top": "T", "target": "xilinx-hls", "tasks": {}, "bogus": true}"#;
+    let json = r#"{"schema_version": 2, "cflags": [], "top": "T", "target": "xilinx-hls", "tasks": {}, "bogus": true}"#;
     let err = Graph::from_json(json).unwrap_err();
     let msg = err.to_string();
     assert!(
@@ -194,6 +198,7 @@ fn unknown_top_level_field_rejected() {
 #[test]
 fn invalid_level_rejected() {
     let json = r#"{
+        "schema_version": 2,
         "cflags": [], "top": "T", "target": "xilinx-hls",
         "tasks": {"T": {"code": "", "level": "invalid", "synth": "hls"}}
     }"#;
@@ -208,6 +213,7 @@ fn invalid_level_rejected() {
 #[test]
 fn invalid_category_rejected_with_path() {
     let json = r#"{
+        "schema_version": 2,
         "cflags": [], "top": "T", "target": "xilinx-hls",
         "tasks": {"T": {"code": "", "level": "lower", "synth": "hls",
             "ports": [{"cat": "nonexistent", "name": "x", "type": "int", "width": 32}]}}

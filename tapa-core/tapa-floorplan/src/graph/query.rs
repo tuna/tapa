@@ -184,6 +184,7 @@ pub mod tests {
     /// A two-leaf `A -> fifo -> B` design, mirroring the flatten test graph.
     pub fn vadd_graph() -> TaskGraph {
         let json = r#"{
+            "schema_version": 2,
             "cflags": [],
             "top": "VecAdd",
             "target": "xilinx-hls",
@@ -220,6 +221,7 @@ pub mod tests {
     pub fn mmap_graph() -> TaskGraph {
         TaskGraph::from_json(
             r#"{
+                "schema_version": 2,
                 "cflags": [], "top": "Top", "target": "xilinx-hls",
                 "tasks": {
                     "Top": {
@@ -295,6 +297,7 @@ pub mod tests {
     pub fn distributed_control_graph() -> TaskGraph {
         TaskGraph::from_json(
             r#"{
+                "schema_version": 2,
                 "cflags": [], "top": "Top", "target": "xilinx-vitis",
                 "tasks": {
                     "Top": {
@@ -454,6 +457,7 @@ pub mod tests {
     fn enabled_control_is_a_noop_without_child_instances() {
         let design = TaskGraph::from_json(
             r#"{
+                "schema_version": 2,
                 "cflags": [], "top": "Leaf", "target": "xilinx-hls",
                 "tasks": {"Leaf": {
                     "readable_name":"Leaf","code":"","level":"lower","synth":"hls",
@@ -543,6 +547,7 @@ pub mod tests {
     fn placement_aggregates_parallel_streams_without_losing_routing_records() {
         let design = TaskGraph::from_json(
             r#"{
+                "schema_version": 2,
                 "cflags": [], "top": "Top", "target": "xilinx-hls",
                 "tasks": {
                     "Top": {
