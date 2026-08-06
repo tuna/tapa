@@ -30,6 +30,7 @@ walkdir = { workspace = true }
 tapa-codegen = { workspace = true }
 tapa-floorplan = { workspace = true }
 tapa-ir = { workspace = true }
+tapa-protocol = { workspace = true }
 tapa-rtl = { workspace = true }
 tapa-xilinx = { workspace = true }
 tempfile = { workspace = true }

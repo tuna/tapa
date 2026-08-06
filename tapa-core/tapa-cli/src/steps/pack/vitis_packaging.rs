@@ -151,47 +151,9 @@ fn apply_pack_overlays(args: &PackArgs, ctx: &CliContext, hdl_dir: &Path) -> Res
     Ok(())
 }
 
-const M_AXI_SUFFIXES: &[&str] = &[
-    "_AWVALID",
-    "_AWREADY",
-    "_AWADDR",
-    "_AWID",
-    "_AWLEN",
-    "_AWSIZE",
-    "_AWBURST",
-    "_AWLOCK",
-    "_AWCACHE",
-    "_AWPROT",
-    "_AWQOS",
-    "_AWREGION",
-    "_WVALID",
-    "_WREADY",
-    "_WDATA",
-    "_WSTRB",
-    "_WLAST",
-    "_BVALID",
-    "_BREADY",
-    "_BID",
-    "_BRESP",
-    "_ARVALID",
-    "_ARREADY",
-    "_ARADDR",
-    "_ARID",
-    "_ARLEN",
-    "_ARSIZE",
-    "_ARBURST",
-    "_ARLOCK",
-    "_ARCACHE",
-    "_ARPROT",
-    "_ARQOS",
-    "_ARREGION",
-    "_RVALID",
-    "_RREADY",
-    "_RDATA",
-    "_RLAST",
-    "_RID",
-    "_RRESP",
-];
+// The one M-AXI suffix vocabulary lives in tapa-protocol; a private
+// copy here once drifted from it (`_AWREGION`/`_ARREGION`).
+use tapa_protocol::M_AXI_SUFFIXES;
 
 static TAPA_LIB_RUNFILES_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"(?:(?:\.\./)*/?)[^\s"<>\|,]*tapa\.runfiles/_main/tapa-lib/"#).unwrap()
@@ -571,6 +533,25 @@ mod tests {
         runner.push_ok("vivado", ToolOutput::default());
         runner.attach_download(crate::util::utf8(xo_path), mock_xo_bytes(root, seed));
         runner
+    }
+
+    /// The base projection reads the shared protocol suffix vocabulary;
+    /// a base whose only surviving port carries the optional REGION
+    /// attribute must still be recognized (a private copy of the table
+    /// once disagreed with the shared one exactly here).
+    #[test]
+    fn m_axi_base_projection_recognizes_region_suffixes() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        fs_err::write(
+            dir.path().join("Top.v"),
+            "module Top(input [3:0] m_axi_a_ARREGION, output [3:0] m_axi_b_AWREGION); endmodule",
+        )
+        .expect("write rtl");
+        let bases = top_rtl_m_axi_bases(dir.path(), "Top").expect("project bases");
+        assert_eq!(
+            bases.into_iter().collect::<Vec<_>>(),
+            vec!["a".to_owned(), "b".to_owned()]
+        );
     }
 
     #[test]

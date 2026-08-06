@@ -170,6 +170,12 @@ pub enum PortDir {
 pub type AxiPortEntry = (&'static str, PortDir);
 
 /// Address-channel ports shared by AR and AW channels.
+///
+/// This is the *emitted* vocabulary — the sub-ports TAPA's generated
+/// fabric declares and wires. `REGION` is deliberately absent: HLS
+/// children never produce it, so an emitted `REGION` port would be an
+/// undriven top-level output (see
+/// [`M_AXI_RECOGNITION_ONLY_SUFFIXES`]).
 pub const M_AXI_ADDR_PORTS: &[AxiPortEntry] = &[
     ("ADDR", PortDir::Output),
     ("BURST", PortDir::Output),
@@ -221,13 +227,58 @@ pub const M_AXI_SUFFIXES_COMPACT: &[&str] = &[
     "_WREADY", "_WSTRB", "_WVALID",
 ];
 
-/// Full suffix set (37 entries) — compact + 8 optional address-channel attributes.
+/// Optional address-channel attributes that packaged RTL may carry but
+/// TAPA's generated fabric never emits or wires.
+///
+/// They belong to the recognition vocabulary ([`M_AXI_SUFFIXES`]) so
+/// consumers that *read* port lists (e.g. the `kernel.xml` base
+/// projection at pack time) accept them, and to nothing else: HLS
+/// children never produce `REGION`, so emitting it would declare an
+/// undriven top-level port.
+pub const M_AXI_RECOGNITION_ONLY_SUFFIXES: &[&str] = &["_ARREGION", "_AWREGION"];
+
+/// Full suffix set (39 entries) — compact + 10 optional address-channel
+/// attributes, including the recognition-only pair.
 pub const M_AXI_SUFFIXES: &[&str] = &[
-    "_ARADDR", "_ARBURST", "_ARID", "_ARLEN", "_ARREADY", "_ARSIZE", "_ARVALID", "_AWADDR",
-    "_AWBURST", "_AWID", "_AWLEN", "_AWREADY", "_AWSIZE", "_AWVALID", "_BID", "_BREADY", "_BRESP",
-    "_BVALID", "_RDATA", "_RID", "_RLAST", "_RREADY", "_RRESP", "_RVALID", "_WDATA", "_WLAST",
-    "_WREADY", "_WSTRB", "_WVALID", "_ARLOCK", "_ARPROT", "_ARQOS", "_ARCACHE", "_AWCACHE",
-    "_AWLOCK", "_AWPROT", "_AWQOS",
+    "_ARADDR",
+    "_ARBURST",
+    "_ARID",
+    "_ARLEN",
+    "_ARREADY",
+    "_ARSIZE",
+    "_ARVALID",
+    "_AWADDR",
+    "_AWBURST",
+    "_AWID",
+    "_AWLEN",
+    "_AWREADY",
+    "_AWSIZE",
+    "_AWVALID",
+    "_BID",
+    "_BREADY",
+    "_BRESP",
+    "_BVALID",
+    "_RDATA",
+    "_RID",
+    "_RLAST",
+    "_RREADY",
+    "_RRESP",
+    "_RVALID",
+    "_WDATA",
+    "_WLAST",
+    "_WREADY",
+    "_WSTRB",
+    "_WVALID",
+    "_ARLOCK",
+    "_ARPROT",
+    "_ARQOS",
+    "_ARCACHE",
+    "_ARREGION",
+    "_AWCACHE",
+    "_AWLOCK",
+    "_AWPROT",
+    "_AWQOS",
+    "_AWREGION",
 ];
 
 /// Per-channel suffix groupings with valid/ready markers.
@@ -330,15 +381,17 @@ mod tests {
             optional.iter().all(|s| s.ends_with("LOCK")
                 || s.ends_with("PROT")
                 || s.ends_with("QOS")
-                || s.ends_with("CACHE")),
-            "only LOCK/PROT/QOS/CACHE are optional, got {optional:?}"
+                || s.ends_with("CACHE")
+                || s.ends_with("REGION")),
+            "only LOCK/PROT/QOS/CACHE/REGION are optional, got {optional:?}"
         );
     }
 
-    /// The by-channel grouping covers the full suffix set, and each channel's
-    /// valid/ready markers are among its own ports.
+    /// The by-channel grouping covers exactly the emitted suffix set —
+    /// the full recognition set minus the recognition-only attributes —
+    /// and each channel's valid/ready markers are among its own ports.
     #[test]
-    fn m_axi_channels_cover_the_full_suffix_set() {
+    fn m_axi_channels_cover_the_emitted_suffix_set() {
         let mut grouped: Vec<&str> = M_AXI_SUFFIXES_BY_CHANNEL
             .values()
             .flat_map(|c| c.ports.iter().copied())
@@ -349,8 +402,12 @@ mod tests {
         assert_eq!(total, grouped.len(), "a suffix appears in two channels");
 
         let grouped: BTreeSet<&str> = grouped.into_iter().collect();
-        let full: BTreeSet<&str> = M_AXI_SUFFIXES.iter().copied().collect();
-        assert_eq!(grouped, full, "channels do not cover the full suffix set");
+        let emitted: BTreeSet<&str> = M_AXI_SUFFIXES
+            .iter()
+            .copied()
+            .filter(|s| !M_AXI_RECOGNITION_ONLY_SUFFIXES.contains(s))
+            .collect();
+        assert_eq!(grouped, emitted, "channels do not cover the emitted set");
 
         for (name, channel) in &M_AXI_SUFFIXES_BY_CHANNEL {
             assert!(
@@ -380,9 +437,16 @@ mod tests {
     /// The suffix lookup is table-driven and rejects unknown shapes.
     #[test]
     fn m_axi_suffix_lookups_track_the_channel_tables() {
-        // Every declared suffix resolves in both lookups.
+        // Every emitted suffix resolves; the recognition-only pair is
+        // deliberately absent from the direction tables — nothing may
+        // emit (and so need to direct) a REGION port.
         for &suffix in M_AXI_SUFFIXES {
-            assert!(m_axi_port_direction(suffix).is_some(), "{suffix}");
+            let direction = m_axi_port_direction(suffix);
+            if M_AXI_RECOGNITION_ONLY_SUFFIXES.contains(&suffix) {
+                assert!(direction.is_none(), "{suffix} must stay emission-free");
+            } else {
+                assert!(direction.is_some(), "{suffix}");
+            }
         }
 
         // Master-side directions straight from the channel tables.

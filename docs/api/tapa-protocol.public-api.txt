@@ -88,6 +88,7 @@ pub const tapa_protocol::M_AXI_ADDR_PORTS: &[tapa_protocol::AxiPortEntry]
 pub const tapa_protocol::M_AXI_CHANNEL_ORDER: &[&str]
 pub const tapa_protocol::M_AXI_MAX_OUTSTANDING: u32
 pub const tapa_protocol::M_AXI_PREFIX: &str
+pub const tapa_protocol::M_AXI_RECOGNITION_ONLY_SUFFIXES: &[&str]
 pub const tapa_protocol::M_AXI_SUFFIXES: &[&str]
 pub const tapa_protocol::M_AXI_SUFFIXES_COMPACT: &[&str]
 pub const tapa_protocol::OSTREAM_SUFFIXES: &[&str]
