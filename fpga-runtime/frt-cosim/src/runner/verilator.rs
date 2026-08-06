@@ -7,6 +7,7 @@ use regex_lite::Regex;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::LazyLock;
 use which::which;
 
 const VERILATOR_BUILD_LOCK_ENV: &str = frt_shm::env::FRT_VERILATOR_BUILD_LOCK;
@@ -315,10 +316,6 @@ fn generate_xilinx_fp_ip_models(rtl_dir: &Path) -> Result<()> {
 /// patching the source we ensure identical behavior across all simulators and
 /// silence the warning.
 fn fix_combinational_nba(rtl_dir: &Path) -> Result<()> {
-    // Match NBA statements: `identifier <= expr;` but not comparisons like `(a <= b)`
-    let nba_re = Regex::new(r"^(\s+\w+)\s*<=\s*(.+;)$")
-        .map_err(|e| CosimError::Metadata(format!("regex compile failed: {e}")))?;
-
     for entry in std::fs::read_dir(rtl_dir)? {
         let path = entry?.path();
         if !is_verilog_like(&path) {
@@ -330,48 +327,64 @@ fn fix_combinational_nba(rtl_dir: &Path) -> Result<()> {
         if !content.contains("always @(*)") {
             continue;
         }
-        let mut result = String::with_capacity(content.len());
-        let mut in_comb_block = false;
-        let mut brace_depth: i32 = 0;
-        for line in content.lines() {
-            let trimmed = line.trim();
-            if trimmed.starts_with("always") && trimmed.contains("@(*)") {
-                in_comb_block = true;
-                brace_depth = 0;
-                // Check if the always block uses begin/end or is single-statement.
-                if !trimmed.contains("begin") {
-                    // Single-statement: only rewrite this one line (or the next).
-                    brace_depth = -1; // will exit after first non-always line
-                }
-            }
-            if in_comb_block {
-                if brace_depth >= 0 {
-                    if trimmed.contains("begin") {
-                        brace_depth += trimmed.matches("begin").count() as i32;
-                    }
-                    if trimmed.contains("end") {
-                        brace_depth -= trimmed.matches("end").count() as i32;
-                        if brace_depth <= 0 {
-                            in_comb_block = false;
-                        }
-                    }
-                } else if !trimmed.starts_with("always") {
-                    // Single-statement block: exit after processing this line.
-                    in_comb_block = false;
-                }
-                // Replace NBA with blocking assignment inside combinational blocks
-                let fixed = nba_re.replace(line, "$1 = $2");
-                result.push_str(&fixed);
-            } else {
-                result.push_str(line);
-            }
-            result.push('\n');
-        }
+        let result = rewrite_combinational_nba(&content);
         if result != content {
             std::fs::write(&path, &result)?;
         }
     }
     Ok(())
+}
+
+fn rewrite_combinational_nba(content: &str) -> String {
+    // Match NBA statements: `identifier <= expr;` but not comparisons like `(a <= b)`
+    static NBA_RE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"^(\s+\w+)\s*<=\s*(.+;)$").unwrap());
+    // Block keywords must match as whole words: identifiers like
+    // `wire_begin` and keywords like `endcase`/`endfunction` contain
+    // `begin`/`end` as substrings, and counting those corrupts the
+    // depth — leaking the rewrite into sequential blocks below.
+    static BEGIN_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\bbegin\b").unwrap());
+    static END_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\bend\b").unwrap());
+
+    let mut result = String::with_capacity(content.len());
+    let mut in_comb_block = false;
+    let mut brace_depth: i32 = 0;
+    for line in content.lines() {
+        // Keywords in `// ...` comments must not count either.
+        let code = line.split("//").next().unwrap_or(line);
+        let trimmed = code.trim();
+        if trimmed.starts_with("always") && trimmed.contains("@(*)") {
+            in_comb_block = true;
+            brace_depth = 0;
+            // Check if the always block uses begin/end or is single-statement.
+            if BEGIN_RE.find_iter(code).count() == 0 {
+                // Single-statement: only rewrite this one line (or the next).
+                brace_depth = -1; // will exit after first non-always line
+            }
+        }
+        if in_comb_block {
+            if brace_depth >= 0 {
+                brace_depth += BEGIN_RE.find_iter(code).count() as i32;
+                let ends = END_RE.find_iter(code).count() as i32;
+                if ends > 0 {
+                    brace_depth -= ends;
+                    if brace_depth <= 0 {
+                        in_comb_block = false;
+                    }
+                }
+            } else if !trimmed.starts_with("always") {
+                // Single-statement block: exit after processing this line.
+                in_comb_block = false;
+            }
+            // Replace NBA with blocking assignment inside combinational blocks
+            let fixed = NBA_RE.replace(line, "$1 = $2");
+            result.push_str(&fixed);
+        } else {
+            result.push_str(line);
+        }
+        result.push('\n');
+    }
+    result
 }
 
 fn is_verilog_like(path: &Path) -> bool {
@@ -573,6 +586,90 @@ endmodule
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn nba_rewrite_stays_inside_combinational_block() {
+        let src = "\
+module m;
+always @(*) begin
+    a <= b;
+end
+always @(posedge clk) begin
+    q <= d;
+end
+endmodule
+";
+        let out = rewrite_combinational_nba(src);
+        assert!(out.contains("    a = b;"), "comb NBA rewritten:\n{out}");
+        assert!(out.contains("    q <= d;"), "sequential NBA kept:\n{out}");
+    }
+
+    /// `begin` inside an identifier must not open a level: the depth
+    /// never returning to zero leaks the rewrite into every sequential
+    /// block below — silent RTL corruption.
+    #[test]
+    fn nba_rewrite_ignores_begin_inside_identifiers() {
+        let src = "\
+module m;
+always @(*) begin
+    state_begin <= next;
+end
+always @(posedge clk) begin
+    q <= d;
+end
+endmodule
+";
+        let out = rewrite_combinational_nba(src);
+        assert!(
+            out.contains("    state_begin = next;"),
+            "comb NBA rewritten:\n{out}"
+        );
+        assert!(out.contains("    q <= d;"), "sequential NBA kept:\n{out}");
+    }
+
+    /// The `end` inside `endcase` must not close the block early:
+    /// statements after the case would silently keep their NBAs.
+    #[test]
+    fn nba_rewrite_survives_endcase() {
+        let src = "\
+module m;
+always @(*) begin
+    case (s)
+        1'b0: x <= a;
+    endcase
+    y <= b;
+end
+endmodule
+";
+        let out = rewrite_combinational_nba(src);
+        assert!(
+            out.contains("        1'b0: x <= a;"),
+            "case arm intact:\n{out}"
+        );
+        assert!(
+            out.contains("    y = b;"),
+            "post-case NBA rewritten:\n{out}"
+        );
+    }
+
+    /// Keywords in comments must not perturb the depth either way.
+    #[test]
+    fn nba_rewrite_ignores_keywords_in_comments() {
+        let src = "\
+module m;
+always @(*) begin
+    // end of the hot path
+    a <= b;
+end
+always @(posedge clk) begin
+    q <= d;
+end
+endmodule
+";
+        let out = rewrite_combinational_nba(src);
+        assert!(out.contains("    a = b;"), "comb NBA rewritten:\n{out}");
+        assert!(out.contains("    q <= d;"), "sequential NBA kept:\n{out}");
+    }
 
     #[test]
     fn resolve_verilator_bin_prefers_env_override() {
