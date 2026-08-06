@@ -95,8 +95,22 @@ pub fn parse_embedded_xml(xml: &str) -> Result<XrtMetadata> {
                         let v = String::from_utf8_lossy(&a.value).into_owned();
                         match a.key.as_ref() {
                             b"name" => name = v,
-                            b"id" => id = v.parse().unwrap_or(0),
-                            b"addressQualifier" => qualifier = v.parse().unwrap_or(0),
+                            // A malformed id would silently alias another
+                            // argument's slot; fail loudly instead.
+                            b"id" => {
+                                id = v.parse().map_err(|_parse_err| {
+                                    FrtError::MetadataParse(format!(
+                                        "malformed arg id {v:?} in embedded XML"
+                                    ))
+                                })?;
+                            }
+                            b"addressQualifier" => {
+                                qualifier = v.parse().map_err(|_parse_err| {
+                                    FrtError::MetadataParse(format!(
+                                        "malformed addressQualifier {v:?} in embedded XML"
+                                    ))
+                                })?;
+                            }
                             b"dataWidth" | b"width" => data_width = v.parse().ok(),
                             b"hostSize" => host_size_bytes = parse_size_bytes(&v),
                             b"size" => size_bytes = parse_size_bytes(&v),
@@ -115,11 +129,22 @@ pub fn parse_embedded_xml(xml: &str) -> Result<XrtMetadata> {
                         // name. So rank hostSize, then a recognizable C
                         // type, then the register `size`.
                         0 => XrtArgKind::Scalar {
+                            // No silent default: every historical
+                            // wrong-width bug surfaced as an opaque
+                            // clSetKernelArg failure at run time. Failing
+                            // here names the argument and the metadata
+                            // that was missing.
                             width: data_width
                                 .or_else(|| host_size_bytes.map(|b| b.saturating_mul(8)))
                                 .or_else(|| c_scalar_type_bits(&c_type))
                                 .or_else(|| size_bytes.map(|b| b.saturating_mul(8)))
-                                .unwrap_or(32),
+                                .ok_or_else(|| {
+                                    FrtError::MetadataParse(format!(
+                                        "cannot determine scalar width for arg {name:?}: \
+                                         no dataWidth/width, hostSize, recognizable type \
+                                         (got {c_type:?}), or size attribute"
+                                    ))
+                                })?,
                         },
                         // For mmap args `size` is the 8-byte pointer size, not
                         // the bus data width, so it is not a width fallback.
@@ -376,5 +401,39 @@ mod tests {
     fn extract_platform_vbnv_short_buffer_returns_none() {
         let buf = vec![0u8; 100]; // Too short
         assert_eq!(extract_platform_vbnv(&buf), None);
+    }
+
+    #[test]
+    fn scalar_with_no_width_source_is_an_error_naming_the_arg() {
+        let xml = r#"<?xml version="1.0"?>
+<root><kernel name="k"><args>
+  <arg name="mystery" addressQualifier="0" id="0" type="SomeOpaqueTypedef"/>
+</args></kernel></root>"#;
+        let err = parse_embedded_xml(xml).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("mystery") && msg.contains("SomeOpaqueTypedef"),
+            "error must name the arg and the unrecognized type: {msg}"
+        );
+    }
+
+    #[test]
+    fn malformed_arg_id_is_an_error_not_arg_zero() {
+        let xml = r#"<?xml version="1.0"?>
+<root><kernel name="k"><args>
+  <arg name="n" addressQualifier="0" id="bogus" dataWidth="32"/>
+</args></kernel></root>"#;
+        let err = parse_embedded_xml(xml).unwrap_err();
+        assert!(err.to_string().contains("bogus"), "{err}");
+    }
+
+    #[test]
+    fn malformed_qualifier_is_an_error_not_scalar() {
+        let xml = r#"<?xml version="1.0"?>
+<root><kernel name="k"><args>
+  <arg name="a" addressQualifier="oops" id="0" dataWidth="32"/>
+</args></kernel></root>"#;
+        let err = parse_embedded_xml(xml).unwrap_err();
+        assert!(err.to_string().contains("oops"), "{err}");
     }
 }
