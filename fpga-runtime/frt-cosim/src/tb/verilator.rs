@@ -154,7 +154,7 @@ impl<'a> VerilatorTbGenerator<'a> {
             },
             |arg, _width, offset, bytes| ScalarArg::new(&arg.name, bytes, offset),
             |arg, width_bytes, peek, axis| StreamArg::new(&arg.name, width_bytes, peek, axis),
-        );
+        )?;
 
         let tmpl = TbTemplate {
             top_name: &self.spec.top_name,

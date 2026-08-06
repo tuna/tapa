@@ -4,7 +4,8 @@ pub mod xsim;
 
 use std::collections::HashMap;
 
-use crate::metadata::{normalized_scalar_bytes, KernelSpec};
+use crate::error::{CosimError, Result};
+use crate::metadata::{normalized_scalar_bytes, KernelSpec, Mode};
 
 #[derive(Clone)]
 pub struct ScalarWord {
@@ -14,7 +15,7 @@ pub struct ScalarWord {
 
 /// Look up the register offset for an arg name in the scalar register map.
 /// Falls back to `"{name}_offset"` if the exact name is not found.
-pub fn lookup_register_offset(spec: &KernelSpec, name: &str) -> u32 {
+pub fn lookup_register_offset(spec: &KernelSpec, name: &str) -> Option<u32> {
     spec.scalar_register_map
         .get(name)
         .or_else(|| {
@@ -22,7 +23,23 @@ pub fn lookup_register_offset(spec: &KernelSpec, name: &str) -> u32 {
             spec.scalar_register_map.get(&key)
         })
         .copied()
-        .unwrap_or(0)
+}
+
+/// Resolve the AXI-lite register offset an arg's value is written to.
+///
+/// Vitis-mode testbenches program args through the `s_axi_control`
+/// register file, so a missing map entry there means every such write
+/// would land on offset 0 and silently corrupt the kernel state — hard
+/// error instead. HLS-mode testbenches drive the ports directly and
+/// never touch the register file, so no offset is fine.
+fn required_register_offset(spec: &KernelSpec, name: &str) -> Result<u32> {
+    match lookup_register_offset(spec, name) {
+        Some(offset) => Ok(offset),
+        None if spec.mode == Mode::Hls => Ok(0),
+        None => Err(CosimError::Metadata(format!(
+            "no control register offset for arg {name:?}: the s_axi control register map is missing or incomplete"
+        ))),
+    }
 }
 
 /// Read all Verilog file contents for peek-port detection and similar scans.
@@ -62,6 +79,10 @@ fn port_declared(verilog_contents: &[String], port: &str) -> bool {
     verilog_contents.iter().any(|text| re.is_match(text))
 }
 
+/// The four groups [`classify_args`] sorts a spec's args into:
+/// mmaps, scalars, input streams, output streams.
+pub type ClassifiedArgs<M, S, T> = (Vec<M>, Vec<S>, Vec<T>, Vec<T>);
+
 /// Classify spec args into four groups by applying backend-specific constructors.
 #[allow(
     clippy::implicit_hasher,
@@ -74,8 +95,8 @@ pub fn classify_args<M, S, T>(
     make_mmap: impl Fn(&crate::metadata::ArgSpec, u32) -> M,
     make_scalar: impl Fn(&crate::metadata::ArgSpec, u32, u32, &[u8]) -> S,
     make_stream: impl Fn(&crate::metadata::ArgSpec, usize, Option<String>, bool) -> T,
-) -> (Vec<M>, Vec<S>, Vec<T>, Vec<T>) {
-    use crate::metadata::{ArgKind, Mode, StreamDir, StreamProtocol};
+) -> Result<ClassifiedArgs<M, S, T>> {
+    use crate::metadata::{ArgKind, StreamDir, StreamProtocol};
     use names::{infer_peek_name, stream_peek_ports_exist};
 
     let mut mmaps = vec![];
@@ -86,11 +107,11 @@ pub fn classify_args<M, S, T>(
     for arg in &spec.args {
         match &arg.kind {
             ArgKind::Mmap { .. } => {
-                let offset = lookup_register_offset(spec, &arg.name);
+                let offset = required_register_offset(spec, &arg.name)?;
                 mmaps.push(make_mmap(arg, offset));
             }
             ArgKind::Scalar { width } => {
-                let offset = lookup_register_offset(spec, &arg.name);
+                let offset = required_register_offset(spec, &arg.name)?;
                 let bytes =
                     normalized_scalar_bytes(*width, scalar_values.get(&arg.id).map(Vec::as_slice));
                 scalars.push(make_scalar(arg, *width, offset, &bytes));
@@ -118,7 +139,7 @@ pub fn classify_args<M, S, T>(
             }
         }
     }
-    (mmaps, scalars, streams_in, streams_out)
+    Ok((mmaps, scalars, streams_in, streams_out))
 }
 
 /// AXI4 signal names for a single mmap port.
@@ -268,6 +289,68 @@ pub fn scalar_words(base_offset: u32, bytes: &[u8]) -> Vec<ScalarWord> {
 #[cfg(test)]
 mod tests {
     use super::direct_offset_port_name;
+    use super::{classify_args, KernelSpec, Mode};
+    use crate::metadata::{ArgKind, ArgSpec};
+    use std::collections::HashMap;
+
+    fn scalar_spec(mode: Mode, register_map: HashMap<String, u32>) -> KernelSpec {
+        KernelSpec {
+            top_name: "Top".to_owned(),
+            mode,
+            args: vec![ArgSpec {
+                name: "n".to_owned(),
+                id: 0,
+                kind: ArgKind::Scalar { width: 32 },
+            }],
+            part_num: None,
+            verilog_files: vec![],
+            tcl_files: vec![],
+            xci_files: vec![],
+            scalar_register_map: register_map,
+        }
+    }
+
+    fn classify_offsets(spec: &KernelSpec) -> crate::error::Result<Vec<u32>> {
+        let (_, scalars, _, _) = classify_args(
+            spec,
+            &HashMap::new(),
+            &[],
+            |_, offset| offset,
+            |_, _, offset, _| offset,
+            |_, _, _, _| (),
+        )?;
+        Ok(scalars)
+    }
+
+    /// A Vitis-mode arg missing from the control register map must be
+    /// an error: falling back to offset 0 writes every such scalar over
+    /// the control registers and silently corrupts the cosimulation.
+    #[test]
+    fn missing_register_offset_is_an_error_in_vitis_mode() {
+        let spec = scalar_spec(Mode::Vitis, HashMap::new());
+        let error = classify_offsets(&spec).expect_err("offset 0 fallback must not happen");
+        assert!(
+            error.to_string().contains("control register offset"),
+            "unexpected error: {error}"
+        );
+    }
+
+    /// HLS-mode testbenches drive ports directly and never consult the
+    /// register file, so an empty map stays fine there.
+    #[test]
+    fn missing_register_offset_is_fine_in_hls_mode() {
+        let spec = scalar_spec(Mode::Hls, HashMap::new());
+        assert_eq!(classify_offsets(&spec).expect("classify"), vec![0]);
+    }
+
+    #[test]
+    fn register_offset_falls_back_to_offset_spelling() {
+        let spec = scalar_spec(
+            Mode::Vitis,
+            HashMap::from([("n_offset".to_owned(), 0x1c_u32)]),
+        );
+        assert_eq!(classify_offsets(&spec).expect("classify"), vec![0x1c]);
+    }
 
     #[test]
     fn direct_offset_prefers_conventional_spelling() {

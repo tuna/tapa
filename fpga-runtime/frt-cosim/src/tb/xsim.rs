@@ -150,7 +150,7 @@ impl<'a> XsimTbGenerator<'a> {
         }
     }
 
-    fn collect_args(&self) -> (Vec<MmapArg>, Vec<ScalarArg>, Vec<StreamArg>, Vec<StreamArg>) {
+    fn collect_args(&self) -> Result<super::ClassifiedArgs<MmapArg, ScalarArg, StreamArg>> {
         let verilog_contents = read_verilog_contents(self.spec);
         let base_addresses = self.base_addresses;
 
@@ -180,7 +180,7 @@ impl<'a> XsimTbGenerator<'a> {
     }
 
     pub fn render_tb(&self) -> Result<String> {
-        let (mmap_args, scalar_args, stream_args, stream_out_args) = self.collect_args();
+        let (mmap_args, scalar_args, stream_args, stream_out_args) = self.collect_args()?;
         let mode = match self.spec.mode {
             Mode::Hls => "hls",
             Mode::Vitis => "vitis",
