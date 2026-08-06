@@ -225,9 +225,25 @@ fn has_ext(name: &str, exts: &[&str]) -> bool {
     exts.iter().any(|x| ext.eq_ignore_ascii_case(x))
 }
 
-fn extract_file(file: &mut zip::read::ZipFile<'_>, name: &str, out_dir: &Path) -> Result<PathBuf> {
+/// Join a zip entry name under `out_dir`, refusing entries that would
+/// land outside it — absolute paths and `..` components ("zip slip"):
+/// archives come from user-supplied `.xo`/`.zip` files.
+fn safe_extract_path(name: &str, out_dir: &Path) -> Result<PathBuf> {
+    use std::path::Component;
     let rel = Path::new(name);
-    let out = out_dir.join(rel);
+    let contained = rel
+        .components()
+        .all(|c| matches!(c, Component::Normal(_) | Component::CurDir));
+    if !contained {
+        return Err(CosimError::Metadata(format!(
+            "archive entry {name:?} would extract outside the staging directory"
+        )));
+    }
+    Ok(out_dir.join(rel))
+}
+
+fn extract_file(file: &mut zip::read::ZipFile<'_>, name: &str, out_dir: &Path) -> Result<PathBuf> {
+    let out = safe_extract_path(name, out_dir)?;
     if let Some(parent) = out.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -239,6 +255,26 @@ fn extract_file(file: &mut zip::read::ZipFile<'_>, name: &str, out_dir: &Path) -
 #[cfg(test)]
 mod tests {
     use super::normalized_scalar_bytes;
+    use super::safe_extract_path;
+
+    #[test]
+    fn extract_paths_stay_under_the_staging_dir() {
+        let out = std::path::Path::new("/staging");
+        assert_eq!(
+            safe_extract_path("rtl/top.v", out).expect("plain relative path"),
+            out.join("rtl/top.v")
+        );
+        assert_eq!(
+            safe_extract_path("./report.json", out).expect("cur-dir component"),
+            out.join("./report.json")
+        );
+        for evil in ["../evil.v", "rtl/../../evil.v", "/etc/evil"] {
+            assert!(
+                safe_extract_path(evil, out).is_err(),
+                "{evil:?} must be rejected"
+            );
+        }
+    }
 
     #[test]
     fn short_buffers_are_zero_padded_to_width() {
