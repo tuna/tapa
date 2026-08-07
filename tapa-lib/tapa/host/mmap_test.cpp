@@ -80,11 +80,10 @@ TEST(TaggedMmapTest, VectorizedAndReinterpretKeepTheTag) {
 TEST(TaggedMmapTest, SizedMmapsKeepTheTagAndTheCount) {
   static_assert(std::is_base_of<mmaps<int, 4>, read_only_mmaps<int, 4>>::value,
                 "a tagged mmaps must extend its untagged kind");
-  static_assert(
-      std::is_same<decltype(std::declval<read_only_mmaps<int, 4>>()
-                                .template vectorized<2>()),
-                   read_only_mmaps<vec_t<int, 2>, 4>>::value,
-      "vectorized() must keep both the tag and the channel count");
+  static_assert(std::is_same<decltype(std::declval<read_only_mmaps<int, 4>>()
+                                          .template vectorized<2>()),
+                             read_only_mmaps<vec_t<int, 2>, 4>>::value,
+                "vectorized() must keep both the tag and the channel count");
 }
 
 }  // namespace
