@@ -193,7 +193,7 @@ fn verilator_hls_escapes_banked_mmap_names() {
 
 #[test]
 fn xsim_hls_tb_snapshot() {
-    use frt_cosim::tb::xsim::XsimTbGenerator;
+    use frt_cosim::tb::xsim::{XsimOptions, XsimTbGenerator};
     let spec = hls_spec();
     let base_addrs = std::collections::HashMap::from([("a".into(), 0x1000_0000u64)]);
     let scalar_vals = std::collections::HashMap::from([(1u32, vec![3u8, 0, 0, 0])]);
@@ -203,8 +203,11 @@ fn xsim_hls_tb_snapshot() {
         &base_addrs,
         &scalar_vals,
         "xc7a100tcsg324-1",
-        false,
-        false,
+        XsimOptions {
+            save_waveform: false,
+            legacy: false,
+            start_gui: false,
+        },
     );
     let tb = generator.render_tb().expect("render tb");
     assert!(tb.contains("module tb_vadd"));
@@ -229,14 +232,46 @@ fn xsim_hls_tb_snapshot() {
         tcl.contains("set_property -name {xsim.simulate.runtime} -value {0ns}"),
         "{tcl}"
     );
+    // Headless runs drive the generated scripts: Vivado's in-process bridge
+    // crashes while spawning the engine on 2025.2.
+    assert!(tcl.contains("launch_simulation -scripts_only"), "{tcl}");
+    assert!(tcl.contains("exec ./$step.sh"), "{tcl}");
+    let write_run_idx = tcl
+        .find("puts $custom_tcl_fd \"run all\"")
+        .expect("run all");
     let launch_idx = tcl.find("launch_simulation").expect("launch");
-    let run_idx = tcl.find("run all").expect("run all");
-    assert!(launch_idx < run_idx, "{tcl}");
+    assert!(write_run_idx < launch_idx, "{tcl}");
+}
+
+#[test]
+fn xsim_tcl_hands_the_gui_run_to_launch_simulation() {
+    use frt_cosim::tb::xsim::{XsimOptions, XsimTbGenerator};
+    let spec = vitis_spec();
+    let base_addrs = std::collections::HashMap::from([("a".into(), 0x1000_0000u64)]);
+    let scalar_vals = std::collections::HashMap::from([(2u32, vec![7u8, 0, 0, 0])]);
+    let generator = XsimTbGenerator::new(
+        &spec,
+        std::path::Path::new("/path/to/frt_dpi_xsim.so"),
+        &base_addrs,
+        &scalar_vals,
+        "xc7a100tcsg324-1",
+        XsimOptions {
+            start_gui: true,
+            ..XsimOptions::default()
+        },
+    );
+    let tcl = generator
+        .render_tcl(std::path::Path::new("/tmp/tb"))
+        .expect("render tcl");
+    assert!(!tcl.contains("-scripts_only"), "{tcl}");
+    assert!(tcl.contains("launch_simulation"), "{tcl}");
+    // The GUI stays open for inspection once the run finishes.
+    assert!(!tcl.contains("quit"), "{tcl}");
 }
 
 #[test]
 fn xsim_hls_stream_output_is_serviced_on_posedge() {
-    use frt_cosim::tb::xsim::XsimTbGenerator;
+    use frt_cosim::tb::xsim::{XsimOptions, XsimTbGenerator};
     let spec = hls_stream_out_spec();
     let base_addrs = HashMap::new();
     let scalar_vals = std::collections::HashMap::from([(0u32, vec![3u8, 0, 0, 0])]);
@@ -246,8 +281,11 @@ fn xsim_hls_stream_output_is_serviced_on_posedge() {
         &base_addrs,
         &scalar_vals,
         "xc7a100tcsg324-1",
-        false,
-        false,
+        XsimOptions {
+            save_waveform: false,
+            legacy: false,
+            start_gui: false,
+        },
     );
     let tb = generator.render_tb().expect("render tb");
     assert!(tb.contains("always @(posedge ap_clk) begin"));
@@ -258,7 +296,7 @@ fn xsim_hls_stream_output_is_serviced_on_posedge() {
 
 #[test]
 fn xsim_hls_stream_input_refills_without_bubble() {
-    use frt_cosim::tb::xsim::XsimTbGenerator;
+    use frt_cosim::tb::xsim::{XsimOptions, XsimTbGenerator};
     let spec = hls_spec();
     let base_addrs = std::collections::HashMap::from([("a".into(), 0x1000_0000u64)]);
     let scalar_vals = std::collections::HashMap::from([(1u32, vec![3u8, 0, 0, 0])]);
@@ -268,8 +306,11 @@ fn xsim_hls_stream_input_refills_without_bubble() {
         &base_addrs,
         &scalar_vals,
         "xc7a100tcsg324-1",
-        false,
-        false,
+        XsimOptions {
+            save_waveform: false,
+            legacy: false,
+            start_gui: false,
+        },
     );
     let tb = generator.render_tb().expect("render tb");
     let step_idx = tb
@@ -308,7 +349,7 @@ fn verilator_hls_stream_input_refills_without_bubble() {
 
 #[test]
 fn xsim_hls_escapes_banked_mmap_names() {
-    use frt_cosim::tb::xsim::XsimTbGenerator;
+    use frt_cosim::tb::xsim::{XsimOptions, XsimTbGenerator};
     let spec = banked_hls_spec();
     let base_addrs = std::collections::HashMap::from([("chan[0]".into(), 0x1000_0000u64)]);
     let scalar_vals = std::collections::HashMap::from([(1u32, vec![7u8, 0, 0, 0])]);
@@ -318,8 +359,11 @@ fn xsim_hls_escapes_banked_mmap_names() {
         &base_addrs,
         &scalar_vals,
         "xc7a100tcsg324-1",
-        false,
-        false,
+        XsimOptions {
+            save_waveform: false,
+            legacy: false,
+            start_gui: false,
+        },
     );
     let tb = generator.render_tb().expect("render tb");
     assert!(tb.contains("m_axi_chan__05b0__05d_ARADDR"));
@@ -329,7 +373,7 @@ fn xsim_hls_escapes_banked_mmap_names() {
 
 #[test]
 fn xsim_vitis_tb_contains_control_sequence() {
-    use frt_cosim::tb::xsim::XsimTbGenerator;
+    use frt_cosim::tb::xsim::{XsimOptions, XsimTbGenerator};
     let spec = vitis_spec();
     let base_addrs = std::collections::HashMap::from([("a".into(), 0x1000_0000u64)]);
     let scalar_vals = std::collections::HashMap::from([(2u32, vec![7u8, 0, 0, 0])]);
@@ -339,8 +383,11 @@ fn xsim_vitis_tb_contains_control_sequence() {
         &base_addrs,
         &scalar_vals,
         "xc7a100tcsg324-1",
-        false,
-        false,
+        XsimOptions {
+            save_waveform: false,
+            legacy: false,
+            start_gui: false,
+        },
     );
     let tb = generator.render_tb().expect("render tb");
     assert!(tb.contains("task automatic ctrl_write"));
@@ -352,7 +399,7 @@ fn xsim_vitis_tb_contains_control_sequence() {
 
 #[test]
 fn xsim_vitis_stream_input_uses_direct_try_read_on_posedge() {
-    use frt_cosim::tb::xsim::XsimTbGenerator;
+    use frt_cosim::tb::xsim::{XsimOptions, XsimTbGenerator};
     let spec = vitis_spec();
     let base_addrs = std::collections::HashMap::from([("a".into(), 0x1000_0000u64)]);
     let scalar_vals = std::collections::HashMap::from([(2u32, vec![7u8, 0, 0, 0])]);
@@ -362,8 +409,11 @@ fn xsim_vitis_stream_input_uses_direct_try_read_on_posedge() {
         &base_addrs,
         &scalar_vals,
         "xc7a100tcsg324-1",
-        false,
-        false,
+        XsimOptions {
+            save_waveform: false,
+            legacy: false,
+            start_gui: false,
+        },
     );
     let tb = generator.render_tb().expect("render tb");
     assert!(tb.contains("always @(posedge ap_clk) begin"), "{tb}");
@@ -384,7 +434,7 @@ fn xsim_vitis_stream_input_uses_direct_try_read_on_posedge() {
 
 #[test]
 fn xsim_vitis_axis_output_uses_direct_write_handshake() {
-    use frt_cosim::tb::xsim::XsimTbGenerator;
+    use frt_cosim::tb::xsim::{XsimOptions, XsimTbGenerator};
     let spec = vitis_stream_out_spec();
     let base_addrs = std::collections::HashMap::new();
     let scalar_vals = std::collections::HashMap::from([(0u32, vec![7u8, 0, 0, 0])]);
@@ -394,8 +444,11 @@ fn xsim_vitis_axis_output_uses_direct_write_handshake() {
         &base_addrs,
         &scalar_vals,
         "xc7a100tcsg324-1",
-        false,
-        false,
+        XsimOptions {
+            save_waveform: false,
+            legacy: false,
+            start_gui: false,
+        },
     );
     let tb = generator.render_tb().expect("render tb");
     assert!(
@@ -478,7 +531,7 @@ fn verilator_vitis_tb_uses_direct_axis_write_handshake() {
 
 #[test]
 fn xsim_tcl_includes_xci_tcl_and_legacy_elab_property() {
-    use frt_cosim::tb::xsim::XsimTbGenerator;
+    use frt_cosim::tb::xsim::{XsimOptions, XsimTbGenerator};
     let mut spec = vitis_spec();
     spec.verilog_files = vec![std::path::PathBuf::from("/tmp/rtl/top.v")];
     spec.xci_files = vec![std::path::PathBuf::from("/tmp/ip/example.xci")];
@@ -492,8 +545,11 @@ fn xsim_tcl_includes_xci_tcl_and_legacy_elab_property() {
         &base_addrs,
         &scalar_vals,
         "xc7a100tcsg324-1",
-        true,
-        true,
+        XsimOptions {
+            save_waveform: true,
+            legacy: true,
+            start_gui: false,
+        },
     );
     let tcl = generator
         .render_tcl(std::path::Path::new("/tmp/tb"))

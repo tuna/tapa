@@ -117,6 +117,18 @@ struct TclTemplate {
     dpi_sv_lib: String,
     save_waveform: bool,
     legacy: bool,
+    start_gui: bool,
+}
+
+/// How the simulation is run, as opposed to what is simulated.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct XsimOptions {
+    /// Log all signals to a waveform database.
+    pub save_waveform: bool,
+    /// Target a Vivado old enough to predate the `xsim.*` fileset properties.
+    pub legacy: bool,
+    /// Hand the simulation to the Vivado GUI instead of running it headless.
+    pub start_gui: bool,
 }
 
 pub struct XsimTbGenerator<'a> {
@@ -125,8 +137,7 @@ pub struct XsimTbGenerator<'a> {
     base_addresses: &'a HashMap<String, u64>,
     scalar_values: &'a HashMap<u32, Vec<u8>>,
     part_num: &'a str,
-    save_waveform: bool,
-    legacy: bool,
+    options: XsimOptions,
 }
 
 impl<'a> XsimTbGenerator<'a> {
@@ -136,8 +147,7 @@ impl<'a> XsimTbGenerator<'a> {
         base_addresses: &'a HashMap<String, u64>,
         scalar_values: &'a HashMap<u32, Vec<u8>>,
         part_num: &'a str,
-        save_waveform: bool,
-        legacy: bool,
+        options: XsimOptions,
     ) -> Self {
         Self {
             spec,
@@ -145,8 +155,7 @@ impl<'a> XsimTbGenerator<'a> {
             base_addresses,
             scalar_values,
             part_num,
-            save_waveform,
-            legacy,
+            options,
         }
     }
 
@@ -237,8 +246,9 @@ impl<'a> XsimTbGenerator<'a> {
                 .unwrap_or_default()
                 .to_string_lossy()
                 .to_string(),
-            save_waveform: self.save_waveform,
-            legacy: self.legacy,
+            save_waveform: self.options.save_waveform,
+            legacy: self.options.legacy,
+            start_gui: self.options.start_gui,
         };
         template
             .render()

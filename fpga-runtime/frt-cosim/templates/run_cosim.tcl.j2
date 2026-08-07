@@ -25,9 +25,33 @@ set_property -name {xsim.simulate.wdb} -value {wave.wdb} -objects [get_filesets 
 {% endif %}
 set custom_tcl "{{ tb_dir }}/xsim_init.tcl"
 set custom_tcl_fd [open $custom_tcl "w"]
-puts $custom_tcl_fd "# XSim custom batch script; run_cosim.tcl controls simulation start."
+puts $custom_tcl_fd "run all"
+{% if !start_gui %}
+puts $custom_tcl_fd "quit"
+{% endif %}
 close $custom_tcl_fd
 set_property -name {xsim.simulate.custom_tcl} -value $custom_tcl -objects [get_filesets sim_1]
 set_property -name {xsim.simulate.runtime} -value {0ns} -objects [get_filesets sim_1]
+{% if start_gui %}
 launch_simulation
-run all
+{% else %}
+# Batch runs drive the generated scripts instead of launch_simulation: the
+# in-process simulation bridge crashes while spawning the engine on Vivado
+# 2025.2. The scripts run the same compile/elaborate/simulate steps.
+launch_simulation -scripts_only
+set sim_base [file join [get_property DIRECTORY [current_project]] "[current_project].sim" [get_property NAME [current_fileset -simset]] behav]
+set sim_dir ""
+foreach candidate [list [file join $sim_base xsim] $sim_base] {
+  if {[file exists [file join $candidate simulate.sh]]} {
+    set sim_dir $candidate
+    break
+  }
+}
+if {$sim_dir eq ""} {
+  error "no generated simulation scripts under $sim_base"
+}
+cd $sim_dir
+foreach step {compile elaborate simulate} {
+  exec ./$step.sh >@stdout 2>@stderr
+}
+{% endif %}

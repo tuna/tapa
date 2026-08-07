@@ -2,7 +2,7 @@ use super::{configure_sim_command, environ::xilinx_environ, SimRunner};
 use crate::context::CosimContext;
 use crate::error::{CosimError, Result};
 use crate::metadata::KernelSpec;
-use crate::tb::xsim::XsimTbGenerator;
+use crate::tb::xsim::{XsimOptions, XsimTbGenerator};
 use std::collections::HashMap;
 use std::io::Read as _;
 use std::path::{Path, PathBuf};
@@ -55,8 +55,11 @@ impl SimRunner for XsimRunner {
             &ctx.base_addresses,
             scalar_values,
             part,
-            self.save_waveform,
-            self.legacy,
+            XsimOptions {
+                save_waveform: self.save_waveform,
+                legacy: self.legacy,
+                start_gui: self.start_gui,
+            },
         );
         let tb_file = format!("tb_{}.sv", spec.top_name);
 
