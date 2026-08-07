@@ -329,6 +329,8 @@ class istream : virtual public internal::basic_stream<T> {
     bool is_empty = this->get_queue().empty();
     if (is_empty) {
       internal::yield(this->get_name(), "empty");
+    } else {
+      internal::note_poll_progress();
     }
     return is_empty;
   }
@@ -475,6 +477,8 @@ class ostream : virtual public internal::basic_stream<T> {
     bool is_full = this->get_queue().full();
     if (is_full) {
       internal::yield(this->get_name(), "full");
+    } else {
+      internal::note_poll_progress();
     }
     return is_full;
   }

@@ -91,7 +91,11 @@ class worker {
         if (!active) {
           this->wait_cv.notify_all();
         }
-        if (!coroutine_executed) {
+        if (coroutine_executed) {
+          // Running a coroutine is progress: start the next idle spell at the
+          // cheap end of the backoff rather than wherever the last one ended.
+          note_poll_progress();
+        } else {
           reschedule_this_thread();
         }
       }

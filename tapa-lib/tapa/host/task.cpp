@@ -33,10 +33,35 @@
 
 namespace tapa {
 
+namespace internal {
+
+thread_local int blocked_poll_streak = 0;
+
+}  // namespace internal
+
 namespace {
 
+// Back off a thread that cannot proceed yet.
+//
+// A blocked channel usually clears within microseconds, so sleeping a flat
+// millisecond put a 1 kHz ceiling on every blocked transfer — without
+// coroutines (the macOS default) that ceiling *is* the simulation's runtime.
+// Hand the CPU over first, and only start sleeping once this thread has
+// failed often enough to look genuinely stalled, so an idle worker or a wait
+// on hardware still parks rather than spinning. `note_poll_progress` resets
+// the streak, so an alternating producer/consumer stays on the cheap path.
 void reschedule_this_thread() {
-  std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  constexpr int kYieldRounds = 64;
+  constexpr int kShortSleepRounds = 256;
+
+  const int streak = internal::blocked_poll_streak++;
+  if (streak < kYieldRounds) {
+    std::this_thread::yield();
+  } else if (streak < kYieldRounds + kShortSleepRounds) {
+    std::this_thread::sleep_for(std::chrono::microseconds(20));
+  } else {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
 }
 
 }  // namespace

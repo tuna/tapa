@@ -2,18 +2,26 @@
 // All rights reserved. The contributor(s) of this file has/have agreed to the
 // RapidStream Contributor License Agreement.
 
-// Guards the simulator's blocked-poll path against per-poll heap allocation.
+// Guards the simulator's blocked-poll path against two regressions it has
+// already had. A producer/consumer pair sharing a shallow channel blocks on
+// nearly every element, so anything charged per blocked poll scales with the
+// transferred data rather than with the design.
 //
-// A task that blocks on a full or empty channel yields to the scheduler, and
-// the yield carries a human-readable reason that is only ever formatted when
-// stream debugging is switched on. If that reason is built eagerly, every
-// blocked poll pays for a `std::string` -- and a producer/consumer pair sharing
-// a shallow channel blocks on nearly every element, so the cost scales with
-// the data, not with the number of times anyone reads a log.
+//  1. Allocation. A blocked poll yields with a human-readable reason that is
+//     only formatted when stream debugging is on. Built eagerly, every poll
+//     paid for a `std::string`. Asserted exactly: blocking must cost no more
+//     allocations than the same transfer through a channel deep enough never
+//     to block.
 //
-// Wall-clock is a poor measure here: without coroutines a yield sleeps for a
-// millisecond, which swamps the allocation entirely. Counting allocations
-// instead is deterministic and measures exactly the defect.
+//  2. Sleeping. A thread that cannot proceed backs off. When that backoff was
+//     a flat one-millisecond sleep, every blocked poll hit a 1 kHz ceiling --
+//     which without coroutines (the macOS default) was the entire runtime of a
+//     simulation: 20000 elements took over ten seconds instead of ten
+//     milliseconds. Asserted coarsely, since separating microseconds from
+//     milliseconds needs no precision.
+//
+// Both configurations are covered: `:stream-alloc-test` links the coroutine
+// scheduler, `:stream-alloc-test-sim` the thread-per-task one.
 //
 // This target replaces global `operator new`, which is process-wide, so it is
 // deliberately kept out of the catch-all `tapa-lib-test` binary.
@@ -85,14 +93,13 @@ TEST(StreamAllocTest, BlockingDoesNotAllocatePerPoll) {
   const auto [blocking, blocking_ms] = Transfer<2>();
   const auto [non_blocking, non_blocking_ms] = Transfer<kElements + 1>();
 
-  // Reported unconditionally so a regression shows the actual numbers. The
-  // timings are informational only: they are far too machine- and
-  // load-dependent to assert on, whereas the allocation counts are exact.
+  // Reported unconditionally so a regression shows the actual numbers.
   std::cerr << "elements=" << kElements << "\n"
             << "  blocking(depth=2):            " << blocking
             << " allocations, " << blocking_ms << " ms\n"
-            << "  non_blocking(depth=" << (kElements + 1) << "): "
-            << non_blocking << " allocations, " << non_blocking_ms << " ms\n";
+            << "  non_blocking(depth=" << (kElements + 1)
+            << "): " << non_blocking << " allocations, " << non_blocking_ms
+            << " ms\n";
 
   ASSERT_GT(blocking + non_blocking, 0u)
       << "the allocation hook never fired; the counting build is broken";
@@ -106,6 +113,17 @@ TEST(StreamAllocTest, BlockingDoesNotAllocatePerPoll) {
       << "blocking cost " << blocking << " allocations vs " << non_blocking
       << " when never blocking, over " << kElements
       << " elements: the blocked-poll path is allocating per poll again";
+
+  // Deliberately coarse. This does not measure throughput -- it separates a
+  // microsecond-scale backoff from a millisecond-scale sleep, which are two
+  // orders of magnitude apart, so machine speed and load cannot bridge them.
+  // Sleeping a millisecond per blocked poll costs upwards of ten seconds here;
+  // yielding costs tens of milliseconds.
+  constexpr double kMillisecondSleepWouldExceedMs = 2000.0;
+  EXPECT_LT(blocking_ms, kMillisecondSleepWouldExceedMs)
+      << "moving " << kElements << " elements through a depth-2 channel took "
+      << blocking_ms
+      << " ms: a blocked poll is sleeping again instead of backing off";
 }
 
 }  // namespace

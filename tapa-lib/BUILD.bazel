@@ -191,6 +191,22 @@ cc_test(
     ],
 )
 
+# The same guard against `:tapa-sim`, which builds without coroutines and so
+# takes the thread-per-task scheduler -- the default on macOS, and the
+# configuration where a blocked poll used to sleep a millisecond.
+cc_test(
+    name = "stream-alloc-test-sim",
+    size = "small",
+    srcs = ["tapa/host/stream_alloc_test.cpp"],
+    target_compatible_with = ["@platforms//os:linux"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":tapa-sim",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+    ],
+)
+
 cc_test(
     name = "frt-flags-test",
     size = "small",

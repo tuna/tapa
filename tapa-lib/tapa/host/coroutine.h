@@ -22,6 +22,17 @@ void schedule_cleanup(const std::function<void()>&);
 void yield(const char* reason);
 void yield(const std::string& channel_name, const char* state);
 
+// How many times in a row this thread has found itself unable to proceed.
+//
+// A thread that cannot make progress backs off progressively, from handing
+// the CPU over to sleeping, so a genuinely idle thread costs no spin. But a
+// producer/consumer pair alternates between blocking and making progress, and
+// with no reset the streak would climb until every poll slept a millisecond
+// again — which is the whole cost of a simulation without coroutines. Any
+// successful poll clears it.
+extern thread_local int blocked_poll_streak;
+inline void note_poll_progress() { blocked_poll_streak = 0; }
+
 // FRT instance lifecycle, observed by blocked stream operations. A stream
 // bound to a kernel instance can only be filled or drained by that
 // instance, so once every scheduled instance has finished, a blocked
