@@ -133,6 +133,18 @@ fn vadd_rtl_annotations_preserved() {
     );
 }
 
+/// An all-default area object (`"self_area": {}`) is a stale spelling of
+/// "unannotated", not a measured zero: it must parse as `None` so reports
+/// and floorplanning derive from the children instead of trusting a zero.
+#[test]
+fn empty_area_annotation_reads_as_unannotated() {
+    let d = Design::from_json(&fixture("vadd_design.json")).expect("parse");
+    let stream2mmap = &d.tasks["Stream2Mmap"];
+    assert_eq!(stream2mmap.self_area, None, "empty self_area is no data");
+    let top = &d.tasks["VecAdd"];
+    assert_eq!(top.total_area, None, "empty total_area is no data");
+}
+
 #[test]
 fn vadd_fifo_endpoints() {
     let d = Design::from_json(&fixture("vadd_design.json")).expect("parse");
