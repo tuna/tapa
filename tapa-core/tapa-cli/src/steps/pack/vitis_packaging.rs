@@ -183,12 +183,20 @@ fn top_rtl_m_axi_bases(
         let Some(rest) = port.name.strip_prefix("m_axi_") else {
             continue;
         };
-        for suffix in M_AXI_SUFFIXES {
-            if let Some(base) = rest.strip_suffix(suffix) {
-                out.insert(base.to_owned());
-                break;
-            }
-        }
+        // Every emitted M-AXI port has to be one the protocol crate knows:
+        // an unrecognized one would drop out of the projection silently and
+        // leave kernel.xml describing fewer interfaces than the RTL has.
+        let base = M_AXI_SUFFIXES
+            .iter()
+            .find_map(|suffix| rest.strip_suffix(suffix))
+            .ok_or_else(|| {
+                CliError::Codegen(format!(
+                    "top RTL `{}` has M-AXI port `{}`, whose suffix is not in                      tapa_protocol::M_AXI_SUFFIXES; add it there so every reader                      of the vocabulary agrees",
+                    rtl_path.display(),
+                    port.name,
+                ))
+            })?;
+        out.insert(base.to_owned());
     }
     Ok(out)
 }
@@ -552,6 +560,23 @@ mod tests {
             bases.into_iter().collect::<Vec<_>>(),
             vec!["a".to_owned(), "b".to_owned()]
         );
+    }
+
+    /// An M-AXI port the shared vocabulary does not know is a drift signal,
+    /// not something to skip: kernel.xml would describe fewer interfaces
+    /// than the RTL actually has.
+    #[test]
+    fn an_unknown_m_axi_suffix_fails_the_projection() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        fs_err::write(
+            dir.path().join("Top.v"),
+            "module Top(input m_axi_a_ARVALID, input m_axi_a_ARFUTURE); endmodule",
+        )
+        .expect("write rtl");
+        let err = top_rtl_m_axi_bases(dir.path(), "Top").expect_err("unknown suffix");
+        let msg = err.to_string();
+        assert!(msg.contains("m_axi_a_ARFUTURE"), "{msg}");
+        assert!(msg.contains("M_AXI_SUFFIXES"), "{msg}");
     }
 
     #[test]
