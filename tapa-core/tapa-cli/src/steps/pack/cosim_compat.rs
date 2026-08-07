@@ -148,8 +148,8 @@ mod tests {
                 fifos: BTreeMap::new(),
                 readable_name: "Top".to_owned(),
                 synth: SynthTarget::Hls,
-                self_area: IndexMap::new(),
-                total_area: IndexMap::new(),
+                self_area: None,
+                total_area: None,
                 clock_period: "3.33".to_owned(),
             },
         );

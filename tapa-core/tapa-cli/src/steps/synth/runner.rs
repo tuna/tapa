@@ -5,12 +5,11 @@
 //! owns the unsupported-flag gating, the HLS cflag construction, and
 //! the recursive Verilog-file walker that feeds the codegen step.
 
-use serde_json::Value;
-use tapa_ir::Task;
+use tapa_ir::{Area, Task};
 use tapa_xilinx::{CsynthReport, ToolRunner};
 
 use crate::context::CliContext;
-use crate::error::Result;
+use crate::error::{CliError, Result};
 use crate::state::work as work_io;
 use crate::tapacc::cflags::{get_remote_hls_cflags, get_tapacc_cflags};
 use crate::tapacc::discover::find_resource;
@@ -69,7 +68,7 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
         hdl_inputs.insert(task_name.clone(), files);
 
         if let Some(task) = state.graph.tasks.get_mut(task_name) {
-            apply_hls_metrics(task, &out.csynth);
+            apply_hls_metrics(task_name, task, &out.csynth)?;
         }
     }
     generate_rtl_tree(&ctx.work_dir, &state.graph, &hdl_inputs, None)?;
@@ -109,19 +108,32 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
 /// `total_area` is cleared because it is either re-populated by optional
 /// out-of-context synthesis or derived recursively from `self_area` by report
 /// and topology consumers.
-fn apply_hls_metrics(task: &mut Task, report: &CsynthReport) {
+fn apply_hls_metrics(task_name: &str, task: &mut Task, report: &CsynthReport) -> Result<()> {
     task.clock_period
         .clone_from(&report.estimated_clock_period_ns);
-    task.self_area.clear();
-    task.total_area.clear();
-    for (key, value) in &report.area {
-        if let Ok(value) = value.parse::<i64>() {
-            task.self_area.insert(key.clone(), Value::from(value));
-        } else {
-            task.self_area
-                .insert(key.clone(), Value::String(value.clone()));
+    let count = |resource: &str| -> Result<u64> {
+        match report.area.get(resource) {
+            // A resource the report omits is none of it used.
+            None => Ok(0),
+            Some(raw) => raw.trim().parse().map_err(|error| {
+                CliError::Report(format!(
+                    "HLS reported `{resource}` area `{raw}` for task `{task_name}`, which is \
+                     not a resource count: {error}",
+                ))
+            }),
         }
-    }
+    };
+    task.self_area = Some(Area {
+        lut: count("LUT")?,
+        ff: count("FF")?,
+        bram_18k: count("BRAM_18K")?,
+        dsp: count("DSP")?,
+        uram: count("URAM")?,
+    });
+    // Cleared because it is either re-populated by optional out-of-context
+    // synthesis or derived recursively from `self_area`.
+    task.total_area = None;
+    Ok(())
 }
 
 /// Build the HLS CFLAGS: the analyzer-stored `graph_cflags` (so
@@ -298,8 +310,14 @@ mod tests {
             fifos: BTreeMap::new(),
             readable_name: String::new(),
             synth: SynthTarget::Hls,
-            self_area: IndexMap::from([("LUT".to_string(), json!(999))]),
-            total_area: IndexMap::from([("LUT".to_string(), json!(999))]),
+            self_area: Some(Area {
+                lut: 999,
+                ..Area::default()
+            }),
+            total_area: Some(Area {
+                lut: 999,
+                ..Area::default()
+            }),
             clock_period: "9.99".to_string(),
         };
         let report = CsynthReport {
@@ -313,13 +331,14 @@ mod tests {
             ]),
         };
 
-        apply_hls_metrics(&mut task, &report);
+        apply_hls_metrics("Add", &mut task, &report).expect("apply metrics");
 
         assert_eq!(task.clock_period, "1.25");
-        assert_eq!(task.self_area.get("LUT"), Some(&json!(42)));
-        assert_eq!(task.self_area.get("FF"), Some(&json!(21)));
+        let area = task.self_area.expect("self area");
+        assert_eq!(area.lut, 42);
+        assert_eq!(area.ff, 21);
         assert!(
-            task.total_area.is_empty(),
+            task.total_area.is_none(),
             "stale post-synthesis totals must not survive a new HLS run"
         );
     }
@@ -343,8 +362,8 @@ mod tests {
                 fifos: BTreeMap::new(),
                 readable_name: String::new(),
                 synth: SynthTarget::Hls,
-                self_area: IndexMap::new(),
-                total_area: IndexMap::new(),
+                self_area: None,
+                total_area: None,
                 clock_period: "0".to_string(),
             },
         );
@@ -367,8 +386,8 @@ mod tests {
                 fifos: BTreeMap::new(),
                 readable_name: String::new(),
                 synth: SynthTarget::Hls,
-                self_area: IndexMap::new(),
-                total_area: IndexMap::new(),
+                self_area: None,
+                total_area: None,
                 clock_period: "3.33".to_string(),
             },
         );
@@ -458,7 +477,7 @@ mod tests {
         );
         assert_eq!(persisted.graph.tasks["Add"].clock_period, "1.0");
         assert_eq!(persisted.graph.tasks["VecAdd"].clock_period, "1.0");
-        let report: Value = serde_json::from_str(
+        let report: serde_json::Value = serde_json::from_str(
             &std::fs::read_to_string(work.join("report.json")).expect("read report"),
         )
         .expect("parse report");

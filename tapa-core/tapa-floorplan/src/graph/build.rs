@@ -65,7 +65,12 @@ impl FloorGraphBuilder {
                 .tasks
                 .get(def_name)
                 .ok_or_else(|| GraphError::MissingTaskDef(def_name.clone()))?;
-            let area = Area::from_annotations(&def.self_area);
+            // One policy for a missing annotation, everywhere: no area means
+            // no resources. `synth: ignore` tasks (custom RTL) never get an
+            // HLS estimate, and refusing to plan them would be worse than
+            // planning them as weightless. A value that is present but not a
+            // count is rejected when the graph is parsed, not here.
+            let area = def.self_area.unwrap_or_default();
             for (idx, inst) in instances.iter().enumerate() {
                 let name = inst.canonical_name(def_name, idx).into_owned();
                 let vertex_index = self.vertices.len();

@@ -12,9 +12,7 @@
 
 use std::collections::BTreeMap;
 
-use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
 use crate::connectivity::MemoryBank;
 
@@ -35,39 +33,47 @@ pub const fn floorplanned_fifo_storage_depth(logical_depth: u32) -> u32 {
 
 /// Resource counts for the five classes TAPA floorplans on.
 ///
+/// One count model with one spelling: the device tables, the floorplan
+/// result, and the [`Task::self_area`](crate::Task::self_area) /
+/// [`Task::total_area`](crate::Task::total_area) annotations all serialize
+/// as these five fields. They are exactly the resources the HLS and
+/// utilization report readers produce. A resource absent from a document is
+/// zero of that resource; a value that is not a count fails to parse rather
+/// than silently becoming zero.
+///
 /// Fields are stored in struct order `lut, ff, bram_18k, dsp, uram`; the
 /// upstream `RESOURCES` iteration order is `FF, LUT, BRAM_18K, DSP, URAM`,
-/// which consumers reproduce where solver parity matters. The keys in the
-/// untyped [`Task::self_area`](crate::Task::self_area) /
-/// [`Task::total_area`](crate::Task::total_area) maps are the uppercase
-/// `LUT`/`FF`/`BRAM_18K`/`DSP`/`URAM` that synth writes;
-/// [`Area::from_annotations`] reads exactly those.
+/// which consumers reproduce where solver parity matters.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Area {
+    #[serde(default)]
     pub lut: u64,
+    #[serde(default)]
     pub ff: u64,
+    #[serde(default)]
     pub bram_18k: u64,
+    #[serde(default)]
     pub dsp: u64,
+    #[serde(default)]
     pub uram: u64,
 }
 
 impl Area {
-    /// Read a typed [`Area`] out of the untyped `LUT`/`FF`/`BRAM_18K`/`DSP`/
-    /// `URAM` annotation map synth writes into a task's area fields.
+    /// Add `count` instances' worth of `other`, refusing to wrap.
     ///
-    /// A missing or non-integer entry counts as zero: an unannotated task
-    /// occupies no area, rather than poisoning the whole conversion.
+    /// Returns `None` on overflow so callers can name the task whose
+    /// aggregate blew up.
     #[must_use]
-    pub fn from_annotations(map: &IndexMap<String, Value>) -> Self {
-        let get = |key: &str| map.get(key).and_then(Value::as_u64).unwrap_or(0);
-        Self {
-            lut: get("LUT"),
-            ff: get("FF"),
-            bram_18k: get("BRAM_18K"),
-            dsp: get("DSP"),
-            uram: get("URAM"),
-        }
+    pub fn checked_add_scaled(self, other: Self, count: u64) -> Option<Self> {
+        let add = |a: u64, b: u64| a.checked_add(b.checked_mul(count)?);
+        Some(Self {
+            lut: add(self.lut, other.lut)?,
+            ff: add(self.ff, other.ff)?,
+            bram_18k: add(self.bram_18k, other.bram_18k)?,
+            dsp: add(self.dsp, other.dsp)?,
+            uram: add(self.uram, other.uram)?,
+        })
     }
 }
 
@@ -569,16 +575,13 @@ mod tests {
     }
 
     #[test]
-    fn area_reads_the_uppercase_annotation_keys() {
-        let map: IndexMap<String, Value> = IndexMap::from([
-            ("LUT".to_string(), json!(10)),
-            ("FF".to_string(), json!(20)),
-            ("BRAM_18K".to_string(), json!(3)),
-            ("DSP".to_string(), json!(4)),
-            ("URAM".to_string(), json!(5)),
-        ]);
+    fn area_round_trips_its_five_counts() {
+        let area: Area = serde_json::from_value(
+            json!({"lut": 10, "ff": 20, "bram_18k": 3, "dsp": 4, "uram": 5}),
+        )
+        .expect("parse area");
         assert_eq!(
-            Area::from_annotations(&map),
+            area,
             Area {
                 lut: 10,
                 ff: 20,
@@ -587,6 +590,38 @@ mod tests {
                 uram: 5
             },
         );
+        assert_eq!(
+            serde_json::to_value(area).expect("serialize area"),
+            json!({"lut": 10, "ff": 20, "bram_18k": 3, "dsp": 4, "uram": 5}),
+            "one spelling for every document that carries counts",
+        );
+    }
+
+    #[test]
+    fn area_rejects_a_value_that_is_not_a_count() {
+        // The old reader turned this into a silent zero on one path and an
+        // error on another.
+        serde_json::from_value::<Area>(json!({"lut": "lots"})).expect_err("non-count lut");
+    }
+
+    #[test]
+    fn scaled_accumulation_refuses_to_wrap() {
+        let one = Area {
+            lut: 1,
+            ..Area::default()
+        };
+        assert_eq!(
+            Area::default().checked_add_scaled(one, 3),
+            Some(Area {
+                lut: 3,
+                ..Area::default()
+            })
+        );
+        let huge = Area {
+            lut: u64::MAX,
+            ..Area::default()
+        };
+        assert_eq!(huge.checked_add_scaled(one, 1), None);
     }
 
     #[test]
@@ -600,9 +635,9 @@ mod tests {
 
     #[test]
     fn area_missing_entries_are_zero() {
-        let map: IndexMap<String, Value> = IndexMap::from([("LUT".to_string(), json!(7))]);
+        let area: Area = serde_json::from_value(json!({"lut": 7})).expect("parse area");
         assert_eq!(
-            Area::from_annotations(&map),
+            area,
             Area {
                 lut: 7,
                 ..Area::default()

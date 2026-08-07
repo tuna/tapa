@@ -370,10 +370,10 @@ mod tests {
                 },
                 "A": {"readable_name": "A", "code": "void A() {}", "level": "lower", "synth": "hls",
                     "ports": [{"cat": "ostream", "name": "out", "type": "float", "width": 32}],
-                    "self_area": {"LUT": 100, "FF": 200}},
+                    "self_area": {"lut": 100, "ff": 200}},
                 "B": {"readable_name": "B", "code": "void B() {}", "level": "lower", "synth": "hls",
                     "ports": [{"cat": "istream", "name": "in", "type": "float", "width": 32}],
-                    "self_area": {"LUT": 50, "FF": 60}}
+                    "self_area": {"lut": 50, "ff": 60}}
             }
         }"#;
         let graph = tapa_ir::TaskGraph::from_json(json).expect("parse");
@@ -421,10 +421,10 @@ mod tests {
                 },
                 "A": {"readable_name": "A", "code": "void A() {}", "level": "lower", "synth": "hls",
                     "ports": [{"cat": "ostream", "name": "out", "type": "float", "width": 32}],
-                    "self_area": {"LUT": 120000}},
+                    "self_area": {"lut": 120000}},
                 "B": {"readable_name": "B", "code": "void B() {}", "level": "lower", "synth": "hls",
                     "ports": [{"cat": "istream", "name": "in", "type": "float", "width": 32}],
-                    "self_area": {"LUT": 120000}}
+                    "self_area": {"lut": 120000}}
             }
         }"#;
         let graph = tapa_ir::TaskGraph::from_json(json).expect("parse");
@@ -489,9 +489,9 @@ mod tests {
                     },"fifos":{}
                 },
                 "Normal": {"readable_name":"Normal","code":"","level":"lower","synth":"hls",
-                    "ports":[],"self_area":{"LUT":120000}},
+                    "ports":[],"self_area":{"lut":120000}},
                 "Ticker": {"readable_name":"Ticker","code":"","level":"lower","synth":"hls",
-                    "ports":[],"self_area":{"LUT":120000}}
+                    "ports":[],"self_area":{"lut":120000}}
             }
         }"#;
         let graph = tapa_ir::TaskGraph::from_json(json).expect("parse");

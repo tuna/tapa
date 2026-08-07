@@ -2,10 +2,9 @@
 
 use std::collections::BTreeMap;
 
-use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
+use crate::floorplan::Area;
 use crate::instance::TaskInstance;
 use crate::interconnect::InterconnectDefinition;
 use crate::port::Port;
@@ -26,11 +25,7 @@ pub enum TaskLevel {
 /// annotation block (`clock_period`, `self_area`, `total_area`) in place,
 /// and report reads them back. The annotations are absent in tapacc output
 /// and omitted from the wire form until populated.
-#[allow(
-    clippy::derive_partial_eq_without_eq,
-    reason = "area dicts hold serde_json::Value, which is not Eq (Number may be f64)"
-)]
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Task {
     /// Task level: `"lower"` (leaf) or `"upper"` (composite).
@@ -57,10 +52,13 @@ pub struct Task {
     /// Seeded empty by analyze, written by synth, read by report.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub clock_period: String,
-    /// Per-task self area dict (resource → number). Post-synthesis.
-    #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
-    pub self_area: IndexMap<String, Value>,
-    /// Per-task total area dict (self + descendants). Post-synthesis.
-    #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
-    pub total_area: IndexMap<String, Value>,
+    /// This task's own area, as HLS reported it. Post-synthesis; `None`
+    /// until a synthesis step annotates it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub self_area: Option<Area>,
+    /// This task's area including every instantiated descendant. Post-
+    /// synthesis; `None` until out-of-context synthesis measures it, in
+    /// which case consumers derive it from `self_area` instead.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total_area: Option<Area>,
 }

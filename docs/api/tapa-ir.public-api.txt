@@ -625,7 +625,7 @@ pub tapa_ir::floorplan::Area::ff: u64
 pub tapa_ir::floorplan::Area::lut: u64
 pub tapa_ir::floorplan::Area::uram: u64
 impl tapa_ir::floorplan::Area
-pub fn tapa_ir::floorplan::Area::from_annotations(&indexmap::map::IndexMap<alloc::string::String, serde_json::value::Value>) -> Self
+pub fn tapa_ir::floorplan::Area::checked_add_scaled(self, Self, u64) -> core::option::Option<Self>
 impl core::clone::Clone for tapa_ir::floorplan::Area
 pub fn tapa_ir::floorplan::Area::clone(&self) -> tapa_ir::floorplan::Area
 impl core::cmp::Eq for tapa_ir::floorplan::Area
@@ -1527,12 +1527,13 @@ pub tapa_ir::task::Task::fifos: alloc::collections::btree::map::BTreeMap<alloc::
 pub tapa_ir::task::Task::level: tapa_ir::task::TaskLevel
 pub tapa_ir::task::Task::ports: alloc::vec::Vec<tapa_ir::port::Port>
 pub tapa_ir::task::Task::readable_name: alloc::string::String
-pub tapa_ir::task::Task::self_area: indexmap::map::IndexMap<alloc::string::String, serde_json::value::Value>
+pub tapa_ir::task::Task::self_area: core::option::Option<tapa_ir::floorplan::Area>
 pub tapa_ir::task::Task::synth: tapa_ir::synth_target::SynthTarget
 pub tapa_ir::task::Task::tasks: alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::vec::Vec<tapa_ir::instance::TaskInstance>>
-pub tapa_ir::task::Task::total_area: indexmap::map::IndexMap<alloc::string::String, serde_json::value::Value>
+pub tapa_ir::task::Task::total_area: core::option::Option<tapa_ir::floorplan::Area>
 impl core::clone::Clone for tapa_ir::task::Task
 pub fn tapa_ir::task::Task::clone(&self) -> tapa_ir::task::Task
+impl core::cmp::Eq for tapa_ir::task::Task
 impl core::cmp::PartialEq for tapa_ir::task::Task
 pub fn tapa_ir::task::Task::eq(&self, &tapa_ir::task::Task) -> bool
 impl core::fmt::Debug for tapa_ir::task::Task
@@ -1549,6 +1550,10 @@ impl core::marker::Unpin for tapa_ir::task::Task
 impl core::marker::UnsafeUnpin for tapa_ir::task::Task
 impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::task::Task
 impl core::panic::unwind_safe::UnwindSafe for tapa_ir::task::Task
+impl<Q, K> equivalent::Equivalent<K> for tapa_ir::task::Task where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::task::Task::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::task::Task where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::task::Task::equivalent(&self, &K) -> bool
 impl<T, U> core::convert::Into<U> for tapa_ir::task::Task where U: core::convert::From<T>
 pub fn tapa_ir::task::Task::into(self) -> U
 impl<T, U> core::convert::TryFrom<U> for tapa_ir::task::Task where U: core::convert::Into<T>
@@ -2323,7 +2328,7 @@ pub tapa_ir::Area::ff: u64
 pub tapa_ir::Area::lut: u64
 pub tapa_ir::Area::uram: u64
 impl tapa_ir::floorplan::Area
-pub fn tapa_ir::floorplan::Area::from_annotations(&indexmap::map::IndexMap<alloc::string::String, serde_json::value::Value>) -> Self
+pub fn tapa_ir::floorplan::Area::checked_add_scaled(self, Self, u64) -> core::option::Option<Self>
 impl core::clone::Clone for tapa_ir::floorplan::Area
 pub fn tapa_ir::floorplan::Area::clone(&self) -> tapa_ir::floorplan::Area
 impl core::cmp::Eq for tapa_ir::floorplan::Area
@@ -3302,12 +3307,13 @@ pub tapa_ir::Task::fifos: alloc::collections::btree::map::BTreeMap<alloc::string
 pub tapa_ir::Task::level: tapa_ir::task::TaskLevel
 pub tapa_ir::Task::ports: alloc::vec::Vec<tapa_ir::port::Port>
 pub tapa_ir::Task::readable_name: alloc::string::String
-pub tapa_ir::Task::self_area: indexmap::map::IndexMap<alloc::string::String, serde_json::value::Value>
+pub tapa_ir::Task::self_area: core::option::Option<tapa_ir::floorplan::Area>
 pub tapa_ir::Task::synth: tapa_ir::synth_target::SynthTarget
 pub tapa_ir::Task::tasks: alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::vec::Vec<tapa_ir::instance::TaskInstance>>
-pub tapa_ir::Task::total_area: indexmap::map::IndexMap<alloc::string::String, serde_json::value::Value>
+pub tapa_ir::Task::total_area: core::option::Option<tapa_ir::floorplan::Area>
 impl core::clone::Clone for tapa_ir::task::Task
 pub fn tapa_ir::task::Task::clone(&self) -> tapa_ir::task::Task
+impl core::cmp::Eq for tapa_ir::task::Task
 impl core::cmp::PartialEq for tapa_ir::task::Task
 pub fn tapa_ir::task::Task::eq(&self, &tapa_ir::task::Task) -> bool
 impl core::fmt::Debug for tapa_ir::task::Task
@@ -3324,6 +3330,10 @@ impl core::marker::Unpin for tapa_ir::task::Task
 impl core::marker::UnsafeUnpin for tapa_ir::task::Task
 impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::task::Task
 impl core::panic::unwind_safe::UnwindSafe for tapa_ir::task::Task
+impl<Q, K> equivalent::Equivalent<K> for tapa_ir::task::Task where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::task::Task::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::task::Task where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::task::Task::equivalent(&self, &K) -> bool
 impl<T, U> core::convert::Into<U> for tapa_ir::task::Task where U: core::convert::From<T>
 pub fn tapa_ir::task::Task::into(self) -> U
 impl<T, U> core::convert::TryFrom<U> for tapa_ir::task::Task where U: core::convert::Into<T>

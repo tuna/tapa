@@ -682,13 +682,13 @@ mod tests {
                     "readable_name": "Producer", "code": "void Producer() {}",
                     "level": "lower", "synth": "hls",
                     "ports": [{"cat": "ostream", "name": "out", "type": "int", "width": 32}],
-                    "self_area": {"LUT": producer_area.lut, "FF": producer_area.ff}
+                    "self_area": {"lut": producer_area.lut, "ff": producer_area.ff}
                 },
                 "Consumer": {
                     "readable_name": "Consumer", "code": "void Consumer() {}",
                     "level": "lower", "synth": "hls",
                     "ports": [{"cat": "istream", "name": "in", "type": "int", "width": 32}],
-                    "self_area": {"LUT": consumer_area.lut, "FF": consumer_area.ff}
+                    "self_area": {"lut": consumer_area.lut, "ff": consumer_area.ff}
                 }
             }
         });
@@ -708,7 +708,7 @@ mod tests {
                         "fifos":{}},
                     "Reader": {"readable_name":"Reader","code":"","level":"lower","synth":"hls",
                         "ports":[{"cat":"mmap","name":"data","type":"int*","width":32}],
-                        "self_area":{"LUT":10,"FF":20}}
+                        "self_area":{"lut":10,"ff":20}}
                 }
             }"#,
         )

@@ -39,7 +39,7 @@ struct Report {
     schema: String,
     name: String,
     performance: Performance,
-    area: Area,
+    area: AreaSection,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -50,8 +50,11 @@ struct Performance {
     critical_path: Option<IndexMap<String, Self>>,
 }
 
+/// The `area` section of a task's published report: where the numbers came
+/// from, the totals, and the per-child breakdown. [`tapa_ir::Area`] is the
+/// count model behind `total`.
 #[derive(Debug, Clone, Serialize)]
-struct Area {
+struct AreaSection {
     source: String,
     total: IndexMap<String, Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -61,7 +64,7 @@ struct Area {
 #[derive(Debug, Clone, Serialize)]
 struct BreakdownEntry {
     count: usize,
-    area: Area,
+    area: AreaSection,
 }
 
 struct ChildReport<'a> {
@@ -106,7 +109,7 @@ fn build_task_report(design: &Design, task_name: &str, schema: &str) -> Result<R
         CliError::Report(format!("report: task `{task_name}` not found in design"))
     })?;
 
-    let has_explicit_total = !task.total_area.is_empty();
+    let has_explicit_total = task.total_area.is_some();
     let area_source = if has_explicit_total { "synth" } else { "hls" };
 
     let mut child_reports = Vec::new();
@@ -144,7 +147,7 @@ fn build_task_report(design: &Design, task_name: &str, schema: &str) -> Result<R
         }
     }
 
-    let total_area = effective_total_area(design, task_name)?;
+    let total_area = published_area(effective_total_area(design, task_name)?);
 
     let (performance, area_breakdown) = if task.level == TaskLevel::Upper {
         let mut critical_path = IndexMap::new();
@@ -184,12 +187,31 @@ fn build_task_report(design: &Design, task_name: &str, schema: &str) -> Result<R
         schema: schema.to_string(),
         name: task_name.to_string(),
         performance,
-        area: Area {
+        area: AreaSection {
             source: area_source.to_string(),
             total: total_area,
             breakdown: area_breakdown,
         },
     })
+}
+
+/// Render a typed area into the report's published resource map.
+///
+/// The report schema is a user-facing document, so the keys and their order
+/// stay what they have always been; the typed [`tapa_ir::Area`] is the
+/// single internal model behind it. An unannotated task publishes an empty
+/// map, as it did when the annotation was missing.
+fn published_area(area: Option<tapa_ir::Area>) -> IndexMap<String, Value> {
+    let Some(area) = area else {
+        return IndexMap::new();
+    };
+    IndexMap::from([
+        ("BRAM_18K".to_string(), Value::from(area.bram_18k)),
+        ("DSP".to_string(), Value::from(area.dsp)),
+        ("FF".to_string(), Value::from(area.ff)),
+        ("LUT".to_string(), Value::from(area.lut)),
+        ("URAM".to_string(), Value::from(area.uram)),
+    ])
 }
 
 fn parse_clock_period(task_name: &str, period: &str) -> Result<f64> {
@@ -228,7 +250,7 @@ mod tests {
         ]
     }
 
-    fn leaf(name: &str, clock: &str, area: Value) -> Task {
+    fn leaf(name: &str, clock: &str, area: Option<tapa_ir::Area>) -> Task {
         Task {
             level: TaskLevel::Lower,
             code: format!("void {name}() {{}}\n"),
@@ -237,12 +259,13 @@ mod tests {
             fifos: BTreeMap::new(),
             readable_name: String::new(),
             synth: SynthTarget::Hls,
-            self_area: IndexMap::new(),
-            total_area: area_to_map(area),
+            self_area: None,
+            total_area: area,
             clock_period: clock.to_string(),
         }
     }
 
+    #[allow(dead_code, reason = "kept for fixtures that still build maps")]
     fn area_to_map(v: Value) -> IndexMap<String, Value> {
         match v {
             Value::Object(o) => o.into_iter().collect(),
@@ -257,7 +280,7 @@ mod tests {
     fn derived_task(
         name: &str,
         clock: &str,
-        self_area: Value,
+        self_area: tapa_ir::Area,
         tasks: BTreeMap<String, Vec<TaskInstance>>,
     ) -> Task {
         Task {
@@ -272,8 +295,8 @@ mod tests {
             fifos: BTreeMap::new(),
             readable_name: String::new(),
             synth: SynthTarget::Hls,
-            self_area: area_to_map(self_area),
-            total_area: IndexMap::new(),
+            self_area: Some(self_area),
+            total_area: None,
             clock_period: clock.to_string(),
         }
     }
@@ -284,7 +307,14 @@ mod tests {
     #[test]
     fn unsynthesized_task_clock_period_reads_as_zero() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let mut custom_rtl = leaf("Custom", "", serde_json::json!({"LUT": 7}));
+        let mut custom_rtl = leaf(
+            "Custom",
+            "",
+            Some(tapa_ir::Area {
+                lut: 7,
+                ..tapa_ir::Area::default()
+            }),
+        );
         custom_rtl.synth = SynthTarget::Ignore;
         let tasks = BTreeMap::from([
             ("Custom".to_string(), custom_rtl),
@@ -298,8 +328,8 @@ mod tests {
                     fifos: BTreeMap::new(),
                     readable_name: String::new(),
                     synth: SynthTarget::Hls,
-                    self_area: IndexMap::new(),
-                    total_area: IndexMap::new(),
+                    self_area: None,
+                    total_area: None,
                     clock_period: "2.5".to_string(),
                 },
             ),
@@ -335,7 +365,11 @@ mod tests {
             derived_task(
                 "Leaf",
                 "4.0",
-                serde_json::json!({"LUT": 11, "FF": 1}),
+                tapa_ir::Area {
+                    lut: 11,
+                    ff: 1,
+                    ..tapa_ir::Area::default()
+                },
                 BTreeMap::new(),
             ),
         );
@@ -344,7 +378,11 @@ mod tests {
             derived_task(
                 "Middle",
                 "2.5",
-                serde_json::json!({"LUT": 7, "FF": 2}),
+                tapa_ir::Area {
+                    lut: 7,
+                    ff: 2,
+                    ..tapa_ir::Area::default()
+                },
                 BTreeMap::from([("Leaf".to_string(), instances(3))]),
             ),
         );
@@ -353,7 +391,11 @@ mod tests {
             derived_task(
                 "Top",
                 "2.0",
-                serde_json::json!({"LUT": 5, "FF": 3}),
+                tapa_ir::Area {
+                    lut: 5,
+                    ff: 3,
+                    ..tapa_ir::Area::default()
+                },
                 BTreeMap::from([("Middle".to_string(), instances(2))]),
             ),
         );
@@ -414,14 +456,24 @@ mod tests {
                 fifos: BTreeMap::new(),
                 readable_name: String::new(),
                 synth: SynthTarget::Hls,
-                self_area: IndexMap::new(),
-                total_area: area_to_map(serde_json::json!({"LUT": 100})),
+                self_area: None,
+                total_area: Some(tapa_ir::Area {
+                    lut: 100,
+                    ..tapa_ir::Area::default()
+                }),
                 clock_period: "3.33".to_string(),
             },
         );
         tasks.insert(
             "Add".to_string(),
-            leaf("Add", "3.33", serde_json::json!({"LUT": 50})),
+            leaf(
+                "Add",
+                "3.33",
+                Some(tapa_ir::Area {
+                    lut: 50,
+                    ..tapa_ir::Area::default()
+                }),
+            ),
         );
         let design = Design {
             schema_version: tapa_ir::graph::SCHEMA_VERSION,
@@ -451,7 +503,7 @@ mod tests {
     fn override_schema_wins() {
         let dir = tempfile::tempdir().expect("tempdir");
         let mut tasks = BTreeMap::new();
-        tasks.insert("T".to_string(), leaf("T", "3.33", serde_json::json!({})));
+        tasks.insert("T".to_string(), leaf("T", "3.33", None));
         let design = Design {
             schema_version: tapa_ir::graph::SCHEMA_VERSION,
             top: "T".to_string(),

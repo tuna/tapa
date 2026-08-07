@@ -34,16 +34,16 @@
             ],
             "readable_name": "Add",
             "self_area": {
-                "DSP": 2,
-                "FF": 100,
-                "LUT": 200
+                "dsp": 2,
+                "ff": 100,
+                "lut": 200
             },
             "synth": "hls",
             "tasks": {},
             "total_area": {
-                "DSP": 2,
-                "FF": 100,
-                "LUT": 200
+                "dsp": 2,
+                "ff": 100,
+                "lut": 200
             }
         },
         "Mmap2Stream": {
@@ -67,14 +67,14 @@
             ],
             "readable_name": "Mmap2Stream",
             "self_area": {
-                "FF": 502,
-                "LUT": 414
+                "ff": 502,
+                "lut": 414
             },
             "synth": "hls",
             "tasks": {},
             "total_area": {
-                "FF": 502,
-                "LUT": 414
+                "ff": 502,
+                "lut": 414
             }
         },
         "Stream2Mmap": {

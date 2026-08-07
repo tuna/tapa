@@ -278,10 +278,10 @@ fn vadd_floor_graph() -> FloorGraph {
             },
             "A": {"readable_name": "A", "code": "void A() {}", "level": "lower", "synth": "hls",
                 "ports": [{"cat": "ostream", "name": "out", "type": "float", "width": 32}],
-                "self_area": {"LUT": 100, "FF": 200}},
+                "self_area": {"lut": 100, "ff": 200}},
             "B": {"readable_name": "B", "code": "void B() {}", "level": "lower", "synth": "hls",
                 "ports": [{"cat": "istream", "name": "in", "type": "float", "width": 32}],
-                "self_area": {"LUT": 50, "FF": 60}}
+                "self_area": {"lut": 50, "ff": 60}}
         }
     }"#;
     let graph = tapa_ir::TaskGraph::from_json(json).expect("parse");
@@ -377,11 +377,11 @@ fn single_task_floor_graph_with_area(area: Area) -> FloorGraph {
                 "synth": "hls",
                 "ports": [],
                 "self_area": {
-                    "LUT": area.lut,
-                    "FF": area.ff,
-                    "BRAM_18K": area.bram_18k,
-                    "DSP": area.dsp,
-                    "URAM": area.uram
+                    "lut": area.lut,
+                    "ff": area.ff,
+                    "bram_18k": area.bram_18k,
+                    "dsp": area.dsp,
+                    "uram": area.uram
                 }
             }
         }
@@ -474,9 +474,9 @@ fn mmap_floor_graph() -> FloorGraph {
                     "C": [{"args": {}, "step": 0}]}, "fifos": {}},
             "R": {"readable_name": "R", "code": "void R() {}", "level": "lower", "synth": "hls",
                 "ports": [{"cat": "mmap", "name": "m", "type": "ap_uint<512>*", "width": 512}],
-                "self_area": {"LUT": 400}},
+                "self_area": {"lut": 400}},
             "C": {"readable_name": "C", "code": "void C() {}", "level": "lower", "synth": "hls",
-                "ports": [], "self_area": {"LUT": 400}}
+                "ports": [], "self_area": {"lut": 400}}
         }
     }"#;
     let graph = tapa_ir::TaskGraph::from_json(json).expect("parse");

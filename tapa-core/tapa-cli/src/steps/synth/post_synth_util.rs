@@ -27,7 +27,7 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use serde_json::Value;
-use tapa_ir::Design;
+use tapa_ir::{Area, Design};
 use tapa_xilinx::{parse_utilization_rpt, run_vivado, ToolRunner, UtilizationReport, VivadoJob};
 
 use crate::error::{CliError, Result};
@@ -239,14 +239,13 @@ fn apply_total_area(design: &mut Design, util: &UtilizationReport) {
     let lut = get_metric_int(util, "Total LUTs");
     let uram = get_metric_int(util, "URAM");
 
-    task.total_area.clear();
-    task.total_area
-        .insert("BRAM_18K".to_string(), Value::from(bram));
-    task.total_area.insert("DSP".to_string(), Value::from(dsp));
-    task.total_area.insert("FF".to_string(), Value::from(ff));
-    task.total_area.insert("LUT".to_string(), Value::from(lut));
-    task.total_area
-        .insert("URAM".to_string(), Value::from(uram));
+    task.total_area = Some(Area {
+        lut: lut.unsigned_abs(),
+        ff: ff.unsigned_abs(),
+        bram_18k: bram.unsigned_abs(),
+        dsp: dsp.unsigned_abs(),
+        uram: uram.unsigned_abs(),
+    });
 }
 
 fn get_metric_int(util: &UtilizationReport, key: &str) -> i64 {
@@ -303,8 +302,8 @@ mod tests {
                 fifos: BTreeMap::new(),
                 readable_name: String::new(),
                 synth: SynthTarget::Hls,
-                self_area: IndexMap::new(),
-                total_area: IndexMap::new(),
+                self_area: None,
+                total_area: None,
                 clock_period: "0".to_string(),
             },
         );
@@ -320,8 +319,8 @@ mod tests {
                 fifos: BTreeMap::new(),
                 readable_name: String::new(),
                 synth: SynthTarget::Hls,
-                self_area: IndexMap::new(),
-                total_area: IndexMap::new(),
+                self_area: None,
+                total_area: None,
                 clock_period: "3.33".to_string(),
             },
         );
@@ -437,12 +436,12 @@ mod tests {
             .expect("emit_post_synth_util");
 
         let add = design.tasks.get("Add").expect("Add task present");
-        assert_eq!(add.total_area.get("LUT"), Some(&json!(100)));
-        assert_eq!(add.total_area.get("FF"), Some(&json!(200)));
-        assert_eq!(add.total_area.get("DSP"), Some(&json!(3)));
-        assert_eq!(add.total_area.get("URAM"), Some(&json!(1)));
+        assert_eq!(add.total_area.expect("total area").lut, 100);
+        assert_eq!(add.total_area.expect("total area").ff, 200);
+        assert_eq!(add.total_area.expect("total area").dsp, 3);
+        assert_eq!(add.total_area.expect("total area").uram, 1);
         // BRAM_18K = RAMB36*2 + RAMB18 = 4*2 + 5 = 13
-        assert_eq!(add.total_area.get("BRAM_18K"), Some(&json!(13)));
+        assert_eq!(add.total_area.expect("total area").bram_18k, 13);
 
         let calls = runner.calls();
         assert_eq!(calls.len(), 1, "exactly one Vivado run expected");
@@ -489,7 +488,7 @@ mod tests {
         assert!(runner.calls().is_empty(), "Vivado must not be invoked");
         // But the rpt is still parsed and applied.
         let add = design.tasks.get("Add").expect("Add task");
-        assert_eq!(add.total_area.get("LUT"), Some(&json!(100)));
+        assert_eq!(add.total_area.expect("total area").lut, 100);
     }
 
     #[test]
@@ -513,8 +512,8 @@ mod tests {
         );
         for task in ["Add", "Mul"] {
             assert_eq!(
-                design.tasks[task].total_area.get("LUT"),
-                Some(&json!(100)),
+                design.tasks[task].total_area.expect("total area").lut,
+                100,
                 "result for {task} must be folded into the matching task"
             );
         }

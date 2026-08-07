@@ -71,8 +71,8 @@ fn task_graph(ports: Vec<Port>) -> TaskGraph {
             tasks: BTreeMap::new(),
             fifos: BTreeMap::new(),
             clock_period: String::new(),
-            self_area: IndexMap::new(),
-            total_area: IndexMap::new(),
+            self_area: None,
+            total_area: None,
         },
     );
     TaskGraph {

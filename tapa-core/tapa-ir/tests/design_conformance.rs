@@ -80,7 +80,8 @@ fn canonical_design_json() -> &'static str {
         r#"{"Add": {"level": "lower", "code": "void Add() {}", "readable_name": "Add", "#,
         r#""synth": "hls", "ports": [{"cat": "istream", "name": "a", "type": "float", "#,
         r#""width": 32}], "tasks": {}, "fifos": {}, "clock_period": "2.342", "#,
-        r#""self_area": {"LUT": 414}, "total_area": {"LUT": 414}}, "#,
+        r#""self_area": {"lut": 414, "ff": 0, "bram_18k": 0, "dsp": 0, "uram": 0}, "#,
+        r#""total_area": {"lut": 414, "ff": 0, "bram_18k": 0, "dsp": 0, "uram": 0}}, "#,
         r#""VecAdd": {"level": "upper", "code": "void VecAdd() {}", "#,
         r#""readable_name": "VecAdd", "synth": "hls", "ports": [], "#,
         r#""tasks": {"Add": [{"args": {"a": {"arg": "a_q", "cat": "istream"}}, "step": 0}]}, "#,
@@ -123,8 +124,8 @@ fn vadd_leaf_task() {
 fn vadd_rtl_annotations_preserved() {
     let d = Design::from_json(&fixture("vadd_design.json")).expect("parse");
     let m2s = &d.tasks["Mmap2Stream"];
-    let lut = m2s.self_area.get("LUT").expect("has LUT");
-    assert_eq!(lut, 414, "LUT value");
+    let area = m2s.self_area.expect("has self area");
+    assert_eq!(area.lut, 414, "LUT value");
     assert_eq!(m2s.clock_period, "2.342", "clock_period");
 }
 

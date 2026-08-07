@@ -205,12 +205,12 @@ pub mod tests {
                 "A": {
                     "readable_name": "A", "code": "void A() {}", "level": "lower", "synth": "hls",
                     "ports": [{"cat": "ostream", "name": "out", "type": "float", "width": 32}],
-                    "self_area": {"LUT": 100, "FF": 200}
+                    "self_area": {"lut": 100, "ff": 200}
                 },
                 "B": {
                     "readable_name": "B", "code": "void B() {}", "level": "lower", "synth": "hls",
                     "ports": [{"cat": "istream", "name": "in", "type": "float", "width": 32}],
-                    "self_area": {"LUT": 50, "FF": 60}
+                    "self_area": {"lut": 50, "ff": 60}
                 }
             }
         }"#;
@@ -231,7 +231,7 @@ pub mod tests {
                     "Reader": {
                         "readable_name": "Reader", "code": "", "level": "lower", "synth": "hls",
                         "ports": [{"cat":"mmap","name":"data","type":"int*","width":32}],
-                        "self_area": {"LUT":10,"FF":20}
+                        "self_area": {"lut":10,"ff":20}
                     }
                 }
             }"#,

@@ -334,8 +334,8 @@ mod tests {
                 fifos: BTreeMap::new(),
                 readable_name: String::new(),
                 synth: SynthTarget::Hls,
-                self_area: IndexMap::new(),
-                total_area: IndexMap::new(),
+                self_area: None,
+                total_area: None,
                 clock_period: "0".to_string(),
             },
         );

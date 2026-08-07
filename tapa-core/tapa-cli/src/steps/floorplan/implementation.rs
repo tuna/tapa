@@ -983,7 +983,7 @@ mod tests {
             r#"{
                 "cflags": [], "top": "Top", "target": "xilinx-vitis",
                 "tasks": {"Top": {"readable_name":"Top", "code":"", "level":"lower",
-                    "synth":"hls", "ports":[], "self_area":{"LUT":1}}}
+                    "synth":"hls", "ports":[], "self_area":{"lut":1}}}
             }"#,
         )
         .expect("graph");
