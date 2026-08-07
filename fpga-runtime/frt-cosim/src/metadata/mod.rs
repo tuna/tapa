@@ -1,3 +1,4 @@
+pub mod kernel_xml;
 pub mod sax_control;
 pub mod xo;
 pub mod zip_pkg;

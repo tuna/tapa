@@ -1,9 +1,9 @@
-use super::metadata::{
-    extract_embedded_xml, extract_platform_vbnv, parse_embedded_xml, XrtArgKind, XrtMetadata,
-};
+use super::metadata::{extract_embedded_xml, extract_platform_vbnv, parse_embedded_xml};
 use crate::device::{BufferAccess, Device};
 use crate::error::{FrtError, Result};
+use frt_cosim::metadata::kernel_xml::{KernelXml, XclbinTarget};
 use frt_cosim::metadata::normalized_scalar_bytes;
+use frt_cosim::metadata::ArgKind;
 use frt_cosim::runner::environ::xilinx_environ;
 use opencl3::command_queue::{
     CommandQueue, CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE, CL_QUEUE_PROFILING_ENABLE,
@@ -30,7 +30,7 @@ struct BufferBinding {
 }
 
 pub struct XrtDevice {
-    _meta: XrtMetadata,
+    _meta: KernelXml,
     context: Context,
     queue: CommandQueue,
     kernel: Kernel,
@@ -134,12 +134,12 @@ impl XrtDevice {
 /// later opens (whatever their xclbin's mode) reuse the first
 /// bootstrap's outcome, which the `XCL_EMULATION_MODE`-already-set
 /// early-out made true of the old per-open code path as well.
-fn bootstrap_emulation_env_once(meta: &XrtMetadata) -> Result<()> {
+fn bootstrap_emulation_env_once(meta: &KernelXml) -> Result<()> {
     static BOOTSTRAP: std::sync::OnceLock<std::result::Result<(), String>> =
         std::sync::OnceLock::new();
     BOOTSTRAP
         .get_or_init(|| {
-            apply_emulation_mode_env(meta.mode);
+            apply_emulation_mode_env(meta.target);
             ensure_xrt_emulation_bootstrap(meta).map_err(|e| e.to_string())
         })
         .clone()
@@ -163,24 +163,24 @@ fn completion_without_events(finished: bool, launched: bool) -> Option<bool> {
 
 /// The `XCL_EMULATION_MODE` value an xclbin of this mode asks for, or `None`
 /// when it runs on real hardware and wants the variable left alone.
-fn emulation_mode_env_value(mode: super::metadata::XclbinMode) -> Option<&'static str> {
-    match mode {
-        super::metadata::XclbinMode::HwEmu => Some("hw_emu"),
-        super::metadata::XclbinMode::SwEmu => Some("sw_emu"),
-        super::metadata::XclbinMode::Flat => None,
+fn emulation_mode_env_value(target: XclbinTarget) -> Option<&'static str> {
+    match target {
+        XclbinTarget::HwEmu => Some("hw_emu"),
+        XclbinTarget::SwEmu => Some("sw_emu"),
+        XclbinTarget::Flat => None,
     }
 }
 
-fn apply_emulation_mode_env(mode: super::metadata::XclbinMode) {
+fn apply_emulation_mode_env(target: XclbinTarget) {
     if std::env::var_os("XCL_EMULATION_MODE").is_some() {
         return;
     }
-    if let Some(value) = emulation_mode_env_value(mode) {
+    if let Some(value) = emulation_mode_env_value(target) {
         std::env::set_var("XCL_EMULATION_MODE", value);
     }
 }
 
-fn ensure_xrt_emulation_bootstrap(meta: &XrtMetadata) -> Result<()> {
+fn ensure_xrt_emulation_bootstrap(meta: &KernelXml) -> Result<()> {
     if std::env::var_os("XCL_EMULATION_MODE").is_none() {
         return Ok(());
     }
@@ -322,7 +322,7 @@ impl Device for XrtDevice {
             ._meta
             .args
             .iter()
-            .any(|a| a.id == index && matches!(a.kind, XrtArgKind::Stream { .. }))
+            .any(|a| a.id == index && matches!(a.kind, ArgKind::Stream { .. }))
         {
             return Err(FrtError::MetadataParse(
                 "XRT/OpenCL stream arguments are not supported in this runtime path".into(),
@@ -406,7 +406,7 @@ impl Device for XrtDevice {
         // indices.  Use set_kernel_arg directly for both kinds instead.
         for arg in &args {
             match arg.kind {
-                XrtArgKind::Scalar { width } => {
+                ArgKind::Scalar { width } => {
                     let raw = normalized_scalar_bytes(
                         width,
                         self.scalars.get(&arg.id).map(std::vec::Vec::as_slice),
@@ -427,7 +427,7 @@ impl Device for XrtDevice {
                         })?;
                     };
                 }
-                XrtArgKind::Mmap { .. } => {
+                ArgKind::Mmap { .. } => {
                     let binding = self.buffers.get(&arg.id).ok_or_else(|| {
                         FrtError::MetadataParse(format!(
                             "missing mmap arg binding for id {}",
@@ -454,7 +454,7 @@ impl Device for XrtDevice {
                         })?;
                     };
                 }
-                XrtArgKind::Stream { .. } => {
+                ArgKind::Stream { .. } => {
                     return Err(FrtError::MetadataParse(
                         "XRT/OpenCL stream arguments are not supported in this runtime path".into(),
                     ));
@@ -538,7 +538,7 @@ impl Device for XrtDevice {
     }
 }
 
-fn select_device(meta: &XrtMetadata) -> Result<cl_device_id> {
+fn select_device(meta: &KernelXml) -> Result<cl_device_id> {
     let requested_bdf = env_non_empty(frt_shm::env::FRT_XOCL_BDF);
     let platforms = ocl_result(get_platforms(), "enumerate OpenCL platforms")?;
     for p in &platforms {
@@ -575,7 +575,7 @@ fn select_device(meta: &XrtMetadata) -> Result<cl_device_id> {
 
 fn pick_device(
     devices: &[cl_device_id],
-    meta: &XrtMetadata,
+    meta: &KernelXml,
     requested_bdf: Option<&str>,
 ) -> Result<Option<cl_device_id>> {
     for id in devices {
@@ -714,8 +714,8 @@ fn elapsed_ns(events: &[Event]) -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::super::metadata::XclbinMode;
     use super::{completion_without_events, emulation_mode_env_value};
+    use frt_cosim::metadata::kernel_xml::XclbinTarget;
 
     #[test]
     fn a_device_that_never_launched_is_not_finished() {
@@ -743,8 +743,14 @@ mod tests {
 
     #[test]
     fn only_emulation_xclbins_ask_for_an_emulation_mode() {
-        assert_eq!(emulation_mode_env_value(XclbinMode::HwEmu), Some("hw_emu"));
-        assert_eq!(emulation_mode_env_value(XclbinMode::SwEmu), Some("sw_emu"));
-        assert_eq!(emulation_mode_env_value(XclbinMode::Flat), None);
+        assert_eq!(
+            emulation_mode_env_value(XclbinTarget::HwEmu),
+            Some("hw_emu")
+        );
+        assert_eq!(
+            emulation_mode_env_value(XclbinTarget::SwEmu),
+            Some("sw_emu")
+        );
+        assert_eq!(emulation_mode_env_value(XclbinTarget::Flat), None);
     }
 }

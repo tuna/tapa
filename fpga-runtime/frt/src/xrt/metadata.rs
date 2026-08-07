@@ -1,243 +1,17 @@
+//! xclbin-binary concerns.
+//!
+//! Finding the metadata XML inside the container, and reading the platform
+//! VBNV out of its header. The XML itself is parsed by
+//! [`frt_cosim::metadata::kernel_xml`], shared with the cosim runtime.
+
 use crate::error::{FrtError, Result};
-use quick_xml::events::Event;
-use quick_xml::Reader;
+use frt_cosim::metadata::kernel_xml::{self, KernelXml};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum XrtArgKind {
-    Scalar { width: u32 },
-    Mmap { data_width: u32 },
-    Stream { width: u32 },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct XrtArg {
-    pub name: String,
-    pub id: u32,
-    pub kind: XrtArgKind,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct XrtMetadata {
-    pub top_name: String,
-    pub args: Vec<XrtArg>,
-    pub platform: String,
-    pub mode: XclbinMode,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum XclbinMode {
-    Flat,
-    HwEmu,
-    SwEmu,
-}
-
-pub fn parse_embedded_xml(xml: &str) -> Result<XrtMetadata> {
-    let mut reader = Reader::from_str(xml);
-    reader.config_mut().trim_text(true);
-    let mut top_name = String::new();
-    let mut platform = String::new();
-    let mut mode = XclbinMode::Flat;
-    let mut args = Vec::new();
-    let mut buf = Vec::new();
-
-    loop {
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e) | Event::Empty(e)) => match e.name().as_ref() {
-                b"kernel" => {
-                    for a in e.attributes().flatten() {
-                        if a.key.as_ref() == b"name" {
-                            top_name = String::from_utf8_lossy(&a.value).into_owned();
-                        }
-                    }
-                }
-                b"platform" => {
-                    if platform.is_empty() {
-                        for a in e.attributes().flatten() {
-                            let key = a.key.as_ref();
-                            if key == b"name" || key == b"vbnv" || key == b"platformVBNV" {
-                                let value = String::from_utf8_lossy(&a.value).trim().to_owned();
-                                if !value.is_empty() {
-                                    platform = value;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-                b"core" => {
-                    for a in e.attributes().flatten() {
-                        if a.key.as_ref() == b"target" {
-                            let target = String::from_utf8_lossy(&a.value).to_ascii_lowercase();
-                            if target.contains("hw_em") || target.contains("hw_emu") {
-                                mode = XclbinMode::HwEmu;
-                            } else if target.contains("csim")
-                                || target.contains("sw_emu")
-                                || target.contains("sw_em")
-                            {
-                                mode = XclbinMode::SwEmu;
-                            }
-                        }
-                    }
-                }
-                b"arg" => {
-                    let mut name = String::new();
-                    let mut id = 0u32;
-                    let mut qualifier = 0u32;
-                    // `dataWidth`/`width` come from hand-written fixtures and
-                    // cosim-style XML; real Vitis xclbin XML instead carries
-                    // the C byte size of the argument (`size="0x8"` for a
-                    // `uint64_t` scalar, `size="0x2"` for `uint16_t`).
-                    let mut data_width = None;
-                    let mut host_size_bytes = None;
-                    let mut size_bytes = None;
-                    let mut c_type = String::new();
-                    for a in e.attributes().flatten() {
-                        let v = String::from_utf8_lossy(&a.value).into_owned();
-                        match a.key.as_ref() {
-                            b"name" => name = v,
-                            // A malformed id would silently alias another
-                            // argument's slot; fail loudly instead.
-                            b"id" => {
-                                id = v.parse().map_err(|_parse_err| {
-                                    FrtError::MetadataParse(format!(
-                                        "malformed arg id {v:?} in embedded XML"
-                                    ))
-                                })?;
-                            }
-                            b"addressQualifier" => {
-                                qualifier = v.parse().map_err(|_parse_err| {
-                                    FrtError::MetadataParse(format!(
-                                        "malformed addressQualifier {v:?} in embedded XML"
-                                    ))
-                                })?;
-                            }
-                            b"dataWidth" | b"width" => data_width = v.parse().ok(),
-                            b"hostSize" => host_size_bytes = parse_size_bytes(&v),
-                            b"size" => size_bytes = parse_size_bytes(&v),
-                            b"type" => c_type = v,
-                            _ => {}
-                        }
-                    }
-                    let kind = match qualifier {
-                        // Scalar register width must match the kernel's
-                        // declaration or the OpenCL driver rejects the arg.
-                        // `hostSize` is the generator's logical C width in
-                        // bytes; `size` is the s_axi register footprint,
-                        // 4-byte-padded for sub-32-bit scalars (a `Pid`/
-                        // `uint16_t` arg ships `hostSize="0x2"` with
-                        // `size="0x4"`), and `type` can be a bare typedef
-                        // name. So rank hostSize, then a recognizable C
-                        // type, then the register `size`.
-                        0 => XrtArgKind::Scalar {
-                            // No silent default: every historical
-                            // wrong-width bug surfaced as an opaque
-                            // clSetKernelArg failure at run time. Failing
-                            // here names the argument and the metadata
-                            // that was missing.
-                            width: data_width
-                                .or_else(|| host_size_bytes.map(|b| b.saturating_mul(8)))
-                                .or_else(|| c_scalar_type_bits(&c_type))
-                                .or_else(|| size_bytes.map(|b| b.saturating_mul(8)))
-                                .ok_or_else(|| {
-                                    FrtError::MetadataParse(format!(
-                                        "cannot determine scalar width for arg {name:?}: \
-                                         no dataWidth/width, hostSize, recognizable type \
-                                         (got {c_type:?}), or size attribute"
-                                    ))
-                                })?,
-                        },
-                        // For mmap args `size` is the 8-byte pointer size, not
-                        // the bus data width, so it is not a width fallback.
-                        1 => XrtArgKind::Mmap {
-                            data_width: data_width.unwrap_or(32),
-                        },
-                        4 => XrtArgKind::Stream {
-                            width: data_width.unwrap_or(32),
-                        },
-                        q => return Err(FrtError::MetadataParse(format!("unknown qualifier {q}"))),
-                    };
-                    args.push(XrtArg { name, id, kind });
-                }
-                _ => {}
-            },
-            Ok(Event::Eof) => break,
-            Err(e) => return Err(FrtError::MetadataParse(e.to_string())),
-            _ => {}
-        }
-        buf.clear();
-    }
-
-    if top_name.is_empty() {
-        return Err(FrtError::MetadataParse(
-            "kernel name missing from embedded XML".into(),
-        ));
-    }
-
-    Ok(XrtMetadata {
-        top_name,
-        args,
-        platform,
-        mode,
-    })
-}
-
-/// Extract the platform VBNV string from the xclbin2 binary header.
+/// Parse the metadata XML embedded in an xclbin.
 ///
-/// The old C++ runtime read `axlf_top->m_header.m_platformVBNV` (a 64-byte
-/// null-terminated string at offset 352) which always contains the full
-/// platform identifier (e.g. `xilinx_u250_gen3x16_xdma_4_1_202210_1`).
-/// The XML `<platform name="...">` attribute may carry a shorter value in
-/// some xclbin versions, so we prefer the header field.
-pub fn extract_platform_vbnv(xclbin: &[u8]) -> Option<String> {
-    const PLATFORM_VBNV_OFFSET: usize = 352;
-    const PLATFORM_VBNV_LEN: usize = 64;
-
-    if xclbin.len() < PLATFORM_VBNV_OFFSET + PLATFORM_VBNV_LEN {
-        return None;
-    }
-    let raw = &xclbin[PLATFORM_VBNV_OFFSET..PLATFORM_VBNV_OFFSET + PLATFORM_VBNV_LEN];
-    let end = raw
-        .iter()
-        .position(|&b| b == 0)
-        .unwrap_or(PLATFORM_VBNV_LEN);
-    let s = std::str::from_utf8(&raw[..end]).ok()?.trim().to_owned();
-    if s.is_empty() {
-        return None;
-    }
-    // Validate: a Xilinx VBNV looks like "xilinx_u250_gen3x16_xdma_4_1_202210_1"
-    // — only alphanumeric, underscores, hyphens, and dots.
-    if !s
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.')
-    {
-        return None;
-    }
-    Some(s)
-}
-
-/// Bit width of a primitive C scalar type name from Vitis arg metadata
-/// (`type="uint16_t"`); returns None for pointers, composites, and other
-/// non-primitive spellings so callers can fall back to `size`.
-fn c_scalar_type_bits(ty: &str) -> Option<u32> {
-    let t = ty.trim().trim_start_matches("const").trim();
-    match t {
-        "bool" | "char" | "signed char" | "unsigned char" | "int8_t" | "uint8_t" => Some(8),
-        "short" | "short int" | "unsigned short" | "unsigned short int" | "int16_t"
-        | "uint16_t" => Some(16),
-        "int" | "unsigned" | "unsigned int" | "int32_t" | "uint32_t" | "float" => Some(32),
-        "long" | "long int" | "unsigned long" | "unsigned long int" | "long long"
-        | "unsigned long long" | "int64_t" | "uint64_t" | "double" => Some(64),
-        _ => None,
-    }
-}
-
-/// Parse a Vitis XML `size` attribute (hex `0x..` or decimal) into bytes.
-fn parse_size_bytes(value: &str) -> Option<u32> {
-    let s = value.trim();
-    match s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
-        Some(hex) => u32::from_str_radix(hex, 16).ok(),
-        None => s.parse().ok(),
-    }
+/// A thin adapter over the shared reader: only the error type differs.
+pub fn parse_embedded_xml(xml: &str) -> Result<KernelXml> {
+    kernel_xml::parse(xml).map_err(|e| FrtError::MetadataParse(e.to_string()))
 }
 
 pub fn extract_embedded_xml(xclbin: &[u8]) -> Result<String> {
@@ -277,123 +51,100 @@ pub fn extract_embedded_xml(xclbin: &[u8]) -> Result<String> {
     ))
 }
 
+/// Extract the platform VBNV string from the xclbin2 binary header.
+///
+/// The old C++ runtime read `axlf_top->m_header.m_platformVBNV` (a 64-byte
+/// null-terminated string at offset 352) which always contains the full
+/// platform identifier (e.g. `xilinx_u250_gen3x16_xdma_4_1_202210_1`).
+/// The XML `<platform name="...">` attribute may carry a shorter value in
+/// some xclbin versions, so we prefer the header field.
+pub fn extract_platform_vbnv(xclbin: &[u8]) -> Option<String> {
+    const PLATFORM_VBNV_OFFSET: usize = 352;
+    const PLATFORM_VBNV_LEN: usize = 64;
+
+    if xclbin.len() < PLATFORM_VBNV_OFFSET + PLATFORM_VBNV_LEN {
+        return None;
+    }
+    let raw = &xclbin[PLATFORM_VBNV_OFFSET..PLATFORM_VBNV_OFFSET + PLATFORM_VBNV_LEN];
+    let end = raw
+        .iter()
+        .position(|&b| b == 0)
+        .unwrap_or(PLATFORM_VBNV_LEN);
+    let s = std::str::from_utf8(&raw[..end]).ok()?.trim().to_owned();
+    if s.is_empty() {
+        return None;
+    }
+    // Validate: a Xilinx VBNV looks like "xilinx_u250_gen3x16_xdma_4_1_202210_1"
+    // — only alphanumeric, underscores, hyphens, and dots.
+    if !s
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.')
+    {
+        return None;
+    }
+    Some(s)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    const KERNEL_XML: &str = r#"<?xml version="1.0"?>
-<root><kernel name="vadd"><args>
-  <arg name="a" addressQualifier="1" id="0" dataWidth="512" addrWidth="64"/>
-  <arg name="n" addressQualifier="0" id="1" dataWidth="32"/>
-</args></kernel></root>"#;
-
-    const TARGETED_XML: &str = r#"<?xml version="1.0"?>
-<project>
-  <platform name="xilinx_u250_gen3x16_xdma_3_1_202020_1">
-    <device>
-      <core target="hw_em">
-        <kernel name="vadd"><args>
-          <arg name="a" addressQualifier="1" id="0" dataWidth="512" />
-        </args></kernel>
-      </core>
-    </device>
-  </platform>
-</project>"#;
-
-    #[test]
-    fn parse_kernel_xml_extracts_args() {
-        let meta = parse_embedded_xml(KERNEL_XML).expect("parse");
-        assert_eq!(meta.top_name, "vadd");
-        assert_eq!(meta.args.len(), 2);
+    /// An xclbin2 container holding `sections` as NUL-separated blobs.
+    fn xclbin_with(sections: &[&str]) -> Vec<u8> {
+        let mut buf = b"xclbin2\0".to_vec();
+        buf.resize(416, 0);
+        for section in sections {
+            buf.extend_from_slice(section.as_bytes());
+            buf.push(0);
+        }
+        buf
     }
 
     #[test]
-    fn scalar_width_falls_back_to_vitis_size_bytes() {
-        // Real Vitis xclbin XML carries the C byte size, not a bit width.
-        const VITIS_XML: &str = r#"<?xml version="1.0"?>
-<root><kernel name="k"><args>
-  <arg name="wide" addressQualifier="0" id="0" size="0x8" type="uint64_t"/>
-  <arg name="narrow" addressQualifier="0" id="1" size="0x2" type="uint16_t"/>
-  <arg name="plain" addressQualifier="0" id="2" size="0x4" type="int"/>
-  <arg name="ptr" addressQualifier="1" id="3" size="0x8" type="int*"/>
-  <arg name="regpad" addressQualifier="0" id="4" size="0x4" hostSize="0x2" type="Pid"/>
-  <arg name="nosize" addressQualifier="0" id="5" type="uint64_t"/>
-  <arg name="custom" addressQualifier="0" id="6" size="0x8" type="my_struct_t"/>
-</args></kernel></root>"#;
-        let meta = parse_embedded_xml(VITIS_XML).expect("parse");
-        let width = |id| {
-            meta.args.iter().find(|a| a.id == id).map(|a| match a.kind {
-                XrtArgKind::Scalar { width } | XrtArgKind::Stream { width } => width,
-                XrtArgKind::Mmap { data_width } => data_width,
-            })
-        };
-        assert_eq!(width(0), Some(64));
-        assert_eq!(width(1), Some(16));
-        assert_eq!(width(2), Some(32));
-        // mmap `size` is the 8-byte pointer size, not the bus width.
-        assert_eq!(width(3), Some(32));
-        // A register-padded scalar still binds its logical C width.
-        assert_eq!(width(4), Some(16));
-        // `type` alone (no `size`) is enough.
-        assert_eq!(width(5), Some(64));
-        // Non-primitive types fall back to `size`.
-        assert_eq!(width(6), Some(64));
+    fn embedded_metadata_is_picked_out_of_the_container() {
+        const METADATA: &str = r#"<?xml version="1.0"?><project><kernel name="vadd"/></project>"#;
+        let xclbin = xclbin_with(&[METADATA]);
+        assert_eq!(extract_embedded_xml(&xclbin).expect("extract"), METADATA);
     }
 
     #[test]
-    fn typedef_id_width_comes_from_host_size() {
-        // The generated Graph kernel xml: `Pid` typedef name, register-
-        // padded `size`, logical `hostSize`.
-        const GRAPH_XML: &str = r#"<?xml version="1.0"?>
-<root><kernel name="Graph"><args>
-  <arg name="num_partitions" addressQualifier="0" id="0" size="0x4" hostSize="0x2" type="Pid"/>
-</args></kernel></root>"#;
-        let meta = parse_embedded_xml(GRAPH_XML).expect("parse");
-        assert!(matches!(
-            meta.args[0].kind,
-            XrtArgKind::Scalar { width: 16 }
-        ));
+    fn other_embedded_xml_sections_are_skipped() {
+        // An xclbin also carries IP-catalog and system-diagram XML; only the
+        // section describing a kernel is the metadata we want.
+        const IP_LAYOUT: &str = r#"<?xml version="1.0"?><ip_catalog><ip name="axi"/></ip_catalog>"#;
+        const METADATA: &str = r#"<?xml version="1.0"?><project><kernel name="vadd"/></project>"#;
+        let xclbin = xclbin_with(&[IP_LAYOUT, METADATA]);
+        assert_eq!(extract_embedded_xml(&xclbin).expect("extract"), METADATA);
     }
 
     #[test]
-    fn explicit_bit_width_wins_over_size() {
-        const BOTH_XML: &str = r#"<?xml version="1.0"?>
-<root><kernel name="k"><args>
-  <arg name="s" addressQualifier="0" id="0" dataWidth="512" size="0x8"/>
-</args></kernel></root>"#;
-        let meta = parse_embedded_xml(BOTH_XML).expect("parse");
-        assert!(matches!(
-            meta.args[0].kind,
-            XrtArgKind::Scalar { width: 512 }
-        ));
+    fn a_container_without_metadata_is_an_error() {
+        let xclbin = xclbin_with(&[r#"<?xml version="1.0"?><ip_catalog/>"#]);
+        let err = extract_embedded_xml(&xclbin).expect_err("no kernel section");
+        assert!(err.to_string().contains("EMBEDDED_METADATA"), "{err}");
     }
 
     #[test]
-    fn parse_embedded_xml_extracts_platform_and_mode() {
-        let meta = parse_embedded_xml(TARGETED_XML).expect("parse");
-        assert_eq!(meta.top_name, "vadd");
-        assert_eq!(meta.platform, "xilinx_u250_gen3x16_xdma_3_1_202020_1");
-        assert_eq!(meta.mode, XclbinMode::HwEmu);
+    fn a_file_that_is_not_an_xclbin_is_an_error() {
+        let err = extract_embedded_xml(b"not an xclbin at all").expect_err("bad magic");
+        assert!(err.to_string().contains("xclbin2"), "{err}");
     }
 
     #[test]
     fn extract_platform_vbnv_from_header() {
         // Build a minimal xclbin-like buffer with the VBNV at offset 352.
-        let mut buf = vec![0u8; 416]; // 352 + 64
-        buf[..8].copy_from_slice(b"xclbin2\0");
+        let mut buf = vec![0u8; 416];
         let vbnv = b"xilinx_u250_gen3x16_xdma_4_1_202210_1";
         buf[352..352 + vbnv.len()].copy_from_slice(vbnv);
-        let result = extract_platform_vbnv(&buf);
         assert_eq!(
-            result.as_deref(),
+            extract_platform_vbnv(&buf).as_deref(),
             Some("xilinx_u250_gen3x16_xdma_4_1_202210_1")
         );
     }
 
     #[test]
     fn extract_platform_vbnv_empty_returns_none() {
-        let mut buf = vec![0u8; 416];
-        buf[..8].copy_from_slice(b"xclbin2\0");
+        let buf = vec![0u8; 416];
         assert_eq!(extract_platform_vbnv(&buf), None);
     }
 
@@ -401,39 +152,5 @@ mod tests {
     fn extract_platform_vbnv_short_buffer_returns_none() {
         let buf = vec![0u8; 100]; // Too short
         assert_eq!(extract_platform_vbnv(&buf), None);
-    }
-
-    #[test]
-    fn scalar_with_no_width_source_is_an_error_naming_the_arg() {
-        let xml = r#"<?xml version="1.0"?>
-<root><kernel name="k"><args>
-  <arg name="mystery" addressQualifier="0" id="0" type="SomeOpaqueTypedef"/>
-</args></kernel></root>"#;
-        let err = parse_embedded_xml(xml).unwrap_err();
-        let msg = err.to_string();
-        assert!(
-            msg.contains("mystery") && msg.contains("SomeOpaqueTypedef"),
-            "error must name the arg and the unrecognized type: {msg}"
-        );
-    }
-
-    #[test]
-    fn malformed_arg_id_is_an_error_not_arg_zero() {
-        let xml = r#"<?xml version="1.0"?>
-<root><kernel name="k"><args>
-  <arg name="n" addressQualifier="0" id="bogus" dataWidth="32"/>
-</args></kernel></root>"#;
-        let err = parse_embedded_xml(xml).unwrap_err();
-        assert!(err.to_string().contains("bogus"), "{err}");
-    }
-
-    #[test]
-    fn malformed_qualifier_is_an_error_not_scalar() {
-        let xml = r#"<?xml version="1.0"?>
-<root><kernel name="k"><args>
-  <arg name="a" addressQualifier="oops" id="0" dataWidth="32"/>
-</args></kernel></root>"#;
-        let err = parse_embedded_xml(xml).unwrap_err();
-        assert!(err.to_string().contains("oops"), "{err}");
     }
 }
