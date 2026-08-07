@@ -1,4 +1,4 @@
-use crate::device::{BufferAccess, RuntimeArgCategory, RuntimeArgInfo};
+use crate::device::BufferAccess;
 use crate::env_bool;
 use crate::instance::{Instance, Simulator};
 use std::cell::RefCell;
@@ -8,9 +8,6 @@ use std::path::Path;
 
 struct FrtInstanceHandle {
     instance: Instance,
-    args_cache: Vec<RuntimeArgInfo>,
-    arg_name_cache: Option<CString>,
-    arg_type_cache: Option<CString>,
 }
 
 /// Obtain a shared reference to the `FrtInstanceHandle` behind an opaque pointer.
@@ -122,10 +119,6 @@ fn parse_buffer_access(tag: c_int) -> BufferAccess {
     }
 }
 
-fn cat_to_c_int(cat: RuntimeArgCategory) -> c_int {
-    cat as c_int
-}
-
 fn open_instance(path: &str, sim: Option<&str>) -> Result<Instance, String> {
     let p = Path::new(path);
     match p.extension().and_then(|e| e.to_str()) {
@@ -184,12 +177,7 @@ pub extern "C" fn frt_instance_open(
             return std::ptr::null_mut();
         }
     };
-    let handle = FrtInstanceHandle {
-        instance,
-        args_cache: Vec::new(),
-        arg_name_cache: None,
-        arg_type_cache: None,
-    };
+    let handle = FrtInstanceHandle { instance };
     Box::into_raw(Box::new(handle)).cast::<std::ffi::c_void>()
 }
 
@@ -205,91 +193,6 @@ pub extern "C" fn frt_instance_close(handle: *mut std::ffi::c_void) {
     if !matches!(h.instance.is_finished(), Ok(true)) {
         let _ = h.instance.kill();
     }
-}
-
-#[no_mangle]
-pub extern "C" fn frt_instance_get_arg_count(
-    handle: *mut std::ffi::c_void,
-    out_count: *mut u32,
-) -> c_int {
-    clear_last_error();
-    if out_count.is_null() {
-        set_last_error("out_count is null");
-        return -1;
-    }
-    let Some(h) = with_handle_mut(handle) else {
-        return -1;
-    };
-    h.args_cache = h.instance.args_info();
-    // SAFETY: out_count is non-null (checked above) and the caller guarantees
-    // it points to a valid writable u32.
-    unsafe { *out_count = h.args_cache.len() as u32 };
-    0
-}
-
-/// Read the metadata of the kernel argument at `ordinal`.
-///
-/// `out_name` and `out_type` receive pointers to NUL-terminated strings
-/// owned by the instance handle. Each pointer is valid until the next
-/// `frt_instance_get_arg` call on the same instance handle, or until the
-/// instance is closed with `frt_instance_close`; callers must copy the
-/// strings (and only access the handle from one thread at a time) to use
-/// them beyond that point.
-#[no_mangle]
-pub extern "C" fn frt_instance_get_arg(
-    handle: *mut std::ffi::c_void,
-    ordinal: u32,
-    out_index: *mut u32,
-    out_cat: *mut c_int,
-    out_name: *mut *const c_char,
-    out_type: *mut *const c_char,
-) -> c_int {
-    clear_last_error();
-    if out_index.is_null() || out_cat.is_null() || out_name.is_null() || out_type.is_null() {
-        set_last_error("output pointer is null");
-        return -1;
-    }
-    let Some(h) = with_handle_mut(handle) else {
-        return -1;
-    };
-    if h.args_cache.is_empty() {
-        h.args_cache = h.instance.args_info();
-    }
-    let Some(arg) = h.args_cache.get(ordinal as usize).cloned() else {
-        set_last_error(format!("arg ordinal out of range: {ordinal}"));
-        return -1;
-    };
-    let Ok(name_cstr) = CString::new(arg.name) else {
-        set_last_error("arg name contains interior nul byte");
-        return -1;
-    };
-    let Ok(type_cstr) = CString::new(arg.type_name) else {
-        set_last_error("arg type contains interior nul byte");
-        return -1;
-    };
-    h.arg_name_cache = Some(name_cstr);
-    h.arg_type_cache = Some(type_cstr);
-
-    // SAFETY: all four output pointers are non-null (checked above) and the
-    // caller guarantees they point to valid writable locations.
-    unsafe { *out_index = arg.index };
-    // SAFETY: out_cat is non-null (checked above).
-    unsafe { *out_cat = cat_to_c_int(arg.category) };
-    // SAFETY: out_name is non-null (checked above).
-    unsafe {
-        *out_name = h
-            .arg_name_cache
-            .as_ref()
-            .map_or(std::ptr::null(), |s| s.as_ptr());
-    };
-    // SAFETY: out_type is non-null (checked above).
-    unsafe {
-        *out_type = h
-            .arg_type_cache
-            .as_ref()
-            .map_or(std::ptr::null(), |s| s.as_ptr());
-    };
-    0
 }
 
 #[no_mangle]
@@ -374,15 +277,6 @@ pub extern "C" fn frt_instance_set_stream_arg(
 }
 
 #[no_mangle]
-pub extern "C" fn frt_instance_suspend_buffer(handle: *mut std::ffi::c_void, index: u32) -> usize {
-    clear_last_error();
-    let Some(h) = with_handle_mut(handle) else {
-        return 0;
-    };
-    h.instance.suspend_buffer(index)
-}
-
-#[no_mangle]
 pub extern "C" fn frt_instance_write_to_device(handle: *mut std::ffi::c_void) -> c_int {
     instance_method_call(handle, Instance::write_to_device)
 }
@@ -395,16 +289,6 @@ pub extern "C" fn frt_instance_read_from_device(handle: *mut std::ffi::c_void) -
 #[no_mangle]
 pub extern "C" fn frt_instance_exec(handle: *mut std::ffi::c_void) -> c_int {
     instance_method_call(handle, Instance::exec)
-}
-
-#[no_mangle]
-pub extern "C" fn frt_instance_pause(handle: *mut std::ffi::c_void) -> c_int {
-    instance_method_call(handle, Instance::pause)
-}
-
-#[no_mangle]
-pub extern "C" fn frt_instance_resume(handle: *mut std::ffi::c_void) -> c_int {
-    instance_method_call(handle, Instance::resume)
 }
 
 #[no_mangle]

@@ -3,9 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <ostream>
 #include <string>
-#include <vector>
 
 #include "tapa/host/frt/c_api.h"
 #include "tapa/host/frt/types.h"
@@ -13,33 +11,6 @@
 namespace tapa {
 namespace internal {
 namespace frt {
-
-struct ArgInfo {
-  int index = 0;
-  std::string name;
-  std::string type;
-  RuntimeArgCategory cat = RuntimeArgCategory::Scalar;
-};
-
-inline std::ostream& operator<<(std::ostream& os,
-                                const RuntimeArgCategory& cat) {
-  switch (cat) {
-    case RuntimeArgCategory::Scalar:
-      return os << "scalar";
-    case RuntimeArgCategory::Mmap:
-      return os << "mmap";
-    case RuntimeArgCategory::Stream:
-      return os << "stream";
-    case RuntimeArgCategory::Streams:
-      return os << "streams";
-  }
-  return os << "unknown";
-}
-
-inline std::ostream& operator<<(std::ostream& os, const ArgInfo& arg) {
-  return os << "ArgInfo(index=" << arg.index << ", name=" << arg.name
-            << ", type=" << arg.type << ", cat=" << arg.cat << ")";
-}
 
 // Thin RAII handle over the Rust `frt_instance_*` C ABI. Argument lowering is
 // performed once by tapa-lib's accessors, which call the three `Set*Arg`
@@ -58,17 +29,13 @@ class Instance {
   // Passes a shared-memory stream identified by `path`.
   void SetStreamArg(int index, const std::string& path);
 
-  size_t SuspendBuf(int index);
   void WriteToDevice();
   void ReadFromDevice();
   void Exec();
-  void Pause();
-  void Resume();
   void Finish();
   void Kill();
   bool IsFinished() const;
 
-  std::vector<ArgInfo> GetArgsInfo() const;
   int64_t LoadTimeNanoSeconds() const;
   int64_t ComputeTimeNanoSeconds() const;
   int64_t StoreTimeNanoSeconds() const;

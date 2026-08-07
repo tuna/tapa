@@ -1,5 +1,5 @@
 use crate::cosim::CosimDevice;
-use crate::device::{BufferAccess, Device, RuntimeArgInfo};
+use crate::device::{BufferAccess, Device};
 use crate::error::{FrtError, Result};
 use crate::xrt::device::XrtDevice;
 use std::path::Path;
@@ -56,10 +56,6 @@ impl Instance {
         self.device.set_stream_arg(index, shm_path)
     }
 
-    pub fn suspend_buffer(&mut self, index: u32) -> usize {
-        self.device.suspend_buffer(index)
-    }
-
     pub fn write_to_device(&mut self) -> Result<()> {
         self.device.write_to_device()
     }
@@ -72,14 +68,6 @@ impl Instance {
         self.device.exec()
     }
 
-    pub fn pause(&mut self) -> Result<()> {
-        self.device.pause()
-    }
-
-    pub fn resume(&mut self) -> Result<()> {
-        self.device.resume()
-    }
-
     pub fn finish(&mut self) -> Result<()> {
         self.device.finish()
     }
@@ -90,10 +78,6 @@ impl Instance {
 
     pub fn is_finished(&mut self) -> Result<bool> {
         self.device.is_finished()
-    }
-
-    pub fn args_info(&self) -> Vec<RuntimeArgInfo> {
-        self.device.args_info()
     }
 
     pub fn load_ns(&self) -> u64 {

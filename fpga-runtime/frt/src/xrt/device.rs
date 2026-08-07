@@ -1,7 +1,7 @@
 use super::metadata::{
     extract_embedded_xml, extract_platform_vbnv, parse_embedded_xml, XrtArgKind, XrtMetadata,
 };
-use crate::device::{sorted_args_info, BufferAccess, Device, RuntimeArgCategory, RuntimeArgInfo};
+use crate::device::{BufferAccess, Device};
 use crate::error::{FrtError, Result};
 use frt_cosim::metadata::normalized_scalar_bytes;
 use frt_cosim::runner::environ::xilinx_environ;
@@ -333,10 +333,6 @@ impl Device for XrtDevice {
         )))
     }
 
-    fn suspend_buffer(&mut self, index: u32) -> usize {
-        usize::from(self.buffers.remove(&index).is_some())
-    }
-
     fn write_to_device(&mut self) -> Result<()> {
         self.load_events.clear();
         for binding in self.buffers.values_mut() {
@@ -529,24 +525,6 @@ impl Device for XrtDevice {
         Ok(all_done)
     }
 
-    fn args_info(&self) -> Vec<RuntimeArgInfo> {
-        sorted_args_info(self._meta.args.iter().map(|arg| {
-            let (type_name, category) = match arg.kind {
-                XrtArgKind::Scalar { width } => {
-                    (scalar_type_name(width), RuntimeArgCategory::Scalar)
-                }
-                XrtArgKind::Mmap { .. } => ("mmap".to_owned(), RuntimeArgCategory::Mmap),
-                XrtArgKind::Stream { .. } => ("stream".to_owned(), RuntimeArgCategory::Stream),
-            };
-            RuntimeArgInfo {
-                index: arg.id,
-                name: arg.name.clone(),
-                type_name,
-                category,
-            }
-        }))
-    }
-
     fn load_ns(&self) -> u64 {
         self.load_ns
     }
@@ -694,14 +672,6 @@ fn current_username() -> Option<String> {
     None
 }
 
-fn scalar_type_name(width_bits: u32) -> String {
-    match width_bits {
-        0..=32 => "uint32_t".to_owned(),
-        33..=64 => "uint64_t".to_owned(),
-        _ => format!("uint{width_bits}_t"),
-    }
-}
-
 fn device_bdf(id: cl_device_id) -> Option<String> {
     // Xilinx OpenCL extension (`CL_DEVICE_PCIE_BDF`) returning the device PCIe BDF.
     const CL_DEVICE_PCIE_BDF: u32 = 0x4038;
@@ -745,14 +715,7 @@ fn elapsed_ns(events: &[Event]) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::super::metadata::XclbinMode;
-    use super::{completion_without_events, emulation_mode_env_value, scalar_type_name};
-
-    #[test]
-    fn scalar_type_names_expand_beyond_u64() {
-        assert_eq!(scalar_type_name(1), "uint32_t");
-        assert_eq!(scalar_type_name(64), "uint64_t");
-        assert_eq!(scalar_type_name(128), "uint128_t");
-    }
+    use super::{completion_without_events, emulation_mode_env_value};
 
     #[test]
     fn a_device_that_never_launched_is_not_finished() {

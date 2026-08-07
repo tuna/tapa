@@ -5,7 +5,6 @@
 #include <cstdlib>
 #include <memory>
 #include <string>
-#include <vector>
 
 #include <glog/logging.h>
 
@@ -87,10 +86,6 @@ void Instance::SetStreamArg(int index, const std::string& path) {
            "set_stream");
 }
 
-size_t Instance::SuspendBuf(int index) {
-  return impl_->handle ? frt_instance_suspend_buffer(impl_->handle, index) : 0;
-}
-
 void Instance::WriteToDevice() {
   if (impl_->handle)
     CheckFfi(frt_instance_write_to_device(impl_->handle), "write_to_device");
@@ -103,14 +98,6 @@ void Instance::ReadFromDevice() {
 
 void Instance::Exec() {
   if (impl_->handle) CheckFfi(frt_instance_exec(impl_->handle), "exec");
-}
-
-void Instance::Pause() {
-  if (impl_->handle) CheckFfi(frt_instance_pause(impl_->handle), "pause");
-}
-
-void Instance::Resume() {
-  if (impl_->handle) CheckFfi(frt_instance_resume(impl_->handle), "resume");
 }
 
 void Instance::Finish() {
@@ -127,24 +114,6 @@ bool Instance::IsFinished() const {
   int ret = frt_instance_is_finished(impl_->handle);
   CHECK_GE(ret, 0) << "is_finished failed: " << LastErr();
   return ret != 0;
-}
-
-std::vector<ArgInfo> Instance::GetArgsInfo() const {
-  if (!impl_->handle) return {};
-  uint32_t count = 0;
-  CheckFfi(frt_instance_get_arg_count(impl_->handle, &count), "get_arg_count");
-  std::vector<ArgInfo> args;
-  for (uint32_t i = 0; i < count; ++i) {
-    uint32_t idx = 0;
-    int cat = 0;
-    const char* name = nullptr;
-    const char* type = nullptr;
-    CheckFfi(frt_instance_get_arg(impl_->handle, i, &idx, &cat, &name, &type),
-             "get_arg");
-    args.push_back({static_cast<int>(idx), name ? name : "", type ? type : "",
-                    static_cast<RuntimeArgCategory>(cat)});
-  }
-  return args;
 }
 
 int64_t Instance::LoadTimeNanoSeconds() const {

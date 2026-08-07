@@ -1,4 +1,4 @@
-use crate::device::{sorted_args_info, BufferAccess, Device, RuntimeArgCategory, RuntimeArgInfo};
+use crate::device::{BufferAccess, Device};
 use crate::error::{FrtError, Result};
 use crate::instance::Simulator;
 use frt_cosim::context::CosimContext;
@@ -40,14 +40,11 @@ struct BufferBinding {
     ptr: *mut u8,
     bytes: usize,
     access: BufferAccess,
-    load_suspended: bool,
-    store_suspended: bool,
 }
 
 struct RunningSimulation {
     child: Child,
     started_at: Instant,
-    paused: bool,
 }
 
 enum SimulationState {
@@ -167,7 +164,7 @@ impl CosimDevice {
     fn copy_back_to_host(&mut self) -> Result<()> {
         let started = Instant::now();
         for (index, binding) in &self.pending_buffers {
-            if !binding.access.stores_to_host() || binding.store_suspended {
+            if !binding.access.stores_to_host() {
                 continue;
             }
             if binding.ptr.is_null() && binding.bytes != 0 {
@@ -249,34 +246,6 @@ impl CosimDevice {
                 self.pending_sim_error = Some(FrtError::SimFailed(status));
             }
             self.simulation_state = SimulationState::Finished;
-        }
-        Ok(())
-    }
-
-    fn pause_simulation(&mut self) -> Result<()> {
-        if self.poll_simulation()? {
-            return Ok(());
-        }
-        if let SimulationState::Running(run) = &mut self.simulation_state {
-            if run.paused {
-                return Ok(());
-            }
-            signal_child_group(&run.child, libc::SIGSTOP)?;
-            run.paused = true;
-        }
-        Ok(())
-    }
-
-    fn resume_simulation(&mut self) -> Result<()> {
-        if self.poll_simulation()? {
-            return Ok(());
-        }
-        if let SimulationState::Running(run) = &mut self.simulation_state {
-            if !run.paused {
-                return Ok(());
-            }
-            signal_child_group(&run.child, libc::SIGCONT)?;
-            run.paused = false;
         }
         Ok(())
     }
@@ -505,16 +474,8 @@ impl Device for CosimDevice {
             )));
         }
         self.ctx.resize_buffer(&name, bytes)?;
-        self.pending_buffers.insert(
-            index,
-            BufferBinding {
-                ptr,
-                bytes,
-                access,
-                load_suspended: false,
-                store_suspended: false,
-            },
-        );
+        self.pending_buffers
+            .insert(index, BufferBinding { ptr, bytes, access });
         Ok(())
     }
 
@@ -549,26 +510,10 @@ impl Device for CosimDevice {
         Ok(())
     }
 
-    fn suspend_buffer(&mut self, index: u32) -> usize {
-        let Some(binding) = self.pending_buffers.get_mut(&index) else {
-            return 0;
-        };
-        let mut erased = 0;
-        if binding.access.loads_from_host() && !binding.load_suspended {
-            binding.load_suspended = true;
-            erased += 1;
-        }
-        if binding.access.stores_to_host() && !binding.store_suspended {
-            binding.store_suspended = true;
-            erased += 1;
-        }
-        erased
-    }
-
     fn write_to_device(&mut self) -> Result<()> {
         let started = Instant::now();
         for (index, binding) in &self.pending_buffers {
-            if !binding.access.loads_from_host() || binding.load_suspended {
+            if !binding.access.loads_from_host() {
                 continue;
             }
             if binding.ptr.is_null() && binding.bytes != 0 {
@@ -608,7 +553,6 @@ impl Device for CosimDevice {
             self.simulation_state = SimulationState::Running(RunningSimulation {
                 child,
                 started_at: Instant::now(),
-                paused: false,
             });
             self.compute_ns = 0;
             return Ok(());
@@ -628,17 +572,8 @@ impl Device for CosimDevice {
         self.simulation_state = SimulationState::Running(RunningSimulation {
             child,
             started_at: Instant::now(),
-            paused: false,
         });
         Ok(())
-    }
-
-    fn pause(&mut self) -> Result<()> {
-        self.pause_simulation()
-    }
-
-    fn resume(&mut self) -> Result<()> {
-        self.resume_simulation()
     }
 
     fn finish(&mut self) -> Result<()> {
@@ -659,10 +594,6 @@ impl Device for CosimDevice {
     fn kill(&mut self) -> Result<()> {
         match &mut self.simulation_state {
             SimulationState::Running(run) => {
-                if run.paused {
-                    let _ = signal_child_group(&run.child, libc::SIGCONT);
-                    run.paused = false;
-                }
                 if let Err(err) = signal_child_group(&run.child, libc::SIGINT) {
                     tracing::warn!("failed to send SIGINT to simulator process group: {err}");
                 }
@@ -685,33 +616,6 @@ impl Device for CosimDevice {
 
     fn is_finished(&mut self) -> Result<bool> {
         self.poll_simulation()
-    }
-
-    fn args_info(&self) -> Vec<RuntimeArgInfo> {
-        sorted_args_info(self.spec.args.iter().map(|arg| {
-            let (type_name, category) = match &arg.kind {
-                frt_cosim::metadata::ArgKind::Scalar { .. } => {
-                    ("scalar".to_owned(), RuntimeArgCategory::Scalar)
-                }
-                frt_cosim::metadata::ArgKind::Mmap { .. } => {
-                    ("mmap".to_owned(), RuntimeArgCategory::Mmap)
-                }
-                frt_cosim::metadata::ArgKind::Stream { protocol, .. } => (
-                    match protocol {
-                        frt_cosim::metadata::StreamProtocol::Axis => "axis",
-                        frt_cosim::metadata::StreamProtocol::ApFifo => "ap_fifo",
-                    }
-                    .to_owned(),
-                    RuntimeArgCategory::Stream,
-                ),
-            };
-            RuntimeArgInfo {
-                index: arg.id,
-                name: arg.name.clone(),
-                type_name,
-                category,
-            }
-        }))
     }
 
     fn load_ns(&self) -> u64 {
@@ -1000,38 +904,6 @@ mod tests {
             std::fs::canonicalize(&found).expect("canonicalize found"),
             std::fs::canonicalize(&library).expect("canonicalize library"),
         );
-    }
-
-    #[test]
-    fn suspend_buffer_suppresses_load_and_store_transfers() {
-        let mut dev = make_test_device_with_mmap(false);
-        let mut host_word = 10u32;
-        dev.set_buffer_arg(
-            0,
-            (&raw mut host_word).cast::<u8>(),
-            std::mem::size_of_val(&host_word),
-            BufferAccess::ReadWrite,
-        )
-        .expect("set buffer");
-        dev.ctx
-            .buffers
-            .get_mut("buf0")
-            .expect("mmap buffer")
-            .as_mut_slice()[..4]
-            .copy_from_slice(&42u32.to_le_bytes());
-
-        assert_eq!(dev.suspend_buffer(0), 2);
-        assert_eq!(dev.pending_buffers.len(), 1);
-        host_word = 99;
-        dev.write_to_device().expect("write to device");
-        assert_eq!(
-            &dev.ctx.buffers["buf0"].as_slice()[..4],
-            &42u32.to_le_bytes()
-        );
-        dev.read_from_device().expect("read from device");
-        assert_eq!(host_word, 99);
-        dev.finish().expect("finish suspended readback");
-        assert_eq!(host_word, 99);
     }
 
     fn declared_stream_args_for_test() -> HashMap<u32, String> {

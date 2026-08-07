@@ -2,21 +2,13 @@ pub mod environ;
 pub mod verilator;
 pub mod xsim;
 
-use crate::{
-    context::CosimContext,
-    error::{CosimError, Result},
-    metadata::KernelSpec,
-};
+use crate::{context::CosimContext, error::Result, metadata::KernelSpec};
 use std::collections::HashMap;
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::process::Child;
 use std::process::Command;
-
-pub struct SimResult {
-    pub wall_ns: u64,
-}
 
 pub trait SimRunner {
     fn prepare(
@@ -27,18 +19,6 @@ pub trait SimRunner {
         tb_dir: &Path,
     ) -> Result<()>;
     fn spawn(&self, spec: &KernelSpec, ctx: &CosimContext, tb_dir: &Path) -> Result<Child>;
-
-    fn run(&self, spec: &KernelSpec, ctx: &CosimContext, tb_dir: &Path) -> Result<SimResult> {
-        let t0 = std::time::Instant::now();
-        self.prepare(spec, ctx, &HashMap::new(), tb_dir)?;
-        let mut child = self.spawn(spec, ctx, tb_dir)?;
-        let status = child.wait()?;
-        let wall_ns = t0.elapsed().as_nanos() as u64;
-        if !status.success() {
-            return Err(CosimError::SimFailed(status));
-        }
-        Ok(SimResult { wall_ns })
-    }
 }
 
 /// Acquire an exclusive `flock`-based lock on the given path.
