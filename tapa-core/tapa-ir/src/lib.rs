@@ -7,6 +7,7 @@
 //! the `.zip` archive, where `frt-cosim` — in a different Cargo workspace —
 //! parses it back with these same types.
 
+pub mod clock;
 pub mod connectivity;
 pub mod floorplan;
 pub mod graph;
@@ -21,6 +22,7 @@ pub mod work_state;
 
 mod error;
 
+pub use clock::{ClockPeriod, ClockPeriodError};
 pub use connectivity::{
     DuplicateMemoryEndpoint, MemoryBank, MemoryBinding, MemoryBindings, MemoryEndpoint, MemoryKind,
 };
@@ -32,7 +34,7 @@ pub use floorplan::{
     ControlChannel, Coor, FloorplanResult, PipelineRoute, PipelineScheme, RoutedChannel,
 };
 pub use graph::TaskGraph;
-pub use instance::{Arg, TaskInstance};
+pub use instance::{Arg, ArgSource, TaskInstance, WireValue};
 pub use interconnect::{EndpointRef, InterconnectDefinition};
 pub use port::{ArgCategory, Port};
 pub use synth_target::SynthTarget;

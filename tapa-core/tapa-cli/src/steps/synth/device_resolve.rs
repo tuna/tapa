@@ -8,6 +8,7 @@
 use camino::Utf8PathBuf;
 use std::path::Path;
 
+use tapa_ir::ClockPeriod;
 use tapa_xilinx::{parse_device_info as xilinx_parse_device_info, DeviceInfo};
 
 use crate::error::{CliError, Result};
@@ -16,7 +17,7 @@ use super::SynthArgs;
 
 pub(super) fn resolve_device_info(args: &SynthArgs) -> Result<DeviceInfo> {
     let part_override = args.part_num.as_deref();
-    let clock_override_owned = args.clock_period.map(|c| format!("{c}"));
+    let clock_override_owned = args.clock_period.map(|c| c.to_string());
     let clock_override = clock_override_owned.as_deref();
 
     if let Some(platform) = args.platform.as_deref() {
@@ -27,9 +28,9 @@ pub(super) fn resolve_device_info(args: &SynthArgs) -> Result<DeviceInfo> {
             ))
         })?;
         let info = xilinx_parse_device_info(&resolved, part_override, clock_override)?;
-        crate::util::parse_clock_period_ns(&info.clock_period).map_err(|message| {
+        ClockPeriod::from_nanoseconds_str(&info.clock_period).map_err(|error| {
             CliError::InvalidArg(format!(
-                "platform `{platform}` provides an invalid target {message}"
+                "platform `{platform}` provides an invalid target: {error}"
             ))
         })?;
         return Ok(info);

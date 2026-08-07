@@ -613,14 +613,22 @@ fn build_payload_fields(
     let rtl_instance = sanitize_identifier_name(instance);
     for (port_name, arg) in args {
         let (output, source, width) = if arg.cat.is_scalar() {
+            // A scalar is the one binding that can be a constant rather than
+            // a parent wire; this is where the constant becomes Verilog.
+            let driver = match &arg.arg {
+                tapa_ir::ArgSource::Name(name) => Expr::ident(sanitize_array_name(name)),
+                tapa_ir::ArgSource::Literal(value) => Expr::lit(value.to_string()),
+            };
             (
                 format!("{rtl_instance}__{port_name}"),
-                Expr::ident(sanitize_array_name(&arg.arg)),
+                driver,
                 resolve_scalar_width(state, child_name, port_name)?,
             )
         } else if arg.cat.is_direct_mmap() {
-            let parent_name = sanitize_array_name(&arg.arg);
-            let source = mmap_connections.get(&arg.arg).map_or_else(
+            // An mmap always names a parent wire, never a constant.
+            let Some(parent) = arg.name() else { continue };
+            let parent_name = sanitize_array_name(parent);
+            let source = mmap_connections.get(parent).map_or_else(
                 || Expr::ident(format!("{parent_name}_offset")),
                 |connection| {
                     if connection.chan_count.is_some() {

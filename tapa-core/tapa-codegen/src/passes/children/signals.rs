@@ -420,18 +420,27 @@ fn push_pipeline_portargs(
     for (port_name, arg) in args {
         if arg.cat.is_scalar() {
             let (pipeline_out, fsm_in_port) = pipeline_wire_names(inst_name, port_name, false);
-            stage.fsm_portargs.push(tapa_rtl::builder::PortArg::new(
-                &fsm_in_port,
-                Expr::ident(tapa_rtl::module::sanitize_array_name(&arg.arg)),
-            ));
+            // A scalar is the one binding that can be a constant rather than
+            // a parent wire; this is where the constant becomes Verilog.
+            let driver = match &arg.arg {
+                tapa_ir::ArgSource::Name(name) => {
+                    Expr::ident(tapa_rtl::module::sanitize_array_name(name))
+                }
+                tapa_ir::ArgSource::Literal(value) => Expr::lit(value.to_string()),
+            };
+            stage
+                .fsm_portargs
+                .push(tapa_rtl::builder::PortArg::new(&fsm_in_port, driver));
             stage.fsm_portargs.push(tapa_rtl::builder::PortArg::new(
                 &pipeline_out,
                 Expr::ident(&pipeline_out),
             ));
         } else if arg.cat.is_direct_mmap() {
+            // An mmap always names a parent wire, never a constant.
+            let Some(parent) = arg.name() else { continue };
             let (pipeline_out, fsm_in_port) = pipeline_wire_names(inst_name, port_name, true);
-            let arg_name = tapa_rtl::module::sanitize_array_name(&arg.arg);
-            let offset_source = stage.mmap_conns.get(&arg.arg).map_or_else(
+            let arg_name = tapa_rtl::module::sanitize_array_name(parent);
+            let offset_source = stage.mmap_conns.get(parent).map_or_else(
                 || Expr::ident(format!("{arg_name}_offset")),
                 |conn| {
                     if conn.chan_count.is_some() {
@@ -463,12 +472,14 @@ fn build_mmap_bindings(
     let mut mmap_bindings = ChildMmapBindings::default();
     for (child_port, arg) in inst.args {
         if arg.cat.is_direct_mmap() {
+            // An mmap always names a parent wire, never a constant.
+            let Some(parent) = arg.name() else { continue };
             let mut binding = ChildMmapBinding::default();
             if let Some(prefix) = stage.axi_pipeline_plan.and_then(|plan| {
                 plan.child_wire_prefix(&tapa_ir::AxiEndpoint {
                     instance: inst.logical_inst_name.clone(),
                     port: child_port.clone(),
-                    top_port: arg.arg.clone(),
+                    top_port: parent.to_owned(),
                 })
             }) {
                 binding.direct_wire_prefix = Some(prefix);
@@ -476,17 +487,17 @@ fn build_mmap_bindings(
             if let Some(&slave_idx) =
                 stage
                     .mmap_slave_map
-                    .get(&(arg.arg.clone(), inst.child_name.to_owned(), idx))
+                    .get(&(parent.to_owned(), inst.child_name.to_owned(), idx))
             {
                 binding.slave_index = Some(slave_idx);
-                if let Some(conn) = stage.mmap_conns.get(&arg.arg) {
+                if let Some(conn) = stage.mmap_conns.get(parent) {
                     binding.wire_id_width = Some(m_axi::crossbar_slave_id_width(conn));
                     if let Some(slave) = conn.slaves.get(slave_idx) {
                         binding.child_id_width = Some(slave.id_width);
                     }
                 }
             }
-            mmap_bindings.insert(arg.arg.clone(), binding);
+            mmap_bindings.insert(parent.to_owned(), binding);
         }
     }
     mmap_bindings
@@ -527,23 +538,24 @@ fn add_async_mmap_bridges(
         if !matches!(arg.cat, tapa_ir::port::ArgCategory::AsyncMmap) {
             continue;
         }
+        let Some(parent) = arg.name() else { continue };
         let active_tags = async_mmap::active_tags(child_rtl, child_port);
         if active_tags.is_empty() {
             continue;
         }
         let enabled = async_mmap::enabled_axi_directions(child_rtl, child_port, &active_tags);
-        let m_axi_wire_prefix = mmap_bindings.wire_prefix(&arg.arg);
-        let upstream_m_axi_prefix = mmap_bindings.upstream_wire_prefix(&arg.arg);
+        let m_axi_wire_prefix = mmap_bindings.wire_prefix(parent);
+        let upstream_m_axi_prefix = mmap_bindings.upstream_wire_prefix(parent);
         let bridge_base = async_mmap::bridge_base_from_m_axi_prefix(&m_axi_wire_prefix);
         // Aggregation already derived the width with the same
         // parent-then-child port precedence.
-        let data_width = stage.mmap_conns.get(&arg.arg).map_or(64, |c| c.data_width);
-        let connect_optional_axi_ports = mmap_bindings.slave_index(&arg.arg).is_none();
+        let data_width = stage.mmap_conns.get(parent).map_or(64, |c| c.data_width);
+        let connect_optional_axi_ports = mmap_bindings.slave_index(parent).is_none();
         if let Some(mm) = stage.modules.get_mut(stage.task_name) {
             async_mmap::add_bridge_signals(mm, &bridge_base, &active_tags, data_width);
             mm.add_instance(async_mmap::build_bridge_instance(
                 &bridge_base,
-                &tapa_ir::async_mmap_bridge_instance_name(&arg.arg),
+                &tapa_ir::async_mmap_bridge_instance_name(parent),
                 &m_axi_wire_prefix,
                 &upstream_m_axi_prefix,
                 &active_tags,

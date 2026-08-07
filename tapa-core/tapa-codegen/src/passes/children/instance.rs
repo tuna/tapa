@@ -152,19 +152,25 @@ pub(super) fn build_child_instance_with_reset(
 
     // Argument port bindings
     for (child_port, arg) in args {
+        if arg.cat.is_scalar() {
+            // Scalar: connect to per-instance pipeline signal, whichever
+            // parent wire or constant feeds it.
+            let pipeline_name = format!("{instance_name}__{child_port}");
+            port_args.push(PortArg::new(
+                child_port.as_str(),
+                Expr::ident(pipeline_name),
+            ));
+            continue;
+        }
+        // Every other category binds a named parent wire; a constant there
+        // has nothing to connect to.
+        let Some(parent) = arg.name() else { continue };
         match arg.cat {
-            ArgCategory::Scalar => {
-                // Scalar: connect to per-instance pipeline signal
-                let pipeline_name = format!("{instance_name}__{child_port}");
-                port_args.push(PortArg::new(
-                    child_port.as_str(),
-                    Expr::ident(pipeline_name),
-                ));
-            }
+            ArgCategory::Scalar => unreachable!("handled above"),
             ArgCategory::Istream | ArgCategory::Istreams => {
                 // Input stream: connect with ISTREAM_SUFFIXES
                 for suffix in ISTREAM_SUFFIXES {
-                    let signal = Expr::ident(stream_signal(&arg.arg, suffix));
+                    let signal = Expr::ident(stream_signal(parent, suffix));
                     port_args.push(PortArg::new(
                         resolve_child_stream_port(child_port, suffix),
                         signal.clone(),
@@ -174,7 +180,7 @@ pub(super) fn build_child_instance_with_reset(
                         {
                             port_args.push(PortArg::new(
                                 peek_port,
-                                Expr::ident(peek_signal(&arg.arg, suffix)),
+                                Expr::ident(peek_signal(parent, suffix)),
                             ));
                         }
                     }
@@ -185,7 +191,7 @@ pub(super) fn build_child_instance_with_reset(
                 for suffix in OSTREAM_SUFFIXES {
                     port_args.push(PortArg::new(
                         resolve_child_stream_port(child_port, suffix),
-                        Expr::ident(stream_signal(&arg.arg, suffix)),
+                        Expr::ident(stream_signal(parent, suffix)),
                     ));
                 }
             }
@@ -195,9 +201,9 @@ pub(super) fn build_child_instance_with_reset(
                 // Bind M-AXI channel ports:
                 // If crossbar exists (slave index present), bind to downstream wires
                 // Otherwise bind directly to upstream parent m_axi signals
-                let m_axi_wire_prefix = mmap_bindings.wire_prefix(&arg.arg);
-                let m_axi_wire_id_width = mmap_bindings.wire_id_width(&arg.arg);
-                let child_m_axi_id_width = mmap_bindings.child_id_width(&arg.arg);
+                let m_axi_wire_prefix = mmap_bindings.wire_prefix(parent);
+                let m_axi_wire_id_width = mmap_bindings.wire_id_width(parent);
+                let child_m_axi_id_width = mmap_bindings.child_id_width(parent);
                 if matches!(arg.cat, ArgCategory::AsyncMmap) {
                     if child_has_direct_mmap_ports(child_rtl, child_port) {
                         let child_rtl_filter =
@@ -243,7 +249,7 @@ pub(super) fn build_child_instance_with_reset(
                 // Other categories: direct connection
                 port_args.push(PortArg::new(
                     sanitize_array_name(child_port),
-                    Expr::ident(sanitize_array_name(&arg.arg)),
+                    Expr::ident(sanitize_array_name(parent)),
                 ));
             }
         }

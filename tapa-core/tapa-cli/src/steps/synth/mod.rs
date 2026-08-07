@@ -62,9 +62,9 @@ pub struct SynthArgs {
     #[arg(
         long = "clock-period",
         value_name = "NS",
-        value_parser = crate::util::parse_clock_period_ns
+        value_parser = crate::util::parse_clock_period
     )]
-    pub clock_period: Option<f64>,
+    pub clock_period: Option<tapa_ir::ClockPeriod>,
 
     #[arg(short = 'j', long = "jobs", value_name = "N")]
     pub jobs: Option<u32>,

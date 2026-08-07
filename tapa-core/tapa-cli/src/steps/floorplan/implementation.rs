@@ -158,15 +158,13 @@ pub(super) fn validate_target(
         )));
     }
 
-    let clock_period = state.flow.clock_period.as_deref().ok_or_else(|| {
+    let clock_period = state.flow.clock_period.ok_or_else(|| {
         CliError::InvalidArg(
             "implementation requires a synthesized target clock period; rerun `tapa synth`"
                 .to_string(),
         )
     })?;
-    let clock_period = crate::util::parse_clock_period_ns(clock_period)
-        .map_err(|message| CliError::InvalidArg(format!("invalid synthesized target {message}")))?;
-    let target_mhz = target_frequency_mhz(clock_period)
+    let target_mhz = target_frequency_mhz(clock_period.nanoseconds())
         .map_err(|error| CliError::InvalidArg(error.to_string()))?;
 
     Ok(ImplementationTarget {
@@ -761,6 +759,7 @@ fn atomic_copy(source: impl AsRef<Path>, destination: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tapa_ir::ClockPeriod;
 
     fn floorplan() -> FloorplanResult {
         FloorplanResult {
@@ -990,7 +989,7 @@ mod tests {
         let mut state = WorkState::new(graph);
         state.flow.part_num = Some("xcu280-fsvh2892-2L-e".to_string());
         state.flow.platform = Some("xilinx_u280_test".to_string());
-        state.flow.clock_period = Some("3.33".to_string());
+        state.flow.clock_period = Some(ClockPeriod::from_picoseconds(3330));
         let target = validate_target(&state, 2).expect("valid target");
         assert_eq!(target.platform, "xilinx_u280_test");
         assert_eq!(target.target_mhz, 300);
@@ -1001,9 +1000,11 @@ mod tests {
         }
 
         state.flow.platform = Some("xilinx_u280_test".to_string());
-        state.flow.clock_period = Some("NaN".to_string());
+        // A non-numeric period is no longer representable; zero is the one
+        // unusable value the typed field still admits.
+        state.flow.clock_period = Some(ClockPeriod::ZERO);
         validate_target(&state, 2).expect_err("invalid clock must fail");
-        state.flow.clock_period = Some("3.33".to_string());
+        state.flow.clock_period = Some(ClockPeriod::from_picoseconds(3330));
         state.flow.part_num = Some("xcvc1902-vsva2197-2MP-e-S".to_string());
         validate_target(&state, 2).expect_err("Versal must fail early");
     }

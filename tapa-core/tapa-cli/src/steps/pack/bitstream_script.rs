@@ -9,6 +9,8 @@ use std::path::{Path, PathBuf};
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
+use tapa_ir::ClockPeriod;
+
 use crate::error::{CliError, Result};
 
 /// Render the `#!/bin/bash` v++ script with an absolute `.xo` path.
@@ -21,7 +23,7 @@ pub(super) fn render_vitis_script(
     top: &str,
     output_file: &Path,
     platform: Option<&str>,
-    clock_period: Option<&str>,
+    clock_period: Option<ClockPeriod>,
     floorplan_xdc: Option<&Path>,
     connectivity_ini: Option<&Path>,
 ) -> Result<String> {
@@ -30,10 +32,7 @@ pub(super) fn render_vitis_script(
     let connectivity_ini = connectivity_ini.map(|p| absolutize_lexical(p).display().to_string());
     let target_frequency = clock_period
         .map(|clock| {
-            let period = crate::util::parse_clock_period_ns(clock).map_err(|message| {
-                CliError::InvalidArg(format!("cannot emit bitstream script: invalid {message}"))
-            })?;
-            tapa_xilinx::target_frequency_mhz(period)
+            tapa_xilinx::target_frequency_mhz(clock.nanoseconds())
                 .map(|frequency| frequency.to_string())
                 .map_err(|error| {
                     CliError::InvalidArg(format!(
@@ -67,7 +66,7 @@ pub(super) fn write_vitis_script(
     top: &str,
     output_file: &Path,
     platform: Option<&str>,
-    clock_period: Option<&str>,
+    clock_period: Option<ClockPeriod>,
     floorplan_xdc: Option<&Path>,
     connectivity_ini: Option<&Path>,
 ) -> Result<()> {
@@ -121,7 +120,7 @@ mod tests {
         top: &str,
         output_file: &Path,
         platform: Option<&str>,
-        clock_period: Option<&str>,
+        clock_period: Option<ClockPeriod>,
         floorplan_xdc: Option<&Path>,
         connectivity_ini: Option<&Path>,
     ) -> String {
@@ -160,13 +159,13 @@ mod tests {
     fn rendered_scripts_match_expected_substrings() {
         type Flags<'a> = (
             Option<&'a str>,
-            Option<&'a str>,
+            Option<ClockPeriod>,
             Option<&'a str>,
             Option<&'a str>,
         );
         type Row<'a> = (&'a str, Flags<'a>, &'a [&'a str], &'a [&'a str]);
 
-        let mhz_clock = (1000.0_f64 / 300.75).to_string();
+        let mhz_clock = ClockPeriod::from_nanoseconds(1000.0_f64 / 300.75).expect("period");
         let cases: &[Row] = &[
             (
                 "platform",
@@ -181,13 +180,13 @@ mod tests {
             ),
             (
                 "frequency",
-                (None, Some("3.33"), None, None),
+                (None, Some(ClockPeriod::from_picoseconds(3330)), None, None),
                 &["TARGET_FREQUENCY=300", "--kernel_frequency"],
                 &[],
             ),
             (
                 "frequency-never-rounds-up",
-                (None, Some(&mhz_clock), None, None),
+                (None, Some(mhz_clock), None, None),
                 &["TARGET_FREQUENCY=300"],
                 &["TARGET_FREQUENCY=301"],
             ),
@@ -195,7 +194,7 @@ mod tests {
                 "xdc-hook",
                 (
                     Some("plat"),
-                    Some("3.33"),
+                    Some(ClockPeriod::from_picoseconds(3330)),
                     Some("/work/floorplan.xdc"),
                     None,
                 ),
@@ -206,7 +205,7 @@ mod tests {
                 "ini-config",
                 (
                     Some("plat"),
-                    Some("3.33"),
+                    Some(ClockPeriod::from_picoseconds(3330)),
                     None,
                     Some("/work/link_config.ini"),
                 ),
@@ -260,7 +259,7 @@ mod tests {
             "VecAdd",
             Path::new("/tmp/a.xo"),
             Some("plat"),
-            Some("3.33"),
+            Some(ClockPeriod::from_picoseconds(3330)),
             None,
             None,
         )
@@ -282,9 +281,13 @@ mod tests {
         }
     }
 
+    /// Non-numeric, negative, and infinite periods cannot reach here — they
+    /// never become a [`ClockPeriod`]. Zero and an absurdly long period
+    /// still can, and neither yields a usable target frequency.
     #[test]
-    fn invalid_clock_period_is_rejected() {
-        for clock in ["fast", "0", "-1", "NaN", "inf", "1e-300", "1e300"] {
+    fn a_period_with_no_usable_frequency_is_rejected() {
+        for picoseconds in [0, u64::MAX] {
+            let clock = ClockPeriod::from_picoseconds(picoseconds);
             let error =
                 render_vitis_script("Top", Path::new("/tmp/a.xo"), None, Some(clock), None, None)
                     .expect_err("invalid clock period");
@@ -307,7 +310,7 @@ mod tests {
             "Top",
             Path::new("/tmp/a.xo"),
             Some("plat"),
-            Some("3.33"),
+            Some(ClockPeriod::from_picoseconds(3330)),
             Some(Path::new("/work/floorplan.xdc")),
             Some(Path::new("/work/link_config.ini")),
         );

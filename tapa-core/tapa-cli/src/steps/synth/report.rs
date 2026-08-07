@@ -10,7 +10,7 @@
 //! name: <top task name>
 //! performance:
 //!   source: hls
-//!   clock_period: "<seconds>"
+//!   clock_period: "<nanoseconds>"   # canonical decimal, e.g. "3.33"
 //!   critical_path:        # only when top is upper
 //!     <child_task_name>: { ...child performance dict... }
 //! area:
@@ -26,7 +26,7 @@ use std::path::Path;
 use indexmap::IndexMap;
 use serde::Serialize;
 use serde_json::Value;
-use tapa_ir::{Design, TaskLevel};
+use tapa_ir::{ClockPeriod, Design, TaskLevel};
 
 use crate::error::{CliError, Result};
 use crate::steps::version::VERSION as TAPA_VERSION;
@@ -42,12 +42,37 @@ struct Report {
     area: AreaSection,
 }
 
+/// Where a published number came from. Serializes as the wire strings the
+/// report schema has always used.
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+enum MetricSource {
+    /// The HLS estimate.
+    Hls,
+    /// A measured post-synthesis value.
+    Synth,
+}
+
 #[derive(Debug, Clone, Serialize)]
 struct Performance {
-    source: String,
-    clock_period: String,
+    source: MetricSource,
+    /// Published as decimal nanoseconds; the schema is a document, so the
+    /// reading stays the text a user recognizes.
+    #[serde(serialize_with = "serialize_nanoseconds", rename = "clock_period")]
+    clock: ClockPeriod,
     #[serde(skip_serializing_if = "Option::is_none")]
     critical_path: Option<IndexMap<String, Self>>,
+}
+
+#[allow(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde's serialize_with contract takes the field by reference"
+)]
+fn serialize_nanoseconds<S: serde::Serializer>(
+    clock: &ClockPeriod,
+    serializer: S,
+) -> std::result::Result<S::Ok, S::Error> {
+    serializer.serialize_str(&clock.to_string())
 }
 
 /// The `area` section of a task's published report: where the numbers came
@@ -55,7 +80,7 @@ struct Performance {
 /// count model behind `total`.
 #[derive(Debug, Clone, Serialize)]
 struct AreaSection {
-    source: String,
+    source: MetricSource,
     total: IndexMap<String, Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     breakdown: Option<IndexMap<String, BreakdownEntry>>,
@@ -70,7 +95,7 @@ struct BreakdownEntry {
 struct ChildReport<'a> {
     name: &'a str,
     count: usize,
-    clock: f64,
+    clock: ClockPeriod,
     report: Report,
 }
 
@@ -109,8 +134,11 @@ fn build_task_report(design: &Design, task_name: &str, schema: &str) -> Result<R
         CliError::Report(format!("report: task `{task_name}` not found in design"))
     })?;
 
-    let has_explicit_total = task.total_area.is_some();
-    let area_source = if has_explicit_total { "synth" } else { "hls" };
+    let area_source = if task.total_area.is_some() {
+        MetricSource::Synth
+    } else {
+        MetricSource::Hls
+    };
 
     let mut child_reports = Vec::new();
     if task.level == TaskLevel::Upper {
@@ -120,32 +148,25 @@ fn build_task_report(design: &Design, task_name: &str, schema: &str) -> Result<R
                 continue;
             }
             let report = build_task_report(design, child_name, schema)?;
-            let clock = parse_clock_period(child_name, &report.performance.clock_period)?;
             child_reports.push(ChildReport {
                 name: child_name,
                 count,
-                clock,
+                clock: report.performance.clock,
                 report,
             });
         }
     }
 
-    // A task with no HLS estimate carries an empty `clock_period`: either
-    // `synth` has not run yet, or it is a `synth: ignore` task that HLS
-    // skips entirely. Such a task contributes zero to the critical path
-    // rather than failing the whole report.
-    let mut clock_period = if task.clock_period.is_empty() {
-        "0".to_string()
-    } else {
-        task.clock_period.clone()
-    };
-    let mut clock = parse_clock_period(task_name, &clock_period)?;
-    for child in &child_reports {
-        if child.clock.total_cmp(&clock).is_gt() {
-            clock = child.clock;
-            clock_period.clone_from(&child.report.performance.clock_period);
-        }
-    }
+    // A task with no HLS estimate has no measured period: either `synth`
+    // has not run yet, or it is a `synth: ignore` task that HLS skips
+    // entirely. Such a task contributes zero to the critical path rather
+    // than failing the whole report.
+    let clock = child_reports
+        .iter()
+        .map(|child| child.clock)
+        .chain(task.clock_period)
+        .max()
+        .unwrap_or(ClockPeriod::ZERO);
 
     let total_area = published_area(effective_total_area(design, task_name)?);
 
@@ -153,7 +174,7 @@ fn build_task_report(design: &Design, task_name: &str, schema: &str) -> Result<R
         let mut critical_path = IndexMap::new();
         let mut breakdown = IndexMap::new();
         for child in child_reports {
-            if child.clock.total_cmp(&clock).is_eq() {
+            if child.clock == clock {
                 critical_path.insert(child.name.to_string(), child.report.performance);
             }
             breakdown.insert(
@@ -166,8 +187,8 @@ fn build_task_report(design: &Design, task_name: &str, schema: &str) -> Result<R
         }
         (
             Performance {
-                source: "hls".to_string(),
-                clock_period,
+                source: MetricSource::Hls,
+                clock,
                 critical_path: Some(critical_path),
             },
             Some(breakdown),
@@ -175,8 +196,8 @@ fn build_task_report(design: &Design, task_name: &str, schema: &str) -> Result<R
     } else {
         (
             Performance {
-                source: "hls".to_string(),
-                clock_period,
+                source: MetricSource::Hls,
+                clock,
                 critical_path: None,
             },
             None,
@@ -188,7 +209,7 @@ fn build_task_report(design: &Design, task_name: &str, schema: &str) -> Result<R
         name: task_name.to_string(),
         performance,
         area: AreaSection {
-            source: area_source.to_string(),
+            source: area_source,
             total: total_area,
             breakdown: area_breakdown,
         },
@@ -214,20 +235,6 @@ fn published_area(area: Option<tapa_ir::Area>) -> IndexMap<String, Value> {
     ])
 }
 
-fn parse_clock_period(task_name: &str, period: &str) -> Result<f64> {
-    let parsed = period.parse::<f64>().map_err(|error| {
-        CliError::Report(format!(
-            "report: task `{task_name}` has invalid clock period `{period}`: {error}"
-        ))
-    })?;
-    if !parsed.is_finite() {
-        return Err(CliError::Report(format!(
-            "report: task `{task_name}` has non-finite clock period `{period}`"
-        )));
-    }
-    Ok(parsed)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -250,7 +257,7 @@ mod tests {
         ]
     }
 
-    fn leaf(name: &str, clock: &str, area: Option<tapa_ir::Area>) -> Task {
+    fn leaf(name: &str, clock: Option<ClockPeriod>, area: Option<tapa_ir::Area>) -> Task {
         Task {
             level: TaskLevel::Lower,
             code: format!("void {name}() {{}}\n"),
@@ -261,7 +268,7 @@ mod tests {
             synth: SynthTarget::Hls,
             self_area: None,
             total_area: area,
-            clock_period: clock.to_string(),
+            clock_period: clock,
         }
     }
 
@@ -279,7 +286,7 @@ mod tests {
 
     fn derived_task(
         name: &str,
-        clock: &str,
+        clock: Option<ClockPeriod>,
         self_area: tapa_ir::Area,
         tasks: BTreeMap<String, Vec<TaskInstance>>,
     ) -> Task {
@@ -297,7 +304,7 @@ mod tests {
             synth: SynthTarget::Hls,
             self_area: Some(self_area),
             total_area: None,
-            clock_period: clock.to_string(),
+            clock_period: clock,
         }
     }
 
@@ -309,7 +316,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let mut custom_rtl = leaf(
             "Custom",
-            "",
+            None,
             Some(tapa_ir::Area {
                 lut: 7,
                 ..tapa_ir::Area::default()
@@ -330,7 +337,7 @@ mod tests {
                     synth: SynthTarget::Hls,
                     self_area: None,
                     total_area: None,
-                    clock_period: "2.5".to_string(),
+                    clock_period: Some(ClockPeriod::from_picoseconds(2500)),
                 },
             ),
         ]);
@@ -364,7 +371,7 @@ mod tests {
             "Leaf".to_string(),
             derived_task(
                 "Leaf",
-                "4.0",
+                Some(ClockPeriod::from_picoseconds(4000)),
                 tapa_ir::Area {
                     lut: 11,
                     ff: 1,
@@ -377,7 +384,7 @@ mod tests {
             "Middle".to_string(),
             derived_task(
                 "Middle",
-                "2.5",
+                Some(ClockPeriod::from_picoseconds(2500)),
                 tapa_ir::Area {
                     lut: 7,
                     ff: 2,
@@ -390,7 +397,7 @@ mod tests {
             "Top".to_string(),
             derived_task(
                 "Top",
-                "2.0",
+                Some(ClockPeriod::from_picoseconds(2000)),
                 tapa_ir::Area {
                     lut: 5,
                     ff: 3,
@@ -413,15 +420,17 @@ mod tests {
         )
         .expect("valid report json");
 
-        assert_eq!(parsed["performance"]["clock_period"], "4.0");
+        // Published in canonical nanoseconds: `4`, not the `4.0` a
+        // tool happened to print.
+        assert_eq!(parsed["performance"]["clock_period"], "4");
         assert_eq!(
             parsed["performance"]["critical_path"]["Middle"]["clock_period"],
-            "4.0"
+            "4"
         );
         assert_eq!(
             parsed["performance"]["critical_path"]["Middle"]["critical_path"]["Leaf"]
                 ["clock_period"],
-            "4.0"
+            "4"
         );
         assert_eq!(parsed["area"]["source"], "hls");
         assert_eq!(parsed["area"]["total"]["LUT"], 85);
@@ -461,14 +470,14 @@ mod tests {
                     lut: 100,
                     ..tapa_ir::Area::default()
                 }),
-                clock_period: "3.33".to_string(),
+                clock_period: Some(ClockPeriod::from_picoseconds(3330)),
             },
         );
         tasks.insert(
             "Add".to_string(),
             leaf(
                 "Add",
-                "3.33",
+                Some(ClockPeriod::from_picoseconds(3330)),
                 Some(tapa_ir::Area {
                     lut: 50,
                     ..tapa_ir::Area::default()
@@ -503,7 +512,10 @@ mod tests {
     fn override_schema_wins() {
         let dir = tempfile::tempdir().expect("tempdir");
         let mut tasks = BTreeMap::new();
-        tasks.insert("T".to_string(), leaf("T", "3.33", None));
+        tasks.insert(
+            "T".to_string(),
+            leaf("T", Some(ClockPeriod::from_picoseconds(3330)), None),
+        );
         let design = Design {
             schema_version: tapa_ir::graph::SCHEMA_VERSION,
             top: "T".to_string(),

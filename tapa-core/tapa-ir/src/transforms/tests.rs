@@ -69,10 +69,10 @@ fn flatten_collapses_two_level_hierarchy() {
     assert_eq!(out.top, "VecAdd");
     let new_top = out.tasks.get("VecAdd").expect("top survives");
     let a_inst = &new_top.tasks["A"][0];
-    assert_eq!(a_inst.args["out"].arg, "fifo_VecAdd");
-    assert_eq!(a_inst.args["n"].arg, "n");
+    assert_eq!(a_inst.args["out"].name(), Some("fifo_VecAdd"));
+    assert_eq!(a_inst.args["n"].name(), Some("n"));
     let b_inst = &new_top.tasks["B"][0];
-    assert_eq!(b_inst.args["in"].arg, "fifo_VecAdd");
+    assert_eq!(b_inst.args["in"].name(), Some("fifo_VecAdd"));
     let fifo = new_top.fifos.get("fifo_VecAdd").expect("fifo renamed");
     assert_eq!(fifo.consumed_by, Some(EndpointRef("B".to_string(), 0)));
     assert_eq!(fifo.produced_by, Some(EndpointRef("A".to_string(), 0)));
@@ -176,7 +176,8 @@ fn flatten_hoists_leaf_under_nested_upper() {
     // (promoted through `p` in Inner → `n` in Outer).
     let arg = leaf_insts[0].args.get("q").expect("q arg present");
     assert_eq!(
-        arg.arg, "n",
+        arg.name(),
+        Some("n"),
         "nested scalar arg must promote to Outer's external port"
     );
 }
@@ -243,10 +244,10 @@ fn flatten_uses_explicit_upper_instance_names_in_nested_fifo_paths() {
 
     let west_fifo = "q_compute_stage_west_cluster_Outer";
     let east_fifo = "q_compute_stage_east_cluster_Outer";
-    assert_eq!(top.tasks["Source"][0].args["out"].arg, west_fifo);
-    assert_eq!(top.tasks["Sink"][0].args["in"].arg, west_fifo);
-    assert_eq!(top.tasks["Source"][1].args["out"].arg, east_fifo);
-    assert_eq!(top.tasks["Sink"][1].args["in"].arg, east_fifo);
+    assert_eq!(top.tasks["Source"][0].args["out"].name(), Some(west_fifo));
+    assert_eq!(top.tasks["Sink"][0].args["in"].name(), Some(west_fifo));
+    assert_eq!(top.tasks["Source"][1].args["out"].name(), Some(east_fifo));
+    assert_eq!(top.tasks["Sink"][1].args["in"].name(), Some(east_fifo));
 
     assert_eq!(
         top.fifos[west_fifo].produced_by,
@@ -320,7 +321,8 @@ fn flatten_resolves_indexed_stream_bundle_args_through_parent_binding() {
     let top = out.tasks.get("Outer").expect("top survives");
     let leaf = &top.tasks["Leaf"][0];
     assert_eq!(
-        leaf.args["pkt_in"].arg, "qs[7]_Outer",
+        leaf.args["pkt_in"].name(),
+        Some("qs[7]_Outer"),
         "leaf indexed stream arg must resolve through Stage.in_q[3] -> qs[7]"
     );
 

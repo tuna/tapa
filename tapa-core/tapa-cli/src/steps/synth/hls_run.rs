@@ -6,7 +6,7 @@ use rayon::prelude::*;
 use std::fs;
 use std::path::Path;
 
-use tapa_ir::{Design, SynthTarget};
+use tapa_ir::{ClockPeriod, Design, SynthTarget};
 use tapa_xilinx::{run_hls_with_retry, run_hls_with_retry_in_stage, HlsJob, HlsOutput, ToolRunner};
 
 use crate::error::{CliError, Result};
@@ -38,7 +38,7 @@ impl TaskHlsLayout {
 #[derive(Debug, Clone)]
 pub struct HlsRunOptions {
     pub part_num: String,
-    pub clock_period: String,
+    pub clock_period: ClockPeriod,
     pub other_configs: String,
     pub cflags: Vec<String>,
     pub skip_based_on_mtime: bool,
@@ -137,7 +137,7 @@ pub fn run_hls_for_leaves(
             .cflags(options.cflags.clone())
             .target_part(options.part_num.clone())
             .top_name(task_name.clone())
-            .clock_period(options.clock_period.clone())
+            .clock_period(options.clock_period.to_string())
             .reports_out_dir(layout.reports_dir.clone())
             .hdl_out_dir(layout.hdl_dir.clone())
             .other_configs(options.other_configs.clone())
@@ -335,7 +335,7 @@ mod tests {
                 synth: SynthTarget::Hls,
                 self_area: None,
                 total_area: None,
-                clock_period: "0".to_string(),
+                clock_period: None,
             },
         );
         Design {
@@ -385,7 +385,7 @@ mod tests {
 
         let opts = HlsRunOptions {
             part_num: "xcvu37p".to_string(),
-            clock_period: "3.33".to_string(),
+            clock_period: ClockPeriod::from_picoseconds(3330),
             other_configs: String::new(),
             cflags: Vec::new(),
             skip_based_on_mtime: true,
@@ -433,7 +433,7 @@ mod tests {
 
         let opts = HlsRunOptions {
             part_num: "xcvu37p".to_string(),
-            clock_period: "3.33".to_string(),
+            clock_period: ClockPeriod::from_picoseconds(3330),
             other_configs: String::new(),
             cflags: Vec::new(),
             skip_based_on_mtime: true,
@@ -474,7 +474,7 @@ mod tests {
 
         let opts = HlsRunOptions {
             part_num: "xcvu37p".to_string(),
-            clock_period: "3.33".to_string(),
+            clock_period: ClockPeriod::from_picoseconds(3330),
             other_configs: String::new(),
             cflags: Vec::new(),
             skip_based_on_mtime: true,

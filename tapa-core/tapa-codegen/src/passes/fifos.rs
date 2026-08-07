@@ -314,7 +314,7 @@ fn fifo_producer_for(
                 instance
                     .args
                     .iter()
-                    .find(|(_, arg)| arg.arg == fifo_name)
+                    .find(|(_, arg)| arg.name() == Some(fifo_name))
                     .map(|(port_name, _)| port_name.clone())
             });
         FifoProducer {

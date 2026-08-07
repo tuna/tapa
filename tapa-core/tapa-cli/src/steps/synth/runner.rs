@@ -5,7 +5,7 @@
 //! owns the unsupported-flag gating, the HLS cflag construction, and
 //! the recursive Verilog-file walker that feeds the codegen step.
 
-use tapa_ir::{Area, Task};
+use tapa_ir::{Area, ClockPeriod, Task};
 use tapa_xilinx::{CsynthReport, ToolRunner};
 
 use crate::context::CliContext;
@@ -37,7 +37,11 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
     let device = resolve_device_info(args)?;
     state.flow.part_num = Some(device.part_num.clone());
     state.flow.platform.clone_from(&args.platform);
-    state.flow.clock_period = Some(device.clock_period.clone());
+    // The vendor tools speak nanoseconds in text; this is the one place
+    // that reading becomes our own typed quantity.
+    let clock_period = ClockPeriod::from_nanoseconds_str(&device.clock_period)
+        .map_err(|error| CliError::InvalidArg(format!("invalid synthesis target: {error}")))?;
+    state.flow.clock_period = Some(clock_period);
     // A synthesis rerun may change RTL, area, device, or timing inputs. Make
     // every result derived from the previous RTL inactive before the long HLS
     // runs, so an interrupted rerun cannot be packed or floorplanned as if it
@@ -50,7 +54,7 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
 
     let opts = HlsRunOptions {
         part_num: device.part_num.clone(),
-        clock_period: device.clock_period.clone(),
+        clock_period,
         other_configs: args.other_hls_configs.clone(),
         cflags: build_hls_cflags(&state.graph.cflags, ctx.remote_config.is_some()),
         skip_based_on_mtime: args.skip_hls_based_on_mtime,
@@ -109,8 +113,13 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
 /// out-of-context synthesis or derived recursively from `self_area` by report
 /// and topology consumers.
 fn apply_hls_metrics(task_name: &str, task: &mut Task, report: &CsynthReport) -> Result<()> {
-    task.clock_period
-        .clone_from(&report.estimated_clock_period_ns);
+    task.clock_period = Some(
+        ClockPeriod::from_nanoseconds_str(&report.estimated_clock_period_ns).map_err(|error| {
+            CliError::Report(format!(
+                "HLS reported an unusable clock period for `{task_name}`: {error}"
+            ))
+        })?,
+    );
     let count = |resource: &str| -> Result<u64> {
         match report.area.get(resource) {
             // A resource the report omits is none of it used.
@@ -318,7 +327,7 @@ mod tests {
                 lut: 999,
                 ..Area::default()
             }),
-            clock_period: "9.99".to_string(),
+            clock_period: Some(ClockPeriod::from_picoseconds(9990)),
         };
         let report = CsynthReport {
             top: "Add".to_string(),
@@ -333,7 +342,7 @@ mod tests {
 
         apply_hls_metrics("Add", &mut task, &report).expect("apply metrics");
 
-        assert_eq!(task.clock_period, "1.25");
+        assert_eq!(task.clock_period, Some(ClockPeriod::from_picoseconds(1250)));
         let area = task.self_area.expect("self area");
         assert_eq!(area.lut, 42);
         assert_eq!(area.ff, 21);
@@ -364,7 +373,7 @@ mod tests {
                 synth: SynthTarget::Hls,
                 self_area: None,
                 total_area: None,
-                clock_period: "0".to_string(),
+                clock_period: None,
             },
         );
         let mut child_tasks = BTreeMap::new();
@@ -388,7 +397,7 @@ mod tests {
                 synth: SynthTarget::Hls,
                 self_area: None,
                 total_area: None,
-                clock_period: "3.33".to_string(),
+                clock_period: Some(ClockPeriod::from_picoseconds(3330)),
             },
         );
         let mut state = WorkState::new(TaskGraph {
@@ -465,7 +474,10 @@ mod tests {
             persisted.flow.part_num.as_deref(),
             Some("xcvu37p-fsvh2892-2L-e"),
         );
-        assert_eq!(persisted.flow.clock_period.as_deref(), Some("3.33"));
+        assert_eq!(
+            persisted.flow.clock_period,
+            Some(ClockPeriod::from_picoseconds(3330))
+        );
         assert_eq!(
             persisted.flow.platform, None,
             "no --platform was passed, so none must be recorded",
@@ -475,12 +487,13 @@ mod tests {
             Target::XilinxHls,
             "the flow target must survive synth's rewrite",
         );
-        assert_eq!(persisted.graph.tasks["Add"].clock_period, "1.0");
-        assert_eq!(persisted.graph.tasks["VecAdd"].clock_period, "1.0");
+        let one_ns = Some(ClockPeriod::from_picoseconds(1000));
+        assert_eq!(persisted.graph.tasks["Add"].clock_period, one_ns);
+        assert_eq!(persisted.graph.tasks["VecAdd"].clock_period, one_ns);
         let report: serde_json::Value = serde_json::from_str(
             &std::fs::read_to_string(work.join("report.json")).expect("read report"),
         )
         .expect("parse report");
-        assert_eq!(report["performance"]["clock_period"], "1.0");
+        assert_eq!(report["performance"]["clock_period"], "1");
     }
 }

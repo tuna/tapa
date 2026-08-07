@@ -165,7 +165,11 @@ TEST(InvokeParser, InstancesAndArgs) {
   EXPECT_EQ(adder.args.at("a").arg, "q1");
   EXPECT_EQ(adder.args.at("b").arg, "q2");
   EXPECT_EQ(adder.args.at("c").arg, "qc");
-  EXPECT_EQ(adder.args.at("n").arg, "64'd100");
+  // An integer constant leaves the frontend as a width and a value, not as
+  // Verilog text.
+  EXPECT_TRUE(adder.args.at("n").arg.empty());
+  EXPECT_EQ(adder.args.at("n").value, std::optional<uint64_t>(100));
+  EXPECT_EQ(adder.args.at("n").width, 64u);
   EXPECT_EQ(adder.args.at("n").cat, TapaKind::kNotTapa);
 
   ASSERT_EQ(top.instances.at("Consumer").size(), 1u);

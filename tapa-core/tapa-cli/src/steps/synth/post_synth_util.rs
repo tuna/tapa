@@ -257,6 +257,7 @@ fn get_metric_int(util: &UtilizationReport, key: &str) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tapa_ir::ClockPeriod;
 
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Condvar, Mutex};
@@ -301,7 +302,7 @@ mod tests {
                 synth: SynthTarget::Hls,
                 self_area: None,
                 total_area: None,
-                clock_period: "0".to_string(),
+                clock_period: None,
             },
         );
         let mut child_tasks = BTreeMap::new();
@@ -318,7 +319,7 @@ mod tests {
                 synth: SynthTarget::Hls,
                 self_area: None,
                 total_area: None,
-                clock_period: "3.33".to_string(),
+                clock_period: Some(ClockPeriod::from_picoseconds(3330)),
             },
         );
         Design {

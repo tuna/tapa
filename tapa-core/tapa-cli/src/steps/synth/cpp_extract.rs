@@ -82,7 +82,7 @@ mod tests {
                 synth: SynthTarget::Hls,
                 self_area: None,
                 total_area: None,
-                clock_period: "0".to_string(),
+                clock_period: None,
             },
         );
         let design = Design {
@@ -122,7 +122,7 @@ mod tests {
                 synth: SynthTarget::Hls,
                 self_area: None,
                 total_area: None,
-                clock_period: "0".to_string(),
+                clock_period: None,
             },
         );
         let design = Design {

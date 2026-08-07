@@ -69,7 +69,7 @@ fn task_graph(ports: Vec<Port>) -> TaskGraph {
             ports,
             tasks: BTreeMap::new(),
             fifos: BTreeMap::new(),
-            clock_period: String::new(),
+            clock_period: None,
             self_area: None,
             total_area: None,
         },
@@ -229,7 +229,7 @@ fn stamped_metadata_survives_the_archive_json_round_trip() {
     let json = r#"{
         "top": "K", "target": "xilinx-hls",
         "tasks": {"K": {"level": "lower", "code": "", "synth": "hls",
-            "readable_name": "K", "clock_period": "0",
+            "readable_name": "K",
             "ports": [
                 {"cat": "mmap", "name": "a", "type": "int*", "width": 512,
                  "mmap_addr_width": 64},
@@ -331,7 +331,7 @@ fn hmap_fans_out_when_read_from_archive_json() {
     let json = r#"{
         "top": "Gemv", "target": "xilinx-hls",
         "tasks": {"Gemv": {"level": "lower", "code": "", "synth": "hls",
-            "readable_name": "Gemv", "clock_period": "0",
+            "readable_name": "Gemv",
             "ports": [
                 {"cat": "mmap", "name": "mat_a", "type": "int*", "width": 512,
                  "chan_count": 2, "chan_size": 131072},
@@ -352,7 +352,7 @@ fn hmap_category_is_rejected_by_the_schema() {
     let json = r#"{
         "top": "Gemv", "target": "xilinx-hls",
         "tasks": {"Gemv": {"level": "lower", "code": "", "synth": "hls",
-            "readable_name": "Gemv", "clock_period": "0",
+            "readable_name": "Gemv",
             "ports": [
                 {"cat": "hmap", "name": "mat_a", "type": "int*", "width": 512,
                  "chan_count": 2, "chan_size": 131072}

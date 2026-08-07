@@ -288,24 +288,34 @@ pub(super) fn expected_memory_interfaces(
                 if !argument.cat.is_direct_mmap() {
                     continue;
                 }
+                let parent_port =
+                    argument
+                        .name()
+                        .ok_or_else(|| GraphError::UnsupportedMemoryInterface {
+                            port: child_port.clone(),
+                            detail: format!(
+                                "child endpoint `{instance_name}.{child_port}` binds a constant, \
+                             not a top-level mmap"
+                            ),
+                        })?;
 
                 let child = find_port(&task.ports, child_port).ok_or_else(|| {
                     GraphError::UnsupportedMemoryInterface {
-                        port: argument.arg.clone(),
+                        port: parent_port.to_owned(),
                         detail: format!(
                             "child endpoint `{instance_name}.{child_port}` has no port metadata"
                         ),
                     }
                 })?;
-                let parent = find_port(&top.ports, &argument.arg).ok_or_else(|| {
+                let parent = find_port(&top.ports, parent_port).ok_or_else(|| {
                     GraphError::UnsupportedMemoryInterface {
-                        port: argument.arg.clone(),
+                        port: parent_port.to_owned(),
                         detail: "top-level mmap port metadata is missing".to_string(),
                     }
                 })?;
                 if child.cat != argument.cat || parent.cat != tapa_ir::ArgCategory::Mmap {
                     return Err(GraphError::UnsupportedMemoryInterface {
-                        port: argument.arg.clone(),
+                        port: parent_port.to_owned(),
                         detail: format!(
                             "child binding category '{}' must match child metadata '{}' and connect to a plain top mmap",
                             argument.cat.as_str(),
@@ -319,7 +329,7 @@ pub(super) fn expected_memory_interfaces(
                     || parent.chan_size.is_some()
                 {
                     return Err(GraphError::UnsupportedMemoryInterface {
-                        port: argument.arg.clone(),
+                        port: parent_port.to_owned(),
                         detail: "hierarchical mmap channels are not modeled".to_string(),
                     });
                 }
@@ -327,10 +337,10 @@ pub(super) fn expected_memory_interfaces(
                 let endpoint = AxiEndpoint {
                     instance: instance_name.clone(),
                     port: child_port.clone(),
-                    top_port: argument.arg.clone(),
+                    top_port: parent_port.to_owned(),
                 };
                 top_port_users
-                    .entry(argument.arg.clone())
+                    .entry(parent_port.to_owned())
                     .or_default()
                     .push(format!("{instance_name}.{child_port}"));
                 expected.insert(

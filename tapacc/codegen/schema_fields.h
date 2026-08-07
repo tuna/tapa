@@ -20,7 +20,7 @@ inline constexpr const char* kFieldTasks = "tasks";
 // `tapa_ir::SCHEMA_VERSION`; the conformance test locks the pair, and
 // tapa-ir rejects graphs newer than it understands with a regenerate
 // message instead of a field-level misparse.
-inline constexpr int kSchemaVersion = 1;
+inline constexpr int kSchemaVersion = 2;
 
 // ── Task ────────────────────────────────────────────────────────────
 inline constexpr const char* kFieldCode = "code";
@@ -42,6 +42,7 @@ inline constexpr const char* kFieldChanSize = "chan_size";
 inline constexpr const char* kFieldStep = "step";
 inline constexpr const char* kFieldArgs = "args";
 inline constexpr const char* kFieldArg = "arg";
+inline constexpr const char* kFieldValue = "value";
 
 // ── FIFO / interconnect ─────────────────────────────────────────────
 inline constexpr const char* kFieldDepth = "depth";

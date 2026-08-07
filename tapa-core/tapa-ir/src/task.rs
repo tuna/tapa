@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::clock::ClockPeriod;
 use crate::floorplan::Area;
 use crate::instance::TaskInstance;
 use crate::interconnect::InterconnectDefinition;
@@ -48,10 +49,11 @@ pub struct Task {
     /// FIFO / interconnect definitions (upper tasks only).
     #[serde(default)]
     pub fifos: BTreeMap<String, InterconnectDefinition>,
-    /// Post-synthesis achieved clock-period estimate (seconds, stringified).
-    /// Seeded empty by analyze, written by synth, read by report.
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub clock_period: String,
+    /// Achieved clock-period estimate, as HLS reported it. `None` until a
+    /// synthesis step measures it — including for `synth: ignore` tasks,
+    /// which HLS never sees.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clock_period: Option<ClockPeriod>,
     /// This task's own area, as HLS reported it. Post-synthesis; `None`
     /// until a synthesis step annotates it.
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -175,6 +175,39 @@ fn test_generate_rtl_child_scalar_pipeline_preserves_width() {
     );
 }
 
+/// A scalar bound to a constant carries `{width, value}` from the frontend;
+/// the RTL backend is the only place that spells it as a Verilog literal.
+#[test]
+fn test_generate_rtl_child_scalar_constant_becomes_a_verilog_literal() {
+    let top = task("top", "upper", |t| {
+        t["tasks"] = serde_json::json!({
+            "child": [{"args": {"pe_id": {"arg": {"width": 32, "value": 7}, "cat": "scalar"}}}]
+        });
+    });
+    let child = task("child", "lower", |t| {
+        t["ports"] = serde_json::json!([
+            {"cat": "scalar", "name": "pe_id", "type": "uint32_t", "width": 32}
+        ]);
+    });
+    let prog = design("top", "xilinx-hls", &[("top", top), ("child", child)]);
+
+    let manifest = run_manifest(
+        prog,
+        &["top"],
+        &[(
+            "child",
+            "module child(\n\
+                 input wire ap_clk,\n\
+                 input wire ap_rst_n,\n\
+                 input wire [31:0] pe_id\n\
+                 );\nendmodule",
+        )],
+    );
+
+    let top_v = rtl_file(&manifest, "top.v");
+    check(top_v, &[".child_0__pe_id_in(32'd7)"], &["pe_id_in(7)"]);
+}
+
 #[test]
 fn test_generate_rtl_upper_output_regs_become_nets() {
     let top = task("top", "upper", |t| {

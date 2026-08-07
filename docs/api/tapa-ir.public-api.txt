@@ -1,4 +1,123 @@
 pub mod tapa_ir
+pub mod tapa_ir::clock
+pub enum tapa_ir::clock::ClockPeriodError
+pub tapa_ir::clock::ClockPeriodError::NotANumber(alloc::string::String)
+pub tapa_ir::clock::ClockPeriodError::OutOfRange(alloc::string::String)
+impl core::clone::Clone for tapa_ir::clock::ClockPeriodError
+pub fn tapa_ir::clock::ClockPeriodError::clone(&self) -> tapa_ir::clock::ClockPeriodError
+impl core::cmp::Eq for tapa_ir::clock::ClockPeriodError
+impl core::cmp::PartialEq for tapa_ir::clock::ClockPeriodError
+pub fn tapa_ir::clock::ClockPeriodError::eq(&self, &tapa_ir::clock::ClockPeriodError) -> bool
+impl core::error::Error for tapa_ir::clock::ClockPeriodError
+impl core::fmt::Debug for tapa_ir::clock::ClockPeriodError
+pub fn tapa_ir::clock::ClockPeriodError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tapa_ir::clock::ClockPeriodError
+pub fn tapa_ir::clock::ClockPeriodError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tapa_ir::clock::ClockPeriodError
+impl core::marker::Freeze for tapa_ir::clock::ClockPeriodError
+impl core::marker::Send for tapa_ir::clock::ClockPeriodError
+impl core::marker::Sync for tapa_ir::clock::ClockPeriodError
+impl core::marker::Unpin for tapa_ir::clock::ClockPeriodError
+impl core::marker::UnsafeUnpin for tapa_ir::clock::ClockPeriodError
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::clock::ClockPeriodError
+impl core::panic::unwind_safe::UnwindSafe for tapa_ir::clock::ClockPeriodError
+impl<Q, K> equivalent::Equivalent<K> for tapa_ir::clock::ClockPeriodError where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::clock::ClockPeriodError::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::clock::ClockPeriodError where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::clock::ClockPeriodError::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_ir::clock::ClockPeriodError where U: core::convert::From<T>
+pub fn tapa_ir::clock::ClockPeriodError::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_ir::clock::ClockPeriodError where U: core::convert::Into<T>
+pub type tapa_ir::clock::ClockPeriodError::Error = core::convert::Infallible
+pub fn tapa_ir::clock::ClockPeriodError::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_ir::clock::ClockPeriodError where U: core::convert::TryFrom<T>
+pub type tapa_ir::clock::ClockPeriodError::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_ir::clock::ClockPeriodError::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_ir::clock::ClockPeriodError where T: core::clone::Clone
+pub type tapa_ir::clock::ClockPeriodError::Owned = T
+pub fn tapa_ir::clock::ClockPeriodError::clone_into(&self, &mut T)
+pub fn tapa_ir::clock::ClockPeriodError::to_owned(&self) -> T
+impl<T> alloc::string::ToString for tapa_ir::clock::ClockPeriodError where T: core::fmt::Display + ?core::marker::Sized
+pub fn tapa_ir::clock::ClockPeriodError::to_string(&self) -> alloc::string::String
+impl<T> core::any::Any for tapa_ir::clock::ClockPeriodError where T: 'static + ?core::marker::Sized
+pub fn tapa_ir::clock::ClockPeriodError::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_ir::clock::ClockPeriodError where T: ?core::marker::Sized
+pub fn tapa_ir::clock::ClockPeriodError::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_ir::clock::ClockPeriodError where T: ?core::marker::Sized
+pub fn tapa_ir::clock::ClockPeriodError::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_ir::clock::ClockPeriodError where T: core::clone::Clone
+pub unsafe fn tapa_ir::clock::ClockPeriodError::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_ir::clock::ClockPeriodError
+pub fn tapa_ir::clock::ClockPeriodError::from(T) -> T
+pub struct tapa_ir::clock::ClockPeriod(_)
+impl tapa_ir::clock::ClockPeriod
+pub const tapa_ir::clock::ClockPeriod::ZERO: Self
+pub fn tapa_ir::clock::ClockPeriod::from_nanoseconds(f64) -> core::result::Result<Self, tapa_ir::clock::ClockPeriodError>
+pub fn tapa_ir::clock::ClockPeriod::from_nanoseconds_str(&str) -> core::result::Result<Self, tapa_ir::clock::ClockPeriodError>
+pub const fn tapa_ir::clock::ClockPeriod::from_picoseconds(u64) -> Self
+pub fn tapa_ir::clock::ClockPeriod::nanoseconds(self) -> f64
+pub const fn tapa_ir::clock::ClockPeriod::picoseconds(self) -> u64
+impl core::clone::Clone for tapa_ir::clock::ClockPeriod
+pub fn tapa_ir::clock::ClockPeriod::clone(&self) -> tapa_ir::clock::ClockPeriod
+impl core::cmp::Eq for tapa_ir::clock::ClockPeriod
+impl core::cmp::Ord for tapa_ir::clock::ClockPeriod
+pub fn tapa_ir::clock::ClockPeriod::cmp(&self, &tapa_ir::clock::ClockPeriod) -> core::cmp::Ordering
+impl core::cmp::PartialEq for tapa_ir::clock::ClockPeriod
+pub fn tapa_ir::clock::ClockPeriod::eq(&self, &tapa_ir::clock::ClockPeriod) -> bool
+impl core::cmp::PartialOrd for tapa_ir::clock::ClockPeriod
+pub fn tapa_ir::clock::ClockPeriod::partial_cmp(&self, &tapa_ir::clock::ClockPeriod) -> core::option::Option<core::cmp::Ordering>
+impl core::default::Default for tapa_ir::clock::ClockPeriod
+pub fn tapa_ir::clock::ClockPeriod::default() -> tapa_ir::clock::ClockPeriod
+impl core::fmt::Debug for tapa_ir::clock::ClockPeriod
+pub fn tapa_ir::clock::ClockPeriod::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tapa_ir::clock::ClockPeriod
+pub fn tapa_ir::clock::ClockPeriod::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tapa_ir::clock::ClockPeriod
+pub fn tapa_ir::clock::ClockPeriod::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tapa_ir::clock::ClockPeriod
+impl core::marker::StructuralPartialEq for tapa_ir::clock::ClockPeriod
+impl serde_core::ser::Serialize for tapa_ir::clock::ClockPeriod
+pub fn tapa_ir::clock::ClockPeriod::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tapa_ir::clock::ClockPeriod
+pub fn tapa_ir::clock::ClockPeriod::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tapa_ir::clock::ClockPeriod
+impl core::marker::Send for tapa_ir::clock::ClockPeriod
+impl core::marker::Sync for tapa_ir::clock::ClockPeriod
+impl core::marker::Unpin for tapa_ir::clock::ClockPeriod
+impl core::marker::UnsafeUnpin for tapa_ir::clock::ClockPeriod
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::clock::ClockPeriod
+impl core::panic::unwind_safe::UnwindSafe for tapa_ir::clock::ClockPeriod
+impl<Q, K> equivalent::Comparable<K> for tapa_ir::clock::ClockPeriod where Q: core::cmp::Ord + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::clock::ClockPeriod::compare(&self, &K) -> core::cmp::Ordering
+impl<Q, K> equivalent::Equivalent<K> for tapa_ir::clock::ClockPeriod where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::clock::ClockPeriod::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::clock::ClockPeriod where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::clock::ClockPeriod::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_ir::clock::ClockPeriod where U: core::convert::From<T>
+pub fn tapa_ir::clock::ClockPeriod::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_ir::clock::ClockPeriod where U: core::convert::Into<T>
+pub type tapa_ir::clock::ClockPeriod::Error = core::convert::Infallible
+pub fn tapa_ir::clock::ClockPeriod::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_ir::clock::ClockPeriod where U: core::convert::TryFrom<T>
+pub type tapa_ir::clock::ClockPeriod::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_ir::clock::ClockPeriod::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_ir::clock::ClockPeriod where T: core::clone::Clone
+pub type tapa_ir::clock::ClockPeriod::Owned = T
+pub fn tapa_ir::clock::ClockPeriod::clone_into(&self, &mut T)
+pub fn tapa_ir::clock::ClockPeriod::to_owned(&self) -> T
+impl<T> alloc::string::ToString for tapa_ir::clock::ClockPeriod where T: core::fmt::Display + ?core::marker::Sized
+pub fn tapa_ir::clock::ClockPeriod::to_string(&self) -> alloc::string::String
+impl<T> core::any::Any for tapa_ir::clock::ClockPeriod where T: 'static + ?core::marker::Sized
+pub fn tapa_ir::clock::ClockPeriod::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_ir::clock::ClockPeriod where T: ?core::marker::Sized
+pub fn tapa_ir::clock::ClockPeriod::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_ir::clock::ClockPeriod where T: ?core::marker::Sized
+pub fn tapa_ir::clock::ClockPeriod::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_ir::clock::ClockPeriod where T: core::clone::Clone
+pub unsafe fn tapa_ir::clock::ClockPeriod::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_ir::clock::ClockPeriod
+pub fn tapa_ir::clock::ClockPeriod::from(T) -> T
+impl<T> serde_core::de::DeserializeOwned for tapa_ir::clock::ClockPeriod where T: for<'de> serde_core::de::Deserialize<'de>
 pub mod tapa_ir::connectivity
 pub enum tapa_ir::connectivity::MemoryKind
 pub tapa_ir::connectivity::MemoryKind::Ddr
@@ -1021,9 +1140,63 @@ pub fn tapa_ir::graph::TaskGraph::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::graph::TaskGraph where T: for<'de> serde_core::de::Deserialize<'de>
 pub const tapa_ir::graph::SCHEMA_VERSION: u32
 pub mod tapa_ir::instance
+pub enum tapa_ir::instance::ArgSource
+pub tapa_ir::instance::ArgSource::Literal(tapa_ir::instance::WireValue)
+pub tapa_ir::instance::ArgSource::Name(alloc::string::String)
+impl tapa_ir::instance::ArgSource
+pub fn tapa_ir::instance::ArgSource::name(&self) -> core::option::Option<&str>
+impl core::clone::Clone for tapa_ir::instance::ArgSource
+pub fn tapa_ir::instance::ArgSource::clone(&self) -> tapa_ir::instance::ArgSource
+impl core::cmp::Eq for tapa_ir::instance::ArgSource
+impl core::cmp::PartialEq for tapa_ir::instance::ArgSource
+pub fn tapa_ir::instance::ArgSource::eq(&self, &tapa_ir::instance::ArgSource) -> bool
+impl core::fmt::Debug for tapa_ir::instance::ArgSource
+pub fn tapa_ir::instance::ArgSource::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tapa_ir::instance::ArgSource
+impl serde_core::ser::Serialize for tapa_ir::instance::ArgSource
+pub fn tapa_ir::instance::ArgSource::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tapa_ir::instance::ArgSource
+pub fn tapa_ir::instance::ArgSource::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tapa_ir::instance::ArgSource
+impl core::marker::Send for tapa_ir::instance::ArgSource
+impl core::marker::Sync for tapa_ir::instance::ArgSource
+impl core::marker::Unpin for tapa_ir::instance::ArgSource
+impl core::marker::UnsafeUnpin for tapa_ir::instance::ArgSource
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::instance::ArgSource
+impl core::panic::unwind_safe::UnwindSafe for tapa_ir::instance::ArgSource
+impl<Q, K> equivalent::Equivalent<K> for tapa_ir::instance::ArgSource where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::instance::ArgSource::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::instance::ArgSource where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::instance::ArgSource::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_ir::instance::ArgSource where U: core::convert::From<T>
+pub fn tapa_ir::instance::ArgSource::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_ir::instance::ArgSource where U: core::convert::Into<T>
+pub type tapa_ir::instance::ArgSource::Error = core::convert::Infallible
+pub fn tapa_ir::instance::ArgSource::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_ir::instance::ArgSource where U: core::convert::TryFrom<T>
+pub type tapa_ir::instance::ArgSource::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_ir::instance::ArgSource::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_ir::instance::ArgSource where T: core::clone::Clone
+pub type tapa_ir::instance::ArgSource::Owned = T
+pub fn tapa_ir::instance::ArgSource::clone_into(&self, &mut T)
+pub fn tapa_ir::instance::ArgSource::to_owned(&self) -> T
+impl<T> core::any::Any for tapa_ir::instance::ArgSource where T: 'static + ?core::marker::Sized
+pub fn tapa_ir::instance::ArgSource::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_ir::instance::ArgSource where T: ?core::marker::Sized
+pub fn tapa_ir::instance::ArgSource::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_ir::instance::ArgSource where T: ?core::marker::Sized
+pub fn tapa_ir::instance::ArgSource::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_ir::instance::ArgSource where T: core::clone::Clone
+pub unsafe fn tapa_ir::instance::ArgSource::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_ir::instance::ArgSource
+pub fn tapa_ir::instance::ArgSource::from(T) -> T
+impl<T> serde_core::de::DeserializeOwned for tapa_ir::instance::ArgSource where T: for<'de> serde_core::de::Deserialize<'de>
 pub struct tapa_ir::instance::Arg
-pub tapa_ir::instance::Arg::arg: alloc::string::String
+pub tapa_ir::instance::Arg::arg: tapa_ir::instance::ArgSource
 pub tapa_ir::instance::Arg::cat: tapa_ir::port::ArgCategory
+impl tapa_ir::instance::Arg
+pub fn tapa_ir::instance::Arg::name(&self) -> core::option::Option<&str>
+pub fn tapa_ir::instance::Arg::named(impl core::convert::Into<alloc::string::String>, tapa_ir::port::ArgCategory) -> Self
 impl core::clone::Clone for tapa_ir::instance::Arg
 pub fn tapa_ir::instance::Arg::clone(&self) -> tapa_ir::instance::Arg
 impl core::cmp::Eq for tapa_ir::instance::Arg
@@ -1122,6 +1295,60 @@ pub unsafe fn tapa_ir::instance::TaskInstance::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_ir::instance::TaskInstance
 pub fn tapa_ir::instance::TaskInstance::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::instance::TaskInstance where T: for<'de> serde_core::de::Deserialize<'de>
+pub struct tapa_ir::instance::WireValue
+pub tapa_ir::instance::WireValue::value: u64
+pub tapa_ir::instance::WireValue::width: u32
+impl core::clone::Clone for tapa_ir::instance::WireValue
+pub fn tapa_ir::instance::WireValue::clone(&self) -> tapa_ir::instance::WireValue
+impl core::cmp::Eq for tapa_ir::instance::WireValue
+impl core::cmp::PartialEq for tapa_ir::instance::WireValue
+pub fn tapa_ir::instance::WireValue::eq(&self, &tapa_ir::instance::WireValue) -> bool
+impl core::fmt::Debug for tapa_ir::instance::WireValue
+pub fn tapa_ir::instance::WireValue::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tapa_ir::instance::WireValue
+pub fn tapa_ir::instance::WireValue::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tapa_ir::instance::WireValue
+impl core::marker::StructuralPartialEq for tapa_ir::instance::WireValue
+impl serde_core::ser::Serialize for tapa_ir::instance::WireValue
+pub fn tapa_ir::instance::WireValue::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tapa_ir::instance::WireValue
+pub fn tapa_ir::instance::WireValue::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tapa_ir::instance::WireValue
+impl core::marker::Send for tapa_ir::instance::WireValue
+impl core::marker::Sync for tapa_ir::instance::WireValue
+impl core::marker::Unpin for tapa_ir::instance::WireValue
+impl core::marker::UnsafeUnpin for tapa_ir::instance::WireValue
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::instance::WireValue
+impl core::panic::unwind_safe::UnwindSafe for tapa_ir::instance::WireValue
+impl<Q, K> equivalent::Equivalent<K> for tapa_ir::instance::WireValue where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::instance::WireValue::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::instance::WireValue where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::instance::WireValue::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_ir::instance::WireValue where U: core::convert::From<T>
+pub fn tapa_ir::instance::WireValue::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_ir::instance::WireValue where U: core::convert::Into<T>
+pub type tapa_ir::instance::WireValue::Error = core::convert::Infallible
+pub fn tapa_ir::instance::WireValue::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_ir::instance::WireValue where U: core::convert::TryFrom<T>
+pub type tapa_ir::instance::WireValue::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_ir::instance::WireValue::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_ir::instance::WireValue where T: core::clone::Clone
+pub type tapa_ir::instance::WireValue::Owned = T
+pub fn tapa_ir::instance::WireValue::clone_into(&self, &mut T)
+pub fn tapa_ir::instance::WireValue::to_owned(&self) -> T
+impl<T> alloc::string::ToString for tapa_ir::instance::WireValue where T: core::fmt::Display + ?core::marker::Sized
+pub fn tapa_ir::instance::WireValue::to_string(&self) -> alloc::string::String
+impl<T> core::any::Any for tapa_ir::instance::WireValue where T: 'static + ?core::marker::Sized
+pub fn tapa_ir::instance::WireValue::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_ir::instance::WireValue where T: ?core::marker::Sized
+pub fn tapa_ir::instance::WireValue::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_ir::instance::WireValue where T: ?core::marker::Sized
+pub fn tapa_ir::instance::WireValue::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_ir::instance::WireValue where T: core::clone::Clone
+pub unsafe fn tapa_ir::instance::WireValue::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_ir::instance::WireValue
+pub fn tapa_ir::instance::WireValue::from(T) -> T
+impl<T> serde_core::de::DeserializeOwned for tapa_ir::instance::WireValue where T: for<'de> serde_core::de::Deserialize<'de>
 pub mod tapa_ir::interconnect
 pub struct tapa_ir::interconnect::EndpointRef(pub alloc::string::String, pub u32)
 impl core::clone::Clone for tapa_ir::interconnect::EndpointRef
@@ -1521,7 +1748,7 @@ impl<T> core::convert::From<T> for tapa_ir::task::TaskLevel
 pub fn tapa_ir::task::TaskLevel::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::task::TaskLevel where T: for<'de> serde_core::de::Deserialize<'de>
 pub struct tapa_ir::task::Task
-pub tapa_ir::task::Task::clock_period: alloc::string::String
+pub tapa_ir::task::Task::clock_period: core::option::Option<tapa_ir::clock::ClockPeriod>
 pub tapa_ir::task::Task::code: alloc::string::String
 pub tapa_ir::task::Task::fifos: alloc::collections::btree::map::BTreeMap<alloc::string::String, tapa_ir::interconnect::InterconnectDefinition>
 pub tapa_ir::task::Task::level: tapa_ir::task::TaskLevel
@@ -1614,7 +1841,7 @@ pub fn tapa_ir::transforms::TransformError::from(T) -> T
 pub fn tapa_ir::transforms::flatten(&tapa_ir::graph::TaskGraph) -> core::result::Result<tapa_ir::graph::TaskGraph, tapa_ir::transforms::TransformError>
 pub mod tapa_ir::work_state
 pub struct tapa_ir::work_state::FlowSettings
-pub tapa_ir::work_state::FlowSettings::clock_period: core::option::Option<alloc::string::String>
+pub tapa_ir::work_state::FlowSettings::clock_period: core::option::Option<tapa_ir::clock::ClockPeriod>
 pub tapa_ir::work_state::FlowSettings::part_num: core::option::Option<alloc::string::String>
 pub tapa_ir::work_state::FlowSettings::platform: core::option::Option<alloc::string::String>
 pub tapa_ir::work_state::FlowSettings::synthed: bool
@@ -1794,6 +2021,57 @@ pub unsafe fn tapa_ir::port::ArgCategory::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_ir::port::ArgCategory
 pub fn tapa_ir::port::ArgCategory::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::port::ArgCategory where T: for<'de> serde_core::de::Deserialize<'de>
+pub enum tapa_ir::ArgSource
+pub tapa_ir::ArgSource::Literal(tapa_ir::instance::WireValue)
+pub tapa_ir::ArgSource::Name(alloc::string::String)
+impl tapa_ir::instance::ArgSource
+pub fn tapa_ir::instance::ArgSource::name(&self) -> core::option::Option<&str>
+impl core::clone::Clone for tapa_ir::instance::ArgSource
+pub fn tapa_ir::instance::ArgSource::clone(&self) -> tapa_ir::instance::ArgSource
+impl core::cmp::Eq for tapa_ir::instance::ArgSource
+impl core::cmp::PartialEq for tapa_ir::instance::ArgSource
+pub fn tapa_ir::instance::ArgSource::eq(&self, &tapa_ir::instance::ArgSource) -> bool
+impl core::fmt::Debug for tapa_ir::instance::ArgSource
+pub fn tapa_ir::instance::ArgSource::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tapa_ir::instance::ArgSource
+impl serde_core::ser::Serialize for tapa_ir::instance::ArgSource
+pub fn tapa_ir::instance::ArgSource::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tapa_ir::instance::ArgSource
+pub fn tapa_ir::instance::ArgSource::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tapa_ir::instance::ArgSource
+impl core::marker::Send for tapa_ir::instance::ArgSource
+impl core::marker::Sync for tapa_ir::instance::ArgSource
+impl core::marker::Unpin for tapa_ir::instance::ArgSource
+impl core::marker::UnsafeUnpin for tapa_ir::instance::ArgSource
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::instance::ArgSource
+impl core::panic::unwind_safe::UnwindSafe for tapa_ir::instance::ArgSource
+impl<Q, K> equivalent::Equivalent<K> for tapa_ir::instance::ArgSource where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::instance::ArgSource::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::instance::ArgSource where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::instance::ArgSource::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_ir::instance::ArgSource where U: core::convert::From<T>
+pub fn tapa_ir::instance::ArgSource::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_ir::instance::ArgSource where U: core::convert::Into<T>
+pub type tapa_ir::instance::ArgSource::Error = core::convert::Infallible
+pub fn tapa_ir::instance::ArgSource::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_ir::instance::ArgSource where U: core::convert::TryFrom<T>
+pub type tapa_ir::instance::ArgSource::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_ir::instance::ArgSource::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_ir::instance::ArgSource where T: core::clone::Clone
+pub type tapa_ir::instance::ArgSource::Owned = T
+pub fn tapa_ir::instance::ArgSource::clone_into(&self, &mut T)
+pub fn tapa_ir::instance::ArgSource::to_owned(&self) -> T
+impl<T> core::any::Any for tapa_ir::instance::ArgSource where T: 'static + ?core::marker::Sized
+pub fn tapa_ir::instance::ArgSource::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_ir::instance::ArgSource where T: ?core::marker::Sized
+pub fn tapa_ir::instance::ArgSource::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_ir::instance::ArgSource where T: ?core::marker::Sized
+pub fn tapa_ir::instance::ArgSource::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_ir::instance::ArgSource where T: core::clone::Clone
+pub unsafe fn tapa_ir::instance::ArgSource::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_ir::instance::ArgSource
+pub fn tapa_ir::instance::ArgSource::from(T) -> T
+impl<T> serde_core::de::DeserializeOwned for tapa_ir::instance::ArgSource where T: for<'de> serde_core::de::Deserialize<'de>
 pub enum tapa_ir::AxiChannel
 pub tapa_ir::AxiChannel::ReadAddress
 pub tapa_ir::AxiChannel::ReadData
@@ -1857,6 +2135,55 @@ pub unsafe fn tapa_ir::floorplan::AxiChannel::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_ir::floorplan::AxiChannel
 pub fn tapa_ir::floorplan::AxiChannel::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::floorplan::AxiChannel where T: for<'de> serde_core::de::Deserialize<'de>
+pub enum tapa_ir::ClockPeriodError
+pub tapa_ir::ClockPeriodError::NotANumber(alloc::string::String)
+pub tapa_ir::ClockPeriodError::OutOfRange(alloc::string::String)
+impl core::clone::Clone for tapa_ir::clock::ClockPeriodError
+pub fn tapa_ir::clock::ClockPeriodError::clone(&self) -> tapa_ir::clock::ClockPeriodError
+impl core::cmp::Eq for tapa_ir::clock::ClockPeriodError
+impl core::cmp::PartialEq for tapa_ir::clock::ClockPeriodError
+pub fn tapa_ir::clock::ClockPeriodError::eq(&self, &tapa_ir::clock::ClockPeriodError) -> bool
+impl core::error::Error for tapa_ir::clock::ClockPeriodError
+impl core::fmt::Debug for tapa_ir::clock::ClockPeriodError
+pub fn tapa_ir::clock::ClockPeriodError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tapa_ir::clock::ClockPeriodError
+pub fn tapa_ir::clock::ClockPeriodError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tapa_ir::clock::ClockPeriodError
+impl core::marker::Freeze for tapa_ir::clock::ClockPeriodError
+impl core::marker::Send for tapa_ir::clock::ClockPeriodError
+impl core::marker::Sync for tapa_ir::clock::ClockPeriodError
+impl core::marker::Unpin for tapa_ir::clock::ClockPeriodError
+impl core::marker::UnsafeUnpin for tapa_ir::clock::ClockPeriodError
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::clock::ClockPeriodError
+impl core::panic::unwind_safe::UnwindSafe for tapa_ir::clock::ClockPeriodError
+impl<Q, K> equivalent::Equivalent<K> for tapa_ir::clock::ClockPeriodError where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::clock::ClockPeriodError::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::clock::ClockPeriodError where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::clock::ClockPeriodError::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_ir::clock::ClockPeriodError where U: core::convert::From<T>
+pub fn tapa_ir::clock::ClockPeriodError::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_ir::clock::ClockPeriodError where U: core::convert::Into<T>
+pub type tapa_ir::clock::ClockPeriodError::Error = core::convert::Infallible
+pub fn tapa_ir::clock::ClockPeriodError::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_ir::clock::ClockPeriodError where U: core::convert::TryFrom<T>
+pub type tapa_ir::clock::ClockPeriodError::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_ir::clock::ClockPeriodError::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_ir::clock::ClockPeriodError where T: core::clone::Clone
+pub type tapa_ir::clock::ClockPeriodError::Owned = T
+pub fn tapa_ir::clock::ClockPeriodError::clone_into(&self, &mut T)
+pub fn tapa_ir::clock::ClockPeriodError::to_owned(&self) -> T
+impl<T> alloc::string::ToString for tapa_ir::clock::ClockPeriodError where T: core::fmt::Display + ?core::marker::Sized
+pub fn tapa_ir::clock::ClockPeriodError::to_string(&self) -> alloc::string::String
+impl<T> core::any::Any for tapa_ir::clock::ClockPeriodError where T: 'static + ?core::marker::Sized
+pub fn tapa_ir::clock::ClockPeriodError::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_ir::clock::ClockPeriodError where T: ?core::marker::Sized
+pub fn tapa_ir::clock::ClockPeriodError::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_ir::clock::ClockPeriodError where T: ?core::marker::Sized
+pub fn tapa_ir::clock::ClockPeriodError::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_ir::clock::ClockPeriodError where T: core::clone::Clone
+pub unsafe fn tapa_ir::clock::ClockPeriodError::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_ir::clock::ClockPeriodError
+pub fn tapa_ir::clock::ClockPeriodError::from(T) -> T
 pub enum tapa_ir::ControlChannel
 pub tapa_ir::ControlChannel::Completion
 pub tapa_ir::ControlChannel::Launch
@@ -2379,8 +2706,11 @@ impl<T> core::convert::From<T> for tapa_ir::floorplan::Area
 pub fn tapa_ir::floorplan::Area::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::floorplan::Area where T: for<'de> serde_core::de::Deserialize<'de>
 pub struct tapa_ir::Arg
-pub tapa_ir::Arg::arg: alloc::string::String
+pub tapa_ir::Arg::arg: tapa_ir::instance::ArgSource
 pub tapa_ir::Arg::cat: tapa_ir::port::ArgCategory
+impl tapa_ir::instance::Arg
+pub fn tapa_ir::instance::Arg::name(&self) -> core::option::Option<&str>
+pub fn tapa_ir::instance::Arg::named(impl core::convert::Into<alloc::string::String>, tapa_ir::port::ArgCategory) -> Self
 impl core::clone::Clone for tapa_ir::instance::Arg
 pub fn tapa_ir::instance::Arg::clone(&self) -> tapa_ir::instance::Arg
 impl core::cmp::Eq for tapa_ir::instance::Arg
@@ -2537,6 +2867,75 @@ pub unsafe fn tapa_ir::floorplan::AxiEndpoint::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_ir::floorplan::AxiEndpoint
 pub fn tapa_ir::floorplan::AxiEndpoint::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::floorplan::AxiEndpoint where T: for<'de> serde_core::de::Deserialize<'de>
+pub struct tapa_ir::ClockPeriod(_)
+impl tapa_ir::clock::ClockPeriod
+pub const tapa_ir::clock::ClockPeriod::ZERO: Self
+pub fn tapa_ir::clock::ClockPeriod::from_nanoseconds(f64) -> core::result::Result<Self, tapa_ir::clock::ClockPeriodError>
+pub fn tapa_ir::clock::ClockPeriod::from_nanoseconds_str(&str) -> core::result::Result<Self, tapa_ir::clock::ClockPeriodError>
+pub const fn tapa_ir::clock::ClockPeriod::from_picoseconds(u64) -> Self
+pub fn tapa_ir::clock::ClockPeriod::nanoseconds(self) -> f64
+pub const fn tapa_ir::clock::ClockPeriod::picoseconds(self) -> u64
+impl core::clone::Clone for tapa_ir::clock::ClockPeriod
+pub fn tapa_ir::clock::ClockPeriod::clone(&self) -> tapa_ir::clock::ClockPeriod
+impl core::cmp::Eq for tapa_ir::clock::ClockPeriod
+impl core::cmp::Ord for tapa_ir::clock::ClockPeriod
+pub fn tapa_ir::clock::ClockPeriod::cmp(&self, &tapa_ir::clock::ClockPeriod) -> core::cmp::Ordering
+impl core::cmp::PartialEq for tapa_ir::clock::ClockPeriod
+pub fn tapa_ir::clock::ClockPeriod::eq(&self, &tapa_ir::clock::ClockPeriod) -> bool
+impl core::cmp::PartialOrd for tapa_ir::clock::ClockPeriod
+pub fn tapa_ir::clock::ClockPeriod::partial_cmp(&self, &tapa_ir::clock::ClockPeriod) -> core::option::Option<core::cmp::Ordering>
+impl core::default::Default for tapa_ir::clock::ClockPeriod
+pub fn tapa_ir::clock::ClockPeriod::default() -> tapa_ir::clock::ClockPeriod
+impl core::fmt::Debug for tapa_ir::clock::ClockPeriod
+pub fn tapa_ir::clock::ClockPeriod::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tapa_ir::clock::ClockPeriod
+pub fn tapa_ir::clock::ClockPeriod::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tapa_ir::clock::ClockPeriod
+pub fn tapa_ir::clock::ClockPeriod::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tapa_ir::clock::ClockPeriod
+impl core::marker::StructuralPartialEq for tapa_ir::clock::ClockPeriod
+impl serde_core::ser::Serialize for tapa_ir::clock::ClockPeriod
+pub fn tapa_ir::clock::ClockPeriod::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tapa_ir::clock::ClockPeriod
+pub fn tapa_ir::clock::ClockPeriod::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tapa_ir::clock::ClockPeriod
+impl core::marker::Send for tapa_ir::clock::ClockPeriod
+impl core::marker::Sync for tapa_ir::clock::ClockPeriod
+impl core::marker::Unpin for tapa_ir::clock::ClockPeriod
+impl core::marker::UnsafeUnpin for tapa_ir::clock::ClockPeriod
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::clock::ClockPeriod
+impl core::panic::unwind_safe::UnwindSafe for tapa_ir::clock::ClockPeriod
+impl<Q, K> equivalent::Comparable<K> for tapa_ir::clock::ClockPeriod where Q: core::cmp::Ord + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::clock::ClockPeriod::compare(&self, &K) -> core::cmp::Ordering
+impl<Q, K> equivalent::Equivalent<K> for tapa_ir::clock::ClockPeriod where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::clock::ClockPeriod::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::clock::ClockPeriod where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::clock::ClockPeriod::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_ir::clock::ClockPeriod where U: core::convert::From<T>
+pub fn tapa_ir::clock::ClockPeriod::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_ir::clock::ClockPeriod where U: core::convert::Into<T>
+pub type tapa_ir::clock::ClockPeriod::Error = core::convert::Infallible
+pub fn tapa_ir::clock::ClockPeriod::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_ir::clock::ClockPeriod where U: core::convert::TryFrom<T>
+pub type tapa_ir::clock::ClockPeriod::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_ir::clock::ClockPeriod::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_ir::clock::ClockPeriod where T: core::clone::Clone
+pub type tapa_ir::clock::ClockPeriod::Owned = T
+pub fn tapa_ir::clock::ClockPeriod::clone_into(&self, &mut T)
+pub fn tapa_ir::clock::ClockPeriod::to_owned(&self) -> T
+impl<T> alloc::string::ToString for tapa_ir::clock::ClockPeriod where T: core::fmt::Display + ?core::marker::Sized
+pub fn tapa_ir::clock::ClockPeriod::to_string(&self) -> alloc::string::String
+impl<T> core::any::Any for tapa_ir::clock::ClockPeriod where T: 'static + ?core::marker::Sized
+pub fn tapa_ir::clock::ClockPeriod::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_ir::clock::ClockPeriod where T: ?core::marker::Sized
+pub fn tapa_ir::clock::ClockPeriod::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_ir::clock::ClockPeriod where T: ?core::marker::Sized
+pub fn tapa_ir::clock::ClockPeriod::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_ir::clock::ClockPeriod where T: core::clone::Clone
+pub unsafe fn tapa_ir::clock::ClockPeriod::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_ir::clock::ClockPeriod
+pub fn tapa_ir::clock::ClockPeriod::from(T) -> T
+impl<T> serde_core::de::DeserializeOwned for tapa_ir::clock::ClockPeriod where T: for<'de> serde_core::de::Deserialize<'de>
 pub struct tapa_ir::Coor
 pub tapa_ir::Coor::dl_x: u32
 pub tapa_ir::Coor::dl_y: u32
@@ -2811,7 +3210,7 @@ impl<T> core::convert::From<T> for tapa_ir::floorplan::FloorplanResult
 pub fn tapa_ir::floorplan::FloorplanResult::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::floorplan::FloorplanResult where T: for<'de> serde_core::de::Deserialize<'de>
 pub struct tapa_ir::FlowSettings
-pub tapa_ir::FlowSettings::clock_period: core::option::Option<alloc::string::String>
+pub tapa_ir::FlowSettings::clock_period: core::option::Option<tapa_ir::clock::ClockPeriod>
 pub tapa_ir::FlowSettings::part_num: core::option::Option<alloc::string::String>
 pub tapa_ir::FlowSettings::platform: core::option::Option<alloc::string::String>
 pub tapa_ir::FlowSettings::synthed: bool
@@ -3301,7 +3700,7 @@ impl<T> core::convert::From<T> for tapa_ir::port::Port
 pub fn tapa_ir::port::Port::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::port::Port where T: for<'de> serde_core::de::Deserialize<'de>
 pub struct tapa_ir::Task
-pub tapa_ir::Task::clock_period: alloc::string::String
+pub tapa_ir::Task::clock_period: core::option::Option<tapa_ir::clock::ClockPeriod>
 pub tapa_ir::Task::code: alloc::string::String
 pub tapa_ir::Task::fifos: alloc::collections::btree::map::BTreeMap<alloc::string::String, tapa_ir::interconnect::InterconnectDefinition>
 pub tapa_ir::Task::level: tapa_ir::task::TaskLevel
@@ -3459,6 +3858,60 @@ pub unsafe fn tapa_ir::instance::TaskInstance::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_ir::instance::TaskInstance
 pub fn tapa_ir::instance::TaskInstance::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::instance::TaskInstance where T: for<'de> serde_core::de::Deserialize<'de>
+pub struct tapa_ir::WireValue
+pub tapa_ir::WireValue::value: u64
+pub tapa_ir::WireValue::width: u32
+impl core::clone::Clone for tapa_ir::instance::WireValue
+pub fn tapa_ir::instance::WireValue::clone(&self) -> tapa_ir::instance::WireValue
+impl core::cmp::Eq for tapa_ir::instance::WireValue
+impl core::cmp::PartialEq for tapa_ir::instance::WireValue
+pub fn tapa_ir::instance::WireValue::eq(&self, &tapa_ir::instance::WireValue) -> bool
+impl core::fmt::Debug for tapa_ir::instance::WireValue
+pub fn tapa_ir::instance::WireValue::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tapa_ir::instance::WireValue
+pub fn tapa_ir::instance::WireValue::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tapa_ir::instance::WireValue
+impl core::marker::StructuralPartialEq for tapa_ir::instance::WireValue
+impl serde_core::ser::Serialize for tapa_ir::instance::WireValue
+pub fn tapa_ir::instance::WireValue::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tapa_ir::instance::WireValue
+pub fn tapa_ir::instance::WireValue::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tapa_ir::instance::WireValue
+impl core::marker::Send for tapa_ir::instance::WireValue
+impl core::marker::Sync for tapa_ir::instance::WireValue
+impl core::marker::Unpin for tapa_ir::instance::WireValue
+impl core::marker::UnsafeUnpin for tapa_ir::instance::WireValue
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::instance::WireValue
+impl core::panic::unwind_safe::UnwindSafe for tapa_ir::instance::WireValue
+impl<Q, K> equivalent::Equivalent<K> for tapa_ir::instance::WireValue where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::instance::WireValue::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::instance::WireValue where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::instance::WireValue::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_ir::instance::WireValue where U: core::convert::From<T>
+pub fn tapa_ir::instance::WireValue::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_ir::instance::WireValue where U: core::convert::Into<T>
+pub type tapa_ir::instance::WireValue::Error = core::convert::Infallible
+pub fn tapa_ir::instance::WireValue::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_ir::instance::WireValue where U: core::convert::TryFrom<T>
+pub type tapa_ir::instance::WireValue::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_ir::instance::WireValue::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_ir::instance::WireValue where T: core::clone::Clone
+pub type tapa_ir::instance::WireValue::Owned = T
+pub fn tapa_ir::instance::WireValue::clone_into(&self, &mut T)
+pub fn tapa_ir::instance::WireValue::to_owned(&self) -> T
+impl<T> alloc::string::ToString for tapa_ir::instance::WireValue where T: core::fmt::Display + ?core::marker::Sized
+pub fn tapa_ir::instance::WireValue::to_string(&self) -> alloc::string::String
+impl<T> core::any::Any for tapa_ir::instance::WireValue where T: 'static + ?core::marker::Sized
+pub fn tapa_ir::instance::WireValue::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_ir::instance::WireValue where T: ?core::marker::Sized
+pub fn tapa_ir::instance::WireValue::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_ir::instance::WireValue where T: ?core::marker::Sized
+pub fn tapa_ir::instance::WireValue::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_ir::instance::WireValue where T: core::clone::Clone
+pub unsafe fn tapa_ir::instance::WireValue::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_ir::instance::WireValue
+pub fn tapa_ir::instance::WireValue::from(T) -> T
+impl<T> serde_core::de::DeserializeOwned for tapa_ir::instance::WireValue where T: for<'de> serde_core::de::Deserialize<'de>
 pub struct tapa_ir::WorkState
 pub tapa_ir::WorkState::floorplan: core::option::Option<tapa_ir::floorplan::FloorplanResult>
 pub tapa_ir::WorkState::flow: tapa_ir::work_state::FlowSettings

@@ -264,6 +264,8 @@ void ParseInvocations(UpperTaskContext& uc, const clang::Expr* task_obj) {
             !decl_ref && !op_call && !is_seq && as_int.has_value();
 
         std::string arg_name;
+        // Set instead of `arg_name` when the argument is an integer constant.
+        std::optional<uint64_t> arg_value;
         if (decl_ref != nullptr) {
           arg_name = decl_ref->getNameInfo().getAsString();
         } else if (op_call != nullptr) {
@@ -274,7 +276,7 @@ void ParseInvocations(UpperTaskContext& uc, const clang::Expr* task_obj) {
             arg_name = ArrayNameAt(base->getNameInfo().getAsString(), idx);
           }
         } else if (is_int_literal) {
-          arg_name = "64'd" + std::to_string(static_cast<uint64_t>(*as_int));
+          arg_value = static_cast<uint64_t>(*as_int);
         }
 
         if (decl_ref != nullptr || op_call != nullptr || is_int_literal ||
@@ -307,7 +309,12 @@ void ParseInvocations(UpperTaskContext& uc, const clang::Expr* task_obj) {
 
           auto set_arg = [&](const std::string& a, const std::string& p,
                              TapaKind cat) {
-            insts.back().args[p] = Arg{a, cat};
+            insts.back().args[p] = Arg::Named(a, cat);
+          };
+          // Scalars are the only bindings that can be a constant. 64 bits
+          // matches the width the RTL backend has always given these.
+          auto set_const = [&](uint64_t v, const std::string& p) {
+            insts.back().args[p] = Arg::Constant(v, 64, TapaKind::kNotTapa);
           };
 
           if (pk == TapaKind::kMmap || pk == TapaKind::kImmap ||
@@ -341,8 +348,9 @@ void ParseInvocations(UpperTaskContext& uc, const clang::Expr* task_obj) {
               set_arg(a, ArrayNameAt(port, j), TapaKind::kOStream);
             }
           } else if (is_seq) {
-            set_arg("64'd" + std::to_string(seq_pos[arg]++), port,
-                    TapaKind::kNotTapa);
+            set_const(seq_pos[arg]++, port);
+          } else if (arg_value) {
+            set_const(*arg_value, port);
           } else {
             set_arg(arg_name, port, TapaKind::kNotTapa);  // scalar
           }

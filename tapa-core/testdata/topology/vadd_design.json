@@ -2,7 +2,7 @@
     "target": "xilinx-hls",
     "tasks": {
         "Add": {
-            "clock_period": "3.125",
+            "clock_period": 3125,
             "code": "void Add() {}",
             "fifos": {},
             "level": "lower",
@@ -47,7 +47,7 @@
             }
         },
         "Mmap2Stream": {
-            "clock_period": "2.342",
+            "clock_period": 2342,
             "code": "void Mmap2Stream() {}",
             "fifos": {},
             "level": "lower",
@@ -78,7 +78,6 @@
             }
         },
         "Stream2Mmap": {
-            "clock_period": "0",
             "code": "void Stream2Mmap() {}",
             "fifos": {},
             "level": "lower",
@@ -103,7 +102,6 @@
             "total_area": {}
         },
         "VecAdd": {
-            "clock_period": "0",
             "code": "void VecAdd() {}",
             "fifos": {
                 "a_q": {

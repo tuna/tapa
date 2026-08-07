@@ -553,7 +553,11 @@ pub(super) fn index_fifo_arg_widths(
                 let Some(width) = port_width(flat, def_name, port_name) else {
                     continue;
                 };
-                let entry = index.entry(arg.arg.clone()).or_default();
+                // Streams always bind to a named FIFO, never to a constant.
+                let Some(fifo) = arg.name() else {
+                    continue;
+                };
+                let entry = index.entry(fifo.to_owned()).or_default();
                 let side = if arg.cat.is_output_stream() {
                     &mut entry.producer
                 } else {

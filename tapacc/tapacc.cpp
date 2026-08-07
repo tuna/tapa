@@ -89,7 +89,12 @@ nlohmann::json InstanceJson(const Instance& inst) {
   if (inst.name) j[kFieldName] = *inst.name;
   j[kFieldArgs] = nlohmann::json::object();
   for (const auto& [port, arg] : inst.args) {
-    j[kFieldArgs][port] = {{kFieldArg, arg.arg},
+    // A name serializes as a string; a constant as {width, value}, leaving
+    // the Verilog spelling to the RTL backend.
+    nlohmann::json bound = arg.value ? nlohmann::json{{kFieldWidth, arg.width},
+                                                      {kFieldValue, *arg.value}}
+                                     : nlohmann::json(arg.arg);
+    j[kFieldArgs][port] = {{kFieldArg, std::move(bound)},
                            {kFieldCat, TapaKindCat(arg.cat)}};
   }
   return j;

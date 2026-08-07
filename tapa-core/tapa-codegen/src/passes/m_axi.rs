@@ -502,19 +502,22 @@ pub(crate) fn add_crossbar_slave_id_padding(
         if !arg.cat.is_direct_mmap() {
             continue;
         }
-        let Some(slave_idx) = mmap_bindings.slave_index(&arg.arg) else {
+        let Some(parent) = arg.name() else {
             continue;
         };
-        let Some(target_width) = mmap_bindings.wire_id_width(&arg.arg) else {
+        let Some(slave_idx) = mmap_bindings.slave_index(parent) else {
             continue;
         };
-        let Some(child_width) = mmap_bindings.child_id_width(&arg.arg) else {
+        let Some(target_width) = mmap_bindings.wire_id_width(parent) else {
+            continue;
+        };
+        let Some(child_width) = mmap_bindings.child_id_width(parent) else {
             continue;
         };
         if child_width >= target_width {
             continue;
         }
-        let wire_prefix = crossbar_slave_prefix(&arg.arg, slave_idx);
+        let wire_prefix = crossbar_slave_prefix(parent, slave_idx);
         for suffix in ["_ARID", "_AWID"] {
             let wire_name = format!("{wire_prefix}{suffix}");
             assigns.push(ContinuousAssign::new(

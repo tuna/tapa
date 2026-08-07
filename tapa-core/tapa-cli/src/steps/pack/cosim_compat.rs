@@ -114,6 +114,7 @@ pub fn stamp_cosim_port_metadata(state: &WorkState) -> WorkState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tapa_ir::ClockPeriod;
 
     use std::collections::BTreeMap;
 
@@ -149,7 +150,7 @@ mod tests {
                 synth: SynthTarget::Hls,
                 self_area: None,
                 total_area: None,
-                clock_period: "3.33".to_owned(),
+                clock_period: Some(ClockPeriod::from_picoseconds(3330)),
             },
         );
         WorkState::new(TaskGraph {

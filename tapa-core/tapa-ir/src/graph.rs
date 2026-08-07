@@ -44,7 +44,7 @@ pub struct TaskGraph {
 }
 
 /// The task-graph schema version this crate reads and writes.
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
 
 const fn default_schema_version() -> u32 {
     SCHEMA_VERSION

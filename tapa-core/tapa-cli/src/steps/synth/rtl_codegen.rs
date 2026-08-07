@@ -178,6 +178,7 @@ fn codegen_to_cli_error(op: &str, task: &str, err: &dyn std::fmt::Display) -> Cl
 mod tests {
     use super::*;
     use std::collections::BTreeMap;
+    use tapa_ir::ClockPeriod;
 
     use tapa_ir::{SynthTarget, Task, TaskInstance, TaskLevel};
 
@@ -221,7 +222,7 @@ mod tests {
                 synth: SynthTarget::Hls,
                 self_area: None,
                 total_area: None,
-                clock_period: "0".to_string(),
+                clock_period: None,
             },
         );
         let mut child_tasks = BTreeMap::new();
@@ -245,7 +246,7 @@ mod tests {
                 synth: SynthTarget::Hls,
                 self_area: None,
                 total_area: None,
-                clock_period: "3.33".to_string(),
+                clock_period: Some(ClockPeriod::from_picoseconds(3330)),
             },
         );
         Design {
@@ -343,7 +344,7 @@ mod tests {
                 synth: SynthTarget::Ignore,
                 self_area: None,
                 total_area: None,
-                clock_period: "0".to_string(),
+                clock_period: None,
             },
         );
         let top = design.tasks.get_mut("VecAdd").expect("top task");
@@ -353,10 +354,7 @@ mod tests {
                 name: None,
                 args: BTreeMap::from([(
                     "n".to_string(),
-                    tapa_ir::Arg {
-                        arg: "1".to_string(),
-                        cat: ArgCategory::Scalar,
-                    },
+                    tapa_ir::Arg::named("1".to_string(), ArgCategory::Scalar),
                 )]),
                 step: 0,
             }],
@@ -495,7 +493,7 @@ mod tests {
                 synth: SynthTarget::Ignore,
                 self_area: None,
                 total_area: None,
-                clock_period: "0".to_string(),
+                clock_period: None,
             },
         );
         let dir = tempfile::tempdir().expect("tempdir");

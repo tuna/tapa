@@ -200,8 +200,12 @@ impl TopologyWithRtl {
                     let (child_id_width, child_threads) =
                         self.child_mmap_summary(child_task_name, child_port_name, cache)?;
 
-                    // Group by parent scope arg name (arg.arg), not child port name
-                    let parent_arg_name = &arg.arg;
+                    // Group by parent scope arg name, not child port name. An
+                    // mmap never binds a constant, so an unnamed one has no
+                    // connection to record.
+                    let Some(parent_arg_name) = arg.name() else {
+                        continue;
+                    };
                     let parent_port = task.ports.iter().find(|p| p.name == *parent_arg_name);
 
                     let (data_width, chan_count, chan_size) = merge_mmap_port_metadata(
@@ -213,9 +217,9 @@ impl TopologyWithRtl {
                         port,
                     )?;
                     let conn = connections
-                        .entry(parent_arg_name.clone())
+                        .entry(parent_arg_name.to_owned())
                         .or_insert_with(|| MMapConnection {
-                            arg_name: parent_arg_name.clone(),
+                            arg_name: parent_arg_name.to_owned(),
                             slaves: Vec::new(),
                             chan_count,
                             chan_size,

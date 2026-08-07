@@ -31,12 +31,23 @@ struct Port {
   std::optional<uint32_t> chan_size;   // hmap
 };
 
-// One argument of a child invocation: the resolved parent-scope name (a port /
-// FIFO name, or a Verilog literal like "64'd5") plus the category of the child
-// port it binds to.
+// One argument of a child invocation: what the child port binds to in the
+// parent's scope, plus the category of that child port. A binding is either a
+// name (port / FIFO) or an integer constant. The constant is reported as a
+// width and a value; spelling it as a Verilog literal is the RTL backend's
+// job, not the frontend's.
 struct Arg {
-  std::string arg;
+  std::string arg;                // empty when `value` is set
+  std::optional<uint64_t> value;  // constant passed at the invoke site
+  uint32_t width = 0;             // bit width of `value`
   TapaKind cat;
+
+  static Arg Named(std::string name, TapaKind cat) {
+    return Arg{std::move(name), std::nullopt, 0, cat};
+  }
+  static Arg Constant(uint64_t value, uint32_t width, TapaKind cat) {
+    return Arg{"", value, width, cat};
+  }
 };
 
 // One instantiation of a child task within an upper task (post vec-expansion).

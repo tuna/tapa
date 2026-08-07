@@ -9,7 +9,7 @@ mod tests;
 use std::collections::BTreeMap;
 
 use crate::graph::TaskGraph;
-use crate::instance::{Arg, TaskInstance};
+use crate::instance::{Arg, ArgSource, TaskInstance};
 use crate::interconnect::{EndpointRef, InterconnectDefinition};
 use crate::port::ArgCategory;
 use crate::task::TaskLevel;
@@ -155,7 +155,13 @@ fn collect_leaves_recursive(
             // `ExternalPort.global_name = name` rule).
             let mut resolved_args: BTreeMap<String, Arg> = BTreeMap::new();
             for (port_name, arg) in &inst.args {
-                let resolved = resolve_scoped_arg(&arg.arg, &fifo_global_map, arg_bindings);
+                let resolved = match &arg.arg {
+                    // A constant has no parent scope to resolve against.
+                    ArgSource::Literal(value) => ArgSource::Literal(*value),
+                    ArgSource::Name(name) => {
+                        ArgSource::Name(resolve_scoped_arg(name, &fifo_global_map, arg_bindings))
+                    }
+                };
                 resolved_args.insert(
                     port_name.clone(),
                     Arg {
@@ -187,7 +193,7 @@ fn collect_leaves_recursive(
                 let child_scope = format!("{inst_name}_{scope_path}");
                 let child_bindings: BTreeMap<String, String> = resolved_args
                     .iter()
-                    .map(|(p, a)| (p.clone(), a.arg.clone()))
+                    .filter_map(|(p, a)| Some((p.clone(), a.name()?.to_owned())))
                     .collect();
                 collect_leaves_recursive(
                     graph,
@@ -294,7 +300,7 @@ fn find_endpoint(
     for (task_name, insts) in instantiations {
         for (idx, inst) in insts.iter().enumerate() {
             for arg in inst.args.values() {
-                if arg.arg == fifo_global && role.matches(arg.cat) {
+                if arg.name() == Some(fifo_global) && role.matches(arg.cat) {
                     let idx_u32 = u32::try_from(idx).unwrap_or(u32::MAX);
                     return Some(EndpointRef(task_name.clone(), idx_u32));
                 }

@@ -90,7 +90,7 @@ The single state file: everything the pipeline persists between steps, and the o
 - **`flow`** — compilation settings shared across pipeline steps (part number, clock period, platform, and whether synthesis has run), resolved by `tapa synth` and read back by `tapa pack` so options need not be repeated on the command line. The flow `target` is deliberately not duplicated here: it lives in `graph.target` alone.
 
 ```admonish note
-`clock_period` appears in both blocks and means different things: `flow.clock_period` is the clock period you *requested*, while a task's `graph.tasks.<TASK>.clock_period` is the period HLS *estimated* for it.
+`clock_period` appears in both blocks and means different things: `flow.clock_period` is the clock period you *requested*, while a task's `graph.tasks.<TASK>.clock_period` is the period HLS *estimated* for it. Both are whole picoseconds — `3330` is 3.33 ns — so a period is one number rather than text a reader has to parse. `report.json` prints nanoseconds, since that is what its readers recognise.
 ```
 
 **`tapacc.json`**

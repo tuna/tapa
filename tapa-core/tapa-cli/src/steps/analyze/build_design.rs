@@ -110,7 +110,7 @@ mod tests {
             "flatten must rename `fifo` to `fifo_VecAdd`; got {top:?}",
         );
         let a0 = &top.tasks["A"][0];
-        assert_eq!(a0.args["out"].arg, "fifo_VecAdd");
+        assert_eq!(a0.args["out"].name(), Some("fifo_VecAdd"));
     }
 
     /// Nested upper children are recursively flattened. In this

@@ -18,7 +18,7 @@ use std::path::Path;
 use std::sync::LazyLock;
 
 use regex::Regex;
-use tapa_ir::{Design, WorkState};
+use tapa_ir::{ClockPeriod, Design, WorkState};
 use tapa_xilinx::{
     pack_xo as xilinx_pack_xo, DeviceInfo, KernelXmlArgs, PackageXoInputs, ToolRunner,
 };
@@ -31,6 +31,10 @@ use super::bitstream_script::write_vitis_script;
 use super::custom_rtl::{apply_custom_rtl, load_templates_info};
 use super::kernel_xml_ports::{build_kernel_xml_ports_for_rtl, m_axi_param_block_for_rtl};
 use super::{enforce_xo_suffix, PackArgs};
+
+/// Fallback target clock for a kernel XML written before `synth` recorded
+/// one: 3.33 ns, the historical default.
+const DEFAULT_CLOCK_PERIOD: ClockPeriod = ClockPeriod::from_picoseconds(3330);
 
 pub(super) fn pack_vitis(args: &PackArgs, ctx: &CliContext, state: &WorkState) -> Result<()> {
     let design = &state.graph;
@@ -123,22 +127,20 @@ fn resolve_top_task(design: &Design) -> Result<&tapa_ir::Task> {
     })
 }
 
-fn resolve_device_settings(work_dir: &Path, flow: &FlowSettings) -> Result<(String, String)> {
+fn resolve_device_settings(work_dir: &Path, flow: &FlowSettings) -> Result<(String, ClockPeriod)> {
     let state_path = work_dir.join("tapa.json");
     let missing = |field: &str| CliError::MissingState {
         name: format!("`{field}` (run `synth` first to populate it)"),
         path: state_path.clone(),
     };
     let part_num = flow.part_num.clone().ok_or_else(|| missing("part_num"))?;
-    let clock_period = flow
-        .clock_period
-        .clone()
-        .ok_or_else(|| missing("clock_period"))?;
-    crate::util::parse_clock_period_ns(&clock_period).map_err(|message| {
-        CliError::InvalidArg(format!(
-            "invalid synthesized target {message}; rerun `tapa synth`"
-        ))
-    })?;
+    let clock_period = flow.clock_period.ok_or_else(|| missing("clock_period"))?;
+    // The type rules out everything but zero, which no device can run at.
+    if clock_period == ClockPeriod::ZERO {
+        return Err(CliError::InvalidArg(
+            "synthesized target clock period is zero; rerun `tapa synth`".to_string(),
+        ));
+    }
     Ok((part_num, clock_period))
 }
 
@@ -212,7 +214,7 @@ fn build_package_xo_inputs(
     hdl_dir: &Path,
     output_path: &Path,
     part_num: String,
-    clock_period: String,
+    clock_period: ClockPeriod,
     kernel_ports: Vec<tapa_xilinx::KernelXmlPort>,
     m_axi_params: Vec<(String, Vec<(String, String)>)>,
     report_paths: Vec<(Utf8PathBuf, String)>,
@@ -222,15 +224,15 @@ fn build_package_xo_inputs(
         .hdl_dir(crate::util::utf8(hdl_dir))
         .device_info(DeviceInfo {
             part_num,
-            clock_period: clock_period.clone(),
+            clock_period: clock_period.to_string(),
         })
-        .clock_period(clock_period)
+        .clock_period(clock_period.to_string())
         .kernel_xml(KernelXmlArgs {
             top_name: design.top.clone(),
             clock_period: flow
                 .clock_period
-                .clone()
-                .unwrap_or_else(|| "3.33".to_string()),
+                .unwrap_or(DEFAULT_CLOCK_PERIOD)
+                .to_string(),
             ports: kernel_ports,
         })
         .kernel_out_path(crate::util::utf8(output_path))
@@ -438,7 +440,7 @@ fn emit_bitstream_script(
         top,
         output_path,
         flow.platform.as_deref(),
-        flow.clock_period.as_deref(),
+        flow.clock_period,
         link_inputs.floorplan_xdc.as_deref(),
         link_inputs.connectivity.as_deref(),
     )?;
@@ -499,7 +501,7 @@ mod tests {
         );
         state.flow.synthed = true;
         state.flow.part_num = Some("xcvu37p-fsvh2892-2L-e".to_string());
-        state.flow.clock_period = Some("3.33".to_string());
+        state.flow.clock_period = Some(DEFAULT_CLOCK_PERIOD);
         state
     }
 
@@ -774,23 +776,24 @@ mod tests {
         );
     }
 
+    /// Negative, infinite, and non-numeric periods cannot reach here — the
+    /// state file will not deserialize into a [`ClockPeriod`]. Zero is the
+    /// one invalid value the type still admits.
     #[test]
-    fn packaging_rejects_invalid_persisted_clock_period() {
+    fn packaging_rejects_a_zero_persisted_clock_period() {
         let dir = tempfile::tempdir().expect("tempdir");
-        for clock_period in ["0", "-1", "NaN", "inf", "fast"] {
-            let flow = FlowSettings {
-                part_num: Some("xcvu37p-fsvh2892-2L-e".to_string()),
-                clock_period: Some(clock_period.to_string()),
-                ..FlowSettings::default()
-            };
-            let error = resolve_device_settings(dir.path(), &flow)
-                .expect_err("invalid persisted period must fail");
-            assert!(
-                matches!(error, CliError::InvalidArg(ref message)
-                    if message.contains("clock period") && message.contains("tapa synth")),
-                "got {error}",
-            );
-        }
+        let flow = FlowSettings {
+            part_num: Some("xcvu37p-fsvh2892-2L-e".to_string()),
+            clock_period: Some(ClockPeriod::ZERO),
+            ..FlowSettings::default()
+        };
+        let error =
+            resolve_device_settings(dir.path(), &flow).expect_err("a zero period must fail");
+        assert!(
+            matches!(error, CliError::InvalidArg(ref message)
+                if message.contains("clock period") && message.contains("tapa synth")),
+            "got {error}",
+        );
     }
 
     #[test]

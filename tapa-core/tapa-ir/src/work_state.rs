@@ -15,6 +15,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::clock::ClockPeriod;
 use crate::error::ParseError;
 use crate::floorplan::FloorplanResult;
 use crate::graph::TaskGraph;
@@ -110,7 +111,7 @@ pub struct FlowSettings {
     /// *achieved* estimate HLS reports back: one is an input to synthesis,
     /// the other a result of it. Both are kept.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub clock_period: Option<String>,
+    pub clock_period: Option<ClockPeriod>,
     /// Set once `synth` has completed for this work dir.
     #[serde(default)]
     pub synthed: bool,
@@ -138,7 +139,7 @@ mod tests {
                 synth: SynthTarget::Hls,
                 self_area: None,
                 total_area: None,
-                clock_period: "0".to_string(),
+                clock_period: None,
             },
         );
         WorkState::new(TaskGraph {
@@ -164,7 +165,7 @@ mod tests {
         let mut state = sample_state();
         state.flow.part_num = Some("xcvu37p".to_string());
         state.flow.platform = Some("xilinx_u250_gen3x16_xdma_4_1_202210_1".to_string());
-        state.flow.clock_period = Some("3.33".to_string());
+        state.flow.clock_period = Some(ClockPeriod::from_picoseconds(3330));
         state.flow.synthed = true;
         let json = serde_json::to_string(&state).expect("serialize");
         let back = WorkState::from_json(&json).expect("parse");

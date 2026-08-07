@@ -317,6 +317,8 @@ mod tests {
                   matching the production names keeps tests legible"
     )]
 
+    use tapa_ir::ClockPeriod;
+
     use super::*;
 
     use std::path::Path;
@@ -382,7 +384,7 @@ mod tests {
                 synth: SynthTarget::Hls,
                 self_area: None,
                 total_area: None,
-                clock_period: "3.33".to_string(),
+                clock_period: Some(ClockPeriod::from_picoseconds(3330)),
             },
         );
         let mut state = WorkState::new(TaskGraph {
@@ -393,7 +395,7 @@ mod tests {
             cflags: Vec::new(),
         });
         state.flow.part_num = Some("xcu250-figd2104-2L-e".to_string());
-        state.flow.clock_period = Some("3.33".to_string());
+        state.flow.clock_period = Some(ClockPeriod::from_picoseconds(3330));
         state.flow.synthed = true;
         work_io::store(work_dir, &state).expect("store state");
     }

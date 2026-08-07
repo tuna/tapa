@@ -4,7 +4,7 @@
     "cflags": [],
     "tasks": {
         "AsyncReader": {
-            "clock_period": "3.125",
+            "clock_period": 3125,
             "code": "void AsyncReader() {}",
             "fifos": {},
             "level": "lower",
@@ -35,7 +35,7 @@
             ]
         },
         "AsyncTop": {
-            "clock_period": "3.125",
+            "clock_period": 3125,
             "code": "void AsyncTop() {}",
             "level": "upper",
             "readable_name": "AsyncTop",

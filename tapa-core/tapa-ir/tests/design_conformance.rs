@@ -76,10 +76,10 @@ fn to_compact_json(design: &Design) -> String {
 /// renaming, or dropping any field breaks the byte comparison.
 fn canonical_design_json() -> &'static str {
     concat!(
-        r#"{"schema_version": 1, "top": "VecAdd", "target": "xilinx-vitis", "cflags": ["-std=c++17"], "tasks": "#,
+        r#"{"schema_version": 2, "top": "VecAdd", "target": "xilinx-vitis", "cflags": ["-std=c++17"], "tasks": "#,
         r#"{"Add": {"level": "lower", "code": "void Add() {}", "readable_name": "Add", "#,
         r#""synth": "hls", "ports": [{"cat": "istream", "name": "a", "type": "float", "#,
-        r#""width": 32}], "tasks": {}, "fifos": {}, "clock_period": "2.342", "#,
+        r#""width": 32}], "tasks": {}, "fifos": {}, "clock_period": 2342, "#,
         r#""self_area": {"lut": 414, "ff": 0, "bram_18k": 0, "dsp": 0, "uram": 0}, "#,
         r#""total_area": {"lut": 414, "ff": 0, "bram_18k": 0, "dsp": 0, "uram": 0}}, "#,
         r#""VecAdd": {"level": "upper", "code": "void VecAdd() {}", "#,
@@ -126,7 +126,11 @@ fn vadd_rtl_annotations_preserved() {
     let m2s = &d.tasks["Mmap2Stream"];
     let area = m2s.self_area.expect("has self area");
     assert_eq!(area.lut, 414, "LUT value");
-    assert_eq!(m2s.clock_period, "2.342", "clock_period");
+    assert_eq!(
+        m2s.clock_period,
+        Some(tapa_ir::ClockPeriod::from_picoseconds(2342)),
+        "clock_period"
+    );
 }
 
 #[test]
@@ -149,7 +153,7 @@ fn vadd_instance_args() {
     let instance = &add_instances[0];
     assert_eq!(instance.args.len(), 4, "4 args");
     let a_arg = &instance.args["a"];
-    assert_eq!(a_arg.arg, "a_q", "a connects to a_q FIFO");
+    assert_eq!(a_arg.name(), Some("a_q"), "a connects to a_q FIFO");
     assert_eq!(a_arg.cat, ArgCategory::Istream, "a is istream");
 }
 
@@ -377,7 +381,6 @@ fn mmap_port_category_round_trips() {
         "top": "T", "target": "xilinx-hls",
         "tasks": {"T": {"level": "lower", "code": "", "synth": "hls",
             "readable_name": "T",
-            "clock_period": "0",
             "ports": [{"cat": "mmap", "name": "data", "type": "float*", "width": 32}]}}
     }"#;
     let d = Design::from_json(json).expect("parse mmap port");

@@ -4,7 +4,7 @@
     "cflags": [],
     "tasks": {
         "CustomShell": {
-            "clock_period": "3.125",
+            "clock_period": 3125,
             "code": "void CustomShell() {}",
             "fifos": {},
             "level": "lower",
@@ -29,7 +29,7 @@
             ]
         },
         "ShellTop": {
-            "clock_period": "3.125",
+            "clock_period": 3125,
             "code": "void ShellTop() {}",
             "level": "upper",
             "readable_name": "ShellTop",

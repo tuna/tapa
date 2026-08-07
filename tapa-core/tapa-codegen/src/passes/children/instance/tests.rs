@@ -21,7 +21,7 @@ fn build_child_instance_test(
                     | ArgCategory::Ostreams
             )
         })
-        .map(|a| a.arg.clone())
+        .filter_map(|a| a.name().map(str::to_owned))
         .collect();
     build_child_instance_with_reset(
         child_task_name,
@@ -43,17 +43,11 @@ fn build_child_instance_has_handshake_and_args() {
     let mut args = BTreeMap::new();
     args.insert(
         "data_in".to_owned(),
-        Arg {
-            arg: "fifo_0".to_owned(),
-            cat: ArgCategory::Istream,
-        },
+        Arg::named("fifo_0".to_owned(), ArgCategory::Istream),
     );
     args.insert(
         "size".to_owned(),
-        Arg {
-            arg: "n".to_owned(),
-            cat: ArgCategory::Scalar,
-        },
+        Arg::named("n".to_owned(), ArgCategory::Scalar),
     );
     let inst = build_child_instance_test(
         "worker",
@@ -85,17 +79,11 @@ fn build_child_instance_uses_hls_stream_names_without_child_rtl() {
     let mut args = BTreeMap::new();
     args.insert(
         "data_in".to_owned(),
-        Arg {
-            arg: "fifo_0".to_owned(),
-            cat: ArgCategory::Istream,
-        },
+        Arg::named("fifo_0".to_owned(), ArgCategory::Istream),
     );
     args.insert(
         "data_out".to_owned(),
-        Arg {
-            arg: "fifo_1".to_owned(),
-            cat: ArgCategory::Ostream,
-        },
+        Arg::named("fifo_1".to_owned(), ArgCategory::Ostream),
     );
     let inst = build_child_instance_test(
         "worker",
@@ -124,10 +112,7 @@ fn build_child_instance_sanitizes_indexed_stream_names() {
     let mut args = BTreeMap::new();
     args.insert(
         "qs[24]_Network".to_owned(),
-        Arg {
-            arg: "qs[24]_Network".to_owned(),
-            cat: ArgCategory::Istream,
-        },
+        Arg::named("qs[24]_Network".to_owned(), ArgCategory::Istream),
     );
     let inst = build_child_instance_test(
         "worker",
@@ -166,10 +151,7 @@ fn build_child_instance_connects_istream_peek_inputs() {
     let mut args = BTreeMap::new();
     args.insert(
         "pkt_in_q0".to_owned(),
-        Arg {
-            arg: "fifo_0".to_owned(),
-            cat: ArgCategory::Istream,
-        },
+        Arg::named("fifo_0".to_owned(), ArgCategory::Istream),
     );
     let inst = build_child_instance_test(
         "switch",
@@ -208,10 +190,7 @@ fn build_child_instance_connects_array_istream_peek_inputs() {
     let mut args = BTreeMap::new();
     args.insert(
         "in_q[0]".to_owned(),
-        Arg {
-            arg: "fifo[0]".to_owned(),
-            cat: ArgCategory::Istream,
-        },
+        Arg::named("fifo[0]".to_owned(), ArgCategory::Istream),
     );
     let inst = build_child_instance_test(
         "stage",
@@ -259,17 +238,11 @@ fn build_child_instance_passes_stream_ports_through_with_s_infix() {
     let mut args = BTreeMap::new();
     args.insert(
         "a_int".to_owned(),
-        Arg {
-            arg: "a_ext".to_owned(),
-            cat: ArgCategory::Istream,
-        },
+        Arg::named("a_ext".to_owned(), ArgCategory::Istream),
     );
     args.insert(
         "c_int".to_owned(),
-        Arg {
-            arg: "c_ext".to_owned(),
-            cat: ArgCategory::Ostream,
-        },
+        Arg::named("c_ext".to_owned(), ArgCategory::Ostream),
     );
     let parent_rtl = VerilogModule::parse(
         "module Mid(\n\
@@ -358,17 +331,11 @@ fn build_child_instance_passes_array_stream_ports_through_without_infix() {
     let mut args = BTreeMap::new();
     args.insert(
         "in_q0[0]".to_owned(),
-        Arg {
-            arg: "in_q[0]".to_owned(),
-            cat: ArgCategory::Istream,
-        },
+        Arg::named("in_q[0]".to_owned(), ArgCategory::Istream),
     );
     args.insert(
         "out_q[0]".to_owned(),
-        Arg {
-            arg: "out_q[0]".to_owned(),
-            cat: ArgCategory::Ostream,
-        },
+        Arg::named("out_q[0]".to_owned(), ArgCategory::Ostream),
     );
     let parent_fifos: BTreeSet<String> = BTreeSet::new();
     let inst = build_child_instance_with_reset(
@@ -408,10 +375,7 @@ fn build_child_instance_sanitizes_indexed_mmap_signals() {
     let mut args = BTreeMap::new();
     args.insert(
         "mem".to_owned(),
-        Arg {
-            arg: "chan[0]".to_owned(),
-            cat: ArgCategory::Mmap,
-        },
+        Arg::named("chan[0]".to_owned(), ArgCategory::Mmap),
     );
     let inst = build_child_instance_test(
         "worker",
@@ -458,10 +422,7 @@ fn build_child_instance_connects_async_mmap_stream_ports() {
     let mut args = BTreeMap::new();
     args.insert(
         "mem".to_owned(),
-        Arg {
-            arg: "chan[0]".to_owned(),
-            cat: ArgCategory::AsyncMmap,
-        },
+        Arg::named("chan[0]".to_owned(), ArgCategory::AsyncMmap),
     );
     let inst = build_child_instance_test(
         "copy",
@@ -516,10 +477,7 @@ fn build_child_instance_connects_async_mmap_slot_axi_ports() {
     let mut args = BTreeMap::new();
     args.insert(
         "mem_Copy_0".to_owned(),
-        Arg {
-            arg: "chan[0]".to_owned(),
-            cat: ArgCategory::AsyncMmap,
-        },
+        Arg::named("chan[0]".to_owned(), ArgCategory::AsyncMmap),
     );
     let inst = build_child_instance_test(
         "SLOT_X0Y2_SLOT_X0Y2",
@@ -560,10 +518,7 @@ fn build_child_instance_uses_vitis_2025_offset_spelling_when_present() {
     let mut args = BTreeMap::new();
     args.insert(
         "mmap".to_owned(),
-        Arg {
-            arg: "a".to_owned(),
-            cat: ArgCategory::Mmap,
-        },
+        Arg::named("a".to_owned(), ArgCategory::Mmap),
     );
     let inst = build_child_instance_test(
         "Mmap2Stream",
@@ -649,10 +604,7 @@ fn build_child_instance_keeps_conventional_offset_spelling() {
     let mut args = BTreeMap::new();
     args.insert(
         "mmap".to_owned(),
-        Arg {
-            arg: "a".to_owned(),
-            cat: ArgCategory::Mmap,
-        },
+        Arg::named("a".to_owned(), ArgCategory::Mmap),
     );
     let inst = build_child_instance_test(
         "Mmap2Stream",

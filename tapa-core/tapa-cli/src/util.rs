@@ -3,21 +3,22 @@
 use std::path::PathBuf;
 
 use camino::Utf8PathBuf;
+use tapa_ir::ClockPeriod;
 
 use crate::error::CliError;
 
-/// Parse a clock period in nanoseconds as a finite, positive value.
-pub fn parse_clock_period_ns(value: &str) -> Result<f64, String> {
-    let period = value
-        .parse::<f64>()
-        .map_err(|_| format!("clock period `{value}` is not a number"))?;
-    if period.is_finite() && period > 0.0 {
-        Ok(period)
-    } else {
-        Err(format!(
-            "clock period must be finite and greater than zero, got `{value}`"
-        ))
+/// Parse a `--clock-period` flag: nanoseconds in decimal. A *target* period
+/// must be positive — zero has no frequency to synthesize for — which is
+/// stricter than [`ClockPeriod`] itself, since a measured period of zero is
+/// a legitimate reading.
+pub fn parse_clock_period(value: &str) -> Result<ClockPeriod, String> {
+    let period = ClockPeriod::from_nanoseconds_str(value).map_err(|error| error.to_string())?;
+    if period == ClockPeriod::ZERO {
+        return Err(format!(
+            "clock period must be greater than zero, got `{value}`"
+        ));
     }
+    Ok(period)
 }
 
 /// Convert a path to a [`Utf8PathBuf`] via a lossy conversion. The
@@ -104,13 +105,12 @@ mod tests {
 
     #[test]
     fn clock_period_must_be_finite_and_positive() {
-        let parsed = parse_clock_period_ns("3.33").expect("valid period");
-        assert!((parsed - 3.33).abs() < f64::EPSILON);
+        assert_eq!(
+            parse_clock_period("3.33").expect("valid period"),
+            ClockPeriod::from_picoseconds(3330)
+        );
         for invalid in ["fast", "0", "-1", "NaN", "inf", "-inf"] {
-            assert!(
-                parse_clock_period_ns(invalid).is_err(),
-                "accepted {invalid}"
-            );
+            assert!(parse_clock_period(invalid).is_err(), "accepted {invalid}");
         }
     }
 }

@@ -99,6 +99,7 @@ fn check_version(text: &str, path: &Path) -> Result<()> {
 mod tests {
     use super::*;
     use std::collections::BTreeMap;
+    use tapa_ir::ClockPeriod;
 
     use tapa_ir::{SynthTarget, Target, Task, TaskGraph, TaskLevel};
 
@@ -116,7 +117,7 @@ mod tests {
                 synth: SynthTarget::Hls,
                 self_area: None,
                 total_area: None,
-                clock_period: "0".to_string(),
+                clock_period: None,
             },
         );
         WorkState::new(TaskGraph {
@@ -133,7 +134,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let mut state = sample_state();
         state.flow.part_num = Some("xcvu37p".to_string());
-        state.flow.clock_period = Some("3.33".to_string());
+        state.flow.clock_period = Some(ClockPeriod::from_picoseconds(3330));
         state.flow.synthed = true;
         store(dir.path(), &state).expect("store");
         let loaded = load(dir.path()).expect("load");
