@@ -199,6 +199,33 @@ static void service_streams() {
 {% endif %}
 }
 
+{% if !stream_out_args.is_empty() %}
+// Kernel completion says the kernel logic finished, not that its output left
+// the chip: the last beats it wrote can still be sitting in the output FIFOs.
+// Keep clocking until every output stream has been quiet for a few cycles, or
+// those beats never reach the host and it waits forever.
+static void drain_output_streams() {
+{% if mode == "hls" %}
+  // ap_done and ap_ready assert together, so the extra cycles below would
+  // start the kernel over if ap_start were still asserted.
+  dut->ap_start = 0;
+{% endif %}
+  for (int idle_cycles = 0; idle_cycles < 4;) {
+    service_all_axi();
+    service_streams();
+    tick();
+    ++idle_cycles;
+{% for arg in stream_out_args %}
+{% if mode == "hls" %}
+    if (dut->{{ arg.write }}) idle_cycles = 0;
+{% else %}
+    if (dut->{{ arg.tvalid }}) idle_cycles = 0;
+{% endif %}
+{% endfor %}
+  }
+}
+{% endif %}
+
 // Load data from shared memory into in-process memory map via FFI
 static void load_from_shm(const char* port, uint64_t base, size_t size) {
   for (size_t off = 0; off < size; off += 64) {
@@ -320,6 +347,10 @@ int main(int argc, char** argv) {
     delete dut;
     return 1;
   }
+
+{% if !stream_out_args.is_empty() %}
+  drain_output_streams();
+{% endif %}
 
 {% for arg in mmap_args %}
   store_to_shm("{{ arg.name }}", 0x{{ "{:016x}"|format(arg.base_addr) }}ULL, {{ arg.data_size }});

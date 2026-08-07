@@ -150,7 +150,6 @@ wire stream_ready_{{ arg.ident }};
 {% for arg in stream_out_args %}
 byte unsigned stream_out_bytes_{{ arg.ident }}[0:{{ arg.dpi_width_bytes - 1 }}];
 wire [{{ arg.width_bytes * 8 - 1 }}:0] stream_out_data_{{ arg.ident }};
-reg can_write_{{ arg.ident }};
 {% if mode == "hls" %}
 wire stream_out_eos_{{ arg.ident }};
 wire stream_out_write_{{ arg.ident }};
@@ -434,17 +433,25 @@ always @(posedge ap_clk) begin
 {% endfor %}
 
 {% for arg in stream_out_args %}
-  can_write_{{ arg.ident }} = tapa_stream_can_write("{{ arg.name }}");
-  stream_out_ready_{{ arg.ident }} <= can_write_{{ arg.ident }};
-  if (stream_out_valid_{{ arg.ident }} && can_write_{{ arg.ident }}) begin
+  // A beat transfers when tvalid and the tready the DUT saw at this same edge
+  // are both high. tready is registered, so it must also be what decides
+  // whether to consume: pairing tvalid with a freshly sampled
+  // `tapa_stream_can_write` consumes beats the DUT is still holding
+  // (duplicating them) and skips beats the DUT already released (losing them).
+  if (stream_out_valid_{{ arg.ident }} && stream_out_ready_{{ arg.ident }}) begin
     for (i = 0; i < {{ arg.width_bytes }}; i = i + 1) begin
       stream_out_bytes_{{ arg.ident }}[i] = stream_out_data_{{ arg.ident }}[i*8 +: 8];
     end
 {% if arg.axis %}
     stream_out_bytes_{{ arg.ident }}[{{ arg.width_bytes }}] = stream_out_tlast_{{ arg.ident }};
 {% endif %}
-    void'(tapa_stream_try_write("{{ arg.name }}", stream_out_bytes_{{ arg.ident }}));
+    // tready was only raised after the queue reported room, and this
+    // testbench is the queue's only producer, so the push cannot fail.
+    if (!tapa_stream_try_write("{{ arg.name }}", stream_out_bytes_{{ arg.ident }}))
+      $fatal(1, "stream '{{ arg.name }}': dropped a beat accepted on tready");
   end
+  // Sampled after the push so the next cycle's tready accounts for it.
+  stream_out_ready_{{ arg.ident }} <= tapa_stream_can_write("{{ arg.name }}");
 {% endfor %}
 end
 {% endif %}
@@ -466,6 +473,23 @@ initial begin
   repeat (2) @(posedge ap_clk);
 {% else %}
   wait (interrupt === 1'b1);
+{% if !stream_out_args.is_empty() %}
+  // ap_done says the kernel logic finished, not that its output left the
+  // chip: the last beats it wrote can still be sitting in the AXIS adapter
+  // FIFOs. Keep clocking until every output stream has been quiet for a few
+  // cycles, or $finish strands those beats and the host waits forever.
+  begin
+    int idle_cycles;
+    idle_cycles = 0;
+    while (idle_cycles < 4) begin
+      @(posedge ap_clk);
+      idle_cycles = idle_cycles + 1;
+{% for arg in stream_out_args %}
+      if (stream_out_valid_{{ arg.ident }}) idle_cycles = 0;
+{% endfor %}
+    end
+  end
+{% endif %}
   repeat (2) @(posedge ap_clk);
 {% endif %}
   $finish;

@@ -451,22 +451,32 @@ fn xsim_vitis_axis_output_uses_direct_write_handshake() {
         },
     );
     let tb = generator.render_tb().expect("render tb");
+    // The beat must be consumed on the tready the DUT saw, not on a freshly
+    // sampled queue state: the latter duplicates held beats and drops
+    // released ones whenever the queue changes fullness mid-transfer.
     assert!(
-        tb.contains("can_write_s_out = tapa_stream_can_write(\"s_out\");"),
+        tb.contains("if (stream_out_valid_s_out && stream_out_ready_s_out) begin"),
         "{tb}"
     );
     assert!(
-        tb.contains("stream_out_ready_s_out <= can_write_s_out;"),
+        tb.contains("stream_out_ready_s_out <= tapa_stream_can_write(\"s_out\");"),
         "{tb}"
     );
     assert!(
-        tb.contains("void'(tapa_stream_try_write(\"s_out\", stream_out_bytes_s_out));"),
+        tb.contains("if (!tapa_stream_try_write(\"s_out\", stream_out_bytes_s_out))"),
         "{tb}"
     );
     assert!(
         !tb.contains("stream_out_ready_s_out = tapa_stream_ostream_step("),
         "{tb}"
     );
+    // tready must be refreshed after the push so the next cycle sees the
+    // room the push consumed.
+    let consume = tb.find("tapa_stream_try_write(\"s_out\"").expect("push");
+    let refresh = tb
+        .find("stream_out_ready_s_out <= tapa_stream_can_write")
+        .expect("tready refresh");
+    assert!(consume < refresh, "{tb}");
 }
 
 #[test]
@@ -527,6 +537,59 @@ fn verilator_vitis_tb_uses_direct_axis_write_handshake() {
         !tb.contains("dut->s_out_TREADY = tapa_stream_ostream_step("),
         "{tb}"
     );
+}
+
+/// Kernel completion leaves beats in the output AXIS adapter FIFOs; stopping
+/// the clock right there strands them and the host waits for data that never
+/// arrives.
+#[test]
+fn verilator_vitis_tb_drains_output_streams_after_completion() {
+    let spec = vitis_stream_out_spec();
+    let base_addrs = std::collections::HashMap::new();
+    let buf_sizes = std::collections::HashMap::new();
+    let scalar_vals = std::collections::HashMap::from([(0u32, vec![7u8, 0, 0, 0])]);
+    let generator = VerilatorTbGenerator::new(&spec, &base_addrs, &buf_sizes, &scalar_vals);
+    let tb = generator.render_tb().expect("render");
+    assert!(
+        tb.contains("if (dut->s_out_TVALID) idle_cycles = 0;"),
+        "{tb}"
+    );
+    let interrupt = tb.find("__SYM__interrupt").expect("completion check");
+    let drain = tb.find("drain_output_streams();").expect("drain call");
+    assert!(interrupt < drain, "{tb}");
+}
+
+/// See `verilator_vitis_tb_drains_output_streams_after_completion`: the same
+/// truncation loses beats under xsim, where it showed up as a hung host.
+#[test]
+fn xsim_vitis_tb_drains_output_streams_before_finish() {
+    use frt_cosim::tb::xsim::{XsimOptions, XsimTbGenerator};
+    let spec = vitis_stream_out_spec();
+    let base_addrs = std::collections::HashMap::new();
+    let scalar_vals = std::collections::HashMap::from([(0u32, vec![7u8, 0, 0, 0])]);
+    let generator = XsimTbGenerator::new(
+        &spec,
+        std::path::Path::new("/path/to/frt_dpi_xsim.so"),
+        &base_addrs,
+        &scalar_vals,
+        "xc7a100tcsg324-1",
+        XsimOptions {
+            save_waveform: false,
+            legacy: false,
+            start_gui: false,
+        },
+    );
+    let tb = generator.render_tb().expect("render tb");
+    assert!(
+        tb.contains("if (stream_out_valid_s_out) idle_cycles = 0;"),
+        "{tb}"
+    );
+    let interrupt = tb
+        .find("wait (interrupt === 1'b1);")
+        .expect("completion wait");
+    let drain = tb.find("while (idle_cycles < 4)").expect("drain loop");
+    let finish = tb.find("$finish;").expect("finish");
+    assert!(interrupt < drain && drain < finish, "{tb}");
 }
 
 #[test]
