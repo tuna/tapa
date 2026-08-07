@@ -1,10 +1,11 @@
 #include "V{{ top_name }}.h"
 #include "verilated.h"
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <deque>
-#include <unordered_map>
+#include <vector>
 
 extern "C" {
 void tapa_axi_read(const char* port, uint64_t addr, uint32_t width, uint8_t* out);
@@ -16,21 +17,47 @@ bool tapa_stream_can_write(const char* port);
 bool tapa_hls_stream_ostream_step(const char* port, bool write, const uint8_t* data);
 }
 
-static std::unordered_map<uint64_t, uint8_t> memory;
+// The device memory one mmap argument sees. Each argument is addressed
+// through its own AXI port over a known range, so this is a flat array per
+// port rather than one map over a shared address space. A
+// `std::unordered_map<uint64_t, uint8_t>` spends about 43 bytes of hash node
+// per modeled byte: a 16 MiB buffer cost 738 MB resident, against 34 MB here.
+//
+// Addresses outside the range are ordinary traffic, not errors -- a burst beat
+// is as wide as the data bus, so the last beat of a buffer that is not a whole
+// number of beats runs past the end. Reads there yield zero and writes there
+// are dropped, which is what the map did for addresses it never loaded.
+class MemRegion {
+ public:
+  MemRegion(uint64_t base, size_t size) : base_(base), data_(size) {}
 
-static void mem_read(uint64_t addr, void* buf, size_t nbytes) {
+  uint64_t base() const { return base_; }
+  size_t size() const { return data_.size(); }
+  uint8_t* data() { return data_.data(); }
+
+  void read(uint64_t addr, void* buf, size_t nbytes) const {
     auto* dst = reinterpret_cast<uint8_t*>(buf);
-    for (size_t i = 0; i < nbytes; i++)
-        dst[i] = memory[addr + i];
-}
+    for (size_t i = 0; i < nbytes; i++) {
+      // Below `base_` this wraps to a huge value, which the bound rejects.
+      const uint64_t off = addr + i - base_;
+      dst[i] = off < data_.size() ? data_[off] : 0;
+    }
+  }
 
-static void mem_write(uint64_t addr, const void* buf, const void* strb_ptr, size_t nbytes) {
+  void write(uint64_t addr, const void* buf, const void* strb_ptr, size_t nbytes) {
     auto* src = reinterpret_cast<const uint8_t*>(buf);
     auto* strb = reinterpret_cast<const uint8_t*>(strb_ptr);
-    for (size_t i = 0; i < nbytes; i++)
-        if (strb[i / 8] & (1 << (i % 8)))
-            memory[addr + i] = src[i];
-}
+    for (size_t i = 0; i < nbytes; i++) {
+      const uint64_t off = addr + i - base_;
+      if (off < data_.size() && (strb[i / 8] & (1 << (i % 8))))
+        data_[off] = src[i];
+    }
+  }
+
+ private:
+  uint64_t base_;
+  std::vector<uint8_t> data_;
+};
 
 static V{{ top_name }}* dut;
 
@@ -50,6 +77,7 @@ struct AxiWriteReq {
 };
 
 {% for arg in mmap_args %}
+static MemRegion mem_{{ arg.ident }}(0x{{ "{:016x}"|format(arg.base_addr) }}ULL, {{ arg.data_size }});
 static std::deque<AxiReadReq> rd_q_{{ arg.ident }};
 static std::deque<AxiWriteReq> wr_q_{{ arg.ident }};
 static std::deque<uint32_t> b_q_{{ arg.ident }};
@@ -79,8 +107,8 @@ static void service_all_axi() {
   if (!rd_q_{{ arg.ident }}.empty()) {
     auto& r = rd_q_{{ arg.ident }}.front();
     dut->{{ arg.rvalid }} = 1;
-    mem_read(r.addr + (uint64_t)r.beat * {{ arg.data_width_bytes }},
-             &dut->{{ arg.rdata }}, {{ arg.data_width_bytes }});
+    mem_{{ arg.ident }}.read(r.addr + (uint64_t)r.beat * {{ arg.data_width_bytes }},
+                             &dut->{{ arg.rdata }}, {{ arg.data_width_bytes }});
     dut->{{ arg.rlast }} = (r.beat == r.len) ? 1 : 0;
     dut->{{ arg.rid }} = r.id;
     dut->{{ arg.rresp }} = 0;
@@ -100,9 +128,9 @@ static void service_all_axi() {
   dut->{{ arg.wready }} = !wr_q_{{ arg.ident }}.empty() ? 1 : 0;
   if (dut->{{ arg.wvalid }} && dut->{{ arg.wready }} && !wr_q_{{ arg.ident }}.empty()) {
     auto& w = wr_q_{{ arg.ident }}.front();
-    mem_write(w.addr + (uint64_t)w.beat * {{ arg.data_width_bytes }},
-              &dut->{{ arg.wdata }}, &dut->{{ arg.wstrb }},
-              {{ arg.data_width_bytes }});
+    mem_{{ arg.ident }}.write(w.addr + (uint64_t)w.beat * {{ arg.data_width_bytes }},
+                              &dut->{{ arg.wdata }}, &dut->{{ arg.wstrb }},
+                              {{ arg.data_width_bytes }});
     w.beat++;
     if (dut->{{ arg.wlast }}) {
       b_q_{{ arg.ident }}.push_back(w.id);
@@ -226,25 +254,22 @@ static void drain_output_streams() {
 }
 {% endif %}
 
-// Load data from shared memory into in-process memory map via FFI
-static void load_from_shm(const char* port, uint64_t base, size_t size) {
-  for (size_t off = 0; off < size; off += 64) {
-    size_t chunk = (off + 64 <= size) ? 64 : (size - off);
-    uint8_t buf[64];
-    tapa_axi_read(port, base + off, chunk, buf);
-    for (size_t i = 0; i < chunk; i++)
-      memory[base + off + i] = buf[i];
+// The DPI carries its transfer length in a uint32_t, so moving a whole region
+// between shared memory and the model is chunked rather than issued as one
+// call. The chunk goes straight into the region -- there is no staging buffer.
+static constexpr size_t kShmChunkBytes = 1u << 20;
+
+static void load_from_shm(const char* port, MemRegion& region) {
+  for (size_t off = 0; off < region.size(); off += kShmChunkBytes) {
+    const size_t chunk = std::min(kShmChunkBytes, region.size() - off);
+    tapa_axi_read(port, region.base() + off, (uint32_t)chunk, region.data() + off);
   }
 }
 
-// Store data from in-process memory map back to shared memory via FFI
-static void store_to_shm(const char* port, uint64_t base, size_t size) {
-  for (size_t off = 0; off < size; off += 64) {
-    size_t chunk = (off + 64 <= size) ? 64 : (size - off);
-    uint8_t buf[64];
-    for (size_t i = 0; i < chunk; i++)
-      buf[i] = memory[base + off + i];
-    tapa_axi_write(port, base + off, chunk, buf);
+static void store_to_shm(const char* port, MemRegion& region) {
+  for (size_t off = 0; off < region.size(); off += kShmChunkBytes) {
+    const size_t chunk = std::min(kShmChunkBytes, region.size() - off);
+    tapa_axi_write(port, region.base() + off, (uint32_t)chunk, region.data() + off);
   }
 }
 
@@ -282,7 +307,7 @@ int main(int argc, char** argv) {
   for (int i = 0; i < 5; ++i) tick();
 
 {% for arg in mmap_args %}
-  load_from_shm("{{ arg.name }}", 0x{{ "{:016x}"|format(arg.base_addr) }}ULL, {{ arg.data_size }});
+  load_from_shm("{{ arg.name }}", mem_{{ arg.ident }});
 {% endfor %}
 
 {% if mode == "hls" %}
@@ -353,7 +378,7 @@ int main(int argc, char** argv) {
 {% endif %}
 
 {% for arg in mmap_args %}
-  store_to_shm("{{ arg.name }}", 0x{{ "{:016x}"|format(arg.base_addr) }}ULL, {{ arg.data_size }});
+  store_to_shm("{{ arg.name }}", mem_{{ arg.ident }});
 {% endfor %}
 
   std::fprintf(stderr, "simulation complete (mode={{ mode }})\n");
