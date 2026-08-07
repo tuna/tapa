@@ -32,10 +32,6 @@ use super::custom_rtl::{apply_custom_rtl, load_templates_info, warn_unimplemente
 use super::kernel_xml_ports::{build_kernel_xml_ports, m_axi_param_block};
 use super::{enforce_xo_suffix, PackArgs};
 
-/// Fallback target clock for a kernel XML written before `synth` recorded
-/// one: 3.33 ns, the historical default.
-const DEFAULT_CLOCK_PERIOD: ClockPeriod = ClockPeriod::from_picoseconds(3330);
-
 pub(super) fn pack_vitis(args: &PackArgs, ctx: &CliContext, state: &WorkState) -> Result<()> {
     let design = &state.graph;
     let flow = &state.flow;
@@ -105,7 +101,6 @@ pub fn package_prepared_vitis_rtl(
         .unwrap_or_default();
     let inputs = build_package_xo_inputs(
         design,
-        flow,
         rtl_dir,
         xo_path,
         part_num,
@@ -194,7 +189,9 @@ fn top_rtl_m_axi_bases(
             .find_map(|suffix| rest.strip_suffix(suffix))
             .ok_or_else(|| {
                 CliError::Codegen(format!(
-                    "top RTL `{}` has M-AXI port `{}`, whose suffix is not in                      tapa_protocol::M_AXI_SUFFIXES; add it there so every reader                      of the vocabulary agrees",
+                    "top RTL `{}` has M-AXI port `{}`, whose suffix is not in \
+                     tapa_protocol::M_AXI_SUFFIXES; add it there so every \
+                     reader of the vocabulary agrees",
                     rtl_path.display(),
                     port.name,
                 ))
@@ -211,7 +208,6 @@ fn top_rtl_m_axi_bases(
 )]
 fn build_package_xo_inputs(
     design: &Design,
-    flow: &FlowSettings,
     hdl_dir: &Path,
     output_path: &Path,
     part_num: String,
@@ -228,12 +224,11 @@ fn build_package_xo_inputs(
             clock_period: clock_period.to_string(),
         })
         .clock_period(clock_period.to_string())
+        // resolve_device_settings already rejected a missing clock period,
+        // so the validated one is the one the kernel XML records.
         .kernel_xml(KernelXmlArgs {
             top_name: design.top.clone(),
-            clock_period: flow
-                .clock_period
-                .unwrap_or(DEFAULT_CLOCK_PERIOD)
-                .to_string(),
+            clock_period: clock_period.to_string(),
             ports: kernel_ports,
         })
         .kernel_out_path(crate::util::utf8(output_path))
@@ -504,7 +499,7 @@ mod tests {
         );
         state.flow.synthed = true;
         state.flow.part_num = Some("xcvu37p-fsvh2892-2L-e".to_string());
-        state.flow.clock_period = Some(DEFAULT_CLOCK_PERIOD);
+        state.flow.clock_period = Some(ClockPeriod::from_picoseconds(3330));
         state
     }
 

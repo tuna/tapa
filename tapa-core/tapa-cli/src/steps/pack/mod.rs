@@ -82,8 +82,8 @@ pub(super) fn published_floorplan_xdc(
 /// Dispatch packaging according to the target stored by `analyze`.
 pub fn run(args: &PackArgs, ctx: &CliContext) -> Result<()> {
     let state = work_io::load(&ctx.work_dir)?;
-    // Completed-synthesis and custom-RTL/floorplan validation is centralized
-    // in `steps::registry`.
+    // Completed-synthesis and custom-RTL/floorplan validation lives in
+    // `PipelineStep::check` (steps/chain.rs).
     published_floorplan_xdc(&ctx.work_dir, &state)?;
     // The graph's `target` is the single home of the flow; this exhaustive
     // match is the dispatch site a new `Target` variant would break.
