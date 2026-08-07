@@ -1,8 +1,6 @@
 #ifndef TAPA_CODEGEN_BACKEND_H_
 #define TAPA_CODEGEN_BACKEND_H_
 
-#include <string_view>
-
 #include "clang/AST/Decl.h"
 #include "clang/AST/Stmt.h"
 #include "clang/Rewrite/Core/Rewriter.h"
@@ -30,9 +28,6 @@ struct PortContext {
 class Backend {
  public:
   virtual ~Backend() = default;
-
-  // Serialized target name ("hls", "ignore", ...).
-  virtual std::string_view Name() const = 0;
 
   // Router: emit the interface pragmas + anti-DCE stubs for one port.
   void EmitPortPreamble(const PortContext& p, CodeSink& out) const {

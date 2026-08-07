@@ -1,8 +1,6 @@
 #ifndef TAPA_CODEGEN_IGNORE_H_
 #define TAPA_CODEGEN_IGNORE_H_
 
-#include <string_view>
-
 #include "backend.h"
 
 namespace tapa::cc {
@@ -12,8 +10,6 @@ namespace tapa::cc {
 // dead-code elimination (dummy reads/writes) and whose body is otherwise empty.
 class IgnoreBackend final : public Backend {
  public:
-  std::string_view Name() const override { return "ignore"; }
-
   // Ignore never rewrites signatures (no mmap -> offset).
   void RewriteSignature(const TaskModel&, bool,
                         clang::Rewriter&) const override {}

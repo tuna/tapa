@@ -5,6 +5,8 @@
 
 #include "clang/AST/DeclTemplate.h"
 
+#include "frontend/type_args.h"
+
 namespace tapa::cc {
 
 namespace {
@@ -36,20 +38,7 @@ TapaKind ClassifyByQualifiedName(std::string_view name) {
 }  // namespace
 
 TapaKind ClassifyTapaType(clang::QualType type) {
-  // Peel lvalue-references and template-parameter substitutions so that
-  // `tapa::mmap<T>&`, `const tapa::mmap<T>&`, and a substituted `T` all reduce
-  // to the underlying record.
-  for (;;) {
-    if (const auto* ref = type->getAs<clang::LValueReferenceType>()) {
-      type = ref->getPointeeType();
-      continue;
-    }
-    if (const auto* subst = type->getAs<clang::SubstTemplateTypeParmType>()) {
-      type = subst->getReplacementType();
-      continue;
-    }
-    break;
-  }
+  type = PeelType(type);
   if (const clang::RecordDecl* record = type->getAsRecordDecl()) {
     return ClassifyByQualifiedName(record->getQualifiedNameAsString());
   }

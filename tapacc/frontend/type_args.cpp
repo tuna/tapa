@@ -7,11 +7,7 @@
 
 namespace tapa::cc {
 
-namespace {
-
-// Peel lvalue-references and template-parameter substitutions so that
-// `tapa::mmap<T>&` and a substituted `T` both expose their arguments.
-clang::QualType Peel(clang::QualType type) {
+clang::QualType PeelType(clang::QualType type) {
   for (bool changed = true; changed;) {
     changed = false;
     if (const auto* ref = type->getAs<clang::LValueReferenceType>()) {
@@ -26,11 +22,9 @@ clang::QualType Peel(clang::QualType type) {
   return type;
 }
 
-}  // namespace
-
 const clang::TemplateArgument* GetTemplateArg(clang::QualType type,
                                               unsigned idx) {
-  type = Peel(type);
+  type = PeelType(type);
 
   // Prefer the as-written specialization type so type arguments keep their
   // source spelling (e.g. a typedef stays a typedef).
@@ -54,7 +48,7 @@ std::optional<int64_t> IntTemplateArg(clang::QualType type, unsigned idx) {
   // as-written `TemplateSpecializationType`, its arguments have non-type
   // parameters already evaluated to `Integral` (the as-written form stores
   // them as unevaluated `Expression`s).
-  type = Peel(type);
+  type = PeelType(type);
   const auto* record = type->getAs<clang::RecordType>();
   if (record == nullptr) return std::nullopt;
   const auto* spec =

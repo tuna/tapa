@@ -10,12 +10,15 @@ cc_library(
     srcs = ["classify.cpp"],
     hdrs = ["classify.h"],
     copts = TAPACC_COPTS,
-    deps = [CLANG_TOOLING],
+    includes = [".."],
+    deps = [
+        ":type_args",
+        CLANG_TOOLING,
+    ],
 )
 
 cc_library(
     name = "program",
-    srcs = ["program.cpp"],
     hdrs = ["program.h"],
     copts = TAPACC_COPTS,
     deps = [

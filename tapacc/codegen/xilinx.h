@@ -1,8 +1,6 @@
 #ifndef TAPA_CODEGEN_XILINX_H_
 #define TAPA_CODEGEN_XILINX_H_
 
-#include <string_view>
-
 #include "backend.h"
 
 namespace tapa::cc {
@@ -12,8 +10,6 @@ namespace tapa::cc {
 class XilinxBackend final : public Backend {
  public:
   explicit XilinxBackend(bool is_vitis) : is_vitis_(is_vitis) {}
-
-  std::string_view Name() const override { return "hls"; }
 
   void RewriteSignature(const TaskModel& task, bool is_top,
                         clang::Rewriter& rewriter) const override;
