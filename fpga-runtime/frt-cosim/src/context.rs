@@ -3,6 +3,15 @@ use crate::metadata::{ArgKind, KernelSpec};
 use frt_shm::{MmapSegment, SharedMemoryQueue};
 use std::collections::HashMap;
 
+/// Size of the segment an mmap argument gets before the host binds one.
+///
+/// The real size arrives with `set_buffer_arg`, which replaces the segment, so
+/// this is a stand-in and nothing reads it: an argument the host never binds
+/// reads as zero and its writes go nowhere, whatever the size. It used to be
+/// 4 MiB, which bought only a 4 MiB copy into the replacement -- 4.5 ms per
+/// mmap argument per invocation, against 16 us for the replacement alone.
+const PLACEHOLDER_BUFFER_BYTES: usize = 1;
+
 pub struct CosimContext {
     pub buffers: HashMap<String, MmapSegment>,
     pub streams: HashMap<String, SharedMemoryQueue>,
@@ -51,8 +60,7 @@ impl CosimContext {
         for arg in &spec.args {
             match &arg.kind {
                 ArgKind::Mmap { .. } => {
-                    let size = 4 * 1024 * 1024usize;
-                    let seg = MmapSegment::create(&arg.name, size)?;
+                    let seg = MmapSegment::create(&arg.name, PLACEHOLDER_BUFFER_BYTES)?;
                     let base = mmap_idx * 0x1000_0000u64;
                     buffers.insert(arg.name.clone(), seg);
                     base_addresses.insert(arg.name.clone(), base);
@@ -253,7 +261,7 @@ mod tests {
             })
             .expect_err("resize should fail");
         assert!(err.to_string().contains("injected failure"));
-        assert_eq!(ctx.buffers["a"].len(), 4 * 1024 * 1024);
+        assert_eq!(ctx.buffers["a"].len(), PLACEHOLDER_BUFFER_BYTES);
         assert_eq!(ctx.buffers["a"].path(), original_path.as_path());
         assert_eq!(ctx.buffers["a"].as_slice()[0], 0xaa);
     }

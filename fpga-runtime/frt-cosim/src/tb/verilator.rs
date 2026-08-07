@@ -145,10 +145,12 @@ impl<'a> VerilatorTbGenerator<'a> {
                     &offset_port,
                     (data_width as usize).div_ceil(8),
                     base_addresses.get(&arg.name).copied().unwrap_or(0),
-                    buffer_sizes
-                        .get(&arg.name)
-                        .copied()
-                        .unwrap_or(4 * 1024 * 1024),
+                    // The context creates a segment for every mmap argument,
+                    // so the entry is always here in production. An unknown
+                    // size models nothing rather than guessing at one: reads
+                    // return zero and writes are dropped, which is what an
+                    // unbound argument did when the model was a hash map.
+                    buffer_sizes.get(&arg.name).copied().unwrap_or(0),
                     offset,
                 )
             },
