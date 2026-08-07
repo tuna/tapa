@@ -57,4 +57,15 @@ TEST(FrtFlagsTest, SimulatorFlagIsTheUsersChoiceOrNothing) {
   FLAGS_cosim_simulator.clear();
 }
 
+TEST(FrtFlagsTest, SimulatorFlagIsTheUsersChoiceOrNothing) {
+  // Which backend runs a bitstream is Rust's decision now; this flag only
+  // says which simulator to use if one is used at all.
+  FLAGS_cosim_simulator.clear();
+  EXPECT_EQ(tapa::internal::frt::SimulatorFlag(), nullptr);
+
+  FLAGS_cosim_simulator = "verilator";
+  EXPECT_STREQ(tapa::internal::frt::SimulatorFlag(), "verilator");
+  FLAGS_cosim_simulator.clear();
+}
+
 }  // namespace
