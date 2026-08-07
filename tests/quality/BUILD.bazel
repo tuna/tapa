@@ -10,6 +10,7 @@ sh_test(
     args = ["$(location axis_adapter_behavior_test.sh)"],
     data = [
         "axis_adapter_behavior_test.sh",
+        "axis_adapter_smoke_main.cpp",
         "axis_adapter_smoke_tb.sv",
         "//tapa-core:tapa-codegen/assets/verilog/axis_adapter.v",
         "//tapa-core:tapa-codegen/assets/verilog/fifo.v",
