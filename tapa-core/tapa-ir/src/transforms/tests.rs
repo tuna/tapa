@@ -8,6 +8,7 @@ use crate::task::TaskLevel;
 
 fn vadd_two_level_graph_json() -> &'static str {
     r#"{
+        "schema_version": 2,
         "cflags": ["-std=c++14"],
         "top": "VecAdd",
         "target": "xilinx-hls",
@@ -95,10 +96,77 @@ fn flatten_preserves_top_metadata() {
     assert_eq!(top.synth, SynthTarget::Hls);
 }
 
+/// A constant bound at an upper-task invoke site must reach the leaves
+/// below it: with name-only bindings the leaf's arg stayed a dangling
+/// `Name` of the middle task's port — a wire that exists nowhere.
+#[test]
+fn flatten_propagates_constants_through_upper_tasks() {
+    let g = TaskGraph::from_json(
+        r#"{
+        "schema_version": 2,
+        "cflags": [],
+        "top": "Top",
+        "target": "xilinx-hls",
+        "tasks": {
+            "Top": {
+                "readable_name": "Top",
+                "code": "void Top();",
+                "level": "upper",
+                "synth": "hls",
+                "ports": [],
+                "tasks": {
+                    "Mid": [{"args": {
+                        "n": {"arg": {"width": 64, "value": 16}, "cat": "scalar"}
+                    }, "step": 0}]
+                },
+                "fifos": {}
+            },
+            "Mid": {
+                "readable_name": "Mid",
+                "code": "void Mid(uint64_t n);",
+                "level": "upper",
+                "synth": "hls",
+                "ports": [
+                    {"cat": "scalar", "name": "n", "type": "uint64_t", "width": 64}
+                ],
+                "tasks": {
+                    "Leaf": [{"args": {
+                        "n": {"arg": "n", "cat": "scalar"}
+                    }, "step": 0}]
+                },
+                "fifos": {}
+            },
+            "Leaf": {
+                "readable_name": "Leaf",
+                "code": "void Leaf(uint64_t n) {}",
+                "level": "lower",
+                "synth": "hls",
+                "ports": [
+                    {"cat": "scalar", "name": "n", "type": "uint64_t", "width": 64}
+                ]
+            }
+        }
+    }"#,
+    )
+    .expect("parse");
+    let out = flatten(&g).expect("flatten ok");
+    let top = out.tasks.get("Top").expect("top survives");
+    let leaf = &top.tasks["Leaf"][0];
+    assert_eq!(
+        leaf.args["n"].arg,
+        crate::instance::ArgSource::Literal(crate::instance::WireValue {
+            width: 64,
+            value: 16
+        }),
+        "the invoke-site constant must reach the leaf, not dangle as a port name"
+    );
+}
+
 /// Even an empty nested upper task must flatten without an error.
 #[test]
 fn flatten_accepts_nested_upper_without_error() {
     let json = r#"{
+        "schema_version": 2,
         "cflags": [],
         "top": "Outer",
         "target": "xilinx-hls",
@@ -132,6 +200,7 @@ fn flatten_accepts_nested_upper_without_error() {
 #[test]
 fn flatten_hoists_leaf_under_nested_upper() {
     let json = r#"{
+        "schema_version": 2,
         "cflags": [],
         "top": "Outer",
         "target": "xilinx-hls",
@@ -185,6 +254,7 @@ fn flatten_hoists_leaf_under_nested_upper() {
 #[test]
 fn flatten_uses_explicit_upper_instance_names_in_nested_fifo_paths() {
     let json = r#"{
+        "schema_version": 2,
         "cflags": [],
         "top": "Outer",
         "target": "xilinx-hls",
@@ -270,6 +340,7 @@ fn flatten_uses_explicit_upper_instance_names_in_nested_fifo_paths() {
 #[test]
 fn flatten_resolves_indexed_stream_bundle_args_through_parent_binding() {
     let json = r#"{
+        "schema_version": 2,
         "cflags": [],
         "top": "Outer",
         "target": "xilinx-hls",
