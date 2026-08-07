@@ -328,7 +328,7 @@ class istream : virtual public internal::basic_stream<T> {
   bool empty() {
     bool is_empty = this->get_queue().empty();
     if (is_empty) {
-      internal::yield("channel '" + this->get_name() + "' is empty");
+      internal::yield(this->get_name(), "empty");
     }
     return is_empty;
   }
@@ -474,7 +474,7 @@ class ostream : virtual public internal::basic_stream<T> {
   bool full() {
     bool is_full = this->get_queue().full();
     if (is_full) {
-      internal::yield("channel '" + this->get_name() + "' is full");
+      internal::yield(this->get_name(), "full");
     }
     return is_full;
   }

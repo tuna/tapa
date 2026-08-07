@@ -156,10 +156,15 @@ cc_test(
     name = "tapa-lib-test",
     size = "small",
     # `flags_test.cpp` has its own focused target (`:frt-flags-test`) so it is
-    # not swept into this catch-all test.
+    # not swept into this catch-all test. `stream_alloc_test.cpp` replaces the
+    # global allocation functions, which is process-wide, so it gets its own
+    # target too (`:stream-alloc-test`).
     srcs = glob(
         ["tapa/**/*_test.cpp"],
-        exclude = ["tapa/host/frt/flags_test.cpp"],
+        exclude = [
+            "tapa/host/frt/flags_test.cpp",
+            "tapa/host/stream_alloc_test.cpp",
+        ],
     ),
     linkopts = ["-lstdc++fs"],
     target_compatible_with = ["@platforms//os:linux"],
@@ -167,6 +172,19 @@ cc_test(
     deps = [
         ":scoped_log_sink_mock",
         ":scoped_set_env",
+        ":tapa",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "stream-alloc-test",
+    size = "small",
+    srcs = ["tapa/host/stream_alloc_test.cpp"],
+    target_compatible_with = ["@platforms//os:linux"],
+    visibility = ["//visibility:public"],
+    deps = [
         ":tapa",
         "@googletest//:gtest",
         "@googletest//:gtest_main",

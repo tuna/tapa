@@ -11,7 +11,16 @@ namespace tapa {
 namespace internal {
 void schedule(bool detach, const std::function<void()>&);
 void schedule_cleanup(const std::function<void()>&);
-void yield(const std::string& msg);
+
+// Yield to the scheduler, naming what the caller is blocked on.
+//
+// The reason is formatted only when stream debugging is on, and the
+// non-coroutine build ignores it outright — but a blocked producer/consumer
+// pair yields once per element, so callers must not build a message eagerly.
+// Both overloads take pieces the caller already holds (`get_name()` returns a
+// reference) so a yield costs no allocation.
+void yield(const char* reason);
+void yield(const std::string& channel_name, const char* state);
 
 // FRT instance lifecycle, observed by blocked stream operations. A stream
 // bound to a kernel instance can only be filled or drained by that

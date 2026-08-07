@@ -122,16 +122,32 @@ mutex debug_mtx;  // Serialize debug logging across threads.
 
 }  // namespace
 
-void yield(const string& msg) {
-  if (debug) {
-    unique_lock l(debug_mtx);
-    LOG(INFO) << msg;
-  }
+namespace {
+
+void yield_to_scheduler() {
   if (current_handle == nullptr) {
     reschedule_this_thread();
   } else {
     (*current_handle)();
   }
+}
+
+}  // namespace
+
+void yield(const char* reason) {
+  if (debug) {
+    unique_lock l(debug_mtx);
+    LOG(INFO) << reason;
+  }
+  yield_to_scheduler();
+}
+
+void yield(const string& channel_name, const char* state) {
+  if (debug) {
+    unique_lock l(debug_mtx);
+    LOG(INFO) << "channel '" << channel_name << "' is " << state;
+  }
+  yield_to_scheduler();
 }
 
 namespace {
@@ -243,7 +259,9 @@ __attribute__((weak)) void __sanitizer_finish_switch_fiber(void*, const void**,
 namespace tapa {
 namespace internal {
 
-void yield(const std::string& msg) { reschedule_this_thread(); }
+void yield(const char*) { reschedule_this_thread(); }
+
+void yield(const std::string&, const char*) { reschedule_this_thread(); }
 
 namespace {
 
