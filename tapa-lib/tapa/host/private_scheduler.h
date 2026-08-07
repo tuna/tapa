@@ -143,6 +143,7 @@ class thread_pool {
  public:
   thread_pool(size_t worker_count = 0) {
     signal(SIGINT, signal_handler);
+    ensure_split_stack_runtime_ready();
     if (worker_count == 0) {
       if (auto concurrency = getenv("TAPA_CONCURRENCY")) {
         worker_count = atoi(concurrency);

@@ -71,6 +71,16 @@ using boost::condition_variable;
 using boost::mutex;
 using boost::coroutines2::segmented_stack;
 
+// libgcc's split-stack runtime keeps the page size in a static that only
+// __morestack_load_mmap() fills in. It normally runs from an .init_array
+// entry that rides in with libgcc's morestack.o, but nothing guarantees the
+// linker pulls that member when no translation unit is compiled
+// -fsplit-stack (Clang cannot). Left at zero, the page-size rounding in
+// allocate_segment turns every request into mmap(length = 0), and each
+// coroutine dies with "unable to allocate additional stack space: errno 22".
+// Declared weak so a libgcc without the symbol still links.
+extern "C" void __morestack_load_mmap(void) __attribute__((weak));
+
 using pull_type = boost::coroutines2::coroutine<void>::pull_type;
 using push_type = boost::coroutines2::coroutine<void>::push_type;
 using unique_lock = boost::unique_lock<mutex>;
@@ -105,6 +115,11 @@ uint64_t get_time_ns() {
   timespec tp;
   clock_gettime(CLOCK_MONOTONIC, &tp);
   return static_cast<uint64_t>(tp.tv_sec) * 1000000000 + tp.tv_nsec;
+}
+
+// Idempotent: safe whether or not the .init_array entry already ran.
+void ensure_split_stack_runtime_ready() {
+  if (__morestack_load_mmap != nullptr) __morestack_load_mmap();
 }
 
 int get_physical_core_count() {
