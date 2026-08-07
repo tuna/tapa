@@ -183,13 +183,30 @@ class frt_queue : public base_queue<T> {
   T front() const override { return stream_.front(); }
 
   frt::Stream<T>& get_frt_stream() override {
+    bound_at_.store(frt_instances_scheduled(), std::memory_order_relaxed);
     is_frt_arg_.store(true, std::memory_order_relaxed);
     return stream_;
+  }
+
+  // Bound once the instance this stream was handed to has actually been
+  // scheduled: from then on that instance is the only party that fills or
+  // drains it, which is what lets `check_kernel_can_still_serve` call a
+  // blocked operation unservable.
+  //
+  // Arguments are bound before `schedule_frt_instance` counts the instance,
+  // so between the two a second sequential invoke would otherwise look like
+  // "bound, and everything finished" and abort a healthy run. Comparing
+  // against the total at bind time closes that window.
+  bool is_kernel_bound() const override {
+    return is_frt_arg_.load(std::memory_order_relaxed) &&
+           frt_instances_scheduled() >
+               bound_at_.load(std::memory_order_relaxed);
   }
 
  private:
   frt::Stream<T> stream_;
   std::atomic<bool> is_frt_arg_ = false;
+  std::atomic<int> bound_at_ = 0;
 };
 
 template <typename T>
