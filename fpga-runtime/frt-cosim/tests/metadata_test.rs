@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 
 use frt_cosim::metadata::{self, ArgKind, Mode, StreamDir, StreamProtocol};
-use indexmap::IndexMap;
 use tapa_ir::port::{ArgCategory, Port};
 use tapa_ir::{SynthTarget, Target, Task, TaskGraph, TaskLevel};
 

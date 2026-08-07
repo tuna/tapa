@@ -179,7 +179,6 @@ mod tests {
     use super::*;
     use std::collections::BTreeMap;
 
-    use indexmap::IndexMap;
     use tapa_ir::{SynthTarget, Task, TaskInstance, TaskLevel};
 
     fn write_stub_module(dir: &Path, task_name: &str) -> Utf8PathBuf {

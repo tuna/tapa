@@ -26,7 +26,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use serde_json::Value;
 use tapa_ir::{Area, Design};
 use tapa_xilinx::{parse_utilization_rpt, run_vivado, ToolRunner, UtilizationReport, VivadoJob};
 
@@ -265,8 +264,6 @@ mod tests {
 
     use std::collections::BTreeMap;
 
-    use indexmap::IndexMap;
-    use serde_json::json;
     use tapa_ir::{SynthTarget, Task, TaskInstance, TaskLevel};
     use tapa_xilinx::{MockToolRunner, ToolInvocation, ToolOutput, XilinxError};
 

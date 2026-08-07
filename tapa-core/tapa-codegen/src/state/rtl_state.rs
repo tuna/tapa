@@ -100,6 +100,10 @@ impl TopologyWithRtl {
 
 // `u32::bit_width` is still unstable on the pinned stable toolchain.
 #[allow(
+    unknown_lints,
+    reason = "manual_bit_width only exists on the runner's newer clippy"
+)]
+#[allow(
     clippy::manual_bit_width,
     reason = "u32::bit_width is unstable on the pinned stable toolchain"
 )]

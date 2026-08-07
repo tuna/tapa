@@ -323,7 +323,6 @@ mod tests {
 
     use std::collections::BTreeMap;
 
-    use indexmap::IndexMap;
     use tapa_ir::{
         port::{ArgCategory, Port},
         SynthTarget, Task, TaskGraph, TaskLevel,

@@ -181,7 +181,7 @@ mod tests {
     use std::sync::Mutex;
 
     use clap::Parser;
-    use serde_json::json;
+
     use std::collections::BTreeMap;
 
     use indexmap::IndexMap;

@@ -318,7 +318,6 @@ mod tests {
 
     use std::collections::BTreeMap;
 
-    use indexmap::IndexMap;
     use tapa_ir::{Design, SynthTarget, Task, TaskLevel};
     use tapa_xilinx::{MockToolRunner, ToolInvocation, ToolOutput};
 
