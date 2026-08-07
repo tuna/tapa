@@ -146,18 +146,37 @@ fn bootstrap_emulation_env_once(meta: &XrtMetadata) -> Result<()> {
         .map_err(FrtError::MetadataParse)
 }
 
+/// The part of the `is_finished` contract that needs no `OpenCL` runtime:
+/// a run that was never launched is not finished, and a run already known to
+/// be finished stays finished. `None` means the answer is in the events.
+fn completion_without_events(finished: bool, launched: bool) -> Option<bool> {
+    if finished {
+        return Some(true);
+    }
+    // Not launched yet: not finished — the cosim backend answers the same,
+    // so `close` treats both backends identically.
+    if !launched {
+        return Some(false);
+    }
+    None
+}
+
+/// The `XCL_EMULATION_MODE` value an xclbin of this mode asks for, or `None`
+/// when it runs on real hardware and wants the variable left alone.
+fn emulation_mode_env_value(mode: super::metadata::XclbinMode) -> Option<&'static str> {
+    match mode {
+        super::metadata::XclbinMode::HwEmu => Some("hw_emu"),
+        super::metadata::XclbinMode::SwEmu => Some("sw_emu"),
+        super::metadata::XclbinMode::Flat => None,
+    }
+}
+
 fn apply_emulation_mode_env(mode: super::metadata::XclbinMode) {
     if std::env::var_os("XCL_EMULATION_MODE").is_some() {
         return;
     }
-    match mode {
-        super::metadata::XclbinMode::HwEmu => {
-            std::env::set_var("XCL_EMULATION_MODE", "hw_emu");
-        }
-        super::metadata::XclbinMode::SwEmu => {
-            std::env::set_var("XCL_EMULATION_MODE", "sw_emu");
-        }
-        super::metadata::XclbinMode::Flat => {}
+    if let Some(value) = emulation_mode_env_value(mode) {
+        std::env::set_var("XCL_EMULATION_MODE", value);
     }
 }
 
@@ -486,13 +505,8 @@ impl Device for XrtDevice {
     }
 
     fn is_finished(&mut self) -> Result<bool> {
-        if self.finished {
-            return Ok(true);
-        }
-        // Not launched yet: not finished — the cosim backend answers the
-        // same, so `close` treats both backends identically.
-        if !self.launched {
-            return Ok(false);
+        if let Some(answer) = completion_without_events(self.finished, self.launched) {
+            return Ok(answer);
         }
         if self.compute_events.is_empty() {
             return Ok(true);
@@ -730,12 +744,44 @@ fn elapsed_ns(events: &[Event]) -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::scalar_type_name;
+    use super::super::metadata::XclbinMode;
+    use super::{completion_without_events, emulation_mode_env_value, scalar_type_name};
 
     #[test]
     fn scalar_type_names_expand_beyond_u64() {
         assert_eq!(scalar_type_name(1), "uint32_t");
         assert_eq!(scalar_type_name(64), "uint64_t");
         assert_eq!(scalar_type_name(128), "uint128_t");
+    }
+
+    #[test]
+    fn a_device_that_never_launched_is_not_finished() {
+        assert_eq!(
+            completion_without_events(/*finished=*/ false, /*launched=*/ false),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn a_finished_device_stays_finished_without_being_launched_again() {
+        assert_eq!(
+            completion_without_events(/*finished=*/ true, /*launched=*/ false),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn a_launched_device_defers_to_its_events() {
+        assert_eq!(
+            completion_without_events(/*finished=*/ false, /*launched=*/ true),
+            None
+        );
+    }
+
+    #[test]
+    fn only_emulation_xclbins_ask_for_an_emulation_mode() {
+        assert_eq!(emulation_mode_env_value(XclbinMode::HwEmu), Some("hw_emu"));
+        assert_eq!(emulation_mode_env_value(XclbinMode::SwEmu), Some("sw_emu"));
+        assert_eq!(emulation_mode_env_value(XclbinMode::Flat), None);
     }
 }
