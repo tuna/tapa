@@ -43,6 +43,31 @@ void reschedule_this_thread() {
 
 namespace internal {
 
+namespace {
+
+// Instances handed to `schedule_frt_instance` that have not finished yet,
+// and how many have finished. Both are needed to tell "no instance has
+// started" (nothing to wait for yet) from "every instance is done" (a
+// blocked FRT-bound stream will never be served).
+std::atomic<int> frt_instances_in_flight{0};
+std::atomic<int> frt_instances_finished{0};
+
+}  // namespace
+
+void note_frt_instance_scheduled() {
+  frt_instances_in_flight.fetch_add(1, std::memory_order_relaxed);
+}
+
+void note_frt_instance_finished() {
+  frt_instances_finished.fetch_add(1, std::memory_order_relaxed);
+  frt_instances_in_flight.fetch_sub(1, std::memory_order_relaxed);
+}
+
+bool every_frt_instance_finished() {
+  return frt_instances_finished.load(std::memory_order_relaxed) > 0 &&
+         frt_instances_in_flight.load(std::memory_order_relaxed) == 0;
+}
+
 // Killed via SIGINT when tapa::invoke synchronous kernel is running.
 frt::Instance* frt_sync_kernel_instance = nullptr;
 extern "C" void kill_frt_sync_kernel(int) {

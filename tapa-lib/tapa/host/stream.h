@@ -56,6 +56,10 @@ class type_erased_queue {
   virtual bool empty() const = 0;
   virtual bool full() const = 0;
 
+  // Whether this channel is bound to a kernel instance, making that
+  // instance the only party that can drain or fill it.
+  virtual bool is_kernel_bound() const { return false; }
+
  protected:
   // Pops up to `n` elements and logs them as leftovers.
   virtual void log_leftovers(int n) = 0;
@@ -297,6 +301,23 @@ std::ostream& operator<<(std::ostream& os, const elem_t<T>& elem) {
   return os;
 }
 
+/// Abort a blocked channel operation that can never complete.
+///
+/// A channel bound to a kernel instance is filled or drained only by that
+/// instance. Once every scheduled instance has finished — the simulator
+/// exited, the device returned — a blocked operation on such a channel has
+/// no one left to serve it, and waiting forever hides the real failure.
+template <typename T>
+void check_kernel_can_still_serve(const base_queue<T>& queue,
+                                  const char* waiting_for) {
+  if (queue.is_kernel_bound() && every_frt_instance_finished()) {
+    LOG(FATAL) << "channel '" << queue.get_name() << "' is still "
+               << waiting_for
+               << " after every kernel instance finished; the kernel stopped "
+                  "before the transfer completed";
+  }
+}
+
 }  // namespace internal
 
 /// Consumer-side view of a @c tapa::stream. Use only as a task parameter.
@@ -388,6 +409,7 @@ class istream : virtual public internal::basic_stream<T> {
   T read() {
     T val;
     while (!try_read(val)) {
+      internal::check_kernel_can_still_serve(this->get_queue(), "empty");
     }
     return val;
   }
@@ -428,6 +450,7 @@ class istream : virtual public internal::basic_stream<T> {
   /// Blocking consume of an EoT token.
   void open() {
     while (!try_open()) {
+      internal::check_kernel_can_still_serve(this->get_queue(), "empty");
     }
   }
 
@@ -468,6 +491,7 @@ class ostream : virtual public internal::basic_stream<T> {
   /// Blocking write of @p value.
   void write(const T& value) {
     while (!try_write(value)) {
+      internal::check_kernel_can_still_serve(this->get_queue(), "full");
     }
   }
 
@@ -489,6 +513,7 @@ class ostream : virtual public internal::basic_stream<T> {
   /// Blocking write of an EoT token.
   void close() {
     while (!try_close()) {
+      internal::check_kernel_can_still_serve(this->get_queue(), "full");
     }
   }
 

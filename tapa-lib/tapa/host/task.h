@@ -51,6 +51,9 @@ void deallocate(void* addr, size_t length);
 template <typename InstancePtr>
 void schedule_frt_instance(InstancePtr instance) {
   schedule_cleanup([instance]() { instance->Kill(); });
+  // Counted before the task is queued so a producer that blocks first sees
+  // an instance in flight rather than "everything finished".
+  note_frt_instance_scheduled();
   schedule(/*detach=*/false, [instance]() {
     instance->WriteToDevice();
     instance->Exec();
@@ -59,6 +62,7 @@ void schedule_frt_instance(InstancePtr instance) {
       yield("frt::Instance() is not finished");
     }
     instance->Finish();
+    note_frt_instance_finished();
   });
 }
 
