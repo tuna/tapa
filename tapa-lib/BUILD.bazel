@@ -22,6 +22,7 @@ config_setting(
 _PUBLIC_HEADERS = [
     "tapa.h",
     "tapa/base/logging.h",
+    "tapa/base/logging_dummy.h",
     "tapa/base/stream.h",
     "tapa/base/tapa.h",
     "tapa/base/task.h",

@@ -362,78 +362,39 @@ class hmap : public mmap<T> {
   }
 };
 
-#define TAPA_DEFINE_MMAP(tag)                          \
-  template <typename T>                                \
-  class tag##_mmap : public mmap<T> {                  \
-    tag##_mmap(T* ptr) : mmap<T>(ptr) {}               \
-                                                       \
-   public:                                             \
-    using mmap<T>::mmap;                               \
-    tag##_mmap(const mmap<T>& base) : mmap<T>(base) {} \
-                                                       \
-    template <uint64_t N>                              \
-    tag##_mmap<vec_t<T, N>> vectorized() const {       \
-      return mmap<T>::template vectorized<N>();        \
-    }                                                  \
-    template <typename U>                              \
-    tag##_mmap<U> reinterpret() const {                \
-      return mmap<T>::template reinterpret<U>();       \
-    }                                                  \
+// Every buffer-access tag gets a subclass of each single-buffer handle, and
+// they differ only in which handle they extend.
+#define TAPA_DEFINE_TAGGED_MMAP(tag, kind)               \
+  template <typename T>                                  \
+  class tag##_##kind : public kind<T> {                  \
+    tag##_##kind(T* ptr) : kind<T>(ptr) {}               \
+                                                         \
+   public:                                               \
+    using kind<T>::kind;                                 \
+    tag##_##kind(const kind<T>& base) : kind<T>(base) {} \
+                                                         \
+    template <uint64_t N>                                \
+    tag##_##kind<vec_t<T, N>> vectorized() const {       \
+      return kind<T>::template vectorized<N>();          \
+    }                                                    \
+    template <typename U>                                \
+    tag##_##kind<U> reinterpret() const {                \
+      return kind<T>::template reinterpret<U>();         \
+    }                                                    \
   }
-TAPA_DEFINE_MMAP(placeholder);
-TAPA_DEFINE_MMAP(read_only);
-TAPA_DEFINE_MMAP(write_only);
-TAPA_DEFINE_MMAP(read_write);
-#undef TAPA_DEFINE_MMAP
 
-#define TAPA_DEFINE_IMMAP(tag)                            \
-  template <typename T>                                   \
-  class tag##_immap : public immap<T> {                   \
-    tag##_immap(T* ptr) : immap<T>(ptr) {}                \
-                                                          \
-   public:                                                \
-    using immap<T>::immap;                                \
-    tag##_immap(const immap<T>& base) : immap<T>(base) {} \
-                                                          \
-    template <uint64_t N>                                 \
-    tag##_immap<vec_t<T, N>> vectorized() const {         \
-      return immap<T>::template vectorized<N>();          \
-    }                                                     \
-    template <typename U>                                 \
-    tag##_immap<U> reinterpret() const {                  \
-      return immap<T>::template reinterpret<U>();         \
-    }                                                     \
-  }
-TAPA_DEFINE_IMMAP(placeholder);
-TAPA_DEFINE_IMMAP(read_only);
-TAPA_DEFINE_IMMAP(write_only);
-TAPA_DEFINE_IMMAP(read_write);
-#undef TAPA_DEFINE_IMMAP
+#define TAPA_DEFINE_TAGGED_MMAP_FAMILY(kind)  \
+  TAPA_DEFINE_TAGGED_MMAP(placeholder, kind); \
+  TAPA_DEFINE_TAGGED_MMAP(read_only, kind);   \
+  TAPA_DEFINE_TAGGED_MMAP(write_only, kind);  \
+  TAPA_DEFINE_TAGGED_MMAP(read_write, kind)
+TAPA_DEFINE_TAGGED_MMAP_FAMILY(mmap);
+TAPA_DEFINE_TAGGED_MMAP_FAMILY(immap);
+TAPA_DEFINE_TAGGED_MMAP_FAMILY(ommap);
+#undef TAPA_DEFINE_TAGGED_MMAP_FAMILY
+#undef TAPA_DEFINE_TAGGED_MMAP
 
-#define TAPA_DEFINE_OMMAP(tag)                            \
-  template <typename T>                                   \
-  class tag##_ommap : public ommap<T> {                   \
-    tag##_ommap(T* ptr) : ommap<T>(ptr) {}                \
-                                                          \
-   public:                                                \
-    using ommap<T>::ommap;                                \
-    tag##_ommap(const ommap<T>& base) : ommap<T>(base) {} \
-                                                          \
-    template <uint64_t N>                                 \
-    tag##_ommap<vec_t<T, N>> vectorized() const {         \
-      return ommap<T>::template vectorized<N>();          \
-    }                                                     \
-    template <typename U>                                 \
-    tag##_ommap<U> reinterpret() const {                  \
-      return ommap<T>::template reinterpret<U>();         \
-    }                                                     \
-  }
-TAPA_DEFINE_OMMAP(placeholder);
-TAPA_DEFINE_OMMAP(read_only);
-TAPA_DEFINE_OMMAP(write_only);
-TAPA_DEFINE_OMMAP(read_write);
-#undef TAPA_DEFINE_OMMAP
-
+// `mmaps` carries an extra size parameter, so it does not fit the macro above.
 #define TAPA_DEFINE_MMAPS(tag)                                        \
   template <typename T, uint64_t S>                                   \
   class tag##_mmaps : public mmaps<T, S> {                            \
