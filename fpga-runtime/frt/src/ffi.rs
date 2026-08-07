@@ -107,13 +107,7 @@ fn parse_simulator(sim: Option<&str>) -> Result<Simulator, String> {
 }
 
 fn open_instance(path: &str, sim: Option<&str>) -> Result<Instance, String> {
-    let p = Path::new(path);
-    match p.extension().and_then(|e| e.to_str()) {
-        Some("xo" | "zip") => {
-            Instance::open_cosim(p, &parse_simulator(sim)?).map_err(|e| e.to_string())
-        }
-        _ => Instance::open(p).map_err(|e| e.to_string()),
-    }
+    Instance::open(Path::new(path), &parse_simulator(sim)?).map_err(|e| e.to_string())
 }
 
 /// Return the error message recorded by the most recent failed `frt_*`

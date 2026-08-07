@@ -18,8 +18,8 @@ namespace frt {
 // Flag ownership lives entirely in C++ (flags.cpp). These forwarders are
 // defined there; referencing them keeps flags.cpp linked so its gflags
 // `DEFINE_*` registrations survive.
-void ForwardFlagsToEnv(const std::string& bitstream);
-const char* SimulatorFlag(const std::string& bitstream);
+void ForwardFlagsToEnv();
+const char* SimulatorFlag();
 bool CosimSetupOnly();
 
 namespace {
@@ -42,8 +42,8 @@ struct Instance::Impl {
 
   explicit Impl(const std::string& bitstream) {
     if (bitstream.empty()) return;
-    ForwardFlagsToEnv(bitstream);
-    handle = frt_instance_open(bitstream.c_str(), SimulatorFlag(bitstream));
+    ForwardFlagsToEnv();
+    handle = frt_instance_open(bitstream.c_str(), SimulatorFlag());
     LOG_IF(FATAL, handle == nullptr)
         << "failed to open '" << bitstream << "': " << LastErr();
   }

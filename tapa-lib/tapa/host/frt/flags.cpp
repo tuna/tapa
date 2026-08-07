@@ -31,11 +31,6 @@ namespace frt {
 
 namespace {
 
-bool IsCosimPackage(const std::string& path) {
-  return (path.size() > 3 && path.compare(path.size() - 3, 3, ".xo") == 0) ||
-         (path.size() > 4 && path.compare(path.size() - 4, 4, ".zip") == 0);
-}
-
 void SetEnvIf(const char* name, const std::string& val) {
   if (!val.empty()) {
     setenv(name, val.c_str(), 1);
@@ -52,14 +47,18 @@ void SetBoolEnvIf(const char* name, bool val) {
 
 }  // namespace
 
-const char* SimulatorFlag(const std::string& bitstream) {
-  if (!IsCosimPackage(bitstream)) return nullptr;
-  return FLAGS_cosim_simulator.empty() ? "xsim" : FLAGS_cosim_simulator.c_str();
+// Which backend runs a bitstream is decided once, in Rust
+// (`ExecutionMode::of`), from the same path this flag accompanies. Passing
+// the simulator name for a hardware bitstream is harmless: it is ignored.
+const char* SimulatorFlag() {
+  return FLAGS_cosim_simulator.empty() ? nullptr
+                                       : FLAGS_cosim_simulator.c_str();
 }
 
-void ForwardFlagsToEnv(const std::string& bitstream) {
+// Forwarded unconditionally: every one of these is read only by the cosim
+// backend, so no forwarding decision has to know the execution mode.
+void ForwardFlagsToEnv() {
   SetEnvIf("FRT_XOCL_BDF", FLAGS_xocl_bdf);
-  if (!IsCosimPackage(bitstream)) return;
   SetBoolEnvIf("FRT_XSIM_START_GUI", FLAGS_xsim_start_gui);
   SetBoolEnvIf("FRT_XSIM_SAVE_WAVEFORM", FLAGS_xsim_save_waveform);
   SetEnvIf("FRT_COSIM_WORK_DIR", FLAGS_cosim_work_dir);

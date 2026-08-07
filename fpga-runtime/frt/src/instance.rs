@@ -10,21 +10,45 @@ pub enum Simulator {
     Xsim { legacy: bool },
 }
 
+/// How a bitstream runs, as decided by what kind of file it is.
+///
+/// The one place that decision is made: the C++ host used to sniff the
+/// same extensions to pick which flags to forward, and the FFI layer
+/// sniffed them again to pick a constructor.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ExecutionMode {
+    /// An `.xclbin` on real hardware or an XRT emulator.
+    Hardware,
+    /// An `.xo`/`.zip` package driven by a simulator.
+    Cosim,
+}
+
+impl ExecutionMode {
+    pub fn of(path: &Path) -> Result<Self> {
+        match path.extension().and_then(|e| e.to_str()) {
+            Some("xclbin") => Ok(Self::Hardware),
+            Some("xo" | "zip") => Ok(Self::Cosim),
+            _ => Err(FrtError::NoDevice {
+                path: path.to_owned(),
+            }),
+        }
+    }
+}
+
 pub struct Instance {
     device: Box<dyn Device>,
 }
 
 impl Instance {
-    pub fn open(path: impl AsRef<Path>) -> Result<Self> {
+    /// Open `path`, letting its kind decide the backend. `sim` is consulted
+    /// only for a cosim package; hardware ignores it.
+    pub fn open(path: impl AsRef<Path>, sim: &Simulator) -> Result<Self> {
         let path = path.as_ref();
-        match path.extension().and_then(|e| e.to_str()) {
-            Some("xclbin") => Ok(Self {
-                device: Box::new(XrtDevice::open(path)?),
-            }),
-            _ => Err(FrtError::NoDevice {
-                path: path.to_owned(),
-            }),
-        }
+        let device: Box<dyn Device> = match ExecutionMode::of(path)? {
+            ExecutionMode::Hardware => Box::new(XrtDevice::open(path)?),
+            ExecutionMode::Cosim => Box::new(CosimDevice::open(path, sim)?),
+        };
+        Ok(Self { device })
     }
 
     pub fn open_cosim(path: impl AsRef<Path>, sim: &Simulator) -> Result<Self> {
@@ -90,5 +114,33 @@ impl Instance {
 
     pub fn store_ns(&self) -> u64 {
         self.device.store_ns()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ExecutionMode;
+    use std::path::Path;
+
+    #[test]
+    fn the_file_kind_decides_the_backend() {
+        assert_eq!(
+            ExecutionMode::of(Path::new("k.xclbin")).expect("xclbin"),
+            ExecutionMode::Hardware
+        );
+        assert_eq!(
+            ExecutionMode::of(Path::new("k.xo")).expect("xo"),
+            ExecutionMode::Cosim
+        );
+        assert_eq!(
+            ExecutionMode::of(Path::new("k.zip")).expect("zip"),
+            ExecutionMode::Cosim
+        );
+    }
+
+    #[test]
+    fn an_unrunnable_path_names_itself() {
+        let err = ExecutionMode::of(Path::new("kernel.bit")).expect_err("not runnable");
+        assert!(err.to_string().contains("kernel.bit"), "{err}");
     }
 }
