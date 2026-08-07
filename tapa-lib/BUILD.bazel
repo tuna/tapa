@@ -26,6 +26,7 @@ _PUBLIC_HEADERS = [
     "tapa/base/tapa.h",
     "tapa/base/task.h",
     "tapa/base/util.h",
+    "tapa/base/vec.h",
     "tapa/compat.h",
     "tapa/host/coroutine.h",
     "tapa/host/frt/c_api.h",
