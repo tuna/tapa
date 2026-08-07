@@ -68,15 +68,16 @@ void Instance::SetScalarArg(int index, const void* data, size_t size) {
       "set_scalar");
 }
 
-void Instance::SetBufferArg(int index, const void* ptr, size_t bytes, Tag tag) {
+void Instance::SetBufferArg(int index, const void* ptr, size_t bytes,
+                            BufferAccess access) {
   if (!impl_->handle) return;
   // The FRT C ABI takes a mutable pointer. Read-only mmaps expose a const
   // element pointer, so const-cast here as the former BufferArg did; the
-  // read/write direction is conveyed by `tag`, not pointer constness.
+  // direction is conveyed by `access`, not pointer constness.
   CheckFfi(frt_instance_set_buffer_arg_typed(
                impl_->handle, index,
                const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(ptr)),
-               bytes, static_cast<int>(tag)),
+               bytes, static_cast<int>(access)),
            "set_buffer");
 }
 

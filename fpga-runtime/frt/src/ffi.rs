@@ -106,19 +106,6 @@ fn parse_simulator(sim: Option<&str>) -> Result<Simulator, String> {
     }
 }
 
-fn parse_buffer_access(tag: c_int) -> BufferAccess {
-    // frt tags are host-relative; tapa tags are kernel-relative, so they are
-    // swapped. kReadOnly(1) means "host reads = kernel writes" → stores_to_host;
-    // kWriteOnly(2) means "host writes = kernel reads" → loads_from_host.
-    // This matches the old C++ TapaFastCosimDevice::SetBufferArg convention.
-    match tag {
-        0 => BufferAccess::PlaceHolder,
-        1 => BufferAccess::WriteOnly,
-        2 => BufferAccess::ReadOnly,
-        _ => BufferAccess::ReadWrite,
-    }
-}
-
 fn open_instance(path: &str, sim: Option<&str>) -> Result<Instance, String> {
     let p = Path::new(path);
     match p.extension().and_then(|e| e.to_str()) {
@@ -237,7 +224,10 @@ pub extern "C" fn frt_instance_set_buffer_arg_typed(
         set_last_error("buffer ptr is null");
         return -1;
     }
-    let access = parse_buffer_access(tag);
+    let Some(access) = BufferAccess::from_wire(tag) else {
+        set_last_error(format!("unknown buffer access {tag}"));
+        return -1;
+    };
     let Some(h) = with_handle_mut(handle) else {
         return -1;
     };

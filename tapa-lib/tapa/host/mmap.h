@@ -509,17 +509,17 @@ struct accessor<async_mmap<T>&, mmaps<T, S>&> {
       }                                                                       \
     }                                                                         \
   }
-// Host/kernel perspective is inverted: a host `read_only_` buffer is written
-// by the host and read by the kernel, hence `kWriteOnly` (and vice versa).
-TAPA_DEFINE_ACCESSOR(placeholder_, , frt::Tag::kPlaceHolder);
+// The accessor names are the host's view; `BufferAccess` is the kernel's.
+// A `read_only_mmap` is read by the kernel, so the host has to load it.
+TAPA_DEFINE_ACCESSOR(placeholder_, , BufferAccess::PlaceHolder);
 
 // mmap accessors
-TAPA_DEFINE_ACCESSOR(read_only_, , frt::Tag::kWriteOnly);
-TAPA_DEFINE_ACCESSOR(write_only_, , frt::Tag::kReadOnly);
-TAPA_DEFINE_ACCESSOR(read_write_, , frt::Tag::kReadWrite);
+TAPA_DEFINE_ACCESSOR(read_only_, , BufferAccess::ReadOnly);
+TAPA_DEFINE_ACCESSOR(write_only_, , BufferAccess::WriteOnly);
+TAPA_DEFINE_ACCESSOR(read_write_, , BufferAccess::ReadWrite);
 
 // mmaps accessors
-TAPA_DEFINE_ACCESSOR(, &, frt::Tag::kReadWrite);
+TAPA_DEFINE_ACCESSOR(, &, BufferAccess::ReadWrite);
 
 #undef TAPA_DEFINE_ACCESSOR
 

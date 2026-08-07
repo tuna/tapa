@@ -12,14 +12,6 @@ namespace tapa {
 namespace internal {
 namespace frt {
 
-// Buffer access category forwarded to `frt_instance_set_buffer_arg_typed`.
-enum class Tag {
-  kPlaceHolder = 0,
-  kReadOnly = 1,
-  kWriteOnly = 2,
-  kReadWrite = 3,
-};
-
 // Type-erased carrier for a stream's FFI context (its shared-memory path).
 class StreamArg {
  public:

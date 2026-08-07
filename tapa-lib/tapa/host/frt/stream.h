@@ -104,11 +104,8 @@ class StreamBase : public StreamArg {
   void* handle_ = nullptr;
 };
 
-template <typename T, Tag tag = Tag::kReadWrite>
-class Stream;
-
 template <typename T>
-class Stream<T, Tag::kReadWrite> : public StreamBase<T> {
+class Stream : public StreamBase<T> {
  public:
   using StreamBase<T>::StreamBase;
 
