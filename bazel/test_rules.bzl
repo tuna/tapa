@@ -40,10 +40,16 @@ def tapa_app_test(
         xo_visibility = None):
     """Declares the standard tests/apps target set for a single app.
 
-    Generates sh_test targets `<name>`, `<name>-hw-emu`, `<name>-xosim`, and
-    `<name>-verilator-zipsim`; a `<name>-host` cc_binary; `<name>-xo` and
-    `<name>-zip` tapa_xo targets; and a `<name>-hw-emu-xclbin` vpp_xclbin
-    target, matching the historical per-app BUILD stanzas.
+    Generates sh_test targets `<name>` (software simulation), `<name>-xosim`
+    (the `.xo` under TAPA's own testbench), `<name>-hw-emu` (the `.xclbin`
+    under XRT hardware emulation), and `<name>-verilator-zipsim`; a
+    `<name>-host` cc_binary; `<name>-xo` and `<name>-zip` tapa_xo targets;
+    and a `<name>-hw-emu-xclbin` vpp_xclbin target.
+
+    Each simulation target is named for what it simulates. `-xosim` and
+    `-hw-emu` were swapped until 2026-08, which read as cosim having been
+    dropped: the XRT-gated target wore the `-xosim` name, so a host without
+    XRT skipped what looked like the `.xo` tier.
 
     Args:
         name: App name; also the basename of the `<name>.cpp` kernel source.
@@ -54,7 +60,7 @@ def tapa_app_test(
             `["<name>.h"]`.
         sim_args: Extra args of the `<name>` sh_test on all platforms.
         macos_sim_args: Extra args of the `<name>` sh_test on macOS only.
-        hw_test_args: Extra trailing args of the `-hw-emu`, `-xosim`, and
+        hw_test_args: Extra trailing args of the `-xosim`, `-hw-emu`, and
             `-verilator-zipsim` sh_tests.
         extra_test_data: Extra data prepended to the sh_tests' `data`.
         hw_test_timeout: Timeout of the hardware simulation sh_tests.
@@ -91,8 +97,11 @@ def tapa_app_test(
         tags = ["cpu:2"],
     )
 
+    # Simulates the `.xo` with TAPA's own testbench through frt-cosim, the
+    # same thing `tapa_functional_test` calls `-xosim`. No XRT, no platform
+    # shell: the kernel RTL only.
     sh_test(
-        name = "%s-hw-emu" % name,
+        name = "%s-xosim" % name,
         size = "enormous",
         timeout = hw_test_timeout,
         srcs = ["//bazel:v++_env.sh"],
@@ -108,8 +117,11 @@ def tapa_app_test(
         tags = ["cpu:2"],
     )
 
+    # Vitis hardware emulation: the linked `.xclbin` under XRT, kernel plus
+    # platform shell. Needs XRT and a platform v++ will still accept, so it
+    # is gated -- see the HAS_XRT note in VARS.local.bzl.
     sh_test(
-        name = "%s-xosim" % name,
+        name = "%s-hw-emu" % name,
         size = "enormous",
         timeout = hw_test_timeout,
         srcs = ["//bazel:xrt_env.sh"],
