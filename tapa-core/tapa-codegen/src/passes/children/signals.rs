@@ -176,7 +176,8 @@ fn wire_child_instance(
     apply_control_plan_or_pipelines(stage, inst)?;
     push_pipeline_portargs(stage, &inst.inst_name, inst.args);
     let mmap_bindings = build_mmap_bindings(stage, inst, idx);
-    let (reset_n, bridge_reset) = instance_reset_exprs(stage, &inst.logical_inst_name);
+    let (reset_n, bridge_reset) =
+        instance_reset_exprs(stage.control_plan.is_some(), &inst.logical_inst_name);
     add_async_mmap_bridges(stage, inst, &mmap_bindings, &bridge_reset);
     add_child_instance(stage, inst, &mmap_bindings, reset_n);
     Ok(())
@@ -504,19 +505,23 @@ fn build_mmap_bindings(
 }
 
 /// Compute the child-local reset and the async-bridge reset for one instance.
-fn instance_reset_exprs(stage: &ChildStageCtx<'_, '_>, logical_inst_name: &str) -> (Expr, Expr) {
-    let reset_n = stage.control_plan.map_or_else(
-        || Expr::ident(HANDSHAKE_RST_N),
-        |_| {
-            Expr::ident(
-                distributed_control::DistributedControlPlan::child_reset_name(logical_inst_name),
-            )
-        },
-    );
+///
+/// Takes the presence of a distributed control plan rather than the plan
+/// itself: presence is all the choice depends on, and a plan can only be
+/// built from a floorplan, which would put a whole pipeline behind a
+/// two-branch decision.
+fn instance_reset_exprs(distributed_control: bool, logical_inst_name: &str) -> (Expr, Expr) {
+    let reset_n = if distributed_control {
+        Expr::ident(
+            distributed_control::DistributedControlPlan::child_reset_name(logical_inst_name),
+        )
+    } else {
+        Expr::ident(HANDSHAKE_RST_N)
+    };
     // A floorplanned async bridge is co-located with its child, so the
     // routed child reset is also its physically local reset;
     // non-floorplanned builds use the parent reset.
-    let bridge_reset = if stage.control_plan.is_some() {
+    let bridge_reset = if distributed_control {
         Expr::logical_not(reset_n.clone())
     } else {
         Expr::ident(HANDSHAKE_RST)
@@ -664,4 +669,57 @@ fn resolve_child_scalar_width(
                 None
             }
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pipeline_wire_names_tag_mmap_arguments_as_offsets() {
+        // An mmap argument pipelines its *offset*, not the argument, so the
+        // two families must not collide in the parent's wire namespace.
+        assert_eq!(
+            pipeline_wire_names("worker_0", "data", true),
+            (
+                "worker_0__data_offset".to_owned(),
+                "worker_0__data_offset_in".to_owned()
+            )
+        );
+        assert_eq!(
+            pipeline_wire_names("worker_0", "data", false),
+            ("worker_0__data".to_owned(), "worker_0__data_in".to_owned())
+        );
+    }
+
+    #[test]
+    fn without_distributed_control_an_instance_uses_the_parent_resets() {
+        let (reset_n, bridge_reset) = instance_reset_exprs(false, "worker_0");
+        assert_eq!(reset_n.to_string(), HANDSHAKE_RST_N);
+        // Active-high parent reset, not the negation of reset_n: the bridge
+        // has no routed reset of its own in a non-floorplanned build.
+        assert_eq!(bridge_reset.to_string(), HANDSHAKE_RST);
+    }
+
+    #[test]
+    fn with_distributed_control_an_instance_uses_its_routed_reset() {
+        let (reset_n, bridge_reset) = instance_reset_exprs(true, "worker_0");
+        assert_eq!(
+            reset_n.to_string(),
+            distributed_control::DistributedControlPlan::child_reset_name("worker_0")
+        );
+        // The bridge is co-located with its child, so it takes the child's
+        // routed reset inverted -- never the parent's. Logical `!`, not
+        // bitwise `~`: the reset is one bit and the bridge wants active-high.
+        assert_eq!(bridge_reset.to_string(), format!("!{reset_n}"));
+        assert_ne!(bridge_reset.to_string(), HANDSHAKE_RST);
+    }
+
+    #[test]
+    fn the_routed_reset_is_derived_from_the_instance_name() {
+        // Two instances must not share a reset net.
+        let (a, _) = instance_reset_exprs(true, "worker_0");
+        let (b, _) = instance_reset_exprs(true, "worker_1");
+        assert_ne!(a.to_string(), b.to_string());
+    }
 }
