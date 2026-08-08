@@ -53,12 +53,16 @@ fn resolve_worker_count(jobs: Option<u32>, work_count: usize) -> usize {
 #[derive(Debug, Clone, Parser)]
 #[command(name = "synth", about = "Synthesize the TAPA program into RTL code.")]
 pub struct SynthArgs {
+    /// Target FPGA part number. Required unless `--platform` is given.
     #[arg(long = "part-num", value_name = "PART")]
     pub part_num: Option<String>,
 
+    /// Vitis platform name. Required unless `--part-num` is given; also
+    /// supplies a default clock period.
     #[arg(short = 'p', long = "platform", value_name = "PLATFORM")]
     pub platform: Option<String>,
 
+    /// Target clock period in nanoseconds. Defaults to the platform's.
     #[arg(
         long = "clock-period",
         value_name = "NS",
@@ -66,21 +70,32 @@ pub struct SynthArgs {
     )]
     pub clock_period: Option<tapa_ir::ClockPeriod>,
 
+    /// Parallel HLS and post-synthesis jobs. Defaults to the host's
+    /// available parallelism.
     #[arg(short = 'j', long = "jobs", value_name = "N")]
     pub jobs: Option<u32>,
 
+    /// Keep each task's Vitis HLS project under `hls/<task>/project`
+    /// for post-mortem inspection instead of discarding it.
     #[arg(long = "keep-hls-work-dir", default_value_t = false)]
     pub keep_hls_work_dir: bool,
 
+    /// Reuse a task's existing Verilog when it is newer than its
+    /// extracted C++, skipping that task's HLS run.
     #[arg(long = "skip-hls-based-on-mtime", default_value_t = false)]
     pub skip_hls_based_on_mtime: bool,
 
+    /// Extra Tcl appended verbatim to every generated HLS script.
     #[arg(long = "other-hls-configs", default_value = "")]
     pub other_hls_configs: String,
 
+    /// Run out-of-context Vivado synthesis per task for accurate area
+    /// numbers, instead of relying on the coarser HLS estimates.
     #[arg(long = "enable-synth-util", default_value_t = false)]
     pub enable_synth_util: bool,
 
+    /// Stamp `report.json` / `report.yaml` with this schema version
+    /// instead of the built-in one. For report-consumer testing.
     #[arg(long = "override-report-schema-version", default_value = "")]
     pub override_report_schema_version: String,
 }
