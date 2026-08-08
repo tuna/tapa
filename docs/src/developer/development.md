@@ -106,12 +106,17 @@ The `open_cosim_verilator` end-to-end tests are skipped because they need
 the `libfrt_dpi_verilator` shared library that only the Bazel runfiles
 tree stages; run them through `bazel test //fpga-runtime:cargo_test`.
 
-Baseline (2026-08-06, report-only — informational, not a CI gate):
+Baseline (2026-08-08, report-only — informational, not a CI gate):
 
-| Workspace      | Line coverage | Weakest crates                            |
-| -------------- | ------------- | ----------------------------------------- |
-| `tapa-core`    | 89.6%         | `tapa-cli` 83.1%, `tapa-xilinx` 85.0%     |
-| `fpga-runtime` | 57.6%         | `frt` 42.6% (XRT paths need hardware)     |
+| Workspace      | Line coverage | Weakest files                                  |
+| -------------- | ------------- | ---------------------------------------------- |
+| `tapa-core`    | 89.8%         | `tapa-xilinx` `runtime/remote/transport.rs` 29.0%, `runtime/ssh.rs` 54.1% |
+| `fpga-runtime` | 64.8%         | `frt` `shm_ffi.rs` 0.0%, `xrt/device.rs` 5.2%, `ffi.rs` 12.5% |
+
+What is uncovered is mostly what cannot run here: the SSH/remote transport
+needs a remote host, and the XRT and FFI paths need a board. Treat the totals
+as a trend rather than a target — raising them means either hardware in the
+loop or seams that let those paths be driven from a test.
 
 ## Update Dependencies
 
