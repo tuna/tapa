@@ -25,6 +25,10 @@ The workflow will:
 - Create the git tag `v<version>` on `main`
 - Publish `tapa.tar.gz` to GitHub Releases
 
+After the release is published, re-pin the hand-maintained `TAPA_VERSION`
+examples (`README.md` and `docs/src/start/installation.md`) to the new tag;
+nothing bumps them automatically.
+
 ## Staging Builds
 
 Every push to `main` triggers the `staging-build.yml` workflow, which
