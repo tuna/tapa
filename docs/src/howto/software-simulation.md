@@ -30,12 +30,13 @@ TAPA_CONCURRENCY=1 ./vadd
 ## Expected output
 
 ```
-I20000101 00:00:00.000000 0000000 task.h:66] running software simulation with TAPA library
-kernel time: 1.19429 s
+WARNING: Logging before InitGoogleLogging() is written to STDERR
+I... task.h:...] running software simulation with TAPA library
+kernel time: 0.0032 s
 PASS!
 ```
 
-The log line confirms the software simulation path was taken. `PASS!` is printed by the application when its correctness check succeeds.
+The `running software simulation` line confirms the software simulation path was taken. `PASS!` is printed by the application when its correctness check succeeds. The leading `WARNING:` line comes from glog and is harmless. Exact timestamps, source line numbers, and timings vary per run and per build.
 
 ## Stream logging
 
@@ -55,7 +56,7 @@ TAPA writes one log file per stream. The format depends on the element type:
 
 Vitis HLS software simulation runs each task **sequentially** in a single thread. The tasks take turns executing to completion before the next one starts. This means races between concurrent tasks are invisible — the simulation passes even when tasks make assumptions about each other's execution order that will not hold in real hardware.
 
-TAPA uses **coroutine-based simulation**: all tasks run on the same thread but yield cooperatively at stream blocking points. When a task calls `read()` on an empty stream, it suspends and another task runs. This models the concurrent, backpressure-driven semantics of hardware much more faithfully. Bugs that manifest in hardware because two tasks execute simultaneously are far more likely to surface during TAPA software simulation than during Vitis HLS software simulation.
+TAPA uses **coroutine-based simulation**: every task becomes a coroutine, and coroutines yield cooperatively at stream blocking points. When a task calls `read()` on an empty stream, it suspends and another task runs. The coroutines are spread over a pool of worker threads (`TAPA_CONCURRENCY`, default: the host's physical core count), so tasks on different workers also run in genuine parallel. Together this models the concurrent, backpressure-driven semantics of hardware much more faithfully. Bugs that manifest in hardware because two tasks execute simultaneously are far more likely to surface during TAPA software simulation than during Vitis HLS software simulation.
 
 This is also why TAPA enforces stream depth in software simulation: a producer that fills a depth-2 FIFO will block in TAPA simulation, just as it would in hardware.
 

@@ -26,6 +26,12 @@ Hardware cosimulation. Runs RTL simulation using the XO artifact to verify the h
 
 ---
 
+**DSE** (design-space exploration)
+
+The `tapa floorplan --dse` mode. Instead of producing one floorplan, it sweeps a range of per-slot logic-utilization caps, runs `v++ --link` on each candidate, and keeps the one with the highest achieved frequency. Results land in `floorplan-metrics.json` (the winner) and `dse/candidates.json` (every candidate).
+
+---
+
 **detached task**
 
 A task invoked with `.invoke<tapa::detach>()`. A detached task runs concurrently with its siblings but the parent does not wait for it to finish before returning. Useful for background tasks such as monitors or credit managers. See `tapa::task` in the [API reference](api.md).
@@ -41,6 +47,12 @@ A sentinel value written to a stream to signal the end of a data sequence. The p
 **fast cosim**
 
 Synonym for *cosim* in the TAPA context. Fast cosim is invoked by passing a `.xo` file as the `--bitstream` argument to the host executable. The host executable runs the Rust `libfrt` cosim runtime in-process, which avoids a full Vivado implementation run and is significantly faster than traditional cosim flows.
+
+---
+
+**floorplan**
+
+The optional `tapa floorplan` step, run between `synth` and `pack`. It assigns tasks to SLRs on a multi-die device, balances resource usage across them, and inserts pipeline registers on the channels that cross SLR boundaries — trading a little latency for a shorter critical path. It writes `floorplan.xdc`, which `pack` picks up automatically. The partitioner solves a wire-crossing-minimizing ILP with the external `cbc` solver. This is the AutoBridge technique, now maintained as part of TAPA.
 
 ---
 
@@ -71,6 +83,12 @@ The `tapa pack` step. Packages per-task RTL produced by `tapa synth` into a sing
 **remote execution**
 
 Offloading vendor-tool steps (HLS, pack) to a remote Linux host over SSH. Configured with `--remote-host`. The local machine runs `tapacc` (the analyze step) and transfers source files; the remote host runs Vitis HLS. Useful when cross-compiling from macOS or when the local machine lacks a Vitis licence.
+
+---
+
+**SLR** (super logic region)
+
+One die of a multi-die FPGA. Large Alveo parts are built from two to four SLRs joined by a limited number of cross-die wires, and a signal crossing that boundary costs significantly more delay than one staying inside a die. This is what *floorplan* exists to manage.
 
 ---
 
@@ -107,6 +125,18 @@ A task that only invokes other tasks via `tapa::task().invoke()` and contains no
 **work directory**
 
 The directory where TAPA stores all intermediate artifacts between pipeline steps. Set with `--work-dir`. The default is `work.out/` in the current directory. See [Output Files](output-files.md) for the full directory structure.
+
+---
+
+**Verilator**
+
+An open-source Verilog simulator, and one of the two backends for TAPA fast cosim. Select it with `-cosim_simulator verilator` on the host executable. It needs no Vivado installation and runs on Linux and macOS, but does not support Vivado waveform capture.
+
+---
+
+**xsim**
+
+The Verilog simulator that ships with Vivado, and the default backend for TAPA fast cosim. Linux only, and requires a Vivado installation on the machine running the host executable. Unlike *Verilator*, it can save waveforms (`-xsim_save_waveform`) for inspection in the Vivado GUI.
 
 ---
 

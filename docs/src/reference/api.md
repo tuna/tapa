@@ -94,13 +94,24 @@ Read-only view of a stream. Always passed by reference in task signatures: `tapa
 |--------|----------|-------------|-------------|
 | `read()` | yes | yes | Blocks until an element is available, then returns it. |
 | `read(bool& ok)` | no | yes | Non-blocking read; sets `ok` to true if an element was consumed. |
+| `read(nullptr)` | no | yes | Non-blocking read that discards the success flag; returns `T()` when the stream is empty. Use after an `empty()` / `try_eot()` check has already established that data is there. |
 | `try_read(T& val)` | no | yes | Non-blocking read; returns true and writes to `val` if successful. |
-| `peek(bool& ok)` | no | no | Returns the next element without consuming it; sets `ok`. |
+| `operator>>(T& val)` | yes | yes | Blocking read into `val`; returns the stream so reads can be chained. Equivalent to `val = read()`. |
+| `peek(bool& ok)` | no | no | Returns the next element without consuming it; sets `ok` to whether one was available. |
+| `peek(nullptr)` | no | no | Peek that discards the success flag; returns `T()` when the stream is empty. |
+| `peek(bool& ok, bool& is_eot)` | no | no | Peek that also reports whether the head element is the EoT marker. |
 | `try_peek(T& val)` | no | no | Non-blocking peek; returns true if data was available. |
 | `empty()` | no | no | Returns true if the stream contains no elements. |
-| `eot(bool& ok)` | no | no | Returns true if the head element is an end-of-transaction marker. |
+| `try_eot(bool& is_eot)` | no | no | Returns true if a head element is available, and sets `is_eot` to whether it is the end-of-transaction marker. This is the primitive the EoT loop macros are built on. |
+| `eot(bool& ok)` | no | no | Returns true if the head element is an end-of-transaction marker; sets `ok` to whether an element was available at all. Inverted argument order relative to `try_eot`. |
 | `open()` | yes | yes | Blocks until an EoT marker arrives, then consumes it. Used to receive stream closure. |
 | `try_open()` | no | yes | Non-blocking variant of `open()`; returns true if EoT was consumed. |
+
+```admonish warning
+`read()`, `read(bool&)`, `try_read()`, and `peek()` all abort on an EoT
+marker — they are for data elements only. Check `try_eot()` first, or use one
+of the `TAPA_WHILE_*_EOT` macros, when the producer closes the stream.
+```
 
 ### `tapa::ostream<T>`
 
@@ -110,6 +121,7 @@ Write-only view of a stream. Always passed by reference in task signatures: `tap
 |--------|----------|-------------|-------------|
 | `write(const T& val)` | yes | yes | Blocks until space is available, then writes `val`. |
 | `try_write(const T& val)` | no | yes | Non-blocking write; returns true if the element was written. |
+| `operator<<(const T& val)` | yes | yes | Blocking write; returns the stream so writes can be chained. Equivalent to `write(val)`. |
 | `full()` | no | no | Returns true if the stream is full. |
 | `close()` | yes | yes | Writes an end-of-transaction marker; blocks until space is available. |
 | `try_close()` | no | yes | Non-blocking variant of `close()`; returns true if the EoT was written. |

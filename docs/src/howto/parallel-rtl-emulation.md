@@ -187,9 +187,9 @@ The same `-cosim_simulator` flag applies to all instances:
     -cosim_simulator verilator
 ```
 
-### Controlling concurrency
+### Controlling host-side concurrency
 
-Set `TAPA_CONCURRENCY` to limit how many cosim processes run simultaneously. This is useful on machines with limited memory:
+`TAPA_CONCURRENCY` sets how many worker threads the host runtime uses to run its task coroutines (default: the host's physical core count). Lowering it reduces host thread pressure and makes scheduling deterministic:
 
 ```bash
 TAPA_CONCURRENCY=1 ./cannon \
@@ -198,7 +198,9 @@ TAPA_CONCURRENCY=1 ./cannon \
     --gather_bitstream=gather.xo
 ```
 
-At `TAPA_CONCURRENCY=1` the processes still exchange data correctly through shared-memory FIFOs, but only one simulation runs at a time.
+```admonish warning
+`TAPA_CONCURRENCY` does **not** cap how many simulators run at once. Each invocation that receives a `tapa::executable` spawns its own simulator process and the host coroutine then yields while it runs, so every simulator is live concurrently even at `TAPA_CONCURRENCY=1`. If you are running out of memory, emulate fewer kernels per run — leave the other bitstream flags empty so those kernels fall back to software simulation.
+```
 
 ---
 
@@ -211,7 +213,7 @@ At `TAPA_CONCURRENCY=1` the processes still exchange data correctly through shar
 | `-cosim_simulator <backend>` | `xsim` (default, Linux only) or `verilator` (cross-platform). Applied to all instances. |
 | `-xsim_save_waveform` | Save simulation waveforms. Pair with `-cosim_work_dir`. |
 | `-xsim_part_num <part>` | Target FPGA part number (e.g., `xcu280-fsvh2892-2L-e`). |
-| `TAPA_CONCURRENCY` | Environment variable. Limits the number of cosim processes that run simultaneously. |
+| `TAPA_CONCURRENCY` | Environment variable. Number of host worker threads running task coroutines — not a cap on simulator processes. |
 
 ---
 

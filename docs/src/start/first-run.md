@@ -37,10 +37,15 @@ simulation.
 ## Expected output
 
 ```
-I20000101 00:00:00.000000 0000000 task.h:66] running software simulation with TAPA library
-kernel time: 1.19429 s
+WARNING: Logging before InitGoogleLogging() is written to STDERR
+I... task.h:...] running software simulation with TAPA library
+kernel time: 0.0032 s
 PASS!
 ```
+
+Timestamps, source line numbers, and the kernel time vary per run — only the
+`running software simulation` line and `PASS!` matter. The leading `WARNING:`
+line comes from glog and is harmless.
 
 ## What this proves
 

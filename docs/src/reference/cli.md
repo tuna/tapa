@@ -10,6 +10,17 @@ tapa [global options] <subcommand> [subcommand options]
 `tapa compile` is a shortcut that runs `tapa analyze`, `tapa synth`, and `tapa pack` in sequence in a single command. When using the individual subcommands, pass `--work-dir` as a **global** flag before the subcommand name: `tapa --work-dir DIR <subcommand>`.
 ```
 
+Subcommands are also chainable — they are processed left to right, sharing one work directory, so `tapa analyze … synth … pack …` is a single invocation:
+
+```bash
+tapa --work-dir work.out \
+  analyze --top VecAdd -f vadd.cpp \
+  synth --part-num xcu250-figd2104-2L-e --clock-period 3.33 \
+  pack -o vadd.xo
+```
+
+This page covers the flags you need for day-to-day work. A few additional flags exist for build-system plumbing and internal testing; run `tapa <subcommand> --help` to see the complete surface.
+
 ## Global Options
 
 These options must appear before the subcommand name.
@@ -32,26 +43,28 @@ These options must appear before the subcommand name.
 
 ## tapa compile
 
-Run the full compilation pipeline (analyze → synth → pack) in a single command.
+Run the full compilation pipeline (analyze → synth → pack) in a single command. Its flag surface is the union of `tapa analyze`, `tapa synth`, and `tapa pack` — every flag documented for those three is accepted here too.
 
 ### Required flags
 
 | Flag | Description |
 |------|-------------|
-| `--top FUNCTION` / `-t FUNCTION` | Top-level task function name. |
-| `-f FILE` | Kernel source file. |
-| `-o OUTPUT.xo` | Output XO file path. |
+| `--top TASK` / `-t TASK` | Top-level task function name. |
+| `--input FILE` / `-f FILE` | Kernel source file. Repeat the flag for multiple sources. |
 
-### Optional flags
+### Commonly used optional flags
 
 | Flag | Description |
 |------|-------------|
+| `--output FILE` / `-o FILE` | Output path (default: `work.xo`, or `work.zip` for the `xilinx-hls` target). |
 | `--part-num PART` | Target FPGA part number (e.g., `xcu250-figd2104-2L-e`). |
-| `--platform PLATFORM` | Vitis platform string. Alternative to `--part-num`. |
+| `--platform PLATFORM` / `-p PLATFORM` | Vitis platform name. Alternative to `--part-num`. |
 | `--clock-period NS` | Target clock period in nanoseconds. |
+| `--cflags FLAG` / `-c FLAG` | Compiler flag for the kernel (e.g., `-Iinclude`). Repeat the flag for multiple. |
 | `--target {xilinx-vitis,xilinx-hls}` | Output target (default: `xilinx-vitis`). |
-| `-j N` | Number of parallel HLS jobs. |
-| `--custom-rtl PATH` | Custom RTL file or directory to include in the XO. |
+| `-j N` / `--jobs N` | Number of parallel HLS jobs. |
+| `--custom-rtl PATH` | Custom RTL file or directory to include in the XO. Repeatable. |
+| `--connectivity FILE` | Vitis link config with memory `sp=` bank assignments. |
 
 ### Example
 
@@ -68,25 +81,31 @@ tapa compile \
 
 ## tapa analyze
 
-Parse C++ source and extract the task graph to a JSON file in the work directory. This stage always runs locally and does not require vendor tools.
+Parse C++ source and extract the task graph to `tapa.json` in the work directory. This stage always runs locally and does not require vendor tools.
 
 ### Required flags
 
 | Flag | Description |
 |------|-------------|
-| `--top FUNCTION` / `-t FUNCTION` | Top-level task function name. |
-| `-f FILE` | Kernel source file. |
+| `--top TASK` / `-t TASK` | Top-level task function name. |
+| `--input FILE` / `-f FILE` | Kernel source file. Repeat the flag for multiple sources. |
 
 ### Optional flags
 
 | Flag | Description |
 |------|-------------|
+| `--cflags FLAG` / `-c FLAG` | Compiler flag passed through to the kernel frontend, such as an include path. Repeat the flag for multiple. |
 | `--target {xilinx-vitis,xilinx-hls}` | Output target (default: `xilinx-vitis`). Controls the synthesis flow. |
+| `--flatten-hierarchy` | Flatten the task hierarchy so every leaf task sits directly under the top task. |
+| `--keep-hierarchy` | Preserve the task hierarchy as written. This is the default; the flag exists to override `--flatten-hierarchy`. |
 
 ### Example
 
 ```bash
-tapa --work-dir work.out analyze --top VecAdd -f vadd.cpp
+tapa --work-dir work.out analyze \
+  --top VecAdd \
+  -f vadd.cpp \
+  -c -Iinclude
 ```
 
 ---
@@ -100,15 +119,18 @@ Run Vitis HLS on each task to produce per-task Verilog RTL. Reads the task graph
 | Flag | Description |
 |------|-------------|
 | `--part-num PART` | Target FPGA part number. Required if `--platform` is not set. |
-| `--platform PLATFORM` | Vitis platform string. Required if `--part-num` is not set. |
+| `--platform PLATFORM` / `-p PLATFORM` | Vitis platform name. Required if `--part-num` is not set. |
 
 ### Optional flags
 
 | Flag | Description |
 |------|-------------|
-| `--clock-period NS` | Target clock period in nanoseconds. Can be derived from `--platform` if not set explicitly. |
-| `-j N` | Number of parallel HLS and post-synthesis jobs (default: available logical CPU count). |
-| `--enable-synth-util` | Run post-HLS RTL synthesis to produce per-task resource utilization estimates. |
+| `--clock-period NS` | Target clock period in nanoseconds. Derived from `--platform` if not set explicitly. |
+| `-j N` / `--jobs N` | Number of parallel HLS and post-synthesis jobs (default: the host's available parallelism). |
+| `--enable-synth-util` | Run out-of-context Vivado synthesis per task for accurate area numbers instead of the coarser HLS estimates. Costs one extra Vivado run per task. |
+| `--keep-hls-work-dir` | Keep each task's Vitis HLS project under `hls/<task>/project` instead of discarding it. Useful for post-mortem debugging of an HLS failure. |
+| `--skip-hls-based-on-mtime` | Reuse a task's existing Verilog when it is newer than its extracted C++, skipping that task's HLS run. Speeds up iteration when only some tasks changed. |
+| `--other-hls-configs TCL` | Extra Tcl appended verbatim to every generated HLS script. |
 
 ### Example
 
@@ -127,20 +149,13 @@ Floorplan a design for a multi-die (multi-SLR) FPGA. Run it between `synth` and 
 
 Run it **after** `tapa synth` (it needs each task's resource estimate) and **before** `tapa pack`. The partitioner solves a wire-crossing-minimizing ILP with the local `cbc` solver.
 
-Run it **after** `tapa synth` (it needs the per-task areas) and **before** `tapa pack`.
-
-### Required flags
-
-| Flag | Description |
-|------|-------------|
-| `--connectivity FILE` | Vitis link `sp=` config mapping each direct M-AXI port to a memory bank. Required when the kernel has direct M-AXI ports (HBM/DDR pinning). |
-
 ### Optional flags (planning)
 
 | Flag | Description |
 |------|-------------|
+| `--connectivity FILE` | Vitis link `sp=` config mapping each direct M-AXI port to a memory bank. Required in practice when the kernel has direct M-AXI ports (HBM/DDR pinning) — without it the planner cannot tell which bank a port reaches. |
 | `--usage-limit FRAC` | Per-slot resource utilization target for a non-DSE plan; raised on infeasibility (default `0.7`). |
-| `--partition-strategy {auto,flat,multi-level}` | Placement schedule. `multi-level` places into rows (SLRs) then refines into atomic slots. |
+| `--partition-strategy {auto,flat,multi-level}` | Placement schedule (default `auto`). `flat` places directly into atomic slots with one ILP; `multi-level` places into rows (SLRs) first, then refines into atomic slots. `auto` picks between them with a built-in heuristic. |
 | `--pp-scheme {single,double,single_h_double_v}` | How pipeline registers distribute across a crossing's route (default `double`). |
 | `--max-seconds N` | ILP wall-clock limit in seconds (default `600`). |
 
@@ -151,8 +166,8 @@ These run the floorplanned design through `v++ --link` to measure Fmax. They req
 | Flag | Description |
 |------|-------------|
 | `--run-impl` | Plan one candidate at `--usage-limit`, package the XO, and run one `v++ --link` to measure its Fmax. |
-| `--dse` | Design-space exploration: sweep exact logic-utilization caps across `--dse-min`…`--dse-max`. |
-| `--dse-min FRAC` / `--dse-max FRAC` / `--dse-step FRAC` | DSE cap range and step (require `--dse`). |
+| `--dse` | Design-space exploration: sweep exact logic-utilization caps across `--dse-min`…`--dse-max` and keep the highest-frequency implementation. |
+| `--dse-min FRAC` / `--dse-max FRAC` / `--dse-step FRAC` | DSE cap range and step (defaults `0.55` / `0.9` / `0.03`; require `--dse`). The sweep starts at `--dse-max` and steps down. |
 | `--dse-jobs N` | Max candidate package/link jobs to run concurrently (default `1`; requires `--dse`). |
 | `--vivado-threads N` | Per-link Vivado synthesis jobs (`--vivado.synth.jobs`, default `2`). Lower it on memory-constrained hosts. |
 
@@ -189,8 +204,10 @@ Package per-task RTL from the work directory into a single output artifact. For 
 
 | Flag | Description |
 |------|-------------|
-| `-o OUTPUT` | Output file path (default: `work.xo` for the Vitis target, `work.zip` for other targets). |
-| `--custom-rtl PATH` | Custom RTL file or directory to include in the XO. |
+| `--output FILE` / `-o FILE` | Output file path (default: `work.xo` for the Vitis target, `work.zip` for other targets). |
+| `--custom-rtl PATH` | Custom RTL file or directory to include in the XO. Repeat the flag for multiple paths. Not available after `tapa floorplan`. |
+| `--connectivity FILE` | Memory connectivity `.ini` with the Vitis `sp=` bank assignments. When set, the emitted bitstream script passes it to `v++ --link` as a `--config`, binding each M-AXI port to its bank — required for HBM/DDR designs. |
+| `--bitstream-script FILE` / `-s FILE` | Write the generated bitstream-generation script to this path. |
 
 ### Example
 
@@ -198,15 +215,25 @@ Package per-task RTL from the work directory into a single output artifact. For 
 tapa --work-dir work.out pack -o vadd.xo
 ```
 
+---
+
 ## tapa g++
 
-Compile TAPA host and kernel C++ for software simulation. This is a wrapper around `g++` that automatically sets the required TAPA include paths and link flags. All arguments after `--` are forwarded directly to `g++`.
+Compile TAPA host and kernel C++ for software simulation. This is a wrapper around `g++` that automatically sets `-std=c++17` plus the required TAPA include paths and link flags. Every remaining argument is forwarded to `g++` verbatim.
+
+### Optional flags
+
+| Flag | Description |
+|------|-------------|
+| `--executable PATH` | Run this compiler instead of `g++` (default: `g++`). |
 
 ### Example
 
 ```bash
 tapa g++ -- vadd.cpp vadd-host.cpp -o vadd
 ```
+
+The `--` separator is optional — it is only needed when your first forwarded argument could be mistaken for one of `tapa g++`'s own flags. `tapa g++` is terminal: no further subcommand can be chained after it.
 
 See [Software Simulation](../howto/software-simulation.md) for how to run the resulting executable.
 

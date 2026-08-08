@@ -43,7 +43,9 @@ target a Vitis platform directly, for example:
 
     --platform xilinx_u250_gen3x16_xdma_4_1_202210_1
 
-HLS reports are written to `work.out/report/` after synthesis completes.
+Per-task HLS reports are written to `work.out/hls/<TASK>/report/`, and a
+combined timing and area summary to `work.out/report.json` and
+`work.out/report.yaml`. See [Output Files](../reference/output-files.md).
 ```
 
 Artifact produced: `vecadd.xo`

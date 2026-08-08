@@ -8,11 +8,9 @@
 
 If fast cosim fails (`FAIL!` or hangs) but software simulation passes, the most common causes are:
 
-- **Non-deterministic scheduling can expose races not visible in software simulation.** Software simulation uses coroutine scheduling that runs tasks cooperatively; RTL runs tasks truly in parallel. Races that are hidden by cooperative scheduling in software simulation may surface as failures in fast cosim. Fix: remove any assumptions about task ordering that are not enforced by stream synchronization.
+- **Scheduling differences can expose races not visible in software simulation.** Software simulation runs tasks as cooperatively-scheduled coroutines; RTL runs every task truly in parallel, cycle by cycle. A race that cooperative scheduling happens to resolve one way in software simulation may resolve the other way in cosim. Fix: remove any assumption about task ordering that is not enforced by stream synchronization.
 
 - **Blocking `async_mmap` operations inside pipelined loops.** A blocking call inside a pipelined loop can stall the pipeline in RTL in ways that software simulation does not model. Fix: use non-blocking reads/writes and manually handle the response FIFOs, or switch to `tapa::mmap` to simplify the memory access model while debugging.
-
-- **Non-deterministic task scheduling.** Software simulation uses coroutine scheduling that may resolve races differently than RTL. If results depend on the relative timing of two tasks, they may differ between simulation and RTL.
 
 ```admonish note
 Fast cosim models DRAM with a simplified functional model. Throughput and latency numbers from fast cosim are not representative of on-board performance. Use fast cosim only to verify functional correctness.

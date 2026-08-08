@@ -79,7 +79,7 @@ The TAPA codebase is organized into several key directories:
   using HLS tools, and generates system interconnect and XO object file for
   FPGA. For the `xilinx-hls` target, a `.zip` RTL archive is generated
   instead. The Bazel `//tapa-core:tapa` target provides the command wrapper
-  and `tapa-core/assets` contains shared Verilog templates.
+  and `tapa-core/tapa-codegen/assets` contains shared Verilog templates.
 
 - `tapacc/`: Implements the TAPA C++ compiler to translate TAPA tasks to JSON.
 

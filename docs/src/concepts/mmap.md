@@ -112,9 +112,20 @@ This eliminates the extra copy and suppresses XRT alignment warnings.
 ## Shared mmap
 
 The same `mmap` argument can be passed to multiple child tasks. TAPA inserts
-an AXI interconnect so both tasks share the same AXI port:
+an AXI interconnect so both tasks share the same AXI port. Here one buffer is
+split into regions by an `offset` argument, and two instances of the same leaf
+task read different regions of it:
 
 ```cpp
+// Leaf task: reads the region starting at element n * offset.
+void Mmap2Stream(tapa::mmap<float> mem, int offset, uint64_t n,
+                 tapa::ostream<float>& stream) {
+  for (uint64_t i = 0; i < n; ++i) {
+    stream.write(mem[n * offset + i]);
+  }
+  stream.close();
+}
+
 void Load(tapa::mmap<float> srcs, uint64_t n,
           tapa::ostream<float>& a, tapa::ostream<float>& b) {
   tapa::task()
@@ -122,6 +133,9 @@ void Load(tapa::mmap<float> srcs, uint64_t n,
       .invoke(Mmap2Stream, srcs, 1, n, b);
 }
 ```
+
+The complete working version of this is `tests/functional/shared-mmap/` in the
+repository.
 
 ```admonish warning
 When a mmap is shared across tasks, the programmer is responsible for memory

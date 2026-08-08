@@ -18,9 +18,21 @@ TAPA splits work between local and remote:
 |------|------------|
 | `tapa analyze` (runs `tapa-cpp` and `tapacc`) | Always local |
 | `tapa synth` (Vitis HLS synthesis) | Remote when `--remote-host` is set |
+| `tapa floorplan` with `--run-impl` or `--dse` (`v++ --link`) | Remote when `--remote-host` is set |
 | `tapa pack` (IP packaging) | Remote when `--remote-host` is set |
-| Host fast-cosim runtime (`--bitstream=*.xo`) | Remote when `--remote-host` is set |
 | File transfer (`.xo`, `.zip` artifacts) | Handled automatically by TAPA |
+
+Planning-only `tapa floorplan` (no `--run-impl`, no `--dse`) needs no vendor tool and always runs locally, using the local `cbc` solver.
+
+```admonish warning
+Remote execution applies to the **`tapa` compiler only**. The host executable
+you build with `tapa g++` always runs locally — software simulation, fast
+cosimulation, and on-board execution all happen on the machine you launch it
+from. There is no `--remote-host` equivalent for the runtime, so the machine
+running `./vadd --bitstream=vadd.xo` needs its own Vivado (for `xsim`) or
+Verilator installation. Copy the `.xo` back and simulate locally, or run the
+host binary over SSH yourself.
+```
 
 ## Commands
 

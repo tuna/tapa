@@ -48,11 +48,15 @@ work.out/
 ├── rtl/
 ├── report/                    # with --enable-synth-util
 ├── template/                  # when a task targets "ignore"
+├── dse/                       # with `tapa floorplan --dse`
 ├── tapa.json
 ├── tapacc.json
 ├── templates_info.json        # when a task targets "ignore"
 ├── report.json
-└── report.yaml
+├── report.yaml
+├── floorplan.xdc              # after `tapa floorplan`
+├── floorplan-metrics.json     # with --run-impl or --dse
+└── floorplan-timing.rpt       # with --run-impl or --dse
 ```
 
 ### File and directory descriptions
@@ -100,3 +104,15 @@ The raw, unmodified output of `tapacc`, saved verbatim by `tapa analyze` for pro
 **`report.json` / `report.yaml`**
 
 Timing and resource-utilisation report, written unconditionally after `tapa synth` completes. Both files contain the same data in JSON and YAML encoding. Without `--enable-synth-util`, areas come from HLS estimates; with it, child-task totals are replaced by out-of-context Vivado utilization and the underlying `.hier.util.rpt` files are written under `report/`.
+
+**`floorplan.xdc`**
+
+Written by `tapa floorplan`. Contains the pblock definitions for every slot and pipeline stage, the pipeline-stage cell matches, and the reset-distribution timing cuts. `tapa pack` picks it up automatically once the floorplan marker is present in `tapa.json` and wires it into the generated bitstream script as `OPT_DESIGN.TCL.PRE`, so `v++ --link` applies it. See the [`tapa floorplan` CLI reference](cli.md#tapa-floorplan) for what it emits.
+
+**`floorplan-metrics.json` / `floorplan-timing.rpt`**
+
+Written only when `tapa floorplan` runs an implementation (`--run-impl` or `--dse`). `floorplan-metrics.json` records the achieved kernel frequency and the utilization cap of the winning plan; `floorplan-timing.rpt` is the post-implementation timing report it came from.
+
+**`dse/`**
+
+Written only by `tapa floorplan --dse`. Holds one subdirectory per explored utilization cap, each with a `candidate.json` describing that attempt, plus a top-level `candidates.json` summarising every candidate so you can see the whole sweep rather than just the winner.

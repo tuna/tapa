@@ -49,8 +49,8 @@ This step takes **several hours** depending on design complexity and host machin
 The output artifact is `vadd.$platform.hw.xclbin` — this is the bitstream loaded onto the FPGA.
 
 Key alignment rules:
-- `--kernel VecAdd` must match the top-level function name in your TAPA source.
-- `--platform $platform` must match the platform string used in `tapa compile --part-num`.
+- `--kernel VecAdd` must match the top-level function name in your TAPA source, the same name you passed to `tapa compile --top`.
+- `--platform $platform` must name a platform built for the same device that `tapa compile` targeted. If you compiled with `--part-num xcu280-fsvh2892-2L-e`, link against a U280 platform; a mismatch fails at link time. Passing `--platform` to `tapa compile` instead of `--part-num` avoids the question entirely, since TAPA then derives the part from the platform.
 - The input `.xo` filename (`vadd.$platform.hw.xo`) must be the file produced by `tapa compile`.
 
 ## Stage 3: Execute on the FPGA

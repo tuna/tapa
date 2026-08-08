@@ -70,8 +70,9 @@ tapa g++ -- vadd.cpp vadd-host.cpp -o vadd
 
 Expected output:
 ```
-I20000101 00:00:00.000000 0000000 task.h:66] running software simulation with TAPA library
-kernel time: 1.19429 s
+WARNING: Logging before InitGoogleLogging() is written to STDERR
+I... task.h:...] running software simulation with TAPA library
+kernel time: 0.0032 s
 PASS!
 ```
 

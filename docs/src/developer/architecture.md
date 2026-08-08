@@ -3,10 +3,9 @@
 ```admonish note
 This page is the **architecture charter** for the TAPA compiler's Rust
 toolchain. It describes the component map, the layer rule, and the charter
-of each crate — it is a standing reference, not a changelog.
-The step-by-step program that brings the code in line with this charter
-lives in the working document `REFACTOR-PLAN.md` (repository
-root, not yet committed).
+of each crate — it is a standing reference, not a changelog. Read it before
+adding a crate, moving code across crates, or introducing a new
+cross-component contract.
 ```
 
 ## Component Map
@@ -40,9 +39,9 @@ into a floorplan and into RTL, `tapa-xilinx` drives the vendor tools, and
 
 ## Load-Bearing Contract Guards
 
-Several cross-component contracts are already guarded in CI. The
-architecture preserves these seams and hardens around them; any refactor
-must keep them green.
+Several cross-component contracts are guarded in CI. These are the seams
+where two independent implementations have to agree, so a change that
+breaks one of them is a change that breaks the build — keep them green.
 
 - **Versioned work state.** The `tapa.json` state file is a versioned
   schema: `WorkState` in `tapa-core/tapa-ir/src/work_state.rs` carries a
@@ -108,7 +107,7 @@ in `tapa-ir` and `tapa-protocol`, never by sharing implementation.
 - **Naming disambiguation.** Where crate types collide, alias once at the
   consuming module instead of importing ambiguous names at each use
   site: `tapa_ir::Port as IrPort` versus `tapa_rtl::Port as RtlPort`
-  (the one live collision today, in `tapa-codegen`'s RTL state);
+  (as done in `tapa-codegen`'s RTL state);
   `tapa_cli::remote_config` (config/flag overlay) versus
   `tapa_xilinx::runtime::remote` (transport).
 - **Error taxonomy.** Each crate defines its domain errors with
@@ -140,13 +139,3 @@ cargo +nightly-2026-07-30 public-api --package tapa-ir > ../docs/api/tapa-ir.pub
 ```
 
 (repeat for `tapa-protocol` and `tapa-rtl`).
-
-## The Phased Program
-
-This charter is the target; the code is brought in line with it
-incrementally by the phased refactor program (invariants and charters, then
-per-engine restructuring, then runtime hardening), where each phase
-preserves observable behavior and lands behind the conformance guards
-above. The program itself — findings, phase contents, exit criteria, and
-risks — lives in the working document **`REFACTOR-PLAN.md`**
-(repository root, not yet committed).

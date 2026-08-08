@@ -1,6 +1,6 @@
 # Learning Path
 
-These labs walk through the TAPA programming model from first principles to advanced topics. Each lab builds on the previous one — you will understand each concept more deeply if you complete them in order. Allow roughly four hours to work through all six labs.
+These labs walk through the TAPA programming model from first principles to advanced topics. Each lab builds on the previous one — you will understand each concept more deeply if you complete them in order. Allow roughly two and a half hours to work through all five labs.
 
 ## Labs
 

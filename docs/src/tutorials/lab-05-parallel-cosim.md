@@ -128,9 +128,9 @@ By default each cosim process uses a temporary directory that is deleted at exit
 
 TAPA creates `./cosim_work/XXXXXX/` per instance so the simulations do not interfere.
 
-### Limiting concurrency
+### Controlling host-side concurrency
 
-On memory-constrained machines, set `TAPA_CONCURRENCY` to cap the number of running cosim processes:
+`TAPA_CONCURRENCY` sets the number of worker threads the host runtime uses for its task coroutines (default: the host's physical core count). Setting it to 1 makes host scheduling deterministic, which helps when reproducing a failure:
 
 ```bash
 TAPA_CONCURRENCY=1 ./cannon-host \
@@ -139,7 +139,9 @@ TAPA_CONCURRENCY=1 ./cannon-host \
     --gather_bitstream=gather.xo
 ```
 
-Even with `TAPA_CONCURRENCY=1` the processes exchange data correctly through shared-memory FIFOs; they just run one at a time.
+```admonish warning
+This is a host-side thread count, not a simulator budget. Each `tapa::executable` invocation spawns its own simulator process and the host coroutine yields while it runs, so all simulators are live at once even at `TAPA_CONCURRENCY=1`. To cut memory use, emulate fewer kernels per run by leaving the other bitstream flags empty.
+```
 
 ---
 
