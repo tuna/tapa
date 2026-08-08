@@ -144,32 +144,6 @@ For Bazel dependencies:
 
 3. Remove `MODULE.bazel.lock` to force regeneration.
 
-For the Node.js toolchain in `MODULE.bazel`:
-
-```starlark
-node.toolchain(node_version = "17.9.1")
-```
-
-### XRT Dependency
-
-For XRT (Xilinx Runtime):
-
-1. Check the [XRT GitHub releases](https://github.com/Xilinx/XRT/releases)
-   for latest versions.
-
-2. Update the version and SHA256 checksum in `MODULE.bazel`:
-
-   ```starlark
-   XRT_VERSION = "202420.2.18.179"  # Update version
-   XRT_SHA256 = "..."  # Update SHA256 checksum
-   ```
-
-3. Calculate SHA256 checksum with:
-
-   ```bash
-   curl -L https://github.com/Xilinx/XRT/archive/refs/tags/{VERSION}.tar.gz | sha256sum
-   ```
-
 ### LLVM Version Updates
 
 To update the LLVM version:
