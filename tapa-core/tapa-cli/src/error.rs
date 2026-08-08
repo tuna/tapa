@@ -71,11 +71,15 @@ impl CliError {
     /// conventional status 2 for command-line usage errors.
     #[must_use]
     pub fn exit_code(&self) -> u8 {
-        match self {
-            Self::TapaccFailed { code, .. }
-            | Self::Xilinx(tapa_xilinx::XilinxError::ToolFailure { code, .. }) => {
-                normalize_child_exit_code(*code)
+        // A vendor error that carries a child status forwards it. Which of
+        // its variants those are is `XilinxError`'s to say, not ours.
+        if let Self::Xilinx(error) = self {
+            if let Some(code) = error.tool_exit_code() {
+                return normalize_child_exit_code(code);
             }
+        }
+        match self {
+            Self::TapaccFailed { code, .. } => normalize_child_exit_code(*code),
             Self::ClapParse { .. }
             | Self::WorkDir(..)
             | Self::MissingState { .. }
@@ -146,6 +150,24 @@ mod tests {
                 stderr: "signal".to_owned(),
             }
             .exit_code(),
+            1
+        );
+    }
+
+    #[test]
+    fn vendor_errors_without_a_child_status_exit_one() {
+        // The status comes from `XilinxError::tool_exit_code`, so a vendor
+        // error that never reached an exit status must not invent one.
+        assert_eq!(
+            CliError::Xilinx(tapa_xilinx::XilinxError::ToolTimeout {
+                program: "vivado".to_owned(),
+                timeout_secs: 60,
+            })
+            .exit_code(),
+            1
+        );
+        assert_eq!(
+            CliError::Xilinx(tapa_xilinx::XilinxError::Template("boom".to_owned())).exit_code(),
             1
         );
     }
