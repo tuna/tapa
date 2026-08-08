@@ -499,3 +499,212 @@ fn invalid_route_direction(
 fn invalid_floorplan(detail: impl Into<String>) -> CodegenError {
     CodegenError::InvalidMmapConnection(format!("invalid floorplan: {}", detail.into()))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tapa_ir::MemoryKind;
+
+    const CHILD: (u32, u32) = (1, 0);
+    const BANK_SIDE: (u32, u32) = (0, 0);
+
+    fn endpoint() -> AxiEndpoint {
+        AxiEndpoint {
+            instance: "worker_0".to_owned(),
+            port: "mem".to_owned(),
+            top_port: "m_axi_mem".to_owned(),
+        }
+    }
+
+    fn bank(index: u32) -> MemoryBank {
+        MemoryBank {
+            kind: MemoryKind::Hbm,
+            index,
+        }
+    }
+
+    fn slot((x, y): (u32, u32)) -> String {
+        format!("SLOT_X{x}Y{y}")
+    }
+
+    /// A route over `slots`, carrying `bank`. `reg_regions` plays no part in
+    /// validation, so it stays empty.
+    fn route(bank_index: u32, slots: &[(u32, u32)]) -> PlannedRoute {
+        PlannedRoute {
+            bank: bank(bank_index),
+            route: slots.iter().copied().map(slot).collect(),
+            reg_regions: Vec::new(),
+        }
+    }
+
+    /// Validate one channel against fresh accumulators.
+    fn check(channel: AxiChannel, route: &PlannedRoute) -> Result<(), CodegenError> {
+        validate_channel_route(&endpoint(), channel, route, CHILD, &mut None, &mut None)
+    }
+
+    fn message(error: &CodegenError) -> String {
+        error.to_string()
+    }
+
+    #[test]
+    fn forward_channels_start_at_the_child_and_end_at_the_bank() {
+        // AR/AW/W carry a request outward, so the child is the source.
+        for channel in [
+            AxiChannel::ReadAddress,
+            AxiChannel::WriteAddress,
+            AxiChannel::WriteData,
+        ] {
+            check(channel, &route(0, &[CHILD, BANK_SIDE]))
+                .unwrap_or_else(|e| panic!("{channel:?} should validate: {e}"));
+        }
+    }
+
+    #[test]
+    fn return_channels_start_at_the_bank_and_end_at_the_child() {
+        // R/B carry a response back, so the child is the destination.
+        for channel in [AxiChannel::ReadData, AxiChannel::WriteResponse] {
+            check(channel, &route(0, &[BANK_SIDE, CHILD]))
+                .unwrap_or_else(|e| panic!("{channel:?} should validate: {e}"));
+        }
+    }
+
+    #[test]
+    fn a_forward_channel_routed_backwards_is_rejected() {
+        // The direction check is the one thing standing between a mirrored
+        // floorplan and RTL that wires a request channel the wrong way.
+        let error = check(AxiChannel::ReadAddress, &route(0, &[BANK_SIDE, CHILD]))
+            .expect_err("a backwards AR route must be rejected");
+        assert!(
+            message(&error).contains("must start at child slot"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn a_return_channel_routed_backwards_is_rejected() {
+        let error = check(AxiChannel::ReadData, &route(0, &[CHILD, BANK_SIDE]))
+            .expect_err("a backwards R route must be rejected");
+        assert!(
+            message(&error).contains("must end at child slot"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn a_route_must_cross_at_least_two_slots() {
+        let error = check(AxiChannel::ReadAddress, &route(0, &[CHILD]))
+            .expect_err("a single-slot route must be rejected");
+        assert!(
+            message(&error).contains("must cross at least two slots"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn an_unparsable_slot_name_is_rejected() {
+        let bad = PlannedRoute {
+            bank: bank(0),
+            route: vec![slot(CHILD), "NOT_A_SLOT".to_owned()],
+            reg_regions: Vec::new(),
+        };
+        let error = check(AxiChannel::ReadAddress, &bad)
+            .expect_err("an invalid slot name must be rejected");
+        assert!(
+            message(&error).contains("invalid slot 'NOT_A_SLOT'"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn a_route_that_never_leaves_the_child_slot_is_rejected() {
+        // Co-located endpoints are meant to be absent from the plan
+        // entirely, so a route whose two ends agree is a contradiction.
+        let error = check(AxiChannel::ReadAddress, &route(0, &[CHILD, CHILD]))
+            .expect_err("a route within one slot must be rejected");
+        assert!(message(&error).contains("both endpoints are in"), "{error}");
+    }
+
+    #[test]
+    fn channels_of_one_endpoint_must_agree_on_the_bank() {
+        let mut common_bank = None;
+        let mut common_slot = None;
+        validate_channel_route(
+            &endpoint(),
+            AxiChannel::ReadAddress,
+            &route(0, &[CHILD, BANK_SIDE]),
+            CHILD,
+            &mut common_bank,
+            &mut common_slot,
+        )
+        .expect("first channel establishes the bank");
+
+        let error = validate_channel_route(
+            &endpoint(),
+            AxiChannel::ReadData,
+            &route(1, &[BANK_SIDE, CHILD]),
+            CHILD,
+            &mut common_bank,
+            &mut common_slot,
+        )
+        .expect_err("a second bank on one endpoint must be rejected");
+        assert!(
+            message(&error).contains("routes channels to both"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn channels_of_one_endpoint_must_agree_on_the_bank_side_slot() {
+        let mut common_bank = None;
+        let mut common_slot = None;
+        validate_channel_route(
+            &endpoint(),
+            AxiChannel::ReadAddress,
+            &route(0, &[CHILD, BANK_SIDE]),
+            CHILD,
+            &mut common_bank,
+            &mut common_slot,
+        )
+        .expect("first channel establishes the bank-side slot");
+
+        // Same bank, but reached from a different slot.
+        let error = validate_channel_route(
+            &endpoint(),
+            AxiChannel::ReadData,
+            &route(0, &[(2, 2), CHILD]),
+            CHILD,
+            &mut common_bank,
+            &mut common_slot,
+        )
+        .expect_err("two bank-side slots on one endpoint must be rejected");
+        assert!(
+            message(&error).contains("different bank-side slots"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn agreeing_channels_accumulate_without_error() {
+        let mut common_bank = None;
+        let mut common_slot = None;
+        for (channel, slots) in [
+            (AxiChannel::ReadAddress, [CHILD, BANK_SIDE]),
+            (AxiChannel::WriteAddress, [CHILD, BANK_SIDE]),
+            (AxiChannel::WriteData, [CHILD, BANK_SIDE]),
+            (AxiChannel::ReadData, [BANK_SIDE, CHILD]),
+            (AxiChannel::WriteResponse, [BANK_SIDE, CHILD]),
+        ] {
+            validate_channel_route(
+                &endpoint(),
+                channel,
+                &route(0, &slots),
+                CHILD,
+                &mut common_bank,
+                &mut common_slot,
+            )
+            .unwrap_or_else(|e| panic!("{channel:?} should validate: {e}"));
+        }
+        assert_eq!(common_bank, Some(bank(0)));
+        assert_eq!(common_slot, Some(BANK_SIDE));
+    }
+}
