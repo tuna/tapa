@@ -26,15 +26,6 @@ compliance with style guidelines. To manually run the checks:
 pre-commit run --all-files
 ```
 
-### Setting C++ Compiler Options for IDEs
-
-Generate a `compile_commands.json` file to configure your IDE with Bazel's
-compiler options:
-
-```bash
-bazel run //:refresh_compile_commands
-```
-
 ## Code Structure
 
 The TAPA codebase is organized into several key directories:
