@@ -25,7 +25,14 @@ set -ue
 
 # Default values for the installation options.
 TAPA_LOCAL_PACKAGE="${TAPA_LOCAL_PACKAGE:-}"
-TAPA_VERSION="${TAPA_VERSION:-0.1.20260721}"
+# Pinned deliberately to the last release of the Python toolchain, which is
+# what `--beta`'s absence means: users get the version we recommend for
+# production while the internals move to Rust. This is NOT the `VERSION` file
+# -- that is the *next* version, bumped nightly by CI and usually unreleased,
+# so tracking it here would advertise a download that 404s. `--beta` selects
+# `latest`, and a release becoming the recommended one is a decision, not a
+# consequence of the date.
+TAPA_VERSION="${TAPA_VERSION:-0.1.20260319}"
 TAPA_DOWNLOAD_TMPFILE=""
 
 if [ "$(id -u)" -eq 0 ]; then
@@ -58,7 +65,7 @@ Options:
       --no-create-symlinks     Do not create symbolic links in the system path.
       --no-modify-path         Do not modify the PATH environment variable.
 
-  -V, --version <version>      Specify the TAPA version to download (default: 0.1.20260721).
+  -V, --version <version>      Specify the TAPA version to download (default: 0.1.20260319).
                                Ignored if TAPA_LOCAL_PACKAGE is set.
       --beta                   Install the latest (potentially unstable) release.
 
@@ -69,7 +76,7 @@ Options:
 
 Environment variables:
   TAPA_LOCAL_PACKAGE           Path to a local TAPA tarball (skips download).
-  TAPA_VERSION                 Version to download (default: 0.1.20260721).
+  TAPA_VERSION                 Version to download (default: 0.1.20260319).
 EOF
 }
 
