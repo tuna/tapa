@@ -4,93 +4,15 @@ use std::path::Path;
 
 use crate::error::{CosimError, Result};
 use crate::metadata::{ArgKind, KernelSpec, Mode};
-use crate::tb::names::{escape_verilog_identifier, escaped_verilog_signal, verilator_identifier};
-use crate::tb::{
-    classify_args, read_verilog_contents, scalar_words, AxiSignals, ScalarWord, StreamSignals,
+use crate::tb::names::{escape_verilog_identifier, verilator_identifier};
+use crate::tb::{classify_args, read_verilog_contents, MmapArg, Naming, ScalarArg, StreamArg};
+
+/// xsim drives the DUT through escaped Verilog port references, while the
+/// testbench state it declares around them must stay bare identifiers.
+const NAMING: Naming = Naming {
+    ident: verilator_identifier,
+    port: escape_verilog_identifier,
 };
-
-#[derive(Clone)]
-struct MmapArg {
-    name: String,
-    ident: String,
-    offset_name: String,
-    araddr: String,
-    arburst: String,
-    arcache: String,
-    arid: String,
-    arlen: String,
-    arlock: String,
-    arprot: String,
-    arqos: String,
-    arready: String,
-    arsize: String,
-    arvalid: String,
-    awaddr: String,
-    awburst: String,
-    awcache: String,
-    awid: String,
-    awlen: String,
-    awlock: String,
-    awprot: String,
-    awqos: String,
-    awready: String,
-    awsize: String,
-    awvalid: String,
-    bid: String,
-    bready: String,
-    bresp: String,
-    bvalid: String,
-    rdata: String,
-    rid: String,
-    rlast: String,
-    rready: String,
-    rresp: String,
-    rvalid: String,
-    wdata: String,
-    wlast: String,
-    wready: String,
-    wstrb: String,
-    wvalid: String,
-    data_width_bytes: usize,
-    id_width: usize,
-    base_addr: u64,
-    reg_offset_lo: u32,
-    reg_offset_hi: u32,
-}
-
-#[derive(Clone)]
-struct ScalarArg {
-    name: String,
-    value_expr: String,
-    words: Vec<ScalarWord>,
-}
-
-#[derive(Clone)]
-struct StreamArg {
-    name: String,
-    ident: String,
-    empty_n: String,
-    dout: String,
-    din: String,
-    read: String,
-    full_n: String,
-    write: String,
-    tdata: String,
-    tvalid: String,
-    tready: String,
-    tlast: String,
-    width_bytes: usize,
-    /// Total bytes passed to/from the DPI function.  Always `width_bytes + 1`:
-    /// the extra byte carries the EOS/TLAST flag.  For AXIS streams this maps
-    /// to TLAST; for `ApFifo` streams it maps to the MSB of the `dout`/`din` port.
-    dpi_width_bytes: usize,
-    /// True when the stream uses AXI-Stream (Vitis mode).  The EOS bit is
-    /// carried as a separate byte in the DPI transfer and maps to TLAST.
-    axis: bool,
-    has_peek: bool,
-    peek_empty_n: String,
-    peek_dout: String,
-}
 
 #[derive(Template)]
 #[template(path = "tb_xsim.sv.j2", escape = "none")]
@@ -159,7 +81,7 @@ impl<'a> XsimTbGenerator<'a> {
         }
     }
 
-    fn collect_args(&self) -> Result<super::ClassifiedArgs<MmapArg, ScalarArg, StreamArg>> {
+    fn collect_args(&self) -> Result<super::ClassifiedArgs> {
         let verilog_contents = read_verilog_contents(self.spec);
         let base_addresses = self.base_addresses;
 
@@ -172,19 +94,25 @@ impl<'a> XsimTbGenerator<'a> {
                     ArgKind::Mmap { data_width, .. } => *data_width,
                     ArgKind::Scalar { .. } | ArgKind::Stream { .. } => unreachable!(),
                 };
-                let id_width = detect_axi_id_width(&verilog_contents, &arg.name);
                 let offset_port = super::direct_offset_port_name(&verilog_contents, &arg.name);
-                MmapArg::new(
-                    &arg.name,
-                    &offset_port,
-                    (data_width as usize).div_ceil(8),
-                    id_width,
-                    base_addresses.get(&arg.name).copied().unwrap_or(0),
-                    offset,
-                )
+                MmapArg {
+                    id_width: detect_axi_id_width(&verilog_contents, &arg.name),
+                    ..MmapArg::new(
+                        NAMING,
+                        &arg.name,
+                        &offset_port,
+                        (data_width as usize).div_ceil(8),
+                        base_addresses.get(&arg.name).copied().unwrap_or(0),
+                        offset,
+                    )
+                }
             },
-            |arg, width, offset, bytes| ScalarArg::new(&arg.name, width, bytes, offset),
-            |arg, width_bytes, peek, axis| StreamArg::new(&arg.name, width_bytes, peek, axis),
+            |arg, width, offset, bytes| {
+                ScalarArg::new(NAMING, &arg.name, sv_literal(width, bytes), offset, bytes)
+            },
+            |arg, width_bytes, peek, axis| {
+                StreamArg::new(NAMING, &arg.name, width_bytes, peek, axis)
+            },
         )
     }
 
@@ -286,102 +214,4 @@ fn detect_axi_id_width(verilog_contents: &[String], mmap_name: &str) -> usize {
         }
     }
     1
-}
-
-impl MmapArg {
-    fn new(
-        name: &str,
-        offset_port: &str,
-        data_width_bytes: usize,
-        id_width: usize,
-        base_addr: u64,
-        reg_offset_lo: u32,
-    ) -> Self {
-        let a = AxiSignals::new(name, escaped_verilog_signal);
-        Self {
-            name: name.to_owned(),
-            ident: verilator_identifier(name),
-            offset_name: escape_verilog_identifier(offset_port),
-            araddr: a.araddr,
-            arburst: a.arburst,
-            arcache: a.arcache,
-            arid: a.arid,
-            arlen: a.arlen,
-            arlock: a.arlock,
-            arprot: a.arprot,
-            arqos: a.arqos,
-            arready: a.arready,
-            arsize: a.arsize,
-            arvalid: a.arvalid,
-            awaddr: a.awaddr,
-            awburst: a.awburst,
-            awcache: a.awcache,
-            awid: a.awid,
-            awlen: a.awlen,
-            awlock: a.awlock,
-            awprot: a.awprot,
-            awqos: a.awqos,
-            awready: a.awready,
-            awsize: a.awsize,
-            awvalid: a.awvalid,
-            bid: a.bid,
-            bready: a.bready,
-            bresp: a.bresp,
-            bvalid: a.bvalid,
-            rdata: a.rdata,
-            rid: a.rid,
-            rlast: a.rlast,
-            rready: a.rready,
-            rresp: a.rresp,
-            rvalid: a.rvalid,
-            wdata: a.wdata,
-            wlast: a.wlast,
-            wready: a.wready,
-            wstrb: a.wstrb,
-            wvalid: a.wvalid,
-            data_width_bytes,
-            id_width,
-            base_addr,
-            reg_offset_lo,
-            reg_offset_hi: reg_offset_lo + 4,
-        }
-    }
-}
-
-impl ScalarArg {
-    fn new(name: &str, width_bits: u32, bytes: &[u8], reg_offset: u32) -> Self {
-        Self {
-            name: escape_verilog_identifier(name),
-            value_expr: sv_literal(width_bits, bytes),
-            words: scalar_words(reg_offset, bytes),
-        }
-    }
-}
-
-impl StreamArg {
-    fn new(name: &str, width_bytes: usize, peek: Option<String>, axis: bool) -> Self {
-        let has_peek = peek.is_some();
-        let peek_name = peek.unwrap_or_default();
-        let s = StreamSignals::new(name, &peek_name, escaped_verilog_signal);
-        Self {
-            name: name.to_owned(),
-            ident: verilator_identifier(name),
-            empty_n: s.empty_n,
-            dout: s.dout,
-            din: s.din,
-            read: s.read,
-            full_n: s.full_n,
-            write: s.write,
-            tdata: s.tdata,
-            tvalid: s.tvalid,
-            tready: s.tready,
-            tlast: s.tlast,
-            width_bytes,
-            dpi_width_bytes: width_bytes + 1,
-            axis,
-            has_peek,
-            peek_empty_n: s.peek_empty_n,
-            peek_dout: s.peek_dout,
-        }
-    }
 }

@@ -46,14 +46,6 @@ pub fn cpp_identifier(name: &str) -> String {
     out
 }
 
-pub fn escaped_verilog_signal(prefix: &str, name: &str, suffix: &str) -> String {
-    escape_verilog_identifier(&format!("{prefix}{name}{suffix}"))
-}
-
-pub fn cpp_signal(prefix: &str, name: &str, suffix: &str) -> String {
-    cpp_identifier(&format!("{prefix}{name}{suffix}"))
-}
-
 pub fn infer_peek_name(stream_name: &str) -> Option<String> {
     if let Some(base) = stream_name.strip_suffix("_s") {
         return Some(format!("{base}_peek"));

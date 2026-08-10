@@ -98,54 +98,54 @@ static void tick() {
 static void service_all_axi() {
 {% for arg in mmap_args %}
   // ---- AR channel: accept into queue (up to kMaxOutstanding) ----
-  dut->{{ arg.arready }} = (int(rd_q_{{ arg.ident }}.size()) < kMaxOutstanding) ? 1 : 0;
-  if (dut->{{ arg.arvalid }} && dut->{{ arg.arready }}) {
-    rd_q_{{ arg.ident }}.push_back({dut->{{ arg.araddr }}, (uint8_t)dut->{{ arg.arlen }},
-                                    (uint8_t)dut->{{ arg.arid }}, 0});
+  dut->{{ arg.axi.arready }} = (int(rd_q_{{ arg.ident }}.size()) < kMaxOutstanding) ? 1 : 0;
+  if (dut->{{ arg.axi.arvalid }} && dut->{{ arg.axi.arready }}) {
+    rd_q_{{ arg.ident }}.push_back({dut->{{ arg.axi.araddr }}, (uint8_t)dut->{{ arg.axi.arlen }},
+                                    (uint8_t)dut->{{ arg.axi.arid }}, 0});
   }
   // ---- R channel: serve head of read queue ----
   if (!rd_q_{{ arg.ident }}.empty()) {
     auto& r = rd_q_{{ arg.ident }}.front();
-    dut->{{ arg.rvalid }} = 1;
+    dut->{{ arg.axi.rvalid }} = 1;
     mem_{{ arg.ident }}.read(r.addr + (uint64_t)r.beat * {{ arg.data_width_bytes }},
-                             &dut->{{ arg.rdata }}, {{ arg.data_width_bytes }});
-    dut->{{ arg.rlast }} = (r.beat == r.len) ? 1 : 0;
-    dut->{{ arg.rid }} = r.id;
-    dut->{{ arg.rresp }} = 0;
-    if (dut->{{ arg.rready }}) {
+                             &dut->{{ arg.axi.rdata }}, {{ arg.data_width_bytes }});
+    dut->{{ arg.axi.rlast }} = (r.beat == r.len) ? 1 : 0;
+    dut->{{ arg.axi.rid }} = r.id;
+    dut->{{ arg.axi.rresp }} = 0;
+    if (dut->{{ arg.axi.rready }}) {
       if (r.beat >= r.len) rd_q_{{ arg.ident }}.pop_front();
       else r.beat++;
     }
   } else {
-    dut->{{ arg.rvalid }} = 0;
+    dut->{{ arg.axi.rvalid }} = 0;
   }
   // ---- AW channel: accept into queue ----
-  dut->{{ arg.awready }} = (int(wr_q_{{ arg.ident }}.size()) < kMaxOutstanding) ? 1 : 0;
-  if (dut->{{ arg.awvalid }} && dut->{{ arg.awready }}) {
-    wr_q_{{ arg.ident }}.push_back({dut->{{ arg.awaddr }}, (uint8_t)dut->{{ arg.awid }}, 0});
+  dut->{{ arg.axi.awready }} = (int(wr_q_{{ arg.ident }}.size()) < kMaxOutstanding) ? 1 : 0;
+  if (dut->{{ arg.axi.awvalid }} && dut->{{ arg.axi.awready }}) {
+    wr_q_{{ arg.ident }}.push_back({dut->{{ arg.axi.awaddr }}, (uint8_t)dut->{{ arg.axi.awid }}, 0});
   }
   // ---- W channel: match data with head AW entry ----
-  dut->{{ arg.wready }} = !wr_q_{{ arg.ident }}.empty() ? 1 : 0;
-  if (dut->{{ arg.wvalid }} && dut->{{ arg.wready }} && !wr_q_{{ arg.ident }}.empty()) {
+  dut->{{ arg.axi.wready }} = !wr_q_{{ arg.ident }}.empty() ? 1 : 0;
+  if (dut->{{ arg.axi.wvalid }} && dut->{{ arg.axi.wready }} && !wr_q_{{ arg.ident }}.empty()) {
     auto& w = wr_q_{{ arg.ident }}.front();
     mem_{{ arg.ident }}.write(w.addr + (uint64_t)w.beat * {{ arg.data_width_bytes }},
-                              &dut->{{ arg.wdata }}, &dut->{{ arg.wstrb }},
+                              &dut->{{ arg.axi.wdata }}, &dut->{{ arg.axi.wstrb }},
                               {{ arg.data_width_bytes }});
     w.beat++;
-    if (dut->{{ arg.wlast }}) {
+    if (dut->{{ arg.axi.wlast }}) {
       b_q_{{ arg.ident }}.push_back(w.id);
       wr_q_{{ arg.ident }}.pop_front();
     }
   }
   // ---- B channel: respond from completed-write queue ----
   if (!b_q_{{ arg.ident }}.empty()) {
-    dut->{{ arg.bvalid }} = 1;
-    dut->{{ arg.bid }} = b_q_{{ arg.ident }}.front();
-    dut->{{ arg.bresp }} = 0;
-    if (dut->{{ arg.bready }})
+    dut->{{ arg.axi.bvalid }} = 1;
+    dut->{{ arg.axi.bid }} = b_q_{{ arg.ident }}.front();
+    dut->{{ arg.axi.bresp }} = 0;
+    if (dut->{{ arg.axi.bready }})
       b_q_{{ arg.ident }}.pop_front();
   } else {
-    dut->{{ arg.bvalid }} = 0;
+    dut->{{ arg.axi.bvalid }} = 0;
   }
 {% endfor %}
 }
@@ -176,51 +176,51 @@ static void service_streams() {
 {% for arg in stream_args %}
   stream_in_have_{{ arg.ident }} = tapa_stream_istream_step(
       "{{ arg.name }}",
-      stream_in_have_{{ arg.ident }} && dut->{{ arg.read }},
+      stream_in_have_{{ arg.ident }} && dut->{{ arg.sig.read }},
       stream_in_data_{{ arg.ident }}.data());
-  dut->{{ arg.empty_n }} = stream_in_have_{{ arg.ident }} ? 1 : 0;
+  dut->{{ arg.sig.empty_n }} = stream_in_have_{{ arg.ident }} ? 1 : 0;
 {% if arg.has_peek %}
-  dut->{{ arg.peek_empty_n }} = stream_in_have_{{ arg.ident }} ? 1 : 0;
+  dut->{{ arg.sig.peek_empty_n }} = stream_in_have_{{ arg.ident }} ? 1 : 0;
 {% endif %}
   if (stream_in_have_{{ arg.ident }}) {
-    std::memcpy(&dut->{{ arg.dout }}, stream_in_data_{{ arg.ident }}.data(), {{ arg.dpi_width_bytes }});
+    std::memcpy(&dut->{{ arg.sig.dout }}, stream_in_data_{{ arg.ident }}.data(), {{ arg.dpi_width_bytes }});
 {% if arg.has_peek %}
-    std::memcpy(&dut->{{ arg.peek_dout }}, stream_in_data_{{ arg.ident }}.data(), {{ arg.dpi_width_bytes }});
+    std::memcpy(&dut->{{ arg.sig.peek_dout }}, stream_in_data_{{ arg.ident }}.data(), {{ arg.dpi_width_bytes }});
 {% endif %}
   }
 {% endfor %}
 {% for arg in stream_out_args %}
   std::array<uint8_t, {{ arg.dpi_width_bytes }}> data{};
-  std::memcpy(data.data(), &dut->{{ arg.din }}, {{ arg.dpi_width_bytes }});
-  dut->{{ arg.full_n }} = tapa_hls_stream_ostream_step("{{ arg.name }}", dut->{{ arg.write }}, data.data()) ? 1 : 0;
+  std::memcpy(data.data(), &dut->{{ arg.sig.din }}, {{ arg.dpi_width_bytes }});
+  dut->{{ arg.sig.full_n }} = tapa_hls_stream_ostream_step("{{ arg.name }}", dut->{{ arg.sig.write }}, data.data()) ? 1 : 0;
 {% endfor %}
 {% else %}
 {% for arg in stream_args %}
   if (!stream_in_have_{{ arg.ident }}) {
     stream_in_have_{{ arg.ident }} = tapa_stream_try_read("{{ arg.name }}", stream_in_data_{{ arg.ident }}.data());
   }
-  dut->{{ arg.tvalid }} = stream_in_have_{{ arg.ident }} ? 1 : 0;
+  dut->{{ arg.sig.tvalid }} = stream_in_have_{{ arg.ident }} ? 1 : 0;
 {% if arg.axis %}
-  dut->{{ arg.tlast }} = stream_in_have_{{ arg.ident }} ? stream_in_data_{{ arg.ident }}[{{ arg.width_bytes }}] : 0;
+  dut->{{ arg.sig.tlast }} = stream_in_have_{{ arg.ident }} ? stream_in_data_{{ arg.ident }}[{{ arg.width_bytes }}] : 0;
 {% else %}
-  dut->{{ arg.tlast }} = 0;
+  dut->{{ arg.sig.tlast }} = 0;
 {% endif %}
   if (stream_in_have_{{ arg.ident }}) {
-    std::memcpy(&dut->{{ arg.tdata }}, stream_in_data_{{ arg.ident }}.data(), {{ arg.width_bytes }});
+    std::memcpy(&dut->{{ arg.sig.tdata }}, stream_in_data_{{ arg.ident }}.data(), {{ arg.width_bytes }});
   }
-  if (stream_in_have_{{ arg.ident }} && dut->{{ arg.tready }}) {
+  if (stream_in_have_{{ arg.ident }} && dut->{{ arg.sig.tready }}) {
     stream_in_have_{{ arg.ident }} = false;
   }
 {% endfor %}
 {% for arg in stream_out_args %}
   bool can_write_{{ arg.ident }} = tapa_stream_can_write("{{ arg.name }}");
-  dut->{{ arg.tready }} = can_write_{{ arg.ident }} ? 1 : 0;
+  dut->{{ arg.sig.tready }} = can_write_{{ arg.ident }} ? 1 : 0;
   std::array<uint8_t, {{ arg.dpi_width_bytes }}> data{};
-  std::memcpy(data.data(), &dut->{{ arg.tdata }}, {{ arg.width_bytes }});
+  std::memcpy(data.data(), &dut->{{ arg.sig.tdata }}, {{ arg.width_bytes }});
 {% if arg.axis %}
-  data[{{ arg.width_bytes }}] = dut->{{ arg.tlast }};
+  data[{{ arg.width_bytes }}] = dut->{{ arg.sig.tlast }};
 {% endif %}
-  if (dut->{{ arg.tvalid }} && can_write_{{ arg.ident }}) {
+  if (dut->{{ arg.sig.tvalid }} && can_write_{{ arg.ident }}) {
     (void)tapa_stream_try_write("{{ arg.name }}", data.data());
   }
 {% endfor %}
@@ -245,9 +245,9 @@ static void drain_output_streams() {
     ++idle_cycles;
 {% for arg in stream_out_args %}
 {% if mode == "hls" %}
-    if (dut->{{ arg.write }}) idle_cycles = 0;
+    if (dut->{{ arg.sig.write }}) idle_cycles = 0;
 {% else %}
-    if (dut->{{ arg.tvalid }}) idle_cycles = 0;
+    if (dut->{{ arg.sig.tvalid }}) idle_cycles = 0;
 {% endif %}
 {% endfor %}
   }
@@ -290,16 +290,16 @@ int main(int argc, char** argv) {
   dut->s_axi_control_RREADY = 0;
 {% endif %}
 {% for arg in mmap_args %}
-  dut->{{ arg.arready }} = 0;
-  dut->{{ arg.rvalid }} = 0;
+  dut->{{ arg.axi.arready }} = 0;
+  dut->{{ arg.axi.rvalid }} = 0;
 {% if arg.data_width_bytes > 8 %}
-  std::memset(&dut->{{ arg.rdata }}, 0, sizeof(dut->{{ arg.rdata }}));
+  std::memset(&dut->{{ arg.axi.rdata }}, 0, sizeof(dut->{{ arg.axi.rdata }}));
 {% else %}
-  dut->{{ arg.rdata }} = 0;
+  dut->{{ arg.axi.rdata }} = 0;
 {% endif %}
-  dut->{{ arg.rlast }} = 0; dut->{{ arg.rid }} = 0; dut->{{ arg.rresp }} = 0;
-  dut->{{ arg.awready }} = 1; dut->{{ arg.wready }} = 1;
-  dut->{{ arg.bvalid }} = 0; dut->{{ arg.bid }} = 0; dut->{{ arg.bresp }} = 0;
+  dut->{{ arg.axi.rlast }} = 0; dut->{{ arg.axi.rid }} = 0; dut->{{ arg.axi.rresp }} = 0;
+  dut->{{ arg.axi.awready }} = 1; dut->{{ arg.axi.wready }} = 1;
+  dut->{{ arg.axi.bvalid }} = 0; dut->{{ arg.axi.bid }} = 0; dut->{{ arg.axi.bresp }} = 0;
 {% endfor %}
 
   for (int i = 0; i < 10; ++i) tick();
@@ -312,16 +312,16 @@ int main(int argc, char** argv) {
 
 {% if mode == "hls" %}
 {% for arg in mmap_args %}
-  dut->{{ arg.offset_ident }} = 0x{{ "{:016x}"|format(arg.base_addr) }}ULL;
+  dut->{{ arg.offset_port }} = 0x{{ "{:016x}"|format(arg.base_addr) }}ULL;
 {% endfor %}
 {% for arg in scalar_args %}
   {
-    const uint8_t scalar_bytes[] = { {{ arg.bytes_initializer }} };
-    std::memset(&dut->{{ arg.member }}, 0, sizeof(dut->{{ arg.member }}));
+    const uint8_t scalar_bytes[] = { {{ arg.value }} };
+    std::memset(&dut->{{ arg.port }}, 0, sizeof(dut->{{ arg.port }}));
     std::memcpy(
-        &dut->{{ arg.member }},
+        &dut->{{ arg.port }},
         scalar_bytes,
-        std::min(sizeof(dut->{{ arg.member }}), sizeof(scalar_bytes)));
+        std::min(sizeof(dut->{{ arg.port }}), sizeof(scalar_bytes)));
   }
 {% endfor %}
   dut->ap_start = 1;

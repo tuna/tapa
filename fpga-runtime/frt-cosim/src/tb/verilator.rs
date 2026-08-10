@@ -3,89 +3,15 @@ use std::collections::HashMap;
 
 use crate::error::{CosimError, Result};
 use crate::metadata::{ArgKind, KernelSpec, Mode};
-use crate::tb::names::{cpp_identifier, cpp_signal};
-use crate::tb::{
-    classify_args, read_verilog_contents, scalar_words, AxiSignals, ScalarWord, StreamSignals,
+use crate::tb::names::cpp_identifier;
+use crate::tb::{classify_args, read_verilog_contents, MmapArg, Naming, ScalarArg, StreamArg};
+
+/// Verilator exposes every DUT port as a C++ member, so both kinds of name
+/// are the same mangling.
+const NAMING: Naming = Naming {
+    ident: cpp_identifier,
+    port: cpp_identifier,
 };
-
-pub struct MmapArg {
-    pub name: String,
-    pub ident: String,
-    /// DUT member for the direct-offset scalar (`<name>_offset`, or
-    /// `<name>_r` on Vitis HLS 2025.1+ modules).
-    pub offset_ident: String,
-    pub araddr: String,
-    pub arburst: String,
-    pub arcache: String,
-    pub arid: String,
-    pub arlen: String,
-    pub arlock: String,
-    pub arprot: String,
-    pub arqos: String,
-    pub arready: String,
-    pub arsize: String,
-    pub arvalid: String,
-    pub awaddr: String,
-    pub awburst: String,
-    pub awcache: String,
-    pub awid: String,
-    pub awlen: String,
-    pub awlock: String,
-    pub awprot: String,
-    pub awqos: String,
-    pub awready: String,
-    pub awsize: String,
-    pub awvalid: String,
-    pub bid: String,
-    pub bready: String,
-    pub bresp: String,
-    pub bvalid: String,
-    pub rdata: String,
-    pub rid: String,
-    pub rlast: String,
-    pub rready: String,
-    pub rresp: String,
-    pub rvalid: String,
-    pub wdata: String,
-    pub wlast: String,
-    pub wready: String,
-    pub wstrb: String,
-    pub wvalid: String,
-    pub data_width_bytes: usize,
-    pub base_addr: u64,
-    pub data_size: usize,
-    pub reg_offset_lo: u32,
-    pub reg_offset_hi: u32,
-}
-
-pub struct ScalarArg {
-    pub name: String,
-    pub member: String,
-    pub bytes_initializer: String,
-    pub words: Vec<ScalarWord>,
-}
-
-pub struct StreamArg {
-    pub name: String,
-    pub ident: String,
-    pub empty_n: String,
-    pub dout: String,
-    pub din: String,
-    pub read: String,
-    pub full_n: String,
-    pub write: String,
-    pub tdata: String,
-    pub tvalid: String,
-    pub tready: String,
-    pub tlast: String,
-    pub width_bytes: usize,
-    pub dpi_width_bytes: usize,
-    pub axis: bool,
-    pub has_peek: bool,
-    pub peek_name: String,
-    pub peek_empty_n: String,
-    pub peek_dout: String,
-}
 
 #[derive(Template)]
 #[template(path = "tb_verilator.cpp.j2", escape = "none")]
@@ -140,22 +66,35 @@ impl<'a> VerilatorTbGenerator<'a> {
                     ArgKind::Scalar { .. } | ArgKind::Stream { .. } => unreachable!(),
                 };
                 let offset_port = super::direct_offset_port_name(&verilog_contents, &arg.name);
-                MmapArg::new(
-                    &arg.name,
-                    &offset_port,
-                    (data_width as usize).div_ceil(8),
-                    base_addresses.get(&arg.name).copied().unwrap_or(0),
+                MmapArg {
                     // The context creates a segment for every mmap argument,
                     // so the entry is always here in production. An unknown
                     // size models nothing rather than guessing at one: reads
                     // return zero and writes are dropped, which is what an
                     // unbound argument did when the model was a hash map.
-                    buffer_sizes.get(&arg.name).copied().unwrap_or(0),
+                    data_size: buffer_sizes.get(&arg.name).copied().unwrap_or(0),
+                    ..MmapArg::new(
+                        NAMING,
+                        &arg.name,
+                        &offset_port,
+                        (data_width as usize).div_ceil(8),
+                        base_addresses.get(&arg.name).copied().unwrap_or(0),
+                        offset,
+                    )
+                }
+            },
+            |arg, _width, offset, bytes| {
+                ScalarArg::new(
+                    NAMING,
+                    &arg.name,
+                    bytes_to_cpp_initializer(bytes),
                     offset,
+                    bytes,
                 )
             },
-            |arg, _width, offset, bytes| ScalarArg::new(&arg.name, bytes, offset),
-            |arg, width_bytes, peek, axis| StreamArg::new(&arg.name, width_bytes, peek, axis),
+            |arg, width_bytes, peek, axis| {
+                StreamArg::new(NAMING, &arg.name, width_bytes, peek, axis)
+            },
         )?;
 
         let tmpl = TbTemplate {
@@ -177,104 +116,4 @@ fn bytes_to_cpp_initializer(bytes: &[u8]) -> String {
         .map(|b| format!("0x{b:02x}"))
         .collect::<Vec<_>>()
         .join(", ")
-}
-
-impl MmapArg {
-    fn new(
-        name: &str,
-        offset_port: &str,
-        data_width_bytes: usize,
-        base_addr: u64,
-        data_size: usize,
-        reg_offset_lo: u32,
-    ) -> Self {
-        let a = AxiSignals::new(name, cpp_signal);
-        Self {
-            name: name.to_owned(),
-            ident: cpp_identifier(name),
-            offset_ident: cpp_identifier(offset_port),
-            araddr: a.araddr,
-            arburst: a.arburst,
-            arcache: a.arcache,
-            arid: a.arid,
-            arlen: a.arlen,
-            arlock: a.arlock,
-            arprot: a.arprot,
-            arqos: a.arqos,
-            arready: a.arready,
-            arsize: a.arsize,
-            arvalid: a.arvalid,
-            awaddr: a.awaddr,
-            awburst: a.awburst,
-            awcache: a.awcache,
-            awid: a.awid,
-            awlen: a.awlen,
-            awlock: a.awlock,
-            awprot: a.awprot,
-            awqos: a.awqos,
-            awready: a.awready,
-            awsize: a.awsize,
-            awvalid: a.awvalid,
-            bid: a.bid,
-            bready: a.bready,
-            bresp: a.bresp,
-            bvalid: a.bvalid,
-            rdata: a.rdata,
-            rid: a.rid,
-            rlast: a.rlast,
-            rready: a.rready,
-            rresp: a.rresp,
-            rvalid: a.rvalid,
-            wdata: a.wdata,
-            wlast: a.wlast,
-            wready: a.wready,
-            wstrb: a.wstrb,
-            wvalid: a.wvalid,
-            data_width_bytes,
-            base_addr,
-            data_size,
-            reg_offset_lo,
-            reg_offset_hi: reg_offset_lo + 4,
-        }
-    }
-}
-
-impl ScalarArg {
-    fn new(name: &str, bytes: &[u8], reg_offset: u32) -> Self {
-        Self {
-            name: name.to_owned(),
-            member: cpp_identifier(name),
-            bytes_initializer: bytes_to_cpp_initializer(bytes),
-            words: scalar_words(reg_offset, bytes),
-        }
-    }
-}
-
-impl StreamArg {
-    fn new(name: &str, width_bytes: usize, peek: Option<String>, axis: bool) -> Self {
-        let has_peek = peek.is_some();
-        let peek_name = peek.unwrap_or_default();
-        let s = StreamSignals::new(name, &peek_name, cpp_signal);
-        Self {
-            name: name.to_owned(),
-            ident: cpp_identifier(name),
-            empty_n: s.empty_n,
-            dout: s.dout,
-            din: s.din,
-            read: s.read,
-            full_n: s.full_n,
-            write: s.write,
-            tdata: s.tdata,
-            tvalid: s.tvalid,
-            tready: s.tready,
-            tlast: s.tlast,
-            width_bytes,
-            dpi_width_bytes: width_bytes + 1,
-            axis,
-            has_peek,
-            peek_name,
-            peek_empty_n: s.peek_empty_n,
-            peek_dout: s.peek_dout,
-        }
-    }
 }
