@@ -27,7 +27,6 @@ use self::distributed_control::DistributedControlPlan;
 use crate::error::CodegenError;
 use crate::rtl_state::{MMapConnection, TopologyWithRtl};
 use crate::state::views::{DesignView, FsmTable, ModuleTable, OutputSet};
-use crate::{DesignPass, TaskPass};
 
 /// Context handed to each [`DesignPass`]: the narrowed per-concern views
 /// built from the state's disjoint fields (Phase 1b). Pass bodies never see
@@ -199,151 +198,123 @@ impl TaskStageInputs {
 
 /// Design pass: build the authoritative port-only shells for
 /// `Ignore`-synthesized tasks into `module_map`.
-pub struct IgnoreTaskShells;
-
-impl DesignPass for IgnoreTaskShells {
-    fn run(&self, ctx: &mut DesignPassCtx<'_>) -> Result<(), CodegenError> {
-        // Ignored tasks have no HLS result to attach. Build their
-        // authoritative port-only shell from topology so parents can resolve
-        // the module while the user authors the replacement RTL.
-        let design = ctx.design.design();
-        let task_names: Vec<String> = design.tasks.keys().cloned().collect();
-        for task_name in &task_names {
-            let task = &design.tasks[task_name];
-            if task.synth != SynthTarget::Ignore {
-                continue;
-            }
-            let source = crate::template::render_task_template(task_name, task);
-            let module = tapa_rtl::VerilogModule::parse(&source)?;
-            ctx.modules.insert(
-                task_name.clone(),
-                tapa_rtl::mutation::MutableModule::from_parsed(module),
-            );
+pub fn ignore_task_shells(ctx: &mut DesignPassCtx<'_>) -> Result<(), CodegenError> {
+    // Ignored tasks have no HLS result to attach. Build their
+    // authoritative port-only shell from topology so parents can resolve
+    // the module while the user authors the replacement RTL.
+    let design = ctx.design.design();
+    let task_names: Vec<String> = design.tasks.keys().cloned().collect();
+    for task_name in &task_names {
+        let task = &design.tasks[task_name];
+        if task.synth != SynthTarget::Ignore {
+            continue;
         }
-        Ok(())
+        let source = crate::template::render_task_template(task_name, task);
+        let module = tapa_rtl::VerilogModule::parse(&source)?;
+        ctx.modules.insert(
+            task_name.clone(),
+            tapa_rtl::mutation::MutableModule::from_parsed(module),
+        );
     }
+    Ok(())
 }
 
 /// Task pass: strip HLS artifacts from the task's module and normalize its
 /// reset/handshake wiring before any child or FIFO wiring is added.
-pub struct CleanupHlsArtifacts;
-
-impl TaskPass for CleanupHlsArtifacts {
-    fn run(&self, ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenError> {
-        let is_top_task = ctx.inputs.is_top_task;
-        let control_plan = ctx.inputs.control_plan.as_ref();
-        cleanup::cleanup_hls_artifacts(
-            ctx.design,
-            &mut ctx.modules,
-            ctx.name,
-            is_top_task,
-            control_plan,
-        );
-        Ok(())
-    }
+#[allow(
+    clippy::unnecessary_wraps,
+    reason = "every pass shares one signature so the stage table stays uniform"
+)]
+pub fn cleanup_hls_artifacts(ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenError> {
+    let is_top_task = ctx.inputs.is_top_task;
+    let control_plan = ctx.inputs.control_plan.as_ref();
+    cleanup::cleanup_hls_artifacts(
+        ctx.design,
+        &mut ctx.modules,
+        ctx.name,
+        is_top_task,
+        control_plan,
+    );
+    Ok(())
 }
 
 /// Task pass: create the per-task FSM module, unless a distributed control
 /// plan replaces it.
-pub struct CreateFsmModule;
-
-impl TaskPass for CreateFsmModule {
-    fn run(&self, ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenError> {
-        if ctx.inputs.control_plan.is_none() {
-            let task_level = ctx
-                .design
-                .design()
-                .tasks
-                .get(ctx.name)
-                .ok_or_else(|| CodegenError::TaskNotFound(ctx.name.to_owned()))?
-                .level;
-            ctx.fsms.create_fsm_module(ctx.name, task_level)?;
-        }
-        Ok(())
+pub fn create_fsm_module(ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenError> {
+    if ctx.inputs.control_plan.is_none() {
+        let task_level = ctx
+            .design
+            .design()
+            .tasks
+            .get(ctx.name)
+            .ok_or_else(|| CodegenError::TaskNotFound(ctx.name.to_owned()))?
+            .level;
+        ctx.fsms.create_fsm_module(ctx.name, task_level)?;
     }
+    Ok(())
 }
 
 /// Task pass: generate the child-instance signals and wiring, remembering
 /// the `is_done` nets for the control stage.
-pub struct GenerateChildSignals;
-
-impl TaskPass for GenerateChildSignals {
-    fn run(&self, ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenError> {
-        let is_done_signals = crate::passes::children::generate_child_signals(ctx)?;
-        ctx.inputs.is_done_signals = is_done_signals;
-        Ok(())
-    }
+pub fn generate_child_signals(ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenError> {
+    let is_done_signals = crate::passes::children::generate_child_signals(ctx)?;
+    ctx.inputs.is_done_signals = is_done_signals;
+    Ok(())
 }
 
 /// Task pass: instantiate and connect the task's FIFO storage.
-pub struct FifoInstantiateConnect;
-
-impl TaskPass for FifoInstantiateConnect {
-    fn run(&self, ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenError> {
-        crate::passes::fifos::instantiate_fifos(ctx.design, &mut ctx.modules, ctx.name)?;
-        crate::passes::fifos::connect_fifos(ctx.design, &mut ctx.modules, ctx.name)?;
-        Ok(())
-    }
+pub fn fifo_instantiate_connect(ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenError> {
+    crate::passes::fifos::instantiate_fifos(ctx.design, &mut ctx.modules, ctx.name)?;
+    crate::passes::fifos::connect_fifos(ctx.design, &mut ctx.modules, ctx.name)?;
+    Ok(())
 }
 
 /// Task pass: add M-AXI ports and crossbars, reusing the precomputed mmap
 /// connections.
-pub struct MAxiCrossbars;
-
-impl TaskPass for MAxiCrossbars {
-    fn run(&self, ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenError> {
-        crate::m_axi::add_m_axi_and_crossbars(
-            &mut ctx.modules,
-            &mut ctx.outputs,
-            ctx.name,
-            &ctx.inputs.mmap_conns,
-        )?;
-        Ok(())
-    }
+pub fn m_axi_crossbars(ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenError> {
+    crate::m_axi::add_m_axi_and_crossbars(
+        &mut ctx.modules,
+        &mut ctx.outputs,
+        ctx.name,
+        &ctx.inputs.mmap_conns,
+    )?;
+    Ok(())
 }
 
 /// Task pass: instantiate floorplan-routed direct M-AXI pipelines (top task
 /// only; the plan is `None` otherwise).
-pub struct AxiPipelineInstantiate;
-
-impl TaskPass for AxiPipelineInstantiate {
-    fn run(&self, ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenError> {
-        if let Some(plan) = &ctx.inputs.axi_pipeline_plan {
-            plan.instantiate(&mut ctx.modules, ctx.name)?;
-        }
-        Ok(())
+pub fn axi_pipeline_instantiate(ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenError> {
+    if let Some(plan) = &ctx.inputs.axi_pipeline_plan {
+        plan.instantiate(&mut ctx.modules, ctx.name)?;
     }
+    Ok(())
 }
 
 /// Task pass: apply the global FSM — from the distributed control plan when
 /// one exists, otherwise by programming the per-task FSM module directly.
-pub struct ControlFsm;
-
-impl TaskPass for ControlFsm {
-    fn run(&self, ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenError> {
-        if let Some(plan) = &ctx.inputs.control_plan {
-            plan.instantiate_global(&mut ctx.modules, ctx.name, &ctx.inputs.is_done_signals)?;
-        } else if let Some(fsm_mm) = ctx.fsms.get_mut(ctx.name) {
-            crate::program::apply_global_fsm(fsm_mm, &ctx.inputs.is_done_signals);
-        }
-        Ok(())
+pub fn control_fsm(ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenError> {
+    if let Some(plan) = &ctx.inputs.control_plan {
+        plan.instantiate_global(&mut ctx.modules, ctx.name, &ctx.inputs.is_done_signals)?;
+    } else if let Some(fsm_mm) = ctx.fsms.get_mut(ctx.name) {
+        crate::program::apply_global_fsm(fsm_mm, &ctx.inputs.is_done_signals);
     }
+    Ok(())
 }
 
 /// Task pass: instantiate the top-level `s_axi` control slave (top task
 /// only).
-pub struct SAxiControl;
-
-impl TaskPass for SAxiControl {
-    fn run(&self, ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenError> {
-        if ctx.inputs.is_top_task {
-            self::s_axi::instantiate_top_control_s_axi(
-                ctx.design,
-                &mut ctx.modules,
-                ctx.name,
-                ctx.inputs.top_instantiates_control_s_axi,
-            );
-        }
-        Ok(())
+#[allow(
+    clippy::unnecessary_wraps,
+    reason = "every pass shares one signature so the stage table stays uniform"
+)]
+pub fn s_axi_control(ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenError> {
+    if ctx.inputs.is_top_task {
+        self::s_axi::instantiate_top_control_s_axi(
+            ctx.design,
+            &mut ctx.modules,
+            ctx.name,
+            ctx.inputs.top_instantiates_control_s_axi,
+        );
     }
+    Ok(())
 }

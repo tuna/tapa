@@ -24,33 +24,24 @@ use crate::error::CodegenError;
 use crate::passes::{DesignPassCtx, TaskPassCtx, TaskStageInputs};
 use crate::rtl_state::TopologyWithRtl;
 
-/// A pipeline stage that runs once over the whole design.
-pub(crate) trait DesignPass {
-    /// Run the pass.
-    fn run(&self, ctx: &mut DesignPassCtx<'_>) -> Result<(), CodegenError>;
-}
-
 /// A pipeline stage that runs in order for each upper-level, non-`Ignore`
 /// task (in `BTreeMap` task order).
-pub(crate) trait TaskPass {
-    /// Run the pass for a single task.
-    fn run(&self, ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenError>;
-}
+type TaskPass = fn(&mut TaskPassCtx<'_>) -> Result<(), CodegenError>;
 
 /// The task-scoped passes, in stage order.
 ///
 /// They run for each upper-level, non-`Ignore` task (in `BTreeMap` task
-/// order), between the [`passes::IgnoreTaskShells`] and
-/// [`emit::CollectOutputs`] design passes.
-const TASK_PASSES: &[&dyn TaskPass] = &[
-    &passes::CleanupHlsArtifacts,
-    &passes::CreateFsmModule,
-    &passes::GenerateChildSignals,
-    &passes::FifoInstantiateConnect,
-    &passes::MAxiCrossbars,
-    &passes::AxiPipelineInstantiate,
-    &passes::ControlFsm,
-    &passes::SAxiControl,
+/// order), between the [`passes::ignore_task_shells`] and
+/// [`emit::collect_outputs`] design passes.
+const TASK_PASSES: &[TaskPass] = &[
+    passes::cleanup_hls_artifacts,
+    passes::create_fsm_module,
+    passes::generate_child_signals,
+    passes::fifo_instantiate_connect,
+    passes::m_axi_crossbars,
+    passes::axi_pipeline_instantiate,
+    passes::control_fsm,
+    passes::s_axi_control,
 ];
 
 /// Run the full RTL codegen pipeline and return
@@ -66,7 +57,7 @@ const TASK_PASSES: &[&dyn TaskPass] = &[
 pub fn generate_rtl(state: &mut TopologyWithRtl) -> Result<ArtifactManifest, CodegenError> {
     let task_names: Vec<String> = state.design.tasks.keys().cloned().collect();
 
-    passes::IgnoreTaskShells.run(&mut DesignPassCtx::new(&mut *state))?;
+    passes::ignore_task_shells(&mut DesignPassCtx::new(&mut *state))?;
 
     for task_name in &task_names {
         let task = &state.design.tasks[task_name];
@@ -75,11 +66,11 @@ pub fn generate_rtl(state: &mut TopologyWithRtl) -> Result<ArtifactManifest, Cod
         }
         let mut inputs = TaskStageInputs::prepare(state, task_name)?;
         for pass in TASK_PASSES {
-            pass.run(&mut TaskPassCtx::new(&mut *state, task_name, &mut inputs))?;
+            pass(&mut TaskPassCtx::new(&mut *state, task_name, &mut inputs))?;
         }
     }
 
-    emit::CollectOutputs.run(&mut DesignPassCtx::new(&mut *state))?;
+    emit::collect_outputs(&mut DesignPassCtx::new(&mut *state))?;
 
     Ok(ArtifactManifest::collect(state))
 }
