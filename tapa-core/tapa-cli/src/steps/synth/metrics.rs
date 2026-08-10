@@ -1,8 +1,27 @@
 //! Effective synthesis metrics shared by reports and topology consumers.
 
-use tapa_ir::{Area, Design, TaskLevel};
+use tapa_ir::{Area, Design, Task, TaskLevel};
 
 use crate::error::{CliError, Result};
+
+/// The children `task` actually instantiates, as `(name, count)`.
+///
+/// A child named with no instances, or one the design does not define,
+/// contributes nothing and is skipped rather than reported as absent — the
+/// design may legitimately reference an externally supplied module.
+pub(super) fn instantiated_children<'a>(
+    design: &Design,
+    task: &'a Task,
+) -> Vec<(&'a String, usize)> {
+    if task.level != TaskLevel::Upper {
+        return Vec::new();
+    }
+    task.tasks
+        .iter()
+        .map(|(name, instances)| (name, instances.len()))
+        .filter(|(name, count)| *count > 0 && design.tasks.contains_key(name.as_str()))
+        .collect()
+}
 
 /// Return a task's effective total area.
 ///
@@ -21,28 +40,22 @@ pub(super) fn effective_total_area(design: &Design, task_name: &str) -> Result<O
         return Ok(None);
     };
 
-    if task.level == TaskLevel::Upper {
-        for (child_name, instances) in &task.tasks {
-            let count = instances.len();
-            if count == 0 || !design.tasks.contains_key(child_name) {
-                continue;
-            }
-            let Some(child_total) = effective_total_area(design, child_name)? else {
-                continue;
-            };
-            let count = u64::try_from(count).map_err(|error| {
+    for (child_name, count) in instantiated_children(design, task) {
+        let Some(child_total) = effective_total_area(design, child_name)? else {
+            continue;
+        };
+        let count = u64::try_from(count).map_err(|error| {
+            CliError::Report(format!(
+                "metrics: task `{task_name}` has too many child instances: {error}"
+            ))
+        })?;
+        total = total
+            .checked_add_scaled(child_total, count)
+            .ok_or_else(|| {
                 CliError::Report(format!(
-                    "metrics: task `{task_name}` has too many child instances: {error}"
+                    "metrics: area overflows while aggregating task `{task_name}`"
                 ))
             })?;
-            total = total
-                .checked_add_scaled(child_total, count)
-                .ok_or_else(|| {
-                    CliError::Report(format!(
-                        "metrics: area overflows while aggregating task `{task_name}`"
-                    ))
-                })?;
-        }
     }
     Ok(Some(total))
 }

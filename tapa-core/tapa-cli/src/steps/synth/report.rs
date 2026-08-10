@@ -31,7 +31,7 @@ use tapa_ir::{ClockPeriod, Design, TaskLevel};
 use crate::error::{CliError, Result};
 use crate::steps::version::VERSION as TAPA_VERSION;
 
-use super::metrics::effective_total_area;
+use super::metrics::{effective_total_area, instantiated_children};
 
 /// Typed report schema mirroring the on-disk format.
 #[derive(Debug, Clone, Serialize)]
@@ -141,20 +141,14 @@ fn build_task_report(design: &Design, task_name: &str, schema: &str) -> Result<R
     };
 
     let mut child_reports = Vec::new();
-    if task.level == TaskLevel::Upper {
-        for (child_name, instances) in &task.tasks {
-            let count = instances.len();
-            if count == 0 || !design.tasks.contains_key(child_name) {
-                continue;
-            }
-            let report = build_task_report(design, child_name, schema)?;
-            child_reports.push(ChildReport {
-                name: child_name,
-                count,
-                clock: report.performance.clock,
-                report,
-            });
-        }
+    for (child_name, count) in instantiated_children(design, task) {
+        let report = build_task_report(design, child_name, schema)?;
+        child_reports.push(ChildReport {
+            name: child_name,
+            count,
+            clock: report.performance.clock,
+            report,
+        });
     }
 
     // A task with no HLS estimate has no measured period: either `synth`

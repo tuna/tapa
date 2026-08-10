@@ -123,13 +123,15 @@ impl CosimDevice {
             }
             Simulator::Xsim { legacy } => {
                 let dpi = dpi_lib_path("xsim")?;
-                Box::new(XsimRunner::find(
-                    dpi,
-                    *legacy,
-                    opts.save_waveform,
-                    opts.start_gui,
-                    opts.part_num_override.clone(),
-                )?)
+                Box::new(XsimRunner {
+                    dpi_lib: dpi,
+                    options: frt_cosim::tb::xsim::XsimOptions {
+                        save_waveform: opts.save_waveform,
+                        legacy: *legacy,
+                        start_gui: opts.start_gui,
+                    },
+                    part_num_override: opts.part_num_override.clone(),
+                })
             }
         };
 

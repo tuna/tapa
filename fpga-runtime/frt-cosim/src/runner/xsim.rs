@@ -11,28 +11,9 @@ use which::which;
 
 pub struct XsimRunner {
     pub dpi_lib: PathBuf,
-    pub legacy: bool,
-    pub save_waveform: bool,
-    pub start_gui: bool,
+    /// How the simulation is run; passed straight to the testbench generator.
+    pub options: XsimOptions,
     pub part_num_override: Option<String>,
-}
-
-impl XsimRunner {
-    pub fn find(
-        dpi_lib: PathBuf,
-        legacy: bool,
-        save_waveform: bool,
-        start_gui: bool,
-        part_num_override: Option<String>,
-    ) -> Result<Self> {
-        Ok(Self {
-            dpi_lib,
-            legacy,
-            save_waveform,
-            start_gui,
-            part_num_override,
-        })
-    }
 }
 
 impl SimRunner for XsimRunner {
@@ -55,11 +36,7 @@ impl SimRunner for XsimRunner {
             &ctx.base_addresses,
             scalar_values,
             part,
-            XsimOptions {
-                save_waveform: self.save_waveform,
-                legacy: self.legacy,
-                start_gui: self.start_gui,
-            },
+            self.options,
         );
         let tb_file = format!("tb_{}.sv", spec.top_name);
 
@@ -74,7 +51,11 @@ impl SimRunner for XsimRunner {
         ctx: &CosimContext,
         tb_dir: &Path,
     ) -> Result<std::process::Child> {
-        let mode = if self.start_gui { "gui" } else { "batch" };
+        let mode = if self.options.start_gui {
+            "gui"
+        } else {
+            "batch"
+        };
         let home = tb_dir.join("run");
         std::fs::create_dir_all(&home)?;
         let vivado_bin = which("vivado").map_err(|_e| CosimError::ToolNotFound("vivado".into()))?;
