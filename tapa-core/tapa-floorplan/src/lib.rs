@@ -37,7 +37,8 @@ pub use crate::error::{PlanError, RenderXdcError};
 pub use crate::graph::{ControlInterface, MemoryInterface};
 pub use crate::partition::PartitionStrategy;
 pub use crate::plan::{
-    plan, plan_with_inputs, render_xdc, PlanInputs, PlanOptions, PlanOptionsError,
+    plan, plan_with_inputs, render_xdc, ExactDseResourceCaps, PlanInputs, PlanOptions,
+    PlanOptionsError,
 };
 
 /// Model-fingerprint instrumentation consumed by
@@ -46,7 +47,7 @@ pub use crate::plan::{
 pub use crate::plan::fingerprint::fingerprint_plan_models_json;
 
 pub(crate) use crate::plan::{
-    plan_with_inputs_at_usage_limit_and_caps, ExactDseResourceCaps, EXACT_DSE_CAP_SCALE,
+    plan_with_inputs_at_usage_limit_and_caps, EXACT_DSE_CAP_SCALE,
     MULTILEVEL_BLOCK_RESOURCE_MARGIN_UNITS,
 };
 

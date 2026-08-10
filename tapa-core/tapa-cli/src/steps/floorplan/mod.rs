@@ -327,10 +327,7 @@ fn plan_implementation_candidates(
         return Ok((
             vec![implementation::PlannedCandidate {
                 index: 0,
-                requested_utilization_cap: args.usage_limit,
-                effective_block_utilization_cap: None,
-                multilevel_block_margin_applied: false,
-                utilization_cap_policy: implementation::UtilizationCapPolicy::Relaxing,
+                caps: implementation::CandidateCaps::relaxing(args.usage_limit),
                 realized_max_utilization,
                 floorplan,
             }],
@@ -343,33 +340,20 @@ fn plan_implementation_candidates(
     let mut candidates = Vec::new();
     let mut infeasible = Vec::new();
     for (index, candidate) in explored.into_iter().enumerate() {
+        let caps = implementation::CandidateCaps::exact(candidate.caps());
         match candidate {
             DseCandidate::Feasible {
-                logic_utilization_cap,
-                effective_block_utilization_cap,
-                multilevel_block_margin_applied,
                 max_utilization,
                 floorplan,
+                ..
             } => candidates.push(implementation::PlannedCandidate {
                 index,
-                requested_utilization_cap: logic_utilization_cap,
-                effective_block_utilization_cap: Some(effective_block_utilization_cap),
-                multilevel_block_margin_applied,
-                utilization_cap_policy: implementation::UtilizationCapPolicy::Exact,
+                caps,
                 realized_max_utilization: max_utilization,
                 floorplan,
             }),
-            DseCandidate::Infeasible {
-                logic_utilization_cap,
-                effective_block_utilization_cap,
-                multilevel_block_margin_applied,
-            } => {
-                infeasible.push(implementation::InfeasibleCandidate {
-                    index,
-                    requested_utilization_cap: logic_utilization_cap,
-                    effective_block_utilization_cap,
-                    multilevel_block_margin_applied,
-                });
+            DseCandidate::Infeasible { .. } => {
+                infeasible.push(implementation::InfeasibleCandidate { index, caps });
             }
         }
     }

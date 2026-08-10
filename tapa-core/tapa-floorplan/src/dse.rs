@@ -57,12 +57,8 @@ impl DseOptions {
 pub enum DseCandidate {
     /// A unique placement was found at this exact cap.
     Feasible {
-        /// Swept exact limit used for LUT and FF resources.
-        logic_utilization_cap: f64,
-        /// Effective exact limit used for BRAM18K, DSP, and URAM resources.
-        effective_block_utilization_cap: f64,
-        /// Whether the multilevel block-resource margin policy was selected.
-        multilevel_block_margin_applied: bool,
+        /// The exact per-resource limits this attempt was held to.
+        caps: ExactDseResourceCaps,
         /// Largest realized resource fraction over every slot and resource.
         max_utilization: f64,
         /// Complete placement, routing, and pipeline plan.
@@ -70,13 +66,19 @@ pub enum DseCandidate {
     },
     /// The exact-cap problem was proven infeasible or exceeded its resource cap.
     Infeasible {
-        /// Swept exact limit used for LUT and FF resources.
-        logic_utilization_cap: f64,
-        /// Effective exact limit used for BRAM18K, DSP, and URAM resources.
-        effective_block_utilization_cap: f64,
-        /// Whether the multilevel block-resource margin policy was selected.
-        multilevel_block_margin_applied: bool,
+        /// The exact per-resource limits this attempt was held to.
+        caps: ExactDseResourceCaps,
     },
+}
+
+impl DseCandidate {
+    /// The exact limits this attempt was planned under.
+    #[must_use]
+    pub fn caps(&self) -> ExactDseResourceCaps {
+        match self {
+            Self::Feasible { caps, .. } | Self::Infeasible { caps } => *caps,
+        }
+    }
 }
 
 /// Why design-space exploration could not complete its sweep.
@@ -173,17 +175,11 @@ fn candidates_from_sweep(
             );
             match attempt.value {
                 Some((floorplan, max_utilization)) => DseCandidate::Feasible {
-                    logic_utilization_cap: caps.logic_utilization_cap,
-                    effective_block_utilization_cap: caps.effective_block_utilization_cap,
-                    multilevel_block_margin_applied: caps.multilevel_block_margin_applied,
+                    caps,
                     max_utilization,
                     floorplan,
                 },
-                None => DseCandidate::Infeasible {
-                    logic_utilization_cap: caps.logic_utilization_cap,
-                    effective_block_utilization_cap: caps.effective_block_utilization_cap,
-                    multilevel_block_margin_applied: caps.multilevel_block_margin_applied,
-                },
+                None => DseCandidate::Infeasible { caps },
             }
         })
         .collect()
@@ -527,9 +523,11 @@ mod tests {
         assert!(matches!(
             candidates[0],
             DseCandidate::Feasible {
-                logic_utilization_cap: 0.9,
-                effective_block_utilization_cap: 1.0,
-                multilevel_block_margin_applied: true,
+                caps: ExactDseResourceCaps {
+                    logic_utilization_cap: 0.9,
+                    effective_block_utilization_cap: 1.0,
+                    multilevel_block_margin_applied: true,
+                },
                 max_utilization: 0.75,
                 ..
             }
@@ -537,9 +535,11 @@ mod tests {
         assert!(matches!(
             candidates[1],
             DseCandidate::Infeasible {
-                logic_utilization_cap: 0.85,
-                effective_block_utilization_cap: 0.95,
-                multilevel_block_margin_applied: true,
+                caps: ExactDseResourceCaps {
+                    logic_utilization_cap: 0.85,
+                    effective_block_utilization_cap: 0.95,
+                    multilevel_block_margin_applied: true,
+                },
             }
         ));
 
