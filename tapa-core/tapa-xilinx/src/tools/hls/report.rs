@@ -7,8 +7,8 @@
 
 use std::collections::HashMap;
 
-use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
+use tapa_ir::{Area, Resource};
 
 use crate::error::{Result, XilinxError};
 
@@ -19,7 +19,7 @@ pub struct CsynthReport {
     pub target_clock_period_ns: String,
     pub estimated_clock_period_ns: String,
     #[serde(default)]
-    pub area: IndexMap<String, String>,
+    pub area: Area,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -72,7 +72,7 @@ struct AreaEstimates {
     resources: Option<Resources>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 struct Resources {
     #[serde(rename = "BRAM_18K", default)]
     bram_18k: Option<String>,
@@ -84,6 +84,29 @@ struct Resources {
     lut: Option<String>,
     #[serde(rename = "URAM", default)]
     uram: Option<String>,
+}
+
+impl Resources {
+    /// One resource's count. A class the report omits is none of it used;
+    /// a value that is not a count fails rather than silently becoming zero.
+    fn count(&self, resource: Resource) -> Result<u64> {
+        let raw = match resource {
+            Resource::Bram18k => &self.bram_18k,
+            Resource::Dsp => &self.dsp,
+            Resource::Ff => &self.ff,
+            Resource::Lut => &self.lut,
+            Resource::Uram => &self.uram,
+        };
+        let Some(raw) = raw.as_deref().map(str::trim) else {
+            return Ok(0);
+        };
+        raw.parse().map_err(|error| {
+            XilinxError::HlsReportParse(format!(
+                "csynth.xml: `{}` area `{raw}` is not a resource count: {error}",
+                resource.name(),
+            ))
+        })
+    }
 }
 
 pub fn parse_csynth_xml(bytes: &[u8]) -> Result<CsynthReport> {
@@ -106,26 +129,11 @@ pub fn parse_csynth_xml(bytes: &[u8]) -> Result<CsynthReport> {
             XilinxError::HlsReportParse("csynth.xml: TargetClockPeriod not found".into())
         })?;
 
-    let mut area = IndexMap::new();
-    if let Some(ae) = parsed.area_estimates {
-        if let Some(res) = ae.resources {
-            if let Some(v) = res.bram_18k {
-                area.insert("BRAM_18K".to_string(), v.trim().to_string());
-            }
-            if let Some(v) = res.dsp {
-                area.insert("DSP".to_string(), v.trim().to_string());
-            }
-            if let Some(v) = res.ff {
-                area.insert("FF".to_string(), v.trim().to_string());
-            }
-            if let Some(v) = res.lut {
-                area.insert("LUT".to_string(), v.trim().to_string());
-            }
-            if let Some(v) = res.uram {
-                area.insert("URAM".to_string(), v.trim().to_string());
-            }
-        }
-    }
+    let resources = parsed
+        .area_estimates
+        .and_then(|estimates| estimates.resources)
+        .unwrap_or_default();
+    let area = Area::try_from_amounts(|resource| resources.count(resource))?;
 
     Ok(CsynthReport {
         top: top.trim().to_string(),
@@ -265,7 +273,7 @@ mod tests {
         assert_eq!(r.part, "xcu250-figd2104-2L-e");
         assert_eq!(r.target_clock_period_ns, "3.333");
         assert_eq!(r.estimated_clock_period_ns, "2.871");
-        assert!(r.area.is_empty(), "fixture has no AreaEstimates");
+        assert_eq!(r.area, Area::default(), "fixture has no AreaEstimates");
     }
 
     #[test]
@@ -293,11 +301,30 @@ mod tests {
   </AreaEstimates>\
 </profile>";
         let r = parse_csynth_xml(xml.as_bytes()).unwrap();
-        assert_eq!(r.area.get("BRAM_18K"), Some(&"1".to_string()));
-        assert_eq!(r.area.get("DSP"), Some(&"2".to_string()));
-        assert_eq!(r.area.get("FF"), Some(&"3".to_string()));
-        assert_eq!(r.area.get("LUT"), Some(&"4".to_string()));
-        assert_eq!(r.area.get("URAM"), Some(&"5".to_string()));
+        assert_eq!(
+            r.area,
+            Area {
+                bram_18k: 1,
+                dsp: 2,
+                ff: 3,
+                lut: 4,
+                uram: 5,
+            },
+        );
+    }
+
+    #[test]
+    fn csynth_area_that_is_not_a_count_is_an_error() {
+        let xml = CSYNTH.replace(
+            "</PerformanceEstimates>",
+            "</PerformanceEstimates>\
+             <AreaEstimates><Resources><LUT>lots</LUT></Resources></AreaEstimates>",
+        );
+        let err = parse_csynth_xml(xml.as_bytes()).unwrap_err();
+        assert!(
+            err.to_string().contains("`LUT` area `lots`"),
+            "unexpected error: {err}"
+        );
     }
 
     #[test]

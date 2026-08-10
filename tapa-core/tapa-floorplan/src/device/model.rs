@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use tapa_ir::Area;
 
 pub use tapa_ir::floorplan::Coor;
+pub use tapa_ir::Resource;
 
 /// Horizontal grid spacing between adjacent slot centroids.
 pub const UNIT_DIST_X: i64 = 100;
@@ -30,46 +31,6 @@ pub const VERTICAL_DIST_PENALTY: i64 = 2;
 pub const DEFAULT_USAGE_LIMIT: f64 = 0.7;
 /// Sentinel "no limit" wire capacity: a boundary with this cap never binds.
 pub const WIRE_CAPACITY_INF: u64 = 100_000_000;
-
-/// The five FPGA resource classes, in solver iteration order
-/// (`FF, LUT, BRAM_18K, DSP, URAM`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum Resource {
-    Ff,
-    Lut,
-    Bram18k,
-    Dsp,
-    Uram,
-}
-
-impl Resource {
-    /// All five classes, for iterating capacity constraints.
-    pub const ALL: [Self; 5] = [Self::Ff, Self::Lut, Self::Bram18k, Self::Dsp, Self::Uram];
-
-    /// This class's amount within an [`Area`].
-    #[must_use]
-    pub fn amount(self, area: &Area) -> u64 {
-        match self {
-            Self::Ff => area.ff,
-            Self::Lut => area.lut,
-            Self::Bram18k => area.bram_18k,
-            Self::Dsp => area.dsp,
-            Self::Uram => area.uram,
-        }
-    }
-
-    /// The uppercase annotation-key name of this class.
-    #[must_use]
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::Ff => "FF",
-            Self::Lut => "LUT",
-            Self::Bram18k => "BRAM_18K",
-            Self::Dsp => "DSP",
-            Self::Uram => "URAM",
-        }
-    }
-}
 
 /// Per-direction wire crossing capacities of a slot boundary.
 ///

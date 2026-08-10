@@ -593,9 +593,10 @@ fn validate_realized_usage(
         let block_limit = scaled_area(capacity, block_capacity_limit);
         for resource in Resource::ALL {
             let used = resource.amount(used_area);
-            let allowed = match resource {
-                Resource::Ff | Resource::Lut => resource.amount(&logic_limit),
-                Resource::Bram18k | Resource::Dsp | Resource::Uram => resource.amount(&block_limit),
+            let allowed = if resource.is_logic() {
+                resource.amount(&logic_limit)
+            } else {
+                resource.amount(&block_limit)
             };
             if used > allowed {
                 return Err(PipelineError::RealizedCapacity {

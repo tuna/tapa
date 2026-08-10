@@ -434,14 +434,12 @@ fn realized_utilization(
                 continue;
             }
             let ratio = resource_ratio(used, available);
-            match resource {
-                Resource::Ff | Resource::Lut => {
-                    utilization.logic = utilization.logic.max(ratio);
-                }
-                Resource::Bram18k | Resource::Dsp | Resource::Uram => {
-                    utilization.block = utilization.block.max(ratio);
-                }
-            }
+            let group = if resource.is_logic() {
+                &mut utilization.logic
+            } else {
+                &mut utilization.block
+            };
+            *group = group.max(ratio);
         }
     }
     if utilization.maximum() > 1.0 {

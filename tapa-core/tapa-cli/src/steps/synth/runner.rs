@@ -5,7 +5,7 @@
 //! owns the unsupported-flag gating, the HLS cflag construction, and
 //! the recursive Verilog-file walker that feeds the codegen step.
 
-use tapa_ir::{Area, ClockPeriod, Task};
+use tapa_ir::{ClockPeriod, Task};
 use tapa_xilinx::{CsynthReport, ToolRunner};
 
 use crate::context::CliContext;
@@ -120,25 +120,7 @@ fn apply_hls_metrics(task_name: &str, task: &mut Task, report: &CsynthReport) ->
             ))
         })?,
     );
-    let count = |resource: &str| -> Result<u64> {
-        match report.area.get(resource) {
-            // A resource the report omits is none of it used.
-            None => Ok(0),
-            Some(raw) => raw.trim().parse().map_err(|error| {
-                CliError::Report(format!(
-                    "HLS reported `{resource}` area `{raw}` for task `{task_name}`, which is \
-                     not a resource count: {error}",
-                ))
-            }),
-        }
-    };
-    task.self_area = Some(Area {
-        lut: count("LUT")?,
-        ff: count("FF")?,
-        bram_18k: count("BRAM_18K")?,
-        dsp: count("DSP")?,
-        uram: count("URAM")?,
-    });
+    task.self_area = Some(report.area);
     // Cleared because it is either re-populated by optional out-of-context
     // synthesis or derived recursively from `self_area`.
     task.total_area = None;
@@ -193,7 +175,6 @@ mod tests {
 
     use std::collections::BTreeMap;
 
-    use indexmap::IndexMap;
     use tapa_ir::{Area, FloorplanResult, SynthTarget, Target, TaskGraph, TaskLevel};
     use tapa_xilinx::{ToolInvocation, ToolOutput};
 
@@ -334,10 +315,11 @@ mod tests {
             part: "xcvu37p".to_string(),
             target_clock_period_ns: "3.33".to_string(),
             estimated_clock_period_ns: "1.25".to_string(),
-            area: IndexMap::from([
-                ("LUT".to_string(), "42".to_string()),
-                ("FF".to_string(), "21".to_string()),
-            ]),
+            area: Area {
+                lut: 42,
+                ff: 21,
+                ..Area::default()
+            },
         };
 
         apply_hls_metrics("Add", &mut task, &report).expect("apply metrics");

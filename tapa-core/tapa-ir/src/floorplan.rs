@@ -75,6 +75,84 @@ impl Area {
             uram: add(self.uram, other.uram)?,
         })
     }
+
+    /// Build an area by asking `amount` for each resource class.
+    pub fn from_amounts(mut amount: impl FnMut(Resource) -> u64) -> Self {
+        Self {
+            lut: amount(Resource::Lut),
+            ff: amount(Resource::Ff),
+            bram_18k: amount(Resource::Bram18k),
+            dsp: amount(Resource::Dsp),
+            uram: amount(Resource::Uram),
+        }
+    }
+
+    /// [`Area::from_amounts`] for a fallible source, such as a report whose
+    /// counts are text that may not parse.
+    pub fn try_from_amounts<E>(
+        mut amount: impl FnMut(Resource) -> Result<u64, E>,
+    ) -> Result<Self, E> {
+        Ok(Self {
+            lut: amount(Resource::Lut)?,
+            ff: amount(Resource::Ff)?,
+            bram_18k: amount(Resource::Bram18k)?,
+            dsp: amount(Resource::Dsp)?,
+            uram: amount(Resource::Uram)?,
+        })
+    }
+}
+
+/// The five FPGA resource classes, in solver iteration order
+/// (`FF, LUT, BRAM_18K, DSP, URAM`).
+///
+/// This is the single naming and iteration authority for the classes an
+/// [`Area`] counts: HLS report parsing, the floorplan ILP, and the published
+/// synthesis report all name them through here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Resource {
+    Ff,
+    Lut,
+    Bram18k,
+    Dsp,
+    Uram,
+}
+
+impl Resource {
+    /// All five classes, for iterating capacity constraints.
+    pub const ALL: [Self; 5] = [Self::Ff, Self::Lut, Self::Bram18k, Self::Dsp, Self::Uram];
+
+    /// This class's amount within an [`Area`].
+    #[must_use]
+    pub fn amount(self, area: &Area) -> u64 {
+        match self {
+            Self::Ff => area.ff,
+            Self::Lut => area.lut,
+            Self::Bram18k => area.bram_18k,
+            Self::Dsp => area.dsp,
+            Self::Uram => area.uram,
+        }
+    }
+
+    /// The uppercase annotation-key name of this class.
+    #[must_use]
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Ff => "FF",
+            Self::Lut => "LUT",
+            Self::Bram18k => "BRAM_18K",
+            Self::Dsp => "DSP",
+            Self::Uram => "URAM",
+        }
+    }
+
+    /// Whether this class is fine-grained logic rather than a hard block.
+    ///
+    /// The two groups are budgeted separately: logic absorbs pipeline
+    /// registers, hard blocks do not.
+    #[must_use]
+    pub fn is_logic(self) -> bool {
+        matches!(self, Self::Ff | Self::Lut)
+    }
 }
 
 /// An inclusive integer rectangle of grid slots: the region spanning

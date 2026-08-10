@@ -533,11 +533,10 @@ mod tests {
         let report = find_and_parse_csynth(&reports, "Mmap2Stream").expect("reload task report");
         assert_eq!(report.top, "Mmap2Stream", "must load the task top report");
         assert_eq!(
-            report.area.get("FF").map(String::as_str),
-            Some("843"),
+            report.area.ff, 843,
             "must read the task's own area, not the sub-loop's",
         );
-        assert_eq!(report.area.get("BRAM_18K").map(String::as_str), Some("1"));
+        assert_eq!(report.area.bram_18k, 1);
     }
 
     #[test]

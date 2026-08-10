@@ -198,11 +198,11 @@ pub(crate) fn floorplan_with_exact_resource_caps(
 }
 
 fn exact_resource_cap_constraints(device: &Device, block_limit: f64) -> PlacementConstraints {
-    let by_resource = BTreeMap::from([
-        (Resource::Bram18k, block_limit),
-        (Resource::Dsp, block_limit),
-        (Resource::Uram, block_limit),
-    ]);
+    let by_resource: BTreeMap<_, _> = Resource::ALL
+        .into_iter()
+        .filter(|resource| !resource.is_logic())
+        .map(|resource| (resource, block_limit))
+        .collect();
     let max_resource_limits = row_regions(device)
         .into_iter()
         .chain(atomic_regions(device))
@@ -529,19 +529,12 @@ fn scaled_area_with_overrides(
     limits: &RegionResourceLimits,
     region: &Coor,
 ) -> Area {
-    let amount = |resource: Resource| {
+    Area::from_amounts(|resource| {
         scaled_amount(
             resource.amount(&area),
             lookup_limit(limits, region, resource).unwrap_or(default_limit),
         )
-    };
-    Area {
-        lut: amount(Resource::Lut),
-        ff: amount(Resource::Ff),
-        bram_18k: amount(Resource::Bram18k),
-        dsp: amount(Resource::Dsp),
-        uram: amount(Resource::Uram),
-    }
+    })
 }
 
 #[allow(
