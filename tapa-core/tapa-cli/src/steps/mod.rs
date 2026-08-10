@@ -30,6 +30,5 @@ pub mod floorplan;
 pub mod gcc;
 pub mod meta;
 pub mod pack;
-pub(crate) mod registry;
 pub mod synth;
 pub mod version;

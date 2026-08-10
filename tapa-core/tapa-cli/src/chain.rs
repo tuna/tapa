@@ -10,12 +10,14 @@
 //! that happens to equal a subcommand name (e.g. `--top synth`) is
 //! consumed by clap as the flag value, never as a chunk boundary.
 
+use std::path::Path;
+
 use clap::{Parser, Subcommand};
+use tapa_ir::WorkState;
 
 use crate::context::CliContext;
 use crate::error::{CliError, Result};
 use crate::state::work as work_io;
-use crate::steps::registry::{self, Precondition};
 use crate::steps::{analyze, floorplan, gcc, meta, pack, synth, version};
 use crate::tapacc::find_clang_binary;
 
@@ -28,37 +30,45 @@ pub(crate) enum PipelineStep<'a> {
     Pack(&'a pack::PackArgs),
 }
 
-impl<'a> PipelineStep<'a> {
-    fn spec(self) -> &'static [Precondition] {
-        match self {
-            Self::Analyze(_) => registry::analyze(),
-            Self::Synth(_) => registry::synth(),
-            Self::Floorplan(_) => registry::floorplan(),
-            Self::Pack(_) => registry::pack(),
-        }
+impl PipelineStep<'_> {
+    /// Whether this step has a prerequisite to check at all. A step without
+    /// one never pays for a work-state load.
+    fn has_prerequisites(self) -> bool {
+        matches!(self, Self::Floorplan(_) | Self::Pack(_))
     }
 
-    fn precondition_args(self) -> Option<&'a pack::PackArgs> {
+    /// Check this step's prerequisites against an already-loaded state.
+    fn check(self, state: &WorkState, state_path: &Path) -> Result<()> {
         match self {
-            Self::Pack(args) => Some(args),
-            Self::Analyze(_) | Self::Synth(_) | Self::Floorplan(_) => None,
+            // Placement needs the per-task areas synthesis records.
+            Self::Floorplan(_) if !state.flow.synthed => Err(CliError::Floorplan(
+                "run `synth` before `floorplan`: the placement needs per-task areas".to_string(),
+            )),
+            Self::Pack(_) if !state.flow.synthed => Err(CliError::MissingState {
+                name: "completed synthesis (run `tapa synth` first)".to_string(),
+                path: state_path.to_path_buf(),
+            }),
+            // An RTL overlay applied after placement would no longer match the
+            // cell names the floorplan constrains.
+            Self::Pack(args) if state.floorplan.is_some() && !args.custom_rtl.is_empty() => {
+                Err(CliError::InvalidArg(
+                    "`--custom-rtl` cannot modify RTL after floorplanning; omit it or rerun \
+                     synthesis and packaging without the active floorplan"
+                        .to_string(),
+                ))
+            }
+            Self::Analyze(_) | Self::Synth(_) | Self::Floorplan(_) | Self::Pack(_) => Ok(()),
         }
     }
 }
 
-/// Resolve and validate a pipeline step's registry entry before dispatch.
+/// Check a pipeline step's prerequisites before dispatch.
 pub(crate) fn validate_pipeline_step(step: PipelineStep<'_>, ctx: &CliContext) -> Result<()> {
-    let spec = step.spec();
-    if spec.is_empty() {
+    if !step.has_prerequisites() {
         return Ok(());
     }
     let state = work_io::load(&ctx.work_dir)?;
-    registry::validate(
-        spec,
-        &state,
-        &work_io::path_in(&ctx.work_dir),
-        step.precondition_args(),
-    )
+    step.check(&state, &work_io::path_in(&ctx.work_dir))
 }
 
 /// Validate and dispatch one pipeline step through the shared machinery.
@@ -255,6 +265,94 @@ fn parse_chain_tail(tail: &[String]) -> Result<Step> {
 mod tests {
     use super::*;
     use crate::globals::Cli;
+
+    fn work_state(synthed: bool, floorplanned: bool) -> WorkState {
+        let mut state = WorkState::new(tapa_ir::TaskGraph {
+            schema_version: tapa_ir::graph::SCHEMA_VERSION,
+            top: "Top".to_string(),
+            target: tapa_ir::Target::XilinxVitis,
+            tasks: std::collections::BTreeMap::new(),
+            cflags: Vec::new(),
+        });
+        state.flow.synthed = synthed;
+        if floorplanned {
+            state.floorplan = Some(crate::testutil::mock_floorplan_result(
+                "test-device",
+                (1, 1),
+            ));
+        }
+        state
+    }
+
+    fn pack_args(custom_rtl: &[&str]) -> pack::PackArgs {
+        pack::PackArgs {
+            output: None,
+            bitstream_script: None,
+            connectivity: None,
+            custom_rtl: custom_rtl.iter().map(std::path::PathBuf::from).collect(),
+        }
+    }
+
+    fn check(step: PipelineStep<'_>, state: &WorkState) -> Result<()> {
+        step.check(state, Path::new("/work/tapa.json"))
+    }
+
+    #[test]
+    fn analyze_and_synth_state_no_prerequisites() {
+        let args =
+            analyze::AnalyzeArgs::parse_from(["analyze", "--input", "vadd.cpp", "--top", "Top"]);
+        assert!(!PipelineStep::Analyze(&args).has_prerequisites());
+        let args = synth::SynthArgs::parse_from(["synth"]);
+        assert!(!PipelineStep::Synth(&args).has_prerequisites());
+    }
+
+    #[test]
+    fn floorplan_requires_completed_synthesis() {
+        let args = floorplan::FloorplanArgs::parse_from(["floorplan"]);
+        let step = PipelineStep::Floorplan(&args);
+        assert!(step.has_prerequisites());
+        check(step, &work_state(true, false)).expect("completed synthesis must satisfy floorplan");
+        let error = check(step, &work_state(false, false)).expect_err("floorplan needs synthesis");
+        assert!(matches!(
+            error,
+            CliError::Floorplan(ref message)
+                if message == "run `synth` before `floorplan`: the placement needs per-task areas"
+        ));
+    }
+
+    #[test]
+    fn pack_requires_completed_synthesis() {
+        let args = pack_args(&[]);
+        let step = PipelineStep::Pack(&args);
+        assert!(step.has_prerequisites());
+        check(step, &work_state(true, false)).expect("completed synthesis must satisfy pack");
+        let error = check(step, &work_state(false, false)).expect_err("pack needs synthesis");
+        assert!(matches!(
+            error,
+            CliError::MissingState { ref name, ref path }
+                if name == "completed synthesis (run `tapa synth` first)"
+                    && path == Path::new("/work/tapa.json")
+        ));
+    }
+
+    #[test]
+    fn pack_rejects_custom_rtl_only_after_floorplanning() {
+        let no_overlay = pack_args(&[]);
+        check(PipelineStep::Pack(&no_overlay), &work_state(true, true))
+            .expect("floorplan without custom RTL must be accepted");
+
+        let overlay = pack_args(&["replacement.v"]);
+        check(PipelineStep::Pack(&overlay), &work_state(true, false))
+            .expect("custom RTL without a floorplan must be accepted");
+
+        let error = check(PipelineStep::Pack(&overlay), &work_state(true, true))
+            .expect_err("custom RTL must not modify floorplanned RTL");
+        assert!(matches!(
+            error,
+            CliError::InvalidArg(ref message)
+                if message == "`--custom-rtl` cannot modify RTL after floorplanning; omit it or rerun synthesis and packaging without the active floorplan"
+        ));
+    }
 
     fn parse(args: &[&str]) -> std::result::Result<Cli, clap::Error> {
         Cli::try_parse_from(std::iter::once("tapa").chain(args.iter().copied()))
