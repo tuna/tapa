@@ -23,12 +23,26 @@ runs:
   using: "composite"
   steps:
     - name: Create docker image as the build environment
-      run: >
-        docker build \
-          -t ${{ inputs.imageTag }} \
-          -f ${{ inputs.dockerfile }} \
-          --build-arg UBUNTU_PRO_TOKEN=${{ env.UBUNTU_PRO_TOKEN }} \
-          --build-arg DOCKER_USER_ID=$(id -u) \
-          --build-arg DOCKER_GROUP_ID=$(id -g) \
-          ${{ inputs.context }}
+      # Retry the build: package mirrors and GitHub occasionally drop a
+      # connection mid-layer. Docker keeps the layers it already finished, so a
+      # retry resumes at the failed one rather than starting over.
+      run: |
+        attempt=1
+        max_attempts=3
+        while true; do
+          rc=0
+          docker build \
+            -t ${{ inputs.imageTag }} \
+            -f ${{ inputs.dockerfile }} \
+            --build-arg UBUNTU_PRO_TOKEN=${{ env.UBUNTU_PRO_TOKEN }} \
+            --build-arg DOCKER_USER_ID=$(id -u) \
+            --build-arg DOCKER_GROUP_ID=$(id -g) \
+            ${{ inputs.context }} || rc=$?
+          if [[ $rc -eq 0 || $attempt -ge $max_attempts ]]; then
+            exit $rc
+          fi
+          echo "::warning::docker build failed (exit $rc); retrying in 30s (attempt $attempt/$max_attempts)"
+          sleep 30
+          attempt=$((attempt+1))
+        done
       shell: bash

@@ -11,6 +11,9 @@ FROM debian:bookworm-20250721-slim
 ARG DOCKER_USER_ID
 ARG DOCKER_GROUP_ID
 
+# Pinned so a rebuild fetches the same source revision.
+ARG BATS_VERSION=v1.14.0
+
 # Testing framework:
 #   - bats (from source)
 #   - parallel
@@ -25,6 +28,26 @@ ARG DOCKER_GROUP_ID
 #   - g++
 
 ENV DEBIAN_FRONTEND=noninteractive
+
+# The CI runner sits next to TUNA, so fetch packages from there. Plain http is
+# deliberate: the base images have no ca-certificates yet at this point, and
+# apt authenticates the archive with its own GPG signatures regardless of the
+# transport. Handles both the classic sources.list and the deb822 .sources
+# layout that noble uses. Order matters: debian-security before debian, so the
+# longer path is not eaten by the shorter one.
+RUN set -eu; \
+    for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do \
+      [ -f "$f" ] || continue; \
+      sed -i \
+        -e 's|https\?://deb\.debian\.org/debian-security|http://mirrors.tuna.tsinghua.edu.cn/debian-security|g' \
+        -e 's|https\?://security\.debian\.org/debian-security|http://mirrors.tuna.tsinghua.edu.cn/debian-security|g' \
+        -e 's|https\?://security\.debian\.org|http://mirrors.tuna.tsinghua.edu.cn/debian-security|g' \
+        -e 's|https\?://deb\.debian\.org/debian|http://mirrors.tuna.tsinghua.edu.cn/debian|g' \
+        -e 's|https\?://archive\.ubuntu\.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g' \
+        -e 's|https\?://security\.ubuntu\.com/ubuntu|http://mirrors.tuna.tsinghua.edu.cn/ubuntu|g' \
+        "$f"; \
+    done
+
 RUN apt-get update && \
       # Update the following line to the latest date for retriggering the docker build
       echo "Installing system dependencies as of 20250723" && \
@@ -40,7 +63,14 @@ RUN apt-get update && \
         locales \
         parallel \
       && \
-      git clone https://github.com/bats-core/bats-core.git /tmp/bats-core && \
+      # Retry: GitHub is the one host in this build with no usable mirror.
+      for attempt in 1 2 3 4 5; do \
+        git clone --depth 1 --branch "${BATS_VERSION}" \
+          https://github.com/bats-core/bats-core.git /tmp/bats-core && break; \
+        echo "bats clone attempt ${attempt} failed; retrying" >&2; \
+        rm -rf /tmp/bats-core; \
+        sleep $((attempt * 10)); \
+      done && \
       cd /tmp/bats-core && \
       ./install.sh /usr/local && \
       apt-get purge -y --auto-remove \

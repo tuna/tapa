@@ -30,7 +30,9 @@ jobs:
     needs: build
 
     strategy:
-      fail-fast: true
+      # One broken image must not cancel the other 24 jobs: a single
+      # distro-specific failure used to hide every other result in the matrix.
+      fail-fast: false
       matrix:
         include:
           # Test all Vitis versions on the latest supported Ubuntu LTS.

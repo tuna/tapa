@@ -11,6 +11,12 @@ FROM almalinux:10.0-20250711
 ARG DOCKER_USER_ID
 ARG DOCKER_GROUP_ID
 
+# Pinned so a rebuild fetches the same sources, and checksummed so a truncated
+# download fails at the check instead of surfacing as a confusing tar error.
+ARG BATS_VERSION=v1.14.0
+ARG PARALLEL_VERSION=20260722
+ARG PARALLEL_SHA256=afe4b572a4334aac3a002a080ad618249f00b84d7659d03e77412727d18f1ad6
+
 # Testing framework:
 #   - bats (from source)
 #   - parallel (from source)
@@ -28,7 +34,10 @@ ARG DOCKER_GROUP_ID
 RUN yum update -y && \
     # Update the following line to the latest date for retriggering the docker build
     echo "Installing system dependencies as of 20250723" && \
-    yum install -y \
+    # ocl-icd-devel ships only in CRB, which is disabled by default on
+    # EL9 and on Rocky 10; enabling it explicitly is a no-op where it is
+    # already on.
+    yum install -y --enablerepo=crb \
         autoconf \
         bison \
         bzip2 \
@@ -48,12 +57,31 @@ RUN yum update -y && \
         util-linux \
     && \
     cd /tmp && \
-      git clone https://github.com/bats-core/bats-core.git bats-core && \
+      # Retry: GitHub is the one host in this build with no usable mirror.
+      for attempt in 1 2 3 4 5; do \
+        git clone --depth 1 --branch "${BATS_VERSION}" \
+          https://github.com/bats-core/bats-core.git bats-core && break; \
+        echo "bats clone attempt ${attempt} failed; retrying" >&2; \
+        rm -rf bats-core; \
+        sleep $((attempt * 10)); \
+      done && \
       cd bats-core && \
       ./install.sh /usr/local && \
     cd /tmp && \
-      curl -sSL https://ftp.gnu.org/gnu/parallel/parallel-latest.tar.bz2 | tar -xj && \
-      cd parallel-* && \
+      # TUNA first, then the GNU mirror redirector. `-f` keeps an HTTP error
+      # body from being piped into tar, and the checksum catches truncation.
+      for url in \
+        "https://mirrors.tuna.tsinghua.edu.cn/gnu/parallel/parallel-${PARALLEL_VERSION}.tar.bz2" \
+        "https://ftpmirror.gnu.org/gnu/parallel/parallel-${PARALLEL_VERSION}.tar.bz2" \
+      ; do \
+        curl -fsSL --connect-timeout 20 --max-time 900 \
+             --retry 5 --retry-delay 5 --retry-all-errors \
+             -o parallel.tar.bz2 "${url}" && break; \
+        echo "parallel download failed: ${url}" >&2; \
+      done && \
+      echo "${PARALLEL_SHA256}  parallel.tar.bz2" | sha256sum -c - && \
+      tar -xjf parallel.tar.bz2 && \
+      cd "parallel-${PARALLEL_VERSION}" && \
       ./configure && \
       make install -j $(nproc) && \
     yum remove -y \

@@ -11,6 +11,9 @@ FROM debian:buster-slim
 ARG DOCKER_USER_ID
 ARG DOCKER_GROUP_ID
 
+# Pinned so a rebuild fetches the same source revision.
+ARG BATS_VERSION=v1.14.0
+
 # Testing framework:
 #   - bats (from source)
 #   - parallel
@@ -44,7 +47,14 @@ RUN sed -i 's|deb.debian.org|archive.debian.org|g' /etc/apt/sources.list && \
         locales \
         parallel \
       && \
-      git clone https://github.com/bats-core/bats-core.git /tmp/bats-core && \
+      # Retry: GitHub is the one host in this build with no usable mirror.
+      for attempt in 1 2 3 4 5; do \
+        git clone --depth 1 --branch "${BATS_VERSION}" \
+          https://github.com/bats-core/bats-core.git /tmp/bats-core && break; \
+        echo "bats clone attempt ${attempt} failed; retrying" >&2; \
+        rm -rf /tmp/bats-core; \
+        sleep $((attempt * 10)); \
+      done && \
       cd /tmp/bats-core && \
       ./install.sh /usr/local && \
       apt-get purge -y --auto-remove \
