@@ -29,7 +29,7 @@ use crate::state::work::FlowSettings;
 
 use super::bitstream_script::write_vitis_script;
 use super::custom_rtl::{apply_custom_rtl, load_templates_info};
-use super::kernel_xml_ports::{build_kernel_xml_ports_for_rtl, m_axi_param_block_for_rtl};
+use super::kernel_xml_ports::{build_kernel_xml_ports, m_axi_param_block};
 use super::{enforce_xo_suffix, PackArgs};
 
 /// Fallback target clock for a kernel XML written before `synth` recorded
@@ -92,7 +92,7 @@ pub fn package_prepared_vitis_rtl(
         .unwrap_or(rtl_dir);
     let (part_num, clock_period) = resolve_device_settings(state_root, flow)?;
     let top_m_axi_bases = top_rtl_m_axi_bases(rtl_dir, &design.top)?;
-    let kernel_ports = build_kernel_xml_ports_for_rtl(&top_task.ports, &top_m_axi_bases);
+    let kernel_ports = build_kernel_xml_ports(&top_task.ports, &top_m_axi_bases);
     if kernel_ports.is_empty() {
         return Err(CliError::InvalidArg(format!(
             "top task `{}` has no external ports; cannot emit kernel.xml",
@@ -111,7 +111,7 @@ pub fn package_prepared_vitis_rtl(
         part_num,
         clock_period,
         kernel_ports,
-        m_axi_param_block_for_rtl(&top_task.ports, &top_m_axi_bases),
+        m_axi_param_block(&top_task.ports, &top_m_axi_bases),
         report_paths,
     );
 

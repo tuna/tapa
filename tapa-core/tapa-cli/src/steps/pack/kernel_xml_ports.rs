@@ -9,24 +9,15 @@ use tapa_ir::{ArgCategory, Port};
 use tapa_rtl::module::sanitize_array_name;
 use tapa_xilinx::{KernelXmlPort, PortCategory};
 
-/// Project a `tapa_ir::Port` list into the `KernelXmlPort`
-/// shape `tapa_xilinx::emit_kernel_xml` expects, including the
-/// channel fan-out unrolling for hmap ports.
-#[cfg(test)]
-pub(super) fn build_kernel_xml_ports(ports: &[Port]) -> Vec<KernelXmlPort> {
-    build_kernel_xml_ports_impl(ports, None)
-}
-
-pub(super) fn build_kernel_xml_ports_for_rtl(
+/// Project a `tapa_ir::Port` list into the `KernelXmlPort` shape
+/// `tapa_xilinx::emit_kernel_xml` expects, including the channel fan-out
+/// unrolling for hmap ports.
+///
+/// `m_axi_bases` names the M-AXI ports the generated RTL actually declares;
+/// an empty set means "take the ports at their declared fan-out".
+pub(super) fn build_kernel_xml_ports(
     ports: &[Port],
     m_axi_bases: &BTreeSet<String>,
-) -> Vec<KernelXmlPort> {
-    build_kernel_xml_ports_impl(ports, Some(m_axi_bases))
-}
-
-fn build_kernel_xml_ports_impl(
-    ports: &[Port],
-    m_axi_bases: Option<&BTreeSet<String>>,
 ) -> Vec<KernelXmlPort> {
     let mut out = Vec::<KernelXmlPort>::new();
     for port in ports {
@@ -53,23 +44,10 @@ fn build_kernel_xml_ports_impl(
     out
 }
 
-/// Add `HAS_BURST=0` and `SUPPORTS_NARROW_BURST=0` to each `m_axi`
-/// port.
-#[cfg(test)]
-pub(super) fn m_axi_param_block(ports: &[Port]) -> Vec<(String, Vec<(String, String)>)> {
-    m_axi_param_block_impl(ports, None)
-}
-
-pub(super) fn m_axi_param_block_for_rtl(
+/// Add `HAS_BURST=0` and `SUPPORTS_NARROW_BURST=0` to each `m_axi` port.
+pub(super) fn m_axi_param_block(
     ports: &[Port],
     m_axi_bases: &BTreeSet<String>,
-) -> Vec<(String, Vec<(String, String)>)> {
-    m_axi_param_block_impl(ports, Some(m_axi_bases))
-}
-
-fn m_axi_param_block_impl(
-    ports: &[Port],
-    m_axi_bases: Option<&BTreeSet<String>>,
 ) -> Vec<(String, Vec<(String, String)>)> {
     let mut out = Vec::<(String, Vec<(String, String)>)>::new();
     let kv = vec![
@@ -87,7 +65,7 @@ fn m_axi_param_block_impl(
     out
 }
 
-fn projected_port_names(port: &Port, m_axi_bases: Option<&BTreeSet<String>>) -> Vec<String> {
+fn projected_port_names(port: &Port, m_axi_bases: &BTreeSet<String>) -> Vec<String> {
     let base = sanitize_array_name(&port.name);
     let chan_count = port.chan_count.unwrap_or(0);
     let default_names: Vec<String> = if chan_count == 0 {
@@ -98,9 +76,6 @@ fn projected_port_names(port: &Port, m_axi_bases: Option<&BTreeSet<String>>) -> 
     if !port.cat.is_mmap_like() {
         return default_names;
     }
-    let Some(m_axi_bases) = m_axi_bases else {
-        return default_names;
-    };
     if m_axi_bases.contains(&base) {
         return vec![base];
     }
@@ -154,7 +129,7 @@ mod tests {
                 mmap_addr_width: None,
             },
         ];
-        let out = build_kernel_xml_ports(&ports);
+        let out = build_kernel_xml_ports(&ports, &BTreeSet::new());
         assert_eq!(out.len(), 3);
         assert!(matches!(out[0].category, PortCategory::Scalar));
         assert!(matches!(out[1].category, PortCategory::MAxi));
@@ -173,7 +148,7 @@ mod tests {
             stream_depth: None,
             mmap_addr_width: None,
         }];
-        let out = build_kernel_xml_ports(&ports);
+        let out = build_kernel_xml_ports(&ports, &BTreeSet::new());
         assert_eq!(out.len(), 3);
         assert_eq!(out[0].name, "gmem_0");
         assert_eq!(out[1].name, "gmem_1");
@@ -192,9 +167,9 @@ mod tests {
             stream_depth: None,
             mmap_addr_width: None,
         }];
-        let out = build_kernel_xml_ports(&ports);
+        let out = build_kernel_xml_ports(&ports, &BTreeSet::new());
         assert_eq!(out[0].name, "chan_0");
-        let block = m_axi_param_block(&ports);
+        let block = m_axi_param_block(&ports, &BTreeSet::new());
         assert_eq!(block[0].0, "chan_0");
     }
 
@@ -212,11 +187,11 @@ mod tests {
         }];
         let m_axi_bases = BTreeSet::from(["mat_a".to_owned()]);
 
-        let xml_ports = build_kernel_xml_ports_for_rtl(&ports, &m_axi_bases);
+        let xml_ports = build_kernel_xml_ports(&ports, &m_axi_bases);
         assert_eq!(xml_ports.len(), 1);
         assert_eq!(xml_ports[0].name, "mat_a");
 
-        let block = m_axi_param_block_for_rtl(&ports, &m_axi_bases);
+        let block = m_axi_param_block(&ports, &m_axi_bases);
         assert_eq!(block.len(), 1);
         assert_eq!(block[0].0, "mat_a");
     }
@@ -245,7 +220,7 @@ mod tests {
                 mmap_addr_width: None,
             },
         ];
-        let block = m_axi_param_block(&ports);
+        let block = m_axi_param_block(&ports, &BTreeSet::new());
         assert_eq!(block.len(), 1);
         assert_eq!(block[0].0, "gmem");
         assert!(block[0].1.iter().any(|(k, v)| k == "HAS_BURST" && v == "0"));

@@ -112,6 +112,27 @@ struct PendingNet {
     width: u32,
 }
 
+/// The slot cells an edge's endpoints landed in, or `None` when both landed
+/// in the same slot — co-located, so nothing crosses.
+fn crossing_cells(
+    graph: &FloorGraph,
+    regions: &BTreeMap<String, String>,
+    src: usize,
+    dst: usize,
+) -> Result<Option<(Cell, Cell)>, PipelineError> {
+    let region_of = |vertex: usize| {
+        let name = &graph.vertex(vertex).name;
+        regions
+            .get(name)
+            .ok_or_else(|| PipelineError::BadRegion(name.clone()))
+    };
+    let (src_region, dst_region) = (region_of(src)?, region_of(dst)?);
+    if src_region == dst_region {
+        return Ok(None);
+    }
+    Ok(Some((region_cell(src_region)?, region_cell(dst_region)?)))
+}
+
 /// Find every stream and AXI channel whose endpoints landed in different
 /// slots. All channel classes enter one routing MILP so they compete for the
 /// same physical boundary capacities.
@@ -121,35 +142,23 @@ fn cross_slot_nets(
 ) -> Result<Vec<PendingNet>, PipelineError> {
     let mut nets = Vec::new();
     for edge in graph.streams() {
-        let src_region = regions
-            .get(&graph.vertex(edge.src).name)
-            .ok_or_else(|| PipelineError::BadRegion(graph.vertex(edge.src).name.clone()))?;
-        let dst_region = regions
-            .get(&graph.vertex(edge.dst).name)
-            .ok_or_else(|| PipelineError::BadRegion(graph.vertex(edge.dst).name.clone()))?;
-        if src_region == dst_region {
-            continue; // co-located: no crossing
-        }
+        let Some((src, dst)) = crossing_cells(graph, regions, edge.src, edge.dst)? else {
+            continue;
+        };
         nets.push(PendingNet {
             channel: RoutedChannel::Stream {
                 fifo: edge.link.clone(),
             },
             shared_channels: Vec::new(),
-            src: region_cell(src_region)?,
-            dst: region_cell(dst_region)?,
+            src,
+            dst,
             width: edge.width,
         });
     }
     for edge in graph.axi_nets() {
-        let src_region = regions
-            .get(&graph.vertex(edge.src).name)
-            .ok_or_else(|| PipelineError::BadRegion(graph.vertex(edge.src).name.clone()))?;
-        let dst_region = regions
-            .get(&graph.vertex(edge.dst).name)
-            .ok_or_else(|| PipelineError::BadRegion(graph.vertex(edge.dst).name.clone()))?;
-        if src_region == dst_region {
+        let Some((src, dst)) = crossing_cells(graph, regions, edge.src, edge.dst)? else {
             continue;
-        }
+        };
         nets.push(PendingNet {
             channel: RoutedChannel::Axi {
                 endpoint: edge.endpoint.clone(),
@@ -157,8 +166,8 @@ fn cross_slot_nets(
                 channel: edge.channel,
             },
             shared_channels: Vec::new(),
-            src: region_cell(src_region)?,
-            dst: region_cell(dst_region)?,
+            src,
+            dst,
             width: edge.width,
         });
     }
@@ -166,15 +175,9 @@ fn cross_slot_nets(
         if edge.channel == tapa_ir::ControlChannel::Reset {
             continue; // emitted with the matching Launch route below
         }
-        let src_region = regions
-            .get(&graph.vertex(edge.src).name)
-            .ok_or_else(|| PipelineError::BadRegion(graph.vertex(edge.src).name.clone()))?;
-        let dst_region = regions
-            .get(&graph.vertex(edge.dst).name)
-            .ok_or_else(|| PipelineError::BadRegion(graph.vertex(edge.dst).name.clone()))?;
-        if src_region == dst_region {
+        let Some((src, dst)) = crossing_cells(graph, regions, edge.src, edge.dst)? else {
             continue;
-        }
+        };
 
         let mut shared_channels = Vec::new();
         let width = if edge.channel == tapa_ir::ControlChannel::Launch {
@@ -210,8 +213,8 @@ fn cross_slot_nets(
                 channel: edge.channel,
             },
             shared_channels,
-            src: region_cell(src_region)?,
-            dst: region_cell(dst_region)?,
+            src,
+            dst,
             width,
         });
     }
