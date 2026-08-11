@@ -195,7 +195,7 @@ fn round_trip_byte_equal() {
 /// The payload here lists `VecAdd` before `Add` on purpose: an insertion-
 /// ordered map (`IndexMap`) would echo the input order and fail.
 #[test]
-fn task_order_preserved() {
+fn task_order_is_sorted_not_as_written() {
     let json = concat!(
         r#"{"schema_version": 1, "top": "VecAdd", "target": "xilinx-hls", "cflags": [], "tasks": {"#,
         r#""VecAdd": {"level": "upper", "code": "", "readable_name": "VecAdd", "#,

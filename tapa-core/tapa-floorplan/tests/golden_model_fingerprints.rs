@@ -1,7 +1,7 @@
 //! Model fingerprints for the golden `vadd-floorplanned` design.
 //!
-//! The floorplan refactor (REFACTOR-PLAN Phase 2 item 3) must keep solver
-//! numerics identical per commit: CBC is deterministic given a fixed input,
+//! Refactoring the floorplan must keep solver numerics identical per
+//! commit: CBC is deterministic given a fixed input,
 //! so the models the two formulations hand to the solver are the whole
 //! contract. This gate records — per solve call, in order — each model's
 //! shape (variables, constraints, nonzeros, sense), its order-independent

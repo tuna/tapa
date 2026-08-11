@@ -1,4 +1,4 @@
-//! Narrowed per-concern state views (REFACTOR-PLAN §4 Phase 1 item 1b).
+//! Narrowed per-concern state views.
 //!
 //! The pass pipeline never receives the whole [`crate::rtl_state::TopologyWithRtl`];
 //! the driver-side context construction splits it once into these disjoint

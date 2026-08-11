@@ -1,12 +1,12 @@
-//! The typed pass pipeline (REFACTOR-PLAN §4 Phase 1 item 1).
+//! The typed pass pipeline.
 //!
 //! Every pass body takes per-concern [`crate::state::views`] borrow views
-//! (Phase 1b) instead of the whole [`TopologyWithRtl`]; the unit structs
-//! below are thin delegates registered in the ordered [`crate::pipeline`]
-//! table. The driver-side [`DesignPassCtx`] / [`TaskPassCtx`] carry the
-//! views built from disjoint field borrows of the state. Only the context
-//! constructors, the lib.rs driver, and [`TaskStageInputs::prepare`]
-//! (read-only staging) may name the whole state object.
+//! instead of the whole [`TopologyWithRtl`]; the functions below are the
+//! passes themselves, run in the order `lib.rs` lists them. The driver-side
+//! [`DesignPassCtx`] / [`TaskPassCtx`] carry the views built from disjoint
+//! field borrows of the state. Only the context constructors, the lib.rs
+//! driver, and [`TaskStageInputs::prepare`] (read-only staging) may name the
+//! whole state object.
 
 pub mod async_mmap;
 mod axi_pipeline;
@@ -28,9 +28,9 @@ use crate::error::CodegenError;
 use crate::rtl_state::{MMapConnection, TopologyWithRtl};
 use crate::state::views::{DesignView, FsmTable, ModuleTable, OutputSet};
 
-/// Context handed to each [`DesignPass`]: the narrowed per-concern views
-/// built from the state's disjoint fields (Phase 1b). Pass bodies never see
-/// the whole `TopologyWithRtl`.
+/// Context handed to each design-scope pass: the narrowed per-concern views
+/// built from the state's disjoint fields. Pass bodies never see the whole
+/// `TopologyWithRtl`.
 pub struct DesignPassCtx<'a> {
     /// Read access to the design model.
     pub design: DesignView<'a>,
@@ -73,7 +73,7 @@ impl<'a> DesignPassCtx<'a> {
 
 /// Per-upper-task pass context: the task identity, its driver-precomputed
 /// staged inputs, and the narrowed per-concern views built from the state's
-/// disjoint fields (Phase 1b).
+/// disjoint fields.
 pub struct TaskPassCtx<'a> {
     /// The upper-level task currently being instrumented.
     pub name: &'a str,

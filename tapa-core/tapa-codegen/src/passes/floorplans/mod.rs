@@ -1,6 +1,5 @@
-//! Floorplan-consumption adapter for the FIFO pass (F1): every
-//! `FloorplanResult` read the fifo wiring needs, reading `tapa_ir::floorplan`
-//! types only (REFACTOR-PLAN §4 Phase 1 item 2).
+//! Floorplan-consumption adapter for the FIFO pass: every `FloorplanResult`
+//! read the fifo wiring needs, reading `tapa_ir::floorplan` types only.
 
 use tapa_ir::{FloorplanResult, RoutedChannel};
 
