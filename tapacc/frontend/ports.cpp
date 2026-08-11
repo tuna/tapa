@@ -70,6 +70,26 @@ void CheckParamShape(const clang::ASTContext& ctx,
         builder.AddString(param->getNameAsString());
       }
       break;
+    // `tapa::stream`/`tapa::streams` declare a channel; they carry no
+    // direction and are only meaningful as a local variable of an upper task.
+    // As a parameter they used to fall through to the scalar catch-all, which
+    // bound the channel object to the s_axilite control bundle and left Vitis
+    // HLS to fail on it much later ("Cannot apply disaggregate pragma ...").
+    case TapaKind::kStream:
+    case TapaKind::kStreams: {
+      const bool array = kind == TapaKind::kStreams;
+      auto builder = ReportCustomDiag(
+          ctx, clang::DiagnosticsEngine::Error, param->getLocation(),
+          "%0 parameter '%1' declares a channel rather than a port; a task "
+          "reads a channel through tapa::%2 and writes one through tapa::%3. "
+          "%0 belongs in the body of an upper task, where it connects two "
+          "invocations");
+      builder.AddString(array ? "tapa::streams" : "tapa::stream");
+      builder.AddString(param->getNameAsString());
+      builder.AddString(array ? "istreams" : "istream");
+      builder.AddString(array ? "ostreams" : "ostream");
+      break;
+    }
     case TapaKind::kMmap:
     case TapaKind::kMmaps:
     case TapaKind::kImmap:

@@ -142,6 +142,24 @@ TEST(Ports, StreamsAndAsyncMmapRequireReference) {
   }
 }
 
+// `tapa::stream` is a channel, not a port: it has no direction, so a task
+// cannot declare one as a parameter. Before this was rejected it fell through
+// to the scalar catch-all and the channel object was bound to the s_axilite
+// control bundle, which Vitis HLS only refused much later.
+TEST(Ports, StreamInstanceIsNotAPort) {
+  const char* bad[] = {
+      "void probe(tapa::stream<int>& s);",
+      "void probe(tapa::stream<int, 8>& s);",
+      "void probe(tapa::streams<int, 2>& s);",
+  };
+  for (const char* signature : bad) {
+    auto b = BuildProbe(signature);
+    CountingDiags diags;
+    BuildPortsExpectingError(b, diags);
+    EXPECT_GT(diags.errors, 0u) << signature;
+  }
+}
+
 TEST(Ports, MmapFamilyRequiresValue) {
   const char* bad[] = {
       "void probe(tapa::mmap<int>& m);",
