@@ -194,10 +194,42 @@ fn validate_nets(nets: &[RouteNet], device: &Device) -> Result<(), RouteError> {
     Ok(())
 }
 
+/// Candidate paths for every net, sharing one enumeration per distinct
+/// `(src, dst)` pair.
+///
+/// A design routes thousands of nets across a handful of slot pairs, and the
+/// depth-first enumeration is the expensive part; the same pair always yields
+/// the same paths.
+struct Candidates {
+    /// One path set per distinct endpoint pair, in first-use order.
+    sets: Vec<Vec<Vec<Cell>>>,
+    /// Which set each net uses, in net input order.
+    of_net: Vec<usize>,
+}
+
+impl Candidates {
+    /// The candidate paths of one net.
+    fn paths(&self, net_index: usize) -> &[Vec<Cell>] {
+        &self.sets[self.of_net[net_index]]
+    }
+
+    /// Every net's candidate paths, in net input order.
+    fn iter(&self) -> impl Iterator<Item = &[Vec<Cell>]> {
+        self.of_net.iter().map(|&set| self.sets[set].as_slice())
+    }
+}
+
 /// Build the generated candidates in net input order.
-fn candidates_for(nets: &[RouteNet], device: &Device) -> Result<Vec<Vec<Vec<Cell>>>, RouteError> {
-    let mut candidates = Vec::with_capacity(nets.len());
+fn candidates_for(nets: &[RouteNet], device: &Device) -> Result<Candidates, RouteError> {
+    let mut sets: Vec<Vec<Vec<Cell>>> = Vec::new();
+    let mut of_pair = std::collections::BTreeMap::<(Cell, Cell), usize>::new();
+    let mut of_net = Vec::with_capacity(nets.len());
+
     for (net_index, net) in nets.iter().enumerate() {
+        if let Some(&set) = of_pair.get(&(net.src, net.dst)) {
+            of_net.push(set);
+            continue;
+        }
         let paths = enumerate_paths(net.src, net.dst, device.cols, device.rows, MAX_DETOUR);
         if paths.is_empty() {
             return Err(RouteError::Infeasible(format!(
@@ -205,22 +237,60 @@ fn candidates_for(nets: &[RouteNet], device: &Device) -> Result<Vec<Vec<Vec<Cell
                 net.src, net.dst,
             )));
         }
+        // Every invariant `validate_path` checks — endpoints, in-grid, simple,
+        // adjacent — depends only on the pair and the device, so validating the
+        // first net that uses a set covers every later net that shares it.
         for path in &paths {
             validate_path(net_index, net, path, device)?;
         }
-        candidates.push(paths);
+        sets.push(paths);
+        of_pair.insert((net.src, net.dst), sets.len() - 1);
+        of_net.push(sets.len() - 1);
     }
-    Ok(candidates)
+    Ok(Candidates { sets, of_net })
+}
+
+/// Order the path choices of nets that share endpoints and width.
+///
+/// Such nets are interchangeable: permuting their choices leaves the objective
+/// and every boundary load untouched, because the model sees only endpoints and
+/// width. Without this the search explores the same routing once per
+/// permutation — factorially many for a wide bundle between two slots.
+fn add_symmetry_rows(lp: &mut LpModel, nets: &[RouteNet], path_vars: &[Vec<LpVar>]) {
+    let rank_terms = |vars: &[LpVar], sign: f64, terms: &mut SparseRow| {
+        for (rank, &var) in vars.iter().enumerate() {
+            let rank = u64::try_from(rank).expect("candidate count fits u64");
+            if rank > 0 {
+                terms.push(sign * rank.as_f64(), var);
+            }
+        }
+    };
+
+    let mut previous = std::collections::BTreeMap::<(Cell, Cell, u32), usize>::new();
+    for (net_index, net) in nets.iter().enumerate() {
+        let Some(earlier) = previous.insert((net.src, net.dst, net.width), net_index) else {
+            continue;
+        };
+        let mut terms = SparseRow::new();
+        rank_terms(&path_vars[earlier], 1.0, &mut terms);
+        rank_terms(&path_vars[net_index], -1.0, &mut terms);
+        lp.add_constraint(
+            format!("symmetry_{earlier}_{net_index}"),
+            terms.into_expr(),
+            Comparison::Le,
+            0.0,
+        );
+    }
 }
 
 /// Read exactly one integral path choice for each net. Every path variable
 /// must be present; there is no implicit-zero or path-zero fallback.
 fn selected_routes(
-    candidates: &[Vec<Vec<Cell>>],
+    candidates: &Candidates,
     path_vars: &[Vec<LpVar>],
     solution: &crate::solver::LpSolution,
 ) -> Result<Vec<Vec<Cell>>, RouteError> {
-    let mut routes = Vec::with_capacity(candidates.len());
+    let mut routes = Vec::with_capacity(path_vars.len());
     for (net_index, (paths, vars)) in candidates.iter().zip(path_vars).enumerate() {
         let path_index = read_one_of_k(solution, vars).map_err(|error| match error {
             OneOfKError::MissingVariable { position } => RouteError::InvalidSolution(format!(
@@ -238,7 +308,7 @@ fn selected_routes(
                 "more than one path selected for net {net_index}"
             )),
         })?;
-        routes.push(paths[path_index].clone());
+        routes.push(paths[path_index].to_vec());
     }
     Ok(routes)
 }
@@ -279,18 +349,14 @@ fn validate_within_capacity(
 /// Candidates are enumerated shortest-first, so path zero is a shortest path.
 /// The router may spread traffic better than this, which is exactly why the
 /// message reports the shortest-path demand as evidence rather than as proof.
-fn describe_congestion(
-    nets: &[RouteNet],
-    candidates: &[Vec<Vec<Cell>>],
-    limits: &[Boundary],
-) -> String {
+fn describe_congestion(nets: &[RouteNet], candidates: &Candidates, limits: &[Boundary]) -> String {
     let worst = limits
         .iter()
         .filter_map(|boundary| {
             let capacity = boundary.capacity?;
             let demand: u64 = nets
                 .iter()
-                .zip(candidates)
+                .zip(candidates.iter())
                 .filter(|(_, paths)| path_crosses(&paths[0], boundary))
                 .map(|(net, _)| u64::from(net.width))
                 .sum();
@@ -313,7 +379,7 @@ fn describe_congestion(
 
 /// The total-hop objective over the path variables, used on devices with no
 /// bounded boundary and to pin an unconstrained primary solve.
-fn hop_objective(candidates: &[Vec<Vec<Cell>>], path_vars: &[Vec<LpVar>]) -> LinExpr {
+fn hop_objective(candidates: &Candidates, path_vars: &[Vec<LpVar>]) -> LinExpr {
     let mut terms = SparseRow::new();
     for (paths, vars) in candidates.iter().zip(path_vars) {
         for (path, &var) in paths.iter().zip(vars) {
@@ -337,7 +403,7 @@ fn refine_lexicographic(
     opts: &SolveOpts,
     primary: &crate::solver::LpSolution,
     max_crossings: Option<LpVar>,
-    candidates: &[Vec<Vec<Cell>>],
+    candidates: &Candidates,
     path_vars: &[Vec<LpVar>],
 ) -> Result<Option<crate::solver::LpSolution>, RouteError> {
     let pin = max_crossings.map_or_else(
@@ -378,14 +444,15 @@ pub fn route_nets(
 
     // One binary per candidate path; exactly one per net.
     let mut path_vars: Vec<Vec<LpVar>> = Vec::with_capacity(nets.len());
-    for (net_index, paths) in candidates.iter().enumerate() {
+    for net_index in 0..nets.len() {
         path_vars.push(add_one_of_k_row(
             &mut lp,
             &format!("net_{net_index}"),
-            paths.len(),
+            candidates.paths(net_index).len(),
             |path_index| format!("p_{net_index}_{path_index}"),
         ));
     }
+    add_symmetry_rows(&mut lp, nets, &path_vars);
 
     // Per bounded boundary: a hard capacity row, so every incumbent — even a
     // time-limited one — is a physically legal route; plus, when balancing,
@@ -1024,6 +1091,114 @@ mod tests {
                 "got {err}"
             );
         }
+    }
+
+    #[test]
+    fn nets_between_the_same_slots_share_one_enumeration() {
+        let device = toy_device(100);
+        let net = |src, dst, width| RouteNet { src, dst, width };
+        let nets = [
+            net((0, 0), (1, 1), 8),
+            net((0, 0), (1, 1), 9),
+            net((1, 1), (0, 0), 8),
+        ];
+        let candidates = candidates_for(&nets, &device).expect("candidates");
+
+        assert_eq!(
+            candidates.sets.len(),
+            2,
+            "the two forward nets share a set; the reverse net is its own pair",
+        );
+        assert_eq!(candidates.of_net, [0, 0, 1]);
+        assert_eq!(candidates.paths(0), candidates.paths(1));
+    }
+
+    #[test]
+    fn identical_nets_are_ordered_to_break_their_permutation_symmetry() {
+        let net = |width| RouteNet {
+            src: (0, 0),
+            dst: (1, 0),
+            width,
+        };
+        let nets = [net(8), net(8), net(9), net(8)];
+        let mut lp = LpModel::new(Sense::Minimize);
+        let path_vars: Vec<Vec<LpVar>> = (0..nets.len())
+            .map(|net_index| {
+                add_one_of_k_row(&mut lp, &format!("net_{net_index}"), 3, |path| {
+                    format!("p_{net_index}_{path}")
+                })
+            })
+            .collect();
+
+        add_symmetry_rows(&mut lp, &nets, &path_vars);
+
+        let ordered: Vec<&str> = lp
+            .constraints
+            .iter()
+            .map(|row| row.name.as_str())
+            .filter(|name| name.starts_with("symmetry_"))
+            .collect();
+        assert_eq!(
+            ordered,
+            ["symmetry_0_1", "symmetry_1_3"],
+            "consecutive members of each identical group are ordered; the \
+             odd width is its own group",
+        );
+
+        let row = lp
+            .constraints
+            .iter()
+            .find(|row| row.name == "symmetry_0_1")
+            .expect("symmetry row");
+        assert_eq!(row.op, Comparison::Le);
+        assert_eq!(row.rhs.to_bits(), 0.0_f64.to_bits());
+        assert_eq!(
+            row.expr.terms,
+            vec![
+                (1.0, path_vars[0][1]),
+                (2.0, path_vars[0][2]),
+                (-1.0, path_vars[1][1]),
+                (-2.0, path_vars[1][2]),
+            ],
+            "rank zero is free on both sides, so the row orders the choices",
+        );
+    }
+
+    /// Ordering identical nets removes permutations, not solutions: the router
+    /// still spreads them however it likes, but always reports the one member
+    /// ordering out of the `k!` that are otherwise indistinguishable.
+    #[test]
+    fn symmetry_ordering_canonicalizes_identical_nets_without_losing_answers() {
+        let device = toy_device(100);
+        let net = RouteNet {
+            src: (0, 0),
+            dst: (1, 0),
+            width: 10,
+        };
+        let nets = [net, net, net];
+        let routes = route_with_cbc(&nets, &device);
+        assert_eq!(routes.len(), 3);
+
+        let candidates = candidates_for(&nets, &device).expect("candidates");
+        let chosen: Vec<usize> = routes
+            .iter()
+            .enumerate()
+            .map(|(net_index, route)| {
+                candidates
+                    .paths(net_index)
+                    .iter()
+                    .position(|path| path == route)
+                    .expect("a routed path is one of the net's candidates")
+            })
+            .collect();
+        assert!(
+            chosen.windows(2).all(|pair| pair[0] <= pair[1]),
+            "identical nets must report non-decreasing candidate indices: {chosen:?}",
+        );
+        assert!(
+            chosen.iter().any(|index| *index > 0),
+            "balancing still spreads them across boundaries: {routes:?}",
+        );
     }
 
     #[test]
