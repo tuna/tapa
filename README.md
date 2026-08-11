@@ -34,18 +34,9 @@ Published results: 2× higher frequency on average versus Vivado
 curl -fsSL https://raw.githubusercontent.com/tuna/tapa/main/install.sh | sh -s -- -q
 ```
 
-This installs the current **stable** release (0.1.20260319). With root
-privileges, installs to `/opt/tapa` (symlinks in `/usr/local/bin`). Without
-root, installs to `~/.tapa` and updates your shell `PATH`.
-
-> **Note:** TAPA's internal toolchain is being incrementally refactored to Rust
-> for improved performance and reliability. During this transition, we recommend
-> staying on the stable release (`0.1.20260319`) for production workloads. To
-> install the latest (potentially unstable) release instead, pass `--beta`:
->
-> ```bash
-> curl -fsSL https://raw.githubusercontent.com/tuna/tapa/main/install.sh | sh -s -- -q --beta
-> ```
+This installs the latest release. With root privileges, installs to
+`/opt/tapa` (symlinks in `/usr/local/bin`). Without root, installs to `~/.tapa`
+and updates your shell `PATH`.
 
 **Requirements:** Linux (Ubuntu 18.04+, Debian 10+, RHEL 9+, Fedora 34+, Amazon
 Linux 2023), `g++` 7.5.0+, and the [CBC](https://github.com/coin-or/Cbc) ILP
