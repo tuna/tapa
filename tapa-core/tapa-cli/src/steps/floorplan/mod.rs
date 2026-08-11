@@ -75,7 +75,7 @@ fn memory_plan_inputs(
     if interfaces.is_empty() {
         if let Some(binding) = bindings.and_then(|bindings| bindings.iter().next()) {
             return Err(CliError::InvalidArg(format!(
-                "connectivity binding `{}` does not name a direct M-AXI port of kernel `{top}`",
+                "connectivity binding `{}` does not name a direct M-AXI port of kernel `{top}`; the kernel has no direct M-AXI ports",
                 binding.endpoint,
             )));
         }
@@ -99,8 +99,13 @@ fn memory_plan_inputs(
                 .iter()
                 .any(|interface| interface.endpoint.top_port == binding.endpoint.port);
         if !known {
+            let ports = interfaces
+                .iter()
+                .map(|interface| interface.endpoint.top_port.as_str())
+                .collect::<Vec<_>>()
+                .join("`, `");
             return Err(CliError::InvalidArg(format!(
-                "connectivity binding `{}` does not name a direct M-AXI port of kernel `{top}`",
+                "connectivity binding `{}` does not name a direct M-AXI port of kernel `{top}`; direct M-AXI ports are `{ports}`",
                 binding.endpoint,
             )));
         }

@@ -198,6 +198,16 @@ sp=VecAdd.c:HBM[2]
 
 The left-hand side is `<compute-unit>.<argument>`. TAPA names the compute unit after the top task — its generated bitstream script passes `--connectivity.nk VecAdd:1:VecAdd` — so the name is the bare top task, **not** the `VecAdd_1` form Vitis defaults to when the kernel is instantiated without `nk`. The argument is the top task's parameter name, as it appears in the C++ signature. Bank targets are `HBM[n]` or `DDR[n]`.
 
+For a `tapa::mmaps<T, N>` parameter (an array of `N` memory channels) the
+argument uses bracket indices, matching the port names in
+`work.out/tapa.json` — **not** the `chan_0` form of the generated RTL ports:
+
+```ini
+[connectivity]
+sp=Bandwidth.chan[0]:DDR[0]
+sp=Bandwidth.chan[1]:DDR[1]
+```
+
 The same file is what `tapa pack --connectivity` forwards to `v++ --link` as a `--config`, so one file serves both steps.
 
 ### Optional flags (implementation / DSE)
