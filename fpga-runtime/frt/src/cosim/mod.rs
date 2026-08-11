@@ -119,7 +119,7 @@ impl CosimDevice {
         let runner: Box<dyn SimRunner> = match sim {
             Simulator::Verilator => {
                 let dpi = dpi_lib_path("verilator")?;
-                Box::new(VerilatorRunner::find(dpi)?)
+                Box::new(VerilatorRunner { dpi_lib: dpi })
             }
             Simulator::Xsim { legacy } => {
                 let dpi = dpi_lib_path("xsim")?;

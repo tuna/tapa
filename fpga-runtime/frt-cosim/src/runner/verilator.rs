@@ -16,12 +16,6 @@ pub struct VerilatorRunner {
     pub dpi_lib: PathBuf,
 }
 
-impl VerilatorRunner {
-    pub fn find(dpi_lib: PathBuf) -> Result<Self> {
-        Ok(Self { dpi_lib })
-    }
-}
-
 fn resolve_verilator_bin(
     verilator_bin: Option<PathBuf>,
     runfiles_root: Option<PathBuf>,
