@@ -23,7 +23,7 @@ use camino::Utf8PathBuf;
 use self::transport::{cleanup_session, local_to_remote_path, unique_session_id, upload_batch};
 pub(crate) use self::transport::{download_tree, shell_quote};
 use crate::error::{Result, XilinxError};
-use crate::runtime::process::{ToolInvocation, ToolOutput, ToolRunner};
+use crate::runtime::process::{unified_hls_args, ToolInvocation, ToolOutput, ToolRunner};
 use crate::runtime::ssh::{classify_ssh_error, SshErrorKind, SshSession};
 
 pub struct RemoteToolRunner {
@@ -157,7 +157,30 @@ fn build_remote_script(
         .chain(rewritten_args.iter().map(|a| shell_quote(a)))
         .collect::<Vec<_>>()
         .join(" ");
-    parts.push(format!("cd {} && exec {}", shell_quote(&remote_cwd), exec));
+    if inv.program == "vitis_hls" {
+        // Vitis 2025.1+ removed the classic `vitis_hls` executable in
+        // favor of the unified `vitis-run` CLI. Which form applies is a
+        // property of the remote installation, so decide in the remote
+        // shell (after its settings script populated PATH).
+        let unified_exec = std::iter::once(shell_quote("vitis-run"))
+            .chain(
+                unified_hls_args(&rewritten_args)
+                    .iter()
+                    .map(|a| shell_quote(a)),
+            )
+            .collect::<Vec<_>>()
+            .join(" ");
+        parts.push(format!(
+            "cd {} && if ! command -v vitis_hls >/dev/null 2>&1 \
+                && command -v vitis-run >/dev/null 2>&1; \
+                then exec {}; else exec {}; fi",
+            shell_quote(&remote_cwd),
+            unified_exec,
+            exec
+        ));
+    } else {
+        parts.push(format!("cd {} && exec {}", shell_quote(&remote_cwd), exec));
+    }
     let full_cmd = parts.join(" ; ");
     format!("bash -c {}", shell_quote(&full_cmd))
 }
@@ -486,7 +509,12 @@ mod tests {
                 source /opt/Xilinx/Vitis/2023.2/settings64.sh ; \
                 export TAPA_TCL=/tmp/tapa-remote/tapa-1-2-3/rootfs/work/top/run.tcl ; \
                 cd /tmp/tapa-remote/tapa-1-2-3/rootfs/work/top && \
-                exec vitis_hls -f /tmp/tapa-remote/tapa-1-2-3/rootfs/work/top/run.tcl'"
+                if ! command -v vitis_hls >/dev/null 2>&1 && \
+                command -v vitis-run >/dev/null 2>&1; \
+                then exec vitis-run --mode hls --tcl \
+                /tmp/tapa-remote/tapa-1-2-3/rootfs/work/top/run.tcl; \
+                else exec vitis_hls -f \
+                /tmp/tapa-remote/tapa-1-2-3/rootfs/work/top/run.tcl; fi'"
         );
     }
 

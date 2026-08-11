@@ -136,7 +136,7 @@ fn hls_needs_unified_rewrite(tool_root: &Path) -> bool {
 /// Translate classic `vitis_hls` argv to `vitis-run` argv: `-f <tcl>`
 /// becomes `--tcl <tcl>` (in `vitis-run`, `-f` means `--platform`), and
 /// `--mode hls` is always prepended. Other args pass through untouched.
-fn unified_hls_args(args: &[String]) -> Vec<String> {
+pub(crate) fn unified_hls_args(args: &[String]) -> Vec<String> {
     let mut out = vec!["--mode".to_owned(), "hls".to_owned()];
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {

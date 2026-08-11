@@ -7,6 +7,9 @@
 ## What you need
 
 - SSH access to a Linux machine with Vitis HLS and/or Vivado installed
+- `g++` on the remote machine — Vitis HLS includes system C/C++ headers, so a
+  minimal remote (for example a fresh container) fails with
+  `'features.h' file not found` without it
 - The path to `settings64.sh` on the remote machine
 - TAPA installed locally (the `tapa analyze` step always runs locally)
 
