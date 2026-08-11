@@ -8,8 +8,8 @@ TAPA is a task-parallel HLS framework that compiles C++ dataflow programs to Ver
 
 | | Sponsor | Contribution |
 | :---: | --- | --- |
-| <img src="../figures/sponsors/tuna.png" alt="TUNA" width="36"> | [Tsinghua University TUNA Association](https://tuna.moe/) | Compute infrastructure and community maintenance |
-| <img src="../figures/sponsors/moonshot-kimi.jpg" alt="Moonshot Kimi" width="36"> | [Moonshot AI — Kimi](https://www.moonshot.ai/) | AI model tokens for development |
+| <img src="https://tuna.moe/assets/img/logo-small-dark@2x.png" alt="TUNA" width="96"> | [Tsinghua University TUNA Association](https://tuna.moe/) | Compute infrastructure and community maintenance |
+| <img src="https://upload.wikimedia.org/wikipedia/en/8/87/Kimi-logo-2025.png" alt="Moonshot Kimi" width="96"> | [Moonshot AI — Kimi](https://www.moonshot.ai/) | AI model tokens for development |
 
 ## Choose your path
 

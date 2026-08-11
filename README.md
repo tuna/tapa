@@ -23,8 +23,8 @@ Published results: 2× higher frequency on average versus Vivado
 
 | | Sponsor | Contribution |
 | :---: | --- | --- |
-| <img src="docs/src/figures/sponsors/tuna.png" alt="TUNA" width="36"> | [Tsinghua University TUNA Association](https://tuna.moe/) | Compute infrastructure and community maintenance |
-| <img src="docs/src/figures/sponsors/moonshot-kimi.jpg" alt="Moonshot Kimi" width="36"> | [Moonshot AI — Kimi](https://www.moonshot.ai/) | AI model tokens for development |
+| <img src="https://tuna.moe/assets/img/logo-small-dark@2x.png" alt="TUNA" width="96"> | [Tsinghua University TUNA Association](https://tuna.moe/) | Compute infrastructure and community maintenance |
+| <img src="https://upload.wikimedia.org/wikipedia/en/8/87/Kimi-logo-2025.png" alt="Moonshot Kimi" width="96"> | [Moonshot AI — Kimi](https://www.moonshot.ai/) | AI model tokens for development |
 
 ## Quick Start
 
