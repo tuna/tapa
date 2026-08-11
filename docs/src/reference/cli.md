@@ -153,19 +153,36 @@ Run it **after** `tapa synth` (it needs each task's resource estimate) and **bef
 
 Floorplanning needs a device table describing the slot grid and where each memory bank and control interface attaches. Tables ship for:
 
-| Device | Part | Banks |
-|---|---|---|
-| Alveo U250 | `xcu250-figd2104-2L-e` | `DDR[0]`–`DDR[3]`, one per SLR |
-| Alveo U280 | `xcu280-fsvh2892-2L-e` | `HBM[0]`–`HBM[31]`, `DDR[0]`, `DDR[1]` |
-| VCK190 | `xcvc1902-vsva2197-2MP-e-S` | `DDR[0]`–`DDR[3]`, by NoC memory controller |
+| Device | Part | Banks | Platform the table was built from |
+|---|---|---|---|
+| Alveo U250 | `xcu250-figd2104-2L-e` | `DDR[0]`–`DDR[3]`, one per SLR | `xilinx_u250_gen3x16_xdma_4_1_202210_1` |
+| Alveo U280 | `xcu280-fsvh2892-2L-e` | `HBM[0]`–`HBM[31]`, `DDR[0]`, `DDR[1]` | `xilinx_u280_gen3x16_xdma_1_202211_1` |
+| VCK190 | `xcvc1902-vsva2197-2MP-e-S` | `DDR[0]`–`DDR[3]`, by NoC memory controller | `xilinx_vck190_base_202410_1` |
 
 Any other part is rejected with `no floorplan device table matches ...`. The other steps (`analyze`, `synth`, `pack`) work on every part Vitis HLS supports; only floorplanning is restricted.
+
+### Synthesizing with `--platform`, not `--part-num`
+
+If the top task has direct M-AXI ports, run `tapa synth` with `--platform` naming the exact platform in the table above — not with `--part-num`. Floorplanning a design with external memory has to place each M-AXI port next to the shell interface that reaches its bank, and those locations are properties of one specific platform, so the planner refuses to guess:
+
+```
+tapa: floorplan error: external-memory floorplanning requires platform
+`xilinx_u250_gen3x16_xdma_4_1_202210_1`; rerun synthesis with `--platform`
+```
+
+Naming a different platform is rejected the same way, with `platform ... does not match floorplan device platform ...`. `--part-num` alone is enough only for a design with no direct M-AXI ports, where there is nothing to anchor.
+
+This applies to every floorplan run, not just the `--run-impl` and `--dse` flows below — those need `--platform` for a further reason, that they invoke `v++ --link`.
 
 ### Optional flags (planning)
 
 | Flag | Description |
 |------|-------------|
-| `--connectivity FILE` | Vitis link `sp=` config mapping each direct M-AXI port to a memory bank. Required in practice when the kernel has direct M-AXI ports (HBM/DDR pinning) — without it the planner cannot tell which bank a port reaches. See [Connectivity file](#connectivity-file) for the exact syntax. |
+| `--connectivity FILE` | Vitis link `sp=` config mapping each direct M-AXI port to a memory bank. Required when the kernel has direct M-AXI ports (HBM/DDR pinning) — without it the planner cannot tell which bank a port reaches, and it stops with `floorplanning direct M-AXI ports requires --connectivity with sp=...`, naming every port it wants a line for. See [Connectivity file](#connectivity-file) for the exact syntax. |
+| `--usage-limit FRAC` | Per-slot resource utilization target for a non-DSE plan; raised on infeasibility (default `0.7`). |
+| `--partition-strategy {auto,flat,multi-level}` | Placement schedule (default `auto`). `flat` places directly into atomic slots with one ILP; `multi-level` places into rows (SLRs) first, then refines into atomic slots. `auto` picks between them with a built-in heuristic. |
+| `--pp-scheme {single,double,single_h_double_v}` | How pipeline registers distribute across a crossing's route (default `double`). |
+| `--max-seconds N` | ILP wall-clock limit in seconds (default `600`). |
 
 ### Connectivity file
 
@@ -181,14 +198,10 @@ sp=VecAdd.c:HBM[2]
 The left-hand side is `<compute-unit>.<argument>`. TAPA names the compute unit after the top task — its generated bitstream script passes `--connectivity.nk VecAdd:1:VecAdd` — so the name is the bare top task, **not** the `VecAdd_1` form Vitis defaults to when the kernel is instantiated without `nk`. The argument is the top task's parameter name, as it appears in the C++ signature. Bank targets are `HBM[n]` or `DDR[n]`.
 
 The same file is what `tapa pack --connectivity` forwards to `v++ --link` as a `--config`, so one file serves both steps.
-| `--usage-limit FRAC` | Per-slot resource utilization target for a non-DSE plan; raised on infeasibility (default `0.7`). |
-| `--partition-strategy {auto,flat,multi-level}` | Placement schedule (default `auto`). `flat` places directly into atomic slots with one ILP; `multi-level` places into rows (SLRs) first, then refines into atomic slots. `auto` picks between them with a built-in heuristic. |
-| `--pp-scheme {single,double,single_h_double_v}` | How pipeline registers distribute across a crossing's route (default `double`). |
-| `--max-seconds N` | ILP wall-clock limit in seconds (default `600`). |
 
 ### Optional flags (implementation / DSE)
 
-These run the floorplanned design through `v++ --link` to measure Fmax. They require synthesis with `--platform <installed-platform-name>` and a `xilinx-vitis` target, and they run Vivado/Vitis on the tool host.
+These run the floorplanned design through `v++ --link` to measure Fmax. On top of the `--platform` synthesis that external-memory floorplanning already requires, they need a `xilinx-vitis` target and a platform `v++` still accepts, and they run Vivado/Vitis on the tool host.
 
 | Flag | Description |
 |------|-------------|
