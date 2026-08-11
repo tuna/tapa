@@ -305,6 +305,14 @@ impl Device for XrtDevice {
                 "create OpenCL buffer",
             )?
         };
+        // Bind the buffer to its kernel argument now rather than in `exec`.
+        // XRT derives a buffer's memory bank from the `sp=` connectivity of
+        // the argument it is bound to, and `write_to_device` transfers before
+        // `exec` runs. With every port on one bank XRT can infer the bank
+        // anyway; with ports spread over several banks an unbound buffer
+        // fails the transfer with "Cannot allocate buffer at unknown memory
+        // index".
+        bind_buffer_arg(&self.kernel, index, &buffer)?;
         self.buffers.insert(
             index,
             BufferBinding {
@@ -428,31 +436,14 @@ impl Device for XrtDevice {
                     };
                 }
                 ArgKind::Mmap { .. } => {
-                    let binding = self.buffers.get(&arg.id).ok_or_else(|| {
-                        FrtError::MetadataParse(format!(
+                    // Already bound by `set_buffer_arg`; only its presence
+                    // still needs checking here.
+                    if !self.buffers.contains_key(&arg.id) {
+                        return Err(FrtError::MetadataParse(format!(
                             "missing mmap arg binding for id {}",
                             arg.id
-                        ))
-                    })?;
-                    // Pass a pointer to the cl_mem handle.  clSetKernelArg
-                    // expects arg_value to point to the cl_mem value itself.
-                    let cl_mem_handle = binding.buffer.get();
-                    // SAFETY: self.kernel is a valid OpenCL kernel,
-                    // arg.id is the correct argument index, and
-                    // cl_mem_handle is a valid cl_mem obtained from
-                    // the buffer created earlier.
-                    unsafe {
-                        set_kernel_arg(
-                            self.kernel.get(),
-                            arg.id,
-                            std::mem::size_of_val(&cl_mem_handle),
-                            (&raw const cl_mem_handle).cast::<c_void>(),
-                        )
-                        .map_err(|code| FrtError::OpenCl {
-                            code,
-                            msg: format!("set OpenCL mmap kernel arg: error code {code}"),
-                        })?;
-                    };
+                        )));
+                    }
                 }
                 ArgKind::Stream { .. } => {
                     return Err(FrtError::MetadataParse(
@@ -539,6 +530,10 @@ impl Device for XrtDevice {
 }
 
 fn select_device(meta: &KernelXml) -> Result<cl_device_id> {
+    // `cl3` loads the ICD loader lazily, so nothing before this point needs
+    // OpenCL at all. Check it explicitly here: without it, the first API call
+    // fails with a bare dlopen message that says nothing about what to install.
+    ensure_opencl_runtime()?;
     let requested_bdf = env_non_empty(frt_shm::env::FRT_XOCL_BDF);
     let platforms = ocl_result(get_platforms(), "enumerate OpenCL platforms")?;
     for p in &platforms {
@@ -686,11 +681,92 @@ fn device_bdf(id: cl_device_id) -> Option<String> {
     }
 }
 
+/// Make sure an `OpenCL` ICD loader can be loaded before the first `OpenCL`
+/// call.
+///
+/// `cl3` loads `libOpenCL.so` — the symlink that ships in the *development*
+/// package. The loader itself is packaged as `libOpenCL.so.1`, and that is
+/// what XRT depends on, so an XRT-only machine has the runtime but not the
+/// name `cl3` asks for. Probe both and point `cl3` at whichever exists via
+/// its own `OPENCL_DYLIB_PATH` override.
+#[cfg(target_os = "linux")]
+fn ensure_opencl_runtime() -> Result<()> {
+    use std::sync::Once;
+    static ONCE: Once = Once::new();
+    static NAMES: [&str; 2] = ["libOpenCL.so", "libOpenCL.so.1"];
+
+    if std::env::var_os("OPENCL_DYLIB_PATH").is_some() {
+        return Ok(());
+    }
+    let mut found = None;
+    for name in NAMES {
+        if can_dlopen(name) {
+            found = Some(name);
+            break;
+        }
+    }
+    let Some(name) = found else {
+        return Err(FrtError::NoOpenClRuntime(format!(
+            "none of {} could be loaded",
+            NAMES.join(", ")
+        )));
+    };
+    // Only needed for the fallback SONAME, but setting it unconditionally
+    // keeps the loaded library identical to the one probed here.
+    ONCE.call_once(|| std::env::set_var("OPENCL_DYLIB_PATH", name));
+    Ok(())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn ensure_opencl_runtime() -> Result<()> {
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn can_dlopen(name: &str) -> bool {
+    let Ok(c_name) = std::ffi::CString::new(name) else {
+        return false;
+    };
+    // SAFETY: `c_name` is a valid NUL-terminated string; RTLD_LAZY|RTLD_LOCAL
+    // resolves no symbols eagerly and keeps them out of the global namespace.
+    let handle = unsafe { libc::dlopen(c_name.as_ptr(), libc::RTLD_LAZY | libc::RTLD_LOCAL) };
+    if handle.is_null() {
+        return false;
+    }
+    // SAFETY: `handle` came from `dlopen` and is not used afterwards. The
+    // library stays resident because `cl3` loads it again moments later.
+    unsafe { libc::dlclose(handle) };
+    true
+}
+
 fn ocl_result<T>(res: opencl3::Result<T>, ctx: &str) -> Result<T> {
     res.map_err(|e| FrtError::OpenCl {
         code: e.0,
         msg: format!("{ctx}: {e}"),
     })
+}
+
+/// Point kernel argument `index` at `buffer`.
+///
+/// `clSetKernelArg` takes a pointer to the `cl_mem` value itself, not the
+/// memory it names.
+fn bind_buffer_arg(kernel: &Kernel, index: u32, buffer: &Buffer<u8>) -> Result<()> {
+    let cl_mem_handle = buffer.get();
+    // SAFETY: `kernel` is a valid OpenCL kernel, `index` is the argument
+    // index taken from the kernel's own metadata, and `cl_mem_handle` is a
+    // valid cl_mem obtained from a buffer created on the same context.
+    unsafe {
+        set_kernel_arg(
+            kernel.get(),
+            index,
+            std::mem::size_of_val(&cl_mem_handle),
+            (&raw const cl_mem_handle).cast::<c_void>(),
+        )
+        .map_err(|code| FrtError::OpenCl {
+            code,
+            msg: format!("set OpenCL mmap kernel arg: error code {code}"),
+        })
+    }
 }
 
 fn elapsed_ns(events: &[Event]) -> u64 {
