@@ -6,7 +6,7 @@ RapidStream Contributor License Agreement.
 
 # TAPA
 
-[![Staging Build](https://github.com/tuna/tapa/actions/workflows/staging-build.yml/badge.svg)](https://github.com/tuna/tapa/actions/workflows/staging-build.yml)
+[![Staging](https://github.com/tuna/tapa/actions/workflows/staging-build.yml/badge.svg)](https://github.com/tuna/tapa/actions/workflows/staging-build.yml)
 [![Documentation](https://readthedocs.org/projects/tapa/badge/?version=latest)](https://tapa.readthedocs.io/en/latest/?badge=latest)
 
 TAPA is a task-parallel HLS framework that compiles C++ dataflow programs to Verilog RTL for Xilinx FPGAs. Software simulation runs on any Linux machine without FPGA hardware.

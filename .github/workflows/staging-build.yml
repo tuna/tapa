@@ -2,7 +2,7 @@
 # All rights reserved. The contributor(s) of this file has/have agreed to the
 # RapidStream Contributor License Agreement.
 
-name: Staging Build
+name: Staging
 
 concurrency:
   group: release
@@ -20,12 +20,12 @@ permissions:
 
 jobs:
   build:
-    name: Staging Build
+    name: Staging
     uses: ./.github/workflows/release-build.yml
     secrets: inherit
 
   test-staging:
-    name: Test Staging Build
+    name: Test Staging
     runs-on: self-hosted
     needs: build
 

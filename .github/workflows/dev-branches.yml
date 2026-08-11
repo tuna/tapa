@@ -12,7 +12,6 @@ on:
       - release/*
 
 permissions:
-  actions: write
   contents: write
 
 jobs:
@@ -161,18 +160,13 @@ jobs:
           token: ${{ secrets.GH_PUSH_PAT }}
 
       - name: Try to merge into main
-        id: merge
+        # The push uses GH_PUSH_PAT, which does trigger workflows on main —
+        # staging-build.yml runs from this push alone. Do not add an
+        # explicit workflow_dispatch here: it races the push-triggered run
+        # under the shared `release` concurrency group and cancels one of
+        # the two at random.
         run: >
           git checkout main &&
           git merge --ff-only ${{ github.ref_name }} &&
-          git push &&
-          echo "is-successful=true" >>"${GITHUB_OUTPUT}" ||
-          echo "is-successful=false" >>"${GITHUB_OUTPUT}"
+          git push
         shell: bash
-
-      - name: Trigger staging build
-        uses: benc-uk/workflow-dispatch@v1
-        if: ${{ steps.merge.outputs.is-successful == 'true' }}
-        with:
-          workflow: Staging Build
-          ref: refs/heads/main
