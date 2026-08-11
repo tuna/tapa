@@ -13,13 +13,15 @@ attributes.
 
 load("@rules_cc//cc:defs.bzl", "cc_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
-load("@vars//:vars.bzl", "HAS_XRT")
+load("@vars//:vars.bzl", "HAS_XRT", "XILINX_HW_EMU_PLATFORM")
 load("//bazel:tapa_rules.bzl", "tapa_xo")
 load("//bazel:v++_rules.bzl", "vpp_xclbin")
 
 _CARGO_RELEASE_ARTIFACTS = "//fpga-runtime:cargo_release_artifacts"
 
-_HW_EMU_PLATFORM = "xilinx_u250_gen3x16_xdma_4_1_202210_1"
+# Must name the same device as XILINX_PART_NUM, which is what the `.xo` these
+# targets link was synthesized for. See the note in VARS.bzl.
+_HW_EMU_PLATFORM = XILINX_HW_EMU_PLATFORM
 
 _HOST_DEPS = [
     "//tapa-lib:tapa-host",

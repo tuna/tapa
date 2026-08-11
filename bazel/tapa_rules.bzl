@@ -14,6 +14,7 @@ load(
     "REMOTE_USER",
     "REMOTE_XILINX_SETTINGS",
     "REMOTE_XILINX_TOOL_PATH",
+    "XILINX_PART_NUM",
     "XILINX_TOOL_VERSION",
 )
 load("//bazel:xilinx_versions.bzl", "vitis_layout_subdir")
@@ -102,7 +103,7 @@ def _tapa_xo_impl(ctx):
         tapa_cmd.extend(["--part-num", ctx.attr.part_num])
 
     if not ctx.attr.platform_name and not ctx.attr.clock_period and not ctx.attr.part_num:
-        tapa_cmd.extend(["--part-num", "xcu250-figd2104-2l-e"])
+        tapa_cmd.extend(["--part-num", XILINX_PART_NUM])
         tapa_cmd.extend(["--clock-period", "3.33"])
 
     if ctx.attr.enable_synth_util:
@@ -200,7 +201,7 @@ tapa_reuse_work_dir_xo = rule(
         "hdrs": attr.label_list(allow_files = True),
         "include": attr.label_list(allow_files = True),
         "top_name": attr.string(mandatory = True),
-        "part_num": attr.string(default = "xcu250-figd2104-2l-e"),
+        "part_num": attr.string(default = XILINX_PART_NUM),
         "clock_period": attr.string(default = "3.33"),
         "tapa_cli": attr.label(
             cfg = "exec",
