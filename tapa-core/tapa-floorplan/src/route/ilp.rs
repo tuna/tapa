@@ -53,8 +53,8 @@ pub enum RouteError {
     #[error(transparent)]
     Solver(#[from] SolverError),
     /// The solver proved that the routing MILP is infeasible.
-    #[error("routing is infeasible")]
-    Infeasible,
+    #[error("routing is infeasible: {0}")]
+    Infeasible(String),
     /// The solver neither proved infeasibility nor returned a usable
     /// incumbent.
     #[error("routing solver returned no usable incumbent ({0:?})")]
@@ -200,7 +200,10 @@ fn candidates_for(nets: &[RouteNet], device: &Device) -> Result<Vec<Vec<Vec<Cell
     for (net_index, net) in nets.iter().enumerate() {
         let paths = enumerate_paths(net.src, net.dst, device.cols, device.rows, MAX_DETOUR);
         if paths.is_empty() {
-            return Err(RouteError::Infeasible);
+            return Err(RouteError::Infeasible(format!(
+                "net {net_index} has no path from {:?} to {:?} within {MAX_DETOUR} extra hops",
+                net.src, net.dst,
+            )));
         }
         for path in &paths {
             validate_path(net_index, net, path, device)?;
@@ -268,6 +271,44 @@ fn validate_within_capacity(
         }
     }
     Ok(())
+}
+
+/// Name the boundary that is most over-subscribed when every net takes its
+/// shortest path, so an infeasible route says which wall it hit.
+///
+/// Candidates are enumerated shortest-first, so path zero is a shortest path.
+/// The router may spread traffic better than this, which is exactly why the
+/// message reports the shortest-path demand as evidence rather than as proof.
+fn describe_congestion(
+    nets: &[RouteNet],
+    candidates: &[Vec<Vec<Cell>>],
+    limits: &[Boundary],
+) -> String {
+    let worst = limits
+        .iter()
+        .filter_map(|boundary| {
+            let capacity = boundary.capacity?;
+            let demand: u64 = nets
+                .iter()
+                .zip(candidates)
+                .filter(|(_, paths)| path_crosses(&paths[0], boundary))
+                .map(|(net, _)| u64::from(net.width))
+                .sum();
+            (demand > capacity).then_some((demand, capacity, boundary))
+        })
+        .max_by_key(|(demand, capacity, _)| (demand - capacity, *demand));
+
+    match worst {
+        Some((demand, capacity, boundary)) => format!(
+            "with every net on a shortest path the {:?}-{:?} boundary carries {demand} wires \
+             against a budget of {capacity}; place the endpoints closer together, or widen the \
+             boundary's declared wire capacity",
+            boundary.a, boundary.b,
+        ),
+        None => "no single boundary is over-subscribed on shortest paths, so the nets cannot be \
+                 spread across the available detours"
+            .to_string(),
+    }
 }
 
 /// The total-hop objective over the path variables, used on devices with no
@@ -395,7 +436,9 @@ pub fn route_nets(
     let solution = solver.solve(&lp, &route_opts)?;
     if !solution.is_found() {
         return Err(match solution.status {
-            LpStatus::Infeasible => RouteError::Infeasible,
+            LpStatus::Infeasible => {
+                RouteError::Infeasible(describe_congestion(nets, &candidates, &limits))
+            }
             LpStatus::NotSolved | LpStatus::Unbounded => RouteError::NoIncumbent(solution.status),
             LpStatus::Optimal | LpStatus::Feasible => {
                 unreachable!("found incumbents are handled above")
@@ -415,6 +458,12 @@ pub fn route_nets(
         &candidates,
         &path_vars,
     )?;
+    if refined.is_none() {
+        log::warn!(
+            "the routing lexicographic refinement found no incumbent; these routes are still \
+             valid but may not reproduce across solver versions",
+        );
+    }
     let solution = refined.as_ref().unwrap_or(&solution);
     let routes = selected_routes(&candidates, &path_vars, solution)?;
     validate_within_capacity(nets, &routes, &limits)?;
@@ -875,6 +924,42 @@ mod tests {
         );
     }
 
+    /// An infeasible route has to name the wall it hit. The router's own
+    /// answer is "no", so the message reconstructs the shortest-path demand and
+    /// reports the boundary that cannot carry it.
+    #[test]
+    fn infeasible_routing_names_the_congested_boundary() {
+        let device = toy_device(0);
+        let nets = [
+            RouteNet {
+                src: (0, 0),
+                dst: (1, 0),
+                width: 40,
+            },
+            RouteNet {
+                src: (0, 1),
+                dst: (1, 1),
+                width: 40,
+            },
+        ];
+        let opts = SolveOpts {
+            threads: Some(1),
+            ..SolveOpts::default()
+        };
+        let error = match route_nets(&nets, &device, &CbcSolver::new(), &opts) {
+            Err(RouteError::Solver(SolverError::Spawn { .. })) => crate::solver::missing_cbc(),
+            Err(error) => error,
+            Ok(routes) => panic!("a zero-capacity crossing must not route: {routes:?}"),
+        };
+        let message = error.to_string();
+        assert!(matches!(error, RouteError::Infeasible(_)), "got {message}");
+        assert!(
+            message.contains("(0, 0)-(1, 0)") && message.contains("carries 40 wires"),
+            "got {message}",
+        );
+        assert!(message.contains("budget of 0"), "got {message}");
+    }
+
     #[test]
     fn infeasible_routing_status_is_propagated() {
         let device = toy_device(100);
@@ -894,7 +979,7 @@ mod tests {
             &SolveOpts::default(),
         )
         .expect_err("an over-congested design proves infeasible");
-        assert!(matches!(err, RouteError::Infeasible), "got {err}");
+        assert!(matches!(err, RouteError::Infeasible(_)), "got {err}");
     }
 
     #[test]

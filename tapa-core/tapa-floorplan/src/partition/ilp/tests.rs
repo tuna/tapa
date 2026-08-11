@@ -392,6 +392,13 @@ fn single_task_floor_graph_with_area(area: Area) -> FloorGraph {
 }
 
 fn one_slot_device(lut: u64) -> Device {
+    one_slot_device_with_area(Area {
+        lut,
+        ..Area::default()
+    })
+}
+
+fn one_slot_device_with_area(area: Area) -> Device {
     Device {
         key: "one-slot".to_string(),
         part_num: "xcone".to_string(),
@@ -403,10 +410,7 @@ fn one_slot_device(lut: u64) -> Device {
         slots: vec![Slot {
             x: 0,
             y: 0,
-            area: Area {
-                lut,
-                ..Area::default()
-            },
+            area,
             centroid_x: 0,
             centroid_y: 0,
             pblock_ranges: Vec::new(),
@@ -1409,7 +1413,7 @@ fn exact_usage_limit_disables_infeasibility_retries() {
     let ordinary_solver = StatusSolver::new(LpStatus::Infeasible);
     assert!(matches!(
         floorplan_with_strategy(&graph, &device, DEFAULT_USAGE_LIMIT, (DEFAULT_USAGE_LIMIT).max(MAX_USAGE_LIMIT), PartitionStrategy::Flat, &ordinary_solver, &SolveOpts::default()),
-        Err(IlpError::Infeasible(limit)) if limit == MAX_USAGE_LIMIT
+        Err(IlpError::Infeasible { limit, .. }) if limit == MAX_USAGE_LIMIT
     ));
     assert!(
         ordinary_solver.calls.load(Ordering::Relaxed) > 1,
@@ -1427,12 +1431,70 @@ fn exact_usage_limit_disables_infeasibility_retries() {
             &exact_solver,
             &SolveOpts::default(),
         ),
-        Err(IlpError::Infeasible(limit)) if limit == DEFAULT_USAGE_LIMIT
+        Err(IlpError::Infeasible { limit, .. }) if limit == DEFAULT_USAGE_LIMIT
     ));
     assert_eq!(
         exact_solver.calls.load(Ordering::Relaxed),
         1,
         "an exact DSE candidate must perform only its requested solve",
+    );
+}
+
+/// An infeasible placement has to say which wall it hit. A design whose
+/// vertices each fit but whose total does not is the common case, and naming
+/// the oversubscribed resource with both numbers is what tells a user whether
+/// to shrink the design or reach for a bigger part.
+#[test]
+fn infeasible_placement_names_the_oversubscribed_resource() {
+    let graph = vadd_floor_graph();
+    // vadd asks for 216 LUT and 273 FF. Ample FF, so only LUT can bind:
+    // derating 200 by the 0.95 ceiling leaves 190.
+    let device = one_slot_device_with_area(Area {
+        lut: 200,
+        ff: 100_000,
+        ..Area::default()
+    });
+    let error = floorplan_with_strategy(
+        &graph,
+        &device,
+        DEFAULT_USAGE_LIMIT,
+        MAX_USAGE_LIMIT,
+        PartitionStrategy::Flat,
+        &StatusSolver::new(LpStatus::Infeasible),
+        &SolveOpts::default(),
+    )
+    .expect_err("216 LUT cannot fit 190");
+
+    let message = error.to_string();
+    assert!(
+        matches!(error, IlpError::Infeasible { limit, .. } if limit == MAX_USAGE_LIMIT),
+        "got {message}",
+    );
+    assert!(message.contains("216 LUT"), "got {message}");
+    assert!(message.contains("190 available"), "got {message}");
+}
+
+/// When every resource fits, the limit is not the binding constraint, and the
+/// message must point at wires and packing rather than invent a resource.
+#[test]
+fn infeasible_placement_without_an_oversubscribed_resource_says_so() {
+    let error = floorplan_with_strategy(
+        &vadd_floor_graph(),
+        &one_slot_device_with_area(Area {
+            lut: 100_000,
+            ff: 100_000,
+            ..Area::default()
+        }),
+        DEFAULT_USAGE_LIMIT,
+        MAX_USAGE_LIMIT,
+        PartitionStrategy::Flat,
+        &StatusSolver::new(LpStatus::Infeasible),
+        &SolveOpts::default(),
+    )
+    .expect_err("the solver reports infeasible regardless");
+    assert!(
+        error.to_string().contains("wire capacity or per-slot packing"),
+        "got {error}",
     );
 }
 

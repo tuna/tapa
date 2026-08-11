@@ -336,11 +336,12 @@ fn utilization_units(utilization: f64) -> u32 {
 
 fn rejection_kind(error: &PlanError) -> Option<RejectionKind> {
     match error {
-        PlanError::Ilp(IlpError::Infeasible(_) | IlpError::NoCandidates { .. }) => {
+        PlanError::Ilp(IlpError::Infeasible { .. } | IlpError::NoCandidates { .. }) => {
             Some(RejectionKind::Terminal)
         }
         PlanError::Pipeline(
-            PipelineError::Route(RouteError::Infeasible) | PipelineError::RealizedCapacity { .. },
+            PipelineError::Route(RouteError::Infeasible(_))
+            | PipelineError::RealizedCapacity { .. },
         ) => Some(RejectionKind::Retryable),
         PlanError::Options(_)
         | PlanError::NoPartNum
@@ -730,7 +731,10 @@ mod tests {
     #[test]
     fn rejection_classification_distinguishes_monotone_placement_failures() {
         assert_eq!(
-            rejection_kind(&PlanError::Ilp(IlpError::Infeasible(0.7))),
+            rejection_kind(&PlanError::Ilp(IlpError::Infeasible {
+                limit: 0.7,
+                demand: "the design needs 1 LUT against 0 available at that limit".to_string(),
+            })),
             Some(RejectionKind::Terminal)
         );
         assert_eq!(
@@ -741,7 +745,7 @@ mod tests {
         );
         assert_eq!(
             rejection_kind(&PlanError::Pipeline(PipelineError::Route(
-                RouteError::Infeasible
+                RouteError::Infeasible(String::new())
             ))),
             Some(RejectionKind::Retryable)
         );

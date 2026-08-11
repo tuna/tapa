@@ -131,28 +131,73 @@ pub fn plan_with_retry_ceiling_and_solvers(
         options.partition_strategy,
     );
     let opts = solve_options(options);
-    let assignment = floorplan_with_strategy(
-        &graph,
-        &device,
-        options.usage_limit,
-        retry_ceiling,
-        options.partition_strategy,
-        placement_solver,
-        &opts,
-    )?;
-    finish_plan(
-        &graph,
-        &device,
-        options,
-        finish_solver,
-        &opts,
-        assignment,
-        ExactDseResourceCaps {
-            logic_utilization_cap: retry_ceiling,
-            effective_block_utilization_cap: retry_ceiling,
-            multilevel_block_margin_applied: false,
-        },
-    )
+    // `max_seconds` bounds one invocation, so report how many a plan actually
+    // took: the total solver time is that count times the limit, not the limit.
+    let placement_solver = CountingSolver::new(placement_solver);
+    let finish_solver = CountingSolver::new(finish_solver);
+    let result = (|| {
+        let assignment = floorplan_with_strategy(
+            &graph,
+            &device,
+            options.usage_limit,
+            retry_ceiling,
+            options.partition_strategy,
+            &placement_solver,
+            &opts,
+        )?;
+        finish_plan(
+            &graph,
+            &device,
+            options,
+            &finish_solver,
+            &opts,
+            assignment,
+            ExactDseResourceCaps {
+                logic_utilization_cap: retry_ceiling,
+                effective_block_utilization_cap: retry_ceiling,
+                multilevel_block_margin_applied: false,
+            },
+        )
+    })();
+    log::info!(
+        "floorplan issued {} placement and {} routing solves, each capped at {}s",
+        placement_solver.count(),
+        finish_solver.count(),
+        options.max_seconds,
+    );
+    result
+}
+
+/// A pass-through [`Solver`](crate::solver::Solver) that counts invocations, so
+/// a plan can report how many times it paid `max_seconds`.
+struct CountingSolver<'a> {
+    inner: &'a dyn crate::solver::Solver,
+    calls: std::sync::atomic::AtomicUsize,
+}
+
+impl<'a> CountingSolver<'a> {
+    fn new(inner: &'a dyn crate::solver::Solver) -> Self {
+        Self {
+            inner,
+            calls: std::sync::atomic::AtomicUsize::new(0),
+        }
+    }
+
+    fn count(&self) -> usize {
+        self.calls.load(std::sync::atomic::Ordering::Relaxed)
+    }
+}
+
+impl crate::solver::Solver for CountingSolver<'_> {
+    fn solve(
+        &self,
+        model: &crate::solver::LpModel,
+        opts: &SolveOpts,
+    ) -> Result<crate::solver::LpSolution, crate::solver::SolverError> {
+        self.calls
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.inner.solve(model, opts)
+    }
 }
 
 pub fn plan_with_inputs_at_usage_limit_and_caps(

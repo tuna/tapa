@@ -234,7 +234,7 @@ pub struct FloorplanArgs {
     #[arg(long = "pp-scheme", value_enum, default_value_t = PpScheme::Double)]
     pub pp_scheme: PpScheme,
 
-    /// ILP time limit, in seconds.
+    /// Time limit for a single ILP solve, in seconds. A plan runs several.
     #[arg(
         long = "max-seconds",
         default_value_t = 600,

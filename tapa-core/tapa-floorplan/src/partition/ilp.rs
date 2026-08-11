@@ -110,8 +110,13 @@ pub enum IlpError {
     #[error(transparent)]
     Solver(#[from] SolverError),
     /// No feasible placement was found within the utilization retry envelope.
-    #[error("floorplan is infeasible up to usage limit {0}")]
-    Infeasible(f64),
+    #[error("floorplan is infeasible up to usage limit {limit}: {demand}")]
+    Infeasible {
+        /// The highest derating that was attempted.
+        limit: f64,
+        /// What the design asks of the device at that derating.
+        demand: String,
+    },
     /// The solver neither proved infeasibility nor returned a usable
     /// incumbent. Increasing utilization would hide this failure.
     #[error("floorplan solver returned no usable incumbent ({0:?})")]
@@ -270,7 +275,7 @@ fn floorplan_with_config(
                 opts,
             ) {
                 Ok(assignment) => assignment.placements,
-                Err(IlpError::Infeasible(_) | IlpError::NoCandidates { .. }) => solve_iteration(
+                Err(IlpError::Infeasible { .. } | IlpError::NoCandidates { .. }) => solve_iteration(
                     graph,
                     device,
                     &slots,
@@ -572,12 +577,72 @@ fn attempt_placement(
     match solution.status {
         LpStatus::Infeasible => {
             log::info!("placement infeasible at usage limit {usage_limit:.2}");
-            Ok(Rung::Infeasible(IlpError::Infeasible(config.retry_ceiling)))
+            Ok(Rung::Infeasible(IlpError::Infeasible {
+                limit: config.retry_ceiling,
+                demand: describe_demand(
+                    graph,
+                    device,
+                    regions,
+                    config.retry_ceiling,
+                    &config.constraints,
+                ),
+            }))
         }
         LpStatus::NotSolved | LpStatus::Unbounded => Err(IlpError::NoIncumbent(solution.status)),
         LpStatus::Optimal | LpStatus::Feasible => {
             unreachable!("found incumbents returned during readback")
         }
+    }
+}
+
+/// Name the resource the design asks most of, so an infeasible placement says
+/// which wall it hit rather than only that it hit one.
+///
+/// The iteration's regions tile the device, so summing their derated areas is
+/// the whole budget at `usage_limit`. A resource over budget is a definitive
+/// explanation; if none is, the binding constraint is the wire-capacity cuts or
+/// per-slot packing, and the message says so instead of inventing a cause.
+fn describe_demand(
+    graph: &FloorGraph,
+    device: &Device,
+    regions: &[Coor],
+    usage_limit: f64,
+    constraints: &PlacementConstraints,
+) -> String {
+    let mut worst: Option<(Resource, u64, u64)> = None;
+    for resource in Resource::ALL {
+        let demand: u64 = graph
+            .vertices()
+            .iter()
+            .map(|vertex| resource.amount(&vertex.area))
+            .sum();
+        let supply: u64 = regions
+            .iter()
+            .filter_map(|region| {
+                let total = device.island_area(region)?;
+                let limit = lookup_limit(&constraints.max_resource_limits, region, resource)
+                    .unwrap_or(usage_limit);
+                Some(scaled_amount(resource.amount(&total), limit))
+            })
+            .sum();
+        if demand > supply
+            && worst.is_none_or(|(_, worst_demand, worst_supply)| {
+                // Compare `demand / supply` without dividing by a zero supply.
+                demand.saturating_mul(worst_supply) > worst_demand.saturating_mul(supply)
+            })
+        {
+            worst = Some((resource, demand, supply));
+        }
+    }
+
+    match worst {
+        Some((resource, demand, supply)) => format!(
+            "the design needs {demand} {} against {supply} available at that limit",
+            resource.name(),
+        ),
+        None => "every resource fits, so the binding constraint is inter-slot wire capacity or \
+                 per-slot packing rather than the utilization limit"
+            .to_string(),
     }
 }
 

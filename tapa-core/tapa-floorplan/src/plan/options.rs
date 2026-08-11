@@ -10,7 +10,13 @@ use crate::partition::PartitionStrategy;
 pub struct PlanOptions {
     /// Base per-slot utilization target; raised on infeasibility.
     pub usage_limit: f64,
-    /// ILP wall-clock limit, in seconds.
+    /// Wall-clock limit for *one* solver invocation, in seconds.
+    ///
+    /// A plan issues several: each partition iteration searches the
+    /// utilization ladder and refines the rung it settles on, and routing adds
+    /// its own solve and refinement. A plan's total solver time is therefore a
+    /// small multiple of this, not equal to it; the count is logged when the
+    /// plan finishes.
     pub max_seconds: u64,
     /// CBC worker threads. `1` keeps the solve deterministic.
     pub threads: u32,
