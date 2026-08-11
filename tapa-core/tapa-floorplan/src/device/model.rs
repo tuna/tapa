@@ -413,15 +413,17 @@ pub(crate) fn usable_wire_capacity(raw: u64) -> u64 {
     raw / 10 * 7 + ((raw % 10) * 7 + 5) / 10
 }
 
-/// The usable capacity of the shared border between two facing slot sides.
+/// The usable capacity of the shared border between two facing slot sides,
+/// or `None` when neither facing side declares a limit.
 ///
 /// The *smaller* of the two facing declarations is taken first — either side
 /// of the physical boundary may be the binding one — and the result is
-/// derated to its usable share. Placement cuts and per-boundary routing
-/// constraints both use this helper so the two stages always model the same
-/// budget for a given boundary.
-pub(crate) fn effective_border_capacity(lhs: u64, rhs: u64) -> u64 {
-    usable_wire_capacity(lhs.min(rhs))
+/// derated to its usable share. This is the single boundedness test the
+/// placement cuts and the routing MILP share: a boundary that constrains
+/// one stage constrains the other, and neither stage infers
+/// "unconstrained" from a merely large number.
+pub(crate) fn bounded_border_capacity(lhs: u64, rhs: u64) -> Option<u64> {
+    (lhs.min(rhs) < WIRE_CAPACITY_INF).then(|| usable_wire_capacity(lhs.min(rhs)))
 }
 
 /// [`effective_border_capacity`], or `None` when neither facing side declares
@@ -460,14 +462,19 @@ mod tests {
     }
 
     #[test]
-    fn effective_border_capacity_takes_the_minimum_then_derates() {
-        assert_eq!(effective_border_capacity(100, 1), 1, "min(100, 1) * 0.7");
-        assert_eq!(effective_border_capacity(1, 100), 1);
-        assert_eq!(effective_border_capacity(10, 10), 7);
+    fn bounded_border_capacity_takes_the_minimum_then_derates() {
+        assert_eq!(bounded_border_capacity(100, 1), Some(1), "min(100, 1) * 0.7");
+        assert_eq!(bounded_border_capacity(1, 100), Some(1));
+        assert_eq!(bounded_border_capacity(10, 10), Some(7));
         assert_eq!(
-            effective_border_capacity(WIRE_CAPACITY_INF, 0),
-            0,
+            bounded_border_capacity(WIRE_CAPACITY_INF, 0),
+            Some(0),
             "one unconstrained side does not lift the other side's zero",
+        );
+        assert_eq!(
+            bounded_border_capacity(WIRE_CAPACITY_INF, WIRE_CAPACITY_INF),
+            None,
+            "two unconstrained sides mean no bound at all",
         );
     }
     use super::*;
