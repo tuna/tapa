@@ -1015,12 +1015,14 @@ fn exact_multilevel_caps_apply_to_row_and_atomic_resource_rows() {
                     row.name == format!("node_{}_{}_usage", region.region_name(), resource.name())
                 })
                 .expect("resource row");
+            // Both groups floor onto whole resources, exactly as the candidate
+            // filter does; only the fraction they floor differs.
             let expected = match resource {
                 Resource::Ff | Resource::Lut => {
                     scaled_amount(resource.amount(&area), logic_limit).as_f64()
                 }
                 Resource::Bram18k | Resource::Dsp | Resource::Uram => {
-                    resource.amount(&area).as_f64() * block_limit
+                    scaled_amount(resource.amount(&area), block_limit).as_f64()
                 }
             };
             assert_eq!(

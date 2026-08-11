@@ -5,7 +5,7 @@
 //! placement ILP be reused for the row-level and column-level passes of
 //! multilevel placement.
 
-use crate::device::model::{effective_border_capacity, Coor, Device, WIRE_CAPACITY_INF};
+use crate::device::model::{bounded_border_capacity, Coor, Device};
 
 /// A clean bipartition of the current candidate regions.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -25,10 +25,10 @@ pub struct Cut {
 ///
 /// The capacity of each neighboring region pair is computed over only their
 /// *shared* border interval, with each cell pair contributing
-/// [`effective_border_capacity`] of its two facing declarations — the same
-/// per-boundary budget the routing MILP enforces. Cuts whose capacity is at
-/// the unconstrained sentinel scale are omitted because the ILP would skip
-/// them.
+/// [`bounded_border_capacity`] of its two facing declarations — the same
+/// per-boundary budget the routing MILP enforces. A cut with even one
+/// unconstrained cell pair cannot bind (wires would simply flow there), so it
+/// is omitted rather than given a huge finite budget.
 #[must_use]
 pub fn find_cuts_for_regions(device: &Device, regions: &[Coor]) -> Vec<Cut> {
     if regions.is_empty() {
@@ -82,13 +82,13 @@ fn push_if_clean_and_binding(
         return;
     }
 
-    let capacity: u64 = lhs
+    let capacity: Option<u64> = lhs
         .iter()
         .flat_map(|left| rhs.iter().map(move |right| (left, right)))
         .filter(|(left, right)| left.is_neighbor(right))
         .map(|(left, right)| border_capacity(device, left, right))
         .sum();
-    if capacity < WIRE_CAPACITY_INF / 2 {
+    if let Some(capacity) = capacity {
         cuts.push(Cut {
             name,
             lhs,
@@ -102,40 +102,47 @@ fn push_if_clean_and_binding(
 /// interval of two neighboring regions. Cells without a facing partner
 /// (partially overlapping borders) contribute nothing to this pair's border,
 /// so the cut never credits capacity the crossing wires cannot physically use.
-fn border_capacity(device: &Device, lhs: &Coor, rhs: &Coor) -> u64 {
+///
+/// `None` when any cell pair on the shared border is unconstrained, or when
+/// the bounded pairs sum past `u64` — either way the pair cannot bind.
+fn border_capacity(device: &Device, lhs: &Coor, rhs: &Coor) -> Option<u64> {
     let shared_x = lhs.dl_x.max(rhs.dl_x)..=lhs.ur_x.min(rhs.ur_x);
     let shared_y = lhs.dl_y.max(rhs.dl_y)..=lhs.ur_y.min(rhs.ur_y);
-    if lhs.is_south_neighbor_of(rhs) {
-        return shared_x
+    // Each arm names the two facing declarations of one cell pair: the side
+    // `lhs` presents to `rhs`, then the side `rhs` presents back.
+    let facing: Vec<(u64, u64)> = if lhs.is_south_neighbor_of(rhs) {
+        shared_x
             .filter_map(|x| device.slot(x, lhs.ur_y).zip(device.slot(x, rhs.dl_y)))
-            .map(|(a, b)| effective_border_capacity(a.wire_cap.north, b.wire_cap.south))
-            .sum();
-    }
-    if lhs.is_north_neighbor_of(rhs) {
-        return shared_x
+            .map(|(near, far)| (near.wire_cap.north, far.wire_cap.south))
+            .collect()
+    } else if lhs.is_north_neighbor_of(rhs) {
+        shared_x
             .filter_map(|x| device.slot(x, lhs.dl_y).zip(device.slot(x, rhs.ur_y)))
-            .map(|(a, b)| effective_border_capacity(a.wire_cap.south, b.wire_cap.north))
-            .sum();
-    }
-    if lhs.is_west_neighbor_of(rhs) {
-        return shared_y
+            .map(|(near, far)| (near.wire_cap.south, far.wire_cap.north))
+            .collect()
+    } else if lhs.is_west_neighbor_of(rhs) {
+        shared_y
             .filter_map(|y| device.slot(lhs.ur_x, y).zip(device.slot(rhs.dl_x, y)))
-            .map(|(a, b)| effective_border_capacity(a.wire_cap.east, b.wire_cap.west))
-            .sum();
-    }
-    if lhs.is_east_neighbor_of(rhs) {
-        return shared_y
+            .map(|(near, far)| (near.wire_cap.east, far.wire_cap.west))
+            .collect()
+    } else if lhs.is_east_neighbor_of(rhs) {
+        shared_y
             .filter_map(|y| device.slot(lhs.dl_x, y).zip(device.slot(rhs.ur_x, y)))
-            .map(|(a, b)| effective_border_capacity(a.wire_cap.west, b.wire_cap.east))
-            .sum();
-    }
-    0
+            .map(|(near, far)| (near.wire_cap.west, far.wire_cap.east))
+            .collect()
+    } else {
+        return Some(0);
+    };
+
+    facing.into_iter().try_fold(0_u64, |total, (near, far)| {
+        total.checked_add(bounded_border_capacity(near, far)?)
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::device::model::{DirCaps, Slot};
+    use crate::device::model::{DirCaps, Slot, WIRE_CAPACITY_INF};
     use crate::device::select::select_device;
     use tapa_ir::Area;
 
@@ -268,8 +275,51 @@ mod tests {
         let wide = Coor::span(0, 1, 2, 1);
         assert_eq!(
             border_capacity(&device, &narrow, &wide),
-            7,
+            Some(7),
             "only the aligned slot pair contributes: round(10 * 0.7)",
+        );
+    }
+
+    /// One unconstrained cell pair means wires can cross freely, so the cut
+    /// cannot bind — regardless of how small the *other* pairs' budgets are.
+    /// Testing the summed capacity against a sentinel scale instead would keep
+    /// this cut and cap the whole boundary at 7 wires.
+    #[test]
+    fn one_unconstrained_cell_pair_drops_the_whole_cut() {
+        let mk_slot = |x, y, north, south| Slot {
+            x,
+            y,
+            area: Area::default(),
+            centroid_x: i64::from(x),
+            centroid_y: i64::from(y),
+            pblock_ranges: Vec::new(),
+            wire_cap: DirCaps {
+                north,
+                south,
+                east: WIRE_CAPACITY_INF,
+                west: WIRE_CAPACITY_INF,
+            },
+            tags: Vec::new(),
+        };
+        let device = Device {
+            key: "toy".to_string(),
+            part_num: "toy".to_string(),
+            platform_name: None,
+            rows: 2,
+            cols: 2,
+            is_versal: false,
+            user_pblock_name: None,
+            slots: vec![
+                mk_slot(0, 0, 10, 0),
+                mk_slot(1, 0, WIRE_CAPACITY_INF, 0),
+                mk_slot(0, 1, 0, 10),
+                mk_slot(1, 1, 0, WIRE_CAPACITY_INF),
+            ],
+        };
+        let rows = [Coor::span(0, 0, 1, 0), Coor::span(0, 1, 1, 1)];
+        assert!(
+            find_cuts_for_regions(&device, &rows).is_empty(),
+            "column 1 is unconstrained, so the row boundary cannot bind",
         );
     }
 

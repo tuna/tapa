@@ -390,6 +390,16 @@ pub(crate) fn effective_border_capacity(lhs: u64, rhs: u64) -> u64 {
     usable_wire_capacity(lhs.min(rhs))
 }
 
+/// [`effective_border_capacity`], or `None` when neither facing side declares
+/// a limit.
+///
+/// This is the single boundedness test the placement cuts and the routing
+/// MILP share: a boundary that constrains one stage constrains the other, and
+/// neither stage infers "unconstrained" from a merely large number.
+pub(crate) fn bounded_border_capacity(lhs: u64, rhs: u64) -> Option<u64> {
+    (lhs.min(rhs) < WIRE_CAPACITY_INF).then(|| effective_border_capacity(lhs, rhs))
+}
+
 #[cfg(test)]
 mod tests {
 

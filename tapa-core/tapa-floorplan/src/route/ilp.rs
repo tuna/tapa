@@ -3,7 +3,7 @@
 //!
 //! Each net selects exactly one candidate path. Every bounded boundary
 //! contributes a *hard* `sum(width * selected_path) <= capacity` row, using
-//! the same per-boundary [`effective_border_capacity`] budget the placement
+//! the same per-boundary [`bounded_border_capacity`] budget the placement
 //! cuts model, so a time-limited incumbent is always a physically legal
 //! route. The objective minimizes the worst normalized utilization over the
 //! positive-capacity boundaries; on a device with no bounded boundary at all
@@ -14,7 +14,7 @@
 
 use std::collections::BTreeSet;
 
-use crate::device::model::{effective_border_capacity, Device, WIRE_CAPACITY_INF};
+use crate::device::model::{bounded_border_capacity, Device};
 use crate::route::paths::{enumerate_paths, Cell};
 use crate::solver::assign::{add_one_of_k_row, read_one_of_k, OneOfKError};
 use crate::solver::sparse::SparseRow;
@@ -90,12 +90,6 @@ struct Boundary {
     capacity: Option<u64>,
 }
 
-/// The usable budget of one boundary: the smaller facing declaration,
-/// derated; `None` when the boundary is unconstrained on both sides.
-fn boundary_capacity(lhs: u64, rhs: u64) -> Option<u64> {
-    (lhs.min(rhs) < WIRE_CAPACITY_INF).then(|| effective_border_capacity(lhs, rhs))
-}
-
 /// Collect every adjacent-grid boundary in deterministic row-major order.
 fn boundaries(device: &Device) -> Vec<Boundary> {
     let mut out = Vec::new();
@@ -109,7 +103,7 @@ fn boundaries(device: &Device) -> Vec<Boundary> {
                     out.push(Boundary {
                         a: (x, y),
                         b: (x + 1, y),
-                        capacity: boundary_capacity(slot.wire_cap.east, right.wire_cap.west),
+                        capacity: bounded_border_capacity(slot.wire_cap.east, right.wire_cap.west),
                     });
                 }
             }
@@ -118,7 +112,7 @@ fn boundaries(device: &Device) -> Vec<Boundary> {
                     out.push(Boundary {
                         a: (x, y),
                         b: (x, y + 1),
-                        capacity: boundary_capacity(slot.wire_cap.north, up.wire_cap.south),
+                        capacity: bounded_border_capacity(slot.wire_cap.north, up.wire_cap.south),
                     });
                 }
             }

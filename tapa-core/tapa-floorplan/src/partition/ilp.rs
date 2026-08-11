@@ -876,11 +876,12 @@ fn add_resource_constraints(
                 }
             }
 
-            let max_rhs = lookup_limit(&constraints.max_resource_limits, &region, resource)
-                .map_or_else(
-                    || scaled_amount(resource.amount(&total), usage_limit).as_f64(),
-                    |limit| resource.amount(&total).as_f64() * limit,
-                );
+            // The same floor `scaled_area_with_overrides` applies when it
+            // filters candidates, so a region the filter admits is never one
+            // this row then rejects by a fraction of a unit.
+            let limit = lookup_limit(&constraints.max_resource_limits, &region, resource)
+                .unwrap_or(usage_limit);
+            let max_rhs = scaled_amount(resource.amount(&total), limit).as_f64();
             lp.add_constraint(
                 format!("node_{}_{}_usage", region.region_name(), resource.name()),
                 terms.into_expr(),
