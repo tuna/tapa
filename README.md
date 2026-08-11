@@ -13,14 +13,18 @@ TAPA is a task-parallel HLS framework that compiles C++ dataflow programs to Ver
 
 *C++ source → `tapa compile` → RTL (.xo) → Vitis v++ → FPGA bitstream*
 
-TAPA is community maintained by the
-[Tsinghua University TUNA Association](https://tuna.moe/).
-
 Published results: 2× higher frequency on average versus Vivado
 [[1]](https://doi.org/10.1145/3431920.3439289), with 7× faster compilation and
 3× faster software simulation versus Vitis HLS
 [[2]](https://doi.org/10.1109/fccm51124.2021.00032).
 
+
+## Sponsors
+
+| | Sponsor | Contribution |
+| :---: | --- | --- |
+| <img src="docs/src/figures/sponsors/tuna.png" alt="TUNA" width="36"> | [Tsinghua University TUNA Association](https://tuna.moe/) | Compute infrastructure and community maintenance |
+| <img src="docs/src/figures/sponsors/moonshot-kimi.jpg" alt="Moonshot Kimi" width="36"> | [Moonshot AI — Kimi](https://www.moonshot.ai/) | AI model tokens for development |
 
 ## Quick Start
 

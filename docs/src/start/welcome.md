@@ -4,6 +4,13 @@ TAPA is a task-parallel HLS framework that compiles C++ dataflow programs to Ver
 
 *C++ source → `tapa compile` → RTL (.xo) → Vitis v++ → FPGA bitstream*
 
+## Sponsors
+
+| | Sponsor | Contribution |
+| :---: | --- | --- |
+| <img src="../figures/sponsors/tuna.png" alt="TUNA" width="36"> | [Tsinghua University TUNA Association](https://tuna.moe/) | Compute infrastructure and community maintenance |
+| <img src="../figures/sponsors/moonshot-kimi.jpg" alt="Moonshot Kimi" width="36"> | [Moonshot AI — Kimi](https://www.moonshot.ai/) | AI model tokens for development |
+
 ## Choose your path
 
 - **New to FPGA?** → [Your First Run](first-run.md)
