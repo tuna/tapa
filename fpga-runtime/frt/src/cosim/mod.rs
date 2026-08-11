@@ -337,6 +337,13 @@ fn runtime_options() -> RuntimeOptions {
 fn make_tb_dir(work_dir: Option<&Path>, parallel: bool) -> Result<TbDir> {
     if let Some(base) = work_dir {
         std::fs::create_dir_all(base)?;
+        // Absolute from here on. The simulators run with this directory as
+        // their CWD but are handed paths built from it (the testbench in
+        // `run_cosim.tcl`, `-sv_root` for xelab), so a relative
+        // `-cosim_work_dir ./cosim_work` would resolve as
+        // `cosim_work/cosim_work/...` and the run would fail before it
+        // started.
+        let base = std::fs::canonicalize(base)?;
         if parallel {
             let suffix = format!(
                 "{}_{}",
@@ -350,7 +357,7 @@ fn make_tb_dir(work_dir: Option<&Path>, parallel: bool) -> Result<TbDir> {
             std::fs::create_dir_all(&dir)?;
             return Ok(TbDir::Fixed(dir));
         }
-        return Ok(TbDir::Fixed(base.to_path_buf()));
+        return Ok(TbDir::Fixed(base));
     }
     Ok(TbDir::Temp(tempfile::tempdir()?))
 }
@@ -423,9 +430,9 @@ fn dpi_lib_path_from_exe(exe: &Path, variant: &str) -> Result<PathBuf> {
         }
     }
     let candidates = dpi_library_candidates(variant);
-    for candidate in candidates {
+    for candidate in &candidates {
         for base in &search_dirs {
-            let p = base.join(&candidate);
+            let p = base.join(candidate);
             if p.exists() {
                 // Downstream cosim tools run from deep temp/obj subdirectories:
                 // Verilator's `c++` link from `obj_dir` and XSIM's `-sv_root`
@@ -436,10 +443,91 @@ fn dpi_lib_path_from_exe(exe: &Path, variant: &str) -> Result<PathBuf> {
             }
         }
     }
-    Err(FrtError::MetadataParse(format!(
-        "libfrt_dpi_{variant} shared library not found next to executable, \
-         under TAPA_HOME, or on LD_LIBRARY_PATH"
-    )))
+    // Last resort: ask the dynamic loader. FRT links statically into the host
+    // binary, so `dladdr` above lands on the executable rather than on the
+    // installed `lib/` directory — but the host binary carries a DT_RUNPATH
+    // pointing there, because `tapa g++` links with `-Wl,-rpath,<libdir>`.
+    // Loading by bare name lets the loader apply that RUNPATH (and ldconfig,
+    // and LD_LIBRARY_PATH), after which the resolved path can be read back.
+    for candidate in &candidates {
+        if let Some(p) = dpi_lib_path_from_loader(candidate) {
+            return Ok(p);
+        }
+    }
+    Err(FrtError::DpiLibraryNotFound {
+        name: candidates[0].clone(),
+    })
+}
+
+/// Resolve a shared library by bare name through the dynamic loader and
+/// report the absolute path it was loaded from.
+///
+/// Returns `None` when the loader cannot find the library, or on platforms
+/// without glibc's `dlinfo` (macOS, musl), where the explicit search above
+/// plus `TAPA_HOME` remain the only mechanisms.
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+fn dpi_lib_path_from_loader(name: &str) -> Option<PathBuf> {
+    use std::ffi::{CStr, CString, OsStr};
+    use std::os::unix::ffi::OsStrExt as _;
+
+    /// The prefix of glibc's `struct link_map` that `RTLD_DI_LINKMAP`
+    /// exposes. `libc` does not declare it; only the leading fields are
+    /// read, and their layout is part of the glibc ABI.
+    #[repr(C)]
+    #[allow(
+        clippy::struct_field_names,
+        reason = "field names are glibc's, kept verbatim so the layout is checkable against its header"
+    )]
+    struct LinkMap {
+        l_addr: usize,
+        l_name: *mut libc::c_char,
+        l_ld: *mut libc::c_void,
+        l_next: *mut Self,
+        l_prev: *mut Self,
+    }
+
+    let c_name = CString::new(name).ok()?;
+    // SAFETY: `c_name` is a valid NUL-terminated string. RTLD_LAZY|RTLD_LOCAL
+    // resolves nothing eagerly and does not expose the library's symbols to
+    // later lookups, so this cannot disturb the host process.
+    let handle = unsafe { libc::dlopen(c_name.as_ptr(), libc::RTLD_LAZY | libc::RTLD_LOCAL) };
+    if handle.is_null() {
+        return None;
+    }
+    let mut map: *mut LinkMap = std::ptr::null_mut();
+    // SAFETY: `handle` is a live handle from `dlopen`, and RTLD_DI_LINKMAP
+    // writes a `*mut link_map` through the out-pointer.
+    let rc = unsafe {
+        libc::dlinfo(
+            handle,
+            libc::RTLD_DI_LINKMAP,
+            (&raw mut map).cast::<libc::c_void>(),
+        )
+    };
+    let resolved = if rc == 0 && !map.is_null() {
+        // SAFETY: `map` points at a loader-owned link_map whose `l_name` is a
+        // NUL-terminated path string valid until `dlclose`.
+        let name_ptr = unsafe { (*map).l_name };
+        if name_ptr.is_null() {
+            None
+        } else {
+            // SAFETY: `name_ptr` is a NUL-terminated string owned by the loader.
+            let bytes = unsafe { CStr::from_ptr(name_ptr) }.to_bytes();
+            (!bytes.is_empty()).then(|| PathBuf::from(OsStr::from_bytes(bytes)))
+        }
+    } else {
+        None
+    };
+    // SAFETY: `handle` is a live handle from `dlopen` and is not used again.
+    unsafe { libc::dlclose(handle) };
+    // The loader may report a relative path if that is how it found the
+    // library; make it absolute for the deep-CWD consumers described above.
+    resolved.map(|p| std::fs::canonicalize(&p).unwrap_or(p))
+}
+
+#[cfg(not(all(target_os = "linux", target_env = "gnu")))]
+fn dpi_lib_path_from_loader(_name: &str) -> Option<PathBuf> {
+    None
 }
 
 fn dpi_library_candidates(variant: &str) -> [String; 2] {
@@ -905,6 +993,44 @@ mod tests {
         assert_eq!(
             std::fs::canonicalize(&found).expect("canonicalize found"),
             std::fs::canonicalize(&library).expect("canonicalize library"),
+        );
+    }
+
+    #[test]
+    fn make_tb_dir_resolves_a_relative_work_dir_to_an_absolute_path() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let _guard = ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let prev_cwd = std::env::current_dir().expect("cwd");
+        std::env::set_current_dir(tmp.path()).expect("chdir to tempdir");
+
+        let relative = Path::new("./cosim_work");
+        let plain = make_tb_dir(Some(relative), false);
+        let parallel = make_tb_dir(Some(relative), true);
+
+        std::env::set_current_dir(&prev_cwd).expect("restore cwd");
+
+        // A relative work dir used to reach the generated Tcl verbatim while
+        // the simulator ran with that same directory as its CWD, so the
+        // testbench resolved as `cosim_work/cosim_work/tb_*.sv`.
+        let plain = plain.expect("plain work dir");
+        assert!(
+            plain.path().is_absolute(),
+            "work dir must be absolute: {:?}",
+            plain.path()
+        );
+        let parallel = parallel.expect("parallel work dir");
+        assert!(
+            parallel.path().is_absolute(),
+            "parallel work dir must be absolute: {:?}",
+            parallel.path()
+        );
+        assert!(
+            parallel.path().starts_with(plain.path()),
+            "parallel work dir {:?} must live under {:?}",
+            parallel.path(),
+            plain.path()
         );
     }
 

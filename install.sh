@@ -266,6 +266,19 @@ create_symlinks() {
       fi
       ln -sf "$bin" "/usr/local/bin/$bin_name"
     done
+
+    # A system-wide install is reached through the symlinks above, so no
+    # profile is edited and nothing records where TAPA actually lives. The
+    # cosim runtime normally recovers that from the host binary's RUNPATH,
+    # but TAPA_HOME is the documented override and the fallback on platforms
+    # whose loader cannot report a resolved path.
+    if [ -d /etc/profile.d ]; then
+      if [ "$VERBOSE" = "yes" ]; then
+        echo "Writing \"/etc/profile.d/tapa.sh\"..."
+      fi
+      echo "export TAPA_HOME=\"$TAPA_INSTALL_DIR\"" >/etc/profile.d/tapa.sh
+      chmod 644 /etc/profile.d/tapa.sh
+    fi
   fi
 }
 
@@ -288,11 +301,14 @@ modify_profile_path_in_file() {
     return
   fi
 
-  # Add the PATH environment variable to the profile file.
+  # Add the PATH environment variable to the profile file. TAPA_HOME goes
+  # alongside it: the cosim runtime uses it to locate the DPI libraries when
+  # the host binary's RUNPATH cannot be consulted.
   if [ "$QUIET" = "no" ]; then
     echo "Adding PATH to TAPA to \"$profile_file\"..."
   fi
   echo "export PATH=\"\$PATH:$TAPA_INSTALL_DIR/usr/bin\"" >>"$profile_file"
+  echo "export TAPA_HOME=\"$TAPA_INSTALL_DIR\"" >>"$profile_file"
 }
 
 # Modify the PATH environment variable.
