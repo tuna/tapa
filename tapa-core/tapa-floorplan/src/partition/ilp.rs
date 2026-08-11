@@ -43,8 +43,8 @@ const FLAT_SCHEDULE_MAX_EDGE_COUNT: usize = 300;
 /// refines multilevel.
 const MULTILEVEL_SCHEDULE_EDGE_COUNT: usize = 800;
 /// Between the edge-count thresholds the automatic schedule refines
-/// multilevel once the device has at least this many squared rows.
-const MULTILEVEL_SCHEDULE_MIN_SQUARED_ROWS: u64 = 8;
+/// multilevel once the device has at least this many rows.
+const MULTILEVEL_SCHEDULE_MIN_ROWS: u32 = 3;
 
 /// How the device is subdivided into placement iterations.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -275,7 +275,7 @@ pub fn select_strategy(device: &Device, edge_count: usize) -> PartitionStrategy 
     if edge_count > MULTILEVEL_SCHEDULE_EDGE_COUNT {
         return PartitionStrategy::MultiLevel;
     }
-    if u64::from(device.rows) * u64::from(device.rows) >= MULTILEVEL_SCHEDULE_MIN_SQUARED_ROWS {
+    if device.rows >= MULTILEVEL_SCHEDULE_MIN_ROWS {
         PartitionStrategy::MultiLevel
     } else {
         PartitionStrategy::Flat
@@ -338,9 +338,8 @@ fn atomic_regions(device: &Device) -> Vec<Coor> {
 }
 
 fn row_regions(device: &Device) -> Vec<Coor> {
-    if device.cols == 0 {
-        return Vec::new();
-    }
+    // `Device::validate` rejects a zero-width grid before a device reaches the
+    // planner, so `cols - 1` is the rightmost column, never an underflow.
     (0..device.rows)
         .map(|y| Coor::span(0, y, device.cols - 1, y))
         .collect()

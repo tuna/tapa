@@ -579,6 +579,11 @@ pub struct FloorplanResult {
     pub grid: (u32, u32),
     /// Flattened instance canonical name → region tag, e.g.
     /// `"SLOT_X0Y0_TO_SLOT_X1Y0"`.
+    ///
+    /// A stream that also appears in [`routes`](Self::routes) is *split* across
+    /// that route: its entry here names only where its Tail storage lives, and
+    /// `routes` is authoritative for where each Head/Body/Tail stage goes. Do
+    /// not read a routed stream's entry as the placement of the whole channel.
     pub regions: BTreeMap<String, String>,
     /// One entry per pipelined channel.
     pub routes: Vec<PipelineRoute>,

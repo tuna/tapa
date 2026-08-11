@@ -182,13 +182,21 @@ pub(super) fn occupied_rtl_names(
     for fifo in top.fifos.keys() {
         let description = || format!("stream `{fifo}`");
         let owner = format!("stream:{fifo}");
+        // Codegen names the instance with `sanitize_array_name`, which passes
+        // through anything that is not a well-formed `name[index]`. A stream
+        // whose name survives that with characters Verilog identifiers cannot
+        // carry produces RTL nothing downstream can reference — including the
+        // XDC cell patterns, which sanitize as identifiers. Reject it here,
+        // where the name is still known to be a stream.
+        let rtl = format!("{}_fifo", sanitize_array_name(fifo));
+        if sanitize_identifier_name(&rtl) != rtl {
+            return Err(GraphError::UnrepresentableStreamName {
+                fifo: fifo.clone(),
+                rtl,
+            });
+        }
         occupy(&mut occupied, fifo.clone(), &owner, description())?;
-        occupy(
-            &mut occupied,
-            format!("{}_fifo", sanitize_array_name(fifo)),
-            &owner,
-            description(),
-        )?;
+        occupy(&mut occupied, rtl, &owner, description())?;
     }
     for alias in co_located {
         // A FIFO's own co-location alias is the same logical object as the
@@ -430,6 +438,34 @@ mod tests {
             matches!(error, GraphError::NameConflict { .. }),
             "got {error}"
         );
+    }
+
+    /// `sanitize_array_name` passes a malformed bracket expression through, so
+    /// the emitted `{name}_fifo` instance would carry characters no Verilog
+    /// identifier can. The XDC cell pattern sanitizes as an identifier and
+    /// would then match nothing; reject the design instead.
+    #[test]
+    fn stream_name_that_cannot_become_an_identifier_fails_closed() {
+        let mut value = serde_json::to_value(vadd_graph()).expect("serialize graph");
+        value["tasks"]["VecAdd"]["fifos"] = serde_json::json!({
+            "q[bad]": {"depth": 2, "consumed_by": ["B", 0], "produced_by": ["A", 0]}
+        });
+        value["tasks"]["VecAdd"]["tasks"]["A"][0]["args"] =
+            serde_json::json!({"out": {"arg": "q[bad]", "cat": "ostream"}});
+        value["tasks"]["VecAdd"]["tasks"]["B"][0]["args"] =
+            serde_json::json!({"in": {"arg": "q[bad]", "cat": "istream"}});
+        let design = TaskGraph::from_json(&value.to_string()).expect("parse");
+        let flat = tapa_ir::flatten(&design).expect("flatten");
+        let error = FloorGraph::build(&flat).expect_err("unrepresentable stream name");
+        assert!(
+            matches!(
+                error,
+                GraphError::UnrepresentableStreamName { ref rtl, .. } if !rtl.contains('[')
+                    || rtl.contains(']')
+            ),
+            "got {error}",
+        );
+        assert!(error.to_string().contains("legal identifier"), "{error}");
     }
 
     #[test]

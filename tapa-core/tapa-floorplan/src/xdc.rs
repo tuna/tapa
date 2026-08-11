@@ -121,10 +121,11 @@ pub fn emit_xdc(result: &FloorplanResult, device: &Device) -> Result<String, Xdc
                 format!("{instance} {}", channel.rtl_name()),
             ),
         };
-        let (Some(head_region), Some(tail_region)) = (route.route.first(), route.route.last())
-        else {
-            continue;
-        };
+        let (head_region, tail_region) = route
+            .route
+            .first()
+            .zip(route.route.last())
+            .expect("validate_result rejects a route with no slots");
 
         by_region
             .entry(canonical_pblock_name(head_region))
@@ -373,7 +374,12 @@ fn tcl_double_quote_escape(text: &str) -> String {
 /// Two transforms bridge the graph name to the netlist name codegen emits:
 ///   * `sanitize_identifier_name` applies codegen's Verilog identifier rules;
 ///   * an optional `_fifo` suffix matches FIFO and handshake-pipeline instances,
-///     which codegen names `{sanitized}_fifo`, while leaf tasks carry no suffix.
+///     which codegen names `{sanitize_array_name(name)}_fifo`, while leaf tasks
+///     carry no suffix.
+///
+/// The two sanitizers can disagree in general, but not on a name that reaches
+/// here: `occupied_rtl_names` rejects a stream whose emitted instance would not
+/// be a legal Verilog identifier, which is exactly the case where they differ.
 ///
 /// Anchoring keeps `PEG_Xvec_1` from also capturing `PEG_Xvec_10..19`.
 fn cell_name_regex(instance: &str) -> String {

@@ -218,6 +218,10 @@ pub enum GraphError {
         channel: AxiChannel,
         width: u32,
     },
+    /// A stream's generated RTL instance would not be a legal Verilog
+    /// identifier, so neither codegen nor the XDC cell patterns can name it.
+    #[error("stream `{fifo}` generates RTL instance `{rtl}`, which is not a legal identifier")]
+    UnrepresentableStreamName { fifo: String, rtl: String },
     /// A generated transient name collided with real RTL.
     #[error("duplicate placement vertex name `{0}`")]
     DuplicateVertex(String),

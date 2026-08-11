@@ -25,10 +25,15 @@ use crate::ExactInt;
 
 /// Maximum extra slot visits in a generated candidate path.
 const MAX_DETOUR: usize = 2;
-/// Absolute MIP gap requested for the routing solve: an incumbent within
-/// this absolute margin of the bound is accepted, and the lexicographic
-/// refinement then resolves the selection deterministically.
-const MIP_GAP_ABS: f64 = 0.001;
+/// Absolute MIP gap requested when the objective is worst-boundary
+/// utilization: a tenth of a percent of a boundary's budget is not worth more
+/// search, and the lexicographic refinement then resolves the selection
+/// deterministically.
+///
+/// It is deliberately not applied to the hop-count fallback objective, whose
+/// units are whole hops — there the same number would be an expensive way of
+/// asking for the exact optimum.
+const UTILIZATION_MIP_GAP_ABS: f64 = 0.001;
 
 /// A net to route: a width-weighted connection between two slots.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -316,11 +321,11 @@ pub fn route_nets(
     solver: &dyn Solver,
     opts: &SolveOpts,
 ) -> Result<Vec<Vec<Cell>>, RouteError> {
-    validate_nets(nets, device)?;
-    let candidates = candidates_for(nets, device)?;
-    if candidates.is_empty() {
+    if nets.is_empty() {
         return Ok(Vec::new());
     }
+    validate_nets(nets, device)?;
+    let candidates = candidates_for(nets, device)?;
     let limits = boundaries(device);
 
     let mut lp = LpModel::new(Sense::Minimize);
@@ -386,7 +391,7 @@ pub fn route_nets(
     lp.set_objective(objective);
 
     let mut route_opts = opts.clone();
-    route_opts.mip_gap_abs = Some(MIP_GAP_ABS);
+    route_opts.mip_gap_abs = max_crossings.map(|_| UTILIZATION_MIP_GAP_ABS);
     let solution = solver.solve(&lp, &route_opts)?;
     if !solution.is_found() {
         return Err(match solution.status {
