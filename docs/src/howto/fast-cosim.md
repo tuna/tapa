@@ -122,13 +122,18 @@ If the simulation becomes unresponsive:
 
 1. Run with `-cosim_work_dir` to persist intermediate files.
 2. Abort the simulation with Ctrl-C.
-3. Locate `[work-dir]/output/run/run_cosim.tcl`.
-4. Open Vivado in GUI mode and source the script:
+3. Open Vivado in GUI mode and source the run script the work directory kept:
    ```bash
-   vivado -mode gui -source [work-dir]/output/run/run_cosim.tcl
+   vivado -mode gui -source [work-dir]/run_cosim.tcl
    ```
 
 This allows real-time observation and waveform analysis of the frozen state.
+
+The work directory holds the rest of what a post-mortem needs alongside it:
+`tb_<TOP>.sv` is the generated testbench, `vivado.log` is the transcript of the
+run that hung, and `run/` is the Vivado project itself
+(`run/cosim.sim/sim_1/behav/xsim/` is where `-xsim_save_waveform` writes
+`wave.wdb`).
 
 ```admonish warning
 Cross-channel access for HBM is not currently supported in fast cosimulation. Each AXI interface can only access one HBM channel.

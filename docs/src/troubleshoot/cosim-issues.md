@@ -97,7 +97,7 @@ Run with waveform capture and a persistent work directory so you can inspect the
 Then open the waveform in Vivado GUI:
 
 ```bash
-vivado -mode gui -source ./cosim_work/output/run/run_cosim.tcl
+vivado -mode gui -source ./cosim_work/run_cosim.tcl
 ```
 
 In the waveform viewer, add the AXI memory interface signals and compare the expected vs actual data on each transaction. Look for read data that does not match what the host wrote, or write transactions that target unexpected addresses.

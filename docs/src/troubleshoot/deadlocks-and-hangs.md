@@ -114,7 +114,7 @@ Run cosim with a persistent work directory and waveform capture enabled so you c
 If the simulation hangs, press Ctrl-C to terminate it, then open the waveform in Vivado:
 
 ```bash
-vivado -mode gui -source ./cosim_work/output/run/run_cosim.tcl
+vivado -mode gui -source ./cosim_work/run_cosim.tcl
 ```
 
 Inspect the AXI and stream signals to identify which channel is stalled. A valid signal held high with a ready signal held low indicates backpressure; a ready signal high with no valid indicates the producer has stopped sending.
