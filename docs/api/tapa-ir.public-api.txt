@@ -681,6 +681,67 @@ pub unsafe fn tapa_ir::floorplan::PipelineScheme::clone_to_uninit(&self, *mut u8
 impl<T> core::convert::From<T> for tapa_ir::floorplan::PipelineScheme
 pub fn tapa_ir::floorplan::PipelineScheme::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::floorplan::PipelineScheme where T: for<'de> serde_core::de::Deserialize<'de>
+pub enum tapa_ir::floorplan::Resource
+pub tapa_ir::floorplan::Resource::Bram18k
+pub tapa_ir::floorplan::Resource::Dsp
+pub tapa_ir::floorplan::Resource::Ff
+pub tapa_ir::floorplan::Resource::Lut
+pub tapa_ir::floorplan::Resource::Uram
+impl tapa_ir::floorplan::Resource
+pub const tapa_ir::floorplan::Resource::ALL: [Self; 5]
+pub fn tapa_ir::floorplan::Resource::amount(self, &tapa_ir::floorplan::Area) -> u64
+pub fn tapa_ir::floorplan::Resource::is_logic(self) -> bool
+pub fn tapa_ir::floorplan::Resource::name(self) -> &'static str
+impl core::clone::Clone for tapa_ir::floorplan::Resource
+pub fn tapa_ir::floorplan::Resource::clone(&self) -> tapa_ir::floorplan::Resource
+impl core::cmp::Eq for tapa_ir::floorplan::Resource
+impl core::cmp::Ord for tapa_ir::floorplan::Resource
+pub fn tapa_ir::floorplan::Resource::cmp(&self, &tapa_ir::floorplan::Resource) -> core::cmp::Ordering
+impl core::cmp::PartialEq for tapa_ir::floorplan::Resource
+pub fn tapa_ir::floorplan::Resource::eq(&self, &tapa_ir::floorplan::Resource) -> bool
+impl core::cmp::PartialOrd for tapa_ir::floorplan::Resource
+pub fn tapa_ir::floorplan::Resource::partial_cmp(&self, &tapa_ir::floorplan::Resource) -> core::option::Option<core::cmp::Ordering>
+impl core::fmt::Debug for tapa_ir::floorplan::Resource
+pub fn tapa_ir::floorplan::Resource::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tapa_ir::floorplan::Resource
+pub fn tapa_ir::floorplan::Resource::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tapa_ir::floorplan::Resource
+impl core::marker::StructuralPartialEq for tapa_ir::floorplan::Resource
+impl core::marker::Freeze for tapa_ir::floorplan::Resource
+impl core::marker::Send for tapa_ir::floorplan::Resource
+impl core::marker::Sync for tapa_ir::floorplan::Resource
+impl core::marker::Unpin for tapa_ir::floorplan::Resource
+impl core::marker::UnsafeUnpin for tapa_ir::floorplan::Resource
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::floorplan::Resource
+impl core::panic::unwind_safe::UnwindSafe for tapa_ir::floorplan::Resource
+impl<Q, K> equivalent::Comparable<K> for tapa_ir::floorplan::Resource where Q: core::cmp::Ord + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::floorplan::Resource::compare(&self, &K) -> core::cmp::Ordering
+impl<Q, K> equivalent::Equivalent<K> for tapa_ir::floorplan::Resource where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::floorplan::Resource::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::floorplan::Resource where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::floorplan::Resource::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_ir::floorplan::Resource where U: core::convert::From<T>
+pub fn tapa_ir::floorplan::Resource::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_ir::floorplan::Resource where U: core::convert::Into<T>
+pub type tapa_ir::floorplan::Resource::Error = core::convert::Infallible
+pub fn tapa_ir::floorplan::Resource::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_ir::floorplan::Resource where U: core::convert::TryFrom<T>
+pub type tapa_ir::floorplan::Resource::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_ir::floorplan::Resource::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_ir::floorplan::Resource where T: core::clone::Clone
+pub type tapa_ir::floorplan::Resource::Owned = T
+pub fn tapa_ir::floorplan::Resource::clone_into(&self, &mut T)
+pub fn tapa_ir::floorplan::Resource::to_owned(&self) -> T
+impl<T> core::any::Any for tapa_ir::floorplan::Resource where T: 'static + ?core::marker::Sized
+pub fn tapa_ir::floorplan::Resource::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_ir::floorplan::Resource where T: ?core::marker::Sized
+pub fn tapa_ir::floorplan::Resource::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_ir::floorplan::Resource where T: ?core::marker::Sized
+pub fn tapa_ir::floorplan::Resource::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_ir::floorplan::Resource where T: core::clone::Clone
+pub unsafe fn tapa_ir::floorplan::Resource::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_ir::floorplan::Resource
+pub fn tapa_ir::floorplan::Resource::from(T) -> T
 pub enum tapa_ir::floorplan::RoutedChannel
 pub tapa_ir::floorplan::RoutedChannel::Axi
 pub tapa_ir::floorplan::RoutedChannel::Axi::bank: tapa_ir::connectivity::MemoryBank
@@ -745,6 +806,8 @@ pub tapa_ir::floorplan::Area::lut: u64
 pub tapa_ir::floorplan::Area::uram: u64
 impl tapa_ir::floorplan::Area
 pub fn tapa_ir::floorplan::Area::checked_add_scaled(self, Self, u64) -> core::option::Option<Self>
+pub fn tapa_ir::floorplan::Area::from_amounts(impl core::ops::function::FnMut(tapa_ir::floorplan::Resource) -> u64) -> Self
+pub fn tapa_ir::floorplan::Area::try_from_amounts<E>(impl core::ops::function::FnMut(tapa_ir::floorplan::Resource) -> core::result::Result<u64, E>) -> core::result::Result<Self, E>
 impl core::clone::Clone for tapa_ir::floorplan::Area
 pub fn tapa_ir::floorplan::Area::clone(&self) -> tapa_ir::floorplan::Area
 impl core::cmp::Eq for tapa_ir::floorplan::Area
@@ -2397,6 +2460,67 @@ pub unsafe fn tapa_ir::floorplan::PipelineScheme::clone_to_uninit(&self, *mut u8
 impl<T> core::convert::From<T> for tapa_ir::floorplan::PipelineScheme
 pub fn tapa_ir::floorplan::PipelineScheme::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::floorplan::PipelineScheme where T: for<'de> serde_core::de::Deserialize<'de>
+pub enum tapa_ir::Resource
+pub tapa_ir::Resource::Bram18k
+pub tapa_ir::Resource::Dsp
+pub tapa_ir::Resource::Ff
+pub tapa_ir::Resource::Lut
+pub tapa_ir::Resource::Uram
+impl tapa_ir::floorplan::Resource
+pub const tapa_ir::floorplan::Resource::ALL: [Self; 5]
+pub fn tapa_ir::floorplan::Resource::amount(self, &tapa_ir::floorplan::Area) -> u64
+pub fn tapa_ir::floorplan::Resource::is_logic(self) -> bool
+pub fn tapa_ir::floorplan::Resource::name(self) -> &'static str
+impl core::clone::Clone for tapa_ir::floorplan::Resource
+pub fn tapa_ir::floorplan::Resource::clone(&self) -> tapa_ir::floorplan::Resource
+impl core::cmp::Eq for tapa_ir::floorplan::Resource
+impl core::cmp::Ord for tapa_ir::floorplan::Resource
+pub fn tapa_ir::floorplan::Resource::cmp(&self, &tapa_ir::floorplan::Resource) -> core::cmp::Ordering
+impl core::cmp::PartialEq for tapa_ir::floorplan::Resource
+pub fn tapa_ir::floorplan::Resource::eq(&self, &tapa_ir::floorplan::Resource) -> bool
+impl core::cmp::PartialOrd for tapa_ir::floorplan::Resource
+pub fn tapa_ir::floorplan::Resource::partial_cmp(&self, &tapa_ir::floorplan::Resource) -> core::option::Option<core::cmp::Ordering>
+impl core::fmt::Debug for tapa_ir::floorplan::Resource
+pub fn tapa_ir::floorplan::Resource::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tapa_ir::floorplan::Resource
+pub fn tapa_ir::floorplan::Resource::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tapa_ir::floorplan::Resource
+impl core::marker::StructuralPartialEq for tapa_ir::floorplan::Resource
+impl core::marker::Freeze for tapa_ir::floorplan::Resource
+impl core::marker::Send for tapa_ir::floorplan::Resource
+impl core::marker::Sync for tapa_ir::floorplan::Resource
+impl core::marker::Unpin for tapa_ir::floorplan::Resource
+impl core::marker::UnsafeUnpin for tapa_ir::floorplan::Resource
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::floorplan::Resource
+impl core::panic::unwind_safe::UnwindSafe for tapa_ir::floorplan::Resource
+impl<Q, K> equivalent::Comparable<K> for tapa_ir::floorplan::Resource where Q: core::cmp::Ord + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::floorplan::Resource::compare(&self, &K) -> core::cmp::Ordering
+impl<Q, K> equivalent::Equivalent<K> for tapa_ir::floorplan::Resource where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::floorplan::Resource::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::floorplan::Resource where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::floorplan::Resource::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_ir::floorplan::Resource where U: core::convert::From<T>
+pub fn tapa_ir::floorplan::Resource::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_ir::floorplan::Resource where U: core::convert::Into<T>
+pub type tapa_ir::floorplan::Resource::Error = core::convert::Infallible
+pub fn tapa_ir::floorplan::Resource::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_ir::floorplan::Resource where U: core::convert::TryFrom<T>
+pub type tapa_ir::floorplan::Resource::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_ir::floorplan::Resource::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_ir::floorplan::Resource where T: core::clone::Clone
+pub type tapa_ir::floorplan::Resource::Owned = T
+pub fn tapa_ir::floorplan::Resource::clone_into(&self, &mut T)
+pub fn tapa_ir::floorplan::Resource::to_owned(&self) -> T
+impl<T> core::any::Any for tapa_ir::floorplan::Resource where T: 'static + ?core::marker::Sized
+pub fn tapa_ir::floorplan::Resource::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_ir::floorplan::Resource where T: ?core::marker::Sized
+pub fn tapa_ir::floorplan::Resource::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_ir::floorplan::Resource where T: ?core::marker::Sized
+pub fn tapa_ir::floorplan::Resource::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_ir::floorplan::Resource where T: core::clone::Clone
+pub unsafe fn tapa_ir::floorplan::Resource::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_ir::floorplan::Resource
+pub fn tapa_ir::floorplan::Resource::from(T) -> T
 pub enum tapa_ir::RoutedChannel
 pub tapa_ir::RoutedChannel::Axi
 pub tapa_ir::RoutedChannel::Axi::bank: tapa_ir::connectivity::MemoryBank
@@ -2656,6 +2780,8 @@ pub tapa_ir::Area::lut: u64
 pub tapa_ir::Area::uram: u64
 impl tapa_ir::floorplan::Area
 pub fn tapa_ir::floorplan::Area::checked_add_scaled(self, Self, u64) -> core::option::Option<Self>
+pub fn tapa_ir::floorplan::Area::from_amounts(impl core::ops::function::FnMut(tapa_ir::floorplan::Resource) -> u64) -> Self
+pub fn tapa_ir::floorplan::Area::try_from_amounts<E>(impl core::ops::function::FnMut(tapa_ir::floorplan::Resource) -> core::result::Result<u64, E>) -> core::result::Result<Self, E>
 impl core::clone::Clone for tapa_ir::floorplan::Area
 pub fn tapa_ir::floorplan::Area::clone(&self) -> tapa_ir::floorplan::Area
 impl core::cmp::Eq for tapa_ir::floorplan::Area
