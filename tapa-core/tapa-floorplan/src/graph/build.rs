@@ -150,7 +150,10 @@ impl FloorGraphBuilder {
 
             self.vertices[host].area = self.vertices[host]
                 .area
-                .checked_add(fifo_area(data_width, floorplanned_fifo_storage_depth(depth)))
+                .checked_add(fifo_area(
+                    data_width,
+                    floorplanned_fifo_storage_depth(depth),
+                ))
                 .ok_or_else(|| GraphError::ResourceOverflow(fifo_name.clone()))?;
             self.co_located.push(CoLocatedInstance {
                 name: fifo_name.clone(),
@@ -453,11 +456,12 @@ impl FloorGraphBuilder {
         dst: usize,
         width: u32,
     ) -> Result<(), GraphError> {
-        self.add_placement_width(src, dst, width)
-            .ok_or_else(|| GraphError::ControlWidthOverflow {
+        self.add_placement_width(src, dst, width).ok_or_else(|| {
+            GraphError::ControlWidthOverflow {
                 instance: instance.to_string(),
                 channel,
-            })?;
+            }
+        })?;
         nets.push(ControlNet {
             instance: instance.to_string(),
             channel,

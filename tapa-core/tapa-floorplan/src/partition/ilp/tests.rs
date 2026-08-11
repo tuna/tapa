@@ -905,8 +905,16 @@ fn multilevel_infeasible_refinement_reuses_the_flat_atomic_formulation() {
     );
     let constraints = exact_resource_cap_constraints(&device, block_limit);
     let regions = atomic_regions(&device);
-    let domains = candidate_domains(&graph, &device, &regions, &region_areas(&device, &regions).expect("region areas"), logic_limit, None, &constraints)
-        .expect("flat domains");
+    let domains = candidate_domains(
+        &graph,
+        &device,
+        &regions,
+        &region_areas(&device, &regions).expect("region areas"),
+        logic_limit,
+        None,
+        &constraints,
+    )
+    .expect("flat domains");
     let expected = FloorplanModel::build(
         &graph,
         &device,
@@ -1403,7 +1411,12 @@ fn multilevel_atomic_placement_starts_where_the_row_pass_landed() {
         .into_iter()
         .filter(|(region, _)| region.width() == 1 && region.height() == 1)
         .map(|(region, budget)| {
-            budget / device.island_area(&region).expect("region area").lut.as_f64()
+            budget
+                / device
+                    .island_area(&region)
+                    .expect("region area")
+                    .lut
+                    .as_f64()
         })
         .collect();
     assert!(!atomic.is_empty(), "the atomic pass must have run");
@@ -1556,7 +1569,9 @@ fn infeasible_placement_without_an_oversubscribed_resource_says_so() {
     )
     .expect_err("the solver reports infeasible regardless");
     assert!(
-        error.to_string().contains("wire capacity or per-slot packing"),
+        error
+            .to_string()
+            .contains("wire capacity or per-slot packing"),
         "got {error}",
     );
 }

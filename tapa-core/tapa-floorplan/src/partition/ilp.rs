@@ -282,17 +282,19 @@ fn floorplan_with_config(
                 opts,
             ) {
                 Ok(assignment) => assignment.placements,
-                Err(IlpError::Infeasible { .. } | IlpError::NoCandidates { .. }) => solve_iteration(
-                    graph,
-                    device,
-                    &slots,
-                    None,
-                    config,
-                    atomic_base,
-                    solver,
-                    opts,
-                )?
-                .placements,
+                Err(IlpError::Infeasible { .. } | IlpError::NoCandidates { .. }) => {
+                    solve_iteration(
+                        graph,
+                        device,
+                        &slots,
+                        None,
+                        config,
+                        atomic_base,
+                        solver,
+                        opts,
+                    )?
+                    .placements
+                }
                 Err(error) => return Err(error),
             }
         }
@@ -548,7 +550,9 @@ fn finish_iteration(
     opts: &SolveOpts,
 ) -> Result<SolvedIteration, IlpError> {
     log::info!("placement succeeded at usage limit {:.2}", rung.usage_limit);
-    let refined = rung.model.refine_lexicographic(solver, opts, &rung.solution)?;
+    let refined = rung
+        .model
+        .refine_lexicographic(solver, opts, &rung.solution)?;
     if refined.is_none() {
         log::warn!(
             "the placement's lexicographic refinement found no incumbent; this plan is still \
@@ -870,7 +874,16 @@ impl FloorplanModel {
         let x = add_assignment_vars(&mut lp, graph, domains);
         let y = add_edge_vars(&mut lp, graph, domains);
         add_coupling(&mut lp, graph, domains, &x, &y);
-        add_resource_constraints(&mut lp, graph, areas, domains, usage_limit, constraints, &x, &y)?;
+        add_resource_constraints(
+            &mut lp,
+            graph,
+            areas,
+            domains,
+            usage_limit,
+            constraints,
+            &x,
+            &y,
+        )?;
         add_cut_constraints(&mut lp, graph, domains, cuts, &y);
         add_objective(&mut lp, graph, device, domains, &y)?;
         Ok(Self { lp, x })

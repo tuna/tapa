@@ -1060,7 +1060,11 @@ mod tests {
             scaled_area(device.slot(1, 1).expect("slot").area, 0.7).ff,
             "an untouched slot keeps its whole derated budget",
         );
-        assert_eq!(budgets.len(), device.slots.len(), "every slot gets a budget");
+        assert_eq!(
+            budgets.len(),
+            device.slots.len(),
+            "every slot gets a budget"
+        );
 
         let overfull = BTreeMap::from([(
             Coor::slot(0, 1).region_name(),
@@ -1098,23 +1102,21 @@ mod tests {
             ..SolveOpts::default()
         };
 
-        let route = |baseline: &BTreeMap<String, Area>| {
-            match plan_routes(
-                &graph,
-                &regions,
-                baseline,
-                &device,
-                PipelineScheme::Single,
-                MAX_USAGE_LIMIT,
-                &CbcSolver::new(),
-                &opts,
-            ) {
-                Ok(routes) => routes,
-                Err(PipelineError::Route(RouteError::Solver(SolverError::Spawn { .. }))) => {
-                    crate::solver::missing_cbc()
-                }
-                Err(error) => panic!("routing failed: {error}"),
+        let route = |baseline: &BTreeMap<String, Area>| match plan_routes(
+            &graph,
+            &regions,
+            baseline,
+            &device,
+            PipelineScheme::Single,
+            MAX_USAGE_LIMIT,
+            &CbcSolver::new(),
+            &opts,
+        ) {
+            Ok(routes) => routes,
+            Err(PipelineError::Route(RouteError::Solver(SolverError::Spawn { .. }))) => {
+                crate::solver::missing_cbc()
             }
+            Err(error) => panic!("routing failed: {error}"),
         };
 
         let unconstrained = route(&BTreeMap::new());
@@ -1126,7 +1128,9 @@ mod tests {
 
         let constrained = route(&baseline);
         assert!(
-            !constrained[0].reg_regions.contains(&"SLOT_X0Y1".to_string()),
+            !constrained[0]
+                .reg_regions
+                .contains(&"SLOT_X0Y1".to_string()),
             "the full slot must hold no Body registers: {:?}",
             constrained[0],
         );

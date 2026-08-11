@@ -50,7 +50,12 @@ pub fn refine(
     achieved: f64,
     rank_rows: &[Vec<LpVar>],
 ) -> Result<Option<LpSolution>, SolverError> {
-    lp.add_constraint(PIN_ROW.to_string(), pinned, Comparison::Le, pin_bound(achieved));
+    lp.add_constraint(
+        PIN_ROW.to_string(),
+        pinned,
+        Comparison::Le,
+        pin_bound(achieved),
+    );
     lp.set_objective(rank_objective(rank_rows));
     let refined = solver.solve(lp, opts)?;
     Ok(refined.is_found().then_some(refined))
