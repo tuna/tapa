@@ -139,40 +139,44 @@ struct vec_t : protected std::array<T, N> {
   TAPA_VEC_DEFINE_OP(>>)
 #undef TAPA_VEC_DEFINE_OP
 
+// Unary operators build a new vector: `-v` must not negate `v` in place.
 #define TAPA_VEC_DEFINE_OP(op)          \
-  vec_t<T, N> operator op() {           \
+  vec_t<T, N> operator op() const {     \
     TAPA_VEC_INLINE;                    \
+    vec_t<T, N> result;                 \
     for (size_type i = 0; i < N; ++i) { \
       TAPA_VEC_UNROLL;                  \
-      set(i, op get(i));                \
+      result.set(i, op get(i));         \
     }                                   \
-    return *this;                       \
+    return result;                      \
   }
   TAPA_VEC_DEFINE_OP(+)
   TAPA_VEC_DEFINE_OP(-)
   TAPA_VEC_DEFINE_OP(~)
 #undef TAPA_VEC_DEFINE_OP
 
-#define TAPA_VEC_DEFINE_OP(op)                       \
-  template <typename T2>                             \
-  vec_t<T, N> operator op(const vec_t<T2, N>& rhs) { \
-    TAPA_VEC_INLINE;                                 \
-    vec_t<T, N> result;                              \
-    for (size_type i = 0; i < N; ++i) {              \
-      TAPA_VEC_UNROLL;                               \
-      result.set(i, get(i) op rhs[i]);               \
-    }                                                \
-    return result;                                   \
-  }                                                  \
-  template <typename T2>                             \
-  vec_t<T, N> operator op(const T2 & rhs) {          \
-    TAPA_VEC_INLINE;                                 \
-    vec_t<T, N> result;                              \
-    for (size_type i = 0; i < N; ++i) {              \
-      TAPA_VEC_UNROLL;                               \
-      result.set(i, get(i) op rhs);                  \
-    }                                                \
-    return result;                                   \
+// Binary operators read the left operand and leave it alone, so they are
+// const: `a + b` must work when `a` is a `const vec_t`.
+#define TAPA_VEC_DEFINE_OP(op)                             \
+  template <typename T2>                                   \
+  vec_t<T, N> operator op(const vec_t<T2, N>& rhs) const { \
+    TAPA_VEC_INLINE;                                       \
+    vec_t<T, N> result;                                    \
+    for (size_type i = 0; i < N; ++i) {                    \
+      TAPA_VEC_UNROLL;                                     \
+      result.set(i, get(i) op rhs[i]);                     \
+    }                                                      \
+    return result;                                         \
+  }                                                        \
+  template <typename T2>                                   \
+  vec_t<T, N> operator op(const T2 & rhs) const {          \
+    TAPA_VEC_INLINE;                                       \
+    vec_t<T, N> result;                                    \
+    for (size_type i = 0; i < N; ++i) {                    \
+      TAPA_VEC_UNROLL;                                     \
+      result.set(i, get(i) op rhs);                        \
+    }                                                      \
+    return result;                                         \
   }
   TAPA_VEC_DEFINE_OP(+)
   TAPA_VEC_DEFINE_OP(-)

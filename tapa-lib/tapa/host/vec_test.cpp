@@ -118,14 +118,36 @@ TEST(VecTest, UnaryOperatorsApplyElementwise) {
   EXPECT_TRUE(Equals(~MakeVec4(0, 1, -1, 5), ~0, ~1, ~(-1), ~5));
 }
 
+// `-v` used to negate `v` itself and hand back a copy of the result, so the
+// operand of every unary operator was silently destroyed.
+TEST(VecTest, UnaryOperatorsLeaveTheirOperandAlone) {
+  Vec4 v = MakeVec4(1, -2, 3, -4);
+  EXPECT_TRUE(Equals(-v, -1, 2, -3, 4));
+  EXPECT_TRUE(Equals(v, 1, -2, 3, -4));
+  EXPECT_TRUE(Equals(~v, ~1, ~(-2), ~3, ~(-4)));
+  EXPECT_TRUE(Equals(v, 1, -2, 3, -4));
+}
+
+// Reading a vector never modifies it, so every operator that only reads is
+// callable on a `const` one.
+TEST(VecTest, ConstVectorsSupportTheReadOnlyOperators) {
+  const Vec4 v = MakeVec4(1, 2, 3, 4);
+  EXPECT_TRUE(Equals(-v, -1, -2, -3, -4));
+  EXPECT_TRUE(Equals(v + v, 2, 4, 6, 8));
+  EXPECT_TRUE(Equals(v * 3, 3, 6, 9, 12));
+}
+
 TEST(VecTest, BinaryOperatorsAgainstAnotherVector) {
   const Vec4 lhs = MakeVec4(10, 20, 30, 40);
   const Vec4 rhs = MakeVec4(1, 2, 3, 4);
-  EXPECT_TRUE(Equals(Vec4(lhs) + rhs, 11, 22, 33, 44));
-  EXPECT_TRUE(Equals(Vec4(lhs) - rhs, 9, 18, 27, 36));
-  EXPECT_TRUE(Equals(Vec4(lhs) * rhs, 10, 40, 90, 160));
-  EXPECT_TRUE(Equals(Vec4(lhs) / rhs, 10, 10, 10, 10));
-  EXPECT_TRUE(Equals(Vec4(lhs) % rhs, 0, 0, 0, 0));
+  EXPECT_TRUE(Equals(lhs + rhs, 11, 22, 33, 44));
+  EXPECT_TRUE(Equals(lhs - rhs, 9, 18, 27, 36));
+  EXPECT_TRUE(Equals(lhs * rhs, 10, 40, 90, 160));
+  EXPECT_TRUE(Equals(lhs / rhs, 10, 10, 10, 10));
+  EXPECT_TRUE(Equals(lhs % rhs, 0, 0, 0, 0));
+  // Neither operand is touched.
+  EXPECT_TRUE(Equals(lhs, 10, 20, 30, 40));
+  EXPECT_TRUE(Equals(rhs, 1, 2, 3, 4));
 }
 
 TEST(VecTest, BinaryOperatorsAgainstAScalar) {
