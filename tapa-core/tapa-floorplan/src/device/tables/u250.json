@@ -2,6 +2,7 @@
     "cols": 2,
     "key": "u250",
     "part_num": "xcu250-figd2104-2L-e",
+    "platform_name": "xilinx_u250_gen3x16_xdma_4_1_202210_1",
     "rows": 4,
     "slots": [
         {
@@ -27,14 +28,19 @@
             "area": {
                 "bram_18k": 768,
                 "dsp": 1536,
-                "ff": 433920,
-                "lut": 216960,
+                "ff": 426240,
+                "lut": 213120,
                 "uram": 128
             },
             "centroid_x": 0,
             "centroid_y": 150,
             "pblock_ranges": [
                 "CLOCKREGION_X0Y4:CLOCKREGION_X3Y7"
+            ],
+            "tags": [
+                "DDR[1]",
+                "S_AXI_CONTROL",
+                "CLK_RST"
             ],
             "wire_cap": {
                 "north": 11520,
@@ -84,16 +90,19 @@
         },
         {
             "area": {
-                "bram_18k": 576,
-                "dsp": 1536,
-                "ff": 430080,
-                "lut": 215040,
-                "uram": 192
+                "bram_18k": 568,
+                "dsp": 1496,
+                "ff": 413760,
+                "lut": 206880,
+                "uram": 184
             },
             "centroid_x": 100,
             "centroid_y": 0,
             "pblock_ranges": [
                 "CLOCKREGION_X4Y0:CLOCKREGION_X7Y3"
+            ],
+            "tags": [
+                "DDR[0]"
             ],
             "wire_cap": {
                 "north": 11520
@@ -103,11 +112,11 @@
         },
         {
             "area": {
-                "bram_18k": 576,
-                "dsp": 1536,
-                "ff": 430080,
-                "lut": 215040,
-                "uram": 192
+                "bram_18k": 0,
+                "dsp": 0,
+                "ff": 0,
+                "lut": 0,
+                "uram": 0
             },
             "centroid_x": 100,
             "centroid_y": 150,
@@ -123,16 +132,19 @@
         },
         {
             "area": {
-                "bram_18k": 576,
-                "dsp": 1536,
-                "ff": 430080,
-                "lut": 215040,
-                "uram": 192
+                "bram_18k": 552,
+                "dsp": 1458,
+                "ff": 404400,
+                "lut": 202200,
+                "uram": 180
             },
             "centroid_x": 100,
             "centroid_y": 300,
             "pblock_ranges": [
                 "CLOCKREGION_X4Y8:CLOCKREGION_X7Y11"
+            ],
+            "tags": [
+                "DDR[2]"
             ],
             "wire_cap": {
                 "north": 11520,
@@ -154,11 +166,15 @@
             "pblock_ranges": [
                 "CLOCKREGION_X4Y12:CLOCKREGION_X7Y15"
             ],
+            "tags": [
+                "DDR[3]"
+            ],
             "wire_cap": {
                 "south": 11520
             },
             "x": 1,
             "y": 3
         }
-    ]
+    ],
+    "user_pblock_name": "pblock_dynamic_region"
 }

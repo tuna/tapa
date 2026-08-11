@@ -751,9 +751,39 @@ mod tests {
             bridge_instance: None,
         };
 
-        for part in ["xcu250-figd2104-2L-e", "xcvc1902-vsva2197-2MP-e-S"] {
+        for part in [
+            "xcu250-figd2104-2L-e",
+            "xcu280-fsvh2892-2L-e",
+            "xcvc1902-vsva2197-2MP-e-S",
+        ] {
             let mut state = WorkState::new(graph.clone());
             state.flow.part_num = Some(part.to_string());
+            // Exact bank locations are only valid for the platform the table
+            // was measured on, so the platform check runs first.
+            state.flow.platform = crate::device::select_device(part)
+                .expect("known part")
+                .platform_name
+                .clone();
+            // An index no device models — a typo in the connectivity file —
+            // must be caught before CBC is handed an unsolvable problem.
+            let mut unmodeled = interface.clone();
+            unmodeled.bank.index = 99;
+            let error = plan_with_inputs(
+                &state,
+                &PlanOptions::default(),
+                &PlanInputs {
+                    memory: vec![unmodeled],
+                    control: None,
+                },
+            )
+            .expect_err("an unmodeled bank must fail before CBC");
+            assert!(
+                matches!(error, PlanError::BankTag { matches: 0, .. }),
+                "{part}: expected a bank-tag error, got {error:?}"
+            );
+
+            // Every table models `DDR[0]`, so the same call must get past the
+            // bank check (it still fails later on this stub graph).
             let error = plan_with_inputs(
                 &state,
                 &PlanOptions::default(),
@@ -762,8 +792,11 @@ mod tests {
                     control: None,
                 },
             )
-            .expect_err("an unmodeled bank must fail before CBC");
-            assert!(matches!(error, PlanError::BankTag { matches: 0, .. }));
+            .expect_err("the stub graph cannot be planned");
+            assert!(
+                !matches!(error, PlanError::BankTag { .. }),
+                "{part}: DDR[0] must resolve to a slot, got {error:?}"
+            );
         }
     }
 

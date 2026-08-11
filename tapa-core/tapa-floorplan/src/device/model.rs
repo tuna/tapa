@@ -193,6 +193,22 @@ pub enum DeviceValidationError {
         /// The bank tag requiring a platform.
         tag: String,
     },
+    /// A tag anchors placement to this slot, but the slot has no fabric for
+    /// the anchored logic to occupy.
+    #[error(
+        "slot ({x},{y}) carries tag `{tag}` but has no fabric; an anchor pins \
+         logic to its slot, so a slot with no capacity makes every plan \
+         infeasible — give the slot the resources the platform leaves it, or \
+         move the tag to the slot that borders the interface"
+    )]
+    AnchorTagWithoutCapacity {
+        /// Slot column.
+        x: u32,
+        /// Slot row.
+        y: u32,
+        /// The tag anchoring logic to an empty slot.
+        tag: String,
+    },
 }
 
 impl Device {
@@ -261,6 +277,24 @@ impl Device {
                         });
                     }
                 }
+            }
+        }
+
+        // A tag is a placement anchor: the vertex that carries it can only go
+        // in the slot the tag names. An empty slot therefore does not mean
+        // "nothing is placed here" — it means nothing can be placed at all,
+        // and the ILP reports that as a generic infeasibility far from the
+        // cause.
+        for slot in &self.slots {
+            if slot.area != tapa_ir::Area::default() {
+                continue;
+            }
+            if let Some(tag) = slot.tags.first() {
+                return Err(DeviceValidationError::AnchorTagWithoutCapacity {
+                    x: slot.x,
+                    y: slot.y,
+                    tag: tag.clone(),
+                });
             }
         }
 
@@ -585,6 +619,33 @@ mod tests {
         device
             .validate()
             .expect("SLR markers and control tags are not banks");
+    }
+
+    /// An anchor pins its vertex to the tagged slot and nowhere else, so a
+    /// tag on an empty slot is not "nothing goes here" — it is "nothing can be
+    /// placed", which the ILP would otherwise surface as a generic
+    /// infeasibility blaming wire capacity.
+    #[test]
+    fn device_validation_rejects_an_anchor_tag_on_an_empty_slot() {
+        let mut device = grid_2x2();
+        device.platform_name = Some("shell".to_string());
+        device.slots[0].area = tapa_ir::Area::default();
+        device.slots[0].tags.push("S_AXI_CONTROL".to_string());
+        assert_eq!(
+            device.validate(),
+            Err(DeviceValidationError::AnchorTagWithoutCapacity {
+                x: device.slots[0].x,
+                y: device.slots[0].y,
+                tag: "S_AXI_CONTROL".to_string(),
+            })
+        );
+
+        // An empty slot that anchors nothing is fine: it is simply fabric the
+        // platform kept, and the partitioner will never choose it.
+        device.slots[0].tags.clear();
+        device
+            .validate()
+            .expect("an untagged empty slot is a modelling fact, not an error");
     }
 
     #[test]

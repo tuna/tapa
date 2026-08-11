@@ -221,6 +221,142 @@ mod tests {
         }
     }
 
+    /// Every HP I/O bank on `xcu250` lives in clock-region column X4 (banks
+    /// 61-74), so every DDR4 controller is in the right-hand slot column, and
+    /// `platforminfo` puts DDR segment n on SLR n. The shell — where the
+    /// PCIe/XDMA control interface enters — occupies SLR1's right half.
+    #[test]
+    fn u250_external_interfaces_have_exact_unique_slots() {
+        let device = select_device("u250").expect("u250 resolves");
+        assert_eq!(
+            device.platform_name.as_deref(),
+            Some("xilinx_u250_gen3x16_xdma_4_1_202210_1")
+        );
+        assert_eq!(
+            device.user_pblock_name.as_deref(),
+            Some("pblock_dynamic_region")
+        );
+        for (tag, expected) in [
+            ("DDR[0]", (1, 0)),
+            // SLR1's right half is entirely shell, so the interfaces that
+            // enter there anchor to the only slot in SLR1 that has fabric.
+            ("DDR[1]", (0, 1)),
+            ("DDR[2]", (1, 2)),
+            ("DDR[3]", (1, 3)),
+            ("CLK_RST", (0, 1)),
+            ("S_AXI_CONTROL", (0, 1)),
+        ] {
+            let slots = device.slots_with_tag(tag).collect::<Vec<_>>();
+            assert_eq!(slots.len(), 1, "{tag} must identify exactly one slot");
+            assert_eq!((slots[0].x, slots[0].y), expected, "{tag}");
+        }
+    }
+
+    /// Every SLR is cut at the same column boundary, and each slot's capacity
+    /// is the fabric the platform's `pblock_dynamic_region` actually leaves
+    /// it, measured per clock region. The four slots the shell does not touch
+    /// come out exactly equal to the device-level numbers, which is the
+    /// cross-check that the measurement is right.
+    ///
+    /// SLR1 is the interesting row: the shell owns all four of its right-hand
+    /// columns, so slot (1,1) is empty and the interfaces that enter through
+    /// it anchor to (0,1) instead. Re-cutting that row to balance it
+    /// (`X0-X1` / `X2-X3`, 1.8% apart against 4.7% for the aligned cut) was
+    /// tried and rejected: a row-specific cut would put logical column 1 over
+    /// physical `X4-X7` in SLR0 and `X2-X3` in SLR1, asserting an SLL border
+    /// between pblocks that share no physical column.
+    #[test]
+    fn u250_slots_carry_the_platform_dynamic_region() {
+        let device = select_device("u250").expect("u250 resolves");
+        for (x, y, pblock, lut) in [
+            (0, 0, "CLOCKREGION_X0Y0:CLOCKREGION_X3Y3", 216_960),
+            (1, 0, "CLOCKREGION_X4Y0:CLOCKREGION_X7Y3", 206_880),
+            (0, 1, "CLOCKREGION_X0Y4:CLOCKREGION_X3Y7", 213_120),
+            // The shell: no user fabric at all, hence no tag either.
+            (1, 1, "CLOCKREGION_X4Y4:CLOCKREGION_X7Y7", 0),
+            (0, 2, "CLOCKREGION_X0Y8:CLOCKREGION_X3Y11", 216_960),
+            (1, 2, "CLOCKREGION_X4Y8:CLOCKREGION_X7Y11", 202_200),
+            (0, 3, "CLOCKREGION_X0Y12:CLOCKREGION_X3Y15", 216_960),
+            (1, 3, "CLOCKREGION_X4Y12:CLOCKREGION_X7Y15", 215_040),
+        ] {
+            let slot = device.slot(x, y).expect("slot");
+            assert_eq!(slot.pblock_ranges, vec![pblock.to_string()], "({x},{y})");
+            assert_eq!(slot.area.lut, lut, "({x},{y})");
+            assert_eq!(slot.area.ff, lut * 2, "({x},{y})");
+        }
+        // Every column is cut at the same place in every row, so a vertical
+        // hop always joins slots that physically overlap. `border_capacity`,
+        // the pipeline planner's SLR-hop register budget, and the XDC's
+        // `USER_SLL_REG` guidance all depend on that.
+        for slot in &device.slots {
+            let columns: Vec<&str> = slot.pblock_ranges[0]
+                .split(':')
+                .map(|end| end.split('Y').next().expect("CLOCKREGION_X<n>Y<m>"))
+                .collect();
+            let expected: [&str; 2] = if slot.x == 0 {
+                ["CLOCKREGION_X0", "CLOCKREGION_X3"]
+            } else {
+                ["CLOCKREGION_X4", "CLOCKREGION_X7"]
+            };
+            assert_eq!(
+                columns.as_slice(),
+                expected.as_slice(),
+                "slot ({},{}) breaks column alignment",
+                slot.x,
+                slot.y,
+            );
+        }
+    }
+
+    /// VC1902's four NoC memory controllers sit in the bottom row at
+    /// clock regions X0Y0, X3Y0, X6Y0 and X10Y0. The table's memory-facing
+    /// row is y=0, whose left slot spans CR columns X0-X4 and whose right
+    /// slot spans X5-X9, so the first two controllers face the left slot.
+    #[test]
+    fn vck190_external_interfaces_have_exact_unique_slots() {
+        let device = select_device("vck190").expect("vck190 resolves");
+        assert!(device.is_versal);
+        assert_eq!(
+            device.platform_name.as_deref(),
+            Some("xilinx_vck190_base_202410_1")
+        );
+        for (tag, expected) in [
+            ("DDR[0]", (0, 0)),
+            ("DDR[1]", (0, 0)),
+            ("DDR[2]", (1, 0)),
+            ("DDR[3]", (1, 0)),
+            ("CLK_RST", (0, 0)),
+            ("S_AXI_CONTROL", (0, 0)),
+        ] {
+            let slots = device.slots_with_tag(tag).collect::<Vec<_>>();
+            assert_eq!(slots.len(), 1, "{tag} must identify exactly one slot");
+            assert_eq!((slots[0].x, slots[0].y), expected, "{tag}");
+        }
+    }
+
+    /// Anchoring only works when a tag names one slot, so no table may
+    /// repeat an exact bank or interface tag. A copy-paste slip in a
+    /// hand-authored table would otherwise surface as a confusing plan-time
+    /// error. Family tags like the bare `HBM` are deliberately shared.
+    #[test]
+    fn no_device_table_repeats_an_exact_tag() {
+        for (key, _) in TABLES {
+            let device = select_device(key).expect("known device resolves");
+            let mut seen = std::collections::BTreeSet::new();
+            for slot in &device.slots {
+                for tag in &slot.tags {
+                    if !tag.ends_with(']') && !matches!(tag.as_str(), "CLK_RST" | "S_AXI_CONTROL") {
+                        continue;
+                    }
+                    assert!(
+                        seen.insert(tag.clone()),
+                        "{key}: tag {tag} appears on more than one slot"
+                    );
+                }
+            }
+        }
+    }
+
     #[test]
     fn u280_platform_slot_capacities_are_precollected() {
         let device = select_device("u280").expect("u280 resolves");

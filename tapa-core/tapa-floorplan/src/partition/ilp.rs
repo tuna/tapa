@@ -139,6 +139,13 @@ pub enum IlpError {
     /// Candidate filtering left a vertex with nowhere legal to go.
     #[error("vertex `{vertex}` has no feasible candidate region")]
     NoCandidates { vertex: String },
+    /// A vertex is anchored to a tag whose slot cannot hold it. Raising the
+    /// utilization limit cannot help — the anchor admits exactly one region —
+    /// so this is reported instead of being retried into a generic
+    /// infeasibility. Preformatted rather than structured to keep the error
+    /// enum small enough for `clippy::result_large_err`.
+    #[error("{0}")]
+    AnchorUnplaceable(String),
     /// A partition region refers to cells absent from the device model.
     #[error("partition region `{0}` is outside the device model")]
     InvalidRegion(String),
@@ -743,6 +750,47 @@ fn candidate_domains(
         candidates.sort_unstable();
         candidates.dedup();
         if candidates.is_empty() {
+            // An anchored vertex has one admissible region, so "nowhere to go"
+            // has a single cause worth naming. Without this the failure is
+            // retried at a higher limit and finally reported as a generic
+            // infeasibility that blames wire capacity.
+            if let Some(tag) = vertex.required_tag.as_deref() {
+                let tagged: Vec<Coor> = regions
+                    .iter()
+                    .copied()
+                    .filter(|region| region_has_tag(device, region, tag))
+                    .collect();
+                let available = tagged
+                    .first()
+                    .and_then(|region| areas.get(region).map(|total| (region, total)))
+                    .map(|(region, total)| {
+                        scaled_area_with_overrides(
+                            *total,
+                            usage_limit,
+                            &constraints.max_resource_limits,
+                            region,
+                        )
+                    })
+                    .unwrap_or_default();
+                let where_ = if tagged.is_empty() {
+                    "no region".to_string()
+                } else {
+                    tagged
+                        .iter()
+                        .map(Coor::region_name)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                };
+                return Err(IlpError::AnchorUnplaceable(format!(
+                    "`{}` is anchored to `{tag}`, which selects {where_}, but it needs {} \
+                     and only {} is available there; the device table must give that slot \
+                     the resources the platform leaves it, or tag the slot that borders \
+                     the interface instead",
+                    vertex.name,
+                    describe_area(vertex.area),
+                    describe_area(available),
+                )));
+            }
             return Err(IlpError::NoCandidates {
                 vertex: vertex.name.clone(),
             });
@@ -799,6 +847,21 @@ fn area_fits(required: Area, available: Area) -> bool {
     Resource::ALL
         .into_iter()
         .all(|resource| resource.amount(&required) <= resource.amount(&available))
+}
+
+/// An area as a short `LUT=… FF=…` line for an error message, listing only the
+/// resources that are non-zero so an all-zero area reads as "nothing".
+fn describe_area(area: Area) -> String {
+    let parts: Vec<String> = Resource::ALL
+        .into_iter()
+        .filter(|resource| resource.amount(&area) > 0)
+        .map(|resource| format!("{resource:?}={}", resource.amount(&area)))
+        .collect();
+    if parts.is_empty() {
+        "no resources".to_string()
+    } else {
+        parts.join(" ")
+    }
 }
 
 fn complete_assignment(

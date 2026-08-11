@@ -581,7 +581,11 @@ mod tests {
                 },
             )]),
         };
-        let device = select_device("u250").expect("u250");
+        // Every shipped table now names a platform pblock to nest under, so
+        // clear it here to keep the plain, unparented emission covered.
+        // `golden_xdc_for_a_platform_child_pblock` covers the nested form.
+        let mut device = select_device("u250").expect("u250");
+        device.user_pblock_name = None;
 
         let expected = "\
 create_pblock SLOT_X0Y0_TO_SLOT_X0Y0
