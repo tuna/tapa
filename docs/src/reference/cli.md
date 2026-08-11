@@ -149,11 +149,38 @@ Floorplan a design for a multi-die (multi-SLR) FPGA. Run it between `synth` and 
 
 Run it **after** `tapa synth` (it needs each task's resource estimate) and **before** `tapa pack`. The partitioner solves a wire-crossing-minimizing ILP with the local `cbc` solver.
 
+### Supported devices
+
+Floorplanning needs a device table describing the slot grid and where each memory bank and control interface attaches. Tables ship for:
+
+| Device | Part | Banks |
+|---|---|---|
+| Alveo U250 | `xcu250-figd2104-2L-e` | `DDR[0]`–`DDR[3]`, one per SLR |
+| Alveo U280 | `xcu280-fsvh2892-2L-e` | `HBM[0]`–`HBM[31]`, `DDR[0]`, `DDR[1]` |
+| VCK190 | `xcvc1902-vsva2197-2MP-e-S` | `DDR[0]`–`DDR[3]`, by NoC memory controller |
+
+Any other part is rejected with `no floorplan device table matches ...`. The other steps (`analyze`, `synth`, `pack`) work on every part Vitis HLS supports; only floorplanning is restricted.
+
 ### Optional flags (planning)
 
 | Flag | Description |
 |------|-------------|
-| `--connectivity FILE` | Vitis link `sp=` config mapping each direct M-AXI port to a memory bank. Required in practice when the kernel has direct M-AXI ports (HBM/DDR pinning) — without it the planner cannot tell which bank a port reaches. |
+| `--connectivity FILE` | Vitis link `sp=` config mapping each direct M-AXI port to a memory bank. Required in practice when the kernel has direct M-AXI ports (HBM/DDR pinning) — without it the planner cannot tell which bank a port reaches. See [Connectivity file](#connectivity-file) for the exact syntax. |
+
+### Connectivity file
+
+A standard Vitis link config, one `sp=` line per direct M-AXI port:
+
+```ini
+[connectivity]
+sp=VecAdd.a:HBM[0]
+sp=VecAdd.b:HBM[1]
+sp=VecAdd.c:HBM[2]
+```
+
+The left-hand side is `<compute-unit>.<argument>`. TAPA names the compute unit after the top task — its generated bitstream script passes `--connectivity.nk VecAdd:1:VecAdd` — so the name is the bare top task, **not** the `VecAdd_1` form Vitis defaults to when the kernel is instantiated without `nk`. The argument is the top task's parameter name, as it appears in the C++ signature. Bank targets are `HBM[n]` or `DDR[n]`.
+
+The same file is what `tapa pack --connectivity` forwards to `v++ --link` as a `--config`, so one file serves both steps.
 | `--usage-limit FRAC` | Per-slot resource utilization target for a non-DSE plan; raised on infeasibility (default `0.7`). |
 | `--partition-strategy {auto,flat,multi-level}` | Placement schedule (default `auto`). `flat` places directly into atomic slots with one ILP; `multi-level` places into rows (SLRs) first, then refines into atomic slots. `auto` picks between them with a built-in heuristic. |
 | `--pp-scheme {single,double,single_h_double_v}` | How pipeline registers distribute across a crossing's route (default `double`). |

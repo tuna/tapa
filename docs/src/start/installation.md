@@ -98,6 +98,45 @@ sudo apt-get install coinor-cbc
 sudo yum install coin-or-Cbc
 ```
 
+## Running in a container
+
+A minimal base image (for example `ubuntu:24.04`) lacks two things the Xilinx
+tools need. Neither is a TAPA dependency — software simulation works without
+them — but `tapa synth` and cosimulation shell out to Vitis HLS and Vivado,
+and both fail with obscure errors when they are missing.
+
+**A UTF-8 locale.** Vitis HLS aborts with
+`locale::facet::_S_create_c_locale name not valid`:
+
+```bash
+apt-get install -y locales && locale-gen en_US.UTF-8
+export LANG=en_US.UTF-8
+```
+
+**Vivado's runtime libraries.** Vivado fails to start with
+`couldn't load file "libxv_tcltasks.so": libpixman-1.so.0: cannot open shared
+object file`:
+
+```bash
+apt-get install -y libpixman-1-0 libtinfo6 libncurses6 libx11-6 libxext6 \
+  libxrender1 libfontconfig1 libfreetype6
+```
+
+Mount the Xilinx installation and the platform repository into the container
+and source the tool settings as usual:
+
+```bash
+docker run -it \
+  -v /opt/Xilinx:/opt/Xilinx:ro \
+  -v /opt/xilinx/platforms:/opt/xilinx/platforms:ro \
+  ubuntu:24.04
+source /opt/Xilinx/Vitis/<version>/settings64.sh
+```
+
+Running a design on hardware or in hardware emulation additionally needs XRT
+installed inside the container; software simulation and fast cosimulation do
+not.
+
 ## Verify installation
 
 ```bash

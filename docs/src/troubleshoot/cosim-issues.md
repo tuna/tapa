@@ -64,7 +64,18 @@ sudo apt install verilator
 
 ### Verilator compilation error (Verilog parsing error)
 
-TAPA generates Verilog targeting recent Verilator versions. If you see Verilog parsing errors, update Verilator to the version used in TAPA's CI pipeline.
+TAPA needs **Verilator 5.044 or newer** — the version pinned in the repository's
+`MODULE.bazel` and used by CI. Older releases reject the AXI master that Vitis
+HLS generates for any `mmap` port, so even the `vadd` example fails:
+
+```
+%Error: rtl/Stream2Mmap_mmap_m_axi.v:2046:27: Expecting expression to be
+        constant, but can't determine constant for FUNCREF 'log2'
+```
+
+Distribution packages lag well behind (Ubuntu 24.04 ships 5.020), so check
+`verilator --version` and [build from source](https://verilator.org/guide/latest/install.html)
+if it is older. The xsim backend has no such constraint.
 
 ### No waveform support with Verilator
 

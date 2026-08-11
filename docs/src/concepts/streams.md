@@ -177,6 +177,10 @@ void InnerStage(int b, tapa::istreams<pkt_t, kN / 2>& in_q0,
 
 - Always pass streams by reference: `istream<T>&`, `ostream<T>&`. Never by
   value — the stream object is not copyable.
+- A parameter is never a `stream<T>`. `stream` declares a channel and belongs
+  in an upper-level task's body; a task that reads or writes one takes
+  `istream<T>&` or `ostream<T>&`. That applies to the top-level task too — a
+  kernel exposes an external stream port as `istream`/`ostream`.
 - Each stream instance must have exactly one reader and exactly one writer.
 - TAPA software simulation respects stream depth: a full stream blocks the
   writer, matching hardware behavior.
@@ -200,6 +204,30 @@ void Leaf(tapa::istream<float> in) { /* ... */ }  // missing &
 
 ```cpp
 void Leaf(tapa::istream<float>& in) { /* ... */ }
+```
+
+**Wrong** — a channel where a port belongs (a `stream` has no direction, so
+there is no interface for it to become):
+
+```cpp
+void Task(tapa::stream<float>& data_q) { /* ... */ }
+```
+
+```
+error: tapa::stream parameter 'data_q' declares a channel rather than a port;
+a task reads a channel through tapa::istream and writes one through
+tapa::ostream
+```
+
+**Right** — the channel stays in the upper task, the port carries a direction:
+
+```cpp
+void Task(tapa::ostream<float>& data_q) { /* ... */ }
+
+void Upper() {
+  tapa::stream<float> data_q("data_q");
+  tapa::task().invoke(Task, data_q);
+}
 ```
 
 ---

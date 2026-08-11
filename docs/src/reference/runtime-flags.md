@@ -16,6 +16,7 @@ These variables are read by the host executable at startup.
 | `FRT_COSIM_YIELD` | `1` (enabled) | When enabled, the DPI layer calls `thread::yield_now()` on empty reads or full writes. Disable with `0` to busy-wait instead. |
 | `FRT_XSIM_LEGACY` | `0` | Set to `1` to use the legacy xelab command-line format for older Vivado versions. |
 | `FRT_XOCL_BDF` | (unset) | PCIe Bus:Device:Function for XRT/OpenCL device selection. Equivalent to the `-xocl_bdf` gflag. |
+| `TAPA_HOME` | (unset) | TAPA installation prefix, e.g. `/opt/tapa`. Only needed as an override: cosim normally finds its DPI libraries through the library path `tapa g++` links into the host binary. `install.sh` sets it for you (`/etc/profile.d/tapa.sh` for a system-wide install, your shell profile otherwise). Set it by hand if you relocated the installation or copied a host binary to a machine without it. |
 
 ### Example: reproducible single-threaded simulation
 
