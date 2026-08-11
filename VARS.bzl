@@ -12,11 +12,13 @@ XILINX_PLATFORM_REPO_PATHS = "/opt/xilinx/platforms"
 # for when a target names neither a part nor a platform; XILINX_HW_EMU_PLATFORM
 # is what `vpp_xclbin` links the resulting `.xo` against. The two must name the
 # same device -- `v++ --link` rejects a part/platform mismatch -- and the
-# platform has to be one the installed Vitis still accepts, which rules out
-# anything more than a year older than the toolchain. Override both in
-# VARS.local.bzl when the local install ships a different device.
-XILINX_PART_NUM = "xcu250-figd2104-2l-e"
-XILINX_HW_EMU_PLATFORM = "xilinx_u250_gen3x16_xdma_4_1_202210_1"
+# platform has to be one the installed Vitis still accepts. The U55C is the
+# only Alveo that satisfies both across the supported tool range: v++ 2025.2
+# refuses the U250 platform as too old, and newer installs do not ship xcu280.
+# Override both in VARS.local.bzl when the local install ships a different
+# device.
+XILINX_PART_NUM = "xcu55c-fsvh2892-2L-e"
+XILINX_HW_EMU_PLATFORM = "xilinx_u55c_gen3x16_xdma_3_202210_1"
 
 # Remote SSH host for fetching vendor headers. Leave REMOTE_HOST empty to disable.
 REMOTE_HOST = ""

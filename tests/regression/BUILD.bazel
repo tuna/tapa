@@ -48,7 +48,7 @@ tapa_xo(
     hdrs = ["serpens-32ch/tapa/src/mmio.h"],
     clock_period = "3.33",
     jobs = 8,
-    part_num = "xcu280-fsvh2892-2L-e",
+    part_num = "xcu55c-fsvh2892-2L-e",
     tags = [
         "cpu:8",
         "manual",

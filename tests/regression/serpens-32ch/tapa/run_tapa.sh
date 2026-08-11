@@ -8,7 +8,7 @@ tapa \
   --work-dir ${WORK_DIR} \
   compile \
   --top serpens \
-  --part-num xcu280-fsvh2892-2L-e \
+  --part-num xcu55c-fsvh2892-2L-e \
   --clock-period 3.33 \
   -o ${WORK_DIR}/serpens32_256.xo \
   -f src/serpens_tapa_256.cpp \
