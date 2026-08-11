@@ -227,25 +227,60 @@ fn floorplan_with_config(
         PartitionStrategy::Auto => unreachable!("auto strategy was resolved"),
         PartitionStrategy::Flat => {
             let slots = atomic_regions(device);
-            solve_iteration(graph, device, &slots, None, config, solver, opts)?
+            solve_iteration(
+                graph,
+                device,
+                &slots,
+                None,
+                config,
+                config.usage_limit,
+                solver,
+                opts,
+            )?
+            .placements
         }
         PartitionStrategy::MultiLevel => {
             let rows = row_regions(device);
-            let row_assignment = solve_iteration(graph, device, &rows, None, config, solver, opts)?;
+            let row_pass = solve_iteration(
+                graph,
+                device,
+                &rows,
+                None,
+                config,
+                config.usage_limit,
+                solver,
+                opts,
+            )?;
+            // The row pass is a relaxation of the atomic pass at the same
+            // limit: a row's capacity is the sum of its slots', every atomic
+            // assignment induces a row assignment, and the horizontal cuts are
+            // the same rows over the same boundaries. So a rung the rows could
+            // not place is one the slots cannot place either, and the atomic
+            // search starts where the rows landed instead of re-proving them.
+            let atomic_base = row_pass.usage_limit;
             let slots = atomic_regions(device);
             match solve_iteration(
                 graph,
                 device,
                 &slots,
-                Some(&row_assignment),
+                Some(&row_pass.placements),
                 config,
+                atomic_base,
                 solver,
                 opts,
             ) {
-                Ok(assignment) => assignment,
-                Err(IlpError::Infeasible(_) | IlpError::NoCandidates { .. }) => {
-                    solve_iteration(graph, device, &slots, None, config, solver, opts)?
-                }
+                Ok(assignment) => assignment.placements,
+                Err(IlpError::Infeasible(_) | IlpError::NoCandidates { .. }) => solve_iteration(
+                    graph,
+                    device,
+                    &slots,
+                    None,
+                    config,
+                    atomic_base,
+                    solver,
+                    opts,
+                )?
+                .placements,
                 Err(error) => return Err(error),
             }
         }
@@ -345,97 +380,205 @@ fn row_regions(device: &Device) -> Vec<Coor> {
         .collect()
 }
 
-/// Run one partition iteration, retrying only this iteration at successively
-/// higher global usage limits.
+/// A completed partition iteration and the rung of the utilization ladder it
+/// was found on.
+struct SolvedIteration {
+    placements: BTreeMap<String, Coor>,
+    /// The utilization limit this placement was found at. Every lower rung was
+    /// proven infeasible for this iteration.
+    usage_limit: f64,
+}
+
+/// A rung that placed, kept whole so the ladder search can refine the rung it
+/// settles on instead of refining every rung it probes.
+struct FeasibleRung {
+    usage_limit: f64,
+    model: FloorplanModel,
+    domains: Vec<Vec<Coor>>,
+    solution: crate::solver::LpSolution,
+}
+
+/// What one rung of the utilization ladder produced.
+enum Rung {
+    Placed(Box<FeasibleRung>),
+    /// Nothing places at this derating. Carries the error to surface if even
+    /// the ceiling turns out to be infeasible, so a permanent pin, parent, or
+    /// memory-domain conflict is still reported as itself.
+    Infeasible(IlpError),
+}
+
+/// The utilization ladder from `base` up to `ceiling` inclusive, in steps of
+/// [`USAGE_LIMIT_STEP`] with the ceiling always the last rung.
+fn usage_ladder(base: f64, ceiling: f64) -> Vec<f64> {
+    let mut rungs = vec![base];
+    let mut limit = base;
+    while limit < ceiling {
+        limit = (limit + USAGE_LIMIT_STEP).min(ceiling);
+        rungs.push(limit);
+    }
+    rungs
+}
+
+/// Run one partition iteration, searching the utilization ladder for the
+/// lowest derating that places.
+///
+/// Feasibility is monotone in the limit: raising it only widens every candidate
+/// domain and relaxes every resource row, leaving the cuts and the objective
+/// untouched. So the ladder is a sorted predicate and the lowest rung that
+/// places can be searched for rather than walked to.
+///
+/// The search gallops — base, then one rung up, then two, four, … — before
+/// bisecting the bracket it lands in. A design that fits at the requested
+/// derating still costs exactly one solve, a design needing one bump costs the
+/// same as a linear walk, and a design that only fits near the ceiling costs
+/// logarithmically many instead of one solve per rung.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "one iteration needs its graph, device, regions, parent restriction, config, base rung, and solver explicitly"
+)]
 fn solve_iteration(
     graph: &FloorGraph,
     device: &Device,
     regions: &[Coor],
     parents: Option<&BTreeMap<String, Coor>>,
     config: &PlacementConfig,
+    base_usage_limit: f64,
     solver: &dyn Solver,
     opts: &SolveOpts,
-) -> Result<BTreeMap<String, Coor>, IlpError> {
-    let retry_ceiling = config.retry_ceiling;
-    let mut usage_limit = config.usage_limit;
+) -> Result<SolvedIteration, IlpError> {
     // Cuts depend only on the iteration's regions, not on the derating being
-    // retried; compute them once.
+    // searched; compute them once.
     let cuts = find_cuts_for_regions(device, regions);
+    let ladder = usage_ladder(base_usage_limit, config.retry_ceiling);
+    let probe = |rung: usize| {
+        attempt_placement(
+            graph, device, regions, parents, config, &cuts, ladder[rung], solver, opts,
+        )
+    };
 
-    loop {
-        let domains = match candidate_domains(
-            graph,
-            device,
-            regions,
-            usage_limit,
-            parents,
-            &config.constraints,
-        ) {
-            Ok(domains) => domains,
-            Err(error @ IlpError::NoCandidates { .. }) => {
-                // A domain can be empty merely because the current global
-                // utilization derating is too strict. Probe the retry ceiling
-                // once to distinguish that case from a permanent pin, parent,
-                // or memory-domain conflict before deciding whether to retry.
-                match candidate_domains(
-                    graph,
-                    device,
-                    regions,
-                    retry_ceiling,
-                    parents,
-                    &config.constraints,
-                ) {
-                    Ok(_) => {
-                        let Some(next) = next_usage_limit(usage_limit, retry_ceiling) else {
-                            return Err(error);
-                        };
-                        usage_limit = next;
-                    }
-                    Err(permanent) => return Err(permanent),
-                }
-                continue;
+    // The base rung, then the bracket the gallop lands in.
+    let mut infeasible = match probe(0)? {
+        Rung::Placed(found) => return finish_iteration(graph, *found, solver, opts),
+        Rung::Infeasible(reason) => {
+            if ladder.len() == 1 {
+                return Err(reason);
             }
-            Err(error) => return Err(error),
-        };
-        let mut model = FloorplanModel::build(
-            graph,
-            device,
-            &domains,
-            &cuts,
-            usage_limit,
-            &config.constraints,
-        )?;
-        let solution = solver.solve(&model.lp, opts)?;
-        if solution.is_found() {
-            log::info!("placement succeeded at usage limit {usage_limit:.2}");
-            // Lexicographic tie-break: pin the achieved objective, then
-            // minimize a stable candidate ranking so translation-equivalent
-            // optima resolve identically across solver versions.
-            let refined = model.refine_lexicographic(solver, opts, &solution)?;
-            return model.read_back(graph, &domains, refined.as_ref().unwrap_or(&solution));
+            0
         }
-
-        match solution.status {
-            LpStatus::Infeasible => {
-                log::info!("placement infeasible at usage limit {usage_limit:.2}; retrying higher");
-            }
-            LpStatus::NotSolved | LpStatus::Unbounded => {
-                return Err(IlpError::NoIncumbent(solution.status));
-            }
-            LpStatus::Optimal | LpStatus::Feasible => {
-                unreachable!("found incumbents returned during readback")
+    };
+    let last = ladder.len() - 1;
+    let mut stride = 1;
+    let (mut feasible, mut placed) = loop {
+        let rung = (infeasible + stride).min(last);
+        match probe(rung)? {
+            Rung::Placed(found) => break (rung, found),
+            Rung::Infeasible(reason) if rung == last => return Err(reason),
+            Rung::Infeasible(_) => {
+                infeasible = rung;
+                stride *= 2;
             }
         }
+    };
 
-        let Some(next) = next_usage_limit(usage_limit, retry_ceiling) else {
-            return Err(IlpError::Infeasible(retry_ceiling));
-        };
-        usage_limit = next;
+    // Bisect the half-open bracket `(infeasible, feasible]`.
+    while feasible - infeasible > 1 {
+        let rung = infeasible + (feasible - infeasible) / 2;
+        match probe(rung)? {
+            Rung::Placed(found) => {
+                feasible = rung;
+                placed = found;
+            }
+            Rung::Infeasible(_) => infeasible = rung,
+        }
     }
+    finish_iteration(graph, *placed, solver, opts)
 }
 
-fn next_usage_limit(current: f64, ceiling: f64) -> Option<f64> {
-    (current < ceiling).then(|| (current + USAGE_LIMIT_STEP).min(ceiling))
+/// Refine the rung the ladder settled on and read its placement back.
+///
+/// The lexicographic tie-break runs once, here, rather than at every probed
+/// rung: pin the achieved objective, then minimize a stable candidate ranking
+/// so translation-equivalent optima resolve identically across solver versions.
+fn finish_iteration(
+    graph: &FloorGraph,
+    mut rung: FeasibleRung,
+    solver: &dyn Solver,
+    opts: &SolveOpts,
+) -> Result<SolvedIteration, IlpError> {
+    log::info!("placement succeeded at usage limit {:.2}", rung.usage_limit);
+    let refined = rung.model.refine_lexicographic(solver, opts, &rung.solution)?;
+    if refined.is_none() {
+        log::warn!(
+            "the placement's lexicographic refinement found no incumbent; this plan is still \
+             valid but may not reproduce across solver versions",
+        );
+    }
+    let placements = rung.model.read_back(
+        graph,
+        &rung.domains,
+        refined.as_ref().unwrap_or(&rung.solution),
+    )?;
+    Ok(SolvedIteration {
+        placements,
+        usage_limit: rung.usage_limit,
+    })
+}
+
+/// Try to place at exactly `usage_limit`, without the lexicographic refinement
+/// the settled rung gets.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "mirrors solve_iteration's inputs plus the rung being probed"
+)]
+fn attempt_placement(
+    graph: &FloorGraph,
+    device: &Device,
+    regions: &[Coor],
+    parents: Option<&BTreeMap<String, Coor>>,
+    config: &PlacementConfig,
+    cuts: &[Cut],
+    usage_limit: f64,
+    solver: &dyn Solver,
+    opts: &SolveOpts,
+) -> Result<Rung, IlpError> {
+    let domains = match candidate_domains(
+        graph,
+        device,
+        regions,
+        usage_limit,
+        parents,
+        &config.constraints,
+    ) {
+        Ok(domains) => domains,
+        // An empty domain may be a derating that is merely too strict, or a
+        // permanent pin, parent, or memory conflict. Either way nothing places
+        // here; the ladder search decides which by asking the ceiling.
+        Err(error @ IlpError::NoCandidates { .. }) => return Ok(Rung::Infeasible(error)),
+        Err(error) => return Err(error),
+    };
+
+    let model =
+        FloorplanModel::build(graph, device, &domains, cuts, usage_limit, &config.constraints)?;
+    let solution = solver.solve(&model.lp, opts)?;
+    if solution.is_found() {
+        return Ok(Rung::Placed(Box::new(FeasibleRung {
+            usage_limit,
+            model,
+            domains,
+            solution,
+        })));
+    }
+
+    match solution.status {
+        LpStatus::Infeasible => {
+            log::info!("placement infeasible at usage limit {usage_limit:.2}");
+            Ok(Rung::Infeasible(IlpError::Infeasible(config.retry_ceiling)))
+        }
+        LpStatus::NotSolved | LpStatus::Unbounded => Err(IlpError::NoIncumbent(solution.status)),
+        LpStatus::Optimal | LpStatus::Feasible => {
+            unreachable!("found incumbents returned during readback")
+        }
+    }
 }
 
 /// Legal region lists for every vertex.  All placement restrictions are

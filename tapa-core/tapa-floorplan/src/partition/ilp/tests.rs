@@ -1204,6 +1204,149 @@ fn flat_floorplan_assigns_every_vertex_without_cbc() {
     assert_eq!(result.regions.len(), graph.vertices().len());
 }
 
+/// A solver that places only once the model's own derating reaches
+/// `required_limit`, standing in for a design that fits exactly at one rung.
+///
+/// Each model is built at a single utilization limit, so the first LUT row's
+/// budget and its region's capacity recover which rung is being probed.
+struct RungGateSolver {
+    device: Device,
+    required_limit: f64,
+    inner: ChooseSolver,
+    calls: AtomicUsize,
+    probed: Mutex<Vec<(Coor, f64)>>,
+}
+
+impl RungGateSolver {
+    fn new(device: &Device, required_limit: f64) -> Self {
+        Self {
+            device: device.clone(),
+            required_limit,
+            inner: ChooseSolver::first(),
+            calls: AtomicUsize::new(0),
+            probed: Mutex::new(Vec::new()),
+        }
+    }
+
+    /// The `(region, LUT budget)` of the first resource row of every model
+    /// this solver was handed, in solve order.
+    fn probed(&self) -> Vec<(Coor, f64)> {
+        self.probed.lock().expect("lock").clone()
+    }
+}
+
+impl Solver for RungGateSolver {
+    fn solve(&self, model: &LpModel, opts: &SolveOpts) -> Result<LpSolution, SolverError> {
+        self.calls.fetch_add(1, Ordering::Relaxed);
+        let row = model
+            .constraints
+            .iter()
+            .find(|row| row.name.ends_with("_LUT_usage"))
+            .expect("every placement model carries LUT capacity rows");
+        let region = row
+            .name
+            .strip_prefix("node_")
+            .and_then(|name| name.strip_suffix("_LUT_usage"))
+            .and_then(Coor::from_region_name)
+            .expect("resource rows name their region");
+        self.probed.lock().expect("lock").push((region, row.rhs));
+
+        let capacity = self.device.island_area(&region).expect("region area").lut;
+        if row.rhs < scaled_amount(capacity, self.required_limit).as_f64() {
+            return Ok(LpSolution {
+                status: LpStatus::Infeasible,
+                objective: 0.0,
+                values: HashMap::new(),
+            });
+        }
+        self.inner.solve(model, opts)
+    }
+}
+
+/// The ladder search must land on the same rung a linear walk would — the
+/// lowest that places — while probing logarithmically many rungs in the tail
+/// and refining only the rung it settles on.
+#[test]
+fn the_usage_ladder_finds_its_lowest_feasible_rung_without_walking() {
+    let device = one_slot_device(1000);
+    let ladder = usage_ladder(DEFAULT_USAGE_LIMIT, MAX_USAGE_LIMIT);
+    assert_eq!(ladder.len(), 14, "0.70 to 0.95 in 0.02 steps, ceiling last");
+    assert_eq!(ladder[0].to_bits(), DEFAULT_USAGE_LIMIT.to_bits());
+    assert_eq!(ladder[13].to_bits(), MAX_USAGE_LIMIT.to_bits());
+
+    for rung in [0, 1, 10, 13] {
+        let solver = RungGateSolver::new(&device, ladder[rung]);
+        let result = floorplan_with_strategy(
+            &single_task_floor_graph(1),
+            &device,
+            DEFAULT_USAGE_LIMIT,
+            MAX_USAGE_LIMIT,
+            PartitionStrategy::Flat,
+            &solver,
+            &SolveOpts::default(),
+        )
+        .expect("some rung of the ladder places");
+        assert_eq!(
+            result.regions.get("A_0"),
+            Some(&Coor::slot(0, 0).region_name()),
+        );
+
+        // A linear walk proves every lower rung infeasible, then solves and
+        // refines the one that places.
+        let walked = rung + 2;
+        let calls = solver.calls.load(Ordering::Relaxed);
+        assert!(
+            calls <= walked,
+            "rung {rung} took {calls} solves; a linear walk takes {walked}",
+        );
+        // The refinement is the last solve, and it runs on the rung the search
+        // settled on — which must be the lowest one that places.
+        let settled = solver.probed().last().expect("at least one probe").1;
+        assert_eq!(
+            settled.to_bits(),
+            scaled_amount(1000, ladder[rung]).as_f64().to_bits(),
+            "the search settled on a rung other than the lowest feasible one",
+        );
+    }
+}
+
+/// The multilevel row pass is a relaxation of the atomic pass at the same
+/// limit, so once the rows have proven a rung infeasible the atomic pass must
+/// start above it rather than re-proving every rung below.
+#[test]
+fn multilevel_atomic_placement_starts_where_the_row_pass_landed() {
+    let graph = vadd_floor_graph();
+    let device = select_device("u280").expect("u280");
+    let required_limit = 0.9;
+    let solver = RungGateSolver::new(&device, required_limit);
+
+    floorplan_with_strategy(
+        &graph,
+        &device,
+        DEFAULT_USAGE_LIMIT,
+        MAX_USAGE_LIMIT,
+        PartitionStrategy::MultiLevel,
+        &solver,
+        &SolveOpts::default(),
+    )
+    .expect("multilevel placement");
+
+    let atomic: Vec<f64> = solver
+        .probed()
+        .into_iter()
+        .filter(|(region, _)| region.width() == 1 && region.height() == 1)
+        .map(|(region, budget)| {
+            budget / device.island_area(&region).expect("region area").lut.as_f64()
+        })
+        .collect();
+    assert!(!atomic.is_empty(), "the atomic pass must have run");
+    assert!(
+        atomic.iter().all(|limit| *limit >= required_limit - 0.001),
+        "the rows already proved every rung below {required_limit} infeasible, so the atomic \
+         pass must not probe one: {atomic:?}",
+    );
+}
+
 #[test]
 fn invalid_usage_limit_is_rejected_before_model_building() {
     let graph = vadd_floor_graph();
