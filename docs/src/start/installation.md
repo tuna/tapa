@@ -114,6 +114,15 @@ apt-get install -y libpixman-1-0 libtinfo6 libncurses6 libx11-6 libxext6 \
   libxrender1 libfontconfig1 libfreetype6
 ```
 
+**Versal platforms additionally need `libyaml-0-2`.** Linking against a
+Versal platform rebuilds the PLM firmware, and Vivado's `dtc` fails with
+`libyaml-0.so.2: cannot open shared object file` when the library is
+missing:
+
+```bash
+apt-get install -y libyaml-0-2
+```
+
 Mount the Xilinx installation and the platform repository into the container
 and source the tool settings as usual:
 
@@ -127,7 +136,11 @@ source /opt/Xilinx/Vitis/<version>/settings64.sh
 
 Running a design on hardware or in hardware emulation additionally needs XRT
 installed inside the container; software simulation and fast cosimulation do
-not.
+not. XRT's GitHub releases do not publish installable packages — download
+the XRT `.deb`/`.rpm` for your distribution from the
+[Xilinx download center](https://www.xilinx.com/support/download.html)
+(bundled with the Vitis/XRT unified installer downloads) and install it with
+your package manager, for example `apt-get install ./xrt_*-xrt.deb`.
 
 ## Verify installation
 
