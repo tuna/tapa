@@ -20,6 +20,7 @@ use crate::error::{CliError, Result};
 use crate::state::work as work_io;
 use crate::steps::{analyze, floorplan, gcc, meta, pack, synth, version};
 use crate::tapacc::find_clang_binary;
+use crate::update;
 
 /// A pipeline step paired with its concrete arguments.
 #[derive(Clone, Copy)]
@@ -152,6 +153,24 @@ pub enum Step {
         #[command(flatten)]
         chain_tail: ChainTail,
     },
+    /// Update TAPA to the latest release, replacing the current
+    /// installation in place.
+    #[command(visible_alias = "upgrade")]
+    Update {
+        #[command(flatten)]
+        args: update::UpdateArgs,
+        #[command(flatten)]
+        chain_tail: ChainTail,
+    },
+    /// Fetch the latest release tag and refresh the cached check
+    /// result. Spawned detached by the automatic update check.
+    #[command(name = "update-check", hide = true)]
+    UpdateCheck {
+        #[command(flatten)]
+        args: update::UpdateCheckArgs,
+        #[command(flatten)]
+        chain_tail: ChainTail,
+    },
     /// Resolve a clang-family helper and print its absolute path.
     #[command(name = "find-clang-binary", hide = true)]
     FindClangBinary {
@@ -217,6 +236,8 @@ impl Step {
             | Self::Pack { chain_tail, .. }
             | Self::Compile { chain_tail, .. }
             | Self::Version { chain_tail, .. }
+            | Self::Update { chain_tail, .. }
+            | Self::UpdateCheck { chain_tail, .. }
             | Self::FindClangBinary { chain_tail, .. } => Some(&mut chain_tail.chain_tail),
             Self::Gpp { .. } => None,
         }
@@ -233,6 +254,11 @@ impl Step {
             Self::Compile { args, .. } => meta::run_compile_composite(&args, ctx),
             Self::Gpp { args } => gcc::run(&args, ctx),
             Self::Version { args, .. } => version::run(&args, ctx),
+            Self::Update { args, .. } => update::run_update(&args, ctx),
+            Self::UpdateCheck { .. } => {
+                update::run_update_check();
+                Ok(())
+            }
             Self::FindClangBinary { args, .. } => find_clang_binary::run(&args, ctx),
         }
     }

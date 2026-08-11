@@ -6,11 +6,13 @@ use std::process::ExitCode;
 
 use clap::Parser;
 
+use tapa_cli::chain::Step;
 use tapa_cli::context::CliContext;
 use tapa_cli::error::CliError;
 use tapa_cli::globals::Cli;
 use tapa_cli::logging;
 use tapa_cli::remote_config::bootstrap_remote;
+use tapa_cli::update;
 
 fn main() -> ExitCode {
     match run() {
@@ -47,13 +49,30 @@ fn run() -> Result<(), CliError> {
         std::env::set_var("TMPDIR", temp_dir);
     }
 
+    // The update flow never touches vendor tools or compiler state:
+    // skip remote bootstrap (which may trigger an SSH sync — the hidden
+    // `update-check` worker runs detached and must not) and skip the
+    // automatic release check (the worker would recurse; `update` would
+    // warn about the very release it just installed).
+    let is_update_flow = matches!(
+        cli.step,
+        Some(Step::Update { .. } | Step::UpdateCheck { .. })
+    );
+
     // Bootstrap remote config (~/.taparc + CLI overrides) before any
     // compiler step runs. Sync failures inside this call are non-fatal so
     // local-only flows are unaffected.
-    ctx.remote_config = bootstrap_remote(&cli.globals)?;
+    if !is_update_flow {
+        ctx.remote_config = bootstrap_remote(&cli.globals)?;
+    }
 
     if let Some(step) = cli.step {
         step.execute(&mut ctx)?;
+    }
+
+    // Cached, non-blocking release check: prints last, never fails.
+    if !is_update_flow {
+        update::finish();
     }
     Ok(())
 }

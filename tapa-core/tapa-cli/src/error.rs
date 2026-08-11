@@ -29,6 +29,9 @@ pub enum CliError {
     #[error("archive error: {0}")]
     Archive(String),
 
+    #[error("update error: {0}")]
+    Update(String),
+
     #[error("codegen error: {0}")]
     Codegen(String),
 
@@ -93,6 +96,7 @@ impl CliError {
             | Self::Schema(..)
             | Self::Xilinx(..)
             | Self::Archive(..)
+            | Self::Update(..)
             | Self::Codegen(..)
             | Self::Floorplan(..)
             | Self::Report(..) => 1,

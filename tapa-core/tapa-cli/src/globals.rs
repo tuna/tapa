@@ -100,6 +100,7 @@ Subcommands (chainable, processed left-to-right):
   pack                          Pack the generated RTL into a Xilinx `.xo`.
   compile                       analyze + synth + pack in one invocation.
   g++                           Invoke g++ with TAPA include / link flags.
+  update                        Update TAPA to the latest release.
   version                       Print TAPA version.
 
 Use `tapa <subcommand> --help` for per-subcommand options.

@@ -84,6 +84,7 @@ redundant_type_annotations = "deny"
 unsafe_op_in_unsafe_fn = "deny"
 
 [workspace.dependencies]
+anstyle = "1"
 backon = "1"
 camino = { version = "1", features = ["serde1"] }
 clap = { version = "4", features = ["derive", "env", "wrap_help"] }
@@ -127,6 +128,7 @@ thiserror = "2"
 tree-sitter = "0.25"
 tree-sitter-systemverilog = "0.3"
 typed-builder = "0.21"
+ureq = "3"
 walkdir = "2"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 

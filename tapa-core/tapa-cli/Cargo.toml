@@ -8,8 +8,13 @@ name = "tapa"
 path = "src/main.rs"
 
 [dependencies]
+anstyle = { workspace = true }
 const-str = { workspace = true }
+directories = { workspace = true }
+flate2 = { workspace = true }
 hex = { workspace = true }
+tar = { workspace = true }
+ureq = { workspace = true }
 which = { workspace = true }
 camino = { workspace = true }
 clap = { workspace = true }

@@ -10,6 +10,7 @@ pub mod remote_config;
 pub mod state;
 pub mod steps;
 pub mod tapacc;
+pub mod update;
 mod util;
 
 #[cfg(test)]

@@ -287,3 +287,19 @@ Print the installed TAPA version.
 ```bash
 tapa version
 ```
+
+---
+
+## tapa update
+
+Update TAPA to the latest release, replacing the current installation in place. `tapa upgrade` is an alias. It detects the install root from the running binary (`<root>/usr/bin/tapa`, so `/opt/tapa` and `~/.tapa` installs both work, including via the `/usr/local/bin` symlinks) and needs the same write permission the original install took — use `sudo` for a system-wide install.
+
+```bash
+tapa update
+```
+
+Separately, `tapa` checks for new releases automatically: at most once every 24 hours it fetches the latest release tag in the background (a detached process that never blocks or fails your command), caches the result, and prints a warning at the end of the **next** invocation when a newer release exists. Set `TAPA_NO_UPDATE_CHECK=1` to disable the check.
+
+```admonish note
+The automatic check only reads `https://api.github.com/repos/tuna/tapa/releases/latest` and writes its cache under `$XDG_CACHE_HOME/tapa/` (or `~/.cache/tapa/`); it never sends any data.
+```
