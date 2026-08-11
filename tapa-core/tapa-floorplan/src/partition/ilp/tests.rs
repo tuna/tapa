@@ -600,6 +600,24 @@ fn canonical_placement_model_matches_expected_formulation() {
             [(100.0, producer.as_str()), (116.0, consumer.as_str())],
         );
     }
+    // The flip-flop rows also reserve the Head registers a crossing will need:
+    // A -> B is 35 wires, and its Head lands in whichever region A does.
+    for (region, producer, consumer, crossing) in [
+        (&bottom_name, &producer_x[0], &consumer_x[0], route_y[1]),
+        (&top_name, &producer_x[1], &consumer_x[1], route_y[2]),
+    ] {
+        assert_row(
+            lp,
+            &format!("node_{region}_FF_usage"),
+            Comparison::Le,
+            700.0,
+            [
+                (200.0, producer.as_str()),
+                (73.0, consumer.as_str()),
+                (35.0, crossing),
+            ],
+        );
+    }
     assert_row(
         lp,
         "cut_y=0_capacity",

@@ -63,8 +63,15 @@ pub struct PlacementEdge {
     pub src: usize,
     /// Higher-index endpoint.
     pub dst: usize,
-    /// Sum of the physical widths of all streams between the endpoints.
+    /// Sum of the physical widths of all channels between the endpoints.
     pub width: u32,
+    /// The part of [`width`](Self::width) flowing `src` → `dst`.
+    ///
+    /// A channel's generated Head registers live in its *source* slot, so the
+    /// two directions are charged to different regions when the edge crosses.
+    pub forward_width: u32,
+    /// The part of [`width`](Self::width) flowing `dst` → `src`.
+    pub reverse_width: u32,
 }
 
 /// One directed, named stream retained for routing and code generation.

@@ -827,13 +827,7 @@ impl FloorplanModel {
         let y = add_edge_vars(&mut lp, graph, domains);
         add_coupling(&mut lp, graph, domains, &x, &y);
         add_resource_constraints(
-            &mut lp,
-            graph,
-            device,
-            domains,
-            usage_limit,
-            constraints,
-            &x,
+            &mut lp, graph, device, domains, usage_limit, constraints, &x, &y,
         )?;
         add_cut_constraints(&mut lp, graph, domains, cuts, &y);
         add_objective(&mut lp, graph, device, domains, &y)?;
@@ -1058,6 +1052,10 @@ fn add_coupling(
     }
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "resource rows need the vertex areas, the crossing registers, and the limits that bound both"
+)]
 fn add_resource_constraints(
     lp: &mut LpModel,
     graph: &FloorGraph,
@@ -1066,6 +1064,7 @@ fn add_resource_constraints(
     usage_limit: f64,
     constraints: &PlacementConstraints,
     x: &[Vec<LpVar>],
+    y: &[Vec<Vec<LpVar>>],
 ) -> Result<(), IlpError> {
     let active_regions: BTreeSet<Coor> = domains.iter().flatten().copied().collect();
     for region in active_regions {
@@ -1081,6 +1080,9 @@ fn add_resource_constraints(
                 {
                     terms.push(resource.amount(&vertex.area).as_f64(), x[vi][ci]);
                 }
+            }
+            if resource == Resource::Ff {
+                add_crossing_head_terms(&mut terms, graph, domains, y, &region);
             }
 
             // The same floor `scaled_area_with_overrides` applies when it
@@ -1098,6 +1100,44 @@ fn add_resource_constraints(
         }
     }
     Ok(())
+}
+
+/// Reserve the flip-flops a crossing's generated Head registers will take in
+/// `region`.
+///
+/// Every channel that ends up crossing gets a Head register bundle in its
+/// *source* slot, one flip-flop per physical wire. The route is not chosen yet,
+/// so the Body registers in intermediate slots cannot be charged here — but the
+/// Heads can: `y[e][a][b]` already says which region each endpoint landed in,
+/// so a crossing term contributes its forward width to `a` and its reverse
+/// width to `b`. Charging them makes the placement reserve room it will
+/// certainly need, instead of discovering the overflow after routing.
+///
+/// The Head's single gate LUT per channel is left out: the edge aggregates
+/// channels, so the count is not on hand, and one LUT against a slot's hundreds
+/// of thousands is not worth carrying a second counter for.
+fn add_crossing_head_terms(
+    terms: &mut SparseRow,
+    graph: &FloorGraph,
+    domains: &[Vec<Coor>],
+    y: &[Vec<Vec<LpVar>>],
+    region: &Coor,
+) {
+    for term in y_terms(graph, domains) {
+        if term.src == term.dst {
+            continue; // co-located: the channel stays a direct wire
+        }
+        let heads = u64::from(if term.src == region {
+            term.edge.forward_width
+        } else if term.dst == region {
+            term.edge.reverse_width
+        } else {
+            0
+        });
+        if heads > 0 {
+            terms.push(heads.as_f64(), term.var(y));
+        }
+    }
 }
 
 fn lookup_limit(limits: &RegionResourceLimits, region: &Coor, resource: Resource) -> Option<f64> {

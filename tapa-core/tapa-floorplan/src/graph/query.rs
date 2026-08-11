@@ -601,6 +601,10 @@ pub mod tests {
                 src: a.min(b),
                 dst: a.max(b),
                 width: 35 + 67 + 11,
+                // A and B are indices 0 and 1, so A -> B is the forward
+                // direction and the 8-bit reply comes back.
+                forward_width: 35 + 67,
+                reverse_width: 11,
             }]
         );
     }
@@ -631,6 +635,10 @@ pub mod tests {
                 src: task.min(bank),
                 dst: task.max(bank),
                 width: 80 + 38 + 80 + 39 + 5,
+                // The task is index 0 and the bank terminal index 1: address
+                // and write data run out, read data and the response come back.
+                forward_width: 80 + 80 + 39,
+                reverse_width: 38 + 5,
             }]
         );
 

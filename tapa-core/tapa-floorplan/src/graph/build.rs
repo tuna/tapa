@@ -19,6 +19,16 @@ use super::validate::{
     validate_memory_interface_shape,
 };
 
+/// The widths flowing each way across one endpoint pair, accumulated while the
+/// graph is built and summed into a [`PlacementEdge`] at the end.
+#[derive(Debug, Clone, Copy, Default)]
+struct DirectedWidth {
+    /// Low-index endpoint to high-index endpoint.
+    forward: u32,
+    /// High-index endpoint to low-index endpoint.
+    reverse: u32,
+}
+
 /// Transient accumulator for one `FloorGraph` construction pass.
 ///
 /// Owns the collections the task-vertex, FIFO-clustering, and
@@ -32,7 +42,8 @@ pub(super) struct FloorGraphBuilder {
     index: HashMap<String, usize>,
     /// (definition name, instance index) → vertex index, for endpoint resolution.
     task_endpoints: HashMap<(String, u32), usize>,
-    placement_widths: BTreeMap<(usize, usize), u32>,
+    /// `(low, high)` endpoint pair → the widths flowing low→high and high→low.
+    placement_widths: BTreeMap<(usize, usize), DirectedWidth>,
     co_located: Vec<CoLocatedInstance>,
 }
 
@@ -156,10 +167,7 @@ impl FloorGraphBuilder {
                         data_width,
                         depth,
                     });
-                    let endpoints = (src.min(dst), src.max(dst));
-                    let width = self.placement_widths.entry(endpoints).or_default();
-                    *width = width
-                        .checked_add(physical_width)
+                    self.add_placement_width(src, dst, physical_width)
                         .ok_or_else(|| GraphError::PlacementWidthOverflow(fifo_name.clone()))?;
                 }
             }
@@ -286,9 +294,7 @@ impl FloorGraphBuilder {
                     }
                     AxiChannel::ReadData | AxiChannel::WriteResponse => (terminal, task_vertex),
                 };
-                let pair = (src.min(dst), src.max(dst));
-                let placement_width = self.placement_widths.entry(pair).or_default();
-                *placement_width = placement_width.checked_add(width).ok_or_else(|| {
+                self.add_placement_width(src, dst, width).ok_or_else(|| {
                     GraphError::PlacementWidthOverflow(format!(
                         "{}.{} {channel:?}",
                         endpoint.instance, endpoint.port
@@ -404,7 +410,13 @@ impl FloorGraphBuilder {
         let placement_edges = self
             .placement_widths
             .into_iter()
-            .map(|((src, dst), width)| PlacementEdge { src, dst, width })
+            .map(|((src, dst), widths)| PlacementEdge {
+                src,
+                dst,
+                width: widths.forward + widths.reverse,
+                forward_width: widths.forward,
+                reverse_width: widths.reverse,
+            })
             .collect();
         BuiltGraph {
             vertices: self.vertices,
@@ -412,6 +424,23 @@ impl FloorGraphBuilder {
             placement_edges,
             co_located: self.co_located,
         }
+    }
+
+    /// Accumulate one directed channel's width onto its endpoint pair.
+    ///
+    /// `None` on overflow, which the caller names.
+    fn add_placement_width(&mut self, src: usize, dst: usize, width: u32) -> Option<()> {
+        let entry = self
+            .placement_widths
+            .entry((src.min(dst), src.max(dst)))
+            .or_default();
+        let directed = if src < dst {
+            &mut entry.forward
+        } else {
+            &mut entry.reverse
+        };
+        *directed = directed.checked_add(width)?;
+        Some(())
     }
 
     /// Append one control net, accumulating its placement-crossing width.
@@ -424,15 +453,11 @@ impl FloorGraphBuilder {
         dst: usize,
         width: u32,
     ) -> Result<(), GraphError> {
-        let pair = (src.min(dst), src.max(dst));
-        let placement_width = self.placement_widths.entry(pair).or_default();
-        *placement_width =
-            placement_width
-                .checked_add(width)
-                .ok_or_else(|| GraphError::ControlWidthOverflow {
-                    instance: instance.to_string(),
-                    channel,
-                })?;
+        self.add_placement_width(src, dst, width)
+            .ok_or_else(|| GraphError::ControlWidthOverflow {
+                instance: instance.to_string(),
+                channel,
+            })?;
         nets.push(ControlNet {
             instance: instance.to_string(),
             channel,
