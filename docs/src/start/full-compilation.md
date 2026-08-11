@@ -12,7 +12,7 @@ simulation.
 
 - TAPA installed — see [Installation](installation.md)
 - Xilinx Vitis 2022.1 or newer
-- A compatible Alveo platform (the examples below use the U250)
+- A compatible Alveo platform (the examples below use the U55C)
 - The vadd source files: [`vadd.cpp`](https://github.com/tuna/tapa/blob/main/tests/apps/vadd/vadd.cpp) and [`vadd-host.cpp`](https://github.com/tuna/tapa/blob/main/tests/apps/vadd/vadd-host.cpp)
 
 ## Stage 1 — Synthesize to RTL
@@ -23,7 +23,7 @@ Run `tapa compile` to translate the C++ kernel into an RTL object (`.xo`):
 tapa \
   compile \
   --top VecAdd \
-  --part-num xcu250-figd2104-2L-e \
+  --part-num xcu55c-fsvh2892-2L-e \
   --clock-period 3.33 \
   -f vadd.cpp \
   -o vecadd.xo
@@ -41,7 +41,7 @@ tapa \
 You can replace `--part-num` and `--clock-period` with `--platform` to
 target a Vitis platform directly, for example:
 
-    --platform xilinx_u250_gen3x16_xdma_4_1_202210_1
+    --platform xilinx_u55c_gen3x16_xdma_3_202210_1
 
 Per-task HLS reports are written to `work.out/hls/<TASK>/report/`, and a
 combined timing and area summary to `work.out/report.json` and
@@ -78,15 +78,23 @@ Use Vitis `v++` to link the `.xo` into a hardware bitstream. This step does
 not involve TAPA and typically takes several hours:
 
 ```bash
-v++ -o vadd.xilinx_u250_gen3x16_xdma_4_1_202210_1.hw.xclbin \
+v++ -o vadd.xilinx_u55c_gen3x16_xdma_3_202210_1.hw.xclbin \
   --link \
   --target hw \
   --kernel VecAdd \
-  --platform xilinx_u250_gen3x16_xdma_4_1_202210_1 \
+  --platform xilinx_u55c_gen3x16_xdma_3_202210_1 \
   vecadd.xo
 ```
 
-Artifact produced: `vadd.xilinx_u250_gen3x16_xdma_4_1_202210_1.hw.xclbin`
+Artifact produced: `vadd.xilinx_u55c_gen3x16_xdma_3_202210_1.hw.xclbin`
+
+```admonish note
+`v++` only accepts platforms within its support window: a platform is
+supported for the remainder of its release calendar year plus the following
+year. If linking fails with `ERROR: [v++ 60-1299] The specified platform is
+not supported`, switch to a platform version your Vitis installation still
+supports. See [Common Errors](../troubleshoot/common-errors.md).
+```
 
 ```admonish warning
 Hardware binary generation typically takes several hours. Plan accordingly,
@@ -99,7 +107,7 @@ With an Alveo card installed and XRT configured, run the host binary and
 point it at the generated xclbin:
 
 ```bash
-./vadd --bitstream=vadd.xilinx_u250_gen3x16_xdma_4_1_202210_1.hw.xclbin
+./vadd --bitstream=vadd.xilinx_u55c_gen3x16_xdma_3_202210_1.hw.xclbin
 ```
 
 A successful on-board run prints `PASS!`, confirming the accelerator

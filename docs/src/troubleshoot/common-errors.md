@@ -196,4 +196,22 @@ If a parameter type mismatch error is confusing, work through this checklist:
 
 ---
 
+## `v++ 60-1299`: platform not supported
+
+**Symptom:** `v++ --link` fails with
+`ERROR: [v++ 60-1299] The specified platform is not supported. Platform '<name>.xpfm' (version <year>) is not supported by the current tool version`.
+
+**Cause:** Vitis supports a platform for the remainder of its release
+calendar year plus the following calendar year, after which `v++` rejects
+it — for example the U250 platform `xilinx_u250_gen3x16_xdma_4_1_202210_1`
+under Vitis 2025.2. TAPA's `compile`, `synth`, and `floorplan` steps accept
+the platform because they only need the FPGA part from it, so the rejection
+first surfaces at the `v++` link step.
+
+**Fix:** Re-run `tapa compile` with a platform your Vitis version still
+supports (for example `xilinx_u55c_gen3x16_xdma_3_202210_1`) and link
+against that platform.
+
+---
+
 **See also:** [Deadlocks & Hangs](deadlocks-and-hangs.md) | [Cosimulation Issues](cosim-issues.md)

@@ -174,7 +174,7 @@ tapa g++ -- kernel.cpp host.cpp -o app
 ./app
 
 # RTL synthesis
-tapa compile --top Top --part-num xcu250-figd2104-2L-e \
+tapa compile --top Top --part-num xcu55c-fsvh2892-2L-e \
   --clock-period 3.33 -f kernel.cpp -o kernel.xo
 
 # Fast cosimulation
@@ -182,7 +182,7 @@ tapa compile --top Top --part-num xcu250-figd2104-2L-e \
 
 # Bitstream link (v++)
 v++ -o app.hw.xclbin --link --target hw --kernel Top \
-  --platform xilinx_u250_gen3x16_xdma_4_1_202210_1 kernel.xo
+  --platform xilinx_u55c_gen3x16_xdma_3_202210_1 kernel.xo
 
 # On-board run
 ./app --bitstream=app.hw.xclbin
