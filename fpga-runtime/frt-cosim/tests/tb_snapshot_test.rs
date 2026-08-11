@@ -105,6 +105,49 @@ fn vitis_stream_out_spec() -> KernelSpec {
     }
 }
 
+fn two_stream_out_spec(mode: Mode) -> KernelSpec {
+    let protocol = match mode {
+        Mode::Hls => frt_cosim::metadata::StreamProtocol::ApFifo,
+        Mode::Vitis => frt_cosim::metadata::StreamProtocol::Axis,
+    };
+    KernelSpec {
+        top_name: "vadd".into(),
+        mode,
+        part_num: Some("xc7a100tcsg324-1".into()),
+        verilog_files: vec![],
+        tcl_files: vec![],
+        xci_files: vec![],
+        scalar_register_map: HashMap::from([("n".into(), 0x10u32)]),
+        args: vec![
+            ArgSpec {
+                name: "n".into(),
+                id: 0,
+                kind: ArgKind::Scalar { width: 32 },
+            },
+            ArgSpec {
+                name: "s_out".into(),
+                id: 1,
+                kind: ArgKind::Stream {
+                    width: 32,
+                    depth: 8,
+                    dir: StreamDir::Out,
+                    protocol: protocol.clone(),
+                },
+            },
+            ArgSpec {
+                name: "t_out".into(),
+                id: 2,
+                kind: ArgKind::Stream {
+                    width: 32,
+                    depth: 8,
+                    dir: StreamDir::Out,
+                    protocol,
+                },
+            },
+        ],
+    }
+}
+
 fn banked_hls_spec() -> KernelSpec {
     KernelSpec {
         top_name: "Bandwidth".into(),
@@ -552,13 +595,32 @@ fn verilator_vitis_tb_uses_direct_axis_write_handshake() {
         "{tb}"
     );
     assert!(
-        tb.contains("(void)tapa_stream_try_write(\"s_out\", data.data());"),
+        tb.contains("(void)tapa_stream_try_write(\"s_out\", stream_out_bytes_s_out.data());"),
         "{tb}"
     );
     assert!(
         !tb.contains("dut->s_out_TREADY = tapa_stream_ostream_step("),
         "{tb}"
     );
+}
+
+/// Every per-argument local in `service_streams` must carry the argument's
+/// identifier. A shared name compiles for one output stream and is a
+/// redefinition for two, so a kernel with two output streams used to emit a
+/// testbench that could not build.
+#[test]
+fn verilator_names_each_output_stream_buffer_after_its_argument() {
+    for mode in [Mode::Hls, Mode::Vitis] {
+        let spec = two_stream_out_spec(mode);
+        let base_addrs = std::collections::HashMap::new();
+        let buf_sizes = std::collections::HashMap::new();
+        let scalar_vals = std::collections::HashMap::from([(0u32, vec![7u8, 0, 0, 0])]);
+        let generator = VerilatorTbGenerator::new(&spec, &base_addrs, &buf_sizes, &scalar_vals);
+        let tb = generator.render_tb().expect("render");
+        assert!(tb.contains("stream_out_bytes_s_out{};"), "{tb}");
+        assert!(tb.contains("stream_out_bytes_t_out{};"), "{tb}");
+        assert!(!tb.contains("> data{};"), "{tb}");
+    }
 }
 
 /// Kernel completion leaves beats in the output AXIS adapter FIFOs; stopping

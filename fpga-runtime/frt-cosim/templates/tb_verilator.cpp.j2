@@ -190,9 +190,9 @@ static void service_streams() {
   }
 {% endfor %}
 {% for arg in stream_out_args %}
-  std::array<uint8_t, {{ arg.dpi_width_bytes }}> data{};
-  std::memcpy(data.data(), &dut->{{ arg.sig.din }}, {{ arg.dpi_width_bytes }});
-  dut->{{ arg.sig.full_n }} = tapa_hls_stream_ostream_step("{{ arg.name }}", dut->{{ arg.sig.write }}, data.data()) ? 1 : 0;
+  std::array<uint8_t, {{ arg.dpi_width_bytes }}> stream_out_bytes_{{ arg.ident }}{};
+  std::memcpy(stream_out_bytes_{{ arg.ident }}.data(), &dut->{{ arg.sig.din }}, {{ arg.dpi_width_bytes }});
+  dut->{{ arg.sig.full_n }} = tapa_hls_stream_ostream_step("{{ arg.name }}", dut->{{ arg.sig.write }}, stream_out_bytes_{{ arg.ident }}.data()) ? 1 : 0;
 {% endfor %}
 {% else %}
 {% for arg in stream_args %}
@@ -215,13 +215,13 @@ static void service_streams() {
 {% for arg in stream_out_args %}
   bool can_write_{{ arg.ident }} = tapa_stream_can_write("{{ arg.name }}");
   dut->{{ arg.sig.tready }} = can_write_{{ arg.ident }} ? 1 : 0;
-  std::array<uint8_t, {{ arg.dpi_width_bytes }}> data{};
-  std::memcpy(data.data(), &dut->{{ arg.sig.tdata }}, {{ arg.width_bytes }});
+  std::array<uint8_t, {{ arg.dpi_width_bytes }}> stream_out_bytes_{{ arg.ident }}{};
+  std::memcpy(stream_out_bytes_{{ arg.ident }}.data(), &dut->{{ arg.sig.tdata }}, {{ arg.width_bytes }});
 {% if arg.axis %}
-  data[{{ arg.width_bytes }}] = dut->{{ arg.sig.tlast }};
+  stream_out_bytes_{{ arg.ident }}[{{ arg.width_bytes }}] = dut->{{ arg.sig.tlast }};
 {% endif %}
   if (dut->{{ arg.sig.tvalid }} && can_write_{{ arg.ident }}) {
-    (void)tapa_stream_try_write("{{ arg.name }}", data.data());
+    (void)tapa_stream_try_write("{{ arg.name }}", stream_out_bytes_{{ arg.ident }}.data());
   }
 {% endfor %}
 {% endif %}
