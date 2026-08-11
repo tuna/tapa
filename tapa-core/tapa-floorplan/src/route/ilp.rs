@@ -250,6 +250,65 @@ fn candidates_for(nets: &[RouteNet], device: &Device) -> Result<Candidates, Rout
     Ok(Candidates { sets, of_net })
 }
 
+/// What each slot can still spend on the Body registers a route leaves there.
+///
+/// Placement reserves a crossing's Head registers, but its Bodies land in slots
+/// only the route picks — so this is where they are budgeted. Without it the
+/// router is free to detour a wide bundle through a slot that has no room, and
+/// the overflow surfaces afterwards as a hard accounting failure.
+pub struct RegisterBudget<'a> {
+    /// The Body-register slots a candidate path would occupy, with repeats.
+    /// Supplied by the caller, which owns the pipeline scheme.
+    pub bodies: &'a dyn Fn(&[Cell]) -> Vec<Cell>,
+    /// Flip-flops each slot may spend on those registers.
+    pub available: std::collections::BTreeMap<Cell, u64>,
+}
+
+/// Bound the Body registers each slot receives by what it can still afford.
+fn add_register_budget_rows(
+    lp: &mut LpModel,
+    nets: &[RouteNet],
+    candidates: &Candidates,
+    path_vars: &[Vec<LpVar>],
+    budget: &RegisterBudget<'_>,
+) {
+    // One evaluation per distinct candidate path, not per net that shares it.
+    let bodies: Vec<Vec<std::collections::BTreeMap<Cell, u64>>> = candidates
+        .sets
+        .iter()
+        .map(|paths| {
+            paths
+                .iter()
+                .map(|path| {
+                    let mut counts = std::collections::BTreeMap::<Cell, u64>::new();
+                    for cell in (budget.bodies)(path) {
+                        *counts.entry(cell).or_default() += 1;
+                    }
+                    counts
+                })
+                .collect()
+        })
+        .collect();
+
+    for (&cell, &available) in &budget.available {
+        let mut terms = SparseRow::new();
+        for (net_index, net) in nets.iter().enumerate() {
+            for (path_index, counts) in bodies[candidates.of_net[net_index]].iter().enumerate() {
+                let registers = counts.get(&cell).copied().unwrap_or(0) * u64::from(net.width);
+                if registers > 0 {
+                    terms.push(registers.as_f64(), path_vars[net_index][path_index]);
+                }
+            }
+        }
+        lp.add_constraint(
+            format!("slot_{}_{}_registers", cell.0, cell.1),
+            terms.into_expr(),
+            Comparison::Le,
+            available.as_f64(),
+        );
+    }
+}
+
 /// Order the path choices of nets that share endpoints and width.
 ///
 /// Such nets are interchangeable: permuting their choices leaves the objective
@@ -349,7 +408,12 @@ fn validate_within_capacity(
 /// Candidates are enumerated shortest-first, so path zero is a shortest path.
 /// The router may spread traffic better than this, which is exactly why the
 /// message reports the shortest-path demand as evidence rather than as proof.
-fn describe_congestion(nets: &[RouteNet], candidates: &Candidates, limits: &[Boundary]) -> String {
+fn describe_congestion(
+    nets: &[RouteNet],
+    candidates: &Candidates,
+    limits: &[Boundary],
+    budget: Option<&RegisterBudget<'_>>,
+) -> String {
     let worst = limits
         .iter()
         .filter_map(|boundary| {
@@ -371,8 +435,44 @@ fn describe_congestion(nets: &[RouteNet], candidates: &Candidates, limits: &[Bou
              boundary's declared wire capacity",
             boundary.a, boundary.b,
         ),
-        None => "no single boundary is over-subscribed on shortest paths, so the nets cannot be \
-                 spread across the available detours"
+        None => describe_register_pressure(nets, candidates, budget),
+    }
+}
+
+/// The fallback explanation when no boundary is the wall: a slot with no room
+/// left for the Body registers the shortest paths would leave there.
+fn describe_register_pressure(
+    nets: &[RouteNet],
+    candidates: &Candidates,
+    budget: Option<&RegisterBudget<'_>>,
+) -> String {
+    let worst = budget.and_then(|budget| {
+        budget
+            .available
+            .iter()
+            .filter_map(|(&cell, &available)| {
+                let demand: u64 = nets
+                    .iter()
+                    .zip(candidates.iter())
+                    .map(|(net, paths)| {
+                        let bodies = (budget.bodies)(&paths[0]);
+                        let count = bodies.iter().filter(|body| **body == cell).count();
+                        u64::try_from(count).expect("body count fits u64") * u64::from(net.width)
+                    })
+                    .sum();
+                (demand > available).then_some((demand, available, cell))
+            })
+            .max_by_key(|(demand, available, _)| (demand - available, *demand))
+    });
+
+    match worst {
+        Some((demand, available, cell)) => format!(
+            "no boundary is over-subscribed, but on shortest paths slot {cell:?} would hold \
+             {demand} pipeline registers with only {available} flip-flops left; place the \
+             endpoints closer together, lower --usage-limit, or choose a lighter --pp-scheme"
+        ),
+        None => "no single boundary or slot is over-subscribed on shortest paths, so the nets \
+                 cannot be spread across the available detours"
             .to_string(),
     }
 }
@@ -425,6 +525,7 @@ fn refine_lexicographic(
 pub fn route_nets(
     nets: &[RouteNet],
     device: &Device,
+    budget: Option<&RegisterBudget<'_>>,
     solver: &dyn Solver,
     opts: &SolveOpts,
 ) -> Result<Vec<Vec<Cell>>, RouteError> {
@@ -453,6 +554,9 @@ pub fn route_nets(
         ));
     }
     add_symmetry_rows(&mut lp, nets, &path_vars);
+    if let Some(budget) = budget {
+        add_register_budget_rows(&mut lp, nets, &candidates, &path_vars, budget);
+    }
 
     // Per bounded boundary: a hard capacity row, so every incumbent — even a
     // time-limited one — is a physically legal route; plus, when balancing,
@@ -504,7 +608,7 @@ pub fn route_nets(
     if !solution.is_found() {
         return Err(match solution.status {
             LpStatus::Infeasible => {
-                RouteError::Infeasible(describe_congestion(nets, &candidates, &limits))
+                RouteError::Infeasible(describe_congestion(nets, &candidates, &limits, budget))
             }
             LpStatus::NotSolved | LpStatus::Unbounded => RouteError::NoIncumbent(solution.status),
             LpStatus::Optimal | LpStatus::Feasible => {
@@ -673,7 +777,7 @@ mod tests {
             threads: Some(1),
             ..SolveOpts::default()
         };
-        match route_nets(nets, device, &CbcSolver::new(), &opts) {
+        match route_nets(nets, device, None, &CbcSolver::new(), &opts) {
             Ok(routes) => routes,
             Err(RouteError::Solver(SolverError::Spawn { .. })) => crate::solver::missing_cbc(),
             Err(other) => panic!("routing failed: {other}"),
@@ -848,6 +952,7 @@ mod tests {
         let err = route_nets(
             &nets,
             &device,
+            None,
             &DictatedSolver {
                 objective: 0.0,
                 value: 0.0,
@@ -871,6 +976,7 @@ mod tests {
         let err = route_nets(
             &nets,
             &device,
+            None,
             &FixedSolver {
                 status: LpStatus::Optimal,
                 objective: 0.0,
@@ -894,6 +1000,7 @@ mod tests {
         let err = route_nets(
             &nets,
             &device,
+            None,
             &DictatedSolver {
                 objective: 0.0,
                 value: 0.5,
@@ -920,6 +1027,7 @@ mod tests {
         let err = route_nets(
             &nets,
             &device,
+            None,
             &DictatedSolver {
                 objective: 1.1,
                 value: 0.0,
@@ -952,7 +1060,7 @@ mod tests {
             dst: (1, 0),
             width: 1,
         }];
-        let err = route_nets(&nets, &device, &solver(), &SolveOpts::default())
+        let err = route_nets(&nets, &device, None, &solver(), &SolveOpts::default())
             .expect_err("wire over a zero-capacity boundary");
         assert!(matches!(err, RouteError::InvalidSolution(_)), "got {err}");
 
@@ -963,7 +1071,7 @@ mod tests {
             width: 0,
         }];
         assert_eq!(
-            route_nets(&nets, &device, &solver(), &SolveOpts::default())
+            route_nets(&nets, &device, None, &solver(), &SolveOpts::default())
                 .expect("zero-width net crosses nothing"),
             vec![vec![(0, 0), (1, 0)]],
         );
@@ -985,7 +1093,7 @@ mod tests {
             selected: Some(LpVar(0)),
         };
         assert_eq!(
-            route_nets(&nets, &device, &solver, &SolveOpts::default())
+            route_nets(&nets, &device, None, &solver, &SolveOpts::default())
                 .expect("an unconstrained device imposes no wire budget"),
             vec![vec![(0, 0), (1, 0)]],
         );
@@ -1013,7 +1121,7 @@ mod tests {
             threads: Some(1),
             ..SolveOpts::default()
         };
-        let error = match route_nets(&nets, &device, &CbcSolver::new(), &opts) {
+        let error = match route_nets(&nets, &device, None, &CbcSolver::new(), &opts) {
             Err(RouteError::Solver(SolverError::Spawn { .. })) => crate::solver::missing_cbc(),
             Err(error) => error,
             Ok(routes) => panic!("a zero-capacity crossing must not route: {routes:?}"),
@@ -1038,6 +1146,7 @@ mod tests {
         let err = route_nets(
             &nets,
             &device,
+            None,
             &FixedSolver {
                 status: LpStatus::Infeasible,
                 objective: 0.0,
@@ -1057,7 +1166,7 @@ mod tests {
             dst: (2, 0),
             width: 1,
         }];
-        let err = route_nets(&nets, &device, &PanicSolver, &SolveOpts::default())
+        let err = route_nets(&nets, &device, None, &PanicSolver, &SolveOpts::default())
             .expect_err("outside endpoint");
         assert!(
             matches!(err, RouteError::InvalidEndpoint { .. }),
@@ -1078,6 +1187,7 @@ mod tests {
             let err = route_nets(
                 &nets,
                 &device,
+                None,
                 &FixedSolver {
                     status,
                     objective: 0.0,

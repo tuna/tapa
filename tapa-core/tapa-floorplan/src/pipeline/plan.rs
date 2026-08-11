@@ -22,7 +22,7 @@ use crate::graph::{fifo_area, FloorGraph};
 use crate::partition::ilp::scaled_area;
 #[cfg(test)]
 use crate::partition::ilp::MAX_USAGE_LIMIT;
-use crate::route::ilp::{route_nets, slot_tag, RouteError, RouteNet};
+use crate::route::ilp::{route_nets, slot_tag, RegisterBudget, RouteError, RouteNet};
 use crate::route::paths::Cell;
 use crate::solver::{SolveOpts, Solver};
 
@@ -58,19 +58,22 @@ pub enum PipelineError {
 ///   boundary, then removes the first Head and last Tail entries.
 #[must_use]
 pub fn pipeline_reg_regions(route: &[Cell], scheme: PipelineScheme) -> Vec<String> {
+    pipeline_reg_cells(route, scheme)
+        .into_iter()
+        .map(slot_tag)
+        .collect()
+}
+
+/// [`pipeline_reg_regions`] as grid cells, for the routing budget that has to
+/// count how many Body registers a candidate path would leave in each slot.
+fn pipeline_reg_cells(route: &[Cell], scheme: PipelineScheme) -> Vec<Cell> {
     if route.len() < 2 {
         return Vec::new();
     }
 
     match scheme {
-        PipelineScheme::Single => route[1..route.len() - 1]
-            .iter()
-            .map(|&cell| slot_tag(cell))
-            .collect(),
-        PipelineScheme::Double => route
-            .windows(2)
-            .flat_map(|hop| [slot_tag(hop[0]), slot_tag(hop[1])])
-            .collect(),
+        PipelineScheme::Single => route[1..route.len() - 1].to_vec(),
+        PipelineScheme::Double => route.windows(2).flat_map(|hop| [hop[0], hop[1]]).collect(),
         PipelineScheme::SingleHDoubleV => {
             let mut multiplicity = vec![1usize; route.len()];
             for (index, hop) in route.windows(2).enumerate() {
@@ -79,10 +82,10 @@ pub fn pipeline_reg_regions(route: &[Cell], scheme: PipelineScheme) -> Vec<Strin
                     multiplicity[index + 1] = 2;
                 }
             }
-            let expanded: Vec<String> = route
+            let expanded: Vec<Cell> = route
                 .iter()
                 .zip(multiplicity)
-                .flat_map(|(&cell, count)| std::iter::repeat_n(slot_tag(cell), count))
+                .flat_map(|(&cell, count)| std::iter::repeat_n(cell, count))
                 .collect();
             expanded[1..expanded.len() - 1].to_vec()
         }
@@ -222,11 +225,21 @@ fn cross_slot_nets(
 }
 
 /// Plan every cross-slot stream and AXI route for a placed design.
+///
+/// `baseline` is the placed-but-unrouted per-slot usage and `logic_capacity_limit`
+/// the derating it was placed under; together they give the router the
+/// flip-flops each slot can still spend on Body registers.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "routing needs the placement, the device, the scheme, and the resource envelope it must route inside"
+)]
 pub fn plan_routes(
     graph: &FloorGraph,
     regions: &BTreeMap<String, String>,
+    baseline: &BTreeMap<String, Area>,
     device: &Device,
     scheme: PipelineScheme,
+    logic_capacity_limit: f64,
     solver: &dyn Solver,
     opts: &SolveOpts,
 ) -> Result<Vec<PipelineRoute>, PipelineError> {
@@ -243,7 +256,12 @@ pub fn plan_routes(
             width: net.width,
         })
         .collect();
-    let routes = route_nets(&route_nets_input, device, solver, opts)?;
+    let bodies = |path: &[Cell]| pipeline_reg_cells(path, scheme);
+    let budget = RegisterBudget {
+        bodies: &bodies,
+        available: register_budgets(baseline, device, logic_capacity_limit),
+    };
+    let routes = route_nets(&route_nets_input, device, Some(&budget), solver, opts)?;
 
     let mut pipeline_routes = Vec::new();
     for (net, route) in nets.iter().zip(routes) {
@@ -259,6 +277,32 @@ pub fn plan_routes(
         }
     }
     Ok(pipeline_routes)
+}
+
+/// The flip-flops each slot may still spend on routed Body registers.
+///
+/// Deliberately generous: it subtracts the placed usage but not the Head
+/// registers or the routed Tail's growth, whose costs the endpoints already fix
+/// and which no path choice can move. A budget that is too tight would reject
+/// routes that realize fine; one that is merely loose still steers the router
+/// away from slots that are full, and [`realize_slot_usage`] remains the exact
+/// check.
+fn register_budgets(
+    baseline: &BTreeMap<String, Area>,
+    device: &Device,
+    logic_capacity_limit: f64,
+) -> BTreeMap<Cell, u64> {
+    device
+        .slots
+        .iter()
+        .map(|slot| {
+            let capacity = scaled_area(slot.area, logic_capacity_limit).ff;
+            let placed = baseline
+                .get(&slot.coor().region_name())
+                .map_or(0, |area| area.ff);
+            ((slot.x, slot.y), capacity.saturating_sub(placed))
+        })
+        .collect()
 }
 
 /// Replace pre-routing FIFO estimates with the resources of the generated
@@ -950,8 +994,10 @@ mod tests {
         let routes = match plan_routes(
             &graph,
             &regions,
+            &BTreeMap::new(),
             &select_device("u280").expect("u280"),
             PipelineScheme::Single,
+            MAX_USAGE_LIMIT,
             &CbcSolver::new(),
             &SolveOpts {
                 threads: Some(1),
@@ -992,6 +1038,106 @@ mod tests {
         assert_eq!(launch.route, reset.route);
         assert_eq!(launch.reg_regions, reset.reg_regions);
         assert_eq!(launch.scheme, reset.scheme);
+    }
+
+    #[test]
+    fn register_budgets_leave_a_slot_what_placement_did_not_take() {
+        let device = select_device("u280").expect("u280");
+        let capacity = scaled_area(device.slot(0, 1).expect("slot").area, 0.7).ff;
+        let baseline = BTreeMap::from([(
+            Coor::slot(0, 1).region_name(),
+            Area {
+                ff: capacity - 100,
+                ..Area::default()
+            },
+        )]);
+
+        let budgets = register_budgets(&baseline, &device, 0.7);
+
+        assert_eq!(budgets[&(0, 1)], 100, "only what placement left over");
+        assert_eq!(
+            budgets[&(1, 1)],
+            scaled_area(device.slot(1, 1).expect("slot").area, 0.7).ff,
+            "an untouched slot keeps its whole derated budget",
+        );
+        assert_eq!(budgets.len(), device.slots.len(), "every slot gets a budget");
+
+        let overfull = BTreeMap::from([(
+            Coor::slot(0, 1).region_name(),
+            Area {
+                ff: capacity + 1,
+                ..Area::default()
+            },
+        )]);
+        assert_eq!(
+            register_budgets(&overfull, &device, 0.7)[&(0, 1)],
+            0,
+            "a slot already past its derating offers nothing, it does not wrap",
+        );
+    }
+
+    /// The router must route *around* a slot with no room rather than leave the
+    /// overflow for `realize_slot_usage` to reject after the fact.
+    #[test]
+    fn routing_detours_around_a_slot_with_no_register_budget() {
+        use crate::solver::{CbcSolver, SolverError};
+
+        let graph = one_stream_graph(2, Area::default(), Area::default());
+        let device = select_device("u280").expect("u280");
+        let regions = BTreeMap::from([
+            ("Producer_0".to_string(), Coor::slot(0, 0).region_name()),
+            ("Consumer_0".to_string(), Coor::slot(0, 2).region_name()),
+        ]);
+        // Fill the only intermediate slot on the direct path.
+        let baseline = BTreeMap::from([(
+            Coor::slot(0, 1).region_name(),
+            scaled_area(device.slot(0, 1).expect("slot").area, MAX_USAGE_LIMIT),
+        )]);
+        let opts = SolveOpts {
+            threads: Some(1),
+            ..SolveOpts::default()
+        };
+
+        let route = |baseline: &BTreeMap<String, Area>| {
+            match plan_routes(
+                &graph,
+                &regions,
+                baseline,
+                &device,
+                PipelineScheme::Single,
+                MAX_USAGE_LIMIT,
+                &CbcSolver::new(),
+                &opts,
+            ) {
+                Ok(routes) => routes,
+                Err(PipelineError::Route(RouteError::Solver(SolverError::Spawn { .. }))) => {
+                    crate::solver::missing_cbc()
+                }
+                Err(error) => panic!("routing failed: {error}"),
+            }
+        };
+
+        let unconstrained = route(&BTreeMap::new());
+        assert_eq!(
+            unconstrained[0].reg_regions,
+            ["SLOT_X0Y1"],
+            "with room to spare the straight path is shortest",
+        );
+
+        let constrained = route(&baseline);
+        assert!(
+            !constrained[0].reg_regions.contains(&"SLOT_X0Y1".to_string()),
+            "the full slot must hold no Body registers: {:?}",
+            constrained[0],
+        );
+        assert_eq!(
+            constrained[0].route.first().map(String::as_str),
+            Some("SLOT_X0Y0"),
+        );
+        assert_eq!(
+            constrained[0].route.last().map(String::as_str),
+            Some("SLOT_X0Y2"),
+        );
     }
 
     #[test]

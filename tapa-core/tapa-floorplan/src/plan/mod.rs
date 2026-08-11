@@ -262,8 +262,10 @@ fn finish_plan(
     let routes = plan_routes(
         graph,
         &assignment.regions,
+        &assignment.slot_usage,
         device,
         options.scheme,
+        realized_caps.logic_utilization_cap,
         solver,
         opts,
     )?;
