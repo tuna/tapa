@@ -112,6 +112,12 @@ cc_import(
 # (from `rustc --print native-static-libs`). FRT's symbols are not hidden: the
 # shipped artifact is the static libtapa.a (no export table to filter), and
 # --exclude-libs breaks resolution across Bazel's internal libtapa.so DSO.
+#
+# No `-lOpenCL`: `cl3` (under `opencl3`) enables its `dynamic` feature by
+# default and dlopens the ICD loader on first use, so nothing here references
+# an OpenCL symbol at link time. Listing it would make software simulation —
+# which never touches OpenCL — fail to link on a machine with no ICD loader
+# installed.
 cc_library(
     name = "frt",
     linkopts = select({
@@ -119,7 +125,6 @@ cc_library(
             "-liconv",
         ],
         "//conditions:default": [
-            "-lOpenCL",
             "-lpthread",
             "-ldl",
             "-lrt",

@@ -121,13 +121,19 @@ pub fn get_tapa_ldflags() -> Vec<String> {
     // used to carry FRT's native dependencies transitively — with static
     // linking they must be listed explicitly, after `-lfrt` (see
     // `rustc --print native-static-libs` for the `frt` crate).
+    //
+    // `-lOpenCL` is deliberately absent: `cl3` (under `opencl3`) defaults to
+    // its `dynamic` feature and dlopens the ICD loader when a design is first
+    // run on hardware, so no OpenCL symbol is referenced at link time.
+    // Requiring the library here would break `tapa g++` for pure software
+    // simulation, which the docs promise needs nothing but a C++ compiler.
     let mut names = vec![
         "tapa", "frt", "context", "thread", "glog", "gflags", "stdc++fs",
     ];
     if cfg!(target_os = "macos") {
         names.push("iconv");
     } else {
-        names.extend(["OpenCL", "pthread", "dl", "rt", "m"]);
+        names.extend(["pthread", "dl", "rt", "m"]);
     }
     for name in names {
         out.push(format!("-l{name}"));
@@ -261,6 +267,10 @@ mod tests {
             // Dropped with the zip crate's default features; no longer linked.
             "-llzma",
             "-lbz2",
+            // `cl3` dlopens the ICD loader on first hardware use, so nothing
+            // references an OpenCL symbol at link time. Keeping this flag
+            // would make software simulation need an ICD loader installed.
+            "-lOpenCL",
         ] {
             assert!(
                 !flags.contains(&removed.to_string()),
@@ -282,15 +292,17 @@ mod tests {
                 "missing linker flag {kept}"
             );
         }
-        // The remaining native FRT dep differs by host platform.
-        let platform_lib = if cfg!(target_os = "macos") {
-            "-liconv"
+        // The remaining native FRT deps differ by host platform.
+        let platform_libs: &[&str] = if cfg!(target_os = "macos") {
+            &["-liconv"]
         } else {
-            "-lOpenCL"
+            &["-lpthread", "-ldl", "-lrt", "-lm"]
         };
-        assert!(
-            flags.contains(&platform_lib.to_string()),
-            "missing platform linker flag {platform_lib}"
-        );
+        for platform_lib in platform_libs {
+            assert!(
+                flags.contains(&(*platform_lib).to_string()),
+                "missing platform linker flag {platform_lib}"
+            );
+        }
     }
 }
