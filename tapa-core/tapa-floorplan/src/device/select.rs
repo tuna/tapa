@@ -8,12 +8,14 @@ use crate::device::model::{Device, DeviceValidationError};
 
 /// Every embedded device table, as `(key, json)`.
 ///
-/// Only the three devices with Vivado-free precollected resource tables are
-/// present (u250, u280, vck190); u50/u55c need per-slot areas extracted from
-/// Vivado and are added once characterized.
+/// Each table's per-slot area is precollected, so selection never shells out to
+/// Vivado. u50 is the one characterized device still missing; it needs the same
+/// per-clock-region census of its platform's `pblock_dynamic_region` that the
+/// others were built from.
 const TABLES: &[(&str, &str)] = &[
     ("u250", include_str!("tables/u250.json")),
     ("u280", include_str!("tables/u280.json")),
+    ("u55c", include_str!("tables/u55c.json")),
     ("vck190", include_str!("tables/vck190.json")),
 ];
 
@@ -218,6 +220,103 @@ mod tests {
             let slots = device.slots_with_tag(tag).collect::<Vec<_>>();
             assert_eq!(slots.len(), 1, "{tag} must identify exactly one slot");
             assert_eq!((slots[0].x, slots[0].y), expected);
+        }
+    }
+
+    /// `xcu55c` shares `xcu280`'s die and package, so the grid is the same
+    /// 3 SLRs × 2 columns over CR X0-X7 / Y0-Y11, and the 32
+    /// `BLI_HBM_AXI_INTF` sites all sit in CR row Y0 — X0-X15 under CR
+    /// columns X0-X3 and X16-X31 under X4-X7, which is what splits the banks
+    /// across the bottom row's two slots.
+    ///
+    /// The shell is not the same. The U55C platform hands the ULP one
+    /// `BLP_S_AXI_CTRL_USER_*` interface per SLR and every one of them is
+    /// placed in the right-hand column, so the control anchor is a choice of
+    /// row rather than of column; SLR1 is taken because it is equidistant from
+    /// the other two.
+    #[test]
+    fn u55c_external_interfaces_have_exact_unique_slots() {
+        let device = select_device("u55c").expect("u55c resolves");
+        assert_eq!(device.part_num, "xcu55c-fsvh2892-2L-e");
+        assert_eq!(
+            device.platform_name.as_deref(),
+            Some("xilinx_u55c_gen3x16_xdma_3_202210_1")
+        );
+        assert_eq!(
+            device.user_pblock_name.as_deref(),
+            Some("pblock_dynamic_region")
+        );
+        assert!(!device.is_versal);
+        for index in 0..32 {
+            let tag = format!("HBM[{index}]");
+            let slots = device.slots_with_tag(&tag).collect::<Vec<_>>();
+            assert_eq!(slots.len(), 1, "{tag} must identify exactly one slot");
+            assert_eq!(slots[0].y, 0, "{tag} belongs in the memory-facing row");
+            assert_eq!(slots[0].x, u32::from(index >= 16));
+        }
+        for tag in ["CLK_RST", "S_AXI_CONTROL"] {
+            let slots = device.slots_with_tag(tag).collect::<Vec<_>>();
+            assert_eq!(slots.len(), 1, "{tag} must identify exactly one slot");
+            assert_eq!((slots[0].x, slots[0].y), (1, 1));
+        }
+        // The U55C carries no DDR, so a `sp=...:DDR[0]` binding must fail to
+        // resolve rather than land somewhere plausible.
+        assert_eq!(device.slots_with_tag("DDR[0]").count(), 0);
+    }
+
+    /// Per-slot areas are a census of the sites the platform's
+    /// `pblock_dynamic_region` leaves in each slot, measured on the shell
+    /// checkpoint shipped in the platform's `hw.xsa`. Two properties make the
+    /// numbers checkable: the shell occupies only the right-hand column, so
+    /// every left-column slot must equal the bare device's fabric for that
+    /// quarter; and the six slots must tile the dynamic region without
+    /// overlapping.
+    #[test]
+    fn u55c_slots_carry_the_platform_dynamic_region() {
+        let device = select_device("u55c").expect("u55c resolves");
+        for (x, y, lut, dsp, bram_18k, uram) in [
+            // Left column: untouched by the shell, equal to the raw device.
+            (0, 0, 220_800, 1440, 768, 128),
+            (0, 1, 216_960, 1536, 768, 128),
+            (0, 2, 216_960, 1536, 768, 128),
+            // Right column: what the static region leaves behind.
+            (1, 0, 168_000, 1224, 432, 192),
+            (1, 1, 147_840, 1248, 384, 192),
+            (1, 2, 178_080, 1392, 432, 192),
+        ] {
+            let slot = device.slot(x, y).expect("slot");
+            assert_eq!(slot.area.lut, lut, "({x},{y}) lut");
+            assert_eq!(slot.area.ff, lut * 2, "({x},{y}) ff");
+            assert_eq!(slot.area.dsp, dsp, "({x},{y}) dsp");
+            assert_eq!(slot.area.bram_18k, bram_18k, "({x},{y}) bram");
+            assert_eq!(slot.area.uram, uram, "({x},{y}) uram");
+            assert!(!slot.pblock_ranges.is_empty(), "({x},{y}) ranges");
+        }
+        // SLL budget is 6 registers per LAGUNA site, and the shell takes a
+        // quarter of the right column's, so the two columns cross at
+        // different capacities.
+        assert_eq!(device.slot(0, 0).expect("slot").wire_cap.north, 11_520);
+        assert_eq!(device.slot(1, 0).expect("slot").wire_cap.north, 8_640);
+        // Every column is cut at the same clock-region boundary in every row,
+        // so a vertical hop always joins slots that physically overlap — the
+        // invariant `border_capacity` and the SLL pipelining both rest on.
+        for slot in &device.slots {
+            let (lo, hi) = if slot.x == 0 { (0, 3) } else { (4, 7) };
+            for range in &slot.pblock_ranges {
+                for column in range.match_indices("CLOCKREGION_X").filter_map(|(at, _)| {
+                    range[at + "CLOCKREGION_X".len()..]
+                        .split('Y')
+                        .next()
+                        .and_then(|digits| digits.parse::<u32>().ok())
+                }) {
+                    assert!(
+                        (lo..=hi).contains(&column),
+                        "slot ({},{}) reaches CR column X{column}, outside X{lo}-X{hi}: {range}",
+                        slot.x,
+                        slot.y,
+                    );
+                }
+            }
         }
     }
 
