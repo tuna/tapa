@@ -155,6 +155,7 @@ Floorplanning needs a device table describing the slot grid and where each memor
 
 | Device | Part | Banks | Platform the table was built from |
 |---|---|---|---|
+| Alveo U55C | `xcu55c-fsvh2892-2L-e` | `HBM[0]`–`HBM[31]`, no DDR | `xilinx_u55c_gen3x16_xdma_3_202210_1` |
 | Alveo U250 | `xcu250-figd2104-2L-e` | `DDR[0]`–`DDR[3]`, one per SLR | `xilinx_u250_gen3x16_xdma_4_1_202210_1` |
 | Alveo U280 | `xcu280-fsvh2892-2L-e` | `HBM[0]`–`HBM[31]`, `DDR[0]`, `DDR[1]` | `xilinx_u280_gen3x16_xdma_1_202211_1` |
 | VCK190 | `xcvc1902-vsva2197-2MP-e-S` | `DDR[0]`–`DDR[3]`, by NoC memory controller | `xilinx_vck190_base_202410_1` |
@@ -222,7 +223,7 @@ These run the floorplanned design through `v++ --link` to measure Fmax. On top o
 ### Example
 
 ```bash
-tapa --work-dir work.out synth --platform xilinx_u280_gen3x16_xdma_1_202211_1 --clock-period 3
+tapa --work-dir work.out synth --platform xilinx_u55c_gen3x16_xdma_3_202210_1 --clock-period 3
 tapa --work-dir work.out floorplan \
   --partition-strategy multi-level \
   --pp-scheme double \
