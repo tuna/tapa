@@ -53,12 +53,14 @@ This is typically a Vivado bug. Try switching to a different Vitis/Vivado versio
 
 ## Verilator issues
 
-### `verilator not found`
+### `cosim error: tool not found: verilator`
 
-Install Verilator from your package manager or build from source:
+Verilator is not on `PATH`. Install it — but read the next section first and
+check the version you get, because the package managers ship releases too old
+for TAPA and the resulting failure looks like something else entirely:
 
 ```bash
-# Debian/Ubuntu
+# Debian/Ubuntu — check `verilator --version` afterwards
 sudo apt install verilator
 ```
 

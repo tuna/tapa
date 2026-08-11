@@ -8,8 +8,22 @@
 
 - A `.xo` kernel object from `tapa compile` (or a `.zip` for the `xilinx-hls` target)
 - One of:
-  - **xsim**: Requires a Vivado installation. Linux only.
+  - **xsim**: Requires a Vivado installation. Linux only. No version floor.
   - **verilator**: Open-source. Works on Linux and macOS. No Vivado required.
+    **Must be 5.044 or newer** — see below.
+
+```admonish warning title="Check your Verilator version before choosing it"
+Verilator older than 5.044 cannot elaborate the AXI master Vitis HLS generates
+for an `mmap` port, so every design with one fails — including `vadd`. The
+distribution packages are well behind that floor (Ubuntu 24.04 ships 5.020), so
+`apt install verilator` is usually not enough; check `verilator --version` and
+[build from source](https://verilator.org/guide/latest/install.html) if it is
+older. The failure looks like a Verilog parsing error rather than a version
+problem:
+
+    %Error: rtl/Stream2Mmap_mmap_m_axi.v:2046:27: Expecting expression to be
+            constant, but can't determine constant for FUNCREF 'log2'
+```
 
 ## Commands
 

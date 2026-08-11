@@ -67,6 +67,9 @@ minutes that Vitis cosimulation requires. A successful run prints `PASS!`.
 The default simulator backend is `xsim`, which requires Vivado on Linux. To use
 Verilator instead (cross-platform, no Vivado required), pass `-cosim_simulator verilator`
 to the host executable: `./vadd --bitstream=vadd.xo -cosim_simulator verilator`.
+That path needs Verilator 5.044 or newer, which is ahead of most distribution
+packages — see [Fast Hardware Simulation](../howto/fast-cosim.md) before
+reaching for it.
 ```
 
 ## Stage 3 — Link to xclbin

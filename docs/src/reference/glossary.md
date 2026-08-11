@@ -130,7 +130,7 @@ The directory where TAPA stores all intermediate artifacts between pipeline step
 
 **Verilator**
 
-An open-source Verilog simulator, and one of the two backends for TAPA fast cosim. Select it with `-cosim_simulator verilator` on the host executable. It needs no Vivado installation and runs on Linux and macOS, but does not support Vivado waveform capture.
+An open-source Verilog simulator, and one of the two backends for TAPA fast cosim. Select it with `-cosim_simulator verilator` on the host executable. It needs no Vivado installation and runs on Linux and macOS, but does not support Vivado waveform capture, and must be version 5.044 or newer — older releases cannot elaborate the AXI master Vitis HLS generates for an `mmap` port.
 
 ---
 
