@@ -8,7 +8,7 @@
 
 - A `.xo` kernel object from `tapa compile`
 - Vitis and XRT installed (Linux only)
-- The target platform string (e.g., `xilinx_u280_xdma_201920_3`)
+- The target platform string (e.g., `xilinx_u55c_gen3x16_xdma_3_202210_1`)
 - An Alveo board installed in the system for the final execution step
 - Several hours of compute time for `v++ --link`
 
@@ -17,13 +17,13 @@
 If you do not already have a `.xo`, produce it with `tapa compile`:
 
 ```bash
-platform=xilinx_u280_xdma_201920_3
+platform=xilinx_u55c_gen3x16_xdma_3_202210_1
 
 tapa \
   --work-dir work.out \
   compile \
   --top VecAdd \
-  --part-num xcu280-fsvh2892-2L-e \
+  --part-num xcu55c-fsvh2892-2L-e \
   --clock-period 3.33 \
   -f vadd.cpp \
   -o vadd.$platform.hw.xo
@@ -50,7 +50,7 @@ The output artifact is `vadd.$platform.hw.xclbin` — this is the bitstream load
 
 Key alignment rules:
 - `--kernel VecAdd` must match the top-level function name in your TAPA source, the same name you passed to `tapa compile --top`.
-- `--platform $platform` must name a platform built for the same device that `tapa compile` targeted. If you compiled with `--part-num xcu280-fsvh2892-2L-e`, link against a U280 platform; a mismatch fails at link time. Passing `--platform` to `tapa compile` instead of `--part-num` avoids the question entirely, since TAPA then derives the part from the platform.
+- `--platform $platform` must name a platform built for the same device that `tapa compile` targeted. If you compiled with `--part-num xcu55c-fsvh2892-2L-e`, link against a U55C platform; a mismatch fails at link time. Passing `--platform` to `tapa compile` instead of `--part-num` avoids the question entirely, since TAPA then derives the part from the platform.
 - The input `.xo` filename (`vadd.$platform.hw.xo`) must be the file produced by `tapa compile`.
 
 ## Stage 3: Execute on the FPGA
@@ -65,8 +65,8 @@ The same host executable used for software and hardware simulation runs on board
 
 ```
 INFO: Found platform: Xilinx
-INFO: Found device: xilinx_u280_xdma_201920_3
-INFO: Using xilinx_u280_xdma_201920_3
+INFO: Found device: xilinx_u55c_gen3x16_xdma_3_202210_1
+INFO: Using xilinx_u55c_gen3x16_xdma_3_202210_1
 ...
 elapsed time: 7.48926 s
 PASS!

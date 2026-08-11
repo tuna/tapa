@@ -46,7 +46,7 @@ tapa \
   --remote-xilinx-settings /opt/Xilinx/Vitis/2024.1/settings64.sh \
   compile \
   --top VecAdd \
-  --part-num xcu280-fsvh2892-2L-e \
+  --part-num xcu55c-fsvh2892-2L-e \
   --clock-period 3.33 \
   -f vadd.cpp \
   -o vadd.xo

@@ -8,14 +8,14 @@
 
 - A `.xo` kernel object from `tapa compile`
 - Vitis and XRT installed (Linux only)
-- The target platform string (e.g., `xilinx_u280_xdma_201920_3`)
+- The target platform string (e.g., `xilinx_u55c_gen3x16_xdma_3_202210_1`)
 
 ## Commands
 
 ### Generate the hardware emulation bitstream
 
 ```bash
-platform=xilinx_u280_xdma_201920_3
+platform=xilinx_u55c_gen3x16_xdma_3_202210_1
 
 v++ -o vadd.$platform.hw_emu.xclbin \
   --link \
@@ -38,16 +38,22 @@ The same host executable used for software simulation and fast cosim runs unchan
 ## Expected output
 
 ```
-INFO: Loading vadd.xilinx_u250_xdma_201830_2.hw_emu.xclbin
-INFO: Found platform: Xilinx
-INFO: Found device: xilinx_u250_xdma_201830_2
-INFO: Using xilinx_u250_xdma_201830_2
-INFO: [HW-EMU 01] Hardware emulation runs simulation underneath. Using a large data set will result in long simulation times. It is recommended that a small dataset is used for faster execution. The flow uses approximate models for DDR memory and interconnect and hence the performance data generated is approximate.
+INFO: [HW-EMU 05] Path of the simulation directory : /tmp/.frt.0/.run/.../behav_waveform/xsim
+INFO: [HW-EMU 01] Hardware emulation runs simulation underneath. Using a large data set will result in long simulation times. It is recommended that a small dataset is used for faster execution. The flow uses approximate models for Global memories and interconnect and hence the performance data generated is approximate.
+XRT build version: 2.20.0
 ...
+kernel time: 1.00021 s
+PASS!
 INFO: [HW-EMU 06-0] Waiting for the simulator process to exit
 INFO: [HW-EMU 06-1] All the simulator processes exited successfully
-elapsed time: 31.0901 s
-PASS!
+```
+
+```admonish warning title="The reported time is not a measurement"
+Under hardware emulation the printed `kernel time` is sampled on a one-second
+poll, so it rounds up to a whole second: the same `vadd` xclbin reports
+`1.00024 s` for `n=100` and `4.00121 s` for `n=10000`. Read it as confirmation
+that the kernel ran, not as a number to compare designs with. For cycle-level
+timing, use the simulation log under the path in the `HW-EMU 05` line.
 ```
 
 ```admonish note
@@ -60,7 +66,7 @@ The run is correct when:
 
 1. The `INFO: [HW-EMU 06-1] All the simulator processes exited successfully` line appears.
 2. The application's correctness check prints `PASS!`.
-3. The elapsed time is reported (confirming the kernel actually executed).
+3. A kernel time is reported at all — which confirms the kernel executed, but see the warning above before reading anything into its value.
 
 ```admonish tip
 Use a small dataset for hardware emulation runs. Large datasets cause proportionally long simulation times because every clock cycle is simulated in software.

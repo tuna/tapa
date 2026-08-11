@@ -44,7 +44,7 @@ Run synthesis with utilization reporting enabled:
 ```bash
 tapa --work-dir work.out synth \
   --enable-synth-util \
-  --part-num xcu280-fsvh2892-2L-e \
+  --part-num xcu55c-fsvh2892-2L-e \
   --clock-period 3.33
 ```
 

@@ -68,21 +68,21 @@ Each kernel function is compiled independently. Invoke `tapa compile` once per t
 ```bash
 tapa compile \
   --top Scatter \
-  --part-num xcu280-fsvh2892-2L-e \
+  --part-num xcu55c-fsvh2892-2L-e \
   --clock-period 3.33 \
   -f cannon.cpp \
   -o scatter.xo
 
 tapa compile \
   --top ProcElem \
-  --part-num xcu280-fsvh2892-2L-e \
+  --part-num xcu55c-fsvh2892-2L-e \
   --clock-period 3.33 \
   -f cannon.cpp \
   -o proc-elem.xo
 
 tapa compile \
   --top Gather \
-  --part-num xcu280-fsvh2892-2L-e \
+  --part-num xcu55c-fsvh2892-2L-e \
   --clock-period 3.33 \
   -f cannon.cpp \
   -o gather.xo
@@ -212,7 +212,7 @@ TAPA_CONCURRENCY=1 ./cannon \
 | `-cosim_work_dir_parallel` | Create a unique subdirectory per instance. Required when multiple kernels share `-cosim_work_dir`. |
 | `-cosim_simulator <backend>` | `xsim` (default, Linux only) or `verilator` (cross-platform). Applied to all instances. |
 | `-xsim_save_waveform` | Save simulation waveforms. Pair with `-cosim_work_dir`. |
-| `-xsim_part_num <part>` | Target FPGA part number (e.g., `xcu280-fsvh2892-2L-e`). |
+| `-xsim_part_num <part>` | Target FPGA part number (e.g., `xcu55c-fsvh2892-2L-e`). |
 | `TAPA_CONCURRENCY` | Environment variable. Number of host worker threads running task coroutines — not a cap on simulator processes. |
 
 ---
@@ -230,9 +230,9 @@ The `tests/functional/parallel-emulation/` directory in the TAPA repository cont
 **Compile** (three invocations from one source file):
 
 ```bash
-tapa compile --top Scatter  -f cannon.cpp -o scatter.xo   --part-num xcu280-fsvh2892-2L-e --clock-period 3.33
-tapa compile --top ProcElem -f cannon.cpp -o proc-elem.xo --part-num xcu280-fsvh2892-2L-e --clock-period 3.33
-tapa compile --top Gather   -f cannon.cpp -o gather.xo    --part-num xcu280-fsvh2892-2L-e --clock-period 3.33
+tapa compile --top Scatter  -f cannon.cpp -o scatter.xo   --part-num xcu55c-fsvh2892-2L-e --clock-period 3.33
+tapa compile --top ProcElem -f cannon.cpp -o proc-elem.xo --part-num xcu55c-fsvh2892-2L-e --clock-period 3.33
+tapa compile --top Gather   -f cannon.cpp -o gather.xo    --part-num xcu55c-fsvh2892-2L-e --clock-period 3.33
 ```
 
 **Run:**

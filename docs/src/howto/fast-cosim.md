@@ -103,7 +103,7 @@ The following flags control fast cosim behavior when passed to the host executab
 
 | Flag | Description |
 |------|-------------|
-| `-xsim_part_num <part>` | Target FPGA part number for simulation (e.g., `xcu280-fsvh2892-2L-e`). |
+| `-xsim_part_num <part>` | Target FPGA part number for simulation (e.g., `xcu55c-fsvh2892-2L-e`). |
 | `-cosim_work_dir <dir>` | Persistent working directory for simulation artifacts. Without this, a temporary directory is used and deleted after the run. |
 | `-xsim_save_waveform` | Save simulation waveforms to a `.wdb` file in the work directory. Requires `-cosim_work_dir`. |
 | `-xsim_start_gui` | Open the Vivado GUI for interactive debugging during simulation. |
