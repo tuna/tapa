@@ -40,8 +40,24 @@ fn run() -> Result<(), CliError> {
 
     logging::install(cli.globals.verbose, cli.globals.quiet);
 
+    // The update flow never touches vendor tools or compiler state:
+    // skip remote bootstrap (which may trigger an SSH sync — the hidden
+    // `update-check` worker runs detached and must not) and skip the
+    // automatic release check (the worker would recurse; `update` would
+    // warn about the very release it just installed).
+    let is_update_flow = matches!(
+        cli.step,
+        Some(Step::Update { .. } | Step::UpdateCheck { .. })
+    );
+
     let mut ctx = CliContext::from_globals(&cli.globals);
-    let work_dir = ctx.work_dir.clone();
+    // The update flow gets a cache-dir work dir: it has no use for
+    // `./work.out`, and creating one in the user's cwd would be litter.
+    let work_dir = if is_update_flow {
+        update::update_flow_work_dir()
+    } else {
+        ctx.work_dir.clone()
+    };
     ctx.switch_work_dir(work_dir.clone())
         .map_err(|e| CliError::WorkDir(work_dir.clone(), e.to_string()))?;
 

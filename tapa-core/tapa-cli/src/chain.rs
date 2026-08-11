@@ -208,6 +208,21 @@ impl Step {
                 Some(parse_chain_tail(&tail)?)
             };
         }
+        // Replacing the running tool cannot compose with compiler work:
+        // a step chained after `update` would run under the binary image
+        // the update just replaced (and with remote bootstrap skipped,
+        // since that keys off the first step), and one chained before it
+        // makes the same commands position-dependent. `g++` sets the
+        // precedent for a terminal step.
+        if steps.len() > 1
+            && steps
+                .iter()
+                .any(|step| matches!(step, Self::Update { .. } | Self::UpdateCheck { .. }))
+        {
+            return Err(CliError::InvalidArg(
+                "`tapa update` cannot be chained with other steps; run it alone".to_owned(),
+            ));
+        }
         for step in steps {
             step.run_one(ctx)?;
         }

@@ -26,7 +26,14 @@ set -ue
 # Default values for the installation options.
 TAPA_LOCAL_PACKAGE="${TAPA_LOCAL_PACKAGE:-}"
 TAPA_VERSION="${TAPA_VERSION:-latest}"
+# Release tags carry a v prefix; copying one from the releases page into
+# -V v0.1.x would otherwise compose a .../download/vv0.1.x/ URL that 404s.
+TAPA_VERSION="${TAPA_VERSION#v}"
 TAPA_DOWNLOAD_TMPFILE=""
+# Set when --no-modify-path is passed. Distinct from MODIFY_PROFILE_PATH,
+# which is already "no" by default for root because a root install reaches
+# TAPA through symlinks and edits no user profile.
+NO_MODIFY_PATH_REQUESTED="no"
 
 if [ "$(id -u)" -eq 0 ]; then
   # Default to /opt/tapa if the user has the root privilege.
@@ -128,6 +135,7 @@ parse_args() {
       ;;
     --no-modify-path)
       MODIFY_PROFILE_PATH="no"
+      NO_MODIFY_PATH_REQUESTED="yes"
       shift
       ;;
     -V | --version)
@@ -259,8 +267,11 @@ create_symlinks() {
     # profile is edited and nothing records where TAPA actually lives. The
     # cosim runtime normally recovers that from the host binary's RUNPATH,
     # but TAPA_HOME is the documented override and the fallback on platforms
-    # whose loader cannot report a resolved path.
-    if [ -d /etc/profile.d ]; then
+    # whose loader cannot report a resolved path. (A no-symlinks install
+    # gets TAPA_HOME from the user's profile files instead, so this block
+    # only runs on the symlink path at all; within it, writing every user's
+    # shell startup still follows --no-modify-path.)
+    if [ "$NO_MODIFY_PATH_REQUESTED" = "no" ] && [ -d /etc/profile.d ]; then
       if [ "$VERBOSE" = "yes" ]; then
         echo "Writing \"/etc/profile.d/tapa.sh\"..."
       fi
@@ -281,22 +292,29 @@ modify_profile_path_in_file() {
     return
   fi
 
-  # Check if the PATH environment variable is already modified.
-  if grep -q "$TAPA_INSTALL_DIR" "$profile_file"; then
-    if [ "$VERBOSE" = "yes" ]; then
-      echo "The PATH to TAPA is already set in \"$profile_file\". Skipping..."
-    fi
-    return
-  fi
+  # Each line is checked on its own: an upgrade over an install that
+  # predates TAPA_HOME already has the PATH line, and skipping the whole
+  # file on that basis would leave TAPA_HOME unset for exactly the users
+  # the variable was added for. -F because an install dir is a path, not a
+  # regular expression.
+  path_line="export PATH=\"\$PATH:$TAPA_INSTALL_DIR/usr/bin\""
+  home_line="export TAPA_HOME=\"$TAPA_INSTALL_DIR\""
+  added=no
 
-  # Add the PATH environment variable to the profile file. TAPA_HOME goes
-  # alongside it: the cosim runtime uses it to locate the DPI libraries when
-  # the host binary's RUNPATH cannot be consulted.
-  if [ "$QUIET" = "no" ]; then
-    echo "Adding PATH to TAPA to \"$profile_file\"..."
+  for line in "$path_line" "$home_line"; do
+    if grep -qF "$line" "$profile_file"; then
+      continue
+    fi
+    if [ "$added" = "no" ] && [ "$QUIET" = "no" ]; then
+      echo "Adding TAPA to \"$profile_file\"..."
+    fi
+    echo "$line" >>"$profile_file"
+    added=yes
+  done
+
+  if [ "$added" = "no" ] && [ "$VERBOSE" = "yes" ]; then
+    echo "TAPA is already set up in \"$profile_file\". Skipping..."
   fi
-  echo "export PATH=\"\$PATH:$TAPA_INSTALL_DIR/usr/bin\"" >>"$profile_file"
-  echo "export TAPA_HOME=\"$TAPA_INSTALL_DIR\"" >>"$profile_file"
 }
 
 # Modify the PATH environment variable.
