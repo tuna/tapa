@@ -330,7 +330,7 @@ Mmap2Stream Mmap2Stream_0 (
 
 tapa_control_pipeline #(
   .WIDTH(66),
-  .BODY_LEVEL(6)
+  .BODY_LEVEL(2)
 ) __tapa_control_Mmap2Stream_1_launch (
   .clk(ap_clk),
   .in_data(__tapa_control_Mmap2Stream_1__launch_input),
@@ -339,7 +339,7 @@ tapa_control_pipeline #(
 
 tapa_control_pipeline #(
   .WIDTH(1),
-  .BODY_LEVEL(6)
+  .BODY_LEVEL(2)
 ) __tapa_control_Mmap2Stream_1_reset (
   .clk(ap_clk),
   .in_data(ap_rst_n),
@@ -522,7 +522,7 @@ fifo_almost_full #(
 );
 
 tapa_global_controller #(
-  .FLUSH_CYCLES(16)
+  .FLUSH_CYCLES(14)
 ) __tapa_global_controller (
   .ap_clk(ap_clk),
   .ap_rst_n(ap_rst_n),

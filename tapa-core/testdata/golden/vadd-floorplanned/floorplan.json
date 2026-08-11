@@ -67,14 +67,14 @@
       },
       "route": [
         "SLOT_X1Y1",
-        "SLOT_X1Y0",
+        "SLOT_X0Y1",
         "SLOT_X0Y0"
       ],
       "scheme": "double",
       "reg_regions": [
         "SLOT_X1Y1",
-        "SLOT_X1Y0",
-        "SLOT_X1Y0",
+        "SLOT_X0Y1",
+        "SLOT_X0Y1",
         "SLOT_X0Y0"
       ]
     },
@@ -86,14 +86,14 @@
       },
       "route": [
         "SLOT_X1Y1",
-        "SLOT_X1Y0",
+        "SLOT_X0Y1",
         "SLOT_X0Y0"
       ],
       "scheme": "double",
       "reg_regions": [
         "SLOT_X1Y1",
-        "SLOT_X1Y0",
-        "SLOT_X1Y0",
+        "SLOT_X0Y1",
+        "SLOT_X0Y1",
         "SLOT_X0Y0"
       ]
     },
@@ -124,17 +124,11 @@
       },
       "route": [
         "SLOT_X1Y1",
-        "SLOT_X0Y1",
-        "SLOT_X0Y0",
         "SLOT_X1Y0"
       ],
       "scheme": "double",
       "reg_regions": [
         "SLOT_X1Y1",
-        "SLOT_X0Y1",
-        "SLOT_X0Y1",
-        "SLOT_X0Y0",
-        "SLOT_X0Y0",
         "SLOT_X1Y0"
       ]
     },
@@ -146,17 +140,11 @@
       },
       "route": [
         "SLOT_X1Y1",
-        "SLOT_X0Y1",
-        "SLOT_X0Y0",
         "SLOT_X1Y0"
       ],
       "scheme": "double",
       "reg_regions": [
         "SLOT_X1Y1",
-        "SLOT_X0Y1",
-        "SLOT_X0Y1",
-        "SLOT_X0Y0",
-        "SLOT_X0Y0",
         "SLOT_X1Y0"
       ]
     },
@@ -186,7 +174,7 @@
   "slot_usage": {
     "SLOT_X0Y0_TO_SLOT_X0Y0": {
       "lut": 415,
-      "ff": 914,
+      "ff": 780,
       "bram_18k": 0,
       "dsp": 0,
       "uram": 0
@@ -200,7 +188,7 @@
     },
     "SLOT_X1Y0_TO_SLOT_X1Y0": {
       "lut": 415,
-      "ff": 842,
+      "ff": 708,
       "bram_18k": 0,
       "dsp": 0,
       "uram": 0

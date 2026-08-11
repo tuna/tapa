@@ -10,6 +10,7 @@
 //! placement pins its achieved objective expression, the router pins its
 //! norm variable or hop objective).
 
+use crate::solver::solve::SOLUTION_TOLERANCE;
 use crate::solver::sparse::SparseRow;
 use crate::solver::{
     Comparison, LinExpr, LpModel, LpSolution, LpVar, SolveOpts, Solver, SolverError,
@@ -18,6 +19,19 @@ use crate::solver::{
 /// Row name pinning the achieved primary objective; both formulations
 /// used this exact name.
 const PIN_ROW: &str = "lexicographic_pin";
+
+/// The achieved objective, widened so the primary incumbent itself always
+/// satisfies the pin.
+///
+/// A solver reports its solution as decimals, so a continuous objective comes
+/// back rounded. Pinning that rounded value exactly can land a hair below what
+/// the binding row requires, making the refinement infeasible and silently
+/// discarding the determinism it exists for. The slack is the solver's own
+/// solution tolerance scaled by the objective, far below the gap between two
+/// materially different objective values.
+fn pin_bound(achieved: f64) -> f64 {
+    achieved + SOLUTION_TOLERANCE * achieved.abs().max(1.0)
+}
 
 /// Pin the achieved primary objective and re-solve minimizing the stable
 /// candidate ranking over `rank_rows` (each row's candidate position is
@@ -36,7 +50,7 @@ pub fn refine(
     achieved: f64,
     rank_rows: &[Vec<LpVar>],
 ) -> Result<Option<LpSolution>, SolverError> {
-    lp.add_constraint(PIN_ROW.to_string(), pinned, Comparison::Le, achieved);
+    lp.add_constraint(PIN_ROW.to_string(), pinned, Comparison::Le, pin_bound(achieved));
     lp.set_objective(rank_objective(rank_rows));
     let refined = solver.solve(lp, opts)?;
     Ok(refined.is_found().then_some(refined))
@@ -124,8 +138,27 @@ mod tests {
         let pin_row = &model.constraints[rows_before];
         assert_eq!(pin_row.name, PIN_ROW);
         assert_eq!(pin_row.op, Comparison::Le);
-        assert_eq!(pin_row.rhs.to_bits(), 42.0_f64.to_bits());
+        assert_eq!(pin_row.rhs.to_bits(), pin_bound(42.0).to_bits());
         assert_eq!(model.objective, rank_objective(&rows));
+    }
+
+    /// A continuous objective comes back from the solver as rounded decimals.
+    /// Pinning that value exactly can exclude the very incumbent it came from,
+    /// which silently costs the refinement — and the reproducibility it buys.
+    #[test]
+    fn the_pin_admits_the_incumbent_it_was_read_from() {
+        // The routing balance objective: 1498 wires over a 5277-wire budget,
+        // as CBC prints it.
+        let exact = 1498.0 / 5277.0;
+        let printed = 0.283_873_41;
+        assert!(printed < exact, "the printed value rounds down");
+        assert!(
+            pin_bound(printed) >= exact,
+            "the pin must still admit the exact incumbent",
+        );
+        // The slack stays far below anything that could change the answer.
+        assert!(pin_bound(printed) - printed < 1e-6);
+        assert!(pin_bound(0.0) > 0.0, "a zero objective still admits itself");
     }
 
     #[test]

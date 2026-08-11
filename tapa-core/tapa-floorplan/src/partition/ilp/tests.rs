@@ -1547,10 +1547,11 @@ fn refinement_solve_pins_the_primary_objective_and_ranks_candidates() {
         .find(|constraint| constraint.name == "lexicographic_pin")
         .expect("the primary objective must be pinned");
     assert_eq!(pin.op, Comparison::Le);
-    assert_eq!(
-        pin.rhs.to_bits(),
-        1.0_f64.to_bits(),
-        "the edge-less primary objective is its constant 1.0",
+    assert!(
+        (pin.rhs - 1.0).abs() < 1e-5,
+        "the edge-less primary objective is its constant 1.0, plus the pin's \
+         solver-tolerance slack; got {}",
+        pin.rhs,
     );
     assert_eq!(
         pin.expr.constant.to_bits(),

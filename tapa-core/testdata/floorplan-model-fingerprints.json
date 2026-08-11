@@ -26,8 +26,8 @@
       "nonzeros": 965,
       "var_domains": "0x639f0741237fccc5",
       "objective": "0xd845df212bc0f904",
-      "rows": "0x83ecbe291d0ab1cd",
-      "exact_lp_text": "0x60b0719e167d8468",
+      "rows": "0x1873b50b49b32ddb",
+      "exact_lp_text": "0x408b46e1af55fe17",
       "solve_status": "optimal",
       "solve_objective": 11.0
     },
@@ -54,10 +54,10 @@
       "nonzeros": 104,
       "var_domains": "0xbdd0bd0f48cf273e",
       "objective": "0x45e1cfa5bff751ed",
-      "rows": "0xb2b6aa1c622de132",
-      "exact_lp_text": "0x2eeda3fed602c114",
-      "solve_status": "infeasible",
-      "solve_objective": 0.53731345
+      "rows": "0x75543a02ada68f6c",
+      "exact_lp_text": "0xec2614b4eb539799",
+      "solve_status": "optimal",
+      "solve_objective": 2.0
     }
   ]
 }
