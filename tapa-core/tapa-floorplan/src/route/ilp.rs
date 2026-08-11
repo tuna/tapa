@@ -367,7 +367,7 @@ fn selected_routes(
                 "more than one path selected for net {net_index}"
             )),
         })?;
-        routes.push(paths[path_index].to_vec());
+        routes.push(paths[path_index].clone());
     }
     Ok(routes)
 }

@@ -30,7 +30,7 @@ const PIN_ROW: &str = "lexicographic_pin";
 /// solution tolerance scaled by the objective, far below the gap between two
 /// materially different objective values.
 fn pin_bound(achieved: f64) -> f64 {
-    achieved + SOLUTION_TOLERANCE * achieved.abs().max(1.0)
+    SOLUTION_TOLERANCE.mul_add(achieved.abs().max(1.0), achieved)
 }
 
 /// Pin the achieved primary objective and re-solve minimizing the stable

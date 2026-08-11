@@ -449,13 +449,28 @@ fn two_slot_golden_device() -> Device {
     }
 }
 
+/// The capacities of every region a domain list mentions.
+fn domain_areas(device: &Device, domains: &[Vec<Coor>]) -> RegionAreas {
+    let regions: Vec<Coor> = domains
+        .iter()
+        .flatten()
+        .copied()
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    region_areas(device, &regions).expect("region areas")
+}
+
 fn two_slot_golden_model(graph: &FloorGraph) -> FloorplanModel {
     let bottom = Coor::slot(0, 0);
     let top = Coor::slot(0, 1);
+    let device = two_slot_golden_device();
+    let domains = vec![vec![bottom, top]; graph.vertices().len()];
     FloorplanModel::build(
         graph,
-        &two_slot_golden_device(),
-        &vec![vec![bottom, top]; graph.vertices().len()],
+        &device,
+        &domains,
+        &domain_areas(&device, &domains),
         &[Cut {
             name: "y=0".to_string(),
             lhs: vec![bottom],
@@ -588,36 +603,6 @@ fn canonical_placement_model_matches_expected_formulation() {
         10,
         "five resource rows per active slot"
     );
-    for (region, producer, consumer) in [
-        (&bottom_name, &producer_x[0], &consumer_x[0]),
-        (&top_name, &producer_x[1], &consumer_x[1]),
-    ] {
-        assert_row(
-            lp,
-            &format!("node_{region}_LUT_usage"),
-            Comparison::Le,
-            700.0,
-            [(100.0, producer.as_str()), (116.0, consumer.as_str())],
-        );
-    }
-    // The flip-flop rows also reserve the Head registers a crossing will need:
-    // A -> B is 35 wires, and its Head lands in whichever region A does.
-    for (region, producer, consumer, crossing) in [
-        (&bottom_name, &producer_x[0], &consumer_x[0], route_y[1]),
-        (&top_name, &producer_x[1], &consumer_x[1], route_y[2]),
-    ] {
-        assert_row(
-            lp,
-            &format!("node_{region}_FF_usage"),
-            Comparison::Le,
-            700.0,
-            [
-                (200.0, producer.as_str()),
-                (73.0, consumer.as_str()),
-                (35.0, crossing),
-            ],
-        );
-    }
     assert_row(
         lp,
         "cut_y=0_capacity",
@@ -635,6 +620,59 @@ fn canonical_placement_model_matches_expected_formulation() {
         ]),
         "35-bit width times the vertically penalized 150-unit distance"
     );
+}
+
+/// Each active region gets one capacity row per resource. The logic rows are
+/// where a crossing's generated Head registers are reserved, so that cost is
+/// visible to placement rather than discovered after routing.
+#[test]
+fn resource_rows_reserve_task_area_and_crossing_head_registers() {
+    let graph = vadd_floor_graph();
+    let model = two_slot_golden_model(&graph);
+    let lp = &model.lp;
+    let bottom_name = Coor::slot(0, 0).region_name();
+    let top_name = Coor::slot(0, 1).region_name();
+    let producer_x = [format!("x_A_0_{bottom_name}"), format!("x_A_0_{top_name}")];
+    let consumer_x = [format!("x_B_0_{bottom_name}"), format!("x_B_0_{top_name}")];
+
+    assert_eq!(
+        lp.constraints
+            .iter()
+            .filter(|row| row.name.starts_with("node_"))
+            .count(),
+        10,
+        "five resource rows per active slot"
+    );
+    for (region, producer, consumer) in [
+        (&bottom_name, &producer_x[0], &consumer_x[0]),
+        (&top_name, &producer_x[1], &consumer_x[1]),
+    ] {
+        assert_row(
+            lp,
+            &format!("node_{region}_LUT_usage"),
+            Comparison::Le,
+            700.0,
+            [(100.0, producer.as_str()), (116.0, consumer.as_str())],
+        );
+    }
+    // A -> B is 35 wires and its Head lands wherever A does, so the crossing
+    // term appears in A's region row, not B's.
+    for (region, producer, consumer, crossing) in [
+        (&bottom_name, &producer_x[0], &consumer_x[0], "y_0_0_1"),
+        (&top_name, &producer_x[1], &consumer_x[1], "y_0_1_0"),
+    ] {
+        assert_row(
+            lp,
+            &format!("node_{region}_FF_usage"),
+            Comparison::Le,
+            700.0,
+            [
+                (200.0, producer.as_str()),
+                (73.0, consumer.as_str()),
+                (35.0, crossing),
+            ],
+        );
+    }
 }
 
 #[test]
@@ -685,6 +723,7 @@ fn sparse_domains_encode_exact_terminals_and_user_pins() {
         &graph,
         &device,
         &regions,
+        &region_areas(&device, &regions).expect("region areas"),
         DEFAULT_USAGE_LIMIT,
         None,
         &constraints,
@@ -709,6 +748,7 @@ fn sparse_domains_encode_exact_terminals_and_user_pins() {
         &graph,
         &device,
         &domains,
+        &domain_areas(&device, &domains),
         &find_cuts_for_regions(&device, &regions),
         DEFAULT_USAGE_LIMIT,
         &constraints,
@@ -735,6 +775,7 @@ fn sparse_domains_encode_exact_terminals_and_user_pins() {
         &stream_graph,
         &device,
         &sparse_domains,
+        &domain_areas(&device, &sparse_domains),
         &[],
         DEFAULT_USAGE_LIMIT,
         &PlacementConstraints::default(),
@@ -864,12 +905,13 @@ fn multilevel_infeasible_refinement_reuses_the_flat_atomic_formulation() {
     );
     let constraints = exact_resource_cap_constraints(&device, block_limit);
     let regions = atomic_regions(&device);
-    let domains = candidate_domains(&graph, &device, &regions, logic_limit, None, &constraints)
+    let domains = candidate_domains(&graph, &device, &regions, &region_areas(&device, &regions).expect("region areas"), logic_limit, None, &constraints)
         .expect("flat domains");
     let expected = FloorplanModel::build(
         &graph,
         &device,
         &domains,
+        &domain_areas(&device, &domains),
         &find_cuts_for_regions(&device, &regions),
         logic_limit,
         &constraints,
@@ -892,6 +934,7 @@ fn readback_rejects_missing_and_fractional_assignments() {
         &graph,
         &device,
         &domains,
+        &domain_areas(&device, &domains),
         &[],
         DEFAULT_USAGE_LIMIT,
         &PlacementConstraints::default(),
@@ -938,6 +981,7 @@ fn resource_overrides_use_total_region_capacity() {
         &graph,
         &device,
         &domains,
+        &domain_areas(&device, &domains),
         &[],
         DEFAULT_USAGE_LIMIT,
         &constraints,
@@ -1168,6 +1212,7 @@ fn rectangular_centroid_coefficients_preserve_half_units() {
         &graph,
         &device,
         &domains,
+        &domain_areas(&device, &domains),
         &[],
         DEFAULT_USAGE_LIMIT,
         &PlacementConstraints::default(),

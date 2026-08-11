@@ -58,6 +58,13 @@ pub enum PartitionStrategy {
     MultiLevel,
 }
 
+/// One partition iteration's regions and their summed slot capacities.
+///
+/// Every rung of the utilization ladder filters candidates and builds resource
+/// rows over the same regions, so the areas are resolved once per iteration
+/// rather than once per (vertex, region, rung).
+type RegionAreas = BTreeMap<Coor, Area>;
+
 /// Per-region, per-resource fractional limits.  Region names use
 /// `SLOT_X..._TO_SLOT_X...`.
 type RegionResourceLimits = BTreeMap<String, BTreeMap<Resource, f64>>;
@@ -364,6 +371,20 @@ fn validate_limit(
     }
 }
 
+/// Resolve every region's capacity once, failing on a region the device model
+/// does not cover.
+fn region_areas(device: &Device, regions: &[Coor]) -> Result<RegionAreas, IlpError> {
+    regions
+        .iter()
+        .map(|region| {
+            let area = device
+                .island_area(region)
+                .ok_or_else(|| IlpError::InvalidRegion(region.region_name()))?;
+            Ok((*region, area))
+        })
+        .collect()
+}
+
 fn atomic_regions(device: &Device) -> Vec<Coor> {
     let mut regions = Vec::with_capacity((device.rows * device.cols) as usize);
     // Candidate ordering is x-major, then y-minor.
@@ -416,10 +437,16 @@ enum Rung {
 /// [`USAGE_LIMIT_STEP`] with the ceiling always the last rung.
 fn usage_ladder(base: f64, ceiling: f64) -> Vec<f64> {
     let mut rungs = vec![base];
-    let mut limit = base;
-    while limit < ceiling {
-        limit = (limit + USAGE_LIMIT_STEP).min(ceiling);
-        rungs.push(limit);
+    // Step by repeated addition rather than by multiplying an index, so every
+    // rung is bit-identical to what walking the ladder one step at a time
+    // produced. The ceiling is the last rung and terminates the loop.
+    #[allow(
+        clippy::while_float,
+        reason = "the loop stops at the ceiling, which `min` makes exactly reachable"
+    )]
+    while *rungs.last().expect("the base rung is always present") < ceiling {
+        let next = (rungs.last().expect("non-empty") + USAGE_LIMIT_STEP).min(ceiling);
+        rungs.push(next);
     }
     rungs
 }
@@ -454,10 +481,20 @@ fn solve_iteration(
     // Cuts depend only on the iteration's regions, not on the derating being
     // searched; compute them once.
     let cuts = find_cuts_for_regions(device, regions);
+    let areas = region_areas(device, regions)?;
     let ladder = usage_ladder(base_usage_limit, config.retry_ceiling);
     let probe = |rung: usize| {
         attempt_placement(
-            graph, device, regions, parents, config, &cuts, ladder[rung], solver, opts,
+            graph,
+            device,
+            regions,
+            &areas,
+            parents,
+            config,
+            &cuts,
+            ladder[rung],
+            solver,
+            opts,
         )
     };
 
@@ -539,6 +576,7 @@ fn attempt_placement(
     graph: &FloorGraph,
     device: &Device,
     regions: &[Coor],
+    areas: &RegionAreas,
     parents: Option<&BTreeMap<String, Coor>>,
     config: &PlacementConfig,
     cuts: &[Cut],
@@ -550,6 +588,7 @@ fn attempt_placement(
         graph,
         device,
         regions,
+        areas,
         usage_limit,
         parents,
         &config.constraints,
@@ -562,8 +601,15 @@ fn attempt_placement(
         Err(error) => return Err(error),
     };
 
-    let model =
-        FloorplanModel::build(graph, device, &domains, cuts, usage_limit, &config.constraints)?;
+    let model = FloorplanModel::build(
+        graph,
+        device,
+        &domains,
+        areas,
+        cuts,
+        usage_limit,
+        &config.constraints,
+    )?;
     let solution = solver.solve(&model.lp, opts)?;
     if solution.is_found() {
         return Ok(Rung::Placed(Box::new(FeasibleRung {
@@ -579,13 +625,7 @@ fn attempt_placement(
             log::info!("placement infeasible at usage limit {usage_limit:.2}");
             Ok(Rung::Infeasible(IlpError::Infeasible {
                 limit: config.retry_ceiling,
-                demand: describe_demand(
-                    graph,
-                    device,
-                    regions,
-                    config.retry_ceiling,
-                    &config.constraints,
-                ),
+                demand: describe_demand(graph, areas, config.retry_ceiling, &config.constraints),
             }))
         }
         LpStatus::NotSolved | LpStatus::Unbounded => Err(IlpError::NoIncumbent(solution.status)),
@@ -604,8 +644,7 @@ fn attempt_placement(
 /// per-slot packing, and the message says so instead of inventing a cause.
 fn describe_demand(
     graph: &FloorGraph,
-    device: &Device,
-    regions: &[Coor],
+    areas: &RegionAreas,
     usage_limit: f64,
     constraints: &PlacementConstraints,
 ) -> String {
@@ -616,13 +655,12 @@ fn describe_demand(
             .iter()
             .map(|vertex| resource.amount(&vertex.area))
             .sum();
-        let supply: u64 = regions
+        let supply: u64 = areas
             .iter()
-            .filter_map(|region| {
-                let total = device.island_area(region)?;
+            .map(|(region, total)| {
                 let limit = lookup_limit(&constraints.max_resource_limits, region, resource)
                     .unwrap_or(usage_limit);
-                Some(scaled_amount(resource.amount(&total), limit))
+                scaled_amount(resource.amount(total), limit)
             })
             .sum();
         if demand > supply
@@ -652,6 +690,7 @@ fn candidate_domains(
     graph: &FloorGraph,
     device: &Device,
     regions: &[Coor],
+    areas: &RegionAreas,
     usage_limit: f64,
     parents: Option<&BTreeMap<String, Coor>>,
     constraints: &PlacementConstraints,
@@ -680,11 +719,11 @@ fn candidate_domains(
                 }
             }
 
-            let total = device
-                .island_area(&region)
+            let total = areas
+                .get(&region)
                 .ok_or_else(|| IlpError::InvalidRegion(region.region_name()))?;
             let available = scaled_area_with_overrides(
-                total,
+                *total,
                 usage_limit,
                 &constraints.max_resource_limits,
                 &region,
@@ -809,10 +848,15 @@ struct FloorplanModel {
 }
 
 impl FloorplanModel {
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "one iteration's model needs its graph, device, domains, region areas, cuts, derating, and overrides"
+    )]
     fn build(
         graph: &FloorGraph,
         device: &Device,
         domains: &[Vec<Coor>],
+        areas: &RegionAreas,
         cuts: &[Cut],
         usage_limit: f64,
         constraints: &PlacementConstraints,
@@ -826,9 +870,7 @@ impl FloorplanModel {
         let x = add_assignment_vars(&mut lp, graph, domains);
         let y = add_edge_vars(&mut lp, graph, domains);
         add_coupling(&mut lp, graph, domains, &x, &y);
-        add_resource_constraints(
-            &mut lp, graph, device, domains, usage_limit, constraints, &x, &y,
-        )?;
+        add_resource_constraints(&mut lp, graph, areas, domains, usage_limit, constraints, &x, &y)?;
         add_cut_constraints(&mut lp, graph, domains, cuts, &y);
         add_objective(&mut lp, graph, device, domains, &y)?;
         Ok(Self { lp, x })
@@ -1059,7 +1101,7 @@ fn add_coupling(
 fn add_resource_constraints(
     lp: &mut LpModel,
     graph: &FloorGraph,
-    device: &Device,
+    areas: &RegionAreas,
     domains: &[Vec<Coor>],
     usage_limit: f64,
     constraints: &PlacementConstraints,
@@ -1068,8 +1110,8 @@ fn add_resource_constraints(
 ) -> Result<(), IlpError> {
     let active_regions: BTreeSet<Coor> = domains.iter().flatten().copied().collect();
     for region in active_regions {
-        let total = device
-            .island_area(&region)
+        let total = *areas
+            .get(&region)
             .ok_or_else(|| IlpError::InvalidRegion(region.region_name()))?;
         for resource in Resource::ALL {
             let mut terms = SparseRow::new();
