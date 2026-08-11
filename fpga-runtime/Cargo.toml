@@ -138,9 +138,6 @@ askama = { version = "0.12", features = ["serde_json"] }
 frt-cosim = { path = "frt-cosim" }
 frt-dpi = { path = "frt-dpi" }
 frt-shm = { path = "frt-shm" }
-# Test-only: `tapa_ir::Task`'s area dicts are `IndexMap`s, so building a task
-# graph literal in a test needs the same map type the schema uses.
-indexmap = { version = "2", features = ["serde"] }
 libc = "0.2"
 memmap2 = "0.9"
 opencl3 = "0.10"

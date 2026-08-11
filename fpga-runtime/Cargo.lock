@@ -348,7 +348,6 @@ version = "0.1.0"
 dependencies = [
  "askama",
  "frt-shm",
- "indexmap",
  "libc",
  "quick-xml",
  "regex-lite",
@@ -792,7 +791,6 @@ dependencies = [
 name = "tapa-ir"
 version = "0.1.0"
 dependencies = [
- "indexmap",
  "regex-lite",
  "serde",
  "serde_json",

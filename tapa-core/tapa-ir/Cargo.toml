@@ -4,12 +4,14 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-indexmap = { workspace = true }
 regex-lite = { workspace = true }
 serde = { workspace = true }
-# `preserve_order` keeps `serde_json::Value` map keys in insertion order so
-# Value-typed payloads (area dicts, `transforms::flatten`) round-trip
-# in their original key order.
+# `preserve_order` keeps `serde_json::Value` map keys in insertion order.
+# Nothing in this crate is `Value`-typed any more (areas, wire values and
+# clock periods all became named fields), so the feature buys this crate
+# nothing directly -- but dropping it takes `indexmap` out of the dependency
+# graph, and with it the `Equivalent`/`Comparable` blanket impls that the
+# blessed public-API listing records for every type here.
 serde_json = { workspace = true, features = ["preserve_order"] }
 serde_path_to_error = { workspace = true }
 strum = { workspace = true }

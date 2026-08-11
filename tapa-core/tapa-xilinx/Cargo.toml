@@ -10,7 +10,6 @@ backon = { workspace = true }
 camino = { workspace = true }
 directories = { workspace = true }
 flate2 = { workspace = true }
-indexmap = { workspace = true }
 fs-err = { workspace = true }
 minijinja = { workspace = true }
 nix = { workspace = true }
