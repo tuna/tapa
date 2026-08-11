@@ -28,7 +28,7 @@ use crate::error::{CliError, Result};
 use crate::state::work::FlowSettings;
 
 use super::bitstream_script::write_vitis_script;
-use super::custom_rtl::{apply_custom_rtl, load_templates_info};
+use super::custom_rtl::{apply_custom_rtl, load_templates_info, warn_unimplemented_templates};
 use super::kernel_xml_ports::{build_kernel_xml_ports, m_axi_param_block};
 use super::{enforce_xo_suffix, PackArgs};
 
@@ -146,10 +146,11 @@ fn resolve_device_settings(work_dir: &Path, flow: &FlowSettings) -> Result<(Stri
 
 fn apply_pack_overlays(args: &PackArgs, ctx: &CliContext, hdl_dir: &Path) -> Result<()> {
     // --custom-rtl: apply user overlays before Vivado scans `rtl_dir`.
+    let templates = load_templates_info(&ctx.work_dir)?;
     if !args.custom_rtl.is_empty() {
-        let templates = load_templates_info(&ctx.work_dir)?;
         apply_custom_rtl(hdl_dir, &args.custom_rtl, &templates)?;
     }
+    warn_unimplemented_templates(&ctx.work_dir, hdl_dir, &templates);
     Ok(())
 }
 

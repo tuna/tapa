@@ -103,7 +103,42 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
     state.flow.synthed = true;
     work_io::store(&ctx.work_dir, &state)?;
 
+    report_timing_summary(clock_period, &state.graph);
+
     Ok(())
+}
+
+/// Say whether HLS met the requested clock period, and if not, which task
+/// was worst.
+///
+/// Frequency is the headline property of a TAPA design, but until now the
+/// only place the achieved estimate appeared was `report.json` — a design
+/// could miss its target by 2× and `tapa synth` would print nothing at all.
+fn report_timing_summary(target: ClockPeriod, graph: &tapa_ir::TaskGraph) {
+    let Some((worst_task, worst)) = graph
+        .tasks
+        .iter()
+        .filter_map(|(name, task)| task.clock_period.map(|period| (name, period)))
+        .max_by_key(|(_, period)| period.picoseconds())
+    else {
+        return;
+    };
+    let target_ns = target.nanoseconds();
+    let worst_ns = worst.nanoseconds();
+    if worst > target {
+        log::warn!(
+            "HLS estimates {worst_ns:.3} ns ({:.1} MHz) for the critical task `{worst_task}`, \
+             over the {target_ns:.3} ns ({:.1} MHz) target; see report.json for the per-task breakdown",
+            1000.0 / worst_ns,
+            1000.0 / target_ns,
+        );
+    } else {
+        log::info!(
+            "HLS estimates {worst_ns:.3} ns ({:.1} MHz) for the critical task `{worst_task}`, \
+             within the {target_ns:.3} ns target",
+            1000.0 / worst_ns,
+        );
+    }
 }
 
 /// Apply the raw metrics reported by HLS to a task.

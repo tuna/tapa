@@ -215,6 +215,26 @@ fn bundle_report_paths_into_xo(
     }
     tmp.persist(xo)
         .map_err(|e| XilinxError::XoRedaction(format!("persist bundled xo: {e}")))?;
+    // `NamedTempFile` creates at 0600 and `persist` keeps that mode, so the
+    // packaged `.xo` would end up private to the building user while the
+    // `.zip` from the `xilinx-hls` target — written through `File::create` —
+    // is world-readable. Build outputs are shared (CI artifacts, group build
+    // directories), so make the two agree.
+    set_artifact_mode(xo)?;
+    Ok(())
+}
+
+/// Give a produced artifact the permissions `File::create` would have under
+/// the conventional `umask 022`. No-op off Unix.
+#[cfg(unix)]
+fn set_artifact_mode(path: &camino::Utf8Path) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt as _;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o644))?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn set_artifact_mode(_path: &camino::Utf8Path) -> Result<()> {
     Ok(())
 }
 

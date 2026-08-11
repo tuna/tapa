@@ -40,6 +40,47 @@ pub(super) fn load_templates_info(work_dir: &Path) -> Result<TemplatesInfo> {
     Ok(parsed)
 }
 
+/// Warn about `target("ignore")` tasks whose generated port shell is still
+/// what will be packaged.
+///
+/// The shell has an empty module body, so an artifact containing one is a
+/// stub: it elaborates but does nothing. Packaging used to accept that
+/// silently, and the omission only surfaced as wrong results in simulation.
+/// A file that still matches `<work_dir>/template/<module>.v` byte for byte
+/// was not overlaid by `--custom-rtl`.
+pub(super) fn warn_unimplemented_templates(
+    work_dir: &Path,
+    rtl_dir: &Path,
+    templates_info: &TemplatesInfo,
+) {
+    let mut unimplemented = Vec::new();
+    for module in templates_info.keys() {
+        let file = format!("{module}.v");
+        let generated = work_dir.join("template").join(&file);
+        let packaged = rtl_dir.join(&file);
+        let (Ok(generated), Ok(packaged)) = (fs_err::read(&generated), fs_err::read(&packaged))
+        else {
+            continue;
+        };
+        if generated == packaged {
+            unimplemented.push(module.as_str());
+        }
+    }
+    if unimplemented.is_empty() {
+        return;
+    }
+    let (noun, verb) = if unimplemented.len() == 1 {
+        ("task", "declares")
+    } else {
+        ("tasks", "declare")
+    };
+    log::warn!(
+        "packaging an empty port shell: {noun} {} {verb} `tapa::target(\"ignore\")` but no \
+         --custom-rtl replacement was supplied, so the packaged design will not compute anything",
+        unimplemented.join(", "),
+    );
+}
+
 /// Expand user-supplied `--custom-rtl` CLI paths. Files are accepted
 /// verbatim; directories are walked recursively for any regular-file
 /// entries.

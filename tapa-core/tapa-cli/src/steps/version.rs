@@ -1,5 +1,5 @@
-//! `tapa version` — prints the contents of the `VERSION` file with no
-//! trailing newline.
+//! `tapa version` — prints the contents of the `VERSION` file, with a
+//! trailing newline only when standard output is a terminal.
 
 use std::io::Write;
 
@@ -29,6 +29,12 @@ pub const VERSION: &str = {
 pub fn run(_args: &VersionArgs, _ctx: &CliContext) -> Result<()> {
     let mut stdout = std::io::stdout().lock();
     stdout.write_all(VERSION.as_bytes())?;
+    // A bare version keeps `$(tapa version)` clean, but at an interactive
+    // prompt it runs straight into the next prompt. Terminals get the
+    // newline; pipes and captures do not.
+    if std::io::IsTerminal::is_terminal(&stdout) {
+        stdout.write_all(b"\n")?;
+    }
     Ok(())
 }
 

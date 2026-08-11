@@ -34,7 +34,7 @@ mod kernel_xml_ports;
 pub(crate) mod vitis_packaging;
 
 use cosim_compat::{check_cosim_supported_categories, stamp_cosim_port_metadata};
-use custom_rtl::{apply_custom_rtl, load_templates_info};
+use custom_rtl::{apply_custom_rtl, load_templates_info, warn_unimplemented_templates};
 use vitis_packaging::pack_vitis;
 
 #[derive(Debug, Clone, Parser)]
@@ -195,10 +195,11 @@ fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, state: &WorkState) -> Result<
             path: rtl_dir,
         });
     }
+    let templates = load_templates_info(&ctx.work_dir)?;
     if !args.custom_rtl.is_empty() {
-        let templates = load_templates_info(&ctx.work_dir)?;
         apply_custom_rtl(&rtl_dir, &args.custom_rtl, &templates)?;
     }
+    warn_unimplemented_templates(&ctx.work_dir, &rtl_dir, &templates);
     let output_path = enforce_zip_suffix(args.output.as_ref());
     if let Some(parent) = output_path.parent() {
         if !parent.as_os_str().is_empty() {
