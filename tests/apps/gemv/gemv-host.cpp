@@ -2,6 +2,7 @@
 // All rights reserved. The contributor(s) of this file has/have agreed to the
 // RapidStream Contributor License Agreement.
 
+#include <iostream>
 #include <random>
 #include <vector>
 
@@ -67,12 +68,12 @@ int main(int argc, char* argv[]) {
     }
   }
   if (num_errors == 0) {
-    LOG(INFO) << "PASS!";
+    std::clog << "PASS!" << std::endl;
   } else {
     if (num_errors > threshold) {
       LOG(WARNING) << " (+" << (num_errors - threshold) << " more errors)";
     }
-    LOG(INFO) << "FAIL!";
+    std::clog << "FAIL!" << std::endl;
   }
   return num_errors > 0 ? 1 : 0;
 }
