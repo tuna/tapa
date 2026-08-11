@@ -1162,6 +1162,7 @@ pub fn tapa_ir::graph::TaskGraph::from_json(&str) -> core::result::Result<Self, 
 pub fn tapa_ir::graph::TaskGraph::from_reader<R: alloc::io::read::Read>(R) -> core::result::Result<Self, tapa_ir::ParseError>
 impl core::clone::Clone for tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::clone(&self) -> tapa_ir::graph::TaskGraph
+impl core::cmp::Eq for tapa_ir::graph::TaskGraph
 impl core::cmp::PartialEq for tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::eq(&self, &tapa_ir::graph::TaskGraph) -> bool
 impl core::fmt::Debug for tapa_ir::graph::TaskGraph
@@ -1178,6 +1179,10 @@ impl core::marker::Unpin for tapa_ir::graph::TaskGraph
 impl core::marker::UnsafeUnpin for tapa_ir::graph::TaskGraph
 impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::graph::TaskGraph
 impl core::panic::unwind_safe::UnwindSafe for tapa_ir::graph::TaskGraph
+impl<Q, K> equivalent::Equivalent<K> for tapa_ir::graph::TaskGraph where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::graph::TaskGraph::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::graph::TaskGraph where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::graph::TaskGraph::equivalent(&self, &K) -> bool
 impl<T, U> core::convert::Into<U> for tapa_ir::graph::TaskGraph where U: core::convert::From<T>
 pub fn tapa_ir::graph::TaskGraph::into(self) -> U
 impl<T, U> core::convert::TryFrom<U> for tapa_ir::graph::TaskGraph where U: core::convert::Into<T>
@@ -1966,6 +1971,7 @@ pub fn tapa_ir::work_state::WorkState::from_json(&str) -> core::result::Result<S
 pub fn tapa_ir::work_state::WorkState::new(tapa_ir::graph::TaskGraph) -> Self
 impl core::clone::Clone for tapa_ir::work_state::WorkState
 pub fn tapa_ir::work_state::WorkState::clone(&self) -> tapa_ir::work_state::WorkState
+impl core::cmp::Eq for tapa_ir::work_state::WorkState
 impl core::cmp::PartialEq for tapa_ir::work_state::WorkState
 pub fn tapa_ir::work_state::WorkState::eq(&self, &tapa_ir::work_state::WorkState) -> bool
 impl core::fmt::Debug for tapa_ir::work_state::WorkState
@@ -1982,6 +1988,10 @@ impl core::marker::Unpin for tapa_ir::work_state::WorkState
 impl core::marker::UnsafeUnpin for tapa_ir::work_state::WorkState
 impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::work_state::WorkState
 impl core::panic::unwind_safe::UnwindSafe for tapa_ir::work_state::WorkState
+impl<Q, K> equivalent::Equivalent<K> for tapa_ir::work_state::WorkState where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::work_state::WorkState::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::work_state::WorkState where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::work_state::WorkState::equivalent(&self, &K) -> bool
 impl<T, U> core::convert::Into<U> for tapa_ir::work_state::WorkState where U: core::convert::From<T>
 pub fn tapa_ir::work_state::WorkState::into(self) -> U
 impl<T, U> core::convert::TryFrom<U> for tapa_ir::work_state::WorkState where U: core::convert::Into<T>
@@ -3147,6 +3157,7 @@ pub fn tapa_ir::graph::TaskGraph::from_json(&str) -> core::result::Result<Self, 
 pub fn tapa_ir::graph::TaskGraph::from_reader<R: alloc::io::read::Read>(R) -> core::result::Result<Self, tapa_ir::ParseError>
 impl core::clone::Clone for tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::clone(&self) -> tapa_ir::graph::TaskGraph
+impl core::cmp::Eq for tapa_ir::graph::TaskGraph
 impl core::cmp::PartialEq for tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::eq(&self, &tapa_ir::graph::TaskGraph) -> bool
 impl core::fmt::Debug for tapa_ir::graph::TaskGraph
@@ -3163,6 +3174,10 @@ impl core::marker::Unpin for tapa_ir::graph::TaskGraph
 impl core::marker::UnsafeUnpin for tapa_ir::graph::TaskGraph
 impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::graph::TaskGraph
 impl core::panic::unwind_safe::UnwindSafe for tapa_ir::graph::TaskGraph
+impl<Q, K> equivalent::Equivalent<K> for tapa_ir::graph::TaskGraph where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::graph::TaskGraph::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::graph::TaskGraph where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::graph::TaskGraph::equivalent(&self, &K) -> bool
 impl<T, U> core::convert::Into<U> for tapa_ir::graph::TaskGraph where U: core::convert::From<T>
 pub fn tapa_ir::graph::TaskGraph::into(self) -> U
 impl<T, U> core::convert::TryFrom<U> for tapa_ir::graph::TaskGraph where U: core::convert::Into<T>
@@ -3399,6 +3414,7 @@ pub fn tapa_ir::graph::TaskGraph::from_json(&str) -> core::result::Result<Self, 
 pub fn tapa_ir::graph::TaskGraph::from_reader<R: alloc::io::read::Read>(R) -> core::result::Result<Self, tapa_ir::ParseError>
 impl core::clone::Clone for tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::clone(&self) -> tapa_ir::graph::TaskGraph
+impl core::cmp::Eq for tapa_ir::graph::TaskGraph
 impl core::cmp::PartialEq for tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::eq(&self, &tapa_ir::graph::TaskGraph) -> bool
 impl core::fmt::Debug for tapa_ir::graph::TaskGraph
@@ -3415,6 +3431,10 @@ impl core::marker::Unpin for tapa_ir::graph::TaskGraph
 impl core::marker::UnsafeUnpin for tapa_ir::graph::TaskGraph
 impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::graph::TaskGraph
 impl core::panic::unwind_safe::UnwindSafe for tapa_ir::graph::TaskGraph
+impl<Q, K> equivalent::Equivalent<K> for tapa_ir::graph::TaskGraph where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::graph::TaskGraph::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::graph::TaskGraph where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::graph::TaskGraph::equivalent(&self, &K) -> bool
 impl<T, U> core::convert::Into<U> for tapa_ir::graph::TaskGraph where U: core::convert::From<T>
 pub fn tapa_ir::graph::TaskGraph::into(self) -> U
 impl<T, U> core::convert::TryFrom<U> for tapa_ir::graph::TaskGraph where U: core::convert::Into<T>
@@ -3893,6 +3913,7 @@ pub fn tapa_ir::graph::TaskGraph::from_json(&str) -> core::result::Result<Self, 
 pub fn tapa_ir::graph::TaskGraph::from_reader<R: alloc::io::read::Read>(R) -> core::result::Result<Self, tapa_ir::ParseError>
 impl core::clone::Clone for tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::clone(&self) -> tapa_ir::graph::TaskGraph
+impl core::cmp::Eq for tapa_ir::graph::TaskGraph
 impl core::cmp::PartialEq for tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::eq(&self, &tapa_ir::graph::TaskGraph) -> bool
 impl core::fmt::Debug for tapa_ir::graph::TaskGraph
@@ -3909,6 +3930,10 @@ impl core::marker::Unpin for tapa_ir::graph::TaskGraph
 impl core::marker::UnsafeUnpin for tapa_ir::graph::TaskGraph
 impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::graph::TaskGraph
 impl core::panic::unwind_safe::UnwindSafe for tapa_ir::graph::TaskGraph
+impl<Q, K> equivalent::Equivalent<K> for tapa_ir::graph::TaskGraph where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::graph::TaskGraph::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::graph::TaskGraph where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::graph::TaskGraph::equivalent(&self, &K) -> bool
 impl<T, U> core::convert::Into<U> for tapa_ir::graph::TaskGraph where U: core::convert::From<T>
 pub fn tapa_ir::graph::TaskGraph::into(self) -> U
 impl<T, U> core::convert::TryFrom<U> for tapa_ir::graph::TaskGraph where U: core::convert::Into<T>
@@ -4048,6 +4073,7 @@ pub fn tapa_ir::work_state::WorkState::from_json(&str) -> core::result::Result<S
 pub fn tapa_ir::work_state::WorkState::new(tapa_ir::graph::TaskGraph) -> Self
 impl core::clone::Clone for tapa_ir::work_state::WorkState
 pub fn tapa_ir::work_state::WorkState::clone(&self) -> tapa_ir::work_state::WorkState
+impl core::cmp::Eq for tapa_ir::work_state::WorkState
 impl core::cmp::PartialEq for tapa_ir::work_state::WorkState
 pub fn tapa_ir::work_state::WorkState::eq(&self, &tapa_ir::work_state::WorkState) -> bool
 impl core::fmt::Debug for tapa_ir::work_state::WorkState
@@ -4064,6 +4090,10 @@ impl core::marker::Unpin for tapa_ir::work_state::WorkState
 impl core::marker::UnsafeUnpin for tapa_ir::work_state::WorkState
 impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::work_state::WorkState
 impl core::panic::unwind_safe::UnwindSafe for tapa_ir::work_state::WorkState
+impl<Q, K> equivalent::Equivalent<K> for tapa_ir::work_state::WorkState where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::work_state::WorkState::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::work_state::WorkState where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::work_state::WorkState::equivalent(&self, &K) -> bool
 impl<T, U> core::convert::Into<U> for tapa_ir::work_state::WorkState where U: core::convert::From<T>
 pub fn tapa_ir::work_state::WorkState::into(self) -> U
 impl<T, U> core::convert::TryFrom<U> for tapa_ir::work_state::WorkState where U: core::convert::Into<T>

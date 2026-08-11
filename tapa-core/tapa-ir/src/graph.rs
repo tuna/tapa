@@ -18,11 +18,7 @@ use crate::target::Target;
 use crate::task::Task;
 
 /// Root of the unified task graph.
-#[allow(
-    clippy::derive_partial_eq_without_eq,
-    reason = "transitively holds serde_json::Value through Task"
-)]
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct TaskGraph {
     /// Producer schema version, stamped by `tapacc`. Absent means a

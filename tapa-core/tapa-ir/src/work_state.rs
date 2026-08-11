@@ -40,11 +40,7 @@ pub const FILE_NAME: &str = "tapa.json";
 pub const VERSION: u32 = 3;
 
 /// Everything the pipeline persists between steps.
-#[allow(
-    clippy::derive_partial_eq_without_eq,
-    reason = "transitively holds serde_json::Value through TaskGraph"
-)]
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct WorkState {
     /// Schema version; always [`VERSION`] for state this tapa writes.
