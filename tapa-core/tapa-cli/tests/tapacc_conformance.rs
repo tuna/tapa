@@ -71,8 +71,12 @@ const KERNELS: &[Kernel] = &[
     Kernel {
         env: "TAPA_CONFORMANCE_ASYNC_MMAP",
         top: "AsyncTop",
-        expected_tasks: &["AsyncReader", "AsyncTop"],
-        flows: &["xilinx-hls"],
+        expected_tasks: &["AsyncReader", "AsyncTop", "Writer"],
+        // Both flows: this kernel is also the examples-catalog entry for
+        // `async_mmap`, so the `xilinx-vitis` target the docs tell users to
+        // compile with has to parse too. (This test stops at `tapa analyze`;
+        // whether Vitis HLS accepts the shape is not covered here.)
+        flows: &["xilinx-hls", "xilinx-vitis"],
     },
     Kernel {
         env: "TAPA_CONFORMANCE_TEMPLATED",

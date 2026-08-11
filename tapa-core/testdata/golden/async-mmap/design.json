@@ -28,7 +28,7 @@
                 },
                 {
                     "cat": "ostream",
-                    "name": "out",
+                    "name": "data_q",
                     "type": "float",
                     "width": 32
                 }
@@ -57,7 +57,7 @@
                 },
                 {
                     "cat": "ostream",
-                    "name": "out",
+                    "name": "data_q",
                     "type": "float",
                     "width": 32
                 }
@@ -74,8 +74,8 @@
                                 "arg": "n",
                                 "cat": "scalar"
                             },
-                            "out": {
-                                "arg": "out",
+                            "data_q": {
+                                "arg": "data_q",
                                 "cat": "ostream"
                             }
                         },
@@ -84,7 +84,7 @@
                 ]
             },
             "fifos": {
-                "out": {
+                "data_q": {
                     "produced_by": [
                         "AsyncReader",
                         0

@@ -1,6 +1,6 @@
 // HLS-style input fixture for the `AsyncTop` upper task of
 // `tests/apps/async_mmap/async_mmap.cpp` (see PROVENANCE.md). Same shape as
-// the `vadd` top fixture, plus the external output stream `out` that the
+// the `vadd` top fixture, plus the external output stream `data_q` that the
 // child drives (HLS spells external streams as plain `out_*` ports).
 `timescale 1 ns / 1 ps
 
@@ -29,9 +29,9 @@ module AsyncTop (
         s_axi_control_BREADY,
         s_axi_control_BRESP,
         interrupt,
-        out_din,
-        out_full_n,
-        out_write
+        data_q_din,
+        data_q_full_n,
+        data_q_write
 );
 
 parameter    C_S_AXI_CONTROL_DATA_WIDTH = 32;
@@ -61,9 +61,9 @@ output   s_axi_control_BVALID;
 input   s_axi_control_BREADY;
 output  [1:0] s_axi_control_BRESP;
 output   interrupt;
-output  [32:0] out_din;
-input   out_full_n;
-output   out_write;
+output  [32:0] data_q_din;
+input   data_q_full_n;
+output   data_q_write;
 
 reg ap_done;
 reg ap_idle;

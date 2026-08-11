@@ -26,9 +26,9 @@ module AsyncTop #(
   input wire s_axi_control_BREADY,
   output wire [1:0] s_axi_control_BRESP,
   output wire interrupt,
-  output wire [32:0] out_din,
-  input wire out_full_n,
-  output wire out_write,
+  output wire [32:0] data_q_din,
+  input wire data_q_full_n,
+  output wire data_q_write,
   output wire [63:0] m_axi_mem_ARADDR,
   output wire [1:0] m_axi_mem_ARBURST,
   output wire [3:0] m_axi_mem_ARCACHE,
@@ -169,6 +169,9 @@ AsyncReader AsyncReader_0 (
   .ap_done(AsyncReader_0__ap_done),
   .ap_idle(AsyncReader_0__ap_idle),
   .ap_ready(AsyncReader_0__ap_ready),
+  .data_q_din(data_q_din),
+  .data_q_full_n(data_q_full_n),
+  .data_q_write(data_q_write),
   .mem_read_addr_s_din(mem_read_addr__din),
   .mem_read_addr_s_full_n(mem_read_addr__full_n),
   .mem_read_addr_s_write(mem_read_addr__write),
@@ -181,10 +184,7 @@ AsyncReader AsyncReader_0 (
   .mem_write_addr_s_write(mem_write_addr__write),
   .mem_write_data_s_write(mem_write_data__write),
   .mem_write_resp_s_read(mem_write_resp__read),
-  .n(AsyncReader_0__n),
-  .out_din(out_din),
-  .out_full_n(out_full_n),
-  .out_write(out_write)
+  .n(AsyncReader_0__n)
 );
 
 AsyncTop_fsm __tapa_fsm_unit (

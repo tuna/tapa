@@ -27,9 +27,9 @@ module AsyncReader (
         mem_write_data_s_write,
         mem_write_resp_s_read,
         n,
-        out_din,
-        out_full_n,
-        out_write
+        data_q_din,
+        data_q_full_n,
+        data_q_write
 );
 
 input   ap_clk;
@@ -52,9 +52,9 @@ output   mem_write_addr_s_write;
 output   mem_write_data_s_write;
 output   mem_write_resp_s_read;
 input  [63:0] n;
-output  [32:0] out_din;
-input   out_full_n;
-output   out_write;
+output  [32:0] data_q_din;
+input   data_q_full_n;
+output   data_q_write;
 
 reg ap_done;
 reg ap_idle;

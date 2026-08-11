@@ -12,7 +12,7 @@ which is neither prebuilt here nor buildable within the effort budget
 `design.json` is therefore hand-adapted from the `vadd` case's topology to
 match the exact kernel `tests/apps/async_mmap/async_mmap.cpp` (the same
 file the tapacc conformance suite analyzes): top task `AsyncTop` with a
-plain `mmap` port `mem`, scalar `n`, and an external `ostream` `out`; one
+plain `mmap` port `mem`, scalar `n`, and an external `ostream` `data_q`; one
 child `AsyncReader` whose `async_mmap` port `mem` binds to the top's
 `mem`. The external stream is modeled as a depth-less FIFO with only
 `produced_by`, per `tapa-ir`'s `InterconnectDefinition` schema, and the
