@@ -137,11 +137,10 @@ impl FloorGraphBuilder {
                 .or(src)
                 .ok_or_else(|| GraphError::UnanchoredFifo(fifo_name.clone()))?;
 
-            self.vertices[host].area = checked_add_area(
-                self.vertices[host].area,
-                fifo_area(data_width, floorplanned_fifo_storage_depth(depth)),
-            )
-            .ok_or_else(|| GraphError::ResourceOverflow(fifo_name.clone()))?;
+            self.vertices[host].area = self.vertices[host]
+                .area
+                .checked_add(fifo_area(data_width, floorplanned_fifo_storage_depth(depth)))
+                .ok_or_else(|| GraphError::ResourceOverflow(fifo_name.clone()))?;
             self.co_located.push(CoLocatedInstance {
                 name: fifo_name.clone(),
                 host,
@@ -625,16 +624,6 @@ pub(super) fn resolve_fifo_data_width(
     payload
         .checked_add(1)
         .ok_or_else(|| GraphError::UnresolvedFifoWidth(fifo_name.to_string()))
-}
-
-pub(super) fn checked_add_area(lhs: Area, rhs: Area) -> Option<Area> {
-    Some(Area {
-        lut: lhs.lut.checked_add(rhs.lut)?,
-        ff: lhs.ff.checked_add(rhs.ff)?,
-        bram_18k: lhs.bram_18k.checked_add(rhs.bram_18k)?,
-        dsp: lhs.dsp.checked_add(rhs.dsp)?,
-        uram: lhs.uram.checked_add(rhs.uram)?,
-    })
 }
 
 /// The bit width of `port_name` on task `def_name`.

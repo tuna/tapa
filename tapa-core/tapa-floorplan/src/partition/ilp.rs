@@ -23,9 +23,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use tapa_ir::Area;
 
-use crate::device::model::{
-    add_area, Coor, Device, Resource, DEFAULT_USAGE_LIMIT, VERTICAL_DIST_PENALTY,
-};
+use crate::device::model::{Coor, Device, Resource, DEFAULT_USAGE_LIMIT, VERTICAL_DIST_PENALTY};
 use crate::graph::{FloorGraph, PlacementEdge};
 use crate::partition::cut::{find_cuts_for_regions, Cut};
 use crate::solver::assign::{add_one_of_k_row, read_one_of_k, OneOfKError};
@@ -582,7 +580,12 @@ fn complete_assignment(
         }
         if vertex.materialize {
             let entry = slot_usage.entry(region).or_default();
-            *entry = add_area(*entry, vertex.area);
+            *entry = entry.checked_add(vertex.area).ok_or_else(|| {
+                IlpError::InvalidSolution(format!(
+                    "resource accounting overflows in `{}`",
+                    slot.region_name()
+                ))
+            })?;
         }
     }
     Ok(Assignment {

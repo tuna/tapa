@@ -314,13 +314,13 @@ impl Device {
     }
 
     /// The summed resources of every slot in a region. `None` if any covered
-    /// cell has no slot.
+    /// cell has no slot, or if the table's own areas sum past `u64`.
     #[must_use]
     pub fn island_area(&self, region: &Coor) -> Option<Area> {
         let mut total = Area::default();
         for (x, y) in region.all_slot_coors() {
             let slot = self.slot(x, y)?;
-            total = add_area(total, slot.area);
+            total = total.checked_add(slot.area)?;
         }
         Some(total)
     }
@@ -388,19 +388,6 @@ pub(crate) fn usable_wire_capacity(raw: u64) -> u64 {
 /// budget for a given boundary.
 pub(crate) fn effective_border_capacity(lhs: u64, rhs: u64) -> u64 {
     usable_wire_capacity(lhs.min(rhs))
-}
-
-/// Component-wise sum of two [`Area`]s. A free function because `Area` is
-/// defined in `tapa-ir`, so the orphan rule forbids an `impl Add` here.
-#[must_use]
-pub fn add_area(a: Area, b: Area) -> Area {
-    Area {
-        lut: a.lut + b.lut,
-        ff: a.ff + b.ff,
-        bram_18k: a.bram_18k + b.bram_18k,
-        dsp: a.dsp + b.dsp,
-        uram: a.uram + b.uram,
-    }
 }
 
 #[cfg(test)]

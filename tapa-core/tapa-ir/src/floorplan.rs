@@ -60,6 +60,30 @@ pub struct Area {
 }
 
 impl Area {
+    /// Component-wise sum, refusing to wrap.
+    ///
+    /// Returns `None` on overflow so callers can name the object whose
+    /// aggregate blew up.
+    #[must_use]
+    pub fn checked_add(self, other: Self) -> Option<Self> {
+        self.checked_add_scaled(other, 1)
+    }
+
+    /// Component-wise difference, refusing to wrap.
+    ///
+    /// Returns `None` when `other` exceeds `self` in any resource, so callers
+    /// can name the accounting invariant that broke.
+    #[must_use]
+    pub fn checked_sub(self, other: Self) -> Option<Self> {
+        Some(Self {
+            lut: self.lut.checked_sub(other.lut)?,
+            ff: self.ff.checked_sub(other.ff)?,
+            bram_18k: self.bram_18k.checked_sub(other.bram_18k)?,
+            dsp: self.dsp.checked_sub(other.dsp)?,
+            uram: self.uram.checked_sub(other.uram)?,
+        })
+    }
+
     /// Add `count` instances' worth of `other`, refusing to wrap.
     ///
     /// Returns `None` on overflow so callers can name the task whose
@@ -700,6 +724,32 @@ mod tests {
             ..Area::default()
         };
         assert_eq!(huge.checked_add_scaled(one, 1), None);
+    }
+
+    #[test]
+    fn component_wise_arithmetic_refuses_to_wrap_in_either_direction() {
+        let two = Area {
+            lut: 2,
+            bram_18k: 2,
+            ..Area::default()
+        };
+        let one = Area {
+            lut: 1,
+            bram_18k: 1,
+            ..Area::default()
+        };
+        assert_eq!(one.checked_add(one), Some(two));
+        assert_eq!(two.checked_sub(one), Some(one));
+        assert_eq!(
+            one.checked_sub(two),
+            None,
+            "a difference that would wrap is an accounting error, not zero",
+        );
+        let huge = Area {
+            lut: u64::MAX,
+            ..Area::default()
+        };
+        assert_eq!(huge.checked_add(one), None);
     }
 
     #[test]

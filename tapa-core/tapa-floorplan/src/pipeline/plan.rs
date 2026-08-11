@@ -537,7 +537,7 @@ fn subtract_usage(
     let current = usage
         .get_mut(region)
         .ok_or_else(|| accounting_error(link, &format!("missing baseline usage for `{region}`")))?;
-    *current = checked_sub_area(*current, area).ok_or_else(|| {
+    *current = current.checked_sub(area).ok_or_else(|| {
         accounting_error(
             link,
             &format!("baseline usage in `{region}` does not contain its FIFO estimate"),
@@ -553,30 +553,10 @@ fn add_usage(
     link: &str,
 ) -> Result<(), PipelineError> {
     let current = usage.entry(region.to_string()).or_default();
-    *current = checked_add_area(*current, area).ok_or_else(|| {
+    *current = current.checked_add(area).ok_or_else(|| {
         accounting_error(link, &format!("resource count overflows in `{region}`"))
     })?;
     Ok(())
-}
-
-fn checked_add_area(lhs: Area, rhs: Area) -> Option<Area> {
-    Some(Area {
-        lut: lhs.lut.checked_add(rhs.lut)?,
-        ff: lhs.ff.checked_add(rhs.ff)?,
-        bram_18k: lhs.bram_18k.checked_add(rhs.bram_18k)?,
-        dsp: lhs.dsp.checked_add(rhs.dsp)?,
-        uram: lhs.uram.checked_add(rhs.uram)?,
-    })
-}
-
-fn checked_sub_area(lhs: Area, rhs: Area) -> Option<Area> {
-    Some(Area {
-        lut: lhs.lut.checked_sub(rhs.lut)?,
-        ff: lhs.ff.checked_sub(rhs.ff)?,
-        bram_18k: lhs.bram_18k.checked_sub(rhs.bram_18k)?,
-        dsp: lhs.dsp.checked_sub(rhs.dsp)?,
-        uram: lhs.uram.checked_sub(rhs.uram)?,
-    })
 }
 
 fn validate_realized_usage(
@@ -773,11 +753,11 @@ mod tests {
         graph: &FloorGraph,
         regions: &BTreeMap<String, String>,
     ) -> BTreeMap<String, Area> {
-        let mut usage = BTreeMap::new();
+        let mut usage: BTreeMap<String, Area> = BTreeMap::new();
         for vertex in graph.vertices() {
             let region = regions.get(&vertex.name).expect("vertex region").clone();
             let entry = usage.entry(region).or_default();
-            *entry = checked_add_area(*entry, vertex.area).expect("test area fits");
+            *entry = entry.checked_add(vertex.area).expect("test area fits");
         }
         usage
     }
@@ -899,14 +879,12 @@ mod tests {
         );
         assert_eq!(
             realized[&Coor::slot(1, 0).region_name()],
-            checked_add_area(
-                Area {
-                    lut: 10,
-                    ff: 20,
-                    ..Area::default()
-                },
-                fifo_area(36, 8),
-            )
+            Area {
+                lut: 10,
+                ff: 20,
+                ..Area::default()
+            }
+            .checked_add(fifo_area(36, 8))
             .expect("area fits"),
             "the child-side read-data Tail carries the two-entry AXI buffer plus grace"
         );

@@ -805,7 +805,9 @@ pub tapa_ir::floorplan::Area::ff: u64
 pub tapa_ir::floorplan::Area::lut: u64
 pub tapa_ir::floorplan::Area::uram: u64
 impl tapa_ir::floorplan::Area
+pub fn tapa_ir::floorplan::Area::checked_add(self, Self) -> core::option::Option<Self>
 pub fn tapa_ir::floorplan::Area::checked_add_scaled(self, Self, u64) -> core::option::Option<Self>
+pub fn tapa_ir::floorplan::Area::checked_sub(self, Self) -> core::option::Option<Self>
 pub fn tapa_ir::floorplan::Area::from_amounts(impl core::ops::function::FnMut(tapa_ir::floorplan::Resource) -> u64) -> Self
 pub fn tapa_ir::floorplan::Area::try_from_amounts<E>(impl core::ops::function::FnMut(tapa_ir::floorplan::Resource) -> core::result::Result<u64, E>) -> core::result::Result<Self, E>
 impl core::clone::Clone for tapa_ir::floorplan::Area
@@ -2789,7 +2791,9 @@ pub tapa_ir::Area::ff: u64
 pub tapa_ir::Area::lut: u64
 pub tapa_ir::Area::uram: u64
 impl tapa_ir::floorplan::Area
+pub fn tapa_ir::floorplan::Area::checked_add(self, Self) -> core::option::Option<Self>
 pub fn tapa_ir::floorplan::Area::checked_add_scaled(self, Self, u64) -> core::option::Option<Self>
+pub fn tapa_ir::floorplan::Area::checked_sub(self, Self) -> core::option::Option<Self>
 pub fn tapa_ir::floorplan::Area::from_amounts(impl core::ops::function::FnMut(tapa_ir::floorplan::Resource) -> u64) -> Self
 pub fn tapa_ir::floorplan::Area::try_from_amounts<E>(impl core::ops::function::FnMut(tapa_ir::floorplan::Resource) -> core::result::Result<u64, E>) -> core::result::Result<Self, E>
 impl core::clone::Clone for tapa_ir::floorplan::Area
