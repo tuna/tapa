@@ -13,16 +13,19 @@ pub struct ScalarWord {
     pub value_u32: u32,
 }
 
-/// Look up the register offset for an arg name in the scalar register map.
-/// Falls back to `"{name}_offset"` if the exact name is not found.
+/// Look up an arg name in the scalar register map without case sensitivity.
+/// Falls back to `"{name}_offset"` if the direct spelling is not found.
 pub fn lookup_register_offset(spec: &KernelSpec, name: &str) -> Option<u32> {
-    spec.scalar_register_map
-        .get(name)
-        .or_else(|| {
-            let key = format!("{name}_offset");
-            spec.scalar_register_map.get(&key)
+    let lookup = |key: &str| {
+        spec.scalar_register_map.get(key).copied().or_else(|| {
+            spec.scalar_register_map
+                .iter()
+                .find_map(|(candidate, offset)| {
+                    candidate.eq_ignore_ascii_case(key).then_some(*offset)
+                })
         })
-        .copied()
+    };
+    lookup(name).or_else(|| lookup(&format!("{name}_offset")))
 }
 
 /// Resolve the AXI-lite register offset an arg's value is written to.
@@ -416,8 +419,8 @@ pub fn scalar_words(base_offset: u32, bytes: &[u8]) -> Vec<ScalarWord> {
 
 #[cfg(test)]
 mod tests {
-    use super::direct_offset_port_name;
     use super::{classify_args, KernelSpec, Mode};
+    use super::{direct_offset_port_name, lookup_register_offset};
     use crate::metadata::{ArgKind, ArgSpec};
     use std::collections::HashMap;
 
@@ -478,6 +481,15 @@ mod tests {
     fn missing_register_offset_is_fine_in_hls_mode() {
         let spec = scalar_spec(Mode::Hls, HashMap::new());
         assert_eq!(classify_offsets(&spec).expect("classify"), vec![0]);
+    }
+
+    #[test]
+    fn register_offset_matches_verilog_name_case_insensitively() {
+        let spec = scalar_spec(
+            Mode::Vitis,
+            HashMap::from([("L3_OUT_DIST".to_owned(), 0x1c_u32)]),
+        );
+        assert_eq!(lookup_register_offset(&spec, "l3_out_dist"), Some(0x1c));
     }
 
     #[test]
