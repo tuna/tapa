@@ -105,6 +105,13 @@ void CheckParamShape(const clang::ASTContext& ctx,
       }
       break;
     default:
+      if (param->getType().getNonReferenceType()->isPointerType()) {
+        auto builder = ReportCustomDiag(
+            ctx, clang::DiagnosticsEngine::Error, param->getLocation(),
+            "raw pointer task parameter '%0' is not a TAPA memory port; "
+            "use tapa::mmap<T> by value for off-chip memory");
+        builder.AddString(param->getNameAsString());
+      }
       break;
   }
 }

@@ -160,6 +160,19 @@ TEST(Ports, StreamInstanceIsNotAPort) {
   }
 }
 
+TEST(Ports, RawPointerIsNotAMemoryPort) {
+  const char* bad[] = {
+      "void probe(int* mem);",
+      "void probe(const float* mem);",
+  };
+  for (const char* signature : bad) {
+    auto b = BuildProbe(signature);
+    CountingDiags diags;
+    BuildPortsExpectingError(b, diags);
+    EXPECT_GT(diags.errors, 0u) << signature;
+  }
+}
+
 TEST(Ports, MmapFamilyRequiresValue) {
   const char* bad[] = {
       "void probe(tapa::mmap<int>& m);",

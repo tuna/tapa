@@ -42,6 +42,29 @@ void Task(tapa::mmap<int> mem) { ... }
 
 ---
 
+## Raw pointer used as a task memory port
+
+**Symptom:** `tapacc` reports that a raw pointer task parameter is not a TAPA
+memory port. Older versions could instead fail much later while packaging the
+XO, with an unrelated `ipx::add_bus_parameter` or missing bus-interface error.
+
+**Cause:** Vitis HLS uses raw pointer parameters plus `m_axi` pragmas for
+off-chip memory. TAPA task ports encode that interface in the C++ type itself,
+so a raw pointer is not a valid task memory port.
+
+**Fix:** Replace the raw pointer with `tapa::mmap<T>` passed by value. No
+`m_axi` pragma is needed.
+
+```cpp
+// Wrong
+void Load(const int* mem, tapa::ostream<int>& out) { /* ... */ }
+
+// Right
+void Load(tapa::mmap<const int> mem, tapa::ostream<int>& out) { /* ... */ }
+```
+
+---
+
 ## `async_mmap` passed by value
 
 **Symptom:** The build fails with "`async_mmap` parameter must be passed by reference".
