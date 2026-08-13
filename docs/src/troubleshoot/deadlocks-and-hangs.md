@@ -30,9 +30,18 @@ Start at the default depth of 2 and increase to 16 or 32 when you observe backpr
 
 ### 2. Missing loop termination or element count mismatch
 
-A writer sends fewer elements than the reader expects. The reader blocks indefinitely waiting for data that never arrives.
+A writer and reader disagree about the number of elements in a transaction. If
+the writer sends too few, the reader waits forever; if it sends too many, the
+writer eventually blocks on a full FIFO after the reader stops.
 
-**Fix:** Verify that every producer sends exactly as many elements as the corresponding consumer reads. A common mistake is an off-by-one in loop bounds or a conditional `write` that skips elements.
+**Fix:** Verify that every producer sends exactly as many elements as the
+corresponding consumer reads. Common mistakes include an off-by-one loop bound,
+a conditional `write` that skips elements, and padding a fixed-size memory
+buffer without updating the protocol metadata that controls downstream reads.
+
+For a fixed-count architecture, pad both the payload and its count/end pointer
+before copying either to an mmap. Resizing only the host allocation does not
+change how many stream beats the RTL produces or consumes.
 
 ### 3. Circular dependency between tasks
 
