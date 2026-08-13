@@ -12,11 +12,13 @@
 #include <vector>
 
 #include <ap_int.h>
+#include <gflags/gflags.h>
 #include <tapa.h>
 
 #include "../../include/mmio.h"
 #include "../../include/sparse_helper.h"
 #include "callipepla.h"
+#include "tests/regression/sparse_fixture.h"
 
 using std::cout;
 using std::endl;
@@ -28,6 +30,8 @@ using std::vector;
 
 template <typename T>
 using aligned_vector = std::vector<T, tapa::aligned_allocator<T>>;
+
+DEFINE_string(bitstream, "", "path to bitstream file, run csim if empty");
 
 void Callipepla(tapa::mmap<int> edge_list_ptr,
                 tapa::mmaps<ap_uint<512>, NUM_CH_SPARSE> edge_list_ch,
@@ -79,6 +83,67 @@ void get_diag_A(const int M, const int K, const int NNZ,
   }
 }
 
+vector<double> cg_residuals(int M, const vector<int>& CSRRowPtr,
+                            const vector<int>& CSRColIndex,
+                            const vector<float>& CSRVal,
+                            const vector<double>& diag_A, int max_iterations,
+                            double threshold) {
+  vector<double> r(M, 1.0);
+  vector<double> z(M);
+  vector<double> p(M);
+  vector<double> ap(M);
+
+  const auto dot = [](const vector<double>& lhs, const vector<double>& rhs) {
+    double result = 0.0;
+    for (size_t i = 0; i < lhs.size(); ++i) {
+      result += lhs[i] * rhs[i];
+    }
+    return result;
+  };
+  const auto spmv = [&](const vector<double>& input, vector<double>& output) {
+    std::fill(output.begin(), output.end(), 0.0);
+    for (int row = 0; row < M; ++row) {
+      for (int i = CSRRowPtr[row]; i < CSRRowPtr[row + 1]; ++i) {
+        output[row] += static_cast<double>(CSRVal[i]) * input[CSRColIndex[i]];
+      }
+    }
+  };
+
+  for (int i = 0; i < M; ++i) {
+    if (diag_A[i] == 0.0) {
+      return {};
+    }
+    z[i] = r[i] / diag_A[i];
+    p[i] = z[i];
+  }
+
+  vector<double> residuals = {dot(r, r)};
+  double rz = dot(r, z);
+  for (int iteration = 0; iteration < max_iterations; ++iteration) {
+    spmv(p, ap);
+    const double alpha = rz / dot(p, ap);
+    for (int i = 0; i < M; ++i) {
+      r[i] -= alpha * ap[i];
+    }
+
+    residuals.push_back(dot(r, r));
+    if (residuals.back() < threshold) {
+      break;
+    }
+
+    for (int i = 0; i < M; ++i) {
+      z[i] = r[i] / diag_A[i];
+    }
+    const double rz_new = dot(r, z);
+    const double beta = rz_new / rz;
+    for (int i = 0; i < M; ++i) {
+      p[i] = z[i] + beta * p[i];
+    }
+    rz = rz_new;
+  }
+  return residuals;
+}
+
 int main(int argc, char** argv) {
   gflags::ParseCommandLineFlags(&argc, &argv, /*remove_flags=*/true);
 
@@ -118,6 +183,17 @@ int main(int argc, char** argv) {
   cout << "Matrix size: \n";
   cout << "A: sparse matrix, " << M << " x " << K << ". NNZ = " << nnz << "\n";
 
+  if (M != kCallipeplaNumRows || K != kCallipeplaNumRows) {
+    cout << "expected a " << kCallipeplaNumRows << " x " << kCallipeplaNumRows
+         << " matrix for this fixed RTL architecture\n";
+    return EXIT_FAILURE;
+  }
+  if (num_ites != kCallipeplaIterations) {
+    cout << "expected " << kCallipeplaIterations
+         << " iterations for this fixed RTL architecture\n";
+    return EXIT_FAILURE;
+  }
+
   vector<float> CSRVal_f(nnz);
   FP64_to_FP32(nnz, CSRVal, CSRVal_f);
 
@@ -142,6 +218,14 @@ int main(int argc, char** argv) {
       edge_list_ptr,         // vector<int> & edge_list_ptr,
       DEP_DIST_LOAD_STORE);  // const int DEP_DIST_LOAD_STORE = 10)
 
+  if (!tapa::regression::PadSparseEdgeLists(edge_list_pes, edge_list_ptr,
+                                            kCallipeplaSparseBeatsPerChannel)) {
+    cout << "sparse fixture exceeds the fixed "
+         << kCallipeplaSparseBeatsPerChannel
+         << " beats per channel supported by this RTL architecture\n";
+    return EXIT_FAILURE;
+  }
+
   aligned_vector<int> edge_list_ptr_fpga;
   int edge_list_ptr_fpga_size = ((edge_list_ptr.size() + 15) / 16) * 16;
   int edge_list_ptr_fpga_chunk_size =
@@ -152,10 +236,6 @@ int main(int argc, char** argv) {
   }
 
   vector<aligned_vector<unsigned long>> sparse_A_fpga_vec(NUM_CH_SPARSE);
-  int sparse_A_fpga_column_size =
-      8 * edge_list_ptr[edge_list_ptr.size() - 1] * 4 / 4;
-  int sparse_A_fpga_chunk_size =
-      ((sparse_A_fpga_column_size + 511) / 512) * 512;
 
   edge_list_64bit_fp32(edge_list_pes, edge_list_ptr, sparse_A_fpga_vec,
                        NUM_CH_SPARSE);
@@ -210,11 +290,6 @@ int main(int argc, char** argv) {
     diag_A_fpga[i] = diag_A[i];
   }
 
-  std::string bitstream;
-  if (const auto bitstream_ptr = getenv("TAPAB")) {
-    bitstream = bitstream_ptr;
-  }
-
   int MAX_SIZE_edge_LIST_PTR = edge_list_ptr.size() - 1;
   int MAX_LEN_edge_PTR = edge_list_ptr[MAX_SIZE_edge_LIST_PTR];
 
@@ -222,7 +297,8 @@ int main(int argc, char** argv) {
 
   cout << "launch kernel\n";
   double time_taken = tapa::invoke(
-      Callipepla, bitstream, tapa::read_only_mmap<int>(edge_list_ptr_fpga),
+      Callipepla, FLAGS_bitstream,
+      tapa::read_only_mmap<int>(edge_list_ptr_fpga),
       tapa::read_only_mmaps<unsigned long, NUM_CH_SPARSE>(sparse_A_fpga_vec)
           .reinterpret<ap_uint<512>>(),
 
@@ -239,23 +315,41 @@ int main(int argc, char** argv) {
   cout << "M " << M << endl;
   cout << "num_ites " << num_ites << endl;
   cout << "th_termination " << th_termination << endl;
-  int ite_kernel;
-  for (ite_kernel = num_ites;
-       (ite_kernel > 0) && (vec_RES_fpga[ite_kernel] < 1e-305); --ite_kernel);
 
-  cout << "res form device ..." << endl;
-  for (int i = 0; i < ite_kernel + 1; ++i) {
-    cout << "Ite = " << std::setw(5) << i << ", rr = " << vec_RES_fpga[i]
-         << endl;
+  const auto expected_residuals = cg_residuals(
+      M, CSRRowPtr, CSRColIndex, CSRVal_f, diag_A, num_ites, th_termination);
+  if (expected_residuals.empty()) {
+    cout
+        << "matrix has a zero diagonal and cannot use Jacobi preconditioning\n";
+    return EXIT_FAILURE;
+  }
+
+  bool pass = true;
+  cout << "res from device ..." << endl;
+  for (size_t i = 0; i < expected_residuals.size(); ++i) {
+    const double expected = expected_residuals[i];
+    const double actual = vec_RES_fpga[i];
+    cout << "Ite = " << std::setw(5) << i << ", rr = " << actual << endl;
+    if (expected < th_termination) {
+      pass &= actual < th_termination;
+    } else {
+      pass &= std::abs(actual - expected) <=
+              1e-6 * std::max(std::abs(expected), 1e-12);
+    }
   }
 
   time_taken *= 1e-9;  // total time in second
   printf("Kernel time is %f ms\n", time_taken * 1000);
+  const size_t iterations = expected_residuals.size() - 1;
+  cout << "# Iterations = " << iterations << endl;
+  if (iterations != 0) {
+    printf("Per iteration time is %f ms\n", time_taken * 1000 / iterations);
+  }
 
-  cout << "# Iterations = " << ite_kernel << endl;
-
-  time_taken /= ite_kernel;
-  printf("Per iteration time is %f ms\n", time_taken * 1000);
-
-  return 0;
+  if (!pass) {
+    cout << "Failed residual verification.\n";
+    return EXIT_FAILURE;
+  }
+  cout << "Success!\n";
+  return EXIT_SUCCESS;
 }

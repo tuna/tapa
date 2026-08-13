@@ -9,6 +9,9 @@
 #include <tapa.h>
 
 constexpr int NUM_CH_SPARSE = 16;
+constexpr int kCallipeplaNumRows = 14;
+constexpr int kCallipeplaSparseBeatsPerChannel = 29;
+constexpr int kCallipeplaIterations = 16;
 
 constexpr int X_PARTITION_FACTOR =
     4;  // BRAMs = 512 / 16 / 2 = 16 -> factor = 16 / (64 / 16)

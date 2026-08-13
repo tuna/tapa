@@ -10,6 +10,10 @@
 #include <tapa.h>
 #include "callipepla.h"
 
+#ifndef __SYNTHESIS__
+inline void ap_wait() {}
+#endif
+
 constexpr int FIFO_DEPTH = 2;
 constexpr int FIFO_DEPTH_M6 = 50;
 
@@ -18,9 +22,9 @@ const int NUM_CH_SPARSE_mult_8 = NUM_CH_SPARSE * 8;
 const int WINDOW_SIZE_div_8 = WINDOW_SIZE / 8;
 
 #define NUM_ITE 1
-#define NUM_A_LEN 29
-#define M 14
-#define rp_time 16
+#define NUM_A_LEN kCallipeplaSparseBeatsPerChannel
+#define M kCallipeplaNumRows
+#define rp_time kCallipeplaIterations
 #define th_termination (1e-12)
 
 struct MultXVec {
@@ -491,7 +495,6 @@ void Arbiter_Y(
   const int num_pe_output =
       ((M + NUM_CH_SPARSE - 1) / NUM_CH_SPARSE) * NUM_CH_SPARSE_div_8;
   const int num_out = (M + 7) >> 3;
-  const int num_ite_Y = num_pe_output * (rp_time + 1);
 
   bool term_flag = false;
 
@@ -646,7 +649,7 @@ void ctrl_AP(tapa::istream<double_v8>& qm_din,
   bool term_flag = false;
 
 l_rp:
-  for (int rp = -1, ch = 0; !term_flag & (rp < rp_time); rp++) {
+  for (int rp = -1; !term_flag & (rp < rp_time); rp++) {
 #pragma HLS loop_flatten off
 #pragma HLS loop_tripcount min = 1 max = 16
     InstRdWr ist;
@@ -841,8 +844,6 @@ rp:
 #pragma HLS pipeline II = 1
 #pragma HLS dependence true variable = psum distance = DEP_DIST_LOAD_STORE
       // DEBUG
-      bool tmp1 = q1.empty();
-      bool tmp2 = q2.empty();
       if (!q1.empty() & !q2.empty()) {
         double_v8 v1;
         q1.try_read(v1);
@@ -993,9 +994,6 @@ rp:
 #pragma HLS pipeline II = 1
 #pragma HLS dependence true variable = psum distance = DEP_DIST_LOAD_STORE
       // DEBUG
-      bool tmp1 = qr.empty();
-      bool tmp2 = qz.empty();
-      bool tmp3 = qr_out.full();
       if (!qr.empty() & !qz.empty() & !qr_out.full()) {
         double_v8 v1;
         qr.try_read(v1);
@@ -1180,8 +1178,6 @@ rp:
     for (int i = 0; i < inst.len;) {
 #pragma HLS pipeline II = 1
       // DEBUG
-      bool tmp1 = qr.empty();
-      bool tmp2 = qdiagA.empty();
       bool nop_flag = qr.empty() | qdiagA.empty();
       if (inst.q_idx == 0) {
         nop_flag |= qr_m6.full();
