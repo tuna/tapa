@@ -285,7 +285,7 @@ def tapa_functional_test(
         **kernel_kwargs
     )
 
-def regression_xosim(name, xo, host_srcs, hw_test_args = [], extra_test_data = []):
+def regression_xosim(name, xo, host_srcs, host_defines = [], hw_test_args = [], extra_test_data = []):
     """Declares a host binary plus a manual fast-cosim test for a regression design.
 
     `<name>-host` builds the design's TAPA host program; `<name>-xosim` runs it
@@ -297,6 +297,7 @@ def regression_xosim(name, xo, host_srcs, hw_test_args = [], extra_test_data = [
         name: Base target name.
         xo: Label of the `.xo` to simulate.
         host_srcs: `srcs` of the `<name>-host` cc_binary.
+        host_defines: Preprocessor definitions for the host sources.
         hw_test_args: Extra trailing args passed to the host after `--bitstream`.
         extra_test_data: Extra data files needed at run time (e.g. input graphs).
     """
@@ -305,6 +306,7 @@ def regression_xosim(name, xo, host_srcs, hw_test_args = [], extra_test_data = [
     cc_binary(
         name = "%s-host" % name,
         srcs = host_srcs,
+        local_defines = host_defines,
         tags = ["manual"],
         deps = _HOST_DEPS,
     )

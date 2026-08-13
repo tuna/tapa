@@ -2,20 +2,19 @@
 // All rights reserved. The contributor(s) of this file has/have agreed to the
 // RapidStream Contributor License Agreement.
 
+#ifndef TAPA_TESTS_REGRESSION_KNN_SRC_KNN_H_
+#define TAPA_TESTS_REGRESSION_KNN_SRC_KNN_H_
+
 #include <inttypes.h>
 #include <stdlib.h>
 #include "ap_axi_sdata.h"
 #include "ap_int.h"
-#include "hls_stream.h"
 
 const int IWIDTH = 256;
 #define INTERFACE_WIDTH ap_uint<IWIDTH>
 #define INPUT_DIM (2)
 #define TOP (10)
-#define NUM_SP_PTS (1048576)
 #define DISTANCE_METRIC (1)
-#define NUM_PE (1)
-#define NUM_KERNEL (1)
 
 #define DATA_TYPE_TOTAL_SZ 32
 #define DATA_TYPE float
@@ -26,7 +25,9 @@ const int IWIDTH = 256;
 /***************************************************************/
 
 #define BUFFER_SIZE_PADDED (1048576)
-#define NUM_SP_PTS_PADDED (1048576)
+#ifndef KNN_NUM_TILES
+#define KNN_NUM_TILES 64
+#endif
 
 // NOTE: Each of the below calculations are effectively a ceil() operation.
 //      Ex: (x-1)/y + 1 is ceil(x/y).
@@ -36,12 +37,12 @@ const int L2I_FACTOR_W = ((IWIDTH - 1) / (INPUT_DIM * LOCAL_DIST_SZ)) + 1;
 const int D2L_FACTOR_W = ((LOCAL_DIST_SZ - 1) / (DATA_TYPE_TOTAL_SZ)) + 1;
 // D2I = Data_Type to Interface
 const int D2I_FACTOR_W = ((IWIDTH - 1) / (INPUT_DIM * DATA_TYPE_TOTAL_SZ)) + 1;
-// I2D = Interface to Data_type
-const int I2D_FACTOR_W = ((INPUT_DIM * DATA_TYPE_TOTAL_SZ - 1) / (IWIDTH)) + 1;
-#define NUM_OF_TILES (64)
+#define NUM_OF_TILES KNN_NUM_TILES
 #define TILE_LEN_IN_I (BUFFER_SIZE_PADDED / IWIDTH)
 #define TILE_LEN_IN_D (BUFFER_SIZE_PADDED / (INPUT_DIM * DATA_TYPE_TOTAL_SZ))
 #define TILE_LEN_IN_L (BUFFER_SIZE_PADDED / (INPUT_DIM * LOCAL_DIST_SZ))
+#define NUM_SP_PTS_PADDED (TILE_LEN_IN_D * NUM_OF_TILES)
+static_assert(NUM_OF_TILES > 0, "KNN requires at least one tile");
 // // DEBUG NOTE: BW_FACTOR = 0.7698287024216459
 #define USING_LTYPES 1
 #define PARALLEL_SORT (1)
@@ -72,3 +73,5 @@ const int SEGMENT_IDX_START_OF_PADDING = (NUM_SEGMENTS - __NUM_PADDED_SEGMENTS);
 const int LVALUE_IDX_START_OF_PADDING = (TILE_LEN_IN_L % SEGMENT_SIZE_IN_L);
 
 const int NUM_ITERATIONS = 1;
+
+#endif  // TAPA_TESTS_REGRESSION_KNN_SRC_KNN_H_

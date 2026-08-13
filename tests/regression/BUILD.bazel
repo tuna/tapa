@@ -172,6 +172,24 @@ tapa_xo(
     top_name = "Knn",
 )
 
+# This test-only configuration keeps all 18 processing elements and their
+# merge tree, but processes one tile per PE instead of the canonical 64.
+tapa_xo(
+    name = "knn-xosim-xo",
+    src = "knn/src/knn.cpp",
+    hdrs = ["knn/src/knn.h"],
+    cflags = "-DKNN_NUM_TILES=1",
+    clock_period = "3.33",
+    connectivity = "knn/src/knn.ini",
+    jobs = 8,
+    part_num = "xcu55c-fsvh2892-2L-e",
+    tags = [
+        "cpu:8",
+        "manual",
+    ],
+    top_name = "Knn",
+)
+
 tapa_xo(
     name = "lu-decompose-xo",
     src = "lu_decompose/tapa/src/kernel_kernel.cpp",
@@ -304,12 +322,13 @@ regression_xosim(
 
 regression_xosim(
     name = "knn",
+    host_defines = ["KNN_NUM_TILES=1"],
     host_srcs = [
         "knn/src/knn.cpp",
         "knn/src/knn-host.cpp",
         "knn/src/knn.h",
     ],
-    xo = ":knn-xo",
+    xo = ":knn-xosim-xo",
 )
 
 regression_xosim(
