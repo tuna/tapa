@@ -7,7 +7,21 @@ the `:nightly` aggregation target. Designs without a `run_tapa.sh`
 (and thus without declared parameters) are not in the tier yet.
 """
 
+load("@rules_cc//cc:defs.bzl", "cc_test")
 load("//bazel:tapa_rules.bzl", "tapa_xo")
+
+cc_test(
+    name = "sparse-fixture-test",
+    size = "small",
+    srcs = [
+        "sparse_fixture.h",
+        "sparse_fixture_test.cpp",
+    ],
+    deps = [
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+    ],
+)
 
 tapa_xo(
     name = "callipepla-xo",
