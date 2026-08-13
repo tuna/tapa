@@ -11,7 +11,7 @@ Papers describing the TAPA compiler, the physical design toolflow it integrates,
 **Yuze Chi, Licheng Guo, Jason Lau, Young-kyu Choi, Jie Wang, Jason Cong.**
 Extending High-Level Synthesis for Task-Parallel Programs.
 *IEEE FCCM*, 2021.
-[[PDF](https://arxiv.org/pdf/2009.11389.pdf)] [[Code](https://github.com/UCLA-VAST/tapa)]
+[[PDF](https://arxiv.org/pdf/2009.11389.pdf)] [[Code](https://github.com/UCLA-VAST/tapa)] [[PageRank regression design](https://github.com/tuna/tapa/tree/main/tests/regression/page_rank)]
 
 Introduces the TAPA task API, coroutine-based software simulation (3.2× faster than Vitis HLS sequential simulation), and fast hierarchical RTL generation (6.8× faster QoR iteration). Reduces kernel and host code by 22% and 51% on average versus Vitis HLS dataflow.
 
@@ -120,7 +120,7 @@ Accelerators built with the TAPA compiler and toolflow.
 **Linghao Song, Yuze Chi, Atefeh Sohrabizadeh, Young-kyu Choi, Jason Lau, Jason Cong.**
 Sextans: A Streaming Accelerator for General-Purpose Sparse-Matrix Dense-Matrix Multiplication.
 *ACM/SIGDA FPGA*, 2022.
-[[PDF](https://par.nsf.gov/servlets/purl/10350115)] [[Code](https://github.com/linghaosong/Sextans/tree/tapa)]
+[[PDF](https://par.nsf.gov/servlets/purl/10350115)] [[Code](https://github.com/linghaosong/Sextans/tree/tapa)] [[U55C regression design](https://github.com/tuna/tapa/tree/main/tests/regression/spmm/sextans-u55c-3x3floorplan)] [[Split-memory regression design](https://github.com/tuna/tapa/tree/main/tests/regression/spmm/sextans-u280-split-bram-uram)]
 
 SpMM accelerator on Alveo U280/U250. TAPA/AutoBridge-compiled DDR variant achieves 260 MHz versus a Vivado baseline of 189 MHz. Up to 2.50× geomean speedup over NVIDIA K80.
 
@@ -129,16 +129,26 @@ SpMM accelerator on Alveo U280/U250. TAPA/AutoBridge-compiled DDR variant achiev
 **Linghao Song, Yuze Chi, Licheng Guo, Jason Cong.**
 Serpens: A High Bandwidth Memory Based Accelerator for General-Purpose Sparse Matrix-Vector Multiplication.
 *ACM/IEEE DAC*, 2022.
-[[Code](https://github.com/linghaosong/Serpens)]
+[[Code](https://github.com/linghaosong/Serpens)] [[16-channel regression design](https://github.com/tuna/tapa/tree/main/tests/regression/serpens-16ch)] [[24-channel regression design](https://github.com/tuna/tapa/tree/main/tests/regression/serpens-24ch)] [[32-channel regression design](https://github.com/tuna/tapa/tree/main/tests/regression/serpens-32ch)]
 
 SpMV accelerator on Alveo U280 using 24 HBM channels. The Vitis HLS baseline failed to route; TAPA + AutoBridge achieves 270 MHz and up to 60.55 GFLOP/s.
+
+---
+
+**Yixiao Du, Yuwei Hu, Zhongchun Zhou, Zhiru Zhang.**
+High-Performance Sparse Linear Algebra on HBM-Equipped FPGAs Using HLS: A Case Study on SpMV.
+*ACM/SIGDA FPGA*, 2022.
+[[PDF](https://www.csl.cornell.edu/~zhiruz/pdfs/spmv-fpga2022.pdf)] [[Code](https://github.com/cornell-zhang/HiSparse)] [[Regression design](https://github.com/tuna/tapa/tree/main/tests/regression/spmv-hisparse-mmap)]
+
+HiSparse SpMV case study exploiting HBM channel parallelism. The regression
+variant uses direct mmap interfaces rather than `async_mmap`.
 
 ---
 
 **Linghao Song, Licheng Guo, Suhail Basalama, Yuze Chi, Robert F. Lucas, Jason Cong.**
 Callipepla: Stream Centric Instruction Set and Mixed Precision for Accelerating Conjugate Gradient Solver.
 *ACM/SIGDA FPGA*, 2023.
-[[Code](https://github.com/UCLA-VAST/Callipepla)]
+[[Code](https://github.com/UCLA-VAST/Callipepla)] [[Regression design](https://github.com/tuna/tapa/tree/main/tests/regression/callipepla)]
 
 Conjugate gradient solver on U280 HBM. 3.94× speedup and 2.94× better energy efficiency over Xilinx XcgSolver; 3.34× better energy efficiency and 77% throughput of an A100 GPU at 4× lower memory bandwidth. Built with TAPA and AutoBridge.
 
@@ -187,7 +197,7 @@ FPGA SSSP accelerator on Alveo U280. Up to 4.9× over prior FPGA accelerators, 2
 **Jie Wang, Licheng Guo, Jason Cong.**
 AutoSA: A Polyhedral Compiler for High-Performance Systolic Arrays on FPGA.
 *ACM/SIGDA FPGA*, 2021.
-[[Paper](https://dl.acm.org/doi/10.1145/3431920.3439292)] [[Code](https://github.com/UCLA-VAST/AutoSA)]
+[[Paper](https://dl.acm.org/doi/10.1145/3431920.3439292)] [[Code](https://github.com/UCLA-VAST/AutoSA)] [[MM regression designs](https://github.com/tuna/tapa/tree/main/tests/regression/autosa)] [[CNN regression design](https://github.com/tuna/tapa/tree/main/tests/regression/cnn)] [[LU regression design](https://github.com/tuna/tapa/tree/main/tests/regression/lu_decompose)]
 
 Polyhedral systolic array compiler targeting MM, CNN, LU, MTTKRP. Integrated with TAPA and AutoBridge for routing congestion resolution and frequency improvement.
 
@@ -207,7 +217,7 @@ CNN compilation framework for OpenPose, U-Net, E-Net, and VGG-16 on Alveo U250/U
 **Alec Lu, Zhenman Fang, Nazanin Farahpour, Lesley Shannon.**
 CHIP-KNN: A Configurable and High-Performance K-Nearest Neighbors Accelerator on Cloud FPGAs.
 *IEEE ICFPT*, 2020.
-[[Code](https://github.com/SFU-HiAccel/CHIP-KNN)]
+[[Code](https://github.com/SFU-HiAccel/CHIP-KNN)] [[Regression design](https://github.com/tuna/tapa/tree/main/tests/regression/knn)]
 
 KNN accelerator on Alveo U280. TAPA-compiled design achieves 252 MHz versus a Vivado baseline of 165 MHz.
 
