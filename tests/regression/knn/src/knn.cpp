@@ -38,7 +38,6 @@ const int D2L_FACTOR_W = ((LOCAL_DIST_SZ - 1) / (DATA_TYPE_TOTAL_SZ)) + 1;
 // D2I = Data_Type to Interface
 const int D2I_FACTOR_W = ((IWIDTH - 1) / (INPUT_DIM * DATA_TYPE_TOTAL_SZ)) + 1;
 // I2D = Interface to Data_type
-const int I2D_FACTOR_W = ((INPUT_DIM * DATA_TYPE_TOTAL_SZ - 1) / (IWIDTH)) + 1;
 #define NUM_OF_TILES (64)
 #define TILE_LEN_IN_I (BUFFER_SIZE_PADDED / IWIDTH)
 #define TILE_LEN_IN_D (BUFFER_SIZE_PADDED / (INPUT_DIM * DATA_TYPE_TOTAL_SZ))
@@ -124,14 +123,10 @@ void compute(
 #pragma HLS PIPELINE II = 1
         LOCAL_DIST_DTYPE aggregated_local_dists = 0;
         SP_idx = ii * SEGMENT_SIZE_IN_D / D2I_FACTOR_W + jj;
-        int TEMP_DEBUG_INT = 0;
-
         for (int kk = 0; kk < D2I_FACTOR_W; ++kk) {
 #pragma HLS UNROLL
 
           DATA_TYPE delta_squared_sum = 0.0;
-          unsigned int dist_range_idx =
-              (kk % D2L_FACTOR_W) * DATA_TYPE_TOTAL_SZ;
           int start_idx = kk * INPUT_DIM;
 
           for (int ll = 0; ll < INPUT_DIM; ++ll) {
@@ -196,7 +191,6 @@ void para_partial_sort(LOCAL_DIST_DTYPE* local_distance, int start_id,
 
     LOCAL_DIST_DTYPE cur_Lval = local_distance[i / D2L_FACTOR_W];
     unsigned char D_idx = i % D2L_FACTOR_W;
-    unsigned char range_idx = (D_idx)*DATA_TYPE_TOTAL_SZ;
     DATA_TYPE cur_Dval;
 
     cur_Dval = cur_Lval;

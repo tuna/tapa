@@ -300,7 +300,7 @@ int main(int argc, char* argv[]) {
   gflags::ParseCommandLineFlags(&argc, &argv, /*remove_flags=*/true);
 
   // generate input data
-  int num_pe = 18;  // user-defined - temp hack
+  constexpr int num_pe = 18;  // user-defined - temp hack
   int dataSize = NUM_SP_PTS_PADDED * num_pe;
   vector<float> searchspace_data(dataSize * INPUT_DIM);
   vector<float> searchspace_data_part[num_pe];
