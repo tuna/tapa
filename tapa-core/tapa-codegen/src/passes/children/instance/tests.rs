@@ -102,6 +102,33 @@ fn build_child_instance_uses_hls_stream_names_without_child_rtl() {
 }
 
 #[test]
+fn build_child_instance_ties_off_ostream_peek_artifact() {
+    use std::collections::BTreeMap;
+    let sig = InstanceSignals::new("worker_0", false);
+    let child_rtl = VerilogModule::parse(concat!(
+        "module worker(input wire ap_clk, output wire [32:0] data_out_s_din, ",
+        "input wire data_out_s_full_n, output wire data_out_s_write, ",
+        "input wire [32:0] data_out_peek); endmodule"
+    ))
+    .unwrap();
+    let mut args = BTreeMap::new();
+    args.insert(
+        "data_out".to_owned(),
+        Arg::named("fifo_1".to_owned(), ArgCategory::Ostream),
+    );
+    let inst = build_child_instance_test(
+        "worker",
+        "worker_0",
+        &sig,
+        &args,
+        &ChildMmapBindings::default(),
+        Some(&child_rtl),
+    );
+    let text = inst.to_string();
+    assert!(text.contains(".data_out_peek('d0)"), "got:\n{text}");
+}
+
+#[test]
 fn build_child_instance_sanitizes_indexed_stream_names() {
     use std::collections::BTreeMap;
     let sig = InstanceSignals::new("worker_0", false);

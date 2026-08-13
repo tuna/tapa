@@ -187,12 +187,17 @@ pub(super) fn build_child_instance_with_reset(
                 }
             }
             ArgCategory::Ostream | ArgCategory::Ostreams => {
-                // Output stream: connect with OSTREAM_SUFFIXES
+                // Output stream: connect with OSTREAM_SUFFIXES. Vitis HLS also
+                // emits the unified stream type's input-only peek member even
+                // though an ostream cannot use it; tie that artifact off.
                 for suffix in OSTREAM_SUFFIXES {
                     port_args.push(PortArg::new(
                         resolve_child_stream_port(child_port, suffix),
                         Expr::ident(stream_signal(parent, suffix)),
                     ));
+                }
+                if let Some(peek_port) = resolve_child_stream_peek_port(child_port, "") {
+                    port_args.push(PortArg::new(peek_port, Expr::lit("'d0")));
                 }
             }
             ArgCategory::Mmap | ArgCategory::AsyncMmap => {

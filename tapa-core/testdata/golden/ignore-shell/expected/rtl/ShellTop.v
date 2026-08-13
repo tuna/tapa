@@ -51,7 +51,8 @@ CustomShell CustomShell_0 (
   .n(CustomShell_0__n),
   .out_s_din(out_din),
   .out_s_full_n(out_full_n),
-  .out_s_write(out_write)
+  .out_s_write(out_write),
+  .out_peek('d0)
 );
 
 ShellTop_fsm __tapa_fsm_unit (

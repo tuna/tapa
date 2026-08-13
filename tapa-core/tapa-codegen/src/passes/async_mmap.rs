@@ -259,6 +259,14 @@ pub fn child_portargs(
                 }
             }
         }
+        // The unified HLS stream type leaves an input-only peek member on
+        // output channels. It has no protocol role for an ostream, but Vitis
+        // retains it on some async-mmap channels, so drive the artifact.
+        if matches!(tag, READ_ADDR | WRITE_ADDR | WRITE_DATA) {
+            if let Some(port) = child_rtl.find_port(&format!("{prefix}_peek")) {
+                ports.push(PortArg::new(port.name.clone(), Expr::lit("'d0")));
+            }
+        }
         if tag.ends_with("_addr") {
             if let Some(port) = child_rtl.find_port_by_affixes(&prefix, "_offset") {
                 ports.push(PortArg::new(port.name.clone(), Expr::ident(offset_signal)));
@@ -507,6 +515,25 @@ mod tests {
         let names: Vec<_> = ports.iter().map(|p| p.port_name.clone()).collect();
         assert!(names.contains(&"mem_read_data_s_dout".to_string()));
         assert!(names.contains(&"mem_read_data_peek_dout".to_string()));
+    }
+
+    #[test]
+    fn child_portargs_ties_off_ostream_peek_artifact() {
+        let module = VerilogModule::parse(
+            "module child(\n\
+             output wire [64:0] mem_write_data_s_din,\n\
+             input wire mem_write_data_s_full_n,\n\
+             output wire mem_write_data_s_write,\n\
+             input wire [64:0] mem_write_data_peek\n\
+             ); endmodule",
+        )
+        .unwrap();
+        let ports = child_portargs(&module, "mem", "chan", "chan_offset");
+        let peek = ports
+            .iter()
+            .find(|port| port.port_name == "mem_write_data_peek")
+            .expect("output peek binding");
+        assert_eq!(peek.connection.to_string(), "'d0");
     }
 
     #[test]
