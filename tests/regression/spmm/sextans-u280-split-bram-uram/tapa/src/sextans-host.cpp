@@ -10,6 +10,7 @@
 #include <vector>
 
 #include <ap_int.h>
+#include <gflags/gflags.h>
 #include <tapa.h>
 
 #include "mmio.h"
@@ -27,6 +28,8 @@ using std::vector;
 template <typename T>
 using aligned_vector = std::vector<T, tapa::aligned_allocator<T>>;
 
+DEFINE_string(bitstream, "", "path to bitstream file, run csim if empty");
+
 void Sextans(tapa::mmap<int> edge_list_ptr,
              tapa::mmaps<ap_uint<512>, NUM_CH_SPARSE> edge_list_ch,
              tapa::mmaps<float_v16, NUM_CH_B> mat_B_ch,
@@ -36,6 +39,7 @@ void Sextans(tapa::mmap<int> edge_list_ptr,
              const int alpha_u, int beta_u);
 
 int main(int argc, char** argv) {
+  gflags::ParseCommandLineFlags(&argc, &argv, /*remove_flags=*/true);
   printf("start host\n");
 
   float ALPHA = 0.85;
@@ -131,10 +135,6 @@ int main(int argc, char** argv) {
   }
 
   vector<aligned_vector<unsigned long>> sparse_A_fpga_vec(NUM_CH_SPARSE);
-  int sparse_A_fpga_column_size =
-      8 * edge_list_ptr[edge_list_ptr.size() - 1] * 4 / 4;
-  int sparse_A_fpga_chunk_size =
-      ((sparse_A_fpga_column_size + 511) / 512) * 512;
 
   edge_list_64bit(edge_list_pes, edge_list_ptr, sparse_A_fpga_vec,
                   NUM_CH_SPARSE);
@@ -224,14 +224,9 @@ int main(int argc, char** argv) {
   tmpPointer_v = (int*)&BETA;
   int beta_int = *tmpPointer_v;
 
-  std::string bitstream;
-  if (const auto bitstream_ptr = getenv("TAPAB")) {
-    bitstream = bitstream_ptr;
-  }
-
   cout << "launch kernel\n";
   double time_taken = tapa::invoke(
-      Sextans, bitstream, tapa::read_only_mmap<int>(edge_list_ptr_fpga),
+      Sextans, FLAGS_bitstream, tapa::read_only_mmap<int>(edge_list_ptr_fpga),
       tapa::read_only_mmaps<unsigned long, NUM_CH_SPARSE>(sparse_A_fpga_vec)
           .reinterpret<ap_uint<512>>(),
       tapa::read_only_mmaps<float, NUM_CH_B>(mat_B_fpga_vec)
@@ -280,5 +275,5 @@ int main(int argc, char** argv) {
   }
   printf("num_mismatch = %d, percent = %.2f%%\n", mismatch_cnt, diffpercent);
 
-  return EXIT_SUCCESS;
+  return pass ? EXIT_SUCCESS : EXIT_FAILURE;
 }

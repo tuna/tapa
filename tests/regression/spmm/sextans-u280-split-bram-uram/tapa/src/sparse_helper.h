@@ -220,11 +220,6 @@ void read_suitsparse_matrix(char* filename_A, vector<int>& elePtr,
     exit(1);
   }
 
-  int t = 0;
-  for (int i = 0; i < M_K; i++) {
-    t += counter[i];
-  }
-
   elePtr[0] = 0;
   for (int i = 1; i <= M_K; i++) {
     elePtr[i] = elePtr[i - 1] + counter[i - 1];
