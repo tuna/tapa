@@ -11,12 +11,11 @@
 #include <iostream>
 #include <vector>
 
-#include <ap_int.h>
 #include <tapa.h>
 
-#include "../../include/mmio.h"
 #include "../../include/sparse_helper.h"
 #include "callipepla.h"
+#include "mmio.h"
 
 using std::cout;
 using std::endl;
@@ -30,7 +29,7 @@ template <typename T>
 using aligned_vector = std::vector<T, tapa::aligned_allocator<T>>;
 
 void Callipepla(tapa::mmap<int> edge_list_ptr,
-                tapa::mmaps<ap_uint<512>, NUM_CH_SPARSE> edge_list_ch,
+                tapa::mmaps<tapa::u<512>, NUM_CH_SPARSE> edge_list_ch,
                 tapa::mmaps<double_v8, 2> vec_x,
                 tapa::mmaps<double_v8, 2> vec_p, tapa::mmap<double_v8> vec_Ap,
                 tapa::mmaps<double_v8, 2> vec_r, tapa::mmap<double_v8> vec_digA,
@@ -226,7 +225,7 @@ int main(int argc, char** argv) {
   double time_taken = tapa::invoke(
       Callipepla, bitstream, tapa::read_only_mmap<int>(edge_list_ptr_fpga),
       tapa::read_only_mmaps<unsigned long, NUM_CH_SPARSE>(sparse_A_fpga_vec)
-          .reinterpret<ap_uint<512>>(),
+          .reinterpret<tapa::u<512>>(),
 
       tapa::read_write_mmaps<double, 2>(vec_X_fpga).reinterpret<double_v8>(),
       tapa::read_write_mmaps<double, 2>(vec_P_fpga).reinterpret<double_v8>(),
