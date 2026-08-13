@@ -9,12 +9,11 @@
 #include <iostream>
 #include <vector>
 
-#include <ap_int.h>
 #include <tapa.h>
 
 #include "mmio.h"
 #include "sextans.h"
-#include "sparse_helper.h"
+#include "sparse_helper_spmm.h"
 
 using std::cout;
 using std::endl;
@@ -28,7 +27,7 @@ template <typename T>
 using aligned_vector = std::vector<T, tapa::aligned_allocator<T>>;
 
 void Sextans(tapa::mmap<int> edge_list_ptr,
-             tapa::mmaps<ap_uint<512>, NUM_CH_SPARSE> edge_list_ch,
+             tapa::mmaps<tapa::u<512>, NUM_CH_SPARSE> edge_list_ch,
              tapa::mmaps<float_v16, NUM_CH_B> mat_B_ch,
              tapa::mmaps<float_v16, NUM_CH_C> mat_C_ch_in,
              tapa::mmaps<float_v16, NUM_CH_C> mat_C_ch);
@@ -235,7 +234,7 @@ int main(int argc, char** argv) {
   double time_taken = tapa::invoke(
       Sextans, bitstream, tapa::read_only_mmap<int>(edge_list_ptr_fpga),
       tapa::read_only_mmaps<unsigned long, NUM_CH_SPARSE>(sparse_A_fpga_vec)
-          .reinterpret<ap_uint<512>>(),
+          .reinterpret<tapa::u<512>>(),
       tapa::read_only_mmaps<float, NUM_CH_B>(mat_B_fpga_vec)
           .reinterpret<float_v16>(),
       tapa::read_only_mmaps<float, NUM_CH_C>(mat_C_fpga_in)
