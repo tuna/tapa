@@ -633,7 +633,7 @@ void PE_non_zero_diag(tapa::istream<float>& fifo_V_in,
 /* Module Definition */
 
 /* Module Definition */
-void A_IO_L3_in(A_t1* A, tapa::ostream<float>& fifo_A_local_out) {
+void A_IO_L3_in(tapa::mmap<A_t1> A, tapa::ostream<float>& fifo_A_local_out) {
 #pragma HLS INLINE OFF
   /* Variable Declaration */
   /* Variable Declaration */
@@ -20048,7 +20048,8 @@ void L_drain_IO_L2_out_boundary(int p0, tapa::ostream<float>& fifo_L_drain_out,
 /* Module Definition */
 
 /* Module Definition */
-void L_drain_IO_L3_out(L_t1* L, tapa::istream<float>& fifo_L_drain_local_in) {
+void L_drain_IO_L3_out(tapa::mmap<L_t1> L,
+                       tapa::istream<float>& fifo_L_drain_local_in) {
 #pragma HLS INLINE OFF
   /* Variable Declaration */
   /* Variable Declaration */
@@ -26439,7 +26440,8 @@ void U_drain_IO_L2_out_boundary(int p0, tapa::ostream<U_t4>& fifo_U_drain_out,
 /* Module Definition */
 
 /* Module Definition */
-void U_drain_IO_L3_out(U_t16* U, tapa::istream<U_t4>& fifo_U_drain_local_in) {
+void U_drain_IO_L3_out(tapa::mmap<U_t16> U,
+                       tapa::istream<U_t4>& fifo_U_drain_local_in) {
 #pragma HLS INLINE OFF
   /* Variable Declaration */
   U_t4 data_split[4];
