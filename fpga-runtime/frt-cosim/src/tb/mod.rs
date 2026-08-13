@@ -402,11 +402,8 @@ impl StreamArg {
     }
 }
 
-/// Width needed to address every AXI-Lite control register programmed by a testbench.
-///
-/// Vitis kernels use a wider control address port once their register map grows
-/// beyond 256 bytes. Keep the historical eight-bit minimum for small kernels,
-/// but retain every high address bit for large argument lists.
+/// Minimum width needed to address every AXI-Lite control register programmed
+/// by a testbench, including the fixed interrupt/control registers through 0x0c.
 pub fn control_addr_width(mmap_args: &[MmapArg], scalar_args: &[ScalarArg]) -> u32 {
     let mmap_offsets = mmap_args
         .iter()
@@ -414,8 +411,12 @@ pub fn control_addr_width(mmap_args: &[MmapArg], scalar_args: &[ScalarArg]) -> u
     let scalar_offsets = scalar_args
         .iter()
         .flat_map(|arg| arg.words.iter().map(|word| word.reg_offset));
-    let max_offset = mmap_offsets.chain(scalar_offsets).max().unwrap_or(0);
-    (u32::BITS - max_offset.leading_zeros()).max(8)
+    let max_offset = mmap_offsets
+        .chain(scalar_offsets)
+        .max()
+        .unwrap_or(0)
+        .max(0x0c);
+    u32::BITS - max_offset.leading_zeros()
 }
 
 pub fn scalar_words(base_offset: u32, bytes: &[u8]) -> Vec<ScalarWord> {

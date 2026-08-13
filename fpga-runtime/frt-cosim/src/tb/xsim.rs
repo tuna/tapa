@@ -132,7 +132,19 @@ impl<'a> XsimTbGenerator<'a> {
             Mode::Hls => "hls",
             Mode::Vitis => "vitis",
         };
-        let control_addr_width = control_addr_width(&mmap_args, &scalar_args);
+        let required_control_width = control_addr_width(&mmap_args, &scalar_args);
+        let control_addr_width = match detect_parameter_value(
+            &read_verilog_contents(self.spec),
+            "C_S_AXI_CONTROL_ADDR_WIDTH",
+        ) {
+            Some(declared) if declared < required_control_width => {
+                return Err(CosimError::Metadata(format!(
+                    "packaged control address port is {declared} bits, but register offsets require {required_control_width} bits"
+                )));
+            }
+            Some(declared) => declared,
+            None => required_control_width.max(8),
+        };
         let template = SvTemplate {
             top_name: &self.spec.top_name,
             mode,
@@ -206,6 +218,19 @@ fn sv_literal(width_bits: u32, bytes_le: &[u8]) -> String {
     format!("{width}'h{hex}")
 }
 
+fn detect_parameter_value(verilog_contents: &[String], name: &str) -> Option<u32> {
+    let pattern = format!(r"{}\s*=\s*(\d+)", regex_lite::escape(name));
+    let re = regex_lite::Regex::new(&pattern).unwrap();
+    for text in verilog_contents {
+        if let Some(caps) = re.captures(text) {
+            if let Ok(value) = caps[1].parse::<u32>() {
+                return Some(value);
+            }
+        }
+    }
+    None
+}
+
 /// Detect a top-level AXI port width by scanning Verilog declarations.
 /// Returns the width represented by `[N:0]`, or one for scalar/absent ports.
 fn detect_axi_port_width(verilog_contents: &[String], port_name: &str) -> usize {
@@ -232,12 +257,17 @@ mod tests {
 
     #[test]
     fn detects_axi_port_widths() {
-        let verilog = vec![
-            "module Top(output [2:0] m_axi_mem_ARID, output m_axi_mem_ARLOCK); endmodule"
-                .to_owned(),
-        ];
+        let verilog = vec![concat!(
+            "module Top #(parameter C_S_AXI_CONTROL_ADDR_WIDTH = 6) ",
+            "(output [2:0] m_axi_mem_ARID, output m_axi_mem_ARLOCK); endmodule"
+        )
+        .to_owned()];
         assert_eq!(detect_axi_port_width(&verilog, "m_axi_mem_ARID"), 3);
         assert_eq!(detect_axi_port_width(&verilog, "m_axi_mem_ARLOCK"), 1);
+        assert_eq!(
+            detect_parameter_value(&verilog, "C_S_AXI_CONTROL_ADDR_WIDTH"),
+            Some(6)
+        );
     }
 
     #[test]
