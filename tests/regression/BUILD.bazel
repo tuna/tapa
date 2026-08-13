@@ -284,11 +284,11 @@ regression_xosim(
     name = "serpens-16ch",
     extra_test_data = ["testdata/identity-16.mtx"],
     host_srcs = [
-        "serpens-16ch/tapa/src/mmio.h",
+        "include/mmio.h",
         "serpens-16ch/tapa/src/serpens.cpp",
         "serpens-16ch/tapa/src/serpens-host.cpp",
         "serpens-16ch/tapa/src/serpens.h",
-        "serpens-16ch/tapa/src/sparse_helper.h",
+        "include/sparse_helper_spmv.h",
     ],
     hw_test_args = [
         "$(location testdata/identity-16.mtx)",
@@ -302,11 +302,11 @@ regression_xosim(
     extra_test_data = ["testdata/identity-4704.mtx"],
     host_srcs = [
         "sparse_fixture.h",
-        "serpens-24ch/tapa/src/mmio.h",
+        "include/mmio.h",
         "serpens-24ch/tapa/src/serpens-host-noconst.cpp",
         "serpens-24ch/tapa/src/serpens-noconst.cpp",
         "serpens-24ch/tapa/src/serpens-noconst.h",
-        "serpens-24ch/tapa/src/sparse_helper.h",
+        "include/sparse_helper_spmv.h",
     ],
     hw_test_args = [
         "$(location testdata/identity-4704.mtx)",
@@ -319,12 +319,11 @@ regression_xosim(
     name = "sextans-split-bram-uram",
     extra_test_data = ["testdata/identity-16.mtx"],
     host_srcs = [
-        "spmm/sextans-u280-split-bram-uram/tapa/src/mmio.h",
-        "spmm/sextans-u280-split-bram-uram/tapa/src/modules.h",
+        "include/mmio.h",
         "spmm/sextans-u280-split-bram-uram/tapa/src/sextans.cpp",
         "spmm/sextans-u280-split-bram-uram/tapa/src/sextans-host.cpp",
         "spmm/sextans-u280-split-bram-uram/tapa/src/sextans.h",
-        "spmm/sextans-u280-split-bram-uram/tapa/src/sparse_helper.h",
+        "include/sparse_helper_spmm.h",
     ],
     hw_test_args = [
         "$(location testdata/identity-16.mtx)",
@@ -338,7 +337,7 @@ regression_xosim(
     extra_test_data = ["testdata/spd-14.mtx"],
     host_srcs = [
         "sparse_fixture.h",
-        "callipepla/include/mmio.h",
+        "include/mmio.h",
         "callipepla/include/sparse_helper.h",
         "callipepla/tapa/src_noconst/callipepla.cpp",
         "callipepla/tapa/src_noconst/callipepla-host.cpp",
@@ -366,11 +365,11 @@ regression_xosim(
     extra_test_data = ["testdata/identity-4704.mtx"],
     host_srcs = [
         "sparse_fixture.h",
-        "spmm/sextans-u55c-3x3floorplan/tapa/src/mmio.h",
+        "include/mmio.h",
         "spmm/sextans-u55c-3x3floorplan/tapa/src/sextans-host-no-const-para.cpp",
         "spmm/sextans-u55c-3x3floorplan/tapa/src/sextans-no-const-para.cpp",
         "spmm/sextans-u55c-3x3floorplan/tapa/src/sextans-no-const-para.h",
-        "spmm/sextans-u55c-3x3floorplan/tapa/src/sparse_helper.h",
+        "include/sparse_helper_spmm.h",
     ],
     hw_test_args = [
         "$(location testdata/identity-4704.mtx)",

@@ -7,10 +7,6 @@ stays literal so the generated targets keep their historical names and
 attributes.
 """
 
-# Copyright (c) 2026 RapidStream Design Automation, Inc. and contributors.
-# All rights reserved. The contributor(s) of this file has/have agreed to the
-# RapidStream Contributor License Agreement.
-
 load("@rules_cc//cc:defs.bzl", "cc_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("@vars//:vars.bzl", "HAS_XRT", "XILINX_HW_EMU_PLATFORM")
@@ -23,10 +19,11 @@ _CARGO_RELEASE_ARTIFACTS = "//fpga-runtime:cargo_release_artifacts"
 # targets link was synthesized for. See the note in VARS.bzl.
 _HW_EMU_PLATFORM = XILINX_HW_EMU_PLATFORM
 
+# No vendor include path: host CPU simulation must be self-contained, which
+# is what proves the vendor-agnostic migration actually landed.
 _HOST_DEPS = [
     "//tapa-lib:tapa-host",
     "@gflags",
-    "@vitis_hls//:include",
 ]
 
 def tapa_app_test(
@@ -285,7 +282,7 @@ def tapa_functional_test(
         **kernel_kwargs
     )
 
-def regression_xosim(name, xo, host_srcs, host_defines = [], hw_test_args = [], extra_test_data = []):
+def regression_xosim(name, xo, host_srcs, host_defines = [], hw_test_args = [], extra_test_data = [], hw_test_timeout = None):
     """Declares a host binary plus a manual fast-cosim test for a regression design.
 
     `<name>-host` builds the design's TAPA host program; `<name>-xosim` runs it
@@ -300,12 +297,15 @@ def regression_xosim(name, xo, host_srcs, host_defines = [], hw_test_args = [], 
         host_defines: Preprocessor definitions for the host sources.
         hw_test_args: Extra trailing args passed to the host after `--bitstream`.
         extra_test_data: Extra data files needed at run time (e.g. input graphs).
+        hw_test_timeout: Timeout of the cosim sh_test; defaults to the
+            `enormous` size's ceiling.
     """
     host_label = ":%s-host" % name
 
     cc_binary(
         name = "%s-host" % name,
         srcs = host_srcs,
+        includes = ["include"],
         local_defines = host_defines,
         tags = ["manual"],
         deps = _HOST_DEPS,
@@ -314,6 +314,7 @@ def regression_xosim(name, xo, host_srcs, host_defines = [], hw_test_args = [], 
     sh_test(
         name = "%s-xosim" % name,
         size = "enormous",
+        timeout = hw_test_timeout,
         srcs = ["//bazel:v++_env.sh"],
         args = [
             "$(location %s)" % host_label,
