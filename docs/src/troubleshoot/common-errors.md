@@ -195,7 +195,11 @@ although Vitis HLS accepts the kernel.
 in generated RTL. TAPA software simulation is transaction-based and does not
 provide a cycle-accurate host implementation.
 
-**Fix:** Guard a synthesis-only wait explicitly:
+**Fix:** Use the portable form: `tapa::wait()` (or `tapa::wait(n)`) is a
+no-op in software simulation and lowers to `ap_wait`/`ap_wait_n` when
+synthesizing, so the kernel builds on both paths unchanged. If you must keep
+the vendor intrinsic (e.g. in code shared with a non-TAPA build), guard it
+explicitly:
 
 ```cpp
 #ifdef __SYNTHESIS__
