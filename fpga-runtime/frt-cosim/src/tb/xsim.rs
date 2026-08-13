@@ -99,7 +99,14 @@ impl<'a> XsimTbGenerator<'a> {
                 };
                 let offset_port = super::direct_offset_port_name(&verilog_contents, &arg.name);
                 MmapArg {
-                    id_width: detect_axi_id_width(&verilog_contents, &arg.name),
+                    id_width: detect_axi_port_width(
+                        &verilog_contents,
+                        &format!("m_axi_{}_ARID", arg.name),
+                    ),
+                    lock_width: detect_axi_port_width(
+                        &verilog_contents,
+                        &format!("m_axi_{}_ARLOCK", arg.name),
+                    ),
                     ..MmapArg::new(
                         NAMING,
                         &arg.name,
@@ -199,13 +206,10 @@ fn sv_literal(width_bits: u32, bytes_le: &[u8]) -> String {
     format!("{width}'h{hex}")
 }
 
-/// Detect the AXI ID width for a given mmap port by scanning the Verilog
-/// source files for the ARID port declaration.  Returns the bit-width
-/// (e.g. 3 for `[2:0]`).  Defaults to 1 if the port is not found.
-fn detect_axi_id_width(verilog_contents: &[String], mmap_name: &str) -> usize {
-    let escaped = escape_verilog_identifier(&format!("m_axi_{mmap_name}_ARID"));
-    // Match patterns like:  output [2:0] m_axi_foo_ARID  or  wire [2:0] ...
-    // The left bound N in [N:0] gives width = N+1.
+/// Detect a top-level AXI port width by scanning Verilog declarations.
+/// Returns the width represented by `[N:0]`, or one for scalar/absent ports.
+fn detect_axi_port_width(verilog_contents: &[String], port_name: &str) -> usize {
+    let escaped = escape_verilog_identifier(port_name);
     let pattern = format!(
         r"\[\s*(\d+)\s*:\s*0\s*\]\s*{}",
         regex_lite::escape(&escaped)
@@ -225,6 +229,16 @@ fn detect_axi_id_width(verilog_contents: &[String], mmap_name: &str) -> usize {
 mod tests {
     use super::*;
     use crate::metadata::{ArgKind, ArgSpec};
+
+    #[test]
+    fn detects_axi_port_widths() {
+        let verilog = vec![
+            "module Top(output [2:0] m_axi_mem_ARID, output m_axi_mem_ARLOCK); endmodule"
+                .to_owned(),
+        ];
+        assert_eq!(detect_axi_port_width(&verilog, "m_axi_mem_ARID"), 3);
+        assert_eq!(detect_axi_port_width(&verilog, "m_axi_mem_ARLOCK"), 1);
+    }
 
     #[test]
     fn widens_control_address_bus_for_large_register_map() {

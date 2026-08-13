@@ -310,6 +310,9 @@ pub struct MmapArg {
     /// ARID width the packaged RTL declares. Only xsim declares the AXI
     /// signals itself and so needs it; Verilator leaves it zero.
     pub id_width: usize,
+    /// ARLOCK/AWLOCK width the packaged RTL declares. AXI4 uses one bit while
+    /// older AXI3 modules use two; only xsim needs to mirror it.
+    pub lock_width: usize,
 }
 
 impl MmapArg {
@@ -332,6 +335,7 @@ impl MmapArg {
             reg_offset_hi: reg_offset_lo + 4,
             data_size: 0,
             id_width: 0,
+            lock_width: 0,
         }
     }
 }
