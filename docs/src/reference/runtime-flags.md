@@ -14,6 +14,7 @@ These variables are read by the host executable at startup.
 | `TAPA_STREAM_LOG_DIR` | (unset — logging disabled) | Directory for stream transfer logs. When set, TAPA writes one log file per named stream recording each value written to that stream. Useful for tracing data corruption during software simulation. |
 | `FRT_STREAM_DEBUG` | (unset) | When set, log every successful stream read and write in the DPI layer. Produces high-volume output; use only for targeted debugging. |
 | `FRT_COSIM_YIELD` | `1` (enabled) | When enabled, the DPI layer calls `thread::yield_now()` on empty reads or full writes. Disable with `0` to busy-wait instead. |
+| `FRT_COSIM_TIMEOUT_SECONDS` | `0` (disabled) | Maximum wall-clock time for a fast-cosim simulator process. On expiry, TAPA terminates the simulator process group and reports a timeout. Set a positive integer to enable it. |
 | `FRT_XSIM_LEGACY` | `0` | Set to `1` to use the legacy xelab command-line format for older Vivado versions. |
 | `FRT_XOCL_BDF` | (unset) | PCIe Bus:Device:Function for XRT/OpenCL device selection. Equivalent to the `-xocl_bdf` gflag. |
 | `TAPA_HOME` | (unset) | TAPA installation prefix, e.g. `/opt/tapa`. Only needed as an override: cosim normally finds its DPI libraries through the library path `tapa g++` links into the host binary. `install.sh` sets it for you (`/etc/profile.d/tapa.sh` for a system-wide install, your shell profile otherwise). Set it by hand if you relocated the installation or copied a host binary to a machine without it. |
@@ -49,6 +50,7 @@ These flags use single-dash prefix (e.g., `-cosim_work_dir`) because they are pa
 | `-xsim_save_waveform` | Save simulation waveforms to a `.wdb` file in the work directory. Pair with `-cosim_work_dir`; without it, the temporary directory and all waveforms are deleted after the run. |
 | `-xsim_start_gui` | Open the Vivado GUI for interactive debugging during simulation. |
 | `-cosim_simulator <backend>` | Simulator backend: `xsim` (default, Linux only, requires Vivado) or `verilator` (cross-platform, no Vivado required, needs Verilator 5.044+). |
+| `-cosim_timeout_seconds <seconds>` | Stop the simulator process group after this much wall-clock time and report a timeout. `0` (the default) disables the timeout. |
 | `-cosim_setup_only` | Run simulation setup only, then stop before executing the simulation. Useful for inspecting generated simulation files before committing to a full run. |
 | `-cosim_resume_from_post_sim` | Skip re-running the simulation and jump directly to post-simulation checks. Use after a completed simulation to re-run checks without re-simulating. |
 | `-cosim_work_dir_parallel` | Create a unique subdirectory per instance when running multiple concurrent simulations, preventing work directory collisions. |

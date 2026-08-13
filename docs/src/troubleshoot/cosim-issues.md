@@ -28,6 +28,26 @@ If your design uses multiple HBM pseudo-channels and the fast cosim result does 
 
 ---
 
+## Fast cosim runs indefinitely
+
+A run that never reaches `ap_done` may be deadlocked, but cycle-accurate
+simulation of a valid full-size workload can also take hours. TAPA therefore
+does not impose a timeout by default. For unattended runs, choose a limit that
+fits the workload:
+
+```bash
+./app --bitstream=kernel.xo -cosim_timeout_seconds=3600
+```
+
+When the limit expires, the runtime terminates the xsim or Verilator process
+group and reports an explicit wall-clock-timeout error. Retry with a small
+input before treating the timeout as a design bug. If the small case also
+stalls, keep a `-cosim_work_dir`, inspect the stream-progress diagnostics
+below, and debug the saved waveform. The timeout itself cannot identify which
+task or protocol is blocked.
+
+---
+
 ## xsim issues
 
 ### `xsim not found` or `Vivado not found`

@@ -21,6 +21,13 @@ pub enum FrtError {
     NoOpenClRuntime(String),
     #[error("resume-from-post-sim stream binding error: {0}")]
     ResumeStreamBinding(String),
+    #[error("invalid cosim runtime option: {0}")]
+    CosimOption(String),
+    #[error(
+        "cosimulation exceeded the configured {timeout_secs}s wall-clock timeout; \
+         increase -cosim_timeout_seconds or set it to 0 to disable the timeout"
+    )]
+    CosimTimeout { timeout_secs: u64 },
     #[error("OpenCL error {code}: {msg}")]
     OpenCl { code: i32, msg: String },
     #[error("simulator exited with status {0}")]

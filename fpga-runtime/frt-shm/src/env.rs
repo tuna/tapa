@@ -8,6 +8,7 @@ pub const FRT_COSIM_SETUP_ONLY: &str = "FRT_COSIM_SETUP_ONLY";
 pub const FRT_COSIM_RESUME_FROM_POST_SIM: &str = "FRT_COSIM_RESUME_FROM_POST_SIM";
 pub const FRT_COSIM_WORK_DIR: &str = "FRT_COSIM_WORK_DIR";
 pub const FRT_COSIM_WORK_DIR_PARALLEL: &str = "FRT_COSIM_WORK_DIR_PARALLEL";
+pub const FRT_COSIM_TIMEOUT_SECONDS: &str = "FRT_COSIM_TIMEOUT_SECONDS";
 pub const FRT_COSIM_YIELD: &str = "FRT_COSIM_YIELD";
 
 // ── XSim-specific options ───────────────────────────────────────────────

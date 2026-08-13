@@ -28,6 +28,7 @@ impl TbDir {
 
 struct RuntimeOptions {
     start_gui: bool,
+    timeout_seconds: Option<u64>,
     save_waveform: bool,
     setup_only: bool,
     resume_from_post_sim: bool,
@@ -63,6 +64,7 @@ pub struct CosimDevice {
     _extract_dir: tempfile::TempDir,
     setup_only: bool,
     resume_from_post_sim: bool,
+    timeout_seconds: Option<u64>,
     scalars: HashMap<u32, Vec<u8>>,
     pending_buffers: HashMap<u32, BufferBinding>,
     simulation_state: SimulationState,
@@ -96,7 +98,7 @@ impl CosimDevice {
                 | frt_cosim::metadata::ArgKind::Mmap { .. } => None,
             })
             .collect();
-        let opts = runtime_options();
+        let opts = runtime_options()?;
         let tb_dir = make_tb_dir(opts.work_dir.as_deref(), opts.work_dir_parallel)?;
         let ctx = if opts.resume_from_post_sim {
             let config_path = tb_dir.path().join("dpi_config.json");
@@ -145,6 +147,7 @@ impl CosimDevice {
             _extract_dir: extract_dir,
             setup_only: opts.setup_only,
             resume_from_post_sim: opts.resume_from_post_sim,
+            timeout_seconds: opts.timeout_seconds,
             scalars: HashMap::new(),
             pending_buffers: HashMap::new(),
             simulation_state: SimulationState::Idle,
@@ -232,15 +235,31 @@ impl CosimDevice {
                         self.pending_sim_error = Some(FrtError::SimFailed(status));
                     }
                     self.simulation_state = SimulationState::Finished;
-                    Ok(true)
-                } else {
-                    Ok(false)
+                    return Ok(true);
                 }
+                if let Some(timeout_secs) = self.timeout_seconds.filter(|timeout_secs| {
+                    run.started_at.elapsed() >= std::time::Duration::from_secs(*timeout_secs)
+                }) {
+                    terminate_running_simulation(run)?;
+                    self.compute_ns = run.started_at.elapsed().as_nanos() as u64;
+                    self.pending_sim_error = Some(FrtError::CosimTimeout { timeout_secs });
+                    self.simulation_state = SimulationState::Finished;
+                    return Ok(true);
+                }
+                Ok(false)
             }
         }
     }
 
     fn wait_simulation(&mut self) -> Result<()> {
+        if self.timeout_seconds.is_some()
+            && matches!(self.simulation_state, SimulationState::Running(_))
+        {
+            while !self.poll_simulation()? {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            return Ok(());
+        }
         if let SimulationState::Running(run) = &mut self.simulation_state {
             let status = run.child.wait()?;
             self.compute_ns = run.started_at.elapsed().as_nanos() as u64;
@@ -299,6 +318,19 @@ fn validate_resume_stream_bindings(
     )))
 }
 
+fn terminate_running_simulation(run: &mut RunningSimulation) -> Result<()> {
+    if let Err(err) = signal_child_group(&run.child, libc::SIGINT) {
+        tracing::warn!("failed to send SIGINT to simulator process group: {err}");
+    }
+    match run.child.kill() {
+        Ok(()) => {}
+        Err(err) if err.kind() == std::io::ErrorKind::InvalidInput => {}
+        Err(err) => return Err(err.into()),
+    }
+    let _ = run.child.wait();
+    Ok(())
+}
+
 #[cfg(unix)]
 fn signal_child_group(child: &Child, signal: libc::c_int) -> Result<()> {
     let pgid = child.id() as i32;
@@ -321,17 +353,29 @@ fn signal_child_group(_child: &Child, _signal: libc::c_int) -> Result<()> {
 use crate::env_bool;
 use frt_shm::env_non_empty;
 
-fn runtime_options() -> RuntimeOptions {
+fn parse_timeout_seconds(value: Option<&str>) -> Result<Option<u64>> {
+    let Some(value) = value else { return Ok(None) };
+    let seconds = value.parse::<u64>().map_err(|_err| {
+        FrtError::CosimOption(format!(
+            "FRT_COSIM_TIMEOUT_SECONDS={value:?}; expected a nonnegative integer number of seconds"
+        ))
+    })?;
+    Ok((seconds != 0).then_some(seconds))
+}
+
+fn runtime_options() -> Result<RuntimeOptions> {
     use frt_shm::env;
-    RuntimeOptions {
+    let timeout = env_non_empty(env::FRT_COSIM_TIMEOUT_SECONDS);
+    Ok(RuntimeOptions {
         start_gui: env_bool(env::FRT_XSIM_START_GUI),
+        timeout_seconds: parse_timeout_seconds(timeout.as_deref())?,
         save_waveform: env_bool(env::FRT_XSIM_SAVE_WAVEFORM),
         setup_only: env_bool(env::FRT_COSIM_SETUP_ONLY),
         resume_from_post_sim: env_bool(env::FRT_COSIM_RESUME_FROM_POST_SIM),
         work_dir: env_non_empty(env::FRT_COSIM_WORK_DIR).map(PathBuf::from),
         work_dir_parallel: env_bool(env::FRT_COSIM_WORK_DIR_PARALLEL),
         part_num_override: env_non_empty(env::FRT_XSIM_PART_NUM),
-    }
+    })
 }
 
 fn make_tb_dir(work_dir: Option<&Path>, parallel: bool) -> Result<TbDir> {
@@ -684,15 +728,7 @@ impl Device for CosimDevice {
     fn kill(&mut self) -> Result<()> {
         match &mut self.simulation_state {
             SimulationState::Running(run) => {
-                if let Err(err) = signal_child_group(&run.child, libc::SIGINT) {
-                    tracing::warn!("failed to send SIGINT to simulator process group: {err}");
-                }
-                match run.child.kill() {
-                    Ok(()) => {}
-                    Err(e) if e.kind() == std::io::ErrorKind::InvalidInput => {}
-                    Err(e) => return Err(e.into()),
-                }
-                let _ = run.child.wait();
+                terminate_running_simulation(run)?;
                 self.compute_ns = run.started_at.elapsed().as_nanos() as u64;
                 self.simulation_state = SimulationState::Finished;
             }
@@ -785,6 +821,7 @@ mod tests {
             _extract_dir: tempfile::tempdir().expect("create extract dir"),
             setup_only: false,
             resume_from_post_sim: false,
+            timeout_seconds: None,
             scalars: HashMap::new(),
             pending_buffers: HashMap::new(),
             simulation_state: SimulationState::Idle,
@@ -816,6 +853,38 @@ mod tests {
         dev.ctx = CosimContext::new(&dev.spec).expect("create cosim context");
         dev.resume_from_post_sim = resume_from_post_sim;
         dev
+    }
+
+    #[test]
+    fn timeout_option_is_strict_and_zero_disables_it() {
+        assert_eq!(parse_timeout_seconds(None).expect("unset timeout"), None);
+        assert_eq!(
+            parse_timeout_seconds(Some("0")).expect("zero timeout"),
+            None
+        );
+        assert_eq!(
+            parse_timeout_seconds(Some("3600")).expect("positive timeout"),
+            Some(3600)
+        );
+        let err = parse_timeout_seconds(Some("1h")).expect_err("invalid timeout");
+        assert!(err.to_string().contains("FRT_COSIM_TIMEOUT_SECONDS"));
+    }
+
+    #[test]
+    fn wall_clock_timeout_stops_the_simulator_and_surfaces_an_error() {
+        let mut dev = make_test_device(5.0);
+        dev.timeout_seconds = Some(1);
+        dev.exec().expect("spawn simulation");
+        let SimulationState::Running(run) = &mut dev.simulation_state else {
+            panic!("simulation must be running");
+        };
+        run.started_at = Instant::now()
+            .checked_sub(Duration::from_secs(2))
+            .expect("earlier instant");
+
+        assert!(dev.is_finished().expect("timeout poll completes"));
+        let err = dev.finish().expect_err("timeout must fail finish");
+        assert!(matches!(err, FrtError::CosimTimeout { timeout_secs: 1 }));
     }
 
     #[test]

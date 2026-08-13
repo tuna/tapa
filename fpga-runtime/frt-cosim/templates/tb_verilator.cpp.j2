@@ -343,16 +343,14 @@ int main(int argc, char** argv) {
 {% endif %}
   std::fprintf(stderr, "Kernel started, running simulation...\n");
 
-  bool done = false;
-  constexpr int kTimeoutCycles = 50000000;
-  for (int cycle = 0; cycle < kTimeoutCycles; ++cycle) {
+  for (uint64_t cycle = 0;; ++cycle) {
     service_all_axi();
     service_streams();
     tick();
 {% if mode == "hls" %}
     if (dut->ap_done) {
-      std::fprintf(stderr, "Kernel done after %d cycles\n", cycle);
-      done = true;
+      std::fprintf(stderr, "Kernel done after %llu cycles\n",
+                   static_cast<unsigned long long>(cycle));
       break;
     }
     if (dut->ap_ready) {
@@ -360,17 +358,11 @@ int main(int argc, char** argv) {
     }
 {% else %}
     if (dut->__SYM__interrupt) {
-      std::fprintf(stderr, "Kernel done after %d cycles\n", cycle);
-      done = true;
+      std::fprintf(stderr, "Kernel done after %llu cycles\n",
+                   static_cast<unsigned long long>(cycle));
       break;
     }
 {% endif %}
-  }
-
-  if (!done) {
-    std::fprintf(stderr, "simulation timeout\n");
-    delete dut;
-    return 1;
   }
 
 {% if !stream_out_args.is_empty() %}

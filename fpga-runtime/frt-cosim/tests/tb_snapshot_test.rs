@@ -217,6 +217,9 @@ fn verilator_hls_tb_snapshot() {
     assert!(tb.contains("tapa_stream_try_write"));
     assert!(tb.contains("tapa_stream_can_write"));
     assert!(tb.contains("m_axi_a_ARADDR"));
+    assert!(tb.contains("for (uint64_t cycle = 0;; ++cycle)"));
+    assert!(!tb.contains("kTimeoutCycles"));
+    assert!(!tb.contains("simulation timeout"));
 }
 
 #[test]

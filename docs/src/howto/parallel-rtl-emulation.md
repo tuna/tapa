@@ -211,6 +211,7 @@ TAPA_CONCURRENCY=1 ./cannon \
 | `-cosim_work_dir <dir>` | Persistent working directory for simulation artifacts. |
 | `-cosim_work_dir_parallel` | Create a unique subdirectory per instance. Required when multiple kernels share `-cosim_work_dir`. |
 | `-cosim_simulator <backend>` | `xsim` (default, Linux only) or `verilator` (cross-platform, needs Verilator 5.044+). Applied to all instances. |
+| `-cosim_timeout_seconds <seconds>` | Apply the same wall-clock limit to each simulator process; `0` (the default) disables it. |
 | `-xsim_save_waveform` | Save simulation waveforms. Pair with `-cosim_work_dir`. |
 | `-xsim_part_num <part>` | Target FPGA part number (e.g., `xcu55c-fsvh2892-2L-e`). |
 | `TAPA_CONCURRENCY` | Environment variable. Number of host worker threads running task coroutines — not a cap on simulator processes. |

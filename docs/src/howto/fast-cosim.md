@@ -122,6 +122,7 @@ The following flags control fast cosim behavior when passed to the host executab
 | `-xsim_save_waveform` | Save simulation waveforms to a `.wdb` file in the work directory. Requires `-cosim_work_dir`. |
 | `-xsim_start_gui` | Open the Vivado GUI for interactive debugging during simulation. |
 | `-cosim_simulator <backend>` | Simulator backend: `xsim` (default, Linux only) or `verilator` (cross-platform). |
+| `-cosim_timeout_seconds <seconds>` | Stop fast cosim after this much wall-clock time; `0` (the default) leaves it unlimited. |
 | `-cosim_setup_only` | Run simulation setup only, then stop before executing the simulation. |
 | `-cosim_resume_from_post_sim` | Skip re-running the simulation; jump directly to post-simulation checks. |
 | `-cosim_work_dir_parallel` | Create a unique subdirectory per instance when running concurrent simulations. |
@@ -131,6 +132,19 @@ The following flags control fast cosim behavior when passed to the host executab
 Fast cosim completes in seconds for simple designs. A successful run prints the application's correctness result (e.g., `PASS!`) after the simulation finishes.
 
 ## Debugging frozen simulations
+
+Fast cosim has no timeout by default: a large design may legitimately need
+hours, so the runtime cannot choose a safe universal limit. For unattended
+runs, set an explicit wall-clock limit:
+
+```bash
+./vadd --bitstream VecAdd.xo -cosim_timeout_seconds 3600 1000
+```
+
+On expiry, TAPA terminates the simulator process group and reports which limit
+was reached. A timeout does not distinguish a deadlock from a workload that is
+merely too large; use a reduced input first, then inspect the saved work
+directory if the reduced case also stalls.
 
 If the simulation becomes unresponsive:
 

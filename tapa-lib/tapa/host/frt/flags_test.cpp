@@ -7,6 +7,7 @@
 #include "tapa/scoped_set_env.h"
 
 DECLARE_bool(xsim_save_waveform);
+DECLARE_uint64(cosim_timeout_seconds);
 DECLARE_string(cosim_work_dir);
 DECLARE_string(cosim_simulator);
 
@@ -20,8 +21,10 @@ namespace {
 TEST(FrtFlagsTest, DefaultFlagsDoNotClearExistingCosimEnv) {
   tapa_testing::ScopedSetEnv save_waveform("FRT_XSIM_SAVE_WAVEFORM", "1");
   tapa_testing::ScopedSetEnv work_dir("FRT_COSIM_WORK_DIR", "/tmp/existing");
+  tapa_testing::ScopedSetEnv timeout("FRT_COSIM_TIMEOUT_SECONDS", "17");
 
   FLAGS_xsim_save_waveform = false;
+  FLAGS_cosim_timeout_seconds = 0;
   FLAGS_cosim_work_dir.clear();
 
   tapa::internal::frt::ForwardFlagsToEnv();
@@ -30,6 +33,17 @@ TEST(FrtFlagsTest, DefaultFlagsDoNotClearExistingCosimEnv) {
   EXPECT_STREQ(std::getenv("FRT_XSIM_SAVE_WAVEFORM"), "1");
   ASSERT_NE(std::getenv("FRT_COSIM_WORK_DIR"), nullptr);
   EXPECT_STREQ(std::getenv("FRT_COSIM_WORK_DIR"), "/tmp/existing");
+  ASSERT_NE(std::getenv("FRT_COSIM_TIMEOUT_SECONDS"), nullptr);
+  EXPECT_STREQ(std::getenv("FRT_COSIM_TIMEOUT_SECONDS"), "17");
+}
+
+TEST(FrtFlagsTest, PositiveTimeoutIsForwarded) {
+  tapa_testing::ScopedSetEnv timeout("FRT_COSIM_TIMEOUT_SECONDS", nullptr);
+  FLAGS_cosim_timeout_seconds = 42;
+  tapa::internal::frt::ForwardFlagsToEnv();
+  ASSERT_NE(std::getenv("FRT_COSIM_TIMEOUT_SECONDS"), nullptr);
+  EXPECT_STREQ(std::getenv("FRT_COSIM_TIMEOUT_SECONDS"), "42");
+  FLAGS_cosim_timeout_seconds = 0;
 }
 
 TEST(FrtFlagsTest, SimulatorFlagIsTheUsersChoiceOrNothing) {
