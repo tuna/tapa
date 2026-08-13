@@ -86,7 +86,7 @@ wire mem_read_data__read;
 wire [63:0] mem_write_addr__din;
 wire mem_write_addr__full_n;
 wire mem_write_addr__write;
-wire [31:0] mem_write_data__din;
+wire [32:0] mem_write_data__din;
 wire mem_write_data__full_n;
 wire mem_write_data__write;
 wire [7:0] mem_write_resp__dout;
@@ -101,7 +101,7 @@ async_mmap #(
   .AddrWidth(64),
   .WaitTimeWidth(2),
   .MaxWaitTime(3),
-  .BurstLenWidth(9),
+  .BurstLenWidth(8),
   .MaxBurstLen(255),
   .EnableReadChannel(1),
   .EnableWriteChannel(0)
@@ -154,7 +154,7 @@ async_mmap #(
   .write_addr_din(mem_write_addr__din),
   .write_addr_full_n(mem_write_addr__full_n),
   .write_addr_write(mem_write_addr__write),
-  .write_data_din(mem_write_data__din),
+  .write_data_din(mem_write_data__din[31:0]),
   .write_data_full_n(mem_write_data__full_n),
   .write_data_write(mem_write_data__write),
   .write_resp_dout(mem_write_resp__dout),

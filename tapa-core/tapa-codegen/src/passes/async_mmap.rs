@@ -42,9 +42,12 @@ fn tag_data_width(tag: &str, suffix: &str, data_width: u32) -> u32 {
     if !STREAM_DATA_SUFFIXES.contains(&suffix) {
         return 1;
     }
-    match tag {
-        READ_ADDR | WRITE_ADDR => AXI_ADDR_WIDTH,
-        WRITE_RESP => 8,
+    match (tag, suffix) {
+        (READ_ADDR | WRITE_ADDR, _) => AXI_ADDR_WIDTH,
+        (WRITE_RESP, _) => 8,
+        // `tapa::ostream<T>` carries EoT in the MSB. The AXI bridge consumes
+        // only T, but the child-facing wire must retain the complete port.
+        (WRITE_DATA, "_din") => data_width.saturating_add(1),
         _ => data_width,
     }
 }
@@ -215,6 +218,19 @@ pub fn child_connection_expr(base: &str, tag: &str, suffix: &str) -> Expr {
     }
 }
 
+fn bridge_connection_expr(base: &str, tag: &str, suffix: &str, data_width: u32) -> Expr {
+    let signal = Expr::ident(signal_name(base, tag, suffix));
+    if matches!((tag, suffix), (WRITE_DATA, "_din")) {
+        Expr::range(
+            signal,
+            Expr::int(u64::from(data_width.saturating_sub(1))),
+            Expr::int(0),
+        )
+    } else {
+        signal
+    }
+}
+
 pub fn child_portargs(
     child_rtl: &VerilogModule,
     child_port: &str,
@@ -303,7 +319,7 @@ pub fn build_bridge_instance(
         ParamArg::new("AddrWidth", Expr::int(u64::from(AXI_ADDR_WIDTH))),
         ParamArg::new("WaitTimeWidth", Expr::int(2)),
         ParamArg::new("MaxWaitTime", Expr::int(3)),
-        ParamArg::new("BurstLenWidth", Expr::int(9)),
+        ParamArg::new("BurstLenWidth", Expr::int(8)),
         ParamArg::new("MaxBurstLen", Expr::int(u64::from(max_burst_len))),
         ParamArg::new(
             "EnableReadChannel",
@@ -353,7 +369,7 @@ pub fn build_bridge_instance(
     for &tag in TAGS {
         for &suffix in tag_suffixes(tag) {
             let connection = if active_tags.contains(tag) {
-                Expr::ident(signal_name(bridge_base, tag, suffix))
+                bridge_connection_expr(bridge_base, tag, suffix, data_width)
             } else if suffix.ends_with("_read") || suffix.ends_with("_write") {
                 Expr::lit("1'b0")
             } else if suffix == "_din" {
@@ -469,6 +485,12 @@ mod tests {
     }
 
     #[test]
+    fn bridge_discards_write_data_eot_explicitly() {
+        let expr = bridge_connection_expr("base", WRITE_DATA, "_din", 512);
+        assert_eq!(expr.to_string(), "base_write_data__din[511:0]");
+    }
+
+    #[test]
     fn child_portargs_maps_peek_for_istream() {
         let module = VerilogModule::parse(
             "module child(\n\
@@ -494,10 +516,15 @@ mod tests {
         let mut tags = BTreeSet::new();
         tags.insert(READ_ADDR);
         tags.insert(READ_DATA);
+        tags.insert(WRITE_DATA);
         add_bridge_signals(&mut mm, "chan", &tags, 64);
         let emitted = mm.emit();
         assert!(emitted.contains("chan_read_addr__din"), "got:\n{emitted}");
         assert!(emitted.contains("chan_read_data__dout"), "got:\n{emitted}");
+        assert!(
+            emitted.contains("wire [64:0] chan_write_data__din"),
+            "write-data EoT bit must reach the child:\n{emitted}"
+        );
     }
 
     #[test]
@@ -522,6 +549,7 @@ mod tests {
         let text = inst.to_string();
         assert!(text.contains("async_mmap"), "got:\n{text}");
         assert!(text.contains("DataWidth(512)"), "got:\n{text}");
+        assert!(text.contains("BurstLenWidth(8)"), "got:\n{text}");
         assert!(text.contains("EnableReadChannel(1)"), "got:\n{text}");
         assert!(text.contains("EnableWriteChannel(0)"), "got:\n{text}");
         assert!(text.contains("chan__m_axi"), "got:\n{text}");
