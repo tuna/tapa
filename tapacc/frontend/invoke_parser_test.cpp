@@ -164,6 +164,18 @@ TEST(InvokeParser, ReplicatedExplicitNameIsUniquePerLane) {
   EXPECT_EQ(instances[2].name, "worker_2");
 }
 
+TEST(InvokeParser, ConstantUsesChildPortWidth) {
+  constexpr char kCode[] = R"cpp(
+    void Worker(short value) {}
+    void Top() { tapa::task().invoke(Worker, -1); }
+  )cpp";
+  auto p = ParseCode(kCode, "Top", /*is_top=*/false);
+  const auto& arg =
+      p.tasks.at("Top").instances.at("Worker")[0].args.at("value");
+  EXPECT_EQ(arg.width, 16u);
+  EXPECT_EQ(arg.value, std::optional<uint64_t>(0xffff));
+}
+
 TEST(InvokeParser, InstancesAndArgs) {
   auto p = ParseTop();
   const TaskModel& top = p.tasks.at("Top");

@@ -29,6 +29,11 @@ std::optional<int64_t> EvalInt(const clang::ASTContext& ctx,
   return std::nullopt;
 }
 
+uint64_t TruncateToWidth(uint64_t value, uint32_t width) {
+  if (width == 0 || width >= 64) return value;
+  return value & ((uint64_t{1} << width) - 1);
+}
+
 // step (bulk-synchronous mode), vector length, and whether an explicit instance
 // name is present, from the invoke method's template specialization arguments.
 struct InvokeMode {
@@ -311,10 +316,13 @@ void ParseInvocations(UpperTaskContext& uc, const clang::Expr* task_obj) {
                              TapaKind cat) {
             insts.back().args[p] = Arg::Named(a, cat);
           };
-          // Scalars are the only bindings that can be a constant. 64 bits
-          // matches the width the RTL backend has always given these.
+          // Constants are sized to the child scalar port. The generic
+          // `invoke` template does not perform ordinary call conversion, so
+          // the frontend must apply the port's truncation explicitly.
           auto set_const = [&](uint64_t v, const std::string& p) {
-            insts.back().args[p] = Arg::Constant(v, 64, TapaKind::kNotTapa);
+            const uint32_t width = BitWidth(uc.ctx, param->getType());
+            insts.back().args[p] = Arg::Constant(TruncateToWidth(v, width),
+                                                 width, TapaKind::kNotTapa);
           };
 
           if (pk == TapaKind::kMmap || pk == TapaKind::kImmap ||
