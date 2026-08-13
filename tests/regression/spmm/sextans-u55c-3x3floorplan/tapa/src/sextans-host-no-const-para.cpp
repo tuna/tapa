@@ -10,11 +10,13 @@
 #include <vector>
 
 #include <ap_int.h>
-// #include <tapa.h>
+#include <gflags/gflags.h>
+#include <tapa.h>
 
 #include "mmio.h"
 #include "sextans-no-const-para.h"
 #include "sparse_helper.h"
+#include "tests/regression/sparse_fixture.h"
 
 using std::cout;
 using std::endl;
@@ -27,15 +29,16 @@ using std::vector;
 template <typename T>
 using aligned_vector = std::vector<T, tapa::aligned_allocator<T>>;
 
+DEFINE_string(bitstream, "", "path to bitstream file, run csim if empty");
+
 void Sextans(tapa::mmap<int> edge_list_ptr,
              tapa::mmaps<ap_uint<512>, NUM_CH_SPARSE> edge_list_ch,
              tapa::mmaps<float_v16, NUM_CH_B> mat_B_ch,
              tapa::mmaps<float_v16, NUM_CH_C> mat_C_ch_in,
-             tapa::mmaps<float_v16, NUM_CH_C> mat_C_ch, const int NUM_ITE,
-             const int NUM_A_LEN, const int M, const int K, const int P_N,
-             const int alpha_u, int beta_u);
+             tapa::mmaps<float_v16, NUM_CH_C> mat_C_ch);
 
 int main(int argc, char** argv) {
+  gflags::ParseCommandLineFlags(&argc, &argv, /*remove_flags=*/true);
   printf("start host\n");
 
   float ALPHA = 0.85;
@@ -87,6 +90,16 @@ int main(int argc, char** argv) {
   cout << "B: dense matrix, " << K << " x " << N << "\n";
   cout << "C: dense matrix, " << M << " x " << N << "\n";
 
+  if (M != kSextansNumRows || K != kSextansNumRows || N != kSextansNumColumns ||
+      rp_time != kSextansRepeatCount || ALPHA != 0.85f || BETA != -2.06f) {
+    cout << "expected a " << kSextansNumRows << " x " << kSextansNumRows
+         << " matrix, " << kSextansNumColumns << " dense columns, "
+         << kSextansRepeatCount
+         << " repeat, alpha 0.85, and beta -2.06 for this fixed RTL "
+            "architecture\n";
+    return EXIT_FAILURE;
+  }
+
   // initiate matrix B and matrix C
   vector<float> mat_B_cpu, mat_C_cpu;
   mat_B_cpu.resize(K * N, 0.0);
@@ -125,6 +138,13 @@ int main(int argc, char** argv) {
       edge_list_ptr,         // vector<int> & edge_list_ptr,
       DEP_DIST_LOAD_STORE);  // const int DEP_DIST_LOAD_STORE = 10)
 
+  if (!tapa::regression::PadSparseEdgeLists(edge_list_pes, edge_list_ptr,
+                                            kSextansSparseBeatsPerChannel)) {
+    cout << "sparse fixture exceeds the fixed " << kSextansSparseBeatsPerChannel
+         << " beats per channel supported by this RTL architecture\n";
+    return EXIT_FAILURE;
+  }
+
   aligned_vector<int> edge_list_ptr_fpga;
   int edge_list_ptr_fpga_size = ((edge_list_ptr.size() + 15) / 16) * 16;
   int edge_list_ptr_fpga_chunk_size =
@@ -135,11 +155,6 @@ int main(int argc, char** argv) {
   }
 
   vector<aligned_vector<unsigned long>> sparse_A_fpga_vec(NUM_CH_SPARSE);
-  int sparse_A_fpga_column_size =
-      8 * edge_list_ptr[edge_list_ptr.size() - 1] * 4 / 4;
-  int sparse_A_fpga_chunk_size =
-      ((sparse_A_fpga_column_size + 511) / 512) * 512;
-
   edge_list_64bit(edge_list_pes, edge_list_ptr, sparse_A_fpga_vec,
                   NUM_CH_SPARSE);
 
@@ -218,24 +233,9 @@ int main(int argc, char** argv) {
   cout << "CPU GFLOPS: " << 2.0f * (nnz + M) * N / 1000000000 / time_cpu
        << "\n";
 
-  int MAX_SIZE_edge_LIST_PTR = edge_list_ptr.size() - 1;
-  int MAX_LEN_edge_PTR = edge_list_ptr[MAX_SIZE_edge_LIST_PTR];
-  int para_N = (rp_time << 16) | N;
-
-  int* tmpPointer_v;
-  tmpPointer_v = (int*)&ALPHA;
-  int alpha_int = *tmpPointer_v;
-  tmpPointer_v = (int*)&BETA;
-  int beta_int = *tmpPointer_v;
-
-  std::string bitstream;
-  if (const auto bitstream_ptr = getenv("TAPAB")) {
-    bitstream = bitstream_ptr;
-  }
-
   cout << "launch kernel\n";
   double time_taken = tapa::invoke(
-      Sextans, bitstream, tapa::read_only_mmap<int>(edge_list_ptr_fpga),
+      Sextans, FLAGS_bitstream, tapa::read_only_mmap<int>(edge_list_ptr_fpga),
       tapa::read_only_mmaps<unsigned long, NUM_CH_SPARSE>(sparse_A_fpga_vec)
           .reinterpret<ap_uint<512>>(),
       tapa::read_only_mmaps<float, NUM_CH_B>(mat_B_fpga_vec)
@@ -244,13 +244,6 @@ int main(int argc, char** argv) {
           .reinterpret<float_v16>(),
       tapa::write_only_mmaps<float, NUM_CH_C>(mat_C_fpga_vec)
           .reinterpret<float_v16>());
-  cout << "MAX_SIZE_edge_LIST_PTR " << MAX_SIZE_edge_LIST_PTR << endl;
-  cout << "MAX_LEN_edge_PTR " << MAX_LEN_edge_PTR << endl;
-  cout << "M " << M << endl;
-  cout << "K " << K << endl;
-  cout << "para_N " << para_N << endl;
-  cout << "alpha_int " << alpha_int << endl;
-  cout << "beta_int " << beta_int << endl;
   time_taken *= (1e-9 / rp_time);
   printf("Kernel time is %f ms\n", time_taken * 1000);
 
@@ -289,5 +282,5 @@ int main(int argc, char** argv) {
   }
   printf("num_mismatch = %d, percent = %.2f%%\n", mismatch_cnt, diffpercent);
 
-  return EXIT_SUCCESS;
+  return pass ? EXIT_SUCCESS : EXIT_FAILURE;
 }

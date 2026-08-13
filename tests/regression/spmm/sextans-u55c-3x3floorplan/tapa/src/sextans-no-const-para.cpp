@@ -15,10 +15,10 @@
 constexpr int FIFO_DEPTH = 2;
 constexpr int PEG_PER_A = 512 / 256;
 #define NUM_ITE 2
-#define NUM_A_LEN 2140
-#define M 4704
-#define K 4704
-#define P_N 65552
+#define NUM_A_LEN kSextansSparseBeatsPerChannel
+#define M kSextansNumRows
+#define K kSextansNumRows
+#define P_N ((kSextansRepeatCount << 16) | kSextansNumColumns)
 #define ALPHA_U 1062836634
 #define BETA_U -1073490166
 

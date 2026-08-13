@@ -9,6 +9,10 @@
 #include <tapa.h>
 
 constexpr int NUM_CH_SPARSE = 8;
+constexpr int kSextansNumRows = 4704;
+constexpr int kSextansNumColumns = 16;
+constexpr int kSextansSparseBeatsPerChannel = 2140;
+constexpr int kSextansRepeatCount = 1;
 constexpr int NUM_CH_B = 4;
 constexpr int NUM_CH_C = 8;
 
