@@ -245,28 +245,6 @@ fn verilator_models_device_memory_as_a_flat_array_per_port() {
 }
 
 #[test]
-fn verilator_models_device_memory_as_a_flat_array_per_port() {
-    let spec = hls_spec();
-    let base_addrs = std::collections::HashMap::from([("a".into(), 0x1000_0000u64)]);
-    let buf_sizes = std::collections::HashMap::from([("a".into(), 4096usize)]);
-    let scalar_vals = std::collections::HashMap::from([(1u32, vec![7u8, 0, 0, 0])]);
-    let generator = VerilatorTbGenerator::new(&spec, &base_addrs, &buf_sizes, &scalar_vals);
-    let tb = generator.render_tb().expect("render");
-
-    // One region per port, sized from the host buffer. Keyed on the actual
-    // buffer size so the region can never silently fall back to a default.
-    assert!(
-        tb.contains("static MemRegion mem_a(0x0000000010000000ULL, 4096);"),
-        "{tb}"
-    );
-    // A hash map over the address space costs ~43 bytes of node per modeled
-    // byte: a 16 MiB buffer took 738 MB of resident memory, versus 34 MB here.
-    // (The header, not the word -- the region's comment names the type it
-    // replaced.)
-    assert!(!tb.contains("#include <unordered_map>"), "{tb}");
-}
-
-#[test]
 fn verilator_hls_escapes_banked_mmap_names() {
     let spec = banked_hls_spec();
     let base_addrs = std::collections::HashMap::from([("chan[0]".into(), 0x1000_0000u64)]);

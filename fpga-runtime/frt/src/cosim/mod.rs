@@ -10,7 +10,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Child;
 use std::process::Command;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 enum TbDir {
     Temp(tempfile::TempDir),
@@ -318,14 +318,37 @@ fn validate_resume_stream_bindings(
     )))
 }
 
+/// How long the simulator is given to act on SIGINT before SIGKILL.
+///
+/// The point of the SIGINT is to let xsim or Verilator close its waveform
+/// database; killing in the same breath means the handler never runs, and a
+/// timed-out run produces no waveform — exactly the artifact needed to
+/// diagnose the hang that caused the timeout.
+const TERMINATE_GRACE: Duration = Duration::from_secs(5);
+
 fn terminate_running_simulation(run: &mut RunningSimulation) -> Result<()> {
     if let Err(err) = signal_child_group(&run.child, libc::SIGINT) {
         tracing::warn!("failed to send SIGINT to simulator process group: {err}");
     }
-    match run.child.kill() {
-        Ok(()) => {}
-        Err(err) if err.kind() == std::io::ErrorKind::InvalidInput => {}
-        Err(err) => return Err(err.into()),
+
+    let deadline = Instant::now() + TERMINATE_GRACE;
+    loop {
+        match run.child.try_wait() {
+            Ok(Some(_)) => return Ok(()),
+            Ok(None) => {}
+            Err(err) => return Err(err.into()),
+        }
+        if Instant::now() >= deadline {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+
+    // The grace gave well-behaved processes their chance at the waveform;
+    // escalate to the whole group: a simulator that ignored SIGINT leaves
+    // its workers holding the shm queues and the work directory otherwise.
+    if let Err(err) = signal_child_group(&run.child, libc::SIGKILL) {
+        tracing::warn!("failed to send SIGKILL to simulator process group: {err}");
     }
     let _ = run.child.wait();
     Ok(())
