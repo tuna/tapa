@@ -64,12 +64,15 @@ count is a compile-time constant but its consumer's comes from host data:
 ```cpp
 constexpr int kBeatsPerChannel = 1139;  // baked into the RTL
 
-void ReadA(tapa::async_mmap<ap_uint<512>>& a, tapa::ostream<ap_uint<512>>& out) {
-  for (int req = 0, resp = 0; resp < kBeatsPerChannel;)  // always 1139
+void ReadA(tapa::async_mmap<tapa::u<512>>& a, tapa::ostream<tapa::u<512>>& out) {
+  for (int req = 0, resp = 0; resp < kBeatsPerChannel;) {
+    // async_read() here is an application helper (see the regression
+    // designs), not a TAPA API: it issues the request and parks the beat.
     async_read(a, out, kBeatsPerChannel, req, resp);
+  }
 }
 
-void Compute(tapa::istream<ap_uint<512>>& in, tapa::istream<int>& config) {
+void Compute(tapa::istream<tapa::u<512>>& in, tapa::istream<int>& config) {
   const int beats = config.read();  // whatever the host wrote
   for (int i = 0; i < beats; ++i) in.read();
 }
@@ -97,8 +100,7 @@ The `write_resp` FIFO fills up. Once full, the hardware stops accepting new writ
 
 ```cpp
 void WriteTask(tapa::async_mmap<int>& mem, tapa::istream<int>& data, int n) {
-  for (int64_t i_req = 0, i_resp = 0; i_resp < n;) {
-#pragma HLS pipeline II=1
+  [[tapa::pipeline(1)]] for (int64_t i_req = 0, i_resp = 0; i_resp < n;) {
     if (i_req < n && !data.empty() &&
         !mem.write_addr.full() && !mem.write_data.full()) {
       mem.write_addr.try_write(i_req);
