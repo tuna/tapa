@@ -1,10 +1,8 @@
-"""Nightly regression tier: real-world designs compiled to .xo.
+"""Full-scale regression designs compiled to .xo.
 
-Each target mirrors the parameters of the design's checked-in
-`run_tapa.sh`. Everything here is `manual`: the builds need Vitis HLS
-and real wall time, so only the nightly workflow builds them, through
-the `:nightly` aggregation target. Designs without a `run_tapa.sh`
-(and thus without declared parameters) are not in the tier yet.
+Each `tapa_xo` selects the canonical source variant and validated target
+parameters for one design. XO targets are `manual`: they need vendor tools and
+substantial wall time. The `:nightly` filegroup aggregates every canonical XO.
 """
 
 load("@rules_cc//cc:defs.bzl", "cc_test")
@@ -40,11 +38,7 @@ tapa_xo(
 tapa_xo(
     name = "serpens-24ch-xo",
     src = "serpens-24ch/tapa/src/serpens-noconst.cpp",
-    hdrs = [
-        "serpens-24ch/tapa/src/mmio.h",
-        "serpens-24ch/tapa/src/serpens-noconst.h",
-        "serpens-24ch/tapa/src/sparse_helper.h",
-    ],
+    hdrs = ["serpens-24ch/tapa/src/serpens-noconst.h"],
     clock_period = "3.33",
     connectivity = "serpens-24ch/tapa/src/link_config.ini",
     jobs = 8,
@@ -59,7 +53,6 @@ tapa_xo(
 tapa_xo(
     name = "serpens-32ch-xo",
     src = "serpens-32ch/tapa/src/serpens_tapa_256.cpp",
-    hdrs = ["serpens-32ch/tapa/src/mmio.h"],
     clock_period = "3.33",
     jobs = 8,
     part_num = "xcu55c-fsvh2892-2L-e",
@@ -73,11 +66,7 @@ tapa_xo(
 tapa_xo(
     name = "sextans-xo",
     src = "spmm/sextans-u55c-3x3floorplan/tapa/src/sextans-no-const-para.cpp",
-    hdrs = [
-        "spmm/sextans-u55c-3x3floorplan/tapa/src/mmio.h",
-        "spmm/sextans-u55c-3x3floorplan/tapa/src/sextans-no-const-para.h",
-        "spmm/sextans-u55c-3x3floorplan/tapa/src/sparse_helper.h",
-    ],
+    hdrs = ["spmm/sextans-u55c-3x3floorplan/tapa/src/sextans-no-const-para.h"],
     clock_period = "3.00",
     jobs = 8,
     part_num = "xcu55c-fsvh2892-2L-e",
@@ -120,15 +109,175 @@ tapa_xo(
     top_name = "kernel0",
 )
 
+tapa_xo(
+    name = "cnn-xo",
+    src = "cnn/tapa/src/tapa_kernel.cpp",
+    clock_period = "3.33",
+    connectivity = "cnn/tapa/src/link_config.ini",
+    jobs = 8,
+    part_num = "xcu250-figd2104-2L-e",
+    tags = [
+        "cpu:8",
+        "manual",
+    ],
+    top_name = "kernel3",
+)
+
+tapa_xo(
+    name = "hbm-bandwidth-xo",
+    src = "hbm-bandwidth/src/bandwidth.cpp",
+    hdrs = ["hbm-bandwidth/src/bandwidth.h"],
+    clock_period = "3.33",
+    connectivity = "hbm-bandwidth/src/link_config.ini",
+    jobs = 8,
+    part_num = "xcu55c-fsvh2892-2L-e",
+    tags = [
+        "cpu:8",
+        "manual",
+    ],
+    top_name = "Bandwidth",
+)
+
+tapa_xo(
+    name = "hbm-bandwidth-1-ch-xo",
+    src = "hbm-bandwidth-1-ch/src/bandwidth.cpp",
+    hdrs = ["hbm-bandwidth-1-ch/src/bandwidth.h"],
+    clock_period = "3.33",
+    connectivity = "hbm-bandwidth-1-ch/src/link_config.ini",
+    jobs = 8,
+    part_num = "xcu55c-fsvh2892-2L-e",
+    tags = [
+        "cpu:8",
+        "manual",
+    ],
+    top_name = "Bandwidth",
+)
+
+tapa_xo(
+    name = "knn-xo",
+    src = "knn/src/knn.cpp",
+    hdrs = ["knn/src/knn.h"],
+    clock_period = "3.33",
+    connectivity = "knn/src/knn.ini",
+    jobs = 8,
+    part_num = "xcu55c-fsvh2892-2L-e",
+    tags = [
+        "cpu:8",
+        "manual",
+    ],
+    top_name = "Knn",
+)
+
+tapa_xo(
+    name = "lu-decompose-xo",
+    src = "lu_decompose/tapa/src/kernel_kernel.cpp",
+    clock_period = "3.33",
+    connectivity = "lu_decompose/tapa/src/link_config.ini",
+    jobs = 8,
+    part_num = "xcu250-figd2104-2L-e",
+    tags = [
+        "cpu:8",
+        "manual",
+    ],
+    top_name = "kernel0",
+)
+
+tapa_xo(
+    name = "page-rank-xo",
+    src = "page_rank/tapa/src/page-rank.cpp",
+    hdrs = [
+        "page_rank/tapa/src/page-rank.h",
+        "page_rank/tapa/src/page-rank-kernel.h",
+    ],
+    clock_period = "3.33",
+    connectivity = "page_rank/tapa/src/link_config.ini",
+    jobs = 8,
+    part_num = "xcu55c-fsvh2892-2L-e",
+    tags = [
+        "cpu:8",
+        "manual",
+    ],
+    top_name = "PageRank",
+)
+
+tapa_xo(
+    name = "serpens-16ch-xo",
+    src = "serpens-16ch/tapa/src/serpens.cpp",
+    hdrs = ["serpens-16ch/tapa/src/serpens.h"],
+    clock_period = "3.33",
+    connectivity = "serpens-16ch/tapa/src/link_config.ini",
+    jobs = 8,
+    part_num = "xcu55c-fsvh2892-2L-e",
+    tags = [
+        "cpu:8",
+        "manual",
+    ],
+    top_name = "Serpens",
+)
+
+tapa_xo(
+    name = "sextans-split-bram-uram-xo",
+    src = "spmm/sextans-u280-split-bram-uram/tapa/src/sextans.cpp",
+    hdrs = ["spmm/sextans-u280-split-bram-uram/tapa/src/sextans.h"],
+    clock_period = "3.33",
+    connectivity = "spmm/sextans-u280-split-bram-uram/tapa/src/link_config.ini",
+    jobs = 8,
+    part_num = "xcu55c-fsvh2892-2L-e",
+    tags = [
+        "cpu:8",
+        "manual",
+    ],
+    top_name = "Sextans",
+)
+
+tapa_xo(
+    name = "spmv-hisparse-mmap-xo",
+    src = "spmv-hisparse-mmap/tapa/src/spmv.cpp",
+    clock_period = "3.33",
+    connectivity = "spmv-hisparse-mmap/tapa/src/spmv.ini",
+    jobs = 8,
+    part_num = "xcu55c-fsvh2892-2L-e",
+    tags = [
+        "cpu:8",
+        "manual",
+    ],
+    top_name = "spmv",
+)
+
+tapa_xo(
+    name = "stencil-dilate-xo",
+    src = "stencil-dilate/tapa/src/unikernel.cpp",
+    hdrs = ["stencil-dilate/tapa/src/DILATE.h"],
+    clock_period = "3.33",
+    connectivity = "stencil-dilate/tapa/src/unikernel.ini",
+    jobs = 8,
+    part_num = "xcu55c-fsvh2892-2L-e",
+    tags = [
+        "cpu:8",
+        "manual",
+    ],
+    top_name = "unikernel",
+)
+
 filegroup(
     name = "nightly",
     srcs = [
         ":autosa-mm-u250-xo",
         ":autosa-mm-u55c-xo",
         ":callipepla-xo",
+        ":cnn-xo",
+        ":hbm-bandwidth-1-ch-xo",
+        ":hbm-bandwidth-xo",
+        ":knn-xo",
+        ":lu-decompose-xo",
+        ":page-rank-xo",
+        ":serpens-16ch-xo",
         ":serpens-24ch-xo",
         ":serpens-32ch-xo",
+        ":sextans-split-bram-uram-xo",
         ":sextans-xo",
+        ":spmv-hisparse-mmap-xo",
+        ":stencil-dilate-xo",
     ],
     tags = ["manual"],
 )
