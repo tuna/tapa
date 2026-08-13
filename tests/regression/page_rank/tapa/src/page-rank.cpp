@@ -82,6 +82,9 @@ config_update_offsets:
 #pragma HLS unroll
     update_config_q[pe].close();
   }
+#ifdef __SYNTHESIS__
+  ap_wait();
+#endif
 
   bool all_done = false;
   int iter = 0;
@@ -127,6 +130,9 @@ bulk_steps:
         task_resp_q[pe].read();
       }
     }
+#ifdef __SYNTHESIS__
+    ap_wait();
+#endif
 
     // Tell PEs to tell UpdateHandlers that the scatter phase is done.
     TaskReq req = {};
@@ -382,15 +388,15 @@ void VertexRouterTemplated(
     tapa::istreams<VertexReq, N>& pe_req_q,
     tapa::istreams<VertexAttrVec, N>& pe_in_q,
     tapa::ostreams<VertexAttrVec, N>& pe_out_q) {
-  TAPA_ELEM_TYPE(pe_req_q) pe_req;
+  VertexReq pe_req;
   bool pe_req_valid = false;
   bool mm_req_ready = false;
 
-  TAPA_ELEM_TYPE(mm_in_q) mm_in;
+  VertexAttrVec mm_in;
   bool mm_in_valid = false;
   bool pe_out_ready[N] = {};
 
-  TAPA_ELEM_TYPE(pe_in_q) pe_in;
+  VertexAttrVec pe_in;
   bool pe_in_valid = false;
   bool mm_out_ready = false;
 

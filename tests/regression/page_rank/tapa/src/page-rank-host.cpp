@@ -169,12 +169,6 @@ int main(int argc, char* argv[]) {
       // there are kEdgeVecLen x kEdgeVecLen edge bins
       // we select edges along diagonal directions until the bins are empty
 
-      for (int src_bank = 0; src_bank < kEdgeVecLen; ++src_bank) {
-        for (int dst_bank = 0; dst_bank < kEdgeVecLen; ++dst_bank) {
-          auto& q = edge_table[src_pid][dst_pid][src_bank][dst_bank];
-        }
-      }
-
       for (bool done = false; !done;) {
         done = true;
         for (int i = 0; i < kEdgeVecLen; ++i) {
@@ -352,7 +346,8 @@ int main(int argc, char* argv[]) {
   LOG(INFO) << "device code finished after " << *metadata.rbegin()
             << " iterations";
 
-  vector<VertexAttr> best_baseline(10);
+  vector<VertexAttr> best_baseline(
+      std::min<size_t>(10, vertices_baseline.size()));
   vector<decltype(VertexAttr::ranking)> best(best_baseline.size());
   auto comp = [](const VertexAttr& lhs, const VertexAttr& rhs) {
     return lhs.ranking > rhs.ranking;
