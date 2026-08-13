@@ -9,13 +9,12 @@
 #include <iostream>
 #include <vector>
 
-#include <ap_int.h>
 #include <gflags/gflags.h>
 #include <tapa.h>
 
 #include "mmio.h"
 #include "serpens.h"
-#include "sparse_helper.h"
+#include "sparse_helper_spmv.h"
 
 using std::cout;
 using std::endl;
@@ -178,7 +177,7 @@ int main(int argc, char** argv) {
   double time_taken = tapa::invoke(
       Serpens, FLAGS_bitstream, tapa::read_only_mmap<int>(edge_list_ptr_fpga),
       tapa::read_only_mmaps<unsigned long, NUM_CH_SPARSE>(sparse_A_fpga_vec)
-          .reinterpret<ap_uint<512>>(),
+          .reinterpret<tapa::u<512>>(),
       tapa::read_only_mmap<float>(vec_X_fpga).reinterpret<float_v16>(),
       tapa::read_only_mmap<float>(vec_Y_fpga).reinterpret<float_v16>(),
       tapa::write_only_mmap<float>(vec_Y_out_fpga).reinterpret<float_v16>(),
