@@ -23,6 +23,7 @@ const int WIDTH_FACTOR = DWIDTH / 32;
 #define STAGE_COUNT 1
 #define TOP_APPEND 0
 #define BOTTOM_APPEND 1026
+constexpr int kDilateWindowBeats = BOTTOM_APPEND;
 #define OVERLAP_TOP_OVERHEAD 0
 #define OVERLAP_BOTTOM_OVERHEAD 524286
 #define DECRE_TOP_APPEND 0

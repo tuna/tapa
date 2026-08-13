@@ -180,7 +180,6 @@ MAJOR_LOOP:
     s_stream_770_to_1023 << HLS_REG(s_block_1024);
     s_block_1024 = HLS_REG(s_block_1025);
 
-    unsigned int idx_s = 0 + (i + 1026);
     s_block_1025 = HLS_REG(s.read());
   }
 
@@ -215,9 +214,11 @@ void load(tapa::async_mmap<INTERFACE_WIDTH>& a,
   // unsigned int loop_bound = GRID_COLS/WIDTH_FACTOR*PART_ROWS +
   // (TOP_APPEND+BOTTOM_APPEND)*(iters-1) + 65 + 66;
   unsigned int loop_bound = GRID_COLS / WIDTH_FACTOR * PART_ROWS +
-                            (TOP_APPEND + BOTTOM_APPEND) * (iters - 1) + 1026;
+                            (TOP_APPEND + BOTTOM_APPEND) * (iters - 1) +
+                            kDilateWindowBeats;
 
-  for (int k_wr_req = (1026), k_wr_resp = (1026), k_rd_req = 0, k_rd_resp = 0;
+  for (int k_wr_req = kDilateWindowBeats, k_wr_resp = kDilateWindowBeats,
+           k_rd_req = 0, k_rd_resp = 0;
        k_rd_resp < loop_bound || k_wr_resp < loop_bound;) {
     // read from a
     if (k_rd_req < loop_bound && a.read_addr.try_write(k_rd_req)) {

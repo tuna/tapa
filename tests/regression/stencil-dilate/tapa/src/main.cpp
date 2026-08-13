@@ -2,27 +2,20 @@
 // All rights reserved. The contributor(s) of this file has/have agreed to the
 // RapidStream Contributor License Agreement.
 
-#include <chrono>
-#include <fstream>
+#include <algorithm>
+#include <array>
+#include <cstdint>
+#include <cstring>
 #include <iostream>
 #include <vector>
 
 #include <gflags/gflags.h>
 #include <tapa.h>
-#include "SEIDEL2D.h"
 
-using std::clog;
-using std::endl;
-using std::vector;
-using std::chrono::duration;
-using std::chrono::high_resolution_clock;
-
-// void VecAdd(tapa::mmap<const float> a_array, tapa::mmap<const float> b_array,
-//             tapa::mmap<float> c_array, uint64_t n);
+#include "DILATE.h"
 
 void unikernel(
-    tapa::mmap<INTERFACE_WIDTH> in_0,
-    tapa::mmap<INTERFACE_WIDTH> out_0,  // HBM 0 1
+    tapa::mmap<INTERFACE_WIDTH> in_0, tapa::mmap<INTERFACE_WIDTH> out_0,
     tapa::mmap<INTERFACE_WIDTH> in_1, tapa::mmap<INTERFACE_WIDTH> out_1,
     tapa::mmap<INTERFACE_WIDTH> in_2, tapa::mmap<INTERFACE_WIDTH> out_2,
     tapa::mmap<INTERFACE_WIDTH> in_3, tapa::mmap<INTERFACE_WIDTH> out_3,
@@ -41,181 +34,136 @@ void unikernel(
 
 DEFINE_string(bitstream, "", "path to bitstream file, run csim if empty");
 
+template <typename T>
+using AlignedVector = std::vector<T, tapa::aligned_allocator<T>>;
+
+namespace {
+
+constexpr uint32_t kIterations = 1;
+constexpr int kPayloadBeats = GRID_COLS / WIDTH_FACTOR * PART_ROWS;
+constexpr int kBufferBeats = kPayloadBeats + kDilateWindowBeats;
+
+uint32_t FloatBits(float value) {
+  uint32_t bits;
+  std::memcpy(&bits, &value, sizeof(bits));
+  return bits;
+}
+
+float BitsFloat(uint32_t bits) {
+  float value;
+  std::memcpy(&value, &bits, sizeof(value));
+  return value;
+}
+
+float ReadFloat(const AlignedVector<INTERFACE_WIDTH>& data, size_t index) {
+  const size_t word = index / WIDTH_FACTOR;
+  const size_t lane = index % WIDTH_FACTOR;
+  return BitsFloat(data[word].range(lane * 32 + 31, lane * 32));
+}
+
+float Expected(const AlignedVector<INTERFACE_WIDTH>& input, size_t index) {
+  constexpr std::array<int, 13> kOffsets = {
+      2,
+      GRID_COLS + 1,
+      GRID_COLS + 2,
+      GRID_COLS + 3,
+      2 * GRID_COLS,
+      2 * GRID_COLS + 1,
+      2 * GRID_COLS + 2,
+      2 * GRID_COLS + 3,
+      2 * GRID_COLS + 4,
+      3 * GRID_COLS + 1,
+      3 * GRID_COLS + 2,
+      3 * GRID_COLS + 3,
+      4 * GRID_COLS + 2,
+  };
+  float expected = ReadFloat(input, index + kOffsets.front());
+  for (const int offset : kOffsets) {
+    expected = std::max(expected, ReadFloat(input, index + offset));
+  }
+  return expected;
+}
+
+}  // namespace
+
 int main(int argc, char* argv[]) {
   gflags::ParseCommandLineFlags(&argc, &argv, /*remove_flags=*/true);
 
-  srand(time(NULL));
-
-  // Data initialization
-  //  const uint64_t n = argc > 1 ? atoll(argv[1]) : 1024 * 1024;
-  printf("midle_region = %d\n", MIDLE_REGION);
-  vector<INTERFACE_WIDTH> in_0(MIDLE_REGION);
-  vector<INTERFACE_WIDTH> out_0(MIDLE_REGION);
-  // vector<INTERFACE_WIDTH> in_1(MIDLE_REGION); vector<INTERFACE_WIDTH>
-  // out_1(MIDLE_REGION); vector<INTERFACE_WIDTH> in_2(MIDLE_REGION);
-  // vector<INTERFACE_WIDTH> out_2(MIDLE_REGION); vector<INTERFACE_WIDTH>
-  // in_3(MIDLE_REGION); vector<INTERFACE_WIDTH> out_3(MIDLE_REGION);
-  // vector<INTERFACE_WIDTH> in_4(MIDLE_REGION); vector<INTERFACE_WIDTH>
-  // out_4(MIDLE_REGION); vector<INTERFACE_WIDTH> in_5(MIDLE_REGION);
-  // vector<INTERFACE_WIDTH> out_5(MIDLE_REGION); vector<INTERFACE_WIDTH>
-  // in_6(MIDLE_REGION); vector<INTERFACE_WIDTH> out_6(MIDLE_REGION);
-  // vector<INTERFACE_WIDTH> in_7(MIDLE_REGION); vector<INTERFACE_WIDTH>
-  // out_7(MIDLE_REGION); vector<INTERFACE_WIDTH> in_8(MIDLE_REGION);
-  // vector<INTERFACE_WIDTH> out_8(MIDLE_REGION); vector<INTERFACE_WIDTH>
-  // in_9(MIDLE_REGION); vector<INTERFACE_WIDTH> out_9(MIDLE_REGION);
-  // vector<INTERFACE_WIDTH> in_10(MIDLE_REGION); vector<INTERFACE_WIDTH>
-  // out_10(MIDLE_REGION); vector<INTERFACE_WIDTH> in_11(MIDLE_REGION);
-  // vector<INTERFACE_WIDTH> out_11(MIDLE_REGION); for (uint64_t i = 0; i < n;
-  // ++i) {
-  //   a[i] = static_cast<float>(i);
-  //   b[i] = static_cast<float>(i) * 2;
-  //   c[i] = 0.f;
-  // }
-  // Software emulation vector
-  float sw_in[MIDLE_REGION * WIDTH_FACTOR];
-  float sw_out[MIDLE_REGION * WIDTH_FACTOR];
-
-  // input test
-  for (int i = 0; i < MIDLE_REGION; i++) {
-    INTERFACE_WIDTH a;
-    float temp = rand() % 100 + 1;
-    // float temp = (i * i) % 100;
-    for (int k = 0; k < WIDTH_FACTOR; k++) {
-      unsigned int idx_k = k << 5;
-      // float temp = (i * WIDTH_FACTOR + k);
-
-      a.range(idx_k + 31, idx_k) = *((uint32_t*)(&temp));
-      sw_in[i * WIDTH_FACTOR + k] = temp;
-    }
-    in_0[i] = a;
-    out_0[i] = a;
-    in_1[i] = a;
-    out_1[i] = a;
-    in_2[i] = a;
-    out_2[i] = a;
-    in_3[i] = a;
-    out_3[i] = a;
-    in_4[i] = a;
-    out_4[i] = a;
-    in_5[i] = a;
-    out_5[i] = a;
-    in_6[i] = a;
-    out_6[i] = a;
-    in_7[i] = a;
-    out_7[i] = a;
-    in_8[i] = a;
-    out_8[i] = a;
-    in_9[i] = a;
-    out_9[i] = a;
-    in_10[i] = a;
-    out_10[i] = a;
-    in_11[i] = a;
-    out_11[i] = a;
-    in_12[i] = a;
-    out_12[i] = a;
-    in_13[i] = a;
-    out_13[i] = a;
-    in_14[i] = a;
-    out_14[i] = a;
-  }
-  const uint32_t iter = 1;
-
-  // Software result
-
-  // for(int i = 0; i < MIDLE_REGION * WIDTH_FACTOR; i++){
-  //   sw_in[i] = i;
-  // }
-
-  for (int n = 0; n < iter; n++) {
-    for (int i = 1025; i < MIDLE_REGION * WIDTH_FACTOR - 1025; i++) {
-      sw_out[i] = (sw_in[i - 1024] + sw_in[i - 1025] + sw_in[i - 1023] +
-                   sw_in[i - 1] + sw_in[i] + sw_in[i + 1] + sw_in[i + 1023] +
-                   sw_in[i + 1] + sw_in[i + 1025]) /
-                  (float)9;
-    }
-  }
-  // std::cout << (GRID_COLS/WIDTH_FACTOR*PART_ROWS +
-  // (TOP_APPEND+BOTTOM_APPEND)*(1-1)) << endl; std::cout << MIDLE_REGION <<
-  // endl;
-
-  std::cout << "kernel start" << endl;
-  // Kernel execution
-  auto start = high_resolution_clock::now();
-  // tapa::invoke(VecAdd, FLAGS_bitstream, tapa::read_only_mmap<const float>(a),
-  //              tapa::read_only_mmap<const float>(b),
-  //              tapa::write_only_mmap<float>(c), n);
-  tapa::invoke(unikernel, FLAGS_bitstream,
-               tapa::read_write_mmap<INTERFACE_WIDTH>(in_0),
-               tapa::read_write_mmap<INTERFACE_WIDTH>(out_0),
-               tapa::read_write_mmap<INTERFACE_WIDTH>(in_1),
-               tapa::read_write_mmap<INTERFACE_WIDTH>(out_1),
-               tapa::read_write_mmap<INTERFACE_WIDTH>(in_2),
-               tapa::read_write_mmap<INTERFACE_WIDTH>(out_2),
-               tapa::read_write_mmap<INTERFACE_WIDTH>(in_3),
-               tapa::read_write_mmap<INTERFACE_WIDTH>(out_3),
-               tapa::read_write_mmap<INTERFACE_WIDTH>(in_4),
-               tapa::read_write_mmap<INTERFACE_WIDTH>(out_4),
-               tapa::read_write_mmap<INTERFACE_WIDTH>(in_5),
-               tapa::read_write_mmap<INTERFACE_WIDTH>(out_5),
-               tapa::read_write_mmap<INTERFACE_WIDTH>(in_6),
-               tapa::read_write_mmap<INTERFACE_WIDTH>(out_6),
-               tapa::read_write_mmap<INTERFACE_WIDTH>(in_7),
-               tapa::read_write_mmap<INTERFACE_WIDTH>(out_7),
-               tapa::read_write_mmap<INTERFACE_WIDTH>(in_8),
-               tapa::read_write_mmap<INTERFACE_WIDTH>(out_8),
-               tapa::read_write_mmap<INTERFACE_WIDTH>(in_9),
-               tapa::read_write_mmap<INTERFACE_WIDTH>(out_9),
-               tapa::read_write_mmap<INTERFACE_WIDTH>(in_10),
-               tapa::read_write_mmap<INTERFACE_WIDTH>(out_10),
-               tapa::read_write_mmap<INTERFACE_WIDTH>(in_11),
-               tapa::read_write_mmap<INTERFACE_WIDTH>(out_11),
-               tapa::read_write_mmap<INTERFACE_WIDTH>(in_12),
-               tapa::read_write_mmap<INTERFACE_WIDTH>(out_12),
-               tapa::read_write_mmap<INTERFACE_WIDTH>(in_13),
-               tapa::read_write_mmap<INTERFACE_WIDTH>(out_13),
-               tapa::read_write_mmap<INTERFACE_WIDTH>(in_14),
-               tapa::read_write_mmap<INTERFACE_WIDTH>(out_14), iter);
-  auto stop = high_resolution_clock::now();
-  duration<double> elapsed = stop - start;
-  clog << "elapsed time: " << elapsed.count() << "s" << endl;
-
-  // Verification
-  uint64_t num_errors = 0;
-  const uint64_t threshold = 10;  // only report up to these errors
-  for (int i = 66; i < 128; i++) {
-    for (int k = 0; k < WIDTH_FACTOR; k++) {
-      unsigned int idx_k = k << 5;
-      uint32_t temp = out_0[i + 66].range(idx_k + 31, idx_k);
-      float hw_result = (*((float*)(&temp)));
-      if (sw_out[i * WIDTH_FACTOR + k] != hw_result) {
-        ++num_errors;
-        std::cout << (i * WIDTH_FACTOR + k) << " " << hw_result << " "
-                  << sw_out[i * WIDTH_FACTOR + k] << endl;
+  std::array<AlignedVector<INTERFACE_WIDTH>, KERNEL_COUNT> inputs;
+  std::array<AlignedVector<INTERFACE_WIDTH>, KERNEL_COUNT> outputs;
+  for (int channel = 0; channel < KERNEL_COUNT; ++channel) {
+    inputs[channel].resize(kBufferBeats);
+    outputs[channel].resize(kBufferBeats);
+    for (int word = 0; word < kBufferBeats; ++word) {
+      INTERFACE_WIDTH packed = 0;
+      for (int lane = 0; lane < WIDTH_FACTOR; ++lane) {
+        const size_t index = static_cast<size_t>(word) * WIDTH_FACTOR + lane;
+        const float value =
+            static_cast<float>((channel + 1) * 1024 + (index * 17) % 997);
+        packed.range(lane * 32 + 31, lane * 32) = FloatBits(value);
       }
-      // sstd::cout << (i * WIDTH_FACTOR + k) << " " << hw_result << " " <<
-      // sw_out[i * WIDTH_FACTOR + k] << endl;
+      inputs[channel][word] = packed;
     }
   }
-  // for (uint64_t i = 0; i < n; ++i) {
-  //   auto expected = i * 3;
-  //   auto actual = static_cast<uint64_t>(c[i]);
-  //   if (actual != expected) {
-  //     if (num_errors < threshold) {
-  //       clog << "expected: " << expected << ", actual: " << actual << endl;
-  //     } else if (num_errors == threshold) {
-  //       clog << "...";
-  //     }
-  //     ++num_errors;
-  //   }
-  // }
 
-  if (num_errors == 0) {
-    clog << "PASS!" << endl;
-  } else {
-    if (num_errors > threshold) {
-      clog << " (+" << (num_errors - threshold) << " more errors)" << endl;
+  std::clog << "running " << KERNEL_COUNT << " dilation channels over "
+            << kPayloadBeats << " packed words\n";
+  const int64_t kernel_time_ns = tapa::invoke(
+      unikernel, FLAGS_bitstream,
+      tapa::read_write_mmap<INTERFACE_WIDTH>(inputs[0]),
+      tapa::read_write_mmap<INTERFACE_WIDTH>(outputs[0]),
+      tapa::read_write_mmap<INTERFACE_WIDTH>(inputs[1]),
+      tapa::read_write_mmap<INTERFACE_WIDTH>(outputs[1]),
+      tapa::read_write_mmap<INTERFACE_WIDTH>(inputs[2]),
+      tapa::read_write_mmap<INTERFACE_WIDTH>(outputs[2]),
+      tapa::read_write_mmap<INTERFACE_WIDTH>(inputs[3]),
+      tapa::read_write_mmap<INTERFACE_WIDTH>(outputs[3]),
+      tapa::read_write_mmap<INTERFACE_WIDTH>(inputs[4]),
+      tapa::read_write_mmap<INTERFACE_WIDTH>(outputs[4]),
+      tapa::read_write_mmap<INTERFACE_WIDTH>(inputs[5]),
+      tapa::read_write_mmap<INTERFACE_WIDTH>(outputs[5]),
+      tapa::read_write_mmap<INTERFACE_WIDTH>(inputs[6]),
+      tapa::read_write_mmap<INTERFACE_WIDTH>(outputs[6]),
+      tapa::read_write_mmap<INTERFACE_WIDTH>(inputs[7]),
+      tapa::read_write_mmap<INTERFACE_WIDTH>(outputs[7]),
+      tapa::read_write_mmap<INTERFACE_WIDTH>(inputs[8]),
+      tapa::read_write_mmap<INTERFACE_WIDTH>(outputs[8]),
+      tapa::read_write_mmap<INTERFACE_WIDTH>(inputs[9]),
+      tapa::read_write_mmap<INTERFACE_WIDTH>(outputs[9]),
+      tapa::read_write_mmap<INTERFACE_WIDTH>(inputs[10]),
+      tapa::read_write_mmap<INTERFACE_WIDTH>(outputs[10]),
+      tapa::read_write_mmap<INTERFACE_WIDTH>(inputs[11]),
+      tapa::read_write_mmap<INTERFACE_WIDTH>(outputs[11]),
+      tapa::read_write_mmap<INTERFACE_WIDTH>(inputs[12]),
+      tapa::read_write_mmap<INTERFACE_WIDTH>(outputs[12]),
+      tapa::read_write_mmap<INTERFACE_WIDTH>(inputs[13]),
+      tapa::read_write_mmap<INTERFACE_WIDTH>(outputs[13]),
+      tapa::read_write_mmap<INTERFACE_WIDTH>(inputs[14]),
+      tapa::read_write_mmap<INTERFACE_WIDTH>(outputs[14]), kIterations);
+  std::clog << "kernel time: " << kernel_time_ns << " ns\n";
+
+  uint64_t errors = 0;
+  constexpr uint64_t kMaxReportedErrors = 10;
+  for (int channel = 0; channel < KERNEL_COUNT; ++channel) {
+    for (size_t index = 0; index < size_t{kPayloadBeats} * WIDTH_FACTOR;
+         ++index) {
+      const float expected = Expected(inputs[channel], index);
+      const float actual = ReadFloat(
+          outputs[channel], size_t{kDilateWindowBeats} * WIDTH_FACTOR + index);
+      if (actual != expected) {
+        if (errors < kMaxReportedErrors) {
+          std::clog << "channel " << channel << ", element " << index
+                    << ": expected " << expected << ", got " << actual << '\n';
+        }
+        ++errors;
+      }
     }
-    clog << "FAIL!" << endl;
   }
-  return num_errors > 0 ? 1 : 0;
+
+  if (errors != 0) {
+    std::clog << "FAIL: " << errors << " mismatches\n";
+    return EXIT_FAILURE;
+  }
+  std::clog << "PASS\n";
+  return EXIT_SUCCESS;
 }
