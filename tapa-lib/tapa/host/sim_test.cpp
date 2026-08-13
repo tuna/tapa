@@ -42,3 +42,12 @@ TEST(TapaSimTest, InvokeWithEmptyBitstream) {
   EXPECT_EQ(data[0], 100);
   EXPECT_GT(ns, 0);
 }
+
+TEST(TapaSimTest, AlignedAllocatorSupportsContainerReallocation) {
+  using Vector = std::vector<int, tapa::aligned_allocator<int>>;
+  Vector data = {1, 2, 3};
+  data.shrink_to_fit();
+  Vector moved;
+  moved = std::move(data);
+  EXPECT_EQ(moved, (Vector{1, 2, 3}));
+}

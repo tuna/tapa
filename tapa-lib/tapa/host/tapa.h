@@ -44,6 +44,8 @@ struct aligned_allocator {
   using value_type = T;
   using size_type = std::size_t;
   using difference_type = std::ptrdiff_t;
+  using is_always_equal = std::true_type;
+
   template <typename U>
   void construct(U* ptr) {
     ::new (static_cast<void*>(ptr)) U;
@@ -57,6 +59,14 @@ struct aligned_allocator {
   }
   void deallocate(T* ptr, std::size_t count) {
     internal::deallocate(ptr, count * sizeof(T));
+  }
+  template <typename U>
+  constexpr bool operator==(const aligned_allocator<U>&) const noexcept {
+    return true;
+  }
+  template <typename U>
+  constexpr bool operator!=(const aligned_allocator<U>&) const noexcept {
+    return false;
   }
 };
 
