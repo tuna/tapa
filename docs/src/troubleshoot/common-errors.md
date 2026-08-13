@@ -186,6 +186,30 @@ void TopLevel(/* ... */) {
 
 ---
 
+## `ap_wait` is not declared in software simulation
+
+**Symptom:** The host build fails with an undeclared `ap_wait` or `ap_wait_n`,
+although Vitis HLS accepts the kernel.
+
+**Cause:** These are vendor synthesis intrinsics that impose cycle boundaries
+in generated RTL. TAPA software simulation is transaction-based and does not
+provide a cycle-accurate host implementation.
+
+**Fix:** Guard a synthesis-only wait explicitly:
+
+```cpp
+#ifdef __SYNTHESIS__
+  ap_wait();
+#endif
+```
+
+Do not use the guard to hide synchronization required by the program's dataflow
+semantics. If another task must observe a phase boundary, express it with a
+stream token or another explicit handshake so software simulation and RTL obey
+the same contract.
+
+---
+
 ## Static variables behave differently in simulation vs hardware
 
 **Symptom:** Software simulation produces different output than hardware execution.
