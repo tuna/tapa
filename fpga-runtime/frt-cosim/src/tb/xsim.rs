@@ -5,7 +5,9 @@ use std::path::Path;
 use crate::error::{CosimError, Result};
 use crate::metadata::{ArgKind, KernelSpec, Mode};
 use crate::tb::names::{escape_verilog_identifier, verilator_identifier};
-use crate::tb::{classify_args, read_verilog_contents, MmapArg, Naming, ScalarArg, StreamArg};
+use crate::tb::{
+    classify_args, control_addr_width, read_verilog_contents, MmapArg, Naming, ScalarArg, StreamArg,
+};
 
 /// xsim drives the DUT through escaped Verilog port references, while the
 /// testbench state it declares around them must stay bare identifiers.
@@ -19,6 +21,7 @@ const NAMING: Naming = Naming {
 struct SvTemplate<'a> {
     top_name: &'a str,
     mode: &'a str,
+    control_addr_width: u32,
     mmap_args: Vec<MmapArg>,
     scalar_args: Vec<ScalarArg>,
     stream_args: Vec<StreamArg>,
@@ -122,9 +125,11 @@ impl<'a> XsimTbGenerator<'a> {
             Mode::Hls => "hls",
             Mode::Vitis => "vitis",
         };
+        let control_addr_width = control_addr_width(&mmap_args, &scalar_args);
         let template = SvTemplate {
             top_name: &self.spec.top_name,
             mode,
+            control_addr_width,
             mmap_args,
             scalar_args,
             stream_args,
@@ -214,4 +219,44 @@ fn detect_axi_id_width(verilog_contents: &[String], mmap_name: &str) -> usize {
         }
     }
     1
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::metadata::{ArgKind, ArgSpec};
+
+    #[test]
+    fn widens_control_address_bus_for_large_register_map() {
+        let spec = KernelSpec {
+            top_name: "Top".to_owned(),
+            mode: Mode::Vitis,
+            args: vec![ArgSpec {
+                name: "value".to_owned(),
+                id: 0,
+                kind: ArgKind::Scalar { width: 64 },
+            }],
+            part_num: None,
+            verilog_files: vec![],
+            tcl_files: vec![],
+            xci_files: vec![],
+            scalar_register_map: HashMap::from([("value".to_owned(), 0x100)]),
+        };
+        let base_addresses = HashMap::new();
+        let scalar_values = HashMap::from([(0, vec![0; 8])]);
+        let tb = XsimTbGenerator::new(
+            &spec,
+            Path::new("/tmp/libfrt_dpi_xsim.so"),
+            &base_addresses,
+            &scalar_values,
+            "xcu55c-fsvh2892-2L-e",
+            XsimOptions::default(),
+        )
+        .render_tb()
+        .expect("render testbench");
+
+        assert!(tb.contains("reg [8:0] s_axi_control_AWADDR"));
+        assert!(tb.contains("ctrl_write(9'h100"));
+        assert!(tb.contains("ctrl_write(9'h104"));
+    }
 }

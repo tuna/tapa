@@ -151,7 +151,7 @@ static void service_all_axi() {
 }
 
 {% if mode == "vitis" %}
-static void ctrl_write(uint8_t addr, uint32_t data) {
+static void ctrl_write(uint32_t addr, uint32_t data) {
   dut->s_axi_control_AWVALID = 1;
   dut->s_axi_control_AWADDR = addr;
   dut->s_axi_control_WVALID = 1;

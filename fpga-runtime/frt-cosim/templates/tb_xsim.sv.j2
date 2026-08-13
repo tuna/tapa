@@ -22,14 +22,14 @@ wire ap_idle;
 {% if mode == "vitis" %}
 reg s_axi_control_AWVALID = 0;
 wire s_axi_control_AWREADY;
-reg [7:0] s_axi_control_AWADDR = 0;
+reg [{{ control_addr_width - 1 }}:0] s_axi_control_AWADDR = 0;
 reg s_axi_control_WVALID = 0;
 wire s_axi_control_WREADY;
 reg [31:0] s_axi_control_WDATA = 0;
 reg [3:0] s_axi_control_WSTRB = 0;
 reg s_axi_control_ARVALID = 0;
 wire s_axi_control_ARREADY;
-reg [7:0] s_axi_control_ARADDR = 0;
+reg [{{ control_addr_width - 1 }}:0] s_axi_control_ARADDR = 0;
 wire s_axi_control_RVALID;
 reg s_axi_control_RREADY = 0;
 wire [31:0] s_axi_control_RDATA;
@@ -41,7 +41,7 @@ wire interrupt;
 {% endif %}
 
 {% if mode == "vitis" %}
-task automatic ctrl_write(input [7:0] addr, input [31:0] data);
+task automatic ctrl_write(input [{{ control_addr_width - 1 }}:0] addr, input [31:0] data);
 begin
   s_axi_control_AWVALID <= 1'b1;
   s_axi_control_AWADDR <= addr;
@@ -276,18 +276,18 @@ initial begin
   @(posedge ap_clk);
   ap_start = 1'b0;
 {% else %}
-  ctrl_write(8'h04, 32'h0000_0001);
-  ctrl_write(8'h08, 32'h0000_0001);
+  ctrl_write({{ control_addr_width }}'h04, 32'h0000_0001);
+  ctrl_write({{ control_addr_width }}'h08, 32'h0000_0001);
 {% for arg in mmap_args %}
-  ctrl_write(8'h{{ "{:02x}"|format(arg.reg_offset_lo) }}, 32'h{{ "{:08x}"|format(arg.base_addr & 0xffffffff) }});
-  ctrl_write(8'h{{ "{:02x}"|format(arg.reg_offset_hi) }}, 32'h{{ "{:08x}"|format((arg.base_addr >> 32) & 0xffffffff) }});
+  ctrl_write({{ control_addr_width }}'h{{ "{:02x}"|format(arg.reg_offset_lo) }}, 32'h{{ "{:08x}"|format(arg.base_addr & 0xffffffff) }});
+  ctrl_write({{ control_addr_width }}'h{{ "{:02x}"|format(arg.reg_offset_hi) }}, 32'h{{ "{:08x}"|format((arg.base_addr >> 32) & 0xffffffff) }});
 {% endfor %}
 {% for arg in scalar_args %}
 {% for word in arg.words %}
-  ctrl_write(8'h{{ "{:02x}"|format(word.reg_offset) }}, 32'h{{ "{:08x}"|format(word.value_u32) }});
+  ctrl_write({{ control_addr_width }}'h{{ "{:02x}"|format(word.reg_offset) }}, 32'h{{ "{:08x}"|format(word.value_u32) }});
 {% endfor %}
 {% endfor %}
-  ctrl_write(8'h00, 32'h0000_0001);
+  ctrl_write({{ control_addr_width }}'h00, 32'h0000_0001);
 {% endif %}
 end
 

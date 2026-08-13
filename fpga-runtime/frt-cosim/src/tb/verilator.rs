@@ -117,3 +117,36 @@ fn bytes_to_cpp_initializer(bytes: &[u8]) -> String {
         .collect::<Vec<_>>()
         .join(", ")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::metadata::{ArgKind, ArgSpec};
+
+    #[test]
+    fn control_write_address_does_not_truncate_large_offsets() {
+        let spec = KernelSpec {
+            top_name: "Top".to_owned(),
+            mode: Mode::Vitis,
+            args: vec![ArgSpec {
+                name: "value".to_owned(),
+                id: 0,
+                kind: ArgKind::Scalar { width: 32 },
+            }],
+            part_num: None,
+            verilog_files: vec![],
+            tcl_files: vec![],
+            xci_files: vec![],
+            scalar_register_map: HashMap::from([("value".to_owned(), 0x100)]),
+        };
+        let base_addresses = HashMap::new();
+        let buffer_sizes = HashMap::new();
+        let scalar_values = HashMap::from([(0, vec![0; 4])]);
+        let tb = VerilatorTbGenerator::new(&spec, &base_addresses, &buffer_sizes, &scalar_values)
+            .render_tb()
+            .expect("render testbench");
+
+        assert!(tb.contains("static void ctrl_write(uint32_t addr"));
+        assert!(tb.contains("ctrl_write(0x100"));
+    }
+}
