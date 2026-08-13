@@ -359,7 +359,11 @@ void ParseInvocations(UpperTaskContext& uc, const clang::Expr* task_obj) {
 
         if (const auto* str = llvm::dyn_cast<clang::StringLiteral>(arg)) {
           if (i == 1 && mode.has_name && !task_name.empty()) {
-            uc.task.instances[task_name].back().name = str->getString().str();
+            std::string name = str->getString().str();
+            if (mode.vec_length > 1) {
+              name += "_" + std::to_string(i_vec);
+            }
+            uc.task.instances[task_name].back().name = std::move(name);
             continue;
           }
         }

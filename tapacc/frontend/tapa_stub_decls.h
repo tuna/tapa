@@ -44,6 +44,11 @@ inline constexpr char kTapaStubDecls[] = R"cpp(
     task& invoke(Func&& func, Args&&... args) {
       return *this;
     }
+    template <int mode, int n, typename Func, typename... Args,
+              unsigned long name_size>
+    task& invoke(Func&& func, const char (&name)[name_size], Args&&... args) {
+      return *this;
+    }
   };
   struct seq {};
   struct executable {};

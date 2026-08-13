@@ -151,6 +151,19 @@ TEST(InvokeParser, ProducerConsumerEndpoints) {
   EXPECT_EQ(qc.consumed_by->task, "Consumer");
 }
 
+TEST(InvokeParser, ReplicatedExplicitNameIsUniquePerLane) {
+  constexpr char kCode[] = R"cpp(
+    void Worker(int value) {}
+    void Top() { tapa::task().invoke<-1, 3>(Worker, "worker", 42); }
+  )cpp";
+  auto p = ParseCode(kCode, "Top", /*is_top=*/false);
+  const auto& instances = p.tasks.at("Top").instances.at("Worker");
+  ASSERT_EQ(instances.size(), 3u);
+  EXPECT_EQ(instances[0].name, "worker_0");
+  EXPECT_EQ(instances[1].name, "worker_1");
+  EXPECT_EQ(instances[2].name, "worker_2");
+}
+
 TEST(InvokeParser, InstancesAndArgs) {
   auto p = ParseTop();
   const TaskModel& top = p.tasks.at("Top");
