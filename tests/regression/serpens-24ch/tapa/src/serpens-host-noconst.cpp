@@ -10,11 +10,13 @@
 #include <vector>
 
 #include <ap_int.h>
+#include <gflags/gflags.h>
 #include <tapa.h>
 
 #include "mmio.h"
 #include "serpens-noconst.h"
 #include "sparse_helper.h"
+#include "tests/regression/sparse_fixture.h"
 
 using std::cout;
 using std::endl;
@@ -27,7 +29,10 @@ using std::vector;
 template <typename T>
 using aligned_vector = std::vector<T, tapa::aligned_allocator<T>>;
 
+DEFINE_string(bitstream, "", "path to bitstream file, run csim if empty");
+
 int main(int argc, char** argv) {
+  gflags::ParseCommandLineFlags(&argc, &argv, /*remove_flags=*/true);
   printf("start host\n");
 
   float ALPHA = 0.85;
@@ -75,6 +80,11 @@ int main(int argc, char** argv) {
 
   cout << "Matrix size: \n";
   cout << "A: sparse matrix, " << M << " x " << K << ". NNZ = " << nnz << "\n";
+  if (M != kSerpensNumRows || K != kSerpensNumCols) {
+    cout << "expected a " << kSerpensNumRows << " x " << kSerpensNumCols
+         << " matrix for this fixed RTL architecture\n";
+    return EXIT_FAILURE;
+  }
 
   // initiate vec X and vec Y
   vector<float> vec_X_cpu, vec_Y_cpu;
@@ -111,6 +121,13 @@ int main(int argc, char** argv) {
       edge_list_ptr,         // vector<int> & edge_list_ptr,
       DEP_DIST_LOAD_STORE);  // const int DEP_DIST_LOAD_STORE = 10)
 
+  if (!tapa::regression::PadSparseEdgeLists(edge_list_pes, edge_list_ptr,
+                                            kSerpensSparseBeatsPerChannel)) {
+    cout << "sparse fixture exceeds the fixed " << kSerpensSparseBeatsPerChannel
+         << " beats per channel supported by this RTL architecture\n";
+    return EXIT_FAILURE;
+  }
+
   aligned_vector<int> edge_list_ptr_fpga;
   int edge_list_ptr_fpga_size = ((edge_list_ptr.size() + 15) / 16) * 16;
   int edge_list_ptr_fpga_chunk_size =
@@ -121,10 +138,6 @@ int main(int argc, char** argv) {
   }
 
   vector<aligned_vector<unsigned long>> sparse_A_fpga_vec(NUM_CH_SPARSE);
-  int sparse_A_fpga_column_size =
-      8 * edge_list_ptr[edge_list_ptr.size() - 1] * 4 / 4;
-  int sparse_A_fpga_chunk_size =
-      ((sparse_A_fpga_column_size + 511) / 512) * 512;
 
   edge_list_64bit(edge_list_pes, edge_list_ptr, sparse_A_fpga_vec,
                   NUM_CH_SPARSE);
@@ -174,14 +187,9 @@ int main(int argc, char** argv) {
   tmpPointer_v = (int*)&BETA;
   int beta_int = *tmpPointer_v;
 
-  std::string bitstream;
-  if (const auto bitstream_ptr = getenv("TAPAB")) {
-    bitstream = bitstream_ptr;
-  }
-
   cout << "launch kernel\n";
   double time_taken = tapa::invoke(
-      Serpens, bitstream, tapa::read_only_mmap<int>(edge_list_ptr_fpga),
+      Serpens, FLAGS_bitstream, tapa::read_only_mmap<int>(edge_list_ptr_fpga),
       tapa::read_only_mmaps<unsigned long, NUM_CH_SPARSE>(sparse_A_fpga_vec)
           .reinterpret<ap_uint<512>>(),
       tapa::read_only_mmap<float>(vec_X_fpga).reinterpret<float_v16>(),
@@ -220,5 +228,5 @@ int main(int argc, char** argv) {
   }
   printf("num_mismatch = %d, percent = %.2f%%\n", mismatch_cnt, diffpercent);
 
-  return EXIT_SUCCESS;
+  return pass ? EXIT_SUCCESS : EXIT_FAILURE;
 }

@@ -22,9 +22,6 @@ const int NUM_CH_SPARSE_mult_2 = NUM_CH_SPARSE * 2;
 const int WINDOW_SIZE_div_16 = WINDOW_SIZE >> 4;
 
 #define NUM_ITE 1
-#define NUM_A_LEN 1139
-#define M 4704
-#define K 4704
 #define P_N 1
 #define alpha_u 1062836634
 #define beta_u -1073490166
@@ -58,9 +55,9 @@ void read_edge_list_ptr(tapa::async_mmap<int>& edge_list_ptr,
   const int rp_time = (P_N == 0) ? 1 : P_N;
 
   PE_inst.write(NUM_ITE);
-  PE_inst.write(M);
+  PE_inst.write(kSerpensNumRows);
   PE_inst.write(rp_time);
-  PE_inst.write(K);
+  PE_inst.write(kSerpensNumCols);
 
   const int num_ite_plus1 = NUM_ITE + 1;
 l_rp:
@@ -79,7 +76,7 @@ l_rp:
 void read_X(tapa::async_mmap<float_v16>& vec_X,
             tapa::ostream<float_v16>& fifo_X) {
   const int rp_time = (P_N == 0) ? 1 : P_N;
-  const int num_ite_X = (K + 15) >> 4;
+  const int num_ite_X = (kSerpensNumCols + 15) >> 4;
 
 l_rp:
   for (int rp = 0; rp < rp_time; rp++) {
@@ -102,10 +99,10 @@ l_rp:
 #pragma HLS loop_flatten off
 #pragma HLS loop_tripcount min = 1 max = 16
   rd_A:
-    for (int i_req = 0, i_resp = 0; i_resp < NUM_A_LEN;) {
+    for (int i_req = 0, i_resp = 0; i_resp < kSerpensSparseBeatsPerChannel;) {
 #pragma HLS loop_tripcount min = 1 max = 10000
 #pragma HLS pipeline II = 1
-      async_read(A, fifo_A, NUM_A_LEN, i_req, i_resp);
+      async_read(A, fifo_A, kSerpensSparseBeatsPerChannel, i_req, i_resp);
     }
   }
 }
@@ -316,9 +313,9 @@ void Arbiter_Y(tapa::istreams<float_v2, NUM_CH_SPARSE_div_8>& fifo_in,
                tapa::ostream<float_v2>& fifo_out) {
   const int rp_time = (P_N == 0) ? 1 : P_N;
   const int num_pe_output =
-      ((M + NUM_CH_SPARSE_mult_2 - 1) / NUM_CH_SPARSE_mult_2) *
+      ((kSerpensNumRows + NUM_CH_SPARSE_mult_2 - 1) / NUM_CH_SPARSE_mult_2) *
       NUM_CH_SPARSE_div_8;
-  const int num_out = (M + 15) >> 4;
+  const int num_out = (kSerpensNumRows + 15) >> 4;
   const int num_ite_Y = num_pe_output * rp_time;
 aby:
   for (int i = 0, c_idx = 0, o_idx = 0; i < num_ite_Y;) {
@@ -370,7 +367,7 @@ void FloatvMultConst_alpha(tapa::istream<float_v16>& fifo_in,
                            tapa::ostream<float_v16>& fifo_out) {
   const float alpha_f = tapa::bit_cast<float>(alpha_u);
   const int rp_time = (P_N == 0) ? 1 : P_N;
-  const int num_ite_Y = ((M + 15) >> 4) * rp_time;
+  const int num_ite_Y = ((kSerpensNumRows + 15) >> 4) * rp_time;
 cc:
   for (int i = 0; i < num_ite_Y;) {
 #pragma HLS pipeline II = 1
@@ -388,7 +385,7 @@ void FloatvMultConst_beta(tapa::istream<float_v16>& fifo_in,
                           tapa::ostream<float_v16>& fifo_out) {
   const float alpha_f = tapa::bit_cast<float>(beta_u);
   const int rp_time = (P_N == 0) ? 1 : P_N;
-  const int num_ite_Y = ((M + 15) >> 4) * rp_time;
+  const int num_ite_Y = ((kSerpensNumRows + 15) >> 4) * rp_time;
 cc:
   for (int i = 0; i < num_ite_Y;) {
 #pragma HLS pipeline II = 1
@@ -404,7 +401,7 @@ cc:
 
 void read_Y(tapa::async_mmap<float_v16>& Y, tapa::ostream<float_v16>& fifo_Y) {
   const int rp_time = (P_N == 0) ? 1 : P_N;
-  const int num_ite_Y = (M + 15) >> 4;
+  const int num_ite_Y = (kSerpensNumRows + 15) >> 4;
 
 l_rp:
   for (int rp = 0; rp < rp_time; rp++) {
@@ -440,7 +437,7 @@ cc:
 void write_Y(tapa::istream<float_v16>& fifo_Y,
              tapa::async_mmap<float_v16>& Y_out) {
   const int rp_time = (P_N == 0) ? 1 : P_N;
-  const int num_ite_Y = (M + 15) >> 4;
+  const int num_ite_Y = (kSerpensNumRows + 15) >> 4;
 
 l_rp:
   for (int rp = 0; rp < rp_time; rp++) {
