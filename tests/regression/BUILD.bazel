@@ -1,12 +1,16 @@
 """Full-scale regression designs compiled to .xo.
 
 Each `tapa_xo` selects the canonical source variant and validated target
-parameters for one design. XO targets are `manual`: they need vendor tools and
-substantial wall time. The `:nightly` filegroup aggregates every canonical XO.
+parameters for one design. XO and xsim targets are `manual`: they need vendor
+tools and substantial wall time. The `:nightly` filegroup aggregates every
+canonical XO. A design with a `tapa::invoke` host also exposes a manual
+`<name>-xosim` target. OpenCL-only hosts cannot directly drive TAPA fast
+cosimulation.
 """
 
 load("@rules_cc//cc:defs.bzl", "cc_test")
 load("//bazel:tapa_rules.bzl", "tapa_xo")
+load("//bazel:test_rules.bzl", "regression_xosim")
 
 cc_test(
     name = "sparse-fixture-test",
@@ -257,6 +261,154 @@ tapa_xo(
         "manual",
     ],
     top_name = "unikernel",
+)
+
+regression_xosim(
+    name = "hbm-bandwidth-1-ch",
+    host_srcs = [
+        "hbm-bandwidth-1-ch/src/bandwidth.cpp",
+        "hbm-bandwidth-1-ch/src/bandwidth-host.cpp",
+        "hbm-bandwidth-1-ch/src/bandwidth.h",
+    ],
+    hw_test_args = ["64"],
+    xo = ":hbm-bandwidth-1-ch-xo",
+)
+
+regression_xosim(
+    name = "hbm-bandwidth",
+    host_srcs = [
+        "hbm-bandwidth/src/bandwidth.cpp",
+        "hbm-bandwidth/src/bandwidth-host.cpp",
+        "hbm-bandwidth/src/bandwidth.h",
+    ],
+    hw_test_args = ["64"],
+    xo = ":hbm-bandwidth-xo",
+)
+
+regression_xosim(
+    name = "page-rank",
+    extra_test_data = ["page_rank/tapa/data/graph.txt"],
+    host_srcs = [
+        "page_rank/tapa/src/nxgraph.hpp",
+        "page_rank/tapa/src/page-rank.cpp",
+        "page_rank/tapa/src/page-rank-host.cpp",
+        "page_rank/tapa/src/page-rank-kernel.h",
+        "page_rank/tapa/src/page-rank.h",
+    ],
+    hw_test_args = [
+        "$(location page_rank/tapa/data/graph.txt)",
+        "8",
+    ],
+    xo = ":page-rank-xo",
+)
+
+regression_xosim(
+    name = "knn",
+    host_srcs = [
+        "knn/src/knn.cpp",
+        "knn/src/knn-host.cpp",
+        "knn/src/knn.h",
+    ],
+    xo = ":knn-xo",
+)
+
+regression_xosim(
+    name = "serpens-16ch",
+    extra_test_data = ["testdata/identity-16.mtx"],
+    host_srcs = [
+        "serpens-16ch/tapa/src/mmio.h",
+        "serpens-16ch/tapa/src/serpens.cpp",
+        "serpens-16ch/tapa/src/serpens-host.cpp",
+        "serpens-16ch/tapa/src/serpens.h",
+        "serpens-16ch/tapa/src/sparse_helper.h",
+    ],
+    hw_test_args = [
+        "$(location testdata/identity-16.mtx)",
+        "1",
+    ],
+    xo = ":serpens-16ch-xo",
+)
+
+regression_xosim(
+    name = "serpens-24ch",
+    extra_test_data = ["testdata/identity-4704.mtx"],
+    host_srcs = [
+        "sparse_fixture.h",
+        "serpens-24ch/tapa/src/mmio.h",
+        "serpens-24ch/tapa/src/serpens-host-noconst.cpp",
+        "serpens-24ch/tapa/src/serpens-noconst.cpp",
+        "serpens-24ch/tapa/src/serpens-noconst.h",
+        "serpens-24ch/tapa/src/sparse_helper.h",
+    ],
+    hw_test_args = [
+        "$(location testdata/identity-4704.mtx)",
+        "1",
+    ],
+    xo = ":serpens-24ch-xo",
+)
+
+regression_xosim(
+    name = "sextans-split-bram-uram",
+    extra_test_data = ["testdata/identity-16.mtx"],
+    host_srcs = [
+        "spmm/sextans-u280-split-bram-uram/tapa/src/mmio.h",
+        "spmm/sextans-u280-split-bram-uram/tapa/src/modules.h",
+        "spmm/sextans-u280-split-bram-uram/tapa/src/sextans.cpp",
+        "spmm/sextans-u280-split-bram-uram/tapa/src/sextans-host.cpp",
+        "spmm/sextans-u280-split-bram-uram/tapa/src/sextans.h",
+        "spmm/sextans-u280-split-bram-uram/tapa/src/sparse_helper.h",
+    ],
+    hw_test_args = [
+        "$(location testdata/identity-16.mtx)",
+        "8",
+    ],
+    xo = ":sextans-split-bram-uram-xo",
+)
+
+regression_xosim(
+    name = "callipepla",
+    extra_test_data = ["testdata/spd-14.mtx"],
+    host_srcs = [
+        "sparse_fixture.h",
+        "callipepla/include/mmio.h",
+        "callipepla/include/sparse_helper.h",
+        "callipepla/tapa/src_noconst/callipepla.cpp",
+        "callipepla/tapa/src_noconst/callipepla-host.cpp",
+        "callipepla/tapa/src_noconst/callipepla.h",
+    ],
+    hw_test_args = [
+        "$(location testdata/spd-14.mtx)",
+        "16",
+    ],
+    xo = ":callipepla-xo",
+)
+
+regression_xosim(
+    name = "stencil-dilate",
+    host_srcs = [
+        "stencil-dilate/tapa/src/DILATE.h",
+        "stencil-dilate/tapa/src/main.cpp",
+        "stencil-dilate/tapa/src/unikernel.cpp",
+    ],
+    xo = ":stencil-dilate-xo",
+)
+
+regression_xosim(
+    name = "sextans",
+    extra_test_data = ["testdata/identity-4704.mtx"],
+    host_srcs = [
+        "sparse_fixture.h",
+        "spmm/sextans-u55c-3x3floorplan/tapa/src/mmio.h",
+        "spmm/sextans-u55c-3x3floorplan/tapa/src/sextans-host-no-const-para.cpp",
+        "spmm/sextans-u55c-3x3floorplan/tapa/src/sextans-no-const-para.cpp",
+        "spmm/sextans-u55c-3x3floorplan/tapa/src/sextans-no-const-para.h",
+        "spmm/sextans-u55c-3x3floorplan/tapa/src/sparse_helper.h",
+    ],
+    hw_test_args = [
+        "$(location testdata/identity-4704.mtx)",
+        "16",
+    ],
+    xo = ":sextans-xo",
 )
 
 filegroup(

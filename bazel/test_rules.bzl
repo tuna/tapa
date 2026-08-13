@@ -284,3 +284,46 @@ def tapa_functional_test(
         top_name = top_name,
         **kernel_kwargs
     )
+
+def regression_xosim(name, xo, host_srcs, hw_test_args = [], extra_test_data = []):
+    """Declares a host binary plus a manual fast-cosim test for a regression design.
+
+    `<name>-host` builds the design's TAPA host program; `<name>-xosim` runs it
+    against the `.xo` under TAPA's own testbench through frt-cosim, the same
+    mechanism tests/apps uses. Both are `manual`: they need Vivado and real
+    wall time, so nothing runs them unless asked.
+
+    Args:
+        name: Base target name.
+        xo: Label of the `.xo` to simulate.
+        host_srcs: `srcs` of the `<name>-host` cc_binary.
+        hw_test_args: Extra trailing args passed to the host after `--bitstream`.
+        extra_test_data: Extra data files needed at run time (e.g. input graphs).
+    """
+    host_label = ":%s-host" % name
+
+    cc_binary(
+        name = "%s-host" % name,
+        srcs = host_srcs,
+        tags = ["manual"],
+        deps = _HOST_DEPS,
+    )
+
+    sh_test(
+        name = "%s-xosim" % name,
+        size = "enormous",
+        srcs = ["//bazel:v++_env.sh"],
+        args = [
+            "$(location %s)" % host_label,
+            "--bitstream=$(location %s)" % xo,
+        ] + hw_test_args,
+        data = extra_test_data + [
+            host_label,
+            xo,
+            _CARGO_RELEASE_ARTIFACTS,
+        ],
+        tags = [
+            "cpu:2",
+            "manual",
+        ],
+    )
