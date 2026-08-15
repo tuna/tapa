@@ -6,6 +6,7 @@
 
 #include <chrono>
 #include <csignal>
+#include <cstdlib>
 
 #include <atomic>
 #include <deque>
@@ -36,6 +37,7 @@ namespace tapa {
 namespace internal {
 
 thread_local int blocked_poll_streak = 0;
+thread_local uint64_t blocked_poll_count = 0;
 
 }  // namespace internal
 
@@ -91,6 +93,97 @@ void note_frt_instance_finished() {
 bool every_frt_instance_finished() {
   return frt_instances_finished.load(std::memory_order_relaxed) > 0 &&
          frt_instances_in_flight.load(std::memory_order_relaxed) == 0;
+}
+
+uint64_t parse_stall_warn_seconds(const char* text) {
+  // Ten seconds sits far below the multi-hour hangs this exists to catch and
+  // far above any legitimate gap between two stream operations in software
+  // simulation, where a blocked channel normally clears in microseconds.
+  constexpr double kDefaultSeconds = 10.;
+
+  double seconds = kDefaultSeconds;
+  if (text != nullptr && *text != '\0') {
+    char* end = nullptr;
+    const double parsed = std::strtod(text, &end);
+    if (end != text && *end == '\0' && parsed >= 0.) {
+      seconds = parsed;
+    } else {
+      LOG(WARNING) << "ignoring TAPA_STALL_WARN_SECONDS='" << text
+                   << "'; expected a nonnegative number of seconds";
+    }
+  }
+  return static_cast<uint64_t>(seconds * 1e9);
+}
+
+namespace {
+
+// Blocked polls between clock reads. A deadlocked task polls in a tight
+// scheduler loop, so this is reached in well under a second while keeping
+// `clock_gettime` off all but a sliver of the blocked path.
+constexpr uint64_t kStallSampleInterval = 512;
+
+// A deadlock blocks every task at once, and one line per stuck channel is the
+// useful part; past that it is repetition.
+constexpr int kMaxStallWarnings = 8;
+
+std::atomic<int> stall_warnings_emitted{0};
+
+uint64_t stall_warn_threshold_ns() {
+  static const uint64_t threshold =
+      parse_stall_warn_seconds(std::getenv("TAPA_STALL_WARN_SECONDS"));
+  return threshold;
+}
+
+uint64_t monotonic_ns() {
+  return static_cast<uint64_t>(
+      std::chrono::duration_cast<std::chrono::nanoseconds>(
+          std::chrono::steady_clock::now().time_since_epoch())
+          .count());
+}
+
+}  // namespace
+
+void note_blocked_poll(const std::string& channel_name, const char* state) {
+  const uint64_t threshold_ns = stall_warn_threshold_ns();
+  if (threshold_ns == 0) return;
+
+  // Zeroed by `note_poll_progress`, so this only climbs while nothing this
+  // thread polls is clearing.
+  const uint64_t polls = ++blocked_poll_count;
+  if (polls % kStallSampleInterval != 0) return;
+
+  thread_local uint64_t stall_since_ns = 0;
+  thread_local bool warned = false;
+  if (polls == kStallSampleInterval) {
+    // First sample of this stall: start the clock rather than measure from a
+    // previous one. Also re-arms the warning after progress resumed.
+    stall_since_ns = monotonic_ns();
+    warned = false;
+    return;
+  }
+  if (warned) return;
+
+  // A kernel instance may legitimately run for hours, and a host stream bound
+  // to one is waiting on hardware or RTL rather than on a deadlocked peer.
+  if (frt_instances_in_flight.load(std::memory_order_relaxed) > 0) return;
+
+  const uint64_t elapsed_ns = monotonic_ns() - stall_since_ns;
+  if (elapsed_ns < threshold_ns) return;
+  warned = true;
+
+  const int emitted =
+      stall_warnings_emitted.fetch_add(1, std::memory_order_relaxed);
+  if (emitted >= kMaxStallWarnings) return;
+  LOG(WARNING) << "no stream progress for " << elapsed_ns / 1000000000
+               << "s; blocked on channel '" << channel_name << "' (" << state
+               << "). A consumer stuck on an empty channel or a producer stuck "
+                  "on a full one usually means the two disagree on how many "
+                  "elements the transaction carries. Set "
+                  "TAPA_STALL_WARN_SECONDS to change the threshold, or 0 to "
+                  "silence this.";
+  if (emitted + 1 == kMaxStallWarnings) {
+    LOG(WARNING) << "further channel stall warnings suppressed";
+  }
 }
 
 // Killed via SIGINT when tapa::invoke synchronous kernel is running.
@@ -172,6 +265,7 @@ void yield(const string& channel_name, const char* state) {
     unique_lock l(debug_mtx);
     LOG(INFO) << "channel '" << channel_name << "' is " << state;
   }
+  note_blocked_poll(channel_name, state);
   yield_to_scheduler();
 }
 
@@ -286,7 +380,10 @@ namespace internal {
 
 void yield(const char*) { reschedule_this_thread(); }
 
-void yield(const std::string&, const char*) { reschedule_this_thread(); }
+void yield(const std::string& channel_name, const char* state) {
+  note_blocked_poll(channel_name, state);
+  reschedule_this_thread();
+}
 
 namespace {
 

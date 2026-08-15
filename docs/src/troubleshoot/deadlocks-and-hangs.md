@@ -8,6 +8,25 @@
 
 ---
 
+## Start with the stall warning
+
+Software simulation names the stuck channel for you. After a task has been
+blocked on one channel for 10 seconds with nothing it polls clearing, TAPA
+logs:
+
+```text
+W tapa: no stream progress for 10s; blocked on channel 'fifo_A' (empty). ...
+```
+
+`empty` means a consumer is starved, `full` means a producer is backed up —
+which is usually enough to identify the pair below. Lower the threshold with
+`TAPA_STALL_WARN_SECONDS=2` to see it sooner, or set `0` to silence it. The
+warning stays quiet while a kernel instance is running, because waiting on
+hardware or RTL is not a stall.
+
+Fast cosim has no equivalent: use `-cosim_timeout_seconds` (see
+[Cosim Issues](./cosim-issues.md)) and reproduce in software simulation first.
+
 ## Diagnosis checklist
 
 Work through the following causes in order — they are listed from most to least common.

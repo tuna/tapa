@@ -158,11 +158,14 @@ cc_test(
     # `flags_test.cpp` has its own focused target (`:frt-flags-test`) so it is
     # not swept into this catch-all test. `stream_alloc_test.cpp` replaces the
     # global allocation functions, which is process-wide, so it gets its own
-    # target too (`:stream-alloc-test`).
+    # target too (`:stream-alloc-test`), as does `stall_test.cpp`, which needs
+    # the stall threshold in the environment before the first blocked poll
+    # reads it (`:stall-test`).
     srcs = glob(
         ["tapa/**/*_test.cpp"],
         exclude = [
             "tapa/host/frt/flags_test.cpp",
+            "tapa/host/stall_test.cpp",
             "tapa/host/stream_alloc_test.cpp",
         ],
     ),
@@ -172,6 +175,24 @@ cc_test(
     deps = [
         ":scoped_log_sink_mock",
         ":scoped_set_env",
+        ":tapa",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+    ],
+)
+
+# `stall_warn_threshold_ns` caches the env var the first time any blocked poll
+# reads it, so the threshold has to be in place before the process starts
+# rather than set from inside a test.
+cc_test(
+    name = "stall-test",
+    size = "small",
+    srcs = ["tapa/host/stall_test.cpp"],
+    env = {"TAPA_STALL_WARN_SECONDS": "0.05"},
+    target_compatible_with = ["@platforms//os:linux"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":scoped_log_sink_mock",
         ":tapa",
         "@googletest//:gtest",
         "@googletest//:gtest_main",

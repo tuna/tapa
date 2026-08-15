@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <functional>
 #include <string>
 
@@ -31,7 +32,29 @@ void yield(const std::string& channel_name, const char* state);
 // again — which is the whole cost of a simulation without coroutines. Any
 // successful poll clears it.
 extern thread_local int blocked_poll_streak;
-inline void note_poll_progress() { blocked_poll_streak = 0; }
+
+// How many blocked polls this thread has made since it last made progress.
+//
+// Distinct from `blocked_poll_streak`: that one drives the non-coroutine
+// backoff and the coroutine scheduler never touches it, whereas the stall
+// detector must count in both. Zeroed by the same successful poll, so a
+// thread that keeps getting served never reaches the first clock read.
+extern thread_local uint64_t blocked_poll_count;
+
+inline void note_poll_progress() {
+  blocked_poll_streak = 0;
+  blocked_poll_count = 0;
+}
+
+// Warn once when a channel stays blocked past the stall threshold.
+//
+// Called only from the blocked path, so the clock reads land where the
+// simulation is already waiting and the success path stays free.
+void note_blocked_poll(const std::string& channel_name, const char* state);
+
+// Seconds parsed out of `TAPA_STALL_WARN_SECONDS`, as nanoseconds; 0 disables
+// the warning. Exposed for testing; `text` may be null or empty for "unset".
+uint64_t parse_stall_warn_seconds(const char* text);
 
 // FRT instance lifecycle, observed by blocked stream operations. A stream
 // bound to a kernel instance can only be filled or drained by that

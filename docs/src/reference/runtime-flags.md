@@ -12,6 +12,7 @@ These variables are read by the host executable at startup.
 |----------|---------|-------------|
 | `TAPA_CONCURRENCY` | Number of CPU cores | Number of parallel coroutine threads used by software simulation. Set to `1` for single-threaded, more reproducible simulation runs. Has no effect on HLS compilation parallelism (`-j`). |
 | `TAPA_STREAM_LOG_DIR` | (unset — logging disabled) | Directory for stream transfer logs. When set, TAPA writes one log file per named stream recording each value written to that stream. Useful for tracing data corruption during software simulation. |
+| `TAPA_STALL_WARN_SECONDS` | `10` | Seconds a task may stay blocked on one channel, with nothing it polls clearing, before software simulation warns and names that channel. Set `0` to disable. Suppressed while a kernel instance is running, since waiting on hardware or RTL is not a stall. |
 | `FRT_STREAM_DEBUG` | (unset) | When set, log every successful stream read and write in the DPI layer. Produces high-volume output; use only for targeted debugging. |
 | `FRT_COSIM_YIELD` | `1` (enabled) | When enabled, the DPI layer calls `thread::yield_now()` on empty reads or full writes. Disable with `0` to busy-wait instead. |
 | `FRT_COSIM_TIMEOUT_SECONDS` | `0` (disabled) | Maximum wall-clock time for a fast-cosim simulator process. On expiry, TAPA terminates the simulator process group and reports a timeout. Set a positive integer to enable it. |
