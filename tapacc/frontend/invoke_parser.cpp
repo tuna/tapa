@@ -8,6 +8,7 @@
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/Mangle.h"
+#include "llvm/ADT/APSInt.h"
 
 #include "classify.h"
 #include "codegen/conventions.h"
@@ -29,9 +30,26 @@ std::optional<int64_t> EvalInt(const clang::ASTContext& ctx,
   return std::nullopt;
 }
 
-uint64_t TruncateToWidth(uint64_t value, uint32_t width) {
-  if (width == 0 || width >= 64) return value;
-  return value & ((uint64_t{1} << width) - 1);
+// Convert `value` to `type` the way the language would, by handing the work
+// to clang's integral conversion rather than masking bits here: extend or
+// truncate to the destination width, then reinterpret with its signedness.
+// This is what the constant evaluator's `HandleIntToIntCast` does for an
+// implicit conversion, so a literal reaches the RTL with the bits the C++
+// program says it has.
+//
+// A non-integral port (a `float` scalar) has no integral conversion to apply;
+// pass the evaluated bits through unchanged, as before.
+uint64_t ConvertToPortType(const clang::ASTContext& ctx, uint64_t value,
+                           clang::QualType type) {
+  // A boolean conversion is not an integral one: every nonzero value becomes
+  // `true`, rather than the low bit surviving a truncation.
+  if (type->isBooleanType()) return value != 0 ? 1 : 0;
+  if (!type->isIntegralOrEnumerationType()) return value;
+  llvm::APSInt converted(llvm::APInt(/*numBits=*/64, value),
+                         /*isUnsigned=*/true);
+  converted = converted.extOrTrunc(ctx.getIntWidth(type));
+  converted.setIsSigned(type->isSignedIntegerOrEnumerationType());
+  return converted.getZExtValue();
 }
 
 // step (bulk-synchronous mode), vector length, and whether an explicit instance
@@ -316,13 +334,15 @@ void ParseInvocations(UpperTaskContext& uc, const clang::Expr* task_obj) {
                              TapaKind cat) {
             insts.back().args[p] = Arg::Named(a, cat);
           };
-          // Constants are sized to the child scalar port. The generic
-          // `invoke` template does not perform ordinary call conversion, so
-          // the frontend must apply the port's truncation explicitly.
+          // Constants are sized to the child scalar port. `invoke` binds its
+          // arguments to `Args&&...`, so the AST never holds an implicit
+          // conversion to the child's parameter type -- the frontend has to
+          // ask clang for one.
           auto set_const = [&](uint64_t v, const std::string& p) {
-            const uint32_t width = BitWidth(uc.ctx, param->getType());
-            insts.back().args[p] = Arg::Constant(TruncateToWidth(v, width),
-                                                 width, TapaKind::kNotTapa);
+            const clang::QualType type = param->getType();
+            insts.back().args[p] =
+                Arg::Constant(ConvertToPortType(uc.ctx, v, type),
+                              BitWidth(uc.ctx, type), TapaKind::kNotTapa);
           };
 
           if (pk == TapaKind::kMmap || pk == TapaKind::kImmap ||

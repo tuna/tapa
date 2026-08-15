@@ -176,6 +176,38 @@ TEST(InvokeParser, ConstantUsesChildPortWidth) {
   EXPECT_EQ(arg.value, std::optional<uint64_t>(0xffff));
 }
 
+TEST(InvokeParser, ConstantTakesTheLanguageConversionToThePort) {
+  // Each literal is out of range for its port, so the recorded bits show
+  // which conversion ran. `invoke` binds `Args&&...`, so nothing in the AST
+  // narrows these -- the frontend asks clang to.
+  constexpr char kCode[] = R"cpp(
+    void Narrow(unsigned char value) {}
+    void Signed(signed char value) {}
+    void Flag(bool value) {}
+    void Wide(long long value) {}
+    void Top() {
+      tapa::task()
+          .invoke(Narrow, 300)
+          .invoke(Signed, 200)
+          .invoke(Flag, 2)
+          .invoke(Wide, -1);
+    }
+  )cpp";
+  auto p = ParseCode(kCode, "Top", /*is_top=*/false);
+  const auto& insts = p.tasks.at("Top").instances;
+  auto value_of = [&](const char* task) {
+    return insts.at(task)[0].args.at("value").value;
+  };
+
+  // 300 -> 8 bits keeps the low byte; 200 -> signed char is 0xc8 either way.
+  EXPECT_EQ(value_of("Narrow"), std::optional<uint64_t>(300 & 0xff));
+  EXPECT_EQ(value_of("Signed"), std::optional<uint64_t>(0xc8));
+  // A boolean conversion, not a truncation: 2 is `true`, not its low bit.
+  EXPECT_EQ(value_of("Flag"), std::optional<uint64_t>(1));
+  // No truncation at 64 bits: the full two's-complement pattern survives.
+  EXPECT_EQ(value_of("Wide"), std::optional<uint64_t>(0xffffffffffffffffULL));
+}
+
 TEST(InvokeParser, InstancesAndArgs) {
   auto p = ParseTop();
   const TaskModel& top = p.tasks.at("Top");
