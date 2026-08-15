@@ -32,10 +32,7 @@ tapa_xo(
     clock_period = "3.33",
     jobs = 8,
     part_num = "xcu55c-fsvh2892-2L-e",
-    tags = [
-        "cpu:8",
-        "manual",
-    ],
+    tags = ["manual"],
     top_name = "Callipepla",
 )
 
@@ -47,10 +44,7 @@ tapa_xo(
     connectivity = "serpens-24ch/tapa/src/link_config.ini",
     jobs = 8,
     part_num = "xcu55c-fsvh2892-2L-e",
-    tags = [
-        "cpu:8",
-        "manual",
-    ],
+    tags = ["manual"],
     top_name = "Serpens",
 )
 
@@ -60,10 +54,7 @@ tapa_xo(
     clock_period = "3.33",
     jobs = 8,
     part_num = "xcu55c-fsvh2892-2L-e",
-    tags = [
-        "cpu:8",
-        "manual",
-    ],
+    tags = ["manual"],
     top_name = "serpens",
 )
 
@@ -74,10 +65,7 @@ tapa_xo(
     clock_period = "3.00",
     jobs = 8,
     part_num = "xcu55c-fsvh2892-2L-e",
-    tags = [
-        "cpu:8",
-        "manual",
-    ],
+    tags = ["manual"],
     top_name = "Sextans",
 )
 
@@ -90,10 +78,7 @@ tapa_xo(
     clock_period = "3.00",
     jobs = 8,
     part_num = "xcu250-figd2104-2L-e",
-    tags = [
-        "cpu:8",
-        "manual",
-    ],
+    tags = ["manual"],
     top_name = "kernel0",
 )
 
@@ -106,10 +91,7 @@ tapa_xo(
     clock_period = "3.00",
     jobs = 8,
     part_num = "xcu55c-fsvh2892-2L-e",
-    tags = [
-        "cpu:8",
-        "manual",
-    ],
+    tags = ["manual"],
     top_name = "kernel0",
 )
 
@@ -120,10 +102,7 @@ tapa_xo(
     connectivity = "cnn/tapa/src/link_config.ini",
     jobs = 8,
     part_num = "xcu250-figd2104-2L-e",
-    tags = [
-        "cpu:8",
-        "manual",
-    ],
+    tags = ["manual"],
     top_name = "kernel3",
 )
 
@@ -135,10 +114,7 @@ tapa_xo(
     connectivity = "hbm-bandwidth/src/link_config.ini",
     jobs = 8,
     part_num = "xcu55c-fsvh2892-2L-e",
-    tags = [
-        "cpu:8",
-        "manual",
-    ],
+    tags = ["manual"],
     top_name = "Bandwidth",
 )
 
@@ -150,10 +126,7 @@ tapa_xo(
     connectivity = "hbm-bandwidth-1-ch/src/link_config.ini",
     jobs = 8,
     part_num = "xcu55c-fsvh2892-2L-e",
-    tags = [
-        "cpu:8",
-        "manual",
-    ],
+    tags = ["manual"],
     top_name = "Bandwidth",
 )
 
@@ -165,10 +138,7 @@ tapa_xo(
     connectivity = "knn/src/knn.ini",
     jobs = 8,
     part_num = "xcu55c-fsvh2892-2L-e",
-    tags = [
-        "cpu:8",
-        "manual",
-    ],
+    tags = ["manual"],
     top_name = "Knn",
 )
 
@@ -183,10 +153,7 @@ tapa_xo(
     connectivity = "knn/src/knn.ini",
     jobs = 8,
     part_num = "xcu55c-fsvh2892-2L-e",
-    tags = [
-        "cpu:8",
-        "manual",
-    ],
+    tags = ["manual"],
     top_name = "Knn",
 )
 
@@ -197,10 +164,7 @@ tapa_xo(
     connectivity = "lu_decompose/tapa/src/link_config.ini",
     jobs = 8,
     part_num = "xcu250-figd2104-2L-e",
-    tags = [
-        "cpu:8",
-        "manual",
-    ],
+    tags = ["manual"],
     top_name = "kernel0",
 )
 
@@ -215,10 +179,7 @@ tapa_xo(
     connectivity = "page_rank/tapa/src/link_config.ini",
     jobs = 8,
     part_num = "xcu55c-fsvh2892-2L-e",
-    tags = [
-        "cpu:8",
-        "manual",
-    ],
+    tags = ["manual"],
     top_name = "PageRank",
 )
 
@@ -230,10 +191,7 @@ tapa_xo(
     connectivity = "serpens-16ch/tapa/src/link_config.ini",
     jobs = 8,
     part_num = "xcu55c-fsvh2892-2L-e",
-    tags = [
-        "cpu:8",
-        "manual",
-    ],
+    tags = ["manual"],
     top_name = "Serpens",
 )
 
@@ -245,10 +203,7 @@ tapa_xo(
     connectivity = "spmm/sextans-u280-split-bram-uram/tapa/src/link_config.ini",
     jobs = 8,
     part_num = "xcu55c-fsvh2892-2L-e",
-    tags = [
-        "cpu:8",
-        "manual",
-    ],
+    tags = ["manual"],
     top_name = "Sextans",
 )
 
@@ -259,10 +214,7 @@ tapa_xo(
     connectivity = "spmv-hisparse-mmap/tapa/src/spmv.ini",
     jobs = 8,
     part_num = "xcu55c-fsvh2892-2L-e",
-    tags = [
-        "cpu:8",
-        "manual",
-    ],
+    tags = ["manual"],
     top_name = "spmv",
 )
 
@@ -274,10 +226,7 @@ tapa_xo(
     connectivity = "stencil-dilate/tapa/src/unikernel.ini",
     jobs = 8,
     part_num = "xcu55c-fsvh2892-2L-e",
-    tags = [
-        "cpu:8",
-        "manual",
-    ],
+    tags = ["manual"],
     top_name = "unikernel",
 )
 

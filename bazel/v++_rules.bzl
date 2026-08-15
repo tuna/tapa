@@ -57,13 +57,27 @@ def _vpp_xclbin_impl(ctx):
         executable = vpp,
         arguments = vpp_cmd,
         mnemonic = "VppLink",
-        resource_set = _resource_set,
+        execution_requirements = _vpp_exec_requirements(target),
     )
 
     return [DefaultInfo(files = depset([xclbin]))]
 
-def _resource_set(_os, _num_inputs):
-    return {"memory": 2000}  # MB
+# CPU and MB reserved per `v++ --link` target. `sw_emu` only rewrites the
+# container, but `hw_emu` runs xsc compile and elaborate (both capped at
+# mt_level=2 above) and `hw` runs a full Vivado implementation. The old flat
+# 2000 MB with no CPU claim let Bazel pack several Vivados onto one host.
+_VPP_RESOURCES = {
+    "sw_emu": (1, 2000),
+    "hw_emu": (2, 8000),
+    "hw": (4, 16000),
+}
+
+def _vpp_exec_requirements(target):
+    cpu, memory = _VPP_RESOURCES.get(target, _VPP_RESOURCES["hw_emu"])
+    return {
+        "resources:cpu:{}".format(cpu): "",
+        "resources:memory:{}".format(memory): "",
+    }
 
 vpp_xclbin = rule(
     implementation = _vpp_xclbin_impl,

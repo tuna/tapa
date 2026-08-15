@@ -38,6 +38,42 @@ def _remote_xilinx_settings():
         return REMOTE_XILINX_TOOL_PATH + subdir + XILINX_TOOL_VERSION + "/settings64.sh"
     return ""
 
+# Peak RSS of one Vitis HLS process, in MB. Measured across the regression
+# designs; wide 512-bit sparse tasks sit at the top of that range.
+_HLS_JOB_MB = 2048
+
+# Peak RSS of the single Vivado that `tapa pack` spawns for IP packaging, in
+# MB. This is the floor rather than an addend: packing starts after every HLS
+# job has exited, so an action's high-water mark is one phase or the other,
+# never their sum. Designs with thousands of tasks exceed it (lu_decompose,
+# 1505 tasks / 9104 Verilog files, peaked near 17 GB), but sizing every action
+# for that outlier would serialize the whole build.
+_PACK_MB = 6144
+
+def _vendor_exec_requirements(jobs, remote_host):
+    """Local resource reservation for one `tapa` invocation.
+
+    A `tapa_xo` action forks `--jobs` concurrent Vitis HLS processes and then
+    a Vivado for packaging. Bazel's default estimate for an unannotated action
+    is one CPU and ~250 MB, so without this the scheduler treats each one as a
+    lightweight compile and runs as many as there are cores -- which is how a
+    full `bazel test //...` used to exhaust host memory and take the server
+    down with it.
+
+    This goes through `execution_requirements` rather than `resource_set`
+    because the latter must be a top-level function and so cannot see `jobs`.
+    A `cpu:N` tag on the target would replace the whole reservation, memory
+    included, so leave those tags off `tapa_xo` targets.
+    """
+    reqs = {
+        "resources:cpu:{}".format(jobs): "",
+        "resources:memory:{}".format(max(jobs * _HLS_JOB_MB, _PACK_MB)): "",
+    }
+    if remote_host:
+        # Vendor tools run on the remote host, so only the ssh client is local.
+        reqs = {"requires-network": "1"}
+    return reqs
+
 def _tapa_xo_impl(ctx):
     tapa_cli = ctx.executable.tapa_cli
     src = ctx.file.src
@@ -129,7 +165,7 @@ def _tapa_xo_impl(ctx):
         tools = [tapa_cli, ctx.executable.vitis_hls_env],
         executable = ctx.executable.vitis_hls_env,
         arguments = tapa_cmd,
-        execution_requirements = {"requires-network": "1"} if remote_host else {},
+        execution_requirements = _vendor_exec_requirements(ctx.attr.jobs, remote_host),
     )
 
     return [DefaultInfo(files = depset([output_file or work_dir]))]
@@ -165,17 +201,21 @@ def _tapa_reuse_work_dir_xo_impl(ctx):
     part_num = ctx.attr.part_num
     clock_period = ctx.attr.clock_period
 
+    # `tapa synth` defaults `--jobs` to the host's available parallelism, which
+    # would fork that many Vitis HLS processes out of a single Bazel action.
+    # Pin it so the fan-out matches what `_vendor_exec_requirements` reserves.
     script = """
 set -ex
 {prefix} analyze {includes} --input {src} --top {top} --target xilinx-vitis
-{prefix} synth --part-num {part} --clock-period {clock} --override-report-schema-version=redacted
-{prefix} synth --part-num {part} --clock-period {clock} --skip-hls-based-on-mtime --override-report-schema-version=redacted
+{prefix} synth --jobs {jobs} --part-num {part} --clock-period {clock} --override-report-schema-version=redacted
+{prefix} synth --jobs {jobs} --part-num {part} --clock-period {clock} --skip-hls-based-on-mtime --override-report-schema-version=redacted
 {prefix} pack --output {output}
 """.format(
         prefix = prefix,
         includes = includes,
         src = src.path,
         top = top_name,
+        jobs = ctx.attr.jobs,
         part = part_num,
         clock = clock_period,
         output = output_file.path,
@@ -189,7 +229,7 @@ set -ex
         inputs = inputs,
         tools = [tapa_cli, ctx.executable.vitis_hls_env],
         command = script,
-        execution_requirements = {"requires-network": "1"} if remote_host else {},
+        execution_requirements = _vendor_exec_requirements(ctx.attr.jobs, remote_host),
     )
 
     return [DefaultInfo(files = depset([output_file]))]
@@ -203,6 +243,11 @@ tapa_reuse_work_dir_xo = rule(
         "top_name": attr.string(mandatory = True),
         "part_num": attr.string(default = XILINX_PART_NUM),
         "clock_period": attr.string(default = "3.33"),
+        "jobs": attr.int(
+            default = 1,
+            doc = "Parallel HLS jobs. The action reserves CPU and memory to " +
+                  "match; do not add a cpu:N tag, which would override that.",
+        ),
         "tapa_cli": attr.label(
             cfg = "exec",
             default = Label("//tapa-core:tapa"),
@@ -252,7 +297,8 @@ tapa_xo = rule(
         ),
         "jobs": attr.int(
             default = 1,
-            doc = "Parallel HLS jobs; pair values > 1 with a cpu:N tag.",
+            doc = "Parallel HLS jobs. The action reserves CPU and memory to " +
+                  "match; do not add a cpu:N tag, which would override that.",
         ),
         "enable_synth_util": attr.bool(),
         "flatten_hierarchy": attr.bool(),
