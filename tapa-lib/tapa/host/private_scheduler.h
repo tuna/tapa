@@ -92,9 +92,13 @@ class worker {
           this->wait_cv.notify_all();
         }
         if (coroutine_executed) {
-          // Running a coroutine is progress: start the next idle spell at the
-          // cheap end of the backoff rather than wherever the last one ended.
-          note_poll_progress();
+          // Running a coroutine is progress for the backoff: start the next
+          // idle spell at the cheap end rather than wherever the last one
+          // ended. It is NOT stream progress: a blocked coroutine runs (one
+          // poll, one yield) every round, so resetting blocked_poll_count
+          // here would keep the stall detector from ever firing in this
+          // build. Only a successful poll resets that one.
+          blocked_poll_streak = 0;
         } else {
           reschedule_this_thread();
         }

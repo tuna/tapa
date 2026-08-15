@@ -33,12 +33,14 @@ void yield(const std::string& channel_name, const char* state);
 // successful poll clears it.
 extern thread_local int blocked_poll_streak;
 
-// How many blocked polls this thread has made since it last made progress.
+// How many blocked polls this thread has made since a poll last succeeded.
 //
-// Distinct from `blocked_poll_streak`: that one drives the non-coroutine
-// backoff and the coroutine scheduler never touches it, whereas the stall
-// detector must count in both. Zeroed by the same successful poll, so a
-// thread that keeps getting served never reaches the first clock read.
+// Distinct from `blocked_poll_streak`: the streak drives the idle backoff,
+// so the coroutine scheduler resets it after every round that ran a
+// coroutine. This count feeds the stall detector and must survive those
+// rounds — a blocked coroutine still runs every round — so only a
+// successful poll zeroes it. A thread that keeps getting served never
+// reaches the first clock read.
 extern thread_local uint64_t blocked_poll_count;
 
 inline void note_poll_progress() {

@@ -56,7 +56,12 @@ void reschedule_this_thread() {
   constexpr int kYieldRounds = 64;
   constexpr int kShortSleepRounds = 256;
 
-  const int streak = internal::blocked_poll_streak++;
+  // Capped at the slowest rung: every streak past it already sleeps 1 ms,
+  // and an unbounded increment is signed-overflow UB after ~25 days.
+  const int streak = internal::blocked_poll_streak;
+  if (streak < kYieldRounds + kShortSleepRounds) {
+    ++internal::blocked_poll_streak;
+  }
   if (streak < kYieldRounds) {
     std::this_thread::yield();
   } else if (streak < kYieldRounds + kShortSleepRounds) {
@@ -105,11 +110,15 @@ uint64_t parse_stall_warn_seconds(const char* text) {
   if (text != nullptr && *text != '\0') {
     char* end = nullptr;
     const double parsed = std::strtod(text, &end);
-    if (end != text && *end == '\0' && parsed >= 0.) {
+    // UINT64_MAX nanoseconds; also rejects inf and NaN, whose conversion to
+    // uint64_t is undefined behavior.
+    constexpr double kMaxSeconds = static_cast<double>(UINT64_MAX) / 1e9;
+    if (end != text && *end == '\0' && parsed >= 0. && parsed <= kMaxSeconds) {
       seconds = parsed;
     } else {
       LOG(WARNING) << "ignoring TAPA_STALL_WARN_SECONDS='" << text
-                   << "'; expected a nonnegative number of seconds";
+                   << "'; expected a nonnegative number of seconds"
+                   << " (at most " << kMaxSeconds << ")";
     }
   }
   return static_cast<uint64_t>(seconds * 1e9);
