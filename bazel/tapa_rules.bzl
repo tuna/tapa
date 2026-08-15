@@ -75,6 +75,8 @@ def _vendor_exec_requirements(jobs, remote_host):
     return reqs
 
 def _tapa_xo_impl(ctx):
+    if ctx.attr.jobs < 1:
+        fail("jobs must be >= 1, got {}".format(ctx.attr.jobs))
     tapa_cli = ctx.executable.tapa_cli
     src = ctx.file.src
     top_name = ctx.attr.top_name
@@ -245,8 +247,9 @@ tapa_reuse_work_dir_xo = rule(
         "clock_period": attr.string(default = "3.33"),
         "jobs": attr.int(
             default = 1,
-            doc = "Parallel HLS jobs. The action reserves CPU and memory to " +
-                  "match; do not add a cpu:N tag, which would override that.",
+            doc = "Parallel HLS jobs (must be >= 1). The action reserves " +
+                  "CPU and memory to match; do not add a cpu:N tag, which " +
+                  "would override that.",
         ),
         "tapa_cli": attr.label(
             cfg = "exec",
@@ -297,8 +300,9 @@ tapa_xo = rule(
         ),
         "jobs": attr.int(
             default = 1,
-            doc = "Parallel HLS jobs. The action reserves CPU and memory to " +
-                  "match; do not add a cpu:N tag, which would override that.",
+            doc = "Parallel HLS jobs (must be >= 1). The action reserves " +
+                  "CPU and memory to match; do not add a cpu:N tag, which " +
+                  "would override that.",
         ),
         "enable_synth_util": attr.bool(),
         "flatten_hierarchy": attr.bool(),
