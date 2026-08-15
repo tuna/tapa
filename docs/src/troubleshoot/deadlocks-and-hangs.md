@@ -58,9 +58,30 @@ corresponding consumer reads. Common mistakes include an off-by-one loop bound,
 a conditional `write` that skips elements, and padding a fixed-size memory
 buffer without updating the protocol metadata that controls downstream reads.
 
-For a fixed-count architecture, pad both the payload and its count/end pointer
-before copying either to an mmap. Resizing only the host allocation does not
-change how many stream beats the RTL produces or consumes.
+This bites hardest in a *fixed-count* architecture, where a producer's trip
+count is a compile-time constant but its consumer's comes from host data:
+
+```cpp
+constexpr int kBeatsPerChannel = 1139;  // baked into the RTL
+
+void ReadA(tapa::async_mmap<ap_uint<512>>& a, tapa::ostream<ap_uint<512>>& out) {
+  for (int req = 0, resp = 0; resp < kBeatsPerChannel;)  // always 1139
+    async_read(a, out, kBeatsPerChannel, req, resp);
+}
+
+void Compute(tapa::istream<ap_uint<512>>& in, tapa::istream<int>& config) {
+  const int beats = config.read();  // whatever the host wrote
+  for (int i = 0; i < beats; ++i) in.read();
+}
+```
+
+Run a small input through it and `ReadA` writes 1139 beats while `Compute`
+takes only as many as the host's pointer claims. The FIFO fills, `ReadA`
+blocks forever, and the stall warning names its output channel as `full`.
+
+**Fix:** pad the payload *and* the count/end pointer to the fixed size, before
+copying either into the mmap. Resizing only the host allocation leaves the
+pointer saying "5 beats" while the RTL still emits 1139.
 
 ### 3. Circular dependency between tasks
 
