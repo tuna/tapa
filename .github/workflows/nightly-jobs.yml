@@ -26,6 +26,30 @@ jobs:
           UBUNTU_PRO_TOKEN: ${{ secrets.UBUNTU_PRO_TOKEN }}
           MAC_ADDRESS: ${{ secrets.MAC_ADDRESS }}
 
+  link-check:
+    name: Doc Link Liveness
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout myself
+        uses: actions/checkout@v4
+
+      # pre-commit's check-links only validates link syntax, so dead URLs
+      # (moved GPG keys, retired release pages) slip through until someone
+      # follows them. This sweeps README and the doc tree nightly.
+      - name: Check links
+        uses: lycheeverse/lychee-action@v2
+        with:
+          # The local mdBook server URL in the build guide is not live here.
+          args: >-
+            --no-progress
+            --exclude localhost
+            --max-retries 3
+            'README.md'
+            './docs/src/**/*.md'
+          fail: true
+          token: ${{ secrets.GITHUB_TOKEN }}
+
   bump-version:
     name: Bump Version
     runs-on: ubuntu-latest
