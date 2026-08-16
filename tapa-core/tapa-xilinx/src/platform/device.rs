@@ -31,7 +31,10 @@ fn attr_value(e: &quick_xml::events::BytesStart<'_>, name: &str) -> Result<Optio
         let attr = attr.map_err(|err| XilinxError::HlsReportParse(err.to_string()))?;
         let key = std::str::from_utf8(attr.key.as_ref()).unwrap_or("");
         if local_name(key) == name {
-            let val = attr.unescape_value().map_err(XilinxError::Xml)?.to_string();
+            let val = attr
+                .normalized_value(quick_xml::XmlVersion::Implicit1_0)
+                .map_err(XilinxError::Xml)?
+                .to_string();
             return Ok(Some(val));
         }
     }
