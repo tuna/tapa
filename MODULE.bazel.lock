@@ -276,7 +276,7 @@
   "moduleExtensions": {
     "//bazel:dependencies.bzl%load_dependencies": {
       "general": {
-        "bzlTransitiveDigest": "M/jgUsNFmlrvmXByJ0miMAiMOBfjfhfosBgY+RfAcBE=",
+        "bzlTransitiveDigest": "pICuWWY5F9lXq+jHhz8VNiQWO5vObyOpVz1u82l1qJE=",
         "usagesDigest": "R/mru0wX2nxaR5WLYDX44DFEAMeABaiVH5PaEGW3+bc=",
         "recordedInputs": [
           "REPO_MAPPING:,vars +resolve_vars+vars"

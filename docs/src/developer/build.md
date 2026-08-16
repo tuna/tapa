@@ -23,7 +23,7 @@ To build TAPA from source, you need:
 - [Libstdc++](https://gcc.gnu.org/libstdc++/) matching the most recent GCC
   version installed on your system
 - [Python](https://www.python.org) 3 or later for Bazel
-- [Rust](https://www.rust-lang.org) 1.88.0 (via [rustup](https://rustup.rs)) for
+- [Rust](https://www.rust-lang.org) 1.97.1 (via [rustup](https://rustup.rs)) for
   building via `cargo` directly — pre-commit's fmt/clippy hooks use it. The
   version is pinned in `rust-toolchain.toml` and must match the Bazel toolchain
   pinned in `MODULE.bazel`; bump both together.

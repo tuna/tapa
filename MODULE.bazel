@@ -77,7 +77,7 @@ llvm = use_extension("@toolchains_llvm//toolchain/extensions:llvm.bzl", "llvm", 
 rust = use_extension("@rules_rust//rust:extensions.bzl", "rust", dev_dependency = True)
 rust.toolchain(
     edition = "2021",
-    versions = ["1.88.0"],
+    versions = ["1.97.1"],
 )
 use_repo(rust, "rust_toolchains")
 
