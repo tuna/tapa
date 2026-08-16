@@ -130,7 +130,7 @@ tree-sitter-systemverilog = "0.3"
 typed-builder = "0.21"
 ureq = "3"
 walkdir = "2"
-zip = { version = "2", default-features = false, features = ["deflate"] }
+zip = { version = "8", default-features = false, features = ["deflate"] }
 
 # Internal crates
 tapa-protocol = { path = "tapa-protocol" }

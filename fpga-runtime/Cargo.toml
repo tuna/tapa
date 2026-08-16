@@ -159,4 +159,4 @@ which = "7"
 # default bzip2/lzma/zstd features avoids linking their system libraries
 # (liblzma/libbz2), which the hermetic Bazel C++ toolchain sysroot lacks when
 # libfrt.a is statically linked into host binaries.
-zip = { version = "2", default-features = false, features = ["deflate"] }
+zip = { version = "8", default-features = false, features = ["deflate"] }

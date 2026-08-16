@@ -243,7 +243,7 @@ fn safe_extract_path(name: &str, out_dir: &Path) -> Result<PathBuf> {
     Ok(out_dir.join(rel))
 }
 
-fn extract_file(file: &mut zip::read::ZipFile<'_>, name: &str, out_dir: &Path) -> Result<PathBuf> {
+fn extract_file(file: &mut impl Read, name: &str, out_dir: &Path) -> Result<PathBuf> {
     let out = safe_extract_path(name, out_dir)?;
     if let Some(parent) = out.parent() {
         std::fs::create_dir_all(parent)?;
