@@ -133,14 +133,14 @@ iter_over_hash_type = "allow"
 unsafe_op_in_unsafe_fn = "deny"
 
 [workspace.dependencies]
-cbindgen = "0.28"
+cbindgen = "0.29"
 askama = { version = "0.16", features = ["serde_json"] }
 frt-cosim = { path = "frt-cosim" }
 frt-dpi = { path = "frt-dpi" }
 frt-shm = { path = "frt-shm" }
 libc = "0.2"
 memmap2 = "0.9"
-opencl3 = "0.10"
+opencl3 = "0.12"
 quick-xml = { version = "0.41", features = ["serialize"] }
 regex-lite = "0.1"
 serde = { version = "1", features = ["derive"] }
@@ -154,7 +154,7 @@ tapa-ir = { path = "../tapa-core/tapa-ir" }
 tempfile = "3"
 thiserror = "2"
 tracing = "0.1"
-which = "7"
+which = "8"
 # Only deflate/stored are needed to read Vitis .xo packages; dropping the
 # default bzip2/lzma/zstd features avoids linking their system libraries
 # (liblzma/libbz2), which the hermetic Bazel C++ toolchain sysroot lacks when
