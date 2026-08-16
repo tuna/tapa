@@ -2,20 +2,20 @@
 
 module(name = "tapa")
 
-bazel_dep(name = "bazel_skylib", version = "1.9.0", dev_dependency = True)
-bazel_dep(name = "platforms", version = "1.0.0", dev_dependency = True)
-bazel_dep(name = "rules_cc", version = "0.2.18", dev_dependency = True)
-bazel_dep(name = "rules_rust", version = "0.69.0", dev_dependency = True)
-bazel_dep(name = "rules_pkg", version = "1.2.0", dev_dependency = True)
+bazel_dep(name = "bazel_skylib", version = "1.9.2", dev_dependency = True)
+bazel_dep(name = "platforms", version = "1.1.0", dev_dependency = True)
+bazel_dep(name = "rules_cc", version = "0.2.22", dev_dependency = True)
+bazel_dep(name = "rules_rust", version = "0.73.0", dev_dependency = True)
+bazel_dep(name = "rules_pkg", version = "1.3.0", dev_dependency = True)
 
 # 2.0.0-rc3 generated launchers require sys._base_executable, which is absent
 # from the Python used by the Ubuntu 18.04 CI image. Load-bearing: the
 # tapa-llvm-project repo references @rules_python//python:defs.bzl.
-bazel_dep(name = "rules_python", version = "1.9.0", dev_dependency = True)
+bazel_dep(name = "rules_python", version = "1.9.2", dev_dependency = True)
 bazel_dep(name = "rules_shell", version = "0.8.0", dev_dependency = True)
 bazel_dep(name = "rules_verilator", version = "0.3.2", dev_dependency = True)
-bazel_dep(name = "rules_verilog", version = "1.1.1", dev_dependency = True)
-bazel_dep(name = "toolchains_llvm", version = "1.7.0", dev_dependency = True)
+bazel_dep(name = "rules_verilog", version = "1.4.2", dev_dependency = True)
+bazel_dep(name = "toolchains_llvm", version = "1.8.0", dev_dependency = True)
 bazel_dep(name = "verilator", version = "5.044", dev_dependency = True)
 
 # 5.046.bcr.3 pulls rules_cc_autoconf through BCR bison/flex/m4. That helper
@@ -103,8 +103,8 @@ llvm.toolchain(
         "rhel-9.3-x86_64": "14.0.0",
         "rhel-9.4-x86_64": "14.0.0",
         "rhel-9.5-x86_64": "14.0.0",
-        # Other platforms use latest
-        "": "20.1.8",
+        # Other platforms use latest that toolchains_llvm ships a build for
+        "": "22.1.7",
     },
     stdlib = {
         "linux-x86_64": "stdc++",
@@ -124,11 +124,11 @@ register_toolchains(
     dev_dependency = True,
 )
 
-bazel_dep(name = "nlohmann_json", version = "3.12.0.bcr.1")  # Required by tapacc
+bazel_dep(name = "nlohmann_json", version = "3.12.0.bcr.2")  # Required by tapacc
 bazel_dep(name = "rules_boost", repo_name = "com_github_nelhage_rules_boost")
 git_override(
     module_name = "rules_boost",
-    commit = "795af624bbc1a285b73358ee53eb056e30723d26",
+    commit = "d4d306ef48b7dbddf0389e48b90f6eb74ec18a71",
     patch_cmds = [
         # Enable BOOST_USE_SEGMENTED_STACKS, BOOST_USE_ASAN, BOOST_USE_UCONTEXT.
         # Use perl -i for cross-platform compatibility (sed -i differs between GNU and BSD).
@@ -143,7 +143,7 @@ use_repo(non_module_boost_repositories, "boost")
 
 bazel_dep(name = "gflags", version = "2.2.2.bcr.1")
 bazel_dep(name = "glog", version = "0.5.0")  # Must be 0.5.0; dpi requires this version.
-bazel_dep(name = "googletest", version = "1.17.0.bcr.2")
+bazel_dep(name = "googletest", version = "1.18.0")
 
 single_version_override(
     module_name = "glog",
@@ -160,9 +160,9 @@ load_dependencies = use_extension(
 )
 use_repo(load_dependencies, "ssh_key", "vitis_hls", "xsim_xv")
 
-bazel_dep(name = "libuuid", version = "2.41.2")
+bazel_dep(name = "libuuid", version = "2.41.2.bcr.0")
 
-LLVM_VERSION_MAJOR = 20
+LLVM_VERSION_MAJOR = 22
 
 LLVM_VERSION_MINOR = 1
 
@@ -170,7 +170,7 @@ LLVM_VERSION_PATCH = 8
 
 LLVM_VERSION = "{}.{}.{}".format(LLVM_VERSION_MAJOR, LLVM_VERSION_MINOR, LLVM_VERSION_PATCH)
 
-LLVM_SHA256 = "6898f963c8e938981e6c4a302e83ec5beb4630147c7311183cf61069af16333d"
+LLVM_SHA256 = "922f1817a0df7b1489272d18134ee0087a8b068828f87ac63b9861b1a9965888"
 
 http_archive(
     name = "tapa-llvm-project",
@@ -204,15 +204,13 @@ LLVM_VERSION_MAJOR = {0}
 LLVM_VERSION_MINOR = {1}
 LLVM_VERSION_PATCH = {2}
 PACKAGE_VERSION = "{0}.{1}.{2}"
-MAX_CLANG_ABI_COMPAT_VERSION = "{0}"
 EOF
         """.format(LLVM_VERSION_MAJOR, LLVM_VERSION_MINOR, LLVM_VERSION_PATCH),
     ],
     patches = [
-        "//bazel:patches/tapa-llvm-project/0001-Disable-zlib-zstd-mpfr-pfm-and-proto.patch",
+        "//bazel:patches/tapa-llvm-project/0001-Disable-zlib-zstd-mpfr-and-pfm.patch",
         "//bazel:patches/tapa-llvm-project/0002-Add-TAPA-pragmas-to-Clang.patch",
         "//bazel:patches/tapa-llvm-project/0003-Wno-error.patch",
-        "//bazel:patches/tapa-llvm-project/0004-Patch-missing-macro.patch",
     ],
     sha256 = LLVM_SHA256,
     strip_prefix = "llvm-project-{}.src".format(LLVM_VERSION),

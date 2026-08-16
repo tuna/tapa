@@ -1,15 +1,9 @@
-From 81ad17c3750c0f42cc5d420e8b7cc3be32208672 Mon Sep 17 00:00:00 2001
-From: Jason Lau <lau@rapidstream-da.com>
-Date: Tue, 3 Sep 2024 14:01:19 -0700
-Subject: [PATCH] Add TAPA pragmas to Clang
-
 diff --git a/clang/include/clang/Basic/Attr.td b/clang/include/clang/Basic/Attr.td
-index 46d0a66d59c3..4e4c52ced4f8 100644
 --- a/clang/include/clang/Basic/Attr.td
 +++ b/clang/include/clang/Basic/Attr.td
-@@ -4719,3 +4719,33 @@ def ClspvLibclcBuiltin: InheritableAttr {
-   let Documentation = [ClspvLibclcBuiltinDoc];
-   let SimpleHandler = 1;
+@@ -5345,3 +5345,33 @@
+   let Subjects = SubjectList<[Function]>;
+   let Documentation = [ModularFormatDocs];
  }
 +
 +// Begin TAPA
@@ -41,11 +35,35 @@ index 46d0a66d59c3..4e4c52ced4f8 100644
 +}
 +
 +// End TAPA
+diff --git a/clang/include/clang/Basic/AttributeCommonInfo.h b/clang/include/clang/Basic/AttributeCommonInfo.h
+--- a/clang/include/clang/Basic/AttributeCommonInfo.h
++++ b/clang/include/clang/Basic/AttributeCommonInfo.h
+@@ -72,7 +72,7 @@
+     IgnoredAttribute,
+     UnknownAttribute,
+   };
+-  enum class Scope { NONE, CLANG, GNU, MSVC, OMP, HLSL, VK, GSL, RISCV };
++  enum class Scope { NONE, CLANG, GNU, MSVC, OMP, HLSL, VK, GSL, RISCV, TAPA };
+   enum class AttrArgsInfo {
+     None,
+     Optional,
+diff --git a/clang/lib/Basic/Attributes.cpp b/clang/lib/Basic/Attributes.cpp
+--- a/clang/lib/Basic/Attributes.cpp
++++ b/clang/lib/Basic/Attributes.cpp
+@@ -236,7 +236,8 @@
+       .Case("vk", AttributeCommonInfo::Scope::VK)
+       .Case("msvc", AttributeCommonInfo::Scope::MSVC)
+       .Case("omp", AttributeCommonInfo::Scope::OMP)
+-      .Case("riscv", AttributeCommonInfo::Scope::RISCV);
++      .Case("riscv", AttributeCommonInfo::Scope::RISCV)
++      .Case("tapa", AttributeCommonInfo::Scope::TAPA);
+ }
+ 
+ unsigned AttributeCommonInfo::calculateAttributeSpellingListIndex() const {
 diff --git a/clang/lib/Sema/SemaDeclAttr.cpp b/clang/lib/Sema/SemaDeclAttr.cpp
-index e2eada24f9fc..8f5c69a759d2 100644
 --- a/clang/lib/Sema/SemaDeclAttr.cpp
 +++ b/clang/lib/Sema/SemaDeclAttr.cpp
-@@ -159,6 +159,43 @@ bool Sema::checkStringLiteralArgumentAttr(const ParsedAttr &AL, unsigned ArgNum,
+@@ -162,6 +162,43 @@
    return checkStringLiteralArgumentAttr(AL, ArgExpr, Str, ArgLocation);
  }
  
@@ -89,9 +107,9 @@ index e2eada24f9fc..8f5c69a759d2 100644
  /// Check if the passed-in expression is of type int or bool.
  static bool isIntOrBool(Expr *Exp) {
    QualType QT = Exp->getType();
-@@ -7100,6 +7149,19 @@ ProcessDeclAttribute(Sema &S, Scope *scope, Decl *D, const ParsedAttr &AL,
-   case ParsedAttr::AT_VTablePointerAuthentication:
-     handleVTablePointerAuthentication(S, D, AL);
+@@ -8033,6 +8070,19 @@
+   case ParsedAttr::AT_GCCStruct:
+     handleGCCStructAttr(S, D, AL);
      break;
 +
 +  // Tapa attributes.
@@ -110,10 +128,9 @@ index e2eada24f9fc..8f5c69a759d2 100644
  }
  
 diff --git a/clang/lib/Sema/SemaStmtAttr.cpp b/clang/lib/Sema/SemaStmtAttr.cpp
-index 7f452d177c16..63955cce53d7 100644
 --- a/clang/lib/Sema/SemaStmtAttr.cpp
 +++ b/clang/lib/Sema/SemaStmtAttr.cpp
-@@ -189,6 +189,50 @@ static Attr *handleLoopHintAttr(Sema &S, Stmt *St, const ParsedAttr &A,
+@@ -188,6 +188,50 @@
    return LoopHintAttr::CreateImplicit(S.Context, Option, State, ValueExpr, A);
  }
  
@@ -164,10 +181,10 @@ index 7f452d177c16..63955cce53d7 100644
  namespace {
  class CallExprFinder : public ConstEvaluatedExprVisitor<CallExprFinder> {
    bool FoundAsmStmt = false;
-@@ -672,6 +716,10 @@ static Attr *ProcessStmtAttribute(Sema &S, Stmt *St, const ParsedAttr &A,
-     return handleNoConvergentAttr(S, St, A, Range);
-   case ParsedAttr::AT_Annotate:
+@@ -724,6 +768,10 @@
      return S.CreateAnnotationAttr(A);
+   case ParsedAttr::AT_Atomic:
+     return handleAtomicAttr(S, St, A, Range);
 +  case ParsedAttr::AT_TapaPipeline:
 +    return handleTapaPipelineAttr(S, St, A, Range);
 +  case ParsedAttr::AT_TapaUnroll:
@@ -175,30 +192,3 @@ index 7f452d177c16..63955cce53d7 100644
    default:
      if (Attr *AT = nullptr; A.getInfo().handleStmtAttribute(S, St, A, AT) !=
                              ParsedAttrInfo::NotHandled) {
-diff --git a/clang/include/clang/Basic/AttributeCommonInfo.h b/clang/include/clang/Basic/AttributeCommonInfo.h
-index deadbeef1..deadbeef2 100644
---- a/clang/include/clang/Basic/AttributeCommonInfo.h
-+++ b/clang/include/clang/Basic/AttributeCommonInfo.h
-@@ -68,5 +68,5 @@ enum Kind {
-     UnknownAttribute,
-   };
--  enum class Scope { NONE, CLANG, GNU, MSVC, OMP, HLSL, GSL, RISCV };
-+  enum class Scope { NONE, CLANG, GNU, MSVC, OMP, HLSL, GSL, RISCV, TAPA };
-   enum class AttrArgsInfo {
-     None,
-diff --git a/clang/lib/Basic/Attributes.cpp b/clang/lib/Basic/Attributes.cpp
-index deadbeef1..deadbeef2 100644
---- a/clang/lib/Basic/Attributes.cpp
-+++ b/clang/lib/Basic/Attributes.cpp
-@@ -187,7 +187,8 @@
-       .Case("hlsl", AttributeCommonInfo::Scope::HLSL)
-       .Case("msvc", AttributeCommonInfo::Scope::MSVC)
-       .Case("omp", AttributeCommonInfo::Scope::OMP)
--      .Case("riscv", AttributeCommonInfo::Scope::RISCV);
-+      .Case("riscv", AttributeCommonInfo::Scope::RISCV)
-+      .Case("tapa", AttributeCommonInfo::Scope::TAPA);
- }
- 
- unsigned AttributeCommonInfo::calculateAttributeSpellingListIndex() const {
--- 
-2.34.1
