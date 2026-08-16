@@ -30,7 +30,7 @@ Install these tools using your OS package manager. For Ubuntu:
 ```bash
 # Install bazel
 sudo apt-get install apt-transport-https ca-certificates gnupg
-curl -fsSL https://bazel.build/bazel-release.pub.gpg \
+curl -fsSL https://releases.bazel.build/bazel-release.pub.gpg \
   | gpg --dearmor | sudo tee /usr/share/keyrings/bazel-archive-keyring.gpg
 echo "deb [arch=amd64 signed-by=/usr/share/keyrings/bazel-archive-keyring.gpg] \
     https://storage.googleapis.com/bazel-apt stable jdk1.8" \
