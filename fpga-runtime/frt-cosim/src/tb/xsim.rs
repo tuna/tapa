@@ -270,6 +270,52 @@ mod tests {
         );
     }
 
+    /// The testbench programs a 64-bit mmap base address as two 32-bit
+    /// control writes, so the template has to split it with a mask and a
+    /// shift. Askama spells bitwise AND `bitand`; getting that expression
+    /// wrong still renders, and the damage only shows up as a DUT reading
+    /// the wrong address under xsim.
+    #[test]
+    fn splits_mmap_base_address_into_low_and_high_words() {
+        let spec = KernelSpec {
+            top_name: "Top".to_owned(),
+            mode: Mode::Vitis,
+            args: vec![ArgSpec {
+                name: "buf".to_owned(),
+                id: 0,
+                kind: ArgKind::Mmap {
+                    data_width: 32,
+                    addr_width: 64,
+                },
+            }],
+            part_num: None,
+            verilog_files: vec![],
+            tcl_files: vec![],
+            xci_files: vec![],
+            scalar_register_map: HashMap::from([("buf".to_owned(), 0x10)]),
+        };
+        let base_addresses = HashMap::from([("buf".to_owned(), 0xdead_beef_1234_5678_u64)]);
+        let tb = XsimTbGenerator::new(
+            &spec,
+            Path::new("/tmp/libfrt_dpi_xsim.so"),
+            &base_addresses,
+            &HashMap::new(),
+            "xcu55c-fsvh2892-2L-e",
+            XsimOptions::default(),
+        )
+        .render_tb()
+        .expect("render testbench");
+
+        assert!(
+            tb.contains("32'h12345678"),
+            "low word of the base address missing: {tb}"
+        );
+        assert!(
+            tb.contains("32'hdeadbeef"),
+            "high word of the base address missing: {tb}"
+        );
+    }
+
     #[test]
     fn widens_control_address_bus_for_large_register_map() {
         let spec = KernelSpec {

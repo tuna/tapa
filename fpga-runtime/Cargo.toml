@@ -134,7 +134,7 @@ unsafe_op_in_unsafe_fn = "deny"
 
 [workspace.dependencies]
 cbindgen = "0.28"
-askama = { version = "0.12", features = ["serde_json"] }
+askama = { version = "0.16", features = ["serde_json"] }
 frt-cosim = { path = "frt-cosim" }
 frt-dpi = { path = "frt-dpi" }
 frt-shm = { path = "frt-shm" }

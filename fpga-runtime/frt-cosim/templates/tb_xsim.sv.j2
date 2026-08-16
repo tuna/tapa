@@ -279,8 +279,8 @@ initial begin
   ctrl_write({{ control_addr_width }}'h04, 32'h0000_0001);
   ctrl_write({{ control_addr_width }}'h08, 32'h0000_0001);
 {% for arg in mmap_args %}
-  ctrl_write({{ control_addr_width }}'h{{ "{:02x}"|format(arg.reg_offset_lo) }}, 32'h{{ "{:08x}"|format(arg.base_addr & 0xffffffff) }});
-  ctrl_write({{ control_addr_width }}'h{{ "{:02x}"|format(arg.reg_offset_hi) }}, 32'h{{ "{:08x}"|format((arg.base_addr >> 32) & 0xffffffff) }});
+  ctrl_write({{ control_addr_width }}'h{{ "{:02x}"|format(arg.reg_offset_lo) }}, 32'h{{ "{:08x}"|format(arg.base_addr bitand 0xffffffff) }});
+  ctrl_write({{ control_addr_width }}'h{{ "{:02x}"|format(arg.reg_offset_hi) }}, 32'h{{ "{:08x}"|format((arg.base_addr >> 32) bitand 0xffffffff) }});
 {% endfor %}
 {% for arg in scalar_args %}
 {% for word in arg.words %}
