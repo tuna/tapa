@@ -1,15 +1,7 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
-From: Alexander Khabarov <alexander.khabarov@arm.com>
-Date: Thu, 19 Oct 2023 15:07:57 +0000
-Subject: [PATCH] Disable `zlib`, `zstd`, `mpfr` and `pfm`
-
-`zlib`, `zstd`, `mpfr`, `pfm` and `proto` are optional dependencies.
-
 diff --git a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
-index 0ee339526..51676d039 100644
 --- a/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
 +++ b/utils/bazel/llvm-project-overlay/libc/BUILD.bazel
-@@ -39,7 +39,7 @@ MEMORY_COPTS = [
+@@ -32,7 +32,7 @@
  # Flag documentation: https://bazel.build/extending/config
  string_flag(
      name = "mpfr",
@@ -19,42 +11,40 @@ index 0ee339526..51676d039 100644
          "disable",  # Skip tests that need mpfr
          "external",  # Build mpfr from source
 diff --git a/utils/bazel/llvm-project-overlay/lld/BUILD.bazel b/utils/bazel/llvm-project-overlay/lld/BUILD.bazel
-index fb6e2397c..2cb2fab44 100644
 --- a/utils/bazel/llvm-project-overlay/lld/BUILD.bazel
 +++ b/utils/bazel/llvm-project-overlay/lld/BUILD.bazel
-@@ -108,8 +108,8 @@ cc_library(
+@@ -106,8 +106,8 @@
          "//llvm:TargetParser",
          "//llvm:TransformUtils",
          "//llvm:config",
--        "@llvm_zlib//:zlib",
--        "@llvm_zstd//:zstd",
-+        # "@llvm_zlib//:zlib",
-+        # "@llvm_zstd//:zstd",
+-        "//third-party:zlib",
+-        "//third-party:zstd",
++        # "//third-party:zlib",
++        # "//third-party:zstd",
      ],
  )
-
+ 
 diff --git a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-index ef5299138..836d4049e 100644
 --- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
 +++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-@@ -291,14 +291,8 @@ cc_library(
-     deps = [
+@@ -324,14 +324,8 @@
          ":config",
          ":Demangle",
+         "//third-party/siphash",
 -        # We unconditionally depend on the custom LLVM zlib wrapper. This will
 -        # be an empty library unless zlib is enabled, in which case it will
 -        # both provide the necessary dependencies and configuration defines.
--        "@llvm_zlib//:zlib",
+-        "//third-party:zlib",
 -        # We unconditionally depend on the custom LLVM zstd wrapper. This will
 -        # be an empty library unless zstd is enabled, in which case it will
 -        # both provide the necessary dependencies and configuration defines.
--        "@llvm_zstd//:zstd",
-+        # "@llvm_zlib//:zlib",
-+        # "@llvm_zstd//:zstd",
+-        "//third-party:zstd",
++        # "//third-party:zlib",
++        # "//third-party:zstd",
      ],
  )
-
-@@ -2959,7 +2953,7 @@ cc_library(
+ 
+@@ -4434,7 +4428,7 @@
  # Flag documentation: https://bazel.build/extending/config
  string_flag(
      name = "pfm",
@@ -63,31 +53,3 @@ index ef5299138..836d4049e 100644
      values = [
          "disable",  # Don't include pfm at all
          "external",  # Build pfm from source
-diff --git a/utils/bazel/llvm-project-overlay/clang/BUILD.bazel b/utils/bazel/llvm-project-overlay/clang/BUILD.bazel
-index deadbeeef..deaadbeef 100644
---- a/utils/bazel/llvm-project-overlay/clang/BUILD.bazel
-+++ b/utils/bazel/llvm-project-overlay/clang/BUILD.bazel
-@@ -2780,23 +2780,0 @@
--proto_library(
--    name = "cxx-proto",
--    srcs = ["tools/clang-fuzzer/cxx_proto.proto"],
--)
--
--cc_proto_library(
--    name = "cxx_cc_proto",
--    deps = [":cxx-proto"],
--)
--
--cc_library(
--    name = "proto-to-cxx-lib",
--    srcs = ["tools/clang-fuzzer/proto-to-cxx/proto_to_cxx.cpp"],
--    hdrs = ["tools/clang-fuzzer/proto-to-cxx/proto_to_cxx.h"],
--    includes = ["tools/clang-fuzzer"],
--    deps = [":cxx_cc_proto"],
--)
--
--cc_binary(
--    name = "clang-proto-to-cxx",
--    srcs = ["tools/clang-fuzzer/proto-to-cxx/proto_to_cxx_main.cpp"],
--    deps = [":proto-to-cxx-lib"],
--)
