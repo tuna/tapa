@@ -25,8 +25,32 @@ fn redact_xml_payload(text: &str) -> String {
     }
 }
 
-fn redact_xml_event_based(text: &str) -> std::result::Result<String, quick_xml::Error> {
+/// Redact one buffered text node and emit it, re-escaping on the way out.
+fn flush_text(
+    pending: &mut Option<String>,
+    stack: &[String],
+    writer: &mut quick_xml::Writer<Vec<u8>>,
+) -> std::result::Result<(), quick_xml::Error> {
     use quick_xml::events::{BytesText, Event};
+
+    let Some(raw) = pending.take() else {
+        return Ok(());
+    };
+    let text_content = quick_xml::escape::unescape(&raw)?;
+    let redacted = if matches!(
+        stack.last().map(String::as_str),
+        Some("xilinx:coreCreationDateTime" | "coreCreationDateTime")
+    ) {
+        "1980-01-01T00:00:00Z".to_string()
+    } else {
+        redact_cpp_paths(&text_content)
+    };
+    writer.write_event(Event::Text(BytesText::new(&redacted)))?;
+    Ok(())
+}
+
+fn redact_xml_event_based(text: &str) -> std::result::Result<String, quick_xml::Error> {
+    use quick_xml::events::Event;
     use quick_xml::{Reader, Writer};
 
     let mut reader = Reader::from_str(text);
@@ -36,8 +60,38 @@ fn redact_xml_event_based(text: &str) -> std::result::Result<String, quick_xml::
     let mut buf = Vec::new();
     let mut stack: Vec<String> = Vec::new();
 
+    // quick-xml reports each `&ref;` as its own `GeneralRef` event, so one
+    // text node arrives as an alternating run of `Text` and `GeneralRef`.
+    // Redacting each piece separately would let a path containing an entity
+    // escape rewriting, so the run is reassembled in its original escaped
+    // form and only redacted once the node ends.
+    let mut pending: Option<String> = None;
+
     loop {
-        match reader.read_event_into(&mut buf) {
+        let event = reader.read_event_into(&mut buf);
+        // Keep accumulating while the text node continues.
+        match &event {
+            Ok(Event::Text(t)) => {
+                pending
+                    .get_or_insert_with(String::new)
+                    .push_str(&t.xml10_content()?);
+                buf.clear();
+                continue;
+            }
+            Ok(Event::GeneralRef(r)) => {
+                let entity = r.decode()?;
+                let pending = pending.get_or_insert_with(String::new);
+                pending.push('&');
+                pending.push_str(&entity);
+                pending.push(';');
+                buf.clear();
+                continue;
+            }
+            _ => {}
+        }
+        flush_text(&mut pending, &stack, &mut writer)?;
+
+        match event {
             Ok(Event::Eof) => break,
             Ok(Event::Start(mut e)) => {
                 redact_element_attrs(&mut e);
@@ -48,18 +102,6 @@ fn redact_xml_event_based(text: &str) -> std::result::Result<String, quick_xml::
             Ok(Event::Empty(mut e)) => {
                 redact_element_attrs(&mut e);
                 writer.write_event(Event::Empty(e))?;
-            }
-            Ok(Event::Text(t)) => {
-                let text_content = t.unescape()?.into_owned();
-                let redacted = if matches!(
-                    stack.last().map(String::as_str),
-                    Some("xilinx:coreCreationDateTime" | "coreCreationDateTime")
-                ) {
-                    "1980-01-01T00:00:00Z".to_string()
-                } else {
-                    redact_cpp_paths(&text_content)
-                };
-                writer.write_event(Event::Text(BytesText::new(&redacted)))?;
             }
             Ok(Event::End(e)) => {
                 stack.pop();
@@ -85,7 +127,7 @@ fn redact_element_attrs(elem: &mut BytesStart<'_>) {
                 .unwrap_or("")
                 .to_string();
             let value = attr
-                .unescape_value()
+                .normalized_value(quick_xml::XmlVersion::Implicit1_0)
                 .unwrap_or_else(|_| std::str::from_utf8(&attr.value).unwrap_or("").into())
                 .into_owned();
             (key, value)
@@ -247,6 +289,31 @@ mod tests {
         assert!(out.contains("<xilinx:coreCreationDateTime>1980-01-01T00:00:00Z"));
         assert!(out.contains("<SourceLocation>cpp/foo.cc</SourceLocation>"));
         assert!(out.contains(r#"ProjectID="0123456789abcdef0123456789abcdef""#));
+    }
+
+    /// Redaction decodes text and attributes on the way in and re-escapes on
+    /// the way out, so an entity that survives the trip must come back out
+    /// exactly once-escaped. Reading text without expanding entities still
+    /// round-trips every other case, and turns this one into `&amp;amp;`.
+    #[test]
+    fn redact_xml_preserves_entities_exactly_once() {
+        let input = r#"<root>
+  <SourceLocation>/work/a&amp;b/cpp/foo.cc</SourceLocation>
+  <meta note="x &lt; y &amp;&amp; y &gt; z"/>
+</root>"#;
+        let out = redact_xml_payload(input);
+        assert!(
+            out.contains("<SourceLocation>cpp/foo.cc</SourceLocation>"),
+            "path still redacted with entities present: {out}"
+        );
+        assert!(
+            !out.contains("&amp;amp;") && !out.contains("&amp;lt;"),
+            "entities double-escaped: {out}"
+        );
+        assert!(
+            out.contains(r#"note="x &lt; y &amp;&amp; y &gt; z""#),
+            "attribute entities not preserved: {out}"
+        );
     }
 
     #[test]
