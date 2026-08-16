@@ -1,0 +1,8 @@
+# Toolchain for direct `cargo` invocations (pre-commit's fmt/clippy hooks,
+# local builds). Must stay in sync with the pinned Bazel Rust toolchain in
+# MODULE.bazel — bump both together. Ignored when cargo is not rustup-managed.
+[toolchain]
+channel = "1.97.1"
+# The hooks named above are not part of a default toolchain install; listing
+# them here makes `rustup` fetch them with the channel itself.
+components = ["clippy", "rustfmt"]

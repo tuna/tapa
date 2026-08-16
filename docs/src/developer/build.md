@@ -23,6 +23,10 @@ To build TAPA from source, you need:
 - [Libstdc++](https://gcc.gnu.org/libstdc++/) matching the most recent GCC
   version installed on your system
 - [Python](https://www.python.org) 3 or later for Bazel
+- [Rust](https://www.rust-lang.org) 1.97.1 (via [rustup](https://rustup.rs)) for
+  building via `cargo` directly — pre-commit's fmt/clippy hooks use it. The
+  version is pinned in `rust-toolchain.toml` and must match the Bazel toolchain
+  pinned in `MODULE.bazel`; bump both together.
 - [Other TAPA dependencies](../start/installation.md)
 
 Install these tools using your OS package manager. For Ubuntu:
@@ -36,6 +40,9 @@ echo "deb [arch=amd64 signed-by=/usr/share/keyrings/bazel-archive-keyring.gpg] \
     https://storage.googleapis.com/bazel-apt stable jdk1.8" \
   | sudo tee /etc/apt/sources.list.d/bazel.list
 sudo apt-get install bazel
+
+# Install Rust (rustup honors the version pinned in rust-toolchain.toml)
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 # Install other tools
 sudo apt-get install binutils git python3 coinor-cbc
