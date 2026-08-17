@@ -2,7 +2,6 @@
 // All rights reserved. The contributor(s) of this file has/have agreed to the
 // RapidStream Contributor License Agreement.
 
-#include <ap_int.h>
 #include <cassert>
 #include <cstdio>
 #include <cstring>
@@ -25,14 +24,13 @@ using float_v8 = tapa::vec_t<float, 8>;
 using float_v2 = tapa::vec_t<float, 2>;
 
 struct MultXVec {
-  tapa::vec_t<ap_uint<18>, 8> row;
+  tapa::vec_t<tapa::u<18>, 8> row;
   float_v8 axv;
 };
 
 template <typename T, typename R>
 inline void async_read(tapa::async_mmap<T>& A, tapa::ostream<T>& fifo_A,
                        const R A_len, R& i_req, R& i_resp) {
-#pragma HLS inline
   if ((i_req < A_len) & !A.read_addr.full()) {
     A.read_addr.try_write(i_req);
     ++i_req;
@@ -57,13 +55,11 @@ void read_edge_list_ptr(const int num_ite, const int M, const int P_N,
 
   const int num_ite_plus1 = num_ite + 1;
 l_rp:
-  for (int rp = 0; rp < rp_time; rp++) {
-#pragma HLS loop_flatten off
-#pragma HLS loop_tripcount min = 1 max = 16
+  [[tapa::tripcount(1, 16)]] [[tapa::flatten(false)]] for (int rp = 0;
+                                                           rp < rp_time; rp++) {
   rd_ptr:
-    for (int i_req = 0, i_resp = 0; i_resp < num_ite_plus1;) {
-#pragma HLS loop_tripcount min = 1 max = 800
-#pragma HLS pipeline II = 1
+    [[tapa::pipeline(1)]] [[tapa::tripcount(
+        1, 800)]] for (int i_req = 0, i_resp = 0; i_resp < num_ite_plus1;) {
       async_read(edge_list_ptr, PE_inst, num_ite_plus1, i_req, i_resp);
     }
   }
@@ -75,36 +71,32 @@ void read_X(const int P_N, const int K, tapa::async_mmap<float_v16>& vec_X,
   const int num_ite_X = (K + 15) >> 4;
 
 l_rp:
-  for (int rp = 0; rp < rp_time; rp++) {
-#pragma HLS loop_flatten off
-#pragma HLS loop_tripcount min = 1 max = 16
+  [[tapa::tripcount(1, 16)]] [[tapa::flatten(false)]] for (int rp = 0;
+                                                           rp < rp_time; rp++) {
   rd_X:
-    for (int i_req = 0, i_resp = 0; i_resp < num_ite_X;) {
-#pragma HLS loop_tripcount min = 1 max = 500000
-#pragma HLS pipeline II = 1
+    [[tapa::pipeline(1)]] [[tapa::tripcount(
+        1, 500000)]] for (int i_req = 0, i_resp = 0; i_resp < num_ite_X;) {
       async_read(vec_X, fifo_X, num_ite_X, i_req, i_resp);
     }
   }
 }
 
-void read_A(const int P_N, const int A_len, tapa::async_mmap<ap_uint<512>>& A,
-            tapa::ostream<ap_uint<512>>& fifo_A) {
+void read_A(const int P_N, const int A_len, tapa::async_mmap<tapa::u<512>>& A,
+            tapa::ostream<tapa::u<512>>& fifo_A) {
   const int rp_time = (P_N == 0) ? 1 : P_N;
 l_rp:
-  for (int rp = 0; rp < rp_time; rp++) {
-#pragma HLS loop_flatten off
-#pragma HLS loop_tripcount min = 1 max = 16
+  [[tapa::tripcount(1, 16)]] [[tapa::flatten(false)]] for (int rp = 0;
+                                                           rp < rp_time; rp++) {
   rd_A:
-    for (int i_req = 0, i_resp = 0; i_resp < A_len;) {
-#pragma HLS loop_tripcount min = 1 max = 10000
-#pragma HLS pipeline II = 1
+    [[tapa::pipeline(1)]] [[tapa::tripcount(
+        1, 10000)]] for (int i_req = 0, i_resp = 0; i_resp < A_len;) {
       async_read(A, fifo_A, A_len, i_req, i_resp);
     }
   }
 }
 
 void PEG_Xvec(tapa::istream<int>& fifo_inst_in,
-              tapa::istream<ap_uint<512>>& fifo_A,
+              tapa::istream<tapa::u<512>>& fifo_A,
               tapa::istream<float_v16>& fifo_X_in,
               tapa::ostream<int>& fifo_inst_out,
               tapa::ostream<float_v16>& fifo_X_out,
@@ -126,31 +118,25 @@ void PEG_Xvec(tapa::istream<int>& fifo_inst_in,
   fifo_inst_out_to_Yvec.write(rp_time);
 
 l_rp:
-  for (int rp = 0; rp < rp_time; rp++) {
-#pragma HLS loop_flatten off
-#pragma HLS loop_tripcount min = 1 max = 16
-
-    float local_X[4][WINDOW_SIZE];
-#pragma HLS bind_storage variable = local_X latency = 2 type = RAM_2P impl = \
-    BRAM
-#pragma HLS array_partition variable = local_X complete dim = 1
-#pragma HLS array_partition variable = local_X cyclic factor = \
-    X_PARTITION_FACTOR dim = 2
+  [[tapa::tripcount(1, 16)]] [[tapa::flatten(false)]] for (int rp = 0;
+                                                           rp < rp_time; rp++) {
+    [[tapa::storage("RAM_2P", "BRAM", 2)]] [[tapa::partition(
+        "complete", -1,
+        1)]] [[tapa::partition("cyclic", X_PARTITION_FACTOR,
+                               2)]] float local_X[4][WINDOW_SIZE];
 
     auto start_32 = fifo_inst_in.read();
     fifo_inst_out.write(start_32);
     fifo_inst_out_to_Yvec.write(start_32);
 
   main:
-    for (int i = 0; i < NUM_ITE; ++i) {
-#pragma HLS loop_tripcount min = 1 max = 49
-
+    [[tapa::tripcount(1, 49)]] for (int i = 0; i < NUM_ITE; ++i) {
       // fill onchip X
     read_X:
-      for (int j = 0; (j < WINDOW_SIZE_div_16) &
-                      (j < ((K + 15) >> 4) - i * WINDOW_SIZE_div_16);) {
-#pragma HLS loop_tripcount min = 1 max = 512
-#pragma HLS pipeline II = 1
+      [[tapa::pipeline(1)]] [[tapa::tripcount(
+          1, 512)]] for (int j = 0;
+                         (j < WINDOW_SIZE_div_16) &
+                         (j < ((K + 15) >> 4) - i * WINDOW_SIZE_div_16);) {
         if (!fifo_X_in.empty() & !fifo_X_out.full()) {
           float_v16 x;
           fifo_X_in.try_read(x);
@@ -170,19 +156,18 @@ l_rp:
       fifo_inst_out_to_Yvec.write(end_32);
 
     computation:
-      for (int j = start_32; j < end_32;) {
-#pragma HLS loop_tripcount min = 1 max = 200
-#pragma HLS pipeline II = 1
+      [[tapa::pipeline(1)]] [[tapa::tripcount(1, 200)]] for (int j = start_32;
+                                                             j < end_32;) {
         if (!fifo_A.empty()) {
-          ap_uint<512> a_pes;
+          tapa::u<512> a_pes;
           fifo_A.try_read(a_pes);
           MultXVec raxv;
 
           for (int p = 0; p < 8; ++p) {
-            ap_uint<64> a = a_pes(63 + p * 64, p * 64);
-            ap_uint<14> a_col = a(63, 50);
-            ap_uint<18> a_row = a(49, 32);
-            ap_uint<32> a_val = a(31, 0);
+            tapa::u<64> a = a_pes(63 + p * 64, p * 64);
+            tapa::u<14> a_col = a(63, 50);
+            tapa::u<18> a_row = a(49, 32);
+            tapa::u<32> a_val = a(31, 0);
 
             raxv.row[p] = a_row;
             if (a_row[17] == 0) {
@@ -199,19 +184,18 @@ l_rp:
   }
 }
 
-inline void PUcore_Ymtx(ap_uint<18> addr_c, float val_d0_f,
-                        ap_uint<64> local_C_pe0[URAM_DEPTH]) {
-#pragma HLS inline
-  ap_uint<64> c_val_u64 = local_C_pe0[addr_c(17, 1)];
+inline void PUcore_Ymtx(tapa::u<18> addr_c, float val_d0_f,
+                        tapa::u<64> local_C_pe0[URAM_DEPTH]) {
+  tapa::u<64> c_val_u64 = local_C_pe0[addr_c(17, 1)];
 
-  ap_uint<32> c_val_d0_u = c_val_u64(31, 0);
-  ap_uint<32> c_val_d1_u = c_val_u64(63, 32);
+  tapa::u<32> c_val_d0_u = c_val_u64(31, 0);
+  tapa::u<32> c_val_d1_u = c_val_u64(63, 32);
 
-  ap_uint<32> c_val_u = (addr_c[0]) ? c_val_d1_u : c_val_d0_u;
+  tapa::u<32> c_val_u = (addr_c[0]) ? c_val_d1_u : c_val_d0_u;
 
   float c_val_plus_d0_f = tapa::bit_cast<float>(c_val_u) + val_d0_f;
 
-  c_val_u = tapa::bit_cast<ap_uint<32>>(c_val_plus_d0_f);
+  c_val_u = tapa::bit_cast<tapa::u<32>>(c_val_plus_d0_f);
 
   if (addr_c[0]) {
     c_val_d1_u = c_val_u;
@@ -235,21 +219,17 @@ void PEG_Yvec(tapa::istream<int>& fifo_inst_in,
       (M + NUM_CH_SPARSE_mult_16 - 1) / NUM_CH_SPARSE_mult_16;
   const int num_v_out = (M + NUM_CH_SPARSE_mult_2 - 1) / NUM_CH_SPARSE_mult_2;
 
-  ap_uint<64> local_C[8][URAM_DEPTH];
-#pragma HLS bind_storage variable = local_C type = RAM_2P impl = \
-    URAM latency = 1
-#pragma HLS array_partition complete variable = local_C dim = 1
+  [[tapa::storage("RAM_2P", "URAM", 1)]] [[tapa::partition(
+      "complete", -1, 1)]] tapa::u<64> local_C[8][URAM_DEPTH];
 
 l_rp:
-  for (int rp = 0; rp < rp_time; rp++) {
-#pragma HLS loop_flatten off
-#pragma HLS loop_tripcount min = 1 max = 16
-
+  [[tapa::tripcount(1, 16)]] [[tapa::flatten(false)]] for (int rp = 0;
+                                                           rp < rp_time; rp++) {
     // init local C
   init_C:
-    for (int i = 0; i < num_v_init; ++i) {
-#pragma HLS loop_tripcount min = 1 max = 800
-#pragma HLS pipeline II = 1
+    [[tapa::pipeline(1)]] [[tapa::tripcount(1, 800)]] for (int i = 0;
+                                                           i < num_v_init;
+                                                           ++i) {
       for (int p = 0; p < 8; ++p) {
         local_C[p][i] = 0;
       }
@@ -258,17 +238,16 @@ l_rp:
     auto start_32 = fifo_inst_in.read();
 
   main:
-    for (int i = 0; i < NUM_ITE; ++i) {
-#pragma HLS loop_tripcount min = 1 max = 49
-
+    [[tapa::tripcount(1, 49)]] for (int i = 0; i < NUM_ITE; ++i) {
       // computation
       const auto end_32 = fifo_inst_in.read();
 
     computation:
-      for (int j = start_32; j < end_32;) {
-#pragma HLS loop_tripcount min = 1 max = 200
-#pragma HLS pipeline II = 1
-#pragma HLS dependence true variable = local_C distance = DEP_DIST_LOAD_STORE
+      [[tapa::dependence(
+          "local_C", "", "", "", 1,
+          "DEP_DIST_LOAD_STORE")]] [[tapa::
+                                         pipeline(1)]] [[tapa::tripcount(
+          1, 200)]] for (int j = start_32; j < end_32;) {
         if (!fifo_aXvec.empty()) {
           MultXVec raxv;
           fifo_aXvec.try_read(raxv);
@@ -286,13 +265,12 @@ l_rp:
 
     // cout << "PE = " << pe_idx << endl;
   write_C_outer:
-    for (int i = 0, c_idx = 0; i < num_v_out; ++i) {
-#pragma HLS loop_tripcount min = 1 max = 1800
-#pragma HLS pipeline II = 1
+    [[tapa::pipeline(1)]] [[tapa::tripcount(
+        1, 1800)]] for (int i = 0, c_idx = 0; i < num_v_out; ++i) {
       float_v2 out_v;
-      ap_uint<64> u_64 = local_C[c_idx][i >> 3];
+      tapa::u<64> u_64 = local_C[c_idx][i >> 3];
       for (int d = 0; d < 2; ++d) {
-        ap_uint<32> u_32_d = u_64(31 + 32 * d, 32 * d);
+        tapa::u<32> u_32_d = u_64(31 + 32 * d, 32 * d);
         out_v[d] = tapa::bit_cast<float>(u_32_d);
       }
       fifo_Y_out.write(out_v);
@@ -314,9 +292,8 @@ void Arbiter_Y(const int P_N, const int M,
   const int num_out = (M + 15) >> 4;
   const int num_ite_Y = num_pe_output * rp_time;
 aby:
-  for (int i = 0, c_idx = 0, o_idx = 0; i < num_ite_Y;) {
-#pragma HLS loop_tripcount min = 1 max = 1800
-#pragma HLS pipeline II = 1
+  [[tapa::pipeline(1)]] [[tapa::tripcount(
+      1, 1800)]] for (int i = 0, c_idx = 0, o_idx = 0; i < num_ite_Y;) {
     if (!fifo_in[c_idx].empty() & !fifo_out.full()) {
       float_v2 tmp;
       fifo_in[c_idx].try_read(tmp);
@@ -338,15 +315,13 @@ aby:
 
 void Merger_Y(tapa::istreams<float_v2, 8>& fifo_in,
               tapa::ostream<float_v16>& fifo_out) {
-  for (;;) {
-#pragma HLS pipeline II = 1
+  [[tapa::pipeline(1)]] for (;;) {
     bool flag_nop = fifo_out.full();
     for (int i = 0; i < 8; ++i) {
       flag_nop |= fifo_in[i].empty();
     }
     if (!flag_nop) {
-      float_v16 tmpv16;
-#pragma HLS aggregate variable = tmpv16
+      [[tapa::aggregate]] float_v16 tmpv16;
       for (int i = 0; i < 8; ++i) {
         float_v2 tmp;
         fifo_in[i].try_read(tmp);
@@ -366,8 +341,7 @@ void FloatvMultConst(const int P_N, const int M, const int alpha_u,
   const int rp_time = (P_N == 0) ? 1 : P_N;
   const int num_ite_Y = ((M + 15) >> 4) * rp_time;
 cc:
-  for (int i = 0; i < num_ite_Y;) {
-#pragma HLS pipeline II = 1
+  [[tapa::pipeline(1)]] for (int i = 0; i < num_ite_Y;) {
     float_v16 tmp;
     bool read_ready = fifo_in.try_read(tmp);
     if (read_ready) {
@@ -384,13 +358,11 @@ void read_Y(const int P_N, const int M, tapa::async_mmap<float_v16>& Y,
   const int num_ite_Y = (M + 15) >> 4;
 
 l_rp:
-  for (int rp = 0; rp < rp_time; rp++) {
-#pragma HLS loop_flatten off
-#pragma HLS loop_tripcount min = 1 max = 16
+  [[tapa::tripcount(1, 16)]] [[tapa::flatten(false)]] for (int rp = 0;
+                                                           rp < rp_time; rp++) {
   rd_Y:
-    for (int i_req = 0, i_resp = 0; i_resp < num_ite_Y;) {
-#pragma HLS loop_tripcount min = 1 max = 500000
-#pragma HLS pipeline II = 1
+    [[tapa::pipeline(1)]] [[tapa::tripcount(
+        1, 500000)]] for (int i_req = 0, i_resp = 0; i_resp < num_ite_Y;) {
       async_read(Y, fifo_Y, num_ite_Y, i_req, i_resp);
     }
   }
@@ -400,8 +372,7 @@ void FloatvAddFloatv(tapa::istream<float_v16>& fifo_in0,
                      tapa::istream<float_v16>& fifo_in1,
                      tapa::ostream<float_v16>& fifo_out) {
 cc:
-  for (;;) {
-#pragma HLS pipeline II = 1
+  [[tapa::pipeline(1)]] for (;;) {
     bool flag_nop = fifo_in0.empty() | fifo_in1.empty();
     if (!flag_nop) {
       float_v16 tmp0;
@@ -420,13 +391,11 @@ void write_Y(const int P_N, const int M, tapa::istream<float_v16>& fifo_Y,
   const int num_ite_Y = (M + 15) >> 4;
 
 l_rp:
-  for (int rp = 0; rp < rp_time; rp++) {
-#pragma HLS loop_flatten off
-#pragma HLS loop_tripcount min = 1 max = 16
+  [[tapa::tripcount(1, 16)]] [[tapa::flatten(false)]] for (int rp = 0;
+                                                           rp < rp_time; rp++) {
   wr_C:
-    for (int i_req = 0, i_resp = 0; i_resp < num_ite_Y;) {
-#pragma HLS loop_tripcount min = 1 max = 500000
-#pragma HLS pipeline II = 1
+    [[tapa::pipeline(1)]] [[tapa::tripcount(
+        1, 500000)]] for (int i_req = 0, i_resp = 0; i_resp < num_ite_Y;) {
       if ((i_req < num_ite_Y) & !fifo_Y.empty() & !Y_out.write_addr.full() &
           !Y_out.write_data.full()) {
         Y_out.write_addr.try_write(i_req);
@@ -444,16 +413,14 @@ l_rp:
 }
 
 void black_hole_int(tapa::istream<int>& fifo_in) {
-  for (;;) {
-#pragma HLS pipeline II = 1
+  [[tapa::pipeline(1)]] for (;;) {
     int tmp;
     fifo_in.try_read(tmp);
   }
 }
 
 void black_hole_float_v16(tapa::istream<float_v16>& fifo_in) {
-  for (;;) {
-#pragma HLS pipeline II = 1
+  [[tapa::pipeline(1)]] for (;;) {
     float_v16 tmp;
     fifo_in.try_read(tmp);
   }
@@ -461,7 +428,7 @@ void black_hole_float_v16(tapa::istream<float_v16>& fifo_in) {
 
 void Serpens(tapa::mmap<int> edge_list_ptr,
 
-             tapa::mmaps<ap_uint<512>, NUM_CH_SPARSE> edge_list_ch,
+             tapa::mmaps<tapa::u<512>, NUM_CH_SPARSE> edge_list_ch,
 
              tapa::mmap<float_v16> vec_X,
 
@@ -476,7 +443,7 @@ void Serpens(tapa::mmap<int> edge_list_ptr,
   tapa::streams<float_v16, NUM_CH_SPARSE + 1, FIFO_DEPTH> fifo_X_pe(
       "fifo_X_pe");
 
-  tapa::streams<ap_uint<512>, NUM_CH_SPARSE, FIFO_DEPTH> fifo_A("fifo_A");
+  tapa::streams<tapa::u<512>, NUM_CH_SPARSE, FIFO_DEPTH> fifo_A("fifo_A");
 
   tapa::streams<int, NUM_CH_SPARSE, FIFO_DEPTH> Yvec_inst("Yvec_inst");
 

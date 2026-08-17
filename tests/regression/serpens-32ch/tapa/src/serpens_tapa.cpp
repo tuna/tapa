@@ -2,7 +2,6 @@
 // All rights reserved. The contributor(s) of this file has/have agreed to the
 // RapidStream Contributor License Agreement.
 
-#include <ap_int.h>
 #include <tapa.h>
 #include <cassert>
 #include <cstdio>
@@ -22,55 +21,46 @@ const int DEP_DIST_LOAD_STORE = 10;
 const int B_PARTITION_FACTOR = 8;
 const int URAM_DEPTH = 8192;
 
+// The register idiom the old HLS_REG spelled with vendor pragmas.
 template <class T>
 T HLS_REG(T in) {
-#pragma HLS inline off
-#pragma HLS pipeline II = 1
-#pragma HLS LATENCY min = 1 max = 1
-  return in;
+  return tapa::reg(in);
 }
 
-float uint32_to_float(ap_uint<32> u) {
-#pragma HLS inline
+float uint32_to_float(tapa::u<32> u) {
   float* tmpPointer_v = (float*)&u;
   return (*tmpPointer_v);
 }
 
-ap_uint<32> float_to_uint32(float u) {
-#pragma HLS inline
-  ap_uint<32>* tmpPointer_v = (ap_uint<32>*)&u;
+tapa::u<32> float_to_uint32(float u) {
+  tapa::u<32>* tmpPointer_v = (tapa::u<32>*)&u;
   return (*tmpPointer_v);
 }
 
-void read_edge_list_ptr(const ap_uint<32> num_ite, const ap_uint<32> M,
-                        const ap_uint<16> rp_time, const ap_uint<32> K,
-                        const ap_uint<32> alpha_u,
-                        tapa::async_mmap<ap_uint<32>>& edge_list_ptr,
-                        tapa::ostream<ap_uint<32>>& fifo_edge_list_ptr) {
-#pragma HLS inline off
+void read_edge_list_ptr(const tapa::u<32> num_ite, const tapa::u<32> M,
+                        const tapa::u<16> rp_time, const tapa::u<32> K,
+                        const tapa::u<32> alpha_u,
+                        tapa::async_mmap<tapa::u<32>>& edge_list_ptr,
+                        tapa::ostream<tapa::u<32>>& fifo_edge_list_ptr) {
   fifo_edge_list_ptr.write(num_ite);
   fifo_edge_list_ptr.write(M);
-  const ap_uint<32> P32 = ((ap_uint<32>)rp_time) << 16;
+  const tapa::u<32> P32 = ((tapa::u<32>)rp_time) << 16;
   fifo_edge_list_ptr.write(P32);
   fifo_edge_list_ptr.write(K);
   fifo_edge_list_ptr.write(alpha_u);
 
 l_rp:
-  for (ap_uint<16> rp = 0; rp < rp_time; rp++) {
-#pragma HLS loop_flatten off
-#pragma HLS loop_tripcount min = 1 max = 16
+  [[tapa::tripcount(1, 16)]] [[tapa::flatten(false)]] for (tapa::u<16> rp = 0;
+                                                           rp < rp_time; rp++) {
     //     rd_ptr:
-    //         for(ap_uint<32> i = 0; i < num_ite + 1; i++) {
-    // #pragma HLS loop_tripcount min=1 max=800
-    // #pragma HLS pipeline II=1
-    //             ap_uint<32> tmp = edge_list_ptr[i];
+    //         for(tapa::u<32> i = 0; i < num_ite + 1; i++) {
+    //             tapa::u<32> tmp = edge_list_ptr[i];
     //             fifo_edge_list_ptr.write(tmp);
     //         }
 
   rd_ptr:
-    for (ap_uint<32> i_req = 0, i_resp = 0; i_resp <= num_ite;) {
-#pragma HLS loop_tripcount min = 1 max = 800
-#pragma HLS pipeline II = 1
+    [[tapa::pipeline(1)]] [[tapa::tripcount(
+        1, 800)]] for (tapa::u<32> i_req = 0, i_resp = 0; i_resp <= num_ite;) {
       if (i_req <= num_ite && i_req < i_resp + 64 &&
           edge_list_ptr.read_addr.try_write(i_req)) {
         ++i_req;
@@ -83,26 +73,21 @@ l_rp:
   }
 }
 
-void read_A(tapa::async_mmap<ap_uint<512>>& A,
-            tapa::ostream<ap_uint<512>>& fifo_A, const ap_uint<32> A_len,
-            const ap_uint<16> rp_time) {
-#pragma HLS inline off
+void read_A(tapa::async_mmap<tapa::u<512>>& A,
+            tapa::ostream<tapa::u<512>>& fifo_A, const tapa::u<32> A_len,
+            const tapa::u<16> rp_time) {
 l_rp:
-  for (ap_uint<16> rp = 0; rp < rp_time; rp++) {
-#pragma HLS loop_flatten off
-#pragma HLS loop_tripcount min = 1 max = 16
+  [[tapa::tripcount(1, 16)]] [[tapa::flatten(false)]] for (tapa::u<16> rp = 0;
+                                                           rp < rp_time; rp++) {
     //     rd_A:
-    //         for(ap_uint<32> i = 0; i < A_len; i++) {
-    // #pragma HLS loop_tripcount min=1 max=10000
-    // #pragma HLS pipeline II=1
-    //             ap_uint<512> tmp_A = A[i];
+    //         for(tapa::u<32> i = 0; i < A_len; i++) {
+    //             tapa::u<512> tmp_A = A[i];
     //             fifo_A.write(tmp_A);
     //         }
 
   rd_A:
-    for (ap_uint<32> i_req = 0, i_resp = 0; i_resp < A_len;) {
-#pragma HLS loop_tripcount min = 1 max = 10000
-#pragma HLS pipeline II = 1
+    [[tapa::pipeline(1)]] [[tapa::tripcount(
+        1, 10000)]] for (tapa::u<32> i_req = 0, i_resp = 0; i_resp < A_len;) {
       if (i_req < A_len && i_req < i_resp + 64 &&
           A.read_addr.try_write(i_req)) {
         ++i_req;
@@ -115,28 +100,24 @@ l_rp:
   }
 }
 
-void read_X(tapa::async_mmap<ap_uint<512>>& X,
-            tapa::ostream<ap_uint<512>>& fifo_X, const ap_uint<32> K,
-            const ap_uint<16> rp_time) {
-#pragma HLS inline off
-  const ap_uint<32> num_ite_X = ((K + 15) >> 4);
+void read_X(tapa::async_mmap<tapa::u<512>>& X,
+            tapa::ostream<tapa::u<512>>& fifo_X, const tapa::u<32> K,
+            const tapa::u<16> rp_time) {
+  const tapa::u<32> num_ite_X = ((K + 15) >> 4);
 
 l_rp:
-  for (ap_uint<16> rp = 0; rp < rp_time; rp++) {
-#pragma HLS loop_flatten off
-#pragma HLS loop_tripcount min = 1 max = 16
+  [[tapa::tripcount(1, 16)]] [[tapa::flatten(false)]] for (tapa::u<16> rp = 0;
+                                                           rp < rp_time; rp++) {
     //     rd_X:
-    //         for(ap_uint<32> i = 0; i < num_ite_X; i++) {
-    // #pragma HLS loop_tripcount min=1 max=500000
-    // #pragma HLS pipeline II=1
-    //             ap_uint<512> tmp_X = X[i];
+    //         for(tapa::u<32> i = 0; i < num_ite_X; i++) {
+    //             tapa::u<512> tmp_X = X[i];
     //             fifo_X.write(tmp_X);
     //         }
 
   rd_X:
-    for (ap_uint<32> i_req = 0, i_resp = 0; i_resp < num_ite_X;) {
-#pragma HLS loop_tripcount min = 1 max = 500000
-#pragma HLS pipeline II = 1
+    [[tapa::pipeline(1)]] [[tapa::tripcount(
+        1, 500000)]] for (tapa::u<32> i_req = 0, i_resp = 0;
+                          i_resp < num_ite_X;) {
       if (i_req < num_ite_X && i_req < i_resp + 64 &&
           X.read_addr.try_write(i_req)) {
         ++i_req;
@@ -149,15 +130,14 @@ l_rp:
   }
 }
 
-void PUcore(ap_uint<18>& addr_c, float& a_val_f, float& b_val_f,
-            ap_uint<64>* local_C_pe0) {
-#pragma HLS inline
-  ap_uint<64> c_val_u64 = local_C_pe0[addr_c(17, 1)];
+void PUcore(tapa::u<18>& addr_c, float& a_val_f, float& b_val_f,
+            tapa::u<64>* local_C_pe0) {
+  tapa::u<64> c_val_u64 = local_C_pe0[addr_c(17, 1)];
 
-  ap_uint<32> c_val_d0_u = c_val_u64(31, 0);
-  ap_uint<32> c_val_d1_u = c_val_u64(63, 32);
+  tapa::u<32> c_val_d0_u = c_val_u64(31, 0);
+  tapa::u<32> c_val_d1_u = c_val_u64(63, 32);
 
-  ap_uint<32> c_val_u = (addr_c[0]) ? c_val_d1_u : c_val_d0_u;
+  tapa::u<32> c_val_u = (addr_c[0]) ? c_val_d1_u : c_val_d0_u;
   float c_val_f = uint32_to_float(c_val_u);
   c_val_f += HLS_REG(a_val_f) * b_val_f;
   c_val_u = float_to_uint32(c_val_f);
@@ -172,32 +152,28 @@ void PUcore(ap_uint<18>& addr_c, float& a_val_f, float& b_val_f,
   local_C_pe0[addr_c(17, 1)] = c_val_u64;
 }
 
-void PEcore(ap_uint<14>& addr_b, ap_uint<18>& addr_c, ap_uint<32>& a_val_u,
+void PEcore(tapa::u<14>& addr_b, tapa::u<18>& addr_c, tapa::u<32>& a_val_u,
 
-            ap_uint<64>* local_C_pe0,
+            tapa::u<64>* local_C_pe0,
 
-            ap_uint<32>* local_B_pe0_pe1) {
-#pragma HLS inline
-  if (addr_c != ((ap_uint<18>)0x3FFFF)) {
+            tapa::u<32>* local_B_pe0_pe1) {
+  if (addr_c != ((tapa::u<18>)0x3FFFF)) {
     float a_val_f = uint32_to_float(a_val_u);
-    ap_uint<32> b_val_u = local_B_pe0_pe1[addr_b];
+    tapa::u<32> b_val_u = local_B_pe0_pe1[addr_b];
     float b_val_f = uint32_to_float(b_val_u);
 
     PUcore(addr_c, a_val_f, b_val_f, local_C_pe0);
   }
 }
 
-void peg2mult(ap_uint<64> opa64, ap_uint<32> alpha_u, ap_uint<64>& mult64) {
-#pragma HLS inline
+void peg2mult(tapa::u<64> opa64, tapa::u<32> alpha_u, tapa::u<64>& mult64) {
   float alpha_f = uint32_to_float(alpha_u);
-  ap_uint<64> c_out;
+  tapa::u<64> c_out;
 
-  float op_a[2];
-#pragma HLS array_partition variable = op_a complete
-  float op_result[2];
-#pragma HLS array_partition variable = op_result complete
+  [[tapa::partition("complete")]] float op_a[2];
+  [[tapa::partition("complete")]] float op_result[2];
 
-  for (ap_uint<2> p = 0; p < 2; ++p) {
+  for (tapa::u<2> p = 0; p < 2; ++p) {
     op_a[p] = uint32_to_float(opa64(31 + p * 32, p * 32));
     op_result[p] = HLS_REG(alpha_f) * op_a[p];
     c_out(31 + p * 32, p * 32) = float_to_uint32(op_result[p]);
@@ -205,28 +181,26 @@ void peg2mult(ap_uint<64> opa64, ap_uint<32> alpha_u, ap_uint<64>& mult64) {
   mult64 = HLS_REG(c_out);
 }
 
-void PEG_true(tapa::istream<ap_uint<32>>& fifo_inst,
-              tapa::istream<ap_uint<512>>& fifo_A,
-              tapa::istream<ap_uint<512>>& fifo_X,        // 16 FP32
-              tapa::ostream<ap_uint<32>>& fifo_inst_out,  // to next PE
-              tapa::ostream<ap_uint<512>>& fifo_X_out,    // to next PE, 16 FP32
-              tapa::ostream<ap_uint<64>>& fifo_C_out) {
-#pragma HLS inline off
+void PEG_true(tapa::istream<tapa::u<32>>& fifo_inst,
+              tapa::istream<tapa::u<512>>& fifo_A,
+              tapa::istream<tapa::u<512>>& fifo_X,        // 16 FP32
+              tapa::ostream<tapa::u<32>>& fifo_inst_out,  // to next PE
+              tapa::ostream<tapa::u<512>>& fifo_X_out,    // to next PE, 16 FP32
+              tapa::ostream<tapa::u<64>>& fifo_C_out) {
   bool SEND_META = true;
-  ap_uint<32> NUM_ITE;
-  ap_uint<32> M;
-  ap_uint<32> P32;
-  ap_uint<32> K;
-  ap_uint<32> alpha_u;
+  tapa::u<32> NUM_ITE;
+  tapa::u<32> M;
+  tapa::u<32> P32;
+  tapa::u<32> K;
+  tapa::u<32> alpha_u;
 
-  ap_uint<32> parameter;
+  tapa::u<32> parameter;
 w_ITE:
-  for (ap_uint<3> i = 0; i < 5;) {
-#pragma HLS loop_tripcount min = 1 max = 10
-#pragma HLS pipeline II = 1
+  [[tapa::pipeline(1)]] [[tapa::tripcount(1, 10)]] for (tapa::u<3> i = 0;
+                                                        i < 5;) {
     bool parameter_ready = fifo_inst.try_read(parameter);
     if (parameter_ready) {
-      ap_uint<32> parameter_delay = HLS_REG(parameter);
+      tapa::u<32> parameter_delay = HLS_REG(parameter);
       switch (i) {
         case 0:
           NUM_ITE = parameter_delay;
@@ -249,45 +223,34 @@ w_ITE:
     }
   }
 
-  const ap_uint<16> rp_time = P32(31, 16);
+  const tapa::u<16> rp_time = P32(31, 16);
 
   if (SEND_META) {
-    ap_uint<64> meta64;
+    tapa::u<64> meta64;
     meta64(31, 0) = M;
     meta64(63, 32) = P32;
     fifo_C_out.write(meta64);
   }
 
   // define local C buffer and bind to URAM
-  ap_uint<64> local_C_pe0[URAM_DEPTH];
-  ap_uint<64> local_C_pe1[URAM_DEPTH];
-  ap_uint<64> local_C_pe2[URAM_DEPTH];
-  ap_uint<64> local_C_pe3[URAM_DEPTH];
-  ap_uint<64> local_C_pe4[URAM_DEPTH];
-  ap_uint<64> local_C_pe5[URAM_DEPTH];
-  ap_uint<64> local_C_pe6[URAM_DEPTH];
-  ap_uint<64> local_C_pe7[URAM_DEPTH];
-
-#pragma HLS bind_storage variable = local_C_pe0 type = RAM_2P impl = URAM
-#pragma HLS bind_storage variable = local_C_pe1 type = RAM_2P impl = URAM
-#pragma HLS bind_storage variable = local_C_pe2 type = RAM_2P impl = URAM
-#pragma HLS bind_storage variable = local_C_pe3 type = RAM_2P impl = URAM
-#pragma HLS bind_storage variable = local_C_pe4 type = RAM_2P impl = URAM
-#pragma HLS bind_storage variable = local_C_pe5 type = RAM_2P impl = URAM
-#pragma HLS bind_storage variable = local_C_pe6 type = RAM_2P impl = URAM
-#pragma HLS bind_storage variable = local_C_pe7 type = RAM_2P impl = URAM
+  [[tapa::storage("RAM_2P", "URAM")]] tapa::u<64> local_C_pe0[URAM_DEPTH];
+  [[tapa::storage("RAM_2P", "URAM")]] tapa::u<64> local_C_pe1[URAM_DEPTH];
+  [[tapa::storage("RAM_2P", "URAM")]] tapa::u<64> local_C_pe2[URAM_DEPTH];
+  [[tapa::storage("RAM_2P", "URAM")]] tapa::u<64> local_C_pe3[URAM_DEPTH];
+  [[tapa::storage("RAM_2P", "URAM")]] tapa::u<64> local_C_pe4[URAM_DEPTH];
+  [[tapa::storage("RAM_2P", "URAM")]] tapa::u<64> local_C_pe5[URAM_DEPTH];
+  [[tapa::storage("RAM_2P", "URAM")]] tapa::u<64> local_C_pe6[URAM_DEPTH];
+  [[tapa::storage("RAM_2P", "URAM")]] tapa::u<64> local_C_pe7[URAM_DEPTH];
 
 l_rp:
-  for (ap_uint<16> rp = 0; rp < rp_time; rp++) {
-#pragma HLS loop_flatten off
-#pragma HLS loop_tripcount min = 1 max = 16
-
+  [[tapa::tripcount(1, 16)]] [[tapa::flatten(false)]] for (tapa::u<16> rp = 0;
+                                                           rp < rp_time; rp++) {
     // init local C
-    const ap_uint<32> M_ITE_INIT = (M + 511) >> 9;
+    const tapa::u<32> M_ITE_INIT = (M + 511) >> 9;
   init_C:
-    for (ap_uint<32> i = 0; i < M_ITE_INIT; ++i) {
-#pragma HLS loop_tripcount min = 1 max = 800
-#pragma HLS pipeline II = 1
+    [[tapa::pipeline(1)]] [[tapa::tripcount(1, 800)]] for (tapa::u<32> i = 0;
+                                                           i < M_ITE_INIT;
+                                                           ++i) {
       local_C_pe0[i] = 0;
       local_C_pe1[i] = 0;
       local_C_pe2[i] = 0;
@@ -299,60 +262,43 @@ l_rp:
     }
 
     // define local B buffer and pragma local B buffer if partition factor > 1
-    ap_uint<32> local_B_pe0_pe1[WINDOW_SIZE];
-    ap_uint<32> local_B_pe2_pe3[WINDOW_SIZE];
-    ap_uint<32> local_B_pe4_pe5[WINDOW_SIZE];
-    ap_uint<32> local_B_pe6_pe7[WINDOW_SIZE];
+    [[tapa::partition("cyclic", B_PARTITION_FACTOR)]] [[tapa::storage(
+        "RAM_2P", "BRAM", 2)]] tapa::u<32> local_B_pe0_pe1[WINDOW_SIZE];
+    [[tapa::partition("cyclic", B_PARTITION_FACTOR)]] [[tapa::storage(
+        "RAM_2P", "BRAM", 2)]] tapa::u<32> local_B_pe2_pe3[WINDOW_SIZE];
+    [[tapa::partition("cyclic", B_PARTITION_FACTOR)]] [[tapa::storage(
+        "RAM_2P", "BRAM", 2)]] tapa::u<32> local_B_pe4_pe5[WINDOW_SIZE];
+    [[tapa::partition("cyclic", B_PARTITION_FACTOR)]] [[tapa::storage(
+        "RAM_2P", "BRAM", 2)]] tapa::u<32> local_B_pe6_pe7[WINDOW_SIZE];
 
-#pragma HLS bind_storage variable = local_B_pe0_pe1 latency = 2 type = \
-    RAM_2P impl = BRAM
-#pragma HLS bind_storage variable = local_B_pe2_pe3 latency = 2 type = \
-    RAM_2P impl = BRAM
-#pragma HLS bind_storage variable = local_B_pe4_pe5 latency = 2 type = \
-    RAM_2P impl = BRAM
-#pragma HLS bind_storage variable = local_B_pe6_pe7 latency = 2 type = \
-    RAM_2P impl = BRAM
-
-#pragma HLS array_partition variable = local_B_pe0_pe1 cyclic factor = \
-    B_PARTITION_FACTOR
-#pragma HLS array_partition variable = local_B_pe2_pe3 cyclic factor = \
-    B_PARTITION_FACTOR
-#pragma HLS array_partition variable = local_B_pe4_pe5 cyclic factor = \
-    B_PARTITION_FACTOR
-#pragma HLS array_partition variable = local_B_pe6_pe7 cyclic factor = \
-    B_PARTITION_FACTOR
-
-    ap_uint<32> start_32_in;
+    tapa::u<32> start_32_in;
     bool start_32_in_ready = false;
   w1:
-    while (!start_32_in_ready) {
-#pragma HLS loop_tripcount min = 1 max = 10
-#pragma HLS pipeline II = 1
+    [[tapa::pipeline(1)]] [[tapa::tripcount(1, 10)]] while (
+        !start_32_in_ready) {
       start_32_in_ready = fifo_inst.try_read(start_32_in);
     }
-    ap_uint<32> start_32 = HLS_REG(start_32_in);
+    tapa::u<32> start_32 = HLS_REG(start_32_in);
 
     fifo_inst_out.write(start_32);
 
   main:
-    for (ap_uint<32> i = 0; i < NUM_ITE; ++i) {
-#pragma HLS loop_tripcount min = 1 max = 49
-
+    [[tapa::tripcount(1, 49)]] for (tapa::u<32> i = 0; i < NUM_ITE; ++i) {
       // fill onchip X
     read_X:
-      for (ap_uint<14> j = 0; (j < WINDOW_SIZE_DIV_16) &&
-                              (j < ((K + 15) >> 4) - i * WINDOW_SIZE_DIV_16);) {
-#pragma HLS loop_tripcount min = 1 max = 1024
-#pragma HLS pipeline II = 1
-        ap_uint<512> x_512;
+      [[tapa::pipeline(1)]] [[tapa::tripcount(
+          1, 1024)]] for (tapa::u<14> j = 0;
+                          (j < WINDOW_SIZE_DIV_16) &&
+                          (j < ((K + 15) >> 4) - i * WINDOW_SIZE_DIV_16);) {
+        tapa::u<512> x_512;
         bool x_512_ready = fifo_X.try_read(x_512);
         ;
 
         if (x_512_ready) {
-          ap_uint<512> x_512_delay = HLS_REG(HLS_REG(x_512));
+          tapa::u<512> x_512_delay = HLS_REG(HLS_REG(x_512));
           fifo_X_out.write(x_512_delay);
         fill_X_p:
-          for (ap_uint<5> k = 0; k < 16; ++k) {
+          for (tapa::u<5> k = 0; k < 16; ++k) {
             local_B_pe0_pe1[HLS_REG(HLS_REG(j)) * 16 + k] =
                 x_512_delay(k * 32 + 31, k * 32);
             local_B_pe2_pe3[HLS_REG(HLS_REG(j)) * 16 + k] =
@@ -367,63 +313,77 @@ l_rp:
       }
 
       // computation
-      ap_uint<32> end_32_in;
+      tapa::u<32> end_32_in;
       bool end_32_ready = false;
     w2:
-      while (!end_32_ready) {
-#pragma HLS loop_tripcount min = 1 max = 10
-#pragma HLS pipeline II = 1
+      [[tapa::pipeline(1)]] [[tapa::tripcount(1, 10)]] while (!end_32_ready) {
         end_32_ready = fifo_inst.try_read(end_32_in);
       }
-      ap_uint<32> end_32 = HLS_REG(end_32_in);
+      tapa::u<32> end_32 = HLS_REG(end_32_in);
 
       fifo_inst_out.write(end_32);
 
     computation:
-      for (ap_uint<32> j = start_32; j < end_32;) {
-#pragma HLS loop_tripcount min = 1 max = 200
-#pragma HLS pipeline II = 1
-
-#pragma HLS dependence true variable = local_C_pe0 distance = \
-    DEP_DIST_LOAD_STORE
-#pragma HLS dependence true variable = local_C_pe1 distance = \
-    DEP_DIST_LOAD_STORE
-#pragma HLS dependence true variable = local_C_pe2 distance = \
-    DEP_DIST_LOAD_STORE
-#pragma HLS dependence true variable = local_C_pe3 distance = \
-    DEP_DIST_LOAD_STORE
-#pragma HLS dependence true variable = local_C_pe4 distance = \
-    DEP_DIST_LOAD_STORE
-#pragma HLS dependence true variable = local_C_pe5 distance = \
-    DEP_DIST_LOAD_STORE
-#pragma HLS dependence true variable = local_C_pe6 distance = \
-    DEP_DIST_LOAD_STORE
-#pragma HLS dependence true variable = local_C_pe7 distance = \
-    DEP_DIST_LOAD_STORE
-
-        ap_uint<512> a_pes;
+      [[tapa::
+            dependence("local_C_pe7", "", 1, "DEP_DIST_LOAD_STORE")]] [[tapa::dependence(
+          "local_C_pe6", "", "", "", 1,
+          "DEP_DIST_LOAD_STORE")]] [[tapa::dependence("local_C_pe5", "", "", "",
+                                                      1,
+                                                      "DEP_DIST_LOAD_"
+                                                      "STORE")]] [[tapa::
+                                                                       dependence(
+                                                                           "loc"
+                                                                           "al_"
+                                                                           "C_"
+                                                                           "pe"
+                                                                           "4",
+                                                                           "",
+                                                                           1,
+                                                                           "DEP"
+                                                                           "_DI"
+                                                                           "ST_"
+                                                                           "LOA"
+                                                                           "D_"
+                                                                           "STO"
+                                                                           "R"
+                                                                           "E")]] [[tapa::
+                                                                                        dependence("local_C_pe3",
+                                                                                                   "",
+                                                                                                   1,
+                                                                                                   "DEP_DIST_LOAD_STORE")]] [[tapa::
+                                                                                                                                  dependence("local_C_pe2",
+                                                                                                                                             "",
+                                                                                                                                             1,
+                                                                                                                                             "DEP_DIST_LOAD_STORE")]] [[tapa::
+                                                                                                                                                                            dependence("local_C_pe1",
+                                                                                                                                                                                       "",
+                                                                                                                                                                                       1,
+                                                                                                                                                                                       "DEP_DIST_LOAD_STORE")]] [[tapa::
+                                                                                                                                                                                                                      dependence("local_C_pe0",
+                                                                                                                                                                                                                                 "",
+                                                                                                                                                                                                                                 1,
+                                                                                                                                                                                                                                 "DEP_DIST_LOAD_STORE")]] [[tapa::pipeline(1)]] [[tapa::tripcount(1,
+                                                                                                                                                                                                                                                                                                  200)]] for (tapa::u<32> j = start_32; j <
+                                                                                                                                                                                                                                                                                                                                        end_32;) {
+        tapa::u<512> a_pes;
         bool a_pes_ready = fifo_A.try_read(a_pes);
 
         if (a_pes_ready) {
-          ap_uint<512> a_pes_delay = HLS_REG(HLS_REG(a_pes));
+          tapa::u<512> a_pes_delay = HLS_REG(HLS_REG(a_pes));
 
-          ap_uint<64> a[8];
-#pragma HLS array_partition variable = a complete
+          [[tapa::partition("complete")]] tapa::u<64> a[8];
 
-          ap_uint<14> a_col[8];
-#pragma HLS array_partition variable = a_col complete
+          [[tapa::partition("complete")]] tapa::u<14> a_col[8];
 
-          ap_uint<18> a_row[8];
-#pragma HLS array_partition variable = a_row complete
+          [[tapa::partition("complete")]] tapa::u<18> a_row[8];
 
-          ap_uint<32> a_val[8];
-#pragma HLS array_partition variable = a_val complete
+          [[tapa::partition("complete")]] tapa::u<32> a_val[8];
 
-          for (ap_uint<4> p = 0; p < 8; ++p) {
+          for (tapa::u<4> p = 0; p < 8; ++p) {
             a[p] = a_pes_delay(63 + p * 64, p * 64);
           }
 
-          for (ap_uint<4> p = 0; p < 8; ++p) {
+          for (tapa::u<4> p = 0; p < 8; ++p) {
             a_col[p] = (a[p])(63, 50);
             a_row[p] = (a[p])(49, 32);
             a_val[p] = (a[p])(31, 0);
@@ -454,10 +414,9 @@ l_rp:
 
     // write C fifo
   write_C_outer:
-    for (ap_uint<32> i = 0; i < (M_ITE_INIT << 3); ++i) {
-#pragma HLS loop_tripcount min = 1 max = 1800
-#pragma HLS pipeline II = 1
-      ap_uint<64> out_c;
+    [[tapa::pipeline(1)]] [[tapa::tripcount(
+        1, 1800)]] for (tapa::u<32> i = 0; i < (M_ITE_INIT << 3); ++i) {
+      tapa::u<64> out_c;
 
       switch (i % 8) {
         case 0:
@@ -486,35 +445,33 @@ l_rp:
           break;
       }
 
-      ap_uint<64> out_c_mult;
+      tapa::u<64> out_c_mult;
       peg2mult(out_c, alpha_u, out_c_mult);
       fifo_C_out.write(HLS_REG(out_c_mult));
     }
   }
 }
 
-void PEG_false(tapa::istream<ap_uint<32>>& fifo_inst,
-               tapa::istream<ap_uint<512>>& fifo_A,
-               tapa::istream<ap_uint<512>>& fifo_X,        // 16 FP32
-               tapa::ostream<ap_uint<32>>& fifo_inst_out,  // to next PE
-               tapa::ostream<ap_uint<512>>& fifo_X_out,  // to next PE, 16 FP32
-               tapa::ostream<ap_uint<64>>& fifo_C_out) {
-#pragma HLS inline off
+void PEG_false(tapa::istream<tapa::u<32>>& fifo_inst,
+               tapa::istream<tapa::u<512>>& fifo_A,
+               tapa::istream<tapa::u<512>>& fifo_X,        // 16 FP32
+               tapa::ostream<tapa::u<32>>& fifo_inst_out,  // to next PE
+               tapa::ostream<tapa::u<512>>& fifo_X_out,  // to next PE, 16 FP32
+               tapa::ostream<tapa::u<64>>& fifo_C_out) {
   bool SEND_META = false;
-  ap_uint<32> NUM_ITE;
-  ap_uint<32> M;
-  ap_uint<32> P32;
-  ap_uint<32> K;
-  ap_uint<32> alpha_u;
+  tapa::u<32> NUM_ITE;
+  tapa::u<32> M;
+  tapa::u<32> P32;
+  tapa::u<32> K;
+  tapa::u<32> alpha_u;
 
-  ap_uint<32> parameter;
+  tapa::u<32> parameter;
 w_ITE:
-  for (ap_uint<3> i = 0; i < 5;) {
-#pragma HLS loop_tripcount min = 1 max = 10
-#pragma HLS pipeline II = 1
+  [[tapa::pipeline(1)]] [[tapa::tripcount(1, 10)]] for (tapa::u<3> i = 0;
+                                                        i < 5;) {
     bool parameter_ready = fifo_inst.try_read(parameter);
     if (parameter_ready) {
-      ap_uint<32> parameter_delay = HLS_REG(parameter);
+      tapa::u<32> parameter_delay = HLS_REG(parameter);
       switch (i) {
         case 0:
           NUM_ITE = parameter_delay;
@@ -537,45 +494,34 @@ w_ITE:
     }
   }
 
-  const ap_uint<16> rp_time = P32(31, 16);
+  const tapa::u<16> rp_time = P32(31, 16);
 
   if (SEND_META) {
-    ap_uint<64> meta64;
+    tapa::u<64> meta64;
     meta64(31, 0) = M;
     meta64(63, 32) = P32;
     fifo_C_out.write(meta64);
   }
 
   // define local C buffer and bind to URAM
-  ap_uint<64> local_C_pe0[URAM_DEPTH];
-  ap_uint<64> local_C_pe1[URAM_DEPTH];
-  ap_uint<64> local_C_pe2[URAM_DEPTH];
-  ap_uint<64> local_C_pe3[URAM_DEPTH];
-  ap_uint<64> local_C_pe4[URAM_DEPTH];
-  ap_uint<64> local_C_pe5[URAM_DEPTH];
-  ap_uint<64> local_C_pe6[URAM_DEPTH];
-  ap_uint<64> local_C_pe7[URAM_DEPTH];
-
-#pragma HLS bind_storage variable = local_C_pe0 type = RAM_2P impl = URAM
-#pragma HLS bind_storage variable = local_C_pe1 type = RAM_2P impl = URAM
-#pragma HLS bind_storage variable = local_C_pe2 type = RAM_2P impl = URAM
-#pragma HLS bind_storage variable = local_C_pe3 type = RAM_2P impl = URAM
-#pragma HLS bind_storage variable = local_C_pe4 type = RAM_2P impl = URAM
-#pragma HLS bind_storage variable = local_C_pe5 type = RAM_2P impl = URAM
-#pragma HLS bind_storage variable = local_C_pe6 type = RAM_2P impl = URAM
-#pragma HLS bind_storage variable = local_C_pe7 type = RAM_2P impl = URAM
+  [[tapa::storage("RAM_2P", "URAM")]] tapa::u<64> local_C_pe0[URAM_DEPTH];
+  [[tapa::storage("RAM_2P", "URAM")]] tapa::u<64> local_C_pe1[URAM_DEPTH];
+  [[tapa::storage("RAM_2P", "URAM")]] tapa::u<64> local_C_pe2[URAM_DEPTH];
+  [[tapa::storage("RAM_2P", "URAM")]] tapa::u<64> local_C_pe3[URAM_DEPTH];
+  [[tapa::storage("RAM_2P", "URAM")]] tapa::u<64> local_C_pe4[URAM_DEPTH];
+  [[tapa::storage("RAM_2P", "URAM")]] tapa::u<64> local_C_pe5[URAM_DEPTH];
+  [[tapa::storage("RAM_2P", "URAM")]] tapa::u<64> local_C_pe6[URAM_DEPTH];
+  [[tapa::storage("RAM_2P", "URAM")]] tapa::u<64> local_C_pe7[URAM_DEPTH];
 
 l_rp:
-  for (ap_uint<16> rp = 0; rp < rp_time; rp++) {
-#pragma HLS loop_flatten off
-#pragma HLS loop_tripcount min = 1 max = 16
-
+  [[tapa::tripcount(1, 16)]] [[tapa::flatten(false)]] for (tapa::u<16> rp = 0;
+                                                           rp < rp_time; rp++) {
     // init local C
-    const ap_uint<32> M_ITE_INIT = (M + 511) >> 9;
+    const tapa::u<32> M_ITE_INIT = (M + 511) >> 9;
   init_C:
-    for (ap_uint<32> i = 0; i < M_ITE_INIT; ++i) {
-#pragma HLS loop_tripcount min = 1 max = 800
-#pragma HLS pipeline II = 1
+    [[tapa::pipeline(1)]] [[tapa::tripcount(1, 800)]] for (tapa::u<32> i = 0;
+                                                           i < M_ITE_INIT;
+                                                           ++i) {
       local_C_pe0[i] = 0;
       local_C_pe1[i] = 0;
       local_C_pe2[i] = 0;
@@ -587,60 +533,43 @@ l_rp:
     }
 
     // define local B buffer and pragma local B buffer if partition factor > 1
-    ap_uint<32> local_B_pe0_pe1[WINDOW_SIZE];
-    ap_uint<32> local_B_pe2_pe3[WINDOW_SIZE];
-    ap_uint<32> local_B_pe4_pe5[WINDOW_SIZE];
-    ap_uint<32> local_B_pe6_pe7[WINDOW_SIZE];
+    [[tapa::partition("cyclic", B_PARTITION_FACTOR)]] [[tapa::storage(
+        "RAM_2P", "BRAM", 2)]] tapa::u<32> local_B_pe0_pe1[WINDOW_SIZE];
+    [[tapa::partition("cyclic", B_PARTITION_FACTOR)]] [[tapa::storage(
+        "RAM_2P", "BRAM", 2)]] tapa::u<32> local_B_pe2_pe3[WINDOW_SIZE];
+    [[tapa::partition("cyclic", B_PARTITION_FACTOR)]] [[tapa::storage(
+        "RAM_2P", "BRAM", 2)]] tapa::u<32> local_B_pe4_pe5[WINDOW_SIZE];
+    [[tapa::partition("cyclic", B_PARTITION_FACTOR)]] [[tapa::storage(
+        "RAM_2P", "BRAM", 2)]] tapa::u<32> local_B_pe6_pe7[WINDOW_SIZE];
 
-#pragma HLS bind_storage variable = local_B_pe0_pe1 latency = 2 type = \
-    RAM_2P impl = BRAM
-#pragma HLS bind_storage variable = local_B_pe2_pe3 latency = 2 type = \
-    RAM_2P impl = BRAM
-#pragma HLS bind_storage variable = local_B_pe4_pe5 latency = 2 type = \
-    RAM_2P impl = BRAM
-#pragma HLS bind_storage variable = local_B_pe6_pe7 latency = 2 type = \
-    RAM_2P impl = BRAM
-
-#pragma HLS array_partition variable = local_B_pe0_pe1 cyclic factor = \
-    B_PARTITION_FACTOR
-#pragma HLS array_partition variable = local_B_pe2_pe3 cyclic factor = \
-    B_PARTITION_FACTOR
-#pragma HLS array_partition variable = local_B_pe4_pe5 cyclic factor = \
-    B_PARTITION_FACTOR
-#pragma HLS array_partition variable = local_B_pe6_pe7 cyclic factor = \
-    B_PARTITION_FACTOR
-
-    ap_uint<32> start_32_in;
+    tapa::u<32> start_32_in;
     bool start_32_in_ready = false;
   w1:
-    while (!start_32_in_ready) {
-#pragma HLS loop_tripcount min = 1 max = 10
-#pragma HLS pipeline II = 1
+    [[tapa::pipeline(1)]] [[tapa::tripcount(1, 10)]] while (
+        !start_32_in_ready) {
       start_32_in_ready = fifo_inst.try_read(start_32_in);
     }
-    ap_uint<32> start_32 = HLS_REG(start_32_in);
+    tapa::u<32> start_32 = HLS_REG(start_32_in);
 
     fifo_inst_out.write(start_32);
 
   main:
-    for (ap_uint<32> i = 0; i < NUM_ITE; ++i) {
-#pragma HLS loop_tripcount min = 1 max = 49
-
+    [[tapa::tripcount(1, 49)]] for (tapa::u<32> i = 0; i < NUM_ITE; ++i) {
       // fill onchip X
     read_X:
-      for (ap_uint<14> j = 0; (j < WINDOW_SIZE_DIV_16) &&
-                              (j < ((K + 15) >> 4) - i * WINDOW_SIZE_DIV_16);) {
-#pragma HLS loop_tripcount min = 1 max = 1024
-#pragma HLS pipeline II = 1
-        ap_uint<512> x_512;
+      [[tapa::pipeline(1)]] [[tapa::tripcount(
+          1, 1024)]] for (tapa::u<14> j = 0;
+                          (j < WINDOW_SIZE_DIV_16) &&
+                          (j < ((K + 15) >> 4) - i * WINDOW_SIZE_DIV_16);) {
+        tapa::u<512> x_512;
         bool x_512_ready = fifo_X.try_read(x_512);
         ;
 
         if (x_512_ready) {
-          ap_uint<512> x_512_delay = HLS_REG(HLS_REG(x_512));
+          tapa::u<512> x_512_delay = HLS_REG(HLS_REG(x_512));
           fifo_X_out.write(x_512_delay);
         fill_X_p:
-          for (ap_uint<5> k = 0; k < 16; ++k) {
+          for (tapa::u<5> k = 0; k < 16; ++k) {
             local_B_pe0_pe1[HLS_REG(HLS_REG(j)) * 16 + k] =
                 x_512_delay(k * 32 + 31, k * 32);
             local_B_pe2_pe3[HLS_REG(HLS_REG(j)) * 16 + k] =
@@ -655,63 +584,77 @@ l_rp:
       }
 
       // computation
-      ap_uint<32> end_32_in;
+      tapa::u<32> end_32_in;
       bool end_32_ready = false;
     w2:
-      while (!end_32_ready) {
-#pragma HLS loop_tripcount min = 1 max = 10
-#pragma HLS pipeline II = 1
+      [[tapa::pipeline(1)]] [[tapa::tripcount(1, 10)]] while (!end_32_ready) {
         end_32_ready = fifo_inst.try_read(end_32_in);
       }
-      ap_uint<32> end_32 = HLS_REG(end_32_in);
+      tapa::u<32> end_32 = HLS_REG(end_32_in);
 
       fifo_inst_out.write(end_32);
 
     computation:
-      for (ap_uint<32> j = start_32; j < end_32;) {
-#pragma HLS loop_tripcount min = 1 max = 200
-#pragma HLS pipeline II = 1
-
-#pragma HLS dependence true variable = local_C_pe0 distance = \
-    DEP_DIST_LOAD_STORE
-#pragma HLS dependence true variable = local_C_pe1 distance = \
-    DEP_DIST_LOAD_STORE
-#pragma HLS dependence true variable = local_C_pe2 distance = \
-    DEP_DIST_LOAD_STORE
-#pragma HLS dependence true variable = local_C_pe3 distance = \
-    DEP_DIST_LOAD_STORE
-#pragma HLS dependence true variable = local_C_pe4 distance = \
-    DEP_DIST_LOAD_STORE
-#pragma HLS dependence true variable = local_C_pe5 distance = \
-    DEP_DIST_LOAD_STORE
-#pragma HLS dependence true variable = local_C_pe6 distance = \
-    DEP_DIST_LOAD_STORE
-#pragma HLS dependence true variable = local_C_pe7 distance = \
-    DEP_DIST_LOAD_STORE
-
-        ap_uint<512> a_pes;
+      [[tapa::
+            dependence("local_C_pe7", "", 1, "DEP_DIST_LOAD_STORE")]] [[tapa::dependence(
+          "local_C_pe6", "", "", "", 1,
+          "DEP_DIST_LOAD_STORE")]] [[tapa::dependence("local_C_pe5", "", "", "",
+                                                      1,
+                                                      "DEP_DIST_LOAD_"
+                                                      "STORE")]] [[tapa::
+                                                                       dependence(
+                                                                           "loc"
+                                                                           "al_"
+                                                                           "C_"
+                                                                           "pe"
+                                                                           "4",
+                                                                           "",
+                                                                           1,
+                                                                           "DEP"
+                                                                           "_DI"
+                                                                           "ST_"
+                                                                           "LOA"
+                                                                           "D_"
+                                                                           "STO"
+                                                                           "R"
+                                                                           "E")]] [[tapa::
+                                                                                        dependence("local_C_pe3",
+                                                                                                   "",
+                                                                                                   1,
+                                                                                                   "DEP_DIST_LOAD_STORE")]] [[tapa::
+                                                                                                                                  dependence("local_C_pe2",
+                                                                                                                                             "",
+                                                                                                                                             1,
+                                                                                                                                             "DEP_DIST_LOAD_STORE")]] [[tapa::
+                                                                                                                                                                            dependence("local_C_pe1",
+                                                                                                                                                                                       "",
+                                                                                                                                                                                       1,
+                                                                                                                                                                                       "DEP_DIST_LOAD_STORE")]] [[tapa::
+                                                                                                                                                                                                                      dependence("local_C_pe0",
+                                                                                                                                                                                                                                 "",
+                                                                                                                                                                                                                                 1,
+                                                                                                                                                                                                                                 "DEP_DIST_LOAD_STORE")]] [[tapa::pipeline(1)]] [[tapa::tripcount(1,
+                                                                                                                                                                                                                                                                                                  200)]] for (tapa::u<32> j = start_32; j <
+                                                                                                                                                                                                                                                                                                                                        end_32;) {
+        tapa::u<512> a_pes;
         bool a_pes_ready = fifo_A.try_read(a_pes);
 
         if (a_pes_ready) {
-          ap_uint<512> a_pes_delay = HLS_REG(HLS_REG(a_pes));
+          tapa::u<512> a_pes_delay = HLS_REG(HLS_REG(a_pes));
 
-          ap_uint<64> a[8];
-#pragma HLS array_partition variable = a complete
+          [[tapa::partition("complete")]] tapa::u<64> a[8];
 
-          ap_uint<14> a_col[8];
-#pragma HLS array_partition variable = a_col complete
+          [[tapa::partition("complete")]] tapa::u<14> a_col[8];
 
-          ap_uint<18> a_row[8];
-#pragma HLS array_partition variable = a_row complete
+          [[tapa::partition("complete")]] tapa::u<18> a_row[8];
 
-          ap_uint<32> a_val[8];
-#pragma HLS array_partition variable = a_val complete
+          [[tapa::partition("complete")]] tapa::u<32> a_val[8];
 
-          for (ap_uint<4> p = 0; p < 8; ++p) {
+          for (tapa::u<4> p = 0; p < 8; ++p) {
             a[p] = a_pes_delay(63 + p * 64, p * 64);
           }
 
-          for (ap_uint<4> p = 0; p < 8; ++p) {
+          for (tapa::u<4> p = 0; p < 8; ++p) {
             a_col[p] = (a[p])(63, 50);
             a_row[p] = (a[p])(49, 32);
             a_val[p] = (a[p])(31, 0);
@@ -742,10 +685,9 @@ l_rp:
 
     // write C fifo
   write_C_outer:
-    for (ap_uint<32> i = 0; i < (M_ITE_INIT << 3); ++i) {
-#pragma HLS loop_tripcount min = 1 max = 1800
-#pragma HLS pipeline II = 1
-      ap_uint<64> out_c;
+    [[tapa::pipeline(1)]] [[tapa::tripcount(
+        1, 1800)]] for (tapa::u<32> i = 0; i < (M_ITE_INIT << 3); ++i) {
+      tapa::u<64> out_c;
 
       switch (i % 8) {
         case 0:
@@ -774,33 +716,31 @@ l_rp:
           break;
       }
 
-      ap_uint<64> out_c_mult;
+      tapa::u<64> out_c_mult;
       peg2mult(out_c, alpha_u, out_c_mult);
       fifo_C_out.write(HLS_REG(out_c_mult));
     }
   }
 }
 
-void PEG_last_false(tapa::istream<ap_uint<32>>& fifo_inst,
-                    tapa::istream<ap_uint<512>>& fifo_A,
-                    tapa::istream<ap_uint<512>>& fifo_X,  // 16 FP32
-                    tapa::ostream<ap_uint<64>>& fifo_C_out) {
-#pragma HLS inline off
+void PEG_last_false(tapa::istream<tapa::u<32>>& fifo_inst,
+                    tapa::istream<tapa::u<512>>& fifo_A,
+                    tapa::istream<tapa::u<512>>& fifo_X,  // 16 FP32
+                    tapa::ostream<tapa::u<64>>& fifo_C_out) {
   bool SEND_META = false;
-  ap_uint<32> NUM_ITE;
-  ap_uint<32> M;
-  ap_uint<32> P32;
-  ap_uint<32> K;
-  ap_uint<32> alpha_u;
+  tapa::u<32> NUM_ITE;
+  tapa::u<32> M;
+  tapa::u<32> P32;
+  tapa::u<32> K;
+  tapa::u<32> alpha_u;
 
-  ap_uint<32> parameter;
+  tapa::u<32> parameter;
 w_ITE:
-  for (ap_uint<3> i = 0; i < 5;) {
-#pragma HLS loop_tripcount min = 1 max = 10
-#pragma HLS pipeline II = 1
+  [[tapa::pipeline(1)]] [[tapa::tripcount(1, 10)]] for (tapa::u<3> i = 0;
+                                                        i < 5;) {
     bool parameter_ready = fifo_inst.try_read(parameter);
     if (parameter_ready) {
-      ap_uint<32> parameter_delay = HLS_REG(parameter);
+      tapa::u<32> parameter_delay = HLS_REG(parameter);
       switch (i) {
         case 0:
           NUM_ITE = parameter_delay;
@@ -822,38 +762,27 @@ w_ITE:
     }
   }
 
-  const ap_uint<16> rp_time = P32(31, 16);
+  const tapa::u<16> rp_time = P32(31, 16);
 
   // define local C buffer and bind to URAM
-  ap_uint<64> local_C_pe0[URAM_DEPTH];
-  ap_uint<64> local_C_pe1[URAM_DEPTH];
-  ap_uint<64> local_C_pe2[URAM_DEPTH];
-  ap_uint<64> local_C_pe3[URAM_DEPTH];
-  ap_uint<64> local_C_pe4[URAM_DEPTH];
-  ap_uint<64> local_C_pe5[URAM_DEPTH];
-  ap_uint<64> local_C_pe6[URAM_DEPTH];
-  ap_uint<64> local_C_pe7[URAM_DEPTH];
-
-#pragma HLS bind_storage variable = local_C_pe0 type = RAM_2P impl = URAM
-#pragma HLS bind_storage variable = local_C_pe1 type = RAM_2P impl = URAM
-#pragma HLS bind_storage variable = local_C_pe2 type = RAM_2P impl = URAM
-#pragma HLS bind_storage variable = local_C_pe3 type = RAM_2P impl = URAM
-#pragma HLS bind_storage variable = local_C_pe4 type = RAM_2P impl = URAM
-#pragma HLS bind_storage variable = local_C_pe5 type = RAM_2P impl = URAM
-#pragma HLS bind_storage variable = local_C_pe6 type = RAM_2P impl = URAM
-#pragma HLS bind_storage variable = local_C_pe7 type = RAM_2P impl = URAM
+  [[tapa::storage("RAM_2P", "URAM")]] tapa::u<64> local_C_pe0[URAM_DEPTH];
+  [[tapa::storage("RAM_2P", "URAM")]] tapa::u<64> local_C_pe1[URAM_DEPTH];
+  [[tapa::storage("RAM_2P", "URAM")]] tapa::u<64> local_C_pe2[URAM_DEPTH];
+  [[tapa::storage("RAM_2P", "URAM")]] tapa::u<64> local_C_pe3[URAM_DEPTH];
+  [[tapa::storage("RAM_2P", "URAM")]] tapa::u<64> local_C_pe4[URAM_DEPTH];
+  [[tapa::storage("RAM_2P", "URAM")]] tapa::u<64> local_C_pe5[URAM_DEPTH];
+  [[tapa::storage("RAM_2P", "URAM")]] tapa::u<64> local_C_pe6[URAM_DEPTH];
+  [[tapa::storage("RAM_2P", "URAM")]] tapa::u<64> local_C_pe7[URAM_DEPTH];
 
 l_rp:
-  for (ap_uint<16> rp = 0; rp < rp_time; rp++) {
-#pragma HLS loop_flatten off
-#pragma HLS loop_tripcount min = 1 max = 16
-
+  [[tapa::tripcount(1, 16)]] [[tapa::flatten(false)]] for (tapa::u<16> rp = 0;
+                                                           rp < rp_time; rp++) {
     // init local C
-    const ap_uint<32> M_ITE_INIT = (M + 511) >> 9;
+    const tapa::u<32> M_ITE_INIT = (M + 511) >> 9;
   init_C:
-    for (ap_uint<32> i = 0; i < M_ITE_INIT; ++i) {
-#pragma HLS loop_tripcount min = 1 max = 800
-#pragma HLS pipeline II = 1
+    [[tapa::pipeline(1)]] [[tapa::tripcount(1, 800)]] for (tapa::u<32> i = 0;
+                                                           i < M_ITE_INIT;
+                                                           ++i) {
       local_C_pe0[i] = 0;
       local_C_pe1[i] = 0;
       local_C_pe2[i] = 0;
@@ -865,57 +794,40 @@ l_rp:
     }
 
     // define local B buffer and pragma local B buffer if partition factor > 1
-    ap_uint<32> local_B_pe0_pe1[WINDOW_SIZE];
-    ap_uint<32> local_B_pe2_pe3[WINDOW_SIZE];
-    ap_uint<32> local_B_pe4_pe5[WINDOW_SIZE];
-    ap_uint<32> local_B_pe6_pe7[WINDOW_SIZE];
+    [[tapa::partition("cyclic", B_PARTITION_FACTOR)]] [[tapa::storage(
+        "RAM_2P", "BRAM", 2)]] tapa::u<32> local_B_pe0_pe1[WINDOW_SIZE];
+    [[tapa::partition("cyclic", B_PARTITION_FACTOR)]] [[tapa::storage(
+        "RAM_2P", "BRAM", 2)]] tapa::u<32> local_B_pe2_pe3[WINDOW_SIZE];
+    [[tapa::partition("cyclic", B_PARTITION_FACTOR)]] [[tapa::storage(
+        "RAM_2P", "BRAM", 2)]] tapa::u<32> local_B_pe4_pe5[WINDOW_SIZE];
+    [[tapa::partition("cyclic", B_PARTITION_FACTOR)]] [[tapa::storage(
+        "RAM_2P", "BRAM", 2)]] tapa::u<32> local_B_pe6_pe7[WINDOW_SIZE];
 
-#pragma HLS bind_storage variable = local_B_pe0_pe1 latency = 2 type = \
-    RAM_2P impl = BRAM
-#pragma HLS bind_storage variable = local_B_pe2_pe3 latency = 2 type = \
-    RAM_2P impl = BRAM
-#pragma HLS bind_storage variable = local_B_pe4_pe5 latency = 2 type = \
-    RAM_2P impl = BRAM
-#pragma HLS bind_storage variable = local_B_pe6_pe7 latency = 2 type = \
-    RAM_2P impl = BRAM
-
-#pragma HLS array_partition variable = local_B_pe0_pe1 cyclic factor = \
-    B_PARTITION_FACTOR
-#pragma HLS array_partition variable = local_B_pe2_pe3 cyclic factor = \
-    B_PARTITION_FACTOR
-#pragma HLS array_partition variable = local_B_pe4_pe5 cyclic factor = \
-    B_PARTITION_FACTOR
-#pragma HLS array_partition variable = local_B_pe6_pe7 cyclic factor = \
-    B_PARTITION_FACTOR
-
-    ap_uint<32> start_32_in;
+    tapa::u<32> start_32_in;
     bool start_32_in_ready = false;
   w1:
-    while (!start_32_in_ready) {
-#pragma HLS loop_tripcount min = 1 max = 10
-#pragma HLS pipeline II = 1
+    [[tapa::pipeline(1)]] [[tapa::tripcount(1, 10)]] while (
+        !start_32_in_ready) {
       start_32_in_ready = fifo_inst.try_read(start_32_in);
     }
-    ap_uint<32> start_32 = HLS_REG(start_32_in);
+    tapa::u<32> start_32 = HLS_REG(start_32_in);
 
   main:
-    for (ap_uint<32> i = 0; i < NUM_ITE; ++i) {
-#pragma HLS loop_tripcount min = 1 max = 49
-
+    [[tapa::tripcount(1, 49)]] for (tapa::u<32> i = 0; i < NUM_ITE; ++i) {
       // fill onchip X
     read_X:
-      for (ap_uint<14> j = 0; (j < WINDOW_SIZE_DIV_16) &&
-                              (j < ((K + 15) >> 4) - i * WINDOW_SIZE_DIV_16);) {
-#pragma HLS loop_tripcount min = 1 max = 1024
-#pragma HLS pipeline II = 1
-        ap_uint<512> x_512;
+      [[tapa::pipeline(1)]] [[tapa::tripcount(
+          1, 1024)]] for (tapa::u<14> j = 0;
+                          (j < WINDOW_SIZE_DIV_16) &&
+                          (j < ((K + 15) >> 4) - i * WINDOW_SIZE_DIV_16);) {
+        tapa::u<512> x_512;
         bool x_512_ready = fifo_X.try_read(x_512);
         ;
 
         if (x_512_ready) {
-          ap_uint<512> x_512_delay = HLS_REG(HLS_REG(x_512));
+          tapa::u<512> x_512_delay = HLS_REG(HLS_REG(x_512));
         fill_X_p:
-          for (ap_uint<5> k = 0; k < 16; ++k) {
+          for (tapa::u<5> k = 0; k < 16; ++k) {
             local_B_pe0_pe1[HLS_REG(HLS_REG(j)) * 16 + k] =
                 x_512_delay(k * 32 + 31, k * 32);
             local_B_pe2_pe3[HLS_REG(HLS_REG(j)) * 16 + k] =
@@ -930,61 +842,75 @@ l_rp:
       }
 
       // computation
-      ap_uint<32> end_32_in;
+      tapa::u<32> end_32_in;
       bool end_32_ready = false;
     w2:
-      while (!end_32_ready) {
-#pragma HLS loop_tripcount min = 1 max = 10
-#pragma HLS pipeline II = 1
+      [[tapa::pipeline(1)]] [[tapa::tripcount(1, 10)]] while (!end_32_ready) {
         end_32_ready = fifo_inst.try_read(end_32_in);
       }
-      ap_uint<32> end_32 = HLS_REG(end_32_in);
+      tapa::u<32> end_32 = HLS_REG(end_32_in);
 
     computation:
-      for (ap_uint<32> j = start_32; j < end_32;) {
-#pragma HLS loop_tripcount min = 1 max = 200
-#pragma HLS pipeline II = 1
-
-#pragma HLS dependence true variable = local_C_pe0 distance = \
-    DEP_DIST_LOAD_STORE
-#pragma HLS dependence true variable = local_C_pe1 distance = \
-    DEP_DIST_LOAD_STORE
-#pragma HLS dependence true variable = local_C_pe2 distance = \
-    DEP_DIST_LOAD_STORE
-#pragma HLS dependence true variable = local_C_pe3 distance = \
-    DEP_DIST_LOAD_STORE
-#pragma HLS dependence true variable = local_C_pe4 distance = \
-    DEP_DIST_LOAD_STORE
-#pragma HLS dependence true variable = local_C_pe5 distance = \
-    DEP_DIST_LOAD_STORE
-#pragma HLS dependence true variable = local_C_pe6 distance = \
-    DEP_DIST_LOAD_STORE
-#pragma HLS dependence true variable = local_C_pe7 distance = \
-    DEP_DIST_LOAD_STORE
-
-        ap_uint<512> a_pes;
+      [[tapa::
+            dependence("local_C_pe7", "", 1, "DEP_DIST_LOAD_STORE")]] [[tapa::dependence(
+          "local_C_pe6", "", "", "", 1,
+          "DEP_DIST_LOAD_STORE")]] [[tapa::dependence("local_C_pe5", "", "", "",
+                                                      1,
+                                                      "DEP_DIST_LOAD_"
+                                                      "STORE")]] [[tapa::
+                                                                       dependence(
+                                                                           "loc"
+                                                                           "al_"
+                                                                           "C_"
+                                                                           "pe"
+                                                                           "4",
+                                                                           "",
+                                                                           1,
+                                                                           "DEP"
+                                                                           "_DI"
+                                                                           "ST_"
+                                                                           "LOA"
+                                                                           "D_"
+                                                                           "STO"
+                                                                           "R"
+                                                                           "E")]] [[tapa::
+                                                                                        dependence("local_C_pe3",
+                                                                                                   "",
+                                                                                                   1,
+                                                                                                   "DEP_DIST_LOAD_STORE")]] [[tapa::
+                                                                                                                                  dependence("local_C_pe2",
+                                                                                                                                             "",
+                                                                                                                                             1,
+                                                                                                                                             "DEP_DIST_LOAD_STORE")]] [[tapa::
+                                                                                                                                                                            dependence("local_C_pe1",
+                                                                                                                                                                                       "",
+                                                                                                                                                                                       1,
+                                                                                                                                                                                       "DEP_DIST_LOAD_STORE")]] [[tapa::
+                                                                                                                                                                                                                      dependence("local_C_pe0",
+                                                                                                                                                                                                                                 "",
+                                                                                                                                                                                                                                 1,
+                                                                                                                                                                                                                                 "DEP_DIST_LOAD_STORE")]] [[tapa::pipeline(1)]] [[tapa::tripcount(1,
+                                                                                                                                                                                                                                                                                                  200)]] for (tapa::u<32> j = start_32; j <
+                                                                                                                                                                                                                                                                                                                                        end_32;) {
+        tapa::u<512> a_pes;
         bool a_pes_ready = fifo_A.try_read(a_pes);
 
         if (a_pes_ready) {
-          ap_uint<512> a_pes_delay = HLS_REG(HLS_REG(a_pes));
+          tapa::u<512> a_pes_delay = HLS_REG(HLS_REG(a_pes));
 
-          ap_uint<64> a[8];
-#pragma HLS array_partition variable = a complete
+          [[tapa::partition("complete")]] tapa::u<64> a[8];
 
-          ap_uint<14> a_col[8];
-#pragma HLS array_partition variable = a_col complete
+          [[tapa::partition("complete")]] tapa::u<14> a_col[8];
 
-          ap_uint<18> a_row[8];
-#pragma HLS array_partition variable = a_row complete
+          [[tapa::partition("complete")]] tapa::u<18> a_row[8];
 
-          ap_uint<32> a_val[8];
-#pragma HLS array_partition variable = a_val complete
+          [[tapa::partition("complete")]] tapa::u<32> a_val[8];
 
-          for (ap_uint<4> p = 0; p < 8; ++p) {
+          for (tapa::u<4> p = 0; p < 8; ++p) {
             a[p] = a_pes_delay(63 + p * 64, p * 64);
           }
 
-          for (ap_uint<4> p = 0; p < 8; ++p) {
+          for (tapa::u<4> p = 0; p < 8; ++p) {
             a_col[p] = (a[p])(63, 50);
             a_row[p] = (a[p])(49, 32);
             a_val[p] = (a[p])(31, 0);
@@ -1015,10 +941,9 @@ l_rp:
 
     // write C fifo
   write_C_outer:
-    for (ap_uint<32> i = 0; i < (M_ITE_INIT << 3); ++i) {
-#pragma HLS loop_tripcount min = 1 max = 1800
-#pragma HLS pipeline II = 1
-      ap_uint<64> out_c;
+    [[tapa::pipeline(1)]] [[tapa::tripcount(
+        1, 1800)]] for (tapa::u<32> i = 0; i < (M_ITE_INIT << 3); ++i) {
+      tapa::u<64> out_c;
 
       switch (i % 8) {
         case 0:
@@ -1047,46 +972,41 @@ l_rp:
           break;
       }
 
-      ap_uint<64> out_c_mult;
+      tapa::u<64> out_c_mult;
       peg2mult(out_c, alpha_u, out_c_mult);
       fifo_C_out.write(HLS_REG(out_c_mult));
     }
   }
 }
 
-void mux_Y_true(tapa::istream<ap_uint<64>>& fifo_in0,
-                tapa::istream<ap_uint<64>>& fifo_in1,
-                tapa::istream<ap_uint<64>>& fifo_in2,
-                tapa::istream<ap_uint<64>>& fifo_in3,
-                tapa::ostream<ap_uint<64>>& fifo_out) {
-#pragma HLS inline off
+void mux_Y_true(tapa::istream<tapa::u<64>>& fifo_in0,
+                tapa::istream<tapa::u<64>>& fifo_in1,
+                tapa::istream<tapa::u<64>>& fifo_in2,
+                tapa::istream<tapa::u<64>>& fifo_in3,
+                tapa::ostream<tapa::u<64>>& fifo_out) {
   bool SEND_META = true;
-  ap_uint<64> m64;
+  tapa::u<64> m64;
   bool M_ready = false;
 w_M:
-  while (!M_ready) {
-#pragma HLS loop_tripcount min = 1 max = 10
-#pragma HLS pipeline II = 1
+  [[tapa::pipeline(1)]] [[tapa::tripcount(1, 10)]] while (!M_ready) {
     M_ready = fifo_in0.try_read(m64);
   }
-  const ap_uint<64> m64_delay = HLS_REG(m64);
+  const tapa::u<64> m64_delay = HLS_REG(m64);
   if (SEND_META) fifo_out.write(m64_delay);
-  const ap_uint<32> M = m64_delay(31, 0);
-  const ap_uint<16> rp_time = m64_delay(63, 48);
+  const tapa::u<32> M = m64_delay(31, 0);
+  const tapa::u<16> rp_time = m64_delay(63, 48);
 
-  const ap_uint<32> num_ite = ((M + 511) >> 9) << 5;
-  const ap_uint<32> num_out = (M + 15) >> 4;
+  const tapa::u<32> num_ite = ((M + 511) >> 9) << 5;
+  const tapa::u<32> num_out = (M + 15) >> 4;
 
 l_rp:
-  for (ap_uint<16> rp = 0; rp < rp_time; rp++) {
-#pragma HLS loop_flatten off
-#pragma HLS loop_tripcount min = 1 max = 16
-    ap_uint<32> n = 0;
+  [[tapa::tripcount(1, 16)]] [[tapa::flatten(false)]] for (tapa::u<16> rp = 0;
+                                                           rp < rp_time; rp++) {
+    tapa::u<32> n = 0;
   mux_C:
-    for (ap_uint<32> i = 0; i < num_ite;) {
-#pragma HLS loop_tripcount min = 1 max = 500
-#pragma HLS pipeline II = 1
-      ap_uint<64> u64;
+    [[tapa::pipeline(1)]] [[tapa::tripcount(1, 500)]] for (tapa::u<32> i = 0;
+                                                           i < num_ite;) {
+      tapa::u<64> u64;
       bool u64_ready;
       switch (i % 4) {
         case 0:
@@ -1103,7 +1023,7 @@ l_rp:
           break;
       }
       if (u64_ready) {
-        ap_uint<64> u64_delay = HLS_REG(HLS_REG(u64));
+        tapa::u<64> u64_delay = HLS_REG(HLS_REG(u64));
         if (n < num_out) {
           fifo_out.write(u64_delay);
           ++n;
@@ -1114,39 +1034,34 @@ l_rp:
   }
 }
 
-void mux_Y_false(tapa::istream<ap_uint<64>>& fifo_in0,
-                 tapa::istream<ap_uint<64>>& fifo_in1,
-                 tapa::istream<ap_uint<64>>& fifo_in2,
-                 tapa::istream<ap_uint<64>>& fifo_in3,
-                 tapa::ostream<ap_uint<64>>& fifo_out) {
-#pragma HLS inline off
+void mux_Y_false(tapa::istream<tapa::u<64>>& fifo_in0,
+                 tapa::istream<tapa::u<64>>& fifo_in1,
+                 tapa::istream<tapa::u<64>>& fifo_in2,
+                 tapa::istream<tapa::u<64>>& fifo_in3,
+                 tapa::ostream<tapa::u<64>>& fifo_out) {
   bool SEND_META = false;
-  ap_uint<64> m64;
+  tapa::u<64> m64;
   bool M_ready = false;
 w_M:
-  while (!M_ready) {
-#pragma HLS loop_tripcount min = 1 max = 10
-#pragma HLS pipeline II = 1
+  [[tapa::pipeline(1)]] [[tapa::tripcount(1, 10)]] while (!M_ready) {
     M_ready = fifo_in0.try_read(m64);
   }
-  const ap_uint<64> m64_delay = HLS_REG(m64);
+  const tapa::u<64> m64_delay = HLS_REG(m64);
   if (SEND_META) fifo_out.write(m64_delay);
-  const ap_uint<32> M = m64_delay(31, 0);
-  const ap_uint<16> rp_time = m64_delay(63, 48);
+  const tapa::u<32> M = m64_delay(31, 0);
+  const tapa::u<16> rp_time = m64_delay(63, 48);
 
-  const ap_uint<32> num_ite = ((M + 511) >> 9) << 5;
-  const ap_uint<32> num_out = (M + 15) >> 4;
+  const tapa::u<32> num_ite = ((M + 511) >> 9) << 5;
+  const tapa::u<32> num_out = (M + 15) >> 4;
 
 l_rp:
-  for (ap_uint<16> rp = 0; rp < rp_time; rp++) {
-#pragma HLS loop_flatten off
-#pragma HLS loop_tripcount min = 1 max = 16
-    ap_uint<32> n = 0;
+  [[tapa::tripcount(1, 16)]] [[tapa::flatten(false)]] for (tapa::u<16> rp = 0;
+                                                           rp < rp_time; rp++) {
+    tapa::u<32> n = 0;
   mux_C:
-    for (ap_uint<32> i = 0; i < num_ite;) {
-#pragma HLS loop_tripcount min = 1 max = 500
-#pragma HLS pipeline II = 1
-      ap_uint<64> u64;
+    [[tapa::pipeline(1)]] [[tapa::tripcount(1, 500)]] for (tapa::u<32> i = 0;
+                                                           i < num_ite;) {
+      tapa::u<64> u64;
       bool u64_ready;
       switch (i % 4) {
         case 0:
@@ -1163,7 +1078,7 @@ l_rp:
           break;
       }
       if (u64_ready) {
-        ap_uint<64> u64_delay = HLS_REG(HLS_REG(u64));
+        tapa::u<64> u64_delay = HLS_REG(HLS_REG(u64));
         if (n < num_out) {
           fifo_out.write(u64_delay);
           ++n;
@@ -1175,41 +1090,37 @@ l_rp:
 }
 
 void merge_Y(
-    tapa::istream<ap_uint<64>>& fifo_in0, tapa::istream<ap_uint<64>>& fifo_in1,
-    tapa::istream<ap_uint<64>>& fifo_in2, tapa::istream<ap_uint<64>>& fifo_in3,
-    tapa::istream<ap_uint<64>>& fifo_in4, tapa::istream<ap_uint<64>>& fifo_in5,
-    tapa::istream<ap_uint<64>>& fifo_in6, tapa::istream<ap_uint<64>>& fifo_in7,
-    tapa::ostream<ap_uint<512>>& fifo_out) {
-#pragma HLS inline off
-  ap_uint<64> m64;
+    tapa::istream<tapa::u<64>>& fifo_in0, tapa::istream<tapa::u<64>>& fifo_in1,
+    tapa::istream<tapa::u<64>>& fifo_in2, tapa::istream<tapa::u<64>>& fifo_in3,
+    tapa::istream<tapa::u<64>>& fifo_in4, tapa::istream<tapa::u<64>>& fifo_in5,
+    tapa::istream<tapa::u<64>>& fifo_in6, tapa::istream<tapa::u<64>>& fifo_in7,
+    tapa::ostream<tapa::u<512>>& fifo_out) {
+  tapa::u<64> m64;
   bool M_ready = false;
 w_M:
-  while (!M_ready) {
-#pragma HLS loop_tripcount min = 1 max = 10
-#pragma HLS pipeline II = 1
+  [[tapa::pipeline(1)]] [[tapa::tripcount(1, 10)]] while (!M_ready) {
     M_ready = fifo_in0.try_read(m64);
   }
-  const ap_uint<64> m64_delay = HLS_REG(HLS_REG(m64));
-  ap_uint<512> m512;
+  const tapa::u<64> m64_delay = HLS_REG(HLS_REG(m64));
+  tapa::u<512> m512;
   m512(63, 0) = m64_delay;
   fifo_out.write(m512);
-  const ap_uint<32> M = m64_delay(31, 0);
-  const ap_uint<16> rp_time = m64_delay(63, 48);
+  const tapa::u<32> M = m64_delay(31, 0);
+  const tapa::u<16> rp_time = m64_delay(63, 48);
 
-  const ap_uint<32> num_out = (M + 15) >> 4;
+  const tapa::u<32> num_out = (M + 15) >> 4;
 
 l_rp:
-  for (ap_uint<16> rp = 0; rp < rp_time; rp++) {
-#pragma HLS loop_flatten off
-#pragma HLS loop_tripcount min = 1 max = 16
-    ap_uint<64> x0;
-    ap_uint<64> x1;
-    ap_uint<64> x2;
-    ap_uint<64> x3;
-    ap_uint<64> x4;
-    ap_uint<64> x5;
-    ap_uint<64> x6;
-    ap_uint<64> x7;
+  [[tapa::tripcount(1, 16)]] [[tapa::flatten(false)]] for (tapa::u<16> rp = 0;
+                                                           rp < rp_time; rp++) {
+    tapa::u<64> x0;
+    tapa::u<64> x1;
+    tapa::u<64> x2;
+    tapa::u<64> x3;
+    tapa::u<64> x4;
+    tapa::u<64> x5;
+    tapa::u<64> x6;
+    tapa::u<64> x7;
 
     bool x0_ready = false;
     bool x1_ready = false;
@@ -1221,9 +1132,8 @@ l_rp:
     bool x7_ready = false;
 
   mg_C:
-    for (ap_uint<32> i = 0; i < num_out;) {
-#pragma HLS loop_tripcount min = 1 max = 500
-#pragma HLS pipeline II = 1
+    [[tapa::pipeline(1)]] [[tapa::tripcount(1, 500)]] for (tapa::u<32> i = 0;
+                                                           i < num_out;) {
       if (!x0_ready) {
         x0_ready = fifo_in0.try_read(x0);
       }
@@ -1251,16 +1161,16 @@ l_rp:
       bool all_ready = x0_ready && x1_ready && x2_ready && x3_ready &&
                        x4_ready && x5_ready && x6_ready && x7_ready;
       if (all_ready) {
-        ap_uint<64> x0_delay = HLS_REG(HLS_REG(x0));
-        ap_uint<64> x1_delay = HLS_REG(HLS_REG(x1));
-        ap_uint<64> x2_delay = HLS_REG(HLS_REG(x2));
-        ap_uint<64> x3_delay = HLS_REG(HLS_REG(x3));
-        ap_uint<64> x4_delay = HLS_REG(HLS_REG(x4));
-        ap_uint<64> x5_delay = HLS_REG(HLS_REG(x5));
-        ap_uint<64> x6_delay = HLS_REG(HLS_REG(x6));
-        ap_uint<64> x7_delay = HLS_REG(HLS_REG(x7));
+        tapa::u<64> x0_delay = HLS_REG(HLS_REG(x0));
+        tapa::u<64> x1_delay = HLS_REG(HLS_REG(x1));
+        tapa::u<64> x2_delay = HLS_REG(HLS_REG(x2));
+        tapa::u<64> x3_delay = HLS_REG(HLS_REG(x3));
+        tapa::u<64> x4_delay = HLS_REG(HLS_REG(x4));
+        tapa::u<64> x5_delay = HLS_REG(HLS_REG(x5));
+        tapa::u<64> x6_delay = HLS_REG(HLS_REG(x6));
+        tapa::u<64> x7_delay = HLS_REG(HLS_REG(x7));
 
-        ap_uint<512> x_out;
+        tapa::u<512> x_out;
         x_out(63, 0) = x0_delay;
         x_out(127, 64) = x1_delay;
         x_out(191, 128) = x2_delay;
@@ -1287,27 +1197,23 @@ l_rp:
   }
 }
 
-void read_Y(tapa::async_mmap<ap_uint<512>>& Y_in,
-            tapa::ostream<ap_uint<512>>& fifo_Y, const ap_uint<32> M,
-            const ap_uint<16> rp_time) {
-#pragma HLS inline off
-  const ap_uint<32> num_ite_Y = (M + 15) >> 4;
+void read_Y(tapa::async_mmap<tapa::u<512>>& Y_in,
+            tapa::ostream<tapa::u<512>>& fifo_Y, const tapa::u<32> M,
+            const tapa::u<16> rp_time) {
+  const tapa::u<32> num_ite_Y = (M + 15) >> 4;
 l_rp:
-  for (ap_uint<16> rp = 0; rp < rp_time; rp++) {
-#pragma HLS loop_flatten off
-#pragma HLS loop_tripcount min = 1 max = 16
+  [[tapa::tripcount(1, 16)]] [[tapa::flatten(false)]] for (tapa::u<16> rp = 0;
+                                                           rp < rp_time; rp++) {
     //     rd_Y:
-    //         for(ap_uint<32> i = 0; i < num_ite_Y; i++) {
-    // #pragma HLS loop_tripcount min=1 max=500000
-    // #pragma HLS pipeline II=1
-    //             ap_uint<512> tmp_y = Y_in[i];
+    //         for(tapa::u<32> i = 0; i < num_ite_Y; i++) {
+    //             tapa::u<512> tmp_y = Y_in[i];
     //             fifo_Y.write(tmp_y);
     //         }
 
   rd_Y:
-    for (ap_uint<32> i_req = 0, i_resp = 0; i_resp < num_ite_Y;) {
-#pragma HLS loop_tripcount min = 1 max = 500000
-#pragma HLS pipeline II = 1
+    [[tapa::pipeline(1)]] [[tapa::tripcount(
+        1, 500000)]] for (tapa::u<32> i_req = 0, i_resp = 0;
+                          i_resp < num_ite_Y;) {
       if (i_req < num_ite_Y && i_req < i_resp + 64 &&
           Y_in.read_addr.try_write(i_req)) {
         ++i_req;
@@ -1320,40 +1226,34 @@ l_rp:
   }
 }
 
-void comp_Y(tapa::istream<ap_uint<512>>& fifo_Y_read_in,
-            tapa::istream<ap_uint<512>>& fifo_Y_pe_in,
-            tapa::ostream<ap_uint<512>>& fifo_Y_out, const ap_uint<32> beta_u) {
-#pragma HLS inline off
+void comp_Y(tapa::istream<tapa::u<512>>& fifo_Y_read_in,
+            tapa::istream<tapa::u<512>>& fifo_Y_pe_in,
+            tapa::ostream<tapa::u<512>>& fifo_Y_out, const tapa::u<32> beta_u) {
   bool M_ready = false;
-  ap_uint<512> M512;
+  tapa::u<512> M512;
 w_Mxx:
-  while (!M_ready) {
-#pragma HLS loop_tripcount min = 1 max = 10
-#pragma HLS pipeline II = 1
+  [[tapa::pipeline(1)]] [[tapa::tripcount(1, 10)]] while (!M_ready) {
     M_ready = fifo_Y_pe_in.try_read(M512);
   }
-  ap_uint<512> M512_delay = HLS_REG(M512);
+  tapa::u<512> M512_delay = HLS_REG(M512);
   fifo_Y_out.write(M512_delay);
-  const ap_uint<32> M = M512_delay(31, 0);
-  const ap_uint<16> rp_time = M512_delay(63, 48);
+  const tapa::u<32> M = M512_delay(31, 0);
+  const tapa::u<16> rp_time = M512_delay(63, 48);
 
   const float beta_f = uint32_to_float(beta_u);
-  const ap_uint<32> num_ite_Y = (M + 15) >> 4;
+  const tapa::u<32> num_ite_Y = (M + 15) >> 4;
 
 l_rp:
-  for (ap_uint<16> rp = 0; rp < rp_time; rp++) {
-#pragma HLS loop_flatten off
-#pragma HLS loop_tripcount min = 1 max = 16
-
-    ap_uint<512> y_read;
+  [[tapa::tripcount(1, 16)]] [[tapa::flatten(false)]] for (tapa::u<16> rp = 0;
+                                                           rp < rp_time; rp++) {
+    tapa::u<512> y_read;
     bool y_read_ready = false;
-    ap_uint<512> y_pe;
+    tapa::u<512> y_pe;
     bool y_pe_ready = false;
 
   cc:
-    for (ap_uint<32> i = 0; i < num_ite_Y;) {
-#pragma HLS loop_tripcount min = 1 max = 5000
-#pragma HLS pipeline II = 1
+    [[tapa::pipeline(1)]] [[tapa::tripcount(1, 5000)]] for (tapa::u<32> i = 0;
+                                                            i < num_ite_Y;) {
       if (!y_read_ready) {
         y_read_ready = fifo_Y_read_in.try_read(y_read);
       }
@@ -1361,11 +1261,11 @@ l_rp:
         y_pe_ready = fifo_Y_pe_in.try_read(y_pe);
       }
       if (y_read_ready && y_pe_ready) {
-        ap_uint<512> y_pe_delay = HLS_REG(HLS_REG(y_pe));
-        ap_uint<512> y_read_delay = HLS_REG(HLS_REG(y_read));
+        tapa::u<512> y_pe_delay = HLS_REG(HLS_REG(y_pe));
+        tapa::u<512> y_read_delay = HLS_REG(HLS_REG(y_read));
 
-        ap_uint<512> y_out;
-        for (ap_uint<5> p = 0; p < 16; ++p) {
+        tapa::u<512> y_out;
+        for (tapa::u<5> p = 0; p < 16; ++p) {
           float op_ab = uint32_to_float(y_pe_delay(31 + p * 32, p * 32));
           float op_y = uint32_to_float(y_read_delay(31 + p * 32, p * 32));
           float op_result = op_ab + HLS_REG(beta_f) * op_y;
@@ -1381,39 +1281,33 @@ l_rp:
   }
 }
 
-void write_Y(tapa::istream<ap_uint<512>>& fifo_Y,
-             tapa::async_mmap<ap_uint<512>>& Y_out) {
-#pragma HLS inline off
+void write_Y(tapa::istream<tapa::u<512>>& fifo_Y,
+             tapa::async_mmap<tapa::u<512>>& Y_out) {
   bool M_ready = false;
-  ap_uint<512> M512;
+  tapa::u<512> M512;
 
 w_Mxx:
-  while (!M_ready) {
-#pragma HLS loop_tripcount min = 1 max = 10
-#pragma HLS pipeline II = 1
+  [[tapa::pipeline(1)]] [[tapa::tripcount(1, 10)]] while (!M_ready) {
     M_ready = fifo_Y.try_read(M512);
   }
 
-  const ap_uint<32> M = M512(31, 0);
-  const ap_uint<16> rp_time = M512(63, 48);
-  const ap_uint<32> num_ite_Y = (M + 15) >> 4;
+  const tapa::u<32> M = M512(31, 0);
+  const tapa::u<16> rp_time = M512(63, 48);
+  const tapa::u<32> num_ite_Y = (M + 15) >> 4;
 
 l_rp:
-  for (ap_uint<16> rp = 0; rp < rp_time; rp++) {
-#pragma HLS loop_flatten off
-#pragma HLS loop_tripcount min = 1 max = 16
+  [[tapa::tripcount(1, 16)]] [[tapa::flatten(false)]] for (tapa::u<16> rp = 0;
+                                                           rp < rp_time; rp++) {
     //     wr_y:
-    //         for (ap_uint<32> i = 0; i < num_ite_Y; ++i) {
-    // #pragma HLS loop_tripcount min=1 max=5000
-    // #pragma HLS pipeline II=1
-    //             ap_uint<512> tmp_y = fifo_Y.read();
+    //         for (tapa::u<32> i = 0; i < num_ite_Y; ++i) {
+    //             tapa::u<512> tmp_y = fifo_Y.read();
     //             Y_out[i] = tmp_y;
     //         }
 
   wr_y:
-    for (ap_uint<32> i_req = 0, i_resp = 0; i_resp < num_ite_Y;) {
-#pragma HLS loop_tripcount min = 1 max = 5000
-#pragma HLS pipeline II = 1
+    [[tapa::pipeline(1)]] [[tapa::tripcount(
+        1, 5000)]] for (tapa::u<32> i_req = 0, i_resp = 0;
+                        i_resp < num_ite_Y;) {
       if (i_req < num_ite_Y && i_req < i_resp + 64 && !fifo_Y.empty() &&
           !Y_out.write_addr.full() && !Y_out.write_data.full()) {
         Y_out.write_addr.try_write(i_req);
@@ -1421,7 +1315,7 @@ l_rp:
         ++i_req;
       }
       if (!Y_out.write_resp.empty()) {
-        i_resp += ap_uint<9>(Y_out.write_resp.read(nullptr)) + 1;
+        i_resp += tapa::u<9>(Y_out.write_resp.read(nullptr)) + 1;
       }
     }
   }
@@ -1431,213 +1325,213 @@ l_rp:
 extern "C" {
 #endif
 
-void serpens(tapa::mmap<ap_uint<32>> edge_list_ptr,
-             tapa::mmap<ap_uint<512>> edge_list_ch0,
-             tapa::mmap<ap_uint<512>> edge_list_ch1,
-             tapa::mmap<ap_uint<512>> edge_list_ch2,
-             tapa::mmap<ap_uint<512>> edge_list_ch3,
-             tapa::mmap<ap_uint<512>> edge_list_ch4,
-             tapa::mmap<ap_uint<512>> edge_list_ch5,
-             tapa::mmap<ap_uint<512>> edge_list_ch6,
-             tapa::mmap<ap_uint<512>> edge_list_ch7,
-             tapa::mmap<ap_uint<512>> edge_list_ch8,
-             tapa::mmap<ap_uint<512>> edge_list_ch9,
-             tapa::mmap<ap_uint<512>> edge_list_ch10,
-             tapa::mmap<ap_uint<512>> edge_list_ch11,
-             tapa::mmap<ap_uint<512>> edge_list_ch12,
-             tapa::mmap<ap_uint<512>> edge_list_ch13,
-             tapa::mmap<ap_uint<512>> edge_list_ch14,
-             tapa::mmap<ap_uint<512>> edge_list_ch15,
-             tapa::mmap<ap_uint<512>> edge_list_ch16,
-             tapa::mmap<ap_uint<512>> edge_list_ch17,
-             tapa::mmap<ap_uint<512>> edge_list_ch18,
-             tapa::mmap<ap_uint<512>> edge_list_ch19,
-             tapa::mmap<ap_uint<512>> edge_list_ch20,
-             tapa::mmap<ap_uint<512>> edge_list_ch21,
-             tapa::mmap<ap_uint<512>> edge_list_ch22,
-             tapa::mmap<ap_uint<512>> edge_list_ch23,
-             tapa::mmap<ap_uint<512>> edge_list_ch24,
-             tapa::mmap<ap_uint<512>> edge_list_ch25,
-             tapa::mmap<ap_uint<512>> edge_list_ch26,
-             tapa::mmap<ap_uint<512>> edge_list_ch27,
-             tapa::mmap<ap_uint<512>> edge_list_ch28,
-             tapa::mmap<ap_uint<512>> edge_list_ch29,
-             tapa::mmap<ap_uint<512>> edge_list_ch30,
-             tapa::mmap<ap_uint<512>> edge_list_ch31,
-             tapa::mmap<ap_uint<512>> vec_X, tapa::mmap<ap_uint<512>> vec_Y,
-             tapa::mmap<ap_uint<512>> vec_Y_out,
+void serpens(tapa::mmap<tapa::u<32>> edge_list_ptr,
+             tapa::mmap<tapa::u<512>> edge_list_ch0,
+             tapa::mmap<tapa::u<512>> edge_list_ch1,
+             tapa::mmap<tapa::u<512>> edge_list_ch2,
+             tapa::mmap<tapa::u<512>> edge_list_ch3,
+             tapa::mmap<tapa::u<512>> edge_list_ch4,
+             tapa::mmap<tapa::u<512>> edge_list_ch5,
+             tapa::mmap<tapa::u<512>> edge_list_ch6,
+             tapa::mmap<tapa::u<512>> edge_list_ch7,
+             tapa::mmap<tapa::u<512>> edge_list_ch8,
+             tapa::mmap<tapa::u<512>> edge_list_ch9,
+             tapa::mmap<tapa::u<512>> edge_list_ch10,
+             tapa::mmap<tapa::u<512>> edge_list_ch11,
+             tapa::mmap<tapa::u<512>> edge_list_ch12,
+             tapa::mmap<tapa::u<512>> edge_list_ch13,
+             tapa::mmap<tapa::u<512>> edge_list_ch14,
+             tapa::mmap<tapa::u<512>> edge_list_ch15,
+             tapa::mmap<tapa::u<512>> edge_list_ch16,
+             tapa::mmap<tapa::u<512>> edge_list_ch17,
+             tapa::mmap<tapa::u<512>> edge_list_ch18,
+             tapa::mmap<tapa::u<512>> edge_list_ch19,
+             tapa::mmap<tapa::u<512>> edge_list_ch20,
+             tapa::mmap<tapa::u<512>> edge_list_ch21,
+             tapa::mmap<tapa::u<512>> edge_list_ch22,
+             tapa::mmap<tapa::u<512>> edge_list_ch23,
+             tapa::mmap<tapa::u<512>> edge_list_ch24,
+             tapa::mmap<tapa::u<512>> edge_list_ch25,
+             tapa::mmap<tapa::u<512>> edge_list_ch26,
+             tapa::mmap<tapa::u<512>> edge_list_ch27,
+             tapa::mmap<tapa::u<512>> edge_list_ch28,
+             tapa::mmap<tapa::u<512>> edge_list_ch29,
+             tapa::mmap<tapa::u<512>> edge_list_ch30,
+             tapa::mmap<tapa::u<512>> edge_list_ch31,
+             tapa::mmap<tapa::u<512>> vec_X, tapa::mmap<tapa::u<512>> vec_Y,
+             tapa::mmap<tapa::u<512>> vec_Y_out,
 
              const int NUM_ITE, const int NUM_A_LEN, const int M, const int K,
              const short P, const unsigned int alpha_u,
              const unsigned int beta_u) {
-  tapa::stream<ap_uint<32>, 2> fifo_edge_list_ptr_pe0("fifo_edge_list_ptr_pe0");
-  tapa::stream<ap_uint<32>, 2> fifo_edge_list_ptr_pe1("fifo_edge_list_ptr_pe1");
-  tapa::stream<ap_uint<32>, 2> fifo_edge_list_ptr_pe2("fifo_edge_list_ptr_pe2");
-  tapa::stream<ap_uint<32>, 2> fifo_edge_list_ptr_pe3("fifo_edge_list_ptr_pe3");
-  tapa::stream<ap_uint<32>, 2> fifo_edge_list_ptr_pe4("fifo_edge_list_ptr_pe4");
-  tapa::stream<ap_uint<32>, 2> fifo_edge_list_ptr_pe5("fifo_edge_list_ptr_pe5");
-  tapa::stream<ap_uint<32>, 2> fifo_edge_list_ptr_pe6("fifo_edge_list_ptr_pe6");
-  tapa::stream<ap_uint<32>, 2> fifo_edge_list_ptr_pe7("fifo_edge_list_ptr_pe7");
-  tapa::stream<ap_uint<32>, 2> fifo_edge_list_ptr_pe8("fifo_edge_list_ptr_pe8");
-  tapa::stream<ap_uint<32>, 2> fifo_edge_list_ptr_pe9("fifo_edge_list_ptr_pe9");
-  tapa::stream<ap_uint<32>, 2> fifo_edge_list_ptr_pe10(
+  tapa::stream<tapa::u<32>, 2> fifo_edge_list_ptr_pe0("fifo_edge_list_ptr_pe0");
+  tapa::stream<tapa::u<32>, 2> fifo_edge_list_ptr_pe1("fifo_edge_list_ptr_pe1");
+  tapa::stream<tapa::u<32>, 2> fifo_edge_list_ptr_pe2("fifo_edge_list_ptr_pe2");
+  tapa::stream<tapa::u<32>, 2> fifo_edge_list_ptr_pe3("fifo_edge_list_ptr_pe3");
+  tapa::stream<tapa::u<32>, 2> fifo_edge_list_ptr_pe4("fifo_edge_list_ptr_pe4");
+  tapa::stream<tapa::u<32>, 2> fifo_edge_list_ptr_pe5("fifo_edge_list_ptr_pe5");
+  tapa::stream<tapa::u<32>, 2> fifo_edge_list_ptr_pe6("fifo_edge_list_ptr_pe6");
+  tapa::stream<tapa::u<32>, 2> fifo_edge_list_ptr_pe7("fifo_edge_list_ptr_pe7");
+  tapa::stream<tapa::u<32>, 2> fifo_edge_list_ptr_pe8("fifo_edge_list_ptr_pe8");
+  tapa::stream<tapa::u<32>, 2> fifo_edge_list_ptr_pe9("fifo_edge_list_ptr_pe9");
+  tapa::stream<tapa::u<32>, 2> fifo_edge_list_ptr_pe10(
       "fifo_edge_list_ptr_pe10");
-  tapa::stream<ap_uint<32>, 2> fifo_edge_list_ptr_pe11(
+  tapa::stream<tapa::u<32>, 2> fifo_edge_list_ptr_pe11(
       "fifo_edge_list_ptr_pe11");
-  tapa::stream<ap_uint<32>, 2> fifo_edge_list_ptr_pe12(
+  tapa::stream<tapa::u<32>, 2> fifo_edge_list_ptr_pe12(
       "fifo_edge_list_ptr_pe12");
-  tapa::stream<ap_uint<32>, 2> fifo_edge_list_ptr_pe13(
+  tapa::stream<tapa::u<32>, 2> fifo_edge_list_ptr_pe13(
       "fifo_edge_list_ptr_pe13");
-  tapa::stream<ap_uint<32>, 2> fifo_edge_list_ptr_pe14(
+  tapa::stream<tapa::u<32>, 2> fifo_edge_list_ptr_pe14(
       "fifo_edge_list_ptr_pe14");
-  tapa::stream<ap_uint<32>, 2> fifo_edge_list_ptr_pe15(
+  tapa::stream<tapa::u<32>, 2> fifo_edge_list_ptr_pe15(
       "fifo_edge_list_ptr_pe15");
-  tapa::stream<ap_uint<32>, 2> fifo_edge_list_ptr_pe16(
+  tapa::stream<tapa::u<32>, 2> fifo_edge_list_ptr_pe16(
       "fifo_edge_list_ptr_pe16");
-  tapa::stream<ap_uint<32>, 2> fifo_edge_list_ptr_pe17(
+  tapa::stream<tapa::u<32>, 2> fifo_edge_list_ptr_pe17(
       "fifo_edge_list_ptr_pe17");
-  tapa::stream<ap_uint<32>, 2> fifo_edge_list_ptr_pe18(
+  tapa::stream<tapa::u<32>, 2> fifo_edge_list_ptr_pe18(
       "fifo_edge_list_ptr_pe18");
-  tapa::stream<ap_uint<32>, 2> fifo_edge_list_ptr_pe19(
+  tapa::stream<tapa::u<32>, 2> fifo_edge_list_ptr_pe19(
       "fifo_edge_list_ptr_pe19");
-  tapa::stream<ap_uint<32>, 2> fifo_edge_list_ptr_pe20(
+  tapa::stream<tapa::u<32>, 2> fifo_edge_list_ptr_pe20(
       "fifo_edge_list_ptr_pe20");
-  tapa::stream<ap_uint<32>, 2> fifo_edge_list_ptr_pe21(
+  tapa::stream<tapa::u<32>, 2> fifo_edge_list_ptr_pe21(
       "fifo_edge_list_ptr_pe21");
-  tapa::stream<ap_uint<32>, 2> fifo_edge_list_ptr_pe22(
+  tapa::stream<tapa::u<32>, 2> fifo_edge_list_ptr_pe22(
       "fifo_edge_list_ptr_pe22");
-  tapa::stream<ap_uint<32>, 2> fifo_edge_list_ptr_pe23(
+  tapa::stream<tapa::u<32>, 2> fifo_edge_list_ptr_pe23(
       "fifo_edge_list_ptr_pe23");
-  tapa::stream<ap_uint<32>, 2> fifo_edge_list_ptr_pe24(
+  tapa::stream<tapa::u<32>, 2> fifo_edge_list_ptr_pe24(
       "fifo_edge_list_ptr_pe24");
-  tapa::stream<ap_uint<32>, 2> fifo_edge_list_ptr_pe25(
+  tapa::stream<tapa::u<32>, 2> fifo_edge_list_ptr_pe25(
       "fifo_edge_list_ptr_pe25");
-  tapa::stream<ap_uint<32>, 2> fifo_edge_list_ptr_pe26(
+  tapa::stream<tapa::u<32>, 2> fifo_edge_list_ptr_pe26(
       "fifo_edge_list_ptr_pe26");
-  tapa::stream<ap_uint<32>, 2> fifo_edge_list_ptr_pe27(
+  tapa::stream<tapa::u<32>, 2> fifo_edge_list_ptr_pe27(
       "fifo_edge_list_ptr_pe27");
-  tapa::stream<ap_uint<32>, 2> fifo_edge_list_ptr_pe28(
+  tapa::stream<tapa::u<32>, 2> fifo_edge_list_ptr_pe28(
       "fifo_edge_list_ptr_pe28");
-  tapa::stream<ap_uint<32>, 2> fifo_edge_list_ptr_pe29(
+  tapa::stream<tapa::u<32>, 2> fifo_edge_list_ptr_pe29(
       "fifo_edge_list_ptr_pe29");
-  tapa::stream<ap_uint<32>, 2> fifo_edge_list_ptr_pe30(
+  tapa::stream<tapa::u<32>, 2> fifo_edge_list_ptr_pe30(
       "fifo_edge_list_ptr_pe30");
-  tapa::stream<ap_uint<32>, 2> fifo_edge_list_ptr_pe31(
+  tapa::stream<tapa::u<32>, 2> fifo_edge_list_ptr_pe31(
       "fifo_edge_list_ptr_pe31");
 
-  tapa::stream<ap_uint<512>, 2> fifo_A_pe0("fifo_A_pe0");
-  tapa::stream<ap_uint<512>, 2> fifo_A_pe1("fifo_A_pe1");
-  tapa::stream<ap_uint<512>, 2> fifo_A_pe2("fifo_A_pe2");
-  tapa::stream<ap_uint<512>, 2> fifo_A_pe3("fifo_A_pe3");
-  tapa::stream<ap_uint<512>, 2> fifo_A_pe4("fifo_A_pe4");
-  tapa::stream<ap_uint<512>, 2> fifo_A_pe5("fifo_A_pe5");
-  tapa::stream<ap_uint<512>, 2> fifo_A_pe6("fifo_A_pe6");
-  tapa::stream<ap_uint<512>, 2> fifo_A_pe7("fifo_A_pe7");
-  tapa::stream<ap_uint<512>, 2> fifo_A_pe8("fifo_A_pe8");
-  tapa::stream<ap_uint<512>, 2> fifo_A_pe9("fifo_A_pe9");
-  tapa::stream<ap_uint<512>, 2> fifo_A_pe10("fifo_A_pe10");
-  tapa::stream<ap_uint<512>, 2> fifo_A_pe11("fifo_A_pe11");
-  tapa::stream<ap_uint<512>, 2> fifo_A_pe12("fifo_A_pe12");
-  tapa::stream<ap_uint<512>, 2> fifo_A_pe13("fifo_A_pe13");
-  tapa::stream<ap_uint<512>, 2> fifo_A_pe14("fifo_A_pe14");
-  tapa::stream<ap_uint<512>, 2> fifo_A_pe15("fifo_A_pe15");
-  tapa::stream<ap_uint<512>, 2> fifo_A_pe16("fifo_A_pe16");
-  tapa::stream<ap_uint<512>, 2> fifo_A_pe17("fifo_A_pe17");
-  tapa::stream<ap_uint<512>, 2> fifo_A_pe18("fifo_A_pe18");
-  tapa::stream<ap_uint<512>, 2> fifo_A_pe19("fifo_A_pe19");
-  tapa::stream<ap_uint<512>, 2> fifo_A_pe20("fifo_A_pe20");
-  tapa::stream<ap_uint<512>, 2> fifo_A_pe21("fifo_A_pe21");
-  tapa::stream<ap_uint<512>, 2> fifo_A_pe22("fifo_A_pe22");
-  tapa::stream<ap_uint<512>, 2> fifo_A_pe23("fifo_A_pe23");
-  tapa::stream<ap_uint<512>, 2> fifo_A_pe24("fifo_A_pe24");
-  tapa::stream<ap_uint<512>, 2> fifo_A_pe25("fifo_A_pe25");
-  tapa::stream<ap_uint<512>, 2> fifo_A_pe26("fifo_A_pe26");
-  tapa::stream<ap_uint<512>, 2> fifo_A_pe27("fifo_A_pe27");
-  tapa::stream<ap_uint<512>, 2> fifo_A_pe28("fifo_A_pe28");
-  tapa::stream<ap_uint<512>, 2> fifo_A_pe29("fifo_A_pe29");
-  tapa::stream<ap_uint<512>, 2> fifo_A_pe30("fifo_A_pe30");
-  tapa::stream<ap_uint<512>, 2> fifo_A_pe31("fifo_A_pe31");
+  tapa::stream<tapa::u<512>, 2> fifo_A_pe0("fifo_A_pe0");
+  tapa::stream<tapa::u<512>, 2> fifo_A_pe1("fifo_A_pe1");
+  tapa::stream<tapa::u<512>, 2> fifo_A_pe2("fifo_A_pe2");
+  tapa::stream<tapa::u<512>, 2> fifo_A_pe3("fifo_A_pe3");
+  tapa::stream<tapa::u<512>, 2> fifo_A_pe4("fifo_A_pe4");
+  tapa::stream<tapa::u<512>, 2> fifo_A_pe5("fifo_A_pe5");
+  tapa::stream<tapa::u<512>, 2> fifo_A_pe6("fifo_A_pe6");
+  tapa::stream<tapa::u<512>, 2> fifo_A_pe7("fifo_A_pe7");
+  tapa::stream<tapa::u<512>, 2> fifo_A_pe8("fifo_A_pe8");
+  tapa::stream<tapa::u<512>, 2> fifo_A_pe9("fifo_A_pe9");
+  tapa::stream<tapa::u<512>, 2> fifo_A_pe10("fifo_A_pe10");
+  tapa::stream<tapa::u<512>, 2> fifo_A_pe11("fifo_A_pe11");
+  tapa::stream<tapa::u<512>, 2> fifo_A_pe12("fifo_A_pe12");
+  tapa::stream<tapa::u<512>, 2> fifo_A_pe13("fifo_A_pe13");
+  tapa::stream<tapa::u<512>, 2> fifo_A_pe14("fifo_A_pe14");
+  tapa::stream<tapa::u<512>, 2> fifo_A_pe15("fifo_A_pe15");
+  tapa::stream<tapa::u<512>, 2> fifo_A_pe16("fifo_A_pe16");
+  tapa::stream<tapa::u<512>, 2> fifo_A_pe17("fifo_A_pe17");
+  tapa::stream<tapa::u<512>, 2> fifo_A_pe18("fifo_A_pe18");
+  tapa::stream<tapa::u<512>, 2> fifo_A_pe19("fifo_A_pe19");
+  tapa::stream<tapa::u<512>, 2> fifo_A_pe20("fifo_A_pe20");
+  tapa::stream<tapa::u<512>, 2> fifo_A_pe21("fifo_A_pe21");
+  tapa::stream<tapa::u<512>, 2> fifo_A_pe22("fifo_A_pe22");
+  tapa::stream<tapa::u<512>, 2> fifo_A_pe23("fifo_A_pe23");
+  tapa::stream<tapa::u<512>, 2> fifo_A_pe24("fifo_A_pe24");
+  tapa::stream<tapa::u<512>, 2> fifo_A_pe25("fifo_A_pe25");
+  tapa::stream<tapa::u<512>, 2> fifo_A_pe26("fifo_A_pe26");
+  tapa::stream<tapa::u<512>, 2> fifo_A_pe27("fifo_A_pe27");
+  tapa::stream<tapa::u<512>, 2> fifo_A_pe28("fifo_A_pe28");
+  tapa::stream<tapa::u<512>, 2> fifo_A_pe29("fifo_A_pe29");
+  tapa::stream<tapa::u<512>, 2> fifo_A_pe30("fifo_A_pe30");
+  tapa::stream<tapa::u<512>, 2> fifo_A_pe31("fifo_A_pe31");
 
-  tapa::stream<ap_uint<512>, 2> fifo_X_pe0("fifo_X_pe0");
-  tapa::stream<ap_uint<512>, 2> fifo_X_pe1("fifo_X_pe1");
-  tapa::stream<ap_uint<512>, 2> fifo_X_pe2("fifo_X_pe2");
-  tapa::stream<ap_uint<512>, 2> fifo_X_pe3("fifo_X_pe3");
-  tapa::stream<ap_uint<512>, 2> fifo_X_pe4("fifo_X_pe4");
-  tapa::stream<ap_uint<512>, 2> fifo_X_pe5("fifo_X_pe5");
-  tapa::stream<ap_uint<512>, 2> fifo_X_pe6("fifo_X_pe6");
-  tapa::stream<ap_uint<512>, 2> fifo_X_pe7("fifo_X_pe7");
-  tapa::stream<ap_uint<512>, 2> fifo_X_pe8("fifo_X_pe8");
-  tapa::stream<ap_uint<512>, 2> fifo_X_pe9("fifo_X_pe9");
-  tapa::stream<ap_uint<512>, 2> fifo_X_pe10("fifo_X_pe10");
-  tapa::stream<ap_uint<512>, 2> fifo_X_pe11("fifo_X_pe11");
-  tapa::stream<ap_uint<512>, 2> fifo_X_pe12("fifo_X_pe12");
-  tapa::stream<ap_uint<512>, 2> fifo_X_pe13("fifo_X_pe13");
-  tapa::stream<ap_uint<512>, 2> fifo_X_pe14("fifo_X_pe14");
-  tapa::stream<ap_uint<512>, 2> fifo_X_pe15("fifo_X_pe15");
-  tapa::stream<ap_uint<512>, 2> fifo_X_pe16("fifo_X_pe16");
-  tapa::stream<ap_uint<512>, 2> fifo_X_pe17("fifo_X_pe17");
-  tapa::stream<ap_uint<512>, 2> fifo_X_pe18("fifo_X_pe18");
-  tapa::stream<ap_uint<512>, 2> fifo_X_pe19("fifo_X_pe19");
-  tapa::stream<ap_uint<512>, 2> fifo_X_pe20("fifo_X_pe20");
-  tapa::stream<ap_uint<512>, 2> fifo_X_pe21("fifo_X_pe21");
-  tapa::stream<ap_uint<512>, 2> fifo_X_pe22("fifo_X_pe22");
-  tapa::stream<ap_uint<512>, 2> fifo_X_pe23("fifo_X_pe23");
-  tapa::stream<ap_uint<512>, 2> fifo_X_pe24("fifo_X_pe24");
-  tapa::stream<ap_uint<512>, 2> fifo_X_pe25("fifo_X_pe25");
-  tapa::stream<ap_uint<512>, 2> fifo_X_pe26("fifo_X_pe26");
-  tapa::stream<ap_uint<512>, 2> fifo_X_pe27("fifo_X_pe27");
-  tapa::stream<ap_uint<512>, 2> fifo_X_pe28("fifo_X_pe28");
-  tapa::stream<ap_uint<512>, 2> fifo_X_pe29("fifo_X_pe29");
-  tapa::stream<ap_uint<512>, 2> fifo_X_pe30("fifo_X_pe30");
-  tapa::stream<ap_uint<512>, 2> fifo_X_pe31("fifo_X_pe31");
+  tapa::stream<tapa::u<512>, 2> fifo_X_pe0("fifo_X_pe0");
+  tapa::stream<tapa::u<512>, 2> fifo_X_pe1("fifo_X_pe1");
+  tapa::stream<tapa::u<512>, 2> fifo_X_pe2("fifo_X_pe2");
+  tapa::stream<tapa::u<512>, 2> fifo_X_pe3("fifo_X_pe3");
+  tapa::stream<tapa::u<512>, 2> fifo_X_pe4("fifo_X_pe4");
+  tapa::stream<tapa::u<512>, 2> fifo_X_pe5("fifo_X_pe5");
+  tapa::stream<tapa::u<512>, 2> fifo_X_pe6("fifo_X_pe6");
+  tapa::stream<tapa::u<512>, 2> fifo_X_pe7("fifo_X_pe7");
+  tapa::stream<tapa::u<512>, 2> fifo_X_pe8("fifo_X_pe8");
+  tapa::stream<tapa::u<512>, 2> fifo_X_pe9("fifo_X_pe9");
+  tapa::stream<tapa::u<512>, 2> fifo_X_pe10("fifo_X_pe10");
+  tapa::stream<tapa::u<512>, 2> fifo_X_pe11("fifo_X_pe11");
+  tapa::stream<tapa::u<512>, 2> fifo_X_pe12("fifo_X_pe12");
+  tapa::stream<tapa::u<512>, 2> fifo_X_pe13("fifo_X_pe13");
+  tapa::stream<tapa::u<512>, 2> fifo_X_pe14("fifo_X_pe14");
+  tapa::stream<tapa::u<512>, 2> fifo_X_pe15("fifo_X_pe15");
+  tapa::stream<tapa::u<512>, 2> fifo_X_pe16("fifo_X_pe16");
+  tapa::stream<tapa::u<512>, 2> fifo_X_pe17("fifo_X_pe17");
+  tapa::stream<tapa::u<512>, 2> fifo_X_pe18("fifo_X_pe18");
+  tapa::stream<tapa::u<512>, 2> fifo_X_pe19("fifo_X_pe19");
+  tapa::stream<tapa::u<512>, 2> fifo_X_pe20("fifo_X_pe20");
+  tapa::stream<tapa::u<512>, 2> fifo_X_pe21("fifo_X_pe21");
+  tapa::stream<tapa::u<512>, 2> fifo_X_pe22("fifo_X_pe22");
+  tapa::stream<tapa::u<512>, 2> fifo_X_pe23("fifo_X_pe23");
+  tapa::stream<tapa::u<512>, 2> fifo_X_pe24("fifo_X_pe24");
+  tapa::stream<tapa::u<512>, 2> fifo_X_pe25("fifo_X_pe25");
+  tapa::stream<tapa::u<512>, 2> fifo_X_pe26("fifo_X_pe26");
+  tapa::stream<tapa::u<512>, 2> fifo_X_pe27("fifo_X_pe27");
+  tapa::stream<tapa::u<512>, 2> fifo_X_pe28("fifo_X_pe28");
+  tapa::stream<tapa::u<512>, 2> fifo_X_pe29("fifo_X_pe29");
+  tapa::stream<tapa::u<512>, 2> fifo_X_pe30("fifo_X_pe30");
+  tapa::stream<tapa::u<512>, 2> fifo_X_pe31("fifo_X_pe31");
 
-  tapa::stream<ap_uint<64>, 2> fifo_Y_pe0("fifo_Y_pe0");
-  tapa::stream<ap_uint<64>, 2> fifo_Y_pe1("fifo_Y_pe1");
-  tapa::stream<ap_uint<64>, 2> fifo_Y_pe2("fifo_Y_pe2");
-  tapa::stream<ap_uint<64>, 2> fifo_Y_pe3("fifo_Y_pe3");
-  tapa::stream<ap_uint<64>, 2> fifo_Y_pe4("fifo_Y_pe4");
-  tapa::stream<ap_uint<64>, 2> fifo_Y_pe5("fifo_Y_pe5");
-  tapa::stream<ap_uint<64>, 2> fifo_Y_pe6("fifo_Y_pe6");
-  tapa::stream<ap_uint<64>, 2> fifo_Y_pe7("fifo_Y_pe7");
-  tapa::stream<ap_uint<64>, 2> fifo_Y_pe8("fifo_Y_pe8");
-  tapa::stream<ap_uint<64>, 2> fifo_Y_pe9("fifo_Y_pe9");
-  tapa::stream<ap_uint<64>, 2> fifo_Y_pe10("fifo_Y_pe10");
-  tapa::stream<ap_uint<64>, 2> fifo_Y_pe11("fifo_Y_pe11");
-  tapa::stream<ap_uint<64>, 2> fifo_Y_pe12("fifo_Y_pe12");
-  tapa::stream<ap_uint<64>, 2> fifo_Y_pe13("fifo_Y_pe13");
-  tapa::stream<ap_uint<64>, 2> fifo_Y_pe14("fifo_Y_pe14");
-  tapa::stream<ap_uint<64>, 2> fifo_Y_pe15("fifo_Y_pe15");
-  tapa::stream<ap_uint<64>, 2> fifo_Y_pe16("fifo_Y_pe16");
-  tapa::stream<ap_uint<64>, 2> fifo_Y_pe17("fifo_Y_pe17");
-  tapa::stream<ap_uint<64>, 2> fifo_Y_pe18("fifo_Y_pe18");
-  tapa::stream<ap_uint<64>, 2> fifo_Y_pe19("fifo_Y_pe19");
-  tapa::stream<ap_uint<64>, 2> fifo_Y_pe20("fifo_Y_pe20");
-  tapa::stream<ap_uint<64>, 2> fifo_Y_pe21("fifo_Y_pe21");
-  tapa::stream<ap_uint<64>, 2> fifo_Y_pe22("fifo_Y_pe22");
-  tapa::stream<ap_uint<64>, 2> fifo_Y_pe23("fifo_Y_pe23");
-  tapa::stream<ap_uint<64>, 2> fifo_Y_pe24("fifo_Y_pe24");
-  tapa::stream<ap_uint<64>, 2> fifo_Y_pe25("fifo_Y_pe25");
-  tapa::stream<ap_uint<64>, 2> fifo_Y_pe26("fifo_Y_pe26");
-  tapa::stream<ap_uint<64>, 2> fifo_Y_pe27("fifo_Y_pe27");
-  tapa::stream<ap_uint<64>, 2> fifo_Y_pe28("fifo_Y_pe28");
-  tapa::stream<ap_uint<64>, 2> fifo_Y_pe29("fifo_Y_pe29");
-  tapa::stream<ap_uint<64>, 2> fifo_Y_pe30("fifo_Y_pe30");
-  tapa::stream<ap_uint<64>, 2> fifo_Y_pe31("fifo_Y_pe31");
+  tapa::stream<tapa::u<64>, 2> fifo_Y_pe0("fifo_Y_pe0");
+  tapa::stream<tapa::u<64>, 2> fifo_Y_pe1("fifo_Y_pe1");
+  tapa::stream<tapa::u<64>, 2> fifo_Y_pe2("fifo_Y_pe2");
+  tapa::stream<tapa::u<64>, 2> fifo_Y_pe3("fifo_Y_pe3");
+  tapa::stream<tapa::u<64>, 2> fifo_Y_pe4("fifo_Y_pe4");
+  tapa::stream<tapa::u<64>, 2> fifo_Y_pe5("fifo_Y_pe5");
+  tapa::stream<tapa::u<64>, 2> fifo_Y_pe6("fifo_Y_pe6");
+  tapa::stream<tapa::u<64>, 2> fifo_Y_pe7("fifo_Y_pe7");
+  tapa::stream<tapa::u<64>, 2> fifo_Y_pe8("fifo_Y_pe8");
+  tapa::stream<tapa::u<64>, 2> fifo_Y_pe9("fifo_Y_pe9");
+  tapa::stream<tapa::u<64>, 2> fifo_Y_pe10("fifo_Y_pe10");
+  tapa::stream<tapa::u<64>, 2> fifo_Y_pe11("fifo_Y_pe11");
+  tapa::stream<tapa::u<64>, 2> fifo_Y_pe12("fifo_Y_pe12");
+  tapa::stream<tapa::u<64>, 2> fifo_Y_pe13("fifo_Y_pe13");
+  tapa::stream<tapa::u<64>, 2> fifo_Y_pe14("fifo_Y_pe14");
+  tapa::stream<tapa::u<64>, 2> fifo_Y_pe15("fifo_Y_pe15");
+  tapa::stream<tapa::u<64>, 2> fifo_Y_pe16("fifo_Y_pe16");
+  tapa::stream<tapa::u<64>, 2> fifo_Y_pe17("fifo_Y_pe17");
+  tapa::stream<tapa::u<64>, 2> fifo_Y_pe18("fifo_Y_pe18");
+  tapa::stream<tapa::u<64>, 2> fifo_Y_pe19("fifo_Y_pe19");
+  tapa::stream<tapa::u<64>, 2> fifo_Y_pe20("fifo_Y_pe20");
+  tapa::stream<tapa::u<64>, 2> fifo_Y_pe21("fifo_Y_pe21");
+  tapa::stream<tapa::u<64>, 2> fifo_Y_pe22("fifo_Y_pe22");
+  tapa::stream<tapa::u<64>, 2> fifo_Y_pe23("fifo_Y_pe23");
+  tapa::stream<tapa::u<64>, 2> fifo_Y_pe24("fifo_Y_pe24");
+  tapa::stream<tapa::u<64>, 2> fifo_Y_pe25("fifo_Y_pe25");
+  tapa::stream<tapa::u<64>, 2> fifo_Y_pe26("fifo_Y_pe26");
+  tapa::stream<tapa::u<64>, 2> fifo_Y_pe27("fifo_Y_pe27");
+  tapa::stream<tapa::u<64>, 2> fifo_Y_pe28("fifo_Y_pe28");
+  tapa::stream<tapa::u<64>, 2> fifo_Y_pe29("fifo_Y_pe29");
+  tapa::stream<tapa::u<64>, 2> fifo_Y_pe30("fifo_Y_pe30");
+  tapa::stream<tapa::u<64>, 2> fifo_Y_pe31("fifo_Y_pe31");
 
-  tapa::stream<ap_uint<64>, 2> fifo_Y_m0("fifo_Y_m0");
-  tapa::stream<ap_uint<64>, 2> fifo_Y_m1("fifo_Y_m1");
-  tapa::stream<ap_uint<64>, 2> fifo_Y_m2("fifo_Y_m2");
-  tapa::stream<ap_uint<64>, 2> fifo_Y_m3("fifo_Y_m3");
-  tapa::stream<ap_uint<64>, 2> fifo_Y_m4("fifo_Y_m4");
-  tapa::stream<ap_uint<64>, 2> fifo_Y_m5("fifo_Y_m5");
-  tapa::stream<ap_uint<64>, 2> fifo_Y_m6("fifo_Y_m6");
-  tapa::stream<ap_uint<64>, 2> fifo_Y_m7("fifo_Y_m7");
+  tapa::stream<tapa::u<64>, 2> fifo_Y_m0("fifo_Y_m0");
+  tapa::stream<tapa::u<64>, 2> fifo_Y_m1("fifo_Y_m1");
+  tapa::stream<tapa::u<64>, 2> fifo_Y_m2("fifo_Y_m2");
+  tapa::stream<tapa::u<64>, 2> fifo_Y_m3("fifo_Y_m3");
+  tapa::stream<tapa::u<64>, 2> fifo_Y_m4("fifo_Y_m4");
+  tapa::stream<tapa::u<64>, 2> fifo_Y_m5("fifo_Y_m5");
+  tapa::stream<tapa::u<64>, 2> fifo_Y_m6("fifo_Y_m6");
+  tapa::stream<tapa::u<64>, 2> fifo_Y_m7("fifo_Y_m7");
 
-  tapa::stream<ap_uint<512>, 2> fifo_Y_pe_u512("fifo_Y_pe_u512");
+  tapa::stream<tapa::u<512>, 2> fifo_Y_pe_u512("fifo_Y_pe_u512");
 
-  tapa::stream<ap_uint<512>, 2> fifo_Y_read_in0("fifo_Y_read_in0");
+  tapa::stream<tapa::u<512>, 2> fifo_Y_read_in0("fifo_Y_read_in0");
 
-  tapa::stream<ap_uint<512>, 2> fifo_Y_ch0("fifo_Y_ch0");
+  tapa::stream<tapa::u<512>, 2> fifo_Y_ch0("fifo_Y_ch0");
 
   tapa::task()
       .invoke(read_edge_list_ptr, NUM_ITE, M, P, K, alpha_u, edge_list_ptr,

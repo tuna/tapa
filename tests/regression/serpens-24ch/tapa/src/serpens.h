@@ -5,7 +5,6 @@
 #ifndef SEEPENS_H
 #define SEEPENS_H
 
-#include <ap_int.h>
 #include <tapa.h>
 
 constexpr int NUM_CH_SPARSE = 24;
@@ -19,7 +18,7 @@ constexpr int URAM_DEPTH =
 using float_v16 = tapa::vec_t<float, 16>;
 
 void Serpens(tapa::mmap<int> edge_list_ptr,
-             tapa::mmaps<ap_uint<512>, NUM_CH_SPARSE> edge_list_ch,
+             tapa::mmaps<tapa::u<512>, NUM_CH_SPARSE> edge_list_ch,
              tapa::mmap<float_v16> vec_X, tapa::mmap<float_v16> vec_Y,
              tapa::mmap<float_v16> vec_Y_out, const int NUM_ITE,
              const int NUM_A_LEN, const int M, const int K, const int P_N,
