@@ -2,24 +2,21 @@
 // All rights reserved. The contributor(s) of this file has/have agreed to the
 // RapidStream Contributor License Agreement.
 
-#include <ap_int.h>
 #include <tapa.h>
 
-typedef ap_uint<512> A_t16;
-typedef ap_uint<256> A_t8;
-typedef ap_uint<512> B_t16;
-typedef ap_uint<256> B_t8;
-typedef ap_uint<512> C_t16;
-typedef ap_uint<64> C_t2;
+typedef tapa::u<512> A_t16;
+typedef tapa::u<256> A_t8;
+typedef tapa::u<512> B_t16;
+typedef tapa::u<256> B_t8;
+typedef tapa::u<512> C_t16;
+typedef tapa::u<64> C_t2;
 
 void A_IO_L3_in(tapa::mmap<A_t16> A, tapa::ostream<A_t8>& fifo_A_local_out) {
-#pragma HLS INLINE OFF
-  for (ap_uint<13> i = 0; i < 3328; i++) {
-#pragma HLS PIPELINE II = 1
+  [[tapa::pipeline(1)]] for (tapa::u<13> i = 0; i < 3328; i++) {
     A_t16 mem_data;
     A_t8 fifo_data;
     mem_data = A[i];
-    for (ap_uint<2> p = 0; p < 2; p++) {
+    for (tapa::u<2> p = 0; p < 2; p++) {
       fifo_data = mem_data(255, 0);
       mem_data = mem_data >> 256;
       fifo_A_local_out.write(fifo_data);
@@ -30,13 +27,11 @@ void A_IO_L3_in(tapa::mmap<A_t16> A, tapa::ostream<A_t8>& fifo_A_local_out) {
 void A_IO_L2_in_intra_trans(int idx, A_t8 local_A[16][32],
                             tapa::ostream<A_t8>& fifo_A_local_out,
                             bool intra_trans_en) {
-#pragma HLS INLINE OFF
   int p0 = idx;
   if (!intra_trans_en) return;
-  for (ap_uint<6> c5 = 0; c5 <= 31; c5 += 1) {
-    for (ap_uint<7> c6 = 0; c6 <= 63; c6 += 1) {
-      for (ap_uint<5> c7 = 0; c7 <= 15; c7 += 1) {
-#pragma HLS PIPELINE II = 1
+  for (tapa::u<6> c5 = 0; c5 <= 31; c5 += 1) {
+    for (tapa::u<7> c6 = 0; c6 <= 63; c6 += 1) {
+      [[tapa::pipeline(1)]] for (tapa::u<5> c7 = 0; c7 <= 15; c7 += 1) {
         A_t8 fifo_data;
         fifo_data = local_A[c7][c5];
         fifo_A_local_out.write(fifo_data);
@@ -49,13 +44,11 @@ void A_IO_L2_in_inter_trans(int idx, A_t8 local_A[16][32],
                             tapa::istream<A_t8>& fifo_A_in,
                             tapa::ostream<A_t8>& fifo_A_out,
                             bool inter_trans_en) {
-#pragma HLS INLINE OFF
   int p0 = idx;
   if (!inter_trans_en) return;
-  for (ap_uint<5> c3 = p0; c3 <= 12; c3 += 1) {
-    for (ap_uint<5> c4 = 0; c4 <= 15; c4 += 1) {
-      for (ap_uint<6> c5 = 0; c5 <= 31; c5 += 1) {
-#pragma HLS PIPELINE II = 1
+  for (tapa::u<5> c3 = p0; c3 <= 12; c3 += 1) {
+    for (tapa::u<5> c4 = 0; c4 <= 15; c4 += 1) {
+      [[tapa::pipeline(1)]] for (tapa::u<6> c5 = 0; c5 <= 31; c5 += 1) {
         A_t8 fifo_data;
         fifo_data = fifo_A_in.read();
         if (c3 == p0) {
@@ -71,13 +64,11 @@ void A_IO_L2_in_inter_trans(int idx, A_t8 local_A[16][32],
 void A_IO_L2_in_inter_trans_boundary(int idx, A_t8 local_A[16][32],
                                      tapa::istream<A_t8>& fifo_A_in,
                                      bool inter_trans_en) {
-#pragma HLS INLINE OFF
   int p0 = idx;
   if (!inter_trans_en) return;
-  for (ap_uint<5> c3 = p0; c3 <= 12; c3 += 1) {
-    for (ap_uint<5> c4 = 0; c4 <= 15; c4 += 1) {
-      for (ap_uint<6> c5 = 0; c5 <= 31; c5 += 1) {
-#pragma HLS PIPELINE II = 1
+  for (tapa::u<5> c3 = p0; c3 <= 12; c3 += 1) {
+    for (tapa::u<5> c4 = 0; c4 <= 15; c4 += 1) {
+      [[tapa::pipeline(1)]] for (tapa::u<6> c5 = 0; c5 <= 31; c5 += 1) {
         A_t8 fifo_data;
         fifo_data = fifo_A_in.read();
         local_A[c4][c5] = fifo_data;
@@ -89,14 +80,11 @@ void A_IO_L2_in_inter_trans_boundary(int idx, A_t8 local_A[16][32],
 void A_IO_L2_in(int idx, tapa::istream<A_t8>& fifo_A_in,
                 tapa::ostream<A_t8>& fifo_A_out,
                 tapa::ostream<A_t8>& fifo_A_local_out) {
-#pragma HLS INLINE OFF
   int p0 = idx;
-  A_t8 local_A_ping[16][32];
-#pragma HLS ARRAY_MAP variable = local_A_ping instance = local_A horizontal
-#pragma HLS RESOURCE variable = local_A_ping core = RAM_2P_BRAM
-  A_t8 local_A_pong[16][32];
-#pragma HLS ARRAY_MAP variable = local_A_pong instance = local_A horizontal
-#pragma HLS RESOURCE variable = local_A_pong core = RAM_2P_BRAM
+  [[tapa::array_map("local_A", -1, "horizontal")]] [[tapa::storage(
+      "RAM_2P", "BRAM")]] A_t8 local_A_ping[16][32];
+  [[tapa::array_map("local_A", -1, "horizontal")]] [[tapa::storage(
+      "RAM_2P", "BRAM")]] A_t8 local_A_pong[16][32];
   bool arb = 0;
   bool inter_trans_en = 1;
   bool intra_trans_en = 0;
@@ -128,14 +116,11 @@ void A_IO_L2_in(int idx, tapa::istream<A_t8>& fifo_A_in,
 
 void A_IO_L2_in_boundary(int idx, tapa::istream<A_t8>& fifo_A_in,
                          tapa::ostream<A_t8>& fifo_A_local_out) {
-#pragma HLS INLINE OFF
   int p0 = idx;
-  A_t8 local_A_ping[16][32];
-#pragma HLS ARRAY_MAP variable = local_A_ping instance = local_A horizontal
-#pragma HLS RESOURCE variable = local_A_ping core = RAM_2P_BRAM
-  A_t8 local_A_pong[16][32];
-#pragma HLS ARRAY_MAP variable = local_A_pong instance = local_A horizontal
-#pragma HLS RESOURCE variable = local_A_pong core = RAM_2P_BRAM
+  [[tapa::array_map("local_A", -1, "horizontal")]] [[tapa::storage(
+      "RAM_2P", "BRAM")]] A_t8 local_A_ping[16][32];
+  [[tapa::array_map("local_A", -1, "horizontal")]] [[tapa::storage(
+      "RAM_2P", "BRAM")]] A_t8 local_A_pong[16][32];
   bool arb = 0;
   bool inter_trans_en = 1;
   bool intra_trans_en = 0;
@@ -166,13 +151,11 @@ void A_IO_L2_in_boundary(int idx, tapa::istream<A_t8>& fifo_A_in,
 }
 
 void B_IO_L3_in(tapa::mmap<B_t16> B, tapa::ostream<B_t8>& fifo_B_local_out) {
-#pragma HLS INLINE OFF
-  for (ap_uint<15> i = 0; i < 16384; i++) {
-#pragma HLS PIPELINE II = 1
+  [[tapa::pipeline(1)]] for (tapa::u<15> i = 0; i < 16384; i++) {
     B_t16 mem_data;
     B_t8 fifo_data;
     mem_data = B[i];
-    for (ap_uint<2> p = 0; p < 2; p++) {
+    for (tapa::u<2> p = 0; p < 2; p++) {
       fifo_data = mem_data(255, 0);
       mem_data = mem_data >> 256;
       fifo_B_local_out.write(fifo_data);
@@ -183,13 +166,11 @@ void B_IO_L3_in(tapa::mmap<B_t16> B, tapa::ostream<B_t8>& fifo_B_local_out) {
 void B_IO_L2_in_intra_trans(int idx, B_t8 local_B[64][32],
                             tapa::ostream<B_t8>& fifo_B_local_out,
                             bool intra_trans_en) {
-#pragma HLS INLINE OFF
   int p0 = idx;
   if (!intra_trans_en) return;
-  for (ap_uint<6> c5 = 0; c5 <= 31; c5 += 1) {
-    for (ap_uint<7> c6 = 0; c6 <= 63; c6 += 1) {
-      for (ap_uint<5> c7 = 0; c7 <= 15; c7 += 1) {
-#pragma HLS PIPELINE II = 1
+  for (tapa::u<6> c5 = 0; c5 <= 31; c5 += 1) {
+    for (tapa::u<7> c6 = 0; c6 <= 63; c6 += 1) {
+      [[tapa::pipeline(1)]] for (tapa::u<5> c7 = 0; c7 <= 15; c7 += 1) {
         B_t8 fifo_data;
         fifo_data = local_B[c6][c5];
         fifo_B_local_out.write(fifo_data);
@@ -202,13 +183,11 @@ void B_IO_L2_in_inter_trans(int idx, B_t8 local_B[64][32],
                             tapa::istream<B_t8>& fifo_B_in,
                             tapa::ostream<B_t8>& fifo_B_out,
                             bool inter_trans_en) {
-#pragma HLS INLINE OFF
   int p0 = idx;
   if (!inter_trans_en) return;
-  for (ap_uint<5> c3 = p0; c3 <= 15; c3 += 1) {
-    for (ap_uint<7> c4 = 0; c4 <= 63; c4 += 1) {
-      for (ap_uint<6> c5 = 0; c5 <= 31; c5 += 1) {
-#pragma HLS PIPELINE II = 1
+  for (tapa::u<5> c3 = p0; c3 <= 15; c3 += 1) {
+    for (tapa::u<7> c4 = 0; c4 <= 63; c4 += 1) {
+      [[tapa::pipeline(1)]] for (tapa::u<6> c5 = 0; c5 <= 31; c5 += 1) {
         B_t8 fifo_data;
         fifo_data = fifo_B_in.read();
         if (c3 == p0) {
@@ -224,13 +203,11 @@ void B_IO_L2_in_inter_trans(int idx, B_t8 local_B[64][32],
 void B_IO_L2_in_inter_trans_boundary(int idx, B_t8 local_B[64][32],
                                      tapa::istream<B_t8>& fifo_B_in,
                                      bool inter_trans_en) {
-#pragma HLS INLINE OFF
   int p0 = idx;
   if (!inter_trans_en) return;
-  for (ap_uint<5> c3 = p0; c3 <= 15; c3 += 1) {
-    for (ap_uint<7> c4 = 0; c4 <= 63; c4 += 1) {
-      for (ap_uint<6> c5 = 0; c5 <= 31; c5 += 1) {
-#pragma HLS PIPELINE II = 1
+  for (tapa::u<5> c3 = p0; c3 <= 15; c3 += 1) {
+    for (tapa::u<7> c4 = 0; c4 <= 63; c4 += 1) {
+      [[tapa::pipeline(1)]] for (tapa::u<6> c5 = 0; c5 <= 31; c5 += 1) {
         B_t8 fifo_data;
         fifo_data = fifo_B_in.read();
         local_B[c4][c5] = fifo_data;
@@ -242,14 +219,11 @@ void B_IO_L2_in_inter_trans_boundary(int idx, B_t8 local_B[64][32],
 void B_IO_L2_in(int idx, tapa::istream<B_t8>& fifo_B_in,
                 tapa::ostream<B_t8>& fifo_B_out,
                 tapa::ostream<B_t8>& fifo_B_local_out) {
-#pragma HLS INLINE OFF
   int p0 = idx;
-  B_t8 local_B_ping[64][32];
-#pragma HLS ARRAY_MAP variable = local_B_ping instance = local_B horizontal
-#pragma HLS RESOURCE variable = local_B_ping core = RAM_2P_BRAM
-  B_t8 local_B_pong[64][32];
-#pragma HLS ARRAY_MAP variable = local_B_pong instance = local_B horizontal
-#pragma HLS RESOURCE variable = local_B_pong core = RAM_2P_BRAM
+  [[tapa::array_map("local_B", -1, "horizontal")]] [[tapa::storage(
+      "RAM_2P", "BRAM")]] B_t8 local_B_ping[64][32];
+  [[tapa::array_map("local_B", -1, "horizontal")]] [[tapa::storage(
+      "RAM_2P", "BRAM")]] B_t8 local_B_pong[64][32];
   bool arb = 0;
   bool inter_trans_en = 1;
   bool intra_trans_en = 0;
@@ -281,14 +255,11 @@ void B_IO_L2_in(int idx, tapa::istream<B_t8>& fifo_B_in,
 
 void B_IO_L2_in_boundary(int idx, tapa::istream<B_t8>& fifo_B_in,
                          tapa::ostream<B_t8>& fifo_B_local_out) {
-#pragma HLS INLINE OFF
   int p0 = idx;
-  B_t8 local_B_ping[64][32];
-#pragma HLS ARRAY_MAP variable = local_B_ping instance = local_B horizontal
-#pragma HLS RESOURCE variable = local_B_ping core = RAM_2P_BRAM
-  B_t8 local_B_pong[64][32];
-#pragma HLS ARRAY_MAP variable = local_B_pong instance = local_B horizontal
-#pragma HLS RESOURCE variable = local_B_pong core = RAM_2P_BRAM
+  [[tapa::array_map("local_B", -1, "horizontal")]] [[tapa::storage(
+      "RAM_2P", "BRAM")]] B_t8 local_B_ping[64][32];
+  [[tapa::array_map("local_B", -1, "horizontal")]] [[tapa::storage(
+      "RAM_2P", "BRAM")]] B_t8 local_B_pong[64][32];
   bool arb = 0;
   bool inter_trans_en = 1;
   bool intra_trans_en = 0;
@@ -322,29 +293,24 @@ void PE(int idx, int idy, tapa::istream<A_t8>& fifo_A_in,
         tapa::ostream<A_t8>& fifo_A_out, tapa::istream<B_t8>& fifo_B_in,
         tapa::ostream<B_t8>& fifo_B_out,
         tapa::ostream<float>& fifo_C_drain_out) {
-#pragma HLS INLINE OFF
   int p0 = idx, p1 = idy;
   float local_A[1][8];
   float local_B[1][8];
-  float local_C[16][64];
-#pragma HLS RESOURCE variable = local_C core = RAM_2P_BRAM
+  [[tapa::storage("RAM_2P", "BRAM")]] float local_C[16][64];
   {
-    for (ap_uint<7> c6 = 0; c6 <= 63; c6 += 1) {
-      for (ap_uint<5> c7 = 0; c7 <= 15; c7 += 1) {
-#pragma HLS PIPELINE II = 1
+    for (tapa::u<7> c6 = 0; c6 <= 63; c6 += 1) {
+      [[tapa::pipeline(1)]] for (tapa::u<5> c7 = 0; c7 <= 15; c7 += 1) {
         local_C[c7][c6] = 0;
       }
     }
-    for (ap_uint<6> c5 = 0; c5 <= 31; c5 += 1) {
-      for (ap_uint<7> c6 = 0; c6 <= 63; c6 += 1) {
-        for (ap_uint<5> c7 = 0; c7 <= 15; c7 += 1) {
-#pragma HLS PIPELINE II = 1
+    for (tapa::u<6> c5 = 0; c5 <= 31; c5 += 1) {
+      for (tapa::u<7> c6 = 0; c6 <= 63; c6 += 1) {
+        [[tapa::pipeline(1)]] for (tapa::u<5> c7 = 0; c7 <= 15; c7 += 1) {
           {
             {
               A_t8 fifo_data;
               fifo_data = fifo_A_in.read();
-              for (ap_uint<4> n = 0; n < 8; n++) {
-#pragma HLS UNROLL
+              [[tapa::unroll]] for (tapa::u<4> n = 0; n < 8; n++) {
                 union {
                   unsigned int ui;
                   float ut;
@@ -358,8 +324,7 @@ void PE(int idx, int idy, tapa::istream<A_t8>& fifo_A_in,
             {
               B_t8 fifo_data;
               fifo_data = fifo_B_in.read();
-              for (ap_uint<4> n = 0; n < 8; n++) {
-#pragma HLS UNROLL
+              [[tapa::unroll]] for (tapa::u<4> n = 0; n < 8; n++) {
                 union {
                   unsigned int ui;
                   float ut;
@@ -370,8 +335,7 @@ void PE(int idx, int idy, tapa::istream<A_t8>& fifo_A_in,
               }
             }
 
-            for (ap_uint<4> c8 = 0; c8 <= 7; c8 += 1) {
-#pragma HLS UNROLL
+            [[tapa::unroll]] for (tapa::u<4> c8 = 0; c8 <= 7; c8 += 1) {
               local_C[c7][c6] =
                   (local_C[c7][c6] + (local_A[0][c8] * local_B[0][c8]));
             }
@@ -392,9 +356,9 @@ void PE(int idx, int idy, tapa::istream<A_t8>& fifo_A_in,
               u1.ut = local_B[0][1];
               u0.ut = local_B[0][0];
               fifo_data =
-                  (ap_uint<32>(u7.ui), ap_uint<32>(u6.ui), ap_uint<32>(u5.ui),
-                   ap_uint<32>(u4.ui), ap_uint<32>(u3.ui), ap_uint<32>(u2.ui),
-                   ap_uint<32>(u1.ui), ap_uint<32>(u0.ui));
+                  (tapa::u<32>(u7.ui), tapa::u<32>(u6.ui), tapa::u<32>(u5.ui),
+                   tapa::u<32>(u4.ui), tapa::u<32>(u3.ui), tapa::u<32>(u2.ui),
+                   tapa::u<32>(u1.ui), tapa::u<32>(u0.ui));
               fifo_B_out.write(fifo_data);
             }
 
@@ -413,9 +377,9 @@ void PE(int idx, int idy, tapa::istream<A_t8>& fifo_A_in,
               u1.ut = local_A[0][1];
               u0.ut = local_A[0][0];
               fifo_data =
-                  (ap_uint<32>(u7.ui), ap_uint<32>(u6.ui), ap_uint<32>(u5.ui),
-                   ap_uint<32>(u4.ui), ap_uint<32>(u3.ui), ap_uint<32>(u2.ui),
-                   ap_uint<32>(u1.ui), ap_uint<32>(u0.ui));
+                  (tapa::u<32>(u7.ui), tapa::u<32>(u6.ui), tapa::u<32>(u5.ui),
+                   tapa::u<32>(u4.ui), tapa::u<32>(u3.ui), tapa::u<32>(u2.ui),
+                   tapa::u<32>(u1.ui), tapa::u<32>(u0.ui));
               fifo_A_out.write(fifo_data);
             }
           }
@@ -437,10 +401,9 @@ void A_PE_dummy(int idx, int idy, tapa::istream<A_t8>& fifo_A_in) {
   {
     {
     }
-    for (ap_uint<6> c5 = 0; c5 <= 31; c5 += 1) {
-      for (ap_uint<7> c6 = 0; c6 <= 63; c6 += 1) {
-        for (ap_uint<5> c7 = 0; c7 <= 15; c7 += 1) {
-#pragma HLS PIPELINE II = 1
+    for (tapa::u<6> c5 = 0; c5 <= 31; c5 += 1) {
+      for (tapa::u<7> c6 = 0; c6 <= 63; c6 += 1) {
+        [[tapa::pipeline(1)]] for (tapa::u<5> c7 = 0; c7 <= 15; c7 += 1) {
           A_t8 fifo_data;
           fifo_data = fifo_A_in.read();
         }
@@ -454,10 +417,9 @@ void B_PE_dummy(int idx, int idy, tapa::istream<B_t8>& fifo_B_in) {
   {
     {
     }
-    for (ap_uint<6> c5 = 0; c5 <= 31; c5 += 1) {
-      for (ap_uint<7> c6 = 0; c6 <= 63; c6 += 1) {
-        for (ap_uint<5> c7 = 0; c7 <= 15; c7 += 1) {
-#pragma HLS PIPELINE II = 1
+    for (tapa::u<6> c5 = 0; c5 <= 31; c5 += 1) {
+      for (tapa::u<7> c6 = 0; c6 <= 63; c6 += 1) {
+        [[tapa::pipeline(1)]] for (tapa::u<5> c7 = 0; c7 <= 15; c7 += 1) {
           B_t8 fifo_data;
           fifo_data = fifo_B_in.read();
         }
@@ -469,18 +431,14 @@ void B_PE_dummy(int idx, int idy, tapa::istream<B_t8>& fifo_B_in) {
 void C_drain_IO_L1_out_intra_trans(
     int idx, int idy, C_t2 local_C[16][32],
     tapa::istream<float>& fifo_C_drain_local_in) {
-#pragma HLS INLINE
   int p0 = idx, p1 = idy;
-  ap_uint<32> buf_data_split[2];
-#pragma HLS ARRAY_PARTITION variable = buf_data_split complete
-  for (ap_uint<7> c6 = 0; c6 <= 63; c6 += 1) {
-    for (ap_uint<5> c7 = 0; c7 <= 15; c7 += 1) {
-#pragma HLS PIPELINE II = 1
+  [[tapa::partition("complete")]] tapa::u<32> buf_data_split[2];
+  for (tapa::u<7> c6 = 0; c6 <= 63; c6 += 1) {
+    [[tapa::pipeline(1)]] for (tapa::u<5> c7 = 0; c7 <= 15; c7 += 1) {
       float fifo_data;
       C_t2 buf_data;
       buf_data = local_C[c7][c6 / 2];
-      for (ap_uint<2> n = 0; n < 2; n++) {
-#pragma HLS UNROLL
+      [[tapa::unroll]] for (tapa::u<2> n = 0; n < 2; n++) {
         buf_data_split[n] = buf_data(31, 0);
         buf_data = buf_data >> 32;
       }
@@ -491,7 +449,7 @@ void C_drain_IO_L1_out_intra_trans(
         float ut;
       } u;
       u.ut = fifo_data;
-      buf_data_split[split_i] = ap_uint<32>(u.ui);
+      buf_data_split[split_i] = tapa::u<32>(u.ui);
       buf_data = (buf_data_split[1], buf_data_split[0]);
       local_C[c7][c6 / 2] = buf_data;
     }
@@ -501,12 +459,10 @@ void C_drain_IO_L1_out_intra_trans(
 void C_drain_IO_L1_out_inter_trans(int idx, int idy, C_t2 local_C[16][32],
                                    tapa::istream<C_t2>& fifo_C_drain_in,
                                    tapa::ostream<C_t2>& fifo_C_drain_out) {
-#pragma HLS INLINE
   int p0 = idx, p1 = idy;
-  for (ap_uint<5> c4 = p1; c4 <= 12; c4 += 1) {
-    for (ap_uint<5> c5 = 0; c5 <= 15; c5 += 1) {
-      for (ap_uint<6> c6 = 0; c6 <= 31; c6 += 1) {
-#pragma HLS PIPELINE II = 1
+  for (tapa::u<5> c4 = p1; c4 <= 12; c4 += 1) {
+    for (tapa::u<5> c5 = 0; c5 <= 15; c5 += 1) {
+      [[tapa::pipeline(1)]] for (tapa::u<6> c6 = 0; c6 <= 31; c6 += 1) {
         C_t2 fifo_data;
         if (c4 == p1) {
           fifo_data = local_C[c5][c6];
@@ -522,12 +478,10 @@ void C_drain_IO_L1_out_inter_trans(int idx, int idy, C_t2 local_C[16][32],
 void C_drain_IO_L1_out_inter_trans_boundary(
     int idx, int idy, C_t2 local_C[16][32],
     tapa::ostream<C_t2>& fifo_C_drain_out) {
-#pragma HLS INLINE
   int p0 = idx, p1 = idy;
-  for (ap_uint<5> c4 = p1; c4 <= 12; c4 += 1) {
-    for (ap_uint<5> c5 = 0; c5 <= 15; c5 += 1) {
-      for (ap_uint<6> c6 = 0; c6 <= 31; c6 += 1) {
-#pragma HLS PIPELINE II = 1
+  for (tapa::u<5> c4 = p1; c4 <= 12; c4 += 1) {
+    for (tapa::u<5> c5 = 0; c5 <= 15; c5 += 1) {
+      [[tapa::pipeline(1)]] for (tapa::u<6> c6 = 0; c6 <= 31; c6 += 1) {
         C_t2 fifo_data;
         fifo_data = local_C[c5][c6];
         fifo_C_drain_out.write(fifo_data);
@@ -539,10 +493,8 @@ void C_drain_IO_L1_out_inter_trans_boundary(
 void C_drain_IO_L1_out(int idx, int idy, tapa::istream<C_t2>& fifo_C_drain_in,
                        tapa::ostream<C_t2>& fifo_C_drain_out,
                        tapa::istream<float>& fifo_C_drain_local_in) {
-#pragma HLS INLINE OFF
   int p0 = idx, p1 = idy;
-  C_t2 local_C[16][32];
-#pragma HLS RESOURCE variable = local_C core = RAM_2P_BRAM
+  [[tapa::storage("RAM_2P", "BRAM")]] C_t2 local_C[16][32];
   C_drain_IO_L1_out_intra_trans(idx, idy, local_C, fifo_C_drain_local_in);
   C_drain_IO_L1_out_inter_trans(idx, idy, local_C, fifo_C_drain_in,
                                 fifo_C_drain_out);
@@ -551,10 +503,8 @@ void C_drain_IO_L1_out(int idx, int idy, tapa::istream<C_t2>& fifo_C_drain_in,
 void C_drain_IO_L1_out_boundary(int idx, int idy,
                                 tapa::ostream<C_t2>& fifo_C_drain_out,
                                 tapa::istream<float>& fifo_C_drain_local_in) {
-#pragma HLS INLINE OFF
   int p0 = idx, p1 = idy;
-  C_t2 local_C[16][32];
-#pragma HLS RESOURCE variable = local_C core = RAM_2P_BRAM
+  [[tapa::storage("RAM_2P", "BRAM")]] C_t2 local_C[16][32];
   C_drain_IO_L1_out_intra_trans(idx, idy, local_C, fifo_C_drain_local_in);
   C_drain_IO_L1_out_inter_trans_boundary(idx, idy, local_C, fifo_C_drain_out);
 }
@@ -562,13 +512,11 @@ void C_drain_IO_L1_out_boundary(int idx, int idy,
 void C_drain_IO_L2_out(int idx, tapa::istream<C_t2>& fifo_C_drain_in,
                        tapa::ostream<C_t2>& fifo_C_drain_out,
                        tapa::istream<C_t2>& fifo_C_drain_local_in) {
-#pragma HLS INLINE OFF
   int p0 = idx;
-  for (ap_uint<5> c3 = p0; c3 <= 15; c3 += 1) {
-    for (ap_uint<5> c4 = 0; c4 <= 12; c4 += 1) {
-      for (ap_uint<5> c5 = 0; c5 <= 15; c5 += 1) {
-        for (ap_uint<6> c6 = 0; c6 <= 31; c6 += 1) {
-#pragma HLS PIPELINE II = 1
+  for (tapa::u<5> c3 = p0; c3 <= 15; c3 += 1) {
+    for (tapa::u<5> c4 = 0; c4 <= 12; c4 += 1) {
+      for (tapa::u<5> c5 = 0; c5 <= 15; c5 += 1) {
+        [[tapa::pipeline(1)]] for (tapa::u<6> c6 = 0; c6 <= 31; c6 += 1) {
           C_t2 fifo_data;
           if (c3 == p0) {
             fifo_data = fifo_C_drain_local_in.read();
@@ -584,13 +532,11 @@ void C_drain_IO_L2_out(int idx, tapa::istream<C_t2>& fifo_C_drain_in,
 
 void C_drain_IO_L2_out_boundary(int idx, tapa::ostream<C_t2>& fifo_C_drain_out,
                                 tapa::istream<C_t2>& fifo_C_drain_local_in) {
-#pragma HLS INLINE OFF
   int p0 = idx;
-  for (ap_uint<5> c3 = p0; c3 <= 15; c3 += 1) {
-    for (ap_uint<5> c4 = 0; c4 <= 12; c4 += 1) {
-      for (ap_uint<5> c5 = 0; c5 <= 15; c5 += 1) {
-        for (ap_uint<6> c6 = 0; c6 <= 31; c6 += 1) {
-#pragma HLS PIPELINE II = 1
+  for (tapa::u<5> c3 = p0; c3 <= 15; c3 += 1) {
+    for (tapa::u<5> c4 = 0; c4 <= 12; c4 += 1) {
+      for (tapa::u<5> c5 = 0; c5 <= 15; c5 += 1) {
+        [[tapa::pipeline(1)]] for (tapa::u<6> c6 = 0; c6 <= 31; c6 += 1) {
           C_t2 fifo_data;
           fifo_data = fifo_C_drain_local_in.read();
           fifo_C_drain_out.write(fifo_data);
@@ -602,14 +548,11 @@ void C_drain_IO_L2_out_boundary(int idx, tapa::ostream<C_t2>& fifo_C_drain_out,
 
 void C_drain_IO_L3_out(tapa::mmap<C_t16> C,
                        tapa::istream<C_t2>& fifo_C_drain_local_in) {
-#pragma HLS INLINE OFF
-  for (ap_uint<15> i = 0; i < 13312; i++) {
-#pragma HLS PIPELINE II = 1
+  [[tapa::pipeline(1)]] for (tapa::u<15> i = 0; i < 13312; i++) {
     C_t16 mem_data;
     C_t2 fifo_data;
-    C_t2 mem_data_split[8];
-#pragma HLS ARRAY_PARTITION variable = mem_data_split complete
-    for (ap_uint<4> p = 0; p < 8; p++) {
+    [[tapa::partition("complete")]] C_t2 mem_data_split[8];
+    for (tapa::u<4> p = 0; p < 8; p++) {
       fifo_data = fifo_C_drain_local_in.read();
       mem_data_split[p] = fifo_data;
     }
