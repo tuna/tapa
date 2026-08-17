@@ -7,11 +7,9 @@
 
 #include <inttypes.h>
 #include <stdlib.h>
-#include "ap_axi_sdata.h"
-#include "ap_int.h"
 
 const int IWIDTH = 256;
-#define INTERFACE_WIDTH ap_uint<IWIDTH>
+#define INTERFACE_WIDTH tapa::u<IWIDTH>
 #define INPUT_DIM (2)
 #define TOP (10)
 #define DISTANCE_METRIC (1)
@@ -20,7 +18,7 @@ const int IWIDTH = 256;
 #define DATA_TYPE float
 #define LOCAL_DIST_SZ (32)
 #define LOCAL_DIST_DTYPE float
-#define TRANSFER_TYPE ap_uint<DATA_TYPE_TOTAL_SZ>
+#define TRANSFER_TYPE tapa::u<DATA_TYPE_TOTAL_SZ>
 
 /***************************************************************/
 
@@ -50,9 +48,9 @@ static_assert(NUM_OF_TILES > 0, "KNN requires at least one tile");
 #define USING_CAT_CMP 0
 
 const int SWIDTH = DATA_TYPE_TOTAL_SZ;
-typedef ap_axiu<SWIDTH, 0, 0, 0> pkt;
-typedef ap_axiu<32, 0, 0, 0> id_pkt;
-#define STREAM_WIDTH ap_uint<SWIDTH>
+typedef tapa::axis<tapa::u<SWIDTH>> pkt;
+typedef tapa::axis<tapa::u<32>> id_pkt;
+#define STREAM_WIDTH tapa::u<SWIDTH>
 
 const int NUM_FEATURES_PER_READ = (IWIDTH / DATA_TYPE_TOTAL_SZ);
 const int QUERY_FEATURE_RESERVE = (128);

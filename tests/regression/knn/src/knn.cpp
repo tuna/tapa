@@ -14,11 +14,8 @@ static inline DATA_TYPE absval(DATA_TYPE input) {
   return (input > 0 ? input : static_cast<DATA_TYPE>(-1 * input));
 }
 
-bool compare_with_register(DATA_TYPE in_1, DATA_TYPE in_2) {
-#pragma HLS pipeline
-#pragma HLS inline off
-#pragma HLS LATENCY min = 2 max = 2
-  return in_1 < in_2;
+[[tapa::pipeline]] bool compare_with_register(DATA_TYPE in_1, DATA_TYPE in_2) {
+  [[tapa::latency(2, 2)]] return in_1 < in_2;
 }
 
 /*************************************************/
@@ -27,10 +24,9 @@ bool compare_with_register(DATA_TYPE in_1, DATA_TYPE in_2) {
 
 void load(int flag, int tile_idx, INTERFACE_WIDTH* local_SP,
           tapa::async_mmap<INTERFACE_WIDTH>& searchSpace) {
-#pragma HLS INLINE OFF
   if (flag) {
-    for (int i_req = 0, i_resp = 0; i_resp < TILE_LEN_IN_I;) {
-#pragma HLS pipeline II = 1
+    [[tapa::pipeline(1)]] for (int i_req = 0, i_resp = 0;
+                               i_resp < TILE_LEN_IN_I;) {
       int addr = QUERY_DATA_RESERVE + tile_idx * TILE_LEN_IN_I + i_req;
       if (i_req < TILE_LEN_IN_I && searchSpace.read_addr.try_write(addr)) {
         i_req++;
@@ -51,17 +47,14 @@ void compute(
     int flag, DATA_TYPE* local_Query, INTERFACE_WIDTH* local_SP,
     LOCAL_DIST_DTYPE local_distance[NUM_SEGMENTS][SEGMENT_SIZE_IN_L + TOP],
     int debug_i) {
-#pragma HLS INLINE OFF
   if (flag) {
     int SP_idx = 0;
     for (int ii = 0; ii < NUM_SEGMENTS; ++ii) {
-      for (int jj = 0; jj < SEGMENT_SIZE_IN_D / D2I_FACTOR_W; ++jj) {
-#pragma HLS PIPELINE II = 1
+      [[tapa::pipeline(1)]] for (int jj = 0;
+                                 jj < SEGMENT_SIZE_IN_D / D2I_FACTOR_W; ++jj) {
         LOCAL_DIST_DTYPE aggregated_local_dists = 0;
         SP_idx = ii * SEGMENT_SIZE_IN_D / D2I_FACTOR_W + jj;
-        for (int kk = 0; kk < D2I_FACTOR_W; ++kk) {
-#pragma HLS UNROLL
-
+        [[tapa::unroll]] for (int kk = 0; kk < D2I_FACTOR_W; ++kk) {
           DATA_TYPE delta_squared_sum = 0.0;
           int start_idx = kk * INPUT_DIM;
 
@@ -99,8 +92,6 @@ void compute(
   }
 }
 void swap(DATA_TYPE* a, DATA_TYPE* b, int* x, int* y) {
-#pragma HLS INLINE
-
   DATA_TYPE tmpdist_a;
   DATA_TYPE tmpdist_b;
 
@@ -120,11 +111,8 @@ void swap(DATA_TYPE* a, DATA_TYPE* b, int* x, int* y) {
 void para_partial_sort(LOCAL_DIST_DTYPE* local_distance, int start_id,
                        DATA_TYPE local_kNearstDist[D2L_FACTOR_W][TOP + 1],
                        int local_kNearstId[D2L_FACTOR_W][TOP + 1]) {
-#pragma HLS INLINE OFF
-  for (int i = 0; i < (SEGMENT_SIZE_IN_L + TOP) * D2L_FACTOR_W; ++i) {
-#pragma HLS PIPELINE II = 2
-#pragma HLS UNROLL FACTOR = D2L_FACTOR_W
-
+  [[tapa::unroll(D2L_FACTOR_W)]] [[tapa::pipeline(
+      2)]] for (int i = 0; i < (SEGMENT_SIZE_IN_L + TOP) * D2L_FACTOR_W; ++i) {
     LOCAL_DIST_DTYPE cur_Lval = local_distance[i / D2L_FACTOR_W];
     unsigned char D_idx = i % D2L_FACTOR_W;
     DATA_TYPE cur_Dval;
@@ -135,13 +123,11 @@ void para_partial_sort(LOCAL_DIST_DTYPE* local_distance, int start_id,
     local_kNearstId[D_idx][0] = start_id + i;
 
     // compare and swap odd
-    for (int ii = 1; ii < TOP; ii += 2) {
-#pragma HLS UNROLL
-#pragma HLS DEPENDENCE variable = "local_kNearstDist" inter false
-#pragma HLS DEPENDENCE variable = "local_kNearstId" inter false
-
-      bool fcmp = compare_with_register(local_kNearstDist[D_idx][ii],
-                                        local_kNearstDist[D_idx][ii + 1]);
+    [[tapa::unroll]] for (int ii = 1; ii < TOP; ii += 2) {
+      [[tapa::dependence("local_kNearstId", "", "inter")]] [[tapa::dependence(
+          "local_kNearstDist", "", "inter")]] bool fcmp =
+          compare_with_register(local_kNearstDist[D_idx][ii],
+                                local_kNearstDist[D_idx][ii + 1]);
       if (fcmp) {
         swap(&local_kNearstDist[D_idx][ii], &local_kNearstDist[D_idx][ii + 1],
              &local_kNearstId[D_idx][ii], &local_kNearstId[D_idx][ii + 1]);
@@ -149,12 +135,11 @@ void para_partial_sort(LOCAL_DIST_DTYPE* local_distance, int start_id,
     }
 
     // compare and swap even
-    for (int ii = 1; ii < TOP + 1; ii += 2) {
-#pragma HLS UNROLL
-#pragma HLS DEPENDENCE variable = "local_kNearstDist" inter false
-#pragma HLS DEPENDENCE variable = "local_kNearstId" inter false
-      bool fcmp = compare_with_register(local_kNearstDist[D_idx][ii - 1],
-                                        local_kNearstDist[D_idx][ii]);
+    [[tapa::unroll]] for (int ii = 1; ii < TOP + 1; ii += 2) {
+      [[tapa::dependence("local_kNearstId", "", "inter")]] [[tapa::dependence(
+          "local_kNearstDist", "", "inter")]] bool fcmp =
+          compare_with_register(local_kNearstDist[D_idx][ii - 1],
+                                local_kNearstDist[D_idx][ii]);
       if (fcmp) {
         swap(&local_kNearstDist[D_idx][ii], &local_kNearstDist[D_idx][ii - 1],
              &local_kNearstId[D_idx][ii], &local_kNearstId[D_idx][ii - 1]);
@@ -167,24 +152,21 @@ void sort(
     LOCAL_DIST_DTYPE local_distance[NUM_SEGMENTS][SEGMENT_SIZE_IN_L + TOP],
     DATA_TYPE local_kNearstDist_partial[NUM_SEGMENTS][D2L_FACTOR_W][TOP + 1],
     int local_kNearstId_partial[NUM_SEGMENTS][D2L_FACTOR_W][TOP + 1]) {
-#pragma HLS INLINE OFF
   if (flag) {
-    int starting_id[NUM_SEGMENTS];
-#pragma HLS ARRAY_PARTITION variable = starting_id complete dim = 0
+    [[tapa::partition("complete", -1, 0)]] int starting_id[NUM_SEGMENTS];
 
-    for (int i = 0; i < NUM_SEGMENTS; ++i) {
-#pragma HLS UNROLL
+    [[tapa::unroll]] for (int i = 0; i < NUM_SEGMENTS; ++i) {
       starting_id[i] = start_id + i * SEGMENT_SIZE_IN_D;
     }
 
     // overwrite invalid sections of the local_distnace array that are only
     // there because
     //  we cant perfectly "segment" our tiles
-    for (int i = 0; i < (NUM_SEGMENTS * SEGMENT_SIZE_IN_L - TILE_LEN_IN_L) %
-                            SEGMENT_SIZE_IN_L;
-         ++i) {
-#pragma HLS PIPELINE II = 1
-#pragma HLS UNROLL FACTOR = L2I_FACTOR_W
+    [[tapa::unroll(L2I_FACTOR_W)]] [[tapa::pipeline(
+        1)]] for (int i = 0;
+                  i < (NUM_SEGMENTS * SEGMENT_SIZE_IN_L - TILE_LEN_IN_L) %
+                          SEGMENT_SIZE_IN_L;
+                  ++i) {
       DATA_TYPE maxval = MAX_DATA_TYPE_VAL;
       LOCAL_DIST_DTYPE aggregated_local_dists = 0;
 
@@ -199,8 +181,7 @@ void sort(
 #if (NUM_SEGMENTS - 1) != SEGMENT_IDX_START_OF_PADDING
     for (int outer_idx = SEGMENT_IDX_START_OF_PADDING + 1;
          outer_idx < NUM_SEGMENTS; ++outer_idx) {
-      for (int i = 0; i < SEGMENT_SIZE_IN_L; i++) {
-#pragma HLS PIPELINE II = 1
+      [[tapa::pipeline(1)]] for (int i = 0; i < SEGMENT_SIZE_IN_L; i++) {
         DATA_TYPE maxval = MAX_DATA_TYPE_VAL;
         LOCAL_DIST_DTYPE aggregated_local_dists = 0;
 
@@ -213,27 +194,12 @@ void sort(
     }
 #endif
 
-    for (unsigned char i = 0; i < NUM_SEGMENTS; ++i) {
-#pragma HLS UNROLL
+    [[tapa::unroll]] for (unsigned char i = 0; i < NUM_SEGMENTS; ++i) {
       para_partial_sort(local_distance[i], starting_id[i],
                         local_kNearstDist_partial[i],
                         local_kNearstId_partial[i]);
     }
   }
-  /*
-  else{
-          for (int i = 0; i < NUM_SEGMENTS; ++i){
-                  for (int j = 0; j < D2L_FACTOR_W; ++j){
-          for (int k = 0; k < TOP+1; ++k){
-                      #pragma HLS UNROLL
-                          local_kNearstId_partial[i][j][k] = -1;
-                          local_kNearstDist_partial[i][j][k] =
-  MAX_DATA_TYPE_VAL;
-                      }
-      }
-          }
-  }
-  */
 }
 void merge_dual(DATA_TYPE local_kNearstDist_partial_a[TOP + 1],
                 DATA_TYPE local_kNearstDist_partial_b[TOP + 1],
@@ -266,8 +232,7 @@ void merge_dual_all_PEs(
     int local_kNearstId_partial_a[NUM_PART][TOP + 1],
     int local_kNearstId_partial_b[NUM_PART][TOP + 1],
     DATA_TYPE dist[NUM_PART][TOP + 1], int id[NUM_PART][TOP + 1]) {
-  for (int i = 0; i < NUM_PART; ++i) {
-#pragma HLS UNROLL
+  [[tapa::unroll]] for (int i = 0; i < NUM_PART; ++i) {
     merge_dual(local_kNearstDist_partial_a[i], local_kNearstDist_partial_b[i],
                local_kNearstId_partial_a[i], local_kNearstId_partial_b[i],
                dist[i], id[i]);
@@ -278,50 +243,38 @@ template <int id>
 void krnl_partialKnn(tapa::async_mmap<INTERFACE_WIDTH>& searchSpace_0,
                      int start_id_0, tapa::ostream<pkt>& out_dist,
                      tapa::ostream<id_pkt>& out_id) {
-#pragma HLS inline
-
-  DATA_TYPE local_Query_0[INPUT_DIM];
-#pragma HLS ARRAY_PARTITION variable = local_Query_0 complete dim = 1
+  [[tapa::partition("complete", -1, 1)]] DATA_TYPE local_Query_0[INPUT_DIM];
   INTERFACE_WIDTH local_SP_0_A[TILE_LEN_IN_I];
 #pragma HLS RESOURCE variable = local_SP_0_A core = XPM_MEMORY uram
   INTERFACE_WIDTH local_SP_0_B[TILE_LEN_IN_I];
 #pragma HLS RESOURCE variable = local_SP_0_B core = XPM_MEMORY uram
 
-  LOCAL_DIST_DTYPE local_distance_0_A[NUM_SEGMENTS][SEGMENT_SIZE_IN_L + TOP];
-#pragma HLS ARRAY_PARTITION variable = local_distance_0_A complete dim = 1
-#pragma HLS ARRAY_PARTITION variable = local_distance_0_A cyclic factor = \
-    L2I_FACTOR_W dim = 2
-  LOCAL_DIST_DTYPE local_distance_0_B[NUM_SEGMENTS][SEGMENT_SIZE_IN_L + TOP];
-#pragma HLS ARRAY_PARTITION variable = local_distance_0_B complete dim = 1
-#pragma HLS ARRAY_PARTITION variable = local_distance_0_B cyclic factor = \
-    L2I_FACTOR_W dim = 2
+  [[tapa::partition("complete", -1, 1)]] [[tapa::partition(
+      "cyclic", L2I_FACTOR_W, 2)]] LOCAL_DIST_DTYPE
+      local_distance_0_A[NUM_SEGMENTS][SEGMENT_SIZE_IN_L + TOP];
+  [[tapa::partition("complete", -1, 1)]] [[tapa::partition(
+      "cyclic", L2I_FACTOR_W, 2)]] LOCAL_DIST_DTYPE
+      local_distance_0_B[NUM_SEGMENTS][SEGMENT_SIZE_IN_L + TOP];
 
   // These are the outputs of the sort() function.
   //  Together, they contain the nearest (distance, ID) pairs for each segment
   //  of all tiles.
-  static DATA_TYPE local_kNearstDist_partial_0[NUM_SEGMENTS][D2L_FACTOR_W]
-                                              [(TOP + 1)];
-#pragma HLS ARRAY_PARTITION variable = \
-    local_kNearstDist_partial_0 complete dim = 0
-  static int local_kNearstId_partial_0[NUM_SEGMENTS][D2L_FACTOR_W][(TOP + 1)];
-#pragma HLS ARRAY_PARTITION variable = \
-    local_kNearstId_partial_0 complete dim = 0
+  [[tapa::partition("complete", -1, 0)]] static DATA_TYPE
+      local_kNearstDist_partial_0[NUM_SEGMENTS][D2L_FACTOR_W][(TOP + 1)];
+  [[tapa::partition("complete", -1, 0)]] static int
+      local_kNearstId_partial_0[NUM_SEGMENTS][D2L_FACTOR_W][(TOP + 1)];
 
   // These store the top K results for each PE.
-  DATA_TYPE local_kNearstDist[NUM_PART][TOP + 1];
-#pragma HLS ARRAY_PARTITION variable = local_kNearstDist complete dim = 0
-  int local_kNearstId[NUM_PART][TOP + 1];
-#pragma HLS ARRAY_PARTITION variable = local_kNearstId complete dim = 0
+  [[tapa::partition("complete", -1,
+                    0)]] DATA_TYPE local_kNearstDist[NUM_PART][TOP + 1];
+  [[tapa::partition("complete", -1, 0)]] int local_kNearstId[NUM_PART][TOP + 1];
 
   // These store the top K results for this KERNEL.
-  DATA_TYPE global_kNearstDist[TOP + 1];
-#pragma HLS ARRAY_PARTITION variable = global_kNearstDist complete
-  int global_kNearstId[TOP + 1];
-#pragma HLS ARRAY_PARTITION variable = global_kNearstId complete
+  [[tapa::partition("complete")]] DATA_TYPE global_kNearstDist[TOP + 1];
+  [[tapa::partition("complete")]] int global_kNearstId[TOP + 1];
 
 LOAD_QUERY:
-  for (int i_req = 0, i_resp = 0; i_resp < INPUT_DIM;) {
-#pragma HLS pipeline II = 1
+  [[tapa::pipeline(1)]] for (int i_req = 0, i_resp = 0; i_resp < INPUT_DIM;) {
     // issue read address
     int input_rd_idx = i_req / NUM_FEATURES_PER_READ;
     if (i_req < INPUT_DIM && searchSpace_0.read_addr.try_write(input_rd_idx)) {
@@ -345,9 +298,7 @@ LOAD_QUERY:
 ITERATION_LOOP:
   for (int it_idx = 0; it_idx < NUM_ITERATIONS; ++it_idx) {
     for (int i = 0; i < NUM_SEGMENTS; ++i) {
-      for (int j = 0; j < TOP; ++j) {
-#pragma HLS PIPELINE II = 1
-
+      [[tapa::pipeline(1)]] for (int j = 0; j < TOP; ++j) {
         DATA_TYPE maxval = MAX_DATA_TYPE_VAL;
         LOCAL_DIST_DTYPE aggregated_local_dists = 0;
 
@@ -363,8 +314,7 @@ ITERATION_LOOP:
 
     for (int i = 0; i < NUM_SEGMENTS; ++i) {
       for (int j = 0; j < D2L_FACTOR_W; ++j) {
-        for (int k = 0; k < TOP + 1; ++k) {
-#pragma HLS UNROLL
+        [[tapa::unroll]] for (int k = 0; k < TOP + 1; ++k) {
           local_kNearstId_partial_0[i][j][k] = -1;
           local_kNearstDist_partial_0[i][j][k] = MAX_DATA_TYPE_VAL;
         }
@@ -391,27 +341,25 @@ ITERATION_LOOP:
              local_kNearstId_partial_0);
       }
     }
-    /**********************************************************************/
+    [[tapa::partition("complete", -1, 1)]] [[tapa::partition(
+        "complete", -1,
+        2)]] [[tapa::
+                   partition("complete", -1, 3)]] [[tapa::storage(
+        "RAM_1P",
+        "LUTRAM")]] /**********************************************************************/
     /**************************  MERGING PARTIAL SORTS ********************/
     /**********************************************************************/
     DATA_TYPE temp_kNearstDist[NUM_SEGMENTS][D2L_FACTOR_W * 2][NUM_PART]
                               [TOP + 1];
-#pragma HLS ARRAY_PARTITION variable = temp_kNearstDist complete dim = 1
-#pragma HLS ARRAY_PARTITION variable = temp_kNearstDist complete dim = 2
-#pragma HLS ARRAY_PARTITION variable = temp_kNearstDist complete dim = 3
-#pragma HLS RESOURCE variable = temp_kNearstDist core = RAM_1P_LUTRAM
-    int temp_kNearstId[NUM_SEGMENTS][D2L_FACTOR_W * 2][NUM_PART][TOP + 1];
-#pragma HLS ARRAY_PARTITION variable = temp_kNearstId complete dim = 1
-#pragma HLS ARRAY_PARTITION variable = temp_kNearstId complete dim = 2
-#pragma HLS ARRAY_PARTITION variable = temp_kNearstId complete dim = 3
-#pragma HLS RESOURCE variable = temp_kNearstId core = RAM_1P_LUTRAM
+    [[tapa::partition("complete", -1, 1)]] [[tapa::partition(
+        "complete", -1,
+        2)]] [[tapa::partition("complete", -1,
+                               3)]] [[tapa::storage("RAM_1P", "LUTRAM")]] int
+        temp_kNearstId[NUM_SEGMENTS][D2L_FACTOR_W * 2][NUM_PART][TOP + 1];
 
-    for (int i = 0; i < NUM_SEGMENTS; ++i) {
-#pragma HLS unroll
-      for (int j = 0; j < D2L_FACTOR_W; ++j) {
-#pragma HLS unroll
-        for (int k = 0; k < TOP + 1; ++k) {
-#pragma HLS unroll
+    [[tapa::unroll]] for (int i = 0; i < NUM_SEGMENTS; ++i) {
+      [[tapa::unroll]] for (int j = 0; j < D2L_FACTOR_W; ++j) {
+        [[tapa::unroll]] for (int k = 0; k < TOP + 1; ++k) {
           temp_kNearstDist[i][j][0][k] = local_kNearstDist_partial_0[i][j][k];
           temp_kNearstId[i][j][0][k] = local_kNearstId_partial_0[i][j][k];
         }
@@ -422,23 +370,20 @@ ITERATION_LOOP:
     /* Merge pairwise on the NUM_SEGMENTS-level. */
     /*********************************************/
 
-    for (int i = 0; i < 4; ++i) {
-#pragma HLS unroll
+    [[tapa::unroll]] for (int i = 0; i < 4; ++i) {
       merge_dual_all_PEs(
           temp_kNearstDist[i * 2 + 0][0], temp_kNearstDist[i * 2 + 1][0],
           temp_kNearstId[i * 2 + 0][0], temp_kNearstId[i * 2 + 1][0],
           temp_kNearstDist[i][D2L_FACTOR_W], temp_kNearstId[i][D2L_FACTOR_W]);
     }
-    for (int i = 0; i < 2; ++i) {
-#pragma HLS unroll
+    [[tapa::unroll]] for (int i = 0; i < 2; ++i) {
       merge_dual_all_PEs(temp_kNearstDist[i * 2 + 0][D2L_FACTOR_W],
                          temp_kNearstDist[i * 2 + 1][D2L_FACTOR_W],
                          temp_kNearstId[i * 2 + 0][D2L_FACTOR_W],
                          temp_kNearstId[i * 2 + 1][D2L_FACTOR_W],
                          temp_kNearstDist[i][0], temp_kNearstId[i][0]);
     }
-    for (int i = 0; i < NUM_PART; ++i) {
-#pragma HLS UNROLL
+    [[tapa::unroll]] for (int i = 0; i < NUM_PART; ++i) {
       merge_dual(temp_kNearstDist[0][0][i], temp_kNearstDist[1][0][i],
                  temp_kNearstId[0][0][i], temp_kNearstId[1][0][i],
                  local_kNearstDist[i], local_kNearstId[i]);
@@ -454,8 +399,7 @@ ITERATION_LOOP:
   STREAM_WIDTH v_data;
   DATA_TYPE temp_data;
 DIST_OUT:
-  for (int i = 1; i < TOP + 1; ++i) {
-#pragma HLS PIPELINE II = 1
+  [[tapa::pipeline(1)]] for (int i = 1; i < TOP + 1; ++i) {
     temp_data = global_kNearstDist[i];
 
     v_data = *((STREAM_WIDTH*)(&temp_data));
@@ -465,8 +409,7 @@ DIST_OUT:
     out_dist.write(v);
   }
 ID_OUT:
-  for (int i = 1; i < TOP + 1; ++i) {
-#pragma HLS PIPELINE II = 1
+  [[tapa::pipeline(1)]] for (int i = 1; i < TOP + 1; ++i) {
     id_pkt v_id;
     v_id.data = global_kNearstId[i];
     out_id.write(v_id);
@@ -587,18 +530,14 @@ void seq_global_merge_L1_L2(
     DATA_TYPE local_kNearstDist_partial[NUM_KERNEL_L1_L2][TOP],
     int local_kNearstId_partial[NUM_KERNEL_L1_L2][TOP], DATA_TYPE* dist,
     int* id) {
-#pragma HLS INLINE OFF
-  int idx[NUM_KERNEL_L1_L2];
-#pragma HLS ARRAY_PARTITION variable = idx complete dim = 0
-  for (int i = 0; i < NUM_KERNEL_L1_L2; ++i) {
-#pragma HLS UNROLL
+  [[tapa::partition("complete", -1, 0)]] int idx[NUM_KERNEL_L1_L2];
+  [[tapa::unroll]] for (int i = 0; i < NUM_KERNEL_L1_L2; ++i) {
     idx[i] = TOP - 1;
   }
   for (int i = TOP - 1; i >= 0; --i) {
     DATA_TYPE min_value = MAX_DATA_TYPE_VAL;
     int min_idx = -1;
-    for (int j = 0; j < NUM_KERNEL_L1_L2; ++j) {
-#pragma HLS PIPELINE II = 1
+    [[tapa::pipeline(1)]] for (int j = 0; j < NUM_KERNEL_L1_L2; ++j) {
       if (local_kNearstDist_partial[j][idx[j]] < min_value) {
         min_value = local_kNearstDist_partial[j][idx[j]];
         min_idx = j;
@@ -618,19 +557,16 @@ void krnl_globalSort_L1_L2(tapa::istream<pkt>& in_dist0,   // Internal Stream
                            tapa::istream<id_pkt>& in_id2,  // Internal Stream
                            tapa::ostream<pkt>& out_dist,
                            tapa::ostream<id_pkt>& out_id) {
-  DATA_TYPE local_kNearstDist_partial[NUM_KERNEL_L1_L2][TOP];
-#pragma HLS ARRAY_PARTITION variable = \
-    local_kNearstDist_partial complete dim = 0
-  int local_kNearstId_partial[NUM_KERNEL_L1_L2][TOP];
-#pragma HLS ARRAY_PARTITION variable = local_kNearstId_partial complete dim = 0
+  [[tapa::partition(
+      "complete", -1,
+      0)]] DATA_TYPE local_kNearstDist_partial[NUM_KERNEL_L1_L2][TOP];
+  [[tapa::partition("complete", -1,
+                    0)]] int local_kNearstId_partial[NUM_KERNEL_L1_L2][TOP];
 
-  DATA_TYPE output_dist[TOP];
-#pragma HLS ARRAY_PARTITION variable = output_dist complete
-  int output_id[TOP];
-#pragma HLS ARRAY_PARTITION variable = output_id complete
+  [[tapa::partition("complete")]] DATA_TYPE output_dist[TOP];
+  [[tapa::partition("complete")]] int output_id[TOP];
 
-  for (unsigned int i = 0; i < TOP; ++i) {
-#pragma HLS PIPELINE II = 1
+  [[tapa::pipeline(1)]] for (unsigned int i = 0; i < TOP; ++i) {
     pkt v0 = in_dist0.read();
     STREAM_WIDTH v0_item = v0.data.range(DATA_TYPE_TOTAL_SZ - 1, 0);
     local_kNearstDist_partial[0][i] = *((DATA_TYPE*)(&v0_item));
@@ -642,8 +578,7 @@ void krnl_globalSort_L1_L2(tapa::istream<pkt>& in_dist0,   // Internal Stream
     local_kNearstDist_partial[2][i] = *((DATA_TYPE*)(&v2_item));
   }
 
-  for (unsigned int i = 0; i < TOP; ++i) {
-#pragma HLS PIPELINE II = 1
+  [[tapa::pipeline(1)]] for (unsigned int i = 0; i < TOP; ++i) {
     id_pkt v0_id = in_id0.read();
     local_kNearstId_partial[0][i] = v0_id.data;
     id_pkt v1_id = in_id1.read();
@@ -658,8 +593,7 @@ void krnl_globalSort_L1_L2(tapa::istream<pkt>& in_dist0,   // Internal Stream
   STREAM_WIDTH v_data;
   DATA_TYPE temp_data;
 DIST_OUT:
-  for (int i = 0; i < TOP; ++i) {
-#pragma HLS PIPELINE II = 1
+  [[tapa::pipeline(1)]] for (int i = 0; i < TOP; ++i) {
     temp_data = output_dist[i];
 
     v_data = *((STREAM_WIDTH*)(&temp_data));
@@ -669,8 +603,7 @@ DIST_OUT:
     out_dist.write(v);
   }
 ID_OUT:
-  for (int i = 0; i < TOP; ++i) {
-#pragma HLS PIPELINE II = 1
+  [[tapa::pipeline(1)]] for (int i = 0; i < TOP; ++i) {
     id_pkt v_id;
     v_id.data = output_id[i];
     out_id.write(v_id);
@@ -681,18 +614,12 @@ ID_OUT:
 void seq_global_merge_L3(
     DATA_TYPE local_kNearstDist_partial[NUM_KERNEL_L3][TOP],
     int local_kNearstId_partial[NUM_KERNEL_L3][TOP], DATA_TYPE* dist, int* id) {
-#pragma HLS INLINE OFF
-  int idx[NUM_KERNEL_L3];
-#pragma HLS ARRAY_PARTITION variable = idx complete dim = 0
-  for (int i = 0; i < NUM_KERNEL_L3; ++i) {
-#pragma HLS UNROLL
-    idx[i] = TOP - 1;
-  }
+  [[tapa::partition("complete", -1, 0)]] int idx[NUM_KERNEL_L3];
+  [[tapa::unroll]] for (int i = 0; i < NUM_KERNEL_L3; ++i) { idx[i] = TOP - 1; }
   for (int i = TOP - 1; i >= 0; --i) {
     DATA_TYPE min_value = MAX_DATA_TYPE_VAL;
     int min_idx = -1;
-    for (int j = 0; j < NUM_KERNEL_L3; ++j) {
-#pragma HLS PIPELINE II = 1
+    [[tapa::pipeline(1)]] for (int j = 0; j < NUM_KERNEL_L3; ++j) {
       if (local_kNearstDist_partial[j][idx[j]] < min_value) {
         min_value = local_kNearstDist_partial[j][idx[j]];
         min_idx = j;
@@ -712,19 +639,16 @@ void krnl_globalSort_L3(
     tapa::async_mmap<DATA_TYPE>& output_knnDist,  // Output Result
     tapa::async_mmap<int>& output_knnId           // Output Result
 ) {
-  DATA_TYPE local_kNearstDist_partial[NUM_KERNEL_L3][TOP];
-#pragma HLS ARRAY_PARTITION variable = \
-    local_kNearstDist_partial complete dim = 0
-  int local_kNearstId_partial[NUM_KERNEL_L3][TOP];
-#pragma HLS ARRAY_PARTITION variable = local_kNearstId_partial complete dim = 0
+  [[tapa::partition(
+      "complete", -1,
+      0)]] DATA_TYPE local_kNearstDist_partial[NUM_KERNEL_L3][TOP];
+  [[tapa::partition("complete", -1,
+                    0)]] int local_kNearstId_partial[NUM_KERNEL_L3][TOP];
 
-  DATA_TYPE output_dist[TOP];
-#pragma HLS ARRAY_PARTITION variable = output_dist complete
-  int output_id[TOP];
-#pragma HLS ARRAY_PARTITION variable = output_id complete
+  [[tapa::partition("complete")]] DATA_TYPE output_dist[TOP];
+  [[tapa::partition("complete")]] int output_id[TOP];
 
-  for (unsigned int i = 0; i < TOP; ++i) {
-#pragma HLS PIPELINE II = 1
+  [[tapa::pipeline(1)]] for (unsigned int i = 0; i < TOP; ++i) {
     pkt v0 = in_dist0.read();
     STREAM_WIDTH v0_item = v0.data.range(DATA_TYPE_TOTAL_SZ - 1, 0);
     local_kNearstDist_partial[0][i] = *((DATA_TYPE*)(&v0_item));
@@ -733,8 +657,7 @@ void krnl_globalSort_L3(
     local_kNearstDist_partial[1][i] = *((DATA_TYPE*)(&v1_item));
   }
 
-  for (unsigned int i = 0; i < TOP; ++i) {
-#pragma HLS PIPELINE II = 1
+  [[tapa::pipeline(1)]] for (unsigned int i = 0; i < TOP; ++i) {
     id_pkt v0_id = in_id0.read();
     local_kNearstId_partial[0][i] = v0_id.data;
     id_pkt v1_id = in_id1.read();
@@ -744,11 +667,9 @@ void krnl_globalSort_L3(
   seq_global_merge_L3(local_kNearstDist_partial, local_kNearstId_partial,
                       output_dist, output_id);
 
-  for (unsigned int i_req_dist = 0, i_resp_dist = 0, i_req_id = 0,
-                    i_resp_id = 0;
-       i_resp_dist < TOP || i_resp_id < TOP;) {
-#pragma HLS pipeline II = 1
-
+  [[tapa::pipeline(1)]] for (unsigned int i_req_dist = 0, i_resp_dist = 0,
+                             i_req_id = 0, i_resp_id = 0;
+                             i_resp_dist < TOP || i_resp_id < TOP;) {
     // write to output_KnnDist
     if (i_req_dist < TOP && !output_knnDist.write_addr.full() &&
         !output_knnDist.write_data.full()) {
