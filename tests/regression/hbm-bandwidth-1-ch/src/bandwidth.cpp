@@ -17,10 +17,9 @@ void Copy(tapa::async_mmap<Elem>& mem, uint64_t n, uint64_t flags) {
 
   Elem elem;
 
-  for (uint64_t i_rd_req = 0, i_rd_resp = 0, i_wr_req = 0, i_wr_resp = 0;
-       write ? (i_wr_resp < n) : (i_rd_resp < n);) {
-#pragma HLS pipeline II = 1
-
+  [[tapa::pipeline(1)]] for (uint64_t i_rd_req = 0, i_rd_resp = 0, i_wr_req = 0,
+                             i_wr_resp = 0;
+                             write ? (i_wr_resp < n) : (i_rd_resp < n);) {
     bool can_read = !mem.read_data.empty();
     bool can_write = !mem.write_addr.full() && !mem.write_data.full();
     int64_t read_addr = i_rd_req;
