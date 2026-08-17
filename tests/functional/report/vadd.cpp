@@ -9,14 +9,12 @@
 
 void Impl(tapa::mmap<const float> mmap, uint64_t n,
           tapa::ostream<float>& stream) {
-#pragma HLS inline off
   for (uint64_t i = 0; i < n; ++i) {
     stream << mmap[i];
   }
 }
 
 void Impl(tapa::istream<float>& stream, tapa::mmap<float> mmap, uint64_t n) {
-#pragma HLS inline off
   for (uint64_t i = 0; i < n; ++i) {
     stream >> mmap[i];
   }
@@ -38,12 +36,10 @@ void Add(tapa::istream<float>& a, tapa::istream<float>& b,
     // TEST: `fmadd` should work with `xcv80-lsva4737-2MHP-e-S` (#258)
     constexpr int kN = 16;
     tapa::vec_t<float, kN> a_vec, b_vec;
-    float acc[kN] = {};
-#pragma HLS array_partition variable = acc complete
+    [[tapa::partition("complete")]] float acc[kN] = {};
     a_vec.set(a.read());
     b_vec.set(b.read());
-    for (int i = 0; i < kN; ++i) {
-#pragma HLS unroll
+    [[tapa::unroll]] for (int i = 0; i < kN; ++i) {
       acc[i] += a_vec[i] * b_vec[i];
     }
     c << acc[0];

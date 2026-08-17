@@ -6,7 +6,7 @@
 
 #include <cstdint>
 
-#include <ap_int.h>
+#include <tapa.h>
 
 struct [[gnu::packed]] input_t {
   unsigned int skip_1 : 1;  // Byte 0, Bit 0
@@ -17,8 +17,8 @@ struct [[gnu::packed]] input_t {
 
 static_assert(sizeof(input_t) == 6, "input_t must be 6 bytes");
 
-// TEST 7: Ensure that ap_int can be used in a stream
-typedef ap_int<32> output_ap_int_t;
+// TEST 7: Ensure that arbitrary-width integers can be used in a stream
+typedef tapa::i<32> output_ap_int_t;
 static_assert(sizeof(output_ap_int_t) == 4, "output_ap_int_t must be 4 bytes");
 
 typedef tapa::vec_t<output_ap_int_t, 2> output_vec_t;
