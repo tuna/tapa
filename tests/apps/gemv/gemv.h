@@ -6,7 +6,6 @@
 
 #include <cstdint>
 
-#include <ap_int.h>
 #include <tapa.h>
 
 using Data = int;
@@ -24,7 +23,7 @@ constexpr int kPeCount = 2;
 constexpr int64_t kPcSize = 128 * 1024;
 
 template <typename T>
-using bits = ap_uint<tapa::widthof<T>()>;
+using bits = tapa::u<tapa::widthof<T>()>;
 
 void Gemv(tapa::hmap<bits<DataVec>, kPcCount, kPcSize> mat_a,
           tapa::mmap<bits<DataVec>> vec_x, tapa::mmap<bits<DataVec>> vec_y);

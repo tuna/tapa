@@ -20,8 +20,8 @@ void GemvCore(int pe_id, tapa::mmap<bits<DataVec>> a,
   }
 
   for (int i = 0; i < kMatrixSize; ++i) {
-    [[tapa::pipeline(1)]] for (int j = 0; j < kMatrixVecCountPerPe; ++j) {
-#pragma HLS dependence variable = local_y type = inter false
+    [[tapa::pipeline(1)]] [[tapa::dependence("local_y", "", "inter")]]
+    for (int j = 0; j < kMatrixVecCountPerPe; ++j) {
       DataVec local_a = tapa::bit_cast<DataVec>(
           a[kMatrixVecCount * i + kMatrixVecCountPerPe * pe_id + j]);
       local_y[j] += local_a * local_x[i / kVecLen][i % kVecLen];

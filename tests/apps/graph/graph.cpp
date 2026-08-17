@@ -213,8 +213,8 @@ void ProcElem(tapa::istream<TaskReq>& req_q, tapa::ostream<TaskResp>& resp_q,
               tapa::istream<Update>& update_in_q,
               tapa::ostream<Update>& update_out_q,
               tapa::mmap<VertexAttr> vertices, tapa::mmap<const Edge> edges) {
-  VertexAttr vertices_local[kMaxPartitionSize];
-#pragma HLS bind_storage variable = vertices_local type = RAM_T2P impl = URAM
+  [[tapa::storage("RAM_T2P",
+                  "URAM")]] VertexAttr vertices_local[kMaxPartitionSize];
 
   TAPA_WHILE_NOT_EOT(req_q) {
     const TaskReq req = req_q.read();
@@ -237,8 +237,8 @@ void ProcElem(tapa::istream<TaskReq>& req_q, tapa::ostream<TaskResp>& resp_q,
       update_out_q.close();
     } else {
     gather:
-      [[tapa::pipeline(1)]] TAPA_WHILE_NOT_EOT(update_in_q) {
-#pragma HLS dependence false variable = vertices_local
+      [[tapa::pipeline(1)]] [[tapa::dependence("vertices_local")]]
+      TAPA_WHILE_NOT_EOT(update_in_q) {
         auto update = update_in_q.read(nullptr);
         VLOG(5) << "recv@ProcElem: Update: " << update;
         auto idx = update.dst - req.base_vid;

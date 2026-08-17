@@ -4,7 +4,6 @@
 
 #include <cstdint>
 
-#include <ap_int.h>
 #include <tapa.h>
 
 template <int width>
@@ -13,13 +12,13 @@ class LfsrTaps;
 template <>
 class LfsrTaps<16> {
  public:
-  static ap_uint<16> Value() { return 0x2d; }
+  static tapa::u<16> Value() { return 0x2d; }
 };
 
 template <int width>
-class Lfsr : public ap_uint<width> {
+class Lfsr : public tapa::u<width> {
  public:
-  using ap_uint<width>::ap_uint;
+  using tapa::u<width>::u;
 
   Lfsr& operator++() {
     CHECK_NE(*this, 0);

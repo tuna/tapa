@@ -32,12 +32,9 @@ void ProcElem(tapa::istream<float>& a_fifo, tapa::istream<float>& b_fifo,
               tapa::istream<float>& i_next, tapa::ostream<float>& j_prev,
               tapa::istream<float>& j_next) {
   const uint64_t kNumElems = (kN / p) * (kN / p);
-  float a[kN / p * kN / p];
-  float b[kN / p * kN / p];
-  float c[kN / p * kN / p];
-#pragma HLS array_partition variable = a cyclic factor = 32
-#pragma HLS array_partition variable = b block factor = 32
-#pragma HLS array_partition variable = c cyclic factor = 32
+  [[tapa::partition("cyclic", 32)]] float a[kN / p * kN / p];
+  [[tapa::partition("block", 32)]] float b[kN / p * kN / p];
+  [[tapa::partition("cyclic", 32)]] float c[kN / p * kN / p];
 
   // Initialize local a, b, and c.
 init:
@@ -50,8 +47,8 @@ init:
 outer:
   for (int l = 0; l < p; ++l) {
   compute:
-    [[tapa::pipeline(1)]] for (uint64_t ij = 0; ij < kNumElems; ++ij) {
-#pragma HLS dependence false variable = c
+    [[tapa::pipeline(1)]] [[tapa::dependence("c")]]
+    for (uint64_t ij = 0; ij < kNumElems; ++ij) {
       float tmp = 0.f;
       const int i = ij / (kN / p);
       const int j = ij % (kN / p);
@@ -61,12 +58,12 @@ outer:
       c[ij] += tmp;
     }
   communicate:
-    [[tapa::pipeline(1)]] for (uint64_t a_wr = 0, b_wr = 0, a_rd = 0, b_rd = 0;
-                               a_wr < kNumElems || b_wr < kNumElems ||
-                               a_rd < kNumElems || b_rd < kNumElems;) {
-#pragma HLS loop_tripcount min = kNumElems max = kNumElems
-#pragma HLS dependence false variable = a
-#pragma HLS dependence false variable = b
+    [[tapa::pipeline(1)]] [[tapa::tripcount(
+        kNumElems,
+        kNumElems)]] [[tapa::dependence("a")]] [[tapa::dependence("b")]]
+    for (uint64_t a_wr = 0, b_wr = 0, a_rd = 0, b_rd = 0;
+         a_wr < kNumElems || b_wr < kNumElems || a_rd < kNumElems ||
+         b_rd < kNumElems;) {
       if (b_wr < kNumElems && i_prev.try_write(b[b_wr])) ++b_wr;
       if (a_wr < kNumElems && j_prev.try_write(a[a_wr])) ++a_wr;
       if (b_rd < b_wr && i_next.try_read(b[b_rd])) ++b_rd;

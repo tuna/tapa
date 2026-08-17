@@ -18,8 +18,7 @@ void AsyncReader(tapa::async_mmap<float>& mem, uint64_t n,
                  tapa::ostream<float>& data_q) {
   // Requests and responses advance independently: that decoupling is the
   // whole point of `async_mmap`.
-  for (uint64_t i_req = 0, i_resp = 0; i_resp < n;) {
-#pragma HLS pipeline II = 1
+  [[tapa::pipeline(1)]] for (uint64_t i_req = 0, i_resp = 0; i_resp < n;) {
     if (i_req < n && !mem.read_addr.full()) {
       mem.read_addr.try_write(i_req);
       ++i_req;
@@ -34,8 +33,7 @@ void AsyncReader(tapa::async_mmap<float>& mem, uint64_t n,
 }
 
 void Writer(tapa::istream<float>& data_q, tapa::mmap<float> dst, uint64_t n) {
-  for (uint64_t i = 0; i < n; ++i) {
-#pragma HLS pipeline II = 1
+  [[tapa::pipeline(1)]] for (uint64_t i = 0; i < n; ++i) {
     dst[i] = data_q.read();
   }
 }
