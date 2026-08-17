@@ -3,6 +3,7 @@
 // RapidStream Contributor License Agreement.
 
 #include <algorithm>
+#include <cstdlib>
 #include <array>
 #include <cstdint>
 #include <cstring>

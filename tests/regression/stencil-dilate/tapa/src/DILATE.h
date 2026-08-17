@@ -14,9 +14,9 @@
 #define ITERATION 512
 
 #include <inttypes.h>
-#include "ap_int.h"
+#include <tapa.h>
 #define DWIDTH 512
-#define INTERFACE_WIDTH ap_uint<DWIDTH>
+#define INTERFACE_WIDTH tapa::u<DWIDTH>
 const int WIDTH_FACTOR = DWIDTH / 32;
 #define PARA_FACTOR 16
 

@@ -2,17 +2,23 @@
 // All rights reserved. The contributor(s) of this file has/have agreed to the
 // RapidStream Contributor License Agreement.
 
-#include <hls_stream.h>
 #include <tapa.h>
 #include "DILATE.h"
 #include "math.h"
 
+// The register idiom the old HLS_REG spelled with three vendor pragmas.
+//
+// Not resource-neutral, and accepted deliberately. The old spelling ended
+// in `#pragma HLS interface port = return register`, which puts the register
+// on the return INTERFACE, so the function itself cost 0 FF; tapa::reg
+// builds a real `noinline` register with a volatile round-trip and an
+// ap_wait() protocol region. Old-vs-new synthesis measures the difference
+// at +16034 FF (+38%) and +3906 LUT for this design. serpens-32ch made the
+// same substitution and came out 3% smaller, so the cost is specific to how
+// this kernel uses the idiom, not inherent to tapa::reg.
 template <class T>
 T HLS_REG(T in) {
-#pragma HLS pipeline
-#pragma HLS inline off
-#pragma HLS interface port = return register
-  return in;
+  return tapa::reg(in);
 }
 
 static float DILATE_stencil_kernel(float s_1_2, float s_3_2, float s_1_3,
@@ -42,16 +48,16 @@ void DILATE(tapa::istream<INTERFACE_WIDTH>& s,
             int iters) {
   INTERFACE_WIDTH s_block_0;
   INTERFACE_WIDTH s_block_1;
-  hls::stream<INTERFACE_WIDTH, 255> s_stream_2_to_255;
+  tapa::hls::stream<INTERFACE_WIDTH, 255> s_stream_2_to_255;
   INTERFACE_WIDTH s_block_256;
   INTERFACE_WIDTH s_block_257;
-  hls::stream<INTERFACE_WIDTH, 255> s_stream_258_to_511;
+  tapa::hls::stream<INTERFACE_WIDTH, 255> s_stream_258_to_511;
   INTERFACE_WIDTH s_block_512;
   INTERFACE_WIDTH s_block_513;
-  hls::stream<INTERFACE_WIDTH, 255> s_stream_514_to_767;
+  tapa::hls::stream<INTERFACE_WIDTH, 255> s_stream_514_to_767;
   INTERFACE_WIDTH s_block_768;
   INTERFACE_WIDTH s_block_769;
-  hls::stream<INTERFACE_WIDTH, 255> s_stream_770_to_1023;
+  tapa::hls::stream<INTERFACE_WIDTH, 255> s_stream_770_to_1023;
   INTERFACE_WIDTH s_block_1024;
   INTERFACE_WIDTH s_block_1025;
 
@@ -79,32 +85,20 @@ void DILATE(tapa::istream<INTERFACE_WIDTH>& s,
   s_block_1025 = s.read();
 
 MAJOR_LOOP:
-  for (int i = 0; i < GRID_COLS / WIDTH_FACTOR * PART_ROWS +
-                          (TOP_APPEND + BOTTOM_APPEND) * (iters - 1);
-       i++) {
-#pragma HLS pipeline II = 1
+  [[tapa::pipeline(1)]] for (int i = 0;
+                             i < GRID_COLS / WIDTH_FACTOR * PART_ROWS +
+                                     (TOP_APPEND + BOTTOM_APPEND) * (iters - 1);
+                             i++) {
     INTERFACE_WIDTH out_temp;
   COMPUTE_LOOP:
-    for (int k = 0; k < PARA_FACTOR; k++) {
-#pragma HLS unroll
-      float s_1_2[PARA_FACTOR], s_3_2[PARA_FACTOR], s_1_3[PARA_FACTOR],
-          s_3_3[PARA_FACTOR], s_0_2[PARA_FACTOR], s_3_1[PARA_FACTOR],
-          s_2_1[PARA_FACTOR], s_2_0[PARA_FACTOR], s_2_4[PARA_FACTOR],
-          s_2_3[PARA_FACTOR], s_2_2[PARA_FACTOR], s_4_2[PARA_FACTOR],
-          s_1_1[PARA_FACTOR];
-#pragma HLS array_partition variable = s_1_2 complete dim = 0
-#pragma HLS array_partition variable = s_3_2 complete dim = 0
-#pragma HLS array_partition variable = s_1_3 complete dim = 0
-#pragma HLS array_partition variable = s_3_3 complete dim = 0
-#pragma HLS array_partition variable = s_0_2 complete dim = 0
-#pragma HLS array_partition variable = s_3_1 complete dim = 0
-#pragma HLS array_partition variable = s_2_1 complete dim = 0
-#pragma HLS array_partition variable = s_2_0 complete dim = 0
-#pragma HLS array_partition variable = s_2_4 complete dim = 0
-#pragma HLS array_partition variable = s_2_3 complete dim = 0
-#pragma HLS array_partition variable = s_2_2 complete dim = 0
-#pragma HLS array_partition variable = s_4_2 complete dim = 0
-#pragma HLS array_partition variable = s_1_1 complete dim = 0
+    [[tapa::unroll]] for (int k = 0; k < PARA_FACTOR; k++) {
+      // One attribute announces every declarator: tapacc lowers one pragma
+      // per array.
+      [[tapa::partition("complete", -1, 0)]] float s_1_2[PARA_FACTOR],
+          s_3_2[PARA_FACTOR], s_1_3[PARA_FACTOR], s_3_3[PARA_FACTOR],
+          s_0_2[PARA_FACTOR], s_3_1[PARA_FACTOR], s_2_1[PARA_FACTOR],
+          s_2_0[PARA_FACTOR], s_2_4[PARA_FACTOR], s_2_3[PARA_FACTOR],
+          s_2_2[PARA_FACTOR], s_4_2[PARA_FACTOR], s_1_1[PARA_FACTOR];
 
       unsigned int idx_k = k << 5;
 
@@ -184,23 +178,23 @@ MAJOR_LOOP:
   }
 
   INTERFACE_WIDTH popout_s_stream_2_to_255;
+  [[tapa::pipeline(1)]]
   while (!s_stream_2_to_255.empty()) {
-#pragma HLS pipeline II = 1
     s_stream_2_to_255 >> popout_s_stream_2_to_255;
   }
   INTERFACE_WIDTH popout_s_stream_258_to_511;
+  [[tapa::pipeline(1)]]
   while (!s_stream_258_to_511.empty()) {
-#pragma HLS pipeline II = 1
     s_stream_258_to_511 >> popout_s_stream_258_to_511;
   }
   INTERFACE_WIDTH popout_s_stream_514_to_767;
+  [[tapa::pipeline(1)]]
   while (!s_stream_514_to_767.empty()) {
-#pragma HLS pipeline II = 1
     s_stream_514_to_767 >> popout_s_stream_514_to_767;
   }
   INTERFACE_WIDTH popout_s_stream_770_to_1023;
+  [[tapa::pipeline(1)]]
   while (!s_stream_770_to_1023.empty()) {
-#pragma HLS pipeline II = 1
     s_stream_770_to_1023 >> popout_s_stream_770_to_1023;
   }
   return;
@@ -210,7 +204,6 @@ void load(tapa::async_mmap<INTERFACE_WIDTH>& a,
           tapa::async_mmap<INTERFACE_WIDTH>& b,
           tapa::ostream<INTERFACE_WIDTH>& stream_out,
           tapa::istream<INTERFACE_WIDTH>& stream_in, uint32_t iters) {
-#pragma HLS inline off
   // unsigned int loop_bound = GRID_COLS/WIDTH_FACTOR*PART_ROWS +
   // (TOP_APPEND+BOTTOM_APPEND)*(iters-1) + 65 + 66;
   unsigned int loop_bound = GRID_COLS / WIDTH_FACTOR * PART_ROWS +
