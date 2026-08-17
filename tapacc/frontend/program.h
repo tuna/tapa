@@ -109,6 +109,9 @@ struct TaskModel {
 struct Program {
   std::string top;
   std::vector<const clang::FunctionDecl*> file_funcs;
+  // Internal-linkage helpers and methods: not tasks, but they still take the
+  // inline policy so the vendor cannot choose their hierarchy for us.
+  std::vector<const clang::FunctionDecl*> local_funcs;
   std::map<std::string, TaskModel> tasks;
 };
 

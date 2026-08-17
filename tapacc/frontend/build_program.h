@@ -16,6 +16,12 @@ namespace tapa::cc {
 std::vector<const clang::FunctionDecl*> CollectFileFuncs(
     const clang::ASTContext& ctx);
 
+// Main-file definitions with internal linkage (`static`, anonymous
+// namespace) and methods — everything `CollectFileFuncs` leaves out. Helpers
+// for codegen's purposes, but kept out of task discovery.
+std::vector<const clang::FunctionDecl*> CollectLocalFuncs(
+    const clang::ASTContext& ctx);
+
 // Build the whole typed Program from a parsed translation unit: discover the
 // tasks reachable from `top`, extract each task's ports, and parse every upper
 // task's instances and streams. The single frontend entry point (AST -> model,
