@@ -45,6 +45,14 @@ inline constexpr uint64_t round_up(uint64_t i) {
   return i == 0 ? 0 : ((i - 1) / N + 1) * N;
 }
 
+/// Yields one clock cycle on synthesis targets (vendor ap_wait). A no-op in
+/// software simulation, where tasks run as coroutines without a clock.
+void wait() noexcept;
+
+/// Yields @p n clock cycles on synthesis targets (vendor ap_wait_n). A no-op
+/// in software simulation, like the nullary form.
+void wait(int n) noexcept;
+
 template <typename To, typename From>
 inline typename std::enable_if<sizeof(To) == sizeof(From), To>::type  //
 bit_cast(From from) noexcept;

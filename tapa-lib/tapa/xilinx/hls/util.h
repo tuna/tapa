@@ -19,6 +19,9 @@
 
 namespace tapa {
 
+inline void wait() noexcept { ap_wait(); }
+inline void wait(int n) noexcept { ap_wait_n(n); }
+
 namespace internal {
 template <typename T>
 inline constexpr int ap_data_bits(T) {

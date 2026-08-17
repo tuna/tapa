@@ -18,6 +18,9 @@ void(ap_wait_n)(int);
 
 namespace tapa {
 
+void wait() noexcept;
+void wait(int n) noexcept;
+
 template <typename To, typename From>
 inline typename std::enable_if<sizeof(To) == sizeof(From), To>::type  //
 bit_cast(From from) noexcept;

@@ -10,6 +10,9 @@
 
 namespace tapa {
 
+inline void wait() noexcept {}  // no clock in CPU simulation
+inline void wait(int) noexcept {}
+
 /// Reinterprets the object representation of @p from as type @c To.
 /// Slightly different from C++20 @c std::bit_cast.
 template <typename To, typename From>

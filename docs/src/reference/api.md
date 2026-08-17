@@ -226,8 +226,7 @@ The kernel must drain `write_resp` to avoid deadlock. If the response channel fi
 
 ```cpp
 void Reader(tapa::async_mmap<float>& mem, tapa::ostream<float>& out, int n) {
-#pragma HLS pipeline II=1
-  for (int i_req = 0, i_resp = 0; i_resp < n;) {
+  [[tapa::pipeline(1)]] for (int i_req = 0, i_resp = 0; i_resp < n;) {
     if (i_req < n && !mem.read_addr.full()) {
       mem.read_addr.write(i_req);
       ++i_req;
@@ -282,9 +281,9 @@ Semantics mirror the vendor types:
 
 The full surface covers construction from builtins/floats, arithmetic and bitwise operators with builtin mixing, slicing (`x(hi, lo)`, `x.range<Hi, Lo>()`), bit select (`x[i]`, `x.set_bit(i, v)`), concatenation (`tapa::concat(a, b)` and the `(a, b)` form), reductions (`and_reduce`, `or_reduce`, `xor_reduce`, and their complements), conversions (`to_int64`, `to_uint64`, `to_double`, implicit `RetType`), and `reverse()`.
 
-### `tapa::wait()`
+### `tapa::wait()` / `tapa::wait(n)`
 
-Yields one clock cycle on synthesis targets (lowered to the vendor `ap_wait()`). A no-op in software simulation, where tasks run as coroutines without a clock. Use it in place of `ap_wait()` to keep programs portable.
+Yields one clock cycle on synthesis targets (lowered to the vendor `ap_wait()`), or `n` cycles for the overload (`ap_wait_n(n)`). Both are no-ops in software simulation, where tasks run as coroutines without a clock. Use them in place of `ap_wait()` and `ap_wait_n()` to keep programs portable.
 
 ### `tapa::widthof<T>()`
 
@@ -319,13 +318,43 @@ out.close(); // send EoT marker downstream
 
 ### Synthesis pragmas (C++ attributes)
 
-These C++ attributes are recognised by TAPA and lowered to Vitis HLS pragmas during synthesis. They have no effect in software simulation.
+These C++ attributes are recognised by TAPA and lowered to vendor pragmas during synthesis. They have no effect in software simulation, and they are how a TAPA program expresses synthesis directives without naming a vendor: write these instead of `#pragma HLS ...`.
+
+**On a statement.** Written on a loop, the attribute applies to *that* loop. Written on any other statement it applies to the innermost enclosing loop — which is what a bare pragma in the same position would have meant.
+
+| Attribute | Lowers to | Description |
+|-----------|-----------|-------------|
+| `[[tapa::pipeline(II, style)]]` | `pipeline` | Pipeline the loop (or function) at initiation interval `II`. Both arguments optional; `style` is `"stp"` (stable/flushable) or `"flp"` (free-running), default vendor choice when omitted. |
+| `[[tapa::unroll(factor)]]` | `unroll` | Unroll by `factor`; fully unroll when omitted. |
+| `[[tapa::tripcount(min, max)]]` | `loop_tripcount` | Declare the loop's trip-count range. Estimation only — it does not change generated hardware. |
+| `[[tapa::flatten(enable)]]` | `loop_flatten` | `false` (or `0`) disables flattening of the loop nest; omitted leaves the vendor's automatic flattening on. |
+| `[[tapa::latency(min, max)]]` | `latency` | Constrain the latency of the loop or region. `max = 0` requests a combinational region. |
+| `[[tapa::dependence(var, kind, dependent, distance, direction)]]` | `dependence` | Describe a loop-carried dependence on `var`. `kind` is `"intra"`/`"inter"`; `dependent` non-zero asserts a real dependence at `distance`, the default asserts independence. |
+| `[[tapa::balance]]` | `expression_balance` | Re-associate the expression tree in the region. |
+
+**On a variable or parameter declaration.** These take the declaration they annotate; on a multi-declarator statement each variable gets its own pragma.
+
+| Attribute | Lowers to | Description |
+|-----------|-----------|-------------|
+| `[[tapa::partition(type, factor, dim)]]` | `array_partition` | Partition an array: `type` is `"cyclic"`, `"block"` or `"complete"`. `factor` and `dim` are positional and optional — pass `-1` to omit one you are skipping, e.g. `[[tapa::partition("complete", -1, 2)]]` partitions dimension 2 with no factor. |
+| `[[tapa::storage(type, impl, latency)]]` | `bind_storage` | Choose the memory the array binds to, e.g. `[[tapa::storage("RAM_2P", "URAM")]]`. |
+| `[[tapa::aggregate]]` | `aggregate` | Pack a struct into a single wide word. |
+| `[[tapa::bind_op(op, impl, latency)]]` | `bind_op` | Bind an operation to a specific implementation, e.g. `("mul", "dsp")`. |
+| `[[tapa::array_map(instance, offset, orient)]]` | `array_map` | Map an array into a larger physical instance. `offset` is positional and optional — `-1` omits it. |
+
+**On a function.**
 
 | Attribute | Description |
 |-----------|-------------|
-| `[[tapa::pipeline(II)]]` | Pipeline the enclosing loop or function with initiation interval `II`. |
-| `[[tapa::unroll(factor)]]` | Unroll the enclosing loop by `factor`. |
 | `[[tapa::target("ignore")]]` | Mark a task for custom RTL replacement. TAPA generates a port-signature template but does not synthesize the task body. |
+
+```admonish note
+The `-1` sentinel in `partition` and `array_map` exists because the arguments are positional and zero is a meaningful value (`dim = 0` means *all* dimensions). Passing a dim where a factor is expected is silently accepted by the vendor and partitions the wrong dimension, so spell the sentinel rather than dropping the argument.
+```
+
+```admonish tip
+Function-level inlining is driven by the `inline` keyword, not an attribute: a helper marked `inline` gets `#pragma HLS inline` plus `__attribute__((always_inline))`, and one without it gets `inline off` plus `noinline`. Do not hand-write those pragmas.
+```
 
 ```admonish note
 `[[tapa::target("ignore")]]` was formerly written as `[[tapa::target("non_synthesizable", "xilinx")]]`. The `"ignore"` form is the current spelling.
