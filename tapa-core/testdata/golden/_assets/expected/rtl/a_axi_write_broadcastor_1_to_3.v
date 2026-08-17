@@ -1,7 +1,3 @@
-// Copyright (c) 2024 RapidStream Design Automation, Inc. and contributors.
-// All rights reserved. The contributor(s) of this file has/have agreed to the
-// RapidStream Contributor License Agreement.
-
 module a_axi_write_broadcastor_1_to_3 (
   ap_clk,
 

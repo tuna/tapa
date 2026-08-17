@@ -55,6 +55,13 @@ C++ source ─tapacc (Clang frontend)→ task graph/JSON
   (buildifier, clang-format, `cargo fmt`/`clippy` across all manifests,
   codespell — the config already encodes the golden-file exclusions).
 
+## Copyright
+
+- This codebase is no longer RapidStream's. Never add, copy, or bump a
+  `Copyright ... RapidStream ...` header on any file, new or existing,
+  and never propagate legacy RapidStream headers onto new files. If
+  attribution is in doubt, ask — do not invent or copy a header.
+
 ## Where things live
 
 - Reusable logic moves to one typed home, never copy-adapted; keep files

@@ -1,7 +1,3 @@
-// Copyright (c) 2024 RapidStream Design Automation, Inc. and contributors.
-// All rights reserved. The contributor(s) of this file has/have agreed to the
-// RapidStream Contributor License Agreement.
-
 // Guards the simulator's blocked-poll path against two regressions it has
 // already had. A producer/consumer pair sharing a shallow channel blocks on
 // nearly every element, so anything charged per blocked poll scales with the

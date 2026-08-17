@@ -1,9 +1,5 @@
 """Shared shell helpers for the repo's custom rules."""
 
-# Copyright (c) 2026 RapidStream Design Automation, Inc. and contributors.
-# All rights reserved. The contributor(s) of this file has/have agreed to the
-# RapidStream Contributor License Agreement.
-
 def sh_quote(value):
     """Quote a string for POSIX shell single-quoted contexts."""
     return "'" + value.replace("'", "'\"'\"'") + "'"

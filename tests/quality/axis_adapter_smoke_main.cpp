@@ -1,7 +1,3 @@
-// Copyright (c) 2024 RapidStream Design Automation, Inc. and contributors.
-// All rights reserved. The contributor(s) of this file has/have agreed to the
-// RapidStream Contributor License Agreement.
-
 // Behavior smoke test for the AXIS <-> stream adapters. The clock is driven
 // here rather than in SystemVerilog so the verilated model needs no delay
 // controls, and therefore no C++20 coroutine support to build.
