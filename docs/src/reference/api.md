@@ -262,9 +262,33 @@ struct vec_t {
 
 Related free functions: `truncated<begin, end>(vec)`, `cat(v1, v2)`, `make_vec<N>(val)`.
 
+### `tapa::u<W>` / `tapa::i<W>`
+
+Vendor-agnostic arbitrary-width integers: `tapa::u<32>` is a 32-bit unsigned value, `tapa::i<32>` a 32-bit signed one. In software simulation they are self-implemented (no vendor headers needed); on the Xilinx HLS target they alias `ap_uint<W>`/`ap_int<W>`.
+
+```cpp
+template <int W>
+class u;  // unsigned
+template <int W>
+class i;  // signed
+```
+
+Semantics mirror the vendor types:
+
+- Mixed-width arithmetic widens so the exact result fits (`tapa::u<8>(200) + tapa::u<8>(100)` is a `tapa::u<9>` holding 300); narrowing assignment truncates the bit pattern.
+- Comparisons use the left operand's signedness.
+- Division truncates toward zero; the remainder takes the dividend's sign.
+- Shifting by a negative amount shifts the other way.
+
+The full surface covers construction from builtins/floats, arithmetic and bitwise operators with builtin mixing, slicing (`x(hi, lo)`, `x.range<Hi, Lo>()`), bit select (`x[i]`, `x.set_bit(i, v)`), concatenation (`tapa::concat(a, b)` and the `(a, b)` form), reductions (`and_reduce`, `or_reduce`, `xor_reduce`, and their complements), conversions (`to_int64`, `to_uint64`, `to_double`, implicit `RetType`), and `reverse()`.
+
+### `tapa::wait()`
+
+Yields one clock cycle on synthesis targets (lowered to the vendor `ap_wait()`). A no-op in software simulation, where tasks run as coroutines without a clock. Use it in place of `ap_wait()` to keep programs portable.
+
 ### `tapa::widthof<T>()`
 
-Returns the bit width of type `T`. For `ap_int<W>` and `ap_uint<W>`, returns `W`. For plain C++ types, returns `sizeof(T) * CHAR_BIT`.
+Returns the bit width of type `T`. For `tapa::u<W>`/`tapa::i<W>` (and `ap_int<W>`/`ap_uint<W>` on vendor targets), returns `W`. For plain C++ types, returns `sizeof(T) * CHAR_BIT`.
 
 ```cpp
 template <typename T>
