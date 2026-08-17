@@ -73,7 +73,10 @@ _VPP_RESOURCES = {
 }
 
 def _vpp_exec_requirements(target):
-    cpu, memory = _VPP_RESOURCES.get(target, _VPP_RESOURCES["hw_emu"])
+    # The rule's `values` constraint rejects any other target at analysis
+    # time, so a silent default here would only ever mask a new target
+    # getting hw_emu's reservation by accident.
+    cpu, memory = _VPP_RESOURCES[target]
     return {
         "resources:cpu:{}".format(cpu): "",
         "resources:memory:{}".format(memory): "",
@@ -217,8 +220,14 @@ def _xilinx_wrapper_impl(ctx):
     lines.append('    if [ -n "$_tapa_gcc_dir" ]; then')
     lines.append('      _gcc_specs="$("$_tapa_gcc_dir/bin/gcc" -print-search-dirs 2>/dev/null | sed -n "s/install: //p")/specs"')
     lines.append("    fi")
-    lines.append('    if [ -n "$_gcc_specs" ] && [ ! -f "$_gcc_specs" ]; then')
-    lines.append('      printf "*self_spec:\\n-B/tmp/tapa-compat-relr/\\n" > "$_gcc_specs" 2>/dev/null || true')
+
+    # Installing the spec needs write access to the tool install tree; on
+    # root-owned installs (unprivileged runners) skip silently instead of
+    # attempting (and loudly failing) the write on every invocation. The
+    # subshell keeps even a genuine redirection failure quiet: bash prints
+    # it before the command's own 2>/dev/null takes effect.
+    lines.append('    if [ -n "$_gcc_specs" ] && [ ! -f "$_gcc_specs" ] && [ -w "$(dirname "$_gcc_specs")" ]; then')
+    lines.append('      { printf "*self_spec:\\n-B/tmp/tapa-compat-relr/\\n" > "$_gcc_specs"; } 2>/dev/null || true')
     lines.append("    fi")
     lines.append("  fi")
     lines.append("fi")
