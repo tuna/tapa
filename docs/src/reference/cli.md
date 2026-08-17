@@ -108,6 +108,16 @@ tapa --work-dir work.out analyze \
   -c -Iinclude
 ```
 
+### Vendor-usage warnings
+
+`analyze` emits soft `remark:` diagnostics when a program uses vendor-specific constructs — vendor headers (`ap_int.h`, `hls_stream.h`, …), `#pragma HLS …`, or wait intrinsics like `ap_wait()`. Each remark names the portable TAPA form:
+
+```
+vadd.cpp:5:13: remark: '#pragma HLS pipeline' is vendor-specific; the portable TAPA form is [[tapa::pipeline(II)]]
+```
+
+These are never errors: the program still analyzes and compiles. They exist to point at the vendor-agnostic spelling (see the [API reference](api.md)).
+
 ---
 
 ## tapa synth

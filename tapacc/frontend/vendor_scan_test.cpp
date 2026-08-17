@@ -104,12 +104,29 @@ TEST(VendorScan, PragmasGetSuggestions) {
       for (int i = 0; i < n; ++i) acc[0] = n;
     }
   )cpp");
-  ASSERT_EQ(remarks.size(), 2);
+  ASSERT_EQ(remarks.size(), 3);
   EXPECT_TRUE(
       Contains(remarks[0], "'#pragma HLS pipeline' is vendor-specific"));
   EXPECT_TRUE(Contains(remarks[0], "[[tapa::pipeline(II)]]"));
   EXPECT_TRUE(Contains(remarks[1], "'#pragma HLS array_partition'"));
   EXPECT_TRUE(Contains(remarks[1], "[[tapa::partition(type, factor, dim)]]"));
+  // An unmapped pragma is named with its pass-through semantics, not
+  // swallowed silently by the handler's registration.
+  EXPECT_TRUE(Contains(remarks[2], "'#pragma HLS some_unmapped_pragma'"));
+  EXPECT_TRUE(Contains(remarks[2], "no portable TAPA form"));
+}
+
+TEST(VendorScan, DataflowRemarkNamesTheMissingForm) {
+  // The leaf dataflow pragma is kept deliberately (docs rule on it); its
+  // remark says so rather than pointing at a portable form that does not
+  // exist.
+  const auto remarks = RunScan(R"cpp(
+    void F() {
+#pragma HLS dataflow
+    }
+  )cpp");
+  ASSERT_EQ(remarks.size(), 1);
+  EXPECT_TRUE(Contains(remarks[0], "no TAPA equivalent"));
 }
 
 TEST(VendorScan, VendorHeaderIncludeGetsSuggestion) {

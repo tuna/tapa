@@ -20,6 +20,7 @@ cc_binary(
         "//tapacc/frontend:build_program",
         "//tapacc/frontend:classify",
         "//tapacc/frontend:program",
+        "//tapacc/frontend:vendor_scan",
         "@nlohmann_json//:json",
         "@tapa-llvm-project//clang:tooling",
     ],

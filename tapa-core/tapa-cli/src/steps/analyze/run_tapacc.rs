@@ -53,6 +53,13 @@ pub(super) fn run_tapacc(
             stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
         });
     }
+    // Non-fatal tapacc diagnostics (warnings, and the vendor-usage remarks
+    // that suggest portable alternatives) reach the user; stdout stays the
+    // machine-read JSON only.
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if !stderr.is_empty() {
+        eprint!("{stderr}");
+    }
     String::from_utf8(output.stdout)
         .map_err(|e| CliError::Codegen(format!("`tapacc` emitted non-UTF-8 output: {e}")))
 }

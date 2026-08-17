@@ -28,7 +28,9 @@ const char* HeaderSuggestion(llvm::StringRef included) {
       included.substr(included.rfind('/') + 1);  // npos+1 == 0: whole string
   return llvm::StringSwitch<const char*>(name)
       .Case("ap_int.h", "tapa::u<W>/tapa::i<W> from <tapa.h>")
-      .Case("ap_fixed.h", "no TAPA equivalent yet")
+      .Case("ap_fixed.h",
+            "tapa::fixed<W, I, Q, O, N>/tapa::ufixed<...> from <tapa.h>")
+      .Case("ap_axi_sdata.h", "tapa::axis<T, WUser, WId, WDest> from <tapa.h>")
       .Case("ap_utils.h", "tapa::wait() from <tapa.h>")
       .Case("hls_stream.h", "tapa::stream<T, depth> from <tapa.h>")
       .Case("hls_vector.h", "tapa::vec_t<T, N> from <tapa.h>")
@@ -87,6 +89,18 @@ const char* QualifiedSuggestion(llvm::StringRef name, llvm::StringRef rest,
   return fallback;
 }
 
+// An unmapped pragma has no portable form; it passes through to the vendor
+// verbatim. Say so once per pragma, or the handler's registration would
+// hide even Clang's unknown-pragma warning from a migrating user.
+void ReportUnmappedPragma(clang::DiagnosticsEngine& diags,
+                          clang::SourceLocation loc, llvm::StringRef name) {
+  const unsigned remark = diags.getCustomDiagID(
+      clang::DiagnosticsEngine::Remark,
+      "'#pragma HLS %0' is vendor-specific and has no portable TAPA form; it "
+      "is passed to the vendor as-is");
+  diags.Report(loc, remark) << name;
+}
+
 void ReportVendorUse(clang::DiagnosticsEngine& diags, clang::SourceLocation loc,
                      llvm::StringRef construct, llvm::StringRef suggestion) {
   const unsigned remark = diags.getCustomDiagID(
@@ -131,9 +145,14 @@ class VendorPragmaScan : public clang::PragmaHandler {
     if (tok.getIdentifierInfo() == nullptr) return;
     const llvm::StringRef name = tok.getIdentifierInfo()->getName();
     const char* suggestion = PragmaSuggestion(name);
-    if (suggestion == nullptr) return;  // vendor pragma with no mapping yet
-    if (pp.getSourceManager().isInSystemHeader(tok.getLocation())) return;
     const clang::SourceLocation loc = tok.getLocation();
+    if (suggestion == nullptr) {  // vendor pragma with no portable form
+      if (!pp.getSourceManager().isInSystemHeader(loc)) {
+        ReportUnmappedPragma(pp.getDiagnostics(), loc, name);
+      }
+      return;
+    }
+    if (pp.getSourceManager().isInSystemHeader(loc)) return;
 
     // Some qualifiers change what the pragma means, and the attribute set
     // cannot express them. Naming an attribute anyway sends the reader to a

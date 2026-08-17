@@ -5,6 +5,28 @@ load("//tapacc:defs.bzl", "CLANG_TOOLING", "TAPACC_COPTS")
 
 package(default_visibility = ["//tapacc:__subpackages__"])
 
+cc_test(
+    name = "vendor_scan_test",
+    srcs = ["vendor_scan_test.cpp"],
+    copts = TAPACC_COPTS,
+    visibility = ["//visibility:private"],
+    deps = [
+        ":vendor_scan",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+        CLANG_TOOLING,
+    ],
+)
+
+cc_library(
+    name = "vendor_scan",
+    srcs = ["vendor_scan.cpp"],
+    hdrs = ["vendor_scan.h"],
+    copts = TAPACC_COPTS,
+    includes = [".."],
+    deps = [CLANG_TOOLING],
+)
+
 cc_library(
     name = "classify",
     srcs = ["classify.cpp"],
