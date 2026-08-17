@@ -378,7 +378,7 @@ void generate_edge_list_for_all_PEs(const vector<int>& CSCColPtr,
 void edge_list_64bit_fp64(
     const vector<vector<edge<double>>>& edge_list_pes,
     const vector<int>& edge_list_ptr,
-    vector<vector<ap_uint<128>, tapa::aligned_allocator<ap_uint<128>>>>&
+    vector<vector<tapa::u<128>, tapa::aligned_allocator<tapa::u<128>>>>&
         sparse_A_fpga_vec,
     const int NUM_CH_SPARSE = 16) {
   int sparse_A_fpga_column_size = 4 * edge_list_ptr[edge_list_ptr.size() - 1];
@@ -396,13 +396,13 @@ void edge_list_64bit_fp64(
     for (int cc = 0; cc < NUM_CH_SPARSE; ++cc) {
       for (int j = 0; j < 4; ++j) {
         edge<double> e = edge_list_pes[j + cc * 4][i];
-        ap_uint<128> x = 0;
+        tapa::u<128> x = 0;
         if (e.row == -1) {
           /*
            x = (ap_uint<96>) 0x3FFFF; //0xFFFFF; //x = 0x3FFFFF;
            x = x << 64;
            */
-          x(81, 64) = (ap_uint<18>)0x3FFFF;
+          x(81, 64) = (tapa::u<18>)0x3FFFF;
         } else {
           /*
            ap_uint<96> x_col = (ap_uint<96>) e.col;
@@ -411,8 +411,8 @@ void edge_list_64bit_fp64(
            = (ap_uint<96>) e.row; x_row = (x_row & 0x3FFFF) << 64; //x_row =
            (x_row & 0xFFFFF) << 32; //x_row = (x_row & 0x3FFFFF) << 32;
            */
-          x(95, 82) = (ap_uint<14>)(e.col & 0x3FFF);
-          x(81, 64) = (ap_uint<18>)(e.row & 0x3FFFF);
+          x(95, 82) = (tapa::u<14>)(e.col & 0x3FFF);
+          x(81, 64) = (tapa::u<18>)(e.row & 0x3FFFF);
 
           // float x_float = 1.0;
           /*
@@ -422,7 +422,7 @@ void edge_list_64bit_fp64(
 
            x = x_col | x_row | x_double_val_96;
            */
-          x(63, 0) = tapa::bit_cast<ap_uint<64>>(e.attr);
+          x(63, 0) = tapa::bit_cast<tapa::u<64>>(e.attr);
         }
         if (NUM_CH_SPARSE == 16) {
           int pe_idx = j + cc * 4;

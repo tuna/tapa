@@ -5,7 +5,6 @@
 #ifndef CALLIPEPLA_H
 #define CALLIPEPLA_H
 
-#include <ap_int.h>
 #include <tapa.h>
 
 constexpr int NUM_CH_SPARSE = 16;
