@@ -5,7 +5,6 @@
 #ifndef SEXTANS_H
 #define SEXTANS_H
 
-#include <ap_int.h>
 #include <tapa.h>
 
 constexpr int NUM_CH_SPARSE = 8;
