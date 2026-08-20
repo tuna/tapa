@@ -8,6 +8,21 @@
 
 - A compiled TAPA host executable (produced by `tapa g++`)
 - No FPGA, no Vivado, no XRT required
+- No vendor headers: the host runtime is self-contained
+
+```admonish note
+Software simulation does not read the Vitis HLS headers at all. `tapa::u<W>`
+and `tapa::i<W>` are implemented by TAPA itself for this target (they alias
+`ap_uint<W>`/`ap_int<W>` only when synthesizing), `tapa::wait()` compiles to
+nothing without a clock, and the `[[tapa::...]]` synthesis attributes are
+inert. Host targets therefore build without a Vitis include path — the test
+tree is built that way, so a program that reaches for a vendor header fails
+here rather than silently depending on an installed Vitis.
+
+A program that still uses vendor constructs keeps working: `tapa analyze`
+reports them as remarks, never errors. See the
+[vendor-usage warnings](../reference/cli.md).
+```
 
 ## Commands
 
