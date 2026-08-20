@@ -165,8 +165,17 @@ jobs:
         # explicit workflow_dispatch here: it races the push-triggered run
         # under the shared `release` concurrency group and cancels one of
         # the two at random.
-        run: >
-          git checkout main &&
-          git merge --ff-only ${{ github.ref_name }} &&
-          git push
+        #
+        # A branch that is simply behind main (two branches going green at
+        # once) is a routine race, not a CI failure: report it and leave the
+        # run green, the way the old `is-successful` output did before the
+        # dispatch step it fed was removed.
+        run: |
+          git checkout main
+          if git merge --ff-only "${{ github.ref_name }}" && git push; then
+            echo "Merged ${{ github.ref_name }} into main."
+          else
+            git merge --abort || true
+            echo "::notice::${{ github.ref_name }} is not fast-forwardable onto main; skipping auto-merge. Rebase onto main and push again."
+          fi
         shell: bash
