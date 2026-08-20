@@ -58,7 +58,6 @@ cc_binary(
     deps = [
         "//tapa-lib:tapa-host",
         "@gflags",
-        "@vitis_hls//:include",
     ],
 )
 
@@ -145,7 +144,6 @@ cc_binary(
     deps = [
         "//tapa-lib:tapa-host",
         "@gflags",
-        "@vitis_hls//:include",
     ],
 )
 
