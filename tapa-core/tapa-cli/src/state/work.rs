@@ -157,7 +157,7 @@ mod tests {
         store(dir.path(), &sample_state()).expect("store");
         let raw = fs_err::read_to_string(path_in(dir.path())).expect("read");
         assert!(
-            raw.starts_with("{\n  \"version\": 3,\n"),
+            raw.starts_with(&format!("{{\n  \"version\": {VERSION},\n")),
             "state file must be pretty-printed for human diffing; got {raw}",
         );
         assert!(raw.ends_with("}\n"), "state file must end with a newline");
@@ -186,11 +186,12 @@ mod tests {
         // Restamp with a future version and drop the graph the way a
         // schema change would, so a plain parse would fail on a field
         // long before it noticed the version.
+        let future = VERSION + 1;
         fs_err::write(
             path_in(dir.path()),
-            br#"{"version": 4, "graph": {"whatever": true}}"#,
+            format!(r#"{{"version": {future}, "graph": {{"whatever": true}}}}"#),
         )
-        .expect("write v4 state");
+        .expect("write a future-version state");
         let err = load(dir.path()).expect_err("foreign version must fail");
         let CliError::StaleWorkState {
             found, expected, ..
@@ -198,7 +199,7 @@ mod tests {
         else {
             panic!("expected StaleWorkState, got {err}");
         };
-        assert_eq!(found, "v4", "reported version");
+        assert_eq!(found, &format!("v{future}"), "reported version");
         assert_eq!(*expected, VERSION, "expected version");
         assert!(
             err.to_string().contains("tapa analyze"),
@@ -237,7 +238,8 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         store(dir.path(), &sample_state()).expect("store");
         let text = fs_err::read_to_string(path_in(dir.path())).expect("read");
-        let patched = text.replace("\"version\": 3,", "\"version\": 3,\n  \"bogus\": 1,");
+        let stamp = format!("\"version\": {VERSION},");
+        let patched = text.replace(&stamp, &format!("{stamp}\n  \"bogus\": 1,"));
         fs_err::write(path_in(dir.path()), patched).expect("write");
         let err = load(dir.path()).expect_err("unknown field must fail");
         assert!(

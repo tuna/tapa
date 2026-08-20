@@ -36,8 +36,11 @@ pub const FILE_NAME: &str = "tapa.json";
 /// port metadata on [`crate::port::Port`] landed that way).
 ///
 /// v2 added the optional [`WorkState::floorplan`] contract; v3 made routed
-/// channel identities variant-specific.
-pub const VERSION: u32 = 3;
+/// channel identities variant-specific; v4 changed the nested [`TaskGraph`]
+/// wire form, where an invoke-site constant became a typed
+/// [`crate::instance::ArgSource::Literal`] instead of a Verilog-syntax
+/// string, and the graph gained its own `schema_version`.
+pub const VERSION: u32 = 4;
 
 /// Everything the pipeline persists between steps.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -212,8 +215,12 @@ mod tests {
     }
 
     #[test]
-    fn version_is_v3_for_typed_pipeline_routes() {
-        assert_eq!(VERSION, 3, "typed pipeline routes require state v3");
+    fn version_is_v4_for_typed_invoke_literals() {
+        // A v3 dir carries invoke constants as Verilog-syntax strings,
+        // which the untagged ArgSource now reads as a wire NAME rather
+        // than a literal — accepted silently, then wrong downstream. The
+        // bump is what turns that into "re-run analyze".
+        assert_eq!(VERSION, 4, "typed invoke literals require state v4");
     }
 
     #[test]
