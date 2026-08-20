@@ -38,6 +38,20 @@ void Add(tapa::istream<float>& a, tapa::istream<float>& b,
 }
 
 // Leaf task to instantiate a stream as a communication channel.
+//
+// The `dataflow` pragma stays vendor-spelled on purpose. TAPA places
+// concurrency at the task graph, so there is no attribute for concurrency
+// *within* a leaf task, and the two alternatives are both worse:
+//
+//   * deleting it deadlocks — `Add` fills the depth-2 `c_q` and blocks
+//     because `Stream2Mmap` has not started;
+//   * hoisting `Add`/`Stream2Mmap` into a nested `tapa::task().invoke`
+//     works, but then this test no longer covers a leaf task that
+//     instantiates its own stream, which is the pattern it exists for and
+//     the reason the `tapa::hls::stream` compat layer is kept (Decision 7).
+//
+// `tapa analyze` reports it as a remark, which is the intended outcome for
+// a construct with no portable form.
 void Add2Mmap(tapa::istream<float>& a, tapa::istream<float>& b,
               tapa::mmap<float> c, uint64_t n) {
 #pragma HLS dataflow
