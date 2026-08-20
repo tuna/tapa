@@ -16,10 +16,7 @@ void load_input(tapa::mmap<hls::vector<uint32_t, NUM_WORDS>> in,
                 tapa::ostream<hls::vector<uint32_t, NUM_WORDS>>& inStream,
                 int size) {
   size /= NUM_WORDS;
-  for (int i = 0; i < size; i++) {
-#pragma HLS pipeline II = 1
-    inStream << in[i];
-  }
+  [[tapa::pipeline(1)]] for (int i = 0; i < size; i++) { inStream << in[i]; }
 }
 
 void compute_add(tapa::istream<hls::vector<uint32_t, NUM_WORDS>>& in1_stream,
@@ -27,8 +24,7 @@ void compute_add(tapa::istream<hls::vector<uint32_t, NUM_WORDS>>& in1_stream,
                  tapa::ostream<hls::vector<uint32_t, NUM_WORDS>>& out_stream,
                  int size) {
   size /= NUM_WORDS;
-  for (int i = 0; i < size; i++) {
-#pragma HLS pipeline II = 1
+  [[tapa::pipeline(1)]] for (int i = 0; i < size; i++) {
     out_stream << (in1_stream.read() + in2_stream.read());
   }
 }
@@ -37,8 +33,7 @@ void store_result(tapa::mmap<hls::vector<uint32_t, NUM_WORDS>> out,
                   tapa::istream<hls::vector<uint32_t, NUM_WORDS>>& out_stream,
                   int size) {
   size /= NUM_WORDS;
-  for (int i = 0; i < size; i++) {
-#pragma HLS pipeline II = 1
+  [[tapa::pipeline(1)]] for (int i = 0; i < size; i++) {
     out[i] = out_stream.read();
   }
 }

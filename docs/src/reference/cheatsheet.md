@@ -147,14 +147,16 @@ that loop. `tapa analyze` warns when a vendor pragma is used and names the
 portable form.
 
 ```cpp
-// On a loop (or any statement in it)
+// On the loop itself (or the function, for pipeline); the region
+// attributes (tripcount, flatten, latency, dependence, balance) may also
+// sit on a braced `if` or block to scope to that region.
 [[tapa::pipeline(1)]]                     // initiation interval 1
 [[tapa::pipeline(false)]]                 // do NOT pipeline this loop
 [[tapa::unroll(4)]]                       // partially unroll; omit to unroll fully
 [[tapa::tripcount(1, 800)]]               // trip-count estimate only
 [[tapa::flatten(false)]]                  // do not flatten this nest
 [[tapa::latency(1, 2)]]                   // constrain region latency
-[[tapa::dependence("buf", "inter", 1, "8")]]  // real dependence, distance 8
+[[tapa::dependence("buf", "", "inter", "", 1, 8)]]  // real dependence, distance 8
 [[tapa::balance]]                         // re-associate the expression tree
 
 // On a variable or parameter declaration

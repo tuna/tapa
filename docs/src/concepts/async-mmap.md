@@ -59,8 +59,7 @@ loop:
 ```cpp
 void ReadKernel(tapa::async_mmap<float>& mem, float* result,
                 uint64_t n) {
-  for (int i_req = 0, i_resp = 0; i_resp < n;) {
-#pragma HLS pipeline II=1
+  [[tapa::pipeline(1)]] for (int i_req = 0, i_resp = 0; i_resp < n;) {
     // Issue a read address if the channel has space
     if (i_req < n && mem.read_addr.try_write(i_req)) {
       ++i_req;

@@ -275,15 +275,79 @@ class i;  // signed
 Semantics mirror the vendor types:
 
 - Mixed-width arithmetic widens so the exact result fits (`tapa::u<8>(200) + tapa::u<8>(100)` is a `tapa::u<9>` holding 300); narrowing assignment truncates the bit pattern.
-- Comparisons use the left operand's signedness.
+- Ordering follows C's usual arithmetic conversions with the declared width as the conversion rank: below 32 bits the comparison is signed however it is spelled (C promotes both operands to `int`), and at 32 bits and above the wider-or-equal operand's signedness wins, with an equal-width tie going unsigned, as in C. So `tapa::u<8>(255) > tapa::i<8>(-1)` is true, and `tapa::i<32>(-1) < tapa::u<32>(0)` is false.
+- Equality compares bit patterns, not converted values: each operand is sign- or zero-extended into `max(width, 64)` bits and the patterns compare. So `tapa::i<64>(-1) == tapa::u<64>(~0)` is true, while `tapa::i<32>(-1) == tapa::u<32>(0xffffffff)` is false — unlike C, which would convert the signed operand and call it true.
 - Division truncates toward zero; the remainder takes the dividend's sign.
 - Shifting by a negative amount shifts the other way.
 
 The full surface covers construction from builtins/floats, arithmetic and bitwise operators with builtin mixing, slicing (`x(hi, lo)`, `x.range<Hi, Lo>()`), bit select (`x[i]`, `x.set_bit(i, v)`), concatenation (`tapa::concat(a, b)` and the `(a, b)` form), reductions (`and_reduce`, `or_reduce`, `xor_reduce`, and their complements), conversions (`to_int64`, `to_uint64`, `to_double`, implicit `RetType`), and `reverse()`.
 
+### `tapa::fixed<W, I, Q, O, N>` / `tapa::ufixed<W, I, Q, O, N>`
+
+Vendor-agnostic fixed-point numbers, replacing `ap_fixed`/`ap_ufixed`. A value is a `W`-bit two's-complement integer scaled by `2^-(W - I)`: `I` bits above the binary point (the sign bit among them when signed), `W - I` below. Either count may exceed `W` or go negative. In software simulation they are self-implemented; on the Xilinx HLS target they alias the vendor types, because fixed-point arithmetic is something the HLS compiler implements natively.
+
+```cpp
+template <int W, int I, q_mode Q = q_mode::trn, o_mode O = o_mode::wrap,
+          int N = 0>
+class fixed;   // signed
+template <int W, int I, q_mode Q = q_mode::trn, o_mode O = o_mode::wrap,
+          int N = 0>
+class ufixed;  // unsigned
+```
+
+`Q` says what happens to fractional bits the target cannot hold, `O` to a value that does not fit. Both mirror the vendor modes one for one, including their defaults:
+
+| `tapa::q_mode` | vendor | meaning |
+|---|---|---|
+| `trn` (default) | `AP_TRN` | truncate toward minus infinity |
+| `trn_zero` | `AP_TRN_ZERO` | truncate toward zero |
+| `rnd` | `AP_RND` | round, ties toward plus infinity |
+| `rnd_zero` | `AP_RND_ZERO` | round, ties toward zero |
+| `rnd_min_inf` | `AP_RND_MIN_INF` | round, ties toward minus infinity |
+| `rnd_inf` | `AP_RND_INF` | round, ties away from zero |
+| `rnd_conv` | `AP_RND_CONV` | round, ties to even |
+
+| `tapa::o_mode` | vendor | meaning |
+|---|---|---|
+| `wrap` (default) | `AP_WRAP` | keep the low bits; `N` saturation bits are forced |
+| `wrap_sm` | `AP_WRAP_SM` | sign-magnitude wrap; signed types only |
+| `sat` | `AP_SAT` | clamp to the largest representable magnitude |
+| `sat_zero` | `AP_SAT_ZERO` | replace with zero |
+| `sat_sym` | `AP_SAT_SYM` | clamp to a range symmetric about zero |
+
+Arithmetic never quantizes: `+`, `-` and `*` widen so the result is exact, and the result type carries the *default* modes rather than the operands'. The raw pattern is the public member `V`, and `x(hi, lo)` / `x[i]` slice it, as on the vendor type.
+
+Two deliberate differences. `o_mode::wrap_sm` on an unsigned type is a compile error; the vendor rejects the same combination at run time. And comparison is transcribed from the vendor, which widens whichever side has the coarser fractional width and then compares the *raw* integers — so it inherits the integer conversion rules above rather than comparing exact values.
+
+### Intentional subset
+
+The portable types cover the surface the regression designs and typical kernels use. The vendor forms below are *not* implemented, so code that needs them fails to compile (loudly, never silently): `tapa::fixed` shift operators and its `&`/`|`/`^` against C integers, and the vendor's `to_string` hexfloat formatting for fixed-point. `tapa::u/i` additionally offer `x.to_string(base, sign)` and stream extraction (`in >> x`) matching the vendor's member forms.
+
+### `tapa::axis<T, WUser, WId, WDest>`
+
+Vendor-agnostic AXI4-Stream packet, replacing `ap_axiu`/`ap_axis`. Parameterized by payload type, as the vendor's own `hls::axis` is: `ap_axiu<W, U, I, D>` becomes `tapa::axis<tapa::u<W>, U, I, D>` and `ap_axis<...>` becomes `tapa::axis<tapa::i<W>, ...>`.
+
+```cpp
+template <typename T, int WUser = 0, int WId = 0, int WDest = 0>
+struct axis {
+  T data;
+  u<width_keep> keep;   // one bit per payload byte
+  u<width_strb> strb;
+  /* user */ last; /* id */ /* dest */
+};
+```
+
+TDATA, TKEEP, TSTRB and TLAST are always present; TUSER, TID and TDEST are present exactly when their width is non-zero. Object size, alignment and every member offset match `ap_axiu`, which is what mmap element stride and stream element size depend on. A disabled signal still occupies its slot, so enabling one moves nothing.
+
+Unlike `tapa::u`/`tapa::i` this is one definition for every target rather than a vendor alias: its members are `tapa::u<W>`, which *is* `ap_uint<W>` when synthesizing. Reading or writing a signal the packet does not carry is inert, where the vendor throws; `operator==` and `operator<<` are additions the vendor packet has not.
+
+The vendor's `EnableSignals` bit field, which turns TKEEP/TSTRB/TLAST off individually, has no portable form. `ap_axiu<W, U, I, D>` always has them.
+
 ### `tapa::wait()` / `tapa::wait(n)`
 
 Yields one clock cycle on synthesis targets (lowered to the vendor `ap_wait()`), or `n` cycles for the overload (`ap_wait_n(n)`). Both are no-ops in software simulation, where tasks run as coroutines without a clock. Use them in place of `ap_wait()` and `ap_wait_n()` to keep programs portable.
+
+The simulation no-op is contractual: call `tapa::wait()` bare, never inside `#ifdef __SYNTHESIS__` — the guard exists only for the vendor intrinsics, which the host headers deliberately do not declare.
 
 ### `tapa::widthof<T>()`
 
@@ -320,7 +384,7 @@ out.close(); // send EoT marker downstream
 
 These C++ attributes are recognised by TAPA and lowered to vendor pragmas during synthesis. They have no effect in software simulation, and they are how a TAPA program expresses synthesis directives without naming a vendor: write these instead of `#pragma HLS ...`.
 
-**On a statement.** Written on a loop, the attribute applies to *that* loop. Written on any other statement it applies to the innermost enclosing loop — which is what a bare pragma in the same position would have meant.
+**On a statement.** Written on a loop, the attribute applies to *that* loop. `pipeline` and `unroll` must be written on the loop itself (or, for `pipeline`, on the function); the region attributes — `tripcount`, `flatten`, `latency`, `dependence`, `balance` — may also be written on an `if` (with braces, no `else`) or a bare block, applying to that region, which is what a bare pragma in the same position would have meant. A TAPA attribute on a subject it cannot lower to is a hard error, not a silent ignore.
 
 | Attribute | Lowers to | Description |
 |-----------|-----------|-------------|
@@ -329,14 +393,14 @@ These C++ attributes are recognised by TAPA and lowered to vendor pragmas during
 | `[[tapa::tripcount(min, max)]]` | `loop_tripcount` | Declare the loop's trip-count range. Estimation only — it does not change generated hardware. |
 | `[[tapa::flatten(enable)]]` | `loop_flatten` | `false` (or `0`) disables flattening of the loop nest; omitted leaves the vendor's automatic flattening on. |
 | `[[tapa::latency(min, max)]]` | `latency` | Constrain the latency of the loop or region. `max = 0` requests a combinational region. |
-| `[[tapa::dependence(var, kind, dependent, distance, direction)]]` | `dependence` | Describe a loop-carried dependence on `var`. `kind` is `"intra"`/`"inter"`; `dependent` non-zero asserts a real dependence at `distance`, the default asserts independence. |
+| `[[tapa::dependence(var, class, type, direction, dependent, distance)]]` | `dependence` | Describe a loop-carried dependence on `var`, in the vendor's argument order. `class` is `"array"`/`"pointer"`, `type` `"inter"`/`"intra"`, `direction` `"RAW"`/`"WAR"`/`"WAW"` — all validated at parse time; `dependent` non-zero asserts a real dependence at `distance` (a string for macro passthrough or an integer constant), the default asserts independence. All but `var` are optional; use `""` for a skipped position. |
 | `[[tapa::balance]]` | `expression_balance` | Re-associate the expression tree in the region. |
 
 **On a variable or parameter declaration.** These take the declaration they annotate; on a multi-declarator statement each variable gets its own pragma.
 
 | Attribute | Lowers to | Description |
 |-----------|-----------|-------------|
-| `[[tapa::partition(type, factor, dim)]]` | `array_partition` | Partition an array: `type` is `"cyclic"`, `"block"` or `"complete"`. `factor` and `dim` are positional and optional — pass `-1` to omit one you are skipping, e.g. `[[tapa::partition("complete", -1, 2)]]` partitions dimension 2 with no factor. |
+| `[[tapa::partition(type, factor, dim)]]` | `array_partition` | Partition an array: `type` is `"cyclic"`, `"block"` or `"complete"`. `factor` and `dim` are positional and optional — pass `-1` to omit one you are skipping, e.g. `[[tapa::partition("complete", -1, 2)]]` partitions dimension 2 with no factor. A factor with `"complete"` is rejected at parse time: it is meaningless, and the vendor would silently partition the wrong dimension. |
 | `[[tapa::storage(type, impl, latency)]]` | `bind_storage` | Choose the memory the array binds to, e.g. `[[tapa::storage("RAM_2P", "URAM")]]`. |
 | `[[tapa::aggregate]]` | `aggregate` | Pack a struct into a single wide word. |
 | `[[tapa::bind_op(op, impl, latency)]]` | `bind_op` | Bind an operation to a specific implementation, e.g. `("mul", "dsp")`. |

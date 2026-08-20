@@ -21,7 +21,7 @@ After `tapa compile`, check the HLS reports in `work.out/` for II violations:
 - An II > 1 on a pipelined loop means the loop is not fully pipelined and throughput is reduced.
 - Look for `WARNING: [HLS ...] Unable to schedule` or `II = N` where N > 1 in the HLS log.
 
-Fix: Add `#pragma HLS pipeline II=1` or restructure the loop body to eliminate data-path dependencies.
+Fix: Add `[[tapa::pipeline(1)]]` to the loop, or restructure the loop body to eliminate data-path dependencies.
 
 ### 2. Check memory throughput — consider `async_mmap`
 
@@ -105,7 +105,7 @@ See the [`tapa floorplan` CLI reference](../reference/cli.md) for the full flag 
 
 ### What floorplanning can and cannot fix
 
-Floorplanning fixes problems caused by **placement and routing** — SLR crossings, congestion, and reset-distribution delay. It does **not** change the logic inside a task. If your worst failing paths live entirely within one task (a long combinational chain the HLS scheduler placed in a single cycle), no floorplan will close timing; you need to restructure that task in HLS (e.g. add a `#pragma HLS pipeline`, split the operation across cycles).
+Floorplanning fixes problems caused by **placement and routing** — SLR crossings, congestion, and reset-distribution delay. It does **not** change the logic inside a task. If your worst failing paths live entirely within one task (a long combinational chain the HLS scheduler placed in a single cycle), no floorplan will close timing; you need to restructure that task (e.g. add a `[[tapa::pipeline(1)]]`, split the operation across cycles).
 
 To tell the two apart, read the post-implementation timing report: worst paths whose *source and destination sit in different SLRs*, or whose source is a reset/clock tree, are placement problems the floorplan can address; worst paths contained inside a single task instance are logic-depth problems that require HLS changes.
 
