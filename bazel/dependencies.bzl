@@ -120,6 +120,7 @@ def _vitis_hls_repository_impl(rctx):
     """Repository rule for Vitis HLS that fetches headers via SSH if needed."""
     build_file_content = rctx.attr.build_file_content
 
+    available = True
     path = _first_existing_dir(rctx, rctx.attr.paths)
     if path:
         _symlink_dir(rctx, path)
@@ -128,11 +129,22 @@ def _vitis_hls_repository_impl(rctx):
         if rctx.attr.remote_host and rctx.attr.remote_path:
             fetched = _fetch_vendor_headers_via_ssh(rctx, rctx.attr.remote_path)
         if not fetched:
+            available = False
+
             # buildifier: disable=print
             print("NOTE: Vitis HLS headers not available. " +
                   "Set REMOTE_HOST in VARS.bzl or install Xilinx tools locally.")
 
     rctx.file("BUILD.bazel", build_file_content)
+
+    # Whether the headers actually landed. `:include` is an empty cc_library
+    # when they did not, which compiles fine and silently tests nothing, so a
+    # target that has no meaning without them needs to say so itself --
+    # see `//tapa-lib:vendor-parity-test`.
+    rctx.file(
+        "defs.bzl",
+        "VITIS_HLS_AVAILABLE = {}\n".format("True" if available else "False"),
+    )
 
 _vitis_hls_repository = repository_rule(
     implementation = _vitis_hls_repository_impl,

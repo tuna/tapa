@@ -20,6 +20,11 @@ build --incompatible_autoload_externally=+@rules_python,+@rules_shell,+@rules_cc
 build --incompatible_default_to_explicit_init_py # Don't overwrite __init__.py files
 build --incompatible_strict_action_env
 
+# A test that cannot run here reports SKIPPED rather than aborting the
+# build, so naming `//tapa-lib:vendor-parity-test` on a host without the
+# Vitis headers says what happened instead of erroring.
+test --skip_incompatible_explicit_targets
+
 build:asan --compilation_mode=dbg
 build:asan --copt -fsanitize=address
 build:asan --linkopt -fsanitize=address

@@ -1,10 +1,11 @@
 // Live parity against the vendor arbitrary-precision types.
 //
-// tapa::u/i and tapa::axis are self-implemented stand-ins for ap_uint/ap_int
-// and ap_axiu, and everything a TAPA program observes in software simulation
-// -- object size, member offsets, arithmetic result widths, every bit of
-// every result -- has to be what the vendor produces, or CPU simulation and
-// hardware disagree with nothing to say so.
+// tapa::u/i, tapa::fixed/ufixed and tapa::axis are self-implemented
+// stand-ins for ap_uint/ap_int, ap_fixed/ap_ufixed and ap_axiu, and
+// everything a TAPA program observes in software simulation -- object size,
+// member offsets, arithmetic result widths, every bit of every result -- has
+// to be what the vendor produces, or CPU simulation and hardware disagree
+// with nothing to say so.
 //
 // The other tests state the expected behaviour independently, from the
 // documented rules. This one takes the vendor's own answer as the oracle:
@@ -13,9 +14,17 @@
 // whose limb count is not a power of two (192 bits took 24 bytes here and 32
 // there) -- a difference no hand-written expectation had thought to check.
 //
-// Where the vendor headers are not installed, every case skips and says so.
+// Where the vendor headers are not installed there is nothing to compare
+// against, and `@vitis_hls//:include` is an EMPTY cc_library, so this file
+// would compile, check nothing, and report PASSED. The BUILD target declares
+// itself incompatible there instead and Bazel reports SKIPPED, which is what
+// actually happened; the `__has_include` guard below is the backstop for a
+// build that reaches this file some other way. Either way a PASS means the
+// comparison ran.
+//
 // Regenerate the constants in host/axis_test.cpp and base/int_test.cpp from
-// this test's numbers whenever a new Vitis reshapes anything.
+// this test's numbers whenever a new Vitis reshapes anything -- those are
+// what still pins the layout where this cannot run.
 
 #if defined(__has_include)
 #if __has_include(<ap_int.h>) && __has_include(<ap_axi_sdata.h>) && \
@@ -46,9 +55,11 @@ namespace {
 #ifndef TAPA_VENDOR_HEADERS_AVAILABLE
 
 TEST(VendorParity, Skipped) {
-  GTEST_SKIP() << "ap_int.h / ap_axi_sdata.h are not installed; the vendor "
-                  "oracle cannot run. Layout is still pinned by the recorded "
-                  "constants in host/axis_test.cpp and base/int_test.cpp.";
+  GTEST_SKIP() << "the vendor headers are not installed, so the oracle cannot "
+                  "run. Reaching this is unexpected under Bazel, which marks "
+                  "the target incompatible instead; layout stays pinned by "
+                  "the recorded constants in host/axis_test.cpp and "
+                  "base/int_test.cpp.";
 }
 
 #else
@@ -300,8 +311,8 @@ void CheckBinaryOps(uint64_t& state, int rounds) {
     EXPECT_EQ(a.or_reduce(), va.or_reduce()) << "or_reduce, " << where;
     EXPECT_EQ(a.xor_reduce(), va.xor_reduce()) << "xor_reduce, " << where;
 
-    // Comparisons take the LEFT operand's signedness, a vendor quirk that is
-    // easy to implement as plain C++ comparison and get wrong.
+    // Equality compares the sign/zero-extended patterns at max(W, 64);
+    // ordering follows C's conversions with the width as the rank.
     EXPECT_EQ(a == b, va == vb) << "eq, " << where;
     EXPECT_EQ(a < b, va < vb) << "lt, " << where;
     EXPECT_EQ(a <= b, va <= vb) << "le, " << where;
