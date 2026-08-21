@@ -35,3 +35,10 @@ template emission in `CollectOutputs` — blessed here as
 the children wiring of an ignored instance (scalar propagation from
 `s_axi_control`, external-stream passthrough), and the monolithic-FSM
 control path for the top.
+
+## Regeneration review (2026-08-21)
+
+One line: `ShellTop.v` gains `.out_peek('d0)` on the shell instance,
+from `5220c70f` tying off unused HLS peek inputs — previously the port
+was left unconnected. `design.json` carries the shared representation
+changes only.

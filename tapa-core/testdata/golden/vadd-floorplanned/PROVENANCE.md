@@ -54,3 +54,20 @@ Same rules as the `vadd` case: `expected/rtl/` = generated RTL
 (support assets live under `_assets/`), normalized. The floorplanned path replaces the monolithic
 FSM with distributed control (`tapa_control.v` hierarchy), so this case
 does not emit `VecAdd_fsm.v`.
+
+## Regeneration review (2026-08-21)
+
+Two changes, both from the floorplan ILP gaining register accounting
+(`26c9a18c` reserve a crossing's Head registers during placement,
+`67f394f3` budget a slot's routed pipeline registers):
+
+- `floorplan.json`: the two-hop route from `SLOT_X1Y1` to `SLOT_X0Y0`
+  now goes via `SLOT_X0Y1` instead of `SLOT_X1Y0`. Same endpoints, same
+  hop count, same `double` scheme — an equally valid path the ILP now
+  prefers because it prices the registers each slot must hold.
+- `VecAdd.v`: `BODY_LEVEL` 6 -> 2 on the `Mmap2Stream_1` control
+  pipelines and `FLUSH_CYCLES` 16 -> 14, following from that route and
+  its shorter register chain.
+
+`design.json` carries the same representation-only changes as the `vadd`
+case. No task, port or FIFO changed.

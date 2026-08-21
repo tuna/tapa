@@ -39,3 +39,15 @@ under `_assets/`, normalized). This case exercises: the FIFO-style async-mmap br
 insertion (`mem__m_axi`), read-only bridge parameter pruning, the
 per-instance `*_offset` pipeline, external-stream passthrough, and the
 monolithic-FSM control path.
+
+## Regeneration review (2026-08-21)
+
+Three separate causes, all deliberate:
+
+- port rename `out` -> `data_q` throughout `AsyncTop.v`/`AsyncReader.v`
+  and this document, tracking the kernel rename in `f6e5081b`;
+- `mem_write_data__din` widened 32 -> 33 bits with a `[31:0]` slice at
+  the consumer, and `BurstLenWidth` 9 -> 8 — `6a3165ad` aligning the
+  async-mmap FIFO widths, a fix rather than a cosmetic regeneration;
+- `design.json` representation changes shared with the `vadd` case
+  (typed clock period and area keys).

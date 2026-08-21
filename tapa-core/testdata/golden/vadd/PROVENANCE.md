@@ -44,3 +44,16 @@ assets are blessed once, repo-wide, under `_assets/`).
 is normalized (trailing whitespace trimmed, single trailing newline).
 Regenerate with `TAPA_BLESS_GOLDEN=1 cargo test -p tapa-codegen --test
 golden_rtl`.
+
+## Regeneration review (2026-08-21)
+
+`design.json` only changed representation, not topology:
+
+- `clock_period` `"3.125"` (string, ns) -> `3125` (integer ps), from
+  `378b490e` typed wire values and clock periods;
+- area keys `DSP`/`FF`/`LUT` -> `dsp`/`ff`/`lut`, from `4538b37b` one
+  typed area model.
+
+Task set, ports, FIFOs and levels are unchanged. The nested TaskGraph
+wire form moving is what `work_state::VERSION` was bumped to 4 for, so a
+stale work dir is rejected rather than misparsed.

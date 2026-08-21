@@ -13,3 +13,10 @@ an asset edit costs one re-bless hunk instead of one per case. The harness
 (`golden_rtl.rs`) compares this tree against that slice the same way it
 compares each case's design-specific manifest slice against the case's own
 blessed tree.
+
+## Regeneration review (2026-08-21)
+
+Twelve expected RTL files lost their three-line RapidStream copyright
+header and nothing else (`160a4493`). AGENTS.md forbids carrying such a
+header "on any file, new or existing", so this is policy, not drift. The
+Verilog itself is byte-identical.
