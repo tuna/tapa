@@ -28,6 +28,8 @@ After this lab you will understand:
 |-----------|------|-------|
 | `#include <ap_int.h>` | `#include <tapa.h>` | Not needed at all in software simulation |
 | `ap_uint<W>` / `ap_int<W>` | `tapa::u<W>` / `tapa::i<W>` | Self-implemented for the host; aliases the vendor type when synthesizing |
+| `ap_fixed<W, I, Q, O, N>` / `ap_ufixed<...>` | `tapa::fixed<W, I, Q, O, N>` / `tapa::ufixed<...>` | Same for the modes: `AP_RND` is `tapa::q_mode::rnd`, `AP_SAT` is `tapa::o_mode::sat` |
+| `ap_axiu<W, U, I, D>` / `ap_axis<...>` | `tapa::axis<tapa::u<W>, U, I, D>` / `tapa::axis<tapa::i<W>, ...>` | Parameterized by payload type, as the vendor's own `hls::axis` is |
 | `hls_vector.h`, `hls::vector<T, N>` | `tapa::vec_t<T, N>` | |
 | `ap_wait()` | `tapa::wait()` | |
 | `ap_wait_n(n)` | `tapa::wait(n)` | |
@@ -71,12 +73,25 @@ than one call, split it or accept the wider scope.
 ```
 
 ```admonish warning
-Four vendor constructs have no portable form yet, and `tapa analyze` says so
-rather than suggesting one: `#pragma HLS pipeline off` is covered above, but
-`#pragma HLS stream ... off` (a stream that is not a FIFO), `#pragma HLS
-dataflow` *inside* a leaf task, `ap_fixed`/`ap_ufixed`, and vendor packet
-types such as `ap_axiu<...>` still require the vendor spelling. Keep them and
+Two vendor constructs have no portable form, and `tapa analyze` says so
+rather than suggesting one: `#pragma HLS stream ... off` (a stream that is
+not a FIFO) and `#pragma HLS dataflow` *inside* a leaf task. Keep them and
 expect the remark.
+```
+
+```admonish note title="An unqualified `reg` becomes ambiguous"
+Vitis declares `reg` at global scope in `utils/x_hls_utils.h`, and TAPA
+declares `tapa::reg`. While the argument is an `ap_*` type, an unqualified
+`reg(x)` finds only the vendor's. Once the argument moves into namespace
+`tapa` — the moment a value becomes a `tapa::ufixed` or a `tapa::u<W>` —
+argument-dependent lookup finds `tapa::reg` too and the call stops
+compiling.
+
+They are not the same function. The vendor's is `PIPELINE II=1` plus
+`LATENCY min=1 max=1` and `INLINE off`; `tapa::reg` is a `volatile`
+protocol-region shim with a depth parameter. Qualify the call for the one
+you meant rather than letting the lookup decide, and if you switch, expect
+the hardware to change.
 ```
 
 ---

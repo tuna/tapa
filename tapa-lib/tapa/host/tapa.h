@@ -20,6 +20,7 @@
 #include "tapa/base/tapa.h"
 
 #include "tapa/host/axis.h"
+#include "tapa/host/fixed.h"
 #include "tapa/host/coroutine.h"
 #include "tapa/host/logging.h"
 #include "tapa/host/mmap.h"

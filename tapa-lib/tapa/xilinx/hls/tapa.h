@@ -7,6 +7,7 @@
 #include "tapa/base/tapa.h"
 
 #include "tapa/xilinx/hls/axis.h"
+#include "tapa/xilinx/hls/fixed.h"
 #include "tapa/xilinx/hls/int.h"
 #include "tapa/xilinx/hls/mmap.h"
 #include "tapa/xilinx/hls/stream.h"
