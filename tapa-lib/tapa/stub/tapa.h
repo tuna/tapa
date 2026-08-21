@@ -6,6 +6,7 @@
 
 #include "tapa/base/tapa.h"
 
+#include "tapa/stub/axis.h"
 #include "tapa/stub/logging.h"
 #include "tapa/stub/mmap.h"
 #include "tapa/stub/stream.h"
