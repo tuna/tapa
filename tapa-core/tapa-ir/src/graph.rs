@@ -22,9 +22,10 @@ use crate::task::Task;
 #[serde(deny_unknown_fields)]
 pub struct TaskGraph {
     /// Producer schema version, stamped by `tapacc`. Absent means a
-    /// pre-versioning producer, accepted as version 1. A value above
-    /// [`SCHEMA_VERSION`] is rejected with a clear regenerate message
-    /// instead of a field-level misparse.
+    /// pre-versioning (v1) producer, whose invoke-site constants this
+    /// schema would misread as wire names, so both directions of mismatch
+    /// are rejected with a clear regenerate message instead of a
+    /// field-level misparse.
     #[serde(default = "default_schema_version")]
     pub schema_version: u32,
     /// Name of the top-level task.
@@ -42,8 +43,9 @@ pub struct TaskGraph {
 /// The task-graph schema version this crate reads and writes.
 pub const SCHEMA_VERSION: u32 = 2;
 
+/// A pre-versioning producer's graph is version 1 by definition.
 const fn default_schema_version() -> u32 {
-    SCHEMA_VERSION
+    1
 }
 
 impl TaskGraph {
@@ -60,7 +62,55 @@ impl TaskGraph {
                 supported: SCHEMA_VERSION,
             });
         }
+        if graph.schema_version < SCHEMA_VERSION {
+            return Err(ParseError::OutdatedSchemaVersion {
+                found: graph.schema_version,
+                supported: SCHEMA_VERSION,
+            });
+        }
+        graph.validate_literals()?;
         Ok(graph)
+    }
+
+    /// Reject invalid invoke-site constants at the boundary, so a malformed
+    /// literal fails here instead of rendering invalid Verilog downstream.
+    fn validate_literals(&self) -> Result<(), ParseError> {
+        for (task_name, task) in &self.tasks {
+            for (child_name, instances) in &task.tasks {
+                for instance in instances {
+                    for (port_name, arg) in &instance.args {
+                        if let crate::instance::ArgSource::Literal(value) = &arg.arg {
+                            let path =
+                                format!("tasks.{task_name}.tasks.{child_name}.args.{port_name}");
+                            if !value.is_valid() {
+                                return Err(ParseError::Schema {
+                                    path,
+                                    message: format!(
+                                        "invalid constant {value}: the value must fit \
+                                         a width of 1..=64 bits"
+                                    ),
+                                });
+                            }
+                            // Only a scalar port can take a constant. Every
+                            // stream/mmap consumer resolves args by name and
+                            // would silently skip the binding, leaving a
+                            // child port unconnected.
+                            if arg.cat != crate::port::ArgCategory::Scalar {
+                                return Err(ParseError::Schema {
+                                    path,
+                                    message: format!(
+                                        "constant {value} bound to a `{}` port; only \
+                                         scalar ports take constants",
+                                        arg.cat.as_str()
+                                    ),
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Parse from any reader.
@@ -76,9 +126,43 @@ mod tests {
     use super::*;
 
     #[test]
-    fn missing_schema_version_defaults_to_current() {
-        let g =
-            TaskGraph::from_json(r#"{"top": "T", "target": "xilinx-hls", "tasks": {}}"#).unwrap();
+    fn missing_schema_version_is_rejected_as_pre_versioning() {
+        // A pre-versioning graph's invoke constants are strings that this
+        // schema would silently read as wire names; refuse it like the
+        // WorkState v4 bump refuses stale work states.
+        let err = TaskGraph::from_json(r#"{"top": "T", "target": "xilinx-hls", "tasks": {}}"#)
+            .expect_err("pre-versioning graph must be rejected");
+        assert!(
+            matches!(err, ParseError::OutdatedSchemaVersion { found: 1, .. }),
+            "{err}"
+        );
+        assert!(err.to_string().contains("regenerate"), "{err}");
+    }
+
+    #[test]
+    fn invalid_invoke_constant_is_rejected_at_the_boundary() {
+        let payload = r#"{
+            "schema_version": 2, "top": "T", "target": "xilinx-hls", "cflags": [],
+            "tasks": {
+                "T": {"level": "upper", "code": "", "readable_name": "T", "synth": "hls",
+                    "ports": [], "fifos": {},
+                    "tasks": {"A": [{"args": {
+                        "n": {"arg": {"width": 8, "value": 300}, "cat": "scalar"}
+                    }, "step": 0}]}},
+                "A": {"level": "lower", "code": "", "readable_name": "A", "synth": "hls",
+                    "ports": []}
+            }
+        }"#;
+        let err = TaskGraph::from_json(payload).expect_err("8'd300 must not parse");
+        assert!(err.to_string().contains("invalid constant"), "{err}");
+    }
+
+    #[test]
+    fn current_schema_version_is_accepted() {
+        let g = TaskGraph::from_json(
+            r#"{"schema_version": 2, "top": "T", "target": "xilinx-hls", "tasks": {}}"#,
+        )
+        .unwrap();
         assert_eq!(g.schema_version, SCHEMA_VERSION);
     }
 
@@ -96,7 +180,8 @@ mod tests {
     fn parses_named_child_instances() {
         TaskGraph::from_json(
             r#"{
-              "cflags": [],
+              "schema_version": 2,
+        "cflags": [],
               "top": "Top",
               "target": "xilinx-hls",
               "tasks": {
@@ -133,7 +218,7 @@ mod tests {
         // The flow target is required at the root now that it is the single
         // home for the vendor flow (analyze injects it before parsing).
         let err = TaskGraph::from_json(
-            r#"{"cflags":[],"top":"T","tasks":{"T":{"code":"","level":"upper","synth":"hls","readable_name":"T","ports":[],"tasks":{},"fifos":{}}}}"#,
+            r#"{"schema_version":2,"cflags":[],"top":"T","tasks":{"T":{"code":"","level":"upper","synth":"hls","readable_name":"T","ports":[],"tasks":{},"fifos":{}}}}"#,
         )
         .expect_err("missing root `target` must fail");
         assert!(

@@ -123,7 +123,7 @@ fn collect_leaves_recursive(
     graph: &TaskGraph,
     task_name: &str,
     scope_path: &str,
-    arg_bindings: &BTreeMap<String, String>,
+    arg_bindings: &BTreeMap<String, ArgSource>,
     leaves: &mut BTreeMap<String, Vec<TaskInstance>>,
     fifos: &mut BTreeMap<String, InterconnectDefinition>,
 ) -> Result<(), TransformError> {
@@ -159,7 +159,7 @@ fn collect_leaves_recursive(
                     // A constant has no parent scope to resolve against.
                     ArgSource::Literal(value) => ArgSource::Literal(*value),
                     ArgSource::Name(name) => {
-                        ArgSource::Name(resolve_scoped_arg(name, &fifo_global_map, arg_bindings))
+                        resolve_scoped_arg(name, &fifo_global_map, arg_bindings)
                     }
                 };
                 resolved_args.insert(
@@ -191,9 +191,13 @@ fn collect_leaves_recursive(
                 // prepended with this instance's name.
                 let inst_name = inst.canonical_name(child_def_name, idx);
                 let child_scope = format!("{inst_name}_{scope_path}");
-                let child_bindings: BTreeMap<String, String> = resolved_args
+                // Constants bind too: a leaf below this child may name the
+                // child's port, and the literal is the only value it can
+                // take. Dropping them (name-only bindings) leaves a dangling
+                // wire named after the child's port.
+                let child_bindings: BTreeMap<String, ArgSource> = resolved_args
                     .iter()
-                    .filter_map(|(p, a)| Some((p.clone(), a.name()?.to_owned())))
+                    .map(|(p, a)| (p.clone(), a.arg.clone()))
                     .collect();
                 collect_leaves_recursive(
                     graph,
@@ -237,27 +241,29 @@ fn should_materialize_fifo(fifo: &InterconnectDefinition, is_top_scope: bool) ->
 fn resolve_scoped_arg(
     local_name: &str,
     fifo_global_map: &BTreeMap<String, String>,
-    arg_bindings: &BTreeMap<String, String>,
-) -> String {
+    arg_bindings: &BTreeMap<String, ArgSource>,
+) -> ArgSource {
     if let Some(global) = fifo_global_map.get(local_name) {
-        return global.clone();
+        return ArgSource::Name(global.clone());
     }
-    if let Some(global) = arg_bindings.get(local_name) {
-        return global.clone();
+    if let Some(bound) = arg_bindings.get(local_name) {
+        return bound.clone();
     }
 
     if let Some((base, idx, suffix)) = split_array_index(local_name) {
         if suffix.is_empty() {
-            if let Some(bound) = arg_bindings.get(base) {
-                return offset_array_binding(bound, idx);
+            // Only a name binding can be array-indexed; a constant has no
+            // lanes to offset into.
+            if let Some(ArgSource::Name(bound)) = arg_bindings.get(base) {
+                return ArgSource::Name(offset_array_binding(bound, idx));
             }
             if let Some(bound) = fifo_global_map.get(base) {
-                return offset_array_binding(bound, idx);
+                return ArgSource::Name(offset_array_binding(bound, idx));
             }
         }
     }
 
-    local_name.to_owned()
+    ArgSource::Name(local_name.to_owned())
 }
 
 fn split_array_index(name: &str) -> Option<(&str, u32, &str)> {

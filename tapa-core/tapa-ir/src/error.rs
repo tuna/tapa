@@ -15,6 +15,13 @@ pub enum ParseError {
          this tapa installation"
     )]
     UnsupportedSchemaVersion { found: u32, supported: u32 },
+
+    #[error(
+        "task graph schema version {found} predates typed invoke-site \
+         constants (version {supported}); a stale graph's constants would \
+         be misread as wire names — regenerate the task graph with this tapa"
+    )]
+    OutdatedSchemaVersion { found: u32, supported: u32 },
 }
 
 impl From<std::io::Error> for ParseError {

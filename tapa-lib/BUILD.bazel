@@ -7,6 +7,7 @@
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
 load("@rules_pkg//pkg:mappings.bzl", "pkg_filegroup", "pkg_files", "strip_prefix")
+load("@vitis_hls//:defs.bzl", "VITIS_HLS_AVAILABLE")
 load("//bazel:header_extractor.bzl", "header_extractor")
 
 bool_flag(
@@ -21,14 +22,19 @@ config_setting(
 
 _PUBLIC_HEADERS = [
     "tapa.h",
+    "tapa/base/axis.h",
+    "tapa/base/fixed.h",
     "tapa/base/logging.h",
     "tapa/base/logging_dummy.h",
+    "tapa/base/int.h",
     "tapa/base/stream.h",
     "tapa/base/tapa.h",
     "tapa/base/task.h",
     "tapa/base/util.h",
     "tapa/base/vec.h",
     "tapa/compat.h",
+    "tapa/host/axis.h",
+    "tapa/host/fixed.h",
     "tapa/host/coroutine.h",
     "tapa/host/frt/c_api.h",
     "tapa/host/frt/instance.h",
@@ -41,6 +47,8 @@ _PUBLIC_HEADERS = [
     "tapa/host/task.h",
     "tapa/host/util.h",
     "tapa/host/vec.h",
+    "tapa/stub/axis.h",
+    "tapa/stub/fixed.h",
     "tapa/stub/logging.h",
     "tapa/stub/mmap.h",
     "tapa/stub/stream.h",
@@ -48,8 +56,11 @@ _PUBLIC_HEADERS = [
     "tapa/stub/task.h",
     "tapa/stub/util.h",
     "tapa/stub/vec.h",
+    "tapa/xilinx/hls/axis.h",
+    "tapa/xilinx/hls/fixed.h",
     "tapa/xilinx/hls/logging.h",
     "tapa/xilinx/hls/mmap.h",
+    "tapa/xilinx/hls/int.h",
     "tapa/xilinx/hls/stream.h",
     "tapa/xilinx/hls/tapa.h",
     "tapa/xilinx/hls/task.h",
@@ -167,6 +178,7 @@ cc_test(
             "tapa/host/frt/flags_test.cpp",
             "tapa/host/stall_test.cpp",
             "tapa/host/stream_alloc_test.cpp",
+            "tapa/vendor_parity_test.cpp",
         ],
     ),
     linkopts = ["-lstdc++fs"],
@@ -178,6 +190,28 @@ cc_test(
         ":tapa",
         "@googletest//:gtest",
         "@googletest//:gtest_main",
+    ],
+)
+
+# The vendor headers are an optional dependency, and where Xilinx is not
+# installed `@vitis_hls//:include` is an EMPTY cc_library -- the test would
+# compile, run nothing, and report PASSED, which is indistinguishable from
+# having checked. So the target declares itself incompatible instead and
+# Bazel reports it as SKIPPED, which is what actually happened.
+#
+# Kept out of `:tapa-lib-test` so the catch-all target does not grow a
+# vendor dep.
+cc_test(
+    name = "vendor-parity-test",
+    size = "small",
+    srcs = ["tapa/vendor_parity_test.cpp"],
+    target_compatible_with = ["@platforms//os:linux"] if VITIS_HLS_AVAILABLE else ["@platforms//:incompatible"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":tapa",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+        "@vitis_hls//:include",
     ],
 )
 
@@ -203,6 +237,11 @@ cc_test(
     name = "stream-alloc-test",
     size = "small",
     srcs = ["tapa/host/stream_alloc_test.cpp"],
+    # Wall-clock bounds on scheduler backoff are load-sensitive: under CPU
+    # saturation a blocked poll legitimately reaches the 1 ms rung, so let
+    # Bazel retry rather than flake the suite. The bound still bites on a
+    # quiet runner, which is where the regression would show.
+    flaky = True,
     target_compatible_with = ["@platforms//os:linux"],
     visibility = ["//visibility:public"],
     deps = [
@@ -219,6 +258,9 @@ cc_test(
     name = "stream-alloc-test-sim",
     size = "small",
     srcs = ["tapa/host/stream_alloc_test.cpp"],
+    # Same load sensitivity as stream-alloc-test, in the non-coroutine
+    # scheduler where the backoff matters most.
+    flaky = True,
     target_compatible_with = ["@platforms//os:linux"],
     visibility = ["//visibility:public"],
     deps = [

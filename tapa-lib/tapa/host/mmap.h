@@ -470,8 +470,8 @@ struct accessor<async_mmap<T>&, mmaps<T, S>&> {
       }                                                                       \
     }                                                                         \
   }
-// The accessor names are the host's view; `BufferAccess` is the kernel's.
-// A `read_only_mmap` is read by the kernel, so the host has to load it.
+// The accessor names and `BufferAccess` share the kernel's view: a
+// `read_only_mmap` is read by the kernel, so the host has to load it.
 TAPA_DEFINE_ACCESSOR(placeholder_, , BufferAccess::PlaceHolder);
 
 // mmap accessors

@@ -71,6 +71,15 @@ pub fn parse(xml: &str) -> Result<KernelXml> {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(e) | Event::Empty(e)) => match e.name().as_ref() {
                 b"kernel" => {
+                    // A multi-kernel package has one <kernel> per kernel;
+                    // merging their args would alias registers across
+                    // kernels, so refuse rather than pick one silently.
+                    if !top_name.is_empty() {
+                        return Err(CosimError::Metadata(
+                            "multiple <kernel> elements in kernel metadata XML;                              cosim packages must contain exactly one kernel"
+                                .into(),
+                        ));
+                    }
                     for a in e.attributes().flatten() {
                         if a.key.as_ref() == b"name" {
                             top_name = String::from_utf8_lossy(&a.value).into_owned();
@@ -315,6 +324,23 @@ mod tests {
             .iter()
             .find(|a| a.name == name)
             .unwrap_or_else(|| panic!("no arg {name:?} in {:?}", parsed.args))
+    }
+
+    #[test]
+    fn multiple_kernels_are_rejected_instead_of_merged() {
+        let err = parse(
+            r#"<?xml version="1.0"?>
+<project>
+  <kernel name="a"><args>
+    <arg name="x" addressQualifier="0" id="0" dataWidth="32"/>
+  </args></kernel>
+  <kernel name="b"><args>
+    <arg name="y" addressQualifier="0" id="0" dataWidth="32"/>
+  </args></kernel>
+</project>"#,
+        )
+        .expect_err("two <kernel> elements must not merge into one arg list");
+        assert!(err.to_string().contains("multiple <kernel>"), "{err}");
     }
 
     #[test]

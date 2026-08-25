@@ -30,6 +30,18 @@ std::optional<int64_t> EvalInt(const clang::ASTContext& ctx,
   return std::nullopt;
 }
 
+// Whether an evaluated value survives the task graph's 64-bit constant
+// form whole. getExtValue() truncates anything wider in release builds
+// (and asserts in debug), so this must be asked before the value is read —
+// a constant would otherwise serialize with a truthful-looking width and
+// the wrong bits.
+bool FitsIn64Bits(const clang::Expr::EvalResult& result) {
+  const llvm::APSInt& value = result.Val.getInt();
+  // Signed values need their sign bit as well.
+  return value.isNegative() ? value.getSignificantBits() <= 64
+                            : value.getActiveBits() <= 64;
+}
+
 // Convert `value` to `type` the way the language would, by handing the work
 // to clang's integral conversion rather than masking bits here: extend or
 // truncate to the destination width, then reinterpret with its signedness.
@@ -69,14 +81,45 @@ InvokeMode GetInvokeMode(const clang::CXXMemberCallExpr* invoke) {
   if (spec_args == nullptr) return mode;
   const auto args = spec_args->asArray();
   using TA = clang::TemplateArgument;
-  if (!args.empty() && args[0].getKind() == TA::Integral) {
-    mode.step = args[0].getAsIntegral().getSExtValue();
+
+  // Key the mode off the overload's own shape, never off flat
+  // template-argument positions: an empty Args pack contributes nothing to
+  // the flat list, so a name-only invoke's name_size would otherwise be
+  // misread as the vector length — spawning one instance per name
+  // character instead of one instance, named.
+  if (const auto* fun_template = method->getPrimaryTemplate()) {
+    bool step_seen = false;
+    const auto params = fun_template->getTemplateParameters()->asArray();
+    for (unsigned pos = 0; pos < params.size() && pos < args.size(); ++pos) {
+      const auto* nttp =
+          llvm::dyn_cast<clang::NonTypeTemplateParmDecl>(params[pos]);
+      if (nttp == nullptr || args[pos].getKind() != TA::Integral) continue;
+      const clang::QualType type = nttp->getType();
+      if (type->isEnumeralType()) {
+        // The InvokeMode argument (join/detach/sequential).
+        mode.step = args[pos].getAsIntegral().getSExtValue();
+        step_seen = true;
+      } else if (type->isSpecificBuiltinType(clang::BuiltinType::Int)) {
+        // The stub spells the mode int and follows it with n; the real
+        // headers spell it InvokeMode and follow it with n. Either way the
+        // first int non-type parameter is the mode and the second is n; a
+        // size_t parameter is the name length and carries no mode.
+        if (!step_seen) {
+          mode.step = args[pos].getAsIntegral().getSExtValue();
+          step_seen = true;
+        } else {
+          mode.vec_length = args[pos].getAsIntegral().getZExtValue();
+        }
+      }
+    }
   }
-  if (args.size() > 1 && args[1].getKind() == TA::Integral) {
-    mode.vec_length = args[1].getAsIntegral().getZExtValue();
-  }
-  if (!args.empty() && args.back().getKind() == TA::Integral) {
-    mode.has_name = true;
+
+  // A name is a `const char (&)[N]` parameter right after the callable —
+  // never a port, so the parameter's type identifies it unambiguously.
+  if (method->getNumParams() > 1) {
+    const clang::QualType type = method->getParamDecl(1)->getType();
+    mode.has_name = type->isReferenceType() &&
+                    type->getPointeeType()->isConstantArrayType();
   }
   return mode;
 }
@@ -282,9 +325,19 @@ void ParseInvocations(UpperTaskContext& uc, const clang::Expr* task_obj) {
             mat ? llvm::dyn_cast<clang::CXXOperatorCallExpr>(mat->getSubExpr())
                 : nullptr;
         const bool is_seq = ClassifyTapaType(arg->getType()) == TapaKind::kSeq;
-        const std::optional<int64_t> as_int = EvalInt(uc.ctx, arg);
-        const bool is_int_literal =
-            !decl_ref && !op_call && !is_seq && as_int.has_value();
+        clang::Expr::EvalResult int_eval;
+        const bool evaluates_to_int = !decl_ref && !op_call && !is_seq &&
+                                      arg->EvaluateAsInt(int_eval, uc.ctx);
+        std::optional<int64_t> as_int;
+        bool too_wide = false;
+        if (evaluates_to_int) {
+          if (FitsIn64Bits(int_eval)) {
+            as_int = int_eval.Val.getInt().getExtValue();
+          } else {
+            too_wide = true;
+          }
+        }
+        const bool is_int_literal = evaluates_to_int && !too_wide;
 
         std::string arg_name;
         // Set instead of `arg_name` when the argument is an integer constant.
@@ -298,6 +351,12 @@ void ParseInvocations(UpperTaskContext& uc, const clang::Expr* task_obj) {
           if (base != nullptr) {
             arg_name = ArrayNameAt(base->getNameInfo().getAsString(), idx);
           }
+        } else if (too_wide) {
+          ReportCustomDiag(uc.ctx, clang::DiagnosticsEngine::Error,
+                           arg->getBeginLoc(),
+                           "integer constant bound to a task port does not "
+                           "fit the task graph's 64-bit constant form");
+          continue;
         } else if (is_int_literal) {
           arg_value = static_cast<uint64_t>(*as_int);
         }

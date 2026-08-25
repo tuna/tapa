@@ -568,30 +568,30 @@ TAPA_FIXED_MIXED_ARITH(/)
 // floating operands. Mirror both: integral goes through as_fixed (the
 // double path loses bits past the 53-bit mantissa and flips comparisons
 // against int64 literals), floating goes through double.
-#define TAPA_FIXED_NATIVE_COMPARE(op)                                          \
-  template <int W, int I, bool S, q_mode Q, o_mode O, int N, typename T,       \
-            typename std::enable_if<std::is_integral<T>::value, int>::type =   \
-                0>                                                             \
-  inline bool operator op(const fixed_base<W, I, S, Q, O, N>& lhs, T rhs) {    \
-    return lhs op typename internal::as_fixed<T>::type(rhs);                   \
-  }                                                                            \
-  template <int W, int I, bool S, q_mode Q, o_mode O, int N, typename T,       \
-            typename std::enable_if<std::is_integral<T>::value, int>::type =   \
-                0>                                                             \
-  inline bool operator op(T lhs, const fixed_base<W, I, S, Q, O, N>& rhs) {    \
-    return typename internal::as_fixed<T>::type(lhs) op rhs;                   \
-  }                                                                            \
-  template <int W, int I, bool S, q_mode Q, o_mode O, int N, typename T,       \
-            typename std::enable_if<std::is_floating_point<T>::value,          \
-                                    int>::type = 0>                            \
-  inline bool operator op(const fixed_base<W, I, S, Q, O, N>& lhs, T rhs) {    \
-    return lhs.to_double() op static_cast<double>(rhs);                        \
-  }                                                                            \
-  template <int W, int I, bool S, q_mode Q, o_mode O, int N, typename T,       \
-            typename std::enable_if<std::is_floating_point<T>::value,          \
-                                    int>::type = 0>                            \
-  inline bool operator op(T lhs, const fixed_base<W, I, S, Q, O, N>& rhs) {    \
-    return static_cast<double>(lhs) op rhs.to_double();                        \
+#define TAPA_FIXED_NATIVE_COMPARE(op)                                        \
+  template <int W, int I, bool S, q_mode Q, o_mode O, int N, typename T,     \
+            typename std::enable_if<std::is_integral<T>::value, int>::type = \
+                0>                                                           \
+  inline bool operator op(const fixed_base<W, I, S, Q, O, N>& lhs, T rhs) {  \
+    return lhs op typename internal::as_fixed<T>::type(rhs);                 \
+  }                                                                          \
+  template <int W, int I, bool S, q_mode Q, o_mode O, int N, typename T,     \
+            typename std::enable_if<std::is_integral<T>::value, int>::type = \
+                0>                                                           \
+  inline bool operator op(T lhs, const fixed_base<W, I, S, Q, O, N>& rhs) {  \
+    return typename internal::as_fixed<T>::type(lhs) op rhs;                 \
+  }                                                                          \
+  template <int W, int I, bool S, q_mode Q, o_mode O, int N, typename T,     \
+            typename std::enable_if<std::is_floating_point<T>::value,        \
+                                    int>::type = 0>                          \
+  inline bool operator op(const fixed_base<W, I, S, Q, O, N>& lhs, T rhs) {  \
+    return lhs.to_double() op static_cast<double>(rhs);                      \
+  }                                                                          \
+  template <int W, int I, bool S, q_mode Q, o_mode O, int N, typename T,     \
+            typename std::enable_if<std::is_floating_point<T>::value,        \
+                                    int>::type = 0>                          \
+  inline bool operator op(T lhs, const fixed_base<W, I, S, Q, O, N>& rhs) {  \
+    return static_cast<double>(lhs) op rhs.to_double();                      \
   }
 
 TAPA_FIXED_NATIVE_COMPARE(==)

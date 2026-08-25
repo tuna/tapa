@@ -168,10 +168,16 @@ fn warn_if_outdated() {
     // Piped stdout is block-buffered; flush so the warning really is
     // the last line of output rather than racing ahead of it.
     let _ = std::io::Write::flush(&mut std::io::stdout());
-    let message = format!(
-        "a new TAPA release is available: {tag} (installed: {VERSION}) \
-         — run `tapa update` to upgrade"
-    );
+    // `tapa update` only works on a release installation; a cargo-built
+    // binary would deterministically fail with that advice, so point
+    // those users at the installer instead.
+    let advice = if detect_install_root().is_ok() {
+        "run `tapa update` to upgrade"
+    } else {
+        "upgrade by re-running install.sh"
+    };
+    let message =
+        format!("a new TAPA release is available: {tag} (installed: {VERSION}) — {advice}");
     if std::io::stderr().is_terminal() {
         let style = anstyle::Style::new()
             .fg_color(Some(anstyle::AnsiColor::Yellow.into()))
@@ -180,6 +186,16 @@ fn warn_if_outdated() {
     } else {
         eprintln!("tapa: warning: {message}");
     }
+}
+
+/// A work dir inside the cache for the update flow, which never touches
+/// compiler state — without it `main` would create `./work.out` in the
+/// user's cwd as a side effect of an unrelated command.
+pub fn update_flow_work_dir() -> PathBuf {
+    cache_file_path().map_or_else(
+        || std::env::temp_dir().join("tapa-update-work"),
+        |path| path.with_file_name("update-check-work"),
+    )
 }
 
 /// Stamp the cache and spawn the detached `update-check` worker. The
@@ -253,7 +269,7 @@ fn fetch_latest_tag() -> std::result::Result<String, String> {
         .into();
     let mut response = agent
         .get(RELEASES_API_URL)
-        .header("User-Agent", concat!("tapa/", env!("CARGO_PKG_NAME")))
+        .header("User-Agent", &format!("tapa/{VERSION}"))
         .call()
         .map_err(|e| e.to_string())?;
     let body = response
@@ -269,7 +285,7 @@ fn download_tarball(dest: &Path) -> std::result::Result<(), String> {
     let agent: ureq::Agent = ureq::Agent::config_builder().build().into();
     let mut response = agent
         .get(LATEST_TARBALL_URL)
-        .header("User-Agent", concat!("tapa/", env!("CARGO_PKG_NAME")))
+        .header("User-Agent", &format!("tapa/{VERSION}"))
         .call()
         .map_err(|e| e.to_string())?;
     let mut file = std::fs::File::create(dest).map_err(|e| e.to_string())?;
@@ -290,14 +306,108 @@ fn detect_install_root() -> Result<PathBuf> {
         .filter(|usr| usr.file_name() == Some("usr".as_ref()))
         .and_then(Path::parent);
     match root {
-        Some(root) if root.join("usr").join("bin").is_dir() => Ok(root.to_path_buf()),
+        Some(root) if is_release_root(root) => Ok(root.to_path_buf()),
         _ => Err(CliError::Update(format!(
-            "this tapa binary (`{}`) is not part of a release installation; \
-             reinstall with install.sh: \
+            "this tapa binary (`{}`) is not part of a release installation \
+             that `tapa update` can replace; reinstall with install.sh: \
              https://github.com/tuna/tapa/blob/main/install.sh",
             exe.display(),
         ))),
     }
+}
+
+/// Whether `root` is a TAPA release tree that [`run_update`] may
+/// replace wholesale.
+///
+/// The presence of `<root>/usr/bin` is *not* evidence on its own: for
+/// `root = "/"` it names the system's own `/usr/bin`, so the test
+/// passes on every Unix and the caller would go on to delete the whole
+/// filesystem. A prefix-style extraction (`tar -xzf tapa.tar.gz -C /`,
+/// the natural thing to do with a `usr/`-prefixed tarball) is exactly
+/// what walks `/usr/bin/tapa` up to `/`.
+///
+/// So require both: a directory TAPA alone owns, and a root that is not
+/// a filesystem root. Refusing `/` costs such an install the ability to
+/// self-update — deliberate, since the alternative is an unrecoverable
+/// `remove_dir_all("/")`; `install.sh` re-run remains the escape hatch.
+fn is_release_root(root: &Path) -> bool {
+    root.parent().is_some() && root.join("usr").join("share").join("tapa").is_dir()
+}
+
+/// A sibling of `root` named `.<root><suffix>`.
+///
+/// Sibling rather than `$TMPDIR` so the swap below is a rename within
+/// one filesystem, which is atomic and cannot half-copy.
+fn sibling(root: &Path, suffix: &str) -> Result<PathBuf> {
+    let name = root.file_name().ok_or_else(|| {
+        CliError::Update(format!(
+            "cannot stage an update beside `{}`",
+            root.display()
+        ))
+    })?;
+    let mut staged = std::ffi::OsString::from(".");
+    staged.push(name);
+    staged.push(suffix);
+    Ok(root.with_file_name(staged))
+}
+
+/// Replace the tree at `root` with the contents of `tarball`.
+///
+/// The archive is unpacked into a staging sibling and checked for the
+/// release layout *before* anything is removed: `download_tarball`
+/// validates nothing, so a body that transfers completely but is not a
+/// valid gzip tar (a CDN error page, a corrupted mirror) used to be
+/// discovered only after `remove_dir_all(root)` had already emptied the
+/// installation, leaving no `tapa` binary to retry with. The swap is
+/// two renames with a rollback, so an *error return* leaves either the
+/// old tree or the new one; a crash between the two renames leaves the
+/// root absent, recoverable by renaming `.tapa.old` back by hand.
+fn install_tarball(tarball: &Path, root: &Path) -> Result<()> {
+    let staging = sibling(root, ".new")?;
+    let previous = sibling(root, ".old")?;
+    let _ = std::fs::remove_dir_all(&staging);
+    std::fs::create_dir_all(&staging).map_err(|e| {
+        CliError::Update(format!(
+            "cannot stage an update in `{}`: {e} — retry with elevated \
+             privileges (e.g. `sudo tapa update`) if it is not writable",
+            staging.display(),
+        ))
+    })?;
+
+    let unpacked = (|| -> Result<()> {
+        let file = std::fs::File::open(tarball)?;
+        tar::Archive::new(flate2::read::GzDecoder::new(file)).unpack(&staging)?;
+        if !staging.join("usr").join("bin").join("tapa").is_file() {
+            return Err(CliError::Update(
+                "the downloaded archive does not contain `usr/bin/tapa`".to_string(),
+            ));
+        }
+        Ok(())
+    })();
+    if let Err(e) = unpacked {
+        let _ = std::fs::remove_dir_all(&staging);
+        return Err(e);
+    }
+
+    let _ = std::fs::remove_dir_all(&previous);
+    std::fs::rename(root, &previous).map_err(|e| {
+        let _ = std::fs::remove_dir_all(&staging);
+        CliError::Update(format!(
+            "cannot replace `{}`: {e} — retry with elevated privileges \
+             (e.g. `sudo tapa update`) if it is not writable",
+            root.display(),
+        ))
+    })?;
+    if let Err(e) = std::fs::rename(&staging, root) {
+        let _ = std::fs::rename(&previous, root);
+        let _ = std::fs::remove_dir_all(&staging);
+        return Err(CliError::Update(format!(
+            "cannot move the new release into `{}`: {e}",
+            root.display(),
+        )));
+    }
+    let _ = std::fs::remove_dir_all(&previous);
+    Ok(())
 }
 
 /// `tapa update` — download the latest release and replace the current
@@ -335,16 +445,7 @@ pub fn run_update(_args: &UpdateArgs, _ctx: &CliContext) -> Result<()> {
     download_tarball(&tarball).map_err(|e| CliError::Update(format!("download failed: {e}")))?;
 
     println!("Installing TAPA {tag} to \"{}\"...", root.display());
-    std::fs::remove_dir_all(&root).map_err(|e| {
-        CliError::Update(format!(
-            "cannot replace `{}`: {e} — retry with elevated privileges \
-             (e.g. `sudo tapa update`) if it is not writable",
-            root.display(),
-        ))
-    })?;
-    std::fs::create_dir_all(&root)?;
-    let file = std::fs::File::open(&tarball)?;
-    tar::Archive::new(flate2::read::GzDecoder::new(file)).unpack(&root)?;
+    install_tarball(&tarball, &root)?;
 
     if let Some(path) = cache_file_path() {
         let cache = UpdateCache {
@@ -393,6 +494,39 @@ mod tests {
         assert!(!is_stale(Some(&fresh), 1_000 + CHECK_INTERVAL_SECS - 1));
         assert!(is_stale(Some(&fresh), 1_000 + CHECK_INTERVAL_SECS));
         assert!(is_stale(None, 1_000));
+    }
+
+    #[test]
+    fn filesystem_root_is_never_an_install_root() {
+        // `/` has a `usr/bin` on every Unix, so the layout check alone
+        // accepts it and `run_update` would `remove_dir_all("/")`.
+        assert!(!is_release_root(Path::new("/")));
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path().join("opt").join("tapa");
+        std::fs::create_dir_all(root.join("usr").join("bin")).expect("bin");
+        // A release layout is not established by `usr/bin` alone.
+        assert!(!is_release_root(&root));
+        std::fs::create_dir_all(root.join("usr").join("share").join("tapa")).expect("share");
+        assert!(is_release_root(&root));
+    }
+
+    #[test]
+    fn a_corrupt_archive_leaves_the_installation_intact() {
+        // The download is unvalidated, so a complete-but-corrupt body
+        // reaches the installer; it must not cost the user the binary
+        // they would retry with.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path().join("tapa");
+        let binary = root.join("usr").join("bin").join("tapa");
+        std::fs::create_dir_all(binary.parent().expect("bin")).expect("mkdir");
+        std::fs::write(&binary, b"old").expect("binary");
+        let tarball = dir.path().join("tapa.tar.gz");
+        std::fs::write(&tarball, b"a CDN error page, not a gzip tarball").expect("tarball");
+
+        assert!(install_tarball(&tarball, &root).is_err());
+        assert_eq!(std::fs::read(&binary).expect("still installed"), b"old");
+        assert!(!sibling(&root, ".new").expect("staging").exists());
     }
 
     #[test]

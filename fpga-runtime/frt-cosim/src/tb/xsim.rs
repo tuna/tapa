@@ -84,27 +84,26 @@ impl<'a> XsimTbGenerator<'a> {
         }
     }
 
-    fn collect_args(&self) -> Result<super::ClassifiedArgs> {
-        let verilog_contents = read_verilog_contents(self.spec);
+    fn collect_args(&self, verilog_contents: &[String]) -> Result<super::ClassifiedArgs> {
         let base_addresses = self.base_addresses;
 
         classify_args(
             self.spec,
             self.scalar_values,
-            &verilog_contents,
+            verilog_contents,
             |arg, offset| {
                 let data_width = match &arg.kind {
                     ArgKind::Mmap { data_width, .. } => *data_width,
                     ArgKind::Scalar { .. } | ArgKind::Stream { .. } => unreachable!(),
                 };
-                let offset_port = super::direct_offset_port_name(&verilog_contents, &arg.name);
+                let offset_port = super::direct_offset_port_name(verilog_contents, &arg.name);
                 MmapArg {
                     id_width: detect_axi_port_width(
-                        &verilog_contents,
+                        verilog_contents,
                         &format!("m_axi_{}_ARID", arg.name),
                     ),
                     lock_width: detect_axi_port_width(
-                        &verilog_contents,
+                        verilog_contents,
                         &format!("m_axi_{}_ARLOCK", arg.name),
                     ),
                     ..MmapArg::new(
@@ -127,14 +126,18 @@ impl<'a> XsimTbGenerator<'a> {
     }
 
     pub fn render_tb(&self) -> Result<String> {
-        let (mmap_args, scalar_args, stream_args, stream_out_args) = self.collect_args()?;
+        // Read the packaged RTL once: a large design ships thousands of
+        // Verilog files and every probe below scans all of them.
+        let verilog_contents = read_verilog_contents(self.spec);
+        let (mmap_args, scalar_args, stream_args, stream_out_args) =
+            self.collect_args(&verilog_contents)?;
         let mode = match self.spec.mode {
             Mode::Hls => "hls",
             Mode::Vitis => "vitis",
         };
         let required_control_width = control_addr_width(&mmap_args, &scalar_args);
         let control_addr_width = match detect_parameter_value(
-            &read_verilog_contents(self.spec),
+            &verilog_contents,
             "C_S_AXI_CONTROL_ADDR_WIDTH",
         ) {
             Some(declared) if declared < required_control_width => {
@@ -231,23 +234,12 @@ fn detect_parameter_value(verilog_contents: &[String], name: &str) -> Option<u32
     None
 }
 
-/// Detect a top-level AXI port width by scanning Verilog declarations.
-/// Returns the width represented by `[N:0]`, or one for scalar/absent ports.
+/// Detect a top-level AXI port width, or one for scalar/absent ports.
+/// Scans for the escaped spelling, which is how the packaged RTL declares
+/// an identifier that needs escaping.
 fn detect_axi_port_width(verilog_contents: &[String], port_name: &str) -> usize {
-    let escaped = escape_verilog_identifier(port_name);
-    let pattern = format!(
-        r"\[\s*(\d+)\s*:\s*0\s*\]\s*{}",
-        regex_lite::escape(&escaped)
-    );
-    let re = regex_lite::Regex::new(&pattern).unwrap();
-    for text in verilog_contents {
-        if let Some(caps) = re.captures(text) {
-            if let Ok(n) = caps[1].parse::<usize>() {
-                return n + 1;
-            }
-        }
-    }
-    1
+    crate::tb::port_declaration(verilog_contents, &escape_verilog_identifier(port_name))
+        .unwrap_or(1)
 }
 
 #[cfg(test)]
@@ -267,6 +259,52 @@ mod tests {
         assert_eq!(
             detect_parameter_value(&verilog, "C_S_AXI_CONTROL_ADDR_WIDTH"),
             Some(6)
+        );
+    }
+
+    /// The testbench programs a 64-bit mmap base address as two 32-bit
+    /// control writes, so the template has to split it with a mask and a
+    /// shift. Askama spells bitwise AND `bitand`; getting that expression
+    /// wrong still renders, and the damage only shows up as a DUT reading
+    /// the wrong address under xsim.
+    #[test]
+    fn splits_mmap_base_address_into_low_and_high_words() {
+        let spec = KernelSpec {
+            top_name: "Top".to_owned(),
+            mode: Mode::Vitis,
+            args: vec![ArgSpec {
+                name: "buf".to_owned(),
+                id: 0,
+                kind: ArgKind::Mmap {
+                    data_width: 32,
+                    addr_width: 64,
+                },
+            }],
+            part_num: None,
+            verilog_files: vec![],
+            tcl_files: vec![],
+            xci_files: vec![],
+            scalar_register_map: HashMap::from([("buf".to_owned(), 0x10)]),
+        };
+        let base_addresses = HashMap::from([("buf".to_owned(), 0xdead_beef_1234_5678_u64)]);
+        let tb = XsimTbGenerator::new(
+            &spec,
+            Path::new("/tmp/libfrt_dpi_xsim.so"),
+            &base_addresses,
+            &HashMap::new(),
+            "xcu55c-fsvh2892-2L-e",
+            XsimOptions::default(),
+        )
+        .render_tb()
+        .expect("render testbench");
+
+        assert!(
+            tb.contains("32'h12345678"),
+            "low word of the base address missing: {tb}"
+        );
+        assert!(
+            tb.contains("32'hdeadbeef"),
+            "high word of the base address missing: {tb}"
         );
     }
 

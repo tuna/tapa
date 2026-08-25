@@ -35,9 +35,11 @@ function main() {
   readonly new_version="${old_version_major_minor}${new_version_patch}"
   echo "${new_version}" >VERSION
 
-  # VERSION only. The version installers and docs recommend is pinned by hand
-  # to a *published* release (see install.sh); this file is the next version,
-  # bumped nightly and usually never released, so propagating it here pointed
+  # VERSION only. The version the docs recommend is pinned by hand to a
+  # *published* release (the TAPA_VERSION examples in README.md and
+  # docs/src/start/installation.md, re-pinned at release time per
+  # docs/src/developer/release.md); this file is the next version, bumped
+  # nightly and usually never released, so propagating it here pointed
   # `install.sh` at a download that 404s and then aborted this script every
   # night once the propagation started verifying itself.
   git add -- VERSION

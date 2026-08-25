@@ -65,5 +65,9 @@ uint64_t parse_stall_warn_seconds(const char* text);
 void note_frt_instance_scheduled();
 void note_frt_instance_finished();
 bool every_frt_instance_finished();
+// Instances scheduled so far, monotonically non-decreasing. A stream
+// records this when it is bound as an argument, so it can tell "my
+// instance has not been scheduled yet" from "every instance finished".
+int frt_instances_scheduled();
 }  // namespace internal
 }  // namespace tapa

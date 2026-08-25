@@ -40,7 +40,7 @@ fn required_register_offset(spec: &KernelSpec, name: &str) -> Result<u32> {
         Some(offset) => Ok(offset),
         None if spec.mode == Mode::Hls => Ok(0),
         None => Err(CosimError::Metadata(format!(
-            "no control register offset for arg {name:?}: the s_axi control register map is missing or incomplete"
+            "no control register offset for arg {name:?}: the s_axi control register map              is missing or incomplete (the map is read from packaged Verilog named              *_control_s_axi.v or s_axi_control.v)"
         ))),
     }
 }
@@ -62,24 +62,73 @@ pub fn read_verilog_contents(spec: &KernelSpec) -> Vec<String> {
 /// testbench pins whatever port the packaged module actually has.
 pub fn direct_offset_port_name(verilog_contents: &[String], name: &str) -> String {
     let conventional = format!("{name}_offset");
-    if port_declared(verilog_contents, &conventional) {
+    if port_declaration(verilog_contents, &conventional).is_some() {
         return conventional;
     }
     let vitis_2025 = format!("{name}_r");
-    if port_declared(verilog_contents, &vitis_2025) {
+    if port_declaration(verilog_contents, &vitis_2025).is_some() {
         return vitis_2025;
     }
+    // Neither spelling is declared (encrypted IP cannot be scanned): pin the
+    // conventional one and say so, or elaboration fails far from the cause.
+    eprintln!(
+        "frt-cosim: neither {conventional:?} nor {vitis_2025:?} found in the packaged RTL;          pinning {conventional:?}"
+    );
     conventional
 }
 
-/// Whether any Verilog file declares a port with this exact name.
-fn port_declared(verilog_contents: &[String], port: &str) -> bool {
-    let pattern = format!(
-        r"(?m)\b(?:input|output|inout)\b[^;\n]*\b{}\b",
-        regex_lite::escape(port)
-    );
-    let re = regex_lite::Regex::new(&pattern).unwrap();
-    verilog_contents.iter().any(|text| re.is_match(text))
+/// The packed width of a port's declaration in the packaged Verilog
+/// (`[N:0]` → N+1, absent → 1), or `None` when undeclared.
+///
+/// This is the one declaration probe for the testbenches; matching used to
+/// be re-implemented per call site with subtly different rules (single-line
+/// only vs spanning, keyword-anchored or not).
+pub fn port_declaration(verilog_contents: &[String], port: &str) -> Option<usize> {
+    let width_re = regex_lite::Regex::new(r"\[\s*(\d+)\s*:\s*0\s*\]").unwrap();
+    let is_word = |c: char| c.is_alphanumeric() || c == '_';
+    for text in verilog_contents {
+        // Verilog declarations end at `;` and may span lines or carry
+        // several declarators (`output [2:0] a, output b`): the width comes
+        // from the port's own direction segment, so `[2:0] a` cannot lend
+        // its dimension to the scalar `b`.
+        for decl in text.split(';') {
+            for (name_pos, _) in decl.match_indices(port) {
+                if decl[..name_pos].chars().next_back().is_some_and(is_word)
+                    || decl[name_pos + port.len()..]
+                        .chars()
+                        .next()
+                        .is_some_and(is_word)
+                {
+                    continue;
+                }
+                let head = &decl[..name_pos];
+                let dir = ["input", "output", "inout"]
+                    .iter()
+                    .filter_map(|kw| {
+                        head.rmatch_indices(kw).find_map(|(p, m)| {
+                            let before_ok =
+                                head[..p].chars().next_back().is_none_or(|c| !is_word(c));
+                            let after_ok = head[p + m.len()..]
+                                .chars()
+                                .next()
+                                .is_none_or(|c| !is_word(c));
+                            (before_ok && after_ok).then_some(p + m.len())
+                        })
+                    })
+                    .max();
+                let Some(seg_start) = dir else {
+                    continue;
+                };
+                let width = width_re
+                    .captures_iter(&head[seg_start..])
+                    .last()
+                    .and_then(|c| c[1].parse::<usize>().ok())
+                    .map_or(1, |n| n + 1);
+                return Some(width);
+            }
+        }
+    }
+    None
 }
 
 /// The four groups [`classify_args`] sorts a spec's args into:
@@ -440,7 +489,7 @@ pub fn scalar_words(base_offset: u32, bytes: &[u8]) -> Vec<ScalarWord> {
 
 #[cfg(test)]
 mod tests {
-    use super::{classify_args, KernelSpec, Mode};
+    use super::{classify_args, port_declaration, KernelSpec, Mode};
     use super::{direct_offset_port_name, lookup_register_offset};
     use crate::metadata::{ArgKind, ArgSpec};
     use std::collections::HashMap;
@@ -556,6 +605,27 @@ mod tests {
     /// the same file, so the two implementations cannot drift apart
     /// (the 2025.2 `_offset` -> `_r` rename had to be fixed in both
     /// independently).
+    #[test]
+    fn port_declaration_scopes_widths_to_the_declarator() {
+        let verilog = vec![concat!(
+            "module Top (\n",
+            "    output [2:0] m_axi_mem_ARID,\n",
+            "    output m_axi_mem_ARLOCK,\n",
+            "    input [7:0] s_axis_a_TDATA, s_axis_a_TVALID\n",
+            "); endmodule"
+        )
+        .to_owned()];
+        assert_eq!(port_declaration(&verilog, "m_axi_mem_ARID"), Some(3));
+        // The scalar declarator must not inherit the sibling's [2:0].
+        assert_eq!(port_declaration(&verilog, "m_axi_mem_ARLOCK"), Some(1));
+        // A shared dimension covers every name in its own segment.
+        assert_eq!(port_declaration(&verilog, "s_axis_a_TDATA"), Some(8));
+        assert_eq!(port_declaration(&verilog, "s_axis_a_TVALID"), Some(8));
+        assert_eq!(port_declaration(&verilog, "no_such_port"), None);
+        // A name that is only a prefix of another port is not a match.
+        assert_eq!(port_declaration(&verilog, "m_axi_mem_ARI"), None);
+    }
+
     #[test]
     fn direct_offset_probe_order_follows_naming_fixture() {
         let fixture = include_str!("../../../../tapa-core/tapa-ir/testdata/naming_conventions.tsv");

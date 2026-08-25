@@ -209,7 +209,7 @@ fn round_trip_byte_equal() {
 #[test]
 fn task_order_is_sorted_not_as_written() {
     let json = concat!(
-        r#"{"schema_version": 1, "top": "VecAdd", "target": "xilinx-hls", "cflags": [], "tasks": {"#,
+        r#"{"schema_version": 2, "top": "VecAdd", "target": "xilinx-hls", "cflags": [], "tasks": {"#,
         r#""VecAdd": {"level": "upper", "code": "", "readable_name": "VecAdd", "#,
         r#""synth": "hls", "ports": [], "tasks": {}, "fifos": {}}, "#,
         r#""Add": {"level": "lower", "code": "", "readable_name": "Add", "#,
@@ -246,7 +246,7 @@ fn from_reader_works() {
 #[test]
 fn unknown_task_field_rejected() {
     let json = concat!(
-        r#"{"top": "T", "target": "xilinx-hls", "cflags": [], "tasks": {"#,
+        r#"{"schema_version": 2, "top": "T", "target": "xilinx-hls", "cflags": [], "tasks": {"#,
         r#""T": {"level": "lower", "code": "", "readable_name": "T", "synth": "hls", "#,
         r#""ports": [], "tasks": {}, "fifos": {}, "bogus_field": 1}}}"#,
     );
@@ -267,6 +267,7 @@ fn unknown_task_field_rejected() {
 #[test]
 fn unknown_top_level_field_rejected() {
     let json = r#"{
+        "schema_version": 2,
         "top": "T", "target": "xilinx-hls",
         "tasks": {},
         "extra_top_field": "rejected"
@@ -300,7 +301,7 @@ fn annotation_round_trip() {
 
 #[test]
 fn missing_top_field() {
-    let json = r#"{"target": "xilinx-hls", "tasks": {}}"#;
+    let json = r#"{"schema_version": 2, "target": "xilinx-hls", "tasks": {}}"#;
     let err = Design::from_json(json).unwrap_err();
     let msg = err.to_string();
     assert!(
@@ -311,7 +312,7 @@ fn missing_top_field() {
 
 #[test]
 fn missing_root_target_field() {
-    let json = r#"{"top": "T", "tasks": {}}"#;
+    let json = r#"{"schema_version": 2, "top": "T", "tasks": {}}"#;
     let err = Design::from_json(json).unwrap_err();
     let msg = err.to_string();
     assert!(
@@ -323,6 +324,7 @@ fn missing_root_target_field() {
 #[test]
 fn invalid_level() {
     let json = r#"{
+        "schema_version": 2,
         "top": "T", "target": "xilinx-hls",
         "tasks": {"T": {"level": "invalid", "code": "", "synth": "hls"}}
     }"#;
@@ -343,6 +345,7 @@ fn empty_input() {
 #[test]
 fn invalid_port_category_rejected() {
     let json = r#"{
+        "schema_version": 2,
         "top": "T", "target": "xilinx-hls",
         "tasks": {"T": {"level": "lower", "code": "", "synth": "hls",
             "ports": [{"cat": "not_a_real_cat", "name": "x", "type": "int", "width": 32}]}}
@@ -358,6 +361,7 @@ fn invalid_port_category_rejected() {
 #[test]
 fn invalid_instance_arg_category_rejected() {
     let json = r#"{
+        "schema_version": 2,
         "top": "T", "target": "xilinx-hls",
         "tasks": {"T": {"level": "upper", "code": "", "synth": "hls",
             "tasks": {"C": [{"args": {"p": {"arg": "x", "cat": "bogus"}}, "step": 0}]},
@@ -376,6 +380,7 @@ fn unknown_task_synth_policy_rejected() {
     // The closed `SynthTarget` enum rejects the old flow-derived task
     // targets: only `"hls"` / `"ignore"` are valid per-task values now.
     let json = r#"{
+        "schema_version": 2,
         "top": "T", "target": "xilinx-hls",
         "tasks": {"T": {"level": "lower", "code": "", "synth": "xilinx_vitis"}}
     }"#;
@@ -390,6 +395,7 @@ fn unknown_task_synth_policy_rejected() {
 #[test]
 fn mmap_port_category_round_trips() {
     let json = r#"{
+        "schema_version": 2,
         "top": "T", "target": "xilinx-hls",
         "tasks": {"T": {"level": "lower", "code": "", "synth": "hls",
             "readable_name": "T",

@@ -3,7 +3,9 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <iostream>
 #include <deque>
 #include <vector>
 
@@ -232,17 +234,40 @@ static void service_streams() {
 // the chip: the last beats it wrote can still be sitting in the output FIFOs.
 // Keep clocking until every output stream has been quiet for a few cycles, or
 // those beats never reach the host and it waits forever.
+// Post-completion drain budget: beats leave at one per cycle per stream and
+// the host reads concurrently, so the backlog clears in queue-depth cycles;
+// anything beyond this is a stuck beat, not a slow one.
+static constexpr uint64_t kDrainCycleLimit = 10000000;
+
 static void drain_output_streams() {
+  uint64_t drain_cycle_count = 0;
 {% if mode == "hls" %}
   // ap_done and ap_ready assert together, so the extra cycles below would
   // start the kernel over if ap_start were still asserted.
   dut->ap_start = 0;
 {% endif %}
+  // A beat that stays asserted resets the idle count, so a surplus beat the
+  // host never reads would drain forever. Bound the total drain instead and
+  // name the stuck stream: that is a host/kernel count mismatch, not a hang.
   for (int idle_cycles = 0; idle_cycles < 4;) {
     service_all_axi();
     service_streams();
     tick();
     ++idle_cycles;
+    if (++drain_cycle_count > kDrainCycleLimit) {
+      std::cerr << "cosim: output stream still has unread beats "
+                << kDrainCycleLimit << " cycles after kernel completion:";
+{% for arg in stream_out_args %}
+{% if mode == "hls" %}
+      if (dut->{{ arg.sig.write }}) std::cerr << " {{ arg.name }}";
+{% else %}
+      if (dut->{{ arg.sig.tvalid }}) std::cerr << " {{ arg.name }}";
+{% endif %}
+{% endfor %}
+      std::cerr << " (host read fewer elements than the kernel wrote)"
+                << std::endl;
+      exit(EXIT_FAILURE);
+    }
 {% for arg in stream_out_args %}
 {% if mode == "hls" %}
     if (dut->{{ arg.sig.write }}) idle_cycles = 0;
@@ -342,6 +367,9 @@ int main(int argc, char** argv) {
   ctrl_write(0x00, 1);
 {% endif %}
   std::fprintf(stderr, "Kernel started, running simulation...\n");
+  std::fprintf(stderr,
+               "If this run hangs, bound it with -cosim_timeout_seconds "
+               "(FRT_COSIM_TIMEOUT_SECONDS).\n");
 
   for (uint64_t cycle = 0;; ++cycle) {
     service_all_axi();

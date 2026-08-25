@@ -1,6 +1,6 @@
 {
-    "schema_version": 2,
     "cflags": [],
+    "schema_version": 2,
     "target": "xilinx-hls",
     "tasks": {
         "Top": {

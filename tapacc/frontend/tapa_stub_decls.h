@@ -39,8 +39,29 @@ inline constexpr char kTapaStubDecls[] = R"cpp(
   struct ommap {};
   template <typename T, int N, int S>
   struct hmap {};
+  // The same overload set the real headers (tapa-lib/tapa/stub/task.h)
+  // offer, so tests parse the same shapes users write — in particular the
+  // name-only overload, whose name_size an argument-position probe would
+  // misread as a vector length.
   struct task {
     template <typename Func, typename... Args>
+    task& invoke(Func&& func, Args&&... args) {
+      return *this;
+    }
+    template <int mode, typename Func, typename... Args>
+    task& invoke(Func&& func, Args&&... args) {
+      return *this;
+    }
+    template <typename Func, typename... Args, unsigned long name_size>
+    task& invoke(Func&& func, const char (&name)[name_size], Args&&... args) {
+      return *this;
+    }
+    template <int mode, typename Func, typename... Args,
+              unsigned long name_size>
+    task& invoke(Func&& func, const char (&name)[name_size], Args&&... args) {
+      return *this;
+    }
+    template <int mode, int n, typename Func, typename... Args>
     task& invoke(Func&& func, Args&&... args) {
       return *this;
     }

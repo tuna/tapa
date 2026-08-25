@@ -24,7 +24,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use tapa_ir::Area;
 
 use crate::device::model::{Coor, Device, Resource, DEFAULT_USAGE_LIMIT, VERTICAL_DIST_PENALTY};
-use crate::graph::{FloorGraph, PlacementEdge};
+use crate::graph::{FloorGraph, PlacementEdge, Vertex};
 use crate::partition::cut::{find_cuts_for_regions, Cut};
 use crate::solver::assign::{add_one_of_k_row, read_one_of_k, OneOfKError};
 use crate::solver::sparse::SparseRow;
@@ -139,11 +139,12 @@ pub enum IlpError {
     /// Candidate filtering left a vertex with nowhere legal to go.
     #[error("vertex `{vertex}` has no feasible candidate region")]
     NoCandidates { vertex: String },
-    /// A vertex is anchored to a tag whose slot cannot hold it. Raising the
-    /// utilization limit cannot help — the anchor admits exactly one region —
-    /// so this is reported instead of being retried into a generic
-    /// infeasibility. Preformatted rather than structured to keep the error
-    /// enum small enough for `clippy::result_large_err`.
+    /// A vertex is anchored to a tag whose regions cannot hold it. It is
+    /// retried through the utilization ladder like any empty domain — the
+    /// derated availability grows with the rung — and only the ceiling
+    /// failure is reported, with the cause spelled out. Preformatted rather
+    /// than structured to keep the error enum small enough for
+    /// `clippy::result_large_err`.
     #[error("{0}")]
     AnchorUnplaceable(String),
     /// A partition region refers to cells absent from the device model.
@@ -608,7 +609,9 @@ fn attempt_placement(
         // An empty domain may be a derating that is merely too strict, or a
         // permanent pin, parent, or memory conflict. Either way nothing places
         // here; the ladder search decides which by asking the ceiling.
-        Err(error @ IlpError::NoCandidates { .. }) => return Ok(Rung::Infeasible(error)),
+        Err(error @ (IlpError::NoCandidates { .. } | IlpError::AnchorUnplaceable(_))) => {
+            return Ok(Rung::Infeasible(error));
+        }
         Err(error) => return Err(error),
     };
 
@@ -750,46 +753,23 @@ fn candidate_domains(
         candidates.sort_unstable();
         candidates.dedup();
         if candidates.is_empty() {
-            // An anchored vertex has one admissible region, so "nowhere to go"
-            // has a single cause worth naming. Without this the failure is
-            // retried at a higher limit and finally reported as a generic
-            // infeasibility that blames wire capacity.
+            // An anchored vertex has few admissible regions, so "nowhere to
+            // go" deserves a cause-specific message rather than the generic
+            // no-candidates one.
             if let Some(tag) = vertex.required_tag.as_deref() {
-                let tagged: Vec<Coor> = regions
-                    .iter()
-                    .copied()
-                    .filter(|region| region_has_tag(device, region, tag))
-                    .collect();
-                let available = tagged
-                    .first()
-                    .and_then(|region| areas.get(region).map(|total| (region, total)))
-                    .map(|(region, total)| {
-                        scaled_area_with_overrides(
-                            *total,
-                            usage_limit,
-                            &constraints.max_resource_limits,
-                            region,
-                        )
-                    })
-                    .unwrap_or_default();
-                let where_ = if tagged.is_empty() {
-                    "no region".to_string()
-                } else {
-                    tagged
-                        .iter()
-                        .map(Coor::region_name)
-                        .collect::<Vec<_>>()
-                        .join(", ")
+                let ctx = DomainContext {
+                    device,
+                    regions,
+                    areas,
+                    usage_limit,
+                    constraints,
                 };
-                return Err(IlpError::AnchorUnplaceable(format!(
-                    "`{}` is anchored to `{tag}`, which selects {where_}, but it needs {} \
-                     and only {} is available there; the device table must give that slot \
-                     the resources the platform leaves it, or tag the slot that borders \
-                     the interface instead",
-                    vertex.name,
-                    describe_area(vertex.area),
-                    describe_area(available),
-                )));
+                return Err(anchor_unplaceable_error(
+                    vertex,
+                    tag,
+                    &ctx,
+                    parent.is_some() || target.is_some(),
+                ));
             }
             return Err(IlpError::NoCandidates {
                 vertex: vertex.name.clone(),
@@ -843,6 +823,111 @@ fn scaled_amount(amount: u64, limit: f64) -> u64 {
     (amount as f64 * limit) as u64
 }
 
+/// What [`candidate_domains`] knows about the placement problem, bundled so
+/// the cause-specific error construction stays under the argument ceiling.
+struct DomainContext<'a> {
+    device: &'a Device,
+    regions: &'a [Coor],
+    areas: &'a RegionAreas,
+    usage_limit: f64,
+    constraints: &'a PlacementConstraints,
+}
+
+/// The [`IlpError::AnchorUnplaceable`] for an anchored vertex whose domain
+/// came back empty, with the cause spelled out. The ladder retries this like
+/// any empty domain — the derated availability grows with the rung — so the
+/// message is recomputed at each probe and the reported one names the
+/// ceiling's availability.
+fn anchor_unplaceable_error(
+    vertex: &Vertex,
+    tag: &str,
+    ctx: &DomainContext<'_>,
+    externally_pinned: bool,
+) -> IlpError {
+    let DomainContext {
+        device,
+        regions,
+        areas,
+        usage_limit,
+        constraints,
+    } = *ctx;
+    let tagged: Vec<Coor> = regions
+        .iter()
+        .copied()
+        .filter(|region| region_has_tag(device, region, tag))
+        .collect();
+    if tagged.is_empty() {
+        return IlpError::AnchorUnplaceable(format!(
+            "`{}` is anchored to `{tag}`, which no region carries; the device \
+             table must declare that tag, or tag the slot that borders the \
+             interface instead",
+            vertex.name,
+        ));
+    }
+    let where_ = tagged
+        .iter()
+        .map(Coor::region_name)
+        .collect::<Vec<_>>()
+        .join(", ");
+    // The parent row assignment and the user's region pin are re-applied on
+    // every rung, so if the vertex fits a tagged region at this limit and
+    // still has no candidate, one of those is the binding constraint, not
+    // capacity.
+    let fits_somewhere = tagged.iter().any(|region| {
+        areas.get(region).is_some_and(|total| {
+            area_fits(
+                vertex.area,
+                scaled_area_with_overrides(
+                    *total,
+                    usage_limit,
+                    &constraints.max_resource_limits,
+                    region,
+                ),
+            )
+        })
+    });
+    if fits_somewhere && externally_pinned {
+        return IlpError::AnchorUnplaceable(format!(
+            "`{}` is anchored to `{tag}`, which selects {where_}, and it fits \
+             there at this utilization limit, but a floorplan constraint or \
+             the multilevel row assignment excludes every one of those \
+             regions; relax that constraint or the tag",
+            vertex.name,
+        ));
+    }
+    // Regions are alternatives, so "available" is the component-wise best
+    // any single tagged region offers.
+    let best_available = tagged
+        .iter()
+        .filter_map(|region| {
+            areas.get(region).map(|total| {
+                scaled_area_with_overrides(
+                    *total,
+                    usage_limit,
+                    &constraints.max_resource_limits,
+                    region,
+                )
+            })
+        })
+        .reduce(component_max)
+        .unwrap_or_default();
+    IlpError::AnchorUnplaceable(format!(
+        "`{}` is anchored to `{tag}`, which selects {where_}, but it needs {} \
+         and only {} is available there at this utilization limit; the device \
+         table must give that slot the resources the platform leaves it, or \
+         tag the slot that borders the interface instead",
+        vertex.name,
+        describe_area(vertex.area),
+        describe_area(best_available),
+    ))
+}
+
+/// The component-wise maximum of two areas: the best any one alternative
+/// offers per resource, for "only this is available" error messages.
+fn component_max(a: Area, b: Area) -> Area {
+    Area::from_amounts(|resource| resource.amount(&a).max(resource.amount(&b)))
+}
+
 fn area_fits(required: Area, available: Area) -> bool {
     Resource::ALL
         .into_iter()
@@ -855,7 +940,7 @@ fn describe_area(area: Area) -> String {
     let parts: Vec<String> = Resource::ALL
         .into_iter()
         .filter(|resource| resource.amount(&area) > 0)
-        .map(|resource| format!("{resource:?}={}", resource.amount(&area)))
+        .map(|resource| format!("{}={}", resource.name(), resource.amount(&area)))
         .collect();
     if parts.is_empty() {
         "no resources".to_string()

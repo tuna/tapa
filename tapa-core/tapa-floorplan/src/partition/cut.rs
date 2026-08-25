@@ -142,7 +142,7 @@ fn border_capacity(device: &Device, lhs: &Coor, rhs: &Coor) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::device::model::{DirCaps, Slot, WIRE_CAPACITY_INF};
+    use crate::device::model::{usable_wire_capacity, DirCaps, Slot, WIRE_CAPACITY_INF};
     use crate::device::select::select_device;
     use tapa_ir::Area;
 
@@ -282,8 +282,10 @@ mod tests {
 
     /// One unconstrained cell pair means wires can cross freely, so the cut
     /// cannot bind — regardless of how small the *other* pairs' budgets are.
-    /// Testing the summed capacity against a sentinel scale instead would keep
-    /// this cut and cap the whole boundary at 7 wires.
+    /// Note the old sum-based test dropped this fixture too: the derated
+    /// sentinel-scale arm alone (0.7 * 10^8) crosses half the sentinel, so
+    /// this case cannot tell per-pair boundedness from a summed sentinel —
+    /// the next test is the one that can.
     #[test]
     fn one_unconstrained_cell_pair_drops_the_whole_cut() {
         let mk_slot = |x, y, north, south| Slot {
@@ -320,6 +322,56 @@ mod tests {
         assert!(
             find_cuts_for_regions(&device, &rows).is_empty(),
             "column 1 is unconstrained, so the row boundary cannot bind",
+        );
+    }
+
+    /// Every pair bounded but their derated budgets summing past the
+    /// sentinel scale: the old summed test would drop this cut as
+    /// "unconstrained" (84M >= 100M/2); per-pair boundedness keeps it,
+    /// because no cell pair on the border actually lets wires cross freely.
+    #[test]
+    fn bounded_pairs_keep_the_cut_even_when_their_sum_is_huge() {
+        let mk_slot = |x, y, north, south| Slot {
+            x,
+            y,
+            area: Area::default(),
+            centroid_x: i64::from(x),
+            centroid_y: i64::from(y),
+            pblock_ranges: Vec::new(),
+            wire_cap: DirCaps {
+                north,
+                south,
+                east: WIRE_CAPACITY_INF,
+                west: WIRE_CAPACITY_INF,
+            },
+            tags: Vec::new(),
+        };
+        let device = Device {
+            key: "toy".to_string(),
+            part_num: "toy".to_string(),
+            platform_name: None,
+            rows: 2,
+            cols: 2,
+            is_versal: false,
+            user_pblock_name: None,
+            slots: vec![
+                mk_slot(0, 0, 60_000_000, 0),
+                mk_slot(1, 0, 60_000_000, 0),
+                mk_slot(0, 1, 0, 60_000_000),
+                mk_slot(1, 1, 0, 60_000_000),
+            ],
+        };
+        let rows = [Coor::span(0, 0, 1, 0), Coor::span(0, 1, 1, 1)];
+        let cuts = find_cuts_for_regions(&device, &rows);
+        assert_eq!(
+            cuts.len(),
+            1,
+            "every cell pair is bounded, so the cut binds"
+        );
+        assert_eq!(
+            cuts[0].capacity,
+            2 * usable_wire_capacity(60_000_000),
+            "the sum of the two per-pair budgets: 2 * round(60M * 0.7)",
         );
     }
 

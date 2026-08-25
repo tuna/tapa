@@ -58,7 +58,9 @@ impl ClockPeriod {
     /// Convert a nanosecond quantity, rounding to the nearest picosecond.
     pub fn from_nanoseconds(nanoseconds: f64) -> Result<Self, ClockPeriodError> {
         let picoseconds = nanoseconds * 1000.0;
-        if !picoseconds.is_finite() || picoseconds < 0.0 {
+        // The upper bound (2**64, exactly representable) keeps the `as u64`
+        // below from silently saturating; it also rejects non-finite input.
+        if !(0.0..18_446_744_073_709_551_616.0).contains(&picoseconds) {
             return Err(ClockPeriodError::OutOfRange(nanoseconds.to_string()));
         }
         #[allow(

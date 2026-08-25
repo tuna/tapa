@@ -21,6 +21,17 @@ pub struct WireValue {
     pub value: u64,
 }
 
+impl WireValue {
+    /// Whether the value fits the width and the width is a real wire: a
+    /// `0'd0` or `8'd300` renders invalid Verilog that only the vendor tool
+    /// would reject, far from the frontend slip that produced it. Checked at
+    /// the parse boundary (`TaskGraph::from_json`).
+    #[must_use]
+    pub fn is_valid(&self) -> bool {
+        self.width >= 1 && self.width <= 64 && (self.width == 64 || self.value < (1 << self.width))
+    }
+}
+
 impl fmt::Display for WireValue {
     /// Render as a sized Verilog decimal literal, e.g. `64'd5`.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

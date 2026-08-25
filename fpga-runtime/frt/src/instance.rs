@@ -51,12 +51,6 @@ impl Instance {
         Ok(Self { device })
     }
 
-    pub fn open_cosim(path: impl AsRef<Path>, sim: &Simulator) -> Result<Self> {
-        Ok(Self {
-            device: Box::new(CosimDevice::open(path.as_ref(), sim)?),
-        })
-    }
-
     pub fn set_scalar_arg_bytes(&mut self, index: u32, value: &[u8]) -> Result<()> {
         self.device.set_scalar_arg(index, value)
     }

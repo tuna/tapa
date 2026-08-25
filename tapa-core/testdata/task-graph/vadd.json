@@ -1,8 +1,8 @@
 {
-    "schema_version": 2,
     "cflags": [
         "-std=c++17"
     ],
+    "schema_version": 2,
     "target": "xilinx-hls",
     "tasks": {
         "Add": {

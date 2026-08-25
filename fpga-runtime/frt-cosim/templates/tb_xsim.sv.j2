@@ -279,8 +279,8 @@ initial begin
   ctrl_write({{ control_addr_width }}'h04, 32'h0000_0001);
   ctrl_write({{ control_addr_width }}'h08, 32'h0000_0001);
 {% for arg in mmap_args %}
-  ctrl_write({{ control_addr_width }}'h{{ "{:02x}"|format(arg.reg_offset_lo) }}, 32'h{{ "{:08x}"|format(arg.base_addr & 0xffffffff) }});
-  ctrl_write({{ control_addr_width }}'h{{ "{:02x}"|format(arg.reg_offset_hi) }}, 32'h{{ "{:08x}"|format((arg.base_addr >> 32) & 0xffffffff) }});
+  ctrl_write({{ control_addr_width }}'h{{ "{:02x}"|format(arg.reg_offset_lo) }}, 32'h{{ "{:08x}"|format(arg.base_addr bitand 0xffffffff) }});
+  ctrl_write({{ control_addr_width }}'h{{ "{:02x}"|format(arg.reg_offset_hi) }}, 32'h{{ "{:08x}"|format((arg.base_addr >> 32) bitand 0xffffffff) }});
 {% endfor %}
 {% for arg in scalar_args %}
 {% for word in arg.words %}
@@ -478,12 +478,25 @@ initial begin
   // chip: the last beats it wrote can still be sitting in the AXIS adapter
   // FIFOs. Keep clocking until every output stream has been quiet for a few
   // cycles, or $finish strands those beats and the host waits forever.
-  begin
+  begin : drain_output_streams
     int idle_cycles;
+    // A beat that stays asserted resets the idle count, so a surplus beat
+    // the host never reads would drain forever. Bound the total drain: a
+    // stuck beat is a host/kernel count mismatch, not a slow one.
+    int unsigned drain_cycle_count;
     idle_cycles = 0;
+    drain_cycle_count = 0;
     while (idle_cycles < 4) begin
       @(posedge ap_clk);
       idle_cycles = idle_cycles + 1;
+      drain_cycle_count = drain_cycle_count + 1;
+      if (drain_cycle_count > 10000000) begin
+        $write("cosim: output stream still has unread beats 10M cycles after kernel completion:");
+{% for arg in stream_out_args %}
+        if (stream_out_valid_{{ arg.ident }}) $write(" {{ arg.name }}");
+{% endfor %}
+        $fatal(1, " (host read fewer elements than the kernel wrote)");
+      end
 {% for arg in stream_out_args %}
       if (stream_out_valid_{{ arg.ident }}) idle_cycles = 0;
 {% endfor %}

@@ -65,16 +65,6 @@ fn run() -> Result<(), CliError> {
         std::env::set_var("TMPDIR", temp_dir);
     }
 
-    // The update flow never touches vendor tools or compiler state:
-    // skip remote bootstrap (which may trigger an SSH sync — the hidden
-    // `update-check` worker runs detached and must not) and skip the
-    // automatic release check (the worker would recurse; `update` would
-    // warn about the very release it just installed).
-    let is_update_flow = matches!(
-        cli.step,
-        Some(Step::Update { .. } | Step::UpdateCheck { .. })
-    );
-
     // Bootstrap remote config (~/.taparc + CLI overrides) before any
     // compiler step runs. Sync failures inside this call are non-fatal so
     // local-only flows are unaffected.

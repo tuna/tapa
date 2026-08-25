@@ -56,11 +56,30 @@ pub struct Task {
     pub clock_period: Option<ClockPeriod>,
     /// This task's own area, as HLS reported it. Post-synthesis; `None`
     /// until a synthesis step annotates it.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_zero_area_as_none"
+    )]
     pub self_area: Option<Area>,
     /// This task's area including every instantiated descendant. Post-
     /// synthesis; `None` until out-of-context synthesis measures it, in
     /// which case consumers derive it from `self_area` instead.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_zero_area_as_none"
+    )]
     pub total_area: Option<Area>,
+}
+
+/// An all-default `Area` (`"self_area": {}`) is how older fixtures spelled
+/// "no data"; read it as `None` so consumers do not mistake it for a
+/// measured all-zero area (which would skip child derivation and report a
+/// zero total as post-synthesis truth).
+fn deserialize_zero_area_as_none<'de, D>(deserializer: D) -> Result<Option<Area>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(Option::<Area>::deserialize(deserializer)?.filter(|area| *area != Area::default()))
 }

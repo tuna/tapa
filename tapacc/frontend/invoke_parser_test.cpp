@@ -164,6 +164,31 @@ TEST(InvokeParser, ReplicatedExplicitNameIsUniquePerLane) {
   EXPECT_EQ(instances[2].name, "worker_2");
 }
 
+TEST(InvokeParser, NameOnlyInvokeNamesOneInstance) {
+  // The name-only overload specializes as [Func, name_size] with an empty
+  // Args pack; reading template arguments positionally would misread the
+  // name's length as a vector length and spawn one instance per character.
+  constexpr char kCode[] = R"cpp(
+    void Worker() {}
+    void Top() { tapa::task().invoke(Worker, "worker"); }
+  )cpp";
+  auto p = ParseCode(kCode, "Top", /*is_top=*/false);
+  const auto& instances = p.tasks.at("Top").instances.at("Worker");
+  ASSERT_EQ(instances.size(), 1u);
+  EXPECT_EQ(instances[0].name, "worker");
+}
+
+TEST(InvokeParser, ModeWithNameKeepsBoth) {
+  constexpr char kCode[] = R"cpp(
+    void Worker(int value) {}
+    void Top() { tapa::task().invoke<-1>(Worker, "worker", 42); }
+  )cpp";
+  auto p = ParseCode(kCode, "Top", /*is_top=*/false);
+  const auto& instances = p.tasks.at("Top").instances.at("Worker");
+  ASSERT_EQ(instances.size(), 1u);
+  EXPECT_EQ(instances[0].name, "worker");
+}
+
 TEST(InvokeParser, ConstantUsesChildPortWidth) {
   constexpr char kCode[] = R"cpp(
     void Worker(short value) {}

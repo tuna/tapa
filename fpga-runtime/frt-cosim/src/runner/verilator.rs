@@ -706,7 +706,10 @@ end
 endmodule
 ";
         let out = rewrite_combinational_nba(src);
-        assert!(out.contains("always @(*) a = b;"), "comb NBA rewritten:\n{out}");
+        assert!(
+            out.contains("always @(*) a = b;"),
+            "comb NBA rewritten:\n{out}"
+        );
         assert!(out.contains("    q <= d;"), "sequential NBA kept:\n{out}");
     }
 

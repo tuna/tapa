@@ -1,6 +1,6 @@
 use crate::device::BufferAccess;
 use crate::env_bool;
-use crate::instance::{Instance, Simulator};
+use crate::instance::{ExecutionMode, Instance, Simulator};
 use std::cell::RefCell;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int};
@@ -107,7 +107,15 @@ fn parse_simulator(sim: Option<&str>) -> Result<Simulator, String> {
 }
 
 fn open_instance(path: &str, sim: Option<&str>) -> Result<Instance, String> {
-    Instance::open(Path::new(path), &parse_simulator(sim)?).map_err(|e| e.to_string())
+    let path = Path::new(path);
+    // Hardware ignores the simulator name, so only a cosim package may
+    // reject an unknown one; a stray -cosim_simulator flag must not break
+    // a bitstream run.
+    let simulator = match ExecutionMode::of(path).map_err(|e| e.to_string())? {
+        ExecutionMode::Hardware => Simulator::Xsim { legacy: false },
+        ExecutionMode::Cosim => parse_simulator(sim)?,
+    };
+    Instance::open(path, &simulator).map_err(|e| e.to_string())
 }
 
 /// Return the error message recorded by the most recent failed `frt_*`

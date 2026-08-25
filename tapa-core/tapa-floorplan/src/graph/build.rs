@@ -443,6 +443,10 @@ impl FloorGraphBuilder {
             &mut entry.reverse
         };
         *directed = directed.checked_add(width)?;
+        // The combined width lands on the placement edge; check it here, at
+        // accumulation time with the offender still in scope, rather than
+        // wrapping in finish().
+        entry.forward.checked_add(entry.reverse)?;
         Some(())
     }
 
@@ -688,6 +692,7 @@ mod tests {
     #[test]
     fn producer_consumer_width_mismatch_fails_closed() {
         let json = r#"{
+            "schema_version": 2,
             "cflags": [], "top": "Top", "target": "xilinx-hls",
             "tasks": {
                 "Top": {

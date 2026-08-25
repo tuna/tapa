@@ -35,8 +35,7 @@ void Control(Pid num_partitions, tapa::mmap<uint64_t> metadata,
              // from ProcElem
              tapa::istreams<TaskResp, kNumPes>& task_resp_q) {
   // HLS crashes without this...
-  for (int pe = 0; pe < kNumPes; ++pe) {
-#pragma HLS unroll
+  [[tapa::unroll]] for (int pe = 0; pe < kNumPes; ++pe) {
     update_config_q[pe].close();
     update_phase_q[pe].close();
     task_req_q[pe].close();
@@ -48,20 +47,18 @@ void Control(Pid num_partitions, tapa::mmap<uint64_t> metadata,
   const Vid partition_size = metadata[1];
   const Vid total_num_vertices = partition_size * num_partitions;
   // Number of edges in each partition of each PE.
-  Eid num_edges_local[kMaxNumPartitions][kNumPes];
-#pragma HLS array_partition complete variable = num_edges_local dim = 2
+  [[tapa::partition("complete", -1,
+                    2)]] Eid num_edges_local[kMaxNumPartitions][kNumPes];
   // Number of updates in each partition.
   Eid num_updates_local[kMaxNumPartitions];
   // Memory offset of the 0-th edge in each partition.
-  Eid eid_offsets[kMaxNumPartitions][kNumPes];
-#pragma HLS array_partition complete variable = eid_offsets dim = 2
+  [[tapa::partition("complete", -1,
+                    2)]] Eid eid_offsets[kMaxNumPartitions][kNumPes];
 
-  Eid eid_offset_acc[kNumPes] = {};
-#pragma HLS array_partition complete variable = eid_offset_acc
+  [[tapa::partition("complete")]] Eid eid_offset_acc[kNumPes] = {};
 
 load_config:
-  for (Pid i = 0; i < num_partitions * kNumPes; ++i) {
-#pragma HLS pipeline II = 1
+  [[tapa::pipeline(1)]] for (Pid i = 0; i < num_partitions * kNumPes; ++i) {
     Pid pid = i / kNumPes;
     Pid pe = i % kNumPes;
     Eid num_edges_delta = metadata[i + 2];
@@ -78,13 +75,10 @@ config_update_offsets:
     update_config_q[pid % kNumPes].write(update_offset);
   }
   // Tells UpdateHandler start to wait for phase requests.
-  for (int pe = 0; pe < kNumPes; ++pe) {
-#pragma HLS unroll
+  [[tapa::unroll]] for (int pe = 0; pe < kNumPes; ++pe) {
     update_config_q[pe].close();
   }
-#ifdef __SYNTHESIS__
-  ap_wait();
-#endif
+  tapa::wait();
 
   bool all_done = false;
   int iter = 0;
@@ -95,8 +89,7 @@ bulk_steps:
     // Do the scatter phase for each partition, if active.
     // Wait until all PEs are done with the scatter phase.
     VLOG_F(5, info) << "Phase: " << TaskReq::kScatter;
-    for (int pe = 0; pe < kNumPes; ++pe) {
-#pragma HLS unroll
+    [[tapa::unroll]] for (int pe = 0; pe < kNumPes; ++pe) {
       update_phase_q[pe].write(false);
     }
 
@@ -105,8 +98,7 @@ bulk_steps:
       // Tell VertexMem to start broadcasting source vertices.
       Vid vid_offset = pid * partition_size;
       vertex_req_q.write({vid_offset, partition_size});
-      for (int pe = 0; pe < kNumPes; ++pe) {
-#pragma HLS unroll
+      [[tapa::unroll]] for (int pe = 0; pe < kNumPes; ++pe) {
         TaskReq req{
             /* phase            = */ TaskReq::kScatter,
             /* pid              = */ 0,  // unused
@@ -121,49 +113,38 @@ bulk_steps:
         task_req_q[pe].write(req);
       }
 
-#ifdef __SYNTHESIS__
-      ap_wait();
-#endif
+      tapa::wait();
 
-      for (int pe = 0; pe < kNumPes; ++pe) {
-#pragma HLS unroll
+      [[tapa::unroll]] for (int pe = 0; pe < kNumPes; ++pe) {
         task_resp_q[pe].read();
       }
     }
-#ifdef __SYNTHESIS__
-    ap_wait();
-#endif
-
-    // Tell PEs to tell UpdateHandlers that the scatter phase is done.
+    tapa::wait();
     TaskReq req = {};
     req.scatter_done = true;
-    for (int pe = 0; pe < kNumPes; ++pe) {
-#pragma HLS unroll
+    [[tapa::unroll]] for (int pe = 0; pe < kNumPes; ++pe) {
       task_req_q[pe].write(req);
     }
 
     // Get prepared for the gather phase.
     VLOG_F(5, info) << "Phase: " << TaskReq::kGather;
-    for (int pe = 0; pe < kNumPes; ++pe) {
-#pragma HLS unroll
+    [[tapa::unroll]] for (int pe = 0; pe < kNumPes; ++pe) {
       update_phase_q[pe].write(true);
     }
 
   reset_num_updates:
-    for (Pid pid = 0; pid < num_partitions; ++pid) {
-#pragma HLS pipeline II = 1
+    [[tapa::pipeline(1)]] for (Pid pid = 0; pid < num_partitions; ++pid) {
       num_updates_local[pid] = 0;
     }
 
   collect_num_updates:
-    for (Pid pid_recv = 0; pid_recv < RoundUp<kNumPes>(num_partitions);) {
-#pragma HLS pipeline II = 1
-#pragma HLS dependence false variable = num_updates_local
+    [[tapa::dependence("num_updates_local")]] [[tapa::pipeline(
+        1)]] for (Pid pid_recv = 0;
+                  pid_recv < RoundUp<kNumPes>(num_partitions);) {
       NumUpdates num_updates;
       bool done = false;
       Pid pid;
-      for (int pe = 0; pe < kNumPes; ++pe) {
-#pragma HLS unroll
+      [[tapa::unroll]] for (int pe = 0; pe < kNumPes; ++pe) {
         if (!done && num_updates_q[pe].try_read(num_updates)) {
           done |= true;
           pid = num_updates.addr * kNumPes + pe;
@@ -177,17 +158,12 @@ bulk_steps:
     }
 
     // updates.fence()
-#ifdef __SYNTHESIS__
-    ap_wait_n(80);
-#endif
-
-    // Do the gather phase for each partition.
+    tapa::wait(80);
     // Wait until all partitions are done with the gather phase.
   gather:
-    for (Pid pid_send[kNumPes] = {}, pid_recv = 0; pid_recv < num_partitions;) {
-#pragma HLS pipeline II = 1
-      for (int pe = 0; pe < kNumPes; ++pe) {
-#pragma HLS unroll
+    [[tapa::pipeline(1)]] for (Pid pid_send[kNumPes] = {}, pid_recv = 0;
+                               pid_recv < num_partitions;) {
+      [[tapa::unroll]] for (int pe = 0; pe < kNumPes; ++pe) {
         Pid pid = pid_send[pe] * kNumPes + pe;
         if (pid < num_partitions) {
           TaskReq req{TaskReq::kGather,
@@ -204,8 +180,7 @@ bulk_steps:
       }
 
       TaskResp resp;
-      for (int pe = 0; pe < kNumPes; ++pe) {
-#pragma HLS unroll
+      [[tapa::unroll]] for (int pe = 0; pe < kNumPes; ++pe) {
         if (task_resp_q[pe].try_read(resp)) {
           VLOG_F(3, recv) << resp;
           if (resp.active) all_done = false;
@@ -218,8 +193,7 @@ bulk_steps:
     ++iter;
   }
   // Terminates UpdateHandler.
-  for (int pe = 0; pe < kNumPes; ++pe) {
-#pragma HLS unroll
+  [[tapa::unroll]] for (int pe = 0; pe < kNumPes; ++pe) {
     update_phase_q[pe].close();
     task_req_q[pe].close();
   }
@@ -247,8 +221,8 @@ void VertexMem(tapa::istream<VertexReq>& scatter_req_q,
       bool valid = false;
       bool ready[N] = {};
     vertices_scatter:
-      for (Vid i_req = 0, i_resp = 0; i_resp < req.length;) {
-#pragma HLS pipeline II = 1
+      [[tapa::pipeline(1)]] for (Vid i_req = 0, i_resp = 0;
+                                 i_resp < req.length;) {
         // Send requests.
         if (i_req < req.length &&
             i_req < i_resp + kEstimatedLatency * kVertexVecLen &&
@@ -258,13 +232,11 @@ void VertexMem(tapa::istream<VertexReq>& scatter_req_q,
 
         // Handle responses.
         if (!valid) valid = tmps.read_data.try_read(resp);
-        for (int i = 0; i < kVertexVecLen; ++i) {
-#pragma HLS unroll
+        [[tapa::unroll]] for (int i = 0; i < kVertexVecLen; ++i) {
           tmp_out.set(i, VertexAttrKernel{0.f, resp[i]});
         }
         if (valid) {
-          for (int pe = 0; pe < N; ++pe) {
-#pragma HLS unroll
+          [[tapa::unroll]] for (int pe = 0; pe < N; ++pe) {
             if (!ready[pe]) ready[pe] = vertex_out_q[pe].try_write(tmp_out);
           }
           if (All(ready)) {
@@ -277,8 +249,7 @@ void VertexMem(tapa::istream<VertexReq>& scatter_req_q,
     } else {
       VertexReq req;
       bool done = false;
-      for (int pe = 0; pe < N; ++pe) {
-#pragma HLS unroll
+      [[tapa::unroll]] for (int pe = 0; pe < N; ++pe) {
         if (!done && vertex_req_q[pe].try_read(req)) {
           done |= true;
           // Gather phase
@@ -299,10 +270,10 @@ void VertexMem(tapa::istream<VertexReq>& scatter_req_q,
           bool data_ready_ranking = false;
 
         vertices_gather:
-          for (Vid i_rd_req_degree = 0, i_rd_req_ranking = 0, i_rd_resp = 0,
-                   i_wr = 0;
-               i_wr < req.length;) {
-#pragma HLS pipeline II = 1
+          [[tapa::pipeline(1)]] for (Vid i_rd_req_degree = 0,
+                                     i_rd_req_ranking = 0, i_rd_resp = 0,
+                                     i_wr = 0;
+                                     i_wr < req.length;) {
             // Send read requests.
             if (i_rd_req_degree < req.length &&
                 i_rd_req_degree <
@@ -326,8 +297,7 @@ void VertexMem(tapa::istream<VertexReq>& scatter_req_q,
               if (!valid_ranking)
                 valid_ranking = rankings.read_data.try_read(resp_ranking);
               VertexAttrVec vertex_attr_out;
-              for (int i = 0; i < kVertexVecLen; ++i) {
-#pragma HLS unroll
+              [[tapa::unroll]] for (int i = 0; i < kVertexVecLen; ++i) {
                 vertex_attr_out.set(
                     i, VertexAttrKernel{resp_ranking[i], resp_degree[i]});
               }
@@ -344,8 +314,7 @@ void VertexMem(tapa::istream<VertexReq>& scatter_req_q,
               auto v = vertex_in_q[pe].peek(nullptr);
               FloatVec ranking_out;
               FloatVec tmp_out;
-              for (int i = 0; i < kVertexVecLen; ++i) {
-#pragma HLS unroll
+              [[tapa::unroll]] for (int i = 0; i < kVertexVecLen; ++i) {
                 ranking_out.set(i, v[i].ranking);
                 tmp_out.set(i, v[i].tmp);
               }
@@ -380,7 +349,9 @@ void VertexMem(tapa::istream<VertexReq>& scatter_req_q,
 }
 
 template <uint64_t N>
-void VertexRouterTemplated(
+// `inline` collapses this single call into each VertexRouterR* task; the
+// old spelling was `#pragma HLS inline region` at the call sites.
+inline void VertexRouterTemplated(
     // upstream to VertexMem
     tapa::ostream<VertexReq>& mm_req_q, tapa::istream<VertexAttrVec>& mm_in_q,
     tapa::ostream<VertexAttrVec>& mm_out_q,
@@ -405,21 +376,18 @@ void VertexRouterTemplated(
   decltype(pe_req.length) pe2mm_count = 0;
 
 vertex_router:
-  for (;;) {
-#pragma HLS pipeline II = 1
+  [[tapa::pipeline(1)]] for (;;) {
     if (pe2mm_count == 0) {
       // Not processing a gather phase request.
 
       // Broadcast scatter phase data if any.
       if (!mm_in_valid) mm_in_valid = mm_in_q.try_read(mm_in);
-      if (mm_in_valid) {
-#pragma HLS latency max = 1
-        for (uint64_t i = 0; i < N; ++i) {
-#pragma HLS unroll
+      // Statement-scoped latency bounds (old: latency max = 1 on each block).
+      [[tapa::latency(0, 1)]] if (mm_in_valid) {
+        [[tapa::unroll]] for (uint64_t i = 0; i < N; ++i) {
           if (!pe_out_ready[i]) pe_out_ready[i] = pe_out_q[i].try_write(mm_in);
         }
-        if (All(pe_out_ready)) {
-#pragma HLS latency max = 1
+        [[tapa::latency(0, 1)]] if (All(pe_out_ready)) {
           VLOG_F(20, fwd) << "scatter phase data";
           mm_in_valid = false;
           MemSet(pe_out_ready, false);
@@ -427,8 +395,7 @@ vertex_router:
       }
 
       // Accept gather phase requests.
-      for (uint64_t i = 0; i < N; ++i) {
-#pragma HLS unroll
+      [[tapa::unroll]] for (uint64_t i = 0; i < N; ++i) {
         if (!pe_req_valid && pe_req_q[i].try_read(pe_req)) {
           pe_req_valid |= true;
           pe = i;
@@ -485,7 +452,6 @@ void VertexRouterR1(
     tapa::istreams<VertexReq, kNumPesR1 + 1>& pe_req_q,
     tapa::istreams<VertexAttrVec, kNumPesR1 + 1>& pe_in_q,
     tapa::ostreams<VertexAttrVec, kNumPesR1 + 1>& pe_out_q) {
-#pragma HLS inline region
   VertexRouterTemplated(mm_req_q, mm_in_q, mm_out_q, pe_req_q, pe_in_q,
                         pe_out_q);
 }
@@ -498,7 +464,6 @@ void VertexRouterR2(
     tapa::istreams<VertexReq, kNumPesR2>& pe_req_q,
     tapa::istreams<VertexAttrVec, kNumPesR2>& pe_in_q,
     tapa::ostreams<VertexAttrVec, kNumPesR2>& pe_out_q) {
-#pragma HLS inline region
   VertexRouterTemplated(mm_req_q, mm_in_q, mm_out_q, pe_req_q, pe_in_q,
                         pe_out_q);
 }
@@ -509,8 +474,7 @@ void EdgeMem(tapa::istream<Eid>& edge_req_q,
              tapa::async_mmap<EdgeVec>& edges) {
   bool valid = false;
   EdgeVec edge_v;
-  for (;;) {
-#pragma HLS pipeline II = 1
+  [[tapa::pipeline(1)]] for (;;) {
     // Handle responses.
     if (valid || (valid = edges.read_data.try_read(edge_v))) {
       if (edge_resp_q.try_write(edge_v)) valid = false;
@@ -531,8 +495,7 @@ void UpdateMem(tapa::istream<uint64_t>& read_addr_q,
                tapa::async_mmap<UpdateVec>& updates) {
   bool valid = false;
   UpdateVec update_v;
-  for (;;) {
-#pragma HLS pipeline II = 1
+  [[tapa::pipeline(1)]] for (;;) {
     // Handle read responses.
     if (valid || (valid = updates.read_data.try_read(update_v))) {
       if (read_data_q.try_write(update_v)) valid = false;
@@ -575,24 +538,22 @@ void UpdateHandler(Pid num_partitions,
   // HLS crashes without this...
   update_config_q.open();
   update_phase_q.open();
-#ifdef __SYNTHESIS__
-  ap_wait();
-#endif  // __SYNTEHSIS__
+  tapa::wait();
   update_in_q.open();
-#ifdef __SYNTHESIS__
-  ap_wait();
-#endif  // __SYNTEHSIS__
+  tapa::wait();
   update_out_q.close();
 
   // Memory offsets of each update partition.
-  Eid update_offsets[RoundUp<kNumPes>(kMaxNumPartitions) / kNumPes];
-#pragma HLS bind_storage variable = update_offsets latency = 4
+  [[tapa::storage(
+      "", "",
+      4)]] Eid update_offsets[RoundUp<kNumPes>(kMaxNumPartitions) / kNumPes];
   // Number of updates of each update partition in memory.
   Eid num_updates[RoundUp<kNumPes>(kMaxNumPartitions) / kNumPes];
 
 num_updates_init:
-  for (Pid i = 0; i < RoundUp<kNumPes>(num_partitions) / kNumPes; ++i) {
-#pragma HLS pipeline II = 1
+  [[tapa::pipeline(1)]] for (Pid i = 0;
+                             i < RoundUp<kNumPes>(num_partitions) / kNumPes;
+                             ++i) {
     num_updates[i] = 0;
   }
 
@@ -615,9 +576,8 @@ update_phases:
       Pid last_pid = Pid(-1);
       Eid last_update_idx = Eid(-1);
     update_writes:
-      for (;;) {
-#pragma HLS pipeline II = 1
-#pragma HLS dependence variable = num_updates inter true distance = 2
+      [[tapa::dependence("num_updates", "", "inter", "", 1,
+                         2)]] [[tapa::pipeline(1)]] for (;;) {
         bool is_update_eos = false;
         bool is_update_valid = false;
         const UpdateVecPacket update_with_pid =
@@ -639,8 +599,8 @@ update_phases:
             // number of updates already written to current partition, not
             // including the current update
             Eid update_idx;
-            if (last_pid != pid) {
-#pragma HLS latency min = 1 max = 1
+            // Statement-scoped latency bound (old: latency min = 1 max = 1).
+            [[tapa::latency(1, 1)]] if (last_pid != pid) {
               update_idx = num_updates[pid / kNumPes];
               if (last_pid != Pid(-1)) {
                 num_updates[last_pid / kNumPes] =
@@ -666,12 +626,11 @@ update_phases:
             RoundUp<kUpdateVecLen>(last_update_idx);
       }
       update_in_q.open();
-#ifdef __SYNTHESIS__
-      ap_wait_n(1);
-#endif  // __SYNTHESIS__
+      tapa::wait(1);
     send_num_updates:
-      for (Pid i = 0; i < RoundUp<kNumPes>(num_partitions) / kNumPes; ++i) {
-#pragma HLS pipeline II = 1
+      [[tapa::pipeline(1)]] for (Pid i = 0;
+                                 i < RoundUp<kNumPes>(num_partitions) / kNumPes;
+                                 ++i) {
         // TODO: store relevant partitions only
         VLOG_F(5, send) << "num_updates[" << i << "]: " << num_updates[i];
         num_updates_out_q.write({i, num_updates[i]});
@@ -689,8 +648,8 @@ update_phases:
           bool valid = false;
           UpdateVec update_v;
         update_reads:
-          for (Eid i_rd = 0, i_wr = 0; i_rd < num_updates_pid;) {
-#pragma HLS pipeline II = 1
+          [[tapa::pipeline(1)]] for (Eid i_rd = 0, i_wr = 0;
+                                     i_rd < num_updates_pid;) {
             auto read_addr = update_offsets[pid / kNumPes] + i_wr;
             if (i_wr < num_updates_pid &&
                 updates_read_addr_q.try_write(read_addr / kUpdateVecLen)) {
@@ -735,19 +694,14 @@ void ProcElem(
     tapa::ostream<UpdateVecPacket>& update_out_q) {
   // HLS crashes without this...
   task_req_q.open();
-#ifdef __SYNTHESIS__
-  ap_wait();
-#endif  // __SYNTEHSIS__
+  tapa::wait();
   update_out_q.close();
-#ifdef __SYNTHESIS__
-  ap_wait();
-#endif  // __SYNTEHSIS__
+  tapa::wait();
   update_in_q.open();
 
-  decltype(VertexAttr::tmp) vertices_local[kMaxPartitionSize];
-#pragma HLS array_partition variable = vertices_local cyclic factor = \
-    kEdgeVecLen
-#pragma HLS bind_storage variable = vertices_local type = RAM_T2P impl = URAM
+  [[tapa::partition("cyclic", kEdgeVecLen)]] [[tapa::storage(
+      "RAM_T2P",
+      "URAM")]] decltype(VertexAttr::tmp) vertices_local[kMaxPartitionSize];
 
 task_requests:
   TAPA_WHILE_NOT_EOT(task_req_q) {
@@ -760,18 +714,18 @@ task_requests:
       bool active = false;
       if (req.phase == TaskReq::kScatter) {
       vertex_reads:
-        for (Vid i = 0; i * kVertexVecLen < req.partition_size; ++i) {
-#pragma HLS pipeline II = 1
+        [[tapa::pipeline(1)]] for (Vid i = 0;
+                                   i * kVertexVecLen < req.partition_size;
+                                   ++i) {
           auto vertex_vec = vertex_in_q.read();
-          for (uint64_t j = 0; j < kVertexVecLen; ++j) {
-#pragma HLS unroll
+          [[tapa::unroll]] for (uint64_t j = 0; j < kVertexVecLen; ++j) {
             vertices_local[i * kVertexVecLen + j] = vertex_vec[j].tmp;
           }
         }
 
       edge_reads:
-        for (Eid eid_resp = 0, eid_req = 0; eid_resp < req.num_edges;) {
-#pragma HLS pipeline II = 1
+        [[tapa::pipeline(1)]] for (Eid eid_resp = 0, eid_req = 0;
+                                   eid_resp < req.num_edges;) {
           if (eid_req < req.num_edges &&
               eid_resp < eid_req + kEstimatedLatency * kEdgeVecLen &&
               edge_req_q.try_write(req.eid_offset / kEdgeVecLen +
@@ -787,8 +741,7 @@ task_requests:
             update_v.addr =
                 (edge_v[0].dst - req.overall_base_vid) / req.partition_size;
             update_v.payload.set(Update());
-            for (int i = 0; i < kEdgeVecLen; ++i) {
-#pragma HLS unroll
+            [[tapa::unroll]] for (int i = 0; i < kEdgeVecLen; ++i) {
               const auto& edge = edge_v[i];
               if (edge.src != 0) {
                 auto addr = edge.src - base_vid;
@@ -810,27 +763,27 @@ task_requests:
         }
       } else {
       vertex_resets:
-        for (Vid i = 0; i < req.partition_size; ++i) {
-#pragma HLS pipeline II = 1
-#pragma HLS unroll factor = kEdgeVecLen
+        [[tapa::unroll(kEdgeVecLen)]] [[tapa::pipeline(
+            1)]] for (Vid i = 0; i < req.partition_size; ++i) {
           vertices_local[i] = 0.f;
         }
 
         update_req_q.write({req.phase, req.pid, req.num_edges});
       update_reads:
         [[tapa::pipeline(1)]] TAPA_WHILE_NOT_EOT(update_in_q) {
-#pragma HLS dependence variable = vertices_local inter true distance = \
-    kVertexUpdateDepDist
-          auto update_v = update_in_q.read(nullptr);
+          [[tapa::dependence("vertices_local", "", "inter", "", 1,
+                             "kVertexUpdateDepDist")]] auto update_v =
+              update_in_q.read(nullptr);
           VLOG_F(5, recv) << "Update: " << update_v;
-          for (int i = 0; i < kUpdateVecLen; ++i) {
-#pragma HLS unroll
+          [[tapa::unroll]] for (int i = 0; i < kUpdateVecLen; ++i) {
             auto update = update_v[i];
-            if (update.dst != 0) {
+            // The bound constrains only the divide/accumulate region, as the
+            // pragma inside the `if` did; the dep-dist assertion on
+            // vertices_local was tuned for that scope.
+            [[tapa::latency(0, kVertexUpdateLatency)]] if (update.dst != 0) {
               auto addr = update.dst - base_vid;
               LOG_IF(ERROR, addr % kEdgeVecLen != i)
                   << "addr " << addr << " != " << i << " mod " << kEdgeVecLen;
-#pragma HLS latency max = kVertexUpdateLatency
               addr /= kEdgeVecLen;
               vertices_local[addr * kEdgeVecLen + i] += update.delta;
             }
@@ -843,13 +796,12 @@ task_requests:
         float max_delta = 0.f;
 
       vertex_writes:
-        for (Vid i = 0; i * kVertexVecLen < req.partition_size; ++i) {
-#pragma HLS pipeline II = 1
+        [[tapa::pipeline(1)]] for (Vid i = 0;
+                                   i * kVertexVecLen < req.partition_size;
+                                   ++i) {
           VertexAttrVec vertex_vec = vertex_in_q.read();
-          float delta[kVertexVecLen];
-#pragma HLS array_partition variable = delta complete
-          for (uint64_t j = 0; j < kVertexVecLen; ++j) {
-#pragma HLS unroll
+          [[tapa::partition("complete")]] float delta[kVertexVecLen];
+          [[tapa::unroll]] for (uint64_t j = 0; j < kVertexVecLen; ++j) {
             auto vertex = vertex_vec[j];
             auto tmp = vertices_local[i * kVertexVecLen + j];
             const float new_ranking = req.init + tmp * kDampingFactor;

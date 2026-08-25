@@ -100,6 +100,13 @@ bool every_frt_instance_finished() {
          frt_instances_in_flight.load(std::memory_order_relaxed) == 0;
 }
 
+int frt_instances_scheduled() {
+  // Scheduling adds one in flight; finishing moves one across. The sum is
+  // therefore the running total and never decreases.
+  return frt_instances_finished.load(std::memory_order_relaxed) +
+         frt_instances_in_flight.load(std::memory_order_relaxed);
+}
+
 uint64_t parse_stall_warn_seconds(const char* text) {
   // Ten seconds sits far below the multi-hour hangs this exists to catch and
   // far above any legitimate gap between two stream operations in software
