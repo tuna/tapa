@@ -20,8 +20,8 @@ class IgnoreBackend final : public Backend {
   void RewriteHelperFunc(const clang::FunctionDecl* func,
                          clang::Rewriter& rewriter) const override;
   // Loop attributes vanish with the replaced body; nothing to lower.
-  void LowerPipeline(int, const clang::Stmt*, clang::Rewriter&) const override {
-  }
+  void LowerPipeline(int, const std::string&, const clang::Stmt*,
+                     clang::Rewriter&) const override {}
   void LowerUnroll(int, const clang::Stmt*, clang::Rewriter&) const override {}
 
  protected:

@@ -107,16 +107,14 @@ Stream depth and FPGA resource:
 for (int i = 0; i < n; ++i) out[i] = in[i];
 
 // async_mmap — overlapping reads (two-counter loop)
-for (int64_t i_req = 0, i_resp = 0; i_resp < n;) {
-#pragma HLS pipeline II=1
+[[tapa::pipeline(1)]] for (int64_t i_req = 0, i_resp = 0; i_resp < n;) {
   if (i_req < n) mem.read_addr.try_write(i_req++);
   T val;
   if (mem.read_data.try_read(val)) result[i_resp++] = val;
 }
 
 // async_mmap — writes with response drain
-for (int64_t i_req = 0, i_resp = 0; i_resp < n;) {
-#pragma HLS pipeline II=1
+[[tapa::pipeline(1)]] for (int64_t i_req = 0, i_resp = 0; i_resp < n;) {
   if (i_req < n && !src.empty() &&
       !mem.write_addr.full() && !mem.write_data.full()) {
     mem.write_addr.try_write(i_req);
@@ -142,17 +140,38 @@ void Worker(tapa::istream<float>& in, int idx) { /* ... */ }
 
 ---
 
-## Useful pragmas
+## Synthesis attributes
+
+Write these instead of `#pragma HLS ...`; on a loop the attribute applies to
+that loop. `tapa analyze` warns when a vendor pragma is used and names the
+portable form.
 
 ```cpp
-#pragma HLS pipeline II=1      // pipeline loop with II=1
-#pragma HLS unroll factor=4    // partially unroll loop
+// On a loop (or any statement in it)
+[[tapa::pipeline(1)]]                     // initiation interval 1
+[[tapa::pipeline(false)]]                 // do NOT pipeline this loop
+[[tapa::unroll(4)]]                       // partially unroll; omit to unroll fully
+[[tapa::tripcount(1, 800)]]               // trip-count estimate only
+[[tapa::flatten(false)]]                  // do not flatten this nest
+[[tapa::latency(1, 2)]]                   // constrain region latency
+[[tapa::dependence("buf", "inter", 1, "8")]]  // real dependence, distance 8
+[[tapa::balance]]                         // re-associate the expression tree
 
-// C++ attribute equivalents
-[[tapa::pipeline(1)]]
-[[tapa::unroll(4)]]
-[[tapa::target("ignore")]]     // mark task for custom RTL replacement
+// On a variable or parameter declaration
+[[tapa::partition("cyclic", 16)]]         // factor 16, dimension left to the vendor
+[[tapa::partition("complete", -1, 2)]]    // dimension 2, no factor (-1 omits it)
+[[tapa::storage("RAM_2P", "URAM")]]       // bind the array to URAM
+[[tapa::aggregate]]                       // pack a struct into one wide word
+[[tapa::bind_op("mul", "dsp")]]           // bind an operation to an implementation
+[[tapa::array_map("inst", -1, "vertical")]]
+
+// On a function
+[[tapa::target("ignore")]]                // mark task for custom RTL replacement
 ```
+
+Inlining follows the `inline` keyword, not an attribute: `inline` emits the
+inline pragma plus `always_inline`, and its absence emits `inline off` plus
+`noinline`.
 
 ---
 

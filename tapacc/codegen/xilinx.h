@@ -19,10 +19,18 @@ class XilinxBackend final : public Backend {
                       clang::Rewriter& rewriter) const override;
   void RewriteHelperFunc(const clang::FunctionDecl* func,
                          clang::Rewriter& rewriter) const override;
-  void LowerPipeline(int ii, const clang::Stmt* body,
+  void LowerPipeline(int ii, const std::string& style, const clang::Stmt* body,
                      clang::Rewriter& rewriter) const override;
   void LowerUnroll(int factor, const clang::Stmt* body,
                    clang::Rewriter& rewriter) const override;
+  void LowerStmtAttr(const clang::Attr& attr, const clang::Stmt* body,
+                     clang::Rewriter& rewriter) const override;
+  void LowerDeclAttr(const clang::Attr& attr, const clang::VarDecl& var,
+                     const clang::DeclStmt& decl,
+                     clang::Rewriter& rewriter) const override;
+  void LowerParamAttr(const clang::Attr& attr, const clang::ParmVarDecl& param,
+                      const clang::Stmt* body,
+                      clang::Rewriter& rewriter) const override;
 
  protected:
   void EmitStreamPort(const PortContext&, CodeSink&) const override;

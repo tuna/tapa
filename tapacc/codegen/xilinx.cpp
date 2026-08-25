@@ -3,10 +3,14 @@
 #include <string>
 #include <vector>
 
+#include "clang/AST/Attr.h"
 #include "clang/AST/Decl.h"
+#include "clang/AST/DeclTemplate.h"
 #include "clang/AST/Stmt.h"
 #include "clang/AST/TypeLoc.h"
+#include "clang/Basic/SourceManager.h"
 #include "clang/Lex/Lexer.h"
+#include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include "conventions.h"
@@ -102,20 +106,6 @@ std::string GeneratePreamble(const Backend& backend, const TaskModel& task,
     sink.Line("");  // blank line between parameters
   }
   return sink.Str();
-}
-
-// Vitis HLS rejects `inline` on task functions; strip the leading keyword.
-void RemoveInline(const clang::FunctionDecl* func, clang::Rewriter& rewriter) {
-  if (!func->isInlineSpecified()) return;
-  clang::Token token;
-  clang::Lexer::getRawToken(func->getBeginLoc(), token, rewriter.getSourceMgr(),
-                            rewriter.getLangOpts());
-  if (token.getRawIdentifier().str() == "inline") {
-    rewriter.RemoveText(token.getLocation(), token.getLength());
-  } else {
-    llvm::errs() << "Warning: expected 'inline' at the start of a task; not "
-                    "removed. Vitis HLS does not support inline tasks.\n";
-  }
 }
 
 // Add `#pragma HLS stream` depth pragmas after each stream declaration.
@@ -353,17 +343,72 @@ void XilinxBackend::StripOtherTask(const clang::FunctionDecl* func,
 
 void XilinxBackend::RewriteHelperFunc(const clang::FunctionDecl* func,
                                       clang::Rewriter& rewriter) const {
+  // Only definitions are rewritten: a redeclaration shares the
+  // definition's body (`hasBody()` looks through the chain), so rewriting
+  // one too would insert every stream pragma a second time at the same
+  // point, and the redeclaration's own inline keyword would emit the
+  // opposite pragma at the definition.
+  if (!func->isThisDeclarationADefinition()) return;
   // Non-task helpers keep their body; only stream declarations get depth
   // pragmas (the old RewriteOtherFunc emitted no per-parameter interface code
   // for Xilinx).
   RewriteStreamDefinitions(func, rewriter);
+  // The C++ inline keyword is the portable inlining control: `inline` means
+  // always inline, no keyword means never inline. Emit the vendor pragma AND
+  // the standard clang attribute as a consistent pair — the pragma is what
+  // the tool consumes today, the attribute pins the decision in the front
+  // end so a vendor silently dropping the pragma cannot flip hierarchy.
+  // (always_inline legally requires the inline keyword; both branches
+  // satisfy their precondition by construction.)
+  // Policy spans the whole redeclaration chain (`inline` on any declaration
+  // makes the function inline).
+  clang::SourceLocation insert = func->getBeginLoc();
+  if (const auto* tp = func->getDescribedFunctionTemplate()) {
+    // The attribute must follow the template header, not precede it.
+    insert = tp->getTemplateParameters()->getRAngleLoc().getLocWithOffset(1);
+  } else if (func->getTemplateSpecializationInfo() != nullptr) {
+    // An explicit specialization: attributes may not precede the
+    // `template <>` introducer; insert at the decl-specifier start.
+    insert = func->getInnerLocStart();
+  }
+  const bool is_inline = func->isInlined();
+  if (is_inline && !func->isInlineSpecified()) {
+    // always_inline requires the keyword on this declaration; the chain may
+    // carry it on an earlier one.
+    rewriter.InsertTextBefore(insert, "inline ");
+  }
+  rewriter.InsertTextBefore(insert, is_inline
+                                        ? " __attribute__((always_inline)) "
+                                        : " __attribute__((noinline)) ");
+  // A body written in a macro cannot be rewritten (the pragma would land in
+  // the expansion); the attribute pair still applies.
+  const clang::SourceManager& sm = rewriter.getSourceMgr();
+  const clang::Stmt* body = func->getBody();
+  if (sm.isMacroBodyExpansion(body->getBeginLoc())) {
+    llvm::errs() << "Warning: helper " << func->getNameAsString()
+                 << " has a macro body; inline pragma not emitted\n";
+    return;
+  }
+  AddPragmaToBody(rewriter, body, is_inline ? "HLS inline" : "HLS inline off");
 }
 
-void XilinxBackend::LowerPipeline(int ii, const clang::Stmt* body,
+void XilinxBackend::LowerPipeline(int ii, const std::string& style,
+                                  const clang::Stmt* body,
                                   clang::Rewriter& rewriter) const {
   if (body == nullptr) return;
   std::string pragma = "HLS pipeline";
-  if (ii != 0) pragma += " II = " + std::to_string(ii);
+  // An explicit 0 disables pipelining, mirroring `flatten(false)`; the
+  // omitted sentinel leaves the vendor its default initiation interval.
+  if (ii == 0) {
+    AddPragmaToBody(rewriter, body, "HLS pipeline off");
+    return;
+  }
+  // stp = stable (flushable) pipeline, flp = free-running: a real
+  // scheduling-semantics difference, never dropped.
+  if (!style.empty()) pragma += " style = " + style;
+  // The omitted sentinel (0xFFFFFFFF) arrives here as -1, leaving the
+  // vendor its default initiation interval.
+  if (ii > 0) pragma += " II = " + std::to_string(ii);
   AddPragmaToBody(rewriter, body, pragma);
 }
 
@@ -375,4 +420,156 @@ void XilinxBackend::LowerUnroll(int factor, const clang::Stmt* body,
   AddPragmaToBody(rewriter, body, pragma);
 }
 
+namespace {
+
+// 0xFFFFFFFF (-1) is the "omitted" sentinel for optional integers whose
+// zero is meaningful (array_map offset, storage/bind_op latency).
+bool IsOmitted(uint32_t value) { return value == 0xFFFFFFFF; }
+
+// tripcount/latency bounds are REQUIRED attribute arguments, and zero is a
+// meaningful bound (e.g. `latency max = 0` = combinational): always emit.
+std::string FormatBounds(std::string pragma, int min, int max) {
+  pragma.append(" min = ").append(std::to_string(min));
+  pragma.append(" max = ").append(std::to_string(max));
+  return pragma;
+}
+
+// The single formatting home for region attributes, shared by the
+// statement and declaration lowering paths.
+std::string FormatRegionPragma(const clang::Attr& attr,
+                               clang::Rewriter& rewriter) {
+  return llvm::TypeSwitch<const clang::Attr*, std::string>(&attr)
+      .Case([](const clang::TapaTripcountAttr* attr) {
+        return FormatBounds("HLS loop_tripcount", attr->getMin(),
+                            attr->getMax());
+      })
+      .Case([](const clang::TapaFlattenAttr* attr) {
+        return attr->getEnable() == 0 ? std::string{"HLS loop_flatten off"}
+                                      : std::string{"HLS loop_flatten"};
+      })
+      .Case([](const clang::TapaLatencyAttr* attr) {
+        return FormatBounds("HLS latency", attr->getMin(), attr->getMax());
+      })
+      .Case([&rewriter](const clang::TapaDependenceAttr* attr) {
+        // The vendor's keyword form (accepted since classic vitis_hls, and
+        // what current Vitis documents). Dependent = a real dependence
+        // assertion at `distance`; the default asserts independence.
+        std::string pragma =
+            "HLS dependence variable = " + attr->getVariable().str();
+        if (!attr->getClassName().empty())
+          pragma += " class = " + attr->getClassName().str();
+        if (!attr->getType().empty())
+          pragma += " type = " + attr->getType().str();
+        if (!attr->getDirection().empty())
+          pragma += " direction = " + attr->getDirection().str();
+        pragma += attr->getDependent() != 0 ? " dependent = true"
+                                            : " dependent = false";
+        // Distance keeps the user's spelling: the macro name, the constant,
+        // or the string's content.
+        if (attr->getDependent() != 0) {
+          if (const clang::Expr* d = attr->getDistance()) {
+            const clang::Expr* e = d->IgnoreImpCasts();
+            if (const auto* sl = llvm::dyn_cast<clang::StringLiteral>(e)) {
+              pragma += " distance = " + sl->getString().str();
+            } else {
+              pragma += " distance = " +
+                        clang::Lexer::getSourceText(
+                            clang::CharSourceRange::getTokenRange(
+                                d->getSourceRange()),
+                            rewriter.getSourceMgr(), rewriter.getLangOpts())
+                            .str();
+            }
+          }
+        }
+        return pragma;
+      })
+      .Case([](const clang::TapaBalanceAttr*) {
+        return std::string{"HLS expression_balance"};
+      })
+      .Default(std::string{});
+}
+
+// One formatting home for variable-targeted pragmas (declarations and
+// function parameters share it): formats the vendor pragma naming @p name.
+std::string FormatDeclPragma(const clang::Attr& attr, const std::string& name) {
+  return llvm::TypeSwitch<const clang::Attr*, std::string>(&attr)
+      .Case([&](const clang::TapaPartitionAttr* attr) {
+        std::string pragma =
+            "HLS array_partition variable = " + name + " type = " +
+            clang::TapaPartitionAttr::ConvertPartTypeToStr(attr->getType());
+        if (!IsOmitted(attr->getFactor()))
+          pragma += " factor = " + std::to_string(int(attr->getFactor()));
+        if (!IsOmitted(attr->getDim()))
+          pragma += " dim = " + std::to_string(int(attr->getDim()));
+        return pragma;
+      })
+      .Case([&](const clang::TapaStorageAttr* attr) {
+        std::string pragma = "HLS bind_storage variable = " + name;
+        if (!attr->getType().empty())
+          pragma += " type = " + attr->getType().str();
+        if (!attr->getImpl().empty())
+          pragma += " impl = " + attr->getImpl().str();
+        if (!IsOmitted(attr->getLatency()))
+          pragma += " latency = " + std::to_string(int(attr->getLatency()));
+        return pragma;
+      })
+      .Case([&](const clang::TapaAggregateAttr*) {
+        return "HLS aggregate variable = " + name;
+      })
+      .Case([&](const clang::TapaArrayMapAttr* attr) {
+        std::string pragma = "HLS array_map variable = " + name +
+                             " instance = " + attr->getInstance().str();
+        if (!IsOmitted(attr->getOffset()))
+          pragma += " offset = " + std::to_string(int(attr->getOffset()));
+        if (!attr->getOrient().empty())
+          pragma += " " + attr->getOrient().str();  // horizontal|vertical
+        return pragma;
+      })
+      .Case([&](const clang::TapaBindOpAttr* attr) {
+        std::string pragma = "HLS bind_op variable = " + name +
+                             " op = " + attr->getOp().str() +
+                             " impl = " + attr->getImpl().str();
+        if (!IsOmitted(attr->getLatency()))
+          pragma += " latency = " + std::to_string(int(attr->getLatency()));
+        return pragma;
+      })
+      .Default(std::string{});
+}
+
+}  // namespace
+
+void XilinxBackend::LowerStmtAttr(const clang::Attr& attr,
+                                  const clang::Stmt* body,
+                                  clang::Rewriter& rewriter) const {
+  if (body == nullptr) return;
+  const std::string pragma = FormatRegionPragma(attr, rewriter);
+  if (!pragma.empty()) AddPragmaToBody(rewriter, body, pragma);
+}
+
+void XilinxBackend::LowerDeclAttr(const clang::Attr& attr,
+                                  const clang::VarDecl& var,
+                                  const clang::DeclStmt& decl,
+                                  clang::Rewriter& rewriter) const {
+  const std::string name = var.getNameAsString();
+  // Region attributes that landed on a declaration (they sat before a
+  // declaration statement): same pragma text, placed after the declaration.
+  if (const std::string region = FormatRegionPragma(attr, rewriter);
+      !region.empty()) {
+    AddPragmaAfterStmt(rewriter, &decl, region);
+    return;
+  }
+  const std::string pragma = FormatDeclPragma(attr, name);
+  if (!pragma.empty()) AddPragmaAfterStmt(rewriter, &decl, pragma);
+}
+
+// Function-parameter arrays have no declaration statement: the pragma goes
+// at the top of the body, like the vendor pragma the attribute replaces.
+void XilinxBackend::LowerParamAttr(const clang::Attr& attr,
+                                   const clang::ParmVarDecl& param,
+                                   const clang::Stmt* body,
+                                   clang::Rewriter& rewriter) const {
+  if (body == nullptr) return;
+  const std::string pragma = FormatDeclPragma(attr, param.getNameAsString());
+  if (!pragma.empty()) AddPragmaToBody(rewriter, body, pragma);
+}
 }  // namespace tapa::cc

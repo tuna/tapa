@@ -1,7 +1,8 @@
 diff --git a/clang/include/clang/Basic/Attr.td b/clang/include/clang/Basic/Attr.td
+index e98592f..d09a486 100644
 --- a/clang/include/clang/Basic/Attr.td
 +++ b/clang/include/clang/Basic/Attr.td
-@@ -5345,3 +5345,33 @@
+@@ -5345,3 +5345,137 @@ def ModularFormat : InheritableAttr {
    let Subjects = SubjectList<[Function]>;
    let Documentation = [ModularFormatDocs];
  }
@@ -12,7 +13,10 @@ diff --git a/clang/include/clang/Basic/Attr.td b/clang/include/clang/Basic/Attr.
 +  let Spellings = [GNU<"tapa_pipeline">,
 +                   CXX11<"tapa","pipeline">,
 +                   C23<"tapa", "pipeline">];
-+  let Args = [IntArgument<"II", /* optional */1>];
++  // Style: "" (vendor default), "stp" (stall), "flp" (flushable, and the
++  // replacement Vitis names for the deprecated enable_flush), "frp" (free-running).
++  let Args = [IntArgument<"II", /* optional */1>,
++              StringArgument<"Style", 1>];
 +  let Documentation = [Undocumented];
 +}
 +
@@ -34,11 +38,113 @@ diff --git a/clang/include/clang/Basic/Attr.td b/clang/include/clang/Basic/Attr.
 +  let Documentation = [Undocumented];
 +}
 +
++def TapaTripcount : Attr {
++  let Spellings = [GNU<"tapa_tripcount">,
++                   CXX11<"tapa","tripcount">,
++                   C23<"tapa", "tripcount">];
++  let Args = [IntArgument<"Min">, IntArgument<"Max">];
++  let Documentation = [Undocumented];
++}
++
++def TapaFlatten : Attr {
++  let Spellings = [GNU<"tapa_flatten">,
++                   CXX11<"tapa","flatten">,
++                   C23<"tapa", "flatten">];
++  // Enable = 0 (or `false`) lowers to `loop_flatten off`; absent or nonzero
++  // keeps automatic flattening on.
++  let Args = [IntArgument<"Enable", 1>];
++  let Documentation = [Undocumented];
++}
++
++def TapaLatency : Attr {
++  let Spellings = [GNU<"tapa_latency">,
++                   CXX11<"tapa","latency">,
++                   C23<"tapa", "latency">];
++  let Args = [IntArgument<"Min">, IntArgument<"Max">];
++  let Documentation = [Undocumented];
++}
++
++def TapaDependence : Attr {
++  let Spellings = [GNU<"tapa_dependence">,
++                   CXX11<"tapa","dependence">,
++                   C23<"tapa", "dependence">];
++  // Vendor argument order: (variable, class, type, direction, dependent,
++  // distance). The enum spellings are validated at parse time; distance
++  // takes a string (macro passthrough) or an integer constant expression
++  // (an Expr argument so an unquoted constant parses).
++  let Args = [StringArgument<"Variable">, StringArgument<"ClassName", 1>,
++              StringArgument<"Type", 1>, StringArgument<"Direction", 1>,
++              IntArgument<"Dependent", 1>, ExprArgument<"Distance", 1>];
++  let Documentation = [Undocumented];
++}
++
++def TapaBalance : Attr {
++  let Spellings = [GNU<"tapa_balance">,
++                   CXX11<"tapa","balance">,
++                   C23<"tapa", "balance">];
++  let Documentation = [Undocumented];
++}
++
++def TapaPartition : Attr {
++  let Spellings = [GNU<"tapa_partition">,
++                   CXX11<"tapa","partition">,
++                   C23<"tapa", "partition">];
++  let Args = [EnumArgument<"Type", "PartType", /*is_string=*/false,
++                           ["cyclic", "block", "complete"],
++                           ["Cyclic", "Block", "Complete"]>,
++              IntArgument<"Factor", 1>, IntArgument<"Dim", 1>];
++  let Subjects = SubjectList<[Var, ParmVar]>;
++  let Documentation = [Undocumented];
++}
++
++def TapaStorage : Attr {
++  let Spellings = [GNU<"tapa_storage">,
++                   CXX11<"tapa","storage">,
++                   C23<"tapa", "storage">];
++  // Type/Impl are vendor storage spellings (e.g. "RAM_2P", "URAM");
++  // empty = not requested.
++  let Args = [StringArgument<"Type", 1>, StringArgument<"Impl", 1>,
++              IntArgument<"Latency", 1>];
++  let Subjects = SubjectList<[Var, ParmVar]>;
++  let Documentation = [Undocumented];
++}
++
++def TapaAggregate : Attr {
++  let Spellings = [GNU<"tapa_aggregate">,
++                   CXX11<"tapa","aggregate">,
++                   C23<"tapa", "aggregate">];
++  let Subjects = SubjectList<[Var, ParmVar]>;
++  let Documentation = [Undocumented];
++}
++
++def TapaBindOp : Attr {
++  let Spellings = [GNU<"tapa_bind_op">,
++                   CXX11<"tapa","bind_op">,
++                   C23<"tapa", "bind_op">];
++  let Args = [StringArgument<"Op">, StringArgument<"Impl">,
++              IntArgument<"Latency", 1>];
++  let Subjects = SubjectList<[Var, ParmVar]>;
++  let Documentation = [Undocumented];
++}
++
++def TapaArrayMap : Attr {
++  let Spellings = [GNU<"tapa_array_map">,
++                   CXX11<"tapa","array_map">,
++                   C23<"tapa", "array_map">];
++  // Orient is the vendor keyword "horizontal"/"vertical" (a string: an
++  // optional enum argument would force later args to be required).
++  let Args = [StringArgument<"Instance">, IntArgument<"Offset", 1>,
++              StringArgument<"Orient", 1>];
++  let Subjects = SubjectList<[Var, ParmVar]>;
++  let Documentation = [Undocumented];
++}
++
 +// End TAPA
 diff --git a/clang/include/clang/Basic/AttributeCommonInfo.h b/clang/include/clang/Basic/AttributeCommonInfo.h
+index 77b5eb8..ae24cd2 100644
 --- a/clang/include/clang/Basic/AttributeCommonInfo.h
 +++ b/clang/include/clang/Basic/AttributeCommonInfo.h
-@@ -72,7 +72,7 @@
+@@ -72,7 +72,7 @@ public:
      IgnoredAttribute,
      UnknownAttribute,
    };
@@ -48,9 +154,10 @@ diff --git a/clang/include/clang/Basic/AttributeCommonInfo.h b/clang/include/cla
      None,
      Optional,
 diff --git a/clang/lib/Basic/Attributes.cpp b/clang/lib/Basic/Attributes.cpp
+index 5878a4e..9fe6ff5 100644
 --- a/clang/lib/Basic/Attributes.cpp
 +++ b/clang/lib/Basic/Attributes.cpp
-@@ -236,7 +236,8 @@
+@@ -236,7 +236,8 @@ getScopeFromNormalizedScopeName(StringRef ScopeName) {
        .Case("vk", AttributeCommonInfo::Scope::VK)
        .Case("msvc", AttributeCommonInfo::Scope::MSVC)
        .Case("omp", AttributeCommonInfo::Scope::OMP)
@@ -61,21 +168,42 @@ diff --git a/clang/lib/Basic/Attributes.cpp b/clang/lib/Basic/Attributes.cpp
  
  unsigned AttributeCommonInfo::calculateAttributeSpellingListIndex() const {
 diff --git a/clang/lib/Sema/SemaDeclAttr.cpp b/clang/lib/Sema/SemaDeclAttr.cpp
+index 3f0ea5c..47a6989 100644
 --- a/clang/lib/Sema/SemaDeclAttr.cpp
 +++ b/clang/lib/Sema/SemaDeclAttr.cpp
-@@ -162,6 +162,43 @@
+@@ -162,6 +162,192 @@ bool Sema::checkStringLiteralArgumentAttr(const ParsedAttr &AL, unsigned ArgNum,
    return checkStringLiteralArgumentAttr(AL, ArgExpr, Str, ArgLocation);
  }
  
++#include "TapaAttrs.h"
++
 +// Begin TAPA
 +
 +static void handleTapaPipelineAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
-+  uint32_t ii = 0;
-+  if (AL.getNumArgs()) {
-+    if (!S.checkUInt32Argument(AL, AL.getArgAsExpr(0), ii)) return;
++  // Pipeline belongs on a loop or a function; on a variable it only ever
++  // surfaces as the leak guard's hard error, far from the cause. Warn at
++  // parse time, the way unroll does.
++  if (!isa<FunctionDecl>(D)) {
++    S.Diag(D->getBeginLoc(), diag::warn_attribute_type_not_supported)
++        << AL << "unsupported pipeline target";
++    return;
++  }
++  uint32_t ii = 0xFFFFFFFF;  // omitted; an explicit 0 means `pipeline off`
++  StringRef style;
++  if (AL.getNumArgs() > 0) {
++    if (const auto *StrE = dyn_cast<StringLiteral>(AL.getArgAsExpr(0)
++                                                           ->IgnoreImpCasts())) {
++      style = StrE->getString();
++    } else if (!S.checkUInt32Argument(AL, AL.getArgAsExpr(0), ii)) {
++      return;
++    }
++  }
++  if (AL.getNumArgs() > 1 &&
++      !S.checkStringLiteralArgumentAttr(AL, 1, style)) {
++    return;
 +  }
 +
-+  D->addAttr(::new (S.Context) TapaPipelineAttr(S.Context, AL, ii));
++  D->addAttr(::new (S.Context) TapaPipelineAttr(S.Context, AL, ii, style));
 +}
 +
 +static void handleTapaUnrollAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
@@ -102,12 +230,141 @@ diff --git a/clang/lib/Sema/SemaDeclAttr.cpp b/clang/lib/Sema/SemaDeclAttr.cpp
 +  D->addAttr(::new (S.Context) TapaTargetAttr(S.Context, AL, Target));
 +}
 +
++// Parses an optional integer whose zero is meaningful (offset, latency):
++// -1 means "omitted" and the vendor default applies; anything below -1 is
++// rejected. Stored in the attribute's uint32 as-is.
++static bool parseOptionalInt(Sema &S, const ParsedAttr &AL, unsigned idx,
++                             uint32_t &out) {
++  Expr::EvalResult result;
++  if (!AL.getArgAsExpr(idx)->EvaluateAsInt(result, S.Context)) {
++    S.Diag(AL.getLoc(), diag::err_attribute_argument_type)
++        << AL << AANT_ArgumentIntegerConstant;
++    return false;
++  }
++  const int64_t value = result.Val.getInt().getSExtValue();
++  if (value < -1 || value > 0x7fffffff) {
++    S.Diag(AL.getLoc(), diag::err_attribute_argument_out_of_range)
++        << AL << -1 << 0x7fffffff;
++    return false;
++  }
++  out = static_cast<uint32_t>(value);
++  return true;
++}
++
++static void handleTapaPartitionAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
++  TapaPartitionAttr::PartType type = TapaPartitionAttr::Complete;
++  // factor/dim use the -1 "omitted" sentinel (dim = 0 means all dims).
++  uint32_t factor = 0xFFFFFFFF, dim = 0xFFFFFFFF;
++  SourceLocation type_loc;
++  if (AL.getNumArgs() > 0) {
++    StringRef str;
++    if (!S.checkStringLiteralArgumentAttr(AL, 0, str, &type_loc)) return;
++    if (!TapaPartitionAttr::ConvertStrToPartType(str, type)) {
++      S.Diag(type_loc, diag::warn_attribute_type_not_supported) << AL << str;
++      return;
++    }
++  }
++  if (AL.getNumArgs() > 1 && !parseOptionalInt(S, AL, 1, factor)) return;
++  if (AL.getNumArgs() > 2 && !parseOptionalInt(S, AL, 2, dim)) return;
++  // A factor is meaningless for complete partitioning, and the vendor
++  // accepts the result silently — a factor/dim slip only ever surfaces as a
++  // wrong-pragma audit. Reject it at parse time.
++  if (type == TapaPartitionAttr::Complete && factor != 0xFFFFFFFF) {
++    S.Diag(type_loc, diag::err_attribute_argument_type)
++        << AL << "complete partitioning takes no factor";
++    return;
++  }
++  D->addAttr(::new (S.Context) TapaPartitionAttr(S.Context, AL, type, factor, dim));
++}
++
++static void handleTapaStorageAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
++  StringRef type, impl;
++  uint32_t latency = 0xFFFFFFFF;  // sentinel: omitted
++  if (AL.getNumArgs() > 0 && !S.checkStringLiteralArgumentAttr(AL, 0, type)) return;
++  if (AL.getNumArgs() > 1 && !S.checkStringLiteralArgumentAttr(AL, 1, impl)) return;
++  if (AL.getNumArgs() > 2 && !parseOptionalInt(S, AL, 2, latency)) return;
++  D->addAttr(::new (S.Context) TapaStorageAttr(S.Context, AL, type, impl, latency));
++}
++
++static void handleTapaAggregateAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
++  D->addAttr(::new (S.Context) TapaAggregateAttr(S.Context, AL));
++}
++
++static void handleTapaBindOpAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
++  StringRef op, impl;
++  uint32_t latency = 0xFFFFFFFF;  // sentinel: omitted
++  if (!S.checkStringLiteralArgumentAttr(AL, 0, op)) return;
++  if (!S.checkStringLiteralArgumentAttr(AL, 1, impl)) return;
++  if (AL.getNumArgs() > 2 && !parseOptionalInt(S, AL, 2, latency)) return;
++  D->addAttr(::new (S.Context) TapaBindOpAttr(S.Context, AL, op, impl, latency));
++}
++
++static void handleTapaArrayMapAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
++  StringRef instance;
++  if (!S.checkStringLiteralArgumentAttr(AL, 0, instance)) return;
++  uint32_t offset = 0xFFFFFFFF;  // sentinel: omitted (see parseOptionalInt)
++  if (AL.getNumArgs() > 1 && !parseOptionalInt(S, AL, 1, offset)) return;
++  StringRef orient;
++  SourceLocation loc;
++  if (AL.getNumArgs() > 2) {
++    if (!S.checkStringLiteralArgumentAttr(AL, 2, orient, &loc)) return;
++    if (!orient.empty() && orient != "horizontal" && orient != "vertical") {
++      S.Diag(loc, diag::warn_attribute_type_not_supported) << AL << orient;
++      return;
++    }
++  }
++  D->addAttr(::new (S.Context) TapaArrayMapAttr(S.Context, AL, instance, offset, orient));
++}
++
++// Region attrs (latency, dependence, tripcount, flatten, balance) may sit
++// before a declaration statement; they then attach to the VarDecl and are
++// lowered with the same pragma text.
++static void handleTapaRegionDeclAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
++  switch (AL.getKind()) {
++  default: return;
++  case ParsedAttr::AT_TapaFlatten: {
++    uint32_t enable = 1;
++    if (AL.getNumArgs() > 0 && !S.checkUInt32Argument(AL, AL.getArgAsExpr(0), enable))
++      return;
++    D->addAttr(::new (S.Context) TapaFlattenAttr(S.Context, AL, enable));
++    return;
++  }
++  case ParsedAttr::AT_TapaBalance:
++    D->addAttr(::new (S.Context) TapaBalanceAttr(S.Context, AL));
++    return;
++  case ParsedAttr::AT_TapaTripcount:
++  case ParsedAttr::AT_TapaLatency: {
++    uint32_t first = 0, second = 0;
++    if (!S.checkUInt32Argument(AL, AL.getArgAsExpr(0), first)) return;
++    if (!S.checkUInt32Argument(AL, AL.getArgAsExpr(1), second)) return;
++    if (AL.getKind() == ParsedAttr::AT_TapaTripcount)
++      D->addAttr(::new (S.Context) TapaTripcountAttr(S.Context, AL, first, second));
++    else
++      D->addAttr(::new (S.Context) TapaLatencyAttr(S.Context, AL, first, second));
++    return;
++  }
++  case ParsedAttr::AT_TapaDependence: {
++    StringRef variable, class_, type, direction;
++    uint32_t dependent = 0;
++    if (!parseTapaDependenceArgs(S, AL, variable, class_, type, direction,
++                                 dependent))
++      return;
++    Expr *distance =
++        AL.getNumArgs() > 5 ? AL.getArgAsExpr(5) : nullptr;
++    D->addAttr(::new (S.Context) TapaDependenceAttr(S.Context, AL, variable,
++                                                    class_, type, direction,
++                                                    dependent, distance));
++    return;
++  }
++  }
++}
++
 +// End TAPA
 +
  /// Check if the passed-in expression is of type int or bool.
  static bool isIntOrBool(Expr *Exp) {
    QualType QT = Exp->getType();
-@@ -8033,6 +8070,19 @@
+@@ -8033,6 +8219,41 @@ ProcessDeclAttribute(Sema &S, Scope *scope, Decl *D, const ParsedAttr &AL,
    case ParsedAttr::AT_GCCStruct:
      handleGCCStructAttr(S, D, AL);
      break;
@@ -124,24 +381,60 @@ diff --git a/clang/lib/Sema/SemaDeclAttr.cpp b/clang/lib/Sema/SemaDeclAttr.cpp
 +  case ParsedAttr::AT_TapaTarget:
 +    handleTapaTargetAttr(S, D, AL);
 +    break;
++  case ParsedAttr::AT_TapaPartition:
++    handleTapaPartitionAttr(S, D, AL);
++    break;
++  case ParsedAttr::AT_TapaStorage:
++    handleTapaStorageAttr(S, D, AL);
++    break;
++  case ParsedAttr::AT_TapaAggregate:
++    handleTapaAggregateAttr(S, D, AL);
++    break;
++  case ParsedAttr::AT_TapaBindOp:
++    handleTapaBindOpAttr(S, D, AL);
++    break;
++  case ParsedAttr::AT_TapaArrayMap:
++    handleTapaArrayMapAttr(S, D, AL);
++    break;
++  case ParsedAttr::AT_TapaTripcount:
++  case ParsedAttr::AT_TapaLatency:
++  case ParsedAttr::AT_TapaDependence:
++  case ParsedAttr::AT_TapaFlatten:
++  case ParsedAttr::AT_TapaBalance:
++    handleTapaRegionDeclAttr(S, D, AL);
++    break;
    }
  }
  
 diff --git a/clang/lib/Sema/SemaStmtAttr.cpp b/clang/lib/Sema/SemaStmtAttr.cpp
+index 27fd556..a36c99f 100644
 --- a/clang/lib/Sema/SemaStmtAttr.cpp
 +++ b/clang/lib/Sema/SemaStmtAttr.cpp
-@@ -188,6 +188,50 @@
+@@ -188,6 +188,96 @@ static Attr *handleLoopHintAttr(Sema &S, Stmt *St, const ParsedAttr &A,
    return LoopHintAttr::CreateImplicit(S.Context, Option, State, ValueExpr, A);
  }
  
++#include "TapaAttrs.h"
++
 +// Begin TAPA
 +
 +static Attr *handleTapaPipelineAttr(Sema &S, Stmt *St, const ParsedAttr &A,
 +                                    SourceRange) {
-+  uint32_t ii = 0;
-+  if (A.getNumArgs()) {
-+    if (!S.checkUInt32Argument(A, A.getArgAsExpr(0), ii))
++  uint32_t ii = 0xFFFFFFFF;  // omitted; an explicit 0 means `pipeline off`
++  StringRef style;
++  // Arguments in order: II (integer, optional), style (string, optional).
++  // A string literal in position 0 means II was omitted.
++  if (A.getNumArgs() > 0) {
++    if (const auto *StrE = dyn_cast<StringLiteral>(A.getArgAsExpr(0)
++                                                          ->IgnoreImpCasts())) {
++      style = StrE->getString();
++    } else if (!S.checkUInt32Argument(A, A.getArgAsExpr(0), ii)) {
 +      return nullptr;
++    }
++  }
++  if (A.getNumArgs() > 1 &&
++      !S.checkStringLiteralArgumentAttr(A, 1, style)) {
++    return nullptr;
 +  }
 +
 +  if (St->getStmtClass() != Stmt::DoStmtClass &&
@@ -153,7 +446,7 @@ diff --git a/clang/lib/Sema/SemaStmtAttr.cpp b/clang/lib/Sema/SemaStmtAttr.cpp
 +    return nullptr;
 +  }
 +
-+  return ::new (S.Context) TapaPipelineAttr(S.Context, A, ii);
++  return ::new (S.Context) TapaPipelineAttr(S.Context, A, ii, style);
 +}
 +
 +static Attr *handleTapaUnrollAttr(Sema &S, Stmt *St, const ParsedAttr &A,
@@ -176,12 +469,45 @@ diff --git a/clang/lib/Sema/SemaStmtAttr.cpp b/clang/lib/Sema/SemaStmtAttr.cpp
 +  return ::new (S.Context) TapaUnrollAttr(S.Context, A, factor);
 +}
 +
++static Attr *handleTapaTwoIntAttr(Sema &S, const ParsedAttr &A,
++                                  bool is_tripcount) {
++  uint32_t first = 0, second = 0;
++  if (!S.checkUInt32Argument(A, A.getArgAsExpr(0), first)) return nullptr;
++  if (!S.checkUInt32Argument(A, A.getArgAsExpr(1), second)) return nullptr;
++  if (is_tripcount)
++    return ::new (S.Context) TapaTripcountAttr(S.Context, A, first, second);
++  return ::new (S.Context) TapaLatencyAttr(S.Context, A, first, second);
++}
++
++static Attr *handleTapaDependenceAttr(Sema &S, const ParsedAttr &A) {
++  StringRef variable, class_, type, direction;
++  uint32_t dependent = 0;
++  if (!parseTapaDependenceArgs(S, A, variable, class_, type, direction,
++                               dependent))
++    return nullptr;
++  Expr *distance = A.getNumArgs() > 5 ? A.getArgAsExpr(5) : nullptr;
++  return ::new (S.Context) TapaDependenceAttr(S.Context, A, variable, class_,
++                                              type, direction, dependent,
++                                              distance);
++}
++
++static Attr *handleTapaFlattenAttr(Sema &S, const ParsedAttr &A) {
++  uint32_t enable = 1;  // absent = flatten on
++  if (A.getNumArgs() > 0 && !S.checkUInt32Argument(A, A.getArgAsExpr(0), enable))
++    return nullptr;
++  return ::new (S.Context) TapaFlattenAttr(S.Context, A, enable);
++}
++
++static Attr *handleTapaBalanceAttr(Sema &S, const ParsedAttr &A) {
++  return ::new (S.Context) TapaBalanceAttr(S.Context, A);
++}
++
 +// End TAPA
 +
  namespace {
  class CallExprFinder : public ConstEvaluatedExprVisitor<CallExprFinder> {
    bool FoundAsmStmt = false;
-@@ -724,6 +768,10 @@
+@@ -724,6 +814,20 @@ static Attr *ProcessStmtAttribute(Sema &S, Stmt *St, const ParsedAttr &A,
      return S.CreateAnnotationAttr(A);
    case ParsedAttr::AT_Atomic:
      return handleAtomicAttr(S, St, A, Range);
@@ -189,6 +515,76 @@ diff --git a/clang/lib/Sema/SemaStmtAttr.cpp b/clang/lib/Sema/SemaStmtAttr.cpp
 +    return handleTapaPipelineAttr(S, St, A, Range);
 +  case ParsedAttr::AT_TapaUnroll:
 +    return handleTapaUnrollAttr(S, St, A, Range);
++  case ParsedAttr::AT_TapaTripcount:
++    return handleTapaTwoIntAttr(S, A, /*is_tripcount=*/true);
++  case ParsedAttr::AT_TapaLatency:
++    return handleTapaTwoIntAttr(S, A, /*is_tripcount=*/false);
++  case ParsedAttr::AT_TapaDependence:
++    return handleTapaDependenceAttr(S, A);
++  case ParsedAttr::AT_TapaFlatten:
++    return handleTapaFlattenAttr(S, A);
++  case ParsedAttr::AT_TapaBalance:
++    return handleTapaBalanceAttr(S, A);
    default:
      if (Attr *AT = nullptr; A.getInfo().handleStmtAttribute(S, St, A, AT) !=
                              ParsedAttrInfo::NotHandled) {
+diff --git a/clang/lib/Sema/TapaAttrs.h b/clang/lib/Sema/TapaAttrs.h
+new file mode 100644
+index 0000000..2751c76
+--- /dev/null
++++ b/clang/lib/Sema/TapaAttrs.h
+@@ -0,0 +1,54 @@
++// Shared argument parsing for the TAPA attribute handlers, used from both
++// SemaDeclAttr.cpp and SemaStmtAttr.cpp.
++
++#ifndef LLVM_CLANG_SEMA_TAPAATTRS_H
++#define LLVM_CLANG_SEMA_TAPAATTRS_H
++
++#include "clang/Sema/Sema.h"
++
++namespace clang {
++
++// Parse a dependence attribute's arguments in the vendor's order:
++// (variable, class, type, direction, dependent, distance). The enum
++// spellings are validated; distance takes a string (macro passthrough) or
++// an integer constant expression.
++inline bool parseTapaDependenceArgs(Sema &S, const ParsedAttr &A,
++                                    StringRef &variable, StringRef &class_,
++                                    StringRef &type, StringRef &direction,
++                                    uint32_t &dependent) {
++  if (!S.checkStringLiteralArgumentAttr(A, 0, variable)) return false;
++  auto parseEnum = [&](unsigned idx, StringRef &out,
++                       std::initializer_list<StringRef> allowed) {
++    if (A.getNumArgs() <= idx) return true;
++    SourceLocation loc;
++    if (!S.checkStringLiteralArgumentAttr(A, idx, out, &loc)) return false;
++    if (out.empty()) return true;
++    for (StringRef a : allowed)
++      if (out == a) return true;
++    S.Diag(loc, diag::warn_attribute_type_not_supported) << A << out;
++    return false;
++  };
++  if (!parseEnum(1, class_, {"array", "pointer"})) return false;
++  if (!parseEnum(2, type, {"inter", "intra"})) return false;
++  if (!parseEnum(3, direction, {"RAW", "WAR", "WAW"})) return false;
++  if (A.getNumArgs() > 4 &&
++      !S.checkUInt32Argument(A, A.getArgAsExpr(4), dependent))
++    return false;
++  // Distance (arg 5) is any expression syntactically: a string (macro
++  // passthrough), an integer constant, or an identifier naming one. The
++  // lowering spells it from the source, so only its shape is validated.
++  if (A.getNumArgs() > 5) {
++    const Expr *e = A.getArgAsExpr(5)->IgnoreImpCasts();
++    if (!isa<StringLiteral>(e) && !isa<IntegerLiteral>(e) &&
++        !isa<DeclRefExpr>(e) && !e->isEvaluatable(S.Context)) {
++      S.Diag(A.getLoc(), diag::err_attribute_argument_type)
++          << A << AANT_ArgumentString;
++      return false;
++    }
++  }
++  return true;
++}
++
++}  // namespace clang
++
++#endif  // LLVM_CLANG_SEMA_TAPAATTRS_H

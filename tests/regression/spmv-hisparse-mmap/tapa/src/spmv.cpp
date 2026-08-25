@@ -2,7 +2,6 @@
 // All rights reserved. The contributor(s) of this file has/have agreed to the
 // RapidStream Contributor License Agreement.
 
-#include <ap_fixed.h>
 #include <assert.h>
 #include <tapa.h>
 
@@ -32,7 +31,7 @@ const unsigned PACK_SIZE = 8;
 const unsigned IBITS = 8;
 const unsigned FBITS = 32 - IBITS;
 typedef unsigned IDX_T;
-typedef ap_ufixed<32, IBITS, AP_RND, AP_SAT> VAL_T;
+typedef tapa::ufixed<32, IBITS, tapa::q_mode::rnd, tapa::o_mode::sat> VAL_T;
 #define VAL_T_BITCAST(v) (v(31, 0))
 
 //-------------------------------------------------------------------------
@@ -61,7 +60,7 @@ typedef struct {
 // intra-kernel dataflow payload types
 //-------------------------------------------------------------------------
 // 2-bit instruction
-typedef ap_uint<2> INST_T;
+typedef tapa::u<2> INST_T;
 #define SOD 0x1  // start-of-data
 #define EOD 0x2  // end-of-data
 #define EOS 0x3  // end-of-stream
@@ -140,8 +139,8 @@ std::ostream& operator<<(std::ostream& os, const VEC_PLD_T& p) {
 
 // only works on Vitis 2020.2
 typedef struct {
-  ap_uint<32 * (PACK_SIZE + 1)> data;
-  ap_uint<2> user;  // same as INST_T
+  tapa::u<32 * (PACK_SIZE + 1)> data;
+  tapa::u<2> user;  // same as INST_T
 } VEC_AXIS_T;
 
 #define VEC_AXIS_PKT_IDX(p) (p.data(31, 0))
@@ -184,10 +183,8 @@ const unsigned LOGICAL_VB_SIZE = VB_PER_CLUSTER;
 // matrix loader
 
 IDX_T array_max(IDX_T array[PACK_SIZE]) {
-#pragma HLS inline
   IDX_T result = 0;
-  for (unsigned i = 0; i < PACK_SIZE; i++) {
-#pragma HLS unroll
+  [[tapa::unroll]] for (unsigned i = 0; i < PACK_SIZE; i++) {
     result = (array[i] > result) ? array[i] : result;
   }
   return result;
@@ -201,46 +198,38 @@ void CPSR_matrix_loader(
     tapa::ostreams<EDGE_PLD_T, PACK_SIZE>& ML_to_SF_1_stream  // out
 ) {
   IDX_T matrix_pkt_offset = num_partitions * 2;
-  for (unsigned col_partition_idx = 0; col_partition_idx < num_col_partitions;
-       col_partition_idx++) {
-#pragma HLS pipeline off
-
+  [[tapa::pipeline(false)]] for (unsigned col_partition_idx = 0;
+                                 col_partition_idx < num_col_partitions;
+                                 col_partition_idx++) {
     // read CPSR matadata: partition start and lengths of each stream
     unsigned part_id =
         row_partition_idx * num_col_partitions + col_partition_idx;
     IDX_T partition_info_idx = 2 * part_id;
     IDX_T partition_start = matrix_hbm[partition_info_idx].indices.data[0];
     PACKED_IDX_T part_len_pkt = matrix_hbm[partition_info_idx + 1].indices;
-    IDX_T stream_length[PACK_SIZE];
-#pragma HLS array_partition variable = stream_length complete
-    for (unsigned k = 0; k < PACK_SIZE; k++) {
-#pragma HLS unroll
+    [[tapa::partition("complete")]] IDX_T stream_length[PACK_SIZE];
+    [[tapa::unroll]] for (unsigned k = 0; k < PACK_SIZE; k++) {
       stream_length[k] = part_len_pkt.data[k];
     }
 
     // prepare to read
     unsigned num_reads = array_max(stream_length);
-    IDX_T row_idx[PACK_SIZE];
-#pragma HLS ARRAY_PARTITION variable = row_idx complete
-    for (unsigned k = 0; k < PACK_SIZE; k++) {
-#pragma HLS UNROLL
+    [[tapa::partition("complete")]] IDX_T row_idx[PACK_SIZE];
+    [[tapa::unroll]] for (unsigned k = 0; k < PACK_SIZE; k++) {
       row_idx[k] = k;
     }
 
     // attach start-of-data
-    for (unsigned k = 0; k < PACK_SIZE; k++) {
-#pragma HLS UNROLL
+    [[tapa::unroll]] for (unsigned k = 0; k < PACK_SIZE; k++) {
       ML_to_SF_1_stream[k].write(EDGE_PLD_SOD);
     }
 
   // TODO: manually control the burst length will help?
   loop_matrix_loader:
-    for (unsigned i = 0; i < num_reads; i++) {
-#pragma HLS PIPELINE II = 1
+    [[tapa::pipeline(1)]] for (unsigned i = 0; i < num_reads; i++) {
       SPMV_MAT_PKT_T mat_pkt =
           matrix_hbm[i + partition_start + matrix_pkt_offset];
-      for (unsigned k = 0; k < PACK_SIZE; k++) {
-#pragma HLS UNROLL
+      [[tapa::unroll]] for (unsigned k = 0; k < PACK_SIZE; k++) {
         if (i < stream_length[k]) {
           if (mat_pkt.indices.data[k] == IDX_MARKER) {
             // Be careful: mat_pkt.vals.data[k] can not be larger than power(2,
@@ -258,16 +247,14 @@ void CPSR_matrix_loader(
     }
 
     // attach end-of-data
-    for (unsigned k = 0; k < PACK_SIZE; k++) {
-#pragma HLS UNROLL
+    [[tapa::unroll]] for (unsigned k = 0; k < PACK_SIZE; k++) {
       ML_to_SF_1_stream[k].write(EDGE_PLD_EOD);
     }
 
   }  // loop over column partitions
 
   // attach end-of-stream
-  for (unsigned k = 0; k < PACK_SIZE; k++) {
-#pragma HLS UNROLL
+  [[tapa::unroll]] for (unsigned k = 0; k < PACK_SIZE; k++) {
     ML_to_SF_1_stream[k].write(EDGE_PLD_EOS);
   }
 }
@@ -280,11 +267,9 @@ void CPSR_matrix_loader(
 void spmv_vector_unpacker(tapa::istream<VEC_AXIS_T>& vec_in,
                           tapa::ostreams<VEC_PLD_T, PACK_SIZE>& vec_out) {
   bool exit = false;
-  while (!exit) {
-#pragma HLS pipeline II = 1
+  [[tapa::pipeline(1)]] while (!exit) {
     VEC_AXIS_T pkt = vec_in.read();
-    for (unsigned k = 0; k < PACK_SIZE; k++) {
-#pragma HLS unroll
+    [[tapa::unroll]] for (unsigned k = 0; k < PACK_SIZE; k++) {
       VEC_PLD_T p;
       VAL_T_BITCAST(p.val) = VEC_AXIS_VAL(pkt, k);
       p.idx = VEC_AXIS_PKT_IDX(pkt) * PACK_SIZE + k;
@@ -300,14 +285,12 @@ void spmv_result_packer(tapa::istreams<VEC_PLD_T, PACK_SIZE>& res_in,
                         tapa::ostream<VEC_AXIS_T>& res_out) {
   bool exit = false;
   unsigned pkt_idx = 0;
-  while (!exit) {
-#pragma HLS pipeline II = 1
-    ap_uint<PACK_SIZE> got_SOD = 0;
-    ap_uint<PACK_SIZE> got_EOD = 0;
-    ap_uint<PACK_SIZE> got_EOS = 0;
+  [[tapa::pipeline(1)]] while (!exit) {
+    tapa::u<PACK_SIZE> got_SOD = 0;
+    tapa::u<PACK_SIZE> got_EOD = 0;
+    tapa::u<PACK_SIZE> got_EOS = 0;
     VEC_AXIS_T pkt;
-    for (unsigned k = 0; k < PACK_SIZE; k++) {
-#pragma HLS unroll
+    [[tapa::unroll]] for (unsigned k = 0; k < PACK_SIZE; k++) {
       VEC_PLD_T p = res_in[k].read();
       VEC_AXIS_VAL(pkt, k) = VAL_T_BITCAST(p.val);
       switch (p.inst) {
@@ -364,28 +347,20 @@ void spmv_result_packer(tapa::istreams<VEC_PLD_T, PACK_SIZE>& res_in,
 const unsigned ARBITER_LATENCY = 5;
 
 // arbiter for read requests (EDGE_PLD_T) (depends on col_idx)
-void arbiter_for_read_req(const EDGE_PLD_T in_pld[PACK_SIZE],
-                          EDGE_PLD_T resend_pld[PACK_SIZE],
-                          const ap_uint<PACK_SIZE> in_valid,
-                          ap_uint<1> in_resend[PACK_SIZE],
-                          unsigned xbar_sel[PACK_SIZE],
-                          ap_uint<PACK_SIZE>& out_valid,
-                          const unsigned rotate_priority) {
-#pragma HLS pipeline II = 1 enable_flush
-#pragma HLS latency min = ARBITER_LATENCY max = ARBITER_LATENCY
-
-#pragma HLS array_partition variable = in_pld complete
-#pragma HLS array_partition variable = xbar_sel complete
-
+[[tapa::pipeline(1, "flp")]] void arbiter_for_read_req(
+    [[tapa::partition("complete")]] const EDGE_PLD_T in_pld[PACK_SIZE],
+    EDGE_PLD_T resend_pld[PACK_SIZE], const tapa::u<PACK_SIZE> in_valid,
+    tapa::u<1> in_resend[PACK_SIZE],
+    [[tapa::partition("complete")]] unsigned xbar_sel[PACK_SIZE],
+    tapa::u<PACK_SIZE>& out_valid, const unsigned rotate_priority) {
   // prioritized valid and addr
-  ap_uint<PACK_SIZE> arb_p_in_valid = in_valid;
-  IDX_T arb_p_in_addr[PACK_SIZE];
-  IDX_T in_addr[PACK_SIZE];
-#pragma HLS array_partition variable = in_addr complete
-#pragma HLS array_partition variable = arb_p_in_addr complete
+  [[tapa::latency(ARBITER_LATENCY,
+                  ARBITER_LATENCY)]] tapa::u<PACK_SIZE> arb_p_in_valid =
+      in_valid;
+  [[tapa::partition("complete")]] IDX_T arb_p_in_addr[PACK_SIZE];
+  [[tapa::partition("complete")]] IDX_T in_addr[PACK_SIZE];
 
-  for (unsigned i = 0; i < PACK_SIZE; i++) {
-#pragma HLS unroll
+  [[tapa::unroll]] for (unsigned i = 0; i < PACK_SIZE; i++) {
     arb_p_in_addr[i] = in_pld[(i + rotate_priority) % PACK_SIZE].col_idx;
     in_addr[i] = in_pld[i].col_idx;
   }
@@ -393,14 +368,13 @@ void arbiter_for_read_req(const EDGE_PLD_T in_pld[PACK_SIZE],
   arb_p_in_valid.rrotate(rotate_priority);
 
 loop_A_arbsearch:
-  for (unsigned OLid = 0; OLid < PACK_SIZE; OLid++) {
-#pragma HLS unroll
+  [[tapa::unroll]] for (unsigned OLid = 0; OLid < PACK_SIZE; OLid++) {
     bool found = false;
     unsigned chosen_port = 0;
 
   loop_ab_logic_encoder_unroll:
-    for (unsigned ILid_plus_1 = PACK_SIZE; ILid_plus_1 > 0; ILid_plus_1--) {
-#pragma HLS unroll
+    [[tapa::unroll]] for (unsigned ILid_plus_1 = PACK_SIZE; ILid_plus_1 > 0;
+                          ILid_plus_1--) {
       if (arb_p_in_valid[ILid_plus_1 - 1] &&
           ((arb_p_in_addr[ILid_plus_1 - 1] % PACK_SIZE) == OLid)) {
         chosen_port = ILid_plus_1 - 1;
@@ -416,8 +390,7 @@ loop_A_arbsearch:
     }
   }
 loop_A_grant:
-  for (unsigned ILid = 0; ILid < PACK_SIZE; ILid++) {
-#pragma HLS unroll
+  [[tapa::unroll]] for (unsigned ILid = 0; ILid < PACK_SIZE; ILid++) {
     unsigned requested_olid = in_addr[ILid] % PACK_SIZE;
     bool in_granted = (in_valid[ILid] && out_valid[requested_olid] &&
                        (xbar_sel[requested_olid] == ILid));
@@ -427,28 +400,20 @@ loop_A_grant:
 }
 
 // arbiter for read responses (UPDATE_PLD_T) (depends on row_idx)
-void arbiter_for_read_resp(const UPDATE_PLD_T in_pld[PACK_SIZE],
-                           UPDATE_PLD_T resend_pld[PACK_SIZE],
-                           const ap_uint<PACK_SIZE> in_valid,
-                           ap_uint<1> in_resend[PACK_SIZE],
-                           unsigned xbar_sel[PACK_SIZE],
-                           ap_uint<PACK_SIZE>& out_valid,
-                           const unsigned rotate_priority) {
-#pragma HLS pipeline II = 1 enable_flush
-#pragma HLS latency min = ARBITER_LATENCY max = ARBITER_LATENCY
-
-#pragma HLS array_partition variable = in_pld complete
-#pragma HLS array_partition variable = xbar_sel complete
-
+[[tapa::pipeline(1, "flp")]] void arbiter_for_read_resp(
+    [[tapa::partition("complete")]] const UPDATE_PLD_T in_pld[PACK_SIZE],
+    UPDATE_PLD_T resend_pld[PACK_SIZE], const tapa::u<PACK_SIZE> in_valid,
+    tapa::u<1> in_resend[PACK_SIZE],
+    [[tapa::partition("complete")]] unsigned xbar_sel[PACK_SIZE],
+    tapa::u<PACK_SIZE>& out_valid, const unsigned rotate_priority) {
   // prioritized valid and addr
-  ap_uint<PACK_SIZE> arb_p_in_valid = in_valid;
-  IDX_T arb_p_in_addr[PACK_SIZE];
-  IDX_T in_addr[PACK_SIZE];
-#pragma HLS array_partition variable = in_addr complete
-#pragma HLS array_partition variable = arb_p_in_addr complete
+  [[tapa::latency(ARBITER_LATENCY,
+                  ARBITER_LATENCY)]] tapa::u<PACK_SIZE> arb_p_in_valid =
+      in_valid;
+  [[tapa::partition("complete")]] IDX_T arb_p_in_addr[PACK_SIZE];
+  [[tapa::partition("complete")]] IDX_T in_addr[PACK_SIZE];
 
-  for (unsigned i = 0; i < PACK_SIZE; i++) {
-#pragma HLS unroll
+  [[tapa::unroll]] for (unsigned i = 0; i < PACK_SIZE; i++) {
     arb_p_in_addr[i] = in_pld[(i + rotate_priority) % PACK_SIZE].row_idx;
     in_addr[i] = in_pld[i].row_idx;
   }
@@ -456,14 +421,13 @@ void arbiter_for_read_resp(const UPDATE_PLD_T in_pld[PACK_SIZE],
   arb_p_in_valid.rrotate(rotate_priority);
 
 loop_A_arbsearch:
-  for (unsigned OLid = 0; OLid < PACK_SIZE; OLid++) {
-#pragma HLS unroll
+  [[tapa::unroll]] for (unsigned OLid = 0; OLid < PACK_SIZE; OLid++) {
     bool found = false;
     unsigned chosen_port = 0;
 
   loop_ab_logic_encoder_unroll:
-    for (unsigned ILid_plus_1 = PACK_SIZE; ILid_plus_1 > 0; ILid_plus_1--) {
-#pragma HLS unroll
+    [[tapa::unroll]] for (unsigned ILid_plus_1 = PACK_SIZE; ILid_plus_1 > 0;
+                          ILid_plus_1--) {
       if (arb_p_in_valid[ILid_plus_1 - 1] &&
           ((arb_p_in_addr[ILid_plus_1 - 1] % PACK_SIZE) == OLid)) {
         chosen_port = ILid_plus_1 - 1;
@@ -480,8 +444,7 @@ loop_A_arbsearch:
   }
 
 loop_A_grant:
-  for (unsigned ILid = 0; ILid < PACK_SIZE; ILid++) {
-#pragma HLS unroll
+  [[tapa::unroll]] for (unsigned ILid = 0; ILid < PACK_SIZE; ILid++) {
     unsigned requested_olid = in_addr[ILid] % PACK_SIZE;
     bool in_granted = (in_valid[ILid] && out_valid[requested_olid] &&
                        (xbar_sel[requested_olid] == ILid));
@@ -505,42 +468,33 @@ void shuffler_core_for_read_req(
     tapa::ostreams<EDGE_PLD_T, PACK_SIZE>& output_lanes) {
   const unsigned shuffler_extra_iters = (ARBITER_LATENCY + 1) * PACK_SIZE;
   // pipeline control variables
-  ap_uint<PACK_SIZE> fetch_complete = 0;
+  tapa::u<PACK_SIZE> fetch_complete = 0;
   unsigned loop_extra_iters = shuffler_extra_iters;
-  ap_uint<1> state = SF_WORKING;
+  tapa::u<1> state = SF_WORKING;
   bool loop_exit = false;
 
   // payloads
-  EDGE_PLD_T payload[PACK_SIZE];
-#pragma HLS array_partition variable = payload complete
-  ap_uint<PACK_SIZE> valid = 0;
+  [[tapa::partition("complete")]] EDGE_PLD_T payload[PACK_SIZE];
+  tapa::u<PACK_SIZE> valid = 0;
 
   // resend control
-  EDGE_PLD_T payload_resend[PACK_SIZE];
-#pragma HLS array_partition variable = payload_resend complete
-  ap_uint<1> resend[PACK_SIZE];
-#pragma HLS array_partition variable = resend complete
-  for (unsigned i = 0; i < PACK_SIZE; i++) {
-#pragma HLS unroll
-    resend[i] = 0;
-  }
+  [[tapa::partition("complete")]] EDGE_PLD_T payload_resend[PACK_SIZE];
+  [[tapa::partition("complete")]] tapa::u<1> resend[PACK_SIZE];
+  [[tapa::unroll]] for (unsigned i = 0; i < PACK_SIZE; i++) { resend[i] = 0; }
 
   // arbiter outputs
-  unsigned xbar_sel[PACK_SIZE];
-  ap_uint<PACK_SIZE> xbar_valid = 0;
-#pragma HLS array_partition variable = xbar_sel complete
+  [[tapa::partition("complete")]] unsigned xbar_sel[PACK_SIZE];
+  tapa::u<PACK_SIZE> xbar_valid = 0;
   // arbiter priority rotation
   unsigned rotate_priority = 0;
   unsigned next_rotate_priority = 0;
 
 loop_shuffle_pipeline:
-  while (!loop_exit) {
-#pragma HLS pipeline II = 1
-#pragma HLS dependence variable = resend inter RAW true distance = 6
-#pragma HLS dependence variable = payload_resend inter RAW true distance = 6
-
-    for (unsigned ILid = 0; ILid < PACK_SIZE; ILid++) {
-#pragma HLS unroll
+  [[tapa::dependence(
+      "payload_resend", "", "inter", "RAW", 1,
+      6)]] [[tapa::dependence("resend", "", "inter", "RAW", 1,
+                              6)]] [[tapa::pipeline(1)]] while (!loop_exit) {
+    [[tapa::unroll]] for (unsigned ILid = 0; ILid < PACK_SIZE; ILid++) {
       if (resend[ILid]) {
         valid[ILid] = 1;
         payload[ILid] = payload_resend[ILid];
@@ -585,8 +539,7 @@ loop_shuffle_pipeline:
     // ------- end of A stage
 
     // crossbar stage (C)
-    for (unsigned OLid = 0; OLid < PACK_SIZE; OLid++) {
-#pragma HLS unroll
+    [[tapa::unroll]] for (unsigned OLid = 0; OLid < PACK_SIZE; OLid++) {
       if (xbar_valid[OLid]) {
         if (valid[xbar_sel[OLid]]) {
           output_lanes[OLid].write(payload[xbar_sel[OLid]]);
@@ -596,8 +549,7 @@ loop_shuffle_pipeline:
     // ------- end of C stage
   }  // main while() loop ends here
 
-  for (unsigned OLid = 0; OLid < PACK_SIZE; OLid++) {
-#pragma HLS unroll
+  [[tapa::unroll]] for (unsigned OLid = 0; OLid < PACK_SIZE; OLid++) {
     output_lanes[OLid].write(EDGE_PLD_EOD);
   }
 }
@@ -609,42 +561,33 @@ void shuffler_core_for_read_resp(
     tapa::ostreams<UPDATE_PLD_T, PACK_SIZE>& output_lanes) {
   const unsigned shuffler_extra_iters = (ARBITER_LATENCY + 1) * PACK_SIZE;
   // pipeline control variables
-  ap_uint<PACK_SIZE> fetch_complete = 0;
+  tapa::u<PACK_SIZE> fetch_complete = 0;
   unsigned loop_extra_iters = shuffler_extra_iters;
-  ap_uint<1> state = SF_WORKING;
+  tapa::u<1> state = SF_WORKING;
   bool loop_exit = false;
 
   // payloads
-  UPDATE_PLD_T payload[PACK_SIZE];
-#pragma HLS array_partition variable = payload complete
-  ap_uint<PACK_SIZE> valid = 0;
+  [[tapa::partition("complete")]] UPDATE_PLD_T payload[PACK_SIZE];
+  tapa::u<PACK_SIZE> valid = 0;
 
   // resend control
-  UPDATE_PLD_T payload_resend[PACK_SIZE];
-#pragma HLS array_partition variable = payload_resend complete
-  ap_uint<1> resend[PACK_SIZE];
-#pragma HLS array_partition variable = resend complete
-  for (unsigned i = 0; i < PACK_SIZE; i++) {
-#pragma HLS unroll
-    resend[i] = 0;
-  }
+  [[tapa::partition("complete")]] UPDATE_PLD_T payload_resend[PACK_SIZE];
+  [[tapa::partition("complete")]] tapa::u<1> resend[PACK_SIZE];
+  [[tapa::unroll]] for (unsigned i = 0; i < PACK_SIZE; i++) { resend[i] = 0; }
 
   // arbiter outputs
-  unsigned xbar_sel[PACK_SIZE];
-  ap_uint<PACK_SIZE> xbar_valid = 0;
-#pragma HLS array_partition variable = xbar_sel complete
+  [[tapa::partition("complete")]] unsigned xbar_sel[PACK_SIZE];
+  tapa::u<PACK_SIZE> xbar_valid = 0;
   // arbiter priority rotation
   unsigned rotate_priority = 0;
   unsigned next_rotate_priority = 0;
 
 loop_shuffle_pipeline:
-  while (!loop_exit) {
-#pragma HLS pipeline II = 1
-#pragma HLS dependence variable = resend inter RAW true distance = 6
-#pragma HLS dependence variable = payload_resend inter RAW true distance = 6
-
-    for (unsigned ILid = 0; ILid < PACK_SIZE; ILid++) {
-#pragma HLS unroll
+  [[tapa::dependence(
+      "payload_resend", "", "inter", "RAW", 1,
+      6)]] [[tapa::dependence("resend", "", "inter", "RAW", 1,
+                              6)]] [[tapa::pipeline(1)]] while (!loop_exit) {
+    [[tapa::unroll]] for (unsigned ILid = 0; ILid < PACK_SIZE; ILid++) {
       if (resend[ILid]) {
         valid[ILid] = 1;
         payload[ILid] = payload_resend[ILid];
@@ -689,8 +632,7 @@ loop_shuffle_pipeline:
     // ------- end of A stage
 
     // crossbar stage (C)
-    for (unsigned OLid = 0; OLid < PACK_SIZE; OLid++) {
-#pragma HLS unroll
+    [[tapa::unroll]] for (unsigned OLid = 0; OLid < PACK_SIZE; OLid++) {
       if (xbar_valid[OLid]) {
         if (valid[xbar_sel[OLid]]) {
           output_lanes[OLid].write(payload[xbar_sel[OLid]]);
@@ -700,8 +642,7 @@ loop_shuffle_pipeline:
     // ------- end of C stage
   }  // main while() loop ends here
 
-  for (unsigned OLid = 0; OLid < PACK_SIZE; OLid++) {
-#pragma HLS unroll
+  [[tapa::unroll]] for (unsigned OLid = 0; OLid < PACK_SIZE; OLid++) {
     output_lanes[OLid].write(UPDATE_PLD_EOD);
   }
 }
@@ -713,17 +654,14 @@ loop_shuffle_pipeline:
 void shuffler_read_req(tapa::istreams<EDGE_PLD_T, PACK_SIZE>& input_lanes,
                        tapa::ostreams<EDGE_PLD_T, PACK_SIZE>& output_lanes) {
   bool first_launch = true;
-  ap_uint<PACK_SIZE> got_EOS = 0;
-  while (!got_EOS.and_reduce()) {
-#pragma HLS pipeline off
-    ap_uint<PACK_SIZE> got_SOD = 0;
+  tapa::u<PACK_SIZE> got_EOS = 0;
+  [[tapa::pipeline(false)]] while (!got_EOS.and_reduce()) {
+    tapa::u<PACK_SIZE> got_SOD = 0;
 
     if (first_launch) {
     loop_sync_on_SOD:
-      while (!got_SOD.and_reduce()) {
-#pragma HLS pipeline II = 1
-        for (unsigned ILid = 0; ILid < PACK_SIZE; ILid++) {
-#pragma HLS unroll
+      [[tapa::pipeline(1)]] while (!got_SOD.and_reduce()) {
+        [[tapa::unroll]] for (unsigned ILid = 0; ILid < PACK_SIZE; ILid++) {
           if (!got_SOD[ILid]) {
             EDGE_PLD_T p;
             if (input_lanes[ILid].try_read(p)) {
@@ -737,8 +675,7 @@ void shuffler_read_req(tapa::istreams<EDGE_PLD_T, PACK_SIZE>& input_lanes,
       first_launch = false;
     }  // first launch SOD sync
 
-    for (unsigned OLid = 0; OLid < PACK_SIZE; OLid++) {
-#pragma HLS unroll
+    [[tapa::unroll]] for (unsigned OLid = 0; OLid < PACK_SIZE; OLid++) {
       output_lanes[OLid].write(EDGE_PLD_SOD);
     }
 
@@ -746,10 +683,9 @@ void shuffler_read_req(tapa::istreams<EDGE_PLD_T, PACK_SIZE>& input_lanes,
 
     got_SOD = 0;
   loop_sync_on_SOD_EOS:
-    while (!(got_SOD.and_reduce() || got_EOS.and_reduce())) {
-#pragma HLS pipeline II = 1
-      for (unsigned ILid = 0; ILid < PACK_SIZE; ILid++) {
-#pragma HLS unroll
+    [[tapa::pipeline(1)]] while (
+        !(got_SOD.and_reduce() || got_EOS.and_reduce())) {
+      [[tapa::unroll]] for (unsigned ILid = 0; ILid < PACK_SIZE; ILid++) {
         if (!(got_SOD[ILid] || got_EOS[ILid])) {
           EDGE_PLD_T p;
           if (input_lanes[ILid].try_read(p)) {
@@ -764,8 +700,7 @@ void shuffler_read_req(tapa::istreams<EDGE_PLD_T, PACK_SIZE>& input_lanes,
     }  // while() : EOS or SOD sync
   }  // while() : EOS sync
 
-  for (unsigned OLid = 0; OLid < PACK_SIZE; OLid++) {
-#pragma HLS unroll
+  [[tapa::unroll]] for (unsigned OLid = 0; OLid < PACK_SIZE; OLid++) {
     output_lanes[OLid].write(EDGE_PLD_EOS);
   }
 }
@@ -773,17 +708,14 @@ void shuffler_read_req(tapa::istreams<EDGE_PLD_T, PACK_SIZE>& input_lanes,
 void shuffler_read_resp(tapa::istreams<UPDATE_PLD_T, PACK_SIZE>& input_lanes,
                         tapa::ostreams<UPDATE_PLD_T, PACK_SIZE>& output_lanes) {
   bool first_launch = true;
-  ap_uint<PACK_SIZE> got_EOS = 0;
-  while (!got_EOS.and_reduce()) {
-#pragma HLS pipeline off
-    ap_uint<PACK_SIZE> got_SOD = 0;
+  tapa::u<PACK_SIZE> got_EOS = 0;
+  [[tapa::pipeline(false)]] while (!got_EOS.and_reduce()) {
+    tapa::u<PACK_SIZE> got_SOD = 0;
 
     if (first_launch) {
     loop_sync_on_SOD:
-      while (!got_SOD.and_reduce()) {
-#pragma HLS pipeline II = 1
-        for (unsigned ILid = 0; ILid < PACK_SIZE; ILid++) {
-#pragma HLS unroll
+      [[tapa::pipeline(1)]] while (!got_SOD.and_reduce()) {
+        [[tapa::unroll]] for (unsigned ILid = 0; ILid < PACK_SIZE; ILid++) {
           if (!got_SOD[ILid]) {
             UPDATE_PLD_T p;
             if (input_lanes[ILid].try_read(p)) {
@@ -797,8 +729,7 @@ void shuffler_read_resp(tapa::istreams<UPDATE_PLD_T, PACK_SIZE>& input_lanes,
       first_launch = false;
     }  // first launch SOD sync
 
-    for (unsigned OLid = 0; OLid < PACK_SIZE; OLid++) {
-#pragma HLS unroll
+    [[tapa::unroll]] for (unsigned OLid = 0; OLid < PACK_SIZE; OLid++) {
       output_lanes[OLid].write(UPDATE_PLD_SOD);
     }
 
@@ -806,10 +737,9 @@ void shuffler_read_resp(tapa::istreams<UPDATE_PLD_T, PACK_SIZE>& input_lanes,
 
     got_SOD = 0;
   loop_sync_on_SOD_EOS:
-    while (!(got_SOD.and_reduce() || got_EOS.and_reduce())) {
-#pragma HLS pipeline II = 1
-      for (unsigned ILid = 0; ILid < PACK_SIZE; ILid++) {
-#pragma HLS unroll
+    [[tapa::pipeline(1)]] while (
+        !(got_SOD.and_reduce() || got_EOS.and_reduce())) {
+      [[tapa::unroll]] for (unsigned ILid = 0; ILid < PACK_SIZE; ILid++) {
         if (!(got_SOD[ILid] || got_EOS[ILid])) {
           UPDATE_PLD_T p;
           if (input_lanes[ILid].try_read(p)) {
@@ -824,8 +754,7 @@ void shuffler_read_resp(tapa::istreams<UPDATE_PLD_T, PACK_SIZE>& input_lanes,
     }  // while() : EOS or SOD sync
   }  // while() : EOS sync
 
-  for (unsigned OLid = 0; OLid < PACK_SIZE; OLid++) {
-#pragma HLS unroll
+  [[tapa::unroll]] for (unsigned OLid = 0; OLid < PACK_SIZE; OLid++) {
     output_lanes[OLid].write(UPDATE_PLD_EOS);
   }
 }
@@ -860,8 +789,7 @@ void ufixed_pe_process(tapa::istream<UPDATE_PLD_T>& input,
 
   // in-flight write queue for data-forwarding
   // designed for URAM latnecy=3 (RDL=3, WRL=2)
-  IN_FLIGHT_WRITE ifwq[5];
-#pragma HLS array_partition variable = ifwq complete;
+  [[tapa::partition("complete")]] IN_FLIGHT_WRITE ifwq[5];
   ifwq[0] = (IN_FLIGHT_WRITE){false, 0, 0};
   ifwq[1] = (IN_FLIGHT_WRITE){false, 0, 0};
   ifwq[2] = (IN_FLIGHT_WRITE){false, 0, 0};
@@ -869,11 +797,10 @@ void ufixed_pe_process(tapa::istream<UPDATE_PLD_T>& input,
   ifwq[4] = (IN_FLIGHT_WRITE){false, 0, 0};
 
 pe_process_loop:
-  while (!exit) {
-#pragma HLS pipeline II = 1
-#pragma HLS dependence variable = output_buffer inter false
-#pragma HLS dependence variable = ifwq intra true
-#pragma HLS dependence variable = ifwq inter false
+  [[tapa::dependence("ifwq", "", "inter")]] [[tapa::dependence(
+      "ifwq", "", "intra", "",
+      1)]] [[tapa::dependence("output_buffer", "",
+                              "inter")]] [[tapa::pipeline(1)]] while (!exit) {
     bool valid = false;
     UPDATE_PLD_T pld;
     if (input.try_read(pld)) {
@@ -902,9 +829,8 @@ pe_process_loop:
         : ((bank_addr == ifwq[3].addr) && ifwq[3].valid) ? ifwq[3].value
         : ((bank_addr == ifwq[4].addr) && ifwq[4].valid) ? ifwq[4].value
                                                          : q;
-    VAL_T new_q = q_fwd + incr;
-#pragma HLS bind_op variable = new_q op = add impl = dsp latency = 0
-    VAL_T new_q_reg = reg(new_q);  // force a register after addition
+    [[tapa::bind_op("add", "dsp", 0)]] VAL_T new_q = q_fwd + incr;
+    VAL_T new_q_reg = ::reg(new_q);  // force a register after addition
     ifwq_new_entry.addr = bank_addr;
     ifwq_new_entry.value = new_q;
     ifwq_new_entry.valid = valid;
@@ -928,8 +854,8 @@ void ufixed_pe_output(tapa::ostream<VEC_PLD_T>& output,
   bool exit = false;
   unsigned dump_count = 0;
 pe_output_loop:
-  for (unsigned dump_count = 0; dump_count < used_buf_len; dump_count++) {
-#pragma HLS pipeline II = 1
+  [[tapa::pipeline(1)]] for (unsigned dump_count = 0; dump_count < used_buf_len;
+                             dump_count++) {
     VAL_T q = output_buffer[dump_count];
     VEC_PLD_T out_pld;
     out_pld.val = q;
@@ -946,21 +872,17 @@ pe_output_loop:
 void pe(tapa::istream<UPDATE_PLD_T>& input, tapa::ostream<VEC_PLD_T>& output,
         unsigned id, unsigned used_buf_len) {
   used_buf_len = used_buf_len / PACK_SIZE;
-  VAL_T output_buffer[OB_BANK_SIZE];
-#pragma HLS bind_storage variable = output_buffer type = RAM_2P impl = \
-    URAM latency = 3
+  [[tapa::storage("RAM_2P", "URAM", 3)]] VAL_T output_buffer[OB_BANK_SIZE];
 // reset output buffer before doing anything
 loop_reset_ob:
-  for (unsigned i = 0; i < used_buf_len; i++) {
-#pragma HLS pipeline II = 1
+  [[tapa::pipeline(1)]] for (unsigned i = 0; i < used_buf_len; i++) {
     output_buffer[i] = 0;
   }
 
   // wait on the first SOD
   bool got_SOD = false;
 pe_sync_SOD:
-  while (!got_SOD) {
-#pragma HLS pipeline II = 1
+  [[tapa::pipeline(1)]] while (!got_SOD) {
     UPDATE_PLD_T p = input.read();
     got_SOD = (p.inst == SOD);
   }
@@ -968,16 +890,14 @@ pe_sync_SOD:
   // start processing
   bool exit = false;
 pe_main_loop:
-  while (!exit) {
-#pragma HLS pipeline off
+  [[tapa::pipeline(false)]] while (!exit) {
     // this function will exit upon EOD
     ufixed_pe_process(input, output_buffer);
 
     // read the next payload and decide whether continue processing or exit
     bool got_valid_pld = false;
   pe_sync_SODEOS:
-    while (!got_valid_pld) {
-#pragma HLS pipeline II = 1
+    [[tapa::pipeline(1)]] while (!got_valid_pld) {
       UPDATE_PLD_T p = input.read();
       if (p.inst == SOD) {
         got_valid_pld = true;
@@ -1013,13 +933,12 @@ void vecbuf_reader(tapa::istream<EDGE_PLD_T>& input,
                    tapa::ostream<UPDATE_PLD_T>& output,
                    VAL_T vector_buffer[VB_BANK_SIZE]) {
   bool loop_exit = false;
-  ap_uint<1> state = VR_IDLE;
+  tapa::u<1> state = VR_IDLE;
 #ifdef VAU_LINE_TRACING
   unsigned vr_sw_emu_iter_cnt = 0;
 #endif
 loop_vr:
-  while (!loop_exit) {
-#pragma HLS pipeline II = 1
+  [[tapa::pipeline(1)]] while (!loop_exit) {
     EDGE_PLD_T pin = input.read();
 
 #ifdef VAU_LINE_TRACING
@@ -1084,13 +1003,12 @@ void vecbuf_writer(tapa::istream<VEC_PLD_T>& vec_input,
                    VAL_T vector_buffer[VB_BANK_SIZE]  // double buffering
 ) {
   bool loop_exit = false;
-  ap_uint<1> state = VW_IDLE;
+  tapa::u<1> state = VW_IDLE;
 #ifdef VAU_LINE_TRACING
   unsigned vw_sw_emu_iter_cnt = 0;
 #endif
 loop_vw:
-  while (!loop_exit) {
-#pragma HLS pipeline II = 1
+  [[tapa::pipeline(1)]] while (!loop_exit) {
     VEC_PLD_T pin = vec_input.read();
     // #ifdef VAU_LINE_TRACING
     //         std::cout << "VW: iteration: " << vr_sw_emu_iter_cnt <<
@@ -1136,9 +1054,8 @@ void vecbuf_access_unit(tapa::istream<EDGE_PLD_T>& input,
                         tapa::ostream<UPDATE_PLD_T>& output,
                         unsigned num_partitions) {
   // double-buffered by dataflow in loop
-  VAL_T vector_buffer[VB_BANK_SIZE];
+  [[tapa::storage("RAM_2P", "URAM")]] VAL_T vector_buffer[VB_BANK_SIZE];
 #pragma HLS stream off variable = vector_buffer
-#pragma HLS bind_storage variable = vector_buffer type = RAM_2P impl = URAM
 
   // +1 due to consuming the last EOS
   for (unsigned i = 0; i < num_partitions + 1; i++) {
@@ -1236,15 +1153,13 @@ void vector_loader(tapa::mmap<PACKED_VAL_T> packed_dense_vector,  // in
   }
 
 vector_loader_over_col_partitions:
-  for (unsigned part_id = 0; part_id < num_col_partitions; part_id++) {
-#pragma HLS pipeline off
-
+  [[tapa::pipeline(false)]] for (unsigned part_id = 0;
+                                 part_id < num_col_partitions; part_id++) {
     // attach switch column partition token
     VEC_AXIS_T pout_sod;
     pout_sod.user = SOD;
     pout_sod.data = 0;
-    for (unsigned k = 0; k < 16; k++) {
-#pragma HLS unroll
+    [[tapa::unroll]] for (unsigned k = 0; k < 16; k++) {
       duplicate[k].write(pout_sod);
     }
 
@@ -1256,15 +1171,12 @@ vector_loader_over_col_partitions:
     assert(part_len % PACK_SIZE == 0);
 
   loop_load_vector_packets:
-    for (unsigned i = 0; i < part_len / PACK_SIZE; i++) {
-#pragma HLS pipeline II = 1
+    [[tapa::pipeline(1)]] for (unsigned i = 0; i < part_len / PACK_SIZE; i++) {
       IDX_T dv_idx = i + part_id * VB_PER_CLUSTER / PACK_SIZE;
       PACKED_VAL_T dv_pkt = packed_dense_vector[dv_idx];
       VEC_AXIS_T pout[16];
-      for (unsigned x = 0; x < 16; x++) {
-#pragma HLS unroll
-        for (unsigned k = 0; k < PACK_SIZE; k++) {
-#pragma HLS unroll
+      [[tapa::unroll]] for (unsigned x = 0; x < 16; x++) {
+        [[tapa::unroll]] for (unsigned k = 0; k < PACK_SIZE; k++) {
           VEC_AXIS_VAL(pout[x], k) = VAL_T_BITCAST(dv_pkt.data[k]);
         }
         pout[x].user = 0;
@@ -1277,8 +1189,7 @@ vector_loader_over_col_partitions:
     VEC_AXIS_T pout_eod;
     pout_eod.user = EOD;
     pout_eod.data = 0;
-    for (unsigned k = 0; k < 16; k++) {
-#pragma HLS unroll
+    [[tapa::unroll]] for (unsigned k = 0; k < 16; k++) {
       duplicate[k].write(pout_eod);
     }
   }
@@ -1287,8 +1198,7 @@ vector_loader_over_col_partitions:
   VEC_AXIS_T pout_eos;
   pout_eos.user = EOS;
   pout_eos.data = 0;
-  for (unsigned k = 0; k < 16; k++) {
-#pragma HLS unroll
+  [[tapa::unroll]] for (unsigned k = 0; k < 16; k++) {
     duplicate[k].write(pout_eos);
   }
 }
@@ -1299,13 +1209,12 @@ void result_drain(tapa::mmap<PACKED_VAL_T> packed_dense_result,  // out
 ) {
   // write back
   char current_input = 0;
-  ap_uint<16> finished = 0;
+  tapa::u<16> finished = 0;
   unsigned write_counter = 0;
   bool exit = false;
   unsigned pkt_idx_offset = row_part_id * LOGICAL_OB_SIZE / PACK_SIZE;
 result_drain_main_loop:
-  while (!exit) {
-#pragma HLS pipeline II = 1
+  [[tapa::pipeline(1)]] while (!exit) {
     VEC_AXIS_T pkt;
     bool do_write = false;
 
@@ -1330,8 +1239,7 @@ result_drain_main_loop:
     unsigned abs_pkt_idx = write_counter + pkt_idx_offset;
     if (do_write) {
       PACKED_VAL_T rout;
-      for (unsigned k = 0; k < PACK_SIZE; k++) {
-#pragma HLS unroll
+      [[tapa::unroll]] for (unsigned k = 0; k < PACK_SIZE; k++) {
         VAL_T_BITCAST(rout.data[k]) = VEC_AXIS_VAL(pkt, k);
       }
       write_counter++;

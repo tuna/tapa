@@ -22,6 +22,63 @@ After this lab you will understand:
 | Top function contains computation | Move computation into child tasks | TAPA upper-level tasks are orchestration-only |
 | `hls::stream<T>` local variable | `tapa::stream<T>` local variable | Same syntax; depth is enforced during software simulation (default depth: 2) |
 
+### Types, waits and registers
+
+| Vitis HLS | TAPA | Notes |
+|-----------|------|-------|
+| `#include <ap_int.h>` | `#include <tapa.h>` | Not needed at all in software simulation |
+| `ap_uint<W>` / `ap_int<W>` | `tapa::u<W>` / `tapa::i<W>` | Self-implemented for the host; aliases the vendor type when synthesizing |
+| `hls_vector.h`, `hls::vector<T, N>` | `tapa::vec_t<T, N>` | |
+| `ap_wait()` | `tapa::wait()` | |
+| `ap_wait_n(n)` | `tapa::wait(n)` | |
+| a hand-rolled `HLS_REG` helper | `tapa::reg(x)`, `tapa::reg<T, Depth>(x)` | A real pipeline register — see the note in the [API reference](../reference/api.md) if yours registered only the return interface |
+
+### Pragmas
+
+Every directive below becomes a C++ attribute; the full grammar is in the
+[API reference](../reference/api.md). `tapa analyze` warns on any vendor
+pragma it still sees and names the portable form.
+
+| Vitis HLS | TAPA |
+|-----------|------|
+| `#pragma HLS pipeline II = N` | `[[tapa::pipeline(N)]]` on the loop, or on the function when the pragma was at function scope |
+| `#pragma HLS pipeline off` | `[[tapa::pipeline(false)]]` |
+| `#pragma HLS pipeline II = N enable_flush` | `[[tapa::pipeline(N, "flp")]]` — Vitis deprecated `enable_flush` in favour of `style = flp` |
+| `#pragma HLS unroll [factor = N]` | `[[tapa::unroll]]` / `[[tapa::unroll(N)]]` |
+| `#pragma HLS loop_tripcount min = A max = B` | `[[tapa::tripcount(A, B)]]` |
+| `#pragma HLS loop_flatten off` | `[[tapa::flatten(false)]]` |
+| `#pragma HLS latency min = A max = B` | `[[tapa::latency(A, B)]]` |
+| `#pragma HLS dependence variable = v ...` | `[[tapa::dependence("v", ...)]]` |
+| `#pragma HLS expression_balance` | `[[tapa::balance]]` |
+| `#pragma HLS array_partition variable = a complete dim = D` | `[[tapa::partition("complete", -1, D)]]` on the declaration |
+| `#pragma HLS bind_storage variable = a type = T impl = I` | `[[tapa::storage("T", "I")]]` |
+| `#pragma HLS resource variable = a core = C` | `[[tapa::storage(...)]]` (legacy spelling) |
+| `#pragma HLS aggregate variable = a` | `[[tapa::aggregate]]` |
+| `#pragma HLS array_map variable = a instance = i` | `[[tapa::array_map("i", -1)]]` |
+| `#pragma HLS bind_op variable = a op = o impl = i` | `[[tapa::bind_op("o", "i")]]` |
+| `#pragma HLS inline` on a helper | the `inline` keyword on that helper |
+| `#pragma HLS inline off` on a helper | *omit* the `inline` keyword |
+| `#pragma HLS inline region` at a call site | mark the **callee** `inline` |
+| `#pragma HLS interface ...` | nothing — TAPA synthesizes the top interface |
+| `#pragma HLS stream variable = q depth = N` | the depth template argument, `tapa::stream<T, N>` |
+
+```admonish note
+`inline region` names a region rather than a function, so there is no
+attribute for it. Where the region is exactly one call — the usual case —
+marking the callee `inline` is equivalent: the callee is inlined into that
+call site, which is what the region asked for. Where the region spans more
+than one call, split it or accept the wider scope.
+```
+
+```admonish warning
+Four vendor constructs have no portable form yet, and `tapa analyze` says so
+rather than suggesting one: `#pragma HLS pipeline off` is covered above, but
+`#pragma HLS stream ... off` (a stream that is not a FIFO), `#pragma HLS
+dataflow` *inside* a leaf task, `ap_fixed`/`ap_ufixed`, and vendor packet
+types such as `ap_axiu<...>` still require the vendor spelling. Keep them and
+expect the remark.
+```
+
 ---
 
 ## Example 1: Basic VecAdd migration

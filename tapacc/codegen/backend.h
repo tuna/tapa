@@ -61,10 +61,27 @@ class Backend {
                               clang::Rewriter& rewriter) const = 0;
   virtual void RewriteHelperFunc(const clang::FunctionDecl* func,
                                  clang::Rewriter& rewriter) const = 0;
-  virtual void LowerPipeline(int ii, const clang::Stmt* body,
+  virtual void LowerPipeline(int ii, const std::string& style,
+                             const clang::Stmt* body,
                              clang::Rewriter& rewriter) const = 0;
   virtual void LowerUnroll(int factor, const clang::Stmt* body,
                            clang::Rewriter& rewriter) const = 0;
+  //  - LowerStmtAttr: lower a non-pipeline/unroll statement attribute
+  //    (tripcount, flatten, latency, dependence, balance) attached to a
+  //    loop. Backends that ignore attributes need not override.
+  //  - LowerDeclAttr: lower a variable attribute (partition, storage,
+  //    aggregate, bind_op) attached to a declaration.
+  virtual void LowerStmtAttr(const clang::Attr& attr, const clang::Stmt* body,
+                             clang::Rewriter& rewriter) const {}
+  //  - LowerParamAttr: lower a variable attribute on a function PARAMETER
+  //    (array ports); the pragma lands at the top of the body.
+  virtual void LowerParamAttr(const clang::Attr& attr,
+                              const clang::ParmVarDecl& param,
+                              const clang::Stmt* body,
+                              clang::Rewriter& rewriter) const {}
+  virtual void LowerDeclAttr(const clang::Attr& attr, const clang::VarDecl& var,
+                             const clang::DeclStmt& decl,
+                             clang::Rewriter& rewriter) const {}
 
  protected:
   // Per-category port hooks: a vendor overrides only what it needs; the

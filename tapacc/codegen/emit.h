@@ -32,6 +32,10 @@ void AddPragmaToBody(clang::Rewriter& rewriter, const clang::Stmt* body,
 void AddPragmaAfterStmt(clang::Rewriter& rewriter, const clang::Stmt* stmt,
                         const std::string& pragma);
 
+// Vitis HLS rejects `inline` on task functions; strips the leading keyword
+// from this declaration's spelling (call for every redeclaration).
+void RemoveInline(const clang::FunctionDecl* func, clang::Rewriter& rewriter);
+
 // Remove a lowered `[[tapa::...]]` attribute's source text, swallowing the
 // surrounding whitespace, a trailing/leading comma, or an enclosing `[[ ]]` so
 // the result is clean. Takes the attribute's own source range.

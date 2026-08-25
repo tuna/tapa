@@ -41,6 +41,7 @@
 #include "frontend/build_program.h"
 #include "frontend/classify.h"
 #include "frontend/program.h"
+#include "frontend/vendor_scan.h"
 
 namespace {
 
@@ -120,6 +121,11 @@ llvm::cl::opt<std::string> g_top("top", llvm::cl::Required,
                                  llvm::cl::desc("Top-level task name"),
                                  llvm::cl::cat(g_category));
 
+llvm::cl::opt<bool> g_no_vendor_scan(
+    "no-vendor-scan", llvm::cl::init(false),
+    llvm::cl::desc("Disable the vendor-usage soft warnings"),
+    llvm::cl::cat(g_category));
+
 enum class CliTarget { kHls, kVitis };
 llvm::cl::opt<CliTarget> g_target(
     "target", llvm::cl::desc("Target flow (default xilinx-hls)"),
@@ -132,6 +138,7 @@ class NgConsumer : public clang::ASTConsumer {
  public:
   void HandleTranslationUnit(clang::ASTContext& ctx) override {
     using namespace tapa::cc;
+    if (!g_no_vendor_scan) ScanVendorAsts(ctx);
     const bool is_vitis = g_target == CliTarget::kVitis;
     const SynthTarget default_target =
         is_vitis ? SynthTarget::kXilinxVitis : SynthTarget::kXilinxHls;
@@ -178,6 +185,11 @@ class NgConsumer : public clang::ASTConsumer {
 
 class NgAction : public clang::ASTFrontendAction {
  public:
+  bool BeginSourceFileAction(clang::CompilerInstance& ci) override {
+    if (!g_no_vendor_scan) AttachVendorScan(ci.getPreprocessor());
+    return true;
+  }
+
   std::unique_ptr<clang::ASTConsumer> CreateASTConsumer(
       clang::CompilerInstance&, llvm::StringRef) override {
     return std::make_unique<NgConsumer>();

@@ -4,6 +4,7 @@
 #include <string>
 
 #include "clang/AST/Stmt.h"
+#include "clang/Lex/Lexer.h"
 
 #include "conventions.h"
 #include "frontend/type_args.h"
@@ -93,6 +94,19 @@ void AddPragmaAfterStmt(clang::Rewriter& rewriter, const clang::Stmt* stmt,
                         const std::string& pragma) {
   rewriter.InsertTextAfterToken(stmt->getEndLoc(),
                                 "\n#pragma " + pragma + "\n");
+}
+
+void RemoveInline(const clang::FunctionDecl* func, clang::Rewriter& rewriter) {
+  if (!func->isInlineSpecified()) return;
+  clang::Token token;
+  clang::Lexer::getRawToken(func->getBeginLoc(), token, rewriter.getSourceMgr(),
+                            rewriter.getLangOpts());
+  if (token.getRawIdentifier().str() == "inline") {
+    rewriter.RemoveText(token.getLocation(), token.getLength());
+  } else {
+    llvm::errs() << "Warning: expected 'inline' at the start of a task; not "
+                    "removed. Vitis HLS does not support inline tasks.\n";
+  }
 }
 
 void RemoveLoweredAttr(clang::Rewriter& rewriter,

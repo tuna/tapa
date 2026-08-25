@@ -324,7 +324,7 @@ These C++ attributes are recognised by TAPA and lowered to vendor pragmas during
 
 | Attribute | Lowers to | Description |
 |-----------|-----------|-------------|
-| `[[tapa::pipeline(II, style)]]` | `pipeline` | Pipeline the loop (or function) at initiation interval `II`. Both arguments optional; `style` is `"stp"` (stable/flushable) or `"flp"` (free-running), default vendor choice when omitted. |
+| `[[tapa::pipeline(II, style)]]` | `pipeline` | Pipeline the loop (or function) at initiation interval `II`. Both arguments optional; `style` is `"stp"` (stall), `"flp"` (flushable) or `"frp"` (free-running), the vendor default when omitted. `[[tapa::pipeline(false)]]` *disables* pipelining (`pipeline off`), the same way `flatten(false)` disables flattening. |
 | `[[tapa::unroll(factor)]]` | `unroll` | Unroll by `factor`; fully unroll when omitted. |
 | `[[tapa::tripcount(min, max)]]` | `loop_tripcount` | Declare the loop's trip-count range. Estimation only — it does not change generated hardware. |
 | `[[tapa::flatten(enable)]]` | `loop_flatten` | `false` (or `0`) disables flattening of the loop nest; omitted leaves the vendor's automatic flattening on. |
@@ -350,6 +350,24 @@ These C++ attributes are recognised by TAPA and lowered to vendor pragmas during
 
 ```admonish note
 The `-1` sentinel in `partition` and `array_map` exists because the arguments are positional and zero is a meaningful value (`dim = 0` means *all* dimensions). Passing a dim where a factor is expected is silently accepted by the vendor and partitions the wrong dimension, so spell the sentinel rather than dropping the argument.
+```
+
+```admonish note
+`tapa::reg<T>(x)` returns `x` through a pipeline register, and
+`tapa::reg<T, Depth>(x)` through `Depth` of them. It replaces the hand-rolled
+`HLS_REG` helper that vendor designs carry (a no-inline function with
+`pipeline` and `interface ... register` pragmas). Note it is a real
+register: a design whose `HLS_REG` registered only the return *interface*
+will use more flip-flops after the switch.
+```
+
+```admonish note
+One vendor construct has no attribute form: `#pragma HLS dataflow` *inside*
+a leaf task, for concurrency between plain function calls. TAPA expresses
+concurrency through the task graph, so the portable equivalent is to invoke
+those functions as tasks (`tapa::task().invoke(...)`). Where a design
+deliberately keeps a leaf task that drives its own internal stream, the
+pragma stays and `tapa analyze` reports it as a remark.
 ```
 
 ```admonish tip
