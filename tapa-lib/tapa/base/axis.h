@@ -163,11 +163,13 @@ struct axis {
   dest_type dest;
 
   /// A packet with every payload byte marked valid and TLAST clear, leaving
-  /// the payload uninitialized -- the vendor's default state. Note tapa::u
-  /// zero-initializes where the vendor's ap_uint is genuinely indeterminate,
-  /// so a forgotten set_data reads as 0 here but garbage in Vitis
-  /// simulation (and X in hardware): the friendly default hides that bug
-  /// class, it does not excuse it.
+  /// the payload uninitialized. Vitis 2025.2 uses the same signal defaults,
+  /// while 2024.2 leaves them indeterminate; TAPA keeps one deterministic
+  /// contract across supported releases. Note tapa::u zero-initializes where
+  /// the vendor's ap_uint is genuinely indeterminate, so a forgotten
+  /// set_data reads as 0 here but garbage in Vitis simulation (and X in
+  /// hardware): the friendly default hides that bug class, it does not
+  /// excuse it.
   axis() {
     keep = -1;
     strb = -1;

@@ -200,14 +200,9 @@ TEST(VendorParity, AxisPacketLayout) {
   CheckAxisLayout<288, 2, 0, 0>();
 }
 
-TEST(VendorParity, AxisDefaultState) {
-  const axis<u<32>, 2, 0, 0> mine;
-  const ap_axiu<32, 2, 0, 0> theirs;
-  EXPECT_EQ(TapaBits(mine.keep), VendorBits(theirs.keep));
-  EXPECT_EQ(TapaBits(mine.strb), VendorBits(theirs.strb));
-  EXPECT_EQ(TapaBits(mine.last), VendorBits(theirs.last));
-  EXPECT_EQ(TapaBits(mine.get_user()), VendorBits(theirs.user));
-
+TEST(VendorParity, AxisKeepAll) {
+  // Vitis 2024.2 leaves a default ap_axiu's signals indeterminate, while
+  // 2025.2 initializes them. Only compare behavior shared by both releases.
   axis<u<512> > wide_mine;
   ap_axiu<512, 0, 0, 0> wide_theirs;
   wide_mine.keep = 0;
