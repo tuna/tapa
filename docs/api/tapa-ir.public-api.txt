@@ -1368,6 +1368,8 @@ impl<T> serde_core::de::DeserializeOwned for tapa_ir::instance::TaskInstance whe
 pub struct tapa_ir::instance::WireValue
 pub tapa_ir::instance::WireValue::value: u64
 pub tapa_ir::instance::WireValue::width: u32
+impl tapa_ir::instance::WireValue
+pub fn tapa_ir::instance::WireValue::is_valid(&self) -> bool
 impl core::clone::Clone for tapa_ir::instance::WireValue
 pub fn tapa_ir::instance::WireValue::clone(&self) -> tapa_ir::instance::WireValue
 impl core::cmp::Eq for tapa_ir::instance::WireValue
@@ -2380,6 +2382,9 @@ pub fn tapa_ir::connectivity::MemoryKind::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::connectivity::MemoryKind where T: for<'de> serde_core::de::Deserialize<'de>
 pub enum tapa_ir::ParseError
 pub tapa_ir::ParseError::Json(serde_json::error::Error)
+pub tapa_ir::ParseError::OutdatedSchemaVersion
+pub tapa_ir::ParseError::OutdatedSchemaVersion::found: u32
+pub tapa_ir::ParseError::OutdatedSchemaVersion::supported: u32
 pub tapa_ir::ParseError::Schema
 pub tapa_ir::ParseError::Schema::message: alloc::string::String
 pub tapa_ir::ParseError::Schema::path: alloc::string::String
@@ -4016,6 +4021,8 @@ impl<T> serde_core::de::DeserializeOwned for tapa_ir::instance::TaskInstance whe
 pub struct tapa_ir::WireValue
 pub tapa_ir::WireValue::value: u64
 pub tapa_ir::WireValue::width: u32
+impl tapa_ir::instance::WireValue
+pub fn tapa_ir::instance::WireValue::is_valid(&self) -> bool
 impl core::clone::Clone for tapa_ir::instance::WireValue
 pub fn tapa_ir::instance::WireValue::clone(&self) -> tapa_ir::instance::WireValue
 impl core::cmp::Eq for tapa_ir::instance::WireValue
