@@ -13,11 +13,17 @@
 //! stamp — minus `pack` and the mtime-reuse path: parity cares about
 //! HLS outputs only.
 //!
-//! Hashed per app (sha256 over normalized bytes, keys sorted):
-//! - `rewritten/<task>.cpp` for every task, keyed by task name;
+//! Hashed per app (sha256, keys sorted):
+//! - `rewritten/<task>.cpp` for every task, keyed by task name — RAW
+//!   bytes: this is our own producer's output and stays
+//!   byte-accountable;
 //! - `hls/<task>/verilog/**` for every task, keyed `<task>/<file>`
-//!   relative to `<work>/hls/<task>/verilog`. The sibling `report/`
-//!   dir is excluded on purpose: Vitis report files embed run dates.
+//!   relative to `<work>/hls/<task>/verilog` — CANONICAL bytes: both
+//!   the recorded file names and the contents pass through the
+//!   normalizer in [`canonical`], which erases the source-line numbers
+//!   Vitis HLS bakes into generated names (details and residual blind
+//!   spots there). The sibling `report/` dir is excluded on purpose:
+//!   Vitis report files embed run dates.
 //!
 //! This is an operator tool, not a bazel test target: a full capture is
 //! hours of vendor HLS runtime. Run it from the workspace root after
@@ -40,6 +46,8 @@ use std::time::{Duration, Instant};
 use tempfile::TempDir;
 
 use crate::common::{workspace_path, Result};
+
+mod canonical;
 
 /// Device `bazel/VARS.bzl:XILINX_PART_NUM` gives `tapa_xo` targets that
 /// name neither a part nor a platform — what every `tests/apps` kernel
@@ -357,6 +365,11 @@ fn synth_app(app: &ParityApp, tapa: &Path, work_dir: &Path, options: &Options) -
 }
 
 /// Hash one app's synthesis outputs under `work_dir`.
+///
+/// Verilog keys and contents are canonicalized (see [`canonical`]); two
+/// distinct files whose names canonicalize to the same key collide and
+/// fail loudly instead of silently merging — that would mask exactly
+/// the drift this gate exists to catch.
 fn hash_app(work_dir: &Path, app_name: &str) -> Result<AppHashes> {
     let mut cpp = BTreeMap::new();
     let cpp_dir = work_dir.join("rewritten");
@@ -410,15 +423,36 @@ fn hash_tree(
     out: &mut BTreeMap<String, String>,
     ctx: &str,
 ) -> Result<()> {
+    // Canonical key -> original name, so normalization collisions are
+    // an error rather than a silent merge.
+    let mut origins: BTreeMap<String, String> = BTreeMap::new();
+    hash_tree_inner(dir, prefix, out, &mut origins, ctx)
+}
+
+fn hash_tree_inner(
+    dir: &Path,
+    prefix: &str,
+    out: &mut BTreeMap<String, String>,
+    origins: &mut BTreeMap<String, String>,
+    ctx: &str,
+) -> Result<()> {
     for entry in sorted_entries(dir, ctx)? {
         let name = entry
             .file_name()
             .and_then(|name| name.to_str())
             .ok_or_else(|| format!("{ctx}: non-UTF-8 name under {}", dir.display()))?;
         if entry.is_dir() {
-            hash_tree(&entry, &format!("{prefix}{name}/"), out, ctx)?;
+            hash_tree_inner(&entry, &format!("{prefix}{name}/"), out, origins, ctx)?;
         } else {
-            out.insert(format!("{prefix}{name}"), hash_file(&entry, ctx)?);
+            let key = format!("{prefix}{}", canonical::canonical_verilog(name));
+            if let Some(prior) = origins.get(&key) {
+                return Err(format!(
+                    "{ctx}: canonicalization collision: {prior} and {prefix}{name} \
+both normalize to {key}; refusing to hash them as one file"
+                ));
+            }
+            origins.insert(key.clone(), format!("{prefix}{name}"));
+            out.insert(key, hash_verilog_file(&entry, ctx)?);
         }
     }
     Ok(())
@@ -433,10 +467,25 @@ fn sorted_entries(dir: &Path, ctx: &str) -> Result<Vec<PathBuf>> {
     Ok(entries)
 }
 
+/// Raw sha256 of a file — used for the rewritten C++, which is our own
+/// producer's output and must stay byte-accountable.
 fn hash_file(path: &Path, ctx: &str) -> Result<String> {
     let bytes = fs::read(path)
         .map_err(|error| format!("{ctx}: failed to read {}: {error}", path.display()))?;
     Ok(sha256_hex(&bytes))
+}
+
+/// Canonical sha256 of one verilog file: names and contents normalized
+/// (see [`canonical`]) before hashing, so line-layout-only differences
+/// between generations of the same design hash equal.
+fn hash_verilog_file(path: &Path, ctx: &str) -> Result<String> {
+    let bytes = fs::read(path)
+        .map_err(|error| format!("{ctx}: failed to read {}: {error}", path.display()))?;
+    let text = std::str::from_utf8(&bytes)
+        .map_err(|error| format!("{ctx}: {} is not UTF-8 verilog: {error}", path.display()))?;
+    Ok(sha256_hex(
+        canonical::canonical_verilog_contents(text).as_bytes(),
+    ))
 }
 
 fn sha256_hex(data: &[u8]) -> String {
@@ -689,6 +738,31 @@ mod tests {
         let mut quiet = Vec::new();
         assert_eq!(diff_map("vadd", "cpp", &baseline, &baseline, &mut quiet), 0);
         assert!(quiet.is_empty());
+    }
+
+    #[test]
+    fn hash_tree_rejects_files_that_canonicalize_to_one_key() {
+        // Two distinct loop modules at different source lines but the
+        // same loop id must not silently merge into one manifest entry:
+        // that would mask exactly the drift this gate exists to catch.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let vdir = dir.path().join("verilog");
+        fs::create_dir_all(&vdir).expect("mkdir");
+        for name in [
+            "Add_Add_Pipeline_VITIS_LOOP_38_1.v",
+            "Add_Add_Pipeline_VITIS_LOOP_39_1.v",
+        ] {
+            fs::write(vdir.join(name), "module x(); endmodule\n").expect("write");
+        }
+        let mut out = BTreeMap::new();
+        let error = hash_tree(&vdir, "Add/", &mut out, "vadd")
+            .expect_err("names that normalize equal must collide");
+        assert!(
+            error.contains("canonicalization collision")
+                && error.contains("VITIS_LOOP_38_1")
+                && error.contains("VITIS_LOOP_39_1"),
+            "collision error must name both files: {error}"
+        );
     }
 
     #[test]
