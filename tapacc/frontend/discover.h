@@ -27,6 +27,12 @@ const clang::Expr* GetTapaTaskObject(const clang::Stmt* body);
 std::vector<const clang::CXXMemberCallExpr*> GetInvokes(
     const clang::Stmt* stmt);
 
+// The task function an invoke references, or nullptr if its first argument is
+// not a plain function reference. A cross-TU invoke yields the declaration
+// visible in the invoking TU, not the definition.
+const clang::FunctionDecl* InvokeCallee(
+    const clang::CXXMemberCallExpr* invoke);
+
 // Whether a function is marked `[[tapa::target("ignore")]]`.
 bool IsIgnored(const clang::FunctionDecl* func);
 

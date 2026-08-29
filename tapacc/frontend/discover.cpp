@@ -36,9 +36,8 @@ void GetInvokesInto(const clang::Stmt* stmt,
   }
 }
 
-// The callee task of an invoke: the function referenced by the first argument,
-// or nullptr if it is not a plain function reference (never dereferences a
-// failed cast — §8.3).
+}  // namespace
+
 const clang::FunctionDecl* InvokeCallee(
     const clang::CXXMemberCallExpr* invoke) {
   if (invoke->getNumArgs() == 0) return nullptr;
@@ -47,8 +46,6 @@ const clang::FunctionDecl* InvokeCallee(
   if (ref == nullptr) return nullptr;
   return llvm::dyn_cast<clang::FunctionDecl>(ref->getDecl());
 }
-
-}  // namespace
 
 const clang::Expr* GetTapaTaskObject(const clang::Stmt* body) {
   if (body == nullptr) return nullptr;

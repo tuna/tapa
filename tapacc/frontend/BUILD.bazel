@@ -217,6 +217,44 @@ cc_test(
     ],
 )
 
+# The multi-TU merge: index every TU, merge + discover on pure data, rewrite
+# per TU, emit one graph.
+cc_library(
+    name = "program_builder",
+    srcs = ["program_builder.cpp"],
+    hdrs = ["program_builder.h"],
+    copts = TAPACC_COPTS,
+    includes = [".."],
+    deps = [
+        ":build_program",
+        ":classify",
+        ":discover",
+        ":invoke_parser",
+        ":names",
+        ":ports",
+        ":program",
+        "//tapacc/codegen:ignore",
+        "//tapacc/codegen:rewrite",
+        "//tapacc/codegen:schema_fields",
+        "//tapacc/codegen:xilinx",
+        "@nlohmann_json//:json",
+        CLANG_TOOLING,
+    ],
+)
+
+cc_test(
+    name = "merge_test",
+    srcs = ["merge_test.cpp"],
+    copts = TAPACC_COPTS,
+    deps = [
+        ":program_builder",
+        ":tapa_stub_decls",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+        CLANG_TOOLING,
+    ],
+)
+
 cc_test(
     name = "classify_test",
     srcs = ["classify_test.cpp"],
