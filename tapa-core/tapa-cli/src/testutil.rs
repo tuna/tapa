@@ -32,7 +32,6 @@ pub fn ctx_at(work_dir: &Path) -> CliContext {
     CliContext {
         work_dir: work_dir.to_path_buf(),
         temp_dir: None,
-        clang_format_quota_in_bytes: 0,
         remote_config: None,
         verbose: 0,
         quiet: 0,

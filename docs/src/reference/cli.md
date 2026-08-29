@@ -31,7 +31,6 @@ These options must appear before the subcommand name.
 | `--temp-dir DIR` | Temporary directory, exported to child tools through `TMPDIR`. |
 | `--verbose` / `-v` | Increase logging verbosity. Repeatable (e.g., `-vv`). |
 | `--quiet` / `-q` | Decrease logging verbosity. |
-| `--clang-format-quota-in-bytes N` | Only run `clang-format` over the first `N` bytes of generated code (default: `1000000`). Lower it to speed up runs on very large designs. |
 | `--remote-host user@host[:port]` | Remote Linux host where vendor tools run. |
 | `--remote-key-file PATH` | SSH private key file for authenticating to the remote host. |
 | `--remote-xilinx-settings PATH` | Path to `settings64.sh` on the remote host. |

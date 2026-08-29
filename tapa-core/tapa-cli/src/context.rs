@@ -10,7 +10,6 @@ use crate::globals::GlobalArgs;
 pub struct CliContext {
     pub work_dir: PathBuf,
     pub temp_dir: Option<PathBuf>,
-    pub clang_format_quota_in_bytes: u64,
     /// Resolved remote config (`~/.taparc` + CLI overrides). `None`
     /// means the run is purely local.
     pub remote_config: Option<RemoteConfig>,
@@ -24,7 +23,6 @@ impl CliContext {
         Self {
             work_dir: absolutize_for_storage(&globals.work_dir),
             temp_dir: globals.temp_dir.clone(),
-            clang_format_quota_in_bytes: globals.clang_format_quota_in_bytes,
             remote_config: None,
             verbose: globals.verbose,
             quiet: globals.quiet,

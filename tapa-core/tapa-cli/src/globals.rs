@@ -7,11 +7,6 @@ use clap::Parser;
 use crate::chain::Step;
 use crate::steps::version::VERSION;
 
-/// Default `--clang-format-quota-in-bytes`. Only the first megabyte of
-/// generated code is clang-formatted to bound formatting time on large
-/// designs.
-const DEFAULT_CLANG_FORMAT_QUOTA: u64 = 1_000_000;
-
 /// Top-level CLI: globals + an optional first chained step.
 #[derive(Debug, Parser)]
 #[command(
@@ -58,13 +53,6 @@ pub struct GlobalArgs {
     /// Specify the temporary directory exported through `TMPDIR`.
     #[arg(long = "temp-dir", value_name = "DIR")]
     pub temp_dir: Option<PathBuf>,
-
-    /// Limit clang-format to the first few bytes of code.
-    #[arg(
-        long = "clang-format-quota-in-bytes",
-        default_value_t = DEFAULT_CLANG_FORMAT_QUOTA,
-    )]
-    pub clang_format_quota_in_bytes: u64,
 
     /// Remote Linux host for vendor tools (`user@host[:port]`).
     #[arg(long = "remote-host")]

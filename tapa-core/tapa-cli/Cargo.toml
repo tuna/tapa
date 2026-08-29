@@ -15,7 +15,6 @@ flate2 = { workspace = true }
 hex = { workspace = true }
 tar = { workspace = true }
 ureq = { workspace = true }
-which = { workspace = true }
 camino = { workspace = true }
 clap = { workspace = true }
 env_logger = { workspace = true }

@@ -16,7 +16,6 @@ fn make_globals() -> GlobalArgs {
         quiet: 0,
         work_dir: PathBuf::from("./work.out/"),
         temp_dir: None,
-        clang_format_quota_in_bytes: 1_000_000,
         remote_host: None,
         remote_key_file: None,
         remote_xilinx_settings: None,
