@@ -9,7 +9,7 @@ load("//bazel:test_tool_rules.bzl", "test_tool_test")
 
 tapa_xo(
     name = "enable-synth-util-xo",
-    src = "vadd.cpp",
+    srcs = ["vadd.cpp"],
     clock_period = "3.333",  # for #258
     enable_synth_util = True,
     output_file = "enable-synth-util.xo",

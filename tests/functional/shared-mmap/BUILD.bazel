@@ -68,7 +68,7 @@ cc_binary(
 
 tapa_xo(
     name = "shared-mmap-xo",
-    src = "vadd.cpp",
+    srcs = ["vadd.cpp"],
     top_name = "VecAddShared",
 )
 

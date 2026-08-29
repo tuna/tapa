@@ -64,7 +64,7 @@ sh_test(
 
 tapa_xo(
     name = "stream-top-xo",
-    src = "vadd.cpp",
+    srcs = ["vadd.cpp"],
     hdrs = glob(["*.h"]),
     top_name = "StreamAdd_XRT",
 )
@@ -83,7 +83,7 @@ cc_binary(
 
 tapa_xo(
     name = "stream-top-hls-zip",
-    src = "vadd.cpp",
+    srcs = ["vadd.cpp"],
     hdrs = glob(["*.h"]),
     target = "xilinx-hls",
     top_name = "StreamAdd",

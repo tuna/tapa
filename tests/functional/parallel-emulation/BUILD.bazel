@@ -63,7 +63,7 @@ cc_binary(
 
 tapa_xo(
     name = "scatter",
-    src = "cannon.cpp",
+    srcs = ["cannon.cpp"],
     hdrs = ["cannon.h"],
     include = ["."],
     cflags = "-DTAPA_CANNON_P=2",
@@ -73,7 +73,7 @@ tapa_xo(
 
 tapa_xo(
     name = "proc-elem",
-    src = "cannon.cpp",
+    srcs = ["cannon.cpp"],
     hdrs = ["cannon.h"],
     include = ["."],
     cflags = "-DTAPA_CANNON_P=2",
@@ -83,7 +83,7 @@ tapa_xo(
 
 tapa_xo(
     name = "gather",
-    src = "cannon.cpp",
+    srcs = ["cannon.cpp"],
     hdrs = ["cannon.h"],
     include = ["."],
     cflags = "-DTAPA_CANNON_P=2",
@@ -149,7 +149,7 @@ cc_binary(
 
 tapa_xo(
     name = "scatter-4x4",
-    src = "cannon.cpp",
+    srcs = ["cannon.cpp"],
     hdrs = ["cannon.h"],
     include = ["."],
     cflags = "-DTAPA_CANNON_P=4",
@@ -160,7 +160,7 @@ tapa_xo(
 
 tapa_xo(
     name = "proc-elem-4x4",
-    src = "cannon.cpp",
+    srcs = ["cannon.cpp"],
     hdrs = ["cannon.h"],
     include = ["."],
     cflags = "-DTAPA_CANNON_P=4",
@@ -171,7 +171,7 @@ tapa_xo(
 
 tapa_xo(
     name = "gather-4x4",
-    src = "cannon.cpp",
+    srcs = ["cannon.cpp"],
     hdrs = ["cannon.h"],
     include = ["."],
     cflags = "-DTAPA_CANNON_P=4",

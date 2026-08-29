@@ -9,7 +9,7 @@ load("//bazel:test_tool_rules.bzl", "test_tool_test")
 
 tapa_xo(
     name = "vadd-xo",
-    src = "//tests/apps/vadd:vadd.cpp",
+    srcs = ["//tests/apps/vadd:vadd.cpp"],
     hdrs = ["//tests/apps/vadd:vadd.h"],
     include = ["//tests/apps/vadd:."],
     top_name = "VecAdd",
@@ -30,7 +30,7 @@ test_tool_test(
 
 tapa_xo(
     name = "vadd-zip",
-    src = "//tests/apps/vadd:vadd.cpp",
+    srcs = ["//tests/apps/vadd:vadd.cpp"],
     hdrs = ["//tests/apps/vadd:vadd.h"],
     include = ["//tests/apps/vadd:."],
     target = "xilinx-hls",
@@ -52,7 +52,7 @@ test_tool_test(
 
 tapa_reuse_work_dir_xo(
     name = "reuse-work-dir-vadd-xo",
-    src = "//tests/apps/vadd:vadd.cpp",
+    srcs = ["//tests/apps/vadd:vadd.cpp"],
     hdrs = ["//tests/apps/vadd:vadd.h"],
     include = ["//tests/apps/vadd:."],
     top_name = "VecAdd",

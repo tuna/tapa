@@ -44,7 +44,7 @@ cc_binary(
 
 tapa_xo(
     name = "custom-rtl-target-xo",
-    src = "vadd.cpp",
+    srcs = ["vadd.cpp"],
     custom_rtl_files = glob([
         "rtl/*.v",
         "rtl/*.tcl",
@@ -54,7 +54,7 @@ tapa_xo(
 
 tapa_xo(
     name = "custom-rtl-target-xo-template",
-    src = "vadd.cpp",
+    srcs = ["vadd.cpp"],
     output_file = "template.xo",
     top_name = "VecAdd",
 )

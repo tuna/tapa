@@ -39,7 +39,7 @@ sh_test(
 
 tapa_xo(
     name = "nonpipeline-stream-vadd-xo",
-    src = "vadd.cpp",
+    srcs = ["vadd.cpp"],
     hdrs = ["vadd.h"],
     include = ["."],
     top_name = "VecAdd",

@@ -30,7 +30,10 @@ def tapa_app_test(
         name,
         host_srcs,
         top_name,
+        kernel_srcs = None,
         kernel_hdrs = None,
+        kernel_includes = ["."],
+        host_deps = [],
         sim_args = [],
         macos_sim_args = [],
         hw_test_args = [],
@@ -55,8 +58,14 @@ def tapa_app_test(
         host_srcs: `srcs` of the `<name>-host` cc_binary, typically
             `glob(["*.cpp", "*.h"])`.
         top_name: Kernel top function name.
+        kernel_srcs: `srcs` of both tapa_xo targets (the kernel translation
+            units); defaults to `["<name>.cpp"]`.
         kernel_hdrs: `hdrs` of both tapa_xo targets; defaults to
             `["<name>.h"]`.
+        kernel_includes: `include` dirs of both tapa_xo targets, flowing to
+            `tapa analyze` as `--cflags -I<path>`; defaults to the app dir.
+        host_deps: Extra `deps` of the `<name>-host` cc_binary, e.g. a
+            cc_library providing an include dir outside the app package.
         sim_args: Extra args of the `<name>` sh_test on all platforms.
         macos_sim_args: Extra args of the `<name>` sh_test on macOS only.
         hw_test_args: Extra trailing args of the `-xosim`, `-hw-emu`, and
@@ -69,6 +78,8 @@ def tapa_app_test(
     xo_label = ":%s-xo" % name
     zip_label = ":%s-zip" % name
     xclbin_label = ":%s-hw-emu-xclbin" % name
+    if kernel_srcs == None:
+        kernel_srcs = ["%s.cpp" % name]
     if kernel_hdrs == None:
         kernel_hdrs = ["%s.h" % name]
 
@@ -160,23 +171,23 @@ def tapa_app_test(
         name = "%s-host" % name,
         srcs = host_srcs,
         visibility = ["//tests/functional:__subpackages__"],
-        deps = _HOST_DEPS,
+        deps = _HOST_DEPS + host_deps,
     )
 
     tapa_xo(
         name = "%s-xo" % name,
-        src = "%s.cpp" % name,
+        srcs = kernel_srcs,
         hdrs = kernel_hdrs,
-        include = ["."],
+        include = kernel_includes,
         top_name = top_name,
         **xo_kwargs
     )
 
     tapa_xo(
         name = "%s-zip" % name,
-        src = "%s.cpp" % name,
+        srcs = kernel_srcs,
         hdrs = kernel_hdrs,
-        include = ["."],
+        include = kernel_includes,
         target = "xilinx-hls",
         top_name = top_name,
         **xo_kwargs
@@ -195,7 +206,9 @@ def tapa_functional_test(
         name,
         host_srcs,
         top_name = "VecAdd",
+        kernel_srcs = None,
         kernel_hdrs = None,
+        kernel_includes = [],
         sim_args = [],
         macos_sim_args = ["1000"],
         sim_size = "medium",
@@ -213,7 +226,12 @@ def tapa_functional_test(
         host_srcs: `srcs` of the `<name>-host` cc_binary, typically
             `glob(["*.cpp"])`.
         top_name: Kernel top function name.
+        kernel_srcs: `srcs` of the tapa_xo target; defaults to the shared
+            `vadd.cpp` sample.
         kernel_hdrs: `hdrs` of the tapa_xo target; omitted when None.
+        kernel_includes: `include` dirs of the tapa_xo target, flowing to
+            `tapa analyze` as `--cflags -I<path>`; empty by default because
+            same-dir quote includes resolve without it.
         sim_args: Extra args of the `<name>` sh_test on all platforms.
         macos_sim_args: Extra args of the `<name>` sh_test on macOS only.
         sim_size: Size of the `<name>` sh_test.
@@ -275,9 +293,13 @@ def tapa_functional_test(
         deps = _HOST_DEPS,
     )
 
+    if kernel_srcs == None:
+        kernel_srcs = ["vadd.cpp"]
+
     tapa_xo(
         name = "%s-xo" % name,
-        src = "vadd.cpp",
+        srcs = kernel_srcs,
+        include = kernel_includes,
         top_name = top_name,
         **kernel_kwargs
     )

@@ -57,7 +57,7 @@ cc_binary(
 
 tapa_xo(
     name = "template-tasks-zip",
-    src = "vadd.cpp",
+    srcs = ["vadd.cpp"],
     hdrs = ["vadd.h"],
     include = ["."],
     target = "xilinx-hls",

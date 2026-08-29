@@ -78,7 +78,7 @@ def _tapa_xo_impl(ctx):
     if ctx.attr.jobs < 1:
         fail("jobs must be >= 1, got {}".format(ctx.attr.jobs))
     tapa_cli = ctx.executable.tapa_cli
-    src = ctx.file.src
+    srcs = ctx.files.srcs
     top_name = ctx.attr.top_name
     work_dir = ctx.actions.declare_directory(ctx.attr.name + ".tapa")
 
@@ -108,7 +108,10 @@ def _tapa_xo_impl(ctx):
         if REMOTE_SSH_CONTROL_PERSIST:
             tapa_cmd.extend(["--remote-ssh-control-persist", REMOTE_SSH_CONTROL_PERSIST])
 
-    tapa_cmd.extend(["analyze", "--input", src.path, "--top", top_name])
+    tapa_cmd.append("analyze")
+    for src in srcs:
+        tapa_cmd.extend(["--input", src.path])
+    tapa_cmd.extend(["--top", top_name])
 
     if ctx.file.tapacc:
         tapa_cmd.extend(["--tapacc", ctx.file.tapacc])
@@ -156,7 +159,7 @@ def _tapa_xo_impl(ctx):
     for rtl_file in ctx.files.custom_rtl_files:
         tapa_cmd.extend(["--custom-rtl", rtl_file.path])
 
-    inputs = [src] + ctx.files.hdrs + ctx.files.custom_rtl_files
+    inputs = srcs + ctx.files.hdrs + ctx.files.custom_rtl_files
     if ctx.file.connectivity:
         inputs.append(ctx.file.connectivity)
     if ctx.file.ssh_key:
@@ -174,7 +177,7 @@ def _tapa_xo_impl(ctx):
 
 def _tapa_reuse_work_dir_xo_impl(ctx):
     tapa_cli = ctx.executable.tapa_cli
-    src = ctx.file.src
+    srcs = ctx.files.srcs
     top_name = ctx.attr.top_name
     output_file = ctx.actions.declare_file(ctx.attr.name + ".xo")
     work_dir = ctx.actions.declare_directory(ctx.attr.name + ".tapa")
@@ -200,6 +203,7 @@ def _tapa_reuse_work_dir_xo_impl(ctx):
     env_path = ctx.executable.vitis_hls_env.path
     prefix = " ".join([env_path] + tapa_prefix)
     includes = " ".join(include_flags)
+    input_flags = " ".join(["--input " + src.path for src in srcs])
     part_num = ctx.attr.part_num
     clock_period = ctx.attr.clock_period
 
@@ -208,14 +212,14 @@ def _tapa_reuse_work_dir_xo_impl(ctx):
     # Pin it so the fan-out matches what `_vendor_exec_requirements` reserves.
     script = """
 set -ex
-{prefix} analyze {includes} --input {src} --top {top} --target xilinx-vitis
+{prefix} analyze {includes} {input_flags} --top {top} --target xilinx-vitis
 {prefix} synth --jobs {jobs} --part-num {part} --clock-period {clock} --override-report-schema-version=redacted
 {prefix} synth --jobs {jobs} --part-num {part} --clock-period {clock} --skip-hls-based-on-mtime --override-report-schema-version=redacted
 {prefix} pack --output {output}
 """.format(
         prefix = prefix,
         includes = includes,
-        src = src.path,
+        input_flags = input_flags,
         top = top_name,
         jobs = ctx.attr.jobs,
         part = part_num,
@@ -223,7 +227,7 @@ set -ex
         output = output_file.path,
     )
 
-    inputs = [src] + ctx.files.hdrs
+    inputs = srcs + ctx.files.hdrs
     if ctx.file.ssh_key:
         inputs.append(ctx.file.ssh_key)
     ctx.actions.run_shell(
@@ -239,7 +243,7 @@ set -ex
 tapa_reuse_work_dir_xo = rule(
     implementation = _tapa_reuse_work_dir_xo_impl,
     attrs = {
-        "src": attr.label(allow_single_file = True, mandatory = True),
+        "srcs": attr.label_list(allow_files = [".cpp"], mandatory = True),
         "hdrs": attr.label_list(allow_files = True),
         "include": attr.label_list(allow_files = True),
         "top_name": attr.string(mandatory = True),
@@ -271,7 +275,7 @@ tapa_reuse_work_dir_xo = rule(
 tapa_xo = rule(
     implementation = _tapa_xo_impl,
     attrs = {
-        "src": attr.label(allow_single_file = True, mandatory = True),
+        "srcs": attr.label_list(allow_files = [".cpp"], mandatory = True),
         "hdrs": attr.label_list(allow_files = True),
         "include": attr.label_list(allow_files = True),
         "top_name": attr.string(mandatory = True),

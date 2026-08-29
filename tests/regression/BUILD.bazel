@@ -27,7 +27,7 @@ cc_test(
 
 tapa_xo(
     name = "callipepla-xo",
-    src = "callipepla/tapa/src_noconst/callipepla.cpp",
+    srcs = ["callipepla/tapa/src_noconst/callipepla.cpp"],
     hdrs = ["callipepla/tapa/src_noconst/callipepla.h"],
     clock_period = "3.33",
     jobs = 8,
@@ -38,7 +38,7 @@ tapa_xo(
 
 tapa_xo(
     name = "serpens-24ch-xo",
-    src = "serpens-24ch/tapa/src/serpens-noconst.cpp",
+    srcs = ["serpens-24ch/tapa/src/serpens-noconst.cpp"],
     hdrs = ["serpens-24ch/tapa/src/serpens-noconst.h"],
     clock_period = "3.33",
     connectivity = "serpens-24ch/tapa/src/link_config.ini",
@@ -50,7 +50,7 @@ tapa_xo(
 
 tapa_xo(
     name = "serpens-32ch-xo",
-    src = "serpens-32ch/tapa/src/serpens_tapa_256.cpp",
+    srcs = ["serpens-32ch/tapa/src/serpens_tapa_256.cpp"],
     clock_period = "3.33",
     jobs = 8,
     part_num = "xcu55c-fsvh2892-2L-e",
@@ -60,7 +60,7 @@ tapa_xo(
 
 tapa_xo(
     name = "sextans-xo",
-    src = "spmm/sextans-u55c-3x3floorplan/tapa/src/sextans-no-const-para.cpp",
+    srcs = ["spmm/sextans-u55c-3x3floorplan/tapa/src/sextans-no-const-para.cpp"],
     hdrs = ["spmm/sextans-u55c-3x3floorplan/tapa/src/sextans-no-const-para.h"],
     clock_period = "3.00",
     jobs = 8,
@@ -71,7 +71,7 @@ tapa_xo(
 
 tapa_xo(
     name = "autosa-mm-u250-xo",
-    src = "autosa/mm/10x13/u250/tapa/src/kernel_kernel.cpp",
+    srcs = ["autosa/mm/10x13/u250/tapa/src/kernel_kernel.cpp"],
     hdrs = [
         "autosa/mm/10x13/u250/tapa/src/kernel_kernel.h",
     ],
@@ -84,7 +84,7 @@ tapa_xo(
 
 tapa_xo(
     name = "autosa-mm-u55c-xo",
-    src = "autosa/mm/10x13/u55c/tapa/src/kernel_kernel.cpp",
+    srcs = ["autosa/mm/10x13/u55c/tapa/src/kernel_kernel.cpp"],
     hdrs = [
         "autosa/mm/10x13/u55c/tapa/src/kernel_kernel.h",
     ],
@@ -97,7 +97,7 @@ tapa_xo(
 
 tapa_xo(
     name = "cnn-xo",
-    src = "cnn/tapa/src/tapa_kernel.cpp",
+    srcs = ["cnn/tapa/src/tapa_kernel.cpp"],
     clock_period = "3.33",
     connectivity = "cnn/tapa/src/link_config.ini",
     jobs = 8,
@@ -108,7 +108,7 @@ tapa_xo(
 
 tapa_xo(
     name = "hbm-bandwidth-xo",
-    src = "hbm-bandwidth/src/bandwidth.cpp",
+    srcs = ["hbm-bandwidth/src/bandwidth.cpp"],
     hdrs = ["hbm-bandwidth/src/bandwidth.h"],
     clock_period = "3.33",
     connectivity = "hbm-bandwidth/src/link_config.ini",
@@ -120,7 +120,7 @@ tapa_xo(
 
 tapa_xo(
     name = "hbm-bandwidth-1-ch-xo",
-    src = "hbm-bandwidth-1-ch/src/bandwidth.cpp",
+    srcs = ["hbm-bandwidth-1-ch/src/bandwidth.cpp"],
     hdrs = ["hbm-bandwidth-1-ch/src/bandwidth.h"],
     clock_period = "3.33",
     connectivity = "hbm-bandwidth-1-ch/src/link_config.ini",
@@ -132,7 +132,7 @@ tapa_xo(
 
 tapa_xo(
     name = "knn-xo",
-    src = "knn/src/knn.cpp",
+    srcs = ["knn/src/knn.cpp"],
     hdrs = ["knn/src/knn.h"],
     clock_period = "3.33",
     connectivity = "knn/src/knn.ini",
@@ -146,7 +146,7 @@ tapa_xo(
 # merge tree, but processes one tile per PE instead of the canonical 64.
 tapa_xo(
     name = "knn-xosim-xo",
-    src = "knn/src/knn.cpp",
+    srcs = ["knn/src/knn.cpp"],
     hdrs = ["knn/src/knn.h"],
     cflags = "-DKNN_NUM_TILES=1",
     clock_period = "3.33",
@@ -159,7 +159,7 @@ tapa_xo(
 
 tapa_xo(
     name = "lu-decompose-xo",
-    src = "lu_decompose/tapa/src/kernel_kernel.cpp",
+    srcs = ["lu_decompose/tapa/src/kernel_kernel.cpp"],
     clock_period = "3.33",
     connectivity = "lu_decompose/tapa/src/link_config.ini",
     jobs = 8,
@@ -170,7 +170,7 @@ tapa_xo(
 
 tapa_xo(
     name = "page-rank-xo",
-    src = "page_rank/tapa/src/page-rank.cpp",
+    srcs = ["page_rank/tapa/src/page-rank.cpp"],
     hdrs = [
         "page_rank/tapa/src/page-rank.h",
         "page_rank/tapa/src/page-rank-kernel.h",
@@ -185,7 +185,7 @@ tapa_xo(
 
 tapa_xo(
     name = "serpens-16ch-xo",
-    src = "serpens-16ch/tapa/src/serpens.cpp",
+    srcs = ["serpens-16ch/tapa/src/serpens.cpp"],
     hdrs = ["serpens-16ch/tapa/src/serpens.h"],
     clock_period = "3.33",
     connectivity = "serpens-16ch/tapa/src/link_config.ini",
@@ -197,7 +197,7 @@ tapa_xo(
 
 tapa_xo(
     name = "sextans-split-bram-uram-xo",
-    src = "spmm/sextans-u280-split-bram-uram/tapa/src/sextans.cpp",
+    srcs = ["spmm/sextans-u280-split-bram-uram/tapa/src/sextans.cpp"],
     hdrs = ["spmm/sextans-u280-split-bram-uram/tapa/src/sextans.h"],
     clock_period = "3.33",
     connectivity = "spmm/sextans-u280-split-bram-uram/tapa/src/link_config.ini",
@@ -209,7 +209,7 @@ tapa_xo(
 
 tapa_xo(
     name = "spmv-hisparse-mmap-xo",
-    src = "spmv-hisparse-mmap/tapa/src/spmv.cpp",
+    srcs = ["spmv-hisparse-mmap/tapa/src/spmv.cpp"],
     clock_period = "3.33",
     connectivity = "spmv-hisparse-mmap/tapa/src/spmv.ini",
     jobs = 8,
@@ -220,7 +220,7 @@ tapa_xo(
 
 tapa_xo(
     name = "stencil-dilate-xo",
-    src = "stencil-dilate/tapa/src/unikernel.cpp",
+    srcs = ["stencil-dilate/tapa/src/unikernel.cpp"],
     hdrs = ["stencil-dilate/tapa/src/DILATE.h"],
     clock_period = "3.33",
     connectivity = "stencil-dilate/tapa/src/unikernel.ini",
