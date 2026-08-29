@@ -56,7 +56,7 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
         part_num: device.part_num.clone(),
         clock_period,
         other_configs: args.other_hls_configs.clone(),
-        cflags: build_hls_cflags(&state.graph.cflags, ctx.remote_config.is_some()),
+        cflags: build_hls_cflags(ctx.remote_config.is_some()),
         skip_based_on_mtime: args.skip_hls_based_on_mtime,
         jobs: args.jobs,
         keep_work_dir: args.keep_hls_work_dir,
@@ -163,16 +163,23 @@ fn apply_hls_metrics(task_name: &str, task: &mut Task, report: &CsynthReport) ->
     Ok(())
 }
 
-/// Build the HLS CFLAGS: the analyzer-stored `graph_cflags` (so
-/// `-isystem <tapa-lib>` etc. are forwarded into HLS) followed by the
-/// `-DTAPA_TARGET_*` defines and a `-I <tapa-extra-runtime-include>` entry
-/// when the resource can be resolved ("WORKAROUND: Vitis HLS requires -I or
-/// gflags cannot be found..." branch).
-fn build_hls_cflags(graph_cflags: &[String], remote: bool) -> Vec<String> {
-    // HLS cflags = the analyzer-stored graph cflags followed by
-    // `get_tapacc_cflags()`, so HLS sees the user's own `-I` / `-D`
-    // entries plus the tapa-lib / vendor-include resolution.
-    let mut flags: Vec<String> = graph_cflags.to_vec();
+/// Build the shared HLS cflags TAIL: vendor/tapa include resolution
+/// (`get_tapacc_cflags()`, so `-isystem <tapa-lib>` etc. are forwarded
+/// into HLS) followed by the `-DTAPA_TARGET_*` defines and a
+/// `-I <tapa-extra-runtime-include>` entry when the resource can be
+/// resolved ("WORKAROUND: Vitis HLS requires -I or gflags cannot be
+/// found..." branch).
+///
+/// The user's graph cflags and the per-task manifest flags are
+/// prepended by [`task_cflags`](super::hls_run) — which also means the
+/// `-I <tapa-extra-runtime-include>` workaround flag must stay the
+/// LAST element this returns: Vitis 2025.2's unified (vitis-run) flow
+/// glues any `-cflags` token ending in the exact string `include` to
+/// the token after it (clang `-include <file>` argument-merging
+/// semantics), destroying both. The directory name ends in `include`
+/// by construction, so nothing load-bearing may follow it.
+fn build_hls_cflags(remote: bool) -> Vec<String> {
+    let mut flags: Vec<String> = Vec::new();
     // Remote HLS substitutes `get_tapacc_cflags()` (local
     // vendor/stdlib paths) with `get_remote_hls_cflags()` when
     // `~/.taparc` is active — the

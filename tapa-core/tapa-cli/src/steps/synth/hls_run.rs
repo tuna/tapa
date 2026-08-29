@@ -6,7 +6,7 @@ use rayon::prelude::*;
 use std::fs;
 use std::path::Path;
 
-use tapa_ir::{ClockPeriod, Design, SynthTarget};
+use tapa_ir::{ClockPeriod, Design, SynthTarget, Task};
 use tapa_xilinx::{run_hls_with_retry, run_hls_with_retry_in_stage, HlsJob, HlsOutput, ToolRunner};
 
 use crate::error::{CliError, Result};
@@ -40,6 +40,9 @@ pub struct HlsRunOptions {
     pub part_num: String,
     pub clock_period: ClockPeriod,
     pub other_configs: String,
+    /// Shared cflags tail (vendor/tapa includes + target defines,
+    /// closing with `-I<tapa-extra-runtime-include>`). Per-task user
+    /// and manifest flags are prepended by [`task_cflags`].
     pub cflags: Vec<String>,
     pub skip_based_on_mtime: bool,
     /// Number of HLS runs executed in parallel. `None` or 1 → serial.
@@ -75,7 +78,9 @@ pub fn run_hls_for_leaves(
         }
         let layout = TaskHlsLayout::new(work_dir, task_name);
 
-        let cpp_source = sources.sole_source(task_name)?;
+        // Non-empty for every task: `stage_hls_sources` rejects empty
+        // manifests before any job is planned.
+        let srcs = sources.srcs(task_name);
 
         // Check freshness before creating `layout.hdl_dir`, and require
         // at least one `.v` file so a directory containing only generator
@@ -83,7 +88,7 @@ pub fn run_hls_for_leaves(
         if options.skip_based_on_mtime && layout.hdl_dir.is_dir() {
             let hdl_files = list_hdl_files(&layout.hdl_dir)?;
             if hdl_files.iter().any(|path| is_verilog(path))
-                && hdl_files_are_newer_than(&hdl_files, cpp_source)
+                && hdl_files_are_newer_than(&hdl_files, srcs)
             {
                 log::info!(
                     "skipping HLS for `{task_name}` (mtime cache hit at {})",
@@ -127,8 +132,13 @@ pub fn run_hls_for_leaves(
 
         let job = HlsJob::builder()
             .task_name(task_name.clone())
-            .srcs(vec![cpp_source.clone()])
-            .cflags(options.cflags.clone())
+            .srcs(srcs.to_vec())
+            .cflags(task_cflags(
+                &design.cflags,
+                &work_dir.join(crate::tapacc::REWRITTEN_DIR),
+                task,
+                &options.cflags,
+            ))
             .target_part(options.part_num.clone())
             .top_name(task_name.clone())
             .clock_period(options.clock_period.to_string())
@@ -233,20 +243,57 @@ enum Work {
     RunFresh(HlsJob),
 }
 
-fn hdl_files_are_newer_than(hdl_files: &[Utf8PathBuf], cpp_source: &camino::Utf8Path) -> bool {
-    if hdl_files.is_empty() {
+/// Per-task HLS cflags: the user's graph cflags, then the task
+/// manifest's tree-relative pieces — the rewritten tree root first,
+/// then one `-I` per include dir (the empty entry is the tree root
+/// itself, already covered), then one `-D` per guard define — then
+/// the shared vendor tail (`HlsRunOptions::cflags`). Staging has
+/// already asserted the include dirs and defines are Tcl-safe.
+///
+/// The tail goes last on purpose: it ends with
+/// `-I<tapa-extra-runtime-include>`, and Vitis 2025.2's unified flow
+/// glues a `-cflags` token ending in the exact string `include` to
+/// whatever follows it (losing both), so that flag must close the
+/// string. Manifest include dirs must therefore not end in `include`
+/// either once MF3 starts emitting them.
+fn task_cflags(user: &[String], tree_root: &Path, task: &Task, tail: &[String]) -> Vec<String> {
+    let mut flags = user.to_vec();
+    flags.push(format!("-I{}", tree_root.display()));
+    for dir in &task.include_dirs {
+        if !dir.is_empty() {
+            flags.push(format!("-I{}", tree_root.join(dir).display()));
+        }
+    }
+    for define in &task.defines {
+        flags.push(format!("-D{define}"));
+    }
+    flags.extend_from_slice(tail);
+    flags
+}
+
+fn hdl_files_are_newer_than(hdl_files: &[Utf8PathBuf], srcs: &[Utf8PathBuf]) -> bool {
+    if hdl_files.is_empty() || srcs.is_empty() {
         return false;
     }
-    let Ok(cpp_meta) = fs::metadata(cpp_source) else {
-        return false;
-    };
-    let Ok(cpp_t) = cpp_meta.modified() else {
+    // Every emitted HDL file must postdate the newest source file;
+    // a metadata gap on any input conservatively reports stale.
+    let mut newest_src: Option<std::time::SystemTime> = None;
+    for src in srcs {
+        let Ok(meta) = fs::metadata(src) else {
+            return false;
+        };
+        let Ok(t) = meta.modified() else {
+            return false;
+        };
+        newest_src = Some(newest_src.map_or(t, |prev: std::time::SystemTime| prev.max(t)));
+    }
+    let Some(newest_src) = newest_src else {
         return false;
     };
     hdl_files.iter().all(|hdl| {
         fs::metadata(hdl)
             .and_then(|metadata| metadata.modified())
-            .is_ok_and(|hdl_t| hdl_t > cpp_t)
+            .is_ok_and(|hdl_t| hdl_t > newest_src)
     })
 }
 
@@ -327,25 +374,26 @@ mod tests {
         fs::write(tree.join("Add.cpp"), b"int main(){}\n").unwrap();
     }
 
+    fn leaf_task(name: &str) -> Task {
+        Task {
+            level: TaskLevel::Lower,
+            srcs: vec![format!("{name}.cpp")],
+            include_dirs: Vec::new(),
+            defines: Vec::new(),
+            ports: Vec::new(),
+            tasks: BTreeMap::new(),
+            fifos: BTreeMap::new(),
+            readable_name: String::new(),
+            synth: SynthTarget::Hls,
+            self_area: None,
+            total_area: None,
+            clock_period: None,
+        }
+    }
+
     fn leaf_design() -> Design {
         let mut tasks = BTreeMap::new();
-        tasks.insert(
-            "Add".to_string(),
-            Task {
-                level: TaskLevel::Lower,
-                srcs: vec!["Add.cpp".to_string()],
-                include_dirs: Vec::new(),
-                defines: Vec::new(),
-                ports: Vec::new(),
-                tasks: BTreeMap::new(),
-                fifos: BTreeMap::new(),
-                readable_name: String::new(),
-                synth: SynthTarget::Hls,
-                self_area: None,
-                total_area: None,
-                clock_period: None,
-            },
-        );
+        tasks.insert("Add".to_string(), leaf_task("Add"));
         Design {
             schema_version: tapa_ir::graph::SCHEMA_VERSION,
             top: "Add".to_string(),
@@ -353,6 +401,46 @@ mod tests {
             tasks,
             cflags: Vec::new(),
         }
+    }
+
+    /// The manifest→cflags contract MF3 fills in: user cflags, then
+    /// tree root, one `-I` per include dir (empty = root, skipped),
+    /// one `-D` per guard, then the shared tail — whose closing
+    /// `-I<extra-runtime-include>` must remain the final token
+    /// (Vitis glues tokens onto paths ending in `include`).
+    #[test]
+    fn task_cflags_compose_user_tree_includes_defines_then_tail() {
+        let task = Task {
+            include_dirs: vec![
+                String::new(),
+                "_external/ab12cd34".to_string(),
+                "common".to_string(),
+            ],
+            defines: vec!["TAPA_TASK_DEF_Add".to_string()],
+            ..leaf_task("Add")
+        };
+        let flags = task_cflags(
+            &["-std=c++14".to_string(), "-I/app".to_string()],
+            Path::new("/work/rewritten"),
+            &task,
+            &[
+                "-isystem/tapa-lib".to_string(),
+                "-I/extra-runtime-include".to_string(),
+            ],
+        );
+        assert_eq!(
+            flags,
+            vec![
+                "-std=c++14".to_string(),
+                "-I/app".to_string(),
+                "-I/work/rewritten".to_string(),
+                "-I/work/rewritten/_external/ab12cd34".to_string(),
+                "-I/work/rewritten/common".to_string(),
+                "-DTAPA_TASK_DEF_Add".to_string(),
+                "-isystem/tapa-lib".to_string(),
+                "-I/extra-runtime-include".to_string(),
+            ]
+        );
     }
 
     #[test]
@@ -563,9 +651,11 @@ mod tests {
         fs::write(hdl.join("Add.v"), b"module Add(); wire fresh; endmodule\n").unwrap();
 
         let files = list_hdl_files(&crate::util::utf8(hdl)).unwrap();
-        let cpp = crate::util::utf8(work.join(crate::tapacc::REWRITTEN_DIR).join("Add.cpp"));
+        let srcs = [crate::util::utf8(
+            work.join(crate::tapacc::REWRITTEN_DIR).join("Add.cpp"),
+        )];
         assert!(
-            !hdl_files_are_newer_than(&files, &cpp),
+            !hdl_files_are_newer_than(&files, &srcs),
             "one stale emitted file must invalidate the HLS cache"
         );
     }
